@@ -1,5 +1,7 @@
 # TerraAgent — Architecture Decisions
 
+> **D-44 (2026-11-04):** owner-approved resource economy, database profiles and reproducible experiments amend D-19/D-26/D-35. See [ECONOMY](ECONOMY.md).
+
 > Numbered, append-only. Status: `Proposed` (awaiting owner grill) · `Accepted` · `Superseded by D-NN`.
 > Each decision lists the alternatives so the owner can overturn it with full context. Agents must not silently deviate; propose a new decision instead.
 
@@ -47,6 +49,8 @@
 | D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
+| D-43 | Neutral hive fauna | Accepted (2026-11-04, owner) |
+| D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
 
 | D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
 
@@ -583,7 +587,37 @@ The log stays append-only; these notes record where the code built in W00–W01 
 
 **Alternatives.** Full per-bug transform streaming defeats the requested order-style replication. Seed-only replication cannot recover missing inputs or reconnects. Simulated food/building chains add complexity the owner explicitly excluded.
 
-## D-44 — Hex tiles: one rule for where the hex grid exists
+### D-43 extension — W07 combat, motion and protocol rules (as built)
+
+**As-built rules (2026-11-07).**
+- **Recon Armored Scout (`robot.recon`, `ENTITY_KIND.recon = 51`).** Per owner direction, Recon is a six-wheel armored scout with an independently aiming cannon turret (`frontend/render/kitbash/archetypes/units/recon.ts`) that holds position while firing rather than strafing (`evasive: false` for Recon; `evasive.ts` remains available for air units in W19). Dedicated `building.laserTower` (`ENTITY_KIND.laserTower = 20`) ships in W07; Factory (`4×3` vs `3×3`) and DCA (`2×2` vs `1×1`) footprint refits and building collapse rubble VFX remain `H+` (`RN-66`).
+- **Shared approach band, spotting gate & fractional cadence.** All combat pursuit, hive waves, replay directives and generic attacks share `combatApproachBand` and `footprintAttackRange` (`shared/sim/src/systems/combat/approachBand.ts`). Target acquisition, pursuit and firing require colony spotting (`vision.ts`, `isEntityVisibleToColony`). Fractional firing deadlines (`weaponFire.ts`) preserve exact sustained rates at 5 TPS (e.g. `2/s` → 20 shots in 10 s, `4/s` → 40 shots in 10 s).
+- **Group march & flow-field slots (`moveGroup`).** Multi-unit ground movement uses `moveGroup` (`shared/contracts/src/commands/move-group.ts`), shared flow-field routing (`shared/sim/src/grid/flowField.ts`) and deterministic slot assignment (`shared/sim/src/units/movement/groupMarch.ts`, `slots.ts`), rebuilding seating routes when terrain/blockers change (`GP-89`).
+- **Protocol v2 (`DIFF_FORMAT = 2`, `SIM_VERSION = 3`).** Sparse stance patches (`stancePatch.ts`), stamped compact projectile queues (`projectileQueue.ts`), and welcome/transition fauna motion seeds (`faunaMotionSeed.ts`, `faunaMotionReplica.ts`) synchronize client replicas without per-tick transform streams (`FA-38`, `FA-39`). Canonical v2 snapshots migrate losslessly to v3; `VersionMismatchNotice` prompts reload on protocol mismatch.
+- **GPU-instanced insect swarms & `F6` Combat Lab.** `InsectSwarmRenderer` (`frontend/render/animation/insects/InsectSwarmRenderer.ts`) batches insects by species with per-instance GPU combat/locomotion/death states (`procedural-insect-animation`) and pooled 3D combat/liquid bursts (`CombatBurstSystem.ts`). `F6` Combat Lab (`frontend/game/features/combat-tuning/`) provides live planet-wide stat tuning (preserving HP fractions on max-HP edits, `tunedHealth.ts`) and JSON export.
+
+
+## D-44 — Resource demand, cash fees and database-managed experiments
+
+**Decision (owner, 2026-11-04).** Adopt [ECONOMY](ECONOMY.md) as the implementation contract. Useful recurring consumption, mixed-tier recipes and regional specialization create trading opportunities; prices remain market-discovered and no farming return is guaranteed. USDC is the default cash quote. Buyer pays quote-token fees: platform 100 bp plus stall 0–100 bp (default 100), independent of maker/taker role; W22 treasury allocation comes from platform fees. Exact arithmetic, versioned order terms and funded reservations are mandatory.
+
+**D-19/D-26 amendment.** Our books remain planet-local, but unrestricted cargo transfers and imports permit external trading and cross-planet access. Accept external fee leakage; Guild NPCs offer a service, not an enforceable transport monopoly. Real Guild cargo is stock-backed or purchased, cash is explicitly allocated, and inventory/cash/loss caps and thin-market pauses are required. D-25 permits bots; limits govern economic exposure, not human identity.
+
+**D-35 extension.** Postgres stores typed, validated, immutable economy profile versions. Existing compileData exports the same snapshot/hash to live hosts and headless experiments. Operators can edit candidates, compare evidence, activate at an effective tick and roll back without code deployment. Dev tune stays a sandbox override; old orders/jobs retain their pinned terms.
+
+**AI workflow.** Discover JSON Schema, clone/patch a candidate, run bounded seeded scenarios on the real shared rules, compare paired/held-out results and emit recommendations with evidence. AI experiment credentials cannot activate production or access chain signing keys. Do not maintain a separate authoritative economic simulator.
+
+**Delivery.** W13 includes database management, recurring project/transport consumption, mock USDC fees and simulation tools; W15 adds funded bot policies/tests; W23 gates public cash trading on exact accounting, approved stress results and a real-player pilot. New coefficients and gate thresholds require calibration, recorded in LED-18. This decision accepts the design, not an unmeasured claim of sustainability or a fixed hackathon date.
+
+
+### D-44 extension — Regional specialization and operating logistics
+
+**Owner direction (2026-11-04).** Players need clear reasons to buy and sell. Configure main/scarce resources per planet and canonical sector, independently by ResourceKey/tier (a sand planet may be silica-rich but crystal-poor). Resolve global/type/planet/archetype/sector overrides with explicit provenance. All production/discovery paths respect the same endowment; generated reserves stay pinned for existing worlds. W11 provides identity/persistence hooks; W13 owns database configuration and economics; W27 preserves them under streaming.
+
+Large active bases and armies consume recurring resource supplies. Load relative to powered logistics capacity and route distance increases delivery/resource cost; players can build depots, trade locally, reduce activity or reserve units. Keep storage, command slots and logistics distinct. Supply shortage limits active work/attack cadence after local reserves/grace, while retreat remains possible. Reserve/deployment and away-budget rules are explicit in [ECONOMY](ECONOMY.md); do not raise another player's order price or debit cash automatically. Initial coefficients/shortage floors require calibration and are recorded in LED-19, not presented as measured balance. Multi-colony cost avoidance is tested; D-25 remains unchanged.
+
+
+## D-45 — Hex tiles: one rule for where the hex grid exists
 
 **Context (owner, 2026-11-06).** "Hexagons must never be rendered on or near obstacles, hills or mountains; resources only on hexagons; I need clear rules, a system, not lots of checks." The ground mesh puts a vertex at every tile *centre*, so the surface inside a tile's hexagon is shaped by the tile and its six neighbours: half of a Flat tile next to a dune lies on the dune's ramp. Per-tile flags (`aHexFlat`, `isLevelGroundPlane`, "deposit tiles always get lines") drew hexes up hills and around crystals on slopes.
 
@@ -592,7 +626,7 @@ The log stays append-only; these notes record where the code built in W00–W01 
 - **R2 hex tile:** open ground whose six neighbours all exist, are open ground and share its `levelledFlatHeight` within `HEX_LEVEL_EPS_M` (0.05 m). Its hexagon is one level plane.
 - **R3 wild ground:** everything else — obstacles, hills, water, holes, ramps, the planet rim and every tile touching one of them.
 - **R4 terraforming joins a plane** (owner, 2026-11-06: "I terraformed dunes, some ground still has no hexagons"): levelled ground takes the height of the level plane it joins (`joinPlaneHeight`: heights within 0.05 m are one plane, the plane most anchors share wins). A dune disc's anchors are the nearest hex tiles (searched up to 12 rings out) plus buildings/deposits inside it, else the open ground right beside it, else 0; the disc also levels every other open-ground hex inside it (loose Flat sand, earlier pads). Before, each disc took the *lowest* Flat tile beside it, so neighbouring discs differed by 0.06–0.4 m and ~40 % of flattened desert had no grid; now 0 % when worked outward from the pad, ~2–7 % in a random order (seams where two natural planes meet). Single tiles (`levelToAdjacentFlat`) use the same chooser.
-- **Worked from the edge inward** (owner, 2026-11-06: "hill targeted for terraforming … impossible to terraform"): wild ground beyond the non-hex row is reached by the chain rule in `systems/terraform-basic/chain.ts` (E1 a job needs a stand within the worker's reach; E2 a clicked tile without one is the chain's goal, the nearest obstacle with a stand is worked first, each cleared disc becomes the next stand; E3 only nothing workable ends the order with `no_path`). Supersedes the W02 rule "a clicked tile with no path ends the order". Open edges: GP-88, FF-88.
+- **Worked from the edge inward** (owner, 2026-11-06: "hill targeted for terraforming … impossible to terraform"): wild ground beyond the non-hex row is reached by the chain rule in `systems/terraform-basic/chain.ts` (E1 a job needs a stand within the worker's reach; E2 a clicked tile without one is the chain's goal, the nearest obstacle with a stand is worked first, each cleared disc becomes the next stand; E3 only nothing workable ends the order with `no_path`). Supersedes the W02 rule "a clicked tile with no path ends the order". Open edges: GP-99, FF-91.
 
 Readers, and nothing else decides these:
 - **Grid lines** (`frontend/render/planets/hex/`): `hexTileMask` stamped per cell into `uHexGrid`; an edge line is drawn where its own cell or the neighbour across that edge is a hex tile. Every hex tile is a closed hexagon; wild ground has no lines.
@@ -601,6 +635,6 @@ Readers, and nothing else decides these:
 
 **Not changed.** Building placement (`evaluatePlacement`, `isTileUneven`, W05 linked prep) and unit movement keep their own, wider rules: a building may still be ordered onto wild ground that its linked prep levels, and units still walk beside trees.
 
-**Consequences.** The desert is ~93 % dunes, so its visible deposits drop from ~368 to ~15 per planet (the starter guarantees); the rest stay buried until dunes are flattened (WE-35). Hand-placed scenario deposits and `dev.spawndeposit` bypass the rule (GP-87). Limits: RN-67, FF-87.
+**Consequences.** The desert is ~93 % dunes, so its visible deposits drop from ~368 to ~15 per planet (the starter guarantees); the rest stay buried until dunes are flattened (WE-35). Hand-placed scenario deposits and `dev.spawndeposit` bypass the rule (GP-98). Limits: RN-80, FF-90.
 
 **Alternatives.** A stricter grid rule also used for placement and movement (would forbid building or walking next to any tree); stamping a level pad under every generated deposit (keeps desert deposit counts but cuts flat patches into the dunes — owner question WE-35); rebuilding the mesh so hex tiles are true flat hexagons with transitions on the wild side (large render rework).

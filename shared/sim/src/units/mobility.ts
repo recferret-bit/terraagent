@@ -5,6 +5,7 @@ import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
 import { syncHqView } from '../systems/hq/view';
 import { resolveHqT1Row, rowNum } from '../systems/rows';
+import { resolveKindWeaponRow } from '../systems/combat/weaponRows';
 
 /**
  * Which entity kinds are units (take commands and move) and their stats from the data rows. Every unit moves the
@@ -48,6 +49,7 @@ function statsFromRow(row: CompiledRow): MobileStats {
   };
 }
 
+import { resolveReconRow } from '../systems/factories-hub/robotics';
 import { resolveWorkerRow, syncWorkerView } from '../systems/harvest/unit';
 import { revealVision } from '../systems/hq';
 
@@ -61,6 +63,28 @@ function workerMobileStats(data: CompiledDataLike): MobileStats {
     buildReach: [Number(row.buildReachMin ?? 1), Number(row.buildReachTiles ?? 1)],
     weaponRange: 0,
     dps: 0,
+    stopHoldTicks: 15,
+    retryTicks: 10,
+    retryMaxTicks: 80,
+  };
+}
+
+function faunaMobileStats(
+  data: CompiledDataLike,
+  species: 'blackAnt' | 'blueBeetle' | 'greenSpitter',
+  defaults: { speedPerTick: number; viewRadius: number; weaponRange: number; dps: number },
+): MobileStats {
+  const row = (data?.tables?.fauna as Record<string, CompiledRow | undefined> | undefined)?.[species];
+  const rawSpeed = Number(row?.speed ?? defaults.speedPerTick);
+  const speedPerTick = rawSpeed;
+  return {
+    speedPerTick: Math.fround(speedPerTick),
+    viewRadius: Number(row?.viewRadius ?? defaults.viewRadius),
+    profile: 'ground',
+    terraformReach: [0, 0],
+    buildReach: [0, 0],
+    weaponRange: Number(row?.range ?? defaults.weaponRange),
+    dps: Number(row?.dps ?? defaults.dps),
     stopHoldTicks: 15,
     retryTicks: 10,
     retryMaxTicks: 80,
@@ -89,6 +113,121 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
       },
     },
   ],
+  [
+    ENTITY_KIND.recon,
+    {
+      stats: (data) => {
+        const row = resolveReconRow(data);
+        const rawSpeed = Number(row.speed ?? row.speedTilesPerS ?? 0.7);
+        const speedPerTick = rawSpeed;
+        return {
+          speedPerTick: Math.fround(speedPerTick),
+          viewRadius: Number(row.viewRadius ?? 8),
+          profile: row.mobility === 'hover' ? 'hover' : 'ground',
+          terraformReach: [0, 0],
+          buildReach: [0, 0],
+          weaponRange: Number(row.range ?? 4),
+          dps: Number(row.dps ?? 14),
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick, data) => {
+        const cols = state.entities.cols;
+        const rRow = resolveReconRow(data);
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(rRow.viewRadius ?? 10), tick);
+      },
+    },
+  ],
+  [
+    ENTITY_KIND.demoTank,
+    {
+      stats: (data) => {
+        const row = (data?.tables?.combatUnits as Record<string, CompiledRow | undefined> | undefined)?.demoTank;
+        const rawSpeed = Number(row?.speed ?? 0.44);
+        const speedPerTick = rawSpeed > 1.0 ? rawSpeed * 0.2 : rawSpeed;
+        return {
+          speedPerTick: Math.fround(speedPerTick),
+          viewRadius: Number(row?.viewRadius ?? 6),
+          profile: 'ground',
+          terraformReach: [0, 0],
+          buildReach: [0, 0],
+          weaponRange: Number(row?.range ?? 6),
+          dps: Number(row?.dps ?? 28),
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick) => {
+        const cols = state.entities.cols;
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], 6, tick);
+      },
+    },
+  ],
+  [
+    ENTITY_KIND.demoArtillery,
+    {
+      stats: (data) => {
+        const row = (data?.tables?.combatUnits as Record<string, CompiledRow | undefined> | undefined)?.demoArtillery;
+        const rawSpeed = Number(row?.speed ?? 0.32);
+        const speedPerTick = rawSpeed > 1.0 ? rawSpeed * 0.2 : rawSpeed;
+        return {
+          speedPerTick: Math.fround(speedPerTick),
+          viewRadius: Number(row?.viewRadius ?? 6),
+          profile: 'ground',
+          terraformReach: [0, 0],
+          buildReach: [0, 0],
+          weaponRange: Number(row?.range ?? 12),
+          dps: Number(row?.dps ?? 22.5),
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick) => {
+        const cols = state.entities.cols;
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], 6, tick);
+      },
+    },
+  ],
+  [
+    ENTITY_KIND.blackAnt,
+    {
+      stats: (data) =>
+        faunaMobileStats(data, 'blackAnt', {
+          speedPerTick: 0.4,
+          viewRadius: 6,
+          weaponRange: 1,
+          dps: 8,
+        }),
+    },
+  ],
+  [
+    ENTITY_KIND.blueBeetle,
+    {
+      stats: (data) =>
+        faunaMobileStats(data, 'blueBeetle', {
+          speedPerTick: 0.16,
+          viewRadius: 6,
+          weaponRange: 1,
+          dps: 12,
+        }),
+    },
+  ],
+  [
+    ENTITY_KIND.greenSpitter,
+    {
+      stats: (data) =>
+        faunaMobileStats(data, 'greenSpitter', {
+          speedPerTick: 0.28,
+          viewRadius: 7,
+          weaponRange: 5,
+          dps: 6,
+        }),
+    },
+  ],
 ]);
 
 const statsCache = new WeakMap<CompiledDataLike, Map<number, MobileStats>>();
@@ -100,11 +239,25 @@ export function mobileStats(kind: number, data: CompiledDataLike): MobileStats |
   let byKind = statsCache.get(data);
   if (!byKind) statsCache.set(data, (byKind = new Map()));
   let s = byKind.get(kind);
-  if (!s) byKind.set(kind, (s = def.stats(data)));
+  if (!s) {
+    s = def.stats(data);
+    const weapon = data.tables.weapons ? resolveKindWeaponRow(kind, data) : undefined;
+    if (weapon) {
+      s.weaponRange = Number(weapon.range ?? s.weaponRange);
+      s.dps = Number(weapon.damage ?? 0) * Number(weapon.ratePerS ?? 0);
+    }
+    byKind.set(kind, s);
+  }
   return s;
 }
 
 export const isUnitKind = (kind: number): boolean => MOBILE_KINDS.has(kind);
+
+/** Path profile the movement orchestrator uses. Fauna share the worker rule whatever their row says. */
+export function movementProfile(kind: number, data: CompiledDataLike): PathProfileId {
+  if (kind === ENTITY_KIND.blackAnt || kind === ENTITY_KIND.blueBeetle || kind === ENTITY_KIND.greenSpitter) return 'worker';
+  return mobileStats(kind, data)?.profile ?? 'ground';
+}
 
 /** Lets the unit kind refresh its derived views after the runner changed its columns. */
 export function notifyUnitChanged(state: PlanetState, row: number, tick: number, data: CompiledDataLike): void {

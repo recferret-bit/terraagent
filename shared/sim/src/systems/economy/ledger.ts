@@ -164,16 +164,20 @@ export function recomputeFamilyCaps(
 /** Entity states in which a building gives no colony capacity (storage, unit supply): not built yet, or off the grid. */
 const INACTIVE_PROVIDER_STATES: ReadonlySet<number> = new Set([
   ENTITY_STATE.constructing,
+  ENTITY_STATE.inert,
   ENTITY_STATE.offlineBrownout,
   ENTITY_STATE.offlineUnpowered,
   ENTITY_STATE.offlineOverload,
+  ENTITY_STATE.offlineNoFuel,
   ENTITY_STATE.offlineNoGrid,
 ]);
 
 /** Whether entity row `r` is an alive, completed and powered building (one rule for storage and supply caps). */
 export function isActiveCapacityProvider(state: PlanetState, r: number): boolean {
   const cols = state.entities.cols;
-  return cols.hp[r] > 0 && !INACTIVE_PROVIDER_STATES.has(cols.state[r]);
+  if (cols.hp[r] <= 0) return false;
+  if (cols.kind[r] === ENTITY_KIND.droneControlArray) return cols.state[r] === ENTITY_STATE.active;
+  return !INACTIVE_PROVIDER_STATES.has(cols.state[r]);
 }
 
 /** Counts active (completed, alive, powered) Supply Depot T1 entities owned by `colonyIndex`. */

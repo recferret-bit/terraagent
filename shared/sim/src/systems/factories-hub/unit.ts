@@ -6,7 +6,7 @@ let cachedData: CompiledDataLike | null = null;
 
 /** W00–W05 defaults for Hub production and supply when a caller passes no compiled data. */
 export function defaultHubData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W05']));
+  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W05', 'W07']));
   return cachedData;
 }
 

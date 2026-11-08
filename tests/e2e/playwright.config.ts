@@ -21,7 +21,8 @@ export default defineConfig({
     headless: true,
     baseURL: urls().client,
     viewport: { width: 1280, height: 720 },
-    trace: 'retain-on-failure',
+    // SwiftShader screencast readbacks can stall the render thread. Keep DOM/network traces and explicit QA screenshots.
+    trace: { mode: 'retain-on-failure', screenshots: false, snapshots: true, sources: true },
     screenshot: 'only-on-failure',
     // software GL so WebGL works headless on any machine
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },

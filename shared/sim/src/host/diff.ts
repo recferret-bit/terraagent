@@ -1,14 +1,22 @@
 import { entityColumns } from '../ecs/columns';
-import { insertRow, pruneRemovals, removeRow, rowOf, setCapacity, type Removal } from '../ecs/store';
+import { insertRow, pruneRemovals, removeRow, rowDiffMaskSince, rowOf, setCapacity, type EntityStore, type Removal } from '../ecs/store';
 import { decodeValue, encodeValue } from '../codec/values';
 import { clientTileLayers, tileLayers } from '../grid/layers';
 import type { Blob, ColonyState, PlanetMeta, PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { changedTileIndices, noteTilesStamped } from '../grid/sectors';
-import { clientMeta } from '../codec/snapshot';
+import { CLIENT_OMIT_BLOBS, clientMeta } from '../codec/snapshot';
+import { faunaMotionSeed, installFaunaMotionSeed, type FaunaMotionSeed } from '../codec/faunaMotionSeed';
+import { packProjectileQueue, unpackProjectileQueue, type PackedProjectileQueue } from '../codec/projectileQueue';
+import { applyStancePatch, packStancePatch, type PackedStancePatch } from '../codec/stancePatch';
+import { ENTITY_KIND } from '../ecs/columns';
+import {
+  FAUNA_CORRECTION_INTERVAL_TICKS,
+  shouldOmitFaunaTransformFromRoutineDiff,
+} from '../systems/fauna/directives';
 
 /** Engine diff wire format version (inside the MessagePack map). */
-export const DIFF_FORMAT = 1;
+export const DIFF_FORMAT = 2;
 
 /** Maximum tile count allowed in a single diff delta frame before chunking (W05-19). */
 export const MAX_TILE_DIFF_PER_DELTA = 100;
@@ -40,6 +48,11 @@ export interface EngineDiff {
   colonies: ColonyState[];
   blobs: Record<string, Blob>;
   chunk?: { index: number; total: number };
+  /** Authoritative route lifecycle patches; absent on ordinary waypoint-progress frames. */
+  faunaMotion?: Blob;
+  /** Optional lossless full projectile queue; decodeDiff restores the canonical named blob. */
+  projectileQueue?: PackedProjectileQueue;
+  stancePatch?: PackedStancePatch;
 }
 
 export type SimDiff = EngineDiff & {
@@ -49,6 +62,7 @@ export type SimDiff = EngineDiff & {
 
 export interface DiffChunkOptions {
   forClient?: boolean;
+  omitFaunaMotion?: boolean;
   maxTilesPerDelta?: number;
   maxPayloadBytes?: number;
 }
@@ -63,19 +77,58 @@ function gather(defs: readonly FieldDef[], src: Record<string, TypedArray>, idx:
   return out;
 }
 
-function changedIndices(stamp: ArrayLike<number>, length: number, fromTick: number): Uint32Array {
+function isFaunaBug(kind: number): boolean {
+  return (
+    kind === ENTITY_KIND.blackAnt ||
+    kind === ENTITY_KIND.blueBeetle ||
+    kind === ENTITY_KIND.greenSpitter
+  );
+}
+
+function changedEntityIndices(e: EntityStore, fromTick: number, toTick: number, omitFaunaMotion?: boolean, routeChanges?: ReadonlySet<number>): Uint32Array {
   const out: number[] = [];
-  for (let i = 0; i < length; i++) if (stamp[i] > fromTick) out.push(i);
+  const stamp = e.cols.changedAt;
+  const kind = e.cols.kind;
+  const isCorrectionTick =
+    Boolean(omitFaunaMotion) && toTick > 0 && toTick % FAUNA_CORRECTION_INTERVAL_TICKS === 0;
+  const faunaCorrectionFrom = Math.min(
+    fromTick,
+    Math.max(0, toTick - FAUNA_CORRECTION_INTERVAL_TICKS),
+  );
+  for (let i = 0; i < e.count; i++) {
+    if (routeChanges?.has(e.cols.id[i])) { out.push(i); continue; }
+    const k = kind[i];
+    const minTick = isCorrectionTick && isFaunaBug(k) ? faunaCorrectionFrom : fromTick;
+    if (stamp[i] <= minTick) continue;
+    if (omitFaunaMotion && !isCorrectionTick) {
+      const mask = rowDiffMaskSince(e, i, fromTick);
+      if (shouldOmitFaunaTransformFromRoutineDiff(k, mask, toTick)) continue;
+    }
+    out.push(i);
+  }
   return Uint32Array.from(out);
 }
 
 /** Everything of the window except its tiles: meta, rng, changed entity rows, removals, colonies and blobs. */
 type WindowBase = Omit<EngineDiff, 'tiles' | 'chunk'>;
 
-function windowBase(state: PlanetState, fromTick: number, forClient: boolean): WindowBase {
+function windowBase(
+  state: PlanetState,
+  fromTick: number,
+  opts: { forClient?: boolean; omitFaunaMotion?: boolean } = {},
+): WindowBase {
+  const forClient = opts.forClient === true;
   const e = state.entities;
-  const rows = changedIndices(e.cols.changedAt, e.count, fromTick);
-  return {
+  const motion = forClient ? faunaMotionSeed(state, fromTick) : undefined;
+  const routeChanges = motion ? new Set((motion.value as FaunaMotionSeed).ids) : undefined;
+  const rows = changedEntityIndices(
+    e,
+    fromTick,
+    state.meta.tick,
+    opts.omitFaunaMotion ?? forClient,
+    routeChanges,
+  );
+  const base: WindowBase = {
     v: DIFF_FORMAT,
     fromTick,
     toTick: state.meta.tick,
@@ -88,21 +141,39 @@ function windowBase(state: PlanetState, fromTick: number, forClient: boolean): W
       removed: e.removed.filter((r) => r.at > fromTick),
     },
     colonies: state.colonies.filter((c) => c.changedAt > fromTick),
-    blobs: Object.fromEntries(Object.entries(state.blobs).filter(([, b]) => b.changedAt > fromTick)),
+    blobs: Object.fromEntries(
+      Object.entries(state.blobs).filter(
+        ([k, b]) => (!forClient || !CLIENT_OMIT_BLOBS.has(k)) && b.changedAt > fromTick,
+      ),
+    ),
+    ...(motion ? { faunaMotion: motion } : {}),
   };
+  if (forClient && base.blobs.projectileImpacts) {
+    base.projectileQueue = packProjectileQueue(base.blobs.projectileImpacts);
+    delete base.blobs.projectileImpacts;
+  }
+  if (forClient && base.blobs.combatStances) {
+    base.stancePatch = packStancePatch(state, fromTick, base.blobs.combatStances);
+    delete base.blobs.combatStances;
+  }
+  return base;
 }
 
 const layersFor = (forClient: boolean | undefined): readonly FieldDef[] => (forClient ? clientTileLayers() : tileLayers());
 
 /**
  * Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`.
- * `forClient` drops `hidden` tile layers (D-38); the replica keeps zeros there (`applyTiles` skips absent layers).
+ * `forClient` drops `hidden` tile layers (D-38) and internal server-only blobs.
  * One frame, however many tiles changed: a host that sends to clients uses `clientDeltaFrames` (W05-19) instead.
  */
-export function diffSince(state: PlanetState, fromTick: number, opts: { forClient?: boolean } = {}): Uint8Array {
+export function diffSince(
+  state: PlanetState,
+  fromTick: number,
+  opts: { forClient?: boolean; omitFaunaMotion?: boolean } = {},
+): Uint8Array {
   const tileIdx = changedTileIndices(state, fromTick);
   const diff: EngineDiff = {
-    ...windowBase(state, fromTick, opts.forClient === true),
+    ...windowBase(state, fromTick, opts),
     tiles: { idx: tileIdx, cols: gather(layersFor(opts.forClient), state.grid.layers, tileIdx) },
   };
   return encodeValue(diff);
@@ -152,10 +223,14 @@ export function diffSinceChunked(state: PlanetState, fromTick: number, opts: Dif
   const maxTiles = opts.maxTilesPerDelta ?? MAX_TILE_DIFF_PER_DELTA;
   const maxBytes = opts.maxPayloadBytes ?? MAX_DIFF_PAYLOAD_BYTES;
   const layers = layersFor(opts.forClient);
-  const base = windowBase(state, fromTick, opts.forClient === true);
+  const base = windowBase(state, fromTick, opts);
   const e = state.entities;
   const tilesOnly: WindowBase = {
-    ...base,
+    v: base.v,
+    fromTick: base.fromTick,
+    toTick: base.toTick,
+    meta: base.meta,
+    rng: base.rng,
     entities: { capacity: e.capacity, count: e.count, cols: gather(entityColumns(), e.cols, []), removed: [] },
     colonies: [],
     blobs: {},
@@ -215,7 +290,7 @@ function applyEntities(state: PlanetState, d: EngineDiff): void {
   pruneRemovals(e, d.toTick);
 }
 
-function applyTiles(state: PlanetState, d: EngineDiff): void {
+function applyTiles(state: PlanetState, d: Pick<EngineDiff, 'tiles'>): void {
   const { idx, cols } = d.tiles;
   for (const l of tileLayers()) {
     const to = state.grid.layers[l.name], from = cols[l.name];
@@ -224,10 +299,24 @@ function applyTiles(state: PlanetState, d: EngineDiff): void {
   noteTilesStamped(state, idx);
 }
 
+/** Reconstructs terrain inputs at their authoritative tick before replaying omitted movement. */
+export function reconstructTerrainAtTick(state: PlanetState, diff: EngineDiff, tick: number): void {
+  const selected: number[] = [];
+  for (let i = 0; i < diff.tiles.idx.length; i++) if (diff.tiles.cols.changedAt[i] === tick) selected.push(i);
+  if (!selected.length) return;
+  const defs = tileLayers().filter(layer => diff.tiles.cols[layer.name]);
+  applyTiles(state, { tiles: { idx: Uint32Array.from(selected.map(i => diff.tiles.idx[i])), cols: gather(defs, diff.tiles.cols, selected) } });
+  state.meta.pathEpoch = diff.meta.pathEpoch;
+}
+
 /** Decodes an engine diff produced by `diffSince`. */
 export function decodeDiff(bytes: Uint8Array): EngineDiff {
   const d = decodeValue(bytes) as EngineDiff;
   if (d.v !== DIFF_FORMAT) throw new Error(`unsupported diff format ${String(d.v)}`);
+  if (d.projectileQueue) {
+    d.blobs.projectileImpacts = unpackProjectileQueue(d.projectileQueue);
+    delete d.projectileQueue;
+  }
   return d;
 }
 
@@ -248,6 +337,18 @@ export function applyDiff(state: PlanetState, diff: Uint8Array | EngineDiff | { 
   applyTiles(state, d);
   for (const c of d.colonies) state.colonies[c.index] = c;
   for (const [name, b] of Object.entries(d.blobs)) state.blobs[name] = b;
+  if (d.stancePatch) applyStancePatch(state, d.stancePatch);
   Object.assign(state.meta, d.meta);
   for (const k of Object.keys(d.rng) as Array<keyof PlanetState['rng']>) state.rng[k] = d.rng[k];
+  if (d.faunaMotion) installFaunaMotionSeed(state, d.faunaMotion.value as FaunaMotionSeed);
+}
+
+/** Codec reconstruction of omitted motion, after authoritative rows have won the merge. No gameplay movement rule. */
+export function reconstructEntityMotion(state: PlanetState, reconstructed: PlanetState, ids: readonly number[]): void {
+  const fields = ['x', 'y', 'q', 'r', 'rot'] as const;
+  for (const id of ids) {
+    const row = rowOf(state.entities, id), source = rowOf(reconstructed.entities, id);
+    if (row < 0 || source < 0) continue;
+    for (const field of fields) state.entities.cols[field][row] = reconstructed.entities.cols[field][source];
+  }
 }

@@ -1,0 +1,16 @@
+/* Object list: hub wordmark, collapsible categories. */
+a.wm{color:inherit;text-decoration:none;cursor:pointer}
+a.wm:hover,a.wm:hover b{color:var(--ta-orange-hi)}
+a.wm:focus-visible{outline:1px solid var(--ta-orange);outline-offset:3px}
+.cat-toggle{display:flex;flex:1;align-items:center;gap:6px;background:none;border:0;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;padding:0;text-align:left}
+.cat-toggle:hover{color:var(--ta-orange-hi)}
+.cat-chevron{display:inline-block;width:1em;color:var(--ta-steel)}
+.cat-count{color:var(--ta-steel)}
+.cat-body[hidden]{display:none!important}
+.side-tabs{display:flex;flex:none;flex-wrap:wrap;gap:4px;padding:10px 12px;border-bottom:1px solid var(--ta-seam)}
+.side-pane{flex:1;min-width:0;min-height:0}
+.side-pane[hidden]{display:none!important}
+.side-units{display:flex;flex-direction:column;overflow:hidden}
+#side #list{min-height:0}
+.side-pane[data-side-pane="hive"],.side-pane[data-side-pane="march"]{overflow:auto}
+#side #fauna-panel,#side #march-panel{position:static;inset:auto;width:auto;z-index:auto;border:0;background:transparent;backdrop-filter:none;clip-path:none;padding:8px 10px 16px}

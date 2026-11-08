@@ -13,10 +13,12 @@ import { checkCostAffordability, ensureColonyAt, payProgressiveSlice, refundCost
 import { colonyWho } from '../find';
 import { checkUnitSupply, syncColonySupply } from '../supply';
 import { spawnWorkerUnit, workerTierOf, type WorkerTier } from '../harvest/unit';
+import { flushPendingRallyMoves } from './robotics';
 import { defaultHubData, resolveHubProducerRows, resolveUnitRowForHub } from './unit';
 
 export { spawnWorkerUnit } from '../harvest/unit';
 export { defaultHubData, resolveHubProducerRows, resolveUnitRowForHub };
+export * from './robotics';
 
 export interface HubUnitQueueEntry {
   taskId: string;
@@ -314,6 +316,7 @@ export const hubProductionSystem = defineSystem({
   slot: 9,
   wave: 'W02',
   run(state, ctx) {
+    flushPendingRallyMoves(state, ctx);
     const entries = getAllEntries(state);
     if (entries.length === 0) return;
     const { hubProd } = resolveHubProducerRows(ctx.data);

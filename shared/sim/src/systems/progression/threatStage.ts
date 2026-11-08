@@ -120,6 +120,9 @@ export function syncColonyThreatStage(
       colony.threatStage = threatStage;
       colony.changedAt = tick;
     }
+    if (threatStage >= 3 && typeof colony.s3ReachedAtTick !== 'number') {
+      colony.s3ReachedAtTick = tick;
+    }
   }
 
   const raw = state.blobs.progression?.value;

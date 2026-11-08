@@ -43,6 +43,7 @@ export function planetEventToProgress(
 
   const rule = PROGRESSION_EVENT_RULES[e.kind];
   if (!rule) return null;
+  if (rule.predicate && !rule.predicate(data)) return null;
   const family = (typeof data.op === 'string' && rule.familyByOp?.[data.op]) || rule.family;
   const raw = rule.fields.map(key => data[key]).find(value => typeof value === 'number');
   const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : rule.fallback;

@@ -40,6 +40,8 @@ export interface ShaderModifierPlugin {
   createUniforms?: () => Record<string, THREE.IUniform>;
   /** GLSL declarations (uniforms, helper functions) added to the fragment shader's common block. */
   fragmentDeclarations?: string;
+  vertexDeclarations?: string;
+  vertexNormalChunk?: string;
   vertexTransformChunk?: string;
   fragmentColorChunk?: string;
 }

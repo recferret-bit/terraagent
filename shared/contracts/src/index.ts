@@ -42,6 +42,33 @@ export { StageUnlockedDataSchema, event as stageUnlocked, type StageUnlockedData
 export { SuggestionOfferedDataSchema, event as suggestionOffered, type SuggestionOfferedData } from './events/suggestion-offered';
 export { GoalProgressDataSchema, event as goalProgress, type GoalProgressData } from './events/goal-progress';
 export { GoalDoneDataSchema, event as goalDone, type GoalDoneData } from './events/goal-done';
+export {
+  STANCE_KINDS,
+  StanceKindSchema,
+  SetStanceArgsSchema,
+  command as setStance,
+  type StanceKind,
+  type SetStanceArgs,
+} from './commands/set-stance';
+export { SetRallyArgsSchema, command as setRally, type SetRallyArgs } from './commands/set-rally';
+export { AttackMoveArgsSchema, command as attackMove, type AttackMoveArgs } from './commands/attack-move';
+export { AttackTargetArgsSchema, command as attackTarget, type AttackTargetArgs } from './commands/attack-target';
+export {
+  WEAPON_TYPES,
+  WeaponTypeSchema,
+  ProjectileFiredDataSchema,
+  event as projectileFired,
+  type WeaponType,
+  type ProjectileFiredData,
+} from './events/projectile-fired';
+export { ProjectileImpactDataSchema, event as projectileImpact, type ProjectileImpactData } from './events/projectile-impact';
+export { UnitDestroyedDataSchema, event as unitDestroyed, type UnitDestroyedData } from './events/unit-destroyed';
+export { BuildingDestroyedDataSchema, event as buildingDestroyed, type BuildingDestroyedData } from './events/building-destroyed';
+export { UnderAttackDataSchema, event as underAttack, type UnderAttackData } from './events/under-attack';
+export { RaidStartedDataSchema, event as raidStarted, type RaidStartedData } from './events/raid-started';
+export { RaidRepelledDataSchema, event as raidRepelled, type RaidRepelledData } from './events/raid-repelled';
+export { NestDestroyedDataSchema, event as nestDestroyed, type NestDestroyedData } from './events/nest-destroyed';
+export { FaunaKilledDataSchema, event as faunaKilled, type FaunaKilledData } from './events/fauna-killed';
 export * from './rest';
 export * from './precheck';
 export * from './progression';

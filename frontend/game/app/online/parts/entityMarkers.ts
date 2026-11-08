@@ -77,25 +77,6 @@ export function placeMeshOnTrack(rec: EntityMeshRecord, t: number, follow: numbe
   rec.targetYaw = rec.trackMoving ? Math.atan2(wx - bx, wz - bz) : Math.PI / 2 - pose.rot;
 }
 
-export function updateGroundSelectionRing(
-  selectionRing: THREE.Mesh,
-  sel: EntityMeshRecord | undefined,
-  time: number,
-): void {
-  if (!sel || !sel.mesh.visible) {
-    selectionRing.visible = false;
-    return;
-  }
-  selectionRing.visible = true;
-  const geometry = (sel.mesh as THREE.Mesh).geometry;
-  if (geometry && !geometry.boundingBox) geometry.computeBoundingBox();
-  const box = geometry?.boundingBox;
-  const radius = box ? Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * sel.mesh.scale.x * 0.65 : 1;
-  selectionRing.scale.setScalar(Math.max(1, radius) * (1 + 0.06 * Math.sin(time * 4)));
-  (selectionRing.material as THREE.MeshBasicMaterial).opacity = 0.65 + 0.3 * Math.sin(time * 4);
-  selectionRing.position.set(sel.mesh.position.x, sel.mesh.position.y + 0.06, sel.mesh.position.z);
-}
-
 export function stepTargetMarker(
   targetMarker: THREE.Mesh,
   sel: EntityMeshRecord | undefined,

@@ -8,10 +8,12 @@ export interface PartDef {
   role?: 'plinth' | 'plinthDetail' | 'whip';
   /** 0 static · 1 spinY · 2 bobY · 3 recoilZ · 4 bipedLeg · 5 bipedArm · 6 spiderLeg · 7 wheelSpin (see UnifiedColonyMaterial). */
   animType: number;
+  /** Insect stateful rig species code; populated by ValidationContext from the archetype id. */
+  insectSpecies?: number;
   pivot: [number, number, number];
   emissive: number;
   /** Zone surface (sRGB hex, roughness, metalness). Optional: falls back to the zone's default. */
-  color?: number; roughness?: number; metalness?: number;
+  color?: number; roughness?: number; metalness?: number; tissue?: number;
   tris: Float32Array;
 }
 export interface ModelInput { id: string; label: string; source: 'builder' | 'components'; parts: PartDef[] }

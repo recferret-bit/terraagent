@@ -89,7 +89,7 @@ Every colony structure, robot, and terrain tile draws from 5 core procedural PBR
   - `uWorkWeight` (`0..1`) drives active work motion across all GPU animation channels in `shaderChunks.ts`: `SpinY (1)` high-RPM drill spin, `RecoilPulse (3)` rapid tool impact pulsing, `BipedArm (5)` dual-axis forward pitch + converging inward yaw, `WheelSpin (7)` bracing torque rock, and `BipedBody (8)` / `SpiderBody (9)` forward-leaning effort heave.
   - `WorkParticleSystem` and `WorkParticleEmitter` spawn multi-layer instanced 3D debris chunks (`leafCluster`, `barkSlab`, `woodSplinter`, `rockShard`, `slateChunk`, `sandGrain`, `soilClod`, `oreNugget`, `crystalShard`, `oilDroplet`, `weldSpark`, `energyOrb`, `shockRing`) governed by 9 object-of-interaction presets (`tree`, `rock`, `dune`, `hole`, `flat`, `metals`, `minerals`, `oil`, `repair`), validated via `npm run validate:particles -- --all`.
   - Tool cutter beams lock to GPU-animated hands and tool muzzles via the closed-form CPU mirror `evalArchetypeToolOrigins` / `computeMeshToolOrigins` (`frontend/render/particles/toolOrigins.ts`, with palm muzzle flare orbs on `robot.hero`), and `buildActiveWorkSites` (`workTargetResolver.ts`) targets the nearest 3D prop instance on the worked tile (`terrain.props.instancesForTile`) across 1–2 hexes (`2m–4m`) with a 360° radial splash around the target object.
-  - All of these can be inspected in `/playground.html?hexterrain=1&hatch=1&build=33&work=1&workTarget=tree&depositStage=full&lights=1`.
+  - All of these can be inspected in `/playground.html?hexterrain=1&build=33&work=1&workTarget=tree&depositStage=full&lights=1`.
 
 ---
 

@@ -1229,23 +1229,54 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **To resolve:** Recheck 844×390 with the selection strip open and reserve space if the dock covers it.
 - **Found:** 2026-11-04, full merged browser suite at 844 × 390. Updated 2026-11-06.
 
-### FF-82 · W05 deferred stretch (`H+`) and full-product items (Ridge/Moat, weather hazards, Ctrl+click/Shift-queue)
+### FF-82 · W07-28 combat analytics events are deferred from the hackathon slice
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` (`W07-28`), `frontend/game/features/combat/`
+- **What happens:** The combat HUD (`CombatLog`, screen-edge alert pings, HP bars) and backend progression facts (`faunaKilled`, `nestDestroyed`, `raidRepelled`) are active in W07, while the client analytics batch events (`first_combat_unit`, `first_raid`, `first_raid_repelled`, `first_nest_cleared`, `first_building_lost` in `W07-28`, blank `H` column) are deferred until post-hackathon analytics waves.
+- **Why it is like this:** `W07-28` is outside the `H` hackathon slice in `docs/plan/waves/W07-first-contact.md`.
+- **Workaround / mitigation:** Progression facts and combat log entries record raid repels, unit/building losses, and nest clears.
+- **To resolve:** Implement `W07-28` in `frontend/game/features/combat/` when post-hackathon analytics issues run.
+- **Found:** 2026-11-04, W07 wave execution.
+
+### FF-83 · The game page still orders one unit; the group march is a playground scene
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/playground/content/marchScene.ts`, `frontend/game/features/landfall/selection.ts` (`orderMove`)
+- **What happens:** `/playground.html?march=own` spawns 30 units and sends one `moveGroup`. The play page still sends `moveUnit` for the single selected unit. There is no box select.
+- **Why it is like this:** The march had to be visible before the selection UI grew a multi-unit order.
+- **Workaround / mitigation:** Use the playground MARCH tab (OWN PACE, TOGETHER, ROCK). The sim command is already accepted online.
+- **To resolve:** When several units are selected, send one `moveGroup` instead of one `moveUnit` per unit.
+- **Found:** 2026-11-05, group-march playground scene.
+
+### FF-84 · Corrected live fog preserves saved exploration
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/maps/`, `frontend/game/app/online/entityVisionSync.ts`, `shared/sim/src/systems/combat/vision.ts`, `tests/scenarios/w07-first-contact.ts`
+- **What happens:** Active units and buildings reveal terrain using shared sight ranges. Explored terrain dims after sight leaves; foreign unit/hive markers and models disappear outside current visibility. Newly created W07 scenarios no longer reveal distant hives in advance. Old saves retain their explored terrain, including exploration granted by the previous fixture.
+- **Why it is like this:** Exploration is persistent knowledge; current sight is recomputed. Removing previously saved exploration would discard player progress.
+- **Workaround / mitigation:** Open a fresh W07 scenario to check initial hidden terrain; existing saves still re-shroud areas outside current sight.
+- **To resolve:** No migration to erase exploration is planned.
+- **Presentation / transport limits:** The terrain fog uses a smooth 128² raster while entity and map visibility use shared hex-based spotting, so the cosmetic edge can differ slightly. Client snapshots still contain foreign entity state: this fixes visible disclosure, while server-side per-colony redaction remains tracked by `SIM-V-06` in `docs/spec/SIMULATION.md` §6.
+- **Found:** 2026-11-06, owner report of unseen hive markers and permanent fog removal.
+
+### FF-85 · W05 deferred stretch (`H+`) and full-product items (Ridge/Moat, weather scheduler, Shift-queue)
 
 - **Status:** Open (deferred by wave scope)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** [`docs/plan/waves/W05-shape-the-land.md`](../plan/waves/W05-shape-the-land.md), `frontend/game/features/terraform-basic/`, `shared/sim/src/systems/terraform-basic/`
-- **What happens:** The W05 `H` slice implements the 16 core issues (`W05-01`–`W05-05`, `W05-07`–`W05-10`, `W05-19`, `W05-20`, `W05-22`, `W05-23`, `W05-29`, `W05-33`, `W05-34`). Stretch (`H+`) and full-product items are deferred out of this landing: `W05-06` (`Raise Ridge` / `Dig Moat` defensive ops and `Deep Reclaim` T2 execution beyond the T1 lock gate), `W05-11`–`W05-18` (seeded weather scheduler, solar flares, dust storms, lightning strikes, meteor showers, weather mitigation and `weather` dev command), `W05-21` (`Ctrl+click` multi-tile and `Shift+click` unit order chaining), `W05-24`–`W05-28` (weather banner HUD, 3D weather VFX, global map Weather layer, procedural terraform/weather SFX), and `W05-30`–`W05-32` (weather determinism, delta chunk soak, and 600-tick `w05` parity spec). Also note: per W03 owner feedback (`GP-77`), `Metals Extractor` and `Minerals Quarry` share the unified `Resource Extractor` (`data-building="metalsExtractor"`) card in the Construction menu, which places on either metals or minerals deposits (`PlacementGhost.ts` matches both deposit codes for `metalsExtractor`).
-- **Why it is like this:** W05 wave scope filters to the 16 `H`-tagged issues.
-- **Workaround / mitigation:** Demo story steps 6–10 and 12 are marked deferred in `docs/plan/checks/w05-check.md`.
-- **To resolve:** Land the `H+` / full-scope W05 issues in a follow-up pass.
+- **What happens:** The W05 `H` slice implements the core issues plus console/F8 on-demand weather hazards (`meteor`, `twister`, `lightning`, `storm`, `rain`), `Ctrl+click` multi-tile queueing, and `w05` parity specs. Remaining stretch (`H+`) items are deferred out of this landing: `W05-06` (`Raise Ridge` / `Dig Moat` defensive ops), background weather scheduler (`GP-112`), `Shift+click` unit order chaining (`W05-21`), global map Weather layer (`W05-27`), and procedural terraform/weather SFX (`W05-28`). Also note: per W03 owner feedback (`GP-77`), `Metals Extractor` and `Minerals Quarry` share the unified `Resource Extractor` (`data-building="metalsExtractor"`) card in the Construction menu, which places on either metals or minerals deposits (`PlacementGhost.ts` matches both deposit codes for `metalsExtractor`).
+- **Why it is like this:** W05 wave scope filters to the `H`-tagged slice plus owner-requested weather/terraform controls.
+- **Workaround / mitigation:** Weather hazards can be triggered via the dev console or `F8` Weather tab (`GP-112`).
+- **To resolve:** Land the remaining `H+` / full-scope W05 issues in a follow-up pass.
 - **Found:** 2026-11-04, W05 wave landing.
 
 ## W05 owner feedback pass (2026-11-05)
 
 Open items, see the format in `README.md`:
 - **Terraform chain removed from the UI.** The button queues one order per click (Ctrl+click for many) and no longer chains to neighbours; the sim `work` chain remains for Repair and right-click work. Terraform does not send `workerId` any more (the host picks).
-- **Growth ladder costs water on click.** ~~Terraform on a prepared hex irrigates, on an irrigated hex seeds.~~ Superseded: the ladder was removed from the button; Irrigate/Seed now have no UI path (see `sim-gameplay.md` GP-90).
+- **Growth ladder costs water on click.** ~~Terraform on a prepared hex irrigates, on an irrigated hex seeds.~~ Superseded: the ladder was removed from the button; Irrigate/Seed now have no UI path (see `sim-gameplay.md` GP-101).
 - **Queue cap not predicted.** `terraformMaxOrders` = 16; the client preview does not predict a rejected Ctrl+click.
 - **`..01` to `..04` configs** skip slope, crater and water hexes (their ops are W05 data).
 - **Ghost prep bill and the DOM `TileOverlay` panel** were deliberately left as they are.
@@ -1267,12 +1298,12 @@ Open items, see the format in `README.md`:
 - **Pod scrap is instant** once a Worker Drone or the HQ is in reach; should it be a timed worker job? The client preview does not check pod reach (the host rejects `no_worker_in_reach`).
 - **Unfinished sites** are cancelled only via the Queue panel `cancelTask`; the dismantle tool refuses them. `cannot_dismantle_hq` covers HQ and Hub.
 - **Lights:** an unpowered building's emissives are dead by day too; storage-full (`offlineCapped`) counts as powered; no kind is marked `UnlitLightState` yet (owner: which kinds have no lights?); dimming is per mesh, so no part (for example a status LED) is exempt.
-- **Terrain kinds:** the sim has no Dune or Mountain terrain. Dunes and hills are `slope`: the TERRAFORM dock's `work` job clears a radius-2 disc (GP-86), and the Level order still changes one tile. Mountain is tall `rock` → Break. Ridge and Moat are `prep` codes with no terraform op and no 3D visual, and rock height does not show.
+- **Terrain kinds:** the sim has no Dune or Mountain terrain. Dunes and hills are `slope`: the TERRAFORM dock's `work` job clears a radius-2 disc (GP-97), and the Level order still changes one tile. Mountain is tall `rock` → Break. Ridge and Moat are `prep` codes with no terraform op and no 3D visual, and rock height does not show.
 - **Enclosed hexes** wait until their neighbours are cleared (workers clear a patch edge-first); Ctrl+click the whole patch.
-- **Large `host.step(n)` / `warp`** stalled terraform jobs in a headless run (cause unconfirmed; stepping in slices of 10 ticks works).
+- **Large `host.step(n)` / `warp`** stalled terraform jobs in a headless run (cause unconfirmed; stepping in slices of 10 ticks).
 - **Replica entity rows carry no `tier`;** the colony view now publishes `maxWorkerTier`. Online path of `w05-terrain` was not opened in a browser (needs the Postgres stack).
 
-### FF-83 · Worker drones keep the old unit ids
+### FF-86 · Worker drones keep the old unit ids
 
 - **Status:** Resolved (worker unit id, this change)
 - **Area / code:** `shared/sim/src/data/units-workers-basic.ts`, `frontend/game/features/units-menu/`, `frontend/game/features/queue-panel/queueChipHelpers.ts`, `frontend/game/features/stages/StageToast.ts`
@@ -1282,17 +1313,17 @@ Open items, see the format in `README.md`:
 - **To resolve:** Done in this change.
 - **Found:** 2026-11-06, worker-drone production change. Resolved in this change.
 
-### FF-84 · Menu sneak-peeks were not checked in a browser
+### FF-87 · Menu sneak-peeks were not checked in a browser
 
 - **Status:** Resolved (2026-11-06, local `/play.html?host=local&scenario=w05`)
 - **Area / code:** `frontend/game/features/shared/archetypeThumb.ts`
 - **What happens:** Production and Build were opened in headless Chrome. T1–T3 worker tabs, the two-column build grid, prices, and the hover plate all showed. A missing WebGL context still falls back to a short-name plate.
 - **Why it is like this:** The first pass had not opened the page.
 - **Workaround / mitigation:** None.
-- **To resolve:** Done for this layout. Borrowed meshes are FF-85.
+- **To resolve:** Done for this layout. Borrowed meshes are FF-88.
 - **Found:** 2026-11-06, worker-drone production change.
 
-### FF-85 · Menu previews borrow another archetype when the named mesh is not registered
+### FF-88 · Menu previews borrow another archetype when the named mesh is not registered
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/features/shared/archetypeThumb.ts` (`THUMB_ALIAS`); `frontend/game/app/online/entityKinds.ts`
@@ -1302,7 +1333,7 @@ Open items, see the format in `README.md`:
 - **To resolve:** Register each missing archetype, then drop its alias. Leave `robot.builder` as the T2 and T3 mesh.
 - **Found:** 2026-11-06, menu thumbnail check. Updated the same day for the Build and Production cards.
 
-### FF-86 · The name Terraformer is a badge and a rank, not the drone
+### FF-89 · The name Terraformer is a badge and a rank, not the drone
 
 - **Status:** Accepted (by design)
 - **Area / code:** `docs/terraagent-master-plan-final.md` (achievement "Terraformer"), `docs/game/player-profile-and-achievements-spec.md` (title ladder), `docs/hackathon/near/05-deed-staking-treasury-bounties.md` (R05-18, Q-05-7), `docs/hackathon/near/07-gaps-and-grooming.md`, `docs/hackathon/near/08-wave-grill-checklist.md`
@@ -1312,8 +1343,7 @@ Open items, see the format in `README.md`:
 - **To resolve:** Only if the owner renames the badge. Do not reuse the name for the drone.
 - **Found:** 2026-11-06, worker unit rename.
 
-
-### FF-87 · Draped hex marks: known gaps
+### FF-90 · Draped hex marks: known gaps
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/shared/hexTiles3d.ts`, `hexFootprint3d.ts`, `hub-placement/GhostRig3D.ts`, `construction-menu/powerZoneOverlay.ts`, `app/online/EntityMeshes.ts`
@@ -1321,19 +1351,19 @@ Open items, see the format in `README.md`:
 - **Why it is like this:** Scope of the owner's highlight item; `EntityMeshes.ts` is near the 500-line limit with others' in-flight edits.
 - **Workaround / mitigation:** —
 - **To resolve:** Drape the selection ring the same way; give the Hub ghost tile state its terrain code.
-- **Found:** 2026-11-06, hex-tile rule (D-44), lead + parallel agents
+- **Found:** 2026-11-06, hex-tile rule (D-45), lead + parallel agents
 
-### FF-88 · Terraform marker: the clicked dune outline vanishes while the chain works from the edge
+### FF-91 · Terraform marker: the clicked dune outline vanishes while the chain works from the edge
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/terraform-basic/targets.ts` (`terraformTargets`, `slopeDiscOrTile`)
-- **What happens:** When a clicked dune / tree has no stand (GP-88), its job is skipped and the HQ works the nearest workable disc; `targets.ts` draws markers at `job.q/r`, so the clicked outline disappears and the first marker appears at the dune edge instead.
+- **What happens:** When a clicked dune / tree has no stand (GP-99), its job is skipped and the HQ works the nearest workable disc; `targets.ts` draws markers at `job.q/r`, so the clicked outline disappears and the first marker appears at the dune edge instead.
 - **Why it is like this:** The marker follows the live job; the chain goal is only on the job record (`chainOrigin`).
 - **Workaround / mitigation:** —
 - **To resolve:** Also draw a marker at `chainOrigin` until the chain ends.
 - **Found:** 2026-11-06, W05 owner pass (terraform agent)
 
-### FF-89 · Build-menu thumbnails leak WebGL contexts (the colony canvas can go black)
+### FF-92 · Build-menu thumbnails leak WebGL contexts (the colony canvas can go black)
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/shared/archetypeThumb.ts` (`webglOk()`)
@@ -1343,8 +1373,7 @@ Open items, see the format in `README.md`:
 - **To resolve:** Probe once and cache the result, or call `getExtension('WEBGL_lose_context').loseContext()` on the probe context.
 - **Found:** 2026-11-07, water reflections e2e (agent C)
 
-
-### FF-90 · Ctrl+click TERRAFORM is host-picked; only a plain click uses the selected worker
+### FF-93 · Ctrl+click TERRAFORM is host-picked; only a plain click uses the selected worker
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/features/terraform-basic/BrushController.ts` (`BrushStrokeOptions.queue`), sim `enqueueWorkOrder` → `replaceRunningChains` → `cancelWorkerJobs`
@@ -1352,14 +1381,14 @@ Open items, see the format in `README.md`:
 - **To resolve:** If the owner wants Ctrl+click to queue on the selected worker, the sim needs an append flag on `enqueueWorkOrder`.
 - **Found:** 2026-11-07, W05 full review (client agent)
 
-### FF-91 · The bottom-left dock shrinks to stay below the top-left HUD stack
+### FF-94 · The bottom-left dock shrinks to stay below the top-left HUD stack
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/core/hud/slotFit.ts`, `frontend/game/core/hud/hud.css` (`--ta-hud-top-left-h`), `frontend/game/features/landfall/landfall.css` (`@media (max-height: 500px)`)
 - **What happens:** The dock plus the env panel grew until the pilot chip covered the dock tabs (e2e w03 9&10, w05 1&2 could not click QUEUE / TERRAFORM), and at 844×390 the dock overlapped the HQ panel (w04 3). The bottom-left slot now starts below the measured top-left slot and only the dock shrinks (its body scrolls); on short screens the HQ panel sits right of the dock. Side effects: an expanding top-left plate (pilot chip's Save progress menu) makes the dock jump; at ≤ 500 px height the HQ panel covers the dev PREDICT plate.
 - **Found:** 2026-11-07, W05 full review (client agent, from the e2e baseline)
 
-### FF-92 · Client placement ghost pre-filters occupancy before `evaluatePlacement`
+### FF-95 · Client placement ghost pre-filters occupancy before `evaluatePlacement`
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/construction-menu/ghostContext.ts` (`collectOccupiedTileIndices`), `PlacementGhost.ts` (`scanFootprintTiles`, `evaluateValidity`)
@@ -1367,14 +1396,14 @@ Open items, see the format in `README.md`:
 - **To resolve:** Drop the pre-filter and let `evaluatePlacement` (`occupiedTiles` + `plannedSites`) decide; rerun `placement-parity.spec.ts` and `terraform-parity.spec.ts`.
 - **Found:** 2026-11-07, W05 full review (client agent)
 
-### FF-93 · Small client copies of sim helpers remain
+### FF-96 · Small client copies of sim helpers remain
 
 - **Status:** Open
 - **Area / code:** water check in `features/shared/hexTiles3d.ts:110`, `construction-menu/ghostRenderer.ts:126` (sim `grid/geo.ts:60`); `terraform-basic/planner.ts` `calculateRepairCost` / `calculateDismantleRefund` (round to 2 decimals, host `workJobs.ts` rounds to 6); `hud-min/terraformMeter.ts` `tierGateHint` and `landfall/extractorTierView.ts` call `resolveTierGateSpecs()` without the store's data (default W05 data compiled once, cached).
 - **To resolve:** Export `isWaterTerrain(code)` and a repair/refund preview helper from the sim and import them; pass `store.simData()` to `resolveTierGateSpecs`.
 - **Found:** 2026-11-07, W05 full review (client agent)
 
-### FF-94 · The S1 unlock toast says "Worker Drone", not "Worker Drone T1"
+### FF-97 · The S1 unlock toast says "Worker Drone", not "Worker Drone T1"
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/data/stages.ts` (`units: ['worker']` at S1 and at the T2 stage), `frontend/game/features/stages/StageToast.ts` (labels `worker_t1..t3` exist), `tests/e2e/w08.spec.ts`

@@ -1,0 +1,47 @@
+{
+  "poses": [
+    {
+      "species": "blueBeetle",
+      "biome": "dune",
+      "pose": "attack",
+      "state": "attack",
+      "triangles": 2652
+    },
+    {
+      "species": "blueBeetle",
+      "biome": "dune",
+      "pose": "dead",
+      "state": "dead",
+      "triangles": 2652
+    },
+    {
+      "species": "blueBeetle",
+      "biome": "oceanForest",
+      "pose": "attack",
+      "state": "attack",
+      "triangles": 2652
+    },
+    {
+      "species": "blueBeetle",
+      "biome": "oceanForest",
+      "pose": "dead",
+      "state": "dead",
+      "triangles": 2652
+    },
+    {
+      "species": "blueBeetle",
+      "biome": "forestRock",
+      "pose": "attack",
+      "state": "attack",
+      "triangles": 2652
+    },
+    {
+      "species": "blueBeetle",
+      "biome": "forestRock",
+      "pose": "dead",
+      "state": "dead",
+      "triangles": 2652
+    }
+  ],
+  "errors": []
+}

@@ -1,5 +1,7 @@
 # Test coverage reference
 
+Latest wave review: [W07 review — updated 2026-11-07](./w07-review-2026-11-06.md).
+
 Unit-test coverage (vitest + v8) on branch `wave/w01-landfall`, 2026-11-01: the **baseline** taken at `615fb72` (before the
 review-fix round) and the state **after** that round. Integration (`*.int.spec.ts`, Postgres) and e2e (Playwright) suites
 are not included. Use it as a reference: compare a new run against it.

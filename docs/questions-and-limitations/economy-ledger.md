@@ -217,3 +217,27 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Why it is like this:** W02 refunds reuse the W02 credit helper, which always clamps (LED-16).
 - **To resolve (owner):** should W02 refunds ignore the cap like W01 ones (a `creditResource` option that skips the clamp), or should both clamp? Recommendation: uncapped, as the paid amount already fitted.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+
+### LED-18 · W13 economy implementation and empirical calibration remain outstanding
+
+- **Status:** Open
+- **Area / code:** [ECONOMY](../spec/ECONOMY.md), [W13](../plan/waves/W13-markets.md), W15/W23, LED-16.
+- **What happens:** The owner accepted the resource-demand, quote-fee, funded-bot and database/experiment design on 2026-11-04. This change updates plans/specs; migrations, profile tools, recurring project/transport mechanics and experiment commands are not implemented by this documentation task. No measured demand evidence yet establishes durable prices or public cash readiness.
+- **Why it is like this:** W13-36–49 define the implementation and mock evidence; W15 adds actual bot-policy runs; W23 requires a bounded player pilot before public cash activation. Fee defaults (1% platform, 0–1% stall) are accepted starting settings; consumption coefficients, risk budgets and economic gate thresholds need calibration. Regional 20–30% delivered-cost advantage is a hypothesis.
+- **Workaround / mitigation:** Keep real cash disabled absent evidence. Use actual shared rules, immutable profile hashes, paired/held-out seeds and versioned assumptions; flag incomplete/insufficient data. Reconcile LED-16 before cash. No mock result or assumption is a promise of income.
+- **To resolve:** Implement the assigned issues, verify database lifecycle and exact accounting, run all baseline/stress cases and a real-player pilot against predeclared thresholds, and record the approved activation/evidence. New scope requires calendar reforecasting; historical hackathon dates are not reconfirmed.
+- **Accepted trade-off (D-44):** Unrestricted external cargo transfers/imports can bypass platform fees and reduce geographic spreads. Guild transport is nonexclusive. Do not add hidden transfer taxes; model external fee leakage and import demand explicitly. No anti-bot identity checks are introduced.
+- **Found:** 2026-11-04, W13 grooming; revised after owner requested adoption, database management and AI simulation support.
+
+
+### LED-19 · Regional scarcity and logistics coefficients need integrated calibration
+
+- **Status:** Open
+- **Area / code:** [ECONOMY](../spec/ECONOMY.md) sections 2.1–2.3 and 9; W11-46, W13-50–57, W15, W27.
+- **What happens:** The owner requested planet/sector main-resource settings and higher operating supply/logistics costs for large bases/armies. The plan now defines regional inheritance, unified production-source policy, congestion/distance costs and readiness/shortage rules. This documentation does not implement them or change existing world reserves. The example abundance weights, alpha 0.25, 2.5 cap, readiness factors and 50% minimum combat service are uncalibrated starting fixtures.
+- **Why it is like this:** Per-tier scarcity must survive extractors, terraform finds and starter guarantees. Costs must encourage trade/logistics investment while preserving small-colony viability and reasonable combat. Persistent world endowments cannot be replaced by simply editing a live profile.
+- **Workaround / mitigation:** Pin existing endowment hashes; preview new generation in isolated fixtures, use audited runtime changes only for future production/service windows. Measure specialists and base/army curves with the shared engine before activation. Label all proposed coefficients and forecast uncertainty in reports.
+- **To resolve:** Implement the assigned tasks, choose measured regional supply and cost/shortage targets, test every production path plus power/depot loss, away operation, reserve cycling and cross-sector/streaming replay. Explicit migration of occupied-world endowments remains outside this task and requires its own value-preserving plan.
+- **Accepted trade-off:** Logistics capacity is colony-owned; multiple genuinely separate colonies may reduce congestion and trade with one another. No human-identity aggregation or new anti-bot programme is implied. Model the cost of separate bases and transport and report the residual avoidance; do not claim a guaranteed empire-size tax. The combat service floor permits reduced operations after shortage and must be evaluated for resource-free combat incentives.
+- **Found:** 2026-11-04, owner-requested regional trade and logistics grooming.

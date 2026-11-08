@@ -1,0 +1,89 @@
+{
+  "results": [
+    {
+      "biome": "dune",
+      "view": "iso",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "dune",
+      "view": "front",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "dune",
+      "view": "side",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "dune",
+      "view": "top",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "oceanForest",
+      "view": "iso",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "oceanForest",
+      "view": "front",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "oceanForest",
+      "view": "side",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "oceanForest",
+      "view": "top",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "forestRock",
+      "view": "iso",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "forestRock",
+      "view": "front",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "forestRock",
+      "view": "side",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    },
+    {
+      "biome": "forestRock",
+      "view": "top",
+      "counts": {
+        "combat.acidHit": 30
+      }
+    }
+  ],
+  "errors": []
+}

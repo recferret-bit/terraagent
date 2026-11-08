@@ -99,6 +99,7 @@
 | W14-25 | Balance check: cost of a ~60-tile ring from Flat ≈ 900 M + 600 Min + 10 200 E and ~15 min of one Worker Drone T3, recorded in the scenario report | test | S |  | W14-02 | `npm run scenario w14 -- --report` → the cost line matches `UO-W-09` within 10 % | `UO-W-09` | — |
 | W14-26 | D-27 demo override: data key `unlockOverrides.walls = 'S4'` (declared in W14-01) set by the hackathon build; the full game keeps S7 (enforced only when W08 is on; without W08 the wave flag alone controls availability) | data | S | H | W14-01 | With W08 on and `unlockOverrides.walls = 'S4'` → walls show in the S4 menu; without the override → locked until S7 | D-27, units spec §8.1 | — |
 | W14-27 | Perf: nav rebuild after a 60-tile wall op ≤ 5 ms; flood fill ≤ 2 ms | test | S |  | W14-05, W14-08 | Bench → both budgets hold | SIM §12 | — |
+| W14-29 | Integrate W07 species hive wave cohorts, moveGroup flow-field replanning, and faunaMotionReplica with Ridge/Moat walls and Wall Gate | sim | S | H | W14-05, W14-10, W07-15, W07-33 | Complete a Ridge across an active moveGroup march or blackAnt/blueBeetle/greenSpitter wave cohort → flow-field slots and faunaMotionSeed routes replan to the nearest WallGate or siege position | D-43, UO-W-01, UO-W-07 | — |
 | W14-28 | Wave e2e + scenario `w14-fortify` + tag `wave-14` | test | M | H | all W14 | `npm run e2e -- --waves ..14` → the demo passes and earlier suites still pass | PRODUCT_WAVES §3 | TA-13.3 |
 
 ## Wave DoD

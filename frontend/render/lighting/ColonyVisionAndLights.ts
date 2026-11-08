@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
-import { planetExtent, tileAt } from '../planets/hex/hexMath';
+import { colonyVisionSignature, rasterizeColonyVision } from './colonyVisionRaster';
 import { getViewFocus, inViewFocus } from '../core/viewFocus';
 import { glslFloat } from '../visuals/shaderInject';
 import { PROJECTOR_INNER_MIX } from './projectorCone';
@@ -40,6 +39,7 @@ export interface ColonyVisionTextureInput {
   colonyIndex: number;
   owner?: ArrayLike<number>;
   explored?: ArrayLike<number>;
+  visionSources?: ReadonlyArray<ColonyVisionSourceDesc>;
   baseCenters?: ReadonlyArray<{ x: number; z: number; innerRadius: number; outerRadius: number }>;
 }
 
@@ -74,6 +74,8 @@ const sharedUniforms = {
 };
 
 let lastTexSignature = '';
+let allVisionSources: ReadonlyArray<ColonyVisionSourceDesc> = [];
+let baseVisionSources: ReadonlyArray<ColonyVisionSourceDesc> = [];
 
 /** Returns the shared GPU uniform dictionary for colony projector lights and Field-of-View shroud. */
 export function getColonyVisionUniforms(): Record<string, THREE.IUniform> {
@@ -190,108 +192,13 @@ vec3 applyColonyFovShroud(vec3 worldPos, vec3 color) {
 }
 `;
 
-function computeTerritoryDistanceField(radius: number, owner: ArrayLike<number> | undefined, colonyIndex: number): Uint8Array {
-  const hx = hexIndex(radius);
-  const dist = new Uint8Array(hx.count).fill(255);
-  if (!owner) return dist;
-  const queue: number[] = [];
-  for (let i = 0; i < hx.count; i++) {
-    if (owner[i] === colonyIndex) {
-      dist[i] = 0;
-      queue.push(i);
-    }
-  }
-  let head = 0;
-  while (head < queue.length) {
-    const cur = queue[head++]!;
-    const d = dist[cur]!;
-    if (d >= 3) continue;
-    const q = hx.q[cur]!, r = hx.r[cur]!;
-    for (const [dq, dr] of HEX_DIRS) {
-      const nIdx = hx.indexOf(q + dq, r + dr);
-      if (nIdx >= 0 && dist[nIdx]! > d + 1) {
-        dist[nIdx] = d + 1;
-        queue.push(nIdx);
-      }
-    }
-  }
-  return dist;
-}
-
-function buildTexSignature(input: ColonyVisionTextureInput): string {
-  const { radius, colonyIndex, owner, explored, baseCenters } = input;
-  let ownedCount = 0;
-  let ownedHash = 0;
-  let expCount = 0;
-  const mask = colonyIndex >= 0 && colonyIndex < 8 ? 1 << colonyIndex : 0;
-  if (owner) {
-    for (let i = 0; i < owner.length; i++) {
-      if (owner[i] === colonyIndex) {
-        ownedCount++;
-        ownedHash = (ownedHash * 31 + i) | 0;
-      }
-    }
-  }
-  if (explored && mask) {
-    for (let i = 0; i < explored.length; i++) {
-      if ((explored[i]! & mask) !== 0) expCount++;
-    }
-  }
-  const centersKey = (baseCenters ?? [])
-    .map((c) => `${Math.round(c.x)},${Math.round(c.z)},${Math.round(c.outerRadius)}`)
-    .join(';');
-  return `${radius}:${colonyIndex}:${ownedCount}:${ownedHash}:${expCount}:${centersKey}`;
-}
-
-/** Rasterizes user base territory (`owner === colonyIndex`), base centers, and `explored` into `uVisionMap`. */
+/** Rasterizes remembered terrain and all live sources, independently of the GPU's analytic-circle budget. */
 export function updateColonyVisionTexture(input: ColonyVisionTextureInput): void {
-  const sig = buildTexSignature(input);
+  baseVisionSources = input.baseCenters ?? [];
+  const sig = colonyVisionSignature(input);
   if (sig === lastTexSignature) return;
   lastTexSignature = sig;
-
-  const { radius, colonyIndex, owner, explored, baseCenters = [] } = input;
-  const worldSpan = Math.max(64, planetExtent(radius).x * 2.2);
-  sharedUniforms.uVisionWorldSpan.value = worldSpan;
-
-  const distField = computeTerritoryDistanceField(radius, owner, colonyIndex);
-  const expMask = colonyIndex >= 0 && colonyIndex < 8 ? 1 << colonyIndex : 0;
-  const step = worldSpan / VISION_TEX_SIZE;
-
-  for (let py = 0; py < VISION_TEX_SIZE; py++) {
-    const wz = -worldSpan * 0.5 + (py + 0.5) * step;
-    for (let px = 0; px < VISION_TEX_SIZE; px++) {
-      const wx = -worldSpan * 0.5 + (px + 0.5) * step;
-      let live = 0;
-      let exp = 0;
-      const hit = tileAt(radius, wx, wz);
-      if (hit) {
-        const d = distField[hit.i]!;
-        if (d === 0) live = 1.0;
-        else if (d === 1) live = 0.86;
-        else if (d === 2) live = 0.52;
-        else if (d === 3) live = 0.18;
-        if (explored && expMask && ((explored[hit.i] ?? 0) & expMask) !== 0) {
-          exp = 1.0;
-        }
-      }
-      for (let k = 0; k < baseCenters.length; k++) {
-        const c = baseCenters[k]!;
-        const dc = Math.hypot(wx - c.x, wz - c.z);
-        if (dc < c.outerRadius) {
-          const t = Math.max(0, Math.min(1, (dc - c.innerRadius) / Math.max(0.5, c.outerRadius - c.innerRadius)));
-          const smooth = 1 - t * t * (3 - 2 * t);
-          if (smooth > live) live = smooth;
-          exp = 1.0;
-        }
-      }
-      if (live > exp) exp = live;
-      const idx = (py * VISION_TEX_SIZE + px) * 4;
-      visionData[idx] = Math.round(live * 255);
-      visionData[idx + 1] = Math.round(exp * 255);
-      visionData[idx + 2] = 0;
-      visionData[idx + 3] = 255;
-    }
-  }
+  sharedUniforms.uVisionWorldSpan.value = rasterizeColonyVision(input, visionData, VISION_TEX_SIZE);
   visionTexture.needsUpdate = true;
 }
 
@@ -342,11 +249,16 @@ function uploadCombinedProjectorsAndVision(): void {
     colArr[i]!.set(p.r, p.g, p.b, p.intensity);
   }
 
-  const vCount = Math.min(MAX_VISION_SOURCES, lastColonyVisionSources.length);
+  allVisionSources = lastColonyVisionSources;
+  // All sources are rasterized; give the nearest circles analytic edges for smooth motion in the camera view.
+  const focus = getViewFocus();
+  const sources = [...lastColonyVisionSources].sort((a, b) =>
+    Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
+  const vCount = Math.min(MAX_VISION_SOURCES, sources.length);
   sharedUniforms.uVisionSourceCount.value = vCount;
   const vArr = sharedUniforms.uVisionSources.value;
   for (let i = 0; i < vCount; i++) {
-    const v = lastColonyVisionSources[i]!;
+    const v = sources[i]!;
     vArr[i]!.set(v.x, v.z, v.innerRadius, v.outerRadius);
   }
 }
@@ -390,19 +302,14 @@ export function updateColonyProjectorsAndVision(opts: {
 /** Checks whether world coordinates `(wx, wz)` lie inside the active Field of View of the user's units or base. */
 export function isWorldPointInColonyFov(wx: number, wz: number): boolean {
   if (sharedUniforms.uFovEnabled.value <= 0.001) return true;
-  const vCount = sharedUniforms.uVisionSourceCount.value;
-  const vArr = sharedUniforms.uVisionSources.value;
-  for (let i = 0; i < vCount; i++) {
-    const v = vArr[i]!;
-    if (Math.hypot(wx - v.x, wz - v.y) <= v.w) return true;
+  // Entity visibility must never depend on texture resolution, the camera focus, or the 16-circle shader limit.
+  for (const v of allVisionSources) {
+    if (Math.hypot(wx - v.x, wz - v.z) <= v.outerRadius) return true;
   }
-  const span = sharedUniforms.uVisionWorldSpan.value;
-  const u = wx / Math.max(1, span) + 0.5;
-  const v = wz / Math.max(1, span) + 0.5;
-  if (u < 0 || u > 1 || v < 0 || v > 1) return false;
-  const px = Math.min(VISION_TEX_SIZE - 1, Math.max(0, Math.floor(u * VISION_TEX_SIZE)));
-  const py = Math.min(VISION_TEX_SIZE - 1, Math.max(0, Math.floor(v * VISION_TEX_SIZE)));
-  return (visionData[(py * VISION_TEX_SIZE + px) * 4] ?? 0) >= 48;
+  for (const v of baseVisionSources) {
+    if (Math.hypot(wx - v.x, wz - v.z) <= v.outerRadius) return true;
+  }
+  return false;
 }
 
 /** Resets FoV shroud and projector lights to neutral defaults (used on session dispose and in unit tests). */
@@ -416,6 +323,8 @@ export function resetColonyVisionAndLights(): void {
   lastColonyVisionSources = [];
   colonyLightingBlend = 1;
   lastTexSignature = '';
+  allVisionSources = [];
+  baseVisionSources = [];
   visionData.fill(255);
   visionTexture.needsUpdate = true;
 }

@@ -320,3 +320,98 @@
   color: var(--ta-dim);
   padding: 2px 0;
 }
+
+.ta-units__army-section,
+.ta-units__factory-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  border-top: 1px solid var(--ta-seam);
+  padding-top: var(--ta-s2);
+}
+
+.ta-units__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s1);
+}
+
+.ta-units__section-title {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange-hi);
+  text-transform: uppercase;
+}
+
+.ta-units__rally-readout {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+}
+
+.ta-units__rally-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px var(--ta-s2);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text-2);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-units__rally-btn:hover {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+
+.ta-units__rally-btn[data-active='true'] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+}
+
+.ta-units__army-cards,
+.ta-units__factory-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-units__factory-item {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  padding: 2px var(--ta-s2);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ta-units__progress {
+  width: 100%;
+  height: 4px;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.ta-units__progress-bar {
+  height: 100%;
+  background: var(--ta-orange);
+  transition: width 120ms linear;
+}

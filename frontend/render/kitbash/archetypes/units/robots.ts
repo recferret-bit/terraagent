@@ -1,3 +1,4 @@
+import { addHeroDefenseWeapon } from '../../greebles/heroWeapon';
 import { rbox, cyl, sph, strut, sag, cable, mirror, lathe, solarPanel, type V3 } from '../../greebles/unitParts';
 import * as THREE from 'three';
 import { register } from './common';
@@ -44,6 +45,7 @@ register({
       b.addPart(box(0.135, 0.04, 0.155), 'warningAmber', { name: 'arm cuff light', position: [ax, 1.0, 0.09], rotation: [-0.45, 0, 0], emissiveIntensity: 3.4, ...armAnim });
     });
 
+    addHeroDefenseWeapon(b);
     // Pelvis + belt + torso (animType 8: BipedBody step-reaction carrier)
     const bodyAnim = { animType: 8 as const };
     b.addPart(rbox(0.48, 0.18, 0.32, 0.05, 1), 'frameGunmetal', { name: 'body pelvis', position: [0, 1.11, 0], ...bodyAnim });

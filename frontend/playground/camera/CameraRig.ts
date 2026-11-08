@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import type { FlyState } from '../keyboard';
 import type { View } from '../state';
+
+const FLY_MPS = 12;
+const YAW_RAD_S = 1.1;
 
 export const DIRS: Record<View, THREE.Vector3> = {
   iso: new THREE.Vector3(0.75, 0.78, 0.75).normalize(),
@@ -13,12 +17,23 @@ const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 
 interface Tween { t: number; dur: number; fromPos: THREE.Vector3; toPos: THREE.Vector3; fromTgt: THREE.Vector3; toTgt: THREE.Vector3 }
 export interface ViewOpts { instant?: boolean; target?: THREE.Vector3; radius?: number }
 
-/** Orbit controls + animated framing of the spawned content from the four standard views. */
+/** Orbit controls, WASD/QE fly, and animated framing from the four standard views. */
 export class CameraRig {
   readonly controls: OrbitControls;
   private tween: Tween | null = null;
+  private readonly flyOffset = new THREE.Vector3();
+  private readonly flyForward = new THREE.Vector3();
+  private readonly flyRight = new THREE.Vector3();
+  private readonly flyDelta = new THREE.Vector3();
+  private readonly yawAxis = new THREE.Vector3(0, 1, 0);
 
-  constructor(private camera: THREE.PerspectiveCamera, dom: HTMLElement, private getBounds: () => THREE.Box3, private isRow: () => boolean) {
+  constructor(
+    private camera: THREE.PerspectiveCamera,
+    dom: HTMLElement,
+    private getBounds: () => THREE.Box3,
+    private isRow: () => boolean,
+    private keys: FlyState,
+  ) {
     camera.far = 600;
     const c = this.controls = new OrbitControls(camera, dom);
     c.enableDamping = true;
@@ -47,6 +62,7 @@ export class CameraRig {
   }
 
   step(dt: number) {
+    this.applyFly(dt);
     const tw = this.tween;
     if (!tw) return;
     tw.t += dt / tw.dur;
@@ -58,5 +74,32 @@ export class CameraRig {
     const dir = a.normalize().lerp(b.normalize(), k).normalize();
     this.camera.position.copy(this.controls.target).addScaledVector(dir, THREE.MathUtils.lerp(la, lb, k));
     if (tw.t >= 1) this.tween = null;
+  }
+
+  private applyFly(dt: number) {
+    const { w, a, s, d, q, e } = this.keys;
+    if (!w && !a && !s && !d && !q && !e) return;
+    this.tween = null;
+    const along = (w ? 1 : 0) - (s ? 1 : 0);
+    const side = (d ? 1 : 0) - (a ? 1 : 0);
+    const yaw = ((q ? 1 : 0) - (e ? 1 : 0)) * YAW_RAD_S * dt;
+    const target = this.controls.target;
+    const offset = this.flyOffset.copy(this.camera.position).sub(target);
+    if (along !== 0 || side !== 0) this.slide(offset, along, side, dt);
+    if (yaw !== 0) {
+      offset.applyAxisAngle(this.yawAxis, yaw);
+      this.camera.position.copy(target).add(offset);
+    }
+  }
+
+  private slide(offset: THREE.Vector3, along: number, side: number, dt: number) {
+    const forward = this.flyForward.set(-offset.x, 0, -offset.z);
+    if (forward.lengthSq() < 1e-8) forward.set(0, 0, -1);
+    forward.normalize();
+    const right = this.flyRight.set(-forward.z, 0, forward.x);
+    const delta = this.flyDelta.set(0, 0, 0).addScaledVector(forward, along).addScaledVector(right, side);
+    delta.normalize().multiplyScalar(FLY_MPS * dt);
+    this.camera.position.add(delta);
+    this.controls.target.add(delta);
   }
 }

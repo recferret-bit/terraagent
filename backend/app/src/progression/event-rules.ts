@@ -10,6 +10,7 @@ export const PROGRESSION_EVENT_RULES: Readonly<
       familyByOp?: Readonly<Record<string, AchievementFamilyId>>;
       fields: readonly string[];
       fallback: number;
+      predicate?: (data: Record<string, unknown>) => boolean;
     }
   >
 > = {
@@ -31,6 +32,9 @@ export const PROGRESSION_EVENT_RULES: Readonly<
   colonyFounded: { family: 'first-landfall', fields: [], fallback: 1 },
   buildingCompleted: { family: 'architect', fields: [], fallback: 1 },
   resourceProduced: { family: 'stockpile', fields: ['amount', 'count'], fallback: 1 },
+  faunaKilled: { family: 'exterminator', fields: ['count'], fallback: 1 },
+  nestDestroyed: { family: 'nest-breaker', fields: ['count'], fallback: 1 },
+  raidRepelled: { family: 'unbreached', fields: ['count'], fallback: 1, predicate: (d) => d.unbreached === true },
 };
 
 export function progressEventId(event: unknown): string {

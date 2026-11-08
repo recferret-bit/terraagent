@@ -33,6 +33,7 @@ import { setPlanetTime } from '../time';
 import { devLand } from './land';
 import { devSpawnDeposit } from './spawnDeposit';
 import { devAddLoad, devDamage, devDrainFuel, devSetWind } from './w03';
+import { devFaunaMode, devGodMode, devSpawnHive, devSpawnRaid, devSpawnUnit } from './w07';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
 export const DEV_ENTITY_KIND = 1;
@@ -336,5 +337,10 @@ export default defineSimModule({
     devDrainFuel,
     devAddLoad,
     devDamage,
+    devSpawnRaid,
+    devSpawnHive,
+    devSpawnUnit,
+    devGodMode,
+    devFaunaMode,
   ],
 });

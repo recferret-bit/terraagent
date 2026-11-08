@@ -1,8 +1,12 @@
 # TerraAgent — Product Waves (master plan)
 
+**Regional trade revision (2026-11-04):** W11-46 adds resource identity hooks; W13-50–57 add configurable planet/sector endowments, base/army logistics, trade reasons and AI experiments. W27 preserves pinned resources during streaming. Generated counts replace earlier estimates; no new calendar commitment.
+
+> **W13/W15 economy revision (2026-11-04, D-44):** [ECONOMY](../spec/ECONOMY.md) adds database-managed profiles, recurring consumption, USDC buyer fees and reproducible AI experiments. W13-36–57 are required mock scope; W15 risk/requote/tests are required. W23 distinguishes capped smoke tests from public cash gates. Regenerated ISSUE_INDEX/HACKATHON_SCHEDULE supersede older totals and dates.
+
 > **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
-> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-42; D-42 = W02 as-built build rules; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**960 issues in 28 waves, ≈ 704.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-44; D-42 = W02 as-built build rules; D-43 = W07 neutral hive fauna & combat/motion rules; D-44 = regional specialization & market fees; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**994 issues in 28 waves, ≈ 738.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -23,13 +27,13 @@
 | **W04** | Maps & Camera | Client | Minimap (click to pan), global planet map on `M` with layers, selection and camera polish, tile-state overlay | W01 |
 | **W05** | Shape the Land | Gameplay | Worker Drone T3 and all terrain ops (Level, Fill, Reclaim, Deep Reclaim, Irrigate, Seed), linked prep, beacons + territory + frozen borders, Terraform %, Living bonuses, T2/T3 resource tiers unlocked by terraforming (D-34), `desert` and `ocean` planet types next to `temperate` (D-33), lightning + meteors (holes) | W03 |
 | **W06** | Invisible Chain (F5, mock) | Economy/NEAR | Social login (mock), named account "Pilot ID", gasless relayer (mock), mock receipts in a dev chain explorer | W00, W01 |
-| **W07** | First Contact (battle v1) | Gameplay | Three neutral insect species and hives, passive life/aggressive waves, deterministic directive sync, hive-life playground, Robotics Factory T1, Recon, Autocannon, Laser Tower, supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, evasive units), range and view rings, projectile VFX | W03 |
+| **W07** | First Contact (battle v1) | Gameplay | Three neutral insect species and organic hives, passive life/aggressive waves, deterministic directive + sparse motion sync (`DIFF_FORMAT=2`), GPU-instanced swarm renderer, hive-life + gallery + march playground, Robotics Factory T1, six-wheel Recon Armored Scout (`robot.recon`), Autocannon, Laser Tower (`building.laserTower`), supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, spotting gates, `moveGroup` flow-field slot march, `F6` Combat Lab), range and view rings, pooled projectile/combat/liquid VFX | W03 |
 | **W08** | Stages & HQ Goals | Autonomy | Stage engine S0–S10 (data-driven), triggers / dwell / overrides, `unlockStage` / `threatStage`, suggestion cards, HQ goals with budgets, rule-engine autopilot, priority sliders | W02 |
 | **W09** | Offline & Notifications | Autonomy | Presence, coarse ticking for empty planets, restart fast-run, away mode + away budget, "while you were away" digest, hard mode, Web Push + Telegram (via `NotifierPort`, mock first) | W02 |
 | **W10** | Cargo & Trade Hub (F1, mock) | Economy/NEAR | Trade Hub building, export mints cargo (mock NEP-245), import burns it, mint caps, cargo panel | W02, W06 |
 | **W11** | Planet Foundations | Sim/Meta/Client | Three persistent small sector worlds, atomic sector admission, parties/resume, pinned saves, border-crossing play and simple picker/map | W01, W04, W05 |
 | **W12** | Player Page & Achievements | Meta | `/me` (pilot, progress, planets, stats, history, play), XP and levels, 20 × 3 achievement flip cards, badge art, badge mint outbox (mock) | W01 (more families light up as producer waves land) |
-| **W13** | Markets (F2, mock) | Economy/NEAR | Market stalls at Trade Hubs, buy/sell orders, matching, owner fees, `token_diff` settlement on mock Intents, price board | W06, W10 |
+| **W13** | Markets (F2, mock) | Economy/NEAR | USDC/barter markets, buyer platform/stall fees, mock Intents, database profiles, recurring consumption and seeded AI economy experiments | W06, W10 |
 | **W14** | Fortify (walls) | Gameplay | Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege, `would_isolate` | W05, W07 |
 | **W15** | Guild & Agents (F3, F4, mock) | Economy/NEAR | Orbital Guild NPC traders with wallets visit, quote and trade; colony director key with allowance; `autoTrade` | W09, W13 |
 | **W16** | AI Director | Autonomy | Separate director worker (mock + live Z.ai), private MCP, durable queue, W08 goals, Conservative/Risky skills, security, W11/W27 context, HUD rationale and away story | W08 |

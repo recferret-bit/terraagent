@@ -854,17 +854,17 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: should depot supply ignore power? Remove the legacy Hub lane; word the unknown-unit reject.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
 
-### GP-74 · A building at 0 HP stays as an active wreck; no rebuild path
+### GP-74 · A building at 0 HP stays as an active wreck when W07 is off; removed to Prepared ground when W07 is on
 
-- **Status:** Open
+- **Status:** Resolved for W07+ (`wave/w07-first-contact`) / Open for `TA_WAVES=..03`
 - **Severity:** medium
 - **Confidence:** CONFIRMED
-- **Area / code:** `dev.damage`, `shared/sim/src/systems/terraform-basic/autoRepair.ts`, power graph
-- **What happens:** `damage <pylon> 100` leaves the pylon at hp 0 with state `active`. The power graph drops it (its downstream Quarry goes `offline: no grid`), but auto-repair skips it and nothing removes it, so its tile stays occupied and the player can't rebuild the bridge on the same tile. The W03 demo step "rebuild the pylon → online" is not covered by e2e.
-- **Why it is like this:** Destruction / wreck handling is not part of W03.
-- **Workaround / mitigation:** Place a new pylon on a neighbouring tile inside the zone.
-- **To resolve:** Remove (or turn into rubble) a building at 0 HP, or let repair restore it from 0.
-- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+- **Area / code:** `shared/sim/src/systems/dev/w03.ts` (`devDamage`), `shared/sim/src/systems/combat/damage.ts` (`applyDamage`), `shared/sim/src/systems/terraform-basic/autoRepair.ts`, power graph
+- **What happens:** With `W07` enabled, `damage <entity> 100` delegates to `applyDamage`, removing the building at 0 HP, converting its footprint tiles to `PREP.prepared`, and emitting `buildingDestroyed`. When `W07` is off (`TA_WAVES=..03`), `dev.damage` preserves the W03 unit-test behavior (`w03-dev-commands.spec.ts`) of clamping HP to `0` without removing the entity.
+- **Why it is like this:** Destruction / wreck removal is introduced by W07-02 (`UO-C`, `UO-TF-04`), while `w03-dev-commands.spec.ts` explicitly asserts `hp === 0` on a W03-only pipeline.
+- **Workaround / mitigation:** Enable `W07` (the default `all` wave set) for full building destruction and Prepared pad conversion.
+- **To resolve:** If W03-only runs also want 0-HP removal, update `w03-dev-commands.spec.ts` to expect entity removal at 100% damage.
+- **Found:** 2026-11-04, W03 owner-feedback pass; updated in W07 (`wave/w07-first-contact`).
 
 ### GP-75 · `dismantle` wire form is rejected by the contract
 
@@ -923,15 +923,130 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-80 · W07 hive fauna implementation and provisional balance
 
-- **Status:** Open (implementation planned; balance proposals)
-- **Area / code:** [W07](../plan/waves/W07-first-contact.md), [fauna contract](../game/fauna-hives-spec.md), future shared fauna/raids systems and codec integration
-- **What happens:** The revised plan specifies three neutral insect species and hives, passive/aggressive behavior, directive replication and playground scenes. Runtime combat/fauna code and the six meshes are not implemented by this planning change. Existing W08 threat helpers still return legacy Skitter/Brute/Drifter composition.
-- **Why it is like this:** The current checkout contains W07 planning, not its combat implementation. Species stats, a three-wave episode, cooldowns, provocation and sparse correction cadence are proposed starting values. “Armored” provisionally means visible plating and higher HP, preserving plain-damage battle v1.
-- **Workaround / mitigation:** W07-14/15/25/33–35 and the contract's delivery gates require the actual shared sim, backend, frontend, model and replay work before claiming completion. Shared planet models and cosmetic feeding/building are explicitly owner-requested simplifications.
-- **To resolve:** Implement and validate the wave; playtest proposed numbers and confirm whether blue beetles need actual damage mitigation. Reconcile existing progression helpers and later-wave roster references without inventing a second raid system.
-- **Found:** 2026-11-04, owner fauna redesign.
+- **Status:** Resolved (`wave/w07-first-contact`, 2026-11-04; balance defaults remain tunable via `tune`)
+- **Area / code:** `shared/sim/src/data/{weapons,combat-units,fauna}.ts`, `shared/sim/src/systems/{combat,fauna,progression}/`, `frontend/render/kitbash/archetypes/units/bugs/`, `frontend/playground/fauna/`
+- **What happens:** Implemented the three neutral insect species (`blackAnt`, `blueBeetle`, `greenSpitter`) and species-specific `3×3` hives (`hiveBlackAnt`, `hiveBlueBeetle`, `hiveGreenSpitter`), passive/aggressive state transitions, bounded 3-wave episodes with cooldowns, deterministic `FaunaDirectiveV1` replication + checkpoints, six validated kitbash models, and four playground hive-life fixtures. W08 `systems/progression/threat.ts` (`computeRaidWaveComposition`) now reconciles with the species threat-budget registry (`speciesComposition`) while keeping legacy `skitter`/`brute` fields for W08 callers.
+- **Why it is like this:** Follows the [Hive fauna contract](../game/fauna-hives-spec.md) and OWNER_TASKS defaults (`B2` view radii, `B4` air targeting, `B7` Laser Tower T1 at S3, `B8` footprints, `B9` stance radii, `B10` no ammo/laser spike in battle v1, `B11` bite cadence). Blue beetle armor is represented as higher plain HP (`420`) and chitin plating rather than a damage-reduction multiplier.
+- **Workaround / mitigation:** Every combat and fauna number is in `shared/sim/src/data/{weapons,combat-units,fauna}.ts` and live-tunable via `tune`.
+- **To resolve:** Owner playtest of the starting balance rows; W07-26 (CI duel harness port of `docs/game/tools/battle_duels.py`) is `H+` and deferred per `docs/plan/waves/W07-first-contact.md` §"Hackathon slice".
+- **Found:** 2026-11-04, owner fauna redesign; resolved in W07 (`wave/w07-first-contact`).
 
-### GP-81 · W05-09 re-opens D-37 for linked site prep (`Level`, `Fill`, `Reclaim`, `Deep Reclaim`, `Clear`, `Break`)
+### GP-81 · W07-26 CI duel harness (`shared/sim/test/duels.spec.ts`) is deferred (`H+`)
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` §"Hackathon slice", `docs/game/tools/battle_duels.py`
+- **What happens:** The ground-triangle CI duel suite (`W07-26`, `H+`) is deferred from the W07 hackathon slice; the Python duel harness in `docs/game/tools/battle_duels.py` and the unit/combat/fauna suites (`w07-combat-stats.spec.ts`, `w07-combat-fauna.spec.ts`, `w07-projectiles.spec.ts`, `w07-aoe.spec.ts`, `w07-lasers.spec.ts`, `w07-evasive.spec.ts`, `w07-layers.spec.ts`, `w07-vision.spec.ts`, `w07-targeting.spec.ts`, `w07-stances.spec.ts`) cover the battle v1 mechanics today.
+- **Why it is like this:** Explicit hackathon cut in `docs/plan/waves/W07-first-contact.md`; real Tank/Artillery rows land in W17-26 and air rows in W19-27.
+- **Workaround / mitigation:** Use `spawnUnit recon|demoTank|demoArtillery` and `hitDebug on` in `/play.html?scenario=w07` or run the unit suites.
+- **To resolve:** Land `W07-26` (`shared/sim/test/duels.spec.ts`) when `H+` issues open or alongside W17-26.
+- **Found:** 2026-11-04, W07 wave execution.
+
+### GP-82 · Hive-life firing range locks every shooter onto the lowest id and deals no damage
+
+- **Status:** Resolved (shooting-gallery and battle-orchestrator change)
+- **Area / code:** `shared/sim/src/systems/combat/firingRange.ts`, `damage.ts` (`isCombatDryFire`), `frontend/playground/content/faunaFiringRange.ts`
+- **What happens:** Playground modes `turrets`, `units`, and `bugs` set `blobs.firingRange` and `blobs.combatDryFire` on a real radius-8 planet and step the combat and fauna systems. Dry fire makes `applyDamage` apply 0, so shots and bites still emit and never destroy the target. Every turret, or every battle unit, or every bug, aims at the lowest living entity id of the other side. A turret that loses that bug to range goes quiet instead of picking another. Tank and artillery both draw `robot.combat`. A hive scene also shows the playground hex sample, which is now entirely flat prepared ground with no deposits and no colony border.
+- **Why it is like this:** The range is a dry run of the game's own fire and walk code. Lowest id keeps the shot deterministic. The hex sample used to be a class-and-deposit diorama; hive life needed one terraformed field.
+- **Workaround / mitigation:** Turn dry fire off and the same shot reduces HP (`w07-firing-range.spec.ts`). Passive and aggressive hive scenes still use the cosmetic wander stepper, with the mesh easing toward the logical pose.
+- **Resolution:** `gallery` now combines the turret and unit modes, assigns one fixed bug to each shooter, and holds both sides stationary. `BattleOrchestrator` runs units, defenses, fauna weapons and one impact pass on every host. Old URL modes redirect to the gallery. Dry fire remains intentional; the separate `bugs` mode retains its attack preview. Shared tank/artillery geometry is tracked in RN-70.
+- **Found:** 2026-11-05, playground hive-life pass.
+
+### GP-83 · A together march walks slower than each member's data speed
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/units/movement/orchestrator.ts` (`marchSpeed`), `shared/sim/src/systems/units/groupHandler.ts`, `docs/spec/SIMULATION.md` (SIM-M-01)
+- **What happens:** `moveGroup` with `pace: "together"` freezes every member at the slowest member's `speedPerTick` for that order. A faster unit takes shorter steps than its data row. The cached `mobileStats` object is not written. Default pace is each unit's own speed.
+- **Why it is like this:** SIM-M-01 says movement is at the unit's data speed. The no-teleport checks only forbid going faster, so a slower group pace stays inside them. The frozen number is how a mixed group stays together without a second mover.
+- **Workaround / mitigation:** Omit `pace` (or send `"own"`) and each kind keeps its own speed.
+- **To resolve:** If the owner wants the spec sentence to allow a group pace, add that sentence next to SIM-M-01.
+- **Found:** 2026-11-05, group-march implementation.
+
+### GP-84 · Units in a march may share a tile while they walk
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/units/movement/groupMarch.ts`, `shared/sim/src/grid/flowField.ts`
+- **What happens:** The shared field does not treat other units as obstacles. Two members can stand on the same hex on the way. After the march, each fitted member occupies a different slot.
+- **Why it is like this:** Making units into costs would break the shared field and the snapshot replay. Distinct tiles are reserved only at the destination.
+- **Workaround / mitigation:** The arrival check in `group-march.spec.ts` requires 50 distinct final tiles.
+- **To resolve:** A later change could reserve the slot disk only, still without physics steering.
+- **Found:** 2026-11-05, group-march implementation.
+
+### GP-85 · A member who leaves does not speed the together march back up
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/units/movement/groupMarch.ts` (`marchSpeed` copied onto each motion at issue)
+- **What happens:** `stopUnit` or a later `moveUnit` detaches that one unit. Everyone else keeps the speed frozen when the order was given, even if the slowest member was the one who left.
+- **Why it is like this:** Recomputing the minimum mid-order would change steps that a restored snapshot has already replayed.
+- **Workaround / mitigation:** Send a new `moveGroup` to pick a new pace.
+- **To resolve:** Only if a live pace is required. It would have to be plain data on the march and covered by the restore test.
+- **Found:** 2026-11-05, group-march implementation.
+
+### GP-86 · The long leg of a group march is one shared corridor
+
+- **Status:** Resolved (group seating, 2026-11-06)
+- **Area / code:** `shared/sim/src/units/movement/slots.ts` (`assignSlots`, `leaveCorridor`), `shared/sim/src/units/movement/groupMarch.ts` (`pathToSlot`)
+- **What happens:** Seats used to be handed out by entity id, ring 0 first, and every outside member walked to the anchor before stepping out to that seat. A unit from the middle of the group could be sent to the rim and then walk back out through the units arriving behind it.
+- **Why it is like this:** One reverse Dijkstra still builds the long leg. The seat is now the tile that keeps the unit's offset from the group centre, and the member leaves the corridor at the closest tile with a clear line to that seat.
+- **Workaround / mitigation:** When that line is blocked, the member still follows the corridor to the anchor and takes the disk path around the blockage.
+- **Resolution:** Open ground no longer funnels the group onto the anchor and back out. The blocked-line fallback remains, because a second private search per unit would not fit the expansion budget.
+- **Found:** 2026-11-05, group-march implementation. Seating reported as chaos on 2026-11-06.
+
+### GP-87 · Melee, ranged, and attack approach bands still disagree
+
+- **Status:** Resolved (2026-11-07 working-tree review fixes; commit pending)
+- **Area / code:** `shared/sim/src/systems/fauna/step.ts`, `shared/sim/src/units/commands/attack.ts`
+- **What happens:** Fauna melee stops at distance 1. Ranged fauna use `floor(range) - 1`. The generic attack command uses the full weapon range. A dispatched wave and the live chase can also differ by the target's footprint pad. `moveGroup` does not change any of these.
+- **Why it is like this:** The group march only assigns move slots. Combat approach was left as it stood.
+- **Workaround / mitigation:** None for combat spacing. Group move orders are exact slot tiles (`minDist` 0, `maxDist` 0).
+- **To resolve:** Pick one band rule for melee, ranged chase, and the attack command, and cover it with a time-sampled position test.
+- **Found:** 2026-11-05, movement research.
+- **Resolution:** Shared combatApproachBand and footprintAttackRange now serve live fauna chase, waves, directives, provocation, generic attacks and playground combat. Sampled ant/spitter approaches against a real 3×3 hub remain at the same valid edge over 100 ticks.
+
+### GP-88 · Weapon cooldown rounding changes configured battle rates
+
+- **Status:** Resolved (2026-11-07 working-tree cadence fix; commit pending)
+- **Area / code:** `shared/sim/src/systems/combat/weaponFire.ts:10`, `turrets.ts`, `stanceHelpers.ts`
+- **What happens:** At 5 TPS, rounding `5 / ratePerS` makes the Recon/Autocannon 2/s rows fire every 3 ticks (1.667/s), while Laser Tower 4/s fires every tick (5/s). Their sustained damage differs from W07-13 by −16.7% and +25%.
+- **Why it is like this:** The firing scheduler stores an integer cooldown without retaining fractional cadence.
+- **Workaround / mitigation:** None; data snapshots passing do not prove sustained rates.
+- **To resolve:** Accumulate fractional shot credit or deadlines and test sustained shot counts through the production combat system.
+- **Found:** 2026-11-06, W07 full-branch review; direct production-helper probe.
+- **Fix:** Fractional firing deadlines retain cadence at 5 TPS; production tests verify 20 Recon/Autocannon shots and 40 laser shots over 10 seconds. Zero rate disables fire. Maximum remains one shot per tick (5/s).
+
+### GP-89 · Group local routes survive terrain invalidation
+
+- **Status:** Resolved (2026-11-07 working-tree review fixes; commit pending)
+- **Area / code:** `shared/sim/src/units/movement/groupMarch.ts:197` (`pathToSlot`, `replanGroupMember`)
+- **What happens:** A member starting inside the destination disk retains `slot.local`. After an intermediate tile becomes rock, replanning returns that same original route, even after a replacement field is solved. A 20-HQ group initially at (1,0), ordered around (0,0), leaves member 12 stuck at (1,-1) for 100 ticks when (0,-1) becomes rock; its destination (0,-2) remains reachable.
+- **Why it is like this:** `pathToSlot` returns cached `slot.local` before validating it against current terrain or rebuilding from the member's current position.
+- **Workaround / mitigation:** Issue a fresh move order after the terrain change.
+- **To resolve:** Invalidate/rebuild local seating paths on blockage and epoch change; add coverage for members initially inside the destination disk.
+- **Found:** 2026-11-06, W07 full-branch review, executable SimHost probe.
+- **Resolution:** Local seating routes are rebuilt from the current position against current terrain. A blocked destination fails explicitly; a reachable destination routes around a new rock. The 20-member regression advances 120 individual ticks and checks all reachable assigned slots.
+
+### GP-90 · Demand-based autopilot preserves previously accepted orders
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/rule-engine/automate.ts`, `needs.ts`
+- **What happens:** Priorities now weight observed shortages instead of manufacturing power/expansion/defense demand. Wind and thermal generation count toward night supply; battery discharge does not. Already accepted orders, including old excess wind orders, finish normally. Explicit feasible Secure Power goals complete and stay complete.
+- **Why it is like this:** Correcting future decisions must not silently cancel paid player or goal work.
+- **Workaround / mitigation:** Cancel any unwanted existing queue entries manually. Matching queued work is reused before another automatic order is added.
+- **To resolve:** No automatic queue purge planned; generation forecasts remain heuristic (AI-02).
+- **Found:** 2026-11-06, owner report of endless default-priority turbines.
+
+### GP-91 · Combat Lab tunes types across the planet
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/combat-tuning/`, `shared/sim/src/host/tunedHealth.ts`
+- **What happens:** F6 edits affect every current and future entity of a type across all colonies on this planet. Health changes preserve remaining HP percentage. Weapon rate is capped at 5/s; insect attack intervals use 0.2-second steps with animation minimums (ant 0.8s, beetle/spitter 1s). Demo tank/artillery expose weapon settings only because they have no normal production health row.
+- **Why it is like this:** Uses the existing authoritative planet balance overrides and 5 TPS simulation. Type-wide tuning was the recommended default; individual-instance editing was not requested in reply to clarification.
+- **Workaround / mitigation:** Export JSON for reusable balance overrides. Reload values after other players tune. The existing console `tune reset` restores file/scenario values; no broad reset button is added to the combat panel.
+- **To resolve:** Add individual-instance overrides only if required; support higher firing rates with explicit multi-shot scheduling.
+- **Found:** 2026-11-07, combat tuning and armored scout request.
+
+## W05 Shape the Land
+
+### GP-92 · W05-09 re-opens D-37 for linked site prep (`Level`, `Fill`, `Reclaim`, `Deep Reclaim`, `Clear`, `Break`)
 
 - **Status:** Accepted (by design, W05-09)
 - **Severity:** low
@@ -943,17 +1058,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** —
 - **Found:** 2026-11-04, W05-09 implementation.
 
-### GP-83 · A TERRAFORM click keeps reclaiming every reachable water tile, not only the pond
-
-- **Status:** Accepted (by design)
-- **Area / code:** `shared/sim/src/systems/terraform-basic/chain.ts` (`isChainObstacle`), `groundWorkRule.ts` (`evaluateGroundWorkTile`)
-- **What happens:** shallow water (and deep water, once the colony has a worker of `deepReclaim`'s tier) is a chain obstacle, the same way forest is. One `work` order walks outward from the clicked hex and reclaims every such tile the colony may terraform, not only the connected pond. A locked deep tile is skipped; it does not cancel the shallow tiles of the same stroke.
-- **Why it is like this:** the owner asked for the forest rule (retry an interior tile after the next finished hex, work from a passable neighbour, reach unchanged). A pond-only flood fill would be a second chain.
-- **Workaround / mitigation:** `moveUnit`, `stopUnit` or another TERRAFORM order for that worker ends the chain. Before a T2 worker exists, deep water is `worker_tier_locked` and is left in place.
-- **To resolve:** if one click should stop at the shore of the clicked pond, limit the chain to that connected component.
-- **Found:** 2026-11-06, lake terraform fix
-
-### GP-82 · Worker drone tiers share lanes; the op list on the row is still not read
+### GP-93 · Worker drone tiers share lanes; the op list on the row is still not read
 
 - **Status:** Resolved (worker unit id, this change)
 - **Area / code:** `shared/sim/src/data/units-workers-basic.ts` (rows `t1` / `t2` / `t3`), `shared/sim/src/systems/dispatch/eligibility.ts`
@@ -963,17 +1068,27 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Done for the ids and the duplicate rows.
 - **Found:** 2026-11-06, worker-drone production change. Resolved in this change.
 
-### GP-84 · Some building rows are outside the stage table the build menu now reads
+### GP-94 · A TERRAFORM click keeps reclaiming every reachable water tile, not only the pond
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/terraform-basic/chain.ts` (`isChainObstacle`), `groundWorkRule.ts` (`evaluateGroundWorkTile`)
+- **What happens:** shallow water (and deep water, once the colony has a worker of `deepReclaim`'s tier) is a chain obstacle, the same way forest is. One `work` order walks outward from the clicked hex and reclaims every such tile the colony may terraform, not only the connected pond. A locked deep tile is skipped; it does not cancel the shallow tiles of the same stroke.
+- **Why it is like this:** the owner asked for the forest rule (retry an interior tile after the next finished hex, work from a passable neighbour, reach unchanged). A pond-only flood fill would be a second chain.
+- **Workaround / mitigation:** `moveUnit`, `stopUnit` or another TERRAFORM order for that worker ends the chain. Before a T2 worker exists, deep water is `worker_tier_locked` and is left in place.
+- **To resolve:** if one click should stop at the shore of the clicked pond, limit the chain to that connected component.
+- **Found:** 2026-11-06, lake terraform fix
+
+### GP-95 · Some building rows are outside the stage table the build menu now reads
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/data/terraform.ts` (`territoryBeacon`, `hydro`, `hazardShield`, `lightningRod`), `shared/sim/src/data/trade-hub.ts` (`t1.unlockStage`), `shared/sim/src/data/grid.ts` (`mineralsQuarry`), `shared/sim/src/systems/progression/validate.ts` (`resolveItemUnlockStage`), `frontend/game/features/construction-menu/catalog.ts`
 - **What happens:** The build menu locks a card with `resolveItemUnlockStage`, the same value `placeBuilding` checks. Catalog buildings therefore cannot show as placeable and then return `stage_locked`. Four W05 rows still carry their own `unlockStage` (Territory Beacon 4, Hydro 2, Hazard Shield 4, Lightning Rod 2) but are not in `STAGE_TABLE_ROWS` and not in the build catalog, so `resolveItemUnlockStage` returns 0 and placement does not stage-lock them. Trade Hub T1's row stays at 2 because W10 tests assert that number; the stage table lists `tradeHub` at S4, and with W10 on both the menu and `checkItemUnlockStage` use `evaluateTradeHubUnlock` instead. Minerals Quarry stays off the menu and off the S2 toast (GP-77: it shares the Resource Extractor card).
 - **Why it is like this:** Adding the W05 rows to the stage table would name them on the stage toast while the player still cannot place them. Changing the Trade Hub row would fail the W10 data tests. The quarry card was an owner decision, not a stage.
-- **Workaround / mitigation:** Those four buildings are not build-menu cards, so the Power Pylon failure mode (card enabled, placement rejected) does not apply. Worker drone tiers stay on GP-82: the units menu still reads the row, because every tier shares the item id `worker`.
+- **Workaround / mitigation:** Those four buildings are not build-menu cards, so the Power Pylon failure mode (card enabled, placement rejected) does not apply. Worker drone tiers stay on GP-93: the units menu still reads the row, because every tier shares the item id `worker`.
 - **To resolve:** When a catalog can place Territory Beacon, Hydro, Hazard Shield or Lightning Rod, add that id to the stage that matches its row. Leave Trade Hub T1's row number to W10.
 - **Found:** 2026-11-06, build-menu stage audit.
 
-### GP-85 · DISMANTLE is offered before the stage table unlocks it
+### GP-96 · DISMANTLE is offered before the stage table unlocks it
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/terraform-basic/TerraformMenu.ts` (`PRIMARY_OP_DEFS`), `shared/sim/src/data/stages.ts` (S2 orders include `dismantle`), `shared/sim/src/systems/progression/validate.ts`
@@ -983,27 +1098,27 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Grey DISMANTLE until `resolveItemUnlockStage('dismantle')` (S2), the same way build cards grey.
 - **Found:** 2026-11-06, build-menu stage audit.
 
-### GP-86 · A dune `work` job clears a fixed 5-wide disc, then the chain continues
+### GP-97 · A dune `work` job clears a fixed 5-wide disc, then the chain continues
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/systems/terraform-basic/duneFootprint.ts`, `groundWorkRule.ts` (`evaluateGroundWorkTile`), `workSystem.ts` (`completeGroundWork`), `frontend/game/features/terraform-basic/TargetHighlight3D.ts`
 - **What happens:** Desert sand is `slope` on a height field, so one flattened hex does not remove a mound. A TERRAFORM `work` job on slope now takes five times the slope row (400 ticks, 20 s, 60 E; the time-table row itself stays 80 ticks / 12 E) and, on completion, sets every slope hex within hex distance 2 to flat, prepared, and one height: the lowest flat tile on the ring just outside the disc, or 0 when that ring is still dune. Rock, forest, water, holes, deposits and tiles under a building are left. The Level order is still one tile. The chain then walks outward, so one click keeps clearing the dune sea one disc at a time. The selection hex is dark blue, transparent, and depth-tested, so a unit or a dune crest in front of it covers it. Water usually writes no depth, so a lakebed hex can still show through the surface.
-- **Why it is like this:** The owner asked for a slower job that removes a 5×5 of dune, with the client and the host sharing one rule. The 5× multiplier, the build-plane fallback, and leaving rock caps on the break path are defaults. Stopping the chain at the first disc would be a second chain rule (GP-83).
+- **Why it is like this:** The owner asked for a slower job that removes a 5×5 of dune, with the client and the host sharing one rule. The 5× multiplier, the build-plane fallback, and leaving rock caps on the break path are defaults. Stopping the chain at the first disc would be a second chain rule (GP-94).
 - **Workaround / mitigation:** `moveUnit`, `stopUnit` or another order for that worker ends the chain after the current disc. A rock cap inside the disc is a separate break.
 - **To resolve:** Confirm the 5× time, whether a rock cap inside the disc should fall with the sand, and whether one click should stop after that disc instead of walking the erg.
 - **Found:** 2026-11-06, dune terraform fix.
 
-### GP-87 · Hex-tile deposit rule: checked when a deposit appears, not afterwards; scenario and dev exceptions
+### GP-98 · Hex-tile deposit rule: checked when a deposit appears, not afterwards; scenario and dev exceptions
 
 - **Status:** Open
-- **Area / code:** `shared/sim/src/grid/subsurface.ts` (`revealSubsurface`, `revealAroundChanged`), `systems/terraform-basic/{work,workSystem,duneFootprint,resourceSpawn}.ts`, `systems/dev/spawnDeposit.ts`, `systems/goals/sites.ts`, `tests/scenarios/w05-shape-the-land.ts`
-- **What happens:** D-44 is enforced when a deposit appears (generation, reveal, terraform find). Nothing re-buries a visible deposit whose neighbour later becomes wild (ridge/moat op, building linked prep, runtime `clearPodBlastZone` / `ensureStarterHubSpace`), and those paths do not trigger a reveal on tiles they make hex; the buried deposit appears at the next terraform next to it. Defaults picked: buried oil under natural Flat also appears when a neighbour is terraformed, and the W01 prep ops reveal too. Exceptions: the `w05` scenario hand-places its 2×2 minerals quarry deposit on slope + crater at `(4, 0)` (W05 check step 3, linked prep on a deposit site), `dev.spawndeposit` and `ensureStarterMetalsDeposit` (test grids) write deposits anywhere. The renderer still levels the ground under a deposit on a slope (`computeEffectiveHeights` `hasDeposit`), so those keep their small shelf.
+- **Area / code:** `shared/sim/src/grid/subsurface.ts` (`revealSubsurface`, `revealAroundChanged`, `systems/terraform-basic/{work,workSystem,duneFootprint,resourceSpawn}.ts`, `systems/dev/spawnDeposit.ts`, `systems/goals/sites.ts`, `tests/scenarios/w05-shape-the-land.ts`)
+- **What happens:** D-45 is enforced when a deposit appears (generation, reveal, terraform find). Nothing re-buries a visible deposit whose neighbour later becomes wild (ridge/moat op, building linked prep, runtime `clearPodBlastZone` / `ensureStarterHubSpace`), and those paths do not trigger a reveal on tiles they make hex; the buried deposit appears at the next terraform next to it. Defaults picked: buried oil under natural Flat also appears when a neighbour is terraformed, and the W01 prep ops reveal too. Exceptions: the `w05` scenario hand-places its 2×2 minerals quarry deposit on slope + crater at `(4, 0)` (W05 check step 3, linked prep on a deposit site), `dev.spawndeposit` and `ensureStarterMetalsDeposit` (test grids) write deposits anywhere. The renderer still levels the ground under a deposit on a slope (`computeEffectiveHeights` `hasDeposit`), so those keep their small shelf.
 - **Why it is like this:** One rule at the points where a deposit becomes visible; the exceptions are fixtures and cheats the W05 check guide and e2e rely on.
 - **Workaround / mitigation:** —
 - **To resolve:** Owner: should the `w05` quarry site move to open ground (step 3 then demos linked prep on a non-deposit building)? Then drop the renderer's `hasDeposit` levelling and make `dev.spawndeposit` reject wild tiles.
-- **Found:** 2026-11-06, hex-tile rule (D-44), lead + parallel agents
+- **Found:** 2026-11-06, hex-tile rule (D-45), lead + parallel agents
 
-### GP-88 · Wild ground is worked from the walkable edge inward (E1–E3): open edges
+### GP-99 · Wild ground is worked from the walkable edge inward (E1–E3): open edges
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/systems/terraform-basic/chain.ts` (`chainStandRule`, `pickNextChainTile`), `workSystem.ts` (`approachJob`), `unreachable.ts` (`reportNoPath`), `workJobs.ts` (`workReach`), `work.ts` (`reachOf`)
@@ -1013,7 +1128,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Decide (a) (report `no_path` for the clicked tile while the chain goes on?); read reach from data once; give the W01 path the same chain.
 - **Found:** 2026-11-06, W05 owner pass (terraform agent)
 
-### GP-89 · R4 plane joining: seams where two natural planes meet; old pads keep their steps
+### GP-100 · R4 plane joining: seams where two natural planes meet; old pads keep their steps
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/grid/hexTile.ts` (`joinPlaneHeight`), `systems/terraform-basic/duneFootprint.ts` (`dunePadHeight`, `flattenDuneFootprint`), `work.ts` (`levelToAdjacentFlat`)
@@ -1023,7 +1138,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: should a disc that touches two planes pull the smaller one onto the larger (beyond the disc)?
 - **Found:** 2026-11-06, W05 owner pass (lead)
 
-### GP-90 · Irrigate and Seed have no player path since the one TERRAFORM button
+### GP-101 · Irrigate and Seed have no player path since the one TERRAFORM button
 
 - **Status:** Question for the owner
 - **Area / code:** `frontend/game/features/terraform-basic/planner.ts` (TERRAFORM sends `work` + `intent: 'terraform'`), `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`finishedLevelFlat`), `chain.ts` (`isChainObstacle`), `workSystem.ts` (`completeGroundWork`)
@@ -1033,7 +1148,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: (a) restore the ladder on the button (host-side: a growth job mode after Prepared, priced from the `irrigate`/`seed` rows), or (b) add a separate GROW button that sends the explicit ops. Recommendation: (b), because a mis-click on Prepared ground no longer costs water.
 - **Found:** 2026-11-07, W05 full review (lead + audit agent)
 
-### GP-91 · TERRAFORM dock work is priced from a second time table
+### GP-102 · TERRAFORM dock work is priced from a second time table
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`timedGroundWork`), `TERRAFORM_TIME_TABLE`, op rows in `shared/sim/src/data/ops-basic.ts`
@@ -1042,7 +1157,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: price dock slope/hole/forest/rock from the `level`/`fill`/`clear`/`break` rows (one source), or keep the cheaper dock and amend W05-03/04.
 - **Found:** 2026-11-07, W05 full review (terraform agent)
 
-### GP-92 · deepReclaim data row does not match W05-06
+### GP-103 · deepReclaim data row does not match W05-06
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/data/ops-basic.ts` (`deepReclaim`), `shared/sim/test/data/w05-data.spec.ts:70`
@@ -1051,7 +1166,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner picks. Deep → Shallow works as is for linked prep (`planPrepJobs` follows `toTerrain`), but the dock needs a terrain-aware `completeGroundWork` and a `chainGiveUp` exception in `continueWorkChain`.
 - **Found:** 2026-11-07, W05 full review (terraform agent)
 
-### GP-93 · The dock refuses level ground left at prep `flat`
+### GP-104 · The dock refuses level ground left at prep `flat`
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`finishedLevelFlat`)
@@ -1060,7 +1175,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: one rule for "done" ground. Recommendation: treat prep `flat` like `wild` in `evaluateGroundWorkTile` (grade it) and update the two specs.
 - **Found:** 2026-11-07, W05 full review (terraform agent; lead e2e)
 
-### GP-94 · Living move bonus is read from two data rows
+### GP-105 · Living move bonus is read from two data rows
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/grid/tileModel.ts` (`lookupLivingMoveBp`)
@@ -1068,7 +1183,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Keep one row (recommend `terraformConfig.livingMoveSpeedBonus`) and derive the other.
 - **Found:** 2026-11-07, W05 full review (terraform agent)
 
-### GP-95 · Saved planets from before the Worker unification are not migrated
+### GP-106 · Saved planets from before the Worker unification are not migrated
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/codec/`, `kernel/constants` (`SIM_VERSION`), `ENTITY_KIND`, colony `workers`, path profile `worker`
@@ -1077,7 +1192,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Before any real save matters: `SIM_VERSION = 3` with a 2→3 migration (kind 50 → worker tier 2, 51 → worker tier 3, `harvesters` → `workers`, path profile and queued `buildUnit` renames).
 - **Found:** 2026-11-07, W05 full review (sim-units agent)
 
-### GP-96 · Bio tiers (W05-35) are not built
+### GP-107 · Bio tiers (W05-35) are not built
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/systems/production/tierGate.ts`, `systems/harvest/`
@@ -1085,7 +1200,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** W05-35 after the hackathon.
 - **Found:** 2026-11-07, W05 full review (sim-units agent)
 
-### GP-97 · The colony AI switch is wave-gated to W08
+### GP-108 · The colony AI switch is wave-gated to W08
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/contracts` (`setAiEnabled`, `wave: 'W08'`), `shared/sim/src/systems/goals/ai.ts`
@@ -1093,7 +1208,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: confirm W08 is intended (recommended), or move the flag to W05.
 - **Found:** 2026-11-07, W05 full review (sim-units agent)
 
-### GP-98 · The TERRAFORM chain works on into neighbouring deep water
+### GP-109 · The TERRAFORM chain works on into neighbouring deep water
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/systems/terraform-basic/workSystem.ts` (`continueWorkChain`), `chain.ts`
@@ -1101,7 +1216,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: should the chain stop at deep water (only a direct click reclaims it), like it stops at Prepared ground?
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
 
-### GP-99 · An idle Worker Drone leaves a player move destination at once to harvest
+### GP-110 · An idle Worker Drone leaves a player move destination at once to harvest
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/systems/harvest/index.ts` (`standingHarvestAssignSystem`: `st === idle && !cur.playerAssigned` → retarget), `systems/units/handlers.ts` (`moveUnit`)
@@ -1109,19 +1224,18 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: should a player `move` hold the worker at its destination (e.g. set the unit's `holdUntil`, or a "parked" flag cleared by the next order)? Recommendation: hold until the next order, like an RTS.
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
 
-### GP-100 · Irrigate and Seed uncover buried deposits on the meadow
+### GP-111 · Irrigate and Seed uncover buried deposits on the meadow
 
 - **Status:** Question for the owner
 - **Area / code:** `shared/sim/src/systems/terraform-basic/work.ts` (`emitRevealed` → `revealAroundChanged`, `grid/subsurface.ts`)
-- **What happens:** Every completed terraform op, including Irrigate and Seed, reveals buried deposits on the tile and its neighbours (D-44). In `?scenario=w05` seeding the 10 meadow hexes turns 7 of them into metals deposits (`(0..2, 3)`, `(-1..2, 4)`), so workers can no longer be moved onto them (`site_blocked`) and the Living land is lost to deposits. `tests/e2e/w05.spec.ts` step 5 now picks a Living hex without a deposit.
+- **What happens:** Every completed terraform op, including Irrigate and Seed, reveals buried deposits on the tile and its neighbours (D-45). In `?scenario=w05` seeding the 10 meadow hexes turns 7 of them into metals deposits (`(0..2, 3)`, `(-1..2, 4)`), so workers can no longer be moved onto them (`site_blocked`) and the Living land is lost to deposits. `tests/e2e/w05.spec.ts` step 5 now picks a Living hex without a deposit.
 - **To resolve:** Owner: should growth ops (Irrigate/Seed) reveal? Recommendation: reveal only on ops that change terrain or level (clear/break/level/fill/reclaim/grade).
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
 
-### GP-101 · Wave 5 weather hazards are triggered exclusively via console commands and F8 Weather Lab (no background scheduler)
+### GP-112 · Wave 5 weather hazards are triggered exclusively via console commands and F8 Weather Lab (no background scheduler)
 
 - **Status:** Deliberate trade-off (owner request 2026-11-07)
 - **Area / code:** `shared/sim/src/systems/weather/`, `frontend/game/features/weather/`, `frontend/render/weather/`, `frontend/render/ui/visualLabWeatherWidget.ts`
 - **What happens:** Per owner direction, Wave 5 weather effects (`meteor`, `twister`, `lightning`, `storm`, `rain`) run without a background random scheduler or hazard orchestrator. They are triggered on demand via dev console commands (`meteor [q r]`, `twister [q r] [dirDeg]`, `lightning [q r] [+ rain]`, `storm [on|off]`, `rain [none|minor|heavy|0..1]`) or via the `F8` Visual Shader Lab → `WEATHER` tab. `weatherSystem` (`slot: 5`, `wave: 'W05'`) only steps active console-spawned twisters and expires lightning electrical overload timers (`overloadUntilByEntity`).
 - **Why it is like this:** Simplified by explicit owner request so weather hazards are deterministic, inspectable on demand, and never interrupt gameplay unprompted.
 - **Found:** 2026-11-07, W05 weather implementation
-

@@ -7,3 +7,4 @@
 }
 .ta-net-banner[data-phase='terminal'] { border-color: var(--ta-orange); }
 .ta-net-banner[hidden] { display: none; }
+.ta-version-notice { z-index: 41; border-color: var(--ta-orange); }

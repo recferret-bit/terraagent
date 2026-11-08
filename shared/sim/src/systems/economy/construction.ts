@@ -18,7 +18,7 @@ import { resolvePlacementRule } from '../construction/placement';
 import { buildLinkedPrepJobs } from '../construction/prep';
 import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
 import { revertFootprintLivingTiles } from '../terraform-basic/rules';
-import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
+import { BUILDING_KIND_BY_NAME, buildingKindName, ensureColony, getFootprintTileIndices, isEconomyBuildingKind, resolveBuildingRow } from './buildingRows';
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
 import { checkCostAffordability, debitCost, refundCost, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
@@ -26,7 +26,7 @@ import { onCommandHubCompleted } from '../progression';
 import { syncColonyThreatStage } from '../progression/threatStage';
 import { claimTerritoryRadius } from '../territory-claim';
 
-export { buildingKindName, getBuildingJobs, getFootprintTileIndices, resolveBuildingRow, type BuildingJobRecord };
+export { BUILDING_KIND_BY_NAME, buildingKindName, getBuildingJobs, getFootprintTileIndices, isEconomyBuildingKind, resolveBuildingRow, type BuildingJobRecord };
 
 /** Whether building `entityId` is being dismantled (an open dismantle work job, `terraform-basic/dismantleJob.ts`). */
 function isBeingDismantled(state: PlanetState, entityId: number): boolean {

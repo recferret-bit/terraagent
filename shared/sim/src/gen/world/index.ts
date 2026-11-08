@@ -4,12 +4,14 @@ import { registerGenerator, type PlanetGenerator } from '../generators';
 import { DEFAULT_SPAWN_CAPACITY } from '../spawnSlots';
 import { createContext, type WorldStage } from './context';
 import { classifyDesert } from './stages/classifyDesert';
+import { faunaHives, getWorldgenHiveSites, planWorldgenHiveSites, type PlanHiveSitesOptions } from './stages/faunaHives';
 import { landing } from './stages/landing';
 import { reliefDesert } from './stages/reliefDesert';
 import { subsurface } from './stages/subsurface';
 import { deposits, temperateTerrain } from './stages/temperate';
 
 export { worldProfile, type WorldGenContext, type WorldStage } from './context';
+export { faunaHives, getWorldgenHiveSites, planWorldgenHiveSites, type PlanHiveSitesOptions };
 
 import { GEN_VERSION } from '../generators';
 
@@ -21,7 +23,7 @@ export function registerWorldStage(stage: WorldStage): void {
   if (STAGES.has(stage.id)) throw new Error(`world stage ${stage.id} already registered`);
   STAGES.set(stage.id, stage);
 }
-for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subsurface, landing]) registerWorldStage(st);
+for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subsurface, landing, faunaHives]) registerWorldStage(st);
 
 /**
  * World generation orchestrator (D-38): builds an empty planet, then runs the planet type's profile stages in order —
@@ -41,6 +43,10 @@ export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: 
     onStage?.(id);
   }
   buryWildDeposits(state);
+  if (!ctx.profile.stages.includes('faunaHives')) {
+    faunaHives.run(ctx);
+    onStage?.('faunaHives');
+  }
   state.meta.genVersion = GEN_VERSION;
   return state;
 }

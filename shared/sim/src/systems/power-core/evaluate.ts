@@ -409,15 +409,23 @@ export function calculateUnitDemand(
 ): number {
   const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
   const idleMult = Number(dayCycleRow.unitIdleDrainMult ?? 0.5);
+  const reconRow = resolvePowerRow(data, 'combatUnits', 'recon');
+  const reconActive = Number(reconRow.powerActive ?? reconRow.powerDrainPerS ?? 2.0);
+  const reconIdle = Number(reconRow.powerIdle ?? reconActive * idleMult);
   let unitDemand = 0;
   const cols = state.entities.cols;
   for (let r = 0; r < state.entities.count; r++) {
     if (cols.owner[r] !== colonyIndex || cols.hp[r] <= 0) continue;
     const k = cols.kind[r], st = cols.state[r];
-    if (k !== ENTITY_KIND.worker) continue;
-    const drain = workerPowerDrain(cols.tier[r] || 1, data);
-    const idle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
-    unitDemand += idle ? drain * idleMult : drain;
+    if (k === ENTITY_KIND.worker) {
+      const drain = workerPowerDrain(cols.tier[r] || 1, data);
+      const idle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
+      unitDemand += idle ? drain * idleMult : drain;
+    } else if (k === ENTITY_KIND.recon) {
+      if (st === ENTITY_STATE.inert || st === ENTITY_STATE.descending) continue;
+      const active = st === ENTITY_STATE.moving || st === ENTITY_STATE.working;
+      unitDemand += active ? reconActive : reconIdle;
+    }
   }
   return unitDemand;
 }

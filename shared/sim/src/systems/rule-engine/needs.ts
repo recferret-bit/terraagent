@@ -42,8 +42,6 @@ export function scoreEnergyNeed(
   const supply = overrides?.supplyPerS ?? overrides?.supply ?? Number(stored?.supply ?? est?.supply ?? 0);
   const rawDemand = overrides?.rawDemandPerS ?? overrides?.rawDemand ?? overrides?.demand ?? Number(stored?.rawDemand ?? stored?.demand ?? est?.rawDemand ?? 0);
   const solarNetPerS = overrides?.solarNetPerS ?? Number(stored?.solarNetPerS ?? est?.solarNetPerS ?? 0);
-  const solarDrain = Number(stored?.solarInternalDrainPerS ?? est?.solarInternalDrainPerS ?? 0);
-  const founderCore = overrides?.founderCorePerS ?? Number(stored?.founderCorePerS ?? est?.founderCorePerS ?? 0);
   const netPowerPerS = overrides?.netPowerPerS ?? overrides?.net ?? Number(stored?.net ?? supply - rawDemand);
   const deficitTicks = overrides?.deficitTicks ?? readDeficitTicks(state, colonyIndex, stored);
   const brownout = overrides?.brownout ?? (Boolean(stored?.brownout) || deficitTicks > 0 || netPowerPerS < 0 || rawDemand > supply + 1e-6);
@@ -54,9 +52,11 @@ export function scoreEnergyNeed(
   } else if (typeof stored?.nightNetPerS === 'number') {
     nightNetPerS = stored.nightNetPerS;
   } else {
-    const nonSolarSupply = solarNetPerS !== 0
-      ? supply - Math.max(0, solarNetPerS) - solarDrain
-      : founderCore > 0 && founderCore < supply ? founderCore : supply;
+    // Storage discharge cannot sustain future demand. Keep wind and thermal output;
+    // solar switches off at night, including its internal drain.
+    const generation = overrides?.supplyPerS ?? overrides?.supply ?? stored?.generationPerS
+      ?? supply - Number(stored?.capacitorDischargePerS ?? 0) - Number(stored?.hqCellDischargePerS ?? 0);
+    const nonSolarSupply = generation - Math.max(0, solarNetPerS);
     nightNetPerS = nonSolarSupply - rawDemand;
   }
 
@@ -159,6 +159,43 @@ export function scoreExtractionNeed(
   return { score, extractorCount, minResourceRatio, netResourcePerS };
 }
 
+function countColonyDefenseAssets(
+  state: PlanetState,
+  colonyIndex: number,
+): { defenseCount: number; hasRoboticsFactory: boolean } {
+  const cols = state.entities.cols;
+  let defenseCount = 0;
+  let hasRoboticsFactory = false;
+  for (let row = 0; row < state.entities.count; row++) {
+    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
+    const st = cols.state[row];
+    if (st === ENTITY_STATE.constructing || st === ENTITY_STATE.waiting || st === ENTITY_STATE.inert) continue;
+    const k = cols.kind[row];
+    if (k === ENTITY_KIND.roboticsFactory) hasRoboticsFactory = true;
+    if (
+      k === ENTITY_KIND.autocannon ||
+      k === ENTITY_KIND.laserTower ||
+      k === ENTITY_KIND.recon ||
+      k === ENTITY_KIND.demoTank ||
+      k === ENTITY_KIND.demoArtillery
+    ) {
+      defenseCount++;
+    }
+  }
+  return { defenseCount, hasRoboticsFactory };
+}
+
+function isNeutralPassiveFaunaRow(state: PlanetState, row: number, colonyIndex: number): boolean {
+  const cols = state.entities.cols;
+  if (cols.owner[row] >= 0) return false;
+  const id = cols.id[row];
+  const aggBlob = state.blobs.faunaAggression?.value as
+    | { byEntityId?: Record<number, { aggressiveColonies?: number[] }> }
+    | undefined;
+  const entry = aggBlob?.byEntityId?.[id];
+  if (!entry) return false;
+  return !Array.isArray(entry.aggressiveColonies) || !entry.aggressiveColonies.includes(colonyIndex);
+}
 export function scoreDefenseNeed(
   state: PlanetState,
   colonyIndex: number,
@@ -173,6 +210,7 @@ export function scoreDefenseNeed(
     if (cols.owner[row] === colonyIndex || cols.state[row] === ENTITY_STATE.inert) continue;
     if (cols.kind[row] === ENTITY_KIND.devProbe || cols.kind[row] === ENTITY_KIND.pod) continue;
     if (cols.hp[row] <= 0 && cols.hpMax[row] > 0) continue;
+    if (isNeutralPassiveFaunaRow(state, row, colonyIndex)) continue;
     let minDist = 999;
     for (const a of anchors) {
       const dq = cols.q[row] - a.q, dr = cols.r[row] - a.r;
@@ -194,6 +232,12 @@ export function scoreDefenseNeed(
     const proxBonus = closestDist <= 15 ? Math.round(((15 - closestDist) / 15) * 1000) : 500;
     const countBonus = Math.min(1000, Math.max(0, hostilesWithin15 - 1) * 300 + (underAttack ? 500 : 0));
     score = clampBp(8000 + proxBonus + countBonus);
+  } else {
+    const { defenseCount, hasRoboticsFactory } = countColonyDefenseAssets(state, colonyIndex);
+    const stage = Math.max(Number(colony?.stage ?? 0), Number(colony?.threatStage ?? 0));
+    if ((stage >= 3 || hasRoboticsFactory) && defenseCount < 2) {
+      score = defenseCount === 0 ? 6000 : 4500;
+    }
   }
   return { score, hostilesWithin15, underAttack };
 }

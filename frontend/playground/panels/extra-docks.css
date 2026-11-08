@@ -1,0 +1,2 @@
+/* Hive-life head keeps the mode badge and HIDE on one row. */
+.fp-head-actions{display:flex;align-items:center;gap:6px}

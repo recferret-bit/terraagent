@@ -10,6 +10,8 @@ description: >-
   detail" checks in the procedural-kitbash-3d visual verification step.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Model Geometry Validator (`model-geometry-validator`)
 
 The kitbash pipeline merges 20 to 120 sub-parts into **one** mesh, so nothing in the engine knows that a claw is meant to

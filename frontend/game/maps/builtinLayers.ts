@@ -1,6 +1,7 @@
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
 import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { MAP_LAYER_META, type MapLayerId } from '@terra/contracts';
+import { drawMapFog, isMapTileExplored } from './visibility';
 import { drawEntityDots } from './entityDots';
 import { drawResourcesLayer } from './resourceLayer';
 import { resolveTileColorFromTokens } from './tileColors';
@@ -72,7 +73,7 @@ export function drawTerrainLayer(
   const r = view.tilePixelRadius * 1.08;
   for (let i = 0; i < limit; i++) {
     const { x, y } = view.axialToPixel(hx.q[i]!, hx.r[i]!);
-    ctx.fillStyle = resolveTileColorFromTokens(tiles, i);
+    ctx.fillStyle = resolveTileColorFromTokens(tiles, i, view.ownColonySlot ?? 0);
     drawHexPolygonPath(ctx, x, y, r);
     ctx.fill();
   }
@@ -102,7 +103,7 @@ export function drawTerritoryLayer(
   for (let i = 0; i < limit; i++) {
     const owner = tiles.owner[i] ?? -1;
     if (owner < 0) continue;
-    if (tiles.explored && tiles.explored[i] === 0 && owner !== ownSlot) continue;
+    if (!isMapTileExplored(view, i) && owner !== ownSlot) continue;
 
     ownedTileCount++;
     const q = hx.q[i]!;
@@ -207,6 +208,7 @@ export function renderCompositeMapLayers(
     drawResourcesLayer(ctx, view);
     drawnLayers.push('resources');
   }
+  drawMapFog(ctx, view);
   if (activeLayers.has('units')) {
     unitDots = drawUnitsLayer(ctx, view);
     drawnLayers.push('units');

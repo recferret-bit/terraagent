@@ -280,7 +280,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** add a playground control for build stage and work weight, plus a hex terrain sample scene. Move
   the scaffold into a registered shader modifier. Add one paragraph to `docs/visuals/textures-shaders-lighting-spec.md`.
 - **Found:** 2026-11-01, render review
-- **Fix:** Playground: `hex terrain` toggle / `&hexterrain=1` (sample scene with every class, deposits, a Prepared pad whose wave replays every 3 s, normal and frozen borders; `content/HexSampleHost.ts`), `border hatch` / `&hatch=1`, `work pose` / `&work=1` (`uWorkWeight` 1) and a `build` button / `&build=0|33|66` / `__pg.setBuild()`. The scaffold is now the registered `buildScaffold` shader modifier (`ShaderPluginRegistry`, which gained per-material `createUniforms` and `fragmentDeclarations`). Docs: `docs/visuals/textures-shaders-lighting-spec.md` §3.3, README URL parameters, `docs/dev/DEV_TOOLS.md` (`__pg`). The work pose stays in the core biped arm chunk (it is part of that gait). Checked in headless Chrome: `/playground.html?inspect=building.turret&hexterrain=1&hatch=1&build=66&biome=forestRock` and `?inspect=building.commandHub&hexterrain=1&build=33`, no console errors.
+- **Fix:** Playground: `hex terrain` toggle / `&hexterrain=1` (sample scene with every class, deposits, a Prepared pad whose wave replays every 3 s, normal and frozen borders; `content/HexSampleHost.ts`), `work pose` / `&work=1` (`uWorkWeight` 1) and a `build` button / `&build=0|33|66` / `__pg.setBuild()`. The scaffold is now the registered `buildScaffold` shader modifier (`ShaderPluginRegistry`, which gained per-material `createUniforms` and `fragmentDeclarations`). Docs: `docs/visuals/textures-shaders-lighting-spec.md` §3.3, README URL parameters, `docs/dev/DEV_TOOLS.md` (`__pg`). The work pose stays in the core biped arm chunk (it is part of that gait). The border-hatch toggle and `&hatch=1` were removed later (RN-67); the sample scene stays on solid borders. Checked in headless Chrome: `/playground.html?inspect=building.turret&hexterrain=1&build=66&biome=forestRock` and `?inspect=building.commandHub&hexterrain=1&build=33`, no console errors.
 
 ## Kitbash archetypes (`frontend/render/kitbash/archetypes/`, `greebles/`)
 
@@ -947,7 +947,147 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Give each building archetype an explicit light entry; route buildings through a building vision branch.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
 
-### RN-66 · Work debris uses a fixed outside shell, and the beam hits one outside point
+## W07 First Contact
+
+### RN-66 · W07-23 collapse VFX and W07-24 dedicated Laser Tower / refitted Factory & DCA meshes are deferred (`H+`)
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` §"Hackathon slice" (`W07-23`, `W07-24`), `frontend/game/app/online/EntityMeshes.ts`, `frontend/render/kitbash/archetypes/units/bugs/`
+- **What happens:** The six insect fauna and hive models (`bug.blackAnt`, `bug.blueBeetle`, `bug.greenSpitter`, `hive.blackAnt`, `hive.blueBeetle`, `hive.greenSpitter`) and `robot.recon` are registered and pass `npm run validate:models -- --all --strict` (`44/44` models, 0 errors, 0 warnings). As specified by `docs/plan/waves/W07-first-contact.md` §"Hackathon slice", `W07-23` (3-second building rubble collapse VFX before the Prepared pad) and `W07-24` (refitting `building.roboticsFactory` / `building.droneArray` footprints and authoring a bespoke `building.laserTower` mesh instead of standing in with `building.turret` / `robot.combat`) are `H+` and deferred: destroyed buildings transition directly to their `PREP.prepared` pad, and `laserTower` uses the `building.turret` archetype stand-in.
+- **Why it is like this:** Explicit hackathon slice scope in `docs/plan/waves/W07-first-contact.md`.
+- **Workaround / mitigation:** Laser Tower vs Autocannon is distinguished in the HUD selection bar, ghost preview, range ring (`9` vs `8` tiles), and instant cyan/amber laser beam VFX (`ProjectileVfxSystem`).
+- **To resolve:** Land `W07-23` and `W07-24` when `H+` visual polish issues open.
+- **Found:** 2026-11-04, W07 wave execution.
+- **Review update (2026-11-06):** The dedicated `building.laserTower` now exists in `archetypes/buildings/tech.ts` and is bound by `entityKinds.ts`; it passes strict model validation. The stand-in statement above is historical. Factory/DCA footprint refits and building-collapse VFX remain pending. Status: partially resolved (current W07 tree).
+
+### RN-67 · Playground calibration grid stays on; ruler, border hatch, and shot export are not controls
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/playground/panels/Toolbar.ts`, `frontend/playground/state.ts`, `frontend/playground/stage/StageRig.ts`, `frontend/render/core/createColonyViewport.ts`
+- **What happens:** The square 1 m / 5 m calibration grid is always built and left visible. There is no grid, hex-grid, ruler, or border-hatch button, and `syncURL` does not write `hatch`. `createState` forces `grid: true`, `hex: false`, `ruler: false`, `hatch: false`. The Shot tab (PNG and 4-view sheet) is not rendered; `window.__pg.contactSheet()` still saves a sheet. Hiding the object list resizes the canvas through a `ResizeObserver` on the viewport container. WASD slides the orbit camera and target; Q/E yaw around the target.
+- **Why it is like this:** Playground chrome was simplified so the calibration grid cannot be turned off and fly keys can use W and Q/E.
+- **Workaround / mitigation:** Wireframe, bloom, pixel, shadows, and the 1.8 m human stay on the Look tab. Hex terrain sample stays `&hexterrain=1`.
+- **To resolve:** Only if the owner wants those controls back.
+- **Found:** 2026-11-05, playground camera and chrome pass.
+
+### RN-68 · Organic tissue optics and animation remain inexpensive approximations
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/visuals/unified/organicSurface.ts`, `kitbash/catalog.ts`, `kitbash/greebles/organic/`, `.agents/skills/procedural-kitbash-3d/references/organic-fauna.md`
+- **What happens:** Chitin, soil, membranes and eyes use nonmetallic PBR with shared procedural pigmentation/roughness/micro-normal fields. Acid sacs use opaque wet shading and thickness-inspired color, not physical transmission, subsurface scattering or thin-film iridescence. The insect action rig now allows charged glands up to 20.5% expansion and 12.5% discharge contraction; antennae and jaws articulate rigidly. Feet retain the shared flat-ground gait rather than terrain-aware IK. Per-creature animation phase derives from the initial mesh position; colocated initial poses can share phase.
+- **Why it is like this:** Keeps the six regenerated models below 3.5k triangles, in the existing merged geometry and visible/depth shader pipeline, without transparent sorting or CPU skeletal rigs. State-driven attack and death poses now extend the same merged geometry pipeline.
+- **Workaround / mitigation:** Species gait rates differ; organic legs use explicit alternating tripods. All six models pass geometry/motion validation. Actual GPU poses were compared with the CPU validator; see [review evidence](../visuals/organic-fauna-review.md).
+- **To resolve:** Add measured optical or terrain-foot-placement improvements through the existing renderer if close-up shots justify their cost; use stable app-provided instance seeds when exact duplicate-position phase separation is needed. No 200-unit performance benchmark was run in this visual pass.
+- **Found:** 2026-11-05, organic bugs and hives regeneration.
+
+### RN-69 · Mixed hive-life preview can overlap neighboring insects
+
+- **Status:** Open
+- **Area / code:** `frontend/playground/content/FaunaSceneHost.ts`, `frontend/playground/content/faunaSimHelpers.ts`
+- **What happens:** The existing cosmetic passive/aggressive scene places 17 residents around three hives. The mixed preview visibly crowds neighboring bodies and antennae; the geometry validator checks parts within one creature, not inter-creature collision. This is visible in `docs/visuals/evidence/organic-fauna/mixed-passive.png`.
+- **Why it is like this:** The cosmetic wander fixture and mesh easing do not enforce the regenerated silhouettes as inter-creature clearance envelopes. Gameplay movement was outside this model/skill regeneration.
+- **Workaround / mitigation:** Inspect individual models with `?inspect=fauna.<species>` and each hive separately. Do not use this cosmetic crowd as proof of gameplay collision correctness.
+- **To resolve:** Move passive/aggressive life fixtures onto shared sim movement with appropriate clearance and review emergence using the final silhouettes; avoid adding renderer-side position corrections.
+- **Found:** 2026-11-05, mixed-scene visual check during organic regeneration.
+
+### RN-70 · Weapon steering is immediate; tank and artillery share a chassis
+
+- **Status:** Accepted (by design for animation tuning)
+- **Area / code:** `frontend/render/combat/`, `shared/sim/src/systems/combat/BattleOrchestrator.ts`, `frontend/render/kitbash/catalog.ts`
+- **What happens:** Turrets and barrels acquire their target immediately; recoil follows actual shots. Tank and artillery still use the existing `robot.combat` silhouette, with distinct projectile behavior and ballistic elevation. The server continues using the established 2D range, impact-time and damage rules; animated 3D muzzle placement and terrain-relative aiming are presentation. There is no new 3D barrel-occlusion or projectile collision model.
+- **Why it is like this:** This change fixes aiming and emission coherence across the shared simulation, game and tuning gallery without changing combat balance or introducing separate host rules.
+- **Workaround / mitigation:** The visible and shadow shaders share closed-form steering; muzzle sockets mirror it on the CPU. Target changes are replicated, and early shot events wait for the shooter mesh. GPU readback and client snapshot tests verify the connection; see [battle aiming review](../visuals/battle-aiming.md).
+- **To resolve:** Add traverse-speed limits together with an authoritative aim/fire gate if required, and author distinct tank/artillery meshes when their dedicated archetypes land.
+- **Found:** 2026-11-05, shooting-gallery and battle-system implementation.
+
+### RN-71 · Shot scatter and exterior contacts are presentation geometry
+
+- **Status:** Accepted (visual effects pass)
+- **Area / code:** `frontend/render/combat/shotContact.ts`, `BattlePresentation.ts`, `frontend/render/particles/BurstLayer.ts`
+- **What happens:** Shot endpoints vary by up to 3.5 cm on each aim-plane axis before projection onto the authored target surface. The event's attacker/target/weapon/impact tick seeds the scatter in both game and gallery. Contacts use the base mesh with 7 cm outward clearance; they do not evaluate every GPU-deformed vertex. A hit burst uses the shot's saved contact, so a moving or strongly deforming victim may no longer exactly match that launch-time surface. Server-confirmed misses emit at ground height instead. Damage and collision rules remain the shared simulation's scheduled 2D impacts.
+- **Why it is like this:** The requested recoil, spread and effects improvements are cosmetic and must not silently change authoritative accuracy or introduce client-only damage rules. Reading animated GPU vertices per shot would add synchronization cost.
+- **Workaround / mitigation:** The stationary gallery provides stable surface contacts; outward emission and contact-plane clearance keep chips and expanding billows out of the target at emission. Each burst layer has six pooled concurrent bursts, recycling oldest slots at capacity; artillery tails have 192 pooled segments.
+- **To resolve:** If animated hitboxes or gameplay inaccuracy are wanted, define them in shared simulation and replicate contact data, with renderer adapters consuming the same authoritative result.
+- **Found:** 2026-11-05, recoil and combat-effect pass.
+
+### RN-72 · Insect feet, corpses and acid remain authored visual approximations
+
+- **Status:** Accepted (insect animation pass)
+- **Area / code:** `frontend/render/animation/insects/`, `frontend/render/combat/InsectPresentation.ts`, `frontend/render/particles/presetsLiquid.ts`, `shared/sim/src/systems/combat/insectFixture.ts`
+- **What happens:** Feet and the curled corpse use analytic poses against local flat ground; they do not sample individual terrain contacts or run a ragdoll. Acid uses opaque wet 3D droplets, strands and a collapsing splash on a fixed contact plane, without fluid simulation or persistent corrosion. Trails approximate the floor from endpoint heights. Contact placement retains RN-71's cosmetic surface approximation. The tuning fixtures use live damage: robots have 2,000 HP and robot-attack insect specimens at most 84 HP, making hit/death easy to inspect. Use RESET to replay; specimens do not respawn automatically. Sac alternation is cosmetic per presentation instance: successive observed releases alternate left/right, while a newly created instance starts left; reconnecting clients can start on a different side from an already-running client.
+- **Why it is like this:** Keeps animation in the existing merged GPU renderer and combat decisions in shared simulation; fixtures deliberately shorten death review without altering normal combat data.
+- **Workaround / mitigation:** Synchronized CPU/GPU pose coverage includes combined hit/attack/death states. Corpse meshes remain for 2.4 seconds after removal. Each liquid layer has six pooled bursts; all droplets obey the effect's exterior contact plane. Bugs attack by default; the older crowded passive fixture remains separately accessible (RN-69).
+- **To resolve:** Add terrain-aware foot/contact inputs or fluid/corrosion rules only with a measured need and shared gameplay contracts where applicable.
+- **Found:** 2026-11-06, insect animation implementation and parallel review.
+
+### RN-73 · Final insect animation browser review awaits Chrome access
+
+- **Status:** Resolved (insect visual QA follow-up, 2026-11-06)
+- **Area / code:** `frontend/render/animation/insects/`, `frontend/playground/content/FaunaSceneHost.ts`, `docs/visuals/insect-animation.md`
+- **What happens:** Final browser GPU/CPU pose readback and four-view/three-biome attack/death captures did not execute. Both Chrome launch escalation requests waited for approval and were canceled. Actual eight-scene/direction UI and contact review therefore remains unverified; existing acid-effect screenshots do not establish the insect animation review.
+- **Why it is like this:** GUI/browser execution requires sandbox escalation. No attempt was made to bypass canceled approval.
+- **Workaround / mitigation:** Production build, repo lint, generated-file checks, 84 focused integration tests and the additional UI tests pass. All three insects pass the strict 57-pose CPU validator with zero errors/warnings; all 16 particle presets pass. The review guide lists reproducible checks.
+- **Original follow-up:** Run the guide in `docs/visuals/insect-animation.md` with authorized Chrome access and save the GPU readback and actual attack/death screenshots. Prepared session scripts are `/private/tmp/ta-insect-pose.js` and `/private/tmp/ta-insect-ui/browser-qa.mjs`.
+- **Found:** 2026-11-06, final insect animation QA attempt.
+- **Resolution:** Approved Chrome runs completed all eight scene/direction controls checks, 7,068 GPU/CPU pose samples, and attack/death views for all species in all three biomes. A close-up beetle contact gap was corrected and covered by a mesh-distance regression. Evidence is saved under `docs/visuals/evidence/insect-animation/`; revised beetle geometry, GPU parity, focused tests and production build pass.
+
+### RN-74 · Hive scenes retain the standalone archetype INFO panel
+
+- **Status:** Resolved (2026-11-07 working-tree scene INFO fix; commit pending)
+- **Area / code:** `frontend/playground/PlaygroundApp.ts` (`refreshInfo`, `syncFaunaStage`), `frontend/playground/panels/InfoPanel.ts`
+- **What happens:** Entering a hive scene leaves the right INFO panel showing the previous standalone selection (for example HERO EXPLORER), including its geometry counts. These are not counts for the hive scene. The left Hive pane correctly reports scene population, attack direction and animation states.
+- **Why it is like this:** INFO currently belongs to the standalone archetype selector; it has no scene-summary adapter. This pre-existing UI issue was observed during the animation review and left outside the animation change.
+- **Workaround / mitigation:** Use Hive pane statistics during scene playback; hide INFO to enlarge the viewing area. Individual insect geometry statistics remain correct when selected in Units.
+- **To resolve:** Add scene-aware INFO content or explicitly label its retained standalone selection when a multi-entity scene is active.
+- **Found:** 2026-11-06, insect browser review.
+- **Resolution:** Existing InfoPanel now shows live Hive/March summaries and restores model metadata when a Units selection exits the scene. The related March mode exit was fixed. A DOM smoke covers standalone → hive → March → standalone and changing population without stale geometry counts.
+
+### RN-75 · Hive cavities and ant resizing retain grid-based gameplay contacts
+
+- **Status:** Open
+- **Area / code:** `frontend/render/kitbash/archetypes/units/hives.ts`, `frontend/render/animation/insects/rig.ts`, `shared/sim/src/units/approach.ts`, `shared/sim/src/systems/combat/firingRangeCombat.ts`
+- **What happens:** The ant now renders at 65% linear scale; its shared gameplay radius and one-tile melee stopping band remain unchanged. This can leave a visible gap between the smaller jaws and a robot at release. The larger hives have real, walking-clearance-tested chambers, but the sim still treats hives as grid footprints with external entrance cells: residents do not path through these mesh cavities. The legacy passive cosmetic crowd retains RN-69's overlap limitation.
+- **Why it is like this:** This is a model/size revision. The movement service arrives at tile centers; a fractional melee range alone would not create a legal closer stopping position. Adding renderer-side root translations would violate shared movement ownership. Hive internal navigation likewise needs shared sim support, not visual raycast authority.
+- **Workaround / mitigation:** Animation, sockets and shadows consistently use the new ant scale. Dedicated entrance QA places each bug inside its species chamber and checks twelve walking phases against actual geometry. Existing hive sites occupy 3×3 sim cells; the catalog pedestal covers 6×6 metres. Hives use an extra 6.5 cm shadow receiver normal offset to reduce self-shadow acne; this is an optical bias, not enlarged geometry or collision.
+- **To resolve:** Add authoritative subcell melee stopping/contact targets and entrance traversal through the movement orchestrator, then retune ant reach and spawn/emergence against the same shared positions.
+- **Found:** 2026-11-06, hive and ant size revision.
+
+### RN-76 · Shared movement interpolation buffers presentation behind simulation
+
+- **Status:** Accepted (smooth movement)
+- **Area / code:** `frontend/render/motion/`, `frontend/playground/content/FaunaSceneHost.ts`, `frontend/playground/content/marchScene.ts`, `frontend/game/app/online/EntityMeshes.ts`
+- **What happens:** March and every Hive mode now share the gameplay renderer's tick-keyed pose sampler. Normal preview playback draws between the previous and current 200 ms simulation ticks, adding one tick of visual latency. Manual stepping shows the exact newest pose and resets partial playback; pausing freezes position and heading. Gameplay retains its existing 1.5-tick network buffer, bounded extrapolation and correction smoothing (FA-18).
+- **Why it is like this:** Chasing each 5 Hz target with exponential position easing made Hive residents accelerate and stop five times per second. Interpolating known tick samples produces continuous motion without extrapolating paths or changing authoritative movement. Camera/frame updates do not write sim positions.
+- **Workaround / mitigation:** A single shared sampler handles same-tick replacement, ordered history and shortest-angle interpolation. Tests cover all species and Hive modes, March, pause/step/resume, delayed frames and serialized-server/local gameplay parity. Browser traces for combat, passive and aggressive beetles have 90th/10th percentile frame-speed ratios of 1.08–1.10. The existing passive crowd/entrance collision limitations remain RN-69/RN-75.
+- **To resolve:** No correctness fix pending. Reducing presentation latency would require a shared predictive movement contract; do not reintroduce a preview-only target chase.
+- **Found:** 2026-11-06, global movement smoothing follow-up.
+
+### RN-77 · W07 swarm rendering is per-entity rather than instanced
+
+- **Status:** Resolved (2026-11-07 working-tree swarm batching; commit pending)
+- **Area / code:** `frontend/game/app/online/EntityMeshes.ts:285`, `frontend/render/kitbash/catalog.ts:179`, `frontend/playground/content/FaunaSceneHost.ts:268`
+- **What happens:** Each insect gets a separate Mesh and material with individual uniforms. W07-30 and the fauna contract require swarm instancing. The 200-unit simulation benchmark does not measure GPU/frame cost or prove that rendering requirement.
+- **Why it is like this:** Insects reuse the existing per-entity archetype presentation path.
+- **Workaround / mitigation:** Geometry is cached; GPU animation avoids a CPU skeleton. Neither batches draw calls.
+- **To resolve:** Batch insects by species/material with per-instance animation state and measure a rendered 200-unit encounter, or explicitly revise the requirement.
+- **Found:** 2026-11-06, W07 full-branch review.
+- **Resolution:** Shared InsectSwarmRenderer batches gameplay and playground insects by species with per-instance pose, selection and matching shadow animation. Chrome rendered 200 insects in 3 draw calls; pixel comparison differs by 0.00749/255 on average. Individual hidden proxies remain for picking, sockets and corpse lifecycle, so this reduces draw calls while retaining per-entity geometry/material memory. CPU submission measurement is not a full GPU frame-rate guarantee.
+
+### RN-78 · Armored scout melee preview uses a side-on specimen
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/combat/insectFixture.ts`, `frontend/render/animation/insects/insectContact.spec.ts`
+- **What happens:** Bug-attack preview scouts present their side at the existing 2 m contact distance, keeping the beetle horn clear during anticipation and in contact at release. Robot-attack previews still face their target. Normal gameplay melee spacing remains hex-based and does not account for the exact hull silhouette or facing.
+- **Why it is like this:** The armored scout is longer than the former drone. The preview isolates the insect strike without changing shared attack ranges or adding hull collision rules.
+- **Workaround / mitigation:** The contact regression verifies both anticipation clearance and release contact against the actual new mesh.
+- **To resolve:** Use facing-aware surface approach distances if exact melee contact is required for every gameplay orientation.
+- **Found:** 2026-11-07, armored scout model replacement.
+
+## W05 Shape the Land
+
+### RN-79 · Work debris uses a fixed outside shell, and the beam hits one outside point
 
 - **Status:** Accepted (by design)
 - **Severity:** low
@@ -959,17 +1099,17 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** if a prop is much wider than 1.3 m, offset by that prop's bounds instead of the fixed shell, and optionally aim the beam at the same spawn point.
 - **Found:** 2026-11-06, particle spawn fix
 
-### RN-67 · Hex grid follows D-44: what is left that still reads as hexagons on wild ground
+### RN-80 · Hex grid follows D-45: what is left that still reads as hexagons on wild ground
 
 - **Status:** Open
 - **Area / code:** `frontend/render/planets/hex/hexEdges.ts`, `tileTint.ts` (`uHexGrid`), `territoryBorder.ts`, `scripts/check-structure.mjs`
-- **What happens:** Grid lines are drawn only by the D-44 rule. Still hex-shaped on wild ground: (1) the class tint is looked up per cell, so a colour boundary (slope next to grass) follows tile edges, softened over 0.45 m, with no dark line; (2) the territory border ribbon follows tile edges at `effHeights` + 0.035 m and so climbs dunes (the light zig-zag in the owner's screenshot). Side effects: Living/Irrigated `hexSeam` darkening is drawn only where the grid exists; no lines on the planet rim, either side of a plateau step, the ring around every tree/rock/water tile, or around slope deposits. `check-structure` now lets `frontend/render` import `@terra/sim/grid/hexTile` (a rule module, where the list held only geometry).
+- **What happens:** Grid lines are drawn only by the D-45 rule. Still hex-shaped on wild ground: (1) the class tint is looked up per cell, so a colour boundary (slope next to grass) follows tile edges, softened over 0.45 m, with no dark line; (2) the territory border ribbon follows tile edges at `effHeights` + 0.035 m and so climbs dunes (the light zig-zag in the owner's screenshot). Side effects: Living/Irrigated `hexSeam` darkening is drawn only where the grid exists; no lines on the planet rim, either side of a plateau step, the ring around every tree/rock/water tile, or around slope deposits. `check-structure` now lets `frontend/render` import `@terra/sim/grid/hexTile` (a rule module, where the list held only geometry).
 - **Why it is like this:** Out of the owner's item scope; the border must follow tile edges by nature.
 - **Workaround / mitigation:** —
 - **To resolve:** Owner: interpolate the tint on wild cells (3 reads, reverses "tint stays in its hexagon")? Fade border segments where neither side is a hex tile (leaves gaps in the outline on hills)? Or pass the mask in as a tile layer instead of importing the rule in render.
-- **Found:** 2026-11-06, hex-tile rule (D-44), lead + parallel agents
+- **Found:** 2026-11-06, hex-tile rule (D-45), lead + parallel agents
 
-### RN-68 · Projector-light shader patch copied in several places
+### RN-81 · Projector-light shader patch copied in several places
 
 - **Status:** Open
 - **Area / code:** `frontend/render/lighting/projectorLitMaterial.ts` (`applyColonyProjectorLight`), inline copies in `frontend/playground/stage/StageRig.ts`, `frontend/render/visuals/terrain/Scatter.ts` (×2), `frontend/render/visuals/terrain/terrainShader.ts`
@@ -979,7 +1119,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Move the inline copies onto `applyColonyProjectorLight`.
 - **Found:** 2026-11-06, W05 owner pass (pod agent)
 
-### RN-69 · Landing pod at night: opening burst, closed pod emissives, duplicated pod look
+### RN-82 · Landing pod at night: opening burst, closed pod emissives, duplicated pod look
 
 - **Status:** Open
 - **Area / code:** `frontend/game/app/online/PodImpactRig.ts` (`updateEgress`, `coreLightMat`), kitbash `ship.dropPod`, `frontend/game/app/online/EntityMeshes.ts` (`podVisible`)
@@ -989,7 +1129,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Owner: should the opening burst and the closed pod also go dark at night? Build the opened pod from the kitbash model.
 - **Found:** 2026-11-06, W05 owner pass (pod agent)
 
-### RN-70 · Projector beam follows the projector cone: wide fan, open edges
+### RN-83 · Projector beam follows the projector cone: wide fan, open edges
 
 - **Status:** Open
 - **Area / code:** `frontend/render/lighting/projectorCone.ts` (`projectorCosOuter`, `beamHalfAngle`, `buildBeamRays`), `EntityProjectorRig.ts`, `projectorBeamMaterial.ts`, `archetypeLights.ts`, `frontend/game/app/online/entityVisionSync.ts`, `frontend/playground/content/SpawnSet.ts`
@@ -999,7 +1139,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Owner: keep the wide headlamp or tighten the light? Drape the pool disc; unify the range scale.
 - **Found:** 2026-11-06, W05 owner pass (beam agent)
 
-### RN-71 · Planar water reflections: one plane, frame-old shadows, sky key
+### RN-84 · Planar water reflections: one plane, frame-old shadows, sky key
 
 - **Status:** Open
 - **Area / code:** `frontend/render/visuals/water/reflection/` (`WaterReflectionPass.ts`, `mirrorCamera.ts`, `reflectionRect.ts`, `reflectionTargets.ts`, `reflectionRegistry.ts`, `reflectionOverlays.ts`), `frontend/render/visuals/water/glsl/mirror.ts`, `water/mirrorSky.ts`, `glsl/stages.ts` (`FRAG_MIRROR`, `FRAG_OUTPUT`), `core/createColonyViewport.ts` (`createViewportReflections`); e2e `tests/e2e/probes/water-reflections.spec.ts`
@@ -1009,17 +1149,17 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Clip water boxes against the mirror near plane (tight rect on close cameras); owner: keep the lamp lens / halo out of the mirror? exclude the sky dome (exact sky key, no doubled sun)? tune strength 1 / floor 0.75 on a real screen.
 - **Found:** 2026-11-06, water reflections; updated 2026-11-07 (visibility pass)
 
-### RN-72 · Lamp ground pool over water: drawn under the surface now
+### RN-85 · Lamp ground pool over water: drawn under the surface now
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/render/visuals/water/WaterMaterial.ts` (`WATER_RENDER_ORDER` 1.5, used by `planets/hex/waterBuckets.ts` and `visuals/terrain/Liquids.ts`), `frontend/render/lighting/EntityProjectorRig.ts` (pool `renderOrder` 1, beam 2)
-- **What happens:** At night big light / dark triangles showed on water in a lamp's light pool (owner 2026-11-07). Cause (older than the reflections): the pool disc and the water both had `renderOrder` 1, so three sorted them by distance; the transparent, depth-writing water swell (±0.12 m) cut the pool along the 2 m triangles, or the pool jumped in brightness between two buckets. Now every water surface draws at 1.5: after fauna (0) and pools (1), before beams (2). Side effects: a pool over water is drawn under the surface, dimmed by the water's opacity instead of added on top; a beam entering the water is cut by the moving surface (RN-70 (e) says the beam shows through water: it does not, the water writes depth). The pool is still a flat disc at fixed height (RN-70 (d)).
+- **What happens:** At night big light / dark triangles showed on water in a lamp's light pool (owner 2026-11-07). Cause (older than the reflections): the pool disc and the water both had `renderOrder` 1, so three sorted them by distance; the transparent, depth-writing water swell (±0.12 m) cut the pool along the 2 m triangles, or the pool jumped in brightness between two buckets. Now every water surface draws at 1.5: after fauna (0) and pools (1), before beams (2). Side effects: a pool over water is drawn under the surface, dimmed by the water's opacity instead of added on top; a beam entering the water is cut by the moving surface (RN-83 (e) says the beam shows through water: it does not, the water writes depth). The pool is still a flat disc at fixed height (RN-83 (d)).
 - **Why it is like this:** One stable order between ground decals and volumes; the water is one layer over everything below it.
 - **Workaround / mitigation:** —
 - **To resolve:** —
 - **Found:** 2026-11-07, water reflections pass (agent B); spec `planets/hex/waterBuckets.spec.ts`
 
-### RN-73 · Building rig power has two writers in the game
+### RN-86 · Building rig power has two writers in the game
 
 - **Status:** Question for the owner
 - **Area / code:** `frontend/game/app/online/entityVisionSync.ts` (`applyBuildingLight` on replica updates), `frontend/render/kitbash/catalog.ts` (`tickArchetypeMesh` → `refreshProjectorRig`), `frontend/render/lighting/buildingLights.ts`
@@ -1027,7 +1167,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Owner picks the formula; then `applyBuildingLight` stores `mesh.userData.rigPower` and `refreshProjectorRig` reuses it.
 - **Found:** 2026-11-07, W05 full review (render agent)
 
-### RN-74 · W05-24 hole tiles: tint and depression only, no decal
+### RN-87 · W05-24 hole tiles: tint and depression only, no decal
 
 - **Status:** Open
 - **Area / code:** `frontend/render/planets/hex/chunkMesh.ts` (class palette)
@@ -1035,7 +1175,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Add a hole decal (H+ row).
 - **Found:** 2026-11-07, W05 full review (render agent)
 
-### RN-75 · The mirror render target is kept while no water is on screen
+### RN-88 · The mirror render target is kept while no water is on screen
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/render/visuals/water/reflection/WaterReflectionPass.ts`

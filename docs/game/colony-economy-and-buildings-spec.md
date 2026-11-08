@@ -1,5 +1,9 @@
 # TerraAgent — Colony Economy, 3-Tier Building Progression, Power Grid & Territory Specification
 
+**Regional trade and scale costs (D-44 extension):** [ECONOMY sections 2.1–2.3](../spec/ECONOMY.md) define planet/sector main resources, crystal-poor desert examples, one regional source policy and operating logistics. Storage caps and robot command slots remain separate from depot throughput; large operating bases pay larger material supply baskets with congestion/distance costs. Existing table values remain as-built until W13 calibration/implementation.
+
+> **D-44 economy extension:** [ECONOMY](../spec/ECONOMY.md) adds recurring activity/project/transport consumption, mixed-tier demand and regional delivered-cost calibration. Existing tables seed immutable database profiles; no numerical row is silently rebalanced by this plan update. Production, recipes and refunds share the canonical simulation/ledger paths.
+
 **Target Project:** Autonomous Colony Builder (NEAR Hackathon 2026)  
 **Scope:** Complete Balance Tables (Cost, Footprint Size, Build Time, Power Drain, Output, HP), Destructible Power Lines, Resource & Unit Supply Extensions, and Immutable Territory Collision Mechanics
 

@@ -17,6 +17,47 @@ import type { MobileStats } from '../mobility';
 
 const ARRIVAL_EPS = 1e-5;
 
+/** One geometric step toward a waypoint. Shared by locomotion and the time-sampled march tests. */
+function stepToward(
+  x: number,
+  y: number,
+  tx: number,
+  ty: number,
+  budget: number,
+): { x: number; y: number; budget: number; reached: boolean } {
+  const dist = hexDistance(x, y, tx, ty);
+  if (dist <= budget + ARRIVAL_EPS) return { x: tx, y: ty, budget: Math.max(0, budget - dist), reached: true };
+  const ratio = dist > 0 ? budget / dist : 0;
+  return { x: Math.fround(x + (tx - x) * ratio), y: Math.fround(y + (ty - y) * ratio), budget: 0, reached: false };
+}
+
+/**
+ * Where a unit stands after spending `budget` tiles along `path` from waypoint `next`. No blocked-tile check:
+ * locomotion does that before it calls this. The returned `x`/`y` match what `advanceAlongRoute` writes.
+ */
+export function advancePose(
+  x: number,
+  y: number,
+  path: readonly number[],
+  next: number,
+  budget: number,
+): { x: number; y: number; next: number; arrived: boolean } {
+  let px = x;
+  let py = y;
+  let n = next;
+  let left = budget;
+  const waypoints = path.length / 2;
+  while (n < waypoints) {
+    const stepped = stepToward(px, py, path[n * 2], path[n * 2 + 1], left);
+    px = stepped.x;
+    py = stepped.y;
+    left = stepped.budget;
+    if (!stepped.reached) break;
+    n += 1;
+  }
+  return { x: Math.fround(px), y: Math.fround(py), next: n, arrived: n >= waypoints };
+}
+
 /** Waypoints as a flat `[q0, r0, q1, r1, …]` list; `next` is the index (in pairs) of the waypoint being walked to. */
 export interface Route {
   path: number[];
@@ -78,17 +119,12 @@ export function advanceAlongRoute(
       const [px, py] = axialToPlane(tx - x, ty - y);
       setField(e, row, 'rot', Math.fround(atan2Det(py, px)), ctx.tick);
     }
-    if (dist <= budget + ARRIVAL_EPS) {
-      x = tx;
-      y = ty;
-      budget = Math.max(0, budget - dist);
-      route.next += 1;
-    } else {
-      const ratio = budget / dist;
-      x = Math.fround(x + (tx - x) * ratio);
-      y = Math.fround(y + (ty - y) * ratio);
-      break;
-    }
+    const stepped = stepToward(x, y, tx, ty, budget);
+    x = stepped.x;
+    y = stepped.y;
+    budget = stepped.budget;
+    if (!stepped.reached) break;
+    route.next += 1;
   }
 
   const done = route.next >= waypoints;

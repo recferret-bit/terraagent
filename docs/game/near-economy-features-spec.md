@@ -1,5 +1,7 @@
 # TerraAgent — NEAR Economy Features (Proposal)
 
+> **Owner-approved economy revision (2026-11-04, D-44):** [ECONOMY](../spec/ECONOMY.md) is authoritative for demand, quote-token fees, database profiles and AI experiments. Historical calendar/effort estimates below require reforecasting after the expanded W13/W15 scope.
+
 > **Status:** v0.2 (2026-10-30). **Accepted as D-26.** The owner picked all eight features. Build order and cut line are in D-27 / [`docs/plan/HACKATHON_CUT.md`](../plan/HACKATHON_CUT.md).
 > **Target:** NEAR Hackathon, track **09 "Games With Real Economies — the economy is the gameplay"** (dev window 2026-11-01 → 2026-11-14 23:59 UTC).
 > **Context:** The simulation stays on the **server**, simplified into one Node app (D-24). There is **no anti-cheat and no anti-bot machinery** (D-25). The game server also acts as the **message bus** that matches market orders.
@@ -45,26 +47,27 @@ Days are hackathon build days for one developer who knows the stack. "Tracks" li
 - **Players see:** "Cargo in orbit: 1 200 iron".
 - **Tracks:** 09.
 
-### F2 — Player-owned markets on NEAR Intents · **3–4 days** (needs F1, F5)
-- **Primitive.** Signed `token_diff` intents (NEP-413) on `intents.near`, matched off-chain by **the game server's market module acting as a message bus** and submitted in pairs with `execute_intents`. Colony keys are custodial until the player claims the account (D-18), so the server signs for unclaimed colonies. A batch whose diffs do not sum to zero fails as a whole.
-- **Loop.** Every Trade Hub is a **market stall**:
-  - Its owner lists buy and sell orders and sets a **fee** of 0–3 %.
-  - Each settled trade carries a fee leg to the owner, so the hub is a business.
-  - The Negotiate goal (§4.6 of the units spec) and `autoTrade` place orders.
-  - The planet price board is built from settled diffs.
-- **Players see:** "Contract signed: 300 water for 120 light alloys at Vega Port (1 % fee)".
-- **Tracks:** 09, 01 (DeFi: markets that never close).
+### F2 — Player markets and database-managed economy (W13)
 
-### F3 — Orbital Guild: agent NPC traders with wallets · **3 days** (needs F1, F2)
-- **Primitive.** NPC sub-accounts (`guild-1.npc.terraagent.near`, …) with function-call keys. They hold token inventories and sign intents. They are the **market makers** on every planet market.
-- **Pricing core.** Deterministic: price drifts with each NPC's inventory and with the planet's recent trade history.
-- **Optional LLM layer.** Picks strategy (which planet to visit, what to stockpile) about once an hour.
-- **Loop.**
-  - Guild ships visit planets on a schedule and buy surplus or sell shortages.
-  - **Guild ships are the only cross-planet trade route.** This matches "same-planet only" for players (D-19) and makes the sector economy run without any patch.
-  - Prices respond to what players do.
-- **Players see:** a trader ship lands at your port with offers that change with the market.
-- **Tracks:** 09, 07 (Agent Economy: give AI a wallet), 05 (AI Swarms: many agents, one economy, sub-accounts).
+- USDC is the default quote; resource barter and optional NEAR remain. Mock settlement in W13; real adapters and cash gates in W23.
+- Price-time books execute at maker price. Buyer receives full base and pays quote notional plus platform 1% and maker-stall 0–1% (default 1%), regardless of maker/taker role. At 10 USDC notional the buyer pays 10.20, seller receives 10, platform 0.10 and stall 0.10.
+- Orders pin fee/policy versions and reserve all principal plus fees. Exact atomic arithmetic, cumulative rounding/minimum notional, partial fills for custodial accounts, all-or-nothing for claimed accounts and same-colony self-trade prevention are required. Ambiguous settlement remains pending until reconciled.
+- Fee controls, USDC, matcher tests, accounting reconciliation, telemetry and database profile management are required scope. Resource fees are inventory until sold; mark-to-market estimates are not realized cash revenue.
+- Postgres holds immutable typed profiles for production, recipes, resource targets, market and agent policies. Operators clone/edit/validate, compare experiments, activate at an effective tick and roll back; no code deployment or raw SQL is needed. Existing jobs/orders retain their terms.
+- Planet/sector profiles configure each resource tier independently: deserts can have abundant silica/iron and scarce exotic crystal, with richer sector exceptions. Every production/discovery path respects pinned endowments.
+- Active bases and armies consume recurring logistics supplies. Congestion and route distance raise material costs; depots, local trade and reserve mode reduce them. Market order prices remain unchanged; the player sees the larger supply basket and shortage remedies.
+- Demand comes from activity-based consumption, mixed-tier recipes, regional specialization and repeatable optional prestige projects. No new passive absence fee or guaranteed resource price. Current production/repair/queue rules are reused.
+- A JSON-schema-driven AI workflow discovers parameters, patches candidates, runs the shared sim with seeded manifests, compares paired/held-out/stress reports and returns explained recommendations. Experiment permissions cannot activate live policies.
+- External cargo transfers/imports stay open; our books are planet-local and external-market fee leakage is accepted. Guild transport is not exclusive.
+- Public cash activation requires exact accounting, approved economic gates and observed repeat purchases in a bounded player pilot; mock trade volume does not establish demand. Expanded effort replaces the old 3–4-day market estimate.
+
+### F3 — Funded Orbital Guild traders (W15)
+
+- NPC wallets own finite cargo and quote cash. Real initial cargo is purchased or exported from treasury-owned sim stock; mock seed grants are labeled fixtures. Every cash allocation is explicit; no automatic replenishment.
+- Shared deterministic inventory pricing uses eligible finalized history, staleness/volume/concentration checks, bounded spreads and fee-inclusive reservations. Cash bids pause when references are unreliable; bounded temporary bootstrap prices are disclosed subsidies.
+- Database policies impose per-NPC and global cash/inventory/spend/loss caps with a kill switch. Counters survive restart. Post-fill re-quoting, guardrails, allowance tests and stress reports are required scope.
+- Player directors forecast shortages and sell surplus within floors, effective-price limits, outstanding-order reservations and session budgets. Signing alone does not spend principal; settlement does. Revoke cannot undo an already irreversible submission.
+- Guild routes provide transport alongside external cargo mobility; optional LLM routing suggestions remain within deterministic checks. NPC purchases spend funded money, not new outside demand.
 
 ### F4 — Colony agent wallet (HQ director signs while you're away) · **1–2 days** (needs F2)
 - **Primitive.** The colony account adds a **function-call / intents key with an allowance** that equals the player-set away budget (D-17). The AI director uses it to sign orders under `autoTrade` limits. The player can revoke the key in one tap.

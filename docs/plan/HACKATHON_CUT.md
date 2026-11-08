@@ -1,5 +1,7 @@
 # Hackathon Cut — 14-day solo build (NEAR Hackathon, 2026-11-01 → 11-14)
 
+> **D-44 scope amendment (2026-11-04):** W13 database/simulation work and W15 risk/test promotions expand the required set. Regenerated schedule is the effort/dependency source; historical day targets below must be reforecast. Mock delivery may report uncalibrated economics; public cash cannot bypass evidence gates to meet the date.
+
 > **2026-10-30: option B taken.** Every hackathon wave keeps its contracts, its core vertical slice and its e2e, tagged per issue in the `H` column of [`waves/`](./waves/). Each wave file has a **Hackathon slice** section: the demo steps its e2e tags `@hack`, and what is deferred. Generated numbers and start order: [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) (`python3 scripts/plan/index_waves.py --write`).
 >
 > | Set | Issues | Effort (units) | Critical path (units) |
@@ -56,9 +58,9 @@ The demo can run on mocks in production on purpose: `NEAR_ALLOW_MOCK_IN_PROD=tru
 | W10 Cargo (F1) | 21 · 14.0 | Trade Hub (new archetype), export/import with mint caps and refunds, mock NEP-245 with one token per sub-resource (D-34), panel, contract suite | Shuttle VFX, send-to-account (stretch) |
 | W11 Planet Foundations | See regenerated ISSUE_INDEX | Three canonical persistent small sector worlds, validated atlas/saves/identity, sector join and border play; revised 2026-11-04 scope | Full parties, advanced queue/admin UI and beacon-removal integration; large-world streaming/globe navigation in W27 |
 | W12 Player Page | 18 · 14.5 | `/me` with Pilot, Progress, stats, 20 × 3 flip cards with art, XP and levels, toasts | Planets cards, history, badge minting, titles |
-| W13 Markets (F2) | 25 · 18.5 | Order book per sub-resource pair (D-34; T1 from day one), matching with partial fills, mock Intents `token_diff` settlement, failure handling, cancel/expiry, market tab, price board | Fee controls (default fee used), extra quote tokens, matcher tests (stretch) |
+| W13 Markets (F2) | See regenerated ISSUE_INDEX | USDC and barter, buyer platform/stall fees, exact settlement and matcher tests; database planet/sector resource profiles; base/army logistics and trade reasons; recurring project/transport recipes; seeded AI simulation and stress reports | Map layer, Negotiate hook, new cosmetic/expedition content; public cash needs W23 gates |
 | W14 Fortify | 16 · 12.0 | Raise Ridge, Dig Moat, Lower, walls block ground units and fauna, Wall Gate, `would_isolate`, wall tool | Line of fire / parapet, meteor breach, gate archetype |
-| W15 Guild & Agents (F3, F4) | 20 · 15.0 | Guild NPC wallets, pricing, market making, visits, Guild tab, director key with allowance, autoTrade loop, revoke | Price reaction after fills, guardrails, cross-planet carry |
+| W15 Guild & Agents (F3, F4) | See regenerated ISSUE_INDEX | Funded NPC/director wallets, database policies, mandatory re-quotes/cash/inventory/loss caps, reference-price quality, allowance tests and integrated economy experiments | Cross-planet ship carry and optional LLM strategy |
 | W20 Deed (F6) | 10 · 8.5 | Deed NFT (mock) minted on founding, metadata updates, rendered card | Share page, staking (needs W21 Settled colonies) |
 | W22 Treasury & Bounties (F7, F8) | 19 · 15.5 | Planet DAO, fee share, proposals + vote + Terraform boost, nest bounties with escrow, board | Meteor shield, mercenaries, other bounty kinds |
 | W25 Launch | 13 · 8.0 | Secrets, backups, README, hosted demo on the W26 hosts, video, X post, submission | dashboards, load/soak, analytics page, rollback deploy, R2, TLS |

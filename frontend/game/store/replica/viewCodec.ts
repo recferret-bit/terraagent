@@ -1,4 +1,5 @@
 import type { PlanetType, SimView, ViewColony, ViewEntity } from '@terra/sim';
+import { renderViewBlobs } from './viewBlobs';
 
 /**
  * Entity buffer layout: `count` rows of `ENTITY_STRIDE` float32, per row in this order
@@ -124,7 +125,7 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
     entities: entities.buffer as ArrayBuffer,
     count: v.entities.length,
     colonies: v.colonies,
-    blobs: v.blobs,
+    blobs: renderViewBlobs(v.blobs),
     ...(hasPower ? { entityPower } : {}),
     ...(hasPylon ? { pylonLoads } : {}),
   };

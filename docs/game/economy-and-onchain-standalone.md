@@ -1,5 +1,7 @@
 # TerraAgent — Game Economy & On-Chain Features (Standalone Summary)
 
+> **Revised 2026-11-04:** owner-approved database-managed economy and reproducible AI experiments. W13 is a mock delivery; real-money sustainability still requires calibration and player evidence. Historical effort/calendar figures below predate this expanded scope.
+
 > **Status:** 2026-10-30. A self-contained summary for backlog grooming: it can be read without the rest of the repo. Numbers marked *(proposed)* are tunable defaults, not settled balance. Every balance number lives in data tables and can be changed at runtime during playtests without a rebuild.
 
 ## 1. Context
@@ -64,11 +66,11 @@
 | Daily mint cap | **20 000** units per sub-resource per colony per UTC day *(proposed)* |
 | Trade Hub tier 1 | 2×2 tiles, 22 s build, 100 metals / 80 minerals / 30 fuel / 10 water, −6 E/s, 650 HP |
 | Base storage | Command Hub +500 per family; Supply Depot +1 000 / +3 500 / +12 000 by tier |
-| Market fee | 0–3 %, set by the stall owner |
-| Treasury share | 20 % of the stall owner's fee *(proposed)* |
+| Market fee | Buyer quote-token fee: platform 1% plus stall 0–1% (default 1%) |
+| Treasury share | 20 % of the platform fee *(proposed)* |
 
 **Where resources come from and go (as designed)**
-- **Sources:** extractors, Worker Drones and terrain-shaping yields in the simulation. Exports mint tokens only from stock that already exists. **Exceptions that mint without stock:** the Guild's starting inventory, and a developer "grant cargo" command.
+- **Sources:** extractors, Worker Drones and terrain-shaping yields in the simulation. Exports mint tokens only from stock that already exists. **Mock-only grants:** Guild fixture inventory and dev cargo grants are separately labeled and excluded from organic demand. Real Guild cargo must be purchased or exported from treasury-owned stock.
 - **Sinks:** construction and unit costs, running upkeep, terraforming (water), and treasury project costs (where these tokens end up is undefined; Q6).
 - **Transfers, not sinks:** market trades, fees to stall owners, the treasury share, bounty escrow.
 
@@ -82,11 +84,11 @@
 |---|---|---|---|---|
 | F5 | Invisible chain | Must | 12.5 | Possible after day 10 |
 | F1 | Cargo tokens | Must | 14.0 | Possible after day 10 |
-| F2 | Player markets | Must | 18.5 | Possible after day 10 (dry-run first, then one tiny real trade) |
-| F3 + F4 | Guild traders, colony director | Must | 15.0 | No (mock) |
+| F2 | Player markets + database economy experiments | Must | 44.0 | Possible after day 10 (dry-run first, then one tiny real trade) |
+| F3 + F4 | Guild traders, colony director | Must | 18.5 | No (mock) |
 | F6 | Colony deed (+ staking) | Must, but staking is Later | 8.5 | No (mock) |
 | F7 + F8 | Treasury, bounties | Must (reduced) | 15.5 | No (mock) |
-| — | Real NEAR swap for F5/F1/F2 | Conditional on day 10 | 15.0 | — |
+| — | Real NEAR swap for F5/F1/F2 | Conditional on technical/economic gates | 16.0 | — |
 
 \*One unit ≈ one medium-sized issue. When behind schedule, the treasury/bounties wave is dropped 4th and the deed wave 5th. Login, cargo, markets and the Guild are **never dropped**.
 
@@ -110,41 +112,27 @@
 - **Must:** the Trade Hub (the only new 3D model on the must path), export/import with caps and refunds, the mock token ledger, the hub panel, pending and cap UX.
 - **Stretch / Later:** cargo shuttle model and VFX, history rows, sending cargo to another account, carrying cargo to the next planet by rocket.
 
-### F2 — Player-owned markets on NEAR Intents
-- **What it is:**
-  - Each order is a signed `token_diff` intent from the maker's colony account.
-  - The game server's market module acts as the **message bus and matcher**, with price-time priority.
-  - A match is submitted as one batch: maker leg, taker leg, fee leg (plus a treasury leg once F7 is on). The batch must sum to zero per token, or the whole batch fails.
-- **Books:** one per planet per pair: sub-resource × sub-resource, or sub-resource × NEAR/USDC. **Same-planet trades only.**
-- **Rules** (decided in the plan, not yet written into the NEAR spec):
-  - **Partial fills** are allowed for app-custodied accounts. Accounts the player has claimed get all-or-nothing orders.
-  - **The taker pays the fee**, out of the token it receives. The fee goes to the owner of the stall where the maker listed the order.
-  - **No self-trade.**
-- **Config:** order lifetimes of 15 min, 1 h, 6 h or 24 h; minimum order 10 units; price tick 0.001; at most 20 open orders per colony.
-- **Player sees:**
-  - a Market tab in the hub with the top 10 of the order book and an order form with a preview;
-  - a price board with last price, 24 h volume, VWAP, hourly candles and a sparkline;
-  - toasts such as "Contract signed: 300 water for 120 metals at Vega Port (1 % fee)", or "Contract failed, order returned".
-- **Settlement:** cargo is deposited into the Intents verifier to trade. "In orbit" = account balance + free verifier balance. Import withdraws from the verifier first.
-- **Feeds:** Guild pricing, achievements, the deed's trade volume, the treasury share.
-- **Stretch / Later:** fee controls for stall owners (the demo uses a default fee), NEAR/USDC-priced pairs, a market layer on the map, the HQ's "Negotiate" goal placing orders, matcher unit tests.
+### F2 — Player markets and database-managed economy (W13)
 
-### F3 — Orbital Guild: NPC traders with wallets
-- **What it is:**
-  - App-run NPCs with their own sub-accounts (`guild-N.npc.terraagent.near`), restricted keys, and their own cargo and NEAR inventories.
-  - They **make markets** on every planet book, and they are **the only cross-planet trade route**.
-- **Hackathon roster:**
-  - 2 NPCs, Kestrel and Osprey.
-  - Base spread 4 %, widening up to 15 % where their inventory is thin.
-  - They dock for 12 min, visiting every 20–40 min.
-  - Inventory cap 5 000 per sub-resource; NEAR float cap 5 NEAR.
-- **Pricing (deterministic):**
-  - `mid = reference price × (target inventory / inventory)^k`, clamped.
-  - The reference price is the planet's 24 h VWAP.
-  - An optional LLM strategy layer (route and stockpile choices about hourly) is Later.
-- **Loop:** "Guild trader Kestrel has docked: 6 offers". The Guild tab shows curated offers with Accept, and Guild quotes are badged in the order book.
-- **Funding:** the starting cargo is minted without simulated stock, and the NEAR float is seeded from the owner treasury.
-- **Stretch / Later:** the Guild ship model and landing VFX, re-quoting right after fills, inventory and float guardrails plus a kill switch, actually carrying goods between planets.
+- USDC is the default quote; resource barter and optional NEAR remain. Mock settlement in W13; real adapters and cash gates in W23.
+- Price-time books execute at maker price. Buyer receives full base and pays quote notional plus platform 1% and maker-stall 0–1% (default 1%), regardless of maker/taker role. At 10 USDC notional the buyer pays 10.20, seller receives 10, platform 0.10 and stall 0.10.
+- Orders pin fee/policy versions and reserve all principal plus fees. Exact atomic arithmetic, cumulative rounding/minimum notional, partial fills for custodial accounts, all-or-nothing for claimed accounts and same-colony self-trade prevention are required. Ambiguous settlement remains pending until reconciled.
+- Fee controls, USDC, matcher tests, accounting reconciliation, telemetry and database profile management are required scope. Resource fees are inventory until sold; mark-to-market estimates are not realized cash revenue.
+- Postgres holds immutable typed profiles for production, recipes, resource targets, market and agent policies. Operators clone/edit/validate, compare experiments, activate at an effective tick and roll back; no code deployment or raw SQL is needed. Existing jobs/orders retain their terms.
+- Planet/sector profiles configure each resource tier independently: deserts can have abundant silica/iron and scarce exotic crystal, with richer sector exceptions. Every production/discovery path respects pinned endowments.
+- Active bases and armies consume recurring logistics supplies. Congestion and route distance raise material costs; depots, local trade and reserve mode reduce them. Market order prices remain unchanged; the player sees the larger supply basket and shortage remedies.
+- Demand comes from activity-based consumption, mixed-tier recipes, regional specialization and repeatable optional prestige projects. No new passive absence fee or guaranteed resource price. Current production/repair/queue rules are reused.
+- A JSON-schema-driven AI workflow discovers parameters, patches candidates, runs the shared sim with seeded manifests, compares paired/held-out/stress reports and returns explained recommendations. Experiment permissions cannot activate live policies.
+- External cargo transfers/imports stay open; our books are planet-local and external-market fee leakage is accepted. Guild transport is not exclusive.
+- Public cash activation requires exact accounting, approved economic gates and observed repeat purchases in a bounded player pilot; mock trade volume does not establish demand. Expanded effort replaces the old 3–4-day market estimate.
+
+### F3 — Funded Orbital Guild traders (W15)
+
+- NPC wallets own finite cargo and quote cash. Real initial cargo is purchased or exported from treasury-owned sim stock; mock seed grants are labeled fixtures. Every cash allocation is explicit; no automatic replenishment.
+- Shared deterministic inventory pricing uses eligible finalized history, staleness/volume/concentration checks, bounded spreads and fee-inclusive reservations. Cash bids pause when references are unreliable; bounded temporary bootstrap prices are disclosed subsidies.
+- Database policies impose per-NPC and global cash/inventory/spend/loss caps with a kill switch. Counters survive restart. Post-fill re-quoting, guardrails, allowance tests and stress reports are required scope.
+- Player directors forecast shortages and sell surplus within floors, effective-price limits, outstanding-order reservations and session budgets. Signing alone does not spend principal; settlement does. Revoke cannot undo an already irreversible submission.
+- Guild routes provide transport alongside external cargo mobility; optional LLM routing suggestions remain within deterministic checks. NPC purchases spend funded money, not new outside demand.
 
 ### F4 — Colony director key
 - **What it is:** a restricted key on the colony account whose **allowance** equals the trading share of the player's away budget. The colony's AI director signs trades with it within the player's auto-trade limits. The player revokes it with one tap, and the HUD shows spent vs allowance.
@@ -172,7 +160,7 @@
 - **What it is:**
   - One DAO per planet, SputnikDAO-like. Its members are the planet's colony accounts.
   - Voting: 1 colony = 1 vote; a proposal passes at > 50 % of members; proposals close after 6 h.
-  - Funding: a treasury leg in every trade, worth 20 % of the stall fee. Example: a 300-unit trade at 1 % → 2.4 to the stall owner, 0.6 to the treasury.
+  - Funding: a treasury leg in every trade, worth 20 % of the platform fee. Example: a 10-USDC trade at 1% platform + 1% stall → 0.08 retained by platform, 0.02 treasury, 0.10 stall.
 - **Projects → simulation effects** *(proposed numbers)*:
 
 | Project | Effect | Cost |
@@ -250,26 +238,26 @@ Type: **Owner** = needs an owner decision · **Spec** = a design gap or inconsis
 
 | # | Type | Question / gap | Current state or proposed default |
 |---|---|---|---|
-| Q1 | Owner | **Could the Guild pay out real NEAR?** NPCs hold a NEAR float from the owner treasury, and books may be priced in NEAR/USDC. Nothing says whether the Guild trades NEAR-priced pairs. If it does, farm bots could turn minted cargo into our NEAR, which conflicts with "no real money paid out" | Unspecified. NEAR-priced pairs are Stretch, so the demo has none. The float cap is 5 NEAR per NPC, but enforcing it is Stretch. Decide before Guild wallets go real |
-| Q2 | Owner | **Mint authority has exceptions**: the Guild's starting inventory and the developer grant command mint without simulated stock | Decide whether the seed counts against a supply budget, and make sure the grant command can never run in production |
+| Q1 | Resolved design (D-44) | Guild cash purchases require explicit finite funding; no buyback guarantee | Per-NPC/global caps, restart-safe budgets and price-quality gates are mandatory; calibration and implementation remain open |
+| Q2 | Resolved design (D-44) | Real Guild funding has no stockless mint exception; mock grants are fixtures | W15-05 and cash gates enforce accounting and isolation |
 | Q3 | Owner | Open cargo + no anti-bot = real-value extraction in beta | Accepted for beta, with mint caps as pacing. Consider a legal note alongside the staking review |
-| Q4 | Spec | The market rules (partial fills, taker pays the fee, no self-trade, refunds above the cap on a failed mint) exist only in the plan, not in the NEAR spec | To be written into the spec at the start of the markets work |
+| Q4 | Resolved design (D-44) | Buyer quote-token fees and order policy snapshots replace old fee proposals | NEAR and the economy contract now specify settlement and recovery; implementation is W13 |
 | Q5 | Spec | Several port methods used by the plan are missing from the spec's port table (key status, deed lookup, staking pool list/withdraw/position, DAO member add/remove/lookup, escrow lookup) | Add them to the spec |
 | Q6 | Spec | **Where do treasury project costs go?** Burned (a real sink) or sent somewhere? "Cost 1 000 cargo-equivalent" names no token and no conversion | Undefined |
-| Q7 | Spec | Trade Hub tier 2 "lower transport fuel fee" and tier 3 "orbital drop-pod delivery" have no mechanic: the market design has no transport fee | Only throughput differs between tiers today |
+| Q7 | Planned (D-44) | Transport now has a metered recipe shared by sim and experiments | W13-43 defines actual service consumption; no charge on external wallet transfers |
 | Q8 | Owner | Social-login provider for the real login (NEAR named-account support, mobile redirect, cost). **Needed by 2026-11-11** | HOT is a listed hackathon partner. Fallback: server-created custodial named accounts |
 | Q9 | Owner | Is a wallet link needed to keep a colony across devices, or is guest + "Save progress" enough? | Open |
 | Q10 | Verify | How cargo tokens are deposited into `intents.near`, and its token-id format. If multi-token deposits are not supported, fall back to 10 single tokens (NEP-141) | Check before the cargo contract is written |
 | Q11 | Verify | The 1Click API for NEAR/USDC swaps (0.2 % fee without a partner key) | Check; the owner may register a partner key |
 | Q12 | Owner | Mainnet dev accounts with a small NEAR balance, plus the cargo-contract deployer. **Needed by 2026-11-12** for real cargo and markets | Not done |
-| Q13 | Owner | Proposed balance: mint cap 20 000/day, fee max 3 %, treasury share 20 %, Guild spread and caps, project costs | Use the defaults; tune in playtests |
+| Q13 | Owner | Proposed balance: mint cap 20 000/day, platform fee 1%, stall max 1%, treasury share 20 %, Guild spread and caps, project costs | Use the defaults; tune in playtests |
 | Q14 | Spec | The Petroleum Well (it yields only tier-2 petroleum) unlocks at stage 2 but produces nothing before terraform ≥ 30 % | Proposed: move its unlock to stage 5 |
 | Q15 | Spec | The Hub tier-2 upgrade now costs tier-2 resources, so the mid-game pacing table is stale; the market becomes part of the path to mid-game | Accept; re-run pacing in playtests |
 | Q16 | Owner | Staking: who governs the validator whitelist, a legal review of the staking copy, the testnet → mainnet pool list | After the hackathon; no staking in the demo |
 | Q17 | Spec | The units spec still says the "Negotiate" goal uses the old trade saga, which NEAR Intents replaced | Update the reference |
 | Q18 | Spec | Cargo carry-over to the next planet is promised for cargo tokens, but it depends on the rocket, which is Later | Not in the demo |
 | Q19 | Owner | Cross-planet trade happens only through the Guild, and actually carrying goods is Later. In the demo the Guild sells only its starting stock, and the "sector economy" is one planet | Accept for the demo, or promote carrying to Stretch |
-| Q20 | Owner | Stall fee controls and NEAR/USDC pairs are Stretch, so the judged demo shows a fixed fee and resource-for-resource trades only. That weakens the "player-owned market" and "open cargo" story | Consider moving the fee-control UI (≈ ½ unit) into Must |
+| Q20 | Resolved plan (D-44) | USDC, stall controls and matcher tests are required | W13-17/22/31 promoted to H |
 | Q21 | Spec | The treasury and deed depend on lifecycle events (planet creation, elimination, settling). Some of these come from waves that may be dropped or are Later | A lazy-create fallback exists; check it in the treasury end-to-end test |
 
 ## 9. Rough schedule (at the target pace)

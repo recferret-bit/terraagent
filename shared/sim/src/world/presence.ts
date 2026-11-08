@@ -20,6 +20,15 @@ const ROLES = new Map<number, PresenceRole>([
   [ENTITY_KIND.hq, 'unit'],
   [ENTITY_KIND.worker, 'unit'],
   [ENTITY_KIND.hub, 'structure'],
+  [ENTITY_KIND.recon, 'unit'],
+  [ENTITY_KIND.demoTank, 'unit'],
+  [ENTITY_KIND.demoArtillery, 'unit'],
+  [ENTITY_KIND.blackAnt, 'fauna'],
+  [ENTITY_KIND.blueBeetle, 'fauna'],
+  [ENTITY_KIND.greenSpitter, 'fauna'],
+  [ENTITY_KIND.hiveBlackAnt, 'fauna'],
+  [ENTITY_KIND.hiveBlueBeetle, 'fauna'],
+  [ENTITY_KIND.hiveGreenSpitter, 'fauna'],
 ]);
 
 /** Registers the presence role of an entity kind (e.g. `registerPresenceRole(KIND_SKITTER, 'fauna')`). */

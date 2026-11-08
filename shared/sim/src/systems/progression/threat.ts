@@ -1,7 +1,10 @@
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import type { FaunaSpeciesId } from '../fauna/types';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { computeColonyThreatStage } from './threatStage';
 import { countColonyEntities } from './triggers';
+import { BUILDING_KIND } from './types';
 import { getColonyProgression } from './index';
 
 /** Minimum time after reaching S3 before fauna raids are allowed (`5 min = 300 s = 1500 ticks`, `UO-T-01`). */
@@ -19,6 +22,36 @@ export const NEWCOMER_SHIELD_MAX_AGE_TICKS = NEWCOMER_SHIELD_MAX_AGE_S * TICKS_P
 /** Maximum fauna raid creature count (`UO-T-02`). */
 export const MAX_RAID_SIZE = 12;
 
+/**
+ * Species threat-point cost registry (`fauna-hives-spec.md` §2).
+ * Extensible for W17 `brute` and W19 `drifter` additions via `registerFaunaThreatSpecies`.
+ */
+export const FAUNA_SPECIES_THREAT_COSTS: Record<FaunaSpeciesId, number> & Record<string, number> = {
+  blackAnt: 1,
+  greenSpitter: 2,
+  blueBeetle: 4,
+};
+
+export function registerFaunaThreatSpecies(species: string, threatPoints: number): void {
+  if (!species) return;
+  FAUNA_SPECIES_THREAT_COSTS[species] = Math.max(1, Math.floor(threatPoints));
+}
+
+export function getFaunaSpeciesThreatCost(species: FaunaSpeciesId | string): number {
+  const registered = FAUNA_SPECIES_THREAT_COSTS[species];
+  if (typeof registered === 'number' && registered > 0) return registered;
+  return 1;
+}
+
+export function computeSpeciesWaveCounts(raidSize: number): Record<FaunaSpeciesId, number> {
+  const budget = Math.max(0, Math.floor(raidSize));
+  return {
+    blackAnt: Math.floor(budget / getFaunaSpeciesThreatCost('blackAnt')),
+    greenSpitter: Math.floor(budget / getFaunaSpeciesThreatCost('greenSpitter')),
+    blueBeetle: Math.floor(budget / getFaunaSpeciesThreatCost('blueBeetle')),
+  };
+}
+
 export type RaidCompositionTier = 'none' | 'skitters' | 'skitters_and_brutes' | 'drifter_flock';
 
 export interface RaidComposition {
@@ -26,6 +59,7 @@ export interface RaidComposition {
   skitters: number;
   brutes: number;
   drifterFlocks: number;
+  speciesWaves?: Record<FaunaSpeciesId, number>;
 }
 
 export interface ColonyThreatInput {
@@ -37,8 +71,8 @@ export interface ColonyThreatInput {
   createdAtTick?: number;
   s2ReachedAtTick?: number | null;
   s3ReachedAtTick?: number | null;
-  timeInS2S?: number;
   timeInS3S?: number;
+  timeInS2S?: number;
   thermalGenerators?: number;
   startedRaid?: boolean;
   closedWallRing?: boolean;
@@ -50,6 +84,7 @@ export interface ColonyThreatSummary {
   raidSize: number;
   size: number;
   composition: RaidComposition;
+  speciesWaves: Record<FaunaSpeciesId, number>;
   meteorsAllowed: boolean;
   raidProtected: boolean;
   thermalGenerators: number;
@@ -65,6 +100,17 @@ function isPlanetState(input: PlanetState | ColonyThreatInput | ColonyState): in
   );
 }
 
+function attachSpeciesWaves(comp: RaidComposition, raidSize: number): RaidComposition {
+  const speciesWaves = computeSpeciesWaveCounts(raidSize);
+  Object.defineProperty(comp, 'speciesWaves', {
+    value: speciesWaves,
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return comp;
+}
+
 /**
  * Computes the raid creature composition for a given `threatStage` and `raidSize` (`UO-T-03`, `UO-T-08`).
  * - S3–S5: Skitters only
@@ -78,12 +124,15 @@ export function computeRaidComposition(
   closedWallRing = false,
 ): RaidComposition {
   if (!raidsAllowed || threatStage < 3 || raidSize <= 0) {
-    return {
-      tier: 'none',
-      skitters: 0,
-      brutes: 0,
-      drifterFlocks: 0,
-    };
+    return attachSpeciesWaves(
+      {
+        tier: 'none',
+        skitters: 0,
+        brutes: 0,
+        drifterFlocks: 0,
+      },
+      0,
+    );
   }
   const brutes = threatStage >= 6 ? Math.floor(raidSize / 4) : 0;
   const skitters = Math.max(0, raidSize - brutes);
@@ -95,12 +144,15 @@ export function computeRaidComposition(
         ? 'skitters_and_brutes'
         : 'skitters';
 
-  return {
-    tier,
-    skitters,
-    brutes,
-    drifterFlocks,
-  };
+  return attachSpeciesWaves(
+    {
+      tier,
+      skitters,
+      brutes,
+      drifterFlocks,
+    },
+    raidSize,
+  );
 }
 
 function evaluateThreatFromInput(input: ColonyThreatInput): ColonyThreatSummary {
@@ -129,6 +181,7 @@ function evaluateThreatFromInput(input: ColonyThreatInput): ColonyThreatSummary 
   const raidsAllowed = threatStage >= 3 && effectiveStage >= 3 && s3ElapsedTicks >= RAID_START_FLOOR_TICKS;
   const raidSize = raidsAllowed ? Math.min(MAX_RAID_SIZE, 2 + threatStage + thermalGenerators) : 0;
   const composition = computeRaidComposition(threatStage, raidSize, raidsAllowed, Boolean(input.closedWallRing));
+  const speciesWaves = computeSpeciesWaveCounts(raidSize);
   const meteorsAllowed = effectiveStage >= 2 && s2ElapsedTicks >= METEOR_START_FLOOR_TICKS;
 
   const colonyAgeTicks =
@@ -149,10 +202,38 @@ function evaluateThreatFromInput(input: ColonyThreatInput): ColonyThreatSummary 
     raidSize,
     size: raidSize,
     composition,
+    speciesWaves,
     meteorsAllowed,
     raidProtected,
     thermalGenerators,
   };
+}
+
+function resolveFallbackS3ReachedTick(state: PlanetState, colonyIndex: number): number {
+  const { count, cols } = state.entities;
+  let earliestFactoryTick: number | null = null;
+  for (let row = 0; row < count; row++) {
+    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
+    if (cols.owner[row] !== colonyIndex) continue;
+    if (cols.kind[row] !== ENTITY_KIND.roboticsFactory && cols.kind[row] !== BUILDING_KIND.roboticsFactory && cols.kind[row] !== 40) continue;
+    if (cols.state[row] === ENTITY_STATE.constructing || (cols.progress[row] ?? 1) < 1) continue;
+    const createdTick = Math.max(0, cols.createdAt[row] ?? 0);
+    if (earliestFactoryTick === null || createdTick < earliestFactoryTick) {
+      earliestFactoryTick = createdTick;
+    }
+  }
+  const col = state.colonies[colonyIndex] as (ColonyState & { createdAtTick?: number }) | undefined;
+  const fallback =
+    earliestFactoryTick ??
+    (typeof col?.changedAt === 'number'
+      ? col.changedAt
+      : typeof col?.createdAtTick === 'number'
+        ? col.createdAtTick
+        : 0);
+  if (col && typeof col.s3ReachedAtTick !== 'number') {
+    col.s3ReachedAtTick = fallback;
+  }
+  return fallback;
 }
 
 /**
@@ -169,6 +250,7 @@ export function threatOf(
 
   const state = stateOrColony;
   const col = state.colonies[colonyIndex];
+  const hasProgressionBlob = Boolean(state.blobs.progression?.value);
   const prog = getColonyProgression(state, colonyIndex);
   const counts = countColonyEntities(state, colonyIndex);
   const computedThreatStage = computeColonyThreatStage(state, colonyIndex, prog.stage);
@@ -188,20 +270,22 @@ export function threatOf(
   const s2ReachedAtTick =
     typeof col?.s2ReachedAtTick === 'number'
       ? col.s2ReachedAtTick
-      : typeof prog.s2ReachedAtTick === 'number'
+      : hasProgressionBlob && typeof prog.s2ReachedAtTick === 'number'
         ? prog.s2ReachedAtTick
-        : prog.stage >= 2
+        : hasProgressionBlob && prog.stage >= 2
           ? prog.stageEnteredAtTick
           : null;
 
   const s3ReachedAtTick =
     typeof col?.s3ReachedAtTick === 'number'
       ? col.s3ReachedAtTick
-      : typeof prog.s3ReachedAtTick === 'number'
+      : hasProgressionBlob && typeof prog.s3ReachedAtTick === 'number'
         ? prog.s3ReachedAtTick
-        : prog.stage >= 3
+        : hasProgressionBlob && prog.stage >= 3
           ? prog.stageEnteredAtTick
-          : null;
+          : threatStage >= 3
+            ? resolveFallbackS3ReachedTick(state, colonyIndex)
+            : null;
 
   const createdAtTick =
     typeof col?.createdAtTick === 'number'

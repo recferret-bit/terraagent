@@ -1,16 +1,170 @@
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
+import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
-import { payProgressiveSlice } from '../economy/ledger';
-import { produceWorkerAtHubEdge } from '../factories-hub';
-import { workerTierOf } from '../harvest/unit';
+import { startBuildingConstruction } from '../economy/construction';
+import { checkCostAffordability, payProgressiveSlice } from '../economy/ledger';
+import { produceReconAtFactoryEdge, produceWorkerAtHubEdge, selectRoboticsFactoryProducer } from '../factories-hub';
+import { isCrewKind, isWorker, workerTierOf } from '../harvest/unit';
+import { checkUnitSupply } from '../supply';
+import { enqueueRepairForEntity } from '../terraform-basic/dismantleAndWork';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
-import type { QueueEntry } from './types';
-import { computeResourceWaitState } from './wait';
+import { checkStartMissing } from './earmarks';
+import type { QueueEntry, QueueTaskPayload } from './types';
+import { computeResourceWaitState, isBlockedByPower, maxConcurrentInLane, PRODUCER_BUFFER_LIMIT } from './wait';
+
+/** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
+const SITE_CODES: ReadonlySet<string> = new Set([
+  'site_blocked',
+  'terrain_unbuildable',
+  'not_own_territory',
+  'outside_power_zone',
+  'invalid_args',
+]);
+
+export function unitSupplyData(unit: string, data?: CompiledDataLike): CompiledDataLike | undefined {
+  return unit === 'recon' && !data?.tables?.combatUnits ? undefined : data;
+}
+
+/** Highest-tier free Worker Drone, else the HQ, stamped onto a terraform queue entry. */
+function assignTerraformQueueWorker(state: PlanetState, entry: QueueEntry, allEntries: QueueEntry[]): void {
+  const busy = new Set(
+    allEntries
+      .filter((e) => e.colonyIndex === entry.colonyIndex && e.lane === 'terraform' && e.state === 'in_progress' && e.workerEntityId !== undefined)
+      .map((e) => e.workerEntityId!),
+  );
+  const { count, cols } = state.entities;
+  let best = -1;
+  let bestScore = -1;
+  for (let r = 0; r < count; r++) {
+    if (cols.owner[r] !== entry.colonyIndex || cols.hp[r] <= 0 || busy.has(cols.id[r])) continue;
+    const kind = cols.kind[r];
+    if (!isCrewKind(kind)) continue;
+    const score = (cols.tier[r] || 1) * 2 + (isWorker(kind) ? 1 : 0);
+    if (score > bestScore) { bestScore = score; best = r; }
+  }
+  if (best < 0) return;
+  entry.workerEntityId = cols.id[best];
+  if (cols.workRate[best] > 0) entry.workRate = cols.workRate[best];
+}
+
+export function resolveUnitTaskProducer(
+  state: PlanetState,
+  colonyIndex: number,
+  task: QueueTaskPayload,
+  activeLane: readonly QueueEntry[],
+): { ok: true; task: QueueTaskPayload } | { ok: false; code: string; detail: string } {
+  if (task.kind !== 'buildUnit') return { ok: true, task };
+  if (task.unit === 'recon') {
+    const sel = selectRoboticsFactoryProducer(state, colonyIndex, activeLane, task.producerId);
+    if (!sel.ok) return sel;
+    if (sel.producerId !== undefined && task.producerId === undefined) {
+      return { ok: true, task: { ...task, producerId: sel.producerId } };
+    }
+    return { ok: true, task };
+  }
+  if (typeof task.producerId === 'number') {
+    const producerId = task.producerId;
+    const producerEntries = activeLane.filter((e) => e.task.kind === 'buildUnit' && e.task.producerId === producerId);
+    if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
+      return { ok: false, code: 'queue_full', detail: 'producer buffer full' };
+    }
+  }
+  return { ok: true, task };
+}
+
+export function tryStartQueueEntry(
+  state: PlanetState,
+  entry: QueueEntry,
+  allEntries: QueueEntry[],
+  tick: number,
+  data?: CompiledDataLike,
+  ctx?: StepContext,
+): void {
+  const colony = ensureColony(state, entry.colonyIndex, tick);
+  const afford = checkCostAffordability(colony, entry.cost);
+
+  if (Object.keys(afford.exceedsCap).length > 0) {
+    entry.exceedsCap = afford.exceedsCap;
+    entry.missingResources = undefined;
+    markWaiting(entry, 'storage', 'waiting: storage (no ETA)', null, tick);
+    return;
+  }
+  if (
+    entry.task.kind === 'buildUnit' &&
+    !checkUnitSupply(state, entry.colonyIndex, entry.task.unit, unitSupplyData(entry.task.unit, data), {
+      pending: { queue: allEntries },
+      excludeTaskId: entry.taskId,
+    }).ok
+  ) {
+    markWaiting(entry, 'supply', 'waiting: supply', null, tick);
+    return;
+  }
+  if (isBlockedByPower(state, colony, entry)) {
+    markWaiting(entry, 'power', 'waiting: power', null, tick);
+    return;
+  }
+  const missingForStart = checkStartMissing(state, colony, entry, allEntries, data);
+  if (missingForStart) {
+    entry.missingResources = missingForStart;
+    entry.exceedsCap = undefined;
+    const waitInfo = computeResourceWaitState(state, colony, entry.totalCost ?? entry.cost, missingForStart);
+    markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds, tick);
+    return;
+  }
+  const activeCountInLane = allEntries.filter(
+    (e) => e.colonyIndex === entry.colonyIndex && e.lane === entry.lane && e.state === 'in_progress' && e.taskId !== entry.taskId,
+  ).length;
+  if (activeCountInLane >= maxConcurrentInLane(state, entry.colonyIndex, entry.lane)) {
+    markWaiting(entry, 'worker', 'waiting: worker', null, tick);
+    return;
+  }
+
+  if (entry.task.kind === 'build' && entry.entityId === undefined) {
+    const started = startBuildingConstruction(
+      state,
+      { owner: entry.colonyIndex, building: entry.task.building, q: entry.task.q, r: entry.task.r, rot: entry.task.rotation ?? 0, workRate: entry.workRate, tick, data, costOverride: entry.cost },
+      ctx,
+    );
+    if (!started.ok) {
+      const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
+      const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
+      markWaiting(entry, reason, detail, null, tick);
+      return;
+    }
+    entry.entityId = started.entityId;
+  } else if (entry.task.kind === 'repair') {
+    const started = enqueueRepairForEntity(state, entry.colonyIndex, entry.task.entityId, {
+      taskId: entry.taskId,
+      tick,
+      data,
+    });
+    if (started.ok) {
+      entry.cost = { ...started.job.totalCost };
+      entry.totalCost = { ...started.job.totalCost };
+      entry.buildTicks = started.job.durationTicks;
+      entry.workerEntityId = started.job.workerEntityId;
+    } else if (started.reason !== 'unknown_entity') {
+      markWaiting(entry, 'worker', 'waiting: worker', null, tick);
+      return;
+    }
+  }
+  entry.totalCost ??= { ...entry.cost };
+  entry.spentCost ??= {};
+  if (entry.lane === 'terraform' && entry.workerEntityId === undefined) assignTerraformQueueWorker(state, entry, allEntries);
+  entry.state = 'in_progress';
+  entry.waitReason = undefined;
+  entry.waitDetail = undefined;
+  entry.missingResources = undefined;
+  entry.exceedsCap = undefined;
+  entry.etaSeconds = undefined;
+  entry.resourceWaitSinceTick = undefined;
+  entry.earmarked = undefined;
+}
 
 /** Marks `entry` waiting on `reason` with its status text and ETA (seconds, `null` = none). */
 export function markWaiting(
@@ -121,7 +275,11 @@ function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
-  produceWorkerAtHubEdge(state, colIdx, ctx, task?.unit === 'worker' ? workerTierOf(task.tier) : 1);
+  if (task?.unit === 'recon') {
+    produceReconAtFactoryEdge(state, colIdx, ctx, task.producerId);
+  } else {
+    produceWorkerAtHubEdge(state, colIdx, ctx, task?.unit === 'worker' ? workerTierOf(task.tier) : 1);
+  }
   const count = Math.max(1, Math.floor(task?.count ?? 1));
   const left = (entry.remainingCount ?? count) - 1;
   if (left <= 0 && !task?.repeat) {
@@ -151,6 +309,10 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     return;
   }
   const colony = ensureColony(state, colIdx, ctx.tick);
+  if (isBlockedByPower(state, colony, entry)) {
+    markWaiting(entry, 'power', 'waiting: power', null, ctx.tick);
+    return;
+  }
   const nextElapsed = entry.elapsedTicks + ctx.dt * entry.workRate;
   const nextProgress = Math.min(1, nextElapsed / entry.buildTicks);
   const totalCost = entry.totalCost ?? entry.cost;

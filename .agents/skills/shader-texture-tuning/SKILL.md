@@ -8,6 +8,8 @@ description: >-
   models, or writing terrain and visual effect shaders.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Shader & Procedural Texture Tuning Skill (`shader-texture-tuning`)
 
 This skill enforces **Pillar 3 (The Unifier Shader Architecture)** so procedural kitbashed models and external AI-generated `.glb` assets share an identical lighting response, surface grain, planet weathering gradient, and GPU animation pipeline.

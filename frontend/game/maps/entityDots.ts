@@ -1,9 +1,9 @@
 import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { ENTITY_KIND, presenceRoleOf, type ViewEntity } from '@terra/sim';
-import { hexIndex, hexRound } from '@terra/sim/grid/hex';
+import { hexRound } from '@terra/sim/grid/hex';
 import { is2x2BuildingKind, isConstructibleBuilding } from '../app/online/entityKinds';
 import { E, ENTITY_FIELDS, entityCount, readEntity, type EntityRow } from '../store/replica/viewCodec';
-import { radiusFromTileCount } from './rasterCache';
+import { createMapVisibility } from './visibility';
 import type { MapLayer, MapLayerDrawView } from './types';
 
 /** Most markers drawn per map; units are kept first, buildings fill what is left. */
@@ -159,29 +159,6 @@ export function resolveEntityDotColor(
   return (context?.palette ?? resolveDotPalette())[role];
 }
 
-function resolvePlanetRadius(view: MapLayerDrawView): number {
-  if (view.radius > 0) return view.radius;
-  if (view.clientView?.planet?.radius && view.clientView.planet.radius > 0) {
-    return view.clientView.planet.radius;
-  }
-  if (view.tiles && view.tiles.count > 0) {
-    return radiusFromTileCount(view.tiles.count);
-  }
-  return 0;
-}
-
-function isTileExplored(
-  view: MapLayerDrawView,
-  radius: number,
-  q: number,
-  r: number,
-): boolean {
-  if (!view.tiles?.explored || radius <= 0) return true;
-  const tileIdx = hexIndex(radius).indexOf(q, r);
-  if (tileIdx < 0 || tileIdx >= view.tiles.explored.length) return false;
-  return view.tiles.explored[tileIdx] !== 0;
-}
-
 /**
  * Walks entity rows without a fresh object per packed row (one scratch row is refilled); `ViewEntity[]` input
  * (headless hosts, tests) passes the raw entry too, for its optional `archetype` / `unit` descriptors.
@@ -222,18 +199,19 @@ const finiteOr = (v: number | undefined, fallback: number): number =>
 interface DotContext {
   readonly view: MapLayerDrawView;
   readonly ownColonySlot: number;
-  readonly planetRadius: number;
+  readonly visible: (q: number, r: number) => boolean;
   readonly radiusPx: number;
   readonly palette: DotPalette;
 }
 
 /** One map marker for `row`, or null when it sits on an unexplored tile (own entities always show). */
 function makeDot(c: DotContext, row: EntityRow, raw: Record<string, unknown> | undefined): EntityDot | null {
+  if (row.hp <= 0) return null;
   const role = classifyEntityRole(row.owner, c.ownColonySlot, descriptorOf(raw), row.kind);
   const axialQ = finiteOr(row.x, row.q ?? 0);
   const axialR = finiteOr(row.y, row.r ?? 0);
   const [roundedQ, roundedR] = hexRound(axialQ, axialR);
-  if (role !== 'own' && !isTileExplored(c.view, c.planetRadius, roundedQ, roundedR)) return null;
+  if (role !== 'own' && !c.visible(roundedQ, roundedR)) return null;
   const q = finiteOr(row.q, roundedQ);
   const r = finiteOr(row.r, roundedR);
   const { x, y } = c.view.axialToPixel(axialQ, axialR);
@@ -259,7 +237,7 @@ export function collectEntityDots(
   const ctx: DotContext = {
     view,
     ownColonySlot: view.ownColonySlot ?? 0,
-    planetRadius: resolvePlanetRadius(view),
+    visible: createMapVisibility(view),
     radiusPx: options?.radiusPx ?? DEFAULT_DOT_RADIUS_PX,
     palette: options?.palette ?? resolveDotPalette(),
   };

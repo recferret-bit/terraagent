@@ -7,13 +7,17 @@ import { readColonySupply } from '../shared/supply';
 
 export { formatResourceLabel };
 
-export type UnitKind = 'worker' | 'scout' | 'guard' | 'combatEngineer' | 'hauler';
+export type UnitKind = 'worker' | 'scout' | 'guard' | 'combatEngineer' | 'hauler' | 'recon';
+export type UnitSection = 'workers' | 'army';
 
 export interface UnitCardModel {
   id: string;
   unit: UnitKind;
   label: string;
   archetype: string;
+  section?: UnitSection;
+  category?: 'Workers' | 'Army';
+  producer?: 'commandHub' | 'roboticsFactory';
   tier: number;
   unlockStage: number;
   stageLocked: boolean;
@@ -124,18 +128,34 @@ function resolveUnitUnlockStage(row: Record<string, unknown>): number {
   if (typeof row.unlockStage === 'number' && Number.isFinite(row.unlockStage)) {
     return row.unlockStage;
   }
+  if (typeof row.unlock === 'string') {
+    const m = /^S(\d+)$/i.exec(row.unlock.trim());
+    if (m) return Number(m[1]);
+  }
   return getItemUnlockStage(String(row.unit ?? row.id ?? ''));
+}
+
+function isDevOnlyUnitRow(row: Record<string, unknown>): boolean {
+  if (row.devOnly === true) return true;
+  const id = String(row.unit ?? row.id ?? '');
+  return id === 'demoTank' || id === 'demoArtillery' || id.startsWith('demo');
 }
 
 function makeUnitCard(row: Record<string, unknown>, colonyStage: number | undefined): UnitCardModel {
   const unit = String(row.unit ?? row.id ?? 'worker') as UnitKind;
   const unlockStage = resolveUnitUnlockStage(row);
   const stageLocked = colonyStage !== undefined && colonyStage < unlockStage;
+  const isArmy = row.section === 'army' || row.producer === 'roboticsFactory' || unit === 'recon';
   const buildS = typeof row.designBuildS === 'number'
     ? row.designBuildS
     : typeof row.buildS === 'number'
-      ? Math.round(row.buildS / 5)
+      ? (isArmy && row.buildS <= 30 ? row.buildS : Math.round(row.buildS / 5))
       : 10;
+  const supply = typeof row.supply === 'number'
+    ? row.supply
+    : typeof row.supplyCost === 'number'
+      ? row.supplyCost
+      : 1;
   const powerDrain = typeof row.powerDrainPerS === 'number' ? row.powerDrainPerS : 1.5;
   const cost = (row.cost as Record<string, number>) ?? {};
 
@@ -154,6 +174,9 @@ function makeUnitCard(row: Record<string, unknown>, colonyStage: number | undefi
     unit,
     label: typeof row.label === 'string' ? row.label : unit,
     archetype: typeof row.archetype === 'string' ? row.archetype : 'robot.miner',
+    section: isArmy ? 'army' : 'workers',
+    category: isArmy ? 'Army' : 'Workers',
+    producer: isArmy ? 'roboticsFactory' : 'commandHub',
     tier: typeof row.tier === 'number' ? row.tier : 1,
     unlockStage,
     stageLocked,
@@ -162,7 +185,7 @@ function makeUnitCard(row: Record<string, unknown>, colonyStage: number | undefi
     unlockConditionText,
     unlockDetailText,
     buildS,
-    supply: typeof row.supply === 'number' ? row.supply : 1,
+    supply,
     powerDrainPerS: powerDrain,
     powerText: formatPower(powerDrain),
     cost,
@@ -201,6 +224,19 @@ export function buildUnitsCatalog(
   if (fs.has('W03') && unitsTable?.t2) candidateRows.push(asWorkerRow(unitsTable.t2, 2));
   if (fs.has('W05') && unitsTable?.t3) candidateRows.push(asWorkerRow(unitsTable.t3, 3));
   if (colonyStage !== undefined) candidateRows.push(...STAGE_UNIT_ROWS);
+
+  const combatTable = fs.has('W07') ? data.tables['combatUnits'] : undefined;
+  if (combatTable) {
+    const seenCombat = new Set<string>();
+    for (const row of Object.values(combatTable)) {
+      if (!row || row.kind !== 'unit' || isDevOnlyUnitRow(row as Record<string, unknown>)) continue;
+      const u = String(row.unit ?? row.id ?? '');
+      if (u && !seenCombat.has(u)) {
+        candidateRows.push({ ...row, unit: u, section: 'army' });
+        seenCombat.add(u);
+      }
+    }
+  }
   const cards: UnitCardModel[] = [];
   for (const row of candidateRows) {
     const itemStage = resolveUnitUnlockStage(row);

@@ -12,7 +12,7 @@ import { createState, setBlob, type PlanetState } from '../../src/kernel/state';
 import { step } from '../../src/kernel/step';
 import { ensureColonyLedger } from '../../src/systems/economy/ledger';
 import { setColonyAiEnabled, setColonyPriorities } from '../../src/systems/goals';
-import { getColonyQueue } from '../../src/systems/queue';
+import { getColonyQueue, saveQueueEntries } from '../../src/systems/queue';
 import { createRegistryPipeline } from '../../src/systems/registry';
 import {
   applyAutopilotStep,
@@ -86,6 +86,7 @@ function makeColonyPlanet(stage = 2): PlanetState {
 }
 
 function configureHighPowerNeed(state: PlanetState): void {
+  state.colonies[0]!.syntheticLoadPerS = 30;
   setBlob(
     state,
     'power',
@@ -251,7 +252,7 @@ describe('W08-25 · dev.autopilot command, priority slider weighting, and ViewCo
       target: 'wind',
     });
 
-    // Move expansion slider to 80 (Demo Story step 5) -> suggestion shifts toward outpostBeacon
+    // A high expansion preference cannot invent demand when territory is ample.
     setColonyPriorities(state, 0, { expansion: 80 }, state.meta.tick);
     const r2 = step(
       state,
@@ -261,11 +262,11 @@ describe('W08-25 · dev.autopilot command, priority slider weighting, and ViewCo
     );
     expect(r2.outcomes[0]?.code).toBeUndefined();
     expect(view(state).colonies[0]?.lastAutopilotDecision).toMatchObject({
-      need: 'expand',
+      need: 'energy',
       mode: 'suggestion',
-      target: 'outpostBeacon',
-      priorityKey: 'expansion',
-      priorityValue: 80,
+      target: 'wind',
+      priorityKey: 'power',
+      priorityValue: 50,
     });
     expect(getColonyQueue(state, 0)).toHaveLength(0);
 
@@ -305,5 +306,57 @@ describe('W08-25 · dev.autopilot command, priority slider weighting, and ViewCo
     );
     expect(res.outcomes[0]?.code).toBe('wave_disabled');
     expect(getColonyQueue(state, 0)).toHaveLength(0);
+  });
+});
+
+
+describe('Autopilot responds to demand instead of repeating a standing build job', () => {
+  it('stops after generation meets demand, even with power at maximum, and resumes for new load', () => {
+    const state = makeColonyPlanet(3);
+    configureHighPowerNeed(state);
+    const initial = applyAutopilotStep(state, 0);
+    expect(initial).toMatchObject({ need: 'energy', orderQueued: true });
+
+    // The queued generator has completed and its output now covers the colony.
+    saveQueueEntries(state, [], 1);
+    setBlob(state, 'power', { byColony: { 0: {
+      founderCorePerS: 8, solarNetPerS: 0, windNetPerS: 45,
+      generationPerS: 53, supply: 53, rawDemand: 17, net: 36, brownout: false,
+    } } }, 1);
+    for (let tick = 2; tick < 20; tick++) {
+      const decision = applyAutopilotStep(state, 0, { tick, priorities: { power: 100 } });
+      expect(decision.rawScores.energy).toBe(0);
+      expect(decision.orderQueued).toBe(false);
+    }
+    expect(getColonyQueue(state, 0)).toHaveLength(0);
+
+    configureHighPowerNeed(state);
+    expect(applyAutopilotStep(state, 0)).toMatchObject({ need: 'energy', orderQueued: true });
+  });
+
+  it('counts a player generator already queued instead of adding its own duplicate', () => {
+    const state = makeColonyPlanet(3);
+    configureHighPowerNeed(state);
+    applyAutopilotStep(state, 0);
+    const queue = getColonyQueue(state, 0);
+    queue[0]!.precedence = 'player';
+    delete (queue[0] as unknown as Record<string, unknown>).tag;
+    delete (queue[0] as unknown as Record<string, unknown>).source;
+    saveQueueEntries(state, queue, 1);
+    expect(applyAutopilotStep(state, 0).orderQueued).toBe(false);
+    expect(getColonyQueue(state, 0)).toHaveLength(1);
+    expect(getColonyQueue(state, 0)[0]!.precedence).toBe('player');
+  });
+
+  it('clears a stale power suggestion after the deficit is satisfied', () => {
+    const state = makeColonyPlanet(2);
+    configureHighPowerNeed(state);
+    applyAutopilotStep(state, 0);
+    expect(state.colonies[0]!.activeSuggestion).toBeDefined();
+    setBlob(state, 'power', { byColony: { 0: {
+      founderCorePerS: 8, windNetPerS: 45, supply: 53, rawDemand: 17, net: 36,
+    } } }, 1);
+    expect(applyAutopilotStep(state, 0).need).not.toBe('energy');
+    expect(state.colonies[0]!.activeSuggestion).toBeUndefined();
   });
 });

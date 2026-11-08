@@ -2,41 +2,19 @@ import type { Disposable, FeatureContext, GameView } from '../../core/registry/t
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
 import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
-import { ownColonyIndex, viewColony } from '../shared/colony';
+import { ownColonyIndex } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
+import {
+  ArmySectionController,
+  createProgressBarElement,
+  formatBufferItem,
+  resolveUnitQueueEntries,
+  type QueueItemLike,
+} from './ArmySection';
 import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
 import { createUnitCard, syncUnitCard, type UnitCardHandle } from './unitCard';
 
-interface QueueItemLike {
-  taskId?: string;
-  unit?: string;
-  tier?: number;
-  count?: number;
-  remainingCount?: number;
-  repeat?: boolean;
-  state?: string;
-  waitReason?: string;
-  waitDetail?: string;
-  progress?: number;
-}
-
-function bufferUnitLabel(entry: QueueItemLike): string {
-  const task = (entry as { task?: { unit?: string; tier?: number } }).task;
-  const unit = entry.unit ?? task?.unit ?? 'worker';
-  const tier = entry.tier ?? task?.tier;
-  const shown = tier === 2 || tier === 3 ? tier : 1;
-  return unit === 'worker' ? `Worker Drone T${shown}` : unit;
-}
-
-export function formatBufferItem(entry: QueueItemLike): string {
-  const unit = bufferUnitLabel(entry);
-  const cnt = entry.remainingCount ?? entry.count ?? 1;
-  const repeatIcon = entry.repeat ? ' ↻' : '';
-  let status = entry.state ?? 'queued';
-  if (entry.state === 'in_progress') status = `in_progress ${Math.round((entry.progress ?? 0) * 100)}%`;
-  else if (entry.state === 'waiting') status = entry.waitDetail ?? (entry.waitReason ? `waiting(${entry.waitReason})` : 'waiting(supply)');
-  return `${unit} ×${cnt}${repeatIcon} · ${status}`;
-}
+export { formatBufferItem, type QueueItemLike };
 
 export class UnitsMenu implements Disposable {
   readonly root: HTMLElement;
@@ -47,6 +25,7 @@ export class UnitsMenu implements Disposable {
   private readonly bufferContainer: HTMLElement;
   private readonly countSpan: HTMLElement;
   private readonly repeatBtn: HTMLButtonElement;
+  private readonly army: ArmySectionController | null = null;
   private readonly cardElements = new Map<string, UnitCardHandle>();
   private lastBufferKey: string | null = null;
   private pickedTier: MenuTier | null = null;
@@ -63,12 +42,15 @@ export class UnitsMenu implements Disposable {
   ) {
     retainArchetypeThumbs();
     this.view = initialView;
+    const hasW07 = this.ctx.flags.has('W07');
     this.root = document.createElement('div');
     this.root.className = 'ta-units plate-sm';
     this.root.dataset.open = 'true';
-    const header = this.buildHeader();
+
+    const header = this.buildHeader(hasW07);
     this.headBtn = header.toggle;
     this.supplyEl = header.supply;
+
     const body = document.createElement('div');
     body.className = 'ta-units__body';
     body.setAttribute('data-body', '');
@@ -82,6 +64,13 @@ export class UnitsMenu implements Disposable {
     const buffer = this.buildBuffer();
     this.bufferContainer = buffer.list;
     body.append(this.tierBar, batch.root, this.cardsContainer, buffer.section);
+
+    if (hasW07) {
+      this.army = new ArmySectionController(this.root, this.cardsContainer, body, this.ctx);
+      const s = this.ctx.services as unknown as Record<string, unknown>;
+      s.setRally = (q: number, r: number, producerId?: number) => this.setRally(q, r, producerId);
+    }
+
     this.root.append(header.row, body);
     this.el.appendChild(this.root);
     this.onKeyDown = (event: KeyboardEvent) => this.onUnitsKey(event);
@@ -99,12 +88,24 @@ export class UnitsMenu implements Disposable {
     this.setOpen(!this.isOpen);
   }
 
+  isRallyMode(): boolean {
+    return this.army?.isRallyMode() ?? false;
+  }
+
+  setRally(q: number, r: number, producerId?: number): void {
+    if (this.army) {
+      this.army.setRally(q, r, producerId);
+    } else {
+      this.ctx.services.sendCommand?.('setRally', producerId !== undefined ? { q, r, producerId } : { q, r });
+    }
+  }
+
   update(view: GameView): void {
     this.view = view;
     this.render();
   }
 
-  private buildHeader(): { row: HTMLElement; toggle: HTMLButtonElement; supply: HTMLElement } {
+  private buildHeader(hasW07: boolean): { row: HTMLElement; toggle: HTMLButtonElement; supply: HTMLElement } {
     const row = document.createElement('div');
     row.className = 'ta-units__header';
     const toggle = document.createElement('button');
@@ -118,7 +119,9 @@ export class UnitsMenu implements Disposable {
     supply.setAttribute('data-supply', '');
     supply.setAttribute('data-warning', 'false');
     supply.setAttribute('data-level', 'ok');
-    supply.title = 'Unit supply: used / cap';
+    supply.title = hasW07
+      ? 'Unit supply: used / cap (+10 Command Hub, +8 per Drone Control Array)'
+      : 'Unit supply: used / cap';
     supply.textContent = '— / —';
     row.append(toggle, supply);
     return { row, toggle, supply };
@@ -176,10 +179,16 @@ export class UnitsMenu implements Disposable {
   }
 
   private onUnitsKey(event: KeyboardEvent): void {
-    if ((event.key !== 'u' && event.key !== 'U') || isGameInputBlocked()) return;
+    if (isGameInputBlocked()) return;
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-    this.toggle();
+    if (event.key === 'Escape' && this.army?.isRallyMode()) {
+      this.army.setRallyMode(false);
+      return;
+    }
+    if (event.key === 'u' || event.key === 'U') {
+      this.toggle();
+    }
   }
 
   private setCount(next: number): void {
@@ -215,7 +224,10 @@ export class UnitsMenu implements Disposable {
       const handle = this.cardElements.get(card.id) ?? this.mountCard(card);
       syncUnitCard(handle, card);
       this.applySupplyBlock(handle, supplyBlockReason(supply, card.supply));
-      setTierVisible(handle.root, card.tier === tier);
+      setTierVisible(handle.root, card.section === 'army' ? true : card.tier === tier);
+    }
+    if (this.army && this.army.sectionEl.parentElement === this.cardsContainer) {
+      this.cardsContainer.appendChild(this.army.sectionEl);
     }
     for (const [id, handle] of this.cardElements) {
       if (seen.has(id)) continue;
@@ -228,7 +240,8 @@ export class UnitsMenu implements Disposable {
   private mountCard(card: UnitCardModel): UnitCardHandle {
     const handle = createUnitCard(card, (queued) => this.queueUnit(queued));
     this.cardElements.set(card.id, handle);
-    this.cardsContainer.appendChild(handle.root);
+    const container = card.section === 'army' && this.army ? this.army.cardsEl : this.cardsContainer;
+    container.appendChild(handle.root);
     return handle;
   }
 
@@ -242,6 +255,12 @@ export class UnitsMenu implements Disposable {
   }
 
   private queueUnit(card: UnitCardModel): void {
+    if (card.section === 'army' || card.unit === 'recon') {
+      const task = { kind: 'buildUnit' as const, unit: card.unit, count: this.count, repeat: this.repeat };
+      this.ctx.services.sendCommand?.('enqueueTask', { task });
+      this.ctx.services.enqueueHubUnit?.({ unit: card.unit, count: this.count, repeat: this.repeat });
+      return;
+    }
     const tier = card.tier === 2 || card.tier === 3 ? card.tier : 1;
     const task = { kind: 'buildUnit' as const, unit: card.unit, tier, count: this.count, repeat: this.repeat };
     this.ctx.services.sendCommand?.('enqueueTask', { task });
@@ -249,11 +268,10 @@ export class UnitsMenu implements Disposable {
   }
 
   private renderBuffer(): void {
-    const v = this.view as { blobs?: { hubProduction?: { entries?: Array<QueueItemLike & { colonyIndex?: number }> } } } | undefined;
     const own = ownColonyIndex(this.ctx.services);
-    const raw = (viewColony(this.view, own)?.unitQueue as QueueItemLike[] | undefined)
-      ?? (v?.blobs?.hubProduction?.entries ?? []).filter((en) => (en.colonyIndex ?? own) === own);
-    const entries = raw.filter((en) => en.state !== 'done' && en.state !== 'cancelled');
+    const entries = resolveUnitQueueEntries(this.view, own);
+    this.army?.render(entries, this.view, own);
+
     const nextKey = entries.map((en) => `${en.taskId ?? ''}:${formatBufferItem(en)}`).join('|');
     if (this.lastBufferKey === nextKey) return;
     this.lastBufferKey = nextKey;
@@ -270,6 +288,10 @@ export class UnitsMenu implements Disposable {
       itemEl.className = 'ta-units__buffer-item';
       if (entry.taskId) itemEl.setAttribute('data-task-id', entry.taskId);
       itemEl.textContent = formatBufferItem(entry);
+      if (this.army) {
+        const pct = entry.state === 'in_progress' ? Math.round((entry.progress ?? 0) * 100) : 0;
+        itemEl.appendChild(createProgressBarElement(pct));
+      }
       this.bufferContainer.appendChild(itemEl);
     }
   }
@@ -277,6 +299,7 @@ export class UnitsMenu implements Disposable {
   dispose(): void {
     if (typeof window !== 'undefined') window.removeEventListener('keydown', this.onKeyDown);
     for (const handle of this.cardElements.values()) handle.tip.remove();
+    this.army?.dispose();
     this.cardElements.clear();
     this.root.remove();
     releaseArchetypeThumbs();

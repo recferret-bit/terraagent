@@ -1,5 +1,6 @@
+import { COMBAT_PARTICLE_PRESETS } from './presetsCombat';
 import { BUILTIN_PARTICLE_PRESETS } from './presets';
-import type { InteractionTargetKind, ParticlePresetSpec } from './types';
+import type { InteractionTargetKind, ParticlePresetSpec, RegisteredParticlePreset } from './types';
 
 export interface ResolveTargetKindParams {
   terrainKey?: string | null;
@@ -9,29 +10,34 @@ export interface ResolveTargetKindParams {
 }
 
 class ParticlePresetRegistryImpl {
-  private readonly byId = new Map<string, ParticlePresetSpec>();
+  private readonly byId = new Map<string, RegisteredParticlePreset>();
   private readonly byTarget = new Map<InteractionTargetKind, ParticlePresetSpec>();
 
   constructor() {
-    for (const preset of BUILTIN_PARTICLE_PRESETS) {
+    for (const preset of [...BUILTIN_PARTICLE_PRESETS, ...COMBAT_PARTICLE_PRESETS]) {
       this.register(preset);
     }
   }
 
-  register(preset: ParticlePresetSpec): void {
+  register(preset: RegisteredParticlePreset): void {
     this.byId.set(preset.id, preset);
-    this.byTarget.set(preset.targetKind, preset);
+    if (preset.targetKind !== 'combat') this.byTarget.set(preset.targetKind, preset);
   }
 
-  get(id: string): ParticlePresetSpec | undefined {
+  get(id: string): RegisteredParticlePreset | undefined {
     return this.byId.get(id);
   }
 
-  getByTargetKind(targetKind: InteractionTargetKind): ParticlePresetSpec {
-    return this.byTarget.get(targetKind) ?? this.byId.get('work.flat')!;
+  getWork(id: string): ParticlePresetSpec | undefined {
+    const preset = this.byId.get(id);
+    return preset?.targetKind === 'combat' ? undefined : preset;
   }
 
-  list(): ParticlePresetSpec[] {
+  getByTargetKind(targetKind: InteractionTargetKind): ParticlePresetSpec {
+    return this.byTarget.get(targetKind) ?? this.byTarget.get('flat')!;
+  }
+
+  list(): RegisteredParticlePreset[] {
     return Array.from(this.byId.values());
   }
 

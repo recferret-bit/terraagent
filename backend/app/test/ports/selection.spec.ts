@@ -14,9 +14,10 @@ import { discoverAdapters } from '../../src/ports/adapters.js';
 import { ChainReadPort } from '../../src/near/application/ports/chain-read.port.js';
 import { APP_ENV } from '../../src/core/tokens.js';
 import { PORTS } from '../../src/near/application/ports/index.js';
+import { UNIT_APP_ENV } from '../unit-app-env';
 
 const fixtures = join(import.meta.dirname, 'fixtures/adapters');
-const base = { TA_PORT_BASE: '7380', LOG_LEVEL: 'silent' };
+const base = { ...UNIT_APP_ENV, TA_PORT_BASE: '7380', LOG_LEVEL: 'silent' };
 const envModule = (env: Record<string, string>) => {
   @Global() @Module({ providers: [{ provide: APP_ENV, useValue: env }], exports: [APP_ENV] }) class EnvModule {}
   return EnvModule;

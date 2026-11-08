@@ -1,0 +1,175 @@
+
+> terra-agent@0.1.0 validate:models
+> node .agents/skills/model-geometry-validator/scripts/validate-model.mjs --all --strict
+
+PASS  robot.hero (Hero Explorer) · 58 parts · 3,292 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 29% · hullSecondary 25% · hullPrimary 25% · rubberDark 17% · warningAmber 2% · energyCyan 1% · glassVisor 1%
+  colour by role:  platform 36% frameGunmetal L*56 · locomotion 27% rubberDark L*18 · manipulator 13% hullSecondary L*59 · sensor 4% hullPrimary L*50 · mean L* 48
+
+PASS  robot.miner (Miner T1) · 30 parts · 2,232 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullSecondary 33% · rubberDark 24% · hullPrimary 24% · frameGunmetal 16% · warningAmber 2% · glassVisor 1% · energyCyan 1%
+  colour by role:  platform 43% hullPrimary L*73 · locomotion 35% rubberDark L*21 · manipulator 7% hullSecondary L*57 · sensor 1% glassVisor L*20 · mean L* 50
+
+PASS  robot.builder (Builder T1) · 55 parts · 2,736 tris · minY -0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 34% · hullSecondary 31% · rubberDark 18% · frameGunmetal 12% · solarCell 5% · glassVisor 1% · warningAmber 0% · energyCyan 0%
+  colour by role:  platform 45% hullSecondary L*79 · locomotion 30% rubberDark L*39 · power 13% frameGunmetal L*32 · manipulator 9% hullSecondary L*47 · sensor 2% hullPrimary L*49 · mean L* 57
+
+PASS  robot.combat (Combat T1) · 49 parts · 3,492 tris · minY -0.000 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 31% · hullPrimary 27% · hullSecondary 21% · rubberDark 19% · dangerCrimson 1% · warningAmber 0%
+  colour by role:  platform 52% hullPrimary L*65 · locomotion 30% rubberDark L*17 · sensor 3% hullPrimary L*62 · mean L* 46
+
+PASS  robot.recon (Recon Drone) · 36 parts · 1,728 tris · minY 0.000 · 0 errors, 0 warnings
+  · ANIM_DEEPENS_OVERLAP #26 torch recon gun barrel [hullSecondary, anim 3] @(0.16, 0.46, 0.48) pushes 3.0 cm deeper into its mount #10 under chassis [frameGunmetal] @(0.00, 0.42, -0.02) at -3.0 cm recoil.
+  · ANIM_DEEPENS_OVERLAP #29 torch recon gun barrel [hullSecondary, anim 3] @(-0.16, 0.46, 0.48) pushes 3.0 cm deeper into its mount #10 under chassis [frameGunmetal] @(0.00, 0.42, -0.02) at -3.0 cm recoil.
+  surface by zone: hullPrimary 29% · hullSecondary 28% · frameGunmetal 28% · rubberDark 9% · glassVisor 2% · energyCyan 2% · warningAmber 0%
+  colour by role:  platform 65% hullPrimary L*64 · locomotion 17% rubberDark L*25 · sensor 6% glassVisor L*45 · manipulator 2% hullSecondary L*69 · mean L* 53
+
+PASS  ship.carrier (Orbital Carrier) · 68 parts · 3,472 tris · minY -5.850 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 41% · hullPrimary 38% · hullSecondary 18% · energyCyan 2% · warningAmber 1% · glassVisor 0%
+  colour by role:  platform 37% hullPrimary L*68 · manipulator 16% frameGunmetal L*17 · sensor 1% hullSecondary L*59 · locomotion 1% frameGunmetal L*17 · mean L* 55
+
+PASS  ship.dropPodShell (Drop Pod Shell) · 18 parts · 1,056 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullSecondary 44% · frameGunmetal 31% · hullPrimary 23% · energyCyan 1%
+  colour by role:  locomotion 21% hullSecondary L*69 · mean L* 57
+
+PASS  ship.dropPod (Drop Pod) · 37 parts · 2,348 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 41% · hullSecondary 37% · hullPrimary 17% · warningAmber 3% · energyCyan 1% · glassVisor 1%
+  colour by role:  locomotion 19% hullSecondary L*65 · platform 10% frameGunmetal L*21 · sensor 1% glassVisor L*8 · mean L* 51
+
+PASS  fauna.skitter (Skitter) · 25 parts · 2,384 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullSecondary 44% · terraformEmerald 22% · frameGunmetal 17% · hullPrimary 15% · energyCyan 1%
+  colour by role:  sensor 2% frameGunmetal L*17 · mean L* 63
+
+PASS  fauna.drifter (Drifter) · 22 parts · 2,220 tris · minY 0.576 · 0 errors, 0 warnings
+  surface by zone: hullSecondary 41% · hullPrimary 37% · frameGunmetal 12% · terraformEmerald 8% · energyCyan 2%
+
+PASS  resource.metalDeposit (Metal Deposit) · 11 parts · 724 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 53% · hullSecondary 23% · frameGunmetal 20% · warningAmber 4%
+
+PASS  resource.metalDeposit@half (Metal Deposit · half) · 12 parts · 744 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 56% · hullSecondary 23% · frameGunmetal 19% · warningAmber 2%
+
+PASS  resource.metalDeposit@depleted (Metal Deposit · depleted) · 11 parts · 724 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 60% · hullSecondary 22% · frameGunmetal 17% · warningAmber 1%
+
+PASS  resource.crystalDeposit (Crystal Deposit) · 20 parts · 496 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: energyCyan 45% · hullPrimary 36% · frameGunmetal 11% · hullSecondary 9%
+
+PASS  resource.crystalDeposit@half (Crystal Deposit · half) · 15 parts · 460 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 46% · energyCyan 27% · frameGunmetal 16% · hullSecondary 11%
+
+PASS  resource.crystalDeposit@depleted (Crystal Deposit · depleted) · 10 parts · 392 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 59% · frameGunmetal 21% · hullSecondary 14% · energyCyan 7%
+
+PASS  resource.oilDeposit (Oil Deposit) · 19 parts · 1,624 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 39% · glassVisor 26% · frameGunmetal 16% · hullSecondary 11% · dangerCrimson 8% · warningAmber 0%
+
+PASS  resource.oilDeposit@half (Oil Deposit · half) · 18 parts · 1,524 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 45% · glassVisor 30% · frameGunmetal 13% · hullSecondary 8% · dangerCrimson 3% · warningAmber 0%
+
+PASS  resource.oilDeposit@depleted (Oil Deposit · depleted) · 15 parts · 1,260 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 51% · rubberDark 34% · frameGunmetal 10% · hullSecondary 5% · warningAmber 0%
+
+PASS  fauna.blackAnt (Black Ant) · 41 parts · 2,748 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 86% · hullSecondary 8% · frameGunmetal 5% · glassVisor 2%
+
+PASS  fauna.blueBeetle (Armored Blue Beetle) · 40 parts · 2,652 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 65% · frameGunmetal 29% · hullSecondary 6% · glassVisor 1%
+
+PASS  fauna.greenSpitter (Green Acid Spitter) · 43 parts · 2,980 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 70% · hullSecondary 26% · frameGunmetal 4% · glassVisor 1%
+
+PASS  fauna.hive.blackAnt (Black Ant Mound) · 11 parts · 2,304 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 73% · frameGunmetal 19% · hullSecondary 8%
+
+PASS  fauna.hive.blueBeetle (Armored Beetle Nest) · 10 parts · 1,800 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 65% · frameGunmetal 21% · hullSecondary 14%
+
+PASS  fauna.hive.greenSpitter (Acid Spitter Hive) · 11 parts · 2,496 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 49% · frameGunmetal 39% · hullSecondary 12%
+
+PASS  fauna.nest.skitter (Skitter Burrow) · 23 parts · 1,796 tris · minY -0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 63% · frameGunmetal 28% · hullSecondary 7% · terraformEmerald 2% · warningAmber 0%
+
+PASS  fauna.nest.drifter (Drifter Perch) · 24 parts · 1,432 tris · minY -0.000 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 56% · frameGunmetal 23% · hullSecondary 13% · terraformEmerald 8%
+
+PASS  building.commandHub (Command Hub) · 55 parts · 3,084 tris · minY 0.000 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 48% · hullPrimary 40% · hullSecondary 6% · glassVisor 4% · energyCyan 1% · warningAmber 1% · dangerCrimson 0%
+  colour by role:  platform 72% frameGunmetal L*49 · sensor 4% hullPrimary L*60 · mean L* 50
+
+PASS  building.claimBeacon (Claim Beacon) · 25 parts · 1,576 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 54% · hullSecondary 20% · hullPrimary 17% · energyCyan 6% · warningAmber 3%
+  colour by role:  platform 37% frameGunmetal L*18 · locomotion 6% hullSecondary L*69 · mean L* 46
+
+PASS  building.pylon (Pylon) · 79 parts · 3,480 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 67% · hullPrimary 23% · hullSecondary 8% · energyCyan 1% · warningAmber 1%
+  colour by role:  platform 38% frameGunmetal L*39 · locomotion 5% hullSecondary L*69 · mean L* 39
+
+PASS  building.capacitor (Capacitor) · 37 parts · 3,260 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 53% · frameGunmetal 29% · energyCyan 10% · hullSecondary 7% · warningAmber 0%
+  colour by role:  power 53% hullPrimary L*88 · platform 21% frameGunmetal L*20 · locomotion 4% hullSecondary L*69 · mean L* 66
+
+PASS  building.solar (Solar Array) · 72 parts · 3,244 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 69% · solarCell 16% · hullSecondary 7% · hullPrimary 6% · energyCyan 1% · warningAmber 0%
+  colour by role:  platform 48% frameGunmetal L*26 · power 39% frameGunmetal L*29 · locomotion 7% hullSecondary L*60 · mean L* 31
+
+PASS  building.wind (Wind Turbine) · 34 parts · 2,212 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 59% · hullPrimary 26% · hullSecondary 14% · energyCyan 1% · warningAmber 0% · dangerCrimson 0%
+  colour by role:  platform 55% frameGunmetal L*32 · locomotion 7% hullSecondary L*69 · mean L* 43
+
+PASS  building.coalGen (Coal Generator) · 47 parts · 3,312 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 60% · hullPrimary 22% · hullSecondary 16% · warningAmber 2% · energyCyan 0%
+  colour by role:  platform 30% frameGunmetal L*17 · locomotion 4% hullSecondary L*69 · sensor 2% frameGunmetal L*17 · mean L* 42
+
+PASS  building.mine (Mine) · 68 parts · 3,412 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 59% · hullPrimary 20% · hullSecondary 19% · warningAmber 1% · energyCyan 1%
+  colour by role:  platform 45% frameGunmetal L*31 · manipulator 14% hullPrimary L*55 · locomotion 6% hullSecondary L*69 · sensor 0% frameGunmetal L*17 · mean L* 42
+
+PASS  building.waterPump (Water Pump) · 28 parts · 2,088 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 46% · hullPrimary 34% · hullSecondary 14% · energyCyan 5% · warningAmber 1%
+  colour by role:  platform 34% frameGunmetal L*18 · locomotion 5% hullSecondary L*69 · mean L* 52
+
+PASS  building.supplyDepot (Supply Depot) · 46 parts · 3,468 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 45% · hullPrimary 31% · hullSecondary 23% · warningAmber 1% · energyCyan 0%
+  colour by role:  platform 47% frameGunmetal L*38 · locomotion 3% hullSecondary L*69 · sensor 1% frameGunmetal L*17 · mean L* 51
+
+PASS  building.tradeHub (Inter-Colony Trade Hub) · 52 parts · 3,428 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 46% · hullPrimary 33% · hullSecondary 20% · warningAmber 1% · energyCyan 1%
+  colour by role:  platform 54% frameGunmetal L*40 · locomotion 3% hullSecondary L*69 · sensor 3% hullPrimary L*87 · mean L* 51
+
+PASS  building.droneArray (Drone Control Array) · 54 parts · 3,464 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 51% · hullPrimary 31% · hullSecondary 14% · energyCyan 3% · warningAmber 1% · dangerCrimson 0%
+  colour by role:  platform 62% frameGunmetal L*34 · sensor 12% hullPrimary L*80 · locomotion 5% hullSecondary L*69 · manipulator 0% frameGunmetal L*17 · mean L* 49
+
+PASS  building.roboticsFactory (Robotics Factory) · 57 parts · 3,464 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 59% · hullPrimary 25% · hullSecondary 14% · energyCyan 2% · warningAmber 0% · dangerCrimson 0%
+  colour by role:  platform 32% frameGunmetal L*18 · locomotion 2% hullSecondary L*69 · manipulator 1% hullSecondary L*50 · mean L* 43
+
+PASS  building.turret (Turret) · 29 parts · 2,356 tris · minY -0.100 · 0 errors, 0 warnings
+  · ANIM_DEEPENS_OVERLAP #19 autocannon barrel [frameGunmetal, anim 3] @(-0.30, 1.49, 0.72) pushes 3.0 cm deeper into its mount #15 cannon mantlet block [frameGunmetal] @(0.00, 1.49, 0.44) at -3.0 cm recoil.
+  · ANIM_DEEPENS_OVERLAP #23 autocannon barrel [frameGunmetal, anim 3] @(0.30, 1.49, 0.72) pushes 3.0 cm deeper into its mount #15 cannon mantlet block [frameGunmetal] @(0.00, 1.49, 0.44) at -3.0 cm recoil.
+  surface by zone: frameGunmetal 59% · hullPrimary 26% · hullSecondary 12% · warningAmber 4% · energyCyan 0%
+  colour by role:  platform 55% frameGunmetal L*30 · locomotion 5% hullSecondary L*69 · sensor 2% hullPrimary L*78 · mean L* 43
+
+PASS  building.laserTower (Laser Tower) · 27 parts · 2,180 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 52% · hullPrimary 24% · hullSecondary 19% · energyCyan 2% · warningAmber 2% · dangerCrimson 0%
+  colour by role:  platform 53% frameGunmetal L*27 · power 16% hullPrimary L*86 · locomotion 5% hullSecondary L*69 · sensor 0% dangerCrimson L*56 · mean L* 47
+
+PASS  building.rocket (Rocket) · 84 parts · 3,476 tris · minY -0.100 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 44% · hullPrimary 25% · hullSecondary 22% · warningAmber 6% · energyCyan 3% · dangerCrimson 0%
+  colour by role:  platform 44% frameGunmetal L*37 · locomotion 2% hullSecondary L*69 · mean L* 52
+
+PASS  prop.satComms (Comms Satellite) · 32 parts · 1,680 tris · minY -0.580 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 39% · solarCell 24% · hullPrimary 24% · hullSecondary 12% · energyCyan 0% · warningAmber 0%
+  colour by role:  power 53% frameGunmetal L*32 · mean L* 48
+
+PASS  prop.satSolar (Solar Relay) · 33 parts · 1,952 tris · minY -0.980 · 0 errors, 0 warnings
+  surface by zone: frameGunmetal 47% · solarCell 26% · hullPrimary 16% · hullSecondary 8% · energyCyan 2% · warningAmber 0%
+  colour by role:  power 56% frameGunmetal L*32 · mean L* 42
+
+PASS  prop.stationRing (Orbital Habitat Ring) · 35 parts · 2,260 tris · minY -1.210 · 0 errors, 0 warnings
+  surface by zone: hullPrimary 40% · frameGunmetal 21% · hullSecondary 17% · solarCell 13% · energyCyan 8% · dangerCrimson 0%
+  colour by role:  power 29% frameGunmetal L*31 · mean L* 64
+
+46 models: 46 pass, 0 fail · 0 errors, 0 warnings

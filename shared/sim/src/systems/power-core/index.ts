@@ -43,14 +43,14 @@ function defaultW02Data(): CompiledDataLike {
 
 let cachedW03Data: CompiledDataLike | null = null;
 function defaultW03Data(): CompiledDataLike {
-  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07']));
   return cachedW03Data;
 }
 
 export function resolvePowerRow(data: CompiledDataLike | undefined, table: string, id: string): CompiledRow {
   const t = data?.tables?.[table] as Record<string, CompiledRow> | undefined;
   if (t?.[id]) return t[id];
-  if (table === 'grid') return dataRow(defaultW03Data(), table, id);
+  if (table === 'grid' || table === 'combatUnits') return dataRow(defaultW03Data(), table, id);
   return dataRow(defaultW02Data(), table, id);
 }
 
@@ -167,7 +167,7 @@ export function evaluateColonyPower(
   const col = state.colonies[colonyIndex];
   if (col) col.pollution = Number(col.pollution ?? 0);
 
-  const unitDemand = calculateUnitDemand(state, colonyIndex, data);
+  const unitDemand = graph.hasHub ? calculateUnitDemand(state, colonyIndex, data) : 0;
   const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
   const acc = createPowerAccumulators();
 
@@ -227,6 +227,31 @@ export function getColonyPower(state: PlanetState, colonyIndex = 0, data?: Compi
   return evaluateColonyPower(state, colonyIndex, data, state.meta.tick);
 }
 
+function powerSummaryChanged(prev: ColonyPowerSummary | undefined, next: ColonyPowerSummary): boolean {
+  if (!prev) return true;
+  return (
+    prev.hasHub !== next.hasHub ||
+    prev.supply !== next.supply ||
+    prev.demand !== next.demand ||
+    prev.rawDemand !== next.rawDemand ||
+    prev.buildingDemand !== next.buildingDemand ||
+    prev.unitDemand !== next.unitDemand ||
+    prev.workDemand !== next.workDemand ||
+    prev.net !== next.net ||
+    prev.brownout !== next.brownout ||
+    prev.daylight !== next.daylight ||
+    prev.phase !== next.phase ||
+    prev.capacitorStoredE !== next.capacitorStoredE ||
+    prev.capacitorCapacityE !== next.capacitorCapacityE ||
+    prev.hqCellStoredE !== next.hqCellStoredE ||
+    prev.hqCellCapacityE !== next.hqCellCapacityE ||
+    prev.shedEntityIds.length !== next.shedEntityIds.length ||
+    prev.unpoweredEntityIds.length !== next.unpoweredEntityIds.length ||
+    (prev.overloadedEntityIds?.length ?? 0) !== (next.overloadedEntityIds?.length ?? 0) ||
+    Object.keys(prev.entityPower ?? {}).length !== Object.keys(next.entityPower ?? {}).length
+  );
+}
+
 export function recomputeAllColonyPower(
   state: PlanetState,
   data?: CompiledDataLike,
@@ -234,24 +259,48 @@ export function recomputeAllColonyPower(
   dtTicks = 0,
   ctx?: StepContext,
 ): Record<number, ColonyPowerSummary> {
-  const prevTrackers = (state.blobs.power?.value as { trackers?: Record<number, PowerEventTracker> } | undefined)?.trackers ?? {};
+  const prevBlob = (state.blobs.power?.value as {
+    byColony?: Record<number, ColonyPowerSummary>;
+    trackers?: Record<number, PowerEventTracker>;
+  } | undefined) ?? {};
+  const prevTrackers = prevBlob.trackers ?? {};
   const byColony: Record<number, ColonyPowerSummary> = {};
   const trackers: Record<number, PowerEventTracker> = {};
   const colonyIndices = new Set<number>();
-  for (const c of state.colonies) colonyIndices.add(c.index);
-  for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
+  for (const c of state.colonies) if (c.index >= 0) colonyIndices.add(c.index);
+  for (let row = 0; row < state.entities.count; row++) {
+    const owner = state.entities.cols.owner[row];
+    if (owner >= 0) colonyIndices.add(owner);
+  }
   if (colonyIndices.size === 0) colonyIndices.add(0);
 
+  let anyChanged = !state.blobs.power;
   for (const idx of colonyIndices) {
     const summary = evaluateColonyPower(state, idx, data, tick, dtTicks);
     byColony[idx] = summary;
     if (ctx) {
-      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+      const nextT = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+      trackers[idx] = nextT;
+      const prevT = prevTrackers[idx];
+      if (
+        nextT.brownoutTicks !== (prevT?.brownoutTicks ?? 0) ||
+        nextT.collapseEmitted !== Boolean(prevT?.collapseEmitted)
+      ) {
+        anyChanged = true;
+      }
     }
     const col = state.colonies[idx];
-    if (col) { col.power = summary; col.changedAt = tick; }
+    const changed = powerSummaryChanged(prevBlob.byColony?.[idx], summary);
+    if (changed) anyChanged = true;
+    if (col && (changed || !col.power)) {
+      col.power = summary;
+      col.changedAt = tick;
+    }
   }
-  setBlob(state, 'power', { byColony, trackers: ctx ? trackers : prevTrackers }, tick);
+  const nextValue = { byColony, trackers: ctx ? trackers : prevTrackers };
+  if (anyChanged || !state.blobs.power) {
+    setBlob(state, 'power', nextValue, tick);
+  }
   return byColony;
 }
 

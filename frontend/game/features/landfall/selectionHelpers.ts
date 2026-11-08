@@ -13,8 +13,34 @@ import {
 import { forEachEntity, type EntityRow } from '../../store/replica/viewCodec';
 import { viewColony } from '../shared/colony';
 import type { SelectedEntityView } from './selection';
+import {
+  BLDG_META,
+  COMBAT_KIND_CODES,
+  COMBAT_UNIT_META,
+  KIND_BY_NAME,
+  STATE_BY_NAME,
+  isArmyCombatUnitKind,
+  isFaunaOrHiveKind,
+  isHiveKind,
+  isSelectableCombatUnitKind,
+  normalizeKindCode,
+  normalizeStateCode,
+} from './selectionMeta';
 
-export { depositStageFromRichness };
+export {
+  BLDG_META,
+  COMBAT_KIND_CODES,
+  COMBAT_UNIT_META,
+  KIND_BY_NAME,
+  STATE_BY_NAME,
+  depositStageFromRichness,
+  isArmyCombatUnitKind,
+  isFaunaOrHiveKind,
+  isHiveKind,
+  isSelectableCombatUnitKind,
+  normalizeKindCode,
+  normalizeStateCode,
+};
 
 export interface SelectedDepositView {
   q: number;
@@ -26,51 +52,6 @@ export interface SelectedDepositView {
   remaining: number; // 0..500 units
   maxUnits: number; // 500
   stage: 'full' | 'half' | 'depleted';
-}
-
-const KIND_BY_NAME: Record<string, number> = {
-  hq: ENTITY_KIND.hq,
-  worker: ENTITY_KIND.worker,
-  commandHub: ENTITY_KIND.commandHub,
-  metalsExtractor: ENTITY_KIND.metalsExtractor,
-  solar: ENTITY_KIND.solar,
-  solarArray: ENTITY_KIND.solar,
-  tradeHub: ENTITY_KIND.tradeHub,
-  pod: ENTITY_KIND.pod,
-  devProbe: ENTITY_KIND.devProbe,
-  pylon: ENTITY_KIND.pylon,
-  capacitor: ENTITY_KIND.capacitor,
-  wind: ENTITY_KIND.wind,
-  thermal: ENTITY_KIND.thermal,
-  supplyDepot: ENTITY_KIND.supplyDepot,
-  mineralsQuarry: ENTITY_KIND.mineralsQuarry,
-  waterExtractor: ENTITY_KIND.waterExtractor,
-  petroleumWell: ENTITY_KIND.petroleumWell,
-};
-
-const STATE_BY_NAME: Record<string, number> = {
-  idle: ENTITY_STATE.idle,
-  moving: ENTITY_STATE.moving,
-  working: ENTITY_STATE.working,
-  constructing: ENTITY_STATE.constructing,
-  harvesting: ENTITY_STATE.harvesting,
-  waiting: ENTITY_STATE.waiting,
-  repairing: ENTITY_STATE.repairing,
-  offlineNoFuel: ENTITY_STATE.offlineNoFuel,
-  offlineNoGrid: ENTITY_STATE.offlineNoGrid,
-  offlineOverload: ENTITY_STATE.offlineOverload,
-};
-
-export function normalizeKindCode(k: unknown): number {
-  if (typeof k === 'number' && Number.isFinite(k)) return k;
-  if (typeof k === 'string') return KIND_BY_NAME[k] ?? 0;
-  return 0;
-}
-
-export function normalizeStateCode(s: unknown): number {
-  if (typeof s === 'number' && Number.isFinite(s)) return s;
-  if (typeof s === 'string') return STATE_BY_NAME[s] ?? ENTITY_STATE.idle;
-  return ENTITY_STATE.idle;
 }
 
 function clampOpenProgress(p: unknown): number | null {
@@ -327,12 +308,20 @@ export function normalizeEntityRowWithSupplements(
   const r = Number.isFinite(Number(raw.r)) ? Number(raw.r) : (Number.isFinite(Number(sup?.r)) ? Number(sup?.r) : Math.round(y));
   const state = raw.state !== undefined ? normalizeStateCode(raw.state) : normalizeStateCode(sup?.state);
   const progress = clampOpenProgress(raw.progress) ?? clampOpenProgress(sup?.progress) ?? Number(raw.progress ?? sup?.progress ?? 0);
-  const hpMax = Number(raw.hpMax ?? sup?.hpMax ?? (kind === ENTITY_KIND.hq ? 900 : 160));
-  const hp = Number(raw.hp ?? sup?.hp ?? hpMax);
+  const defaultHpMax =
+    kind === ENTITY_KIND.hq
+      ? 900
+      : (COMBAT_UNIT_META[kind]?.hpMax ?? BLDG_META[kind]?.hpMax ?? ( isHiveKind(kind) ? 1500 : 160 ));
+  const rawHpMax = Number(raw.hpMax ?? sup?.hpMax ?? 0);
+  const hpMax = rawHpMax > 0 ? rawHpMax : defaultHpMax;
+  const rawHp = raw.hp ?? sup?.hp;
+  const hp = rawHp !== undefined && Number.isFinite(Number(rawHp)) ? Number(rawHp) : hpMax;
+  const rawOwner = raw.owner ?? sup?.owner;
+  const owner = rawOwner !== undefined && Number.isFinite(Number(rawOwner)) ? Number(rawOwner) : (isFaunaOrHiveKind(kind) ? -1 : 0);
   return {
     id,
     kind,
-    owner: Number(raw.owner ?? sup?.owner ?? 0),
+    owner,
     q,
     r,
     x,

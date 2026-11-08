@@ -176,13 +176,16 @@ const ECONOMY_BUILDING_ALIASES: Readonly<Record<string, string>> = {
   coalGen: 'thermal',
   thermalPlant: 'thermal',
   oilWell: 'petroleumWell',
+  droneArray: 'droneControlArray',
+  turret: 'autocannon',
+  pulseTurret: 'laserTower',
 };
 
-/** The W02/W03 T1 building row (`economyT1Basic` or `grid`, `kind: 'building'`) named `building`, or `null`. */
+/** The W02/W03/W07 T1 building row (`economyT1Basic`, `grid`, or `combatUnits`, `kind: 'building'`) named `building`, or `null`. */
 export function resolveEconomyBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
   if (building === undefined) return null;
   const canonical = ECONOMY_BUILDING_ALIASES[building] ?? building;
-  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W10'])));
+  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07', 'W10'])));
   if (building === 'tradeHub' || building === 'interColonyTradeHub') {
     const src = data?.tables ? data : fallback;
     const thRow = (src.tables.tradeHub as Record<string, CompiledRow> | undefined)?.t1;
@@ -193,7 +196,10 @@ export function resolveEconomyBuildingRow(building: string | undefined, data?: C
   if (ecoRow && ecoRow.kind === 'building') return ecoRow;
   const gridSrc = data?.tables?.grid ? data : fallback;
   const gridRow = (gridSrc.tables.grid as Record<string, CompiledRow> | undefined)?.[canonical];
-  return gridRow && gridRow.kind === 'building' ? gridRow : null;
+  if (gridRow && gridRow.kind === 'building') return gridRow;
+  const combatSrc = data?.tables?.combatUnits ? data : fallback;
+  const combatRow = (combatSrc.tables.combatUnits as Record<string, CompiledRow> | undefined)?.[canonical];
+  return combatRow && combatRow.kind === 'building' ? combatRow : null;
 }
 
 /**
@@ -255,6 +261,13 @@ export const OCCUPYING_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
   ENTITY_KIND.tradeHub,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
 ]);
 
 const OCCUPYING_KINDS = OCCUPYING_BUILDING_KINDS;
@@ -267,7 +280,18 @@ export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): 
 /** Footprint size of an existing building entity of `kind` (its row's `footprint`). */
 export function entityFootprint(kind: number, data?: CompiledDataLike): number {
   if (kind === ENTITY_KIND.commandHub) return rowNum(resolveHubT1Row(data), 'footprint');
-  if (kind === ENTITY_KIND.pylon) return 1;
+  if (kind === ENTITY_KIND.roboticsFactory) return 3;
+  if (
+    kind === ENTITY_KIND.pylon ||
+    kind === ENTITY_KIND.droneControlArray ||
+    kind === ENTITY_KIND.autocannon ||
+    kind === ENTITY_KIND.laserTower ||
+    kind === ENTITY_KIND.hiveBlackAnt ||
+    kind === ENTITY_KIND.hiveBlueBeetle ||
+    kind === ENTITY_KIND.hiveGreenSpitter
+  ) {
+    return 1;
+  }
   if (OCCUPYING_KINDS.has(kind)) return 2;
   return 1;
 }

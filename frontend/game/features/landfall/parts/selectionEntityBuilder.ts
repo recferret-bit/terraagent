@@ -4,6 +4,7 @@ import { viewColony } from '../../shared/colony';
 import { extractHqFromView, hqJobFromStateCode, type HqStatusView } from '../../shared/hqView';
 import { resolveExtractorTierView } from '../extractorTierView';
 import type { SelectedEntityView, UnitFailureView } from '../selection';
+import { BLDG_META, COMBAT_UNIT_META } from '../selectionMeta';
 import {
   buildSupplementalUnitMap,
   normalizeEntityRowWithSupplements,
@@ -57,21 +58,38 @@ export function enrichHqSelectedView(hq: HqStatusView, rawView: unknown): Select
   };
 }
 
-const BLDG_META: Record<number, { label: string; code: string; w: number; d: number; hpMax: number }> = {
-  [ENTITY_KIND.tradeHub]: { label: 'TRADE HUB', code: 'TRD', w: 2, d: 2, hpMax: 900 },
-  [ENTITY_KIND.commandHub]: { label: 'COMMAND HUB', code: 'HUB', w: 3, d: 3, hpMax: 1500 },
-  [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
-  [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
-  [ENTITY_KIND.pod]: { label: 'DROP POD', code: 'POD', w: 1, d: 1, hpMax: 600 },
-  [ENTITY_KIND.pylon]: { label: 'POWER PYLON', code: 'PYL', w: 1, d: 1, hpMax: 200 },
-  [ENTITY_KIND.capacitor]: { label: 'CAPACITOR BANK', code: 'CAP', w: 2, d: 2, hpMax: 350 },
-  [ENTITY_KIND.wind]: { label: 'WIND TURBINE', code: 'WND', w: 2, d: 2, hpMax: 280 },
-  [ENTITY_KIND.thermal]: { label: 'THERMAL PLANT', code: 'THM', w: 2, d: 2, hpMax: 550 },
-  [ENTITY_KIND.supplyDepot]: { label: 'SUPPLY DEPOT', code: 'DEP', w: 2, d: 2, hpMax: 600 },
-  [ENTITY_KIND.mineralsQuarry]: { label: 'MINERALS QUARRY', code: 'QRY', w: 2, d: 2, hpMax: 500 },
-  [ENTITY_KIND.waterExtractor]: { label: 'WATER EXTRACTOR', code: 'H2O', w: 2, d: 2, hpMax: 420 },
-  [ENTITY_KIND.petroleumWell]: { label: 'PETROLEUM WELL', code: 'OIL', w: 2, d: 2, hpMax: 550 },
-};
+function buildCombatUnitSelectedEntity(
+  e: EntityRow,
+  progress: number,
+  unitsById: Record<string, { current?: unknown; queue?: unknown[] }>,
+): SelectedEntityView | null {
+  const cu = COMBAT_UNIT_META[e.kind];
+  if (!cu) return null;
+  const job = hqJobFromStateCode(e.state);
+  const uRec = unitsById[String(e.id)];
+  const queueCount = uRec
+    ? (uRec.current ? 1 : 0) + (Array.isArray(uRec.queue) ? uRec.queue.length : 0)
+    : (job === 'idle' ? 0 : 1);
+  return {
+    entityId: e.id,
+    kind: e.kind,
+    kindLabel: cu.label,
+    shortCode: cu.code,
+    isUnit: true,
+    isMovable: true,
+    tier: 1,
+    q: e.q,
+    r: e.r,
+    x: e.x,
+    y: e.y,
+    hp: e.hp,
+    hpMax: e.hpMax > 0 ? e.hpMax : cu.hpMax,
+    currentJob: job,
+    queueCount,
+    state: e.state,
+    progress,
+  };
+}
 
 function resolveBuildingJobStatus(e: EntityRow, reason: string | undefined, progress: number): string {
   if (reason) return reason;
@@ -95,6 +113,8 @@ export function buildSelectedEntityFromRow(
 ): SelectedEntityView | null {
   if (e.hp <= 0 || e.state === ENTITY_STATE.descending || (e.kind === ENTITY_KIND.tradeHub && e.state === ENTITY_STATE.inert)) return null;
   const progress = resolveEntityActivityProgress(e, rawView);
+  const combatUnit = buildCombatUnitSelectedEntity(e, progress, unitsById);
+  if (combatUnit) return combatUnit;
   if (e.kind === ENTITY_KIND.worker) {
     const tier = e.tier === 2 || e.tier === 3 ? e.tier : 1;
     const job =

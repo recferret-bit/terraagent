@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createApp } from '../../src/app';
 import { defineDevCommand, DevCommandRegistry } from '../../src/dev/dev-command.registry';
+import { UNIT_APP_ENV } from '../unit-app-env';
 
 const PROD = { NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
 const echo = defineDevCommand({ name: 'test.echo', help: 'Echo n doubled', args: z.object({ n: z.number().int() }), run: ({ n }) => ({ doubled: n * 2 }) });
@@ -11,7 +12,7 @@ const apps: INestApplication[] = [];
 afterAll(async () => { await Promise.all(apps.map((a) => a.close())); });
 
 async function boot(source: Record<string, string>) {
-  const { app } = await createApp({ source: { SIM_THREADS: '1', ...source } });
+  const { app } = await createApp({ source: { ...UNIT_APP_ENV, ...source } });
   await app.listen(0, '127.0.0.1');
   apps.push(app);
   const url = (await app.getUrl()).replace('[::1]', '127.0.0.1');

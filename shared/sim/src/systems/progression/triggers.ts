@@ -30,6 +30,8 @@ const BUILDING_CODE_NAMES: Readonly<Record<number, string>> = {
   [BUILDING_KIND.depot]: 'depot',
   [BUILDING_KIND.capacitor]: 'capacitor',
   [BUILDING_KIND.roboticsFactory]: 'roboticsFactory',
+  40: 'roboticsFactory',
+  [BUILDING_KIND.droneControlArray]: 'droneControlArray',
   [BUILDING_KIND.turret]: 'turret',
   [BUILDING_KIND.pulseTurret]: 'pulseTurret',
   [BUILDING_KIND.wall]: 'wall',
@@ -91,6 +93,8 @@ function buildingAliases(kind: string): readonly string[] {
   if (kind === 'depot' || kind === 'storageDepot' || kind === 'supplyDepot') return ['depot', 'storageDepot', 'supplyDepot'];
   if (kind === 'solar' || kind === 'solarCollector') return ['solar', 'solarCollector'];
   if (kind === 'mineralsExtractor' || kind === 'mineralsQuarry') return ['mineralsExtractor', 'mineralsQuarry'];
+  if (kind === 'turret' || kind === 'autocannon') return ['turret', 'autocannon'];
+  if (kind === 'pulseTurret' || kind === 'laserTower') return ['pulseTurret', 'laserTower'];
   return [kind];
 }
 

@@ -29,6 +29,8 @@ export interface ColonySupply {
   /** The data ceiling the cap is clamped to (`hub.t1.supplyCapMax`). */
   max: number;
   sources: SupplyCapSource[];
+  /** Present and `true` when `used > cap` (e.g. a supply provider went offline or was destroyed). */
+  overCap?: boolean;
 }
 
 /**
@@ -115,7 +117,16 @@ export function computeColonySupply(
   const reserved = reservedSupply(state, colonyIndex, data, opts);
   const cap = Math.min(src.capMax, sum);
   const used = units + reserved;
-  return { used, units, reserved, cap, available: Math.max(0, cap - used), max: src.capMax, sources };
+  return {
+    used,
+    units,
+    reserved,
+    cap,
+    available: Math.max(0, cap - used),
+    max: src.capMax,
+    sources,
+    ...(used > cap ? { overCap: true } : {}),
+  };
 }
 
 export type UnitSupplyCheck =

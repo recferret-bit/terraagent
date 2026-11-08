@@ -1,0 +1,304 @@
+[
+  {
+    "tick": 17,
+    "rngDraws": 0,
+    "mode": "bugs",
+    "modeLabel": "BUGS",
+    "scene": "blackAnt",
+    "biomeKey": "forestRock",
+    "seed": 7,
+    "paused": true,
+    "populationCount": 1,
+    "maxPopulation": 1,
+    "waveCount": 0,
+    "activeProjectiles": 0,
+    "animations": [
+      {
+        "id": 2,
+        "state": "recovery",
+        "phase": 0.5432500000298023,
+        "retired": false
+      }
+    ],
+    "hives": [
+      {
+        "hiveId": "hive:blackAnt",
+        "species": "blackAnt",
+        "hiveArchetypeId": "fauna.hive.blackAnt",
+        "bugArchetypeId": "fauna.blackAnt",
+        "mode": "bugs",
+        "residents": 1,
+        "maxResidents": 1,
+        "waveCount": 0,
+        "position": {
+          "x": -10,
+          "y": 0,
+          "z": 0
+        },
+        "targetColony": "colony:0",
+        "nextWaveTicks": 0
+      }
+    ],
+    "bugs": [
+      {
+        "bugId": "blackAnt:2",
+        "species": "blackAnt",
+        "hiveId": "hive:blackAnt",
+        "archetypeId": "fauna.blackAnt",
+        "x": 2,
+        "y": 0,
+        "z": 0,
+        "yaw": 1.5708,
+        "walkWeight": 0,
+        "workWeight": 0,
+        "gesture": "foraging",
+        "order": "bite"
+      }
+    ]
+  },
+  {
+    "tick": 17,
+    "rngDraws": 0,
+    "mode": "bugs",
+    "modeLabel": "BUGS",
+    "scene": "blueBeetle",
+    "biomeKey": "forestRock",
+    "seed": 7,
+    "paused": true,
+    "populationCount": 1,
+    "maxPopulation": 1,
+    "waveCount": 0,
+    "activeProjectiles": 0,
+    "animations": [
+      {
+        "id": 2,
+        "state": "moving",
+        "phase": 0.7494999998807907,
+        "retired": false
+      }
+    ],
+    "hives": [
+      {
+        "hiveId": "hive:blueBeetle",
+        "species": "blueBeetle",
+        "hiveArchetypeId": "fauna.hive.blueBeetle",
+        "bugArchetypeId": "fauna.blueBeetle",
+        "mode": "bugs",
+        "residents": 1,
+        "maxResidents": 1,
+        "waveCount": 0,
+        "position": {
+          "x": -10,
+          "y": 0,
+          "z": 0
+        },
+        "targetColony": "colony:0",
+        "nextWaveTicks": 0
+      }
+    ],
+    "bugs": [
+      {
+        "bugId": "blueBeetle:2",
+        "species": "blueBeetle",
+        "hiveId": "hive:blueBeetle",
+        "archetypeId": "fauna.blueBeetle",
+        "x": 1.44,
+        "y": 0,
+        "z": 0,
+        "yaw": 1.5708,
+        "walkWeight": 1,
+        "workWeight": 0,
+        "gesture": "foraging",
+        "order": "attack"
+      }
+    ]
+  },
+  {
+    "tick": 17,
+    "rngDraws": 0,
+    "mode": "bugs",
+    "modeLabel": "BUGS",
+    "scene": "greenSpitter",
+    "biomeKey": "forestRock",
+    "seed": 7,
+    "paused": true,
+    "populationCount": 1,
+    "maxPopulation": 1,
+    "waveCount": 0,
+    "activeProjectiles": 1,
+    "animations": [
+      {
+        "id": 2,
+        "state": "recovery",
+        "phase": 0.38883333335320175,
+        "retired": false
+      }
+    ],
+    "hives": [
+      {
+        "hiveId": "hive:greenSpitter",
+        "species": "greenSpitter",
+        "hiveArchetypeId": "fauna.hive.greenSpitter",
+        "bugArchetypeId": "fauna.greenSpitter",
+        "mode": "bugs",
+        "residents": 1,
+        "maxResidents": 1,
+        "waveCount": 0,
+        "position": {
+          "x": -10,
+          "y": 0,
+          "z": 0
+        },
+        "targetColony": "colony:0",
+        "nextWaveTicks": 0
+      }
+    ],
+    "bugs": [
+      {
+        "bugId": "greenSpitter:2",
+        "species": "greenSpitter",
+        "hiveId": "hive:greenSpitter",
+        "archetypeId": "fauna.greenSpitter",
+        "x": -4,
+        "y": 0,
+        "z": 0,
+        "yaw": 1.5708,
+        "walkWeight": 0,
+        "workWeight": 0,
+        "gesture": "foraging",
+        "order": "spit_acid"
+      }
+    ]
+  },
+  {
+    "tick": 17,
+    "rngDraws": 0,
+    "mode": "bugs",
+    "modeLabel": "BUGS",
+    "scene": "mixed",
+    "biomeKey": "forestRock",
+    "seed": 7,
+    "paused": true,
+    "populationCount": 3,
+    "maxPopulation": 3,
+    "waveCount": 0,
+    "activeProjectiles": 1,
+    "animations": [
+      {
+        "id": 2,
+        "state": "recovery",
+        "phase": 0.834249999970198,
+        "retired": false
+      },
+      {
+        "id": 5,
+        "state": "moving",
+        "phase": 0.6684999999403953,
+        "retired": false
+      },
+      {
+        "id": 8,
+        "state": "recovery",
+        "phase": 0.444749999990066,
+        "retired": false
+      }
+    ],
+    "hives": [
+      {
+        "hiveId": "hive:blackAnt",
+        "species": "blackAnt",
+        "hiveArchetypeId": "fauna.hive.blackAnt",
+        "bugArchetypeId": "fauna.blackAnt",
+        "mode": "bugs",
+        "residents": 1,
+        "maxResidents": 1,
+        "waveCount": 0,
+        "position": {
+          "x": -10,
+          "y": 0,
+          "z": -6.928203230275509
+        },
+        "targetColony": "colony:0",
+        "nextWaveTicks": 0
+      },
+      {
+        "hiveId": "hive:blueBeetle",
+        "species": "blueBeetle",
+        "hiveArchetypeId": "fauna.hive.blueBeetle",
+        "bugArchetypeId": "fauna.blueBeetle",
+        "mode": "bugs",
+        "residents": 1,
+        "maxResidents": 1,
+        "waveCount": 0,
+        "position": {
+          "x": -10,
+          "y": 0,
+          "z": 0
+        },
+        "targetColony": "colony:0",
+        "nextWaveTicks": 0
+      },
+      {
+        "hiveId": "hive:greenSpitter",
+        "species": "greenSpitter",
+        "hiveArchetypeId": "fauna.hive.greenSpitter",
+        "bugArchetypeId": "fauna.greenSpitter",
+        "mode": "bugs",
+        "residents": 1,
+        "maxResidents": 1,
+        "waveCount": 0,
+        "position": {
+          "x": -10,
+          "y": 0,
+          "z": 6.928203230275509
+        },
+        "targetColony": "colony:0",
+        "nextWaveTicks": 0
+      }
+    ],
+    "bugs": [
+      {
+        "bugId": "blackAnt:2",
+        "species": "blackAnt",
+        "hiveId": "hive:blackAnt",
+        "archetypeId": "fauna.blackAnt",
+        "x": 2,
+        "y": 0,
+        "z": -6.9282,
+        "yaw": 1.5708,
+        "walkWeight": 0,
+        "workWeight": 0,
+        "gesture": "foraging",
+        "order": "bite"
+      },
+      {
+        "bugId": "blueBeetle:5",
+        "species": "blueBeetle",
+        "hiveId": "hive:blueBeetle",
+        "archetypeId": "fauna.blueBeetle",
+        "x": 1.44,
+        "y": 0,
+        "z": 0,
+        "yaw": 1.5708,
+        "walkWeight": 1,
+        "workWeight": 0,
+        "gesture": "resting",
+        "order": "attack"
+      },
+      {
+        "bugId": "greenSpitter:8",
+        "species": "greenSpitter",
+        "hiveId": "hive:greenSpitter",
+        "archetypeId": "fauna.greenSpitter",
+        "x": -4,
+        "y": 0,
+        "z": 6.9282,
+        "yaw": 1.5708,
+        "walkWeight": 0,
+        "workWeight": 0,
+        "gesture": "tending_brood",
+        "order": "spit_acid"
+      }
+    ]
+  }
+]

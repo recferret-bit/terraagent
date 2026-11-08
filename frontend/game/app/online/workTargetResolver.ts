@@ -17,10 +17,20 @@ import {
   entityGroundY,
   hubBuildProgressForState,
   is2x2BuildingKind,
+  is3x3FootprintKind,
+  isTrackedWalkingUnitKind,
   isWorkerUnitKind,
 } from './entityKinds';
 
-export { computeWorkTarget, entityGroundY, hubBuildProgressForState, is2x2BuildingKind, isWorkerUnitKind };
+export {
+  computeWorkTarget,
+  entityGroundY,
+  hubBuildProgressForState,
+  is2x2BuildingKind,
+  is3x3FootprintKind,
+  isTrackedWalkingUnitKind,
+  isWorkerUnitKind,
+};
 
 interface RawWorkJob {
   workerEntityId?: number;
