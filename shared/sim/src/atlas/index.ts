@@ -7,3 +7,4 @@ export * from './verifiers';
 export * from './generateAtlas';
 export * from './sectorMetrics';
 export * from './crossSectorGameplay';
+export * from './seamTerraforming';
