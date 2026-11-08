@@ -1,12 +1,21 @@
 import { CheckpointProgression } from '../../progression/checkpoint-progression.js';
 import { Inject, Injectable, Optional, type BeforeApplicationShutdown } from '@nestjs/common';
-import { devPlanetTypeOf, GEN_VERSION, restore } from '@terra/sim';
+import { parseWaves } from '@terra/contracts';
+import {
+  devPlanetTypeOf,
+  GEN_VERSION,
+  restore,
+  validateAtlasSaveCompatibility,
+  type AtlasSaveCompatibilityOptions,
+  type WaveFlagsInput,
+} from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge, Histogram } from 'prom-client';
 import { MetricsRegistry } from '../../core/metrics.registry';
 import { layerLogger } from '../../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { HomeRepository } from '../../core/home/home.repository';
+import { FlagsService } from '../../flags/flags.service';
 import { GamePlanets, type LoadOptions } from '../game-planets.service';
 import { hasLiveColony } from '../live-colony';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
@@ -58,13 +67,14 @@ export class SnapshotService implements BeforeApplicationShutdown {
     private readonly planets: GamePlanets,
     private readonly store: SnapshotStore,
     metrics: MetricsRegistry,
-    @Inject(APP_ENV) env: AppEnv,
+    @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(LOGGER) root: Logger,
     /** Each snapshot write waits for the planet's queued journal writes, so a saved snapshot at T has its rows ≤ T. */
     @Optional() private readonly ledger?: PlanetLedgerService,
     /** Colony rows: a restored planet with rows is never marked as a scenario planet (BE-07). */
     @Optional() private readonly homes?: HomeRepository,
     @Optional() private readonly progression?: CheckpointProgression,
+    @Optional() private readonly flags?: Pick<FlagsService, 'list' | 'has'>,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
     this.enabled = persistenceEnabled(env);
@@ -88,7 +98,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
    * and says when the database was unavailable (nothing is known then). Neither held planets nor any planet while the
    * database is down may be generated fresh: that would replace their world and wipe their journal.
    */
-  async restoreAll(): Promise<RestoreReport> {
+  async restoreAll(options?: AtlasSaveCompatibilityOptions): Promise<RestoreReport> {
     const report = { restored: [] as string[], held: [] as string[], dbUnavailable: false };
     if (!this.enabled) return report;
     let ids: string[];
@@ -97,7 +107,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
       return { ...report, dbUnavailable: true };
     }
     for (const id of ids) {
-      const outcome = await this.restore(id);
+      const outcome = await this.restore(id, options);
       if (outcome === 'restored') report.restored.push(id);
       else if (outcome === 'held') report.held.push(id);
     }
@@ -173,8 +183,15 @@ export class SnapshotService implements BeforeApplicationShutdown {
     this.log.warn({ planetId }, `wiped ${planetId} (dev planet.wipe)`);
   }
 
+  private resolveActiveFlags(override?: WaveFlagsInput): WaveFlagsInput | undefined {
+    if (override !== undefined) return override;
+    if (this.flags) return this.flags.list;
+    if (typeof this.env.TA_WAVES === 'string') return parseWaves(this.env.TA_WAVES).list;
+    return undefined;
+  }
+
   /** One live planet: restored, held (snapshots kept, not loaded) or wiped (an old dev planet: generated fresh later). */
-  async restore(id: string): Promise<'restored' | 'held' | 'wiped'> {
+  async restore(id: string, options?: AtlasSaveCompatibilityOptions): Promise<'restored' | 'held' | 'wiped'> {
     try {
       const snap = await this.store.latest(id, (tick) => this.log.warn({ planetId: id, tick: Number(tick) }, 'corrupt snapshot skipped'));
       if (!snap) {
@@ -193,10 +210,23 @@ export class SnapshotService implements BeforeApplicationShutdown {
         this.log.warn({ planetId: id, reason: verdict.reason, now: GEN_VERSION }, `wiped ${id}: ${verdict.reason}`);
         return 'wiped';
       }
+      const state = verdict.state ?? restore(snap.raw);
+      const compat = validateAtlasSaveCompatibility(state, {
+        ...options,
+        planetId: id,
+        flags: this.resolveActiveFlags(options?.flags),
+      });
+      if (!compat.ok) {
+        this.log.error(
+          { planetId: id, code: compat.code, reason: compat.reason },
+          `held ${id}: incompatible atlas save (${compat.code})`,
+        );
+        return 'held';
+      }
       // A scenario planet (no colony rows: its colonies are the scenario's) stays playable as colony 0 by dev sessions.
       // A planet with colony rows is never marked: its colonies belong to their players (BE-07).
       const isDev = devPlanetTypeOf(id) !== null;
-      if (!isDev && hasLiveColony(verdict.state ?? restore(snap.raw)) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
+      if (!isDev && hasLiveColony(state) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
         this.planets.markScenarioColonyPlanet(id);
       }
       const tick = await this.planets.load(id, { snapshot: snap.raw });

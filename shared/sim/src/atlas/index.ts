@@ -13,3 +13,4 @@ export * from './regionalResources';
 export * from './sectorMetrics';
 export * from './crossSectorGameplay';
 export * from './seamTerraforming';
+export * from './persistence';
