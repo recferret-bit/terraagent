@@ -38,7 +38,10 @@ export type LobbyConflictCode =
   | 'party_not_found'
   | 'planet_not_found'
   | 'sector_not_found'
-  | 'slot_not_found';
+  | 'slot_not_found'
+  | 'concurrency_conflict'
+  | 'invalid_lifecycle_transition'
+  | 'audit_metadata_required';
 
 export class LobbyPersistenceConflictError extends ConflictException {
   readonly code: LobbyConflictCode;
@@ -165,6 +168,9 @@ export interface UpdateCanonicalWorldStateInput {
   readonly health?: WorldHealthState;
   readonly admission?: WorldAdmissionState;
   readonly faultCode?: string | null;
+  readonly expectedUpdatedAt?: Date | string | number;
+  readonly now?: Date;
+  readonly onTransition?: (previous: CanonicalWorldRecord, next: CanonicalWorldRecord) => void;
 }
 
 export interface PinAtlasVersionResult {

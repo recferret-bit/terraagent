@@ -4,8 +4,10 @@ import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   buildDefaultCanonicalAtlasManifest,
+  ConcurrencyConflictError,
   LobbyPersistenceService,
   PrismaLobbyStore,
+  WorldLifecycleService,
 } from '../../src/lobby';
 
 let db: TestDatabase;
@@ -106,5 +108,54 @@ describe('W11-02 — PrismaLobbyStore on PostgreSQL', () => {
         handle: 'PG Member 6',
       }),
     ).rejects.toMatchObject({ code: 'party_full' });
+  });
+});
+
+describe('W11-03 — WorldLifecycleService & PrismaLobbyStore on PostgreSQL', () => {
+  it('enforces W11-03 optimistic concurrency, audited pause/resume, and no age-sealing on PostgreSQL', async () => {
+    const svc = new LobbyPersistenceService(db.prisma, undefined, new PrismaLobbyStore(db.prisma));
+    const lifecycle = new WorldLifecycleService(svc);
+
+    const oceanManifest = buildDefaultCanonicalAtlasManifest('ocean', {
+      foundingSeatsPerSector: 3,
+      validatedSeatsPerSector: 3,
+    });
+    const { world } = await svc.provisionCanonicalWorld({ type: 'ocean', manifest: oceanManifest });
+
+    const racePause = await Promise.allSettled([
+      lifecycle.pausePlanetAdmission({
+        planetId: world.id,
+        actor: 'pg_op_1',
+        reason: 'pg race 1',
+        expectedUpdatedAt: world.updatedAt,
+      }),
+      lifecycle.pausePlanetAdmission({
+        planetId: world.id,
+        actor: 'pg_op_2',
+        reason: 'pg race 2',
+        expectedUpdatedAt: world.updatedAt,
+      }),
+    ]);
+    expect(racePause.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = racePause.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toBeInstanceOf(ConcurrencyConflictError);
+
+    const resumed = await lifecycle.resumePlanetAdmission({
+      planetId: world.id,
+      actor: 'pg_op_1',
+      reason: 'pg resume',
+    });
+    expect(resumed.admission).toBe('OPEN');
+    expect(resumed.availability).toBe('open');
+
+    const age7d = await lifecycle.evaluateElapsedAge(world.id, 7 * 24 * 3_600_000);
+    expect(age7d).toMatchObject({
+      ageSealed: false,
+      expired: false,
+      lifecycle: 'ACTIVE',
+      admission: 'OPEN',
+      availability: 'open',
+    });
   });
 });

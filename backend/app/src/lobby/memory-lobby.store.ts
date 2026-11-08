@@ -38,6 +38,7 @@ import {
   normalizeCanonicalWorldInput,
   normalizeSectorSlotsInput,
 } from './lobby-store.helpers';
+import { validateCanonicalWorldStateUpdate } from './lifecycle-policy.helpers';
 import { MemoryReservationOps } from './memory-reservation.ops';
 import { MemoryTicketPartyOps } from './memory-ticket-party.ops';
 
@@ -132,14 +133,18 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
           planetId: input.planetId,
         });
       }
+      validateCanonicalWorldStateUpdate(existing, input);
+      const baseNow = input.now ?? new Date();
+      const nextUpdatedAt = new Date(Math.max(baseNow.getTime(), existing.updatedAt.getTime() + 1));
       const next: CanonicalWorldRecord = {
         ...existing,
         lifecycle: input.lifecycle ?? existing.lifecycle,
         health: input.health ?? existing.health,
         admission: input.admission ?? existing.admission,
         faultCode: input.faultCode === undefined ? existing.faultCode : input.faultCode,
-        updatedAt: new Date(),
+        updatedAt: nextUpdatedAt,
       };
+      input.onTransition?.(existing, next);
       this.worldsById.set(next.id, next);
       return next;
     });
