@@ -14,13 +14,13 @@ export interface StallDeps { client: TradeClient; token: string; onSaved(stall: 
 export class StallEditor {
   readonly root: HTMLElement;
   private readonly slider = h('input', { type: 'range', id: 'stall-range', min: 0, max: 100, step: 1, 'aria-label': 'Stall fee slider' });
-  private readonly pct = h('input', { class: 'input tr-pct', id: 'stall-pct', inputmode: 'decimal', autocomplete: 'off', 'aria-describedby': 'stall-hint' });
-  private readonly apply = h('button', { type: 'submit', class: 'btn btn-primary btn-sm', id: 'stall-apply' }, 'APPLY');
-  private readonly current = h('b', { 'data-stall-current': '' });
+  private readonly pct = h('input', { class: 'input tr-pct', id: 'stall-pct', 'data-testid': 'stall-pct', inputmode: 'decimal', autocomplete: 'off', 'aria-describedby': 'stall-hint' });
+  private readonly apply = h('button', { type: 'submit', class: 'btn btn-primary btn-sm', id: 'stall-apply', 'data-testid': 'stall-apply' }, 'APPLY');
+  private readonly current = h('b', { 'data-stall-current': '', 'data-testid': 'stall-current' });
   private readonly hint = h('span', { class: 'tr-hint', id: 'stall-hint' });
-  private readonly earned = h('p', { class: 'tr-hint', 'data-stall-earned': '' });
+  private readonly earned = h('p', { class: 'tr-hint', 'data-stall-earned': '', 'data-testid': 'stall-earned' });
   private readonly lock = h('p', { class: 'tr-note tr-note-warn', role: 'status', 'data-stall-lock': '' });
-  private readonly msg = h('div', { 'data-stall-msg': '', 'aria-live': 'polite' });
+  private readonly msg = h('div', { 'data-stall-msg': '', 'data-testid': 'stall-msg', 'aria-live': 'polite' });
   private dirty = false;
   private busy = false;
   private stall: TradeStallResponse | null = null;

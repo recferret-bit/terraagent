@@ -10,7 +10,7 @@ export type PickLevel = (level: BookLevel, takerSide: OrderSide) => void;
 function rowEl(r: LadderRow, side: 'ask' | 'bid', quote: ReturnType<typeof quoteOf>, own: boolean, pick: PickLevel): HTMLElement {
   const label = `${side === 'ask' ? 'Ask' : 'Bid'} ${fmtUnit(r.price, quote)} ${quote}, ${r.level.amount} units, ${r.level.orders} orders. ${side === 'ask' ? 'Buy' : 'Sell'} at this price`;
   return h('button', {
-    type: 'button', class: `tr-lv tr-lv-${side}${own ? ' is-own' : ''}`, 'aria-label': label, title: 'Click to prefill the order ticket',
+    type: 'button', 'data-testid': `ladder-${side}`, class: `tr-lv tr-lv-${side}${own ? ' is-own' : ''}`, 'aria-label': label, title: 'Click to prefill the order ticket',
     onclick: () => pick(r.level, side === 'ask' ? 'buy' : 'sell'),
   },
   h('span', { class: 'tr-lv-bar', style: `width:${Math.round(r.depth * 100)}%`, 'aria-hidden': 'true' }),

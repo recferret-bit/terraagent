@@ -17,29 +17,29 @@ export class OrderTicket {
   readonly root: HTMLElement;
   private side: OrderSide = 'sell';
   private busy = false;
-  private readonly amount = h('input', { class: 'input', id: 'tk-amount', inputmode: 'numeric', autocomplete: 'off', placeholder: 'whole units', 'aria-describedby': 'tk-reason' });
-  private readonly total = h('input', { class: 'input', id: 'tk-total', inputmode: 'decimal', autocomplete: 'off', placeholder: 'total for the whole amount', 'aria-describedby': 'tk-reason' });
+  private readonly amount = h('input', { class: 'input', id: 'tk-amount', 'data-testid': 'ticket-amount', inputmode: 'numeric', autocomplete: 'off', placeholder: 'whole units', 'aria-describedby': 'tk-reason' });
+  private readonly total = h('input', { class: 'input', id: 'tk-total', 'data-testid': 'ticket-total', inputmode: 'decimal', autocomplete: 'off', placeholder: 'total for the whole amount', 'aria-describedby': 'tk-reason' });
   private readonly ttl = h('select', { class: 'input', id: 'tk-ttl' });
-  private readonly stall = h('input', { class: 'input', id: 'tk-stall', inputmode: 'decimal', autocomplete: 'off' });
+  private readonly stall = h('input', { class: 'input', id: 'tk-stall', 'data-testid': 'ticket-stall', inputmode: 'decimal', autocomplete: 'off' });
   private readonly stallField = h('div', { class: 'field' });
   private readonly unit = h('p', { class: 'tr-hint', id: 'tk-unit' });
-  private readonly preview = h('dl', { class: 'tr-dl', id: 'tk-preview' });
-  private readonly reason = h('p', { class: 'tr-note tr-note-warn', id: 'tk-reason', role: 'status' });
-  private readonly result = h('div', { class: 'tr-result', 'aria-live': 'polite' });
-  private readonly place = h('button', { type: 'button', class: 'btn btn-primary', id: 'tk-place' }, 'PLACE ORDER');
+  private readonly preview = h('dl', { class: 'tr-dl', id: 'tk-preview', 'data-testid': 'ticket-preview' });
+  private readonly reason = h('p', { class: 'tr-note tr-note-warn', id: 'tk-reason', 'data-testid': 'ticket-reason', role: 'status' });
+  private readonly result = h('div', { class: 'tr-result', 'data-testid': 'ticket-result', 'aria-live': 'polite' });
+  private readonly place = h('button', { type: 'button', class: 'btn btn-primary', id: 'tk-place', 'data-testid': 'ticket-place' }, 'PLACE ORDER');
   private readonly sideBtns: Record<OrderSide, HTMLButtonElement>;
   private readonly policyNote = h('p', { class: 'tr-hint' });
-  private readonly cost = h('input', { class: 'input', id: 'tk-cost', inputmode: 'decimal', autocomplete: 'off', placeholder: 'optional, per unit' });
-  private suggestMsg = h('div', { class: 'tr-suggest', 'aria-live': 'polite' });
+  private readonly cost = h('input', { class: 'input', id: 'tk-cost', 'data-testid': 'ticket-cost', inputmode: 'decimal', autocomplete: 'off', placeholder: 'optional, per unit' });
+  private suggestMsg = h('div', { class: 'tr-suggest', 'data-testid': 'ticket-suggest-msg', 'aria-live': 'polite' });
   private ttlKey = '';
 
   constructor(private readonly d: TicketDeps) {
-    const mk = (s: OrderSide): HTMLButtonElement => h('button', { type: 'button', class: `tr-side tr-side-${s}`, 'data-side': s, role: 'radio', onclick: () => this.setSide(s) }, s.toUpperCase());
+    const mk = (s: OrderSide): HTMLButtonElement => h('button', { type: 'button', class: `tr-side tr-side-${s}`, 'data-side': s, 'data-testid': `ticket-side-${s}`, role: 'radio', onclick: () => this.setSide(s) }, s.toUpperCase());
     this.sideBtns = { buy: mk('buy'), sell: mk('sell') };
     for (const el of [this.amount, this.total, this.stall]) el.addEventListener('input', () => this.update());
     this.ttl.addEventListener('change', () => this.update());
     this.place.addEventListener('click', () => { void this.submit(); });
-    const suggest = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', id: 'tk-suggest', title: 'Agent-assisted: asks the quote engine for a price and amount, only fills the form' }, 'SUGGEST');
+    const suggest = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', id: 'tk-suggest', 'data-testid': 'ticket-suggest', title: 'Agent-assisted: asks the quote engine for a price and amount, only fills the form' }, 'SUGGEST');
     suggest.addEventListener('click', () => { void this.suggest(); });
     this.stallField.append(h('label', { class: 'field-label', for: 'tk-stall' }, 'MAX STALL FEE (%)'), this.stall, h('span', { class: 'field-hint' }, 'Buy only: the most you accept the seller\'s hub to charge. Reserved up front.'));
     this.root = h('div', { class: 'tr-ticket' },
@@ -119,7 +119,7 @@ export class OrderTicket {
   }
 
   private drawPreview(pv: TicketPreview, q: Parameters<typeof fmtAmount>[0], base: string, st: TradeState): void {
-    const row = (k: string, v: string, id: string): HTMLElement[] => [h('dt', {}, k), h('dd', { class: 'num', 'data-k': id }, v)];
+    const row = (k: string, v: string, id: string): HTMLElement[] => [h('dt', {}, k), h('dd', { class: 'num', 'data-k': id, 'data-testid': `ticket-preview-${id}` }, v)];
     const money = (v: bigint | null): string => (v === null ? '-' : fmtAmount(q, v));
     const min = st.policy?.minNotional[q];
     const rows = this.side === 'buy'

@@ -57,6 +57,12 @@ export function timeLeft(expiresAtMs: number, nowMs: number): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+/** The quote to select after the resource changed: the first wanted one the new resource trades against, else the first listed. */
+export function pickQuote<T extends string>(available: readonly T[], ...preferred: ReadonlyArray<T | undefined>): T | undefined {
+  for (const p of preferred) if (p !== undefined && available.includes(p)) return p;
+  return available[0];
+}
+
 /** Basis points as a percentage label: 100 -> "1.00 %". */
 export const bpLabel = (bp: number): string => `${(bp / 100).toFixed(2)} %`;
 export const changeLabel = (bp: number | null): string => (bp === null ? '-' : `${bp >= 0 ? '+' : ''}${(bp / 100).toFixed(2)} %`);
