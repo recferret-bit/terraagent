@@ -37,6 +37,7 @@ export {
 } from './gen/world';
 export * from './grid/sectors';
 export * from './grid/subsurface';
+export * from './atlas';
 export * from './world/presence';
 export * from './world/landingPlanner';
 export * from './gen/spawnSlots';
