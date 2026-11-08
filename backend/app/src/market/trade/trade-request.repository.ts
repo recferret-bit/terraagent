@@ -116,11 +116,15 @@ export class TradeRequestRepository {
 
   /** What the allowance counts for a key now: outstanding orders (open + in flight) and today's committed quote. */
   async usage(keyId: string, colonyId: string, tx: TransactionClient, nowMs: number): Promise<Omit<AllowanceUsage, 'reference'>> {
-    const [open, pending, today] = await Promise.all([
-      tx.marketOrder.count({ where: { colonyId, state: { in: OPEN_ORDER_STATES } } }),
+    const openRows = await tx.marketOrder.findMany({ where: { colonyId, state: { in: OPEN_ORDER_STATES } }, select: { orderId: true } });
+    const [pending, today] = await Promise.all([
       tx.tradeApiRequest.count({ where: { keyId, kind: 'place', state: { in: IN_FLIGHT } } }),
-      tx.tradeApiRequest.findMany({ where: { keyId, kind: 'place', createdAt: { gte: dayStart(nowMs) }, state: { in: [...IN_FLIGHT, 'ACCEPTED'] } } }),
+      // today's requests, plus exposure carried over: an order of an earlier UTC day that still rests counts in full until it ends
+      tx.tradeApiRequest.findMany({
+        where: { keyId, kind: 'place', state: { in: [...IN_FLIGHT, 'ACCEPTED'] }, OR: [{ createdAt: { gte: dayStart(nowMs) } }, { orderId: { in: openRows.map((o) => o.orderId) } }] },
+      }),
     ]);
+    const open = openRows.length;
     const orders = new Map((await tx.marketOrder.findMany({ where: { orderId: { in: today.flatMap((r) => (r.orderId ? [r.orderId] : [])) } }, select: { orderId: true, state: true, cumNotional: true } })).map((o) => [o.orderId, o]));
     let committed = 0n;
     for (const r of today) {

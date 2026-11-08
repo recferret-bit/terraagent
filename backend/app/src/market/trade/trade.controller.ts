@@ -131,7 +131,8 @@ export class TradeController {
 
   // --- public market data -------------------------------------------------------------------------------------
   @Get('book/:planetId/:pair')
-  book(@Param('planetId') planetId: string, @Param('pair') pair: string, @Query('levels') levels?: string): Promise<TradeBookResponse> {
+  book(@Req() req: IncomingMessage, @Param('planetId') planetId: string, @Param('pair') pair: string, @Query('levels') levels?: string): Promise<TradeBookResponse> {
+    this.auth.throttlePublic(req);
     return this.read.book(planetId, pairParam(pair), parseBody(TradeBookQuery, { levels }).levels);
   }
 
@@ -141,24 +142,28 @@ export class TradeController {
     @Req() req: IncomingMessage, @Param('planetId') planetId: string, @Param('pair') pair: string, @Query() query: Record<string, string>, @Query('as') as?: string,
   ): Promise<TradeBookOrdersResponse> {
     this.orders.gate();
+    this.auth.throttlePublic(req);
     const q = parseBody(TradeBookOrdersQuery, { side: query.side, limit: query.limit });
     const p = req.headers.authorization || as ? await this.auth.authenticate(req, as) : null;
     return this.read.bookOrders(planetId, pairParam(pair), q, p);
   }
 
   @Get('board/:planetId')
-  board(@Param('planetId') planetId: string): Promise<TradeBoardResponse> {
+  board(@Req() req: IncomingMessage, @Param('planetId') planetId: string): Promise<TradeBoardResponse> {
+    this.auth.throttlePublic(req);
     return this.read.board(planetId);
   }
 
   @Get('pairs')
-  pairs(): TradePairsResponse {
+  pairs(@Req() req: IncomingMessage): TradePairsResponse {
+    this.auth.throttlePublic(req);
     return this.read.pairs();
   }
 
   @Get('policy')
   async policy(@Req() req: IncomingMessage, @Query('as') as?: string): Promise<TradePolicyResponse> {
     this.orders.gate();
+    if (!req.headers.authorization) this.auth.throttlePublic(req);
     const p = req.headers.authorization ? await this.auth.authenticate(req, as) : null;
     return this.read.policyView(p);
   }

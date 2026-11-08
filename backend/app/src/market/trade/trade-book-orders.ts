@@ -1,10 +1,25 @@
-import { createHash } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import type { ActorKind, FillPolicy, TradeBookOrderView } from '@terra/contracts';
 import { limitPrice, reducePrice } from '@terra/sim/systems/trade/market-price';
 import type { MarketOrderRecord } from '../book/market-order.record.js';
 
 /** Stable per-planet pseudonym of a colony: lets a reader group orders of one maker without learning the colony id. */
-export const colonyRef = (planetId: string, colonyId: string): string => createHash('sha256').update(`book-order-colony:${planetId}:${colonyId}`).digest('hex').slice(0, 12);
+let fallbackSecret: string | null = null;
+/** `TA_COLONY_REF_SECRET`; unset: a random per-process secret (refs then change on restart; production logs it once). */
+function refSecret(): string {
+  const set = process.env.TA_COLONY_REF_SECRET;
+  if (set) return set;
+  if (!fallbackSecret) {
+    fallbackSecret = randomBytes(32).toString('hex');
+    if (process.env.NODE_ENV === 'production') new Logger('colonyRef').warn('TA_COLONY_REF_SECRET is not set: colonyRef pseudonyms use a random per-process secret and change on restart');
+  }
+  return fallbackSecret;
+}
+
+/** HMAC (keyed by a server secret) so a reader cannot reverse the pseudonym by hashing guessable colony ids. */
+export const colonyRef = (planetId: string, colonyId: string, secret: string = refSecret()): string =>
+  createHmac('sha256', secret).update(`book-order-colony:${planetId}:${colonyId}`).digest('hex').slice(0, 12);
 
 /** One resting order as the public list shows it: no account, player, reservation or fee-bucket data. */
 export function bookOrderView(o: MarketOrderRecord, myColonyId: string | null | undefined): TradeBookOrderView {

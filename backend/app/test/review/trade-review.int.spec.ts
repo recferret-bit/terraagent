@@ -12,7 +12,9 @@ import { bootHarness, type Harness } from '../market/market-harness.js';
 let h: Harness;
 let url: string;
 const PLANET = 'preview';
+const PLANET2 = 'preview2';
 const seqs = new Map<string, number>();
+let rejectCancels = false;
 
 function fakeSim(h2: Harness) {
   return async (planetId: string, cmd: SimCommandV1) => {
@@ -26,6 +28,7 @@ function fakeSim(h2: Harness) {
         data: { ref: marketOrderRef(colonyId, orderSeq), orderSeq, colonyId, colonyIndex: cmd.colonyIndex, ...a, stallFeeBp: 100, hubEntityId: 3 },
       } as unknown as PlanetEventOf<'marketOrderRequested'>);
     } else if (cmd.kind === 'market.cancelOrder') {
+      if (rejectCancels) return { ok: false, code: 'host_unavailable' } as never;
       h2.bus.emit('planet.event', {
         planetId, tick: 2, kind: 'marketCancelRequested', severity: 'info', colonyIds: [colonyId],
         data: { colonyId, colonyIndex: cmd.colonyIndex, orderId: (cmd.args as { orderId: string }).orderId },
@@ -54,6 +57,7 @@ async function bot(name: string, index: number, extra: Record<string, unknown> =
 beforeAll(async () => {
   h = await bootHarness();
   h.app.get(GamePlanets).markScenarioColonyPlanet(PLANET, [0, 1, 2, 3, 4, 5, 6, 7]);
+  h.app.get(GamePlanets).markScenarioColonyPlanet(PLANET2, [0, 1, 2, 3, 4, 5, 6, 7]);
   h.app.get(TradeSimPort).override = fakeSim(h);
   await h.app.listen(0, '127.0.0.1');
   url = (await h.app.getUrl()).replace('[::1]', '127.0.0.1');
@@ -117,10 +121,10 @@ describe('review: public reads must not grow server memory per probed planet', (
       await call('GET', `/trade/book/probe-${i}/bio.water%2FUSDC`);
       await call('GET', `/trade/book/probe-${i}/bio.water%2FUSDC/orders`);
     }
+    expect((await call('GET', `/trade/book/${PLANET}/%2525zz`)).status).toBe(400); // malformed escape: 400, not a URIError 500
     for (let i = 0; i < 300; i++) await call('GET', `/trade/board/probe-${i}`);
     expect((await books.loadedPairs()).length).toBe(before);
     expect(board.cache.size).toBeLessThanOrEqual(Math.max(beforeBoard, 256));
-    expect((await call('GET', `/trade/book/${PLANET}/%2525zz`)).status).toBe(400); // malformed escape: 400, not a URIError 500
   });
 });
 
@@ -170,5 +174,43 @@ describe('review: allowance cannot be raced', () => {
     const rb = await call<{ order: { orderId: string } }>('POST', '/trade/orders', { key: b.secret, idem, body: sell() });
     expect([ra.status, rb.status]).toEqual([201, 201]);
     expect(ra.body.order.orderId).not.toBe(rb.body.order.orderId);
+  });
+});
+
+describe('review round 2: cancel retry, carried-over budget, planet-scoped refs', () => {
+  it('a rejected cancel without an Idempotency-Key can be retried', async () => {
+    const b = await bot('retry', 1);
+    const placed = await call<{ order: { orderId: string } }>('POST', '/trade/orders', { key: b.secret, idem: randomUUID(), body: sell() });
+    rejectCancels = true;
+    expect((await call('DELETE', `/trade/orders/${placed.body.order.orderId}`, { key: b.secret })).status).toBe(422);
+    rejectCancels = false;
+    const again = await call<{ status: string }>('DELETE', `/trade/orders/${placed.body.order.orderId}`, { key: b.secret });
+    expect(again.status).toBe(200);
+    expect(again.body.status).toBe('cancelled');
+  });
+
+  it('a resting order of a previous UTC day still counts towards today\'s dailyBudget', async () => {
+    const b = await bot('carry', 2, { allowance: { dailyBudget: '8000000', maxOrderNotional: '6000000' } });
+    const first = await call('POST', '/trade/orders', { key: b.secret, idem: randomUUID(), body: sell({ price: { token: 'USDC', amount: '5000000' } }) });
+    expect(first.status).toBe(201);
+    await h.db.prisma.tradeApiRequest.updateMany({ where: { keyId: b.keyId }, data: { createdAt: new Date(Date.now() - 36 * 3600_000) } });
+    const second = await call<{ error?: { code: string } }>('POST', '/trade/orders', { key: b.secret, idem: randomUUID(), body: sell({ price: { token: 'USDC', amount: '5000000' } }) });
+    expect(second.status).toBe(422);
+    expect(second.body.error?.code).toBe('daily_budget_exceeded');
+  });
+
+  it('release by ref is scoped to the planet (same ref on two scenario planets)', async () => {
+    const a = await bot('twinplanet', 7);
+    const r2 = await call('POST', '/dev/trade/bots', { body: { name: 'twinplanet2', planetId: PLANET2, colonyIndex: 7, fund: { USDC: '1000', 'bio.water': '500' } } });
+    const b = r2.body as CreateTradeKeyResponse;
+    const o1 = (await call<{ order: { orderId: string } }>('POST', '/trade/orders', { key: a.secret, idem: randomUUID(), body: sell() })).body.order.orderId;
+    const r2o = await call<{ order: { orderId: string } }>('POST', '/trade/orders', { key: b.secret, idem: randomUUID(), body: sell() });
+    if (!r2o.body.order) throw new Error(JSON.stringify([r2.status, r2.body, r2o]));
+    const o2 = r2o.body.order.orderId;
+    const ref = (await h.order$(o2)).ref;
+    expect((await h.order$(o1)).ref).toBe(ref); // the collision is real
+    await h.release.release(ref, 'cancelled', 'col_7', PLANET2);
+    expect((await h.order$(o2)).state).toBe('CANCELLED');
+    expect((await h.order$(o1)).state).toBe('OPEN'); // the other planet's order is untouched
   });
 });

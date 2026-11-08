@@ -185,10 +185,10 @@ export class TradeOrdersService {
     this.gate();
     TradeAuth.require(p, 'trade');
     const key = this.idemOf(idemKey, false);
-    const order = await this.prisma.marketOrder.findFirst({ where: { OR: [{ orderId: idOrRef }, { ref: idOrRef }] } });
-    const colony = order ? await p.colonyFor(order.planetId) : null;
-    if (!order || !colony || colony.colonyId !== order.colonyId) throw new TradeError('order_not_found', 'No such order of yours.');
-    const row = await this.cancelRow(p, order, colony, key ?? `cancel:${order.orderId}`);
+    const found = await this.ownOrder(p, idOrRef);
+    if (!found) throw new TradeError('order_not_found', 'No such order of yours.');
+    const { order, colony } = found;
+    const row = await this.cancelRow(p, order, colony, key ?? null);
     if (row.fresh && !TERMINAL.has(order.state)) {
       const out = await this.submitSim(p, row.row, 'market.cancelOrder', { orderId: order.orderId });
       if (!out.ok) await this.requests.setState(row.row.requestId, 'REJECTED', { errorCode: out.code, errorDetail: out.detail ?? out.code });
@@ -196,10 +196,33 @@ export class TradeOrdersService {
     return this.renderCancel(row.row.requestId, order.orderId);
   }
 
-  private async cancelRow(p: TradePrincipal, order: NonNullable<Awaited<ReturnType<PrismaClient['marketOrder']['findFirst']>>>, colony: MarketColony, key: string): Promise<{ row: RequestRow; fresh: boolean }> {
+  /** The caller's order by id or ref: refs repeat across planets, so only a candidate on the caller's colony counts (a key: its own planet). */
+  private async ownOrder(p: TradePrincipal, idOrRef: string) {
+    const candidates = await this.prisma.marketOrder.findMany({ where: { OR: [{ orderId: idOrRef }, { ref: idOrRef }], ...(p.key ? { planetId: p.key.planetId } : {}) }, take: 20 });
+    for (const order of candidates) {
+      const colony = await p.colonyFor(order.planetId);
+      if (colony && colony.colonyId === order.colonyId) return { order, colony };
+    }
+    return null;
+  }
+
+  /**
+   * Without an Idempotency-Key the request id is derived from the order and the attempt: a REJECTED / FAILED earlier attempt does not
+   * pin its rejection forever, the next call is attempt n+1; a settled or in-flight one is replayed.
+   */
+  private async autoCancelKey(tx: Parameters<TradeRequestRepository['usage']>[2], ownerRef: string, orderId: string): Promise<string> {
+    for (let n = 0; ; n++) {
+      const key = n === 0 ? `cancel:${orderId}` : `cancel:${orderId}~${n}`;
+      const prior = await this.requests.findByIdem(ownerRef, key, tx);
+      if (!prior || !['REJECTED', 'FAILED', 'CANCELLED'].includes(prior.state)) return key;
+    }
+  }
+
+  private async cancelRow(p: TradePrincipal, order: NonNullable<Awaited<ReturnType<PrismaClient['marketOrder']['findFirst']>>>, colony: MarketColony, explicit: string | null): Promise<{ row: RequestRow; fresh: boolean }> {
     const hash = bodyHashOf({ cancel: order.orderId });
     return withTransaction(this.prisma, async (tx) => {
       await this.requests.lockOwner(tx, p.ownerRef);
+      const key = explicit ?? await this.autoCancelKey(tx, p.ownerRef, order.orderId);
       const prior = await this.requests.findByIdem(p.ownerRef, key, tx);
       if (prior) return this.replay(prior, hash);
       const row = await this.requests.insert(tx, {

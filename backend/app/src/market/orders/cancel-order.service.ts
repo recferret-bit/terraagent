@@ -39,8 +39,9 @@ export class OrderRelease {
   ) {}
 
   /** `idOrRef` is the server order id or the sim's `ref`. `ownerColonyId` is checked when given (player cancels). */
-  async release(idOrRef: string, reason: ReleaseReason, ownerColonyId?: string): Promise<ReleaseOutcome> {
-    const row = await this.prisma.marketOrder.findFirst({ where: { OR: [{ orderId: idOrRef }, { ref: idOrRef }] }, select: { orderId: true } });
+  async release(idOrRef: string, reason: ReleaseReason, ownerColonyId?: string, planetId?: string): Promise<ReleaseOutcome> {
+    // refs are only unique per planet (`market-order:col_0:1` exists on every scenario planet): scope by planet when the caller knows it
+    const row = await this.prisma.marketOrder.findFirst({ where: { OR: [{ orderId: idOrRef }, { ref: idOrRef }], ...(planetId ? { planetId } : {}) }, select: { orderId: true } });
     if (!row) return { kind: 'unknown' };
     const out = await withTransaction(this.prisma, async (tx): Promise<ReleaseOutcome> => {
       const [order] = await this.repo.lockForUpdate([row.orderId], tx);
@@ -96,7 +97,7 @@ export class CancelOrderHandler implements OnModuleInit, OnModuleDestroy {
   async handle(event: PlanetEventOf<'marketCancelRequested'>): Promise<ReleaseOutcome | null> {
     if (!databaseEnabled(this.env)) return null;
     const d = eventDef('marketCancelRequested').data.parse(event.data);
-    const out = await this.release.release(d.orderId, 'cancelled', d.colonyId);
+    const out = await this.release.release(d.orderId, 'cancelled', d.colonyId, event.planetId);
     if (out.kind === 'unknown' || out.kind === 'foreign') {
       // The sim held an order the server does not have (or not for this colony): drop the sim's mirror with a reject.
       const target: SimTarget = { planetId: event.planetId, colonyId: d.colonyId, colonyIndex: d.colonyIndex };

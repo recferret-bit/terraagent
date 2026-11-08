@@ -67,10 +67,12 @@ reservation rejection passes through as its own code (`insufficient_cargo`, `ord
 fills included), 202 `pending` (poll `GET /orders`) or 422 `rejected`.
 
 Allowance (`chain.trade_api_allowance`, one persisted row per key): `maxOpenOrders`, `maxOrderNotional`, `dailyBudget` (quote atomic, UTC day),
-`allowedPairs`, `priceBandBp` (against the organic VWAP when one exists), `killSwitch`. Outstanding and in-flight orders count before any fill.
+`allowedPairs`, `priceBandBp` (against the organic VWAP when one exists), `killSwitch`. Outstanding and in-flight orders count before any fill. `dailyBudget` is a spend cap on exposure: orders of an earlier UTC day that still rest (or are in flight) count in full towards today's budget until they end, so the midnight reset never frees budget that resting orders still hold.
+A cancel without an `Idempotency-Key` is retried as a new attempt after a REJECTED/FAILED one; a settled or in-flight one is replayed. Per owner: at most 20 active keys, 5 SSE streams per caller, and one shared rate bucket across the owner's keys.
+Public `/v1/trade/*` reads (and failed key lookups) share a bounded per-IP token bucket (`req.ip`, honouring `TA_TRUST_PROXY`; without it the socket address, so behind an untrusted proxy all callers share one bucket). `colonyRef` in the public order list is an HMAC keyed by `TA_COLONY_REF_SECRET` (random per process when unset in dev; in production an unset secret logs a warning and uses a random per-process one, so refs change on restart).
 
 Organic rule (`settlement/organic.ts`): a fill is organic when both sides are `player` or `bot`, in different colonies, with different owners.
-Same owner, fixture, subsidy, npc and guild are never organic; the price-board limits are unchanged.
+Same owner, fixture, subsidy, npc and guild are never organic; a missing owner counts as different outside production (dev scenario seats carry none) and as NOT organic in production (fail closed); the price-board limits are unchanged.
 
 Fill policy is a property of the account, not of the order (ECONOMY section 3, NEAR-60/61): custodial = `partial`, claimed (`near_colony_account.claimed_at`) =
 `all_or_nothing`. `fillPolicy` in `PlaceTradeOrderRequest` is optional; naming the other policy than the account's is `422 fill_policy_not_allowed`

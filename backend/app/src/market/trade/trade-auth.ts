@@ -24,6 +24,9 @@ export const DEFAULT_KEY_RATE = { perSecond: 10, burst: 20 } as const;
 export const SESSION_RATE = { perSecond: 20, burst: 40 } as const;
 /** All keys of one owner share this bucket on top of their own: minting many keys never multiplies the allowed request rate. */
 export const OWNER_KEYS_RATE = { perSecond: 100, burst: 200 } as const;
+/** Per client IP: public reads, and (separately) failed key lookups. The IP is `req.ip` (honours `TA_TRUST_PROXY`), else the socket address. */
+export const PUBLIC_IP_RATE = { perSecond: 30, burst: 90, maxKeys: 5000 } as const;
+export const FAILED_KEY_IP_RATE = { perSecond: 1, burst: 20, maxKeys: 5000 } as const;
 const ALL_SCOPES: readonly TradeScope[] = ['read', 'trade', 'manage'];
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
@@ -32,17 +35,28 @@ const BEARER_RE = /^Bearer\s+(\S+)$/i;
 export class TradeAuth {
   private readonly limiters = new Map<string, TokenBucketLimiter>();
   private ownerLimiter: TokenBucketLimiter | null = null;
+  private readonly publicIp = new TokenBucketLimiter({ ...PUBLIC_IP_RATE, now: () => this.now() });
+  private readonly failedIp = new TokenBucketLimiter({ ...FAILED_KEY_IP_RATE, now: () => this.now() });
   private readonly touched = new Map<string, number>();
   /** Test seam. */
   now: () => number = () => Date.now();
 
   constructor(private readonly keys: TradeKeyRepository, private readonly callers: MarketCallers) {}
 
+  static ipOf(req: IncomingMessage): string {
+    return (req as { ip?: string }).ip ?? req.socket?.remoteAddress ?? 'unknown';
+  }
+
+  /** Per-IP throttle of the PUBLIC reads (book, board, pairs, policy): `rate_limited` (429) when the caller's IP bucket is empty. */
+  throttlePublic(req: IncomingMessage): void {
+    if (!this.publicIp.take(TradeAuth.ipOf(req))) throw new TradeError('rate_limited', `More than ${PUBLIC_IP_RATE.perSecond} public requests per second from this address.`, { perSecond: PUBLIC_IP_RATE.perSecond });
+  }
+
   async authenticate(req: IncomingMessage, asName?: string): Promise<TradePrincipal> {
     const header = req.headers?.authorization;
     const raw = (Array.isArray(header) ? header[0] : header)?.trim();
     const token = raw ? BEARER_RE.exec(raw)?.[1] : undefined;
-    const principal = token && isKeyShaped(token) ? await this.byKey(token) : await this.bySession(req, asName);
+    const principal = token && isKeyShaped(token) ? await this.byKey(token, TradeAuth.ipOf(req)) : await this.bySession(req, asName);
     this.limit(principal);
     return principal;
   }
@@ -52,10 +66,14 @@ export class TradeAuth {
     if (!hasScope(p.scopes, scope)) throw new TradeError('forbidden_scope', `This key lacks the "${scope}" scope.`, { scope });
   }
 
-  private async byKey(secret: string): Promise<TradePrincipal> {
+  private async byKey(secret: string, ip: string): Promise<TradePrincipal> {
     const keyId = keyIdOfSecret(secret);
     const key = keyId ? await this.keys.find(keyId) : null;
-    if (!key || !secretMatches(secret, key.secretHash)) throw new TradeError('unauthorized', 'Unknown API key.');
+    if (!key || !secretMatches(secret, key.secretHash)) {
+      // failed lookups cost a DB read each: they draw on a tight per-IP bucket (guessing keys is both slow and loud)
+      if (!this.failedIp.take(ip)) throw new TradeError('rate_limited', 'Too many failed API key lookups from this address.');
+      throw new TradeError('unauthorized', 'Unknown API key.');
+    }
     if (key.revokedAt) throw new TradeError('key_revoked', 'This API key was revoked.');
     this.touch(key.keyId);
     const colony: MarketColony = { colonyId: key.colonyId, colonyIndex: key.colonyIndex, accountId: key.accountId };
