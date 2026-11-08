@@ -130,6 +130,8 @@ export interface UpdateWorldHealthInput {
   readonly planetId: string;
   readonly health: WorldHealthState;
   readonly faultCode?: string | null;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
   readonly actor?: string;
   readonly reason?: string;
   readonly expectedUpdatedAt?: Date | string | number;
@@ -141,9 +143,23 @@ export interface TransitionWorldLifecycleInput {
   readonly toLifecycle?: WorldLifecycleState | string;
   readonly lifecycle?: WorldLifecycleState | string;
   readonly to?: WorldLifecycleState | string;
+  readonly health?: WorldHealthState;
+  readonly admission?: WorldAdmissionState;
   readonly actor?: string;
   readonly reason?: string;
   readonly faultCode?: string | null;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
+  readonly expectedUpdatedAt?: Date | string | number;
+  readonly now?: Date;
+}
+
+export interface MarkWorldProvisionedInput {
+  readonly planetId: string;
+  readonly actor?: string;
+  readonly reason?: string;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
   readonly expectedUpdatedAt?: Date | string | number;
   readonly now?: Date;
 }
