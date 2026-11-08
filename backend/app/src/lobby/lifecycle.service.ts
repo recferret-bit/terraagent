@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { newId, type SectorId } from '@terra/contracts';
 import {
   assertValidHealthState,
@@ -57,7 +57,7 @@ export class WorldLifecycleService {
   private queuePaused = false;
   private queueUpdatedAt: Date = new Date(0);
 
-  constructor(private readonly persistence: LobbyPersistenceService) {}
+  constructor(@Inject(LobbyPersistenceService) private readonly persistence: LobbyPersistenceService) {}
 
   isQueuePaused(): boolean {
     return this.queuePaused;

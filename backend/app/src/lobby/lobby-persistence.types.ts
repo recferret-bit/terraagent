@@ -316,6 +316,7 @@ export interface LobbyPersistenceStore {
   enqueueTicket(input: EnqueueTicketInput): Promise<EnqueueTicketResult>;
   getTicketById(ticketId: string): Promise<MatchTicketRecord | null>;
   findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null>;
+  listTickets(filter?: { readonly planetId?: string; readonly state?: TicketStateV1 }): Promise<MatchTicketRecord[]>;
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord>;
   cancelTicket(ticketId: string, playerId: string, now?: Date): Promise<MatchTicketRecord>;
 
