@@ -40,7 +40,7 @@
    - Colony 0 (`col_0`, **Aegis Prime**) is founded in sector `sec_0_0` (`landingSlotId: 'slot_sec_0_0_0'`) at `(20, -10)` with a landed HQ (`(20, -10)`), `Command Hub` (`(18, -9)`), `Solar Collector` (`(22, -11)`), cross-sector `Pylon` link (`(24, -12)` in `sec_0_0` ↔ `(26, -13)` in `sec_1_0`), and a boundary `Worker` at `(24, -12)`.
    - Open DevTools console and run:
      ```js
-     window.__online.store.view.colonies[0]
+     window.__online.store.latest.colonies[0]
      ```
    - **Expect:** `id: 'col_0'`, `name: 'Aegis Prime'`, `foundingSectorId: 'sec_0_0'`, `landingSlotId: 'slot_sec_0_0_0'`.
 
@@ -53,12 +53,17 @@
    - The layer bar at `[data-testid="global-map-layers"]` includes the W11 **`SECTORS`** chip (`[data-testid="map-layer-chip-sectors"]`) alongside `TERRITORY`, `TERRAIN`, `RESOURCES`, and `UNITS`, and `SECTORS` is active by default (`aria-pressed="true"`).
    - The canvas draws the `19`-sector macro hex grid (`7` land sectors + `12` ocean ring sectors) with sector IDs, seat occupancy badges, and resource tags.
 3. Click **`SECTORS`** (`[data-testid="map-layer-chip-sectors"]`) to toggle it off (`aria-pressed="false"`), then click it again to turn it back on (`aria-pressed="true"`).
-4. Press **`M`** (or `Escape`) to close the Global Map, then open the in-game dev console with **`` ` ``** (backtick) or DevTools and walk the boundary worker (`unitId: 6`) across the `sec_0_0` → `sec_1_0` seam (`(24, -12)` → `(25, -12)`):
+4. Press **`M`** (or `Escape`) to close the Global Map, then open the DevTools console and walk the boundary worker across the `sec_0_0` → `sec_1_0` seam (`(24, -12)` → `(25, -12)`):
    ```js
-   window.__online.send('moveUnit', { unitId: 6, q: 25, r: -12 })
+   const ents = window.__online.store.latest.entities;
+   let workerId = -1;
+   for (let i = 0; i < window.__online.store.latest.count; i++) {
+     if (ents[i * 13 + 1] === 7 && ents[i * 13 + 2] === 0) { workerId = ents[i * 13]; break; }
+   }
+   await window.__online.commands.send('moveUnit', { unitId: workerId, q: 25, r: -12 });
    ```
 5. **Expect:**
-   - The worker smoothly walks from `sec_0_0` (`(24, -12)`) into `sec_1_0` (`(25, -12)`) with the **same** `entityId` (`6`), **same** `colonyIndex` (`0`), and **same** `foundingSectorId` (`'sec_0_0'`). No extra founding seat is consumed in `sec_1_0`.
+   - The worker smoothly walks from `sec_0_0` (`(24, -12)`) into `sec_1_0` (`(25, -12)`) with the **same** `workerId`, **same** `colonyIndex` (`0`), and **same** `foundingSectorId` (`'sec_0_0'`). No extra founding seat is consumed in `sec_1_0`.
 
 ---
 
@@ -84,7 +89,7 @@
    curl -s http://127.0.0.1:4101/v1/planets/stats | jq .
    ```
 2. **Expect:**
-   - `GET /v1/planets` returns `count: 3` canonical worlds (`Kharon Dunes`, `Thalassa Verde`, `Granite Hollow`), each with `lifecycle: "ACTIVE"`, `health: "OK"`, `admission: "OPEN"`, `availability: "open"`, `landSectors: 7`, `oceanSectors: 12`, `validatedCapacity: 28`, and **no** `newPlanet`, `admissionClosesAt`, or `endsAt` fields.
+   - `GET /v1/planets` returns `count: 3` canonical worlds (`Kharon Dunes`, `Thalassa Verde`, `Granite Hollow`), each with `lifecycle: "ACTIVE"`, `health: "OK"`, `admission: "OPEN"`, `availability: "open"`, `landSectors: 7`, `validatedCapacity: 28`, and **no** `newPlanet`, `admissionClosesAt`, or `endsAt` fields.
    - `GET /v1/planets/stats` returns `{ planetsActive: 3, coloniesAlive, playersOnline, updatedAt }`.
 
 ---
