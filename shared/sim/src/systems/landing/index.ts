@@ -47,6 +47,8 @@ export interface SpawnColonyLandingOpts {
   color?: number;
   unlockStage?: number;
   slotIndex?: number;
+  sectorId?: string;
+  landingSlotId?: string;
   q?: number;
   r?: number;
   tick?: number;
@@ -127,10 +129,11 @@ export function resolveMinLandingSeparation(data?: CompiledDataLike): number {
  */
 export function checkColonyLanding(
   state: SimState,
-  opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'q' | 'r' | 'data'>,
+  opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'sectorId' | 'landingSlotId' | 'q' | 'r' | 'data'>,
 ): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
   if (!Number.isInteger(opts.colonyId) || opts.colonyId < 0) return { ok: false, code: 'invalid_args' };
-  if (opts.colonyId >= MAX_COLONIES_PER_PLANET) return { ok: false, code: 'planet_full' };
+  const maxColonies = state.blobs.atlas ? 64 : MAX_COLONIES_PER_PLANET;
+  if (opts.colonyId >= maxColonies) return { ok: false, code: 'planet_full' };
   // Planets saved before the landing history existed still know their pods.
   if (getLandingPods(state).some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
   // The cargo is credited after the landing changed the world, so it is checked first: a refused cargo lands nothing.
@@ -138,6 +141,8 @@ export function checkColonyLanding(
   const explicit = Number.isInteger(opts.q) && Number.isInteger(opts.r);
   const next = nextLandingSite(state, opts.colonyId, {
     slotIndex: opts.slotIndex,
+    ...(opts.sectorId !== undefined ? { sectorId: opts.sectorId } : {}),
+    ...(opts.landingSlotId !== undefined ? { landingSlotId: opts.landingSlotId } : {}),
     ...(explicit ? { q: opts.q, r: opts.r } : {}),
     data: opts.data,
   });
@@ -277,6 +282,8 @@ interface SpawnColonyCommandArgs {
   color?: number;
   unlockStage?: number;
   slotIndex?: number;
+  sectorId?: string;
+  landingSlotId?: string;
   q?: number;
   r?: number;
 }
@@ -315,6 +322,8 @@ export const spawnColony = defineCommandHandler({
         color: args.color,
         unlockStage: args.unlockStage,
         slotIndex: args.slotIndex,
+        sectorId: args.sectorId,
+        landingSlotId: args.landingSlotId,
         q: args.q,
         r: args.r,
         tick: ctx.tick,

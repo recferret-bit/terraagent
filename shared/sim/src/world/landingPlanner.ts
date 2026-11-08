@@ -135,7 +135,15 @@ function searchSite(s: SimState, colony: number, data?: CompiledDataLike): Landi
 export function nextLandingSite(
   s: SimState,
   colony: number,
-  opts: { slotIndex?: number; q?: number; r?: number; data?: CompiledDataLike; beyondSlots?: boolean } = {},
+  opts: {
+    slotIndex?: number;
+    sectorId?: string;
+    landingSlotId?: string;
+    q?: number;
+    r?: number;
+    data?: CompiledDataLike;
+    beyondSlots?: boolean;
+  } = {},
 ): { ok: true; site: LandingSite } | { ok: false; code: LandingBlock } {
   if (getLandingHistory(s).some((h) => h.colony === colony)) return { ok: false, code: 'already_landed' };
   const slots = getSpawnSlots(s);
@@ -145,6 +153,27 @@ export function nextLandingSite(
     if (why) return { ok: false, code: why };
     const slot = slots.find((sl) => sl.q === q && sl.r === r);
     return { ok: true, site: { q, r, source: 'explicit', ...(slot ? { slot } : {}) } };
+  }
+  if (opts.landingSlotId !== undefined) {
+    const slot = slots.find((sl) => sl.landingSlotId === opts.landingSlotId || sl.slotId === opts.landingSlotId);
+    if (!slot) return { ok: false, code: 'invalid_args' };
+    const why = landingBlock(s, colony, slot.q, slot.r, opts.data);
+    return why ? { ok: false, code: why } : { ok: true, site: { q: slot.q, r: slot.r, source: 'slot', slot } };
+  }
+  if (opts.sectorId !== undefined) {
+    const secSlots = slots.filter((sl) => sl.sectorId === opts.sectorId);
+    if (secSlots.length === 0) return { ok: false, code: 'landing_site_taken' };
+    const secPref =
+      opts.slotIndex !== undefined
+        ? secSlots.find((sl) => sl.sectorSlotIndex === opts.slotIndex || sl.index === opts.slotIndex)
+        : undefined;
+    const secOrder = secPref ? [secPref, ...secSlots.filter((sl) => sl !== secPref)] : secSlots;
+    for (const slot of secOrder) {
+      if (!landingBlock(s, colony, slot.q, slot.r, opts.data)) {
+        return { ok: true, site: { q: slot.q, r: slot.r, source: 'slot', slot } };
+      }
+    }
+    return { ok: false, code: 'landing_site_taken' };
   }
   const preferred = slots[opts.slotIndex ?? colony];
   const order = preferred ? [preferred, ...slots.filter((sl) => sl !== preferred)] : slots;

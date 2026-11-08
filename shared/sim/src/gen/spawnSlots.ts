@@ -13,6 +13,10 @@ export interface SpawnSlot {
   index: number;
   q: number;
   r: number;
+  sectorId?: string;
+  slotId?: string;
+  landingSlotId?: string;
+  sectorSlotIndex?: number;
   claimedBy?: number;
 }
 
