@@ -68,11 +68,14 @@ export class MemoryReservationOps {
   }
 
   private findExistingReservationForInput(input: ReserveSectorSlotInput): ReserveSectorSlotOutcome | null {
-    for (const r of this.reservationsById.values()) {
-      const isActive = r.state === 'HELD' || r.state === 'COMMITTED';
+    for (const r of [...this.reservationsById.values()]) {
+      const isActive = r.state === 'HELD' || r.state === 'COMMITTED' || (r.state as string) === 'SPAWNING';
       if (r.ticketId === input.ticketId || r.colonyId === input.colonyId) {
+        if (!isActive) {
+          this.reservationsById.delete(r.reservationId);
+          continue;
+        }
         if (
-          isActive &&
           r.ticketId === input.ticketId &&
           r.colonyId === input.colonyId &&
           r.playerId === input.playerId &&
@@ -170,6 +173,7 @@ export class MemoryReservationOps {
     this.sectors.set(`${input.planetId}:${sector.sectorId}`, updatedSector);
 
     const reservation: SectorReservationRecord = {
+      id: reservationId,
       reservationId,
       ticketId: input.ticketId,
       colonyId: input.colonyId,
@@ -219,7 +223,7 @@ export class MemoryReservationOps {
         );
       }
       if (current.state === 'COMMITTED') return current;
-      if (current.state !== 'HELD') {
+      if (current.state !== 'HELD' && (current.state as string) !== 'SPAWNING') {
         throw new LobbyPersistenceConflictError(
           'reservation_fenced',
           `cannot commit reservation "${reservationId}" in state ${current.state}`,
@@ -326,6 +330,20 @@ export class MemoryReservationOps {
           updatedAt: now,
         });
       }
+      const ticket = this.ticketsById.get(current.ticketId);
+      if (ticket && (ticket.state === 'RESERVED' || ticket.state === 'SPAWNING')) {
+        this.ticketsById.set(ticket.id, {
+          ...ticket,
+          state: 'QUEUED',
+          reservedPlanetId: null,
+          reservedSectorId: null,
+          reservedLandingSlotId: null,
+          reservationEpoch: null,
+          reservationExpiresAt: null,
+          attempts: reason === 'EXPIRED' ? ticket.attempts + 1 : ticket.attempts,
+          updatedAt: now.toISOString(),
+        });
+      }
       return { released: true, reservation: nextRes };
     });
   }
@@ -333,7 +351,8 @@ export class MemoryReservationOps {
   async expireReservations(now: Date = new Date()): Promise<SectorReservationRecord[]> {
     const expired: SectorReservationRecord[] = [];
     for (const r of [...this.reservationsById.values()]) {
-      if (r.state === 'HELD' && new Date(r.expiresAt).getTime() <= now.getTime()) {
+      const isHold = r.state === 'HELD' || (r.state as string) === 'SPAWNING';
+      if (isHold && new Date(r.expiresAt).getTime() <= now.getTime()) {
         const out = await this.releaseReservation(r.reservationId, 'EXPIRED');
         if (out.released) expired.push(out.reservation);
       }

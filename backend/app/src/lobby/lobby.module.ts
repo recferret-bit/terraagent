@@ -4,6 +4,7 @@ import { LobbyPersistenceService } from './lobby-persistence.service';
 import { PlanetsController } from './planets.controller';
 import { PlanetsService } from './planets.service';
 import { CanonicalWorldProvisioningService } from './provisioning.service';
+import { SectorReservationService } from './reservation.service';
 import { MatchTicketsController } from './tickets.controller';
 import { MatchTicketsService } from './tickets.service';
 
@@ -21,6 +22,7 @@ import { MatchTicketsService } from './tickets.service';
     WorldLifecycleService,
     CanonicalWorldProvisioningService,
     PlanetsService,
+    SectorReservationService,
     MatchTicketsService,
   ],
   exports: [
@@ -28,6 +30,7 @@ import { MatchTicketsService } from './tickets.service';
     WorldLifecycleService,
     CanonicalWorldProvisioningService,
     PlanetsService,
+    SectorReservationService,
     MatchTicketsService,
   ],
 })

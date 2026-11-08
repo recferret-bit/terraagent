@@ -134,6 +134,7 @@ export interface SectorLandingSlotRecord {
 }
 
 export interface SectorReservationRecord extends SectorReservationV1 {
+  readonly id?: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
