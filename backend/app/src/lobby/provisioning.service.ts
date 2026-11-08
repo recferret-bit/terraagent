@@ -195,7 +195,11 @@ export class CanonicalWorldProvisioningService {
   }
 
   private async resolveManifestForType(type: PlanetType, options: ProvisionCanonicalWorldOptions): Promise<AtlasManifestV1> {
-    if (!options.manifest) {
+    if (
+      !options.manifest &&
+      options.foundingSeatsPerSector === undefined &&
+      options.sectorRadius === undefined
+    ) {
       const existingPinned = await this.persistence.getAtlasVersion(CANONICAL_PLANETS[type].id, options.atlasVersion ?? 1);
       if (existingPinned) return existingPinned.manifest;
     }
