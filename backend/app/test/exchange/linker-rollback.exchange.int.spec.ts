@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { eventDef } from '@terra/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditPlanet, expectLedgerDelta } from './exchange-audit.js';
 import { Exchange, ord, type Actor, type World } from './exchange-harness.js';
@@ -28,8 +27,7 @@ describe('request linker: the sim echoes commandId (or not)', () => {
     expect((await ex.ordersOf(w.planetId))[0]).toMatchObject({ actorKind: 'bot' });
   });
 
-  // the contract schema gains `commandId` with the sim change (agent F); until it is merged the strict event schema refuses the field
-  it.skipIf(!('commandId' in (eventDef('marketOrderRequested').data as unknown as { shape: Record<string, unknown> }).shape))('with the field the order links by commandId (same result end to end)', async () => {
+  it('with the field the order links by commandId (same result end to end)', async () => {
     const { r, w } = await place(true);
     const row = await ex.prisma.tradeApiRequest.findUniqueOrThrow({ where: { requestId: r.body.requestId } });
     expect(row).toMatchObject({ state: 'ACCEPTED', commandId: r.body.requestId, orderId: expect.any(String) });
