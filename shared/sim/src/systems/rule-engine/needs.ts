@@ -251,7 +251,7 @@ export function scoreExpandNeed(
   const hubAnchor = findColonyAnchors(state, colonyIndex)[0]!;
   const hx = hexIndex(state.grid.radius);
   const layers = state.grid.layers;
-  const ownerLayer = layers.owner as Int8Array, terrainLayer = layers.terrain as Uint8Array;
+  const ownerLayer = layers.owner as Int16Array, terrainLayer = layers.terrain as Uint8Array;
   const prepLayer = layers.prep as Uint8Array, depositLayer = layers.deposit as Uint8Array;
 
   let ownedTiles = 0, freeBuildable = 0, ownedDeposits = 0, freeOwnedDeposits = 0, unclaimedNear = 0;

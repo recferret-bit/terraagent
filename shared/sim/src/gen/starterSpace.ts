@@ -77,7 +77,7 @@ export function clearPodBlastZone(state: SimState, q: number, r: number, colonyI
   const L = state.grid.layers;
   const terrain = L.terrain as Uint8Array;
   const prep = L.prep as Uint8Array;
-  const owner = L.owner as Int8Array;
+  const owner = L.owner as Int16Array;
   const height = L.height as Float32Array;
   const deposit = L.deposit as Uint8Array | undefined;
   const blast = collectPodBlastTiles(hex, q, r).filter(

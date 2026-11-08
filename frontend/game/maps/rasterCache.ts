@@ -155,7 +155,7 @@ export interface PlanetRasterEntry {
   readonly ctx: CanvasRenderingContext2D;
   readonly terrain: Uint8Array;
   readonly prep: Uint8Array;
-  readonly owner: Int8Array;
+  readonly owner: Int16Array;
   readonly explored: Uint8Array;
   readonly deposit: Uint8Array;
   initialized: boolean;
@@ -205,7 +205,7 @@ export class PlanetRasterCache {
       ctx,
       terrain: new Uint8Array(count),
       prep: new Uint8Array(count),
-      owner: new Int8Array(count),
+      owner: new Int16Array(count),
       explored: new Uint8Array(count),
       deposit: new Uint8Array(count),
       initialized: false,

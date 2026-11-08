@@ -76,6 +76,8 @@ function fillMissing(cols: Record<string, TypedArray>, defs: readonly FieldDef[]
       cols[d.name] = a;
     } else if (cur.length !== length) {
       throw new Error(`snapshot ${where} column ${d.name} has length ${cur.length}, expected ${length}`);
+    } else if (d.dtype === 'i16' && !(cur instanceof Int16Array)) {
+      cols[d.name] = Int16Array.from(cur);
     }
   }
 }

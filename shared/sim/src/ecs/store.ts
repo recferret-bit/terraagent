@@ -2,7 +2,7 @@ import { allocate, type TypedArray } from '../kernel/types';
 import { entityColumns } from './columns';
 
 export interface BaseColumns {
-  id: Uint32Array; kind: Uint8Array; owner: Int8Array; tier: Uint8Array; q: Int16Array; r: Int16Array;
+  id: Uint32Array; kind: Uint8Array; owner: Int16Array; tier: Uint8Array; q: Int16Array; r: Int16Array;
   x: Float32Array; y: Float32Array; rot: Float32Array; hp: Float32Array; hpMax: Float32Array; state: Uint8Array;
   progress: Float32Array; createdAt: Uint32Array; changedAt: Uint32Array;
 }

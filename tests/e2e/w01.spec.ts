@@ -63,7 +63,7 @@ interface OnlineWindow {
         count: number;
         terrain: Uint8Array;
         prep: Uint8Array;
-        owner: Int8Array;
+        owner: Int16Array;
       } | null;
     };
   };

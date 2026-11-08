@@ -48,7 +48,7 @@ export interface ClientTiles {
   terrain: Uint8Array;
   prep: Uint8Array;
   height: Float32Array;
-  owner: Int8Array;
+  owner: Int16Array | Int8Array;
   deposit?: Uint8Array;
   /** Tier of the visible deposit: 0 = legacy (tier 1), 1..3 explicit (sim `depositTier` layer). */
   depositTier?: Uint8Array;
@@ -104,7 +104,7 @@ export function packEntities(entities: SimView['entities']): Float32Array {
   return out;
 }
 
-const copy = <T extends Uint8Array | Int8Array | Float32Array>(a: T): T => a.slice() as T;
+const copy = <T extends Uint8Array | Int8Array | Int16Array | Float32Array>(a: T): T => a.slice() as T;
 
 /** Packs a view; `withTiles` copies the tile layers (welcome / changed tiles), otherwise they are omitted. */
 export function packView(v: SimView, withTiles: boolean): { view: WireView; transfer: ArrayBuffer[] } {
@@ -131,7 +131,7 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
   };
   if (withTiles) {
     const t = v.tiles;
-    const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = copy(t.owner);
+    const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = Int16Array.from(t.owner);
     const deposit = t.deposit ? copy(t.deposit) : undefined;
     const depositTier = t.depositTier ? copy(t.depositTier) : undefined;
     const richness = t.richness ? copy(t.richness) : undefined;
@@ -170,7 +170,10 @@ export function unpackView(w: WireView, serverTimeMs?: number): ClientView {
       terrain: new Uint8Array(w.tiles.terrain),
       prep: new Uint8Array(w.tiles.prep),
       height: new Float32Array(w.tiles.height),
-      owner: new Int8Array(w.tiles.owner),
+      owner:
+        w.tiles.owner.byteLength === w.tiles.count * 2
+          ? new Int16Array(w.tiles.owner)
+          : Int16Array.from(new Int8Array(w.tiles.owner)),
       ...(w.tiles.deposit ? { deposit: new Uint8Array(w.tiles.deposit) } : {}),
       ...(w.tiles.depositTier ? { depositTier: new Uint8Array(w.tiles.depositTier) } : {}),
       ...(w.tiles.richness ? { richness: new Float32Array(w.tiles.richness) } : {}),
