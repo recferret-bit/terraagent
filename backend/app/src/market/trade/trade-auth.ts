@@ -49,7 +49,8 @@ export class TradeAuth {
 
   /** Per-IP throttle of the PUBLIC reads (book, board, pairs, policy): `rate_limited` (429) when the caller's IP bucket is empty. */
   throttlePublic(req: IncomingMessage): void {
-    if (!this.publicIp.take(TradeAuth.ipOf(req))) throw new TradeError('rate_limited', `More than ${PUBLIC_IP_RATE.perSecond} public requests per second from this address.`, { perSecond: PUBLIC_IP_RATE.perSecond });
+    const ip = TradeAuth.ipOf(req);
+    if (!this.publicIp.take(ip)) throw TradeError.rateLimited(`More than ${PUBLIC_IP_RATE.perSecond} public requests per second from this address.`, { perSecond: PUBLIC_IP_RATE.perSecond }, this.publicIp.retryAfterMs(ip));
   }
 
   async authenticate(req: IncomingMessage, asName?: string): Promise<TradePrincipal> {
@@ -71,7 +72,7 @@ export class TradeAuth {
     const key = keyId ? await this.keys.find(keyId) : null;
     if (!key || !secretMatches(secret, key.secretHash)) {
       // failed lookups cost a DB read each: they draw on a tight per-IP bucket (guessing keys is both slow and loud)
-      if (!this.failedIp.take(ip)) throw new TradeError('rate_limited', 'Too many failed API key lookups from this address.');
+      if (!this.failedIp.take(ip)) throw TradeError.rateLimited('Too many failed API key lookups from this address.', {}, this.failedIp.retryAfterMs(ip));
       throw new TradeError('unauthorized', 'Unknown API key.');
     }
     if (key.revokedAt) throw new TradeError('key_revoked', 'This API key was revoked.');
@@ -92,8 +93,9 @@ export class TradeAuth {
     let limiter = this.limiters.get(id);
     if (!limiter) this.limiters.set(id, (limiter = new TokenBucketLimiter({ ...rate, now: () => this.now() })));
     this.ownerLimiter ??= new TokenBucketLimiter({ ...OWNER_KEYS_RATE, now: () => this.now() });
-    if (p.key && !this.ownerLimiter.take(`owner:${p.ownerId}`)) throw new TradeError('rate_limited', `More than ${OWNER_KEYS_RATE.perSecond} requests per second across the keys of one owner.`, { ...OWNER_KEYS_RATE });
-    if (!limiter.take(p.ownerRef)) throw new TradeError('rate_limited', `More than ${rate.perSecond} requests per second.`, { perSecond: rate.perSecond, burst: rate.burst });
+    const owner = `owner:${p.ownerId}`;
+    if (p.key && !this.ownerLimiter.take(owner)) throw TradeError.rateLimited(`More than ${OWNER_KEYS_RATE.perSecond} requests per second across the keys of one owner.`, { ...OWNER_KEYS_RATE }, this.ownerLimiter.retryAfterMs(owner));
+    if (!limiter.take(p.ownerRef)) throw TradeError.rateLimited(`More than ${rate.perSecond} requests per second.`, { perSecond: rate.perSecond, burst: rate.burst }, limiter.retryAfterMs(p.ownerRef));
   }
 
   /** `lastUsedAt` is written at most once a minute per key. */

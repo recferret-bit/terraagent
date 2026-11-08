@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   pairId, type CancelTradeOrderResponse, type PlaceTradeOrderRequest, type PlaceTradeOrderResponse, type SimCommandV1, type TradeAllowance,
 } from '@terra/contracts';
@@ -6,6 +6,8 @@ import { withTransaction, type PrismaClient } from '@terra/db';
 import { CommandPrechecks } from '../../core/command-prechecks.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { PRISMA } from '../../db/db.module.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
+import { InflightGate } from './inflight-gate.js';
 import type { MarketColony } from '../orders/market-colonies.js';
 import { PriceBoardService } from '../board/price-board.service.js';
 import { checkAllowance, type ReferencePrice } from './allowance.js';
@@ -21,6 +23,8 @@ const IDEM_RE = /^[A-Za-z0-9._:~-]{1,80}$/;
 const TERMINAL = new Set(['MATCHED', 'FILLED', 'CANCELLED', 'EXPIRED', 'REJECTED']);
 const OUTCOME_WAIT_MS = 4000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** Poll delays back off (15 ms growing by half up to 250 ms): a waiting request costs one short query per tick, never a held connection. */
+const pollDelay = (attempt: number): number => Math.min(250, Math.round(15 * 1.5 ** attempt));
 
 /** Accepts the sim's reject codes and the host's `thread_down` as one stable code. */
 const simCode = (code: string): string => (code === 'thread_down' ? 'host_unavailable' : code);
@@ -40,7 +44,14 @@ export class TradeOrdersService {
     private readonly sim: TradeSimPort,
     private readonly board: PriceBoardService,
     @Inject(FlagsService) private readonly flags: FlagsService,
-  ) {}
+    @Inject(APP_ENV) env: AppEnv,
+  ) {
+    this.gateway = InflightGate.fromEnv(env);
+  }
+
+  private readonly log = new Logger(TradeOrdersService.name);
+  /** Caps concurrent placements / cancels below the DB pool (`TA_DB_POOL_SIZE`, `TA_TRADE_MAX_INFLIGHT`, `TA_TRADE_QUEUE_WAIT_MS`). */
+  readonly gateway: InflightGate;
 
   /** Test seam. */
   now: () => number = () => Date.now();
@@ -68,6 +79,10 @@ export class TradeOrdersService {
     this.gate();
     TradeAuth.require(p, 'trade');
     const key = this.idemOf(idemKey, true)!;
+    return this.gateway.run(() => this.placeAdmitted(p, body, key));
+  }
+
+  private async placeAdmitted(p: TradePrincipal, body: PlaceTradeOrderRequest, key: string): Promise<HttpResult<PlaceTradeOrderResponse>> {
     const planetId = this.planetOf(p, body.planetId);
     const colony = await this.colonyOrThrow(p, planetId);
     await this.checkFillPolicy(colony, body.fillPolicy);
@@ -83,7 +98,7 @@ export class TradeOrdersService {
         colonyIndex: colony.colonyIndex, ownerId: p.ownerId, pair, side: body.side, resource: body.resource, amount: BigInt(body.amount), priceAmount: BigInt(body.price.amount),
       };
       const rejection = p.key ? await this.allowanceRejection(p, colony, { pair, amount: BigInt(body.amount), notional: BigInt(body.price.amount) }, reference, tx) : null;
-      if (rejection) return { row: await this.requests.insert(tx, { ...base, state: 'REJECTED', errorCode: rejection.code, errorDetail: rejection.message }), fresh: false };
+      if (rejection) return { row: await this.requests.insert(tx, { ...base, state: 'REJECTED', errorCode: rejection.code, errorDetail: rejection.message, errorDetails: rejection.details }), fresh: false };
       return { row: await this.requests.insert(tx, { ...base, notional: BigInt(body.price.amount) }), fresh: true };
     });
     const settled = row.fresh ? await this.submitPlace(p, row.row, colony, body) : await this.settle(row.row);
@@ -148,7 +163,8 @@ export class TradeOrdersService {
       const out = await this.sim.submit(row.planetId, cmd);
       return out.ok ? { ok: true } : { ok: false, code: simCode(out.code), ...('detail' in out && out.detail ? { detail: String(out.detail) } : {}) };
     } catch (err) {
-      return { ok: false, code: 'host_unavailable', detail: err instanceof Error ? err.message : String(err) };
+      this.log.warn(`sim submit failed: ${err instanceof Error ? err.message : String(err)}`);
+      return { ok: false, code: 'host_unavailable', detail: 'The planet host did not accept the command.' };
     }
   }
 
@@ -160,10 +176,10 @@ export class TradeOrdersService {
   /** Polls the request row until `PlaceOrderService` settled it (ACCEPTED / REJECTED / FAILED) or the wait is over. */
   private async awaitOutcome(requestId: string, waitMs = OUTCOME_WAIT_MS): Promise<RequestRow> {
     const until = Date.now() + waitMs;
-    for (;;) {
+    for (let attempt = 0; ; attempt++) {
       const row = (await this.requests.get(requestId))!;
       if (!['SUBMITTED', 'LINKED'].includes(row.state) || Date.now() >= until) return row;
-      await sleep(40);
+      await sleep(pollDelay(attempt));
     }
   }
 
@@ -178,13 +194,18 @@ export class TradeOrdersService {
     if (row.state === 'ACCEPTED') return { status: 201, body: { requestId: row.requestId, status: 'accepted', ...view } };
     if (row.state === 'PENDING' || row.state === 'SUBMITTED' || row.state === 'LINKED') return { status: 202, body: { requestId: row.requestId, status: 'pending' } };
     const code = row.errorCode ?? 'internal';
-    return { status: 422, body: { requestId: row.requestId, status: 'rejected', ...view, error: { code, message: row.errorDetail ?? code } } };
+    const details = row.errorDetails && typeof row.errorDetails === 'object' && !Array.isArray(row.errorDetails) ? { details: row.errorDetails as Record<string, unknown> } : {};
+    return { status: 422, body: { requestId: row.requestId, status: 'rejected', ...view, error: { code, message: row.errorDetail ?? code, ...details } } };
   }
 
   async cancel(p: TradePrincipal, idOrRef: string, idemKey: string | undefined): Promise<HttpResult<CancelTradeOrderResponse>> {
     this.gate();
     TradeAuth.require(p, 'trade');
     const key = this.idemOf(idemKey, false);
+    return this.gateway.run(() => this.cancelAdmitted(p, idOrRef, key));
+  }
+
+  private async cancelAdmitted(p: TradePrincipal, idOrRef: string, key: string | undefined): Promise<HttpResult<CancelTradeOrderResponse>> {
     const found = await this.ownOrder(p, idOrRef);
     if (!found) throw new TradeError('order_not_found', 'No such order of yours.');
     const { order, colony } = found;
@@ -237,8 +258,8 @@ export class TradeOrdersService {
     const until = Date.now() + 3000;
     let order = await this.prisma.marketOrder.findUnique({ where: { orderId } });
     const req = async () => (await this.requests.get(requestId))!;
-    while (order && !TERMINAL.has(order.state) && (await req()).state !== 'REJECTED' && Date.now() < until) {
-      await sleep(40);
+    for (let attempt = 0; order && !TERMINAL.has(order.state) && (await req()).state !== 'REJECTED' && Date.now() < until; attempt++) {
+      await sleep(pollDelay(attempt));
       order = await this.prisma.marketOrder.findUnique({ where: { orderId } });
     }
     const view = order ? { order: tradeOrderView(order) } : {};

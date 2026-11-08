@@ -14,6 +14,8 @@ import { tradeFillView, tradeOrderView } from './trade-views.js';
 export const STREAM_HEARTBEAT_MS = 15_000;
 /** Open SSE connections one caller (key or session) may hold: each registers bus handlers and a timer. */
 export const MAX_STREAMS_PER_CALLER = 5;
+/** A stream slot frees when one of the caller's streams closes: no schedule, so a modest fixed hint. */
+const STREAM_RETRY_AFTER_MS = 5000;
 
 /**
  * Server-sent events of `GET /v1/trade/stream`: the caller's own order state changes and fills, plus the book updates of the
@@ -37,7 +39,7 @@ export class TradeStreamService {
     const planetId = this.orders.planetOf(p, planetIdIn);
     const colony = await this.orders.colonyOrThrow(p, planetId);
     const mine = this.open_.get(p.ownerRef) ?? new Set();
-    if (mine.size >= MAX_STREAMS_PER_CALLER) throw new TradeError('too_many_streams', `At most ${MAX_STREAMS_PER_CALLER} open streams per caller.`, { max: MAX_STREAMS_PER_CALLER });
+    if (mine.size >= MAX_STREAMS_PER_CALLER) throw new TradeError('too_many_streams', `At most ${MAX_STREAMS_PER_CALLER} open streams per caller.`, { max: MAX_STREAMS_PER_CALLER, retryAfterMs: STREAM_RETRY_AFTER_MS });
     const entry = { res, keyId: p.key?.keyId ?? null };
     mine.add(entry);
     this.open_.set(p.ownerRef, mine);

@@ -42,6 +42,14 @@ export class TokenBucketLimiter {
     return true;
   }
 
+  /** Milliseconds until `key` has a whole token again (0 when it already has one): the basis of `Retry-After`. */
+  retryAfterMs(key: string): number {
+    const b = this.buckets.get(key);
+    if (!b) return 0;
+    const tokens = Math.min(this.burst, b.tokens + Math.max(0, this.now() - b.at) * this.perMs);
+    return tokens >= 1 ? 0 : Math.ceil((1 - tokens) / this.perMs);
+  }
+
   /** Forgets keys idle for a minute whose bucket is full again anyway. */
   private sweep(now: number): void {
     if (now - this.lastSweep < IDLE_FORGET_MS) return;

@@ -60,11 +60,13 @@ curl -s -XPATCH "$API/trade/keys/<keyId>/allowance?as=alice" -H 'content-type: a
 curl -s -XDELETE "$API/trade/keys/<keyId>?as=alice"
 ```
 
-Errors are `{ "error": { "code", "message", "details?" } }` with a stable `code`: `unauthorized`, `forbidden_scope`, `key_revoked`, `rate_limited`,
+Errors are `{ "error": { "code", "message", "details?" } }` with a stable `code`: `unauthorized`, `forbidden_scope`, `key_revoked`, `rate_limited`, `server_busy`,
 `idempotency_key_required`, `idempotency_key_reuse`, `wrong_planet`, `no_colony`, `order_not_found`, `order_not_open`, `invalid_request`, and the
 allowance rails `kill_switch`, `pair_not_allowed`, `max_order_notional`, `max_open_orders`, `daily_budget_exceeded`, `price_out_of_band`, and `fill_policy_not_allowed`. A sim or
 reservation rejection passes through as its own code (`insufficient_cargo`, `order_limit`, ...). Placement answers 201 `accepted` (the order exists,
 fills included), 202 `pending` (poll `GET /orders`) or 422 `rejected`.
+
+Hardening: every path and query id of `/v1/trade/*` and `/v1/market/*` is validated by `trade-input.guard.ts` (letters, digits and `. _ : ~ @ -`, at most 128 characters; pairs `base/quote`), else 400 `invalid_request`; unexpected errors answer 500 `internal` with a generic message and a `requestId` (the real text is only logged). Every 429 and 503 carries `Retry-After` (whole seconds) and `details.retryAfterMs`. Placements and cancels pass `InflightGate` (`inflight-gate.ts`): at most `TA_TRADE_MAX_INFLIGHT` run at once (default `floor(TA_DB_POOL_SIZE / 2) - 1`; the pool defaults to 20), others queue up to `TA_TRADE_QUEUE_WAIT_MS` (default 8000) and then get 503 `server_busy`; no request holds a database connection while it waits for its outcome (backoff poll). Stored rejections replay `error.details` as the first answer had them (`chain.trade_api_request.error_details`). A session without a colony on a planet gets 409 `no_colony`; only explicit dev identities (`?as=<name>`, `dev:<name>`) fall back to the scenario's seat 0, never in production. `GET /trade/stall` shows an accepted PUT immediately (the stored value follows via `marketHubFeeSet`).
 
 Allowance (`chain.trade_api_allowance`, one persisted row per key): `maxOpenOrders`, `maxOrderNotional`, `dailyBudget` (quote atomic, UTC day),
 `allowedPairs`, `priceBandBp` (against the organic VWAP when one exists), `killSwitch`. Outstanding and in-flight orders count before any fill. `dailyBudget` is a spend cap on exposure: orders of an earlier UTC day that still rest (or are in flight) count in full towards today's budget until they end, so the midnight reset never frees budget that resting orders still hold.

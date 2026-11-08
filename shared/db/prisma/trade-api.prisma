@@ -65,6 +65,8 @@ model TradeApiRequest {
   targetOrderId String?  @map("target_order_id") @db.VarChar(64)
   errorCode     String?  @map("error_code") @db.VarChar(48)
   errorDetail   String?  @map("error_detail") @db.VarChar(400)
+  /// Structured `error.details` of the rejection (allowance numbers, ...), replayed with the first answer.
+  errorDetails  Json?    @map("error_details")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 

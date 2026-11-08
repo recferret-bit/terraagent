@@ -29,6 +29,8 @@ export interface NewRequest {
   readonly state?: RequestState;
   readonly errorCode?: string;
   readonly errorDetail?: string;
+  /** Structured `error.details` stored with the rejection and replayed with it. */
+  readonly errorDetails?: Record<string, unknown>;
 }
 
 export const newRequestId = (): string => `rq_${randomBytes(12).toString('hex')}`;
@@ -64,6 +66,7 @@ export class TradeRequestRepository {
         resource: r.resource ?? null, amount: r.amount?.toString() ?? null, priceAmount: r.priceAmount?.toString() ?? null,
         notional: (r.notional ?? 0n).toString(), targetOrderId: r.targetOrderId ?? null, state: r.state ?? 'PENDING',
         errorCode: r.errorCode ?? null, errorDetail: r.errorDetail?.slice(0, 400) ?? null,
+        ...(r.errorDetails ? { errorDetails: r.errorDetails as never } : {}),
       },
     });
   }

@@ -204,6 +204,8 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `GAME_DEV_PLANETS` | 0 (1 under `npm run dev`) | Dev planets loaded at boot (the desert `pl_dev…` family with W01 on; the flat W00 planet without W01) |
 | `SNAPSHOT_EVERY_S`, `SNAPSHOTS` | 60, on | Snapshot cadence; `SNAPSHOTS=off` (default off under `NODE_ENV=test`). The ledger journal and the planet/colony rows (`core.planet`, `core.colony`) follow the same switch: off keeps them in memory. Players and sessions use Postgres whenever it is configured |
 | `DELTA_HZ` | 5 | Deltas per second per joined planet |
+| `TA_DB_POOL_SIZE` | 20 | Prisma connection pool of the backend process (1..200) |
+| `TA_TRADE_MAX_INFLIGHT`, `TA_TRADE_QUEUE_WAIT_MS` | `floor(pool/2)-1`, 8000 | Cap on concurrent trade API placements/cancels (excess queues, then 503 `server_busy` + `Retry-After`) and the queue wait in ms |
 | `PLANET_DAY_HOURS`, `PLANET_TIME_SCALE` | 0.25, 1 | Default real-world hours for 1 full planetary day (24 solar hours) and time-scale multiplier on newly created server planets |
 | `TA_BALANCE_OVERRIDES` | — | Path to `balance.overrides.json` merged over the data tables (D-35) |
 | `WS_HELLO_TIMEOUT_MS`, `WS_IDLE_TIMEOUT_MS` | 5000, 60000 | Socket timeouts |

@@ -14,8 +14,14 @@ import { TradeSimPort } from './trade-sim.port.js';
  * caller's colony; the sim owns the rules (Trade Hub present, policy range) and the market module stores the `marketHubFeeSet` event.
  * Humans only: the sim refuses `source: 'bot'` for this command, so API keys get `forbidden_scope` up front.
  */
+/** How long an accepted PUT is shown before the stored value (written by the sim's `marketHubFeeSet` event) must have caught up. */
+const PENDING_FEE_TTL_MS = 15_000;
+
 @Injectable()
 export class TradeStallService {
+  /** Read-your-write: the fee the sim accepted but the store may not hold yet, per planet and colony. */
+  private readonly pending = new Map<string, { bp: number; at: number }>();
+
   constructor(
     private readonly orders: TradeOrdersService,
     private readonly sim: TradeSimPort,
@@ -32,12 +38,16 @@ export class TradeStallService {
     return { planetId: id, colony: await this.orders.colonyOrThrow(p, id) };
   }
 
-  async get(p: TradePrincipal, planetId: string | undefined, feeBp?: number): Promise<TradeStallResponse> {
+  async get(p: TradePrincipal, planetId: string | undefined): Promise<TradeStallResponse> {
     const { planetId: id, colony } = await this.colonyOf(p, planetId);
     const cfg = this.policy.current();
     const stall = await this.prisma.marketStall.findUnique({ where: { planetId_colonyId: { planetId: id, colonyId: colony.colonyId } }, select: { feeBp: true } });
+    const key = `${id}|${colony.colonyId}`;
+    const pend = this.pending.get(key);
+    if (pend && (stall?.feeBp === pend.bp || Date.now() - pend.at > PENDING_FEE_TTL_MS)) this.pending.delete(key); // the store caught up (or the event never came)
+    const shown = pend && this.pending.has(key) ? pend.bp : undefined;
     return {
-      planetId: id, hubFeeBp: feeBp ?? stall?.feeBp ?? cfg.stallFeeDefaultBp, minBp: cfg.stallFeeMinBp, maxBp: cfg.stallFeeMaxBp, defaultBp: cfg.stallFeeDefaultBp,
+      planetId: id, hubFeeBp: shown ?? stall?.feeBp ?? cfg.stallFeeDefaultBp, minBp: cfg.stallFeeMinBp, maxBp: cfg.stallFeeMaxBp, defaultBp: cfg.stallFeeDefaultBp,
       earned: await this.trades.stallEarned(id, colony.colonyId),
     };
   }
@@ -56,6 +66,7 @@ export class TradeStallService {
       throw new TradeError('host_unavailable', err instanceof Error ? err.message : String(err), undefined, 503);
     }
     if (!out.ok) throw new TradeError(String(out.code), 'detail' in out && out.detail ? String(out.detail) : String(out.code));
-    return this.get(p, planetId, body.bp);
+    this.pending.set(`${planetId}|${colony.colonyId}`, { bp: body.bp, at: Date.now() });
+    return this.get(p, planetId);
   }
 }

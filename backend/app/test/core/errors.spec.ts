@@ -104,7 +104,7 @@ describe('error responses', () => {
     expect(await r.json()).toMatchObject({ errorCode: 'CONFLICT' });
   });
 
-  it('unknown error: 500 INTERNAL hides the message in production, shows it in test; logs at error level', async () => {
+  it('unknown error: 500 INTERNAL never shows the internal message (logged instead), in production or not', async () => {
     const prod = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
     const r = await fetch(`${prod.url}/v1/_test/boom`);
     const text = await r.text();
@@ -115,7 +115,9 @@ describe('error responses', () => {
     expect(prod.lines[0]).toMatchObject({ level: 50, errorCode: 'INTERNAL' });
     await prod.app.close();
     const dev = await boot();
-    const body = (await (await fetch(`${dev.url}/v1/_test/boom`)).json()) as { error: { message: string } };
-    expect(body.error.message).toContain('secret');
+    const text2 = await (await fetch(`${dev.url}/v1/_test/boom`)).text();
+    expect(JSON.parse(text2)).toMatchObject({ error: { code: 'internal', message: 'Internal server error' } });
+    expect(text2).not.toContain('secret');
+    expect(dev.lines[0]).toMatchObject({ level: 50 });
   });
 });
