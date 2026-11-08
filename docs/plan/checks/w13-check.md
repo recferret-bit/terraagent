@@ -94,13 +94,13 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
 ## Automated checks (green on this branch)
 
 - `npm run typecheck`, `npm run lint`, `npm run check:structure`, `npm run build` (only the chunk-size warning).
-- `npm test`: **434 files / 2732 tests** (3 skipped). One run showed a single timing flake in `test/ws/commands.spec.ts` that passed on rerun. Includes the exchange unit/property suite (`shared/sim/test/exchange`, `backend/app/src/market/settlement/batch.exchange.spec.ts`: **202 tests**).
-- `npm run test:integration` (Postgres + the DB-backed mock chain): **64 files / 344 tests**, of which `backend/app/test/exchange` is the exchange suite (happy paths, matching corners, concurrency, fault injection, allowance rails, board); run it alone with `TA_PORT_BASE=<p> TA_DB_NAME=<db> npm run test:integration -- backend/app/test/exchange`.
+- `npm test`: **437 files / 2744 tests** passed, 3 skipped. Includes the exchange unit/property suite (`shared/sim/test/exchange`, `shared/sim/test/review`, `backend/app/src/market/settlement/batch.exchange.spec.ts`).
+- `npm run test:integration` (real Postgres + the DB-backed mock chain): **75 files / 409 tests** passed. Exchange suites: `backend/app/test/exchange` (stand-in sim: happy paths, matching corners, concurrency, fault injection, rails, board), `backend/app/test/exchange-real` (REAL planet sim: rails, faults, per-socket topics over a WebSocket, progression replay on real Postgres, soak of 3 seeds x 300 steps, order-slot lifecycle), `backend/app/test/review` (security and money review). Run one alone with `TA_PORT_BASE=<p> TA_DB_NAME=<db> npm run test:integration -- backend/app/test/exchange-real`.
 - `npm run test:contract`: 29/29 (mock `IntentsPort`).
 - `npm run test:parity`: 3 cases pass on both hosts (`w00-empty`, `w03-supply`, `w13r-logistics`).
-- `npm run e2e -- --waves ..13 --workers=1` → **82 passed**, 6 skipped (pre-existing W00/W01/W06/W08/W12 skips), ~18 min on a loaded machine; the W13 suite alone is **18/18** (~6 min: `npm run e2e -- --waves 13`), including `@hack 9d` (trade API as human + bot key) and `@hack 9e` (`/trade.html`).
+- `npm run e2e -- --waves ..13 --workers=1` → **123 passed**, 6 skipped (pre-existing W00/W01/W06/W08/W12 skips), ~31 min on a loaded machine; the W13 suite alone is **59/59** (~13 min: `npm run e2e -- --waves 13`): the market steps 1-12, `9d/9e` (trade API as human + bot key, `/trade.html`), `9f-9r` + `9g2` (trade page UI with real clicks, request budget), `9f-1..22` (bot API on the real sim), `9f-1b/7b/22b` (organic reference price, price band, real quote on scenario `w13m`). The suite freezes the solar clock at noon: a game day is 15 real minutes and night switches Solar and the Trade Hub off (LED-31).
 
-## Known limitations (see `docs/questions-and-limitations/economy-ledger.md` LED-20…LED-30)
+## Known limitations (see `docs/questions-and-limitations/economy-ledger.md` LED-20…LED-31)
 
 - Defaults taken on open questions: total-quote prices, whole-unit resource atoms, sim-first commands (LED-20); matcher/fee/AON rules (LED-21); registry bounds are not owner-approved (LED-22).
 - The in-game Market tab is the simplified quick-trade panel; the full tools (all orders, board, keys, stall editor) live on `/trade.html`. Supply & trade is still a dev-grade HUD panel; the launcher bar is the entry point (LED-28).
