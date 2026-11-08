@@ -32,6 +32,9 @@ const KNOWN_KIND_ALIASES = new Set([
   'droneArray:droneControlArray',
   'autocannon:turret',
   'laserTower:pulseTurret',
+  'outpostBeacon:territoryBeacon',
+  'hazardShield:shieldDome',
+  'hydro:hydroGenerator',
 ]);
 
 const KNOWN_MIGRATION_PREFIX_PAIRS = new Set([

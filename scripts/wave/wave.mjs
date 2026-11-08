@@ -114,7 +114,7 @@ function landWave(w) {
   }
   run('git', ['tag', tag], { cwd: root });
   if (tryOut('git', ['remote'], { cwd: root })) run('git', ['push', 'origin', 'main', tag], { cwd: root });
-  if (existsSync(w.worktree)) run('git', ['worktree', 'remove', w.worktree], { cwd: root });
+  if (existsSync(w.worktree)) run('git', ['worktree', 'remove', '--force', w.worktree], { cwd: root });
   run('git', ['branch', '-d', w.branch], { cwd: root });
   plan = withState(root, loadPlan(root));
   const others = plan.waves.filter((x) => x.open).map((x) => x.id);
