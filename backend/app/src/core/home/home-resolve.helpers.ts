@@ -1,19 +1,14 @@
 import {
   CANONICAL_PLANETS,
   canonicalPlanetById,
-  deriveSectorOccupancy,
-  deriveWorldAvailability,
   newId,
-  planetLookForType,
   type ColonySummary,
   type HomeResponse,
   type PlanetSummary,
   type PlanetType,
-  type SectorSummaryV1,
   type SimCommandV1,
 } from '@terra/contracts';
 import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_TYPE, type DevPlanetType } from '@terra/sim';
-import { buildDefaultCanonicalAtlasManifest } from '../../lobby/atlas-manifest.helper';
 import type { WorldLifecycleService } from '../../lobby/lifecycle.service';
 import type { LobbyPersistenceService } from '../../lobby/lobby-persistence.service';
 import type {
@@ -22,6 +17,7 @@ import type {
   PlanetSectorRecord,
   SectorReservationRecord,
 } from '../../lobby/lobby-persistence.types';
+import { buildCanonicalPlanetSummaryV1 } from '../../lobby/planets.helpers';
 import {
   computeAlternativeSectorsForIntent,
   computeQueuePositionAndEta,
@@ -137,49 +133,6 @@ export function buildBasicPlanetSummary(planet: PlanetRecord): PlanetSummary {
   };
 }
 
-function toSectorSummary(
-  world: Pick<CanonicalWorldRecord, 'lifecycle' | 'health' | 'admission'>,
-  sec: PlanetSectorRecord,
-): SectorSummaryV1 {
-  const validatedCapacity = sec.kind === 'ocean' ? 0 : Math.min(sec.foundingCapacity, sec.validatedCapacity);
-  const foundingCapacity = sec.kind === 'ocean' ? 0 : sec.foundingCapacity;
-  const reservedSeats = sec.kind === 'ocean' ? 0 : sec.reservedSeats;
-  const foundedSeats = sec.kind === 'ocean' ? 0 : sec.foundedSeats;
-  const occ = deriveSectorOccupancy({
-    kind: sec.kind,
-    foundingCapacity,
-    validatedCapacity,
-    reservedSeats,
-    foundedSeats,
-    livingColonies: null,
-    presentColonies: null,
-    onlinePlayers: null,
-    lifecycle: world.lifecycle,
-    health: world.health,
-    admission: world.admission,
-  });
-  return {
-    sectorId: sec.sectorId,
-    continentId: sec.continentId,
-    macroQ: sec.macroQ,
-    macroR: sec.macroR,
-    centerQ: sec.centerQ,
-    centerR: sec.centerR,
-    kind: sec.kind,
-    foundingCapacity,
-    validatedCapacity,
-    reservedSeats,
-    foundedSeats,
-    freeSeats: occ.freeSeats,
-    livingColonies: null,
-    presentColonies: null,
-    onlinePlayers: null,
-    availability: occ.availability,
-    ...(sec.mainResource ? { mainResource: sec.mainResource } : {}),
-    ...(sec.scarceResources ? { scarceResources: [...sec.scarceResources] } : {}),
-  };
-}
-
 export function buildCanonicalPlanetSummary(
   world: CanonicalWorldRecord | null,
   sectors: readonly PlanetSectorRecord[],
@@ -187,92 +140,13 @@ export function buildCanonicalPlanetSummary(
   fallbackType: PlanetType,
   planetRecord?: PlanetRecord | null,
 ): PlanetSummary {
-  const canonicalDef = canonicalPlanetById(fallbackPlanetId) ?? CANONICAL_PLANETS[fallbackType];
-  const type = world?.type ?? planetRecord?.type ?? canonicalDef.type;
-  const isEndedRecord =
-    planetRecord?.status === 'ENDED' ||
-    planetRecord?.status === 'PLANET_ENDED' ||
-    planetRecord?.state === 'ENDED' ||
-    planetRecord?.state === 'PLANET_ENDED';
-  const lifecycle = isEndedRecord ? 'ARCHIVED' : (world?.lifecycle ?? 'ACTIVE');
-  const health = world?.health ?? 'OK';
-  const admission = isEndedRecord ? 'ARCHIVED' : (world?.admission ?? 'OPEN');
-
-  const effectiveSectors: SectorSummaryV1[] =
-    sectors.length > 0
-      ? sectors.map((s) => toSectorSummary({ lifecycle, health, admission }, s))
-      : buildDefaultCanonicalAtlasManifest(type).sectors.map((mSec) => {
-          const cap = mSec.kind === 'ocean' ? 0 : mSec.validatedSafeSites;
-          return {
-            sectorId: mSec.sectorId,
-            continentId: mSec.continentId,
-            macroQ: mSec.macroQ,
-            macroR: mSec.macroR,
-            centerQ: mSec.centerQ,
-            centerR: mSec.centerR,
-            kind: mSec.kind,
-            foundingCapacity: mSec.kind === 'ocean' ? 0 : mSec.foundingCapacity,
-            validatedCapacity: cap,
-            reservedSeats: 0,
-            foundedSeats: 0,
-            freeSeats: cap,
-            livingColonies: null,
-            presentColonies: null,
-            onlinePlayers: null,
-            availability: deriveWorldAvailability({
-              lifecycle,
-              health,
-              admission,
-              freeSeats: cap,
-              sectorKind: mSec.kind,
-            }),
-          };
-        });
-
-  const landSectors = effectiveSectors.filter((s) => s.kind === 'land');
-  const oceanSectors = effectiveSectors.filter((s) => s.kind === 'ocean');
-  const nominalCapacity = landSectors.reduce((sum, s) => sum + s.foundingCapacity, 0);
-  const validatedCapacity = landSectors.reduce((sum, s) => sum + s.validatedCapacity, 0);
-  const reservedSeats = landSectors.reduce((sum, s) => sum + s.reservedSeats, 0);
-  const foundedSeats = landSectors.reduce((sum, s) => sum + s.foundedSeats, 0);
-  const freeSeats = Math.max(0, validatedCapacity - reservedSeats - foundedSeats);
-  const taken = reservedSeats + foundedSeats;
-  const stateStr = planetRecord?.status ?? lifecycle;
-
-  return {
-    id: world?.id ?? fallbackPlanetId,
-    name: world?.name ?? planetRecord?.name ?? canonicalDef.name,
-    type,
-    look: world?.look ?? planetLookForType(type),
-    seed: world?.seed ?? planetRecord?.seed ?? canonicalDef.seed,
-    radius: planetRecord?.radius ?? DEV_PLANET_RADIUS,
-    state: stateStr,
-    status: stateStr,
-    lifecycle,
-    health,
-    admission,
-    availability: deriveWorldAvailability({ lifecycle, health, admission, freeSeats }),
-    atlasVersion: world?.atlasVersion || 1,
-    atlasHash: world?.atlasHash || 'w11-canonical-atlas-v1',
-    configHash: world?.configHash || 'w11-canonical-config-v1',
-    totalSectors: effectiveSectors.length,
-    landSectors: Math.max(1, landSectors.length),
-    oceanSectors: oceanSectors.length,
-    nominalCapacity,
-    validatedCapacity,
-    reservedSeats,
-    foundedSeats,
-    freeSeats,
-    livingColonies: foundedSeats > 0 ? foundedSeats : null,
-    presentColonies: foundedSeats > 0 ? foundedSeats : null,
-    onlinePlayers: null,
-    updatedAt: (world?.updatedAt ?? new Date()).toISOString(),
-    sectors: effectiveSectors as unknown as Record<string, unknown>[],
-    capacity: validatedCapacity,
-    seatsTaken: taken,
-    seats: { taken, capacity: validatedCapacity },
-    ...(world?.faultCode ? { faultCode: world.faultCode } : {}),
-  };
+  return buildCanonicalPlanetSummaryV1({
+    world,
+    sectors,
+    fallbackPlanetId,
+    fallbackType,
+    planetRecord,
+  });
 }
 
 export async function buildEnrichedPlanetSummary(

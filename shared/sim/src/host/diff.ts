@@ -251,6 +251,9 @@ export function diffSinceChunked(state: PlanetState, fromTick: number, opts: Dif
   });
 }
 
+/** Alias for `diffSinceChunked` (W05-19 / W11-47 chunked tile diff partitioning). */
+export const diffChunks = diffSinceChunked;
+
 /** One client delta message: its wire tick window and the encoded engine diff chunk. */
 export interface DeltaFrame {
   fromTick: number;
