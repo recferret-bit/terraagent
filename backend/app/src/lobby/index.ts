@@ -11,6 +11,8 @@ export * from './planets.controller';
 export * from './planets.helpers';
 export * from './planets.service';
 export * from './prisma-lobby.store';
+export * from './provisioning.service';
+export * from './provisioning.types';
 export * from './tickets.controller';
 export * from './tickets.helpers';
 export * from './tickets.service';

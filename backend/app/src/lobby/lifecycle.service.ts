@@ -18,6 +18,7 @@ import {
   type AdmissionEligibilityResult,
   type AdmissionEligibilityStatus,
   type ElapsedAgeEvaluationResult,
+  type MarkWorldProvisionedInput,
   type PauseResumePlanetAdmissionInput,
   type QueuePauseStatus,
   type SectorStatusSnapshot,
@@ -272,6 +273,8 @@ export class WorldLifecycleService {
       planetId: input.planetId,
       health: targetHealth,
       ...(nextFaultCode !== undefined ? { faultCode: nextFaultCode } : {}),
+      ...(input.retryCount !== undefined ? { retryCount: input.retryCount } : {}),
+      ...(input.placementAttempts !== undefined ? { placementAttempts: input.placementAttempts } : {}),
       expectedUpdatedAt: input.expectedUpdatedAt,
       now: input.now,
       onTransition: (prev, next) => {
@@ -312,8 +315,15 @@ export class WorldLifecycleService {
     const updated = await this.persistence.updateCanonicalWorldState({
       planetId: input.planetId,
       lifecycle: targetLifecycle,
-      ...(targetLifecycle === 'ARCHIVED' ? { admission: 'ARCHIVED' } : {}),
+      ...(input.health !== undefined ? { health: input.health } : {}),
+      ...(targetLifecycle === 'ARCHIVED'
+        ? { admission: 'ARCHIVED' }
+        : input.admission !== undefined
+          ? { admission: input.admission }
+          : {}),
       ...(input.faultCode !== undefined ? { faultCode: input.faultCode } : {}),
+      ...(input.retryCount !== undefined ? { retryCount: input.retryCount } : {}),
+      ...(input.placementAttempts !== undefined ? { placementAttempts: input.placementAttempts } : {}),
       expectedUpdatedAt: input.expectedUpdatedAt,
       now: input.now,
       onTransition: (prev, next) => {
@@ -335,6 +345,26 @@ export class WorldLifecycleService {
 
     const sectors = await this.persistence.listSectors(updated.id);
     return buildWorldStatusSnapshot(updated, sectors, recordedAudit);
+  }
+
+  /**
+   * Marks a canonical world as provisioned and healthy on its sim thread (`PROVISIONING -> ACTIVE`, `health: 'OK'`, `faultCode: null`).
+   */
+  async markProvisioned(input: MarkWorldProvisionedInput | string): Promise<WorldStatusSnapshot> {
+    const normalized: MarkWorldProvisionedInput =
+      typeof input === 'string' ? { planetId: input } : input;
+    return this.transitionWorldLifecycle({
+      planetId: normalized.planetId,
+      toLifecycle: 'ACTIVE',
+      health: 'OK',
+      faultCode: null,
+      retryCount: normalized.retryCount,
+      placementAttempts: normalized.placementAttempts,
+      actor: normalized.actor ?? 'system:provisioning',
+      reason: normalized.reason ?? 'canonical world loaded onto sim thread',
+      expectedUpdatedAt: normalized.expectedUpdatedAt,
+      now: normalized.now,
+    });
   }
 
   /**

@@ -45,7 +45,10 @@ export interface PrismaPlanetRow {
   updatedAt: Date;
 }
 
-export function mapCanonicalWorldRow(row: PrismaPlanetRow): CanonicalWorldRecord {
+export function mapCanonicalWorldRow(
+  row: PrismaPlanetRow,
+  attempts?: { readonly retryCount: number; readonly placementAttempts: number },
+): CanonicalWorldRecord {
   return {
     id: row.id,
     name: row.name,
@@ -62,6 +65,8 @@ export function mapCanonicalWorldRow(row: PrismaPlanetRow): CanonicalWorldRecord
     atlasHash: row.atlasHash,
     configHash: row.configHash,
     faultCode: row.faultCode,
+    retryCount: attempts?.retryCount ?? 0,
+    placementAttempts: attempts?.placementAttempts ?? 0,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
