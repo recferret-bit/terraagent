@@ -20,6 +20,7 @@ import {
   normalizeSectorIntentInput,
   normalizeTicketIntentOrThrow,
   sameSectorIntent,
+  toUpdateTicketFromStateInput,
   withSectorIntentModeAlias,
 } from './lobby-store.helpers';
 
@@ -135,13 +136,7 @@ export class MemoryTicketPartyOps {
   }
 
   async updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
-    return this.updateTicket({
-      ticketId: input.ticketId,
-      state: input.state,
-      ...(input.failureCode !== undefined ? { failureCode: input.failureCode } : {}),
-      ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
-      ...(input.now !== undefined ? { now: input.now } : {}),
-    });
+    return this.updateTicket(toUpdateTicketFromStateInput(input));
   }
 
   async updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {

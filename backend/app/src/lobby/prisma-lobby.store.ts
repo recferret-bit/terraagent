@@ -38,6 +38,7 @@ import {
   KeyedMutex,
   normalizeCanonicalWorldInput,
   normalizeSectorSlotsInput,
+  seedManifestSectorsWithUpsert,
 } from './lobby-store.helpers';
 import { validateCanonicalWorldStateUpdate } from './lifecycle-policy.helpers';
 import {
@@ -239,29 +240,7 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
   }
 
   private async seedManifestSectorsInternal(manifest: AtlasManifestV1): Promise<void> {
-    for (const sec of manifest.sectors) {
-      await this.upsertSectorWithSlotsInternal({
-        planetId: manifest.planetId,
-        sectorId: sec.sectorId,
-        continentId: sec.continentId,
-        macroQ: sec.macroQ,
-        macroR: sec.macroR,
-        centerQ: sec.centerQ,
-        centerR: sec.centerR,
-        kind: sec.kind,
-        radius: sec.radius,
-        foundingCapacity: sec.foundingCapacity,
-        validatedCapacity: sec.validatedSafeSites,
-        mainResource: sec.resourceEndowment?.mainResource,
-        scarceResources: sec.resourceEndowment?.scarceResources,
-        slots: sec.safeLandingSlots.map((s) => ({
-          slotId: s.slotId,
-          slotIndex: s.slotIndex,
-          q: s.q,
-          r: s.r,
-        })),
-      });
-    }
+    await seedManifestSectorsWithUpsert(manifest, (s) => this.upsertSectorWithSlotsInternal(s));
   }
 
   async getAtlasVersion(planetId: string, atlasVersion: number): Promise<PinnedAtlasVersionRecord | null> {

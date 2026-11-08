@@ -322,33 +322,14 @@ function resolveBudgetBagAndRollout(
   };
 }
 
-/**
- * Validates that a world provisioning config or manifest satisfies canonical identity rules,
- * small-atlas rollout caps (`validateAtlasRolloutLimits`), and safe-site budgets (`MM-42..44`, `W11-15`).
- */
-export function validateWorldProvisionBudget(
-  input: WorldProvisionBudgetInput | AtlasManifestV1 | AtlasConfigV1 | GeneratedSmallAtlas,
-  options?: { readonly limits?: WorldProvisionBudgetLimits; readonly throwOnError?: boolean },
-): WorldProvisionBudgetResult {
-  const { bag, resolvedLimits, rollout, sectors, observed } = resolveBudgetBagAndRollout(
-    input,
-    options?.limits,
-  );
-  const violations: CapacityBudgetViolation[] = [];
-  let identityCode: CapacityGuardErrorCode | undefined;
-  let canonical: CanonicalPlanetDef | null = null;
-  try {
-    canonical = assertCanonicalWorldIdentity(bag, bag.existingWorldIds);
-  } catch (err) {
-    identityCode = err instanceof CapacityGuardError ? err.code : 'non_canonical_world_forbidden';
-    violations.push({
-      field: identityCode === 'warm_pool_disabled' ? 'warmPoolDisabled' : 'canonicalIdentity',
-      actual: String(bag.id ?? bag.planetId ?? bag.type ?? bag.planetType ?? 'unknown'),
-      limit: CANONICAL_PLANET_IDS.join('|'),
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-
+function collectRolloutAndSeatViolations(
+  bag: ReturnType<typeof resolveBudgetBagAndRollout>['bag'],
+  rollout: ReturnType<typeof resolveBudgetBagAndRollout>['rollout'],
+  sectors: ReturnType<typeof resolveBudgetBagAndRollout>['sectors'],
+  observed: ReturnType<typeof resolveBudgetBagAndRollout>['observed'],
+  resolvedLimits: ReturnType<typeof resolveBudgetBagAndRollout>['resolvedLimits'],
+  violations: CapacityBudgetViolation[],
+): void {
   if (rollout && !rollout.ok) {
     for (const v of rollout.violations) violations.push(v);
   } else if (!rollout) {
@@ -399,6 +380,36 @@ export function validateWorldProvisionBudget(
       message: `cluster safe sites (${bag.clusterValidatedSafeSites}) exceed cluster cap (${resolvedLimits.maxClusterSeatsAtX5})`,
     });
   }
+}
+
+/**
+ * Validates that a world provisioning config or manifest satisfies canonical identity rules,
+ * small-atlas rollout caps (`validateAtlasRolloutLimits`), and safe-site budgets (`MM-42..44`, `W11-15`).
+ */
+export function validateWorldProvisionBudget(
+  input: WorldProvisionBudgetInput | AtlasManifestV1 | AtlasConfigV1 | GeneratedSmallAtlas,
+  options?: { readonly limits?: WorldProvisionBudgetLimits; readonly throwOnError?: boolean },
+): WorldProvisionBudgetResult {
+  const { bag, resolvedLimits, rollout, sectors, observed } = resolveBudgetBagAndRollout(
+    input,
+    options?.limits,
+  );
+  const violations: CapacityBudgetViolation[] = [];
+  let identityCode: CapacityGuardErrorCode | undefined;
+  let canonical: CanonicalPlanetDef | null = null;
+  try {
+    canonical = assertCanonicalWorldIdentity(bag, bag.existingWorldIds);
+  } catch (err) {
+    identityCode = err instanceof CapacityGuardError ? err.code : 'non_canonical_world_forbidden';
+    violations.push({
+      field: identityCode === 'warm_pool_disabled' ? 'warmPoolDisabled' : 'canonicalIdentity',
+      actual: String(bag.id ?? bag.planetId ?? bag.type ?? bag.planetType ?? 'unknown'),
+      limit: CANONICAL_PLANET_IDS.join('|'),
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  collectRolloutAndSeatViolations(bag, rollout, sectors, observed, resolvedLimits, violations);
 
   const code: CapacityGuardErrorCode | undefined =
     violations.length === 0

@@ -8,6 +8,7 @@ import {
   parseSectorId,
   planetLookForType,
   W11_DEFAULT_SECTOR_RADIUS,
+  type AtlasManifestV1,
   type EnqueueTicketRequestV1,
   type NormalizedTicketIntentV1,
   type PlanetLook,
@@ -27,6 +28,8 @@ import {
   type SectorIntentInput,
   type SectorIntentWithMode,
   type TransferCarryRecord,
+  type UpdateTicketInput,
+  type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
 
@@ -309,6 +312,24 @@ export function extractTransferCarryFromInput(
   };
 }
 
+function resolveSectorFieldsFromRaw(rawRec: Record<string, unknown>): {
+  sectorId?: string;
+  autoSector?: boolean;
+} {
+  if ('sectorIntent' in rawRec && typeof rawRec.sectorIntent === 'object' && rawRec.sectorIntent !== null) {
+    const si = rawRec.sectorIntent as { kind?: unknown; mode?: unknown; sectorId?: unknown };
+    const kind = si.kind ?? si.mode;
+    return kind === 'chosen' && typeof si.sectorId === 'string'
+      ? { sectorId: si.sectorId }
+      : { autoSector: true };
+  }
+  if (typeof rawRec.sectorId === 'string') return { sectorId: rawRec.sectorId };
+  if (rawRec.autoSector === true || rawRec.mode === 'AUTO' || rawRec.mode === 'TRANSFER') {
+    return { autoSector: true };
+  }
+  return {};
+}
+
 export function normalizeTicketIntentOrThrow(
   raw: EnqueueTicketRequestInput,
   fallbackTransferCarry?: Partial<TransferCarryRecord> | null,
@@ -332,25 +353,11 @@ export function normalizeTicketIntentOrThrow(
       : undefined) ??
     (rawTc?.carryOver ? { ...rawTc.carryOver } : undefined);
 
-  let sectorFields: { sectorId?: string; autoSector?: boolean } = {};
-  if ('sectorIntent' in rawRec && typeof rawRec.sectorIntent === 'object' && rawRec.sectorIntent !== null) {
-    const si = rawRec.sectorIntent as { kind?: unknown; mode?: unknown; sectorId?: unknown };
-    const kind = si.kind ?? si.mode;
-    sectorFields =
-      kind === 'chosen' && typeof si.sectorId === 'string'
-        ? { sectorId: si.sectorId }
-        : { autoSector: true };
-  } else if (typeof rawRec.sectorId === 'string') {
-    sectorFields = { sectorId: rawRec.sectorId };
-  } else if (rawRec.autoSector === true || rawRec.mode === 'AUTO' || rawRec.mode === 'TRANSFER') {
-    sectorFields = { autoSector: true };
-  }
-
   const req: EnqueueTicketRequestV1 = {
     mode: String(rawRec.mode ?? ''),
     ...(typeof rawRec.planetId === 'string' ? { planetId: rawRec.planetId } : {}),
     ...(typeof rawRec.planetType === 'string' ? { planetType: rawRec.planetType as PlanetType } : {}),
-    ...sectorFields,
+    ...resolveSectorFieldsFromRaw(rawRec),
     ...(typeof rawRec.partyId === 'string' ? { partyId: rawRec.partyId } : {}),
     ...(sourcePlanetId ? { sourcePlanetId } : {}),
     ...(sourceColonyId ? { sourceColonyId } : {}),
@@ -391,6 +398,45 @@ export function normalizeTicketIntentOrThrow(
     parsed.errorCode === 'validation_error' ? 'invalid_ticket_intent' : parsed.errorCode,
     parsed.message,
   );
+}
+
+export async function seedManifestSectorsWithUpsert(
+  manifest: AtlasManifestV1,
+  upsertSector: (input: UpsertSectorWithSlotsInput) => Promise<unknown>,
+): Promise<void> {
+  for (const sec of manifest.sectors) {
+    await upsertSector({
+      planetId: manifest.planetId,
+      sectorId: sec.sectorId,
+      continentId: sec.continentId,
+      macroQ: sec.macroQ,
+      macroR: sec.macroR,
+      centerQ: sec.centerQ,
+      centerR: sec.centerR,
+      kind: sec.kind,
+      radius: sec.radius,
+      foundingCapacity: sec.foundingCapacity,
+      validatedCapacity: sec.validatedSafeSites,
+      mainResource: sec.resourceEndowment?.mainResource,
+      scarceResources: sec.resourceEndowment?.scarceResources,
+      slots: sec.safeLandingSlots.map((s) => ({
+        slotId: s.slotId,
+        slotIndex: s.slotIndex,
+        q: s.q,
+        r: s.r,
+      })),
+    });
+  }
+}
+
+export function toUpdateTicketFromStateInput(input: UpdateTicketStateInput): UpdateTicketInput {
+  return {
+    ticketId: input.ticketId,
+    state: input.state,
+    ...(input.failureCode !== undefined ? { failureCode: input.failureCode } : {}),
+    ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  };
 }
 
 export function sameSectorIntent(

@@ -1,19 +1,19 @@
-# W11 — Lobby, Matchmaking, Planets & Sector Foundations: Owner Check Guide
+# W11 — Planet Foundations: Persistent Worlds & Sector Admission: owner check
 
-Worktree: `../TerraAgent-wt/w11` (branch `wave/w11-lobby-planets`)  
-Ports: client `http://127.0.0.1:5273`, app `http://127.0.0.1:4101`, Postgres DB `terra_wave_w11_lobby_planets` (`TA_PORT_BASE=4100` in `infra/.env.worktree`).  
-W27 Readiness Manifest: [`docs/plan/w27-readiness-manifest.md`](../w27-readiness-manifest.md) (`w27Ready: false`, `w27ScaleClaimed: false` — 28 `H` foundation issues complete; 19 untagged/`H+` issues deferred before W27).
+> The wave's demo story ([`waves/W11-lobby-planets.md`](../waves/W11-lobby-planets.md)) as a hands-on checklist. Format and rules: [`README.md`](./README.md). About 10 minutes.
 
-If the stack is not already running:
+## Before you start
 
-```bash
-cd ../TerraAgent-wt/w11
-npm run dev:stack
-```
+- **Where it runs:** branch `wave/w11-lobby-planets`, worktree `../TerraAgent-wt/w11`. Your main checkout is untouched.
+- **Ports:** this worktree's `infra/.env.worktree` sets `TA_PORT_BASE=4100` → app **4101**, client **5273** (`TA_DB_NAME=terra_wave_w11_lobby_planets`). Below, `<client>` = `http://127.0.0.1:5273`, `<app>` = `http://127.0.0.1:4101`.
+- **Start the stack** (if it isn't running): `cd ../TerraAgent-wt/w11 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat scripts/dev/.out/runner.pid)` if it was started in the background.
+- **Dev console:** in the game page press **`` ` ``** (the key under Esc) to open the in-game dev console (*not* the browser's DevTools console). Press **`M`** to open the fullscreen **Global Planet Map**.
+- **W27 Readiness Manifest:** [`docs/plan/w27-readiness-manifest.md`](../w27-readiness-manifest.md) (`w27Ready: false`, `w27ScaleClaimed: false` — 28 `H` foundation issues complete; 19 untagged/`H+` issues deferred before W27).
+- Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 
 ---
 
-## What to try (Demo Story 1–9)
+## Steps
 
 ### 1. Three persistent world cards & land-sector chooser (`W11-08`, `W11-20`)
 
@@ -140,13 +140,20 @@ npm run dev:stack
 
 ---
 
-## Automated Verification Commands
+## Automated checks
 
 ```bash
 cd ../TerraAgent-wt/w11
 npm run check
-npx vitest run --config tests/vitest.config.ts shared/contracts/src/lobby/w11-contracts.spec.ts shared/sim/src/atlas/ backend/app/src/lobby/ frontend/game/ui/w11-orbital-picker.spec.ts frontend/game/maps/ tests/scenarios/test/w11-lobby.spec.ts
-npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/w11.spec.ts
+npm test
+npm run build
+npm run test:integration
+npm run test:contract
+npm run test:parity
+npm run e2e -- --waves ..11 --hack
 ```
 
-When you're done: `npm run wave -- land 11`
+## When you're done
+
+- **All good:** from the main checkout (`/Users/ferretrec/work/TerraAgent`) run `npm run wave -- land 11`. It re-runs the gates, merges W11 into `main`, tags `wave-11`, pushes, and removes the W11 worktree and branch.
+- **Something is wrong:** tell the wave lead which step and what you saw; it is fixed on the wave branch before anything lands.

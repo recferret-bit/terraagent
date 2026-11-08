@@ -367,11 +367,10 @@ export class SectorReservationService {
     });
   }
 
-  async commitReservation(
+  private async runWithReservationMutex<T>(
     reservationId: string,
-    options?: CommitReservationOptions | number,
-  ): Promise<ManagedSectorReservationRecord> {
-    const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
+    fn: () => Promise<T>,
+  ): Promise<T> {
     const existing = await this.persistence.getReservationById(reservationId);
     if (!existing) {
       throw new LobbyPersistenceConflictError(
@@ -381,6 +380,16 @@ export class SectorReservationService {
     }
     return this.mutex.run(`planet:${existing.planetId}`, async () => {
       this.spawningStateById.delete(reservationId);
+      return fn();
+    });
+  }
+
+  async commitReservation(
+    reservationId: string,
+    options?: CommitReservationOptions | number,
+  ): Promise<ManagedSectorReservationRecord> {
+    const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
+    return this.runWithReservationMutex(reservationId, async () => {
       const committed = await this.persistence.commitReservation(reservationId, expectedEpoch);
       return this.decorateRecord(committed, 'COMMITTED');
     });
@@ -392,15 +401,7 @@ export class SectorReservationService {
     options?: ReleaseReservationOptions | number,
   ): Promise<ReleaseReservationResult> {
     const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
-    const existing = await this.persistence.getReservationById(reservationId);
-    if (!existing) {
-      throw new LobbyPersistenceConflictError(
-        'reservation_fenced',
-        `Reservation "${reservationId}" not found`,
-      );
-    }
-    return this.mutex.run(`planet:${existing.planetId}`, async () => {
-      this.spawningStateById.delete(reservationId);
+    return this.runWithReservationMutex(reservationId, async () => {
       const out = await this.persistence.releaseReservation(
         reservationId,
         reason,

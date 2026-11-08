@@ -29,7 +29,7 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .world-card{width:216px;padding:14px;border:1.5px solid var(--ta-seam-2);background:rgba(15,17,22,.88);backdrop-filter:blur(10px);cursor:pointer;transition:transform var(--ta-dur-quick) ease,border-color var(--ta-dur-quick) ease,background-color var(--ta-dur-quick) ease;text-align:left;color:inherit;font:inherit}
 .world-card:hover{transform:translateY(-3px);border-color:var(--ta-orange)}
 .world-card.sel{border-color:var(--ta-orange);background:linear-gradient(rgba(255,106,19,.12),rgba(255,106,19,.12)),rgba(15,17,22,.92)}
-.thumb{width:64px;height:64px;border-radius:50%;float:right;margin:0 0 6px 6px;box-shadow:inset -12px -8px 18px rgba(0,0,0,.65),0 0 18px var(--glow,#fff3)}
+.thumb{width:64px;height:64px;border-radius:50%;float:right;margin:0 0 6px 6px;box-shadow:inset -12px -8px 18px rgba(0,0,0,.65),0 0 18px var(--glow,rgba(255,255,255,.2))}
 .world-card h3{margin:2px 0 6px;font-family:var(--ta-font-display);font-weight:600;font-size:16px;line-height:1.15;letter-spacing:.06em;text-transform:uppercase;color:var(--ta-text)}
 .world-card p{margin:0 0 10px;font-size:12px;line-height:1.45;color:var(--ta-text-3);clear:both}
 .traits{display:flex;gap:4px;flex-wrap:wrap}
@@ -91,11 +91,11 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .telemetry .temp b{font-size:22px;transition:color .4s,text-shadow .4s;font-variant-numeric:tabular-nums;display:inline-block;min-width:76px;text-align:right}
 .telemetry .temp .u{color:var(--ta-steel)}
 .telemetry .temp .trend{margin-left:8px;font-size:11px;color:inherit}
-.telemetry .temp[data-band=cold] b{color:#8fc8ff}
+.telemetry .temp[data-band=cold] b{color:var(--ta-blue-hi)}
 .telemetry .temp[data-band=warm] b{color:var(--ta-orange-hi)}
 .telemetry .temp[data-band=hot] b{color:var(--ta-orange);text-shadow:0 0 12px rgba(255,106,19,.55)}
-.telemetry .temp[data-band=crit] b{color:#ff5a3c;text-shadow:0 0 16px rgba(255,70,40,.8);animation:tempPulse .5s ease-in-out infinite alternate}
-.telemetry .temp[data-band=cold] .trend{color:#8fc8ff}.telemetry .temp[data-band=crit] .trend,.telemetry .temp[data-band=hot] .trend{color:#ff7a4a}
+.telemetry .temp[data-band=crit] b{color:var(--ta-fault);text-shadow:0 0 16px rgba(255,70,40,.8);animation:tempPulse .5s ease-in-out infinite alternate}
+.telemetry .temp[data-band=cold] .trend{color:var(--ta-blue-hi)}.telemetry .temp[data-band=crit] .trend,.telemetry .temp[data-band=hot] .trend{color:var(--ta-fault-text)}
 @keyframes tempPulse{to{text-shadow:0 0 26px rgba(255,90,40,1)}}
 .caption{position:absolute;left:0;right:0;bottom:13vh;text-align:center;font-family:var(--ta-font-display);font-weight:600;text-transform:uppercase;font-size:clamp(14px,1.7vw,22px);letter-spacing:.2em;color:var(--ta-hull);text-shadow:0 2px 16px rgba(7,8,10,.9),0 0 2px rgba(7,8,10,.9);transition:opacity .4s}
 .progress{position:absolute;left:4vw;right:4vw;bottom:10.4vh;height:3px;background:rgba(242,244,247,.15);overflow:hidden}

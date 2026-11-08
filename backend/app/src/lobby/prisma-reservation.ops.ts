@@ -209,7 +209,14 @@ export class PrismaReservationOps {
     };
   }
 
-  async commitReservation(reservationId: string, expectedEpoch?: number): Promise<SectorReservationRecord> {
+  private async runWithFencedReservation<T>(
+    reservationId: string,
+    expectedEpoch: number | undefined,
+    fn: (
+      tx: Parameters<Parameters<PrismaClient['$transaction']>[0]>[0],
+      current: Awaited<ReturnType<PrismaClient['sectorReservation']['findUniqueOrThrow']>>,
+    ) => Promise<T>,
+  ): Promise<T> {
     const res = await this.prisma.sectorReservation.findUnique({ where: { id: reservationId } });
     if (!res) {
       throw new LobbyPersistenceConflictError('reservation_fenced', `reservation "${reservationId}" not found`);
@@ -223,32 +230,38 @@ export class PrismaReservationOps {
             `reservation "${reservationId}" epoch mismatch (${current.epoch} !== ${expectedEpoch})`,
           );
         }
-        if (current.state === 'COMMITTED') return mapReservationRow(current);
-        if (current.state !== 'HELD' && current.state !== 'SPAWNING') {
-          throw new LobbyPersistenceConflictError(
-            'reservation_fenced',
-            `cannot commit reservation "${reservationId}" in state ${current.state}`,
-          );
-        }
-        const committed = await tx.sectorReservation.update({
-          where: { id: reservationId },
-          data: { state: 'COMMITTED' },
-        });
-        await tx.sectorLandingSlot.updateMany({
-          where: { planetId: current.planetId, landingSlotId: current.landingSlotId },
-          data: { state: 'COMMITTED', expiresAt: null },
-        });
-        await tx.planetSector.updateMany({
-          where: { planetId: current.planetId, sectorId: current.sectorId },
-          data: { reservedSeats: { decrement: 1 }, foundedSeats: { increment: 1 } },
-        });
-        await tx.matchTicket.updateMany({
-          where: { id: current.ticketId },
-          data: { state: 'ASSIGNED' },
-        });
-        return mapReservationRow(committed);
+        return fn(tx, current);
       }),
     );
+  }
+
+  async commitReservation(reservationId: string, expectedEpoch?: number): Promise<SectorReservationRecord> {
+    return this.runWithFencedReservation(reservationId, expectedEpoch, async (tx, current) => {
+      if (current.state === 'COMMITTED') return mapReservationRow(current);
+      if (current.state !== 'HELD' && current.state !== 'SPAWNING') {
+        throw new LobbyPersistenceConflictError(
+          'reservation_fenced',
+          `cannot commit reservation "${reservationId}" in state ${current.state}`,
+        );
+      }
+      const committed = await tx.sectorReservation.update({
+        where: { id: reservationId },
+        data: { state: 'COMMITTED' },
+      });
+      await tx.sectorLandingSlot.updateMany({
+        where: { planetId: current.planetId, landingSlotId: current.landingSlotId },
+        data: { state: 'COMMITTED', expiresAt: null },
+      });
+      await tx.planetSector.updateMany({
+        where: { planetId: current.planetId, sectorId: current.sectorId },
+        data: { reservedSeats: { decrement: 1 }, foundedSeats: { increment: 1 } },
+      });
+      await tx.matchTicket.updateMany({
+        where: { id: current.ticketId },
+        data: { state: 'ASSIGNED' },
+      });
+      return mapReservationRow(committed);
+    });
   }
 
   async releaseReservation(
@@ -256,55 +269,42 @@ export class PrismaReservationOps {
     reason: 'RELEASED' | 'EXPIRED' = 'RELEASED',
     expectedEpoch?: number,
   ): Promise<{ readonly released: boolean; readonly reservation: SectorReservationRecord }> {
-    const res = await this.prisma.sectorReservation.findUnique({ where: { id: reservationId } });
-    if (!res) {
-      throw new LobbyPersistenceConflictError('reservation_fenced', `reservation "${reservationId}" not found`);
-    }
-    return this.mutex.run(`planet:${res.planetId}`, () =>
-      this.prisma.$transaction(async (tx) => {
-        const current = await tx.sectorReservation.findUniqueOrThrow({ where: { id: reservationId } });
-        if (expectedEpoch !== undefined && current.epoch !== expectedEpoch) {
-          throw new LobbyPersistenceConflictError(
-            'reservation_fenced',
-            `reservation "${reservationId}" epoch mismatch (${current.epoch} !== ${expectedEpoch})`,
-          );
-        }
-        if (current.state === 'RELEASED' || current.state === 'EXPIRED') {
-          return { released: false, reservation: mapReservationRow(current) };
-        }
-        if (current.state === 'COMMITTED') {
-          throw new LobbyPersistenceConflictError(
-            'reservation_fenced',
-            `cannot release committed reservation "${reservationId}": founded seats remain held`,
-          );
-        }
-        const updated = await tx.sectorReservation.update({
-          where: { id: reservationId },
-          data: { state: reason },
-        });
-        await tx.sectorLandingSlot.updateMany({
-          where: { planetId: current.planetId, landingSlotId: current.landingSlotId, reservationId },
-          data: { state: 'FREE', reservationId: null, colonyId: null, expiresAt: null },
-        });
-        await tx.planetSector.updateMany({
-          where: { planetId: current.planetId, sectorId: current.sectorId },
-          data: { reservedSeats: { decrement: 1 } },
-        });
-        await tx.matchTicket.updateMany({
-          where: { id: current.ticketId, state: { in: ['RESERVED', 'SPAWNING'] } },
-          data: {
-            state: 'QUEUED',
-            reservedPlanetId: null,
-            reservedSectorId: null,
-            reservedLandingSlotId: null,
-            reservationEpoch: null,
-            reservationExpiresAt: null,
-            ...(reason === 'EXPIRED' ? { attempts: { increment: 1 } } : {}),
-          },
-        });
-        return { released: true, reservation: mapReservationRow(updated) };
-      }),
-    );
+    return this.runWithFencedReservation(reservationId, expectedEpoch, async (tx, current) => {
+      if (current.state === 'RELEASED' || current.state === 'EXPIRED') {
+        return { released: false, reservation: mapReservationRow(current) };
+      }
+      if (current.state === 'COMMITTED') {
+        throw new LobbyPersistenceConflictError(
+          'reservation_fenced',
+          `cannot release committed reservation "${reservationId}": founded seats remain held`,
+        );
+      }
+      const updated = await tx.sectorReservation.update({
+        where: { id: reservationId },
+        data: { state: reason },
+      });
+      await tx.sectorLandingSlot.updateMany({
+        where: { planetId: current.planetId, landingSlotId: current.landingSlotId, reservationId },
+        data: { state: 'FREE', reservationId: null, colonyId: null, expiresAt: null },
+      });
+      await tx.planetSector.updateMany({
+        where: { planetId: current.planetId, sectorId: current.sectorId },
+        data: { reservedSeats: { decrement: 1 } },
+      });
+      await tx.matchTicket.updateMany({
+        where: { id: current.ticketId, state: { in: ['RESERVED', 'SPAWNING'] } },
+        data: {
+          state: 'QUEUED',
+          reservedPlanetId: null,
+          reservedSectorId: null,
+          reservedLandingSlotId: null,
+          reservationEpoch: null,
+          reservationExpiresAt: null,
+          ...(reason === 'EXPIRED' ? { attempts: { increment: 1 } } : {}),
+        },
+      });
+      return { released: true, reservation: mapReservationRow(updated) };
+    });
   }
 
   async expireReservations(now: Date = new Date()): Promise<SectorReservationRecord[]> {
