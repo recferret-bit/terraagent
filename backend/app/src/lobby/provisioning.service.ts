@@ -91,6 +91,18 @@ export class CanonicalWorldProvisioningService {
     return typeof this.customLoader === 'object' && this.customLoader !== null ? this.customLoader : this.defaultLoader;
   }
 
+  async unloadWorld(typeOrId: PlanetType | string): Promise<void> {
+    const type = this.resolveTypeOrThrow(typeOrId);
+    const planetId = CANONICAL_PLANETS[type].id;
+    this.defaultLoader.unloadWorld(planetId);
+    await this.getSimLoader().unloadWorld?.(planetId);
+    const tracked = this.trackByType.get(type);
+    if (tracked) {
+      tracked.loaded = false;
+      tracked.tick = null;
+    }
+  }
+
   isWorldLoaded(typeOrId: PlanetType | string): boolean {
     const type = this.resolveTypeOrThrow(typeOrId);
     const planetId = CANONICAL_PLANETS[type].id;

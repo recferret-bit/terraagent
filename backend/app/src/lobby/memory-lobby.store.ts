@@ -250,6 +250,11 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
     const now = new Date();
     const reservedSeats = prevSec?.reservedSeats ?? 0;
     const foundedSeats = prevSec?.foundedSeats ?? 0;
+    const sectorUnchanged =
+      prevSec !== undefined &&
+      prevSec.kind === norm.kind &&
+      prevSec.foundingCapacity === norm.foundingCapacity &&
+      prevSec.validatedCapacity === norm.validatedCapacity;
     const sector: PlanetSectorRecord = {
       id: prevSec?.id ?? `psec_${norm.planetId}_${norm.sectorId}`,
       planetId: norm.planetId,
@@ -275,7 +280,7 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
       ...(norm.mainResource ? { mainResource: norm.mainResource } : {}),
       ...(norm.scarceResources ? { scarceResources: [...norm.scarceResources] } : {}),
       createdAt: prevSec?.createdAt ?? now,
-      updatedAt: now,
+      updatedAt: sectorUnchanged ? prevSec.updatedAt : now,
     };
     this.sectors.set(secKey, sector);
 
@@ -284,7 +289,12 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
       const slotKey = `${norm.planetId}:${s.landingSlotId}`;
       const prevSlot = this.landingSlots.get(slotKey);
       const slotRec: SectorLandingSlotRecord = prevSlot
-        ? { ...prevSlot, q: s.q, r: s.r, updatedAt: now }
+        ? {
+            ...prevSlot,
+            q: s.q,
+            r: s.r,
+            updatedAt: prevSlot.q === s.q && prevSlot.r === s.r ? prevSlot.updatedAt : now,
+          }
         : {
             id: `pslot_${norm.planetId}_${s.landingSlotId}`,
             planetId: norm.planetId,
