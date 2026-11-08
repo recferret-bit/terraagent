@@ -207,6 +207,7 @@ export interface PrismaReservationRow {
 
 export function mapReservationRow(row: PrismaReservationRow): SectorReservationRecord {
   return {
+    id: row.id,
     reservationId: row.id,
     ticketId: row.ticketId,
     colonyId: row.colonyId,

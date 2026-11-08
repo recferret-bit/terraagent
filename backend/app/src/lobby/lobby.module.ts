@@ -3,6 +3,7 @@ import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import { PlanetsController } from './planets.controller';
 import { PlanetsService } from './planets.service';
+import { SectorReservationService } from './reservation.service';
 import { MatchTicketsController } from './tickets.controller';
 import { MatchTicketsService } from './tickets.service';
 
@@ -14,7 +15,19 @@ import { MatchTicketsService } from './tickets.service';
 @Global()
 @Module({
   controllers: [PlanetsController, MatchTicketsController],
-  providers: [LobbyPersistenceService, WorldLifecycleService, PlanetsService, MatchTicketsService],
-  exports: [LobbyPersistenceService, WorldLifecycleService, PlanetsService, MatchTicketsService],
+  providers: [
+    LobbyPersistenceService,
+    WorldLifecycleService,
+    PlanetsService,
+    SectorReservationService,
+    MatchTicketsService,
+  ],
+  exports: [
+    LobbyPersistenceService,
+    WorldLifecycleService,
+    PlanetsService,
+    SectorReservationService,
+    MatchTicketsService,
+  ],
 })
 export class LobbyModule {}
