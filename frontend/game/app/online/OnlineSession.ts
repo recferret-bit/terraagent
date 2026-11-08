@@ -33,6 +33,7 @@ import { extractPodDescentStatus } from './podStatus';
 import type { PilotBridge } from './pilotBridge';
 import { createSessionHud } from './sessionHud';
 import { scenarioParam } from './sessionTarget';
+import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } from '../../ui/lobby/orbitalPickerModel';
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
 import {
@@ -47,6 +48,9 @@ export interface OnlineSessionOptions {
   viewport?: ColonyViewport; transport?: Transport; store?: WorldStore; localHost?: LocalHost;
   fetch?: FetchLike; storage?: StorageLike; search?: string; uiParent?: HTMLElement;
   makeMesh?: MeshFactory; wsDeps?: WsTransportDeps; planetKind?: PlanetKind;
+  planetId?: string; sectorIntent?: SectorIntentInput;
+  pollQueuedHome?: boolean; enqueueOnNew?: boolean; pollIntervalMs?: number;
+  wait?: (ms: number) => Promise<void>; onQueueCancelled?: (ticketId: string | null) => void;
   skipDescent?: boolean; fromSpaceDescent?: boolean; onReturnToOrbit?: (kind: PlanetKind) => void;
   /** May an unreachable game server fall back to a browser-local host (FA-06)? Default: dev builds only. */
   allowLocalFallback?: boolean;
@@ -62,9 +66,10 @@ export class OnlineSession {
 
   terrain: HexTerrain | null = null; cam: RTSCamera | null = null; lastPick: HexPick | null = null;
   private colonyFramed = false;
-  planetId = ''; colonyId: string | null = null; colonyIndex = 0;
+  planetId = ''; colonyId: string | null = null; colonyIndex = 0; foundingSectorId: string | null = null;
   spawn = { q: 0, r: 0 }; cameraTargetTile = { q: 0, r: 0 };
   bootResult: BootAuthResult | null = null; planetKind: PlanetKind | null;
+  readonly sectorIntent: SectorIntentV1;
 
   private biomeKey = 'forestRock'; private lastHudMs = 0;
   private readonly ownsViewport: boolean; private readonly search: string;
@@ -90,24 +95,17 @@ export class OnlineSession {
     this.onReturnToOrbit = opts.onReturnToOrbit;
     this.allowLocalFallback = opts.allowLocalFallback ?? import.meta.env.DEV;
     this.planetKind = resolveSessionPlanetKind(q, opts.planetKind);
+    this.sectorIntent = normalizeSectorIntent(opts.sectorIntent ?? q.get('sector'));
 
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
     this.viewport = createSafeViewport(root, opts.viewport);
 
     const rig = createSessionBootRig({
-      mode,
-      search: this.search,
-      flags: this.flags,
-      planetKind: this.planetKind,
-      allowLocalFallback: this.allowLocalFallback,
-      skipDescent: this.skipDescent,
-      fromSpaceDescent: this.fromSpaceDescent,
-      uiParent,
-      scene: this.viewport.scene,
-      opts,
-      getBootOverlay: () => this.bootOverlay,
-      onBooted: (b) => this.applyBootResult(b),
+      mode, search: this.search, flags: this.flags, planetKind: this.planetKind,
+      allowLocalFallback: this.allowLocalFallback, skipDescent: this.skipDescent, fromSpaceDescent: this.fromSpaceDescent,
+      uiParent, scene: this.viewport.scene, opts, getBootOverlay: () => this.bootOverlay,
+      onBooted: (b) => this.applyBootResult(b), onQueueCancelled: () => this.returnToOrbit(),
     });
     this.guest = rig.guest;
     this.bootTarget = rig.bootTarget;
@@ -186,6 +184,10 @@ export class OnlineSession {
     writeStoredPlanetKind(kind);
     if (this.onReturnToOrbit) { this.onReturnToOrbit(kind); return; }
     if (typeof location !== 'undefined') location.href = `/play.html?planet=${kind}`;
+  }
+
+  cancelQueuedTicket(ticketId?: string): Promise<boolean> {
+    return this.guest ? this.guest.cancelQueue(ticketId) : Promise.resolve(false);
   }
 
   /** Updates the active space/atmospheric state (`orbit .. approach`) or hands off to surface (`null`). */
@@ -271,12 +273,20 @@ export class OnlineSession {
     this.planetId = boot.planet.id;
     this.colonyId = boot.colony.id;
     this.colonyIndex = boot.colony.colonyIndex;
+    this.foundingSectorId = boot.colony.foundingSectorId ?? boot.foundingSectorId ?? null;
     this.spawn = boot.colony.spawn;
     this.cameraTargetTile = { q: boot.colony.spawn.q, r: boot.colony.spawn.r };
     this.entities.setOwnerColonyIndex(this.colonyIndex);
     this.landfall.setOwnerColonyIndex(this.colonyIndex);
+    this.bootOverlay?.hideQueueStatus();
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
-    if (!this.skipDescent) this.bootOverlay?.setSplashStatus('Deploying drop pod…');
+    if (!this.skipDescent) {
+      if (boot.wasQueued) {
+        this.bootOverlay?.showDescent({ progress: 0, q: this.spawn.q, r: this.spawn.r, landed: false });
+      } else {
+        this.bootOverlay?.setSplashStatus('Deploying drop pod…');
+      }
+    }
   }
 
   /**
@@ -453,6 +463,7 @@ export class OnlineSession {
 
   dispose(): void {
     this.disposed = true;
+    this.guest?.dispose();
     if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
     this.localHost?.stop();
     this.cleanups.forEach((f) => f());

@@ -1,6 +1,8 @@
 import type { DevPlanetType } from '@terra/sim';
 import type { SessionTarget } from '../../net/types';
+import type { SectorIntentInput } from '../../ui/lobby/orbitalPickerModel';
 import { bootAuthAndHome, renewAccessToken, type BootAuthResult, type FetchLike, type StorageLike } from './bootOnline';
+import { BootCancelledError, type JoinQueueCoordinator, type QueuedHomeStatus } from './joinQueueFlow';
 
 export interface GuestBootOptions {
   fetch?: FetchLike;
@@ -8,10 +10,26 @@ export interface GuestBootOptions {
   search: string;
   /** Planet type of a NEW colony (the orbit pick). */
   planetType?: DevPlanetType;
+  /** Canonical planet id for W11 ticket enqueue. */
+  planetId?: string;
+  /** Sector placement intent from the W11 orbital picker. */
+  sectorIntent?: SectorIntentInput;
+  /** When true, polls `/v1/me/home` while `state === 'QUEUED'` until `ACTIVE` or cancelled. */
+  pollQueuedHome?: boolean;
+  /** When true, enqueues a match ticket if `/v1/me/home` returns `NEW`. */
+  enqueueOnNew?: boolean;
+  /** Poll interval (ms) while waiting in the planet queue. */
+  pollIntervalMs?: number;
+  /** Injectable wait for deterministic tests. */
+  wait?(ms: number): Promise<void>;
   /** May an unreachable server fall back to a browser-local host (default: dev builds). */
   allowLocalFallback?: boolean;
   /** Splash status line. */
   onStatus?(status: string): void;
+  /** Queue status callback while `GET /v1/me/home` reports `QUEUED`. */
+  onQueueStatus?(status: QueuedHomeStatus, cancel: () => void): void;
+  /** Queue cancelled callback (`DELETE /v1/match/tickets/:id` completed). */
+  onQueueCancelled?(ticketId: string | null): void;
   /** A failed boot: show `message` with a Retry button; resolve true to retry, false to give up (session disposed). Absent → the boot rejects. */
   onError?(message: string): Promise<boolean>;
   /** Every boot result (first boot, re-boot on reconnect) is applied to the session here. */
@@ -30,6 +48,8 @@ export class GuestBootTarget implements SessionTarget {
   accessToken = '';
   tokenExpiresAtMs?: number;
   private current: BootAuthResult | null = null;
+  private coordinator: JoinQueueCoordinator | null = null;
+  private disposed = false;
   private readonly now: () => number;
 
   constructor(readonly url: string, private readonly o: GuestBootOptions) {
@@ -42,13 +62,25 @@ export class GuestBootTarget implements SessionTarget {
   /** First boot. Retries after each failure the error splash reports, until it succeeds; null when the splash gave up. */
   async boot(): Promise<BootAuthResult | null> {
     for (;;) {
+      if (this.disposed) return null;
       try {
         return this.adopt(await bootAuthAndHome(this.authOptions(!new URLSearchParams(this.o.search).has('as'))));
       } catch (e) {
+        if (e instanceof BootCancelledError || this.disposed) return null;
         if (!this.o.onError) throw e;
         if (!(await this.o.onError(`Couldn't reach orbit: ${e instanceof Error ? e.message : String(e)}`))) return null;
       }
     }
+  }
+
+  async cancelQueue(ticketId?: string): Promise<boolean> {
+    if (!this.coordinator) return false;
+    return this.coordinator.cancelQueuedTicket(ticketId);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.coordinator?.dispose();
   }
 
   async resolve(): Promise<{ planetId: string }> {
@@ -67,8 +99,42 @@ export class GuestBootTarget implements SessionTarget {
   }
 
   private authOptions(tryRefresh: boolean) {
-    const { fetch, storage, search, planetType, allowLocalFallback, onStatus } = this.o;
-    return { fetch, storage, search, planetType, allowLocalFallback, tryRefresh, onStatus };
+    const {
+      fetch,
+      storage,
+      search,
+      planetType,
+      planetId,
+      sectorIntent,
+      pollQueuedHome,
+      enqueueOnNew,
+      pollIntervalMs,
+      wait,
+      allowLocalFallback,
+      onStatus,
+      onQueueStatus,
+      onQueueCancelled,
+    } = this.o;
+    return {
+      fetch,
+      storage,
+      search,
+      planetType,
+      planetId,
+      sectorIntent,
+      pollQueuedHome,
+      enqueueOnNew,
+      pollIntervalMs,
+      wait,
+      allowLocalFallback,
+      tryRefresh,
+      onStatus,
+      onQueueStatus,
+      onQueueCancelled,
+      onCoordinator: (c: JoinQueueCoordinator) => {
+        this.coordinator = c;
+      },
+    };
   }
 
   private adopt(boot: BootAuthResult): BootAuthResult {
