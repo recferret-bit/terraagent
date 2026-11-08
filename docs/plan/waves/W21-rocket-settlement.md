@@ -75,6 +75,7 @@ The colony's endgame works end to end. The player terraforms all owned land to L
 | W21-24 | Dev console `setLiving <pct>`, `settle <colony>`, `launch` | client | S |  | W00-40 | `setLiving 100` → gate chip shows full and Launch enabled | PRODUCT_WAVES §3 | — |
 | W21-25 | Touch: launch confirm and overlay in landscape | client | S |  | W24-11 | On 844×390, tap Launch → confirm → countdown works | D-22 | — |
 | W21-26 | Test: AC-17 — launch rejected below 100 %, settled colony takes no damage and runs no systems | test | M |  | W21-04, W21-09 | `npm run test -w @terra/sim -- settlement` passes | AC-17 | TA-14.7 |
+| W21-28 | Integrate W05 D-45 hex-tile footprints, auto growth-ladder Terraform Zone (Irrigate → Seed), colony AI switch (`setAiEnabled`), and `BuildingLightState` settled monument mode into Rocket Silo and Prepare Rocket | sim | S |  | W21-04, W21-09, W21-17, W05-07, W05-10 | Enable colony AI with Prepare Rocket and settle at 100 % Living → growth-ladder ops complete missing hexes, D-45 4×4 Silo footprint excludes foundation tiles from `launchGate`, and settled buildings freeze `BuildingLightState` | D-45, UO-R-01, UO-R-02 | — |
 | W21-27 | Wave e2e `tests/e2e/w21.spec.ts` + scenario `w21-rocket-settlement` + tag `wave-21` | test | M |  | all W21 | `npm run e2e -- --waves ..21` → the demo story passes (incl. the Settled Deed of W20-15), and every earlier suite passes | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD

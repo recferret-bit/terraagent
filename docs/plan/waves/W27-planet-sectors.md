@@ -237,6 +237,7 @@ Existing IDs remain stable for downstream references; rows below now extend/test
 | W27-44 | Add location breadcrumbs, footprint, home/selection and far-side cues | client | M |  | W27-25, W27-43 | Follow crossing unit then orbit away → distinct accurate camera/home/unit indicators | Position indications | — |
 | W27-45 | Test projection, navigation reversal, input ownership and stale loads | test | M |  | W27-43, W27-44 | Online/local anchor round trips, ocean/seam picks, disconnect and retry → stable safe state | Continuous-map tests | — |
 | W27-46 | Audit all zoom bands, shared landing appearance and transition budgets | test | M |  | W27-35, W27-37, W27-45 | Repeat 100 zoom cycles across three profiles → readable markers, bounded resources and frame gates | Continuous-map QA | — |
+| W27-47 | Integrate W05 R4 hex-terrain plane joining, `WaterReflectionPass` planar reflections, chunked tile diffs (W05-19), and weather/twister/meteor VFX with sector streaming and ground-to-globe transitions | visual | S |  | W27-12, W27-24, W27-42, W05-19, W05-24, W05-28 | Stream sector borders during an active storm/water reflection pass and zoom ground → globe → ground → R4 joined hex chunks and `WaterReflectionPass` dispose/restore cleanly without stencil leaks | D-45, Pillar 3, Pillar 4 | — |
 | W27-39 | Wave e2e, scenarios, owner check guide and landing tag | test | M |  | all above | Run online/local demos and prior suites → green with reproducible owner guide | PRODUCT_WAVES §3, §7 | — |
 
 ## Execution and acceptance gates
