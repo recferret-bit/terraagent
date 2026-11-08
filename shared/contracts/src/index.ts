@@ -74,3 +74,4 @@ export * from './precheck';
 export * from './progression';
 export * from './profile';
 export * from './maps';
+export * from './lobby';

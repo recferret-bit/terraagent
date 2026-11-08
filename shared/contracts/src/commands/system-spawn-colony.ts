@@ -16,6 +16,8 @@ export const command = defineCommand({
     name: z.string().min(1).max(64),
     color: z.number().int().nonnegative().optional(),
     slotIndex: z.number().int().nonnegative().optional(),
+    sectorId: z.string().regex(/^sec_-?\d+_-?\d+$/).optional(),
+    landingSlotId: z.string().regex(/^slot_sec_-?\d+_-?\d+_\d+$/).optional(),
     q: TileCoord.optional(),
     r: TileCoord.optional(),
     unlockStage: z.number().int().min(0).max(10).optional(),

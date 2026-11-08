@@ -26,6 +26,7 @@ describe('W04-01 contracts and flag W04', () => {
   it('defines MAP_LAYER_IDS and alertPing event schema in @terra/contracts', () => {
     expect(MAP_LAYER_IDS).toEqual([
       'territory',
+      'sectors',
       'terrain',
       'terraformPct',
       'resources',

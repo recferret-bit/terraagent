@@ -10,6 +10,7 @@ export { ALERT_PING_KINDS, AlertPingKindSchema, type AlertPingKind };
 
 export const MAP_LAYER_IDS = [
   'territory',
+  'sectors',
   'terrain',
   'terraformPct',
   'resources',
@@ -33,6 +34,7 @@ export interface MapLayerMeta {
 
 export const MAP_LAYER_META: Record<MapLayerId, MapLayerMeta> = {
   territory: { id: 'territory', label: 'Territory', wave: 'W04', defaultOn: true, order: 10 },
+  sectors: { id: 'sectors', label: 'Sectors', wave: 'W11', defaultOn: true, order: 15 },
   terrain: { id: 'terrain', label: 'Terrain', wave: 'W04', defaultOn: true, order: 20 },
   units: { id: 'units', label: 'Units', wave: 'W04', defaultOn: true, order: 30 },
   terraformPct: { id: 'terraformPct', label: 'Terraform %', wave: 'W15', defaultOn: false, order: 40 },
