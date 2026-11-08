@@ -31,7 +31,7 @@ export class MemoryReservationOps {
       if (existingRes) return existingRes;
 
       const world = this.worldsById.get(input.planetId);
-      if (world && (world.admission !== 'OPEN' || world.lifecycle === 'ARCHIVED' || world.health === 'FAULTED')) {
+      if (world && (world.admission !== 'OPEN' || world.lifecycle !== 'ACTIVE' || world.health !== 'OK')) {
         return {
           ok: false,
           reason: 'admission_closed',

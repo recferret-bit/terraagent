@@ -38,6 +38,7 @@ import {
   normalizeCanonicalWorldInput,
   normalizeSectorSlotsInput,
 } from './lobby-store.helpers';
+import { validateCanonicalWorldStateUpdate } from './lifecycle-policy.helpers';
 import {
   mapAtlasVersionRow,
   mapCanonicalWorldRow,
@@ -148,10 +149,23 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
 
   async updateCanonicalWorldState(input: UpdateCanonicalWorldStateInput): Promise<CanonicalWorldRecord> {
     return this.mutex.run(`planet:${input.planetId}`, async () => {
-      const existing = await this.prisma.planet.findUnique({ where: { id: input.planetId } });
-      if (!existing) {
+      const existingRow = await this.prisma.planet.findUnique({ where: { id: input.planetId } });
+      if (!existingRow) {
         throw new LobbyPersistenceConflictError('planet_not_found', `planet "${input.planetId}" not found`);
       }
+      const existing = mapCanonicalWorldRow(existingRow);
+      validateCanonicalWorldStateUpdate(existing, input);
+      const baseNow = input.now ?? new Date();
+      const nextUpdatedAt = new Date(Math.max(baseNow.getTime(), existing.updatedAt.getTime() + 1));
+      const candidate: CanonicalWorldRecord = {
+        ...existing,
+        lifecycle: input.lifecycle ?? existing.lifecycle,
+        health: input.health ?? existing.health,
+        admission: input.admission ?? existing.admission,
+        faultCode: input.faultCode === undefined ? existing.faultCode : input.faultCode,
+        updatedAt: nextUpdatedAt,
+      };
+      input.onTransition?.(existing, candidate);
       const updated = await this.prisma.planet.update({
         where: { id: input.planetId },
         data: {
@@ -159,6 +173,7 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
           ...(input.health ? { health: input.health } : {}),
           ...(input.admission ? { admission: input.admission } : {}),
           ...(input.faultCode !== undefined ? { faultCode: input.faultCode } : {}),
+          updatedAt: nextUpdatedAt,
         },
       });
       return mapCanonicalWorldRow(updated);

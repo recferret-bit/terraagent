@@ -23,7 +23,7 @@ export class PrismaReservationOps {
         if (existingRes) return existingRes;
 
         const planet = await tx.planet.findUnique({ where: { id: input.planetId } });
-        if (planet && (planet.admission !== 'OPEN' || planet.lifecycle === 'ARCHIVED' || planet.health === 'FAULTED')) {
+        if (planet && (planet.admission !== 'OPEN' || planet.lifecycle !== 'ACTIVE' || planet.health !== 'OK')) {
           return {
             ok: false,
             reason: 'admission_closed',

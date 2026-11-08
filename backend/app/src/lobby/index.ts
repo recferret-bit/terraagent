@@ -1,4 +1,7 @@
 export * from './atlas-manifest.helper';
+export * from './lifecycle-policy.helpers';
+export * from './lifecycle.service';
+export * from './lifecycle.types';
 export * from './lobby-persistence.service';
 export * from './lobby-persistence.types';
 export * from './lobby-store.helpers';
