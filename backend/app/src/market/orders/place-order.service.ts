@@ -92,7 +92,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.handleLinked(event, parsed, opts, link);
     } catch (err) {
-      if (link) await this.linker?.fail(link, err instanceof Error ? err.message : String(err)).catch(() => undefined);
+      if (link) await this.linker?.fail(link, 'The order could not be processed (internal error); see the server log.').catch(() => undefined); // never the raw error: clients read this text
       throw err;
     }
   }

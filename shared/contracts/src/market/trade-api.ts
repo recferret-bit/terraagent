@@ -10,6 +10,13 @@ import { MarketBookPayload, MarketPolicyView, MyOrderView, PriceBoardRow } from 
  * Mutating routes take an `Idempotency-Key` header; errors are `{ error: { code, message, details? } }` with a stable `code`.
  */
 
+/** Characters of every id the API takes from a client (planet, order, key, ref, dev identity): no control characters, no separators. */
+export const SAFE_ID_RE = /^[A-Za-z0-9._:~@-]+$/;
+export const SAFE_ID_MAX = 128;
+export const SafeId = z.string().min(1).max(64).regex(SAFE_ID_RE, 'letters, digits and . _ : ~ @ - only');
+/** Free text a client names things with (key label): printable, no control characters (a NUL would reach the database). */
+export const SafeLabel = z.string().min(1).max(64).refine((v) => ![...v].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f), 'no control characters');
+
 export const TRADE_SCOPES = ['read', 'trade', 'manage'] as const;
 export const TradeScope = z.enum(TRADE_SCOPES);
 export type TradeScope = z.infer<typeof TradeScope>;
@@ -21,7 +28,7 @@ export const TRADE_KEY_PREFIX = 'ta_bot_';
 export const TRADE_ERROR_CODES = [
   'unauthorized', 'forbidden_scope', 'key_revoked', 'wave_disabled', 'rate_limited', 'invalid_request', 'no_colony',
   'idempotency_key_required', 'idempotency_key_reuse', 'order_not_found', 'wrong_planet',
-  'kill_switch', 'pair_not_allowed', 'max_open_orders', 'max_order_notional', 'daily_budget_exceeded', 'price_out_of_band', 'key_not_found', 'order_not_open', 'fill_policy_not_allowed', 'fee_out_of_range', 'key_limit', 'too_many_streams',
+  'kill_switch', 'pair_not_allowed', 'max_open_orders', 'max_order_notional', 'daily_budget_exceeded', 'price_out_of_band', 'key_not_found', 'order_not_open', 'fill_policy_not_allowed', 'fee_out_of_range', 'key_limit', 'too_many_streams', 'server_busy',
 ] as const;
 export const TradeErrorCode = z.enum(TRADE_ERROR_CODES);
 export type TradeErrorCode = z.infer<typeof TradeErrorCode>;
@@ -48,8 +55,8 @@ export const TradeAllowanceUpdate = TradeAllowance.partial();
 export type TradeAllowanceUpdate = z.infer<typeof TradeAllowanceUpdate>;
 
 export const CreateTradeKeyRequest = z.strictObject({
-  planetId: z.string().min(1).max(64),
-  label: z.string().min(1).max(64),
+  planetId: SafeId,
+  label: SafeLabel,
   scopes: z.array(TradeScope).min(1).default(['read', 'trade']),
   allowance: TradeAllowanceUpdate.optional(),
   ratePerSecond: z.number().int().min(1).max(1000).optional(),
@@ -87,7 +94,7 @@ export type RevokeTradeKeyResponse = z.infer<typeof RevokeTradeKeyResponse>;
 // --- orders ------------------------------------------------------------------------------------------------------
 export const PlaceTradeOrderRequest = z.strictObject({
   /** Required for session callers; a key is bound to one planet and rejects a different value (`wrong_planet`). */
-  planetId: z.string().min(1).max(64).optional(),
+  planetId: SafeId.optional(),
   side: OrderSide,
   resource: ResourceKey,
   amount: z.number().int().positive().max(1_000_000_000),
@@ -121,7 +128,7 @@ export const CancelTradeOrderResponse = z.object({
 export type CancelTradeOrderResponse = z.infer<typeof CancelTradeOrderResponse>;
 
 export const ListTradeOrdersQuery = z.object({
-  planetId: z.string().min(1).optional(),
+  planetId: SafeId.optional(),
   state: z.union([OrderState, z.literal('open')]).optional(),
   pair: PairId.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -131,7 +138,7 @@ export const TradeOrdersResponse = z.object({ orders: z.array(TradeOrderView) })
 export type TradeOrdersResponse = z.infer<typeof TradeOrdersResponse>;
 
 /** Numeric query values are parsed, never `Number()`-ed: `limit=abc` is a 400, not a 500. */
-export const TradeFillsQuery = z.object({ planetId: z.string().min(1).max(64).optional(), limit: z.coerce.number().int().min(1).max(200).optional() });
+export const TradeFillsQuery = z.object({ planetId: SafeId.optional(), limit: z.coerce.number().int().min(1).max(200).optional() });
 export const TradeBookQuery = z.object({ levels: z.coerce.number().int().min(1).max(50).optional() });
 
 export const TradeFillView = TradeView.extend({ side: OrderSide, orderId: z.string(), counterpartyKind: ActorKind });
@@ -211,7 +218,7 @@ const Rational = z.string().regex(/^\d+(\/[1-9]\d*)?$/, 'expected an integer or 
 const Units = z.string().regex(/^\d{1,15}$/, 'expected a non-negative integer');
 /** Planning inputs the sim holds and the backend cannot see; all optional (unknown stays unknown and shows up as a reason code). */
 export const AgentQuoteQuery = z.object({
-  planetId: z.string().min(1).optional(),
+  planetId: SafeId.optional(),
   resource: ResourceKey,
   quote: MarketTokenKey.default('USDC'),
   ttlS: z.coerce.number().int().positive().max(7 * 86_400).default(3600),
@@ -244,9 +251,9 @@ export const AgentQuoteResponse = z.object({
 export type AgentQuoteResponse = z.infer<typeof AgentQuoteResponse>;
 
 // --- stall (hub fee) ---------------------------------------------------------------------------------------------
-export const PutTradeStallRequest = z.strictObject({ bp: z.number().int().min(0).max(10_000), planetId: z.string().min(1).max(64).optional() });
+export const PutTradeStallRequest = z.strictObject({ bp: z.number().int().min(0).max(10_000), planetId: SafeId.optional() });
 export type PutTradeStallRequest = z.infer<typeof PutTradeStallRequest>;
-export const TradeStallQuery = z.strictObject({ planetId: z.string().min(1).max(64).optional() });
+export const TradeStallQuery = z.strictObject({ planetId: SafeId.optional() });
 export type TradeStallQuery = z.infer<typeof TradeStallQuery>;
 /** The caller's own Trade Hub stall: the fee it charges buyers on fills where it is the maker's stall, its policy range and what it earned (FINAL fills). */
 export const TradeStallResponse = z.object({

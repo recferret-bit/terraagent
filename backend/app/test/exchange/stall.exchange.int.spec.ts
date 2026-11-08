@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { HubFeeHandler } from '../../src/market/orders/hub-fee.handler.js';
 import { Exchange, sleep } from './exchange-harness.js';
 
 let ex: Exchange;
@@ -24,6 +25,23 @@ describe('PUT/GET /v1/trade/stall', () => {
       if (got !== 40) await sleep(40);
     }
     expect(got).toBe(40);
+  });
+
+  it('read-your-write: a GET right after a PUT shows the new fee, every time (the stored value follows via the event)', async () => {
+    const w = ex.world();
+    const a = await w.player({ name: `st${Date.now()}r` });
+    const handler = ex.app.get(HubFeeHandler);
+    const orig = handler.handle.bind(handler);
+    handler.handle = async (e) => { await sleep(400); return orig(e); }; // the sim's event reaches the store late: the API must not show the old fee meanwhile
+    for (const bp of [50, 10, 70, 0, 100, 33]) {
+      const put = await ex.api('PUT', '/trade/stall', { as: a.name, body: { bp, planetId: w.planetId } });
+      expect([put.status, put.body.hubFeeBp]).toEqual([200, bp]);
+      const got = await ex.api('GET', `/trade/stall?planetId=${w.planetId}`, { as: a.name });
+      expect(got.body.hubFeeBp, `GET right after PUT ${bp}`).toBe(bp);
+    }
+    await sleep(600);
+    expect((await ex.api('GET', `/trade/stall?planetId=${w.planetId}`, { as: a.name })).body.hubFeeBp).toBe(33);
+    handler.handle = orig;
   });
 
   it('out of range is 422 fee_out_of_range and never reaches the sim', async () => {

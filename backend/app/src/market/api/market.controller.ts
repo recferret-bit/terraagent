@@ -1,8 +1,10 @@
 import type { IncomingMessage } from 'node:http';
-import { Controller, Get, Inject, Param, Query, Req } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, Req, UseFilters, UseGuards } from '@nestjs/common';
 import type { MarketSnapshotResponse } from '@terra/contracts';
 import { CoreException } from '../../core/errors/index.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { TradeErrorFilter } from '../trade/trade-error.js';
+import { TradeInputGuard } from '../trade/trade-input.guard.js';
 import { MarketCallers } from './market-caller.js';
 import { MarketSnapshotService } from './market-snapshot.service.js';
 
@@ -11,6 +13,8 @@ import { MarketSnapshotService } from './market-snapshot.service.js';
  * `dev:<name>` or `?as=<name>`) also the caller's orders, balances, reservations and stall. 403 `wave_disabled` when W13 is off.
  */
 @Controller('market')
+@UseGuards(TradeInputGuard)
+@UseFilters(TradeErrorFilter)
 export class MarketController {
   constructor(
     private readonly snapshots: MarketSnapshotService,

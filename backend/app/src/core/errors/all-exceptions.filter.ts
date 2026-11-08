@@ -18,6 +18,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const fields = { errorCode: m.errorCode, status: m.status, requestId, method: req.method, path: req.originalUrl.split('?')[0] };
     if (m.status >= 500) this.log.error({ ...fields, err: exception }, m.message);
     else this.log.warn(fields, m.message);
+    const retryMs = (m.details as { retryAfterMs?: unknown } | undefined)?.retryAfterMs;
+    if (m.status === 503 && typeof retryMs === 'number') res.setHeader('Retry-After', String(Math.max(1, Math.ceil(retryMs / 1000))));
     const error = { code: restCodeFor(m.status, m.errorCode), message: m.message, ...(m.details === undefined ? {} : { details: m.details }) };
     res.status(m.status).json({ errorCode: m.errorCode, error, requestId });
   }

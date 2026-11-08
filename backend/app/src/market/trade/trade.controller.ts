@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseFilters } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseFilters, UseGuards } from '@nestjs/common';
 import {
   AgentQuoteQuery, CreateTradeKeyRequest, TradeFillsQuery, TradeBookQuery, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, PutTradeStallRequest, TradeAllowanceUpdate, TradeStallQuery,
   type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
@@ -8,6 +8,7 @@ import {
 } from '@terra/contracts';
 import type { ZodType } from 'zod';
 import type { HttpRes } from '../../core/logging/request-id.js';
+import { TradeInputGuard } from './trade-input.guard.js';
 import { TradeAuth, type TradePrincipal } from './trade-auth.js';
 import { TradeError, TradeErrorFilter } from './trade-error.js';
 import { TradeKeysService } from './trade-keys.service.js';
@@ -34,6 +35,7 @@ export function pairParam(raw: string): string {
  * actor `bot`). Routes, schemas and auth are listed in `TRADE_API_ROUTES` (`@terra/contracts`); curl examples in `market/README.md`.
  */
 @Controller('trade')
+@UseGuards(TradeInputGuard)
 @UseFilters(TradeErrorFilter)
 export class TradeController {
   constructor(
