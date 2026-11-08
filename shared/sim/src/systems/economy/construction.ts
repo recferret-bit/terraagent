@@ -1,4 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { CANCEL_REFUND_RATE, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
@@ -272,6 +273,8 @@ export function startBuildingConstruction(
     if (entityKind === ENTITY_KIND.supplyDepot) syncColonyDepotCaps(state, opts.owner, tick);
     syncColonyThreatStage(state, opts.owner, tick);
   }
+  recordAtlasColonyFounding(state, opts.owner, opts.q, opts.r, tick);
+  syncAtlasColonySectorState(state, tick);
 
   return { ok: true, entityId, buildTicks, effectiveTicks };
 }
@@ -303,6 +306,7 @@ function removeBuildingAndClearFootprint(
   if (state.colonies[owner]?.hubEntityId === entityId) delete state.colonies[owner].hubEntityId;
   removeRow(state.entities, entityId, tick);
   bumpPathEpoch(state.meta);
+  syncAtlasColonySectorState(state, tick);
 }
 
 /**

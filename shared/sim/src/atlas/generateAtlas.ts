@@ -354,7 +354,13 @@ export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetS
       radius: s.radius,
       tileCount: s.tileCount,
       foundingCapacity: s.foundingCapacity,
+      foundedSeats: 0,
+      freeSeats: s.foundingCapacity,
+      livingColonies: 0,
+      presentColonies: 0,
     })),
+    foundingSectorByColony: {},
+    presentSectorsByColony: {},
   };
   setBlob(state, 'atlas', blobValue, state.meta.tick);
   return state;

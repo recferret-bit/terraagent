@@ -1,3 +1,4 @@
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
@@ -77,6 +78,8 @@ export function spawnHqUnit(state: PlanetState, opts: SpawnHqOpts, ctx?: StepCon
 
   revealVision(state, opts.owner, opts.q, opts.r, rowNum(hqRow, 'viewRadius'), tick);
   syncHqView(state, row, tick, data);
+  recordAtlasColonyFounding(state, opts.owner, opts.q, opts.r, tick);
+  syncAtlasColonySectorState(state, tick);
   return id;
 }
 

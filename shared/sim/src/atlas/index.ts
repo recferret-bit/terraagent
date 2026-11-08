@@ -5,3 +5,5 @@ export * from './sampler';
 export * from './depositSampler';
 export * from './verifiers';
 export * from './generateAtlas';
+export * from './sectorMetrics';
+export * from './crossSectorGameplay';

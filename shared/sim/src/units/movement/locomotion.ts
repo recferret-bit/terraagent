@@ -1,3 +1,6 @@
+import { getAtlasBlob } from '../../atlas/generateAtlas';
+import { globalTileToSector } from '../../atlas/partition';
+import { syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
 import { PREP } from '../../grid/layers';
@@ -136,6 +139,12 @@ export function advanceAlongRoute(
   setField(e, row, 'r', nr, ctx.tick);
   if (nq !== prevQ || nr !== prevR) {
     revealVision(state, cols.owner[row], nq, nr, stats.viewRadius, ctx.tick);
+    const atlasBlob = getAtlasBlob(state);
+    if (atlasBlob && cols.owner[row] >= 0) {
+      const prevSec = globalTileToSector(prevQ, prevR, atlasBlob.sectorRadius).sectorId;
+      const nextSec = globalTileToSector(nq, nr, atlasBlob.sectorRadius).sectorId;
+      if (prevSec !== nextSec) syncAtlasColonySectorState(state, ctx.tick);
+    }
   }
   return result;
 }
