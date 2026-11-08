@@ -58,6 +58,8 @@ async function seedPlanet(m: Multi, page: Page): Promise<void> {
   m.planetId = await page.evaluate(() => (window as unknown as { __online: { planetId: string } }).__online.planetId);
   expect(m.planetId).toMatch(/^pl_/);
   m.api = new BotApi({ ...m.ctx, planetId: () => m.planetId });
+  // same reason as w13.spec step 1: nightfall switches Solar off and the Trade Hubs with it
+  expect((await m.api.dev('time', { planetId: m.planetId, timeOfDay: 12, timeScale: 0 })).status).toBe(200);
   m.board = async () => {
     const r = await m.api.call('GET', `/v1/trade/board/${m.planetId}`);
     expect(r.status, JSON.stringify(r.json)).toBe(200);

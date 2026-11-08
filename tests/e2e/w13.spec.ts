@@ -1,8 +1,5 @@
 import type { Page } from '@playwright/test';
-import { registerBotSteps } from './w13-bots';
-import { registerMultiColonySteps } from './w13-bots-multi';
-import { registerTradeUiSteps } from './w13-trade-ui';
-import { registerTradeSteps } from './w13-trade';
+import { registerExtraSteps } from './w13-register';
 import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, stack, test, urls, waitForTick } from './harness';
 
 /**
@@ -117,6 +114,7 @@ test('@hack 1. A opens ?scenario=w13&as=a, B joins with ?join=<planetId>&as=b: A
   await loadScenario(a, 'w13', { skip: '1' }, { as: 'a', timeout: 120_000 });
   planetId = await a.evaluate(() => (window as unknown as OnlineWin).__online.planetId);
   expect(planetId).toMatch(/^pl_/);
+  expect((await dev('time', { planetId, timeOfDay: 12, timeScale: 0 })).status).toBe(200); // night (15-min day) would switch Solar and the hubs off mid-suite
   login(b, 'b');
   await b.goto(`/play.html?${new URLSearchParams({ join: planetId, as: 'b', skip: '1' })}`);
   await waitForTick(b, () => true, 150_000);
@@ -395,10 +393,7 @@ test('@hack 9b. The operator panel UI /dev/chain/?tab=economy: dev tokens, clone
   }
 });
 
-registerTradeSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
-registerBotSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
-registerMultiColonySteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
-registerTradeUiSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
+registerExtraSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
 
 test('@hack 9c. Supply & trade panel: open it, BUY prefills the MARKET order form with side and amount and never submits', async () => {
   test.setTimeout(120_000);
