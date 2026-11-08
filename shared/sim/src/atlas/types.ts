@@ -169,6 +169,16 @@ export interface GenerateSmallAtlasOptions extends BuildSmallAtlasPartitionOptio
   readonly seed?: string;
   readonly worldSalt?: string;
   readonly foundingSeatsPerSector?: number;
+  readonly totalSectors?: number;
+  readonly landSectors?: number;
+  readonly oceanSectors?: number;
+  readonly continentCount?: number;
+  readonly continents?: readonly string[];
+  readonly planetRadius?: number;
+  readonly canonicalWorlds?: number;
+  readonly totalTiles?: number;
+  readonly skipPerfCaps?: boolean;
+  readonly perfCaps?: Partial<import('./perfCaps').SmallAtlasPerfCaps>;
   readonly resourceProfileId?: string;
   readonly regionalResourceConfig?: RegionalResourceResolutionConfig;
   readonly sectorArchetypes?: Readonly<Record<SectorId, string>>;

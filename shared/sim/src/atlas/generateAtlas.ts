@@ -16,6 +16,7 @@ import { hexDistance, hexIndex } from '../grid/hex';
 import { createState, setBlob, type Blob, type PlanetState, type PlanetType } from '../kernel/state';
 import { validateAtlasLandingSites } from './landingSites';
 import { buildAtlasManifest, cloneAtlasManifest } from './manifest';
+import { enforceSmallAtlasPreAllocationCaps, type SmallAtlasPerfCaps } from './perfCaps';
 import {
   createAtlasSamplerContext,
   sampleAtlasTile,
@@ -240,6 +241,9 @@ export function generateSmallAtlas(opts?: GenerateSmallAtlasOptions): GeneratedS
   if (!Number.isSafeInteger(foundingSeatsPerSector) || foundingSeatsPerSector <= 0) {
     throw new RangeError(`foundingSeatsPerSector must be a positive integer, got ${foundingSeatsPerSector}`);
   }
+  if (!opts?.skipPerfCaps) {
+    enforceSmallAtlasPreAllocationCaps(opts, opts?.perfCaps as Partial<SmallAtlasPerfCaps> | undefined);
+  }
   const continentId = opts?.continentId ?? formatContinentId(0);
 
   const partition = buildSmallAtlasPartition(buildCanonicalPartitionOptions({ ...opts, sectorRadius, continentId }));
@@ -390,6 +394,12 @@ function buildAtlasBlobForState(atlas: GeneratedSmallAtlas, manifest: AtlasManif
 }
 
 export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetState {
+  if (opts?.gridRadius !== undefined && (!Number.isSafeInteger(opts.gridRadius) || opts.gridRadius <= 0)) {
+    throw new RangeError(`gridRadius must be a positive integer, got ${opts.gridRadius}`);
+  }
+  if (!opts?.skipPerfCaps) {
+    enforceSmallAtlasPreAllocationCaps(opts, opts?.perfCaps as Partial<SmallAtlasPerfCaps> | undefined);
+  }
   const atlas = resolveAtlasForPlanetState(opts);
   const manifest = opts?.manifest
     ? cloneAtlasManifest(AtlasManifestV1Schema.parse(opts.manifest))
