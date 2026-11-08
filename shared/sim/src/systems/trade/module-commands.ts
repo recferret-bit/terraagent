@@ -5,13 +5,13 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 import { ensureColonyCargoState } from '../cargo/state';
 import { colonyIdOf, resolveModuleColonyIndex } from './colony';
 import { isModuleSource } from './command-source';
+import { applyFill, endOrder } from './market-lifecycle';
 import {
   MAX_TRACKED_SETTLED_TRADES,
   addAmounts,
   boundOpenOrders,
   ensureColonyMarketState,
   readMarketPolicy,
-  sumAmounts,
   type ColonyMarketState,
   type ColonyOpenOrder,
   type MarketResourceAmounts,
@@ -53,6 +53,7 @@ export const marketReserveHandler = defineCommandHandler({
       resource: requested?.resource ?? (Object.keys(reserved)[0] as ResourceKey),
       amount: requested?.amount ?? 0,
       reserved,
+      filled: prev?.filled ?? 0,
     };
     if (args.orderId ?? prev?.orderId) open.orderId = args.orderId ?? prev?.orderId;
     delete market.requested[args.ref];
@@ -75,12 +76,7 @@ export const marketReleaseHandler = defineCommandHandler({
     const { colony, index, market } = r;
 
     addAmounts(market.reservedInOrbit, args.deltas, -1);
-    if (args.reason !== 'filled') delete market.requested[args.ref];
-    const order = market.openOrders[args.ref];
-    if (order) {
-      addAmounts(order.reserved, args.deltas, -1);
-      if (args.reason !== 'filled' || sumAmounts(order.reserved) === 0) delete market.openOrders[args.ref];
-    }
+    endOrder(market, args.ref); // every reason ends the order and frees its slot
     colony.changedAt = ctx.tick;
     if (args.reason === 'settlement_failed') {
       const colonyId = colonyIdOf(colony, index);
@@ -153,13 +149,8 @@ export const marketSettledHandler = defineCommandHandler({
     addAmounts(ensureColonyCargoState(colony).inOrbit, full.deltas, 1);
     if (full.released) {
       addAmounts(market.reservedInOrbit, full.released, -1);
-      const order = full.ref ? market.openOrders[full.ref] : undefined;
-      if (order) {
-        const before = sumAmounts(order.reserved);
-        addAmounts(order.reserved, full.released, -1);
-        if (before > 0 && sumAmounts(order.reserved) === 0) delete market.openOrders[full.ref!];
-      }
     }
+    if (full.ref && full.role !== 'stall') applyFill(market, full.ref, full.trade.amount, full.released);
     market.lastTrade = { tradeId: full.tradeId, role: full.role, base: full.trade.base, amount: full.trade.amount, quote: full.trade.quote, atTick: ctx.tick };
     colony.changedAt = ctx.tick;
     emitSettled(colony, index, full, ctx);

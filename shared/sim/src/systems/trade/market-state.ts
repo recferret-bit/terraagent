@@ -23,6 +23,8 @@ export interface ColonyOpenOrder {
   amount: number;
   orderId?: string;
   reserved: MarketResourceAmounts;
+  /** Base units filled so far (set by `market.reserve`; absent only on orders persisted before the lifecycle fix). */
+  filled?: number;
 }
 
 export interface ColonyLastTrade {

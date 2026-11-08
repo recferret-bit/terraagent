@@ -14,6 +14,7 @@ import {
   type ColonyMarketState,
   type MarketPolicy,
 } from './market-state';
+import { healLeakedSlots } from './market-lifecycle';
 
 
 /** Free in-orbit units of `resource`: mirror `inOrbit` minus what open orders already reserve. */
@@ -103,6 +104,7 @@ export const marketPlaceOrderHandler = defineCommandHandler({
     if (rejected) return rejected;
 
     const market = ensureColonyMarketState(colony, ctx.data);
+    if (Object.keys(market.openOrders).length >= policy.openOrderLimit) healLeakedSlots(market, policy);
     if (Object.keys(market.openOrders).length >= policy.openOrderLimit) {
       return { code: 'order_limit', detail: `At most ${policy.openOrderLimit} open orders.` };
     }
