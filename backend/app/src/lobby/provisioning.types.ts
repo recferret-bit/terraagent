@@ -10,7 +10,7 @@ import {
   type WorldHealthState,
   type WorldLifecycleState,
 } from '@terra/contracts';
-import { buildAtlasManifest, buildDefaultAtlasConfig } from '@terra/sim';
+import { buildAtlasManifest, buildDefaultAtlasConfig, validateAtlasRolloutLimits } from '@terra/sim';
 import type { GamePlanets } from '../game/game-planets.service';
 import type { SnapshotService } from '../game/persistence/snapshot.service';
 import type { SectorStatusSnapshot, WorldStatusSnapshot } from './lifecycle.types';
@@ -210,6 +210,14 @@ export function buildCanonicalProvisioningManifest(
         { expectedPlanetId: canonical.id, actualPlanetId: parsed.planetId, type },
       );
     }
+    const rollout = validateAtlasRolloutLimits(parsed);
+    if (!rollout.ok) {
+      throw new LobbyPersistenceConflictError(
+        'rollout_limit_exceeded',
+        rollout.violations.map((v) => v.message).join('; '),
+        { planetId: canonical.id, type, violations: rollout.violations },
+      );
+    }
     return parsed;
   }
   const config = buildDefaultAtlasConfig({
@@ -223,6 +231,14 @@ export function buildCanonicalProvisioningManifest(
     foundingSeatsPerSector: options.foundingSeatsPerSector,
     resourceProfileId: options.resourceProfileId,
   });
+  const cfgRollout = validateAtlasRolloutLimits(config);
+  if (!cfgRollout.ok) {
+    throw new LobbyPersistenceConflictError(
+      'rollout_limit_exceeded',
+      cfgRollout.violations.map((v) => v.message).join('; '),
+      { planetId: canonical.id, type, violations: cfgRollout.violations },
+    );
+  }
   return buildAtlasManifest(config, {
     atlasVersion: options.atlasVersion ?? 1,
     resourceProfileId: options.resourceProfileId,

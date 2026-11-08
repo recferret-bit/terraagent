@@ -18,6 +18,7 @@ import {
   type WorldHealthState,
   type WorldLifecycleState,
 } from '@terra/contracts';
+import { validateAtlasRolloutLimits } from '@terra/sim';
 import {
   LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
@@ -115,6 +116,16 @@ export function normalizeCanonicalWorldInput(input: ProvisionCanonicalWorldInput
       `manifest planetType "${input.manifest.planetType}" does not match requested type "${input.type}"`,
       { type: input.type, manifestPlanetType: input.manifest.planetType },
     );
+  }
+  if (input.manifest) {
+    const rollout = validateAtlasRolloutLimits(input.manifest);
+    if (!rollout.ok) {
+      throw new LobbyPersistenceConflictError(
+        'rollout_limit_exceeded',
+        rollout.violations.map((v) => v.message).join('; '),
+        { type: input.type, planetId: id, violations: rollout.violations },
+      );
+    }
   }
   const seed = input.seed ?? input.manifest?.seed ?? canonical.seed;
   return {

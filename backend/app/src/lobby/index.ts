@@ -1,4 +1,7 @@
 export * from './atlas-manifest.helper';
+export * from './capacity-guard.helpers';
+export * from './capacity-guard.service';
+export * from './capacity-guard.types';
 export * from './lifecycle-policy.helpers';
 export * from './lifecycle.service';
 export * from './lifecycle.types';
@@ -28,3 +31,6 @@ export * from './tickets.controller';
 export * from './tickets.helpers';
 export * from './tickets.service';
 export * from './tickets.types';
+export * from './world-recovery.helpers';
+export * from './world-recovery.service';
+export * from './world-recovery.types';
