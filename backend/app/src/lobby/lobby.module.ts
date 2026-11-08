@@ -9,13 +9,13 @@ import { CanonicalWorldProvisioningService } from './provisioning.service';
 import { SectorReservationService } from './reservation.service';
 import { MatchTicketsController } from './tickets.controller';
 import { MatchTicketsService } from './tickets.service';
+import { CanonicalWorldRecoveryService } from './world-recovery.service';
 
 /**
  * Lobby domain module (W11): persistent canonical worlds, immutable atlas versions,
  * sector slot reservations, tickets, 5-member parties, persistent lifecycle/admission policy,
- * canonical world sim-thread provisioning, planet/sector summaries & public stats,
- * idempotent matchmaking ticket REST endpoints, same-planet sector matchmaker,
- * and canonical capacity guard (`MM-42..44`).
+ * canonical world sim-thread provisioning & restart recovery, planet/sector summaries & public stats,
+ * idempotent matchmaking ticket REST endpoints, same-planet sector matchmaker, and canonical capacity guard.
  */
 @Global()
 @Module({
@@ -24,6 +24,7 @@ import { MatchTicketsService } from './tickets.service';
     LobbyPersistenceService,
     WorldLifecycleService,
     CanonicalWorldProvisioningService,
+    CanonicalWorldRecoveryService,
     PlanetsService,
     SectorReservationService,
     MatchTicketsService,
@@ -34,6 +35,7 @@ import { MatchTicketsService } from './tickets.service';
     LobbyPersistenceService,
     WorldLifecycleService,
     CanonicalWorldProvisioningService,
+    CanonicalWorldRecoveryService,
     PlanetsService,
     SectorReservationService,
     MatchTicketsService,

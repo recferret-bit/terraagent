@@ -26,3 +26,6 @@ export * from './tickets.controller';
 export * from './tickets.helpers';
 export * from './tickets.service';
 export * from './tickets.types';
+export * from './world-recovery.helpers';
+export * from './world-recovery.service';
+export * from './world-recovery.types';
