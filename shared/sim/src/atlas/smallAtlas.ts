@@ -231,7 +231,25 @@ function populatePartitionTiles(
   };
 }
 
+const defaultPartitionCache = new Map<string, AtlasPartition>();
+
+function defaultPartitionCacheKey(opts?: BuildSmallAtlasPartitionOptions): string | null {
+  const sectorRadius = opts?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
+  const landCoords = opts?.landCoords ?? W11_SEVEN_SECTOR_COORDS;
+  const oceanCoords = opts?.oceanCoords;
+  const includeOceanHalo = opts?.includeOceanHalo ?? true;
+  const continentId = opts?.continentId ?? formatContinentId(0);
+  if (landCoords !== W11_SEVEN_SECTOR_COORDS) return null;
+  if (oceanCoords !== undefined && oceanCoords !== W11_OCEAN_HALO_SECTOR_COORDS) return null;
+  return `${sectorRadius}|${includeOceanHalo ? 1 : 0}|${oceanCoords ? 1 : 0}|${continentId}`;
+}
+
 export function buildSmallAtlasPartition(opts?: BuildSmallAtlasPartitionOptions): AtlasPartition {
+  const cacheKey = defaultPartitionCacheKey(opts);
+  if (cacheKey) {
+    const cached = defaultPartitionCache.get(cacheKey);
+    if (cached) return cached;
+  }
   const sectorRadius = opts?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
   if (!Number.isSafeInteger(sectorRadius) || sectorRadius <= 0) {
     throw new RangeError(`sectorRadius must be a positive integer, got ${sectorRadius}`);
@@ -282,7 +300,7 @@ export function buildSmallAtlasPartition(opts?: BuildSmallAtlasPartitionOptions)
   }
 
   const cornerTriples = collectCornerTriples(seamTiles, sectorRadius, tileByKey);
-  return {
+  const partition: AtlasPartition = {
     sectorRadius,
     tilesPerSector,
     sectors,
@@ -296,4 +314,6 @@ export function buildSmallAtlasPartition(opts?: BuildSmallAtlasPartitionOptions)
     bounds,
     getTile: (q: number, r: number) => tileByKey.get(tileCoordKey(q, r)) ?? null,
   };
+  if (cacheKey) defaultPartitionCache.set(cacheKey, partition);
+  return partition;
 }

@@ -5,6 +5,7 @@ import {
   type SectorKind,
   type SectorNeighbourV1,
 } from '@terra/contracts';
+import type { PlanetType } from '../kernel/state';
 
 /** Alias matching US spelling alongside `@terra/contracts` `SectorNeighbourV1`. */
 export type SectorNeighborV1 = SectorNeighbourV1;
@@ -147,3 +148,181 @@ export const W11_SMALL_ATLAS_SECTOR_COORDS: readonly (readonly [number, number])
   ...W11_SEVEN_SECTOR_COORDS,
   ...W11_OCEAN_HALO_SECTOR_COORDS,
 ] as const;
+
+export interface GenerateSmallAtlasOptions extends BuildSmallAtlasPartitionOptions {
+  readonly planetId?: string;
+  readonly planetType?: PlanetType;
+  readonly seed?: string;
+  readonly worldSalt?: string;
+  readonly foundingSeatsPerSector?: number;
+  /**
+   * Optional explicit order of sector IDs to iterate when populating sector buffers.
+   * Global coordinate sampling guarantees identical tile outputs under any permutation.
+   */
+  readonly sectorOrder?: readonly SectorId[];
+}
+
+export interface CreateAtlasPlanetOptions extends GenerateSmallAtlasOptions {
+  readonly gridRadius?: number;
+  readonly atlas?: GeneratedSmallAtlas;
+}
+
+export interface SampledAtlasTileValues {
+  readonly q: number;
+  readonly r: number;
+  readonly isLandSector: boolean;
+  readonly distanceToOcean: number;
+  readonly distanceToLand: number;
+  readonly terrain: number;
+  readonly prep: number;
+  readonly height: number;
+  readonly deposit: number;
+  readonly depositTier: number;
+  readonly richness: number;
+  readonly subDeposit: number;
+  readonly subRichness: number;
+}
+
+export interface GeneratedAtlasTile extends AtlasTileOwner {
+  readonly continentId: ContinentId | null;
+  readonly distanceToOcean: number;
+  readonly distanceToLand: number;
+  readonly terrain: number;
+  readonly prep: number;
+  readonly height: number;
+  readonly deposit: number;
+  readonly depositTier: number;
+  readonly richness: number;
+  readonly subDeposit: number;
+  readonly subRichness: number;
+}
+
+export interface GeneratedAtlasSector {
+  readonly sectorId: SectorId;
+  readonly ordinal: number;
+  readonly kind: SectorKind;
+  readonly continentId: ContinentId | null;
+  readonly macroQ: number;
+  readonly macroR: number;
+  readonly centerQ: number;
+  readonly centerR: number;
+  readonly radius: number;
+  readonly tileCount: number;
+  readonly foundingCapacity: number;
+  readonly neighbors: readonly SectorNeighborV1[];
+  readonly atlasNeighbors: readonly SectorNeighborV1[];
+  readonly tiles: readonly SectorTileEntry[];
+  readonly seamTiles: readonly AtlasSeamTile[];
+  readonly terrain: Uint8Array;
+  readonly prep: Uint8Array;
+  readonly height: Float32Array;
+  readonly deposit: Uint8Array;
+  readonly depositTier: Uint8Array;
+  readonly richness: Float32Array;
+  readonly subDeposit: Uint8Array;
+  readonly subRichness: Float32Array;
+}
+
+export interface SeamContinuityOptions {
+  readonly maxLandStepM?: number;
+  readonly maxCoastStepM?: number;
+  readonly maxOceanStepM?: number;
+}
+
+export interface SeamContinuityViolation {
+  readonly kind: 'land_height_step' | 'coast_height_step' | 'ocean_height_step' | 'ocean_not_water';
+  readonly sectorA: SectorId;
+  readonly sectorB: SectorId;
+  readonly qA: number;
+  readonly rA: number;
+  readonly qB: number;
+  readonly rB: number;
+  readonly heightDeltaM: number;
+  readonly message: string;
+}
+
+export interface SeamContinuityReport {
+  readonly ok: boolean;
+  readonly totalSeamPairs: number;
+  readonly landToLandPairs: number;
+  readonly landToOceanPairs: number;
+  readonly oceanToOceanPairs: number;
+  readonly maxHeightDeltaM: number;
+  readonly maxLandToLandHeightDeltaM: number;
+  readonly meanLandToLandHeightDeltaM: number;
+  readonly maxLandToOceanHeightDeltaM: number;
+  readonly maxOceanToOceanHeightDeltaM: number;
+  readonly violations: readonly SeamContinuityViolation[];
+}
+
+export interface ConnectedContinentReport {
+  readonly ok: boolean;
+  readonly continentId: ContinentId;
+  readonly landSectorCount: number;
+  readonly reachedLandSectorIds: readonly SectorId[];
+  readonly connectedLandTileCount: number;
+  readonly totalLandTileCount: number;
+  readonly connectedShare: number;
+  readonly crossSectorLandEdges: number;
+  readonly oceanHaloAllWater: boolean;
+  readonly oceanHaloZeroCapacity: boolean;
+  readonly reasons: readonly string[];
+}
+
+export interface AtlasSectorBlobSummary {
+  readonly sectorId: SectorId;
+  readonly ordinal: number;
+  readonly kind: SectorKind;
+  readonly continentId: ContinentId | null;
+  readonly macroQ: number;
+  readonly macroR: number;
+  readonly centerQ: number;
+  readonly centerR: number;
+  readonly radius: number;
+  readonly tileCount: number;
+  readonly foundingCapacity: number;
+}
+
+export interface AtlasBlobValue {
+  readonly planetId: string;
+  readonly planetType: PlanetType;
+  readonly seed: string;
+  readonly genVersion: number;
+  readonly sectorRadius: number;
+  readonly tilesPerSector: number;
+  readonly foundingSeatsPerSector: number;
+  readonly continentId: ContinentId;
+  readonly landSectorIds: readonly SectorId[];
+  readonly oceanSectorIds: readonly SectorId[];
+  readonly bounds: AtlasPartition['bounds'];
+  readonly sectors: readonly AtlasSectorBlobSummary[];
+}
+
+export interface GeneratedSmallAtlas {
+  readonly planetId: string;
+  readonly planetType: PlanetType;
+  readonly seed: string;
+  readonly genVersion: number;
+  readonly sectorRadius: number;
+  readonly tilesPerSector: number;
+  readonly foundingSeatsPerSector: number;
+  readonly continentId: ContinentId;
+  readonly generationOrder: readonly SectorId[];
+  readonly partition: AtlasPartition;
+  readonly sectors: readonly GeneratedAtlasSector[];
+  readonly sectorById: ReadonlyMap<SectorId, GeneratedAtlasSector>;
+  readonly landSectorIds: readonly SectorId[];
+  readonly oceanSectorIds: readonly SectorId[];
+  readonly terrain: Uint8Array;
+  readonly prep: Uint8Array;
+  readonly height: Float32Array;
+  readonly deposit: Uint8Array;
+  readonly depositTier: Uint8Array;
+  readonly richness: Float32Array;
+  readonly subDeposit: Uint8Array;
+  readonly subRichness: Float32Array;
+  getTile(q: number, r: number): GeneratedAtlasTile | null;
+  sampleGlobalTile(q: number, r: number): SampledAtlasTileValues;
+  verifySeamContinuity(opts?: SeamContinuityOptions): SeamContinuityReport;
+  verifyConnectedContinent(): ConnectedContinentReport;
+}

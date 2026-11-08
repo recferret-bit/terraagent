@@ -1,0 +1,370 @@
+import {
+  canonicalPlanetById,
+  canonicalPlanetForType,
+  formatContinentId,
+  formatSectorId,
+  W11_DEFAULT_FOUNDING_SEATS_PER_SECTOR,
+  W11_DEFAULT_SECTOR_RADIUS,
+  W11_SEVEN_SECTOR_COORDS,
+  type SectorId,
+} from '@terra/contracts';
+import { GEN_VERSION } from '../gen/generators';
+import { hexDistance, hexIndex } from '../grid/hex';
+import { createState, setBlob, type Blob, type PlanetState, type PlanetType } from '../kernel/state';
+import { tileCoordKey } from './partition';
+import { createAtlasSamplerContext, sampleAtlasTile, type AtlasSamplerContext } from './sampler';
+import { buildSmallAtlasPartition } from './smallAtlas';
+import {
+  W11_OCEAN_HALO_SECTOR_COORDS,
+  type AtlasBlobValue,
+  type AtlasPartition,
+  type AtlasSectorPartition,
+  type BuildSmallAtlasPartitionOptions,
+  type CreateAtlasPlanetOptions,
+  type GeneratedAtlasSector,
+  type GeneratedAtlasTile,
+  type GeneratedSmallAtlas,
+  type GenerateSmallAtlasOptions,
+} from './types';
+import { verifyAtlasConnectedContinent, verifyAtlasSeamContinuity } from './verifiers';
+
+function isSameCoordSet(
+  coords: readonly (readonly [number, number])[],
+  canonical: readonly (readonly [number, number])[],
+): boolean {
+  if (coords.length !== canonical.length) return false;
+  const setA = new Set(coords.map(([q, r]) => formatSectorId(q, r)));
+  if (setA.size !== canonical.length) return false;
+  return canonical.every(([q, r]) => setA.has(formatSectorId(q, r)));
+}
+
+function buildCanonicalPartitionOptions(opts?: GenerateSmallAtlasOptions): BuildSmallAtlasPartitionOptions {
+  const rawLand = opts?.landCoords ?? W11_SEVEN_SECTOR_COORDS;
+  const landCoords = isSameCoordSet(rawLand, W11_SEVEN_SECTOR_COORDS)
+    ? W11_SEVEN_SECTOR_COORDS
+    : [...rawLand].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+
+  let oceanCoords = opts?.oceanCoords;
+  if (oceanCoords) {
+    oceanCoords = isSameCoordSet(oceanCoords, W11_OCEAN_HALO_SECTOR_COORDS)
+      ? W11_OCEAN_HALO_SECTOR_COORDS
+      : [...oceanCoords].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  }
+
+  return {
+    sectorRadius: opts?.sectorRadius,
+    landCoords,
+    ...(oceanCoords ? { oceanCoords } : {}),
+    includeOceanHalo: opts?.includeOceanHalo,
+    continentId: opts?.continentId,
+  };
+}
+
+function resolveGenerationOrder(
+  partition: AtlasPartition,
+  opts?: GenerateSmallAtlasOptions,
+): SectorId[] {
+  if (opts?.sectorOrder) {
+    if (opts.sectorOrder.length !== partition.sectors.length) {
+      throw new RangeError(
+        `sectorOrder length (${opts.sectorOrder.length}) must equal partition sector count (${partition.sectors.length})`,
+      );
+    }
+    const seen = new Set<SectorId>();
+    const out: SectorId[] = [];
+    for (const id of opts.sectorOrder) {
+      if (!partition.sectorById.has(id)) {
+        throw new RangeError(`sectorOrder contains unknown sectorId "${id}"`);
+      }
+      if (seen.has(id)) {
+        throw new RangeError(`sectorOrder contains duplicate sectorId "${id}"`);
+      }
+      seen.add(id);
+      out.push(id);
+    }
+    return out;
+  }
+
+  if (opts?.landCoords || opts?.oceanCoords) {
+    const requested: SectorId[] = [];
+    const seen = new Set<SectorId>();
+    for (const [mq, mr] of opts.landCoords ?? W11_SEVEN_SECTOR_COORDS) {
+      const id = formatSectorId(mq, mr);
+      if (partition.sectorById.has(id) && !seen.has(id)) {
+        seen.add(id);
+        requested.push(id);
+      }
+    }
+    for (const [mq, mr] of opts.oceanCoords ?? []) {
+      const id = formatSectorId(mq, mr);
+      if (partition.sectorById.has(id) && !seen.has(id)) {
+        seen.add(id);
+        requested.push(id);
+      }
+    }
+    for (const sec of partition.sectors) {
+      if (!seen.has(sec.sectorId)) {
+        seen.add(sec.sectorId);
+        requested.push(sec.sectorId);
+      }
+    }
+    return requested;
+  }
+
+  return partition.sectors.map((s) => s.sectorId);
+}
+
+function generateSectorBuffers(
+  secPart: AtlasSectorPartition,
+  foundingSeatsPerSector: number,
+  samplerCtx: AtlasSamplerContext,
+  partition: AtlasPartition,
+  atlasLayers: {
+    terrain: Uint8Array;
+    prep: Uint8Array;
+    height: Float32Array;
+    deposit: Uint8Array;
+    depositTier: Uint8Array;
+    richness: Float32Array;
+    subDeposit: Uint8Array;
+    subRichness: Float32Array;
+  },
+  generatedTilesByKey: Map<string, GeneratedAtlasTile>,
+): GeneratedAtlasSector {
+  const n = secPart.tileCount;
+  const terrain = new Uint8Array(n);
+  const prep = new Uint8Array(n);
+  const height = new Float32Array(n);
+  const deposit = new Uint8Array(n);
+  const depositTier = new Uint8Array(n);
+  const richness = new Float32Array(n);
+  const subDeposit = new Uint8Array(n);
+  const subRichness = new Float32Array(n);
+
+  for (const st of secPart.tiles) {
+    const idx = st.localIndex;
+    const sampled = sampleAtlasTile(st.q, st.r, samplerCtx);
+    terrain[idx] = sampled.terrain;
+    prep[idx] = sampled.prep;
+    height[idx] = sampled.height;
+    deposit[idx] = sampled.deposit;
+    depositTier[idx] = sampled.depositTier;
+    richness[idx] = sampled.richness;
+    subDeposit[idx] = sampled.subDeposit;
+    subRichness[idx] = sampled.subRichness;
+
+    const owner = partition.getTile(st.q, st.r)!;
+    const aIdx = owner.atlasIndex;
+    atlasLayers.terrain[aIdx] = sampled.terrain;
+    atlasLayers.prep[aIdx] = sampled.prep;
+    atlasLayers.height[aIdx] = sampled.height;
+    atlasLayers.deposit[aIdx] = sampled.deposit;
+    atlasLayers.depositTier[aIdx] = sampled.depositTier;
+    atlasLayers.richness[aIdx] = sampled.richness;
+    atlasLayers.subDeposit[aIdx] = sampled.subDeposit;
+    atlasLayers.subRichness[aIdx] = sampled.subRichness;
+
+    generatedTilesByKey.set(tileCoordKey(st.q, st.r), {
+      ...owner,
+      continentId: secPart.continentId,
+      distanceToOcean: sampled.distanceToOcean,
+      distanceToLand: sampled.distanceToLand,
+      terrain: sampled.terrain,
+      prep: sampled.prep,
+      height: sampled.height,
+      deposit: sampled.deposit,
+      depositTier: sampled.depositTier,
+      richness: sampled.richness,
+      subDeposit: sampled.subDeposit,
+      subRichness: sampled.subRichness,
+    });
+  }
+
+  return {
+    sectorId: secPart.sectorId,
+    ordinal: secPart.ordinal,
+    kind: secPart.kind,
+    continentId: secPart.continentId,
+    macroQ: secPart.macroQ,
+    macroR: secPart.macroR,
+    centerQ: secPart.centerQ,
+    centerR: secPart.centerR,
+    radius: secPart.radius,
+    tileCount: secPart.tileCount,
+    foundingCapacity: secPart.kind === 'land' ? foundingSeatsPerSector : 0,
+    neighbors: secPart.neighbors,
+    atlasNeighbors: secPart.atlasNeighbors,
+    tiles: secPart.tiles,
+    seamTiles: secPart.seamTiles,
+    terrain,
+    prep,
+    height,
+    deposit,
+    depositTier,
+    richness,
+    subDeposit,
+    subRichness,
+  };
+}
+
+export function generateSmallAtlas(opts?: GenerateSmallAtlasOptions): GeneratedSmallAtlas {
+  const byId = opts?.planetId ? canonicalPlanetById(opts.planetId) : null;
+  const planetType: PlanetType = opts?.planetType ?? byId?.type ?? 'temperate';
+  const canonical = canonicalPlanetForType(planetType);
+  const planetId = opts?.planetId ?? canonical.id;
+  const seed = opts?.seed ?? canonical.seed;
+  const sectorRadius = opts?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
+  const foundingSeatsPerSector = opts?.foundingSeatsPerSector ?? W11_DEFAULT_FOUNDING_SEATS_PER_SECTOR;
+  if (!Number.isSafeInteger(foundingSeatsPerSector) || foundingSeatsPerSector <= 0) {
+    throw new RangeError(`foundingSeatsPerSector must be a positive integer, got ${foundingSeatsPerSector}`);
+  }
+  const continentId = opts?.continentId ?? formatContinentId(0);
+
+  const partition = buildSmallAtlasPartition(buildCanonicalPartitionOptions({ ...opts, sectorRadius, continentId }));
+  const generationOrder = resolveGenerationOrder(partition, opts);
+  const samplerCtx = createAtlasSamplerContext({ ...opts, planetId, planetType, seed, sectorRadius, continentId });
+
+  const totalTiles = partition.bounds.totalTiles;
+  const atlasLayers = {
+    terrain: new Uint8Array(totalTiles),
+    prep: new Uint8Array(totalTiles),
+    height: new Float32Array(totalTiles),
+    deposit: new Uint8Array(totalTiles),
+    depositTier: new Uint8Array(totalTiles),
+    richness: new Float32Array(totalTiles),
+    subDeposit: new Uint8Array(totalTiles),
+    subRichness: new Float32Array(totalTiles),
+  };
+  const generatedTilesByKey = new Map<string, GeneratedAtlasTile>();
+  const sectorById = new Map<SectorId, GeneratedAtlasSector>();
+
+  for (const sectorId of generationOrder) {
+    const secPart = partition.sectorById.get(sectorId)!;
+    const generatedSec = generateSectorBuffers(
+      secPart,
+      foundingSeatsPerSector,
+      samplerCtx,
+      partition,
+      atlasLayers,
+      generatedTilesByKey,
+    );
+    sectorById.set(sectorId, generatedSec);
+  }
+
+  const sectors = partition.sectors.map((s) => sectorById.get(s.sectorId)!);
+  const atlas: GeneratedSmallAtlas = {
+    planetId,
+    planetType,
+    seed,
+    genVersion: GEN_VERSION,
+    sectorRadius,
+    tilesPerSector: partition.tilesPerSector,
+    foundingSeatsPerSector,
+    continentId,
+    generationOrder,
+    partition,
+    sectors,
+    sectorById,
+    landSectorIds: partition.landSectorIds,
+    oceanSectorIds: partition.oceanSectorIds,
+    ...atlasLayers,
+    getTile: (q: number, r: number) => generatedTilesByKey.get(tileCoordKey(q, r)) ?? null,
+    sampleGlobalTile: (q: number, r: number) => sampleAtlasTile(q, r, samplerCtx),
+    verifySeamContinuity: (seamOpts) => verifyAtlasSeamContinuity(atlas, seamOpts),
+    verifyConnectedContinent: () => verifyAtlasConnectedContinent(atlas),
+  };
+  return atlas;
+}
+
+function defaultGridRadiusForAtlas(atlas: GeneratedSmallAtlas): number {
+  let maxLandDist = atlas.sectorRadius;
+  for (const sectorId of atlas.landSectorIds) {
+    const sec = atlas.sectorById.get(sectorId);
+    if (!sec) continue;
+    for (const t of sec.tiles) {
+      const d = hexDistance(0, 0, t.q, t.r);
+      if (d > maxLandDist) maxLandDist = d;
+    }
+  }
+  return maxLandDist + 3;
+}
+
+export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetState {
+  const atlas = opts?.atlas ?? generateSmallAtlas(opts);
+  const gridRadius = opts?.gridRadius ?? defaultGridRadiusForAtlas(atlas);
+  if (!Number.isSafeInteger(gridRadius) || gridRadius <= 0) {
+    throw new RangeError(`gridRadius must be a positive integer, got ${gridRadius}`);
+  }
+
+  const state = createState({
+    planetId: atlas.planetId,
+    planetType: atlas.planetType,
+    seed: atlas.seed,
+    radius: gridRadius,
+  });
+  state.meta.genVersion = GEN_VERSION;
+  if (opts?.worldSalt) state.meta.worldSalt = opts.worldSalt;
+
+  const hex = hexIndex(gridRadius);
+  const L = state.grid.layers;
+  const terrain = L.terrain as Uint8Array;
+  const prep = L.prep as Uint8Array;
+  const height = L.height as Float32Array;
+  const deposit = L.deposit as Uint8Array;
+  const depositTier = L.depositTier as Uint8Array | undefined;
+  const richness = L.richness as Float32Array;
+  const subDeposit = L.subDeposit as Uint8Array | undefined;
+  const subRichness = L.subRichness as Float32Array | undefined;
+
+  for (let i = 0; i < hex.count; i++) {
+    const q = hex.q[i]!;
+    const r = hex.r[i]!;
+    const tile = atlas.getTile(q, r) ?? atlas.sampleGlobalTile(q, r);
+    terrain[i] = tile.terrain;
+    prep[i] = tile.prep;
+    height[i] = tile.height;
+    deposit[i] = tile.deposit;
+    if (depositTier) depositTier[i] = tile.depositTier;
+    richness[i] = tile.richness;
+    if (subDeposit) subDeposit[i] = tile.subDeposit;
+    if (subRichness) subRichness[i] = tile.subRichness;
+  }
+
+  const blobValue: AtlasBlobValue = {
+    planetId: atlas.planetId,
+    planetType: atlas.planetType,
+    seed: atlas.seed,
+    genVersion: atlas.genVersion,
+    sectorRadius: atlas.sectorRadius,
+    tilesPerSector: atlas.tilesPerSector,
+    foundingSeatsPerSector: atlas.foundingSeatsPerSector,
+    continentId: atlas.continentId,
+    landSectorIds: [...atlas.landSectorIds],
+    oceanSectorIds: [...atlas.oceanSectorIds],
+    bounds: { ...atlas.partition.bounds },
+    sectors: atlas.sectors.map((s) => ({
+      sectorId: s.sectorId,
+      ordinal: s.ordinal,
+      kind: s.kind,
+      continentId: s.continentId,
+      macroQ: s.macroQ,
+      macroR: s.macroR,
+      centerQ: s.centerQ,
+      centerR: s.centerR,
+      radius: s.radius,
+      tileCount: s.tileCount,
+      foundingCapacity: s.foundingCapacity,
+    })),
+  };
+  setBlob(state, 'atlas', blobValue, state.meta.tick);
+  return state;
+}
+
+export function getAtlasBlob(state: PlanetState): AtlasBlobValue | null {
+  const raw = state.blobs.atlas as Blob | AtlasBlobValue | undefined;
+  if (!raw) return null;
+  if ('value' in raw && raw.value && typeof raw.value === 'object') {
+    return raw.value as AtlasBlobValue;
+  }
+  return raw as AtlasBlobValue;
+}
