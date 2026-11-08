@@ -3,12 +3,14 @@ import type { PixelArtParams } from '../core/pixelArtPass';
 import type { ShadowParams } from '../core/shadowConfig';
 import type { WindParams } from '../core/windConfig';
 import { WIND_RANGES } from '../core/windConfig';
+import { getRainLevel, WEATHER_RANGES, type WeatherParams } from '../core/weatherConfig';
 import type { WaterParams } from '../visuals/water/waterConfig';
-import { WATER_RANGES } from '../visuals/water/waterConfig';
+import { REFLECT_RES_SCALES, WATER_RANGES } from '../visuals/water/waterConfig';
 import type { CrtParams } from './crt';
 import { PERF_RANGES, RENDER_SCALES, TARGET_FPS, type PerfParams } from '../core/perfConfig';
 
-export type VisualTabId = 'crt' | 'pixel' | 'shadow' | 'daynight' | 'wind' | 'water' | 'perf';
+export type TabId = 'crt' | 'pixel' | 'shadow' | 'daynight' | 'wind' | 'water' | 'weather' | 'perf';
+export type VisualTabId = TabId;
 
 export interface SliderSpec<K extends string = string> {
   key: K;
@@ -96,6 +98,8 @@ const span = (r: readonly [number, number]) => ({ min: r[0], max: r[1] });
 const WIND_NAMES = ['CALM', 'BREEZE', 'WINDY', 'GALE'] as const;
 const windName = (v: number) => WIND_NAMES[v < 0.05 ? 0 : v < 1 ? 1 : v < 1.5 ? 2 : 3];
 const WATER_TIERS = ['LOW', 'MED', 'HIGH'] as const;
+const pctOrOff = (v: number) => (v <= 0 ? 'OFF' : pct(v));
+const reflectResName = (v: number) => mul(REFLECT_RES_SCALES[Math.round(v)] ?? REFLECT_RES_SCALES[1]);
 
 export const WIND_SLIDERS: readonly SliderSpec<keyof WindParams>[] = [
   { key: 'directionDeg', label: 'DIRECTION (TOWARD)', ...span(WIND_RANGES.directionDeg), step: 1, fmt: (v) => `${Math.round(v)}°` },
@@ -118,6 +122,10 @@ export const WATER_SLIDERS: readonly SliderSpec<keyof WaterParams>[] = [
   { group: 'FOAM', key: 'foamWidth', label: 'SHORE FOAM WIDTH', ...span(WATER_RANGES.foamWidth), step: 0.1, fmt: (v) => `${v.toFixed(1)} m` },
   { group: 'REFLECTIONS', key: 'sunGlint', label: 'SUN GLINT', ...span(WATER_RANGES.sunGlint), step: 0.05, fmt: pct },
   { group: 'REFLECTIONS', key: 'projectorReflect', label: 'PROJECTOR REFLECTIONS', ...span(WATER_RANGES.projectorReflect), step: 0.05, fmt: pct },
+  { group: 'REFLECTIONS', key: 'reflection', label: 'MIRROR REFLECTION', ...span(WATER_RANGES.reflection), step: 0.05, fmt: pctOrOff },
+  { group: 'REFLECTIONS', key: 'reflectDistort', label: 'REFLECTION DISTORTION', ...span(WATER_RANGES.reflectDistort), step: 0.05, fmt: pct },
+  { group: 'REFLECTIONS', key: 'reflectRes', label: 'REFLECTION RESOLUTION', ...span(WATER_RANGES.reflectRes), step: 1, fmt: reflectResName },
+  { group: 'REFLECTIONS', key: 'reflectDebug', label: 'REFLECTION DEBUG', ...span(WATER_RANGES.reflectDebug), step: 1, fmt: (v) => (v >= 0.5 ? 'MIRROR ONLY' : 'OFF') },
   { group: 'FAUNA & QUALITY', key: 'faunaDensity', label: 'FISH DENSITY', ...span(WATER_RANGES.faunaDensity), step: 0.05, fmt: pct },
   { group: 'FAUNA & QUALITY', key: 'quality', label: 'SHADER TIER', ...span(WATER_RANGES.quality), step: 1, fmt: (v) => WATER_TIERS[Math.round(v)] ?? 'HIGH' },
 ];
@@ -132,6 +140,44 @@ const scaleName = (v: number) => {
   const s = RENDER_SCALES[Math.round(v)] ?? 'auto';
   return s === 'auto' ? 'AUTO (DYNAMIC)' : `×${s.toFixed(2)} FIXED`;
 };
+
+export const WEATHER_SLIDERS: readonly SliderSpec<keyof WeatherParams>[] = [
+  {
+    key: 'rainIntensity',
+    label: 'Rain Intensity',
+    ...span(WEATHER_RANGES.rainIntensity),
+    step: 0.05,
+    fmt: (v) => `${Math.round(v * 100)}% (${getRainLevel(v).toUpperCase()})`,
+  },
+  {
+    key: 'stormDarkness',
+    label: 'Storm Darkness',
+    ...span(WEATHER_RANGES.stormDarkness),
+    step: 0.05,
+    fmt: pct,
+  },
+  {
+    key: 'lightningFlash',
+    label: 'Screen Flash Gain',
+    ...span(WEATHER_RANGES.lightningFlash),
+    step: 0.1,
+    fmt: (v) => `${v.toFixed(1)}x`,
+  },
+  {
+    key: 'meteorShadowScale',
+    label: 'Meteor Shadow Scale',
+    ...span(WEATHER_RANGES.meteorShadowScale),
+    step: 0.1,
+    fmt: (v) => `${v.toFixed(1)}x`,
+  },
+  {
+    key: 'twisterHeight',
+    label: 'Twister Height',
+    ...span(WEATHER_RANGES.twisterHeight),
+    step: 1,
+    fmt: (v) => `${Math.round(v)}m`,
+  },
+];
 
 export const PERF_SLIDERS: readonly SliderSpec<keyof PerfParams>[] = [
   { group: 'RESOLUTION', key: 'renderScale', label: 'RENDER SCALE / PIXEL RATIO', ...span(PERF_RANGES.renderScale), step: 1, fmt: scaleName },

@@ -83,8 +83,8 @@ describe('W07-18 Army UI: Units & Construction Catalogs', () => {
     const unitCards = buildUnitsCatalog(w07Flags);
     const units = unitCards.map((c) => c.unit);
 
-    expect(units).toContain('harvester');
-    expect(units).toContain('builder');
+    expect(units).toContain('worker');
+    expect(unitCards.filter((c) => c.unit === 'worker').map((c) => c.tier)).toEqual([1, 2, 3]);
     expect(units).toContain('recon');
     expect(units).not.toContain('demoTank');
     expect(units).not.toContain('demoArtillery');
@@ -159,12 +159,12 @@ describe('W07-18 Army UI: Ordering 2 Recon, Factory Queue Progress, Supply 2/10 
     const reconCard = armySection?.querySelector('[data-unit="recon"]');
     expect(reconCard).not.toBeNull();
 
-    // Order 2 Recon: increment count to 2, then click QUEUE on Recon card
-    const incBtn = reconCard?.querySelector<HTMLButtonElement>('[data-count-inc]');
+    // Order 2 Recon: increment batch count to 2, then click Recon card
+    const incBtn = host.querySelector<HTMLButtonElement>('[data-count-inc]');
     incBtn?.click();
-    expect(reconCard?.querySelector('[data-count]')?.textContent).toBe('2');
+    expect(host.querySelector('[data-count]')?.textContent).toBe('2');
 
-    const queueBtn = reconCard?.querySelector<HTMLButtonElement>('[data-queue-unit="recon"]');
+    const queueBtn = host.querySelector<HTMLButtonElement>('[data-queue-unit="recon"]');
     queueBtn?.click();
 
     expect(sendCommand).toHaveBeenCalledWith('enqueueTask', {

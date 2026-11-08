@@ -41,7 +41,6 @@ function buildChunkMesh(
   geo.setAttribute('normal', new THREE.BufferAttribute(b.normal, 3));
   geo.setAttribute('aAO', new THREE.BufferAttribute(b.aAO, 1));
   geo.setAttribute('aRock', new THREE.BufferAttribute(b.aRock, 1));
-  geo.setAttribute('aHexFlat', new THREE.BufferAttribute(b.aHexFlat, 1));
   geo.setAttribute('aHexShore', new THREE.BufferAttribute(b.aHexShore, 1));
   geo.setIndex(new THREE.BufferAttribute(b.index, 1));
   geo.computeBoundingSphere();

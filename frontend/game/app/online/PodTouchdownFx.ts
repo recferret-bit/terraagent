@@ -33,40 +33,22 @@ export const POD_TOUCHDOWN_START_ALT_M = 21;
 export type PodLandingMode = 'full' | 'short' | 'skip';
 
 export type PodLandingStateName =
-  | 'orbit'
-  | 'release'
-  | 'freefall'
-  | 'reentry'
-  | 'chute'
-  | 'approach'
-  | 'retro'
-  | 'impact_wait'
-  | 'egress'
-  | 'done';
+  | 'orbit' | 'release' | 'freefall' | 'reentry' | 'chute'
+  | 'approach' | 'retro' | 'impact_wait' | 'egress' | 'done';
 
 export const POD_FULL_STATE_ORDER: readonly PodLandingStateName[] = [
-  'orbit',
-  'release',
-  'freefall',
-  'reentry',
-  'chute',
-  'approach',
-  'retro',
-  'impact_wait',
-  'egress',
-  'done',
+  'orbit', 'release', 'freefall', 'reentry', 'chute', 'approach', 'retro', 'impact_wait', 'egress', 'done',
 ];
 
 export const POD_SHORT_STATE_ORDER: readonly PodLandingStateName[] = [
-  'retro',
-  'impact_wait',
-  'egress',
-  'done',
+  'retro', 'impact_wait', 'egress', 'done',
 ];
 
 export type PodLandingPhase = 'descending' | 'engine-stop' | 'impact-wait' | 'opening' | 'settled';
 
 export interface PodTouchdownState {
+  readonly active: boolean;
+  readonly descending: boolean;
   readonly mode: PodLandingMode;
   readonly state: PodLandingStateName;
   readonly phase: PodLandingPhase;
@@ -116,6 +98,8 @@ export class PodTouchdownFx {
   private elapsed = 0;
   private time = 0;
   private wasSimDescending = false;
+  private lastPodEntityId: number | null = null;
+  private podRemoved = false;
   private lastCameraShake = 0;
   private readonly groundPos = new THREE.Vector3();
 
@@ -188,6 +172,7 @@ export class PodTouchdownFx {
     this.mode = mode;
     this.enabled = mode !== 'skip';
     this.spacePhase = null;
+    this.podRemoved = false;
     this.elapsed = this.enabled ? 0 : POD_TOUCHDOWN_TOTAL_S + 1;
   }
 
@@ -245,9 +230,34 @@ export class PodTouchdownFx {
     this.thrLight.intensity = 0;
   }
 
-  computeState(simDescending: boolean, _simProgress: number): PodTouchdownState {
+  private buildSettledState(visible: boolean): PodTouchdownState {
+    return {
+      active: false,
+      descending: false,
+      mode: this.mode,
+      state: 'done',
+      phase: 'settled',
+      elapsed: this.elapsed,
+      podLift: 0,
+      thrust: 0,
+      dustIntensity: 0,
+      podVisible: false,
+      egressRigVisible: visible,
+      podOpenProgress: 1,
+      podDismantleProgress: visible ? 0 : 1,
+      craterVisible: visible,
+      hqVisible: true,
+      heroEgressProgress: 1,
+      uiVisible: true,
+      cameraShake: 0,
+    };
+  }
+
+  computeState(simDescending: boolean, _simProgress: number, podEntityId?: number | null): PodTouchdownState {
     if (this.spacePhase) {
       return {
+        active: true,
+        descending: true,
         mode: this.mode,
         state: this.spacePhase,
         phase: 'descending',
@@ -267,30 +277,32 @@ export class PodTouchdownFx {
       };
     }
 
+    const isNewPod =
+      typeof podEntityId === 'number' &&
+      ((this.lastPodEntityId !== null && podEntityId !== this.lastPodEntityId) || this.podRemoved);
+    if (typeof podEntityId === 'number') {
+      this.lastPodEntityId = podEntityId;
+      this.podRemoved = false;
+    } else if (podEntityId === null && !simDescending) {
+      this.podRemoved = true;
+    }
+
+    if (simDescending && (isNewPod || (!this.wasSimDescending && (!this.enabled || this.elapsed >= POD_TOUCHDOWN_TOTAL_S)))) {
+      this.restart('short');
+    }
     if (this.wasSimDescending && !simDescending && this.elapsed === 0 && typeof requestAnimationFrame === 'undefined') {
       this.elapsed = POD_TOUCHDOWN_TOTAL_S + 1;
     }
     this.wasSimDescending = simDescending;
 
+    if (this.podRemoved && !simDescending) {
+      this.hideFx();
+      this.impactRig.hide();
+      return this.buildSettledState(false);
+    }
+
     if (!this.enabled || this.elapsed >= POD_TOUCHDOWN_TOTAL_S) {
-      return {
-        mode: this.mode,
-        state: 'done',
-        phase: 'settled',
-        elapsed: this.elapsed,
-        podLift: 0,
-        thrust: 0,
-        dustIntensity: 0,
-        podVisible: false,
-        egressRigVisible: true,
-        podOpenProgress: 1,
-        podDismantleProgress: 0,
-        craterVisible: true,
-        hqVisible: true,
-        heroEgressProgress: 1,
-        uiVisible: true,
-        cameraShake: 0,
-      };
+      return this.buildSettledState(true);
     }
 
     return this.computeActiveSurfaceState(this.elapsed);
@@ -305,6 +317,8 @@ export class PodTouchdownFx {
       const prox = clamp(1 - podLift / 22, 0, 1);
       const retroRumble = smoothstep(0.52, 1.0, u) * 0.22;
       return {
+        active: true,
+        descending: true,
         mode: this.mode,
         state: 'retro',
         phase: 'descending',
@@ -331,6 +345,8 @@ export class PodTouchdownFx {
       const primaryJolt = Math.exp(-dtImpact * 3.8) * (1 - smoothstep(0, 1.25, dtImpact));
       const aftershock = 0.34 * Math.exp(-Math.pow((dtImpact - 0.2) / 0.14, 2));
       return {
+        active: true,
+        descending: false,
         mode: this.mode,
         state: 'impact_wait',
         phase: t < POD_ENGINE_STOP_END_S ? 'engine-stop' : 'impact-wait',
@@ -352,6 +368,8 @@ export class PodTouchdownFx {
 
     const u = clamp((t - POD_WAIT_END_S) / POD_EGRESS_DURATION_S, 0, 1);
     return {
+      active: true,
+      descending: false,
       mode: this.mode,
       state: 'egress',
       phase: 'opening',
@@ -385,7 +403,12 @@ export class PodTouchdownFx {
       this.elapsed += step;
     }
 
-    const state = this.computeState(simDescending, simProgress);
+    const podEntityId = podMesh
+      ? typeof podMesh.userData?.entityId === 'number'
+        ? Number(podMesh.userData.entityId)
+        : undefined
+      : null;
+    const state = this.computeState(simDescending, simProgress, podEntityId);
     this.lastCameraShake = podMesh ? state.cameraShake : 0;
     if (!podMesh) {
       this.hideFx();

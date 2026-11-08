@@ -301,10 +301,10 @@ describe('W04 entity markers branch on kind', () => {
   it('buildings (hub, pylon, capacitor, wind, thermal, depot, quarry, well, pod) are squares drawn before unit dots', () => {
     const K = ENTITY_KIND;
     const list: ViewEntity[] = [
-      makeEntity(1, 0, 0, 0, { kind: K.builder }),
+      makeEntity(1, 0, 0, 0, { kind: K.worker, tier: 2 }),
       makeEntity(2, 0, 1, 0, { kind: K.commandHub }),
       makeEntity(3, 0, 2, 0, { kind: K.pylon }),
-      makeEntity(4, 0, 3, 0, { kind: K.harvester }),
+      makeEntity(4, 0, 3, 0, { kind: K.worker, tier: 1 }),
       ...[K.capacitor, K.wind, K.thermal, K.supplyDepot, K.mineralsQuarry, K.petroleumWell, K.pod].map((kind, i) =>
         makeEntity(10 + i, 1, i, 1, { kind }),
       ),
@@ -335,7 +335,7 @@ describe('W04 entity markers branch on kind', () => {
   it('keeps units first under MAX_ENTITY_DOTS; buildings fill the rest', () => {
     const list: ViewEntity[] = [];
     for (let i = 0; i < 1000; i++) list.push(makeEntity(i + 1, 0, 0, 0, { kind: ENTITY_KIND.pylon }));
-    for (let i = 0; i < 1200; i++) list.push(makeEntity(5000 + i, 0, 0, 0, { kind: ENTITY_KIND.builder }));
+    for (let i = 0; i < 1200; i++) list.push(makeEntity(5000 + i, 0, 0, 0, { kind: ENTITY_KIND.worker, tier: 2 }));
     const dots = collectEntityDots(viewOf(list));
     expect(dots).toHaveLength(MAX_ENTITY_DOTS);
     expect(dots.filter((d) => d.shape === 'dot')).toHaveLength(1200);

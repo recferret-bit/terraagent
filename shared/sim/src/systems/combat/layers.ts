@@ -28,8 +28,7 @@ function lookupRow(data: CompiledDataLike | undefined, table: string, id: string
 const KIND_TO_ROW_ID: Readonly<Record<number, string>> = {
   [ENTITY_KIND.hq]: 'hq',
   [ENTITY_KIND.commandHub]: 'commandHub',
-  [ENTITY_KIND.harvester]: 'harvester',
-  [ENTITY_KIND.builder]: 'builder',
+  [ENTITY_KIND.worker]: 'worker',
   [ENTITY_KIND.roboticsFactory]: 'roboticsFactory',
   [ENTITY_KIND.droneControlArray]: 'droneControlArray',
   [ENTITY_KIND.autocannon]: 'autocannon',

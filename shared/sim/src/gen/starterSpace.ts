@@ -26,6 +26,9 @@ function footprintIdx(state: SimState, q: number, r: number): number[] | null {
   return out;
 }
 
+/** The 3×3 Command Hub footprint tiles centred on `(q, r)` (empty when it leaves the grid). */
+export const starterHubTiles = (state: SimState, q: number, r: number): number[] => footprintIdx(state, q, r) ?? [];
+
 /** Same geo rule the Command Hub placement check applies (Flat, level, no trees / rock / water / deposit), plus ownership. */
 function siteReady(state: SimState, tiles: number[], colonyId: number): boolean {
   const { terrain, prep, owner, deposit, height } = state.grid.layers;

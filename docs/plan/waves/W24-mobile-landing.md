@@ -27,7 +27,7 @@
 2. Rotate to **landscape** (DevTools rotate icon) → **see** the "Tap to play fullscreen" plate. Tap it → **see** fullscreen; the orientation stays locked to landscape on Android (real device only).
 3. On the iOS profile (no element fullscreen; real device or Safari responsive mode) → **see** the "Add to Home Screen" sheet. Open with `display-mode: standalone` → **see** the game fill the screen inside the safe areas.
 4. One-finger drag → **see** the camera pan. Pinch → **see** it zoom. Two-finger twist → **see** a 90° yaw snap (touch device or DevTools touch emulation).
-5. Tap a harvester → **see** it selected. Long-press a tile → **see** the context menu (Build here / Terraform / Move).
+5. Tap a Worker Drone → **see** it selected. Long-press a tile → **see** the context menu (Build here / Terraform / Move).
 6. Open the bottom drawer → **see** the Construction, Terraform, Units and HQ Goals menus as tabs. Place a building with a tap-to-place ghost and a confirm button → **see** the order appear in the queue.
 7. Dev console `perf.probe 20` runs 20 s with 150 buildings and 250 robots → **see** ≥ 30 FPS median on the `low` tier (`quality.set low`) printed in the console.
 8. Open `/landing.html` with DevTools network throttling on Fast 4G → **see** the poster appear and the live orbit-stage hero swap in after first paint; the stats band shows live counts. (The 1.5 s poster time and the ≤ 50 KB gzip initial JS are (e2e only).)
@@ -88,7 +88,7 @@
 | W24-08 | Safe-area layout: CSS variables from `env(safe-area-inset-*)` applied to the HUD root, drawer and minimap | client | S |  | W24-02 | On an iPhone notch profile in landscape → see no HUD element under the notch | CLIENT §11 | — |
 | W24-09 | Touch camera: one-finger pan with inertia, pinch zoom around the midpoint, `touch-action: none` on the canvas | client | M |  | W04-26, W24-02 | Drag with one finger → see a smooth pan; pinch → see the zoom clamp at the W04 limits | CLIENT §11 | TA-11.9 |
 | W24-10 | Two-finger rotate gesture snapping to a 90° yaw (same as `Q`/`E`), with a ≥ 25° twist threshold so it does not fire during pinch | client | S |  | W24-09 | Twist two fingers by 40° → see one 90° yaw step | CLIENT §11, Pillar 4 | TA-11.9 |
-| W24-11 | Touch selection: tap select, tap-hold-drag box select, double-tap a unit to centre, tap empty ground to deselect | client | S |  | W04-23, W24-09 | Tap-hold and drag over 3 harvesters → see 3 selected | CLIENT §11 | TA-11.9 |
+| W24-11 | Touch selection: tap select, tap-hold-drag box select, double-tap a unit to centre, tap empty ground to deselect | client | S |  | W04-23, W24-09 | Tap-hold and drag over 3 Worker Drones → see 3 selected | CLIENT §11 | TA-11.9 |
 | W24-12 | Long-press context menu (450 ms): Build here / Terraform / Move / Rally, items from feature registries, flag-gated | client | M |  | W24-11 | Long-press a Wild tile → see the menu with Terraform; with W07 off → see no Rally item | CLIENT §11 | TA-11.9 |
 | W24-13 | Bottom drawer: the 4 order menus (Construction, Terraform, Units, HQ Goals) as tabs; swipe up/down; menus fed by the same registries as desktop | client | M |  | W24-08, W02-22 | Swipe the drawer up → see the four tabs; tabs of disabled waves are absent | CLIENT §11, UO-M | TA-11.9 |
 | W24-14 | Tap-to-place ghost: the ghost follows the camera centre; confirm and cancel buttons; prep bill shown as a compact chip row | client | M |  | W24-13 | Pick Solar, pan, tap ✓ → see the build order queued with its prep bill | CLIENT §11, UO-TF-03 | TA-11.8 |

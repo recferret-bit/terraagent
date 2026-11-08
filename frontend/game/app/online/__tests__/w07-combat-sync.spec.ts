@@ -97,7 +97,7 @@ function runAuthoritativeSpitterEncounter(): {
     data,
   );
   const targetUnitId = spawnTargetUnit(state, {
-    kind: ENTITY_KIND.harvester,
+    kind: ENTITY_KIND.worker,
     owner: 0,
     q: 4,
     r: 0,
@@ -244,7 +244,7 @@ describe('W07-17 · Deduplicating view.blobs.projectileImpacts against store/hos
     const { host, state, data } = createSpitterEncounterHost('blob-dedup-seed');
     const hiveId = spawnHiveEntity(state, { species: 'greenSpitter', q: 0, r: 0, initialResidents: 1 }, 0, data);
     const bugId = getHiveRecord(state, hiveId)!.residentIds[0]!;
-    const targetId = spawnTargetUnit(state, { kind: ENTITY_KIND.harvester, owner: 0, q: 3, r: 0, hp: 160 });
+    const targetId = spawnTargetUnit(state, { kind: ENTITY_KIND.worker, owner: 0, q: 3, r: 0, hp: 160 });
     applyDamage(state, hiveId, 10, { attackerId: targetId, attackerOwner: 0, tick: 0, data });
 
     const emitted: SimEventWire[] = [];
@@ -343,7 +343,7 @@ describe('W07-17 · W07 entityKinds mappings, footprints, and tracked unit predi
     expect(entityGroundY(mockTerrain, ENTITY_KIND.hiveGreenSpitter, 0, 0, 0, 0)).toBe(4.5);
 
     for (const k of [
-      ENTITY_KIND.hq, ENTITY_KIND.harvester, ENTITY_KIND.builder,
+      ENTITY_KIND.hq, ENTITY_KIND.worker,
       ENTITY_KIND.recon, ENTITY_KIND.demoTank, ENTITY_KIND.demoArtillery,
       ENTITY_KIND.blackAnt, ENTITY_KIND.blueBeetle, ENTITY_KIND.greenSpitter,
     ]) {

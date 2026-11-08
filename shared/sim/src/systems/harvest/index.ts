@@ -23,29 +23,31 @@ import { cancelMove, requestMove } from '../../units/movement/orchestrator';
 import { commandColony } from '../command';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { defineSimModule } from '../define';
-import { creditResource, ensureColonyLedger, isFamilyAtCap, type ColonyWithLedger } from '../economy/ledger';
+import { creditResource, ensureColonyAt, isFamilyAtCap, type ColonyWithLedger } from '../economy/ledger';
 import {
-  assignHarvesterDepositTarget,
+  assignWorkerDepositTarget,
   depositFamilyAndKey,
   HARVEST_CYCLE_TICKS,
   hasAnyPassableNeighbor,
   isPassableAdjacentHex,
   pickBestSurfaceDepositForUnit,
   pickFreeAdjacentDepositHex,
-  type HarvesterTargetAssignment,
+  type WorkerTargetAssignment,
   type HarvestWeights,
 } from './adjacency';
-import { resolveHarvesterRow, syncHarvesterView } from './unit';
+import { harvestRateForWorker, syncHarvestWorkerView } from './workers';
+import { isWorker } from './unit';
 
 export * from './unit';
+export { harvestRateForWorker, syncHarvestWorkerView } from './workers';
 export {
-  assignHarvesterDepositTarget,
+  assignWorkerDepositTarget,
   depositFamilyAndKey,
   HARVEST_CYCLE_TICKS,
   hasAnyPassableNeighbor,
   isPassableAdjacentHex,
   pickFreeAdjacentDepositHex,
-  type HarvesterTargetAssignment,
+  type WorkerTargetAssignment,
   type HarvestWeights,
 };
 
@@ -53,15 +55,7 @@ const DEFAULT_WEIGHTS: HarvestWeights = { metals: 100, minerals: 100, bio: 100 }
 // The metals rates (`metals.t1..t3`) are reset by the extractor system, which runs first in slot 8
 // (`production.extractors` < `production.harvest`); harvesting adds to them.
 const TIERED_HARVEST_KEYS: readonly ResourceKey[] = ['minerals.t2', 'minerals.t3', 'bio.t2', 'bio.t3'];
-
-function ensureColony(state: PlanetState, owner: number, tick: number): ColonyWithLedger {
-  let col = state.colonies[owner];
-  if (!col) {
-    col = { index: owner, id: `col-${owner}`, name: `Colony ${owner + 1}`, color: 0xff6b00, status: 'active', changedAt: tick };
-    state.colonies[owner] = col;
-  }
-  return ensureColonyLedger(col);
-}
+const ensureColony = ensureColonyAt;
 
 export function getColonyHarvestWeights(state: PlanetState, colonyIndex = 0, useGoals = true): HarvestWeights {
   const goalWeights = useGoals ? goalHarvestWeights(state, colonyIndex) : null;
@@ -78,7 +72,7 @@ export function getColonyHarvestWeights(state: PlanetState, colonyIndex = 0, use
 function saveHarvestBlob(
   state: PlanetState,
   weightsByColony: Record<number, HarvestWeights>,
-  assignments: Record<number, HarvesterTargetAssignment>,
+  assignments: Record<number, WorkerTargetAssignment>,
   tick: number,
 ): void {
   setBlob(state, 'harvest', { weightsByColony, assignments }, tick);
@@ -93,11 +87,11 @@ export function pickBestSurfaceDeposit(
 ): { tileIdx: number; q: number; r: number; standQ: number; standR: number; family: ResourceFamily; resourceKey: ResourceKey } | null {
   const colony = ensureColony(state, colonyIndex, state.meta.tick);
   const weights = getColonyHarvestWeights(state, colonyIndex);
-  const rawBlob = (state.blobs.harvest?.value as { assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+  const rawBlob = (state.blobs.harvest?.value as { assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
   return pickBestSurfaceDepositForUnit(state, colony, weights, unitQ, unitR, selfEntityId, rawBlob.assignments);
 }
 
-/** Sets colony harvest weights (`0..100` per family) and retargets active/idle Harvesters immediately. */
+/** Sets colony harvest weights (`0..100` per family) and retargets active/idle Workers immediately. */
 export function applyColonyHarvestWeights(
   state: PlanetState,
   colonyIndex: number,
@@ -114,13 +108,13 @@ export function applyColonyHarvestWeights(
   colony.harvestWeights = next;
   colony.changedAt = tick;
 
-  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
   const weightsByColony = { ...(rawBlob.weightsByColony ?? {}), [colonyIndex]: next };
   const assignments = { ...(rawBlob.assignments ?? {}) };
 
   const e = state.entities, cols = e.cols;
   for (let row = 0; row < e.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.kind[row] !== ENTITY_KIND.harvester || cols.hp[row] <= 0) continue;
+    if (cols.owner[row] !== colonyIndex || !isWorker(cols.kind[row]) || cols.hp[row] <= 0) continue;
     const id = cols.id[row];
     const current = assignments[id];
     if (current && current.mode !== 'harvest') continue;
@@ -136,7 +130,7 @@ export function applyColonyHarvestWeights(
       cancelMove(state, id, tick);
       const atNeighbor = hexDistance(cols.q[row], cols.r[row], target.q, target.r) === 1 && hexDistance(cols.x[row], cols.y[row], cols.q[row], cols.r[row]) <= 0.15;
       setField(e, row, 'state', atNeighbor ? ENTITY_STATE.harvesting : ENTITY_STATE.moving, tick);
-      syncHarvesterView(state, row, tick);
+      syncHarvestWorkerView(state, row, tick);
     }
   }
 
@@ -144,8 +138,8 @@ export function applyColonyHarvestWeights(
   return next;
 }
 
-/** Assigns a Clear (`forest`), Break (`rock`), or Work (`work`) sub-job to a Harvester. */
-export function assignHarvesterSubJob(
+/** Assigns a Clear (`forest`), Break (`rock`), or Work (`work`) sub-job to a Worker Drone. */
+export function assignWorkerSubJob(
   state: PlanetState,
   entityId: number,
   op: string,
@@ -155,7 +149,7 @@ export function assignHarvesterSubJob(
 ): { ok: true } | { ok: false; code: string } {
   if (op !== 'clear' && op !== 'break' && op !== 'work') return { ok: false, code: 'op_not_allowed' };
   const row = rowOf(state.entities, entityId);
-  if (row < 0 || state.entities.cols.kind[row] !== ENTITY_KIND.harvester) return { ok: false, code: 'unknown_entity' };
+  if (row < 0 || state.entities.cols.kind[row] !== ENTITY_KIND.worker) return { ok: false, code: 'unknown_entity' };
   const idx = hexIndex(state.grid.radius);
   const tileIdx = idx.indexOf(q, r);
   if (tileIdx < 0) return { ok: false, code: 'invalid_args' };
@@ -181,7 +175,7 @@ export function assignHarvesterSubJob(
     : terrain === TERRAIN.hole ? TERRAFORM_TIME_TABLE.hole.durationTicks
     : TERRAFORM_TIME_TABLE.flat.durationTicks;
 
-  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
   const assignments = { ...(rawBlob.assignments ?? {}) };
   assignments[entityId] = {
     entityId, mode: op, tileIdx, q, r,
@@ -195,8 +189,8 @@ export function assignHarvesterSubJob(
   return { ok: true };
 }
 
-/** Cancels a Harvester's active harvest/work assignment and sets it to `idle` with `progress = 0`. */
-export function cancelHarvesterTask(
+/** Cancels a Worker Drone's active harvest/work assignment and sets it to `idle` with `progress = 0`. */
+export function cancelWorkerTask(
   state: PlanetState,
   entityId: number,
   tick: number = state.meta.tick,
@@ -204,7 +198,7 @@ export function cancelHarvesterTask(
 ): boolean {
   const row = rowOf(state.entities, entityId);
   if (row < 0) return false;
-  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
   const assignments = { ...(rawBlob.assignments ?? {}) };
   const hadAssignment = Boolean(assignments[entityId]);
   if (hadAssignment) {
@@ -223,9 +217,7 @@ export function cancelHarvesterTask(
   setField(state.entities, row, 'state', ENTITY_STATE.idle, tick);
   setField(state.entities, row, 'targetQ', state.entities.cols.q[row], tick);
   setField(state.entities, row, 'targetR', state.entities.cols.r[row], tick);
-  if (state.entities.cols.kind[row] === ENTITY_KIND.harvester) {
-    syncHarvesterView(state, row, tick, data);
-  }
+  syncHarvestWorkerView(state, row, tick, data);
   return true;
 }
 
@@ -240,12 +232,12 @@ export const setHarvestWeightsHandler = defineCommandHandler({
   },
 });
 
-function stepHarvesterSubJobMove(
+function stepWorkerSubJobMove(
   state: PlanetState,
   row: number,
   id: number,
   st: number,
-  cur: HarvesterTargetAssignment,
+  cur: WorkerTargetAssignment,
   ctx: StepContext,
 ): void {
   const cols = state.entities.cols;
@@ -267,14 +259,14 @@ const standingHarvestAssignSystem = defineSystem({
   run(state, ctx) {
     const e = state.entities, cols = e.cols;
     const book = new UnitBook(state);
-    const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+    const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
     const assignments = { ...(rawBlob.assignments ?? {}) };
     const workJobsById = (state.blobs.workJobs?.value as { byId?: Record<string, { workerEntityId?: number }> } | undefined)?.byId;
     const occupied = occupiedGroundTiles(state, ctx.data); // building footprints (not `anchors`: territory)
     let changed = false;
 
     for (let row = 0; row < e.count; row++) {
-      if (cols.kind[row] !== ENTITY_KIND.harvester || cols.hp[row] <= 0) continue;
+      if (!isWorker(cols.kind[row]) || cols.hp[row] <= 0) continue;
       const id = cols.id[row], owner = cols.owner[row], st = cols.state[row];
       let cur = assignments[id];
 
@@ -285,7 +277,7 @@ const standingHarvestAssignSystem = defineSystem({
       }
       if (workJobsById && Object.values(workJobsById).some((j) => j.workerEntityId === id)) continue;
       if (cur && (cur.mode === 'clear' || cur.mode === 'break' || cur.mode === 'work')) {
-        stepHarvesterSubJobMove(state, row, id, st, cur, ctx);
+        stepWorkerSubJobMove(state, row, id, st, cur, ctx);
         continue;
       }
 
@@ -357,11 +349,11 @@ const standingHarvestAssignSystem = defineSystem({
   },
 });
 
-/** Completes a Harvester's Clear / Break / Work sub-job: the tile becomes Flat and pays THE terraform yield (`opsBasic`). */
-function completeHarvesterWorkJob(
+/** Completes a Worker's Clear / Break / Work sub-job: the tile becomes Flat and pays THE terraform yield (`opsBasic`). */
+function completeWorkerWorkJob(
   state: PlanetState,
   colony: ColonyWithLedger,
-  cur: HarvesterTargetAssignment,
+  cur: WorkerTargetAssignment,
   tick: number,
   data?: CompiledDataLike,
 ): void {
@@ -380,10 +372,8 @@ const standingHarvestYieldSystem = defineSystem({
   slot: 8,
   wave: 'W02',
   run(state, ctx) {
-    const harvRow = resolveHarvesterRow(ctx.data);
-    const ratePerS = Number(harvRow.harvestRatePerS ?? 0.5);
     const e = state.entities, cols = e.cols;
-    const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+    const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
     const assignments = { ...(rawBlob.assignments ?? {}) };
     let changed = false;
 
@@ -399,7 +389,7 @@ const standingHarvestYieldSystem = defineSystem({
     }
 
     for (let row = 0; row < e.count; row++) {
-      if (cols.kind[row] !== ENTITY_KIND.harvester || cols.hp[row] <= 0) continue;
+      if (!isWorker(cols.kind[row]) || cols.hp[row] <= 0) continue;
       const id = cols.id[row], owner = cols.owner[row];
       const cur = assignments[id];
 
@@ -412,12 +402,12 @@ const standingHarvestYieldSystem = defineSystem({
         faceTowards(state, row, cur.q, cur.r, ctx.tick);
         if (cur.elapsedTicks >= cur.requiredTicks) {
           const colony = ensureColony(state, owner, ctx.tick);
-          completeHarvesterWorkJob(state, colony, cur, ctx.tick, ctx.data);
+          completeWorkerWorkJob(state, colony, cur, ctx.tick, ctx.data);
           delete assignments[id];
           setField(e, row, 'progress', 0, ctx.tick);
           setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
         }
-        syncHarvesterView(state, row, ctx.tick, ctx.data);
+        syncHarvestWorkerView(state, row, ctx.tick, ctx.data);
         continue;
       }
 
@@ -435,7 +425,7 @@ const standingHarvestYieldSystem = defineSystem({
           changed = true;
           setField(e, row, 'progress', 0, ctx.tick);
           setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
-          syncHarvesterView(state, row, ctx.tick, ctx.data);
+          syncHarvestWorkerView(state, row, ctx.tick, ctx.data);
           continue;
         }
         const colony = ensureColony(state, owner, ctx.tick);
@@ -446,6 +436,7 @@ const standingHarvestYieldSystem = defineSystem({
           const cycleProg = ((cur.elapsedTicks - 1) % HARVEST_CYCLE_TICKS + 1) / HARVEST_CYCLE_TICKS;
           setField(e, row, 'progress', Math.fround(cycleProg), ctx.tick);
           faceTowards(state, row, cur.q, cur.r, ctx.tick);
+          const ratePerS = harvestRateForWorker(cols.tier[row] || 1, ctx.data);
           const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
           const actualAmount = consumeDepositRichness(state, cur.tileIdx, desiredAmount, ctx.tick);
           if (actualAmount > 0) {
@@ -469,7 +460,7 @@ const standingHarvestYieldSystem = defineSystem({
       } else if (cols.state[row] !== ENTITY_STATE.working && cols.progress[row] !== 0) {
         setField(e, row, 'progress', 0, ctx.tick);
       }
-      syncHarvesterView(state, row, ctx.tick, ctx.data);
+      syncHarvestWorkerView(state, row, ctx.tick, ctx.data);
     }
 
     if (changed) saveHarvestBlob(state, rawBlob.weightsByColony ?? {}, assignments, ctx.tick);

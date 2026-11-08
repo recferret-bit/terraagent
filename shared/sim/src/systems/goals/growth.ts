@@ -34,19 +34,19 @@ export function planGrowth(
   }
   const { count, cols } = state.entities;
   let hasHub = false;
-  let harvesters = 0;
+  let workers = 0;
   for (let row = 0; row < count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    if (cols.kind[row] === ENTITY_KIND.harvester) harvesters++;
+    if (cols.kind[row] === ENTITY_KIND.worker) workers++;
     if (cols.kind[row] === ENTITY_KIND.commandHub && cols.state[row] === ENTITY_STATE.active) hasHub = true;
   }
   // Give a newly built worker time to walk to its target; do not fill supply with idle workers each tick.
   const lastWorker = getColonyQueue(state, colonyIndex, 'units').filter((e) => e.task.kind === 'buildUnit').at(-1);
-  if (hasHub && !full && (harvesters === 0 || (lastWorker && tick - lastWorker.createdAt > 300))) {
-    return { task: { kind: 'buildUnit', unit: 'harvester', count: 1 }, detail: 'Building a harvester for the target resource.' };
+  if (hasHub && !full && (workers === 0 || (lastWorker && tick - lastWorker.createdAt > 300))) {
+    return { task: { kind: 'buildUnit', unit: 'worker', count: 1 }, detail: 'Building a Worker Drone T1 for the target resource.' };
   }
   return { detail: full ? 'Storage full: spend resources to resume production; storage expansion needs W03.'
     : !hasHub ? 'Build the Command Hub first (Establish Colony).'
     : power.phase === 'night' && power.brownout ? 'Waiting for daylight / night power.'
-    : 'Waiting for harvesters or a free, reachable deposit. Check harvest priorities and clear nearby ground.' };
+    : 'Waiting for workers or a free, reachable deposit. Check harvest priorities and clear nearby ground.' };
 }

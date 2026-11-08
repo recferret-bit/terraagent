@@ -95,7 +95,7 @@ export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): 
     return 10;
   }
 
-  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder ||
+  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.worker ||
     kind === ENTITY_KIND.demoTank || kind === ENTITY_KIND.demoArtillery) {
     return mobileStats(kind, data ?? defaultHubData())?.viewRadius ?? 7;
   }

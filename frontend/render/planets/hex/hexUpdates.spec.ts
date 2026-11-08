@@ -21,8 +21,9 @@ import { makeHeightSampler } from './heightSampler';
 import { TILE_M, tileXZ } from './hexMath';
 
 const look = specForPlanetType('temperate');
-const SURFACE_ATTRS = ['position', 'normal', 'aAO', 'aRock', 'aHexFlat', 'aHexShore'] as const;
-const tintData = (t: HexTerrain) => Array.from((t.uniforms.uTileTint!.value as THREE.DataTexture).image.data as Uint8Array);
+const SURFACE_ATTRS = ['position', 'normal', 'aAO', 'aRock', 'aHexShore'] as const;
+const texData = (t: HexTerrain, u: string) => Array.from((t.uniforms[u]!.value as THREE.DataTexture).image.data as Uint8Array);
+const tintData = (t: HexTerrain) => texData(t, 'uTileTint');
 
 /** Every tile a Slope with hashed relief, so a height change spreads through slope easing and normals. */
 function slopeTiles(radius: number): HexTiles {
@@ -51,6 +52,7 @@ function expectSameSurfaces(a: HexTerrain, b: HexTerrain): void {
   const ma = chunkByName(a), mb = chunkByName(b);
   expect([...ma.keys()].sort()).toEqual([...mb.keys()].sort());
   expect(tintData(a), 'per-cell class tint').toEqual(tintData(b));
+  expect(texData(a, 'uHexGrid'), 'per-cell hex grid flag').toEqual(texData(b, 'uHexGrid'));
   for (const [name, mesh] of ma) {
     const other = mb.get(name)!;
     for (const attr of SURFACE_ATTRS) {
@@ -291,7 +293,7 @@ describe('RN-10: hex shader constants', () => {
     const terrain = createHexTerrain({ radius: 4, tiles: slopeTiles(4), look });
     const sh = realSources();
     terrain.material.onBeforeCompile(sh, null as unknown as THREE.WebGLRenderer);
-    expect(sh.vertexShader).toContain(`vFlatPos = aHexFlat * (position.xz / ${TILE_M.toFixed(1)});`);
+    expect(sh.vertexShader).not.toContain('aHexFlat'); // the grid flag is a per-cell texture, not a vertex attribute
     expect(sh.fragmentShader).toContain(`vec2 tp = vLP.xz / ${TILE_M.toFixed(1)};`);
     expect(sh.fragmentShader.indexOf('uniform sampler2D uTileTint')).toBeLessThan(sh.fragmentShader.indexOf('vec4 hexTileTint('));
     // The hex water gate must be defined before the terrain chunk's `#ifndef` default, or GLSL sees a redefinition.

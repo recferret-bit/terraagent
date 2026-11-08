@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createWaterMaterial } from '../water/WaterMaterial';
+import { createWaterMaterial, WATER_RENDER_ORDER } from '../water/WaterMaterial';
+import { registerReflectiveWater } from '../water/reflection/reflectionRegistry';
 
 export interface LiquidResult { mesh: THREE.Mesh; uniforms: Record<string, THREE.IUniform>; dispose(): void }
 
@@ -29,6 +30,7 @@ export function createWater(c: Common, shallow: number, deep: number, sky: numbe
     shallow, deep, sky, heightTex: c.heightTex, span: c.span, level: c.level, shoreField: c.shoreField,
   });
   const mesh = new THREE.Mesh(plane(c, 160), water.material);
-  mesh.name = 'water'; mesh.position.y = c.level; mesh.receiveShadow = true; mesh.renderOrder = 1;
-  return { mesh, uniforms: water.uniforms, dispose() { mesh.geometry.dispose(); water.dispose(); } };
+  mesh.name = 'water'; mesh.position.y = c.level; mesh.receiveShadow = true; mesh.renderOrder = WATER_RENDER_ORDER;
+  const offReflect = registerReflectiveWater({ object: mesh });
+  return { mesh, uniforms: water.uniforms, dispose() { offReflect(); mesh.geometry.dispose(); water.dispose(); } };
 }

@@ -7,8 +7,9 @@ import ts from 'typescript';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
-// Pure grid geometry render may share with the sim (no state, no rules): hex coordinates and the sector index (D-38).
-const RENDER_SIM_GEOMETRY = new Set(['@terra/sim/grid/hex', '@terra/sim/grid/sectors']);
+// Pure grid geometry render may share with the sim (no state, no rules): hex coordinates and the sector index (D-38),
+// plus the one hex tile rule (`grid/hexTile`: where the hex grid exists), which the renderer must draw exactly.
+const RENDER_SIM_GEOMETRY = new Set(['@terra/sim/grid/hex', '@terra/sim/grid/sectors', '@terra/sim/grid/hexTile']);
 const ROOT = resolve(import.meta.dirname, '..');
 const MAX_FILE = 500, MAX_FUNC = 100;
 const SKIP = new Set(['node_modules', 'dist', 'generated', 'test-results', 'playwright-report', '.out']);

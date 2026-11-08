@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
 import { cullToViewFocus, worldCellKey } from '../../core/focusCull';
 import { WAVE_VERT_PEAK } from '../../visuals/water/waveModel';
+import { WATER_RENDER_ORDER } from '../../visuals/water/WaterMaterial';
 import { planetExtent, tileXZ } from './hexMath';
 import { PROP_CELL_M } from './propBuckets';
 
@@ -18,6 +19,7 @@ import { PROP_CELL_M } from './propBuckets';
 export const WATER_CELL_M = PROP_CELL_M;
 /** Shore vertices (dry tile centres next to water) sit this far below the level; the shader masks them by height. */
 export const WATER_SHORE_PIN_Y = -0.16;
+export { WATER_RENDER_ORDER };
 
 export interface WaterBucketSet {
   /** Parent of the bucket meshes. */
@@ -118,7 +120,7 @@ export function createWaterBucketSet(radius: number, material: THREE.Material): 
     mesh.name = `hexWater ${key}`;
     mesh.userData.waterCell = key;
     mesh.receiveShadow = true;
-    mesh.renderOrder = 1; // after the (default-order) fauna, so the surface lies over them
+    mesh.renderOrder = WATER_RENDER_ORDER; // over the fauna and the lamps' ground pools, under the beams
     buckets.set(key, { mesh, tris: built.tris });
     group.add(mesh);
   };

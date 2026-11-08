@@ -1,5 +1,5 @@
 import { DEPOSIT_CODES, PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
-import { HEX_DIRS, hexIndex, isTileUneven, levelledFlatHeight } from '@terra/sim/grid/hex';
+import { HEX_DIRS, hexIndex, levelledFlatHeight } from '@terra/sim/grid/hex';
 import type { PlanetKind } from '../PlanetSpec';
 import { tileXZ } from './hexMath';
 
@@ -30,15 +30,15 @@ export interface HexTileLayers {
 }
 
 /**
- * Plain buffers of one chunk's surface (vertices = tile centres, y = effective height). The class tint is not a vertex
- * attribute: the shader looks it up per hex cell (`tileTint.ts`), so it never smears over neighbouring tiles.
+ * Plain buffers of one chunk's surface (vertices = tile centres, y = effective height). The class tint and the hex grid
+ * flag are not vertex attributes: the shader looks them up per hex cell (`tileTint.ts`), so they never smear over
+ * neighbouring tiles.
  */
 export interface ChunkBuffers {
   position: Float32Array;
   normal: Float32Array;
   aAO: Float32Array;
   aRock: Float32Array;
-  aHexFlat: Float32Array;
   /** Shoreline weight [0..1] of the tile (water tile or dry tile bordering water); drives the beach band. */
   aHexShore: Float32Array;
   index: Uint32Array;
@@ -65,7 +65,7 @@ const CLASS_STYLES: Record<PlanetKind, Record<number, StyleSpec>> = {
     [HEX_TERRAIN.forest]: [0x466e3b, 0x507a44, 0.95, 0.0],
     [HEX_TERRAIN.rock]: [0x6b7078, 0x555a63, 0.74, 1.0],
     [HEX_TERRAIN.slope]: [0x8a795d, 0x78684e, 0.84, 0.0],
-    [HEX_TERRAIN.hole]: [0x64664e, 0x6e7056, 0.95, 0.0],
+    [HEX_TERRAIN.hole]: [0x7e828a, 0x8c919a, 0.92, 0.55],
     [HEX_TERRAIN.shallow]: [0x2b6e78, 0x38858f, 0.88, 0.0],
     [HEX_TERRAIN.deep]: [0x10344a, 0x164663, 0.62, 0.0],
   },
@@ -74,7 +74,7 @@ const CLASS_STYLES: Record<PlanetKind, Record<number, StyleSpec>> = {
     [HEX_TERRAIN.forest]: [0xd69e62, 0xe2af72, 0.95, 0.0],
     [HEX_TERRAIN.rock]: [0xb5784a, 0x8c5836, 0.88, 1.0],
     [HEX_TERRAIN.slope]: [0xd48642, 0xe09650, 0.96, 0.0],
-    [HEX_TERRAIN.hole]: [0xd29a5e, 0xdea96c, 0.95, 0.0],
+    [HEX_TERRAIN.hole]: [0x7e828a, 0x8c919a, 0.92, 0.55],
     [HEX_TERRAIN.shallow]: [0xbd8449, 0xd6a668, 0.9, 0.0],
     [HEX_TERRAIN.deep]: [0x7d4f2d, 0x633c20, 0.65, 0.0],
   },
@@ -83,10 +83,22 @@ const CLASS_STYLES: Record<PlanetKind, Record<number, StyleSpec>> = {
     [HEX_TERRAIN.forest]: [0x447d35, 0x589442, 0.95, 0.0],
     [HEX_TERRAIN.rock]: [0x7a7f86, 0x5c6168, 0.74, 1.0],
     [HEX_TERRAIN.slope]: [0xb8a574, 0x9e8b5c, 0.86, 0.0],
-    [HEX_TERRAIN.hole]: [0x5a7848, 0x688854, 0.95, 0.0],
+    [HEX_TERRAIN.hole]: [0x7e828a, 0x8c919a, 0.92, 0.55],
     [HEX_TERRAIN.shallow]: [0x1f9fb8, 0x2cb5cf, 0.88, 0.0],
     [HEX_TERRAIN.deep]: [0x0b3f66, 0x114f7d, 0.62, 0.0],
   },
+};
+
+const IRRIGATED_STYLES: Record<PlanetKind, StyleSpec> = {
+  forestRock: [0x2b4238, 0x334e42, 0.94, 0.0],
+  dune: [0x754e30, 0x855a38, 0.94, 0.0],
+  oceanForest: [0x26443a, 0x2f5246, 0.94, 0.0],
+};
+
+const LIVING_STYLES: Record<PlanetKind, StyleSpec> = {
+  forestRock: [0x2c6e49, 0x38855a, 1.0, 0.0],
+  dune: [0x2c6e49, 0x3b8c5e, 1.0, 0.0],
+  oceanForest: [0x1e6f4c, 0x2b855c, 1.0, 0.0],
 };
 
 function unpackRgb(hex: number): [number, number, number] {
@@ -104,8 +116,14 @@ export function tileStyle(
   const table = CLASS_STYLES[kind] ?? CLASS_STYLES.forestRock;
   const flatSpec = table[HEX_TERRAIN.flat]!;
   const hasDeposit = deposit !== HEX_DEPOSIT.none && terrain !== HEX_TERRAIN.rock;
-  // Prepared (terraformed) ground is plain levelled flat ground: same tint, AO and material as a flat tile.
-  const spec = prep === HEX_PREP.prepared || hasDeposit ? flatSpec : (table[terrain] ?? flatSpec);
+  // Prepared ground is plain levelled flat ground; Irrigated is damp hydro-soil; Living is lush terraformed ground.
+  const spec = hasDeposit || prep === HEX_PREP.prepared
+    ? flatSpec
+    : prep === HEX_PREP.irrigated
+      ? (IRRIGATED_STYLES[kind] ?? IRRIGATED_STYLES.forestRock)
+      : prep === HEX_PREP.living
+        ? (LIVING_STYLES[kind] ?? LIVING_STYLES.forestRock)
+        : (table[terrain] ?? flatSpec);
   const t = tileHash01(q, r, 31);
   const [r0, g0, b0] = unpackRgb(spec[0]);
   const [r1, g1, b1] = unpackRgb(spec[1]);
@@ -219,7 +237,7 @@ function isWaterAt(layers: HexTileLayers, i: number): boolean {
 
 /** Shoreline weight [0..1] for non-dune water tiles and dry land tiles bordering water. */
 function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: HexTileLayers): number {
-  if (!layers.terrain || layers.kind === 'dune') return 0;
+  if (!layers.terrain || layers.kind === 'dune' || layers.terrain[i] === HEX_TERRAIN.hole) return 0;
   if (isWaterAt(layers, i)) return 1.0;
   const q = hx.q[i]!, r = hx.r[i]!;
   let waterNeighbors = 0;
@@ -270,7 +288,6 @@ export function buildChunk(
   const normal = new Float32Array(V * 3);
   const aAO = new Float32Array(V);
   const aRock = new Float32Array(V);
-  const aHexFlat = new Float32Array(V);
   const aHexShore = new Float32Array(V);
   const hasTerrain = Boolean(layers.terrain);
 
@@ -284,7 +301,6 @@ export function buildChunk(
     if (!hasTerrain) {
       aAO[v] = 1;
       aRock[v] = -1;
-      aHexFlat[v] = 1.0;
       continue;
     }
     const prepVal = layers.prep?.[i] ?? 0;
@@ -292,17 +308,8 @@ export function buildChunk(
     const depVal = layers.deposit?.[i] ?? 0;
     const hasDeposit = depVal !== HEX_DEPOSIT.none && tVal !== HEX_TERRAIN.rock;
     const st = tileStyle(q, r, tVal, prepVal, depVal, layers.kind ?? 'forestRock');
-    const isLevelGroundPlane = Math.abs(levelledFlatHeight(layers.height[i] ?? 0)) <= 0.01;
-    const isFlatBuildable =
-      isClearedPrep(prepVal) ||
-      hasDeposit ||
-      (tVal === HEX_TERRAIN.flat &&
-        prepVal !== HEX_PREP.ridge &&
-        prepVal !== HEX_PREP.moat &&
-        (isLevelGroundPlane || !isTileUneven(radius, i, layers.terrain!, layers.height)));
     aAO[v] = isClearedPrep(prepVal) || hasDeposit ? st.ao : st.ao * horizonAO(hx, i, effHeight);
     aRock[v] = st.rock;
-    aHexFlat[v] = isFlatBuildable ? 1.0 : 0.0;
     aHexShore[v] = tileShoreFactor(hx, i, layers);
   }
   return {
@@ -310,7 +317,6 @@ export function buildChunk(
     normal,
     aAO,
     aRock,
-    aHexFlat,
     aHexShore,
     index: Uint32Array.from(idx),
     vertexTile: Int32Array.from(order),

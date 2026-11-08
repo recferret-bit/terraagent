@@ -1,4 +1,4 @@
-export type HudIconKind = 'metals' | 'minerals' | 'bio' | 'supply' | 'cell' | 'clock';
+export type HudIconKind = 'metals' | 'minerals' | 'bio' | 'supply' | 'cell' | 'clock' | 'terraform';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -54,6 +54,22 @@ function appendIconShapes(svg: SVGElement, kind: HudIconKind): void {
       fill: 'currentColor',
       stroke: 'currentColor',
       'stroke-width': '1.1',
+      'stroke-linejoin': 'round',
+    });
+  } else if (kind === 'terraform') {
+    add('polygon', {
+      points: '8,1.8 13.5,5 13.5,11 8,14.2 2.5,11 2.5,5',
+      fill: 'currentColor',
+      'fill-opacity': '0.24',
+      stroke: 'currentColor',
+      'stroke-width': '1.5',
+      'stroke-linejoin': 'round',
+    });
+    add('path', {
+      d: 'M8 11.5V5.5M5.5 8C6.5 6.5 7.5 5.5 8 5.5C8.5 5.5 9.5 6.5 10.5 8',
+      stroke: 'currentColor',
+      'stroke-width': '1.3',
+      'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
     });
   } else {

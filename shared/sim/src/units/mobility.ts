@@ -50,9 +50,24 @@ function statsFromRow(row: CompiledRow): MobileStats {
 }
 
 import { resolveReconRow } from '../systems/factories-hub/robotics';
-import { resolveBuilderRow, syncBuilderView } from '../systems/factories-hub/unit';
-import { resolveHarvesterRow, syncHarvesterView } from '../systems/harvest/unit';
+import { resolveWorkerRow, syncWorkerView } from '../systems/harvest/unit';
 import { revealVision } from '../systems/hq';
+
+function workerMobileStats(data: CompiledDataLike): MobileStats {
+  const row = resolveWorkerRow(data, 1);
+  return {
+    speedPerTick: Math.fround(Number(row.speedTilesPerS ?? 0.3)),
+    viewRadius: Number(row.viewRadius ?? 7),
+    profile: 'worker',
+    terraformReach: [Number(row.terraformReachMin ?? 0), Number(row.terraformReachTiles ?? 1)],
+    buildReach: [Number(row.buildReachMin ?? 1), Number(row.buildReachTiles ?? 1)],
+    weaponRange: 0,
+    dps: 0,
+    stopHoldTicks: 15,
+    retryTicks: 10,
+    retryMaxTicks: 80,
+  };
+}
 
 function faunaMobileStats(
   data: CompiledDataLike,
@@ -87,51 +102,14 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
     },
   ],
   [
-    ENTITY_KIND.harvester,
+    ENTITY_KIND.worker,
     {
-      stats: (data) => {
-        const row = resolveHarvesterRow(data);
-        return {
-          speedPerTick: Math.fround(Number(row.speedTilesPerS ?? 0.3)),
-          viewRadius: Number(row.viewRadius ?? 7),
-          profile: 'harvester',
-          terraformReach: [0, 1],
-          buildReach: [0, 0],
-          weaponRange: 0,
-          dps: 0,
-          stopHoldTicks: 15,
-          retryTicks: 10,
-          retryMaxTicks: 80,
-        };
-      },
-      onChanged: (state, row, tick, data) => {
-        syncHarvesterView(state, row, tick, data);
-      },
-    },
-  ],
-  [
-    ENTITY_KIND.builder,
-    {
-      stats: (data) => {
-        const row = resolveBuilderRow(data);
-        return {
-          speedPerTick: Math.fround(Number(row.speedTilesPerS ?? 0.3)),
-          viewRadius: Number(row.viewRadius ?? 7),
-          profile: 'ground',
-          terraformReach: [Number(row.terraformReachMin ?? 0), Number(row.terraformReachTiles ?? 1)],
-          buildReach: [Number(row.buildReachMin ?? 1), Number(row.buildReachTiles ?? 1)],
-          weaponRange: 0,
-          dps: 0,
-          stopHoldTicks: 15,
-          retryTicks: 10,
-          retryMaxTicks: 80,
-        };
-      },
+      stats: (data) => workerMobileStats(data),
       onChanged: (state, row, tick, data) => {
         const cols = state.entities.cols;
-        const bRow = resolveBuilderRow(data);
-        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(bRow.viewRadius ?? 7), tick);
-        syncBuilderView(state, row, tick, data);
+        const spec = resolveWorkerRow(data, cols.tier[row] || 1);
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(spec.viewRadius ?? 7), tick);
+        syncWorkerView(state, row, tick, data);
       },
     },
   ],
@@ -275,9 +253,9 @@ export function mobileStats(kind: number, data: CompiledDataLike): MobileStats |
 
 export const isUnitKind = (kind: number): boolean => MOBILE_KINDS.has(kind);
 
-/** Path profile the movement orchestrator uses. Fauna share the harvester rule whatever their row says. */
+/** Path profile the movement orchestrator uses. Fauna share the worker rule whatever their row says. */
 export function movementProfile(kind: number, data: CompiledDataLike): PathProfileId {
-  if (kind === ENTITY_KIND.blackAnt || kind === ENTITY_KIND.blueBeetle || kind === ENTITY_KIND.greenSpitter) return 'harvester';
+  if (kind === ENTITY_KIND.blackAnt || kind === ENTITY_KIND.blueBeetle || kind === ENTITY_KIND.greenSpitter) return 'worker';
   return mobileStats(kind, data)?.profile ?? 'ground';
 }
 

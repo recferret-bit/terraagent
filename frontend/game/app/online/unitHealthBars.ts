@@ -99,8 +99,7 @@ export function isMobileUnitKind(rawKind: number | string): boolean {
   const kind = typeof rawKind === 'number' ? rawKind : resolveHealthBarKind(rawKind);
   return (
     kind === ENTITY_KIND.hq ||
-    kind === ENTITY_KIND.harvester ||
-    kind === ENTITY_KIND.builder ||
+    kind === ENTITY_KIND.worker ||
     kind === ENTITY_KIND.devProbe ||
     kind === ENTITY_KIND.recon ||
     kind === DEMO_TANK_CODE ||

@@ -81,8 +81,7 @@ describe('W07-06: isUnitEvasive and evasive destination selection', () => {
     expect(isUnitEvasive(ENTITY_KIND.recon)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.recon, compileData(parseWaves('..07')))).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.hq, w07Data)).toBe(false);
-    expect(isUnitEvasive(ENTITY_KIND.harvester, w07Data)).toBe(false);
-    expect(isUnitEvasive(ENTITY_KIND.builder, w07Data)).toBe(false);
+    expect(isUnitEvasive(ENTITY_KIND.worker, w07Data)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.blackAnt, w07Data)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.blueBeetle, w07Data)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.greenSpitter, w07Data)).toBe(false);

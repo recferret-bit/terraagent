@@ -1,5 +1,6 @@
 import { PLANET_KINDS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { DEPOSIT_STAGES, type DepositVisualStage } from '@terra/render/kitbash';
+import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $, setBtn } from '../dom';
 import { PLANET_LABEL, TOGGLES, VIEWS, type PgState, type ToggleKey, type View } from '../state';
 import { bindDock } from './dock';
@@ -13,6 +14,7 @@ export interface ToolbarHandlers {
   onBuild(): void;
   onWorkTarget(): void;
   onDepositStage(stage: DepositVisualStage): void;
+  onTileState(preset: TileStatePreset): void;
 }
 
 const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', work: 'work pose', row: 'spawn row', validate: 'validate parts', lights: 'Lights [L]', human: '1.8m human' };
@@ -56,6 +58,13 @@ function depositHtml(): string {
   return `<div id="deposit-stage-btns" data-testid="pg-deposit-stage" class="planet" title="Resource deposit visual stage"><span class="pg-stage-lbl">STAGE:</span>${buttons}</div>`;
 }
 
+function tileStateHtml(): string {
+  const buttons = TILE_STATE_PRESETS.map(
+    (ts) => `<button class="pg-btn" data-v="${ts}" data-tile-state="${ts}">${ts.toUpperCase()}</button>`,
+  ).join('');
+  return `<div id="tile-state-btns" data-testid="pg-tile-state" class="planet" title="Terrain tile preparation state"><span class="pg-stage-lbl">TILES:</span>${buttons}</div>`;
+}
+
 function workHtml(): string {
   return '<button class="pg-btn" id="work-target" title="cycle interaction target for 3D work particles">target: tree</button><button class="pg-btn" id="build" title="construction scaffold stage">build</button>';
 }
@@ -78,7 +87,7 @@ function barHead(): string {
 
 function overlayHtml(): string {
   const view = `${viewsHtml()}<span class="sep"></span>${togs(ORDER.view)}`;
-  const world = `${planetsHtml()}<span class="sep"></span>${togs(ORDER.world)}`;
+  const world = `${planetsHtml()}<span class="sep"></span>${tileStateHtml()}<span class="sep"></span>${togs(ORDER.world)}`;
   const work = `${depositHtml()}<span class="sep"></span>${togs(ORDER.work)}<span class="sep"></span>${workHtml()}`;
   return `
   <div class="panel" id="info"></div>
@@ -107,6 +116,9 @@ export class Toolbar {
     ov.querySelectorAll<HTMLElement>('#planet-btns [data-v]').forEach((b) => (b.onclick = () => this.on.onPlanet(b.dataset.v as PlanetKind)));
     ov.querySelectorAll<HTMLElement>('#deposit-stage-btns [data-deposit-stage]').forEach(
       (b) => (b.onclick = () => this.on.onDepositStage(b.dataset.depositStage as DepositVisualStage)),
+    );
+    ov.querySelectorAll<HTMLElement>('#tile-state-btns [data-tile-state]').forEach(
+      (b) => (b.onclick = () => this.on.onTileState(b.dataset.tileState as TileStatePreset)),
     );
     ov.querySelectorAll<HTMLElement>('.tog').forEach((b) => (b.onclick = () => this.on.onToggle(b.dataset.k as ToggleKey)));
     ov.querySelectorAll<HTMLElement>('#bar [data-tab]').forEach((b) => (b.onclick = () => this.showTab(b.dataset.tab as BarTab)));
@@ -142,6 +154,7 @@ export class Toolbar {
     const wt = document.querySelector<HTMLElement>('#work-target');
     if (wt) { wt.textContent = `target: ${this.state.workTarget}`; wt.classList.toggle('on', this.state.work); }
     setBtn('#deposit-stage-btns', this.state.depositStage);
+    setBtn('#tile-state-btns', this.state.tileState);
   }
   setView(v: View) { setBtn('#views', v); }
   setPlanet(k: PlanetKind) { setBtn('#planet-btns', k); }

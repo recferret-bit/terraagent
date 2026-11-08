@@ -18,7 +18,7 @@ import {
   setTilePrep,
   SimHost,
   snapshot,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   type PlanetState,
 } from '../../src';
@@ -28,13 +28,12 @@ const EPS = 1e-4;
 const A = { q: 5, r: 0 };
 const B = { q: -6, r: 3 };
 
-function rig(): { host: SimHost; hqId: number; harvId: number } {
+function rig(): { host: SimHost; hqId: number } {
   const host = new SimHost({ flags: parseWaves('..02') });
   host.load(createPlanet({ type: 'flat', seed: 'w02-dispatch', radius: 16 }));
   setColonyStock(host.state, 0, { 'metals.t1': 400, 'minerals.t1': 400, 'bio.biomass': 100, 'bio.water': 100 });
   const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
-  const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: A.q - 1, r: A.r }); // next to site A: it must never build
-  return { host, hqId, harvId };
+  return { host, hqId };
 }
 
 const entry = (state: PlanetState, taskId: string) => getColonyQueue(state, 0, 'construction').find((e) => e.taskId === taskId);
@@ -68,7 +67,7 @@ function buildWatched(host: SimHost, hqId: number, site: { q: number; r: number 
 
 describe('dispatch v1: W02 buildings are built by the HQ on site, one after the other (W02-16, UO-D-03)', () => {
   it('two queued builds with only the HQ: it preps and builds A, then walks to B and builds it; nothing advances from afar', () => {
-    const { host, hqId, harvId } = rig();
+    const { host, hqId } = rig();
     const state = host.state;
     const cols = state.entities.cols;
     const watch = new MotionWatch(() => host.state);
@@ -85,7 +84,6 @@ describe('dispatch v1: W02 buildings are built by the HQ on site, one after the 
 
     buildWatched(host, hqId, A, () => aId, watch, 400, () => {
       expect(entry(state, 'b')?.entityId).toBeUndefined(); // B is not started while A is being built
-      expect(getUnitCommand(state, harvId)?.kind).not.toBe('build');
     });
     const hqRow = rowOf(state.entities, hqId);
     expect(hexDistance(cols.q[hqRow], cols.r[hqRow], B.q, B.r)).toBeGreaterThan(3); // still at A
@@ -126,20 +124,35 @@ describe('dispatch v1: W02 buildings are built by the HQ on site, one after the 
 
 describe('dispatch v1: who builds, and builds across snapshots (W02-16)', () => {
   it.each([
-    ['unprepared (its linked prep waits too)', false, 'waiting: site (prep 0/4)'],
-    ['prepared', true, 'waiting: worker (no builder)'],
-  ])('with no builder a started build on a %s site never advances; a Harvester takes neither job', (_label, prepared, detail) => {
+    ['unprepared', false, 'terraform'],
+    ['prepared', true, 'build'],
+  ])('a T1 worker drone takes a T1 %s site', (_label, prepared, commandKind) => {
     const host = new SimHost({ flags: parseWaves('..02') });
     host.load(createPlanet({ type: 'flat', seed: 'w02-dispatch', radius: 16 }));
     setColonyStock(host.state, 0, { 'metals.t1': 400, 'minerals.t1': 400, 'bio.biomass': 100, 'bio.water': 100 });
     if (prepared) for (const i of getFootprintTileIndices(host.state, A.q, A.r, 2, 2).indices) setTilePrep(host.state.grid, i, PREP.prepared);
-    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: A.q - 1, r: A.r });
+    const harvId = spawnWorkerUnit(host.state, { owner: 0, q: A.q - 1, r: A.r });
     host.submit(cmd('enqueueTask', { taskId: 'a', task: { kind: 'build', building: 'solar', ...A } }));
-    for (let t = 0; t < 120; t++) {
+    let saw = false;
+    for (let t = 0; t < 40 && !saw; t++) {
       host.step(1);
-      expect(getUnitCommand(host.state, harvId)?.kind ?? 'none').toBe('none'); // neither the build nor its linked prep
+      saw = getUnitCommand(host.state, harvId)?.kind === commandKind;
     }
-    expect(Object.keys(getUnitRecord(host.state, harvId)?.skip ?? {})).toEqual([]); // not even tried and backed off
+    expect(saw).toBe(true);
+  });
+});
+
+describe('dispatch v1: a build no eligible worker can take waits and pays nothing (W02-16, W05-02)', () => {
+  it.each([
+    ['unprepared (its linked prep waits too)', false, 'waiting: site (prep 0/4)'],
+    ['prepared', true, 'waiting: worker (none free)'],
+  ])('with no worker at all a started build on a %s site never advances and pays nothing', (_label, prepared, detail) => {
+    const host = new SimHost({ flags: parseWaves('..02') });
+    host.load(createPlanet({ type: 'flat', seed: 'w02-dispatch', radius: 16 }));
+    setColonyStock(host.state, 0, { 'metals.t1': 400, 'minerals.t1': 400, 'bio.biomass': 100, 'bio.water': 100 });
+    if (prepared) for (const i of getFootprintTileIndices(host.state, A.q, A.r, 2, 2).indices) setTilePrep(host.state.grid, i, PREP.prepared);
+    host.submit(cmd('enqueueTask', { taskId: 'a', task: { kind: 'build', building: 'solar', ...A } }));
+    for (let t = 0; t < 120; t++) host.step(1);
     const e = entry(host.state, 'a')!;
     expect(e.state).toBe('in_progress');
     expect(e.waitDetail).toBe(detail);
@@ -147,6 +160,28 @@ describe('dispatch v1: who builds, and builds across snapshots (W02-16)', () => 
     expect(Object.values(getBuildingJobs(host.state)[e.entityId!].spentCost ?? {}).every((v) => !v)).toBe(true);
   });
 
+  it('a T1 worker never takes a tier-2 site: it does not try and back off, and the entry waits on `worker (none free)`', () => {
+    const host = new SimHost({ flags: parseWaves('..02') });
+    host.load(createPlanet({ type: 'flat', seed: 'w02-dispatch', radius: 16 }));
+    setColonyStock(host.state, 0, { 'metals.t1': 400, 'minerals.t1': 400, 'bio.biomass': 100, 'bio.water': 100 });
+    for (const i of getFootprintTileIndices(host.state, A.q, A.r, 2, 2).indices) setTilePrep(host.state.grid, i, PREP.prepared);
+    host.submit(cmd('enqueueTask', { taskId: 'a', task: { kind: 'build', building: 'solar', ...A } }));
+    host.step(1);
+    const siteId = entry(host.state, 'a')!.entityId!;
+    host.state.entities.cols.tier[rowOf(host.state.entities, siteId)] = 2; // the site is tier 2: above a T1 worker's cap
+    const workerId = spawnWorkerUnit(host.state, { owner: 0, q: A.q - 1, r: A.r });
+    for (let t = 0; t < 120; t++) {
+      host.step(1);
+      expect(getUnitCommand(host.state, workerId)?.kind ?? 'none').not.toBe('build');
+    }
+    expect(Object.keys(getUnitRecord(host.state, workerId)?.skip ?? {})).toEqual([]); // not even tried and backed off
+    const e = entry(host.state, 'a')!;
+    expect(e).toMatchObject({ state: 'in_progress', waitReason: 'worker', waitDetail: 'waiting: worker (none free)' });
+    expect(progressOf(host.state, siteId)).toBe(0);
+  });
+});
+
+describe('dispatch v1: builds across snapshots (W02-16)', () => {
   it('a build in progress survives snapshot / restore and both copies finish on the same tick', () => {
     const { host } = rig();
     host.submit(cmd('enqueueTask', { taskId: 'a', task: { kind: 'build', building: 'solar', ...A } }));

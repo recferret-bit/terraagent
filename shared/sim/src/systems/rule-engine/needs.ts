@@ -1,25 +1,26 @@
-import { RESOURCE_FAMILY_OF, type ResourceKey } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
-import type { CompiledDataLike } from '../../kernel/config';
-import type { ColonyState, PlanetState } from '../../kernel/state';
+import type { PlanetState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
-import { BASE_HUB_STORAGE_CAP } from '../economy/ledger';
-import { getEnvironment } from '../environment';
 import { getHubUnitQueue } from '../factories-hub';
 import { computeColonySupply } from '../supply';
-import { computeSolarOutputPerS, resolvePowerRow, type ColonyPowerSummary } from '../power-core';
 import {
   clampBp,
+  estimateEntityPower,
+  findColonyAnchors,
   MAX_NEED_BP,
   NEED_KEYS,
+  PRIMARY_STORAGE_RESOURCES,
+  readDeficitTicks,
+  readResourceStockAndCaps,
+  readStoredPower,
   type ColonyNeedsDetail,
   type ColonyNeedsScore,
   type NeedKey,
   type NeedsEvalInput,
   type NeedsEvalOverrides,
-} from './needsTypes';
+} from './parts/needsPowerAndStock';
 
 export {
   MAX_NEED_BP,
@@ -30,66 +31,6 @@ export {
   type NeedsEvalInput,
   type NeedsEvalOverrides,
 };
-
-const PRIMARY_STORAGE_RESOURCES: readonly ResourceKey[] = ['metals.t1', 'minerals.t1', 'bio.water', 'bio.biomass'];
-
-function readStoredPower(state: PlanetState, colonyIndex: number): (Partial<ColonyPowerSummary> & Record<string, unknown>) | null {
-  const fromColony = state.colonies[colonyIndex]?.power;
-  if (fromColony && typeof fromColony === 'object') return fromColony as Partial<ColonyPowerSummary> & Record<string, unknown>;
-  const blobEntry = state.blobs.power;
-  if (!blobEntry || typeof blobEntry !== 'object') return null;
-  const val = ('value' in blobEntry && blobEntry.value && typeof blobEntry.value === 'object' ? blobEntry.value : blobEntry) as Record<string, unknown>;
-  const byColony = val.byColony as Record<string, unknown> | undefined;
-  const hit = byColony?.[String(colonyIndex)] ?? val[String(colonyIndex)];
-  return hit && typeof hit === 'object' ? (hit as Partial<ColonyPowerSummary> & Record<string, unknown>) : null;
-}
-
-function readDeficitTicks(state: PlanetState, colonyIndex: number, powerObj: Record<string, unknown> | null): number {
-  const col = state.colonies[colonyIndex];
-  if (typeof col?.brownoutTicks === 'number') return col.brownoutTicks;
-  if (typeof powerObj?.deficitTicks === 'number') return powerObj.deficitTicks;
-  if (typeof powerObj?.brownoutTicks === 'number') return powerObj.brownoutTicks;
-  const val = state.blobs.power?.value as { trackers?: Record<string, { brownoutTicks?: number }> } | undefined;
-  const tr = val?.trackers?.[String(colonyIndex)];
-  return typeof tr?.brownoutTicks === 'number' ? tr.brownoutTicks : 0;
-}
-
-function estimateEntityPower(state: PlanetState, colonyIndex: number, data?: CompiledDataLike): {
-  founderCorePerS: number;
-  solarNetPerS: number;
-  solarInternalDrainPerS: number;
-  supply: number;
-  rawDemand: number;
-} {
-  const hubRow = resolvePowerRow(data, 'hub', 't1');
-  const extRow = resolvePowerRow(data, 'economyT1Basic', 'metalsExtractor');
-  const harvRow = resolvePowerRow(data, 'unitsWorkersBasic', 'harvester');
-  const env = getEnvironment(state, data);
-  const cols = state.entities.cols;
-  let hubCount = 0, solarDrain = 0, solarNet = 0, onlineGen = 0, demand = 0;
-
-  for (let row = 0; row < state.entities.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    const kind = cols.kind[row], st = cols.state[row];
-    if (st === ENTITY_STATE.constructing || st === ENTITY_STATE.offlineUnpowered) continue;
-    if (kind === ENTITY_KIND.commandHub) {
-      hubCount++;
-    } else if (kind === ENTITY_KIND.solar) {
-      const out = computeSolarOutputPerS(env.daylight, state.meta.planetType, data);
-      solarDrain += out.internalDrain;
-      solarNet += out.net;
-      if (env.phase !== 'night' && env.daylight > 0.001 && out.net > 0) onlineGen += out.net;
-    } else if (kind === ENTITY_KIND.metalsExtractor) {
-      demand += Number(extRow.powerDrainPerS ?? 6);
-    } else if (kind === ENTITY_KIND.harvester) {
-      const full = Number(harvRow.powerDrainPerS ?? 1.5);
-      demand += st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout ? full * 0.5 : full;
-    }
-  }
-  const founderCorePerS = hubCount * Number(hubRow.founderCoreGenPerS ?? 8);
-  const hubDrain = hubCount * Number(hubRow.powerDrainPerS ?? 5);
-  return { founderCorePerS, solarNetPerS: solarNet, solarInternalDrainPerS: solarDrain, supply: founderCorePerS + onlineGen, rawDemand: hubDrain + demand };
-}
 
 export function scoreEnergyNeed(
   state: PlanetState,
@@ -131,25 +72,6 @@ export function scoreEnergyNeed(
       : clampBp(Math.max(0, 2000 - Math.round((netPowerPerS - 5) * 100)));
   }
   return { score, netPowerPerS, nightNetPerS, brownout, deficitTicks };
-}
-
-function readResourceStockAndCaps(
-  colony: ColonyState | undefined,
-  overrides?: NeedsEvalInput,
-): { stock: Record<ResourceKey, number>; capFor: (key: ResourceKey) => number } {
-  const rawStock = (overrides?.stock ?? colony?.stock ?? {}) as Partial<Record<ResourceKey, number>>;
-  const rawCaps = (overrides?.caps ?? colony?.caps ?? {}) as Partial<Record<string, number>>;
-  const stock = {} as Record<ResourceKey, number>;
-  for (const key of PRIMARY_STORAGE_RESOURCES) {
-    stock[key] = typeof rawStock[key] === 'number' && Number.isFinite(rawStock[key]!) ? rawStock[key]! : 0;
-  }
-  const capFor = (key: ResourceKey): number => {
-    const direct = rawCaps[key];
-    if (typeof direct === 'number' && direct > 0) return direct;
-    const famCap = rawCaps[RESOURCE_FAMILY_OF[key]];
-    return typeof famCap === 'number' && famCap > 0 ? famCap : BASE_HUB_STORAGE_CAP;
-  };
-  return { stock, capFor };
 }
 
 export function scoreStorageNeed(
@@ -237,16 +159,6 @@ export function scoreExtractionNeed(
   return { score, extractorCount, minResourceRatio, netResourcePerS };
 }
 
-function findColonyAnchors(state: PlanetState, colonyIndex: number): Array<{ q: number; r: number }> {
-  const cols = state.entities.cols;
-  const anchors: Array<{ q: number; r: number }> = [];
-  for (let row = 0; row < state.entities.count; row++) {
-    if (cols.owner[row] === colonyIndex && cols.hp[row] > 0) anchors.push({ q: cols.q[row], r: cols.r[row] });
-  }
-  if (anchors.length === 0) anchors.push({ q: 0, r: 0 });
-  return anchors;
-}
-
 function countColonyDefenseAssets(
   state: PlanetState,
   colonyIndex: number,
@@ -284,7 +196,6 @@ function isNeutralPassiveFaunaRow(state: PlanetState, row: number, colonyIndex: 
   if (!entry) return false;
   return !Array.isArray(entry.aggressiveColonies) || !entry.aggressiveColonies.includes(colonyIndex);
 }
-
 export function scoreDefenseNeed(
   state: PlanetState,
   colonyIndex: number,

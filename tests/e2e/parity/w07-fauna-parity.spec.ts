@@ -206,7 +206,7 @@ describe('W07-35 · 3. Late, duplicate, and missing/gapped directives', () => {
       s.grid.layers.prep.fill(PREP.prepared);
       ensureColonyRecord(s, 0, 0).status = 'active';
       spawnHiveEntity(s, { species: 'blackAnt', q: 0, r: 0, initialResidents: 2 }, 0, data);
-      spawnColonyUnit(s, { kind: ENTITY_KIND.harvester, owner: 0, q: 9, r: 0, hp: 300 });
+      spawnColonyUnit(s, { kind: ENTITY_KIND.worker, owner: 0, q: 9, r: 0, hp: 300 });
       return s;
     };
 
@@ -425,7 +425,7 @@ describe('W07-35 · 6. TA_WAVES wave gating (..06 vs ..07)', () => {
     const host06 = new SimHost(createRegistryPipeline({ flags: flags06 }));
     const planet06 = createPlanet({ id: 'pl-gate-06', seed: 'ta-waves-gate', type: 'temperate', planetType: 'temperate', radius: 56 });
     ensureColonyRecord(planet06, 0, 0).status = 'active';
-    const unit06 = spawnColonyUnit(planet06, { kind: ENTITY_KIND.harvester, owner: 0, q: 0, r: 0, hp: 200 });
+    const unit06 = spawnColonyUnit(planet06, { kind: ENTITY_KIND.worker, owner: 0, q: 0, r: 0, hp: 200 });
     host06.load(planet06);
 
     const outcomes06: Record<string, string | undefined> = {};

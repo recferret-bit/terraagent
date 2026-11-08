@@ -11,7 +11,7 @@ import {
 } from '../../src';
 
 describe('W02-05 Power system (slot 7) v0 — single component', () => {
-  it('Hub alone -> +16 / -7; + 1 working Harvester -> -9 demand (idle Harvester -> 50% drain = -8)', () => {
+  it('Hub alone -> +16 / -7; + 1 working Worker -> -9 demand (idle Worker -> 50% drain = -8)', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     state.colonies.push({
       index: 0,
@@ -41,9 +41,9 @@ describe('W02-05 Power system (slot 7) v0 — single component', () => {
     expect(pHubOnly.demand).toBe(7);
     expect(pHubOnly.net).toBe(9);
 
-    // Spawn 1 working Harvester
+    // Spawn 1 working Worker
     const harvRow = insertRow(state.entities, state.meta.nextEntityId++, 1);
-    state.entities.cols.kind[harvRow] = ENTITY_KIND.harvester;
+    state.entities.cols.kind[harvRow] = ENTITY_KIND.worker;
     state.entities.cols.owner[harvRow] = 0;
     state.entities.cols.hp[harvRow] = 160;
     state.entities.cols.hpMax[harvRow] = 160;
@@ -55,7 +55,7 @@ describe('W02-05 Power system (slot 7) v0 — single component', () => {
     expect(pWithWorkingHarv.demand).toBe(9);
     expect(pWithWorkingHarv.net).toBe(7);
 
-    // When Harvester is idle, its drain is 50% (1 E/s -> total demand 8)
+    // When Worker is idle, its drain is 50% (1 E/s -> total demand 8)
     state.entities.cols.state[harvRow] = ENTITY_STATE.idle;
     step(state, [], 1, pipeline);
     expect(getColonyPower(state, 0).demand).toBe(8);

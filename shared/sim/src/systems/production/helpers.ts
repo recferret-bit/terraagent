@@ -3,14 +3,14 @@ import { compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
-import { hexIndex } from '../../grid/hex';
-import { DEPOSIT } from '../../grid/layers';
+import { HEX_DIRS, hexIndex } from '../../grid/hex';
+import { DEPOSIT, PREP } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import type { ColonyState, PlanetState } from '../../kernel/state';
+import type { PlanetState } from '../../kernel/state';
 import { evaluatePlacement } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
-import { ensureColonyLedger, syncColonyDepotCaps } from '../economy/ledger';
+import { ensureColonyAt, syncColonyDepotCaps } from '../economy/ledger';
 
 export interface DepositCoverageResult {
   covered: boolean;
@@ -119,21 +119,74 @@ export function checkExtractorDepositCoverage(
   };
 }
 
-export function ensureColonyForOwner(state: PlanetState, owner: number, tick: number): ColonyState {
-  let col = state.colonies[owner];
-  if (!col) {
-    col = {
-      index: owner,
-      id: `col-${owner}`,
-      name: `Colony ${owner + 1}`,
-      color: 0xff6b00,
-      status: 'active',
-      changedAt: tick,
-    };
-    state.colonies[owner] = col;
-  }
-  return ensureColonyLedger(col);
+export interface ExtractorLivingBonusInfo {
+  adjacentToLiving: boolean;
+  bonus: number;
+  mult: number;
+  label: string;
 }
+
+function resolveLivingAdjExtractorBonus(data?: CompiledDataLike): number {
+  const cfg = (data?.tables?.terraform as Record<string, Record<string, unknown>> | undefined)?.terraformConfig;
+  if (typeof cfg?.livingAdjacentExtractorBonus === 'number') return cfg.livingAdjacentExtractorBonus;
+  if (typeof cfg?.livingAdjExtractorBonus === 'number') return cfg.livingAdjExtractorBonus;
+  return 0.05;
+}
+
+/**
+ * Returns `true` when any tile of the footprint `(w, d)` at `(q, r)` or any hex-adjacent tile (`distance === 1`)
+ * has `PREP.living` (`W05-10`, `colony-economy-and-buildings-spec.md` §3.6).
+ */
+export function isExtractorAdjacentToLiving(
+  state: PlanetState,
+  q: number,
+  r: number,
+  w = 2,
+  d = 2,
+  rot = 0,
+): boolean {
+  const swap = rot % 2 !== 0;
+  const fw = Math.max(1, swap ? d : w);
+  const fd = Math.max(1, swap ? w : d);
+  const idx = hexIndex(state.grid.radius);
+  const prepLayer = state.grid.layers.prep as Uint8Array;
+
+  for (let dr = 0; dr < fd; dr++) {
+    for (let dq = 0; dq < fw; dq++) {
+      const fq = q + dq;
+      const fr = r + dr;
+      const selfIdx = idx.indexOf(fq, fr);
+      if (selfIdx >= 0 && prepLayer[selfIdx] === PREP.living) return true;
+      for (const [ndq, ndr] of HEX_DIRS) {
+        const nIdx = idx.indexOf(fq + ndq, fr + ndr);
+        if (nIdx >= 0 && prepLayer[nIdx] === PREP.living) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Computes the Living adjacency bonus (`+5 %`, `mult = 1.05`) for an extractor footprint `(w, d)` at `(q, r)` (`W05-10`).
+ */
+export function getExtractorLivingBonus(
+  state: PlanetState,
+  q: number,
+  r: number,
+  w = 2,
+  d = 2,
+  rot = 0,
+  data?: CompiledDataLike,
+): ExtractorLivingBonusInfo {
+  const adjacentToLiving = isExtractorAdjacentToLiving(state, q, r, w, d, rot);
+  const bonus = adjacentToLiving ? resolveLivingAdjExtractorBonus(data) : 0;
+  const mult = 1 + bonus;
+  const pct = Math.round(bonus * 100);
+  const label = adjacentToLiving ? `+${pct} %` : '0 %';
+  return { adjacentToLiving, bonus, mult, label };
+}
+
+export const ensureColonyForOwner = ensureColonyAt;
 
 function spawnPlacedBuildingEntity(
   state: PlanetState,

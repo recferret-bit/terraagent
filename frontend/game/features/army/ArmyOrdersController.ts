@@ -66,7 +66,7 @@ function collectEntitiesFromView(rawView: unknown, ownerColonyIndex: number): En
   if (hq && !rowsById.has(hq.entityId)) {
     rowsById.set(hq.entityId, {
       id: hq.entityId, kind: ENTITY_KIND.hq, owner: hq.owner ?? ownerColonyIndex,
-      q: hq.q, r: hq.r, x: hq.x, y: hq.y, rot: 0, hp: hq.hp, hpMax: hq.hpMax, state: ENTITY_STATE.idle, progress: 0,
+      q: hq.q, r: hq.r, x: hq.x, y: hq.y, rot: 0, hp: hq.hp, hpMax: hq.hpMax, state: ENTITY_STATE.idle, progress: 0, tier: 1,
     });
   }
   return [...rowsById.values()];

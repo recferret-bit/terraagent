@@ -196,8 +196,8 @@ describe('W07-31 · Colony-scoped provocation (aggressiveColonies isolated to of
     const hiveB = spawnHiveEntity(state, { species: 'blueBeetle', q: -8, r: 0, initialResidents: 2 }, 0, data);
 
     // Unarmed workers isolate fauna provocation from player-versus-player gunfire.
-    const col0Unit = spawnUnit(state, { kind: ENTITY_KIND.builder, owner: 0, q: 6, r: 0, hp: 160 });
-    const col1Unit = spawnUnit(state, { kind: ENTITY_KIND.builder, owner: 1, q: 9, r: 0, hp: 160 });
+    const col0Unit = spawnUnit(state, { kind: ENTITY_KIND.worker, owner: 0, q: 6, r: 0, hp: 160 });
+    const col1Unit = spawnUnit(state, { kind: ENTITY_KIND.worker, owner: 1, q: 9, r: 0, hp: 160 });
 
     // Standing within 5 tiles for > 3 ticks does not provoke passive hives
     host.step(6);
@@ -293,7 +293,7 @@ describe('W07-31 · Acid projectile impact (greenSpitter spitterAcid, projectile
   it('fires spitterAcid into projectileImpacts and resolves arrival damage & splash without friendly fire to other fauna', () => {
     const { host, state, data } = createW07FaunaHost('acid-impact', 20);
     const spitterHive = spawnHiveEntity(state, { species: 'greenSpitter', q: 9, r: 0, initialResidents: 2 }, 0, data);
-    const targetHarv = spawnUnit(state, { kind: ENTITY_KIND.harvester, owner: 0, q: 6, r: 0, hp: 300 });
+    const targetHarv = spawnUnit(state, { kind: ENTITY_KIND.worker, owner: 0, q: 6, r: 0, hp: 300 });
     const bystanderAnt = spawnUnit(state, { kind: ENTITY_KIND.blackAnt, owner: -1, q: 6, r: 1, hp: 120 });
 
     applyDamage(state, spitterHive, 30, { attackerId: targetHarv.id, attackerOwner: 0, tick: host.tick });

@@ -47,8 +47,8 @@ Because unit limbs animate entirely on the GPU via `aPartAnim` in `shaderChunks.
 | Archetype ID | Tool Origin Channels | Muzzle Behavior |
 | :--- | :--- | :--- |
 | `robot.hero` (HQ Drone) | Dual hands: `BipedArm (5)` around shoulder pivots `(±0.34, 1.08, 0.0)` + `bipedBodyTransform (8)` | Dual lasers originate strictly from the animated left and right hands (`(±0.34, 0.72, 0.24)` rest tips transformed by shoulder pitch, converging work yaw, and body heave/twist) with muzzle flare orbs at each palm. |
-| `robot.miner` (Harvester) | Rotary drill (`SpinY 1`) + upper cutter lamp | Primary beam locks to the spinning auger tip; secondary beam locks to the upper auxiliary cutter. |
-| `robot.builder` (Builder) | Articulated torch (`RecoilPulse 3`) + top projector | Beams lock to the recoiling plasma torch nozzle and top nano-lathe projector. |
+| `robot.miner` (Worker Drone T1) | Rotary drill (`SpinY 1`) + upper cutter lamp | Primary beam locks to the spinning auger tip; secondary beam locks to the upper auxiliary cutter. |
+| `robot.builder` (Worker Drone T2 / T3) | Articulated torch (`RecoilPulse 3`) + top projector | Beams lock to the recoiling plasma torch nozzle and top nano-lathe projector. |
 | `robot.combat` (Recon Spider) | Twin autocannon barrels (`animType 39`: `RecoilPulse 3` + `SpiderBody 9`) | Dual beams lock to the alternating-recoil left/right turret muzzles riding on the spider carapace suspension. |
 
 ---

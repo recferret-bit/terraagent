@@ -2,13 +2,15 @@ import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { isTileUneven } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { PREP } from '../../grid/layers';
+import { PREP, TERRAIN } from '../../grid/layers';
+import { setTilePrep } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
-import type { PlacementEntity, PlacementWorld } from '../construction/placement';
+import { colonyMaxWorkerTier, occupiedTiles, type PlacementEntity, type PlacementWorld } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
+import { invalidateExtractorRingCache } from '../production/tierGate';
 import { resolveStartingKitRow, rowNum } from '../rows';
-import { getTerraformOpSpec, isTerraformOpKind, opForTerrain, type TerraformOpKind } from './ops';
+import { getTerraformOpSpec, isTerraformOpCompiled, isTerraformOpKind, opForTerrain, type TerraformOpKind } from './ops';
 
 /**
  * Terraform rules, one pure function for every caller (GP-32, like `evaluatePlacement` for buildings, D-37): the
@@ -34,6 +36,10 @@ export interface TerraformWorld {
   /** Before territory: unclaimed tiles must lie within `preHubRadius` of this point (the colony's pod); none = no limit. */
   preHubCenter: { q: number; r: number } | null;
   preHubRadius: number;
+  /** Highest worker tier owned by the colony (`1` in T1, `2` once a T2 worker exists; gates `deepReclaim`). */
+  maxWorkerTier?: number;
+  /** Tiles under a building footprint (`occupiedTiles`): no Irrigate / Seed there (W05-07 / W05-10). */
+  occupied?: ReadonlySet<number> | null;
 }
 
 export type TerraformCheck = { ok: true } | { ok: false; reason: RejectCode };
@@ -61,6 +67,8 @@ export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data
     hasTerritory: worldHasTerritory(world, colonyId),
     preHubCenter: pod ? { q: pod.q, r: pod.r } : null,
     preHubRadius: rowNum(resolveStartingKitRow(data), 'preHubTerraformRadius'),
+    maxWorkerTier: colonyMaxWorkerTier(world, colonyId),
+    occupied: occupiedTiles(world, data),
   };
 }
 
@@ -89,14 +97,124 @@ export function terraformOwnershipBlock(world: TerraformWorld, colonyId: number,
   return ownershipBlock(world, colonyId, i, q, r, false);
 }
 
-/** Whether `op` changes tile `i` (its `fromTerrain`; a terrain-keeping op such as Grade also needs the prep to change). */
+/** Whether `op` changes tile `i` (its `fromTerrain`; a terrain-keeping op such as Grade/Irrigate/Seed also needs the prep to match/change). */
 function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data?: CompiledDataLike): RejectCode | null {
   const spec = getTerraformOpSpec(op, data);
   const terrain = world.terrain[i], prep = world.prep[i];
+  // The end of the growth ladder: nothing may be done to a Living hex (it only reverts when a building covers it).
+  if (prep === PREP.living) return 'already_terraformed';
+  // The hex already is what the op would make it (a no-op that would only cost a worker's time and resources).
+  if (terrain === spec.toTerrain && spec.toTerrain !== spec.fromTerrain) return 'already_at_target';
   if (terrain !== spec.fromTerrain) return 'site_blocked';
+  if (spec.toTerrain === spec.fromTerrain && prep === spec.toPrep && spec.toPrep !== spec.fromPrep) return 'already_at_target';
+  if (spec.minWorkerTier > (world.maxWorkerTier ?? 1)) return 'worker_tier_locked';
   if (spec.toTerrain !== spec.fromTerrain) return null;
   if (isTileUneven(world.radius, i, world.terrain, world.height)) return 'site_blocked';
-  return prep === spec.toPrep || prep === PREP.living || prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
+  // The growth ladder (Irrigate, Seed) never runs under a building: a footprint keeps its ground Prepared (W05-07).
+  if (spec.fromPrep !== null && world.occupied?.has(i)) return 'site_blocked';
+  if (spec.fromPrep !== null) return prep === spec.fromPrep ? null : 'site_blocked';
+  if (prep === spec.toPrep || prep === PREP.irrigated) return 'already_at_target';
+  return prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
+}
+
+export interface ColonyTerraformStats {
+  livingTiles: number;
+  eligibleOwnedTiles: number;
+  /** `Living ÷ eligibleOwned * 100`, rounded to 0.1 % (e.g. `10 / 412 -> 2.4`). */
+  percent: number;
+}
+
+/**
+ * Computes `colonyId`'s Terraform % (`Living ÷ owned`, excluding unreclaimed Deep Water and Ridge/Moat, W05-07 / W05-10).
+ */
+export function computeColonyTerraformStats(
+  world: Pick<TerraformWorld, 'tileCount' | 'terrain' | 'prep' | 'owner' | 'valid'>,
+  colonyId: number,
+): ColonyTerraformStats {
+  let livingTiles = 0;
+  let eligibleOwnedTiles = 0;
+  for (let i = 0; i < world.tileCount; i++) {
+    if (world.valid && world.valid[i] === 0) continue;
+    if (world.owner[i] !== colonyId) continue;
+    const t = world.terrain[i];
+    const p = world.prep[i];
+    if (t === TERRAIN.deep || p === PREP.ridge || p === PREP.moat) continue;
+    eligibleOwnedTiles++;
+    if (p === PREP.living) livingTiles++;
+  }
+  const percent = eligibleOwnedTiles > 0 ? Number(((livingTiles / eligibleOwnedTiles) * 100).toFixed(1)) : 0;
+  return { livingTiles, eligibleOwnedTiles, percent };
+}
+
+/** Computes and returns `colonyId`'s Terraform % stats on authoritative `state`. */
+export function colonyTerraformStats(state: SimState, colonyId: number): ColonyTerraformStats {
+  const L = state.grid.layers;
+  return computeColonyTerraformStats(
+    {
+      tileCount: state.grid.count,
+      terrain: L.terrain,
+      prep: L.prep,
+      owner: L.owner,
+      valid: (L as { valid?: ArrayLike<number> }).valid ?? null,
+    },
+    colonyId,
+  );
+}
+
+/** Updates `state.colonies[colonyId].terraform` with the latest `ColonyTerraformStats`. */
+export function syncColonyTerraformStats(state: SimState, colonyId: number, tick: number = state.meta.tick): ColonyTerraformStats {
+  const stats = colonyTerraformStats(state, colonyId);
+  const col = state.colonies[colonyId];
+  if (col) {
+    (col as { terraform?: ColonyTerraformStats }).terraform = stats;
+    col.changedAt = tick;
+  }
+  return stats;
+}
+
+/**
+ * Reverts any `PREP.irrigated` or `PREP.living` tiles in `tileIndices` to `PREP.prepared` when a building footprint is placed on them (W05-07).
+ */
+export function revertFootprintLivingTiles(
+  state: SimState,
+  colonyId: number,
+  tileIndices: readonly number[],
+  tick: number = state.meta.tick,
+  emit?: (ev: { kind: 'tileStateChanged'; severity: 'info'; colonyIds: string[]; data: Record<string, unknown> }) => void,
+): number {
+  const hx = hexIndex(state.grid.radius);
+  const { prep } = state.grid.layers;
+  const col = state.colonies[colonyId];
+  const colonyIdStr = col?.id ?? `col-${colonyId}`;
+  const playerId = (col as { playerId?: string } | undefined)?.playerId;
+  let reverted = 0;
+  for (const tileIdx of tileIndices) {
+    if (tileIdx < 0 || tileIdx >= state.grid.count) continue;
+    const prev = prep[tileIdx];
+    if (prev !== PREP.living && prev !== PREP.irrigated) continue;
+    setTilePrep(state.grid, tileIdx, PREP.prepared, tick); // stamps `changedAt` and the sector index (`diffSince`)
+    reverted++;
+    if (emit) {
+      emit({
+        kind: 'tileStateChanged',
+        severity: 'info',
+        colonyIds: [colonyIdStr],
+        data: {
+          colonyId: colonyIdStr,
+          ...(playerId ? { playerId } : {}),
+          q: hx.q[tileIdx]!,
+          r: hx.r[tileIdx]!,
+          prevTerrain: 'flat',
+          prevPrep: prev === PREP.living ? 'living' : 'irrigated',
+          terrain: 'flat',
+          prep: 'prepared',
+        },
+      });
+    }
+  }
+  syncColonyTerraformStats(state, colonyId, tick);
+  if (reverted > 0) invalidateExtractorRingCache(state); // the tier-gate rings read Irrigated / Living (W05-34)
+  return reverted;
 }
 
 /** Whether `colonyId` may run `op` on tile `(q, r)` now (`UO-TF-05`, §4.5). */
@@ -109,6 +227,8 @@ export function evaluateTerraformTile(
   opts: { allowUnclaimed?: boolean; data?: CompiledDataLike } = {},
 ): TerraformCheck {
   if (!isTerraformOpKind(op)) return { ok: false, reason: 'invalid_args' };
+  // A W05 op under `TA_WAVES=..04` (its `opsBasic` row is not compiled): never run on the W05 fallback rows.
+  if (!isTerraformOpCompiled(op, opts.data)) return { ok: false, reason: 'wave_disabled' };
   const i = tileIndex(world, q, r);
   if (i < 0) return { ok: false, reason: 'invalid_args' };
   const reason = ownershipBlock(world, colonyId, i, q, r, Boolean(opts.allowUnclaimed)) ?? groundBlock(world, op, i, opts.data);
@@ -168,12 +288,19 @@ export const terraformJobKey = (op: string, q: number, r: number): string => `${
 export function evaluateTerraform(world: TerraformWorld, opts: EvaluateTerraformOpts): TerraformPlan {
   const plan: TerraformPlan = { jobs: [], skipped: [] };
   const seen = new Set<string>(opts.pending ?? []);
+  // A hex with any queued or running job is taken, whatever its op: a second job on it is wasted work.
+  const queuedTiles = new Set<string>();
+  for (const k of seen) queuedTiles.add(k.slice(k.indexOf(':') + 1));
   const skip = (q: number, r: number, reason: RejectCode): void => {
     plan.skipped.push({ q, r, reason });
     plan.firstReject ??= reason;
   };
   const tileOpts = { allowUnclaimed: opts.allowUnclaimed, data: opts.data };
   for (const { q, r } of opts.tiles) {
+    if (queuedTiles.has(`${q},${r}`)) {
+      skip(q, r, 'already_queued');
+      continue;
+    }
     const res = opts.auto
       ? resolveTerraformTileOp(world, opts.colonyId, q, r, tileOpts)
       : (() => {
@@ -184,12 +311,7 @@ export function evaluateTerraform(world: TerraformWorld, opts: EvaluateTerraform
       skip(q, r, res.reason);
       continue;
     }
-    const key = terraformJobKey(res.op, q, r);
-    if (seen.has(key)) {
-      skip(q, r, 'site_blocked');
-      continue;
-    }
-    seen.add(key);
+    queuedTiles.add(`${q},${r}`);
     plan.jobs.push({ q, r, op: res.op });
   }
   return plan;

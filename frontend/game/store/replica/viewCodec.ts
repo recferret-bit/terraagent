@@ -4,11 +4,12 @@ import { renderViewBlobs } from './viewBlobs';
 /**
  * Entity buffer layout: `count` rows of `ENTITY_STRIDE` float32, per row in this order
  *   [0] id  [1] kind  [2] owner  [3] q  [4] r  [5] x  [6] y  [7] rot  [8] hp  [9] hpMax  [10] state  [11] progress
+ *   [12] tier (unit / building tier, 0 when the kind has none: Worker Drone T2 / T3 mesh, labels)
  * `id` is exact in float32 up to 2^24 (16,777,216 ids per planet). Entity ids are monotonic and never recycled, so a
  * planet that spawns past that needs a wider id column (an Int32 side buffer); `packEntities` throws instead of
  * silently corrupting.
  */
-export const ENTITY_FIELDS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'rot', 'hp', 'hpMax', 'state', 'progress'] as const;
+export const ENTITY_FIELDS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'rot', 'hp', 'hpMax', 'state', 'progress', 'tier'] as const;
 export const ENTITY_STRIDE = ENTITY_FIELDS.length;
 export const MAX_EXACT_ID = 1 << 24;
 export type EntityField = (typeof ENTITY_FIELDS)[number];
@@ -23,7 +24,7 @@ export type EntityRow = { [K in EntityField]: number };
 export function readEntity(ents: Float32Array | readonly ViewEntity[], i: number): EntityRow {
   if (!(ents instanceof Float32Array)) {
     const e = ents[i];
-    return { id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, x: e.x, y: e.y, rot: e.rot, hp: e.hp, hpMax: e.hpMax, state: e.state, progress: e.progress };
+    return { id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, x: e.x, y: e.y, rot: e.rot, hp: e.hp, hpMax: e.hpMax, state: e.state, progress: e.progress, tier: e.tier ?? 0 };
   }
   const o = i * ENTITY_STRIDE;
   const row = {} as EntityRow;
@@ -98,7 +99,7 @@ export function packEntities(entities: SimView['entities']): Float32Array {
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i], o = i * ENTITY_STRIDE;
     if (e.id >= MAX_EXACT_ID) throw new Error(`entity id ${e.id} exceeds float32 exact range`);
-    for (const f of ENTITY_FIELDS) out[o + E[f]] = e[f];
+    for (const f of ENTITY_FIELDS) out[o + E[f]] = e[f] ?? 0;
   }
   return out;
 }

@@ -83,7 +83,7 @@ describe('W07-02 · unit damage and destruction', () => {
 
     const harvId = state.meta.nextEntityId++;
     const harvRow = insertRow(state.entities, harvId, 0);
-    state.entities.cols.kind[harvRow] = ENTITY_KIND.harvester;
+    state.entities.cols.kind[harvRow] = ENTITY_KIND.worker;
     state.entities.cols.owner[harvRow] = 0;
     state.entities.cols.hp[harvRow] = 350;
     state.entities.cols.hpMax[harvRow] = 350;

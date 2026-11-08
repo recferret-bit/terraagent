@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '@terra/render/lighting/ColonyVisionAndLights';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { PEDESTAL_R, buildGrid } from './grid';
@@ -54,4 +55,19 @@ export class StageRig {
   hidePedestal() { this.group.children.forEach((c) => { if (c.name === 'pedestal') c.visible = false; }); }
 
   placeHuman() { this.human.position.set(Math.max(-5, this.getMinX() - 1.2), 0, 0.6); }
+
+  syncLighting(vp: ColonyViewport, kind: PlanetKind, isNightPreview: boolean) {
+    if (isNightPreview) {
+      vp.sun.color.setHex(0x4cc9f0);
+      vp.sun.intensity = 0.22;
+      vp.hemi.color.setHex(0x162844);
+      vp.hemi.groundColor.setHex(0x050811);
+      vp.hemi.intensity = 0.14;
+      vp.scene.environmentIntensity = 0.16;
+      if (vp.scene.background instanceof THREE.Color) vp.scene.background.setHex(0x060a14);
+      if (vp.scene.fog instanceof THREE.FogExp2) vp.scene.fog.color.setHex(0x060a14);
+    } else {
+      vp.applySky(PLANET_SPECS[kind]);
+    }
+  }
 }

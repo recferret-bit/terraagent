@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { colonyVisionSignature, rasterizeColonyVision } from './colonyVisionRaster';
 import { getViewFocus, inViewFocus } from '../core/viewFocus';
+import { glslFloat } from '../visuals/shaderInject';
+import { PROJECTOR_INNER_MIX } from './projectorCone';
 
 /** Projectors uploaded to the GPU (the per-fragment loop length): the nearest ones lighting the view focus. */
 export const MAX_COLONY_PROJECTORS = 32;
@@ -108,12 +110,32 @@ uniform vec4 uProjectorPosRange[${MAX_COLONY_PROJECTORS}];
 uniform vec4 uProjectorDirAngle[${MAX_COLONY_PROJECTORS}];
 uniform vec4 uProjectorColorInt[${MAX_COLONY_PROJECTORS}];
 
+vec2 evalColonyFovMask(vec3 worldPos) {
+  vec2 uv = worldPos.xz / max(uVisionWorldSpan, 1.0) + 0.5;
+  vec2 texVis = (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
+    ? texture2D(uVisionMap, uv).rg
+    : vec2(0.0);
+  float liveVis = texVis.r;
+  float expVis = max(texVis.g, liveVis);
+  for (int i = 0; i < ${MAX_VISION_SOURCES}; i++) {
+    if (i >= uVisionSourceCount) break;
+    vec4 vs = uVisionSources[i];
+    float d = length(worldPos.xz - vs.xy);
+    float unitVis = 1.0 - smoothstep(vs.z, vs.w, d);
+    liveVis = max(liveVis, unitVis);
+    expVis = max(expVis, step(d, vs.w));
+  }
+  return vec2(clamp(liveVis, 0.0, 1.0), clamp(expVis, 0.0, 1.0));
+}
+
 /**
  * One loop over the colony projectors accumulating world-space diffuse AND (when shininess > 0) normalised
  * Blinn-Phong specular toward the unit view vector V (fragment -> camera). Callers that only need diffuse use
  * evalColonyProjectorLight; the water passes its wave normal + roughness to get bots' lights reflected.
  */
 void colonyProjectorLighting(vec3 worldPos, vec3 worldNormal, vec3 V, float shininess, inout vec3 diffuse, inout vec3 spec) {
+  float fovGate = uFovEnabled > 0.001 ? mix(1.0, evalColonyFovMask(worldPos).x, clamp(uFovEnabled, 0.0, 1.0)) : 1.0;
+  if (fovGate <= 0.001) return;
   vec3 N = normalize(worldNormal);
   float specNorm = (shininess + 8.0) * 0.0397887; // (n + 8) / (8 pi)
   for (int i = 0; i < ${MAX_COLONY_PROJECTORS}; i++) {
@@ -131,17 +153,17 @@ void colonyProjectorLighting(vec3 worldPos, vec3 worldNormal, vec3 V, float shin
     float coneAtten = 1.0;
     if (dirAngle.w > -0.5) {
       float cosTheta = dot(-L, normalize(dirAngle.xyz));
-      float innerCos = mix(dirAngle.w, 1.0, 0.42);
+      float innerCos = mix(dirAngle.w, 1.0, ${glslFloat(PROJECTOR_INNER_MIX)}); // projectorCone.ts
       float spot = smoothstep(dirAngle.w, innerCos, cosTheta);
       float nearSpill = smoothstep(range * 0.24, 0.0, dist) * 0.32;
       coneAtten = max(spot, nearSpill);
     }
     float ndl = max(0.26, dot(N, L));
     vec4 colInt = uProjectorColorInt[i];
-    diffuse += colInt.rgb * (colInt.w * distAtten * coneAtten * ndl);
+    diffuse += colInt.rgb * (colInt.w * fovGate * distAtten * coneAtten * ndl);
     if (shininess > 0.0) {
       float ndh = max(dot(N, normalize(L + V)), 0.0);
-      spec += colInt.rgb * (colInt.w * distAtten * coneAtten * max(dot(N, L), 0.0) * pow(ndh, shininess) * specNorm);
+      spec += colInt.rgb * (colInt.w * fovGate * distAtten * coneAtten * max(dot(N, L), 0.0) * pow(ndh, shininess) * specNorm);
     }
   }
 }
@@ -150,24 +172,6 @@ vec3 evalColonyProjectorLight(vec3 worldPos, vec3 worldNormal) {
   vec3 diffuse = vec3(0.0), spec = vec3(0.0);
   colonyProjectorLighting(worldPos, worldNormal, vec3(0.0, 1.0, 0.0), 0.0, diffuse, spec);
   return diffuse;
-}
-
-vec2 evalColonyFovMask(vec3 worldPos) {
-  vec2 uv = worldPos.xz / max(uVisionWorldSpan, 1.0) + 0.5;
-  vec2 texVis = (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
-    ? texture2D(uVisionMap, uv).rg
-    : vec2(0.0);
-  float liveVis = texVis.r;
-  float expVis = max(texVis.g, liveVis);
-  for (int i = 0; i < ${MAX_VISION_SOURCES}; i++) {
-    if (i >= uVisionSourceCount) break;
-    vec4 vs = uVisionSources[i];
-    float d = length(worldPos.xz - vs.xy);
-    float unitVis = 1.0 - smoothstep(vs.z, vs.w, d);
-    liveVis = max(liveVis, unitVis);
-    expVis = max(expVis, step(d, vs.w));
-  }
-  return vec2(clamp(liveVis, 0.0, 1.0), clamp(expVis, 0.0, 1.0));
 }
 
 // uFovEnabled is the shroud strength 0..1 (eased in after the descent hands over, so there is no pop).
@@ -221,6 +225,57 @@ export function selectFocusedProjectors(projectors: ReadonlyArray<ColonyProjecto
   return out;
 }
 
+let hazardProjectors: ColonyProjectorDesc[] = [];
+let lastColonyProjectors: ReadonlyArray<ColonyProjectorDesc> = [];
+let lastColonyVisionSources: ReadonlyArray<ColonyVisionSourceDesc> = [];
+
+function uploadCombinedProjectorsAndVision(): void {
+  const allProjectors =
+    hazardProjectors.length === 0
+      ? lastColonyProjectors
+      : lastColonyProjectors.length === 0
+        ? hazardProjectors
+        : [...lastColonyProjectors, ...hazardProjectors];
+  const sel = selectFocusedProjectors(allProjectors);
+  const pCount = sel.length;
+  sharedUniforms.uProjectorCount.value = pCount;
+  const posArr = sharedUniforms.uProjectorPosRange.value;
+  const dirArr = sharedUniforms.uProjectorDirAngle.value;
+  const colArr = sharedUniforms.uProjectorColorInt.value;
+  for (let i = 0; i < pCount; i++) {
+    const p = allProjectors[sel[i]!]!;
+    posArr[i]!.set(p.x, p.y, p.z, p.range);
+    dirArr[i]!.set(p.dirX, p.dirY, p.dirZ, p.cosAngle);
+    colArr[i]!.set(p.r, p.g, p.b, p.intensity);
+  }
+
+  allVisionSources = lastColonyVisionSources;
+  // All sources are rasterized; give the nearest circles analytic edges for smooth motion in the camera view.
+  const focus = getViewFocus();
+  const sources = [...lastColonyVisionSources].sort((a, b) =>
+    Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
+  const vCount = Math.min(MAX_VISION_SOURCES, sources.length);
+  sharedUniforms.uVisionSourceCount.value = vCount;
+  const vArr = sharedUniforms.uVisionSources.value;
+  for (let i = 0; i < vCount; i++) {
+    const v = sources[i]!;
+    vArr[i]!.set(v.x, v.z, v.innerRadius, v.outerRadius);
+  }
+}
+
+/**
+ * Registers dynamic environmental hazard lights (e.g. glowing molten meteor craters)
+ * that illuminate the nearest terrain, rocks, trees, water, and units inside the player's FoV
+ * and decay as the hazard cools. Never modifies user Fog of War (`uVisionSources`).
+ */
+export function setDynamicHazardLights(
+  projectors: ReadonlyArray<ColonyProjectorDesc>,
+  _unusedVision?: ReadonlyArray<ColonyVisionSourceDesc>,
+): void {
+  hazardProjectors = [...projectors];
+  uploadCombinedProjectorsAndVision();
+}
+
 /**
  * Updates active projector light uniforms (only those lighting the view focus, `selectFocusedProjectors`) and live
  * unit/building vision circles in-place for the current frame. Vision sources are not culled: the CPU FoV test
@@ -239,31 +294,9 @@ export function updateColonyProjectorsAndVision(opts: {
   if (opts.fovDim !== undefined) sharedUniforms.uFovDim.value = opts.fovDim;
   if (opts.nightFactor !== undefined) sharedUniforms.uNightFactor.value = opts.nightFactor;
 
-  const sel = selectFocusedProjectors(opts.projectors);
-  const pCount = sel.length;
-  sharedUniforms.uProjectorCount.value = pCount;
-  const posArr = sharedUniforms.uProjectorPosRange.value;
-  const dirArr = sharedUniforms.uProjectorDirAngle.value;
-  const colArr = sharedUniforms.uProjectorColorInt.value;
-  for (let i = 0; i < pCount; i++) {
-    const p = opts.projectors[sel[i]!]!;
-    posArr[i]!.set(p.x, p.y, p.z, p.range);
-    dirArr[i]!.set(p.dirX, p.dirY, p.dirZ, p.cosAngle);
-    colArr[i]!.set(p.r, p.g, p.b, p.intensity);
-  }
-
-  allVisionSources = opts.visionSources;
-  // All sources are rasterized; give the nearest circles analytic edges for smooth motion in the camera view.
-  const focus = getViewFocus();
-  const sources = [...opts.visionSources].sort((a, b) =>
-    Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
-  const vCount = Math.min(MAX_VISION_SOURCES, sources.length);
-  sharedUniforms.uVisionSourceCount.value = vCount;
-  const vArr = sharedUniforms.uVisionSources.value;
-  for (let i = 0; i < vCount; i++) {
-    const v = sources[i]!;
-    vArr[i]!.set(v.x, v.z, v.innerRadius, v.outerRadius);
-  }
+  lastColonyProjectors = opts.projectors;
+  lastColonyVisionSources = opts.visionSources;
+  uploadCombinedProjectorsAndVision();
 }
 
 /** Checks whether world coordinates `(wx, wz)` lie inside the active Field of View of the user's units or base. */
@@ -285,6 +318,9 @@ export function resetColonyVisionAndLights(): void {
   sharedUniforms.uProjectorCount.value = 0;
   sharedUniforms.uVisionSourceCount.value = 0;
   sharedUniforms.uNightFactor.value = 0.0;
+  hazardProjectors = [];
+  lastColonyProjectors = [];
+  lastColonyVisionSources = [];
   colonyLightingBlend = 1;
   lastTexSignature = '';
   allVisionSources = [];

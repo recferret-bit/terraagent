@@ -178,7 +178,7 @@ describe('moveGroup priority, a second group, and a single move', () => {
   it('rejects a deep-water anchor and a mixed-profile group without moving anyone', () => {
     const host = w01Host();
     const hq = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
-    const harvester = spawnKind(host.state, ENTITY_KIND.harvester, 1, 0, 120);
+    const harvester = spawnKind(host.state, ENTITY_KIND.worker, 1, 0, 120);
     const startHq = pose(host, hq);
     const startHarvester = pose(host, harvester);
     setTileTerrain(host.state.grid, hexIndex(host.state.grid.radius).indexOf(5, 0), TERRAIN.deep);

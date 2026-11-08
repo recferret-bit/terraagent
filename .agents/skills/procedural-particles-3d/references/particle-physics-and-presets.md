@@ -46,7 +46,7 @@ All particle geometries are low-poly, non-indexed `THREE.BufferGeometry` primiti
 - **`drag` ($s^{-1}$):** Exponential air resistance (`exp(-drag * dt)`). High drag (`2.5–3.8`) makes foliage decelerate rapidly after ejection and drift down; low drag (`0.4–0.9`) lets dense rocks follow clean parabolic arcs.
 - **`bounce` (`0..0.95`):** Coefficient of restitution on ground impact (falling below `site.groundY + 0.35 × chunk scale`; `groundY` is the terrain height at the target). Horizontal X/Z velocity is damped (× 0.72) on each bounce so chunks skitter to a halt.
 - **`swirl` ($m/s$):** Tangential vortex acceleration around the work site's vertical axis. Essential for `work.tree` leaf flutter (`1.6`) and `work.dune` sand devil eddies (`1.8`).
-- **Ejection direction (not a preset field):** every layer sprays a full 360° radial fountain around the cut point, with a fixed slight (`0.18`) horizontal bias toward the bot (`WorkParticleEmitter.spawnParticle`), so distant work sites splash on the object itself.
+- **Ejection direction (not a preset field):** every layer sprays a full 360° radial fountain with a fixed slight (`0.18`) horizontal bias toward the bot (`WorkParticleEmitter.spawnParticle`). Spawn positions are **outside** the target volume (a random 0.7–1.3 m offset from the target centre on X, Y and Z, plus a smaller jitter), never at the cut point inside the mesh.
 - **`stretchByVelocity`:** When `> 1.05`, orients the particle's local `+Z` axis along its instantaneous 3D velocity vector and scales length proportionally to speed (`1 + min(speed * 0.35, stretchByVelocity - 1)`).
 
 ---
@@ -58,8 +58,8 @@ Because unit limbs animate entirely on the GPU via `aPartAnim` in `shaderChunks.
 | Archetype ID | Tool Origin Channels | Muzzle Behavior |
 | :--- | :--- | :--- |
 | `robot.hero` (HQ Drone) | Dual hands: `BipedArm (5)` around shoulder pivots `(±0.34, 1.08, 0.0)` + `bipedBodyTransform (8)` | Dual lasers originate strictly from the animated left and right hands (`(±0.34, 0.72, 0.24)` rest tips transformed by shoulder pitch, converging work yaw, and body heave/twist) with muzzle flare orbs at each palm. |
-| `robot.miner` (Harvester) | Rotary drill (`SpinY 1`) + upper cutter lamp | Primary beam locks to the spinning auger tip; secondary beam locks to the upper auxiliary cutter. |
-| `robot.builder` (Builder) | Articulated torch (`RecoilPulse 3`) + top projector | Beams lock to the recoiling plasma torch nozzle and top nano-lathe projector. |
+| `robot.miner` (Worker Drone T1) | Rotary drill (`SpinY 1`) + upper cutter lamp | Primary beam locks to the spinning auger tip; secondary beam locks to the upper auxiliary cutter. |
+| `robot.builder` (Worker Drone T2 / T3) | Articulated torch (`RecoilPulse 3`) + top projector | Beams lock to the recoiling plasma torch nozzle and top nano-lathe projector. |
 | `robot.combat` (Recon Spider) | Twin autocannon barrels (`animType 39`: `RecoilPulse 3` + `SpiderBody 9`) | Dual beams lock to the alternating-recoil left/right turret muzzles riding on the spider carapace suspension. |
 
 ---
@@ -68,4 +68,4 @@ Because unit limbs animate entirely on the GPU via `aPartAnim` in `shaderChunks.
 
 When a bot works a tile from 1–2 hexes away (`2m–4m` world distance):
 1. `buildActiveWorkSites` queries `terrain.props.instancesForTile(tileIndex)` and selects the **nearest 3D prop instance** (pine/broadleaf tree, boulder, rock spire, or metal/mineral/oil deposit node) on that target tile, falling back to the tile center `tileXZ(q, r)` when the tile has no prop instances.
-2. The bot rotates (`yaw = atan2(dx, dz)`) to face the resolved prop/tile target, and its tool cutter beams extend all the way from `toolOrigins` to the object (`targetPos`), while the 3D debris fountain erupts directly on the object with a 360° radial splash around `targetPos`.
+2. The bot rotates (`yaw = atan2(dx, dz)`) to face the resolved prop/tile target. Tool cutter beams end on the **outside** of the object (a shell point toward the bot, not inside `targetPos`). The 3D debris fountain spawns outside that volume — 0.7–1.3 m from the target centre on X, Y and Z — with a 360° radial splash around `targetPos`.

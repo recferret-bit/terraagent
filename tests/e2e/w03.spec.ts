@@ -19,7 +19,7 @@ import {
 /**
  * W03 The Grid — Wave E2E suite covering the demo story (`docs/plan/waves/W03-the-grid.md`) and DoD: power zones
  * (Protoss-style placement), the HQ cell as the night store, brownout and pylon overload, repair, storage wait /
- * earmarks, unit supply and builder dismantle.
+ * earmarks, unit supply and dismantle.
  * Tagged `@hack` so both `npm run e2e -- --waves ..03` and `npm run e2e -- --waves ..03 --hack` run them.
  */
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
@@ -63,11 +63,11 @@ const powerOf = async (page: Page, id: number) => {
   return p?.entityPower?.[String(id)];
 };
 
-test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Harvesters; day supply 29 / demand 19, supply 2 / 10) -> order 1 Builder at Hub -> Builder appears and Construction runs in parallel', async ({ page }) => {
+test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Worker Drones T1; day supply 29 / demand 19, supply 2 / 10) -> order 1 Worker Drone T2 at Hub -> it appears and Construction runs in parallel', async ({ page }) => {
   await openW03(page);
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t1'] ?? 0).toBeGreaterThanOrEqual(400);
   const col = await getColony0(page);
-  // Founder core +16, Solar T1 net +13 = 29; Hub 7 + Extractor 8 + 2 Harvesters 2 each = 19.
+  // Founder core +16, Solar T1 net +13 = 29; Hub 7 + Extractor 8 + 2 Worker Drones 2 each = 19.
   // Workers briefly draw less while walking to their first harvesting targets.
   await expect.poll(async () => (await getColony0(page))?.power).toMatchObject({ supply: 29, demand: 19, net: 10, founderCorePerS: 16, solarNetPerS: 13, phase: 'day', brownout: false });
   expect(col?.power?.hqCellStoredE).toBe(800);
@@ -76,12 +76,12 @@ test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Harvesters; day 
   await expect(page.locator('[data-testid="hud-supply"]')).toHaveAttribute('data-level', 'ok');
 
   const initialEnts = await getEntitiesSnapshot(page);
-  expect(initialEnts.filter((e) => e.kind === KIND.harvester).length).toBe(2);
+  expect(initialEnts.filter((e) => e.kind === KIND.worker).length).toBe(2);
 
   await devConsole(page, 'warp 20');
-  const ack = await sendSimCmd(page, 'enqueueTask', { taskId: 'u-builder-1', task: { kind: 'buildUnit', unit: 'builder' } });
+  const ack = await sendSimCmd(page, 'enqueueTask', { taskId: 'u-worker-t2', task: { kind: 'buildUnit', unit: 'worker', tier: 2 } });
   expect(ack.ok).toBe(true);
-  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.builder), { timeout: 20_000 }).toBe(true);
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).filter((e) => e.kind === KIND.worker).length, { timeout: 20_000 }).toBe(3);
 
   // Two constructions in parallel (HQ + Builder), both inside the Hub's power zone (radius 6).
   await orderBuild(page, 'b-pylon-p1', 'pylon', 4, -2);
@@ -89,7 +89,7 @@ test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Harvesters; day 
   await expect.poll(async () => (await getEntitiesSnapshot(page)).filter((e) => e.kind === KIND.pylon && e.state === 5).length, { timeout: 20_000 }).toBe(2); // ENTITY_STATE.active = 5
 
   await devConsole(page, 'warp 1');
-  await screenshot(page, '1-2-w03-builder-and-parallel-build');
+  await screenshot(page, '1-2-w03-worker-t2-and-parallel-build');
   expectNoPageErrors(page);
 });
 
@@ -225,9 +225,9 @@ test('@hack 8. Select building (#id in selection panel), run damage <entity> 60 
   await openW03(page);
   await devConsole(page, 'warp 20');
 
-  // Order a Builder Drone so it repairs at 1.5x
-  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-bld-rep', task: { kind: 'buildUnit', unit: 'builder' } })).ok).toBe(true);
-  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.builder), { timeout: 20_000 }).toBe(true);
+  // Order a T2 Worker Drone so it repairs at 1.5x
+  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-bld-rep', task: { kind: 'buildUnit', unit: 'worker', tier: 2 } })).ok).toBe(true);
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).filter((e) => e.kind === KIND.worker).length, { timeout: 20_000 }).toBeGreaterThan(2);
 
   const extractor = (await getEntitiesSnapshot(page)).find((e) => e.kind === KIND.metalsExtractor)!; // at (3, 0)
   expect(extractor).toBeTruthy();
@@ -293,7 +293,7 @@ test('@hack 9 & 10. Storage wait ("Build Depot" button opens placement ghost) an
   expectNoPageErrors(page);
 });
 
-test('@hack 11. Unit supply: 2 / 10 at start -> Harvesters fill it to 10 / 10 (full: QUEUE disabled, supply_cap reject, Depot hint) -> a powered Supply Depot raises the cap to 18', async ({ page }) => {
+test('@hack 11. Unit supply: 2 / 10 at start -> Worker Drones fill it to 10 / 10 (full: QUEUE disabled, supply_cap reject, Depot hint) -> a powered Supply Depot raises the cap to 18', async ({ page }) => {
   await openW03(page);
   const header = page.locator('[data-testid="hud-supply"]');
   await expect(header.locator('.ta-hud-min__stock-val')).toHaveText('2 / 10');
@@ -301,9 +301,9 @@ test('@hack 11. Unit supply: 2 / 10 at start -> Harvesters fill it to 10 / 10 (f
 
   await devConsole(page, 'warp 20');
   for (const res of ['metals.t1', 'minerals.t1', 'bio.biomass', 'bio.water']) await devConsole(page, `fill ${res} 500`);
-  // 9 Harvester orders: the first 8 fill the cap (2 + 8 = 10), the 9th waits on supply.
+  // 9 Worker Drone orders: the first 8 fill the cap (2 + 8 = 10), the 9th waits on supply.
   for (let i = 1; i <= 9; i++) {
-    expect((await sendSimCmd(page, 'enqueueTask', { taskId: `u-harv-${i}`, task: { kind: 'buildUnit', unit: 'harvester' } })).ok).toBe(true);
+    expect((await sendSimCmd(page, 'enqueueTask', { taskId: `u-harv-${i}`, task: { kind: 'buildUnit', unit: 'worker', tier: 1 } })).ok).toBe(true);
   }
   await expect.poll(async () => (await getColony0(page))?.supply?.units ?? 0, { timeout: 40_000 }).toBe(10);
   await devConsole(page, 'warp 1');
@@ -313,17 +313,17 @@ test('@hack 11. Unit supply: 2 / 10 at start -> Harvesters fill it to 10 / 10 (f
 
   // Units menu: QUEUE greyed with the reason; the host rejects a direct order with supply_cap.
   await page.locator('[data-testid="dock-tab-production"]').click();
-  await expect(page.locator('[data-queue-unit="harvester"]')).toBeDisabled();
-  await expect(page.locator('[data-unit="harvester"] [data-supply-reason]')).toBeVisible();
-  await expect(page.locator('[data-unit="harvester"] [data-supply-reason]')).toContainText('Supply Depot');
-  expect(await sendSimCmd(page, 'enqueueTask', { taskId: 'u-harv-over', task: { kind: 'buildUnit', unit: 'harvester' } })).toMatchObject({ ok: false, code: 'supply_cap' });
+  await expect(page.locator('[data-unit="worker"][data-tier="1"]')).toBeDisabled();
+  await expect(page.locator('[data-unit="worker"][data-tier="1"] [data-supply-reason]')).toBeVisible();
+  await expect(page.locator('[data-unit="worker"][data-tier="1"] [data-supply-reason]')).toContainText('Supply Depot');
+  expect(await sendSimCmd(page, 'enqueueTask', { taskId: 'u-harv-over', task: { kind: 'buildUnit', unit: 'worker', tier: 1 } })).toMatchObject({ ok: false, code: 'supply_cap' });
   await page.locator('[data-testid="dock-tab-queue"]').click();
   await expect(page.locator('[data-task-id="u-harv-9"] [data-testid="queue-supply-hint"]')).toBeVisible();
   await header.hover();
   await expect(page.locator('[data-testid="res-breakdown-supply"]')).toContainText('Used 10 / cap 10');
   await screenshot(page, '11-supply-full');
 
-  // A Supply Depot, built and powered, adds +8: the waiting Harvester starts.
+  // A Supply Depot, built and powered, adds +8: the waiting Worker Drone starts.
   await devConsole(page, 'warp 20');
   await orderBuild(page, 'b-depot-supply', 'supplyDepot', -3, -3);
   await expect.poll(async () => (await getColony0(page))?.supply?.cap ?? 0, { timeout: 30_000 }).toBe(18);
@@ -338,8 +338,8 @@ test('@hack 11. Unit supply: 2 / 10 at start -> Harvesters fill it to 10 / 10 (f
 test('@hack 12. Dismantle [Z] on the Solar #3: a Builder walks there, "Dismantling n%" in the queue, 50% refunded step by step, the Solar is removed', async ({ page }) => {
   await openW03(page);
   await devConsole(page, 'warp 20');
-  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-bld-dis', task: { kind: 'buildUnit', unit: 'builder' } })).ok).toBe(true);
-  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.builder), { timeout: 20_000 }).toBe(true);
+  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-bld-dis', task: { kind: 'buildUnit', unit: 'worker', tier: 2 } })).ok).toBe(true);
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).filter((e) => e.kind === KIND.worker).length, { timeout: 20_000 }).toBeGreaterThan(2);
   await devConsole(page, 'warp 1');
   // Bio has no income here: the Solar's refund (Biomass 10 -> +5, Water 5 -> +2.5) shows exactly, well under the cap.
   await devConsole(page, 'fill bio.biomass 100');

@@ -48,6 +48,7 @@ function createS3WaveTestHost(seed = 'w07-15-waves', waves = '..08') {
   state.grid.layers.prep.fill(PREP.prepared);
   const col = ensureColonyLedger(ensureColonyRecord(state, 0, 0), { baseCap: 2000 });
   col.status = 'active';
+  col.aiEnabled = true;
   col.stock['metals.t1'] = 800;
   col.stock['minerals.t1'] = 600;
   spawnHqUnit(state, { owner: 0, q: -2, r: 0 });
@@ -254,7 +255,7 @@ describe('W07-15 · Unreachable targets, 300 s withdrawal timeout,colony elimina
 
     // Spawn a cohort against colony 1, then eliminate colony 1's only unit
     ensureColonyRecord(state, 1, 0).status = 'active';
-    const col1Unit = spawnUnit(state, { kind: ENTITY_KIND.harvester, owner: 1, q: -10, r: 0, hp: 100 });
+    const col1Unit = spawnUnit(state, { kind: ENTITY_KIND.worker, owner: 1, q: -10, r: 0, hp: 100 });
     const cohort1 = spawnHiveRaidWave(state, { colonyIndex: 1, hiveId, budget: 4, data });
     expect(cohort1).not.toBeNull();
     applyDamage(state, col1Unit, 500, { tick: host.tick });

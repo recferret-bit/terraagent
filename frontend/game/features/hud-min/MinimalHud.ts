@@ -2,10 +2,10 @@ import { capsOf, TICKS_PER_SECOND, type CompiledDataLike, type ViewColony } from
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
 import { viewColony } from '../shared/colony';
-import { clampPct, makeDiv, makeSpan } from '../shared/dom';
+import { makeDiv, makeSpan } from '../shared/dom';
 import { extractHqFromView } from '../shared/hqView';
-import { readDaytime } from '../shared/daytime';
 import { readColonyPower } from '../shared/power';
+import { EnvPanel } from './envPanel';
 import { createHudIcon, type HudIconKind } from './hudIcons';
 import { readColonySupply } from '../shared/supply';
 import { formatRejectToast } from './rejectText';
@@ -94,7 +94,8 @@ function stockSlot(kind: HudIconKind, testid: string, name: string, family: Fami
 /**
  * Compact top HUD header: icon-only Metals/Minerals/Bio stocks with hover tier & flow breakdowns, unit Supply
  * `used / cap` with its sources breakdown,
- * inline HQ power cell bar with hover power breakdown, planet time of day, game clock, and reject/resource waiting toasts.
+ * HQ power cell icon + numbers with hover power breakdown, game clock, and reject/resource waiting toasts. Time of day,
+ * wind and the Terraform meter are the {@link EnvPanel} under the minimap.
  */
 export class MinimalHud {
   readonly el: HTMLElement;
@@ -109,12 +110,8 @@ export class MinimalHud {
   private readonly bioSub: HTMLElement;
   private readonly supply: StockSlot;
   private readonly cellVal: HTMLElement;
-  private readonly cellFill: HTMLElement;
   private readonly cellBreakdown: HTMLElement;
-  private readonly daytimeEl: HTMLElement;
-  private readonly daytimeIcon: HTMLElement;
-  private readonly daytimeClock: HTMLElement;
-  private readonly daytimeLight: HTMLElement;
+  private readonly env: EnvPanel;
   private cleanups: Array<() => void> = [];
 
   constructor(parent: HTMLElement, private readonly opts: MinimalHudOptions = {}) {
@@ -137,39 +134,27 @@ export class MinimalHud {
     const cellEl = makeDiv('ta-hud-min__cell ta-res-chip', 'hud-hq-cell');
     cellEl.setAttribute('data-family', 'energy');
     cellEl.title = 'HQ Power Cell';
-    const cellBar = makeDiv('ta-hud-min__cell-bar');
-    this.cellFill = makeDiv('ta-hud-min__cell-fill', 'hud-hq-cell-bar');
-    this.cellFill.style.width = '0%';
-    cellBar.appendChild(this.cellFill);
     this.cellVal = makeSpan('ta-hud-min__cell-val', undefined, `${NO_DATA} E`);
     this.cellBreakdown = makeDiv('ta-res-chip__breakdown plate-sm', 'res-breakdown-energy');
     renderPowerBreakdown(this.cellBreakdown, undefined, null, true);
     cellEl.append(
       createHudIcon('cell'),
       makeSpan('ta-hud-min__sr-only', undefined, 'HQ power cell: '),
-      cellBar,
       this.cellVal,
       this.cellBreakdown,
     );
     bindHoverPopover(cellEl);
 
-    // Planet time of day (the sim's solar clock), right after energy: solar output follows the daylight %.
-    this.daytimeEl = makeDiv('ta-hud-min__daytime', 'hud-daytime');
-    this.daytimeEl.setAttribute('data-phase', 'day');
-    this.daytimeEl.title = 'Local time · daylight (solar output)';
-    this.daytimeIcon = makeSpan('ta-hud-min__daytime-icon', undefined, '☀');
-    this.daytimeIcon.setAttribute('aria-hidden', 'true');
-    this.daytimeClock = makeSpan('ta-hud-min__daytime-clock', 'hud-daytime-clock', NO_DATA);
-    this.daytimeLight = makeSpan('ta-hud-min__daytime-light', 'hud-daytime-light', '');
-    this.daytimeEl.append(this.daytimeIcon, this.daytimeClock, this.daytimeLight);
-    this.daytimeEl.hidden = !this.gridOn();
+    // Time of day, wind and the Terraform meter live in the env panel under the minimap (attachEnvPanel); until it
+    // is attached it sits next to the bar.
+    this.env = new EnvPanel(parent, { getColonyIndex: () => this.colonyIndex(), isWaveOn: opts.isWaveOn });
 
     this.toastContainer = makeDiv('ta-hud-toasts', 'hud-toast-container');
     this.toastContainer.setAttribute('role', 'status');
     this.toastContainer.setAttribute('aria-live', 'polite');
 
-    this.el.append(stocks, cellEl, this.daytimeEl, brand, this.toastContainer);
-    parent.appendChild(this.el);
+    this.el.append(stocks, cellEl, brand, this.toastContainer);
+    parent.insertBefore(this.el, this.env.el);
     this.initListeners();
   }
 
@@ -212,22 +197,14 @@ export class MinimalHud {
 
     const hqCell = extractHqFromView(view, colonyIdx, this.opts.store?.simData?.() ?? undefined);
     this.cellVal.textContent = hqCell ? `${String(Math.round(hqCell.cell)).padStart(4, '0')} / ${String(Math.round(hqCell.cellMax)).padStart(4, '0')} E` : `${NO_DATA} E`;
-    this.cellFill.style.width = `${(hqCell ? clampPct(hqCell.cell, hqCell.cellMax) : 0).toFixed(1)}%`;
 
-    const grid = this.gridOn();
-    renderPowerBreakdown(this.cellBreakdown, readColonyPower(view, colonyIdx), hqCell, true, grid);
-    this.daytimeEl.hidden = !grid;
-    if (grid) this.renderDaytime(view, colonyIdx);
+    renderPowerBreakdown(this.cellBreakdown, readColonyPower(view, colonyIdx), hqCell, true, this.gridOn());
+    this.env.update(view);
   }
 
-  private renderDaytime(view: GameView, colonyIdx: number): void {
-    const t = readDaytime(view, colonyIdx);
-    this.daytimeEl.setAttribute('data-phase', t?.phase ?? 'day');
-    this.daytimeIcon.textContent = t?.phase === 'night' ? '☾' : '☀';
-    this.daytimeClock.textContent = t?.clockText ?? NO_DATA;
-    const wind = readColonyPower(view, colonyIdx)?.windFactor;
-    const level = typeof wind !== 'number' ? '' : ` · Wind ${wind < 1 ? 'LOW' : wind > 1 ? 'HIGH' : 'MED'} ${Math.round(wind * 100)}%`;
-    this.daytimeLight.textContent = (t ? `${Math.round(t.daylight * 100)}%` : '') + level;
+  /** Moves the env panel (time of day, wind, Terraform meter) into `container`, e.g. the slot under the minimap. */
+  attachEnvPanel(container: HTMLElement): void {
+    container.appendChild(this.env.el);
   }
 
   private setFamilyStatus(
@@ -341,6 +318,7 @@ export class MinimalHud {
     this.cleanups = [];
     for (const t of this.toastTimers.values()) clearTimeout(t);
     this.toastTimers.clear();
+    this.env.dispose();
     this.el.remove();
   }
 }

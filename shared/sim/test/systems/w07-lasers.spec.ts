@@ -187,8 +187,8 @@ describe('W07-05 range-1 melee bite and HP clamping', () => {
     state.meta.tick = 10;
 
     const ant = spawnEntity(state, { kind: ENTITY_KIND.blackAnt, q: 0, r: 0, hp: 120, owner: -1 });
-    const adjTarget = spawnEntity(state, { kind: ENTITY_KIND.harvester, q: 1, r: 0, hp: 100, owner: 0 });
-    const farTarget = spawnEntity(state, { kind: ENTITY_KIND.harvester, q: 2, r: 0, hp: 100, owner: 0 });
+    const adjTarget = spawnEntity(state, { kind: ENTITY_KIND.worker, q: 1, r: 0, hp: 100, owner: 0 });
+    const farTarget = spawnEntity(state, { kind: ENTITY_KIND.worker, q: 2, r: 0, hp: 100, owner: 0 });
 
     const { ctx: hitCtx, events: hitEvents } = makeTestContext(state, 10);
     const hitRes = fireLaserOrMelee(

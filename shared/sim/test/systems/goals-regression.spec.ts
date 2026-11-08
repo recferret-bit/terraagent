@@ -4,13 +4,14 @@ import {
   createState, createRegistryPipeline, ensureColonyLedger, ensureColonyRecord,
   spawnHqUnit, startBuildingConstruction, hexIndex, DEPOSIT, step,
   getColonyGoals, getColonyQueue, computeColonyResourceRatePerMin, setPlanetTime,
-  getColonyHarvestWeights, queueColonyGoal,
+  getColonyHarvestWeights, queueColonyGoal, setColonyAiEnabled,
 } from '../../src';
 
 function fixture() {
   const state = createState({ planetId: 'goal-regression', planetType: 'temperate', seed: 'goals', radius: 10 });
   const colony = ensureColonyLedger(ensureColonyRecord(state, 0, 0));
   colony.status = 'active';
+  setColonyAiEnabled(state, 0, true); // AI is off by default
   colony.stock['metals.t1'] = 500;
   colony.stock['minerals.t1'] = 300;
   colony.stock['bio.biomass'] = 200;

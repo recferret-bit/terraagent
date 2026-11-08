@@ -3,6 +3,7 @@ import { SelectionDetails } from '../shared/SelectionDetails';
 import { createProgressBar, setProgress } from '../shared/progress';
 import { depositResource } from '../shared/depositLabel';
 import type { HqStatusView, LandfallController, SelectedDepositView, SelectedEntityView } from './selection';
+import { baseHqSelectedView } from './selectionHelpers';
 
 function buildStatBlock(labelText: string, valTestId: string, valInit: string, fillTestId: string, fillModifier: string): {
   stat: HTMLElement;
@@ -27,27 +28,7 @@ function buildStatBlock(labelText: string, valTestId: string, valInit: string, f
   return { stat, keyEl, valEl, fillEl };
 }
 
-function hqFallbackEntity(hq: HqStatusView): SelectedEntityView {
-  return {
-    entityId: hq.entityId,
-    kind: 1,
-    kindLabel: `HQ T${hq.tier} · COMMANDER DRONE`,
-    shortCode: 'HQ',
-    isUnit: true,
-    isMovable: true,
-    tier: hq.tier,
-    q: hq.q,
-    r: hq.r,
-    x: hq.x,
-    y: hq.y,
-    hp: hq.hp,
-    hpMax: hq.hpMax,
-    cell: hq.cell,
-    cellMax: hq.cellMax,
-    currentJob: hq.currentJob,
-    queueCount: hq.queueCount,
-  };
-}
+const hqFallbackEntity = baseHqSelectedView;
 
 function isEntityBusy(entity: SelectedEntityView, prog: number): boolean {
   const job = entity.currentJob;
@@ -96,6 +77,7 @@ export class HqPanel {
   private readonly progressFill: HTMLElement;
   private readonly jobText: HTMLElement;
   private readonly queueText: HTMLElement;
+  private readonly tierText: HTMLElement;
   private readonly cancelBtn: HTMLButtonElement;
   private readonly offChange: () => void;
 
@@ -170,6 +152,11 @@ export class HqPanel {
     this.queueText.dataset.testid = 'hq-queue';
     this.queueText.textContent = 'Queue: 0';
 
+    this.tierText = document.createElement('span');
+    this.tierText.className = 'ta-hq-panel__queue';
+    this.tierText.dataset.testid = 'hq-extractor-tier';
+    this.tierText.hidden = true;
+
     this.cancelBtn = document.createElement('button');
     this.cancelBtn.type = 'button';
     this.cancelBtn.className = 'ta-hq-panel__cancel btn-sm';
@@ -180,7 +167,7 @@ export class HqPanel {
     this.cancelBtn.onclick = () => {
       this.controller.cancelSelected();
     };
-    footer.append(this.jobText, this.queueText, this.cancelBtn);
+    footer.append(this.jobText, this.queueText, this.tierText, this.cancelBtn);
 
     this.el.append(grid, head, hp.stat, this.cellStat, this.progressStat, footer);
     this.details = new SelectionDetails(this.el);
@@ -214,6 +201,7 @@ export class HqPanel {
     this.cellStat.hidden = true;
     this.progressStat.hidden = true;
     this.cancelBtn.hidden = true;
+    this.tierText.hidden = true;
 
     this.jobText.textContent = stageLabel;
     this.queueText.textContent = `(${deposit.q}, ${deposit.r})`;
@@ -279,6 +267,17 @@ export class HqPanel {
 
     this.jobText.textContent = entity.currentJob;
     this.queueText.textContent = `Queue: ${entity.queueCount}`;
+    if (entity.extractorTier) {
+      this.tierText.hidden = false;
+      this.tierText.textContent = entity.extractorTier.summaryText;
+      this.tierText.dataset.unlockedTier = String(entity.extractorTier.unlockedTier);
+      this.tierText.dataset.ringPct = String(entity.extractorTier.ringTerraformedPct);
+    } else {
+      this.tierText.hidden = true;
+      this.tierText.textContent = '';
+      delete this.tierText.dataset.unlockedTier;
+      delete this.tierText.dataset.ringPct;
+    }
     this.cancelBtn.hidden = !isEntityBusy(entity, prog);
   }
 

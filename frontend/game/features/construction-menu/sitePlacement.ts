@@ -1,4 +1,4 @@
-import { evaluatePlacement, type CompiledDataLike, type PlacementBlock, type PlacementWorld } from '@terra/sim';
+import { evaluatePlacement, type CompiledDataLike, type PlacementBill, type PlacementBlock, type PlacementWorld } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { viewPlacementWorld } from '../shared/placementWorld';
@@ -9,6 +9,7 @@ export interface SiteVerdict {
   reason: string;
   code?: string;
   block?: PlacementBlock;
+  bill?: PlacementBill;
 }
 
 /** The ghost's wording for an Extractor off a metals deposit (the card and the e2e read it). */
@@ -55,9 +56,9 @@ export function evaluateSiteWithSim(
       data: opts.data,
     });
   }
-  if (res.ok) return { valid: true, reason: 'valid site' };
+  if (res.ok) return { valid: true, reason: 'valid site', bill: res.bill };
   const reason = res.block === 'noDeposit' ? depositReasonText(opts.building) : res.text ?? res.code ?? 'blocked';
-  return { valid: false, reason, code: res.code, block: res.block };
+  return { valid: false, reason, code: res.code, block: res.block, bill: res.bill };
 }
 
 export { ownColonyIndex } from '../shared/colony';

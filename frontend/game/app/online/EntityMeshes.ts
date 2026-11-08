@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { syncExtractorAppearance } from './extractorAppearance';
 import { updateSelectionPulse, updateGroundSelection } from './selectionPulse';
 import { getWindUniforms } from '@terra/render/core/windConfig';
+import { rotorClockRate } from '@terra/render/core/rotorSpeed';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
 import { attachEntityProjectorRig } from '@terra/render/lighting';
@@ -29,9 +30,13 @@ import {
   is3x3FootprintKind,
   isConstructibleBuilding,
   isTrackedWalkingUnitKind,
-  makeGroundRing,
-  planetKindForBiome,
 } from './entityKinds';
+import {
+  makeGroundRing,
+  placeMeshOnTrack,
+  stepPodTouchdownForEntries,
+  stepTargetMarker,
+} from './parts/entityMarkers';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -56,11 +61,7 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
-/**
- * Renders sim entities (`devProbe`, `pod`, `hq`, `commandHub`, `metalsExtractor`, `solar`, `harvester`) in the online
- * 3D scene, interpolating continuous axial coordinates `(x, y)` smoothly and driving `aPartAnim` walk/work weights,
- * selection & move-target ground rings, and the drop-pod touchdown + retro-engine stop animation.
- */
+/** Online entity meshes: interpolated axial pose, walk/work weights, selection rings, and the drop-pod touchdown. */
 export class EntityMeshes {
   readonly group = new THREE.Group();
   private readonly swarms = new InsectSwarmRenderer(this.group);
@@ -217,15 +218,13 @@ export class EntityMeshes {
     this.clock.observe(Math.min(confirmedTick, view.tick));
     const seen = new Set<number>();
 
-    let ownedPodDescending = false;
-    let ownedPodProgress = 1;
+    let ownedPodId: number | null = null, ownedPodDescending = false, ownedPodProgress = 1;
     forEachEntity(view.entities, view.count, (e) => {
-      if (e.kind !== ENTITY_KIND.pod || e.owner !== this.ownerColonyIndex) return;
-      ownedPodDescending = e.state === ENTITY_STATE.descending;
-      ownedPodProgress = e.progress;
-      return false;
+      if (e.kind === ENTITY_KIND.pod && e.owner === this.ownerColonyIndex && (ownedPodId === null || e.state === ENTITY_STATE.descending || e.id > ownedPodId)) {
+        ownedPodId = e.id; ownedPodDescending = e.state === ENTITY_STATE.descending; ownedPodProgress = e.progress;
+      }
     });
-    const tdState = this.podTouchdown.computeState(ownedPodDescending, ownedPodProgress);
+    const tdState = this.podTouchdown.computeState(ownedPodDescending, ownedPodProgress, ownedPodId);
 
     let correction = 0;
     forEachEntity(view.entities, view.count, (e) => {
@@ -290,20 +289,21 @@ export class EntityMeshes {
     const buildProg = isConstructibleBuilding(kind) ? hubBuildProgressForState(state, progress) : 1;
     const visible = this.computeMeshVisible(kind, owner, state, tdState);
     const isDaylight = !isDayNightOn() || computeSolarState(getDayNightParams()).daylight > 0.05;
+    const tier = e.tier === 2 || e.tier === 3 ? e.tier : e.tier === 1 ? 1 : undefined;
+    const archetypeId = archetypeForKind(kind, tier);
     let rec = this.entries.get(id);
     if (!rec) {
-      const archetypeId = archetypeForKind(kind);
       const mesh = this.makeMesh(archetypeId, this.biomeKey);
       if (isConstructibleBuilding(kind)) stripBuildingPlinth(mesh);
       attachEntityProjectorRig(mesh, archetypeId);
-      mesh.userData.entityId = id; // `__online.entityMeshes()` (listSceneEntities)
+      mesh.userData.entityId = id;
       mesh.position.set(wx, wy, wz);
       mesh.rotation.y = yaw;
       mesh.visible = visible;
       const buildStage = setArchetypeBuildProgress(mesh, buildProg);
       this.group.add(mesh);
       rec = {
-        id, kind, owner, q, r, x, y, rot, hp, hpMax, state, progress: barProgress, buildStage, mesh,
+        id, kind, owner, q, r, x, y, rot, hp, hpMax, state, progress: barProgress, buildStage, tier, mesh,
         targetPos: new THREE.Vector3(wx, wy, wz), targetYaw: yaw,
         track: new MotionTrack(), trackMoving: false,
         walk: state === ENTITY_STATE.moving ? 1 : 0,
@@ -314,7 +314,7 @@ export class EntityMeshes {
       const dx = wx - rec.mesh.position.x, dz = wz - rec.mesh.position.z;
       rec.targetYaw = !isOwnedPod && Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : yaw;
       rec.kind = kind; rec.owner = owner; rec.q = q; rec.r = r; rec.x = x; rec.y = y; rec.rot = rot;
-      rec.hp = hp; rec.hpMax = hpMax; rec.state = state; rec.progress = barProgress;
+      rec.hp = hp; rec.hpMax = hpMax; rec.state = state; rec.progress = barProgress; rec.tier = tier;
       rec.buildStage = setArchetypeBuildProgress(rec.mesh, buildProg);
       rec.mesh.visible = visible;
       rec.targetPos.set(wx, wy, wz);
@@ -323,42 +323,20 @@ export class EntityMeshes {
   }
 
   private stepPodTouchdown(dt: number, terrain: HexTerrain | null): PodTouchdownState {
-    let podRec: EntityMeshRecord | undefined;
-    for (const rec of this.entries.values()) {
-      if (rec.kind === ENTITY_KIND.pod && rec.owner === this.ownerColonyIndex) {
-        podRec = rec;
-        break;
-      }
-    }
-    let hubCoversCrater = false;
-    if (podRec) {
-      for (const rec of this.entries.values()) {
-        if (isConstructibleBuilding(rec.kind) && rec.state !== ENTITY_STATE.waiting) {
-          const coverRadius = rec.kind === ENTITY_KIND.commandHub ? 4.2 : 3.2;
-          if (Math.hypot(rec.targetPos.x - podRec.targetPos.x, rec.targetPos.z - podRec.targetPos.z) <= coverRadius) {
-            hubCoversCrater = true;
-            break;
-          }
-        }
-      }
-    }
-    const podGroundY = podRec && terrain ? terrain.heightAt(podRec.targetPos.x, podRec.targetPos.z) : 0;
-    const tdState = this.podTouchdown.update(
-      dt, podRec?.mesh ?? null, podGroundY,
-      podRec?.state === ENTITY_STATE.descending, podRec?.progress ?? 1,
-      planetKindForBiome(this.biomeKey),
+    return stepPodTouchdownForEntries(
+      this.podTouchdown,
+      this.entries.values(),
+      this.ownerColonyIndex,
+      this.biomeKey,
+      dt,
+      terrain,
     );
-    if (hubCoversCrater && tdState.state === 'done') {
-      this.podTouchdown.impactRig.craterGroup.visible = false;
-      this.podTouchdown.impactRig.egressGroup.visible = false;
-    }
-    return tdState;
   }
 
   /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
   update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
     this.time += dt;
-    this.windTime += dt * getWindUniforms().uWindStrength.value;
+    this.windTime += dt * rotorClockRate(getWindUniforms().uWindStrength.value);
     this.hasTerrain = Boolean(terrain);
     const renderTick = this.clock.advance(realDt);
     const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
@@ -372,7 +350,7 @@ export class EntityMeshes {
       const isOwnedHq = rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex;
       rec.targetPos.y = baseWy + (isOwnedPod ? tdState.podLift : 0);
       if (rec.kind === ENTITY_KIND.pod) rec.mesh.position.lerp(rec.targetPos, posLerp);
-      else this.placeOnTrack(rec, renderTick, 1 - Math.exp(-realDt * FOLLOW_PER_S));
+      else placeMeshOnTrack(rec, renderTick, 1 - Math.exp(-realDt * FOLLOW_PER_S));
       if (isOwnedPod && tdState.state !== 'done') {
         rec.mesh.position.y = rec.targetPos.y;
       } else if (!isOwnedPod) {
@@ -433,35 +411,10 @@ export class EntityMeshes {
     this.swarms.sync(this.biomeKey);
     this.healthBars.sync(this.entries.values());
     this.updateSelectionRing();
-    this.updateTargetMarker(dt, terrain);
-  }
-
-  private updateTargetMarker(dt: number, terrain: HexTerrain | null): void {
-    if (!this.targetMarker.visible) return;
-    this.markerT += dt;
-    this.targetMarker.scale.setScalar(1 + 0.22 * Math.sin(this.markerT * 8));
     const sel = this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined;
-    const stillMoving = sel?.state === ENTITY_STATE.moving;
-    if (!stillMoving && this.markerT > 0.6) {
-      this.targetMarker.visible = false;
-      this.markerTile = null;
-    } else if (terrain && this.markerTile) {
-      const [wx, wz] = tileXZ(this.markerTile.q, this.markerTile.r);
-      this.targetMarker.position.set(wx, terrain.heightAt(wx, wz) + 0.08, wz);
-    }
-  }
-
-  /** Draws a unit / building at its interpolated pose for `t`, facing where it walks (or its sim heading at rest). */
-  private placeOnTrack(rec: EntityMeshRecord, t: number, follow: number): void {
-    const pose = rec.track.at(t) ?? { x: rec.x, y: rec.y, rot: rec.rot };
-    const [wx, wz] = entityWorldXZ(rec.kind, pose.x, pose.y);
-    const p = rec.mesh.position;
-    p.x += (wx - p.x) * follow;
-    p.z += (wz - p.z) * follow;
-    const before = rec.track.at(t - 0.5);
-    const [bx, bz] = before ? entityWorldXZ(rec.kind, before.x, before.y) : [wx, wz];
-    rec.trackMoving = Math.hypot(wx - bx, wz - bz) > 0.02;
-    rec.targetYaw = rec.trackMoving ? Math.atan2(wx - bx, wz - bz) : Math.PI / 2 - pose.rot;
+    const markerNext = stepTargetMarker(this.targetMarker, sel, this.markerT, this.markerTile, dt, terrain);
+    this.markerT = markerNext.markerT;
+    this.markerTile = markerNext.markerTile;
   }
 
   private updateSelectionRing(): void {

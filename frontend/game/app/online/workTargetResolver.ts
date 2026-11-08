@@ -12,6 +12,7 @@ import { resolveTileIndex } from '../../features/landfall/selectionHelpers';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import type { EntityMeshRecord } from './EntityMeshes';
 import {
+  archetypeForKind,
   computeWorkTarget,
   entityGroundY,
   hubBuildProgressForState,
@@ -73,12 +74,6 @@ function unwrapBlob<T>(raw: unknown): T | undefined {
   return raw as T;
 }
 
-function archetypeIdForWorkerKind(kind: number): string {
-  if (kind === ENTITY_KIND.hq) return 'robot.hero';
-  if (kind === ENTITY_KIND.harvester) return 'robot.miner';
-  return 'robot.builder';
-}
-
 export function computeBotToolOrigins(
   kind: number,
   bx: number,
@@ -88,9 +83,10 @@ export function computeBotToolOrigins(
   time = 0,
   walkWeight = 0,
   workWeight = 1,
+  tier?: number,
 ): [number, number, number][] {
   return evalArchetypeToolOrigins({
-    archetypeId: archetypeIdForWorkerKind(kind),
+    archetypeId: archetypeForKind(kind, tier),
     position: [bx, by, bz],
     yaw,
     time,
@@ -447,7 +443,7 @@ export function buildActiveWorkSites(params: {
 
     const groundY = terrain ? terrain.heightAt(tx, tz) : by;
     const ty = groundY + targetHeightOffset(info.targetKind);
-    const toolOrigins = computeMeshToolOrigins(rec.mesh, archetypeIdForWorkerKind(rec.kind), rec.walk, rec.work);
+    const toolOrigins = computeMeshToolOrigins(rec.mesh, archetypeForKind(rec.kind, rec.tier), rec.walk, rec.work);
 
     sites.push({
       workerId: String(rec.id),

@@ -128,9 +128,9 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await expect(solarCard).toContainText('Unlocks at S1: Command Hub T1 complete');
   await expect(page.locator('.ta-construction__card[data-building="supplyDepot"]')).toHaveCount(0);
 
-  // Units menu at S0: Harvester greyed with "Unlocks at S1: Command Hub T1 complete"
+  // Units menu at S0: Worker Drone T1 greyed with "Unlocks at S1: Command Hub T1 complete"
   await page.locator('[data-testid="dock-tab-production"]').click();
-  const harvCard = page.locator('.ta-units__card[data-unit="harvester"]');
+  const harvCard = page.locator('.ta-units__card[data-unit="worker"][data-tier="1"]');
   await expect(harvCard).toBeVisible();
   await expect(harvCard).toHaveAttribute('data-stage-locked', 'true');
   await expect(harvCard).toContainText('Unlocks at S1: Command Hub T1 complete');
@@ -164,7 +164,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S1 First Light');
   await expect(page.locator('[data-testid="stage-reached-toast"]')).toBeVisible();
   await expect(page.locator('[data-testid="stage-toast-title"]')).toHaveText('S1 First Light');
-  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Harvester');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Worker Drone'); // S1 unlocks `worker` (tier 1 is the only tier open at S1)
   await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Metals Extractor');
   await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Solar Collector');
 

@@ -99,56 +99,10 @@
   outline: none;
 }
 
-/*
- * Bottom-left slot shared by the Command Dock (W03, expanded by default) and the minimap (HudRoot renders
- * `.ta-hud__slot[data-slot='bottom-left']`). Only when the minimap is mounted, the dock body gives up the room the
- * minimap takes, so dock + minimap stay below the top-left stack (tick chip, and the W06 pilot chip with its
- * Save progress button down to ~115 px) and above the slot's bottom offset (56 px):
- * 460 px = 56 slot offset + 16 padding + 180 minimap + 8 gap + ~60 dock bar/padding + ~140 top-left stack and margin.
- */
-.ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock__body {
-  max-height: clamp(120px, calc(100vh - 515px), 520px);
-}
-
+/* Short viewports and phone landscape: the plate shrinks. It sits in the top-right slot, not beside the dock. */
 @media (max-height: 500px), (max-width: 900px) and (orientation: landscape) {
   .ta-minimap {
     width: 140px !important;
     height: 140px !important;
   }
-
-  /*
-   * Phone landscape: dock and minimap side by side, both bottom-aligned, lifted above the centred HQ panel
-   * (`.ta-hq-panel`, up to 154 px with the multi-selection strip, 12 px from the bottom) that the side-by-side row would otherwise reach.
-   */
-  .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) {
-    bottom: 168px;
-    flex-direction: row;
-    align-items: flex-end;
-    gap: var(--ta-s2);
-    max-width: none;
-  }
-
-  .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock {
-    width: min(260px, calc(100vw - 200px));
-    flex: 0 1 auto;
-  }
-
-  .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock__body {
-    max-height: min(12vh, 40px);
-  }
-}
-
-/* Map-only tile palette (read by tileColors.ts; fallbacks live there). */
-:root {
-  --ta-map-unexplored: #3b4c6b;
-  --ta-map-flat: #b4cc72;
-  --ta-map-forest: #2fa35c;
-  --ta-map-rock: #a99f94;
-  --ta-map-slope: #d9a05b;
-  --ta-map-hole: #9a5e3e;
-  --ta-map-shallow: #66d3f5;
-  --ta-map-deep: #3a78e0;
-  --ta-map-prepared: #f3e3a6;
-  --ta-map-living: #3deb8a;
-  --ta-map-ridge: #a583ee;
 }

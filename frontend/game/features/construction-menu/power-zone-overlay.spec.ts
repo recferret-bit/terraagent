@@ -32,8 +32,8 @@ describe('power zone overlay (construction ghost armed)', () => {
     expect(o.group.visible).toBe(false);
     o.update(view, true, 0, DATA, 0.016);
     expect(o.group.visible).toBe(true);
-    expect(verts(fill)).toBe(127 * 6 * 3); // 6 triangles per hex
-    expect(verts(edge)).toBe(6 * 13 * 6); // a radius-6 hex disk has 6 * (2 * 6 + 1) outline sides, 2 triangles each
+    expect(verts(fill)).toBe(127 * 12 * 3); // 12 planar pieces per hex (each side split at its mid-point)
+    expect(verts(edge)).toBe(6 * 13 * 12); // a radius-6 hex disk has 6 * (2 * 6 + 1) outline sides, 4 triangles each
   });
 
   it('rebuilds only when a source changes (a pylon extends the zone), not every frame', () => {

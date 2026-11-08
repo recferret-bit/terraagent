@@ -41,6 +41,8 @@ export const w08StagesGoalsScenario = defineScenario({
       stage: 0,
       unlockStage: 0,
       threatStage: 0,
+      // The colony AI is off by default; this scenario exercises goals and autopilot, so it starts with the AI on.
+      aiEnabled: true,
       changedAt: 0,
     });
     state.colonies[0] = colony;

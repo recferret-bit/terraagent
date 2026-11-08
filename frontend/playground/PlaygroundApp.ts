@@ -3,21 +3,13 @@ import { createColonyViewport, type ColonyViewport } from '@terra/render/core/cr
 import { setDayNightExternalSync } from '@terra/render/core/dayNightConfig';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
 import { isShadowOn, onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
-import {
-  addArchetypeLight,
-  exportArchetypeLightsCode,
-  getArchetypeLights,
-  onArchetypeLightsChange,
-  removeArchetypeLight,
-  resetArchetypeLights,
-  updateArchetypeLight,
-  type ArchetypeLightSource,
-} from '@terra/render/lighting/archetypeLights';
+import { addArchetypeLight, exportArchetypeLightsCode, getArchetypeLights, onArchetypeLightsChange, removeArchetypeLight, resetArchetypeLights, updateArchetypeLight, type ArchetypeLightSource } from '@terra/render/lighting/archetypeLights';
 import { initPixelDialog } from '@terra/render/ui/pixelDialog';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { ArchetypeCatalog, setDepositPreviewStage, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
 import { validateArchetype } from '@terra/render/kitbash/validate';
 import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
+import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $ } from './dom';
 import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';
@@ -87,6 +79,7 @@ export class PlaygroundApp {
         this.setWorkTarget(next, true);
       },
       onDepositStage: (s) => this.setDepositStage(s),
+      onTileState: (ts) => this.setTileState(ts),
     });
     this.lightsPanel = new LightsPanel(this.state, {
       onNightToggle: () => this.syncStageLighting(),
@@ -168,6 +161,9 @@ export class PlaygroundApp {
         return validateParticlePreset(preset);
       },
       setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s),
+      setTileState: (ts: TileStatePreset) => this.setTileState(ts),
+      getTileState: () => this.state.tileState,
+      hexTerrain: () => this.hexSample.hexTerrain,
       getLights: (id = this.state.id) => getArchetypeLights(id),
       addLight: (patch?: Partial<ArchetypeLightSource>, id = this.state.id) => addArchetypeLight(id, patch),
       removeLight: (idx: number | string, id = this.state.id) => removeArchetypeLight(id, idx),
@@ -329,28 +325,16 @@ export class PlaygroundApp {
   }
 
   private syncStageLighting() {
-    const vp = this.viewport;
-    if (this.lightsPanel?.isNightPreview) {
-      vp.sun.color.setHex(0x4cc9f0);
-      vp.sun.intensity = 0.22;
-      vp.hemi.color.setHex(0x162844);
-      vp.hemi.groundColor.setHex(0x050811);
-      vp.hemi.intensity = 0.14;
-      vp.scene.environmentIntensity = 0.16;
-      if (vp.scene.background instanceof THREE.Color) vp.scene.background.setHex(0x060a14);
-      if (vp.scene.fog instanceof THREE.FogExp2) vp.scene.fog.color.setHex(0x060a14);
-    } else {
-      vp.applySky(PLANET_SPECS[this.state.kind]);
-    }
+    this.rig.syncLighting(this.viewport, this.state.kind, !!this.lightsPanel?.isNightPreview);
   }
 
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
-    const { kind, surface, hexTerrain, depositStage, faunaScene } = this.state;
+    const { kind, surface, hexTerrain, hatch, depositStage, tileState, faunaScene } = this.state;
     const showHex = !surface && (hexTerrain || faunaScene !== null);
-    const onSurface = this.surface.sync(kind, surface); // both always run: each disposes what it showed before
-    const onHex = this.hexSample.sync(kind, showHex, false, depositStage);
+    const onSurface = this.surface.sync(kind, surface, tileState); // both always run: each disposes what it showed before
+    const onHex = this.hexSample.sync(kind, showHex, hatch, depositStage, tileState);
     if (onSurface || onHex) this.rig.hidePedestal();
     else this.buildStage();
   }
@@ -375,6 +359,21 @@ export class PlaygroundApp {
     this.rebuildContent();
     this.hexSample.setDepositStage(stage);
     this.refreshInfo();
+    this.toolbar.syncToggles();
+    syncURL(this.state);
+  }
+
+  private setTileState(preset: TileStatePreset) {
+    if (!TILE_STATE_PRESETS.includes(preset)) return;
+    this.state.tileState = preset;
+    if (!this.state.hexTerrain && !this.state.surface) {
+      this.state.hexTerrain = true;
+      this.buildStage();
+      this.syncSurface();
+    } else {
+      this.surface.setTileState(preset);
+      this.hexSample.setTileState(preset);
+    }
     this.toolbar.syncToggles();
     syncURL(this.state);
   }
@@ -458,17 +457,13 @@ export class PlaygroundApp {
       case 'pixel': setPixelArt(state.pixel, false); break;
       case 'wire': this.spawns.applyWire(state.wire); this.faunaHost.applyWire(state.wire); break;
       case 'human': this.rig.human.visible = state.human; break;
-      case 'shadows': this.applyShadows(); break;
+      case 'shadows': setShadow(state.shadows); break;
       case 'surface': if (state.surface) state.hexTerrain = false; this.buildStage(); this.syncSurface(); break;
       case 'hexTerrain': if (state.hexTerrain) state.surface = false; this.buildStage(); this.syncSurface(); break;
       case 'validate': this.applyValidation(); this.refreshInfo(); break;
       case 'lights': this.lightsPanel.render(); this.syncStageLighting(); break;
     }
     this.toolbar.syncToggles(); syncURL(state);
-  }
-
-  private applyShadows() {
-    setShadow(this.state.shadows);
   }
 
   private contactSheet(): string {

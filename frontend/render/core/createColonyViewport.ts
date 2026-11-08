@@ -8,12 +8,16 @@ import type { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import { createPixelArtPass, onPixelArtChange, setPixelArtSize } from './pixelArtPass';
 import { recordViewportPlanetBase } from './dayNightConfig';
+import { tickWeatherClock } from './weatherConfig';
 import { tickWindClock } from './windConfig';
 import { updateViewFocus } from './viewFocus';
 import { createViewFocusRing } from './viewFocusRing';
 import { isFocusRingOn, perfTelemetry } from './perfConfig';
 import { createRenderScaleController } from './renderScale';
 import { tickWaterClock } from '../visuals/water/waterConfig';
+import { createWaterReflectionPass } from '../visuals/water/reflection/WaterReflectionPass';
+import { excludeFromReflection } from '../visuals/water/reflection/reflectionRegistry';
+import { createRainAndStormPass } from '../weather/RainAndStormPass';
 import {
   fitShadowToView, followShadowTarget, installShadowShaderPatch, isShadowOn,
   registerShadowViewport, stepSunOrbit, syncViewportShadow,
@@ -134,6 +138,36 @@ function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   return { composer, renderPass, bloom, pixelArt, offPixel };
 }
 
+/** Shared PMREM RoomEnvironment (pillar 4 IBL), assigned to the default scene. */
+function createEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = environment;
+  scene.environmentIntensity = 0.75;
+  return { pmrem, environment };
+}
+
+/**
+ * Planar water reflections for whatever scene / camera the render pass shows (`setView` swaps them). Overlays and light
+ * effects stay out of the mirror by the pass's material rule (`reflectionOverlays.ts`); the view-focus debug ring
+ * (`viewFocusRing.ts`, a direct scene child once shown) is excluded explicitly, as its quad line is opaque.
+ */
+function createViewportReflections(renderer: THREE.WebGLRenderer, renderPass: RenderPass) {
+  const pass = createWaterReflectionPass();
+  let offRing: (() => void) | null = null;
+  return {
+    render() {
+      const scene = renderPass.scene as THREE.Scene;
+      if (!offRing && isFocusRingOn()) {
+        const ring = scene.children.find((c) => c.name === 'viewFocusRing');
+        if (ring) offRing = excludeFromReflection(ring);
+      }
+      pass.render(renderer, scene, renderPass.camera);
+    },
+    dispose() { offRing?.(); pass.dispose(); },
+  };
+}
+
 // F8 → PERF → RENDER SCALE: AUTO / fixed ratio, capped at `maxDpr` (display ≤ 2 or the LOW quality cap).
 function sizeColonyViewport(
   renderer: THREE.WebGLRenderer, composer: EffectComposer, bloom: UnrealBloomPass, pixelArt: ShaderPass,
@@ -161,15 +195,20 @@ function paintColonyFrame(
   vp: ColonyViewport, renderPass: RenderPass, composer: EffectComposer,
   focusRing: ReturnType<typeof createViewFocusRing>,
   renderScale: ReturnType<typeof createRenderScaleController>,
+  rainPass: ReturnType<typeof createRainAndStormPass>,
+  reflections: ReturnType<typeof createViewportReflections>,
   focusGroundY: number, customRes: { width: number; height: number } | null,
 ) {
   stepSunOrbit(vp);
   tickWindClock();
+  tickWeatherClock();
   tickWaterClock();
   // Effects restrict themselves to the visible ground (+ margin); the shadow boxes fit to it.
   const focus = updateViewFocus(renderPass.camera, focusGroundY);
   fitShadowToView(vp, focus);
   focusRing.update(renderPass.scene, focus, focusGroundY, isFocusRingOn());
+  rainPass.update(undefined, renderPass.scene as THREE.Scene, renderPass.camera, { sun: vp.sun, hemi: vp.hemi, renderer: vp.renderer });
+  reflections.render();
   composer.render();
   // AUTO stepped: one resize, not per frame (a `?res=` preset renders at ratio 1: nothing to resize)
   if (renderScale.frame(performance.now()) && !customRes) vp.resize();
@@ -180,25 +219,17 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   installShadowShaderPatch();
   const w = () => container.clientWidth || window.innerWidth;
   const h = () => container.clientHeight || window.innerHeight;
-
   const { scene, camera } = createDefaultView(w() / h());
 
   let customRes: { width: number; height: number } | null = null;
-  // Ground plane the view focus intersects: the shadow-follow target's height, never above 0 (a playground target
-  // is the model centre, not the ground; a plane too low only makes the focus larger, never misses screen).
   let focusGroundY = 0;
   let maxDpr = Math.min(window.devicePixelRatio, 2);
 
   const renderer = createColonyRenderer(container, w(), h(), maxDpr);
-
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environment = environment;
-  scene.environmentIntensity = 0.75;
-
+  const { pmrem, environment } = createEnvironment(renderer, scene);
   const { sun, secondaryShadowLight, hemi } = createSunAndHemi(scene);
-
   const { composer, renderPass, bloom, pixelArt, offPixel } = createComposer(renderer, scene, camera, w(), h());
+  const rainPass = createRainAndStormPass(scene, camera);
 
   const vp: ColonyViewport = {
     renderer, composer, bloom, pixelArt, scene, camera, sun, secondaryShadowLight, hemi, environment,
@@ -228,10 +259,12 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       const dpr = customRes ? 1 : renderScale.resolve(maxDpr);
       sizeColonyViewport(renderer, composer, bloom, pixelArt, renderPass, camera, cw, ch, customRes, dpr);
     },
-    render() { paintColonyFrame(vp, renderPass, composer, focusRing, renderScale, focusGroundY, customRes); },
+    render() { paintColonyFrame(vp, renderPass, composer, focusRing, renderScale, rainPass, reflections, focusGroundY, customRes); },
     dispose() {
       renderScale.dispose();
       focusRing.dispose();
+      rainPass.dispose();
+      reflections.dispose();
       window.removeEventListener('resize', onResize);
       resizeObserver.disconnect();
       offShadow(); offPixel();
@@ -242,6 +275,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   };
   const renderScale = createRenderScaleController(() => vp.resize());
   const focusRing = createViewFocusRing();
+  const reflections = createViewportReflections(renderer, renderPass);
   const offShadow = registerShadowViewport(vp);
   const onResize = () => vp.resize();
   window.addEventListener('resize', onResize);

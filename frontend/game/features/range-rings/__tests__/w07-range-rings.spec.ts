@@ -196,7 +196,7 @@ describe('W07-21 Alt all-units view and enemy hover rings', () => {
         { id: 2, kind: ENTITY_KIND.recon, owner: 0, q: 3, r: 0, x: 3, y: 0, hp: 160, hpMax: 160 },
         { id: 3, kind: ENTITY_KIND.autocannon, owner: 0, q: 5, r: 0, x: 5, y: 0, hp: 450, hpMax: 450 },
         { id: 4, kind: RING_ENTITY_KIND.demoArtillery, owner: 0, q: 6, r: 0, x: 6, y: 0, hp: 200, hpMax: 200 },
-        { id: 5, kind: ENTITY_KIND.harvester, owner: 0, q: 2, r: 2, x: 2, y: 2, hp: 160, hpMax: 160 },
+        { id: 5, kind: ENTITY_KIND.worker, owner: 0, q: 2, r: 2, x: 2, y: 2, hp: 160, hpMax: 160 },
         { id: 99, kind: ENTITY_KIND.greenSpitter, owner: -1, q: 15, r: 0, x: 15, y: 0, hp: 180, hpMax: 180 },
       ],
     };

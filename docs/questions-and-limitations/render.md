@@ -555,7 +555,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/app/online/viewportHelper.ts` (`applyTerrainTileChanges`, `changedTiles`), `frontend/render/planets/hex/hexEdges.ts` (shore beach)
-- **What happened:** with ≤ 16 changed tiles each tile went through `setTileState` (a full planet rebuild each, writing into the previous snapshot's layers) before the final `updateTiles`: up to 17 rebuilds per snapshot. `changedTiles` compared raw `richness`, which a working harvester drains every tick, so every snapshot rebuilt chunks, props and borders near it. Shore cells showed a sand ring with a green hexagon inside.
+- **What happened:** with ≤ 16 changed tiles each tile went through `setTileState` (a full planet rebuild each, writing into the previous snapshot's layers) before the final `updateTiles`: up to 17 rebuilds per snapshot. `changedTiles` compared raw `richness`, which a working Worker Drone drains every tick, so every snapshot rebuilt chunks, props and borders near it. Shore cells showed a sand ring with a green hexagon inside.
 - **Fix:** a single `updateTiles(nextTiles, changed)`; richness compared by `getDepositVisualStage`; a `depositTier`-only change still triggers; the beach is one continuous noise-edged strip. Tests in `viewportHelper.spec.ts`, `hexUpdates.spec.ts`.
 - **Found:** 2026-11-02, terraform rework review
 
@@ -1012,7 +1012,6 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** If animated hitboxes or gameplay inaccuracy are wanted, define them in shared simulation and replicate contact data, with renderer adapters consuming the same authoritative result.
 - **Found:** 2026-11-05, recoil and combat-effect pass.
 
-
 ### RN-72 · Insect feet, corpses and acid remain authored visual approximations
 
 - **Status:** Accepted (insect animation pass)
@@ -1023,7 +1022,6 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** Add terrain-aware foot/contact inputs or fluid/corrosion rules only with a measured need and shared gameplay contracts where applicable.
 - **Found:** 2026-11-06, insect animation implementation and parallel review.
 
-
 ### RN-73 · Final insect animation browser review awaits Chrome access
 
 - **Status:** Resolved (insect visual QA follow-up, 2026-11-06)
@@ -1033,9 +1031,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** Production build, repo lint, generated-file checks, 84 focused integration tests and the additional UI tests pass. All three insects pass the strict 57-pose CPU validator with zero errors/warnings; all 16 particle presets pass. The review guide lists reproducible checks.
 - **Original follow-up:** Run the guide in `docs/visuals/insect-animation.md` with authorized Chrome access and save the GPU readback and actual attack/death screenshots. Prepared session scripts are `/private/tmp/ta-insect-pose.js` and `/private/tmp/ta-insect-ui/browser-qa.mjs`.
 - **Found:** 2026-11-06, final insect animation QA attempt.
-
 - **Resolution:** Approved Chrome runs completed all eight scene/direction controls checks, 7,068 GPU/CPU pose samples, and attack/death views for all species in all three biomes. A close-up beetle contact gap was corrected and covered by a mesh-distance regression. Evidence is saved under `docs/visuals/evidence/insect-animation/`; revised beetle geometry, GPU parity, focused tests and production build pass.
-
 
 ### RN-74 · Hive scenes retain the standalone archetype INFO panel
 
@@ -1046,7 +1042,6 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** Use Hive pane statistics during scene playback; hide INFO to enlarge the viewing area. Individual insect geometry statistics remain correct when selected in Units.
 - **To resolve:** Add scene-aware INFO content or explicitly label its retained standalone selection when a multi-entity scene is active.
 - **Found:** 2026-11-06, insect browser review.
-
 - **Resolution:** Existing InfoPanel now shows live Hive/March summaries and restores model metadata when a Units selection exits the scene. The related March mode exit was fixed. A DOM smoke covers standalone → hive → March → standalone and changing population without stale geometry counts.
 
 ### RN-75 · Hive cavities and ant resizing retain grid-based gameplay contacts
@@ -1078,7 +1073,6 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** Geometry is cached; GPU animation avoids a CPU skeleton. Neither batches draw calls.
 - **To resolve:** Batch insects by species/material with per-instance animation state and measure a rendered 200-unit encounter, or explicitly revise the requirement.
 - **Found:** 2026-11-06, W07 full-branch review.
-
 - **Resolution:** Shared InsectSwarmRenderer batches gameplay and playground insects by species with per-instance pose, selection and matching shadow animation. Chrome rendered 200 insects in 3 draw calls; pixel comparison differs by 0.00749/255 on average. Individual hidden proxies remain for picking, sockets and corpse lifecycle, so this reduces draw calls while retaining per-entity geometry/material memory. CPU submission measurement is not a full GPU frame-rate guarantee.
 
 ### RN-78 · Armored scout melee preview uses a side-on specimen
@@ -1090,3 +1084,101 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** The contact regression verifies both anticipation clearance and release contact against the actual new mesh.
 - **To resolve:** Use facing-aware surface approach distances if exact melee contact is required for every gameplay orientation.
 - **Found:** 2026-11-07, armored scout model replacement.
+
+## W05 Shape the Land
+
+### RN-79 · Work debris uses a fixed outside shell, and the beam hits one outside point
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/particles/spawnShell.ts` (`debrisSpawnPoint`, `beamImpactPoint`); `frontend/render/particles/WorkParticleEmitter.ts` (`spawnParticle`, `computeCutPoint`)
+- **What happens:** chunks spawn on a random 0.7–1.3 m shell around `targetPos` (plus a smaller XYZ jitter, never below `groundY + 0.08`), not on the prop's real bounds. A wide canopy or a large repair target can still contain some chunks; a small node gets a loose halo. The cutter beam ends on one point of a 0.9 m shell toward the bot (sweep stays on that shell), so the laser touches the outside while debris starts at other outside points, not at the impact.
+- **Why it is like this:** the owner asked for debris outside a tree or rock (about 0.7–1.3 m on X, Y and Z) and allowed the beam to be a separate outside point. The emitter does not read mesh bounds.
+- **Workaround / mitigation:** the shell clears a typical tree trunk and boulder. Chunks still fall and bounce on `groundY`.
+- **To resolve:** if a prop is much wider than 1.3 m, offset by that prop's bounds instead of the fixed shell, and optionally aim the beam at the same spawn point.
+- **Found:** 2026-11-06, particle spawn fix
+
+### RN-80 · Hex grid follows D-45: what is left that still reads as hexagons on wild ground
+
+- **Status:** Open
+- **Area / code:** `frontend/render/planets/hex/hexEdges.ts`, `tileTint.ts` (`uHexGrid`), `territoryBorder.ts`, `scripts/check-structure.mjs`
+- **What happens:** Grid lines are drawn only by the D-45 rule. Still hex-shaped on wild ground: (1) the class tint is looked up per cell, so a colour boundary (slope next to grass) follows tile edges, softened over 0.45 m, with no dark line; (2) the territory border ribbon follows tile edges at `effHeights` + 0.035 m and so climbs dunes (the light zig-zag in the owner's screenshot). Side effects: Living/Irrigated `hexSeam` darkening is drawn only where the grid exists; no lines on the planet rim, either side of a plateau step, the ring around every tree/rock/water tile, or around slope deposits. `check-structure` now lets `frontend/render` import `@terra/sim/grid/hexTile` (a rule module, where the list held only geometry).
+- **Why it is like this:** Out of the owner's item scope; the border must follow tile edges by nature.
+- **Workaround / mitigation:** —
+- **To resolve:** Owner: interpolate the tint on wild cells (3 reads, reverses "tint stays in its hexagon")? Fade border segments where neither side is a hex tile (leaves gaps in the outline on hills)? Or pass the mask in as a tile layer instead of importing the rule in render.
+- **Found:** 2026-11-06, hex-tile rule (D-45), lead + parallel agents
+
+### RN-81 · Projector-light shader patch copied in several places
+
+- **Status:** Open
+- **Area / code:** `frontend/render/lighting/projectorLitMaterial.ts` (`applyColonyProjectorLight`), inline copies in `frontend/playground/stage/StageRig.ts`, `frontend/render/visuals/terrain/Scatter.ts` (×2), `frontend/render/visuals/terrain/terrainShader.ts`
+- **What happens:** Unit headlights are GPU uniforms, not three.js lights, so every material that should be lit by them needs the same `onBeforeCompile` projector term. The new helper (used by the opened landing pod) sits next to near-identical inline copies.
+- **Why it is like this:** Fix scoped to the pod (owner, 2026-11-06); the other copies were not touched by a parallel pass.
+- **Workaround / mitigation:** —
+- **To resolve:** Move the inline copies onto `applyColonyProjectorLight`.
+- **Found:** 2026-11-06, W05 owner pass (pod agent)
+
+### RN-82 · Landing pod at night: opening burst, closed pod emissives, duplicated pod look
+
+- **Status:** Open
+- **Area / code:** `frontend/game/app/online/PodImpactRig.ts` (`updateEgress`, `coreLightMat`), kitbash `ship.dropPod`, `frontend/game/app/online/EntityMeshes.ts` (`podVisible`)
+- **What happens:** The opened pod's deck ring and ramp strips now fade with `uNightFactor` (dark at night unless a headlight reaches them). Left as is: (a) the ~1.25 s opening burst (up to 4.0 emissive) still lights at night, kept as the pod powering its deck lights; (b) for ~2 s after touchdown (`impact_wait`) the closed kitbash `ship.dropPod` shows its built-in emissives (thruster glow, harness light, chute ring, beacon) at full brightness at night (building-light dimming does not apply to a pod); (c) `PodImpactRig` copies the `ship.dropPod` geometry and colours by hand: two sources of truth for the pod's look.
+- **Why it is like this:** Owner asked only for the steady blue ring; (a) and (b) are short events.
+- **Workaround / mitigation:** —
+- **To resolve:** Owner: should the opening burst and the closed pod also go dark at night? Build the opened pod from the kitbash model.
+- **Found:** 2026-11-06, W05 owner pass (pod agent)
+
+### RN-83 · Projector beam follows the projector cone: wide fan, open edges
+
+- **Status:** Open
+- **Area / code:** `frontend/render/lighting/projectorCone.ts` (`projectorCosOuter`, `beamHalfAngle`, `buildBeamRays`), `EntityProjectorRig.ts`, `projectorBeamMaterial.ts`, `archetypeLights.ts`, `frontend/game/app/online/entityVisionSync.ts`, `frontend/playground/content/SpawnSet.ts`
+- **What happens:** The visible beam is now built from the same cone as the GPU projector that lights the ground (one definition, `projectorCone.ts`), ending on the ground or fading at range, so it matches the lit pool (owner 2026-11-06: "beam is stretched, must be geometrically right"). Consequences and edges: (a) the headlamp light is wide (~44° outer, aimed 65° off vertical), so the beam is a soft wide fan, and Command Hub floodlights too; a tighter lamp is a light-data change (`max(coneBottomRadius, poolRadius)` / aim in `archetypeLights.ts`) — owner's call; (b) beam range uses `src.range`, the GPU `src.range × scaleForKind` (HQ 11.5 vs 13.2): only the fade end differs; (c) the all-round near light (`nearSpill`, `ColonyVisionAndLights.ts`) has no beam; (d) the ground pool disc is still a flat circle at fixed height (sinks/floats on slopes, circle vs fan); (e) ground-hitting rays go 1.2 m below the bot's ground, so a deeper dip shows a hard end; the beam shows through water (no depth write) and is cut with a hard line at a hillside; (f) non-owned units draw a beam but get no GPU projector; (g) LIGHTS panel "Cone" has no visible effect while below "Pool" (HQ 1.85 < 2.8); the playground spot angle now matches the game.
+- **Why it is like this:** One cone for light and beam; the light's own width was not changed in this pass.
+- **Workaround / mitigation:** —
+- **To resolve:** Owner: keep the wide headlamp or tighten the light? Drape the pool disc; unify the range scale.
+- **Found:** 2026-11-06, W05 owner pass (beam agent)
+
+### RN-84 · Planar water reflections: one plane, frame-old shadows, sky key
+
+- **Status:** Open
+- **Area / code:** `frontend/render/visuals/water/reflection/` (`WaterReflectionPass.ts`, `mirrorCamera.ts`, `reflectionRect.ts`, `reflectionTargets.ts`, `reflectionRegistry.ts`, `reflectionOverlays.ts`), `frontend/render/visuals/water/glsl/mirror.ts`, `water/mirrorSky.ts`, `glsl/stages.ts` (`FRAG_MIRROR`, `FRAG_OUTPUT`), `core/createColonyViewport.ts` (`createViewportReflections`); e2e `tests/e2e/probes/water-reflections.spec.ts`
+- **What happens:** Water mirrors the scene (owner 2026-11-06: efficient, slightly distorted by wind and waves, F8 setting, only the camera area; 2026-11-07: "can't see any reflection"). Known edges: (a) one mirror plane per frame: the first registered water on screen sets the level; other water is hidden in the mirror, not mirrored at its own height (the hex planet has one level); (b) the mirror reuses the previous frame's shadow maps, none on the very first frame; (c) objects hidden by view-focus culling (off screen + 4 m pad) are missing from the mirror; (d) overlays: every material that is `transparent && !depthWrite` (beams, light pools, lamp lens / halo, health bars, rings, ghosts, highlights, borders, cable arcs, ambient particles) is left out of the mirror (`reflectionOverlays.ts`, ~1–6 µs a frame); opaque overlays still need `excludeFromReflection` (only the focus debug ring has it); lamps reflect only through the water's own projector highlight; (e) the scissor rect falls back to the whole target when a water box corner is behind the mirror camera (close cameras, the playground), and the prototype lake plane covers the whole terrain; (f) the mirror image has no bloom; (g) look: the mirror is laid over the water with cover `max(Fresnel, 0.75) × strength` (default strength 1), except where the mirror shows sky: texels close to the sky dome's horizon→top colours or the background colour get no cover (`mirrorSky.ts` sky key), so open water keeps its own look; grey-blue objects near the sky colours are partly keyed out, the dome's sun glow counts as an object (a bright patch when facing the sun), a scene with neither dome nor colour background gets the full, milky mirror; distortion = wave normal × `reflectDistort` × (0.15 m + 0.35 m × wind); (h) geometry: at the ~42° diorama pitch only things beyond the water or standing in it reflect onto it, and a wide sand beach hides most of a shore tree's reflection; this is why the first owner view showed nothing worth seeing even before the compositing fix; (i) a saved WATER setting from before 2026-11-07 keeps `reflection: 0.8` (cover 0.6); F8 → WATER → RESET gives the new default; (j) `reflectMs` is CPU submit time only.
+- **Why it is like this:** One cheap pass at ½ resolution, skipped when no water is visible, instead of screen-space reflections or one pass per water level.
+- **Workaround / mitigation:** F8 → WATER → MIRROR REFLECTION 0 turns it off; LOW tier never runs it; REFLECTION DEBUG = MIRROR ONLY (`?reflectDebug=1`) shows exactly what is reflected.
+- **To resolve:** Clip water boxes against the mirror near plane (tight rect on close cameras); owner: keep the lamp lens / halo out of the mirror? exclude the sky dome (exact sky key, no doubled sun)? tune strength 1 / floor 0.75 on a real screen.
+- **Found:** 2026-11-06, water reflections; updated 2026-11-07 (visibility pass)
+
+### RN-85 · Lamp ground pool over water: drawn under the surface now
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/visuals/water/WaterMaterial.ts` (`WATER_RENDER_ORDER` 1.5, used by `planets/hex/waterBuckets.ts` and `visuals/terrain/Liquids.ts`), `frontend/render/lighting/EntityProjectorRig.ts` (pool `renderOrder` 1, beam 2)
+- **What happens:** At night big light / dark triangles showed on water in a lamp's light pool (owner 2026-11-07). Cause (older than the reflections): the pool disc and the water both had `renderOrder` 1, so three sorted them by distance; the transparent, depth-writing water swell (±0.12 m) cut the pool along the 2 m triangles, or the pool jumped in brightness between two buckets. Now every water surface draws at 1.5: after fauna (0) and pools (1), before beams (2). Side effects: a pool over water is drawn under the surface, dimmed by the water's opacity instead of added on top; a beam entering the water is cut by the moving surface (RN-83 (e) says the beam shows through water: it does not, the water writes depth). The pool is still a flat disc at fixed height (RN-83 (d)).
+- **Why it is like this:** One stable order between ground decals and volumes; the water is one layer over everything below it.
+- **Workaround / mitigation:** —
+- **To resolve:** —
+- **Found:** 2026-11-07, water reflections pass (agent B); spec `planets/hex/waterBuckets.spec.ts`
+
+### RN-86 · Building rig power has two writers in the game
+
+- **Status:** Question for the owner
+- **Area / code:** `frontend/game/app/online/entityVisionSync.ts` (`applyBuildingLight` on replica updates), `frontend/render/kitbash/catalog.ts` (`tickArchetypeMesh` → `refreshProjectorRig`), `frontend/render/lighting/buildingLights.ts`
+- **What happens:** On a replica update the game applies a night-gated rig power; every frame `tickArchetypeMesh` overwrites the same rig with `(0.22 + 0.78·uNightFactor)·projectorIntensity·level` without the gate. The per-frame value renders, so lamp lenses and halos show faintly by day and the "single entry point" of `buildingLights.ts` is not yet true (also on `main`).
+- **To resolve:** Owner picks the formula; then `applyBuildingLight` stores `mesh.userData.rigPower` and `refreshProjectorRig` reuses it.
+- **Found:** 2026-11-07, W05 full review (render agent)
+
+### RN-87 · W05-24 hole tiles: tint and depression only, no decal
+
+- **Status:** Open
+- **Area / code:** `frontend/render/planets/hex/chunkMesh.ts` (class palette)
+- **What happens:** Hole tiles get a class tint and `height ≤ -0.35`; there is no crater/hole decal. The shallow → deep water tint of W05-24 is done.
+- **To resolve:** Add a hole decal (H+ row).
+- **Found:** 2026-11-07, W05 full review (render agent)
+
+### RN-88 · The mirror render target is kept while no water is on screen
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/visuals/water/reflection/WaterReflectionPass.ts`
+- **What happens:** With no water on screen the pass skips and reports `reflectW = 0` but keeps its render target; it frees it only at strength 0 (`?water=0`, LOW tier, MIRROR REFLECTION slider at 0). `?perf=0` and the PERF tab do not touch the pass.
+- **Why it is like this:** Avoids re-allocating the target every time the camera pans over water.
+- **Found:** 2026-11-07, W05 full review (render agent)

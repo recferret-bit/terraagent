@@ -78,8 +78,8 @@ The full tables are in the balance doc; the parts that change the plan:
 
 ### 4.2 The three traps a new player hits (fix before the demo, all data rows)
 
-1. **Minerals:** the R11 kit (400 / 250 / 150 / 150) leaves 10 minerals after Hub + Solar + Extractor + Quarry + Harvester; one wrong order stalls the colony. Kit 400 / 300 / 200 / 150. *Pass 4:* the W01 code and W01-09 already start the player at 600 / 350 / 200 / 200 (units spec §6.4), which removes this dead-end; which kit ships is Q-02-19 (Balance §10 Q7).
-2. **Biomass:** no income until a Harvester clears forest (5 per tile); the Factory, turrets and DCA each need 10–30. Clear yield 25, Harvester on Living ground +0.5/s.
+1. **Minerals:** the R11 kit (400 / 250 / 150 / 150) leaves 10 minerals after Hub + Solar + Extractor + Quarry + Worker Drone T1; one wrong order stalls the colony. Kit 400 / 300 / 200 / 150. *Pass 4:* the W01 code and W01-09 already start the player at 600 / 350 / 200 / 200 (units spec §6.4), which removes this dead-end; which kit ships is Q-02-19 (Balance §10 Q7).
+2. **Biomass:** no income until a Worker Drone T1 clears forest (5 per tile); the Factory, turrets and DCA each need 10–30. Clear yield 25, Worker Drone T1 on Living ground +0.5/s.
 3. **Shared family caps:** biomass fills the Bio cap and stops water; a full Metals cap discards the T2 iron the player just unlocked. Caps per sub-resource.
 
 ### 4.3 Monetization

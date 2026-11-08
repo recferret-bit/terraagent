@@ -108,8 +108,8 @@ export const mapsFeature = defineFeature({
   hud: [
     {
       id: 'minimap',
-      slot: 'bottom-left',
-      order: 5,
+      slot: 'top-right',
+      order: -100,
       mount(el, ctx) {
         return mountMapsFeature(el, ctx);
       },

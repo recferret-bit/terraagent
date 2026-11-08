@@ -25,7 +25,7 @@ describe('Terraform WORK click on a forest tile (HQ drone only)', () => {
     expect((colony.stock['bio.biomass'] ?? 0) - before).toBeCloseTo(15, 4);
   });
 
-  it('a tree no ground worker can get next to (inside a forest) ends the order with a no_path failure, not a silent retry loop', () => {
+  it('a tree no ground worker can get next to (inside a forest) is reached by clearing the forest from its edge (chain E2)', () => {
     const state = createState({ planetId: 'p-wf2', planetType: 'temperate', seed: 'wf2', radius: 10 });
     const colony = ensureColonyLedger({ index: 0, id: 'col-0', name: 'A', color: 0xff6b00, status: 'active', changedAt: 0 });
     state.colonies.push(colony);
@@ -37,9 +37,10 @@ describe('Terraform WORK click on a forest tile (HQ drone only)', () => {
     }
     const i = hx.indexOf(6, 0);
     step(state, [{ commandId: 'w2', colonyIndex: 0, source: 'player', kind: 'enqueueTask', args: { terraform: { op: 'work', tiles: [{ q: 6, r: 0 }] } } }], 1, pipeline);
-    step(state, [], 200, pipeline);
-    expect(state.grid.layers.terrain[i]).toBe(TERRAIN.forest);
-    expect(Object.keys((state.blobs.workJobs?.value as { byId: object }).byId)).toHaveLength(0);
-    expect(getUnitRecord(state, typeof hq === 'number' ? hq : (hq as { entityId: number }).entityId)?.lastFailure?.code).toBe('no_path');
+    const jobs = () => Object.keys((state.blobs.workJobs?.value as { byId: object }).byId);
+    for (let t = 0; t < 4000 && state.grid.layers.terrain[i] === TERRAIN.forest; t++) step(state, [], 1, pipeline);
+    expect(state.grid.layers.terrain[i]).toBe(TERRAIN.flat); // the forest went from its edge to the clicked tree
+    expect(jobs().length).toBeGreaterThan(0); // and the chain goes on around it
+    expect(getUnitRecord(state, typeof hq === 'number' ? hq : (hq as { entityId: number }).entityId)?.lastFailure ?? null).toBeNull();
   });
 });

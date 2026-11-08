@@ -11,11 +11,35 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 export const BASE_HUB_STORAGE_CAP = 500;
 export const DEPOT_STORAGE_CAP = 1000;
 
+export interface ExtractorLivingBonusRecord {
+  entityId: number;
+  q?: number;
+  r?: number;
+  family?: ResourceFamily;
+  adjacentToLiving: boolean;
+  livingBonus: number;
+  livingBonusText: string;
+  ratePerS: number;
+  unlockedTier?: 1 | 2 | 3;
+  ringRadius?: number;
+  ringTotalTiles?: number;
+  ringTerraformedTiles?: number;
+  ringLivingTiles?: number;
+  ringTerraformedRatio?: number;
+  ringLivingRatio?: number;
+  ringTerraformedPct?: number;
+  ringLivingPct?: number;
+  shares?: { t1Share: number; t2Share: number; t3Share: number };
+  incomePerSByKey?: Partial<Record<ResourceKey, number>>;
+}
+
 export interface ColonyProductionLedger {
   capped: Record<ResourceFamily, number>;
   produced: Record<ResourceKey, number>;
   incomePerS: Record<ResourceKey, number>;
   familyIncomePerS: Record<ResourceFamily, number>;
+  extractors?: Record<number, ExtractorLivingBonusRecord>;
+  tierGates?: unknown;
 }
 
 export interface ColonyLedgerFields {
@@ -84,9 +108,35 @@ export function ensureColonyLedger(
     if (typeof rawProd.produced?.[k] === 'number') produced[k] = rawProd.produced[k];
     if (typeof rawProd.incomePerS?.[k] === 'number') incomePerS[k] = rawProd.incomePerS[k];
   }
-  colony.production = { capped, produced, incomePerS, familyIncomePerS };
+  const extractors = rawProd.extractors && typeof rawProd.extractors === 'object' ? { ...rawProd.extractors } : undefined;
+  const tierGates = rawProd.tierGates && typeof rawProd.tierGates === 'object' ? rawProd.tierGates : undefined;
+  colony.production = {
+    capped,
+    produced,
+    incomePerS,
+    familyIncomePerS,
+    ...(extractors ? { extractors } : {}),
+    ...(tierGates ? { tierGates } : {}),
+  };
 
   return colony as ColonyWithLedger;
+}
+
+/** Ensures `state.colonies[colonyIndex]` exists and has a valid ledger at `tick`. */
+export function ensureColonyAt(state: PlanetState, colonyIndex: number, tick: number): ColonyWithLedger {
+  let col = state.colonies[colonyIndex];
+  if (!col) {
+    col = {
+      index: colonyIndex,
+      id: `col-${colonyIndex}`,
+      name: `Colony ${colonyIndex + 1}`,
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: tick,
+    };
+    state.colonies[colonyIndex] = col;
+  }
+  return ensureColonyLedger(col);
 }
 
 /** Recomputes the 3 family storage caps (`500` from Hub + `1000` per active Supply Depot). */

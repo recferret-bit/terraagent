@@ -33,6 +33,10 @@ export class FaunaMotionReplica {
     const state = this.shadow;
     if (!state) throw new Error('fauna motion replica requires welcome');
     const diff = decodeDiff(bytes);
+    if (diff.chunk && diff.chunk.index > 0) {
+      applyDiff(state, bytes);
+      return;
+    }
     if (state.meta.tick !== diff.fromTick) throw new DiffGapError(state.meta.tick, diff.fromTick);
     const log = (diff.blobs.faunaDirectives?.value as FaunaDirectivesBlob | undefined)?.log ?? [];
     const knownSeq = getFaunaDirectivesState(state).lastSeq;

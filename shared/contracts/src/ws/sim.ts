@@ -55,7 +55,9 @@ export type FamilyCaps = z.infer<typeof FamilyCaps>;
 
 export const W01_TERRAFORM_OPS = ['grade', 'clear', 'break'] as const;
 export const W02_TERRAFORM_OPS = ['grade', 'clear', 'break', 'dismantle', 'work'] as const;
-export const TerraformOp = z.enum(W02_TERRAFORM_OPS);
+export const W05_NEW_TERRAFORM_OPS = ['level', 'fill', 'reclaim', 'deepReclaim', 'irrigate', 'seed'] as const;
+export const W05_TERRAFORM_OPS = ['grade', 'clear', 'break', 'dismantle', 'work', ...W05_NEW_TERRAFORM_OPS] as const;
+export const TerraformOp = z.enum(W05_TERRAFORM_OPS);
 export type TerraformOp = z.infer<typeof TerraformOp>;
 
 export const TileCoord = z.number().int().min(-32768).max(32767);

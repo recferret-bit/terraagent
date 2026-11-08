@@ -1,5 +1,7 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
+import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
+import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
 import { ownColonyIndex } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
 import {
@@ -10,35 +12,23 @@ import {
   type QueueItemLike,
 } from './ArmySection';
 import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
+import { createUnitCard, syncUnitCard, type UnitCardHandle } from './unitCard';
 
 export { formatBufferItem, type QueueItemLike };
-
-interface CachedUnitCard {
-  readonly root: HTMLElement;
-  readonly title: HTMLElement;
-  readonly supplyTag: HTMLElement;
-  readonly time: HTMLElement;
-  readonly power: HTMLElement;
-  readonly costs: HTMLElement;
-  readonly countSpan: HTMLElement;
-  readonly repeatBtn: HTMLButtonElement;
-  readonly queueBtn: HTMLButtonElement;
-  reason: HTMLElement | null;
-  unlockDetail: HTMLElement | null;
-  card: UnitCardModel;
-  readonly supplyReason: HTMLElement;
-  costKey: string;
-}
 
 export class UnitsMenu implements Disposable {
   readonly root: HTMLElement;
   private readonly headBtn: HTMLButtonElement;
   private readonly supplyEl: HTMLElement;
+  private readonly tierBar: HTMLElement;
   private readonly cardsContainer: HTMLElement;
   private readonly bufferContainer: HTMLElement;
+  private readonly countSpan: HTMLElement;
+  private readonly repeatBtn: HTMLButtonElement;
   private readonly army: ArmySectionController | null = null;
-  private readonly cardElements = new Map<string, CachedUnitCard>();
+  private readonly cardElements = new Map<string, UnitCardHandle>();
   private lastBufferKey: string | null = null;
+  private pickedTier: MenuTier | null = null;
   private isOpen = true;
   private view?: GameView;
   count = 1;
@@ -50,43 +40,30 @@ export class UnitsMenu implements Disposable {
     private readonly ctx: FeatureContext,
     initialView?: GameView,
   ) {
+    retainArchetypeThumbs();
     this.view = initialView;
     const hasW07 = this.ctx.flags.has('W07');
     this.root = document.createElement('div');
     this.root.className = 'ta-units plate-sm';
     this.root.dataset.open = 'true';
 
-    const header = document.createElement('div');
-    header.className = 'ta-units__header';
-
-    this.headBtn = document.createElement('button');
-    this.headBtn.type = 'button';
-    this.headBtn.className = 'ta-units__toggle';
-    this.headBtn.textContent = 'UNITS [U]';
-    this.headBtn.setAttribute('aria-expanded', 'true');
-    this.headBtn.onclick = () => this.toggle();
-
-    this.supplyEl = document.createElement('span');
-    this.supplyEl.className = 'ta-units__supply';
-    this.supplyEl.setAttribute('data-supply', '');
-    this.supplyEl.setAttribute('data-warning', 'false');
-    this.supplyEl.setAttribute('data-level', 'ok');
-    this.supplyEl.title = hasW07
-      ? 'Unit supply: used / cap (+10 Command Hub, +8 per Drone Control Array)'
-      : 'Unit supply: used / cap';
-    this.supplyEl.textContent = '— / —';
-
-    header.append(this.headBtn, this.supplyEl);
-    this.root.appendChild(header);
+    const header = this.buildHeader(hasW07);
+    this.headBtn = header.toggle;
+    this.supplyEl = header.supply;
 
     const body = document.createElement('div');
     body.className = 'ta-units__body';
     body.setAttribute('data-body', '');
-
+    this.tierBar = document.createElement('div');
+    const batch = this.buildBatch();
+    this.countSpan = batch.countSpan;
+    this.repeatBtn = batch.repeatBtn;
     this.cardsContainer = document.createElement('div');
     this.cardsContainer.className = 'ta-units__cards';
     this.cardsContainer.setAttribute('data-cards', '');
-    body.appendChild(this.cardsContainer);
+    const buffer = this.buildBuffer();
+    this.bufferContainer = buffer.list;
+    body.append(this.tierBar, batch.root, this.cardsContainer, buffer.section);
 
     if (hasW07) {
       this.army = new ArmySectionController(this.root, this.cardsContainer, body, this.ctx);
@@ -94,42 +71,10 @@ export class UnitsMenu implements Disposable {
       s.setRally = (q: number, r: number, producerId?: number) => this.setRally(q, r, producerId);
     }
 
-    const bufferSection = document.createElement('div');
-    bufferSection.className = 'ta-units__buffer-section';
-
-    const bufferHead = document.createElement('div');
-    bufferHead.className = 'ta-units__buffer-header';
-    const bufferTitle = document.createElement('span');
-    bufferTitle.className = 'ta-units__buffer-title';
-    bufferTitle.textContent = 'Hub Buffer';
-    bufferHead.appendChild(bufferTitle);
-    bufferSection.appendChild(bufferHead);
-
-    this.bufferContainer = document.createElement('div');
-    this.bufferContainer.className = 'ta-units__buffer';
-    this.bufferContainer.setAttribute('data-unit-buffer', '');
-    bufferSection.appendChild(this.bufferContainer);
-
-    body.appendChild(bufferSection);
-    this.root.appendChild(body);
+    this.root.append(header.row, body);
     this.el.appendChild(this.root);
-
-    this.onKeyDown = (e: KeyboardEvent) => {
-      if (isGameInputBlocked()) return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-      if (e.key === 'Escape' && this.army?.isRallyMode()) {
-        this.army.setRallyMode(false);
-        return;
-      }
-      if (e.key === 'u' || e.key === 'U') {
-        this.toggle();
-      }
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('keydown', this.onKeyDown);
-    }
-
+    this.onKeyDown = (event: KeyboardEvent) => this.onUnitsKey(event);
+    if (typeof window !== 'undefined') window.addEventListener('keydown', this.onKeyDown);
     this.render();
   }
 
@@ -160,10 +105,102 @@ export class UnitsMenu implements Disposable {
     this.render();
   }
 
+  private buildHeader(hasW07: boolean): { row: HTMLElement; toggle: HTMLButtonElement; supply: HTMLElement } {
+    const row = document.createElement('div');
+    row.className = 'ta-units__header';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'ta-units__toggle';
+    toggle.textContent = 'UNITS [U]';
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.onclick = () => this.toggle();
+    const supply = document.createElement('span');
+    supply.className = 'ta-units__supply';
+    supply.setAttribute('data-supply', '');
+    supply.setAttribute('data-warning', 'false');
+    supply.setAttribute('data-level', 'ok');
+    supply.title = hasW07
+      ? 'Unit supply: used / cap (+10 Command Hub, +8 per Drone Control Array)'
+      : 'Unit supply: used / cap';
+    supply.textContent = '— / —';
+    row.append(toggle, supply);
+    return { row, toggle, supply };
+  }
+
+  private buildBatch(): { root: HTMLElement; countSpan: HTMLElement; repeatBtn: HTMLButtonElement } {
+    const root = document.createElement('div');
+    root.className = 'ta-units__batch';
+    const stepper = document.createElement('div');
+    stepper.className = 'ta-units__stepper';
+    const decBtn = document.createElement('button');
+    decBtn.type = 'button';
+    decBtn.className = 'ta-units__stepper-btn';
+    decBtn.setAttribute('data-count-dec', '');
+    decBtn.textContent = '−';
+    decBtn.onclick = () => this.setCount(this.count - 1);
+    const countSpan = document.createElement('span');
+    countSpan.className = 'ta-units__count';
+    countSpan.setAttribute('data-count', '1');
+    countSpan.textContent = '1';
+    const incBtn = document.createElement('button');
+    incBtn.type = 'button';
+    incBtn.className = 'ta-units__stepper-btn';
+    incBtn.setAttribute('data-count-inc', '');
+    incBtn.textContent = '+';
+    incBtn.onclick = () => this.setCount(this.count + 1);
+    stepper.append(decBtn, countSpan, incBtn);
+    const repeatBtn = document.createElement('button');
+    repeatBtn.type = 'button';
+    repeatBtn.className = 'ta-units__repeat-btn';
+    repeatBtn.setAttribute('data-repeat', 'false');
+    repeatBtn.textContent = 'REPEAT';
+    repeatBtn.onclick = () => {
+      this.repeat = !this.repeat;
+      repeatBtn.setAttribute('data-repeat', String(this.repeat));
+    };
+    root.append(stepper, repeatBtn);
+    return { root, countSpan, repeatBtn };
+  }
+
+  private buildBuffer(): { section: HTMLElement; list: HTMLElement } {
+    const section = document.createElement('div');
+    section.className = 'ta-units__buffer-section';
+    const head = document.createElement('div');
+    head.className = 'ta-units__buffer-header';
+    const title = document.createElement('span');
+    title.className = 'ta-units__buffer-title';
+    title.textContent = 'Hub Buffer';
+    head.appendChild(title);
+    const list = document.createElement('div');
+    list.className = 'ta-units__buffer';
+    list.setAttribute('data-unit-buffer', '');
+    section.append(head, list);
+    return { section, list };
+  }
+
+  private onUnitsKey(event: KeyboardEvent): void {
+    if (isGameInputBlocked()) return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (event.key === 'Escape' && this.army?.isRallyMode()) {
+      this.army.setRallyMode(false);
+      return;
+    }
+    if (event.key === 'u' || event.key === 'U') {
+      this.toggle();
+    }
+  }
+
+  private setCount(next: number): void {
+    this.count = Math.max(1, Math.min(5, next));
+    this.countSpan.textContent = String(this.count);
+    this.countSpan.setAttribute('data-count', String(this.count));
+  }
+
   private render(): void {
     const supply = resolveSupply(this.view, ownColonyIndex(this.ctx.services));
     this.renderSupply(supply);
-    this.renderCards(supply);
+    this.renderCards(buildUnitsCatalog(this.ctx.flags, this.view), supply);
     this.renderBuffer();
   }
 
@@ -174,284 +211,60 @@ export class UnitsMenu implements Disposable {
     this.supplyEl.setAttribute('data-level', level);
   }
 
-  private renderCards(supply: SupplySummary | null): void {
-    const cards = buildUnitsCatalog(this.ctx.flags, this.view);
+  private renderCards(cards: UnitCardModel[], supply: SupplySummary | null): void {
+    const tier = rememberTier(this.pickedTier, cards);
+    this.pickedTier = tier;
+    renderTierBar(this.tierBar, 'prod', presentTiers(cards), tier, (next) => {
+      this.pickedTier = next;
+      this.render();
+    });
     const seen = new Set<string>();
     for (const card of cards) {
-      seen.add(card.unit);
-      const existing = this.cardElements.get(card.unit);
-      const cached = existing ?? this.createCardElement(card);
-      if (existing) {
-        this.updateCardElement(existing, card);
-      } else {
-        this.cardElements.set(card.unit, cached);
-        const container = card.section === 'army' && this.army ? this.army.cardsEl : this.cardsContainer;
-        container.appendChild(cached.root);
-      }
-      this.applySupplyBlock(cached, supplyBlockReason(supply, card.supply));
+      seen.add(card.id);
+      const handle = this.cardElements.get(card.id) ?? this.mountCard(card);
+      syncUnitCard(handle, card);
+      this.applySupplyBlock(handle, supplyBlockReason(supply, card.supply));
+      setTierVisible(handle.root, card.section === 'army' ? true : card.tier === tier);
     }
     if (this.army && this.army.sectionEl.parentElement === this.cardsContainer) {
       this.cardsContainer.appendChild(this.army.sectionEl);
     }
-    for (const [unit, cached] of this.cardElements) {
-      if (!seen.has(unit)) {
-        cached.root.remove();
-        this.cardElements.delete(unit);
-      }
+    for (const [id, handle] of this.cardElements) {
+      if (seen.has(id)) continue;
+      handle.root.remove();
+      handle.tip.remove(); // an open tip is parked on document.body (`bindCardTip`)
+      this.cardElements.delete(id);
     }
   }
 
-  /** At the cap the QUEUE button is disabled and the card says why (the host would reject with `supply_cap`). */
-  private applySupplyBlock(cached: CachedUnitCard, reason: string | null): void {
-    cached.root.setAttribute('data-supply-blocked', String(reason !== null));
-    cached.queueBtn.disabled = reason !== null || Boolean(cached.card.disabled);
-    const defaultTitle =
-      cached.card.section === 'army' ? 'Queue this unit at the Robotics Factory' : 'Queue this unit at the Command Hub';
-    cached.queueBtn.title = reason ?? cached.card.disabledReason ?? defaultTitle;
-    cached.supplyReason.hidden = reason === null;
-    if (reason !== null && cached.supplyReason.textContent !== reason) cached.supplyReason.textContent = reason;
+  private mountCard(card: UnitCardModel): UnitCardHandle {
+    const handle = createUnitCard(card, (queued) => this.queueUnit(queued));
+    this.cardElements.set(card.id, handle);
+    const container = card.section === 'army' && this.army ? this.army.cardsEl : this.cardsContainer;
+    container.appendChild(handle.root);
+    return handle;
   }
 
-  private updateCardElement(cached: CachedUnitCard, card: UnitCardModel): void {
-    cached.card = card;
-    if (cached.title.textContent !== card.label) cached.title.textContent = card.label;
-    const supplyText = `Supply ${card.supply}`;
-    if (cached.supplyTag.textContent !== supplyText) cached.supplyTag.textContent = supplyText;
-    const timeText = `${card.buildS}s`;
-    if (cached.time.textContent !== timeText) cached.time.textContent = timeText;
-    if (cached.power.textContent !== card.powerText) cached.power.textContent = card.powerText;
-
-    const costKey = card.costPills.join('|');
-    if (cached.costKey !== costKey) {
-      cached.costKey = costKey;
-      cached.costs.replaceChildren();
-      for (const pillText of card.costPills) {
-        const pill = document.createElement('span');
-        pill.className = 'ta-units__cost-pill';
-        pill.textContent = pillText;
-        cached.costs.appendChild(pill);
-      }
-    }
-
-    cached.countSpan.textContent = String(this.count);
-    cached.countSpan.setAttribute('data-count', String(this.count));
-    cached.repeatBtn.setAttribute('data-repeat', String(this.repeat));
-    this.syncUnitCardLockState(cached, card);
+  /** At the cap the card is disabled and says why (the host would reject with `supply_cap`). */
+  private applySupplyBlock(handle: UnitCardHandle, reason: string | null): void {
+    const blocked = reason !== null;
+    handle.root.setAttribute('data-supply-blocked', String(blocked));
+    if (!handle.card.disabled) handle.root.disabled = blocked;
+    handle.supplyReason.hidden = !blocked;
+    if (blocked && handle.supplyReason.textContent !== reason) handle.supplyReason.textContent = reason ?? '';
   }
 
-  private syncUnitCardLockState(cached: CachedUnitCard, card: UnitCardModel): void {
-    const disabled = Boolean(card.disabled);
-    cached.root.className = card.stageLocked ? 'ta-units__card plate-sm is-stage-locked' : 'ta-units__card plate-sm';
-    cached.root.setAttribute('data-disabled', String(disabled));
-    cached.root.setAttribute('data-unlock-stage', String(card.unlockStage));
-    cached.queueBtn.disabled = disabled;
-    cached.queueBtn.setAttribute('data-disabled', String(disabled));
-
-    if (card.stageLocked) {
-      cached.root.setAttribute('data-stage-locked', 'true');
-      const cond = card.unlockConditionText ?? card.disabledReason ?? '';
-      const detail = card.unlockDetailText ?? cond;
-      const fullTooltip = detail && detail !== cond ? `${cond} (${detail})` : cond;
-      cached.root.setAttribute('title', fullTooltip);
-      cached.root.setAttribute('aria-label', `${card.label} — ${fullTooltip}`);
-      cached.root.setAttribute('data-unlock-detail', detail);
-    } else if (typeof cached.root.removeAttribute === 'function') {
-      for (const attr of ['data-stage-locked', 'title', 'aria-label', 'data-unlock-detail']) {
-        cached.root.removeAttribute(attr);
-      }
+  private queueUnit(card: UnitCardModel): void {
+    if (card.section === 'army' || card.unit === 'recon') {
+      const task = { kind: 'buildUnit' as const, unit: card.unit, count: this.count, repeat: this.repeat };
+      this.ctx.services.sendCommand?.('enqueueTask', { task });
+      this.ctx.services.enqueueHubUnit?.({ unit: card.unit, count: this.count, repeat: this.repeat });
+      return;
     }
-
-    if (disabled && card.disabledReason) {
-      if (!cached.reason) {
-        cached.reason = document.createElement('span');
-        cached.reason.className = 'ta-units__reason';
-        cached.root.appendChild(cached.reason);
-      }
-      if (cached.reason.textContent !== card.disabledReason) {
-        cached.reason.textContent = card.disabledReason;
-      }
-      const detail = card.unlockDetailText ?? '';
-      if (card.stageLocked && detail && detail !== card.disabledReason) {
-        if (!cached.unlockDetail) {
-          cached.unlockDetail = document.createElement('span');
-          cached.unlockDetail.className = 'ta-units__unlock-detail';
-          cached.root.appendChild(cached.unlockDetail);
-        }
-        if (cached.unlockDetail.textContent !== detail) {
-          cached.unlockDetail.textContent = detail;
-        }
-      } else if (cached.unlockDetail) {
-        cached.unlockDetail.remove();
-        cached.unlockDetail = null;
-      }
-    } else {
-      if (cached.reason) {
-        cached.reason.remove();
-        cached.reason = null;
-      }
-      if (cached.unlockDetail) {
-        cached.unlockDetail.remove();
-        cached.unlockDetail = null;
-      }
-    }
-  }
-
-  private createCardElement(card: UnitCardModel): CachedUnitCard {
-    const cardEl = document.createElement('div');
-    cardEl.className = 'ta-units__card plate-sm';
-    cardEl.setAttribute('data-unit', card.unit);
-    if (card.section) cardEl.setAttribute('data-unit-section', card.section);
-
-    const headRow = document.createElement('div');
-    headRow.className = 'ta-units__card-head';
-    const title = document.createElement('span');
-    title.className = 'ta-units__title';
-    title.textContent = card.label;
-    const supplyTag = document.createElement('span');
-    supplyTag.className = 'ta-units__supply-tag';
-    supplyTag.textContent = `Supply ${card.supply}`;
-    headRow.append(title, supplyTag);
-
-    const metaRow = document.createElement('div');
-    metaRow.className = 'ta-units__meta';
-    const time = document.createElement('span');
-    time.className = 'ta-units__time';
-    time.textContent = `${card.buildS}s`;
-    const power = document.createElement('span');
-    power.className = 'ta-units__power';
-    power.textContent = card.powerText;
-    metaRow.append(time, power);
-
-    const costs = document.createElement('div');
-    costs.className = 'ta-units__costs';
-    for (const pillText of card.costPills) {
-      const pill = document.createElement('span');
-      pill.className = 'ta-units__cost-pill';
-      pill.textContent = pillText;
-      costs.appendChild(pill);
-    }
-
-    const { controls, countSpan, repeatBtn, queueBtn } = this.createControlsRow(card);
-    const supplyReason = document.createElement('div');
-    supplyReason.className = 'ta-units__supply-reason';
-    supplyReason.setAttribute('data-supply-reason', '');
-    supplyReason.hidden = true;
-    cardEl.append(headRow, metaRow, costs, controls, supplyReason);
-    const cached: CachedUnitCard = {
-      root: cardEl,
-      title,
-      supplyTag,
-      time,
-      power,
-      costs,
-      countSpan,
-      repeatBtn,
-      queueBtn,
-      supplyReason,
-      reason: null,
-      unlockDetail: null,
-      card,
-      costKey: card.costPills.join('|'),
-    };
-    this.syncUnitCardLockState(cached, card);
-    return cached;
-  }
-
-  private createControlsRow(card: UnitCardModel): {
-    controls: HTMLElement;
-    countSpan: HTMLElement;
-    repeatBtn: HTMLButtonElement;
-    queueBtn: HTMLButtonElement;
-  } {
-    const unit = card.unit;
-    const controls = document.createElement('div');
-    controls.className = 'ta-units__controls';
-
-    const stepper = document.createElement('div');
-    stepper.className = 'ta-units__stepper';
-
-    const decBtn = document.createElement('button');
-    decBtn.type = 'button';
-    decBtn.className = 'ta-units__stepper-btn';
-    decBtn.setAttribute('data-count-dec', '');
-    decBtn.textContent = '−';
-    decBtn.onclick = () => {
-      this.count = Math.max(1, this.count - 1);
-      this.updateCountReadouts();
-    };
-
-    const countSpan = document.createElement('span');
-    countSpan.className = 'ta-units__count';
-    countSpan.setAttribute('data-count', String(this.count));
-    countSpan.textContent = String(this.count);
-
-    const incBtn = document.createElement('button');
-    incBtn.type = 'button';
-    incBtn.className = 'ta-units__stepper-btn';
-    incBtn.setAttribute('data-count-inc', '');
-    incBtn.textContent = '+';
-    incBtn.onclick = () => {
-      this.count = Math.min(5, this.count + 1);
-      this.updateCountReadouts();
-    };
-    stepper.append(decBtn, countSpan, incBtn);
-
-    const repeatBtn = document.createElement('button');
-    repeatBtn.type = 'button';
-    repeatBtn.className = 'ta-units__repeat-btn';
-    repeatBtn.setAttribute('data-repeat', String(this.repeat));
-    repeatBtn.textContent = 'REPEAT';
-    repeatBtn.onclick = () => {
-      this.repeat = !this.repeat;
-      this.updateRepeatButtons();
-    };
-
-    const queueBtn = document.createElement('button');
-    queueBtn.type = 'button';
-    queueBtn.className = 'ta-units__queue-btn';
-    queueBtn.setAttribute('data-queue-unit', unit);
-    queueBtn.textContent = 'QUEUE';
-    queueBtn.onclick = () => {
-      if (this.cardElements.get(unit)?.card.disabled) return;
-      this.queueUnit(unit);
-    };
-
-    controls.append(stepper, repeatBtn, queueBtn);
-    return { controls, countSpan, repeatBtn, queueBtn };
-  }
-
-  private updateCountReadouts(): void {
-    const readouts = this.root.querySelectorAll('[data-count]');
-    for (const el of readouts) {
-      el.textContent = String(this.count);
-      el.setAttribute('data-count', String(this.count));
-    }
-  }
-
-  private updateRepeatButtons(): void {
-    const btns = this.root.querySelectorAll('[data-repeat]');
-    for (const el of btns) {
-      el.setAttribute('data-repeat', String(this.repeat));
-    }
-  }
-
-  private queueUnit(unit: string): void {
-    const payload = {
-      task: {
-        kind: 'buildUnit' as const,
-        unit,
-        count: this.count,
-        repeat: this.repeat,
-      },
-    };
-    this.ctx.services.sendCommand?.('enqueueTask', payload);
-
-    const s = this.ctx.services as unknown as {
-      enqueueHubUnit?: (opts: { unit?: string; count?: number; repeat?: boolean }) => unknown;
-    };
-    if (typeof s.enqueueHubUnit === 'function') {
-      s.enqueueHubUnit({ unit, count: this.count, repeat: this.repeat });
-    }
+    const tier = card.tier === 2 || card.tier === 3 ? card.tier : 1;
+    const task = { kind: 'buildUnit' as const, unit: card.unit, tier, count: this.count, repeat: this.repeat };
+    this.ctx.services.sendCommand?.('enqueueTask', { task });
+    this.ctx.services.enqueueHubUnit?.({ unit: card.unit, tier, count: this.count, repeat: this.repeat });
   }
 
   private renderBuffer(): void {
@@ -462,7 +275,6 @@ export class UnitsMenu implements Disposable {
     const nextKey = entries.map((en) => `${en.taskId ?? ''}:${formatBufferItem(en)}`).join('|');
     if (this.lastBufferKey === nextKey) return;
     this.lastBufferKey = nextKey;
-
     this.bufferContainer.replaceChildren();
     if (entries.length === 0) {
       const empty = document.createElement('span');
@@ -471,7 +283,6 @@ export class UnitsMenu implements Disposable {
       this.bufferContainer.appendChild(empty);
       return;
     }
-
     for (const entry of entries) {
       const itemEl = document.createElement('div');
       itemEl.className = 'ta-units__buffer-item';
@@ -486,11 +297,11 @@ export class UnitsMenu implements Disposable {
   }
 
   dispose(): void {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('keydown', this.onKeyDown);
-    }
+    if (typeof window !== 'undefined') window.removeEventListener('keydown', this.onKeyDown);
+    for (const handle of this.cardElements.values()) handle.tip.remove();
     this.army?.dispose();
     this.cardElements.clear();
     this.root.remove();
+    releaseArchetypeThumbs();
   }
 }

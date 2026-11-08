@@ -143,7 +143,7 @@ export function isTargetReachableFrom(
 ): boolean {
   if (hexDistance(fromQ, fromR, targetQ, targetR) <= bandMax) return true;
   const fromIdx = hexIndex(state.grid.radius).indexOf(fromQ, fromR);
-  const blockers = pathBlockersFor(state, 'harvester', fromIdx, data);
+  const blockers = pathBlockersFor(state, 'worker', fromIdx, data);
   const res = findHexPath(
     state,
     { q: fromQ, r: fromR },

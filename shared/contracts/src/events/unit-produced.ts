@@ -11,6 +11,7 @@ export const event = defineEvent({
     playerId: z.string().optional(),
     entityId: z.number().int(),
     unit: z.string(),
+    tier: z.number().int().min(1).max(3).optional(),
     producerId: z.number().int().optional(),
     q: z.number().int(),
     r: z.number().int(),

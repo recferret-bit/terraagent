@@ -35,13 +35,18 @@ export const BUILDING_KIND = {
   pulseTurret: ENTITY_KIND.laserTower,
   laserTower: ENTITY_KIND.laserTower,
   wall: 39,
-  radar: 41,
-  outpostBeacon: 21,
+  radar: 43,
+  outpostBeacon: ENTITY_KIND.territoryBeacon,
+  territoryBeacon: ENTITY_KIND.territoryBeacon,
   tradeHub: ENTITY_KIND.tradeHub,
   road: 23,
   smelter: 24,
   chemicalPlant: 25,
-  shieldDome: 26,
+  shieldDome: ENTITY_KIND.hazardShield,
+  hazardShield: ENTITY_KIND.hazardShield,
+  lightningRod: ENTITY_KIND.lightningRod,
+  hydro: ENTITY_KIND.hydro,
+  hydroGenerator: ENTITY_KIND.hydro,
   missileBattery: 27,
   researchLab: 28,
   heavyFoundry: 29,
@@ -58,15 +63,13 @@ export const BUILDING_KIND = {
 
 /**
  * Extended unit entity kind codes for progression trigger checks (`UO-LC-02`, `stages.ts`).
- * Extends `ENTITY_KIND` codes (`hq: 3`, `harvester: 7`).
+ * Extends `ENTITY_KIND` codes (`hq: 3`, `worker: 7`).
  */
 export const UNIT_KIND = {
   hq: ENTITY_KIND.hq,
-  harvester: ENTITY_KIND.harvester,
-  builder: ENTITY_KIND.builder,
+  worker: ENTITY_KIND.worker,
   scout: ENTITY_KIND.recon,
   recon: ENTITY_KIND.recon,
-  terraformer: 52,
   guard: 53,
   combatEngineer: 54,
   hauler: 55,

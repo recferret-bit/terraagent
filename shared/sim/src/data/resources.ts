@@ -14,9 +14,9 @@ const fileYields = (id: string): Readonly<Partial<Record<ResourceKey, number>>> 
 export const RESOURCE_INCOME_TABLE = {
   forest: fileYields('clear'),
   rock: fileYields('break'),
-  'harvester.metals': { resourceId: 'metals.t1', ratePerSec: 1.875, cycleYield: 7.5, cycleSec: 4 },
-  'harvester.minerals': { resourceId: 'minerals.t1', ratePerSec: 1.5, cycleYield: 6.0, cycleSec: 4 },
-  'harvester.oil': { resourceId: 'bio.biomass', ratePerSec: 1.25, cycleYield: 5.0, cycleSec: 4 },
+  'worker.metals': { resourceId: 'metals.t1', ratePerSec: 1.875, cycleYield: 7.5, cycleSec: 4 },
+  'worker.minerals': { resourceId: 'minerals.t1', ratePerSec: 1.5, cycleYield: 6.0, cycleSec: 4 },
+  'worker.oil': { resourceId: 'bio.biomass', ratePerSec: 1.25, cycleYield: 5.0, cycleSec: 4 },
   'extractor.metals.t1': { resourceId: 'metals.t1', ratePerSec: 2.5 },
   'solar.t1': { resourceId: 'energy', ratePerSec: 20 },
   'command.hub': { resourceId: 'energy', ratePerSec: 8, waterRatePerSec: 0.5 },

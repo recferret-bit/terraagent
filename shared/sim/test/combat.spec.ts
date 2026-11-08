@@ -214,7 +214,7 @@ describe('W07-31 · Instant-hit lasers (laserTower, hqAutoTurret) and range-1 me
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 1 });
     const ant = spawnEntity(state, { kind: ENTITY_KIND.blackAnt, owner: -1, q: 2, r: 0, hp: 120 });
     const beetle = spawnEntity(state, { kind: ENTITY_KIND.blueBeetle, owner: -1, q: 4, r: 0, hp: 900 });
-    const harv = spawnEntity(state, { kind: ENTITY_KIND.harvester, owner: 0, q: 2, r: 1, hp: 350 });
+    const harv = spawnEntity(state, { kind: ENTITY_KIND.worker, owner: 0, q: 2, r: 1, hp: 350 });
 
     const { ctx, events } = makeStepCtx(state, 1);
     const laserRes = fireLaserOrMelee(state, { attackerId: tower.id, targetId: ant.id, weaponId: 'laserTower', tick: 1 }, ctx);

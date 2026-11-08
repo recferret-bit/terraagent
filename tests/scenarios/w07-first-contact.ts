@@ -92,9 +92,9 @@ function spawnW07ColonyStructuresAndWorkers(state: PlanetState): void {
   for (const [bq, br] of [[-2, -1], [1, -2]] as const) {
     const bId = state.meta.nextEntityId++;
     const bRow = insertRow(state.entities, bId, 0);
-    state.entities.cols.kind[bRow] = ENTITY_KIND.builder;
+    state.entities.cols.kind[bRow] = ENTITY_KIND.worker;
     state.entities.cols.owner[bRow] = 0;
-    state.entities.cols.tier[bRow] = 1;
+    state.entities.cols.tier[bRow] = 2;
     placeSpawnedEntity(state.entities, bRow, bq, br, 0);
     state.entities.cols.hp[bRow] = 140;
     state.entities.cols.hpMax[bRow] = 140;
@@ -107,7 +107,7 @@ function spawnW07ColonyStructuresAndWorkers(state: PlanetState): void {
   for (const [hq, hr] of [[2, 2], [-2, 2], [2, 1], [-1, 2], [1, 2]] as const) {
     const harvId = state.meta.nextEntityId++;
     const harvRow = insertRow(state.entities, harvId, 0);
-    state.entities.cols.kind[harvRow] = ENTITY_KIND.harvester;
+    state.entities.cols.kind[harvRow] = ENTITY_KIND.worker;
     state.entities.cols.owner[harvRow] = 0;
     state.entities.cols.tier[harvRow] = 1;
     placeSpawnedEntity(state.entities, harvRow, hq, hr, 0);

@@ -1,5 +1,5 @@
 import type { StageReachedData } from '@terra/contracts';
-import { getStageSpec } from '@terra/sim';
+import { compileData, getStageSpec } from '@terra/sim';
 import type { Disposable } from '../../core/registry/types';
 
 export interface StageToastOptions {
@@ -18,14 +18,14 @@ export interface StageToastOptions {
 const ITEM_LABELS: Record<string, string> = {
   // Units
   hq: 'HQ',
-  harvester: 'Harvester',
-  builder: 'Builder',
+  worker: 'Worker Drone',
+  worker_t1: 'Worker Drone T1',
+  worker_t2: 'Worker Drone T2',
+  worker_t3: 'Worker Drone T3',
   scout: 'Scout',
   guard: 'Guard',
   combatEngineer: 'Combat Engineer',
   hauler: 'Hauler',
-  harvester_t2: 'Harvester T2',
-  builder_t2: 'Builder T2',
   striker: 'Striker',
   sapper: 'Sapper',
   envirobot: 'Envirobot',
@@ -51,6 +51,9 @@ const ITEM_LABELS: Record<string, string> = {
   biomassExtractor: 'Biomass Extractor',
   solar: 'Solar Collector',
   wind: 'Wind Turbine',
+  thermal: 'Thermal Plant',
+  petroleumWell: 'Petroleum Well',
+  supplyDepot: 'Supply Depot',
   pylon: 'Pylon',
   depot: 'Depot',
   storageDepot: 'Storage Depot',
@@ -118,8 +121,34 @@ const ITEM_LABELS: Record<string, string> = {
 /**
  * Returns a human-readable display label for a unit, building, or order ID.
  */
+const UNIT_TABLES = ['unitsWorkersBasic', 'grid', 'terraform'] as const;
+let unitLabelCache: Record<string, string> | null = null;
+
+/** Row label for a unit id (`t1`/`t2`/`t3` or the row's `unit`), so toasts follow the balance table. */
+function unitLabelFromBalance(id: string): string | undefined {
+  if (!unitLabelCache) {
+    unitLabelCache = {};
+    const data = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W05']));
+    for (const name of UNIT_TABLES) {
+      const table = data.tables[name] as Record<string, { id?: string; kind?: string; unit?: string; label?: string; tier?: number }> | undefined;
+      if (!table) continue;
+      for (const row of Object.values(table)) {
+        if (row.kind !== 'unit' || typeof row.label !== 'string') continue;
+        if (typeof row.id === 'string') unitLabelCache[row.id] = row.label;
+        if (row.unit === 'worker' && (row.tier === 1 || row.tier === 2 || row.tier === 3)) {
+          unitLabelCache[`worker_t${row.tier}`] = row.label;
+          unitLabelCache[`t${row.tier}`] = row.label;
+        } else if (typeof row.unit === 'string') unitLabelCache[row.unit] = row.label;
+      }
+    }
+  }
+  return unitLabelCache[id];
+}
+
 export function formatItemLabel(id: string): string {
   if (ITEM_LABELS[id]) return ITEM_LABELS[id];
+  const fromRow = unitLabelFromBalance(id);
+  if (fromRow) return fromRow;
   const spaced = id.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

@@ -72,7 +72,7 @@ it('W08-06: spawning a colony with unlockStage = 4 makes S1-S4 items buildable i
     expect.arrayContaining(['commandHub', 'metalsExtractor', 'solar', 'roboticsFactory', 'outpostBeacon', 'tradeHub']),
   );
   expect(snapshot.units).toEqual(
-    expect.arrayContaining(['harvester', 'builder', 'scout', 'guard', 'combatEngineer', 'hauler']),
+    expect.arrayContaining(['worker', 'scout', 'guard', 'combatEngineer', 'hauler']),
   );
 
   const v = host.view();

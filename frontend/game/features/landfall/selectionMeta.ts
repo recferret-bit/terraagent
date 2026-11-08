@@ -21,8 +21,9 @@ export const COMBAT_KIND_CODES = {
 
 export const KIND_BY_NAME: Record<string, number> = {
   hq: ENTITY_KIND.hq,
-  harvester: ENTITY_KIND.harvester,
-  builder: ENTITY_KIND.builder,
+  worker: ENTITY_KIND.worker,
+  harvester: ENTITY_KIND.worker,
+  builder: ENTITY_KIND.worker,
   commandHub: ENTITY_KIND.commandHub,
   metalsExtractor: ENTITY_KIND.metalsExtractor,
   solar: ENTITY_KIND.solar,

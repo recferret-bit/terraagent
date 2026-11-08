@@ -202,7 +202,7 @@ export function computeColonyResourceRatePerMin(
   resourceKey: ResourceKey,
   data?: CompiledDataLike,
 ): number {
-  // Read actual production. Idle harvesters, depleted deposits and unpowered extractors yield zero.
+  // Read actual production. Idle workers, depleted deposits and unpowered extractors yield zero.
   const colony = state.colonies[colonyIndex];
   const production = colony?.production as { incomePerS?: Partial<Record<ResourceKey, number>> } | undefined;
   void data;
@@ -301,7 +301,7 @@ function stepGrowEconomyGoal(
   const openChild = orders.find((e) => e.goalId === goal.id && e.state !== 'done' && e.state !== 'cancelled');
   goal.detail = `${currentRatePerMin.toFixed(1)} / ${targetRatePerMin} ${resourceKey}/min. `;
   if (openChild) {
-    goal.detail += openChild.waitDetail || `Working: ${openChild.task.kind === 'build' ? openChild.task.building : 'harvester'}`;
+    goal.detail += openChild.waitDetail || `Working: ${openChild.task.kind === 'build' ? openChild.task.building : 'worker'}`;
   } else {
     const plan = planGrowth(state, colonyIndex, resourceKey, tick, ctx?.data);
     goal.detail += plan.detail;

@@ -1,16 +1,20 @@
 import type { RejectCode } from '@terra/contracts';
+import { CANCEL_REFUND_RATE } from '../../data';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState, SimState } from '../../kernel/state';
 import { placementWorldFromState } from '../construction/placementWorld';
+import { ensureColony } from '../economy/buildingRows';
+import { refundCost } from '../economy/ledger';
 import { findColonyHqRow } from '../find';
 import { syncHqView } from '../hq/view';
 import { resolveHqT1Row, rowNum } from '../rows';
 import { executeDismantleAtTile } from './dismantleAndWork';
-import { getTerraformOpSpec, isTerraformOpKind, type TerraformOpKind } from './ops';
+import { isTerraformOpKind, type TerraformOpKind } from './ops';
 import {
   colonyTerraformOrders,
   getColonyTerraformJobCount,
   getManualTerraformLaneCount,
+  newTerraformJob,
   nextOrderId,
   readOrdersByColony,
   writeOrdersByColony,
@@ -70,11 +74,6 @@ export interface EnqueueTerraformOrderResult {
   skippedCount: number;
 }
 
-const newJob = (q: number, r: number, op: TerraformOpKind, data?: CompiledDataLike): TerraformJob => {
-  const spec = getTerraformOpSpec(op, data);
-  return { q, r, op, progress: 0, baseTimeS: spec.baseTimeS, totalEnergyE: spec.energyCostE, energyDrawnE: 0 };
-};
-
 /** Every `op:q,r` the colony already has queued (a tile is never queued twice for one op, GP-01). */
 function pendingJobKeys(state: PlanetState, colonyId: number): Set<string> {
   const out = new Set<string>();
@@ -90,9 +89,10 @@ function laneFull(state: PlanetState, colonyId: number, newJobs: number, data?: 
 }
 
 function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: TerraformJob[]; skippedCount: number; reject?: RejectCode } {
+  const planetType = state.meta.planetType;
   if (Array.isArray(opts.jobs) && opts.jobs.length > 0) {
     if (opts.jobs.some((j) => !isTerraformOpKind(j.op))) return { jobs: [], skippedCount: 0, reject: 'invalid_args' };
-    return { jobs: opts.jobs.map((j) => newJob(j.q, j.r, j.op, opts.data)), skippedCount: 0 };
+    return { jobs: opts.jobs.map((j) => newTerraformJob(j.q, j.r, j.op, opts.data, planetType)), skippedCount: 0 };
   }
   const auto = Boolean(opts.autoPrepare) || opts.op === 'auto';
   if (!Array.isArray(opts.tiles) || opts.tiles.length === 0 || (!auto && !isTerraformOpKind(opts.op))) {
@@ -107,7 +107,7 @@ function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: Ter
     pending: pendingJobKeys(state, opts.colonyId),
     data: opts.data,
   });
-  const jobs = plan.jobs.map((j) => newJob(j.q, j.r, j.op, opts.data));
+  const jobs = plan.jobs.map((j) => newTerraformJob(j.q, j.r, j.op, opts.data, planetType));
   return { jobs, skippedCount: plan.skipped.length, ...(jobs.length === 0 ? { reject: plan.firstReject ?? 'site_blocked' } : {}) };
 }
 
@@ -181,6 +181,12 @@ export function removeTerraformOrder(state: SimState, colonyId: number, orderId:
   const list = byColony[colonyId] ?? [];
   const at = list.findIndex((o) => o.orderId === orderId);
   if (at < 0) return false;
+  const removed = list[at];
+  for (const job of removed.jobs) {
+    if (job.spentCost && Object.values(job.spentCost).some((v) => (v ?? 0) > 0)) {
+      refundCost(ensureColony(state, colonyId, tick), job.spentCost, CANCEL_REFUND_RATE, tick);
+    }
+  }
   list.splice(at, 1);
   writeOrdersByColony(state, byColony, tick);
   const hqRow = findColonyHqRow(state, colonyId);

@@ -42,10 +42,22 @@
 }
 
 .ta-hud__slot[data-slot='bottom-left'] {
+  /* Top edge: below the top-left stack (`slotFit.ts` publishes its height), so the dock never slides under it. */
+  top: var(--ta-hud-top-left-h, 0px);
   bottom: 56px;
   left: 0;
   align-items: flex-start;
   justify-content: flex-end;
+}
+
+/* The env panel and the other plates keep their size; only the Command Dock shrinks (its body scrolls). */
+.ta-hud__slot[data-slot='bottom-left'] > * {
+  flex-shrink: 0;
+}
+
+.ta-hud__slot[data-slot='bottom-left'] > .ta-command-dock {
+  flex-shrink: 1;
+  min-height: 0;
 }
 
 .ta-hud__slot[data-slot='bottom-right'] {
@@ -93,6 +105,7 @@
 }
 
 .ta-command-dock__bar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -174,8 +187,35 @@
   flex-direction: column;
   gap: var(--ta-s2);
   padding: var(--ta-s2) var(--ta-s3);
-  max-height: min(520px, calc(100vh - 150px));
+  /* The bottom-left slot bounds the dock's height (see its rule); this caps it on tall screens. */
+  max-height: 520px;
+  min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ta-seam-2) var(--ta-deep);
+}
+
+.ta-command-dock__body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ta-command-dock__body::-webkit-scrollbar-track {
+  background: var(--ta-deep);
+}
+
+.ta-command-dock__body::-webkit-scrollbar-thumb {
+  background: var(--ta-seam-2);
+}
+
+.ta-command-dock__body::-webkit-scrollbar-thumb:hover {
+  background: var(--ta-orange);
+}
+
+.ta-command-dock .ta-construction__cards,
+.ta-command-dock .ta-units__cards {
+  max-height: none;
+  overflow: visible;
 }
 
 .ta-command-dock[data-collapsed='true'] .ta-command-dock__body {

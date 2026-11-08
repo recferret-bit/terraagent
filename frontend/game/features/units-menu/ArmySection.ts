@@ -5,6 +5,7 @@ import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 export interface QueueItemLike {
   taskId?: string;
   unit?: string;
+  tier?: number;
   count?: number;
   remainingCount?: number;
   repeat?: boolean;
@@ -18,6 +19,7 @@ export interface QueueItemLike {
   task?: {
     kind?: string;
     unit?: string;
+    tier?: number;
     count?: number;
     repeat?: boolean;
     producerId?: number;
@@ -25,7 +27,10 @@ export interface QueueItemLike {
 }
 
 export function entryUnit(entry: QueueItemLike): string {
-  return entry.unit ?? entry.task?.unit ?? 'harvester';
+  const unit = entry.unit ?? entry.task?.unit ?? 'worker';
+  const tier = entry.tier ?? entry.task?.tier;
+  const shown = tier === 2 || tier === 3 ? tier : 1;
+  return unit === 'worker' ? `Worker Drone T${shown}` : unit;
 }
 
 export function entryCount(entry: QueueItemLike): number {

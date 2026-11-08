@@ -63,8 +63,7 @@ describe('W07-08: Entity spotting radii and 5-tick vision cache', () => {
 
     expect(getEntitySpottingRadius(ENTITY_KIND.recon, data)).toBe(10);
     expect(getEntitySpottingRadius(ENTITY_KIND.hq, data)).toBe(9);
-    expect(getEntitySpottingRadius(ENTITY_KIND.harvester, data)).toBe(7);
-    expect(getEntitySpottingRadius(ENTITY_KIND.builder, data)).toBe(7);
+    expect(getEntitySpottingRadius(ENTITY_KIND.worker, data)).toBe(7);
     expect(getEntitySpottingRadius(ENTITY_KIND.blackAnt, data)).toBe(6);
   });
 
@@ -167,7 +166,7 @@ describe('W07-08: Long-range weapon spotting acceptance check', () => {
 
 
 describe('stationary units explore and departed units lose current sight', () => {
-  it.each([ENTITY_KIND.recon, ENTITY_KIND.hq, ENTITY_KIND.builder, ENTITY_KIND.harvester, ENTITY_KIND.demoTank, ENTITY_KIND.demoArtillery])('uses unit kind %i as a real vision source', kind => {
+  it.each([ENTITY_KIND.recon, ENTITY_KIND.hq, ENTITY_KIND.worker, ENTITY_KIND.demoTank, ENTITY_KIND.demoArtillery])('uses unit kind %i as a real vision source', kind => {
     const state = createState({ planetId: 'fog', planetType: 'temperate', seed: 'fog', radius: 40 });
     const row = spawnTestEntity(state, { kind, owner: 0, q: 0, r: 0 });
     const radius = getEntitySpottingRadius(kind, data);

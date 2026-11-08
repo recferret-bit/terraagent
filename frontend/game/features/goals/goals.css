@@ -445,3 +445,7 @@
 .ta-hq-command-panel [hidden] { display: none; }
 .ta-hq-command-panel [role="tabpanel"] { max-height: max(160px, calc(100dvh - 400px)); overflow-y: auto; }
 .ta-goal-detail { color: var(--ta-text-2); font: var(--ta-fs-label) var(--ta-font-body); }
+.ta-ai-toggle { display: flex; align-items: center; gap: var(--ta-s2); padding: var(--ta-s2) var(--ta-s2) 0; }
+.ta-ai-toggle__label { font-family: var(--ta-font-display); font-size: var(--ta-fs-label); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ta-text-2); }
+.ta-ai-toggle__hint { font: var(--ta-fs-label) var(--ta-font-body); color: var(--ta-text-2); }
+.ta-ai-toggle[data-enabled="true"] .ta-ai-toggle__hint { color: var(--ta-text); }

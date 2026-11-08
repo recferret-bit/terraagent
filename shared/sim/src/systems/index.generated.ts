@@ -24,5 +24,6 @@ import mod_terraform_basic from './terraform-basic/index';
 import mod_territory_claim from './territory-claim/index';
 import mod_time from './time/index';
 import mod_units from './units/index';
+import mod_weather from './weather/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_cargo, mod_combat, mod_construction, mod_dev, mod_dispatch, mod_economy, mod_environment, mod_factories_hub, mod_fauna, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_power_core, mod_production, mod_progression, mod_queue, mod_rule_engine, mod_supply, mod_terraform_basic, mod_territory_claim, mod_time, mod_units];
+export const SIM_MODULES: readonly SimModule[] = [mod_cargo, mod_combat, mod_construction, mod_dev, mod_dispatch, mod_economy, mod_environment, mod_factories_hub, mod_fauna, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_power_core, mod_production, mod_progression, mod_queue, mod_rule_engine, mod_supply, mod_terraform_basic, mod_territory_claim, mod_time, mod_units, mod_weather];

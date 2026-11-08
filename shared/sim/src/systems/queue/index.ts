@@ -7,9 +7,7 @@ import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { buildSiteReject } from '../economy/siteTerrain';
-import { startBuildingConstruction } from '../economy/construction';
-import { checkCostAffordability } from '../economy/ledger';
-import { selectRoboticsFactoryProducer } from '../factories-hub';
+import { resolveUnitRowForHub } from '../factories-hub/unit';
 import { checkUnitSupply, unitSupplyOfName } from '../supply';
 import {
   applyReorderQueueTask,
@@ -19,7 +17,7 @@ import {
   refundEntrySpent,
   tryCancelSpecialTaskId,
 } from './cancel';
-import { dismantleQueueTask, enqueueRepairForEntity } from '../terraform-basic/dismantleAndWork';
+import { dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
 import {
@@ -29,25 +27,20 @@ import {
   type QueuePrecedence,
   type QueueTaskPayload,
 } from './types';
-import { markWaiting, stepQueueEntry } from './step';
+import { resolveUnitTaskProducer, stepQueueEntry, tryStartQueueEntry, unitSupplyData } from './step';
 import {
-  checkStartMissing,
   compareEarmarkPriority,
   hasActiveEarmark,
   updateColonyEarmarks,
 } from './earmarks';
 import {
-  computeResourceWaitState,
   enqueueAuthority,
   findOldestAutoIndex,
-  isBlockedByPower,
   isW03QueueActive,
   laneForTask,
   laneLimitFor,
-  maxConcurrentInLane,
   nextAutoTaskId,
   normalizeEnqueueArgs,
-  PRODUCER_BUFFER_LIMIT,
   resolveTaskCostAndTicks,
 } from './wait';
 
@@ -55,9 +48,7 @@ export * from './types';
 export * from './wait';
 export * from './earmarks';
 export { CANCEL_IN_PROGRESS_REFUND_RATIO };
-
-/** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
-const SITE_CODES: ReadonlySet<string> = new Set(['site_blocked', 'terrain_unbuildable', 'not_own_territory', 'outside_power_zone', 'invalid_args']);
+export { sameKindTaskIds } from './cancelGroup';
 
 export function getColonyQueue(state: PlanetState, colonyIndex = 0, lane?: QueueLane): QueueEntry[] {
   const all = getAllQueueEntries(state).filter(
@@ -116,98 +107,6 @@ export interface EnqueueQueueTaskOptions {
   data?: CompiledDataLike;
 }
 
-function unitSupplyData(unit: string, data?: CompiledDataLike): CompiledDataLike | undefined {
-  return unit === 'recon' && !data?.tables?.combatUnits ? undefined : data;
-}
-
-function tryStartQueueEntry(
-  state: PlanetState,
-  entry: QueueEntry,
-  allEntries: QueueEntry[],
-  tick: number,
-  data?: CompiledDataLike,
-  ctx?: StepContext,
-): void {
-  const colony = ensureColony(state, entry.colonyIndex, tick);
-  const afford = checkCostAffordability(colony, entry.cost);
-
-  if (Object.keys(afford.exceedsCap).length > 0) {
-    entry.exceedsCap = afford.exceedsCap;
-    entry.missingResources = undefined;
-    markWaiting(entry, 'storage', 'waiting: storage (no ETA)', null, tick);
-    return;
-  }
-  if (
-    entry.task.kind === 'buildUnit' &&
-    !checkUnitSupply(state, entry.colonyIndex, entry.task.unit, unitSupplyData(entry.task.unit, data), {
-      pending: { queue: allEntries },
-      excludeTaskId: entry.taskId,
-    }).ok
-  ) {
-    markWaiting(entry, 'supply', 'waiting: supply', null, tick);
-    return;
-  }
-  if (isBlockedByPower(state, colony, entry)) {
-    markWaiting(entry, 'power', 'waiting: power', null, tick);
-    return;
-  }
-  const missingForStart = checkStartMissing(state, colony, entry, allEntries, data);
-  if (missingForStart) {
-    entry.missingResources = missingForStart;
-    entry.exceedsCap = undefined;
-    const waitInfo = computeResourceWaitState(state, colony, entry.totalCost ?? entry.cost, missingForStart);
-    markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds, tick);
-    return;
-  }
-  const activeCountInLane = allEntries.filter(
-    (e) => e.colonyIndex === entry.colonyIndex && e.lane === entry.lane && e.state === 'in_progress' && e.taskId !== entry.taskId,
-  ).length;
-  if (activeCountInLane >= maxConcurrentInLane(state, entry.colonyIndex, entry.lane)) {
-    markWaiting(entry, 'worker', 'waiting: worker', null, tick);
-    return;
-  }
-
-  if (entry.task.kind === 'build' && entry.entityId === undefined) {
-    const started = startBuildingConstruction(
-      state,
-      { owner: entry.colonyIndex, building: entry.task.building, q: entry.task.q, r: entry.task.r, rot: entry.task.rotation ?? 0, workRate: entry.workRate, tick, data, costOverride: entry.cost },
-      ctx,
-    );
-    if (!started.ok) {
-      const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
-      const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
-      markWaiting(entry, reason, detail, null, tick);
-      return;
-    }
-    entry.entityId = started.entityId;
-  } else if (entry.task.kind === 'repair') {
-    const started = enqueueRepairForEntity(state, entry.colonyIndex, entry.task.entityId, {
-      taskId: entry.taskId,
-      tick,
-      data,
-    });
-    if (started.ok) {
-      entry.cost = { ...started.job.totalCost };
-      entry.totalCost = { ...started.job.totalCost };
-      entry.buildTicks = started.job.durationTicks;
-      entry.workerEntityId = started.job.workerEntityId;
-    } else if (started.reason !== 'unknown_entity') {
-      markWaiting(entry, 'worker', 'waiting: worker', null, tick);
-      return;
-    }
-  }
-  entry.totalCost ??= { ...entry.cost };
-  entry.spentCost ??= {};
-  entry.state = 'in_progress';
-  entry.waitReason = undefined;
-  entry.waitDetail = undefined;
-  entry.missingResources = undefined;
-  entry.exceedsCap = undefined;
-  entry.etaSeconds = undefined;
-  entry.resourceWaitSinceTick = undefined;
-  entry.earmarked = undefined;
-}
-
 export function scanAndStartQueueEntries(
   state: PlanetState,
   entries: QueueEntry[],
@@ -245,31 +144,6 @@ export function scanAndStartQueueEntries(
 
 export const scanQueueNonBlocking = scanAndStartQueueEntries;
 
-function resolveUnitTaskProducer(
-  state: PlanetState,
-  colonyIndex: number,
-  task: QueueTaskPayload,
-  activeLane: readonly QueueEntry[],
-): { ok: true; task: QueueTaskPayload } | { ok: false; code: string; detail: string } {
-  if (task.kind !== 'buildUnit') return { ok: true, task };
-  if (task.unit === 'recon') {
-    const sel = selectRoboticsFactoryProducer(state, colonyIndex, activeLane, task.producerId);
-    if (!sel.ok) return sel;
-    if (sel.producerId !== undefined && task.producerId === undefined) {
-      return { ok: true, task: { ...task, producerId: sel.producerId } };
-    }
-    return { ok: true, task };
-  }
-  if (typeof task.producerId === 'number') {
-    const producerId = task.producerId;
-    const producerEntries = activeLane.filter((e) => e.task.kind === 'buildUnit' && e.task.producerId === producerId);
-    if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
-      return { ok: false, code: 'queue_full', detail: 'producer buffer full' };
-    }
-  }
-  return { ok: true, task };
-}
-
 export function enqueueQueueTask(
   state: PlanetState,
   opts: EnqueueQueueTaskOptions,
@@ -288,7 +162,11 @@ export function enqueueQueueTask(
   const limit = laneLimitFor(lane);
   const fullCode = isW03QueueActive(state, data) ? 'lane_full' : 'queue_full';
 
-  if (opts.task.kind === 'buildUnit' && unitSupplyOfName(opts.task.unit, unitSupplyData(opts.task.unit, data)) === undefined) {
+  if (
+    opts.task.kind === 'buildUnit' &&
+    !resolveUnitRowForHub(opts.task.unit, data, opts.task.tier) &&
+    (opts.task.unit === 'worker' || unitSupplyOfName(opts.task.unit, unitSupplyData(opts.task.unit, data)) === undefined)
+  ) {
     return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   }
   const prodRes = resolveUnitTaskProducer(state, colonyIndex, opts.task, activeLane);
@@ -345,7 +223,7 @@ export function enqueueQueueTask(
 }
 
 /**
- * Cancels a queue entry, building construction, hub unit production, harvester task, or `'all'` tasks:
+ * Cancels a queue entry, building construction, hub unit production, worker task, or `'all'` tasks:
  * refunds `50 %` (`0.50`) of `spentCost` and removes any unfinished building entity.
  */
 export function cancelQueueTask(

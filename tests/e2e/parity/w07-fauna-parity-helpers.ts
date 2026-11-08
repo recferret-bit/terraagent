@@ -85,7 +85,7 @@ export function buildW07ParitySeedState(seed: string, radius = 24): {
   if (!rfRes.ok) throw new Error(`roboticsFactory failed: ${rfRes.code}`);
 
   const reconId = spawnColonyUnit(state, { kind: ENTITY_KIND.recon, owner: 0, q: 1, r: 0, hp: 240 });
-  const baitUnitId = spawnColonyUnit(state, { kind: ENTITY_KIND.harvester, owner: 0, q: 3, r: 0, hp: 24 });
+  const baitUnitId = spawnColonyUnit(state, { kind: ENTITY_KIND.worker, owner: 0, q: 3, r: 0, hp: 24 });
   const spitterHiveId = spawnHiveEntity(state, { species: 'greenSpitter', q: 5, r: 0, initialResidents: 3 }, 0, data);
   const antHiveId = spawnHiveEntity(state, { species: 'blackAnt', q: -12, r: 0, initialResidents: 4 }, 0, data);
 

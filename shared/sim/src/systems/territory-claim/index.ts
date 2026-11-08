@@ -9,6 +9,7 @@ import type { ConstructionOrder } from '../construction/orders';
 import { resolveHubT1Row, rowNum } from '../rows';
 import { defineSimModule } from '../define';
 import { syncColonySupply } from '../supply';
+import { syncColonyTerraformStats } from '../terraform-basic/rules';
 
 export interface ClaimedTileInfo {
   q: number;
@@ -81,6 +82,10 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
     }
   }
 
+  if (claimedCount > 0 && state.colonies[opts.colonyId]) {
+    syncColonyTerraformStats(state, opts.colonyId, tick);
+  }
+
   return { claimedCount, anchoredCount, frozenCount, claimedTiles };
 }
 
@@ -125,6 +130,7 @@ export function applyHubCompletionEffects(
   col.hubEntityId = order.entityId;
   col.changedAt = tick;
   syncColonySupply(state, order.colonyId, tick, data); // the Hub's supply share (`hub.t1.supplyProvided`)
+  syncColonyTerraformStats(state, order.colonyId, tick);
 
   const colonyIdStr = col.id || `col_${order.colonyId}`;
   const playerId = typeof col.playerId === 'string' && col.playerId.length > 0 ? col.playerId : undefined;

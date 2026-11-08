@@ -3,6 +3,7 @@ import {
   enqueueQueueTask,
   getColonyQueue,
   reorderQueueTask,
+  sameKindTaskIds,
   type EnqueueQueueTaskOptions,
   type PlanetState,
   type QueueEntry,
@@ -11,10 +12,14 @@ import {
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { ownColonyIndex } from '../shared/colony';
 import {
+  LANE_TABS,
   STORAGE_HINT_BUTTON_TEXT,
   STORAGE_HINT_TEXT,
+  chipKind,
+  extractQueueEntriesFromView,
   formatChipStatus,
   hasFlag,
+  reorderEntryInLane,
   resolveChipTitleAndIcon,
   serializeLaneKey,
   serializeStructureKey,
@@ -24,14 +29,6 @@ import {
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 export { STORAGE_HINT_BUTTON_TEXT, STORAGE_HINT_TEXT };
-
-const LANE_TABS: ReadonlyArray<{ id: QueueLane | 'all'; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'construction', label: 'Construction' },
-  { id: 'terraform', label: 'Terraform' },
-  { id: 'units', label: 'Units' },
-  { id: 'hqGoals', label: 'HQ Goals' },
-];
 
 export class QueuePanel {
   readonly root: HTMLElement;
@@ -223,15 +220,21 @@ export class QueuePanel {
     return this.collapsed;
   }
 
+  /**
+   * The cancel click: ends this entry and every other open order of the same kind (several terraform orders go at once;
+   * the host does it in one `cancelTask { scope: 'sameKind' }`, this mirrors it on a local sim state / entry list).
+   */
   cancelTask(taskId: string): void {
     if (this.simState) {
-      cancelQueueTask(this.simState, taskId, this.colonyIndex);
+      for (const id of sameKindTaskIds(this.simState, taskId, this.colonyIndex)) cancelQueueTask(this.simState, id, this.colonyIndex);
       this.syncFromSimState();
     } else {
-      this.entries = this.entries.filter((e) => e.taskId !== taskId);
+      const hit = this.entries.find((e) => e.taskId === taskId);
+      const kind = hit ? chipKind(hit) : undefined;
+      this.entries = this.entries.filter((e) => e.taskId !== taskId && (kind === undefined || e.goalId !== undefined || chipKind(e) !== kind));
       this.render();
     }
-    this.ctx.services.sendCommand?.('cancelTask', { taskId });
+    this.ctx.services.sendCommand?.('cancelTask', { taskId, scope: 'sameKind' });
     this.ctx.services.cancelQueueTask?.(taskId);
   }
 
@@ -251,25 +254,8 @@ export class QueuePanel {
     if (this.simState) {
       reorderQueueTask(this.simState, taskId, { toIndex, colonyIndex: this.colonyIndex });
       this.syncFromSimState();
-    } else {
-      const idx = this.entries.findIndex((e) => e.taskId === taskId);
-      if (idx >= 0) {
-        const target = this.entries[idx];
-        const laneIndices = this.entries
-          .map((e, i) => (e.lane === target.lane ? i : -1))
-          .filter((i) => i >= 0);
-        const pos = laneIndices.indexOf(idx);
-        const clamped = Math.max(0, Math.min(laneIndices.length - 1, toIndex));
-        if (pos >= 0 && clamped !== pos) {
-          const laneItems = laneIndices.map((i) => this.entries[i]);
-          const [moved] = laneItems.splice(pos, 1);
-          laneItems.splice(clamped, 0, moved);
-          for (let k = 0; k < laneIndices.length; k++) {
-            this.entries[laneIndices[k]] = laneItems[k];
-          }
-          this.render();
-        }
-      }
+    } else if (reorderEntryInLane(this.entries, taskId, toIndex)) {
+      this.render();
     }
     this.ctx.services.sendCommand?.('reorderTask', { taskId, toIndex });
   }
@@ -280,17 +266,7 @@ export class QueuePanel {
       return;
     }
     this.colonyIndex = ownColonyIndex(this.ctx.services); // the player's seat (FF-05), not colony 0
-    const colonies = view.colonies as Array<{ index?: number; queue?: QueueEntry[]; constructionQueue?: QueueEntry[]; unitQueue?: QueueEntry[] }> | undefined;
-    const col = colonies?.find((c) => c.index === this.colonyIndex) ?? colonies?.[this.colonyIndex] ?? {};
-    const blobEntries = (view.blobs?.queue as { value?: { entries?: QueueEntry[] }; entries?: QueueEntry[] } | undefined);
-    const fromBlob = blobEntries?.value?.entries ?? blobEntries?.entries;
-    if (Array.isArray(col.queue)) {
-      this.entries = col.queue;
-    } else if (Array.isArray(fromBlob)) {
-      this.entries = fromBlob.filter((e) => (e.colonyIndex ?? 0) === this.colonyIndex);
-    } else if (Array.isArray(col.constructionQueue) || Array.isArray(col.unitQueue)) {
-      this.entries = [...(col.constructionQueue ?? []), ...(col.unitQueue ?? [])];
-    }
+    this.entries = extractQueueEntriesFromView(view, this.colonyIndex);
     this.render();
   }
 

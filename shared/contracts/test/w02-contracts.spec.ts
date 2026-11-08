@@ -32,8 +32,8 @@ describe('W02-01 contracts: commands, events, reject codes', () => {
     // enqueueTask supports build and buildUnit in addition to W01 terraform
     expect(parseCommandArgs('enqueueTask', { build: { building: 'metalsExtractor', q: 3, r: -2, tier: 1 } }).success).toBe(true);
     expect(parseCommandArgs('enqueueTask', { build: { building: 'solar', q: 0, r: 1, rotation: 2 } }).success).toBe(true);
-    expect(parseCommandArgs('enqueueTask', { buildUnit: { unit: 'harvester', count: 3, repeat: true } }).success).toBe(true);
-    expect(parseCommandArgs('enqueueTask', { buildUnit: { unit: 'harvester', count: 0 } }).success).toBe(false);
+    expect(parseCommandArgs('enqueueTask', { buildUnit: { unit: 'worker', count: 3, repeat: true } }).success).toBe(true);
+    expect(parseCommandArgs('enqueueTask', { buildUnit: { unit: 'worker', count: 0 } }).success).toBe(false);
     expect(parseCommandArgs('enqueueTask', { unknownTask: {} }).success).toBe(false);
 
     expect(parseCommandArgs('cancelTask', { taskId: 'tsk_1' }).success).toBe(true);

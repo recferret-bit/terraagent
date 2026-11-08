@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import { PowerHud } from './PowerHud';
+import { E, ENTITY_STRIDE } from '../../store/replica/viewCodec';
 import { installMockDocument, MockElement } from '../test-dom';
 import type { FeatureContext, GameView } from '../../core/registry/types';
 
@@ -137,12 +138,12 @@ describe('PowerHud - inspector and selection', () => {
     const parent = new MockElement('div') as unknown as HTMLElement;
     const hud = new PowerHud(parent);
 
-    const buf = new Float32Array(12);
-    buf[0] = 12;
-    buf[1] = ENTITY_KIND.metalsExtractor;
-    buf[8] = 450;
-    buf[9] = 500;
-    buf[10] = ENTITY_STATE.offlineBrownout;
+    const buf = new Float32Array(ENTITY_STRIDE);
+    buf[E.id] = 12;
+    buf[E.kind] = ENTITY_KIND.metalsExtractor;
+    buf[E.hp] = 450;
+    buf[E.hpMax] = 500;
+    buf[E.state] = ENTITY_STATE.offlineBrownout;
 
     hud.update({
       colonies: [

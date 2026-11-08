@@ -53,9 +53,9 @@ const addDepot = (s: PlanetState, q: number, st: number = ENTITY_STATE.active, r
 const addUnits = (s: PlanetState, kind: number, n: number) => {
   for (let i = 0; i < n; i++) addEntity(s, kind, { q: -4, r: i - 4 });
 };
-const harvesters = (s: PlanetState) => {
+const workers = (s: PlanetState) => {
   let n = 0;
-  for (let r = 0; r < s.entities.count; r++) if (s.entities.cols.kind[r] === ENTITY_KIND.harvester && s.entities.cols.hp[r] > 0) n++;
+  for (let r = 0; r < s.entities.count; r++) if (s.entities.cols.kind[r] === ENTITY_KIND.worker && s.entities.cols.hp[r] > 0) n++;
   return n;
 };
 
@@ -69,10 +69,10 @@ describe('supply: used / cap computation', () => {
     expect(computeColonySupply(s, 0)).toMatchObject({ used: 0, cap: 0, max: 200, sources: [] }); // no Hub, no cap
     addHub(s);
     addEntity(s, ENTITY_KIND.hq);
-    addUnits(s, ENTITY_KIND.harvester, 2);
-    addUnits(s, ENTITY_KIND.builder, 1);
-    addEntity(s, ENTITY_KIND.harvester, { owner: 1 }); // another colony's unit
-    addEntity(s, ENTITY_KIND.harvester, { hp: 0 }); // dead
+    addUnits(s, ENTITY_KIND.worker, 2);
+    addUnits(s, ENTITY_KIND.worker, 1);
+    addEntity(s, ENTITY_KIND.worker, { owner: 1 }); // another colony's unit
+    addEntity(s, ENTITY_KIND.worker, { hp: 0 }); // dead
     expect(computeColonySupply(s, 0)).toEqual({
       used: 3, units: 3, reserved: 0, cap: 10, available: 7, max: 200,
       sources: [{ building: 'commandHub', label: 'Command Hub', count: 1, each: 10, total: 10 }],
@@ -98,14 +98,14 @@ describe('supply: used / cap computation', () => {
   it('the system writes colony.supply each step, stamping changedAt only when the value changed; a dead unit frees its supply', () => {
     const s = planet('sup-sync');
     addHub(s);
-    addUnits(s, ENTITY_KIND.harvester, 3);
+    addUnits(s, ENTITY_KIND.worker, 3);
     const p = pipeline();
     step(s, [], 1, p);
     expect(s.colonies[0].supply).toMatchObject({ used: 3, cap: 10 });
     const stamped = s.colonies[0].changedAt;
     expect(syncColonySupply(s, 0, stamped + 50)).toMatchObject({ used: 3 });
     expect(s.colonies[0].changedAt).toBe(stamped); // unchanged: no stamp, no delta
-    s.entities.cols.hp[1] = 0; // first harvester dies
+    s.entities.cols.hp[1] = 0; // first worker dies
     step(s, [], 1, p);
     expect(s.colonies[0].supply).toMatchObject({ used: 2, units: 2 });
     expect(s.colonies[0].changedAt).toBe(s.meta.tick);
@@ -116,8 +116,8 @@ describe('supply: validation and production', () => {
   it('the enqueueTask command rejects a unit over the cap (supply_cap) and an unknown unit (invalid_args)', () => {
     const s = planet('sup-reject');
     addHub(s);
-    addUnits(s, ENTITY_KIND.harvester, 10);
-    const out = step(s, [enqueueCmd('over', 'harvester'), enqueueCmd('bad', 'tank')], 1, pipeline()).outcomes;
+    addUnits(s, ENTITY_KIND.worker, 10);
+    const out = step(s, [enqueueCmd('over', 'worker'), enqueueCmd('bad', 'tank')], 1, pipeline()).outcomes;
     expect(out.find((o) => o.commandId === 'over')).toMatchObject({ code: 'supply_cap', detail: 'Supply cap reached (10 / 10): build a Supply Depot' });
     expect(out.find((o) => o.commandId === 'bad')?.code).toBe('invalid_args');
     expect(getColonyQueue(s, 0, 'units')).toHaveLength(0);
@@ -127,11 +127,11 @@ describe('supply: validation and production', () => {
   it('a Supply Depot on the Hub grid lifts the cap: the same order is then accepted and starts', () => {
     const s = planet('sup-depot-accept');
     addHub(s);
-    addUnits(s, ENTITY_KIND.harvester, 10);
+    addUnits(s, ENTITY_KIND.worker, 10);
     addDepot(s, 3, ENTITY_STATE.active, 0); // next to the Hub
-    const p = pipeline(); // without the grid: 10 harvesters would brown the depot out (no cap while offline)
+    const p = pipeline(); // without the grid: 10 workers would brown the depot out (no cap while offline)
     const noGrid = { ...p, systems: p.systems.filter((sys) => sys.id !== 'power.core') };
-    const res = step(s, [enqueueCmd('ok', 'harvester')], 1, noGrid);
+    const res = step(s, [enqueueCmd('ok', 'worker')], 1, noGrid);
     expect(res.outcomes[0].code).toBeUndefined();
     expect(getColonyQueue(s, 0, 'units')[0].state).toBe('in_progress');
     expect(s.colonies[0].supply).toMatchObject({ used: 11, units: 10, reserved: 1, cap: 18 });
@@ -140,18 +140,18 @@ describe('supply: validation and production', () => {
   it('production reserves supply when it starts; the rest of a batch waits on supply at the cap; a death lets it resume', () => {
     const s = planet('sup-batch');
     addHub(s);
-    addUnits(s, ENTITY_KIND.harvester, 8);
+    addUnits(s, ENTITY_KIND.worker, 8);
     const p = pipeline();
-    step(s, [enqueueCmd('batch', 'harvester', 4)], 1, p);
+    step(s, [enqueueCmd('batch', 'worker', 4)], 1, p);
     expect(s.colonies[0].supply).toMatchObject({ used: 9, units: 8, reserved: 1 });
-    expect(checkUnitSupply(s, 0, 'builder')).toMatchObject({ ok: true }); // 9 + 1 <= 10
+    expect(checkUnitSupply(s, 0, 'worker')).toMatchObject({ ok: true }); // 9 + 1 <= 10
     for (let i = 0; i < 40; i++) step(s, [], 5, p);
-    expect(harvesters(s)).toBe(10);
+    expect(workers(s)).toBe(10);
     const entry = getColonyQueue(s, 0, 'units')[0];
     expect(entry).toMatchObject({ state: 'waiting', waitReason: 'supply', waitDetail: 'waiting: supply', remainingCount: 2 });
     expect(s.colonies[0].supply).toMatchObject({ used: 10, reserved: 0, available: 0 });
 
-    s.entities.cols.hp[1] = 0; // a harvester dies -> one slot frees
+    s.entities.cols.hp[1] = 0; // a worker dies -> one slot frees
     step(s, [], 1, p);
     expect(getColonyQueue(s, 0, 'units')[0].state).toBe('in_progress');
     expect(s.colonies[0].supply).toMatchObject({ used: 10, units: 9, reserved: 1 });
@@ -160,7 +160,7 @@ describe('supply: validation and production', () => {
   it('cancelling an order in production releases its reservation', () => {
     const s = planet('sup-cancel');
     addHub(s);
-    const res = enqueueQueueTask(s, { colonyIndex: 0, taskId: 'one', task: { kind: 'buildUnit', unit: 'builder' } });
+    const res = enqueueQueueTask(s, { colonyIndex: 0, taskId: 'one', task: { kind: 'buildUnit', unit: 'worker', tier: 2 } });
     expect(res.ok && res.entry.state).toBe('in_progress');
     expect(computeColonySupply(s, 0)).toMatchObject({ used: 1, reserved: 1 });
     expect(cancelQueueTask(s, 'one', 0).ok).toBe(true);

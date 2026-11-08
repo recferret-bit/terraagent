@@ -6,8 +6,11 @@ import { indexOf } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { resolveBuildingRow } from '../economy/construction';
-import { findColonyRoboticsFactories, resolveHubProducerRows, resolveReconRow } from '../factories-hub';
+import { findColonyRoboticsFactories, resolveReconRow } from '../factories-hub';
+import { resolveUnitRowForHub } from '../factories-hub/unit';
+import { isCrewKind, isWorker } from '../harvest/unit';
 import { normalizeRichness } from '../production';
+import { getTerraformJobCost, getTerraformOpSpec, isTerraformOpKind, isW01TerraformOpKind } from '../terraform-basic/ops';
 import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
 
 export const CONSTRUCTION_LANE_LIMIT = 20;
@@ -52,26 +55,29 @@ export function resolveTaskCostAndTicks(
         workRate: Number(reconRow.workRate ?? 1.0),
       };
     }
-    if (task.unit === 'builder') {
-      const tables = data?.tables as
-        | Record<string, Record<string, { cost?: Partial<Record<ResourceKey, number>>; buildS?: number; workRate?: number }> | undefined>
-        | undefined;
-      const builderRow = tables?.grid?.builder ?? tables?.unitsWorkersBasic?.builder;
-      return {
-        cost: { ...(builderRow?.cost ?? { 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 }) },
-        buildTicks: Math.max(1, Number(builderRow?.buildS ?? 60)),
-        workRate: Number(builderRow?.workRate ?? 1.0),
-      };
-    }
-    const { harvester } = resolveHubProducerRows(data);
+    const row = resolveUnitRowForHub(task.unit, data, task.tier); // only `worker` T1–T3 (enqueue rejects the rest)
     return {
-      cost: { ...((harvester.cost ?? {}) as Partial<Record<ResourceKey, number>>) },
-      buildTicks: Math.max(1, Number(harvester.buildS ?? 50)),
-      workRate: 1.0,
+      cost: { ...((row?.cost ?? {}) as Partial<Record<ResourceKey, number>>) },
+      buildTicks: Math.max(1, Number(row?.buildS ?? 50)),
+      workRate: Number(row?.workRate ?? 1.0),
     };
   }
   if (task.kind === 'hqGoal') {
     return { cost: {}, buildTicks: 1, workRate: 1.0 };
+  }
+  if (
+    task.kind === 'terraform' &&
+    isTerraformOpKind(task.op) &&
+    !isW01TerraformOpKind(task.op) &&
+    task.op !== 'dismantle' &&
+    task.op !== 'work'
+  ) {
+    const spec = getTerraformOpSpec(task.op, data);
+    return {
+      cost: getTerraformJobCost(task.op, data),
+      buildTicks: Math.max(1, Math.round(spec.baseTimeS * 5)),
+      workRate: 1.0,
+    };
   }
   return { cost: {}, buildTicks: 25, workRate: 1.5 };
 }
@@ -96,11 +102,11 @@ function depositCodeToResourceKey(dep: number): ResourceKey | null {
   return null;
 }
 
-/** Whether a Harvester of `colonyIndex` harvests now (the production ledger then holds the real per-key rates). */
-function harvestersAtWork(state: PlanetState, colonyIndex: number): boolean {
+/** Whether a Worker Drone of `colonyIndex` harvests now (the production ledger then holds the real per-key rates). */
+function workersAtWork(state: PlanetState, colonyIndex: number): boolean {
   const { count, cols } = state.entities;
   for (let r = 0; r < count; r++) {
-    if (cols.owner[r] === colonyIndex && cols.kind[r] === ENTITY_KIND.harvester && cols.state[r] === ENTITY_STATE.harvesting) return true;
+    if (cols.owner[r] === colonyIndex && isWorker(cols.kind[r]) && cols.state[r] === ENTITY_STATE.harvesting) return true;
   }
   return false;
 }
@@ -108,8 +114,8 @@ function harvestersAtWork(state: PlanetState, colonyIndex: number): boolean {
 /**
  * Estimates current colony income per second (`amount/s`) for a given `ResourceKey`.
  * Uses explicit `colony.incomePerS`, else the production ledger (`colony.production.incomePerS`, written each step by
- * `production.extractors` / `production.harvest`: the real per-key rate, so a Harvester mining metals adds nothing to
- * Minerals). Without a ledger rate it guesses: active extractors (`1.0 * richness`/s) and idle / moving Harvesters.
+ * `production.extractors` / `production.harvest`: the real per-key rate, so a Worker Drone mining metals adds nothing
+ * to Minerals). Without a ledger rate it guesses: active extractors (`1.0 * richness`/s) and idle / moving workers.
  */
 export function estimateResourceIncomePerS(
   state: PlanetState,
@@ -123,10 +129,10 @@ export function estimateResourceIncomePerS(
   const production = (colony as { production?: { incomePerS?: Partial<Record<ResourceKey, number>> } }).production;
   const ledgerRate = production?.incomePerS?.[key];
   if (typeof ledgerRate === 'number' && ledgerRate > 0) return ledgerRate;
-  if (production?.incomePerS && harvestersAtWork(state, colony.index)) return 0; // the ledger knows: nothing comes in
+  if (production?.incomePerS && workersAtWork(state, colony.index)) return 0; // the ledger knows: nothing comes in
 
   let rate = 0;
-  let idleOrMovingHarvesters = 0;
+  let idleOrMovingWorkers = 0;
   const { count, cols } = state.entities;
   for (let r = 0; r < count; r++) {
     if (cols.owner[r] !== colony.index) continue;
@@ -136,7 +142,7 @@ export function estimateResourceIncomePerS(
       const tileIdx = indexOf(state.grid.radius, cols.q[r], cols.r[r]);
       const rawRich = tileIdx >= 0 ? state.grid.layers.richness[tileIdx] : 10000;
       rate += 1.0 * normalizeRichness(rawRich || 10000);
-    } else if (kind === ENTITY_KIND.harvester) {
+    } else if (isWorker(kind)) {
       if (st === ENTITY_STATE.harvesting) {
         const tileIdx = indexOf(state.grid.radius, cols.q[r], cols.r[r]);
         const dep = tileIdx >= 0 ? state.grid.layers.deposit[tileIdx] : DEPOSIT.none;
@@ -145,13 +151,13 @@ export function estimateResourceIncomePerS(
           rate += 0.5;
         }
       } else if (st === ENTITY_STATE.idle || st === ENTITY_STATE.moving) {
-        idleOrMovingHarvesters++;
+        idleOrMovingWorkers++;
       }
     }
   }
 
-  if (rate === 0 && idleOrMovingHarvesters > 0 && (key === 'metals.t1' || key === 'minerals.t1' || key === 'bio.biomass')) {
-    rate = 0.5 * idleOrMovingHarvesters;
+  if (rate === 0 && idleOrMovingWorkers > 0 && (key === 'metals.t1' || key === 'minerals.t1' || key === 'bio.biomass')) {
+    rate = 0.5 * idleOrMovingWorkers;
   }
   return rate;
 }
@@ -278,10 +284,10 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
     };
   }
   if (raw.buildUnit && typeof raw.buildUnit === 'object') {
-    const u = raw.buildUnit as { unit: string; count?: number; repeat?: boolean; producerId?: number };
+    const u = raw.buildUnit as { unit: string; tier?: 1 | 2 | 3; count?: number; repeat?: boolean; producerId?: number };
     return {
       ...base,
-      task: { kind: 'buildUnit', unit: u.unit, count: u.count, repeat: u.repeat, producerId: u.producerId },
+      task: { kind: 'buildUnit', unit: u.unit, tier: u.tier, count: u.count, repeat: u.repeat, producerId: u.producerId },
     };
   }
   if (raw.terraform && typeof raw.terraform === 'object') {
@@ -386,14 +392,14 @@ export function nextAutoTaskId(entries: readonly QueueEntry[], colonyIndex: numb
   return candidate;
 }
 
+/** The terraform and construction lanes run one entry per live crew unit (HQ or Worker Drone); other lanes one. */
 export function maxConcurrentInLane(state: PlanetState, colonyIndex: number, lane: QueueLane): number {
-  if (lane !== 'construction') return 1;
-  let builders = 0;
+  if (lane !== 'terraform' && lane !== 'construction') return 1;
+  let crew = 0;
   const { count, cols } = state.entities;
   for (let r = 0; r < count; r++) {
-    if (cols.owner[r] !== colonyIndex || cols.hp[r] <= 0) continue;
-    if (cols.kind[r] === ENTITY_KIND.hq || cols.kind[r] === ENTITY_KIND.builder) builders++;
+    if (cols.owner[r] === colonyIndex && cols.hp[r] > 0 && isCrewKind(cols.kind[r])) crew++;
   }
-  return Math.max(1, builders);
+  return Math.max(1, crew);
 }
 

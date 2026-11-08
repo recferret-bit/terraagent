@@ -7,8 +7,7 @@ import { defaultHubData } from '../factories-hub/unit';
  * Where unit supply numbers come from (data only, XC-01): what each unit kind uses and what each building kind provides.
  *
  * - A unit uses `supply` of its row: any row with `kind: 'unit'` and a `unit` name that is an `ENTITY_KIND`
- *   (harvester, builder, …), plus the HQ (`hq.t1.supply`, 0: the HQ never counts). A unit row that sits in two tables
- *   (the builder: `grid` and `unitsWorkersBasic`) is read from the first table by name, as `resolveBuilderRow` does.
+ *   (`worker`, …), plus the HQ (`hq.t1.supply`, 0: the HQ never counts). The first row of a repeated unit name wins.
  * - A building provides `supplyProvided` of its row: any row with a `building` name that is an `ENTITY_KIND`
  *   (Command Hub `hub.t1`, Supply Depot `grid.supplyDepot`, …). Other buildings provide 0.
  * - The colony cap is clamped to `hub.t1.supplyCapMax`.
@@ -23,7 +22,7 @@ export interface SupplyProvider {
 export interface SupplySources {
   /** Supply used per alive unit, by `ENTITY_KIND`; kinds absent here use 0. */
   readonly unitSupplyByKind: ReadonlyMap<number, number>;
-  /** Supply of a producible unit by its order name (`'harvester'`, `'builder'`). */
+  /** Supply of a producible unit by its order name (`'worker'`). */
   readonly unitSupplyByName: ReadonlyMap<string, number>;
   /** Cap providers by `ENTITY_KIND`. */
   readonly providers: ReadonlyMap<number, SupplyProvider>;

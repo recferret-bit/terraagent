@@ -186,7 +186,7 @@ describe('W07-14 · Acceptance Check Part 1: passive bugs and hives ignore passi
       hp: 160,
     });
     const harvId = spawnColonyUnit(state, {
-      kind: ENTITY_KIND.harvester,
+      kind: ENTITY_KIND.worker,
       owner: 0,
       q: 2,
       r: -1,
@@ -262,7 +262,7 @@ describe('W07-14 · Acceptance Check Part 2: attacking one provokes ONLY that hi
     const hiveC = spawnHiveEntity(state, { species: 'greenSpitter', q: -8, r: 0, initialResidents: 2 }, 0, data);
     const colony0Hq = spawnHqUnit(state, { owner: 0, q: 2, r: 0 });
     const colony1Recon = spawnColonyUnit(state, { kind: ENTITY_KIND.recon, owner: 1, q: -2, r: 0, hp: 160 });
-    const colony0NearHiveB = spawnColonyUnit(state, { kind: ENTITY_KIND.harvester, owner: 0, q: 1, r: 8, hp: 350 });
+    const colony0NearHiveB = spawnColonyUnit(state, { kind: ENTITY_KIND.worker, owner: 0, q: 1, r: 8, hp: 350 });
 
     const cols = state.entities.cols;
     const hq0Row = rowOf(state.entities, colony0Hq);
@@ -309,7 +309,7 @@ describe('W07-14 · Acceptance Check Part 2: attacking one provokes ONLY that hi
       data,
     );
     const colony1Recon = spawnColonyUnit(state, {
-      kind: ENTITY_KIND.harvester,
+      kind: ENTITY_KIND.worker,
       owner: 1,
       q: -5,
       r: 0,

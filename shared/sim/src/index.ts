@@ -17,6 +17,7 @@ export * from './grid/layers';
 export * from './grid/tileModel';
 export * from './grid/path';
 export * from './grid/geo';
+export * from './grid/hexTile';
 export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
 export { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType, type DevPlanetType } from './gen/flat';
@@ -77,6 +78,7 @@ export {
 } from './systems/economy/construction';
 export * from './systems/economy/events';
 export * from './systems/environment';
+export * from './systems/weather';
 export * from './systems/power-core';
 export * from './systems/production';
 export * from './systems/factories-hub';

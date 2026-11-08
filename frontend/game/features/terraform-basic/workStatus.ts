@@ -22,6 +22,8 @@ const GROUND_NAME: Readonly<Record<string, string>> = {
   slope: 'SLOPE',
   hole: 'CRATER',
   flat: 'GROUND',
+  shallow: 'WATER',
+  deep: 'DEEP WATER',
 };
 
 function jobText(j: WorkJobView): string {

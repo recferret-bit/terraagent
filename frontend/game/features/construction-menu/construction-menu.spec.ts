@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadFeatures } from '../../core/registry';
+import { E, ENTITY_STRIDE } from '../../store/replica/viewCodec';
 import { buildConstructionCatalog, type BuildingCardModel } from './catalog';
 import constructionFeature from './index';
 
@@ -204,9 +205,9 @@ describe('buildConstructionCatalog - hubBuilt state', () => {
     expect(catShorthand[0].disabled).toBe(true);
     expect(catShorthand[0].disabledReason).toBe('Already built');
 
-    const entityBuf = new Float32Array(24);
-    entityBuf[1] = 3; // entity 0 is hq
-    entityBuf[13] = 4; // entity 1 is commandHub
+    const entityBuf = new Float32Array(2 * ENTITY_STRIDE);
+    entityBuf[E.kind] = 3; // entity 0 is hq
+    entityBuf[ENTITY_STRIDE + E.kind] = 4; // entity 1 is commandHub
     const catBuf = buildConstructionCatalog(flags, { entities: entityBuf });
     expect(catBuf[0].disabled).toBe(true);
     expect(catBuf[0].disabledReason).toBe('Already built');
@@ -285,12 +286,23 @@ describe('ConstructionMenu DOM HUD Component', () => {
 
     const extractorBtn = mockParent.querySelector('[data-building="metalsExtractor"]');
     expect(extractorBtn?.getAttribute('data-disabled')).toBe('false');
-    expect(extractorBtn?.querySelector('.ta-construction__title')?.textContent).toBe('Resource Extractor');
-    expect(extractorBtn?.querySelector('.ta-construction__footprint')?.textContent).toBe('2×2');
-    expect(extractorBtn?.querySelector('.ta-construction__time')?.textContent).toBe('14s (9.3s HQ)');
-    expect(extractorBtn?.querySelector('.ta-construction__power')?.textContent).toBe('−8 E/s');
+    const face = extractorBtn?.querySelector('.ta-card-face');
+    expect(face?.querySelector('.ta-construction__title')?.textContent).toBe('Resource Extractor');
+    expect(face?.querySelector('.ta-card-tier')?.textContent).toBe('T1');
+    expect(face?.querySelector('.ta-card-price')?.textContent).toBe('65 Metals · 20 Minerals');
+    expect(face?.querySelector('.ta-card-time')?.textContent).toBe('14s');
+    expect(face?.querySelector('.ta-construction__footprint')).toBeNull();
+    expect(face?.querySelector('.ta-construction__time')).toBeNull();
+    expect(face?.querySelector('.ta-construction__power')).toBeNull();
+    expect(mockParent.querySelector('[data-testid="build-tier-t1"]')?.getAttribute('aria-selected')).toBe('true');
+    expect(mockParent.querySelector('[data-testid="build-tier-t2"]')).toBeNull();
 
-    const pills = extractorBtn?.querySelectorAll('.ta-construction__cost-pill').map((p) => p.textContent);
+    const tip = extractorBtn?.querySelector('.ta-card-tip');
+    expect(tip?.querySelector('.ta-construction__footprint')?.textContent).toBe('2×2');
+    expect(tip?.querySelector('.ta-construction__time')?.textContent).toBe('14s (9.3s HQ)');
+    expect(tip?.querySelector('.ta-construction__power')?.textContent).toBe('−8 E/s');
+
+    const pills = tip?.querySelectorAll('.ta-construction__cost-pill').map((p) => p.textContent);
     expect(pills).toEqual(['65 Metals', '20 Minerals', '10 Water']);
 
     extractorBtn?.click();
@@ -335,7 +347,7 @@ describe('W08-11: ConstructionMenu stage filtering', () => {
     (globalThis as unknown as { window: unknown }).window = origWin;
   });
 
-  it('at S1 shows Builder, Pylon, and Depot greyed out with unlock condition and unlocks them at S2', () => {
+  it('at S1 shows Pylon and Depot greyed out with unlock condition and unlocks them at S2', () => {
     const parentEl = new MockElement('div') as unknown as HTMLElement;
     const startPlacement = vi.fn();
     const track = vi.fn();
@@ -346,7 +358,7 @@ describe('W08-11: ConstructionMenu stage filtering', () => {
     const mockParent = parentEl as unknown as MockElement;
     instance.update?.({ colonies: [{ stage: 1, unlockStage: 1, hubBuilt: true }] });
 
-    for (const kind of ['builder', 'pylon', 'depot']) {
+    for (const kind of ['pylon', 'depot']) {
       const btn = mockParent.querySelector(`[data-building="${kind}"]`);
       expect(btn).not.toBeNull();
       expect(btn?.disabled).toBe(true);
@@ -367,9 +379,9 @@ describe('W08-11: ConstructionMenu stage filtering', () => {
     expect(mockParent.querySelector('[data-building="roboticsFactory"]')).toBeNull();
     expect(mockParent.querySelector('[data-building="turret"]')).toBeNull();
 
-    // Advance to S2: Builder, Pylon, Depot unlock; S3 items appear greyed out
+    // Advance to S2: Pylon and Depot unlock; S3 items appear greyed out
     instance.update?.({ colonies: [{ stage: 2, unlockStage: 2, hubBuilt: true }] });
-    for (const kind of ['builder', 'pylon', 'depot']) {
+    for (const kind of ['pylon', 'depot']) {
       const btn = mockParent.querySelector(`[data-building="${kind}"]`);
       expect(btn?.disabled).toBe(false);
       expect(btn?.getAttribute('data-disabled')).toBe('false');
@@ -387,5 +399,46 @@ describe('W08-11: ConstructionMenu stage filtering', () => {
     }
 
     instance.dispose();
+  });
+});
+
+describe('W03 grid rows use the same stage as placement', () => {
+  const flags = new Set(['W00', 'W01', 'W02', 'W03', 'W08']);
+  const viewAt = (stage: number) => ({ colonies: [{ stage, unlockStage: stage, hubBuilt: true }] }) as never;
+
+  function cardsAt(stage: number) {
+    return new Map(buildConstructionCatalog(flags, viewAt(stage)).map((card) => [card.building, card]));
+  }
+
+  it('at S1 greys every S2 grid card, including Power Pylon, and hides Thermal (S3)', () => {
+    const cards = cardsAt(1);
+    for (const id of ['pylon', 'wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot'] as const) {
+      const card = cards.get(id);
+      expect(card, id).toBeDefined();
+      expect(card?.unlockStage).toBe(2);
+      expect(card?.stageLocked).toBe(true);
+      expect(card?.disabled).toBe(true);
+      expect(card?.disabledReason).toBe('Unlocks at S2: extractor + generator · 2 min');
+    }
+    expect(cards.get('metalsExtractor')?.stageLocked).toBe(false);
+    expect(cards.get('metalsExtractor')?.disabled).toBe(false);
+    expect(cards.get('solar')?.stageLocked).toBe(false);
+    expect(cards.get('thermal')).toBeUndefined();
+    expect(cards.has('mineralsQuarry')).toBe(false);
+  });
+
+  it('at S2 enables the grid cards and greys Thermal; at S3 Thermal is placeable', () => {
+    const s2 = cardsAt(2);
+    for (const id of ['pylon', 'wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot'] as const) {
+      expect(s2.get(id)?.stageLocked).toBe(false);
+      expect(s2.get(id)?.disabled).toBe(false);
+    }
+    expect(s2.get('thermal')?.unlockStage).toBe(3);
+    expect(s2.get('thermal')?.stageLocked).toBe(true);
+    expect(s2.get('thermal')?.disabledReason).toBe('Unlocks at S3: 6 buildings + 2nd extractor · 3 min');
+
+    const s3 = cardsAt(3);
+    expect(s3.get('thermal')?.stageLocked).toBe(false);
+    expect(s3.get('thermal')?.disabled).toBe(false);
   });
 });

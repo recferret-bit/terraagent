@@ -12,6 +12,8 @@ import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
+import { BUILDING_LIT } from '../visuals/unified/buildingLit';
+import { getBuildingLightLevel } from '../lighting/buildingLights';
 
 export * from './faunaVisualRegistry';
 
@@ -169,6 +171,8 @@ export type ArchetypeUniforms = ReturnType<typeof createUnifiedColonyMaterial>['
   uBuildStage: THREE.IUniform<number>;
   /** Model height (m) the scaffold cut fractions refer to. */
   uBuildHeight: THREE.IUniform<number>;
+  /** Drawn light level 0..1 of the emissive parts (`applyBuildingLight` only). */
+  uLit: THREE.IUniform<number>;
 };
 
 export interface ArchetypeMesh extends THREE.Mesh {
@@ -179,7 +183,11 @@ export interface ArchetypeMesh extends THREE.Mesh {
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
   const rig = WeaponRigRegistry.get(id);
   const insect = INSECT_SPECIES[id];
-  const made = createUnifiedColonyMaterial({ biome: biomeKey, shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])] });
+  const made = createUnifiedColonyMaterial({
+    biome: biomeKey,
+    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0,
+    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
+  });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   const geometry = ArchetypeCatalog.getGeometry(id, stage);
@@ -198,6 +206,16 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
   if (insect) attachInsectAnimator(mesh);
   attachEntityProjectorRig(mesh, id);
   return mesh;
+}
+
+/**
+ * Rig power from the night factor, the F8 projector intensity and the drawn light level (`applyBuildingLight`).
+ * In the game `entityVisionSync` → `applyBuildingLight` also writes the rig power (night-gated, on replica updates);
+ * this per-frame write runs after it and is what renders (open question: one writer).
+ */
+function refreshProjectorRig(mesh: THREE.Object3D, stage: number): void {
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
 }
 
 /** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */
@@ -220,8 +238,7 @@ export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight
     insect.update(0);
   }
   const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
-  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  refreshProjectorRig(mesh, stage);
 }
 
 /** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
@@ -242,8 +259,7 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
   if (u?.uBuildStage) u.uBuildStage.value = stage;
   if (mesh.userData) (mesh.userData as any).buildStage = stage;
-  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  refreshProjectorRig(mesh, stage);
   return stage;
 }
 

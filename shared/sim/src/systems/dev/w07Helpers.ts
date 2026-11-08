@@ -9,7 +9,6 @@ import { isFaunaBugKind, isFaunaHiveKind } from '../combat/damage';
 import { commandColony } from '../command';
 import { ensureColonyLedger } from '../economy/ledger';
 import { syncReconView } from '../factories-hub/robotics';
-import { syncBuilderView } from '../factories-hub/unit';
 import { emitFaunaDirective } from '../fauna/directives';
 import { clearHiveAggression, provokeFaunaBug, provokeHive } from '../fauna/provocation';
 import { spawnFaunaBug, spawnHiveSite, spawnResidentBug } from '../fauna/spawn';
@@ -22,7 +21,7 @@ import {
   type HiveRecord,
 } from '../fauna/types';
 import { resolveWaveConfig, selectCandidateHiveForRaid } from '../fauna/waves';
-import { syncHarvesterView, withoutUnitView } from '../harvest/unit';
+import { syncWorkerView, withoutUnitView, type WorkerTier } from '../harvest/unit';
 import { issueUnitCommand } from '../units/registry';
 
 const VALID_SPECIES = new Set<FaunaSpeciesId>(['blackAnt', 'blueBeetle', 'greenSpitter']);
@@ -156,8 +155,9 @@ export function selectOrSpawnRaidHive(
 }
 
 export interface ColonyUnitSpawnSpec {
-  canonicalUnit: 'recon' | 'demoTank' | 'demoArtillery' | 'harvester' | 'builder';
+  canonicalUnit: 'recon' | 'demoTank' | 'demoArtillery' | 'worker';
   kind: number;
+  tier?: WorkerTier;
   hp: number;
   viewRadius: number;
   label: string;
@@ -167,7 +167,6 @@ export interface ColonyUnitSpawnSpec {
 export function resolveColonyUnitSpec(unitRaw: string, ctx: StepContext): ColonyUnitSpawnSpec | null {
   const combatTbl = ctx.data?.tables?.combatUnits as Record<string, CompiledRow | undefined> | undefined;
   const workerTbl = ctx.data?.tables?.unitsWorkersBasic as Record<string, CompiledRow | undefined> | undefined;
-  const gridTbl = ctx.data?.tables?.grid as Record<string, CompiledRow | undefined> | undefined;
 
   if (unitRaw === 'recon') {
     const r = combatTbl?.recon;
@@ -202,25 +201,27 @@ export function resolveColonyUnitSpec(unitRaw: string, ctx: StepContext): Colony
       archetype: 'robot.artillery',
     };
   }
-  if (unitRaw === 'harvester') {
-    const r = workerTbl?.harvester;
+  if (unitRaw === 'harvester' || unitRaw === 'worker') {
+    const r = workerTbl?.t1 ?? workerTbl?.harvester;
     return {
-      canonicalUnit: 'harvester',
-      kind: ENTITY_KIND.harvester,
-      hp: Number(r?.hp ?? 120),
+      canonicalUnit: 'worker',
+      kind: ENTITY_KIND.worker,
+      tier: 1,
+      hp: Number(r?.hp ?? 160),
       viewRadius: Number(r?.viewRadius ?? 7),
-      label: String(r?.label ?? 'Harvester Drone'),
+      label: String(r?.label ?? 'Worker Drone T1'),
       archetype: String(r?.archetype ?? 'robot.miner'),
     };
   }
   if (unitRaw === 'builder') {
-    const r = gridTbl?.builder ?? workerTbl?.builder;
+    const r = workerTbl?.t2 ?? workerTbl?.t1;
     return {
-      canonicalUnit: 'builder',
-      kind: ENTITY_KIND.builder,
-      hp: Number(r?.hp ?? 100),
+      canonicalUnit: 'worker',
+      kind: ENTITY_KIND.worker,
+      tier: 2,
+      hp: Number(r?.hp ?? 180),
       viewRadius: Number(r?.viewRadius ?? 7),
-      label: String(r?.label ?? 'Builder Drone'),
+      label: String(r?.label ?? 'Worker Drone T2'),
       archetype: String(r?.archetype ?? 'robot.builder'),
     };
   }
@@ -237,12 +238,8 @@ export function syncSpawnedColonyUnitView(
     syncReconView(state, row, ctx.tick, ctx.data);
     return;
   }
-  if (spec.canonicalUnit === 'harvester') {
-    syncHarvesterView(state, row, ctx.tick, ctx.data);
-    return;
-  }
-  if (spec.canonicalUnit === 'builder') {
-    syncBuilderView(state, row, ctx.tick, ctx.data);
+  if (spec.canonicalUnit === 'worker') {
+    syncWorkerView(state, row, ctx.tick, ctx.data);
     return;
   }
   const cols = state.entities.cols;
