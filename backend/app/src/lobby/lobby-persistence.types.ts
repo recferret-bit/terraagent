@@ -227,6 +227,8 @@ export interface UpsertSectorWithSlotsInput {
   readonly radius?: number;
   readonly foundingCapacity: number;
   readonly validatedCapacity: number;
+  readonly reservedSeats?: number;
+  readonly foundedSeats?: number;
   readonly mainResource?: ResourceKey;
   readonly scarceResources?: readonly ResourceKey[];
   readonly slots?: readonly {
@@ -235,6 +237,14 @@ export interface UpsertSectorWithSlotsInput {
     readonly q: number;
     readonly r: number;
   }[];
+}
+
+export interface UpdateSectorCountersInput {
+  readonly planetId: string;
+  readonly sectorId: SectorId;
+  readonly reservedSeats?: number;
+  readonly foundedSeats?: number;
+  readonly now?: Date;
 }
 
 export interface ReserveSectorSlotInput {

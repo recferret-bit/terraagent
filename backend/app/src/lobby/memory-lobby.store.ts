@@ -248,13 +248,17 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
     const secKey = `${norm.planetId}:${norm.sectorId}`;
     const prevSec = this.sectors.get(secKey);
     const now = new Date();
-    const reservedSeats = prevSec?.reservedSeats ?? 0;
-    const foundedSeats = prevSec?.foundedSeats ?? 0;
+    const reservedSeats =
+      input.reservedSeats !== undefined ? Math.max(0, input.reservedSeats) : (prevSec?.reservedSeats ?? 0);
+    const foundedSeats =
+      input.foundedSeats !== undefined ? Math.max(0, input.foundedSeats) : (prevSec?.foundedSeats ?? 0);
     const sectorUnchanged =
       prevSec !== undefined &&
       prevSec.kind === norm.kind &&
       prevSec.foundingCapacity === norm.foundingCapacity &&
-      prevSec.validatedCapacity === norm.validatedCapacity;
+      prevSec.validatedCapacity === norm.validatedCapacity &&
+      prevSec.reservedSeats === reservedSeats &&
+      prevSec.foundedSeats === foundedSeats;
     const sector: PlanetSectorRecord = {
       id: prevSec?.id ?? `psec_${norm.planetId}_${norm.sectorId}`,
       planetId: norm.planetId,
@@ -288,12 +292,14 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
     for (const s of norm.slots) {
       const slotKey = `${norm.planetId}:${s.landingSlotId}`;
       const prevSlot = this.landingSlots.get(slotKey);
+      const nextQ = input.slots !== undefined ? s.q : (prevSlot?.q ?? s.q);
+      const nextR = input.slots !== undefined ? s.r : (prevSlot?.r ?? s.r);
       const slotRec: SectorLandingSlotRecord = prevSlot
         ? {
             ...prevSlot,
-            q: s.q,
-            r: s.r,
-            updatedAt: prevSlot.q === s.q && prevSlot.r === s.r ? prevSlot.updatedAt : now,
+            q: nextQ,
+            r: nextR,
+            updatedAt: prevSlot.q === nextQ && prevSlot.r === nextR ? prevSlot.updatedAt : now,
           }
         : {
             id: `pslot_${norm.planetId}_${s.landingSlotId}`,
@@ -301,8 +307,8 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
             sectorId: norm.sectorId,
             landingSlotId: s.landingSlotId,
             slotIndex: s.slotIndex,
-            q: s.q,
-            r: s.r,
+            q: nextQ,
+            r: nextR,
             state: 'FREE',
             reservationId: null,
             colonyId: null,
