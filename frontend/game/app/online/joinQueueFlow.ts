@@ -1,7 +1,6 @@
 import {
   CANONICAL_PLANETS,
   canonicalPlanetById,
-  type AuthResponse,
   type PlanetType,
   type SectorPlacementIntentV1,
 } from '@terra/contracts';
@@ -10,15 +9,12 @@ import {
   toSectorPlacementIntentV1,
   type SectorIntentInput,
 } from '../../ui/lobby/orbitalPickerModel';
-import { backoffDelay } from '../../net/backoff';
 import type { BootOverlay } from './BootOverlay';
 import {
   BootError,
   DEVICE_SECRET_KEY,
-  HOME_ATTEMPTS,
   deviceSecretKey,
   getOrCreateDeviceSecret,
-  refreshAccessToken,
   type BootAuthResult,
   type BootColonySummary,
   type BootPlanetSummary,
