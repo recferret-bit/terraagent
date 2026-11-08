@@ -4,7 +4,6 @@ import {
   parseLandingSlotId,
   parseWaves,
   type AtlasManifestV1,
-  type SectorId,
 } from '@terra/contracts';
 import { decodeValue } from '../codec/values';
 import { restore, snapshot, type SnapshotOpts } from '../codec/snapshot';
