@@ -182,6 +182,13 @@ export const PlanetSummaryV1Schema = z
     sectors: z.array(SectorSummaryV1Schema).min(1),
     colonies: z.array(PublicColonySummaryV1Schema).optional(),
     faultCode: z.string().min(1).max(64).nullable().optional(),
+    seed: z.string().min(1).max(64).optional(),
+    radius: z.number().int().positive().optional(),
+    state: z.string().min(1).max(32).optional(),
+    status: z.string().min(1).max(32).optional(),
+    capacity: z.number().int().nonnegative().optional(),
+    seatsTaken: z.number().int().nonnegative().optional(),
+    seats: z.object({ taken: z.number().int().nonnegative(), capacity: z.number().int().nonnegative() }).optional(),
   })
   .superRefine((p, ctx) => {
     if (p.look !== planetLookForType(p.type)) {
