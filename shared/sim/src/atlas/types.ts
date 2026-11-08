@@ -1,5 +1,7 @@
 import {
   W11_SEVEN_SECTOR_COORDS,
+  type AtlasConfigV1,
+  type AtlasManifestV1,
   type ContinentId,
   type SafeLandingSlotV1,
   type SectorId,
@@ -169,6 +171,8 @@ export interface GenerateSmallAtlasOptions extends BuildSmallAtlasPartitionOptio
 export interface CreateAtlasPlanetOptions extends GenerateSmallAtlasOptions {
   readonly gridRadius?: number;
   readonly atlas?: GeneratedSmallAtlas;
+  readonly config?: AtlasConfigV1;
+  readonly manifest?: AtlasManifestV1;
 }
 
 export interface SampledAtlasTileValues {
@@ -300,6 +304,14 @@ export interface AtlasBlobValue {
   readonly planetType: PlanetType;
   readonly seed: string;
   readonly genVersion: number;
+  readonly atlasVersion?: number;
+  readonly topologyVersion?: number;
+  readonly configVersion?: number;
+  readonly configHash?: string;
+  readonly atlasHash?: string;
+  readonly resourceProfileId?: string;
+  readonly resourceProfileHash?: string;
+  readonly manifest?: AtlasManifestV1;
   readonly sectorRadius: number;
   readonly tilesPerSector: number;
   readonly foundingSeatsPerSector: number;

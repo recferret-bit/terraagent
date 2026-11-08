@@ -1,4 +1,5 @@
 import {
+  AtlasManifestV1Schema,
   canonicalPlanetById,
   canonicalPlanetForType,
   formatContinentId,
@@ -6,6 +7,7 @@ import {
   W11_DEFAULT_FOUNDING_SEATS_PER_SECTOR,
   W11_DEFAULT_SECTOR_RADIUS,
   W11_SEVEN_SECTOR_COORDS,
+  type AtlasManifestV1,
   type SectorId,
 } from '@terra/contracts';
 import { GEN_VERSION } from '../gen/generators';
@@ -13,6 +15,7 @@ import type { SpawnSlot } from '../gen/spawnSlots';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { createState, setBlob, type Blob, type PlanetState, type PlanetType } from '../kernel/state';
 import { validateAtlasLandingSites } from './landingSites';
+import { buildAtlasManifest, cloneAtlasManifest } from './manifest';
 import { tileCoordKey } from './partition';
 import { createAtlasSamplerContext, sampleAtlasTile, type AtlasSamplerContext } from './sampler';
 import { buildSmallAtlasPartition } from './smallAtlas';
@@ -325,8 +328,97 @@ function defaultGridRadiusForAtlas(atlas: GeneratedSmallAtlas): number {
   return maxLandDist + 3;
 }
 
+function resolveAtlasForPlanetState(opts?: CreateAtlasPlanetOptions): GeneratedSmallAtlas {
+  if (opts?.atlas) return opts.atlas;
+  if (opts?.manifest) {
+    const m = AtlasManifestV1Schema.parse(opts.manifest);
+    const landCoords = m.sectors
+      .filter((s) => s.kind === 'land')
+      .map((s) => [s.macroQ, s.macroR] as const);
+    const oceanCoords = m.sectors
+      .filter((s) => s.kind === 'ocean')
+      .map((s) => [s.macroQ, s.macroR] as const);
+    const continentId =
+      m.sectors.find((s) => s.kind === 'land' && s.continentId !== null)?.continentId ??
+      formatContinentId(0);
+    return generateSmallAtlas({
+      planetId: m.planetId,
+      planetType: m.planetType,
+      seed: m.seed,
+      sectorRadius: m.sectorRadius,
+      foundingSeatsPerSector: m.foundingSeatsPerSector,
+      landCoords,
+      oceanCoords,
+      includeOceanHalo: oceanCoords.length > 0,
+      continentId,
+      worldSalt: opts.worldSalt,
+    });
+  }
+  return generateSmallAtlas(opts);
+}
+
+function buildAtlasBlobForState(
+  atlas: GeneratedSmallAtlas,
+  manifest: AtlasManifestV1,
+): AtlasBlobValue {
+  const manifestSectorById = new Map(manifest.sectors.map((s) => [s.sectorId, s]));
+  return {
+    planetId: atlas.planetId,
+    planetType: atlas.planetType,
+    seed: atlas.seed,
+    genVersion: atlas.genVersion,
+    atlasVersion: manifest.atlasVersion,
+    topologyVersion: manifest.topologyVersion,
+    configVersion: manifest.configVersion,
+    configHash: manifest.configHash,
+    atlasHash: manifest.atlasHash,
+    resourceProfileId: manifest.resourceProfileId,
+    resourceProfileHash: manifest.resourceProfileHash,
+    manifest,
+    sectorRadius: atlas.sectorRadius,
+    tilesPerSector: atlas.tilesPerSector,
+    foundingSeatsPerSector: manifest.foundingSeatsPerSector,
+    nominalCapacity: manifest.nominalCapacity,
+    validatedCapacity: manifest.validatedCapacity,
+    safeLandingSlots: manifest.sectors.flatMap((s) => s.safeLandingSlots.map((sl) => ({ ...sl }))),
+    continentId: atlas.continentId,
+    landSectorIds: [...atlas.landSectorIds],
+    oceanSectorIds: [...atlas.oceanSectorIds],
+    bounds: { ...atlas.partition.bounds },
+    sectors: atlas.sectors.map((s) => {
+      const mSec = manifestSectorById.get(s.sectorId);
+      const slots = (mSec?.safeLandingSlots ?? s.safeLandingSlots).map((sl) => ({ ...sl }));
+      const validated = mSec?.validatedSafeSites ?? s.validatedSafeSites;
+      return {
+        sectorId: s.sectorId,
+        ordinal: s.ordinal,
+        kind: s.kind,
+        continentId: s.continentId,
+        macroQ: s.macroQ,
+        macroR: s.macroR,
+        centerQ: s.centerQ,
+        centerR: s.centerR,
+        radius: s.radius,
+        tileCount: s.tileCount,
+        foundingCapacity: mSec?.foundingCapacity ?? s.foundingCapacity,
+        validatedSafeSites: validated,
+        safeLandingSlots: slots,
+        foundedSeats: 0,
+        freeSeats: validated,
+        livingColonies: 0,
+        presentColonies: 0,
+      };
+    }),
+    foundingSectorByColony: {},
+    presentSectorsByColony: {},
+  };
+}
+
 export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetState {
-  const atlas = opts?.atlas ?? generateSmallAtlas(opts);
+  const atlas = resolveAtlasForPlanetState(opts);
+  const manifest = opts?.manifest
+    ? cloneAtlasManifest(AtlasManifestV1Schema.parse(opts.manifest))
+    : buildAtlasManifest(atlas, { config: opts?.config });
   const gridRadius = opts?.gridRadius ?? defaultGridRadiusForAtlas(atlas);
   if (!Number.isSafeInteger(gridRadius) || gridRadius <= 0) {
     throw new RangeError(`gridRadius must be a positive integer, got ${gridRadius}`);
@@ -366,45 +458,9 @@ export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetS
     if (subRichness) subRichness[i] = tile.subRichness;
   }
 
-  const blobValue: AtlasBlobValue = {
-    planetId: atlas.planetId,
-    planetType: atlas.planetType,
-    seed: atlas.seed,
-    genVersion: atlas.genVersion,
-    sectorRadius: atlas.sectorRadius,
-    tilesPerSector: atlas.tilesPerSector,
-    foundingSeatsPerSector: atlas.foundingSeatsPerSector,
-    nominalCapacity: atlas.nominalCapacity,
-    validatedCapacity: atlas.validatedCapacity,
-    safeLandingSlots: atlas.safeLandingSlots.map((s) => ({ ...s })),
-    continentId: atlas.continentId,
-    landSectorIds: [...atlas.landSectorIds],
-    oceanSectorIds: [...atlas.oceanSectorIds],
-    bounds: { ...atlas.partition.bounds },
-    sectors: atlas.sectors.map((s) => ({
-      sectorId: s.sectorId,
-      ordinal: s.ordinal,
-      kind: s.kind,
-      continentId: s.continentId,
-      macroQ: s.macroQ,
-      macroR: s.macroR,
-      centerQ: s.centerQ,
-      centerR: s.centerR,
-      radius: s.radius,
-      tileCount: s.tileCount,
-      foundingCapacity: s.foundingCapacity,
-      validatedSafeSites: s.validatedSafeSites,
-      safeLandingSlots: s.safeLandingSlots.map((sl) => ({ ...sl })),
-      foundedSeats: 0,
-      freeSeats: s.validatedSafeSites,
-      livingColonies: 0,
-      presentColonies: 0,
-    })),
-    foundingSectorByColony: {},
-    presentSectorsByColony: {},
-  };
+  const blobValue = buildAtlasBlobForState(atlas, manifest);
   setBlob(state, 'atlas', blobValue, state.meta.tick);
-  const spawnSlots: SpawnSlot[] = atlas.safeLandingSlots.map((slot, index) => ({
+  const spawnSlots: SpawnSlot[] = blobValue.safeLandingSlots.map((slot, index) => ({
     index,
     q: slot.q,
     r: slot.r,
