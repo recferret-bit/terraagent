@@ -6,6 +6,7 @@ import { MatchmakerService } from './matchmaker.service';
 import { PlanetsController } from './planets.controller';
 import { PlanetsService } from './planets.service';
 import { CanonicalWorldProvisioningService } from './provisioning.service';
+import { WorldReconciliationService } from './reconciliation.service';
 import { SectorReservationService } from './reservation.service';
 import { SpawnSagaService } from './spawn-saga.service';
 import { MatchTicketsController } from './tickets.controller';
@@ -33,6 +34,7 @@ import { CanonicalWorldRecoveryService } from './world-recovery.service';
     MatchmakerService,
     CanonicalCapacityGuardService,
     SpawnSagaService,
+    WorldReconciliationService,
   ],
   exports: [
     LobbyPersistenceService,
@@ -45,6 +47,7 @@ import { CanonicalWorldRecoveryService } from './world-recovery.service';
     MatchmakerService,
     CanonicalCapacityGuardService,
     SpawnSagaService,
+    WorldReconciliationService,
   ],
 })
 export class LobbyModule {}

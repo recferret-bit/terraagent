@@ -304,6 +304,8 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
         radius: norm.radius,
         foundingCapacity: norm.foundingCapacity,
         validatedCapacity: norm.validatedCapacity,
+        ...(input.reservedSeats !== undefined ? { reservedSeats: Math.max(0, input.reservedSeats) } : {}),
+        ...(input.foundedSeats !== undefined ? { foundedSeats: Math.max(0, input.foundedSeats) } : {}),
         mainResource: norm.mainResource ?? null,
         ...(norm.scarceResources ? { scarceResources: [...norm.scarceResources] } : {}),
       },
@@ -317,6 +319,8 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
         radius: norm.radius,
         foundingCapacity: norm.foundingCapacity,
         validatedCapacity: norm.validatedCapacity,
+        ...(input.reservedSeats !== undefined ? { reservedSeats: Math.max(0, input.reservedSeats) } : {}),
+        ...(input.foundedSeats !== undefined ? { foundedSeats: Math.max(0, input.foundedSeats) } : {}),
         mainResource: norm.mainResource ?? null,
       },
     });
