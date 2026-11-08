@@ -1,4 +1,7 @@
 export * from './atlas-manifest.helper';
+export * from './capacity-guard.helpers';
+export * from './capacity-guard.service';
+export * from './capacity-guard.types';
 export * from './lifecycle-policy.helpers';
 export * from './lifecycle.service';
 export * from './lifecycle.types';
