@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { registerBotSteps } from './w13-bots';
+import { registerMultiColonySteps } from './w13-bots-multi';
 import { registerTradeUiSteps } from './w13-trade-ui';
 import { registerTradeSteps } from './w13-trade';
 import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, stack, test, urls, waitForTick } from './harness';
@@ -396,6 +397,7 @@ test('@hack 9b. The operator panel UI /dev/chain/?tab=economy: dev tokens, clone
 
 registerTradeSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
 registerBotSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
+registerMultiColonySteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
 registerTradeUiSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
 
 test('@hack 9c. Supply & trade panel: open it, BUY prefills the MARKET order form with side and amount and never submits', async () => {

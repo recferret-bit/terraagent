@@ -99,11 +99,12 @@ export function registerInputSteps(api: BotApi): void {
     expect((await api.trade('GET', '/balances', { key: w.bc.key })).status, 'the server is still alive').toBe(200);
   });
 
-  // REPORTED: a NUL byte in an id reaches Postgres (22021) and answers 500 with the raw Prisma message.
-  test.fail('@hack 9f-14b. A NUL byte in an order id answers 4xx, not 500 (REPORTED: 500 internal with a Prisma message)', async () => {
+  // fixed (U): ids are validated, a NUL byte answers 400 invalid_request and no DB text leaks
+  test('@hack 9f-14b. A NUL byte in an order id answers 4xx, not 500, and leaks no internal text', async () => {
     const w = await api.world();
     const r = await api.trade('DELETE', '/orders/%00%00', { key: w.bc.key });
-    expect(r.status, JSON.stringify(r.json)).toBeLessThan(500);
+    expect(r.status, JSON.stringify(r.json)).toBe(400);
+    expect(JSON.stringify(r.json)).not.toMatch(/prisma|postgres|22021/i);
   });
 
 }
@@ -124,8 +125,8 @@ export function registerLimitSteps(api: BotApi): void {
     expect((await api.trade('GET', '/balances', { key: (await api.world()).ba.key })).status).toBe(200);
   });
 
-  // REPORTED: no Retry-After header is sent anywhere (TradeErrorFilter writes only status + JSON); expected-failure until the backend sets it.
-  test.fail('@hack 9f-15b. Rate limiter 429 carries a Retry-After header (REPORTED: missing)', async () => {
+  // fixed (U): every 429/503 of /v1/trade/* carries Retry-After
+  test('@hack 9f-15b. Rate limiter 429 carries a Retry-After header', async () => {
     test.setTimeout(120_000);
     const bot = await api.bot(`rr${nonce()}`, 0);
     const burst = await Promise.all(Array.from({ length: 80 }, () => api.trade('GET', '/balances', { key: bot.key })));
