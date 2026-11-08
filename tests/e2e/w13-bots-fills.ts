@@ -25,7 +25,6 @@ export function registerFillSteps(api: BotApi): void {
     test.info().annotations.push({ type: 'observed', description: `board after organic bot trade: ${JSON.stringify({ classification: row.classification, reason: row.reason, counterparties: row.counterparties, concentrationBp: row.concentrationBp, eligibleVolume: row.eligibleVolume })}` });
   });
 
-  test.fixme('@hack 9f-1b. Organic reference: 3 trades / 10 units / 3 counterparties flip the board from insufficient_data to organic with a VWAP (needs a scenario with >= 3 seated colonies with Trade Hubs; w13 has 2)', () => undefined);
 
   test('@hack 9f-2. Same-owner bots (one owner, two colonies) never trade organically', async () => {
     test.setTimeout(180_000);

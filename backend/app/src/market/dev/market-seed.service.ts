@@ -21,6 +21,7 @@ import { MarketFaucetService } from './market-faucet.service.js';
 
 export const SeedArgs = z.strictObject({ planetId: z.string().min(1), pair: z.string().min(1) });
 export const ClearArgs = z.strictObject({ planetId: z.string().min(1) });
+export const AgeArgs = z.strictObject({ planetId: z.string().min(1), seconds: z.number().int().min(1).max(86_400) });
 
 /** The fixture bot colony of a planet: labelled, never in the sim, never organic (D-44). */
 export const botColonyId = (planetId: string): string => `bot.${planetId}`;
@@ -117,6 +118,19 @@ export class MarketSeedService {
     this.faucet.assertDevMarket();
     const { planetId } = ClearArgs.parse(raw);
     return { planetId, cancelled: await this.clearBook(planetId) };
+  }
+
+  /**
+   * Dev `market.ageTrades` (W13 e2e): moves `settledAt` of every FINAL trade of a planet `seconds` into the past, so the board
+   * staleness and the quote reference age can be tested without waiting an hour. Does NOT invalidate the board cache (it
+   * expires by itself within `BOARD_CACHE_TTL_MS`), so the caller sees exactly what production would after that time passes.
+   */
+  async ageTrades(raw: unknown): Promise<{ planetId: string; aged: number }> {
+    this.faucet.assertDevMarket();
+    const { planetId, seconds } = AgeArgs.parse(raw);
+    const rows = await this.prisma.intentTrade.findMany({ where: { planetId, state: 'FINAL', settledAt: { not: null } }, select: { tradeId: true, settledAt: true } });
+    for (const r of rows) await this.prisma.intentTrade.update({ where: { tradeId: r.tradeId }, data: { settledAt: new Date(r.settledAt!.getTime() - seconds * 1000) } });
+    return { planetId, aged: rows.length };
   }
 
   private async clearBook(planetId: string, pair?: string): Promise<number> {
