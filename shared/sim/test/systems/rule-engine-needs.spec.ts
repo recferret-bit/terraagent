@@ -179,7 +179,7 @@ describe('W08-23 · Rule-engine needs scoring (expand, extraction, table)', () =
   it('scores expand >= 5000 bp when free buildable owned tiles < 30 or unclaimed deposits exist nearby', () => {
     const state = makeTestPlanet();
     const hx = hexIndex(state.grid.radius);
-    const ownerLayer = state.grid.layers.owner as Int8Array;
+    const ownerLayer = state.grid.layers.owner as Int16Array;
     const terrainLayer = state.grid.layers.terrain as Uint8Array;
     const depositLayer = state.grid.layers.deposit as Uint8Array;
 

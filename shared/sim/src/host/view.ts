@@ -98,7 +98,7 @@ export interface SimView {
     depositTier?: Uint8Array;
     richness?: Float32Array;
     height: Float32Array;
-    owner: Int8Array;
+    owner: Int16Array;
     explored: Uint8Array;
   };
   entities: ViewEntity[];
@@ -240,7 +240,7 @@ export function view(state: PlanetState): SimView {
       depositTier: L.depositTier as Uint8Array,
       richness: L.richness as Float32Array,
       height: L.height as Float32Array,
-      owner: L.owner as Int8Array,
+      owner: L.owner as Int16Array,
       explored: L.explored as Uint8Array,
     },
     entities,

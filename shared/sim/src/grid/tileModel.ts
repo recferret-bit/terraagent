@@ -28,7 +28,7 @@ export interface TileLayersLike {
   deposit?: Uint8Array;
   richness?: Float32Array;
   height?: Float32Array;
-  owner?: Int8Array;
+  owner?: Int16Array | Int8Array;
   explored?: Uint8Array;
   anchors?: Uint8Array;
   graceUntil?: Float64Array;

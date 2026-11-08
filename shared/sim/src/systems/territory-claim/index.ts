@@ -48,7 +48,7 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
   const radius = Math.max(0, Math.floor(opts.radius ?? rowNum(resolveHubT1Row(opts.data), 'claimRadius')));
   const tick = opts.tick ?? state.meta.tick;
   const hex = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const anchorsLayer = state.grid.layers.anchors as Uint8Array;
 
   let claimedCount = 0;

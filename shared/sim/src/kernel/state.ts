@@ -41,7 +41,7 @@ export interface Grid {
   readonly deposit?: Uint8Array;
   readonly richness?: Float32Array;
   readonly height?: Float32Array;
-  readonly owner?: Int8Array;
+  readonly owner?: Int16Array;
   readonly explored?: Uint8Array;
   readonly anchors?: Uint8Array;
   readonly graceUntil?: Float64Array;
