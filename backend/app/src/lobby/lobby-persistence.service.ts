@@ -38,6 +38,7 @@ import {
   type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
+import { KeyedMutex } from './lobby-store.helpers';
 import { MemoryLobbyStore } from './memory-lobby.store';
 import { PrismaLobbyStore } from './prisma-lobby.store';
 
@@ -50,6 +51,7 @@ export const LOBBY_STORE = Symbol('LOBBY_STORE');
 @Injectable()
 export class LobbyPersistenceService implements LobbyPersistenceStore {
   private readonly store: LobbyPersistenceStore;
+  private readonly playerTicketLock = new KeyedMutex();
 
   constructor(
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
@@ -194,7 +196,15 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
   }
 
   enqueueTicket(input: EnqueueTicketInput): Promise<EnqueueTicketResult> {
-    return this.store.enqueueTicket(input);
+    return this.withPlayerTicketLock(input.playerId, () => this.store.enqueueTicket(input));
+  }
+
+  /**
+   * Serializes per-player ticket operations so concurrent identical POSTs for the same player
+   * never create duplicate active tickets.
+   */
+  withPlayerTicketLock<T>(playerId: string, fn: () => Promise<T>): Promise<T> {
+    return this.playerTicketLock.run(`ticket:${playerId}`, fn);
   }
 
   getTicketById(ticketId: string): Promise<MatchTicketRecord | null> {
@@ -203,6 +213,13 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
 
   findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null> {
     return this.store.findActiveTicketByPlayer(playerId);
+  }
+
+  listTickets(filter?: {
+    readonly planetId?: string;
+    readonly state?: MatchTicketRecord['state'];
+  }): Promise<MatchTicketRecord[]> {
+    return this.store.listTickets(filter);
   }
 
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import {
   CANONICAL_PLANETS,
@@ -27,16 +28,25 @@ import {
 export const DEFAULT_RESERVATION_TTL_MS = 90_000;
 export const ACTIVE_TICKET_STATES: readonly TicketStateV1[] = ['QUEUED', 'RESERVED', 'SPAWNING'];
 
+const heldMutexKeys = new AsyncLocalStorage<ReadonlySet<string>>();
+
 /**
  * Per-key FIFO async mutex so concurrent operations on the same canonical type, planet, ticket, or party
- * serialize deterministically without race conditions.
+ * serialize deterministically without race conditions. Re-entrant within the same async execution context.
  */
 export class KeyedMutex {
   private readonly chains = new Map<string, Promise<void>>();
+  private readonly instanceId = randomBytes(4).toString('hex');
 
   run<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const scopedKey = `${this.instanceId}:${key}`;
+    const held = heldMutexKeys.getStore();
+    if (held?.has(scopedKey)) {
+      return fn();
+    }
     const prev = this.chains.get(key) ?? Promise.resolve();
-    const next = prev.then(fn, fn);
+    const runScoped = () => heldMutexKeys.run(new Set([...(held ?? []), scopedKey]), fn);
+    const next = prev.then(runScoped, runScoped);
     const tail = next.then(
       () => undefined,
       () => undefined,

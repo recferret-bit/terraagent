@@ -8,3 +8,7 @@ export * from './lobby-store.helpers';
 export * from './lobby.module';
 export * from './memory-lobby.store';
 export * from './prisma-lobby.store';
+export * from './tickets.controller';
+export * from './tickets.helpers';
+export * from './tickets.service';
+export * from './tickets.types';
