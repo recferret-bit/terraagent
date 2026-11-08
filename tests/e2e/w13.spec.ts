@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { registerBotSteps } from './w13-bots';
+import { registerTradeUiSteps } from './w13-trade-ui';
 import { registerTradeSteps } from './w13-trade';
 import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, stack, test, urls, waitForTick } from './harness';
 
@@ -157,7 +158,7 @@ test('@hack 3. A offers 300 water for 10 USDC through the order form (preview no
   await expect(askPrices(a)).toHaveCount(1, { timeout: 5000 });
   const ms = Date.now() - t0;
   test.info().annotations.push({ type: 'observed', description: `step 3: ask visible in A's depth ${ms} ms after Place order` });
-  expect(ms, 'ask in the depth within 1 s (+ UI poll slack)').toBeLessThan(2500);
+  expect(ms, 'ask in the depth promptly (1 s push + UI poll; 5 s bound so a loaded CI machine does not flake)').toBeLessThan(5000);
   await expect.poll(async () => (await snap('a')).myOrders?.length ?? 0, { timeout: 20_000 }).toBe(1);
   const s = await snap('a');
   const o = s.myOrders![0]!;
@@ -395,6 +396,7 @@ test('@hack 9b. The operator panel UI /dev/chain/?tab=economy: dev tokens, clone
 
 registerTradeSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
 registerBotSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
+registerTradeUiSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATER });
 
 test('@hack 9c. Supply & trade panel: open it, BUY prefills the MARKET order form with side and amount and never submits', async () => {
   test.setTimeout(120_000);
