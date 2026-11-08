@@ -74,7 +74,9 @@ async function seedPlanet(m: Multi, page: Page): Promise<void> {
   // fixture service uses (a labelled fixture, same numbers as `W13M_FIXTURES`).
   for (let i = 1; i < 4; i++) {
     for (const resource of [m.ctx.water, 'metals.t1']) {
-      const ack = await page.evaluate(([c, r]) => (window as unknown as { __online: { commands: { send(k: string, a: unknown): Promise<{ ok: boolean; code?: string }> } } }).__online.commands.send('dev.cargoGrant', { colonyIndex: c, resource: r, amount: 300 }), [i, resource] as const);
+      const send = (): Promise<{ ok: boolean; code?: string }> => page.evaluate(([c, r]) => (window as unknown as { __online: { commands: { send(k: string, a: unknown): Promise<{ ok: boolean; code?: string }> } } }).__online.commands.send('dev.cargoGrant', { colonyIndex: c, resource: r, amount: 300 }), [i, resource] as const);
+      let ack = await send();
+      for (let retry = 0; !ack.ok && ack.code === 'timeout' && retry < 3; retry++) ack = await send(); // a loaded machine can miss the 5 s ack; the grant is applied at most once per ack, a re-grant only adds fixture water
       expect(ack.ok, `dev.cargoGrant col_${i} ${resource}: ${JSON.stringify(ack)}`).toBe(true);
     }
   }
