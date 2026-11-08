@@ -8,5 +8,6 @@ export * from './verifiers';
 export * from './landingPlan';
 export * from './landingSites';
 export * from './generateAtlas';
+export * from './manifest';
 export * from './sectorMetrics';
 export * from './crossSectorGameplay';
