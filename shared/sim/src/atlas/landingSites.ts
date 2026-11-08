@@ -323,7 +323,12 @@ export function validateSeedCorpusLandingSites(opts?: SeedCorpusValidationOption
     const seeds = opts?.seeds ?? W11_DEFAULT_SEED_CORPUS_BY_TYPE[planetType];
     for (const seed of seeds) {
       for (const cap of capacities) {
-        const atlas = generateSmallAtlas({ planetType, seed, foundingSeatsPerSector: cap });
+        const atlas = generateSmallAtlas({
+          planetType,
+          seed,
+          foundingSeatsPerSector: cap,
+          skipPerfCaps: true,
+        });
         const v = validateAtlasLandingSites(atlas, {
           foundingSeatsPerSector: cap,
           minSlotSeparation: opts?.minSlotSeparation,
