@@ -3,11 +3,14 @@ import {
   CANONICAL_PLANETS,
   newId,
   type EnqueueTicketRequestV1,
+  type LandingSlotId,
   type MatchTicketV1,
   type NormalizedTicketIntentV1,
   type PlanetType,
+  type SectorId,
 } from '@terra/contracts';
 import { HomeRepository } from '../core/home/home.repository';
+import { HomeService } from '../core/home/home.service';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import {
@@ -72,9 +75,11 @@ export class MatchTicketsService {
     @Inject(LobbyPersistenceService) private readonly persistence: LobbyPersistenceService,
     @Optional() @Inject(WorldLifecycleService) lifecycle?: WorldLifecycleService,
     @Optional() @Inject(HomeRepository) homeRepo?: HomeRepository,
+    @Optional() @Inject(HomeService) homeService?: HomeService,
   ) {
     this.lifecycle = lifecycle ?? new WorldLifecycleService(this.persistence);
     this.homeRepo = homeRepo ?? new HomeRepository();
+    homeService?.setLobbyServices(this.persistence, this.lifecycle);
   }
 
   /**
@@ -284,7 +289,8 @@ export class MatchTicketsService {
               colonyIndex: repoColony.colonyIndex,
               name: repoColony.name,
               color: repoColony.color,
-              foundingSectorId: 'sec_0_0',
+              foundingSectorId: (repoColony.foundingSectorId ?? 'sec_0_0') as SectorId,
+              ...(repoColony.landingSlotId ? { landingSlotId: repoColony.landingSlotId as LandingSlotId } : {}),
               spawnQ: repoColony.spawnQ,
               spawnR: repoColony.spawnR,
             },

@@ -1,11 +1,17 @@
 import {
   W11_SEVEN_SECTOR_COORDS,
+  type AtlasConfigV1,
+  type AtlasManifestV1,
   type ContinentId,
+  type SafeLandingSlotV1,
   type SectorId,
   type SectorKind,
   type SectorNeighbourV1,
 } from '@terra/contracts';
 import type { PlanetType } from '../kernel/state';
+import type { AtlasLandingValidationReport, ValidateAtlasLandingSitesOptions } from './landingTypes';
+
+export * from './landingTypes';
 
 /** Alias matching US spelling alongside `@terra/contracts` `SectorNeighbourV1`. */
 export type SectorNeighborV1 = SectorNeighbourV1;
@@ -165,6 +171,8 @@ export interface GenerateSmallAtlasOptions extends BuildSmallAtlasPartitionOptio
 export interface CreateAtlasPlanetOptions extends GenerateSmallAtlasOptions {
   readonly gridRadius?: number;
   readonly atlas?: GeneratedSmallAtlas;
+  readonly config?: AtlasConfigV1;
+  readonly manifest?: AtlasManifestV1;
 }
 
 export interface SampledAtlasTileValues {
@@ -209,6 +217,8 @@ export interface GeneratedAtlasSector {
   readonly radius: number;
   readonly tileCount: number;
   readonly foundingCapacity: number;
+  readonly validatedSafeSites: number;
+  readonly safeLandingSlots: readonly SafeLandingSlotV1[];
   readonly neighbors: readonly SectorNeighborV1[];
   readonly atlasNeighbors: readonly SectorNeighborV1[];
   readonly tiles: readonly SectorTileEntry[];
@@ -281,6 +291,8 @@ export interface AtlasSectorBlobSummary {
   readonly radius: number;
   readonly tileCount: number;
   readonly foundingCapacity: number;
+  readonly validatedSafeSites?: number;
+  readonly safeLandingSlots?: readonly SafeLandingSlotV1[];
   readonly foundedSeats?: number;
   readonly freeSeats?: number;
   readonly livingColonies?: number;
@@ -292,9 +304,20 @@ export interface AtlasBlobValue {
   readonly planetType: PlanetType;
   readonly seed: string;
   readonly genVersion: number;
+  readonly atlasVersion?: number;
+  readonly topologyVersion?: number;
+  readonly configVersion?: number;
+  readonly configHash?: string;
+  readonly atlasHash?: string;
+  readonly resourceProfileId?: string;
+  readonly resourceProfileHash?: string;
+  readonly manifest?: AtlasManifestV1;
   readonly sectorRadius: number;
   readonly tilesPerSector: number;
   readonly foundingSeatsPerSector: number;
+  readonly nominalCapacity: number;
+  readonly validatedCapacity: number;
+  readonly safeLandingSlots: readonly SafeLandingSlotV1[];
   readonly continentId: ContinentId;
   readonly landSectorIds: readonly SectorId[];
   readonly oceanSectorIds: readonly SectorId[];
@@ -312,6 +335,10 @@ export interface GeneratedSmallAtlas {
   readonly sectorRadius: number;
   readonly tilesPerSector: number;
   readonly foundingSeatsPerSector: number;
+  readonly nominalCapacity: number;
+  readonly validatedCapacity: number;
+  readonly safeLandingSlots: readonly SafeLandingSlotV1[];
+  readonly landingValidation: AtlasLandingValidationReport;
   readonly continentId: ContinentId;
   readonly generationOrder: readonly SectorId[];
   readonly partition: AtlasPartition;
@@ -331,4 +358,5 @@ export interface GeneratedSmallAtlas {
   sampleGlobalTile(q: number, r: number): SampledAtlasTileValues;
   verifySeamContinuity(opts?: SeamContinuityOptions): SeamContinuityReport;
   verifyConnectedContinent(): ConnectedContinentReport;
+  validateLandingSites(opts?: ValidateAtlasLandingSitesOptions): AtlasLandingValidationReport;
 }

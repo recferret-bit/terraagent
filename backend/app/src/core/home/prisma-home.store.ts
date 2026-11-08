@@ -28,7 +28,12 @@ const orNull = <T>(row: T | null, map: (r: T) => ColonyRecord | PlanetRecord) =>
 
 /** Planet and colony rows in `core.planet` / `core.colony`. */
 export class PrismaHomeStore implements HomeStore {
+  private readonly recapSeenIds = new Set<string>();
+
   constructor(private readonly prisma: PrismaClient) {}
+
+  private toColony = (row: NewColonyRow & { createdAt: Date }): ColonyRecord =>
+    colonyFromRow({ ...row, recapSeen: this.recapSeenIds.has(row.id) });
 
   async findPlanet(id: string): Promise<PlanetRecord | null> {
     return orNull(await this.prisma.planet.findUnique({ where: { id } }), planetFromRow) as PlanetRecord | null;
@@ -54,35 +59,51 @@ export class PrismaHomeStore implements HomeStore {
   }
 
   async findColony(id: string): Promise<ColonyRecord | null> {
-    return orNull(await this.prisma.colony.findUnique({ where: { id } }), colonyFromRow) as ColonyRecord | null;
+    return orNull(await this.prisma.colony.findUnique({ where: { id } }), this.toColony) as ColonyRecord | null;
   }
 
   async findLatestColony(playerId: string, planetId?: string): Promise<ColonyRecord | null> {
     const row = await this.prisma.colony.findFirst({ where: { playerId, ...(planetId === undefined ? {} : { planetId }) }, orderBy: { createdAt: 'desc' } });
-    return orNull(row, colonyFromRow) as ColonyRecord | null;
+    return orNull(row, this.toColony) as ColonyRecord | null;
   }
 
   async listColonies(planetId?: string): Promise<ColonyRecord[]> {
     const rows = await this.prisma.colony.findMany({ ...(planetId === undefined ? {} : { where: { planetId } }), orderBy: { colonyIndex: 'asc' } });
-    return rows.map(colonyFromRow);
+    return rows.map(this.toColony);
   }
 
   async createColony(row: NewColonyRow): Promise<{ colony: ColonyRecord; planet: PlanetRecord | null }> {
-    const created = await this.prisma.colony.create({ data: row });
-    return { colony: colonyFromRow(created), planet: await this.recount(row.planetId) };
+    const { recapSeen, foundingSectorId, landingSlotId, ...rest } = row;
+    const created = await this.prisma.colony.create({
+      data: {
+        ...rest,
+        foundingSectorId: foundingSectorId ?? 'sec_0_0',
+        ...(landingSlotId !== undefined ? { landingSlotId } : {}),
+      },
+    });
+    if (recapSeen) this.recapSeenIds.add(created.id);
+    return { colony: this.toColony(created), planet: await this.recount(row.planetId) };
   }
 
   async deleteColony(id: string): Promise<string | null> {
     const rows = await this.prisma.colony.findMany({ where: { id }, select: { planetId: true } });
     if (!rows[0]) return null;
+    this.recapSeenIds.delete(id);
     await this.prisma.colony.deleteMany({ where: { id } });
     await this.recount(rows[0].planetId);
     return rows[0].planetId;
   }
 
   async setColonyStatus(id: string, status: string): Promise<ColonyRecord | null> {
+    if (status === 'ELIMINATED') this.recapSeenIds.delete(id);
     const r = await this.prisma.colony.updateMany({ where: { id }, data: { status } });
     return r.count ? this.findColony(id) : null;
+  }
+
+  async setColonyRecapSeen(id: string, recapSeen = true): Promise<ColonyRecord | null> {
+    if (recapSeen) this.recapSeenIds.add(id);
+    else this.recapSeenIds.delete(id);
+    return this.findColony(id);
   }
 
   async deleteColoniesOfPlanet(planetId: string): Promise<number> {

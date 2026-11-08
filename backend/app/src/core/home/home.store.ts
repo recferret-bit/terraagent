@@ -22,6 +22,9 @@ export interface ColonyRecord {
   readonly color: number;
   readonly status: string;
   readonly state: string;
+  readonly foundingSectorId?: string;
+  readonly landingSlotId?: string | null;
+  readonly recapSeen?: boolean;
   readonly spawnQ: number;
   readonly spawnR: number;
   readonly spawn: { readonly q: number; readonly r: number };
@@ -48,6 +51,9 @@ export interface NewColonyRow {
   readonly name: string;
   readonly color: number;
   readonly status: string;
+  readonly foundingSectorId?: string;
+  readonly landingSlotId?: string | null;
+  readonly recapSeen?: boolean;
   readonly spawnQ: number;
   readonly spawnR: number;
 }
@@ -72,12 +78,20 @@ export interface HomeStore {
   /** Deletes the colony (if any) and recounts its planet's seats; returns the planet id it was on. */
   deleteColony(id: string): Promise<string | null>;
   setColonyStatus(id: string, status: string): Promise<ColonyRecord | null>;
+  setColonyRecapSeen(id: string, recapSeen?: boolean): Promise<ColonyRecord | null>;
   /** Deletes every colony row of the planet and resets its seat count (dev wipe); returns how many colonies. */
   deleteColoniesOfPlanet(planetId: string): Promise<number>;
 }
 
 export function colonyFromRow(row: NewColonyRow & { createdAt: Date }): ColonyRecord {
-  return { ...row, state: row.status, spawn: { q: row.spawnQ, r: row.spawnR } };
+  return {
+    ...row,
+    foundingSectorId: row.foundingSectorId ?? 'sec_0_0',
+    landingSlotId: row.landingSlotId ?? null,
+    recapSeen: row.recapSeen ?? false,
+    state: row.status,
+    spawn: { q: row.spawnQ, r: row.spawnR },
+  };
 }
 
 const newest = (a: ColonyRecord | null, b: ColonyRecord) => (!a || b.createdAt.getTime() >= a.createdAt.getTime() ? b : a);
@@ -145,7 +159,16 @@ export class MemoryHomeStore implements HomeStore {
   async setColonyStatus(id: string, status: string): Promise<ColonyRecord | null> {
     const c = this.colonies.get(id);
     if (!c) return null;
-    const next = { ...c, status, state: status };
+    const recapSeen = status === 'ELIMINATED' && c.status !== 'ELIMINATED' ? false : c.recapSeen;
+    const next = { ...c, status, state: status, recapSeen };
+    this.colonies.set(id, next);
+    return next;
+  }
+
+  async setColonyRecapSeen(id: string, recapSeen = true): Promise<ColonyRecord | null> {
+    const c = this.colonies.get(id);
+    if (!c) return null;
+    const next = { ...c, recapSeen };
     this.colonies.set(id, next);
     return next;
   }
