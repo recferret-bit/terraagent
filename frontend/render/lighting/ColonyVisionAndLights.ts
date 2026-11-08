@@ -39,6 +39,7 @@ export interface ColonyVisionTextureInput {
   colonyIndex: number;
   owner?: ArrayLike<number>;
   explored?: ArrayLike<number>;
+  exploredByColony?: Record<number, Uint8Array>;
   visionSources?: ReadonlyArray<ColonyVisionSourceDesc>;
   baseCenters?: ReadonlyArray<{ x: number; z: number; innerRadius: number; outerRadius: number }>;
 }

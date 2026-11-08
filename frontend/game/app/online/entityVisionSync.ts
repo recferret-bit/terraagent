@@ -216,6 +216,7 @@ export function syncColonyVisionAndProjectors(opts: {
       radius: terrain.radius,
       colonyIndex: ownerColonyIndex,
       explored: tiles?.explored,
+      exploredByColony: tiles?.exploredByColony,
       visionSources,
     });
   }

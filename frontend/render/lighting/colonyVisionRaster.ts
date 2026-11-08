@@ -1,17 +1,32 @@
 import { planetExtent, tileAt } from '../planets/hex/hexMath';
 import type { ColonyVisionSourceDesc, ColonyVisionTextureInput } from './ColonyVisionAndLights';
 
+function isVisionTileExplored(input: ColonyVisionTextureInput, tileIdx: number): boolean {
+  const col = input.colonyIndex;
+  if (!Number.isInteger(col) || col < 0 || tileIdx < 0) return false;
+  const bitset = input.exploredByColony?.[col];
+  if (bitset) {
+    const byteIdx = tileIdx >> 3;
+    if (byteIdx < bitset.length && (bitset[byteIdx]! & (1 << (tileIdx & 7))) !== 0) {
+      return true;
+    }
+  }
+  if (col < 8 && input.explored) {
+    return ((input.explored[tileIdx] ?? 0) & (1 << col)) !== 0;
+  }
+  return false;
+}
+
 /** Remembered terrain is separate from current sight. Ownership never grants sight by itself. */
 export function rasterizeColonyVision(input: ColonyVisionTextureInput, pixels: Uint8Array, size: number): number {
   const span = Math.max(64, planetExtent(input.radius).x * 2.2);
   const step = span / size;
-  const mask = input.colonyIndex >= 0 && input.colonyIndex < 8 ? 1 << input.colonyIndex : 0;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const hit = tileAt(input.radius, (x + 0.5) * step - span / 2, (y + 0.5) * step - span / 2);
       const offset = (y * size + x) * 4;
       pixels[offset] = 0;
-      pixels[offset + 1] = hit && ((input.explored?.[hit.i] ?? 0) & mask) ? 255 : 0;
+      pixels[offset + 1] = hit && isVisionTileExplored(input, hit.i) ? 255 : 0;
       pixels[offset + 2] = 0;
       pixels[offset + 3] = 255;
     }
@@ -42,11 +57,21 @@ function rasterizeSource(c: ColonyVisionSourceDesc, pixels: Uint8Array, size: nu
 }
 
 export function colonyVisionSignature(input: ColonyVisionTextureInput): string {
-  const mask = input.colonyIndex >= 0 && input.colonyIndex < 8 ? 1 << input.colonyIndex : 0;
+  const col = input.colonyIndex;
+  const bitset = col >= 0 ? input.exploredByColony?.[col] : undefined;
   let hash = 0;
-  if (input.explored && mask) {
-    for (let i = 0; i < input.explored.length; i++) {
-      if (input.explored[i]! & mask) hash = (hash * 31 + i + 1) | 0;
+  if (bitset && col >= 8) {
+    for (let b = 0; b < bitset.length; b++) {
+      const byte = bitset[b]!;
+      if (byte === 0) continue;
+      for (let bit = 0; bit < 8; bit++) {
+        if (byte & (1 << bit)) hash = (hash * 31 + (b << 3) + bit + 1) | 0;
+      }
+    }
+  } else if (col >= 0 && col < 8 && (bitset || input.explored)) {
+    const tileLen = Math.max(input.explored?.length ?? 0, (bitset?.length ?? 0) << 3);
+    for (let i = 0; i < tileLen; i++) {
+      if (isVisionTileExplored(input, i)) hash = (hash * 31 + i + 1) | 0;
     }
   }
   const sources = [...(input.baseCenters ?? []), ...(input.visionSources ?? [])];

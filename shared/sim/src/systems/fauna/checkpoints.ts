@@ -185,6 +185,7 @@ export function restoreFaunaCheckpoint(state: PlanetState, checkpoint: FaunaChec
 
   for (const k of Object.keys(state.blobs)) delete state.blobs[k];
   for (const [k, v] of Object.entries(restored.blobs)) state.blobs[k] = v;
+  linkGridMeta(state.grid, state.meta, state.blobs);
 }
 
 export interface ApplyFaunaDirectiveOptions {

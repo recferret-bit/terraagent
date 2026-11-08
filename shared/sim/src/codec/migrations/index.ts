@@ -1,3 +1,5 @@
+import { hydrateLegacyExplorationOnSnapshotObject } from '../../grid/exploration';
+
 /**
  * Snapshot migration registry (SIM-D-07). A migration upgrades the DECODED plain snapshot object (envelope with
  * `header` and `state`) from one `SIM_VERSION` to a later one. Chains are followed greedily (largest step that does
@@ -31,6 +33,7 @@ function migrateV3ToV4(snapshot: SnapshotObject): SnapshotObject {
     const owner = toInt16(state.entities.cols.owner);
     if (owner) state.entities.cols.owner = owner;
   }
+  hydrateLegacyExplorationOnSnapshotObject(state);
   if (isRecord(state.meta)) {
     state.meta.simVersion = 4;
   }
