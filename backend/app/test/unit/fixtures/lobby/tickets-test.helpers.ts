@@ -20,6 +20,8 @@ import {
   MatchTicketsController,
   MatchTicketsService,
   MemoryLobbyStore,
+  PlanetsController,
+  PlanetsService,
   WorldLifecycleService,
 } from '../../../../src/lobby';
 
@@ -47,9 +49,21 @@ export function createTicketFixture() {
   const homeRepo = new HomeRepository();
   const homeService = new HomeService(homeRepo, undefined, persistence, lifecycle);
   const homeController = new HomeController(homeService);
+  const planets = new PlanetsService(persistence, lifecycle, homeRepo);
+  const planetsController = new PlanetsController(planets);
   const tickets = new MatchTicketsService(persistence, lifecycle, homeRepo, homeService);
   const controller = new MatchTicketsController(tickets);
-  return { persistence, lifecycle, homeRepo, homeService, homeController, tickets, controller };
+  return {
+    persistence,
+    lifecycle,
+    homeRepo,
+    homeService,
+    homeController,
+    planets,
+    planetsController,
+    tickets,
+    controller,
+  };
 }
 
 export async function bootTicketsHttpApp(onAppCreated?: (app: INestApplication) => void) {
@@ -76,6 +90,7 @@ export async function bootTicketsHttpApp(onAppCreated?: (app: INestApplication) 
     lifecycle: created.app.get(WorldLifecycleService),
     homeRepo: created.app.get(HomeRepository),
     homeService: created.app.get(HomeService),
+    planets: created.app.get(PlanetsService),
     tickets: created.app.get(MatchTicketsService),
   };
 }
