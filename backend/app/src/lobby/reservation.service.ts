@@ -31,6 +31,7 @@ import {
   type ManagedSectorReservationRecord,
   type ReleaseReservationOptions,
   type ReleaseReservationResult,
+  type ReservationSlotFencePolicy,
   type ReserveSectorSlotRequest,
   type ReserveSlotForTicketOptions,
   type SectorReservationResult,
@@ -53,6 +54,7 @@ import {
 export class SectorReservationService {
   private readonly mutex = new KeyedMutex();
   private readonly spawningStateById = new Map<string, boolean>();
+  private slotFencePolicy?: ReservationSlotFencePolicy;
 
   constructor(
     @Inject(LobbyPersistenceService)
@@ -71,6 +73,14 @@ export class SectorReservationService {
 
   getAuthorityValidator(): SimLandingAuthorityValidator | undefined {
     return this.authorityValidator;
+  }
+
+  setSlotFencePolicy(policy: ReservationSlotFencePolicy | undefined): void {
+    this.slotFencePolicy = policy;
+  }
+
+  getSlotFencePolicy(): ReservationSlotFencePolicy | undefined {
+    return this.slotFencePolicy;
   }
 
   async reserveSlotForTicket(
@@ -180,6 +190,7 @@ export class SectorReservationService {
       input.sectorId,
       input.landingSlotId,
       ticket,
+      this.slotFencePolicy,
     );
     if (!candidatesOutcome.ok) return candidatesOutcome.failure;
 
