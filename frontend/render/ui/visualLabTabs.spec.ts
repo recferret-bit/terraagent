@@ -12,27 +12,34 @@ import { AMBIENT_FOLLOW_BOX, createHexAmbient } from '../planets/hex/hexAmbient'
 import { getViewFocus, setViewFocusEnabled, updateViewFocus } from '../core/viewFocus';
 import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { disposePixelDialog, initPixelDialog, selectVisualTab, togglePixelDialog } from './pixelDialog';
-import { WATER_SLIDERS, WIND_SLIDERS } from './visualLabSpecs';
+import { WATER_SLIDERS, WEATHER_SLIDERS, WIND_SLIDERS } from './visualLabSpecs';
 import { getVisualLabTab, VISUAL_LAB_TABS } from './visualLabTabs';
+import {
+  getWeatherParams, isTwisterAvailable, onWeatherAction, resetWeatherParams, setWeather, setWeatherParams, WEATHER_RANGES,
+} from '../core/weatherConfig';
+import { createRainAndStormPass } from '../weather/RainAndStormPass';
 
 const RANGES: Partial<Record<string, Readonly<Record<string, readonly [number, number]>>>> = {
   wind: WIND_RANGES,
   water: WATER_RANGES,
+  weather: WEATHER_RANGES,
 };
 
 function restore() {
   resetWindParams(); setWind(true);
   resetWaterParams(); setWaterFx(true);
+  resetWeatherParams(); setWeather(true);
 }
 
 describe('F8 Visual Shader Lab tab registry', () => {
   beforeEach(restore);
   afterEach(restore);
 
-  it('registers the seven tabs once, in order, with unknown ids falling back to SHADOW', () => {
-    expect(VISUAL_LAB_TABS.map((t) => t.id)).toEqual(['crt', 'pixel', 'shadow', 'daynight', 'wind', 'water', 'perf']);
+  it('registers the eight tabs once, in order, with unknown ids falling back to SHADOW', () => {
+    expect(VISUAL_LAB_TABS.map((t) => t.id)).toEqual(['crt', 'pixel', 'shadow', 'daynight', 'wind', 'water', 'weather', 'perf']);
     expect(getVisualLabTab('nope').id).toBe('shadow');
     expect(getVisualLabTab('wind').head).toBeDefined();
+    expect(getVisualLabTab('weather').head).toBeDefined();
   });
 
   it('keeps every slider inside its tab params and, for lab stores, inside the clamp range', () => {
@@ -53,6 +60,18 @@ describe('F8 Visual Shader Lab tab registry', () => {
     expect(WIND_SLIDERS.map((s) => s.key).sort()).toEqual(Object.keys(WIND_RANGES).sort());
     expect(WATER_SLIDERS.map((s) => s.key).sort()).toEqual(Object.keys(WATER_RANGES).sort());
     expect(WATER_SLIDERS.find((s) => s.key === 'quality')!.fmt(0)).toBe('LOW');
+    const water = (k: string) => WATER_SLIDERS.find((s) => s.key === k)!;
+    expect(water('reflection').fmt(0)).toBe('OFF');
+    expect(water('reflection').fmt(0.8)).toBe('80%');
+    expect(water('reflectDistort').fmt(1)).toBe('100%');
+    expect([0, 1, 2].map(water('reflectRes').fmt)).toEqual(['×0.25', '×0.50', '×1.00']);
+    expect(water('reflectRes').step).toBe(1);
+    expect(water('reflectDebug').label).toBe('REFLECTION DEBUG');
+    expect([0, 1].map(water('reflectDebug').fmt)).toEqual(['OFF', 'MIRROR ONLY']);
+    expect(water('reflectDebug').step).toBe(1);
+    // the mirror sliders sit in the REFLECTIONS group, consecutive (one group heading)
+    expect(WATER_SLIDERS.filter((s) => s.group === 'REFLECTIONS').map((s) => s.key))
+      .toEqual(['sunGlint', 'projectorReflect', 'reflection', 'reflectDistort', 'reflectRes', 'reflectDebug']);
   });
 
   it('setParam reaches the wind / water stores and switches a bypassed effect back on', () => {
@@ -226,5 +245,52 @@ describe('F8 dialog WIND / WATER tabs', () => {
     expect(getWaterParams().quality).toBe(1);
     expect(isWaterFxOn()).toBe(true);
     expect(dlg.querySelector('[data-val="quality"]')?.textContent).toBe('MED');
+
+    selectVisualTab('weather');
+    expect(WEATHER_SLIDERS.map((s) => s.key)).not.toContain('screenRaindrops');
+    expect(dlg.querySelector('#pd-weather-screen-drops-btn')).toBeNull();
+    expect(dlg.querySelectorAll('#pd-sliders input[type=range]').length).toBe(WEATHER_SLIDERS.length);
+    const twisterBtn = dlg.querySelector<HTMLButtonElement>('[data-weather-act="twister"]')!;
+    expect(twisterBtn.disabled).toBe(false);
+    expect(dlg.querySelector('#pd-weather-twister-hint')?.textContent).toContain('LOCKED');
+    const actions: string[] = [];
+    const offAct = onWeatherAction((a) => actions.push(a));
+    dlg.querySelector<HTMLButtonElement>('[data-weather-preset="twister-ready"]')!.click();
+    expect(isTwisterAvailable()).toBe(true);
+    expect(twisterBtn.disabled).toBe(false);
+    twisterBtn.click();
+    dlg.querySelector<HTMLButtonElement>('[data-weather-act="meteor"]')!.click();
+    dlg.querySelector<HTMLButtonElement>('[data-weather-act="lightning"]')!.click();
+    expect(actions).toEqual(['twister-ready', 'twister', 'meteor', 'lightning']);
+    offAct();
+  });
+
+  it('updates RainAndStormPass streak count, wind tilt, and storm fog darkening', () => {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xb9dcef);
+    scene.fog = new THREE.FogExp2(0xb9dcef, 0.007);
+    const cam = new THREE.PerspectiveCamera(28, 1, 1, 600);
+    cam.position.set(42, 46, 42);
+    cam.lookAt(0, 0, 0);
+    const pass = createRainAndStormPass(scene, cam);
+
+    pass.update(0.016);
+    expect(pass.group.visible).toBe(false);
+    expect(pass.getActiveStreakCount()).toBe(0);
+
+    setWindParams({ directionDeg: 0, strength: 1.4 });
+    setWeatherParams({ rainIntensity: 0.35, stormDarkness: 0.6, stormActive: true });
+    pass.update(0.016);
+    expect(pass.group.visible).toBe(true);
+    expect(pass.getActiveStreakCount()).toBeGreaterThan(100);
+    expect(pass.getWindTilt().dx).toBeGreaterThan(0.5);
+    expect((scene.fog as THREE.FogExp2).density).toBeGreaterThan(0.012);
+
+    setWeatherParams({ rainIntensity: 0, stormDarkness: 0, stormActive: false });
+    pass.update(0.016);
+    expect(pass.group.visible).toBe(false);
+    expect((scene.fog as THREE.FogExp2).density).toBeCloseTo(0.007, 4);
+    expect(getWeatherParams().rainIntensity).toBe(0);
+    pass.dispose();
   });
 });

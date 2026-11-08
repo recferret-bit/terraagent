@@ -5,11 +5,17 @@ import { applyTerrainShader } from './terrainShader';
 
 const KIND_INDEX: Record<PlanetKind, number> = { dune: 0, oceanForest: 1, forestRock: 2 };
 
-/** Uniforms of the terrain shader from a planet palette. `ext` = full extent (m) the radial fog fade is measured against. */
-export function terrainUniforms(spec: PlanetSpec, level: number, ext: number, wind: readonly [number, number]): Record<string, THREE.IUniform> {
+/**
+ * Uniforms of the terrain shader from a planet palette. `ext` = full extent (m) the radial fog fade is measured against.
+ * `terraformMap`: the caller's `uTerraformMap` (the hex terrain's per-tile one); without it a 128² world-space map is
+ * allocated here, which the caller then owns (dispose it with the material).
+ */
+export function terrainUniforms(
+  spec: PlanetSpec, level: number, ext: number, wind: readonly [number, number], terraformMap?: THREE.Texture,
+): Record<string, THREE.IUniform> {
   const p = spec.palette;
   const tfPalette = resolveTerraformPalette(spec.kind);
-  const { terraformTexture } = createTerraformMapTexture(128);
+  const terraformTexture = terraformMap ?? createTerraformMapTexture(128).terraformTexture;
   const c = (n: number) => new THREE.Color(n);
   return {
     uTime: { value: 0 },

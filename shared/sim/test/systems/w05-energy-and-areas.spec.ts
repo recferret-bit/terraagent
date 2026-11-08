@@ -15,7 +15,7 @@ import {
   setTileOwner,
   setTilePrep,
   setTileTerrain,
-  spawnTerraformerUnit,
+  spawnWorkerUnit,
   startBuildingConstruction,
   step,
   TERRAIN,
@@ -76,7 +76,7 @@ describe('W05-08 · Op energy and group-1 brownout shedding', () => {
 
     // Start at noon (hour 12:00, full daylight): Hub (16) + Solar (20) = 36 E/s supply > Hub (7) + Drone (2.5) + Reclaim (14.29) = 23.79 E/s
     setPlanetTime(state, { timeOfDay: 12, timeScale: 0 }, 0);
-    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 2, r: 0 });
 
     // Enqueue Reclaim (14 s = 70 ticks at 1.0x, 200 E = 14.2857 E/s) and run 28 more ticks -> 29 ticks so far
     const enqRes = step(
@@ -160,10 +160,10 @@ describe('W05-08 · Area order splits tiles over <= 8 workers', () => {
       tiles.push({ q, r });
     }
 
-    // Spawn 10 Terraformer Drones adjacent to the row
+    // Spawn 10 Worker Drones adjacent to the row
     const workerIds: number[] = [];
     for (let i = 0; i < 10; i++) {
-      workerIds.push(spawnTerraformerUnit(state, { owner: 0, q: -4 + i, r: 3 }));
+      workerIds.push(spawnWorkerUnit(state, { tier: 3, owner: 0, q: -4 + i, r: 3 }));
     }
 
     const enqRes = step(

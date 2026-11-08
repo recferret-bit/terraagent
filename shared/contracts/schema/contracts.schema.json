@@ -1223,6 +1223,75 @@
       "summary": "Dev console: respawns or lands the caller colony drop pod and HQ at a spawn slot.",
       "wave": "W01"
     },
+    "dev.lightning": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hexCount": {
+            "maximum": 19,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rain": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: triggers a 4-hex lightning strike that heavily damages targets, overloads electricity, and puts damaged buildings offline temporarily (W05).",
+      "wave": "W05"
+    },
+    "dev.meteor": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hexCount": {
+            "maximum": 37,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: triggers a meteor impact that destroys all entities in a 10-hex blast zone and leaves TERRAIN.hole craters (W05).",
+      "wave": "W05"
+    },
     "dev.nudge": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1294,6 +1363,37 @@
       "origin": "client",
       "summary": "Dev console: dumps or overrides the colony power grid component balance and shed states (W02-30, W10-30).",
       "wave": "W02"
+    },
+    "dev.rain": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "intensity": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "level": {
+            "enum": [
+              "none",
+              "minor",
+              "heavy"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: sets planet rain level (none, minor, heavy) and intensity (0..1) (W05).",
+      "wave": "W05"
     },
     "dev.reveal": {
       "args": {
@@ -1528,6 +1628,38 @@
       "summary": "Dev command to set colony stage (`set`), skip stage dwell timer (`skip-dwell`), or trigger a safety override (`trigger`).",
       "wave": "W08"
     },
+    "dev.storm": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lightning": {
+            "type": "boolean"
+          },
+          "rain": {
+            "enum": [
+              "none",
+              "minor",
+              "heavy"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: toggles or configures storm + rain + lightning weather state on the planet (W05).",
+      "wave": "W05"
+    },
     "dev.teleport": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1643,6 +1775,37 @@
       "origin": "client",
       "summary": "Dev console (`tradehub.spawn`): spawns an instant completed online Trade Hub for the caller colony (W10-26).",
       "wave": "W10"
+    },
+    "dev.twister": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dirDeg": {
+            "type": "number"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: spawns a rising twister that travels in a random direction, damages buildings, and sucks up units and trees (requires high wind and minor rain, W05).",
+      "wave": "W05"
     },
     "enqueueTask": {
       "args": {
@@ -1788,6 +1951,11 @@
                   },
                   "repeat": {
                     "type": "boolean"
+                  },
+                  "tier": {
+                    "maximum": 3,
+                    "minimum": 1,
+                    "type": "integer"
                   },
                   "unit": {
                     "maxLength": 64,
@@ -1975,6 +2143,11 @@
                       },
                       "repeat": {
                         "type": "boolean"
+                      },
+                      "tier": {
+                        "maximum": 3,
+                        "minimum": 1,
+                        "type": "integer"
                       },
                       "unit": {
                         "maxLength": 64,
@@ -2556,7 +2729,7 @@
         ]
       },
       "origin": "client",
-      "summary": "Immediately updates the per-family harvest weights for standing Harvester jobs (UO-L-01, W02-12).",
+      "summary": "Immediately updates the per-family harvest weights for standing Worker jobs (UO-L-01, W02-12).",
       "wave": "W02"
     },
     "setPlanetTime": {
@@ -3676,10 +3849,31 @@
             "minimum": 0,
             "type": "number"
           },
+          "damagedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
           "entityId": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "offlineDurationTicks": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "overloadedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
           },
           "planetId": {
             "type": "string"
@@ -3693,6 +3887,29 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "tiles": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "q": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "r": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "q",
+                "r"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -3702,7 +3919,7 @@
         "type": "object"
       },
       "severity": "warn",
-      "summary": "Emitted when a lightning bolt strikes a tile or is absorbed by a Lightning Rod (W05-01).",
+      "summary": "Emitted when a lightning bolt strikes a tile or 4-hex cluster, damaging buildings and overloading electricity (W05-01).",
       "wave": "W05"
     },
     "meteorImpact": {
@@ -3721,6 +3938,11 @@
               "type": "integer"
             },
             "type": "array"
+          },
+          "hexCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "planetId": {
             "type": "string"
@@ -3742,6 +3964,29 @@
           },
           "shielded": {
             "type": "boolean"
+          },
+          "tiles": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "q": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "r": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "q",
+                "r"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -4824,6 +5069,55 @@
       "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
     },
+    "twisterStarted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "dirRad": {
+            "type": "number"
+          },
+          "durationTicks": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "planetId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "twisterId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "twisterId",
+          "q",
+          "r",
+          "dirRad",
+          "durationTicks"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a twister rises and begins moving in a random direction (W05).",
+      "wave": "W05"
+    },
     "unitProduced": {
       "audience": "player",
       "data": {
@@ -4854,6 +5148,11 @@
           "r": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "tier": {
+            "maximum": 3,
+            "minimum": 1,
             "type": "integer"
           },
           "unit": {

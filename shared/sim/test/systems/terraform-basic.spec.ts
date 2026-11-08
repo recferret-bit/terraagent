@@ -238,7 +238,7 @@ describe('W01-13: Territory rules and queue management', () => {
 });
 
 describe('W02: cancelTask on the working unit (CANCEL on its selection card)', () => {
-  it.each(['harvester', 'unit'])('%s:<id> ends the terraform order the unit works on and stops it', (prefix) => {
+  it.each(['worker', 'unit'])('%s:<id> ends the terraform order the unit works on and stops it', (prefix) => {
     const host = new SimHost({ flags: parseWaves('..02') });
     host.load(createPlanet({ type: 'flat', seed: 'tf-unit-cancel', radius: 12 }));
     const state = host.state;

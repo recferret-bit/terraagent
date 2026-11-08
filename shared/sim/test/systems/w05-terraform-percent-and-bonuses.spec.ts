@@ -23,7 +23,7 @@ import {
   setTileOwner,
   setTilePrep,
   setTileTerrain,
-  spawnTerraformerUnit,
+  spawnWorkerUnit,
   step,
   syncColonyTerraformStats,
   TERRAIN,
@@ -186,7 +186,7 @@ function measureGroundMoveDistance(prepState: number): number {
     setTileHeight(state.grid, i, 0, 0);
   }
 
-  const unitId = spawnTerraformerUnit(state, { owner: 0, q: -5, r: 0 });
+  const unitId = spawnWorkerUnit(state, { tier: 3, owner: 0, q: -5, r: 0 });
   step(
     state,
     [

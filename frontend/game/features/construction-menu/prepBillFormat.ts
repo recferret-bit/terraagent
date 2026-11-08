@@ -1,6 +1,7 @@
 import {
-  PREP,
-  TERRAIN,
+  isPreparedGround,
+  linkedPrepActive,
+  opForTerrain,
   planPrepJobs,
   summarizePrepJobs,
   type CompiledDataLike,
@@ -28,21 +29,16 @@ const W05_OP_LABELS: Readonly<Record<string, string>> = {
   grade: 'Grade',
 };
 
+/** W05 linked prep is on: the flag, or the host's data compiles the W05 ops (the sim's `linkedPrepActive`). */
 export function isW05LinkedPrepActive(flags: { has(flag: string): boolean }, data?: CompiledDataLike): boolean {
-  if (flags.has('W05')) return true;
-  return Boolean((data?.tables?.opsBasic as Record<string, unknown> | undefined)?.level);
+  return flags.has('W05') || linkedPrepActive(data);
 }
 
-export function getTilePrepOp(terrain: number, prep: number, w05Active = false): string | undefined {
-  if (prep === PREP.prepared || prep === PREP.irrigated || prep === PREP.living) return undefined;
+/** The first prep op of one footprint tile: the sim's own `opForTerrain` (W05), else the legacy `prepare`. */
+export function getTilePrepOp(terrain: number, prep: number, w05Active = false, data?: CompiledDataLike): string | undefined {
+  if (isPreparedGround(prep)) return undefined;
   if (!w05Active) return 'prepare';
-  if (terrain === TERRAIN.slope) return 'level';
-  if (terrain === TERRAIN.hole) return 'fill';
-  if (terrain === TERRAIN.shallow) return 'reclaim';
-  if (terrain === TERRAIN.deep) return 'deepReclaim';
-  if (terrain === TERRAIN.forest) return 'clear';
-  if (terrain === TERRAIN.rock) return 'break';
-  return 'grade';
+  return opForTerrain(terrain, data) ?? undefined;
 }
 
 export function formatPrepBillText(bill: Record<string, number>): string {

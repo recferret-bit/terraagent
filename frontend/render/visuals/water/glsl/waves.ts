@@ -18,9 +18,9 @@ const WATER_UNIFORM_DECLS = `uniform float ${Object.keys(getWaterUniforms()).joi
 
 /**
  * Feature switches derived from the one `WATER_QUALITY` define (0 LOW, 1 MEDIUM, 2 HIGH).
- * LOW: 2 Gerstner waves, no ripples, no caustics, no parallax, 1 field fetch.
- * MED: 3 waves, 1 ripple octave, caustics, wind-onshore foam, 1 field fetch.
- * HIGH: 4 waves, 2 ripple octaves, caustics, refracted-bed parallax (+1 field fetch).
+ * LOW: 2 Gerstner waves, no ripples, no caustics, no parallax, 1 field fetch, no mirror reflection.
+ * MED: 3 waves, 1 ripple octave, caustics, wind-onshore foam, 1 field fetch, mirror reflection (1 tap).
+ * HIGH: 4 waves, 2 ripple octaves, caustics, refracted-bed parallax (+1 field fetch), mirror reflection (3 taps).
  */
 export const WATER_TIER_GLSL = /* glsl */ `
 #ifndef WATER_QUALITY
@@ -32,11 +32,15 @@ export const WATER_TIER_GLSL = /* glsl */ `
 #define WATER_CAUSTICS
 #define WATER_PARALLAX
 #define WATER_ONSHORE
+#define WATER_MIRROR
+#define WATER_MIRROR_TAPS 3
 #elif WATER_QUALITY == 1
 #define WATER_WAVE_COUNT 3
 #define WATER_DETAIL_OCTAVES 1
 #define WATER_CAUSTICS
 #define WATER_ONSHORE
+#define WATER_MIRROR
+#define WATER_MIRROR_TAPS 1
 #else
 #define WATER_WAVE_COUNT 2
 #define WATER_DETAIL_OCTAVES 0
@@ -145,5 +149,60 @@ vec2 waterDetailSlope(vec2 p, float ws, float footprint) {
   }
 #endif
   return s;
+}
+
+/**
+ * Multi-cell concentric raindrop ripple slopes across 3 staggered grid layers.
+ * Each cell spawns an expanding circular wave ring whose radial derivative perturbs the water normal.
+ */
+vec2 waterRainRippleSlope(vec2 p, float time, float rain) {
+  vec2 totalSlope = vec2(0.0);
+  for (int layer = 0; layer < 2; layer++) {
+    float fl = float(layer);
+    vec2 uv = p * (1.9 + fl * 1.1) + vec2(fl * 13.7, fl * 29.3);
+    vec2 cell = floor(uv);
+    vec2 local = fract(uv) - 0.5;
+    float rnd = tHash(cell + fl * 19.1);
+    float rnd2 = tHash(cell + vec2(7.3, 11.9) + fl * 23.7);
+    if (rnd2 <= clamp(0.35 + rain * 0.65, 0.0, 1.0)) {
+      vec2 center = (vec2(rnd, rnd2) - 0.5) * 0.42;
+      vec2 dVec = local - center;
+      float dist = length(dVec) + 1e-4;
+      float r = fract(time * 1.8 + rnd);
+      float env = smoothstep(0.015, 0.12, dist) * (1.0 - smoothstep(0.0, 0.48, abs(dist - r * 0.46)));
+      float ring = sin(dist * 28.0 - r * 18.0) * exp(-dist * 4.5) * (1.0 - r) * env * 1.25;
+      totalSlope += (dVec / dist) * ring;
+    }
+  }
+  return totalSlope;
+}
+
+vec3 waterElectrocutionField(vec2 p, float electroInt, vec2 origin, float t) {
+  const float MAX_R = 15.5;
+  vec2 dp = p - origin;
+  float r = length(dp);
+  if (electroInt <= 0.001 || r > MAX_R) return vec3(0.0);
+  float age = clamp(1.0 - electroInt, 0.0, 1.0);
+  float frontR = mix(3.2, MAX_R, smoothstep(0.0, 0.32, age));
+  if (r > frontR) return vec3(0.0);
+  float radialEnv = (1.0 - smoothstep(frontR * 0.65, frontR, r)) * (1.0 - smoothstep(MAX_R * 0.72, MAX_R, r));
+  float ang = atan(dp.y, dp.x);
+  float w1 = vnoise(p * 0.75 + vec2(t * 2.5, -t * 2.0)) - 0.5;
+  float w2 = vnoise(p * 1.85 - vec2(t * 4.5, t * 3.8)) - 0.5;
+  float b1 = abs(sin(ang * 5.0 + w1 * 3.6 + w2 * 1.4 - r * 0.32));
+  float armWidth1 = mix(0.095, 0.025, clamp(r / MAX_R, 0.0, 1.0));
+  float m1 = smoothstep(armWidth1, 0.0, b1);
+  float b2 = abs(sin(ang * 11.0 - w1 * 2.8 + w2 * 3.8 + r * 0.75));
+  float m2 = smoothstep(0.06, 0.0, b2) * smoothstep(0.8, 3.2, r) * (1.0 - smoothstep(4.5, MAX_R * 0.9, r));
+  float b3 = abs(sin(r * 2.3 - ang * 3.0 + w1 * 4.8 + w2 * 2.4 - t * 14.0));
+  float m3 = smoothstep(0.055, 0.0, b3) * clamp(m1 * 1.4 + m2 * 1.2 + 0.25, 0.0, 1.0);
+  float surge = 0.55 + 0.45 * sin(r * 2.8 - t * 22.0 + w2 * 5.0);
+  float flicker = 0.72 + 0.28 * sin(t * 58.0 + r * 3.5 + ang * 4.0);
+  float web = clamp(m1 * 1.25 + m2 * 0.85 + m3 * 0.7, 0.0, 1.0) * (0.65 + 0.55 * surge);
+  float coreFlash = exp(-r * r * 0.22) * smoothstep(0.35, 1.0, electroInt);
+  vec3 boltCyan = vec3(0.18, 0.78, 1.0);
+  vec3 boltCore = vec3(0.75, 0.96, 1.45);
+  vec3 col = mix(boltCyan, boltCore, clamp(m1 * 0.75 + coreFlash, 0.0, 1.0));
+  return col * (web + coreFlash * 0.85) * radialEnv * electroInt * flicker * 2.1;
 }
 `;

@@ -1,8 +1,9 @@
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { setField } from '../../ecs/store';
+import { rowOf, setField } from '../../ecs/store';
 import { getEnvironment } from '../environment';
+import { workerPowerDrain } from '../harvest/workers';
 import { applyBrownoutShedding, type ShedCandidate, type SheddingResult } from './shedding';
 import { pylonDrainPerS, resolveConsumerDrains } from './drains';
 import { type PowerGraph, type PowerGraphComponent } from './graph';
@@ -89,6 +90,12 @@ export function getComponentSyntheticLoad(colony: unknown, comp: PowerGraphCompo
   return 0;
 }
 
+function isLightningOverloaded(state: PlanetState, entityId: number, tick: number): boolean {
+  const map = (state.blobs.weather?.value as { overloadUntilByEntity?: Record<number, number> } | undefined)?.overloadUntilByEntity;
+  const until = map?.[entityId];
+  return typeof until === 'number' && until > tick;
+}
+
 export function evaluateComponentBuildingRows(
   state: PlanetState,
   colonyIndex: number,
@@ -106,12 +113,21 @@ export function evaluateComponentBuildingRows(
   let windGross = 0, windDrain = 0, windNet = 0;
   const capRows: number[] = [], shedCandidates: ShedCandidate[] = [];
   const nightSolarIds: number[] = [], noFuelIds: number[] = [];
-  const onlineEntityIds: number[] = [...comp.hubIds, ...comp.pylonIds];
+  const onlineEntityIds: number[] = [...comp.hubIds, ...comp.pylonIds].filter((id) => !isLightningOverloaded(state, id, tick));
   const drains = resolveConsumerDrains(data);
 
   for (const row of comp.attachedBuildingRows) {
-    const id = cols.id[row], kind = cols.kind[row], st = cols.state[row];
+    const id = cols.id[row], kind = cols.kind[row];
+    let st = cols.state[row];
     if (st === ENTITY_STATE.constructing) continue;
+    if (isLightningOverloaded(state, id, tick)) {
+      if (st !== ENTITY_STATE.offlineOverload) setField(state.entities, row, 'state', ENTITY_STATE.offlineOverload, tick);
+      continue;
+    }
+    if (st === ENTITY_STATE.offlineOverload) {
+      setField(state.entities, row, 'state', ENTITY_STATE.active, tick);
+      st = ENTITY_STATE.active;
+    }
     if (kind === ENTITY_KIND.solar) {
       const out = computeSolarOutputPerS(env.daylight, state.meta.planetType, data);
       solarGross += out.gross; solarDrain += out.internalDrain; solarNet += out.net;
@@ -237,6 +253,35 @@ function buildUnpoweredComponentResult(
   };
 }
 
+function applyComponentLightningOverload(
+  state: PlanetState,
+  comp: PowerGraphComponent,
+  shed: SheddingResult,
+  onlineEntityIds: number[],
+  overloadedEntityIds: number[],
+  tick: number,
+): void {
+  const allIds = [...comp.hubIds, ...comp.pylonIds, ...comp.attachedBuildingIds];
+  for (const id of allIds) {
+    const row = rowOf(state.entities, id);
+    if (isLightningOverloaded(state, id, tick)) {
+      if (row >= 0 && state.entities.cols.state[row] !== ENTITY_STATE.offlineOverload) {
+        setField(state.entities, row, 'state', ENTITY_STATE.offlineOverload, tick);
+      }
+      shed.offlineReasons[id] = 'offline: lightning overload';
+      const idx = onlineEntityIds.indexOf(id);
+      if (idx >= 0) onlineEntityIds.splice(idx, 1);
+      if (!overloadedEntityIds.includes(id)) overloadedEntityIds.push(id);
+    } else if (
+      row >= 0 &&
+      state.entities.cols.state[row] === ENTITY_STATE.offlineOverload &&
+      !overloadedEntityIds.includes(id)
+    ) {
+      setField(state.entities, row, 'state', ENTITY_STATE.active, tick);
+    }
+  }
+}
+
 export function evaluateSingleComponent(
   state: PlanetState,
   colonyIndex: number,
@@ -274,7 +319,9 @@ export function evaluateSingleComponent(
   const isPowered = hasOverride || genSupply > 0 || hasCapStored;
 
   if (!isPowered) {
-    return buildUnpoweredComponentResult(state, comp, bRes, overloadRes, compRawDemand, isW03, tick);
+    const unpoweredRes = buildUnpoweredComponentResult(state, comp, bRes, overloadRes, compRawDemand, isW03, tick);
+    applyComponentLightningOverload(state, comp, unpoweredRes.shed, unpoweredRes.onlineEntityIds, unpoweredRes.overloadedEntityIds, tick);
+    return unpoweredRes;
   }
 
   const { hqCell, capRes, effectiveSupply: storedSupply } = stepComponentStores(
@@ -291,6 +338,8 @@ export function evaluateSingleComponent(
   for (const id of overloadRes.overloadedShedEntityIds) {
     shed.offlineReasons[id] = 'offline: overload';
   }
+  const overloadedEntityIds = [...overloadRes.overloadedShedEntityIds];
+  applyComponentLightningOverload(state, comp, shed, bRes.onlineEntityIds, overloadedEntityIds, tick);
   const totalShedEntityIds = [...overloadRes.overloadedShedEntityIds, ...shed.shedEntityIds];
 
   const compRemainingDemand = shed.remainingDemand;
@@ -317,7 +366,7 @@ export function evaluateSingleComponent(
     shed,
     pylonLoads: overloadRes.pylonLoads,
     overloadedPylons: overloadRes.overloadedPylons,
-    overloadedEntityIds: overloadRes.overloadedShedEntityIds,
+    overloadedEntityIds,
   };
 }
 
@@ -336,6 +385,12 @@ export function processUnattachedBuildings(
     const id = cols.id[row], kind = cols.kind[row], st = cols.state[row];
     if (st === ENTITY_STATE.constructing) continue;
     unpoweredEntityIds.push(id);
+    if (isLightningOverloaded(state, id, tick)) {
+      if (st !== ENTITY_STATE.offlineOverload) setField(e, row, 'state', ENTITY_STATE.offlineOverload, tick);
+      offlineReasons[id] = 'offline: lightning overload';
+      entityPower[id] = { state: 'offline', reason: 'offline: lightning overload', component: -1, overloaded: true } as EntityPowerStatus;
+      continue;
+    }
     const isGen = kind === ENTITY_KIND.solar || kind === ENTITY_KIND.wind || kind === ENTITY_KIND.thermal;
     const targetState = (!isGen && isW03) ? ENTITY_STATE.offlineNoGrid : ENTITY_STATE.offlineUnpowered;
     if (st !== targetState) {
@@ -354,21 +409,15 @@ export function calculateUnitDemand(
 ): number {
   const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
   const idleMult = Number(dayCycleRow.unitIdleDrainMult ?? 0.5);
-  const harvDrain = Number(resolvePowerRow(data, 'unitsWorkersBasic', 'harvester').powerDrainPerS ?? 1.5);
-  const bldDrain = Number(resolvePowerRow(data, 'grid', 'builder').powerDrainPerS ?? 2.0);
-  const tfRow =
-    (data?.tables?.terraform as Record<string, { powerDrainPerS?: number }> | undefined)?.terraformer ??
-    (data?.tables?.unitsWorkersBasic as Record<string, { powerDrainPerS?: number }> | undefined)?.terraformer;
-  const tfDrain = Number(tfRow?.powerDrainPerS ?? 2.5);
   let unitDemand = 0;
   const cols = state.entities.cols;
   for (let r = 0; r < state.entities.count; r++) {
     if (cols.owner[r] !== colonyIndex || cols.hp[r] <= 0) continue;
     const k = cols.kind[r], st = cols.state[r];
+    if (k !== ENTITY_KIND.worker) continue;
+    const drain = workerPowerDrain(cols.tier[r] || 1, data);
     const idle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
-    if (k === ENTITY_KIND.harvester) unitDemand += idle ? harvDrain * idleMult : harvDrain;
-    else if (k === ENTITY_KIND.builder) unitDemand += idle ? bldDrain * idleMult : bldDrain;
-    else if (k === ENTITY_KIND.terraformer) unitDemand += idle ? tfDrain * idleMult : tfDrain;
+    unitDemand += idle ? drain * idleMult : drain;
   }
   return unitDemand;
 }
@@ -402,7 +451,15 @@ export function applyOfflineStatuses(
     entityPower[id] = { state: 'offline', reason: 'offline: brownout', component: graph.componentByBuildingId.get(id) ?? -1 };
   }
   for (const id of overloadedEntityIds) {
-    offlineReasons[id] = 'offline: overload';
-    entityPower[id] = { state: 'offline', reason: 'offline: overload', component: graph.componentByBuildingId.get(id) ?? -1 };
+    const isLightning = offlineReasons[id] === 'offline: lightning overload';
+    const reason = isLightning ? 'offline: lightning overload' : 'offline: overload';
+    offlineReasons[id] = reason;
+    const cId = graph.componentByBuildingId.get(id) ?? graph.componentByRelayId.get(id) ?? -1;
+    entityPower[id] = {
+      state: 'offline',
+      reason,
+      component: cId,
+      ...(isLightning ? { overloaded: true } : {}),
+    } as EntityPowerStatus;
   }
 }

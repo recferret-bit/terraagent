@@ -34,6 +34,7 @@ export const EnqueueBuildTask = z.strictObject({
 export const EnqueueBuildUnitTask = z.strictObject({
   buildUnit: z.strictObject({
     unit: z.string().min(1).max(64),
+    tier: z.number().int().min(1).max(3).optional(),
     count: z.number().int().min(1).max(100).optional(),
     repeat: z.boolean().optional(),
     producerId: z.number().int().nonnegative().optional(),
@@ -74,6 +75,7 @@ export const EnqueueDirectTask = z.strictObject({
     z.strictObject({
       kind: z.literal('buildUnit'),
       unit: z.string().min(1).max(64),
+      tier: z.number().int().min(1).max(3).optional(),
       count: z.number().int().min(1).max(100).optional(),
       repeat: z.boolean().optional(),
       producerId: z.number().int().nonnegative().optional(),

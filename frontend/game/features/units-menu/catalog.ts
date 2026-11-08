@@ -1,11 +1,13 @@
 import type { FlagSet } from '@terra/contracts';
 import type { ColonySupply } from '@terra/sim';
 import { formatUnlockAtTooltip, getItemUnlockStage, getStageSpec } from '@terra/sim';
-import { clientDataFor } from '../../core/flags/data';
+import { clientDataFor, formatResourceLabel, toFlagSet } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
 import { readColonySupply } from '../shared/supply';
 
-export type UnitKind = 'harvester' | 'builder' | 'terraformer' | 'scout' | 'guard' | 'combatEngineer' | 'hauler';
+export { formatResourceLabel };
+
+export type UnitKind = 'worker' | 'scout' | 'guard' | 'combatEngineer' | 'hauler';
 
 export interface UnitCardModel {
   id: string;
@@ -30,33 +32,6 @@ export interface UnitCardModel {
 
 export type SupplySummary = ColonySupply;
 
-const RESOURCE_LABELS: Record<string, string> = {
-  'metals.t1': 'Metals',
-  'minerals.t1': 'Minerals',
-  'bio.biomass': 'Biomass',
-  'bio.water': 'Water',
-};
-
-export function formatResourceLabel(res: string): string {
-  if (RESOURCE_LABELS[res]) return RESOURCE_LABELS[res];
-  const parts = res.split('.');
-  const last = parts[parts.length - 1];
-  return last.charAt(0).toUpperCase() + last.slice(1);
-}
-
-function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
-  if ('spec' in flags && 'list' in flags && typeof flags.has === 'function') {
-    return flags as FlagSet;
-  }
-  const set = flags as ReadonlySet<string>;
-  const list = Array.from(set);
-  return {
-    has: (w: string) => set.has(w),
-    list,
-    spec: list.join(','),
-  };
-}
-
 function formatPower(drain: number): string {
   if (drain > 0) return `−${drain} E/s`;
   return '0 E/s';
@@ -71,18 +46,6 @@ export function resolveSupply(view: GameView | undefined, colonyIndex = 0): Supp
 }
 
 const STAGE_UNIT_ROWS: readonly Record<string, unknown>[] = [
-  {
-    id: 'builder',
-    unit: 'builder',
-    label: 'Builder',
-    archetype: 'robot.builder',
-    tier: 1,
-    unlockStage: 2,
-    designBuildS: 12,
-    supply: 1,
-    powerDrainPerS: 2,
-    cost: { 'metals.t1': 55, 'minerals.t1': 25, 'bio.biomass': 10, 'bio.water': 0 },
-  },
   {
     id: 'scout',
     unit: 'scout',
@@ -165,7 +128,7 @@ function resolveUnitUnlockStage(row: Record<string, unknown>): number {
 }
 
 function makeUnitCard(row: Record<string, unknown>, colonyStage: number | undefined): UnitCardModel {
-  const unit = String(row.unit ?? row.id ?? 'harvester') as UnitKind;
+  const unit = String(row.unit ?? row.id ?? 'worker') as UnitKind;
   const unlockStage = resolveUnitUnlockStage(row);
   const stageLocked = colonyStage !== undefined && colonyStage < unlockStage;
   const buildS = typeof row.designBuildS === 'number'
@@ -208,6 +171,18 @@ function makeUnitCard(row: Record<string, unknown>, colonyStage: number | undefi
   };
 }
 
+/** Balance rows are `t1`/`t2`/`t3` with `unit: 'worker'`. T1 is the miner mesh; T2 and T3 share `robot.builder`. */
+function asWorkerRow(row: Record<string, unknown>, tier: 1 | 2 | 3): Record<string, unknown> {
+  return {
+    ...row,
+    id: typeof row.id === 'string' ? row.id : `t${tier}`,
+    unit: 'worker',
+    tier,
+    archetype: tier === 1 ? 'robot.miner' : 'robot.builder',
+    label: typeof row.label === 'string' ? row.label : `Worker Drone T${tier}`,
+  };
+}
+
 export function buildUnitsCatalog(
   flags: ReadonlySet<string> | FlagSet,
   view?: GameView,
@@ -216,29 +191,16 @@ export function buildUnitsCatalog(
   if (!fs.has('W02')) return [];
 
   const data = clientDataFor(fs);
-  const unitsTable = data.tables['unitsWorkersBasic'];
-  if (!unitsTable) return [];
-
-  const harvesterRow = unitsTable['harvester'];
-  if (!harvesterRow) return [];
+  const unitsTable = data.tables['unitsWorkersBasic'] as Record<string, Record<string, unknown>> | undefined;
+  const t1 = unitsTable?.t1;
+  if (!t1) return [];
 
   const isLiveGameView = Boolean(view && typeof view === 'object' && 'planet' in view && (view as { planet?: unknown }).planet !== undefined);
   const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view);
-  const candidateRows: Record<string, unknown>[] = [harvesterRow as Record<string, unknown>];
-  if (colonyStage !== undefined) {
-    candidateRows.push(
-      ...STAGE_UNIT_ROWS.filter(
-        (row) => !(fs.has('W03') && row.unit === 'builder') && !(fs.has('W05') && row.unit === 'terraformer'),
-      ),
-    );
-  }
-
-  const builderRow = fs.has('W03') ? data.tables['grid']?.['builder'] : undefined;
-  if (builderRow) candidateRows.push({ ...builderRow, unit: 'builder' });
-  const terraformerRow = fs.has('W05')
-    ? (data.tables['terraform']?.['terraformer'] ?? unitsTable['terraformer'])
-    : undefined;
-  if (terraformerRow) candidateRows.push({ ...terraformerRow, unit: 'terraformer' });
+  const candidateRows: Record<string, unknown>[] = [asWorkerRow(t1, 1)];
+  if (fs.has('W03') && unitsTable?.t2) candidateRows.push(asWorkerRow(unitsTable.t2, 2));
+  if (fs.has('W05') && unitsTable?.t3) candidateRows.push(asWorkerRow(unitsTable.t3, 3));
+  if (colonyStage !== undefined) candidateRows.push(...STAGE_UNIT_ROWS);
   const cards: UnitCardModel[] = [];
   for (const row of candidateRows) {
     const itemStage = resolveUnitUnlockStage(row);

@@ -225,3 +225,15 @@ describe('W05-22: Wave gating, hover hints, and Living overlay mode (L)', () => 
     overlay.dispose();
   });
 });
+
+describe('W05-36 tier gate line reads the host gates', () => {
+  it('shows the thresholds, the colony Terraform % against the next gate and which tier is open', async () => {
+    const { tierGateHint } = await import('./terraformMeter');
+    const gate = (open: boolean, minTerraformPct: number) => ({ open, minTerraformPct }) as never;
+    const col = { tierGates: { enabled: true, colonyTerraformPct: 24.4, tier2: gate(false, 30), tier3: gate(false, 70) } } as never;
+    expect(tierGateHint(col)).toBe('T2 at 30 % · T3 at 70 % · Terraform 24 % / 30 % · locked');
+    const open2 = { tierGates: { enabled: true, colonyTerraformPct: 41, tier2: gate(true, 30), tier3: gate(false, 70) } } as never;
+    expect(tierGateHint(open2)).toBe('T2 at 30 % · T3 at 70 % · Terraform 41 % / 70 % · T2 open');
+    expect(tierGateHint(undefined)).toBe('T2 at 30 % · T3 at 70 %');
+  });
+});

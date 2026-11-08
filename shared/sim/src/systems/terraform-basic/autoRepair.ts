@@ -26,12 +26,13 @@ export function repairPrecedenceForHp(hp: number, hpMax: number, data?: Compiled
   return hp < criticalRepairHpRatio(data) * Math.max(1, hpMax) ? 'system' : 'auto';
 }
 
-/** Repair rate multiplier for `workerEntityId` (`1.5x` for Builder Drone, `1.0x` for HQ Drone or Harvester). */
+/** Repair rate multiplier for `workerEntityId` (`1.5x` for Worker Drone T2, `1.0x` for the HQ and other tiers). */
 export function resolveWorkerRepairRate(state: SimState, workerEntityId: number, data?: CompiledDataLike): number {
   const wRow = rowOf(state.entities, workerEntityId);
-  if (wRow >= 0 && state.entities.cols.kind[wRow] === ENTITY_KIND.builder) {
-    const builderRow = (data?.tables?.grid as Record<string, { repairRateMultiplier?: number }> | undefined)?.builder;
-    return Number(builderRow?.repairRateMultiplier ?? 1.5);
+  const cols = state.entities.cols;
+  if (wRow >= 0 && cols.kind[wRow] === ENTITY_KIND.worker && (cols.tier[wRow] || 1) === 2) {
+    const row = (data?.tables?.unitsWorkersBasic as Record<string, { repairRateMultiplier?: number }> | undefined)?.t2;
+    return Number(row?.repairRateMultiplier ?? 1.5);
   }
   return 1.0;
 }

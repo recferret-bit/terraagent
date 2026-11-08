@@ -61,7 +61,7 @@ export class TerraformMenu {
     this.el = makeDiv('ta-tf-menu plate', 'terraform-menu');
     const header = makeDiv('ta-tf-menu__header');
     header.appendChild(makeSpan('eyebrow', undefined, 'TERRAFORM OPS'));
-    this.workerBadge = makeSpan('ta-tf-menu__workers mono', 'tf-worker-badge', 'HQ, Builder & Terraformer');
+    this.workerBadge = makeSpan('ta-tf-menu__workers mono', 'tf-worker-badge', 'Worker Drones');
     header.appendChild(this.workerBadge);
 
     const opsRow = makeDiv('ta-tf-menu__ops');

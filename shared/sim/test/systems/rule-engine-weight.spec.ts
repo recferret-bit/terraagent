@@ -165,7 +165,7 @@ describe('W08-24 · Safety floors: repair >= 8000 bp and defense under attack >=
   it('Acceptance check: defense=0 under active attack still scores defense >= 8000 bp (+1000 bp when away)', () => {
     const state = makeTestPlanet();
     spawnEntity(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0 });
-    spawnEntity(state, { kind: ENTITY_KIND.harvester, owner: 1, q: 6, r: 0, hp: 120, hpMax: 120 });
+    spawnEntity(state, { kind: ENTITY_KIND.worker, owner: 1, q: 6, r: 0, hp: 120, hpMax: 120 });
 
     const weighted = evaluateWeightedColonyNeeds(state, 0, {
       economy: 50,

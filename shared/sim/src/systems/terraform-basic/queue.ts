@@ -9,11 +9,12 @@ import { findColonyHqRow } from '../find';
 import { syncHqView } from '../hq/view';
 import { resolveHqT1Row, rowNum } from '../rows';
 import { executeDismantleAtTile } from './dismantleAndWork';
-import { getTerraformJobCost, getTerraformOpSpec, isTerraformOpKind, type TerraformOpKind } from './ops';
+import { isTerraformOpKind, type TerraformOpKind } from './ops';
 import {
   colonyTerraformOrders,
   getColonyTerraformJobCount,
   getManualTerraformLaneCount,
+  newTerraformJob,
   nextOrderId,
   readOrdersByColony,
   writeOrdersByColony,
@@ -73,21 +74,6 @@ export interface EnqueueTerraformOrderResult {
   skippedCount: number;
 }
 
-const newJob = (q: number, r: number, op: TerraformOpKind, data?: CompiledDataLike, planetType?: string): TerraformJob => {
-  const spec = getTerraformOpSpec(op, data);
-  const totalCost = getTerraformJobCost(op, data, planetType);
-  return {
-    q,
-    r,
-    op,
-    progress: 0,
-    baseTimeS: spec.baseTimeS,
-    totalEnergyE: spec.energyCostE,
-    energyDrawnE: 0,
-    ...(Object.keys(totalCost).length > 0 ? { totalCost, spentCost: {} } : {}),
-  };
-};
-
 /** Every `op:q,r` the colony already has queued (a tile is never queued twice for one op, GP-01). */
 function pendingJobKeys(state: PlanetState, colonyId: number): Set<string> {
   const out = new Set<string>();
@@ -106,7 +92,7 @@ function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: Ter
   const planetType = state.meta.planetType;
   if (Array.isArray(opts.jobs) && opts.jobs.length > 0) {
     if (opts.jobs.some((j) => !isTerraformOpKind(j.op))) return { jobs: [], skippedCount: 0, reject: 'invalid_args' };
-    return { jobs: opts.jobs.map((j) => newJob(j.q, j.r, j.op, opts.data, planetType)), skippedCount: 0 };
+    return { jobs: opts.jobs.map((j) => newTerraformJob(j.q, j.r, j.op, opts.data, planetType)), skippedCount: 0 };
   }
   const auto = Boolean(opts.autoPrepare) || opts.op === 'auto';
   if (!Array.isArray(opts.tiles) || opts.tiles.length === 0 || (!auto && !isTerraformOpKind(opts.op))) {
@@ -121,7 +107,7 @@ function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: Ter
     pending: pendingJobKeys(state, opts.colonyId),
     data: opts.data,
   });
-  const jobs = plan.jobs.map((j) => newJob(j.q, j.r, j.op, opts.data, planetType));
+  const jobs = plan.jobs.map((j) => newTerraformJob(j.q, j.r, j.op, opts.data, planetType));
   return { jobs, skippedCount: plan.skipped.length, ...(jobs.length === 0 ? { reject: plan.firstReject ?? 'site_blocked' } : {}) };
 }
 

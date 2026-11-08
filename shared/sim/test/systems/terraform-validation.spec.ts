@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { REJECT_CODES } from '@terra/contracts';
+import { parseWaves, REJECT_CODES } from '@terra/contracts';
 import {
+  compileData,
   evaluateTerraform,
   getColonyTerraformOrders,
   hexIndex,
@@ -23,7 +24,8 @@ const send = (host: SimHost, args: unknown, colony: number | null = 0) => {
 };
 
 function rig() {
-  const host = w01Host({ seed: 'terraform-validation', radius: 12 });
+  // The W05 op rows (Irrigate, Seed) are compiled: under `..04` data they are `wave_disabled` (w05-terraform-gates.spec).
+  const host = w01Host({ seed: 'terraform-validation', radius: 12, data: compileData(parseWaves('..05')) });
   spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
   const idx = hexIndex(host.state.grid.radius);
   return { host, at: (q: number, r: number) => idx.indexOf(q, r) };

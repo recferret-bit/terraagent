@@ -7,10 +7,10 @@ import { HEX_DIRS, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import type { ColonyState, PlanetState } from '../../kernel/state';
+import type { PlanetState } from '../../kernel/state';
 import { evaluatePlacement } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
-import { ensureColonyLedger, syncColonyDepotCaps } from '../economy/ledger';
+import { ensureColonyAt, syncColonyDepotCaps } from '../economy/ledger';
 
 export interface DepositCoverageResult {
   covered: boolean;
@@ -186,21 +186,7 @@ export function getExtractorLivingBonus(
   return { adjacentToLiving, bonus, mult, label };
 }
 
-export function ensureColonyForOwner(state: PlanetState, owner: number, tick: number): ColonyState {
-  let col = state.colonies[owner];
-  if (!col) {
-    col = {
-      index: owner,
-      id: `col-${owner}`,
-      name: `Colony ${owner + 1}`,
-      color: 0xff6b00,
-      status: 'active',
-      changedAt: tick,
-    };
-    state.colonies[owner] = col;
-  }
-  return ensureColonyLedger(col);
-}
+export const ensureColonyForOwner = ensureColonyAt;
 
 function spawnPlacedBuildingEntity(
   state: PlanetState,

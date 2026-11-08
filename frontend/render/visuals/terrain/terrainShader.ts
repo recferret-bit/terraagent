@@ -1,5 +1,6 @@
 /** GLSL for the terrain material: composed from named chunks, injected by `applyTerrainShader`. */
 import type * as THREE from 'three';
+import { getWeatherUniforms } from '../../core/weatherConfig';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
 import { TERRAFORM_EVAL_GLSL, TERRAFORM_UNIFORMS_GLSL } from '../TerrainAndWaterShaders';
 import { NOISE_GLSL } from './glsl';
@@ -13,9 +14,51 @@ const VERT_BEGIN = /* glsl */ `#include <begin_vertex>
 vLP = position; vLN = normal; vAO = aAO; vRock = aRock;`;
 
 const FRAG_DECLS = /* glsl */ `uniform float uTime, uKind, uLevel, uExt;
+uniform float uRainIntensity, uWetness, uPuddleLevel, uStormDarkness, uWeatherTime;
+uniform float uPuddleElectroIntensity;
+uniform vec2 uPuddleElectroOrigin;
 uniform vec3 uLow, uHigh, uRock, uRockDark, uAccent; uniform vec2 uWind;
 varying vec3 vLP; varying vec3 vLN; varying float vAO; varying float vRock;
 vec3 gBump; vec3 gEmis; float gRough;
+
+float evalPuddleNoiseField(vec2 wp) {
+  return (vnoise(wp * 0.22 + vec2(3.7, -5.1)) * 0.65 + vnoise(wp * 0.47 - vec2(1.9, 4.3)) * 0.35) + (vnoise(wp * 0.55) - 0.5) * 0.28;
+}
+
+vec3 evalPuddleElectrocution(vec2 p, float electroInt, vec2 origin, float t, float puddleThreshold) {
+  const float MAX_R = 4.6;
+  vec2 dp = p - origin;
+  float r = length(dp);
+  if (electroInt <= 0.001 || r > MAX_R) return vec3(0.0);
+  float pOrigin = evalPuddleNoiseField(origin);
+  float pMid1 = evalPuddleNoiseField(mix(origin, p, 0.35));
+  float pMid2 = evalPuddleNoiseField(mix(origin, p, 0.70));
+  float minPuddlePath = min(pOrigin, min(pMid1, pMid2));
+  float connectedPuddle = smoothstep(puddleThreshold - 0.06, puddleThreshold + 0.01, minPuddlePath);
+  if (connectedPuddle <= 0.001) return vec3(0.0);
+  float age = clamp(1.0 - electroInt, 0.0, 1.0);
+  float frontR = mix(1.4, MAX_R, smoothstep(0.0, 0.32, age));
+  if (r > frontR) return vec3(0.0);
+  float radialEnv = (1.0 - smoothstep(frontR * 0.65, frontR, r)) * (1.0 - smoothstep(MAX_R * 0.72, MAX_R, r));
+  float ang = atan(dp.y, dp.x);
+  float w1 = vnoise(p * 0.75 + vec2(t * 2.5, -t * 2.0)) - 0.5;
+  float w2 = vnoise(p * 1.85 - vec2(t * 4.5, t * 3.8)) - 0.5;
+  float b1 = abs(sin(ang * 5.0 + w1 * 3.6 + w2 * 1.4 - r * 0.32));
+  float armWidth1 = mix(0.095, 0.025, clamp(r / MAX_R, 0.0, 1.0));
+  float m1 = smoothstep(armWidth1, 0.0, b1);
+  float b2 = abs(sin(ang * 11.0 - w1 * 2.8 + w2 * 3.8 + r * 0.75));
+  float m2 = smoothstep(0.06, 0.0, b2) * smoothstep(0.4, 1.8, r) * (1.0 - smoothstep(2.5, MAX_R * 0.9, r));
+  float b3 = abs(sin(r * 2.3 - ang * 3.0 + w1 * 4.8 + w2 * 2.4 - t * 14.0));
+  float m3 = smoothstep(0.055, 0.0, b3) * clamp(m1 * 1.4 + m2 * 1.2 + 0.25, 0.0, 1.0);
+  float surge = 0.55 + 0.45 * sin(r * 2.8 - t * 22.0 + w2 * 5.0);
+  float flicker = 0.72 + 0.28 * sin(t * 58.0 + r * 3.5 + ang * 4.0);
+  float web = clamp(m1 * 1.25 + m2 * 0.85 + m3 * 0.7, 0.0, 1.0) * (0.65 + 0.55 * surge);
+  float coreFlash = exp(-r * r * 0.22) * smoothstep(0.35, 1.0, electroInt);
+  vec3 boltCyan = vec3(0.18, 0.78, 1.0);
+  vec3 boltCore = vec3(0.75, 0.96, 1.45);
+  vec3 col = mix(boltCyan, boltCore, clamp(m1 * 0.75 + coreFlash, 0.0, 1.0));
+  return col * (web + coreFlash * 0.85) * radialEnv * connectedPuddle * electroInt * flicker * 2.1;
+}
 `;
 
 const STRATA_ROCK = /* glsl */ `// Rock surface = three rock "materials" blended by soft alpha masks (no hard bands):
@@ -127,6 +170,79 @@ const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
   diffuseColor.rgb = col;
 }`;
 
+const TERRAIN_WEATHER_GLSL = /* glsl */ `
+void evalTerrainWeather(
+  inout vec3 col,
+  inout float rough,
+  inout vec3 bump,
+  inout vec3 emis,
+  vec3 worldPos,
+  vec3 worldN,
+  float waterLevel,
+  float waterGate,
+  float hexShore
+) {
+  float aboveWater = mix(
+    1.0 - smoothstep(0.62, 0.94, hexShore),
+    smoothstep(waterLevel + 0.06, waterLevel + 0.18, worldPos.y),
+    waterGate
+  );
+  if (aboveWater <= 0.001) return;
+  float steep = 1.0 - clamp(worldN.y, 0.0, 1.0);
+  if (uWetness > 0.001) {
+    float wet = uWetness * aboveWater;
+    col *= mix(1.0, 0.62, wet * (1.0 - 0.35 * steep));
+    float luma = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(luma), col, 1.0 + 0.18 * wet);
+    float upSheen = pow(clamp(worldN.y, 0.0, 1.0), 2.0);
+    vec3 viewDirW = normalize(cameraPosition - worldPos);
+    float fresnelW = pow(1.0 - max(0.0, dot(worldN, viewDirW)), 2.5);
+    col += vec3(0.06, 0.09, 0.14) * (wet * upSheen * (0.45 + 0.55 * fresnelW));
+    rough = mix(rough, 0.22, wet * 0.75);
+  }
+  if (uPuddleLevel > 0.01 && steep < 0.22) {
+    vec2 wp = worldPos.xz;
+    float puddleNoise = evalPuddleNoiseField(wp);
+    float puddleThreshold = mix(0.76, 0.44, uPuddleLevel);
+    float puddleMask = smoothstep(puddleThreshold - 0.09, puddleThreshold + 0.04, puddleNoise)
+      * (1.0 - smoothstep(0.06, 0.22, steep))
+      * aboveWater
+      * (1.0 - smoothstep(0.25, 0.55, hexShore))
+      * step(0.01, uPuddleLevel);
+    if (puddleMask > 0.001) {
+      float puddleRim = smoothstep(0.0, 0.35, puddleMask) * (1.0 - smoothstep(0.35, 0.88, puddleMask));
+      col *= mix(1.0, 0.70, puddleRim);
+      vec3 viewDirP = normalize(cameraPosition - worldPos);
+      float pFresnel = 0.28 + 0.72 * pow(1.0 - max(0.0, viewDirP.y), 3.0);
+      vec3 puddleCol = mix(col * 0.52, vec3(0.14, 0.20, 0.28), 0.74);
+      puddleCol = mix(puddleCol, vec3(0.32, 0.44, 0.60), pFresnel * 0.55);
+      bump = mix(bump, bump * 0.06, puddleMask);
+      if (uRainIntensity > 0.01) {
+        vec2 puv = wp * 1.4;
+        vec2 pcell = floor(puv);
+        float prnd = tHash(pcell);
+        float pr = fract(uWeatherTime * 1.7 + prnd);
+        vec2 pcenter = (vec2(prnd, fract(prnd * 17.3)) - 0.5) * 0.36;
+        vec2 pdv = fract(puv) - 0.5 - pcenter;
+        float pdist = length(pdv) + 1e-4;
+        float pring = sin(pdist * 36.0 - uWeatherTime * 14.0) * exp(-pdist * 4.8) * (1.0 - pr);
+        float pSplash = clamp(pring, 0.0, 1.0) * uRainIntensity;
+        puddleCol += vec3(0.32, 0.44, 0.56) * (pSplash * 0.65);
+        emis += vec3(0.12, 0.18, 0.26) * (pSplash * puddleMask);
+        bump += vec3(pdv.x / pdist, 0.0, pdv.y / pdist) * (pring * 0.14 * uRainIntensity * puddleMask);
+      }
+      col = mix(col, puddleCol, puddleMask * 0.88);
+      if (uPuddleElectroIntensity > 0.001) {
+        vec3 puddleElectro = evalPuddleElectrocution(wp, uPuddleElectroIntensity, uPuddleElectroOrigin, uTime, puddleThreshold) * puddleMask;
+        col += puddleElectro * 0.65;
+        emis += puddleElectro * 2.2;
+      }
+      rough = mix(rough, 0.05, puddleMask);
+    }
+  }
+}
+`;
+
 /**
  * Water-level bands (shore sand, wet ground, lake-bed mud) assume land rises out of the water as a continuous
  * heightfield. A material whose dry ground can sit at or below the water level defines `TA_WATER_GATE` (1 on water
@@ -138,12 +254,16 @@ ${TERRAFORM_UNIFORMS_GLSL}
 #ifndef TA_WATER_GATE
 #define TA_WATER_GATE 1.0
 #endif
-${FRAG_DECLS}
+#ifndef TA_HEX_SHORE_VAL
+#define TA_HEX_SHORE_VAL 0.0
+#endif
 ${NOISE_GLSL}
+${FRAG_DECLS}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
 ${STRATA_ROCK}
 ${TERRAFORM_EVAL_GLSL}
 ${WATER_BED_TINT_GLSL}
+${TERRAIN_WEATHER_GLSL}
 ${COLONY_VISION_AND_LIGHTS_GLSL}`;
 
 const FRAG_COLOR = `#include <color_fragment>
@@ -160,7 +280,13 @@ const FRAG_FOG = /* glsl */ `#include <fog_fragment>
 gl_FragColor.rgb = applyColonyFovShroud(vLP, gl_FragColor.rgb);`;
 
 export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms, uniforms: Record<string, THREE.IUniform>) {
-  Object.assign(sh.uniforms, getColonyVisionUniforms(), { uAbsorption: getWaterUniforms().uAbsorption }, uniforms);
+  Object.assign(
+    sh.uniforms,
+    getColonyVisionUniforms(),
+    getWeatherUniforms(),
+    { uAbsorption: getWaterUniforms().uAbsorption },
+    uniforms,
+  );
   sh.vertexShader = injectAll(sh.vertexShader, [
     ['#include <common>', VERT_COMMON],
     ['#include <begin_vertex>', VERT_BEGIN],
@@ -168,8 +294,8 @@ export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms,
   sh.fragmentShader = injectAll(sh.fragmentShader, [
     ['#include <common>', FRAG_COMMON],
     ['#include <color_fragment>', FRAG_COLOR],
-    // after the colour AND the hex beach (`alphatest_fragment`, hexEdges.ts): ground under water is tinted by depth
-    ['#include <roughnessmap_fragment>', `diffuseColor.rgb = waterBedTint(diffuseColor.rgb, uLevel - vLP.y, TA_WATER_GATE);\n#include <roughnessmap_fragment>\nroughnessFactor = gRough;`],
+    // after the colour AND the hex beach (`alphatest_fragment`, hexEdges.ts): ground under water is tinted by depth, dry ground gets wetness + puddles
+    ['#include <roughnessmap_fragment>', `diffuseColor.rgb = waterBedTint(diffuseColor.rgb, uLevel - vLP.y, TA_WATER_GATE);\nevalTerrainWeather(diffuseColor.rgb, gRough, gBump, gEmis, vLP, normalize(vLN), uLevel, TA_WATER_GATE, TA_HEX_SHORE_VAL);\n#include <roughnessmap_fragment>\nroughnessFactor = gRough;`],
     ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\nnormal = normalize(normal + (viewMatrix*vec4(gBump,0.0)).xyz);`],
     ['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\nvec3 taProj = evalColonyProjectorLight(vLP, normalize(vLN + gBump));\ntotalEmissiveRadiance += gEmis + diffuseColor.rgb * taProj + taProj * 0.06;`],
     ['#include <fog_fragment>', FRAG_FOG],

@@ -13,15 +13,20 @@ import {
 import {
   getPerfParams, isPerfOn, onPerfChange, resetPerfParams, setPerf, setPerfParams, togglePerf,
 } from '../core/perfConfig';
+import {
+  getWeatherParams, isWeatherOn, onWeatherChange, resetWeatherParams, setWeather, setWeatherParams, toggleWeather,
+} from '../core/weatherConfig';
 import { getCrtParams, isCrtOn, onCrtChange, resetCrtParams, setCrt, setCrtParams, toggleCrt } from './crt';
 import {
-  CRT_SLIDERS, DAY_NIGHT_SLIDERS, PERF_SLIDERS, PIXEL_SLIDERS, SHADOW_SLIDERS, WATER_SLIDERS, WIND_SLIDERS,
+  CRT_SLIDERS, DAY_NIGHT_SLIDERS, PERF_SLIDERS, PIXEL_SLIDERS, SHADOW_SLIDERS, WATER_SLIDERS, WEATHER_SLIDERS, WIND_SLIDERS,
   type SliderSpec, type VisualTabId,
 } from './visualLabSpecs';
 import { CYCLE_HEAD, PERF_HEAD, SUN_HEAD, WIND_HEAD, type VisualLabHead } from './visualLabWidgets';
+import { bindWeatherHead, WEATHER_HEAD } from './visualLabWeatherWidget';
 
-export type { VisualTabId } from './visualLabSpecs';
+export type { TabId, VisualTabId } from './visualLabSpecs';
 export type { VisualLabHead } from './visualLabWidgets';
+export { bindWeatherHead, WEATHER_HEAD };
 
 type Params = Readonly<Record<string, number>>;
 
@@ -29,8 +34,10 @@ export interface VisualLabTab {
   readonly id: VisualTabId;
   readonly label: string;
   readonly statusTitle: string;
+  readonly title?: string;
+  readonly accent?: string;
   readonly sliders: readonly SliderSpec[];
-  /** Optional widget drawn above the sliders (sun pad, solar clock, wind compass). */
+  /** Optional widget drawn above the sliders (sun pad, solar clock, wind compass, weather controls). */
   readonly head?: VisualLabHead;
   isOn(): boolean;
   toggle(): void;
@@ -55,7 +62,7 @@ interface StoreApi<P> {
   onChange(fn: () => void): () => unknown;
 }
 
-type Meta = Pick<VisualLabTab, 'id' | 'label' | 'statusTitle' | 'sliders' | 'head'>;
+type Meta = Pick<VisualLabTab, 'id' | 'label' | 'statusTitle' | 'title' | 'accent' | 'sliders' | 'head'>;
 
 function storeTab<P>(meta: Meta, s: StoreApi<P>): VisualLabTab {
   return {
@@ -106,11 +113,29 @@ export const VISUAL_LAB_TABS: readonly VisualLabTab[] = [
     },
   },
   storeTab({ id: 'wind', label: 'WIND', statusTitle: 'PLANETARY WIND (VISUAL)', sliders: WIND_SLIDERS, head: WIND_HEAD }, {
-    isOn: isWindOn, setOn: setWind, toggle: toggleWind, get: getWindParams, set: setWindParams, reset: resetWindParams, onChange: onWindChange,
+    isOn: isWindOn, setOn: setWind, toggle: toggleWind, get: getWindParams,
+    set: (p) => setWindParams(p, 'user'), reset: resetWindParams, onChange: onWindChange,
   }),
   storeTab({ id: 'water', label: 'WATER', statusTitle: 'WATER SURFACE & FAUNA', sliders: WATER_SLIDERS }, {
     isOn: isWaterFxOn, setOn: setWaterFx, toggle: toggleWaterFx, get: getWaterParams, set: setWaterParams,
     reset: resetWaterParams, onChange: onWaterChange,
+  }),
+  storeTab({
+    id: 'weather',
+    label: 'WEATHER',
+    statusTitle: 'Weather Hazards & Storm Controls (Wave 5)',
+    title: 'Weather Hazards & Storm Controls (Wave 5)',
+    accent: '#38bdf8',
+    sliders: WEATHER_SLIDERS,
+    head: WEATHER_HEAD,
+  }, {
+    isOn: isWeatherOn,
+    setOn: (on) => setWeather(on, 'user'),
+    toggle: toggleWeather,
+    get: getWeatherParams,
+    set: (p) => setWeatherParams(p, 'user'),
+    reset: resetWeatherParams,
+    onChange: onWeatherChange,
   }),
   // ON/OFF = PERF OPTIMISATIONS (OFF = native DPR, view focus off, secondary shadow always on: the A/B baseline).
   storeTab({ id: 'perf', label: 'PERF', statusTitle: 'PERF OPTIMISATIONS', sliders: PERF_SLIDERS, head: PERF_HEAD }, {
@@ -118,6 +143,8 @@ export const VISUAL_LAB_TABS: readonly VisualLabTab[] = [
     onChange: onPerfChange,
   }),
 ];
+
+export const buildTabRegistrations = (): readonly VisualLabTab[] => VISUAL_LAB_TABS;
 
 export const DEFAULT_VISUAL_TAB: VisualTabId = 'shadow';
 

@@ -1,5 +1,4 @@
 import type { ResourceKey } from '@terra/contracts';
-import { ENTITY_KIND } from '../../ecs/columns';
 import { commandColony } from '../command';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -10,7 +9,9 @@ import { defineSimModule } from '../define';
 import { buildSiteReject } from '../economy/siteTerrain';
 import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability } from '../economy/ledger';
-import { checkUnitSupply, unitSupplyOfName } from '../supply';
+import { resolveUnitRowForHub } from '../factories-hub/unit';
+import { isCrewKind, isWorker } from '../harvest/unit';
+import { checkUnitSupply } from '../supply';
 import {
   applyReorderQueueTask,
   CANCEL_IN_PROGRESS_REFUND_RATIO,
@@ -117,6 +118,28 @@ export interface EnqueueQueueTaskOptions {
   data?: CompiledDataLike;
 }
 
+/** Highest-tier free Worker Drone, else the HQ, stamped onto a terraform queue entry. */
+function assignTerraformQueueWorker(state: PlanetState, entry: QueueEntry, allEntries: QueueEntry[]): void {
+  const busy = new Set(
+    allEntries
+      .filter((e) => e.colonyIndex === entry.colonyIndex && e.lane === 'terraform' && e.state === 'in_progress' && e.workerEntityId !== undefined)
+      .map((e) => e.workerEntityId!),
+  );
+  const { count, cols } = state.entities;
+  let best = -1;
+  let bestScore = -1;
+  for (let r = 0; r < count; r++) {
+    if (cols.owner[r] !== entry.colonyIndex || cols.hp[r] <= 0 || busy.has(cols.id[r])) continue;
+    const kind = cols.kind[r];
+    if (!isCrewKind(kind)) continue;
+    const score = (cols.tier[r] || 1) * 2 + (isWorker(kind) ? 1 : 0);
+    if (score > bestScore) { bestScore = score; best = r; }
+  }
+  if (best < 0) return;
+  entry.workerEntityId = cols.id[best];
+  if (cols.workRate[best] > 0) entry.workRate = cols.workRate[best];
+}
+
 function tryStartQueueEntry(
   state: PlanetState,
   entry: QueueEntry,
@@ -189,24 +212,7 @@ function tryStartQueueEntry(
   }
   entry.totalCost ??= { ...entry.cost };
   entry.spentCost ??= {};
-  if (entry.lane === 'terraform' && entry.workerEntityId === undefined) {
-    const busy = new Set(
-      allEntries
-        .filter((e) => e.colonyIndex === entry.colonyIndex && e.lane === 'terraform' && e.state === 'in_progress' && e.workerEntityId !== undefined)
-        .map((e) => e.workerEntityId!),
-    );
-    const { count, cols } = state.entities;
-    for (const targetKind of [ENTITY_KIND.terraformer, ENTITY_KIND.hq]) {
-      for (let r = 0; r < count; r++) {
-        if (cols.owner[r] === entry.colonyIndex && cols.hp[r] > 0 && cols.kind[r] === targetKind && !busy.has(cols.id[r])) {
-          entry.workerEntityId = cols.id[r];
-          if (cols.workRate[r] > 0) entry.workRate = cols.workRate[r];
-          break;
-        }
-      }
-      if (entry.workerEntityId !== undefined) break;
-    }
-  }
+  if (entry.lane === 'terraform' && entry.workerEntityId === undefined) assignTerraformQueueWorker(state, entry, allEntries);
   entry.state = 'in_progress';
   entry.waitReason = undefined;
   entry.waitDetail = undefined;
@@ -272,7 +278,7 @@ export function enqueueQueueTask(
   const limit = laneLimitFor(lane);
   const fullCode = isW03QueueActive(state, data) ? 'lane_full' : 'queue_full';
 
-  if (opts.task.kind === 'buildUnit' && unitSupplyOfName(opts.task.unit, data) === undefined) {
+  if (opts.task.kind === 'buildUnit' && !resolveUnitRowForHub(opts.task.unit, data, opts.task.tier)) {
     return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   }
   if (opts.task.kind === 'buildUnit' && typeof opts.task.producerId === 'number') {
@@ -335,7 +341,7 @@ export function enqueueQueueTask(
 }
 
 /**
- * Cancels a queue entry, building construction, hub unit production, harvester task, or `'all'` tasks:
+ * Cancels a queue entry, building construction, hub unit production, worker task, or `'all'` tasks:
  * refunds `50 %` (`0.50`) of `spentCost` and removes any unfinished building entity.
  */
 export function cancelQueueTask(

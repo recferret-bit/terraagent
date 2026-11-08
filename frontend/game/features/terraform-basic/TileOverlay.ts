@@ -1,241 +1,33 @@
-import { hexIndex, PREP, TERRAIN, terraformOrdersOf, type TerraformOpKind, type TerraformOrder } from '@terra/sim';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import type { GameView } from '../../core/registry/types';
 import { makeDiv } from '../shared/dom';
 import { isHotkeyPress } from '../shared/hotkeys';
+import {
+  activeOrderOf,
+  computeOverlayState,
+  extractColonyOrders,
+  LIVING_MOVE_SPEED_HINT,
+  MAX_OVERLAY_CHIPS,
+  type OverlayJobEntry,
+  type OverlayOrderProgress,
+  type OverlayTileEntry,
+  type TileOverlayMode,
+  type TileOverlayState,
+  type TilePrepStateName,
+} from './parts/overlayState';
 
-export type TilePrepStateName = 'wild' | 'flat' | 'prepared' | 'irrigated' | 'living' | 'ridge' | 'moat';
-export type TileOverlayMode = 'all' | 'living';
-
-export const LIVING_MOVE_SPEED_HINT = 'Living ground: +10 % ground move speed';
-
-export interface OverlayJobEntry {
-  orderId: string;
-  q: number;
-  r: number;
-  op: TerraformOpKind;
-  progress: number;
-  percent: number;
-  status: 'in_progress' | 'queued';
-}
-
-export interface OverlayOrderProgress {
-  orderId: string;
-  op: TerraformOpKind;
-  totalJobs: number;
-  completedJobs: number;
-  remainingJobs: number;
-  skippedCount: number;
-  currentJob: OverlayJobEntry | null;
-  overallProgress: number;
-  overallPercent: number;
-  status?: 'in_progress' | 'waiting';
-  waitReason?: 'resources' | 'power';
-  waitingText?: string;
-}
-
-export interface OverlayTileEntry {
-  q: number;
-  r: number;
-  state: TilePrepStateName;
-  terrain: string;
-  op?: TerraformOpKind;
-  progress: number;
-  percent: number;
-}
-
-export interface TileOverlayState {
-  visible: boolean;
-  mode?: TileOverlayMode;
-  livingHint?: string;
-  counts: {
-    wild: number;
-    flat: number;
-    prepared: number;
-    irrigated: number;
-    living: number;
-    other: number;
-  };
-  activeOrder: OverlayOrderProgress | null;
-  orders: OverlayOrderProgress[];
-  jobs: OverlayJobEntry[];
-  tiles: OverlayTileEntry[];
-  progress: number;
-  percent: number;
-}
-
-function prepCodeToName(code: number): TilePrepStateName {
-  if (code === PREP.flat) return 'flat';
-  if (code === PREP.prepared) return 'prepared';
-  if (code === PREP.irrigated) return 'irrigated';
-  if (code === PREP.living) return 'living';
-  if (code === PREP.ridge) return 'ridge';
-  if (code === PREP.moat) return 'moat';
-  return 'wild';
-}
-
-function terrainCodeToName(code: number): string {
-  if (code === TERRAIN.forest) return 'forest';
-  if (code === TERRAIN.rock) return 'rock';
-  if (code === TERRAIN.slope) return 'slope';
-  if (code === TERRAIN.hole) return 'hole';
-  if (code === TERRAIN.shallow) return 'shallow';
-  if (code === TERRAIN.deep) return 'deep';
-  return 'flat';
-}
-
-/** `colonyId`'s queued terraform orders in the view (`blobs.terraformTasks` is `{ byColony }`; the sim's own reader). */
-export function extractColonyOrders(view: GameView | null | undefined, colonyId: number): readonly TerraformOrder[] {
-  return terraformOrdersOf(view?.blobs?.terraformTasks, colonyId);
-}
-
-function buildOrderProgress(order: TerraformOrder): {
-  summary: OverlayOrderProgress;
-  jobEntries: OverlayJobEntry[];
-} {
-  const remainingJobs = order.jobs.length;
-  const totalJobs = Math.max(remainingJobs, order.totalJobs ?? remainingJobs);
-  const completedJobs = order.completedJobs ?? Math.max(0, totalJobs - remainingJobs);
-  const jobEntries: OverlayJobEntry[] = order.jobs.map((j, idx) => {
-    const clamped = Math.max(0, Math.min(1, Number(j.progress ?? 0)));
-    return {
-      orderId: order.orderId,
-      q: j.q,
-      r: j.r,
-      op: j.op,
-      progress: clamped,
-      percent: Math.round(clamped * 100),
-      status: idx === 0 ? 'in_progress' : 'queued',
-    };
-  });
-  const currentJob = jobEntries[0] ?? null;
-  const overallProgress =
-    totalJobs > 0 ? Math.min(1, (completedJobs + (currentJob?.progress ?? 0)) / totalJobs) : 0;
-  const waitReason = order.waitReason ?? order.jobs[0]?.waitReason;
-  const status: 'in_progress' | 'waiting' =
-    order.status === 'waiting' || order.jobs[0]?.status === 'waiting' || Boolean(waitReason)
-      ? 'waiting'
-      : 'in_progress';
-  const waitingText = waitReason ? `waiting(${waitReason})` : undefined;
-  return {
-    summary: {
-      orderId: order.orderId,
-      op: order.op,
-      totalJobs,
-      completedJobs,
-      remainingJobs,
-      skippedCount: order.skippedCount ?? 0,
-      currentJob,
-      overallProgress,
-      overallPercent: Math.round(overallProgress * 100),
-      status,
-      ...(waitReason ? { waitReason, waitingText } : {}),
-    },
-    jobEntries,
-  };
-}
-
-export function computeOverlayState(
-  view: GameView | null | undefined,
-  visible: boolean,
-  colonyId: number,
-  mode: TileOverlayMode = 'all',
-): TileOverlayState {
-  const counts = { wild: 0, flat: 0, prepared: 0, irrigated: 0, living: 0, other: 0 };
-  const tileLayers = view?.tiles;
-  if (tileLayers?.prep) {
-    for (let i = 0; i < tileLayers.count; i++) {
-      const p = tileLayers.prep[i];
-      if (p === PREP.wild) counts.wild++;
-      else if (p === PREP.flat) counts.flat++;
-      else if (p === PREP.prepared) counts.prepared++;
-      else if (p === PREP.irrigated) counts.irrigated++;
-      else if (p === PREP.living) counts.living++;
-      else counts.other++;
-    }
-  }
-
-  const rawOrders = extractColonyOrders(view, colonyId);
-  const orders: OverlayOrderProgress[] = [];
-  const jobs: OverlayJobEntry[] = [];
-  for (const o of rawOrders) {
-    const built = buildOrderProgress(o);
-    orders.push(built.summary);
-    jobs.push(...built.jobEntries);
-  }
-  const activeOrder = orders[0] ?? null;
-
-  const jobByCoord = new Map<string, OverlayJobEntry>();
-  for (const j of jobs) {
-    const key = `${j.q},${j.r}`;
-    if (!jobByCoord.has(key)) jobByCoord.set(key, j);
-  }
-
-  const radius = view?.planet?.radius;
-  const idx = typeof radius === 'number' ? hexIndex(radius) : null;
-  const coordsToInspect: Array<{ q: number; r: number; tileIdx?: number }> = [...jobByCoord.values()].map((j) => ({
-    q: j.q,
-    r: j.r,
-  }));
-  const seenCoords = new Set(coordsToInspect.map((c) => `${c.q},${c.r}`));
-
-  if (tileLayers?.prep) {
-    for (let i = 0; i < tileLayers.count && coordsToInspect.length < MAX_CHIPS; i++) {
-      const p = tileLayers.prep[i];
-      if (p !== PREP.living && !(mode === 'living' && p === PREP.irrigated)) continue;
-      const q = idx ? idx.q[i]! : i;
-      const r = idx ? idx.r[i]! : 0;
-      const key = `${q},${r}`;
-      if (seenCoords.has(key)) continue;
-      seenCoords.add(key);
-      coordsToInspect.push({ q, r, tileIdx: i });
-    }
-  }
-
-  const tiles: OverlayTileEntry[] = [];
-  for (const c of coordsToInspect) {
-    const tileIdx = c.tileIdx ?? (idx ? idx.indexOf(c.q, c.r) : -1);
-    const prepCode = tileLayers && tileIdx >= 0 ? tileLayers.prep[tileIdx] : PREP.wild;
-    const terrainCode = tileLayers && tileIdx >= 0 ? tileLayers.terrain[tileIdx] : TERRAIN.flat;
-    const state = prepCodeToName(prepCode);
-    const job = jobByCoord.get(`${c.q},${c.r}`);
-    const doneProgress = state === 'prepared' || state === 'flat' || state === 'irrigated' || state === 'living' ? 1 : 0;
-    const progress = job ? job.progress : doneProgress;
-    tiles.push({
-      q: c.q,
-      r: c.r,
-      state,
-      terrain: terrainCodeToName(terrainCode),
-      ...(job ? { op: job.op } : {}),
-      progress,
-      percent: Math.round(progress * 100),
-    });
-  }
-
-  const progress = activeOrder
-    ? Math.max(activeOrder.currentJob?.progress ?? 0, activeOrder.overallProgress)
-    : 0;
-  return {
-    visible,
-    mode,
-    livingHint: LIVING_MOVE_SPEED_HINT,
-    counts,
-    activeOrder,
-    orders,
-    jobs,
-    tiles,
-    progress,
-    percent: Math.round(progress * 100),
-  };
-}
-
-/** The colony's first order with work left (what CANCEL and the status line act on). */
-export function activeOrderOf(view: GameView | null | undefined, colonyId: number): OverlayOrderProgress | null {
-  const first = extractColonyOrders(view, colonyId)[0];
-  return first ? buildOrderProgress(first).summary : null;
-}
-
-const MAX_CHIPS = 32;
+export {
+  activeOrderOf,
+  computeOverlayState,
+  extractColonyOrders,
+  LIVING_MOVE_SPEED_HINT,
+  type OverlayJobEntry,
+  type OverlayOrderProgress,
+  type OverlayTileEntry,
+  type TileOverlayMode,
+  type TileOverlayState,
+  type TilePrepStateName,
+};
 
 /**
  * Tile-state overlay. The full state (tile counts, chips) is computed only while the overlay is shown or when asked
@@ -344,7 +136,7 @@ export class TileOverlay {
         ? `LIVING ${counts.living} · IRRIGATED ${counts.irrigated} · +10 % ground move speed on Living tiles`
         : `WILD ${counts.wild} · FLAT ${counts.flat} · PREPARED ${counts.prepared} · LIVING ${counts.living} · IRRIGATED ${counts.irrigated} · +10 % ground move speed on Living tiles`;
     this.renderProgress(activeOrder);
-    this.renderChips(tiles.slice(0, MAX_CHIPS));
+    this.renderChips(tiles.slice(0, MAX_OVERLAY_CHIPS));
   }
 
   private renderProgress(activeOrder: OverlayOrderProgress | null): void {

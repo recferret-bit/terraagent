@@ -1,5 +1,6 @@
 import { HUD_SLOTS, type Feature, type FeatureContext, type GameView, type HudPanelInstance, type HudSlot } from '../registry/types';
 import { CommandDock, resolveDockTabForFeature, type DockTabId } from './CommandDock';
+import { fitBottomLeftUnderTopLeft } from './slotFit';
 import './hud.css';
 
 /** pointer-events:none overlay with five slot containers; mounts every enabled feature's HUD panels. */
@@ -8,6 +9,7 @@ export class HudRoot {
   private slots = new Map<HudSlot, HTMLElement>();
   private panels: HudPanelInstance[] = [];
   private dock: CommandDock | null = null;
+  private offFit: () => void = () => {};
 
   constructor(parent: HTMLElement, features: readonly Feature[], ctx: FeatureContext) {
     this.el = document.createElement('div');
@@ -42,6 +44,7 @@ export class HudRoot {
       try { this.panels.push(p.mount(el, ctx)); } catch (e) { console.warn(`HUD panel ${f.id}/${p.id} failed`, e); el.remove(); }
     }
     parent.appendChild(this.el);
+    this.offFit = fitBottomLeftUnderTopLeft(this.el, this.slots.get('top-left')!);
   }
 
   setVisible(visible: boolean) {
@@ -55,6 +58,7 @@ export class HudRoot {
   dispose() {
     for (const p of this.panels) { try { p.dispose(); } catch (e) { console.warn(e); } }
     this.panels = [];
+    this.offFit();
     this.dock?.dispose();
     this.dock = null;
     this.el.remove();

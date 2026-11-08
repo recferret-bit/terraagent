@@ -3,7 +3,7 @@ import { hexDistance, placementPowerZoneSources, powerZoneTiles, type CompiledDa
 import type { GameView } from '../../core/registry/types';
 import type { Scene3dService } from '../shared/scene3d';
 import { viewPlacementWorld } from '../shared/placementWorld';
-import { hexTileTriangles, setMeshPositions } from '../shared/hexTiles3d';
+import { hexTileTriangles, setMeshPositions, waterTileTest } from '../shared/hexTiles3d';
 
 /** Signal blue of the design system (`--ta-blue-hi` / `--ta-blue`): systems, here the colony's power zone. */
 const ZONE_EDGE = 0x5b8cff;
@@ -70,7 +70,9 @@ export class PowerZoneOverlay3D {
   private rebuild(sources: readonly PowerZoneSource[], mapRadius?: number): void {
     const inMap = (q: number, r: number) => mapRadius === undefined || hexDistance(0, 0, q, r) <= mapRadius;
     const tiles = powerZoneTiles(sources).filter((t) => inMap(t.q, t.r));
-    const { fill, edge } = hexTileTriangles(this.s3, tiles);
+    const terrain = (this.seenTiles as { terrain?: ArrayLike<number> } | null)?.terrain;
+    // draped on the ground (on the water surface over a lake), see `hexTileTriangles`
+    const { fill, edge } = hexTileTriangles(this.s3, tiles, { isWater: waterTileTest(terrain, mapRadius) });
     setMeshPositions(this.fill, fill);
     setMeshPositions(this.edge, edge);
   }

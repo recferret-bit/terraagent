@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
+import { command as enqueueTaskCommand } from '@terra/contracts/commands/enqueue-task';
 import { BrushController, type BrushCommandSink } from './BrushController';
 
 let hovered = { q: 0, r: 0 };
@@ -28,7 +29,7 @@ describe('Terraform brush: one click, one order; Ctrl+click queues and stays arm
     const { brush, surface, sent } = setup();
     click(surface, 3, 1);
     expect(sent.map((s) => s.kind)).toEqual(['enqueueTask']);
-    expect(sent.map(terraformOf)).toEqual([{ op: 'grade', tiles: [{ q: 3, r: 1 }] }]);
+    expect(sent.map(terraformOf)).toEqual([{ op: 'work', intent: 'terraform', tiles: [{ q: 3, r: 1 }] }]);
     expect(brush.isArmed()).toBe(false);
     click(surface, 4, 1);
     expect(sent).toHaveLength(1);
@@ -54,11 +55,28 @@ describe('Terraform brush: one click, one order; Ctrl+click queues and stays arm
     expect(brush.isArmed()).toBe(true);
   });
 
-  it('the selected unit is sent as workerId of a REPAIR order only', () => {
+  it('the selected unit is sent as workerId of a TERRAFORM order (the host replaces that worker\'s chain)', () => {
     const { brush, surface, sent } = setup({ getWorkerId: () => 7 });
     click(surface, 2, 0);
-    expect(terraformOf(sent[0]!)).toEqual({ op: 'grade', tiles: [{ q: 2, r: 0 }] });
+    expect(terraformOf(sent[0]!)).toEqual({ op: 'work', intent: 'terraform', tiles: [{ q: 2, r: 0 }], workerId: 7 });
     expect(brush.isArmed()).toBe(false);
+  });
+
+  it('Ctrl+click TERRAFORM orders leave the worker to the host (a named worker would replace its chain on every hex)', () => {
+    const { surface, sent } = setup({ getWorkerId: () => 7 });
+    click(surface, 3, 1, { ctrlKey: true });
+    click(surface, 4, 1, { ctrlKey: true });
+    expect(sent.map(terraformOf)).toEqual([
+      { op: 'work', intent: 'terraform', tiles: [{ q: 3, r: 1 }] },
+      { op: 'work', intent: 'terraform', tiles: [{ q: 4, r: 1 }] },
+    ]);
+  });
+
+  it('every order the brush sends passes the enqueueTask contract (the args the host validates)', () => {
+    const { surface, sent } = setup({ getWorkerId: () => 7 });
+    click(surface, 2, 0);
+    expect(sent).toHaveLength(1);
+    expect(enqueueTaskCommand.args.safeParse(sent[0]!.args).success).toBe(true);
   });
 
   it('any right click (Ctrl or not) disarms', () => {
@@ -75,7 +93,7 @@ describe('Terraform brush: host reject', () => {
     brush.strokeTile(3, 1);
     expect(brush.getLastStroke()?.statusText).toMatch(/ordered/i);
     await new Promise((r) => setTimeout(r, 0));
-    expect(brush.getLastStroke()?.statusText).toBe('Rejected by host: not own territory');
+    expect(brush.getLastStroke()?.statusText).toBe('Rejected: Not your territory');
     expect(brush.getLastOutcome()?.ok).toBe(false);
   });
 

@@ -1,6 +1,6 @@
 import { dismantleTargetRejectByName, ENTITY_KIND, ENTITY_STATE, isUnitKind, type CompiledDataLike, type PlanetState, type TerraformOpKind } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
-import { REJECT_TEXT } from '../hud-min/rejectText';
+import { REJECT_TEXT } from '../shared/rejectText';
 import type { TileCoord } from '../shared/pointer';
 import { colonyWorkJobs } from './workStatus';
 import {
@@ -22,8 +22,8 @@ import {
 export type WorkIntent = 'terraform' | 'repair';
 
 /**
- * The `terraform` member of `enqueueTask` the dock buttons send (one tile per click): TERRAFORM a per-hex op (`clear`,
- * `break`, `level`, `fill`, `reclaim`, `grade`, ...), REPAIR `work` + `intent: 'repair'`, DISMANTLE `dismantle`.
+ * The `terraform` member of `enqueueTask` the dock buttons send (one tile per click): TERRAFORM is `work` +
+ * `intent: 'terraform'` (the chain), REPAIR `work` + `intent: 'repair'`, DISMANTLE `dismantle`.
  */
 export interface TerraformWireArgs {
   op: TerraformOpKind;
@@ -65,15 +65,15 @@ const skip = (op: TerraformPrimaryOp, reason: string, status: string): PrimaryOp
   outcome: { ok: false, reason, op, status },
 });
 
-const NO_WORKER = 'No HQ Drone or Harvester to do the work';
+const NO_WORKER = 'No HQ Drone or Worker Drone to do the work';
 
-/** A unit by kind name (drones, harvesters): never a dismantle target. The HQ Drone is left to the HQ reject. */
+/** A unit by kind name (drones): never a dismantle target. The HQ Drone is left to the HQ reject. */
 const isUnitName = (kindName: string): boolean => {
   const kind = (ENTITY_KIND as Record<string, number>)[kindName];
   return kind !== undefined && kindName !== 'hq' && isUnitKind(kind);
 };
 
-const withWorker =(workerId: number | undefined) => (workerId === undefined ? {} : { workerId });
+const withWorker = (workerId: number | undefined) => (workerId === undefined ? {} : { workerId });
 
 function planDismantle(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan {
   // The host's own rule (`dismantleTargetReject`): a unit / drone, the worker itself, HQ / Hub or a site never is a target.
@@ -92,8 +92,8 @@ function planDismantle(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPl
     return skip('dismantle', 'cannot_dismantle_hq', 'Cannot dismantle Command Hub or HQ Drone');
   }
   const refund = calculateDismantleRefund(resolveEntityBaseCost(target.kindName, target.cost, ctx.data ?? undefined));
-  // Builder work (owner feedback W03 #6): a Builder Drone or the HQ takes it apart in half its build time.
-  const status = `Dismantle ordered: a Builder takes it apart (+${pct(DISMANTLE_REFUND_RATIO)} refunded step by step)`;
+  // Worker Drone or HQ takes it apart in half its build time (owner feedback W03 #6).
+  const status = `Dismantle ordered: a Worker Drone takes it apart (+${pct(DISMANTLE_REFUND_RATIO)} refunded step by step)`;
   return {
     terraform: { op: 'dismantle', tiles: [{ q, r }] },
     outcome: { ok: true, op: 'dismantle', targetId: target.id, refund, status },
@@ -126,9 +126,9 @@ const isChaining = (ctx: PrimaryOpContext, workerId: number | undefined): boolea
 const SKIP_STATUS: Readonly<Record<string, string>> = {
   not_own_territory: 'Outside your territory',
   invalid_args: 'Outside the map',
-  already_terraformed: 'Already terraformed (Living)',
+  already_terraformed: 'Already terraformed',
   already_queued: 'Already queued: a terraform job is waiting or running here',
-  already_at_target: 'Nothing to change: already in that state',
+  already_at_target: 'Already terraformed',
   site_blocked: 'Nothing to terraform here (already done, queued, or built on)',
   building_here: 'A building stands on this hex',
   deposit_here: 'Resource deposit here: harvest it instead',
@@ -136,22 +136,20 @@ const SKIP_STATUS: Readonly<Record<string, string>> = {
 };
 
 /**
- * TERRAFORM on one hex: the sim's own per-hex op (`evaluateTerraform` with `auto`: trees → Clear, rock → Break, slope →
- * Level, crater → Fill, water → Reclaim, plain ground → Grade) goes out as one `enqueueTask` order. The client names
- * the concrete op because the host's multi-hex auto-prepare only applies from two hexes up.
+ * TERRAFORM on one hex: `work` + `intent: 'terraform'` (the chain). The preview is the sim's ground rule
+ * (`planGroundWorkTiles`). Level flat that is already terraformed sends nothing. With no tile layers yet the host
+ * judges the click alone.
  */
 function planTerraform(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan {
   const data = ctx.data ?? undefined;
   const preview = planTerraformTiles(ctx.view, [{ q, r }], { colonyId: ctx.colonyId, data });
   const job = preview.jobs[0];
-  // No tile layers in the view yet (`queuedCount` 0 with no reason): the host judges alone.
   if (!job && preview.firstReject) return skip('terraform', preview.firstReject, SKIP_STATUS[preview.firstReject] ?? `Cannot terraform: ${preview.firstReject.replace(/_/g, ' ')}`);
   if (job && !hasWorkerEntity(ctx.entities, ctx.colonyId, ctx.view)) return skip('terraform', 'no_worker', NO_WORKER);
-  const op: TerraformOpKind = (job?.op as TerraformOpKind | undefined) ?? 'grade';
   return {
-    terraform: { op, tiles: [{ q, r }] },
-    outcome: { ok: true, op: 'terraform', status: `Terraform ordered: ${op.toUpperCase()} (${q},${r})` },
-    job: { q, r, op },
+    terraform: { op: 'work', intent: 'terraform', tiles: [{ q, r }], ...withWorker(ctx.workerId) },
+    outcome: { ok: true, op: 'terraform', status: `Terraform ordered (${q},${r})` },
+    job: { q, r, op: 'work' },
   };
 }
 

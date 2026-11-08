@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, type GeoBlock } from '@terra/sim';
+import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, geoBuildOptionsFor, hexDistance, type GeoBlock, type GeoBuildOptions } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { extractHqFromView } from '../shared/hqView';
@@ -57,8 +57,9 @@ function scanFootprintTiles(
   occupied: ReadonlySet<number>,
   tilesData?: ClientTiles,
   requiresDeposit?: string,
-  w05Active = false,
+  geo: GeoBuildOptions = { linkedPrep: false },
 ): FootprintScanResult {
+  const w05Active = geo.linkedPrep === true;
   const tiles: PlacementGhostTile[] = [];
   const prepBill: Record<string, number> = {};
   const coveredDepositIndices: number[] = [];
@@ -77,7 +78,7 @@ function scanFootprintTiles(
       const deposit = tilesData?.deposit ? (tilesData.deposit[tileIdx] ?? DEPOSIT.none) : DEPOSIT.none;
       if (tilesData) {
         // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first (unless W05 linkedPrep).
-        terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', { linkedPrep: w05Active });
+        terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', geo);
         if ((!w05Active && terrain === TERRAIN.deep) || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
         if (matchesDeposit(deposit, reqDepCode)) coveredDepositIndices.push(tileIdx);
       }
@@ -129,7 +130,9 @@ export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions, ctx:
   const footprintD = isSwapped ? meta.footprintW : meta.footprintD;
   const tilesData = (opts.view as { tiles?: ClientTiles } | undefined)?.tiles;
   const w05Active = isW05LinkedPrepActive(opts.flags, ctx.data);
-  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit, w05Active);
+  // The host's geo options (D-37): linked prep, and deep water once the colony has a worker of `deepReclaim`'s tier.
+  const geo = { ...geoBuildOptionsFor(ctx.world, opts.colonyId ?? 0, ctx.data), linkedPrep: w05Active };
+  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit, geo);
   const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: ctx.data, world: ctx.world });
   const val = sim ? { valid: sim.valid, statusColor: sim.valid ? 'green' as const : 'red' as const, reason: sim.reason, depositCovered: sim.valid && scan.coveredDepositIndices.length > 0 }
     : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);

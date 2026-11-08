@@ -123,9 +123,9 @@ function claimedBuildOrderIds(u: UnitCtx): Set<string> {
 }
 
 /**
- * Dispatch of construction to builders (W02-16, W03-02, `UO-D-03`): a unit that may build (`maxBuildTier` ≥ the site's tier;
- * a Harvester never does) takes an unclaimed ready W01 order or W02/W03 job, and keeps the one it works on until it is done:
- * one site at a time per builder so HQ (1.5×) and Builder Drone (1.0×) build multiple sites in parallel.
+ * Dispatch of construction (W02-16, W03-02, `UO-D-03`): a drone whose tier covers the site takes an unclaimed ready
+ * order or job, and keeps the one it works on until it is done:
+ * one site at a time per worker so HQ (1.5×) and Worker Drone (1.0×) build multiple sites in parallel.
  */
 export const buildProvider: UnitWorkProvider = {
   id: 'build',

@@ -1,6 +1,7 @@
 import { hexDistance, hexIndex, type HexIndex } from '../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
+import { depositGroundMask } from './depositGround';
 import { ALL_DEPOSITS, collectDiskTiles, collectPodBlastTiles, footprint2x2Valid, spawnCfg } from './spawnDisk';
 
 /** The `UO-TF-09` spawn guarantee check of a generated planet (split from `spawnSlots.ts`). */
@@ -67,26 +68,27 @@ function checkDepositsGuarantee(state: SimState, hex: HexIndex, slot: { q: numbe
   const prep = state.grid.layers.prep as Uint8Array;
   const deposit = state.grid.layers.deposit as Uint8Array;
   const richness = state.grid.layers.richness as Float32Array;
+  const ground = depositGroundMask(state);
   const r8Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.metalsRadius, 1);
 
   let hasMetalsWith2x2 = false;
   for (const mIdx of r8Tiles) {
     if (deposit[mIdx] !== DEPOSIT.metals) continue;
     const fp = footprint2x2Valid(hex, { index: 0, q: slot.q, r: slot.r }, hex.q[mIdx], hex.r[mIdx], cfg.metalsRadius);
-    if (fp && fp.every((fIdx) => terrain[fIdx] === TERRAIN.flat && prep[fIdx] === PREP.flat)) {
+    if (ground[mIdx] === 1 && fp && fp.every((fIdx) => terrain[fIdx] === TERRAIN.flat && prep[fIdx] === PREP.flat)) {
       hasMetalsWith2x2 = true;
       break;
     }
   }
   if (!hasMetalsWith2x2) {
-    reasons.push('missing metals deposit with free 2x2 flat footprint within r<=8');
+    reasons.push('missing metals deposit on a hex tile with a free 2x2 flat footprint within r<=8');
   }
 
   const r12Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.allDepositsRadius, 1);
   for (const kind of ALL_DEPOSITS) {
-    const hit = r12Tiles.some((idx) => deposit[idx] === kind && richness[idx] > 0);
+    const hit = r12Tiles.some((idx) => deposit[idx] === kind && richness[idx] > 0 && ground[idx] === 1);
     if (!hit) {
-      reasons.push(`missing deposit kind ${kind} within r<=12`);
+      reasons.push(`missing deposit kind ${kind} on a hex tile within r<=12`);
     }
   }
 }

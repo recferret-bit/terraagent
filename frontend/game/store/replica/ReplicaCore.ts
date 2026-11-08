@@ -43,6 +43,8 @@ export class ReplicaCore {
   private host: SimHost | null = null;
   private current: ReplicaStatus = 'empty';
   private lastViewTick = -1;
+  /** A continuation chunk arrived since the last view (see `delta`). */
+  private continuationTiles = false;
   private flags: readonly string[] = [];
   private overrides: BalanceOverrides | undefined;
   constructor(private readonly opts: ReplicaOptions = {}) {}
@@ -115,6 +117,9 @@ export class ReplicaCore {
     }
     // A diff that leaves the replica anywhere but the announced tick cannot be trusted.
     if (this.host.tick !== d.toTick) { this.current = 'needsResync'; return { ok: false, reason: 'badDiff', detail: `at ${this.host.tick}, expected ${d.toTick}`, request: true }; }
+    // A continuation chunk (W05-19, `toTick → toTick`) carries tiles stamped inside a window the last view already
+    // covered, so the `changedAt` scan cannot see them: the next view must carry tiles again.
+    if (d.fromTick === d.toTick) this.continuationTiles = true;
     return { ok: true, tick: d.toTick };
   }
 
@@ -123,8 +128,9 @@ export class ReplicaCore {
   /** True when any tile changed after the last `markViewed` (scans the `changedAt` layer; tiles are few). */
   tilesChanged(): boolean {
     const stamp = this.state.grid.layers.changedAt;
+    if (this.continuationTiles) return true;
     for (let i = 0; i < stamp.length; i++) if (stamp[i] > this.lastViewTick) return true;
     return this.lastViewTick < 0;
   }
-  markViewed(): void { this.lastViewTick = this.tick; }
+  markViewed(): void { this.lastViewTick = this.tick; this.continuationTiles = false; }
 }

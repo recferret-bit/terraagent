@@ -20,7 +20,7 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 | `curl 127.0.0.1:4001/v1/healthz` and `/v1/readyz` | `{"ok":true}` and `{"db":"ok","simThreads":N}` (N = cores − 1 unless `SIM_THREADS` is set) |
 | Open http://127.0.0.1:5173/play.html?scenario=w00 | A flat hex planet; the HUD `TICK` chip rises about 5 per second |
 | Press `` ` `` and type `warp 10` (`warp 1` to undo) | The tick rate rises to about 50/s and a `×10` badge appears |
-| Open the flag panel (top right) or add `&waves=..00` | `W00` on, every later wave off |
+| Add `&waves=..00` to the URL | `W00` on, every later wave off |
 | `npm run dev:restart` while the page is open | "Reconnecting…", then the tick continues from the saved snapshot, not 0 |
 | Open http://127.0.0.1:5173/dev/chain/ in a second tab, then run `chain.ping` in the play page's dev console (or press `CHAIN.PING` on the explorer) | A `mock:` receipt appears in the explorer after 300–1 500 ms |
 | Stop the app; open `/play.html?host=local&scenario=w00` | The same planet runs in the browser alone; a reload resumes from IndexedDB |

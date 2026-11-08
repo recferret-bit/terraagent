@@ -3,12 +3,14 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { isTileUneven } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
+import { setTilePrep } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
-import type { PlacementEntity, PlacementWorld } from '../construction/placement';
+import { colonyMaxWorkerTier, occupiedTiles, type PlacementEntity, type PlacementWorld } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
+import { invalidateExtractorRingCache } from '../production/tierGate';
 import { resolveStartingKitRow, rowNum } from '../rows';
-import { getTerraformOpSpec, isTerraformOpKind, opForTerrain, type TerraformOpKind } from './ops';
+import { getTerraformOpSpec, isTerraformOpCompiled, isTerraformOpKind, opForTerrain, type TerraformOpKind } from './ops';
 
 /**
  * Terraform rules, one pure function for every caller (GP-32, like `evaluatePlacement` for buildings, D-37): the
@@ -36,6 +38,8 @@ export interface TerraformWorld {
   preHubRadius: number;
   /** Highest worker tier owned by the colony (`1` in T1, `2` once a T2 worker exists; gates `deepReclaim`). */
   maxWorkerTier?: number;
+  /** Tiles under a building footprint (`occupiedTiles`): no Irrigate / Seed there (W05-07 / W05-10). */
+  occupied?: ReadonlySet<number> | null;
 }
 
 export type TerraformCheck = { ok: true } | { ok: false; reason: RejectCode };
@@ -47,18 +51,6 @@ export function worldHasTerritory(world: Pick<PlacementWorld, 'owner' | 'tileCou
   if (world.entities.some((e) => e.kind === ENTITY_KIND.hub && e.owner === colonyId && isAlive(e) && e.state === ENTITY_STATE.active)) return true;
   for (let i = 0; i < world.tileCount; i++) if (world.owner[i] === colonyId) return true;
   return false;
-}
-
-function resolveColonyMaxWorkerTier(entities: readonly PlacementEntity[], colonyId: number): number {
-  let maxTier = 1;
-  for (const e of entities) {
-    if (e.owner !== colonyId || !isAlive(e)) continue;
-    if (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.builder || e.kind === ENTITY_KIND.terraformer) {
-      const t = typeof e.tier === 'number' && e.tier > 0 ? e.tier : 1;
-      if (t > maxTier) maxTier = t;
-    }
-  }
-  return maxTier;
 }
 
 /** The terraform view of a placement world (the client ghost's world works too) for `colonyId`. */
@@ -75,7 +67,8 @@ export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data
     hasTerritory: worldHasTerritory(world, colonyId),
     preHubCenter: pod ? { q: pod.q, r: pod.r } : null,
     preHubRadius: rowNum(resolveStartingKitRow(data), 'preHubTerraformRadius'),
-    maxWorkerTier: resolveColonyMaxWorkerTier(world.entities, colonyId),
+    maxWorkerTier: colonyMaxWorkerTier(world, colonyId),
+    occupied: occupiedTiles(world, data),
   };
 }
 
@@ -117,6 +110,8 @@ function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data
   if (spec.minWorkerTier > (world.maxWorkerTier ?? 1)) return 'worker_tier_locked';
   if (spec.toTerrain !== spec.fromTerrain) return null;
   if (isTileUneven(world.radius, i, world.terrain, world.height)) return 'site_blocked';
+  // The growth ladder (Irrigate, Seed) never runs under a building: a footprint keeps its ground Prepared (W05-07).
+  if (spec.fromPrep !== null && world.occupied?.has(i)) return 'site_blocked';
   if (spec.fromPrep !== null) return prep === spec.fromPrep ? null : 'site_blocked';
   if (prep === spec.toPrep || prep === PREP.irrigated) return 'already_at_target';
   return prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
@@ -197,8 +192,7 @@ export function revertFootprintLivingTiles(
     if (tileIdx < 0 || tileIdx >= state.grid.count) continue;
     const prev = prep[tileIdx];
     if (prev !== PREP.living && prev !== PREP.irrigated) continue;
-    prep[tileIdx] = PREP.prepared;
-    state.grid.layers.changedAt[tileIdx] = tick;
+    setTilePrep(state.grid, tileIdx, PREP.prepared, tick); // stamps `changedAt` and the sector index (`diffSince`)
     reverted++;
     if (emit) {
       emit({
@@ -219,6 +213,7 @@ export function revertFootprintLivingTiles(
     }
   }
   syncColonyTerraformStats(state, colonyId, tick);
+  if (reverted > 0) invalidateExtractorRingCache(state); // the tier-gate rings read Irrigated / Living (W05-34)
   return reverted;
 }
 
@@ -232,6 +227,8 @@ export function evaluateTerraformTile(
   opts: { allowUnclaimed?: boolean; data?: CompiledDataLike } = {},
 ): TerraformCheck {
   if (!isTerraformOpKind(op)) return { ok: false, reason: 'invalid_args' };
+  // A W05 op under `TA_WAVES=..04` (its `opsBasic` row is not compiled): never run on the W05 fallback rows.
+  if (!isTerraformOpCompiled(op, opts.data)) return { ok: false, reason: 'wave_disabled' };
   const i = tileIndex(world, q, r);
   if (i < 0) return { ok: false, reason: 'invalid_args' };
   const reason = ownershipBlock(world, colonyId, i, q, r, Boolean(opts.allowUnclaimed)) ?? groundBlock(world, op, i, opts.data);

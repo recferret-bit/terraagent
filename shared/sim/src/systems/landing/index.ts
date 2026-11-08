@@ -15,8 +15,10 @@ import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { hqViewRadius, revealVision, spawnHqUnit } from '../hq';
 import { resolveStartingKitRow, rowNum } from '../rows';
+import { stepHqRespawns } from './hqRespawn';
 
 export { resolveStartingKitRow } from '../rows';
+export * from './hqRespawn';
 
 /**
  * Colonies per planet: `grid.explored` is a `u8` bit mask (one bit per colony), so a planet takes 8 colonies (GP-17).
@@ -353,25 +355,27 @@ export const landing = defineSystem({
   wave: 'W01',
   run(state, ctx) {
     const pods = getLandingPods(state);
-    if (pods.length === 0) return;
-    let changed = false;
-    for (const pod of pods) {
-      if (pod.deployed) continue;
-      changed = true;
-      pod.ticksRemaining = Math.max(0, pod.ticksRemaining - ctx.dt);
-      if (pod.ticksRemaining <= 0) {
-        deployPod(state, pod, ctx);
-      } else {
-        const podRow = rowOf(state.entities, pod.podEntityId);
-        if (podRow >= 0) {
-          const progress = Math.fround((pod.totalTicks - pod.ticksRemaining) / pod.totalTicks);
-          setField(state.entities, podRow, 'progress', progress, ctx.tick);
+    if (pods.length > 0) {
+      let changed = false;
+      for (const pod of pods) {
+        if (pod.deployed) continue;
+        changed = true;
+        pod.ticksRemaining = Math.max(0, pod.ticksRemaining - ctx.dt);
+        if (pod.ticksRemaining <= 0) {
+          deployPod(state, pod, ctx);
+        } else {
+          const podRow = rowOf(state.entities, pod.podEntityId);
+          if (podRow >= 0) {
+            const progress = Math.fround((pod.totalTicks - pod.ticksRemaining) / pod.totalTicks);
+            setField(state.entities, podRow, 'progress', progress, ctx.tick);
+          }
         }
       }
+      if (changed) {
+        setBlob(state, 'landingPods', pods, ctx.tick);
+      }
     }
-    if (changed) {
-      setBlob(state, 'landingPods', pods, ctx.tick);
-    }
+    stepHqRespawns(state, ctx);
   },
 });
 

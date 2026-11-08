@@ -1,4 +1,4 @@
-/* Env panel: time of day, wind and Terraform meter stacked under the minimap (bottom-left slot, order 6). */
+/* Env panel: time of day, wind and Terraform meter (bottom-left slot, order 6; under or beside the Command Dock). */
 .ta-env-panel {
   display: flex;
   flex-direction: column;

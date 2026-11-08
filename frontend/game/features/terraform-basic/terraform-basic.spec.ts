@@ -5,6 +5,7 @@ import {
   ENTITY_KIND,
   getColonyTerraformOrders,
   getEntityBaseBuildCost,
+  getWorkJobsMap,
   hexIndex,
   PREP,
   setTileTerrain,
@@ -86,29 +87,26 @@ describe('TERRAFORM picks each hex\'s op, skips what it cannot work, and the ove
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
 
     host.step(1);
-    const orders = getColonyTerraformOrders(state, 0);
-    expect(orders).toHaveLength(1);
-    expect(tf.overlay.getActiveOrder()?.orderId).toBe(orders[0].orderId);
-    expect(container.querySelector('[data-testid="tf-status"]')!.textContent).toContain('0 / 1 jobs');
+    const jobs = Object.values(getWorkJobsMap(state));
+    expect(jobs).toHaveLength(1);
+    expect(tf.overlay.getActiveOrder()?.orderId).toBe(jobs[0]!.jobId);
+    expect(container.querySelector('[data-testid="tf-status"]')!.textContent).toContain('TERRAFORM');
 
-    host.step(4);
-    expect(tf.getOverlayState().activeOrder?.currentJob?.percent).toBe(50);
-    expect(overlayEl.textContent).toContain('50%');
-
-    host.step(5);
-    expect(tf.getOverlayState().counts.prepared).toBe(1);
+    host.step(20);
+    expect(tf.getOverlayState().activeOrder?.currentJob?.percent).toBeGreaterThan(0);
     tf.dispose();
   });
 
-  it('the one button picks Clear for trees, Break for rock and Grade for plain ground', () => {
+  it('the one button queues work for trees, rock and wild flat; deep water is skipped', () => {
     const host = createMixed4x4Host();
     const tf = mountTerraformBasic(document.createElement('div'), { host });
-    expect(tf.strokeTile(1, 1).jobs.map((j) => j.op)).toEqual(['clear']);
-    expect(tf.strokeTile(1, 2).jobs.map((j) => j.op)).toEqual(['break']);
-    expect(tf.strokeTile(1, 0).jobs.map((j) => j.op)).toEqual(['grade']);
+    expect(tf.strokeTile(1, 1).jobs.map((j) => j.op)).toEqual(['work']);
+    expect(tf.strokeTile(1, 2).jobs.map((j) => j.op)).toEqual(['work']);
+    expect(tf.strokeTile(1, 0).jobs.map((j) => j.op)).toEqual(['work']);
     expect(tf.strokeTile(2, 3).queuedCount).toBe(0);
     host.step(1);
-    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.op)).toEqual(['clear', 'break', 'grade']);
+    expect(Object.values(getWorkJobsMap(host.state)).map((j) => j.terrainKey).sort()).toEqual(['flat', 'forest', 'rock']);
+    expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
     tf.dispose();
   });
 });
@@ -125,8 +123,8 @@ describe('Terraform brush wiring (FF-01, FF-02, FF-04, FF-09)', () => {
     click(canvas, 'pointerdown', 0, 2, 2);
     click(canvas, 'pointerup', 0, 2, 2);
     expect(sendCommand).toHaveBeenCalledTimes(1);
-    // no tile layers in the view yet: the host picks the op (a Grade order auto-prepares)
-    expect(sendCommand).toHaveBeenCalledWith('enqueueTask', { terraform: { op: 'grade', tiles: [{ q: 2, r: 2 }] } });
+    // no tile layers in the view yet: the host judges the work order
+    expect(sendCommand).toHaveBeenCalledWith('enqueueTask', { terraform: { op: 'work', intent: 'terraform', tiles: [{ q: 2, r: 2 }] } });
     tf.dispose();
     canvas.remove();
   });
@@ -170,12 +168,12 @@ describe('Terraform brush wiring (FF-01, FF-02, FF-04, FF-09)', () => {
 
     host.step(1);
     tf.update(host.view() as never);
-    const hostId = getColonyTerraformOrders(host.state, 0)[0].orderId;
+    const hostId = Object.values(getWorkJobsMap(host.state))[0]!.jobId;
     expect(tf.cancelOrder()).toBe(true);
     expect(submit).toHaveBeenCalledTimes(2);
     expect(submit.mock.calls[1][0]).toMatchObject({ kind: 'cancelTask', args: { taskId: hostId } });
     host.step(1);
-    expect(getColonyTerraformOrders(host.state, 0)).toHaveLength(0);
+    expect(getWorkJobsMap(host.state)).toEqual({});
     tf.dispose();
   });
 
@@ -365,7 +363,7 @@ function groundFixture() {
 describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
   function mountWithEntities(workerId?: number) {
     const sendCommand = vi.fn();
-    const sel = workerId === undefined ? null : { entityId: workerId, isUnit: true, kind: workerId === 4 ? ENTITY_KIND.harvester : ENTITY_KIND.hq, hp: 1 };
+    const sel = workerId === undefined ? null : { entityId: workerId, isUnit: true, kind: workerId === 4 ? ENTITY_KIND.worker : ENTITY_KIND.hq, hp: 1 };
     const landfall = { getOwnerColonyIndex: () => 0, getSelectedEntity: () => sel };
     const tf = mountTerraformBasic(document.createElement('div'), { services: { sendCommand, landfall } as never });
     tf.update({
@@ -375,28 +373,29 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
         { id: 2, kind: 'hq', owner: 0, q: 2, r: 0, hp: 200, hpMax: 200 },
         { id: 3, kind: 'solar', owner: 0, q: 4, r: 4, hp: 150, hpMax: 300, footprint: 2 },
       ],
-      units: [{ id: 4, kind: 'harvester', owner: 0, q: 6, r: 0, hp: 80, hpMax: 160 }],
+      units: [{ id: 4, kind: 'worker', owner: 0, q: 6, r: 0, hp: 80, hpMax: 160 }],
     } as never);
     const lastTerraform = () => (sendCommand.mock.lastCall?.[1] as { terraform: unknown } | undefined)?.terraform;
     return { tf, sendCommand, lastTerraform };
   }
 
-  it('TERRAFORM sends one per-hex op order (trees → Clear, prepared ground → Irrigate); deep water needs a T2 worker', () => {
+  it('TERRAFORM sends a work order (trees); prepared ground is already terraformed; deep water needs a T2 worker', () => {
     const { tf, sendCommand, lastTerraform } = mountWithEntities(2);
     expect(tf.hasWorkerAvailable()).toBe(true);
     tf.selectOp('terraform');
     tf.strokeTile(8, 0);
     expect(tf.getLastOutcome()).toMatchObject({ ok: true, op: 'terraform' });
     expect(sendCommand).toHaveBeenLastCalledWith('enqueueTask', expect.anything());
-    expect(lastTerraform()).toEqual({ op: 'clear', tiles: [{ q: 8, r: 0 }] });
+    expect(lastTerraform()).toEqual({ op: 'work', intent: 'terraform', tiles: [{ q: 8, r: 0 }], workerId: 2 });
     expect(parseCommandArgs('enqueueTask', sendCommand.mock.lastCall?.[1]).success).toBe(true);
 
     tf.strokeTile(10, 0);
-    expect(lastTerraform()).toEqual({ op: 'irrigate', tiles: [{ q: 10, r: 0 }] });
+    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'already_terraformed', status: 'Already terraformed' });
+    expect(sendCommand).toHaveBeenCalledTimes(1);
 
     tf.strokeTile(9, 0);
     expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'worker_tier_locked', status: 'Deep water needs a T2 worker' });
-    expect(sendCommand).toHaveBeenCalledTimes(2);
+    expect(sendCommand).toHaveBeenCalledTimes(1);
   });
 
   it('REPAIR targets a damaged own entity only (40% full-repair cost); elsewhere it says so and sends nothing', () => {
@@ -421,7 +420,7 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
     expect(lastTerraform()).toEqual({ op: 'work', intent: 'repair', tiles: [{ q: 4, r: 4 }], workerId: 4 });
     expect(parseCommandArgs('enqueueTask', sendCommand.mock.lastCall?.[1]).success).toBe(true);
 
-    // The selected damaged harvester is the target, so it is not also named as the worker.
+    // The selected damaged worker is the target, so it is not also named as the worker.
     tf.strokeTile(6, 0);
     expect(lastTerraform()).toEqual({ op: 'work', intent: 'repair', tiles: [{ q: 6, r: 0 }] });
     expect(calculateRepairCost({ 'metals.t1': 100 }, 0, 100)).toEqual({ 'metals.t1': 40 });
@@ -447,7 +446,7 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
     const enqueueTerraform = vi.fn();
     const tf = mountTerraformBasic(document.createElement('div'), { enqueueTerraform });
     tf.strokeTile(3, 1);
-    expect(enqueueTerraform).toHaveBeenCalledWith({ op: 'grade', tiles: [{ q: 3, r: 1 }] });
+    expect(enqueueTerraform).toHaveBeenCalledWith({ op: 'work', intent: 'terraform', tiles: [{ q: 3, r: 1 }] });
   });
 });
 

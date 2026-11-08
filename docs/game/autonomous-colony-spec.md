@@ -23,9 +23,9 @@ Three resource families, each with three tiers (D-34). **T1 is available from la
 
 | Family | T1 (from landing) | T2 (after terraforming) | T3 (after more terraforming) | Primary use | Sources |
 |---|---|---|---|---|---|
-| **Metals** | Iron | Light alloys (copper, aluminium) | Titanium | Robots, buildings, rockets | Metals Extractor on metal deposits; Harvester |
-| **Minerals** | Silica | Rare earths | Exotic crystal | Advanced components, electronics | Minerals Quarry on mineral deposits; Harvester |
-| **Bio** | Water and Biomass (two T1 sub-resources) | Petroleum / organics | Gene-stock | Fuel, cooling, terraforming, biology | Water Extractor (water); Harvester clearing forest (biomass) and harvesting Living ground (gene-stock); Petroleum Well on oil deposits (petroleum / organics) |
+| **Metals** | Iron | Light alloys (copper, aluminium) | Titanium | Robots, buildings, rockets | Metals Extractor on metal deposits; Worker Drone T1 |
+| **Minerals** | Silica | Rare earths | Exotic crystal | Advanced components, electronics | Minerals Quarry on mineral deposits; Worker Drone T1 |
+| **Bio** | Water and Biomass (two T1 sub-resources) | Petroleum / organics | Gene-stock | Fuel, cooling, terraforming, biology | Water Extractor (water); Worker Drone T1 clearing forest (biomass) and harvesting Living ground (gene-stock); Petroleum Well on oil deposits (petroleum / organics) |
 | **Energy** | — | — | — | Everything (grid power, E/s; stored only in capacitors) | Multiple generator types (§3) |
 
 Stock keys: `metals.t1 … metals.t3`, `minerals.t1 … minerals.t3`, `bio.water`, `bio.biomass`, `bio.t2`, `bio.t3`. Unlock thresholds, yield split and cost reading: [`colony-economy-and-buildings-spec.md`](./colony-economy-and-buildings-spec.md) §3.0. Every sub-resource trades as its own cargo token, so a colony can buy T2/T3 before it can mine them.

@@ -9,7 +9,7 @@ import type { PlanetState } from '../../kernel/state';
 import { cancelQueueTask, enqueueAuthority, enqueueTaskHandler, getAllQueueEntries, normalizeEnqueueArgs } from '../queue';
 import { sameKindTaskIds } from '../queue/cancelGroup';
 import { mirrorRepairQueueEntry } from './autoRepair';
-import { enqueueWorkAtTile, executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
+import { cancelWorkJobs, enqueueWorkAtTile, executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
 import { checkItemUnlockStage, resolveItemUnlockStage } from '../progression/validate';
 import { isTerraformOpKind } from './ops';
 import { cancelTerraformOrder, enqueueTerraformOrder, findTerraformOrder } from './queue';
@@ -19,6 +19,9 @@ import { enqueueWorkOrder } from './workOrder';
 export * from './autoRepair';
 export * from './chain';
 export * from './dismantleAndWork';
+export * from './duneFootprint';
+export * from './meteorCraterFootprint';
+export { activeWorkFootprintTiles } from './groundWorkRule';
 export * from './dismantleRule';
 export * from './ops';
 export * from './orders';
@@ -134,11 +137,15 @@ export const cancelTask = defineCommandHandler({
 
 /** Cancels the one order `id` (rules in {@link cancelTask}); a reject code, or undefined when it was cancelled. */
 function cancelOneTask(state: PlanetState, colonyId: number, id: string, ctx: StepContext): string | undefined {
+  // `work` jobs exist from W01. With W02 on, `cancelQueueTask` cancels them (and their queue entry).
+  if (!ctx.flags.has('W02') && hasWorkJob(state, id)) {
+    return cancelWorkJobs(state, colonyId, { jobId: id }, ctx.tick).cancelled > 0 ? undefined : 'unknown_entity';
+  }
   if (ctx.flags.has('W02')) {
     const isSpecialW02Id =
       id === 'all' ||
       id.startsWith('building:') ||
-      id.startsWith('harvester:') ||
+      id.startsWith('worker:') ||
       id.startsWith('unit:') ||
       hasWorkJob(state, id) ||
       getAllQueueEntries(state).some((e) => e.taskId === id && e.state !== 'done' && e.state !== 'cancelled');

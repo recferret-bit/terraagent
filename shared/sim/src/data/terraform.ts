@@ -2,50 +2,20 @@ import { defineTable } from './_define';
 
 /**
  * W05 terraforming, territory, hazard & resource-tier gate data (`SIMULATION.md` §7.2, `colony-economy-and-buildings-spec.md` §2.2, §3.6, `units-orders-and-progression-spec.md` §3.2, §4.5, §5.1, D-34, D-35):
- * Terraformer Drone unit row; Territory Beacon T1, Hydro Generator T1, Hazard Shield T1, Lightning Rod T1 building rows;
+ * Territory Beacon T1, Hydro Generator T1, Hazard Shield T1, Lightning Rod T1 building rows;
  * resource-tier gate thresholds, local ring radius, and yield splits (`tier2Gate`, `tier3Gate`); and Living tile bonuses (`terraformConfig`).
+ * Worker Drone T3 lives in `unitsWorkersBasic.t3`, not in this table.
  */
 export default defineTable({
   name: 'terraform',
   summary:
-    'Terraformer Drone unit row, Territory Beacon T1, Hydro T1, Hazard Shield T1, Lightning Rod T1, resource-tier gate rows (D-34), and Living tile bonuses (W05).',
+    'Territory Beacon T1, Hydro T1, Hazard Shield T1, Lightning Rod T1, resource-tier gate rows (D-34), and Living tile bonuses (W05).',
   units: {
     buildS: 'seconds',
     speedTilesPerS: 'perSecond',
+    harvestRatePerS: 'resourceFlow',
   },
   rows: [
-    {
-      id: 'terraformer',
-      wave: 'W05',
-      kind: 'unit',
-      unit: 'terraformer',
-      label: 'Terraformer Drone',
-      archetype: 'robot.terraformer',
-      tier: 1,
-      unlockStage: 2,
-      builtAt: 'commandHub',
-      buildS: 12,
-      designBuildS: 12,
-      cost: {
-        'metals.t1': 50,
-        'minerals.t1': 30,
-        'bio.biomass': 10,
-        'bio.water': 0,
-      },
-      supply: 1,
-      powerDrainPerS: 2.5,
-      hp: 160,
-      speedTilesPerS: 1.5,
-      designSpeedTilesPerS: 1.5,
-      viewRadius: 7,
-      radius: 0.4,
-      workRate: 1.0,
-      maxBuildTier: 0,
-      maxTerraformTier: 1,
-      terraformReachMin: 0,
-      terraformReachTiles: 1,
-      lanes: ['terraform'],
-    },
     {
       id: 'territoryBeacon',
       wave: 'W05',

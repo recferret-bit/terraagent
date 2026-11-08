@@ -83,7 +83,7 @@ export const hudMinFeature: Feature & { mount(ctx: MountMinimalHudCtx): MountedM
         },
       },
       {
-        // Time of day, wind and the Terraform meter: a compact panel stacked under the minimap (order 5).
+        // Time of day, wind and the Terraform meter: bottom-left, under or beside the Command Dock (not the minimap).
         id: 'env-panel',
         slot: 'bottom-left',
         order: 6,

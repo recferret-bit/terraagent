@@ -3,15 +3,15 @@
 > **Track:** Gameplay (G) · **Flag:** `W05` · **Scenario:** `tests/scenarios/w05-shape-the-land.ts` · **Tag:** `wave-05` · **Depends on:** W03
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §4.5 (`UO-TF-01..10`), §5.1 · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §2, §3.1, §3.3 (Hydro), §3.7 (Hazard Shield) · [`SIMULATION.md`](../../spec/SIMULATION.md) §7.5 (`SIM-G-TER`), §7.6, §10 (`SIM-GEN`) · [`textures-shaders-lighting-spec.md`](../../visuals/textures-shaders-lighting-spec.md) · D-33 (three planet types), D-34 (resource tiers), D-35 (numbers are data rows, tunable with W00-59)
 > **Resources (D-34):** op costs in `M` / `Min` / `W` shorthand (e.g. Level 2 Min, Fill 10 M + 5 Min) read through the D-34 T1 rule: `metals.t1` / `minerals.t1` / `bio.water`.
-> **Owned paths:** `shared/sim/src/systems/{terraform,territory,weather,hazards}/`, `shared/sim/src/gen/terrain-mix.ts`, `shared/sim/src/data/terraform.ts`, `frontend/game/features/{terraform,territory,weather}/`, terrain look in `frontend/render/visuals/terrain/` (bind only: terrain shader mask, `Liquids.ts`), weather VFX binding of `frontend/render/lighting/LightningStrikeSystem.ts`, new archetypes `frontend/render/kitbash/archetypes/units/terraformer.ts` and `frontend/render/kitbash/archetypes/buildings/{lightning-rod,hydro}.ts`, resource tiers `shared/sim/src/systems/resource-tiers/`, `shared/sim/src/data/resource-tiers.ts`, `frontend/game/features/resource-tiers/`, `tests/scenarios/w05-{tiers,desert,ocean}.ts`.
-> **Soft dependencies:** stage numbers (unlocks, meteor floor) ← W08; Deep Reclaim playable with W17's T2 workers; meteor breach consumer ← W14.
+> **Owned paths:** `shared/sim/src/systems/{terraform,territory,weather,hazards}/`, `shared/sim/src/gen/terrain-mix.ts`, `shared/sim/src/data/terraform.ts`, `frontend/game/features/{terraform,territory,weather}/`, terrain look in `frontend/render/visuals/terrain/` (bind only: terrain shader mask, `Liquids.ts`), weather VFX binding of `frontend/render/lighting/LightningStrikeSystem.ts`, new archetypes `frontend/render/kitbash/archetypes/buildings/{lightning-rod,hydro}.ts` (Worker Drone T3 uses existing `robot.builder`; do not add `robot.terraformer`), resource tiers `shared/sim/src/systems/resource-tiers/`, `shared/sim/src/data/resource-tiers.ts`, `frontend/game/features/resource-tiers/`, `tests/scenarios/w05-{tiers,desert,ocean}.ts`.
+> **Soft dependencies:** stage numbers (unlocks, meteor floor) ← W08; Deep Reclaim playable with Worker Drone T2 (W03) or higher; meteor breach consumer ← W14.
 
 **Generation review (2026-11-03):** D-38 already brought desert/ocean base generators forward; W05-17 extends their biome features and validation rather than recreating them. [W11](./W11-lobby-planets.md) adds the small sector atlas and verifies terrain, placement, territory and power across borders; its full acceptance needs W05-12/-13. [W27](./W27-planet-sectors.md) scales the same world model to large continents and streamed queries.
 
 ## Goal
 
 The colony can **reshape and claim land**:
-- the Terraform drone and every terrain op beyond W01's Grade / Clear / Break;
+- the Worker Drone T3 and every terrain op beyond W01's Grade / Clear / Break;
 - linked prep on any terrain;
 - Living land with Terraform % and its bonuses;
 - territory beacons with frozen borders;
@@ -23,7 +23,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 ## Demo story (e2e `tests/e2e/w05.spec.ts`)
 
 1. Open `/play.html?scenario=w05`: S4 colony (Reclaim / Irrigate / Seed and the Beacon unlock at S4), `temperate`, a shallow lake and a crater near the Hub.
-2. Units menu → order a Terraformer → it appears.
+2. Units menu → order a Worker Drone T3 → it appears.
 3. Construction menu → place a Quarry on the slope + crater footprint → the ghost shows the prep bill (Level ×2, Fill ×1, Grade ×4: time, E, M/Min). Confirm → the construction shows `waiting(site: 0/4 tiles prepared)` and a linked terraform order runs. The building starts at 4/4.
 4. Terraform menu → brush **Reclaim** over 6 shallow-water tiles → they turn Flat, then Prepared after Grade.
 5. Terraform menu → brush **Irrigate → Seed** over 10 Prepared tiles → they turn Living. The HUD shows `Terraform 10 / 412 (2.4 %)`, and a unit on Living tiles moves 10 % faster.
@@ -42,18 +42,18 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 - **The hackathon e2e covers demo steps:** 1–5, 11, 13. `W05-33` tags these steps `@hack`; `npm run e2e -- --hack` runs only them, and the other steps run once their rows land.
 - **Resource tiers in the demo (D-34):** T1 everywhere, plus one T2 unlock on the Metals Extractor in the seeded `w05-tiers` scenario (step 13, W05-34). Reaching 30 % Terraform by hand takes too long for a live demo, so the scenario seeds it. T3, Bio tiers (W03-30, W05-35) and the tier-unlock indicator (W05-36) are stretch or later.
-- **Deferred:** Territory Beacon and border reverts (steps 6–8), storms, lightning and meteors (steps 9–10), the `desert` and `ocean` planet types (step 12; D-27 / D-33: the demo is `temperate` only; **since D-38 their ground generation already exists in W01** — W05 adds the type-specific gameplay: storms, Water Extractor ×0.5, richness tuning, ops that level dunes), Hydro, Deep Reclaim, the Terraformer archetype (an existing robot stands in), op VFX.
+- **Deferred:** Territory Beacon and border reverts (steps 6–8), storms, lightning and meteors (steps 9–10), the `desert` and `ocean` planet types (step 12; D-27 / D-33: the demo is `temperate` only; **since D-38 their ground generation already exists in W01** — W05 adds the type-specific gameplay: storms, Water Extractor ×0.5, richness tuning, ops that level dunes), Hydro, Deep Reclaim, no new Worker Drone T3 mesh (`robot.builder` stands in; do not add `robot.terraformer`), op VFX.
 - **Still true:** with `TA_WAVES` below this wave the app behaves exactly as the previous wave's tag.
 
 ## Features covered
 
 | # | Feature (spec) | Issues |
 |---|---|---|
-| 1 | Terraformer drone: Hub T1+, 14 s, 50/30/5/10, supply 1, −2.5 E/s + op energy, terraform 1.0× | W05-02 |
+| 1 | Worker Drone T3: same unit as T1/T2, build tier ≤ 3, mesh `robot.builder` (no `robot.terraformer`) | W05-02 |
 | 2 | Level (Slope → Flat, 8 s, 60 E, 2 Min) | W05-03 |
 | 3 | Fill (Hole → Flat, 10 s, 100 E, 10 M + 5 Min) | W05-04 |
 | 4 | Reclaim (Shallow → Flat, 14 s, 200 E, 20 M + 10 Min) | W05-05 |
-| 5 | Deep Reclaim (Deep → Shallow, 28 s, 400 E, 40 M + 20 Min, **T2 workers only**): implemented here, playable when W17 adds T2 workers | W05-06 |
+| 5 | Deep Reclaim (Deep → Shallow, 28 s, 400 E, 40 M + 20 Min): needs Worker Drone T2 (W03) or T3, or HQ T2+. T1 cannot. | W05-06 |
 | 6 | Irrigate (15 `bio.water`, ×2 on `desert`) and Seed (10 `bio.water` + 5 `minerals.t1`) → Living; a footprint on Living reverts it to Prepared | W05-07 |
 | 7 | Op energy: drawn over work time, grows with rate, on the Hub component, shed group 1, pause keeps progress (`UO-TF-02`) | W05-08 |
 | 8 | Area orders split over ≤ 8 workers (`UO-L-04`) | W05-08 |
@@ -70,26 +70,26 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 | 19 | Territory rendering: colony colours, frozen border marks, reverting tiles, beacon radius preview | W05-21 |
 | 20 | Terraform % HUD and Living overlay | W05-22 |
 | 21 | Tile-state visuals: Irrigated, Living (existing `uTerraformMap` mask), shallow/deep water (existing `Liquids.ts`), hole decals; Prepared pad from W01-21 | W05-23, W05-24 |
-| 22 | Archetypes: Terraformer (new), Beacon T1 (bind existing `building.claimBeacon`), Lightning Rod T1 (new), Hydro T1 (new) | W05-25, W05-26 |
+| 22 | Archetypes: Worker Drone T3 uses existing `robot.builder` (not a new mesh), Beacon T1 (bind existing `building.claimBeacon`), Lightning Rod T1 (new), Hydro T1 (new) | W05-25, W05-26 |
 | 23 | VFX: terraform ops, lightning (existing `LightningStrikeSystem`), meteors, storm haze | W05-27, W05-28 |
 | 24 | Achievements: Stone Mason (Level/Fill counted here; Clear/Break in W01), Hydro Engineer, Green Thumb | W05-29 |
 | 25 | Analytics: first terraform op, first Living tile, first beacon, first meteor | W05-30 |
 | 26 | Dev console: meteor, storm, terrain set, colony spawn | W05-31 |
 | 27 | Tests: op state machine, border property test (the spawn-guarantee property test is W01-33) | W05-32 |
 | 28 | Resource tier gate (D-34): T2 at colony Terraform ≥ 30 % + ≥ 50 % Irrigated/Living in the deposit ring, T3 at ≥ 70 % + ≥ 50 % Living; yield split 70/30 and 50/30/20 | W05-34 |
-| 29 | Bio tiers: gene-stock (`bio.t3`) from Harvesters on Living ground once T3 is open (the Bio T2 source is W03-30's Petroleum Well) | W05-35 |
+| 29 | Bio tiers: gene-stock (`bio.t3`) from Worker Drones (T1) on Living ground once T3 is open (the Bio T2 source is W03-30's Petroleum Well) | W05-35 |
 | 30 | Tier-unlock indicator: family chips and extractor panel show the gate progress and the active tiers | W05-36 |
 
 ## Issues
 
 | ID | Title | Type | Size | H | Deps | Acceptance (do X → see Y) | Spec | Replaces |
 |---|---|---|---|---|---|---|---|---|
-| W05-01 | Contracts & data: Terraformer unit row; op rows `level, fill, reclaim, deepReclaim (minWorkerTier 2), irrigate, seed`; Territory Beacon T1, Hydro T1, Hazard Shield & Lightning Rod T1 rows; events `tileStateChanged`, `territoryClaimed`, `borderFrozen`, `territoryReverting`, `lightningStrike`, `meteorImpact`, `stormStarted/Ended`, `tierUnlocked {family, tier}`; resource-tier data rows (thresholds, ring size, splits; D-34); flag `W05` | contract | M | H | W03-01 | `TA_WAVES=..05` → the menu data lists 6 new ops; `..04` → only Grade/Clear/Break | `UO-TF`, econ §3.1 | TA-14.1 |
-| W05-02 | Terraformer drone in sim: printed at the Hub, terraform lane only, rate 1.0×, drain 2.5 + op energy | sim | S | H | W05-01 | Order a Terraformer → it spawns and takes the next Terraform-lane entry | §5.1 | TA-06.6 |
+| W05-01 | Contracts & data: Worker Drone T3 unit row; op rows `level, fill, reclaim, deepReclaim (minWorkerTier 2), irrigate, seed`; Territory Beacon T1, Hydro T1, Hazard Shield & Lightning Rod T1 rows; events `tileStateChanged`, `territoryClaimed`, `borderFrozen`, `territoryReverting`, `lightningStrike`, `meteorImpact`, `stormStarted/Ended`, `tierUnlocked {family, tier}`; resource-tier data rows (thresholds, ring size, splits; D-34); flag `W05` | contract | M | H | W03-01 | `TA_WAVES=..05` → the menu data lists 6 new ops; `..04` → only Grade/Clear/Break | `UO-TF`, econ §3.1 | TA-14.1 |
+| W05-02 | Worker Drone T3 in sim: `buildUnit { unit: 'worker', tier: 3 }`, same lanes as T1/T2, build tier ≤ 3, mesh `robot.builder` | sim | S | H | W05-01 | Order a Worker Drone T3 → it spawns; it harvests, builds tier ≤ 3 and terraforms | §5.1 | TA-06.6 |
 | W05-03 | Level op: Slope → Flat, 8 s, 60 E, 2 Min | sim | S | H | W05-02 | Brush Level on a slope → after 8 s at 1.0× the tile is Flat and 2 Min are spent | `UO-TF` | TA-14.3 |
 | W05-04 | Fill op: Hole → Flat, 10 s, 100 E, 10 M + 5 Min | sim | S | H | W05-02 | Fill a crater tile → Flat; the stock drops by 10 M / 5 Min | `UO-TF` | TA-14.3 |
 | W05-05 | Reclaim op: Shallow water → Flat, 14 s, 200 E, 20 M + 10 Min; units can no longer swim-slow through it | sim | S | H | W05-02 | Reclaim 1 shallow tile → Flat after 14 s; passability becomes 1.0× | `UO-TF` | TA-14.3 |
-| W05-06 | Deep Reclaim op: Deep → Shallow, 28 s, 400 E, 40 M + 20 Min, eligible only for worker tier ≥ 2 (HQ T2, Multitask T2). Unit-tested with a scenario-granted T2 worker. Visible but locked in the menu ("needs a T2 worker — Second Tier") until W17 is on | sim | S |  | W05-02 | Scenario `w05-t2` with a test T2 worker → Deep → Shallow; a normal colony gets `worker_tier_locked` | `UO-TF-10`, units §9 Q11, D-16 | TA-14.3 |
+| W05-06 | Deep Reclaim op: Deep → Shallow, 28 s, 400 E, 40 M + 20 Min, eligible for Worker Drone T2+ (W03) or HQ T2+. A colony with only Worker Drone T1 gets `worker_tier_locked` | sim | S |  | W05-02 | A colony with only Worker Drone T1 gets `worker_tier_locked`; Worker Drone T2 reclaims Deep → Shallow | `UO-TF-10`, units §9 Q11, D-16 | TA-14.3 |
 | W05-07 | Irrigate (15 `bio.water`, ×2 on `desert`) and Seed (10 `bio.water` + 5 `minerals.t1`) → Living; placing a footprint on Living reverts those tiles to Prepared | sim | M | H | W05-02 | Irrigate then Seed 1 tile → Living; build over it → Prepared again and Terraform % drops | `UO-TF-04` | TA-14.3 |
 | W05-08 | Op energy and areas: energy/tile drawn evenly over work time × rate on the Hub component; group-1 shedding pauses ops (progress kept, `waiting(power)`); area order splits tiles over ≤ 8 workers | sim | M | H | W05-02, W03-07 | Run Reclaim at night with a deficit → the op pauses at 43 % and resumes at dawn from 43 % | `UO-TF-02`, `UO-L-04` | TA-14.3 |
 | W05-09 | **Re-open D-37 first:** since W01 trees, rock, slope, hole and water are `terrain_unbuildable` in `geoBuildBlock`; decide per class whether it becomes linked-prep-able (extend `geo.ts` + `planPrepJobs`, one shared rule) or stays a player op. W02 builds already reject an uneven footprint (`uneven` → `terrain_unbuildable`) instead of flattening it; decide here whether linked Level on a mild slope replaces that ([GP-55](../../questions-and-limitations/sim-gameplay.md)). Linked prep on any terrain: register the W05 ops (Level, Fill, Reclaim, Deep Reclaim) in W01-15's missing-op table; the single linked order, `site n/m` wait, cancel cascade and lane exemption stay W01-15's | sim | S | H | W05-03..07, W01-15 | Place on 2 slope + 1 hole + 1 flat → one linked order (Level ×2, Fill, Grade ×4); cancel → both disappear | `UO-TF-03` | TA-14.3 |
@@ -107,7 +107,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 | W05-22 | Terraform HUD: `Terraform n / m (x %)` meter, `L` toggles the Living mode of W01-27's tile-state overlay, Living move-speed hint on hover | client | S | H | W05-10, W01-27 | Seed a tile → the meter updates within 1 s | `UO-TF-06` | TA-11.7 |
 | W05-23 | Irrigated and Living terrain look: drive a per-tile mask from tile state, reusing the `uTerraformMap` DataTexture + `terraformedLush` colour + frontier ring of the existing `createTerraformingTerrainMaterial` (`frontend/render/visuals/TerrainAndWaterShaders.ts`) inside the live terrain shader (`frontend/render/visuals/terrain/terrainShader.ts`); Irrigated adds wet darkening; the Prepared pad comes from W01-21 | visual | S | H | W01-21 | Toggle tile states in the playground terrain view → Prepared, Irrigated and Living are distinct in iso and top views | Pillar 3, texture skill | TA-14.9 |
 | W05-24 | Terrain visuals per tile class: drive the existing shallow→deep tint of `Liquids.ts` `createWater` from Shallow/Deep tiles, hole/crater decals (slope shading already exists in the terrain shader) | visual | S | H+ | W01-08 | Scenario `w05` → the lake's shallow rim reads lighter than its deep centre, and crater tiles show a hole decal | shader skill | TA-14.9 |
-| W05-25 | Kitbash: Terraformer drone (≥ 7 parts, grading-blade silhouette breaker, op animation states) | visual | M | H+ | — | `?inspect=robot.terraformer` → 4-view audit passes, minY 0, < 3.5 k tris | Pillar 1 | TA-14.9 |
+| W05-25 | Worker Drone T3 mesh: use existing `robot.builder` (T2's mesh). Do not author `robot.terraformer`. | visual | M | H+ | — | `?inspect=robot.builder` is the T2 and T3 mesh; no `robot.terraformer` archetype | Pillar 1 | TA-14.9 |
 | W05-26 | Kitbash: bind the existing `building.claimBeacon` (1×1 obelisk) as Territory Beacon T1; new Hazard Shield & Lightning Rod T1 (1×1) and Hydro Power Station T1 (2×3, water intake facing the lake) | visual | M | H+ | — | `?inspect=building.lightningRod` and `?inspect=building.hydro` → 4-view audit and `validate:models` pass (0/0), minY 0, < 3.5 k tris; a built beacon renders as `claimBeacon` | Pillar 1 | TA-14.9 |
 | W05-27 | Terraform op VFX for the W05 ops: level sweep, fill pour, reclaim pumping spray, irrigation mist, seeding sprouts (Grade/Break/Clear VFX come from W01-22) — built on `frontend/render/visuals/terrain/Particles.ts` and the descent `GroundFX` | visual | M |  | W05-20, W01-22 | Run each op in the scenario → each shows its own effect, and the effect stops when the op pauses | VFX | TA-14.9 |
 | W05-28 | Weather VFX: wire the existing `LightningStrikeSystem` (`frontend/render/lighting/`, `strikeAt` / `update`) to `lightningStrike` events; meteor streak + impact flash; storm haze / sandstorm particles via the existing `frontend/render/visuals/terrain/Particles.ts` | visual | S |  | W05-15, W05-16 | `startStorm` + `meteor` → bolts and a meteor render, with ≤ 1 ms frame cost on desktop | lighting skill | TA-14.9 |
@@ -116,7 +116,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 | W05-31 | Dev console: `meteor <q> <r>`, `startStorm`, `setTerrain <q> <r> <class>`, `spawnColony <q> <r>`, `grantT2Worker` (tests only) | server | S | H+ | W00-40 | `spawnColony` next to the border → a second colony appears with its own Hub and border | PRODUCT_WAVES §3 | — |
 | W05-32 | Tests: op state-machine unit tests, border-collision property test (random beacon orders never overwrite foreign tiles); the spawn-guarantee property test is W01-33 | test | S | H+ | W05-09, W05-12 | `npm test -w @terra/sim -- terraform territory` → green | `UO-TF`, `SIM-G-TER` | TA-06.3 |
 | W05-34 | Resource tier gate (D-34): per extractor, T2 opens when the colony's Terraform % ≥ 30 and ≥ 50 % of the tiles within 2 of its footprint are Irrigated or Living; T3 when Terraform % ≥ 70 and ≥ 50 % of that ring is Living; yield split 70 % T1 / 30 % T2 (T2 open) and 50 / 30 / 20 (T3 open), Mk tier only scales the rate; ring ratio cached and refreshed on `tileStateChanged`; `tierUnlocked` event; colony view exposes the gates and each extractor's ring %; thresholds, ring size and splits are data rows (D-35, tunable with W00-59); ships scenario `w05-tiers` | sim | M | H | W05-10, W02-08, W03-11 | Load `?scenario=w05-tiers` → see the ringed Metals Extractor's income split 70 % `metals.t1` / 30 % `metals.t2` while the Extractor on unterraformed ground stays 100 % `metals.t1` | D-34, `UO-TF-06` | — |
-| W05-35 | Bio tiers: a Harvester working Living ground in a colony with T3 open credits the T3 share of the W05-34 split as gene-stock (`bio.t3`), the rest as `bio.biomass`; W03-30's Petroleum Well reads the same gate for `bio.t2` | sim | S |  | W05-34, W02-12, W03-30 | In a scenario at Terraform 72 % put a Harvester on Living tiles → see `bio.t3` income at 20 % of its yield | D-34 | — |
+| W05-35 | Bio tiers: a Worker Drone T1 working Living ground in a colony with T3 open credits the T3 share of the W05-34 split as gene-stock (`bio.t3`), the rest as `bio.biomass`; W03-30's Petroleum Well reads the same gate for `bio.t2` | sim | S |  | W05-34, W02-12, W03-30 | In a scenario at Terraform 72 % put a Worker Drone T1 on Living tiles → see `bio.t3` income at 20 % of its yield | D-34 | — |
 | W05-36 | Tier-unlock indicator: the family chips' tier breakdown marks T2/T3 locked or open with the colony gate ("Terraform 24 % / 30 %"), the extractor info panel shows its ring % and active tiers, and a `tierUnlocked` toast; vanilla DOM panel on the design system (D-36) | client | S | H+ | W05-34, W02-26 | Load `?scenario=w05-tiers` and click the ringed Extractor → see "T2 active · ring 64 % / 50 %" and the Metals chip mark T2 open | D-34, CLIENT §8 | — |
 | W05-33 | Wave e2e + scenarios `w05-shape-the-land`, `w05-desert` and `w05-ocean` (both land with W05-17; `w05-tiers` comes from W05-34) + tag `wave-05` | test | M | H | all W05 | `npm run e2e -- --waves ..05` → the demo passes, earlier suites still pass | PRODUCT_WAVES §3 | TA-13.3 |
 
@@ -124,11 +124,11 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 - `tests/e2e/w05.spec.ts` passes, and so do all earlier wave suites.
 - All scenarios load (`w05-tiers`; `w05-desert` and `w05-ocean` once W05-17 lands).
-- With `TA_WAVES=..04`, the Terraformer, the new ops, beacons, weather and meteors are absent, and W01's Grade / Clear / Break still works.
-- Deep Reclaim stays locked until W17.
+- With `TA_WAVES=..04`, the Worker Drone T3, the new ops, beacons, weather and meteors are absent, and W01's Grade / Clear / Break still works.
+- Deep Reclaim needs Worker Drone T2 (W03) or higher, or HQ T2+. Worker Drone T1 cannot do it.
 - Tag `wave-05` is created.
 
 ## Notes
 
-- **Deep Reclaim** is fully built and tested here, but it is gated by worker tier, not by wave. It becomes playable the moment W17 adds HQ T2 and Multitask T2, with no extra code. Its unlock stage (S5) is enforced only when W08 is on.
+- **Deep Reclaim** is gated by worker tier, not by a later wave. Worker Drone T2 (W03) and T3 can do it; Worker Drone T1 cannot. HQ T2 and Multitask T2 can too, when those exist. Its unlock stage (S5) is enforced only when W08 is on.
 - **Meteor timing** uses the stage engine when W08 is on. Otherwise it falls back to colony age.

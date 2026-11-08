@@ -17,8 +17,7 @@ import {
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
-  spawnBuilderUnit,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   step,
   TERRAIN,
@@ -29,7 +28,7 @@ import { executeDismantleAtTile } from '../../src/systems/terraform-basic';
 
 /**
  * Owner bug W05: "my drone self-dismantled" and "dismantle of drones works remotely". Dismantle is a worker action on a
- * finished own building, done on site by a Builder Drone or the HQ (`dismantleRule.ts`, `dismantleJob.ts`). A unit is
+ * finished own building, done on site by a Worker Drone or the HQ (`dismantleRule.ts`, `dismantleJob.ts`). A unit is
  * never a target (it was recycled at once, from anywhere, and a drone standing on the hex took the order itself).
  */
 const FLAGS = parseWaves('..03');
@@ -78,15 +77,15 @@ const stock = (s: PlanetState) => ({ ...(s.colonies[0]!.stock as Record<string, 
 
 describe('dismantle target rule (shared by the host and the client preview)', () => {
   it('units, the worker itself, HQ / Hub and unfinished sites are never a target', () => {
-    expect(dismantleTargetReject(ENTITY_KIND.builder, ENTITY_STATE.idle)).toBe('cannot_dismantle_unit');
-    expect(dismantleTargetReject(ENTITY_KIND.harvester, ENTITY_STATE.idle)).toBe('cannot_dismantle_unit');
-    expect(dismantleTargetReject(ENTITY_KIND.builder, ENTITY_STATE.idle, { isSelf: true })).toBe('cannot_dismantle_self');
+    expect(dismantleTargetReject(ENTITY_KIND.worker, ENTITY_STATE.idle)).toBe('cannot_dismantle_unit');
+    expect(dismantleTargetReject(ENTITY_KIND.worker, ENTITY_STATE.idle)).toBe('cannot_dismantle_unit');
+    expect(dismantleTargetReject(ENTITY_KIND.worker, ENTITY_STATE.idle, { isSelf: true })).toBe('cannot_dismantle_self');
     expect(dismantleTargetReject(ENTITY_KIND.hq, ENTITY_STATE.idle)).toBe('cannot_dismantle_hq');
     expect(dismantleTargetReject(ENTITY_KIND.commandHub, ENTITY_STATE.active)).toBe('cannot_dismantle_hq');
     expect(dismantleTargetReject(ENTITY_KIND.solar, ENTITY_STATE.constructing)).toBe('dismantle_unfinished');
     expect(dismantleTargetReject(ENTITY_KIND.solar, ENTITY_STATE.active)).toBeNull();
     expect(dismantleTargetReject(ENTITY_KIND.pod, ENTITY_STATE.idle)).toBeNull();
-    expect(dismantleTargetRejectByName('builder', ENTITY_STATE.idle)).toBe('cannot_dismantle_unit');
+    expect(dismantleTargetRejectByName('worker', ENTITY_STATE.idle)).toBe('cannot_dismantle_unit');
     expect(dismantleTargetRejectByName('solar', ENTITY_STATE.active)).toBeNull();
   });
 });
@@ -94,33 +93,33 @@ describe('dismantle target rule (shared by the host and the client preview)', ()
 describe('dismantle never targets a unit', () => {
   it('a drone on an empty hex: typed reject, the drone lives, nothing refunded, no job', () => {
     const { state, pipeline } = world('d-unit');
-    const builder = spawnBuilderUnit(state, { owner: 0, q: 2, r: 0 });
+    const workerT2 = spawnWorkerUnit(state, { tier: 2, owner: 0, q: 2, r: 0 });
     const before = stock(state);
     const res = run(state, pipeline, [dismantleCmd('d1', 2, 0)]);
     expect(res.outcomes[0]!.code).toBe('cannot_dismantle_unit');
-    expect(alive(state, builder)).toBe(true);
+    expect(alive(state, workerT2)).toBe(true);
     expect(stock(state)).toEqual(before);
     expect(getWorkJobsMap(state)).toEqual({});
   });
 
-  it('a Harvester and a Builder named by entityId (queue form) are refused as units; the worker itself as self', () => {
+  it('a Worker and a Builder named by entityId (queue form) are refused as units; the worker itself as self', () => {
     const { state } = world('d-unit-id');
-    const builder = spawnBuilderUnit(state, { owner: 0, q: 2, r: 0 });
-    const harvester = spawnHarvesterUnit(state, { owner: 0, q: -2, r: 0 });
-    expect(executeDismantleAtTile(state, 0, 2, 0, 1, undefined, builder)).toEqual({ ok: false, reason: 'cannot_dismantle_unit' });
-    expect(executeDismantleAtTile(state, 0, -2, 0, 1, undefined, harvester)).toEqual({ ok: false, reason: 'cannot_dismantle_unit' });
-    expect(executeDismantleAtTile(state, 0, 2, 0, 1, undefined, builder, undefined, builder)).toEqual({ ok: false, reason: 'cannot_dismantle_self' });
-    expect(alive(state, builder) && alive(state, harvester)).toBe(true);
+    const workerT2 = spawnWorkerUnit(state, { tier: 2, owner: 0, q: 2, r: 0 });
+    const worker = spawnWorkerUnit(state, { owner: 0, q: -2, r: 0 });
+    expect(executeDismantleAtTile(state, 0, 2, 0, 1, undefined, workerT2)).toEqual({ ok: false, reason: 'cannot_dismantle_unit' });
+    expect(executeDismantleAtTile(state, 0, -2, 0, 1, undefined, worker)).toEqual({ ok: false, reason: 'cannot_dismantle_unit' });
+    expect(executeDismantleAtTile(state, 0, 2, 0, 1, undefined, workerT2, undefined, workerT2)).toEqual({ ok: false, reason: 'cannot_dismantle_self' });
+    expect(alive(state, workerT2) && alive(state, worker)).toBe(true);
   });
 
   it('the drone standing on a building hex is not the target: the building is (the old self-dismantle)', () => {
     const { state, pipeline } = world('d-self');
-    const builder = spawnBuilderUnit(state, { owner: 0, q: 4, r: 0 });
+    const workerT2 = spawnWorkerUnit(state, { tier: 2, owner: 0, q: 4, r: 0 });
     const ext = building(state, ENTITY_KIND.metalsExtractor, 4, 0);
-    const res = run(state, pipeline, [dismantleCmd('d1', 4, 0, { workerId: builder })]);
+    const res = run(state, pipeline, [dismantleCmd('d1', 4, 0, { workerId: workerT2 })]);
     expect(res.outcomes[0]!.code).toBeUndefined();
-    expect(alive(state, builder)).toBe(true);
-    expect(getWorkJobsMap(state).d1).toMatchObject({ mode: 'dismantle', targetEntityId: ext, workerEntityId: builder });
+    expect(alive(state, workerT2)).toBe(true);
+    expect(getWorkJobsMap(state).d1).toMatchObject({ mode: 'dismantle', targetEntityId: ext, workerEntityId: workerT2 });
   });
 
   it('the HQ Drone and the Command Hub are refused as before', () => {
@@ -135,7 +134,7 @@ describe('dismantle never targets a unit', () => {
 describe('dismantle target checks', () => {
   it('a building under construction, a foreign and an unknown entity are typed rejects', () => {
     const { state } = world('d-checks');
-    spawnBuilderUnit(state, { owner: 0, q: 0, r: 0 });
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: 0, r: 0 });
     const site = building(state, ENTITY_KIND.solar, 3, 0, { st: ENTITY_STATE.constructing });
     const foreign = building(state, ENTITY_KIND.solar, -3, 0, { owner: 1 });
     expect(executeDismantleAtTile(state, 0, 3, 0)).toEqual({ ok: false, reason: 'dismantle_unfinished' });
@@ -150,7 +149,7 @@ describe('dismantle target checks', () => {
     const { state } = world('d-pod');
     const pod = building(state, ENTITY_KIND.pod, 0, 0, { fp: 1, st: ENTITY_STATE.idle });
     building(state, ENTITY_KIND.commandHub, 6, 0, { fp: 3 });
-    const far = spawnBuilderUnit(state, { owner: 0, q: -6, r: 0 });
+    const far = spawnWorkerUnit(state, { tier: 2, owner: 0, q: -6, r: 0 });
     expect(executeDismantleAtTile(state, 0, 0, 0)).toEqual({ ok: false, reason: 'no_worker_in_reach' });
     expect(alive(state, pod)).toBe(true);
     const row = rowOf(state.entities, far);
@@ -164,11 +163,11 @@ describe('dismantle target checks', () => {
 describe('dismantle is done on site, never remotely or instantly', () => {
   it('no progress and no refund while the worker is out of reach; the building stays until it arrives', () => {
     const { state, pipeline } = world('d-remote');
-    const builder = spawnBuilderUnit(state, { owner: 0, q: -8, r: 0 });
+    const workerT2 = spawnWorkerUnit(state, { tier: 2, owner: 0, q: -8, r: 0 });
     const ext = building(state, ENTITY_KIND.metalsExtractor, 4, 0);
     const before = stock(state);
     run(state, pipeline, [dismantleCmd('d1', 4, 0)]);
-    const bRow = rowOf(state.entities, builder);
+    const bRow = rowOf(state.entities, workerT2);
     const c = state.entities.cols;
     expect(alive(state, ext)).toBe(true); // ordered, not done
     let sawAway = false;

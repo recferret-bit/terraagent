@@ -18,7 +18,7 @@ W03 landed as `wave-03` (`f655f35`) on 2026-11-04. The main frontend and backend
 
 ## 1. Prepare the colony and check the counters
 
-Open the game link. Wait until terrain, units and buildings appear and the tick counter advances. Dismiss the stage announcement and close Goals to expose the map. This demo starts at Stage 2 so Builder and Pylon orders are unlocked.
+Open the game link. Wait until terrain, units and buildings appear and the tick counter advances. Dismiss the stage announcement and close Goals to expose the map. This demo starts at Stage 2 so Worker Drone T2 and Pylon orders are unlocked.
 
 In the in-game console enter:
 
@@ -28,7 +28,7 @@ fill all
 warp 1
 ```
 
-**Check:** stock totals and caps have four digits, such as `0500 / 0500`; hovering still gives the resource breakdown. The scenario starts with a Command Hub, Resource Extractor, Solar Array, HQ explorer and two Harvesters.
+**Check:** stock totals and caps have four digits, such as `0500 / 0500`; hovering still gives the resource breakdown. The scenario starts with a Command Hub, Resource Extractor, Solar Array, HQ explorer and two Worker Drones (T1).
 
 ## 2. Reject placement visibly — including wind
 
@@ -47,7 +47,7 @@ Click the existing extractor, then the Command Hub, then a unit.
 
 ## 4. Watch construction without job switching
 
-1. Press **U** and queue a **Builder Drone**. Use `warp 10` until it appears, then `warp 1`.
+1. Press **U** and queue a **Worker Drone T2**. Use `warp 10` until it appears, then `warp 1`.
 2. Run `fill all` so resource shortages do not interfere with this check.
 3. Press **B** and place a **Wind Turbine** on a green site; `(0, -4)` is a verified example.
 4. Once a worker is building, place a **Capacitor Bank** on another green site; `(3, -3)` is a verified example.

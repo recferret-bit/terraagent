@@ -5,7 +5,7 @@ import { readDaytime } from '../shared/daytime';
 import { makeDiv, makeSpan } from '../shared/dom';
 import { readColonyPower } from '../shared/power';
 import './envPanel.css';
-import { createTerraformSlot, readColonyTerraformStats, renderTerraformBreakdown, TERRAFORM_BONUS_HINT, TERRAFORM_TIER_GATE_HINT } from './terraformMeter';
+import { createTerraformSlot, readColonyTerraformStats, renderTerraformBreakdown, TERRAFORM_BONUS_HINT, tierGateHint } from './terraformMeter';
 
 /** Shown in place of a number until the first view arrives. */
 const NO_DATA = '—';
@@ -104,8 +104,9 @@ export class EnvPanel {
     tf.el.setAttribute('data-eligible', String(stats.eligibleOwnedTiles));
     tf.el.setAttribute('data-percent', pctText);
     tf.el.setAttribute('data-living-hint', '+10 % ground move speed');
-    tf.el.title = `${label} · ${TERRAFORM_BONUS_HINT} · ${TERRAFORM_TIER_GATE_HINT}`;
-    renderTerraformBreakdown(tf.breakdown, stats);
+    const gates = tierGateHint(col);
+    tf.el.title = `${label} · ${TERRAFORM_BONUS_HINT} · ${gates}`;
+    renderTerraformBreakdown(tf.breakdown, stats, gates);
   }
 
   dispose(): void {

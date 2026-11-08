@@ -7,6 +7,8 @@ import {
   DEPOSIT,
   diffSince,
   hexIndex,
+  hexTileRing,
+  PREP,
   restore,
   revealSubsurface,
   SimHost,
@@ -23,6 +25,17 @@ const firstBuried = (s: ReturnType<typeof createPlanet>, terrain?: number) => {
   for (let i = 0; i < s.grid.count; i++) if (s.grid.layers.subDeposit[i] && (terrain === undefined || s.grid.layers.terrain[i] === terrain)) return i;
   return -1;
 };
+
+/** Makes tile `i`'s six neighbours (and `i` itself when `self`) Flat open ground at height 0, like cleared ground. */
+function levelRing(s: ReturnType<typeof createPlanet>, i: number, self = true): void {
+  const L = s.grid.layers;
+  for (const j of hexTileRing(s.grid.radius, i)) {
+    if (j === i && !self) continue;
+    L.terrain[j] = TERRAIN.flat;
+    L.prep[j] = PREP.flat;
+    L.height[j] = 0;
+  }
+}
 
 describe('hidden subsurface never reaches a client (D-38)', () => {
   it('client snapshots omit hidden layers (restore zero-fills), persisted snapshots keep them', () => {
@@ -53,12 +66,14 @@ describe('hidden subsurface never reaches a client (D-38)', () => {
     }
   });
 
-  it('revealSubsurface moves the buried deposit into the public layers once', () => {
+  it('revealSubsurface moves the buried deposit into the public layers once, and only on a hex tile', () => {
     const s = createPlanet({ id: 'p', seed: 'hidden-3', type: 'temperate', planetType: 'desert', radius: 56 });
-    const i = firstBuried(s);
+    const i = firstBuried(s, TERRAIN.rock);
     const kind = s.grid.layers.subDeposit[i];
     const rich = Math.round(s.grid.layers.subRichness[i]);
     expect(s.grid.layers.deposit[i]).toBe(DEPOSIT.none);
+    expect(revealSubsurface(s, i, 2)).toBeNull(); // still under rock: wild ground
+    levelRing(s, i);
     expect(revealSubsurface(s, i, 3)).toEqual({ deposit: ['none', 'metals', 'minerals', 'oil'][kind], richnessBp: rich });
     expect([s.grid.layers.deposit[i], s.grid.layers.richness[i], s.grid.layers.subDeposit[i]]).toEqual([kind, rich, 0]);
     expect(s.grid.layers.changedAt[i]).toBe(3);
@@ -73,6 +88,7 @@ describe('hidden subsurface never reaches a client (D-38)', () => {
     expect(i).toBeGreaterThanOrEqual(0);
     const hx = hexIndex(s.grid.radius);
     const tq = hx.q[i], tr = hx.r[i];
+    levelRing(s, i, false); // open, level ground around the rock: once broken it is a hex tile
     spawnHqUnit(s, { owner: 0, q: tq + 1, r: tr });
     const cmd: SimCommand = { colonyIndex: 0, source: 'player', commandId: 'hb', kind: 'enqueueTask', args: { terraform: { op: 'break', tiles: [{ q: tq, r: tr }] } } };
     host.submit(cmd);

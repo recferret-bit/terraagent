@@ -9,8 +9,9 @@ import { fbm2d, hash2d } from '../noise';
  * Hidden subsurface (D-38): what Clear / Break uncovers. Buried deposits cluster in veins (noise above a per-terrain
  * threshold): metal and mineral veins under rock, minerals / oil under dunes, metals under forest roots, oil pockets
  * under plains. Written to the server-only layers `subDeposit` / `subRichness`; per-sector seeds, no planet rng.
- * Runs last (after `landing`), so it sees the final classes: no later step moves a buried deposit under another class
- * (WE-09). What lies under slope and flat waits for a later op (Level, W05); Clear / Break uncover forest / rock.
+ * Runs after `landing`, so it sees the final classes: no later step moves a buried deposit under another class
+ * (WE-09). A buried deposit appears once its tile is a hex tile: after every terraform the changed tiles and their
+ * neighbours are tried (`revealAroundChanged`, `grid/subsurface.ts`).
  */
 export const subsurface: WorldStage = {
   id: 'subsurface',

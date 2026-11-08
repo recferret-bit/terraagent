@@ -31,7 +31,7 @@ import {
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   startBuildingConstruction,
   step,
@@ -54,19 +54,19 @@ describe('W02 Authoritative Data Tables & Finite Resource Deposits', () => {
 
     expect(RESOURCE_INCOME_TABLE.forest).toEqual({ 'bio.biomass': 15 });
     expect(RESOURCE_INCOME_TABLE.rock).toEqual({ 'metals.t1': 8, 'minerals.t1': 4 });
-    expect(RESOURCE_INCOME_TABLE['harvester.metals']).toEqual({
+    expect(RESOURCE_INCOME_TABLE['worker.metals']).toEqual({
       resourceId: 'metals.t1',
       ratePerSec: 1.875,
       cycleYield: 7.5,
       cycleSec: 4,
     });
-    expect(RESOURCE_INCOME_TABLE['harvester.minerals']).toEqual({
+    expect(RESOURCE_INCOME_TABLE['worker.minerals']).toEqual({
       resourceId: 'minerals.t1',
       ratePerSec: 1.5,
       cycleYield: 6.0,
       cycleSec: 4,
     });
-    expect(RESOURCE_INCOME_TABLE['harvester.oil']).toEqual({
+    expect(RESOURCE_INCOME_TABLE['worker.oil']).toEqual({
       resourceId: 'bio.biomass',
       ratePerSec: 1.25,
       cycleYield: 5.0,
@@ -114,8 +114,8 @@ describe('W02 Authoritative Data Tables & Finite Resource Deposits', () => {
   });
 });
 
-describe('W02 Multi-Harvester Adjacency & UnitBook Preservation', () => {
-  it('keeps UnitBook intact during syncHarvesterView, blocks harvesters from entering deposit tiles, and allows multiple harvesters on adjacent hexes', () => {
+describe('W02 Multi-Worker Adjacency & UnitBook Preservation', () => {
+  it('keeps UnitBook intact during syncWorkerView, blocks workers from entering deposit tiles, and allows multiple workers on adjacent hexes', () => {
     const state = createState({ planetId: 'p-harv', planetType: 'temperate', seed: 'harv', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -132,9 +132,9 @@ describe('W02 Multi-Harvester Adjacency & UnitBook Preservation', () => {
     setTileDeposit(state, depIdx, DEPOSIT.minerals, 10000, 0);
 
     const hqId = spawnHqUnit(state, { owner: 0, q: -2, r: 0 });
-    const h1 = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
-    spawnHarvesterUnit(state, { owner: 0, q: 0, r: 1 });
-    spawnHarvesterUnit(state, { owner: 0, q: 1, r: -1 });
+    const h1 = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
+    spawnWorkerUnit(state, { owner: 0, q: 0, r: 1 });
+    spawnWorkerUnit(state, { owner: 0, q: 1, r: -1 });
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
@@ -152,7 +152,7 @@ describe('W02 Multi-Harvester Adjacency & UnitBook Preservation', () => {
 
     const harvPositions = new Set<string>();
     for (let r = 0; r < state.entities.count; r++) {
-      if (state.entities.cols.kind[r] !== ENTITY_KIND.harvester) continue;
+      if (state.entities.cols.kind[r] !== ENTITY_KIND.worker) continue;
       const q = state.entities.cols.q[r];
       const rCoord = state.entities.cols.r[r];
       expect(hexDistance(q, rCoord, 2, 0)).toBe(1);
@@ -182,7 +182,7 @@ describe('W02 Multi-Harvester Adjacency & UnitBook Preservation', () => {
 });
 
 describe('W02 Progressive Cost Subtraction & 50% Cancel Refunds', () => {
-  it('subtracts resources progressively and refunds 50% of spentCost on cancel (building:<id>, harvester:<id>, and all)', () => {
+  it('subtracts resources progressively and refunds 50% of spentCost on cancel (building:<id>, worker:<id>, and all)', () => {
     const state = createState({ planetId: 'p-prog', planetType: 'temperate', seed: 'prog', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -233,7 +233,7 @@ describe('W02 Progressive Cost Subtraction & 50% Cancel Refunds', () => {
     state.entities.cols.state[hubRow] = ENTITY_STATE.active;
 
     creditResource(colony, 'metals.t1', 100, state.meta.tick);
-    const uRes = enqueueHubUnit(state, { colonyIndex: 0, unit: 'harvester' });
+    const uRes = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
     expect(uRes.ok).toBe(true);
     if (!uRes.ok) throw new Error('expected ok');
 
@@ -263,7 +263,7 @@ describe('W02 Simplified Terraform: Dismantle & Work (Repair + Ground)', () => {
     creditResource(colony, 'bio.water', 50, 0);
 
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
-    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 1, r: 0 });
+    const harvId = spawnWorkerUnit(state, { owner: 0, q: 1, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
     const disHq = executeDismantleAtTile(state, 0, 0, 0);

@@ -34,10 +34,10 @@ function spawnBuilding(
   return row;
 }
 
-function spawnHarvester(state: ReturnType<typeof createState>, active = true): number {
+function spawnWorker(state: ReturnType<typeof createState>, active = true): number {
   const row = insertRow(state.entities, state.meta.nextEntityId++, 1);
   const cols = state.entities.cols;
-  cols.kind[row] = ENTITY_KIND.harvester;
+  cols.kind[row] = ENTITY_KIND.worker;
   cols.owner[row] = 0;
   cols.hp[row] = 160;
   cols.hpMax[row] = 160;
@@ -114,11 +114,11 @@ describe('W03-07 Per-component brownout shedding', () => {
     spawnBuilding(state, ENTITY_KIND.wind, 21, 20, 2, 2, 350);
     const extBRow = spawnBuilding(state, ENTITY_KIND.metalsExtractor, 22, 20, 2, 2, 500);
 
-    // Spawn 4 active Harvesters (4 * 2 = 8 E/s robot demand)
-    spawnHarvester(state, true);
-    spawnHarvester(state, true);
-    spawnHarvester(state, true);
-    spawnHarvester(state, true);
+    // Spawn 4 active Workers (4 * 2 = 8 E/s robot demand)
+    spawnWorker(state, true);
+    spawnWorker(state, true);
+    spawnWorker(state, true);
+    spawnWorker(state, true);
 
     step(state, [], 1, pipeline);
     const power = getColonyPower(state, 0);

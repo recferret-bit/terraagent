@@ -12,8 +12,7 @@ import { isUnitKind } from '../../units/mobility';
 import { isWorkerEligibleForJob } from '../dispatch/eligibility';
 import { workCrewRow } from '../dispatch/crew';
 import { buildingKindName, getFootprintTileIndices, resolveBuildingRow } from '../economy/construction';
-import { resolveUnitRowForHub } from '../factories-hub';
-import { resolveHarvesterRow } from '../harvest';
+import { resolveWorkerRow } from '../harvest';
 import { rowNum } from '../rows';
 import { joinJobAsHelper } from './crewHelpers';
 import { dismantleTargetReject } from './dismantleRule';
@@ -33,7 +32,7 @@ import { classifyGroundWorkTile, createGroundWorkJob, primeWorkerForWorkJob, sel
 export {
   cancelWorkerJobs, cancelWorkJobs, getWorkJobsMap, hasActiveWorkJobForWorker, hasWorkJob, saveWorkJobsMap, workJobDrawPerS, type WorkJobRecord,
 } from './workJobs';
-export { classifyGroundWorkTile } from './workTile';
+export { classifyGroundWorkTile, evaluateGroundWorkTile, planGroundWorkTiles } from './workTile';
 export { workJobsSystem } from './workSystem';
 
 let cachedDefaultCostData: CompiledDataLike | null = null;
@@ -43,12 +42,10 @@ function defaultBuildCostData(): CompiledDataLike {
 }
 
 /** The base build cost of an entity kind (repair is priced and dismantle refunded from it); the client preview reads it too. */
-export function getEntityBaseBuildCost(kind: number, data?: CompiledDataLike): Partial<Record<ResourceKey, number>> {
+export function getEntityBaseBuildCost(kind: number, data?: CompiledDataLike, tier = 1): Partial<Record<ResourceKey, number>> {
   const src = data ?? defaultBuildCostData();
-  if (kind === ENTITY_KIND.harvester) return ((resolveHarvesterRow(src).cost ?? { 'metals.t1': 70, 'minerals.t1': 30 }) as Partial<Record<ResourceKey, number>>);
-  if (kind === ENTITY_KIND.builder) {
-    const builderRow = resolveUnitRowForHub('builder', src) ?? resolveUnitRowForHub('builder', defaultBuildCostData());
-    return ((builderRow?.cost ?? { 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 }) as Partial<Record<ResourceKey, number>>);
+  if (kind === ENTITY_KIND.worker) {
+    return (resolveWorkerRow(src, tier).cost ?? { 'metals.t1': 40, 'minerals.t1': 15, 'bio.biomass': 5 }) as Partial<Record<ResourceKey, number>>;
   }
   if (kind === ENTITY_KIND.hq) return { 'metals.t1': 100, 'minerals.t1': 50 };
   const bName = buildingKindName(kind);
@@ -125,7 +122,7 @@ export type DismantleResult = { ok: true; entityId: number; refunded: Partial<Re
  *   Command Hub and HQ Drone `'cannot_dismantle_hq'`, a site still under construction `'dismantle_unfinished'` (cancel
  *   it in the queue), a foreign or unknown `entityId` `'not_own_colony'` / `'unknown_entity'`, a building already being
  *   dismantled `'already_dismantling'`.
- * - A finished building: orders a dismantle job (`dismantleJob.ts`, job id `taskId`): a Builder Drone or the HQ walks
+ * - A finished building: orders a dismantle job (`dismantleJob.ts`, job id `taskId`): a Worker Drone or the HQ walks
  *   there and takes it apart on site in half its build time, refunding 50 % of its cost step by step. No worker, no
  *   progress.
  * - The landed pod is scrapped (no refund) once an active Hub stands and an own Builder / HQ is next to it.
@@ -165,7 +162,7 @@ export function executeDismantleAtTile(
   return orderBuildingDismantle(state, targetRow, tick, data, taskId);
 }
 
-/** Whether an own alive worker that can dismantle (Builder Drone, HQ) is in reach of entity row `row`. */
+/** Whether an own alive worker that can dismantle (Worker Drone, HQ) is in reach of entity row `row`. */
 function hasWorkerInReach(state: SimState, colonyId: number, row: number): boolean {
   const cols = state.entities.cols;
   for (let w = 0; w < state.entities.count; w++) {
@@ -219,7 +216,7 @@ export function dismantleQueueTask(
 }
 
 /**
- * Orders the dismantle of finished building row `row`: a Builder Drone (else the HQ) gets the job, the building becomes
+ * Orders the dismantle of finished building row `row`: a Worker Drone (else the HQ) gets the job, the building becomes
  * an offline site and the construction lane shows it. `site_blocked` when the colony has no such worker.
  */
 function orderBuildingDismantle(state: SimState, row: number, tick: number, data?: CompiledDataLike, taskId?: string): DismantleResult {
@@ -229,7 +226,7 @@ function orderBuildingDismantle(state: SimState, row: number, tick: number, data
   if (hasWorkJob(state, jobId)) return { ok: false, reason: 'invalid_args' };
   const workerId = selectWorkerForWorkOp(state, colonyId, cols.q[row], cols.r[row], undefined, entityId, 'dismantle');
   if (workerId === null) return { ok: false, reason: 'site_blocked' };
-  const job = createDismantleJob(state, row, workerId, jobId, getEntityBaseBuildCost(cols.kind[row], data), tick, data);
+  const job = createDismantleJob(state, row, workerId, jobId, getEntityBaseBuildCost(cols.kind[row], data, cols.tier[row] || 1), tick, data);
   if (!job) return { ok: false, reason: 'invalid_args' };
   const stored = storeWorkJob(state, job, tick, data);
   if (!stored.ok) return stored;
@@ -254,7 +251,7 @@ export function createRepairWorkJobRecord(
   const targetId = cols.id[damagedRow];
   const hpMax = cols.hpMax[damagedRow], startHp = cols.hp[damagedRow];
   const missingFraction = Math.max(0, (hpMax - startHp) / Math.max(1, hpMax));
-  const baseCost = getEntityBaseBuildCost(cols.kind[damagedRow], data);
+  const baseCost = getEntityBaseBuildCost(cols.kind[damagedRow], data, cols.tier[damagedRow] || 1);
   const totalCost: Partial<Record<ResourceKey, number>> = {};
   for (const [k, v] of Object.entries(baseCost) as [ResourceKey, number][]) {
     if (v && v > 0) totalCost[k] = Number((v * repairCostRate(data) * missingFraction).toFixed(6));
@@ -297,10 +294,18 @@ export function enqueueRepairForEntity(
   return storeWorkJob(state, job, tick, opts?.data);
 }
 
+/** A terraform `work` job (not a helper) already targets `(q, r)` for this colony. */
+function terraformWorkQueued(state: SimState, colonyId: number, q: number, r: number): boolean {
+  for (const j of Object.values(getWorkJobsMap(state))) {
+    if (j.helpOf === undefined && j.mode === 'terraform' && j.colonyId === colonyId && j.q === q && j.r === r) return true;
+  }
+  return false;
+}
+
 /**
- * Enqueues a simplified `work` job at `(q, r)` (`op: 'work'`, available to HQ Drone, Builder Drone, and Harvester):
+ * Enqueues a simplified `work` job at `(q, r)` (`op: 'work'`, available to the HQ and every Worker Drone):
  * - Case A: Target tile `(q, r)` has a damaged friendly unit or building (`hp < hpMax`) -> starts a repair job at 40% base cost scaled by missing HP.
- * - Case B: Target tile `(q, r)` is un-terraformed ground (`forest`, `rock`, `slope`, `hole`, or wild `flat`) -> starts a terraforming job using `TERRAFORM_TIME_TABLE` and `RESOURCE_INCOME_TABLE`.
+ * - Case B: Target tile `(q, r)` is un-terraformed ground (forest, rock, slope, hole, wild flat, shallow water, deep water with a T2+ worker) -> a terraforming job. Water takes its time and cost from the `reclaim` / `deepReclaim` op.
  * `intent: 'repair'` allows only case A (no damaged target → `site_blocked`), `'terraform'` only case B; absent = A else B.
  * `chain`: a terraform job continues on the nearest obstacles when done (`chain.ts`; repair never chains).
  */
@@ -339,6 +344,7 @@ export function enqueueWorkAtTile(
     return storeWorkJob(state, job, tick, opts?.data);
   }
 
+  if (terraformWorkQueued(state, colonyId, q, r)) return { ok: false, reason: 'already_queued' };
   const ground = classifyGroundWorkTile(state, colonyId, tileIdx, { data: opts?.data });
   if (!ground.ok) return ground;
   const workerId = selectWorkerForWorkOp(state, colonyId, q, r, opts?.workerId);
@@ -350,7 +356,7 @@ export function enqueueWorkAtTile(
   return storeWorkJob(state, job, tick, opts?.data);
 }
 
-/** Puts `workerId` (an own HQ, Builder or Harvester other than the target) on open repair `lead` as a helper. */
+/** Puts `workerId` (an own HQ, Builder or Worker other than the target) on open repair `lead` as a helper. */
 function joinRepairCrew(state: SimState, colonyId: number, lead: WorkJobRecord, workerId: number, tick: number, data?: CompiledDataLike): void {
   if (workerId === lead.targetEntityId) return;
   if (selectWorkerForWorkOp(state, colonyId, lead.q, lead.r, workerId, lead.targetEntityId, 'repair') !== workerId) return;

@@ -519,7 +519,7 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `backend/app/test/game/production-batches.spec.ts`
-- **What happens:** the spec raises `production.produced` by hand before each step and checks the batches; the earlier spec that drove `creditResource` was deleted in round 1. Nothing checks that an Extractor or Harvester on a running planet ends up in a batch (the flag gate `flags.includes('W02')`, the step order, the colony id).
+- **What happens:** the spec raises `production.produced` by hand before each step and checks the batches; the earlier spec that drove `creditResource` was deleted in round 1. Nothing checks that an Extractor or Worker Drone T1 on a running planet ends up in a batch (the flag gate `flags.includes('W02')`, the step order, the colony id).
 - **To resolve:** one test that loads a `PlanetHost` with the `w02` scenario (an active Extractor), steps 300+ ticks and expects a `metals.t1` batch.
 - **Found:** 2026-11-03, W02 review round 2 (backend agent)
 

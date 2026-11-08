@@ -6,6 +6,7 @@ import {
   TERRAIN,
   createPlanet,
   getColonyTerraformOrders,
+  getWorkJobsMap,
   hexCount,
   hexIndex,
   setColonyStock,
@@ -157,13 +158,15 @@ function mountOnW05Planet() {
 }
 
 describe('Terraform: one button does every ground job', () => {
-  it('slope, trees, rock, water and a crater each get the op their ground needs', () => {
+  it('slope, trees, rock, water and a crater each queue a work job (the chain picks the op)', () => {
     const { host, tf } = mountOnW05Planet();
     tf.selectOp('terraform');
     const ops = [[1, 0], [2, 0], [3, 0], [1, 1], [2, 1]].map(([q, r]) => tf.strokeTile(q!, r!).jobs[0]?.op);
-    expect(ops).toEqual(['level', 'clear', 'break', 'reclaim', 'fill']);
+    expect(ops).toEqual(['work', 'work', 'work', 'work', 'work']);
     host.step(1);
-    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.op)).toEqual(['level', 'clear', 'break', 'reclaim', 'fill']);
+    const keys = Object.values(getWorkJobsMap(host.state)).map((j) => j.terrainKey).sort();
+    expect(keys).toEqual(['forest', 'hole', 'rock', 'shallow', 'slope']);
+    expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
   });
 
   it('the menu offers exactly Terraform, Repair, Dismantle', () => {
@@ -188,7 +191,8 @@ describe('Terraform targets: highlighted hexes and Ctrl+click queueing', () => {
     click(1, 0, { ctrlKey: true });
     expect(tf.isArmed()).toBe(true);
     host.step(1);
-    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.jobs[0]!.op)).toEqual(['clear', 'break', 'level']);
+    const tiles = Object.values(getWorkJobsMap(host.state)).map((j) => `${j.q},${j.r}`).sort();
+    expect(tiles).toEqual(['1,0', '2,0', '3,0']);
   });
 
   it('every queued hex is highlighted in the 3D scene until its job is gone', () => {
@@ -204,7 +208,7 @@ describe('Terraform targets: highlighted hexes and Ctrl+click queueing', () => {
     expect(group.visible).toBe(true);
     expect(group.children).toHaveLength(2);
 
-    for (const o of getColonyTerraformOrders(host.state, 0)) tf.cancelOrder(o.orderId);
+    for (const j of Object.values(getWorkJobsMap(host.state))) tf.cancelOrder(j.jobId);
     host.step(1);
     tf.update(host.view() as never);
     expect(tf.getTargetTiles()).toEqual([]);
@@ -224,7 +228,7 @@ describe('Terraform targets: highlighted hexes and Ctrl+click queueing', () => {
     expect(tf.getLastStroke()?.statusText).toBe('Terraform cancelled (2,0)');
     host.step(1);
     tf.update(host.view() as never);
-    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.jobs[0]!.op)).toEqual(['break']);
+    expect(Object.values(getWorkJobsMap(host.state)).map((j) => `${j.q},${j.r}`)).toEqual(['3,0']);
     expect(tf.getTargetTiles().map((t) => `${t.q},${t.r}`)).toEqual(['3,0']);
     expect(tf.isArmed()).toBe(true);
   });
@@ -244,20 +248,21 @@ describe('Terraform targets: highlighted hexes and Ctrl+click queueing', () => {
   });
 });
 
-describe('Terraform on ground that is already clear: Irrigate, then Seed (Living)', () => {
-  it('a prepared hex gets Irrigate, an irrigated one Seed; a Living hex has nothing left', () => {
+describe('Terraform on ground that is already clear', () => {
+  it('level flat (flat, prepared, irrigated, living) queues nothing', () => {
     const { host, tf } = mountOnW05Planet();
     const idx = hexIndex(host.state.grid.radius);
     const i = idx.indexOf(-1, 1);
     tf.selectOp('terraform');
-    for (const [prep, op] of [[PREP.prepared, 'irrigate'], [PREP.irrigated, 'seed']] as const) {
+    for (const prep of [PREP.flat, PREP.prepared, PREP.irrigated, PREP.living]) {
       setTileTerrain(host.state.grid, i, TERRAIN.flat);
       setTilePrep(host.state.grid, i, prep);
+      host.state.grid.layers.height[i] = 0;
       tf.update(host.view() as never);
-      expect(tf.strokeTile(-1, 1).jobs.map((j) => j.op)).toEqual([op]);
+      const stroke = tf.strokeTile(-1, 1);
+      expect(stroke.queuedCount).toBe(0);
+      expect(stroke.outcome?.reason).toBe('already_terraformed');
+      expect(stroke.statusText).toBe('Already terraformed');
     }
-    setTilePrep(host.state.grid, i, PREP.living);
-    tf.update(host.view() as never);
-    expect(tf.strokeTile(-1, 1).queuedCount).toBe(0);
   });
 });

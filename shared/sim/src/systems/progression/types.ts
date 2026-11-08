@@ -60,13 +60,11 @@ export const BUILDING_KIND = {
 
 /**
  * Extended unit entity kind codes for progression trigger checks (`UO-LC-02`, `stages.ts`).
- * Extends `ENTITY_KIND` codes (`hq: 3`, `harvester: 7`).
+ * Extends `ENTITY_KIND` codes (`hq: 3`, `worker: 7`).
  */
 export const UNIT_KIND = {
   hq: ENTITY_KIND.hq,
-  harvester: ENTITY_KIND.harvester,
-  builder: ENTITY_KIND.builder,
-  terraformer: ENTITY_KIND.terraformer,
+  worker: ENTITY_KIND.worker,
   scout: 52,
   recon: 52,
   guard: 53,

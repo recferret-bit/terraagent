@@ -61,19 +61,19 @@ test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> s
   expectNoPageErrors(page);
 });
 
-test('@hack 2. Queue 1 Harvester in Units menu -> paid progressively (40/15/5/0), completes and harvests nearest deposit', async ({ page }) => {
+test('@hack 2. Queue 1 Worker Drone T1 in Units menu -> paid progressively (40/15/5/0), completes and harvests nearest deposit', async ({ page }) => {
   await openW02(page);
   await devConsole(page, 'warp 20');
   const ack = await sendSimCmd(page, 'enqueueTask', {
     taskId: 'u-harv-1',
-    task: { kind: 'buildUnit', unit: 'harvester' },
+    task: { kind: 'buildUnit', unit: 'worker', tier: 1 },
   });
   expect(ack.ok).toBe(true);
 
-  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.harvester), { timeout: 15_000 }).toBe(true);
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.worker), { timeout: 15_000 }).toBe(true);
 
   await devConsole(page, 'warp 1');
-  await screenshot(page, '2-harvester-active');
+  await screenshot(page, '2-worker-active');
   expectNoPageErrors(page);
 });
 
@@ -238,8 +238,11 @@ const ownObstaclesOnScreen = (page: Page) =>
 /** Open orders in the colony's terraform queue (`blobs.terraformTasks.byColony`). */
 const terraformOrderCount = (page: Page) =>
   page.evaluate(() => {
-    const v = (window as unknown as { __online: { store: { latest: { blobs?: { terraformTasks?: { byColony?: Record<string, unknown[]> } } } | null } } }).__online.store.latest;
-    return Object.values(v?.blobs?.terraformTasks?.byColony ?? {}).reduce((n, list) => n + list.length, 0);
+    type Blobs = { terraformTasks?: { byColony?: Record<string, unknown[]> }; workJobs?: { byId?: Record<string, unknown> } };
+    const v = (window as unknown as { __online: { store: { latest: { blobs?: Blobs } | null } } }).__online.store.latest;
+    // TERRAFORM goes out as one `work` order (intent terraform): the host keeps it in `workJobs`; explicit ops stay in `terraformTasks`.
+    const tasks = Object.values(v?.blobs?.terraformTasks?.byColony ?? {}).reduce((n, list) => n + list.length, 0);
+    return tasks + Object.keys(v?.blobs?.workJobs?.byId ?? {}).length;
   });
 
 test('@hack 9. Terraform dock: TERRAFORM / REPAIR / DISMANTLE, hotkeys only on the open tab, G + click an obstacle -> one terraform order', async ({ page }) => {
@@ -262,7 +265,7 @@ test('@hack 9. Terraform dock: TERRAFORM / REPAIR / DISMANTLE, hotkeys only on t
   // Tall tree props may make the pick land on a neighbouring hex; any terraformable hex starts the chain.
   expect(await clickTile(page, target!.q, target!.r)).toBeTruthy();
   await expect(menu).toHaveAttribute('data-armed', 'false'); // one order per armed click
-  // TERRAFORM picks the hex's op (Clear / Break ...) and queues one order in the host's terraform queue.
+  // TERRAFORM: the host picks the hex's work (Clear / Break ...) and queues one work job.
   await expect.poll(async () => (await terraformOrderCount(page)), { timeout: 10_000 }).toBeGreaterThan(0);
   await expect(page.locator('[data-testid="tf-status"]')).toContainText(/Terraform|jobs/i);
   await screenshot(page, '9-terraform-order');

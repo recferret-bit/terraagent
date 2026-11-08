@@ -140,7 +140,7 @@ function findColonySupportNodes(
       if (!hqAnchor) hqAnchor = pos;
     } else if (kind === ENTITY_KIND.pod) {
       if (!podAnchor) podAnchor = pos;
-    } else if (kind !== ENTITY_KIND.harvester && kind !== ENTITY_KIND.devProbe) {
+    } else if (kind !== ENTITY_KIND.worker && kind !== ENTITY_KIND.devProbe) {
       supportNodes.push(pos);
     }
   }

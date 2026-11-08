@@ -5,14 +5,8 @@ import { isValidTileIndex } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { resolveHqT1Row, rowNum } from '../rows';
-import {
-  SITE_PREP_TERRAFORM_OPS,
-  getTerraformJobCost,
-  getTerraformOpSpec,
-  opForTerrain,
-  type SitePrepTerraformOp,
-} from '../terraform-basic/ops';
-import type { TerraformJob } from '../terraform-basic/orders';
+import { SITE_PREP_TERRAFORM_OPS, getTerraformOpSpec, opForTerrain } from '../terraform-basic/ops';
+import { newTerraformJob, type TerraformJob } from '../terraform-basic/orders';
 
 export interface SitePrepOpCounts {
   grade: number;
@@ -71,20 +65,6 @@ export interface PrepTileInput {
 
 /** Pure planner behind `buildLinkedPrepJobs`: the ordered S0 ops that turn each tile into Prepared ground. */
 export function planPrepJobs(tiles: ReadonlyArray<PrepTileInput>, data?: CompiledDataLike): TerraformJob[] {
-  const job = (q: number, r: number, op: SitePrepTerraformOp): TerraformJob => {
-    const spec = getTerraformOpSpec(op, data);
-    const totalCost = getTerraformJobCost(op, data);
-    return {
-      q,
-      r,
-      op,
-      progress: 0,
-      baseTimeS: spec.baseTimeS,
-      totalEnergyE: spec.energyCostE,
-      energyDrawnE: 0,
-      ...(Object.keys(totalCost).length > 0 ? { totalCost, spentCost: {} } : {}),
-    };
-  };
   const jobs: TerraformJob[] = [];
   for (const t of tiles) {
     if (isPreparedGround(t.prep)) continue;
@@ -93,7 +73,7 @@ export function planPrepJobs(tiles: ReadonlyArray<PrepTileInput>, data?: Compile
     for (let n = 0; n < SITE_PREP_TERRAFORM_OPS.length; n++) {
       const op = opForTerrain(terrain, data);
       if (!op) break;
-      jobs.push(job(t.q, t.r, op));
+      jobs.push(newTerraformJob(t.q, t.r, op, data));
       const spec = getTerraformOpSpec(op, data);
       if (spec.toTerrain === spec.fromTerrain) break;
       terrain = spec.toTerrain;

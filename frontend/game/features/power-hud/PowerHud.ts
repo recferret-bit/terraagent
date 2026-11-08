@@ -11,9 +11,7 @@ const KIND_NAMES: Record<number, string> = {
   [ENTITY_KIND.tradeHub]: 'Inter-Colony Trade Hub',
   [ENTITY_KIND.hq]: 'Colony HQ',
   [ENTITY_KIND.dropPod]: 'Drop Pod',
-  [ENTITY_KIND.harvester]: 'Harvester',
-  [ENTITY_KIND.builder]: 'Builder Drone',
-  [ENTITY_KIND.terraformer]: 'Terraformer Drone',
+  [ENTITY_KIND.worker]: 'Worker Drone',
   [ENTITY_KIND.pylon]: 'Power Pylon',
   [ENTITY_KIND.capacitor]: 'Capacitor Bank',
   [ENTITY_KIND.wind]: 'Wind Turbine',
@@ -42,7 +40,7 @@ const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
 ]);
 
 /** A `SimView` entity as the inspector reads it (tests pass partial rows). */
-type EntitySummaryRow = Partial<Record<'id' | 'kind' | 'owner' | 'hp' | 'hpMax' | 'state', number>>;
+type EntitySummaryRow = Partial<Record<'id' | 'kind' | 'owner' | 'hp' | 'hpMax' | 'state' | 'tier', number>>;
 
 export interface EntitySummary {
   id: number;
@@ -50,6 +48,15 @@ export interface EntitySummary {
   hp: number;
   hpMax: number;
   state: number;
+  tier?: number;
+}
+
+function entityName(entity: EntitySummary): string {
+  if (entity.kind === ENTITY_KIND.worker) {
+    const tier = entity.tier === 2 || entity.tier === 3 ? entity.tier : 1;
+    return `Worker Drone T${tier}`;
+  }
+  return KIND_NAMES[entity.kind] ?? 'Building';
 }
 
 export function formatEntityState(state: number, explicitReason?: string): string {
@@ -204,7 +211,7 @@ export class PowerHud implements Disposable {
     }
 
     this.inspector.style.display = 'flex';
-    const label = KIND_NAMES[entity.kind] ?? 'Building';
+    const label = entityName(entity);
     this.inspectorTitle.textContent = label;
     this.inspectorHp.textContent = `${Math.round(entity.hp)} / ${Math.round(entity.hpMax)} HP`;
 
@@ -255,7 +262,11 @@ export class PowerHud implements Disposable {
     let fallbackBuilding: EntitySummary | null = null;
     const rows = Array.isArray(entities) ? (entities.filter(Boolean) as unknown as Parameters<typeof forEachEntity>[0]) : entities;
     forEachEntity(rows, count, (e) => {
-      const summary: EntitySummary = { id: Number(e.id ?? 0), kind: Number(e.kind ?? 0), hp: Number(e.hp ?? 0), hpMax: Number(e.hpMax || e.hp || 0), state: Number(e.state ?? 0) };
+      const tier = e.tier;
+      const summary: EntitySummary = {
+        id: Number(e.id ?? 0), kind: Number(e.kind ?? 0), hp: Number(e.hp ?? 0), hpMax: Number(e.hpMax || e.hp || 0), state: Number(e.state ?? 0),
+        ...(tier === 1 || tier === 2 || tier === 3 ? { tier } : {}),
+      };
       if (targetId !== null) {
         if (summary.id !== targetId) return;
         target = summary;

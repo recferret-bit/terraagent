@@ -486,7 +486,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/data/terraform-finds.ts` (row `terraformFinds.deposit`; file constant `TERRAFORM_RESOURCE_SPAWN`), `shared/sim/src/systems/terraform-basic/resourceSpawn.ts`, `shared/sim/src/systems/dev/spawnDeposit.ts`
-- **What happens:** every finished terraform hex with no deposit after the buried-deposit reveal (and no unit on it) rolls 1%; a hit puts a full deposit (`richnessBp` 10000) on the hex, tier t1 50% / t2 35% / t3 15%, family uniform over metals / minerals / oil. Fixed yields and the buried reveal are kept. A found deposit makes the hex unbuildable and impassable again (deposit rule) and, depleted, stays as rubble like any deposit (owner). A Harvester or Extractor on it pays the tier. Data without the W02 row gives chance 0 (W01 planets never roll).
+- **What happens:** every finished terraform hex with no deposit after the buried-deposit reveal (and no unit on it) rolls 1%; a hit puts a full deposit (`richnessBp` 10000) on the hex, tier t1 50% / t2 35% / t3 15%, family uniform over metals / minerals / oil. Fixed yields and the buried reveal are kept. A found deposit makes the hex unbuildable and impassable again (deposit rule) and, depleted, stays as rubble like any deposit (owner). A Worker Drone T1 or Extractor on it pays the tier. Data without the W02 row gives chance 0 (W01 planets never roll).
 - **Why it is like this:** the owner asked for 60 / 35 / 15 (110%) and chose 50 / 35 / 15; uniform family and rubble on depletion confirmed by the owner.
 - **Workaround / mitigation:** `tune terraformFinds.deposit.chance 1` and the dev command `spawndeposit <q> <r> <family> <tier>` make finds checkable.
 - **Found:** 2026-11-02, terraform rework
@@ -513,7 +513,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
   - ~~Skipped tiles stay skipped for the whole chain~~ Resolved (2026-11-03): an unreachable follow-up is retried after the chain's next finished tile; the chain now works outward from the clicked tile (`chainOrigin`, closest first) instead of from the last tile, so it no longer drifts far from the order.
   - The chain ignores tiles already queued in W01 manual orders (the completion re-check prevents a double yield, but a walk is wasted).
   - `cancelTask <root>~n` cancels only that job; the chain ends because nothing is left.
-  - A Harvester in a chain does not harvest.
+  - A Worker Drone T1 in a chain does not harvest.
 - **Found:** 2026-11-02, terraform rework
 
 ### GP-44 · `work` completion events do not match their schemas
@@ -532,9 +532,9 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/terraform-basic/{workJobs,workSystem}.ts`, `shared/sim/src/systems/power-core/{workLoad,shedding,index}.ts`
-- **What happened:** work jobs carried an energy cost from `TERRAFORM_TIME_TABLE` but nothing drew it, so continuous terraforming was free and a brownout did not throttle it (`UO-TF-02`, shed group 1). The W01 order path draws from the HQ power cell; a Harvester has no cell.
-- **Fix:** the owner picked the colony grid, for the HQ Drone and the Harvester alike. Each worker's current job draws `energyCost / work time` (`workJobDrawPerS`: `durationTicks × TICK_MS`, e.g. forest 8 E / 12 s ≈ 0.67 E/s; repair 0) while the worker is at the job (walking draws nothing). The power core (`collectWorkLoad`) adds it to `rawDemand` as shed candidates in the group whose `categories` list `terraformOp` (`shedGroup1`), so jobs go before factories and extractors (newest worker first). A shed job is listed in `ColonyPowerSummary.shedWorkJobIds`, its worker's entity state is not touched; the next step the work-jobs system holds it at `waiting` / `power` with its progress kept, and it resumes (and its chain goes on) once the grid carries it again. The summary gains `workDemand` (drawn after shedding; `buildingDemand` excludes it); the `power` dev command prints `work:` and the paused jobs; the power widget's demand includes it; the TERRAFORM status line shows `waiting (power)`. Test `terraform-work-power.spec.ts`.
-- **Still open:** before the Command Hub there is no grid (supply 0), so pre-Hub work jobs stay unmetered (free) as before; an HQ-cell fallback was not built. Balance: a Hub-only colony has +3 E/s spare, so one terraform job fits, but with a few Harvesters or an Extractor the job pauses until a Solar is up (and at night). `TERRAFORM_TIME_TABLE` documents its ticks as 20 Hz while the sim runs at 5 Hz (`TICK_MS` 200), so the real work time (and the draw) uses `durationTicks × 0.2 s`.
+- **What happened:** work jobs carried an energy cost from `TERRAFORM_TIME_TABLE` but nothing drew it, so continuous terraforming was free and a brownout did not throttle it (`UO-TF-02`, shed group 1). The W01 order path draws from the HQ power cell; a Worker Drone T1 has no cell.
+- **Fix:** the owner picked the colony grid, for the HQ Drone and the Worker Drone T1 alike. Each worker's current job draws `energyCost / work time` (`workJobDrawPerS`: `durationTicks × TICK_MS`, e.g. forest 8 E / 12 s ≈ 0.67 E/s; repair 0) while the worker is at the job (walking draws nothing). The power core (`collectWorkLoad`) adds it to `rawDemand` as shed candidates in the group whose `categories` list `terraformOp` (`shedGroup1`), so jobs go before factories and extractors (newest worker first). A shed job is listed in `ColonyPowerSummary.shedWorkJobIds`, its worker's entity state is not touched; the next step the work-jobs system holds it at `waiting` / `power` with its progress kept, and it resumes (and its chain goes on) once the grid carries it again. The summary gains `workDemand` (drawn after shedding; `buildingDemand` excludes it); the `power` dev command prints `work:` and the paused jobs; the power widget's demand includes it; the TERRAFORM status line shows `waiting (power)`. Test `terraform-work-power.spec.ts`.
+- **Still open:** before the Command Hub there is no grid (supply 0), so pre-Hub work jobs stay unmetered (free) as before; an HQ-cell fallback was not built. Balance: a Hub-only colony has +3 E/s spare, so one terraform job fits, but with a few Worker Drones (T1) or an Extractor the job pauses until a Solar is up (and at night). `TERRAFORM_TIME_TABLE` documents its ticks as 20 Hz while the sim runs at 5 Hz (`TICK_MS` 200), so the real work time (and the draw) uses `durationTicks × 0.2 s`.
 - **Found:** 2026-11-02, terraform rework review
 
 ### GP-46 · The direct-task `enqueueTask` form uses `cmd.colonyIndex ?? 0`
@@ -554,7 +554,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** high
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/layers.ts` (`anchors`), `shared/sim/src/systems/economy/construction.ts`, `shared/sim/src/systems/terraform-basic/workTile.ts`, `shared/sim/src/systems/harvest/{adjacency,index}.ts`, `shared/sim/src/systems/units/handlers.ts` (`moveUnit`), `frontend/game/features/construction-menu/PlacementGhost.ts`
-- **What happened:** `claimTerritoryRadius` adds 1 to `anchors` on every tile a Hub claims (W01-17, `SIMULATION.md` territory), while W02 construction set `anchors = 1` under a footprint, read `anchors !== 0` as "tile occupied" and set it to 0 on demolish; TERRAFORM `work`, harvest stand/target tiles and `moveUnit` onto a deposit read it the same way, and so did the client placement ghost. Once a real Command Hub completed, every tile of its territory looked occupied: W02 builds waited on `site (tile occupied)`, TERRAFORM was refused, Harvesters found no deposit or stand tile, and a demolish zeroed the territory count of its tiles. The `w02` scenario seeds territory without anchors, so it never showed.
+- **What happened:** `claimTerritoryRadius` adds 1 to `anchors` on every tile a Hub claims (W01-17, `SIMULATION.md` territory), while W02 construction set `anchors = 1` under a footprint, read `anchors !== 0` as "tile occupied" and set it to 0 on demolish; TERRAFORM `work`, harvest stand/target tiles and `moveUnit` onto a deposit read it the same way, and so did the client placement ghost. Once a real Command Hub completed, every tile of its territory looked occupied: W02 builds waited on `site (tile occupied)`, TERRAFORM was refused, Worker Drones (T1) found no deposit or stand tile, and a demolish zeroed the territory count of its tiles. The `w02` scenario seeds territory without anchors, so it never showed.
 - **Fix:** `anchors` is territory only. Building occupancy is `occupiedGroundTiles(state, data)` (`systems/construction/occupancy.ts`, the union of the cached `buildingFootprints`, i.e. `occupiesGround` + `entityFootprint`, the rule placement and path profiles already use). Construction checks it (validation runs before the new entity is inserted) and no longer writes `anchors`; `classifyGroundWorkTile`, the harvest scan (built once per system run and passed down) and `moveUnit` use it; `buildingFootprintTiles` (workTile) is replaced by it; the client ghost marks only entity footprints and queued builds. Path profiles / `bumpPathEpoch` never read `anchors`. Test `territory-anchors-occupancy.spec.ts` (real W01 Hub claim, then build, TERRAFORM, harvest and demolish inside territory).
 - **Still open:**
   - No save migration. Nothing in the sim reads `anchors` for a decision today (no grace/loss system yet; `dev.seed` resets it), so pre-fix saves that carry `anchors = 1` under a building outside territory, or `0` under a demolished building inside it, are harmless until a territory-loss system reads the count. That system should recompute `anchors` from the alive anchor buildings on load instead of trusting the stored value.
@@ -583,14 +583,14 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Still open:** (1) should the player get a salvage refund? (2) if the pod must be removable before the Hub, those two rules must read `blobs.landingPods` / `landingHistory` instead of the entity. (3) The removal is instant (like other `dismantle` ops), with no work job or wreck-fade animation; `PodTouchdownFx.podDismantleProgress` is only the egress retraction.
 - **Found:** 2026-11-03, owner request
 
-### GP-50 · A restored planet with a Harvester crashed on its first step (`reading 'entityId'` of null)
+### GP-50 · A restored planet with a Worker Drone T1 crashed on its first step (`reading 'entityId'` of null)
 
 - **Status:** Resolved (2f1f2c1)
 - **Severity:** high
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/harvest/unit.ts` (`syncHarvesterView`, `withoutUnitView`), `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (unit dismantle)
-- **What happened:** `syncHarvesterView` added an index alias to the `col.harvesters` array (`list[entityId] = view`). A Harvester with entity id 3 turned a one-element list into a sparse `[view, , , view]`. Live, `filter` skips holes, so nothing showed. The snapshot codec saves holes as `null`, so the first step after a restore (server restart, `?host=local` reload) threw in `filter((u) => u.entityId …)`. Dev server log: `planet pl_01M6EG80PWJJA4Y2N5RHFET9ER went down (step_failed): step to tick 91022 failed: Cannot read properties of null (reading 'entityId')`; its saved `col.harvesters` was `[3, null, null, 3]`. Dismantling a unit ran `delete colHarvs[entityId]`, which made the same kind of hole and left the unit's view in both lists.
-- **Fix:** both lists stay dense, one view per unit, matched by `entityId` (`withoutUnitView`; it also drops non-object entries, so already saved snapshots heal on their first step). Unit dismantle filters both lists the same way. Readers (`frontend/game/features/landfall/selectionHelpers.ts`) already search arrays by `entityId`. Test `shared/sim/test/systems/harvester-snapshot.spec.ts` (snapshot round trip, plus a saved planet with null holes). The saved dev snapshot of `pl_01M6EG80…` now steps.
+- **Area / code:** `shared/sim/src/systems/harvest/unit.ts` (`syncWorkerView`, `withoutUnitView`), `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (unit dismantle)
+- **What happened:** `syncWorkerView` added an index alias to the `col.workers` array (`list[entityId] = view`). A Worker Drone T1 with entity id 3 turned a one-element list into a sparse `[view, , , view]`. Live, `filter` skips holes, so nothing showed. The snapshot codec saves holes as `null`, so the first step after a restore (server restart, `?host=local` reload) threw in `filter((u) => u.entityId …)`. Dev server log: `planet pl_01M6EG80PWJJA4Y2N5RHFET9ER went down (step_failed): step to tick 91022 failed: Cannot read properties of null (reading 'entityId')`; its saved `col.workers` was `[3, null, null, 3]`. Dismantling a unit ran `delete col.workers[entityId]`, which made the same kind of hole and left the unit's view in both lists.
+- **Fix:** both lists stay dense, one view per unit, matched by `entityId` (`withoutUnitView`; it also drops non-object entries, so already saved snapshots heal on their first step). Unit dismantle filters both lists the same way. Readers (`frontend/game/features/landfall/selectionHelpers.ts`) already search arrays by `entityId`. Test `shared/sim/test/systems/worker-snapshot.spec.ts` (snapshot round trip, plus a saved planet with null holes). The saved dev snapshot of `pl_01M6EG80…` now steps.
 - **Found:** 2026-11-03, dev server log, economy review
 
 ### GP-51 · HQ fast recharge: suspended in a group-3 brownout now, but never counted as grid load
@@ -600,16 +600,16 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/hq/cell.ts` (`rechargePerTick`, `fastRechargeShed`), `shared/sim/src/systems/power-core/shedding.ts` (`hqFastRechargeShed`), `hq.t1.cellFastRechargeShedGroup`; `UO-HQ-06`, W01-11, W02-06
 - **What happened:** the power core computed `ColonyPowerSummary.hqFastRechargeShed` but nothing read it, so the HQ cell kept recharging at 20 E/s next to an active Hub during a brownout that shed group 3. Now `rechargePerTick` falls back to the 3 E/s self rate while the colony's stored power summary has `hqFastRechargeShed`. `hq` sorts before `power.core` in slot 7, so the HQ reads the previous step's verdict (a one-step lag, the same on every host). Without the W02 power system there is no summary and the old rule applies. Test `shared/sim/test/systems/power-extractor-brownout.spec.ts`.
-- **Still open (owner):** the spec says the fast recharge "counts as grid load in shed group 3", but it is never added to `rawDemand`. Counting 20 E/s against a Hub-only grid (+8 / −5) would shed it at once in every early colony. Effect today: a Hub-only colony with one Extractor is always in a group-3 brownout, so the HQ recharges at 3 E/s until a Solar carries the Extractor. Any deficit still left when shedding reaches group 3 suspends it, also one made only of unshed load: a Hub-only colony with three Harvesters (5 + 4.5 > 8 E/s) sheds nothing visible, but its HQ recharges at 3 E/s. Recommendation: count the fast recharge only while the cell is below its maximum, as `fast − self` E/s, and shed it in group 3 like an Extractor, or keep it free and drop the sentence from the spec.
+- **Still open (owner):** the spec says the fast recharge "counts as grid load in shed group 3", but it is never added to `rawDemand`. Counting 20 E/s against a Hub-only grid (+8 / −5) would shed it at once in every early colony. Effect today: a Hub-only colony with one Extractor is always in a group-3 brownout, so the HQ recharges at 3 E/s until a Solar carries the Extractor. Any deficit still left when shedding reaches group 3 suspends it, also one made only of unshed load: a Hub-only colony with three Worker Drones (T1) (5 + 4.5 > 8 E/s) sheds nothing visible, but its HQ recharges at 3 E/s. Recommendation: count the fast recharge only while the cell is below its maximum, as `fast − self` E/s, and shed it in group 3 like an Extractor, or keep it free and drop the sentence from the spec.
 - **Found:** 2026-11-03, economy review (owner report "built an extractor, energy still 200/200")
 
-### GP-52 · Harvesters draw grid power but a brownout never stops them
+### GP-52 · Worker Drones (T1) draw grid power but a brownout never stops them
 
 - **Status:** Question for the owner
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/power-core/index.ts` (`evaluateColonyPower`, harvester branch), `shared/sim/src/systems/harvest/index.ts` (`production.harvest`), `economyT1Basic.shedGroup1..4` categories
-- **What happens:** each Harvester adds 1.5 E/s (0.75 E/s idle) to `unitDemand`, but it is never a shed candidate and `production.harvest` has no power gate, so in a deficit the extractors are shed while Harvesters keep mining. No shed group lists units, so this matches the data.
+- **Area / code:** `shared/sim/src/systems/power-core/index.ts` (`evaluateColonyPower`, worker branch), `shared/sim/src/systems/harvest/index.ts` (`production.harvest`), `economyT1Basic.shedGroup1..4` categories
+- **What happens:** each Worker Drone T1 adds 1.5 E/s (0.75 E/s idle) to `unitDemand`, but it is never a shed candidate and `production.harvest` has no power gate, so in a deficit the extractors are shed while Worker Drones (T1) keep mining. No shed group lists units, so this matches the data.
 - **To resolve:** decide whether units take part in shedding (a unit category in a group, then gate `production.harvest` on `offlineBrownout`) or keep units always on and leave the drain as information only.
 - **Found:** 2026-11-03, economy review
 
@@ -679,8 +679,8 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/construction/work.ts` (`buildProvider`), `shared/sim/src/systems/economy/buildJob.ts`, `shared/sim/src/systems/queue/index.ts` (`tryStartQueueEntry`, `activeInLane`), `shared/sim/src/systems/dispatch/index.ts` (`selectWorkerForDispatch`, `dispatchJob`, `dispatch.manager`)
-- **What happens:** W02-16 is built in round 2 (58956ab) as a pull: the HQ's `build` work provider takes the colony's oldest W01 order ready for work, else its oldest W02 job ready for work, walks into reach and works it through the W01 `build` command; a Harvester never builds. With one builder (the HQ) per colony the "nearest idle eligible worker, lowest tier on ties" rule of `UO-D-03` is trivially met, and pre-empting auto work for a player-precedence job is not implemented in the providers. `selectWorkerForDispatch` and `dispatchJob` have no caller outside tests; `dispatch.manager` (slot 5) only prunes `blobs.dispatch` records of idle or gone workers. `dispatchJob`'s Harvester branch (`dispatch/index.ts` ~181/183) would rewrite the tile's terrain to forest / rock before assigning a Clear / Break, a state write no rule allows. The construction lane also starts one W02 build per colony at a time: a second build entry waits `waiting: worker` (`activeInLane`), gets no building entity, no ghost on the map and no linked prep until the first one finishes. This is a lane rule, not a builder count: a second builder would not change it.
-- **Why it is like this:** the hackathon cut: one builder per colony in W02; Builder Drones (more builders) come later.
+- **What happens:** W02-16 is built in round 2 (58956ab) as a pull: the HQ's `build` work provider takes the colony's oldest W01 order ready for work, else its oldest W02 job ready for work, walks into reach and works it through the W01 `build` command; Worker Drone T1 builds tier ≤ 1 and terraforms except deep water. With one builder (the HQ) per colony the "nearest idle eligible worker, lowest tier on ties" rule of `UO-D-03` is trivially met, and pre-empting auto work for a player-precedence job is not implemented in the providers. `selectWorkerForDispatch` and `dispatchJob` have no caller outside tests; `dispatch.manager` (slot 5) only prunes `blobs.dispatch` records of idle or gone workers. `dispatchJob`'s Worker Drone T1 branch (`dispatch/index.ts` ~181/183) would rewrite the tile's terrain to forest / rock before assigning a Clear / Break, a state write no rule allows. The construction lane also starts one W02 build per colony at a time: a second build entry waits `waiting: worker` (`activeInLane`), gets no building entity, no ghost on the map and no linked prep until the first one finishes. This is a lane rule, not a builder count: a second builder would not change it.
+- **Why it is like this:** the hackathon cut: one builder per colony in W02; Worker Drone T2 (W03) adds deep water and build tier ≤ 2.
 - **To resolve:** when a colony can have several builders, let the lane start one entry per free builder, move the pull into `selectWorkerForDispatch` (or delete it), add pre-emption, and drop the terrain write from `dispatchJob`.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
@@ -689,9 +689,9 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Status:** Open
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/dispatch/eligibility.ts` (`isWorkerEligibleForJob`, `canDoWork`, `colonyHasEligibleWorker`), `shared/sim/src/data/hq.ts` (`hq.t1.maxBuildTier`), `shared/sim/src/data/units-workers-basic.ts` (`harvester.maxBuildTier` 0, `allowedTerraformOps: ['clear', 'break']`), `shared/sim/src/host/view.ts`, `shared/sim/src/systems/harvest/unit.ts`
-- **What happens:** which unit may build, prep a site or terraform is decided by entity kind in code: the HQ builds up to its `tier` column and runs every op; a Harvester never builds or preps and takes only `clear` / `break` / `work`. `hq.t1.maxBuildTier` is read nowhere (reserved in `generation-data.spec.ts`), `harvester.maxBuildTier` is only copied into the client views (`host/view.ts`, `syncHarvesterView`), and `allowedTerraformOps` is read nowhere; it also lacks `work`, which the code allows. A `tune` of these fields changes nothing.
-- **To resolve:** read `maxBuildTier` / `allowedTerraformOps` from the unit's row in `isWorkerEligibleForJob` (add `work` to the Harvester row), or delete the fields.
+- **Area / code:** `shared/sim/src/systems/dispatch/eligibility.ts` (`isWorkerEligibleForJob`, `canDoWork`, `colonyHasEligibleWorker`), `shared/sim/src/data/hq.ts` (`hq.t1.maxBuildTier`), `shared/sim/src/data/units-workers-basic.ts` (`t1` / `t2` / `t3`; `maxBuildTier` and `allowedTerraformOps`), `shared/sim/src/host/view.ts`, `shared/sim/src/systems/harvest/unit.ts`
+- **What happens:** which unit may build, prep a site or terraform is decided by entity kind in code: the HQ builds up to its `tier` column and runs every op; Worker Drone T1 harvests, builds tier ≤ 1 and terraforms except deep water. T2 adds deep water and build tier ≤ 2. T3 builds tier ≤ 3. They are one unit (`worker`), rows `t1` / `t2` / `t3`. `hq.t1.maxBuildTier` is read nowhere (reserved in `generation-data.spec.ts`), `unitsWorkersBasic.t1.maxBuildTier` is only copied into the client views (`host/view.ts`, `syncWorkerView`), and `allowedTerraformOps` is read nowhere; it also lacks `work`, which the code allows. A `tune` of these fields changes nothing.
+- **To resolve:** read `maxBuildTier` / `allowedTerraformOps` from the unit's row in `isWorkerEligibleForJob` (rows `t1` / `t2` / `t3`), or delete the fields.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
 ### GP-60 · A W02 site can stall without a specific status
@@ -710,17 +710,17 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/queue/wait.ts` (income estimate used by `computeResourceWaitState`)
-- **What happens:** when a colony has no production ledger rate, the resource-wait ETA guesses income from literals: `1.0 × richness` per active Extractor and `0.5` per harvesting Harvester (or `0.5` per idle / moving Harvester). The rows say otherwise (Extractor `outputPerS` 4.0 × 0.25 = 1.0, Harvester `harvestRatePerS` 2.0 × 0.25 = 0.5 today) and a `tune` is not seen. Since round 1 the normal path reads `colony.production.incomePerS`, so the fallback runs only for colonies without a production ledger.
+- **What happens:** when a colony has no production ledger rate, the resource-wait ETA guesses income from literals: `1.0 × richness` per active Extractor and `0.5` per harvesting Worker Drone T1 (or `0.5` per idle / moving Worker Drone T1). The rows say otherwise (Extractor `outputPerS` 4.0 × 0.25 = 1.0, Worker Drone T1 `harvestRatePerS` 2.0 × 0.25 = 0.5 today) and a `tune` is not seen. Since round 1 the normal path reads `colony.production.incomePerS`, so the fallback runs only for colonies without a production ledger.
 - **To resolve:** read the rates from the compiled rows, or drop the fallback and show `(no ETA)`.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
-### GP-62 · Two Harvester production paths write `col.unitQueue`
+### GP-62 · Two Worker Drone T1 production paths write `col.unitQueue`
 
 - **Status:** Open
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/queue/index.ts` (`saveQueueEntries`, slot 4 `queue.manager`), `shared/sim/src/systems/queue/step.ts` (`finishUnit`, `buildUnit` entries), `shared/sim/src/systems/factories-hub/index.ts` (`saveAllEntries`, `enqueueHubUnit`, slot 9 `factories.hub`)
-- **What happens:** the Units lane of the W02 queue (`enqueueTask { buildUnit }`) builds Harvesters in `queue/step.ts`, and the older `factories-hub` system has its own queue and production loop. Both write the colony's `col.unitQueue` view (slot 4 and slot 9), so one can overwrite what the other wrote in the same step. `enqueueHubUnit` has no live caller: the Units menu calls it only through an optional session hook that only `units-menu.spec.ts` supplies. Cancel paths still read both (`cancelAllColonyTasks` → `getHubUnitQueue`).
+- **What happens:** the Units lane of the W02 queue (`enqueueTask { buildUnit }`) builds Worker Drones (T1) in `queue/step.ts`, and the older `factories-hub` system has its own queue and production loop. Both write the colony's `col.unitQueue` view (slot 4 and slot 9), so one can overwrite what the other wrote in the same step. `enqueueHubUnit` has no live caller: the Units menu calls it only through an optional session hook that only `units-menu.spec.ts` supplies. Cancel paths still read both (`cancelAllColonyTasks` → `getHubUnitQueue`).
 - **To resolve:** keep one Units-lane implementation (the queue), delete `enqueueHubUnit` and the factories-hub queue, or make factories-hub the queue's producer only. See XC-28.
 - **Found:** 2026-11-03, W02 review round 1 (sim agent)
 
@@ -750,8 +750,8 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Status:** Open
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/economy/ledger.ts` (`creditResource`, `opts.produced`), callers in `systems/dev/index.ts` (`fill`, grants), `systems/terraform-basic/workSystem.ts`, `systems/harvest/index.ts` (`completeHarvesterWorkJob`), `backend/app/src/game/thread/production-batches.ts`
-- **What happens:** `production.produced` grows on every `creditResource` call except refunds (`refundCost` passes `produced: false`). Dev `fill` / grant commands and TERRAFORM / Harvester work-job yields therefore count as produced, and the W02-28 `resourceProduced` batches (Stockpile progression) include them, not only Extractor and Harvester output.
+- **Area / code:** `shared/sim/src/systems/economy/ledger.ts` (`creditResource`, `opts.produced`), callers in `systems/dev/index.ts` (`fill`, grants), `systems/terraform-basic/workSystem.ts`, `systems/harvest/index.ts` (`completeWorkerWorkJob`), `backend/app/src/game/thread/production-batches.ts`
+- **What happens:** `production.produced` grows on every `creditResource` call except refunds (`refundCost` passes `produced: false`). Dev `fill` / grant commands and TERRAFORM / Worker Drone T1 work-job yields therefore count as produced, and the W02-28 `resourceProduced` batches (Stockpile progression) include them, not only Extractor and Worker Drone T1 output.
 - **To resolve:** pass `produced: false` from dev grants (and from terraform yields if Stockpile should count only extraction), or split the counter by source.
 - **Found:** 2026-11-03, W02 review round 1 (backend agent)
 
@@ -778,7 +778,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Area / code:** `shared/sim/src/systems/goals/{executors,growth,breakdown}.ts`; [progression contract](../plan/W08-PROGRESSION-CONTRACT.md)
 - **What happens:** Grow Metals now bypasses unavailable storage placement, creates real production orders and reads the production ledger. An idle unit, capped stock or unpowered extractor no longer counts as output. Secure Power uses actual night output; +10 E/s cannot complete with the current solar-only construction catalog. Water growth is unavailable because the current harvest path cannot produce water. Unsupported goal kinds reject with `wave_disabled` instead of taking a slot and doing nothing. Existing saved unsupported goals explain the missing executor and can be cancelled.
 - **Why it is like this:** W03 owns storage/night generators/resource extractors; W07 and later waves own combat, expansion, tech and rocket actions. W08 does not implement those waves. Goal executor registration is now the availability gate.
-- **Workaround / mitigation:** active goals show action/wait reasons. Spend full storage, supply missing resources, clear a valid site or cancel a blocked goal. Automatic harvesters follow the active resource goal without changing saved weights; manual assignments remain authoritative. Goals no longer create a fallback metals deposit in the live world.
+- **Workaround / mitigation:** active goals show action/wait reasons. Spend full storage, supply missing resources, clear a valid site or cancel a blocked goal. Automatic Worker Drones follow the active resource goal without changing saved weights; manual assignments remain authoritative. Goals no longer create a fallback metals deposit in the live world.
 - **To resolve:** owning waves must implement the acceptance tests and tutorial chain in the progression contract, including storage growth, actual positive night output, Water extraction, finite-resource/reachability handling and budget ceilings (W08-20, still deferred). Current budget values remain metadata, not enforced spending ceilings.
 - **Found:** 2026-11-03, W08 owner fixes. Supersedes GP-66's claim that unfinished goals are intentionally queueable.
 
@@ -800,7 +800,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** data rows `shared/sim/src/data/hub.ts`, `grid.ts`, `economy-t1-basic.ts`, `units-workers-basic.ts`, `hq.ts`
-- **What happens:** Owner feedback #3 ("too much energy"): every consumer costs more (Extractor −8, Quarry −10, Water −9, Well −12, Depot −3, Capacitor −2, Pylon −2.5, Harvester −2/−1, Builder −3; Solar net 13, Wind 12). To keep the W03 start alive through most of a night with the 800 E cell, the Hub founder core rose from +8 to +16 (drain −5 → −7). W03 start: day net about +10, night about −3 (cell lasts ~267 s with working Harvesters, the whole night when they idle); one more Extractor + Quarry browns out in under a minute at night. The W02 night-brownout demo no longer happens with one Extractor (+1 at night).
+- **What happens:** Owner feedback #3 ("too much energy"): every consumer costs more (Extractor −8, Quarry −10, Water −9, Well −12, Depot −3, Capacitor −2, Pylon −2.5, Worker Drone T1 −2/−1, Worker Drone T2 −3; Solar net 13, Wind 12). To keep the W03 start alive through most of a night with the 800 E cell, the Hub founder core rose from +8 to +16 (drain −5 → −7). W03 start: day net about +10, night about −3 (cell lasts ~267 s with working Worker Drones (T1), the whole night when they idle); one more Extractor + Quarry browns out in under a minute at night. The W02 night-brownout demo no longer happens with one Extractor (+1 at night).
 - **Why it is like this:** The alternative, a bigger `hq.t1.cellCapacity`, needs the scenarios' hard-coded `cell` / `cellMax` changed too.
 - **Workaround / mitigation:** All numbers are data rows and `tune`-able.
 - **To resolve:** Owner: keep founder 16, or lower it and raise the cell capacity. Also: the `hqFastRechargeShed` / `cellFastRechargeShedGroup` fields are dead and `docs/game/colony-economy-and-buildings-spec.md` §2.2 ("fast recharge counts as group-3 load") is outdated — remove both.
@@ -824,7 +824,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts`, the dismantle job files next to it, `shared/sim/src/data/work-crew.ts`
-- **What happens:** Owner feedback #6: a Builder Drone (else the HQ) walks to the building and takes it apart in 0.5 × build time, refunding 50 % step by step. Details: the building goes offline at order time (before the worker arrives), so dismantling a pylon splits the network at once; a cancel at ≥ 80 % leaves 1 HP and triggers a critical auto-repair; a dismantle takes a construction-lane slot from order time (with only the HQ, a queued build waits on `worker`); units are still recycled instantly (50 %) and the pod wreck is scrapped; the `demolish` command is still instant (unused by the client, a second path); multi-tile dismantles can't be cancelled by command id (job ids lack `chainRootId`; the client sends single tiles); no `buildingDismantled` event contract exists.
+- **What happens:** Owner feedback #6: a Worker Drone T2 (else the HQ) walks to the building and takes it apart in 0.5 × build time, refunding 50 % step by step. Details: the building goes offline at order time (before the worker arrives), so dismantling a pylon splits the network at once; a cancel at ≥ 80 % leaves 1 HP and triggers a critical auto-repair; a dismantle takes a construction-lane slot from order time (with only the HQ, a queued build waits on `worker`); units are still recycled instantly (50 %) and the pod wreck is scrapped; the `demolish` command is still instant (unused by the client, a second path); multi-tile dismantles can't be cancelled by command id (job ids lack `chainRootId`; the client sends single tiles); no `buildingDismantled` event contract exists.
 - **Why it is like this:** Dismantle reuses the repair work-job machinery (`blobs.workJobs`), not a second worker path.
 - **Workaround / mitigation:** Cancel via CANCEL JOB on the building or the queue chip.
 - **To resolve:** Route `demolish` through the job or remove it; add a `buildingDismantled` event if a client needs it.
@@ -836,9 +836,9 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `workCrew.crew` (`helperEfficiency` 0.6, `maxCrew` 4, `autoHelpRadius` 12), `workCrew.repair.costRate` 0.4
-- **What happens:** Owner feedback #9: the k-th worker on a job adds `0.6^k` of its rate (1/2/3 Builders on a Solar site: 93 → 60 → 50 ticks, same 60 metals), payment and refunds follow progress so a crew costs what one worker costs. Repair costs 0.4 × cost × missing HP share and waits on `resources` at zero stock. Any idle Builder within 12 hexes joins an open repair or dismantle — including one the player parked — and can't take builds until that job ends; the HQ and Harvesters never auto-help.
+- **What happens:** Owner feedback #9: the k-th worker on a job adds `0.6^k` of its rate (1/2/3 Worker Drones on a Solar site: 93 → 60 → 50 ticks, same 60 metals), payment and refunds follow progress so a crew costs what one worker costs. Repair costs 0.4 × cost × missing HP share and waits on `resources` at zero stock. Any idle Worker Drone T2 within 12 hexes joins an open repair or dismantle — including one the player parked — and can't take builds until that job ends; the HQ and Worker Drones (T1) never auto-help.
 - **Why it is like this:** Diminishing returns stop a swarm from making work instant.
-- **Workaround / mitigation:** Give the Builder another order to pull it off.
+- **Workaround / mitigation:** Give that Worker Drone another order to pull it off.
 - **To resolve:** Owner: confirm that auto-help may grab parked Builders.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
 
@@ -937,8 +937,191 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/geo.ts` (`geoBuildBlock`), `shared/sim/src/systems/construction/{prep,placement}.ts`, `shared/sim/src/systems/economy/siteTerrain.ts`, `shared/sim/src/systems/terraform-basic/ops.ts` (`SITE_PREP_TERRAFORM_OPS`, `opForTerrain`)
-- **What happens:** W05-09 re-opens D-37 per terrain class when W05 data (`opsBasic.level`) is active: `TERRAIN.forest` (`clear` + `grade`), `TERRAIN.rock` (`break` + `grade`), `TERRAIN.slope` (`level` + `grade`), `TERRAIN.hole` (`fill` + `grade`), and `TERRAIN.shallow` (`reclaim` + `grade`) become linked-prep-able in `geoBuildBlock` and `planPrepJobs` under one shared rule (`evaluatePlacement` + `planPrepJobs`). `TERRAIN.deep` (`deepReclaim` + `grade`) is linked-prep-able only when the colony has an alive T2+ worker (`hq`, `builder`, or `terraformer`); otherwise it remains blocked (`water`). `PREP.ridge` and `PREP.moat` remain `terrain_unbuildable` (`ridge`). When `TA_WAVES=..01..04` (or `data` is omitted in W01 unit specs), `linkedPrep` is `false` so W01–W04 `terrain_unbuildable` placement checks remain unchanged.
+- **What happens:** W05-09 re-opens D-37 per terrain class when W05 data (`opsBasic.level`) is active: `TERRAIN.forest` (`clear` + `grade`), `TERRAIN.rock` (`break` + `grade`), `TERRAIN.slope` (`level` + `grade`), `TERRAIN.hole` (`fill` + `grade`), and `TERRAIN.shallow` (`reclaim` + `grade`) become linked-prep-able in `geoBuildBlock` and `planPrepJobs` under one shared rule (`evaluatePlacement` + `planPrepJobs`). `TERRAIN.deep` (`deepReclaim` + `grade`) is linked-prep-able only when the colony has an alive Worker Drone tier ≥ 2, or the HQ; otherwise it remains blocked (`water`). `PREP.ridge` and `PREP.moat` remain `terrain_unbuildable` (`ridge`). When `TA_WAVES=..01..04` (or `data` is omitted in W01 unit specs), `linkedPrep` is `false` so W01–W04 `terrain_unbuildable` placement checks remain unchanged.
 - **Why it is like this:** Keeps one shared `evaluatePlacement` + `planPrepJobs` rule across server, local host, and client construction ghost while preserving W01–W04 wave compatibility (`--waves ..04`).
 - **Workaround / mitigation:** None needed; `cancelTask` on either the build or its linked prep cancels both and refunds `50 %` of spent resources.
 - **To resolve:** —
 - **Found:** 2026-11-04, W05-09 implementation.
+
+### GP-83 · A TERRAFORM click keeps reclaiming every reachable water tile, not only the pond
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/terraform-basic/chain.ts` (`isChainObstacle`), `groundWorkRule.ts` (`evaluateGroundWorkTile`)
+- **What happens:** shallow water (and deep water, once the colony has a worker of `deepReclaim`'s tier) is a chain obstacle, the same way forest is. One `work` order walks outward from the clicked hex and reclaims every such tile the colony may terraform, not only the connected pond. A locked deep tile is skipped; it does not cancel the shallow tiles of the same stroke.
+- **Why it is like this:** the owner asked for the forest rule (retry an interior tile after the next finished hex, work from a passable neighbour, reach unchanged). A pond-only flood fill would be a second chain.
+- **Workaround / mitigation:** `moveUnit`, `stopUnit` or another TERRAFORM order for that worker ends the chain. Before a T2 worker exists, deep water is `worker_tier_locked` and is left in place.
+- **To resolve:** if one click should stop at the shore of the clicked pond, limit the chain to that connected component.
+- **Found:** 2026-11-06, lake terraform fix
+
+### GP-82 · Worker drone tiers share lanes; the op list on the row is still not read
+
+- **Status:** Resolved (worker unit id, this change)
+- **Area / code:** `shared/sim/src/data/units-workers-basic.ts` (rows `t1` / `t2` / `t3`), `shared/sim/src/systems/dispatch/eligibility.ts`
+- **What happens:** There is one produced unit, `worker` (`ENTITY_KIND.worker`). T1, T2 and T3 are rows of `unitsWorkersBasic`, not kinds `harvester`, `builder` and `terraformer`. The command is `buildUnit { unit: 'worker', tier: 1|2|3 }`. T1 harvests, builds tier ≤ 1 and terraforms except deep water (mesh `robot.miner`). T2 adds deep water and build tier ≤ 2 (mesh `robot.builder`). T3 builds tier ≤ 3 (mesh `robot.builder`). The `grid.builder` and `terraform.terraformer` unit rows are removed. `allowedTerraformOps` / `maxBuildTier` still not being read at runtime stays GP-59.
+- **Why it is like this:** The three ids and the duplicate tables were the same drone. Keeping them made the menu and the spawner disagree.
+- **Workaround / mitigation:** None. Edit `unitsWorkersBasic` only.
+- **To resolve:** Done for the ids and the duplicate rows.
+- **Found:** 2026-11-06, worker-drone production change. Resolved in this change.
+
+### GP-84 · Some building rows are outside the stage table the build menu now reads
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/data/terraform.ts` (`territoryBeacon`, `hydro`, `hazardShield`, `lightningRod`), `shared/sim/src/data/trade-hub.ts` (`t1.unlockStage`), `shared/sim/src/data/grid.ts` (`mineralsQuarry`), `shared/sim/src/systems/progression/validate.ts` (`resolveItemUnlockStage`), `frontend/game/features/construction-menu/catalog.ts`
+- **What happens:** The build menu locks a card with `resolveItemUnlockStage`, the same value `placeBuilding` checks. Catalog buildings therefore cannot show as placeable and then return `stage_locked`. Four W05 rows still carry their own `unlockStage` (Territory Beacon 4, Hydro 2, Hazard Shield 4, Lightning Rod 2) but are not in `STAGE_TABLE_ROWS` and not in the build catalog, so `resolveItemUnlockStage` returns 0 and placement does not stage-lock them. Trade Hub T1's row stays at 2 because W10 tests assert that number; the stage table lists `tradeHub` at S4, and with W10 on both the menu and `checkItemUnlockStage` use `evaluateTradeHubUnlock` instead. Minerals Quarry stays off the menu and off the S2 toast (GP-77: it shares the Resource Extractor card).
+- **Why it is like this:** Adding the W05 rows to the stage table would name them on the stage toast while the player still cannot place them. Changing the Trade Hub row would fail the W10 data tests. The quarry card was an owner decision, not a stage.
+- **Workaround / mitigation:** Those four buildings are not build-menu cards, so the Power Pylon failure mode (card enabled, placement rejected) does not apply. Worker drone tiers stay on GP-82: the units menu still reads the row, because every tier shares the item id `worker`.
+- **To resolve:** When a catalog can place Territory Beacon, Hydro, Hazard Shield or Lightning Rod, add that id to the stage that matches its row. Leave Trade Hub T1's row number to W10.
+- **Found:** 2026-11-06, build-menu stage audit.
+
+### GP-85 · DISMANTLE is offered before the stage table unlocks it
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/terraform-basic/TerraformMenu.ts` (`PRIMARY_OP_DEFS`), `shared/sim/src/data/stages.ts` (S2 orders include `dismantle`), `shared/sim/src/systems/progression/validate.ts`
+- **What happens:** The Terraform dock shows DISMANTLE whenever W02 is on. It does not read the stage table. `enqueueTask` for `dismantle` is `stage_locked` until S2, the same reject the Power Pylon card used to hide.
+- **Why it is like this:** This change wired the build catalog to `resolveItemUnlockStage`. The terraform dock is still wave-gated only. Level, fill, reclaim, irrigate and seed are not separate buttons; they run inside the TERRAFORM chain.
+- **Workaround / mitigation:** The host rejects the order. The button stays clickable.
+- **To resolve:** Grey DISMANTLE until `resolveItemUnlockStage('dismantle')` (S2), the same way build cards grey.
+- **Found:** 2026-11-06, build-menu stage audit.
+
+### GP-86 · A dune `work` job clears a fixed 5-wide disc, then the chain continues
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/systems/terraform-basic/duneFootprint.ts`, `groundWorkRule.ts` (`evaluateGroundWorkTile`), `workSystem.ts` (`completeGroundWork`), `frontend/game/features/terraform-basic/TargetHighlight3D.ts`
+- **What happens:** Desert sand is `slope` on a height field, so one flattened hex does not remove a mound. A TERRAFORM `work` job on slope now takes five times the slope row (400 ticks, 20 s, 60 E; the time-table row itself stays 80 ticks / 12 E) and, on completion, sets every slope hex within hex distance 2 to flat, prepared, and one height: the lowest flat tile on the ring just outside the disc, or 0 when that ring is still dune. Rock, forest, water, holes, deposits and tiles under a building are left. The Level order is still one tile. The chain then walks outward, so one click keeps clearing the dune sea one disc at a time. The selection hex is dark blue, transparent, and depth-tested, so a unit or a dune crest in front of it covers it. Water usually writes no depth, so a lakebed hex can still show through the surface.
+- **Why it is like this:** The owner asked for a slower job that removes a 5×5 of dune, with the client and the host sharing one rule. The 5× multiplier, the build-plane fallback, and leaving rock caps on the break path are defaults. Stopping the chain at the first disc would be a second chain rule (GP-83).
+- **Workaround / mitigation:** `moveUnit`, `stopUnit` or another order for that worker ends the chain after the current disc. A rock cap inside the disc is a separate break.
+- **To resolve:** Confirm the 5× time, whether a rock cap inside the disc should fall with the sand, and whether one click should stop after that disc instead of walking the erg.
+- **Found:** 2026-11-06, dune terraform fix.
+
+### GP-87 · Hex-tile deposit rule: checked when a deposit appears, not afterwards; scenario and dev exceptions
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/grid/subsurface.ts` (`revealSubsurface`, `revealAroundChanged`), `systems/terraform-basic/{work,workSystem,duneFootprint,resourceSpawn}.ts`, `systems/dev/spawnDeposit.ts`, `systems/goals/sites.ts`, `tests/scenarios/w05-shape-the-land.ts`
+- **What happens:** D-44 is enforced when a deposit appears (generation, reveal, terraform find). Nothing re-buries a visible deposit whose neighbour later becomes wild (ridge/moat op, building linked prep, runtime `clearPodBlastZone` / `ensureStarterHubSpace`), and those paths do not trigger a reveal on tiles they make hex; the buried deposit appears at the next terraform next to it. Defaults picked: buried oil under natural Flat also appears when a neighbour is terraformed, and the W01 prep ops reveal too. Exceptions: the `w05` scenario hand-places its 2×2 minerals quarry deposit on slope + crater at `(4, 0)` (W05 check step 3, linked prep on a deposit site), `dev.spawndeposit` and `ensureStarterMetalsDeposit` (test grids) write deposits anywhere. The renderer still levels the ground under a deposit on a slope (`computeEffectiveHeights` `hasDeposit`), so those keep their small shelf.
+- **Why it is like this:** One rule at the points where a deposit becomes visible; the exceptions are fixtures and cheats the W05 check guide and e2e rely on.
+- **Workaround / mitigation:** —
+- **To resolve:** Owner: should the `w05` quarry site move to open ground (step 3 then demos linked prep on a non-deposit building)? Then drop the renderer's `hasDeposit` levelling and make `dev.spawndeposit` reject wild tiles.
+- **Found:** 2026-11-06, hex-tile rule (D-44), lead + parallel agents
+
+### GP-88 · Wild ground is worked from the walkable edge inward (E1–E3): open edges
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/terraform-basic/chain.ts` (`chainStandRule`, `pickNextChainTile`), `workSystem.ts` (`approachJob`), `unreachable.ts` (`reportNoPath`), `workJobs.ts` (`workReach`), `work.ts` (`reachOf`)
+- **What happens:** A clicked dune / tree with no tile the worker may stand on within its reach no longer ends the order with `no_path` (the W02 rule, `chain.ts` old `seq === 0` line): the chain works the nearest obstacle that has a stand and moves inward (E1–E3 in `chain.ts`). This also applies to forests (a tree deep inside a forest is now cleared from the forest edge). Open edges: (a) if the clicked tile never gets a stand (island beyond deep water) but the chain finds other work, the HQ clears the nearest workable tile and the player gets no `no_path`; (b) the stand check is local (a non-blocked tile within reach), not a path test: walled-in pockets are still caught by the skip-on-path-fail, one failed search each; (c) HQ reach is defined twice: `workReach` (hard-coded 2, `workJobs.ts`) and `terraformReachTiles` (data, `mobility.ts`); E1 uses `workReach` because the goal band does; (d) the W01 `terraformTasks` path (`work.ts`, `reachOf`) has no E1–E3: linked prep or auto-terraform on wild dunes would hit the old wall.
+- **Why it is like this:** Owner 2026-11-06: a hill beyond the one non-hex row next to the grid was "impossible to terraform" (the HQ's `ground` profile cannot stand on slope or uneven Flat, its goal band is 1–2 hexes from the clicked disc centre).
+- **Workaround / mitigation:** —
+- **To resolve:** Decide (a) (report `no_path` for the clicked tile while the chain goes on?); read reach from data once; give the W01 path the same chain.
+- **Found:** 2026-11-06, W05 owner pass (terraform agent)
+
+### GP-89 · R4 plane joining: seams where two natural planes meet; old pads keep their steps
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/grid/hexTile.ts` (`joinPlaneHeight`), `systems/terraform-basic/duneFootprint.ts` (`dunePadHeight`, `flattenDuneFootprint`), `work.ts` (`levelToAdjacentFlat`)
+- **What happens:** A dune disc takes the plane of the nearest hex tiles (≤ 12 rings), else the open ground beside it, else 0, and levels all open ground inside it. Flattening outward from the landing pad leaves no gap in the grid; flattening in a random order leaves ~2–7 % of worked open ground off the grid, where two natural level areas 0.06–0.3 m apart meet (a real step under R2). Ground flattened before this change keeps its old steps (no migration).
+- **Why it is like this:** One plane rule; merging two existing planes would move ground the player did not work.
+- **Workaround / mitigation:** Work dunes outward from the grid; a new disc over a seam re-levels the open ground inside it.
+- **To resolve:** Owner: should a disc that touches two planes pull the smaller one onto the larger (beyond the disc)?
+- **Found:** 2026-11-06, W05 owner pass (lead)
+
+### GP-90 · Irrigate and Seed have no player path since the one TERRAFORM button
+
+- **Status:** Question for the owner
+- **Area / code:** `frontend/game/features/terraform-basic/planner.ts` (TERRAFORM sends `work` + `intent: 'terraform'`), `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`finishedLevelFlat`), `chain.ts` (`isChainObstacle`), `workSystem.ts` (`completeGroundWork`)
+- **What happens:** The TERRAFORM button sends one `work` order; on Prepared, Irrigated or Living ground the host answers `already_terraformed`. The work chain stops at level Flat + Prepared and `WorkJobRecord` has no growth-ladder op, so Irrigate and Seed (W05-07) run only through a raw `enqueueTask { terraform: { op: 'irrigate' | 'seed' } }`. `tests/e2e/w05.spec.ts` step 5 sends those commands directly. Living land, Terraform % growth and the D-34 tier gate cannot be reached by a player in the UI.
+- **Why it is like this:** The uncommitted owner pass removed the client growth ladder ("the button does not climb into Irrigate or Seed"); docs elsewhere still say Irrigate/Seed run inside the TERRAFORM chain.
+- **Workaround / mitigation:** Dev console / scenarios (`w05-tiers`) seed Living ground.
+- **To resolve:** Owner: (a) restore the ladder on the button (host-side: a growth job mode after Prepared, priced from the `irrigate`/`seed` rows), or (b) add a separate GROW button that sends the explicit ops. Recommendation: (b), because a mis-click on Prepared ground no longer costs water.
+- **Found:** 2026-11-07, W05 full review (lead + audit agent)
+
+### GP-91 · TERRAFORM dock work is priced from a second time table
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`timedGroundWork`), `TERRAFORM_TIME_TABLE`, op rows in `shared/sim/src/data/ops-basic.ts`
+- **What happens:** Dock work on slope / hole / forest / rock uses `TERRAFORM_TIME_TABLE` (slope 4 s, 12 E, no resource cost; a dune disc ×5); water uses its `reclaim` / `deepReclaim` rows. The W05-03/04 acceptance numbers (Level 8 s / 60 E / 2 Min, Fill 10 s / 100 E / 10 M + 5 Min) hold only for an explicit `op: 'level' | 'fill'` order and for linked prep.
+- **Why it is like this:** The dock was built on W02's time table before the W05 rows existed.
+- **To resolve:** Owner: price dock slope/hole/forest/rock from the `level`/`fill`/`clear`/`break` rows (one source), or keep the cheaper dock and amend W05-03/04.
+- **Found:** 2026-11-07, W05 full review (terraform agent)
+
+### GP-92 · deepReclaim data row does not match W05-06
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/data/ops-basic.ts` (`deepReclaim`), `shared/sim/test/data/w05-data.spec.ts:70`
+- **What happens:** The row says 20 s / 350 E / 35 M + 20 Min and Deep → **Flat**; the wave task and `UO-TF` say 28 s / 400 E / 40 M + 20 Min and Deep → **Shallow**. It came in with the W05-01 data commit (317de2f) with no rationale.
+- **Why it is like this:** Not recorded. Deep → Flat lets the one TERRAFORM click finish a deep hex in one job.
+- **To resolve:** Owner picks. Deep → Shallow works as is for linked prep (`planPrepJobs` follows `toTerrain`), but the dock needs a terrain-aware `completeGroundWork` and a `chainGiveUp` exception in `continueWorkChain`.
+- **Found:** 2026-11-07, W05 full review (terraform agent)
+
+### GP-93 · The dock refuses level ground left at prep `flat`
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`finishedLevelFlat`)
+- **What happens:** `finishedLevelFlat` counts `PREP.flat` as finished, so level ground that an explicit Clear/Break left at prep `flat` (not Prepared) gets `already_terraformed` from the dock and is never graded by it; the same tile at prep `wild` is graded.
+- **Why it is like this:** Deliberate in the owner's specs (`w05-terraform-menu.spec.ts` "level flat (flat, prepared, irrigated, living) queues nothing", `terraform-parity.spec.ts`), but linked site prep counts the same tile as needing `Grade`, and the check guide says "plain ground → grade". The `w05` scenario's quarry hex `(5, 1)` is prep `flat`: the prep bill grades it, the dock says `Already terraformed`. `tests/e2e/w05.spec.ts` @hack 14 now works the crater `(4, 1)` instead.
+- **To resolve:** Owner: one rule for "done" ground. Recommendation: treat prep `flat` like `wild` in `evaluateGroundWorkTile` (grade it) and update the two specs.
+- **Found:** 2026-11-07, W05 full review (terraform agent; lead e2e)
+
+### GP-94 · Living move bonus is read from two data rows
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/grid/tileModel.ts` (`lookupLivingMoveBp`)
+- **What happens:** The +10 % Living move bonus reads both `terrain.temperate.livingMoveMult` and `terraformConfig.livingMoveSpeedBonus`; tuning one row may not change the speed.
+- **To resolve:** Keep one row (recommend `terraformConfig.livingMoveSpeedBonus`) and derive the other.
+- **Found:** 2026-11-07, W05 full review (terraform agent)
+
+### GP-95 · Saved planets from before the Worker unification are not migrated
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/codec/`, `kernel/constants` (`SIM_VERSION`), `ENTITY_KIND`, colony `workers`, path profile `worker`
+- **What happens:** Entity kinds 50/51 (Builder, Terraformer) were removed, `col.harvesters`/`builders` became `col.workers`, path profile `harvester` became `worker` and `buildUnit.unit` is `worker` + `tier`. `SIM_VERSION` was not bumped and no migration exists: a saved planet from before restores with orphan kind-50/51 rows and stale lists.
+- **Why it is like this:** Dev planets are recreated anyway (`GEN_VERSION` 10), and no production saves exist yet.
+- **To resolve:** Before any real save matters: `SIM_VERSION = 3` with a 2→3 migration (kind 50 → worker tier 2, 51 → worker tier 3, `harvesters` → `workers`, path profile and queued `buildUnit` renames).
+- **Found:** 2026-11-07, W05 full review (sim-units agent)
+
+### GP-96 · Bio tiers (W05-35) are not built
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/production/tierGate.ts`, `systems/harvest/`
+- **What happens:** A Worker Drone on Living ground in a colony with T3 open credits no `bio.t3` (gene-stock). Not in the H slice.
+- **To resolve:** W05-35 after the hackathon.
+- **Found:** 2026-11-07, W05 full review (sim-units agent)
+
+### GP-97 · The colony AI switch is wave-gated to W08
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/contracts` (`setAiEnabled`, `wave: 'W08'`), `shared/sim/src/systems/goals/ai.ts`
+- **What happens:** `setAiEnabled` (contract, handler) is `wave: 'W08'`, like the goals system and the client HQ goals panel that holds the toggle, so it is consistent: the toggle shows and works only with W08 on (the default dev stack), not in `?scenario=w05` (`..05`, where the W08 colony AI does not run anyway). It shipped in this W05 branch (commit d8c5fe1).
+- **To resolve:** Owner: confirm W08 is intended (recommended), or move the flag to W05.
+- **Found:** 2026-11-07, W05 full review (sim-units agent)
+
+### GP-98 · The TERRAFORM chain works on into neighbouring deep water
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/systems/terraform-basic/workSystem.ts` (`continueWorkChain`), `chain.ts`
+- **What happens:** After the 6 shallow lake hexes of `?scenario=w05` are reclaimed, the chain continues into the adjacent deep hex `(-4, 2)` once a T2+ worker exists, spending the `deepReclaim` cost the player never clicked. Now that dock completions update Terraform % (this review), the reclaimed deep hex joins the denominator (`412 → 413`); `tests/e2e/w05.spec.ts` step 5 accepts either value.
+- **To resolve:** Owner: should the chain stop at deep water (only a direct click reclaims it), like it stops at Prepared ground?
+- **Found:** 2026-11-07, W05 full review (lead, e2e)
+
+### GP-99 · An idle Worker Drone leaves a player move destination at once to harvest
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/systems/harvest/index.ts` (`standingHarvestAssignSystem`: `st === idle && !cur.playerAssigned` → retarget), `systems/units/handlers.ts` (`moveUnit`)
+- **What happens:** After the Worker unification every Worker Drone (T1–T3) auto-harvests when idle, the old Harvester rule. A worker the player moves to an empty tile arrives and, the next tick, walks off to the nearest deposit; before, Builder/Terraformer drones stayed where they were sent. `tests/e2e/w05.spec.ts` step 5 now watches every view for the arrival instead of polling the position.
+- **To resolve:** Owner: should a player `move` hold the worker at its destination (e.g. set the unit's `holdUntil`, or a "parked" flag cleared by the next order)? Recommendation: hold until the next order, like an RTS.
+- **Found:** 2026-11-07, W05 full review (lead, e2e)
+
+### GP-100 · Irrigate and Seed uncover buried deposits on the meadow
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/systems/terraform-basic/work.ts` (`emitRevealed` → `revealAroundChanged`, `grid/subsurface.ts`)
+- **What happens:** Every completed terraform op, including Irrigate and Seed, reveals buried deposits on the tile and its neighbours (D-44). In `?scenario=w05` seeding the 10 meadow hexes turns 7 of them into metals deposits (`(0..2, 3)`, `(-1..2, 4)`), so workers can no longer be moved onto them (`site_blocked`) and the Living land is lost to deposits. `tests/e2e/w05.spec.ts` step 5 now picks a Living hex without a deposit.
+- **To resolve:** Owner: should growth ops (Irrigate/Seed) reveal? Recommendation: reveal only on ops that change terrain or level (clear/break/level/fill/reclaim/grade).
+- **Found:** 2026-11-07, W05 full review (lead, e2e)
+
+### GP-101 · Wave 5 weather hazards are triggered exclusively via console commands and F8 Weather Lab (no background scheduler)
+
+- **Status:** Deliberate trade-off (owner request 2026-11-07)
+- **Area / code:** `shared/sim/src/systems/weather/`, `frontend/game/features/weather/`, `frontend/render/weather/`, `frontend/render/ui/visualLabWeatherWidget.ts`
+- **What happens:** Per owner direction, Wave 5 weather effects (`meteor`, `twister`, `lightning`, `storm`, `rain`) run without a background random scheduler or hazard orchestrator. They are triggered on demand via dev console commands (`meteor [q r]`, `twister [q r] [dirDeg]`, `lightning [q r] [+ rain]`, `storm [on|off]`, `rain [none|minor|heavy|0..1]`) or via the `F8` Visual Shader Lab → `WEATHER` tab. `weatherSystem` (`slot: 5`, `wave: 'W05'`) only steps active console-spawned twisters and expires lightning electrical overload timers (`overloadUntilByEntity`).
+- **Why it is like this:** Simplified by explicit owner request so weather hazards are deterministic, inspectable on demand, and never interrupt gameplay unprompted.
+- **Found:** 2026-11-07, W05 weather implementation
+

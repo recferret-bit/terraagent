@@ -9,6 +9,8 @@ import {
   indexOf,
   insertRow,
   placeSpawnedEntity,
+  rowOf,
+  spawnWorkerUnit,
   PREP,
   revealVision,
   setTilePrep,
@@ -59,6 +61,15 @@ function seedW04TerrainAndBiomeSamples(state: PlanetState): void {
       setTilePrep(state, idx, PREP.wild, 0);
     }
   }
+}
+
+function tuneWorker(state: PlanetState, id: number): void {
+  const row = rowOf(state.entities, id);
+  state.entities.cols.hp[row] = 400;
+  state.entities.cols.hpMax[row] = 400;
+  state.entities.cols.cell[row] = 200;
+  state.entities.cols.cellMax[row] = 200;
+  state.entities.cols.workRate[row] = 1.0;
 }
 
 function spawnW04Unit(
@@ -136,9 +147,9 @@ export default defineScenario({
     });
 
     spawnW04Unit(state, 0, ENTITY_KIND.hq, 2, -1);
-    spawnW04Unit(state, 0, ENTITY_KIND.harvester, -2, 1);
+    tuneWorker(state, spawnWorkerUnit(state, { owner: 0, q: -2, r: 1, tier: 1 }));
     spawnW04Unit(state, 1, ENTITY_KIND.hq, 6, 1);
-    spawnW04Unit(state, 1, ENTITY_KIND.harvester, 6, -1);
+    tuneWorker(state, spawnWorkerUnit(state, { owner: 1, q: 6, r: -1, tier: 1 }));
 
     revealVision(state, 0, 0, 0, 10, 0);
     revealVision(state, 0, 7, 0, 4, 0);

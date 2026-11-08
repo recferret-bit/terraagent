@@ -4,7 +4,6 @@ import {
   getColonyQueue,
   reorderQueueTask,
   sameKindTaskIds,
-  terraformOrdersOf,
   type EnqueueQueueTaskOptions,
   type PlanetState,
   type QueueEntry,
@@ -13,10 +12,14 @@ import {
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { ownColonyIndex } from '../shared/colony';
 import {
+  LANE_TABS,
   STORAGE_HINT_BUTTON_TEXT,
   STORAGE_HINT_TEXT,
+  chipKind,
+  extractQueueEntriesFromView,
   formatChipStatus,
   hasFlag,
+  reorderEntryInLane,
   resolveChipTitleAndIcon,
   serializeLaneKey,
   serializeStructureKey,
@@ -26,18 +29,6 @@ import {
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 export { STORAGE_HINT_BUTTON_TEXT, STORAGE_HINT_TEXT };
-
-/** The kind a same-kind cancel groups by (all terraform work is one kind; builds group by building, units by unit). */
-const chipKind = (e: QueueEntry): string =>
-  e.task.kind === 'build' ? `build:${e.task.building}` : e.task.kind === 'buildUnit' ? `buildUnit:${e.task.unit}` : e.task.kind;
-
-const LANE_TABS: ReadonlyArray<{ id: QueueLane | 'all'; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'construction', label: 'Construction' },
-  { id: 'terraform', label: 'Terraform' },
-  { id: 'units', label: 'Units' },
-  { id: 'hqGoals', label: 'HQ Goals' },
-];
 
 export class QueuePanel {
   readonly root: HTMLElement;
@@ -263,25 +254,8 @@ export class QueuePanel {
     if (this.simState) {
       reorderQueueTask(this.simState, taskId, { toIndex, colonyIndex: this.colonyIndex });
       this.syncFromSimState();
-    } else {
-      const idx = this.entries.findIndex((e) => e.taskId === taskId);
-      if (idx >= 0) {
-        const target = this.entries[idx];
-        const laneIndices = this.entries
-          .map((e, i) => (e.lane === target.lane ? i : -1))
-          .filter((i) => i >= 0);
-        const pos = laneIndices.indexOf(idx);
-        const clamped = Math.max(0, Math.min(laneIndices.length - 1, toIndex));
-        if (pos >= 0 && clamped !== pos) {
-          const laneItems = laneIndices.map((i) => this.entries[i]);
-          const [moved] = laneItems.splice(pos, 1);
-          laneItems.splice(clamped, 0, moved);
-          for (let k = 0; k < laneIndices.length; k++) {
-            this.entries[laneIndices[k]] = laneItems[k];
-          }
-          this.render();
-        }
-      }
+    } else if (reorderEntryInLane(this.entries, taskId, toIndex)) {
+      this.render();
     }
     this.ctx.services.sendCommand?.('reorderTask', { taskId, toIndex });
   }
@@ -292,36 +266,7 @@ export class QueuePanel {
       return;
     }
     this.colonyIndex = ownColonyIndex(this.ctx.services); // the player's seat (FF-05), not colony 0
-    const colonies = view.colonies as Array<{ index?: number; queue?: QueueEntry[]; constructionQueue?: QueueEntry[]; unitQueue?: QueueEntry[] }> | undefined;
-    const col = colonies?.find((c) => c.index === this.colonyIndex) ?? colonies?.[this.colonyIndex] ?? {};
-    const blobEntries = (view.blobs?.queue as { value?: { entries?: QueueEntry[] }; entries?: QueueEntry[] } | undefined);
-    const fromBlob = blobEntries?.value?.entries ?? blobEntries?.entries;
-    if (Array.isArray(col.queue)) {
-      this.entries = [...col.queue];
-    } else if (Array.isArray(fromBlob)) {
-      this.entries = fromBlob.filter((e) => (e.colonyIndex ?? 0) === this.colonyIndex);
-    } else if (Array.isArray(col.constructionQueue) || Array.isArray(col.unitQueue)) {
-      this.entries = [...(col.constructionQueue ?? []), ...(col.unitQueue ?? [])];
-    }
-    const tfBlob = (view.blobs?.terraformTasks as { value?: unknown } | undefined)?.value ?? view.blobs?.terraformTasks;
-    const tfOrders = terraformOrdersOf(tfBlob, this.colonyIndex);
-    if (tfOrders.length > 0) {
-      for (const o of tfOrders) {
-        const waitReason = o.waitReason ?? o.jobs[0]?.waitReason;
-        const isWaiting = o.status === 'waiting' || o.jobs[0]?.status === 'waiting' || Boolean(waitReason);
-        const total = Math.max(o.jobs.length, o.totalJobs ?? o.jobs.length);
-        const done = o.completedJobs ?? Math.max(0, total - o.jobs.length);
-        const progress = total > 0 ? Math.min(1, (done + Number(o.jobs[0]?.progress ?? 0)) / total) : 0;
-        const patch = { state: (isWaiting ? 'waiting' : 'in_progress') as QueueEntry['state'], waitReason, waitDetail: waitReason ? `waiting(${waitReason})` : undefined, progress };
-        const idx = this.entries.findIndex((e) => e.taskId === o.orderId || e.taskId === o.taskId);
-        if (idx >= 0) { this.entries[idx] = { ...this.entries[idx]!, ...patch }; continue; }
-        this.entries.push({
-          taskId: o.orderId, colonyIndex: this.colonyIndex, lane: 'terraform', precedence: o.isLinkedPrep ? 'system' : 'player',
-          ...patch, task: { kind: 'terraform', op: o.op, q: o.jobs[0]?.q ?? 0, r: o.jobs[0]?.r ?? 0 },
-          cost: {}, paid: true, buildTicks: Math.max(1, total * 50), elapsedTicks: Math.round(progress * total * 50), workRate: 1, createdAt: 0,
-        });
-      }
-    }
+    this.entries = extractQueueEntriesFromView(view, this.colonyIndex);
     this.render();
   }
 

@@ -122,6 +122,23 @@ export function ensureColonyLedger(
   return colony as ColonyWithLedger;
 }
 
+/** Ensures `state.colonies[colonyIndex]` exists and has a valid ledger at `tick`. */
+export function ensureColonyAt(state: PlanetState, colonyIndex: number, tick: number): ColonyWithLedger {
+  let col = state.colonies[colonyIndex];
+  if (!col) {
+    col = {
+      index: colonyIndex,
+      id: `col-${colonyIndex}`,
+      name: `Colony ${colonyIndex + 1}`,
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: tick,
+    };
+    state.colonies[colonyIndex] = col;
+  }
+  return ensureColonyLedger(col);
+}
+
 /** Recomputes the 3 family storage caps (`500` from Hub + `1000` per active Supply Depot). */
 export function recomputeFamilyCaps(
   colony: ColonyState,

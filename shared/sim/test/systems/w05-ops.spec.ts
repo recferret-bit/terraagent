@@ -19,7 +19,7 @@ import {
   setTilePrep,
   setTileTerrain,
   spawnHqUnit,
-  spawnTerraformerUnit,
+  spawnWorkerUnit,
   startBuildingConstruction,
   step,
   TERRAIN,
@@ -68,8 +68,8 @@ describe('W05-03 · Level op (Slope -> Flat, 8 s, 60 E, 2 Min)', () => {
     setTileTerrain(state.grid, tIdx, TERRAIN.slope, 0);
     setTileHeight(state.grid, tIdx, 1.8, 0);
 
-    // Spawn a Terraformer Drone (1.0x work rate) adjacent to the slope tile so it works immediately
-    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    // Spawn a Worker Drone (1.0x work rate) adjacent to the slope tile so it works immediately
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 2, r: 0 });
     const startMin = colony.stock['minerals.t1'];
 
     const enqRes = step(
@@ -173,7 +173,7 @@ describe('W05-04 · Fill op (Hole -> Flat, 10 s, 100 E, 10 M + 5 Min)', () => {
     setTileTerrain(state.grid, tIdx, TERRAIN.hole, 0);
     setTileHeight(state.grid, tIdx, -1.4, 0);
 
-    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 2, r: 0 });
     const startMetals = colony.stock['metals.t1'];
     const startMinerals = colony.stock['minerals.t1'];
 
@@ -239,7 +239,7 @@ describe('W05-05 · Reclaim op (Shallow water -> Flat, 14 s, 200 E, 20 M + 10 Mi
     expect(groundMoveMultiplierBp(state.grid, tIdx)).toBe(5000);
     expect(isGroundMoveBlocked(state.grid.layers.terrain[tIdx], state.grid.layers.deposit[tIdx])).toBe(true);
 
-    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 2, r: 0 });
     const startMetals = colony.stock['metals.t1'];
     const startMinerals = colony.stock['minerals.t1'];
 
@@ -287,7 +287,7 @@ describe('W05-05 · Deep Reclaim worker tier gate', () => {
     const tIdx = hx.indexOf(target.q, target.r);
     setTileTerrain(state.grid, tIdx, TERRAIN.deep, 0);
 
-    const tfId = spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    const tfId = spawnWorkerUnit(state, { owner: 0, q: 2, r: 0, tier: 1 });
     const rLocked = step(
       state,
       [
@@ -330,7 +330,7 @@ describe('W05-07 · Irrigate and Seed -> Living, and building footprint revert',
     const tIdx = hx.indexOf(target.q, target.r);
     setTilePrep(state.grid, tIdx, PREP.prepared, 0);
 
-    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 2, r: 0 });
     const startWater = colony.stock['bio.water'];
     const startMinerals = colony.stock['minerals.t1'];
 
@@ -403,7 +403,7 @@ describe('W05-07 · Desert 2x water cost on Irrigate', () => {
     const tIdx = hx.indexOf(target.q, target.r);
     setTilePrep(state.grid, tIdx, PREP.prepared, 0);
 
-    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 2, r: 0 });
     const startWater = colony.stock['bio.water'];
 
     const rIrr = step(

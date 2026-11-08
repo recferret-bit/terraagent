@@ -84,17 +84,17 @@ flowchart LR
 
 | Family | T1 (from landing) | T2 | T3 | Sources |
 |---|---|---|---|---|
-| **Metals** | Iron `metals.t1` | Light alloys (copper, aluminium) `metals.t2` | Titanium `metals.t3` | Metals Extractor on metal deposits; Harvester on surface metal deposits (T1); Break yields |
-| **Minerals** | Silica `minerals.t1` | Rare earths `minerals.t2` | Exotic crystal `minerals.t3` | Minerals Quarry on mineral deposits; Harvester on surface mineral deposits (T1); Dig Moat yields |
-| **Bio** | Water `bio.water` and Biomass `bio.biomass` | Petroleum / organics `bio.t2` | Gene-stock `bio.t3` | Water Extractor (`bio.water`); Harvester clearing forest (`bio.biomass`) and harvesting Living ground (`bio.t3` once T3 is unlocked, **proposed**); Petroleum Well & Refinery on oil deposits (`bio.t2`) |
+| **Metals** | Iron `metals.t1` | Light alloys (copper, aluminium) `metals.t2` | Titanium `metals.t3` | Metals Extractor on metal deposits; Worker Drone T1 on surface metal deposits (T1); Break yields |
+| **Minerals** | Silica `minerals.t1` | Rare earths `minerals.t2` | Exotic crystal `minerals.t3` | Minerals Quarry on mineral deposits; Worker Drone T1 on surface mineral deposits (T1); Dig Moat yields |
+| **Bio** | Water `bio.water` and Biomass `bio.biomass` | Petroleum / organics `bio.t2` | Gene-stock `bio.t3` | Water Extractor (`bio.water`); Worker Drone T1 clearing forest (`bio.biomass`) and harvesting Living ground (`bio.t3` once T3 is unlocked, **proposed**); Petroleum Well & Refinery on oil deposits (`bio.t2`) |
 
 **Energy** is not a family: it stays grid power (`E/s`), stored only in Capacitor Banks.
 
 **Unlock rule (both gates, D-34; numbers proposed, data rows per D-35).** An extractor yields its family's T2 sub-resource only when (1) the colony's Terraform % (`UO-TF-06`) is **≥ 30 %** and (2) its deposit ground is terraformed: **≥ 50 % of the tiles within 2 of its footprint** (the ring) are Irrigated or Living. T3 needs Terraform % **≥ 70 %** and **≥ 50 % Living** tiles in that ring. T1 is always produced.
 
-**Terraform find (owner, 2026-11-02).** Besides the unlock rule, each hex a player TERRAFORM order finishes has a **1 %** chance to spawn a full deposit of tier **t1 50 % / t2 35 % / t3 15 %** (family uniform; `UO-TF-11`); a Harvester on a t2/t3 deposit yields that tier (`metals.t2`, `minerals.t3`, `bio.t2`, …) with no Terraform % gate.
+**Terraform find (owner, 2026-11-02).** Besides the unlock rule, each hex a player TERRAFORM order finishes has a **1 %** chance to spawn a full deposit of tier **t1 50 % / t2 35 % / t3 15 %** (family uniform; `UO-TF-11`); a Worker Drone T1 on a t2/t3 deposit yields that tier (`metals.t2`, `minerals.t3`, `bio.t2`, …) with no Terraform % gate.
 
-**Finite 3-stage multi-harvester deposits (`full`, `half`, `depleted`, W02).** Every surface deposit starts with **500 units** of finite reserves (`richnessBp = 10000`, `20 bp = 1 unit`). Up to **6 harvesters** can work the same deposit simultaneously by parking on its 6 adjacent hex neighbors (`hexDistance === 1`, never stepping inside the deposit mesh). As reserves are extracted, the deposit transitions across three visual kitbash variants (`deposit.<type>.full` at $> 50\%$, `deposit.<type>.half` at $1\text{–}50\%$, and `deposit.<type>.depleted` at $0\%$ rubble) and exposes its stage and `remaining / 500` reserves when clicked in the bottom selection bar.
+**Finite 3-stage deposits (several workers on one deposit) (`full`, `half`, `depleted`, W02).** Every surface deposit starts with **500 units** of finite reserves (`richnessBp = 10000`, `20 bp = 1 unit`). Up to **6 workers** can work the same deposit simultaneously by parking on its 6 adjacent hex neighbors (`hexDistance === 1`, never stepping inside the deposit mesh). As reserves are extracted, the deposit transitions across three visual kitbash variants (`deposit.<type>.full` at $> 50\%$, `deposit.<type>.half` at $1\text{–}50\%$, and `deposit.<type>.depleted` at $0\%$ rubble) and exposes its stage and `remaining / 500` reserves when clicked in the bottom selection bar.
 
 **Progressive resource deduction, 50 % cancel/dismantle refunds, and 40 % repair cost (`shared/sim/src/data/ops-basic.ts`, `shared/sim/src/data/resources.ts`, W01/W02).**
 - **Progressive payment:** Construction orders, factory unit production slots, and unit/building repairs deduct resources **progressively** in whole units proportional to work progress (`0 → 1`) rather than upfront on enqueue. If a required resource runs out mid-task, work pauses (`waiting: resources`) and resumes automatically as income arrives.
@@ -102,7 +102,7 @@ flowchart LR
 - **Full-repair cost (`REPAIR_COST_RATE = 0.4`):** Repairing a damaged unit or building from `0% → 100%` HP costs **40 %** of its base build cost (scaled linearly by missing HP and deducted progressively), taking `4.0 s` (`TERRAFORM_TIME_TABLE.repair`).
 - **Canonical data tables:** Terraform operation durations and energy costs live in `TERRAFORM_TIME_TABLE` (`shared/sim/src/data/ops-basic.ts`), and lump-sum clearing yields / per-second extraction rates live in `RESOURCE_INCOME_TABLE` (`shared/sim/src/data/resources.ts`).
 
-**Yield split (proposed).** Applies to the Metals Extractor and the Minerals Quarry. With T2 unlocked, 30 % of the output becomes T2 (70 % T1). With T3 unlocked, 50 % T1 + 30 % T2 + 20 % T3. Extractor tier (Mk.I–III) only scales the rate, never the split. The Bio sources produce the sub-resource named in the table: the Water Extractor always `bio.water`; the Petroleum Well only `bio.t2`, under the T2 gates; the Harvester `bio.biomass`, plus `bio.t3` on Living ground under the T3 gates.
+**Yield split (proposed).** Applies to the Metals Extractor and the Minerals Quarry. With T2 unlocked, 30 % of the output becomes T2 (70 % T1). With T3 unlocked, 50 % T1 + 30 % T2 + 20 % T3. Extractor tier (Mk.I–III) only scales the rate, never the split. The Bio sources produce the sub-resource named in the table: the Water Extractor always `bio.water`; the Petroleum Well only `bio.t2`, under the T2 gates; the Worker Drone T1 `bio.biomass`, plus `bio.t3` on Living ground under the T3 gates.
 
 **Trading.** Every sub-resource is its own cargo token and market pair (F1/F2). T1 trades from day one, so a colony can **buy T2/T3 before it can mine them**.
 
@@ -259,9 +259,9 @@ Every number in this spec lives in a data row (`shared/sim/src/data/*.ts`) and c
 
 | Robot Archetype | Tier | Footprint / Scale | Build Time | Cost (M / Min / Pet / W) | Supply Cost | Grid Power Draw (`-E/s`) | HP | Speed & Capabilities |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :-: | :--- |
-| **Miner / Harvester Bot** | **T1** | `0.8m` | `10s` | `40 M / 15 Min / 5 Pet / 0 W` | `1 Supply` | `-1.5 E/s` | `160` | Harvests `+2.0 res/s`; clears small trees/rocks |
-| **Miner / Harvester Bot** | **T2** | `1.2m` | `22s` | `110 M / 50 Min / 20 Pet / 10 W` | `2 Supply` | `-4.0 E/s` | `420` | Harvests `+6.0 res/s`; heavy plasma cutter |
-| **Miner / Harvester Bot** | **T3** | `1.7m` | `48s` | `300 M / 160 Min / 70 Pet / 30 W` | `4 Supply` | `-10.0 E/s` | `1,100` | Harvests `+18.0 res/s`; autonomous ore smelting |
+| **Miner / Worker Drone T1 Bot** | **T1** | `0.8m` | `10s` | `40 M / 15 Min / 5 Pet / 0 W` | `1 Supply` | `-1.5 E/s` | `160` | Harvests `+2.0 res/s`; clears small trees/rocks |
+| **Miner / Worker Drone T1 Bot** | **T2** | `1.2m` | `22s` | `110 M / 50 Min / 20 Pet / 10 W` | `2 Supply` | `-4.0 E/s` | `420` | Harvests `+6.0 res/s`; heavy plasma cutter |
+| **Miner / Worker Drone T1 Bot** | **T3** | `1.7m` | `48s` | `300 M / 160 Min / 70 Pet / 30 W` | `4 Supply` | `-10.0 E/s` | `1,100` | Harvests `+18.0 res/s`; autonomous ore smelting |
 | **Builder / Repair Bot** | **T1** | `0.8m` | `12s` | `45 M / 25 Min / 10 Pet / 0 W` | `1 Supply` | `-2.0 E/s` | `150` | Build/Repair rate `1.0x`; repairs severed Power Lines |
 | **Builder / Repair Bot** | **T2** | `1.2m` | `26s` | `125 M / 80 Min / 30 Pet / 10 W` | `2 Supply` | `-5.0 E/s` | `390` | Build/Repair rate `2.5x`; dual welding arms |
 | **Builder / Repair Bot** | **T3** | `1.7m` | `55s` | `340 M / 240 Min / 95 Pet / 30 W` | `4 Supply` | `-12.0 E/s` | `1,000` | Build/Repair rate `6.0x`; nano-lathe projector |

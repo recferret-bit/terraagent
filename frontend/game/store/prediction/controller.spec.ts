@@ -24,7 +24,7 @@ describe('SimWorkerController prediction messages', () => {
       ctl.handle({ t: 'reject', id: 'cm_1', code: 'unknown_entity' });
       expect(xOf()).toBe(x0);
       expect(out.some((m) => m.t === 'cmdRejected' && m.code === 'unknown_entity')).toBe(true);
-      expect(ENTITY_STRIDE).toBe(12);
+      expect(ENTITY_STRIDE).toBe(13);
     }
   });
 });

@@ -96,10 +96,15 @@ describe('W08-02 unlock helpers and tooltips', () => {
   it('evaluates item unlock stages accurately', () => {
     expect(getItemUnlockStage('robotics_factory')).toBe(3);
     expect(getItemUnlockStage('roboticsFactory')).toBe(3);
-    expect(getItemUnlockStage('builder')).toBe(2);
+    expect(getItemUnlockStage('worker')).toBe(1);
     expect(getItemUnlockStage('pylon')).toBe(2);
     expect(getItemUnlockStage('depot')).toBe(2);
     expect(getItemUnlockStage('storageDepot')).toBe(2);
+    expect(getItemUnlockStage('wind')).toBe(2);
+    expect(getItemUnlockStage('waterExtractor')).toBe(2);
+    expect(getItemUnlockStage('petroleumWell')).toBe(2);
+    expect(getItemUnlockStage('supplyDepot')).toBe(2);
+    expect(getItemUnlockStage('thermal')).toBe(3);
     expect(getItemUnlockStage('hq')).toBe(0);
     expect(getItemUnlockStage('commandHub')).toBe(0);
     expect(getItemUnlockStage('metalsExtractor')).toBe(1);

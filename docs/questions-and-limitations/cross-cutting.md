@@ -390,8 +390,8 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Status:** Open
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/factories-hub/index.ts` (queue, `enqueueHubUnit`, production loop, slot 9), `shared/sim/src/systems/queue/step.ts` (`buildUnit` entries, `finishUnit` → `produceHarvesterAtHubEdge`)
-- **What happens:** Harvester production exists twice: the W02 queue's Units lane and the older factories-hub queue, each with cost, progress, count / repeat and cancel handling. Only the queue has a live caller; both write `col.unitQueue` (GP-62).
+- **Area / code:** `shared/sim/src/systems/factories-hub/index.ts` (queue, `enqueueHubUnit`, production loop, slot 9), `shared/sim/src/systems/queue/step.ts` (`buildUnit` entries, `finishUnit` → `produceWorkerAtHubEdge`)
+- **What happens:** Worker Drone T1 production exists twice: the W02 queue's Units lane and the older factories-hub queue, each with cost, progress, count / repeat and cancel handling. Only the queue has a live caller; both write `col.unitQueue` (GP-62).
 - **To resolve:** remove the factories-hub queue (keep its spawn helper) or route the lane through it; one implementation.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
@@ -401,7 +401,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/queue/cancel.ts` (`cancelAllColonyTasks`: `cancelConstructionOrder(…, 'current')`, `cancelTerraformOrder(…, 'active')`)
-- **What happens:** "cancel all" clears every W02 queue entry, building job, Hub unit, Harvester task and work job of the colony, but for W01 orders it uses the lane wildcards, which name one order each: the open construction order (`'current'`) and the first manual terraform order (`'active'`). Other W01 terraform orders stay queued.
+- **What happens:** "cancel all" clears every W02 queue entry, building job, Hub unit, Worker Drone T1 task and work job of the colony, but for W01 orders it uses the lane wildcards, which name one order each: the open construction order (`'current'`) and the first manual terraform order (`'active'`). Other W01 terraform orders stay queued.
 - **To resolve:** loop over `constructionOrdersOf` / `colonyTerraformOrders` of the colony.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
@@ -477,7 +477,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
   - `W03-30`: Petroleum Well T1 `bio.t2` runtime hook (needs W05-34's terraforming gate);
   - `W03-32..37`: multi-builder dispatch cleanup, single Units-lane consolidation, depleted-extractor offline state, economy-row territory/refund rules, day-window cleanup, and harvest-weight slider UI.
 - **Why it is like this:** per `docs/plan/waves/W03-the-grid.md` ("Hackathon slice"), only the 15 `H` issues are in scope for this wave landing.
-- **Workaround / mitigation:** the 15 H issues and all `@hack` demo steps (steps 1–4, 5 Depot, 6 night + group shedding, 7 pylon branch overload, 8 Builder 1.5× auto-repair, 9 `waiting(storage)` + Build Depot button, 10 60 s earmark, plus `?waves=..02` DoD) are built and verified in `tests/e2e/w03.spec.ts`.
+- **Workaround / mitigation:** the 15 H issues and all `@hack` demo steps (steps 1–4, 5 Depot, 6 night + group shedding, 7 pylon branch overload, 8 Worker Drone T2 1.5× auto-repair, 9 `waiting(storage)` + Build Depot button, 10 60 s earmark, plus `?waves=..02` DoD) are built and verified in `tests/e2e/w03.spec.ts`.
 - **To resolve:** build the H+ and post-hackathon rows in a later landing (`wave-03.2`) or their downstream waves.
 - **Found:** 2026-11-03, W03 landing
 
@@ -522,3 +522,20 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** The browser check verifies new repaint work and fewer repaints than the full map. The stationary raster-cache unit fixture still requires exactly one repaint for one changed tile.
 - **To resolve:** No runtime change needed.
 - **Found:** 2026-11-04, post-landing main browser suite.
+
+### XC-40 · Two copies of the open-ground prep set
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/grid/hexTile.ts` (`isOpenGround`), `shared/sim/src/grid/geo.ts` (`isPreparedGround`)
+- **What happens:** `hexTile.isOpenGround` repeats the prep set of `geo.isPreparedGround`.
+- **Why it is like this:** `frontend/render` may import `grid/hexTile` (pure functions over arrays and contract codes) but not `geo.ts`, which pulls in the sim layers.
+- **To resolve:** Move the prep set into a tiny pure module both import, if a third copy appears.
+- **Found:** 2026-11-07, W05 full review (terraform agent)
+
+### XC-41 · e2e w12 step 4 expects 1 past colony; the scenario seeds 2
+
+- **Status:** Open
+- **Area / code:** `tests/e2e/w12.spec.ts` ("4. Planets section current & past colony cards"), `tests/scenarios/w12-profile.ts` ("an active colony ... and 2 past colonies")
+- **What happens:** On the server host the page shows 2 `me-past-colony` cards and the test expects 1. Neither file changed in the W05 branch (pre-existing on `main`; the step was never reached in earlier W05 runs because `@hack 1` timed out first).
+- **To resolve:** Align the test with the scenario (expect 2) or the scenario with the test; W12 owner.
+- **Found:** 2026-11-07, W05 full review (lead, e2e)

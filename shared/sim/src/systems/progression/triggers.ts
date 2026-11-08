@@ -56,9 +56,7 @@ const BUILDING_CODE_NAMES: Readonly<Record<number, string>> = {
 
 const UNIT_CODE_NAMES: Readonly<Record<number, string>> = {
   [UNIT_KIND.hq]: 'hq',
-  [UNIT_KIND.harvester]: 'harvester',
-  [UNIT_KIND.builder]: 'builder',
-  [UNIT_KIND.terraformer]: 'terraformer',
+  [UNIT_KIND.worker]: 'worker',
   [UNIT_KIND.scout]: 'scout',
   [UNIT_KIND.guard]: 'guard',
   [UNIT_KIND.combatEngineer]: 'combatEngineer',

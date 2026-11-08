@@ -69,24 +69,18 @@ function changedIndices(stamp: ArrayLike<number>, length: number, fromTick: numb
   return Uint32Array.from(out);
 }
 
-/**
- * Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`.
- * `forClient` drops `hidden` tile layers (D-38); the replica keeps zeros there (`applyTiles` skips absent layers).
- */
-export function diffSince(state: PlanetState, fromTick: number, opts: { forClient?: boolean; maxTiles?: number } = {}): Uint8Array {
+/** Everything of the window except its tiles: meta, rng, changed entity rows, removals, colonies and blobs. */
+type WindowBase = Omit<EngineDiff, 'tiles' | 'chunk'>;
+
+function windowBase(state: PlanetState, fromTick: number, forClient: boolean): WindowBase {
   const e = state.entities;
-  let tileIdx = changedTileIndices(state, fromTick);
-  if (opts.maxTiles !== undefined && tileIdx.length > opts.maxTiles) {
-    tileIdx = tileIdx.subarray(0, opts.maxTiles);
-  }
   const rows = changedIndices(e.cols.changedAt, e.count, fromTick);
-  const diff: EngineDiff = {
+  return {
     v: DIFF_FORMAT,
     fromTick,
     toTick: state.meta.tick,
-    meta: opts.forClient ? clientMeta(state.meta) : state.meta,
+    meta: forClient ? clientMeta(state.meta) : state.meta,
     rng: state.rng,
-    tiles: { idx: tileIdx, cols: gather(opts.forClient ? clientTileLayers() : tileLayers(), state.grid.layers, tileIdx) },
     entities: {
       capacity: e.capacity,
       count: e.count,
@@ -95,6 +89,21 @@ export function diffSince(state: PlanetState, fromTick: number, opts: { forClien
     },
     colonies: state.colonies.filter((c) => c.changedAt > fromTick),
     blobs: Object.fromEntries(Object.entries(state.blobs).filter(([, b]) => b.changedAt > fromTick)),
+  };
+}
+
+const layersFor = (forClient: boolean | undefined): readonly FieldDef[] => (forClient ? clientTileLayers() : tileLayers());
+
+/**
+ * Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`.
+ * `forClient` drops `hidden` tile layers (D-38); the replica keeps zeros there (`applyTiles` skips absent layers).
+ * One frame, however many tiles changed: a host that sends to clients uses `clientDeltaFrames` (W05-19) instead.
+ */
+export function diffSince(state: PlanetState, fromTick: number, opts: { forClient?: boolean } = {}): Uint8Array {
+  const tileIdx = changedTileIndices(state, fromTick);
+  const diff: EngineDiff = {
+    ...windowBase(state, fromTick, opts.forClient === true),
+    tiles: { idx: tileIdx, cols: gather(layersFor(opts.forClient), state.grid.layers, tileIdx) },
   };
   return encodeValue(diff);
 }
@@ -102,124 +111,90 @@ export function diffSince(state: PlanetState, fromTick: number, opts: { forClien
 /** Encodes an EngineDiff, SimDiff or payload object to MessagePack bytes. */
 export function encodeDiff(diff: EngineDiff | Uint8Array | { diff: Uint8Array }): Uint8Array {
   if (diff instanceof Uint8Array) return diff;
-  if (typeof diff === 'object' && diff !== null) {
-    if ('diff' in diff && (diff as { diff: Uint8Array }).diff instanceof Uint8Array) {
-      return (diff as { diff: Uint8Array }).diff;
-    }
-    return encodeValue(diff);
-  }
+  if ('diff' in diff && diff.diff instanceof Uint8Array) return diff.diff;
   return encodeValue(diff);
 }
 
+/** Cuts `tileIdx` into runs of at most `maxTiles` (one empty run when nothing changed). */
 function partitionTiles(tileIdx: Uint32Array, maxTiles: number): Uint32Array[] {
   if (tileIdx.length === 0) return [new Uint32Array(0)];
   const slices: Uint32Array[] = [];
-  for (let i = 0; i < tileIdx.length; i += maxTiles) {
-    slices.push(tileIdx.subarray(i, Math.min(i + maxTiles, tileIdx.length)));
-  }
+  for (let i = 0; i < tileIdx.length; i += maxTiles) slices.push(tileIdx.subarray(i, Math.min(i + maxTiles, tileIdx.length)));
   return slices;
 }
 
-interface SliceTask {
-  slice: Uint32Array;
-  isFirst: boolean;
-}
-
-function enforcePayloadLimit(
-  slices: Uint32Array[],
-  state: PlanetState,
-  tLayers: readonly FieldDef[],
-  baseDiff: Omit<EngineDiff, 'tiles' | 'chunk'>,
-  emptyEntities: EngineDiff['entities'],
-  maxBytes: number,
-): SimDiff[] {
-  const finalSlices: { slice: Uint32Array; isFirst: boolean }[] = [];
-  const queue: SliceTask[] = slices.map((s, i) => ({ slice: s, isFirst: i === 0 }));
-
+/**
+ * Halves runs until each run's tile bytes fit `tileBudget` (a single tile always goes). Only the tile part is measured:
+ * the window's entities, colonies and blobs ride in the first frame whatever their size, so a busy colony does not cut
+ * a small brush into one-tile frames.
+ */
+function fitTileBudget(slices: Uint32Array[], state: PlanetState, layers: readonly FieldDef[], tileBudget: number): Uint32Array[] {
+  const out: Uint32Array[] = [];
+  const queue = [...slices];
   while (queue.length > 0) {
-    const item = queue.shift()!;
-    const candidate: EngineDiff = {
-      ...baseDiff,
-      entities: item.isFirst ? baseDiff.entities : emptyEntities,
-      colonies: item.isFirst ? baseDiff.colonies : [],
-      blobs: item.isFirst ? baseDiff.blobs : {},
-      tiles: { idx: item.slice, cols: gather(tLayers, state.grid.layers, item.slice) },
-      chunk: { index: 0, total: slices.length },
-    };
-    const encoded = encodeValue(candidate);
-    if (encoded.byteLength > maxBytes && item.slice.length > 1) {
-      const mid = Math.floor(item.slice.length / 2);
-      queue.unshift(
-        { slice: item.slice.subarray(0, mid), isFirst: item.isFirst },
-        { slice: item.slice.subarray(mid), isFirst: false },
-      );
-    } else {
-      finalSlices.push(item);
-    }
+    const slice = queue.shift()!;
+    const bytes = encodeValue({ idx: slice, cols: gather(layers, state.grid.layers, slice) }).byteLength;
+    if (bytes > tileBudget && slice.length > 1) {
+      const mid = Math.floor(slice.length / 2);
+      queue.unshift(slice.subarray(0, mid), slice.subarray(mid));
+    } else out.push(slice);
   }
-
-  const total = finalSlices.length;
-  const result: SimDiff[] = [];
-  for (let i = 0; i < total; i++) {
-    const item = finalSlices[i];
-    const candidate: SimDiff = {
-      ...baseDiff,
-      entities: item.isFirst ? baseDiff.entities : emptyEntities,
-      colonies: item.isFirst ? baseDiff.colonies : [],
-      blobs: item.isFirst ? baseDiff.blobs : {},
-      tiles: { idx: item.slice, cols: gather(tLayers, state.grid.layers, item.slice) },
-      chunk: { index: i, total },
-    };
-    const encoded = encodeValue(candidate);
-    candidate.diff = encoded;
-    candidate.byteLength = encoded.byteLength;
-    result.push(candidate);
-  }
-
-  return result;
+  return out;
 }
 
 /**
- * Everything stamped after `fromTick`, partitioned into capped chunks (W05-19).
- * Guarantees <= MAX_TILE_DIFF_PER_DELTA tiles per chunk and encoded payload <= MAX_DIFF_PAYLOAD_BYTES.
+ * Everything stamped after `fromTick`, partitioned into capped chunks (W05-19): at most `maxTilesPerDelta` tiles per
+ * chunk, and every chunk's encoded size within `maxPayloadBytes`, except that the first chunk also carries the
+ * window's entities, colonies and blobs (never split). Later chunks hold tiles only; `applyDiff` accepts them as
+ * continuations of the first.
  */
-export function diffSinceChunked(
-  state: PlanetState,
-  fromTick: number,
-  opts: DiffChunkOptions = {},
-): SimDiff[] {
+export function diffSinceChunked(state: PlanetState, fromTick: number, opts: DiffChunkOptions = {}): SimDiff[] {
   const maxTiles = opts.maxTilesPerDelta ?? MAX_TILE_DIFF_PER_DELTA;
   const maxBytes = opts.maxPayloadBytes ?? MAX_DIFF_PAYLOAD_BYTES;
+  const layers = layersFor(opts.forClient);
+  const base = windowBase(state, fromTick, opts.forClient === true);
   const e = state.entities;
-  const tileIdx = changedTileIndices(state, fromTick);
-  const rows = changedIndices(e.cols.changedAt, e.count, fromTick);
-  const tLayers = opts.forClient ? clientTileLayers() : tileLayers();
-
-  const baseDiff = {
-    v: DIFF_FORMAT,
-    fromTick,
-    toTick: state.meta.tick,
-    meta: opts.forClient ? clientMeta(state.meta) : state.meta,
-    rng: state.rng,
-    entities: {
-      capacity: e.capacity,
-      count: e.count,
-      cols: gather(entityColumns(), e.cols, rows),
-      removed: e.removed.filter((r) => r.at > fromTick),
-    },
-    colonies: state.colonies.filter((c) => c.changedAt > fromTick),
-    blobs: Object.fromEntries(Object.entries(state.blobs).filter(([, b]) => b.changedAt > fromTick)),
+  const tilesOnly: WindowBase = {
+    ...base,
+    entities: { capacity: e.capacity, count: e.count, cols: gather(entityColumns(), e.cols, []), removed: [] },
+    colonies: [],
+    blobs: {},
   };
+  const noTiles = { idx: new Uint32Array(0), cols: gather(layers, state.grid.layers, []) };
+  const header = encodeValue({ ...tilesOnly, tiles: noTiles, chunk: { index: 0, total: 0 } }).byteLength;
+  const slices = fitTileBudget(partitionTiles(changedTileIndices(state, fromTick), maxTiles), state, layers, maxBytes - header);
+  return slices.map((slice, index) => {
+    const frame: SimDiff = {
+      ...(index === 0 ? base : tilesOnly),
+      tiles: { idx: slice, cols: gather(layers, state.grid.layers, slice) },
+      chunk: { index, total: slices.length },
+    };
+    frame.diff = encodeValue(frame);
+    frame.byteLength = frame.diff.byteLength;
+    return frame;
+  });
+}
 
-  const emptyEntities: EngineDiff['entities'] = {
-    capacity: e.capacity,
-    count: e.count,
-    cols: gather(entityColumns(), e.cols, []),
-    removed: [],
-  };
+/** One client delta message: its wire tick window and the encoded engine diff chunk. */
+export interface DeltaFrame {
+  fromTick: number;
+  toTick: number;
+  diff: Uint8Array;
+}
 
-  const slices = partitionTiles(tileIdx, maxTiles);
-  return enforcePayloadLimit(slices, state, tLayers, baseDiff, emptyEntities, maxBytes);
+/**
+ * The client deltas from `fromTick` to now (W05-19), the one path every host uses to send state to clients (server
+ * thread, local host, `SimHost.onDelta`): hidden layers dropped (D-38), tiles chunked by `diffSinceChunked`. The first
+ * frame spans `fromTick → toTick`; continuation frames span `toTick → toTick`, so a transport that checks "a delta starts
+ * where the last one ended" accepts them unchanged, and `applyDiff` applies them by their chunk header.
+ */
+export function clientDeltaFrames(state: PlanetState, fromTick: number, opts: Omit<DiffChunkOptions, 'forClient'> = {}): DeltaFrame[] {
+  const toTick = state.meta.tick;
+  return diffSinceChunked(state, fromTick, { ...opts, forClient: true }).map((c, i) => ({
+    fromTick: i === 0 ? fromTick : toTick,
+    toTick,
+    diff: c.diff!,
+  }));
 }
 
 function applyEntities(state: PlanetState, d: EngineDiff): void {

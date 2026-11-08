@@ -279,8 +279,11 @@ export class LocalHostCore {
   private flushDelta(): void {
     const toTick = this.host.tick;
     if (!this.joined || toTick <= this.lastDeltaTick) return;
-    const diff = ownBytes(this.host.diffSince(this.lastDeltaTick, { forClient: true }));
-    this.server({ v: 1, t: 'delta', tick: toTick, d: { fromTick: this.lastDeltaTick, toTick, diff, events: this.window.splice(0) } });
+    // The same frames the server planet host sends (W05-19): a large tile change goes out in capped chunks; events ride frame 0.
+    this.host.clientDeltaFrames(this.lastDeltaTick).forEach((f, i) => {
+      const events = i === 0 ? this.window.splice(0) : [];
+      this.server({ v: 1, t: 'delta', tick: f.toTick, d: { fromTick: f.fromTick, toTick: f.toTick, diff: ownBytes(f.diff), events } });
+    });
     this.lastDeltaTick = toTick;
   }
 

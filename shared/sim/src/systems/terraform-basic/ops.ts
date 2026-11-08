@@ -143,11 +143,21 @@ export function listTerraformMenuOps(data?: CompiledDataLike): TerraformOpSpec[]
   return out;
 }
 
+/**
+ * Whether `op` is in this step's compiled `opsBasic` (a wave that has not shipped the row cannot run it: `TA_WAVES=..04`
+ * has Grade / Clear / Break only). `work` and `dismantle` are not rows (always on); no table at all → the W05 fallback
+ * of callers without a step ctx.
+ */
+export function isTerraformOpCompiled(op: TerraformOpKind, data?: CompiledDataLike): boolean {
+  if (op === 'work' || op === 'dismantle' || isW01TerraformOpKind(op)) return true;
+  const table = data?.tables?.opsBasic as Record<string, unknown> | undefined;
+  return !table || op in table;
+}
+
 /** The op that works a tile of `terrain` (the op whose `fromTerrain` it is; Grade for flat ground), or `null`. */
 export function opForTerrain(terrain: number, data?: CompiledDataLike): SitePrepTerraformOp | null {
-  const table = data?.tables?.opsBasic as Record<string, unknown> | undefined;
   for (const op of SITE_PREP_TERRAFORM_OPS) {
-    if (!isW01TerraformOpKind(op) && table && !(op in table)) continue;
+    if (!isTerraformOpCompiled(op, data)) continue;
     if (getTerraformOpSpec(op, data).fromTerrain === terrain) return op;
   }
   return null;

@@ -32,7 +32,7 @@ What an agent **cannot** do without a human: spend beyond its allowance, move th
 
 **Three resource families, three tiers.** Metals (iron → light alloys → titanium), Minerals (silica → rare earths → exotic crystal), Bio (water and biomass → petroleum → gene-stock). Tier 1 is mined from landing; tiers 2 and 3 only on terraformed ground. Energy is grid power, not a resource.
 
-**Sources.** Extractors on deposits, harvesters on forest and Living ground, terrain work that yields what it digs up.
+**Sources.** Extractors on deposits, Worker Drones on forest and Living ground, terrain work that yields what it digs up.
 
 **Sinks.** Construction and units, upkeep, terraforming (water and energy), treasury projects (burned *(proposed)*), and the Guild's off-planet sales *(proposed)*.
 

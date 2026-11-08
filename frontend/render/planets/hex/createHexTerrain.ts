@@ -150,7 +150,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const ext = planetExtent(radius);
   const tint = createHexTileTint(radius, chunkLayers());
   // Dune ripples follow the same shared wind object as dust, trees and waves (by reference: F8 WIND re-orients them).
-  const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0]), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
+  const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0], tint.terraformTexture), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
   const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
   const material = createTerrainMaterial(uniforms, (sh) => addHexEdges(sh, edge));
   // three keys programs on `onBeforeCompile.toString()`, which is the same closure for the plain heightfield terrain:

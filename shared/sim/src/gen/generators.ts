@@ -32,8 +32,10 @@ export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'c
  *    after the landing stage (W02).
  * 9: circular pod-drop blast zone around every spawn slot cleared of trees, rock, slopes, holes, water, and deposits,
  *    and levelled to terraformed Flat ground (W02).
+ * 10: a visible deposit only lies on a hex tile (`depositGround.ts`): the `deposits` stage and the starter deposit
+ *    guarantees (now placed after the landing zones are levelled) choose hex tiles, and a final step buries the rest.
  */
-export const GEN_VERSION = 9;
+export const GEN_VERSION = 10;
 
 const generators = new Map<string, PlanetGenerator>();
 

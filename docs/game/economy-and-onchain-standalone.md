@@ -68,7 +68,7 @@
 | Treasury share | 20 % of the stall owner's fee *(proposed)* |
 
 **Where resources come from and go (as designed)**
-- **Sources:** extractors, harvesters and terrain-shaping yields in the simulation. Exports mint tokens only from stock that already exists. **Exceptions that mint without stock:** the Guild's starting inventory, and a developer "grant cargo" command.
+- **Sources:** extractors, Worker Drones and terrain-shaping yields in the simulation. Exports mint tokens only from stock that already exists. **Exceptions that mint without stock:** the Guild's starting inventory, and a developer "grant cargo" command.
 - **Sinks:** construction and unit costs, running upkeep, terraforming (water), and treasury project costs (where these tokens end up is undefined; Q6).
 - **Transfers, not sinks:** market trades, fees to stall owners, the treasury share, bounty escrow.
 

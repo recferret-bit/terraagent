@@ -8,7 +8,7 @@ import type { PlanetState } from '../kernel/state';
 import { createPipeline, step, StepError, type Pipeline, type StepResult } from '../kernel/step';
 import { createEngineConfig, type EngineConfigInput } from '../systems/registry';
 import { clone } from './clone';
-import { applyDiff, diffSince, diffSinceChunked, type DiffChunkOptions, type EngineDiff, type SimDiff } from './diff';
+import { applyDiff, clientDeltaFrames, diffSince, diffSinceChunked, type DeltaFrame, type DiffChunkOptions, type EngineDiff, type SimDiff } from './diff';
 import { view, type SimView } from './view';
 
 export type SimHostOptions = EngineConfigInput & { data?: CompiledDataLike };
@@ -109,12 +109,16 @@ export class SimHost {
   /** `forClient` drops hidden (server-only) tile layers: use it for every welcome / join (D-38). */
   snapshot(opts: { forClient?: boolean } = {}): Uint8Array { return snapshot(this.state, opts); }
   /** `forClient` drops hidden tile layers: use it for every delta sent to a client (D-38). */
-  diffSince(tick: number, opts: { forClient?: boolean; maxTiles?: number } = {}): Uint8Array {
+  diffSince(tick: number, opts: { forClient?: boolean } = {}): Uint8Array {
     return diffSince(this.state, tick, opts);
   }
   /** Produces chunked diffs for client synchronization when tile changes are large (W05-19). */
   diffSinceChunked(tick: number, opts: DiffChunkOptions = {}): SimDiff[] {
     return diffSinceChunked(this.state, tick, opts);
+  }
+  /** The client delta messages from `tick` to now (W05-19, `clientDeltaFrames`): what every host sends to clients. */
+  clientDeltaFrames(tick: number, opts: Omit<DiffChunkOptions, 'forClient'> = {}): DeltaFrame[] {
+    return clientDeltaFrames(this.state, tick, opts);
   }
   /** Throws `DiffGapError` when this host is not at the diff's `fromTick`. */
   applyDiff(diff: Uint8Array | EngineDiff | { diff: Uint8Array }): void {

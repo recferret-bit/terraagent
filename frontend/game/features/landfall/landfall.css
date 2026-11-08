@@ -200,3 +200,13 @@
 .ta-hq-panel[data-expanded='true'] { width: min(800px, calc(100vw - 32px)); }
 .ta-selection-details { flex-basis: 100%; min-width: 0; border-top: 1px solid var(--ta-seam); padding-top: var(--ta-s2); }
 .ta-selection-details[hidden] { display: none; }
+
+/* Short screens (phone landscape): the dock column fills the left edge, so the panel sits right of it, not centred. */
+@media (max-height: 500px) {
+  .ta-hq-panel {
+    left: auto;
+    right: var(--ta-s3);
+    transform: none;
+    max-width: calc(100vw - 396px);
+  }
+}

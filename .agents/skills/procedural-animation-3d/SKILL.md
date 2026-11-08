@@ -75,7 +75,7 @@ Because vertex displacement happens on the GPU in `shaderChunks.ts`,Three.js `me
 - Use `evalArchetypeToolOrigins(archetypeId, time, walkWeight, workWeight)` or `computeMeshToolOrigins(mesh, archetypeId, time, walkWeight, workWeight)` in `frontend/render/particles/toolOrigins.ts`.
 - `toolOrigins.ts` evaluates the exact closed-form CPU mirror of `bipedBodyTransform`, `spiderBodyTransform`, `BipedArm (5)`, `SpinY (1)`, and `RecoilPulse (3)` for the 1–2 tool muzzle points per working unit:
   - **`robot.hero` (HQ Drone):** Dual lasers and palm flare orbs stay 100% locked to the left and right hands (`animType 5` + `BipedBody 8`) throughout the dual-axis cutting sweep.
-  - **`robot.miner` (Harvester), `robot.builder` (Builder), `robot.combat` (Recon):** Beams lock to the spinning auger tip (`SpinY 1`), pulsing welding torch (`RecoilPulse 3`), or alternating twin cannon barrels (`animType 39`).
+  - **`robot.miner` (Worker Drone T1), `robot.builder` (Worker Drone T2 / T3), `robot.combat` (Recon):** Beams lock to the spinning auger tip (`SpinY 1`), pulsing welding torch (`RecoilPulse 3`), or alternating twin cannon barrels (`animType 39`).
 
 ---
 

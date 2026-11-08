@@ -20,7 +20,7 @@ describe('W05-01 menu op wave gating & op specs', () => {
     const ops = listTerraformMenuOps(compiled).map((s) => s.op);
     expect(ops).toEqual(['grade', 'clear', 'break']);
     expect(Object.keys(compiled.tables.terraform ?? {})).toHaveLength(0);
-    expect(compiled.tables.unitsWorkersBasic?.terraformer).toBeUndefined();
+    expect(compiled.tables.unitsWorkersBasic?.t3).toBeUndefined();
   });
 
   it('TA_WAVES=..05 -> menu data lists all 6 new ops (level, fill, reclaim, deepReclaim, irrigate, seed)', () => {
@@ -86,13 +86,17 @@ describe('W05-01 menu op wave gating & op specs', () => {
   });
 });
 
-describe('W05-01 Terraformer unit row, building rows, resource-tier gate rows, and events', () => {
-  it('includes Terraformer unit row, W05 building rows, resource-tier gate rows, and W05 events', () => {
+describe('W05-01 Worker unit row, building rows, resource-tier gate rows, and events', () => {
+  it('includes Worker unit row, W05 building rows, resource-tier gate rows, and W05 events', () => {
     const compiled = compileData(parseWaves('..05'));
-    const tfUnit = dataRow(compiled, 'unitsWorkersBasic', 'terraformer');
+    const tfUnit = dataRow(compiled, 'unitsWorkersBasic', 't3');
     expect(tfUnit.workRate).toBe(1.0);
     expect(tfUnit.powerDrainPerS).toBe(2.5);
-    expect(tfUnit.lanes).toEqual(['terraform']);
+    expect(tfUnit.lanes).toEqual(['harvest', 'construction', 'terraform']);
+    expect(tfUnit.label).toBe('Worker Drone T3');
+    expect(tfUnit.tier).toBe(3);
+    expect(dataRow(compiled, 'unitsWorkersBasic', 't3').label).toBe('Worker Drone T3');
+    expect(dataRow(compiled, 'unitsWorkersBasic', 't3').tier).toBe(3);
 
     expect(dataRow(compiled, 'terraform', 'territoryBeacon').claimRadius).toBe(8);
     expect(dataRow(compiled, 'terraform', 'hydro').requiresAdjacentWater).toBe(true);

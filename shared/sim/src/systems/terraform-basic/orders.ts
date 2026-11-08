@@ -1,6 +1,9 @@
 import type { ResourceKey } from '@terra/contracts';
+import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
-import type { TerraformOpKind } from './ops';
+import { METEOR_CRATER_TERRAFORM_MULTIPLIER } from './groundWorkRule';
+import { meteorCraterWorkTiles } from './meteorCraterFootprint';
+import { getTerraformJobCost, getTerraformOpSpec, type TerraformOpKind } from './ops';
 
 /**
  * The terraform queue (`blobs.terraformTasks`): one shape, `{ byColony: { [colony]: TerraformOrder[] } }`, written
@@ -22,6 +25,33 @@ export interface TerraformJob {
   status?: 'in_progress' | 'waiting';
   waitReason?: 'resources' | 'power';
   assignedUnitId?: number;
+}
+
+/** A fresh job of `op` on `(q, r)`: time, energy and cost from the op row (`planetType` applies Irrigate's desert ×2). */
+export function newTerraformJob(
+  q: number,
+  r: number,
+  op: TerraformOpKind,
+  data?: CompiledDataLike,
+  planetType?: string,
+  state?: PlanetState,
+): TerraformJob {
+  const spec = getTerraformOpSpec(op, data);
+  const totalCost = getTerraformJobCost(op, data, planetType);
+  const isCraterHole =
+    op === 'fill' &&
+    state !== undefined &&
+    meteorCraterWorkTiles(state.grid.radius, q, r, state.grid.layers.terrain, state.blobs?.weather).length > 1;
+  return {
+    q,
+    r,
+    op,
+    progress: 0,
+    baseTimeS: isCraterHole ? spec.baseTimeS * METEOR_CRATER_TERRAFORM_MULTIPLIER : spec.baseTimeS,
+    totalEnergyE: spec.energyCostE,
+    energyDrawnE: 0,
+    ...(Object.keys(totalCost).length > 0 ? { totalCost, spentCost: {} } : {}),
+  };
 }
 
 export interface TerraformOrder {
@@ -86,8 +116,21 @@ export function readOrdersByColony(state: PlanetState): Record<number, Terraform
 /** Writes the queue (orders with no jobs left are dropped) and stamps the blob at `tick`. */
 export function writeOrdersByColony(state: PlanetState, byColony: Record<number, TerraformOrder[]>, tick: number): void {
   const clean: Record<number, TerraformOrder[]> = {};
+  const fillSpec = getTerraformOpSpec('fill');
   for (const [k, list] of Object.entries(byColony)) {
     const nonEmpty = list.filter((o) => o.jobs.length > 0);
+    for (const o of nonEmpty) {
+      for (const j of o.jobs) {
+        if (
+          j.op === 'fill' &&
+          j.progress === 0 &&
+          j.baseTimeS <= fillSpec.baseTimeS &&
+          meteorCraterWorkTiles(state.grid.radius, j.q, j.r, state.grid.layers.terrain, state.blobs?.weather).length > 1
+        ) {
+          j.baseTimeS = fillSpec.baseTimeS * METEOR_CRATER_TERRAFORM_MULTIPLIER;
+        }
+      }
+    }
     if (nonEmpty.length > 0) clean[Number(k)] = nonEmpty;
   }
   const value: TerraformTasksBlobValue = { byColony: clean };

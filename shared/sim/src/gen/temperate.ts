@@ -2,6 +2,7 @@ import { hexDistance, hexIndex } from '../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt, nextU32, seedStream } from '../kernel/rng';
 import type { PlanetState, PlanetType } from '../kernel/state';
+import { depositGroundMask } from './depositGround';
 import { profileNum, profileNumber, worldProfile, type ProfileRow } from './profile';
 import { fbm2d, hash2d } from './world/noise';
 
@@ -137,10 +138,14 @@ export function assignTemperateTerrain(s: PlanetState, SHARE_BP: TerrainShares =
   }
 }
 
-/** Visible deposits: ~4 % of land tiles, spaced ≥ 2 apart, cycling metals / minerals / oil. */
+/**
+ * Visible deposits: ~4 % of the tile count, spaced ≥ 2 apart, cycling metals / minerals / oil, chosen only among the
+ * hex tiles of the ground at this stage (`depositGroundMask`, rule G1 of `depositGround.ts`). A desert has no hex
+ * tiles yet (all wild sand) and gets none here: its ore lies in the hidden subsurface under the dunes.
+ */
 export function assignTemperateDeposits(s: PlanetState): void {
   const { radius, count, layers } = s.grid;
-  const terrain = layers.terrain as Uint8Array;
+  const ground = depositGroundMask(s);
   const deposit = layers.deposit as Uint8Array;
   const richness = layers.richness as Float32Array;
   const hex = hexIndex(radius);
@@ -152,14 +157,12 @@ export function assignTemperateDeposits(s: PlanetState): void {
   const candidates: number[] = [];
 
   for (let i = 0; i < count; i++) {
-    const t = terrain[i];
-    if (t !== TERRAIN.flat && t !== TERRAIN.slope) continue;
+    if (!ground[i]) continue;
     const q = hex.q[i];
     const r = hex.r[i];
     const x = Math.fround(q + 0.5 * r);
     const y = Math.fround(r * SQRT3_HALF);
-    const bonus = t === TERRAIN.flat ? 0.15 : 0.08;
-    scores[i] = Math.fround(fbm2d(x, y, 0.18, depSeed) + bonus + hash2d(q, r, depSeed) * 0.2);
+    scores[i] = Math.fround(fbm2d(x, y, 0.18, depSeed) + hash2d(q, r, depSeed) * 0.2);
     candidates.push(i);
   }
 

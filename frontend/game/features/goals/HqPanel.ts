@@ -1,6 +1,6 @@
 import type { FeatureContext } from '../../core/registry/types';
-import { PrioritiesPanel } from '../priorities/PrioritiesPanel';
-import '../priorities/priorities.css';
+import { PrioritiesPanel } from '../shared/priorities/PrioritiesPanel';
+import '../shared/priorities/priorities.css';
 import { AiToggle } from './AiToggle';
 import { GoalsPanel } from './GoalsPanel';
 

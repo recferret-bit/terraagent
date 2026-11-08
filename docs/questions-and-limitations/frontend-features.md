@@ -638,14 +638,14 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Later:** `collectOccupiedTileIndices` no longer reads `tiles.anchors` (the territory claim count, not occupancy): see `sim-gameplay.md` GP-47.
 - **Found:** 2026-11-02, owner review (W02)
 
-### FF-38 · Selected unit / building bar layout, empty-ground deselect, Harvester selection, and 3D unit health bars
+### FF-38 · Selected unit / building bar layout, empty-ground deselect, Worker Drone T1 selection, and 3D unit health bars
 
 - **Status:** Resolved (W02 review-fix 2026-11-02)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/features/landfall/HqPanel.ts`, `frontend/game/features/landfall/selection.ts`, `frontend/game/features/landfall/landfall.css`, `frontend/game/app/online/unitHealthBars.ts`, `frontend/game/app/online/EntityMeshes.ts`, `shared/sim/src/systems/harvest/index.ts`
-- **What happens:** the selection card sat in `top-left` even with nothing selected, clicking empty ground did not deselect, Harvester robots (`ENTITY_KIND.harvester`) could not be selected or commanded (auto-harvest immediately overwrote player moves), and units had no 3D health bars.
-- **Fix:** moved `.ta-hq-panel` to a compact horizontal bottom-center bar (`hidden` when nothing is selected, with a multi-select unit grid slot + count badge ready for future box/Shift multi-selection), added empty-ground deselection, enabled Harvester & building selection + `moveUnit`/`stopUnit` orders (with `standingHarvestAssignSystem` yielding to active/queued `UnitBook` orders), and added `UnitHealthBars` (`unit-health-bars`) rendering a single camera-aligned 3D health bar sized to unit width above each unit.
+- **What happens:** the selection card sat in `top-left` even with nothing selected, clicking empty ground did not deselect, Worker Drone T1 robots (`ENTITY_KIND.worker`) could not be selected or commanded (auto-harvest immediately overwrote player moves), and units had no 3D health bars.
+- **Fix:** moved `.ta-hq-panel` to a compact horizontal bottom-center bar (`hidden` when nothing is selected, with a multi-select unit grid slot + count badge ready for future box/Shift multi-selection), added empty-ground deselection, enabled Worker Drone T1 & building selection + `moveUnit`/`stopUnit` orders (with `standingHarvestAssignSystem` yielding to active/queued `UnitBook` orders), and added `UnitHealthBars` (`unit-health-bars`) rendering a single camera-aligned 3D health bar sized to unit width above each unit.
 - **Found:** 2026-11-02, owner review (W02)
 
 ### FF-39 · Units walking or spawning inside buildings and Solar Arrays working at night
@@ -654,8 +654,8 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Severity:** high
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/construction/placement.ts`, `shared/sim/src/grid/pathProfiles.ts`, `shared/sim/src/units/mobility.ts`, `shared/sim/src/systems/units/handlers.ts`, `shared/sim/src/systems/factories-hub/index.ts`, `shared/sim/src/systems/queue/index.ts`, `shared/sim/src/systems/economy/construction.ts`, `shared/sim/src/systems/power-core/index.ts`, `frontend/game/features/landfall/selection.ts`
-- **What happens:** `OCCUPYING_KINDS` only included `commandHub`, `ENTITY_KIND.harvester` used `profile: 'none'`, `queueSystem` spawned completed Harvesters at `(0, 0)` inside the Command Hub, `moveUnit` and `LandfallController.orderMove` allowed targeting building footprint tiles, and Solar Arrays did not record `offline: night` at night.
-- **Fix:** added `metalsExtractor` and `solar` to `OCCUPYING_KINDS`, added the `'harvester'` path profile blocking building footprints and water/holes/ridges, rejected `moveUnit` onto any building tile on both server (`handlers.ts`) and client (`selection.ts`), routed `queueSystem` unit completions through `spawnHarvesterAtHubEdge`, evacuated units standing on newly placed building footprints, and marked Solar Arrays `offline: night` (`0` generation) when `phase === 'night' || daylight <= 0.001`.
+- **What happens:** `OCCUPYING_KINDS` only included `commandHub`, `ENTITY_KIND.worker` used `profile: 'none'`, `queueSystem` spawned completed Worker Drones (T1) at `(0, 0)` inside the Command Hub, `moveUnit` and `LandfallController.orderMove` allowed targeting building footprint tiles, and Solar Arrays did not record `offline: night` at night.
+- **Fix:** added `metalsExtractor` and `solar` to `OCCUPYING_KINDS`, added the worker path profile blocking building footprints and water/holes/ridges, rejected `moveUnit` onto any building tile on both server (`handlers.ts`) and client (`selection.ts`), routed `queueSystem` unit completions through `spawnWorkerAtHubEdge`, evacuated units standing on newly placed building footprints, and marked Solar Arrays `offline: night` (`0` generation) when `phase === 'night' || daylight <= 0.001`.
 - **Found:** 2026-11-02, owner review (W02)
 
 
@@ -665,7 +665,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/features/landfall/{HqPanel,selectionHelpers}.ts`, `shared/sim/src/systems/queue/cancel.ts`
-- **What happens:** CANCEL JOB is shown for any busy unit and whenever the unit's current/queued command is `terraform` or it owns a work job (`unitHasTerraformJob`); it sends `cancelTask { taskId: 'harvester:<id>' }`, which now also removes the terraform order the unit works on (a Hub's linked prep cancels its construction order). There is no repair job in the sim, so none is detected. Cancelling removes the whole order (all its tiles), not only the unit's current tile, and other units on the same order stop too.
+- **What happens:** CANCEL JOB is shown for any busy unit and whenever the unit's current/queued command is `terraform` or it owns a work job (`unitHasTerraformJob`); it sends `cancelTask { taskId: 'worker:<id>' }`, which now also removes the terraform order the unit works on (a Hub's linked prep cancels its construction order). There is no repair job in the sim, so none is detected. Cancelling removes the whole order (all its tiles), not only the unit's current tile, and other units on the same order stop too.
 - **Found:** 2026-11-02, W02 review
 
 
@@ -675,9 +675,9 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/terraform-basic/{dismantleAndWork,unreachable}.ts`, `frontend/game/features/terraform-basic/BrushController.ts`
-- **What happened:** the HQ Drone uses the `ground` path profile (forest blocks it) and must stand within 2 tiles of the work tile. A tree inside a forest clump has no walkable tile in that band, so the path request failed and `workJobsSystem` re-requested it every few ticks forever: the order was accepted (`ok`) and nothing ever happened. Trees on the edge of a clump, or reached by a Harvester (profile `harvester` crosses forest), worked.
+- **What happened:** the HQ Drone uses the `ground` path profile (forest blocks it) and must stand within 2 tiles of the work tile. A tree inside a forest clump has no walkable tile in that band, so the path request failed and `workJobsSystem` re-requested it every few ticks forever: the order was accepted (`ok`) and nothing ever happened. Trees on the edge of a clump, or reached by a Worker Drone T1 (its path profile crosses forest), worked.
 - **Now:** a work job whose route to the band fails is dropped and the worker's `lastFailure` is set to `no_path` (the existing unit-failure toast). Test: `shared/sim/test/systems/work-forest-click.spec.ts`.
-- **Left open:** the client still sends the click (no reachability pre-check at enqueue, so no immediate reject); the player has to clear a clump from its edge inward or build a Harvester. Owner decision: let the drone fly over trees, or stand off further, or auto-chain the edge trees.
+- **Left open:** the client still sends the click (no reachability pre-check at enqueue, so no immediate reject); the player has to clear a clump from its edge inward or build a Worker Drone T1. Owner decision: let the drone fly over trees, or stand off further, or auto-chain the edge trees.
 - **Brush notes:** (obsolete) Ctrl+click multi-add, the hover hex marker and the area brush were removed in the terraform rework (FF-42).
 - **Found:** 2026-11-02, owner review (W02)
 
@@ -688,7 +688,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/features/terraform-basic/{TerraformMenu,BrushController,primaryOps,groundPreview,referenceTables,workStatus,resourceFound}.ts`, `frontend/game/features/shared/{hotkeys,pointer,depositLabel}.ts`, `frontend/game/core/hud/CommandDock.ts`, `frontend/game/features/landfall/{HqPanel,selectionHelpers}.ts`
 - **What happens:** three buttons, TERRAFORM on top; each click sends one `enqueueTask { terraform: { op: 'work' | 'dismantle', intent?, tiles: [{q,r}], workerId? } }` and disarms the tool; the sim chains terraform (GP-43). Ctrl+click multi-add, the area brush, the 3D hover marker and brushed-tile marks are gone; the S0 grade/clear/break hotkeys are dropped (`strokeTile(q, r, { op })` still sends them from code). G / R / Z arm only while the Terraform tab is open (no invisible armed tool); right-click disarms and passes through to the map. The preview uses the sim's own helpers (parity test against `enqueueWorkAtTile` on every tile). Host rejects are matched to the brush's own command. A `resourceSpawned` toast and a deposit tier on the deposit card announce finds; reference tables read sim data.
-- **Defaults picked:** `F` is the camera follow-HQ key, so TERRAFORM is `G`; `R` is shared with the ghost rotate (the brush is blocked while a ghost is up); DISMANTLE moved from `X` to `Z` and `X` only stops the unit (owner). `workerId` is sent only for a selected own, alive HQ Drone / Harvester.
+- **Defaults picked:** `F` is the camera follow-HQ key, so TERRAFORM is `G`; `R` is shared with the ghost rotate (the brush is blocked while a ghost is up); DISMANTLE moved from `X` to `Z` and `X` only stops the unit (owner). `workerId` is sent only for a selected own, alive HQ Drone / Worker Drone T1.
 - **To resolve:** the plan's area brush (W01-27, W05-20, units spec §4.5 menu row) comes back in W05.
 - **Found:** 2026-11-02, terraform rework
 
@@ -844,8 +844,8 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Status:** Question for the owner
 - **Severity:** low
 - **Confidence:** CONFIRMED (code trace; reported by the frontend agent, round 1)
-- **Area / code:** `frontend/game/core/hud/CommandDock.ts:30` (`hub-placement` gets the BUILD tab when W02 is off), `frontend/game/features/terraform-basic/index.ts:251` (`wave: 'W01'`, but holds the terraform rework of FF-42: TERRAFORM `work`, REPAIR, DISMANTLE, reference rows), `frontend/game/features/hud-min/MinimalHud.ts` (`bindHoverPopover` tier popovers), `frontend/game/app/online/EntityMeshes.ts:49-57,120` (`archetypeForKind`: harvester → `robot.miner`; `WorkParticleSystem`), `frontend/game/app/online/OnlineSession.ts:124,168` (only the health bars are gated by `W02`; `bindOnlineDayNightSync` is not), `frontend/render/lighting/` projector rigs; `docs/plan/PRODUCT_WAVES.md:22` (repair is a W03 row)
-- **What happens:** round 1 gated the W02 HUD, the terraform R/Z keys, health bars and the W02 dev commands behind the `W02` flag, but a `?waves=..01` client still shows: the Command Dock itself (it hosts the W01 Hub menu and the Terraform tab, where W01 had separate panels); the reworked TERRAFORM tool (`work` instead of W01's GRADE / CLEAR / BREAK, plus the reference rows); the per-tier popovers on the resource chips; work particles and hand lasers; the projector light rigs; the day/night binding of the scene to the planet clock; and Harvester meshes when a `..01` client meets a W02 host. REPAIR ships in W02 although `PRODUCT_WAVES.md` puts repair in W03.
+- **Area / code:** `frontend/game/core/hud/CommandDock.ts:30` (`hub-placement` gets the BUILD tab when W02 is off), `frontend/game/features/terraform-basic/index.ts:251` (`wave: 'W01'`, but holds the terraform rework of FF-42: TERRAFORM `work`, REPAIR, DISMANTLE, reference rows), `frontend/game/features/hud-min/MinimalHud.ts` (`bindHoverPopover` tier popovers), `frontend/game/app/online/EntityMeshes.ts:49-57,120` (`archetypeForKind`: worker → `robot.miner`; `WorkParticleSystem`), `frontend/game/app/online/OnlineSession.ts:124,168` (only the health bars are gated by `W02`; `bindOnlineDayNightSync` is not), `frontend/render/lighting/` projector rigs; `docs/plan/PRODUCT_WAVES.md:22` (repair is a W03 row)
+- **What happens:** round 1 gated the W02 HUD, the terraform R/Z keys, health bars and the W02 dev commands behind the `W02` flag, but a `?waves=..01` client still shows: the Command Dock itself (it hosts the W01 Hub menu and the Terraform tab, where W01 had separate panels); the reworked TERRAFORM tool (`work` instead of W01's GRADE / CLEAR / BREAK, plus the reference rows); the per-tier popovers on the resource chips; work particles and hand lasers; the projector light rigs; the day/night binding of the scene to the planet clock; and Worker Drone T1 meshes when a `..01` client meets a W02 host. REPAIR ships in W02 although `PRODUCT_WAVES.md` puts repair in W03.
 - **Why it is like this:** these pieces replaced W01 code in place (no W01 variant left to fall back to) or are render systems with no flag input.
 - **Workaround / mitigation:** the W01 e2e suite runs with `?waves=..01` and passes; the W02 suite's step 10 checks the gated UI (planet clock, grid lines, Production tab, W02 build cards, power widget).
 - **To resolve:** owner decides what `..01` must look like. Recommendation: accept the dock, the terraform rework, the render systems and the popovers as the new W01 look (they change no rule), and only move REPAIR behind `W03` (or update `PRODUCT_WAVES.md` to say it ships in W02).
@@ -1179,7 +1179,7 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/maps/entityDots.ts`, `shared/sim/src/world/presence.ts` (`presenceRoleOf`)
-- **What happens:** The sim defines only owner −1 (unowned); −2 (fauna) and −3 (Guild) exist only in `entityDots.ts`, and no fauna kind is registered. Also `presenceRoleOf` treats every kind ≥ hub as `structure`, so Harvesters (7) and Builders (8) count as structures for presence / AI; nothing calls `registerPresenceRole`.
+- **What happens:** The sim defines only owner −1 (unowned); −2 (fauna) and −3 (Guild) exist only in `entityDots.ts`, and no fauna kind is registered. Also `presenceRoleOf` treats every kind ≥ hub as `structure`, so Worker Drones (T1) (7) and Builders (8) count as structures for presence / AI; nothing calls `registerPresenceRole`.
 - **Why it is like this:** Found by the W04 review; outside the map fix scope.
 - **Workaround / mitigation:** Unowned entities draw neutral steel.
 - **To resolve:** Define owner codes in contracts; register presence roles for unit kinds.
@@ -1190,9 +1190,9 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Status:** Open
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `frontend/game/maps/minimap.css` (dock body budget `calc(100vh - 460px)`), `frontend/game/core/hud/hud.css` (top-left slot `z-index: 1`)
-- **What happens:** At 1280×720 the expanded Command Dock over the minimap reached the W06 pilot chip and caught its clicks (fixed in bce78bc by a tighter budget and lifting the top-left slot). At phone landscape 844×390 with W06 on, the dock (y 77–294) still overlaps the pilot chip (y 57–115). Side effect of the fix: the top-left slot now stacks above every other HUD slot.
-- **Why it is like this:** The bottom-left slot holds both the dock and the W04 minimap.
+- **Area / code:** `frontend/game/core/hud/hud.css` (top-left slot `z-index: 1`), `frontend/game/features/maps/index.ts` (minimap slot)
+- **What happens:** At 1280×720 the expanded Command Dock over the minimap reached the W06 pilot chip and caught its clicks (fixed in bce78bc by a tighter budget and lifting the top-left slot). At phone landscape 844×390 with W06 on, the dock (y 77–294) still overlaps the pilot chip (y 57–115). Side effect of the fix: the top-left slot now stacks above every other HUD slot. On 2026-11-06 the minimap left the bottom-left slot for the top-right corner and the dock-height budget in `minimap.css` was removed, so that phone overlap needs another look.
+- **Why it is like this:** The bottom-left slot used to hold both the dock and the W04 minimap. The minimap is now top-right. The top-left z-index lift is still in place.
 - **Workaround / mitigation:** Collapse the dock (`Q`) on small screens.
 - **To resolve:** A HUD layout budget per breakpoint that reserves the top-left plate.
 - **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
@@ -1221,13 +1221,13 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 
 ### FF-81 · Landscape HUD reserves space for the expanded selection strip
 
-- **Status:** Accepted (merged W03/W04 regression fix)
-- **Area / code:** `frontend/game/maps/minimap.css`
-- **What happens:** At phone landscape sizes, the dock and minimap sit above the selection strip. The build list has a shorter scrollable viewport so controls remain clear of the top HUD and selected unit.
-- **Why it is like this:** The merged multi-selection strip can be 154 px tall, exceeding the earlier 76 px allowance.
-- **Workaround / mitigation:** Scroll the build list to reach lower cards; desktop sizing is unchanged.
-- **To resolve:** Revisit the landscape layout when adding more selection details.
-- **Found:** 2026-11-04, full merged browser suite at 844 × 390.
+- **Status:** Open (recheck after the minimap moved)
+- **Area / code:** `frontend/game/maps/minimap.css`, `frontend/game/core/hud/hud.css` (`.ta-command-dock__body`)
+- **What happens:** The phone-landscape rule that put the dock and the minimap side by side, and shortened the build list, was removed on 2026-11-06 when the minimap moved to the top-right. The dock body now uses its normal max-height (`min(520px, 100vh - 150px)`). On a short landscape screen that body can meet the selection strip or the top-left pilot chip.
+- **Why it is like this:** The side-by-side rule only made sense while the minimap shared the bottom-left slot.
+- **Workaround / mitigation:** Collapse the dock. The build list still scrolls inside the dock body.
+- **To resolve:** Recheck 844×390 with the selection strip open and reserve space if the dock covers it.
+- **Found:** 2026-11-04, full merged browser suite at 844 × 390. Updated 2026-11-06.
 
 ### FF-82 · W05 deferred stretch (`H+`) and full-product items (Ridge/Moat, weather hazards, Ctrl+click/Shift-queue)
 
@@ -1245,7 +1245,7 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 
 Open items, see the format in `README.md`:
 - **Terraform chain removed from the UI.** The button queues one order per click (Ctrl+click for many) and no longer chains to neighbours; the sim `work` chain remains for Repair and right-click work. Terraform does not send `workerId` any more (the host picks).
-- **Growth ladder costs water on click.** Terraform on a prepared hex irrigates, on an irrigated hex seeds. Owner question: keep this on the one button?
+- **Growth ladder costs water on click.** ~~Terraform on a prepared hex irrigates, on an irrigated hex seeds.~~ Superseded: the ladder was removed from the button; Irrigate/Seed now have no UI path (see `sim-gameplay.md` GP-90).
 - **Queue cap not predicted.** `terraformMaxOrders` = 16; the client preview does not predict a rejected Ctrl+click.
 - **`..01` to `..04` configs** skip slope, crater and water hexes (their ops are W05 data).
 - **Ghost prep bill and the DOM `TileOverlay` panel** were deliberately left as they are.
@@ -1264,11 +1264,120 @@ Open items, see the format in `README.md`:
 ## W05 dismantle, lights and terrain scene (2026-11-05)
 
 - **Owner question: drones are not dismantlable** (the safer reading). If recycling is wanted it needs a worker walking to the drone, a timed job and an on-site refund.
-- **Pod scrap is instant** once a Builder or HQ is in reach; should it be a timed worker job? The client preview does not check pod reach (the host rejects `no_worker_in_reach`).
+- **Pod scrap is instant** once a Worker Drone or the HQ is in reach; should it be a timed worker job? The client preview does not check pod reach (the host rejects `no_worker_in_reach`).
 - **Unfinished sites** are cancelled only via the Queue panel `cancelTask`; the dismantle tool refuses them. `cannot_dismantle_hq` covers HQ and Hub.
 - **Lights:** an unpowered building's emissives are dead by day too; storage-full (`offlineCapped`) counts as powered; no kind is marked `UnlitLightState` yet (owner: which kinds have no lights?); dimming is per mesh, so no part (for example a status LED) is exempt.
-- **Terrain kinds:** the sim has no Dune or Mountain terrain and no op for them (dunes and hills are `slope` → Level, mountain is tall `rock` → Break). Ridge and Moat are `prep` codes with no terraform op and no 3D visual, and rock height does not show.
+- **Terrain kinds:** the sim has no Dune or Mountain terrain. Dunes and hills are `slope`: the TERRAFORM dock's `work` job clears a radius-2 disc (GP-86), and the Level order still changes one tile. Mountain is tall `rock` → Break. Ridge and Moat are `prep` codes with no terraform op and no 3D visual, and rock height does not show.
 - **Enclosed hexes** wait until their neighbours are cleared (workers clear a patch edge-first); Ctrl+click the whole patch.
 - **Large `host.step(n)` / `warp`** stalled terraform jobs in a headless run (cause unconfirmed; stepping in slices of 10 ticks works).
 - **Replica entity rows carry no `tier`;** the colony view now publishes `maxWorkerTier`. Online path of `w05-terrain` was not opened in a browser (needs the Postgres stack).
 
+### FF-83 · Worker drones keep the old unit ids
+
+- **Status:** Resolved (worker unit id, this change)
+- **Area / code:** `shared/sim/src/data/units-workers-basic.ts`, `frontend/game/features/units-menu/`, `frontend/game/features/queue-panel/queueChipHelpers.ts`, `frontend/game/features/stages/StageToast.ts`
+- **What happens:** The produced unit is `worker` (`ENTITY_KIND.worker`). T1, T2 and T3 are one unit. Cards use `data-unit="worker"` and `data-tier`. The command is `buildUnit { unit: 'worker', tier: 1|2|3 }`. Cancel ids use `worker:<id>`. The colony list is `col.workers`. The ids `harvester`, `builder` and `terraformer` are not the unit.
+- **Why it is like this:** The menu already said Worker Drone while commands still used the old ids.
+- **Workaround / mitigation:** None.
+- **To resolve:** Done in this change.
+- **Found:** 2026-11-06, worker-drone production change. Resolved in this change.
+
+### FF-84 · Menu sneak-peeks were not checked in a browser
+
+- **Status:** Resolved (2026-11-06, local `/play.html?host=local&scenario=w05`)
+- **Area / code:** `frontend/game/features/shared/archetypeThumb.ts`
+- **What happens:** Production and Build were opened in headless Chrome. T1–T3 worker tabs, the two-column build grid, prices, and the hover plate all showed. A missing WebGL context still falls back to a short-name plate.
+- **Why it is like this:** The first pass had not opened the page.
+- **Workaround / mitigation:** None.
+- **To resolve:** Done for this layout. Borrowed meshes are FF-85.
+- **Found:** 2026-11-06, worker-drone production change.
+
+### FF-85 · Menu previews borrow another archetype when the named mesh is not registered
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/shared/archetypeThumb.ts` (`THUMB_ALIAS`); `frontend/game/app/online/entityKinds.ts`
+- **What happens:** Worker Drone T3 uses `robot.builder`, the same mesh as T2. Do not register `robot.terraformer`. Cards whose archetype is not in the kitbash catalog draw a stand-in: `building.petroleumWell` and `building.quarry` use `building.mine`, `building.depot` uses `building.supplyDepot`, `building.outpostBeacon` uses `building.claimBeacon`, `robot.scout` uses `robot.hero`, `robot.engineer` uses `robot.builder`, `robot.hauler` uses `robot.miner`.
+- **Why it is like this:** Those rows name meshes that were never registered. A text plate read as a missing icon. New archetypes were not part of this HUD pass.
+- **Workaround / mitigation:** The card shows the stand-in mesh the game already draws for the closest registered id.
+- **To resolve:** Register each missing archetype, then drop its alias. Leave `robot.builder` as the T2 and T3 mesh.
+- **Found:** 2026-11-06, menu thumbnail check. Updated the same day for the Build and Production cards.
+
+### FF-86 · The name Terraformer is a badge and a rank, not the drone
+
+- **Status:** Accepted (by design)
+- **Area / code:** `docs/terraagent-master-plan-final.md` (achievement "Terraformer"), `docs/game/player-profile-and-achievements-spec.md` (title ladder), `docs/hackathon/near/05-deed-staking-treasury-bounties.md` (R05-18, Q-05-7), `docs/hackathon/near/07-gaps-and-grooming.md`, `docs/hackathon/near/08-wave-grill-checklist.md`
+- **What happens:** The achievement and the profile title "Terraformer" stay as frozen badge and rank names. They are not Worker Drone T3. The unit is `worker` at tier 3, mesh `robot.builder`.
+- **Why it is like this:** Those names are already in the hackathon achievement list and the title ladder. Renaming the badge would collide with the frozen ids.
+- **Workaround / mitigation:** Read "Terraformer" next to Den Hunter, Councilor, or the Cadet → Architect ladder as a badge or title. Read Worker Drone T3 as the unit.
+- **To resolve:** Only if the owner renames the badge. Do not reuse the name for the drone.
+- **Found:** 2026-11-06, worker unit rename.
+
+
+### FF-87 · Draped hex marks: known gaps
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/shared/hexTiles3d.ts`, `hexFootprint3d.ts`, `hub-placement/GhostRig3D.ts`, `construction-menu/powerZoneOverlay.ts`, `app/online/EntityMeshes.ts`
+- **What happens:** Terraform targets/hover, the power zone and both ghost footprints are draped exactly on the rendered ground (12 pieces per hex, each in one lattice triangle; water tiles lift to the water plane). Gaps: the Hub ghost footprint does not lift to the water plane (`HubFootprintTileState` has no terrain code; water is invalid anyway); on the planet rim `heightSampler` reads 0 outside the planet, so a mark can float or sink on its outer side; the power zone keeps its coarse rebuild trigger (any tile change, 400 ms throttle) instead of `hexDrapeKey`; the unit selection ring and target marker (`EntityMeshes.ts`) are still flat rings that can clip on steep ground. The water lift is only spec-tested (the w05-terrain lake sits at +0.01 m). Daylight on sand: the dark-blue hover fill (0.18 opacity) reads faintly; the outline carries the mark.
+- **Why it is like this:** Scope of the owner's highlight item; `EntityMeshes.ts` is near the 500-line limit with others' in-flight edits.
+- **Workaround / mitigation:** —
+- **To resolve:** Drape the selection ring the same way; give the Hub ghost tile state its terrain code.
+- **Found:** 2026-11-06, hex-tile rule (D-44), lead + parallel agents
+
+### FF-88 · Terraform marker: the clicked dune outline vanishes while the chain works from the edge
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/terraform-basic/targets.ts` (`terraformTargets`, `slopeDiscOrTile`)
+- **What happens:** When a clicked dune / tree has no stand (GP-88), its job is skipped and the HQ works the nearest workable disc; `targets.ts` draws markers at `job.q/r`, so the clicked outline disappears and the first marker appears at the dune edge instead.
+- **Why it is like this:** The marker follows the live job; the chain goal is only on the job record (`chainOrigin`).
+- **Workaround / mitigation:** —
+- **To resolve:** Also draw a marker at `chainOrigin` until the chain ends.
+- **Found:** 2026-11-06, W05 owner pass (terraform agent)
+
+### FF-89 · Build-menu thumbnails leak WebGL contexts (the colony canvas can go black)
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/shared/archetypeThumb.ts` (`webglOk()`)
+- **What happens:** `webglOk()` creates a throwaway WebGL context per Build-menu thumbnail and never releases it. Chrome then warns "Too many active WebGL contexts. Oldest context will be lost." and the colony canvas itself was seen lost (`isContextLost() === true`, black view) in a headless run with one page open.
+- **Why it is like this:** Found while writing the water-reflection e2e; out of that task's scope.
+- **Workaround / mitigation:** `tests/e2e/probes/water-reflections.rig.ts` loses those probe contexts right after use (off with `E2E_KEEP_PROBE_CONTEXTS=1`), so that suite does not show the bug.
+- **To resolve:** Probe once and cache the result, or call `getExtension('WEBGL_lose_context').loseContext()` on the probe context.
+- **Found:** 2026-11-07, water reflections e2e (agent C)
+
+
+### FF-90 · Ctrl+click TERRAFORM is host-picked; only a plain click uses the selected worker
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/terraform-basic/BrushController.ts` (`BrushStrokeOptions.queue`), sim `enqueueWorkOrder` → `replaceRunningChains` → `cancelWorkerJobs`
+- **What happens:** A TERRAFORM order that names a worker replaces that worker's other chain jobs on the host. Ctrl+click with a selected worker therefore kept only the last queued hex. Now a plain click sends the selected worker ("this worker, go here"); Ctrl+click leaves the worker out and the host picks (tier-aware, so the deep hex still gets a T2 worker).
+- **To resolve:** If the owner wants Ctrl+click to queue on the selected worker, the sim needs an append flag on `enqueueWorkOrder`.
+- **Found:** 2026-11-07, W05 full review (client agent)
+
+### FF-91 · The bottom-left dock shrinks to stay below the top-left HUD stack
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/core/hud/slotFit.ts`, `frontend/game/core/hud/hud.css` (`--ta-hud-top-left-h`), `frontend/game/features/landfall/landfall.css` (`@media (max-height: 500px)`)
+- **What happens:** The dock plus the env panel grew until the pilot chip covered the dock tabs (e2e w03 9&10, w05 1&2 could not click QUEUE / TERRAFORM), and at 844×390 the dock overlapped the HQ panel (w04 3). The bottom-left slot now starts below the measured top-left slot and only the dock shrinks (its body scrolls); on short screens the HQ panel sits right of the dock. Side effects: an expanding top-left plate (pilot chip's Save progress menu) makes the dock jump; at ≤ 500 px height the HQ panel covers the dev PREDICT plate.
+- **Found:** 2026-11-07, W05 full review (client agent, from the e2e baseline)
+
+### FF-92 · Client placement ghost pre-filters occupancy before `evaluatePlacement`
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/construction-menu/ghostContext.ts` (`collectOccupiedTileIndices`), `PlacementGhost.ts` (`scanFootprintTiles`, `evaluateValidity`)
+- **What happens:** `evaluatePlacementGhost` skips `evaluatePlacement` when the client's own occupancy scan says "occupied" (`scan.hasOccupied ? null : evaluateSiteWithSim`): a second partial placement rule on the client (D-37). Pre-existing, not from the W05 diff.
+- **To resolve:** Drop the pre-filter and let `evaluatePlacement` (`occupiedTiles` + `plannedSites`) decide; rerun `placement-parity.spec.ts` and `terraform-parity.spec.ts`.
+- **Found:** 2026-11-07, W05 full review (client agent)
+
+### FF-93 · Small client copies of sim helpers remain
+
+- **Status:** Open
+- **Area / code:** water check in `features/shared/hexTiles3d.ts:110`, `construction-menu/ghostRenderer.ts:126` (sim `grid/geo.ts:60`); `terraform-basic/planner.ts` `calculateRepairCost` / `calculateDismantleRefund` (round to 2 decimals, host `workJobs.ts` rounds to 6); `hud-min/terraformMeter.ts` `tierGateHint` and `landfall/extractorTierView.ts` call `resolveTierGateSpecs()` without the store's data (default W05 data compiled once, cached).
+- **To resolve:** Export `isWaterTerrain(code)` and a repair/refund preview helper from the sim and import them; pass `store.simData()` to `resolveTierGateSpecs`.
+- **Found:** 2026-11-07, W05 full review (client agent)
+
+### FF-94 · The S1 unlock toast says "Worker Drone", not "Worker Drone T1"
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/data/stages.ts` (`units: ['worker']` at S1 and at the T2 stage), `frontend/game/features/stages/StageToast.ts` (labels `worker_t1..t3` exist), `tests/e2e/w08.spec.ts`
+- **What happens:** The owner's e2e edit expected `Worker Drone T1` in the S1 reveal; the stage rows only say `worker`, so the toast cannot name the tier and reads `Worker Drone` (the same at the T2 stage). The review changed the e2e assertion to `Worker Drone` so the suite matches the code.
+- **To resolve:** Owner: list `worker_t1` / `worker_t2` in the stage rows (and teach the unlock-stage resolver those ids), then restore the `Worker Drone T1` assertion.
+- **Found:** 2026-11-07, W05 full review (lead, e2e)

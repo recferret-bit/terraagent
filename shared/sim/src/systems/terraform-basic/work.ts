@@ -3,8 +3,9 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { isTileUneven } from '../../grid/geo';
 import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
+import { joinPlaneHeight } from '../../grid/hexTile';
 import { TERRAIN } from '../../grid/layers';
-import { revealSubsurface } from '../../grid/subsurface';
+import { revealAroundChanged } from '../../grid/subsurface';
 import { prepKeyFromId, setTileHeight, setTilePrep, setTileTerrain, terrainKeyFromId } from '../../grid/tileModel';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
@@ -51,7 +52,7 @@ function dropJob(order: TerraformOrder, at: number): void {
   order.skippedCount++;
 }
 
-/** Levels a newly cleared/broken flat tile to match adjacent level flat ground so it becomes passable and buildable. */
+/** Levels a newly cleared/broken flat tile onto the plane of the adjacent level flat ground (R4, `joinPlaneHeight`). */
 export function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: number): void {
   const hx = hexIndex(state.grid.radius);
   const q = hx.q[tileIdx]!, r = hx.r[tileIdx]!;
@@ -63,17 +64,57 @@ export function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: n
       peers.push(height[j]);
     }
   }
-  if (peers.length > 0) {
-    let bestH = peers[0]!;
-    let bestCount = 0;
-    for (const h of peers) {
-      const c = peers.filter((p) => Math.abs(p - h) < 1e-3).length;
-      if (c > bestCount) { bestCount = c; bestH = h; }
-    }
-    if (height[tileIdx] !== bestH) setTileHeight(state.grid, tileIdx, bestH, tick);
+  const plane = joinPlaneHeight(peers); // R4: the plane most level neighbours share
+  if (plane !== null) {
+    if (height[tileIdx] !== plane) setTileHeight(state.grid, tileIdx, plane, tick);
   } else if (Math.abs(height[tileIdx]) > 0.15) {
     setTileHeight(state.grid, tileIdx, 0, tick);
   }
+}
+
+/**
+ * Changed ground uncovers what world generation buried (D-38): on the changed tile and its neighbours, every buried
+ * deposit whose tile is now a hex tile (`revealAroundChanged`, `grid/subsurface.ts`) appears, one `groundRevealed` each.
+ */
+function emitRevealed(state: PlanetState, tileIdx: number, ctx: StepContext, colonyIdStr: string, who: ReturnType<typeof colonyWho>['who']): void {
+  for (const found of revealAroundChanged(state, [tileIdx], ctx.tick)) {
+    ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, ...found } });
+  }
+}
+
+/** A tile a terraform just changed (an order job or a dock `work` job): where, what it was, and the op. */
+export interface TerraformedTile {
+  tileIdx: number;
+  q: number;
+  r: number;
+  prevTerrain: string;
+  prevPrep: string;
+  op: string;
+  /** Tiles the one job changed (a dune disc clears several). */
+  count?: number;
+}
+
+/**
+ * The bookkeeping after every terraform tile change, one service for the order path and the dock `work` path: the
+ * colony's Terraform % (`UO-TF-06`: a reclaimed deep tile joins the denominator), the tier-gate ring cache (W05-34) and,
+ * with W05 on, `tileStateChanged` with the tile's terrain / prep as it is now.
+ */
+export function noteTileTerraformed(state: PlanetState, colonyId: number, t: TerraformedTile, ctx: StepContext): void {
+  syncColonyTerraformStats(state, colonyId, ctx.tick);
+  invalidateExtractorRingCache(state);
+  if (!ctx.flags.has('W05')) return;
+  const { colonyIdStr, who } = colonyWho(state, colonyId);
+  const L = state.grid.layers;
+  ctx.emit({
+    kind: 'tileStateChanged',
+    severity: 'info',
+    colonyIds: [colonyIdStr],
+    data: {
+      ...who, q: t.q, r: t.r, prevTerrain: t.prevTerrain, prevPrep: t.prevPrep,
+      terrain: terrainKeyFromId(L.terrain[t.tileIdx]), prep: prepKeyFromId(L.prep[t.tileIdx]), op: t.op,
+      ...(t.count !== undefined && t.count > 1 ? { count: t.count } : {}),
+    },
+  });
 }
 
 function completeTerraformJob(state: PlanetState, colonyId: number, job: TerraformJob, ctx: StepContext): void {
@@ -82,53 +123,28 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   if (tileIdx < 0) return;
   const { colonyIdStr, who } = colonyWho(state, colonyId);
   const spec = getTerraformOpSpec(job.op, ctx.data);
-  const prevTerrain = terrainKeyFromId(state.grid.layers.terrain[tileIdx]);
-  const prevPrep = prepKeyFromId(state.grid.layers.prep[tileIdx]);
+  const changed: TerraformedTile = {
+    tileIdx, q: job.q, r: job.r, op: job.op,
+    prevTerrain: terrainKeyFromId(state.grid.layers.terrain[tileIdx]),
+    prevPrep: prepKeyFromId(state.grid.layers.prep[tileIdx]),
+  };
   if (spec.toTerrain === spec.fromTerrain) {
     setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
     if (job.op === 'grade') levelToAdjacentFlat(state, tileIdx, tick);
-    syncColonyTerraformStats(state, colonyId, tick);
-    invalidateExtractorRingCache(state);
-    if (ctx.flags.has('W05')) {
-      ctx.emit({
-        kind: 'tileStateChanged',
-        severity: 'info',
-        colonyIds: [colonyIdStr],
-        data: { ...who, q: job.q, r: job.r, prevTerrain, prevPrep, terrain: prevTerrain, prep: prepKeyFromId(spec.toPrep), op: job.op },
-      });
-    }
+    noteTileTerraformed(state, colonyId, changed, ctx);
     if (job.op === 'seed') {
       ctx.emit({ kind: 'obstacleRemoved', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, op: 'seed', count: 1, q: job.q, r: job.r } });
     } else {
       ctx.emit({ kind: 'tilePrepared', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, count: 1, q: job.q, r: job.r } });
     }
+    emitRevealed(state, tileIdx, ctx, colonyIdStr, who);
     return;
   }
   setTileTerrain(state.grid, tileIdx, spec.toTerrain, tick);
   setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
   if (spec.toTerrain === TERRAIN.flat) levelToAdjacentFlat(state, tileIdx, tick);
-  syncColonyTerraformStats(state, colonyId, tick);
-  invalidateExtractorRingCache(state);
-  if (ctx.flags.has('W05')) {
-    ctx.emit({
-      kind: 'tileStateChanged',
-      severity: 'info',
-      colonyIds: [colonyIdStr],
-      data: {
-        ...who,
-        q: job.q,
-        r: job.r,
-        prevTerrain,
-        prevPrep,
-        terrain: terrainKeyFromId(spec.toTerrain),
-        prep: prepKeyFromId(spec.toPrep),
-        op: job.op,
-      },
-    });
-  }
-  // Removing the obstacle uncovers what world generation buried under it (D-38, `grid/subsurface.ts`).
-  const found = revealSubsurface(state, tileIdx, tick);
-  if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });
+  noteTileTerraformed(state, colonyId, changed, ctx);
+  emitRevealed(state, tileIdx, ctx, colonyIdStr, who);
   const overflow = creditYield(state, colonyId, job, ctx);
   ctx.emit({
     kind: 'obstacleRemoved',
@@ -415,8 +431,8 @@ function terraformProviderFor(id: string, lane: (o: TerraformOrder) => boolean):
 const anyLinkedPrep = terraformProviderFor('terraformPrep', (o) => o.isLinkedPrep);
 
 /**
- * A building's linked site prep (asked before construction: a site is prepared before it is built on). Only a
- * terraform-capable builder takes it (HQ and Builder Drone in W03, `UO-D-03`); a Harvester never prepares a site.
+ * A building's linked site prep (asked before construction: a site is prepared before it is built on).
+ * The HQ and any Worker Drone whose tier covers the site take it (`UO-D-03`).
  */
 export const linkedPrepProvider: UnitWorkProvider = {
   id: anyLinkedPrep.id,
@@ -425,12 +441,8 @@ export const linkedPrepProvider: UnitWorkProvider = {
 
 const anyManualTerraform = terraformProviderFor('terraform', (o) => !o.isLinkedPrep);
 
-/** The player's manual terraform orders (asked after construction, GP-04; HQ and Terraformer Drone). */
+/** The player's manual terraform orders (asked after construction, GP-04; HQ and Worker Drone). */
 export const terraformProvider: UnitWorkProvider = {
   id: anyManualTerraform.id,
-  propose: (u) =>
-    u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq ||
-    u.state.entities.cols.kind[u.row] === ENTITY_KIND.terraformer
-      ? anyManualTerraform.propose(u)
-      : null,
+  propose: (u) => (canDoWork(u, 'terraform') ? anyManualTerraform.propose(u) : null),
 };

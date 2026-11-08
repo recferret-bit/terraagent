@@ -2,12 +2,13 @@ import type { RejectCode } from '@terra/contracts';
 import {
   DISMANTLE_REFUND_RATE,
   ENTITY_KIND,
-  evaluateTerraform,
+  entityFootprint,
   getEntityBaseBuildCost,
   getBuildingFootprintTiles,
+  occupiedTiles,
   placementWorldFromState,
+  planGroundWorkTiles,
   REPAIR_COST_RATE,
-  terraformJobKey,
   terraformWorldFrom,
   type CompiledDataLike,
   type PlanetState,
@@ -17,11 +18,11 @@ import type { GameView } from '../../core/registry/types';
 import { viewPlacementWorld } from '../shared/placementWorld';
 import type { TileCoord } from '../shared/pointer';
 import { extractColonyOrders } from './TileOverlay';
+import { colonyWorkJobs } from './workStatus';
 
 /**
- * The 3 buttons of the Terraform dock tab. TERRAFORM goes on the wire as the sim's per-tile ops (the host picks each
- * hex's op from its ground: `enqueueTask { terraform: { op: 'grade', tiles } }` auto-prepares), REPAIR as `work` +
- * `intent: 'repair'`, DISMANTLE as `dismantle`.
+ * The 3 buttons of the Terraform dock tab. TERRAFORM goes on the wire as `work` + `intent: 'terraform'` (the host picks
+ * each hex's work from its ground and chains on), REPAIR as `work` + `intent: 'repair'`, DISMANTLE as `dismantle`.
  */
 export type TerraformPrimaryOp = 'terraform' | 'repair' | 'dismantle';
 
@@ -67,9 +68,7 @@ export interface InspectableEntity {
 export function normalizeEntityKindName(kind: unknown): string {
   if (kind === ENTITY_KIND.commandHub || kind === 'commandHub' || kind === 'hub') return 'commandHub';
   if (kind === ENTITY_KIND.hq || kind === 'hq' || kind === 'hqDrone') return 'hq';
-  if (kind === ENTITY_KIND.harvester || kind === 'harvester') return 'harvester';
-  if (kind === ENTITY_KIND.builder || kind === 'builder' || kind === 'builderDrone') return 'builder';
-  if (kind === ENTITY_KIND.terraformer || kind === 'terraformer' || kind === 'terraformerDrone') return 'terraformer';
+  if (kind === ENTITY_KIND.worker || kind === 'worker') return 'worker';
   if (kind === ENTITY_KIND.metalsExtractor || kind === 'metalsExtractor' || kind === 'extractor') return 'metalsExtractor';
   if (kind === ENTITY_KIND.solar || kind === 'solar' || kind === 'solarCollector') return 'solar';
   if (kind === ENTITY_KIND.tradeHub || kind === 'tradeHub') return 'tradeHub';
@@ -112,10 +111,10 @@ export function calculateDismantleRefund(spentCost: Readonly<Record<string, numb
   return out;
 }
 
-function defaultFootprintForKind(kindName: string): number {
-  if (kindName === 'commandHub') return 3;
-  if (kindName === 'metalsExtractor' || kindName === 'solar' || kindName === 'tradeHub') return 2;
-  return 1;
+/** Footprint of a building the view row does not size: the sim's `entityFootprint` (Hub 3, 2×2 buildings, else 1). */
+function defaultFootprintForKind(rawKind: number | string, kindName: string): number {
+  const code = typeof rawKind === 'number' ? rawKind : (ENTITY_KIND as Record<string, number>)[kindName];
+  return code === undefined ? 1 : entityFootprint(code);
 }
 
 function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | null {
@@ -125,7 +124,7 @@ function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | 
   if (!Number.isFinite(q) || !Number.isFinite(r)) return null;
   const rawKind = (raw.kind ?? raw.building ?? raw.unit ?? 'entity') as number | string;
   const kindName = normalizeEntityKindName(rawKind);
-  const defFp = defaultFootprintForKind(kindName);
+  const defFp = defaultFootprintForKind(rawKind, kindName);
   const fw = Number(raw.footprintW ?? raw.w ?? raw.footprint ?? defFp) || defFp;
   const fd = Number(raw.footprintD ?? raw.d ?? raw.h ?? raw.footprint ?? defFp) || defFp;
   return {
@@ -145,6 +144,14 @@ function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | 
   };
 }
 
+function pushInspectableItems(out: InspectableEntity[], items: readonly unknown[]): void {
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const conv = toInspectableEntity(item as Record<string, unknown>);
+    if (conv) out.push(conv);
+  }
+}
+
 export function extractViewEntities(
   view: GameView | null | undefined,
   hostState?: PlanetState | null,
@@ -152,31 +159,15 @@ export function extractViewEntities(
   const out: InspectableEntity[] = [];
   const v = (view ?? {}) as { entities?: unknown; units?: unknown[]; count?: number };
   if (v.entities instanceof Float32Array) {
-    for (const e of viewPlacementWorld(view).entities) {
-      const conv = toInspectableEntity(e as unknown as Record<string, unknown>);
-      if (conv) out.push(conv);
-    }
+    pushInspectableItems(out, viewPlacementWorld(view).entities);
   } else if (Array.isArray(v.entities)) {
-    for (const item of v.entities) {
-      if (item && typeof item === 'object') {
-        const conv = toInspectableEntity(item as Record<string, unknown>);
-        if (conv) out.push(conv);
-      }
-    }
+    pushInspectableItems(out, v.entities);
   }
   if (Array.isArray(v.units)) {
-    for (const unit of v.units) {
-      if (unit && typeof unit === 'object') {
-        const conv = toInspectableEntity(unit as Record<string, unknown>);
-        if (conv) out.push(conv);
-      }
-    }
+    pushInspectableItems(out, v.units);
   }
   if (out.length === 0 && hostState) {
-    for (const e of placementWorldFromState(hostState).entities) {
-      const conv = toInspectableEntity(e as unknown as Record<string, unknown>);
-      if (conv) out.push(conv);
-    }
+    pushInspectableItems(out, placementWorldFromState(hostState).entities);
   }
   return out;
 }
@@ -210,7 +201,7 @@ export function findEntityAtTile(
   return null;
 }
 
-/** Checks whether the player has an alive HQ Drone, Harvester, Builder, or Terraformer available to perform terraform/work orders. */
+/** Checks whether the player has an alive HQ Drone or Worker Drone available to perform terraform/work orders. */
 export function hasWorkerEntity(
   entities: readonly InspectableEntity[],
   colonyId: number,
@@ -219,50 +210,26 @@ export function hasWorkerEntity(
   for (const e of entities) {
     if (!isEntityAlive(e)) continue;
     if (e.owner !== undefined && e.owner !== colonyId) continue;
-    if (e.kindName === 'hq' || e.kindName === 'harvester' || e.kindName === 'builder' || e.kindName === 'terraformer') return true;
+    if (e.kindName === 'hq' || e.kindName === 'worker') return true;
   }
   const colonies = (view as { colonies?: Array<{ index?: number; hq?: { hp?: number; cell?: number } }> } | null)?.colonies;
   const col = colonies?.find((c) => c.index === colonyId) ?? colonies?.[colonyId];
   return Boolean(col?.hq && (col.hq.hp === undefined || col.hq.hp > 0));
 }
 
-/** Highest worker tier owned by `colonyId` (`1` in T1, `2` once a T2 worker exists; gates `deepReclaim`). */
-export function colonyMaxWorkerTier(
-  entities: readonly InspectableEntity[],
-  colonyId: number,
-  view?: GameView | null,
-): number {
-  let maxTier = 1;
-  for (const e of entities) {
-    if (!isEntityAlive(e)) continue;
-    if (e.owner !== undefined && e.owner !== colonyId) continue;
-    if (e.kindName === 'hq' || e.kindName === 'builder' || e.kindName === 'terraformer') {
-      const t = typeof e.tier === 'number' && e.tier > 0 ? e.tier : 1;
-      if (t > maxTier) maxTier = t;
-    }
-  }
-  const colonies = (view as { colonies?: Array<{ index?: number; maxWorkerTier?: number; workerTier?: number }> } | null)?.colonies;
-  const col = colonies?.find((c, i) => (c?.index ?? i) === colonyId);
-  const viewTier = col?.maxWorkerTier ?? col?.workerTier;
-  if (typeof viewTier === 'number' && viewTier > maxTier) maxTier = viewTier;
-  return maxTier;
-}
-
-/** Every `op:q,r` the colony already has queued in the view (the host skips those tiles: never worked twice). */
-function pendingJobKeys(view: GameView | null | undefined, colonyId: number): Set<string> {
+/** Tiles already named by a terraform order or a `work` job (the host skips those: never worked twice). */
+function pendingTiles(view: GameView | null | undefined, colonyId: number): Set<string> {
   const out = new Set<string>();
-  for (const o of extractColonyOrders(view, colonyId)) for (const j of o.jobs) out.add(terraformJobKey(j.op, j.q, j.r));
+  for (const o of extractColonyOrders(view, colonyId)) for (const j of o.jobs) out.add(`${j.q},${j.r}`);
+  for (const j of colonyWorkJobs(view, colonyId)) if (j.mode === 'terraform') out.add(`${j.q},${j.r}`);
   return out;
 }
 
-/** The growth ops TERRAFORM falls back to on ground that is already clear: prepared → Irrigate → Seed (Living). */
-const GROWTH_LADDER: readonly TerraformOpKind[] = ['irrigate', 'seed'];
-
 /**
- * Preview of a TERRAFORM stroke over the replica view with the sim's own rule (`evaluateTerraform`, the function the
- * `enqueueTask` handler runs). Each hex gets the op its ground needs (`auto`: trees → Clear, rock → Break, slope →
- * Level, crater → Fill, water → Reclaim, plain ground → Grade); ground that is already prepared climbs the growth
- * ladder instead (Irrigate, then Seed), so the one button also takes a hex to Living. D-37, FF-03.
+ * Preview of a TERRAFORM stroke with the sim's own ground rule (`planGroundWorkTiles` / `evaluateGroundWorkTile`,
+ * the function the `work` handler runs). One `work` job per hex the chain can take (trees, rock, slope, crater,
+ * water). Level flat that is already `flat`, prepared, irrigated or living is `already_terraformed` — the button
+ * does not climb into Irrigate or Seed. D-37.
  */
 export function planTerraformTiles(
   view: GameView | null | undefined,
@@ -271,32 +238,19 @@ export function planTerraformTiles(
 ): BrushPlan {
   const placement = viewPlacementWorld(view);
   if (placement.tileCount === 0) return { jobs: [], queuedCount: 0, skippedCount: tiles.length };
-  const built = terraformWorldFrom(placement, opts.colonyId, opts.data);
-  // The replica's entity rows carry no tier: the host publishes the colony's best worker tier on its view (`maxWorkerTier`).
-  const world = { ...built, maxWorkerTier: Math.max(built.maxWorkerTier ?? 1, colonyMaxWorkerTier([], opts.colonyId, view)) };
-  const pending = pendingJobKeys(view, opts.colonyId);
-  const base = { colonyId: opts.colonyId, pending, data: opts.data } as const;
-  const table = opts.data?.tables?.opsBasic as Record<string, unknown> | undefined;
-  const jobs: PlannedTileJob[] = [];
-  let skippedCount = 0;
-  let firstReject: RejectCode | undefined;
-  for (const t of tiles) {
-    const auto = evaluateTerraform(world, { ...base, op: 'grade', tiles: [t], auto: true });
-    let job = auto.jobs[0];
-    let reject = auto.firstReject;
-    // Ground that already is prepared (`already_at_target`) is judged by the growth ladder's own verdict.
-    for (const op of job || reject !== 'already_at_target' ? [] : GROWTH_LADDER) {
-      if (table && !(op in table)) continue; // the op's wave is off: no such row in the compiled data
-      const step = evaluateTerraform(world, { ...base, op, tiles: [t] });
-      job = step.jobs[0];
-      if (job) break;
-      reject = step.firstReject ?? reject;
-    }
-    if (job) jobs.push(job);
-    else {
-      skippedCount++;
-      firstReject ??= reject;
-    }
-  }
-  return { jobs, queuedCount: jobs.length, skippedCount, ...(firstReject ? { firstReject } : {}) };
+  // `viewPlacementWorld` carries the host's per-colony worker tier, so Deep Reclaim unlocks with a T2 worker (W05-06).
+  const world = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  const plan = planGroundWorkTiles(world, tiles, {
+    colonyId: opts.colonyId,
+    deposit: placement.deposit,
+    occupied: occupiedTiles(placement, opts.data),
+    pending: pendingTiles(view, opts.colonyId),
+    data: opts.data,
+  });
+  return {
+    jobs: plan.jobs,
+    queuedCount: plan.jobs.length,
+    skippedCount: plan.skipped.length,
+    ...(plan.firstReject ? { firstReject: plan.firstReject } : {}),
+  };
 }

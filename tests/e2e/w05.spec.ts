@@ -15,6 +15,7 @@ import {
   STATE_CONSTRUCTING,
   test,
 } from './harness';
+import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
 import { W05_PREPARED_MEADOW_TILES, W05_SHALLOW_LAKE_TILES } from '../scenarios/w05-shape-the-land';
 
 /**
@@ -37,6 +38,7 @@ async function openScenario(page: Page, id: string, params: Record<string, strin
 interface OnlineTileSnapshot {
   terrain: number;
   prep: number;
+  deposit: number;
 }
 
 async function readTileAt(page: Page, q: number, r: number): Promise<OnlineTileSnapshot | null> {
@@ -44,10 +46,10 @@ async function readTileAt(page: Page, q: number, r: number): Promise<OnlineTileS
     const w = window as unknown as {
       __online?: {
         store?: {
-          latestTiles?: { count: number; terrain: Uint8Array; prep: Uint8Array } | null;
+          latestTiles?: { count: number; terrain: Uint8Array; prep: Uint8Array; deposit?: Uint8Array } | null;
           latest?: {
             planet?: { radius?: number };
-            tiles?: { count: number; terrain: Uint8Array; prep: Uint8Array };
+            tiles?: { count: number; terrain: Uint8Array; prep: Uint8Array; deposit?: Uint8Array };
           } | null;
         };
       };
@@ -62,7 +64,7 @@ async function readTileAt(page: Page, q: number, r: number): Promise<OnlineTileS
       const qMax = Math.min(R, -rr + R);
       for (let qq = qMin; qq <= qMax; qq++) {
         if (qq === tq && rr === tr) {
-          return { terrain: tiles.terrain[idx] ?? 0, prep: tiles.prep[idx] ?? 0 };
+          return { terrain: tiles.terrain[idx] ?? 0, prep: tiles.prep[idx] ?? 0, deposit: tiles.deposit?.[idx] ?? 0 };
         }
         idx++;
       }
@@ -79,7 +81,7 @@ async function closeConsole(page: Page): Promise<void> {
   }
 }
 
-test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub) -> order a Terraformer in Units menu -> Terraformer Drone spawns', async ({ page }) => {
+test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub) -> order a Worker Drone T3 in Units menu -> it spawns', async ({ page }) => {
   await openScenario(page, 'w05');
   await expect(page.getByTestId('hud-terraform-val')).toHaveText('Terraform 0 / 412 (0.0 %)');
 
@@ -94,20 +96,22 @@ test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub
   await expect(page.getByTestId('tf-op-terraform')).toBeVisible();
   await expect(page.getByTestId('tf-w05-ops')).toHaveCount(0);
 
-  // Step 2: Units menu -> order a Terraformer -> it spawns.
+  // Step 2: Units menu -> order a T3 Worker Drone -> it spawns.
   await devConsole(page, 'warp 20');
   await page.getByTestId('dock-tab-production').click();
-  const tfCard = page.locator('[data-unit="terraformer"]');
+  const beforeWorkers = (await getEntitiesSnapshot(page)).filter((e) => e.kind === KIND.worker).length;
+  await page.getByTestId('prod-tier-t3').click();
+  const tfCard = page.locator('[data-unit="worker"][data-tier="3"]');
   await expect(tfCard).toBeVisible();
-  await page.locator('[data-queue-unit="terraformer"]').click();
+  await tfCard.click();
 
   await expect.poll(
-    async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.terraformer),
+    async () => (await getEntitiesSnapshot(page)).filter((e) => e.kind === KIND.worker).length,
     { timeout: 25_000 },
-  ).toBe(true);
+  ).toBeGreaterThan(beforeWorkers);
 
   await devConsole(page, 'warp 1');
-  await screenshot(page, '1-2-w05-terraformer-spawned');
+  await screenshot(page, '1-2-w05-worker-t3-spawned');
   expectNoPageErrors(page);
 });
 
@@ -166,13 +170,40 @@ test('@hack 3. Construction menu -> place a Resource Extractor (Quarry) on the s
   expectNoPageErrors(page);
 });
 
-test('@hack 4 & 5. Ctrl+click Terraform: reclaim -> grade 6 shallow-water tiles, then irrigate -> seed 10 Prepared tiles -> HUD shows Terraform 10 / 412 (2.4 %) and units on Living move 10 % faster', async ({ page }) => {
+/** Moves a Worker Drone onto a Living meadow hex (one that did not turn into a deposit) and sees it arrive. */
+async function expectWorkerReachesLivingHex(page: Page): Promise<void> {
+  // At warp 20 one view spans ~20 ticks: an arrival followed by the walk back to a deposit (GP-99) can fall between views.
+  await devConsole(page, 'warp 1');
+  await closeConsole(page);
+  const mover = (await getEntitiesSnapshot(page)).find((e) => e.kind === KIND.worker)!;
+  // Changed ground uncovers buried deposits (D-44), so pick a Living meadow hex that did not turn into one.
+  let target: readonly [number, number] | undefined;
+  for (const [q, r] of W05_PREPARED_MEADOW_TILES) if ((await readTileAt(page, q, r))?.deposit === 0) { target = [q, r]; break; }
+  expect(target, 'a Living meadow hex without a deposit').toBeTruthy();
+  const [tq, tr] = target!;
+  // An idle Worker Drone goes back to harvesting the tick after it arrives (GP-99), so watch every view for the arrival.
+  await page.evaluate(({ id, tq, tr, E, S }) => {
+    const w = window as unknown as { __online: { store: { onView(fn: (v: { count: number; entities: Float32Array }) => void): () => void } }; __moverAt?: boolean };
+    w.__moverAt = false;
+    const off = w.__online.store.onView((v) => {
+      for (let i = 0; i < v.count; i++) {
+        const o = i * S;
+        if (v.entities[o + E.id] === id && v.entities[o + E.q] === tq && v.entities[o + E.r] === tr) { w.__moverAt = true; off(); }
+      }
+    });
+  }, { id: mover.id, tq, tr, E, S: ENTITY_STRIDE });
+  expect((await sendSimCmd(page, 'moveUnit', { entityId: mover.id, q: tq, r: tr })).ok).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __moverAt?: boolean }).__moverAt === true), { timeout: 15_000 }).toBe(true);
+  expect(await readTileAt(page, tq, tr)).toMatchObject({ prep: 4 });
+}
+
+test('@hack 4 & 5. Ctrl+click Terraform reclaims the shallow lake to prepared ground; explicit irrigate -> seed makes the meadow Living (Terraform 10 / 412, 2.4 %)', async ({ page }) => {
   await openScenario(page, 'w05');
   await devConsole(page, 'warp 20');
   await closeConsole(page);
 
-  // Order a Terraformer so HQ + Builder + Terraformer work the area brushes in parallel.
-  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-tf-step4', task: { kind: 'buildUnit', unit: 'terraformer' } })).ok).toBe(true);
+  // Order a Worker Drone T3 so the HQ and workers cover the area brushes together.
+  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-tf-step4', task: { kind: 'buildUnit', unit: 'worker', tier: 3 } })).ok).toBe(true);
 
   // Step 4: one Terraform button; Ctrl+click queues each hex. First pass reclaims the 6 shallow-water tiles.
   await page.getByTestId('dock-tab-terraform').click();
@@ -184,31 +215,27 @@ test('@hack 4 & 5. Ctrl+click Terraform: reclaim -> grade 6 shallow-water tiles,
   };
   await ctrlClickAll(W05_SHALLOW_LAKE_TILES);
 
+  // One chain pass: shallow water becomes flat and prepared. The dock does not grade, irrigate or seed.
   await expect.poll(
     async () => {
       for (const [q, r] of W05_SHALLOW_LAKE_TILES) {
-        if ((await readTileAt(page, q, r))?.terrain !== 0) return false;
+        const tile = await readTileAt(page, q, r);
+        if (tile?.terrain !== 0 || tile?.prep !== 2) return false;
       }
       return true;
     },
     { timeout: 45_000 },
   ).toBe(true);
-
-  // Second pass: the same button grades the reclaimed Flat tiles -> Prepared.
-  await ctrlClickAll(W05_SHALLOW_LAKE_TILES);
-  await expect.poll(
-    async () => {
-      for (const [q, r] of W05_SHALLOW_LAKE_TILES) {
-        if ((await readTileAt(page, q, r))?.prep !== 2) return false;
-      }
-      return true;
-    },
-    { timeout: 35_000 },
-  ).toBe(true);
   await screenshot(page, '4-lake-reclaimed-and-graded');
 
-  // Step 5: Terraform irrigates the 10 Prepared meadow tiles, then seeds them to Living.
-  await ctrlClickAll(W05_PREPARED_MEADOW_TILES);
+  // The dock leaves prepared ground alone. Growth ops are still explicit orders; stop the chain so a worker can take them.
+  for (const e of await getEntitiesSnapshot(page)) {
+    if (e.kind === KIND.hq || e.kind === KIND.worker) {
+      await sendSimCmd(page, 'cancelTask', { taskId: `unit:${e.id}` });
+    }
+  }
+  const meadow = W05_PREPARED_MEADOW_TILES.map(([q, r]) => ({ q, r }));
+  expect((await sendSimCmd(page, 'enqueueTask', { terraform: { op: 'irrigate', tiles: meadow } })).ok).toBe(true);
   await expect.poll(
     async () => {
       for (const [q, r] of W05_PREPARED_MEADOW_TILES) {
@@ -219,7 +246,7 @@ test('@hack 4 & 5. Ctrl+click Terraform: reclaim -> grade 6 shallow-water tiles,
     { timeout: 45_000 },
   ).toBe(true);
 
-  await ctrlClickAll(W05_PREPARED_MEADOW_TILES);
+  expect((await sendSimCmd(page, 'enqueueTask', { terraform: { op: 'seed', tiles: meadow } })).ok).toBe(true);
   await expect.poll(
     async () => {
       for (const [q, r] of W05_PREPARED_MEADOW_TILES) {
@@ -230,7 +257,10 @@ test('@hack 4 & 5. Ctrl+click Terraform: reclaim -> grade 6 shallow-water tiles,
     { timeout: 50_000 },
   ).toBe(true);
 
-  await expect(page.getByTestId('hud-terraform-val')).toHaveText('Terraform 10 / 412 (2.4 %)');
+  // The TERRAFORM chain works on into the neighbouring deep hex (-4, 2) once a T2+ worker exists; a reclaimed deep
+  // hex joins the eligible denominator (412 -> 413). Whether the chain got there before the cancel above is timing.
+  const deepLeft = (await readTileAt(page, -4, 2))?.terrain === 6; // TERRAIN.deep = 6
+  await expect(page.getByTestId('hud-terraform-val')).toHaveText(deepLeft ? 'Terraform 10 / 412 (2.4 %)' : 'Terraform 10 / 413 (2.4 %)');
   await expect(page.getByTestId('hud-terraform')).toHaveAttribute('data-living-hint', '+10 % ground move speed');
 
   // Press L -> Living mode of the tile-state overlay opens and shows the +10 % move speed hint.
@@ -242,17 +272,8 @@ test('@hack 4 & 5. Ctrl+click Terraform: reclaim -> grade 6 shallow-water tiles,
   await expect(page.getByTestId('tf-overlay-summary')).toContainText('LIVING 10');
   await expect(page.getByTestId('tf-overlay-summary')).toContainText('+10 % ground move speed');
 
-  // Move the Builder Drone onto the Living meadow -> verify it traverses Living tiles at 1.1x speed.
-  const builder = (await getEntitiesSnapshot(page)).find((e) => e.kind === KIND.builder)!;
-  expect((await sendSimCmd(page, 'moveUnit', { entityId: builder.id, q: 1, r: 4 })).ok).toBe(true);
-  await expect.poll(
-    async () => {
-      const b = (await getEntitiesSnapshot(page)).find((e) => e.id === builder.id);
-      return b ? b.q === 1 && b.r === 4 : false;
-    },
-    { timeout: 15_000 },
-  ).toBe(true);
-  expect(await readTileAt(page, 1, 4)).toMatchObject({ prep: 4 });
+  // Move a Worker Drone onto the Living meadow -> verify it traverses Living tiles at 1.1x speed.
+  await expectWorkerReachesLivingHex(page);
 
   await devConsole(page, 'warp 1');
   await screenshot(page, '5-living-meadow-2.4-percent');
@@ -356,24 +377,26 @@ test('@hack 13. Open ?scenario=w05-tiers (Terraform 31 %, ringed Metals Extracto
   expectNoPageErrors(page);
 });
 
-test('@hack 14. DoD: ?waves=..04 hides W05 UI (Terraformer unit card, W05 terraform op chips, Terraform HUD meter) and W01 Grade / Clear / Break still works', async ({ page }) => {
+test('@hack 14. DoD: ?waves=..04 hides W05 UI (Worker Drone T3 card, Terraform HUD meter; 3-button terraform tool) and W01 Grade / Clear / Break still works', async ({ page }) => {
   test.skip(local, 'local engine compiles scenario with its own wave flags');
   await openScenario(page, 'w05', { waves: '..04' });
 
   await expect(page.getByTestId('hud-terraform')).toBeHidden();
   await page.getByTestId('dock-tab-production').click();
-  await expect(page.locator('[data-unit="terraformer"]')).toHaveCount(0);
+  await expect(page.locator('[data-unit="worker"][data-tier="3"]')).toHaveCount(0);
 
   await page.getByTestId('dock-tab-terraform').click();
-  await expect(page.getByTestId('tf-w05-ops')).toBeHidden();
+  // Only the W01 3-button toolset; W05 adds no separate op chips (the host picks each hex's op).
+  expect(await page.getByTestId('terraform-menu').locator('[data-op]').evaluateAll((els) => els.map((e) => e.getAttribute('data-op')))).toEqual(['terraform', 'repair', 'dismantle']);
   await expect(page.getByTestId('tf-op-terraform')).toBeVisible();
 
-  // W01 Grade still works on a flat tile with ?waves=..04.
+  // The 3-button TERRAFORM still works with ?waves=..04: the crater hex (4, 1) is worked to Prepared flat ground.
+  // (Level ground left at prep `flat`, like the scenario's (5, 1), counts as done for the dock: GP-93.)
   await devConsole(page, 'warp 20');
   await closeConsole(page);
   await page.getByTestId('tf-op-terraform').click();
-  await clickTile(page, 5, 1);
-  await expect.poll(async () => (await readTileAt(page, 5, 1))?.prep ?? 0, { timeout: 20_000 }).toBe(2);
+  await clickTile(page, 4, 1);
+  await expect.poll(async () => { const t = await readTileAt(page, 4, 1); return t ? `${t.terrain}/${t.prep}` : ''; }, { timeout: 20_000 }).toBe('0/2');
 
   await devConsole(page, 'warp 1');
   await screenshot(page, '14-waves-04-no-w05-ui');

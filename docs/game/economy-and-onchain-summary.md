@@ -59,7 +59,7 @@
 | Treasury share | 20 % of the hub-owner fee (`TREASURY_FEE_SHARE_BP=2000`) *(proposed)* | NEAR-101, W22-07 |
 
 **Sources and sinks (as designed today):**
-- **Sources:** extractors, harvester and terrain-op yields (sim); cargo mints happen only on export, as stock that already exists. **Exceptions that mint without stock:** the Guild seed inventory (W15-05) and the dev `cargo.grant` (W10-26).
+- **Sources:** extractors, Worker Drones and terrain-op yields (sim); cargo mints happen only on export, as stock that already exists. **Exceptions that mint without stock:** the Guild seed inventory (W15-05) and the dev `cargo.grant` (W10-26).
 - **Sinks:** construction and unit costs, running upkeep, terraform ops (`bio.water`), treasury project costs (where the paid tokens end up is undefined, Q6).
 - **Transfers (not sinks):** market trades, fee legs to stall owners, the treasury leg, bounty escrow.
 

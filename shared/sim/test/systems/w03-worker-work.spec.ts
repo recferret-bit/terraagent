@@ -17,7 +17,7 @@ import {
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
-  spawnBuilderUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   startBuildingConstruction,
   step,
@@ -84,7 +84,7 @@ const dismantleCmd = (id: string, q: number, r: number): SimCommand =>
 describe('crew: several builders on one construction site', () => {
   function buildWith(n: number): { ticks: number; spent: number } {
     const { state, colony, pipeline } = world(`crew-build-${n}`);
-    for (let i = 0; i < n; i++) spawnBuilderUnit(state, { owner: 0, q: SPOTS[i]![0], r: SPOTS[i]![1] });
+    for (let i = 0; i < n; i++) spawnWorkerUnit(state, { tier: 2, owner: 0, q: SPOTS[i]![0], r: SPOTS[i]![1] });
     const b = startBuildingConstruction(state, { owner: 0, building: 'solar', q: 0, r: 0 });
     if (!b.ok) throw new Error(b.code);
     const before = colony.stock['metals.t1'];
@@ -117,9 +117,9 @@ describe('crew: several builders on one construction site', () => {
 });
 
 describe('repair: pays by the HP it restores, stalls on an empty stock, a crew is faster at the same cost', () => {
-  it('auto-repair by a Builder Drone costs costRate × build cost × missing share', () => {
+  it('auto-repair by a Worker Drone T2 costs costRate × build cost × missing share', () => {
     const { state, colony, pipeline } = world('rep-cost');
-    spawnBuilderUnit(state, { owner: 0, q: 3, r: 0 });
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: 3, r: 0 });
     const ext = extractor(state, 5, 0, 150); // 50 % missing
     const rate = Number(DATA.tables.workCrew!.repair!.costRate);
     const before = { m: colony.stock['metals.t1'], n: colony.stock['minerals.t1'] };
@@ -131,7 +131,7 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
 
   it('stalls with wait reason `resources` at zero stock and resumes when the stock refills', () => {
     const { state, colony, pipeline } = world('rep-stall', { 'metals.t1': 0, 'minerals.t1': 0 });
-    spawnBuilderUnit(state, { owner: 0, q: 3, r: 0 });
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: 3, r: 0 });
     const ext = extractor(state, 5, 0, 150);
     run(state, pipeline, [], 40);
     const job = Object.values(getWorkJobsMap(state)).find((j) => j.mode === 'repair');
@@ -147,7 +147,7 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
 
   function repairWith(builders: number): { ticks: number; spent: number } {
     const { state, colony, pipeline } = world(`rep-crew-${builders}`);
-    for (let i = 0; i < builders; i++) spawnBuilderUnit(state, { owner: 0, q: 3, r: i === 0 ? 0 : -i });
+    for (let i = 0; i < builders; i++) spawnWorkerUnit(state, { tier: 2, owner: 0, q: 3, r: i === 0 ? 0 : -i });
     const ext = extractor(state, 5, 0, 30); // 90 % missing
     const before = colony.stock['metals.t1'];
     let ticks = 0;
@@ -160,7 +160,7 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
 
   it('a repair order naming another worker on an open repair joins it as a helper (no second paid job)', () => {
     const { state, pipeline } = world('rep-join');
-    spawnBuilderUnit(state, { owner: 0, q: 3, r: 0 });
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: 3, r: 0 });
     const hqId = spawnHqUnit(state, { owner: 0, q: -3, r: 0 });
     const ext = extractor(state, 5, 0, 150);
     run(state, pipeline); // auto-repair opens the lead job (the Builder)
@@ -171,7 +171,7 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
     expect(jobs.find((j) => j.workerEntityId === hqId)).toMatchObject({ helpOf: expect.any(String), totalCost: {} });
   });
 
-  it('an idle Builder Drone joins an open repair: faster, same cost, no second paid job', () => {
+  it('an idle Worker Drone T2 joins an open repair: faster, same cost, no second paid job', () => {
     const [one, two] = [repairWith(1), repairWith(2)];
     expect(two.ticks).toBeLessThan(one.ticks);
     expect(two.spent).toBeCloseTo(one.spent, 4);
@@ -179,10 +179,10 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
   });
 });
 
-/** A world with a Builder Drone at (2, -1) next to a finished Metals Extractor at (4, 0). */
+/** A world with a Worker Drone T2 at (2, -1) next to a finished Metals Extractor at (4, 0). */
 function dismantleWorld(seed: string) {
   const w = world(seed);
-  const builderId = spawnBuilderUnit(w.state, { owner: 0, q: 2, r: -1 });
+  const builderId = spawnWorkerUnit(w.state, { tier: 2, owner: 0, q: 2, r: -1 });
   const ext = extractor(w.state, 4, 0);
   return { ...w, builderId, ext };
 }
@@ -227,12 +227,22 @@ describe('dismantle: builder work, half the build time, the 50 % refund step by 
     expect(getColonyQueue(state, 0, 'construction').some((e) => e.task.kind === 'dismantle')).toBe(false);
   });
 
-  it('the HQ does it when there is no Builder; a Harvester never does', () => {
+  it('the HQ does it when there is no Worker Drone', () => {
     const { state, pipeline } = world('dis-hq');
     const hqId = spawnHqUnit(state, { owner: 0, q: -2, r: 0 });
     const ext = extractor(state, 4, 0);
     run(state, pipeline, [dismantleCmd('d-hq', 4, 0)]);
     expect(getWorkJobsMap(state)['d-hq']?.workerEntityId).toBe(hqId);
+    run(state, pipeline, [], 200);
+    expect(alive(state, ext)).toBe(false);
+  });
+
+  it('a Worker Drone T1 dismantles too (every tier may, W05-02)', () => {
+    const { state, pipeline } = world('dis-t1');
+    const workerId = spawnWorkerUnit(state, { tier: 1, owner: 0, q: 2, r: -1 });
+    const ext = extractor(state, 4, 0);
+    run(state, pipeline, [dismantleCmd('d-t1', 4, 0)]);
+    expect(getWorkJobsMap(state)['d-t1']?.workerEntityId).toBe(workerId);
     run(state, pipeline, [], 200);
     expect(alive(state, ext)).toBe(false);
   });
@@ -293,7 +303,7 @@ describe('dismantle: host validation, cancel, crew, storage cap', () => {
   it('a crew dismantles faster and refunds exactly the same 50 %', () => {
     const go = (builders: number) => {
       const { state, colony, pipeline } = world(`dis-crew-${builders}`);
-      for (let i = 0; i < builders; i++) spawnBuilderUnit(state, { owner: 0, q: 2, r: -1 - i });
+      for (let i = 0; i < builders; i++) spawnWorkerUnit(state, { tier: 2, owner: 0, q: 2, r: -1 - i });
       const ext = extractor(state, 4, 0);
       const before = colony.stock['metals.t1'];
       run(state, pipeline, [dismantleCmd('d1', 4, 0)]);

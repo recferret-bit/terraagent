@@ -8,6 +8,7 @@ import {
 } from '../core/perfConfig';
 import { targetRefreshMs } from '../core/renderScale';
 import { getViewFocus, isViewFocusFrozen } from '../core/viewFocus';
+export { bindWeatherHead, syncWeatherHead, WEATHER_HEAD, WEATHER_HEAD_HTML } from './visualLabWeatherWidget';
 
 export interface VisualLabHead {
   html(): string;

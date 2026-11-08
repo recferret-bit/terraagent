@@ -5,7 +5,8 @@ import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
-import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge, produceTerraformerAtHubEdge } from '../factories-hub';
+import { produceWorkerAtHubEdge } from '../factories-hub';
+import { workerTierOf } from '../harvest/unit';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import type { QueueEntry } from './types';
@@ -31,11 +32,20 @@ export function markWaiting(
   }
 }
 
+/** The tier of the building a job raises (its entity's `tier` column; 1 when unset). */
+function buildJobTier(state: PlanetState, job: BuildingJobRecord): number {
+  const row = rowOf(state.entities, job.entityId);
+  return row >= 0 ? state.entities.cols.tier[row] || 1 : 1;
+}
+
 /** What an in-progress build entry shows while its job does not advance (`../economy/buildJob.ts`). */
 const BUILD_WAIT_DETAIL: Readonly<Record<BuildJobWait, (state: PlanetState, job: BuildingJobRecord) => string>> = {
   site: (_s, job) => `waiting: site (prep ${job.preparedCount ?? 0}/${job.totalTiles ?? 0})`,
   resources: () => 'waiting: resources',
-  worker: (s, job) => (colonyHasEligibleWorker(s, job.owner, { kind: 'build' }) ? 'waiting: worker (HQ en route)' : 'waiting: worker (no builder)'),
+  worker: (s, job) =>
+    colonyHasEligibleWorker(s, job.owner, { kind: 'build', tier: buildJobTier(s, job) })
+      ? 'waiting: worker (HQ en route)'
+      : 'waiting: worker (none free)',
 };
 
 /** A build entry follows its building's job (a builder on site advances and pays it, W02-16). */
@@ -111,13 +121,7 @@ function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
-  if (task?.unit === 'builder') {
-    produceBuilderAtHubEdge(state, colIdx, ctx);
-  } else if (task?.unit === 'terraformer') {
-    produceTerraformerAtHubEdge(state, colIdx, ctx);
-  } else {
-    produceHarvesterAtHubEdge(state, colIdx, ctx);
-  }
+  produceWorkerAtHubEdge(state, colIdx, ctx, task?.unit === 'worker' ? workerTierOf(task.tier) : 1);
   const count = Math.max(1, Math.floor(task?.count ?? 1));
   const left = (entry.remainingCount ?? count) - 1;
   if (left <= 0 && !task?.repeat) {

@@ -4,6 +4,7 @@ import {
   applyBuildingLight,
   attachEntityProjectorRig,
   peekArchetypeLights,
+  projectorCosOuter,
   stepLightLevel,
   getColonyLightingBlend,
   isWorldPointInColonyFov,
@@ -26,26 +27,26 @@ export { isWorldPointInColonyFov, resetColonyVisionAndLights };
 
 const _projColor = new THREE.Color();
 
-export function lightArchetypeForKind(kind: number): string {
+export function lightArchetypeForKind(kind: number, tier?: number): string {
   if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
   if (kind === ENTITY_KIND.metalsExtractor) return 'building.mine';
   if (kind === ENTITY_KIND.solar) return 'building.solar';
   if (kind === ENTITY_KIND.tradeHub) return 'building.tradeHub';
   if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
   if (kind === ENTITY_KIND.hq) return 'robot.hero';
-  if (kind === ENTITY_KIND.harvester) return 'robot.miner';
+  if (kind === ENTITY_KIND.worker) return archetypeForKind(kind, tier);
   if (kind === ENTITY_KIND.devProbe) return 'robot.scout';
-  return archetypeForKind(kind);
+  return archetypeForKind(kind, tier);
 }
 
-export function scaleForKind(kind: number): number {
+export function scaleForKind(kind: number, tier?: number): number {
   if (kind === ENTITY_KIND.commandHub) return 1.55;
   if (kind === ENTITY_KIND.metalsExtractor) return 1.3;
   if (kind === ENTITY_KIND.solar) return 1.3;
   if (kind === ENTITY_KIND.tradeHub) return 1.3;
   if (kind === ENTITY_KIND.pod) return 1.15;
   if (kind === ENTITY_KIND.hq) return 1.15;
-  if (kind === ENTITY_KIND.harvester) return 1.05;
+  if (kind === ENTITY_KIND.worker) return tier === 2 || tier === 3 ? 1 : 1.05;
   if (kind === ENTITY_KIND.devProbe) return 0.95;
   return 1.0;
 }
@@ -88,8 +89,7 @@ function appendArchetypeProjectors(opts: {
     const dz = worldTargetZ - worldPosZ;
     const len = Math.max(1e-4, Math.hypot(dx, dy, dz));
 
-    const spread = Math.max(src.coneBottomRadius, src.poolRadius) * 1.55 * meshScale;
-    const cosAngle = Math.max(0.52, Math.min(0.82, len / Math.hypot(len, spread)));
+    const cosAngle = projectorCosOuter(src); // the same cone the beam mesh draws (`projectorCone.ts`)
 
     _projColor.setHex(src.color);
     projectors.push({
@@ -123,13 +123,13 @@ function collectOwnedEntityVisionAndProjectors(
   const yaw = rec.mesh.rotation.y;
   const projOpts = {
     projectors,
-    archetypeId: lightArchetypeForKind(rec.kind),
+    archetypeId: lightArchetypeForKind(rec.kind, rec.tier),
     ux,
     uy,
     uz,
     yaw,
     meshScale: rec.mesh.scale.x || 1,
-    rangeScale: scaleForKind(rec.kind),
+    rangeScale: scaleForKind(rec.kind, rec.tier),
     lightScale,
     stateMul,
   };
@@ -214,7 +214,7 @@ export function syncColonyVisionAndProjectors(opts: {
   const projectors: ColonyProjectorDesc[] = [];
 
   for (const rec of records) {
-    const archetypeId = archetypeForKind(rec.kind);
+    const archetypeId = archetypeForKind(rec.kind, rec.tier);
     // The building light state (power, brownout group, construction) is decided by `entityLightLevel` in the sim; the
     // renderer only eases to it and applies it through `applyBuildingLight`.
     const target = entityLightLevel({ kind: rec.kind, state: rec.state, buildStage: rec.buildStage }, nightFactor);

@@ -9,6 +9,7 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
+import { colonyTerraformStats } from '../terraform-basic/rules';
 import {
   creditResource,
   ensureColonyLedger,
@@ -49,6 +50,18 @@ const NON_METALS_EXTRACTOR_KEYS: readonly ResourceKey[] = [
 ];
 
 const lastExtractorIncomeByState = new WeakMap<PlanetState, IncomeMapByOwner>();
+
+/** A colony's Terraform % (a full-grid scan), computed at most once per colony per step and shared by its extractors. */
+type TerraformPctOf = (colonyIndex: number) => number;
+
+function terraformPctMemo(state: PlanetState): TerraformPctOf {
+  const memo = new Map<number, number>();
+  return (colonyIndex) => {
+    let pct = memo.get(colonyIndex);
+    if (pct === undefined) memo.set(colonyIndex, (pct = colonyTerraformStats(state, colonyIndex).percent));
+    return pct;
+  };
+}
 
 function isOfflineExtractorState(st: number): boolean {
   return (
@@ -136,6 +149,7 @@ function stepDepositExtractorRow(
   depositKind: number,
   family: ResourceFamily,
   extractorIncomeByOwner: IncomeMapByOwner,
+  pctOf: TerraformPctOf,
   fallbackKey?: ResourceKey,
 ): void {
   const e = state.entities, cols = e.cols;
@@ -157,7 +171,7 @@ function stepDepositExtractorRow(
   if (!cov.covered) return;
 
   const livingBonus = getExtractorLivingBonus(state, q, r, w, d, rot, ctx.data);
-  const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data);
+  const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data, pctOf(owner));
   emitTierUnlockedIfNeeded(state, colony, owner, cols.id[row], family, q, r, tierGate.unlockedTier, ctx);
 
   const entityTier = Math.max(1, Number(cols.tier?.[row] ?? 1));
@@ -192,6 +206,7 @@ function stepWaterExtractorRow(
   ctx: StepContext,
   waterRow: CompiledRow,
   extractorIncomeByOwner: IncomeMapByOwner,
+  pctOf: TerraformPctOf,
 ): void {
   const e = state.entities, cols = e.cols;
   const st = cols.state[row];
@@ -209,7 +224,7 @@ function stepWaterExtractorRow(
   const w = cols.footprintW?.[row] || Number(waterRow.footprintW ?? 2);
   const d = cols.footprintD?.[row] || Number(waterRow.footprintD ?? 2);
   const livingBonus = getExtractorLivingBonus(state, q, r, w, d, rot, ctx.data);
-  const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data);
+  const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data, pctOf(owner));
   const baseWaterPerS = Number(waterRow.outputPerS ?? 0.875);
   const planetMult = state.meta.planetType === 'desert' ? Number(waterRow.desertOutputMult ?? 0.5) : 1.0;
   const ratePerS = baseWaterPerS * planetMult * livingBonus.mult;
@@ -231,12 +246,13 @@ function stepWaterExtractorRow(
 function applyExtractorIncomeToLedger(
   state: PlanetState,
   extractorIncomeByOwner: IncomeMapByOwner,
+  pctOf: TerraformPctOf,
   data?: CompiledDataLike,
 ): void {
   for (const colony of state.colonies) {
     if (!colony) continue;
     const c = ensureColonyLedger(colony);
-    const tierGates = computeColonyTierGates(state, c.index, data);
+    const tierGates = computeColonyTierGates(state, c.index, data, pctOf(c.index));
     c.production.tierGates = tierGates;
     (c as { tierGates?: ColonyTierGatesSummary }).tierGates = tierGates;
 
@@ -272,24 +288,25 @@ const extractorProductionSystem = defineSystem({
     const wellRow = resolvePetroleumWellRow(ctx.data);
     const e = state.entities, cols = e.cols;
     const extractorIncomeByOwner: IncomeMapByOwner = new Map();
+    const pctOf = terraformPctMemo(state);
 
     for (let row = 0; row < e.count; row++) {
       if (cols.hp[row] <= 0) continue;
       const k = cols.kind[row];
       if (k === ENTITY_KIND.metalsExtractor) {
         const metal = checkExtractorDepositCoverage(state, cols.q[row], cols.r[row], cols.footprintW[row] || 2, cols.footprintD[row] || 2, cols.rot[row], DEPOSIT.metals).covered;
-        stepDepositExtractorRow(state, row, ctx, extRow, metal ? DEPOSIT.metals : DEPOSIT.minerals, metal ? 'metals' : 'minerals', extractorIncomeByOwner);
+        stepDepositExtractorRow(state, row, ctx, extRow, metal ? DEPOSIT.metals : DEPOSIT.minerals, metal ? 'metals' : 'minerals', extractorIncomeByOwner, pctOf);
       } else if (k === ENTITY_KIND.mineralsQuarry) {
-        stepDepositExtractorRow(state, row, ctx, quarryRow, DEPOSIT.minerals, 'minerals', extractorIncomeByOwner);
+        stepDepositExtractorRow(state, row, ctx, quarryRow, DEPOSIT.minerals, 'minerals', extractorIncomeByOwner, pctOf);
       } else if (k === ENTITY_KIND.waterExtractor) {
-        stepWaterExtractorRow(state, row, ctx, waterRow, extractorIncomeByOwner);
+        stepWaterExtractorRow(state, row, ctx, waterRow, extractorIncomeByOwner, pctOf);
       } else if (k === ENTITY_KIND.petroleumWell) {
-        stepDepositExtractorRow(state, row, ctx, wellRow, DEPOSIT.oil, 'bio', extractorIncomeByOwner, 'bio.t2');
+        stepDepositExtractorRow(state, row, ctx, wellRow, DEPOSIT.oil, 'bio', extractorIncomeByOwner, pctOf, 'bio.t2');
       }
     }
 
     lastExtractorIncomeByState.set(state, extractorIncomeByOwner);
-    applyExtractorIncomeToLedger(state, extractorIncomeByOwner, ctx.data);
+    applyExtractorIncomeToLedger(state, extractorIncomeByOwner, pctOf, ctx.data);
   },
 });
 

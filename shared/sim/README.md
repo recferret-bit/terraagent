@@ -247,7 +247,7 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   (`data/terraform-finds.ts`, tunable; read with `terraformFindSpec(data)`: 1% chance; family uniform
   metals/minerals/oil; tier t1 50% / t2 35% / t3 15%; `ctx.rng('misc')`) for a full deposit when the tile has none and
   no unit stands on it (`setTileDeposit(..., tier)` writes the visible `depositTier` layer, 0 = legacy t1; event
-  `resourceSpawned`; Harvester and Metals Extractor pay `depositFamilyAndKey(code, tier)`). `dev.spawndeposit` places
+  `resourceSpawned`; Worker and Metals Extractor pay `depositFamilyAndKey(code, tier)`). `dev.spawndeposit` places
   one. Terraform jobs **chain**: the worker's next job is the obstacle (forest, rock, slope, hole, uneven flat;
   never level grass) it may terraform and nobody targets that is closest to the tile the player clicked
   (`chainOrigin`), then closest to the tile just finished, then the lowest tile index, so it clears the area around
@@ -270,8 +270,8 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   text. W02 building jobs (`blobs.construction`, `economy/buildJob.ts`) are worked by the same `build` command
   (id `job:<entityId>`, after the W01 orders, oldest first): progress and the progressive payment happen only while the
   builder stands in reach (`advanceBuildingJob`); `economy.construction` (slot 6) only keeps the site bookkeeping
-  (prepared tiles, `site` / `resources` / `worker` wait). A Harvester never takes build or linked-prep work
-  (`dispatch/eligibility.ts`, GP-58 / GP-59). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
+  (prepared tiles, `site` / `resources` / `worker` wait). A Worker Drone takes harvest, build, and linked-prep work
+  up to its tier (`dispatch/eligibility.ts`). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
   `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
 - **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,
   so an idle planet sends no gameplay blobs. Blob state is not filtered per colony (SIMULATION §6, GP-36).

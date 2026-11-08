@@ -114,11 +114,25 @@ describe('W08-10 · placeBuilding unlock-stage validation', () => {
   });
 });
 
+describe('grid buildings share the stage table with placement', () => {
+  it('locks Pylon, Wind, Water, Petroleum, Capacitor and Supply Depot at S1, and Thermal until S3', () => {
+    const { state } = createStagePlanet(1, 1, '..08');
+    const flags = parseWaves('..08');
+    for (const id of ['pylon', 'wind', 'waterExtractor', 'petroleumWell', 'capacitor', 'supplyDepot']) {
+      expect(resolveItemUnlockStage(id)).toBe(2);
+      expect(checkItemUnlockStage(state, 0, id, flags)).toMatchObject({ ok: false, code: 'stage_locked', unlocksAt: 'S2' });
+    }
+    expect(checkItemUnlockStage(state, 0, 'metalsExtractor', flags)).toEqual({ ok: true });
+    expect(checkItemUnlockStage(state, 0, 'solar', flags)).toEqual({ ok: true });
+    expect(resolveItemUnlockStage('thermal')).toBe(3);
+    expect(checkItemUnlockStage(state, 0, 'thermal', flags)).toMatchObject({ ok: false, unlocksAt: 'S3' });
+  });
+});
+
 describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
-  it('rejects S2 items (builder, pylon, depot, fill, bridge) via enqueueTask at S1 with unlocksAt: "S2", and accepts them once unlockStage = 2', () => {
+  it('rejects S2 items (pylon, depot, fill, bridge) via enqueueTask at S1 with unlocksAt: "S2", and accepts them once unlockStage = 2', () => {
     const { state, colony, pipeline } = createStagePlanet(1, 1);
     const s2Orders = [
-      { commandId: 'eq-builder', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { buildUnit: { unit: 'builder', count: 1 } } },
       { commandId: 'eq-pylon', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { build: { building: 'pylon', q: 2, r: 0 } } },
       { commandId: 'eq-depot', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { build: { building: 'depot', q: 3, r: 0 } } },
       { commandId: 'eq-fill', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask' as const, args: { terraform: { op: 'fill', tiles: [{ q: 1, r: 0 }] } } },
@@ -140,8 +154,8 @@ describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
       pipeline,
     );
     // Fill on plain flat ground would change nothing: the shared terraform rule refuses it (`already_at_target`).
-    expect(rUnlocked.outcomes.map((o) => o.code)).toEqual([undefined, undefined, undefined, 'already_at_target', undefined]);
-    expect(getColonyQueue(state, 0).length).toBe(4);
+    expect(rUnlocked.outcomes.map((o) => o.code)).toEqual([undefined, undefined, 'already_at_target', undefined]);
+    expect(getColonyQueue(state, 0).length).toBe(3);
   });
 
   it('rejects S3 and S4 items at S2, and unlocks them when unlockStage is raised (including inherited unlockStage > stage)', () => {
@@ -196,7 +210,7 @@ describe('W08-10 · S0 / S1 Command Hub and HQ precedence unlock rules', () => {
       state,
       [
         { commandId: 's0-solar', colonyIndex: 0, source: 'player', kind: 'enqueueTask', args: { build: { building: 'solar', q: 2, r: 0 } } },
-        { commandId: 's0-harvester', colonyIndex: 0, source: 'player', kind: 'enqueueTask', args: { buildUnit: { unit: 'harvester', count: 1 } } },
+        { commandId: 's0-worker', colonyIndex: 0, source: 'player', kind: 'enqueueTask', args: { buildUnit: { unit: 'worker', count: 1 } } },
       ],
       1,
       pipeline,
@@ -232,7 +246,7 @@ describe('W08-10 · S0 / S1 Command Hub and HQ precedence unlock rules', () => {
     state.entities.cols.state[hubRow] = ENTITY_STATE.active;
 
     expect(resolveEffectiveUnlockStage(state, 0)).toBe(1);
-    expect(checkItemUnlockStage(state, 0, 'harvester')).toEqual({ ok: true });
+    expect(checkItemUnlockStage(state, 0, 'worker')).toEqual({ ok: true });
     expect(checkItemUnlockStage(state, 0, 'pylon')).toEqual({
       ok: false,
       code: 'stage_locked',

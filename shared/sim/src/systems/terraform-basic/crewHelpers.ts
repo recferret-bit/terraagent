@@ -15,7 +15,7 @@ import { primeWorkerForWorkJob, syncWorkerView } from './workTile';
  * job's id: the work-jobs system walks its worker to the job like any other and, once there, the worker adds its crew
  * share to the lead's progress (`../dispatch/crew.ts`). The lead pays (repair) or refunds (dismantle) by progress, so
  * helpers make the job faster, never cheaper or dearer. Helpers join two ways: a player order naming a worker on a
- * job that is already open, and idle Builder Drones near an open job (`attachIdleHelpers`).
+ * job that is already open, and idle Worker Drones near an open job (`attachIdleHelpers`).
  */
 
 const CREW_MODES: ReadonlySet<WorkJobRecord['mode']> = new Set(['repair', 'dismantle']);
@@ -55,17 +55,17 @@ export function joinJobAsHelper(state: SimState, lead: WorkJobRecord, workerId: 
   return true;
 }
 
-/** An idle Builder Drone of `colonyId` with nothing to do (no work job, no unit command), as a helper candidate. */
-function isIdleBuilder(state: PlanetState, row: number, colonyId: number, busy: ReadonlySet<number>, book: UnitBook): boolean {
+/** An idle Worker Drone of `colonyId` with nothing to do (no work job, no unit command), as a helper candidate. */
+function isIdleWorker(state: PlanetState, row: number, colonyId: number, busy: ReadonlySet<number>, book: UnitBook): boolean {
   const cols = state.entities.cols;
-  if (cols.kind[row] !== ENTITY_KIND.builder || cols.owner[row] !== colonyId || cols.hp[row] <= 0) return false;
+  if (cols.kind[row] !== ENTITY_KIND.worker || cols.owner[row] !== colonyId || cols.hp[row] <= 0) return false;
   if (cols.state[row] !== ENTITY_STATE.idle || busy.has(cols.id[row])) return false;
   const rec = book.peek(cols.id[row]);
   return !rec || (rec.current === null && rec.queue.length === 0);
 }
 
 /**
- * Idle Builder Drones join open repair and dismantle jobs within `workCrew.crew.autoHelpRadius` hexes, nearest first,
+ * Idle Worker Drones join open repair and dismantle jobs within `workCrew.crew.autoHelpRadius` hexes, nearest first,
  * up to `maxCrew` workers per job (work-jobs system, after auto-repair queued its jobs). Returns whether `jobs` changed.
  */
 export function attachIdleHelpers(state: PlanetState, jobs: Record<string, WorkJobRecord>, ctx: StepContext): boolean {
@@ -81,9 +81,10 @@ export function attachIdleHelpers(state: PlanetState, jobs: Record<string, WorkJ
     while (free > 0) {
       let best = -1, bestD = Infinity;
       for (let row = 0; row < e.count; row++) {
-        if (cols.kind[row] !== ENTITY_KIND.builder) continue;
+        if (cols.kind[row] !== ENTITY_KIND.worker) continue;
+        if (lead.targetEntityId !== undefined && cols.id[row] === lead.targetEntityId) continue;
         book ??= new UnitBook(state);
-        if (!isIdleBuilder(state, row, lead.colonyId, busy, book)) continue;
+        if (!isIdleWorker(state, row, lead.colonyId, busy, book)) continue;
         const d = hexDistance(cols.q[row], cols.r[row], lead.q, lead.r);
         if (d <= autoHelpRadius && d < bestD) { best = row; bestD = d; }
       }

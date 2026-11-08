@@ -1,5 +1,6 @@
 import type { CompiledDataLike } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
+import { formatRejectToast } from '../shared/rejectText';
 import { dispatchCommand, type CommandSink, type DispatchedCommand, type InProcessHost } from '../shared/commandDispatch';
 import { bindExclusivePointer, resolvePointerTile, type TileCoord, type TilePickerFn } from '../shared/pointer';
 import {
@@ -16,6 +17,11 @@ export type { BrushStrokeOutcome, TerraformPrimaryOp, TerraformWireArgs, TileCoo
 export interface BrushStrokeOptions {
   op?: TerraformPrimaryOp;
   colonyId?: number;
+  /**
+   * A Ctrl / Cmd + click (queue): TERRAFORM leaves the worker to the host. A terraform order naming its worker replaces
+   * that worker's chain on the host (`enqueueWorkOrder`), so naming it on every queued hex would cancel the hex before.
+   */
+  queue?: boolean;
 }
 
 export interface BrushStrokeSummary {
@@ -41,7 +47,7 @@ export interface BrushCommandSink extends CommandSink {
   enqueueTerraform?: (terraform: TerraformWireArgs) => unknown;
   /** The player's colony, read per stroke (FF-05). */
   getColonyId?: () => number;
-  /** The selected own unit, sent as `workerId` of REPAIR (`undefined`: the host picks the worker). */
+  /** The selected own unit, sent as `workerId` of REPAIR and of a plain TERRAFORM click (`undefined`: the host picks). */
   getWorkerId?: () => number | undefined;
   /** Another map mode owns the pointer (a placement ghost): the armed brush leaves clicks alone. */
   isBlocked?: () => boolean;
@@ -107,10 +113,10 @@ export class BrushController {
     return this.lastOutcome;
   }
 
-  /** The host rejected the newest order (`strokeId`: only if it is still the newest): the status stops claiming it was ordered. */
+  /** The host rejected the newest order (`strokeId`: only if it is still the newest): the status shows the toast's text for it. */
   noteRejected(code: string, strokeId?: string): void {
     if (strokeId !== undefined && this.lastStroke?.strokeId !== strokeId) return;
-    const status = `Rejected by host: ${code.replace(/_/g, ' ')}`;
+    const status = formatRejectToast(code, undefined, 'enqueueTask');
     this.lastOutcome = { ...(this.lastOutcome ?? {}), ok: false, reason: code, status };
     if (this.lastStroke) this.lastStroke = { ...this.lastStroke, statusText: status, outcome: this.lastOutcome };
     this.sink.onChange?.();
@@ -125,7 +131,7 @@ export class BrushController {
     return this.resolveView();
   }
 
-  /** True when the player has an alive HQ Drone, Harvester, Builder, or Terraformer available to execute terraform/work tasks. */
+  /** True when the player has an alive HQ or Worker Drone available to execute terraform/work tasks. */
   hasWorkerAvailable(view?: GameView | null): boolean {
     const resolved = view ?? this.resolveView();
     const entities = extractViewEntities(resolved, this.sink.host?.state);
@@ -152,7 +158,7 @@ export class BrushController {
     const hostState = this.sink.host?.state;
     const entities = extractViewEntities(view, hostState);
     const data = this.sink.simData?.() ?? null;
-    const workerId = this.sink.getWorkerId?.();
+    const workerId = op === 'terraform' && opts?.queue ? undefined : this.sink.getWorkerId?.();
     const plan = planPrimaryOp(op, { view, hostState, entities, colonyId, workerId, data }, tile.q, tile.r);
     let sent: DispatchedCommand | null = null;
     if (plan.terraform) {
@@ -236,7 +242,7 @@ export class BrushController {
           this.pressTile = null;
           const queue = e.ctrlKey || e.metaKey;
           if (queue && this.selectedOp === 'terraform' && this.toggleQueued(tile.q, tile.r)) return;
-          if (this.strokeTile(tile.q, tile.r).queuedCount > 0 && !queue) this.disarm();
+          if (this.strokeTile(tile.q, tile.r, { queue }).queuedCount > 0 && !queue) this.disarm();
         },
       },
       LEFT_ONLY,

@@ -1,10 +1,10 @@
 import { hexDistance, hexIndex, type HexIndex } from '../grid/hex';
+import { hexTileRing } from '../grid/hexTile';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt } from '../kernel/rng';
 import { setBlob, type Blob, type SimState } from '../kernel/state';
 import { DEV_PLANET_CAPACITY } from './flat';
-import { ALL_DEPOSITS, collectDiskTiles, collectPodBlastTiles, footprint2x2Valid, spawnCfg } from './spawnDisk';
-import { getDepositRichnessBp } from './temperate';
+import { collectDiskTiles, collectPodBlastTiles, spawnCfg } from './spawnDisk';
 
 /** Spawn slots of a planet generated without a `capacity`: the seats of a dev planet. */
 export const DEFAULT_SPAWN_CAPACITY = DEV_PLANET_CAPACITY;
@@ -180,90 +180,6 @@ function enforceR4Guarantee(
   }
 }
 
-function enforceR8MetalsAnd2x2(
-  state: SimState,
-  hex: HexIndex,
-  slot: SpawnSlot,
-  convertedCounts: Map<number, number>,
-  protectedTiles: Set<number>,
-  footprints?: Set<number>,
-): void {
-  const cfg = spawnCfg(state);
-  const deposit = state.grid.layers.deposit as Uint8Array;
-  const richness = state.grid.layers.richness as Float32Array;
-  const r8Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.metalsRadius, 1);
-
-  for (const mIdx of r8Tiles) {
-    if (deposit[mIdx] !== DEPOSIT.metals) continue;
-    const fp = footprint2x2Valid(hex, slot, hex.q[mIdx], hex.r[mIdx], cfg.metalsRadius);
-    if (!fp) continue;
-    for (const fIdx of fp) {
-      makeTileFlat(state, fIdx, convertedCounts);
-      protectedTiles.add(fIdx);
-      footprints?.add(fIdx);
-    }
-    richness[mIdx] = getDepositRichnessBp(state.meta.seed, mIdx, DEPOSIT.metals, state.meta.planetType);
-    return;
-  }
-
-  const candidates = collectDiskTiles(hex, slot.q, slot.r, cfg.metalsRadius, 3);
-  for (const mIdx of candidates) {
-    if (deposit[mIdx] !== DEPOSIT.none || protectedTiles.has(mIdx)) continue;
-    const fp = footprint2x2Valid(hex, slot, hex.q[mIdx], hex.r[mIdx], cfg.metalsRadius);
-    if (!fp || fp.some((fIdx) => deposit[fIdx] !== DEPOSIT.none)) continue;
-    for (const fIdx of fp) {
-      makeTileFlat(state, fIdx, convertedCounts);
-      protectedTiles.add(fIdx);
-      footprints?.add(fIdx);
-    }
-    deposit[mIdx] = DEPOSIT.metals;
-    richness[mIdx] = getDepositRichnessBp(state.meta.seed, mIdx, DEPOSIT.metals, state.meta.planetType);
-    return;
-  }
-}
-
-function enforceR12AllDeposits(
-  state: SimState,
-  hex: HexIndex,
-  slot: SpawnSlot,
-  convertedCounts: Map<number, number>,
-  protectedTiles: Set<number>,
-  rebalance = true,
-): void {
-  const cfg = spawnCfg(state);
-  const terrain = state.grid.layers.terrain as Uint8Array;
-  const prep = state.grid.layers.prep as Uint8Array;
-  const deposit = state.grid.layers.deposit as Uint8Array;
-  const richness = state.grid.layers.richness as Float32Array;
-  const r12Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.allDepositsRadius, 1);
-
-  for (const kind of ALL_DEPOSITS) {
-    const existing = r12Tiles.find((idx) => deposit[idx] === kind);
-    if (existing !== undefined) {
-      protectedTiles.add(existing);
-      if (richness[existing] <= 0) {
-        richness[existing] = getDepositRichnessBp(state.meta.seed, existing, kind, state.meta.planetType);
-      }
-      continue;
-    }
-
-    const ring6to11 = collectDiskTiles(hex, slot.q, slot.r, 11, 6);
-    ring6to11.sort((a, b) => (terrain[a] === TERRAIN.flat ? 0 : 1) - (terrain[b] === TERRAIN.flat ? 0 : 1) || a - b);
-    const chosen = ring6to11.find((idx) => deposit[idx] === DEPOSIT.none && !protectedTiles.has(idx));
-    if (chosen !== undefined) {
-      if (rebalance) {
-        makeTileFlat(state, chosen, convertedCounts);
-      } else if (terrain[chosen] !== TERRAIN.flat && terrain[chosen] !== TERRAIN.slope) {
-        terrain[chosen] = TERRAIN.slope;
-        prep[chosen] = PREP.wild;
-      }
-      deposit[chosen] = kind;
-      richness[chosen] = getDepositRichnessBp(state.meta.seed, chosen, kind, state.meta.planetType);
-      protectedTiles.add(chosen);
-    }
-  }
-}
-
 function defaultHeightForTerrain(code: number): number {
   if (code === TERRAIN.deep) return Math.fround(-0.45);
   if (code === TERRAIN.shallow) return Math.fround(-0.15);
@@ -285,9 +201,12 @@ function rebalanceGlobalTerrainMix(
   const height = state.grid.layers.height as Float32Array;
   const count = state.grid.count;
 
+  // Never beside a visible deposit: an obstacle next to it would leave the deposit on wild ground (`depositGround.ts`).
+  const nearDeposit = new Set<number>();
+  for (let i = 0; i < count; i++) if (deposit[i] !== DEPOSIT.none) for (const j of hexTileRing(state.grid.radius, i)) nearDeposit.add(j);
   const swapPool: number[] = [];
   for (let i = 0; i < count; i++) {
-    if (terrain[i] === TERRAIN.flat && deposit[i] === DEPOSIT.none && !protectedTiles.has(i)) {
+    if (terrain[i] === TERRAIN.flat && !nearDeposit.has(i) && !protectedTiles.has(i)) {
       swapPool.push(i);
     }
   }
@@ -304,37 +223,29 @@ function rebalanceGlobalTerrainMix(
 }
 
 /**
- * Generates `capacity` spawn slots on the radius-32 ring (±3 jitter), enforces all `UO-TF-09`
- * terrain and deposit guarantees around every slot, and stores the slots in `state.blobs.spawnSlots`.
- * `footprintsOut` receives the metals 2×2 Flat footprint tiles: later stages must keep them Flat (WE-18).
+ * Generates `capacity` spawn slots on the radius-32 ring (±3 jitter), enforces the `UO-TF-09` terrain guarantees
+ * (pod blast zone, r<=4 Flat share) around every slot, and stores the slots in `state.blobs.spawnSlots`. The deposit
+ * guarantees are placed later, on the hex tiles of the levelled landing zones (`placeStarterDeposits`).
  */
 export function generateSpawnSlots(
   state: SimState,
   capacity = DEFAULT_SPAWN_CAPACITY,
-  opts: { rebalance?: boolean; footprintsOut?: Set<number> } = {},
+  opts: { rebalance?: boolean } = {},
 ): SpawnSlot[] {
   const cfg = spawnCfg(state);
   const hex = hexIndex(state.grid.radius);
   const slots = pickRingSlots(state, capacity);
   const convertedCounts = new Map<number, number>();
-  const reservedTiles = new Set<number>();
   const slotZoneTiles = new Set<number>();
 
   for (const slot of slots) {
     for (const idx of collectDiskTiles(hex, slot.q, slot.r, cfg.allDepositsRadius)) {
       slotZoneTiles.add(idx);
     }
-    for (const idx of collectPodBlastTiles(hex, slot.q, slot.r)) {
-      reservedTiles.add(idx);
-    }
   }
 
   const doRebalance = opts.rebalance !== false;
-  for (const slot of slots) {
-    enforceR4Guarantee(state, hex, slot, convertedCounts);
-    enforceR8MetalsAnd2x2(state, hex, slot, convertedCounts, reservedTiles, opts.footprintsOut);
-    enforceR12AllDeposits(state, hex, slot, convertedCounts, reservedTiles, doRebalance);
-  }
+  for (const slot of slots) enforceR4Guarantee(state, hex, slot, convertedCounts);
 
   // Quota planets (temperate / ocean) give back converted tiles elsewhere; relief planets keep their natural mix.
   if (doRebalance) rebalanceGlobalTerrainMix(state, convertedCounts, slotZoneTiles);

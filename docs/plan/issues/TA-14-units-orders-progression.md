@@ -13,7 +13,7 @@
 
 D-16 replaces the D-15 robot list with the spec's roster, order lanes, ground preparation, terrain walls, truces and an 11-stage learning curve.
 
-**MVP scope:** stages **S0–S7**, with 9 unit types: HQ T1–T2, Harvester, Builder, Terraformer, Multitask T2, Recon, Tank, Artillery and Mobile Radar. It also includes the Prepared-ground rule, all terraform ops (Deep Reclaim from S5), Ridge/Moat walls with the Wall Gate, line of fire, and truces. S8–S10 content (air, Anti-Air, Aero Hangar, T3) is data-only with `enabled: false`.
+**MVP scope:** stages **S0–S7**, with units: HQ T1–T2, Worker Drone T1–T3 (one unit), Multitask T2, Recon, Tank, Artillery and Mobile Radar. It also includes the Prepared-ground rule, all terraform ops (Deep Reclaim from S5), Ridge/Moat walls with the Wall Gate, line of fire, and truces. S8–S10 content (air, Anti-Air, Aero Hangar, T3) is data-only with `enabled: false`.
 
 This epic adds sim systems and data on top of TA-06, and the client surfaces on top of TA-11. Existing TA-06 and TA-11 tasks are rescoped where they overlap (TA-06.6, TA-06.7, TA-06.11, TA-11.8).
 
@@ -48,7 +48,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
 | `TA-14.2` | Order lanes & queue: pay-on-start, dispatch + earmarks, precedence, worker-tier gate, HQ rules (cell, refit, reprint, elimination) | W2 / L2 | TA-06.6, TA-14.3 |
 | `TA-14.5` | Progression: `unlockStage`/`threatStage`, triggers + dwell + overrides, stage-scaled raids, newcomer shield, suggestion cards | W3 / L2 | TA-06.7, TA-14.2 |
 | `TA-14.6` | HQ goals & diplomacy in sim: goal breakdown + budgets, truces (offer/sign/notice/Oathbreaker), Negotiate goal | W3 / L2 | TA-14.5 |
-| `TA-14.9` | Visuals: MVP archetypes (terraformer, multitask, tank, artillery, radar, wall gate, brute), Prepared pad & Ridge/Moat terrain look, terraform VFX | W3 / L5 | TA-11.6 |
+| `TA-14.9` | Visuals: MVP archetypes (multitask, tank, artillery, radar, wall gate, brute; Worker Drone T3 uses `robot.builder`, no `robot.terraformer`), Prepared pad & Ridge/Moat terrain look, terraform VFX | W3 / L5 | TA-11.6 |
 | `TA-14.4` | Battle v1 (D-28): plain HP/damage, projectile impact-at-time, lasers/rockets/AoE, evasive units, layers, line of fire (parapet), wall-aware nav, fauna siege, gate pathing, Recon/Tank/Artillery/Radar, Brute | W4 / L2 | TA-06.6, TA-14.3, TA-14.6 |
 | `TA-14.8` | Client order menus: Construction/Terraform/Units/HQ Goals, queue panel (reasons, ETA, earmarks), tile overlay, goal & stage cards, truce UI | W4 / L5 | TA-11.7, TA-11.8 |
 | `TA-14.10` | Battle v1 client: weapon/min/view range rings, projectile visuals (tracers, arcs, rocket trails, beams), impact + AoE decals | W4 / L5 | TA-14.4, TA-11.6 |
@@ -165,7 +165,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
 
 #### Definition of Done (DoD)
 - [ ] `dispatch.spec.ts`: pay-on-start; refunds; `waiting(storage)` never earmarks.
-- [ ] `tier-gate.spec.ts`: a T1 Builder cannot start a T2 structure; only the HQ upgrades the Hub.
+- [ ] `tier-gate.spec.ts`: a Worker Drone T1 cannot start a tier-2 structure; only the HQ upgrades the Hub.
 - [ ] `hq.spec.ts`: refit on Hub upgrade; reprint while the Hub stands; Hub lost + HQ alive gives a 6 000-tick window; both lost eliminates the colony.
 - [ ] `AC-07` data: every waiting entry carries a reason and an ETA in the view.
 - [ ] Status synced (§1.6).
@@ -243,7 +243,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
 - **Depends On:** `TA-11.6`
 - **Spec:** units spec §2 (archetype ids), §7 rows 11, 15, 17 · [`AGENTS.md`](../../../AGENTS.md) Pillars 1–4
 - **Target Files:**
-  - `frontend/game/src/kitbash/archetypes/{units/terraformer.ts,units/multitask.ts,units/tank.ts,units/artillery.ts,units/radar.ts,buildings/wall-gate.ts,nature/brute.ts}`
+  - `frontend/game/src/kitbash/archetypes/{units/multitask.ts,units/tank.ts,units/artillery.ts,units/radar.ts,buildings/wall-gate.ts,nature/brute.ts}`
   - `frontend/game/src/render/terrain/{prep-overlay.ts,ridge-moat.ts}`
   - `frontend/game/src/render/fx/terraform-fx.ts`
   - `frontend/game/test/visual/*.spec.ts`

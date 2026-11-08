@@ -8,6 +8,8 @@ import {
   indexOf,
   insertRow,
   placeSpawnedEntity,
+  rowOf,
+  spawnWorkerUnit,
   PREP,
   revealVision,
   setTilePrep,
@@ -146,6 +148,14 @@ function spawnW05StructuresAndUnits(state: PlanetState): void {
   startBuildingConstruction(state, { owner: 0, building: 'metalsExtractor', q: -3, r: -2, instant: true, costOverride: {}, tick: 0 });
   startBuildingConstruction(state, { owner: 0, building: 'metalsExtractor', q: 1, r: -6, instant: true, costOverride: {}, tick: 0 });
 
+  const tuneWorker = (id: number, hp: number, cell: number, workRate: number) => {
+    const row = rowOf(state.entities, id);
+    state.entities.cols.hp[row] = hp;
+    state.entities.cols.hpMax[row] = hp;
+    state.entities.cols.cell[row] = cell;
+    state.entities.cols.cellMax[row] = cell;
+    state.entities.cols.workRate[row] = workRate;
+  };
   const spawnUnit = (kind: number, q: number, r: number, hp: number, cell: number, workRate: number) => {
     const id = state.meta.nextEntityId++;
     const row = insertRow(state.entities, id, 0);
@@ -162,9 +172,9 @@ function spawnW05StructuresAndUnits(state: PlanetState): void {
   };
 
   spawnUnit(ENTITY_KIND.hq, 2, 1, 900, 800, 1.5);
-  spawnUnit(ENTITY_KIND.builder, 2, 2, 150, 100, 1.0);
-  spawnUnit(ENTITY_KIND.harvester, -2, 1, 120, 100, 0.5);
-  spawnUnit(ENTITY_KIND.harvester, -2, 2, 120, 100, 0.5);
+  tuneWorker(spawnWorkerUnit(state, { owner: 0, q: 2, r: 2, tier: 2 }), 150, 100, 1.0);
+  tuneWorker(spawnWorkerUnit(state, { owner: 0, q: -2, r: 1, tier: 1 }), 120, 100, 0.5);
+  tuneWorker(spawnWorkerUnit(state, { owner: 0, q: -2, r: 2, tier: 1 }), 120, 100, 0.5);
 }
 
 /**

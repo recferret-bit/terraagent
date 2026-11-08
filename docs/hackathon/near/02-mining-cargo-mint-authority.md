@@ -4,7 +4,7 @@
 
 ## 1. Purpose
 
-Mining is the only source of value in the game loop: extractors, harvesters and terrain ops fill colony storage, and storage caps force the player to *spend, export or lose it* (Balance §2, §7.1). Export at a Trade Hub turns stock into NEP-245 cargo on the colony account ("Cargo in orbit"), which F2 markets and the Guild trade. Import turns cargo back into stock. The server simulation decides every unit that reaches the chain (D-26), and the Trade Hub is the only door (NEAR §1 principle 3).
+Mining is the only source of value in the game loop: extractors, Worker Drones and terrain ops fill colony storage, and storage caps force the player to *spend, export or lose it* (Balance §2, §7.1). Export at a Trade Hub turns stock into NEP-245 cargo on the colony account ("Cargo in orbit"), which F2 markets and the Guild trade. Import turns cargo back into stock. The server simulation decides every unit that reaches the chain (D-26), and the Trade Hub is the only door (NEAR §1 principle 3).
 
 ## 2. Actors and accounts
 
@@ -28,10 +28,10 @@ Mining is the only source of value in the game loop: extractors, harvesters and 
 | R02-4 | Planet modifiers on richness: Desert Metals/Minerals +15 %, Ocean Bio +20 % / Metals −15 %, Temperate Minerals +15 %; Water Extractor ×0.5 on Desert. The hackathon generates `temperate` only | Decided (value proposed) | D-33, econ §3 "Planet modifiers", SIM §10, D-27; W05-17 (—) |
 | R02-5 | A meteor has a 30 % chance to create a new deposit | Decided (value proposed) | SIM §7.6; W05-16 (—) |
 | R02-6 | Extractors must cover their deposit; output = table rate × richness × `ECONOMY_RATE_SCALE`, only while powered; halts at the family cap | Decided | econ §3.4, SIM §7.1, W02-08 (H) |
-| R02-7 | Harvesters take the nearest surface deposit of the most-needed family, T1 only, credited straight to storage (no hauling); Clear/Break give lump yields (+5 `bio.biomass`, +10 `metals.t1`) | Planned | W02-12 (H), W01-13 (H), SIM §7.2 |
+| R02-7 | Worker Drones (T1) take the nearest surface deposit of the most-needed family, T1 only, credited straight to storage (no hauling); Clear/Break give lump yields (+5 `bio.biomass`, +10 `metals.t1`) | Planned | W02-12 (H), W01-13 (H), SIM §7.2 |
 | R02-8 | Three families (Metals, Minerals, Bio), 10 sub-resources keyed by `ResourceKey`; Energy is grid power, not a family | Decided | D-34, SIM-G-RES |
 | R02-9 | T2 output needs colony Terraform ≥ 30 % and ≥ 50 % Irrigated/Living in the deposit ring (r2); T3 needs ≥ 70 % and ≥ 50 % Living; split 70/30 and 50/30/20; Mk tier scales rate only | Decided (value proposed) | D-34, econ §3.0; W05-34 (H) |
-| R02-10 | Bio sources: Water Extractor → `bio.water`; Harvester → `bio.biomass` (+ `bio.t3` on Living under T3 gates, marked proposed in econ §3.0); Petroleum Well → `bio.t2` only under T2 gates | Decided | D-34, econ §3.0; W03-30 (H+) |
+| R02-10 | Bio sources: Water Extractor → `bio.water`; Worker Drone T1 → `bio.biomass` (+ `bio.t3` on Living under T3 gates, marked proposed in econ §3.0); Petroleum Well → `bio.t2` only under T2 gates | Decided | D-34, econ §3.0; W03-30 (H+) |
 | R02-11 | One storage cap per family, shared by its sub-resources (sum rule marked proposed); Command Hub T1 +500 / T2 +1 500, Depot +1 000 / 3 500 / 12 000 to all three families | Decided | econ §1 rule 4, §3.5; SIM §7.1; W02-02 (H) |
 | R02-12 | One NEP-245 contract `res.terraagent.near`; token id = `ResourceKey` (10 ids); 18 decimals; Energy is not a token | Decided | NEAR-50, D-34, PROTOCOL §4.5 |
 | R02-13 | `mt_mint` / `mt_burn` are callable only by `minter.*`; a non-minter call fails `NEAR_UNAUTHORIZED_MINTER` (mock) | Decided | NEAR-50, NEF F1; W10-10 (H), W23-17 (H2) |
@@ -68,7 +68,7 @@ Mining is the only source of value in the game loop: extractors, harvesters and 
 | R02-44 | The ten-NEP-141 fallback is not needed per the Intents docs | Proposed | 06 R06-8, Q-06-4 |
 | R02-45 | The economy touches the chain at one door, the Trade Hub; production, combat and terraforming stay in the sim | Decided | NEAR §1 p.3, NEF §1 |
 | R02-46 | Deposits never deplete: no depletion rule exists in SIMULATION, econ or W02/W03 | Gap | Q-02-20 |
-| R02-47 | Harvester on Living ground +0.5 biomass/s from S4 (`bio.t3` still only at T3) | Proposed | Balance §8 |
+| R02-47 | Worker Drone T1 on Living ground +0.5 biomass/s from S4 (`bio.t3` still only at T3) | Proposed | Balance §8 |
 | R02-48 | Carry-over amount: NEAR-54 moves all in-orbit cargo; WP §8 says "part of the cargo"; W21-13 gives pod stock ×1.25 (750/437/250/250 = 1.25 × the W01-09 kit) | Conflict | Conflict → Q-02-21; W21-12, W21-13 (—) |
 | R02-49 | When NEAR or the verifier is unreachable, cargo commands are rejected `market_unavailable`; an export accepted before that settles async through the outbox. Landed code has `NEAR_UNAVAILABLE` (503, "retry with the same opId") | Decided | NEAR §1 p.4, PROTOCOL §10; code: `backend/app/src/near/domain/errors.ts` |
 | R02-50 | Adapter env: code key is `NEAR_ADAPTER_CARGO_TOKEN`; W10-10 (binding), W10-29, W23-01 (acceptance), W23 demo step 2 and W23-42 write `NEAR_ADAPTER_CARGO` (fail-closed: the wrong name silently selects mock) | Conflict | Conflict → Q-06-11; code: `backend/app/src/near/infrastructure/adapter-selection.ts` |
@@ -102,8 +102,8 @@ Mining is the only source of value in the game loop: extractors, harvesters and 
 | Minerals Quarry T1/T2/T3 | +3.0 / 9.5 / 30.0 per s | econ §3.4 | Decided |
 | Petroleum Well T1/T2/T3 | +2.5 / 8.0 / 25.0 `bio.t2`/s, T2 gates only | econ §3.4 | Decided |
 | Water Extractor T1/T2/T3 | +3.5 / 11.0 / 34.0 `bio.water`/s (×0.5 Desert) | econ §3.4 | Decided |
-| Harvester | 2.0 × scale res/s | W02-12 (H) | Planned |
-| Harvester on Living | +0.5 biomass/s from S4 | Balance §8 | Proposed |
+| Worker Drone T1 | 2.0 × scale res/s | W02-12 (H) | Planned |
+| Worker Drone T1 on Living | +0.5 biomass/s from S4 | Balance §8 | Proposed |
 | `ECONOMY_RATE_SCALE` | 0.25 (Extractor T1 → 1.0/s) | Balance §1 (citing units §6.4) | Decided |
 | Storage | Command Hub T1 +500 / T2 +1 500; Depot +1 000 / 3 500 / 12 000 per family | SIM §7.1, econ §3.5 | Decided |
 | Trade Hub throughput | 250 / 900 / 3 500 units per min | econ §3.5, NEAR-53 | Decided |
@@ -229,7 +229,7 @@ Market trades, fee legs, the treasury leg and bounty escrow are transfers, not s
 ## 9. Grill questions
 
 - **W01/W02:** Which starting kit ships (Q-02-19)? Does W02-02 clamp a 600 kit to the 500 cap? Do deposits deplete (Q-02-20)?
-- **W03/W05:** With W03-30 at H+ and Bio/T3 tiers deferred, which tokens can a demo colony mint? Is the W05-34 gate a share or a Living-tile count (R02-40)? Harvester on Living (R02-47)?
+- **W03/W05:** With W03-30 at H+ and Bio/T3 tiers deferred, which tokens can a demo colony mint? Is the W05-34 gate a share or a Living-tile count (R02-40)? Worker Drone T1 on Living (R02-47)?
 - **W10:** Answer Q-02-1 (snapshot vs outbox) before W10-05/08 start. Who signs the burn (Q-02-3)? Where does the daily counter live (Q-02-4)? Sum or per hub (Q-02-5)? Which error set, including `market_unavailable` (Q-02-6, Q-02-7)? Is the cap default 20 000 or 10 000? Does the demo's 300 export pass at T1 (Q-02-18)?
 - **W10-10:** Use the landed `mock_chain_balance` / `mock_chain_receipt` or add `mock_chain_mt_*` tables (Q-02-22)?
 - **W10-26 / W10-29:** What stops `cargo.grant` against a real adapter (Q-02-2)? Which env name goes into `ENVS.md` (Q-06-11)?

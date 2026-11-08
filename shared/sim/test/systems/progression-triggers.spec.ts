@@ -120,7 +120,7 @@ describe('W08-03 · Stage trigger evaluator & 1 Hz dwell progression', () => {
       stage: 1,
       previousStage: 0,
       title: 'S1 First Light',
-      units: ['harvester'],
+      units: ['worker'],
     });
     expect(eventDef('stageReached').data.safeParse(s1Reached[0].data).success).toBe(true);
     expect(colony.stage).toBe(1);
@@ -170,8 +170,8 @@ describe('W08-03 · S2 acceptance check (extractor + generator + 2 min dwell)', 
       stage: 2,
       previousStage: 1,
       title: 'S2 The Grid',
-      units: ['builder'],
-      buildings: ['pylon', 'depot', 'storageDepot', 'capacitor'],
+      units: [],
+      buildings: ['pylon', 'depot', 'storageDepot', 'capacitor', 'wind', 'waterExtractor', 'petroleumWell', 'supplyDepot'],
     });
     expect(eventDef('stageReached').data.safeParse(s2Reached[0].data).success).toBe(true);
     expect(colony.stage).toBe(2);

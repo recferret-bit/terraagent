@@ -85,7 +85,7 @@ function collectUnitTileSet(state: PlanetState, colonyIndex: number): Set<number
     if (cols.owner[row] !== colonyIndex) continue;
     if (cols.hp[row] <= 0 && cols.hpMax[row] > 0) continue;
     const k = cols.kind[row];
-    if (k === ENTITY_KIND.hq || k === ENTITY_KIND.harvester || k === ENTITY_KIND.pod) {
+    if (k === ENTITY_KIND.hq || k === ENTITY_KIND.worker || k === ENTITY_KIND.pod) {
       const tIdx = idx.indexOf(cols.q[row], cols.r[row]);
       if (tIdx >= 0) out.add(tIdx);
     }

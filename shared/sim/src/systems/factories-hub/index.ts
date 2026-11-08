@@ -1,61 +1,27 @@
 import type { ResourceKey } from '@terra/contracts';
 import { CANCEL_REFUND_RATE } from '../../data';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { placeSpawnedEntity } from '../../ecs/placement';
-import { insertRow } from '../../ecs/store';
+import { ENTITY_KIND } from '../../ecs/columns';
 import { hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
+import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { buildingFootprints } from '../construction/occupancy';
 import { defineSimModule } from '../define';
-import { checkCostAffordability, ensureColonyLedger, payProgressiveSlice, refundCost } from '../economy/ledger';
+import { checkCostAffordability, ensureColonyAt, payProgressiveSlice, refundCost } from '../economy/ledger';
 import { colonyWho } from '../find';
-import { revealVision } from '../hq';
 import { checkUnitSupply, syncColonySupply } from '../supply';
-import {
-  buildBuilderView,
-  builderJobFromState,
-  buildTerraformerView,
-  defaultHubData,
-  resolveBuilderRow,
-  resolveHubProducerRows,
-  resolveTerraformerRow,
-  resolveUnitRowForHub,
-  spawnBuilderUnit,
-  spawnTerraformerUnit,
-  syncBuilderView,
-  syncTerraformerView,
-  type BuilderJob,
-  type BuilderUnitView,
-  type SpawnBuilderOpts,
-  type TerraformerUnitView,
-} from './unit';
+import { spawnWorkerUnit, workerTierOf, type WorkerTier } from '../harvest/unit';
+import { defaultHubData, resolveHubProducerRows, resolveUnitRowForHub } from './unit';
 
-export {
-  buildBuilderView,
-  builderJobFromState,
-  buildTerraformerView,
-  defaultHubData,
-  resolveBuilderRow,
-  resolveHubProducerRows,
-  resolveTerraformerRow,
-  resolveUnitRowForHub,
-  spawnBuilderUnit,
-  spawnTerraformerUnit,
-  syncBuilderView,
-  syncTerraformerView,
-  type BuilderJob,
-  type BuilderUnitView,
-  type SpawnBuilderOpts,
-  type TerraformerUnitView,
-};
+export { spawnWorkerUnit } from '../harvest/unit';
+export { defaultHubData, resolveHubProducerRows, resolveUnitRowForHub };
 
 export interface HubUnitQueueEntry {
   taskId: string;
-  unit: 'harvester' | 'builder' | 'terraformer';
+  unit: string;
+  tier: WorkerTier;
   colonyIndex: number;
   producerId?: number;
   count: number;
@@ -75,14 +41,7 @@ export interface HubUnitQueueEntry {
   spawnedEntityIds: number[];
 }
 
-function ensureColony(state: PlanetState, colonyIndex: number, tick: number): ColonyState {
-  let col = state.colonies[colonyIndex];
-  if (!col) {
-    col = { index: colonyIndex, id: `col-${colonyIndex}`, name: `Colony ${colonyIndex + 1}`, color: 0xff6b00, status: 'active', changedAt: tick };
-    state.colonies[colonyIndex] = col;
-  }
-  return ensureColonyLedger(col);
-}
+const ensureColony = ensureColonyAt;
 
 function getAllEntries(state: PlanetState): HubUnitQueueEntry[] {
   const raw = (state.blobs.hubProduction?.value as { entries?: HubUnitQueueEntry[] } | undefined)?.entries;
@@ -164,63 +123,37 @@ export function findHubEdgeSpawnTile(state: PlanetState, colonyIndex: number, da
 }
 
 /**
- * A finished Harvester: spawned at the Hub edge, then `unitProduced` in the one player-event shape (`colonyIds` = the
- * colony's string id, `data.colonyId` / `playerId`, see `colonyWho`) so it reaches the colony's channel.
+ * A finished Worker Drone: spawned at the Hub edge, then `unitProduced` in the one player-event shape (`colonyIds` =
+ * the colony's string id, `data.colonyId` / `playerId`, see `colonyWho`) so it reaches the colony's channel.
  */
-export function produceHarvesterAtHubEdge(state: PlanetState, colonyIndex: number, ctx: StepContext): { entityId: number; q: number; r: number } {
-  const spawned = spawnHarvesterAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx);
+export function produceWorkerAtHubEdge(
+  state: PlanetState,
+  colonyIndex: number,
+  ctx: StepContext,
+  tier?: WorkerTier,
+): { entityId: number; q: number; r: number } {
+  const spawned = spawnWorkerAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx, tier);
   const { colonyIdStr, who } = colonyWho(state, colonyIndex);
-  ctx.emit({ kind: 'unitProduced', colonyIds: [colonyIdStr], data: { ...who, entityId: spawned.entityId, unit: 'harvester', q: spawned.q, r: spawned.r } });
+  ctx.emit({
+    kind: 'unitProduced',
+    colonyIds: [colonyIdStr],
+    data: { ...who, entityId: spawned.entityId, unit: 'worker', tier: spawned.tier, q: spawned.q, r: spawned.r },
+  });
   return spawned;
 }
 
-export function spawnHarvesterAtHubEdge(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike, ctx?: StepContext): { entityId: number; q: number; r: number } {
-  const { harvester } = resolveHubProducerRows(data);
+export function spawnWorkerAtHubEdge(
+  state: PlanetState,
+  colonyIndex: number,
+  tick: number,
+  data?: CompiledDataLike,
+  ctx?: StepContext,
+  tier?: WorkerTier,
+): { entityId: number; q: number; r: number; tier: WorkerTier } {
   const pos = findHubEdgeSpawnTile(state, colonyIndex, data);
-  const id = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
-  const row = insertRow(state.entities, id, tick);
-  const cols = state.entities.cols;
-  cols.kind[row] = ENTITY_KIND.harvester;
-  cols.owner[row] = colonyIndex;
-  cols.tier[row] = Number(harvester.tier ?? 1);
-  placeSpawnedEntity(state.entities, row, pos.q, pos.r, tick);
-  cols.hp[row] = Math.fround(Number(harvester.hp ?? 160));
-  cols.hpMax[row] = Math.fround(Number(harvester.hp ?? 160));
-  cols.state[row] = ENTITY_STATE.idle;
-  cols.workRate[row] = Math.fround(Number(harvester.workRate ?? 1.0));
-  cols.targetQ[row] = pos.q;
-  cols.targetR[row] = pos.r;
-  cols.createdAt[row] = tick;
-  cols.changedAt[row] = tick;
-
-  revealVision(state, colonyIndex, pos.q, pos.r, Number(harvester.viewRadius ?? 7), tick);
-  return { entityId: id, q: pos.q, r: pos.r };
-}
-
-export function spawnBuilderAtHubEdge(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike, ctx?: StepContext): { entityId: number; q: number; r: number } {
-  const pos = findHubEdgeSpawnTile(state, colonyIndex, data);
-  const entityId = spawnBuilderUnit(state, { owner: colonyIndex, q: pos.q, r: pos.r, tick, data }, ctx);
-  return { entityId, q: pos.q, r: pos.r };
-}
-
-export function produceBuilderAtHubEdge(state: PlanetState, colonyIndex: number, ctx: StepContext): { entityId: number; q: number; r: number } {
-  const spawned = spawnBuilderAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx);
-  const { colonyIdStr, who } = colonyWho(state, colonyIndex);
-  ctx.emit({ kind: 'unitProduced', colonyIds: [colonyIdStr], data: { ...who, entityId: spawned.entityId, unit: 'builder', q: spawned.q, r: spawned.r } });
-  return spawned;
-}
-
-export function spawnTerraformerAtHubEdge(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike, ctx?: StepContext): { entityId: number; q: number; r: number } {
-  const pos = findHubEdgeSpawnTile(state, colonyIndex, data);
-  const entityId = spawnTerraformerUnit(state, { owner: colonyIndex, q: pos.q, r: pos.r, tick, data }, ctx);
-  return { entityId, q: pos.q, r: pos.r };
-}
-
-export function produceTerraformerAtHubEdge(state: PlanetState, colonyIndex: number, ctx: StepContext): { entityId: number; q: number; r: number } {
-  const spawned = spawnTerraformerAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx);
-  const { colonyIdStr, who } = colonyWho(state, colonyIndex);
-  ctx.emit({ kind: 'unitProduced', colonyIds: [colonyIdStr], data: { ...who, entityId: spawned.entityId, unit: 'terraformer', q: spawned.q, r: spawned.r } });
-  return spawned;
+  const resolved = workerTierOf(tier);
+  const entityId = spawnWorkerUnit(state, { owner: colonyIndex, q: pos.q, r: pos.r, tier: resolved, tick, data }, ctx);
+  return { entityId, q: pos.q, r: pos.r, tier: resolved };
 }
 
 function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueEntry[], colonyIndex: number, tick: number, data?: CompiledDataLike): void {
@@ -283,7 +216,10 @@ function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueE
 
 export interface EnqueueHubUnitOptions {
   colonyIndex?: number;
-  unit?: 'harvester' | 'builder' | 'terraformer' | string;
+  /** Only `worker`. Missing means `worker`. */
+  unit?: string;
+  /** 1, 2, or 3. Missing means 1. */
+  tier?: WorkerTier;
   count?: number;
   repeat?: boolean;
   producerId?: number;
@@ -292,18 +228,17 @@ export interface EnqueueHubUnitOptions {
   data?: CompiledDataLike;
 }
 
-/** Enqueues a unit production order (`harvester`, `builder`, or `terraformer`) at the Command Hub's Units lane (paid progressively as it builds). */
+/** Enqueues a Worker Drone production order at the Command Hub's Units lane (paid progressively as it builds). */
 export function enqueueHubUnit(
   state: PlanetState,
   opts: EnqueueHubUnitOptions = {},
 ): { ok: true; entry: HubUnitQueueEntry; entries: HubUnitQueueEntry[] } | { ok: false; code: string; detail?: string } {
   const tick = opts.tick ?? state.meta.tick;
   const colonyIndex = opts.colonyIndex ?? 0;
-  const unitName = opts.unit ?? 'harvester';
-  const unitRow = resolveUnitRowForHub(unitName, opts.data);
-  if (!unitRow || (unitName !== 'harvester' && unitName !== 'builder' && unitName !== 'terraformer')) {
-    return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
-  }
+  const unitName = opts.unit ?? 'worker';
+  const tier = workerTierOf(opts.tier);
+  const unitRow = resolveUnitRowForHub(unitName, opts.data, opts.tier);
+  if (!unitRow) return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   const { hubProd } = resolveHubProducerRows(opts.data);
   const entries = getAllEntries(state);
   const activeForColony = entries.filter((e) => e.colonyIndex === colonyIndex && e.state !== 'done' && e.state !== 'cancelled');
@@ -314,11 +249,12 @@ export function enqueueHubUnit(
 
   const count = Math.max(1, Math.floor(opts.count ?? 1));
   const cost = { ...(unitRow.cost as Record<ResourceKey, number>) };
-  const buildTicks = Math.max(1, Number(unitRow.buildS ?? (unitName === 'builder' ? 60 : 50)));
+  const buildTicks = Math.max(1, Number(unitRow.buildS ?? (tier === 1 ? 50 : 60)));
 
   const entry: HubUnitQueueEntry = {
     taskId: opts.taskId ?? `u-${colonyIndex}-${tick}-${entries.length + 1}`,
     unit: unitName,
+    tier,
     colonyIndex,
     producerId: opts.producerId,
     count,
@@ -414,11 +350,7 @@ export const hubProductionSystem = defineSystem({
 
         while (active.state === 'in_progress' && active.elapsedTicks >= active.buildTicks - 1e-6) {
           const carry = Math.max(0, active.elapsedTicks - active.buildTicks);
-          const spawned = active.unit === 'builder'
-            ? produceBuilderAtHubEdge(state, colIdx, ctx)
-            : active.unit === 'terraformer'
-              ? produceTerraformerAtHubEdge(state, colIdx, ctx)
-              : produceHarvesterAtHubEdge(state, colIdx, ctx);
+          const spawned = produceWorkerAtHubEdge(state, colIdx, ctx, active.tier);
           active.spawnedEntityIds.push(spawned.entityId);
 
           if (active.remainingCount > 1) {

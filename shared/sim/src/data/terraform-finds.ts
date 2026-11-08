@@ -36,7 +36,7 @@ export function findSpecFromRow(row: Readonly<Record<string, RowValue>>): Terraf
  * Resource deposit found by terraforming (owner decision W02): when a ground `work` job finishes and the hex holds no
  * deposit after the buried-deposit reveal, roll `chance` (the `misc` rng stream); on a hit a full deposit
  * (`richnessBp`) of a uniform `families` kind appears with tier odds `t1Weight` / `t2Weight` / `t3Weight` (relative).
- * Its tier is the visible `depositTier` tile layer (Harvester and Metals Extractor pay `metals.t{tier}`, …).
+ * Its tier is the visible `depositTier` tile layer (Worker and Metals Extractor pay `metals.t{tier}`, …).
  * Tunable: `tune terraformFinds.deposit.chance 0.5`. Dev: `spawndeposit <q> <r> <family> <tier>` places one.
  */
 const table = defineTable({

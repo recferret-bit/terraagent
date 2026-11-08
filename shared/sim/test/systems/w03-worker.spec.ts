@@ -19,7 +19,7 @@ import {
   isWorkerEligibleForJob,
   PREP,
   rowOf,
-  spawnBuilderUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   startBuildingConstruction,
   step,
@@ -27,7 +27,7 @@ import {
   view,
 } from '../../src';
 
-describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => {
+describe('W03-02 Worker Drone T2 in sim: Hub production (12 s / 60 ticks)', () => {
   it('queues a Builder at the Hub -> pays 45/25/10 progressively and spawns after 12 s (60 ticks) with workRate 1.0x', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w03-b1', radius: 10 });
     const colony = ensureColonyLedger({
@@ -58,17 +58,18 @@ describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => 
 
     // Rejects Builder when W03 wave is off in data
     const w02Data = compileData(parseWaves('..02'));
-    expect(enqueueHubUnit(state, { colonyIndex: 0, unit: 'builder', data: w02Data })).toEqual({
+    expect(enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker', tier: 2, data: w02Data })).toEqual({
       ok: false,
       code: 'invalid_args',
       detail: 'unknown unit',
     });
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
-    const qRes = enqueueHubUnit(state, { colonyIndex: 0, unit: 'builder', count: 1 });
+    const qRes = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker', tier: 2, count: 1 });
     expect(qRes.ok).toBe(true);
     if (!qRes.ok) throw new Error('expected ok');
-    expect(qRes.entry.unit).toBe('builder');
+    expect(qRes.entry.unit).toBe('worker');
+    expect(qRes.entry.tier).toBe(2);
     expect(qRes.entry.buildTicks).toBe(60);
     expect(qRes.entry.state).toBe('in_progress');
 
@@ -79,7 +80,7 @@ describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => 
 
     // Step 1 more tick (60 ticks = 12.0 s): Builder spawns at Hub edge
     const doneStep = step(state, [], 1, pipeline);
-    expect(doneStep.events.some((e) => e.kind === 'unitProduced' && (e.data as { unit?: string }).unit === 'builder')).toBe(true);
+    expect(doneStep.events.some((e) => e.kind === 'unitProduced' && (e.data as { unit?: string }).unit === 'worker')).toBe(true);
     expect(getHubUnitQueue(state, 0)).toHaveLength(0);
     expect(computeColonySupply(state, 0).units).toBe(1);
     expect(colony.stock['metals.t1']).toBeCloseTo(455, 4);
@@ -88,16 +89,16 @@ describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => 
 
     // Verify spawned Builder entity and SimView projection
     const simView = view(state);
-    const builderEnt = simView.entities.find((e) => e.kind === ENTITY_KIND.builder);
+    const builderEnt = simView.entities.find((e) => e.kind === ENTITY_KIND.worker);
     expect(builderEnt).toBeDefined();
     expect(builderEnt).toMatchObject({
-      unit: 'builder',
-      label: 'Builder Drone',
+      unit: 'worker', tier: 2,
+      label: 'Worker Drone T2',
       archetype: 'robot.builder',
       hp: 150,
       hpMax: 150,
       workRate: 1.0,
-      maxBuildTier: 1,
+      maxBuildTier: 2,
       supply: 1,
       powerDrainPerS: 3,
       viewRadius: 7,
@@ -105,7 +106,7 @@ describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => 
   });
 });
 
-describe('W03-02 Builder Drone in sim: 1.0x parallel build and T1 tier lock', () => {
+describe('W03-02 Worker Drone T2 in sim: 1.0x parallel build and the build-tier cap (tier ≤ worker tier)', () => {
   it('HQ (1.5x) and Builder (1.0x) build 2 queued buildings in parallel at their respective rates', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w03-b2', radius: 10 });
     const colony = ensureColonyLedger({
@@ -131,7 +132,7 @@ describe('W03-02 Builder Drone in sim: 1.0x parallel build and T1 tier lock', ()
 
     // Spawn HQ at (0, 0) [workRate 1.5x, buildReach 2..3] and Builder at (-4, 0) [workRate 1.0x, buildReach 1..1]
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
-    spawnBuilderUnit(state, { owner: 0, q: -4, r: 0 });
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: -4, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
 
     const b1 = startBuildingConstruction(state, { owner: 0, building: 'solar', q: 2, r: 0 });
@@ -163,7 +164,7 @@ describe('W03-02 Builder Drone in sim: 1.0x parallel build and T1 tier lock', ()
     expect(state.entities.cols.progress[row2]).toBeCloseTo(60 / 90, 2);
   });
 
-  it('rejects assigning a Builder to a T2 site with worker_tier_locked', () => {
+  it('rejects assigning a Worker Drone T2 to a T3 site with worker_tier_locked', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w03-b3', radius: 10 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -176,21 +177,25 @@ describe('W03-02 Builder Drone in sim: 1.0x parallel build and T1 tier lock', ()
     state.colonies.push(colony);
 
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
-    const builderId = spawnBuilderUnit(state, { owner: 0, q: 1, r: 0 });
+    const builderId = spawnWorkerUnit(state, { tier: 2, owner: 0, q: 1, r: 0 });
 
-    // Eligibility checks
-    expect(isWorkerEligibleForJob(ENTITY_KIND.builder, 1, { kind: 'build', tier: 1 })).toBe(true);
-    expect(isWorkerEligibleForJob(ENTITY_KIND.builder, 1, { kind: 'build', tier: 2 })).toBe(false);
-    expect(isWorkerEligibleForJob(ENTITY_KIND.builder, 1, { kind: 'linkedPrep' })).toBe(true);
-    expect(checkWorkerBuildTier(ENTITY_KIND.builder, 1, 1)).toEqual({ ok: true });
-    expect(checkWorkerBuildTier(ENTITY_KIND.builder, 1, 2)).toEqual({ ok: false, code: 'worker_tier_locked' });
+    // A tier-1 worker still cannot build a T2 site. The spawned drone is T2, so it can.
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 1, { kind: 'build', tier: 1 })).toBe(true);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 1, { kind: 'build', tier: 2 })).toBe(false);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 2, { kind: 'build', tier: 2 })).toBe(true);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 2, { kind: 'build', tier: 3 })).toBe(false);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 1, { kind: 'build', tier: 1 })).toBe(true);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 1, { kind: 'terraform', op: 'dismantle' })).toBe(true);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 1, { kind: 'terraform', op: 'deepReclaim' })).toBe(false);
+    expect(isWorkerEligibleForJob(ENTITY_KIND.worker, 1, { kind: 'linkedPrep' })).toBe(true);
+    expect(checkWorkerBuildTier(ENTITY_KIND.worker, 1, 1)).toEqual({ ok: true });
+    expect(checkWorkerBuildTier(ENTITY_KIND.worker, 1, 2)).toEqual({ ok: false, code: 'worker_tier_locked' });
+    expect(checkWorkerBuildTier(ENTITY_KIND.worker, 2, 2)).toEqual({ ok: true });
 
-    // Assigning Builder to a T2 site returns worker_tier_locked
-    const lockRes = assignBuilderToSite(state, builderId, { q: 3, r: 0, tier: 2 });
-    expect(lockRes).toEqual({ ok: false, code: 'worker_tier_locked' });
-
-    // Assigning Builder to a T1 site succeeds
-    const okRes = assignBuilderToSite(state, builderId, { q: 3, r: 0, tier: 1 });
+    expect(assignBuilderToSite(state, builderId, { q: 4, r: 0, tier: 3 })).toEqual({ ok: false, code: 'worker_tier_locked' });
+    const t1Id = spawnWorkerUnit(state, { tier: 1, owner: 0, q: -1, r: 0 });
+    expect(assignBuilderToSite(state, t1Id, { q: 3, r: 0, tier: 2 })).toEqual({ ok: false, code: 'worker_tier_locked' });
+    const okRes = assignBuilderToSite(state, builderId, { q: 3, r: 0, tier: 2 });
     expect(okRes.ok).toBe(true);
 
     // HQ T1 is also tier-locked on T2 until upgraded to T2
@@ -201,8 +206,8 @@ describe('W03-02 Builder Drone in sim: 1.0x parallel build and T1 tier lock', ()
   });
 });
 
-describe('W03-02 Builder Drone in sim: linked site prep and Hub batch count', () => {
-  it('supports linked prep by Builder Drone and count/repeat in Hub Units lane', () => {
+describe('W03-02 Worker Drone T2 in sim: linked site prep and Hub batch count', () => {
+  it('supports linked prep by Worker Drone T2 and count/repeat in Hub Units lane', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w03-b4', radius: 10 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -224,8 +229,8 @@ describe('W03-02 Builder Drone in sim: linked site prep and Hub batch count', ()
     creditResource(colony, 'bio.biomass', 200, 0);
     creditResource(colony, 'bio.water', 200, 0);
 
-    // Spawn Builder Drone at (0, 0) without an HQ: Builder prepares the 2x2 footprint and then builds Solar T1!
-    spawnBuilderUnit(state, { owner: 0, q: 0, r: 0 });
+    // Spawn Worker Drone T2 at (0, 0) without an HQ: Builder prepares the 2x2 footprint and then builds Solar T1!
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
 
     const b1 = startBuildingConstruction(state, { owner: 0, building: 'solar', q: 2, r: 0 });
@@ -250,7 +255,7 @@ describe('W03-02 Builder Drone in sim: linked site prep and Hub batch count', ()
     state.entities.cols.hpMax[hubRow] = 1500;
     state.entities.cols.state[hubRow] = ENTITY_STATE.active;
 
-    const q2 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'builder', count: 2 });
+    const q2 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker', tier: 2, count: 2 });
     expect(q2.ok).toBe(true);
     for (let t = 0; t < 120; t++) step(state, [], 1, pipeline);
     expect(computeColonySupply(state, 0).units).toBe(3);

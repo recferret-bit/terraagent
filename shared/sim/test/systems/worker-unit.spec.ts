@@ -6,14 +6,14 @@ import {
   dataRow,
   ENTITY_KIND,
   ENTITY_STATE,
-  getHarvesterView,
+  getWorkerView,
   hexDistance,
   hexIndex,
-  listHarvesterViews,
+  listWorkerViews,
   PREP,
   rowOf,
   SimHost,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   TERRAIN,
   type SimCommand,
 } from '../../src';
@@ -25,14 +25,14 @@ function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0): Sim
 
 function createW02Host(radius = 28): SimHost {
   const host = new SimHost({ flags: parseWaves('..02') });
-  host.load(createPlanet({ type: 'flat', seed: 'harvester-test', radius }));
+  host.load(createPlanet({ type: 'flat', seed: 'worker-test', radius }));
   return host;
 }
 
-describe('W02-11: Harvester unit stats and data compilation', () => {
-  it('compiles Harvester T1 stats with 40/15/5/0 cost, 10s build, 0.5 harvestRate', () => {
+describe('W02-11: Worker unit stats and data compilation', () => {
+  it('compiles Worker T1 stats with 40/15/5/0 cost, 10s build, 0.5 harvestRate', () => {
     const compiled = compileData(parseWaves('..02'));
-    const hRow = dataRow(compiled, 'unitsWorkersBasic', 'harvester');
+    const hRow = dataRow(compiled, 'unitsWorkersBasic', 't1');
     expect(hRow.cost).toEqual({
       'metals.t1': 40,
       'minerals.t1': 15,
@@ -49,18 +49,18 @@ describe('W02-11: Harvester unit stats and data compilation', () => {
     expect(hRow.viewRadius).toBe(7);
     expect(hRow.radius).toBe(0.4);
     expect(hRow.harvestRatePerS).toBe(0.5);
-    expect(hRow.maxBuildTier).toBe(0);
+    expect(hRow.maxBuildTier).toBe(1);
   });
 
-  it('spawns a Harvester and initializes entity store columns', () => {
+  it('spawns a Worker and initializes entity store columns', () => {
     const host = createW02Host();
     const state = host.state;
-    const harvesterId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
-    const row = rowOf(state.entities, harvesterId);
+    const workerId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
+    const row = rowOf(state.entities, workerId);
     expect(row).toBe(0);
 
     const cols = state.entities.cols;
-    expect(cols.kind[row]).toBe(ENTITY_KIND.harvester);
+    expect(cols.kind[row]).toBe(ENTITY_KIND.worker);
     expect(cols.owner[row]).toBe(0);
     expect(cols.tier[row]).toBe(1);
     expect(cols.q[row]).toBe(0);
@@ -74,8 +74,8 @@ describe('W02-11: Harvester unit stats and data compilation', () => {
   });
 });
 
-describe('W02-11: Harvester views and inspector fields', () => {
-  it('exposes stats in getHarvesterView, blobs.units, colony, and host view', () => {
+describe('W02-11: Worker views and inspector fields', () => {
+  it('exposes stats in getWorkerView, blobs.units, colony, and host view', () => {
     const host = createW02Host();
     const state = host.state;
     state.colonies[0] = {
@@ -87,12 +87,12 @@ describe('W02-11: Harvester views and inspector fields', () => {
       changedAt: 0,
     };
 
-    const harvesterId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
-    expect(getHarvesterView(state, harvesterId)).toMatchObject({
-      entityId: harvesterId,
-      kind: ENTITY_KIND.harvester,
-      unit: 'harvester',
-      label: 'Harvester Drone',
+    const workerId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
+    expect(getWorkerView(state, workerId)).toMatchObject({
+      entityId: workerId,
+      kind: ENTITY_KIND.worker,
+      unit: 'worker',
+      label: 'Worker Drone T1',
       archetype: 'robot.miner',
       owner: 0,
       tier: 1,
@@ -108,27 +108,27 @@ describe('W02-11: Harvester views and inspector fields', () => {
       radius: 0.4,
       harvestRatePerS: 0.5,
       workRate: 1.0,
-      maxBuildTier: 0,
+      maxBuildTier: 1,
       buildS: 50,
       designBuildS: 10,
       currentJob: 'idle',
     });
 
-    const list = listHarvesterViews(state, 0);
+    const list = listWorkerViews(state, 0);
     expect(list).toHaveLength(1);
-    expect(list[0]?.entityId).toBe(harvesterId);
+    expect(list[0]?.entityId).toBe(workerId);
 
     const blobUnits = state.blobs.units?.value as Record<number, unknown> | undefined;
-    expect(blobUnits?.[harvesterId]).toBeDefined();
+    expect(blobUnits?.[workerId]).toBeDefined();
 
-    expect((state.colonies[0]?.harvesters as unknown[])?.[0]).toMatchObject({ entityId: harvesterId });
-    expect((state.colonies[0]?.units as unknown[])?.[0]).toMatchObject({ entityId: harvesterId });
+    expect((state.colonies[0]?.workers as unknown[])?.[0]).toMatchObject({ entityId: workerId });
+    expect((state.colonies[0]?.units as unknown[])?.[0]).toMatchObject({ entityId: workerId });
 
     expect(host.view().entities[0]).toMatchObject({
-      id: harvesterId,
-      kind: ENTITY_KIND.harvester,
-      unit: 'harvester',
-      label: 'Harvester Drone',
+      id: workerId,
+      kind: ENTITY_KIND.worker,
+      unit: 'worker',
+      label: 'Worker Drone T1',
       archetype: 'robot.miner',
       supply: 1,
       powerDrainPerS: 2,
@@ -137,24 +137,24 @@ describe('W02-11: Harvester views and inspector fields', () => {
       radius: 0.4,
       harvestRatePerS: 0.5,
       workRate: 1.0,
-      maxBuildTier: 0,
+      maxBuildTier: 1,
     });
   });
 
   it('returns null or empty array for nonexistent queries', () => {
     const host = createW02Host();
     const state = host.state;
-    expect(getHarvesterView(state, 123)).toBeNull();
-    expect(getHarvesterView(state)).toBeNull();
-    expect(listHarvesterViews(state, 0)).toEqual([]);
+    expect(getWorkerView(state, 123)).toBeNull();
+    expect(getWorkerView(state)).toBeNull();
+    expect(listWorkerViews(state, 0)).toEqual([]);
   });
 });
 
-describe('W02-11: Harvester vision and movement', () => {
+describe('W02-11: Worker vision and movement', () => {
   it('reveals fog-of-war vision within viewRadius 7 upon spawn', () => {
     const host = createW02Host();
     const state = host.state;
-    spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
+    spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
 
     const idx = hexIndex(state.grid.radius);
     const explored = state.grid.layers.explored as Uint8Array;
@@ -164,14 +164,14 @@ describe('W02-11: Harvester vision and movement', () => {
     }
   });
 
-  it('moves Harvester at 1.5 t/s (0.3 t/tick) over 15 tiles in 50 ticks (10.0 s)', () => {
+  it('moves Worker at 1.5 t/s (0.3 t/tick) over 15 tiles in 50 ticks (10.0 s)', () => {
     const host = createW02Host();
     const state = host.state;
-    const harvesterId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
-    const row = rowOf(state.entities, harvesterId);
+    const workerId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
+    const row = rowOf(state.entities, workerId);
     const cols = state.entities.cols;
 
-    host.submit(mkCmd('moveUnit', { entityId: harvesterId, q: 15, r: 0 }, 0));
+    host.submit(mkCmd('moveUnit', { entityId: workerId, q: 15, r: 0 }, 0));
 
     for (let t = 1; t <= 49; t++) {
       const res = host.step(1);
@@ -181,7 +181,7 @@ describe('W02-11: Harvester vision and movement', () => {
     expect(host.tick).toBe(49);
     expect(cols.state[row]).toBe(ENTITY_STATE.moving);
     expect(cols.x[row]).toBeCloseTo(14.7, 2);
-    expect(getHarvesterView(state, harvesterId)).toMatchObject({
+    expect(getWorkerView(state, workerId)).toMatchObject({
       currentJob: 'moving',
       targetQ: 15,
       targetR: 0,
@@ -192,7 +192,7 @@ describe('W02-11: Harvester vision and movement', () => {
     expect(cols.state[row]).toBe(ENTITY_STATE.idle);
     expect(cols.q[row]).toBe(15);
     expect(cols.r[row]).toBe(0);
-    expect(getHarvesterView(state, harvesterId)).toMatchObject({
+    expect(getWorkerView(state, workerId)).toMatchObject({
       q: 15,
       r: 0,
       currentJob: 'idle',
@@ -206,21 +206,21 @@ describe('W02-11: Harvester vision and movement', () => {
   it('validates movement destination, colony ownership, and impassable terrain', () => {
     const host = createW02Host();
     const state = host.state;
-    const harvesterId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
+    const workerId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
     const idx = hexIndex(state.grid.radius);
 
     host.submit(mkCmd('moveUnit', { entityId: 9999, q: 2, r: 0 }, 0));
     expect(host.step(1).outcomes[0]?.code).toBe('unknown_entity');
 
-    host.submit(mkCmd('moveUnit', { entityId: harvesterId, q: 2, r: 0 }, 1));
+    host.submit(mkCmd('moveUnit', { entityId: workerId, q: 2, r: 0 }, 1));
     expect(host.step(1).outcomes[0]?.code).toBe('not_own_colony');
 
     state.grid.layers.terrain[idx.indexOf(5, 0)] = TERRAIN.deep;
-    host.submit(mkCmd('moveUnit', { entityId: harvesterId, q: 5, r: 0 }, 0));
+    host.submit(mkCmd('moveUnit', { entityId: workerId, q: 5, r: 0 }, 0));
     expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
 
     state.grid.layers.prep[idx.indexOf(6, 0)] = PREP.ridge;
-    host.submit(mkCmd('moveUnit', { entityId: harvesterId, q: 6, r: 0 }, 0));
+    host.submit(mkCmd('moveUnit', { entityId: workerId, q: 6, r: 0 }, 0));
     expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
   });
 });

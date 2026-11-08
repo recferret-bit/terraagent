@@ -10,7 +10,8 @@ import {
   placeSpawnedEntity,
   PREP,
   revealVision,
-  spawnTerraformerUnit,
+  rowOf,
+  spawnWorkerUnit,
   setTilePrep,
   startBuildingConstruction,
   syncColonyTerraformStats,
@@ -61,8 +62,8 @@ export function patchTiles(patch: W05TerrainPatch): ReadonlyArray<readonly [numb
   return [[cq, cr], ...HEX_DIRS.map(([dq, dr]) => [cq + dq, cr + dr] as const)];
 }
 
-/** Terraformer tier of the worker that can run Deep Reclaim (T2 gate). Tier-1 HQ + Builder are also present. */
-export const W05_TERRAIN_TERRAFORMER_TIER = 2;
+/** Tier of the worker that can run Deep Reclaim (T2 gate). A T1 HQ is also present. */
+export const W05_TERRAIN_WORKER_TIER = 2;
 
 function setTile(state: PlanetState, q: number, r: number, terrain: number, prep: number, height: number): void {
   const idx = indexOf(state.grid.radius, q, r);
@@ -147,14 +148,20 @@ function spawnColony(state: PlanetState): void {
     startBuildingConstruction(state, { owner: 0, building, q, r, instant: true, costOverride: {}, tick: 0 });
   }
   spawnUnit(state, ENTITY_KIND.hq, 2, 1, 1, 900, 800, 1.5);
-  spawnUnit(state, ENTITY_KIND.builder, 2, 2, 1, 150, 100, 1.0);
-  spawnTerraformerUnit(state, { owner: 0, q: 1, r: 2, tier: W05_TERRAIN_TERRAFORMER_TIER });
+  const t2 = spawnWorkerUnit(state, { owner: 0, q: 2, r: 2, tier: 2 });
+  const t2Row = rowOf(state.entities, t2);
+  state.entities.cols.hp[t2Row] = 150;
+  state.entities.cols.hpMax[t2Row] = 150;
+  state.entities.cols.cell[t2Row] = 100;
+  state.entities.cols.cellMax[t2Row] = 100;
+  state.entities.cols.workRate[t2Row] = 1.0;
+  spawnWorkerUnit(state, { owner: 0, q: 1, r: 2, tier: W05_TERRAIN_WORKER_TIER });
 }
 
 /**
  * W05 Terrain Garden (owner request 2026-11-05): one scene with every terraformable obstacle near the Command Hub so the
  * single Terraform button can be tried on all of them (patch table `W05_TERRAIN_PATCHES`, ring 8 around the Hub).
- * Stage 5 (Deep Reclaim is stage-locked until S5) plus a pre-spawned T2 Terraformer (Deep Reclaim needs a T2 worker).
+ * Stage 5 (Deep Reclaim is stage-locked until S5) plus a pre-spawned T2 worker (Deep Reclaim needs a T2 worker).
  * Sim reality: there are no separate dune / mountain terrain codes. Dunes and hills are `slope` (Level), a mountain is tall
  * `rock` (Break); `ridge` / `moat` are `prep` codes with no terraform op (they are shown, never orderable).
  */

@@ -17,7 +17,7 @@ import {
   refundCost,
   rowOf,
   setTileDeposit,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   step,
   type ColonyWithLedger,
@@ -36,7 +36,7 @@ function colonyPlanet(seed: string, stock: Partial<Record<string, number>> = {})
   return { state, colony };
 }
 
-/** An active Command Hub at (0, 0): grid power and the Harvester spawn edge. */
+/** An active Command Hub at (0, 0): grid power and the Worker spawn edge. */
 function addActiveHub(state: PlanetState): number {
   const cols = state.entities.cols;
   const id = state.meta.nextEntityId++;
@@ -51,9 +51,9 @@ function addActiveHub(state: PlanetState): number {
   return id;
 }
 
-const harvesterCount = (state: PlanetState): number => {
+const workerCount = (state: PlanetState): number => {
   let n = 0;
-  for (let r = 0; r < state.entities.count; r++) if (state.entities.cols.kind[r] === ENTITY_KIND.harvester) n++;
+  for (let r = 0; r < state.entities.count; r++) if (state.entities.cols.kind[r] === ENTITY_KIND.worker) n++;
   return n;
 };
 
@@ -102,29 +102,29 @@ describe('cancel never removes a finished building', () => {
 });
 
 describe('Units lane: count and repeat (W02-10, W02-24)', () => {
-  it('builds `count` Harvesters from one buildUnit entry, then the entry is done', () => {
+  it('builds `count` Workers from one buildUnit entry, then the entry is done', () => {
     const { state } = colonyPlanet('unit-count', RICH);
     addActiveHub(state);
-    const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'three', task: { kind: 'buildUnit', unit: 'harvester', count: 3 } });
+    const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'three', task: { kind: 'buildUnit', unit: 'worker', count: 3 } });
     if (!res.ok) throw new Error(res.code);
     step(state, [], 1, pipeline());
     const p = pipeline();
     for (let i = 0; i < 60; i++) step(state, [], 5, p);
-    expect(harvesterCount(state)).toBe(3);
+    expect(workerCount(state)).toBe(3);
     expect(getColonyQueue(state, 0, 'units')).toHaveLength(0);
   });
 
   it('stops at the supply cap: the rest of the batch waits on supply', () => {
     const { state, colony } = colonyPlanet('unit-supply', { 'metals.t1': 500, 'minerals.t1': 500, 'bio.biomass': 500 });
     addActiveHub(state);
-    const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'eleven', task: { kind: 'buildUnit', unit: 'harvester', count: 11 } });
+    const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'eleven', task: { kind: 'buildUnit', unit: 'worker', count: 11 } });
     if (!res.ok) throw new Error(res.code);
     const p = pipeline();
     for (let i = 0; i < 140; i++) {
       for (const k of ['metals.t1', 'minerals.t1', 'bio.biomass'] as const) colony.stock[k] = 400;
       step(state, [], 5, p);
     }
-    expect(harvesterCount(state)).toBe(10);
+    expect(workerCount(state)).toBe(10);
     const entry = getColonyQueue(state, 0, 'units').find((e) => e.taskId === 'eleven');
     expect(entry?.state).toBe('waiting');
     expect(entry?.waitReason).toBe('supply');
@@ -133,22 +133,22 @@ describe('Units lane: count and repeat (W02-10, W02-24)', () => {
   it('a repeat entry refills after each unit', () => {
     const { state } = colonyPlanet('unit-repeat', RICH);
     addActiveHub(state);
-    const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'rep', task: { kind: 'buildUnit', unit: 'harvester', count: 1, repeat: true } });
+    const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'rep', task: { kind: 'buildUnit', unit: 'worker', count: 1, repeat: true } });
     if (!res.ok) throw new Error(res.code);
     const p = pipeline();
     for (let i = 0; i < 25; i++) step(state, [], 5, p);
-    expect(harvesterCount(state)).toBeGreaterThanOrEqual(2);
+    expect(workerCount(state)).toBeGreaterThanOrEqual(2);
     expect(getColonyQueue(state, 0, 'units').some((e) => e.taskId === 'rep')).toBe(true);
   });
 });
 
 describe('queue ETA reads the production ledger', () => {
-  it('a Harvester mining metals gives no Minerals ETA', () => {
+  it('a Worker mining metals gives no Minerals ETA', () => {
     const { state } = colonyPlanet('eta', { 'metals.t1': 200, 'minerals.t1': 1, 'bio.biomass': 100, 'bio.water': 100 });
     addActiveHub(state);
     const idx = hexIndex(state.grid.radius);
     setTileDeposit(state, idx.indexOf(5, 0), DEPOSIT.metals, 10000, 0);
-    spawnHarvesterUnit(state, { owner: 0, q: 4, r: 1 });
+    spawnWorkerUnit(state, { owner: 0, q: 4, r: 1 });
     const p = pipeline();
     for (let i = 0; i < 20; i++) step(state, [], 1, p);
     const res = enqueueQueueTask(state, { colonyIndex: 0, taskId: 'eta', task: { kind: 'build', building: 'solar', q: -4, r: 3 } });
@@ -177,13 +177,13 @@ describe('refunds are not production', () => {
   });
 });
 
-describe('a new footprint evacuates a harvesting Harvester', () => {
-  it('the Harvester leaves the footprint and does not stay on it', () => {
+describe('a new footprint evacuates a harvesting Worker', () => {
+  it('the Worker leaves the footprint and does not stay on it', () => {
     const { state } = colonyPlanet('evac', RICH);
     addActiveHub(state);
     const idx = hexIndex(state.grid.radius);
     setTileDeposit(state, idx.indexOf(6, 0), DEPOSIT.minerals, 10000, 0);
-    const hId = spawnHarvesterUnit(state, { owner: 0, q: 5, r: 0 });
+    const hId = spawnWorkerUnit(state, { owner: 0, q: 5, r: 0 });
     spawnHqUnit(state, { owner: 0, q: 3, r: 2 });
     const p = pipeline();
     step(state, [], 5, p);
@@ -221,13 +221,13 @@ describe('unitProduced matches the contract and the player-event shape (round 2)
     colony.id = 'col-alpha';
     (colony as { playerId?: string }).playerId = 'pl_1';
     addActiveHub(state);
-    const res = enqueueQueueTask(state, { colonyIndex: 0, task: { kind: 'buildUnit', unit: 'harvester' } });
+    const res = enqueueQueueTask(state, { colonyIndex: 0, task: { kind: 'buildUnit', unit: 'worker' } });
     if (!res.ok) throw new Error(res.code);
     const p = pipeline();
     let ev: { colonyIds: unknown[]; data: unknown } | undefined;
     for (let i = 0; i < 200 && !ev; i++) ev = step(state, [], 1, p).events.find((e) => e.kind === 'unitProduced');
     expect(ev?.colonyIds).toEqual(['col-alpha']);
-    expect(ev?.data).toMatchObject({ colonyId: 'col-alpha', playerId: 'pl_1', unit: 'harvester' });
+    expect(ev?.data).toMatchObject({ colonyId: 'col-alpha', playerId: 'pl_1', unit: 'worker' });
     expect(eventDef('unitProduced').data.safeParse(ev?.data).success).toBe(true);
   });
 });

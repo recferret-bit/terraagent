@@ -1,9 +1,9 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
-import { PrioritiesPanel } from './PrioritiesPanel';
-import './priorities.css';
+import { PrioritiesPanel } from '../shared/priorities/PrioritiesPanel';
+import '../shared/priorities/priorities.css';
 
-export { CANONICAL_PRIORITY_SLIDERS, PrioritySliders, type PrioritySlidersOptions, type SliderDef } from './PrioritySliders';
-export { PrioritiesPanel } from './PrioritiesPanel';
+export { CANONICAL_PRIORITY_SLIDERS, PrioritySliders, type PrioritySlidersOptions, type SliderDef } from '../shared/priorities/PrioritySliders';
+export { PrioritiesPanel } from '../shared/priorities/PrioritiesPanel';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {

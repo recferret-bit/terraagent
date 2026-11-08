@@ -18,9 +18,7 @@ const ROLES = new Map<number, PresenceRole>([
   [ENTITY_KIND.devProbe, 'other'],
   [ENTITY_KIND.pod, 'pod'],
   [ENTITY_KIND.hq, 'unit'],
-  [ENTITY_KIND.harvester, 'unit'],
-  [ENTITY_KIND.builder, 'unit'],
-  [ENTITY_KIND.terraformer, 'unit'],
+  [ENTITY_KIND.worker, 'unit'],
   [ENTITY_KIND.hub, 'structure'],
 ]);
 

@@ -32,7 +32,7 @@ export function disposeObject3D(obj: THREE.Object3D): void {
 function isMobileUnitKind(kind: number): boolean {
   return (
     kind === ENTITY_KIND.hq ||
-    kind === ENTITY_KIND.harvester ||
+    kind === ENTITY_KIND.worker ||
     kind === ENTITY_KIND.devProbe
   );
 }

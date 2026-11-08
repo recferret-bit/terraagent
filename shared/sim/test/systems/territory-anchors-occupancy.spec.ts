@@ -17,12 +17,12 @@ import {
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   startBuildingConstruction,
   step,
   TERRAIN,
-  type HarvesterTargetAssignment,
+  type WorkerTargetAssignment,
   type PlanetState,
   type SimCommand,
 } from '../../src';
@@ -105,12 +105,12 @@ describe('anchors = territory only; building occupancy comes from the entities',
     const jobs = (state.blobs.workJobs?.value as { byId?: Record<string, { tileIdx: number }> } | undefined)?.byId ?? {};
     expect(Object.values(jobs).some((j) => j.tileIdx === at(-2, 2))).toBe(true);
 
-    // (c) a Harvester finds the free deposit inside territory and a free stand tile next to it (the Extractor's deposit,
+    // (c) a Worker finds the free deposit inside territory and a free stand tile next to it (the Extractor's deposit,
     // under a building, is not a target).
     setTileDeposit(state, at(8, -3), DEPOSIT.metals, 10000, state.meta.tick);
-    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 8, r: -1 });
+    const harvId = spawnWorkerUnit(state, { owner: 0, q: 8, r: -1 });
     run([], 3);
-    const assignment = (state.blobs.harvest?.value as { assignments?: Record<number, HarvesterTargetAssignment> } | undefined)?.assignments?.[harvId];
+    const assignment = (state.blobs.harvest?.value as { assignments?: Record<number, WorkerTargetAssignment> } | undefined)?.assignments?.[harvId];
     expect(assignment).toMatchObject({ mode: 'harvest', tileIdx: at(8, -3) });
     expect(hexDistance(assignment!.standQ!, assignment!.standR!, 8, -3)).toBe(1);
 

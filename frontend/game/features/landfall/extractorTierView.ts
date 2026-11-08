@@ -1,4 +1,4 @@
-import { ENTITY_KIND } from '@terra/sim';
+import { ENTITY_KIND, resolveTierGateSpecs } from '@terra/sim';
 import { viewColony } from '../shared/colony';
 
 export interface ExtractorTierView {
@@ -35,10 +35,13 @@ export function resolveExtractorTierView(
   const ringTerraformedPct = typeof rec.ringTerraformedPct === 'number' ? rec.ringTerraformedPct : 0;
   const ringLivingPct = typeof rec.ringLivingPct === 'number' ? rec.ringLivingPct : 0;
   const rawShares = rec.shares as { t1Share?: number; t2Share?: number; t3Share?: number } | undefined;
+  // Missing shares: the D-34 data rows' split for the unlocked tier (`resolveTierGateSpecs`), not a copied table.
+  const specs = resolveTierGateSpecs();
+  const split = unlockedTier === 3 ? specs.tier3 : unlockedTier === 2 ? specs.tier2 : { t1Share: 1, t2Share: 0, t3Share: 0 };
   const shares = {
-    t1Share: typeof rawShares?.t1Share === 'number' ? rawShares.t1Share : unlockedTier === 3 ? 0.5 : unlockedTier === 2 ? 0.7 : 1,
-    t2Share: typeof rawShares?.t2Share === 'number' ? rawShares.t2Share : unlockedTier >= 2 ? 0.3 : 0,
-    t3Share: typeof rawShares?.t3Share === 'number' ? rawShares.t3Share : unlockedTier === 3 ? 0.2 : 0,
+    t1Share: typeof rawShares?.t1Share === 'number' ? rawShares.t1Share : split.t1Share,
+    t2Share: typeof rawShares?.t2Share === 'number' ? rawShares.t2Share : split.t2Share,
+    t3Share: typeof rawShares?.t3Share === 'number' ? rawShares.t3Share : split.t3Share,
   };
   const incomePerSByKey = rec.incomePerSByKey as Partial<Record<string, number>> | undefined;
 

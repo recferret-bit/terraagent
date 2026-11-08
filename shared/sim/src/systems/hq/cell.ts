@@ -158,9 +158,7 @@ export function stepTerraformWorkWithCell(state: SimState, hqRow: number, opts: 
     hqRow >= 0 &&
     hqRow < e.count &&
     (opts.gridPowered ||
-      e.cols.kind[hqRow] === ENTITY_KIND.builder ||
-      e.cols.kind[hqRow] === ENTITY_KIND.terraformer ||
-      e.cols.kind[hqRow] === ENTITY_KIND.harvester)
+      e.cols.kind[hqRow] === ENTITY_KIND.worker)
   ) {
     const d = stepDemand(workRateOf(state, hqRow, opts.data), opts, opts.dtS ?? TICK_MS / 1000, opts.remainingProgress, opts.remainingEnergyE);
     return { progressDelta: d ? d.desiredProgress : 1, energyDrawnE: d ? d.neededE : 0 };

@@ -1,4 +1,5 @@
 import { createState, type PlanetState } from '../../kernel/state';
+import { buryWildDeposits } from '../depositGround';
 import { registerGenerator, type PlanetGenerator } from '../generators';
 import { DEFAULT_SPAWN_CAPACITY } from '../spawnSlots';
 import { createContext, type WorldStage } from './context';
@@ -24,8 +25,10 @@ for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subs
 
 /**
  * World generation orchestrator (D-38): builds an empty planet, then runs the planet type's profile stages in order —
- * relief → classes → visible deposits → spawn slots + levelled landing zones → hidden subsurface. Every stage is a
- * small part in `stages/`; per-sector seeds keep sectors independent. Pure: the same params give the same planet.
+ * relief → classes → visible deposits → spawn slots + levelled landing zones → hidden subsurface — and last, for every
+ * profile, the deposit ground rule (`buryWildDeposits`: no visible deposit on wild ground, `depositGround.ts`). Every
+ * stage is a small part in `stages/`; per-sector seeds keep sectors independent. Pure: the same params give the same
+ * planet.
  */
 export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: string) => void): PlanetState {
   const state = createState({ planetId: p.planetId, planetType: p.planetType, seed: p.seed, radius: p.radius });
@@ -37,6 +40,7 @@ export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: 
     stage.run(ctx);
     onStage?.(id);
   }
+  buryWildDeposits(state);
   state.meta.genVersion = GEN_VERSION;
   return state;
 }

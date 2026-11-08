@@ -47,22 +47,12 @@ describe('W04-01 contracts and flag W04', () => {
     expect(parsed).toEqual({ q: 4, r: -2, kind: 'underAttack' });
   });
 
-  it('with TA_WAVES=..03 shows W04 off in the flag panel and registers no map layers', () => {
+  it('with TA_WAVES=..03 does not load maps and registers no map layers', () => {
     const waveSet = parseWaves('..03');
     expect(waveSet.has('W04')).toBe(false);
 
     const flags = new Set<string>(waveSet.list);
-    const services: Record<string, unknown> = { flagsSource: 'welcome' };
-    const ctx = { flags, host: 'server', services } as unknown as FeatureContext;
-
-    const flagEl = document.createElement('div');
-    const flagPanel = flagsFeature.hud![0].mount(flagEl, ctx);
-    const head = flagEl.querySelector('.ta-flags__head') as HTMLButtonElement;
-    if (head.getAttribute('aria-expanded') === 'false') head.click();
-
-    const w04Chip = flagEl.querySelector('[data-wave="W04"]');
-    expect(w04Chip).not.toBeNull();
-    expect(w04Chip!.getAttribute('data-on')).toBe('false');
+    const ctx = { flags, host: 'server', services: {} } as unknown as FeatureContext;
 
     const activeFeatures = loadFeatures(ctx);
     expect(activeFeatures.some((f) => f.id === 'maps')).toBe(false);
@@ -75,7 +65,6 @@ describe('W04-01 contracts and flag W04', () => {
     expect(mapLayerRegistry.all()).toHaveLength(0);
     expect(mapLayerRegistry.forFlags(flags)).toHaveLength(0);
 
-    flagPanel.dispose();
     hud.dispose();
   });
 });

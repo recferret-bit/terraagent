@@ -233,8 +233,8 @@ describe('W08-17 Goal breakdown: grow_economy', () => {
     });
   });
 
-  it('queues hq-tagged harvester buildUnit order when target is minerals or all metals deposits are occupied', () => {
-    const { state, pipeline } = createS0ColonyPlanet('grow-harvester');
+  it('queues hq-tagged worker buildUnit order when target is minerals or all metals deposits are occupied', () => {
+    const { state, pipeline } = createS0ColonyPlanet('grow-worker');
     startBuildingConstruction(state, {
       owner: 0,
       building: 'commandHub',
@@ -264,7 +264,7 @@ describe('W08-17 Goal breakdown: grow_economy', () => {
     const unitOrders = getColonyQueue(state, 0, 'units').filter((e) => e.goalId === active.id);
     expect(unitOrders).toHaveLength(1);
     expect(unitOrders[0].precedence).toBe('hq');
-    expect(unitOrders[0].task).toMatchObject({ kind: 'buildUnit', unit: 'harvester' });
+    expect(unitOrders[0].task).toMatchObject({ kind: 'buildUnit', unit: 'worker' });
   });
 });
 

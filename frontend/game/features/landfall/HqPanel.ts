@@ -3,6 +3,7 @@ import { SelectionDetails } from '../shared/SelectionDetails';
 import { createProgressBar, setProgress } from '../shared/progress';
 import { depositResource } from '../shared/depositLabel';
 import type { HqStatusView, LandfallController, SelectedDepositView, SelectedEntityView } from './selection';
+import { baseHqSelectedView } from './selectionHelpers';
 
 function buildStatBlock(labelText: string, valTestId: string, valInit: string, fillTestId: string, fillModifier: string): {
   stat: HTMLElement;
@@ -27,27 +28,7 @@ function buildStatBlock(labelText: string, valTestId: string, valInit: string, f
   return { stat, keyEl, valEl, fillEl };
 }
 
-function hqFallbackEntity(hq: HqStatusView): SelectedEntityView {
-  return {
-    entityId: hq.entityId,
-    kind: 1,
-    kindLabel: `HQ T${hq.tier} · COMMANDER DRONE`,
-    shortCode: 'HQ',
-    isUnit: true,
-    isMovable: true,
-    tier: hq.tier,
-    q: hq.q,
-    r: hq.r,
-    x: hq.x,
-    y: hq.y,
-    hp: hq.hp,
-    hpMax: hq.hpMax,
-    cell: hq.cell,
-    cellMax: hq.cellMax,
-    currentJob: hq.currentJob,
-    queueCount: hq.queueCount,
-  };
-}
+const hqFallbackEntity = baseHqSelectedView;
 
 function isEntityBusy(entity: SelectedEntityView, prog: number): boolean {
   const job = entity.currentJob;

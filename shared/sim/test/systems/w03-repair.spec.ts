@@ -17,8 +17,7 @@ import {
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
-  spawnBuilderUnit,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   step,
   TERRAIN,
@@ -94,7 +93,7 @@ describe('W03-03 critical auto-repair and Builder 1.5x repair rate', () => {
   it('auto-queues a system repair at 40% HP; Builder walks to it, repairs at 1.5x, and pays 24% base build cost progressively', () => {
     const { state, colony, pipeline } = createW03RepairWorld('w03-rep-crit');
     spawnHqUnit(state, { owner: 0, q: -4, r: 0 });
-    const builderId = spawnBuilderUnit(state, { owner: 0, q: 2, r: 0 });
+    const builderId = spawnWorkerUnit(state, { tier: 2, owner: 0, q: 2, r: 0 });
     expect(builderId).toBeGreaterThan(0);
 
     // Place a constructed Metals Extractor at (5, 0) damaged to 40% HP (120 / 300 HP, missing 60%).
@@ -141,7 +140,7 @@ describe('W03-03 critical auto-repair and Builder 1.5x repair rate', () => {
 describe('W03-03 precedence rules, tier freedom, and fallback workers', () => {
   it('queues non-critical damage (>= 50% HP) at auto precedence and upgrades to system when HP drops below 50%', () => {
     const { state, pipeline } = createW03RepairWorld('w03-rep-upgrade');
-    spawnBuilderUnit(state, { owner: 0, q: -4, r: 0 });
+    spawnWorkerUnit(state, { tier: 2, owner: 0, q: -4, r: 0 });
     const extId = spawnConstructedExtractor(state, 5, 0, 210, 300, 1); // 70% HP
 
     step(state, [], 1, pipeline);
@@ -155,10 +154,10 @@ describe('W03-03 precedence rules, tier freedom, and fallback workers', () => {
     expect(entry2?.precedence).toBe('system');
   });
 
-  it('allows Builder Drone to repair any tier (T2+) at 1.5x rate, and HQ/Harvester to repair at 1.0x rate', () => {
+  it('allows Worker Drone T2 to repair any tier at 1.5x rate, and HQ or another tier at 1.0x', () => {
     const { state, pipeline } = createW03RepairWorld('w03-rep-t2');
     spawnHqUnit(state, { owner: 0, q: -5, r: 0 });
-    const builderId = spawnBuilderUnit(state, { owner: 0, q: 3, r: 0 });
+    const builderId = spawnWorkerUnit(state, { tier: 2, owner: 0, q: 3, r: 0 });
     // Spawn a T2 structure adjacent at (4, 0) at 50% HP (missing 50% -> 40 base repair ticks).
     const t2Id = spawnConstructedExtractor(state, 4, 0, 150, 300, 2);
 
@@ -174,10 +173,10 @@ describe('W03-03 precedence rules, tier freedom, and fallback workers', () => {
     expect(builderTicks).toBe(27);
     expect(rowOf(state.entities, builderId)).toBeGreaterThanOrEqual(0);
 
-    // Verify HQ / Harvester repairs at 1.0x (40 ticks for 50% missing HP) when no Builder exists.
+    // Verify HQ / Worker repairs at 1.0x (40 ticks for 50% missing HP) when no Builder exists.
     const w2 = createW03RepairWorld('w03-rep-harv');
     spawnHqUnit(w2.state, { owner: 0, q: -6, r: 0 });
-    const harvId = spawnHarvesterUnit(w2.state, { owner: 0, q: 3, r: 0 }) as number;
+    const harvId = spawnWorkerUnit(w2.state, { owner: 0, q: 3, r: 0 }) as number;
     const ext2Id = spawnConstructedExtractor(w2.state, 4, 0, 150, 300, 1);
     let harvTicks = 0;
     while (harvTicks < 60 && w2.state.entities.cols.hp[rowOf(w2.state.entities, ext2Id)] < 300) {
@@ -190,18 +189,18 @@ describe('W03-03 precedence rules, tier freedom, and fallback workers', () => {
     expect(harvId).toBeGreaterThan(0);
   });
 
-  it('spawns a Builder Drone when buildUnit { unit: builder } finishes in the W03 queue', () => {
+  it('spawns a Worker Drone T2 when buildUnit { unit: worker, tier: 2 } finishes in the W03 queue', () => {
     const { state, pipeline } = createW03RepairWorld('w03-queue-builder');
     const enq = enqueueQueueTask(state, {
       colonyIndex: 0,
-      task: { kind: 'buildUnit', unit: 'builder', count: 1 },
+      task: { kind: 'buildUnit', unit: 'worker', tier: 2, count: 1 },
       tick: 0,
     });
     expect(enq.ok).toBe(true);
     for (let t = 0; t < 65; t++) step(state, [], 1, pipeline);
     let builders = 0;
     for (let r = 0; r < state.entities.count; r++) {
-      if (state.entities.cols.kind[r] === ENTITY_KIND.builder) builders++;
+      if (state.entities.cols.kind[r] === ENTITY_KIND.worker) builders++;
     }
     expect(builders).toBe(1);
   });

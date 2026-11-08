@@ -8,6 +8,7 @@ import {
   DEPOSIT,
   ensureColonyLedger,
   ENTITY_KIND,
+  evaluateExtractorTierGate,
   getBuildingFootprintTiles,
   getExtractorRingCacheDiagnostics,
   getExtractorRingStats,
@@ -20,7 +21,7 @@ import {
   setTileOwner,
   setTilePrep,
   setTileTerrain,
-  spawnTerraformerUnit,
+  spawnWorkerUnit,
   startBuildingConstruction,
   step,
   syncColonyTerraformStats,
@@ -220,7 +221,7 @@ describe('W05-34 Ring cache and w05-tiers scenario', () => {
     setTileTerrain(state, ringTileIdx, TERRAIN.flat, 0);
     setTilePrep(state, ringTileIdx, PREP.prepared, 0);
     startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: -3, r: 0, instant: true, costOverride: {} });
-    spawnTerraformerUnit(state, { owner: 0, q: 0, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 0, r: 0 });
 
     const r1 = getExtractorRingStats(state, 2, 0, 2, 2, 0, 2);
     const diag1 = getExtractorRingCacheDiagnostics(state);
@@ -296,5 +297,26 @@ describe('W05-34 Ring cache and w05-tiers scenario', () => {
     expect(plain.shares).toEqual({ t1Share: 1, t2Share: 0, t3Share: 0 });
     expect(plain.incomePerSByKey['metals.t1']).toBeGreaterThan(0);
     expect(plain.incomePerSByKey['metals.t2'] ?? 0).toBe(0);
+  });
+});
+
+describe('W05-34 each gate reads the ring of its own radius (D-35 tuning)', () => {
+  it('a tuned tier3Gate.ringRadius 1 opens T3 on a Living inner ring even when the radius-2 ring is mostly bare', () => {
+    const { state } = setupFlatColonyState(0);
+    const idx = hexIndex(state.grid.radius);
+    const foot: Array<[number, number]> = [[2, 0], [3, 0], [2, 1], [3, 1]];
+    for (let i = 0; i < state.grid.count; i++) {
+      const d = Math.min(...foot.map(([q, r]) => hexDistance(idx.q[i]!, idx.r[i]!, q, r)));
+      setTilePrep(state, i, d === 1 ? PREP.living : PREP.flat, 0);
+    }
+    const base = compileData(parseWaves('..05'));
+    const tuned = compileData(parseWaves('..05'), { terraform: { tier3Gate: { ringRadius: 1 } } });
+    const atBase = evaluateExtractorTierGate(state, 0, 2, 0, 2, 2, 0, base, 100);
+    expect(atBase.ring.livingRatio).toBeLessThan(0.5);
+    expect(atBase.unlockedTier).toBe(1);
+    const atTuned = evaluateExtractorTierGate(state, 0, 2, 0, 2, 2, 0, tuned, 100);
+    expect(atTuned.ringT3Open).toBe(true);
+    expect(atTuned.unlockedTier).toBe(3);
+    expect(atTuned.shares).toEqual({ t1Share: 0.5, t2Share: 0.3, t3Share: 0.2 });
   });
 });

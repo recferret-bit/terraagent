@@ -4,10 +4,12 @@ import {
   getArchetypeLightsVersion,
   type ArchetypeLightSource,
 } from './archetypeLights';
+import { createProjectorBeamMaterial } from './projectorBeamMaterial';
+import { beamFalloff, buildBeamRays, projectorConeFromSource } from './projectorCone';
 
 export * from './archetypeLights';
+export * from './projectorCone';
 
-const DOWN_AXIS = new THREE.Vector3(0, -1, 0);
 const _tmpColor = new THREE.Color();
 
 export interface EntityProjectorRigState {
@@ -35,31 +37,63 @@ function resolveRigKind(archetypeId: string): 'robot' | 'building' | 'pod' {
   return 'pod';
 }
 
-function buildVolumetricConeGeo(
-  topRadius: number,
-  bottomRadius: number,
-  length: number,
-  colorHex: number,
-  intensity: number,
-): THREE.BufferGeometry {
-  const geo = new THREE.CylinderGeometry(Math.max(0.01, topRadius), Math.max(0.05, bottomRadius), length, 16, 1, true);
-  geo.translate(0, -length * 0.5, 0);
+/** Steps along each beam generator (vertex colours follow the GPU falloff `(1 - d / range)^2` per step). */
+const BEAM_STEPS = 8;
+/** Ground-hitting generators continue this far (model metres) below the ground plane, so the beam still reaches the
+ *  terrain in dips; on flat or rising ground the depth test hides that part and the beam ends on the terrain. */
+const BEAM_SINK = 1.2;
+/** Brightness of the beam shell relative to the lamp colour: the cone spans the whole lit pool, so it stays faint. */
+const BEAM_GAIN = 0.8;
+
+function sourceColor(colorHex: number, intensity: number): [number, number, number] {
   _tmpColor.setHex(colorHex);
   const mult = Math.max(0.1, Math.min(2.5, intensity / 1.25));
-  const cr = Math.min(1, _tmpColor.r * mult);
-  const cg = Math.min(1, _tmpColor.g * mult);
-  const cb = Math.min(1, _tmpColor.b * mult);
-  const pos = geo.getAttribute('position');
-  const colors = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    const t = Math.max(0, Math.min(1, -y / Math.max(0.01, length)));
-    const fade = Math.pow(1 - t, 1.75) * (t < 0.06 ? 0.85 : 1.0);
-    colors[i * 3] = cr * fade;
-    colors[i * 3 + 1] = cg * fade;
-    colors[i * 3 + 2] = cb * fade;
+  return [Math.min(1, _tmpColor.r * mult), Math.min(1, _tmpColor.g * mult), Math.min(1, _tmpColor.b * mult)];
+}
+
+/**
+ * The visible beam of `source`: an open cone shell from the lamp along the GPU projector's axis at its half-power
+ * angle (`projectorCone.ts`), each generator ending where it meets the ground (or fading out at the light's range),
+ * so the beam's footprint is the lit pool from every camera angle. Built in model space; the rig group is NOT rotated.
+ */
+function buildVolumetricBeamGeo(source: Readonly<ArchetypeLightSource>, colorHex: number): THREE.BufferGeometry {
+  const cone = projectorConeFromSource(source);
+  const rays = buildBeamRays(cone, {
+    groundY: source.target[1],
+    sink: BEAM_SINK,
+    aperture: Math.max(0.01, source.coneTopRadius),
+    segments: 24,
+  });
+  const [cr, cg, cb] = sourceColor(colorHex, source.intensity);
+  const n = rays.length;
+  const positions = new Float32Array(n * (BEAM_STEPS + 1) * 3);
+  const colors = new Float32Array(positions.length);
+  for (let i = 0; i < n; i++) {
+    const ray = rays[i]!;
+    for (let k = 0; k <= BEAM_STEPS; k++) {
+      const d = (ray.length * k) / BEAM_STEPS;
+      const o = (i * (BEAM_STEPS + 1) + k) * 3;
+      positions[o] = ray.origin.x + ray.dir.x * d;
+      positions[o + 1] = ray.origin.y + ray.dir.y * d;
+      positions[o + 2] = ray.origin.z + ray.dir.z * d;
+      const fade = BEAM_GAIN * beamFalloff(d, cone.range) * (k === 0 ? 0.85 : 1);
+      colors[o] = cr * fade;
+      colors[o + 1] = cg * fade;
+      colors[o + 2] = cb * fade;
+    }
   }
+  const index: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a0 = i * (BEAM_STEPS + 1);
+    const b0 = ((i + 1) % n) * (BEAM_STEPS + 1);
+    for (let k = 0; k < BEAM_STEPS; k++) index.push(a0 + k, b0 + k, a0 + k + 1, b0 + k, b0 + k + 1, a0 + k + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals(); // the view-facing fade of `createProjectorBeamMaterial` reads them
+  geo.computeBoundingSphere();
   return geo;
 }
 
@@ -67,11 +101,7 @@ function buildGroundPoolGeo(radius: number, colorHex: number, intensity: number)
   const safeR = Math.max(0.05, radius);
   const geo = new THREE.CircleGeometry(safeR, 24);
   geo.rotateX(-Math.PI / 2);
-  _tmpColor.setHex(colorHex);
-  const mult = Math.max(0.1, Math.min(2.5, intensity / 1.25));
-  const cr = Math.min(1, _tmpColor.r * mult);
-  const cg = Math.min(1, _tmpColor.g * mult);
-  const cb = Math.min(1, _tmpColor.b * mult);
+  const [cr, cg, cb] = sourceColor(colorHex, intensity);
   const pos = geo.getAttribute('position');
   const colors = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
@@ -106,16 +136,7 @@ export class EntityProjectorRig implements EntityProjectorRigState {
 
     const defaultLensColor = colorHex ?? (this.kind === 'robot' ? 0xb8f4ff : 0xfff0c8);
 
-    this.beamMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.14,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      fog: false,
-    });
+    this.beamMat = createProjectorBeamMaterial();
 
     this.poolMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -185,21 +206,8 @@ export class EntityProjectorRig implements EntityProjectorRigState {
       halo.position.set(px, py, pz);
       halo.scale.setScalar(Math.max(0.24, source.coneTopRadius * 2.4));
 
-      const v = new THREE.Vector3(tx - px, ty - py, tz - pz);
-      const len = Math.max(0.2, v.length());
-      const dir = v.clone().normalize();
-
-      const coneGeo = buildVolumetricConeGeo(
-        source.coneTopRadius,
-        source.coneBottomRadius,
-        len,
-        color,
-        source.intensity,
-      );
-      const cone = new THREE.Mesh(coneGeo, this.beamMat);
+      const cone = new THREE.Mesh(buildVolumetricBeamGeo(source, color), this.beamMat);
       cone.name = 'projector-beam-cone';
-      cone.position.set(px, py, pz);
-      cone.quaternion.setFromUnitVectors(DOWN_AXIS, dir);
       cone.castShadow = false;
       cone.renderOrder = 2;
 

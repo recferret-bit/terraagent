@@ -1,11 +1,25 @@
-import { computeColonyTerraformStats, type ColonyTerraformStats, type ViewColony } from '@terra/sim';
+import { computeColonyTerraformStats, resolveTierGateSpecs, type ColonyTerraformStats, type ColonyTierGatesSummary, type ViewColony } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import { makeDiv, makeSpan } from '../shared/dom';
 import { createHudIcon } from './hudIcons';
 import { bindHoverPopover } from './resourceBreakdown';
 
 export const TERRAFORM_BONUS_HINT = 'Living ground: +10 % ground move speed · +5 % adjacent extractor output';
-export const TERRAFORM_TIER_GATE_HINT = 'T2 at 30 % · T3 at 70 %';
+
+/**
+ * The D-34 tier gates line (W05-36): thresholds and open / locked from the host's `colony.tierGates`, else the data
+ * rows' thresholds (`resolveTierGateSpecs`). Never a second copy of the numbers.
+ */
+export function tierGateHint(col: ViewColony | undefined): string {
+  const gates = (col as { tierGates?: ColonyTierGatesSummary } | undefined)?.tierGates;
+  const specs = gates ?? resolveTierGateSpecs();
+  const t2 = specs.tier2.minTerraformPct, t3 = specs.tier3.minTerraformPct;
+  const base = `T2 at ${t2} % · T3 at ${t3} %`;
+  if (!gates?.enabled) return base;
+  const state = gates.tier3.open ? 'T3 open' : gates.tier2.open ? 'T2 open' : 'locked';
+  const next = gates.tier2.open ? t3 : t2;
+  return `${base} · Terraform ${Math.round(gates.colonyTerraformPct)} % / ${next} % · ${state}`;
+}
 
 export function readColonyTerraformStats(
   col: ViewColony | undefined,
@@ -50,7 +64,7 @@ export function readColonyTerraformStats(
   return colStats ?? { livingTiles: 0, eligibleOwnedTiles: 0, percent: 0 };
 }
 
-export function renderTerraformBreakdown(container: HTMLElement, stats: ColonyTerraformStats): void {
+export function renderTerraformBreakdown(container: HTMLElement, stats: ColonyTerraformStats, gateHint = tierGateHint(undefined)): void {
   if (!container.querySelector('.ta-res-breakdown__header')) {
     container.replaceChildren();
     const hdr = makeDiv('ta-res-breakdown__header', undefined, 'TERRAFORM');
@@ -68,7 +82,7 @@ export function renderTerraformBreakdown(container: HTMLElement, stats: ColonyTe
   const bonusEl = container.querySelector('[data-testid="res-terraform-bonus"]');
   if (bonusEl) bonusEl.textContent = TERRAFORM_BONUS_HINT;
   const gateEl = container.querySelector('[data-testid="res-terraform-gates"]');
-  if (gateEl) gateEl.textContent = TERRAFORM_TIER_GATE_HINT;
+  if (gateEl) gateEl.textContent = gateHint;
 }
 
 export interface TerraformSlot {

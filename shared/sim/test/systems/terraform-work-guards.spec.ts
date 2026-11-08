@@ -17,7 +17,7 @@ import {
   setTilePrep,
   setTileTerrain,
   snapshot,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   spawnTerraformDeposit,
   step,
@@ -156,7 +156,7 @@ describe('work jobs: one entry point', () => {
       kind: kind as SimCommand['kind'],
       args,
     });
-    expect(w.run([noCol('n1', 'enqueueTask', { task: { kind: 'buildUnit', unit: 'harvester' } })]).outcomes[0].code).toBe('not_own_colony');
+    expect(w.run([noCol('n1', 'enqueueTask', { task: { kind: 'buildUnit', unit: 'worker' } })]).outcomes[0].code).toBe('not_own_colony');
     expect(w.run([noCol('n2', 'cancelTask', { taskId: 'all' })]).outcomes[0].code).toBe('not_own_colony');
     expect(w.run([noCol('n3', 'reorderTask', { taskId: 'u1', toIndex: 0 })]).outcomes[0].code).toBe('not_own_colony');
   });
@@ -194,7 +194,7 @@ describe('repair behind a chain', () => {
     const col = ensureColonyLedger(w.state.colonies[0]!);
     col.stock['metals.t1'] = 400;
     col.stock['minerals.t1'] = 400;
-    const harv = spawnHarvesterUnit(w.state, { owner: 0, q: -2, r: 0 }) as number;
+    const harv = spawnWorkerUnit(w.state, { owner: 0, q: -2, r: 0 }) as number;
     const hRow = rowOf(w.state.entities, harv);
     const cols = w.state.entities.cols;
     cols.hp[hRow] = Math.round(cols.hpMax[hRow] / 2);
@@ -217,7 +217,7 @@ describe('unreachable tiles: only the ordered tile reports no_path', () => {
     const hx = hexIndex(12);
     for (let i = 0; i < w.state.grid.count; i++) {
       const d = Math.max(Math.abs(hx.q[i]! - cq), Math.abs(hx.r[i]!), Math.abs(hx.q[i]! - cq + hx.r[i]!));
-      if (d >= 1 && d <= 2) setTileTerrain(w.state, i, TERRAIN.deep, 0);
+      if (d >= 2 && d <= 3) setTileTerrain(w.state, i, TERRAIN.deep, 0); // a pocket: a stand in reach, no path to it
     }
     w.setTerrain(cq, 0, TERRAIN.forest);
   }

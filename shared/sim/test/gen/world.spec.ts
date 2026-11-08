@@ -130,6 +130,6 @@ describe('generator fingerprint (bump GEN_VERSION when this changes)', () => {
   it('one planet per profile: pinned summary of the generated ground and spawn slots for GEN_VERSION', () => {
     const got = { genVersion: GEN_VERSION, desert: fingerprint('desert', 'golden-1'), temperate: fingerprint('temperate', 'golden-2'), ocean: fingerprint('ocean', 'golden-3') };
     // If this fails after a deliberate generator change: bump GEN_VERSION in gen/generators.ts, then update the values.
-    expect(got).toEqual({ genVersion: 9, desert: '437bd25f', temperate: '8ea0d6d3', ocean: '706ff3d8' });
+    expect(got).toEqual({ genVersion: 10, desert: '156442b5', temperate: 'f6eece75', ocean: '6affdd2a' });
   });
 });

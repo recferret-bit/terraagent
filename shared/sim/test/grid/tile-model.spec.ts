@@ -106,7 +106,7 @@ describe('W01-08 tile model: ground passability, movement multipliers and builda
       expect(isBuildablePrepared(state.grid, i)).toBe(false);
     }
 
-    // Prepared and Irrigated normalize land movement to 1.0x; only Prepared and Living are buildable
+    // Prepared and Irrigated normalize land movement to 1.0x; Prepared, Irrigated and Living are buildable (`isPreparedGround`)
     const t = 0;
     setTileTerrain(state.grid, t, TERRAIN.flat);
     setTilePrep(state.grid, t, PREP.prepared);
@@ -116,7 +116,7 @@ describe('W01-08 tile model: ground passability, movement multipliers and builda
 
     setTilePrep(state.grid, t, PREP.irrigated);
     expect(groundMoveMultiplierBp(state.grid, t, data)).toBe(10000);
-    expect(isBuildablePrepared(state.grid, t)).toBe(false);
+    expect(isBuildablePrepared(state.grid, t)).toBe(true);
 
     // Living gives +10% movement speed (1.1x = 11000 bp) and is buildable (UO-TF-07, UO-TF-04)
     setTilePrep(state.grid, t, PREP.living);

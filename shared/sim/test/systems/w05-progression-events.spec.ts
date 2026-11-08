@@ -14,7 +14,7 @@ import {
   setTileOwner,
   setTilePrep,
   setTileTerrain,
-  spawnTerraformerUnit,
+  spawnWorkerUnit,
   startBuildingConstruction,
   step,
   TERRAIN,
@@ -70,7 +70,7 @@ describe('W05-29 · W05 progression events (obstacleRemoved + family mapping)', 
       setTilePrep(state.grid, hx.indexOf(t.q, t.r), PREP.irrigated, 0);
     }
 
-    spawnTerraformerUnit(state, { owner: 0, q: 4, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 4, r: 0 });
 
     const enq = step(
       state,
@@ -111,7 +111,7 @@ describe('W05-29 · W05 progression events (obstacleRemoved + family mapping)', 
 describe('W05-29 · Level, Fill, Reclaim, DeepReclaim obstacleRemoved + achievement mapping', () => {
   it('emits obstacleRemoved { op, count: 1 } for level, fill, reclaim, and deepReclaim', () => {
     const { state, hx, pipeline } = createW05ProgressionColony();
-    const tfId = spawnTerraformerUnit(state, { owner: 0, q: 4, r: 0 });
+    const tfId = spawnWorkerUnit(state, { tier: 3, owner: 0, q: 4, r: 0 });
     state.entities.cols.tier[rowOf(state.entities, tfId)] = 2;
 
     const cases: Array<{ op: 'level' | 'fill' | 'reclaim' | 'deepReclaim'; terrain: number; q: number; r: number }> = [

@@ -1,15 +1,14 @@
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
-import { hexDistance, hexIndex } from '../../grid/hex';
-import { TERRAIN } from '../../grid/layers';
+import { hexDistance } from '../../grid/hex';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { UnitBook } from '../../units/book';
 import { defineSimModule } from '../define';
 import { buildJobKey } from '../economy/buildJob';
-import { assignHarvesterSubJob } from '../harvest';
+import { assignWorkerSubJob, isCrewKind } from '../harvest';
 import { hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
-import { checkWorkerBuildTier, isWorkerEligibleForJob } from './eligibility';
+import { checkWorkerBuildTier, isWorker, isWorkerEligibleForJob } from './eligibility';
 
 export { canDoWork, checkWorkerBuildTier, colonyHasEligibleWorker, isWorkerEligibleForJob, type WorkEligibilitySpec, type WorkKind } from './eligibility';
 
@@ -83,7 +82,7 @@ function determineWorkerPrecedence(
     return { isIdle: false, currentPrecedence: 'auto' };
   }
   const activeAssign = (state.blobs.harvest?.value as { assignments?: Record<number, { mode?: string }> } | undefined)?.assignments?.[id];
-  if (cols.kind[row] === ENTITY_KIND.harvester && activeAssign?.mode === 'harvest' && !byWorker[id]) {
+  if (isWorker(cols.kind[row]) && activeAssign?.mode === 'harvest' && !byWorker[id]) {
     return { isIdle: false, currentPrecedence: 'auto' };
   }
   return { isIdle: false, currentPrecedence: byWorker[id]?.precedence ?? 'player' };
@@ -110,19 +109,12 @@ export function selectWorkerForDispatch(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
     const kind = cols.kind[row];
-    if (
-      kind !== ENTITY_KIND.hq &&
-      kind !== ENTITY_KIND.builder &&
-      kind !== ENTITY_KIND.harvester &&
-      kind !== ENTITY_KIND.terraformer
-    ) {
-      continue;
-    }
+    if (!isCrewKind(kind)) continue;
     if (hasActiveWorkJobForWorker(state, cols.id[row])) continue; // on a `work` job / terraform chain (never pre-empted)
     const tier = cols.tier[row] || 1;
     if (!isWorkerEligibleForJob(kind, tier, job)) continue;
 
-    const maxBuildTier = kind === ENTITY_KIND.hq ? tier : kind === ENTITY_KIND.builder ? 1 : 0;
+    const maxBuildTier = kind === ENTITY_KIND.hq ? Math.max(1, tier) : tier;
     const dist = hexDistance(cols.q[row], cols.r[row], job.q, job.r);
     const { isIdle, currentPrecedence } = determineWorkerPrecedence(state, row, byWorker);
 
@@ -182,17 +174,8 @@ export function dispatchJob(
   const colonyIndex = job.colonyIndex ?? cols.owner[row];
   const precedence: DispatchPrecedence = job.precedence ?? 'player';
 
-  if (cols.kind[row] === ENTITY_KIND.harvester && job.kind === 'terraform' && (job.op === 'clear' || job.op === 'break' || job.op === 'work')) {
-    const idx = hexIndex(state.grid.radius);
-    const tileIdx = idx.indexOf(job.q, job.r);
-    if (tileIdx >= 0) {
-      if (job.op === 'clear' && state.grid.layers.terrain[tileIdx] !== TERRAIN.forest) {
-        state.grid.layers.terrain[tileIdx] = TERRAIN.forest;
-      } else if (job.op === 'break' && state.grid.layers.terrain[tileIdx] !== TERRAIN.rock) {
-        state.grid.layers.terrain[tileIdx] = TERRAIN.rock;
-      }
-    }
-    assignHarvesterSubJob(state, chosen.workerEntityId, job.op, job.q, job.r, tick);
+  if (isWorker(cols.kind[row]) && job.kind === 'terraform' && (job.op === 'clear' || job.op === 'break' || job.op === 'work')) {
+    assignWorkerSubJob(state, chosen.workerEntityId, job.op, job.q, job.r, tick);
   } else {
     setField(state.entities, row, 'targetQ', job.q, tick);
     setField(state.entities, row, 'targetR', job.r, tick);
@@ -235,7 +218,7 @@ export interface AssignBuilderSiteSpec {
 
 /**
  * Assigns a specific worker (`workerEntityId`) to construct `site`, enforcing `maxBuildTier` (`worker_tier_locked`
- * when `site.tier` exceeds the worker's `maxBuildTier`, e.g. Builder Drone on a T2+ site).
+ * when `site.tier` exceeds the worker's tier).
  */
 export function assignBuilderToSite(
   state: PlanetState,

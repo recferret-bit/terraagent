@@ -174,6 +174,16 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
   return mesh;
 }
 
+/**
+ * Rig power from the night factor, the F8 projector intensity and the drawn light level (`applyBuildingLight`).
+ * In the game `entityVisionSync` → `applyBuildingLight` also writes the rig power (night-gated, on replica updates);
+ * this per-frame write runs after it and is what renders (open question: one writer).
+ */
+function refreshProjectorRig(mesh: THREE.Object3D, stage: number): void {
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
+}
+
 /** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */
 export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number, workWeight?: number) {
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
@@ -181,8 +191,7 @@ export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
   const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
-  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
+  refreshProjectorRig(mesh, stage);
 }
 
 /** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
@@ -203,8 +212,7 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
   if (u?.uBuildStage) u.uBuildStage.value = stage;
   if (mesh.userData) (mesh.userData as any).buildStage = stage;
-  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
+  refreshProjectorRig(mesh, stage);
   return stage;
 }
 

@@ -10,7 +10,7 @@ import {
   setTileTerrain,
   SimHost,
   spawnHqUnit,
-  spawnTerraformerUnit,
+  spawnWorkerUnit,
   startBuildingConstruction,
   TERRAIN,
   type SimEvent,
@@ -375,7 +375,7 @@ describe('W05-29: W05 progression events (obstacleRemoved + family mapping)', ()
       setTilePrep(state.grid, hex.indexOf(t.q, t.r), PREP.irrigated, 0);
     }
 
-    spawnTerraformerUnit(state, { owner: 0, q: 4, r: 0 });
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 4, r: 0 });
 
     const obstacleEvents = collect<BatchedObstacleRemovedEvent>(bus, 'obstacleRemoved');
     forwardHost(host, bus, 'pl_w05');

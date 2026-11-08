@@ -42,7 +42,7 @@
 
 ## W05 AI switch (2026-11-05)
 
-- **Owner question: should AI off stop idle harvesters?** Harvester auto-targeting (`systems/harvest`, `goalHarvestWeights`) is not gated; only goal breakdown and the rule-engine autopilot are.
+- **Owner question: should AI off stop idle Worker Drones?** Worker Drone T1 auto-targeting (`systems/harvest`, `goalHarvestWeights`) is not gated; only goal breakdown and the rule-engine autopilot are.
 - **Goals queued by the player sit idle while AI is off**, and the UI does not say so yet.
 - **Existing `hq`/`ai` queue entries are not cancelled** when AI is switched off; they finish.
 - **Spacing is a soft rule** (`siteSpacing.ts`): it falls back to touching sites when no lane site exists; hub and extractor pickers are unchanged; manual placement is not constrained.

@@ -91,11 +91,10 @@ interface OnlineDebugWindow {
 
 /** Entity kinds the suites look for (`ENTITY_KIND` in `shared/sim/src/ecs/columns.ts`). */
 export const KIND = {
+  hq: 3,
   metalsExtractor: 5,
   solar: 6,
-  harvester: 7,
-  builder: 50,
-  terraformer: 51,
+  worker: 7,
   pylon: 9,
   mineralsQuarry: 14,
   waterExtractor: 15,

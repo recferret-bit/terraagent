@@ -1,9 +1,11 @@
 import { STAGE_BUILDING_ROWS } from './stageRows';
 import type { FlagSet } from '@terra/contracts';
-import { ENTITY_KIND, evaluateTradeHubUnlock, type CompiledDataLike, formatUnlockAtTooltip, getItemUnlockStage, getStageSpec, TICK_MS } from '@terra/sim';
-import { clientDataFor } from '../../core/flags/data';
+import { ENTITY_KIND, evaluateTradeHubUnlock, type CompiledDataLike, formatUnlockAtTooltip, getStageSpec, resolveItemUnlockStage, TICK_MS } from '@terra/sim';
+import { clientDataFor, formatResourceLabel, toFlagSet } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
 import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
+
+export { formatResourceLabel };
 
 export type BuildingKind =
   | 'commandHub'
@@ -17,7 +19,6 @@ export type BuildingKind =
   | 'mineralsQuarry'
   | 'waterExtractor'
   | 'petroleumWell'
-  | 'builder'
   | 'depot'
   | 'roboticsFactory'
   | 'turret'
@@ -42,28 +43,15 @@ export interface BuildingCardModel {
   hqBuildS: number;
   cost: Record<string, number>;
   powerText: string;
+  archetype: string;
   disabled: boolean;
   disabledReason?: string;
-}
-
-function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
-  if ('spec' in flags && 'list' in flags && typeof flags.has === 'function') {
-    return flags as FlagSet;
-  }
-  const set = flags as ReadonlySet<string>;
-  const list = Array.from(set);
-  return {
-    has: (w: string) => set.has(w),
-    list,
-    spec: list.join(','),
-  };
 }
 
 const LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
   metalsExtractor: 'Resource Extractor',
   solar: 'Solar Collector Array',
-  builder: 'Builder',
   depot: 'Depot',
   roboticsFactory: 'Robotics Factory',
   turret: 'Turret',
@@ -123,12 +111,9 @@ export function formatUnlockDetail(stage: number): string {
   return formatUnlockAtTooltip(stage);
 }
 
+/** Stage `checkItemUnlockStage` enforces. A balance row's `unlockStage` is not a second rule. */
 function resolveRowUnlockStage(row: Record<string, unknown>): number {
-  if (typeof row.unlockStage === 'number' && Number.isFinite(row.unlockStage)) {
-    return row.unlockStage;
-  }
-  const key = String(row.building ?? row.id ?? '');
-  return getItemUnlockStage(key);
+  return resolveItemUnlockStage(String(row.building ?? row.id ?? ''));
 }
 
 function formatPower(row: Record<string, unknown>): string {
@@ -265,6 +250,7 @@ function makeCard(
     hqBuildS,
     cost,
     powerText,
+    archetype: typeof row.archetype === 'string' ? row.archetype : `building.${building}`,
     disabled,
     disabledReason,
   };

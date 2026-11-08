@@ -14,13 +14,13 @@
 ## Steps
 
 1. **Minimap HUD, tile-state colours, entity dots & camera footprint trapezoid.**
-   - Open `<client>/play.html?scenario=w04` → the W04 scenario planet loads with Colony A at `(0, 0)` (Command Hub, HQ drone, 2 Harvesters, prepared pad and living ring) and Colony B at `(10, -8)` (Command Hub and HQ drone), plus flat grass, sand, rock, forest, water, and surface deposits across the disc.
-   - At the **bottom-left** (`180 × 180 px` chamfered Faction Plate, shifted cleanly above the Command Dock when W02+ is active), **see** the **Minimap**:
+   - Open `<client>/play.html?scenario=w04` → the W04 scenario planet loads with Colony A at `(0, 0)` (Command Hub, HQ drone, 2 Worker Drones (T1), prepared pad and living ring) and Colony B at `(10, -8)` (Command Hub and HQ drone), plus flat grass, sand, rock, forest, water, and surface deposits across the disc.
+   - At the **top-right** (`180 × 180 px` chamfered Faction Plate, first in that column, not above the Command Dock), **see** the **Minimap**:
      - Hex tiles coloured by state and terrain class from the `--ta-*` Faction Plate palette (Prepared pad grey, Living ring green, Wild flat/sand/rock/forest/water in their distinct terrain colours, deposits highlighted).
-     - **Entity dots** on top of the terrain raster: your colony's Hub, HQ and Harvesters in **Signal Orange**, and Colony B's Hub and HQ in its foreign colony colour.
+     - **Entity dots** on top of the terrain raster: your colony's Hub, HQ and Worker Drones (T1) in **Signal Orange**, and Colony B's Hub and HQ in its foreign colony colour.
      - A crisp **white camera footprint trapezoid** showing the 3D camera's ground-plane frustum around `(0, 0)`.
    - Press **`Q`** or **`E`** to yaw the 3D camera by `90°` → **see** the white trapezoid on the minimap rotate `90°` to match.
-   - Open the in-game dev console (**`` ` ``**) and run `spawndeposit 3 -2 metals 1` → only that single hex is repainted in the offscreen raster cache (`window.__online.minimap.dirtyTiles === 1` in browser DevTools). Run `spawn robot.harvester 4 -2` → **see** a new orange unit dot appear on the minimap and move as the robot walks.
+   - Open the in-game dev console (**`` ` ``**) and run `spawndeposit 3 -2 metals 1` → only that single hex is repainted in the offscreen raster cache (`window.__online.minimap.dirtyTiles === 1` in browser DevTools). Run `spawn robot.miner 4 -2` → **see** a new orange unit dot appear on the minimap and move as the robot walks.
    - *(Hackathon slice note: fog-of-war rendering W04-08 and foreign-territory diagonal border hatching W04-06 are deferred out of the `H` slice; see [`frontend-features.md`](../../questions-and-limitations/frontend-features.md) FF-64.)*
 2. **Click on the minimap to pan the 3D camera.**
    - Click near the **far top-right or bottom-left corner** of the minimap canvas (away from the `⤢` expand button) → **see** the 3D diorama camera pan immediately to that part of the planet and the white camera trapezoid jump to the clicked spot.
@@ -46,7 +46,7 @@
 8. **Control groups (`Ctrl+1..9` / `1..9`)** — *not in this landing* (`W04-25` is full-product scope). Skip.
 9. **Alert pings (`alert.ping`)** — *not in this landing* (`W04-02` and `W04-12` are stretch `H+`). Skip.
 10. **Earlier waves stay clean (`&waves=..03`).**
-    - Open `<client>/play.html?scenario=w04&waves=..03` → **see** no minimap in the bottom-left, pressing **`M`** does nothing (no Global Map overlay opens), the `W04` badge in the top-right **WAVES** panel is off, and camera controls behave identically to W01–W03.
+    - Open `<client>/play.html?scenario=w04&waves=..03` → **see** no minimap, pressing **`M`** does nothing (no Global Map overlay opens), and camera controls behave identically to W01–W03.
 
 ## Automated checks (already green on the branch)
 

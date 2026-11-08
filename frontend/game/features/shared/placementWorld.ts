@@ -26,9 +26,19 @@ export function isPlanetState(src: unknown): src is PlanetState {
 function entitiesFromView(rawEntities: Float32Array | ViewEntity[] | undefined, rawCount?: number): PlacementEntity[] {
   const out: PlacementEntity[] = [];
   forEachEntity(rawEntities, rawCount, (e) => {
-    out.push({ id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, hp: e.hp, hpMax: e.hpMax, state: e.state });
+    out.push({ id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, hp: e.hp, hpMax: e.hpMax, state: e.state, ...(e.tier > 0 ? { tier: e.tier } : {}) });
   });
   return out;
+}
+
+/** The host's per-colony best worker tier (`ViewColony.maxWorkerTier`), what `colonyMaxWorkerTier` reads on the client. */
+function maxWorkerTierByColony(colonies: unknown): Record<number, number> | undefined {
+  if (!Array.isArray(colonies)) return undefined;
+  const out: Record<number, number> = {};
+  colonies.forEach((c: { index?: number; maxWorkerTier?: number } | null, i) => {
+    if (c && typeof c.maxWorkerTier === 'number') out[typeof c.index === 'number' ? c.index : i] = c.maxWorkerTier;
+  });
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Hex radius of a planet with `count` tiles (`count = 3r(r + 1) + 1`). */
@@ -63,8 +73,10 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
     tiles?: ClientTiles;
     entities?: Float32Array | ViewEntity[];
     count?: number;
+    colonies?: unknown;
   };
   const tiles = v.tiles ?? fallbackTiles ?? null;
+  const tiers = maxWorkerTierByColony(v.colonies);
   const complete = Boolean(tiles?.terrain && tiles.prep && tiles.owner);
   return {
     radius: typeof v.planet?.radius === 'number' ? v.planet.radius : radiusOfTileCount(tiles?.count ?? 0),
@@ -76,6 +88,7 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
     height: tiles?.height ?? null,
     entities: entitiesFromView(v.entities, v.count),
     plannedSites: plannedSitesFromQueue(viewQueueEntries(source)),
+    ...(tiers ? { maxWorkerTierByColony: tiers } : {}),
   };
 }
 
