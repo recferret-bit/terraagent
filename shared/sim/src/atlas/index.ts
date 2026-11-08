@@ -1,3 +1,7 @@
 export * from './types';
 export * from './partition';
 export * from './smallAtlas';
+export * from './sampler';
+export * from './depositSampler';
+export * from './verifiers';
+export * from './generateAtlas';

@@ -21,6 +21,7 @@ export * from './grid/hexTile';
 export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
 export { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType, type DevPlanetType } from './gen/flat';
+export { buryWildDeposits, depositGroundMask } from './gen/depositGround';
 export { getDepositRichnessBp } from './gen/temperate';
 export {
   faunaHives,
