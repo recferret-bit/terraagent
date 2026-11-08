@@ -64,7 +64,6 @@ export function registerRailSteps(api: BotApi): void {
     await api.reset();
   });
 
-  test.fixme('@hack 9f-7b. price_out_of_band fires once an organic reference exists (needs the >= 3 colony scenario, see 9f-1b)', () => undefined);
 
 }
 

@@ -1,6 +1,6 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { defineDevCommand, DevCommandRegistry } from '../../dev/dev-command.registry.js';
-import { ClearArgs, MarketSeedService, SeedArgs } from './market-seed.service.js';
+import { AgeArgs, ClearArgs, MarketSeedService, SeedArgs } from './market-seed.service.js';
 
 /** Dev console commands `market.seed` and `market.clear` (`POST /v1/dev/commands/market.seed|market.clear`). */
 @Injectable()
@@ -19,6 +19,12 @@ export class MarketSeedCommand implements OnModuleInit {
       help: 'Cancel every open fixture-bot order on a planet: {planetId}',
       args: ClearArgs,
       run: (args) => this.seeds.clear(args),
+    }));
+    this.registry.register(defineDevCommand({
+      name: 'market.ageTrades',
+      help: 'Age every FINAL trade of a planet into the past (price board / quote staleness tests): {planetId, seconds}',
+      args: AgeArgs,
+      run: (args) => this.seeds.ageTrades(args),
     }));
   }
 }

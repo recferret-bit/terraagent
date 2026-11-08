@@ -39,5 +39,4 @@ export function registerQuoteSteps(api: BotApi): void {
     }
   });
 
-  test.fixme('@hack 9f-22b. Agent quote after organic trades: real bid/ask, stale_reference once the last organic trade is old; the returned order POSTs as is (needs the >= 3 colony scenario, see 9f-1b)', () => undefined);
 }

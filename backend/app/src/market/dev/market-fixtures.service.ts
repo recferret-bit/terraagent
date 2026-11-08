@@ -3,6 +3,7 @@ import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { parseDisplayAmount, type MarketTokenKey, type ResourceKey } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { W13_FIXTURES } from '@terra/scenarios/w13-markets';
+import { W13M_FIXTURES } from '@terra/scenarios/w13-markets-multi';
 import { EventBus } from '../../bus/event-bus.js';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
@@ -71,14 +72,15 @@ export class MarketFixtures implements OnModuleInit {
   }
 
   async onCreated(e: ScenarioCreatedBusEvent): Promise<void> {
-    if (e.scenario !== 'w13') return;
-    await this.mark(`${PLAN}${e.planetId}`, { kind: 'w13FixturePlan', planetId: e.planetId });
+    if (e.scenario !== 'w13' && e.scenario !== 'w13m') return;
+    await this.mark(`${PLAN}${e.planetId}`, { kind: 'w13FixturePlan', planetId: e.planetId, scenario: e.scenario });
   }
 
   async onSeated(e: ScenarioSeatedBusEvent): Promise<void> {
     try {
-      const plan = await this.prisma.mockChainIntent.findUnique({ where: { opId: `${PLAN}${e.planetId}` }, select: { id: true } });
-      const fixture = W13_FIXTURES[e.colonyIndex];
+      const plan = await this.prisma.mockChainIntent.findUnique({ where: { opId: `${PLAN}${e.planetId}` }, select: { id: true, diff: true } });
+      const table = (plan?.diff as { scenario?: string } | null)?.scenario === 'w13m' ? W13M_FIXTURES : W13_FIXTURES; // plans written before `w13m` carry no scenario: w13
+      const fixture = table[e.colonyIndex];
       if (!plan || !fixture) return;
       if (!(await this.mark(`${SEAT}${e.planetId}:${e.colonyIndex}`, { kind: 'w13FixtureSeat', planetId: e.planetId, colonyIndex: e.colonyIndex }))) return;
       // the one shared resolver (W13-20): `col_<index>` and the account `cargo.export` mints to
