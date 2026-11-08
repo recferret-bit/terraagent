@@ -155,3 +155,13 @@ export interface SweepExpiredReservationsOptions {
   readonly planetId?: string;
   readonly ignoreQueuePause?: boolean;
 }
+
+/**
+ * Policy registered by `SpawnSagaService` so `SectorReservationService` never reassigns a landing slot
+ * while an expired/timed-out reservation's in-flight spawn is still unresolved (MM-35..38).
+ */
+export interface ReservationSlotFencePolicy {
+  isSlotBlockedByPendingSpawn(planetId: string, landingSlotId: LandingSlotId): boolean;
+  isSlotDeprioritized?(planetId: string, landingSlotId: LandingSlotId): boolean;
+}
+
