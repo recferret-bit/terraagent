@@ -22,6 +22,7 @@ import { ensureWorktreeEnv } from './isolation.mjs';
 import { openIssue, landIssue } from './issue.mjs';
 import { checkWave } from './check.mjs';
 import { runLandHarness, syncWaveWithMain, runAuditCommand } from './harness.mjs';
+import { regenerateInWorktree } from './reconcile.mjs';
 import { runPropagateCommand } from './propagate.mjs';
 import { validateWaveCli } from './validate.mjs';
 import { wavePrompt, resolvePreset, buildRunnerCommand, GROK_CONTEXT_WINDOW } from './prompt.mjs';
@@ -115,6 +116,7 @@ function landWave(w) {
     tryOut('git', ['merge', '--abort'], { cwd: root });
     fail(`merging ${w.branch} into main conflicts (merge aborted): merge main into ${w.branch} in ${w.worktree}, resolve by hand and re-run.\n${String(e.stdout || e.stderr || '').trim()}`);
   }
+  regenerateInWorktree(root);
   run('git', ['tag', tag], { cwd: root });
   if (tryOut('git', ['remote'], { cwd: root })) run('git', ['push', 'origin', 'main', tag], { cwd: root });
   if (existsSync(w.worktree)) run('git', ['worktree', 'remove', '--force', w.worktree], { cwd: root });

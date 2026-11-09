@@ -79,6 +79,7 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 | W18-27 | Tests: shield property (AC-06), truce no-damage (AC-12), away never cancels (AC-13), elimination timer | test | M | H | W18-06, W18-13, W18-15 | `npm run test -w @terra/sim -- pvp` → all four specs pass | AC-06, AC-12, AC-13 | TA-13.x |
 | W18-28 | Test: raid → siphon → repel flow with deterministic seed; ruins decay | test | S | H | W18-05, W18-09 | Unit test asserts resource deltas and ruin HP after 100 s | SIM §7.7 | — |
 | W18-30 | Route PvP raid groups and foreign-territory attackMove through W07 moveGroup flow-field slots, combatApproachBand, and spotting gate | sim | S | H | W18-02, W18-03, W07-08, W07-12 | Enqueue Raid Colony on B with 6 units → raid group marches via moveGroup flow-field slots, stops at footprintAttackRange of spotted B structures, and respects truce/shield gates | D-43, SIM §7.7, UO-W-08 | — |
+| W18-31 | Integrate W11 R=48 isolated founding sector and cross_sector_disabled guard into PvP raid targeting and w18-pvp-diplomacy scenario | sim | S | H | W18-02, W11-41, W11-04 | Boot w18-pvp-diplomacy → rival colonies co-seat inside the active R=48 founding sector; cross-sector raid orders reject with cross_sector_disabled | W11 handoff, SIM §7.7 | — |
 | W18-29 | Wave e2e `tests/e2e/w18.spec.ts` + scenario `w18-pvp-diplomacy` + tag `wave-18` | test | M | H | all W18 | `npm run e2e -- --waves ..18` → the demo story passes (incl. the seat-refill check of step 3), and every earlier suite passes | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD

@@ -2,7 +2,7 @@
 
 > **Resource geography extension (2026-11-04):** W11-46 pins canonical regional resource inputs; [ECONOMY §2.2](../../spec/ECONOMY.md#22-planet-and-sector-resource-endowments) defines W13 database inheritance and scarcity. W11 uses bootstrap profiles without depending on W13. Existing worlds keep their pinned endowment; startup never rerolls resources.
 
-> **Status:** Replanned 2026-11-04 after owner approval; implementation is not claimed.
+> **Status:** Landed (`wave-11`, 2026-11-09).
 > **Track:** Sim / Meta / Client · **Flag:** `W11` · **Tag:** `wave-11` · **Scenario:** `tests/scenarios/w11-lobby.ts` · **E2E:** `tests/e2e/w11.spec.ts`
 > **Depends on waves:** W01 (spine), W04 (maps), W05 (terrain and territory).
 > **Optional:** W09 (elimination and away consumers), W12 (authenticated resume), W21 (transfer producer).

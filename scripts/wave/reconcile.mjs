@@ -51,6 +51,11 @@ export function regenerateInWorktree(cwd) {
   if (!process.env.TA_WAVE_NO_GEN && existsSync(join(cwd, 'scripts', 'gen', 'run.mjs'))) {
     const r = spawnSync(process.execPath, ['scripts/gen/run.mjs'], { cwd, encoding: 'utf8' });
     if (r.status === 0) ran.push('npm run gen');
+    const prismaBin = join(cwd, 'node_modules', '.bin', 'prisma');
+    if (existsSync(prismaBin) && existsSync(join(cwd, 'shared', 'db', 'prisma', 'schema.prisma'))) {
+      const p = spawnSync(prismaBin, ['generate', '--schema', 'shared/db/prisma/schema.prisma'], { cwd, encoding: 'utf8' });
+      if (p.status === 0) ran.push('prisma generate');
+    }
   }
   if (!process.env.TA_WAVE_NO_PLAN_WRITE && existsSync(join(cwd, 'scripts', 'plan', 'index_waves.py'))) {
     const check = spawnSync('python3', ['scripts/plan/index_waves.py', '--waves-json'], { cwd, encoding: 'utf8' });
