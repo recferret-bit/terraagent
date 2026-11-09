@@ -15,6 +15,7 @@ import { ReadinessRegistry } from '../core/readiness.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { EconomyActivationService } from '../economy/activation/activation.service';
+import { installAwayPolicyMetric } from './away-rejections';
 import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-activation-bridge';
 import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
@@ -169,6 +170,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
         for (const [id, k] of planets.warped()) this.set({ planet: id }, k);
       },
     });
+    installAwayPolicyMetric(reg);
     new Counter({
       name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {
