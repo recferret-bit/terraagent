@@ -19,6 +19,7 @@ import { RelayStatusService } from './identity/relay-status.service.js';
 import { SocialAuthService } from './identity/social-auth.service.js';
 import { SocialLink } from './identity/social-link.js';
 import { NearMockCommand } from './infrastructure/dev/near-mock.command.js';
+import { StakingPoolsController } from './staking/staking-pools.controller.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
 export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
@@ -33,6 +34,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     NearHealthController,
     RelayStatusController,
     SocialAuthController,
+    StakingPoolsController,
   ],
   providers: [
     CargoExportOutboxService,
