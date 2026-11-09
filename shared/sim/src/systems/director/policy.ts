@@ -49,7 +49,7 @@ function stripEmpty(patch: NonNullable<SetDirectorPolicyArgs['priorities']>): Pa
 }
 
 /**
- * Applies a player policy patch. A risk change does not write `awayRaids`.
+ * Applies a player policy patch. Does not write `awayRaids` or `autopilotMode`.
  * Any real change bumps `intentRevision` and supersedes open plans (AI §3, §4).
  */
 export function applyDirectorPolicy(
@@ -69,7 +69,6 @@ export function applyDirectorPolicy(
   }
   writePatch(record, patch);
   record.policy.revision += 1;
-  record.awayRaids = false;
   if (patch.priorities) {
     setColonyPriorities(state, colonyIndex, patch.priorities, tick);
     record.baselinePriorities = { ...record.policy.priorities };
@@ -99,6 +98,7 @@ export function colonyDirector(state: PlanetState, colonyIndex: number) {
     policy: clonePolicy(record.policy),
     intentRevision: record.intentRevision,
     awayRaids: record.awayRaids,
+    autopilotMode: record.autopilotMode,
     plans: record.plans.map((plan) => ({ ...plan })),
   };
 }

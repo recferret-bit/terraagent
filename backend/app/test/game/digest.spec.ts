@@ -300,6 +300,19 @@ describe('away story on digest close', () => {
     expect(AwayDigestV1Schema.safeParse(body).success).toBe(true);
   });
 
+  it('seals the awayStory paragraph when the provider is on and omits story when it is off', async () => {
+    const facts = ['Away for 60s.', '1 attacks, 0 repelled.'];
+    const told = awayStory(
+      { enabled: true, day: '2026-11-09', colonyId: COLONY, facts },
+      new GlobalTokenBudget(10_000),
+    );
+    const on = await played(createDigestStory({ NODE_ENV: 'production', AWAY_STORY_ENABLED: 'true', TA_WAVES: '..16' }));
+    expect(on.body.story).toBe(told.paragraph);
+    expect(on.body.story).toBe('Away for 60s. 1 attacks, 0 repelled.');
+    const off = await played(createDigestStory({ NODE_ENV: 'production', AWAY_STORY_ENABLED: 'false', TA_WAVES: '..16' }));
+    expect(off.body).not.toHaveProperty('story');
+  });
+
   it('mentions duration and one resource net, and stays off when W16 is off', () => {
     const body = emptyDigest(COLONY, '2026-11-09T12:00:00.000Z');
     body.durationS = 5;
