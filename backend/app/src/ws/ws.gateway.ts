@@ -11,6 +11,7 @@ import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
+import { presenceClosed, presenceJoined } from '../game/presence/planet-mode';
 import type { PresenceTracker } from '../game/presence/tracker';
 import type { CommandIngress } from './command-ingress';
 import { Connection, type ConnectionDeps } from './connection';
@@ -103,7 +104,7 @@ export class WsGateway {
       onClosed: (c) => {
         this.conns.delete(c);
         if (c.playerId && this.byPlayer.get(c.playerId) === c) this.byPlayer.delete(c.playerId);
-        this.o.presence?.close(this.presenceId(c));
+        this.notePresenceClose(c);
       },
     };
     this.conns.add(new Connection(ws, deps));
@@ -117,10 +118,25 @@ export class WsGateway {
 
   /** `leaveRoom` clears colonyId before `onClosed`, so the colony is captured here, at welcome. */
   private notePresenceJoin(c: Connection): void {
-    if (!this.o.presence || !c.playerId || !c.planetId || !c.colonyId) return;
-    this.o.presence.join({
-      socketId: this.presenceId(c), planetId: c.planetId, colonyId: c.colonyId, playerId: c.playerId, colonyIndex: c.colonyIndex,
-    });
+    const presence = this.o.presence;
+    if (!presence || !c.playerId || !c.planetId || !c.colonyId) return;
+    const planetId = c.planetId;
+    const id = this.presenceId(c);
+    const session = { socketId: id, planetId, colonyId: c.colonyId, playerId: c.playerId, colonyIndex: c.colonyIndex };
+    presenceJoined(presence, this.planetModes(), id, planetId, () => presence.join(session));
+  }
+
+  /** `leaveRoom` has already cleared `planetId`. The tracker still knows which planet the socket was on. */
+  private notePresenceClose(c: Connection): void {
+    const presence = this.o.presence;
+    if (!presence) return;
+    const id = this.presenceId(c);
+    presenceClosed(presence, this.planetModes(), id, () => presence.close(id));
+  }
+
+  private planetModes() {
+    const planets = this.o.planets;
+    return { setMode: (planetId: string, mode: 'active' | 'coarse') => { planets.setMode(planetId, mode); } };
   }
 
   /** The new welcome is already sent: close the player's previous planet socket with 4001. */

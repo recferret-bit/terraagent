@@ -4,7 +4,7 @@ import {
   allModules, applyTunedEntityHealth, buildPipeline, clientDeltaFrames, createPlanet, effectiveOverrides, getColonyStock, mergeOverrides, nextLandingSite, restore, snapshot, step,
   StepError, tune,
   type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
-  type SimModule, type TuneRequest,
+  type SimModule, type StepMode, type TuneRequest,
   regionForNewPlanet, type ResolvedRegion,
 } from '@terra/sim';
 import { ProductionBatches } from './production-batches';
@@ -13,6 +13,7 @@ import { type LoadMsg, type PassStat, type Post, type PlanetStats, type ToThread
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
 export interface SchedulerView {
   info(planetId: string): PlanetSchedule | undefined;
+  setMode(planetId: string, mode: StepMode): void;
   readonly maxLag: number;
   recentPasses(): PassStat[];
 }
@@ -377,6 +378,8 @@ export class PlanetHost {
       if (process.env.NODE_ENV === 'production') return;
       const end = performance.now() + msg.ms;
       while (performance.now() < end) { /* busy-wait: simulates a stalled thread */ }
+    } else if (msg.op === 'mode') {
+      this.sched?.setMode(msg.planetId, msg.mode);
     }
     // 'warp' and 'stop' are handled by the thread entry (it owns the port and the timer).
   }

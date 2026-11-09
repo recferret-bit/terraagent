@@ -23,6 +23,8 @@ export type CtlOp =
   | { readonly op: 'stats'; readonly reqId: number }
   /** Dev time warp: `k` engine steps per due slot (1..100); the thread may run less (budget cap) and answers with a `warp` message. */
   | { readonly op: 'warp'; readonly planetId: string; readonly k: number }
+  /** CT-14: `active` steps `dt` 1 every tick; `coarse` steps `dt` 5 every second. The thread applies it on the next due step. */
+  | { readonly op: 'mode'; readonly planetId: string; readonly mode: 'active' | 'coarse' }
   /** Test/dev only (ignored in production): busy-wait the thread for `ms`. */
   | { readonly op: 'block'; readonly ms: number }
   /** Test/dev only (ignored in production): step the planet by `dt` now, in message order (engine parity test, run with `autoStep: false`). */

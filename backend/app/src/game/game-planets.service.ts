@@ -216,6 +216,11 @@ export class GamePlanets {
     return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'warp', planetId, k });
   }
 
+  /** CT-14. The thread keeps the planet's due time; the new `dt` applies on the next step. */
+  setMode(planetId: string, mode: 'active' | 'coarse'): boolean {
+    return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'mode', planetId, mode });
+  }
+
   /** Effective warp of a planet (1 when never warped). */
   warpOf(planetId: string): number {
     return this.warps.get(planetId) ?? 1;
