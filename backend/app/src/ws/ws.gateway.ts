@@ -11,6 +11,7 @@ import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
+import type { PresenceTracker } from '../game/presence/tracker';
 import type { CommandIngress } from './command-ingress';
 import { Connection, type ConnectionDeps } from './connection';
 import type { HomeProvider } from './home-provider';
@@ -32,6 +33,8 @@ export interface GatewayOptions {
   readonly helloTimeoutMs: number;
   readonly idleTimeoutMs: number;
   readonly bus?: EventBus;
+  /** In-memory away timer (CT-10). Absent in gateway unit fixtures that do not boot the game module. */
+  readonly presence?: PresenceTracker;
 }
 
 /** `/ws` upgrade handling, origin allow-list, connection registry and the one-planet-socket-per-player rule (WS-13). */
@@ -48,6 +51,8 @@ export class WsGateway {
   private readonly uncargo: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
+  private readonly presenceIds = new WeakMap<Connection, string>();
+  private presenceSeq = 0;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
@@ -93,13 +98,29 @@ export class WsGateway {
       seatDevScenario: this.o.seatDevScenario,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),
-      onJoined: (c) => this.replaceOlder(c),
+      // Join is recorded before replaceOlder: its `bye 4001` is a close, and this join must cancel that timer.
+      onJoined: (c) => { this.notePresenceJoin(c); this.replaceOlder(c); },
       onClosed: (c) => {
         this.conns.delete(c);
         if (c.playerId && this.byPlayer.get(c.playerId) === c) this.byPlayer.delete(c.playerId);
+        this.o.presence?.close(this.presenceId(c));
       },
     };
     this.conns.add(new Connection(ws, deps));
+  }
+
+  private presenceId(c: Connection): string {
+    let id = this.presenceIds.get(c);
+    if (!id) { id = `s${++this.presenceSeq}`; this.presenceIds.set(c, id); }
+    return id;
+  }
+
+  /** `leaveRoom` clears colonyId before `onClosed`, so the colony is captured here, at welcome. */
+  private notePresenceJoin(c: Connection): void {
+    if (!this.o.presence || !c.playerId || !c.planetId || !c.colonyId) return;
+    this.o.presence.join({
+      socketId: this.presenceId(c), planetId: c.planetId, colonyId: c.colonyId, playerId: c.playerId, colonyIndex: c.colonyIndex,
+    });
   }
 
   /** The new welcome is already sent: close the player's previous planet socket with 4001. */
@@ -136,6 +157,7 @@ export class WsGateway {
     this.unbook?.();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
+    this.o.presence?.stop();
     await new Promise<void>((resolve) => {
       const t = setTimeout(() => { for (const c of all) c.terminate(); resolve(); }, graceMs);
       const poll = setInterval(() => {

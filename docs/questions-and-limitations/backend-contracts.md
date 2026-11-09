@@ -749,3 +749,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `autoTrade` stays out of this command. Its checker is W09-13 and its command is W15-01 `setAutoTrade`.
 - **To resolve:** Confirm the single-command shape, or split `setAwayBudget` to match PROTOCOL. Confirm Bio covers oil.
 - **Found:** 2026-11-09, W09-01 contract default
+
+### BE-54 · Presence away memory does not survive a process restart
+
+- **Status:** Accepted (W09-02 scope; restart recovery is a later issue)
+- **Area / code:** `backend/app/src/game/presence/tracker.ts`, `shared/sim/src/systems/presence/`
+- **What happens:** sockets and the 60s away timer live in process memory. A blip under 60s posts nothing. At 60s (inclusive) the tracker posts `system.presence { away: true }` and stamps `last_seen_at`. A later join posts `away: false`. After a restart those timers and the "already away" bit are gone. The sim blob in a snapshot still says away, so the colony stays away (CT-14), but the new process does not post `away: false` on reconnect because it does not remember the away. A colony that was connected when the process died is not put on a fresh 60s timer either. `colonyBack.awayForS` is omitted: the sim has no wall clock. `submit` results other than a thrown error (`wave_disabled`, `planet_not_loaded`, `thread_down`) do not fail the socket; `last_seen_at` is still written when the row exists. `wave_disabled` is ignored on purpose when flag `W09` is off. A `leave` that keeps the socket open does not start the timer; only the last socket's close does (CT-10).
+- **Why it is like this:** D-24 keeps presence in the one app, with no NATS and no leases. W09-02 posts the command and stamps `last_seen_at`. Snapshot resume is a later issue under `backend/app/src/game/{snapshot,restart}/`.
+- **Workaround / mitigation:** `last_seen_at` is durable. The away flag already stored in the sim snapshot is left as it was. Flag-off still records presence on the platform rows.
+- **To resolve:** on boot, or on the first join, read the `presence` blob and post `away: false` only when it says away. Arm away timers for restored colonies that have no socket.
+- **Found:** 2026-11-09, W09-02

@@ -2,8 +2,9 @@ model Player {
   id               String   @id
   handle           String   @unique
   deviceSecretHash String?  @unique @map("device_secret_hash")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(3)
 
   sessions AuthSession[]
 
@@ -61,9 +62,10 @@ model Colony {
   status           String   @default("ACTIVE")
   foundingSectorId String   @default("sec_0_0") @map("founding_sector_id")
   landingSlotId    String?  @map("landing_slot_id")
-  spawnQ           Int      @default(0) @map("spawn_q")
-  spawnR           Int      @default(0) @map("spawn_r")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  spawnQ           Int       @default(0) @map("spawn_q")
+  spawnR           Int       @default(0) @map("spawn_r")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(3)
 
   @@unique([planetId, colonyIndex])
   @@index([playerId])
