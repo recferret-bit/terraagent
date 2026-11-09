@@ -29,7 +29,7 @@ import {
   setTilePrep,
   setTileTerrain,
   snapshot,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   spawnTerraformDeposit,
   step,
@@ -39,6 +39,7 @@ import {
   type StepContext,
 } from '../../src';
 import production from '../../src/systems/production';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 const seq = (...xs: number[]) => {
   let i = 0;
@@ -157,21 +158,21 @@ describe('harvest of tiered deposits', () => {
     expect(depositFamilyAndKey(DEPOSIT.none, 2)).toBeNull();
   });
 
-  it('a Harvester next to a tier-2 metals deposit credits metals.t2, not metals.t1', () => {
+  it('a Worker next to a tier-2 metals deposit credits metals.t2, not metals.t1', () => {
     const state = createState({ planetId: 'p-h2', planetType: 'temperate', seed: 'h2', radius: 8 });
     const colony = ensureColonyLedger({ index: 0, id: 'col-0', name: 'A', color: 0xff6b00, status: 'active', changedAt: 0 });
     state.colonies.push(colony);
     const idx = hexIndex(state.grid.radius);
     for (let k = 0; k < state.grid.count; k++) setTileDeposit(state, k, DEPOSIT.none, 0, 0);
     setTileDeposit(state, idx.indexOf(1, 0), DEPOSIT.metals, 10000, 0, 2);
-    spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
+    spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     step(state, [], 1, pipeline);
-    const t1 = colony.stock['metals.t1'];
-    const t2 = colony.stock['metals.t2'];
+    const t1 = resourceValue(colony, 'metals.t1');
+    const t2 = resourceValue(colony, 'metals.t2');
     step(state, [], 5, pipeline);
-    expect(colony.stock['metals.t2'] - t2).toBeCloseTo(0.5, 5);
-    expect(colony.stock['metals.t1']).toBe(t1);
+    expect(resourceValue(colony, 'metals.t2') - t2).toBeCloseTo(0.5, 5);
+    expect(resourceValue(colony, 'metals.t1')).toBe(t1);
   });
 
   it('a Metals Extractor on a tier-3 metals deposit credits metals.t3 and reports its rate under that key', () => {
@@ -191,8 +192,8 @@ describe('harvest of tiered deposits', () => {
     // The extractor system alone (no Pylon network here, the power system would switch it off).
     const run = production.systems!.find((s) => s.id === 'production.extractors')!.run;
     for (let t = 1; t <= 10; t++) run(state, { tick: t, dt: 1 } as unknown as StepContext);
-    expect(colony.stock['metals.t3']).toBeGreaterThan(0);
-    expect(colony.stock['metals.t1']).toBe(0);
+    expect(resourceValue(colony, 'metals.t3')).toBeGreaterThan(0);
+    expect(resourceValue(colony, 'metals.t1')).toBe(0);
     expect(colony.production.incomePerS['metals.t3']).toBeGreaterThan(0);
     expect(colony.production.incomePerS['metals.t1']).toBe(0);
   });

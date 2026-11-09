@@ -52,6 +52,14 @@
   .art-pg i { position: absolute; left: 50%; top: 30px; width: 46px; height: 70px; transform: translateX(-50%); background: var(--ta-hull); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
   .art-pg i::after { content: ""; position: absolute; left: 8px; right: 8px; top: 12px; height: 8px; background: var(--ta-energy); }
 
+  .art-trade { display: flex; align-items: flex-end; gap: 10px; padding: 0 36px 22px; background: linear-gradient(rgba(91,140,255,.16) 1px, transparent 1px) 0 0 / 100% 30px, var(--ta-black-hole); }
+  .art-trade i { flex: 1; background: var(--ta-terra); height: 46px; }
+  .art-trade i:nth-child(2) { height: 78px; background: var(--ta-fault); }
+  .art-trade i:nth-child(3) { height: 62px; }
+  .art-trade i:nth-child(4) { height: 98px; background: var(--ta-fault); }
+  .art-trade i:nth-child(5) { height: 84px; }
+  .art-trade::after { content: "MOCK USDC · ORBITAL CARGO"; position: absolute; left: 20px; top: 14px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-steel); }
+
   .ref { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; margin-top: 20px; padding: 22px 28px; background: var(--ta-deep); border: 1px solid var(--ta-seam); }
   .ref .h3 { font-size: 20px; }
   .ref p { margin: 4px 0 0; color: var(--ta-text-3); font-size: 15px; }
@@ -142,6 +150,22 @@
         <p>Explore the W12 pilot's career, lifetime statistics, colonies and achievements in a new tab.</p>
         <span class="path">/me.html?as=w12</span>
         <a class="btn btn-primary btn-sm go" href="/me.html?as=w12" target="_blank" rel="noopener noreferrer">OPEN MOCK PILOT →</a>
+      </div>
+    </article>
+    <article class="door plate card-hover">
+      <a class="cover" href="/trade.html" aria-label="Open the trading page"></a>
+      <div class="door-art art-trade" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="door-body">
+        <div class="door-top"><span class="label c-blue">MOCK MARKET</span><span class="door-num">06</span></div>
+        <h2 class="h3">Trade</h2>
+        <p>Order book, price board, order ticket, fills and bot keys for your orbital resources. All money is mock.</p>
+        <div class="quick">
+          <a href="/trade.html?pair=bio.water/USDC">WATER / USDC</a>
+          <a href="/trade.html?pair=metals.t1/USDC">METALS T1 / USDC</a>
+          <a href="/trade.html?as=a">DEV IDENTITY A</a>
+        </div>
+        <span class="path">/trade.html</span>
+        <a class="btn btn-primary btn-sm go" href="/trade.html">OPEN TRADING <span aria-hidden="true">→</span></a>
       </div>
     </article>
   </section>

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeSandbox, openWaveBranch, git } from './testkit.mjs';
 import { dbNameFor, readWorktreeEnv } from './isolation.mjs';
+import { loadPlan, issueTitle } from './plan.mjs';
 import { resolvePreset, buildRunnerCommand, wavePrompt } from './prompt.mjs';
 
 const wave = (id) => ({ id, tags: { H: 1 }, file: 'docs/plan/waves/x.md', branch: `wave/${id}` });
@@ -218,3 +219,51 @@ test('wave accepts wave id directly or with W prefix (e.g. W00, 00)', () => {
   assert.equal(r2.status, 0, r2.out);
   assert.match(r2.out, /would open W00/);
 });
+
+test('postponed waves (W14, W17, W19, W21, W24, W27) show POSTPONED in status and refuse open/land without --force', () => {
+  const sb = makeSandbox();
+  const statusOut = sb.run(['status']).out;
+  for (const wid of ['W14', 'W17', 'W19', 'W21', 'W24', 'W27']) {
+    const line = statusOut.split('\n').find((l) => l.startsWith(`${wid} `));
+    assert.ok(line, `missing status line for ${wid}`);
+    assert.match(line, /POSTPONED \(skipped\)/);
+  }
+  const rOpen = sb.run(['open', '14']);
+  assert.notEqual(rOpen.status, 0);
+  assert.match(rOpen.out, /W14 is marked POSTPONED/);
+  const rOpenDry = sb.run(['open', '14', '--dry-run']);
+  assert.notEqual(rOpenDry.status, 0);
+  assert.match(rOpenDry.out, /W14 is marked POSTPONED/);
+  const rNextDry = sb.run(['next', '14', '--dry-run']);
+  assert.notEqual(rNextDry.status, 0);
+  assert.match(rNextDry.out, /W14 is marked POSTPONED/);
+  openWaveBranch(sb, '14');
+  const rLand = sb.run(['land', '14']);
+  assert.notEqual(rLand.status, 0);
+  assert.match(rLand.out, /W14 is marked POSTPONED/);
+});
+
+test('issueTitle handles escaped pipes (\\|) in wave table titles without truncating', () => {
+  const sb = makeSandbox();
+  const plan = loadPlan(sb.root);
+  const w23Title = issueTitle(sb.root, plan, 'W23-01');
+  assert.match(w23Title, /NEAR_MODE=mock\|testnet\|devnet\|mainnet/);
+});
+
+test('wavePrompt includes Vertical Slice Scope, Testing, Full-Game Integration & NEAR_MODE Switch rules', () => {
+  const preset = resolvePreset(wave('W23'), {});
+  assert.deepEqual(preset.tags, ['H']);
+  const prompt = wavePrompt(wave('W23'), 'Real NEAR', {
+    preset,
+    progress: { done: ['W23-01'], total: ['W23-01', 'W23-02'], remaining: ['W23-02'] },
+  });
+  assert.match(prompt, /Vertical Slice Scope, Testing, Full-Game Integration & Mock\/Real Switch Rules/);
+  assert.match(prompt, /W14, W17, W19, W21, W24, W27/);
+  assert.match(prompt, /NEAR_MODE=mock/);
+  assert.match(prompt, /NEAR_MODE=testnet\|devnet/);
+  assert.match(prompt, /NEAR_ADAPTER_<PORT>=mock\|testnet\|devnet\|mainnet/);
+  assert.match(prompt, /AI_PROVIDER=mock\|zai/);
+  assert.match(prompt, /NOTIFY_ADAPTER=mock\|live\|webpush\|telegram/);
+  assert.match(prompt, /IdentityPort, RelayerPort, CargoTokenPort, IntentsPort, AgentWalletPort, DeedNftPort, BadgeNftPort, StakingPort, TreasuryDaoPort, EscrowPort, ChainReadPort/);
+});
+

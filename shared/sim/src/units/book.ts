@@ -15,6 +15,11 @@ export interface UnitRecord {
   fails?: Record<string, number>;
   /** The last player command that failed (e.g. its target was unreachable), or `null`. Clients toast it once per `tick`. */
   lastFailure: UnitFailure | null;
+  /**
+   * W13 reserve mode: set while the unit is in reserve or still deploying (`readyAt`). No work provider hands it work and no
+   * attack/build/terraform command is accepted; movement stays possible. Ownership and control-slot use are untouched.
+   */
+  reserve?: { mode: 'reserve' | 'activating'; readyAt: number; version: number };
 }
 
 export interface UnitFailure {
@@ -38,6 +43,7 @@ const emptyRecord = (): UnitRecord => ({ current: null, queue: [], holdUntil: 0,
 export class UnitBook {
   private readonly value: UnitsBlobValue & Record<string, unknown>;
   private dirty = false;
+  private stampDirty = false;
 
   constructor(private readonly state: PlanetState) {
     const raw = state.blobs.units?.value as (UnitsBlobValue & Record<string, unknown>) | undefined;
@@ -71,15 +77,17 @@ export class UnitBook {
     return Object.keys(this.value.byId).map(Number).sort((a, b) => a - b);
   }
 
-  remove(id: number): void {
+  remove(id: number, stamp = false): void {
     if (this.value.byId[String(id)]) {
       delete this.value.byId[String(id)];
       this.dirty = true;
+      if (stamp) this.stampDirty = true;
     }
   }
 
-  touch(): void {
+  touch(stamp = true): void {
     this.dirty = true;
+    if (stamp) this.stampDirty = true;
   }
 
   flush(tick: number): void {
@@ -90,8 +98,13 @@ export class UnitBook {
         if (k !== 'byId') this.value[k] = v;
       }
     }
-    setBlob(this.state, 'units', this.value, tick);
+    if (this.stampDirty || !this.state.blobs.units) {
+      setBlob(this.state, 'units', this.value, tick);
+    } else {
+      this.state.blobs.units.value = this.value;
+    }
     this.dirty = false;
+    this.stampDirty = false;
   }
 }
 
@@ -103,4 +116,9 @@ export function getUnitCommand(state: PlanetState, id: number): UnitCommand | nu
 /** The full command record of entity `id`, or `null` if it never received a command. */
 export function getUnitRecord(state: PlanetState, id: number): UnitRecord | null {
   return new UnitBook(state).peek(id);
+}
+
+/** Whether entity `id` is in reserve mode or still deploying out of it (no work, no attack). */
+export function isUnitReserved(state: PlanetState, id: number): boolean {
+  return new UnitBook(state).peek(id)?.reserve !== undefined;
 }

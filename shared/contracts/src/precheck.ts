@@ -24,6 +24,26 @@ export type CommandPrecheck = { ok: true; args: unknown; dev: boolean } | { ok: 
  * outside production, strict args. Ownership lands with colonies (W01): a W00 session has none, so only dev kinds pass.
  * Shared by the app's ingress and the local host, so both reject identically.
  */
+function normalizeCombatPrecheckArgs(kind: string, args: unknown): unknown {
+  if ((kind !== 'setStance' && kind !== 'attackMove' && kind !== 'attackTarget') || !args || typeof args !== 'object') {
+    return args;
+  }
+  const obj = args as Record<string, unknown>;
+  if (!('unitIds' in obj) && !('unitId' in obj)) return args;
+  const next: Record<string, unknown> = { ...obj };
+  if ('unitIds' in next) {
+    const u = next.unitIds;
+    delete next.unitIds;
+    if (next.entityIds === undefined) next.entityIds = u;
+  }
+  if ('unitId' in next) {
+    const u = next.unitId;
+    delete next.unitId;
+    if (next.entityId === undefined) next.entityId = u;
+  }
+  return next;
+}
+
 export function precheckClientCommand(
   kind: string,
   args: unknown,
@@ -34,7 +54,7 @@ export function precheckClientCommand(
   if (!hasCommandKind(kind)) return { ok: false, code: 'unknown_kind' };
   const def = commandDef(kind);
   if (def.origin !== 'client' || (def.dev && o.production)) return { ok: false, code: 'unknown_kind' };
-  const parsed = parseCommandArgs(kind, args);
+  const parsed = parseCommandArgs(kind, normalizeCombatPrecheckArgs(kind, args));
   if (!parsed.success) {
     const i = parsed.error.issues[0];
     return { ok: false, code: 'invalid_args', ...(i ? { detail: `${i.path.join('.') || 'args'}: ${i.message}`.slice(0, 200) } : {}) };

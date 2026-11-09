@@ -244,6 +244,7 @@ transports, dev console wiring). Entry format: [README](./README.md). Ledger jou
 - **To resolve:** owner: is ~300 ms + one-way latency acceptable for unit orders? If not, start the clock on the predicted track for the player's own selected unit only. Either way, say in DEV_TOOLS which renderer `?predict=0` affects.
 - **Found:** 2026-11-01, frontend-app review
 - **Partly done (review-fix round 2026-11-01):** DEV_TOOLS `&predict=0` now says which renderer it affects (W00 `devProbe` layer 400 ms behind; HQ / pod / Hub meshes 300 ms behind in both modes). The latency question stays with the owner; no render change made.
+- **Shared sampler (2026-11-06):** Implementation now lives in `frontend/render/motion/entityMotion.ts`; the old path re-exports it. March and Hive use the same sampler with a local fixed-tick clock. Gameplay's confirmed-clock latency and correction handling are unchanged; see RN-76 in `render.md`.
 
 ### FA-19 · `WorldStore.simData()` says it includes live `tune` overrides; it only changes on a welcome
 
@@ -318,7 +319,7 @@ transports, dev console wiring). Entry format: [README](./README.md). Ledger jou
 - **To resolve:** map kinds through a registry when new kinds arrive; use `hexDistance` from `@terra/sim/grid/hex`; show an error plate when the real viewport fails.
 - **Found:** 2026-11-01, frontend-app review
 - **Update (W02 review round 1, 2026-11-03, frontend agent): the crater / egress part is now a Question for the owner; the description above is stale.**
-  - **Kinds:** `archetypeForKind` (`EntityMeshes.ts:49-57`) now maps `metalsExtractor` → `building.mine`, `solar` → `building.solar`, `harvester` → `robot.miner`, and any other kind (`devProbe`) to `robot.builder`, not `robot.scout` (see RN-60 for the light mismatch).
+  - **Kinds:** `archetypeForKind` (`EntityMeshes.ts:49-57`) now maps `metalsExtractor` → `building.mine`, `solar` → `building.solar`, `worker` → `robot.miner`, and any other kind (`devProbe`) to `robot.builder`, not `robot.scout` (see RN-60 for the light mismatch).
   - **Crater cover:** `hubCoversCrater` (`EntityMeshes.ts:332-353`) no longer uses axial distance. It hides the crater and the egress shell when **any** constructible building (`isConstructibleBuilding`, state not `waiting`) of **any** colony has its centre within 4.2 m (Hub) or 3.2 m (Extractor / Solar) of the pod in world xz. A tile is 2 m, so 4.2 m is about 2 hexes, while a 3×3 Hub footprint reaches about 2 hexes from its centre and the W01 rule said "within 3"; a neighbour's building next to the pod also hides it.
   - **Egress shell:** after touchdown the opened pod (petals, ramp; `PodImpactRig.setSettled` / the `done` state of `PodTouchdownFx`) stays visible on the landing tile until such a building covers it; without a building it stays for the whole game.
   - **Question:** should the landed pod shell disappear on its own (after the HQ walks out, or when the pod entity is dismantled), and should only the owner's own Hub hide it, using hex distance? Recommendation: hide the shell when the pod entity is gone, keep the crater until the own Hub covers it by `hexDistance ≤ 2`.
@@ -461,3 +462,35 @@ transports, dev console wiring). Entry format: [README](./README.md). Ledger jou
 - **Workaround / mitigation:** dev handle only.
 - **To resolve:** delete `applyTilePatch` and `applyChangedTileList` (`HexTerrain.setTileState` stays: the playground's `content/HexSampleHost.ts` uses it on its own sample terrain).
 - **Found:** 2026-11-03, W02 review round 1 (frontend agent)
+
+### FA-37 · Playground dialog hide state is not in the URL
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/playground/panels/dock.ts`, `Sidebar.ts` (`expanded`)
+- **What happens:** LIST, INFO, CONTROLS, and LIGHTS in the centered header toggle their dialog. A lit tab means the dialog is open. A second click collapses it until the tab is pressed again, or until reload. A reload opens every dialog again. Hive-life and group march are tabs inside the object list (HIVE, MARCH, UNITS), not separate dialogs. Object groups (robot, building, ship, resource, fauna, prop) start collapsed. While the search box has text, every group that still has matches is forced open, and clicking its header does not collapse it. Clearing the search returns to the groups opened by hand (none, on a fresh load). Collapsing the lights editor leaves the night preview on; `L` and the Work-tab lights toggle still turn the feature off, and turning it back on opens the editor.
+- **Why it is like this:** the playground URL stays the inspect and scene parameters. Hide and expand are session chrome, not a shareable scene.
+- **Workaround / mitigation:** The header tabs are the hide and show control. `/` opens the object list, selects UNITS, and focuses search.
+- **To resolve:** only if a shared link should reopen a collapsed layout. Add explicit parameters then; do not infer them from the search box.
+- **Found:** 2026-11-04, playground dialog pass
+
+### FA-38 · Sparse fauna motion was not reconstructed on the live client path
+
+- **Status:** Resolved (2026-11-07 working-tree motion reconstruction; commit pending)
+- **Area / code:** `frontend/game/store/replica/ReplicaCore.ts`, `shared/sim/src/host/faunaMotionReplica.ts`, `shared/sim/src/codec/faunaMotionSeed.ts`
+- **What happens:** Client diffs suppress routine fauna transforms until the 25-tick correction, but the old live replica only applied diffs. The tested directive helper was not connected to that path. With prediction disabled or no player command pending, ants could retain stale positions between corrections.
+- **Why it is like this:** In-process parity helpers exercised additional replay calls that production delivery did not execute.
+- **Resolution:** ReplicaCore reconstructs motion through a separate shared simulation service, using existing fauna movement/routing rules. Welcome snapshots include filtered fauna routes, commands and timing; authoritative rows win every correction. A sparse material-route journal preserves authority timing under colony path-search competition; the 80-HQ stress regression, batched frames and cancellations now match exactly. Private route/search state is filtered from renderer-bound worker views. Tests use the actual worker/replica path for both server and local hosts, including prediction, mid-walk joins, terrain edits, tuning and recovery.
+- **Workaround / mitigation:** A newly received directive for an already-simulated tick requests a fresh welcome rather than mutating history without the full historical command stream. Migrated saves and current-protocol welcomes without the optional seed remain loadable and converge at the next correction; modern servers include the seed. Live protocol versions still must match (FA-39). The service is not a complete replay of other colonies’ historical commands or path-budget competition.
+- **To resolve:** No known routine-motion fix pending. Add complete historical command inputs only if historical rollback is preferred over authoritative resynchronization.
+- **Found:** 2026-11-07, full W07 review and a failing production-path motion regression.
+
+### FA-39 · Combat wire changes require an explicit client-version boundary
+
+- **Status:** Resolved (2026-11-07 working-tree protocol versioning and save migration; commit pending)
+- **Area / code:** `shared/sim/src/host/diff.ts`, `shared/sim/src/kernel/constants.ts`, `shared/sim/src/codec/migrations/index.ts`, `frontend/game/store/local/snapshotStore.ts`, `frontend/game/net/VersionMismatchNotice.ts`
+- **What happens:** Without a version change, an older client accepts the new compact diff envelope but ignores its projectile and stance fields, retaining stale combat state.
+- **Why it is like this:** Canonical snapshot layout stayed compatible while the live diff format changed; snapshot compatibility alone did not identify the new wire contract.
+- **Resolution:** Diff format 2 and simulation version 3 reject incompatible live peers. An immutable identity migration from save version 2 preserves existing canonical snapshots; local resume recognizes the supported migration while retaining hash and flag checks. A visible mismatch notice offers an explicit reload, preserves the active scenario planet via its join URL, and cleans up with the session.
+- **Workaround / mitigation:** Already-loaded older JavaScript cannot gain the new notice retroactively. Refresh that page manually after restarting the stack. No automatic reload loop is introduced.
+- **To resolve:** No current-client fix pending. Deploy compatible frontend/backend versions together.
+- **Found:** 2026-11-07, independent final codec review.

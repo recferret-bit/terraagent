@@ -32,6 +32,7 @@ import {
   fromCargoBaseUnits,
   NEAR_ADAPTER_CARGO,
 } from '../application/ports/cargo-token.port.js';
+import { FreeVerifierService } from './free-verifier.service.js';
 
 export interface NearCargoStatusBusEvent {
   readonly planetId?: string;
@@ -68,6 +69,7 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Optional() @Inject(NEAR_ADAPTER_CARGO) private readonly cargo?: CargoTokenPort,
+    @Optional() private readonly freeVerifier?: FreeVerifierService,
   ) {}
 
   onModuleInit(): void {
@@ -123,7 +125,7 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
         : [];
 
     const seenResources = new Set<string>(rows.map((r) => r.resource));
-    const inOrbit = await this.readInOrbitBalances(accountId, seenResources);
+    const { inOrbit, reserved } = await this.readInOrbitBalances(accountId, seenResources);
 
     const pendingExport: CargoPendingItem[] = [];
     const pendingImport: CargoPendingItem[] = [];
@@ -176,6 +178,7 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
       colonyId,
       accountId,
       inOrbit,
+      ...(Object.keys(reserved).length > 0 ? { reserved } : {}),
       pending,
       pendingExport,
       pendingImport,
@@ -380,23 +383,26 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
     return `${stem}.${MOCK_ACCOUNT_ROOT}`;
   }
 
+  /** In orbit = cargo account + free verifier balance (W13-16); `reserved` is what open market sell orders lock (shown separately). */
   private async readInOrbitBalances(
     accountId: string,
     seenResources: ReadonlySet<string>,
-  ): Promise<CargoResourceMap> {
+  ): Promise<{ inOrbit: CargoResourceMap; reserved: CargoResourceMap }> {
     const inOrbit: CargoResourceMap = {};
-    if (!this.cargo) return inOrbit;
+    const reserved: CargoResourceMap = {};
+    if (!this.cargo) return { inOrbit, reserved };
+    const market = (await this.freeVerifier?.snapshot(accountId)) ?? {};
 
     await Promise.all(
       RESOURCE_KEYS.map(async (key) => {
         const bal = await this.cargo!.balanceOf({ accountId, tokenId: key });
-        const major = fromCargoBaseUnits(bal);
-        if (major > 0 || seenResources.has(key)) {
-          inOrbit[key] = major;
-        }
+        const m = market[key];
+        const major = fromCargoBaseUnits((BigInt(bal) + (m?.free ?? 0n)).toString());
+        if (major > 0 || seenResources.has(key)) inOrbit[key] = major;
+        if (m && m.reserved > 0n) reserved[key] = fromCargoBaseUnits(m.reserved.toString());
       }),
     );
-    return inOrbit;
+    return { inOrbit, reserved };
   }
 
   private extractOptionalPlayerId(

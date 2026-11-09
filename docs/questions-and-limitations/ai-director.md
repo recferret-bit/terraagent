@@ -129,3 +129,10 @@
 - **Workaround / mitigation:** the `w16` scenario still stores Conservative Resources in the sim (`tests/scenarios/w16-director.ts`). Confirm that with the scenario unit test. The owner steps that need a visible goal, a budget, a rejected raid, or a delayed plan are deferred until the plate is fed from the sim.
 - **To resolve:** add a client-safe director view and call `render` from the feature `update`. Mount the controls only when that command path exists.
 - **Found:** 2026-11-04, W16-27.
+
+## W05 AI switch (2026-11-05)
+
+- **Owner question: should AI off stop idle Worker Drones?** Worker Drone T1 auto-targeting (`systems/harvest`, `goalHarvestWeights`) is not gated; only goal breakdown and the rule-engine autopilot are.
+- **Goals queued by the player sit idle while AI is off**, and the UI does not say so yet.
+- **Existing `hq`/`ai` queue entries are not cancelled** when AI is switched off; they finish.
+- **Spacing is a soft rule** (`siteSpacing.ts`): it falls back to touching sites when no lane site exists; hub and extractor pickers are unchanged; manual placement is not constrained.

@@ -39,6 +39,8 @@ export interface ColonyCargoState extends ColonyCargoCapState {
   pendingImport: Record<string, PendingCargoImport>;
   reservedByFamily: Record<ResourceFamily, number>;
   inOrbit: Partial<Record<ResourceKey, number>>;
+  /** W13 transport service inputs held per operation ref (withdrawn to `sys:transport`); dropped when charged, returned on failure. */
+  transportReserve: Record<string, Partial<Record<ResourceKey, number>>>;
   lastEvent?: ColonyCargoEvent;
 }
 
@@ -83,6 +85,10 @@ export function ensureColonyCargoState(
     }
   }
   raw.reservedByFamily = reservedByFamily;
+
+  if (!raw.transportReserve || typeof raw.transportReserve !== 'object' || Array.isArray(raw.transportReserve)) {
+    raw.transportReserve = {};
+  }
 
   if (!raw.inOrbit || typeof raw.inOrbit !== 'object' || Array.isArray(raw.inOrbit)) {
     raw.inOrbit = {};

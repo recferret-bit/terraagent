@@ -2,8 +2,14 @@
 import type { ParityCase } from './_define';
 import scn_w00_empty from './w00-empty.parity';
 import scn_w03_supply from './w03-supply.parity';
+import scn_w07_first_contact from './w07-first-contact.parity';
+import scn_w11_lobby from './w11-lobby.parity';
+import scn_w13r_logistics from './w13r-logistics.parity';
 
 export const PARITY_CASES: readonly { readonly id: string; readonly def: ParityCase }[] = [
   { id: 'w00-empty', def: scn_w00_empty },
   { id: 'w03-supply', def: scn_w03_supply },
+  { id: 'w07-first-contact', def: scn_w07_first_contact },
+  { id: 'w11-lobby', def: scn_w11_lobby },
+  { id: 'w13r-logistics', def: scn_w13r_logistics },
 ];

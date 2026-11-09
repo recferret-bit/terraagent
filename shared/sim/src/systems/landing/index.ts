@@ -1,3 +1,5 @@
+import { W11_MAX_SMALL_ATLAS_COLONIES } from '@terra/contracts';
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { checkMove, initialCaps, systemActor, treasury, treasuryCtx, type Amounts, type AddRequest } from '../../economy';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
@@ -15,8 +17,10 @@ import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { hqViewRadius, revealVision, spawnHqUnit } from '../hq';
 import { resolveStartingKitRow, rowNum } from '../rows';
+import { stepHqRespawns } from './hqRespawn';
 
 export { resolveStartingKitRow } from '../rows';
+export * from './hqRespawn';
 
 /**
  * Colonies per planet: `grid.explored` is a `u8` bit mask (one bit per colony), so a planet takes 8 colonies (GP-17).
@@ -45,6 +49,8 @@ export interface SpawnColonyLandingOpts {
   color?: number;
   unlockStage?: number;
   slotIndex?: number;
+  sectorId?: string;
+  landingSlotId?: string;
   q?: number;
   r?: number;
   tick?: number;
@@ -125,10 +131,11 @@ export function resolveMinLandingSeparation(data?: CompiledDataLike): number {
  */
 export function checkColonyLanding(
   state: SimState,
-  opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'q' | 'r' | 'data'>,
+  opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'sectorId' | 'landingSlotId' | 'q' | 'r' | 'data'>,
 ): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
   if (!Number.isInteger(opts.colonyId) || opts.colonyId < 0) return { ok: false, code: 'invalid_args' };
-  if (opts.colonyId >= MAX_COLONIES_PER_PLANET) return { ok: false, code: 'planet_full' };
+  const maxColonies = state.blobs.atlas ? W11_MAX_SMALL_ATLAS_COLONIES : MAX_COLONIES_PER_PLANET;
+  if (opts.colonyId >= maxColonies) return { ok: false, code: 'planet_full' };
   // Planets saved before the landing history existed still know their pods.
   if (getLandingPods(state).some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
   // The cargo is credited after the landing changed the world, so it is checked first: a refused cargo lands nothing.
@@ -136,6 +143,8 @@ export function checkColonyLanding(
   const explicit = Number.isInteger(opts.q) && Number.isInteger(opts.r);
   const next = nextLandingSite(state, opts.colonyId, {
     slotIndex: opts.slotIndex,
+    ...(opts.sectorId !== undefined ? { sectorId: opts.sectorId } : {}),
+    ...(opts.landingSlotId !== undefined ? { landingSlotId: opts.landingSlotId } : {}),
     ...(explicit ? { q: opts.q, r: opts.r } : {}),
     data: opts.data,
   });
@@ -190,6 +199,10 @@ export function spawnColonyLanding(
     slot.claimedBy = colonyId;
     setBlob(state, 'spawnSlots', getSpawnSlots(state), tick);
   }
+  const resolvedLandingSlotId = opts.landingSlotId ?? slot?.landingSlotId ?? slot?.slotId;
+  if (typeof resolvedLandingSlotId === 'string') {
+    col.landingSlotId = resolvedLandingSlotId;
+  }
   // Remembered forever: the planner never lands anyone here (or within the separation) again (D-39).
   recordLanding(state, { colony: colonyId, ...(col.id ? { colonyId: col.id } : {}), ...(opts.playerId ? { playerId: opts.playerId } : {}), q, r, tick, ...(slot ? { slot: slot.index } : {}) }, tick);
   ensureStarterHubSpace(state, q, r, colonyId);
@@ -228,6 +241,8 @@ export function spawnColonyLanding(
     deployed: false,
   });
   setBlob(state, 'landingPods', pods, tick);
+  recordAtlasColonyFounding(state, colonyId, slot?.q ?? opts.q ?? q, slot?.r ?? opts.r ?? r, tick);
+  syncAtlasColonySectorState(state, tick);
 
   return { ok: true, podEntityId, q, r };
 }
@@ -275,6 +290,8 @@ interface SpawnColonyCommandArgs {
   color?: number;
   unlockStage?: number;
   slotIndex?: number;
+  sectorId?: string;
+  landingSlotId?: string;
   q?: number;
   r?: number;
 }
@@ -313,6 +330,8 @@ export const spawnColony = defineCommandHandler({
         color: args.color,
         unlockStage: args.unlockStage,
         slotIndex: args.slotIndex,
+        sectorId: args.sectorId,
+        landingSlotId: args.landingSlotId,
         q: args.q,
         r: args.r,
         tick: ctx.tick,
@@ -353,25 +372,27 @@ export const landing = defineSystem({
   wave: 'W01',
   run(state, ctx) {
     const pods = getLandingPods(state);
-    if (pods.length === 0) return;
-    let changed = false;
-    for (const pod of pods) {
-      if (pod.deployed) continue;
-      changed = true;
-      pod.ticksRemaining = Math.max(0, pod.ticksRemaining - ctx.dt);
-      if (pod.ticksRemaining <= 0) {
-        deployPod(state, pod, ctx);
-      } else {
-        const podRow = rowOf(state.entities, pod.podEntityId);
-        if (podRow >= 0) {
-          const progress = Math.fround((pod.totalTicks - pod.ticksRemaining) / pod.totalTicks);
-          setField(state.entities, podRow, 'progress', progress, ctx.tick);
+    if (pods.length > 0) {
+      let changed = false;
+      for (const pod of pods) {
+        if (pod.deployed) continue;
+        changed = true;
+        pod.ticksRemaining = Math.max(0, pod.ticksRemaining - ctx.dt);
+        if (pod.ticksRemaining <= 0) {
+          deployPod(state, pod, ctx);
+        } else {
+          const podRow = rowOf(state.entities, pod.podEntityId);
+          if (podRow >= 0) {
+            const progress = Math.fround((pod.totalTicks - pod.ticksRemaining) / pod.totalTicks);
+            setField(state.entities, podRow, 'progress', progress, ctx.tick);
+          }
         }
       }
+      if (changed) {
+        setBlob(state, 'landingPods', pods, ctx.tick);
+      }
     }
-    if (changed) {
-      setBlob(state, 'landingPods', pods, ctx.tick);
-    }
+    stepHqRespawns(state, ctx);
   },
 });
 

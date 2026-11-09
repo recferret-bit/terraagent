@@ -272,10 +272,10 @@ describe('W08-13 Acceptance Check: Reach S2 and Unlock Reveal Panel', () => {
       'Grid reach, parallel workers, storage, night',
     );
 
-    // Unlock Reveal Panel
+    // Unlock Reveal Panel. S2 no longer lists a drone (the T2 worker is a production tier, not a stage unit id).
+    expect(container.querySelector('[data-testid="stage-unlock-units"]')?.textContent ?? '').toBe('');
     expectToastUnlocks(container, {
-      units: ['Builder'],
-      buildings: ['Pylon', 'Depot', 'Capacitor'],
+      buildings: ['Pylon', 'Depot', 'Capacitor', 'Wind Turbine', 'Water Extractor', 'Petroleum Well', 'Supply Depot'],
       orders: ['Fill', 'Bridge', 'Dismantle'],
     });
 
@@ -310,10 +310,11 @@ describe('W08-13 Stage Transitions & Safety Overrides', () => {
     expect(container.querySelector('[data-testid="stage-toast-override"]')).toBeNull();
 
     expectToastUnlocks(container, {
-      units: ['Harvester'],
-      buildings: ['Metals Extractor', 'Solar Collector', 'Wind Turbine'],
+      units: ['Worker Drone'],
+      buildings: ['Metals Extractor', 'Solar Collector'],
       orders: ['Harvest'],
     });
+    expect(container.querySelector('[data-testid="stage-unlock-buildings"]')?.textContent ?? '').not.toContain('Wind');
 
     mounted.dispose();
   });
@@ -340,7 +341,7 @@ describe('W08-13 Stage Transitions & Safety Overrides', () => {
 
     expectToastUnlocks(container, {
       units: ['Scout', 'Guard'],
-      buildings: ['Robotics Factory', 'Turret'],
+      buildings: ['Robotics Factory', 'Turret', 'Thermal Plant'],
       orders: ['Patrol', 'Hold', 'Guard'],
     });
 
@@ -431,9 +432,9 @@ describe('W08-13 Transport stageReached Event & Direct API', () => {
     expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S2 The Grid');
     expectToastUnlocks(container, {
-      units: ['Builder'],
       buildings: ['Pylon'],
     });
+    expect(container.querySelector('[data-testid="stage-unlock-units"]')?.textContent ?? '').toBe('');
 
     mounted.dispose();
   });
@@ -452,7 +453,7 @@ describe('W08-13 Transport stageReached Event & Direct API', () => {
   });
 
   it('formatItemLabel and formatItemList format and deduplicate labels properly', () => {
-    expect(formatItemLabel('builder')).toBe('Builder');
+    expect(formatItemLabel('worker_t2')).toBe('Worker Drone T2');
     expect(formatItemLabel('metalsExtractor')).toBe('Metals Extractor');
     expect(formatItemLabel('solar')).toBe('Solar Collector');
     expect(formatItemLabel('wind')).toBe('Wind Turbine');

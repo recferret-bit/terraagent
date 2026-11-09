@@ -12,10 +12,35 @@ import {
 } from '@terra/sim';
 import { forEachEntity, type EntityRow } from '../../store/replica/viewCodec';
 import { viewColony } from '../shared/colony';
-import { hqJobFromStateCode, type HqStatusView } from '../shared/hqView';
 import type { SelectedEntityView } from './selection';
+import {
+  BLDG_META,
+  COMBAT_KIND_CODES,
+  COMBAT_UNIT_META,
+  KIND_BY_NAME,
+  STATE_BY_NAME,
+  isArmyCombatUnitKind,
+  isFaunaOrHiveKind,
+  isHiveKind,
+  isSelectableCombatUnitKind,
+  normalizeKindCode,
+  normalizeStateCode,
+} from './selectionMeta';
 
-export { depositStageFromRichness };
+export {
+  BLDG_META,
+  COMBAT_KIND_CODES,
+  COMBAT_UNIT_META,
+  KIND_BY_NAME,
+  STATE_BY_NAME,
+  depositStageFromRichness,
+  isArmyCombatUnitKind,
+  isFaunaOrHiveKind,
+  isHiveKind,
+  isSelectableCombatUnitKind,
+  normalizeKindCode,
+  normalizeStateCode,
+};
 
 export interface SelectedDepositView {
   q: number;
@@ -27,52 +52,6 @@ export interface SelectedDepositView {
   remaining: number; // 0..500 units
   maxUnits: number; // 500
   stage: 'full' | 'half' | 'depleted';
-}
-
-const KIND_BY_NAME: Record<string, number> = {
-  hq: ENTITY_KIND.hq,
-  harvester: ENTITY_KIND.harvester,
-  builder: ENTITY_KIND.builder,
-  commandHub: ENTITY_KIND.commandHub,
-  metalsExtractor: ENTITY_KIND.metalsExtractor,
-  solar: ENTITY_KIND.solar,
-  solarArray: ENTITY_KIND.solar,
-  tradeHub: ENTITY_KIND.tradeHub,
-  pod: ENTITY_KIND.pod,
-  devProbe: ENTITY_KIND.devProbe,
-  pylon: ENTITY_KIND.pylon,
-  capacitor: ENTITY_KIND.capacitor,
-  wind: ENTITY_KIND.wind,
-  thermal: ENTITY_KIND.thermal,
-  supplyDepot: ENTITY_KIND.supplyDepot,
-  mineralsQuarry: ENTITY_KIND.mineralsQuarry,
-  waterExtractor: ENTITY_KIND.waterExtractor,
-  petroleumWell: ENTITY_KIND.petroleumWell,
-};
-
-const STATE_BY_NAME: Record<string, number> = {
-  idle: ENTITY_STATE.idle,
-  moving: ENTITY_STATE.moving,
-  working: ENTITY_STATE.working,
-  constructing: ENTITY_STATE.constructing,
-  harvesting: ENTITY_STATE.harvesting,
-  waiting: ENTITY_STATE.waiting,
-  repairing: ENTITY_STATE.repairing,
-  offlineNoFuel: ENTITY_STATE.offlineNoFuel,
-  offlineNoGrid: ENTITY_STATE.offlineNoGrid,
-  offlineOverload: ENTITY_STATE.offlineOverload,
-};
-
-export function normalizeKindCode(k: unknown): number {
-  if (typeof k === 'number' && Number.isFinite(k)) return k;
-  if (typeof k === 'string') return KIND_BY_NAME[k] ?? 0;
-  return 0;
-}
-
-export function normalizeStateCode(s: unknown): number {
-  if (typeof s === 'number' && Number.isFinite(s)) return s;
-  if (typeof s === 'string') return STATE_BY_NAME[s] ?? ENTITY_STATE.idle;
-  return ENTITY_STATE.idle;
 }
 
 function clampOpenProgress(p: unknown): number | null {
@@ -90,9 +69,16 @@ function taskProgressFromEntry(t: Record<string, unknown> | null | undefined): n
   return null;
 }
 
-function lookupHarvesterOrUnitProgress(rawView: Record<string, unknown>, id: number): number | null {
+function workerLists(rawView: Record<string, unknown>): unknown[] {
+  const lists: unknown[] = [rawView.workers];
+  const colonies = rawView.colonies;
+  if (Array.isArray(colonies)) for (const c of colonies) if (c && typeof c === 'object') lists.push((c as { workers?: unknown }).workers);
+  return lists;
+}
+
+function lookupWorkerOrUnitProgress(rawView: Record<string, unknown>, id: number): number | null {
   const key = String(id);
-  const harvs = rawView.harvesters as Record<string, unknown> | unknown[] | undefined;
+  const harvs = workerLists(rawView).find((list) => list) as Record<string, unknown> | unknown[] | undefined;
   if (Array.isArray(harvs)) {
     const h = harvs.find((x) => x && typeof x === 'object' && ((x as { id?: number }).id === id || (x as { entityId?: number }).entityId === id)) as Record<string, unknown> | undefined;
     const p = taskProgressFromEntry(h);
@@ -169,6 +155,22 @@ function resolveWorkerQueueOrTerraformProgress(
   return nearBldgProg;
 }
 
+function resolveHubActivityProgress(v: Record<string, unknown>, col: Record<string, unknown> | undefined): number {
+  const hubActive = (v.hubQueue as { active?: Record<string, unknown> } | undefined)?.active;
+  const hp = taskProgressFromEntry(hubActive);
+  if (hp !== null) return hp;
+  const blobs = v.blobs as Record<string, unknown> | undefined;
+  const uQueue = (col?.unitQueue ?? col?.queue ?? blobs?.queue) as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(uQueue)) return 0;
+  for (const t of uQueue) {
+    if ((t.lane === 'units' || !t.lane) && (t.state === 'in_progress' || t.status === 'active')) {
+      const p = taskProgressFromEntry(t);
+      if (p !== null) return p;
+    }
+  }
+  return 0;
+}
+
 export function resolveEntityActivityProgress(
   e: { id: number; kind: number | string; q: number; r: number; x: number; y: number; state?: number; progress?: number; owner?: number },
   rawView: unknown,
@@ -178,29 +180,15 @@ export function resolveEntityActivityProgress(
   if (!rawView || typeof rawView !== 'object') return 0;
   const v = rawView as Record<string, unknown>;
   const kind = normalizeKindCode(e.kind);
-  const unitProg = lookupHarvesterOrUnitProgress(v, e.id);
+  const unitProg = lookupWorkerOrUnitProgress(v, e.id);
   if (unitProg !== null) return unitProg;
 
   const col = viewColony(v, e.owner ?? 0) as Record<string, unknown> | undefined;
-  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder) {
+  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.worker) {
     const wp = resolveWorkerQueueOrTerraformProgress(e, v, col);
     if (wp !== null) return wp;
   }
-  if (kind === ENTITY_KIND.commandHub) {
-    const hubActive = (v.hubQueue as { active?: Record<string, unknown> } | undefined)?.active;
-    const hp = taskProgressFromEntry(hubActive);
-    if (hp !== null) return hp;
-    const blobs = v.blobs as Record<string, unknown> | undefined;
-    const uQueue = (col?.unitQueue ?? col?.queue ?? blobs?.queue) as Array<Record<string, unknown>> | undefined;
-    if (Array.isArray(uQueue)) {
-      for (const t of uQueue) {
-        if ((t.lane === 'units' || !t.lane) && (t.state === 'in_progress' || t.status === 'active')) {
-          const p = taskProgressFromEntry(t);
-          if (p !== null) return p;
-        }
-      }
-    }
-  }
+  if (kind === ENTITY_KIND.commandHub) return resolveHubActivityProgress(v, col);
   return 0;
 }
 
@@ -297,7 +285,7 @@ export function buildSupplementalUnitMap(rawView: Record<string, unknown>): Map<
     const byId = (units.byId && typeof units.byId === 'object' ? units.byId : units) as Record<string, unknown>;
     for (const [k, u] of Object.entries(byId)) mergeRec(k, u);
   }
-  const harvs = rawView.harvesters as Record<string, unknown> | unknown[] | undefined;
+  const harvs = workerLists(rawView).find((list) => list) as Record<string, unknown> | unknown[] | undefined;
   if (Array.isArray(harvs)) {
     for (const h of harvs) mergeRec(undefined, h);
   } else if (harvs && typeof harvs === 'object') {
@@ -311,7 +299,7 @@ export function normalizeEntityRowWithSupplements(
   sup: Record<string, unknown> | undefined,
 ): EntityRow {
   const id = Number(raw.id ?? raw.entityId ?? sup?.id ?? 0);
-  const kind = normalizeKindCode(raw.kind) || normalizeKindCode(sup?.kind) || ENTITY_KIND.harvester;
+  const kind = normalizeKindCode(raw.kind) || normalizeKindCode(sup?.kind) || ENTITY_KIND.worker;
   const rx = raw.x ?? raw.q ?? sup?.x ?? sup?.q ?? 0;
   const ry = raw.y ?? raw.r ?? sup?.y ?? sup?.r ?? 0;
   const x = Number.isFinite(Number(rx)) ? Number(rx) : 0;
@@ -320,12 +308,20 @@ export function normalizeEntityRowWithSupplements(
   const r = Number.isFinite(Number(raw.r)) ? Number(raw.r) : (Number.isFinite(Number(sup?.r)) ? Number(sup?.r) : Math.round(y));
   const state = raw.state !== undefined ? normalizeStateCode(raw.state) : normalizeStateCode(sup?.state);
   const progress = clampOpenProgress(raw.progress) ?? clampOpenProgress(sup?.progress) ?? Number(raw.progress ?? sup?.progress ?? 0);
-  const hpMax = Number(raw.hpMax ?? sup?.hpMax ?? (kind === ENTITY_KIND.hq ? 900 : 160));
-  const hp = Number(raw.hp ?? sup?.hp ?? hpMax);
+  const defaultHpMax =
+    kind === ENTITY_KIND.hq
+      ? 900
+      : (COMBAT_UNIT_META[kind]?.hpMax ?? BLDG_META[kind]?.hpMax ?? ( isHiveKind(kind) ? 1500 : 160 ));
+  const rawHpMax = Number(raw.hpMax ?? sup?.hpMax ?? 0);
+  const hpMax = rawHpMax > 0 ? rawHpMax : defaultHpMax;
+  const rawHp = raw.hp ?? sup?.hp;
+  const hp = rawHp !== undefined && Number.isFinite(Number(rawHp)) ? Number(rawHp) : hpMax;
+  const rawOwner = raw.owner ?? sup?.owner;
+  const owner = rawOwner !== undefined && Number.isFinite(Number(rawOwner)) ? Number(rawOwner) : (isFaunaOrHiveKind(kind) ? -1 : 0);
   return {
     id,
     kind,
-    owner: Number(raw.owner ?? sup?.owner ?? 0),
+    owner,
     q,
     r,
     x,
@@ -335,153 +331,15 @@ export function normalizeEntityRowWithSupplements(
     hpMax,
     state,
     progress,
+    tier: Number(raw.tier ?? sup?.tier ?? 0) || 0,
   };
 }
 
-/**
- * Whether unit `id` is doing terraform work in `rawView`: a `terraform` unit command (current or shift-queued, from
- * `blobs.units`) or an open work/dismantle job (`blobs.workJobs`) it carries out. Orders in `blobs.terraformTasks` are
- * only the colony queue; the unit's own command is what ties an order to it.
- */
-export function unitHasTerraformJob(rawView: unknown, id: number): boolean {
-  const blobs = (rawView as { blobs?: Record<string, unknown> } | null)?.blobs;
-  const rec = (blobs?.units as { byId?: Record<string, { current?: { kind?: string } | null; queue?: { kind?: string }[] }> } | undefined)?.byId?.[String(id)];
-  if (rec?.current?.kind === 'terraform' || (Array.isArray(rec?.queue) && rec.queue.some((c) => c?.kind === 'terraform'))) return true;
-  const jobs = (blobs?.workJobs as { byId?: Record<string, { workerEntityId?: number }> } | undefined)?.byId;
-  return jobs ? Object.values(jobs).some((j) => j?.workerEntityId === id) : false;
-}
-
-export function enrichHqSelectedView(hq: HqStatusView, rawView: unknown): SelectedEntityView {
-  const progress = resolveEntityActivityProgress(
-    { id: hq.entityId, kind: ENTITY_KIND.hq, q: hq.q, r: hq.r, x: hq.x, y: hq.y, owner: hq.owner },
-    rawView,
-  );
-  return {
-    entityId: hq.entityId,
-    kind: ENTITY_KIND.hq,
-    kindLabel: `HQ T${hq.tier} · COMMANDER DRONE`,
-    shortCode: 'HQ',
-    isUnit: true,
-    isMovable: true,
-    tier: hq.tier,
-    q: hq.q,
-    r: hq.r,
-    x: hq.x,
-    y: hq.y,
-    hp: hq.hp,
-    hpMax: hq.hpMax,
-    cell: hq.cell,
-    cellMax: hq.cellMax,
-    currentJob: hq.currentJob,
-    queueCount: hq.queueCount,
-    progress,
-    terraformJob: unitHasTerraformJob(rawView, hq.entityId),
-  };
-}
-
-const BLDG_META: Record<number, { label: string; code: string; w: number; d: number; hpMax: number }> = {
-  [ENTITY_KIND.tradeHub]: { label: 'TRADE HUB', code: 'TRD', w: 2, d: 2, hpMax: 900 },
-  [ENTITY_KIND.commandHub]: { label: 'COMMAND HUB', code: 'HUB', w: 3, d: 3, hpMax: 1500 },
-  [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
-  [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
-  [ENTITY_KIND.pod]: { label: 'DROP POD', code: 'POD', w: 1, d: 1, hpMax: 600 },
-  [ENTITY_KIND.pylon]: { label: 'POWER PYLON', code: 'PYL', w: 1, d: 1, hpMax: 200 },
-  [ENTITY_KIND.capacitor]: { label: 'CAPACITOR BANK', code: 'CAP', w: 2, d: 2, hpMax: 350 },
-  [ENTITY_KIND.wind]: { label: 'WIND TURBINE', code: 'WND', w: 2, d: 2, hpMax: 280 },
-  [ENTITY_KIND.thermal]: { label: 'THERMAL PLANT', code: 'THM', w: 2, d: 2, hpMax: 550 },
-  [ENTITY_KIND.supplyDepot]: { label: 'SUPPLY DEPOT', code: 'DEP', w: 2, d: 2, hpMax: 600 },
-  [ENTITY_KIND.mineralsQuarry]: { label: 'MINERALS QUARRY', code: 'QRY', w: 2, d: 2, hpMax: 500 },
-  [ENTITY_KIND.waterExtractor]: { label: 'WATER EXTRACTOR', code: 'H2O', w: 2, d: 2, hpMax: 420 },
-  [ENTITY_KIND.petroleumWell]: { label: 'PETROLEUM WELL', code: 'OIL', w: 2, d: 2, hpMax: 550 },
-};
-
-export function buildSelectedEntityFromRow(
-  e: EntityRow,
-  rawView: unknown,
-  offlineReasons: Record<number, string>,
-  unitsById: Record<string, { current?: unknown; queue?: unknown[] }>,
-): SelectedEntityView | null {
-  if (e.hp <= 0 || e.state === ENTITY_STATE.descending || (e.kind === ENTITY_KIND.tradeHub && e.state === ENTITY_STATE.inert)) return null;
-  const progress = resolveEntityActivityProgress(e, rawView);
-  if (e.kind === ENTITY_KIND.harvester || e.kind === ENTITY_KIND.builder) {
-    const isBuilder = e.kind === ENTITY_KIND.builder;
-    const job =
-      e.state === ENTITY_STATE.moving ? 'moving'
-      : e.state === ENTITY_STATE.harvesting ? 'harvesting'
-      : e.state === ENTITY_STATE.repairing ? 'repairing'
-      : e.state === ENTITY_STATE.constructing ? 'constructing'
-      : e.state === ENTITY_STATE.working ? 'working'
-      : e.state === ENTITY_STATE.offlineBrownout ? 'offline: brownout'
-      : progress > 0 && progress < 1 ? (isBuilder ? 'working' : 'harvesting')
-      : 'idle';
-    const uRec = unitsById[String(e.id)];
-    const queueCount = uRec ? (uRec.current ? 1 : 0) + (Array.isArray(uRec.queue) ? uRec.queue.length : 0) : (job === 'idle' ? 0 : 1);
-    return {
-      entityId: e.id, kind: e.kind,
-      kindLabel: isBuilder ? 'BUILDER DRONE' : 'HARVESTER DRONE',
-      shortCode: isBuilder ? 'BLD' : 'HRV',
-      isUnit: true, isMovable: true, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
-      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : (isBuilder ? 150 : 160), currentJob: job, queueCount,
-      state: e.state, progress, terraformJob: unitHasTerraformJob(rawView, e.id),
-    };
-  }
-  if (e.kind === ENTITY_KIND.devProbe) {
-    const job = hqJobFromStateCode(e.state);
-    return {
-      entityId: e.id, kind: e.kind, kindLabel: 'PROBE DRONE', shortCode: 'PRB',
-      isUnit: true, isMovable: true, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
-      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : 100, currentJob: job, queueCount: job === 'idle' ? 0 : 1,
-      state: e.state, progress,
-    };
-  }
-  const b = BLDG_META[e.kind];
-  if (!b) return null;
-  const reason = offlineReasons[e.id];
-  const dismantle = dismantleJobOf(rawView, e.id);
-  if (dismantle) {
-    // Coming down (owner feedback W03 #6): a site again, its progress is the dismantle job's (0 → 100 %).
-    return {
-      entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
-      isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
-      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: 'dismantling', queueCount: 1,
-      footprintW: b.w, footprintD: b.d, state: e.state, progress: Math.max(0.001, Math.min(0.999, dismantle.progress)),
-    };
-  }
-  const job = reason
-    ? reason
-    : e.state === ENTITY_STATE.constructing ? 'constructing'
-    : e.state === ENTITY_STATE.waiting ? 'waiting'
-    : e.state === ENTITY_STATE.offlineBrownout ? 'offline: brownout'
-    : e.state === ENTITY_STATE.offlineUnpowered ? 'offline: unpowered'
-    : e.state === ENTITY_STATE.offlineCapped ? 'offline: capped'
-    : e.state === ENTITY_STATE.offlineNoFuel ? 'offline: no fuel'
-    : e.state === ENTITY_STATE.offlineNoGrid ? 'offline: no grid'
-    : e.state === ENTITY_STATE.offlineOverload ? 'offline: overload'
-    : e.kind === ENTITY_KIND.pod ? 'landed'
-    : progress > 0 && progress < 1 ? 'working' : 'online';
-  const queueCount = progress > 0 && progress < 1 ? 1 : 0;
-  return {
-    entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
-    isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
-    hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: job, queueCount,
-    footprintW: b.w, footprintD: b.d, state: e.state, progress,
-  };
-}
-
-/** The open dismantle job (`blobs.workJobs`, mode `dismantle`, not a helper record) of building `entityId`, if any. */
-export function dismantleJobOf(rawView: unknown, entityId: number): { progress: number } | null {
-  const byId = ((rawView as { blobs?: Record<string, unknown> } | null)?.blobs?.workJobs as
-    { byId?: Record<string, { mode?: string; targetEntityId?: number; helpOf?: string; progress?: number }> } | undefined)?.byId;
-  if (!byId) return null;
-  for (const j of Object.values(byId)) {
-    if (j?.mode === 'dismantle' && j.targetEntityId === entityId && j.helpOf === undefined) return { progress: Number(j.progress) || 0 };
-  }
-  return null;
-}
-
-/** Colony `owner`'s Units-lane entry CANCEL JOB on the Command Hub ends: the running one, else the next queued; null if none. */
-export function hubUnitsLaneTaskId(rawView: unknown, owner: number): string | null {
-  const queue = (viewColony(rawView, owner) as { queue?: Array<{ taskId?: string; lane?: string; state?: string }> } | undefined)?.queue;
-  const lane = (queue ?? []).filter((t) => t.lane === 'units' && typeof t.taskId === 'string');
-  return (lane.find((t) => t.state === 'in_progress') ?? lane[0])?.taskId ?? null;
-}
+export {
+  baseHqSelectedView,
+  buildSelectedEntityFromRow,
+  dismantleJobOf,
+  enrichHqSelectedView,
+  hubUnitsLaneTaskId,
+  unitHasTerraformJob,
+} from './parts/selectionEntityBuilder';

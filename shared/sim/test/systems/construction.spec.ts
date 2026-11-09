@@ -23,6 +23,7 @@ import {
   step,
   TERRAIN,
 } from '../../src';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-09 Generic T1 construction & demolish refund', () => {
   it('build a Solar (18 s -> 12 s at HQ 1.5x), then demolish -> 50% cost refunded and footprint stays prepared', () => {
@@ -67,24 +68,24 @@ describe('W02-09 Generic T1 construction & demolish refund', () => {
     if (!started.ok) throw new Error('expected ok');
 
     // Cost is deducted progressively across construction ticks (not 100% upfront at tick 0)
-    expect(colony.stock['metals.t1']).toBe(60);
-    expect(colony.stock['minerals.t1']).toBe(75);
-    expect(colony.stock['bio.biomass']).toBe(10);
-    expect(colony.stock['bio.water']).toBe(5);
+    expect(resourceValue(colony, 'metals.t1')).toBe(60);
+    expect(resourceValue(colony, 'minerals.t1')).toBe(75);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(10);
+    expect(resourceValue(colony, 'bio.water')).toBe(5);
 
     // Step 59 ticks (11.8s) -> still constructing, ~59/60 of cost paid progressively
     step(state, [], 59, pipeline);
     expect(state.entities.cols.state[1]).toBe(ENTITY_STATE.constructing);
-    expect(colony.stock['metals.t1']).toBeCloseTo(1, 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(1, 4);
 
     // Step 1 more tick (total 60 ticks = 12.0s) -> completed and 100% of cost deducted!
     const doneStep = step(state, [], 1, pipeline);
     expect(state.entities.cols.state[1]).toBe(ENTITY_STATE.active);
     expect(doneStep.events.some((e) => e.kind === 'buildingCompleted')).toBe(true);
-    expect(colony.stock['metals.t1']).toBe(0);
-    expect(colony.stock['minerals.t1']).toBe(0);
-    expect(colony.stock['bio.biomass']).toBe(0);
-    expect(colony.stock['bio.water']).toBe(0);
+    expect(resourceValue(colony, 'metals.t1')).toBe(0);
+    expect(resourceValue(colony, 'minerals.t1')).toBe(0);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(0);
+    expect(resourceValue(colony, 'bio.water')).toBe(0);
 
     // Demolish via command -> 50% cost refunded (30 / 37.5 / 5 / 2.5) and footprint stays prepared
     const demStep = step(
@@ -94,10 +95,10 @@ describe('W02-09 Generic T1 construction & demolish refund', () => {
       pipeline,
     );
     expect(demStep.outcomes[0].code).toBeUndefined();
-    expect(colony.stock['metals.t1']).toBe(30);
-    expect(colony.stock['minerals.t1']).toBe(37.5);
-    expect(colony.stock['bio.biomass']).toBe(5);
-    expect(colony.stock['bio.water']).toBe(2.5);
+    expect(resourceValue(colony, 'metals.t1')).toBe(30);
+    expect(resourceValue(colony, 'minerals.t1')).toBe(37.5);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(5);
+    expect(resourceValue(colony, 'bio.water')).toBe(2.5);
 
     const fp = getFootprintTileIndices(state, 2, 1, 2, 2);
     for (const tileIdx of fp.indices) {
@@ -159,7 +160,7 @@ describe('W01/W02 construction coexistence & GP-11 cap preservation', () => {
 });
 
 describe('W02 building footprints, unit collision & perimeter spawn', () => {
-  it('centers 3x3 Command Hub footprints on (q, r), blocks HQ and Harvester movement onto buildings, and evacuates units under new footprints', () => {
+  it('centers 3x3 Command Hub footprints on (q, r), blocks HQ and Worker movement onto buildings, and evacuates units under new footprints', () => {
     const state = createState({ planetId: 'p-fp', planetType: 'temperate', seed: 'w02-fp', radius: 12 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -209,10 +210,10 @@ describe('W02 building footprints, unit collision & perimeter spawn', () => {
     });
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
-    // Queue and produce a Harvester via enqueueTask -> spawns at Hub perimeter (not (0, 0))
+    // Queue and produce a Worker via enqueueTask -> spawns at Hub perimeter (not (0, 0))
     step(
       state,
-      [{ commandId: 'q-hrv', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask', args: { task: { kind: 'buildUnit', unit: 'harvester' } } }],
+      [{ commandId: 'q-hrv', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask', args: { task: { kind: 'buildUnit', unit: 'worker' } } }],
       55,
       pipeline,
     );
@@ -220,7 +221,7 @@ describe('W02 building footprints, unit collision & perimeter spawn', () => {
     let hrvQ = 0;
     let hrvR = 0;
     for (let r = 0; r < state.entities.count; r++) {
-      if (state.entities.cols.kind[r] === ENTITY_KIND.harvester) {
+      if (state.entities.cols.kind[r] === ENTITY_KIND.worker) {
         hrvId = state.entities.cols.id[r];
         hrvQ = state.entities.cols.q[r];
         hrvR = state.entities.cols.r[r];
@@ -229,7 +230,7 @@ describe('W02 building footprints, unit collision & perimeter spawn', () => {
     expect(hrvId).toBeGreaterThan(0);
     expect(Math.max(Math.abs(hrvQ), Math.abs(hrvR))).toBeGreaterThanOrEqual(2);
 
-    // Both HQ and Harvester reject moveUnit into Command Hub (0, 0) or Solar (3, 0) with site_blocked
+    // Both HQ and Worker reject moveUnit into Command Hub (0, 0) or Solar (3, 0) with site_blocked
     const moveRes = step(
       state,
       [

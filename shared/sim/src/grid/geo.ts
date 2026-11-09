@@ -28,26 +28,55 @@ export function isGroundMoveBlocked(terrain: number, deposit: number): boolean {
 /** Max height difference (m) inside one building footprint: Grade prepares a tile, it does not move dunes (Level is W05). */
 export const MAX_FOOTPRINT_SPREAD_M = 0.6;
 
-/** Ground is ready for a foundation (Prepared or Living). */
+/** Ground is ready for a foundation (Prepared, Irrigated, or Living; placing a building reverts Irrigated/Living to Prepared). */
 export function isPreparedGround(prep: number): boolean {
-  return prep === PREP.prepared || prep === PREP.living;
+  return prep === PREP.prepared || prep === PREP.irrigated || prep === PREP.living;
 }
 
 /** How a building treats resource deposits on its footprint. */
 export type DepositRule = 'forbid' | 'require' | 'any';
 
+export interface GeoBuildOptions {
+  /** W05-09 (re-opening D-37): when true, trees, rock, slopes, holes and shallow water are linked-prep-able rather than blocking. */
+  linkedPrep?: boolean;
+  /** Whether the colony has a T2+ worker that can execute `deepReclaim` during linked prep. */
+  canDeepReclaim?: boolean;
+}
+
 /**
- * Terrain check for one footprint tile: `null` when a building may stand here (after at most a Grade), otherwise the
- * blocking cause. Trees and rock must be terraformed away by the player first; water, slopes and holes need later ops.
+ * Terrain check for one footprint tile: `null` when a building may stand here (after linked prep), otherwise the
+ * blocking cause. In W01..W04 (`!opts?.linkedPrep`), trees, rock, water, slopes and holes block until terraformed
+ * first; in W05 (`opts?.linkedPrep`), they are converted to Flat + Prepared by the building's linked prep order.
  */
-export function geoBuildBlock(terrain: number, prep: number, deposit: number, depositRule: DepositRule): GeoBlock | null {
+export function geoBuildBlock(
+  terrain: number,
+  prep: number,
+  deposit: number,
+  depositRule: DepositRule,
+  opts?: GeoBuildOptions,
+): GeoBlock | null {
   if (prep === PREP.ridge || prep === PREP.moat) return 'ridge';
-  if (terrain === TERRAIN.deep || terrain === TERRAIN.shallow) return 'water';
-  if (terrain === TERRAIN.forest) return 'trees';
-  if (terrain === TERRAIN.rock) return 'rock';
-  if (terrain === TERRAIN.slope) return 'slope';
-  if (terrain === TERRAIN.hole) return 'hole';
-  if (terrain !== TERRAIN.flat) return 'slope';
+  if (!opts?.linkedPrep) {
+    if (terrain === TERRAIN.deep || terrain === TERRAIN.shallow) return 'water';
+    if (terrain === TERRAIN.forest) return 'trees';
+    if (terrain === TERRAIN.rock) return 'rock';
+    if (terrain === TERRAIN.slope) return 'slope';
+    if (terrain === TERRAIN.hole) return 'hole';
+    if (terrain !== TERRAIN.flat) return 'slope';
+  } else {
+    if (terrain === TERRAIN.deep && !opts.canDeepReclaim) return 'water';
+    if (
+      terrain !== TERRAIN.flat &&
+      terrain !== TERRAIN.forest &&
+      terrain !== TERRAIN.rock &&
+      terrain !== TERRAIN.slope &&
+      terrain !== TERRAIN.hole &&
+      terrain !== TERRAIN.shallow &&
+      terrain !== TERRAIN.deep
+    ) {
+      return 'slope';
+    }
+  }
   const hasDeposit = deposit !== DEPOSIT.none;
   if (depositRule === 'forbid' && hasDeposit) return 'deposit';
   if (depositRule === 'require' && !hasDeposit) return 'noDeposit';

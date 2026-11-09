@@ -1,3 +1,4 @@
+import { globalTileToSector } from '../atlas/partition';
 import type { CompiledDataLike } from '../kernel/config';
 import type { Grid, PlanetState } from '../kernel/state';
 import { HEX_DIRS, hexDistance, hexIndex, type HexIndex } from './hex';
@@ -280,13 +281,34 @@ export function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoo
   const goalIdx = valid ? idx.indexOf(to.q, to.r) : -1;
   const band = opts?.band && opts.band.maxDist > 0 ? { minDist: Math.max(0, opts.band.minDist), maxDist: opts.band.maxDist } : null;
   const { layers, count } = resolveTileLayers(grid);
+  const rawAtlas = 'blobs' in grid ? ((grid as PlanetState).blobs?.atlas as { value?: unknown } | undefined) : undefined;
+  const atlas = (rawAtlas && typeof rawAtlas === 'object' && 'value' in rawAtlas ? rawAtlas.value : rawAtlas) as
+    | { sectorRadius?: number }
+    | undefined;
+  const sectorRadius = typeof atlas?.sectorRadius === 'number' && atlas.sectorRadius > 0 ? atlas.sectorRadius : 0;
+  const startSectorId = sectorRadius > 0 && startIdx >= 0 ? globalTileToSector(from.q, from.r, sectorRadius).sectorId : null;
+  const crossSecBlocked =
+    startSectorId !== null
+      ? (i: number) => i >= 0 && i < idx.count && globalTileToSector(idx.q[i]!, idx.r[i]!, sectorRadius).sectorId !== startSectorId
+      : null;
+  const baseGoalBlocked = opts?.goalBlocked ?? opts?.blocked;
+  const effectiveBlocked = crossSecBlocked
+    ? opts?.blocked
+      ? (i: number) => crossSecBlocked(i) || opts.blocked!(i)
+      : crossSecBlocked
+    : opts?.blocked;
+  const effectiveGoalBlocked = crossSecBlocked
+    ? baseGoalBlocked
+      ? (i: number) => crossSecBlocked(i) || baseGoalBlocked(i)
+      : crossSecBlocked
+    : baseGoalBlocked;
 
   const s: AStarSearchState = {
     grid,
     idx,
     data: opts?.data,
-    blocked: opts?.blocked,
-    goalBlocked: opts?.goalBlocked ?? opts?.blocked,
+    blocked: effectiveBlocked,
+    goalBlocked: effectiveGoalBlocked,
     layers,
     count,
     costs: stepCostTable(opts?.data),
@@ -312,7 +334,7 @@ export function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoo
 
   const fail: HexPathResult = { ok: false, path: [], expansions: 0, totalCostBp: 0 };
   if (startIdx < 0 || goalIdx < 0 || !isGroundPassable(grid, startIdx, opts?.data)) return finish(s, fail);
-  if (!band && (!isGroundPassable(grid, goalIdx, opts?.data) || (opts?.blocked?.(goalIdx) ?? false))) return finish(s, fail);
+  if (!band && (!isGroundPassable(grid, goalIdx, opts?.data) || (effectiveBlocked?.(goalIdx) ?? false))) return finish(s, fail);
   if (isGoalTile(s, startIdx)) {
     return finish(s, { ok: true, path: [{ q: from.q, r: from.r }], expansions: 0, totalCostBp: 0 });
   }

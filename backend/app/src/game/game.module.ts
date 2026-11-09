@@ -14,6 +14,11 @@ import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
+import { EconomyActivationService } from '../economy/activation/activation.service';
+import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-activation-bridge';
+import { ProfileSwapper } from './profile-swap';
+import { EconomyModule } from '../economy/economy.module';
+import { EconomyProfileService } from '../economy/profile/profile.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
@@ -23,6 +28,7 @@ import { gameLandingHost } from './home-landing-host';
 import { DevLedgerController } from './ledger/dev-ledger.controller';
 import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
 import { LedgerStorePort } from './ledger/ledger-store.port';
+import { EconomyTelemetry } from '../economy/telemetry/economy-telemetry';
 import { PlanetLedgerService } from './ledger/planet-ledger.service';
 import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
 import { persistenceEnabled } from '../core/persistence';
@@ -58,21 +64,38 @@ export const env = defineEnv('game', {
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
+  imports: [EconomyModule],
   controllers: [DevPlanetsController, DevLedgerController],
   providers: [
     {
       provide: POOL,
+      inject: [APP_ENV, FlagsService, EconomyProfileService, STATIC_OVERRIDES],
+      useFactory: async (e: AppEnv, f: FlagsService, economy: EconomyProfileService, staticOverrides: BalanceOverrides) => {
+        // Pinned economy profile (D-44): the active global version is read ONCE here and compiled into plain overrides; the
+        // file overrides (TA_BALANCE_OVERRIDES) and the env time settings layer on top. Sim threads never touch the DB.
+        const profile = await economy.bootOverrides();
+        return new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list, deltaHz: Number(e.DELTA_HZ), overrides: mergeOverrides(profile, staticOverrides) });
+      },
+    },
+    {
+      provide: STATIC_OVERRIDES,
       inject: [APP_ENV, FlagsService],
-      useFactory: (e: AppEnv, f: FlagsService) => {
-        const base = loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list);
+      useFactory: (e: AppEnv, f: FlagsService): BalanceOverrides => {
+        const file = loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list);
         const realHoursPerDay = e.PLANET_DAY_HOURS as number | undefined;
         const timeScale = e.PLANET_TIME_SCALE as number | undefined;
         const envTime: BalanceOverrides =
           realHoursPerDay !== undefined || timeScale !== undefined
             ? { time: { cycle: { ...(realHoursPerDay !== undefined ? { realHoursPerDay } : {}), ...(timeScale !== undefined ? { timeScale } : {}) } } }
             : {};
-        return new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list, deltaHz: Number(e.DELTA_HZ), overrides: mergeOverrides(base, envTime) });
+        return mergeOverrides(file, envTime);
       },
+    },
+    { provide: SWAPPER, inject: [POOL], useFactory: (pool: SimThreadPool) => new ProfileSwapper(pool) },
+    {
+      provide: EconomyActivationBridge,
+      inject: [EconomyProfileService, EconomyActivationService, SWAPPER, STATIC_OVERRIDES],
+      useFactory: (p: EconomyProfileService, a: EconomyActivationService, sw: ProfileSwapper, st: BalanceOverrides) => new EconomyActivationBridge(p, a, sw, st),
     },
     { provide: GamePlanets, inject: [POOL, APP_ENV], useFactory: (pool: SimThreadPool, e: AppEnv) => new GamePlanets(pool, Number(e.DELTA_HZ)) },
     SnapshotStore,
@@ -83,6 +106,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
       useFactory: (e: AppEnv, prisma: PrismaClient) => (persistenceEnabled(e) ? new PrismaLedgerStore(prisma) : new InMemoryLedgerStore()),
     },
     PlanetLedgerService,
+    EconomyTelemetry,
     SnapshotService,
     ProgressionEventForwarder,
   ],

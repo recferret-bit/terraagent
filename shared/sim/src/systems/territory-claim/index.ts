@@ -1,3 +1,6 @@
+import { getAtlasBlob } from '../../atlas/generateAtlas';
+import { globalTileToSector } from '../../atlas/partition';
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { isValidTileIndex, setTileOwner } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -9,6 +12,7 @@ import type { ConstructionOrder } from '../construction/orders';
 import { resolveHubT1Row, rowNum } from '../rows';
 import { defineSimModule } from '../define';
 import { syncColonySupply } from '../supply';
+import { syncColonyTerraformStats } from '../terraform-basic/rules';
 
 export interface ClaimedTileInfo {
   q: number;
@@ -47,8 +51,10 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
   const radius = Math.max(0, Math.floor(opts.radius ?? rowNum(resolveHubT1Row(opts.data), 'claimRadius')));
   const tick = opts.tick ?? state.meta.tick;
   const hex = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const anchorsLayer = state.grid.layers.anchors as Uint8Array;
+  const atlasBlob = getAtlasBlob(state);
+  const centerSectorId = atlasBlob ? globalTileToSector(opts.q, opts.r, atlasBlob.sectorRadius).sectorId : null;
 
   let claimedCount = 0;
   let anchoredCount = 0;
@@ -62,6 +68,9 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
       const tq = opts.q + dq;
       const tr = opts.r + dr;
       if (hexDistance(opts.q, opts.r, tq, tr) > radius) continue;
+      if (centerSectorId !== null && globalTileToSector(tq, tr, atlasBlob!.sectorRadius).sectorId !== centerSectorId) {
+        continue;
+      }
       const tileIdx = hex.indexOf(tq, tr);
       if (tileIdx < 0 || !isValidTileIndex(state.grid, tileIdx)) continue;
 
@@ -79,6 +88,14 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
         frozenCount++;
       }
     }
+  }
+
+  if (claimedCount > 0 && state.colonies[opts.colonyId]) {
+    syncColonyTerraformStats(state, opts.colonyId, tick);
+  }
+  if (claimedCount > 0 || anchoredCount > 0) {
+    recordAtlasColonyFounding(state, opts.colonyId, opts.q, opts.r, tick);
+    syncAtlasColonySectorState(state, tick);
   }
 
   return { claimedCount, anchoredCount, frozenCount, claimedTiles };
@@ -125,6 +142,7 @@ export function applyHubCompletionEffects(
   col.hubEntityId = order.entityId;
   col.changedAt = tick;
   syncColonySupply(state, order.colonyId, tick, data); // the Hub's supply share (`hub.t1.supplyProvided`)
+  syncColonyTerraformStats(state, order.colonyId, tick);
 
   const colonyIdStr = col.id || `col_${order.colonyId}`;
   const playerId = typeof col.playerId === 'string' && col.playerId.length > 0 ? col.playerId : undefined;

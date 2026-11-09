@@ -1,17 +1,5 @@
 export const STAGE_BUILDING_ROWS: readonly Record<string, unknown>[] = [
   {
-    id: 'builder',
-    building: 'builder',
-    label: 'Builder',
-    tier: 1,
-    unlockStage: 2,
-    footprintW: 1,
-    footprintD: 1,
-    designBuildS: 12,
-    cost: { 'metals.t1': 55, 'minerals.t1': 25, 'bio.biomass': 10, 'bio.water': 0 },
-    powerDrainPerS: 2,
-  },
-  {
     id: 'pylon',
     building: 'pylon',
     label: 'Pylon',

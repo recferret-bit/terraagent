@@ -5,10 +5,19 @@ import scn_w01_landfall from './w01-landfall';
 import scn_w02_first_light from './w02-first-light';
 import scn_w03_the_grid from './w03-the-grid';
 import scn_w04_maps_camera from './w04-maps-camera';
+import scn_w05_shape_the_land from './w05-shape-the-land';
+import scn_w05_terrain from './w05-terrain';
+import scn_w05_tiers from './w05-tiers';
 import scn_w06_invisible_chain from './w06-invisible-chain';
+import scn_w07_first_contact from './w07-first-contact';
+import scn_w07_stress from './w07-stress';
 import scn_w08_stages_goals from './w08-stages-goals';
 import scn_w10_cargo_trade_hub from './w10-cargo-trade-hub';
+import scn_w11_lobby from './w11-lobby';
 import scn_w12_profile from './w12-profile';
+import scn_w13_markets from './w13-markets';
+import scn_w13_markets_multi from './w13-markets-multi';
+import scn_w13_regions from './w13-regions';
 import scn_w16_director from './w16-director';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
@@ -17,9 +26,18 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w02-first-light', def: scn_w02_first_light },
   { file: 'w03-the-grid', def: scn_w03_the_grid },
   { file: 'w04-maps-camera', def: scn_w04_maps_camera },
+  { file: 'w05-shape-the-land', def: scn_w05_shape_the_land },
+  { file: 'w05-terrain', def: scn_w05_terrain },
+  { file: 'w05-tiers', def: scn_w05_tiers },
   { file: 'w06-invisible-chain', def: scn_w06_invisible_chain },
+  { file: 'w07-first-contact', def: scn_w07_first_contact },
+  { file: 'w07-stress', def: scn_w07_stress },
   { file: 'w08-stages-goals', def: scn_w08_stages_goals },
   { file: 'w10-cargo-trade-hub', def: scn_w10_cargo_trade_hub },
+  { file: 'w11-lobby', def: scn_w11_lobby },
   { file: 'w12-profile', def: scn_w12_profile },
+  { file: 'w13-markets', def: scn_w13_markets },
+  { file: 'w13-markets-multi', def: scn_w13_markets_multi },
+  { file: 'w13-regions', def: scn_w13_regions },
   { file: 'w16-director', def: scn_w16_director },
 ];

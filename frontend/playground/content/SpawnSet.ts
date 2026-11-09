@@ -11,6 +11,7 @@ import {
 import { MAX_COLONY_PROJECTORS, updateColonyProjectorsAndVision, type ColonyProjectorDesc } from '@terra/render/lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, EntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
 import { getArchetypeLights, peekArchetypeLights } from '@terra/render/lighting/archetypeLights';
+import { projectorCosOuter } from '@terra/render/lighting/projectorCone';
 import {
   WorkParticleSystem,
   computeMeshToolOrigins,
@@ -131,8 +132,7 @@ export class SpawnSet {
         const dist = _dir.length();
         if (dist > 1e-4) _dir.divideScalar(dist);
         else _dir.set(0, -1, 0);
-        const halfAngle = Math.atan2(Math.max(0.1, l.coneBottomRadius), Math.max(0.4, dist));
-        const cosAngle = Math.cos(Math.min(Math.PI * 0.48, halfAngle + 0.18));
+        const cosAngle = projectorCosOuter(l); // the game's cone, which the beam mesh draws too
         _col.setHex(l.color);
         projectors.push({
           x: _pos.x, y: _pos.y, z: _pos.z, range: l.range,

@@ -519,7 +519,7 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `backend/app/test/game/production-batches.spec.ts`
-- **What happens:** the spec raises `production.produced` by hand before each step and checks the batches; the earlier spec that drove `creditResource` was deleted in round 1. Nothing checks that an Extractor or Harvester on a running planet ends up in a batch (the flag gate `flags.includes('W02')`, the step order, the colony id).
+- **What happens:** the spec raises `production.produced` by hand before each step and checks the batches; the earlier spec that drove `creditResource` was deleted in round 1. Nothing checks that an Extractor or Worker Drone T1 on a running planet ends up in a batch (the flag gate `flags.includes('W02')`, the step order, the colony id).
 - **To resolve:** one test that loads a `PlanetHost` with the `w02` scenario (an active Extractor), steps 300+ ticks and expects a `metals.t1` batch.
 - **Found:** 2026-11-03, W02 review round 2 (backend agent)
 
@@ -727,3 +727,15 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** normal restart replays committed inputs exactly once; uncheckpointed world/facts roll back together. Incarnation IDs isolate intentional planet wipes. Stop workers before administrative data resets.
 - **To resolve:** W09 recovery must quarantine/reconcile rollback beyond committed progression rather than automatically revoke earned badges. Recommendation: retain earned lifetime awards and record an audited recovery incident; choose compensation rules before enabling automatic rollback of external effects.
 - **Found:** 2026-11-04, W12 hardening.
+
+## W11 Planet Foundations & Sector Admission
+
+### BE-52 · W11 hackathon (`H`) foundation scope vs deferred untagged / `H+` lobby rows
+
+- **Status:** Accepted (by design, W11 `H` scope split)
+- **Area / code:** `backend/app/src/lobby/`, `frontend/game/ui/`, `frontend/game/app/online/joinQueueFlow.ts`, [`docs/plan/waves/W11-lobby-planets.md`](../plan/waves/W11-lobby-planets.md), [`docs/plan/w27-readiness-manifest.md`](../plan/w27-readiness-manifest.md)
+- **What happens:** W11 delivers all 28 `H`-tagged foundation issues (`W11-01..04, 06..08, 10..13, 15, 20, 22, 32..43, 46, 47`): the three canonical worlds (`pl_desert`, `pl_ocean`, `pl_temperate`), 7-sector small-atlas partition, widened `i16` owner, per-colony exploration bitsets, pinned immutable `AtlasManifestV1`, REST planet/sector summaries and ticket queue, atomic sector-seat reservations, idempotent spawn saga, reconciliation sweep, orbital picker sector chooser, queued boot overlay, and Global Map `Sectors` layer. The 19 untagged / `H+` rows in `W11-lobby-planets.md` (`W11-05` dynamic planet rules, `W11-09` dedicated lobby WS event stream, `W11-14` full party leader/member HTTP controller + same-planet spread, `W11-16..19` transfer carry/bonus/archive/notification hooks, `W11-21` standalone `/lobby` HTML entry, `W11-23..31` orbital drawer/queue/party/recap/stats/onboarding plates, and `W11-44..45` Prometheus lobby gauges & structured audit events) remain explicitly deferred to full W11 / W27 (`docs/plan/w27-readiness-manifest.md`). Note that `LobbyPersistenceService` already implements the underlying party store methods (`createParty`, `joinPartyByCode`, `leaveParty`, `setPartyIntent`) and transfer-carry ticket metadata so those follow-ups require no schema migration.
+- **Why it is like this:** The hackathon wave scope (`tags: H`, 28 issues) focuses on the persistent canonical-world architecture, sector admission, and reusing the existing `/play.html` orbital selector rather than building a separate `/lobby` app or multi-party UI before W27.
+- **Workaround / mitigation:** The orbital picker in `/play.html?planet=<kind>` polls `/v1/planets` + `/v1/planets/:id/sectors` (with optional WebSocket summary bridge) and supports `Auto (recommended)` + manual sector selection + queued retry/cancel; `docs/plan/w27-readiness-manifest.md` records all 19 deferred rows.
+- **To resolve:** Implement the remaining untagged / `H+` W11 rows when full lobby party/transfer/standalone-entry scope is scheduled alongside W27.
+- **Found:** 2026-11-08, W11 delivery.

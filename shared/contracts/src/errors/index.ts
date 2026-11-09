@@ -23,10 +23,20 @@ export const REJECT_CODES = [
   'outside_power_zone',
   // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
   'already_dismantling',
+  // W05 dismantle (owner bug "my drone self-dismantled"): dismantle is a worker action on a finished own building. A
+  // unit (drone) or the worker itself cannot be dismantled, a building still under construction is cancelled instead,
+  // the landed pod is only scrapped with a worker next to it.
+  'cannot_dismantle_unit', 'cannot_dismantle_self', 'dismantle_unfinished', 'no_worker_in_reach',
+  // W05 terraform: the hex is already Living (end of the growth ladder), the hex already has a queued or running
+  // terraform job, or the op would change nothing (the hex is already in the op's target state)
+  'already_terraformed', 'already_queued', 'already_at_target',
   // W08 HQ goals: goal queue is full for the colony's HQ tier (2 / 3 / 5); `cancelGoal` / `reorderGoal` names no open goal
   'goal_limit', 'unknown_goal',
   // W10 cargo & trade hub: insufficient stock/cargo, storage full on import, or Trade Hub offline
   'insufficient_stock', 'insufficient_cargo', 'storage_full', 'hub_offline',
+  // W13 markets: stall fee outside the policy range, open-order limit reached, below lot / minimum notional, no such open
+  // order of the colony (`no_trade_hub`, `hub_offline`, `insufficient_cargo`, `market_unavailable` are reused)
+  'fee_out_of_range', 'order_limit', 'order_too_small', 'unknown_order',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;
@@ -55,6 +65,9 @@ export const REST_ERROR_CODES = [
   'planet_not_recruiting', 'queue_full', 'near_unavailable', 'internal',
   // W01 `/me/home`: the new colony's landing was refused (409, `errorCode: COLONY_SEAT_REJECTED`, the reject code in `details.code`)
   'seat_rejected',
+  // W11 persistent worlds & sector admission (MATCHMAKING §0):
+  'unsupported_mode', 'ticket_open', 'already_has_colony', 'planet_paused', 'planet_faulted', 'planet_archived',
+  'sector_full', 'invalid_sector', 'too_late', 'party_full', 'same_planet_transfer', 'flag_incompatible',
   // generic fallbacks by status when the domain code has no REST code of its own (BE-17): 409, 503, 413, 429
   'conflict', 'unavailable', 'payload_too_large', 'rate_limited',
 ] as const;

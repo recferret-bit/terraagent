@@ -19,11 +19,15 @@ export interface FeatureServices {
   /** The session's world replica (`WorldStore`); features read views through it. */
   store?: FeatureStore;
   /** Axial tile under a pointer position (the online session's terrain pick), or null off the planet. */
+  /** Adds a tab to the Trade Hub panel; returns its unregister. Provided by the `trade-hub` feature while its panel is mounted. */
+  /** Opens the Trade Hub panel on the extension tab `id` (e.g. `market`). */
+  showTradeHubTab?: (id: string) => void;
+  registerTradeHubTab?: (def: TradeHubTabDef) => () => void;
   pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
 }
 
 /** The part of `WorldStore` features use; optional members, so a spec can pass a stand-in with only what it needs. */
-export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'currentPlanetId'>>;
+export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'currentPlanetId' | 'onServerEvents' | 'onRenderEvents' | 'onMarketBook' | 'onMarketTrade'>>;
 
 export interface FeatureContext {
   readonly flags: ReadonlySet<string>;
@@ -32,6 +36,10 @@ export interface FeatureContext {
 }
 
 export interface Disposable { dispose(): void }
+
+/** An extra tab of the Trade Hub panel (the `trade-hub` feature provides `services.registerTradeHubTab`). */
+export interface TradeHubTabInstance extends Disposable { onShow?(): void; onHide?(): void }
+export interface TradeHubTabDef { id: string; label: string; mount(el: HTMLElement, ctx: FeatureContext): TradeHubTabInstance }
 
 export interface HudPanelInstance extends Disposable { update?(view: GameView): void }
 export interface HudPanelDef {

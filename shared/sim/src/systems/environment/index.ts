@@ -62,19 +62,73 @@ function formatClock(hourOfDay: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+export function weatherDaylightMultiplier(
+  stormActive = false,
+  rainIntensity = 0,
+  rainLevel: 'none' | 'minor' | 'heavy' = 'none',
+): number {
+  if (stormActive) return 0.45;
+  if (rainLevel === 'heavy' || rainIntensity > 0.5) return 0.55;
+  if (rainLevel === 'minor' || rainIntensity > 0.01) return 0.72;
+  return 1;
+}
+
 /**
  * The environment at planetary solar hour `hour` (`systems/time`, the one authoritative clock the 3D sun follows too):
  * night from `SUNSET_HOUR` (18:00) for `nightShare` of the 24 h (temperate 45 %: 18:00 → 04:48), day the rest. Daylight
- * is 1 from sunrise and falls over the last 15 % of the day (smoothstep) to 0 at sunset; a storm halves it.
+ * is 1 from sunrise and falls over the last 15 % of the day (smoothstep) to 0 at sunset; weather (rain/storm) reduces it.
  * `cycleProgress` is the share of the day since sunrise (`dayShare` = sunset); `cycleTick` the same in ticks.
  */
 export function computeEnvironmentAtHour(
   planetType: PlanetType,
   hour: number,
   data?: CompiledDataLike,
-  stormActive = false,
-  dayLengthTicks: number = getDayLengthTicks(data),
+  stormActive?: boolean,
+  dayLengthTicks?: number,
+  rainIntensity?: number,
+  rainLevel?: 'none' | 'minor' | 'heavy',
+): EnvironmentState;
+export function computeEnvironmentAtHour(
+  hour: number,
+  stormActive?: boolean,
+  rainIntensity?: number,
+  rainLevel?: 'none' | 'minor' | 'heavy',
+): EnvironmentState;
+export function computeEnvironmentAtHour(
+  planetTypeOrHour: PlanetType | number,
+  hourOrStorm?: number | boolean,
+  dataOrRainIntensity?: CompiledDataLike | number,
+  stormOrRainLevel?: boolean | 'none' | 'minor' | 'heavy',
+  dayLengthTicksArg?: number,
+  rainIntensityArg = 0,
+  rainLevelArg: 'none' | 'minor' | 'heavy' = 'none',
 ): EnvironmentState {
+  let planetType: PlanetType;
+  let hour: number;
+  let data: CompiledDataLike | undefined;
+  let stormActive: boolean;
+  let dayLengthTicks: number;
+  let rainIntensity: number;
+  let rainLevel: 'none' | 'minor' | 'heavy';
+
+  if (typeof planetTypeOrHour === 'number') {
+    planetType = 'temperate';
+    hour = planetTypeOrHour;
+    data = undefined;
+    stormActive = Boolean(hourOrStorm);
+    rainIntensity = typeof dataOrRainIntensity === 'number' ? dataOrRainIntensity : 0;
+    rainLevel = stormOrRainLevel === 'minor' || stormOrRainLevel === 'heavy' ? stormOrRainLevel : 'none';
+    dayLengthTicks = getDayLengthTicks(undefined);
+  } else {
+    planetType = planetTypeOrHour;
+    hour = typeof hourOrStorm === 'number' ? hourOrStorm : 12;
+    data = typeof dataOrRainIntensity === 'object' ? dataOrRainIntensity : undefined;
+    stormActive = Boolean(stormOrRainLevel);
+    dayLengthTicks = dayLengthTicksArg ?? getDayLengthTicks(data);
+    rainIntensity = rainIntensityArg;
+    rainLevel = rainLevelArg;
+  }
+
   const nightShare = getNightShare(planetType, data);
   const dayShare = Math.max(0.05, 1 - nightShare);
   const h = normalizeSolarHour(hour);
@@ -87,8 +141,8 @@ export function computeEnvironmentAtHour(
     const duskT = Math.min(1, Math.max(0, (dayProgress - 0.85) / 0.15));
     baseDaylight = dayProgress < 0.85 ? 1 : Number((1 - duskT * duskT * (3 - 2 * duskT)).toFixed(4));
   }
-  const stormDaylightMult = stormActive ? 0.5 : 1;
-  const daylight = baseDaylight === 0 ? 0 : Number((baseDaylight * stormDaylightMult).toFixed(4));
+  const stormDaylightMult = weatherDaylightMultiplier(stormActive, rainIntensity, rainLevel);
+  const daylight = baseDaylight === 0 ? 0 : Number((baseDaylight * stormDaylightMult).toFixed(3));
   const finiteDay = Number.isFinite(dayLengthTicks) ? dayLengthTicks : 0;
   return {
     cycleTick: Math.round(cycleProgress * finiteDay),
@@ -115,7 +169,15 @@ export function computeEnvironmentAtCycleTick(
   const dayLengthTicks = getDayLengthTicks(data);
   const wrapped = ((cycleTick % dayLengthTicks) + dayLengthTicks) % dayLengthTicks;
   const hour = getSunriseHour(planetType, data) + (wrapped / dayLengthTicks) * 24;
-  return computeEnvironmentAtHour(planetType, hour, data, stormActive, dayLengthTicks);
+  const env = computeEnvironmentAtHour(planetType, hour, data, false, dayLengthTicks);
+  if (!stormActive) return env;
+  const stormDaylightMult = 0.5;
+  return {
+    ...env,
+    stormActive: true,
+    stormDaylightMult,
+    daylight: env.daylight === 0 ? 0 : Number((env.daylight * stormDaylightMult).toFixed(4)),
+  };
 }
 
 /** The solar hour of `'day'` (12:00), `'morning'` (06:00), `'night'` (18:00), `'midnight'`, or `'HH:MM'`; null if unreadable. */
@@ -137,21 +199,53 @@ export function cycleTickForTimeSpec(target: string, planetType: PlanetType, dat
 }
 
 /** The environment of the planet's solar clock at `tickF` (default: now), with the planet's own day length. */
-export function environmentFromPlanetTime(state: PlanetState, data?: CompiledDataLike, stormActive = false, tickF?: number): EnvironmentState {
+export function environmentFromPlanetTime(
+  state: PlanetState,
+  data?: CompiledDataLike,
+  stormActive?: boolean,
+  tickF?: number,
+): EnvironmentState {
   const pt = getPlanetTime(state, data, tickF);
-  return computeEnvironmentAtHour(state.meta.planetType, pt.hour, data, stormActive, dayLengthTicksFor(pt.realHoursPerDay, pt.timeScale));
+  const rawWeather = state.blobs?.weather as
+    | { value?: unknown; stormActive?: boolean; rainIntensity?: number; rainLevel?: 'none' | 'minor' | 'heavy' }
+    | undefined;
+  const weather = (
+    rawWeather && typeof rawWeather === 'object' && 'value' in rawWeather && rawWeather.value
+      ? rawWeather.value
+      : rawWeather
+  ) as { stormActive?: boolean; rainIntensity?: number; rainLevel?: 'none' | 'minor' | 'heavy' } | undefined;
+  const isStorm = stormActive !== undefined ? Boolean(stormActive || weather?.stormActive) : Boolean(weather?.stormActive);
+  const rainIntensity = typeof weather?.rainIntensity === 'number' && Number.isFinite(weather.rainIntensity) ? weather.rainIntensity : 0;
+  const rainLevel = weather?.rainLevel === 'minor' || weather?.rainLevel === 'heavy' ? weather.rainLevel : 'none';
+  return computeEnvironmentAtHour(
+    state.meta.planetType,
+    pt.hour,
+    data,
+    isStorm,
+    dayLengthTicksFor(pt.realHoursPerDay, pt.timeScale),
+    rainIntensity,
+    rainLevel,
+  );
 }
 
 export function getEnvironment(state: PlanetState, data?: CompiledDataLike): EnvironmentState {
-  const existing = state.blobs.environment?.value as EnvironmentState | undefined;
-  if (existing && typeof existing.daylight === 'number') return existing;
-  return environmentFromPlanetTime(state, data);
+  const existing = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
+  return environmentFromPlanetTime(state, data, existing?.stormActive === true);
 }
 
 export function applyEnvironmentState(state: PlanetState, env: EnvironmentState, tick: number): void {
-  setBlob(state, 'environment', env, tick);
+  const prev = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
+  const envChanged =
+    !state.blobs.environment ||
+    prev?.daylight !== env.daylight ||
+    prev?.phase !== env.phase ||
+    prev?.stormActive !== env.stormActive;
+  if (envChanged || !state.blobs.environment) {
+    setBlob(state, 'environment', env, tick);
+  }
   for (const colony of state.colonies) {
-    if (colony.daylight !== env.daylight || colony.dayPhase !== env.phase || colony.timeOfDay !== env.clockText) {
+    const lightChanged = colony.daylight !== env.daylight || colony.dayPhase !== env.phase;
+    if (lightChanged || colony.timeOfDay === undefined) {
       colony.daylight = env.daylight;
       colony.dayPhase = env.phase;
       colony.timeOfDay = env.clockText;

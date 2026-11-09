@@ -220,7 +220,7 @@ describe('Tool origins kinematics (@terra/render/particles)', () => {
 
 describe('Preset coverage & emitter robustness (@terra/render/particles)', () => {
   it('has exactly one preset per target kind, and NaN beam emissive fails the validator', () => {
-    const kinds = ParticlePresetRegistry.list().map((p) => p.targetKind).sort();
+    const kinds = ParticlePresetRegistry.list().filter(p => p.targetKind !== 'combat').map((p) => p.targetKind).sort();
     expect(kinds).toEqual(['dune', 'flat', 'hole', 'metals', 'minerals', 'oil', 'repair', 'rock', 'tree']);
     expect(new Set(BUILTIN_PARTICLE_PRESETS.map((p) => p.id)).size).toBe(9);
     const clean = structuredClone(ParticlePresetRegistry.getByTargetKind('rock'));
@@ -251,6 +251,53 @@ describe('Preset coverage & emitter robustness (@terra/render/particles)', () =>
     em.step(0.05); // 25 % through a 0.2 s burst: the ring starts small, not at the end of a 1 s burst's growth
     expect(ring.scale.x).toBeGreaterThan(0.45);
     expect(ring.scale.x).toBeLessThan(0.45 + 0.5 * 1.45);
+    em.dispose();
+  });
+
+  it('spawns each chunk outside the target volume, with X, Y and Z all varying', () => {
+    const target: [number, number, number] = [2, 0.52, -3];
+    const em = new WorkParticleEmitter(ParticlePresetRegistry.getByTargetKind('tree'), {
+      workerId: 'tree-outside',
+      targetKind: 'tree',
+      botOrigin: [2, 0, -6],
+      toolOrigins: [[2, 0.9, -5.2]],
+      targetPos: target,
+      groundY: 0,
+      intensity: 1,
+    });
+    const layers = (em as unknown as {
+      layers: { px: Float32Array; py: Float32Array; pz: Float32Array; spec: { count: number } }[];
+    }).layers;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const zs: number[] = [];
+    for (const layer of layers) {
+      for (let i = 0; i < layer.spec.count; i++) {
+        const dx = layer.px[i] - target[0];
+        const dy = layer.py[i] - target[1];
+        const dz = layer.pz[i] - target[2];
+        expect(Math.hypot(dx, dy, dz)).toBeGreaterThan(0.45);
+        expect(Math.hypot(dx, dy, dz)).toBeLessThan(1.6);
+        expect(layer.py[i]).toBeGreaterThanOrEqual(0.08 - 1e-5); // Float32Array rounds 0.08 down by a few nm
+        xs.push(layer.px[i]);
+        ys.push(layer.py[i]);
+        zs.push(layer.pz[i]);
+      }
+    }
+    const span = (v: number[]) => Math.max(...v) - Math.min(...v);
+    expect(span(xs)).toBeGreaterThan(0.5);
+    expect(span(ys)).toBeGreaterThan(0.5);
+    expect(span(zs)).toBeGreaterThan(0.5);
+    const keys = xs.map((x, i) => `${x.toFixed(4)}|${ys[i]!.toFixed(4)}|${zs[i]!.toFixed(4)}`);
+    expect(new Set(keys).size).toBe(xs.length);
+
+    em.step(0.016);
+    const targetV = new THREE.Vector3(...target);
+    const orbs = em.group.children.filter((c): c is THREE.Mesh =>
+      (c as THREE.Mesh).isMesh && (c as THREE.Mesh).geometry === getParticleGeometry('energyOrb'));
+    const nearest = Math.min(...orbs.map((m) => m.position.distanceTo(targetV)));
+    expect(nearest).toBeGreaterThan(0.45);
+    expect(nearest).toBeLessThan(1.35);
     em.dispose();
   });
 });

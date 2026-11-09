@@ -1,5 +1,7 @@
 # TerraAgent — NEAR Integration Specification
 
+> **D-44 economy revision:** [ECONOMY](ECONOMY.md) specifies exact buyer quote-token fees, database profiles, funded NPC limits, open cargo mobility and cash-launch evidence. W13 is mock-first; acceptance of the design does not enable real money.
+
 > **Status:** v0.2 (2026-10-30). Rewritten around the NEAR economy features **F1–F8** (D-26), hosted by the `near` module of the one app (D-24). There is no `near-gateway` service and no NATS.
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §11 · **Feature design:** [`docs/game/near-economy-features-spec.md`](../game/near-economy-features-spec.md) · **Decisions:** D-10, D-18, D-19, D-23, D-25, D-26 · **Plan:** [`TA-10`](../plan/issues/TA-10-near-gateway.md)
 > **Game design:** [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md) §11, §13 pillar 5 ("chain is invisible") · Hackathon track 09 "Games With Real Economies".
@@ -131,20 +133,23 @@ sequenceDiagram
   P->>A: market.placeOrder {sell 300 bio.water, want 120 metals.t1, hub H}
   A->>A: sim reserves 300 bio.water in orbit (market.reserve) · store signed token_diff
   Note over A: another colony / Guild NPC places the mirror order
-  A->>A: match: maker + taker + hub-owner fee leg (sum to zero per token)
-  A->>I: execute_intents([maker, taker, feeLeg])  (via relayer)
+  A->>A: match: principal + buyer quote-token platform/stall fees (sum to zero per token)
+  A->>I: execute_intents([maker, taker, platformFee, stallFee])  (via relayer)
   I-->>A: final
   A->>P: market.settled → push market.trade
 ```
 
 | ID | Rule |
 |---|---|
-| `NEAR-60` | An order is a **signed `token_diff` intent** (NEP-413 payload) from the maker's colony account. It covers in-orbit cargo (or NEAR / USDC balances in the verifier) and has a deadline equal to the order TTL. The app stores it in `chain.market_order`. |
-| `NEAR-61` | **Matching.** The `near` module is the **message bus**. Each planet has one order book per token pair (sub-resource × sub-resource, or sub-resource × NEAR / USDC), with price-time priority. A match builds the batch `[maker, taker, feeLeg]`. The fee leg pays `fee_bp` (0–3 %, set by the Trade Hub owner with `market.setHubFee`) to the hub owner's colony account. Per token, the batch must sum to zero, or `execute_intents` rejects the whole batch. |
-| `NEAR-62` | **Settlement.** The batch is submitted through the relayer. When it is final, the app writes `chain.intent_trade` and sends `market.settled` to both sims (they release reservations, and trade history feeds the price board). On failure, orders go back to the book or expire and reservations are released. |
-| `NEAR-63` | **Scope.** Same-planet order books only (D-19). Cross-planet flow comes only from Guild NPCs (F3). A Trade Hub T1 is required to place orders; truces are not. |
+| `NEAR-60` | Orders pin policy/fee version, beneficiary accounts, exact price/quantity, deadline and maximum spend; custodial fills receive fill-sized NEP-413 signatures, claimed accounts use all-or-nothing signed orders. Persist terms and reservations in `chain.market_order`. |
+| `NEAR-61` | **Matching and fees (D-44).** Planet/pair price-time books, maker execution price. Buyer receives full base and pays quote notional plus platform 100 bp and maker-stall 0–100 bp (default 100), independent of maker/taker role. Exact cumulative rounding, minimum notional, fee-inclusive reservations and policy compatibility follow ECONOMY §3. Build principal/platform/stall legs (plus allocation to W22 treasury from platform fee); aggregate identical accounts, conserve each token. Same-colony orders never match. Custodial accounts may fill partially; claimed accounts are all-or-nothing (`NEAR-60`). The buyer fee is never taken from the received base resource. |
+| `NEAR-62` | **Settlement.** Idempotent outbox executes the atomic batch; final receipt updates orders, fills, reservations and `chain.intent_trade` once. Final failure restores executable orders with funds reacquired atomically, or expires them. Unknown chain outcomes remain pending/quarantined until reconciled; never release uncertain funds. Concurrent fills/cancels and restarts are tested. |
+| `NEAR-63` | **Scope (D-44).** Our books are same-planet; an online Trade Hub is required. External cargo transfers remain unrestricted and owned cargo can be imported on the receiving colony planet under published Hub/transport rules. Guild transport is a service, not an exclusive cross-planet route; external-market fee leakage is accepted. |
 | `NEAR-64` | **Dev and test.** `intents.near` is **mainnet only, with no testnet**. Development uses dedicated mainnet dev accounts with tiny amounts plus `simulate_intents` / `dry: true` quotes. CI stubs the verifier. |
-| `NEAR-65` | **Open in beta.** Orders may be priced in NEAR or USDC (via verifier balances). The 1Click API may be used for external swaps (0.2 % fee without a JWT). **Verify the API details in the docs.** |
+| `NEAR-65` | **Quote assets.** USDC is the default; barter and optional NEAR remain supported. Token decimals and chain IDs are explicit registry metadata, amounts are exact atomic integers and the UI displays all fees. W13 uses mock balances; W23 verifies current adapter documentation and requires ECONOMY §7 gates before public cash activation. External swaps are optional integrations, not assumed liquidity. |
+| `NEAR-66` | **Related-volume classification (D-44).** Every fill records buyer/seller actor kinds and an `organic` flag. A fill is `organic = true` only when both sides are actor kind `player` or `bot` (D-45), different colonies **and** different owners. Same-owner (known related colonies), fixture/seed, subsidy, `npc` and Guild fills are `organic = false`: excluded from reference prices and organic-volume metrics, never rewarded with withdrawable subsidies. Unknown wallets cannot be proven independent. A bot-only market can establish a reference price; bot demand counts only as far as the bot consumes what it buys (hypothesis, LED-18). |
+| `NEAR-67` | **Bot trading accounts (D-45).** Actor kind `bot` is an agent-operated colony account. An API key (shown once, stored hashed, revocable) is bound to one colony account and calls `/v1/trade/*` ([PROTOCOL](./PROTOCOL.md) §8a); every order enters the sim as `market.placeOrder` with command source `'bot'` and takes the human path (reserve, match, fee legs, settlement). Per-key allowances: max open orders, max order notional, daily spend/loss budget, allowed pairs, price band versus the reference price, kill switch, idempotency keys, rate limits. Allowances are reserved on placement and consumed on final settlement (ECONOMY §4). Bots never hold or sign with a chain key; signing stays with the colony's custodial/relayer path (W06) and, in W23, the same ports on real accounts. |
+| `NEAR-68` | **Emulated chain for tests (D-45).** The W13 mock Intents/relayer/cargo adapters form a fully emulated NEAR chain with deterministic, seedable fault injection: fail-before-submit, unknown outcome, delayed finality, duplicate delivery and insufficient funds. The same contract suites run against the real adapters in W23 (`simulate` only on mainnet). |
 
 ---
 
@@ -152,10 +157,10 @@ sequenceDiagram
 
 | ID | Rule |
 |---|---|
-| `NEAR-70` | Guild NPCs are app-run agents with **their own sub-account wallets** and function-call keys. They hold cargo and NEAR inventories and sign their own intents. They act as **market makers** on every planet book. |
-| `NEAR-71` | **Pricing core** (deterministic, in the app): the NPC's mid price drifts with its inventory and the planet's last 24 h of settled trades. The spread widens when inventory is thin. An optional LLM layer (the `ai` module, within the same budget) picks routes and stockpile goals about once an hour. |
-| `NEAR-72` | **Visits.** NPCs travel a schedule between planets (`chain.guild_visit`). While docked they quote offers to that planet's Trade Hubs (`guild.arrived` push). They are the **only cross-planet trade route**. |
-| `NEAR-73` | **Funding.** NPC wallets are seeded from the owner treasury with a small NEAR float plus initial cargo minted by `minter.*`. They are capped in size so a bug cannot drain the treasury. |
+| `NEAR-70` | Guild NPCs are app-run agents with **their own sub-account wallets** and function-call keys. They hold cargo and NEAR inventories and sign their own intents. They act as **market makers** on every planet book. From D-45 they are one kind of agent on the same bot API and quote library (NEAR-67); their actor kind stays `npc`, so their fills are never organic. |
+| `NEAR-71` | **Pricing (D-44).** Shared pure inventory-adjusted quote function uses eligible finalized trades, concentration/volume/staleness and bounded-price checks. Only organic fills (NEAR-66) establish references; Guild, fixture, subsidy and same-owner fills are excluded. The quote library is the W13 need/value library (ECONOMY §4). Pause real cash bids on insufficient data; temporary bootstrap quotes require an explicit finite subsidy budget. Re-quote after fills. LLM strategy cannot bypass risk checks; ECONOMY §4. |
+| `NEAR-72` | **Visits.** NPC schedules and inventories persist across planets. They provide transport and market-making alongside permitted external transfers/imports. With W11 off the route loops locally; no independent planet clock. |
+| `NEAR-73` | **Funding (D-44).** Explicit finite owner allocation; real cargo is purchased or exported from treasury-owned sim stock. Mock mint grants are labeled fixtures. Persist per-NPC and global cash/inventory/spend/loss budgets and reservations; no automatic refill. Enforce before signing and on fills/restart, with a kill switch. Versioned DB policies and tests are required, not stretch. |
 
 ---
 
@@ -164,7 +169,7 @@ sequenceDiagram
 | ID | Rule |
 |---|---|
 | `NEAR-80` | `POST /v1/near/director-key` adds a function-call / intents key to the colony account. Its allowance equals the away trading budget (CONTINUITY AW-13 / AW-20). Revoke deletes the key. |
-| `NEAR-81` | The AI director signs orders with this key only within `autoTrade` limits. The sim and the `near` module both check the limits before matching. |
+| `NEAR-81` | Director orders use one shared shortage/surplus and limit check in sim and matcher. Reserve full fee-inclusive principal/allowance before placement, consume on final settlement, release on cancel/expiry/final failure. Revoke stops unsubmitted work; already submitted settlement reconciles. Native key gas allowance is not an asset-spend limit; enforce asset authorization through the verified adapter/payload and reservation ledger. |
 
 ---
 
@@ -186,7 +191,7 @@ sequenceDiagram
 | ID | Rule |
 |---|---|
 | `NEAR-100` | Each planet gets a SputnikDAO instance (`{planet}.sputnik-dao.near`) when it is created. Members are the colony accounts on the planet. |
-| `NEAR-101` | A share of every market fee leg (proposed: 20 % of `fee_bp`) goes to the planet DAO. |
+| `NEAR-101` | W22 allocates `TREASURY_FEE_SHARE_BP` (default 2 000 bp) of the platform fee to the planet DAO. No additional buyer surcharge and no reduction of stall fee. Preserve exact cumulative allocation rounding and report retained platform fees separately. |
 | `NEAR-102` | Proposal kinds map to sim effects: `meteor_shield` (hazard reduction for N hours), `terraform_boost` (Living-op cost −X %), and `guild_subsidy` (extra Guild visit). When a proposal passes, the app sends the effect to the sim as a `system.*` command. |
 
 ---
@@ -210,7 +215,7 @@ sequenceDiagram
 | `NEAR_ACCOUNT_ROOT` | `terraagent.near` | |
 | `NEAR_STAKING_POOLS` | whitelist of validator pools | NEAR-92 |
 | `CARGO_MINT_CAP_PER_DAY` | 20 000 per sub-resource per colony (proposed) | NEAR-53 |
-| `MARKET_FEE_BP_MAX` / `TREASURY_FEE_SHARE_BP` | 300 / 2 000 | NEAR-61, NEAR-101 |
+| `MARKET_PLATFORM_FEE_BP` / `MARKET_FEE_BP_MAX` / `TREASURY_FEE_SHARE_BP` | 100 / 100 / 2 000 (versioned DB profile) | NEAR-61, NEAR-101 |
 | `NEAR_MIN_RELAYER_BALANCE` | 5 NEAR | alert below |
 
 **Cost estimate** (verify in TA-10): account creation ≈ 0.01 NEAR; mint/burn and intent batches ≈ 0.0005–0.002 NEAR each in gas, paid by the relayer; NEP-245 and NEP-171 storage deposits paid by the relayer.
@@ -256,7 +261,7 @@ Tables (sketches in DATA_MODEL §4.4 / §4.4.1):
 | 1 | Root accounts | Register `terraagent.testnet` and `terraagent.near` now | D-23 | Owner task |
 | 2 | RPC provider | **FastNEAR** + fallback | D-23 | §12 |
 | 3 | Player claim of a colony account | **At launch** | D-18 | §2 |
-| 4 | Cross-planet trades | **Same-planet only** for players; Guild NPCs carry goods between planets | D-19, D-26 | NEAR-63, NEAR-72 |
+| 4 | Cross-planet trades | Planet-local books; unrestricted external cargo transfers/imports, Guild transport service (D-44) | D-19, D-26 | NEAR-63, NEAR-72 |
 | 5 | NEAR Intents settlement | **In MVP** | D-19 | §6 (designed; replaces the D-11 receipt saga) |
 | 6 | Colony left after the rocket | **Settled**; own-NEAR staking through the deed and colony account | D-18 | §9 |
 | 7 | One app, no gateway service or NATS | **Yes** | D-24 | The `near` module is in-process |

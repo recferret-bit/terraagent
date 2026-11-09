@@ -17,7 +17,7 @@ import type { ColonyPowerSummary } from './types';
  * - Charge cap: `hq.t1.cellFastRechargePerS` while the HQ is within `cellFastRechargeRadius` of a Hub, else
  *   `cellSelfRechargePerS` (docking still recharges faster).
  * - Discharge cap: `hq.t1.cellGridDischargePerS`, wherever the HQ is (the Hub is linked to its commander).
- * `cols.cell` also holds Harvester cargo, so rows are picked by `ENTITY_KIND.hq` only. With `dtTicks = 0` (a read-only
+ * `cols.cell` also holds Worker cargo, so rows are picked by `ENTITY_KIND.hq` only. With `dtTicks = 0` (a read-only
  * evaluation) the rates are reported and nothing is written.
  */
 export interface HqCellStepResult {

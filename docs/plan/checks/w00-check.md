@@ -16,7 +16,7 @@
 2. **Planet renders and ticks.** Open `<client>/play.html?scenario=w00` → a flat green hex-tiled planet with a small builder robot in the middle (the test entity), no orbit menu or descent. The **TICK** chip (top left) counts up about 5 per second. Mouse wheel zooms, WASD pans, Q/E rotates.
 3. **Time warp.** Dev console: `help` → the command list. `warp 10` → the tick counter runs about 50/s and an orange **`×10`** badge appears. `warp 1` → back to about 5/s, badge gone.
 4. **State inspector** — *not in this landing* (W00-43 is H+). Skip.
-5. **Wave flags.** The **WAVES** panel (top right) shows all 26 waves on. Open `<client>/play.html?scenario=w00&waves=..00` → only **W00** is lit.
+5. **Wave flags.** There is no **WAVES** panel. In the dev console (press **`` ` ``**), `flags` prints the enabled set (all 26 waves on). Open `<client>/play.html?scenario=w00&waves=..00` → `flags` prints only **W00** (the URL still narrows waves; there is no panel to look at).
 6. **Survives a restart.** Keep the play page open; in the worktree terminal run `npm run dev:restart` → the page shows **"Reconnecting…"** for a few seconds, then carries on from the tick it had reached (not 0), same planet.
 7. **Mock blockchain receipt.** Open `<client>/dev/chain/` in a second tab (mock chain explorer). In the play tab's dev console type `chain.ping` → it prints a `mock:…` hash after about 1 s; within 1–2 s the same hash appears as a new highlighted row in the explorer. (The explorer's **CHAIN.PING** button does the same.)
 8. **CI** — nothing to click: CI has never run on GitHub (nothing is pushed). Optional: `npm run ci:fast` in the worktree ends green.

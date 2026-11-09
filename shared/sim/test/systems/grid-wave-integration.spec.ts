@@ -22,19 +22,19 @@ function fixture() {
 describe('W03 integration with landed progression and trade', () => {
   it('preserves Trade Hub wire identity and counts live builders, pylons and depots correctly', () => {
     expect(ENTITY_KIND.tradeHub).toBe(8);
-    expect(ENTITY_KIND.builder).not.toBe(ENTITY_KIND.tradeHub);
-    expect(UNIT_KIND.builder).toBe(ENTITY_KIND.builder);
+    expect(ENTITY_KIND.worker).not.toBe(ENTITY_KIND.tradeHub);
+    expect(UNIT_KIND.worker).toBe(ENTITY_KIND.worker);
     expect(BUILDING_KIND.pylon).toBe(ENTITY_KIND.pylon);
     expect(BUILDING_KIND.depot).toBe(ENTITY_KIND.supplyDepot);
     const { state, spawn } = fixture();
-    spawn(ENTITY_KIND.builder, 0, 0);
+    spawn(ENTITY_KIND.worker, 0, 0);
     spawn(ENTITY_KIND.pylon, 1, 0);
     spawn(ENTITY_KIND.supplyDepot, 2, 0);
     const counts = countColonyEntities(state, 0);
     expect(counts.completedBuildings).toBe(2);
     expect(counts.buildingCountsByKind.pylon).toBe(1);
     expect(counts.buildingCountsByKind.depot).toBe(1);
-    expect(counts.unitCountsByKind.builder).toBe(1);
+    expect(counts.unitCountsByKind.worker).toBe(1);
   });
 
   it('retains tiered Trade Hub draw, cuts power despite stored energy, and restores the grid', () => {

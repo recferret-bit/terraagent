@@ -24,20 +24,35 @@ float waterOnshore(float shore, vec2 p, float ws) {
 /** \`anim\` (the view-focus weight) fades the moving parts (drift, wave-front lines, breakup) to a still band. */
 float waterShoreFoam(vec2 p, float shore, float onshore, float anim) {
   float w = max(uFoamWidth, 0.05);
+  if (shore > 1.65 * w + 0.25) return 0.0;
   vec2 np = p * 1.3;
   float n = anim >= 1.0 ? vnoise(np + uWindDrift * 0.08) // drifting with the wind; still off the focus
     : anim > 0.0 ? mix(vnoise(np), vnoise(np + uWindDrift * 0.08), anim) : vnoise(np);
-  float edge = 1.0 - smoothstep(0.0, 0.35 * w, shore + (n - 0.5) * 0.35 * w);
+  float edge = 1.0 - smoothstep(0.0, 0.55 * w, shore + (n - 0.5) * 0.35 * w);
   float expo = clamp(0.6 + 0.6 * onshore, 0.25, 1.4);
-  float still = edge * 0.775; // the breakup at its mean (0.5)
+  float still = edge * 0.82;
   if (anim <= 0.0) return clamp(still * expo, 0.0, 1.0);
   float t = uWaterTime;
-  // Lines of constant shore distance; the phase grows with time, so each line walks toward the shore.
-  float front = 0.5 + 0.5 * sin(shore * (6.2831853 / (0.35 * w + 0.35)) + t * 2.4 + n * 3.0);
-  float lines = smoothstep(0.72, 0.95, front) * (1.0 - smoothstep(0.25 * w, w, shore));
-  float breakup = smoothstep(0.3, 0.7, vnoise(p * 2.7 - uWindDir * (t * 0.5) + 3.1));
-  float moving = edge * (0.55 + 0.45 * breakup) + lines * breakup * 0.8;
-  return clamp(mix(still, moving, anim) * expo, 0.0, 1.0);
+  float ws = uWindStrength;
+  float warp = (vnoise(vWaterWorldPos.xz * 1.4 + vec2(t * 0.2, -t * 0.15)) - 0.5) * 0.28
+    + (vnoise(vWaterWorldPos.xz * 3.8 - vec2(t * 0.35)) - 0.5) * 0.14;
+  float lace = smoothstep(
+    0.32,
+    0.72,
+    vnoise(vWaterWorldPos.xz * 6.5 + vec2(t * 0.3, -t * 0.25)) * 0.65
+      + vnoise(vWaterWorldPos.xz * 13.5 - vec2(t * 0.4)) * 0.35
+  );
+  float shoreLip = (1.0 - smoothstep(0.0, 0.22 * w, shore + warp * 0.18)) * 0.92;
+  float swash = (1.0 - smoothstep(0.0, 0.55 * w, shore + warp * 0.42)) * (0.75 + 0.25 * lace);
+  float wavePhase = shore * (9.5 / w) + t * (1.8 + 0.6 * min(ws, 2.0)) + warp * 5.0;
+  float breakers = pow(max(0.0, sin(wavePhase)), 5.0)
+    * (1.0 - smoothstep(0.08 * w, 1.45 * w, shore))
+    * (0.55 + 0.45 * lace);
+  float froth = smoothstep(0.48, 0.78, lace)
+    * (1.0 - smoothstep(0.0, 1.15 * w, shore + warp * 0.45))
+    * 0.52;
+  float moving = clamp((max(shoreLip, swash * 1.12) + breakers * 0.95 + froth) * expo, 0.0, 1.0);
+  return clamp(mix(still * expo, moving, anim), 0.0, 1.0);
 }
 
 float waterCrestFoam(vec2 p, WaterWave w, float ws) {
@@ -47,5 +62,31 @@ float waterCrestFoam(vec2 p, WaterWave w, float ws) {
   vec2 q = vec2(dot(p, uWindDir) * 1.4, dot(p, vec2(-uWindDir.y, uWindDir.x)) * 4.2) - vec2(uWaterTime * 0.8, 0.0);
   float br = smoothstep(0.5, 0.85, vnoise(q));
   return crest * gust * br * min(ws, 1.5) * 0.7;
+}
+
+/**
+ * Procedural raindrop splash crowns & floating micro-bubble rings across 3 staggered grid layers.
+ */
+float waterRainBubbles(vec2 p, float time, float rain) {
+  if (rain <= 0.01) return 0.0;
+  float bubbles = 0.0;
+  for (int layer = 0; layer < 2; layer++) {
+    float fl = float(layer);
+    vec2 uv = p * (2.2 + fl * 1.35) + vec2(fl * 17.3, fl * 31.1);
+    vec2 cell = floor(uv);
+    vec2 local = fract(uv) - 0.5;
+    float rnd = tHash(cell + fl * 13.7);
+    float rnd2 = tHash(cell + vec2(5.1, 9.7) + fl * 29.3);
+    float life = fract(time * (1.65 + 0.35 * rnd) + rnd);
+    vec2 center = (vec2(rnd, rnd2) - 0.5) * 0.44;
+    float dist = length(local - center);
+    float splashCore = (1.0 - smoothstep(0.0, 0.055, dist)) * (1.0 - smoothstep(0.0, 0.28, life));
+    float ringRadius = life * 0.38;
+    float cluster = smoothstep(0.22, 0.82, tHash(floor(uv * 8.0)));
+    float bubbleRing = (1.0 - smoothstep(0.0, 0.03, abs(dist - ringRadius))) * (1.0 - life) * cluster;
+    float isSplash = step(rnd2, 0.32 + rain * 0.68);
+    bubbles += (splashCore * 0.95 + bubbleRing * 0.78) * isSplash;
+  }
+  return clamp(bubbles * (0.62 + 0.58 * rain), 0.0, 1.0);
 }
 `;

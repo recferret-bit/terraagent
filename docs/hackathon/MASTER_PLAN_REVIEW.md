@@ -1,5 +1,7 @@
 # Master plan review — fit, track rules and grand-prize odds
 
+> **D-44 supersedes the fee figures in this review (2026-11-04).** The buyer pays platform 100 bp plus the maker stall's 0-100 bp (default 100) in the quote token; no 0-3 % range, no taker-received fee. See [ECONOMY](../spec/ECONOMY.md) §3.
+
 > **Status:** 2026-10-31, review of [`../terraagent-master-plan-final.md`](../terraagent-master-plan-final.md) (the "master economy, on-chain, AI orchestrator & monetization plan") against the repo's decisions (`spec/DECISIONS.md` D-16..D-36), the hackathon cut (`HACKATHON_CUT.md`), the wave files, the official track brief and the numbers in [`economy-balance-simulation.md`](./economy-balance-simulation.md).
 > **Sources checked today:** nearhackathon.com (prizes, judging, timeline, submission), the organisers' prompt repo `nearai/near-hackathon-prompt-examples` (`tracks/09-games.md`, `07-agents.md`, `05-swarms.md`, `SUBMITTING.md`), auth.near.org, docs.near.ai/cloud/verification.
 > **Pass 4 (2026-11-02):** rules, tracks and judges re-checked against nearhackathon.com and https://nearhackathon.com/HACKATHON.md (fetched 2026-11-02); unit numbers moved to the current cut (H = 395 issues, ≈ 299.5 units); repo/LICENSE status, the W26 `terraagent.fun` hosts, tracks 06/03 and the W16-21 dependency added. D-37 is now Accepted as hosting on `main`; **D-MP here is a provisional id** (the W01 wave branch already has Accepted D-37..D-41 with other meanings).
@@ -78,8 +80,8 @@ The full tables are in the balance doc; the parts that change the plan:
 
 ### 4.2 The three traps a new player hits (fix before the demo, all data rows)
 
-1. **Minerals:** the R11 kit (400 / 250 / 150 / 150) leaves 10 minerals after Hub + Solar + Extractor + Quarry + Harvester; one wrong order stalls the colony. Kit 400 / 300 / 200 / 150. *Pass 4:* the W01 code and W01-09 already start the player at 600 / 350 / 200 / 200 (units spec §6.4), which removes this dead-end; which kit ships is Q-02-19 (Balance §10 Q7).
-2. **Biomass:** no income until a Harvester clears forest (5 per tile); the Factory, turrets and DCA each need 10–30. Clear yield 25, Harvester on Living ground +0.5/s.
+1. **Minerals:** the R11 kit (400 / 250 / 150 / 150) leaves 10 minerals after Hub + Solar + Extractor + Quarry + Worker Drone T1; one wrong order stalls the colony. Kit 400 / 300 / 200 / 150. *Pass 4:* the W01 code and W01-09 already start the player at 600 / 350 / 200 / 200 (units spec §6.4), which removes this dead-end; which kit ships is Q-02-19 (Balance §10 Q7).
+2. **Biomass:** no income until a Worker Drone T1 clears forest (5 per tile); the Factory, turrets and DCA each need 10–30. Clear yield 25, Worker Drone T1 on Living ground +0.5/s.
 3. **Shared family caps:** biomass fills the Bio cap and stops water; a full Metals cap discards the T2 iron the player just unlocked. Caps per sub-resource.
 
 ### 4.3 Monetization

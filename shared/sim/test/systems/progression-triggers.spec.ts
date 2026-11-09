@@ -120,7 +120,7 @@ describe('W08-03 · Stage trigger evaluator & 1 Hz dwell progression', () => {
       stage: 1,
       previousStage: 0,
       title: 'S1 First Light',
-      units: ['harvester'],
+      units: ['worker'],
     });
     expect(eventDef('stageReached').data.safeParse(s1Reached[0].data).success).toBe(true);
     expect(colony.stage).toBe(1);
@@ -170,8 +170,8 @@ describe('W08-03 · S2 acceptance check (extractor + generator + 2 min dwell)', 
       stage: 2,
       previousStage: 1,
       title: 'S2 The Grid',
-      units: ['builder'],
-      buildings: ['pylon', 'depot', 'storageDepot', 'capacitor'],
+      units: [],
+      buildings: ['pylon', 'depot', 'storageDepot', 'capacitor', 'wind', 'waterExtractor', 'petroleumWell', 'supplyDepot'],
     });
     expect(eventDef('stageReached').data.safeParse(s2Reached[0].data).success).toBe(true);
     expect(colony.stage).toBe(2);
@@ -193,16 +193,17 @@ describe('W08-03 · S3 and S4 trigger conditions & wave cap', () => {
     colony.stage = 2;
     colony.unlockStage = 2;
 
+    // Keep all building sight inside the initial HQ ring, so this fixture tests the scout branch of S4.
     // 5 buildings + 2 extractors is NOT enough for S3
-    spawnCompletedEntity(state, { kind: ENTITY_KIND.commandHub, q: 2, r: 0 });
-    spawnCompletedEntity(state, { kind: ENTITY_KIND.metalsExtractor, q: 4, r: 0 });
-    spawnCompletedEntity(state, { kind: BUILDING_KIND.mineralsExtractor, q: 5, r: 0 });
-    spawnCompletedEntity(state, { kind: ENTITY_KIND.solar, q: 2, r: 2 });
-    spawnCompletedEntity(state, { kind: BUILDING_KIND.wind, q: 3, r: 2 });
+    spawnCompletedEntity(state, { kind: ENTITY_KIND.commandHub, q: 0, r: 0 });
+    spawnCompletedEntity(state, { kind: ENTITY_KIND.metalsExtractor, q: 1, r: 0 });
+    spawnCompletedEntity(state, { kind: BUILDING_KIND.mineralsExtractor, q: 0, r: 1 });
+    spawnCompletedEntity(state, { kind: ENTITY_KIND.solar, q: 1, r: 1 });
+    spawnCompletedEntity(state, { kind: BUILDING_KIND.wind, q: -1, r: 2 });
     expect(evaluateStageTrigger(state, 0, 3)).toBe(false);
 
     // 6th completed building satisfies S3
-    spawnCompletedEntity(state, { kind: BUILDING_KIND.depot, q: 1, r: 2 });
+    spawnCompletedEntity(state, { kind: BUILDING_KIND.depot, q: 1, r: -1 });
     expect(evaluateStageTrigger(state, 0, 3)).toBe(true);
 
     // Advance 3 min (180s = 900 ticks) -> S3 reached
@@ -211,7 +212,7 @@ describe('W08-03 · S3 and S4 trigger conditions & wave cap', () => {
     expect(colony.stage).toBe(3);
 
     // S4 requires Robotics Factory + (scout unit OR >= 5 tiles explored outside initial landing ring)
-    spawnCompletedEntity(state, { kind: BUILDING_KIND.roboticsFactory, q: 6, r: 0 });
+    spawnCompletedEntity(state, { kind: BUILDING_KIND.roboticsFactory, q: 0, r: 0 });
     expect(evaluateStageTrigger(state, 0, 4)).toBe(false);
 
     spawnCompletedEntity(state, { kind: UNIT_KIND.scout, q: 7, r: 0 });

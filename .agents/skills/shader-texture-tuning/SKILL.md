@@ -8,6 +8,8 @@ description: >-
   models, or writing terrain and visual effect shaders.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Shader & Procedural Texture Tuning Skill (`shader-texture-tuning`)
 
 This skill enforces **Pillar 3 (The Unifier Shader Architecture)** so procedural kitbashed models and external AI-generated `.glb` assets share an identical lighting response, surface grain, planet weathering gradient, and GPU animation pipeline.
@@ -46,10 +48,13 @@ Adjust the exposed uniforms live (or via a diagnostic GUI / URL params) to balan
 - `uTriplanarScale` (`1.5 – 4.0`): Controls frequency of procedural micro-normal/roughness variation.
 
 ### Step 3: Terrain, Water & Terraforming Splatmap Tuning
-When tuning the terraforming terrain splatmap, use `createTerraformingTerrainMaterial()` from [TerrainAndWaterShaders.ts](./examples/TerrainAndWaterShaders.ts) (in-repo copy: `frontend/render/visuals/TerrainAndWaterShaders.ts`). The example's `createHydroWaterMaterial()` is not the game's water: every water surface uses `createWaterMaterial()` in `frontend/render/visuals/water/WaterMaterial.ts` (GLSL chunks in `frontend/render/visuals/water/glsl/`: `waves`, `surface`, `foam`, `reflections`, `bed`, `stages`), tuned through `waterConfig.ts` (F8 Visual Shader Lab → `WATER` tab, `?water=1|0`), with the shared wave maths (wavelengths, slopes, peak height that fauna and the CPU read too) in `waveModel.ts`. For the splatmap:
+When tuning the terraforming terrain splatmap, use `createTerraformingTerrainMaterial()` from [TerrainAndWaterShaders.ts](./examples/TerrainAndWaterShaders.ts) (in-repo copy: `frontend/render/visuals/TerrainAndWaterShaders.ts`). The example's `createHydroWaterMaterial()` is not the game's water: every water surface uses `createWaterMaterial()` in `frontend/render/visuals/water/WaterMaterial.ts` (GLSL chunks in `frontend/render/visuals/water/glsl/`: `waves`, `surface`, `foam`, `reflections`, `mirror`, `bed`, `stages`; the planar mirror image comes from `visuals/water/reflection/`, see below), tuned through `waterConfig.ts` (F8 Visual Shader Lab → `WATER` tab, `?water=1|0`), with the shared wave maths (wavelengths, slopes, peak height that fauna and the CPU read too) in `waveModel.ts`. For the splatmap:
 1. Sample the dynamic `uTerraformMap` (`DataTexture` updated by terraforming stations).
 2. Compute a glowing frontier ring along the transition boundary (`smoothstep(0.42, 0.5, mask) * (1.0 - smoothstep(0.5, 0.58, mask))`) boosted by `3.8x` for selective bloom.
 3. Blend barren biome rock/sand/ice into lush terraformed grass/soil inside the mask.
+
+### Step 4: Planar Water Reflections
+The water mirrors the scene through one planar pass (`frontend/render/visuals/water/reflection/`): `createColonyViewport().render()` calls `WaterReflectionPass.render()` right before `composer.render()`; it reflects the render camera about the water plane (`mirrorCamera.ts`, Reflector-style oblique near-plane clip), renders into a HalfFloat target sized `REFLECT_RES_SCALES[reflectRes]` × the canvas, scissored to the screen rect of the visible water, and writes the shared uniforms in `reflectionUniforms.ts` (`uReflTex`, `uReflMatrix`, `uReflRect`, `uReflOn`). The water shader (`glsl/mirror.ts`, MED 1 tap, HIGH 3 taps, LOW none) projects the undisplaced surface point through `uReflMatrix`, offsets it along the wave normal (`uReflDistort`, wind-scaled) and lays the mirror over the water with cover `max(Fresnel, 0.75) × strength` (alpha follows the cover, not the brightness, so dark trees read); texels that match the sky (dome gradient or background, `water/mirrorSky.ts`) get no cover, so open water keeps its look. Transparent no-depth-write materials are left out of the mirror (`reflectionOverlays.ts`). Debug: F8 → WATER → REFLECTION DEBUG / `?reflectDebug=1` (mirror only); e2e `tests/e2e/probes/water-reflections.spec.ts`. A new water surface calls `registerReflectiveWater({ object, planeY?, parts? })`; anything that must not appear in the mirror calls `excludeFromReflection(obj)`. Limits: `docs/questions-and-limitations/render.md` RN-71.
 
 ---
 

@@ -6,6 +6,8 @@ export interface Scene3dService {
   scene: THREE.Scene;
   /** Axial float tile coords to world metres, y = terrain height there. */
   tileToWorld(x: number, y: number): { x: number; y: number; z: number };
+  /** Live interpolated entity centre, projected onto terrain for ground indicators. */
+  renderedEntityGroundPosition?(entityId: number): { x: number; y: number; z: number } | null;
   /** Biome key of the current planet look (`PlanetSpec.biomeKey`). */
   biomeKey(): string;
 }
@@ -24,11 +26,4 @@ declare module '../../core/registry/types' {
   interface GameView { sim?: SimFrame }
 }
 
-/** A rendered pose in axial tile coordinates (`rot` in radians). */
-export interface Pose { x: number; y: number; rot: number }
-
-/** Shortest-arc interpolation of an angle in radians. */
-export const lerpAngle = (a: number, b: number, k: number): number => {
-  const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
-  return a + d * k;
-};
+export { lerpAngle, type Pose } from '@terra/render/motion/pose';

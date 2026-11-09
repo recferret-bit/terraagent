@@ -1,5 +1,5 @@
 import { getParticleGeometryTriCount } from '../geometries';
-import type { ParticleLayerSpec, ParticlePresetSpec, ParticleRole } from '../types';
+import type { ParticleLayerSpec, RegisteredParticlePreset, ParticleRole } from '../types';
 
 export type ParticleIssueSeverity = 'error' | 'warn' | 'info';
 
@@ -127,7 +127,7 @@ function checkLayerPhysics(layer: ParticleLayerSpec, add: (s: ParticleIssueSever
 }
 
 function checkRolesAndHierarchy(
-  preset: ParticlePresetSpec,
+  preset: RegisteredParticlePreset,
   roleShares: Record<ParticleRole, number>,
   add: (s: ParticleIssueSeverity, c: ParticleIssueCode, m: string, f?: string) => void,
 ): number {
@@ -179,7 +179,7 @@ function checkRolesAndHierarchy(
 }
 
 function checkBeamAndBounce(
-  preset: ParticlePresetSpec,
+  preset: RegisteredParticlePreset,
   issues: ReadonlyArray<ParticleValidationIssue>,
   add: (sev: ParticleIssueSeverity, code: ParticleIssueCode, message: string, fix?: string) => void,
 ): void {
@@ -191,6 +191,7 @@ function checkBeamAndBounce(
       'Enable bounce >= 0.25 on at least one physical chunk layer so debris rebounds on the terrain.',
     );
   }
+  if (preset.targetKind === 'combat') return;
   const b = preset.toolBeam;
   if (!(b.beamRadius > 0) || !(b.sweepRadius >= 0) || !(b.pulseFreq > 0) || ![b.beamRadius, b.sweepRadius, b.pulseFreq].every(Number.isFinite)) {
     add(
@@ -210,7 +211,7 @@ function checkBeamAndBounce(
   }
 }
 
-export function validateParticlePreset(preset: ParticlePresetSpec): ParticleValidationReport {
+export function validateParticlePreset(preset: RegisteredParticlePreset): ParticleValidationReport {
   const issues: ParticleValidationIssue[] = [];
   const add = (severity: ParticleIssueSeverity, code: ParticleIssueCode, message: string, fix?: string) => {
     issues.push({ severity, code, message, fix });

@@ -2,7 +2,8 @@ import { hexDistance } from '../../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../../grid/layers';
 import { collectPodBlastTiles } from '../../spawnDisk';
 import { generateSpawnSlots, type SpawnSlot } from '../../spawnSlots';
-import { ensureStarterHubSpace } from '../../starterSpace';
+import { placeStarterDeposits } from '../../starterDeposits';
+import { ensureStarterHubSpace, starterHubTiles } from '../../starterSpace';
 import { TILE_M, type WorldGenContext, type WorldStage } from '../context';
 import { smoothstep } from '../noise';
 
@@ -15,16 +16,15 @@ function quantile(values: number[], p: number): number {
   return v[Math.min(v.length - 1, Math.floor(v.length * p))];
 }
 
-interface ZoneOpts { radius: number; falloff: number; clearZone: boolean; keep: ReadonlySet<number> }
+interface ZoneOpts { radius: number; falloff: number; clearZone: boolean }
 
 /**
  * Levels one landing zone (D-38): a terraformed-looking flat disc of `radius` tiles at one height (the zone's median
  * ground level), easing back into the natural relief over `falloff` tiles so there is no cliff at its edge. On relief
  * planets (`clearZone`) every land tile of the disc becomes Flat (deposits kept); quota planets only level heights.
- * Tiles in `keep` (the spawn guarantee's metals footprints) never change class in the falloff ring.
  */
 function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void {
-  const { radius, falloff, clearZone, keep } = zone;
+  const { radius, falloff, clearZone } = zone;
   const L = ctx.state.grid.layers;
   const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, height = L.height as Float32Array;
   const deposit = L.deposit as Uint8Array, richness = L.richness as Float32Array;
@@ -66,18 +66,12 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void 
       }
       continue;
     }
-    if (clearZone && keep.has(i)) {
-      height[i] = level;
-      terrain[i] = TERRAIN.flat;
-      prep[i] = PREP.flat;
-      continue;
-    }
     const t = smoothstep(radius, outer, d);
     height[i] = Math.fround(level + (height[i] - level) * t);
     if (clearZone && t < 0.65 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none) terrain[i] = TERRAIN.slope;
   }
-  // Outside the levelled pod-drop disc, wild desert stays `slope` (dunes) except for `keep` and a narrow gentle rim (`slopeGradientM`).
-  if (clearZone) reclassifyRing(ctx, slot, radius, tiles.filter((t) => t.d > radius && !keep.has(t.i) && !blastTiles.has(t.i)));
+  // Outside the levelled pod-drop disc, wild desert stays `slope` (dunes) except for a narrow gentle rim (`slopeGradientM`).
+  if (clearZone) reclassifyRing(ctx, slot, radius, tiles.filter((t) => t.d > radius && !blastTiles.has(t.i)));
 }
 
 /**
@@ -112,8 +106,9 @@ function reclassifyRing(ctx: WorldGenContext, slot: SpawnSlot, radius: number, r
 }
 
 /**
- * Spawn slots (`UO-TF-09` guarantees, `spawnSlots.ts`) + a levelled starter landing zone around each slot. Relief
- * planets keep their natural heights outside the zones (the slot guarantees only change classes there).
+ * Spawn slots (`UO-TF-09` terrain guarantees, `spawnSlots.ts`) + a levelled starter landing zone and Hub site around
+ * each slot, then the starter deposit guarantees on the hex tiles of the finished ground (`starterDeposits.ts`).
+ * Relief planets keep their natural heights outside the zones (the slot guarantees only change classes there).
  */
 export const landing: WorldStage = {
   id: 'landing',
@@ -121,15 +116,17 @@ export const landing: WorldStage = {
     const clearZone = ctx.profile.clearLandingZone === true;
     const height = ctx.state.grid.layers.height as Float32Array;
     const natural = clearZone ? height.slice() : null;
-    const keep = new Set<number>();
-    const slots = generateSpawnSlots(ctx.state, ctx.capacity, { rebalance: !clearZone, footprintsOut: keep });
+    const slots = generateSpawnSlots(ctx.state, ctx.capacity, { rebalance: !clearZone });
     if (natural) height.set(natural);
-    const zone: ZoneOpts = { radius: ctx.num('landingRadius', 4), falloff: ctx.num('landingFalloff', 3), clearZone, keep };
+    const zone: ZoneOpts = { radius: ctx.num('landingRadius', 4), falloff: ctx.num('landingFalloff', 3), clearZone };
+    const hubSites = new Set<number>();
     for (const slot of slots) {
       levelZone(ctx, slot, zone);
       // The Hub guarantee (same geo + spread rule as placement): a buildable 3×3 within reach of every slot.
-      ensureStarterHubSpace(ctx.state, slot.q, slot.r, slot.index);
+      const site = ensureStarterHubSpace(ctx.state, slot.q, slot.r, slot.index);
+      if (site) for (const i of starterHubTiles(ctx.state, site.q, site.r)) hubSites.add(i);
     }
+    placeStarterDeposits(ctx.state, slots, hubSites);
     const deposit = ctx.state.grid.layers.deposit as Uint8Array;
     const richness = ctx.state.grid.layers.richness as Float32Array;
     for (let i = 0; i < ctx.state.grid.count; i++) {

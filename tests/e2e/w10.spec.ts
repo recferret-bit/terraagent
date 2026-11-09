@@ -1,4 +1,5 @@
 import type { BrowserContext, Page } from '@playwright/test';
+import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
 import {
   clickTile,
   devConsole,
@@ -120,16 +121,17 @@ test('@hack 1. Open ?scenario=w10 -> S2 colony with 900 metals.t1 stock, online 
     brownout: false,
   });
 
-  const hasHub = await page.evaluate(() => {
+  const hasHub = await page.evaluate(({ E, S }) => {
     const s = (window as unknown as OnlineDebugWindow).__online.store.latest;
     if (!s) return false;
     for (let i = 0; i < s.count; i++) {
-      if (s.entities[i * 12 + 1] === 8 && s.entities[i * 12 + 3] === 2 && s.entities[i * 12 + 4] === 1) {
+      const o = i * S;
+      if (s.entities[o + E.kind] === 8 && s.entities[o + E.q] === 2 && s.entities[o + E.r] === 1) {
         return true;
       }
     }
     return false;
-  });
+  }, { E, S: ENTITY_STRIDE });
   expect(hasHub).toBe(true);
   await expect(page.locator('[data-building="tradeHub"]')).toBeVisible();
   await screenshot(page, '1-w10-colony-loaded');
@@ -286,13 +288,13 @@ test('@hack 9. Flag-off check (?waves=..09) -> Trade Hub hidden from Constructio
   await expect(page.locator('[data-building="tradeHub"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="trade-hub-panel"]')).toHaveCount(0);
 
-  const hubState = await page.evaluate(() => {
+  const hubState = await page.evaluate(({ E, S }) => {
     const win = window as unknown as OnlineDebugWindow;
     const s = win.__online.store.latest;
     let state = -1;
     if (s) {
       for (let i = 0; i < s.count; i++) {
-        if (s.entities[i * 12 + 1] === 8) state = s.entities[i * 12 + 10];
+        if (s.entities[i * S + E.kind] === 8) state = s.entities[i * S + E.state];
       }
     }
     let meshVisible: boolean | null = null;
@@ -300,7 +302,7 @@ test('@hack 9. Flag-off check (?waves=..09) -> Trade Hub hidden from Constructio
       if (entry.kind === 8) meshVisible = entry.mesh.visible;
     }
     return { state, meshVisible };
-  });
+  }, { E, S: ENTITY_STRIDE });
   expect(hubState.state).toBe(6); // ENTITY_STATE.inert
   expect(hubState.meshVisible).toBe(false);
 

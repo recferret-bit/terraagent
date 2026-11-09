@@ -1,5 +1,7 @@
 # TerraAgent — Simulation & Planet Host Specification
 
+**Regional economy extension:** [ECONOMY](ECONOMY.md) sections 2.2–2.3 require one shared regional production resolver and logistics evaluator. Endowment hash is pinned to atlas/sector identity; runtime service windows pin their policy and exact costs. All terrain finds/extractors/renewables, work/combat, ledger and headless experiments reuse these functions. Regions are not separate simulations or clocks.
+
 > **Status:** v0.2 (2026-10-30). This is the **simplified server simulation** (D-24): one app, sim in `worker_threads`, reproducible but not bit-exact, snapshot + coarse fast-run on restart, full state to clients, and no anti-cheat checks (D-25). The earlier deterministic, lease-based host is summarised in §15 as Future.
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9, §14, §15 · [`DECISIONS.md`](./DECISIONS.md) D-16, D-17, D-18, D-21, D-24, D-25, D-31, D-37, D-38, D-41
 > **Gameplay source:** [`docs/game/colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md), [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md), [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md)
@@ -84,7 +86,7 @@ Command kinds (summary; arguments in PROTOCOL.md):
 |---|---|---|
 | Colony control | `setPriorities`, `enqueueTask` (build / upgrade / repair / terraform / buildUnit / queueGoal / raid / launchRocket), `cancelTask`, `placeBuilding`, `upgradeBuilding`, `demolish`, `setAutopilot`, `setAwayBudget`, `setHarvestWeights`, `setStance`, `attackMove`, `setRally`, `setPlanetTime` | player, ai |
 | AI | `ai.directive` (DirectiveV1/v2) | ai |
-| Cargo & market (D-26) | `cargo.export {resource, amount}` (moves stock to "in orbit" pending mint), `cargo.import {resource, amount}` (credited after the burn confirms), `cargo.settled {ref, ok}`, `market.reserve` / `market.release` / `market.settled {tradeId, deltas}` | player, ai, near |
+| Cargo & market (D-26) | `cargo.export {resource, amount}` (moves stock to "in orbit" pending mint), `cargo.import {resource, amount}` (credited after the burn confirms), `cargo.settled {ref, ok}`, `market.reserve` / `market.release` / `market.settled {tradeId, deltas}` (module-only, whole-unit resource deltas; client market commands go sim-first, see PROTOCOL §4.4.1) | player, ai, near |
 | Diplomacy & bounties | `diplomacy.proposeTruce` / `respondTruce` / `cancelTruce`, `bounty.post` / `bounty.claim` / `bounty.paid` | player, ai, near |
 | System | `system.spawnColony`, `system.retireColony`, `system.seal`, `system.end`, `system.presence {colonyId, away}`, `system.arrive` | lobby, game |
 
@@ -170,7 +172,7 @@ interface PlanetState {
 
 All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked **(proposed)**. `compileData()` converts design units and durations (`SIM-D-03`). The unit roster, lanes, ground prep, walls, truces and progression follow [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md) (D-16, accepted); where §7.2–§7.7 below differ, the units spec wins.
 
-- `SIM-G-DATA` **Balance is data, tunable at runtime (D-35).** Every balance number (costs, HP, DPS, ranges, view radii, timers, rates, thresholds, AI weights) is a row in `shared/sim/src/data/*.ts`, never a constant in system code. `compileData()` merges an optional **overrides file** (`balance.overrides.json`, path from `TA_BALANCE_OVERRIDES`; per planet via the scenario) over the tables. The dev console's `tune <table>.<row>.<field> <value>` / `tune reset` / `tune export` applies a change live to the running planet (server and local host) and records it in the planet's event log. `dataHash` in `welcome` (`SIM-X-08`) covers the overrides, so clients reload the same numbers. Values marked **(proposed)** here and the B1–B13 defaults in `docs/plan/OWNER_TASKS.md` are the starting rows.
+- `SIM-G-DATA` **Balance is data, tunable at runtime (D-35, extended by D-44).** W13 [ECONOMY](ECONOMY.md) pins immutable database profile versions compiled once for live hosts and isolated experiments; no DB reads in ticks. New jobs pin the effective version; existing jobs retain terms. File/dev overrides remain sandbox-only when cash is enabled. The following file-based workflow is the existing baseline. Every balance number (costs, HP, DPS, ranges, view radii, timers, rates, thresholds, AI weights) is a row in `shared/sim/src/data/*.ts`, never a constant in system code. `compileData()` merges an optional **overrides file** (`balance.overrides.json`, path from `TA_BALANCE_OVERRIDES`; per planet via the scenario) over the tables. The dev console's `tune <table>.<row>.<field> <value>` / `tune reset` / `tune export` applies a change live to the running planet (server and local host) and records it in the planet's event log. `dataHash` in `welcome` (`SIM-X-08`) covers the overrides, so clients reload the same numbers. Values marked **(proposed)** here and the B1–B13 defaults in `docs/plan/OWNER_TASKS.md` are the starting rows.
 - `SIM-G-RES` **Resources (D-34).** Stock is 10 sub-resources keyed by `ResourceKey` (§5) in three families (Metals, Minerals, Bio), each with T1/T2/T3; T2/T3 output needs the terraforming gates of the economy spec §3.0. Storage caps are **per family** (Hub and Depot storage adds to all three; the sub-resources of a family share its cap, proposed). Energy is grid power (E/s), stored only in capacitors.
 - **Reading the cost columns in §7.1–§7.3 (D-34 tier rule).** Costs stay written `M/Min/Pet/W` until each table is rebalanced. A **T1** item pays M → `metals.t1`, Min → `minerals.t1`, Pet → `bio.biomass`, W → `bio.water`. A **T2** item pays 60 % of M and Min in T1 and 40 % in T2 of the same family, and its Pet in `bio.t2`. A **T3** item pays 40 % T1, 30 % T2, 30 % T3 of M and Min, Pet in `bio.t2`, plus 10 % of its M as `bio.t3`. W is always `bio.water`. Upkeep per second (fuel, coolant, terraform water) uses the T1 reading (proposed).
 
@@ -207,7 +209,7 @@ All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked 
 
 | Robot | Build | Cost M/Min/Pet/W | Supply | Drain E/s | HP | Speed **(proposed)** | Capability |
 |---|---|---|---|---|---|---|---|
-| Miner / Harvester | 10 s | 40/15/5/0 | 1 | −1.5 | 160 | 1.5 tiles/s | +2.0 res/s from a surface deposit tile; clears forest/rock (yields 20 Metals per clear, proposed) |
+| Miner / Worker Drone T1 | 10 s | 40/15/5/0 | 1 | −1.5 | 160 | 1.5 tiles/s | +2.0 res/s from a surface deposit tile; clears forest/rock (yields 20 Metals per clear, proposed) |
 | Builder / Repair | 12 s | 45/25/10/0 | 1 | −2.0 | 150 | 1.5 tiles/s | Build/repair rate 1.0×; repairs severed pylons |
 | Combat / Raider | 14 s | 55/30/15/0 | 1 | −2.5 | 240 | 2.5 tiles/s | 14 DPS, range 4 (proposed); nest clearing, raids |
 
@@ -296,7 +298,7 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 | `raidStarted` / `raidRepelled` | warn | raid begins / all raiders dead |
 | `rocketReady` / `rocketLaunched` / `colonySettled` | info | silo complete / launch / settled |
 | `colonyCritical` / `colonyEliminated` | critical | units spec `UO-HQ-04` |
-| `cargoExportRequested` / `marketOrderMatched` / `truceSigned` / `bountyCompleted` | info | inputs for the `near` module (D-26) |
+| `cargoExportRequested` / `marketOrderRequested` / `marketCancelRequested` / `marketHubFeeSet` / `truceSigned` / `bountyCompleted` | info | inputs for the `near` module (D-26) |
 | (no event) | — | rejections are command outcomes (`StepResult.outcomes` → `cmd.reject` to the issuing socket or module only), not events |
 
 ---
@@ -396,7 +398,7 @@ The planned test per rule (task plan). Files marked by a later wave's task do no
 | 9 | NEAR economy | Cargo export/import, market reservations, bounties enter the sim as commands | D-26 | §4 command groups, `SIM-C-05` |
 | 10 | Planet types | `desert` / `ocean` / `temperate`, one-to-one with the landing worlds | D-33 | §5 `PlanetType`, §7.6 Ocean column, §10 mix |
 | 11 | Resources | Metals / Minerals / Bio × T1–T3, unlocked by terraforming; Energy is grid power | D-34 | §5 `ResourceKey`, `SIM-G-RES`, §7.1–§7.3 cost reading, storage per family |
-| 12 | Balance tuning | Data rows + overrides file + dev `tune` | D-35 | `SIM-G-DATA` |
+| 12 | Balance tuning | Database profile snapshots for W13; sandbox overrides/dev `tune` | D-35, D-44 | `SIM-G-DATA` |
 | 13 | `powerOverload` debounce | 600 ticks in §7.4 and §9 (under `SIM-D-03` that is 60 s of game time) | R8 | §9 row |
 
 Follow-up design needed:

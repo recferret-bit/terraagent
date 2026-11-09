@@ -6,7 +6,9 @@ import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { nextFloat } from '../../kernel/rng';
 import type { PlanetState } from '../../kernel/state';
-import { occupiedGroundTiles } from '../construction/occupancy';
+import { buildingFootprints, occupiedGroundTiles } from '../construction/occupancy';
+import { buildGapField, footprintGap, laneTier, organicTarget } from '../construction/siteSpacing';
+import { collectReservedTiles } from '../goals/sites';
 import {
   evaluatePlacement,
   getBuildingFootprintTiles,
@@ -138,14 +140,14 @@ function findColonySupportNodes(
       if (!hqAnchor) hqAnchor = pos;
     } else if (kind === ENTITY_KIND.pod) {
       if (!podAnchor) podAnchor = pos;
-    } else if (kind !== ENTITY_KIND.harvester && kind !== ENTITY_KIND.devProbe) {
+    } else if (kind !== ENTITY_KIND.worker && kind !== ENTITY_KIND.devProbe) {
       supportNodes.push(pos);
     }
   }
 
   let fallbackAnchor = hubAnchor ?? hqAnchor ?? podAnchor;
   if (!fallbackAnchor) {
-    const ownerLayer = state.grid.layers.owner as Int8Array;
+    const ownerLayer = state.grid.layers.owner as Int16Array;
     const hx = hexIndex(state.grid.radius);
     for (let i = 0; i < state.grid.count; i++) {
       if (ownerLayer[i] === colonyIndex) {
@@ -163,7 +165,7 @@ function detectGridFlags(state: PlanetState, colonyIndex: number): {
   colonyHasTerritory: boolean;
   planetHasRichness: boolean;
 } {
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const richnessLayer = state.grid.layers.richness as Float32Array | undefined;
   let colonyHasTerritory = false;
   let planetHasRichness = false;
@@ -262,11 +264,14 @@ function scoreCandidateSite(
   directDepositMatch: boolean,
   ownedCount: number,
   preparedCount: number,
+  gap: number,
+  targetDist: number,
 ): number {
   const bonus = ownedCount * 100 + preparedCount * 25;
   if (spec.requiresDeposit !== undefined) {
     const anchorBonus = directDepositMatch ? 20000 : 5000;
-    return anchorBonus + richnessBp - minSupportDist * 250 - distToHub * 100 + bonus;
+    // Deposit buildings must sit on ore; among equal deposits prefer one that leaves a walkable lane.
+    return anchorBonus + richnessBp - minSupportDist * 250 - distToHub * 100 + bonus + (laneTier(gap) === 0 ? 400 : 0);
   }
   if (spec.isHub) {
     return 15000 - distToHub * 300 + bonus;
@@ -277,9 +282,9 @@ function scoreCandidateSite(
   if (spec.isPylon) {
     return 12000 - Math.abs(minSupportDist - 5) * 300 - distToHub * 50 + bonus;
   }
-  const inOptimalBand = minSupportDist >= 2 && minSupportDist <= 6 ? 3000 : 0;
-  const ringPenalty = Math.abs(minSupportDist - 3) * 200;
-  return 10000 + inOptimalBand - ringPenalty - distToHub * 100 + bonus;
+  // Ordinary buildings: keep a walkable lane (one free tile) and head for this building's organic target point around
+  // the hub, so the base spreads out loosely instead of piling up beside the hub (`siteSpacing.ts`).
+  return 10000 + (laneTier(gap) === 0 ? 3000 : 0) - targetDist * 250 + bonus;
 }
 
 interface SiteSearchContext {
@@ -292,6 +297,8 @@ interface SiteSearchContext {
   maxRadius: number;
   mustOwnAnchor: boolean;
   jitterCap: number;
+  gaps: Uint8Array;
+  target: { q: number; r: number };
   drawRng: () => number;
   data?: CompiledDataLike;
 }
@@ -343,8 +350,10 @@ function evaluateCandidateTile(
 
   const jitter = ctx.jitterCap > 0 ? Math.floor(ctx.drawRng() * (ctx.jitterCap + 1)) : 0;
   const score =
-    scoreCandidateSite(spec, distToHub, minSupportDist, richnessBp, directDepositMatch, ownedCount, preparedCount) +
-    jitter;
+    scoreCandidateSite(
+      spec, distToHub, minSupportDist, richnessBp, directDepositMatch, ownedCount, preparedCount,
+      footprintGap(ctx.gaps, fpIndices), hexDistance(ctx.target.q, ctx.target.r, q, r),
+    ) + jitter;
 
   return {
     q, r, tileIndex, score,
@@ -380,12 +389,14 @@ export function selectDeterministicBuildSite(
     maxRadius: opts?.maxRadius ?? DEFAULT_SITE_MAX_RADIUS,
     mustOwnAnchor: opts?.requireOwned ?? (colonyHasTerritory && !spec.isHub),
     jitterCap: opts?.jitterBp && opts.jitterBp > 0 ? Math.trunc(opts.jitterBp) : 0,
+    gaps: buildGapField(state.grid.radius, collectReservedTiles(state, colonyIndex, opts?.data)),
+    target: organicTarget(hubAnchor, colonyIndex, buildingFootprints(state, opts?.data).length),
     drawRng: opts?.rng ?? (() => nextFloat(state.rng.ai)),
     data: opts?.data,
   };
 
   const hx = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   let best: BuildSiteSelection | null = null;
   let tieCount = 0;
 

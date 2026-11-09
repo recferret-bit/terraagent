@@ -127,3 +127,9 @@ A player builds a **Trade Hub** and **exports** colony stock to "cargo in orbit"
 Connect expansion/supply tutorial goals to real cargo routes, escorts and Trade Hub orders.
 
 Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (F1 On-Chain Cargo):** Trade Hub T1 (`building.hub.trade`), orbital cargo export (`mt_mint`) and import (`mt_burn`) for the 4 Tier-1 resources (`metals.t1`, `minerals.t1`, `bio.water`, `bio.biomass`; T2/T3 sub-resources stay inactive while `W17`/`W19` are postponed).
+2. **Test Pyramid & Online E2E (`tests/e2e/w10.spec.ts`):** Shared `cargo.contract.ts` suite + outbox crash-recovery & conservation integration specs + online Playwright E2E.
+3. **100% Working Mock Mode + `NEAR_MODE` Switch:** 100% working in `NEAR_MODE=mock` (`MockCargoTokenAdapter`) and switchable to real NEAR testnet/mainnet (`NEAR_MODE=testnet` / `NEAR_ADAPTER_CARGO` in `W23`).

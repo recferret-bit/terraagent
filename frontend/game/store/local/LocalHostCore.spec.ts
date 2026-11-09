@@ -1,5 +1,5 @@
 import { parseWaves, ServerMessage, type ServerMessageOf } from '@terra/contracts';
-import { createPlanet, ensureColonyLedger, ensureColonyRecord, getColonyStock, snapshot, spawnHqUnit, StepError, type BalanceOverrides, type SimHost } from '@terra/sim';
+import { createPlanet, ensureColonyLedger, ensureColonyRecord, getColonyStock, rowOf, snapshot, spawnHqUnit, StepError, type BalanceOverrides, type SimHost } from '@terra/sim';
 import { describe, expect, it, vi } from 'vitest';
 import type { LedgerReply } from '../../net/devServer';
 import { ReplicaCore } from '../replica/ReplicaCore';
@@ -146,6 +146,24 @@ describe('LocalHostCore dev server', () => {
     const w = r.servers().filter((m): m is ServerMessageOf<'welcome'> => m.t === 'welcome').pop()!;
     expect(w.d.overrides).toEqual({ dev: { probe: { nudgeTiles: 3 } } });
     again.stop();
+  });
+
+  it('a live health tune updates existing HQ health and reset restores the same damage fraction', async () => {
+    const r = rig(memorySnapshotStore(), { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    const state = core.simHost.state;
+    ensureColonyRecord(state, 0, 0);
+    const id = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    const row = rowOf(state.entities, id);
+    state.entities.cols.hp[row] = 450;
+    await core.devCommand('tune', { op: 'set', path: 'hq.t1.hp', value: 1800 });
+    expect(core.simHost.state.entities.cols.hpMax[row]).toBe(1800);
+    expect(core.simHost.state.entities.cols.hp[row]).toBe(900);
+    await core.devCommand('tune', { op: 'reset' });
+    expect(core.simHost.state.entities.cols.hpMax[row]).toBe(900);
+    expect(core.simHost.state.entities.cols.hp[row]).toBe(450);
+    core.stop();
   });
 });
 

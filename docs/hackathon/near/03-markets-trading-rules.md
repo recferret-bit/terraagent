@@ -1,7 +1,9 @@
 # 03 — Markets and trading rules (F2)
 
+> **D-44 supersedes the fee rules below (2026-11-04).** The buyer pays the platform fee (100 bp) and the maker stall's fee (0-100 bp, default 100) in the pair's **quote token**, independent of maker/taker role; the fee is never taken from the received token and there is no 50-300 bp or 0-3 % range. W22's treasury share is carved out of the platform fee. See [ECONOMY](../../spec/ECONOMY.md) §3 and [NEAR](../../spec/NEAR.md) `NEAR-61`. Older fee statements in this file are historical.
+
 > **Status:** 2026-10-31, grooming reference, pass 2; pass 4 (2026-11-02) (legend, precedence rules and abbreviations: [`README.md`](./README.md)). **Sources:** [`NEAR.md`](../../spec/NEAR.md) §1, §6, §12, §15 · [`W13-markets.md`](../../plan/waves/W13-markets.md) · W15-08/11, W22-07, W23-21..25, W11-04/05, W04-18 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) §7, §8, §10 · [`DATA_MODEL.md`](../../spec/DATA_MODEL.md) §4.4.1 · NEF F2 · D-19, D-25, D-26, D-30 · MP §0, §1, §3, §7 · Review §2, §4 · Balance §7, §10 · Pivot §2, §6 · [`media-plan.md`](../public/media-plan.md).
-> **Owned here:** the treasury-leg split (Q-03-1), the protocol fee (Q-03-7), NEAR pairs in the demo (Q-03-15). **W13 header note:** partial fills, taker pays the fee, and no self-trade are implemented by H issues but are in no spec, so they are **Planned · spec gap** until W13-02 writes them into NEAR.md (the note's fourth item, the over-cap mint refund, is in [02](./02-mining-cargo-mint-authority.md)).
+> **Owned here:** the treasury-leg split (Q-03-1), the protocol fee (Q-03-7), NEAR pairs in the demo (Q-03-15). **W13 header note:** partial fills (custodial), all-or-nothing (claimed), buyer-pays quote-token fees and no self-trade are now written in NEAR.md (`NEAR-60`, `NEAR-61`, D-44) (the note's fourth item, the over-cap mint refund, is in [02](./02-mining-cargo-mint-authority.md)).
 
 ## 1. Purpose
 
@@ -16,7 +18,7 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | Actor | Account | Role in a trade | Who signs |
 |---|---|---|---|
 | Maker colony | `{colony}.{name}.terraagent.near` (`.mock` in phase 1) | rests an order; the side it gives is deposited into the verifier | the server, with the custodial colony key until the account is claimed (NEF F2, D-18, W13-07); claimed accounts: Q-03-9 |
-| Taker colony | same shape | crosses a resting order; pays the stall fee out of what it receives (W13 note) | same as the maker |
+| Taker colony | same shape | crosses a resting order; fees follow the buyer, not the taker role (D-44) | same as the maker |
 | Stall owner | colony account of the Trade Hub where the **maker** listed (`stallId`) | receives the fee leg | receive-only leg, signer unknown: Q-03-19 |
 | Planet DAO | `{planet}.sputnik-dao.near` (mock `{planet}.dao.mock`, W22-05) | receives the treasury leg (W22-07) | Q-03-19 → [05](./05-deed-staking-treasury-bounties.md) |
 | Project account | not named anywhere | receives the protocol fee (MP §7, Proposed) | Q-03-7 |
@@ -50,12 +52,12 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | R03-18 | Orders from claimed accounts are all-or-nothing. Claim is post-hackathon (W23-14 has no H tag), so this path does not run in the demo. | Planned | W13-11 (H) · spec gap (W13 Goal bullet) |
 | R03-19 | Self-trade prevention: two orders from the same colony never match. The note says "the older stays, the incoming rests"; W13-11 says "skip". | Planned | W13-11 (H) · spec gap (W13 note) |
 | R03-20 | A Guild NPC never trades with another Guild NPC. | Planned | W15-08 (H) |
-| R03-21 | The stall owner sets the fee to 0–3 % with `market.setHubFee` (`fee_out_of_range`), `MARKET_FEE_BP_MAX = 300`. The slider is H+; no H issue sets a default fee or owns the server handler (Q-03-26). | Decided | NEAR-61, NEAR §12 · W13-22 (H+) |
-| R03-22 | The taker pays the fee out of the token it receives. The fee goes to the owner of the stall where the maker listed. | Planned | W13-12 (H) · spec gap (W13 note) |
+| R03-21 | The stall owner sets the fee to 0–100 bp (default 100) with `market.setHubFee` (`fee_out_of_range`), `MARKET_FEE_BP_MAX = 100` (D-44). The slider is H+; no H issue sets a default fee or owns the server handler (Q-03-26). | Decided | NEAR-61, NEAR §12 · W13-22 (H+) |
+| R03-22 | The buyer pays platform and stall fees in the quote token, regardless of maker/taker role (D-44). The stall fee goes to the owner of the stall where the maker listed. | Planned | W13-12 (H) · spec gap (W13 note) |
 | R03-23 | Fee rounding: floor, remainder to the maker. A 1 % fee on 7 units is 0, with no dust. | Planned | W13-31 (H+), a test row only |
 | R03-24 | A share of every market fee goes to the planet DAO. | Decided | NEAR-101 |
 | R03-25 | The treasury also gets 0.2 % of every Guild fill. | Proposed | Balance §7.2, §8; Review §4.4 |
-| R03-26 | A protocol fee of 0.25 % (variant 1) or 0.40 % (variant 2) goes to the project account, as a line in the toast. Default payer: the taker, out of the token it receives. **No issue exists.** | Proposed | MP §0, §7; Review C4; Balance §8, §10 Q6 |
+| R03-26 | The platform fee (100 bp, D-44; the 0.25 % / 0.40 % variants are superseded) goes to the project account, as a line in the toast. Payer: the buyer, in the quote token. **No issue exists.** | Proposed | MP §0, §7; Review C4; Balance §8, §10 Q6 |
 | R03-27 | Variant 3: optionally route 15 % of each treasury project's cost to the project instead of burning it. | Proposed | MP §7 → [05](./05-deed-staking-treasury-bounties.md) R05-47 |
 | R03-28 | Until a NEAR pair exists, the protocol fee is paid in cargo, and the README must say it has no NEAR value. | Proposed | Review §4.3, Balance §7.3 |
 | R03-29 | A match builds `[maker, taker, feeLeg(, treasuryLeg)]`. The sum per token is asserted before submission. A batch that does not sum to zero fails whole (`NEAR_INTENT_DIFF_NOT_ZERO`). | Decided | NEAR-61, §1a rule 4 · W13-05, W13-12 (H) |
@@ -80,7 +82,7 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | R03-48 | `market.acceptGuildOffer` crosses the NPC quote at once through the W13 path. A stale offer id gets `offer_expired` with the new price. | Planned | W15-11 (H) |
 | R03-49 | Negotiate goal hook: places and refreshes orders within the goal's give/want bounds and budget. | Planned | W13-26 (—), units §4.6 |
 | R03-50 | `autoTrade` orders are signed with the director key within limits. `withinAutoTrade` runs in the sim and again in the matcher (`autotrade_limit`). | Decided | NEAR-81 · W15-20, W15-21 (H) → [04](./04-agents-and-communication.md) R04-25 |
-| R03-51 | No rate limits and no anti-bot. Farm bots trading for value is an accepted risk. | Decided | D-25, D-26 |
+| R03-51 | No anti-bot identity programme. Farm bots trading for value is an accepted risk. *Amended by D-45: the bot API `/v1/trade/*` has per-key allowances, kill switch and rate limits; organic fills need `player`/`bot` sides of different colonies and owners.* | Decided; amended D-45 | D-25, D-26, D-45 |
 | R03-52 | With `TA_WAVES` below 13: the Market tab is gone, market commands get `wave_disabled`, and orders stay in the DB untouched. | Planned | W13 DoD, W13-35 (H) |
 | R03-53 | Placement checks: own colony; the maker's own online Trade Hub T1 (`no_trade_hub`, `hub_offline`); an online stall; amounts within config. | Planned | W13-09 (H) |
 | R03-54 | Treasury leg = `TREASURY_FEE_SHARE_BP` 2 000 bp **of the stall fee, carved out of the hub owner's fee** (300 at 1 % → owner 2.4, DAO 0.6), plugged in through `registerFeeLeg`; the batch stays zero-sum. The 2 000 value itself is Decided (value proposed) in NEAR §12. | Planned | W22-07 (H); NEAR §12 |
@@ -122,21 +124,21 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 - Elsewhere: `NEAR_INSUFFICIENT_BALANCE` (NEAR §1a; code), `NEAR_UNAVAILABLE` (code), `offer_expired` (W15-11), `autotrade_limit` (W15-20), `wave_disabled` (W13 DoD).
 - PROTOCOL's `RejectCode` lists only `no_trade_hub` and `market_unavailable` of these (Q-03-11).
 
-**Worked example 1: W13 demo (Planned, W13-12 / W22-07).** A rests an ask: sell 300 `bio.water` for 120 `metals.t1` (0.4 metals per water) at A's own stall, with a 1 % fee. B is the taker and receives water, so the fee is in water: 1 % × 300 = 3.
+**Worked example 1: W13 demo (Planned, W13-12 / W22-07).** A rests an ask: sell 300 `bio.water` for 120 `metals.t1` (0.4 metals per water) at A's own stall, with a 1 % fee. B is the buyer (taker) and pays fees in the quote token (metals), not in water (D-44 supersedes the older receive-side fee). Illustrative D-44 figures: notional 120 metals, platform 1 % = 1.2 and stall 1 % = 1.2 (whole-unit flooring applies, LED-20).
 
 | Leg | water | metals |
 |---|---|---|
 | A (maker) | −300 | +120 |
-| B (taker) | +297 | −120 |
-| Stall owner (A again, as a separate leg) | +3 | 0 |
+| B (buyer) | +300 | −120 − fees (quote token) |
+| Stall owner (A again, as a separate leg) | 0 | +stall fee |
 | **Sum** | 0 | 0 |
 
-With W22 on, W22-07 splits the 3 water: stall owner 2.4, DAO 0.6. Flooring to whole units (W13-31) makes 0.6 impossible (Q-03-2).
+With W22 on, the treasury allocation is carved from the platform fee, never from the stall fee (D-44).
 
 **Worked example 2: NEAR pair, all legs (illustrative, Proposed: Pivot Bet B + MP §7 variant 1; the NEAR leg is wNEAR `nep141:wrap.near` on the real verifier, `native:near` in the mock, Q-03-27).**
 - Stall owner C sets 1 %. A rests a bid at C's stall: buy 1 000 `bio.water` at 0.002 wNEAR per unit (2 wNEAR).
-- B sells into the bid. B is the taker and receives wNEAR, so every fee is paid in wNEAR.
-- Protocol-fee payer (Proposed default, Balance §10 Q6): the taker, out of the token it receives.
+- B sells into the bid. The buyer (A, the maker here) pays every fee in the quote token (wNEAR) on top of the notional (D-44).
+- Protocol-fee payer (D-44): the buyer, in the quote token.
 
 | Leg | water | wNEAR, treasury carved out (W22-07) | wNEAR, treasury added on top (MP §7) |
 |---|---|---|---|
@@ -153,11 +155,11 @@ This batch has five legs; the video beat claims three (Q-03-30).
 
 | Value | Source | Status |
 |---|---|---|
-| Stall fee 0–3 %, `MARKET_FEE_BP_MAX = 300` | NEAR §12, NEAR-61 · W13-03 (H) | Decided |
+| Stall fee 0–100 bp, `MARKET_FEE_BP_MAX = 100` (D-44) | NEAR §12, NEAR-61 · W13-03 (H) | Decided |
 | Default stall `fee_bp` for the demo (the e2e asserts 1 %): not set anywhere | W13 slice, W13-03 → Q-03-26 | Gap |
 | `TREASURY_FEE_SHARE_BP = 2 000` (the value; NEAR-101 "proposed: 20 % of `fee_bp`"). The carve-out from the stall fee is Planned (R03-54, W22-07) | NEAR §12, NEAR-101 | Decided (value proposed) |
 | Treasury 0.2 % of Guild fills | Balance §8 | Proposed |
-| Protocol fee 0.25 % (v1) / 0.40 % (v2), taker pays | MP §7; Balance §10 Q6 | Proposed |
+| Platform fee 100 bp, buyer pays in quote token (D-44; v1/v2 superseded) | ECONOMY §3 | Decided |
 | TTL 15 min / 1 h / 6 h / 24 h; min order 10; tick 0.001; 20 open orders per colony | W13-03 (H) | Planned |
 | TTL sweep 30 s; book push 1 Hz per pair; book depth top 10 per side (phone: best 5) | W13-15, W13-19, W13-20 (H), W13-32 (—) | Planned |
 | Contracts list: last 20; NEAR/USDC shown with 2 decimals | W13-24 (H), W13-17 (H+) | Planned |
@@ -250,8 +252,8 @@ This batch has five legs; the video beat claims three (Q-03-30).
 | Q-03-4 | Self-trade: if the incoming order "rests" (W13 note) after skipping a same-colony order, the book can be crossed. Rest, skip and continue, or cancel? | none |
 | Q-03-5 | Pair identity: is "sell water for metals" the same book as "buy metals for water"? Which token is the base? Is `price.amount` per unit (board 0.4, tick 0.001) or a total ("for 120 metals")? | none |
 | Q-03-6 | Guild quotes are maker orders, but the Guild owns no Trade Hub. Who gets the stall fee on a Guild fill, and who pays the 0.2 % treasury leg (Balance §7.2)? | none |
-| Q-03-7 | Protocol fee: payer, token, recipient account, toast wording, owning issue. | Taker, out of the token it receives (Balance §10 Q6, Proposed). Recipient: Gap. Issue: one S issue in W13 (Review C4). |
-| Q-03-8 | W13-21's preview says "fee paid by buyer", but the rule is "taker pays". The two differ whenever the taker is the seller. | "fee paid by taker" |
+| Q-03-7 | Protocol fee: payer, token, recipient account, toast wording, owning issue. | Buyer, in the quote token (D-44). Recipient: Gap. Issue: one S issue in W13 (Review C4). |
+| Q-03-8 | W13-21's preview says "fee paid by buyer", and the D-44 rule is the same: the buyer pays. | Resolved: "fee paid by buyer" |
 | Q-03-9 | For custodial makers, what is stored in `signed_intent` if the fill-sized diff is signed at match time? For claimed accounts: who signs, and how is a cancel enforced on chain (nonce)? → [01](./01-accounts-keys-relayer.md) Q-01-11 | none |
 | Q-03-10 | Schema drift: DATA_MODEL's `market_order` has `hub_entity_id` and `hub_owner_colony_id` but no `filled` or `stall_id`, and its states are `OPEN/MATCHED/…` where W13-08 has `OPEN/PARTIAL/…`. `intent_trade` has no amount or price. The hub fee has no storage. | Align DATA_MODEL in W13-01 / W13-08 |
 | Q-03-11 | PROTOCOL §4.2 `placeOrder` lacks `stallId` and uses `price.resource`. `RejectCode` lacks the W13 and W15 codes. An off-tick price has no code. Landed `NEAR_UNAVAILABLE` (503) vs `market_unavailable` (WS) vs `near_unavailable` (REST): which does the client see? | Update PROTOCOL with W13-01; map `NEAR_UNAVAILABLE` → `market_unavailable` |

@@ -1,10 +1,11 @@
 import type { ResourceKey } from '@terra/contracts';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
-import { hexDistance } from '../../grid/hex';
+import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
-import { revealSubsurface } from '../../grid/subsurface';
-import { setTilePrep, setTileTerrain } from '../../grid/tileModel';
+import { regionalClearingYields } from '../../economy/regions/sources';
+import { revealAroundChanged, type RevealedDeposit } from '../../grid/subsurface';
+import { prepKeyFromId, setTilePrep, setTileTerrain, terrainIdFromKey, terrainKeyFromId } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
@@ -14,12 +15,16 @@ import { creditResource, payProgressiveSlice } from '../economy/ledger';
 import { nextCrewShare } from '../dispatch/crew';
 import { autoQueueDamagedStructures, resolveWorkerRepairRate, syncRepairQueueEntries } from './autoRepair';
 import { continueWorkChain } from './chain';
+import { flattenDuneFootprint } from './duneFootprint';
+import { findMeteorCraterAt, flattenMeteorCraterFootprint, meteorCraterWorkTiles } from './meteorCraterFootprint';
 import { attachIdleHelpers, releaseHelpers } from './crewHelpers';
 import { stepDismantleWorkJob } from './dismantleJob';
 import { restoreDismantleSite } from './dismantleSite';
 import { spawnTerraformDeposit } from './resourceSpawn';
-import { abandonUnreachableJob } from './unreachable';
-import { colonyWho, levelToAdjacentFlat } from './work';
+import { abandonUnreachableJob, reportNoPath } from './unreachable';
+import { opForTerrain } from './ops';
+import { readOrdersByColony, writeOrdersByColony } from './orders';
+import { colonyWho, levelToAdjacentFlat, noteTileTerraformed } from './work';
 import {
   ensureWorkColony as ensureColony,
   getWorkJobsMap,
@@ -88,29 +93,63 @@ function stepRepairWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: nu
 }
 
 /**
- * Levels the worked ground tile and pays what it held: the fixed yield, the buried deposit (`groundRevealed`), the
- * 1 % deposit roll (`resourceSpawned`). Events carry the concrete op: forest → `obstacleRemoved { op: 'clear' }`,
- * rock → `{ op: 'break' }`, slope / hole / Flat → `tilePrepared` (the W01 order path's event contracts).
+ * The op a dock `work` job on ground `terrainKey` stands for (the one terrain → op rule, `opForTerrain`: forest → clear,
+ * rock → break, and with the W05 rows slope → level, hole → fill; water carries its `workOp`), or `null` for plain
+ * ground (a Grade) and for slope / hole before W05.
+ */
+function removedOpOf(job: WorkJobRecord, data: StepContext['data']): string | null {
+  if (job.workOp) return job.workOp;
+  const op = job.terrainKey ? opForTerrain(terrainIdFromKey(job.terrainKey), data) : null;
+  return op && op !== 'grade' ? op : null;
+}
+
+/**
+ * Levels the worked ground and pays what it held: the fixed yield, the buried deposits that are now on hex tiles (the
+ * worked ground and its neighbours, `revealAroundChanged` → `groundRevealed`), the 1 % deposit roll (`resourceSpawned`).
+ * A slope job clears its dune disc (`flattenDuneFootprint`); every other key still changes the one tile. Bookkeeping
+ * goes through `noteTileTerraformed` (Terraform %, ring cache, `tileStateChanged`), like the order path. Events: an
+ * obstacle op (`removedOpOf`: clear / break / level / fill / reclaim / deepReclaim) → `obstacleRemoved { op }`; every
+ * job → `tilePrepared` (the ground ends Prepared).
  */
 function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepContext): void {
-  setTileTerrain(state.grid, job.tileIdx, TERRAIN.flat, ctx.tick);
-  setTilePrep(state.grid, job.tileIdx, PREP.prepared, ctx.tick);
-  levelToAdjacentFlat(state, job.tileIdx, ctx.tick);
   const { colonyIdStr, who } = colonyWho(state, job.colonyId);
-  const found = revealSubsurface(state, job.tileIdx, ctx.tick);
-  if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });
+  const L = state.grid.layers;
+  const prev = { prevTerrain: terrainKeyFromId(L.terrain[job.tileIdx]), prevPrep: prepKeyFromId(L.prep[job.tileIdx]) };
+  let prepared = 1;
+  let revealed: RevealedDeposit[];
+  if (job.terrainKey === 'slope') {
+    const disc = flattenDuneFootprint(state, job.q, job.r, ctx.tick);
+    prepared = Math.max(1, disc.count);
+    revealed = disc.revealed;
+  } else if (
+    job.terrainKey === 'hole' &&
+    (findMeteorCraterAt(state.blobs?.weather, job.q, job.r) !== undefined ||
+      meteorCraterWorkTiles(state.grid.radius, job.q, job.r, L.terrain, state.blobs?.weather).length > 1)
+  ) {
+    const crater = flattenMeteorCraterFootprint(state, job.q, job.r, ctx.tick);
+    prepared = Math.max(1, crater.count);
+    revealed = crater.revealed;
+  } else {
+    setTileTerrain(state.grid, job.tileIdx, TERRAIN.flat, ctx.tick);
+    setTilePrep(state.grid, job.tileIdx, PREP.prepared, ctx.tick);
+    levelToAdjacentFlat(state, job.tileIdx, ctx.tick);
+    revealed = revealAroundChanged(state, [job.tileIdx], ctx.tick);
+  }
+  const removedOp = removedOpOf(job, ctx.data);
+  noteTileTerraformed(state, job.colonyId, { tileIdx: job.tileIdx, q: job.q, r: job.r, op: removedOp ?? 'work', count: prepared, ...prev }, ctx);
+  for (const found of revealed) {
+    ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: found.q, r: found.r, deposit: found.deposit, richnessBp: found.richnessBp } });
+  }
 
   const colony = ensureColony(state, job.colonyId, ctx.tick);
-  for (const [k, v] of Object.entries(job.yields) as [ResourceKey, number][]) {
-    if (v && v > 0) creditResource(colony, k, v, ctx.tick);
+  for (const [k, v] of Object.entries(regionalClearingYields(state, job.yields)) as [ResourceKey, number][]) { // W13-51: regional clearing yield
+    if (v && v > 0) creditResource(colony, k, v, ctx.tick, { reason: 'terraform.yield' });
   }
-  const at = { count: 1, q: job.q, r: job.r };
-  if (job.terrainKey === 'forest' || job.terrainKey === 'rock') {
-    const op = job.terrainKey === 'forest' ? 'clear' : 'break';
-    ctx.emit({ kind: 'obstacleRemoved', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, op, ...at } });
-  } else {
-    ctx.emit({ kind: 'tilePrepared', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, ...at } });
-  }
+  const at = { count: prepared, q: job.q, r: job.r };
+  // The dock does the obstacle op and the grade in one job: the ground always ends Prepared (`tilePrepared`,
+  // Groundbreaker), and an obstacle op also counts as `obstacleRemoved { op }` (Stone Mason / Hydro Engineer, W05-29).
+  if (removedOp) ctx.emit({ kind: 'obstacleRemoved', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, op: removedOp, ...at } });
+  ctx.emit({ kind: 'tilePrepared', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, ...at } });
   spawnTerraformDeposit(state, job, who, ctx);
 }
 
@@ -119,9 +158,28 @@ function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepCon
  * that changed meanwhile (finished by another job, a building placed on it, claimed by another colony, a deposit
  * appeared) is dropped without terrain change or yield. Returns whether the job ended.
  */
+/** Pays the op's resource cost for this slice (water reclaim). No cost → true. Short → the job waits, progress kept. */
+function payGroundCost(state: PlanetState, job: WorkJobRecord, progress: number, tick: number): boolean {
+  if (!Object.values(job.totalCost).some((v) => (v ?? 0) > 0)) return true;
+  const colony = ensureColony(state, job.colonyId, tick);
+  const pay = payProgressiveSlice(colony, job.totalCost, job.spentCost, progress, tick);
+  if (!pay.ok) {
+    job.status = 'waiting';
+    job.waitReason = 'resources';
+    return false;
+  }
+  job.status = 'in_progress';
+  job.waitReason = undefined;
+  return true;
+}
+
 function stepGroundWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: number, ctx: StepContext): boolean {
   const nextElapsed = job.elapsedTicks + ctx.dt;
   const nextProgress = Math.min(1, nextElapsed / Math.max(1, job.durationTicks));
+  if (!payGroundCost(state, job, nextProgress, ctx.tick)) {
+    setField(state.entities, workerRow, 'state', ENTITY_STATE.waiting, ctx.tick);
+    return false;
+  }
   job.elapsedTicks = nextElapsed;
   job.progress = nextProgress;
   if (nextProgress < 1 - 1e-6) {
@@ -150,7 +208,67 @@ function finishJob(state: PlanetState, jobs: Record<string, WorkJobRecord>, lead
     idleWorker(state, wRow, ctx.tick);
   }
   releaseHelpers(state, jobs, lead.jobId, ctx.tick, ctx.data);
+  if (lead.mode === 'terraform' && lead.terrainKey === 'hole') {
+    const L = state.grid.layers;
+    for (const other of Object.values(jobs)) {
+      if (other.jobId === lead.jobId || other.mode !== 'terraform') continue;
+      if (L.terrain[other.tileIdx] === TERRAIN.flat && L.prep[other.tileIdx] === PREP.prepared) {
+        delete jobs[other.jobId];
+        const oRow = rowOf(state.entities, other.workerEntityId);
+        if (oRow >= 0) {
+          cancelMove(state, other.workerEntityId, ctx.tick);
+          idleWorker(state, oRow, ctx.tick);
+        }
+        releaseHelpers(state, jobs, other.jobId, ctx.tick, ctx.data);
+      }
+    }
+  }
   continueWorkChain(state, lead, jobs, ctx);
+}
+
+function syncPartiallyTerraformedCraters(state: PlanetState, jobs: Record<string, WorkJobRecord>, tick: number, data?: StepContext['data']): boolean {
+  const rawWeather = state.blobs?.weather as { value?: { craters?: Array<{ q: number; r: number; tiles: Array<{ q: number; r: number }> }> } } | undefined;
+  const craters = rawWeather?.value?.craters;
+  if (!Array.isArray(craters) || craters.length === 0) return false;
+  const hx = hexIndex(state.grid.radius);
+  const L = state.grid.layers;
+  let changedJobs = false;
+
+  for (const crater of [...craters]) {
+    const hasFlat = crater.tiles.some((t) => {
+      const idx = hx.indexOf(t.q, t.r);
+      return idx >= 0 && L.terrain[idx] === TERRAIN.flat;
+    });
+    if (!hasFlat) continue;
+    const flattened = flattenMeteorCraterFootprint(state, crater.q, crater.r, tick);
+    const flatSet = new Set(flattened.tiles.map((t) => `${t.q},${t.r}`));
+    const byColony = readOrdersByColony(state);
+    let ordersChanged = false;
+    for (const list of Object.values(byColony)) {
+      for (const order of list) {
+        const before = order.jobs.length;
+        order.jobs = order.jobs.filter((j) => !(flatSet.has(`${j.q},${j.r}`) && (j.op === 'fill' || j.op === 'grade')));
+        if (order.jobs.length !== before) {
+          order.completedJobs += before - order.jobs.length;
+          ordersChanged = true;
+        }
+      }
+    }
+    if (ordersChanged) writeOrdersByColony(state, byColony, tick);
+    for (const other of Object.values(jobs)) {
+      if (other.mode === 'terraform' && flatSet.has(`${other.q},${other.r}`)) {
+        delete jobs[other.jobId];
+        const oRow = rowOf(state.entities, other.workerEntityId);
+        if (oRow >= 0) {
+          cancelMove(state, other.workerEntityId, tick);
+          idleWorker(state, oRow, tick);
+        }
+        releaseHelpers(state, jobs, other.jobId, tick, data);
+        changedJobs = true;
+      }
+    }
+  }
+  return changedJobs;
 }
 
 /**
@@ -177,7 +295,7 @@ function reassignLead(state: PlanetState, jobs: Record<string, WorkJobRecord>, l
 
 /**
  * Walks the worker towards its job: `arrived` (in reach: work now), `moving`, or `abandoned` (no path: the job is
- * dropped from `jobs` and its chain goes on).
+ * dropped from `jobs` and its chain goes on, `chain.ts` E2/E3).
  */
 function approachJob(
   state: PlanetState,
@@ -190,10 +308,13 @@ function approachJob(
   const tRow = job.mode !== 'terraform' && job.targetEntityId !== undefined ? rowOf(e, job.targetEntityId) : -1;
   if (isWorkerAtJob(state, wRow, job.q, job.r, tRow)) return 'arrived';
   const goal = { q: job.q, r: job.r, minDist: 1, maxDist: workReach(cols.kind[wRow], tRow, state) };
-  const report = !job.chain || (job.chainSeq ?? 0) === 0; // a chain's automatic follow-up is skipped silently
-  if (abandonUnreachableJob(state, job.workerEntityId, wRow, goal, ctx, report)) {
+  if (abandonUnreachableJob(state, job.workerEntityId, wRow, goal, ctx, !job.chain)) {
     dropJob(state, jobs, job, ctx.tick);
-    if (isLeadJob(job)) continueWorkChain(state, job, jobs, ctx, true);
+    // A chain goes on from the edge inward (`chain.ts` E2); the player hears `no_path` only when its own tile ends the
+    // order with nothing left to work (E3). A chain's automatic follow-up is skipped silently.
+    const next = isLeadJob(job) ? continueWorkChain(state, job, jobs, ctx, true) : null;
+    const chainLeft = Object.values(jobs).some((j) => j.workerEntityId === job.workerEntityId && j.chain);
+    if (job.chain && (job.chainSeq ?? 0) === 0 && !next && !chainLeft) reportNoPath(state, job.workerEntityId, ctx.tick);
     return 'abandoned';
   }
   setField(e, wRow, 'targetQ', job.q, ctx.tick);
@@ -261,6 +382,7 @@ export const workJobsSystem = defineSystem({
   run(state, ctx) {
     const jobs = getWorkJobsMap(state);
     let changed = autoQueueDamagedStructures(state, jobs, ctx);
+    if (syncPartiallyTerraformedCraters(state, jobs, ctx.tick, ctx.data)) changed = true;
     if (attachIdleHelpers(state, jobs, ctx)) changed = true;
     const entries = Object.values(jobs);
     if (entries.length === 0) {

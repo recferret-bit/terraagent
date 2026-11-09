@@ -10,6 +10,17 @@ export function formatGhostYields(yields: HubGhostBill['yields']): string {
 }
 
 export function formatGhostOps(ops: HubGhostBill['ops']): string {
+  const w05Parts: string[] = [];
+  if (ops.level) w05Parts.push(`Level ×${ops.level}`);
+  if (ops.fill) w05Parts.push(`Fill ×${ops.fill}`);
+  if (ops.reclaim) w05Parts.push(`Reclaim ×${ops.reclaim}`);
+  if (ops.deepReclaim) w05Parts.push(`Deep Reclaim ×${ops.deepReclaim}`);
+  if (w05Parts.length > 0) {
+    if (ops.clear) w05Parts.push(`Clear ×${ops.clear}`);
+    if (ops.break) w05Parts.push(`Break ×${ops.break}`);
+    if (ops.grade) w05Parts.push(`Grade ×${ops.grade}`);
+    return w05Parts.join(' + ');
+  }
   return `Grade ${ops.grade} · Clear ${ops.clear} · Break ${ops.break}`;
 }
 

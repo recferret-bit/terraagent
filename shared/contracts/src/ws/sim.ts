@@ -55,7 +55,9 @@ export type FamilyCaps = z.infer<typeof FamilyCaps>;
 
 export const W01_TERRAFORM_OPS = ['grade', 'clear', 'break'] as const;
 export const W02_TERRAFORM_OPS = ['grade', 'clear', 'break', 'dismantle', 'work'] as const;
-export const TerraformOp = z.enum(W02_TERRAFORM_OPS);
+export const W05_NEW_TERRAFORM_OPS = ['level', 'fill', 'reclaim', 'deepReclaim', 'irrigate', 'seed'] as const;
+export const W05_TERRAFORM_OPS = ['grade', 'clear', 'break', 'dismantle', 'work', ...W05_NEW_TERRAFORM_OPS] as const;
+export const TerraformOp = z.enum(W05_TERRAFORM_OPS);
 export type TerraformOp = z.infer<typeof TerraformOp>;
 
 export const TileCoord = z.number().int().min(-32768).max(32767);
@@ -75,7 +77,7 @@ export type SimEventWire = z.infer<typeof SimEventWire>;
 /** A command as the engine receives it (SIMULATION §4): after zod and ownership checks on the host. */
 export const SimCommandV1 = z.object({
   colonyIndex: z.number().int().nonnegative().nullable(), // null = planet-level (system/admin/dev)
-  source: z.enum(['player', 'ai', 'near', 'admin', 'system', 'dev']),
+  source: z.enum(['player', 'bot', 'ai', 'near', 'admin', 'system', 'dev']),
   commandId: z.string().min(1).max(40), // echoed in ack/reject
   kind: z.string().min(1).max(64),
   args: z.unknown(),

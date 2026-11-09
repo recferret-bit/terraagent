@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetSpec } from '../PlanetSpec';
 import { createTerrainMaterial, terrainUniforms } from '../../visuals/terrain/terrainMaterial';
-import { computeEffectiveHeights, type HexTileLayers } from './chunkMesh';
+import { computeEffectiveHeights, HEX_TERRAIN, type HexTileLayers } from './chunkMesh';
 import { createHexChunkSet } from './chunkSet';
 import { createHexPropScatter, type HexPropScatter } from './chunkPropScatter';
 import { createBorderController } from './borderController';
 import { addHexEdges } from './hexEdges';
-import { planetExtent, rayGround, tileAt } from './hexMath';
+import { planetExtent, rayGround, tileAt, waterSurfaceHit } from './hexMath';
 import { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
 import { createHexAmbient } from './hexAmbient';
 import { getWindUniforms } from '../../core/windConfig';
@@ -150,7 +150,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const ext = planetExtent(radius);
   const tint = createHexTileTint(radius, chunkLayers());
   // Dune ripples follow the same shared wind object as dust, trees and waves (by reference: F8 WIND re-orients them).
-  const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0]), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
+  const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0], tint.terraformTexture), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
   const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
   const material = createTerrainMaterial(uniforms, (sh) => addHexEdges(sh, edge));
   // three keys programs on `onBeforeCompile.toString()`, which is the same closure for the plain heightfield terrain:
@@ -168,6 +168,11 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const ambient = createHexAmbient(look, ext.z);
   group.add(water.group, props.group, borders.mesh, ambient.points);
   const ray = new THREE.Raycaster();
+  const isWaterAt = (x: number, z: number): boolean => {
+    const t = tileAt(radius, x, z);
+    const code = t ? tiles.terrain[t.i] : undefined;
+    return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
+  };
 
   const handle: HexTerrain = {
     group, material, uniforms, water, props, borderMesh: borders.mesh, radius, halfSize: ext.z, heightAt,
@@ -175,7 +180,8 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     pick(input, camera) {
       let r = input as THREE.Raycaster;
       if (input instanceof THREE.Vector2) { ray.setFromCamera(input, camera!); r = ray; }
-      const hit = rayGround(r.ray.origin, r.ray.direction, heightAt);
+      const ground = rayGround(r.ray.origin, r.ray.direction, heightAt);
+      const hit = waterSurfaceHit(r.ray.origin, r.ray.direction, HEX_WATER_LEVEL, ground, isWaterAt) ?? ground;
       // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
       const prop = props.pickProp(r);
       if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {

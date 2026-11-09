@@ -7,8 +7,12 @@
 //   wave:issue -- WNN-XX    create the issue worktree `issue/WNN-XX` from its wave branch
 //   wave:issue:land -- WNN-XX   merge the issue into its wave branch (gates green, `--no-ff`, subject `WNN-XX: <title>`)
 //   wave:check -- NN        merge main into the wave, run the gates, print the demo steps and URL
-//   wave:land -- NN         land the wave in main (refusals, gates, tag, push, cleanup)
-// Options: --dry-run, --root <dir> (or TA_WAVE_ROOT: another repository, e.g. a sandbox clone), --no-e2e.
+//   wave:validate -- NN     run full pre-landing wave validation (task parity, AST duplication, orchestrator/service split, client+server wiring & 2-iteration review/fix loop)
+//   wave:land -- NN         land the wave in main (3-iteration audit/gates/plan check, tag, push, cleanup)
+//   wave:sync -- NN         merge updated main into a WIP wave (auto-heal generated conflicts, 3 iterations, incoming plan delta)
+//   wave:audit -- NN        audit semantic collisions, as-built feature extensions, and future-wave impact
+//   wave:propagate -- NN    inspect/propagate self-review features into future wave plans (--add-issue WMM --title "...")
+// Options: --dry-run, --root <dir> (or TA_WAVE_ROOT: another repository, e.g. a sandbox clone), --no-e2e, --e2e, --iterations <N>, --rounds <N>.
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -17,15 +21,21 @@ import { mainRoot, loadPlan, ordered, withState, waveProgress, readiness, curren
 import { ensureWorktreeEnv } from './isolation.mjs';
 import { openIssue, landIssue } from './issue.mjs';
 import { checkWave } from './check.mjs';
-import { runGates } from './gates.mjs';
+import { runLandHarness, syncWaveWithMain, runAuditCommand } from './harness.mjs';
+import { regenerateInWorktree } from './reconcile.mjs';
+import { runPropagateCommand } from './propagate.mjs';
+import { validateWaveCli } from './validate.mjs';
 import { wavePrompt, resolvePreset, buildRunnerCommand, GROK_CONTEXT_WINDOW } from './prompt.mjs';
 
 const args = process.argv.slice(2);
-const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort', '--root'];
+const VALUE_OPTS = [
+  '--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort', '--root',
+  '--iterations', '--rounds', '--add-issue', '--title', '--type', '--size', '--tag', '--deps', '--accept', '--spec', '--replaces',
+];
 const flag = (n) => args.includes(n);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_OPTS.includes(args[i - 1]));
-const KNOWN = ['next', 'status', 'land', 'open', 'check', 'issue', 'issue:land'];
+const KNOWN = ['next', 'status', 'land', 'sync', 'merge-main', 'audit', 'propagate', 'validate', 'open', 'check', 'issue', 'issue:land'];
 const [command, waveArg] = KNOWN.includes(positional[0])
   ? [positional[0] ?? 'next', positional[1]]
   : (/^w?\d+$/i.test(positional[0] ?? '') ? ['next', positional[0]] : [positional[0] ?? 'next', positional[1]]);
@@ -48,18 +58,20 @@ function status() {
     const r = readiness(plan, w);
     const p = resolvePreset(w, overrides());
     const prog = waveProgress(w, p.tags);
-    const tagLabel = w.tags.H ? `${prog.total.length} H` : `${prog.total.length} all`;
-    const state = w.landed && !w.open
-      ? 'landed'
-      : w.open && prog.complete
-        ? `READY TO LAND (${prog.done.length}/${prog.total.length})`
-        : w.open && w.running
-          ? `RUNNING (${prog.done.length}/${prog.total.length})`
-          : w.open
-            ? `OPEN (${prog.done.length}/${prog.total.length})`
-            : r.ready
-              ? 'ready'
-              : `waits for ${r.unlanded.map((d) => d.id).join(', ')} in main`;
+    const tagLabel = w.postponed ? 'POSTP' : w.tags.H ? `${prog.total.length} H` : `${prog.total.length} all`;
+    const state = w.postponed
+      ? 'POSTPONED (skipped)'
+      : w.landed && !w.open
+        ? 'landed'
+        : w.open && prog.complete
+          ? `READY TO LAND (${prog.done.length}/${prog.total.length})`
+          : w.open && w.running
+            ? `RUNNING (${prog.done.length}/${prog.total.length})`
+            : w.open
+              ? `OPEN (${prog.done.length}/${prog.total.length})`
+              : r.ready
+                ? 'ready'
+                : `waits for ${r.unlanded.map((d) => d.id).join(', ')} in main`;
     const agent = p.label.padEnd(19);
     const params = `par=${p.parallel}`.padEnd(7);
     console.log(`${w.id}  ${state.padEnd(25)} ${tagLabel.padEnd(7)} ${agent} ${params} ${p.track.padEnd(15)} ${w.slug}`);
@@ -73,6 +85,7 @@ function stackedWaves(w) {
 }
 
 function checkLandable(w) {
+  if (w.postponed && !flag('--force')) fail(`${w.id} is marked POSTPONED in the NEAR Hackathon Vertical Slice (pass --force to land anyway)`);
   if (!w.open) fail(`${w.id} has no branch ${w.branch}`);
   const r = readiness(plan, w);
   const blockers = [...new Set([...r.unlanded, ...stackedWaves(w)])];
@@ -84,11 +97,16 @@ function checkLandable(w) {
   const dirty = out('git', ['status', '--porcelain'], { cwd: root }).split('\n').map((l) => l.replace(/^\s*\S{1,2}\s+/, '').replace(/^.* -> /, '')).filter((f) => touched.has(f)); // out() trims, so the first status line may lack its leading space
   if (dirty.length) fail(`the merge would touch uncommitted files in the main checkout:\n  ${dirty.join('\n  ')}`);
   if (!existsSync(w.worktree)) fail(`${w.id} has no worktree ${w.worktree} to run the gates in: run \`npm run wave:open -- ${w.id.slice(1)}\``);
-  runGates(w.worktree, { dryRun: flag('--dry-run') });
+  return runLandHarness(root, plan, w, {
+    iterations: Number(opt('--iterations', 3)),
+    e2e: flag('--e2e'),
+    dryRun: flag('--dry-run'),
+    requirePlanSync: flag('--require-plan-sync'),
+  });
 }
 
 function landWave(w) {
-  checkLandable(w);
+  const delta = checkLandable(w);
   const dry = flag('--dry-run');
   const tag = w.landed ? `${w.tag}.${1 + out('git', ['tag', '--list', `${w.tag}*`], { cwd: root }).split('\n').length}` : w.tag;
   if (dry) return console.log(`would merge ${w.branch} into main as "${waveTitle(root, w)}", tag ${tag}, push main + ${tag}, remove ${w.worktree}, delete ${w.branch}`);
@@ -98,13 +116,17 @@ function landWave(w) {
     tryOut('git', ['merge', '--abort'], { cwd: root });
     fail(`merging ${w.branch} into main conflicts (merge aborted): merge main into ${w.branch} in ${w.worktree}, resolve by hand and re-run.\n${String(e.stdout || e.stderr || '').trim()}`);
   }
+  regenerateInWorktree(root);
   run('git', ['tag', tag], { cwd: root });
   if (tryOut('git', ['remote'], { cwd: root })) run('git', ['push', 'origin', 'main', tag], { cwd: root });
-  if (existsSync(w.worktree)) run('git', ['worktree', 'remove', w.worktree], { cwd: root });
+  if (existsSync(w.worktree)) run('git', ['worktree', 'remove', '--force', w.worktree], { cwd: root });
   run('git', ['branch', '-d', w.branch], { cwd: root });
   plan = withState(root, loadPlan(root));
-  const others = plan.waves.filter((x) => x.open).map((x) => x.id);
+  const others = plan.waves.filter((x) => x.open && !x.postponed).map((x) => x.id);
   console.log(`\n✔ ${w.id} landed as ${tag}.${others.length ? ` Open waves to merge main next: ${others.join(', ')}.` : ''}`);
+  if (delta?.futureWaveImpacts?.length) {
+    console.log(`  Future waves impacted by ${w.id} (${delta.futureWaveImpacts.map((f) => `${f.waveId}→${f.nextIssueId}`).join(', ')}): run \`npm run wave:propagate -- ${w.id.slice(1)}\` to review/update future plans.`);
+  }
 }
 
 /**
@@ -115,7 +137,7 @@ function landWave(w) {
 function autoLandCompleted() {
   const done = new Set();
   for (;;) {
-    const ready = ordered(plan).filter((x) => x.open && !done.has(x.id) && waveProgress(x, resolvePreset(x, overrides()).tags).complete);
+    const ready = ordered(plan).filter((x) => !x.postponed && x.open && !done.has(x.id) && waveProgress(x, resolvePreset(x, overrides()).tags).complete);
     const w = ready.find((x) => readiness(plan, x).unlanded.length === 0);
     if (!w) {
       for (const x of ready) console.log(`· ${x.id} is complete but waits for ${readiness(plan, x).unlanded.map((d) => d.id).join(', ')} to land in main first`);
@@ -134,7 +156,7 @@ function autoLandCompleted() {
 
 function pickNext() {
   if (waveArg) return byId(waveArg);
-  const list = ordered(plan);
+  const list = ordered(plan).filter((w) => !w.postponed);
   const paused = list.find((w) => w.open && !w.running && !waveProgress(w, resolvePreset(w, overrides()).tags).complete);
   if (paused && !flag('--new')) return paused;
   const nextWave = list.find((w) => !w.landed && !w.open && readiness(plan, w).ready);
@@ -146,6 +168,7 @@ function pickNext() {
  * one (a wave opened earlier keeps working; it lands only after its dependencies, see `checkLandable`).
  */
 function openWave(w) {
+  if (w.postponed && !flag('--force')) fail(`${w.id} is marked POSTPONED in the NEAR Hackathon Vertical Slice (pass --force to open anyway)`);
   const r = readiness(plan, w);
   if (!w.open && !r.ready) fail(`${w.id} waits for ${r.unlanded.map((d) => d.id).join(', ')} to land in main: land them first`);
   if (w.open) {
@@ -161,6 +184,7 @@ function openWave(w) {
 function next() {
   if (!waveArg) autoLandCompleted();
   const w = pickNext();
+  if (w.postponed && !flag('--force')) fail(`${w.id} is marked POSTPONED in the NEAR Hackathon Vertical Slice (pass --force to open anyway)`);
   if (w.running && !flag('--force') && !flag('--dry-run')) {
     fail(`${w.id} is already running in another terminal (pass --force to launch another session on ${w.id})`);
   }
@@ -192,12 +216,13 @@ function next() {
 }
 
 function land() {
-  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open) ?? fail('no open wave to land');
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open && !w.postponed) ?? fail('no open wave to land');
   landWave(target);
 }
 
 function open() {
   const w = waveArg ? byId(waveArg) : fail('usage: npm run wave:open -- NN');
+  if (w.postponed && !flag('--force')) fail(`${w.id} is marked POSTPONED in the NEAR Hackathon Vertical Slice (pass --force to open anyway)`);
   if (flag('--dry-run')) return console.log(`would ${w.open ? 'resume' : 'open'} ${w.id} ${w.slug} in ${w.worktree} (branch ${w.branch}${w.open ? '' : `, from main; waits for: ${readiness(plan, w).unlanded.map((d) => d.id).join(', ') || 'nothing'}`})`);
   openWave(w);
 }
@@ -205,5 +230,41 @@ function open() {
 const check = () => checkWave(root, byId(waveArg ?? fail('usage: npm run wave:check -- NN')), { dryRun: flag('--dry-run'), e2e: !flag('--no-e2e') });
 const issue = () => openIssue(root, plan, waveArg, { dryRun: flag('--dry-run') });
 const issueLand = () => landIssue(root, plan, waveArg, { dryRun: flag('--dry-run'), e2e: !flag('--no-e2e') });
+const sync = () => {
+  const opts = { iterations: Number(opt('--iterations', 3)), e2e: flag('--e2e'), dryRun: flag('--dry-run'), syncIssues: flag('--sync-issues') };
+  if (flag('--all')) {
+    const openWaves = ordered(plan).filter((w) => w.open && !w.postponed);
+    if (!openWaves.length) fail('no open WIP waves to sync');
+    for (const w of openWaves) syncWaveWithMain(root, plan, w, opts);
+    return;
+  }
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open && !w.postponed) ?? fail('usage: npm run wave:sync -- NN (or --all)');
+  syncWaveWithMain(root, plan, target, opts);
+};
+const audit = () => {
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open && !w.postponed) ?? fail('usage: npm run wave:audit -- NN');
+  runAuditCommand(root, plan, target, { mode: flag('--sync') ? 'sync' : 'land', json: flag('--json') });
+};
+const propagate = () => {
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open && !w.postponed) ?? fail('usage: npm run wave:propagate -- NN');
+  runPropagateCommand(root, plan, target, { opt, flag });
+};
+const validate = () => {
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open && !w.postponed) ?? fail('usage: npm run wave:validate -- NN');
+  const code = validateWaveCli(root, target, {
+    overrides: overrides(),
+    dryRun: flag('--dry-run'),
+    checkOnly: flag('--check-only'),
+    printPrompt: flag('--print-prompt'),
+    noLaunch: flag('--no-launch'),
+    gates: flag('--gates'),
+    e2e: flag('--e2e') && !flag('--no-e2e'),
+    strict: flag('--strict'),
+    json: flag('--json'),
+    quiet: flag('--quiet'),
+    rounds: Number(opt('--rounds', 1)),
+  });
+  if (code !== 0) process.exit(code);
+};
 
-({ next, status, land, open, check, issue, 'issue:land': issueLand }[command] ?? (() => fail(`unknown command "${command}" (use \`npm run wave\` or \`npm run wave -- status\`)`)))();
+({ next, status, land, sync, 'merge-main': sync, audit, propagate, validate, open, check, issue, 'issue:land': issueLand }[command] ?? (() => fail(`unknown command "${command}" (use \`npm run wave\` or \`npm run wave -- status\`)`)))();

@@ -1,15 +1,18 @@
 import { getStageSpec, type CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
+import { getExploredByColony } from '../grid/tileModel';
 import type { PlanetState, PlanetType } from '../kernel/state';
-import { resolveBuilderRow } from '../systems/factories-hub/unit';
 import {
   getColonyGoals,
   getColonyPriorities,
   getHqGoalLimit,
+  isColonyAiEnabled,
   type ColonyGoalEntry,
   type ColonyPriorities,
 } from '../systems/goals';
-import { resolveHarvesterRow } from '../systems/harvest/unit';
+import { colonyMaxWorkerTier } from '../systems/construction/placement';
+import { placementWorldFromState } from '../systems/construction/placementWorld';
+import { resolveWorkerRow, workerTierOf, type WorkerTier } from '../systems/harvest/unit';
 import { unitSupplyOfKind } from '../systems/supply/sources';
 import type { HqJob, HqUnitView } from '../systems/hq';
 import type { ColonyPowerSummary } from '../systems/power-core/types';
@@ -28,6 +31,7 @@ export interface ViewPylonLoad {
   max: number;
   overloaded?: boolean;
 }
+import { supplyTradeView, type SupplyTradeView } from './supplyTradeView';
 import { getColonyProgression } from '../systems/progression';
 import { getLastAutopilotDecision, type AutopilotDecision, type AutopilotOrderSuggestion } from '../systems/rule-engine';
 
@@ -61,12 +65,16 @@ export interface ViewColony {
   stock?: Record<string, number>;
   caps?: Record<string, number>;
   hq?: HqUnitView;
+  /** Highest tier among the colony's live HQ / Worker Drones (the replica's entity rows carry no tier); gates Deep Reclaim in the client's terraform preview. */
+  maxWorkerTier?: number;
   currentJob?: HqJob;
   queueCount?: number;
   power?: ColonyPowerSummary | Record<string, unknown>;
   goals?: ColonyGoalEntry[];
   goalLimit?: number;
   priorities?: ColonyPriorities;
+  /** Colony AI switch (default false): goals and autopilot only act while true. */
+  aiEnabled?: boolean;
   stage?: number;
   unlockStage?: number;
   threatStage?: number;
@@ -76,6 +84,8 @@ export interface ViewColony {
   dwellRemainingTicks?: number | null;
   nextStageConditionText?: string;
   lastAutopilotDecision?: AutopilotDecision | null;
+  /** W13-55: Supply & trade panel data (badges, shopping basket, logistics bill); absent without a region pin / logistics state. */
+  supplyTrade?: SupplyTradeView;
   activeSuggestion?: AutopilotOrderSuggestion | null;
   [field: string]: unknown;
 }
@@ -92,8 +102,9 @@ export interface SimView {
     depositTier?: Uint8Array;
     richness?: Float32Array;
     height: Float32Array;
-    owner: Int8Array;
+    owner: Int16Array;
     explored: Uint8Array;
+    exploredByColony?: Record<number, Uint8Array>;
   };
   entities: ViewEntity[];
   colonies: ViewColony[];
@@ -130,9 +141,10 @@ function buildViewColonies(
   hqBlob?: HqUnitView & { byColony?: Record<number, HqUnitView> },
   powerBlob?: { byColony?: Record<number, ColonyPowerSummary> },
 ): ViewColony[] {
+  const world = { entities: placementWorldFromState(state).entities }; // one tier scan for host and ghost (placement.ts)
   return state.colonies.map((k) => {
     const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
-    const out: ViewColony = { ...k };
+    const out: ViewColony = { ...k, maxWorkerTier: colonyMaxWorkerTier(world, k.index) };
     if (hq) {
       out.hq = hq;
       out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
@@ -145,6 +157,7 @@ function buildViewColonies(
     out.goals = getColonyGoals(state, k.index);
     out.goalLimit = getHqGoalLimit(state, k.index);
     out.priorities = getColonyPriorities(state, k.index);
+    out.aiEnabled = isColonyAiEnabled(state, k.index);
     const prog = getColonyProgression(state, k.index);
     out.stage = typeof k.stage === 'number' ? k.stage : state.blobs.progression ? prog.stage : undefined;
     out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : prog.unlockStage;
@@ -165,16 +178,42 @@ function buildViewColonies(
         ? k.nextStageConditionText
         : prog.nextStageConditionText || (getStageSpec((out.stage ?? 0) + 1)?.unlockConditionText ?? '');
     out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
+    const supply = supplyTradeView(state, k);
+    if (supply) out.supplyTrade = supply;
     return out;
   });
+}
+
+function workerRowFor(tier: number, cache: Map<WorkerTier, CompiledRow>): CompiledRow {
+  const key = workerTierOf(tier);
+  let row = cache.get(key);
+  if (!row) {
+    row = resolveWorkerRow(undefined, key);
+    cache.set(key, row);
+  }
+  return row;
+}
+
+function applyWorkerEntityView(ent: ViewEntity, tier: number, workRate: number, cache: Map<WorkerTier, CompiledRow>): void {
+  const row = workerRowFor(tier, cache);
+  ent.unit = 'worker';
+  ent.label = String(row.label ?? 'Worker Drone T1');
+  ent.archetype = String(row.archetype ?? 'robot.miner');
+  ent.supply = unitSupplyOfKind(ent.kind);
+  ent.powerDrainPerS = Number(row.powerDrainPerS ?? 2);
+  ent.speedTilesPerS = Number(row.designSpeedTilesPerS ?? 1.5);
+  ent.viewRadius = Number(row.viewRadius ?? 7);
+  ent.radius = Number(row.radius ?? 0.4);
+  ent.harvestRatePerS = Number(row.harvestRatePerS ?? 0.5);
+  ent.workRate = workRate;
+  ent.maxBuildTier = Number(row.maxBuildTier ?? tier);
 }
 
 export function view(state: PlanetState): SimView {
   const e = state.entities, c = e.cols, L = state.grid.layers;
   const powerBlob = state.blobs.power?.value as { byColony?: Record<number, ColonyPowerSummary> } | undefined;
   const entities: ViewEntity[] = [];
-  let harvesterRow: CompiledRow | null = null;
-  let builderRow: CompiledRow | null = null;
+  const workerRows = new Map<WorkerTier, CompiledRow>();
 
   for (let i = 0; i < e.count; i++) {
     const kind = c.kind[i];
@@ -187,32 +226,7 @@ export function view(state: PlanetState): SimView {
       footprintW: c.footprintW?.[i] ?? 0, footprintD: c.footprintD?.[i] ?? 0,
       shedGroup: c.shedGroup?.[i] ?? 0,
     };
-    if (kind === ENTITY_KIND.harvester) {
-      if (!harvesterRow) harvesterRow = resolveHarvesterRow();
-      ent.unit = 'harvester';
-      ent.label = String(harvesterRow.label ?? 'Harvester Drone');
-      ent.archetype = String(harvesterRow.archetype ?? 'robot.miner');
-      ent.supply = unitSupplyOfKind(kind);
-      ent.powerDrainPerS = Number(harvesterRow.powerDrainPerS ?? 1.5);
-      ent.speedTilesPerS = Number(harvesterRow.designSpeedTilesPerS ?? 1.5);
-      ent.viewRadius = Number(harvesterRow.viewRadius ?? 7);
-      ent.radius = Number(harvesterRow.radius ?? 0.4);
-      ent.harvestRatePerS = Number(harvesterRow.harvestRatePerS ?? 0.5);
-      ent.workRate = c.workRate?.[i] ?? 1.0;
-      ent.maxBuildTier = Number(harvesterRow.maxBuildTier ?? 0);
-    } else if (kind === ENTITY_KIND.builder) {
-      if (!builderRow) builderRow = resolveBuilderRow();
-      ent.unit = 'builder';
-      ent.label = String(builderRow.label ?? 'Builder Drone');
-      ent.archetype = String(builderRow.archetype ?? 'robot.builder');
-      ent.supply = unitSupplyOfKind(kind);
-      ent.powerDrainPerS = Number(builderRow.powerDrainPerS ?? 2.0);
-      ent.speedTilesPerS = Number(builderRow.designSpeedTilesPerS ?? 1.5);
-      ent.viewRadius = Number(builderRow.viewRadius ?? 7);
-      ent.radius = Number(builderRow.radius ?? 0.4);
-      ent.workRate = c.workRate?.[i] || 1.0;
-      ent.maxBuildTier = Number(builderRow.maxBuildTier ?? 1);
-    }
+    if (kind === ENTITY_KIND.worker) applyWorkerEntityView(ent, c.tier[i] || 1, c.workRate?.[i] ?? 1, workerRows);
     applyPowerToEntity(ent, state, powerBlob);
     entities.push(ent);
   }
@@ -233,8 +247,9 @@ export function view(state: PlanetState): SimView {
       depositTier: L.depositTier as Uint8Array,
       richness: L.richness as Float32Array,
       height: L.height as Float32Array,
-      owner: L.owner as Int8Array,
+      owner: L.owner as Int16Array,
       explored: L.explored as Uint8Array,
+      exploredByColony: getExploredByColony(state),
     },
     entities,
     colonies,

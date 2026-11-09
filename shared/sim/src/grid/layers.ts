@@ -11,7 +11,7 @@ const BASE: FieldDef[] = [
   { name: 'deposit', dtype: 'u8', wave: 'W00' },
   { name: 'richness', dtype: 'f32', wave: 'W00' },
   { name: 'height', dtype: 'f32', wave: 'W00' }, // metres above the build plane
-  { name: 'owner', dtype: 'i8', wave: 'W00' }, // colony index, -1 = none
+  { name: 'owner', dtype: 'i16', wave: 'W00' }, // colony index (0..32767), -1 = none (W11-37)
   { name: 'explored', dtype: 'u8', wave: 'W00' }, // bitmask per colony, client-side fog (D-25)
   { name: 'anchors', dtype: 'u8', wave: 'W01' }, // count of friendly anchor buildings claiming this tile (W01-17): territory only; "a building stands here" is `occupiedGroundTiles` (entities)
   { name: 'graceUntil', dtype: 'f64', wave: 'W01' }, // tick when zero-anchor tile reverts to unclaimed

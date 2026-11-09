@@ -26,11 +26,17 @@ export type ParticleGeometryKind =
   | 'oilDroplet'
   | 'weldSpark'
   | 'energyOrb'
-  | 'shockRing';
+  | 'shockRing'
+  | 'liquidGlob'
+  | 'liquidDrop'
+  | 'liquidFilament'
+  | 'liquidCrown';
 
 export interface ParticleLayerSpec {
   /** Human-readable layer name (used by particle-effect-validator reports). */
   name: string;
+  /** Liquid drops flatten on landing; a splash remains on its contact plane and collapses. */
+  behavior?: 'liquid' | 'splash';
   /** 60 / 30 / 10 visual hierarchy role: 'primary' (target matter), 'secondary' (contrast/structure/dust), 'accent' (HDR energy). */
   role: ParticleRole;
   /** 3D low-poly mesh chunk geometry (never flat 2D billboard sprites). */
@@ -104,6 +110,14 @@ export interface ParticlePresetSpec {
   /** Multi-layer 3D instanced particle specification (>= 4 layers across primary/secondary/accent). */
   layers: ParticleLayerSpec[];
 }
+
+/** Finite combat bursts share the composition/physics checks, without work-site tool beams. */
+export interface BurstPresetSpec extends Omit<ParticlePresetSpec, 'targetKind' | 'toolBeam'> {
+  targetKind: 'combat';
+  delivery: 'burst';
+  toolBeam?: never;
+}
+export type RegisteredParticlePreset = ParticlePresetSpec | BurstPresetSpec;
 
 export interface ActiveWorkSiteInput {
   /** Unique worker entity ID (or 'playground' in storybook). */

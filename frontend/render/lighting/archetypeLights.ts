@@ -10,10 +10,15 @@ export interface ArchetypeLightSource {
   intensity: number;
   /** Ground projector range in metres (default ~11 for robots, ~9.5 for buildings). */
   range: number;
-  /** Volumetric cone top radius (lamp aperture, e.g. 0.14) and bottom radius (beam spread, e.g. 1.75). */
+  /** Lamp aperture radius (lens size and the beam's start radius, e.g. 0.14). */
   coneTopRadius: number;
+  /**
+   * Spread at the target: the spot half-angle (the lit pool AND the drawn beam, `projectorCone.ts`) comes from
+   * `max(coneBottomRadius, poolRadius) * 1.55` at the target distance, clamped to ~35°..59°. So this has no effect
+   * while it is smaller than `poolRadius`. A tighter beam needs a smaller spread and/or a steeper aim (target).
+   */
   coneBottomRadius: number;
-  /** Ground pool disc radius (e.g. 2.4). */
+  /** Ground pool disc radius (e.g. 2.4); also widens the spot (see `coneBottomRadius`). */
   poolRadius: number;
 }
 

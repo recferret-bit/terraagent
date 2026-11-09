@@ -85,14 +85,16 @@ class MockElement {
     const res: MockElement[] = [];
     const match = (el: MockElement): boolean => {
       if (selector.startsWith('.')) return el.className.split(/\s+/).includes(selector.slice(1));
-      if (selector.startsWith('[') && selector.endsWith(']')) {
-        const inside = selector.slice(1, -1);
-        if (inside.includes('=')) {
-          const [k, rawV] = inside.split('=');
-          const v = rawV.replace(/^["']|["']$/g, '');
-          return el.getAttribute(k) === v;
+      if (selector.startsWith('[')) {
+        const attrs = [...selector.matchAll(/\[([^\]=\s]+)(?:=(["']?)([^"'\]]*)\2)?\]/g)];
+        const rest = selector.replace(/\[[^\]]*\]/g, '');
+        if (attrs.length > 0 && rest === '') {
+          return attrs.every((part) => {
+            const name = part[1] ?? '';
+            if (part[3] === undefined) return el.getAttribute(name) !== null;
+            return el.getAttribute(name) === part[3];
+          });
         }
-        return el.getAttribute(inside) !== null;
       }
       return el.tagName.toLowerCase() === selector.toLowerCase();
     };
@@ -122,24 +124,26 @@ describe('Units Catalog & Helpers', () => {
     expect(loaded.some((f) => f.id === 'units-menu')).toBe(false);
   });
 
-  it('reads harvester row when W02 is enabled with correct stats and costs', () => {
+  it('reads the T1 worker row when W02 is enabled with correct stats and costs', () => {
     const flags = new Set(['W00', 'W01', 'W02']);
     const catalog = buildUnitsCatalog(flags);
 
     expect(catalog).toHaveLength(1);
-    const [harvester] = catalog;
-    expect(harvester.unit).toBe('harvester');
-    expect(harvester.label).toBe('Harvester Drone');
-    expect(harvester.buildS).toBe(10);
-    expect(harvester.supply).toBe(1);
-    expect(harvester.powerText).toBe('−2 E/s');
-    expect(harvester.cost).toEqual({
+    const [worker] = catalog;
+    expect(worker.unit).toBe('worker');
+    expect(worker.archetype).toBe('robot.miner');
+    expect(worker.label).toBe('Worker Drone T1');
+    expect(worker.tier).toBe(1);
+    expect(worker.buildS).toBe(10);
+    expect(worker.supply).toBe(1);
+    expect(worker.powerText).toBe('−2 E/s');
+    expect(worker.cost).toEqual({
       'metals.t1': 40,
       'minerals.t1': 15,
       'bio.biomass': 5,
       'bio.water': 0,
     });
-    expect(harvester.costSummary).toBe('40 Metals · 15 Minerals · 5 Biomass');
+    expect(worker.costSummary).toBe('40 Metals · 15 Minerals · 5 Biomass');
 
     const loaded = loadFeatures({ flags, host: 'server' });
     expect(loaded.some((f) => f.id === 'units-menu')).toBe(true);
@@ -147,17 +151,19 @@ describe('Units Catalog & Helpers', () => {
 
   it('formats buffer items correctly for in_progress and waiting states', () => {
     const inProg = formatBufferItem({
-      unit: 'harvester',
+      unit: 'worker',
+      tier: 1,
       count: 3,
       remainingCount: 3,
       repeat: true,
       state: 'in_progress',
       progress: 0.4,
     });
-    expect(inProg).toBe('harvester ×3 ↻ · in_progress 40%');
+    expect(inProg).toBe('Worker Drone T1 ×3 ↻ · in_progress 40%');
 
     const waiting = formatBufferItem({
-      unit: 'harvester',
+      unit: 'worker',
+      tier: 1,
       count: 1,
       remainingCount: 1,
       repeat: false,
@@ -165,7 +171,7 @@ describe('Units Catalog & Helpers', () => {
       waitReason: 'supply',
       waitDetail: 'waiting(supply)',
     });
-    expect(waiting).toBe('harvester ×1 · waiting(supply)');
+    expect(waiting).toBe('Worker Drone T1 ×1 · waiting(supply)');
   });
 
   it('reads the own colony supply the host computed (never counts units itself)', () => {
@@ -221,14 +227,25 @@ describe('UnitsMenu DOM Component', () => {
     expect(supplyReadout?.textContent).toBe('— / —'); // no view yet
     expect(supplyReadout?.getAttribute('data-warning')).toBe('false');
 
-    const harvesterCard = mockParent.querySelector('[data-unit="harvester"]');
-    expect(harvesterCard).not.toBeNull();
-    expect(harvesterCard?.querySelector('.ta-units__title')?.textContent).toBe('Harvester Drone');
-    expect(harvesterCard?.querySelector('.ta-units__supply-tag')?.textContent).toBe('Supply 1');
-    expect(harvesterCard?.querySelector('.ta-units__time')?.textContent).toBe('10s');
-    expect(harvesterCard?.querySelector('.ta-units__power')?.textContent).toBe('−2 E/s');
+    const workerCard = mockParent.querySelector('[data-unit="worker"][data-tier="1"]');
+    expect(workerCard).not.toBeNull();
+    const face = workerCard?.querySelector('.ta-card-face');
+    expect(face?.querySelector('.ta-units__title')?.textContent).toBe('Worker Drone T1');
+    expect(face?.querySelector('.ta-card-tier')?.textContent).toBe('T1');
+    expect(face?.querySelector('.ta-card-price')?.textContent).toBe('40 Metals · 15 Minerals');
+    expect(face?.querySelector('.ta-card-time')?.textContent).toBe('10s');
+    expect(face?.querySelector('.ta-units__time')).toBeNull();
+    expect(face?.querySelector('.ta-units__power')).toBeNull();
+    expect(face?.querySelector('.ta-card-supply')).toBeNull();
+    expect(mockParent.querySelector('[data-testid="prod-tier-t1"]')?.getAttribute('aria-selected')).toBe('true');
+    expect(mockParent.querySelector('[data-testid="prod-tier-t2"]')).toBeNull();
 
-    const pills = harvesterCard?.querySelectorAll('.ta-units__cost-pill').map((p) => p.textContent);
+    const tip = workerCard?.querySelector('.ta-card-tip');
+    expect(tip?.querySelector('.ta-units__time')?.textContent).toBe('10s');
+    expect(tip?.querySelector('.ta-units__power')?.textContent).toBe('−2 E/s');
+    expect(tip?.querySelector('.ta-card-supply')?.textContent).toBe('Supply 1');
+    expect(tip?.querySelector('.ta-card-role')?.textContent).toBe('Harvest, build, and terraform');
+    const pills = tip?.querySelectorAll('.ta-units__cost-pill').map((p) => p.textContent);
     expect(pills).toEqual(['40 Metals', '15 Minerals', '5 Biomass']);
 
     const countReadout = mockParent.querySelector('[data-count]');
@@ -292,26 +309,13 @@ describe('W08-11: UnitsMenu stage filtering', () => {
     const mockParent = parentEl as unknown as MockElement;
 
     instance.update?.({ colonies: [{ stage: 1, unlockStage: 1 }] });
-    const harvesterCard = mockParent.querySelector('[data-unit="harvester"]');
-    const builderCard = mockParent.querySelector('[data-unit="builder"]');
-    expect(harvesterCard?.getAttribute('data-disabled')).toBe('false');
-    expect(builderCard).not.toBeNull();
-    expect(builderCard?.getAttribute('data-disabled')).toBe('true');
-    expect(builderCard?.getAttribute('data-stage-locked')).toBe('true');
-    expect(builderCard?.className).toContain('is-stage-locked');
-    expect(builderCard?.querySelector('.ta-units__reason')?.textContent).toBe(
-      'Unlocks at S2: extractor + generator · 2 min',
-    );
+    const workerCard = mockParent.querySelector('[data-unit="worker"][data-tier="1"]');
+    expect(workerCard?.getAttribute('data-disabled')).toBe('false');
     expect(mockParent.querySelector('[data-unit="scout"]')).toBeNull();
     expect(mockParent.querySelector('[data-unit="guard"]')).toBeNull();
 
-    // Clicking queue on a stage-locked unit does not send a command
-    mockParent.querySelector('[data-queue-unit="builder"]')?.click();
-    expect(sendCommand).not.toHaveBeenCalled();
-
-    // Advance to S2: Builder unlocks, Scout and Guard appear greyed out with S3 condition
+    // Advance to S2: Scout and Guard appear greyed out with the S3 condition. A locked card does not queue.
     instance.update?.({ colonies: [{ stage: 2, unlockStage: 2 }] });
-    expect(mockParent.querySelector('[data-unit="builder"]')?.getAttribute('data-disabled')).toBe('false');
     for (const s3Unit of ['scout', 'guard']) {
       const card = mockParent.querySelector(`[data-unit="${s3Unit}"]`);
       expect(card).not.toBeNull();
@@ -320,6 +324,8 @@ describe('W08-11: UnitsMenu stage filtering', () => {
         'Unlocks at S3: 6 buildings + 2nd extractor · 3 min',
       );
     }
+    mockParent.querySelector('[data-unit="scout"]')?.click();
+    expect(sendCommand).not.toHaveBeenCalled();
 
     instance.dispose();
   });
@@ -354,7 +360,7 @@ function setupColonyState(): { state: ReturnType<typeof createState>; colony: Re
   return { state, colony };
 }
 
-function queueThreeHarvesters(mockParent: MockElement, sendCommand: ReturnType<typeof vi.fn>): void {
+function queueThreeWorkers(mockParent: MockElement, sendCommand: ReturnType<typeof vi.fn>): void {
   const incBtn = mockParent.querySelector('[data-count-inc]');
   incBtn?.click();
   incBtn?.click();
@@ -365,11 +371,11 @@ function queueThreeHarvesters(mockParent: MockElement, sendCommand: ReturnType<t
   repeatBtn?.click();
   expect(repeatBtn?.getAttribute('data-repeat')).toBe('true');
 
-  const queueBtn = mockParent.querySelector('[data-queue-unit="harvester"]');
+  const queueBtn = mockParent.querySelector('[data-queue-tier="1"]');
   queueBtn?.click();
 
   expect(sendCommand).toHaveBeenCalledWith('enqueueTask', {
-    task: { kind: 'buildUnit', unit: 'harvester', count: 3, repeat: true },
+    task: { kind: 'buildUnit', unit: 'worker', tier: 1, count: 3, repeat: true },
   });
 }
 
@@ -381,22 +387,22 @@ function verifyLoopCycle(
 ): void {
   const supplyReadout = mockParent.querySelector('[data-supply]');
 
-  // Advance 50 ticks (10s): 1st Harvester spawns, 2 remaining
+  // Advance 50 ticks (10s): 1st Worker Drone spawns, 2 remaining
   step(state, [], 50, pipeline);
   instance.update?.(view(state) as unknown as GameView);
-  expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×2 ↻ · in_progress 0%');
+  expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('Worker Drone T1 ×2 ↻ · in_progress 0%');
   expect(supplyReadout?.textContent).toBe('2 / 10');
 
-  // Advance another 50 ticks (20s): 2nd Harvester spawns, 1 remaining
+  // Advance another 50 ticks (20s): 2nd Worker Drone spawns, 1 remaining
   step(state, [], 50, pipeline);
   instance.update?.(view(state) as unknown as GameView);
-  expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×1 ↻ · in_progress 0%');
+  expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('Worker Drone T1 ×1 ↻ · in_progress 0%');
   expect(supplyReadout?.textContent).toBe('3 / 10');
 
-  // Advance 50 more ticks (30s): 3rd Harvester spawns and loops!
+  // Advance 50 more ticks (30s): 3rd Worker Drone spawns and loops!
   step(state, [], 50, pipeline);
   instance.update?.(view(state) as unknown as GameView);
-  expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×3 ↻ · in_progress 0%');
+  expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('Worker Drone T1 ×3 ↻ · in_progress 0%');
   expect(supplyReadout?.textContent).toBe('4 / 10');
 }
 
@@ -414,7 +420,7 @@ describe('W02-24 Acceptance Check', () => {
     (globalThis as unknown as { window: unknown }).window = origWin;
   });
 
-  it('queue 3 Harvesters with repeat -> Hub produces them and loops', () => {
+  it('queue 3 Worker Drones with repeat -> Hub produces them and loops', () => {
     const { state, colony } = setupColonyState();
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
@@ -427,8 +433,9 @@ describe('W02-24 Acceptance Check', () => {
       services: {
         sendCommand,
         track,
-        enqueueHubUnit: (opts: { unit?: 'harvester'; count?: number; repeat?: boolean }) => {
-          enqueueHubUnit(state, { colonyIndex: 0, unit: opts.unit, count: opts.count, repeat: opts.repeat });
+        enqueueHubUnit: (opts: { unit?: string; tier?: number; count?: number; repeat?: boolean }) => {
+          const tier = opts.tier === 2 || opts.tier === 3 ? opts.tier : opts.tier === 1 ? 1 : undefined;
+          enqueueHubUnit(state, { colonyIndex: 0, unit: opts.unit, tier, count: opts.count, repeat: opts.repeat });
         },
       },
     };
@@ -441,13 +448,13 @@ describe('W02-24 Acceptance Check', () => {
     instance.update?.(view(state) as unknown as GameView);
     expect(supplyReadout?.textContent).toBe('0 / 10');
 
-    queueThreeHarvesters(mockParent, sendCommand);
+    queueThreeWorkers(mockParent, sendCommand);
     expect(colony.stock['metals.t1']).toBe(500);
     expect(colony.stock['minerals.t1']).toBe(500);
     expect(colony.stock['bio.biomass']).toBe(500);
 
     instance.update?.(view(state) as unknown as GameView);
-    expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×3 ↻ · in_progress 0%');
+    expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('Worker Drone T1 ×3 ↻ · in_progress 0%');
     expect(supplyReadout?.textContent).toBe('1 / 10');
 
     verifyLoopCycle(state, pipeline, instance, mockParent);
@@ -455,7 +462,8 @@ describe('W02-24 Acceptance Check', () => {
 
     for (let i = 0; i < 6; i++) {
       const r = insertRow(state.entities, state.meta.nextEntityId++, state.meta.tick);
-      state.entities.cols.kind[r] = ENTITY_KIND.harvester;
+      state.entities.cols.kind[r] = ENTITY_KIND.worker;
+      state.entities.cols.tier[r] = 1;
       state.entities.cols.owner[r] = 0;
       state.entities.cols.hp[r] = 160;
       state.entities.cols.state[r] = ENTITY_STATE.idle;
@@ -466,13 +474,14 @@ describe('W02-24 Acceptance Check', () => {
     expect(supplyReadout?.textContent).toBe('10 / 10');
     expect(supplyReadout?.getAttribute('data-warning')).toBe('true');
     expect(supplyReadout?.getAttribute('data-level')).toBe('full');
-    expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×2 ↻ · waiting(supply)');
+    expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('Worker Drone T1 ×2 ↻ · waiting(supply)');
 
     // At the cap the QUEUE button is disabled with the reason (the host would reject with supply_cap).
-    const card = mockParent.querySelector('[data-unit="harvester"]');
-    const queueBtn = card?.querySelector('[data-queue-unit="harvester"]');
+    const card = mockParent.querySelector('[data-unit="worker"][data-tier="1"]');
+    expect(card?.getAttribute('data-queue-unit')).toBe('worker');
+    expect(card?.getAttribute('data-queue-tier')).toBe('1');
     expect(card?.getAttribute('data-supply-blocked')).toBe('true');
-    expect(queueBtn?.disabled).toBe(true);
+    expect((card as { disabled?: boolean } | null)?.disabled).toBe(true);
     expect(card?.querySelector('[data-supply-reason]')?.textContent).toBe('Supply cap reached — build a Supply Depot');
 
     instance.dispose();

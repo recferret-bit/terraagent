@@ -1,3 +1,4 @@
+import { globalTileToSector } from '../../atlas/partition';
 import type { CompiledRow } from '../../data';
 import { ENTITY_KIND } from '../../ecs/columns';
 import { hexDistance } from '../../grid/hex';
@@ -26,6 +27,8 @@ export interface PowerZoneSource {
   q: number;
   r: number;
   radius: number;
+  sectorId?: string;
+  sectorRadius?: number;
 }
 
 /** The `grid.pylon` row of `data`, or `null` when the W03 grid is off (no power zone rule). */
@@ -45,8 +48,13 @@ export const powerZoneRadiusOf = (row: CompiledRow): number => rowNum(row, 'powe
 export const isPowerZoneSourceKind = (kind: number): boolean => kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.pylon;
 
 /** Whether tile `(q, r)` lies inside the zone of `src`. */
-export const inSourceZone = (src: { q: number; r: number; radius: number }, q: number, r: number): boolean =>
-  hexDistance(src.q, src.r, q, r) <= src.radius;
+export const inSourceZone = (
+  src: { q: number; r: number; radius: number; sectorId?: string; sectorRadius?: number },
+  q: number,
+  r: number,
+): boolean =>
+  hexDistance(src.q, src.r, q, r) <= src.radius &&
+  (!src.sectorId || !src.sectorRadius || globalTileToSector(q, r, src.sectorRadius).sectorId === src.sectorId);
 
 /** Whether tile `(q, r)` lies inside the union of `sources`. */
 export const inPowerZone = (sources: readonly PowerZoneSource[], q: number, r: number): boolean =>
@@ -60,13 +68,22 @@ export function placementPowerZoneSources(world: PlacementWorld, colonyId: numbe
   const pylon = pylonRow(data);
   if (!pylon) return [];
   const hubR = powerZoneRadiusOf(resolveHubT1Row(data)), pylonR = powerZoneRadiusOf(pylon);
+  const sectorRadius = world.sectorRadius;
   const out: PowerZoneSource[] = [];
   for (const e of world.entities) {
     if (e.owner !== colonyId || !isPowerZoneSourceKind(e.kind) || (e.hpMax > 0 && e.hp <= 0)) continue;
-    out.push({ kind: e.kind, q: e.q, r: e.r, radius: e.kind === ENTITY_KIND.pylon ? pylonR : hubR });
+    const secProps = sectorRadius
+      ? { sectorId: globalTileToSector(e.q, e.r, sectorRadius).sectorId, sectorRadius }
+      : {};
+    out.push({ kind: e.kind, q: e.q, r: e.r, radius: e.kind === ENTITY_KIND.pylon ? pylonR : hubR, ...secProps });
   }
   for (const p of world.plannedSites ?? []) {
-    if (p.owner === colonyId && p.building === 'pylon') out.push({ kind: ENTITY_KIND.pylon, q: p.q, r: p.r, radius: pylonR });
+    if (p.owner === colonyId && p.building === 'pylon') {
+      const secProps = sectorRadius
+        ? { sectorId: globalTileToSector(p.q, p.r, sectorRadius).sectorId, sectorRadius }
+        : {};
+      out.push({ kind: ENTITY_KIND.pylon, q: p.q, r: p.r, radius: pylonR, ...secProps });
+    }
   }
   return out;
 }

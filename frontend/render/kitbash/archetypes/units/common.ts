@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { KitbashBuilder } from '../../KitbashRegistry';
+import { KitbashBuilder, KitbashRegistry, type MaterialZoneId, type MaterialZoneSpec } from '../../KitbashRegistry';
 import { ArchetypeCatalog, type ArchetypeCategory } from '../../catalog';
 import '../../greebles/unitParts';
 
@@ -36,17 +36,21 @@ export function register(opts: {
   snap?: boolean;
   /** Uniform scale applied after build. */
   scale?: number;
+  /** Optional species-specific material zone overrides. */
+  zones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>>;
 }) {
+  const create = () => {
+    const b = new KitbashBuilder(opts.zones);
+    opts.build(b);
+    return finalizeBuiltGeometry(b.build(), opts);
+  };
+  KitbashRegistry.registerArchetype(opts.id, create);
   ArchetypeCatalog.register({
     id: opts.id,
     label: opts.label,
     category: opts.category,
     footprint: opts.footprint,
     notes: opts.notes,
-    create: () => {
-      const b = new KitbashBuilder();
-      opts.build(b);
-      return finalizeBuiltGeometry(b.build(), opts);
-    },
+    create,
   });
 }

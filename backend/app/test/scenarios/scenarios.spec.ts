@@ -3,12 +3,13 @@ import { restore } from '@terra/sim';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 import { GamePlanets } from '../../src/game/game-planets.service';
+import { UNIT_APP_ENV } from '../unit-app-env';
 
 const apps: INestApplication[] = [];
 afterAll(async () => { await Promise.all(apps.map((a) => a.close())); });
 
 async function boot(source: Record<string, string>) {
-  const { app } = await createApp({ source: { SIM_THREADS: '1', NODE_ENV: 'test', ...source } });
+  const { app } = await createApp({ source: { NODE_ENV: 'test', ...UNIT_APP_ENV, ...source } });
   await app.listen(0, '127.0.0.1');
   apps.push(app);
   return { app, url: (await app.getUrl()).replace('[::1]', '127.0.0.1') };

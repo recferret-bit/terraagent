@@ -390,8 +390,8 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Status:** Open
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/factories-hub/index.ts` (queue, `enqueueHubUnit`, production loop, slot 9), `shared/sim/src/systems/queue/step.ts` (`buildUnit` entries, `finishUnit` → `produceHarvesterAtHubEdge`)
-- **What happens:** Harvester production exists twice: the W02 queue's Units lane and the older factories-hub queue, each with cost, progress, count / repeat and cancel handling. Only the queue has a live caller; both write `col.unitQueue` (GP-62).
+- **Area / code:** `shared/sim/src/systems/factories-hub/index.ts` (queue, `enqueueHubUnit`, production loop, slot 9), `shared/sim/src/systems/queue/step.ts` (`buildUnit` entries, `finishUnit` → `produceWorkerAtHubEdge`)
+- **What happens:** Worker Drone T1 production exists twice: the W02 queue's Units lane and the older factories-hub queue, each with cost, progress, count / repeat and cancel handling. Only the queue has a live caller; both write `col.unitQueue` (GP-62).
 - **To resolve:** remove the factories-hub queue (keep its spawn helper) or route the lane through it; one implementation.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
@@ -401,7 +401,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/queue/cancel.ts` (`cancelAllColonyTasks`: `cancelConstructionOrder(…, 'current')`, `cancelTerraformOrder(…, 'active')`)
-- **What happens:** "cancel all" clears every W02 queue entry, building job, Hub unit, Harvester task and work job of the colony, but for W01 orders it uses the lane wildcards, which name one order each: the open construction order (`'current'`) and the first manual terraform order (`'active'`). Other W01 terraform orders stay queued.
+- **What happens:** "cancel all" clears every W02 queue entry, building job, Hub unit, Worker Drone T1 task and work job of the colony, but for W01 orders it uses the lane wildcards, which name one order each: the open construction order (`'current'`) and the first manual terraform order (`'active'`). Other W01 terraform orders stay queued.
 - **To resolve:** loop over `constructionOrdersOf` / `colonyTerraformOrders` of the colony.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
 
@@ -477,7 +477,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
   - `W03-30`: Petroleum Well T1 `bio.t2` runtime hook (needs W05-34's terraforming gate);
   - `W03-32..37`: multi-builder dispatch cleanup, single Units-lane consolidation, depleted-extractor offline state, economy-row territory/refund rules, day-window cleanup, and harvest-weight slider UI.
 - **Why it is like this:** per `docs/plan/waves/W03-the-grid.md` ("Hackathon slice"), only the 15 `H` issues are in scope for this wave landing.
-- **Workaround / mitigation:** the 15 H issues and all `@hack` demo steps (steps 1–4, 5 Depot, 6 night + group shedding, 7 pylon branch overload, 8 Builder 1.5× auto-repair, 9 `waiting(storage)` + Build Depot button, 10 60 s earmark, plus `?waves=..02` DoD) are built and verified in `tests/e2e/w03.spec.ts`.
+- **Workaround / mitigation:** the 15 H issues and all `@hack` demo steps (steps 1–4, 5 Depot, 6 night + group shedding, 7 pylon branch overload, 8 Worker Drone T2 1.5× auto-repair, 9 `waiting(storage)` + Build Depot button, 10 60 s earmark, plus `?waves=..02` DoD) are built and verified in `tests/e2e/w03.spec.ts`.
 - **To resolve:** build the H+ and post-hackathon rows in a later landing (`wave-03.2`) or their downstream waves.
 - **Found:** 2026-11-03, W03 landing
 
@@ -522,3 +522,88 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** The browser check verifies new repaint work and fewer repaints than the full map. The stationary raster-cache unit fixture still requires exactly one repaint for one changed tile.
 - **To resolve:** No runtime change needed.
 - **Found:** 2026-11-04, post-landing main browser suite.
+
+### XC-40 · Concurrent group-march work interrupts combat-effect verification
+
+- **Status:** Resolved (insect animation integration, 2026-11-06)
+- **Area / code:** `shared/sim/src/units/movement/orchestrator.ts:68`, `frontend/playground/content/marchScene.ts:150` and `:231`
+- **What happens:** During the combat-effect pass, separate uncommitted group-march edits appeared in the same tree. Repo lint reports unused `stats` in the movement orchestrator; a later production build reports two `PlanetState` versus `EntityStore` argument mismatches in `marchScene.ts`. Live reload also replaced the gallery during one screenshot run.
+- **Why it is like this:** The shared worktree is being edited concurrently. These files are outside the combat-effect change and were left intact.
+- **Workaround / mitigation:** All 49 focused combat/particle/client/gallery tests pass. The build passed before the later march-scene edits. Final browser captures suppress the Vite hot-reload socket so they inspect one stable loaded revision.
+- **Resolution:** Removed the unused movement stats binding after the concurrent march fixes arrived. Repo-wide lint and production build both pass. Browser capture still disables hot reload to keep each review on one revision.
+- **Found:** 2026-11-05, final combat-effects verification.
+
+### XC-41 · W07 browser reconnect check only compares hive kinds
+
+- **Status:** Resolved (2026-11-07 working-tree same-planet browser acceptance; commit pending)
+- **Area / code:** `tests/e2e/w07.spec.ts:268`, `tests/e2e/parity/w07-fauna-parity.spec.ts`
+- **What happens:** The browser reconnect test compares only the sorted three hive kind numbers. It does not assert the same planet, cohort/member IDs, HP, pending acid impacts, or reconnect recovery. Detailed replica tests run in-process; browser/server scenario parity checks a separate execution path. Thus green suites do not fully establish W07-35's live backend/two-browser delivery gate.
+- **Why it is like this:** A broad smoke assertion stands in for the detailed browser acceptance story.
+- **Workaround / mitigation:** In-process replica recovery tests and real browser/server deterministic scenario parity do pass.
+- **To resolve:** Join the exact active planet in a second independent browser context, reconnect mid-wave, and compare authoritative IDs, cohorts, HP, impacts and directive sequence at a common tick.
+- **Resolution:** The final SIM_VERSION 3 / diff-format-2 browser run compares the exact planet through independent Chrome processes and distinct identities, requires an active cohort, damaged hive and pending acid impacts, then reloads the peer's join URL and compares again. Both strong comparisons passed at common ticks 660 and 791, and again at ticks 287 and 431 after extracting the shared browser helper. Local hosting has a separate persisted-reload check because independent local hosts cannot share a planet.
+- **Found:** 2026-11-06, W07 full-branch review.
+
+### XC-42 · W07 review browser run needed a W00 screenshot retry
+
+- **Status:** Resolved (2026-11-07 working-tree browser capture/readiness fixes and passing scoped reruns; commit pending)
+- **Area / code:** `tests/e2e/harness/helpers.ts:132`, `tests/e2e/w00.spec.ts:58`; `docs/coverage/w07-review-2026-11-06.md`
+- **What happens:** The combined W00–W07 hack run timed out during W00 screenshot capture (60 s), leaving six W00 tests unrun. The independent W00 rerun passed all eight active tests; the H+ inspector remains intentionally skipped.
+- **Why it is like this:** Root cause is not established. The original run overlapped other test/browser activity, so resource contention is a possibility, not a confirmed diagnosis.
+- **Workaround / mitigation:** Retain the failed result and run W00 separately; do not report the original combined run as green. Static model captures do not repeat the earlier GPU attack/death readback audit.
+- **To resolve:** Reproduce capture timeouts under controlled load and inspect Playwright/Chrome traces if they recur; complete dynamic visual review when changing those rigs.
+- **Found:** 2026-11-06, W07 full-branch review.
+
+- **2026-11-07 follow-up:** Concurrent full-suite load produced timing failures that disappeared in a two-worker rerun. Two software-WebGL contexts in one Chrome process also stalled before the peer opened a WebSocket (trace showed a ~65 s main-thread gap). The live reconnect test now uses separate Chrome processes and distinct dev identities; same-account replacement is expected server behavior, not a reconnect defect. These controlled browser arrangements are not a hardware-GPU performance guarantee.
+- **2026-11-07 trace diagnosis:** In the later W00 failure, ticks advanced from 27 to 184 over 31.389 s (5.00 TPS) while a two-animation-frame wait consumed 31.289 s. Chrome logged GPU readback stalls during Playwright's screenshot screencast. Trace capture now keeps DOM snapshots, network and sources but disables continuous screenshots; explicit QA and failure screenshots and the original timing thresholds remain. This diagnoses the captured software-renderer stall, not every earlier timeout.
+- **W06 follow-up:** Disabling screencast capture alone did not fix the retry story. Its trace showed the Save progress button hidden by descent; the test started observing save status before the action could occur. W06 auth fixtures now use the supported `skip=1` ready-colony path, which still sends the real `landPod` command, and wait for the action to be visible before observing save status. W01 retains normal cinematic landing/handoff coverage. The second client uses the same extracted independent-browser helper as W07. A further trace showed a relay response in 11 ms replacing the saving chip between Playwright polls. A test-only DOM observer now records the exact Saving text, status role and visibility during insertion, with the original 30 s deadline, cleanup, and immediate joint promise handling with OAuth. Authentication, persistent failure-toast and Retry assertions/timeouts remain unchanged. Trace: `/private/tmp/w07-w06-independent-descent.trace.zip`.
+- **Final verification:** W00 passed all eight active cases, including unchanged 5 TPS/warp/prediction checks. W06 passed all five active cases, including real failure/Retry recovery. Prior failed combined runs remain recorded; no claim is made that every earlier timeout had the same cause. Final retry trace: `/private/tmp/w07-w06-final-passed.trace.zip`.
+
+### XC-43 · Production build retains dependency and chunk-size notices
+
+- **Status:** Accepted (review scope; no build failure)
+- **Area / code:** `scripts/ci/build-warnings.mjs`, Vite build output, installed `zod/v4/core` dependency
+- **What happens:** The production build succeeds but reports chunks above 500 kB and removes misplaced PURE annotations from Zod dependency files. The strict-build script permits the chunk-size notice and does not classify the annotation text as a warning.
+- **Why it is like this:** The current strict check matches warning wording rather than structured Rollup warning codes; dependency comment notices do not affect emitted runtime behavior, but its former “no warnings apart from chunk size” summary was broader than the captured output established.
+- **Workaround / mitigation:** The W07 review records the actual notices instead of claiming completely silent bundling. TypeScript, generated-file and application checks run independently.
+- **2026-11-07 correction:** The build script now describes its result as passing the warning-text policy; it no longer claims that all warning categories were checked. Structured warning classification and bundle-size work remain outside this gameplay review.
+- **To resolve:** Use structured Rollup warning reporting with an explicit dependency-notice policy; optimize bundle splitting separately if payload targets are introduced. No dependency upgrade or vendor patch was included in the W07 gameplay review.
+- **Found:** 2026-11-07, final W07 build-log inspection.
+
+### XC-44 · Earlier scripted scenarios inherit later enabled waves
+
+- **Status:** Accepted (scenario and feature-flag separation)
+- **Area / code:** `tests/e2e/harness/stack.ts`, `tests/e2e/w03.spec.ts`, `tests/e2e/w07.spec.ts`, `tests/e2e/w08.spec.ts`
+- **What happens:** Running the W03 scripted construction story with the backend enabled through W08 lets the autonomous planner occupy its future pylon site. The pylon correctly waits on an occupied tile; the old script times out. The captured authority state had an extractor at `(5, -1)`, the scripted pylon destination.
+- **Why it is like this:** A scenario supplies starting state; the backend uses the highest selected wave, and local hosting does not inherit the browser runner's selected-wave bound. Scenarios do not implicitly disable newer features.
+- **Workaround / mitigation:** Run earlier scripted acceptance stories through W07, then W08 separately. W07/W08 browser helpers and the W07 owner guide now set explicit wave bounds, including local-host runs. Preserve the failed broad run and trace instead of treating it as a placement defect.
+- **To resolve:** If cross-wave scripted-story composition becomes a requirement, isolate each story's AI policy or reserve its fixture sites explicitly. Do not weaken placement rules to accommodate the test.
+- **Found:** 2026-11-07, W07 review browser sweep; trace `/private/tmp/w07-review-w03-ai-collision.trace.zip`.
+
+### XC-45 · Production-mode unit fixtures restored the default dev database
+
+- **Status:** Resolved (2026-11-07 working-tree fixture isolation; commit pending)
+- **Area / code:** `backend/app/test/unit-app-env.ts`, `backend/app/test/core/logging-helpers.ts`, `backend/app/test/core/errors.spec.ts`, production-mode unit boot fixtures
+- **What happens:** HTTP tests changing `NODE_ENV` to production implicitly enabled snapshots and persistent ledger restoration. With no explicit database URL, they used the default `terraagent` database on port 15434. A captured failure contained one expected HTTP error and two unrelated sim restoration logs, including a saved snapshot/ledger mismatch. Such fixtures could restore and save dev planets despite testing only HTTP behavior.
+- **Why it is like this:** Persistence defaults off only under `NODE_ENV=test`; fixture mode changes bypassed that protection.
+- **Resolution:** Shared unit fixture defaults explicitly disable snapshot persistence, outbox relay and progression workers, and use one sim thread unless overridden. The production error regression verifies persistence is disabled, the ledger is in memory, and persisted planets are never queried. HTTP assertions count exactly one log for the response's request ID. Integration fixtures retain their explicitly provisioned test databases.
+- **Workaround / mitigation:** No default database reset or cleanup was performed. Existing dev snapshot/ledger inconsistencies exposed by the old fixture remain a separate data-audit concern; they are not suppressed in production logging.
+- **To resolve:** No fixture-isolation fix pending. Inspect a specific saved dev planet and its journal before any data repair; do not delete or rewrite default dev data as a test cleanup step.
+- **Found:** 2026-11-07, final full-suite logging failure and delayed isolated diagnostic.
+
+### XC-46 · Two copies of the open-ground prep set
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/grid/hexTile.ts` (`isOpenGround`), `shared/sim/src/grid/geo.ts` (`isPreparedGround`)
+- **What happens:** `hexTile.isOpenGround` repeats the prep set of `geo.isPreparedGround`.
+- **Why it is like this:** `frontend/render` may import `grid/hexTile` (pure functions over arrays and contract codes) but not `geo.ts`, which pulls in the sim layers.
+- **To resolve:** Move the prep set into a tiny pure module both import, if a third copy appears.
+- **Found:** 2026-11-07, W05 full review (terraform agent)
+
+### XC-47 · e2e w12 step 4 expects 1 past colony; the scenario seeds 2
+
+- **Status:** Open
+- **Area / code:** `tests/e2e/w12.spec.ts` ("4. Planets section current & past colony cards"), `tests/scenarios/w12-profile.ts` ("an active colony ... and 2 past colonies")
+- **What happens:** On the server host the page shows 2 `me-past-colony` cards and the test expects 1. Neither file changed in the W05 branch (pre-existing on `main`; the step was never reached in earlier W05 runs because `@hack 1` timed out first).
+- **To resolve:** Align the test with the scenario (expect 2) or the scenario with the test; W12 owner.
+- **Found:** 2026-11-07, W05 full review (lead, e2e)

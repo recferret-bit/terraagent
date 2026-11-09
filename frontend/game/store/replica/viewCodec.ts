@@ -1,13 +1,15 @@
 import type { PlanetType, SimView, ViewColony, ViewEntity } from '@terra/sim';
+import { renderViewBlobs } from './viewBlobs';
 
 /**
  * Entity buffer layout: `count` rows of `ENTITY_STRIDE` float32, per row in this order
  *   [0] id  [1] kind  [2] owner  [3] q  [4] r  [5] x  [6] y  [7] rot  [8] hp  [9] hpMax  [10] state  [11] progress
+ *   [12] tier (unit / building tier, 0 when the kind has none: Worker Drone T2 / T3 mesh, labels)
  * `id` is exact in float32 up to 2^24 (16,777,216 ids per planet). Entity ids are monotonic and never recycled, so a
  * planet that spawns past that needs a wider id column (an Int32 side buffer); `packEntities` throws instead of
  * silently corrupting.
  */
-export const ENTITY_FIELDS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'rot', 'hp', 'hpMax', 'state', 'progress'] as const;
+export const ENTITY_FIELDS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'rot', 'hp', 'hpMax', 'state', 'progress', 'tier'] as const;
 export const ENTITY_STRIDE = ENTITY_FIELDS.length;
 export const MAX_EXACT_ID = 1 << 24;
 export type EntityField = (typeof ENTITY_FIELDS)[number];
@@ -22,7 +24,7 @@ export type EntityRow = { [K in EntityField]: number };
 export function readEntity(ents: Float32Array | readonly ViewEntity[], i: number): EntityRow {
   if (!(ents instanceof Float32Array)) {
     const e = ents[i];
-    return { id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, x: e.x, y: e.y, rot: e.rot, hp: e.hp, hpMax: e.hpMax, state: e.state, progress: e.progress };
+    return { id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, x: e.x, y: e.y, rot: e.rot, hp: e.hp, hpMax: e.hpMax, state: e.state, progress: e.progress, tier: e.tier ?? 0 };
   }
   const o = i * ENTITY_STRIDE;
   const row = {} as EntityRow;
@@ -46,12 +48,13 @@ export interface ClientTiles {
   terrain: Uint8Array;
   prep: Uint8Array;
   height: Float32Array;
-  owner: Int8Array;
+  owner: Int16Array | Int8Array;
   deposit?: Uint8Array;
   /** Tier of the visible deposit: 0 = legacy (tier 1), 1..3 explicit (sim `depositTier` layer). */
   depositTier?: Uint8Array;
   richness?: Float32Array;
   explored?: Uint8Array;
+  exploredByColony?: Record<number, Uint8Array>;
 }
 
 /** What the main thread sees. `tiles` is present on the first view after a welcome and whenever a tile changed. */
@@ -83,6 +86,7 @@ export interface WireView {
     depositTier?: ArrayBuffer;
     richness?: ArrayBuffer;
     explored?: ArrayBuffer;
+    exploredByColony?: Record<number, ArrayBuffer>;
   };
   entities: ArrayBuffer;
   count: number;
@@ -97,12 +101,12 @@ export function packEntities(entities: SimView['entities']): Float32Array {
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i], o = i * ENTITY_STRIDE;
     if (e.id >= MAX_EXACT_ID) throw new Error(`entity id ${e.id} exceeds float32 exact range`);
-    for (const f of ENTITY_FIELDS) out[o + E[f]] = e[f];
+    for (const f of ENTITY_FIELDS) out[o + E[f]] = e[f] ?? 0;
   }
   return out;
 }
 
-const copy = <T extends Uint8Array | Int8Array | Float32Array>(a: T): T => a.slice() as T;
+const copy = <T extends Uint8Array | Int8Array | Int16Array | Float32Array>(a: T): T => a.slice() as T;
 
 /** Packs a view; `withTiles` copies the tile layers (welcome / changed tiles), otherwise they are omitted. */
 export function packView(v: SimView, withTiles: boolean): { view: WireView; transfer: ArrayBuffer[] } {
@@ -123,17 +127,26 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
     entities: entities.buffer as ArrayBuffer,
     count: v.entities.length,
     colonies: v.colonies,
-    blobs: v.blobs,
+    blobs: renderViewBlobs(v.blobs),
     ...(hasPower ? { entityPower } : {}),
     ...(hasPylon ? { pylonLoads } : {}),
   };
   if (withTiles) {
     const t = v.tiles;
-    const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = copy(t.owner);
+    const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = Int16Array.from(t.owner);
     const deposit = t.deposit ? copy(t.deposit) : undefined;
     const depositTier = t.depositTier ? copy(t.depositTier) : undefined;
     const richness = t.richness ? copy(t.richness) : undefined;
     const explored = t.explored ? copy(t.explored) : undefined;
+    let exploredByColony: Record<number, ArrayBuffer> | undefined;
+    if (t.exploredByColony) {
+      exploredByColony = {};
+      for (const [k, bits] of Object.entries(t.exploredByColony)) {
+        const cloned = copy(bits);
+        exploredByColony[Number(k)] = cloned.buffer as ArrayBuffer;
+        transfer.push(cloned.buffer as ArrayBuffer);
+      }
+    }
     view.tiles = {
       count: t.count,
       terrain: terrain.buffer as ArrayBuffer,
@@ -144,6 +157,7 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
       ...(depositTier ? { depositTier: depositTier.buffer as ArrayBuffer } : {}),
       ...(richness ? { richness: richness.buffer as ArrayBuffer } : {}),
       ...(explored ? { explored: explored.buffer as ArrayBuffer } : {}),
+      ...(exploredByColony ? { exploredByColony } : {}),
     };
     transfer.push(view.tiles.terrain, view.tiles.prep, view.tiles.height, view.tiles.owner);
   }
@@ -163,16 +177,35 @@ export function unpackView(w: WireView, serverTimeMs?: number): ClientView {
   };
   if (serverTimeMs !== undefined) out.serverTimeMs = serverTimeMs;
   if (w.tiles) {
+    let exploredByColony: Record<number, Uint8Array> | undefined;
+    if (w.tiles.exploredByColony) {
+      exploredByColony = {};
+      for (const [k, buf] of Object.entries(w.tiles.exploredByColony)) {
+        exploredByColony[Number(k)] = new Uint8Array(buf);
+      }
+    } else {
+      const blob = w.blobs?.colonyExplored as { byColony?: Record<number, Uint8Array> } | undefined;
+      if (blob?.byColony) {
+        exploredByColony = {};
+        for (const [k, bits] of Object.entries(blob.byColony)) {
+          exploredByColony[Number(k)] = bits instanceof Uint8Array ? bits : Uint8Array.from(bits);
+        }
+      }
+    }
     out.tiles = {
       count: w.tiles.count,
       terrain: new Uint8Array(w.tiles.terrain),
       prep: new Uint8Array(w.tiles.prep),
       height: new Float32Array(w.tiles.height),
-      owner: new Int8Array(w.tiles.owner),
+      owner:
+        w.tiles.owner.byteLength === w.tiles.count * 2
+          ? new Int16Array(w.tiles.owner)
+          : Int16Array.from(new Int8Array(w.tiles.owner)),
       ...(w.tiles.deposit ? { deposit: new Uint8Array(w.tiles.deposit) } : {}),
       ...(w.tiles.depositTier ? { depositTier: new Uint8Array(w.tiles.depositTier) } : {}),
       ...(w.tiles.richness ? { richness: new Float32Array(w.tiles.richness) } : {}),
       ...(w.tiles.explored ? { explored: new Uint8Array(w.tiles.explored) } : {}),
+      ...(exploredByColony ? { exploredByColony } : {}),
     };
   }
   return out;

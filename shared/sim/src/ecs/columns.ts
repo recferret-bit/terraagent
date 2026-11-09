@@ -8,7 +8,7 @@ import type { DType, FieldDef, WaveId } from '../kernel/types';
 const BASE: FieldDef[] = [
   { name: 'id', dtype: 'u32', wave: 'W00' }, // monotonic entity id, never recycled (SIM-D-05)
   { name: 'kind', dtype: 'u8', wave: 'W00' }, // archetype index (data table)
-  { name: 'owner', dtype: 'i8', wave: 'W00' }, // colony index, -1 = none
+  { name: 'owner', dtype: 'i16', wave: 'W00' }, // colony index (0..32767), -1 = none (W11-37)
   { name: 'tier', dtype: 'u8', wave: 'W00' },
   { name: 'q', dtype: 'i16', wave: 'W00' }, // axial tile
   { name: 'r', dtype: 'i16', wave: 'W00' },
@@ -40,8 +40,7 @@ export const ENTITY_KIND = {
   hub: 4,
   metalsExtractor: 5,
   solar: 6,
-  harvester: 7,
-  builder: 50,
+  worker: 7,
   pylon: 9,
   capacitor: 10,
   wind: 11,
@@ -55,6 +54,29 @@ export const ENTITY_KIND = {
   petroleumWell: 16,
   oilWell: 16,
   tradeHub: 8,
+  roboticsFactory: 17,
+  droneControlArray: 18,
+  droneArray: 18,
+  autocannon: 19,
+  turret: 19,
+  laserTower: 20,
+  pulseTurret: 20,
+  territoryBeacon: 21,
+  outpostBeacon: 21,
+  hazardShield: 26,
+  shieldDome: 26,
+  lightningRod: 41,
+  hydro: 42,
+  hydroGenerator: 42,
+  recon: 51,
+  demoTank: 52,
+  demoArtillery: 53,
+  blackAnt: 60,
+  blueBeetle: 61,
+  greenSpitter: 62,
+  hiveBlackAnt: 63,
+  hiveBlueBeetle: 64,
+  hiveGreenSpitter: 65,
 } as const;
 
 export const ENTITY_STATE = {

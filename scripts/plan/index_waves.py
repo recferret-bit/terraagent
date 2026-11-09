@@ -163,9 +163,13 @@ def longest(nodes, g):
     return fin, path[::-1]
 
 
-# Hackathon value order: when time runs out, waves late in this list are the ones left unfinished.
-VALUE_ORDER = ['W00', 'W26', 'W01', 'W02', 'W06', 'W10', 'W13', 'W03', 'W07', 'W05', 'W15', 'W12', 'W08',
-               'W04', 'W09', 'W20', 'W22', 'W14', 'W11', 'W25']
+# Hackathon value order (Vertical Slice): when time runs out, waves late in this list are the ones left unfinished.
+# Landed (12): W00, W26, W01, W02, W06, W10, W03, W07, W05, W04, W08, W12
+# Ready to land now (3): W11, W13, W16
+# Active Vertical Slice remaining (7): W09, W15, W18, W20, W22, W23, W25
+VALUE_ORDER = ['W00', 'W26', 'W01', 'W02', 'W06', 'W10', 'W03', 'W07', 'W05', 'W04', 'W08', 'W12',
+               'W11', 'W13', 'W16', 'W09', 'W15', 'W18', 'W20', 'W22', 'W23', 'W25']
+POSTPONED_WAVES = ['W14', 'W17', 'W19', 'W21', 'W24', 'W27']
 VALUE_WEIGHT = 1.0  # one rank step = one unit of remaining path
 BUILD_DAYS = 13
 
@@ -174,10 +178,21 @@ if '--waves-json' in sys.argv:  # machine-readable wave list for scripts/wave/wa
     waves = {}
     for iid, d in issues.items():
         t = d['tag'] or '-'
-        w = waves.setdefault(d['wave'], {'file': d['file'], 'deps': wave_deps.get(d['wave'], []), 'tags': {}, 'issues': {}})
+        w = waves.setdefault(d['wave'], {
+            'file': d['file'],
+            'deps': [dep for dep in wave_deps.get(d['wave'], []) if dep not in POSTPONED_WAVES or d['wave'] in POSTPONED_WAVES],
+            'postponed': d['wave'] in POSTPONED_WAVES,
+            'tags': {},
+            'issues': {},
+        })
         w['tags'][t] = w['tags'].get(t, 0) + 1
         w['issues'].setdefault(t, []).append(iid)
-    print(json.dumps({'valueOrder': VALUE_ORDER, 'waves': waves, 'problems': problems}))
+    print(json.dumps({
+        'valueOrder': VALUE_ORDER,
+        'postponedWaves': POSTPONED_WAVES,
+        'waves': waves,
+        'problems': problems,
+    }))
     sys.exit(0)
 
 
@@ -255,7 +270,8 @@ if '--write' in sys.argv:
     for w in sorted(per):
         ids = [i for i in order if issues[i]['wave'] == w]
         h = [i for i in ids if issues[i]['tag'] == 'H']
-        out.append(f'| {w} | {len(ids)} | {sum(issues[i]["size"] == "S" for i in ids)} | {sum(issues[i]["size"] == "M" for i in ids)} | '
+        w_label = f'{w} *(POSTPONED)*' if w in POSTPONED_WAVES else w
+        out.append(f'| {w_label} | {len(ids)} | {sum(issues[i]["size"] == "S" for i in ids)} | {sum(issues[i]["size"] == "M" for i in ids)} | '
                    f'{effort(ids):.1f} | {len(h) or ""} | {effort(h) or "":} | {sum(issues[i]["tag"] == "H+" for i in ids) or ""} | '
                    f'{sum(issues[i]["tag"] == "H2" for i in ids) or ""} |')
     out += ['', '| ID | Title | Type | Size | H | Deps |', '|---|---|---|---|---|---|']
@@ -309,5 +325,14 @@ if '--write' in sys.argv:
     for w, i in sorted(e2e.items()):
         if issues[i]['tag'] == 'H':
             s.append(f'| {w} | {i} | {fin[i]:.1f} | {start[i] + UNIT[issues[i]["size"]]:.1f} |')
+    s += ['', '## 5. Postponed Waves (Deferred Out of NEAR Hackathon Vertical Slice)', '',
+          'All Tier 2/3 content (buildings, resources, units, stages S5–S10) and non-core scope are postponed so the hackathon vertical slice focuses on Tier 1 (`S0–S4`) gameplay polish, AI Director, persistent sector multiplayer, economy, offline play, and 100% working mocked + switchable real NEAR/Web3 features:', '',
+          '| Wave | Status | Scope Postponed |', '|---|---|---|',
+          '| `W14` | **POSTPONED** | Fortify (walls, gates, heavy turret, shield dome, stealth/EMP) |',
+          '| `W17` | **POSTPONED** | Second Tier `S5–S7` (all Tier 2 buildings, resources `metals.t2`/`minerals.t2`/`bio.t2`, units `tank`/`artillery`/`radar`/`multitask`) |',
+          '| `W19` | **POSTPONED** | Air & Endgame `S8–S10` (all Tier 3 buildings, resources `metals.t3`/`minerals.t3`/`bio.t3`, units `brute`/aircraft) |',
+          '| `W21` | **POSTPONED** | Rocket & Settlement (Silo T2 & 3-stage rocket; `W20` settles Colony Deeds directly at Stage 4 / 100% Living Planet) |',
+          '| `W24` | **POSTPONED** | Mobile, PWA & Landing polish |',
+          '| `W27` | **POSTPONED** | 450-sector planet streaming (`W11` canonical persistent sector worlds provide complete multiplayer topology) |']
     open('docs/plan/HACKATHON_SCHEDULE.md', 'w').write('\n'.join(s) + '\n')
     print('written ISSUE_INDEX.md, HACKATHON_SCHEDULE.md')

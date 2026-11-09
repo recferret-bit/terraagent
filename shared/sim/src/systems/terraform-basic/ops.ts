@@ -1,14 +1,27 @@
-import { W01_TERRAFORM_OPS, W02_TERRAFORM_OPS, type ResourceKey, type TerraformOp } from '@terra/contracts';
+import {
+  W01_TERRAFORM_OPS,
+  W02_TERRAFORM_OPS,
+  W05_NEW_TERRAFORM_OPS,
+  W05_TERRAFORM_OPS,
+  type ResourceKey,
+  type TerraformOp,
+} from '@terra/contracts';
 import { TERRAFORM_TIME_TABLE } from '../../data/ops-basic';
 import { prepIdFromKey, terrainIdFromKey } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
-import { defaultW01Data, rowNum, ticksToSeconds, w01Row } from '../rows';
+import { defaultW05Data, rowNum, ticksToSeconds, w05Row } from '../rows';
 
-/** The S0 terraform ops: the contracts' list is the one list (XC-13). */
+/** The terraform ops: the contracts' list is the one list (XC-13). */
 export type TerraformOpKind = TerraformOp;
 
-const VALID_OPS: ReadonlySet<string> = new Set(W02_TERRAFORM_OPS);
+export const MENU_TERRAFORM_OPS = [...W01_TERRAFORM_OPS, ...W05_NEW_TERRAFORM_OPS] as const;
+
+export const SITE_PREP_TERRAFORM_OPS = ['grade', 'clear', 'break', 'level', 'fill', 'reclaim', 'deepReclaim'] as const;
+export type SitePrepTerraformOp = (typeof SITE_PREP_TERRAFORM_OPS)[number];
+
+const VALID_OPS: ReadonlySet<string> = new Set(W05_TERRAFORM_OPS);
 const VALID_W01_OPS: ReadonlySet<string> = new Set(W01_TERRAFORM_OPS);
+const VALID_W02_OPS: ReadonlySet<string> = new Set(W02_TERRAFORM_OPS);
 
 export function isTerraformOpKind(op: unknown): op is TerraformOpKind {
   return typeof op === 'string' && VALID_OPS.has(op);
@@ -18,24 +31,35 @@ export function isW01TerraformOpKind(op: unknown): op is (typeof W01_TERRAFORM_O
   return typeof op === 'string' && VALID_W01_OPS.has(op);
 }
 
+export function isW02TerraformOpKind(op: unknown): op is (typeof W02_TERRAFORM_OPS)[number] {
+  return typeof op === 'string' && VALID_W02_OPS.has(op);
+}
+
 export interface TerraformOpSpec {
   op: TerraformOpKind;
   /** Nominal duration in seconds at work rate 1.0 (`timeS`, compiled to ticks, converted back). */
   baseTimeS: number;
   energyCostE: number;
+  /** Resource cost per tile (`opsBasic.<op>.cost`, whole units). */
+  cost: Readonly<Partial<Record<ResourceKey, number>>>;
+  /** Multiplier for `bio.water` cost on desert planets (`opsBasic.irrigate.desertWaterMult`). */
+  desertWaterMult: number;
+  /** Minimum worker tier required to execute this op (`opsBasic.<op>.minWorkerTier`, default 1). */
+  minWorkerTier: number;
   /** What one worked tile pays (`opsBasic.<op>.yields`, whole units, a lump sum). */
   yields: Readonly<Partial<Record<ResourceKey, number>>>;
-  /** The tile rule (`fromTerrain` → `toTerrain` + `toPrep`), as `TERRAIN` / `PREP` codes (GP-34). */
+  /** The tile rule (`fromTerrain` [+ optional `fromPrep`] → `toTerrain` + `toPrep`), as `TERRAIN` / `PREP` codes (GP-34). */
   fromTerrain: number;
+  fromPrep: number | null;
   toTerrain: number;
   toPrep: number;
 }
 
 const specCache = new WeakMap<CompiledDataLike, Map<TerraformOpKind, TerraformOpSpec>>();
 
-/** The balance row of `op` (`opsBasic.<op>`): time, energy, yield and the tile rule. Throws on a missing field. */
+/** The balance row of `op` (`opsBasic.<op>`): time, energy, cost, yield and the tile rule. Throws on a missing field. */
 export function getTerraformOpSpec(op: TerraformOpKind, data?: CompiledDataLike): TerraformOpSpec {
-  const src = data ?? defaultW01Data();
+  const src = data ?? defaultW05Data();
   let byOp = specCache.get(src);
   if (!byOp) specCache.set(src, (byOp = new Map()));
   let spec = byOp.get(op);
@@ -43,9 +67,9 @@ export function getTerraformOpSpec(op: TerraformOpKind, data?: CompiledDataLike)
   return spec;
 }
 
-function readYields(v: unknown, op: string): Partial<Record<ResourceKey, number>> {
-  if (v === undefined || v === null) return {};
-  if (typeof v !== 'object' || Array.isArray(v)) throw new Error(`data row opsBasic.${op}.yields is not a resource map`);
+function readResourceMap(v: unknown, op: string, field: string): Partial<Record<ResourceKey, number>> {
+  if (v === undefined || v === null) return Object.freeze({});
+  if (typeof v !== 'object' || Array.isArray(v)) throw new Error(`data row opsBasic.${op}.${field} is not a resource map`);
   return Object.freeze({ ...(v as Partial<Record<ResourceKey, number>>) });
 }
 
@@ -55,8 +79,12 @@ function readSpec(op: TerraformOpKind, data: CompiledDataLike): TerraformOpSpec 
       op,
       baseTimeS: TERRAFORM_TIME_TABLE.dismantle.durationSec,
       energyCostE: TERRAFORM_TIME_TABLE.dismantle.energyCost,
-      yields: {},
+      cost: Object.freeze({}),
+      desertWaterMult: 1,
+      minWorkerTier: 1,
+      yields: Object.freeze({}),
       fromTerrain: 0,
+      fromPrep: null,
       toTerrain: 0,
       toPrep: 0,
     };
@@ -66,32 +94,72 @@ function readSpec(op: TerraformOpKind, data: CompiledDataLike): TerraformOpSpec 
       op,
       baseTimeS: TERRAFORM_TIME_TABLE.flat.durationSec,
       energyCostE: TERRAFORM_TIME_TABLE.flat.energyCost,
-      yields: {},
+      cost: Object.freeze({}),
+      desertWaterMult: 1,
+      minWorkerTier: 1,
+      yields: Object.freeze({}),
       fromTerrain: 0,
+      fromPrep: null,
       toTerrain: 0,
       toPrep: 1,
     };
   }
-  const row = w01Row(data, 'opsBasic', op);
+  const row = w05Row(data, 'opsBasic', op);
   const key = (field: string): string => {
     const v = row[field];
     if (typeof v !== 'string') throw new Error(`data row opsBasic.${op}.${field} is not a key`);
     return v;
   };
+  const fromPrepRaw = row.fromPrep;
+  const fromPrep = typeof fromPrepRaw === 'string' ? prepIdFromKey(fromPrepRaw) : null;
+  const minWorkerTier = typeof row.minWorkerTier === 'number' ? row.minWorkerTier : 1;
+  const desertWaterMult = typeof row.desertWaterMult === 'number' ? row.desertWaterMult : 1;
   return {
     op,
     baseTimeS: ticksToSeconds(rowNum(row, 'timeS')),
     energyCostE: rowNum(row, 'energyCostE'),
-    yields: readYields(row.yields, op),
+    cost: readResourceMap(row.cost, op, 'cost'),
+    desertWaterMult,
+    minWorkerTier,
+    yields: readResourceMap(row.yields, op, 'yields'),
     fromTerrain: terrainIdFromKey(key('fromTerrain')),
+    fromPrep,
     toTerrain: terrainIdFromKey(key('toTerrain')),
     toPrep: prepIdFromKey(key('toPrep')),
   };
 }
 
+/**
+ * Returns the terraform menu op specs compiled into `data` (`TA_WAVES=..04` -> Grade/Clear/Break;
+ * `TA_WAVES=..05` -> Grade/Clear/Break + Level/Fill/Reclaim/DeepReclaim/Irrigate/Seed).
+ */
+export function listTerraformMenuOps(data?: CompiledDataLike): TerraformOpSpec[] {
+  const src = data ?? defaultW05Data();
+  const table = (src.tables.opsBasic ?? {}) as Record<string, unknown>;
+  const out: TerraformOpSpec[] = [];
+  for (const op of MENU_TERRAFORM_OPS) {
+    if (op in table) out.push(getTerraformOpSpec(op, src));
+  }
+  return out;
+}
+
+/**
+ * Whether `op` is in this step's compiled `opsBasic` (a wave that has not shipped the row cannot run it: `TA_WAVES=..04`
+ * has Grade / Clear / Break only). `work` and `dismantle` are not rows (always on); no table at all → the W05 fallback
+ * of callers without a step ctx.
+ */
+export function isTerraformOpCompiled(op: TerraformOpKind, data?: CompiledDataLike): boolean {
+  if (op === 'work' || op === 'dismantle' || isW01TerraformOpKind(op)) return true;
+  const table = data?.tables?.opsBasic as Record<string, unknown> | undefined;
+  return !table || op in table;
+}
+
 /** The op that works a tile of `terrain` (the op whose `fromTerrain` it is; Grade for flat ground), or `null`. */
-export function opForTerrain(terrain: number, data?: CompiledDataLike): (typeof W01_TERRAFORM_OPS)[number] | null {
-  for (const op of W01_TERRAFORM_OPS) if (getTerraformOpSpec(op, data).fromTerrain === terrain) return op;
+export function opForTerrain(terrain: number, data?: CompiledDataLike): SitePrepTerraformOp | null {
+  for (const op of SITE_PREP_TERRAFORM_OPS) {
+    if (!isTerraformOpCompiled(op, data)) continue;
+    if (getTerraformOpSpec(op, data).fromTerrain === terrain) return op;
+  }
   return null;
 }
 
@@ -103,7 +171,43 @@ export function terraformYields(op: TerraformOpKind, data?: CompiledDataLike): P
   return { ...getTerraformOpSpec(op, data).yields };
 }
 
+/**
+ * The per-tile resource cost of `op` (`opsBasic.<op>.cost`), applying `desertWaterMult` (`2x`) on `desert` planets for `irrigate`.
+ */
+export function getTerraformJobCost(
+  op: TerraformOpKind,
+  data?: CompiledDataLike,
+  planetType?: string,
+): Partial<Record<ResourceKey, number>> {
+  const spec = getTerraformOpSpec(op, data);
+  const out: Partial<Record<ResourceKey, number>> = { ...spec.cost };
+  if (planetType === 'desert' && spec.desertWaterMult !== 1 && typeof out['bio.water'] === 'number') {
+    out['bio.water'] = out['bio.water']! * spec.desertWaterMult;
+  }
+  return out;
+}
+
 /** The yield of a `work` job on ground `key` (forest → Clear's, rock → Break's, slope / hole / Flat → none). */
 export function groundWorkYields(key: string, data?: CompiledDataLike): Partial<Record<ResourceKey, number>> {
   return key === 'forest' ? terraformYields('clear', data) : key === 'rock' ? terraformYields('break', data) : {};
 }
+
+export type ObstacleRemovedAchievement = 'Stone Mason' | 'Hydro Engineer' | 'Green Thumb';
+
+export const OBSTACLE_REMOVED_ACHIEVEMENTS = {
+  clear: 'Stone Mason',
+  break: 'Stone Mason',
+  level: 'Stone Mason',
+  fill: 'Stone Mason',
+  reclaim: 'Hydro Engineer',
+  deepReclaim: 'Hydro Engineer',
+  seed: 'Green Thumb',
+} as const satisfies Readonly<Record<string, ObstacleRemovedAchievement>>;
+
+/** Maps an `obstacleRemoved` terraform op (`clear`, `break`, `level`, `fill`, `reclaim`, `deepReclaim`, `seed`) to its achievement family name (W05-29). */
+export function resolveObstacleRemovedAchievement(op: string): ObstacleRemovedAchievement {
+  if (op === 'reclaim' || op === 'deepReclaim') return 'Hydro Engineer';
+  if (op === 'seed') return 'Green Thumb';
+  return 'Stone Mason';
+}
+

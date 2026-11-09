@@ -7,7 +7,7 @@ const ci = !!process.env.CI;
 // One worker: all suites share one server + database. Output (traces, screenshots, results) under tests/e2e/.out/.
 export default defineConfig({
   testDir: '.',
-  testMatch: /w\d\d\.spec\.ts$|harness\/smoke\.spec\.ts$/,
+  testMatch: /w\d\d\.spec\.ts$|harness\/smoke\.spec\.ts$|probes\/[\w-]+\.spec\.ts$/,
   outputDir: './.out/results',
   workers: 1,
   fullyParallel: false,
@@ -21,7 +21,8 @@ export default defineConfig({
     headless: true,
     baseURL: urls().client,
     viewport: { width: 1280, height: 720 },
-    trace: 'retain-on-failure',
+    // SwiftShader screencast readbacks can stall the render thread. Keep DOM/network traces and explicit QA screenshots.
+    trace: { mode: 'retain-on-failure', screenshots: false, snapshots: true, sources: true },
     screenshot: 'only-on-failure',
     // software GL so WebGL works headless on any machine
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },

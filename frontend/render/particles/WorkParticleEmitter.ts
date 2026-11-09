@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getParticleGeometry } from './geometries';
+import { beamImpactPoint, debrisSpawnPoint, DEBRIS_SHELL_MAX, DEBRIS_SHELL_MIN, randomShellDir, SPAWN_GROUND_CLEAR } from './spawnShell';
 import type { ActiveWorkSiteInput, ParticleLayerSpec, ParticlePresetSpec } from './types';
 
 interface LayerRuntime {
@@ -182,6 +183,9 @@ export class WorkParticleEmitter {
     this.seedAllParticles(1.0);
   }
 
+  /** `rand` as a value for the spawn-shell helpers (one closure per emitter, not two per spawned particle). */
+  private readonly randFn = (): number => this.rand();
+
   private rand(): number {
     this.rngState = (this.rngState * 1664525 + 1013904223) >>> 0;
     return this.rngState / 0xffffffff;
@@ -213,23 +217,23 @@ export class WorkParticleEmitter {
 
   private computeCutPoint(): [number, number, number] {
     const tb = this.preset.toolBeam;
-    const [tx, ty, tz] = this.site.targetPos;
-    const a = this.clock * tb.sweepFreq;
-    const r = tb.sweepRadius * (0.65 + 0.35 * Math.sin(this.clock * 2.3));
-    return [
-      tx + Math.cos(a) * r,
-      Math.max(this.site.groundY + 0.08, ty + Math.sin(a * 1.5) * 0.14),
-      tz + Math.sin(a) * r,
-    ];
+    return beamImpactPoint(
+      this.site.targetPos,
+      this.site.botOrigin,
+      tb.sweepRadius,
+      tb.sweepFreq,
+      this.clock,
+      this.site.groundY + SPAWN_GROUND_CLEAR,
+    );
   }
 
-  private spawnParticle(layer: LayerRuntime, i: number, cutPoint: [number, number, number], speedBoost: number): void {
+  private spawnParticle(layer: LayerRuntime, i: number, speedBoost: number): void {
     const { spec } = layer;
-    const [cx, cy, cz] = cutPoint;
+    const center = this.site.targetPos;
     const [bx, , bz] = this.site.botOrigin;
-    // Full 360-degree radial fountain centered on the target object, with only a subtle bias toward the cutter
-    let dx = bx - cx;
-    let dz = bz - cz;
+    // Full 360-degree radial fountain around the target, with only a subtle bias toward the cutter.
+    let dx = bx - center[0];
+    let dz = bz - center[2];
     const dLen = Math.hypot(dx, dz) || 1;
     dx /= dLen;
     dz /= dLen;
@@ -246,9 +250,11 @@ export class WorkParticleEmitter {
     const radialSpread = 0.35 + 0.65 * this.rand();
     const horizSpeed = speed * radialSpread * 0.48;
 
-    layer.px[i] = cx + (this.rand() - 0.5) * 0.16;
-    layer.py[i] = cy + (this.rand() - 0.3) * 0.16;
-    layer.pz[i] = cz + (this.rand() - 0.5) * 0.16;
+    const radius = DEBRIS_SHELL_MIN + this.rand() * (DEBRIS_SHELL_MAX - DEBRIS_SHELL_MIN);
+    const spawned = debrisSpawnPoint(center, randomShellDir(this.randFn), radius, this.randFn, this.site.groundY + SPAWN_GROUND_CLEAR);
+    layer.px[i] = spawned[0];
+    layer.py[i] = spawned[1];
+    layer.pz[i] = spawned[2];
     layer.vx[i] = dirX * horizSpeed;
     layer.vy[i] = up;
     layer.vz[i] = dirZ * horizSpeed;
@@ -265,10 +271,9 @@ export class WorkParticleEmitter {
   }
 
   private seedAllParticles(speedBoost: number): void {
-    const cut = this.computeCutPoint();
     for (const layer of this.layers) {
       for (let i = 0; i < layer.spec.count; i++) {
-        this.spawnParticle(layer, i, cut, speedBoost);
+        this.spawnParticle(layer, i, speedBoost);
         if (speedBoost > 1.2) {
           layer.age[i] = this.rand() * 0.12;
         }
@@ -276,7 +281,7 @@ export class WorkParticleEmitter {
     }
   }
 
-  private stepLayer(layer: LayerRuntime, dt: number, cutPoint: [number, number, number], canRespawn: boolean): number {
+  private stepLayer(layer: LayerRuntime, dt: number, canRespawn: boolean): number {
     const { spec } = layer;
     const n = spec.count;
     const dampXZ = Math.exp(-spec.drag * dt);
@@ -292,7 +297,7 @@ export class WorkParticleEmitter {
       if (layer.age[i] >= layer.lifetime[i]) {
         if (canRespawn) {
           layer.age[i] = 0;
-          this.spawnParticle(layer, i, cutPoint, 1.0);
+          this.spawnParticle(layer, i, 1.0);
         } else {
           DUMMY.scale.setScalar(0);
           DUMMY.updateMatrix();
@@ -459,7 +464,7 @@ export class WorkParticleEmitter {
 
     let totalAlive = 0;
     for (const layer of this.layers) {
-      totalAlive += this.stepLayer(layer, clampedDt, cutPoint, canRespawn);
+      totalAlive += this.stepLayer(layer, clampedDt, canRespawn);
     }
     return canRespawn || totalAlive > 0;
   }

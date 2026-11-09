@@ -24,6 +24,7 @@ import {
 import { emitGoalProgress, getColonyGoals, saveColonyGoals } from './store';
 import type { ColonyGoalEntry } from './types';
 import { getGoalExecutor, registerGoalExecutor } from './executors';
+import { stepClearCorridorGoal, stepDefendColonyGoal } from './defendAndClear';
 import { planGrowth } from './growth';
 
 const SECURE_POWER_HOLD_TICKS_NIGHT = 5;
@@ -201,7 +202,7 @@ export function computeColonyResourceRatePerMin(
   resourceKey: ResourceKey,
   data?: CompiledDataLike,
 ): number {
-  // Read actual production. Idle harvesters, depleted deposits and unpowered extractors yield zero.
+  // Read actual production. Idle workers, depleted deposits and unpowered extractors yield zero.
   const colony = state.colonies[colonyIndex];
   const production = colony?.production as { incomePerS?: Partial<Record<ResourceKey, number>> } | undefined;
   void data;
@@ -300,7 +301,7 @@ function stepGrowEconomyGoal(
   const openChild = orders.find((e) => e.goalId === goal.id && e.state !== 'done' && e.state !== 'cancelled');
   goal.detail = `${currentRatePerMin.toFixed(1)} / ${targetRatePerMin} ${resourceKey}/min. `;
   if (openChild) {
-    goal.detail += openChild.waitDetail || `Working: ${openChild.task.kind === 'build' ? openChild.task.building : 'harvester'}`;
+    goal.detail += openChild.waitDetail || `Working: ${openChild.task.kind === 'build' ? openChild.task.building : 'worker'}`;
   } else {
     const plan = planGrowth(state, colonyIndex, resourceKey, tick, ctx?.data);
     goal.detail += plan.detail;
@@ -399,7 +400,7 @@ export function stepColonyGoalsBreakdown(
   const active = goals.find((g) => g.status === 'active');
   if (!active) return;
 
-  const executor = getGoalExecutor(active.goal);
+  const executor = getGoalExecutor(active.goal, ctx?.flags);
   if (executor) executor(state, colonyIndex, active, goals, tick, ctx);
   else {
     active.detail = 'Unavailable: this goal requires its owning feature wave. Cancel to continue.';
@@ -410,3 +411,5 @@ export function stepColonyGoalsBreakdown(
 registerGoalExecutor('establish_colony', stepEstablishColonyGoal);
 registerGoalExecutor('grow_economy', stepGrowEconomyGoal);
 registerGoalExecutor('secure_power', stepSecurePowerGoal);
+registerGoalExecutor('defend_colony', stepDefendColonyGoal, { wave: 'W07' });
+registerGoalExecutor('clear_corridor', stepClearCorridorGoal, { wave: 'W07' });

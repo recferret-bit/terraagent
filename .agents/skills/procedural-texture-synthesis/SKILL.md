@@ -8,6 +8,8 @@ description: >-
   or tuning surface textures for 3D models or terrain.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Procedural PBR Texture Synthesis Skill (`procedural-texture-synthesis`)
 
 This skill enables AI coding agents to generate crisp, tileable PBR texture sets (`map`, `normalMap`, `roughnessMap`, `emissiveMap`) in pure code at startup (`< 25ms`) without relying on external `.png` assets.

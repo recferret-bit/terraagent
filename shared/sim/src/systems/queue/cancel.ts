@@ -1,5 +1,5 @@
 import { CANCEL_REFUND_RATE } from '../../data';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
@@ -8,7 +8,7 @@ import { cancelBuildingConstruction, type BuildingJobRecord } from '../economy/c
 import { ensureColony } from '../economy/buildingRows';
 import { refundCost } from '../economy/ledger';
 import { cancelHubUnit, getHubUnitQueue } from '../factories-hub';
-import { cancelHarvesterTask } from '../harvest';
+import { cancelWorkerTask, isCrewKind } from '../harvest';
 import { cancelWorkJobs, hasWorkJob } from '../terraform-basic/dismantleAndWork';
 import { dismantleJobOf } from '../terraform-basic/workJobs';
 import { cancelTerraformOrder, findTerraformOrder } from '../terraform-basic/queue';
@@ -92,8 +92,8 @@ export function cancelAllColonyTasks(
   for (let r = 0; r < state.entities.count; r++) {
     if (state.entities.cols.owner[r] !== colonyIndex || state.entities.cols.hp[r] <= 0) continue;
     const k = state.entities.cols.kind[r];
-    if (k === ENTITY_KIND.harvester || k === ENTITY_KIND.hq || k === ENTITY_KIND.builder) {
-      cancelHarvesterTask(state, state.entities.cols.id[r], tick, data);
+    if (isCrewKind(k)) {
+      cancelWorkerTask(state, state.entities.cols.id[r], tick, data);
     }
   }
 
@@ -192,7 +192,7 @@ export function tryCancelSpecialTaskId(
     return { ok: true, refunded };
   }
 
-  if (taskId.startsWith('harvester:') || taskId.startsWith('unit:')) {
+  if (taskId.startsWith('worker:') || taskId.startsWith('unit:')) {
     const entityId = Number(taskId.split(':')[1]);
     if (!Number.isInteger(entityId) || entityId <= 0) return { ok: false, code: 'invalid_args' };
     const r = rowOf(state.entities, entityId);
@@ -201,7 +201,7 @@ export function tryCancelSpecialTaskId(
       return { ok: false, code: 'not_own_colony' };
     }
     cancelUnitTerraformOrders(state, entityId, state.entities.cols.owner[r], tick, data);
-    cancelHarvesterTask(state, entityId, tick, data);
+    cancelWorkerTask(state, entityId, tick, data);
     const wRes = cancelWorkJobs(state, colonyIndex, { workerEntityId: entityId }, tick);
     return { ok: true, refunded: Object.keys(wRes.refunded).length > 0 };
   }
@@ -226,15 +226,13 @@ export function tryCancelSpecialTaskId(
     const uRow = rowOf(state.entities, numId);
     if (
       uRow >= 0 &&
-      (state.entities.cols.kind[uRow] === ENTITY_KIND.harvester ||
-        state.entities.cols.kind[uRow] === ENTITY_KIND.hq ||
-        state.entities.cols.kind[uRow] === ENTITY_KIND.builder)
+      isCrewKind(state.entities.cols.kind[uRow])
     ) {
       if (colonyIndex !== undefined && colonyIndex !== null && state.entities.cols.owner[uRow] !== colonyIndex) {
         return { ok: false, code: 'not_own_colony' };
       }
       cancelUnitTerraformOrders(state, numId, state.entities.cols.owner[uRow], tick, data);
-      cancelHarvesterTask(state, numId, tick, data);
+      cancelWorkerTask(state, numId, tick, data);
       const wRes = cancelWorkJobs(state, colonyIndex, { workerEntityId: numId }, tick);
       return { ok: true, refunded: Object.keys(wRes.refunded).length > 0 };
     }

@@ -32,6 +32,7 @@ export * from './evaluate';
 export * from './overload';
 export * from './drains';
 export * from './hqCell';
+export * from './lightState';
 export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad';
 
 let cachedW02Data: CompiledDataLike | null = null;
@@ -42,14 +43,14 @@ function defaultW02Data(): CompiledDataLike {
 
 let cachedW03Data: CompiledDataLike | null = null;
 function defaultW03Data(): CompiledDataLike {
-  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07']));
   return cachedW03Data;
 }
 
 export function resolvePowerRow(data: CompiledDataLike | undefined, table: string, id: string): CompiledRow {
   const t = data?.tables?.[table] as Record<string, CompiledRow> | undefined;
   if (t?.[id]) return t[id];
-  if (table === 'grid') return dataRow(defaultW03Data(), table, id);
+  if (table === 'grid' || table === 'combatUnits') return dataRow(defaultW03Data(), table, id);
   return dataRow(defaultW02Data(), table, id);
 }
 
@@ -79,6 +80,75 @@ function syncTradeHubPowerAvailability(state: PlanetState, colonyIndex: number, 
   }
 }
 
+interface ColonyPowerAccumulators {
+  totalSupply: number;
+  totalRawDemand: number;
+  totalDemand: number;
+  totalBuildingDemand: number;
+  solarGross: number;
+  solarDrain: number;
+  solarNet: number;
+  thermalGross: number;
+  thermalDrain: number;
+  thermalNet: number;
+  windGross: number;
+  windDrain: number;
+  windNet: number;
+  results: ComponentEvalResult[];
+  unpoweredEntityIds: number[];
+  nightSolarEntityIds: number[];
+  noFuelEntityIds: number[];
+  allShedEntityIds: number[];
+  allShedWorkJobIds: string[];
+  allOverloadedEntityIds: number[];
+  pylonLoads: Record<number, { flow: number; max: number; overloaded?: boolean; shedEntityIds?: number[] }>;
+  allShedGroupsSet: Set<number>;
+  hqFastRechargeShed: boolean;
+  totalShedWorkDemand: number;
+  componentsSummary: PowerComponentSummary[];
+  entityPower: Record<number, EntityPowerStatus>;
+  offlineReasons: Record<number, string>;
+}
+
+function createPowerAccumulators(): ColonyPowerAccumulators {
+  return {
+    totalSupply: 0, totalRawDemand: 0, totalDemand: 0, totalBuildingDemand: 0,
+    solarGross: 0, solarDrain: 0, solarNet: 0,
+    thermalGross: 0, thermalDrain: 0, thermalNet: 0,
+    windGross: 0, windDrain: 0, windNet: 0,
+    results: [],
+    unpoweredEntityIds: [], nightSolarEntityIds: [], noFuelEntityIds: [],
+    allShedEntityIds: [], allShedWorkJobIds: [], allOverloadedEntityIds: [],
+    pylonLoads: {}, allShedGroupsSet: new Set<number>(),
+    hqFastRechargeShed: false, totalShedWorkDemand: 0,
+    componentsSummary: [], entityPower: {}, offlineReasons: {},
+  };
+}
+
+function accumulateComponentResult(acc: ColonyPowerAccumulators, compId: number, res: ComponentEvalResult): void {
+  acc.componentsSummary.push(res.summary);
+  acc.results.push(res);
+  acc.totalSupply += res.effectiveSupply;
+  acc.totalRawDemand += res.rawDemand;
+  acc.totalDemand += res.demand;
+  acc.totalBuildingDemand += res.buildingDemand;
+  acc.solarGross += res.solarGross; acc.solarDrain += res.solarDrain; acc.solarNet += res.solarNet;
+  acc.thermalGross += res.thermalGross; acc.thermalDrain += res.thermalDrain; acc.thermalNet += res.thermalNet;
+  acc.windGross += res.windGross; acc.windDrain += res.windDrain; acc.windNet += res.windNet;
+  acc.unpoweredEntityIds.push(...res.unpoweredIds);
+  acc.nightSolarEntityIds.push(...res.nightSolarIds);
+  acc.noFuelEntityIds.push(...res.noFuelIds);
+  acc.allShedEntityIds.push(...res.shed.shedEntityIds);
+  acc.allOverloadedEntityIds.push(...res.overloadedEntityIds);
+  Object.assign(acc.pylonLoads, res.pylonLoads);
+  for (const g of res.shed.shedGroupsActive) acc.allShedGroupsSet.add(g);
+  acc.allShedWorkJobIds.push(...res.shed.shedWorkJobIds);
+  acc.totalShedWorkDemand += res.shed.shedWorkDemand;
+  if (res.shed.hqFastRechargeShed) acc.hqFastRechargeShed = true;
+  for (const [idStr, r] of Object.entries(res.shed.offlineReasons)) acc.offlineReasons[Number(idStr)] = r;
+  for (const id of res.onlineEntityIds) acc.entityPower[id] = { state: 'online', component: compId };
+}
+
 /** Evaluates colony power across all power graph components with per-component brownout shedding (W03-05, W03-07). */
 export function evaluateColonyPower(
   state: PlanetState,
@@ -97,87 +167,44 @@ export function evaluateColonyPower(
   const col = state.colonies[colonyIndex];
   if (col) col.pollution = Number(col.pollution ?? 0);
 
-  const unitDemand = calculateUnitDemand(state, colonyIndex, data);
+  const unitDemand = graph.hasHub ? calculateUnitDemand(state, colonyIndex, data) : 0;
   const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
-
-  let totalSupply = 0, totalRawDemand = 0, totalDemand = 0, totalBuildingDemand = 0;
-  let solarGross = 0, solarDrain = 0, solarNet = 0;
-  let thermalGross = 0, thermalDrain = 0, thermalNet = 0;
-  let windGross = 0, windDrain = 0, windNet = 0;
-  const results: ComponentEvalResult[] = [];
-
-  const unpoweredEntityIds: number[] = [], nightSolarEntityIds: number[] = [], noFuelEntityIds: number[] = [];
-  const allShedEntityIds: number[] = [], allShedWorkJobIds: string[] = [];
-  const allOverloadedEntityIds: number[] = [];
-  const pylonLoads: Record<number, { flow: number; max: number; overloaded?: boolean; shedEntityIds?: number[] }> = {};
-  const allShedGroupsSet = new Set<number>();
-  let hqFastRechargeShed = false;
-  let totalShedWorkDemand = 0;
-  const componentsSummary: PowerComponentSummary[] = [];
-  const entityPower: Record<number, EntityPowerStatus> = {};
-  const offlineReasons: Record<number, string> = {};
+  const acc = createPowerAccumulators();
 
   for (const comp of graph.components) {
     const res = evaluateSingleComponent(
       state, colonyIndex, comp, graph, env, windOut, unitDemand, work, graph.hubAnchors, dtTicks, tick, data,
     );
-    componentsSummary.push(res.summary);
-    results.push(res);
-    totalSupply += res.effectiveSupply;
-    totalRawDemand += res.rawDemand;
-    totalDemand += res.demand;
-    totalBuildingDemand += res.buildingDemand;
-    solarGross += res.solarGross; solarDrain += res.solarDrain; solarNet += res.solarNet;
-    thermalGross += res.thermalGross; thermalDrain += res.thermalDrain; thermalNet += res.thermalNet;
-    windGross += res.windGross; windDrain += res.windDrain; windNet += res.windNet;
-    unpoweredEntityIds.push(...res.unpoweredIds);
-    nightSolarEntityIds.push(...res.nightSolarIds);
-    noFuelEntityIds.push(...res.noFuelIds);
-    allShedEntityIds.push(...res.shed.shedEntityIds);
-    allOverloadedEntityIds.push(...res.overloadedEntityIds);
-    Object.assign(pylonLoads, res.pylonLoads);
-    for (const g of res.shed.shedGroupsActive) allShedGroupsSet.add(g);
-    allShedWorkJobIds.push(...res.shed.shedWorkJobIds);
-    totalShedWorkDemand += res.shed.shedWorkDemand;
-    if (res.shed.hqFastRechargeShed) hqFastRechargeShed = true;
-    for (const [idStr, r] of Object.entries(res.shed.offlineReasons)) offlineReasons[Number(idStr)] = r;
-    for (const id of res.onlineEntityIds) entityPower[id] = { state: 'online', component: comp.componentId };
+    accumulateComponentResult(acc, comp.componentId, res);
   }
 
-  processUnattachedBuildings(state, graph, tick, unpoweredEntityIds, offlineReasons, entityPower, data);
-
+  processUnattachedBuildings(state, graph, tick, acc.unpoweredEntityIds, acc.offlineReasons, acc.entityPower, data);
   applyOfflineStatuses(
-    graph,
-    unpoweredEntityIds,
-    nightSolarEntityIds,
-    noFuelEntityIds,
-    allShedEntityIds,
-    allOverloadedEntityIds,
-    offlineReasons,
-    entityPower,
+    graph, acc.unpoweredEntityIds, acc.nightSolarEntityIds, acc.noFuelEntityIds,
+    acc.allShedEntityIds, acc.allOverloadedEntityIds, acc.offlineReasons, acc.entityPower,
   );
 
-  const workDemand = Math.max(0, Number((work.demand - totalShedWorkDemand).toFixed(4)));
-  const effectiveSupply = Math.max(0, Number(totalSupply.toFixed(4)));
-  const demand = Math.max(0, Number(totalDemand.toFixed(4)));
-  const rawDemand = Math.max(0, Number(totalRawDemand.toFixed(4)));
-  const buildingDemand = Math.max(0, Number(totalBuildingDemand.toFixed(4)));
+  const workDemand = Math.max(0, Number((work.demand - acc.totalShedWorkDemand).toFixed(4)));
+  const effectiveSupply = Math.max(0, Number(acc.totalSupply.toFixed(4)));
+  const demand = Math.max(0, Number(acc.totalDemand.toFixed(4)));
+  const rawDemand = Math.max(0, Number(acc.totalRawDemand.toFixed(4)));
+  const buildingDemand = Math.max(0, Number(acc.totalBuildingDemand.toFixed(4)));
   const net = Number((effectiveSupply - demand).toFixed(4));
-  const shedGroupsActive = [...allShedGroupsSet].sort((a, b) => a - b);
-  const brownout = allShedEntityIds.length > 0 || allShedWorkJobIds.length > 0 || rawDemand > effectiveSupply + 1e-6;
+  const shedGroupsActive = [...acc.allShedGroupsSet].sort((a, b) => a - b);
+  const brownout = acc.allShedEntityIds.length > 0 || acc.allShedWorkJobIds.length > 0 || rawDemand > effectiveSupply + 1e-6;
 
   return {
     colonyIndex, hasHub: graph.hasHub, founderCorePerS,
-    solarGrossPerS: Number(solarGross.toFixed(4)), solarInternalDrainPerS: Number(solarDrain.toFixed(4)), solarNetPerS: Number(solarNet.toFixed(4)),
-    thermalGrossPerS: Number(thermalGross.toFixed(4)), thermalInternalDrainPerS: Number(thermalDrain.toFixed(4)), thermalNetPerS: Number(thermalNet.toFixed(4)),
-    windFactor: windOut.windFactor, windGrossPerS: Number(windGross.toFixed(4)), windInternalDrainPerS: Number(windDrain.toFixed(4)), windNetPerS: Number(windNet.toFixed(4)),
-    ...summarizeComponentStores(results),
+    solarGrossPerS: Number(acc.solarGross.toFixed(4)), solarInternalDrainPerS: Number(acc.solarDrain.toFixed(4)), solarNetPerS: Number(acc.solarNet.toFixed(4)),
+    thermalGrossPerS: Number(acc.thermalGross.toFixed(4)), thermalInternalDrainPerS: Number(acc.thermalDrain.toFixed(4)), thermalNetPerS: Number(acc.thermalNet.toFixed(4)),
+    windFactor: windOut.windFactor, windGrossPerS: Number(acc.windGross.toFixed(4)), windInternalDrainPerS: Number(acc.windDrain.toFixed(4)), windNetPerS: Number(acc.windNet.toFixed(4)),
+    ...summarizeComponentStores(acc.results),
     supply: effectiveSupply, demand, rawDemand, buildingDemand, unitDemand: Number(unitDemand.toFixed(4)), workDemand,
     net, brownout,
-    shedGroupsActive, shedEntityIds: allShedEntityIds, shedWorkJobIds: allShedWorkJobIds,
-    unpoweredEntityIds, hqFastRechargeShed, offlineReasons,
-    daylight: env.daylight, phase: env.phase, clockText: env.clockText, entityPower, components: componentsSummary,
-    pylonLoads, overloadedEntityIds: allOverloadedEntityIds,
+    shedGroupsActive, shedEntityIds: acc.allShedEntityIds, shedWorkJobIds: acc.allShedWorkJobIds,
+    unpoweredEntityIds: acc.unpoweredEntityIds, hqFastRechargeShed: acc.hqFastRechargeShed, offlineReasons: acc.offlineReasons,
+    daylight: env.daylight, phase: env.phase, clockText: env.clockText, entityPower: acc.entityPower, components: acc.componentsSummary,
+    pylonLoads: acc.pylonLoads, overloadedEntityIds: acc.allOverloadedEntityIds,
   };
 }
 
@@ -188,19 +215,8 @@ export function notifyPylonOrBuildingRemoved(
   data?: CompiledDataLike,
   ctx?: StepContext,
 ): void {
-  const summaries = recomputeAllColonyPower(state, data, tick);
-  if (ctx) {
-    const prevBlob = (state.blobs.power?.value as {
-      trackers?: Record<number, PowerEventTracker>;
-    } | undefined) ?? {};
-    const prevTrackers = prevBlob.trackers ?? {};
-    const trackers: Record<number, PowerEventTracker> = {};
-    for (const [colIdxStr, summary] of Object.entries(summaries)) {
-      const colIdx = Number(colIdxStr);
-      trackers[colIdx] = evaluatePowerEventsForColony(state, colIdx, summary, prevTrackers[colIdx], ctx, data);
-    }
-    setBlob(state, 'power', { byColony: summaries, trackers }, tick);
-  }
+  void entityId;
+  recomputeAllColonyPower(state, data, tick, 0, ctx);
 }
 
 export function getColonyPower(state: PlanetState, colonyIndex = 0, data?: CompiledDataLike): ColonyPowerSummary {
@@ -211,6 +227,31 @@ export function getColonyPower(state: PlanetState, colonyIndex = 0, data?: Compi
   return evaluateColonyPower(state, colonyIndex, data, state.meta.tick);
 }
 
+function powerSummaryChanged(prev: ColonyPowerSummary | undefined, next: ColonyPowerSummary): boolean {
+  if (!prev) return true;
+  return (
+    prev.hasHub !== next.hasHub ||
+    prev.supply !== next.supply ||
+    prev.demand !== next.demand ||
+    prev.rawDemand !== next.rawDemand ||
+    prev.buildingDemand !== next.buildingDemand ||
+    prev.unitDemand !== next.unitDemand ||
+    prev.workDemand !== next.workDemand ||
+    prev.net !== next.net ||
+    prev.brownout !== next.brownout ||
+    prev.daylight !== next.daylight ||
+    prev.phase !== next.phase ||
+    prev.capacitorStoredE !== next.capacitorStoredE ||
+    prev.capacitorCapacityE !== next.capacitorCapacityE ||
+    prev.hqCellStoredE !== next.hqCellStoredE ||
+    prev.hqCellCapacityE !== next.hqCellCapacityE ||
+    prev.shedEntityIds.length !== next.shedEntityIds.length ||
+    prev.unpoweredEntityIds.length !== next.unpoweredEntityIds.length ||
+    (prev.overloadedEntityIds?.length ?? 0) !== (next.overloadedEntityIds?.length ?? 0) ||
+    Object.keys(prev.entityPower ?? {}).length !== Object.keys(next.entityPower ?? {}).length
+  );
+}
+
 export function recomputeAllColonyPower(
   state: PlanetState,
   data?: CompiledDataLike,
@@ -218,24 +259,48 @@ export function recomputeAllColonyPower(
   dtTicks = 0,
   ctx?: StepContext,
 ): Record<number, ColonyPowerSummary> {
-  const prevTrackers = (state.blobs.power?.value as { trackers?: Record<number, PowerEventTracker> } | undefined)?.trackers ?? {};
+  const prevBlob = (state.blobs.power?.value as {
+    byColony?: Record<number, ColonyPowerSummary>;
+    trackers?: Record<number, PowerEventTracker>;
+  } | undefined) ?? {};
+  const prevTrackers = prevBlob.trackers ?? {};
   const byColony: Record<number, ColonyPowerSummary> = {};
   const trackers: Record<number, PowerEventTracker> = {};
   const colonyIndices = new Set<number>();
-  for (const c of state.colonies) colonyIndices.add(c.index);
-  for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
+  for (const c of state.colonies) if (c.index >= 0) colonyIndices.add(c.index);
+  for (let row = 0; row < state.entities.count; row++) {
+    const owner = state.entities.cols.owner[row];
+    if (owner >= 0) colonyIndices.add(owner);
+  }
   if (colonyIndices.size === 0) colonyIndices.add(0);
 
+  let anyChanged = !state.blobs.power;
   for (const idx of colonyIndices) {
     const summary = evaluateColonyPower(state, idx, data, tick, dtTicks);
     byColony[idx] = summary;
     if (ctx) {
-      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+      const nextT = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+      trackers[idx] = nextT;
+      const prevT = prevTrackers[idx];
+      if (
+        nextT.brownoutTicks !== (prevT?.brownoutTicks ?? 0) ||
+        nextT.collapseEmitted !== Boolean(prevT?.collapseEmitted)
+      ) {
+        anyChanged = true;
+      }
     }
     const col = state.colonies[idx];
-    if (col) { col.power = summary; col.changedAt = tick; }
+    const changed = powerSummaryChanged(prevBlob.byColony?.[idx], summary);
+    if (changed) anyChanged = true;
+    if (col && (changed || !col.power)) {
+      col.power = summary;
+      col.changedAt = tick;
+    }
   }
-  setBlob(state, 'power', { byColony, trackers: ctx ? trackers : prevTrackers }, tick);
+  const nextValue = { byColony, trackers: ctx ? trackers : prevTrackers };
+  if (anyChanged || !state.blobs.power) {
+    setBlob(state, 'power', nextValue, tick);
+  }
   return byColony;
 }
 
@@ -244,26 +309,7 @@ const powerCoreSystem = defineSystem({
   slot: 7,
   wave: 'W02',
   run(state, ctx) {
-    const prevBlob = (state.blobs.power?.value as {
-      byColony?: Record<number, ColonyPowerSummary>;
-      trackers?: Record<number, PowerEventTracker>;
-    } | undefined) ?? {};
-    const prevTrackers = prevBlob.trackers ?? {};
-    const byColony: Record<number, ColonyPowerSummary> = {};
-    const trackers: Record<number, PowerEventTracker> = {};
-    const colonyIndices = new Set<number>();
-    for (const c of state.colonies) colonyIndices.add(c.index);
-    for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
-    if (colonyIndices.size === 0) colonyIndices.add(0);
-
-    for (const idx of colonyIndices) {
-      const summary = evaluateColonyPower(state, idx, ctx.data, ctx.tick, ctx.dt);
-      byColony[idx] = summary;
-      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, ctx.data);
-      const col = state.colonies[idx];
-      if (col) { col.power = summary; col.changedAt = ctx.tick; }
-    }
-    setBlob(state, 'power', { byColony, trackers }, ctx.tick);
+    recomputeAllColonyPower(state, ctx.data, ctx.tick, ctx.dt, ctx);
   },
 });
 

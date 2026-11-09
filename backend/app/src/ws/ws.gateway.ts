@@ -6,6 +6,8 @@ import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
 import { corsOrigin } from '../core/cors';
 import type { EventBus } from '../bus/event-bus';
+import type { MarketBookBusEvent } from '../market/api/market-book-push.service';
+import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.service';
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
@@ -44,6 +46,8 @@ export class WsGateway {
   private readonly unwarp: () => void;
   private readonly undown: () => void;
   private readonly uncargo: (() => void) | undefined;
+  private readonly unmarket: (() => void) | undefined;
+  private readonly unbook: (() => void) | undefined;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
@@ -56,6 +60,9 @@ export class WsGateway {
       for (const c of [...this.conns]) if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
     });
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
+    this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
+    // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
+    this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });
@@ -125,6 +132,8 @@ export class WsGateway {
     this.unwarp();
     this.undown();
     this.uncargo?.();
+    this.unmarket?.();
+    this.unbook?.();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
     await new Promise<void>((resolve) => {

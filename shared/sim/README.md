@@ -45,6 +45,7 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 | Runner | `units/runner.ts` | slot 5: think (die / ask providers / `execute`) → move → settle (a command whose route ended this step runs once more); `stepUnitWork` runs each command's `work` in its `phase` slot: build / terraform progress in 6 (`constructionProgress`, before `constructionSite`), damage in 10 (`combat`). HQ cell recharge is in 7 (power) |
 | Approach | `units/approach.ts` | "walk until within `[minDist, maxDist]` of a tile": shared first phase of move, build, terraform, attack |
 | Orchestrator | `units/movement/orchestrator.ts` | `requestMove` / `cancelMove` / `runMovement`; failed path = failed command, never a straight line; re-plans if the next waypoint becomes blocked |
+| Group march | `units/movement/slots.ts`, `groupMarch.ts`, `grid/flowField.ts` | `moveGroup`: distinct stand tiles around one hex, each unit matched to the offset it already has from the group centre. One shared reverse-Dijkstra field on the path queue; a member leaves it on the first clear line to its own slot. Optional `pace: "together"` frozen at the slowest member. `moveUnit` is still one unit, one exact tile |
 | Pathfinding service | `grid/pathQueue.ts`, `grid/pathSearch.ts`, `grid/pathProfiles.ts` | FIFO of plain-data requests (profile `ground`, goal band); resumable A*; a restored state replays the paid expansions, so it resolves on the same step |
 | Locomotion | `units/movement/locomotion.ts` | Moves at the data speed along waypoints; nothing else may move a live entity |
 
@@ -62,6 +63,19 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   monotonic render clock that follows the newest *confirmed* tick at the measured sim rate
   (`frontend/game/app/online/entityMotion.ts`), so walking speed is constant and the prediction handing over to the
   confirmed state never draws a step back (a walk starts ~0.3 s after the click; panel and target ring react at once). `test/units/sync.spec.ts` checks replica and prediction match the authority each tick.
+- **Sparse fauna motion (W07):** `host/faunaMotionReplica.ts` reconstructs omitted poses through the shared fauna
+  movement phase and unit runner in an isolated state. `codec/faunaMotionSeed.ts` supplies welcome routes, commands
+  and timing; material route transitions (pending, resolved, replan, cancel, arrival) accompany authoritative rows,
+  so colony path-search pressure cannot make a client start early. Ordinary waypoint progress does not emit a route
+  update. Codec merging always gives received rows priority, retains private routes for prediction, and requests a
+  new welcome for gaps or newly received directives from already-simulated ticks. The worker removes private search
+  and route data before sending views to the renderer. Client fixtures test the actual worker path, including
+  prediction disabled, mid-walk joins, live tuning, terrain edits and queued colony searches.
+- **Combat transport compatibility:** client diff format 2 packs projectile queues and changed stance fields in
+  `codec/projectileQueue.ts` and `codec/stancePatch.ts`; canonical state and saved snapshots retain named fields.
+  Simulation version 3 marks this live protocol boundary. The built-in version-2 save migration is lossless;
+  local resume accepts supported migrations while still checking balance hashes and wave flags. Live peers must
+  match versions, and clients surface a reload prompt instead of accepting unsupported combat updates.
 - **No engine-dependent `Math`** (`sin`, `atan2`, `exp`, …; lint `ENGINE_MATH`): use `kernel/detMath.ts` (`atan2Det`, + − × ÷ only).
 - **Never write an entity's position** (`setField(…, 'x'|'y'|'q'|'r')`, `cols.x[row] = …`) outside locomotion. Spawn with
   `placeSpawnedEntity` (`ecs/placement.ts`, throws for an existing row); admin moves (`dev.teleport`, `dev.nudge`, `dev.land`)
@@ -247,7 +261,7 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   (`data/terraform-finds.ts`, tunable; read with `terraformFindSpec(data)`: 1% chance; family uniform
   metals/minerals/oil; tier t1 50% / t2 35% / t3 15%; `ctx.rng('misc')`) for a full deposit when the tile has none and
   no unit stands on it (`setTileDeposit(..., tier)` writes the visible `depositTier` layer, 0 = legacy t1; event
-  `resourceSpawned`; Harvester and Metals Extractor pay `depositFamilyAndKey(code, tier)`). `dev.spawndeposit` places
+  `resourceSpawned`; Worker and Metals Extractor pay `depositFamilyAndKey(code, tier)`). `dev.spawndeposit` places
   one. Terraform jobs **chain**: the worker's next job is the obstacle (forest, rock, slope, hole, uneven flat;
   never level grass) it may terraform and nobody targets that is closest to the tile the player clicked
   (`chainOrigin`), then closest to the tile just finished, then the lowest tile index, so it clears the area around
@@ -270,8 +284,8 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   text. W02 building jobs (`blobs.construction`, `economy/buildJob.ts`) are worked by the same `build` command
   (id `job:<entityId>`, after the W01 orders, oldest first): progress and the progressive payment happen only while the
   builder stands in reach (`advanceBuildingJob`); `economy.construction` (slot 6) only keeps the site bookkeeping
-  (prepared tiles, `site` / `resources` / `worker` wait). A Harvester never takes build or linked-prep work
-  (`dispatch/eligibility.ts`, GP-58 / GP-59). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
+  (prepared tiles, `site` / `resources` / `worker` wait). A Worker Drone takes harvest, build, and linked-prep work
+  up to its tier (`dispatch/eligibility.ts`). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
   `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
 - **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,
   so an idle planet sends no gameplay blobs. Blob state is not filtered per colony (SIMULATION §6, GP-36).

@@ -1,5 +1,6 @@
-# W19 — Air & Endgame (S8–S10)
+# W19 — Air & Endgame (S8–S10) [POSTPONED]
 
+> **Status:** POSTPONED — Deferred out of the NEAR Hackathon Vertical Slice (post-hackathon backlog). All Tier 2/3 content (buildings, resources, units, stages S5–S10) and non-core scope are skipped so the hackathon vertical slice focuses on Tier 1 (`S0–S4`) gameplay polish, AI Director, persistent sector multiplayer, economy, offline play, and NEAR/Web3 features.
 > **Track:** Gameplay (G) · **Flag:** `W19` · **Scenario:** `tests/scenarios/w19-air-endgame.ts` · **Tag:** `wave-19` · **Depends on:** W08, W14, W17. Optional: W04 (minimap air icons, W19-19), W24 (touch menus, W19-30).
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §3.1–3.2 (`UO-HQ-01`), §5.1, §5.2, §5.3 (`UO-B`), §5.4 (`UO-C-01/04/08`), §5.5 (`AC-04`), §5.6, §6.1 (`UO-LC-04`), §6.2, §6.3 (`UO-T-03/08`) · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3 · D-28, D-34, D-35 · [`OWNER_TASKS.md`](../OWNER_TASKS.md) B3, B4, B6
 > **Costs and balance:** T3 rows pay through the D-34 tier rule: 40 % of their M and Min in T1, 30 % in T2 and 30 % in T3 (`metals.t3`, `minerals.t3`), Pet in `bio.t2`, plus 10 % of their M as `bio.t3`; T3 sub-resources come from the W05-34 gate at Terraform ≥ 70 % or from the market (W13). Every number here is a data row, tunable with W00-59 (D-35); the accepted OWNER_TASKS defaults B3 (Hub T3 dwell), B4 (air targeting) and B6 (no special effects) are the starting rows.
@@ -88,6 +89,7 @@ The air layer and the top tier:
 | W19-29 | Dev console `spawnAir <type> <n> [enemy]`, `spawnDrifters <n>` | server | S |  | W00-40 | `spawnAir gunship 4 enemy` → 4 hostile Gunships spawn at the map edge | PRODUCT_WAVES §3 | — |
 | W19-30 | Touch: Hangar menu and air selection in landscape | client | S |  | W24-11 | On 844×390, tap Hangar → queue Fighter works | D-22 | — |
 | W19-31 | Perf check: 40 air units + 60 ground in one planet stays within the sim step budget | test | S |  | W19-04 | Bench scenario → step p99 within SIMULATION §12 budget | SIM §12 | — |
+| W19-33 | Wire W19 air units and Drifter flocks into W07 WeaponRig, CombatBurstSystem, F6 Combat Lab, and stationary robot.recon duel matrix | sim | S |  | W19-05, W19-12, W19-27, W07-22 | Spawn Gunships and Drifters and tune air weapons in F6 Combat Lab → air evasive steering, WeaponRig AA tracking, and air duel rows pass | D-43, UO-C-01, UO-C-04 | — |
 | W19-32 | Wave e2e `tests/e2e/w19.spec.ts` + scenario `w19-air-endgame` + tag `wave-19` | test | M |  | all W19 | `npm run e2e -- --waves ..19` passes the demo; `TA_WAVES=..18` hides Hangar, air units, T3 | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD

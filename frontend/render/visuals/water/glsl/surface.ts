@@ -25,7 +25,7 @@ float waterHexClip(vec2 p) {
   float inWaterHex = step(0.05, vWaterMask) * step(length(cen - vWaterPos / max(vWaterMask, 1e-4)), 0.72);
   if (inWaterHex < 0.5) discard;
   float nearDryBank = 1.0 - smoothstep(0.52, 0.72, vWaterMask);
-  return mix(1.0, smoothstep(0.0, 0.12, he * 2.0), nearDryBank);
+  return mix(1.0, smoothstep(0.0, 0.12, he * 2.0), nearDryBank) * smoothstep(0.42, 0.54, vWaterMask);
 }
 `;
 
@@ -77,5 +77,12 @@ vec3 waterCausticLight(vec2 bp, float depth, float alpha) {
   web *= web; web *= web;
   float k = uCaustics * (1.0 - clamp(uNightFactor, 0.0, 1.0)) * exp(-depth * 0.7) * (1.0 - alpha * 0.6);
   return vec3(0.55, 0.68, 0.62) * (web * k * 0.3);
+}
+
+/** Crisp white/cyan floating splash bubble & ripple crest highlight during rain. */
+vec3 waterRainSurfaceHighlight(vec2 p, float bubbles, float rain, vec3 foamCol) {
+  if (rain <= 0.01 || bubbles <= 0.001) return vec3(0.0);
+  vec3 tint = mix(foamCol, vec3(0.76, 0.94, 1.0), 0.38);
+  return tint * (bubbles * (0.22 + 0.26 * rain));
 }
 `;

@@ -71,9 +71,9 @@ describe('W02-14 Queue v1 part 2 — wait reasons, ETA, storage non-earmarking, 
     });
     state.colonies.push(colony);
 
-    // Spawn 1 Harvester (0.5/s income)
+    // Spawn 1 Worker (0.5/s income)
     const hRow = insertRow(state.entities, 10, 0);
-    state.entities.cols.kind[hRow] = ENTITY_KIND.harvester;
+    state.entities.cols.kind[hRow] = ENTITY_KIND.worker;
     state.entities.cols.owner[hRow] = 0;
     state.entities.cols.state[hRow] = ENTITY_STATE.idle;
 
@@ -148,14 +148,14 @@ describe('W02-14 Queue v1 part 2 — precedence & limits', () => {
       const u = enqueueQueueTask(state, {
         colonyIndex: 0,
         taskId: `u-p1-${i}`,
-        task: { kind: 'buildUnit', unit: 'harvester', producerId: 100 },
+        task: { kind: 'buildUnit', unit: 'worker', producerId: 100 },
       });
       expect(u.ok).toBe(true);
     }
     const uOver = enqueueQueueTask(state, {
       colonyIndex: 0,
       taskId: 'u-p1-over',
-      task: { kind: 'buildUnit', unit: 'harvester', producerId: 100 },
+      task: { kind: 'buildUnit', unit: 'worker', producerId: 100 },
     });
     expect(uOver).toEqual({ ok: false, code: 'queue_full', detail: 'producer buffer full' });
 
@@ -164,14 +164,14 @@ describe('W02-14 Queue v1 part 2 — precedence & limits', () => {
       const u = enqueueQueueTask(state, {
         colonyIndex: 0,
         taskId: `u-p2-${i}`,
-        task: { kind: 'buildUnit', unit: 'harvester', producerId: 200 },
+        task: { kind: 'buildUnit', unit: 'worker', producerId: 200 },
       });
       expect(u.ok).toBe(true);
     }
     const laneOver = enqueueQueueTask(state, {
       colonyIndex: 0,
       taskId: 'u-lane-over',
-      task: { kind: 'buildUnit', unit: 'harvester', producerId: 300 },
+      task: { kind: 'buildUnit', unit: 'worker', producerId: 300 },
     });
     expect(laneOver).toEqual({ ok: false, code: 'queue_full', detail: 'units lane full' });
 

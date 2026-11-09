@@ -1,5 +1,6 @@
-# W17 — Second Tier (S5–S7)
+# W17 — Second Tier (S5–S7) [POSTPONED]
 
+> **Status:** POSTPONED — Deferred out of the NEAR Hackathon Vertical Slice (post-hackathon backlog). All Tier 2/3 content (buildings, resources, units, stages S5–S10) and non-core scope are skipped so the hackathon vertical slice focuses on Tier 1 (`S0–S4`) gameplay polish, AI Director, persistent sector multiplayer, economy, offline play, and NEAR/Web3 features.
 > **Track:** Gameplay (G) · **Flag:** `W17` · **Scenario:** `tests/scenarios/w17-second-tier.ts` · **Tag:** `wave-17` · **Depends on:** W05, W07, W08. Optional: W14 (walls; indirect fire over ridges), W04 (minimap radar blips, W17-17), W24 (touch chips, W17-29).
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §3.1 (`UO-L-02/03`), §3.2 (`UO-HQ-01`), §4.3 (`UO-D-03`), §4.5 (`UO-TF-01/03/08/10`), §4.6 (`UO-G`), §5.1, §5.2, §5.4 (`UO-C-06/08`), §5.5 (`AC-04`), §5.6, §6.2, §6.3 (`UO-T-03`), §6.4 · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3 · D-28, D-34, D-35 · [`OWNER_TASKS.md`](../OWNER_TASKS.md) B1, B5, B6, B7
 > **Costs and balance:** T2 rows pay through the D-34 tier rule: 60 % of their M and Min in `metals.t1` / `minerals.t1` and 40 % in `metals.t2` / `minerals.t2`, Pet in `bio.t2`, W in `bio.water`. A colony gets T2 sub-resources from the W05-34 terraforming gate or buys them on the market (W13). Every number here (stats, dwell, Processor rate, unlock stages) is a data row, tunable with W00-59 (D-35); the accepted OWNER_TASKS defaults B1, B5, B6 and B7 are the starting rows.
@@ -15,9 +16,9 @@ The colony moves past T1:
 
 ## Demo story (e2e `tests/e2e/w17.spec.ts`)
 
-1. Open `/play.html?scenario=w17`: an S4 colony with 3 min of S4 dwell, Hub T1, Factory T1, a Terraformer, Recon ×2, two Supply Depots, stock 2 000 of every T1 sub-resource plus 600 `metals.t2` / `minerals.t2` / `bio.t2` (D-34 T2 costs) and a Skitter nest at 20 tiles. Construction menu → order a Hub T2 upgrade → the order waits ("available in 5:00") because S4 dwell is under 8 min.
+1. Open `/play.html?scenario=w17`: an S4 colony with 3 min of S4 dwell, Hub T1, Factory T1, a Worker Drone T3, Recon ×2, two Supply Depots, stock 2 000 of every T1 sub-resource plus 600 `metals.t2` / `minerals.t2` / `bio.t2` (D-34 T2 costs) and a Skitter nest at 20 tiles. Construction menu → order a Hub T2 upgrade → the order waits ("available in 5:00") because S4 dwell is under 8 min.
 2. Dev console `warp 20` (or `setDwell 4 8`) → the upgrade becomes orderable. The HQ prepares the +1 ring and upgrades the Hub. → The HQ docks for a 20 s refit and comes back as HQ T2 (multirole). Stage toast "S5 Second Tier".
-3. Queue a Multitask T2 at the Hub. → It builds a T2 Metals Extractor. A Builder T1 cannot take that job (`waiting: worker (T2 needed)`).
+3. Queue a Multitask T2 at the Hub. → It builds a T2 Metals Extractor. A Worker Drone T1 cannot take that job (`waiting: worker (T2 needed)`).
 4. Upgrade the Factory to T2 (S6 after 5 min dwell; `warp 20` or `setDwell 5 5`) and build Tank ×2 + Artillery ×2 from the Units menu. Run `spawnBrute 1` → a raid with a Brute arrives.
 5. With no spotter, Artillery does not fire at the Brute beyond its 6-tile view. Build Mobile Radar. → Radar contacts are spotted, and artillery shells land on the Brute from 14 tiles.
 6. Dev console `spawnUnit recon 3 enemy` near the artillery. → Shells miss the strafing Recon, and Tanks kill it.
@@ -82,6 +83,8 @@ The colony moves past T1:
 | W17-27 | Analytics: `hub_t2_ordered`, `first_tank`, `first_artillery_hit` (`stage_reached` for S5–S7 is W08-29's event) | client | S |  | W00-44 | Play to S6 → analytics table has the three events for the session | CLIENT §10 | — |
 | W17-28 | Dev console: `upgradeHub <tier>`, `spawnBrute <n>`, `setDwell <stage> <min>`, `spawnUnit <id> <n> enemy` | server | S |  | W00-40 | Type `upgradeHub 2` → Hub becomes T2 instantly and HQ refits | PRODUCT_WAVES §3 | — |
 | W17-29 | Touch: upgrade button + Multitask lane chips usable in phone landscape | client | S |  | W24-11 | On a 844×390 viewport, tap Hub → Upgrade → confirm works without hover | D-22 | — |
+| W17-31 | Integrate W07 stationary robot.recon Armored Scout, WeaponRig, F6 Combat Lab, InsectSwarmRenderer, and H+ Factory/DCA footprint refits into T2 units and Brute raids | sim | M |  | W17-09, W17-10, W17-14, W07-13, W07-24 | Tune Tank/Artillery/Brute in F6 Combat Lab and trigger an S6 species+Brute raid → WeaponRig recoil/aiming, moveGroup slot march, and duel rows work with stationary robot.recon | D-43, UO-C-08, RN-66 | — |
+| W17-32 | Reconcile W17 Multitask T2 and T2 worker tier gates with W05 unified Worker Drone T1–T3 (`ENTITY_KIND.worker`, tier 1..3), `BuildingLightState` policy, and D-34 extractor ring cache | sim | S |  | W17-05, W17-06, W17-07, W05-02, W05-34 | Spawn Worker Drone T2/T3 and Multitask T2 on a T2/T3 extractor ring → unified worker dispatch, `deepReclaim` tier gates, and `BuildingLightState` transitions work across T2 buildings | D-34, D-45, UO-L-02 | — |
 | W17-30 | Wave e2e `tests/e2e/w17.spec.ts` + scenario `w17-second-tier` + tag `wave-17` | test | M |  | all W17 | `npm run e2e -- --waves ..17` → demo story passes; `TA_WAVES=..16` hides every W17 item | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD

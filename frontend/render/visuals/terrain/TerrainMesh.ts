@@ -26,7 +26,9 @@ export function createTerrain(spec: PlanetSpec, field: HeightField, half: number
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'terrain';
+  mesh.userData.uniforms = uniforms;
   mesh.receiveShadow = true;
   mesh.castShadow = true;
-  return { mesh, heightAt, heightTex, span, uniforms, dispose() { geo.dispose(); mat.dispose(); heightTex.dispose(); } };
+  const tfMap = uniforms.uTerraformMap!.value as THREE.Texture;
+  return { mesh, heightAt, heightTex, span, uniforms, dispose() { geo.dispose(); mat.dispose(); heightTex.dispose(); tfMap.dispose(); } };
 }

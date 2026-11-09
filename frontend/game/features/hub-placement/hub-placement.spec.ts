@@ -235,7 +235,9 @@ describe('3D placement ghost', () => {
     const scene = new THREE.Scene();
     const rig = new GhostRig3D({ scene, tileToWorld: (q, r) => ({ x: q * 2, y: 1, z: r * 2 }), biomeKey: () => 'dune' });
     const src = { isPlacementActive: () => hub.isPlacementActive(), getGhostState: () => hub.peekGhostState() };
-    const tiles = () => rig.group.children.filter((c) => (c as THREE.Mesh).geometry && c.visible) as THREE.Mesh[];
+    const footprint = (name: string) => rig.group.getObjectByName(name) as THREE.Mesh;
+    const ok = footprint('ghost-footprint-ok'), bad = footprint('ghost-footprint-bad');
+    const hexes = (m: THREE.Mesh) => (m.geometry.getAttribute('position')?.count ?? 0) / 36; // 12 draped triangles per hex
 
     rig.update(src, 0.016);
     expect(rig.group.visible).toBe(false);
@@ -244,16 +246,18 @@ describe('3D placement ghost', () => {
     hub.hoverTile(-3, 4);
     rig.update(src, 0.016);
     expect(rig.group.visible).toBe(true);
-    const ok = tiles().filter((m) => m.geometry.type === 'CircleGeometry');
-    expect(ok).toHaveLength(9);
-    expect(new Set(ok.map((m) => (m.material as THREE.MeshBasicMaterial).color.getHex()))).toEqual(new Set([0x39ff88]));
+    expect(ok.visible).toBe(true);
+    expect(hexes(ok)).toBe(9);
+    expect(bad.visible).toBe(false);
+    expect((ok.material as THREE.MeshBasicMaterial).color.getHex()).toBe(0x39ff88);
 
     hub.hoverTile(2, 2); // rock
     rig.update(src, 0.016);
     expect(hub.peekGhostState().valid).toBe(false);
     expect(rig.group.visible).toBe(true);
-    const bad = tiles().filter((m) => m.geometry.type === 'CircleGeometry');
-    expect(bad.some((m) => (m.material as THREE.MeshBasicMaterial).color.getHex() === 0xff3b3b)).toBe(true);
+    expect(bad.visible).toBe(true);
+    expect(hexes(bad)).toBeGreaterThan(0);
+    expect((bad.material as THREE.MeshBasicMaterial).color.getHex()).toBe(0xff3b3b);
 
     hub.cancelPlacement();
     rig.update(src, 0.016);

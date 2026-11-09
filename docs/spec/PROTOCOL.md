@@ -1,5 +1,7 @@
 # TerraAgent — Wire Protocols (WebSocket, in-process messages, REST)
 
+> **Planned W13 economy interface (D-44):** [ECONOMY](ECONOMY.md) governs policy-version/hash fields, exact decimal-string token amounts, inclusive buy limits, platform/stall/treasury fee breakdown and structured experiment APIs. W13-36 generates shared schemas; W13-46 exposes the authenticated tooling listed in DEV_TOOLS. No new endpoint is claimed implemented here.
+
 > **W11/W27 amendment (2026-11-04): W11 pins atlas/sector identities, wide owners and save versions while retaining bounded small-world replication. W27 adds negotiated interest epochs, sector baselines/deltas and partial replicas; full-world welcome/delta assumptions below remain only for supported small/legacy worlds. Incompatible clients/flags reject atlas saves without resetting them. Follow the W11/W27 wave contract gates.**
 
 > **Status:** v0.2 (2026-10-30). This covers the simplified one-app design (D-24) with no anti-cheat and no fog filtering (D-25; only crash/load limits, WS-16), plus the NEAR economy messages (D-26). The NATS contract and planet tickets are summarised in §13 as Future.
@@ -105,12 +107,12 @@ const Cmd       = Envelope("cmd", z.object({ kind: CommandKind, args: z.unknown(
 
 | Group | Kinds |
 |---|---|
-| Colony control | `setPriorities` · `enqueueTask` (`build`, `upgrade`, `repair`, `terraform {op, tiles}`, `buildUnit {unit, count, repeat}`, `queueGoal {goal, params}`, `raid`, `launchRocket`) · `cancelTask {taskId}` (W01: an order id, the client's own id = the command id that created it, or a building's entity id; `'active'` = the first manual terraform order, `'current'` = the open construction order, never crossing lanes; a Hub's linked prep cancels the Hub; no match → `unknown_entity`) · `landPod` (W01: open the own descending pod once it has descended `hq.startingKit.podLandMinS`) · `placeBuilding` · `upgradeBuilding` · `demolish` · `setStance` · `attackMove` · `setRally` · `setHarvestWeights` · `setDirectorPolicy` (W16: patch risk, preset, the same independent 0..100 priorities, skill allow/deny and pause; no `awayRaids` field) |
+| Colony control | `setPriorities` · `enqueueTask` (`build`, `upgrade`, `repair`, `terraform {op, tiles}`, `buildUnit { unit, tier, count, repeat }` (worker: `unit: 'worker'`, `tier: 1|2|3`), `queueGoal {goal, params}`, `raid`, `launchRocket`) · `cancelTask {taskId}` (W01: an order id, the client's own id = the command id that created it, or a building's entity id; `'active'` = the first manual terraform order, `'current'` = the open construction order, never crossing lanes; a Hub's linked prep cancels the Hub; no match → `unknown_entity`) · `landPod` (W01: open the own descending pod once it has descended `hq.startingKit.podLandMinS`) · `placeBuilding` · `upgradeBuilding` · `demolish` · `setStance` · `attackMove` · `setRally` · `setHarvestWeights` · `setDirectorPolicy` (W16: patch risk, preset, the same independent 0..100 priorities, skill allow/deny and pause; no `awayRaids` field) |
 | Away & autopilot | `setAutopilot {aiDirector, awayRaids}` · `setAwayBudget {perResource}` · `setAutoTrade {limits}` |
 | Cargo (F1) | `cargo.export {resource, amount}` · `cargo.import {resource, amount}` (`resource`: `ResourceKey`, any tier; T1 trades from day one, D-34) |
-| Market (F2/F3) | `market.placeOrder {side, resource: ResourceKey, amount, price: {resource: ResourceKey \| "NEAR" \| "USDC", amount}, ttlS}` · `market.cancelOrder {orderId}` · `market.setHubFee {bp}` · `market.acceptGuildOffer {offerId}` |
+| Market (F2/F3) | `market.placeOrder {side, resource: ResourceKey, amount, price: {token, amount}, ttlS, stallId?, maxStallFeeBp?}` · `market.cancelOrder {orderId}` · `market.setHubFee {bp}` · `market.acceptGuildOffer {offerId}` (details: §4.4.1) |
 | Diplomacy & bounties (F8) | `diplomacy.proposeTruce` · `diplomacy.respondTruce` · `diplomacy.cancelTruce` · `bounty.post {target, reward}` · `bounty.claim {bountyId}` |
-| Module-only (never from clients) | `cargo.settled` · `market.settled` · `bounty.paid` · `system.spawnColony` · `system.retireColony` · `system.seal` · `system.end` · `system.presence` · `system.arrive` |
+| Module-only (never from clients) | `cargo.settled` · `market.reserve` · `market.release` · `market.settled` · `bounty.paid` · `system.spawnColony` · `system.retireColony` · `system.seal` · `system.end` · `system.presence` · `system.arrive` |
 
 W16 does not add a client or module `ai.directive` kind. The director proposes a `DirectiveV2` batch whose actions reuse the landed command schemas (`queueGoal`, `cancelGoal`, `setPriorities`, `enqueueTask`, `placeBuilding`, `moveUnit`, `stopUnit`, `setHarvestWeights`). The host applies those ordinary commands. Player events: `directorAction` (proposed / applied / rejected / superseded) and `directorStatus`. Wire schemas live in `shared/contracts/src/ai/`.
 
@@ -154,7 +156,7 @@ const Bye       = Envelope("bye",  z.object({ code: CloseCode, reason: z.string(
 // cargo.status {colonyId, inOrbit, pending} · notify.test
 ```
 
-`RejectCode` = `invalid_args` · `unknown_kind` · `not_own_colony` · `colony_inactive` · `not_own_territory` · `site_blocked` · `terrain_unbuildable` · `insufficient_resources` · `supply_cap` · `tier_locked` · `worker_tier_locked` · `stage_locked` · `no_trade_hub` · `raid_protected` · `truce_active` · `would_isolate` · `launch_gate` · `mint_cap` · `market_unavailable` · `planet_ended` · `internal` · `unknown_entity` · `wave_disabled` · `host_unavailable` · `rate_limited` (the full list, with the W01 additions `already_landed`, `landing_site_taken`, `queue_full` (terraform lane full), `planet_full` (8 colonies per planet), is `REJECT_CODES` in `shared/contracts/src/errors/index.ts`). A sim rejection may carry a `detail` (e.g. the placement block text `not your territory`); hosts pass it in `cmd.reject.detail`.
+`RejectCode` = `invalid_args` · `unknown_kind` · `not_own_colony` · `colony_inactive` · `not_own_territory` · `site_blocked` · `terrain_unbuildable` · `insufficient_resources` · `supply_cap` · `tier_locked` · `worker_tier_locked` · `stage_locked` · `no_trade_hub` · `raid_protected` · `truce_active` · `would_isolate` · `launch_gate` · `mint_cap` · `market_unavailable` · `planet_ended` · `internal` · `unknown_entity` · `wave_disabled` · `host_unavailable` · `rate_limited` · `fee_out_of_range` · `order_limit` · `order_too_small` · `unknown_order` (W13-01 market codes; the full list, with the W01 additions `already_landed`, `landing_site_taken`, `queue_full` (terraform lane full), `planet_full` (8 colonies per planet), is `REJECT_CODES` in `shared/contracts/src/errors/index.ts`). A sim rejection may carry a `detail` (e.g. the placement block text `not your territory`); hosts pass it in `cmd.reject.detail`.
 
 ### 4.4 Command semantics
 
@@ -164,6 +166,20 @@ const Bye       = Envelope("bye",  z.object({ code: CloseCode, reason: z.string(
 | `WS-21` | `cmd.ack` is sent when the command has been **applied** at a step. `cmd.reject` is sent for per-kind args, ownership or game-rule failures (a frame that fails the envelope schema is logged and dropped without a reply). Commands are **not durable**: if the app crashes before the next snapshot, they are lost (≤ 60 s, D-24). |
 | `WS-22` | **Resync:** if the socket's `bufferedAmount` exceeds **1 MiB**, the server stops deltas and sends `welcome {reason: "resync"}` once the buffer drains below 256 KiB. A client that sees a gap (`fromTick ≠` previous `toTick`) sends `join` again. |
 | `WS-23` | Within a socket, messages are delivered in send order. Events of a delta window travel inside that `delta` (`d.events`); a bare `event` is sent only for host notices or planets nobody subscribes to. |
+
+#### 4.4.1 Market commands, events and pushes (W13-01 contracts, D-44)
+
+Code: `shared/contracts/src/{market,commands/market-*,events/market-*}`; rationale and defaults: [LED-20](../questions-and-limitations/economy-ledger.md). Fee and fill rules are [ECONOMY](ECONOMY.md) §3 and [NEAR](NEAR.md) §6.
+
+| ID | Rule |
+|---|---|
+| `WS-30` | **`market.placeOrder {side, resource, amount, price: {token, amount}, ttlS, stallId?, maxStallFeeBp?}`.** `amount` is a positive integer of whole base units (lot 1). `price.amount` is the **total** quote for the full `amount` as an atomic decimal string (`numeric(78,0)` on the server; "300 water for 10 USDC" = `amount 300, price {USDC, "10000000"}`); the limit price is the exact rational `price.amount / amount`, compared by cross-multiplication. `price.token` is the pair's quote (USDC, NEAR or a resource key for barter) and must differ from `resource`. `ttlS` is one of the policy's TTL options. The command source is `'client'`, `'director'` or (D-45) `'bot'`; a `'bot'` order comes from the bot API (§8a) and is checked against that key's allowances before the normal validation. `stallId` defaults to the colony's online Trade Hub. `maxStallFeeBp` is the buyer's explicit maximum maker-stall fee (default: the policy maximum) and is reserved in full. Fees are charged to the buyer in the quote token (platform 100 bp plus the maker stall's 0-100 bp), never taken from the received base and never by maker/taker role. The order pins policy version/hash and fee terms at placement. |
+| `WS-31` | **`market.cancelOrder {orderId}`** (server id or sim order ref; owner only; `unknown_order` otherwise). **`market.setHubFee {bp, hubId?}`** sets the stall fee for new maker orders (policy range 0-100 bp, else `fee_out_of_range`); open orders keep their pinned fee. |
+| `WS-32` | **Module-only commands:** `market.reserve {ref, orderId?, deltas}` mirrors a held reservation in `reservedInOrbit`, `market.release {ref, deltas, reason, code?}` (`cancelled`, `expired`, `rejected`, `settlement_failed`, `filled`) and `market.settled {tradeId, role: buyer \| seller \| stall, deltas, released?, trade}` after a FINAL batch. `deltas` are **whole-unit resource deltas only**; USDC and NEAR never enter the sim. None changes sim stock beyond what the delta states. |
+| `WS-33` | **Sim-first flow.** Every client market command is a normal command into the planet sim (`wave_disabled` for free). The sim checks Trade Hub, size, TTL and fee range, then emits `marketOrderRequested`, `marketCancelRequested` or `marketHubFeeSet` (audience server/player as in the event definitions); the market module acts on them in Postgres and answers with the module commands above. Checks that need server state (verifier balance, open-order count) run as a synchronous `CommandPrechecks` precheck before the sim and again under lock afterwards; a difference between the two is reported by `marketOrderRejected {code}`. A sim-accepted order lost by a crash before the module handles the event reserves nothing. |
+| `WS-34` | **Events.** `marketOrderRequested`, `marketCancelRequested`, `marketHubFeeSet`, `marketOrderRejected`, `tradeSettled` (player: price, notional, platform and stall fee, stall name, tx hash) and `feeEarned` (the stall owner's fee). |
+| `WS-35` | **Reject codes** added by W13-01: `fee_out_of_range`, `order_limit` (open-order cap), `order_too_small` (below the pair's lot or minimum notional), `unknown_order`; existing `no_trade_hub`, `insufficient_cargo`, `market_unavailable` apply. |
+| `WS-36` | **Pushes** (topic `market`): `market.book {planetId, pair, bids, asks, last?, seq}` (top levels, debounced 1 Hz per pair; a client drops a push older than its `seq`) and `market.trade {planetId, trade}` (one finalized settlement; `trade` carries the exact fee breakdown and the `organic` classification). Related-colony, Guild and fixture fills are flagged and excluded from organic price/volume metrics (ECONOMY §3). |
 
 ### 4.5 State views
 
@@ -243,7 +259,7 @@ Design in [`NEAR.md`](./NEAR.md) and [`docs/game/near-economy-features-spec.md`]
 | Feature | WS command / push | REST | Chain action (by the `near` module) |
 |---|---|---|---|
 | F1 Cargo | `cargo.export` / `cargo.import`, push `cargo.status` | `GET /v1/near/cargo` | NEP-245 `mt_mint` / `mt_burn` on `res.terraagent.near` (server = mint authority) |
-| F2 Markets | `market.placeOrder` / `cancelOrder` / `setHubFee`, push `market.book` / `market.trade` | `GET /v1/market/{planetId}` | Paired `token_diff` intents (NEP-413 signed) → `execute_intents` on `intents.near` |
+| F2 Markets | `market.placeOrder` / `cancelOrder` / `setHubFee`, push `market.book` / `market.trade` | `GET /v1/market/{planetId}`; bot API `/v1/trade/*` (§8a) | Paired `token_diff` intents (NEP-413 signed) → `execute_intents` on `intents.near` |
 | F3 Guild | `market.acceptGuildOffer`, push `guild.arrived` | `GET /v1/market/guild` | Guild NPC sub-accounts sign their own intents |
 | F4 Director key | `setAutoTrade`, `setAwayBudget` | `POST /v1/near/director-key` (add/revoke) | `add_public_key` intent / function-call key with allowance |
 | F5 Accounts | — | `POST /v1/auth/social`, `POST /v1/near/claim` | Named account creation; NEP-366 meta-tx relayer |
@@ -269,6 +285,7 @@ Base `https://api.terraagent.com/v1`. JSON only. Auth: `Authorization: Bearer <a
 | `POST /party` · `POST /party/join` · `DELETE /party` · `GET /party` | bearer | parties (MM-55) |
 | `POST /notify/push` · `POST /notify/telegram/link` · `DELETE /notify/*` | bearer | notification channels (CONTINUITY §5a) |
 | `/near/*`, `/market/*`, `/bounties/*` | bearer | §7 |
+| `/trade/*` | bot API key | §8a (bot trading API, D-45) |
 | `GET /stats/public` | none | `{ planetsActive, coloniesActive, playersOnline }` (cached 30 s) |
 | `/admin/*` | admin key | admin |
 
@@ -281,6 +298,23 @@ export const HomeResponse = z.discriminatedUnion("state", [
   z.object({ state: z.literal("PLANET_ENDED"), results: PlanetResults, planets: z.array(PlanetSummary), newPlanetTypes: z.array(PlanetType) }),
 ]);
 ```
+
+### 8a. Bot trading API `/v1/trade/*` (W13, D-45)
+
+Auth: `Authorization: Bearer ta_bot_<key>`. An API key is bound to one colony account and acts as actor kind `bot`; humans and bots share the same per-planet books. Keys are created and revoked by the colony owner (Settings, or `POST /v1/trade/keys`); the secret is shown once and stored hashed. Orders become `market.placeOrder` with command source `'bot'`.
+
+| Method & path | Request → response |
+|---|---|
+| `GET /trade/me` | key id, colony, allowances and current usage (open orders, spend today, loss today), kill-switch state |
+| `GET /trade/pairs` | tradable pairs with lot/tick/min notional, fee policy, reference price and its quality |
+| `GET /trade/book/{planetId}/{pair}` | depth snapshot with `seq` |
+| `GET /trade/orders` · `POST /trade/orders` · `DELETE /trade/orders/{orderId}` | list my orders · `{side, resource, amount, price:{token, amount}, ttlS, maxStallFeeBp?}` plus header `Idempotency-Key` · cancel; same body and errors as WS-30 |
+| `GET /trade/fills` | my finalized fills with fee attribution and `organic` flag |
+| `GET /trade/cargo` | my orbital cargo only (account plus free verifier balance, reserved shown separately) |
+| `GET /trade/stream` (SSE, or WebSocket `/trade/ws`) | `book` (debounced 1 Hz per pair), `order`, `fill`, `allowance` and `killswitch` events with `seq` |
+| `POST /trade/kill` | owner or operator sets the key's (or the colony's) kill switch; resting orders cancel, in-flight settlement reconciles |
+
+Allowance errors (stable codes): `bot_key_invalid`, `bot_killed`, `bot_pair_not_allowed`, `bot_order_limit`, `bot_notional_limit`, `bot_budget_exhausted`, `bot_price_band`, `rate_limited` (with `Retry-After`), `idempotency_conflict`. A repeated `Idempotency-Key` with the same body returns the original result; a different body is `idempotency_conflict`. Per-key and per-IP rate limits apply to reads and to order writes separately.
 
 Error envelope (all non-2xx): `{ errorCode, error: { code, message, details? }, requestId }`. `errorCode` is the stable UPPER_SNAKE domain code (`COLONY_SEAT_REJECTED`, `LEDGER_UNAVAILABLE`, `HOME_UNAVAILABLE`, `VALIDATION_ERROR`, …); `error.code` is the REST code below, from the domain code when it has its own, else generic by status. Codes: `validation_error` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `already_queued` (409), `has_live_colony` (409), `seat_rejected` (409: the sim refused to land the new colony, sim code in `details.code`, e.g. `landing_site_taken` when the planets' sims have no site left, `host_unavailable`), `planet_not_recruiting` (409), `conflict` (any other 409), `payload_too_large` (413), `rate_limited` (429: per-IP throttle of `POST /auth/guest` and `GET /me/home`), `queue_full` (503), `near_unavailable` (503, NEAR codes only), `unavailable` (any other 503, e.g. a home planet that cannot be loaded), `internal` (500).
 

@@ -3,7 +3,7 @@ import type { QueueEntry } from '@terra/sim';
 import { dismantleJobOf } from '../landfall/selectionHelpers';
 import { formatChipStatus, resolveChipTitleAndIcon } from './queueChipHelpers';
 
-/** Owner feedback W03 #6: a dismantle is builder work the construction lane and the inspector show as it advances. */
+/** Owner feedback W03 #6: a dismantle is construction-lane work the inspector shows as it advances. */
 const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
   taskId: 'd1', colonyIndex: 0, lane: 'construction', precedence: 'player', state: 'in_progress',
   task: { kind: 'dismantle', entityId: 7, building: 'solar', q: 2, r: 1 },

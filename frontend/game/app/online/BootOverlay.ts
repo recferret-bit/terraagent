@@ -1,4 +1,5 @@
 import './bootOnline.css';
+import { formatQueueStatusMessage, type QueuedHomeStatus } from './joinQueueFlow';
 
 export type BootPhase = 'splash' | 'descent' | 'colony';
 
@@ -7,6 +8,98 @@ export interface DescentTelemetryUpdate {
   q: number;
   r: number;
   landed?: boolean;
+}
+
+function buildSplashDom() {
+  const splashEl = document.createElement('div');
+  splashEl.className = 'ta-orbital-splash plate';
+  splashEl.setAttribute('data-testid', 'orbital-splash');
+  splashEl.dataset.testid = 'orbital-splash';
+  splashEl.dataset.active = 'true';
+  splashEl.hidden = false;
+
+  const eyebrow = document.createElement('div');
+  eyebrow.className = 'ta-orbital-splash__eyebrow';
+  eyebrow.textContent = 'ORBITAL TELEMETRY LINK';
+
+  const title = document.createElement('h1');
+  title.className = 'ta-orbital-splash__title';
+  title.setAttribute('data-testid', 'orbital-splash-title');
+  title.dataset.testid = 'orbital-splash-title';
+  title.textContent = 'TERRAAGENT';
+
+  const splashStatusEl = document.createElement('div');
+  splashStatusEl.className = 'ta-orbital-splash__status';
+  splashStatusEl.setAttribute('data-testid', 'orbital-splash-status');
+  splashStatusEl.dataset.testid = 'orbital-splash-status';
+  splashStatusEl.textContent = 'Contacting orbit…';
+
+  const queueEl = document.createElement('div');
+  queueEl.className = 'ta-orbital-splash__queue plate-sm';
+  queueEl.setAttribute('data-testid', 'queue-status');
+  queueEl.dataset.testid = 'queue-status';
+  queueEl.dataset.active = 'false';
+  queueEl.hidden = true;
+
+  const queueTextEl = document.createElement('div');
+  queueTextEl.className = 'ta-orbital-splash__queue-text';
+  queueTextEl.setAttribute('data-testid', 'queue-status-text');
+  queueTextEl.dataset.testid = 'queue-status-text';
+
+  const queueCancelBtnEl = document.createElement('button');
+  queueCancelBtnEl.type = 'button';
+  queueCancelBtnEl.className = 'btn btn-ghost btn-sm ta-orbital-splash__cancel';
+  queueCancelBtnEl.setAttribute('data-testid', 'queue-cancel-btn');
+  queueCancelBtnEl.dataset.testid = 'queue-cancel-btn';
+  queueCancelBtnEl.textContent = 'CANCEL QUEUE';
+
+  queueEl.append(queueTextEl, queueCancelBtnEl);
+  splashEl.append(eyebrow, title, splashStatusEl, queueEl);
+  return { splashEl, splashStatusEl, queueEl, queueTextEl, queueCancelBtnEl };
+}
+
+function buildDescentDom() {
+  const descentEl = document.createElement('div');
+  descentEl.className = 'ta-descent-phase plate-sm';
+  descentEl.setAttribute('data-testid', 'descent-phase');
+  descentEl.dataset.testid = 'descent-phase';
+  descentEl.dataset.active = 'false';
+  descentEl.hidden = true;
+
+  const header = document.createElement('div');
+  header.className = 'ta-descent-phase__header';
+  const descentLabelEl = document.createElement('span');
+  descentLabelEl.setAttribute('data-testid', 'descent-phase-label');
+  descentLabelEl.dataset.testid = 'descent-phase-label';
+  descentLabelEl.textContent = 'ATMOSPHERIC ENTRY';
+  const descentCoordsEl = document.createElement('span');
+  descentCoordsEl.setAttribute('data-testid', 'descent-coords');
+  descentCoordsEl.dataset.testid = 'descent-coords';
+  descentCoordsEl.textContent = '(0, 0)';
+  header.append(descentLabelEl, descentCoordsEl);
+
+  const metrics = document.createElement('div');
+  metrics.className = 'ta-descent-phase__metrics';
+  const descentAltEl = document.createElement('span');
+  descentAltEl.setAttribute('data-testid', 'descent-altitude');
+  descentAltEl.dataset.testid = 'descent-altitude';
+  descentAltEl.textContent = '120.0 km';
+  const descentProgEl = document.createElement('span');
+  descentProgEl.setAttribute('data-testid', 'descent-progress');
+  descentProgEl.dataset.testid = 'descent-progress';
+  descentProgEl.textContent = '0%';
+  metrics.append(descentAltEl, descentProgEl);
+
+  const bar = document.createElement('div');
+  bar.className = 'ta-descent-phase__bar';
+  const descentBarFillEl = document.createElement('div');
+  descentBarFillEl.className = 'ta-descent-phase__bar-fill';
+  descentBarFillEl.setAttribute('data-testid', 'descent-progress-bar');
+  descentBarFillEl.dataset.testid = 'descent-progress-bar';
+  bar.appendChild(descentBarFillEl);
+
+  descentEl.append(header, metrics, bar);
+  return { descentEl, descentLabelEl, descentCoordsEl, descentAltEl, descentProgEl, descentBarFillEl };
 }
 
 /**
@@ -18,6 +111,9 @@ export interface DescentTelemetryUpdate {
 export class BootOverlay {
   readonly splashEl: HTMLElement;
   readonly splashStatusEl: HTMLElement;
+  readonly queueEl: HTMLElement;
+  readonly queueTextEl: HTMLElement;
+  readonly queueCancelBtnEl: HTMLButtonElement;
   readonly descentEl: HTMLElement;
   readonly descentLabelEl: HTMLElement;
   readonly descentCoordsEl: HTMLElement;
@@ -35,77 +131,20 @@ export class BootOverlay {
   private descentCount = 0;
 
   constructor(parent: HTMLElement) {
-    this.splashEl = document.createElement('div');
-    this.splashEl.className = 'ta-orbital-splash plate';
-    this.splashEl.setAttribute('data-testid', 'orbital-splash');
-    this.splashEl.dataset.testid = 'orbital-splash';
-    this.splashEl.dataset.active = 'true';
-    this.splashEl.hidden = false;
+    const splash = buildSplashDom();
+    this.splashEl = splash.splashEl;
+    this.splashStatusEl = splash.splashStatusEl;
+    this.queueEl = splash.queueEl;
+    this.queueTextEl = splash.queueTextEl;
+    this.queueCancelBtnEl = splash.queueCancelBtnEl;
 
-    const eyebrow = document.createElement('div');
-    eyebrow.className = 'ta-orbital-splash__eyebrow';
-    eyebrow.textContent = 'ORBITAL TELEMETRY LINK';
-
-    const title = document.createElement('h1');
-    title.className = 'ta-orbital-splash__title';
-    title.setAttribute('data-testid', 'orbital-splash-title');
-    title.dataset.testid = 'orbital-splash-title';
-    title.textContent = 'TERRAAGENT';
-
-    this.splashStatusEl = document.createElement('div');
-    this.splashStatusEl.className = 'ta-orbital-splash__status';
-    this.splashStatusEl.setAttribute('data-testid', 'orbital-splash-status');
-    this.splashStatusEl.dataset.testid = 'orbital-splash-status';
-    this.splashStatusEl.textContent = 'Contacting orbit…';
-
-    this.splashEl.appendChild(eyebrow);
-    this.splashEl.appendChild(title);
-    this.splashEl.appendChild(this.splashStatusEl);
-
-    this.descentEl = document.createElement('div');
-    this.descentEl.className = 'ta-descent-phase plate-sm';
-    this.descentEl.setAttribute('data-testid', 'descent-phase');
-    this.descentEl.dataset.testid = 'descent-phase';
-    this.descentEl.dataset.active = 'false';
-    this.descentEl.hidden = true;
-
-    const header = document.createElement('div');
-    header.className = 'ta-descent-phase__header';
-    this.descentLabelEl = document.createElement('span');
-    this.descentLabelEl.setAttribute('data-testid', 'descent-phase-label');
-    this.descentLabelEl.dataset.testid = 'descent-phase-label';
-    this.descentLabelEl.textContent = 'ATMOSPHERIC ENTRY';
-    this.descentCoordsEl = document.createElement('span');
-    this.descentCoordsEl.setAttribute('data-testid', 'descent-coords');
-    this.descentCoordsEl.dataset.testid = 'descent-coords';
-    this.descentCoordsEl.textContent = '(0, 0)';
-    header.appendChild(this.descentLabelEl);
-    header.appendChild(this.descentCoordsEl);
-
-    const metrics = document.createElement('div');
-    metrics.className = 'ta-descent-phase__metrics';
-    this.descentAltEl = document.createElement('span');
-    this.descentAltEl.setAttribute('data-testid', 'descent-altitude');
-    this.descentAltEl.dataset.testid = 'descent-altitude';
-    this.descentAltEl.textContent = '120.0 km';
-    this.descentProgEl = document.createElement('span');
-    this.descentProgEl.setAttribute('data-testid', 'descent-progress');
-    this.descentProgEl.dataset.testid = 'descent-progress';
-    this.descentProgEl.textContent = '0%';
-    metrics.appendChild(this.descentAltEl);
-    metrics.appendChild(this.descentProgEl);
-
-    const bar = document.createElement('div');
-    bar.className = 'ta-descent-phase__bar';
-    this.descentBarFillEl = document.createElement('div');
-    this.descentBarFillEl.className = 'ta-descent-phase__bar-fill';
-    this.descentBarFillEl.setAttribute('data-testid', 'descent-progress-bar');
-    this.descentBarFillEl.dataset.testid = 'descent-progress-bar';
-    bar.appendChild(this.descentBarFillEl);
-
-    this.descentEl.appendChild(header);
-    this.descentEl.appendChild(metrics);
-    this.descentEl.appendChild(bar);
+    const descent = buildDescentDom();
+    this.descentEl = descent.descentEl;
+    this.descentLabelEl = descent.descentLabelEl;
+    this.descentCoordsEl = descent.descentCoordsEl;
+    this.descentAltEl = descent.descentAltEl;
+    this.descentProgEl = descent.descentProgEl;
+    this.descentBarFillEl = descent.descentBarFillEl;
 
     this.colonyEl = document.createElement('div');
     this.colonyEl.className = 'ta-colony-view';
@@ -129,10 +168,7 @@ export class BootOverlay {
     this.offlineEl.title = 'No game server: this colony runs in your browser and is lost on reload';
     this.offlineEl.hidden = true;
 
-    parent.appendChild(this.splashEl);
-    parent.appendChild(this.descentEl);
-    parent.appendChild(this.colonyEl);
-    parent.appendChild(this.offlineEl);
+    parent.append(this.splashEl, this.descentEl, this.colonyEl, this.offlineEl);
   }
 
   /** Shows or hides the "OFFLINE · LOCAL" badge (a dev-build local fallback host is attached, FA-06). */
@@ -182,6 +218,34 @@ export class BootOverlay {
     this.splashStatusEl.textContent = text;
   }
 
+  showQueueStatus(status: QueuedHomeStatus, onCancel?: () => void): void {
+    const label = formatQueueStatusMessage(status);
+    this.showSplash(label);
+    this.queueEl.hidden = false;
+    this.queueEl.dataset.active = 'true';
+    this.queueEl.dataset.ticketId = status.ticketId;
+    this.queueEl.dataset.ticketState = status.ticketState;
+    this.queueEl.dataset.planetId = status.planetId;
+    this.queueEl.dataset.planetType = status.planetType;
+    this.queueEl.dataset.sectorMode = status.sectorIntent.kind;
+    this.queueEl.dataset.sectorId = status.sectorIntent.kind === 'chosen' ? status.sectorIntent.sectorId : 'auto';
+    this.queueEl.dataset.position = String(status.position);
+    this.queueEl.dataset.etaS = status.etaS !== null ? String(status.etaS) : '';
+    this.queueTextEl.textContent = label;
+    this.queueCancelBtnEl.disabled = false;
+    this.queueCancelBtnEl.onclick = () => {
+      this.queueCancelBtnEl.disabled = true;
+      onCancel?.();
+    };
+  }
+
+  hideQueueStatus(): void {
+    this.queueEl.hidden = true;
+    this.queueEl.dataset.active = 'false';
+    this.queueCancelBtnEl.disabled = false;
+    this.queueCancelBtnEl.onclick = null;
+  }
+
   setColonyMeta(planetId: string, colonyId: string, colonyIndex: number): void {
     this.colonyEl.setAttribute('data-planet-id', planetId);
     this.colonyEl.dataset.planetId = planetId;
@@ -208,6 +272,7 @@ export class BootOverlay {
       this.descentCount++;
     }
     this.currentPhase = 'descent';
+    this.hideQueueStatus();
     this.splashEl.hidden = true;
     this.splashEl.dataset.active = 'false';
     const hideBox = Boolean(update.landed);
@@ -239,6 +304,7 @@ export class BootOverlay {
       this.colonyEl.dataset.planetId = planetId;
     }
     this.currentPhase = 'colony';
+    this.hideQueueStatus();
     this.splashEl.hidden = true;
     this.splashEl.dataset.active = 'false';
     this.descentEl.hidden = true;
@@ -249,6 +315,7 @@ export class BootOverlay {
 
   dispose(): void {
     this.settleRetry?.(false);
+    this.hideQueueStatus();
     this.splashEl.remove();
     this.descentEl.remove();
     this.colonyEl.remove();

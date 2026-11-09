@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "requestId": "candidate-regional-specialist-ocean-1",
+  "expectedVersion": 1,
+  "ops": [
+    { "op": "set", "path": "prestige.project.survey_array.cost", "value": { "metals.t1": 40, "minerals.t1": 60, "bio.water": 20, "minerals.t2": 10 } },
+    { "op": "set", "path": "prestige.project.monument.cost", "value": { "metals.t1": 60, "minerals.t1": 70, "bio.biomass": 60, "metals.t3": 5 } },
+    { "op": "set", "path": "prestige.transport.cargo.unitsPerBlock", "value": 150 }
+  ]
+}

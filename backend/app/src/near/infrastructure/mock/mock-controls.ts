@@ -1,3 +1,4 @@
+import { FaultPlan } from './fault-plan.js';
 import type { MockChainConfig } from './mock-chain.config.js';
 
 interface LatencyOverride {
@@ -15,6 +16,9 @@ interface LatencyOverride {
 class MockChainControls {
   private readonly failRates = new Map<string, number>();
   private readonly latencies = new Map<string, LatencyOverride>();
+  private readonly outcomeUnknown = new Set<string>();
+  /** Deterministic one-shot / counted faults (fail before/after submit, insufficient funds, duplicate delivery, hold); see `fault-plan.ts`. */
+  readonly faults = new FaultPlan();
 
   setFail(port: string, rate: number): void {
     if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {
@@ -27,6 +31,19 @@ class MockChainControls {
     if (!isLatencyBound(minMs) || !isLatencyBound(maxMs)) throw new Error('latency bounds must be integers >= 0');
     if (maxMs < minMs) throw new Error(`maxMs (${maxMs}) must be >= minMs (${minMs})`);
     this.latencies.set(portKey(port), { minMs, maxMs });
+  }
+
+  /**
+   * Test/dev only (W13-14): while set for a port, an adapter that honours it (`MockIntentsAdapter.execute`) commits the write and then
+   * throws `NEAR_UNAVAILABLE`, so the caller cannot tell whether it happened. A retry with the same opId returns the stored receipt.
+   */
+  setOutcomeUnknown(port: string, on: boolean): void {
+    if (on) this.outcomeUnknown.add(portKey(port));
+    else this.outcomeUnknown.delete(portKey(port));
+  }
+
+  isOutcomeUnknown(port: string): boolean {
+    return this.outcomeUnknown.has(portKey(port));
   }
 
   /** Case-insensitive port (`relayer` matches `Relayer`). No override → the same `base` object. */
@@ -44,6 +61,8 @@ class MockChainControls {
   reset(): void {
     this.failRates.clear();
     this.latencies.clear();
+    this.outcomeUnknown.clear();
+    this.faults.reset();
   }
 }
 

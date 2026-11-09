@@ -14,7 +14,7 @@ describe('pod wreck dismantle (client)', () => {
   it('pods are skipped by default (REPAIR / TERRAFORM) and found when asked, ranked before the HQ on the same hex', () => {
     expect(findEntityAtTile([pod, hq], 0, 0, 0)?.kindName).toBe('hq');
     expect(findEntityAtTile([hq, pod], 0, 0, 0, true)?.kindName).toBe('pod');
-    expect(findEntityAtTile([pod, ent('harvester', { id: 3 })], 0, 0, 0, true)?.kindName).toBe('harvester');
+    expect(findEntityAtTile([pod, ent('worker', { id: 3 })], 0, 0, 0, true)?.kindName).toBe('worker');
   });
 
   it('DISMANTLE of the pod is refused until a Hub is built, then ordered with no refund', () => {

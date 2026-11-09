@@ -1,8 +1,21 @@
 # TerraAgent — Product Waves (master plan)
 
-> **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
-> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-42; D-42 = W02 as-built build rules; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**960 issues in 28 waves, ≈ 704.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **NEAR Hackathon Vertical Slice Revision (2026-11-09):** Focused the entire schedule on polishing the **Tier-1 (`S0–S4`) Vertical Slice** — core colony gameplay, AI Director, persistent multiplayer & diplomacy, economy/markets, offline play, and NEAR + Web3 features:
+> - **Postponed Waves (`POSTPONED` — 0 `H` issues, skipped by `npm run wave`):** `W14` (Fortify), `W17` (Second Tier S5–S7), `W19` (Air & Endgame S8–S10), `W21` (Rocket & Settlement), `W24` (Mobile, PWA & Landing), and `W27` (450-Sector Streaming).
+> - **Skip All Tier 2/3:** All Tier 2/3 buildings, resources (`metals.t2/t3`, `minerals.t2/t3`, `bio.t2/t3`), units (`tank`, `artillery`, `radar`, `multitask`, `brute`, aircraft), and stages (`S5–S10`) are deferred out of the vertical slice.
+> - **Active Vertical Slice Order (22 Waves, 624 `H` issues):**
+>   - **Landed (14):** `W00 → W26 → W01 → W02 → W06 → W10 → W03 → W07 → W05 → W04 → W08 → W12 → W11 → W13`
+>   - **Ready to Land Now (1):** `W16` (AI Director, `49/49`)
+>   - **Remaining Build Queue (7):** `W09` (Offline & Notifications) → `W15` (Guild & Agent Wallets) → `W18` (PvP & Diplomacy) → `W20` (Colony Deed & Staking, settled at Stage 4 / 100% Living Planet) → `W22` (Treasury DAO & Bounties) → `W23` (`NEAR_MODE=mock|testnet|devnet` Switch & Real NEAR Testnet/Devnet Adapters) → `W25` (Launch Ops & Submission)
+> - **100% Working Mocked + `NEAR_MODE=mock|testnet|devnet` Switch & Full-Game E2E Gates:** Every economy, AI Director (`AI_PROVIDER=mock|zai` with `AI_LIVE=1`), offline (`NOTIFY_ADAPTER=mock|live|webpush|telegram`), and all 11 Web3 ports work 100% end-to-end when mocked (`NEAR_MODE=mock`) and switch cleanly to real NEAR testnet/devnet via `NEAR_MODE=testnet|devnet` (or per-port `NEAR_ADAPTER_<PORT>=mock|testnet|devnet|mainnet`). Every wave enforces unit + integration (positive/negative/corner cases) + full-game server E2E (`tests/e2e/wNN.spec.ts`).
+
+**Regional trade revision (2026-11-04):** W11-46 adds resource identity hooks; W13-50–57 add configurable planet/sector endowments, base/army logistics, trade reasons and AI experiments. W27 (postponed) preserves pinned resources during streaming. Generated counts replace earlier estimates; no new calendar commitment.
+
+> **W13/W15 economy revision (2026-11-04, D-44 & D-45):** [ECONOMY](../spec/ECONOMY.md) adds database-managed profiles, recurring consumption, USDC buyer fees, reproducible AI experiments, and external trading bot API (`/v1/trade/*`). W13-01–67 are required mock scope; W15 risk/requote/tests are required. W23 provides the `NEAR_MODE=mock|testnet|devnet` feature switch and real testnet/devnet adapters. Regenerated ISSUE_INDEX/HACKATHON_SCHEDULE supersede older totals and dates.
+
+> **Status:** v2 Vertical Slice (2026-11-09). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
+> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-45; D-42 = W02 as-built build rules; D-43 = W07 neutral hive fauna & combat/motion rules; D-44 = regional specialization & market fees; D-45 = W05 hex-tile footprint & R4 plane joining + W13 external bot participation; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**1010 issues in 28 waves, ≈ 749.5 agent-days; 624 `H` issues in 22 active Vertical Slice waves**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -18,32 +31,32 @@
 |---|---|---|---|---|
 | **W00** | Platform Skeleton | Spine | App boots, the client connects over WS, and an empty hex planet renders with a live server tick. Dev console, scenario loader, time warp, flags, CI and the e2e harness work. Ports + Postgres mocks + contract tests exist | — |
 | **W01** | Landfall | Spine | Guest login → drop pod lands → HQ drone prepares ground (Grade / Clear / Break) → builds the Command Hub → the colony survives a server restart (snapshot) | W00 |
-| **W02** | First Light | Spine | Harvester and Metals Extractor produce resources (D-34 families Metals / Minerals / Bio, T1 sub-resources; Energy is grid power; finite 3-stage multi-harvester deposits), Solar powers the colony, day/night cycles (with daytime entity light shutoff + night moon shadows), storage caps, order queue v1 (progressive resource deduction, 50% cancel/dismantle refund, wait reasons, ETA), unified collapsible Command Dock (`BUILD`/`PRODUCTION`/`TERRAFORM`/`QUEUE`), bottom selection bar + 3D health/progress bars, and object-driven 3D terraforming particle system with hand-locked lasers | W01 |
-| **W03** | The Grid | Gameplay | Builder, pylons with reach and per-pylon load, capacitor, wind, thermal fuel, depot, quarry / water extractor / petroleum well (Bio T2 source), brownout shedding, automatic repair (the manual REPAIR order already ships in W02), multi-builder dispatch, all 4 order lanes with earmarks | W02 |
+| **W02** | First Light | Spine | Worker Drone T1 and Metals Extractor produce resources (D-34 families Metals / Minerals / Bio, T1 sub-resources; Energy is grid power; finite 3-stage deposits (several workers on one deposit)), Solar powers the colony, day/night cycles (with daytime entity light shutoff + night moon shadows), storage caps, order queue v1 (progressive resource deduction, 50% cancel/dismantle refund, wait reasons, ETA), unified collapsible Command Dock (`BUILD`/`PRODUCTION`/`TERRAFORM`/`QUEUE`), bottom selection bar + 3D health/progress bars, and object-driven 3D terraforming particle system with hand-locked lasers | W01 |
+| **W03** | The Grid | Gameplay | Worker Drone T2, pylons with reach and per-pylon load, capacitor, wind, thermal fuel, depot, quarry / water extractor / petroleum well (Bio T2 source), brownout shedding, automatic repair (the manual REPAIR order already ships in W02), multi-builder dispatch, all 4 order lanes with earmarks | W02 |
 | **W04** | Maps & Camera | Client | Minimap (click to pan), global planet map on `M` with layers, selection and camera polish, tile-state overlay | W01 |
-| **W05** | Shape the Land | Gameplay | Terraformer and all terrain ops (Level, Fill, Reclaim, Deep Reclaim, Irrigate, Seed), linked prep, beacons + territory + frozen borders, Terraform %, Living bonuses, T2/T3 resource tiers unlocked by terraforming (D-34), `desert` and `ocean` planet types next to `temperate` (D-33), lightning + meteors (holes) | W03 |
+| **W05** | Shape the Land | Gameplay | Unified Worker Drone T1–T3 (`ENTITY_KIND.worker`), auto per-hex Terraform / Repair / Dismantle tool with growth ladder (Level, Fill, Reclaim, Deep Reclaim, Irrigate, Seed) and Ctrl+click queue, D-45 hex-tile footprints & R4 plane joining, linked site prep, Territory Beacon + Hydro Power Station + Hazard Shield & Lightning Rod, Terraform %, Living bonuses, T2/T3 resource tiers unlocked by terraforming (D-34), `desert` and `ocean` planet types next to `temperate` (D-33), storms / rain / twisters / lightning + meteors (holes), planar water reflections (`WaterReflectionPass`), and unified `BuildingLightState` | W03 |
 | **W06** | Invisible Chain (F5, mock) | Economy/NEAR | Social login (mock), named account "Pilot ID", gasless relayer (mock), mock receipts in a dev chain explorer | W00, W01 |
-| **W07** | First Contact (battle v1) | Gameplay | Three neutral insect species and hives, passive life/aggressive waves, deterministic directive sync, hive-life playground, Robotics Factory T1, Recon, Autocannon, Laser Tower, supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, evasive units), range and view rings, projectile VFX | W03 |
+| **W07** | First Contact (battle v1) | Gameplay | Three neutral insect species and organic hives, passive life/aggressive waves, deterministic directive + sparse motion sync (`DIFF_FORMAT=2`), GPU-instanced swarm renderer, hive-life + gallery + march playground, Robotics Factory T1, six-wheel Recon Armored Scout (`robot.recon`), Autocannon, Laser Tower (`building.laserTower`), supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, spotting gates, `moveGroup` flow-field slot march, `F6` Combat Lab), range and view rings, pooled projectile/combat/liquid VFX | W03 |
 | **W08** | Stages & HQ Goals | Autonomy | Stage engine S0–S10 (data-driven), triggers / dwell / overrides, `unlockStage` / `threatStage`, suggestion cards, HQ goals with budgets, rule-engine autopilot, priority sliders | W02 |
 | **W09** | Offline & Notifications | Autonomy | Presence, coarse ticking for empty planets, restart fast-run, away mode + away budget, "while you were away" digest, hard mode, Web Push + Telegram (via `NotifierPort`, mock first) | W02 |
 | **W10** | Cargo & Trade Hub (F1, mock) | Economy/NEAR | Trade Hub building, export mints cargo (mock NEP-245), import burns it, mint caps, cargo panel | W02, W06 |
-| **W11** | Planet Foundations | Sim/Meta/Client | Three persistent small sector worlds, atomic sector admission, parties/resume, pinned saves, border-crossing play and simple picker/map | W01, W04, W05 |
+| **W11** | Planet Foundations | Sim/Meta/Client | Three persistent 19-sector worlds (`7` land + `12` ocean sectors, `4×` basic sector size `R=48`, `7,057` tiles/sector), atomic sector admission, parties/resume, pinned saves, isolated single-sector gameplay (`cross_sector_disabled`), and Orbital Picker + Global Map (`M`) surrounding-sector display | W01, W04, W05 |
 | **W12** | Player Page & Achievements | Meta | `/me` (pilot, progress, planets, stats, history, play), XP and levels, 20 × 3 achievement flip cards, badge art, badge mint outbox (mock) | W01 (more families light up as producer waves land) |
-| **W13** | Markets (F2, mock) | Economy/NEAR | Market stalls at Trade Hubs, buy/sell orders, matching, owner fees, `token_diff` settlement on mock Intents, price board | W06, W10 |
-| **W14** | Fortify (walls) | Gameplay | Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege, `would_isolate` | W05, W07 |
+| **W13** | Markets & Trading Bot API (F2, mock) | Economy/NEAR | USDC/barter/NEAR markets, buyer 1% platform + 0–1% stall fees, NEP-413 `MockIntentsAdapter` + deterministic chain fault injection (`near.mock.fault`), DB economy profiles & operator panel (`/dev/chain/?tab=economy`), recurring prestige projects (`survey_array`, `monument`) + metered cargo transport recipe, regional resource endowments + base/army logistics supply windows (`unitReserve`), reproducible AI economy experiments (`npm run economy`), standalone `/trade.html` + `/v1/trade/*` bot REST+SSE API (allowances, kill switch, rate limits, `/v1/trade/overview/:planetId`), and pure need/value quote library (`shared/sim/src/systems/trade/agent/`) + `npm run trade:bot` (D-44, D-45) | W06, W10 |
+| **W14** | **[POSTPONED]** Fortify (walls) | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice* — Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege | W05, W07 |
 | **W15** | Guild & Agents (F3, F4, mock) | Economy/NEAR | Orbital Guild NPC traders with wallets visit, quote and trade; colony director key with allowance; `autoTrade` | W09, W13 |
-| **W16** | AI Director | Autonomy | Separate director worker (mock + live Z.ai), private MCP, durable queue, W08 goals, Conservative/Risky skills, security, W11/W27 context, HUD rationale and away story | W08 |
-| **W17** | Second Tier (S5–S7) | Gameplay | Hub T2 + HQ refit, Multitask T2, T2 buildings, Factory T2, Tank, Artillery, Mobile Radar + spotting, Brute fauna | W05, W07, W08 |
+| **W16** | AI Director | Autonomy | Separate director worker (mock + live Z.ai), private MCP, durable queue, W08 goals, Conservative/Risky skills, security, W11 context, HUD rationale and away story | W08 |
+| **W17** | **[POSTPONED]** Second Tier (S5–S7) | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice (Tier 2/3 skipped)* — Hub T2 + HQ refit, Multitask T2, T2 buildings, Factory T2, Tank, Artillery, Mobile Radar, Brute fauna | W05, W07, W08 |
 | **W18** | PvP & Diplomacy | Gameplay | Raids on colonies, newcomer shield, colony critical / elimination, HQ reprint, truces (offer, notice, Oathbreaker), AI raid opt-in | W07, W09, W11 |
-| **W19** | Air & Endgame (S8–S10) | Gameplay | Aero Hangar, Air Recon, Fighter, Gunship, Bomber, Anti-Air, Drifter, T3 structures, Multitask T3, HQ T3 | W08, W14, W17 |
-| **W20** | Colony Deed & Staking (F6, mock) | Economy/NEAR | A dynamic Deed NFT minted at founding that updates with milestones, a Deed card, own-NEAR staking (mock pool) | W00, W01, W06 |
-| **W21** | Rocket & Settlement | Gameplay | Rocket Silo, launch gate (100 % Living), countdown, Settled colony, carry-over to an eligible different canonical planet, persistent world outcomes, account claim (mock) | W05, W06, W11, W17, W20 |
-| **W22** | Treasury & Bounties (F7, F8, mock) | Economy/NEAR | Planet treasury DAO (fees in, proposals, votes, projects), bounty escrow, mercenary NPCs | W06, W07, W10, W11, W13 (W18 optional) |
-| **W23** | Real NEAR (phase 2) | Economy/NEAR | Each port switches to its real adapter after its contract suite passes: Identity, Relayer → Cargo → Intents → Agent wallet → Deed / Staking → DAO → Escrow | per port: W00, W06, W10, W12, W13, W15, W20, W21, W22; ops: W25 |
-| **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
-| **W25** | Launch Ops & Submission | Ops | Monitoring, backups, rollback deploy, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form. Hosting is W26 | W00 (grows with each wave; hosting issues name W26 ids) |
+| **W19** | **[POSTPONED]** Air & Endgame (S8–S10) | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice (Tier 2/3 skipped)* — Aero Hangar, Air Recon, Fighter, Gunship, Bomber, Anti-Air, Drifter, T3 structures | W08, W14, W17 |
+| **W20** | Colony Deed & Staking (F6, mock) | Economy/NEAR | A dynamic Deed NFT minted at founding that updates with milestones (settled at Stage 4 / 100 % Living Planet), a Deed card, own-NEAR staking (mock pool) | W00, W01, W06, W05, W08 |
+| **W21** | **[POSTPONED]** Rocket & Settlement | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice* — Rocket Silo, launch gate, countdown, carry-over | W05, W06, W11, W17, W20 |
+| **W22** | Treasury & Bounties (F7, F8, mock) | Economy/NEAR | Planet treasury DAO (fees in, proposals, votes, projects), bounty escrow, Tier-1 `robot.recon` mercenary NPC squads | W06, W07, W10, W11, W13 (W18 optional) |
+| **W23** | Real NEAR Switch & Testnet/Devnet (`NEAR_MODE`) | Economy/NEAR | Unified `NEAR_MODE=mock\|testnet\|devnet\|mainnet` feature flag & per-port `NEAR_ADAPTER_<PORT>` override; real NEAR testnet/devnet contracts & adapters for Identity/Relayer, Cargo NEP-245, Intents, Agent Wallet, Deed/Staking, DAO & Escrow | W00, W06, W10, W12, W13, W15, W20, W22 |
+| **W24** | **[POSTPONED]** Mobile, PWA & Landing | Client | *Postponed out of NEAR Hackathon Vertical Slice* — Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls | W02, W04 |
+| **W25** | Launch Ops & Submission | Ops | Monitoring, backups, env & CSP guards, `npm run ports:table`, README / LICENSE / demo video / X post / submission form. Hosting is W26 | W00, W26, W23 |
 | **W26** | Sites | Ops | `terraagent.fun` and its subdomains on one nginx, four compose stacks, local and on `DEPLOY_HOST` over SSH. No Cloudflare | W00 |
-| **W27** | [Planet Scale, Streaming & Navigation](./waves/W27-planet-sectors.md) | Sim/Meta/Client | Extend W11 with large continent configs, bounded residency/streaming, hierarchical maps, ground-to-globe zoom and live globe/landing summaries | W04, W05, W11 |
+| **W27** | **[POSTPONED]** [Planet Scale, Streaming & Navigation](./waves/W27-planet-sectors.md) | Sim/Meta/Client | *Postponed out of NEAR Hackathon Vertical Slice* — Extend W11 with large continent configs, infinite/streaming multi-sector loading, seamless cross-sector boundary traversal, bounded residency, hierarchical maps, ground-to-globe zoom | W04, W05, W11 |
 
 ```mermaid
 flowchart LR
@@ -51,29 +64,23 @@ flowchart LR
   W00 & W01 --> W06
   W02 --> W03 --> W05
   W03 --> W07
-  W05 & W07 --> W14
   W01 --> W04
-  W02 & W04 --> W24
   W02 --> W08 --> W16
   W02 --> W09
   W01 & W04 & W05 --> W11
   W01 --> W12
-  W05 & W07 & W08 --> W17
-  W08 & W14 & W17 --> W19
   W07 & W09 & W11 --> W18
   W02 & W06 --> W10
   W06 & W10 --> W13
   W09 & W13 --> W15
-  W00 & W01 & W06 --> W20
-  W05 & W06 & W11 & W17 & W20 --> W21
+  W00 & W01 & W06 & W05 & W08 --> W20
   W06 & W07 & W10 & W11 & W13 --> W22
-  W00 & W06 & W10 & W12 & W13 & W15 & W20 & W21 & W22 & W25 --> W23
-  W00 --> W25
+  W00 & W06 & W10 & W12 & W13 & W15 & W20 & W22 --> W23
+  W00 & W26 & W23 --> W25
   W00 --> W26
-  W04 & W05 & W11 --> W27
 ```
 
-**W11/W27 split (owner-approved 2026-11-04):** W11 establishes persistent canonical sector worlds after W01/W04/W05. W27 scales that same model; its number does not require W06–W26 first. W27 requires actual W04 camera, W05 territory and full W11 party/recovery/cross-border readiness, not H-only tags. W11-only keeps persistent small worlds; W27 adds streaming/navigation without changing admission or resetting saves. See both wave readiness sections and MATCHMAKING §0.
+**W11/W27 split (owner-approved 2026-11-04; simplified 2026-11-09):** W11 establishes persistent canonical sector worlds after W01/W04/W05 with `4×` basic sector size (`R=48`, `7,057` tiles per sector; `134,083` total tiles across the 19-sector small-atlas manifest: `7` land + `12` ocean halo sectors), isolated single-sector gameplay (`PlanetState.grid.radius = 48`; cross-sector movement, building placement, power links, territory claims and seam terraforming blocked with `reason: 'cross_sector_disabled'`), and all `19` surrounding sectors displayed on the Orbital Picker and Global Map (`M` dialog). W27 scales that same model and unlocks infinite/streaming multi-sector loading and seamless cross-sector boundary traversal; its number does not require W06–W26 first. W27 requires actual W04 camera, W05 territory and full W11 party/recovery/handoff readiness, not H-only tags. W11-only keeps persistent isolated-sector worlds; W27 adds multi-sector streaming, cross-border traversal and ground-to-globe navigation without changing admission or resetting saves. See both wave readiness sections and MATCHMAKING §0.
 
 The **spine** is W00 → W01 → W02. Everything after W02 can run on up to **five parallel tracks**.
 
@@ -95,7 +102,7 @@ Each wave file lists its soft dependencies in its header.
 | **Wave flags** | Each wave owns the flag `W<nn>`. Server: `TA_WAVES=all` (default), `TA_WAVES=..07` (W00–W07 only), or an explicit list like `TA_WAVES=00,01,02,07`. Client: the same set comes from the server in `welcome.flags`; in dev it can be overridden with `?waves=..07`. Code checks `flags.has('W07')`. Data-table rows (buildings, units, ops, achievements, stages) carry `wave: 'W07'` and are filtered at `compileData`. **No flag, no feature**: menus, commands, systems and HUD panels of a disabled wave do not exist |
 | **Flag-safe state** | Snapshots keep entities of disabled waves. A disabled wave's systems do not run and its entities are inert and hidden, never deleted, so turning a wave back on restores them. Commands of a disabled wave are rejected with `wave_disabled` |
 | **Git tags** | When a wave lands on `main` (§7), its merge commit is tagged `wave-NN`; a later landing of the same wave (e.g. its `H+` or post-hackathon rows) is tagged `wave-NN.2`, `wave-NN.3`… `git checkout wave-07 && npm run dev` gives exactly the app as of that landing |
-| **Seed scenarios** | Each wave has `tests/scenarios/wNN-<slug>.ts`, which creates a planet already in the state that wave needs (e.g. W14 starts with a colony at S4, a Terraformer and a nest nearby). Load it with `?scenario=w14` or `npm run scenario w14` |
+| **Seed scenarios** | Each wave has `tests/scenarios/wNN-<slug>.ts`, which creates a planet already in the state that wave needs (e.g. W14 starts with a colony at S4, a Worker Drone T3 and a nest nearby). Load it with `?scenario=w14` or `npm run scenario w14` |
 | **E2E per wave** | `tests/e2e/wNN.spec.ts` drives headless Chrome against the running app and asserts the wave's demo. `npm run e2e -- --waves ..NN` runs every suite up to NN against an app booted with later waves off (`TA_WAVES=..NN`; not with `E2E_REUSE=1`, which keeps the dev stack's setting, or `--host local`, which boots no app), so a regression in an earlier wave is caught. Wave DoD = its e2e passes **and** every earlier wave's e2e still passes |
 | **Local host** | `?host=local` runs the shared engine in the browser with no backend (D-31): gameplay waves can be played and tested without the app or Postgres, and `npm run e2e -- --host local` runs sim-only suites. Features that need server modules (accounts, NEAR, lobby, notifications, progression, LLM) are hidden locally |
 | **Dev tools (W00)** | Dev console (grant resources, set stage, spawn raid, spawn unit, reveal map, `time` planetary solar clock, `tune` balance rows live with a `TA_BALANCE_OVERRIDES` file, D-35), time warp ×1–×100, state inspector, mock chain explorer, flag panel. Dev-only builds; they are not anti-cheat (D-25) and are not shipped in production |
@@ -131,10 +138,11 @@ Issue id: `WNN-XX`, e.g. `W07-12`. One row per issue in the wave file:
 
 Every wave file has: goal, demo story (the e2e script in words), dependencies, track, owned paths, flag, scenario, issue table, and wave DoD. Hackathon waves also have a **Hackathon slice**: the demo steps their e2e tags `@hack` (run with `npm run e2e -- --hack`) and what is deferred.
 
-## 6. Hackathon (Nov 1–14, solo + AI agents)
+## 6. Hackathon Vertical Slice (Nov 1–14, solo + AI agents)
 
-Decision B (2026-10-30): every hackathon wave ships its **core slice**, tagged `H` per issue, so each still ends in a working, tested app. Waves in the cut: W00–W15 (W16 not in the cut), W20 (deed only), W22 (treasury + nest bounties), W25 (submission; hosting moved to W26), W26 (sites on `terraagent.fun`); W23's F5/F1/F2 swap is tagged `H2` and runs only after the D10 gate. Everything else is post-hackathon.
-
+Vertical Slice Revision (2026-11-09): every active hackathon wave ships its **complete Tier-1 (`S0–S4`) vertical slice**, tagged `H` per issue, with full unit + integration + server E2E test suites and 100% mocked execution (`NEAR_MODE=mock`) plus a live `NEAR_MODE=testnet|devnet` switch (`W23`).
+- **22 Active Vertical Slice Waves (`624 H` issues):** `W00, W26, W01, W02, W06, W10, W03, W07, W05, W04, W08, W12, W11` (landed) → `W13, W16` (ready to land) → `W09, W15, W18, W20, W22, W23, W25` (remaining build queue).
+- **6 Postponed Waves (`0 H` issues, skipped by `npm run wave`):** `W14` (Fortify), `W17` (Second Tier S5–S7), `W19` (Air & Endgame S8–S10), `W21` (Rocket & Settlement), `W24` (Mobile, PWA & Landing), and `W27` (450-Sector Streaming), plus all Tier 2/3 buildings, resources, units, and stages (`S5–S10`).
 - Numbers, calibration rule, checkpoints and the drop order: [`HACKATHON_CUT.md`](./HACKATHON_CUT.md).
 - Generated critical path and start order: [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) (`python3 scripts/plan/index_waves.py --write`).
 

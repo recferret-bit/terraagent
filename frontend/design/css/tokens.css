@@ -82,4 +82,17 @@
   --ta-ease-hydraulic: cubic-bezier(.7, 0, .2, 1);
 
   --ta-container: 1320px;
+
+  /* map-only tile palette (read by tileColors.ts) */
+  --ta-map-unexplored: #3b4c6b;
+  --ta-map-flat: #b4cc72;
+  --ta-map-forest: #2fa35c;
+  --ta-map-rock: #a99f94;
+  --ta-map-slope: #d9a05b;
+  --ta-map-hole: #9a5e3e;
+  --ta-map-shallow: #66d3f5;
+  --ta-map-deep: #3a78e0;
+  --ta-map-prepared: #f3e3a6;
+  --ta-map-living: #3deb8a;
+  --ta-map-ridge: #a583ee;
 }

@@ -1,5 +1,14 @@
-import type { MapLayerId, WaveId } from '@terra/contracts';
+import type { CompiledDataLike } from '@terra/sim';
+import type {
+  AtlasManifestV1,
+  MapLayerId,
+  SectorId,
+  SectorSummaryV1,
+  WaveId,
+} from '@terra/contracts';
 import type { ClientTiles, ClientView } from '../store/replica/viewCodec';
+import type { SectorIntentV1 } from '../ui/lobby';
+import type { AtlasMapAdapter } from './atlasMapAdapter';
 import type { CompositeMapRenderResult } from './builtinLayers';
 import type { TrapezoidCorner } from './cameraTrapezoid';
 
@@ -18,6 +27,7 @@ export interface MapViewportTransform {
 }
 
 export interface MapLayerDrawView {
+  readonly simData?: CompiledDataLike;
   readonly selectedEntityId?: number | null;
   readonly width: number;
   readonly height: number;
@@ -32,6 +42,14 @@ export interface MapLayerDrawView {
   readonly tilePixelRadius: number;
   readonly transform?: MapViewportTransform;
   readonly rasterCanvas?: HTMLCanvasElement | OffscreenCanvas | null;
+  readonly atlasAdapter?: AtlasMapAdapter | null;
+  readonly atlasManifest?: AtlasManifestV1 | null;
+  readonly sectorSummaries?: readonly SectorSummaryV1[] | null;
+  readonly selectedSectorId?: SectorId | null;
+  readonly homeSectorId?: SectorId | null;
+  readonly homeTile?: { readonly q: number; readonly r: number } | null;
+  readonly currentSectorId?: SectorId | null;
+  readonly cameraTile?: { readonly q: number; readonly r: number } | null;
 }
 
 export interface MapLayer {
@@ -62,4 +80,9 @@ export interface MinimapStats {
   panX?: number;
   panY?: number;
   lastComposite?: CompositeMapRenderResult | null;
+  selectedSectorId?: SectorId | null;
+  homeSectorId?: SectorId | null;
+  sectorIntent?: SectorIntentV1;
+  atlasHash?: string | null;
+  viewerColony?: number;
 }

@@ -8,7 +8,7 @@ Everything that is not code lives here. Following the D-41 root cleanliness rule
 | [`spec/`](./spec) | **Online architecture** for the server, protocol, client, NEAR and deployment, plus the browser tech stack. `DECISIONS.md` is the source of truth for what was decided | [`DECISIONS.md`](./spec/DECISIONS.md) |
 | [`plan/`](./plan) | **Build plan:** 27 product waves (880 issues, one file per wave), the hackathon cut (`H` tags) and its generated schedule | [`PRODUCT_WAVES.md`](./plan/PRODUCT_WAVES.md), [`HACKATHON_CUT.md`](./plan/HACKATHON_CUT.md) |
 | [`hackathon/`](./hackathon) | **NEAR Hackathon strategy pack (proposals):** master-plan review, balance simulation and calculator, grand-prize pivot, Nov 1–18 launch playbook, whitepaper, landing copy, media plan, on-chain / NEAR grooming reference (`near/`) | [`hackathon/README.md`](./hackathon/README.md) |
-| [`dev/`](./dev) | **Developer tooling reference:** URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands | [`DEV_TOOLS.md`](./dev/DEV_TOOLS.md), [`ENVS.md`](./dev/ENVS.md) |
+| [`dev/`](./dev) | **Developer tooling reference:** URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands | [`DEV_TOOLS.md`](./dev/DEV_TOOLS.md), [`ENVS.md`](./dev/ENVS.md), [`ECONOMY_OPERATOR.md`](./dev/ECONOMY_OPERATOR.md) |
 | [`questions-and-limitations/`](./questions-and-limitations) | **Known limitations and open questions:** what the code deliberately does not handle, trade-offs, questions for the owner. Agents add an entry whenever they leave something undone | [`README.md`](./questions-and-limitations/README.md) |
 | [`coverage/`](./coverage) | **Test coverage reference:** the per-package and per-file unit-test coverage baseline | [`README.md`](./coverage/README.md) |
 | [`visuals/`](./visuals) | **3D and rendering rules** for agents and artists: coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting | [`agent-3d-coding-rules.md`](./visuals/agent-3d-coding-rules.md) |
@@ -28,6 +28,8 @@ Everything that is not code lives here. Following the D-41 root cleanliness rule
 
 ## Online architecture (`spec/`)
 
+[Resource economy and experiment contract](./spec/ECONOMY.md): database profile lifecycle, exact fees, recurring consumption, funded bots, AI simulation manifests and release gates (D-44).
+
 `ARCHITECTURE`, `SIMULATION`, `PROTOCOL`, `CLIENT`, `NEAR`, `AI_ORCHESTRATOR`, `CONTINUITY`, `MATCHMAKING`, `DATA_MODEL`, `DEPLOYMENT` and `DECISIONS` cover the planned backend. [`tech-stack-spec.md`](./spec/tech-stack-spec.md) covers the browser 3D stack.
 Several files describe the earlier multi-service design that decision D-24 simplified to one Node app. Check `DECISIONS.md` before relying on a detail.
 
@@ -38,6 +40,10 @@ Several files describe the earlier multi-service design that decision D-24 simpl
 | [`agent-3d-coding-rules.md`](./visuals/agent-3d-coding-rules.md) | Mandatory rules and reference code for any agent writing Three.js, shaders or procedural models |
 | [`ai-3d-visuals-and-models-spec.md`](./visuals/ai-3d-visuals-and-models-spec.md) | Why AI meshes look bad and the pipeline that fixes it |
 | [`textures-shaders-lighting-spec.md`](./visuals/textures-shaders-lighting-spec.md) | Procedural PBR textures, terrain and water shaders, day/night lighting, lightning |
+| [`organic-fauna-review.md`](./visuals/organic-fauna-review.md) | Organic bug/hive skills, regenerated models, visual evidence and validation results |
+| [`battle-aiming.md`](./visuals/battle-aiming.md) | Stationary shooting gallery, shared battle orchestration, GPU weapon rigs and muzzle validation |
+| [`hive-rework.md`](./visuals/hive-rework.md) | Larger species habitats, 35% smaller ant, entrance clearance and visual review |
+| [`insect-animation.md`](./visuals/insect-animation.md) | Insect state machine, species attacks, hive attack controls, liquid effects and review guide |
 
 The short, enforced version of these rules is in [`AGENTS.md`](../AGENTS.md) and the skills under [`.agents/skills/`](../.agents/skills).
 

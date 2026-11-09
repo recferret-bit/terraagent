@@ -1,6 +1,6 @@
 # @terra/db
 
-Prisma schema, migrations and DB tooling. Postgres 16 with four namespaces: `core`, `world`, `ai`, `chain`.
+Prisma schema, migrations and DB tooling. Postgres 16 with five namespaces: `core`, `world`, `ai`, `chain`, `economy`.
 
 ## Local database
 
@@ -19,7 +19,7 @@ One Postgres server, one database per worktree: `TA_DB_NAME` (`infra/.env.worktr
 ## Adding tables
 
 1. Put the models in your module's own file `shared/db/prisma/<module>.prisma` (models only, every model carries
-   `@@schema("core" | "world" | "ai" | "chain")` and `@@map("snake_case")`). `_base.prisma` holds the generator and datasource.
+   `@@schema("core" | "world" | "ai" | "chain" | "economy")` and `@@map("snake_case")`). `_base.prisma` holds the generator and datasource.
 2. `npm run db:gen -- --name <slug>`: merges all `prisma/*.prisma` into the committed, generated `prisma/schema.prisma`,
    runs `prisma generate`, and writes the next migration `prisma/migrations/NNNN_<slug>/migration.sql` when the merged schema
    differs from what the migrations produce (otherwise it says so and writes nothing). Name defaults to `auto`.

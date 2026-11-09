@@ -2,56 +2,23 @@ import { defineTable } from './_define';
 
 /**
  * W03 grid & economy data (`colony-economy-and-buildings-spec.md` §3.2–3.5, `units-orders-and-progression-spec.md` §3.2, §4.4, §5.1, `SIMULATION.md` §7.4–7.6):
- * Builder Drone unit row; Pylon T1, Capacitor T1, Wind T1, Thermal T1, Supply Depot T1, Minerals Quarry T1,
+ * Pylon T1, Capacitor T1, Wind T1, Thermal T1, Supply Depot T1, Minerals Quarry T1,
  * Water Extractor T1, Petroleum Well T1 building rows; and W03 queue/earmark/grid parameters.
+ * Worker Drone T2 lives in `unitsWorkersBasic.t2`, not in this table.
  */
 export default defineTable({
   name: 'grid',
   summary:
-    'Builder Drone unit row, Pylon T1, Capacitor T1, Wind T1, Thermal T1, Supply Depot T1, Minerals Quarry T1, Water Extractor T1, Petroleum Well T1, and W03 queue/earmark config (W03).',
+    'Pylon T1, Capacitor T1, Wind T1, Thermal T1, Supply Depot T1, Minerals Quarry T1, Water Extractor T1, Petroleum Well T1, and W03 queue/earmark config (W03).',
   units: {
     buildS: 'seconds',
     speedTilesPerS: 'perSecond',
+    harvestRatePerS: 'resourceFlow',
     outputPerS: 'resourceFlow',
     fuelPerS: 'resourceFlow',
     earmarkAfterS: 'seconds',
   },
   rows: [
-    {
-      id: 'builder',
-      wave: 'W03',
-      kind: 'unit',
-      unit: 'builder',
-      label: 'Builder Drone',
-      archetype: 'robot.builder',
-      tier: 1,
-      unlockStage: 2,
-      builtAt: 'commandHub',
-      buildS: 12,
-      designBuildS: 12,
-      cost: {
-        'metals.t1': 45,
-        'minerals.t1': 25,
-        'bio.biomass': 10,
-        'bio.water': 0,
-      },
-      supply: 1,
-      powerDrainPerS: 3,
-      hp: 150,
-      speedTilesPerS: 1.5,
-      designSpeedTilesPerS: 1.5,
-      viewRadius: 7,
-      radius: 0.4,
-      workRate: 1.0,
-      repairRateMultiplier: 1.5,
-      maxBuildTier: 1,
-      maxRepairTier: 3,
-      buildReachMin: 1,
-      buildReachTiles: 1,
-      terraformReachMin: 0,
-      terraformReachTiles: 1,
-      lanes: ['construction'],
-    },
     {
       id: 'pylon',
       wave: 'W03',
@@ -60,7 +27,7 @@ export default defineTable({
       label: 'Power Pylon',
       archetype: 'building.pylon',
       tier: 1,
-      unlockStage: 1,
+      unlockStage: 2,
       footprint: 1,
       footprintW: 1,
       footprintD: 1,
@@ -149,7 +116,7 @@ export default defineTable({
       label: 'Thermal Plant',
       archetype: 'building.coalGen',
       tier: 1,
-      unlockStage: 2,
+      unlockStage: 3,
       footprint: 2,
       footprintW: 2,
       footprintD: 2,
@@ -241,7 +208,7 @@ export default defineTable({
       label: 'Water Extractor',
       archetype: 'building.waterPump',
       tier: 1,
-      unlockStage: 1,
+      unlockStage: 2,
       footprint: 2,
       footprintW: 2,
       footprintD: 2,

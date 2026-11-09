@@ -35,7 +35,7 @@ function makeTestPlanet(radius = 20): PlanetState {
 
 function claimTerritoryRadiusForTest(state: PlanetState, colonyIndex: number, cq: number, cr: number, radius: number): void {
   const hx = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const terrainLayer = state.grid.layers.terrain as Uint8Array;
   const prepLayer = state.grid.layers.prep as Uint8Array;
   for (let i = 0; i < state.grid.count; i++) {
@@ -165,7 +165,7 @@ describe('W08-24 · Safety floors: repair >= 8000 bp and defense under attack >=
   it('Acceptance check: defense=0 under active attack still scores defense >= 8000 bp (+1000 bp when away)', () => {
     const state = makeTestPlanet();
     spawnEntity(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0 });
-    spawnEntity(state, { kind: ENTITY_KIND.harvester, owner: 1, q: 6, r: 0, hp: 120, hpMax: 120 });
+    spawnEntity(state, { kind: ENTITY_KIND.worker, owner: 1, q: 6, r: 0, hp: 120, hpMax: 120 });
 
     const weighted = evaluateWeightedColonyNeeds(state, 0, {
       economy: 50,
@@ -247,7 +247,7 @@ describe('W08-24 · Deterministic site selection (SIM-R-05 / SIM-R-06)', () => {
     expect(chosen!.r).toBe(-4);
   });
 
-  it('prefers valid buildable owned tiles at optimal distance (2..6 hexes) without blocking deposits', () => {
+  it('prefers valid buildable owned tiles around the hub (lane gap, organic 3..8 hex band) without blocking deposits', () => {
     const state = makeTestPlanet();
     claimTerritoryRadiusForTest(state, 0, 0, 0, 10);
     spawnEntity(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0, hp: 1500, hpMax: 1500 });
@@ -262,8 +262,8 @@ describe('W08-24 · Deterministic site selection (SIM-R-05 / SIM-R-06)', () => {
     for (const kind of ['solar', 'wind', 'depot', 'roboticsFactory']) {
       const site = selectDeterministicBuildSite(state, 0, kind);
       expect(site, `expected site for ${kind}`).not.toBeNull();
-      expect(site!.distanceToHub).toBeGreaterThanOrEqual(2);
-      expect(site!.distanceToHub).toBeLessThanOrEqual(6);
+      expect(site!.distanceToHub).toBeGreaterThanOrEqual(3);
+      expect(site!.distanceToHub).toBeLessThanOrEqual(8);
       expect(site!.tileIndex).not.toBe(depIdx);
     }
   });

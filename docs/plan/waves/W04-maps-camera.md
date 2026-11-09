@@ -96,7 +96,7 @@ Layers and markers belonging to waves that are not enabled stay hidden. W04 depe
 | W04-20 | Click-to-fly: click a map point → close the overlay and ease the camera there (instant with reduced motion) | client | S | H+ | W04-14, W04-26 | Click a far tile → see the overlay close and the camera arrive within 0.6 s | CLIENT §8b, §11 | TA-15.7 |
 | W04-21 | Order hook: shift-click on the minimap or global map emits `mapOrderIntent {x, y, kind}` for the current selection; W07 binds rally and attack-move to it | client | S |  | W04-20, W04-23 | Shift-click with the HQ selected → see a `mapOrderIntent` logged in the dev console | CLIENT §8b, UO-M | TA-15.7 |
 | W04-22 | Redraw scheduler: coalesce deltas, ≤ 2 Hz for the global map and ≤ 4 Hz for the minimap, paused when the tab is hidden | client | S | H | W04-03 | Spawn 300 moving units → see the redraw counters stay at ≤ 2 Hz / ≤ 4 Hz | CLIENT §8b, §9 | TA-15.6 |
-| W04-23 | Selection core (extends W01-26's click-select of the HQ): shift-add, box select (screen-space rect over instanced entities), double-click selects the same type on screen; selection store | client | M | H+ | W01-26 | Box-select 5 harvesters (scenario) → see 5 selection rings and "5 selected" | CLIENT §8 | TA-11.6 |
+| W04-23 | Selection core (extends W01-26's click-select of the HQ): shift-add, box select (screen-space rect over instanced entities), double-click selects the same type on screen; selection store | client | M | H+ | W01-26 | Box-select 5 Worker Drones (scenario) → see 5 selection rings and "5 selected" | CLIENT §8 | TA-11.6 |
 | W04-24 | Selection rings and selection panel (single: name, HP, task; multi: type counts), Faction Plate | client | S | H+ | W04-23 | Select the Hub → see its name, HP and queue summary in the panel | CLIENT §8, CLAUDE.md | TA-11.7 |
 | W04-25 | Control groups: `Ctrl+1..9` assign, `1..9` recall, double-press centres the camera; groups survive reconnect (client memory) | client | S |  | W04-23 | Assign the HQ to group 1, deselect, press 1 twice → see the HQ selected and centred | CLIENT §11 | — |
 | W04-26 | Move the existing `frontend/game/app/RTSCamera.ts` to `frontend/game/camera/`; add `flyTo(target, ms)` with easing; turn the hero-only `followTarget` (`Home` / held `F`) into a `follow(entity)` toggle on `F` bound to the selection store | client | S | H+ | W01-26 | Select the HQ, press `F` → see the camera follow the walking HQ | AGENTS.md Pillar 4 | TA-11.5 |
@@ -115,3 +115,8 @@ Layers and markers belonging to waves that are not enabled stay hidden. W04 depe
 - With `TA_WAVES=..03` there is no minimap, no global map and no `M` handling, and the camera behaves as in W01.
 - Tag `wave-04` exists.
 - Every row of the features table is covered by a closed issue.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope:** Telephoto diorama camera, minimap, and global planetary map with pluggable data layers (resources, power, sectors, shields, bounties, markets).
+2. **Test Pyramid & Online E2E (`tests/e2e/w04.spec.ts`):** Unit specs for coordinate projection, fog-of-war visibility, and layer registry + online Playwright E2E + `TA_WAVES=..03` flag-off check.

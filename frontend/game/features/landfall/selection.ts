@@ -1,22 +1,25 @@
-import { ENTITY_KIND, ENTITY_STATE, entityFootprint, getBuildingFootprintTiles, hexDistance, occupiesGround, type CompiledDataLike, type ViewEntity } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, entityFootprint, getBuildingFootprintTiles, occupiesGround, type CompiledDataLike, type ViewEntity } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
 import { forEachEntity, type ClientView } from '../../store/replica/viewCodec';
-import { viewColony } from '../shared/colony';
 import { extractHqFromView, type HqStatusView } from '../shared/hqView';
 import { resolvePointerTile, type TilePickerFn } from '../shared/pointer';
+import type { ExtractorTierView } from './extractorTierView';
 import {
-  buildSelectedEntityFromRow,
-  buildSupplementalUnitMap,
+  extractSelectableEntities,
+  isTileNearHq,
+  unitFailureFromView,
+} from './parts/selectionEntityBuilder';
+import {
   enrichHqSelectedView,
   hubUnitsLaneTaskId,
   inspectDepositAt,
   isBuildingCoveringTile,
-  normalizeEntityRowWithSupplements,
   type SelectedDepositView,
 } from './selectionHelpers';
 
 export { extractHqFromView, hqJobFromStateCode, type HqPanelJob, type HqStatusView } from '../shared/hqView';
+export { extractSelectableEntities, isTileNearHq, unitFailureFromView } from './parts/selectionEntityBuilder';
 export { inspectDepositAt, resolveEntityActivityProgress, type SelectedDepositView } from './selectionHelpers';
 
 export interface SelectedEntityView {
@@ -41,8 +44,8 @@ export interface SelectedEntityView {
   footprintD?: number;
   state?: number;
   progress?: number;
-  /** The unit's current or queued job is terraform work (order / work job): CANCEL is shown and ends it on the host. */
   terraformJob?: boolean;
+  extractorTier?: ExtractorTierView;
 }
 
 export interface StoreLike {
@@ -78,69 +81,12 @@ export interface UnitFailureView {
   source: string;
 }
 
-/** The last failed command of unit `id` in a view, or null. */
-export function unitFailureFromView(view: unknown, id: number): UnitFailureView | null {
-  const units = (view as { blobs?: { units?: { byId?: Record<string, { lastFailure?: UnitFailureView | null }> } } } | null)?.blobs?.units;
-  const f = units?.byId?.[String(id)]?.lastFailure;
-  return f && typeof f.tick === 'number' && typeof f.code === 'string' ? f : null;
-}
-
 export type LandfallListener = (snapshot: {
   hq: HqStatusView | null;
   selectedEntityId: number | null;
   selectedEntity: SelectedEntityView | null;
   selectedDeposit: SelectedDepositView | null;
 }) => void;
-
-export function isTileNearHq(hq: HqStatusView, q: number, r: number, maxDist = 1): boolean {
-  return (
-    hexDistance(q, r, hq.q, hq.r) <= maxDist ||
-    hexDistance(q, r, Math.round(hq.x), Math.round(hq.y)) <= maxDist
-  );
-}
-
-export function extractSelectableEntities(
-  rawView: unknown,
-  ownerColonyIndex?: number,
-  hq?: HqStatusView | null,
-): Map<number, SelectedEntityView> {
-  const out = new Map<number, SelectedEntityView>();
-  const resolvedHq = hq === undefined ? extractHqFromView(rawView, ownerColonyIndex) : hq;
-  if (resolvedHq) out.set(resolvedHq.entityId, enrichHqSelectedView(resolvedHq, rawView));
-  if (!rawView || typeof rawView !== 'object') return out;
-  const view = rawView as { entities?: Float32Array | ViewEntity[] | Record<string, unknown>; count?: number; blobs?: Record<string, unknown> } & Record<string, unknown>;
-  const owner = ownerColonyIndex ?? resolvedHq?.owner ?? 0;
-  const col = viewColony(view, owner) as Record<string, unknown> | undefined;
-  const powerBlob = (view.blobs?.power as { byColony?: Record<number, { offlineReasons?: Record<number, string> }> } | undefined)?.byColony?.[owner];
-  const colPower = col?.power as { offlineReasons?: Record<number, string> } | undefined;
-  const offlineReasons = colPower?.offlineReasons ?? powerBlob?.offlineReasons ?? {};
-  const unitsById = ((view.blobs?.units as { byId?: Record<string, { current?: unknown; queue?: unknown[] }> } | undefined)?.byId) ?? {};
-  const supMap = buildSupplementalUnitMap(view);
-
-  const addRaw = (raw: Record<string, unknown>) => {
-    const id = Number(raw.id ?? raw.entityId ?? 0);
-    const row = normalizeEntityRowWithSupplements(raw, supMap.get(id));
-    if (ownerColonyIndex !== undefined && row.owner !== ownerColonyIndex) return;
-    if (row.kind === ENTITY_KIND.hq) {
-      if (resolvedHq) out.set(resolvedHq.entityId, enrichHqSelectedView(resolvedHq, rawView));
-      return;
-    }
-    const sel = buildSelectedEntityFromRow(row, rawView, offlineReasons, unitsById);
-    if (sel) out.set(sel.entityId, sel);
-  };
-
-  if (view.entities instanceof Float32Array || Array.isArray(view.entities)) {
-    forEachEntity(view.entities, view.count, (e) => addRaw(e as unknown as Record<string, unknown>));
-  } else if (view.entities && typeof view.entities === 'object') {
-    for (const [k, v] of Object.entries(view.entities)) {
-      if (v && typeof v === 'object') addRaw({ id: Number(k), ...(v as Record<string, unknown>) });
-    }
-  }
-  for (const [id, sup] of supMap.entries()) {
-    if (!out.has(id)) addRaw(sup);
-  }
-  return out;
-}
 
 /** A second right-click order on the same tile within this window is the same click reported twice. */
 export const RIGHT_CLICK_DEDUPE_MS = 400;
@@ -194,15 +140,11 @@ export class LandfallController {
     for (const fn of this.listeners) fn(snap);
   }
 
-  getOwnerColonyIndex(): number | undefined {
-    return this.ownerColonyIndex;
-  }
+  getOwnerColonyIndex(): number | undefined { return this.ownerColonyIndex; }
 
   setOwnerColonyIndex(colonyIndex: number | undefined): void {
     this.ownerColonyIndex = colonyIndex;
-    if (this.opts.store?.latest) {
-      this.onView(this.opts.store.latest);
-    }
+    if (this.opts.store?.latest) this.onView(this.opts.store.latest);
   }
 
   onView(view: unknown): void {
@@ -303,9 +245,9 @@ export class LandfallController {
     return (this.selectedEntityId !== null && this.getSelectedEntity() !== null) || this.selectedDeposit !== null;
   }
 
-  getSelectedEntityId(): number | null {
-    return this.selectedEntityId;
-  }
+  getSelectedEntityId(): number | null { return this.selectedEntityId; }
+  getSelectedDeposit(): SelectedDepositView | null { return this.selectedDeposit; }
+  getHq(): HqStatusView | null { return this.latestHq; }
 
   getSelectedEntity(): SelectedEntityView | null {
     if (this.selectedEntityId === null) return null;
@@ -315,14 +257,6 @@ export class LandfallController {
       return enrichHqSelectedView(this.latestHq, this.latestView ?? this.opts.store?.latest);
     }
     return null;
-  }
-
-  getSelectedDeposit(): SelectedDepositView | null {
-    return this.selectedDeposit;
-  }
-
-  getHq(): HqStatusView | null {
-    return this.latestHq;
   }
 
   isTileBlockedByBuilding(q: number, r: number): boolean {
@@ -372,7 +306,7 @@ export class LandfallController {
       ? `building:${sel.entityId}`
       : !sel.isUnit && sel.kind === ENTITY_KIND.commandHub // the Hub's job is its Units lane, never every lane ('all')
         ? hubUnitsLaneTaskId(this.latestView ?? this.opts.store?.latest, this.getOwnerColonyIndex() ?? 0)
-        : `harvester:${sel.entityId}`;
+        : `worker:${sel.entityId}`;
     if (taskId === null) return false;
     if (this.opts.store?.sendCommand) {
       this.opts.store.sendCommand({ type: 'cancelTask', taskId });

@@ -13,6 +13,7 @@ export default tseslint.config(
       'frontend/dist/**',
       '**/generated/**',
       '.agents/**',
+      '.claude/**',
       'docs/**',
       'tests/e2e/.out/**',
       'tests/.out/**',

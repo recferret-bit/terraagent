@@ -1,9 +1,10 @@
-import { ENTITY_STATE } from '../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../ecs/columns';
 import { rowOf, setField } from '../ecs/store';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { DEPOSIT } from '../grid/layers';
 import type { StepContext } from '../kernel/context';
 import type { PlanetState } from '../kernel/state';
+import { applyDamage, retreatHqToSafety } from '../systems/combat/damage';
 import { setUnitActivity } from './approach';
 import { UnitBook } from './book';
 import { mobileStats, notifyUnitChanged } from './mobility';
@@ -39,7 +40,11 @@ const isOut = (state: PlanetState, row: number): boolean => {
 };
 
 function propose(reg: UnitRegistry, u: UnitCtx, book: UnitBook): UnitCommand | null {
-  if (u.ctx.tick < u.record.holdUntil) return null;
+  if (u.ctx.tick < u.record.holdUntil || u.record.reserve) return null; // on hold, or in reserve (no work)
+  if (u.ctx.flags.has('W07') && u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq) {
+    const hpMax = Math.max(1, u.state.entities.cols.hpMax[u.row]);
+    if (u.state.entities.cols.hp[u.row] / hpMax < 0.4) return null;
+  }
   for (const [key, until] of Object.entries(u.record.skip)) {
     if (until > u.ctx.tick) continue;
     delete u.record.skip[key];
@@ -65,20 +70,31 @@ function backOff(reg: UnitRegistry, u: UnitCtx, cmd: UnitCommand): void {
   u.record.skip[key] = u.ctx.tick + Math.min(u.stats.retryTicks * (1 << Math.min(n - 1, 20)), Math.max(u.stats.retryTicks, u.stats.retryMaxTicks));
 }
 
+function isClientVisibleCommand(cmd: UnitCommand | null | undefined): boolean {
+  if (!cmd) return false;
+  if (cmd.source !== 'auto') return true;
+  return cmd.kind === 'build' || cmd.kind === 'terraform' || cmd.kind === 'attack';
+}
+
 /** Ends the current command and lines up the next one (queue first, then auto work) without executing it yet. */
 function finish(reg: UnitRegistry, u: UnitCtx, book: UnitBook, status: Exclude<UnitCommandStatus, 'running'>): void {
   const rec = u.record;
   const cur = rec.current;
+  let needsStamp = isClientVisibleCommand(cur);
   if (cur && status === 'failed') {
     if (cur.source === 'auto') backOff(reg, u, cur);
-    else rec.lastFailure = { code: 'no_path', tick: u.ctx.tick, kind: cur.kind, source: cur.source };
+    else {
+      rec.lastFailure = { code: 'no_path', tick: u.ctx.tick, kind: cur.kind, source: cur.source };
+      needsStamp = true;
+    }
   } else if (cur && rec.fails) {
     delete rec.fails[commandKey(reg, cur)];
   }
   rec.current = null; // before proposing: a provider must not hand back the command that just ended
   rec.current = rec.queue.shift() ?? propose(reg, u, book);
+  if (isClientVisibleCommand(rec.current)) needsStamp = true;
   cancelMove(u.state, u.id, u.ctx.tick);
-  book.touch();
+  book.touch(needsStamp);
   if (!rec.current) {
     const cols = u.state.entities.cols;
     setUnitActivity(u, ENTITY_STATE.idle, cols.q[u.row], cols.r[u.row]);
@@ -95,20 +111,25 @@ function runCurrent(reg: UnitRegistry, u: UnitCtx, book: UnitBook): void {
 
 function think(reg: UnitRegistry, u: UnitCtx, book: UnitBook): void {
   const rec = u.record;
+  if (rec.reserve?.mode === 'activating' && u.ctx.tick >= rec.reserve.readyAt) {
+    delete rec.reserve; // deployment delay over
+    book.touch();
+  }
   if (!rec.current && rec.queue.length > 0) {
     rec.current = rec.queue.shift() ?? null;
     book.touch();
   }
-  if (!rec.current || rec.current.source === 'auto') {
+  if (!rec.current || (rec.current.source === 'auto' && rec.current.kind !== 'move')) {
     const next = propose(reg, u, book);
     if (!next) {
       if (rec.current) finish(reg, u, book, 'done'); // the auto work is gone (done elsewhere or cancelled)
       return;
     }
     if (!rec.current || commandKey(reg, rec.current) !== commandKey(reg, next)) {
+      const needsStamp = isClientVisibleCommand(rec.current) || isClientVisibleCommand(next);
       rec.current = next;
       cancelMove(u.state, u.id, u.ctx.tick);
-      book.touch();
+      book.touch(needsStamp);
     }
   }
   runCurrent(reg, u, book);
@@ -123,6 +144,17 @@ export function stepUnits(reg: UnitRegistry, state: PlanetState, ctx: StepContex
     const u = unitCtx(state, ctx, book, row);
     if (!u) continue;
     if (e.cols.hp[row] <= 0) {
+      if (ctx.flags.has('W07')) {
+        if (e.cols.kind[row] === ENTITY_KIND.hq) {
+          setField(e, row, 'hp', 1, ctx.tick);
+          retreatHqToSafety(state, row, ctx.tick, ctx);
+        } else {
+          applyDamage(state, e.cols.id[row], 1, { tick: ctx.tick, ctx, data: ctx.data });
+          row--;
+        }
+        book.touch();
+        continue;
+      }
       reg.commands.get('die')?.execute(u, { kind: 'die', source: 'auto' });
       book.touch();
       continue;
@@ -175,7 +207,8 @@ export function stepUnitWork(reg: UnitRegistry, phase: UnitWorkPhase, state: Pla
   for (let row = 0; row < e.count; row++) {
     if (isOut(state, row) || e.cols.hp[row] <= 0) continue;
     const id = e.cols.id[row];
-    const cur = book.peek(id)?.current;
+    const rec = book.peek(id);
+    const cur = rec?.reserve ? null : rec?.current; // a unit in reserve neither attacks nor works
     const def = cur ? reg.commands.get(cur.kind) : undefined;
     if (!cur || !def?.work || def.phase !== phase) continue;
     const u = unitCtx(state, ctx, book, row);
@@ -205,8 +238,10 @@ export function issueUnitCommand(
   if (state.entities.cols.state[row] === ENTITY_STATE.inert || state.entities.cols.hp[row] <= 0) return 'invalid_args';
   const def = reg.commands.get(cmd.kind);
   if (!def) return 'unknown_kind';
+  if (u.record.reserve && def.work) return 'invalid_args'; // reserve: no attack / build / terraform (move and retreat stay)
   const code = def.validate?.(u, cmd as never);
   if (code) return code;
+  const prevCmd = u.record.current;
   if (def.immediate) {
     def.execute(u, cmd as never);
   } else if (opts.queue && u.record.current) {
@@ -216,6 +251,6 @@ export function issueUnitCommand(
     u.record.queue = [];
     cancelMove(state, u.id, ctx.tick);
   }
-  book.touch();
+  book.touch(isClientVisibleCommand(prevCmd) || isClientVisibleCommand(cmd));
   book.flush(ctx.tick);
 }

@@ -7,12 +7,14 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { revealVision } from '../hq';
 
-export type HarvesterJob = 'idle' | 'moving' | 'harvesting' | 'working' | 'offlineBrownout';
+export type WorkerTier = 1 | 2 | 3;
 
-export interface HarvesterUnitView {
+export type WorkerJob = 'idle' | 'moving' | 'harvesting' | 'working' | 'constructing' | 'repairing' | 'offlineBrownout';
+
+export interface WorkerUnitView {
   entityId: number;
   kind: number;
-  unit: 'harvester';
+  unit: 'worker';
   label: string;
   archetype: string;
   owner: number;
@@ -32,64 +34,106 @@ export interface HarvesterUnitView {
   harvestRatePerS: number;
   workRate: number;
   maxBuildTier: number;
+  maxTerraformTier: number;
   cost: Record<string, number>;
   buildS: number;
   designBuildS: number;
   targetQ: number;
   targetR: number;
   state: number;
-  currentJob: HarvesterJob;
+  currentJob: WorkerJob;
   progress: number;
-  task: HarvesterJob;
+  task: WorkerJob;
   carrying: number;
 }
 
-export interface SpawnHarvesterOpts {
+export interface SpawnWorkerOpts {
   owner: number;
   q: number;
   r: number;
+  /** 1, 2, or 3. Missing means tier 1. */
+  tier?: WorkerTier;
   tick?: number;
   data?: CompiledDataLike;
 }
 
 let cachedW02Data: CompiledDataLike | null = null;
+let cachedAllWorkerData: CompiledDataLike | null = null;
 
 export function defaultW02Data(): CompiledDataLike {
   if (!cachedW02Data) cachedW02Data = compileData(new Set(['W00', 'W01', 'W02']));
   return cachedW02Data;
 }
 
-export function resolveHarvesterRow(data?: CompiledDataLike): CompiledRow {
-  const table = data?.tables.unitsWorkersBasic as Record<string, CompiledRow> | undefined;
-  if (table?.harvester) return table.harvester;
-  return dataRow(defaultW02Data(), 'unitsWorkersBasic', 'harvester');
+/** Compiled rows for every worker tier (direct spawns when the caller passes no data). */
+export function defaultWorkerData(): CompiledDataLike {
+  if (!cachedAllWorkerData) cachedAllWorkerData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W05']));
+  return cachedAllWorkerData;
 }
 
-export function harvesterJobFromState(stateCode: number): HarvesterJob {
+/** The Worker Drone (`ENTITY_KIND.worker`): harvests, builds and terraforms (W05-02). The HQ is not one. */
+export function isWorker(kind: number): boolean {
+  return kind === ENTITY_KIND.worker;
+}
+
+/** A unit that takes colony work (build, terraform, repair, dismantle): the HQ or a Worker Drone. */
+export function isCrewKind(kind: number): boolean {
+  return kind === ENTITY_KIND.hq || kind === ENTITY_KIND.worker;
+}
+
+export function workerTierOf(tier: number | undefined): WorkerTier {
+  if (tier === 2 || tier === 3) return tier;
+  return 1;
+}
+
+export function workerRowId(tier: number | undefined): 't1' | 't2' | 't3' {
+  const t = workerTierOf(tier);
+  return t === 1 ? 't1' : t === 2 ? 't2' : 't3';
+}
+
+function workersTable(data?: CompiledDataLike): Record<string, CompiledRow> | undefined {
+  return data?.tables?.unitsWorkersBasic as Record<string, CompiledRow> | undefined;
+}
+
+/** The tier's balance row. Falls back to the default compile when `data` omits that wave. */
+export function resolveWorkerRow(data: CompiledDataLike | undefined, tier: number | undefined = 1): CompiledRow {
+  const id = workerRowId(tier);
+  const row = workersTable(data)?.[id];
+  if (row) return row;
+  if (id === 't1') return dataRow(defaultW02Data(), 'unitsWorkersBasic', 't1');
+  return dataRow(defaultWorkerData(), 'unitsWorkersBasic', id);
+}
+
+/**
+ * The tier's row in the active compile. `null` when that wave is off.
+ * Omitted `data` uses {@link defaultWorkerData} (every tier present).
+ */
+export function resolveProducedWorkerRow(data: CompiledDataLike | undefined, tier: number | undefined): CompiledRow | null {
+  if (!data?.tables?.unitsWorkersBasic) return resolveWorkerRow(undefined, tier);
+  return workersTable(data)?.[workerRowId(tier)] ?? null;
+}
+
+export function workerJobFromState(stateCode: number): WorkerJob {
   if (stateCode === ENTITY_STATE.moving) return 'moving';
   if (stateCode === ENTITY_STATE.harvesting) return 'harvesting';
   if (stateCode === ENTITY_STATE.working) return 'working';
+  if (stateCode === ENTITY_STATE.constructing) return 'constructing';
+  if (stateCode === ENTITY_STATE.repairing) return 'repairing';
   if (stateCode === ENTITY_STATE.offlineBrownout) return 'offlineBrownout';
   return 'idle';
 }
 
-export function buildHarvesterView(
-  state: PlanetState,
-  row: number,
-  data?: CompiledDataLike,
-): HarvesterUnitView {
+export function buildWorkerView(state: PlanetState, row: number, data?: CompiledDataLike): WorkerUnitView {
   const cols = state.entities.cols;
-  const hRow = resolveHarvesterRow(data);
-  const currentJob = harvesterJobFromState(cols.state[row]);
-  const cost = (hRow.cost ?? {}) as Record<string, number>;
-  const progress = Number(cols.progress?.[row] ?? 0);
-  const carrying = Number(cols.cell?.[row] ?? 0);
+  const spec = resolveWorkerRow(data, cols.tier[row] || 1);
+  const currentJob = workerJobFromState(cols.state[row]);
+  const cost = (spec.cost ?? {}) as Record<string, number>;
   return {
     entityId: cols.id[row],
     kind: cols.kind[row],
-    unit: 'harvester',
-    label: String(hRow.label ?? 'Harvester Drone'),
-    archetype: String(hRow.archetype ?? 'robot.miner'),
+    unit: 'worker',
+    label: String(spec.label ?? 'Worker Drone T1'),
+    archetype: String(spec.archetype ?? 'robot.miner'),
     owner: cols.owner[row],
     tier: cols.tier[row],
     q: cols.q[row],
@@ -98,39 +142,34 @@ export function buildHarvesterView(
     y: cols.y[row],
     hp: cols.hp[row],
     hpMax: cols.hpMax[row],
-    supply: Number(hRow.supply ?? 1),
-    powerDrainPerS: Number(hRow.powerDrainPerS ?? 1.5),
-    speedTilesPerS: Number(hRow.designSpeedTilesPerS ?? 1.5),
-    designSpeedTilesPerS: Number(hRow.designSpeedTilesPerS ?? 1.5),
-    viewRadius: Number(hRow.viewRadius ?? 7),
-    radius: Number(hRow.radius ?? 0.4),
-    harvestRatePerS: Number(hRow.harvestRatePerS ?? 0.5),
-    workRate: Number(cols.workRate?.[row] ?? 1.0),
-    maxBuildTier: Number(hRow.maxBuildTier ?? 0),
+    supply: Number(spec.supply ?? 1),
+    powerDrainPerS: Number(spec.powerDrainPerS ?? 2),
+    speedTilesPerS: Number(spec.designSpeedTilesPerS ?? 1.5),
+    designSpeedTilesPerS: Number(spec.designSpeedTilesPerS ?? 1.5),
+    viewRadius: Number(spec.viewRadius ?? 7),
+    radius: Number(spec.radius ?? 0.4),
+    harvestRatePerS: Number(spec.harvestRatePerS ?? 0.5),
+    workRate: Number(cols.workRate?.[row] ?? spec.workRate ?? 1),
+    maxBuildTier: Number(spec.maxBuildTier ?? cols.tier[row] ?? 1),
+    maxTerraformTier: Number(spec.maxTerraformTier ?? cols.tier[row] ?? 1),
     cost: { ...cost },
-    buildS: Number(hRow.buildS ?? 50),
-    designBuildS: Number(hRow.designBuildS ?? 10),
+    buildS: Number(spec.buildS ?? 50),
+    designBuildS: Number(spec.designBuildS ?? 10),
     targetQ: cols.targetQ[row],
     targetR: cols.targetR[row],
     state: cols.state[row],
     currentJob,
-    progress,
+    progress: Number(cols.progress?.[row] ?? 0),
     task: currentJob,
-    carrying,
+    carrying: Number(cols.cell?.[row] ?? 0),
   };
 }
 
-export function syncHarvesterView(
-  state: PlanetState,
-  row: number,
-  tick: number,
-  data?: CompiledDataLike,
-): HarvesterUnitView {
-  const unitView = buildHarvesterView(state, row, data);
+export function syncWorkerView(state: PlanetState, row: number, tick: number, data?: CompiledDataLike): WorkerUnitView {
+  const unitView = buildWorkerView(state, row, data);
   const prevObj = (state.blobs.units?.value as Record<string, unknown> | undefined) ?? {};
   const prevById = (prevObj.byId as Record<string, Record<string, unknown>> | undefined) ?? {};
-  const idKey = String(unitView.entityId);
-  const existingRec = prevById[idKey];
+  const existingRec = prevById[String(unitView.entityId)];
   if (existingRec && typeof existingRec === 'object') {
     existingRec.progress = unitView.progress;
     existingRec.task = unitView.task;
@@ -143,7 +182,7 @@ export function syncHarvesterView(
   const owner = state.entities.cols.owner[row];
   if (owner >= 0 && state.colonies[owner]) {
     const col = state.colonies[owner];
-    col.harvesters = [...withoutUnitView(col.harvesters, unitView.entityId), unitView];
+    col.workers = [...withoutUnitView(col.workers, unitView.entityId), unitView];
     col.units = [...withoutUnitView(col.units, unitView.entityId), unitView];
     col.changedAt = tick;
   }
@@ -151,32 +190,30 @@ export function syncHarvesterView(
 }
 
 /**
- * The views of `list` (`col.harvesters` / `col.units`) other than `entityId`'s. Dense arrays only: an index alias
+ * The views of `list` (`col.workers` / `col.units`) other than `entityId`'s. Dense arrays only: an index alias
  * (`list[entityId] = view`) made the array sparse, and the snapshot codec saves its holes as `null`, so a restored
  * planet crashed here (`reading 'entityId'` of null). Non-object entries are dropped, which heals such snapshots.
  */
-export function withoutUnitView(list: unknown, entityId: number): HarvesterUnitView[] {
+export function withoutUnitView(list: unknown, entityId: number): WorkerUnitView[] {
   if (!Array.isArray(list)) return [];
   return (list as unknown[]).filter(
-    (u): u is HarvesterUnitView => !!u && typeof u === 'object' && (u as HarvesterUnitView).entityId !== entityId,
+    (u): u is WorkerUnitView => !!u && typeof u === 'object' && (u as WorkerUnitView).entityId !== entityId,
   );
 }
 
-export function spawnHarvesterUnit(
-  state: PlanetState,
-  opts: SpawnHarvesterOpts,
-  ctx?: StepContext,
-): number {
+/** Spawns one Worker Drone. `tier` is 1, 2, or 3 (default 1). Stats come from that tier's row. */
+export function spawnWorkerUnit(state: PlanetState, opts: SpawnWorkerOpts, ctx?: StepContext): number {
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const data = opts.data ?? ctx?.data;
-  const rowDef = resolveHarvesterRow(data);
+  const tier = workerTierOf(opts.tier);
+  const rowDef = resolveWorkerRow(data, tier);
   const id = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
   const row = insertRow(state.entities, id, tick);
   const cols = state.entities.cols;
 
-  cols.kind[row] = ENTITY_KIND.harvester;
+  cols.kind[row] = ENTITY_KIND.worker;
   cols.owner[row] = opts.owner;
-  cols.tier[row] = Number(rowDef.tier ?? 1);
+  cols.tier[row] = tier;
   placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = Math.fround(Number(rowDef.hp ?? 160));
@@ -192,42 +229,32 @@ export function spawnHarvesterUnit(
   cols.changedAt[row] = tick;
 
   revealVision(state, opts.owner, opts.q, opts.r, Number(rowDef.viewRadius ?? 7), tick);
-  syncHarvesterView(state, row, tick, data);
+  syncWorkerView(state, row, tick, data);
   return id;
 }
 
-export function getHarvesterView(
-  state: PlanetState,
-  entityId?: number,
-  data?: CompiledDataLike,
-): HarvesterUnitView | null {
+export function getWorkerView(state: PlanetState, entityId?: number, data?: CompiledDataLike): WorkerUnitView | null {
   const e = state.entities;
   const cols = e.cols;
   if (entityId !== undefined) {
     const row = rowOf(e, entityId);
-    if (row < 0 || cols.kind[row] !== ENTITY_KIND.harvester) return null;
-    return buildHarvesterView(state, row, data);
+    if (row < 0 || cols.kind[row] !== ENTITY_KIND.worker) return null;
+    return buildWorkerView(state, row, data);
   }
   for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] === ENTITY_KIND.harvester) {
-      return buildHarvesterView(state, row, data);
-    }
+    if (cols.kind[row] === ENTITY_KIND.worker) return buildWorkerView(state, row, data);
   }
   return null;
 }
 
-export function listHarvesterViews(
-  state: PlanetState,
-  owner?: number,
-  data?: CompiledDataLike,
-): HarvesterUnitView[] {
+export function listWorkerViews(state: PlanetState, owner?: number, data?: CompiledDataLike): WorkerUnitView[] {
   const e = state.entities;
   const cols = e.cols;
-  const out: HarvesterUnitView[] = [];
+  const out: WorkerUnitView[] = [];
   for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] !== ENTITY_KIND.harvester) continue;
+    if (cols.kind[row] !== ENTITY_KIND.worker) continue;
     if (owner !== undefined && cols.owner[row] !== owner) continue;
-    out.push(buildHarvesterView(state, row, data));
+    out.push(buildWorkerView(state, row, data));
   }
   return out;
 }

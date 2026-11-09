@@ -27,8 +27,8 @@ function setupColony(id: string) {
   return { state, colony };
 }
 
-describe('W03-13 Earmarks — 60s starvation earmark & Harvester drain protection', () => {
-  it('queue a 200-Minerals building at 40 Minerals, keep queueing 15-Minerals Harvesters -> after 60 s it earmarks 160 Minerals and eventually starts', () => {
+describe('W03-13 Earmarks — 60s starvation earmark & Worker drain protection', () => {
+  it('queue a 200-Minerals building at 40 Minerals, keep queueing 15-Minerals Workers -> after 60 s it earmarks 160 Minerals and eventually starts', () => {
     const { state, colony } = setupColony('p-earmark-accept');
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
     // a finished Command Hub: its power zone (radius 6) holds the Solar site at (2, 1); its supply is the colony's cap
@@ -57,7 +57,7 @@ describe('W03-13 Earmarks — 60s starvation earmark & Harvester drain protectio
     expect(bRes.entry.waitReason).toBe('resources');
     expect(bRes.entry.earmarked).toBeUndefined();
 
-    // Before 60 s (at t = 100 ticks = 20 s), a 15-Minerals Harvester CAN start (non-blocking before 60 s earmark),
+    // Before 60 s (at t = 100 ticks = 20 s), a 15-Minerals Worker CAN start (non-blocking before 60 s earmark),
     // and we replenish the 15 Minerals so stock is back at 40 Minerals at t = 300 (60 s)
     step(state, [], 100, pipeline);
     const hEarly = enqueueQueueTask(state, {
@@ -65,28 +65,28 @@ describe('W03-13 Earmarks — 60s starvation earmark & Harvester drain protectio
       taskId: 'harv-early',
       costOverride: { 'minerals.t1': 15 },
       tick: state.meta.tick,
-      task: { kind: 'buildUnit', unit: 'harvester' },
+      task: { kind: 'buildUnit', unit: 'worker' },
     });
     expect(hEarly.ok && hEarly.entry.state).toBe('in_progress');
     creditResource(colony, 'minerals.t1', 15, state.meta.tick);
-    step(state, [], 200, pipeline); // reaches tick = 300 (60 s), harvester finishes and stock is 40 Minerals
+    step(state, [], 200, pipeline); // reaches tick = 300 (60 s), worker finishes and stock is 40 Minerals
 
     const after60s = getColonyQueue(state, 0, 'construction').find((e) => e.taskId === 'heavy-minerals-bldg');
     expect(after60s?.state).toBe('waiting');
     expect(after60s?.earmarked).toEqual({ 'minerals.t1': 160 });
     expect((colony as { earmarks?: Record<string, number> }).earmarks).toEqual({ 'minerals.t1': 160 });
 
-    // Now keep queueing 15-Minerals Harvesters while Minerals trickle in (+40 Minerals per batch)
+    // Now keep queueing 15-Minerals Workers while Minerals trickle in (+40 Minerals per batch)
     for (let i = 0; i < 4; i++) {
       const h = enqueueQueueTask(state, {
         colonyIndex: 0,
         taskId: `harv-after-${i}`,
         costOverride: { 'minerals.t1': 15 },
         tick: state.meta.tick,
-        task: { kind: 'buildUnit', unit: 'harvester' },
+        task: { kind: 'buildUnit', unit: 'worker' },
       });
       expect(h.ok).toBe(true);
-      // Because the building has earmarked its 160 missing Minerals, the 15-Minerals Harvester waits!
+      // Because the building has earmarked its 160 missing Minerals, the 15-Minerals Worker waits!
       expect(h.ok && h.entry.state).toBe('waiting');
 
       creditResource(colony, 'minerals.t1', 40, state.meta.tick);

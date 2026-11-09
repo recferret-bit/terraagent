@@ -1,160 +1,36 @@
-import { RESOURCE_FAMILY_OF, type ResourceFamily, type ResourceKey } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
-import type { CompiledDataLike } from '../../kernel/config';
-import type { ColonyState, PlanetState } from '../../kernel/state';
+import type { PlanetState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
-import { BASE_HUB_STORAGE_CAP } from '../economy/ledger';
-import { getEnvironment } from '../environment';
 import { getHubUnitQueue } from '../factories-hub';
 import { computeColonySupply } from '../supply';
-import { computeSolarOutputPerS, resolvePowerRow, type ColonyPowerSummary } from '../power-core';
+import {
+  clampBp,
+  estimateEntityPower,
+  findColonyAnchors,
+  MAX_NEED_BP,
+  NEED_KEYS,
+  PRIMARY_STORAGE_RESOURCES,
+  readDeficitTicks,
+  readResourceStockAndCaps,
+  readStoredPower,
+  type ColonyNeedsDetail,
+  type ColonyNeedsScore,
+  type NeedKey,
+  type NeedsEvalInput,
+  type NeedsEvalOverrides,
+} from './parts/needsPowerAndStock';
 
-export const MAX_NEED_BP = 10000;
-export const NEED_KEYS = ['energy', 'storage', 'supply', 'extraction', 'defense', 'expand', 'repair'] as const;
-export type NeedKey = (typeof NEED_KEYS)[number];
-
-const PRIMARY_STORAGE_RESOURCES: readonly ResourceKey[] = ['metals.t1', 'minerals.t1', 'bio.water', 'bio.biomass'];
-
-export interface NeedsEvalInput {
-  data?: CompiledDataLike;
-  netPowerPerS?: number;
-  net?: number;
-  supplyPerS?: number;
-  supply?: number;
-  rawDemandPerS?: number;
-  rawDemand?: number;
-  demand?: number;
-  solarNetPerS?: number;
-  founderCorePerS?: number;
-  nightNetPerS?: number;
-  brownout?: boolean;
-  deficitTicks?: number;
-  stock?: Partial<Record<ResourceKey, number>>;
-  caps?: Partial<Record<ResourceFamily | ResourceKey, number>>;
-  storageFillRatio?: number;
-  maxStorageRatio?: number;
-  supplyUsed?: number;
-  supplyCap?: number;
-  producerIdle?: boolean;
-  factoryIdle?: boolean;
-  extractorCount?: number;
-  resourceIncomePerS?: Partial<Record<ResourceKey, number>> | number;
-  resourceSpendPerS?: Partial<Record<ResourceKey, number>> | number;
-  hostilesWithin15?: number;
-  underAttack?: boolean;
-  recentDamage?: number;
-  freeBuildableOwnedTiles?: number;
-  unclaimedDepositsWithin20?: number;
-  ownedDepositsAllOccupied?: boolean;
-  damagedEntities?: number;
-  severedEntities?: number;
-  minHpRatio?: number;
-}
-
-export type NeedsEvalOverrides = NeedsEvalInput;
-
-export interface ColonyNeedsDetail {
-  netPowerPerS: number;
-  nightNetPerS: number;
-  brownout: boolean;
-  deficitTicks: number;
-  maxStorageRatio: number;
-  supplyRatio: number;
-  supplyUsed: number;
-  supplyCap: number;
-  producerIdle: boolean;
-  extractorCount: number;
-  minResourceRatio: number;
-  netResourcePerS: number;
-  hostilesWithin15: number;
-  underAttack: boolean;
-  freeBuildableOwnedTiles: number;
-  unclaimedDepositsWithin20: number;
-  ownedDepositsAllOccupied: boolean;
-  damagedEntityCount: number;
-  severedEntityCount: number;
-  minHpRatio: number;
-}
-
-export interface ColonyNeedsScore {
-  colonyIndex: number;
-  energy: number;
-  storage: number;
-  supply: number;
-  extraction: number;
-  defense: number;
-  expand: number;
-  repair: number;
-  scores: Record<NeedKey, number>;
-  topNeed: NeedKey;
-  topScore: number;
-  detail: ColonyNeedsDetail;
-}
-
-function clampBp(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(MAX_NEED_BP, Math.round(value)));
-}
-
-function readStoredPower(state: PlanetState, colonyIndex: number): (Partial<ColonyPowerSummary> & Record<string, unknown>) | null {
-  const fromColony = state.colonies[colonyIndex]?.power;
-  if (fromColony && typeof fromColony === 'object') return fromColony as Partial<ColonyPowerSummary> & Record<string, unknown>;
-  const blobEntry = state.blobs.power;
-  if (!blobEntry || typeof blobEntry !== 'object') return null;
-  const val = ('value' in blobEntry && blobEntry.value && typeof blobEntry.value === 'object' ? blobEntry.value : blobEntry) as Record<string, unknown>;
-  const byColony = val.byColony as Record<string, unknown> | undefined;
-  const hit = byColony?.[String(colonyIndex)] ?? val[String(colonyIndex)];
-  return hit && typeof hit === 'object' ? (hit as Partial<ColonyPowerSummary> & Record<string, unknown>) : null;
-}
-
-function readDeficitTicks(state: PlanetState, colonyIndex: number, powerObj: Record<string, unknown> | null): number {
-  const col = state.colonies[colonyIndex];
-  if (typeof col?.brownoutTicks === 'number') return col.brownoutTicks;
-  if (typeof powerObj?.deficitTicks === 'number') return powerObj.deficitTicks;
-  if (typeof powerObj?.brownoutTicks === 'number') return powerObj.brownoutTicks;
-  const val = state.blobs.power?.value as { trackers?: Record<string, { brownoutTicks?: number }> } | undefined;
-  const tr = val?.trackers?.[String(colonyIndex)];
-  return typeof tr?.brownoutTicks === 'number' ? tr.brownoutTicks : 0;
-}
-
-function estimateEntityPower(state: PlanetState, colonyIndex: number, data?: CompiledDataLike): {
-  founderCorePerS: number;
-  solarNetPerS: number;
-  solarInternalDrainPerS: number;
-  supply: number;
-  rawDemand: number;
-} {
-  const hubRow = resolvePowerRow(data, 'hub', 't1');
-  const extRow = resolvePowerRow(data, 'economyT1Basic', 'metalsExtractor');
-  const harvRow = resolvePowerRow(data, 'unitsWorkersBasic', 'harvester');
-  const env = getEnvironment(state, data);
-  const cols = state.entities.cols;
-  let hubCount = 0, solarDrain = 0, solarNet = 0, onlineGen = 0, demand = 0;
-
-  for (let row = 0; row < state.entities.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    const kind = cols.kind[row], st = cols.state[row];
-    if (st === ENTITY_STATE.constructing || st === ENTITY_STATE.offlineUnpowered) continue;
-    if (kind === ENTITY_KIND.commandHub) {
-      hubCount++;
-    } else if (kind === ENTITY_KIND.solar) {
-      const out = computeSolarOutputPerS(env.daylight, state.meta.planetType, data);
-      solarDrain += out.internalDrain;
-      solarNet += out.net;
-      if (env.phase !== 'night' && env.daylight > 0.001 && out.net > 0) onlineGen += out.net;
-    } else if (kind === ENTITY_KIND.metalsExtractor) {
-      demand += Number(extRow.powerDrainPerS ?? 6);
-    } else if (kind === ENTITY_KIND.harvester) {
-      const full = Number(harvRow.powerDrainPerS ?? 1.5);
-      demand += st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout ? full * 0.5 : full;
-    }
-  }
-  const founderCorePerS = hubCount * Number(hubRow.founderCoreGenPerS ?? 8);
-  const hubDrain = hubCount * Number(hubRow.powerDrainPerS ?? 5);
-  return { founderCorePerS, solarNetPerS: solarNet, solarInternalDrainPerS: solarDrain, supply: founderCorePerS + onlineGen, rawDemand: hubDrain + demand };
-}
+export {
+  MAX_NEED_BP,
+  NEED_KEYS,
+  type ColonyNeedsDetail,
+  type ColonyNeedsScore,
+  type NeedKey,
+  type NeedsEvalInput,
+  type NeedsEvalOverrides,
+};
 
 export function scoreEnergyNeed(
   state: PlanetState,
@@ -166,8 +42,6 @@ export function scoreEnergyNeed(
   const supply = overrides?.supplyPerS ?? overrides?.supply ?? Number(stored?.supply ?? est?.supply ?? 0);
   const rawDemand = overrides?.rawDemandPerS ?? overrides?.rawDemand ?? overrides?.demand ?? Number(stored?.rawDemand ?? stored?.demand ?? est?.rawDemand ?? 0);
   const solarNetPerS = overrides?.solarNetPerS ?? Number(stored?.solarNetPerS ?? est?.solarNetPerS ?? 0);
-  const solarDrain = Number(stored?.solarInternalDrainPerS ?? est?.solarInternalDrainPerS ?? 0);
-  const founderCore = overrides?.founderCorePerS ?? Number(stored?.founderCorePerS ?? est?.founderCorePerS ?? 0);
   const netPowerPerS = overrides?.netPowerPerS ?? overrides?.net ?? Number(stored?.net ?? supply - rawDemand);
   const deficitTicks = overrides?.deficitTicks ?? readDeficitTicks(state, colonyIndex, stored);
   const brownout = overrides?.brownout ?? (Boolean(stored?.brownout) || deficitTicks > 0 || netPowerPerS < 0 || rawDemand > supply + 1e-6);
@@ -178,9 +52,11 @@ export function scoreEnergyNeed(
   } else if (typeof stored?.nightNetPerS === 'number') {
     nightNetPerS = stored.nightNetPerS;
   } else {
-    const nonSolarSupply = solarNetPerS !== 0
-      ? supply - Math.max(0, solarNetPerS) - solarDrain
-      : founderCore > 0 && founderCore < supply ? founderCore : supply;
+    // Storage discharge cannot sustain future demand. Keep wind and thermal output;
+    // solar switches off at night, including its internal drain.
+    const generation = overrides?.supplyPerS ?? overrides?.supply ?? stored?.generationPerS
+      ?? supply - Number(stored?.capacitorDischargePerS ?? 0) - Number(stored?.hqCellDischargePerS ?? 0);
+    const nonSolarSupply = generation - Math.max(0, solarNetPerS);
     nightNetPerS = nonSolarSupply - rawDemand;
   }
 
@@ -196,25 +72,6 @@ export function scoreEnergyNeed(
       : clampBp(Math.max(0, 2000 - Math.round((netPowerPerS - 5) * 100)));
   }
   return { score, netPowerPerS, nightNetPerS, brownout, deficitTicks };
-}
-
-function readResourceStockAndCaps(
-  colony: ColonyState | undefined,
-  overrides?: NeedsEvalInput,
-): { stock: Record<ResourceKey, number>; capFor: (key: ResourceKey) => number } {
-  const rawStock = (overrides?.stock ?? colony?.stock ?? {}) as Partial<Record<ResourceKey, number>>;
-  const rawCaps = (overrides?.caps ?? colony?.caps ?? {}) as Partial<Record<string, number>>;
-  const stock = {} as Record<ResourceKey, number>;
-  for (const key of PRIMARY_STORAGE_RESOURCES) {
-    stock[key] = typeof rawStock[key] === 'number' && Number.isFinite(rawStock[key]!) ? rawStock[key]! : 0;
-  }
-  const capFor = (key: ResourceKey): number => {
-    const direct = rawCaps[key];
-    if (typeof direct === 'number' && direct > 0) return direct;
-    const famCap = rawCaps[RESOURCE_FAMILY_OF[key]];
-    return typeof famCap === 'number' && famCap > 0 ? famCap : BASE_HUB_STORAGE_CAP;
-  };
-  return { stock, capFor };
 }
 
 export function scoreStorageNeed(
@@ -302,16 +159,43 @@ export function scoreExtractionNeed(
   return { score, extractorCount, minResourceRatio, netResourcePerS };
 }
 
-function findColonyAnchors(state: PlanetState, colonyIndex: number): Array<{ q: number; r: number }> {
+function countColonyDefenseAssets(
+  state: PlanetState,
+  colonyIndex: number,
+): { defenseCount: number; hasRoboticsFactory: boolean } {
   const cols = state.entities.cols;
-  const anchors: Array<{ q: number; r: number }> = [];
+  let defenseCount = 0;
+  let hasRoboticsFactory = false;
   for (let row = 0; row < state.entities.count; row++) {
-    if (cols.owner[row] === colonyIndex && cols.hp[row] > 0) anchors.push({ q: cols.q[row], r: cols.r[row] });
+    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
+    const st = cols.state[row];
+    if (st === ENTITY_STATE.constructing || st === ENTITY_STATE.waiting || st === ENTITY_STATE.inert) continue;
+    const k = cols.kind[row];
+    if (k === ENTITY_KIND.roboticsFactory) hasRoboticsFactory = true;
+    if (
+      k === ENTITY_KIND.autocannon ||
+      k === ENTITY_KIND.laserTower ||
+      k === ENTITY_KIND.recon ||
+      k === ENTITY_KIND.demoTank ||
+      k === ENTITY_KIND.demoArtillery
+    ) {
+      defenseCount++;
+    }
   }
-  if (anchors.length === 0) anchors.push({ q: 0, r: 0 });
-  return anchors;
+  return { defenseCount, hasRoboticsFactory };
 }
 
+function isNeutralPassiveFaunaRow(state: PlanetState, row: number, colonyIndex: number): boolean {
+  const cols = state.entities.cols;
+  if (cols.owner[row] >= 0) return false;
+  const id = cols.id[row];
+  const aggBlob = state.blobs.faunaAggression?.value as
+    | { byEntityId?: Record<number, { aggressiveColonies?: number[] }> }
+    | undefined;
+  const entry = aggBlob?.byEntityId?.[id];
+  if (!entry) return false;
+  return !Array.isArray(entry.aggressiveColonies) || !entry.aggressiveColonies.includes(colonyIndex);
+}
 export function scoreDefenseNeed(
   state: PlanetState,
   colonyIndex: number,
@@ -326,6 +210,7 @@ export function scoreDefenseNeed(
     if (cols.owner[row] === colonyIndex || cols.state[row] === ENTITY_STATE.inert) continue;
     if (cols.kind[row] === ENTITY_KIND.devProbe || cols.kind[row] === ENTITY_KIND.pod) continue;
     if (cols.hp[row] <= 0 && cols.hpMax[row] > 0) continue;
+    if (isNeutralPassiveFaunaRow(state, row, colonyIndex)) continue;
     let minDist = 999;
     for (const a of anchors) {
       const dq = cols.q[row] - a.q, dr = cols.r[row] - a.r;
@@ -347,6 +232,12 @@ export function scoreDefenseNeed(
     const proxBonus = closestDist <= 15 ? Math.round(((15 - closestDist) / 15) * 1000) : 500;
     const countBonus = Math.min(1000, Math.max(0, hostilesWithin15 - 1) * 300 + (underAttack ? 500 : 0));
     score = clampBp(8000 + proxBonus + countBonus);
+  } else {
+    const { defenseCount, hasRoboticsFactory } = countColonyDefenseAssets(state, colonyIndex);
+    const stage = Math.max(Number(colony?.stage ?? 0), Number(colony?.threatStage ?? 0));
+    if ((stage >= 3 || hasRoboticsFactory) && defenseCount < 2) {
+      score = defenseCount === 0 ? 6000 : 4500;
+    }
   }
   return { score, hostilesWithin15, underAttack };
 }
@@ -360,7 +251,7 @@ export function scoreExpandNeed(
   const hubAnchor = findColonyAnchors(state, colonyIndex)[0]!;
   const hx = hexIndex(state.grid.radius);
   const layers = state.grid.layers;
-  const ownerLayer = layers.owner as Int8Array, terrainLayer = layers.terrain as Uint8Array;
+  const ownerLayer = layers.owner as Int16Array, terrainLayer = layers.terrain as Uint8Array;
   const prepLayer = layers.prep as Uint8Array, depositLayer = layers.deposit as Uint8Array;
 
   let ownedTiles = 0, freeBuildable = 0, ownedDeposits = 0, freeOwnedDeposits = 0, unclaimedNear = 0;

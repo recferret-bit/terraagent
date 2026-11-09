@@ -14,9 +14,10 @@ import { discoverAdapters } from '../../src/ports/adapters.js';
 import { ChainReadPort } from '../../src/near/application/ports/chain-read.port.js';
 import { APP_ENV } from '../../src/core/tokens.js';
 import { PORTS } from '../../src/near/application/ports/index.js';
+import { UNIT_APP_ENV } from '../unit-app-env';
 
 const fixtures = join(import.meta.dirname, 'fixtures/adapters');
-const base = { TA_PORT_BASE: '7380', LOG_LEVEL: 'silent' };
+const base = { ...UNIT_APP_ENV, TA_PORT_BASE: '7380', LOG_LEVEL: 'silent' };
 const envModule = (env: Record<string, string>) => {
   @Global() @Module({ providers: [{ provide: APP_ENV, useValue: env }], exports: [APP_ENV] }) class EnvModule {}
   return EnvModule;
@@ -96,6 +97,25 @@ describe('adapter registry and binding', () => {
   });
   it('accepts a fixture mock in the env section so selecting testnet passes', () => {
     return discoverAdapters(fixtures).then((a) => expect(() => parseEnv([nearEnvFor(a)], { ...base, NEAR_ADAPTER_CHAIN_READ: 'testnet' })).not.toThrow());
+  });
+  it('supports NEAR_MODE=mock|testnet|devnet|mainnet global switch and per-port NEAR_ADAPTER_<PORT> override', async () => {
+    expect(nearAdapterFor('ChainRead', { NEAR_MODE: 'testnet' })).toBe('testnet');
+    expect(nearAdapterFor('Identity', { NEAR_MODE: 'devnet' })).toBe('testnet');
+    expect(nearAdapterFor('Relayer', { NEAR_MODE: 'mainnet' })).toBe('mainnet');
+    expect(nearAdapterFor('CargoToken', { NEAR_MODE: 'mock' })).toBe('mock');
+    expect(nearAdapterFor('ChainRead', { NEAR_MODE: 'Testnet' })).toBe('mock');
+    expect(nearAdapterFor('ChainRead', { NEAR_MODE: 'testnet', NEAR_ADAPTER_CHAIN_READ: 'mock' })).toBe('mock');
+    expect(nearAdapterFor('ChainRead', { NEAR_MODE: 'mock', NEAR_ADAPTER_CHAIN_READ: 'devnet' })).toBe('testnet');
+    expect(nearAdapterFor('DeedNft', { NEAR_ADAPTER_DEED: 'testnet' })).toBe('testnet');
+    expect(nearAdapterFor('BadgeNft', { NEAR_ADAPTER_BADGE: 'mainnet' })).toBe('mainnet');
+    expect(nearAdapterFor('TreasuryDao', { NEAR_ADAPTER_TREASURY: 'testnet' })).toBe('testnet');
+    const adapters = await discoverAdapters(fixtures);
+    const Infra = nearInfrastructureModuleFor(adapters);
+    const build = (env: Record<string, string>) => Test.createTestingModule({ imports: [envModule(env), Infra] }).compile();
+    const devnetPort = await (await build({ NEAR_MODE: 'devnet' })).resolve(ChainReadPort);
+    expect(devnetPort.constructor.name).toBe('TestnetChainRead');
+    const overriddenPort = await (await build({ NEAR_MODE: 'testnet', NEAR_ADAPTER_CHAIN_READ: 'mock' })).resolve(ChainReadPort);
+    expect(overriddenPort.constructor.name).toBe('FixtureChainRead');
   });
 });
 

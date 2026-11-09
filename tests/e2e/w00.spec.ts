@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
 import {
-  CONSOLE, devConsole, expect, expectNoPageErrors, expectedOnWaves, hostMode, loadLocal, loadScenario, readTick, screenshot,
+  CONSOLE, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, readTick, screenshot,
   stack, test, ticksPerSecond, urls, waitForTick,
 } from './harness';
 
@@ -73,17 +73,12 @@ test('@hack 3. dev console warp 10 → about 50 ticks/s and a ×10 badge; warp 1
 
 test.fixme('4. state inspector: click a tile → its JSON (q, r, terrain, prep) — the inspector is H+ and lands later', async () => {});
 
-test('@hack 5. flag panel: W00 on and every other wave listed; ?waves=..00 shows only W00 on', async ({ page }) => {
+test('@hack 5. WAVES panel is absent on the normal load and on ?waves=..00', async ({ page }) => {
   serverOnly();
   await loadScenario(page, 'w00');
-  const chips = page.locator('.ta-flags__chip');
-  await expect(chips).toHaveCount(26);
-  // every wave the app runs is on: all 26, or up to the `--waves` bound the stack booted the app with (`..02`: 3)
-  await expect(page.locator('.ta-flags__chip[data-on=true]')).toHaveCount(expectedOnWaves());
+  await expect(page.locator('.ta-flags')).toHaveCount(0);
   await loadScenario(page, 'w00', { waves: '..00' });
-  await expect(page.locator('.ta-flags__chip[data-on=true]')).toHaveCount(1);
-  await expect(page.locator('.ta-flags__chip[data-wave=W00]')).toHaveAttribute('data-on', 'true');
-  await expect(page.locator('.ta-flags__chip[data-wave=W01]')).toHaveAttribute('data-on', 'false');
+  await expect(page.locator('.ta-flags')).toHaveCount(0);
   await screenshot(page, '5-flags-00');
 });
 

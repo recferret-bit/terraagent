@@ -8,6 +8,8 @@ import {
   indexOf,
   insertRow,
   placeSpawnedEntity,
+  rowOf,
+  spawnWorkerUnit,
   PREP,
   revealVision,
   setTilePrep,
@@ -88,26 +90,21 @@ function spawnW03StructuresAndUnits(state: PlanetState): void {
   state.entities.cols.workRate[hqRow] = 1.5;
   state.entities.cols.state[hqRow] = ENTITY_STATE.idle;
 
-  for (const [hq, hr] of [[2, 2], [-2, 2]] as const) {
-    const harvId = state.meta.nextEntityId++;
-    const harvRow = insertRow(state.entities, harvId, 0);
-    state.entities.cols.kind[harvRow] = ENTITY_KIND.harvester;
-    state.entities.cols.owner[harvRow] = 0;
-    state.entities.cols.tier[harvRow] = 1;
-    placeSpawnedEntity(state.entities, harvRow, hq, hr, 0);
-    state.entities.cols.hp[harvRow] = 120;
-    state.entities.cols.hpMax[harvRow] = 120;
-    state.entities.cols.cell[harvRow] = 100;
-    state.entities.cols.cellMax[harvRow] = 100;
-    state.entities.cols.workRate[harvRow] = 0.5;
-    state.entities.cols.state[harvRow] = ENTITY_STATE.idle;
+  for (const [q, r] of [[2, 2], [-2, 2]] as const) {
+    const id = spawnWorkerUnit(state, { owner: 0, q, r, tier: 1 });
+    const row = rowOf(state.entities, id);
+    state.entities.cols.hp[row] = 120;
+    state.entities.cols.hpMax[row] = 120;
+    state.entities.cols.cell[row] = 100;
+    state.entities.cols.cellMax[row] = 100;
+    state.entities.cols.workRate[row] = 0.5;
   }
 }
 
 /**
  * W03 The Grid seed scenario (`docs/plan/waves/W03-the-grid.md` §3 & W03-29):
  * - Colony at the end of W02: Command Hub T1 at `(0, 0)`, 1 Metals Extractor T1 at `(3, 0)`, 1 Solar Array T1 at `(-3, 2)`.
- * - Units: HQ T1 at `(2, -1)` + 2 Harvester Drones at `(2, 2)` and `(-2, 2)`.
+ * - Units: HQ T1 at `(2, -1)` + 2 Worker Drones (T1) at `(2, 2)` and `(-2, 2)`.
  * - Starting stock: `metals.t1 400, minerals.t1 250, bio.biomass 200, bio.water 200` (caps `500/500/500`).
  */
 export default defineScenario({

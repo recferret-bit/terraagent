@@ -7,6 +7,7 @@ import {
   getBuildingJobs,
   getColonyQueue,
   placeMetalsExtractor,
+  resourceValue,
   rowOf,
   type ColonyWithLedger,
 } from '@terra/sim';
@@ -74,27 +75,27 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
     });
   });
 
-  it('runs demo steps 2–5: Harvester production & standing harvest, Extractor + Solar build & output, and waiting ETA', () => {
+  it('runs demo steps 2–5: Worker Drone production and standing harvest, Extractor + Solar build and output, and waiting ETA', () => {
     const { host } = createScenarioPlanet('w02');
     const col = getCol(host);
 
-    // Step 2: Queue 1 Harvester -> paid progressively across 50 ticks (-40/-15/-5/0), completes in 10s (50 ticks) and harvests
+    // Step 2: Queue 1 Worker Drone T1 -> paid progressively across 50 ticks (-40/-15/-5/0), completes in 10s (50 ticks) and harvests
     host.submit({
       colonyIndex: 0,
       source: 'player',
       commandId: 'c-harv',
       kind: 'enqueueTask',
-      args: { taskId: 'u-harv-1', task: { kind: 'buildUnit', unit: 'harvester' } },
+      args: { taskId: 'u-harv-1', task: { kind: 'buildUnit', unit: 'worker', tier: 1 } },
     });
     host.step(1);
-    expect(col.stock['metals.t1']).toBeCloseTo(400 - 40 / 50, 4);
-    expect(col.stock['minerals.t1']).toBeCloseTo(250 - 15 / 50, 4);
-    expect(col.stock['bio.biomass']).toBeCloseTo(150 - 5 / 50, 4);
+    expect(resourceValue(col, 'metals.t1')).toBeCloseTo(400 - 40 / 50, 4);
+    expect(resourceValue(col, 'minerals.t1')).toBeCloseTo(250 - 15 / 50, 4);
+    expect(resourceValue(col, 'bio.biomass')).toBeCloseTo(150 - 5 / 50, 4);
 
     host.step(55);
     let harvRow = -1;
     for (let r = 0; r < host.state.entities.count; r++) {
-      if (host.state.entities.cols.kind[r] === ENTITY_KIND.harvester) harvRow = r;
+      if (host.state.entities.cols.kind[r] === ENTITY_KIND.worker) harvRow = r;
     }
     expect(harvRow).toBeGreaterThanOrEqual(0);
 
@@ -114,14 +115,12 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
       args: { taskId: 'b-sol-1', task: { kind: 'build', building: 'solar', q: -3, r: 2 } },
     });
     host.step(1);
-    // One HQ builds them one after the other: the Solar waits for it while it preps and builds the Extractor
+    // The HQ and the T1 worker prep the two sites at once.
     expect(getColonyQueue(host.state, 0, 'construction').map((e) => [e.taskId, e.state, e.waitReason])).toEqual([
       ['b-ext-1', 'in_progress', 'site'],
-      ['b-sol-1', 'waiting', 'worker'],
+      ['b-sol-1', 'in_progress', 'site'],
     ]);
-    stepUntil(host, () => isBuilt(host, ENTITY_KIND.metalsExtractor), 300);
-    expect(isBuilt(host, ENTITY_KIND.solar)).toBe(false);
-    stepUntil(host, () => isBuilt(host, ENTITY_KIND.solar), 300);
+    stepUntil(host, () => isBuilt(host, ENTITY_KIND.metalsExtractor) && isBuilt(host, ENTITY_KIND.solar), 300);
     host.step(1);
     expect(col.power?.solarNetPerS).toBe(13);
 
@@ -231,12 +230,12 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
     stepUntil(host, () => (inProg()?.spentCost?.['metals.t1'] ?? 0) >= 30, 400);
     expect(inProg()?.state).toBe('in_progress');
     const paid = getBuildingJobs(host.state)[inProg()?.entityId ?? -1]?.spentCost ?? {}; // paid so far (the job's own record)
-    const before = { ...col.stock };
+    const before = Object.fromEntries(Object.keys(col.stock).map((k) => [k, resourceValue(col, k as never)])) as Record<string, number>; // exact values: stock + residual
     host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-can-p', kind: 'cancelTask', args: { taskId: 'in-prog-solar' } });
     host.step(1);
     // 50 % of what was paid comes back (Minerals: no income here; Metals also gets the Extractor's output)
     expect(paid['minerals.t1'] ?? 0).toBeGreaterThan(30);
-    expect(col.stock['minerals.t1']).toBeCloseTo(before['minerals.t1'] + (paid['minerals.t1'] ?? 0) * 0.5, 4);
-    expect(col.stock['metals.t1']).toBeGreaterThanOrEqual(before['metals.t1'] + (paid['metals.t1'] ?? 0) * 0.5);
+    expect(resourceValue(col, 'minerals.t1')).toBeCloseTo(before['minerals.t1'] + (paid['minerals.t1'] ?? 0) * 0.5, 4);
+    expect(resourceValue(col, 'metals.t1')).toBeGreaterThanOrEqual(before['metals.t1'] + (paid['metals.t1'] ?? 0) * 0.5);
   });
 });

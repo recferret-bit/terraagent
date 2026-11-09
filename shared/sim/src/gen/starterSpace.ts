@@ -26,6 +26,9 @@ function footprintIdx(state: SimState, q: number, r: number): number[] | null {
   return out;
 }
 
+/** The 3×3 Command Hub footprint tiles centred on `(q, r)` (empty when it leaves the grid). */
+export const starterHubTiles = (state: SimState, q: number, r: number): number[] => footprintIdx(state, q, r) ?? [];
+
 /** Same geo rule the Command Hub placement check applies (Flat, level, no trees / rock / water / deposit), plus ownership. */
 function siteReady(state: SimState, tiles: number[], colonyId: number): boolean {
   const { terrain, prep, owner, deposit, height } = state.grid.layers;
@@ -74,7 +77,7 @@ export function clearPodBlastZone(state: SimState, q: number, r: number, colonyI
   const L = state.grid.layers;
   const terrain = L.terrain as Uint8Array;
   const prep = L.prep as Uint8Array;
-  const owner = L.owner as Int8Array;
+  const owner = L.owner as Int16Array;
   const height = L.height as Float32Array;
   const deposit = L.deposit as Uint8Array | undefined;
   const blast = collectPodBlastTiles(hex, q, r).filter(

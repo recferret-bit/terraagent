@@ -192,7 +192,8 @@ export class MeProfileService {
       currentColonies,
       pastColonies: visiblePastColonies,
       activity: (notices ?? []).map(n => {
-        const payload = n.payload as { familyName?: string; tierName?: string; xp?: number };
+        const payload = n.payload as { kind?: string; title?: string; familyName?: string; tierName?: string; xp?: number };
+        if (payload.kind === 'history.trade' && payload.title) return { id: n.id, title: payload.title, createdAt: n.createdAt.toISOString() };
         return { id: n.id, title: `${payload.familyName ?? 'Achievement'} · ${payload.tierName ?? ''} (+${payload.xp ?? 0} XP)`, createdAt: n.createdAt.toISOString() };
       }),
       nextAchievements: next3,

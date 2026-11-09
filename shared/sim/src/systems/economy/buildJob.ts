@@ -1,4 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
+import { deliveredServiceBp, serviceScaled } from '../logistics/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { isBuildablePrepared } from '../../grid/tileModel';
@@ -121,7 +122,8 @@ export function advanceBuildingJob(state: PlanetState, entityId: number, builder
   const e = state.entities, cols = e.cols, tick = ctx.tick;
   // A crew on one site: each further builder this step adds less (`workCrew.crew`), the cost follows the progress.
   const crew = nextCrewShare(job, tick, ctx.data);
-  const rate = crew.share * (cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(ctx.data), 'workRate'));
+  // W13 logistics: the worker's delivered-service ratio scales its work rate once (identical at full service / W13 off)
+  const rate = serviceScaled(crew.share * (cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(ctx.data), 'workRate')), deliveredServiceBp(state, job.owner, cols.id[builderRow]));
   const prevProgress = job.elapsedWeightedTicks / job.buildTicks;
   let weighted = job.elapsedWeightedTicks + ctx.dt * rate;
   let progress = Math.min(1, weighted / job.buildTicks);

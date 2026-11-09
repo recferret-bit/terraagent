@@ -188,4 +188,13 @@ export const perfTelemetry = {
   canvasH: 0,
   /** Smoothed frame interval (ms). */
   frameMs: 0,
+  /** Water reflection mirror pass ran this frame (`visuals/water/reflection/WaterReflectionPass.ts`). */
+  reflectOn: false,
+  /** Smoothed CPU time of the mirror render call (ms; 0 while skipped). */
+  reflectMs: 0,
+  /** Mirror render-target size (px). */
+  reflectW: 0,
+  reflectH: 0,
+  /** Fraction of the mirror target the scissor rect covered this frame (0 while skipped). */
+  reflectRect: 0,
 };

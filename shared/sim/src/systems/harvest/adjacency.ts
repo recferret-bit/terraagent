@@ -3,7 +3,7 @@ import {
   type ResourceFamily,
   type ResourceKey,
 } from '@terra/contracts';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
@@ -14,11 +14,12 @@ import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { ensureColonyLedger, familyStock, isFamilyAtCap, type ColonyWithLedger } from '../economy/ledger';
-import { syncHarvesterView } from './unit';
+import { isCrewKind, isWorker } from './unit';
+import { syncHarvestWorkerView } from './workers';
 
 export type HarvestWeights = Record<ResourceFamily, number>;
 
-export interface HarvesterTargetAssignment {
+export interface WorkerTargetAssignment {
   entityId: number;
   mode: 'harvest' | 'clear' | 'break' | 'work' | 'repair';
   tileIdx: number;
@@ -84,7 +85,7 @@ export function pickFreeAdjacentDepositHex(
   selfEntityId: number,
   unitQ: number,
   unitR: number,
-  assignments?: Record<number, HarvesterTargetAssignment>,
+  assignments?: Record<number, WorkerTargetAssignment>,
   occupied: ReadonlySet<number> = occupiedGroundTiles(state),
 ): { q: number; r: number; tileIdx: number } | null {
   const idx = hexIndex(state.grid.radius);
@@ -94,7 +95,7 @@ export function pickFreeAdjacentDepositHex(
   for (let r = 0; r < e.count; r++) {
     if (cols.hp[r] <= 0 || cols.id[r] === selfEntityId) continue;
     const k = cols.kind[r];
-    if (k !== ENTITY_KIND.harvester && k !== ENTITY_KIND.hq) continue;
+    if (!isCrewKind(k)) continue;
     const uTile = idx.indexOf(cols.q[r], cols.r[r]);
     if (uTile >= 0 && hexDistance(cols.q[r], cols.r[r], depQ, depR) === 1) {
       reserved.add(uTile);
@@ -136,7 +137,7 @@ export function pickBestSurfaceDepositForUnit(
   unitQ: number,
   unitR: number,
   selfEntityId = -1,
-  assignments?: Record<number, HarvesterTargetAssignment>,
+  assignments?: Record<number, WorkerTargetAssignment>,
   occupied: ReadonlySet<number> = occupiedGroundTiles(state),
   goalResource: ResourceKey | null = null,
 ): { tileIdx: number; q: number; r: number; standQ: number; standR: number; family: ResourceFamily; resourceKey: ResourceKey } | null {
@@ -195,10 +196,10 @@ export function pickBestSurfaceDepositForUnit(
 }
 
 /**
- * Assigns a Harvester (`entityId`) to harvest a specific deposit tile `(depQ, depR)` and moves it to the
+ * Assigns a Worker (`entityId`) to harvest a specific deposit tile `(depQ, depR)` and moves it to the
  * closest free passable neighbor hex (`hexDistance === 1`).
  */
-export function assignHarvesterDepositTarget(
+export function assignWorkerDepositTarget(
   state: PlanetState,
   entityId: number,
   depQ: number,
@@ -207,14 +208,14 @@ export function assignHarvesterDepositTarget(
   ctx?: StepContext,
 ): { ok: true; standQ: number; standR: number } | { ok: false; code: string } {
   const row = rowOf(state.entities, entityId);
-  if (row < 0 || state.entities.cols.kind[row] !== ENTITY_KIND.harvester) return { ok: false, code: 'unknown_entity' };
+  if (row < 0 || !isWorker(state.entities.cols.kind[row])) return { ok: false, code: 'unknown_entity' };
   const idx = hexIndex(state.grid.radius);
   const tileIdx = idx.indexOf(depQ, depR);
   if (tileIdx < 0) return { ok: false, code: 'invalid_args' };
   const info = tileDepositInfo(state, tileIdx);
   if (!info) return { ok: false, code: 'site_blocked' };
 
-  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
+  const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
   const assignments = { ...(rawBlob.assignments ?? {}) };
   const cols = state.entities.cols;
   const stand = pickFreeAdjacentDepositHex(state, depQ, depR, entityId, cols.q[row], cols.r[row], assignments);
@@ -252,6 +253,6 @@ export function assignHarvesterDepositTarget(
     if (ctx) requestMove(state, row, { q: stand.q, r: stand.r, minDist: 0, maxDist: 0 }, ctx);
   }
   if (cols.owner[row] >= 0 && state.colonies[cols.owner[row]]) ensureColonyLedger(state.colonies[cols.owner[row]]);
-  syncHarvesterView(state, row, tick, ctx?.data);
+  syncHarvestWorkerView(state, row, tick, ctx?.data);
   return { ok: true, standQ: stand.q, standR: stand.r };
 }

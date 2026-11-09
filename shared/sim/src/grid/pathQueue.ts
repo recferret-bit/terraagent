@@ -1,5 +1,6 @@
 import type { CompiledDataLike } from '../kernel/config';
 import { setBlob, type Blob, type PlanetState } from '../kernel/state';
+import { dropFieldSearch, stepFieldSearch, type FieldRequestData } from './flowField';
 import { hexIndex } from './hex';
 import { pathBlockersFor, type PathProfileId } from './pathProfiles';
 import {
@@ -10,6 +11,8 @@ import {
   type HexPathResult,
   type PathGoalBand,
 } from './pathSearch';
+
+export type { FieldRequestData };
 
 /**
  * The pathfinding service's work queue (`SIM-T-02`): a FIFO of path requests in `state.blobs.pathQueue`, solved with a
@@ -37,6 +40,8 @@ export interface PathRequestInput {
   profile?: PathProfileId;
   /** Stop anywhere in this distance band around `to` (default: exactly `to`). */
   band?: PathGoalBand;
+  /** Shared reverse Dijkstra. `from` / `to` are the anchor; `targets` are tiles the field must reach. */
+  field?: FieldRequestData;
 }
 
 export interface PathQueueEntry {
@@ -47,6 +52,7 @@ export interface PathQueueEntry {
   radius?: number;
   profile?: PathProfileId;
   band?: PathGoalBand;
+  field?: FieldRequestData;
   enqueuedAtTick: number;
   expansionsUsed: number;
   /** `meta.pathEpoch` the search has explored under; a change restarts it (identically on every host). */
@@ -61,6 +67,9 @@ export interface PathQueueResult extends HexPathResult {
   from: AxialCoord;
   to: AxialCoord;
   resolvedAtTick: number;
+  /** Set when a shared field request finishes. `parents[i]` is the step back toward a seed, or `-1`. */
+  fieldParents?: number[];
+  fieldSeeds?: number[];
 }
 
 export interface PathStats {
@@ -128,6 +137,7 @@ export function enqueuePathRequest(state: PlanetState, req: PathRequestInput, ti
     ...(req.radius !== undefined ? { radius: req.radius } : {}),
     ...(req.profile !== undefined ? { profile: req.profile } : {}),
     ...(req.band !== undefined ? { band: { minDist: req.band.minDist, maxDist: req.band.maxDist } } : {}),
+    ...(req.field ? { field: { anchorQ: req.field.anchorQ, anchorR: req.field.anchorR, targets: req.field.targets.map((t) => ({ q: t.q, r: t.r })) } } : {}),
     enqueuedAtTick: state.meta.tick,
     expansionsUsed: 0,
     epoch: state.meta.pathEpoch ?? 0,
@@ -143,6 +153,7 @@ export function cancelPathRequest(state: PlanetState, id: string | number, tick:
   const at = queue.findIndex((e) => e.id === id);
   if (at < 0) return false;
   cacheOf(state).delete(id);
+  dropFieldSearch(state, id);
   const next = queue.slice(0, at).concat(queue.slice(at + 1));
   writeQueue(state, next, { ...getPathStats(state), queueLength: next.length }, tick);
   return true;
@@ -201,11 +212,32 @@ export function stepPathQueue(
     if ((entry.epoch ?? 0) !== epoch || costsChanged) {
       // the ground or the step costs changed while this search was paused: start over (deterministic on every host)
       cacheOf(state).delete(entry.id);
+      dropFieldSearch(state, entry.id);
       entry.expansionsUsed = 0;
       entry.epoch = epoch;
     }
     if (dataHash === undefined) delete entry.dataHash;
     else entry.dataHash = dataHash;
+    if (entry.field) {
+      const stepped = stepFieldSearch(state, entry, budget - expansionsUsed, data);
+      expansionsUsed += stepped.used;
+      entry.expansionsUsed = stepped.expansions;
+      if (!stepped.done) break;
+      pending.shift();
+      resolved.push({
+        id: entry.id,
+        ...(entry.entityId !== undefined ? { entityId: entry.entityId } : {}),
+        from: { q: entry.from.q, r: entry.from.r },
+        to: { q: entry.to.q, r: entry.to.r },
+        ok: (stepped.seeds?.length ?? 0) > 0,
+        path: [],
+        expansions: stepped.expansions,
+        totalCostBp: 0,
+        resolvedAtTick: stamp,
+        ...(stepped.parents ? { fieldParents: stepped.parents, fieldSeeds: stepped.seeds } : {}),
+      });
+      continue;
+    }
     const search = searchFor(state, entry, data);
     const stepRes = continueAStarSearch(search, budget - expansionsUsed);
     expansionsUsed += stepRes.used;

@@ -1,5 +1,9 @@
 # TerraAgent — Architecture Decisions
 
+> **D-45 (2026-11-07):** LLM-controlled bots and humans trade on the same per-planet books through the bot API; organic fills are `player`/`bot` pairs with different colonies and owners. See [ECONOMY](ECONOMY.md) §3/§4.
+
+> **D-44 (2026-11-04):** owner-approved resource economy, database profiles and reproducible experiments amend D-19/D-26/D-35. See [ECONOMY](ECONOMY.md).
+
 > Numbered, append-only. Status: `Proposed` (awaiting owner grill) · `Accepted` · `Superseded by D-NN`.
 > Each decision lists the alternatives so the owner can overturn it with full context. Agents must not silently deviate; propose a new decision instead.
 
@@ -16,7 +20,7 @@
 | D-09 | Z.ai `glm-5.3` via OpenAI-compatible API, behind a provider port | Accepted (2026-10-29): general endpoint, 20M tokens/day, raw logs 14 d |
 | D-10 | Guest-first auth, optional NEAR wallet link (NEP-413) | Proposed |
 | D-11 | Trades settle in-game in MVP with on-chain receipt; real NEAR Intents later | Superseded by D-19 |
-| D-12 | Persistent canonical planets and sector founding capacity | Amended by owner 2026-11-04: W11 foundation, W27 scale/navigation; supersedes instance lifetimes/warm pools |
+| D-12 | Persistent canonical planets and sector founding capacity | Amended by owner 2026-11-04 & 2026-11-09: W11 foundation (4× isolated `R=48` sectors + 19-sector Orbital Picker/Global Map), W27 multi-sector streaming/navigation; supersedes instance lifetimes/warm pools |
 | D-13 | Planets always tick at full rate (no dormant fast-forward in MVP) | Superseded by D-24 (empty planets tick coarse) |
 | D-14 | All backend services are NestJS | Amended by D-24 (one NestJS app; sim threads plain TS) |
 | D-15 | MVP gameplay scope for the online build | Proposed — robot list superseded by D-16 if accepted |
@@ -47,6 +51,9 @@
 | D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
+| D-43 | Neutral hive fauna | Accepted (2026-11-04, owner) |
+| D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
+| D-45 | Bot participation on the shared exchange (bot API `/v1/trade/*`, actor kind `bot`, allowances, deterministic need/value quotes, strategy-only LLMs) and the organic-fill rule (`player`/`bot`, different colony and owner) | Accepted (2026-11-07, lead default; owner may change) |
 
 | D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
 
@@ -122,7 +129,7 @@
 
 ## D-12 — Persistent canonical planets and sector admission
 
-**Owner amendment (2026-11-04).** W11 becomes a small playable version of W27. Three canonical planets, one per existing type, persist from W11 onward. Founding capacity and safe landing slots belong to gameplay sectors; full worlds queue new players. No automatic overflow instances, warm pools, age sealing, lifetime expiry or extinction/all-settled ending. W11 includes small connected sectors and real border crossings; W27 expands scale, streaming and ground-to-globe navigation using the same admission model.
+**Owner amendment (2026-11-04; simplified 2026-11-09).** W11 becomes a simplified playable version of W27. Three canonical planets, one per existing type, persist from W11 onward. Founding capacity and safe landing slots belong to gameplay sectors (`R=48`, `7,057` tiles/sector — 4× basic sector hex area — across the 19-sector small-atlas manifest: `7` land sectors = `49,399` land tiles + `12` ocean halo sectors = `84,684` ocean tiles, `134,083` total tiles); full worlds queue new players. No automatic overflow instances, warm pools, age sealing, lifetime expiry or extinction/all-settled ending. In W11, in-game `PlanetState.grid` loads only a single isolated sector (`radius = 48`, `7,057` tiles) and crossing sector boundaries in gameplay is blocked (`reason: 'cross_sector_disabled'`), while all `19` surrounding sectors remain visible on the Orbital Picker and Global Map (`M` dialog). W27 unlocks infinite/streaming multi-sector loading, seamless cross-sector boundary traversal, large continent scale and ground-to-globe navigation using the same admission model.
 
 **Superseded history.** The 2026-10-29 decision used capacity five per instance, 24-hour admission, 14-day lifetime, two-hour refill and warm pools. Those numbers are not current W11/W27 requirements. Pre-W11 dev seating remains a compatibility path.
 
@@ -160,7 +167,7 @@
 - **Terrain walls (reverse terraforming).** Starting at S7, ridges and moats (indestructible and owner-only) block all ground movement; ridges also block direct fire, except over an adjacent parapet. Air units and indirect fire (artillery, bomber) go over. A destructible Wall Gate lets your own units through. Proposed: extend the MVP to S7 (Q12).
 - **Prepared ground only.** Every footprint tile must be terraformed first (rock, hole, water, forest, slope; Flat needs a Grade). Terraform ops consume energy (brownout shed group 1). The HQ Drone terraforms from landing on its own power cell, so it can always prepare the site for its own Hub.
 
-MVP ships stages S0–S6 with 8 unit types: HQ, Harvester, Builder, Terraformer, Multitask T2, Recon, Tank, Artillery. It also ships the Prepared-ground rule, all 9 terraform ops (Deep Reclaim of deep water by T2 workers from S5), and HQ-negotiated **truces** (non-aggression pacts with a 10-min cancel notice and a 24 h Oathbreaker mark).
+MVP ships stages S0–S6 with HQ, Worker Drone T1–T3 (one unit, `worker`), Multitask T2, Recon, Tank and Artillery. It also ships the Prepared-ground rule, all 9 terraform ops (Deep Reclaim of deep water by T2 workers from S5), and HQ-negotiated **truces** (non-aggression pacts with a 10-min cancel notice and a 24 h Oathbreaker mark).
 
 **Owner answers (2026-10-29):** pay on start; scale 0.25 with the rocket in hours; Aero Hangar; worker tier gate kept; HQ reprint (losing both HQ and Hub eliminates the colony); trades + truces in MVP; 8 types; Founder Core +8 E/s; veterans inherit unlocks; strict grading of all ground; deep water reclaimable at T2. See the spec's §9. The air layer, radar and T3 stay in the data tables with `enabled: false`.
 
@@ -431,7 +438,7 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 | **Bio** | Water and Biomass (two T1 sub-resources) | Petroleum / organics | Gene-stock |
 
 - **Stockpiles:** 10 stored sub-resources, keyed `metals.t1 … metals.t3`, `minerals.t1 … minerals.t3`, `bio.water`, `bio.biomass`, `bio.t2`, `bio.t3`. Storage caps are per family (Depots add to all three). **Energy** is not a family: it stays grid power (E/s), stored only in capacitors.
-- **Sources:** Metals Extractor on metal deposits; Minerals Quarry on mineral deposits; Bio: Water Extractor (water), Harvester clearing forest and harvesting Living ground (biomass, gene-stock), Petroleum Well on oil deposits (`bio.t2`).
+- **Sources:** Metals Extractor on metal deposits; Minerals Quarry on mineral deposits; Bio: Water Extractor (water), Worker Drone T1 clearing forest and harvesting Living ground (biomass, gene-stock), Petroleum Well on oil deposits (`bio.t2`).
 - **Unlock rule (both gates, owner choice):** an extractor yields its family's T2 sub-resource only when (1) the colony's Terraform % ≥ **30 %** and (2) the extractor's deposit ground is terraformed: ≥ 50 % of the tiles within 2 of its footprint are Irrigated or Living. T3 needs Terraform % ≥ **70 %** and ≥ 50 % Living tiles in that ring. T1 is always produced. Percentages and ring size are data (D-35), all **(proposed)**.
 - **Yield split (proposed):** with T2 unlocked, 30 % of an extractor's output becomes T2; with T3 unlocked, 20 % T3 + 30 % T2 + 50 % T1. Extractor tier (Mk.I–III) only scales the rate.
 - **Costs:** the economy spec's `M/Min/Pet/W` cost columns are read through a tier rule until each table is rebalanced: a T1 building or unit pays M → `metals.t1`, Min → `minerals.t1`, Pet → `bio.biomass`, W → `bio.water`. A T2 item pays 60 % of M and Min in T1 and 40 % in T2, and its Pet in `bio.t2`. A T3 item pays 40 % T1, 30 % T2, 30 % T3 of M and Min, Pet in `bio.t2`, plus 10 % of its M as `bio.t3`. Terraform ops consume `bio.water` where the old specs said Water.
@@ -550,12 +557,12 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 
 ## D-42 — W02 economy build rules (as built)
 
-**Context.** W02 added the first economy rows (Metals Extractor, Solar), the order queue and the Harvester on top of the W01 sim. Several deliberate choices depart from the wave doc or from D-37 and must not be "fixed" back by a later wave.
+**Context.** W02 added the first economy rows (Metals Extractor, Solar), the order queue and the Worker Drone T1 on top of the W01 sim. Several deliberate choices depart from the wave doc or from D-37 and must not be "fixed" back by a later wave.
 
 **Decision.**
 - **Day length follows the solar clock.** `systems/environment` derives phase and daylight from the authoritative planet time (`systems/time`, `blobs.planetTime`, default `time.cycle.realHoursPerDay = 0.25`, i.e. a 15 min day) and keeps no clock or day counter of its own; the client's day/night clock syncs from it (`dayNightSync.ts`). Night starts at 18:00 and lasts the planet type's night share (`temperate` 45 %). The spec's 20 min day and the `economyT1Basic.dayCycle` fields are not read (GP-53, WE-30).
 - **W02 building rows use `evaluatePlacement`** (D-37), through the row's placement rule (`requiresDeposit` for the Extractor, a deposit under any other building is `site_blocked`, an uneven footprint is `terrain_unbuildable` instead of being flattened). W02 rows allow unclaimed ground (GP-54, GP-55 are owner questions). There is no second W02 placement check.
-- **The HQ builds on site.** A W02 build is a `build` command job (`job:<entityId>`, linked prep `job:<entityId>/prep`) that the HQ pulls, walks to and works; the Construction lane runs one W02 build per colony at a time and a Harvester never builds or preps (`dispatch/eligibility.ts`, GP-58). Multi-builder choice and pre-emption by `player` entries arrive with the Builder (W03-32).
+- **The HQ builds on site.** A W02 build is a `build` command job (`job:<entityId>`, linked prep `job:<entityId>/prep`) that the HQ pulls, walks to and works; the Construction lane runs one W02 build per colony at a time and Worker Drone T1 builds tier ≤ 1 and terraforms except deep water (`dispatch/eligibility.ts`, GP-58). Multi-worker choice and pre-emption by `player` entries arrive with Worker Drone T2 (W03-32).
 - **Progressive payment, 50 % cancel refund.** Orders pay their slice of the cost as work advances; cancelling a waiting entry is free, cancelling one in progress refunds 50 % of what was paid (`CANCEL_REFUND_RATE`), demolish and dismantle refund 50 % (`DISMANTLE_REFUND_RATE`). The W01 Command Hub order keeps pay-at-start and its 75 % refund. W02 refunds go through `creditResource` and are **clamped at the family cap** (the rest is lost and counted in `production.capped`); the W01 refund is not (LED-17 asks the owner to unify).
 
 **Consequences.** `UO-Q-01/02`, `SIM-C-03` and `UO-D-03` carry as-built notes. Later waves extend the same queue, placement function and dispatch (W03-12, W03-32, W03-35) instead of adding their own.
@@ -582,3 +589,71 @@ The log stays append-only; these notes record where the code built in W00–W01 
 **Scope and defaults.** This supersedes D-15's single-species fauna and old W07 proximity aggression. Blue armor is provisionally modeled as shell geometry + high HP, preserving D-28 plain damage; numerical balance, provocation/cooldown policy and that armor interpretation are proposals recorded as GP-80, not additional owner decisions. Existing W08 threat composition must be reconciled by W07; Brute/Drifter remain later extensions.
 
 **Alternatives.** Full per-bug transform streaming defeats the requested order-style replication. Seed-only replication cannot recover missing inputs or reconnects. Simulated food/building chains add complexity the owner explicitly excluded.
+
+### D-43 extension — W07 combat, motion and protocol rules (as built)
+
+**As-built rules (2026-11-07).**
+- **Recon Armored Scout (`robot.recon`, `ENTITY_KIND.recon = 51`).** Per owner direction, Recon is a six-wheel armored scout with an independently aiming cannon turret (`frontend/render/kitbash/archetypes/units/recon.ts`) that holds position while firing rather than strafing (`evasive: false` for Recon; `evasive.ts` remains available for air units in W19). Dedicated `building.laserTower` (`ENTITY_KIND.laserTower = 20`) ships in W07; Factory (`4×3` vs `3×3`) and DCA (`2×2` vs `1×1`) footprint refits and building collapse rubble VFX remain `H+` (`RN-66`).
+- **Shared approach band, spotting gate & fractional cadence.** All combat pursuit, hive waves, replay directives and generic attacks share `combatApproachBand` and `footprintAttackRange` (`shared/sim/src/systems/combat/approachBand.ts`). Target acquisition, pursuit and firing require colony spotting (`vision.ts`, `isEntityVisibleToColony`). Fractional firing deadlines (`weaponFire.ts`) preserve exact sustained rates at 5 TPS (e.g. `2/s` → 20 shots in 10 s, `4/s` → 40 shots in 10 s).
+- **Group march & flow-field slots (`moveGroup`).** Multi-unit ground movement uses `moveGroup` (`shared/contracts/src/commands/move-group.ts`), shared flow-field routing (`shared/sim/src/grid/flowField.ts`) and deterministic slot assignment (`shared/sim/src/units/movement/groupMarch.ts`, `slots.ts`), rebuilding seating routes when terrain/blockers change (`GP-89`).
+- **Protocol v2 (`DIFF_FORMAT = 2`, `SIM_VERSION = 3`).** Sparse stance patches (`stancePatch.ts`), stamped compact projectile queues (`projectileQueue.ts`), and welcome/transition fauna motion seeds (`faunaMotionSeed.ts`, `faunaMotionReplica.ts`) synchronize client replicas without per-tick transform streams (`FA-38`, `FA-39`). Canonical v2 snapshots migrate losslessly to v3; `VersionMismatchNotice` prompts reload on protocol mismatch.
+- **GPU-instanced insect swarms & `F6` Combat Lab.** `InsectSwarmRenderer` (`frontend/render/animation/insects/InsectSwarmRenderer.ts`) batches insects by species with per-instance GPU combat/locomotion/death states (`procedural-insect-animation`) and pooled 3D combat/liquid bursts (`CombatBurstSystem.ts`). `F6` Combat Lab (`frontend/game/features/combat-tuning/`) provides live planet-wide stat tuning (preserving HP fractions on max-HP edits, `tunedHealth.ts`) and JSON export.
+
+
+## D-44 — Resource demand, cash fees and database-managed experiments
+
+**Decision (owner, 2026-11-04).** Adopt [ECONOMY](ECONOMY.md) as the implementation contract. Useful recurring consumption, mixed-tier recipes and regional specialization create trading opportunities; prices remain market-discovered and no farming return is guaranteed. USDC is the default cash quote. Buyer pays quote-token fees: platform 100 bp plus stall 0–100 bp (default 100), independent of maker/taker role; W22 treasury allocation comes from platform fees. Exact arithmetic, versioned order terms and funded reservations are mandatory. Orders pin policy and fee snapshots; custodial accounts fill partially, claimed accounts are all-or-nothing; same-colony orders never match; related, Guild and fixture fills are excluded from organic price and volume metrics.
+
+**D-19/D-26 amendment.** Our books remain planet-local, but unrestricted cargo transfers and imports permit external trading and cross-planet access. Accept external fee leakage; Guild NPCs offer a service, not an enforceable transport monopoly. Real Guild cargo is stock-backed or purchased, cash is explicitly allocated, and inventory/cash/loss caps and thin-market pauses are required. D-25 permits bots; limits govern economic exposure, not human identity.
+
+**D-35 extension.** Postgres stores typed, validated, immutable economy profile versions. Existing compileData exports the same snapshot/hash to live hosts and headless experiments. Operators can edit candidates, compare evidence, activate at an effective tick and roll back without code deployment. Dev tune stays a sandbox override; old orders/jobs retain their pinned terms.
+
+**AI workflow.** Discover JSON Schema, clone/patch a candidate, run bounded seeded scenarios on the real shared rules, compare paired/held-out results and emit recommendations with evidence. AI experiment credentials cannot activate production or access chain signing keys. Do not maintain a separate authoritative economic simulator.
+
+**Delivery.** W13 includes database management, recurring project/transport consumption, mock USDC fees and simulation tools; W15 adds funded bot policies/tests; W23 gates public cash trading on exact accounting, approved stress results and a real-player pilot. New coefficients and gate thresholds require calibration, recorded in LED-18. This decision accepts the design, not an unmeasured claim of sustainability or a fixed hackathon date.
+
+
+### D-44 extension — Regional specialization and operating logistics
+
+**Owner direction (2026-11-04).** Players need clear reasons to buy and sell. Configure main/scarce resources per planet and canonical sector, independently by ResourceKey/tier (a sand planet may be silica-rich but crystal-poor). Resolve global/type/planet/archetype/sector overrides with explicit provenance. All production/discovery paths respect the same endowment; generated reserves stay pinned for existing worlds. W11 provides identity/persistence hooks; W13 owns database configuration and economics; W27 preserves them under streaming.
+
+Large active bases and armies consume recurring resource supplies. Load relative to powered logistics capacity and route distance increases delivery/resource cost; players can build depots, trade locally, reduce activity or reserve units. Keep storage, command slots and logistics distinct. Supply shortage limits active work/attack cadence after local reserves/grace, while retreat remains possible. Reserve/deployment and away-budget rules are explicit in [ECONOMY](ECONOMY.md); do not raise another player's order price or debit cash automatically. Initial coefficients/shortage floors require calibration and are recorded in LED-19, not presented as measured balance. Multi-colony cost avoidance is tested; D-25 remains unchanged.
+
+
+## D-45 — Hex tiles: one rule for where the hex grid exists
+
+**Context (owner, 2026-11-06).** "Hexagons must never be rendered on or near obstacles, hills or mountains; resources only on hexagons; I need clear rules, a system, not lots of checks." The ground mesh puts a vertex at every tile *centre*, so the surface inside a tile's hexagon is shaped by the tile and its six neighbours: half of a Flat tile next to a dune lies on the dune's ramp. Per-tile flags (`aHexFlat`, `isLevelGroundPlane`, "deposit tiles always get lines") drew hexes up hills and around crystals on slopes.
+
+**Decision.** One function, `shared/sim/src/grid/hexTile.ts`:
+- **R1 open ground:** terrain Flat, or cleared prep (`prepared` / `irrigated` / `living`) on any terrain; never a ridge or moat.
+- **R2 hex tile:** open ground whose six neighbours all exist, are open ground and share its `levelledFlatHeight` within `HEX_LEVEL_EPS_M` (0.05 m). Its hexagon is one level plane.
+- **R3 wild ground:** everything else — obstacles, hills, water, holes, ramps, the planet rim and every tile touching one of them.
+- **R4 terraforming joins a plane** (owner, 2026-11-06: "I terraformed dunes, some ground still has no hexagons"): levelled ground takes the height of the level plane it joins (`joinPlaneHeight`: heights within 0.05 m are one plane, the plane most anchors share wins). A dune disc's anchors are the nearest hex tiles (searched up to 12 rings out) plus buildings/deposits inside it, else the open ground right beside it, else 0; the disc also levels every other open-ground hex inside it (loose Flat sand, earlier pads). Before, each disc took the *lowest* Flat tile beside it, so neighbouring discs differed by 0.06–0.4 m and ~40 % of flattened desert had no grid; now 0 % when worked outward from the pad, ~2–7 % in a random order (seams where two natural planes meet). Single tiles (`levelToAdjacentFlat`) use the same chooser.
+- **Worked from the edge inward** (owner, 2026-11-06: "hill targeted for terraforming … impossible to terraform"): wild ground beyond the non-hex row is reached by the chain rule in `systems/terraform-basic/chain.ts` (E1 a job needs a stand within the worker's reach; E2 a clicked tile without one is the chain's goal, the nearest obstacle with a stand is worked first, each cleared disc becomes the next stand; E3 only nothing workable ends the order with `no_path`). Supersedes the W02 rule "a clicked tile with no path ends the order". Open edges: GP-99, FF-91.
+
+Readers, and nothing else decides these:
+- **Grid lines** (`frontend/render/planets/hex/`): `hexTileMask` stamped per cell into `uHexGrid`; an edge line is drawn where its own cell or the neighbour across that edge is a hex tile. Every hex tile is a closed hexagon; wild ground has no lines.
+- **Visible deposits** appear only on hex tiles: world generation chooses hex tiles (`assignTemperateDeposits`, `placeStarterDeposits`), a last step (`buryWildDeposits`) moves any leftover into the hidden subsurface, `revealSubsurface` reveals only on a hex tile, `revealAroundChanged` re-tries the worked tiles and their one-ring, terraform finds roll only on hex tiles. `GEN_VERSION` 10.
+- **Ground marks** (terraform targets and hover, power zone, placement ghost footprints) are draped on the rendered surface (`frontend/game/features/shared/hexTiles3d.ts`: 12 pieces per hex, each inside one mesh lattice triangle, so the drape is exact).
+
+**Not changed.** Building placement (`evaluatePlacement`, `isTileUneven`, W05 linked prep) and unit movement keep their own, wider rules: a building may still be ordered onto wild ground that its linked prep levels, and units still walk beside trees.
+
+**Consequences.** The desert is ~93 % dunes, so its visible deposits drop from ~368 to ~15 per planet (the starter guarantees); the rest stay buried until dunes are flattened (WE-35). Hand-placed scenario deposits and `dev.spawndeposit` bypass the rule (GP-98). Limits: RN-80, FF-90.
+
+**Alternatives.** A stricter grid rule also used for placement and movement (would forbid building or walking next to any tree); stamping a level pad under every generated deposit (keeps desert deposit counts but cuts flat patches into the dunes — owner question WE-35); rebuilding the mesh so hex tiles are true flat hexagons with transitions on the wild side (large render rework).
+
+## D-46 — Bot participation and the organic-fill rule
+
+**Decision (lead default, 2026-11-07; the owner may change it).** The W13 exchange runs fully automatically: LLM-controlled bots and humans trade on the same per-planet order book, and prices come from real demand.
+
+- **Bot actor.** New actor kind `bot` (agent-operated account). A bot uses a REST+stream trading API at `/v1/trade/*` with an API key bound to one colony account. Keys carry allowances: max open orders, max order notional, daily spend/loss budget, allowed pairs, price band versus the reference price, kill switch, idempotency keys and rate limits. The sim accepts command source `'bot'` on `market.placeOrder`; there is one order path for humans, bots, Guild NPCs and directors. Fees, reservations, rounding and minimum notional are the human rules.
+- **Strategy versus price.** A pure deterministic need/value quote library (`shared/sim/src/systems/trade/agent/`) derives desired quantity from `potentialBuy`, walk-away bid/ask from unit cost and alternatives, applies the ECONOMY §4 inventory-skew quote and hard reservation/budget/staleness limits, and returns reason codes. An LLM (W16 director, external agent) sets strategy only (specialisation, reserve targets, risk, goals); it never types a free price.
+- **Organic rule (amends D-44).** A fill is organic when both sides are actor kind `player` or `bot`, are different colonies and have different owners. Same-owner, fixture, subsidy, `npc` and Guild fills are never organic. The earlier rule (organic only when both sides are `player`) blocked a bot-only market from establishing a reference price and is superseded. The no-identity-verification stance of D-25 stands: owner identity is the account owner known to the platform, not a proof of human independence.
+- **Credibility hypothesis.** Bot demand is only credible if the bot consumes what it buys; this is tracked (intermediary versus consumed volume) and calibrated in LED-18, not asserted.
+- **Surfaces.** Standalone `/trade.html` (all pairs' depth, all my orders, fills, board, my orbital cargo only) plus a simplified in-game Trade Hub. Supply & trade pricing is depth-aware.
+- **Testing.** W13 ships a fully emulated NEAR chain with deterministic fault injection (fail-before-submit, unknown outcome, delayed finality, duplicate delivery, insufficient funds). Real cash settlement stays W23; W23 swaps real FT/Intents behind the same ports and puts bot API keys on real accounts behind the pilot gates.
+- **Guild.** Guild NPCs (W15) become one kind of agent on the same bot API and quote library; their bootstrap session is labelled subsidy and is never organic.
+
+**Alternatives.** Keep organic = both `player` (a bot-only market never gets a reference price; the exchange needs humans online). Let LLMs quote free prices (unbounded loss, prompt-injection exposure). A separate bot-only venue (splits liquidity, hides bot behaviour from humans). Count every distinct-wallet fill as organic (wash trading by one owner).
+
+**Consequences.** Bot-to-bot volume can move the reference price, so allowance, price-band and concentration limits are hard gates; real-cash exposure of bots stays behind W23-48/49.

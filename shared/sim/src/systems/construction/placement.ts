@@ -1,13 +1,17 @@
-import type { RejectCode } from '@terra/contracts';
+import type { RejectCode, ResourceKey } from '@terra/contracts';
 import { compileData, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
+import {
+  GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock, type GeoBuildOptions,
+} from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
+import { getTerraformOpSpec } from '../terraform-basic/ops';
 import { inPowerZone, placementPowerZoneSources, powerZoneActive, type PowerZoneSource } from './powerZone';
-import { planPrepJobs, summarizePrepJobs } from './prep';
+import { isPlacementBlockedBySectorIsolation } from './placementWorld';
+import { planPrepJobs, summarizePrepJobs, type SitePrepOpCounts } from './prep';
 
 export { resolveHubT1Row } from '../rows';
 
@@ -27,6 +31,7 @@ export interface PlacementEntity {
   hp: number;
   hpMax: number;
   state: number;
+  tier?: number;
 }
 
 /** Read-only map + entity snapshot (built from `SimState` on the host, from the replica view in the client). */
@@ -44,6 +49,13 @@ export interface PlacementWorld {
   entities: readonly PlacementEntity[];
   /** Open build orders without a site entity yet (a queued Power Pylon already extends the power zone, `powerZone.ts`). */
   plannedSites?: ReadonlyArray<{ owner: number; building: string; q: number; r: number }>;
+  /**
+   * Best HQ / Worker Drone tier per colony index, for worlds whose entity rows carry no `tier` (a client replica: the
+   * host publishes `colonies[].maxWorkerTier` on its view). The host leaves it out: its entities carry their tier.
+   */
+  maxWorkerTierByColony?: Readonly<Record<number, number>>;
+  sectorRadius?: number;
+  colonyFoundingSectorById?: Readonly<Record<number, string>>;
 }
 
 /** Per-building placement rule (balance rows supply the numbers; the geo part is fixed per building class). */
@@ -83,12 +95,14 @@ export interface PlacementBill {
   baseSeconds: number;
   hqSeconds: number;
   totalEnergyE: number;
-  yields: { 'metals.t1': number; 'bio.biomass': number };
-  ops: { grade: number; clear: number; break: number };
+  yields: { 'metals.t1': number; 'bio.biomass': number; 'minerals.t1'?: number };
+  cost?: Partial<Record<ResourceKey, number>>;
+  ops: SitePrepOpCounts;
 }
 
 export interface PlacementResult {
   ok: boolean;
+  reason?: string;
   code?: RejectCode;
   block?: PlacementBlock;
   text?: string;
@@ -166,13 +180,16 @@ const ECONOMY_BUILDING_ALIASES: Readonly<Record<string, string>> = {
   coalGen: 'thermal',
   thermalPlant: 'thermal',
   oilWell: 'petroleumWell',
+  droneArray: 'droneControlArray',
+  turret: 'autocannon',
+  pulseTurret: 'laserTower',
 };
 
-/** The W02/W03 T1 building row (`economyT1Basic` or `grid`, `kind: 'building'`) named `building`, or `null`. */
+/** The W02/W03/W07 T1 building row (`economyT1Basic`, `grid`, or `combatUnits`, `kind: 'building'`) named `building`, or `null`. */
 export function resolveEconomyBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
   if (building === undefined) return null;
   const canonical = ECONOMY_BUILDING_ALIASES[building] ?? building;
-  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W10'])));
+  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07', 'W10'])));
   if (building === 'tradeHub' || building === 'interColonyTradeHub') {
     const src = data?.tables ? data : fallback;
     const thRow = (src.tables.tradeHub as Record<string, CompiledRow> | undefined)?.t1;
@@ -183,7 +200,10 @@ export function resolveEconomyBuildingRow(building: string | undefined, data?: C
   if (ecoRow && ecoRow.kind === 'building') return ecoRow;
   const gridSrc = data?.tables?.grid ? data : fallback;
   const gridRow = (gridSrc.tables.grid as Record<string, CompiledRow> | undefined)?.[canonical];
-  return gridRow && gridRow.kind === 'building' ? gridRow : null;
+  if (gridRow && gridRow.kind === 'building') return gridRow;
+  const combatSrc = data?.tables?.combatUnits ? data : fallback;
+  const combatRow = (combatSrc.tables.combatUnits as Record<string, CompiledRow> | undefined)?.[canonical];
+  return combatRow && combatRow.kind === 'building' ? combatRow : null;
 }
 
 /**
@@ -232,7 +252,7 @@ export function getBuildingFootprintTiles(q: number, r: number, footprint = 3): 
   return out;
 }
 
-const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
+export const OCCUPYING_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.commandHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
@@ -245,7 +265,16 @@ const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
   ENTITY_KIND.tradeHub,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
 ]);
+
+const OCCUPYING_KINDS = OCCUPYING_BUILDING_KINDS;
 
 /** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */
 export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): boolean {
@@ -255,14 +284,55 @@ export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): 
 /** Footprint size of an existing building entity of `kind` (its row's `footprint`). */
 export function entityFootprint(kind: number, data?: CompiledDataLike): number {
   if (kind === ENTITY_KIND.commandHub) return rowNum(resolveHubT1Row(data), 'footprint');
-  if (kind === ENTITY_KIND.pylon) return 1;
+  if (kind === ENTITY_KIND.roboticsFactory) return 3;
+  if (
+    kind === ENTITY_KIND.pylon ||
+    kind === ENTITY_KIND.droneControlArray ||
+    kind === ENTITY_KIND.autocannon ||
+    kind === ENTITY_KIND.laserTower ||
+    kind === ENTITY_KIND.hiveBlackAnt ||
+    kind === ENTITY_KIND.hiveBlueBeetle ||
+    kind === ENTITY_KIND.hiveGreenSpitter
+  ) {
+    return 1;
+  }
   if (OCCUPYING_KINDS.has(kind)) return 2;
   return 1;
 }
 
 const isAlive = (e: PlacementEntity): boolean => !(e.hpMax > 0 && e.hp <= 0);
 
-function occupiedTiles(world: PlacementWorld, data?: CompiledDataLike): Set<number> {
+/** W05-09 (re-opening D-37): linked site prep covers trees, rock, slope, holes and water once the W05 ops are compiled. */
+export function linkedPrepActive(data?: CompiledDataLike): boolean {
+  return Boolean((data?.tables?.opsBasic as Record<string, unknown> | undefined)?.level);
+}
+
+/**
+ * The best tier among `colonyId`'s alive HQ and Worker Drones (1 when none), the one rule for what a colony's workers
+ * may do (`deepReclaim.minWorkerTier`): placement, linked prep and the terraform rule read it, on the host and the client.
+ */
+export function colonyMaxWorkerTier(world: Pick<PlacementWorld, 'entities' | 'maxWorkerTierByColony'>, colonyId: number): number {
+  let max = Math.max(1, world.maxWorkerTierByColony?.[colonyId] ?? 1);
+  for (const e of world.entities) {
+    if (e.owner !== colonyId || !isAlive(e) || (e.kind !== ENTITY_KIND.hq && e.kind !== ENTITY_KIND.worker)) continue;
+    const t = typeof e.tier === 'number' && e.tier > 0 ? e.tier : 1;
+    if (t > max) max = t;
+  }
+  return max;
+}
+
+/** The `geoBuildBlock` options of `colonyId` (linked prep on, deep water once a worker of `deepReclaim`'s tier exists). */
+export function geoBuildOptionsFor(world: Pick<PlacementWorld, 'entities' | 'maxWorkerTierByColony'>, colonyId: number, data?: CompiledDataLike): GeoBuildOptions {
+  const linkedPrep = linkedPrepActive(data);
+  const deepCompiled = linkedPrep && 'deepReclaim' in (data!.tables.opsBasic as Record<string, unknown>);
+  return {
+    linkedPrep,
+    canDeepReclaim: deepCompiled && colonyMaxWorkerTier(world, colonyId) >= getTerraformOpSpec('deepReclaim', data).minWorkerTier,
+  };
+}
+
+/** Tiles under an alive building's footprint (GP-23: the same set placement, paths and terraform block). */
+export function occupiedTiles(world: PlacementWorld, data?: CompiledDataLike): Set<number> {
   const idx = hexIndex(world.radius);
   const out = new Set<number>();
   for (const e of world.entities) {
@@ -280,10 +350,12 @@ interface TileContext {
   colonyId: number;
   occupied: Set<number>;
   zone: readonly PowerZoneSource[] | null;
+  geo: GeoBuildOptions;
 }
 
 function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileContext, q: number, r: number, tileIdx: number): PlacementTile {
-  const { colonyId, occupied, zone } = ctx;
+  const { colonyId, occupied, zone, geo } = ctx;
+  const linkedPrep = Boolean(geo.linkedPrep);
   const inMap = tileIdx >= 0 && tileIdx < world.tileCount && (!world.valid || world.valid[tileIdx] !== 0);
   if (!inMap) return { q, r, tileIdx, terrain: -1, prep: -1, deposit: 0, owner: -1, prepared: false, ok: false, block: 'outOfMap' };
   const terrain = world.terrain[tileIdx], prep = world.prep[tileIdx], owner = world.owner[tileIdx];
@@ -297,9 +369,9 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileConte
   else {
     const isDepleted = deposit !== 0 && world.richness != null && Number(world.richness[tileIdx] ?? 0) <= 0;
     const effectiveDeposit = rule.deposit === 'require' && isDepleted ? 0 : deposit;
-    block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit);
+    block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit, geo);
   }
-  if (!block && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
+  if (!block && !(linkedPrep && !tile.prepared) && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
   if (block) { tile.ok = false; tile.block = block; }
   return tile;
 }
@@ -337,8 +409,7 @@ function colonyBlock(world: PlacementWorld, rule: PlacementRule, opts: EvaluateP
 }
 
 function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): PlacementBill {
-  // Only the prep the linked order would really do: buildable tiles (Grade). Blocked tiles (trees, rock, …) are the
-  // player's own terraform ops, so an invalid site never advertises Break / Clear work or their yields (D-37).
+  // Only the prep the linked order would really do: buildable tiles. Blocked tiles are not billed (D-37).
   const buildable = tiles.filter((t) => t.ok);
   const sum = summarizePrepJobs(planPrepJobs(buildable, data), data);
   return {
@@ -348,6 +419,7 @@ function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): Plac
     hqSeconds: sum.hqSeconds,
     totalEnergyE: sum.totalEnergyE,
     yields: sum.yields,
+    ...(sum.cost ? { cost: sum.cost } : {}),
     ops: sum.countsByOp,
   };
 }
@@ -389,11 +461,16 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
 
   const idx = hexIndex(world.radius);
   const zone = !rule.isHub && powerZoneActive(opts.data) ? placementPowerZoneSources(world, colonyId, opts.data) : null;
-  const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone };
+  const geo = geoBuildOptionsFor(world, colonyId, opts.data);
+  const linkedPrep = Boolean(geo.linkedPrep);
+  const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone, geo };
   const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, ctx, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
+  if (isPlacementBlockedBySectorIsolation(world, colonyId, q, r, tiles)) {
+    return { ...fail('outOfMap', tiles, bill), code: 'terrain_unbuildable', reason: 'blocked_terrain' };
+  }
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
-  if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
+  if (!(linkedPrep && tiles.some((t) => !t.prepared)) && footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
   if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) return fail('noDeposit', tiles, bill);
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);

@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type CargoStatusPayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type CargoStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
@@ -104,6 +104,8 @@ export class WorldStore {
   private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
   private latestCargoStatus: CargoStatusPayload | null = null;
   private readonly cargoStatuses = new Emitter<CargoStatusPayload>();
+  private readonly marketBooks = new Emitter<MarketBookPayload>();
+  private readonly marketTrades = new Emitter<MarketTradePayload>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -124,6 +126,9 @@ export class WorldStore {
   onView(fn: (v: ClientView) => void): () => void { return this.views.on(fn); }
   onStatus(fn: (s: WorldStatus) => void): () => void { return this.statuses.on(fn); }
   onCargoStatus(fn: (s: CargoStatusPayload) => void): () => void { return this.cargoStatuses.on(fn); }
+  /** W13 `market.book` / `market.trade` pushes of the joined planet. */
+  onMarketBook(fn: (p: MarketBookPayload) => void): () => void { return this.marketBooks.on(fn); }
+  onMarketTrade(fn: (p: MarketTradePayload) => void): () => void { return this.marketTrades.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -250,6 +255,10 @@ export class WorldStore {
         this.views.emit(this.latestView);
       }
       this.cargoStatuses.emit(m.d);
+    } else if (m.t === 'market.book') {
+      this.marketBooks.emit(m.d);
+    } else if (m.t === 'market.trade') {
+      this.marketTrades.emit(m.d);
     }
   }
 

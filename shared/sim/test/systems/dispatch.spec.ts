@@ -11,14 +11,14 @@ import {
   hexIndex,
   setTileDeposit,
   setTileTerrain,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   step,
   TERRAIN,
 } from '../../src';
 
 describe('W02-16 Dispatch v1: nearest idle eligible worker, lowest tier on ties, pre-emption of auto by player', () => {
-  it('Harvester harvesting (auto) + player Clear order -> Harvester is pre-empted to Clear', () => {
+  it('Worker harvesting (auto) + player Clear order -> Worker is pre-empted to Clear', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     state.colonies.push(
       ensureColonyLedger({
@@ -35,13 +35,13 @@ describe('W02-16 Dispatch v1: nearest idle eligible worker, lowest tier on ties,
     setTileDeposit(state, idx.indexOf(1, 0), DEPOSIT.metals, 10000, 0);
     setTileTerrain(state, idx.indexOf(2, 0), TERRAIN.forest, 0);
 
-    // Spawn Harvester at (0, 0) adjacent to the deposit at (1, 0) and step once so it is actively harvesting (auto precedence)
-    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
+    // Spawn Worker at (0, 0) adjacent to the deposit at (1, 0) and step once so it is actively harvesting (auto precedence)
+    const harvId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     step(state, [], 1, pipeline);
     expect(state.entities.cols.state[0]).toBe(ENTITY_STATE.harvesting);
 
-    // Issue player Clear order at (2, 0) -> pre-empts the harvesting Harvester!
+    // Issue player Clear order at (2, 0) -> pre-empts the harvesting Worker!
     const dispatched = dispatchJob(state, {
       colonyIndex: 0,
       kind: 'terraform',
@@ -62,17 +62,17 @@ describe('W02-16 Dispatch v1: nearest idle eligible worker, lowest tier on ties,
   it('routes linked prep and T1 building construction to HQ (terraform/build-capable) and prefers lowest maxBuildTier on ties', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
-    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
+    const harvId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
 
-    // Linked prep goes only to HQ (Harvester cannot prepare/flatten)
+    // Both the HQ and the T1 drone may prep. Equal distance and tier: the lower entity id (HQ, spawned first) wins.
     const prepRes = dispatchJob(state, { colonyIndex: 0, kind: 'linkedPrep', op: 'prepare', q: 2, r: 0 });
     expect(prepRes.ok).toBe(true);
     if (prepRes.ok) expect(prepRes.record.workerEntityId).toBe(hqId);
 
-    // Reset HQ to idle at (0, 0); on equal distance for Clear, Harvester (maxBuildTier 0) wins tie over HQ (maxBuildTier 1)
     state.entities.cols.state[0] = ENTITY_STATE.idle;
     const clearTie = dispatchJob(state, { colonyIndex: 0, kind: 'terraform', op: 'clear', q: 1, r: 0 });
     expect(clearTie.ok).toBe(true);
-    if (clearTie.ok) expect(clearTie.record.workerEntityId).toBe(harvId);
+    if (clearTie.ok) expect(clearTie.record.workerEntityId).toBe(hqId);
+    expect(harvId).toBeGreaterThan(hqId);
   });
 });

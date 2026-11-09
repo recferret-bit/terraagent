@@ -210,4 +210,15 @@ describe('W08-27 Reusable Sliders and Wave Guard', () => {
 
     mounted.dispose();
   });
+
+  it('clamps slider values at min 0 and max 100 boundaries and rounds to step 10', () => {
+    const sliders = new PrioritySliders();
+    sliders.setValue('economy', -25, false);
+    expect(sliders.getValue('economy')).toBe(0);
+    sliders.setValue('economy', 145, false);
+    expect(sliders.getValue('economy')).toBe(100);
+    sliders.setValue('economy', 46, false);
+    expect(sliders.getValue('economy')).toBe(50);
+    sliders.dispose();
+  });
 });

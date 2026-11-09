@@ -1,3 +1,4 @@
+import { globalTileToSector } from '../../atlas/partition';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
@@ -20,6 +21,8 @@ export interface RelayNode {
   radius: number;
   footprintTiles: BuildingFootprintTile[];
   componentId: number;
+  sectorId?: string;
+  sectorRadius?: number;
 }
 
 export interface PowerGraphComponent {
@@ -82,6 +85,11 @@ function collectRelayNodes(
   const pylonRow = resolvePowerRow(data, 'grid', 'pylon');
   const hubRadius = powerZoneRadiusOf(hubRow);
   const pylonRadius = powerZoneRadiusOf(pylonRow);
+  const rawAtlas = state.blobs.atlas as { value?: unknown } | undefined;
+  const atlas = (rawAtlas && typeof rawAtlas === 'object' && 'value' in rawAtlas ? rawAtlas.value : rawAtlas) as
+    | { sectorRadius?: number }
+    | undefined;
+  const sectorRadius = typeof atlas?.sectorRadius === 'number' ? atlas.sectorRadius : undefined;
 
   const e = state.entities, cols = e.cols;
   const relayNodes: RelayNode[] = [];
@@ -92,6 +100,9 @@ function collectRelayNodes(
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
     if (cols.state[row] === ENTITY_STATE.constructing || cols.state[row] === ENTITY_STATE.inert) continue;
     const kind = cols.kind[row];
+    const secProps = sectorRadius
+      ? { sectorId: globalTileToSector(cols.q[row], cols.r[row], sectorRadius).sectorId, sectorRadius }
+      : {};
     if (kind === ENTITY_KIND.commandHub) {
       hasHub = true;
       const w = cols.footprintW?.[row] || Number(hubRow.footprintW ?? 3);
@@ -100,7 +111,7 @@ function collectRelayNodes(
       hubAnchors.push({ q: cols.q[row], r: cols.r[row] });
       relayNodes.push({
         row, id: cols.id[row], kind, q: cols.q[row], r: cols.r[row],
-        radius: hubRadius, footprintTiles: tiles, componentId: -1,
+        radius: hubRadius, footprintTiles: tiles, componentId: -1, ...secProps,
       });
     } else if (kind === ENTITY_KIND.pylon) {
       const w = cols.footprintW?.[row] || 1;
@@ -108,15 +119,39 @@ function collectRelayNodes(
       const tiles = getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]);
       relayNodes.push({
         row, id: cols.id[row], kind, q: cols.q[row], r: cols.r[row],
-        radius: pylonRadius, footprintTiles: tiles, componentId: -1,
+        radius: pylonRadius, footprintTiles: tiles, componentId: -1, ...secProps,
       });
     }
   }
   return { relayNodes, hubAnchors, hasHub };
 }
 
-/** Two relays link when one stands in the other's zone: a pylon placed inside a zone (the placement rule) joins its source. */
-export function relaysLinked(a: RelayNode, b: RelayNode): boolean {
+/** Two relays link when one stands in the other's zone and both belong to the same sector (when atlas sectors exist). */
+export function relaysLinked(
+  aOrState: RelayNode | PlanetState,
+  bOrA: RelayNode | { id?: number; entityId?: number; kind?: number; q: number; r: number; radius?: number; sectorId?: string; sectorRadius?: number },
+  maybeB?: RelayNode | { id?: number; entityId?: number; kind?: number; q: number; r: number; radius?: number; sectorId?: string; sectorRadius?: number },
+): boolean {
+  let state: PlanetState | undefined;
+  let a: { q: number; r: number; radius: number; sectorId?: string; sectorRadius?: number };
+  let b: { q: number; r: number; radius: number; sectorId?: string; sectorRadius?: number };
+  if (maybeB !== undefined) {
+    state = aOrState as PlanetState;
+    const pylonR = powerZoneRadiusOf(resolvePowerRow(undefined, 'grid', 'pylon'));
+    a = { radius: pylonR, ...bOrA };
+    b = { radius: pylonR, ...maybeB };
+  } else {
+    a = aOrState as RelayNode;
+    b = bOrA as RelayNode;
+  }
+  const rawAtlas = state?.blobs?.atlas as { value?: unknown } | undefined;
+  const atlas = (rawAtlas && typeof rawAtlas === 'object' && 'value' in rawAtlas ? rawAtlas.value : rawAtlas) as
+    | { sectorRadius?: number }
+    | undefined;
+  const sectorRadius = atlas?.sectorRadius ?? a.sectorRadius ?? b.sectorRadius;
+  const secA = a.sectorId ?? (sectorRadius ? globalTileToSector(a.q, a.r, sectorRadius).sectorId : undefined);
+  const secB = b.sectorId ?? (sectorRadius ? globalTileToSector(b.q, b.r, sectorRadius).sectorId : undefined);
+  if (secA !== undefined && secB !== undefined && secA !== secB) return false;
   return inSourceZone(a, b.q, b.r) || inSourceZone(b, a.q, a.r);
 }
 
@@ -203,7 +238,23 @@ const POWERED_BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.petroleumWell,
   ENTITY_KIND.supplyDepot,
   ENTITY_KIND.tradeHub,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
 ]);
+
+function defaultBuildingFootprint(kind: number): number {
+  if (kind === ENTITY_KIND.roboticsFactory) return 3;
+  if (
+    kind === ENTITY_KIND.droneControlArray ||
+    kind === ENTITY_KIND.autocannon ||
+    kind === ENTITY_KIND.laserTower
+  ) {
+    return 1;
+  }
+  return 2;
+}
 
 function attachBuildingsToRelays(
   state: PlanetState,
@@ -251,8 +302,9 @@ function attachBuildingsToRelays(
     if (!POWERED_BUILDING_KINDS.has(cols.kind[row])) continue;
     const bId = cols.id[row];
 
-    const w = cols.footprintW?.[row] || 2;
-    const d = cols.footprintD?.[row] || 2;
+    const defFp = defaultBuildingFootprint(cols.kind[row]);
+    const w = cols.footprintW?.[row] || defFp;
+    const d = cols.footprintD?.[row] || defFp;
     const bTiles = getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]);
 
     let bestRelay: RelayNode | null = null;

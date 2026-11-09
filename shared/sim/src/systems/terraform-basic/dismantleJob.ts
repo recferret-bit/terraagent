@@ -14,7 +14,7 @@ import { ensureWorkColony, type WorkJobRecord } from './workJobs';
 
 /**
  * Dismantle as builder work (owner feedback W03 #6). `DISMANTLE [Z]` on an own finished building orders a dismantle
- * job (`blobs.workJobs`, mode `dismantle`): a Builder Drone or the HQ walks there (the work-jobs system, movement
+ * job (`blobs.workJobs`, mode `dismantle`): a Worker Drone or the HQ walks there (the work-jobs system, movement
  * orchestrator) and takes it apart in `workCrew.dismantle.timeFactor` × the building's build time at its work rate
  * (a crew is faster, `../dispatch/crew.ts`). The refund (`refundRate` × build cost) is credited step by step as it
  * advances; at 100 % the building is removed. Meanwhile the building is an offline site (`dismantleSite.ts`) and the
