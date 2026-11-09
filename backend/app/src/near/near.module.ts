@@ -19,9 +19,13 @@ import { RelayStatusService } from './identity/relay-status.service.js';
 import { SocialAuthService } from './identity/social-auth.service.js';
 import { SocialLink } from './identity/social-link.js';
 import { NearMockCommand } from './infrastructure/dev/near-mock.command.js';
+import { DeedRepository } from './deed/deed.repository.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
+import { StakingController } from './staking/staking.controller.js';
 import { StakingPoolsController } from './staking/staking-pools.controller.js';
+import { StakingPositionSyncService } from './staking/staking-position-sync.service.js';
+import { StakingService } from './staking/staking.service.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
 export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
@@ -37,6 +41,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     NearHealthController,
     RelayStatusController,
     SocialAuthController,
+    StakingController,
     StakingPoolsController,
   ],
   providers: [
@@ -44,11 +49,14 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    DeedRepository,
     FreeVerifierService,
     ColonyAccounts,
     RelayStatusService,
     SocialAuthService,
     SocialLink,
+    StakingPositionSyncService,
+    StakingService,
     NearMockCommand,
   ],
   imports: [NearInfrastructureModule, OutboxModule],
@@ -57,10 +65,13 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    DeedRepository,
     FreeVerifierService,
     NearInfrastructureModule,
     OutboxModule,
     SocialLink,
+    StakingPositionSyncService,
+    StakingService,
   ],
 })
 export class NearModule {}
