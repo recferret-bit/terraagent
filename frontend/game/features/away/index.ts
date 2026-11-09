@@ -22,8 +22,8 @@ export default defineFeature({
   wave: 'W09',
   hud: [{
     id: 'away-settings',
-    slot: 'top-right',
-    order: 36,
+    slot: 'top-left',
+    order: 21,
     mount(el, ctx) {
       if (!ctx.flags.has('W09')) {
         el.hidden = true;

@@ -1,4 +1,21 @@
-/* Away settings plate (W09-14). Faction Plate tokens only; chamfer comes from .plate-sm. */
+/* Away settings plate (W09-14). Faction Plate tokens only; chamfer comes from .plate-sm.
+   Sits on the same row as the pilot chip, to the right of Save progress. */
+
+.ta-hud__slot[data-slot='top-left']:has(> .ta-hud__panel[data-feature='away']) {
+  flex-flow: row wrap;
+  align-items: flex-start;
+  max-width: none;
+  width: max-content;
+}
+
+.ta-hud__slot[data-slot='top-left']:has(> .ta-hud__panel[data-feature='away']) > .ta-hud__panel {
+  flex: 1 0 100%;
+}
+
+.ta-hud__slot[data-slot='top-left'] > .ta-hud__panel[data-feature='identity'],
+.ta-hud__slot[data-slot='top-left'] > .ta-hud__panel[data-feature='away'] {
+  flex: 0 0 auto;
+}
 
 .ta-away {
   display: flex;

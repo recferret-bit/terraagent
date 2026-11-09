@@ -118,7 +118,7 @@ describe('away settings panel', () => {
   it('hides the plate when W09 is off and wires the command bus when it is on', async () => {
     expect(awayFeature.id).toBe('away');
     expect(awayFeature.wave).toBe('W09');
-    expect(awayFeature.hud?.[0]).toMatchObject({ id: 'away-settings', slot: 'top-right', order: 36 });
+    expect(awayFeature.hud?.[0]).toMatchObject({ id: 'away-settings', slot: 'top-left', order: 21 });
     const hidden = document.createElement('div');
     const off = awayFeature.hud?.[0]?.mount(hidden, ctx(fakeSend(), ['W00']));
     expect(hidden.hidden).toBe(true);
