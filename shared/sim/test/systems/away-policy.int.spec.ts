@@ -24,6 +24,7 @@ describe('W09-09 setAutopilot in the sim host', () => {
     expect(stored?.budget.metals.perSessionPct).toBe(30);
     expect(stored?.budget.minerals.perDirectivePct).toBe(40);
     expect(stored?.budget.bio.perSessionPct).toBe(60);
+    expect((sim.state.blobs.away?.value as { policyVersion?: number }).policyVersion).toBe(1);
   });
 
   it('rejects a budget over 100 before the handler, and wave_disabled below W09', () => {

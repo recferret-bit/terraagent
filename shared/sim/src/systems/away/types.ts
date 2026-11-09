@@ -5,7 +5,8 @@ export type AwayFamily = 'metals' | 'minerals' | 'bio';
 export const AWAY_FAMILIES = ['metals', 'minerals', 'bio'] as const;
 
 /** AW-01..07. `present` / `player` mean the away rules do not apply. */
-export type AwayAllowRule = 'AW-01' | 'AW-02' | 'AW-03' | 'AW-04' | 'AW-05' | 'AW-06' | 'AW-07' | 'present' | 'player';
+export type AwayAllowRule = 'AW-01' | 'AW-02' | 'AW-03' | 'AW-04' | 'AW-05' | 'AW-06' | 'AW-07' | 'present' | 'player' | 'raid-opt-in' | 'defensive';
+export type AwayDenyRule = 'AW-10' | 'AW-11' | 'AW-12' | 'AW-13' | 'AW-14' | 'AW-15';
 
 export interface AwayFamilyBudgetView {
   readonly perDirectivePct: number;
@@ -43,11 +44,15 @@ export interface AwayCommand {
   readonly actor: AwayActor;
   readonly args: unknown;
   readonly cost?: Partial<Record<AwayFamily, number>>;
+  /** True when this attack stays inside the colony's own territory. */
+  readonly defensive?: boolean;
+  /** Result of `withinAutoTrade` (W09-13). Absent on a trade means outside the limits. */
+  readonly withinAutoTrade?: boolean;
 }
 
 export type AwayDecision =
   | { readonly decision: 'allow'; readonly rule: AwayAllowRule }
-  | { readonly decision: 'abstain' };
+  | { readonly decision: 'reject'; readonly rule: AwayDenyRule; readonly code: 'away_policy' };
 
 export interface BuildOrder {
   readonly building: string;

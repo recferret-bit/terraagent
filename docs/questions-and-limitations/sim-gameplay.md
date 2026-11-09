@@ -1252,12 +1252,12 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Optional: a backend one-shot that re-sends `market.reserve` for open DB orders after deploy, or drop the heal once no pre-fix colony remains.
 - **Found:** 2026-11-08, real-sim integration agent (SIM-LEAK).
 
-### GP-114 · Away allow-list abstains until the deny table lands; one priority step is 10 points
+### GP-114 · Away policy rejects in the pure function; the command pipeline does not consult it yet
 
-- **Status:** Accepted (by design)
+- **Status:** Open
 - **Area / code:** `shared/sim/src/systems/away/policy.ts`, `shared/sim/src/systems/director/overlay.ts` (`awayGuardPoints`)
-- **What happens:** `awayPolicy` allows AW-01..07 and a player command, and returns `abstain` for everything else while the colony is away. It does not yet reject demolish, raids, or over-cap trades. A priority "step" is the landed director guard, 10 points (`awayGuardBp` 1000), not 1 point.
-- **Why it is like this:** W09-09 is the allow list. W09-10 adds AW-10..15 rejects. The slider step is already 10 in `setPriorities` and in the W16 overlay, so a second step size would disagree with the director.
-- **Workaround / mitigation:** Callers must treat `abstain` as "not allowed yet" until W09-10 wires the reject. The gate is not in the command pipeline in W09-09, so the sim still applies those commands.
-- **To resolve:** W09-10 turns abstain-on-deny into `reject` with `away_policy`, and W09-12 counts them. Leave the 10-point step unless the owner wants a 1-point band.
-- **Found:** 2026-11-09, W09-09
+- **What happens:** `awayPolicy` allows AW-01..07, a player command, an opted-in raid, and a defensive shot. Everything else an away actor tries is `reject` with `away_policy` and a rule id. A priority step is the landed director guard, 10 points (`awayGuardBp` 1000). The sim command pipeline does not call `awayPolicy` yet, so a demolish command still applies.
+- **Why it is like this:** W09-09 and W09-10 land the pure function and its table tests. W09-12 is the rejection log and the pipeline gate. The slider step is already 10 in `setPriorities` and in the W16 overlay.
+- **Workaround / mitigation:** Call `awayPolicy` before applying an automated command. Do not treat a sim ack as an away-policy allow until W09-12.
+- **To resolve:** W09-12 consults `awayPolicy` inside the command path, logs `cmd.reject`, and increments `away_policy_rejections_total`. Leave the 10-point step unless the owner wants a 1-point band.
+- **Found:** 2026-11-09, W09-09, updated W09-10

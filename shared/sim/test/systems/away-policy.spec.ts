@@ -46,8 +46,8 @@ describe('W09-09 awayPolicy allow list', () => {
     expect(withinDirective(view(), { metals: 40 })).toBe(true);
   });
 
-  it('abstains when the extractor cost is over the directive cap', () => {
-    expect(awayPolicy(view(), extractor(41)).decision).toBe('abstain');
+  it('rejects an extractor cost over the directive cap', () => {
+    expect(awayPolicy(view(), extractor(41))).toEqual({ decision: 'reject', rule: 'AW-15', code: 'away_policy' });
     expect(withinDirective(view(), { metals: 41 })).toBe(false);
   });
 
@@ -55,12 +55,12 @@ describe('W09-09 awayPolicy allow list', () => {
     const zero = view({ budget: { metals: family(0), minerals: family(0), bio: family(0) } });
     expect(awayPolicy(view(), extractor(40)).decision).toBe('allow');
     expect(awayPolicy(zero, extractor(0)).decision).toBe('allow');
-    expect(awayPolicy(zero, extractor(1)).decision).toBe('abstain');
+    expect(awayPolicy(zero, extractor(1))).toEqual({ decision: 'reject', rule: 'AW-15', code: 'away_policy' });
   });
 
   it('does not treat a turret on another tile as a rebuild', () => {
     const other = cmd('enqueueTask', { build: { building: 'turret', q: 9, r: 9, tier: 1 } });
-    expect(awayPolicy(view(), other).decision).toBe('abstain');
+    expect(awayPolicy(view(), other)).toEqual({ decision: 'reject', rule: 'AW-15', code: 'away_policy' });
   });
 
   it('allows a player demolish while away, and any command when the colony is present', () => {
@@ -73,7 +73,7 @@ describe('W09-09 awayPolicy allow list', () => {
     const ok = cmd('setPriorities', { defense: 50 });
     const far = cmd('setPriorities', { defense: 51 });
     expect(awayPolicy(view(), ok)).toEqual({ decision: 'allow', rule: 'AW-06' });
-    expect(awayPolicy(view(), far).decision).toBe('abstain');
+    expect(awayPolicy(view(), far)).toEqual({ decision: 'reject', rule: 'AW-15', code: 'away_policy' });
   });
 
   it('allows a repair, a replacement unit, a shed, and a queued beacon', () => {
@@ -85,9 +85,9 @@ describe('W09-09 awayPolicy allow list', () => {
 
   it('abstains on a T2 extractor and a unit the colony does not own', () => {
     const t2 = cmd('enqueueTask', { build: { building: 'metalsExtractor', q: 1, r: 1, tier: 2 } }, { cost: { metals: 1 } });
-    expect(awayPolicy(view(), t2).decision).toBe('abstain');
+    expect(awayPolicy(view(), t2)).toEqual({ decision: 'reject', rule: 'AW-15', code: 'away_policy' });
     const stranger = cmd('enqueueTask', { buildUnit: { unit: 'robot.combat', tier: 1 } });
-    expect(awayPolicy(view(), stranger).decision).toBe('abstain');
+    expect(awayPolicy(view(), stranger)).toEqual({ decision: 'reject', rule: 'AW-15', code: 'away_policy' });
   });
 });
 
