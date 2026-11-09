@@ -1,9 +1,10 @@
-import type { AwayDigestV1 } from '@terra/contracts';
+import type { AwayDigestV1, AwaySummary } from '@terra/contracts';
 import type { PlanetState } from '@terra/sim';
 import { baselineFromState, stateOf } from './baseline';
-import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline, stampBaseline } from './body';
+import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline, stampAfter, stampBaseline } from './body';
 import { digestSignal } from './events';
 import { foldAttack, mergeBodies } from './folder';
+import { awaySummary } from './summary';
 import type {
   AttackFold,
   BaselineReader,
@@ -24,6 +25,7 @@ export interface DigestDeps {
 /**
  * Opens one digest when the sim emits `colonyAway`, folds raids while that row is open, and closes it on
  * `colonyBack` or a presence return. Snapshot writes call {@link flushPlanet} (CT-31).
+ * {@link deliverWelcome} closes a still-open row, stamps `after` from the welcome snapshot, and marks it seen.
  */
 export class AwayDigestService {
   private readonly open = new Map<string, OpenDigest>();
@@ -64,6 +66,19 @@ export class AwayDigestService {
   async restoreOpen(): Promise<void> {
     await this.purge();
     for (const row of await this.deps.store.listOpen()) this.remember(row);
+  }
+
+  /**
+   * Latest closed unseen digest for `welcome.away`. Closes an open row first. `raw` is the snapshot already
+   * loaded for that welcome; it sets `after` without a second `fullState`. Marks every closed unseen row seen.
+   */
+  deliverWelcome(colonyId: string, at: Date, raw?: Uint8Array): Promise<AwayDigestV1 | null> {
+    return this.enqueue(colonyId, () => this.deliver(colonyId, at, raw));
+  }
+
+  /** Headline of the newest unseen row. Does not mark it seen, so welcome can still carry the digest. */
+  headline(colonyId: string, at = this.now()): Promise<AwaySummary | null> {
+    return this.enqueue(colonyId, () => this.summarize(colonyId, at));
   }
 
   async purge(now = this.now()): Promise<number> {
@@ -206,12 +221,40 @@ export class AwayDigestService {
     }
   }
 
+  private async deliver(colonyId: string, at: Date, raw?: Uint8Array): Promise<AwayDigestV1 | null> {
+    await this.closeRow(colonyId, at);
+    const row = await this.deps.store.latestUnseen(colonyId);
+    if (!row?.closedAt) return null;
+    const body = this.withEnd(row.body, raw);
+    if (body !== row.body) await this.deps.store.save(row.id, body, row.lastEventSeq, row.closedAt);
+    await this.deps.store.markClosedUnseen(colonyId, at);
+    return body;
+  }
+
+  private async summarize(colonyId: string, at: Date): Promise<AwaySummary | null> {
+    const row = await this.deps.store.latestUnseen(colonyId);
+    if (!row) return null;
+    const live = this.open.get(colonyId);
+    const body = live?.id === row.id ? live.body : row.body;
+    return awaySummary({ ...row, body }, at);
+  }
+
+  /** End baseline from bytes already in hand. A miss leaves `before === after` (BE-59). */
+  private withEnd(body: AwayDigestV1, raw?: Uint8Array): AwayDigestV1 {
+    if (!raw) return body;
+    const state = stateOf(raw);
+    if (!state) return body;
+    const base = baselineFromState(state, body.colonyId);
+    if (!base) return body;
+    return checkedDigest(stampAfter(body, base));
+  }
+
   private seqOf(row: DigestRecord): bigint {
     const live = this.open.get(row.colonyId);
     return live && live.id === row.id ? live.lastEventSeq : row.lastEventSeq;
   }
 
-  private enqueue(colonyId: string, work: () => Promise<void>): Promise<void> {
+  private enqueue<T>(colonyId: string, work: () => Promise<T>): Promise<T> {
     const prev = this.tails.get(colonyId) ?? Promise.resolve();
     const run = prev.then(work);
     this.tails.set(

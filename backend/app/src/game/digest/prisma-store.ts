@@ -79,6 +79,21 @@ export class PrismaDigestStore implements DigestStore {
     });
   }
 
+  async latestUnseen(colonyId: string): Promise<DigestRecord | null> {
+    const row = await this.prisma.planetEventDigest.findFirst({
+      where: { colonyId, seenAt: null },
+      orderBy: [{ openedAt: 'desc' }, { id: 'desc' }],
+    });
+    return row ? toRecord(row) : null;
+  }
+
+  async markClosedUnseen(colonyId: string, seenAt: Date): Promise<void> {
+    await this.prisma.planetEventDigest.updateMany({
+      where: { colonyId, seenAt: null, closedAt: { not: null } },
+      data: { seenAt },
+    });
+  }
+
   async purgeOpenedBefore(cutoff: Date): Promise<number> {
     const deleted = await this.prisma.planetEventDigest.deleteMany({ where: { openedAt: { lt: cutoff } } });
     return deleted.count;

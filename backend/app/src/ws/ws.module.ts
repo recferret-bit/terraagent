@@ -89,6 +89,7 @@ export const env = defineEnv('ws', {
           env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
+          digests,
           presence: createPresenceTracker({
             commands: planets,
             prisma: prisma && databaseEnabled(e) ? prisma : undefined,

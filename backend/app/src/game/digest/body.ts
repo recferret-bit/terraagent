@@ -62,6 +62,21 @@ export function stampBaseline(body: AwayDigestV1, base: DigestBaseline): AwayDig
   };
 }
 
+/** Writes the return numbers into `after` only. `before` stays the away-start baseline (CT-32). */
+export function stampAfter(body: AwayDigestV1, base: DigestBaseline): AwayDigestV1 {
+  const resources = { ...body.resources };
+  for (const key of RESOURCE_KEYS) {
+    resources[key] = { before: body.resources[key].before, after: num(base.resources[key as ResourceKey]) };
+  }
+  return {
+    ...body,
+    resources,
+    energy: { before: body.energy.before, after: base.energy },
+    robots: { ...body.robots, after: whole(base.robots) },
+    territory: { before: body.territory.before, after: whole(base.territory) },
+  };
+}
+
 export function checkedDigest(body: AwayDigestV1): AwayDigestV1 {
   return AwayDigestV1Schema.parse(body);
 }

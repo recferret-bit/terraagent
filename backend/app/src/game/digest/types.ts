@@ -48,6 +48,10 @@ export interface DigestStore {
   listOpen(): Promise<DigestRecord[]>;
   /** Unseen rows, oldest first. */
   listUnseen(colonyId: string): Promise<DigestRecord[]>;
+  /** Newest unseen row. One read on `(colony_id, opened_at)`, not an event-log scan. */
+  latestUnseen(colonyId: string): Promise<DigestRecord | null>;
+  /** Marks every closed unseen row for this colony. Open rows stay unseen. */
+  markClosedUnseen(colonyId: string, seenAt: Date): Promise<void>;
   /** `opened_at` strictly before `cutoff`. A row opened at `cutoff` stays. */
   purgeOpenedBefore(cutoff: Date): Promise<number>;
 }

@@ -165,6 +165,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
       this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
       home.setLandingHost(gameLandingHost(this.snapshots, this.planets, host));
+      home.setAwayHeadline(this.digests);
     }
     this.unsubRecovery = wirePlanetRecovery(this.planets, this.pool, this.snapshots, this.log);
     const pool = this.pool;

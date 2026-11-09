@@ -27,6 +27,7 @@ export interface GatewayOptions {
   readonly verifier: SessionVerifier;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  readonly digests?: ConnectionDeps['digests'];
   readonly flags: readonly string[];
   readonly seatDevScenario?: ConnectionDeps['seatDevScenario'];
   readonly log: Logger;
@@ -95,7 +96,7 @@ export class WsGateway {
 
   private accept(ws: import('ws').WebSocket): void {
     const deps: ConnectionDeps = {
-      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, flags: this.o.flags,
+      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, digests: this.o.digests, flags: this.o.flags,
       seatDevScenario: this.o.seatDevScenario,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),
