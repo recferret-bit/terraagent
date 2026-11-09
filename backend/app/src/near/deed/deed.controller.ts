@@ -94,6 +94,10 @@ export class NearDeedController {
     await this.debounceService.flushReady();
 
     let records = await this.deeds.listForPlayerOrColony({ playerId, colonyId, planetId });
+    if (records.length === 0 && colonyId) {
+      const byColony = await this.deeds.findByColonyId(colonyId);
+      if (byColony) records = [byColony];
+    }
     if (records.length === 0) {
       const seeded = await this.ensureDeedForLoadedColony({ colonyId, planetId, playerId });
       if (seeded) records = [seeded];

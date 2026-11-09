@@ -3,12 +3,16 @@ import { DeedToastHost } from './deedNotifications';
 import { DeedPanel } from './deedPanel';
 import { DEED_EVENTS } from './deedTracker';
 import { DEED_DEV_COMMANDS } from './devCommands';
+import { StakingPanel } from './stakingPanel';
 import './deedCardArt.css';
 import './deedNotifications.css';
 import './deedPanel.css';
 import './signerModal.css';
+import './stakingPanel.css';
 
 export { DeedPanel, type DeedPanelOptions } from './deedPanel';
+export { StakingPanel, type StakingPanelOptions } from './stakingPanel';
+export { REAL_NEAR_COPY } from './stakingPanelParts';
 export { DeedToastHost, type DeedToastInput } from './deedNotifications';
 export {
   createDeedCardArtElement,
@@ -32,6 +36,7 @@ declare module '../../core/registry/types' {
   interface FeatureServices {
     openDeedPanel?: (open?: boolean) => void;
     getDeedPanel?: () => DeedPanel | null;
+    getStakingPanel?: () => StakingPanel | null;
     deedToasts?: DeedToastHost;
   }
 }
@@ -47,6 +52,7 @@ function mountDeedPanel(el: HTMLElement, ctx: FeatureContext): HudPanelInstance 
   const panel = new DeedPanel(el, ctx);
   activeDeedPanel = panel;
   ctx.services.getDeedPanel = () => activeDeedPanel;
+  ctx.services.getStakingPanel = () => activeDeedPanel?.stakingPanel ?? null;
   ctx.services.openDeedPanel = (open = true) => panel.setOpen(open);
 
   return {
@@ -56,6 +62,7 @@ function mountDeedPanel(el: HTMLElement, ctx: FeatureContext): HudPanelInstance 
     dispose() {
       if (activeDeedPanel === panel) activeDeedPanel = null;
       if (ctx.services.getDeedPanel) ctx.services.getDeedPanel = undefined;
+      if (ctx.services.getStakingPanel) ctx.services.getStakingPanel = undefined;
       if (ctx.services.openDeedPanel) ctx.services.openDeedPanel = undefined;
       panel.dispose();
     },

@@ -57,6 +57,12 @@ const accountClaimArgs = z
   })
   .strict();
 
+const timeWarpArgs = z
+  .object({
+    seconds: z.number().positive(),
+  })
+  .strict();
+
 /**
  * W20-27 Dev-console commands:
  * - `deed.show [colony]`
@@ -87,6 +93,7 @@ export class DeedDevCommand implements OnModuleInit {
     this.registry.register(this.deedSettleCommand());
     this.registry.register(this.stakeFundCommand());
     this.registry.register(this.accountClaimCommand());
+    this.registry.register(this.timeWarpCommand());
   }
 
   private assertW20(): void {
@@ -198,17 +205,11 @@ export class DeedDevCommand implements OnModuleInit {
           record.colonyId,
           record.accountId,
         );
-        const targetAccount =
-          account?.trim() || claimInfo.claimedByAccountId || claimInfo.accountId || record.accountId;
+        const targetAccount = account?.trim() || claimInfo.accountId || record.accountId;
 
         const funded = await this.stakingService.fundWalletNear(targetAccount, near);
-        if (!account) {
-          if (record.accountId !== targetAccount) {
-            await this.stakingService.fundWalletNear(record.accountId, near);
-          }
-          if (targetAccount !== 'pilot.mock') {
-            await this.stakingService.fundWalletNear('pilot.mock', near);
-          }
+        if (!account && record.accountId !== targetAccount) {
+          await this.stakingService.fundWalletNear(record.accountId, near);
         }
         return funded;
       },
@@ -238,6 +239,28 @@ export class DeedDevCommand implements OnModuleInit {
         });
         await this.mintService.pushDeedUpdated(record, `Account claimed by ${wallet}`, res.txHash);
         return res;
+      },
+    });
+  }
+
+  private timeWarpCommand(): DevCommand<typeof timeWarpArgs> {
+    return defineDevCommand({
+      name: 'time.warp',
+      help: 'Server: time.warp <seconds> advances the deed debounce and staking clocks.',
+      args: timeWarpArgs,
+      run: async ({ seconds }) => {
+        this.assertW20();
+        const deltaMs = Math.round(seconds * 1000);
+        const flushed = await this.debounce.advanceClockMs(deltaMs);
+        if (flushed.length > 0) {
+          await this.outboxRelay?.pollOnce();
+        }
+        this.stakingService.advanceClockMs(deltaMs);
+        return {
+          seconds,
+          deltaMs,
+          flushedDeeds: flushed.length,
+        };
       },
     });
   }
