@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
-  CancelTradeOrderResponse, CreateTradeKeyResponse, PlaceTradeOrderResponse, TradeBalancesResponse, TradeBookResponse, TradeBoardResponse, TradeFillsResponse,
-  TradeKeyListResponse, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse, TradeStreamEvent, AgentQuoteResponse, marketOrderRef, type SimCommandV1,
+  CancelTradeOrderResponse, CreateTradeKeyResponse, KillTradeResponse, PlaceTradeOrderResponse, TradeBalancesResponse, TradeBookResponse, TradeBoardResponse, TradeFillsResponse,
+  TradeKeyListResponse, TradeMeResponse, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse, TradeStreamEvent, AgentQuoteResponse, marketOrderRef, type SimCommandV1,
 } from '@terra/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { resolveStrategyArg, runScriptedTraderStep } from '../../../../scripts/economy/trade-bot.js';
 import { GamePlanets } from '../../src/game/game-planets.service.js';
 import type { PlanetEventOf } from '../../src/bus/channels.js';
 import { TradeKeysService } from '../../src/market/trade/trade-keys.service.js';
@@ -299,6 +300,8 @@ describe('trade API: reads', () => {
     expect((await call<{ error: { code: string } }>('GET', '/trade/balances', { as: 'alice' })).body.error.code).toBe('invalid_request'); // a session names its planet
     const alice = TradeBalancesResponse.parse((await call('GET', `/trade/balances?planetId=${PLANET}`, { as: 'alice' })).body);
     expect(alice.colonyId).toBe('col_0'); // never col_2: only the caller's own colony
+    const cargo = TradeBalancesResponse.parse((await call('GET', '/trade/cargo', { key: b.secret })).body);
+    expect(cargo).toEqual(bal);
   });
 
   it('book depth, board, pairs, policy; unknown pair is invalid_request; orders filter by state and pair', async () => {
@@ -345,6 +348,37 @@ describe('trade API: reads', () => {
     expect(events[0]).toMatchObject({ type: 'hello', planetId: PLANET });
     expect(events.some((e) => e.type === 'order' && e.order.actorKind === 'bot' && e.order.state === 'OPEN')).toBe(true);
     expect(events.some((e) => e.type === 'book')).toBe(true);
+  });
+});
+
+describe('trade API: me, scripted trader step and kill switch', () => {
+  it('me, scripted trader step and POST /trade/kill work end-to-end over HTTP', async () => {
+    const b = await bot('scripted1', 6, { fund: { USDC: '300', 'bio.water': '300' } });
+    const meBefore = TradeMeResponse.parse((await call('GET', '/trade/me', { key: b.secret })).body);
+    expect(meBefore).toMatchObject({ actorKind: 'bot', keyId: b.keyId, planetId: PLANET, colonyId: 'col_6', killSwitch: false });
+
+    const step = await runScriptedTraderStep({
+      baseUrl: url,
+      apiKey: b.secret,
+      strategy: resolveStrategyArg('exporter'),
+      stepSeq: 1,
+    });
+    expect(step.halted).toBe(false);
+    expect(step.placed).toHaveLength(1);
+    expect(step.placed[0]).toMatchObject({ resource: 'bio.water', side: 'sell', status: 'accepted' });
+
+    const killed = KillTradeResponse.parse((await call('POST', '/trade/kill', { key: b.secret, body: {} })).body);
+    expect(killed).toMatchObject({ keyId: b.keyId, planetId: PLANET, colonyId: 'col_6', killSwitch: true, cancelRequested: 1 });
+    await sleep(300);
+    const meAfter = TradeMeResponse.parse((await call('GET', '/trade/me', { key: b.secret })).body);
+    expect(meAfter.killSwitch).toBe(true);
+    const halted = await runScriptedTraderStep({
+      baseUrl: url,
+      apiKey: b.secret,
+      strategy: resolveStrategyArg('exporter'),
+      stepSeq: 2,
+    });
+    expect(halted).toMatchObject({ halted: true, haltReason: 'kill_switch', placed: [] });
   });
 });
 

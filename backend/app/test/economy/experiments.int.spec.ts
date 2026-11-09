@@ -131,7 +131,7 @@ describe('jobs', () => {
   });
 
   it('a wall-time timeout yields incomplete, never a pass', async () => {
-    const sub = await submit('req-timeout', manifest({ seeds: [1, 2], measureTicks: 60_000, sampleEveryTicks: 20_000, budget: { maxRuns: 8, maxWallSeconds: 1, maxWorkers: 1 } }));
+    const sub = await submit('req-timeout', manifest({ seeds: [1, 2], measureTicks: 500_000, sampleEveryTicks: 2_000, budget: { maxRuns: 8, maxWallSeconds: 1, maxWorkers: 1 } }));
     await jobs.idle(60_000);
     const st = (await call('GET', `/experiments/${sub.json.id}`)).json;
     expect(st.status).toBe('incomplete');
