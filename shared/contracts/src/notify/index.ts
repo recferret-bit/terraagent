@@ -44,3 +44,14 @@ export {
   type NotificationResultPayload,
 } from './payload';
 export { NotificationSubscriptionSchema, type NotificationSubscription } from './subscription';
+export {
+  AUTO_TRADE_PARTNERS,
+  AutoTradeLimitSchema,
+  AutoTradeLimitsSchema,
+  AutoTradeOrderSchema,
+  AutoTradePartnerSchema,
+  type AutoTradeLimit,
+  type AutoTradeLimits,
+  type AutoTradeOrder,
+  type AutoTradePartner,
+} from './auto-trade';
