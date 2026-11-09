@@ -1,5 +1,6 @@
 import { NotificationPayloadSchema } from '@terra/contracts';
 import type { Notification, NotificationResult } from '../ports/notifier.port.js';
+import { noteNotifySent, noteNotifySuppressedConnected } from './metrics.js';
 import type { MockNotifyStore } from './mock-notify.store.js';
 import type { PresenceQuery } from './presence.js';
 
@@ -18,8 +19,12 @@ export class MockNotifier {
 
   async send(n: Notification): Promise<NotificationResult> {
     const payload = NotificationPayloadSchema.parse(n);
-    if (await this.presence.isConnected(payload.colonyId)) return { id: SKIPPED_NOTIFY_ID, status: 'skipped' };
-    const row = await this.store.put(payload);
-    return { id: row.id, status: 'sent' };
+    if (await this.presence.isConnected(payload.colonyId)) {
+      noteNotifySuppressedConnected();
+      return { id: SKIPPED_NOTIFY_ID, status: 'skipped' };
+    }
+    const put = await this.store.put(payload);
+    if (put.inserted) noteNotifySent(payload.kind, payload.channel);
+    return { id: put.row.id, status: 'sent' };
   }
 }

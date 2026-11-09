@@ -110,6 +110,7 @@ describe('away digest', () => {
     await svc.onPlanetEvent(raid(3, 'raidRepelled'));
     await svc.flushPlanet(PLANET);
     expect(await store.count()).toBe(0);
+    expect(store.rowCount()).toBe(0);
     expect(await store.findOpen(COLONY)).toBeNull();
   });
 
@@ -169,6 +170,7 @@ describe('away digest close, merge and baseline', () => {
     expect(unseen[0]?.body.attacks.byColony.map((row) => row.displayName)).toEqual(['R1', 'R2']);
     expect(unseen[0]?.body.durationS).toBe(600);
     expect(await store.count()).toBe(2);
+    expect(store.rowCount()).toBe(2);
   });
 
   it('a presence return closes the row and a late colonyAway does not reopen it', async () => {

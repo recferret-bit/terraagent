@@ -9,7 +9,7 @@ import { EventBus } from '../../src/bus/event-bus';
 import type { PlanetEventV1 } from '../../src/bus/channels';
 import { AlertRouter, type AlertRouteInput } from '../../src/notify/alert-router';
 import { MockNotifier } from '../../src/notify/mock-notifier';
-import type { MockNotifyRow, MockNotifyStore } from '../../src/notify/mock-notify.store';
+import type { MockNotifyPut, MockNotifyRow, MockNotifyStore } from '../../src/notify/mock-notify.store';
 import { MemoryPresence } from '../../src/notify/presence';
 import { NotifierPort, type Notification, type NotificationResult } from '../../src/ports/notifier.port';
 
@@ -30,11 +30,11 @@ class RecordingNotifier extends NotifierPort {
 
 class MemoryStore implements MockNotifyStore {
   readonly rows: MockNotifyRow[] = [];
-  async put(payload: NotificationPayload): Promise<MockNotifyRow> {
+  async put(payload: NotificationPayload): Promise<MockNotifyPut> {
     const hit = this.rows.find(
       (r) => r.colonyId === payload.colonyId && r.eventId === payload.eventId && r.channel === payload.channel,
     );
-    if (hit) return hit;
+    if (hit) return { row: hit, inserted: false };
     const row = {
       id: String(this.rows.length + 1),
       colonyId: payload.colonyId,
@@ -42,7 +42,7 @@ class MemoryStore implements MockNotifyStore {
       channel: payload.channel,
     };
     this.rows.push(row);
-    return row;
+    return { row, inserted: true };
   }
 }
 
