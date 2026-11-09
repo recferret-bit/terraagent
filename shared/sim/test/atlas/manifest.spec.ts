@@ -71,7 +71,7 @@ describe('W11-38 · Deterministic AtlasConfigV1, AtlasManifestV1, and pure-TS SH
       expect(manifestFromConfig.oceanSectors).toBe(12);
       expect(manifestFromConfig.nominalCapacity).toBe(28);
       expect(manifestFromConfig.validatedCapacity).toBe(28);
-      expect(manifestFromConfig.bounds.totalTiles).toBe(34_219);
+      expect(manifestFromConfig.bounds.totalTiles).toBe(134_083);
 
       const atlas = generateSmallAtlas({ planetType });
       const manifestFromAtlas = buildAtlasManifest(atlas);
@@ -171,7 +171,7 @@ describe('W11-38 · Pinned manifest immutability on restart when default rollout
 });
 
 describe('W11-38 · Small-atlas rollout limit validation (validateAtlasRolloutLimits)', () => {
-  it('accepts valid 7-land + 12-ocean R=24 configs and manifests for X=3, 4, and 5', () => {
+  it('accepts valid 7-land + 12-ocean R=48 configs and manifests for X=3, 4, and 5', () => {
     for (const seats of [3, 4, 5]) {
       const cfg = buildDefaultAtlasConfig({ planetType: 'temperate', foundingSeatsPerSector: seats });
       const cfgCheck = validateAtlasRolloutLimits(cfg);
@@ -181,8 +181,8 @@ describe('W11-38 · Small-atlas rollout limit validation (validateAtlasRolloutLi
       expect(cfgCheck.observed.totalSectors).toBe(19);
       expect(cfgCheck.observed.landSectors).toBe(7);
       expect(cfgCheck.observed.oceanSectors).toBe(12);
-      expect(cfgCheck.observed.sectorRadius).toBe(24);
-      expect(cfgCheck.observed.totalTiles).toBe(34_219);
+      expect(cfgCheck.observed.sectorRadius).toBe(48);
+      expect(cfgCheck.observed.totalTiles).toBe(134_083);
       expect(cfgCheck.observed.foundingSeatsPerSector).toBe(seats);
 
       const manifest = buildAtlasManifest(cfg);
@@ -205,7 +205,7 @@ describe('W11-38 · Small-atlas rollout limit validation (validateAtlasRolloutLi
           macroQ: 3,
           macroR: 0,
           kind: 'land' as const,
-          radius: 24,
+          radius: 48,
           foundingCapacity: 4,
         },
       ],
@@ -230,7 +230,7 @@ describe('W11-38 · Small-atlas rollout limit validation (validateAtlasRolloutLi
 
     const bigRadiusCfg = buildDefaultAtlasConfig({
       planetType: 'desert',
-      sectorRadius: 25,
+      sectorRadius: 50,
       foundingSeatsPerSector: 6,
     });
     const bigRadiusCheck = validateAtlasRolloutLimits(bigRadiusCfg);
@@ -278,7 +278,7 @@ describe('W11-38 · Shared AtlasQueryInterface (createAtlasQueryView)', () => {
 
     // Tile-to-sector lookups across center, ring-1 land, ring-2 ocean halo, and outside atlas
     expect(viewFromManifest.getSectorForTile(0, 0)?.sectorId).toBe('sec_0_0');
-    expect(viewFromManifest.getSectorForTile(49, -24)?.sectorId).toBe('sec_1_0');
+    expect(viewFromManifest.getSectorForTile(97, -48)?.sectorId).toBe('sec_1_0');
     const oceanSec = viewFromManifest.getSector('sec_2_0')!;
     expect(viewFromManifest.getSectorForTile(oceanSec.centerQ, oceanSec.centerR)?.sectorId).toBe('sec_2_0');
     expect(viewFromManifest.getSectorForTile(500, 500)).toBeNull();

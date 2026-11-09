@@ -153,8 +153,8 @@ function makeManifestSector(mq: number, mr: number) {
     centerQ: mq * 37,
     centerR: mr * 37,
     kind: 'land' as const,
-    radius: 24,
-    tileCount: 1801,
+    radius: 48,
+    tileCount: 7057,
     foundingCapacity: 4,
     validatedSafeSites: 4,
     safeLandingSlots: [0, 1, 2, 3].map((idx) => ({
@@ -198,7 +198,7 @@ describe('W11-01 · Canonical planets and IDs', () => {
   });
 
   it('formats and parses canonical sector IDs, continent IDs, and landing slot IDs', () => {
-    expect(W11_DEFAULT_SECTOR_RADIUS).toBe(24);
+    expect(W11_DEFAULT_SECTOR_RADIUS).toBe(48);
     expect(W11_DEFAULT_LAND_SECTORS).toBe(7);
     for (const [mq, mr] of W11_SEVEN_SECTOR_COORDS) {
       const sid = formatSectorId(mq, mr);
@@ -232,7 +232,7 @@ describe('W11-01 · AtlasConfigV1 and AtlasManifestV1 validation', () => {
       macroQ: mq,
       macroR: mr,
       kind: 'land' as const,
-      radius: 24,
+      radius: 48,
       foundingCapacity: 4,
       archetype: mq === 0 && mr === 0 ? 'heartland' : 'frontier',
       resourceProfileId: 'desert-baseline-v1',
@@ -243,7 +243,7 @@ describe('W11-01 · AtlasConfigV1 and AtlasManifestV1 validation', () => {
       macroQ: 2,
       macroR: 0,
       kind: 'ocean' as const,
-      radius: 24,
+      radius: 48,
       foundingCapacity: 0,
     };
     const cfg = AtlasConfigV1Schema.parse({
@@ -253,7 +253,7 @@ describe('W11-01 · AtlasConfigV1 and AtlasManifestV1 validation', () => {
       topologyVersion: 1,
       genVersion: 10,
       configVersion: 1,
-      sectorRadius: 24,
+      sectorRadius: 48,
       foundingSeatsPerSector: 4,
       sectors: [...landConfigs, oceanConfig],
       resourceProfileId: 'desert-baseline-v1',
@@ -273,14 +273,14 @@ describe('W11-01 · AtlasConfigV1 and AtlasManifestV1 validation', () => {
       atlasHash: 'sha256:atlas_1',
       resourceProfileId: 'desert-baseline-v1',
       resourceProfileHash: 'sha256:res_1',
-      sectorRadius: 24,
+      sectorRadius: 48,
       foundingSeatsPerSector: 4,
       totalSectors: 8,
       landSectors: 7,
       oceanSectors: 1,
       nominalCapacity: 28,
       validatedCapacity: 28,
-      bounds: { minQ: -100, maxQ: 100, minR: -100, maxR: 100, totalTiles: 14408, maxColonies: 64, maxSectors: 19 },
+      bounds: { minQ: -100, maxQ: 100, minR: -100, maxR: 100, totalTiles: 134083, maxColonies: 64, maxSectors: 19 },
       sectors: [
         ...W11_SEVEN_SECTOR_COORDS.map(([mq, mr]) => makeManifestSector(mq, mr)),
         {
@@ -291,8 +291,8 @@ describe('W11-01 · AtlasConfigV1 and AtlasManifestV1 validation', () => {
           centerQ: 74,
           centerR: 0,
           kind: 'ocean' as const,
-          radius: 24,
-          tileCount: 1801,
+          radius: 48,
+          tileCount: 7057,
           foundingCapacity: 0,
           validatedSafeSites: 0,
           safeLandingSlots: [],

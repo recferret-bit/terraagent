@@ -192,6 +192,7 @@ export interface GenerateSmallAtlasOptions extends BuildSmallAtlasPartitionOptio
 }
 
 export interface CreateAtlasPlanetOptions extends GenerateSmallAtlasOptions {
+  readonly radius?: number;
   readonly gridRadius?: number;
   readonly atlas?: GeneratedSmallAtlas;
   readonly config?: AtlasConfigV1;

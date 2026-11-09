@@ -447,7 +447,7 @@
 | [W11-19](waves/W11-lobby-planets.md) | Shared deterministic adjacent landing-slot selection across sector boundaries | sim | S |  | W11-38 |
 | [W11-20](waves/W11-lobby-planets.md) | Extend authenticated resolveHome/recaps with canonical planet and founding sector; basic queued resume | server | M | H | W11-10 |
 | [W11-21](waves/W11-lobby-planets.md) | Full home routing on boot/reconnect, unseen recap/admin-results presentation and multi-colony resume | client | M | H+ | W11-20 |
-| [W11-22](waves/W11-lobby-planets.md) | Existing orbital picker: three persistent cards, simple sector chooser and automatic-sector option | client | M | H | W11-08, W11-20 |
+| [W11-22](waves/W11-lobby-planets.md) | Existing orbital picker: three persistent cards, 19-sector chooser (7 land + 12 ocean) and automatic-sector option | client | M | H | W11-08, W11-20 |
 | [W11-23](waves/W11-lobby-planets.md) | Queue panel: position, cancel, pause, alternative-sector consent and partial-party/retry states | client | M |  | W11-14, W11-18 |
 | [W11-24](waves/W11-lobby-planets.md) | Party UI and adjacent-sector assignment feedback | client | M |  | W11-17, W11-18 |
 | [W11-25](waves/W11-lobby-planets.md) | Resume/Dive in action on existing orbital menu | client | S |  | W11-21 |
@@ -458,20 +458,20 @@
 | [W11-30](waves/W11-lobby-planets.md) | Lifecycle, reservation, expiry, idempotency and recovery integration matrix | test | M |  | W11-15, W11-16, W11-18 |
 | [W11-31](waves/W11-lobby-planets.md) | Bounded small-world soak with excess queued demand and moving/working colonies | test | M |  | W11-30, W11-43 |
 | [W11-33](waves/W11-lobby-planets.md) | Join and queued reload flow: poll home, show cancellation/status, then existing deploy/descent | client | S | H | W11-22, W11-13 |
-| [W11-34](waves/W11-lobby-planets.md) | Exact macro-hex partition, global tile coordinates and neighbour/sector identities | sim | M | H | W11-01 |
-| [W11-35](waves/W11-lobby-planets.md) | Small connected atlas generation over existing biome profiles and globally sampled terrain | sim | M | H | W11-34 |
-| [W11-36](waves/W11-lobby-planets.md) | Safe landing sites and starter-resource validation across all sector boundaries | sim | M | H | W11-35 |
+| [W11-34](waves/W11-lobby-planets.md) | Exact macro-hex partition (R=48, 7,057 tiles/sector, 134,083 total tiles across 19 sectors), global tile coordinates and neighbour/sector identities | sim | M | H | W11-01 |
+| [W11-35](waves/W11-lobby-planets.md) | Single-sector active grid (R=48, 7,057 tiles) and 19-sector small-atlas manifest generation over existing biome profiles | sim | M | H | W11-34 |
+| [W11-36](waves/W11-lobby-planets.md) | Safe landing sites and starter-resource validation across all 7 land sectors (R=48, 7,057 tiles/sector) | sim | M | H | W11-35 |
 | [W11-37](waves/W11-lobby-planets.md) | Versioned wider owner identity across grid/entities/codec/snapshots | sim | M | H | W11-01 |
-| [W11-38](waves/W11-lobby-planets.md) | Pinned manifest/config and validated rollout limits, shared atlas/query interfaces | sim | M | H | W11-36, W11-37, W11-39 |
+| [W11-38](waves/W11-lobby-planets.md) | Pinned manifest/config and validated rollout limits (R=48, 7,057 tiles/sector, W11_MAX_SMALL_ATLAS_TILES = 140,000), shared atlas/query interfaces | sim | M | H | W11-36, W11-37, W11-39 |
 | [W11-39](waves/W11-lobby-planets.md) | Per-colony exploration representation replacing eight-colony bitmask, with migration fixtures | sim | M | H | W11-37 |
 | [W11-40](waves/W11-lobby-planets.md) | Persist small-atlas saves and legacy compatibility; reject incompatible flags without reset | server | M | H | W11-38 |
-| [W11-41](waves/W11-lobby-planets.md) | Cross-sector walking, construction footprints and power through existing shared queries | sim | M | H | W11-38, W05-01 |
-| [W11-42](waves/W11-lobby-planets.md) | W04 map sector overlay, selection, home/location cue and simple picker integration | client | M | H | W11-22, W11-38, W04-03, W04-15 |
-| [W11-43](waves/W11-lobby-planets.md) | Small-world memory/wire/tick/render measurement and enforced configuration caps | test | M | H | W11-40, W11-41, W11-42 |
-| [W11-44](waves/W11-lobby-planets.md) | Cross-sector beacon claims/removal and territory-outline regression | test | M |  | W11-41, W05-12, W05-13 |
+| [W11-41](waves/W11-lobby-planets.md) | Isolated single-sector gameplay guard: block cross-sector walking, construction footprints, power links, territory and seam terraforming in W11 (defer cross-sector traversal to W27) | sim | M | H | W11-38, W05-01 |
+| [W11-42](waves/W11-lobby-planets.md) | W04 Global Map (`M`) 19-sector overlay (7 land + 12 ocean), selection, home/location cue and Orbital Picker integration | client | M | H | W11-22, W11-38, W04-03, W04-15 |
+| [W11-43](waves/W11-lobby-planets.md) | Small-world memory/wire/tick/render measurement and enforced configuration caps (R=48, 7,057 tiles/sector, 134,083 manifest tiles) | test | M | H | W11-40, W11-41, W11-42 |
+| [W11-44](waves/W11-lobby-planets.md) | Cross-sector beacon/territory isolation in W11 and multi-sector territory-outline readiness for W27 | test | M |  | W11-41, W05-12, W05-13 |
 | [W11-45](waves/W11-lobby-planets.md) | Atlas generation, local/online rule parity and save-upgrade fixtures for W27 handoff | test | M |  | W11-40, W11-44 |
 | [W11-46](waves/W11-lobby-planets.md) | Pin regional-resource profile identity/hash in atlas and sector manifests; bootstrap optional type/sector bindings, preserve source attribution and essential starter access; stable inputs for later W13 DB resolver | sim | M | H | W11-36, W11-38 |
-| [W11-47](waves/W11-lobby-planets.md) | Integrate W05 D-45 hex-tile footprints, R4 terrain plane joining, chunked tile diffs (W05-19), and desert/ocean generators across small-atlas sector seams | sim | S | H | W11-35, W11-41, W05-01, W05-19 |
+| [W11-47](waves/W11-lobby-planets.md) | Integrate W05 D-45 hex-tile footprints, R4 terrain plane joining, chunked tile diffs (W05-19), desert/ocean generators and W11 cross-sector seam isolation | sim | S | H | W11-35, W11-41, W05-01, W05-19 |
 | [W11-32](waves/W11-lobby-planets.md) | Wave e2e + w11-lobby scenario, owner guide and W27 readiness manifest | test | M | H | all W11 |
 | [W12-01](waves/W12-player-page-achievements.md) | Contracts + catalogue `achievements.ts` (pure, no imports; 20 × 3 frozen ids, thresholds, XP, ★, glyph, `producerWave`; Stockpile counts the sum of every produced sub-resource of the three D-34 families from W02-28's `resourceProduced`, Energy excluded; the player id and achievement tag for it come from W12-33, not from the event), `ProgressEventV1 {playerId, family, delta \| max, sourceId}`, profile DTOs, flag `W12` | contract | M | H | W00-01 |
 | [W12-02](waves/W12-player-page-achievements.md) | Server: `Facts` table (one row per player) + updater on the progression bus (counter += delta, max = max(old, new)) | server | M | H | W12-01 |

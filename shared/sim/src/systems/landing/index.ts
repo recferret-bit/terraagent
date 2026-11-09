@@ -241,7 +241,7 @@ export function spawnColonyLanding(
     deployed: false,
   });
   setBlob(state, 'landingPods', pods, tick);
-  recordAtlasColonyFounding(state, colonyId, q, r, tick);
+  recordAtlasColonyFounding(state, colonyId, slot?.q ?? opts.q ?? q, slot?.r ?? opts.r ?? r, tick);
   syncAtlasColonySectorState(state, tick);
 
   return { ok: true, podEntityId, q, r };

@@ -193,6 +193,7 @@ describe('W11-46 · Shuffled sector load order reproduction and starter T1 prote
     const canonicalAtlas = generateSmallAtlas({
       planetType: 'desert',
       seed: 'w11-46-shuffle-seed',
+      sectorRadius: 24,
       resourceProfileId: 'w11-desert-regional-v1',
       sectorArchetypes,
       sectorResourceOverrides,
@@ -209,6 +210,7 @@ describe('W11-46 · Shuffled sector load order reproduction and starter T1 prote
       const shuffledAtlas = generateSmallAtlas({
         planetType: 'desert',
         seed: 'w11-46-shuffle-seed',
+        sectorRadius: 24,
         resourceProfileId: 'w11-desert-regional-v1',
         sectorArchetypes,
         sectorResourceOverrides,
@@ -377,14 +379,14 @@ describe('W11-46 · Cross-border footprint deposit attribution and terraforming 
     });
 
     const tilesForward = [
-      { q: 23, r: 0, depositKind: DEPOSIT.none, depositTier: 0, richness: 0 },
-      { q: 24, r: 0, depositKind: DEPOSIT.none, depositTier: 0, richness: 0 },
-      { q: 23, r: 1, depositKind: DEPOSIT.none, depositTier: 0, richness: 0 },
-      { q: 25, r: 0, depositKind: DEPOSIT.minerals, depositTier: 2, richness: 10000 },
+      { q: 47, r: 0, depositKind: DEPOSIT.none, depositTier: 0, richness: 0 },
+      { q: 48, r: 0, depositKind: DEPOSIT.none, depositTier: 0, richness: 0 },
+      { q: 47, r: 1, depositKind: DEPOSIT.none, depositTier: 0, richness: 0 },
+      { q: 49, r: 0, depositKind: DEPOSIT.minerals, depositTier: 2, richness: 10000 },
     ] as const;
 
     const attrForward = resolveFootprintDepositAttribution({
-      anchorQ: 23,
+      anchorQ: 47,
       anchorR: 0,
       tiles: tilesForward,
       regionalResources: regional,
@@ -394,7 +396,7 @@ describe('W11-46 · Cross-border footprint deposit attribution and terraforming 
       depotSectorId: 'sec_0_0',
     });
     const attrReversed = resolveFootprintDepositAttribution({
-      anchorQ: 23,
+      anchorQ: 47,
       anchorR: 0,
       tiles: [...tilesForward].reverse(),
       regionalResources: regional,
@@ -423,7 +425,7 @@ describe('W11-46 · Cross-border footprint deposit attribution and terraforming 
     expect(attrForward.productionBySector['sec_0_0']).toBeUndefined();
 
     const singleTileAttr = resolveDepositTileAttribution({
-      q: 25,
+      q: 49,
       r: 0,
       depositKind: DEPOSIT.minerals,
       depositTier: 2,
@@ -439,14 +441,14 @@ describe('W11-46 · Cross-border footprint deposit attribution and terraforming 
     const sec10Profile = regional.sectorById.get('sec_1_0')!;
     const find1 = resolveTerraformDiscoveryResource({
       seed: 'w11-46-find',
-      q: 25,
+      q: 49,
       r: 0,
       unlockTier: 1,
       sectorProfile: sec10Profile,
     });
     const find2 = resolveTerraformDiscoveryResource({
       seed: 'w11-46-find',
-      q: 25,
+      q: 49,
       r: 0,
       unlockTier: 1,
       sectorProfile: sec10Profile,

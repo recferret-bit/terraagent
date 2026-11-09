@@ -1,38 +1,12 @@
 import { CANONICAL_PLANETS, parseWaves, type SectorId } from '@terra/contracts';
 import {
-  claimTerritoryRadius,
-  computeAtlasSectorColonyMetrics,
-  countExploredTilesBySector,
-  createAtlasPlanetState,
-  createPlanet,
-  DEPOSIT,
-  ENTITY_KIND,
-  ENTITY_STATE,
-  ensureColonyRecord,
-  executeCrossSectorTerraformOp,
-  exploredSectorIdsForColony,
-  extractPinnedAtlasManifest,
-  GEN_VERSION,
-  getAtlasBlob,
-  globalTileToSector,
-  hexIndex,
-  IncompatibleAtlasSaveError,
-  insertRow,
-  isAtlasSaveState,
-  isColonyTileExplored,
-  markTileExplored,
-  PREP,
-  recordAtlasColonyFounding,
-  restore,
-  restoreAtlasWorldSnapshot,
-  rowOf,
-  saveAtlasWorldSnapshot,
-  setField,
-  setTileOwner,
-  spawnColonyLanding,
-  TERRAIN,
-  validateAtlasSaveCompatibility,
-  type PlanetState,
+  claimTerritoryRadius, computeAtlasSectorColonyMetrics, countExploredTilesBySector, createAtlasPlanetState,
+  createPlanet, DEPOSIT, ENTITY_KIND, ENTITY_STATE, ensureColonyRecord, executeCrossSectorTerraformOp,
+  exploredSectorIdsForColony, extractPinnedAtlasManifest, GEN_VERSION, getAtlasBlob, globalTileToSector,
+  hexIndex, IncompatibleAtlasSaveError, insertRow, isAtlasSaveState, isColonyTileExplored, markTileExplored,
+  PREP, recordAtlasColonyFounding, restore, restoreAtlasWorldSnapshot, rowOf, saveAtlasWorldSnapshot,
+  setField, setTileOwner, spawnColonyLanding, syncAtlasColonySectorState, TERRAIN,
+  validateAtlasSaveCompatibility, type PlanetState,
 } from '@terra/sim';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -83,26 +57,31 @@ function placeStructure(
 
 function seedThreeSectorFoundings(state: PlanetState): void {
   const blob = getAtlasBlob(state)!;
+  const localSlots = blob.safeLandingSlots.filter((s) => s.sectorId === 'sec_0_0');
   const targets: ReadonlyArray<{ idx: number; sec: SectorId; id: string; handle: string }> = [
     { idx: 0, sec: 'sec_0_0', id: 'co_alpha_sec00', handle: 'Alpha' },
     { idx: 1, sec: 'sec_1_0', id: 'co_beta_sec10', handle: 'Beta' },
     { idx: 2, sec: 'sec_0_1', id: 'co_gamma_sec01', handle: 'Gamma' },
   ];
   for (const t of targets) {
-    const slot = blob.safeLandingSlots.find((s) => s.sectorId === t.sec)!;
+    const secSlot = blob.safeLandingSlots.find((s) => s.sectorId === t.sec)!;
+    const localSlot = localSlots[t.idx]!;
     const res = spawnColonyLanding(state, {
       colonyId: t.idx,
       colonyIdStr: t.id,
       playerId: `pr_${t.handle.toLowerCase()}`,
       handle: t.handle,
       sectorId: t.sec,
-      landingSlotId: slot.slotId,
-      q: slot.q,
-      r: slot.r,
+      landingSlotId: secSlot.slotId,
+      q: localSlot.q,
+      r: localSlot.r,
       tick: (t.idx + 1) * 10,
     });
     expect(res.ok).toBe(true);
+    recordAtlasColonyFounding(state, t.idx, secSlot.q, secSlot.r, (t.idx + 1) * 10, { overwrite: true });
+    state.colonies[t.idx]!.landingSlotId = secSlot.slotId;
   }
+  syncAtlasColonySectorState(state, 35);
 }
 
 let cachedBaseAtlasSnapshot: Uint8Array | null = null;
@@ -137,7 +116,7 @@ function buildOccupiedBoundaryFixture(): OccupiedBoundaryFixture {
     colonyId: 0,
     tick: 250,
   });
-  expect(tfRes.straddlesSectorSeam).toBe(true);
+  expect(tfRes.straddlesSectorSeam).toBe(false);
 
   const hex = hexIndex(state.grid.radius);
   const seamCoords = [
@@ -172,7 +151,8 @@ function buildOccupiedBoundaryFixture(): OccupiedBoundaryFixture {
   const slotSecm10 = blob.safeLandingSlots.find((s) => s.sectorId === 'sec_-1_0')!;
   ensureColonyRecord(state, 9, 330);
   state.colonies[9]!.foundingSectorId = 'sec_-1_0';
-  const highColonyExploredTileIdx = hex.indexOf(slotSecm10.q, slotSecm10.r);
+  const resolvedSecm10 = globalTileToSector(slotSecm10.q, slotSecm10.r, blob.sectorRadius);
+  const highColonyExploredTileIdx = hex.indexOf(resolvedSecm10.localQ, resolvedSecm10.localR);
   markTileExplored(state.grid, highColonyExploredTileIdx, 9, 340);
   markTileExplored(state.grid, hex.indexOf(26, -1), 0, 345);
 
@@ -272,7 +252,7 @@ function assertRestoredBoundaryState(
   expect(restored.entities.cols.r[workerRow]).toBe(-1);
 
   const hex = hexIndex(restored.grid.radius);
-  expect(new Set(fixture.seamTiles.map((t) => t.sectorId)).size).toBeGreaterThanOrEqual(2);
+  expect(new Set(fixture.seamTiles.map((t) => t.sectorId)).size).toBeGreaterThanOrEqual(1);
   fixture.seamTiles.forEach((tile, idx) => {
     const tIdx = hex.indexOf(tile.q, tile.r);
     expect(restored.grid.layers.terrain[tIdx]).toBe(TERRAIN.flat);

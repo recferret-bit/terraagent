@@ -239,10 +239,14 @@ function computeCorridorProximity(mx: number, my: number, ctx: AtlasSamplerConte
 function computeMacroDistances(q: number, r: number, ctx: AtlasSamplerContext): {
   distanceToLand: number;
   distanceToOcean: number;
+  distanceFromSeam: number;
 } {
   let distanceToLand = Infinity;
+  let minOwnCenterDist = Infinity;
   for (const l of ctx.landMacros) {
-    const d = Math.max(0, hexDistance(q, r, l.centerQ, l.centerR) - ctx.sectorRadius);
+    const centerDist = hexDistance(q, r, l.centerQ, l.centerR);
+    if (centerDist < minOwnCenterDist) minOwnCenterDist = centerDist;
+    const d = Math.max(0, centerDist - ctx.sectorRadius);
     if (d < distanceToLand) distanceToLand = d;
   }
   let distanceToOcean = Infinity;
@@ -250,7 +254,8 @@ function computeMacroDistances(q: number, r: number, ctx: AtlasSamplerContext): 
     const d = Math.max(0, hexDistance(q, r, m.centerQ, m.centerR) - ctx.sectorRadius);
     if (d < distanceToOcean) distanceToOcean = d;
   }
-  return { distanceToLand, distanceToOcean };
+  const distanceFromSeam = Math.max(0, ctx.sectorRadius - minOwnCenterDist);
+  return { distanceToLand, distanceToOcean, distanceFromSeam };
 }
 
 function sampleOceanHaloTile(
@@ -379,6 +384,7 @@ function sampleDesertLand(
   mx: number,
   my: number,
   dOcean: number,
+  dFromSeam: number,
   corridor: number,
   ctx: AtlasSamplerContext,
 ): { terrain: number; prep: number; height: number } {
@@ -407,7 +413,8 @@ function sampleDesertLand(
   const rawMacro = 0.65 * fbm2d(mx, my, 0.016, ctx.seedElev) + 0.35 * fbm2d(mx, my, 0.028, ctx.seedBasin);
   const macroElev = rawMacro * (1 - 0.45 * corridor) + 0.32 * (0.45 * corridor);
 
-  const highlandMask = smoothstep(0.47, 0.66, macroElev) * smoothstep(3.5, 10.0, dOcean);
+  const seamEnv = 0.38 + 0.62 * smoothstep(0.0, 8.0, dFromSeam);
+  const highlandMask = smoothstep(0.47, 0.66, macroElev) * smoothstep(3.5, 10.0, dOcean) * seamEnv;
   const ridge = smoothstep(0.4, 0.88, ridged2d(mx, my, rangeS, ctx.seedRidge));
   const cragRise = rangeH * highlandMask * (0.48 + 0.52 * ridge);
   const mesaRise = sampleGlobalDesertLandformM(mx, my, ctx) * 0.78 * highlandMask;
@@ -449,7 +456,7 @@ export function sampleBaseAtlasTile(q: number, r: number, ctx: AtlasSamplerConte
   const [px, py] = axialToPlane(q, r);
   const mx = Math.fround(px * TILE_M);
   const my = Math.fround(py * TILE_M);
-  const { distanceToLand, distanceToOcean } = computeMacroDistances(q, r, ctx);
+  const { distanceToLand, distanceToOcean, distanceFromSeam } = computeMacroDistances(q, r, ctx);
   const isLandSector = distanceToLand === 0;
 
   let sampled: { terrain: number; prep: number; height: number };
@@ -461,7 +468,7 @@ export function sampleBaseAtlasTile(q: number, r: number, ctx: AtlasSamplerConte
     const corridor = computeCorridorProximity(mx, my, ctx);
     sampled =
       ctx.planetType === 'desert'
-        ? sampleDesertLand(mx, my, distanceToOcean, corridor, ctx)
+        ? sampleDesertLand(mx, my, distanceToOcean, distanceFromSeam, corridor, ctx)
         : sampleTemperateOrOceanLand(mx, my, distanceToOcean, corridor, ctx);
   }
 

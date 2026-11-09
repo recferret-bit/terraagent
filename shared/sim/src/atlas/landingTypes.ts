@@ -149,6 +149,7 @@ export interface SeedCorpusValidationOptions {
   readonly capacities?: readonly number[];
   readonly planetTypes?: readonly PlanetType[];
   readonly seeds?: readonly string[];
+  readonly sectorRadius?: number;
   readonly minSlotSeparation?: number;
   readonly minBuildableR4?: number;
 }

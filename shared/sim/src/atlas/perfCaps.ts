@@ -48,6 +48,7 @@ export interface SmallAtlasPerfCaps {
   readonly maxDeltaTilesPerChunk: number;
   readonly maxSimStepP95Ms: number;
   readonly maxMapRasterScanPaintMs: number;
+  readonly maxGenTimeMs: number;
   readonly maxHeapDeltaBytesPerWorld: number;
   readonly maxEstimatedAllocationBytes: number;
 }
@@ -64,11 +65,11 @@ export const W11_SMALL_ATLAS_PERF_CAPS: SmallAtlasPerfCaps = {
   maxOceanSectors: 12,
   maxContinents: 1,
   maxContinentCount: 1,
-  maxSectorRadius: W11_DEFAULT_SECTOR_RADIUS, // 24 (1,801 tiles/sector)
-  maxTilesPerSector: 1_801,
-  maxTotalTiles: 34_219, // 19 * 1,801
-  maxTotalTilesHardCeiling: W11_MAX_SMALL_ATLAS_TILES, // 35,000
-  maxPlanetGridRadius: 80, // default 7-land-sector R=24 gridRadius is 76 (17,557 grid tiles)
+  maxSectorRadius: W11_DEFAULT_SECTOR_RADIUS, // 48 (7,057 tiles/sector)
+  maxTilesPerSector: 7_057,
+  maxTotalTiles: 134_083, // 19 * 7,057
+  maxTotalTilesHardCeiling: W11_MAX_SMALL_ATLAS_TILES, // 140,000
+  maxPlanetGridRadius: 64, // single-sector in-game PlanetState.grid radius is 48 (7,057 grid tiles)
   maxFoundingSeatsPerSector: 5, // default X=4, validated for X=3|4|5
   defaultFoundingSeatsPerSector: W11_DEFAULT_FOUNDING_SEATS_PER_SECTOR, // 4
   supportedFoundingSeatsPerSector: W11_SUPPORTED_FOUNDING_SEATS, // [3, 4, 5]
@@ -81,12 +82,13 @@ export const W11_SMALL_ATLAS_PERF_CAPS: SmallAtlasPerfCaps = {
   maxDeltaTilesPerChunk: MAX_TILE_DIFF_PER_DELTA, // 100 tiles
   maxSimStepP95Ms: 50, // 20 Hz / 50 ms step budget (typical < 10 ms)
   maxMapRasterScanPaintMs: 16, // 16 ms browser frame budget for 7-sector 256x256 raster scan/paint
+  maxGenTimeMs: 1_500, // 1,500 ms generation budget for 134,083-tile small atlas
   maxHeapDeltaBytesPerWorld: 64 * 1024 * 1024, // 64 MB per small-atlas world
   maxEstimatedAllocationBytes: 32 * 1024 * 1024, // 32 MB pre-allocation TypedArray ceiling
 } as const;
 
 export const W11_PUBLISHED_SMALL_ATLAS_FIXTURE = {
-  fixtureId: 'w11-canonical-small-atlas-7land-19total-r24-x4',
+  fixtureId: 'w11-canonical-small-atlas-7land-19total-r48-x4',
   supportedScale: W11_SUPPORTED_SCALE_ID,
   w27ScaleClaimed: false as const,
   canonicalPlanetIds: CANONICAL_PLANET_IDS,
@@ -95,11 +97,11 @@ export const W11_PUBLISHED_SMALL_ATLAS_FIXTURE = {
   landSectors: 7,
   oceanSectors: 12,
   continentCount: 1,
-  sectorRadius: 24,
-  tilesPerSector: 1_801,
-  totalAtlasTiles: 34_219,
-  planetGridRadius: 76,
-  planetGridTiles: 17_557,
+  sectorRadius: 48,
+  tilesPerSector: 7_057,
+  totalAtlasTiles: 134_083,
+  planetGridRadius: 48,
+  planetGridTiles: 7_057,
   defaultFoundingSeatsPerSector: 4,
   supportedFoundingSeatsPerSector: W11_SUPPORTED_FOUNDING_SEATS,
   nominalSeatsAtDefaultX4: 28,
@@ -310,17 +312,23 @@ function resolveSectorCounts(input: SmallAtlasBudgetCapInput): {
 function estimatePlanetGridRadius(input: SmallAtlasBudgetCapInput, sectorRadius: number, landSectors: number): number {
   if (typeof input.planetRadius === 'number') return input.planetRadius;
   if (typeof input.gridRadius === 'number') return input.gridRadius;
+  if (typeof input.radius === 'number') return input.radius;
   if (sectorRadius <= 0 || !Number.isFinite(sectorRadius)) return 0;
-  let maxMacroDist = 1;
-  if (Array.isArray(input.landCoords) && input.landCoords.length > 0) {
-    maxMacroDist = Math.max(
-      0,
+  if (landSectors > W11_DEFAULT_LAND_SECTORS) {
+    const maxMacroDist = Math.max(1, Math.ceil(Math.sqrt(landSectors / 3)));
+    return (2 * sectorRadius + 1) * maxMacroDist + sectorRadius + 3;
+  }
+  if (
+    Array.isArray(input.landCoords) &&
+    input.landCoords.some(([mq, mr]) => Number.isSafeInteger(mq) && Number.isSafeInteger(mr) && hexDistance(0, 0, mq, mr) > 1)
+  ) {
+    const maxMacroDist = Math.max(
+      1,
       ...input.landCoords.map(([mq, mr]) => (Number.isSafeInteger(mq) && Number.isSafeInteger(mr) ? hexDistance(0, 0, mq, mr) : 1)),
     );
-  } else if (landSectors > W11_DEFAULT_LAND_SECTORS) {
-    maxMacroDist = Math.max(1, Math.ceil(Math.sqrt(landSectors / 3)));
+    return (2 * sectorRadius + 1) * maxMacroDist + sectorRadius + 3;
   }
-  return (2 * sectorRadius + 1) * maxMacroDist + sectorRadius + 3;
+  return sectorRadius;
 }
 
 /**

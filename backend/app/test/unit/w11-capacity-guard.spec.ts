@@ -337,7 +337,7 @@ describe('W11-15 — Small-atlas rollout & safe-site budget validation before al
 
     const overSeatsConfig = buildDefaultAtlasConfig({
       planetType: 'desert',
-      sectorRadius: 24,
+      sectorRadius: 48,
       foundingSeatsPerSector: 6,
     });
     const overSeatsCheck = validateWorldProvisionBudget(overSeatsConfig);
@@ -347,7 +347,7 @@ describe('W11-15 — Small-atlas rollout & safe-site budget validation before al
 
     const overRadiusConfig = buildDefaultAtlasConfig({
       planetType: 'ocean',
-      sectorRadius: 28,
+      sectorRadius: 52,
       foundingSeatsPerSector: 4,
     });
     const overRadiusCheck = validateWorldProvisionBudget(overRadiusConfig);

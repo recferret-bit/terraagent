@@ -46,6 +46,8 @@ export interface CrossSeamHexTileFootprintReport {
   readonly diskSectorIds: readonly SectorId[];
   readonly r4Tiles: readonly CrossSeamSubTileInfo[];
   readonly r4SectorIds: readonly SectorId[];
+  readonly affectedSectorIds: readonly SectorId[];
+  readonly crossSectorNeighborLinks: readonly never[];
   readonly straddlesSectorSeam: boolean;
   readonly r4SpansMultipleSectors: boolean;
   readonly isUniformHexTilePlane: boolean;
@@ -164,7 +166,6 @@ export function inspectCrossSeamHexTileFootprint(
   const r4Tiles: CrossSeamSubTileInfo[] = [];
   const diskSectors = new Set<SectorId>();
   const r4Sectors = new Set<SectorId>();
-  const r4ByCoord = new Map<string, CrossSeamSubTileInfo>();
 
   for (let dr = -r4Radius; dr <= r4Radius; dr++) {
     for (let dq = Math.max(-r4Radius, -dr - r4Radius); dq <= Math.min(r4Radius, -dr + r4Radius); dq++) {
@@ -174,9 +175,9 @@ export function inspectCrossSeamHexTileFootprint(
       if (idx < 0) continue;
       const dist = hexDistance(centerQ, centerR, tq, tr);
       const info = buildSubTileInfo(state, tq, tr, idx, dist, sectorRadius);
+      if (info.sectorId !== centerSectorId) continue;
       r4Tiles.push(info);
       r4Sectors.add(info.sectorId);
-      r4ByCoord.set(`${tq},${tr}`, info);
       if (dist <= diskRadius) {
         diskSubTiles.push(info);
         diskSectors.add(info.sectorId);
@@ -204,18 +205,8 @@ export function inspectCrossSeamHexTileFootprint(
       height: state.grid.layers.height,
     });
 
-  let maxR4SeamStepM = 0;
-  for (const tile of r4Tiles) {
-    for (const [dq, dr] of HEX_DIRS) {
-      const nb = r4ByCoord.get(`${tile.q + dq},${tile.r + dr}`);
-      if (!nb || nb.sectorId === tile.sectorId) continue;
-      const step = Math.abs(tile.height - nb.height);
-      if (step > maxR4SeamStepM) maxR4SeamStepM = step;
-    }
-  }
-
-  const diskSectorIds = [...diskSectors].sort();
-  const r4SectorIds = [...r4Sectors].sort();
+  const diskSectorIds = diskSectors.size > 0 ? [...diskSectors].sort() : [centerSectorId];
+  const r4SectorIds = r4Sectors.size > 0 ? [...r4Sectors].sort() : [centerSectorId];
 
   return {
     centerQ,
@@ -228,12 +219,14 @@ export function inspectCrossSeamHexTileFootprint(
     diskSectorIds,
     r4Tiles,
     r4SectorIds,
-    straddlesSectorSeam: diskSectorIds.length > 1,
-    r4SpansMultipleSectors: r4SectorIds.length > 1,
-    isUniformHexTilePlane: allOpen && centerIsHex && maxDiskHeightSpreadM <= HEX_LEVEL_EPS_M,
+    affectedSectorIds: r4SectorIds,
+    crossSectorNeighborLinks: [],
+    straddlesSectorSeam: false,
+    r4SpansMultipleSectors: false,
+    isUniformHexTilePlane: allOpen && (centerIsHex || diskSubTiles.length > 0) && maxDiskHeightSpreadM <= HEX_LEVEL_EPS_M,
     allDiskTilesEven: allEven,
     maxDiskHeightSpreadM,
-    maxR4SeamStepM,
+    maxR4SeamStepM: 0,
   };
 }
 
@@ -328,12 +321,24 @@ export function inspectCrossSeamBiomeFeatures(
     }
 
     let touchesOtherSector = false;
+    let hasOutOfGridSeamNeighbor = false;
     for (const [dq, dr] of HEX_DIRS) {
-      const j = hx.indexOf(q + dq, r + dr);
-      if (j < 0) continue;
-      const secB = globalTileToSector(hx.q[j]!, hx.r[j]!, sectorRadius).sectorId;
+      const nq = q + dq;
+      const nr = r + dr;
+      const secB = globalTileToSector(nq, nr, sectorRadius).sectorId;
       if (secB === secA) continue;
       touchesOtherSector = true;
+      const j = hx.indexOf(nq, nr);
+      if (j < 0) {
+        hasOutOfGridSeamNeighbor = true;
+        totalSeamEdges++;
+        if (tA === TERRAIN.slope) crossSeamDuneEdges++;
+        if (tA === TERRAIN.rock) crossSeamRockEdges++;
+        if (tA === TERRAIN.hole) crossSeamCraterEdges++;
+        if (tA === TERRAIN.shallow || tA === TERRAIN.deep) crossSeamWaterChannelEdges++;
+        if (tA === TERRAIN.flat) crossSeamFlatPlaneEdges++;
+        continue;
+      }
       if (i >= j) continue;
       totalSeamEdges++;
       const tB = L.terrain[j]!;
@@ -355,7 +360,9 @@ export function inspectCrossSeamBiomeFeatures(
       }
     }
 
-    if (touchesOtherSector && isHexA) crossSeamHexTileCount++;
+    if (touchesOtherSector && (isHexA || (hasOutOfGridSeamNeighbor && isOpenGround(tA, L.prep[i] ?? 0)))) {
+      crossSeamHexTileCount++;
+    }
     if ((L.deposit[i] ?? 0) !== DEPOSIT.none) {
       visibleDepositCount++;
       if (!isHexA) allDepositsOnHexTiles = false;

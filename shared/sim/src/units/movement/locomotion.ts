@@ -106,14 +106,22 @@ export function advanceAlongRoute(
   let budget = Math.fround(effectiveSpeedPerTick * ctx.dt);
   let result: LocomotionResult = 'moving';
   const waypoints = route.path.length / 2;
+  const atlasBlob = getAtlasBlob(state);
+  const startSectorId = atlasBlob ? globalTileToSector(prevQ, prevR, atlasBlob.sectorRadius).sectorId : null;
 
   while (route.next < waypoints) {
     const tx = route.path[route.next * 2];
     const ty = route.path[route.next * 2 + 1];
     const tileIdx = idx.indexOf(tx, ty);
+    const crossesSector =
+      startSectorId !== null && globalTileToSector(tx, ty, atlasBlob!.sectorRadius).sectorId !== startSectorId;
     // the tile the unit already stands in never blocks it (it may only walk out), like A*'s exempt start tile
     const inside = tx === prevQ && ty === prevR;
-    if (tileIdx < 0 || (!inside && (!isGroundPassable(state.grid, tileIdx, ctx.data) || (blocked?.(tileIdx) ?? false)))) {
+    if (
+      tileIdx < 0 ||
+      crossesSector ||
+      (!inside && (!isGroundPassable(state.grid, tileIdx, ctx.data) || (blocked?.(tileIdx) ?? false)))
+    ) {
       result = 'blocked';
       break;
     }

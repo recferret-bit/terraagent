@@ -27,22 +27,22 @@ import {
 } from '../../src';
 
 describe('W11-34 macro-hex partition basis and coordinate bijections', () => {
-  it('computes exact basis vectors and determinant 3R(R+1)+1 for R=24', () => {
-    const basis = macroBasisVectors(24);
-    expect(basis.bq).toEqual([49, -24]);
-    expect(basis.br).toEqual([24, 25]);
+  it('computes exact basis vectors and determinant 3R(R+1)+1 for R=48', () => {
+    const basis = macroBasisVectors(48);
+    expect(basis.bq).toEqual([97, -48]);
+    expect(basis.br).toEqual([48, 49]);
     const det = basis.bq[0] * basis.br[1] - basis.bq[1] * basis.br[0];
-    expect(det).toBe(1_801);
-    expect(basis.determinant).toBe(hexCount(24));
+    expect(det).toBe(7_057);
+    expect(basis.determinant).toBe(hexCount(48));
 
-    const c00 = sectorCenterForMacro(0, 0, 24);
+    const c00 = sectorCenterForMacro(0, 0, 48);
     expect(c00).toEqual({ centerQ: 0, centerR: 0 });
-    const c10 = sectorCenterForMacro(1, 0, 24);
-    expect(c10).toEqual({ centerQ: 49, centerR: -24 });
-    expect(hexDistance(0, 0, c10.centerQ, c10.centerR)).toBe(49);
+    const c10 = sectorCenterForMacro(1, 0, 48);
+    expect(c10).toEqual({ centerQ: 97, centerR: -48 });
+    expect(hexDistance(0, 0, c10.centerQ, c10.centerR)).toBe(97);
 
-    const byId = sectorCenterForId('sec_-1_1', 24);
-    expect(byId).toEqual({ macroQ: -1, macroR: 1, centerQ: -25, centerR: 49 });
+    const byId = sectorCenterForId('sec_-1_1', 48);
+    expect(byId).toEqual({ macroQ: -1, macroR: 1, centerQ: -49, centerR: 97 });
   });
 
   it('maintains 100% symmetric macro-sector neighbour links across all 6 directions', () => {
@@ -69,26 +69,26 @@ describe('W11-34 macro-hex partition basis and coordinate bijections', () => {
     expect(landOnly.sectors).toHaveLength(7);
     expect(landOnly.landSectorIds).toHaveLength(7);
     expect(landOnly.oceanSectorIds).toHaveLength(0);
-    expect(landOnly.tilesPerSector).toBe(1_801);
-    expect(landOnly.tiles).toHaveLength(7 * 1_801);
-    expect(landOnly.tileByKey.size).toBe(12_607);
+    expect(landOnly.tilesPerSector).toBe(7_057);
+    expect(landOnly.tiles).toHaveLength(7 * 7_057);
+    expect(landOnly.tileByKey.size).toBe(49_399);
 
     const full = buildSmallAtlasPartition({ includeOceanHalo: true });
     expect(full.sectors).toHaveLength(19);
     expect(full.landSectorIds).toHaveLength(7);
     expect(full.oceanSectorIds).toHaveLength(12);
-    expect(full.tiles).toHaveLength(19 * 1_801);
-    expect(full.tileByKey.size).toBe(34_219);
-    expect(full.bounds.totalTiles).toBe(34_219);
+    expect(full.tiles).toHaveLength(19 * 7_057);
+    expect(full.tileByKey.size).toBe(134_083);
+    expect(full.bounds.totalTiles).toBe(134_083);
 
     for (const sector of full.sectors) {
-      expect(sector.tiles).toHaveLength(1_801);
+      expect(sector.tiles).toHaveLength(7_057);
       const byIdTiles = enumerateSectorTiles(sector.sectorId, full.sectorRadius);
-      expect(byIdTiles).toHaveLength(1_801);
+      expect(byIdTiles).toHaveLength(7_057);
 
       for (const t of sector.tiles) {
-        expect(hexDistance(0, 0, t.localQ, t.localR)).toBeLessThanOrEqual(24);
-        const resolved = globalTileToSector(t.q, t.r, 24);
+        expect(hexDistance(0, 0, t.localQ, t.localR)).toBeLessThanOrEqual(48);
+        const resolved = globalTileToSector(t.q, t.r, 48);
         expect(resolved.sectorId).toBe(sector.sectorId);
         expect(resolved.macroQ).toBe(sector.macroQ);
         expect(resolved.macroR).toBe(sector.macroR);
@@ -96,13 +96,13 @@ describe('W11-34 macro-hex partition basis and coordinate bijections', () => {
         expect(resolved.localR).toBe(t.localR);
         expect(resolved.localIndex).toBe(t.localIndex);
 
-        const global1 = sectorLocalToGlobalTile(sector.macroQ, sector.macroR, t.localQ, t.localR, 24);
+        const global1 = sectorLocalToGlobalTile(sector.macroQ, sector.macroR, t.localQ, t.localR, 48);
         expect(global1).toEqual({ q: t.q, r: t.r });
-        const global2 = sectorLocalToGlobalTile(sector.sectorId, t.localQ, t.localR, 24);
+        const global2 = sectorLocalToGlobalTile(sector.sectorId, t.localQ, t.localR, 48);
         expect(global2).toEqual({ q: t.q, r: t.r });
-        const global3 = sectorIdLocalToGlobalTile(sector.sectorId, t.localQ, t.localR, 24);
+        const global3 = sectorIdLocalToGlobalTile(sector.sectorId, t.localQ, t.localR, 48);
         expect(global3).toEqual({ q: t.q, r: t.r });
-        const global4 = sectorLocalIndexToGlobalTile(sector.macroQ, sector.macroR, t.localIndex, 24);
+        const global4 = sectorLocalIndexToGlobalTile(sector.macroQ, sector.macroR, t.localIndex, 48);
         expect(global4).toEqual({ q: t.q, r: t.r, localQ: t.localQ, localR: t.localR });
       }
     }
@@ -116,20 +116,20 @@ describe('W11-34 seam symmetry, 3-sector corners, and dense bounding-box partiti
     const candidateMacros = W11_SMALL_ATLAS_SECTOR_COORDS.map(([mq, mr]) => ({
       mq,
       mr,
-      ...sectorCenterForMacro(mq, mr, 24),
+      ...sectorCenterForMacro(mq, mr, 48),
     }));
 
     let checkedCount = 0;
     for (let r = minR - 2; r <= maxR + 2; r++) {
       for (let q = minQ - 2; q <= maxQ + 2; q++) {
-        const lookup = globalTileToSector(q, r, 24);
-        expect(hexDistance(0, 0, lookup.localQ, lookup.localR)).toBeLessThanOrEqual(24);
+        const lookup = globalTileToSector(q, r, 48);
+        expect(hexDistance(0, 0, lookup.localQ, lookup.localR)).toBeLessThanOrEqual(48);
         expect(lookup.centerQ + lookup.localQ).toBe(q);
         expect(lookup.centerR + lookup.localR).toBe(r);
 
         let matchingCenters = 0;
         for (const c of candidateMacros) {
-          if (hexDistance(q, r, c.centerQ, c.centerR) <= 24) matchingCenters++;
+          if (hexDistance(q, r, c.centerQ, c.centerR) <= 48) matchingCenters++;
         }
         if (matchingCenters > 0) expect(matchingCenters).toBe(1);
         checkedCount++;
@@ -140,10 +140,10 @@ describe('W11-34 seam symmetry, 3-sector corners, and dense bounding-box partiti
 
   it('verifies symmetric 6-neighbours across every seam tile of the 19-sector small atlas', () => {
     const partition = buildSmallAtlasPartition({ includeOceanHalo: true });
-    expect(partition.seamTiles).toHaveLength(19 * 6 * 24);
+    expect(partition.seamTiles).toHaveLength(19 * 6 * 48);
 
     for (const sector of partition.sectors) {
-      expect(sector.seamTiles).toHaveLength(6 * 24);
+      expect(sector.seamTiles).toHaveLength(6 * 48);
     }
 
     for (const seam of partition.seamTiles) {
@@ -153,7 +153,7 @@ describe('W11-34 seam symmetry, 3-sector corners, and dense bounding-box partiti
 
       for (const cross of seam.crossSectorNeighbors) {
         expect(cross.sectorId).not.toBe(seam.sectorId);
-        const reverseNeighbors = tileSectorNeighbors(cross.q, cross.r, 24);
+        const reverseNeighbors = tileSectorNeighbors(cross.q, cross.r, 48);
         const back = reverseNeighbors[cross.oppositeDir]!;
         expect(back.q).toBe(seam.q);
         expect(back.r).toBe(seam.r);
@@ -180,8 +180,8 @@ describe('W11-34 seam symmetry, 3-sector corners, and dense bounding-box partiti
       expect(hexDistance(t2.q, t2.r, t0.q, t0.r)).toBe(1);
 
       for (const t of corner.tiles) {
-        expect(hexDistance(0, 0, t.localQ, t.localR)).toBe(24);
-        const owner = globalTileToSector(t.q, t.r, 24);
+        expect(hexDistance(0, 0, t.localQ, t.localR)).toBe(48);
+        const owner = globalTileToSector(t.q, t.r, 48);
         expect(owner.sectorId).toBe(t.sectorId);
       }
     }

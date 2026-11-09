@@ -130,7 +130,7 @@ export function computeAtlasSectorColonyMetrics(
   const knownSectorIds = new Set<SectorId>(sectors.map((s) => s.sectorId));
   const foundingMap = resolveColonyFoundingSectorMap(state, foundingSectorByColony);
   const { presentBySector, presentByColony, entityCountBySector, ownedTileCountBySector } =
-    collectPresenceBySector(state, sectorRadius, knownSectorIds);
+    collectPresenceBySector(state, sectorRadius, knownSectorIds, foundingMap);
 
   const foundedBySector = new Map<SectorId, number[]>();
   const foundingRecord: Record<number, SectorId> = {};

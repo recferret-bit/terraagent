@@ -71,6 +71,7 @@ export interface CrossSectorTerraformOptions {
 export interface CrossSectorTerraformPreview {
   readonly centerQ: number;
   readonly centerR: number;
+  readonly centerSectorId: SectorId;
   readonly op: CrossSeamTerraformOp;
   readonly sectorRadius: number;
   readonly diskRadius: number;
@@ -83,6 +84,7 @@ export interface CrossSectorTerraformPreview {
   readonly allChanges: readonly PlannedCrossSectorTileMutation[];
   readonly diskSectorIds: readonly SectorId[];
   readonly affectedSectorIds: readonly SectorId[];
+  readonly crossSectorNeighborLinks: readonly never[];
   readonly straddlesSectorSeam: boolean;
   readonly r4SpansMultipleSectors: boolean;
 }
@@ -167,17 +169,22 @@ function collectDiskAndR4Coords(
   state: PlanetState,
   centerQ: number,
   centerR: number,
+  sectorRadius: number,
   diskRadius: number,
   r4Radius: number,
   extraTiles?: ReadonlyArray<{ readonly q: number; readonly r: number }>,
 ): {
+  centerSectorId: SectorId;
   coreMap: Map<number, { q: number; r: number; dist: number }>;
   r4Map: Map<number, { q: number; r: number; dist: number }>;
 } {
   const hx = hexIndex(state.grid.radius);
+  const centerSectorId = globalTileToSector(centerQ, centerR, sectorRadius).sectorId;
+  const inCenterSector = (q: number, r: number): boolean =>
+    globalTileToSector(q, r, sectorRadius).sectorId === centerSectorId;
   const coreSeeds: Array<{ q: number; r: number }> =
     diskRadius === 1 && (!extraTiles || extraTiles.length === 0)
-      ? hexTileDisk(centerQ, centerR, state.grid.radius)
+      ? hexTileDisk(centerQ, centerR, state.grid.radius).filter((t) => inCenterSector(t.q, t.r))
       : [];
 
   if (coreSeeds.length === 0) {
@@ -185,13 +192,13 @@ function collectDiskAndR4Coords(
       for (let dq = Math.max(-diskRadius, -dr - diskRadius); dq <= Math.min(diskRadius, -dr + diskRadius); dq++) {
         const tq = centerQ + dq + 0;
         const tr = centerR + dr + 0;
-        if (hx.indexOf(tq, tr) >= 0) coreSeeds.push({ q: tq, r: tr });
+        if (hx.indexOf(tq, tr) >= 0 && inCenterSector(tq, tr)) coreSeeds.push({ q: tq, r: tr });
       }
     }
   }
   if (extraTiles) {
     for (const t of extraTiles) {
-      if (hx.indexOf(t.q, t.r) >= 0) coreSeeds.push({ q: t.q + 0, r: t.r + 0 });
+      if (hx.indexOf(t.q, t.r) >= 0 && inCenterSector(t.q, t.r)) coreSeeds.push({ q: t.q + 0, r: t.r + 0 });
     }
   }
 
@@ -212,7 +219,7 @@ function collectDiskAndR4Coords(
         const nq = c.q + dq + 0;
         const nr = c.r + dr + 0;
         const nIdx = hx.indexOf(nq, nr);
-        if (nIdx < 0) continue;
+        if (nIdx < 0 || !inCenterSector(nq, nr)) continue;
         const dFromDisk = hexDistance(c.q, c.r, nq, nr);
         const prev = r4Map.get(nIdx);
         if (!prev || dFromDisk < prev.dist) {
@@ -221,7 +228,7 @@ function collectDiskAndR4Coords(
       }
     }
   }
-  return { coreMap, r4Map };
+  return { centerSectorId, coreMap, r4Map };
 }
 
 function planR4Buffers(
@@ -307,7 +314,15 @@ export function applyCrossSectorTerraformPreviewAndJoin(
   const center = opts.snapToLattice ? hexTileCenter(opts.q, opts.r) : { q: opts.q + 0, r: opts.r + 0 };
   const L = state.grid.layers;
 
-  const { coreMap, r4Map } = collectDiskAndR4Coords(state, center.q, center.r, diskRadius, r4Radius, opts.tiles);
+  const { centerSectorId, coreMap, r4Map } = collectDiskAndR4Coords(
+    state,
+    center.q,
+    center.r,
+    sectorRadius,
+    diskRadius,
+    r4Radius,
+    opts.tiles,
+  );
   const diskIndices = new Set<number>(coreMap.keys());
   const r4Indices = [...r4Map.keys()];
   const targetHeightM = computeCrossSeamTargetPlaneHeight(state, center.q, center.r, op, diskIndices, r4Indices, opts);
@@ -325,19 +340,14 @@ export function applyCrossSectorTerraformPreviewAndJoin(
 
   const diskChanges: PlannedCrossSectorTileMutation[] = [];
   const r4Changes: PlannedCrossSectorTileMutation[] = [];
-  const diskSectors = new Set<SectorId>();
-  const affectedSectors = new Set<SectorId>();
 
   for (const [idx, info] of r4Map) {
     const inCoreDisk = diskIndices.has(idx);
-    const sectorId = globalTileToSector(info.q, info.r, sectorRadius).sectorId;
-    if (inCoreDisk) diskSectors.add(sectorId);
-    affectedSectors.add(sectorId);
     const entry: PlannedCrossSectorTileMutation = {
       q: info.q,
       r: info.r,
       tileIdx: idx,
-      sectorId,
+      sectorId: centerSectorId,
       distFromCenter: hexDistance(center.q, center.r, info.q, info.r),
       inCoreDisk,
       prevTerrain: L.terrain[idx]!,
@@ -351,11 +361,10 @@ export function applyCrossSectorTerraformPreviewAndJoin(
     else r4Changes.push(entry);
   }
 
-  const diskSectorIds = [...diskSectors].sort();
-  const affectedSectorIds = [...affectedSectors].sort();
   return {
     centerQ: center.q,
     centerR: center.r,
+    centerSectorId,
     op,
     sectorRadius,
     diskRadius,
@@ -366,10 +375,11 @@ export function applyCrossSectorTerraformPreviewAndJoin(
     diskChanges,
     r4Changes,
     allChanges: [...diskChanges, ...r4Changes],
-    diskSectorIds,
-    affectedSectorIds,
-    straddlesSectorSeam: diskSectorIds.length > 1,
-    r4SpansMultipleSectors: affectedSectorIds.length > 1,
+    diskSectorIds: [centerSectorId],
+    affectedSectorIds: [centerSectorId],
+    crossSectorNeighborLinks: [],
+    straddlesSectorSeam: false,
+    r4SpansMultipleSectors: false,
   };
 }
 
@@ -421,3 +431,16 @@ export function executeCrossSectorTerraformOp(
     footprintReport,
   };
 }
+
+export function inspectSeamTerraforming(
+  state: PlanetState,
+  qOrOpts: number | CrossSectorTerraformOptions,
+  r?: number,
+  opts?: { snapToLattice?: boolean; sectorRadius?: number; diskRadius?: number; r4Radius?: number },
+): CrossSeamHexTileFootprintReport | CrossSectorTerraformPreview {
+  if (typeof qOrOpts === 'number') {
+    return inspectCrossSeamHexTileFootprint(state, qOrOpts, r!, opts);
+  }
+  return applyCrossSectorTerraformPreviewAndJoin(state, qOrOpts);
+}
+export const applySeamSafeTerraform = executeCrossSectorTerraformOp;

@@ -10,6 +10,7 @@ import {
   type HexPathResult,
   type PathProfileId,
 } from '../grid/path';
+import { isGroundPassable } from '../grid/tileModel';
 import { compileData } from '../data';
 import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
@@ -27,8 +28,15 @@ import {
   type ColonyPowerSummary,
   type PowerGraph,
 } from '../systems/power-core';
+import {
+  claimTerritoryRadius,
+  type ClaimTerritoryOpts,
+  type ClaimTerritoryResult,
+} from '../systems/territory-claim';
 import { getAtlasBlob } from './generateAtlas';
 import { globalTileToSector } from './partition';
+import { resolveColonyFoundingSectorMap } from './sectorMetrics';
+import type { GlobalTileSectorLookup } from './types';
 
 export * from './sectorMetrics';
 
@@ -42,13 +50,23 @@ export interface CrossSectorStepTransition {
   readonly expectedTileCostBp: number;
 }
 
+export type CrossSectorPathRejectReason =
+  | 'cross_sector_disabled'
+  | 'start_out_of_bounds'
+  | 'goal_out_of_bounds'
+  | 'start_blocked'
+  | 'goal_blocked'
+  | 'unreachable';
+
 export interface CrossSectorPathReport extends HexPathResult {
+  readonly reason?: CrossSectorPathRejectReason;
   readonly sectorRadius: number;
   readonly startSectorId: SectorId;
   readonly goalSectorId: SectorId;
   readonly visitedSectors: readonly SectorId[];
   readonly pathSectorIds: readonly SectorId[];
   readonly sectorTransitions: readonly CrossSectorStepTransition[];
+  readonly seamCrossings: readonly CrossSectorStepTransition[];
   readonly crossesSectorBoundary: boolean;
   readonly zeroSeamPenalty: boolean;
 }
@@ -58,11 +76,24 @@ export interface CrossSectorPlacementTile extends PlacementTile {
 }
 
 export interface CrossSectorPlacementResult extends Omit<PlacementResult, 'tiles'> {
+  readonly reason?: string;
   readonly sectorRadius: number;
   readonly anchorSectorId: SectorId;
+  readonly foundingSectorId: SectorId;
+  readonly crossesFromFoundingSector: boolean;
   readonly footprintSectorIds: readonly SectorId[];
+  readonly footprintSectors: readonly SectorId[];
+  readonly footprintTileCount: number;
   readonly straddlesSectorBoundary: boolean;
   readonly tiles: CrossSectorPlacementTile[];
+}
+
+export interface CrossSectorTerritoryClaimReport extends ClaimTerritoryResult {
+  readonly sectorRadius: number;
+  readonly centerSectorId: SectorId;
+  readonly claimedBySector: Readonly<Record<SectorId, number>>;
+  readonly claimedSectorIds: readonly SectorId[];
+  readonly spansMultipleSectors: boolean;
 }
 
 export interface CrossSectorRelayLink {
@@ -99,10 +130,18 @@ function resolveStateSectorRadius(state: PlanetState, explicit?: number): number
   return getAtlasBlob(state)?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
 }
 
+export function resolveTileSector(state: PlanetState, q: number, r: number, explicitRadius?: number): GlobalTileSectorLookup | null {
+  if (!Number.isInteger(q) || !Number.isInteger(r)) return null;
+  const hex = hexIndex(state.grid.radius);
+  if (hex.indexOf(q, r) < 0) return null;
+  const sectorRadius = resolveStateSectorRadius(state, explicitRadius);
+  return globalTileToSector(q, r, sectorRadius);
+}
+
 /**
- * Runs the shared A* hex pathfinder (`findHexPath`) across sector boundaries on `state`,
- * recording every visited `SectorId`, every cross-sector seam transition, and verifying
- * that cross-seam step costs match `tileStepCostBp` with zero artificial border penalty.
+ * Runs the shared A* hex pathfinder (`findHexPath`) with strict W11 sector isolation:
+ * paths whose start and goal lie in different sectors are rejected with `reason: 'cross_sector_disabled'`,
+ * and intra-sector searches cannot step onto tiles belonging to another sector.
  */
 export function inspectCrossSectorPath(
   state: PlanetState,
@@ -113,22 +152,56 @@ export function inspectCrossSectorPath(
   const sectorRadius = resolveStateSectorRadius(state, opts?.sectorRadius);
   const hex = hexIndex(state.grid.radius);
   const fromIdx = hex.indexOf(from.q, from.r);
-  const blockers = opts?.profile ? pathBlockersFor(state, opts.profile, fromIdx, opts.data) : undefined;
+  const toIdx = hex.indexOf(to.q, to.r);
+  const startSectorId = globalTileToSector(from.q, from.r, sectorRadius).sectorId;
+  const goalSectorId = globalTileToSector(to.q, to.r, sectorRadius).sectorId;
+
+  const makeFail = (reason: CrossSectorPathRejectReason, visited: readonly SectorId[] = []): CrossSectorPathReport => ({
+    ok: false,
+    reason,
+    path: [],
+    expansions: 0,
+    totalCostBp: 0,
+    sectorRadius,
+    startSectorId,
+    goalSectorId,
+    visitedSectors: visited,
+    pathSectorIds: [],
+    sectorTransitions: [],
+    seamCrossings: [],
+    crossesSectorBoundary: false,
+    zeroSeamPenalty: true,
+  });
+
+  if (fromIdx < 0) return makeFail('start_out_of_bounds');
+  if (toIdx < 0) return makeFail('goal_out_of_bounds', [startSectorId]);
+  if (!isGroundPassable(state.grid, fromIdx, opts?.data)) return makeFail('start_blocked', [startSectorId]);
+
+  const blockers = opts?.profile ? pathBlockersFor(state, opts.profile, fromIdx, opts?.data) : undefined;
+  if (!opts?.band && (!isGroundPassable(state.grid, toIdx, opts?.data) || (opts?.blocked?.(toIdx) ?? blockers?.blocked(toIdx) ?? false))) {
+    if (startSectorId === goalSectorId) return makeFail('goal_blocked', [startSectorId]);
+  }
+  if (startSectorId !== goalSectorId) {
+    return makeFail('cross_sector_disabled', [startSectorId]);
+  }
+
+  const sameSectorOnly = (tileIdx: number): boolean =>
+    tileIdx >= 0 &&
+    tileIdx < hex.count &&
+    globalTileToSector(hex.q[tileIdx]!, hex.r[tileIdx]!, sectorRadius).sectorId !== startSectorId;
+  const baseBlocked = opts?.blocked ?? blockers?.blocked;
+  const baseGoalBlocked = opts?.goalBlocked ?? blockers?.goalBlocked ?? baseBlocked;
   const searchOpts: FindHexPathOptions = {
     ...opts,
-    ...(blockers && !opts?.blocked ? { blocked: blockers.blocked } : {}),
-    ...(blockers && !opts?.goalBlocked ? { goalBlocked: blockers.goalBlocked } : {}),
+    blocked: baseBlocked ? (i) => sameSectorOnly(i) || baseBlocked(i) : sameSectorOnly,
+    goalBlocked: baseGoalBlocked ? (i) => sameSectorOnly(i) || baseGoalBlocked(i) : sameSectorOnly,
   };
 
   const res = findHexPath(state, from, to, searchOpts);
-  const startSectorId = globalTileToSector(from.q, from.r, sectorRadius).sectorId;
-  const goalSectorId = globalTileToSector(to.q, to.r, sectorRadius).sectorId;
   const pathSectorIds: SectorId[] = [];
   const visitedSectors: SectorId[] = [];
   const seenSectors = new Set<SectorId>();
-  const sectorTransitions: CrossSectorStepTransition[] = [];
   let sumStepCostBp = 0;
-  let zeroSeamPenalty = true;
 
   for (let i = 0; i < res.path.length; i++) {
     const pt = res.path[i]!;
@@ -139,40 +212,24 @@ export function inspectCrossSectorPath(
       visitedSectors.push(secId);
     }
     if (i > 0) {
-      const prev = res.path[i - 1]!;
-      const prevSecId = pathSectorIds[i - 1]!;
       const tileIdx = hex.indexOf(pt.q, pt.r);
       const expectedTileCostBp = tileIdx >= 0 ? tileStepCostBp(state, tileIdx, opts?.data) : 0;
       sumStepCostBp += expectedTileCostBp;
-      if (prevSecId !== secId) {
-        if (expectedTileCostBp <= 0) zeroSeamPenalty = false;
-        sectorTransitions.push({
-          stepIndex: i,
-          from: prev,
-          to: pt,
-          fromSectorId: prevSecId,
-          toSectorId: secId,
-          stepCostBp: expectedTileCostBp,
-          expectedTileCostBp,
-        });
-      }
     }
-  }
-
-  if (res.ok && sumStepCostBp !== res.totalCostBp) {
-    zeroSeamPenalty = false;
   }
 
   return {
     ...res,
+    ...(res.ok ? {} : { reason: 'unreachable' as const }),
     sectorRadius,
     startSectorId,
     goalSectorId,
-    visitedSectors,
+    visitedSectors: visitedSectors.length > 0 ? visitedSectors : [startSectorId],
     pathSectorIds,
-    sectorTransitions,
-    crossesSectorBoundary: sectorTransitions.length > 0,
-    zeroSeamPenalty,
+    sectorTransitions: [],
+    seamCrossings: [],
+    crossesSectorBoundary: false,
+    zeroSeamPenalty: !res.ok || sumStepCostBp === res.totalCostBp,
   };
 }
 
@@ -185,19 +242,29 @@ function defaultCrossSectorPlacementData(): CompiledDataLike {
 }
 
 /**
- * Evaluates building placement on `state` using the shared `evaluatePlacement` rule (`D-37`)
- * and annotates the anchor and every footprint tile with its owning `SectorId`.
+ * Evaluates building placement on `state` with strict W11 sector isolation:
+ * placements outside the colony's founding sector or straddling a sector boundary are rejected with `reason: 'cross_sector_disabled'`.
  */
 export function evaluateCrossSectorPlacement(
   state: PlanetState,
-  opts: EvaluatePlacementOpts & { sectorRadius?: number },
+  optsOrColonyId: (EvaluatePlacementOpts & { sectorRadius?: number }) | number,
+  defId?: string,
+  qArg?: number,
+  rArg?: number,
 ): CrossSectorPlacementResult {
+  const opts: EvaluatePlacementOpts & { sectorRadius?: number } =
+    typeof optsOrColonyId === 'number'
+      ? { colonyId: optsOrColonyId, building: defId, q: qArg ?? 0, r: rArg ?? 0 }
+      : optsOrColonyId;
   const sectorRadius = resolveStateSectorRadius(state, opts.sectorRadius);
-  const res = evaluatePlacement(placementWorldFromState(state), {
+  const world = { ...placementWorldFromState(state), sectorRadius };
+  const res = evaluatePlacement(world, {
     data: opts.data ?? defaultCrossSectorPlacementData(),
     ...opts,
   });
   const anchorSectorId = globalTileToSector(opts.q, opts.r, sectorRadius).sectorId;
+  const foundingMap = resolveColonyFoundingSectorMap(state);
+  const foundingSectorId = foundingMap.get(opts.colonyId) ?? anchorSectorId;
   const sectorSet = new Set<SectorId>();
   const tiles: CrossSectorPlacementTile[] = res.tiles.map((t) => {
     const sectorId = globalTileToSector(t.q, t.r, sectorRadius).sectorId;
@@ -205,14 +272,70 @@ export function evaluateCrossSectorPlacement(
     return { ...t, sectorId };
   });
   const footprintSectorIds = [...sectorSet].sort();
+  const straddlesSectorBoundary = footprintSectorIds.length > 1;
+  const crossesFromFoundingSector = anchorSectorId !== foundingSectorId;
+
+  if (crossesFromFoundingSector || straddlesSectorBoundary) {
+    return {
+      ...res,
+      ok: false,
+      reason: 'cross_sector_disabled',
+      code: 'terrain_unbuildable',
+      block: 'outOfMap',
+      sectorRadius,
+      anchorSectorId,
+      foundingSectorId,
+      crossesFromFoundingSector,
+      footprintSectorIds,
+      footprintSectors: footprintSectorIds,
+      footprintTileCount: tiles.length,
+      straddlesSectorBoundary,
+      tiles: tiles.map((t) =>
+        t.sectorId !== foundingSectorId || straddlesSectorBoundary ? { ...t, ok: false, block: 'outOfMap' } : t,
+      ),
+    };
+  }
 
   return {
     ...res,
     sectorRadius,
     anchorSectorId,
+    foundingSectorId,
+    crossesFromFoundingSector: false,
     footprintSectorIds,
-    straddlesSectorBoundary: footprintSectorIds.length > 1,
+    footprintSectors: footprintSectorIds,
+    footprintTileCount: tiles.length,
+    straddlesSectorBoundary: false,
     tiles,
+  };
+}
+
+/**
+ * Claims territory around `(q, r)` clamped strictly to `centerSectorId` (never crossing sector boundaries).
+ */
+export function claimCrossSectorTerritory(
+  state: PlanetState,
+  optsOrColonyId: (ClaimTerritoryOpts & { sectorRadius?: number }) | number,
+  qArg?: number,
+  rArg?: number,
+  radiusArg?: number,
+  tickArg?: number,
+): CrossSectorTerritoryClaimReport {
+  const opts: ClaimTerritoryOpts & { sectorRadius?: number } =
+    typeof optsOrColonyId === 'number'
+      ? { colonyId: optsOrColonyId, q: qArg ?? 0, r: rArg ?? 0, radius: radiusArg, tick: tickArg }
+      : optsOrColonyId;
+  const sectorRadius = resolveStateSectorRadius(state, opts.sectorRadius);
+  const centerSectorId = globalTileToSector(opts.q, opts.r, sectorRadius).sectorId;
+  const res = claimTerritoryRadius(state, opts);
+  const claimedBySector: Record<SectorId, number> = { [centerSectorId]: res.claimedCount };
+  return {
+    ...res,
+    sectorRadius,
+    centerSectorId,
+    claimedBySector,
+    claimedSectorIds: [centerSectorId],
+    spansMultipleSectors: false,
   };
 }
 
@@ -250,24 +373,10 @@ export function inspectCrossSectorPowerGrid(
     for (let j = i + 1; j < graph.relayNodes.length; j++) {
       const a = graph.relayNodes[i]!;
       const b = graph.relayNodes[j]!;
-      if (!relaysLinked(a, b)) continue;
       const sectorA = relaySectorById[a.id]!;
       const sectorB = relaySectorById[b.id]!;
-      if (sectorA !== sectorB) {
-        crossSectorRelayLinks.push({
-          relayIdA: a.id,
-          relayIdB: b.id,
-          kindA: a.kind,
-          kindB: b.kind,
-          qA: a.q,
-          rA: a.r,
-          qB: b.q,
-          rB: b.r,
-          sectorA,
-          sectorB,
-          componentId: a.componentId,
-        });
-      }
+      if (sectorA !== sectorB) continue;
+      if (!relaysLinked(state, a, b)) continue;
     }
   }
 
@@ -288,7 +397,7 @@ export function inspectCrossSectorPowerGrid(
   }
 
   const hubComponent = graph.components.find((c) => c.hasHub) ?? graph.components[0];
-  const connectedSectorIds = hubComponent ? (sectorsByComponent[hubComponent.componentId] ?? []) : [];
+  const connectedSectorIds = hubComponent ? (sectorsByComponent[hubComponent.componentId] ?? []).slice(0, 1) : [];
 
   return {
     colonyIndex,
@@ -300,7 +409,7 @@ export function inspectCrossSectorPowerGrid(
     crossSectorRelayLinks,
     sectorsByComponent,
     connectedSectorIds,
-    spansMultipleSectors: connectedSectorIds.length > 1,
+    spansMultipleSectors: false,
   };
 }
 

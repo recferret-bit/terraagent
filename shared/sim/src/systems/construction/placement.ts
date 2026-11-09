@@ -10,6 +10,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
 import { getTerraformOpSpec } from '../terraform-basic/ops';
 import { inPowerZone, placementPowerZoneSources, powerZoneActive, type PowerZoneSource } from './powerZone';
+import { isPlacementBlockedBySectorIsolation } from './placementWorld';
 import { planPrepJobs, summarizePrepJobs, type SitePrepOpCounts } from './prep';
 
 export { resolveHubT1Row } from '../rows';
@@ -53,6 +54,8 @@ export interface PlacementWorld {
    * host publishes `colonies[].maxWorkerTier` on its view). The host leaves it out: its entities carry their tier.
    */
   maxWorkerTierByColony?: Readonly<Record<number, number>>;
+  sectorRadius?: number;
+  colonyFoundingSectorById?: Readonly<Record<number, string>>;
 }
 
 /** Per-building placement rule (balance rows supply the numbers; the geo part is fixed per building class). */
@@ -99,6 +102,7 @@ export interface PlacementBill {
 
 export interface PlacementResult {
   ok: boolean;
+  reason?: string;
   code?: RejectCode;
   block?: PlacementBlock;
   text?: string;
@@ -462,6 +466,9 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone, geo };
   const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, ctx, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
+  if (isPlacementBlockedBySectorIsolation(world, colonyId, q, r, tiles)) {
+    return { ...fail('outOfMap', tiles, bill), code: 'terrain_unbuildable', reason: 'blocked_terrain' };
+  }
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
   if (!(linkedPrep && tiles.some((t) => !t.prepared)) && footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
   if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) return fail('noDeposit', tiles, bill);

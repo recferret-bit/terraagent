@@ -31,7 +31,7 @@
 | **W08** | Stages & HQ Goals | Autonomy | Stage engine S0–S10 (data-driven), triggers / dwell / overrides, `unlockStage` / `threatStage`, suggestion cards, HQ goals with budgets, rule-engine autopilot, priority sliders | W02 |
 | **W09** | Offline & Notifications | Autonomy | Presence, coarse ticking for empty planets, restart fast-run, away mode + away budget, "while you were away" digest, hard mode, Web Push + Telegram (via `NotifierPort`, mock first) | W02 |
 | **W10** | Cargo & Trade Hub (F1, mock) | Economy/NEAR | Trade Hub building, export mints cargo (mock NEP-245), import burns it, mint caps, cargo panel | W02, W06 |
-| **W11** | Planet Foundations | Sim/Meta/Client | Three persistent small sector worlds, atomic sector admission, parties/resume, pinned saves, border-crossing play and simple picker/map | W01, W04, W05 |
+| **W11** | Planet Foundations | Sim/Meta/Client | Three persistent 19-sector worlds (`7` land + `12` ocean sectors, `4×` basic sector size `R=48`, `7,057` tiles/sector), atomic sector admission, parties/resume, pinned saves, isolated single-sector gameplay (`cross_sector_disabled`), and Orbital Picker + Global Map (`M`) surrounding-sector display | W01, W04, W05 |
 | **W12** | Player Page & Achievements | Meta | `/me` (pilot, progress, planets, stats, history, play), XP and levels, 20 × 3 achievement flip cards, badge art, badge mint outbox (mock) | W01 (more families light up as producer waves land) |
 | **W13** | Markets (F2, mock) | Economy/NEAR | USDC/barter markets, buyer platform/stall fees, mock Intents, database profiles, recurring consumption and seeded AI economy experiments | W06, W10 |
 | **W14** | Fortify (walls) | Gameplay | Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege, `would_isolate` | W05, W07 |
@@ -47,7 +47,7 @@
 | **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
 | **W25** | Launch Ops & Submission | Ops | Monitoring, backups, rollback deploy, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form. Hosting is W26 | W00 (grows with each wave; hosting issues name W26 ids) |
 | **W26** | Sites | Ops | `terraagent.fun` and its subdomains on one nginx, four compose stacks, local and on `DEPLOY_HOST` over SSH. No Cloudflare | W00 |
-| **W27** | [Planet Scale, Streaming & Navigation](./waves/W27-planet-sectors.md) | Sim/Meta/Client | Extend W11 with large continent configs, bounded residency/streaming, hierarchical maps, ground-to-globe zoom and live globe/landing summaries | W04, W05, W11 |
+| **W27** | [Planet Scale, Streaming & Navigation](./waves/W27-planet-sectors.md) | Sim/Meta/Client | Extend W11 with large continent configs, infinite/streaming multi-sector loading, seamless cross-sector boundary traversal, bounded residency, hierarchical maps, ground-to-globe zoom and live globe/landing summaries | W04, W05, W11 |
 
 ```mermaid
 flowchart LR
@@ -77,7 +77,7 @@ flowchart LR
   W04 & W05 & W11 --> W27
 ```
 
-**W11/W27 split (owner-approved 2026-11-04):** W11 establishes persistent canonical sector worlds after W01/W04/W05. W27 scales that same model; its number does not require W06–W26 first. W27 requires actual W04 camera, W05 territory and full W11 party/recovery/cross-border readiness, not H-only tags. W11-only keeps persistent small worlds; W27 adds streaming/navigation without changing admission or resetting saves. See both wave readiness sections and MATCHMAKING §0.
+**W11/W27 split (owner-approved 2026-11-04; simplified 2026-11-09):** W11 establishes persistent canonical sector worlds after W01/W04/W05 with `4×` basic sector size (`R=48`, `7,057` tiles per sector; `134,083` total tiles across the 19-sector small-atlas manifest: `7` land + `12` ocean halo sectors), isolated single-sector gameplay (`PlanetState.grid.radius = 48`; cross-sector movement, building placement, power links, territory claims and seam terraforming blocked with `reason: 'cross_sector_disabled'`), and all `19` surrounding sectors displayed on the Orbital Picker and Global Map (`M` dialog). W27 scales that same model and unlocks infinite/streaming multi-sector loading and seamless cross-sector boundary traversal; its number does not require W06–W26 first. W27 requires actual W04 camera, W05 territory and full W11 party/recovery/handoff readiness, not H-only tags. W11-only keeps persistent isolated-sector worlds; W27 adds multi-sector streaming, cross-border traversal and ground-to-globe navigation without changing admission or resetting saves. See both wave readiness sections and MATCHMAKING §0.
 
 The **spine** is W00 → W01 → W02. Everything after W02 can run on up to **five parallel tracks**.
 

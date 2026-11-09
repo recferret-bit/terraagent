@@ -44,6 +44,7 @@ function createTemperateSeamFixture() {
     planetType: 'temperate',
     seed: CANONICAL_PLANETS.temperate.seed,
     sectorRadius: 8,
+    gridRadius: 27,
   });
   state.grid.layers.explored.fill(0xff);
   const atlas = generateSmallAtlas({

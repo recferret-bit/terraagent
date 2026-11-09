@@ -163,7 +163,7 @@ export function parseLandingSlotId(
 }
 
 /** W11 small-world planning fixture defaults and rollout bounds (W11 contract, WE-33). */
-export const W11_DEFAULT_SECTOR_RADIUS = 24;
+export const W11_DEFAULT_SECTOR_RADIUS = 48;
 export const W11_DEFAULT_FOUNDING_SEATS_PER_SECTOR = 4;
 export const W11_SUPPORTED_FOUNDING_SEATS = [3, 4, 5] as const;
 export const W11_DEFAULT_LAND_SECTORS = 7;
@@ -177,7 +177,7 @@ export const W11_SEVEN_SECTOR_COORDS: readonly (readonly [number, number])[] = [
   [0, 1],
 ] as const;
 export const W11_MAX_SMALL_ATLAS_SECTORS = 19;
-export const W11_MAX_SMALL_ATLAS_TILES = 35_000;
+export const W11_MAX_SMALL_ATLAS_TILES = 140_000;
 export const W11_MAX_SMALL_ATLAS_COLONIES = 64;
 
 export const SectorKindSchema = z.enum(['land', 'ocean']);
@@ -228,7 +228,7 @@ export const SectorConfigV1Schema = z
     macroQ: z.number().int(),
     macroR: z.number().int(),
     kind: SectorKindSchema,
-    radius: z.number().int().min(8).max(64),
+    radius: z.number().int().min(8).max(96),
     foundingCapacity: z.number().int().min(0).max(16),
     archetype: z.string().min(1).max(64).optional(),
     resourceProfileId: z.string().min(1).max(64).optional(),
@@ -268,7 +268,7 @@ export const SectorManifestV1Schema = z
     centerQ: TileCoord,
     centerR: TileCoord,
     kind: SectorKindSchema,
-    radius: z.number().int().min(8).max(64),
+    radius: z.number().int().min(8).max(96),
     tileCount: z.number().int().positive(),
     foundingCapacity: z.number().int().min(0).max(16),
     validatedSafeSites: z.number().int().min(0).max(16),
@@ -337,7 +337,7 @@ export const AtlasConfigV1Schema = z
     topologyVersion: z.number().int().positive(),
     genVersion: z.number().int().positive(),
     configVersion: z.number().int().positive(),
-    sectorRadius: z.number().int().min(8).max(64),
+    sectorRadius: z.number().int().min(8).max(96),
     foundingSeatsPerSector: z.number().int().min(1).max(16),
     sectors: z.array(SectorConfigV1Schema).min(1),
     resourceProfileId: z.string().min(1).max(64).optional(),
@@ -372,7 +372,7 @@ export const AtlasManifestV1Schema = z
     atlasHash: z.string().min(1).max(128),
     resourceProfileId: z.string().min(1).max(64),
     resourceProfileHash: z.string().min(1).max(128),
-    sectorRadius: z.number().int().min(8).max(64),
+    sectorRadius: z.number().int().min(8).max(96),
     foundingSeatsPerSector: z.number().int().min(1).max(16),
     totalSectors: z.number().int().positive(),
     landSectors: z.number().int().positive(),

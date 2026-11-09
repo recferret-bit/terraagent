@@ -326,6 +326,7 @@ export function validateSeedCorpusLandingSites(opts?: SeedCorpusValidationOption
         const atlas = generateSmallAtlas({
           planetType,
           seed,
+          sectorRadius: opts?.sectorRadius,
           foundingSeatsPerSector: cap,
           skipPerfCaps: true,
         });

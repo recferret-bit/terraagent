@@ -248,10 +248,10 @@ function setupBenchmarkColoniesAndCrossSectorWorkload(
     }
   }
 
-  const slots = atlas.safeLandingSlots;
-  const colonyCount = Math.min(activeColonies, Math.max(1, slots.length));
+  const sec00Slots = atlas.sectorById.get('sec_0_0')?.safeLandingSlots ?? atlas.safeLandingSlots;
+  const colonyCount = Math.min(activeColonies, Math.max(1, sec00Slots.length));
   for (let c = 0; c < colonyCount; c++) {
-    const slot = c === 0 ? { q: 20, r: 0 } : slots[(c * 4) % slots.length]!;
+    const slot = c === 0 ? { q: 20, r: 0 } : sec00Slots[c % sec00Slots.length]!;
     host.submit({
       colonyIndex: c,
       source: 'dev',
@@ -452,3 +452,6 @@ export function runSmallAtlasBenchmark(opts?: RunSmallAtlasBenchmarkOptions): Sm
     budgetCheck,
   });
 }
+
+export const runW11AtlasPerfBenchmark = runSmallAtlasBenchmark;
+export const paintSyntheticGlobalMapRaster = benchmarkMapRasterScanAndPaint;

@@ -1,6 +1,7 @@
 import {
   CANONICAL_PLANETS,
   W11_DEFAULT_FOUNDING_SEATS_PER_SECTOR,
+  W11_DEFAULT_SECTOR_RADIUS,
   W11_SEVEN_SECTOR_COORDS,
   deriveSectorOccupancy,
   deriveWorldAvailability,
@@ -73,9 +74,20 @@ export function toSectorPlacementIntentV1(intent: SectorIntentV1): SectorPlaceme
 const DEFAULT_OCEAN_HALO_COORDS: readonly (readonly [number, number])[] = [
   [2, 0],
   [2, -1],
+  [2, -2],
+  [1, -2],
+  [0, -2],
+  [-1, -1],
+  [-2, 0],
+  [-2, 1],
+  [-2, 2],
+  [-1, 2],
+  [0, 2],
+  [1, 1],
 ] as const;
 
 export function buildDefaultSectorSummaries(type: PlanetType, updatedAt: string): SectorSummaryV1[] {
+  const stride = W11_DEFAULT_SECTOR_RADIUS * 2 + 1;
   const mainResourceByType: Readonly<Record<PlanetType, SectorSummaryV1['mainResource']>> = {
     desert: 'metals.t1',
     ocean: 'bio.water',
@@ -89,8 +101,8 @@ export function buildDefaultSectorSummaries(type: PlanetType, updatedAt: string)
       continentId: 'cont_0',
       macroQ,
       macroR,
-      centerQ: macroQ * 37,
-      centerR: macroR * 37,
+      centerQ: macroQ * stride,
+      centerR: macroR * stride,
       kind: 'land',
       foundingCapacity: cap,
       validatedCapacity: cap,
@@ -109,8 +121,8 @@ export function buildDefaultSectorSummaries(type: PlanetType, updatedAt: string)
     continentId: null,
     macroQ,
     macroR,
-    centerQ: macroQ * 37,
-    centerR: macroR * 37,
+    centerQ: macroQ * stride,
+    centerR: macroR * stride,
     kind: 'ocean',
     foundingCapacity: 0,
     validatedCapacity: 0,

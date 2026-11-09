@@ -1,5 +1,5 @@
-import { newId, type LandingSlotId, type SectorId, type SimCommandV1 } from '@terra/contracts';
-import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS } from '@terra/sim';
+import { newId, W11_DEFAULT_SECTOR_RADIUS, type LandingSlotId, type SectorId, type SimCommandV1 } from '@terra/contracts';
+import { DEV_PLANET_CAPACITY } from '@terra/sim';
 import type { ColonyRecord, HomeRepository, PlanetRecord } from '../core/home/home.repository';
 import { createSpawnColonyCommand, type ColonySeatAssignment } from '../core/home/home.service';
 import type { GamePlanets } from '../game/game-planets.service';
@@ -213,7 +213,7 @@ export async function buildSpawnExecutionRequest(params: {
       name: world?.name ?? reservation.planetId,
       type: world?.type ?? ticket.planetType,
       seed: world?.seed ?? 'w11',
-      radius: DEV_PLANET_RADIUS,
+      radius: W11_DEFAULT_SECTOR_RADIUS,
       state: 'ACTIVE',
       capacity: world?.capacity ?? DEV_PLANET_CAPACITY,
     }));

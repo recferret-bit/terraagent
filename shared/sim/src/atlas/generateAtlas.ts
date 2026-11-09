@@ -12,7 +12,7 @@ import {
 } from '@terra/contracts';
 import { GEN_VERSION } from '../gen/generators';
 import type { SpawnSlot } from '../gen/spawnSlots';
-import { hexDistance, hexIndex } from '../grid/hex';
+import { hexIndex } from '../grid/hex';
 import { createState, setBlob, type Blob, type PlanetState, type PlanetType } from '../kernel/state';
 import { validateAtlasLandingSites } from './landingSites';
 import { buildAtlasManifest, cloneAtlasManifest } from './manifest';
@@ -301,17 +301,8 @@ export function generateSmallAtlas(opts?: GenerateSmallAtlasOptions): GeneratedS
   return atlas;
 }
 
-function defaultGridRadiusForAtlas(atlas: GeneratedSmallAtlas): number {
-  let maxLandDist = atlas.sectorRadius;
-  for (const sectorId of atlas.landSectorIds) {
-    const sec = atlas.sectorById.get(sectorId);
-    if (!sec) continue;
-    for (const t of sec.tiles) {
-      const d = hexDistance(0, 0, t.q, t.r);
-      if (d > maxLandDist) maxLandDist = d;
-    }
-  }
-  return maxLandDist + 3;
+export function defaultGridRadiusForAtlas(atlas: GeneratedSmallAtlas): number {
+  return atlas.sectorRadius;
 }
 
 function resolveAtlasForPlanetState(opts?: CreateAtlasPlanetOptions): GeneratedSmallAtlas {
@@ -394,8 +385,9 @@ function buildAtlasBlobForState(atlas: GeneratedSmallAtlas, manifest: AtlasManif
 }
 
 export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetState {
-  if (opts?.gridRadius !== undefined && (!Number.isSafeInteger(opts.gridRadius) || opts.gridRadius <= 0)) {
-    throw new RangeError(`gridRadius must be a positive integer, got ${opts.gridRadius}`);
+  const requestedGridRadius = opts?.radius ?? opts?.gridRadius;
+  if (requestedGridRadius !== undefined && (!Number.isSafeInteger(requestedGridRadius) || requestedGridRadius <= 0)) {
+    throw new RangeError(`gridRadius must be a positive integer, got ${requestedGridRadius}`);
   }
   if (!opts?.skipPerfCaps) {
     enforceSmallAtlasPreAllocationCaps(opts, opts?.perfCaps as Partial<SmallAtlasPerfCaps> | undefined);
@@ -411,7 +403,7 @@ export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetS
         sectorResourceOverrides: opts?.sectorResourceOverrides,
         planetResourceOverride: opts?.planetResourceOverride,
       });
-  const gridRadius = opts?.gridRadius ?? defaultGridRadiusForAtlas(atlas);
+  const gridRadius = requestedGridRadius ?? defaultGridRadiusForAtlas(atlas);
   if (!Number.isSafeInteger(gridRadius) || gridRadius <= 0) {
     throw new RangeError(`gridRadius must be a positive integer, got ${gridRadius}`);
   }

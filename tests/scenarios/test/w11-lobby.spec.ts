@@ -92,54 +92,96 @@ describe('W11 seed scenario (w11 / w11-lobby), atlas corpus, perf caps & W27 rea
     expect(col0?.foundingSectorId).toBe('sec_0_0');
     expect(col0?.landingSlotId).toBe('slot_sec_0_0_0');
   });
+});
 
-  it('populates the 19-sector small-atlas manifest and supports cross-sector walking, placement & power', () => {
+describe('W11 isolated 4x sector (R=48, 7,057 tiles) & disabled cross-sector gameplay', () => {
+  it('populates the 19-sector small-atlas manifest, boots an isolated 4x sector (R=48, 7,057 tiles), and disables cross-sector gameplay', () => {
     const { host } = createScenarioPlanet('w11');
     const state = host.state;
+    expect(state.grid.radius).toBe(48);
+    expect(state.grid.count).toBe(7057);
+
     const atlas = getAtlasBlob(state);
     expect(atlas).toBeDefined();
     expect(atlas?.sectors).toHaveLength(19);
     expect(atlas?.manifest?.totalSectors).toBe(19);
     expect(atlas?.manifest?.landSectors).toBe(7);
     expect(atlas?.manifest?.oceanSectors).toBe(12);
-    expect(atlas?.sectorRadius).toBe(24);
+    expect(atlas?.sectorRadius).toBe(48);
     expect(atlas?.foundingSeatsPerSector).toBe(4);
+    expect(atlas?.sectors.every((s) => s.tileCount === 7057)).toBe(true);
 
-    expect(globalTileToSector(24, -12, 24).sectorId).toBe('sec_0_0');
-    expect(globalTileToSector(25, -12, 24).sectorId).toBe('sec_1_0');
+    expect(globalTileToSector(24, -12, 48).sectorId).toBe('sec_0_0');
+    expect(globalTileToSector(48, -24, 48).sectorId).toBe('sec_0_0');
+    expect(globalTileToSector(49, -24, 48).sectorId).toBe('sec_1_0');
 
-    const pathDiag = inspectCrossSectorPath(
+    const intraSectorPath = inspectCrossSectorPath(
+      state,
+      { q: 24, r: -12 },
+      { q: 26, r: -13 },
+      { sectorRadius: 48 },
+    );
+    expect(intraSectorPath.ok).toBe(true);
+    expect(intraSectorPath.crossesSectorBoundary).toBe(false);
+    expect(intraSectorPath.startSectorId).toBe('sec_0_0');
+    expect(intraSectorPath.goalSectorId).toBe('sec_0_0');
+
+    const outOfGridSectorPath = inspectCrossSectorPath(
+      state,
+      { q: 24, r: -12 },
+      { q: 49, r: -24 },
+      { sectorRadius: 48 },
+    );
+    expect(outOfGridSectorPath.ok).toBe(false);
+    expect(outOfGridSectorPath.reason).toBe('goal_out_of_bounds');
+    expect(outOfGridSectorPath.crossesSectorBoundary).toBe(false);
+    expect(outOfGridSectorPath.startSectorId).toBe('sec_0_0');
+    expect(outOfGridSectorPath.goalSectorId).toBe('sec_1_0');
+
+    const crossSectorPath = inspectCrossSectorPath(
       state,
       { q: 24, r: -12 },
       { q: 26, r: -13 },
       { sectorRadius: 24 },
     );
-    expect(pathDiag.ok).toBe(true);
-    expect(pathDiag.crossesSectorBoundary).toBe(true);
-    expect(pathDiag.startSectorId).toBe('sec_0_0');
-    expect(pathDiag.goalSectorId).toBe('sec_1_0');
+    expect(crossSectorPath.ok).toBe(false);
+    expect(crossSectorPath.reason).toBe('cross_sector_disabled');
+    expect(crossSectorPath.crossesSectorBoundary).toBe(false);
+    expect(crossSectorPath.startSectorId).toBe('sec_0_0');
+    expect(crossSectorPath.goalSectorId).toBe('sec_1_0');
 
-    const placeDiag = evaluateCrossSectorPlacement(state, {
+    const intraPlaceDiag = evaluateCrossSectorPlacement(state, {
       colonyId: 0,
       building: 'solar',
       q: 26,
       r: -15,
-      sectorRadius: 24,
+      sectorRadius: 48,
     });
-    expect(placeDiag.ok).toBe(true);
-    expect(placeDiag.anchorSectorId).toBe('sec_1_0');
+    expect(intraPlaceDiag.ok).toBe(true);
+    expect(intraPlaceDiag.anchorSectorId).toBe('sec_0_0');
+
+    const crossPlaceDiag = evaluateCrossSectorPlacement(state, {
+      colonyId: 0,
+      building: 'solar',
+      q: 49,
+      r: -24,
+      sectorRadius: 48,
+    });
+    expect(crossPlaceDiag.ok).toBe(false);
+    expect(crossPlaceDiag.anchorSectorId).toBe('sec_1_0');
 
     const powerDiag = inspectCrossSectorPowerGrid(state, 0);
-    expect(powerDiag.crossSectorRelayLinks.length).toBeGreaterThanOrEqual(1);
-    expect(powerDiag.spansMultipleSectors).toBe(true);
+    expect(powerDiag.crossSectorRelayLinks).toHaveLength(0);
+    expect(powerDiag.spansMultipleSectors).toBe(false);
+    expect(powerDiag.connectedSectorIds).toEqual(['sec_0_0']);
 
     const metrics = computeAtlasSectorColonyMetrics(state);
     expect(metrics.foundingSectorByColony[0]).toBe('sec_0_0');
-    expect(metrics.presentSectorsByColony[0]).toContain('sec_0_0');
-    expect(metrics.presentSectorsByColony[0]).toContain('sec_1_0');
+    expect(metrics.presentSectorsByColony[0]).toEqual(['sec_0_0']);
     expect(metrics.get('sec_0_0')?.foundedSeats).toBe(1);
+    expect(metrics.get('sec_0_0')?.presentColonies).toBe(1);
     expect(metrics.get('sec_1_0')?.foundedSeats).toBe(0);
-    expect(metrics.get('sec_1_0')?.presentColonies).toBe(1);
+    expect(metrics.get('sec_1_0')?.presentColonies).toBe(0);
   });
 });
 
@@ -162,7 +204,9 @@ describe('W11 safe landing site corpus, W11-43 perf caps & W27 readiness manifes
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalSectors).toBe(19);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxLandSectors).toBe(7);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxOceanSectors).toBe(12);
-    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalTiles).toBe(34_219);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxSectorRadius).toBe(48);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTilesPerSector).toBe(7_057);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalTiles).toBe(134_083);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalFoundingSeatsPerWorld).toBe(35);
 
     const bench = runSmallAtlasBenchmark({

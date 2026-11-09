@@ -73,45 +73,24 @@ export interface CreateAtlasMapAdapterOptions {
 
 function emptyTileLookup(q: number, r: number): AtlasTileLookupResult {
   return {
-    q,
-    r,
-    inAtlas: false,
-    playable: false,
-    sectorId: null,
-    kind: null,
-    macroQ: null,
-    macroR: null,
-    localQ: null,
-    localR: null,
-    localIndex: -1,
-    atlasIndex: -1,
-    bufferIndex: -1,
+    q, r, inAtlas: false, playable: false, sectorId: null, kind: null,
+    macroQ: null, macroR: null, localQ: null, localR: null, localIndex: -1, atlasIndex: -1, bufferIndex: -1,
   };
 }
 
 function buildPartitionFromSectors(
-  sectors: ReadonlyArray<{
-    readonly kind: SectorKind;
-    readonly macroQ: number;
-    readonly macroR: number;
-    readonly continentId?: string | null;
-  }>,
+  sectors: ReadonlyArray<{ readonly kind: SectorKind; readonly macroQ: number; readonly macroR: number; readonly continentId?: string | null }>,
   sectorRadius: number,
 ): AtlasPartition | null {
-  const landCoords = sectors
-    .filter((s) => s.kind === 'land')
-    .map((s) => [s.macroQ, s.macroR] as const);
+  const landCoords = sectors.filter((s) => s.kind === 'land').map((s) => [s.macroQ, s.macroR] as const);
   if (landCoords.length === 0) return null;
-  const oceanCoords = sectors
-    .filter((s) => s.kind === 'ocean')
-    .map((s) => [s.macroQ, s.macroR] as const);
-  const continentId =
-    sectors.find((s) => s.kind === 'land' && s.continentId)?.continentId ?? formatContinentId(0);
+  const oceanCoords = sectors.filter((s) => s.kind === 'ocean').map((s) => [s.macroQ, s.macroR] as const);
+  const continentId = sectors.find((s) => s.kind === 'land' && s.continentId)?.continentId ?? formatContinentId(0);
   return buildSmallAtlasPartition({
     sectorRadius,
     landCoords,
-    ...(oceanCoords.length > 0 ? { oceanCoords } : {}),
-    includeOceanHalo: oceanCoords.length > 0,
+    ...(oceanCoords.length >= 12 || (oceanCoords.length > 0 && landCoords.length !== 7) ? { oceanCoords } : {}),
+    includeOceanHalo: oceanCoords.length > 0 || landCoords.length === 7,
     continentId,
   });
 }
@@ -408,43 +387,41 @@ export function createAtlasMapAdapter(opts: CreateAtlasMapAdapterOptions = {}): 
     }
 
     if (opts.planetSummary) {
-      const partition = buildPartitionFromSectors(
-        opts.planetSummary.sectors,
-        W11_DEFAULT_SECTOR_RADIUS,
-      );
+      const partition = buildPartitionFromSectors(opts.planetSummary.sectors, W11_DEFAULT_SECTOR_RADIUS);
       if (partition) {
         return new AtlasMapAdapter({
-          isAtlas: true,
-          sectorRadius: partition.sectorRadius,
-          projectionRadius: computeAtlasProjectionRadius(partition),
-          manifest: null,
-          query: null,
-          partition,
-          atlasHash: opts.planetSummary.atlasHash ?? null,
-          atlasVersion: opts.planetSummary.atlasVersion ?? null,
-          planetId: opts.planetSummary.id,
-          defaultBufferCount: opts.tileCount ?? partition.bounds.totalTiles,
+          isAtlas: true, sectorRadius: partition.sectorRadius, projectionRadius: computeAtlasProjectionRadius(partition),
+          manifest: null, query: null, partition,
+          atlasHash: opts.planetSummary.atlasHash ?? null, atlasVersion: opts.planetSummary.atlasVersion ?? null,
+          planetId: opts.planetSummary.id, defaultBufferCount: opts.tileCount ?? partition.bounds.totalTiles,
         });
       }
     }
+
+    const fallbackRadius = opts.radius ?? opts.gridRadius ?? (opts.tileCount ? radiusFromTileCount(opts.tileCount) : 0);
+    if (fallbackRadius === W11_DEFAULT_SECTOR_RADIUS) {
+      const defaultBufferCount = opts.tileCount ?? hexCount(W11_DEFAULT_SECTOR_RADIUS);
+      const cacheKey = `w11-canonical-default:${W11_DEFAULT_SECTOR_RADIUS}:${defaultBufferCount}`;
+      const cached = atlasAdapterCache.get(cacheKey);
+      if (cached) return cached;
+      const partition = buildSmallAtlasPartition({ sectorRadius: W11_DEFAULT_SECTOR_RADIUS, includeOceanHalo: true });
+      const adapter = new AtlasMapAdapter({
+        isAtlas: true, sectorRadius: W11_DEFAULT_SECTOR_RADIUS, projectionRadius: computeAtlasProjectionRadius(partition),
+        manifest: null, query: null, partition, defaultBufferCount,
+      });
+      atlasAdapterCache.set(cacheKey, adapter);
+      return adapter;
+    }
   }
 
-  const radius = Math.max(
-    0,
-    opts.radius ?? opts.gridRadius ?? (opts.tileCount ? radiusFromTileCount(opts.tileCount) : 12),
-  );
+  const radius = Math.max(0, opts.radius ?? opts.gridRadius ?? (opts.tileCount ? radiusFromTileCount(opts.tileCount) : 12));
   const defaultBufferCount = opts.tileCount ?? hexCount(radius);
   const key = `${radius}:${defaultBufferCount}`;
   const cached = legacyAdapterCache.get(key);
   if (cached) return cached;
   const legacy = new AtlasMapAdapter({
-    isAtlas: false,
-    sectorRadius: radius,
-    projectionRadius: radius,
-    manifest: null,
-    query: null,
-    partition: null,
-    defaultBufferCount,
+    isAtlas: false, sectorRadius: radius, projectionRadius: radius,
+    manifest: null, query: null, partition: null, defaultBufferCount,
   });
   legacyAdapterCache.set(key, legacy);
   return legacy;

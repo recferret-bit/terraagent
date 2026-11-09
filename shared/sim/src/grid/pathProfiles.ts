@@ -1,6 +1,8 @@
+import { globalTileToSector } from '../atlas/partition';
 import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
 import { isGroundMoveBlocked, isTileUneven } from './geo';
+import { hexIndex } from './hex';
 import { DEPOSIT, PREP, TERRAIN } from './layers';
 import { isPassableTerrain } from './tileModel';
 
@@ -80,12 +82,26 @@ const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, dat
   },
 };
 
+function crossSectorBlockerFor(state: PlanetState, fromIdx: number): Predicate | null {
+  if (fromIdx < 0) return null;
+  const rawAtlas = state.blobs.atlas as { value?: unknown } | undefined;
+  const atlas = (rawAtlas && typeof rawAtlas === 'object' && 'value' in rawAtlas ? rawAtlas.value : rawAtlas) as
+    | { sectorRadius?: number }
+    | undefined;
+  const sectorRadius = atlas?.sectorRadius;
+  if (typeof sectorRadius !== 'number' || sectorRadius <= 0) return null;
+  const hx = hexIndex(state.grid.radius);
+  if (fromIdx >= hx.count) return null;
+  const startSectorId = globalTileToSector(hx.q[fromIdx]!, hx.r[fromIdx]!, sectorRadius).sectorId;
+  return (i: number) => i >= 0 && i < hx.count && globalTileToSector(hx.q[i]!, hx.r[i]!, sectorRadius).sectorId !== startSectorId;
+}
+
 /**
  * The extra-obstacle predicate of `profile` on `state` (undefined for `none`) for a unit at tile `fromIdx` (the
  * footprint it stands in, if any, does not block it). `data`: the step's compiled data (footprint sizes).
  */
 export function pathBlockedFor(state: PlanetState, profile: PathProfileId | undefined, fromIdx = -1, data?: CompiledDataLike): Predicate | undefined {
-  return PROFILES[profile ?? 'none']?.(state, fromIdx, data).blocked;
+  return pathBlockersFor(state, profile, fromIdx, data)?.blocked;
 }
 
 /**
@@ -93,5 +109,12 @@ export function pathBlockedFor(state: PlanetState, profile: PathProfileId | unde
  * stands in at `fromIdx` is exempt) and `goalBlocked` (ending; no footprint is exempt). Undefined for `none`.
  */
 export function pathBlockersFor(state: PlanetState, profile: PathProfileId | undefined, fromIdx: number, data?: CompiledDataLike): Blockers | undefined {
-  return PROFILES[profile ?? 'none']?.(state, fromIdx, data);
+  const base = PROFILES[profile ?? 'none']?.(state, fromIdx, data);
+  const crossSec = crossSectorBlockerFor(state, fromIdx);
+  if (!crossSec) return base;
+  if (!base) return { blocked: crossSec, goalBlocked: crossSec };
+  return {
+    blocked: (i) => crossSec(i) || base.blocked(i),
+    goalBlocked: (i) => crossSec(i) || base.goalBlocked(i),
+  };
 }

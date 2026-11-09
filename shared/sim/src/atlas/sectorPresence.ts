@@ -211,6 +211,7 @@ export function collectPresenceBySector(
   state: PlanetState,
   sectorRadius: number,
   knownSectorIds: ReadonlySet<SectorId>,
+  foundingMap?: ReadonlyMap<number, SectorId>,
 ): {
   presentBySector: Map<SectorId, Set<number>>;
   presentByColony: Map<number, Set<SectorId>>;
@@ -221,6 +222,15 @@ export function collectPresenceBySector(
   const presentByColony = new Map<number, Set<SectorId>>();
   const entityCountBySector = new Map<SectorId, number>();
   const ownedTileCountBySector = new Map<SectorId, number>();
+  const isSingleSectorGrid = state.grid.radius <= sectorRadius + 4;
+  const resolveEffectiveSector = (q: number, r: number, owner: number): SectorId => {
+    const rawSec = globalTileToSector(q, r, sectorRadius).sectorId;
+    if (isSingleSectorGrid && rawSec === 'sec_0_0') {
+      const fSec = foundingMap?.get(owner) ?? state.colonies[owner]?.foundingSectorId;
+      if (typeof fSec === 'string' && knownSectorIds.has(fSec)) return fSec;
+    }
+    return rawSec;
+  };
 
   const markPresent = (secId: SectorId, colonyIndex: number): void => {
     let colSet = presentBySector.get(secId);
@@ -236,7 +246,7 @@ export function collectPresenceBySector(
     const owner = cols.owner[row]!;
     if (owner < 0 || !isColonyLivingInState(state, owner)) continue;
     if (cols.hpMax[row]! > 0 && cols.hp[row]! <= 0) continue;
-    const anchorSec = globalTileToSector(cols.q[row]!, cols.r[row]!, sectorRadius).sectorId;
+    const anchorSec = resolveEffectiveSector(cols.q[row]!, cols.r[row]!, owner);
     if (knownSectorIds.has(anchorSec)) {
       markPresent(anchorSec, owner);
       entityCountBySector.set(anchorSec, (entityCountBySector.get(anchorSec) ?? 0) + 1);
@@ -246,7 +256,7 @@ export function collectPresenceBySector(
     const d = cols.footprintD?.[row] || defFp;
     if (w > 1 || d > 1) {
       for (const ft of entityCoveredTiles(cols.q[row]!, cols.r[row]!, w, d, cols.rot[row] ?? 0)) {
-        const ftSec = globalTileToSector(ft.q, ft.r, sectorRadius).sectorId;
+        const ftSec = resolveEffectiveSector(ft.q, ft.r, owner);
         if (knownSectorIds.has(ftSec)) markPresent(ftSec, owner);
       }
     }
@@ -258,7 +268,7 @@ export function collectPresenceBySector(
     for (let i = 0; i < state.grid.count; i++) {
       const owner = ownerLayer[i]!;
       if (owner < 0) continue;
-      const secId = globalTileToSector(hex.q[i]!, hex.r[i]!, sectorRadius).sectorId;
+      const secId = resolveEffectiveSector(hex.q[i]!, hex.r[i]!, owner);
       if (!knownSectorIds.has(secId)) continue;
       ownedTileCountBySector.set(secId, (ownedTileCountBySector.get(secId) ?? 0) + 1);
       if (isColonyLivingInState(state, owner)) markPresent(secId, owner);

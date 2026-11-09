@@ -24,36 +24,37 @@
      - **Archipelago** (`oceanForest` / `ocean`, canonical ID `pl_01JTHA1ASSAVERDE0000000001`)
      - **Highland Basin** (`forestRock` / `temperate`, canonical ID `pl_01JGRAN1TEH0110W0000000002`)
    - Each card shows its availability badge (`OPEN`) and free founding seats (`28/28 FREE`). There is **no** `newPlanet` card or "create new planet" button.
-   - Inside `[data-testid="sector-picker"]` (`LANDING SECTOR · 7 LAND · 12 OCEAN`), you see:
+   - Inside `[data-testid="sector-picker"]` (`LANDING SECTOR · 7 LAND · 12 OCEAN`, `19` total sectors at `sectorRadius = 48` = `7,057` tiles/sector, `134,083` total tiles), you see:
      - `[data-testid="sector-opt-auto"]` (`AUTO · AUTOMATIC SECTOR`) selected by default (`aria-pressed="true"`).
-     - Seven clickable land sector buttons (`[data-testid="sector-opt-sec_0_0"]` through `[data-testid="sector-opt-sec_0_1"]`), each showing `4/4` free founding seats, `OPEN` badge, and its regional resource specialization (`metals.t1`, `minerals.t1`, `bio.biomass`, etc.).
+     - Seven clickable land sector buttons (`[data-testid="sector-opt-sec_0_0"]` through `[data-testid="sector-opt-sec_0_1"]`) plus the surrounding `12` ocean halo sectors in the orbital preview, with each land sector showing `4/4` free founding seats, `OPEN` badge, and its regional resource specialization (`metals.t1`, `minerals.t1`, `bio.biomass`, etc.).
 3. Click `[data-testid="sector-opt-sec_0_0"]` (`sec_0_0`), then click `[data-testid="sector-opt-auto"]`.
    - **Expect:** `aria-pressed="true"` toggles cleanly between explicit land sector choice (`data-sector-mode="chosen"`) and automatic sector selection (`data-sector-mode="auto"`).
 
 ---
 
-### 2. Seed scenario `?scenario=w11` — Colony founded in `sec_0_0` (`W11-02..04`, `W11-32`)
+### 2. Seed scenario `?scenario=w11` — Isolated 4× sector (`R=48`, `7,057` tiles) founded in `sec_0_0` (`W11-02..04`, `W11-32`)
 
 1. Open <http://127.0.0.1:5273/play.html?scenario=w11&as=w11>.
 2. **Expect:**
    - Boots into **W11 Planet Foundations & Sector Admission** (`seed: 'w11-lobby-planets'`).
-   - Colony 0 (`col_0`, **Aegis Prime**) is founded in sector `sec_0_0` (`landingSlotId: 'slot_sec_0_0_0'`) at `(20, -10)` with a landed HQ (`(20, -10)`), `Command Hub` (`(18, -9)`), `Solar Collector` (`(22, -11)`), cross-sector `Pylon` link (`(24, -12)` in `sec_0_0` ↔ `(26, -13)` in `sec_1_0`), and a boundary `Worker` at `(24, -12)`.
+   - In-game `PlanetState.grid` loads a **single isolated sector** of radius `48` (`7,057` tiles — 4× the hex area of `R=24`).
+   - Colony 0 (`col_0`, **Aegis Prime**) is founded in sector `sec_0_0` (`landingSlotId: 'slot_sec_0_0_0'`) at `(20, -10)` with a landed HQ (`(20, -10)`), `Command Hub` (`(18, -9)`), `Solar Collector` (`(22, -11)`), `Pylon` (`(24, -12)`), and a `Worker` at `(24, -12)`.
    - Open DevTools console and run:
      ```js
-     window.__online.store.latest.colonies[0]
+     ({ radius: window.__online.store.latest.radius, colony0: window.__online.store.latest.colonies[0] })
      ```
-   - **Expect:** `id: 'col_0'`, `name: 'Aegis Prime'`, `foundingSectorId: 'sec_0_0'`, `landingSlotId: 'slot_sec_0_0_0'`.
+   - **Expect:** `radius: 48` (`7,057` tiles in `sec_0_0`), `colony0.id: 'col_0'`, `colony0.name: 'Aegis Prime'`, `colony0.foundingSectorId: 'sec_0_0'`, `colony0.landingSlotId: 'slot_sec_0_0_0'`.
 
 ---
 
-### 3. Global Planet Map (`M`) `'sectors'` layer & cross-sector gameplay (`W11-15`, `W11-22`, `W11-47`)
+### 3. Global Planet Map (`M`) `'sectors'` layer & single-sector in-game isolation (`W11-15`, `W11-22`, `W11-47`)
 
 1. Still on <http://127.0.0.1:5273/play.html?scenario=w11&as=w11>, press **`M`** to open the W04 Global Planet Map overlay.
 2. **Expect:**
    - The layer bar at `[data-testid="global-map-layers"]` includes the W11 **`SECTORS`** chip (`[data-testid="map-layer-chip-sectors"]`) alongside `TERRITORY`, `TERRAIN`, `RESOURCES`, and `UNITS`, and `SECTORS` is active by default (`aria-pressed="true"`).
-   - The canvas draws the `19`-sector macro hex grid (`7` land sectors + `12` ocean ring sectors) with sector IDs, seat occupancy badges, and resource tags.
+   - The canvas draws all `19` surrounding sectors of the macro hex grid (`7` land sectors + `12` ocean halo sectors from `AtlasManifestV1`, `R=48` / `7,057` tiles per sector) with sector IDs, seat occupancy badges, and resource tags.
 3. Click **`SECTORS`** (`[data-testid="map-layer-chip-sectors"]`) to toggle it off (`aria-pressed="false"`), then click it again to turn it back on (`aria-pressed="true"`).
-4. Press **`M`** (or `Escape`) to close the Global Map, then open the DevTools console and walk the boundary worker across the `sec_0_0` → `sec_1_0` seam (`(24, -12)` → `(25, -12)`):
+4. Press **`M`** (or `Escape`) to close the Global Map, then open the DevTools console and verify intra-sector movement inside `sec_0_0` (`(24, -12)` → `(25, -12)`) vs. single-sector boundary isolation (`R=48`):
    ```js
    const ents = window.__online.store.latest.entities;
    let workerId = -1;
@@ -63,7 +64,8 @@
    await window.__online.commands.send('moveUnit', { unitId: workerId, q: 25, r: -12 });
    ```
 5. **Expect:**
-   - The worker smoothly walks from `sec_0_0` (`(24, -12)`) into `sec_1_0` (`(25, -12)`) with the **same** `workerId`, **same** `colonyIndex` (`0`), and **same** `foundingSectorId` (`'sec_0_0'`). No extra founding seat is consumed in `sec_1_0`.
+   - Intra-sector movement within `sec_0_0` (`(24, -12)` → `(25, -12)`, inside the `R=48` single-sector grid of `7,057` tiles) succeeds with the same `workerId`, `colonyIndex` (`0`), and `foundingSectorId` (`'sec_0_0'`).
+   - Crossing into another sector in gameplay (moving/pathfinding beyond the `R=48` active sector boundary, placing buildings across sectors, linking cross-sector power relays, claiming cross-sector territory, or terraforming across sector seams) is blocked in W11 (`reason: 'cross_sector_disabled'`); infinite/streaming multi-sector loading and cross-sector traversal are deferred to W27.
 
 ---
 
@@ -89,7 +91,7 @@
    curl -s http://127.0.0.1:4101/v1/planets/stats | jq .
    ```
 2. **Expect:**
-   - `GET /v1/planets` returns `count: 3` canonical worlds (`Kharon Dunes`, `Thalassa Verde`, `Granite Hollow`), each with `lifecycle: "ACTIVE"`, `health: "OK"`, `admission: "OPEN"`, `availability: "open"`, `landSectors: 7`, `validatedCapacity: 28`, and **no** `newPlanet`, `admissionClosesAt`, or `endsAt` fields.
+   - `GET /v1/planets` returns `count: 3` canonical worlds (`Kharon Dunes`, `Thalassa Verde`, `Granite Hollow`), each with `lifecycle: "ACTIVE"`, `health: "OK"`, `admission: "OPEN"`, `availability: "open"`, `landSectors: 7`, `oceanSectors: 12`, `validatedCapacity: 28`, and **no** `newPlanet`, `admissionClosesAt`, or `endsAt` fields.
    - `GET /v1/planets/stats` returns `{ planetsActive: 3, coloniesAlive, playersOnline, updatedAt }`.
 
 ---

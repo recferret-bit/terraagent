@@ -30,10 +30,10 @@ describe('W11-43 · Published W11 small-atlas perf caps and non-claim of W27 sca
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxLandSectors).toBe(7);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxOceanSectors).toBe(12);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxContinents).toBe(1);
-    expect(W11_SMALL_ATLAS_PERF_CAPS.maxSectorRadius).toBe(24);
-    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTilesPerSector).toBe(1_801);
-    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalTiles).toBe(34_219);
-    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalTilesHardCeiling).toBe(35_000);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxSectorRadius).toBe(48);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTilesPerSector).toBe(7_057);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalTiles).toBe(134_083);
+    expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalTilesHardCeiling).toBe(140_000);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxFoundingSeatsPerSector).toBe(5);
     expect(W11_SMALL_ATLAS_PERF_CAPS.supportedFoundingSeatsPerSector).toEqual([3, 4, 5]);
     expect(W11_SMALL_ATLAS_PERF_CAPS.maxTotalFoundingSeatsPerWorld).toBe(35);
@@ -47,7 +47,11 @@ describe('W11-43 · Published W11 small-atlas perf caps and non-claim of W27 sca
     expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.w27ScaleClaimed).toBe(false);
     expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.totalSectors).toBe(19);
     expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.landSectors).toBe(7);
-    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.totalAtlasTiles).toBe(34_219);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.sectorRadius).toBe(48);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.tilesPerSector).toBe(7_057);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.totalAtlasTiles).toBe(134_083);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.planetGridRadius).toBe(48);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.planetGridTiles).toBe(7_057);
     expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.deferredToW27).toContain('150_sector_medium_atlas');
     expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.deferredToW27).toContain('450_sector_large_atlas');
   });
@@ -65,8 +69,8 @@ describe('W11-43 · Published W11 small-atlas perf caps and non-claim of W27 sca
         expect(check.observed.totalSectors).toBe(19);
         expect(check.observed.landSectors).toBe(7);
         expect(check.observed.oceanSectors).toBe(12);
-        expect(check.observed.sectorRadius).toBe(24);
-        expect(check.observed.totalTiles).toBe(34_219);
+        expect(check.observed.sectorRadius).toBe(48);
+        expect(check.observed.totalTiles).toBe(134_083);
         expect(check.observed.foundingSeatsPerSector).toBe(seats);
         expect(check.observed.totalFoundingSeats).toBe(7 * seats);
 
@@ -86,7 +90,7 @@ describe('W11-43 · Acceptance check 1A: Pre-allocation rejection of W27 150/450
       expect(check.w27ScaleClaimed).toBe(false);
       expect(check.w27ScaleRejected).toBe(true);
       expect(check.observed.totalSectors).toBe(w27Sectors);
-      expect(check.observed.totalTiles).toBe(w27Sectors * 1_801);
+      expect(check.observed.totalTiles).toBe(w27Sectors * 7_057);
       expect(check.violations.map((v) => v.field)).toContain('totalSectors');
       expect(check.violations.map((v) => v.field)).toContain('totalTiles');
       expect(check.violations.map((v) => v.field)).toContain('estimatedAllocationBytes');
@@ -112,7 +116,7 @@ describe('W11-43 · Acceptance check 1A: Pre-allocation rejection of W27 150/450
 });
 
 describe('W11-43 · Acceptance check 1B: Pre-allocation rejection of oversized sector/seat/continent configs', () => {
-  it('rejects oversized landSectors (12), sectorRadius (32), foundingSeatsPerSector (8), and continentCount (3) before allocation', () => {
+  it('rejects oversized landSectors (12), sectorRadius (65), foundingSeatsPerSector (8), and continentCount (3) before allocation', () => {
     const extraLandCoords = [
       ...W11_SEVEN_SECTOR_COORDS,
       [2, 0],
@@ -132,14 +136,14 @@ describe('W11-43 · Acceptance check 1B: Pre-allocation rejection of oversized s
     expect(() => generateSmallAtlas({ landCoords: extraLandCoords })).toThrow(SmallAtlasCapExceededError);
     expect(() => createAtlasPlanetState({ landCoords: extraLandCoords })).toThrow(SmallAtlasCapExceededError);
 
-    const radiusCheck = validateSmallAtlasBudgetCaps({ sectorRadius: 32 });
+    const radiusCheck = validateSmallAtlasBudgetCaps({ sectorRadius: 65 });
     expect(radiusCheck.ok).toBe(false);
     expect(radiusCheck.code).toBe('atlas_budget_exceeded');
     expect(radiusCheck.violations.map((v) => v.field)).toContain('sectorRadius');
     expect(radiusCheck.violations.map((v) => v.field)).toContain('totalTiles');
     expect(radiusCheck.violations.map((v) => v.field)).toContain('planetRadius');
-    expect(() => generateSmallAtlas({ sectorRadius: 32 })).toThrow(SmallAtlasCapExceededError);
-    expect(() => createAtlasPlanetState({ sectorRadius: 32 })).toThrow(SmallAtlasCapExceededError);
+    expect(() => generateSmallAtlas({ sectorRadius: 65 })).toThrow(SmallAtlasCapExceededError);
+    expect(() => createAtlasPlanetState({ sectorRadius: 65 })).toThrow(SmallAtlasCapExceededError);
 
     const seatsCheck = validateSmallAtlasBudgetCaps({ foundingSeatsPerSector: 8 });
     expect(seatsCheck.ok).toBe(false);
@@ -196,7 +200,7 @@ describe('W11-43 · Acceptance check 1B: Pre-allocation rejection of oversized s
 });
 
 describe('W11-43 · Acceptance check 2A: Measured supported W11 small-atlas benchmark', () => {
-  it('runs runSmallAtlasBenchmark() on the supported 19-sector (7 land, R=24, X=4) fixture within all memory, wire, tick, and render budgets', () => {
+  it('runs runSmallAtlasBenchmark() on the supported 19-sector (7 land, R=48, X=4) fixture within all memory, wire, tick, and render budgets', () => {
     const report = runSmallAtlasBenchmark({
       planetType: 'temperate',
       seed: CANONICAL_PLANETS.temperate.seed,
@@ -211,9 +215,9 @@ describe('W11-43 · Acceptance check 2A: Measured supported W11 small-atlas benc
     expect(report.totalSectors).toBe(19);
     expect(report.landSectors).toBe(7);
     expect(report.oceanSectors).toBe(12);
-    expect(report.sectorRadius).toBe(24);
-    expect(report.tilesPerSector).toBe(1_801);
-    expect(report.totalTiles).toBe(34_219);
+    expect(report.sectorRadius).toBe(48);
+    expect(report.tilesPerSector).toBe(7_057);
+    expect(report.totalTiles).toBe(134_083);
     expect(report.foundingSeatsPerSector).toBe(4);
     expect(report.nominalCapacity).toBe(28);
     expect(report.validatedCapacity).toBe(28);
@@ -236,7 +240,7 @@ describe('W11-43 · Acceptance check 2A: Measured supported W11 small-atlas benc
     expect(report.deltaChunkCount).toBeGreaterThanOrEqual(1);
     expect(report.maxDeltaChunkWireBytes).toBeGreaterThan(0);
     expect(report.maxDeltaChunkWireBytes).toBeLessThanOrEqual(W11_SMALL_ATLAS_PERF_CAPS.maxDeltaWireBytesPerChunk);
-    expect(report.wire.spansMultipleSectors).toBe(true);
+    expect(report.wire.spansMultipleSectors).toBe(false);
     expect(report.wire.allDeltaChunksWithinByteBudget).toBe(true);
     expect(report.wire.allDeltaChunksWithinTileBudget).toBe(true);
 
@@ -248,7 +252,7 @@ describe('W11-43 · Acceptance check 2A: Measured supported W11 small-atlas benc
 
     expect(report.render.withinBudget).toBe(true);
     expect(report.render.rasterSize).toBe(256);
-    expect(report.render.paintedAtlasTiles).toBeGreaterThan(12_000);
+    expect(report.render.paintedAtlasTiles).toBe(7_057);
     expect(report.render.crossSectorSeamEdgesPainted).toBeGreaterThan(1_000);
     expect(report.render.crossSectorTerritoryEdgesChecked).toBeGreaterThan(0);
     expect(report.mapScanPaintMs).toBeGreaterThan(0);
@@ -282,7 +286,7 @@ describe('W11-43 · Acceptance check 2B: 3-world canonical corpus benchmark', ()
     expect(corpus.maxMapScanPaintMs).toBeLessThanOrEqual(W11_SMALL_ATLAS_PERF_CAPS.maxMapRasterScanPaintMs);
 
     expect(estimateGzipWireBytes(new Uint8Array(0))).toBe(20);
-    expect(estimateSmallAtlasAllocationBytes({ totalSectors: 19, sectorRadius: 24 })).toBeLessThan(
+    expect(estimateSmallAtlasAllocationBytes({ totalSectors: 19, sectorRadius: 48 })).toBeLessThan(
       W11_SMALL_ATLAS_PERF_CAPS.maxEstimatedAllocationBytes,
     );
     const state = createAtlasPlanetState({ planetType: 'desert' });

@@ -5,6 +5,7 @@ import { starterHubSiteBlocked } from '../gen/starterSpace';
 import { HEX_DIRS, hexDistance, hexIndex, inHex } from '../grid/hex';
 import { DEPOSIT, TERRAIN } from '../grid/layers';
 import { sectorIndex } from '../grid/sectors';
+import { globalTileToSector } from '../atlas/partition';
 import type { CompiledDataLike } from '../kernel/config';
 import type { SimState } from '../kernel/state';
 import { defaultW01Data } from '../systems/hq';
@@ -64,23 +65,39 @@ function blockers(s: SimState, colony: number, relocate = false): Array<{ q: num
 
 const isWater = (t: number) => t === TERRAIN.shallow || t === TERRAIN.deep;
 
+function normalizeLandingCoord(s: SimState, q: number, r: number): { q: number; r: number } {
+  if (!Number.isInteger(q) || !Number.isInteger(r) || inHex(q, r, s.grid.radius)) return { q, r };
+  const rawAtlas = s.blobs.atlas as { value?: unknown } | undefined;
+  const atlas = (rawAtlas && typeof rawAtlas === 'object' && 'value' in rawAtlas ? rawAtlas.value : rawAtlas) as
+    | { sectorRadius?: number; landSectorIds?: readonly string[] }
+    | undefined;
+  if (!atlas || typeof atlas.sectorRadius !== 'number') return { q, r };
+  const resolved = globalTileToSector(q, r, atlas.sectorRadius);
+  if (Array.isArray(atlas.landSectorIds) && !atlas.landSectorIds.includes(resolved.sectorId)) {
+    return { q, r };
+  }
+  return { q: resolved.localQ, r: resolved.localR };
+}
+
 /** Why (q, r) cannot take `colony`'s landing, or null when it can. The "never twice" rule lives here. */
 export function landingBlock(
   s: SimState,
   colony: number,
-  q: number,
-  r: number,
+  rawQ: number,
+  rawR: number,
   data?: CompiledDataLike,
   opts: { relocate?: boolean } = {},
 ): LandingBlock | null {
   // `relocate`: the colony's own pod is still descending and moves (dev.land): its own landing does not count.
   if (!opts.relocate && getLandingHistory(s).some((h) => h.colony === colony)) return 'already_landed';
-  if (!Number.isInteger(q) || !Number.isInteger(r) || !inHex(q, r, s.grid.radius)) return 'invalid_args';
+  if (!Number.isInteger(rawQ) || !Number.isInteger(rawR)) return 'invalid_args';
+  const { q, r } = normalizeLandingCoord(s, rawQ, rawR);
+  if (!inHex(q, r, s.grid.radius)) return 'invalid_args';
   const i = hexIndex(s.grid.radius).indexOf(q, r);
   if (isWater(s.grid.layers.terrain[i])) return 'landing_site_taken';
   const owner = s.grid.layers.owner[i];
   if (owner >= 0 && owner !== colony) return 'landing_site_taken';
-  const slot = getSpawnSlots(s).find((sl) => sl.q === q && sl.r === r);
+  const slot = getSpawnSlots(s).find((sl) => sl.q === rawQ && sl.r === rawR);
   if (slot && slot.claimedBy !== undefined && slot.claimedBy !== colony) return 'landing_site_taken';
   const sep = minLandingSeparation(data);
   if (blockers(s, colony, opts.relocate).some((b) => hexDistance(b.q, b.r, q, r) < sep)) return 'landing_site_taken';
@@ -148,17 +165,20 @@ export function nextLandingSite(
   if (getLandingHistory(s).some((h) => h.colony === colony)) return { ok: false, code: 'already_landed' };
   const slots = getSpawnSlots(s);
   if (opts.q !== undefined || opts.r !== undefined) {
-    const q = opts.q as number, r = opts.r as number;
-    const why = landingBlock(s, colony, q, r, opts.data);
+    const rawQ = opts.q as number, rawR = opts.r as number;
+    const why = landingBlock(s, colony, rawQ, rawR, opts.data);
     if (why) return { ok: false, code: why };
-    const slot = slots.find((sl) => sl.q === q && sl.r === r);
+    const { q, r } = normalizeLandingCoord(s, rawQ, rawR);
+    const slot = slots.find((sl) => sl.q === rawQ && sl.r === rawR) ?? slots.find((sl) => sl.q === q && sl.r === r);
     return { ok: true, site: { q, r, source: 'explicit', ...(slot ? { slot } : {}) } };
   }
   if (opts.landingSlotId !== undefined) {
     const slot = slots.find((sl) => sl.landingSlotId === opts.landingSlotId || sl.slotId === opts.landingSlotId);
     if (!slot) return { ok: false, code: 'invalid_args' };
     const why = landingBlock(s, colony, slot.q, slot.r, opts.data);
-    return why ? { ok: false, code: why } : { ok: true, site: { q: slot.q, r: slot.r, source: 'slot', slot } };
+    if (why) return { ok: false, code: why };
+    const { q, r } = normalizeLandingCoord(s, slot.q, slot.r);
+    return { ok: true, site: { q, r, source: 'slot', slot } };
   }
   if (opts.sectorId !== undefined) {
     const secSlots = slots.filter((sl) => sl.sectorId === opts.sectorId);
@@ -170,7 +190,8 @@ export function nextLandingSite(
     const secOrder = secPref ? [secPref, ...secSlots.filter((sl) => sl !== secPref)] : secSlots;
     for (const slot of secOrder) {
       if (!landingBlock(s, colony, slot.q, slot.r, opts.data)) {
-        return { ok: true, site: { q: slot.q, r: slot.r, source: 'slot', slot } };
+        const { q, r } = normalizeLandingCoord(s, slot.q, slot.r);
+        return { ok: true, site: { q, r, source: 'slot', slot } };
       }
     }
     return { ok: false, code: 'landing_site_taken' };
@@ -178,7 +199,10 @@ export function nextLandingSite(
   const preferred = slots[opts.slotIndex ?? colony];
   const order = preferred ? [preferred, ...slots.filter((sl) => sl !== preferred)] : slots;
   for (const slot of order) {
-    if (!landingBlock(s, colony, slot.q, slot.r, opts.data)) return { ok: true, site: { q: slot.q, r: slot.r, source: 'slot', slot } };
+    if (!landingBlock(s, colony, slot.q, slot.r, opts.data)) {
+      const { q, r } = normalizeLandingCoord(s, slot.q, slot.r);
+      return { ok: true, site: { q, r, source: 'slot', slot } };
+    }
   }
   // A planet with spawn slots seats exactly its slots (capacity, D-12) unless the caller asks to search beyond them
   // (`beyondSlots`, e.g. an AI orchestrator or a re-establish flow); a planet without slots always searches.

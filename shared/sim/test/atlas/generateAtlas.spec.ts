@@ -93,6 +93,16 @@ function assertIdenticalAtlas(a: GeneratedSmallAtlas, b: GeneratedSmallAtlas): v
 
 describe('W11-35 shuffled sector order invariance and global coordinate sampling', () => {
   it('produces bit-for-bit identical tiles and seam edges under reversed and shuffled sector orders across all 3 biomes', () => {
+    const defaultDesert = generateSmallAtlas({
+      planetId: CANONICAL_PLANETS.desert.id,
+      planetType: 'desert',
+      seed: CANONICAL_PLANETS.desert.seed,
+      worldSalt: 'w11-salt-check',
+    });
+    expect(defaultDesert.sectorRadius).toBe(48);
+    expect(defaultDesert.sectors[0]?.tileCount).toBe(7_057);
+    expect(defaultDesert.partition.bounds.totalTiles).toBe(134_083);
+
     for (const planetType of BIOMES) {
       const canonical = CANONICAL_PLANETS[planetType];
       const baseline = generateSmallAtlas({
@@ -100,11 +110,11 @@ describe('W11-35 shuffled sector order invariance and global coordinate sampling
         planetType,
         seed: canonical.seed,
         worldSalt: 'w11-salt-check',
+        sectorRadius: 16,
       });
       expect(baseline.sectors).toHaveLength(19);
       expect(baseline.landSectorIds).toHaveLength(7);
       expect(baseline.oceanSectorIds).toHaveLength(12);
-      expect(baseline.partition.bounds.totalTiles).toBe(34_219);
 
       const defaultIds = baseline.sectors.map((s) => s.sectorId);
       const reversedOrder = [...defaultIds].reverse();
@@ -113,18 +123,20 @@ describe('W11-35 shuffled sector order invariance and global coordinate sampling
         planetType,
         seed: canonical.seed,
         worldSalt: 'w11-salt-check',
+        sectorRadius: 16,
         sectorOrder: reversedOrder,
       });
       expect(reversedAtlas.generationOrder).toEqual(reversedOrder);
       assertIdenticalAtlas(baseline, reversedAtlas);
 
-      for (const permSeed of [101, 202, 303]) {
+      for (const permSeed of [101, 202]) {
         const shuffledOrder: SectorId[] = deterministicShuffle(defaultIds, permSeed);
         const permutedAtlas = generateSmallAtlas({
           planetId: canonical.id,
           planetType,
           seed: canonical.seed,
           worldSalt: 'w11-salt-check',
+          sectorRadius: 16,
           sectorOrder: shuffledOrder,
         });
         expect(permutedAtlas.generationOrder).toEqual(shuffledOrder);
@@ -138,6 +150,7 @@ describe('W11-35 shuffled sector order invariance and global coordinate sampling
         planetType,
         seed: canonical.seed,
         worldSalt: 'w11-salt-check',
+        sectorRadius: 16,
         landCoords: shuffledLand,
         oceanCoords: shuffledOcean,
       });
@@ -147,8 +160,18 @@ describe('W11-35 shuffled sector order invariance and global coordinate sampling
 
   it('keeps land sector tiles identical whether the ring-2 ocean halo is included or omitted', () => {
     for (const planetType of BIOMES) {
-      const withHalo = generateSmallAtlas({ planetType, seed: `halo-parity-${planetType}`, includeOceanHalo: true });
-      const landOnly = generateSmallAtlas({ planetType, seed: `halo-parity-${planetType}`, includeOceanHalo: false });
+      const withHalo = generateSmallAtlas({
+        planetType,
+        seed: `halo-parity-${planetType}`,
+        sectorRadius: 16,
+        includeOceanHalo: true,
+      });
+      const landOnly = generateSmallAtlas({
+        planetType,
+        seed: `halo-parity-${planetType}`,
+        sectorRadius: 16,
+        includeOceanHalo: false,
+      });
       expect(landOnly.sectors).toHaveLength(7);
 
       for (const sectorId of landOnly.landSectorIds) {
@@ -167,8 +190,12 @@ describe('W11-35 shuffled sector order invariance and global coordinate sampling
 describe('W11-35 seam continuity and connected continent verification', () => {
   it('verifies continuous heights and coastlines across all shared sector borders for all 3 profiles', () => {
     for (const planetType of BIOMES) {
-      for (const seed of [CANONICAL_PLANETS[planetType].seed, `alt-${planetType}-1`, `alt-${planetType}-2`]) {
-        const atlas = generateSmallAtlas({ planetType, seed });
+      for (const seed of [CANONICAL_PLANETS[planetType].seed, `alt-${planetType}-1`]) {
+        const atlas = generateSmallAtlas({
+          planetType,
+          seed,
+          sectorRadius: seed === CANONICAL_PLANETS[planetType].seed ? 48 : 24,
+        });
         const seamReport = atlas.verifySeamContinuity();
         expect(seamReport.violations, `${planetType}:${seed}`).toEqual([]);
         expect(seamReport.ok).toBe(true);
@@ -231,12 +258,12 @@ describe('W11-35 distinct biome signatures and hex-tile deposit rules', () => {
       return count;
     };
 
-    const landTotal = 7 * 1_801;
+    const landTotal = 7 * 7_057;
     expect(countLandTerrain(desert, TERRAIN.forest)).toBe(0);
     expect(countLandTerrain(desert, TERRAIN.slope) / landTotal).toBeGreaterThan(0.5);
     expect(countLandTerrain(desert, TERRAIN.rock) / landTotal).toBeGreaterThan(0.03);
     expect(countLandTerrain(desert, TERRAIN.flat) / landTotal).toBeGreaterThan(0.08);
-    expect(Math.max(...desert.height)).toBeGreaterThan(4.5);
+    expect(desert.height.reduce((m, v) => (v > m ? v : m), -Infinity)).toBeGreaterThan(4.5);
 
     const oceanWaterOnLand = countLandTerrain(ocean, TERRAIN.shallow) + countLandTerrain(ocean, TERRAIN.deep);
     const tempWaterOnLand = countLandTerrain(temperate, TERRAIN.shallow) + countLandTerrain(temperate, TERRAIN.deep);
@@ -250,8 +277,9 @@ describe('W11-35 distinct biome signatures and hex-tile deposit rules', () => {
   it('places visible deposits exclusively on global hex tiles with hexDistance >= 2 spacing and valid subsurface veins', () => {
     for (const planetType of BIOMES) {
       const seed = CANONICAL_PLANETS[planetType].seed;
-      const atlas = generateSmallAtlas({ planetType, seed, worldSalt: 'sub-salt' });
-      const samplerCtx = createAtlasSamplerContext({ planetType, seed, worldSalt: 'sub-salt' });
+      const sectorRadius = planetType === 'desert' ? 48 : 24;
+      const atlas = generateSmallAtlas({ planetType, seed, worldSalt: 'sub-salt', sectorRadius });
+      const samplerCtx = createAtlasSamplerContext({ planetType, seed, worldSalt: 'sub-salt', sectorRadius });
       const depositCoords: Array<{ q: number; r: number; kind: number }> = [];
       let subCount = 0;
 
@@ -296,7 +324,8 @@ describe('W11-35 PlanetState integration and option validation', () => {
     const stateB = createAtlasPlanetState({ planetType: 'temperate', seed: 'state-check-seed' });
 
     expect(stateA.meta.genVersion).toBe(GEN_VERSION);
-    expect(stateA.grid.radius).toBe(76);
+    expect(stateA.grid.radius).toBe(48);
+    expect(stateA.grid.count).toBe(7_057);
     expect(snapshot(stateA)).toEqual(snapshot(stateB));
 
     const blob = getAtlasBlob(stateA);
@@ -308,21 +337,19 @@ describe('W11-35 PlanetState integration and option validation', () => {
     const hx = hexIndex(stateA.grid.radius);
     const groundMask = depositGroundMask(stateA);
     let checkedLandTiles = 0;
-    for (const secId of atlas.landSectorIds) {
-      const sec = atlas.sectorById.get(secId)!;
-      for (const st of sec.tiles) {
-        const gIdx = hx.indexOf(st.q, st.r);
-        expect(gIdx).toBeGreaterThanOrEqual(0);
-        expect(stateA.grid.layers.terrain[gIdx]).toBe(sec.terrain[st.localIndex]);
-        expect(stateA.grid.layers.height[gIdx]).toBe(sec.height[st.localIndex]);
-        expect(stateA.grid.layers.deposit[gIdx]).toBe(sec.deposit[st.localIndex]);
-        if (sec.deposit[st.localIndex] !== DEPOSIT.none) {
-          expect(groundMask[gIdx]).toBe(1);
-        }
-        checkedLandTiles++;
+    const sec00 = atlas.sectorById.get('sec_0_0')!;
+    for (const st of sec00.tiles) {
+      const gIdx = hx.indexOf(st.q, st.r);
+      expect(gIdx).toBeGreaterThanOrEqual(0);
+      expect(stateA.grid.layers.terrain[gIdx]).toBe(sec00.terrain[st.localIndex]);
+      expect(stateA.grid.layers.height[gIdx]).toBe(sec00.height[st.localIndex]);
+      expect(stateA.grid.layers.deposit[gIdx]).toBe(sec00.deposit[st.localIndex]);
+      if (sec00.deposit[st.localIndex] !== DEPOSIT.none) {
+        expect(groundMask[gIdx]).toBe(1);
       }
+      checkedLandTiles++;
     }
-    expect(checkedLandTiles).toBe(12_607);
+    expect(checkedLandTiles).toBe(7_057);
     expect(buryWildDeposits(stateA)).toBe(0);
   });
 

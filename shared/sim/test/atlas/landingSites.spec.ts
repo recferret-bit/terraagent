@@ -38,7 +38,7 @@ describe('W11-36 seed corpus validation across desert, ocean, and temperate for 
     'validates the full seed corpus across desert/ocean/temperate and X=3/4/5 with 100% separated valid sites',
     { timeout: 15_000 },
     () => {
-      const corpus = validateSeedCorpusLandingSites();
+      const corpus = validateSeedCorpusLandingSites({ sectorRadius: 24 });
       expect(corpus.ok).toBe(true);
       expect(corpus.failedRuns).toBe(0);
       expect(corpus.failures).toEqual([]);
@@ -72,8 +72,12 @@ describe('W11-36 seed corpus validation across desert, ocean, and temperate for 
             planetId: canonical.id,
             planetType,
             seed: canonical.seed,
+            sectorRadius: x === 4 ? 48 : 24,
             foundingSeatsPerSector: x,
           });
+          if (x === 4) {
+            expect(atlas.sectorRadius).toBe(48);
+          }
           const expectedTotal = 7 * x;
           expect(atlas.nominalCapacity).toBe(expectedTotal);
           expect(atlas.validatedCapacity).toBe(expectedTotal);
@@ -123,7 +127,12 @@ describe('W11-36 seed corpus validation across desert, ocean, and temperate for 
 
 describe('W11-36 cross-sector starter resource access across sector boundaries', () => {
   it('validates starter metals and minerals across a shared land-sector boundary in global coordinates', () => {
-    const atlas = generateSmallAtlas({ planetType: 'temperate', seed: 'cross-seam-res-seed', foundingSeatsPerSector: 3 });
+    const atlas = generateSmallAtlas({
+      planetType: 'temperate',
+      seed: 'cross-seam-res-seed',
+      sectorRadius: 24,
+      foundingSeatsPerSector: 3,
+    });
     const seamSlot: SafeLandingSlotV1 = {
       slotId: 'slot_sec_0_0_0',
       sectorId: 'sec_0_0',
@@ -208,7 +217,8 @@ describe('W11-36 PlanetState spawnSlots and spawnColony integration', () => {
     expect(bySlotId.ok).toBe(true);
     if (bySlotId.ok) {
       const target = blob.safeLandingSlots.find((s) => s.slotId === 'slot_sec_1_0_2')!;
-      expect({ q: bySlotId.q, r: bySlotId.r }).toEqual({ q: target.q, r: target.r });
+      const local = globalTileToSector(target.q, target.r, blob.sectorRadius);
+      expect({ q: bySlotId.q, r: bySlotId.r }).toEqual({ q: local.localQ, r: local.localR });
     }
 
     const bySector = spawnColonyLanding(state, {
@@ -221,7 +231,8 @@ describe('W11-36 PlanetState spawnSlots and spawnColony integration', () => {
     expect(bySector.ok).toBe(true);
     if (bySector.ok) {
       const target = blob.safeLandingSlots.find((s) => s.slotId === 'slot_sec_-1_1_1')!;
-      expect({ q: bySector.q, r: bySector.r }).toEqual({ q: target.q, r: target.r });
+      const local = globalTileToSector(target.q, target.r, blob.sectorRadius);
+      expect({ q: bySector.q, r: bySector.r }).toEqual({ q: local.localQ, r: local.localR });
     }
 
     const highColony = spawnColonyLanding(state, {
@@ -263,13 +274,14 @@ describe('W11-36 PlanetState spawnSlots and spawnColony integration', () => {
 
     const hx = hexIndex(state.grid.radius);
     const slot0 = blob.safeLandingSlots.find((s) => s.slotId === 'slot_sec_1_0_2')!;
+    const slot0Local = globalTileToSector(slot0.q, slot0.r, blob.sectorRadius);
     let hasMetals = false;
     let hasMinerals = false;
     for (let dr = -6; dr <= 6; dr++) {
       for (let dq = -6; dq <= 6; dq++) {
         const d = hexDistance(0, 0, dq, dr);
         if (d < 2 || d > 6) continue;
-        const idx = hx.indexOf(slot0.q + dq, slot0.r + dr);
+        const idx = hx.indexOf(slot0Local.localQ + dq, slot0Local.localR + dr);
         if (idx < 0) continue;
         if (state.grid.layers.deposit[idx] === DEPOSIT.metals) hasMetals = true;
         if (state.grid.layers.deposit[idx] === DEPOSIT.minerals) hasMinerals = true;
@@ -287,18 +299,18 @@ describe('W11-36 structured rejection for cross-sector, intra-sector, and sector
       slotId: 'slot_sec_0_0_0',
       sectorId: 'sec_0_0',
       slotIndex: 0,
-      q: 23,
-      r: -11,
+      q: 47,
+      r: -23,
     };
     const slotB: SafeLandingSlotV1 = {
       slotId: 'slot_sec_1_0_0',
       sectorId: 'sec_1_0',
       slotIndex: 0,
-      q: 26,
-      r: -13,
+      q: 50,
+      r: -25,
     };
-    expect(globalTileToSector(slotA.q, slotA.r, 24).sectorId).toBe('sec_0_0');
-    expect(globalTileToSector(slotB.q, slotB.r, 24).sectorId).toBe('sec_1_0');
+    expect(globalTileToSector(slotA.q, slotA.r, 48).sectorId).toBe('sec_0_0');
+    expect(globalTileToSector(slotB.q, slotB.r, 48).sectorId).toBe('sec_1_0');
     expect(hexDistance(slotA.q, slotA.r, slotB.q, slotB.r)).toBeLessThan(W11_DEFAULT_MIN_SLOT_SEPARATION);
 
     const report = validateAtlasLandingSites(atlas, { slots: [slotA, slotB] });
@@ -352,8 +364,8 @@ describe('W11-36 structured rejection for cross-sector, intra-sector, and sector
       slotId: 'slot_sec_0_0_0',
       sectorId: 'sec_0_0',
       slotIndex: 0,
-      q: 49,
-      r: -24,
+      q: 97,
+      r: -48,
     };
     const mismatchReport = validateAtlasLandingSites(atlas, { slots: [wrongSectorSlot] });
     expect(mismatchReport.ok).toBe(false);
@@ -384,8 +396,8 @@ describe('W11-36 structured rejection for ocean sectors and water tiles', () => 
       slotId: 'slot_sec_2_0_0',
       sectorId: 'sec_2_0',
       slotIndex: 0,
-      q: 98,
-      r: -48,
+      q: 194,
+      r: -96,
     };
     const oceanReport = validateAtlasLandingSites(atlas, { slots: [oceanSlot] });
     expect(oceanReport.ok).toBe(false);

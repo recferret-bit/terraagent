@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { canonicalPlanetById, newId, type PlanetType } from '@terra/contracts';
+import { canonicalPlanetById, newId, W11_DEFAULT_SECTOR_RADIUS, type PlanetType } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import {
   DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, devPlanetTypeOf, MAX_COLONIES_PER_PLANET, type DevPlanetType,
@@ -96,7 +96,7 @@ export class HomeRepository {
       name: input.name ?? canonical?.name ?? (id === 'pl_dev' ? 'Dev Planet' : id),
       type: input.type ?? canonical?.type ?? devPlanetTypeOf(id) ?? DEV_PLANET_TYPE, // the id names its family's type
       seed: input.seed ?? canonical?.seed ?? DEV_PLANET_SEED,
-      radius: input.radius ?? DEV_PLANET_RADIUS,
+      radius: input.radius ?? (canonical ? W11_DEFAULT_SECTOR_RADIUS : DEV_PLANET_RADIUS),
       state: input.state ?? 'ACTIVE',
       capacity: input.capacity ?? (canonical ? 28 : DEV_PLANET_CAPACITY),
     });

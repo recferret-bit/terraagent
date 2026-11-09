@@ -66,7 +66,10 @@ function buildSectorCandidateLocalCoords(
   seed: string,
 ): Array<readonly [number, number]> {
   const maxLocal = Math.max(0, sectorRadius - 4);
-  const crossSafeLocal = Math.max(0, Math.min(maxLocal, Math.floor((2 * sectorRadius + 1 - minSlotSeparation) / 2)));
+  const crossSafeLocal = Math.max(
+    0,
+    Math.min(maxLocal, 17, Math.floor((2 * sectorRadius + 1 - minSlotSeparation) / 2)),
+  );
   const anchorR =
     sectorRadius >= 20 && minSlotSeparation <= 15
       ? Math.max(minSlotSeparation, Math.min(14, sectorRadius - 10))
@@ -78,8 +81,8 @@ function buildSectorCandidateLocalCoords(
   };
 
   const candidates: Array<readonly [number, number]> = [];
-  const seedNum = seedOf(`${seed}|sec_${macroQ}_${macroR}|landing`);
-  const rot = Math.floor(hash2d(macroQ, macroR, seedNum) * 6) % 6;
+  const seedNum = seedOf(`${seed}|sec_0_0|landing`);
+  const rot = Math.floor(hash2d(0, 0, seedNum) * 6) % 6;
   if (foundingCapacity <= 3) {
     candidates.push(ringPt(rot), ringPt(rot + 2), ringPt(rot + 4), [0, 0]);
   } else if (foundingCapacity === 4) {

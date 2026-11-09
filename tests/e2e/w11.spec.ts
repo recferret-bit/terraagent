@@ -40,6 +40,7 @@ interface OnlineW11Window {
       tick: number;
       latest: {
         planet?: { id: string; type: string; radius: number };
+        tiles?: { count: number };
         count?: number;
         colonies?: Array<{
           id?: string;
@@ -53,6 +54,7 @@ interface OnlineW11Window {
     minimap: {
       globalMapOpen?: boolean;
       activeLayers?: string[];
+      selectedSectorId?: string | null;
     } | null;
     commands: {
       send(kind: string, args?: unknown): Promise<{ ok: boolean }>;
@@ -128,6 +130,10 @@ test('@hack 2. ?scenario=w11 boots Colony 0 (Aegis Prime) founded in sec_0_0 wit
       name: c0?.name ?? null,
       foundingSectorId: c0?.foundingSectorId ?? null,
       landingSlotId: c0?.landingSlotId ?? null,
+      planetRadius: v?.planet?.radius ?? null,
+      tileCount:
+        v?.tiles?.count ??
+        (typeof v?.planet?.radius === 'number' ? 1 + 3 * v.planet.radius * (v.planet.radius + 1) : null),
       entityCount: v?.count ?? (v?.entities ? Math.floor(v.entities.length / 13) : 0),
     };
   });
@@ -136,12 +142,14 @@ test('@hack 2. ?scenario=w11 boots Colony 0 (Aegis Prime) founded in sec_0_0 wit
   expect(summary.name).toBe('Aegis Prime');
   expect(summary.foundingSectorId).toBe('sec_0_0');
   expect(summary.landingSlotId).toBe('slot_sec_0_0_0');
+  expect(summary.planetRadius).toBe(48);
+  expect(summary.tileCount).toBe(7057);
   expect(summary.entityCount).toBeGreaterThanOrEqual(6);
 
   expectNoPageErrors(page);
 });
 
-test('@hack 3. Global Planet Map (M) toggles the W11 sectors layer and units walk across sec_0_0 -> sec_1_0 without changing IDs or seats', async () => {
+test('@hack 3. Global Planet Map (M) toggles the W11 sectors layer, displays surrounding sectors, and moves units inside isolated sec_0_0 (R=48)', async () => {
   const startTick = await waitForTick(page, () => true);
 
   const overlay = page.getByTestId('global-map-overlay');
@@ -156,6 +164,10 @@ test('@hack 3. Global Planet Map (M) toggles the W11 sectors layer and units wal
   await expect(sectorsChip).toHaveAttribute('aria-pressed', 'false');
   await sectorsChip.click();
   await expect(sectorsChip).toHaveAttribute('aria-pressed', 'true');
+
+  const readout = page.getByTestId('global-map-readout');
+  await expect(readout).toBeVisible();
+  await expect(readout).toContainText('[sec_0_0]');
 
   await page.keyboard.press('m');
   await expect(overlay).toBeHidden();

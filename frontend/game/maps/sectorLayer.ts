@@ -389,13 +389,17 @@ function paintSingleSectorOverlay(
     ctx.lineWidth = 2;
     ctx.stroke();
   } else if (sec.kind === 'land') {
+    ctx.fillStyle = sec.isCurrentLocation ? 'rgba(56, 189, 248, 0.08)' : 'rgba(30, 58, 95, 0.24)';
+    ctx.fill();
     ctx.setLineDash([5, 3]);
-    ctx.strokeStyle = 'rgba(82, 180, 255, 0.82)';
+    ctx.strokeStyle = 'rgba(82, 180, 255, 0.85)';
     ctx.lineWidth = 1.4;
     ctx.stroke();
   } else {
+    ctx.fillStyle = 'rgba(14, 34, 58, 0.38)';
+    ctx.fill();
     ctx.setLineDash([3, 4]);
-    ctx.strokeStyle = 'rgba(138, 147, 166, 0.42)';
+    ctx.strokeStyle = 'rgba(138, 147, 166, 0.48)';
     ctx.lineWidth = 1;
     ctx.stroke();
   }

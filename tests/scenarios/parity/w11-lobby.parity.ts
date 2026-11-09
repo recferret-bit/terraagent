@@ -1,9 +1,9 @@
 import { defineParityCase } from './_define';
 
 /**
- * W11 cross-sector replay parity:
- * - Walks Colony 0's boundary worker (`unitId: 6`) from `sec_0_0` (`(24, -12)`) into `sec_1_0` (`(25, -12)`).
- * - Places a cross-sector `residence` in `sec_1_0` (`(25, -13)`) powered by the `sec_0_0` ↔ `sec_1_0` pylon chain.
+ * W11 isolated single-sector (R=48, 7,057 tiles) replay parity:
+ * - Moves Colony 0's worker (`unitId: 6`) inside `sec_0_0` from `(24, -12)` to `(25, -12)`.
+ * - Enqueues a `solar` build task inside `sec_0_0` at `(26, -15)` powered by Colony 0's `sec_0_0` pylon network.
  */
 export default defineParityCase({
   id: 'w11-lobby',

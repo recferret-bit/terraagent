@@ -1,10 +1,9 @@
-import { CANONICAL_PLANETS } from '@terra/contracts';
+import { CANONICAL_PLANETS, W11_DEFAULT_SECTOR_RADIUS } from '@terra/contracts';
 import {
   buildAtlasManifest,
   claimTerritoryRadius,
   creditResource,
   DEPOSIT,
-  DEV_PLANET_RADIUS,
   indexOf,
   PREP,
   revealVision,
@@ -52,7 +51,6 @@ function seedW11AtlasBlob(state: PlanetState): void {
 
   const sectors = manifest.sectors.map((sec) => {
     if (sec.sectorId === 'sec_0_0') return overrideSectorSlot0(sec, 'sec_0_0', 20, -10);
-    if (sec.sectorId === 'sec_1_0') return overrideSectorSlot0(sec, 'sec_1_0', 29, -14);
     return {
       ...sec,
       safeLandingSlots: sec.safeLandingSlots.map((sl) => ({ ...sl })),
@@ -70,6 +68,7 @@ function seedW11AtlasBlob(state: PlanetState): void {
     resourceProfileId: manifest.resourceProfileId,
     resourceProfileHash: manifest.resourceProfileHash,
     sectorRadius: manifest.sectorRadius,
+    tilesPerSector: 7057,
     foundingSeatsPerSector: manifest.foundingSeatsPerSector,
     totalSectors: manifest.totalSectors,
     landSectors: manifest.landSectors,
@@ -98,16 +97,6 @@ function seedW11AtlasBlob(state: PlanetState): void {
         sectorId: 'sec_0_0',
         slotId: 'slot_sec_0_0_0',
         landingSlotId: 'slot_sec_0_0_0',
-        sectorSlotIndex: 0,
-      },
-      {
-        index: 1,
-        q: 29,
-        r: -14,
-        takenBy: null,
-        sectorId: 'sec_1_0',
-        slotId: 'slot_sec_1_0_0',
-        landingSlotId: 'slot_sec_1_0_0',
         sectorSlotIndex: 0,
       },
     ],
@@ -192,16 +181,16 @@ function seedCrossSectorColonyStructures(state: PlanetState, tick: number): void
 
 /**
  * W11 Planet Foundations & Sector Admission seed scenario (`docs/plan/waves/W11-lobby-planets.md` & W11-32):
- * - Canonical temperate small-atlas topology (`7` land sectors + `12` ocean sectors = `19` total sectors, `R = 24`).
- * - Colony 0 (`col_0`, `Aegis Prime`) founded in `sec_0_0` (`slot_sec_0_0_0` at `(20, -10)`) with landed HQ.
- * - Cross-sector power chain (`sec_0_0` ↔ `sec_1_0`) and a boundary worker at `(24, -12)` ready to walk into `sec_1_0` (`(25, -12)`).
+ * - Canonical temperate small-atlas topology (`7` land sectors + `12` ocean sectors = `19` total sectors, `R = 48`, `7,057` tiles/sector).
+ * - Isolated single-sector in-game grid (`state.grid.radius === 48`, `7,057` tiles) for `sec_0_0`; surrounding sectors are visible on the Global Map (`M`) and Orbital Picker.
+ * - Colony 0 (`col_0`, `Aegis Prime`) founded in `sec_0_0` (`slot_sec_0_0_0` at `(20, -10)`) with landed HQ, solar, pylons, and worker (`unitId: 6`) at `(24, -12)`.
  */
 export const w11LobbyScenario = defineScenario({
   id: 'w11',
   title: 'W11 Planet Foundations & Sector Admission',
   waves: '..11',
   seed: 'w11-lobby-planets',
-  planet: { type: 'temperate', planetType: 'temperate', radius: DEV_PLANET_RADIUS },
+  planet: { type: 'temperate', planetType: 'temperate', radius: W11_DEFAULT_SECTOR_RADIUS },
   build(host, api) {
     const state = api.planet;
     prepareCrossSectorBasin(state);

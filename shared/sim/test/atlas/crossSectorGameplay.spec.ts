@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves, type SectorId } from '@terra/contracts';
 import {
+  claimCrossSectorTerritory,
   claimTerritoryRadius,
   computeAtlasSectorColonyMetrics,
   countExploredTilesBySector,
@@ -24,6 +25,7 @@ import {
   notifyPylonOrBuildingRemoved,
   placementWorldFromState,
   PREP,
+  relaysLinked,
   rowOf,
   setPlanetTime,
   SimHost,
@@ -81,6 +83,8 @@ function createCrossSectorTestHost(seed = 'w11-41-cross-sector'): SimHost {
     planetId: 'p_verdant',
     planetType: 'temperate',
     seed,
+    sectorRadius: 24,
+    gridRadius: 56,
   });
   const host = new SimHost({
     flags: parseWaves('..03'),
@@ -132,10 +136,10 @@ function getEntityTile(state: PlanetState, entityId: number): { q: number; r: nu
   return { q: state.entities.cols.q[row]!, r: state.entities.cols.r[row]! };
 }
 
-describe('W11-41 cross-sector walking and exploration across 3 sectors', () => {
-  it('pathfinds and walks a unit from sec_0_0 -> sec_1_0 -> sec_0_1 with zero seam cost penalty and reveals 3-sector exploration', () => {
+describe('W11-41 sector isolation: pathfinding and unit movement cannot cross sector boundaries', () => {
+  it('blocks cross-sector pathfinding and unit movement while allowing intra-sector paths', () => {
     const host = createCrossSectorTestHost();
-    flattenRegionForTest(host.state, 23, 0, 8);
+    flattenRegionForTest(host.state, 21, 0, 8);
 
     // Land Colony 0 in sec_0_0 near the tri-sector seam at (19, 0)
     expect(applyCmd(host, mkCmd('dev.land', { q: 19, r: 0 }, 0, 'dev')).code).toBeUndefined();
@@ -143,84 +147,90 @@ describe('W11-41 cross-sector walking and exploration across 3 sectors', () => {
     const hqId = findUnitEntityId(host.state, 0, ENTITY_KIND.hq);
     expect(hqId).toBeGreaterThan(0);
     const startPos = getEntityTile(host.state, hqId);
-    expect(globalTileToSector(startPos.q, startPos.r).sectorId).toBe('sec_0_0');
+    expect(globalTileToSector(startPos.q, startPos.r, 24).sectorId).toBe('sec_0_0');
 
+    const wpIntra = { q: 22, r: 0 };
     const wpSec10 = { q: 26, r: -1 };
     const wpSec01 = { q: 24, r: 3 };
-    expect(globalTileToSector(wpSec10.q, wpSec10.r).sectorId).toBe('sec_1_0');
-    expect(globalTileToSector(wpSec01.q, wpSec01.r).sectorId).toBe('sec_0_1');
+    expect(globalTileToSector(wpIntra.q, wpIntra.r, 24).sectorId).toBe('sec_0_0');
+    expect(globalTileToSector(wpSec10.q, wpSec10.r, 24).sectorId).toBe('sec_1_0');
+    expect(globalTileToSector(wpSec01.q, wpSec01.r, 24).sectorId).toBe('sec_0_1');
 
-    // Verify shared pathfinder across sec_0_0 -> sec_1_0 and sec_1_0 -> sec_0_1
+    // Intra-sector path inside sec_0_0 succeeds
+    const intraLeg = inspectCrossSectorPath(host.state, startPos, wpIntra, { profile: 'ground' });
+    expect(intraLeg.ok).toBe(true);
+    expect(intraLeg.startSectorId).toBe('sec_0_0');
+    expect(intraLeg.goalSectorId).toBe('sec_0_0');
+    expect(intraLeg.crossesSectorBoundary).toBe(false);
+    expect(intraLeg.visitedSectors).toEqual(['sec_0_0']);
+    expect(intraLeg.seamCrossings).toEqual([]);
+    expect(intraLeg.path).toEqual(findHexPath(host.state, startPos, wpIntra).path);
+
+    // Cross-sector path sec_0_0 -> sec_1_0 and sec_1_0 -> sec_0_1 is disabled
     const leg1 = inspectCrossSectorPath(host.state, startPos, wpSec10, { profile: 'ground' });
-    expect(leg1.ok).toBe(true);
-    expect(leg1.startSectorId).toBe('sec_0_0');
-    expect(leg1.goalSectorId).toBe('sec_1_0');
-    expect(leg1.crossesSectorBoundary).toBe(true);
-    expect(leg1.zeroSeamPenalty).toBe(true);
-    expect(leg1.path).toEqual(findHexPath(host.state, startPos, wpSec10).path);
+    expect(leg1.ok).toBe(false);
+    expect(leg1.reason).toBe('cross_sector_disabled');
+    expect(leg1.path).toEqual([]);
+    expect(leg1.visitedSectors).toEqual(['sec_0_0']);
+    expect(leg1.seamCrossings).toEqual([]);
+    expect(leg1.crossesSectorBoundary).toBe(false);
+    expect(findHexPath(host.state, startPos, wpSec10).ok).toBe(false);
 
     const leg2 = inspectCrossSectorPath(host.state, wpSec10, wpSec01, { profile: 'ground' });
-    expect(leg2.ok).toBe(true);
-    expect(leg2.startSectorId).toBe('sec_1_0');
-    expect(leg2.goalSectorId).toBe('sec_0_1');
-    expect(leg2.crossesSectorBoundary).toBe(true);
-    expect(leg2.zeroSeamPenalty).toBe(true);
+    expect(leg2.ok).toBe(false);
+    expect(leg2.reason).toBe('cross_sector_disabled');
+    expect(leg2.crossesSectorBoundary).toBe(false);
 
-    // Walk HQ Commander into sec_1_0 via moveUnit command
-    expect(applyCmd(host, mkCmd('moveUnit', { entityId: hqId, q: wpSec10.q, r: wpSec10.r })).code).toBeUndefined();
-    host.step(60);
-    expect(getEntityTile(host.state, hqId)).toEqual(wpSec10);
+    // Walk HQ Commander within sec_0_0 via moveUnit command
+    expect(applyCmd(host, mkCmd('moveUnit', { entityId: hqId, q: wpIntra.q, r: wpIntra.r })).code).toBeUndefined();
+    host.step(40);
+    expect(getEntityTile(host.state, hqId)).toEqual(wpIntra);
 
-    // Walk HQ Commander from sec_1_0 into sec_0_1 via moveUnit command
-    expect(applyCmd(host, mkCmd('moveUnit', { entityId: hqId, q: wpSec01.q, r: wpSec01.r })).code).toBeUndefined();
-    host.step(60);
-    expect(getEntityTile(host.state, hqId)).toEqual(wpSec01);
-    expect(findUnitEntityId(host.state, 0, ENTITY_KIND.hq)).toBe(hqId);
+    // Attempting to walk HQ Commander across the sector boundary into sec_1_0 is blocked by pathfinder/locomotion
+    applyCmd(host, mkCmd('moveUnit', { entityId: hqId, q: wpSec10.q, r: wpSec10.r }));
+    host.step(40);
+    expect(getEntityTile(host.state, hqId)).toEqual(wpIntra);
+    expect(globalTileToSector(getEntityTile(host.state, hqId).q, getEntityTile(host.state, hqId).r, 24).sectorId).toBe(
+      'sec_0_0',
+    );
 
-    // Verify per-colony exploration spans all 3 sectors
     const exploredBySec = countExploredTilesBySector(host.state, 0);
     expect(exploredBySec.sec_0_0).toBeGreaterThan(20);
-    expect(exploredBySec.sec_1_0).toBeGreaterThan(10);
-    expect(exploredBySec.sec_0_1).toBeGreaterThan(10);
-    expect(exploredSectorIdsForColony(host.state, 0)).toEqual(['sec_0_0', 'sec_0_1', 'sec_1_0']);
+    expect(exploredSectorIdsForColony(host.state, 0)).toContain('sec_0_0');
   });
 
-  it('finds continuous long-range land paths across 3 sector centers on the generated continent', () => {
+  it('uses an isolated single-sector grid (R=48, 7,057 tiles) by default in createAtlasPlanetState and blocks cross-sector paths', () => {
     const state = createAtlasPlanetState({ planetType: 'temperate', seed: 'continent-walk-seed' });
-    const legA = inspectCrossSectorPath(state, { q: 0, r: 0 }, { q: 49, r: -25 });
-    const legB = inspectCrossSectorPath(state, { q: 49, r: -25 }, { q: 24, r: 25 });
-    expect(legA.ok).toBe(true);
-    expect(legA.startSectorId).toBe('sec_0_0');
-    expect(legA.goalSectorId).toBe('sec_1_0');
-    expect(legA.crossesSectorBoundary).toBe(true);
-    expect(legA.zeroSeamPenalty).toBe(true);
-    expect(legB.ok).toBe(true);
-    expect(legB.startSectorId).toBe('sec_1_0');
-    expect(legB.goalSectorId).toBe('sec_0_1');
-    expect(legB.crossesSectorBoundary).toBe(true);
-    expect(legB.zeroSeamPenalty).toBe(true);
+    expect(state.grid.radius).toBe(48);
+    expect(state.grid.count).toBe(7_057);
+
+    const legA = inspectCrossSectorPath(state, { q: 0, r: 0 }, { q: 97, r: -48 });
+    expect(legA.ok).toBe(false);
+    expect(legA.reason).toBe('goal_out_of_bounds');
+    expect(legA.crossesSectorBoundary).toBe(false);
   });
 });
 
-describe('W11-41 cross-sector construction footprints and D-37 placement parity', () => {
-  it('accepts footprints straddling sector seams and inside adjacent sectors once territory and power reach across the seam', () => {
+describe('W11-41 sector isolation: construction footprints and territory claims cannot cross sector boundaries', () => {
+  it('rejects footprints straddling sector seams or placed in another sector while allowing intra-sector builds', () => {
     const host = createCrossSectorTestHost('w11-41-placement');
-    flattenRegionForTest(host.state, 24, 0, 8);
+    flattenRegionForTest(host.state, 22, 0, 8);
 
-    // Land Colony 0 at (23, 0) in sec_0_0 right beside the seam
-    expect(applyCmd(host, mkCmd('dev.land', { q: 23, r: 0 }, 0, 'dev')).code).toBeUndefined();
+    // Land Colony 0 at (20, 0) in sec_0_0 near the seam
+    expect(applyCmd(host, mkCmd('dev.land', { q: 20, r: 0 }, 0, 'dev')).code).toBeUndefined();
     host.state.colonies[0]!.unlockStage = 4;
     creditResource(host.state.colonies[0]!, 'metals.t1', 500, host.tick);
     creditResource(host.state.colonies[0]!, 'minerals.t1', 500, host.tick);
 
-    // 1. Evaluate a 3x3 Command Hub at (24, 1) whose footprint straddles sec_0_0, sec_0_1, and sec_1_0!
+    // 1. Evaluate a 3x3 Command Hub at (24, 1) whose footprint straddles sec_0_0, sec_0_1, and sec_1_0 -> blocked!
     const triSeamHubEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'commandHub',
       q: 24,
       r: 1,
     });
-    expect(triSeamHubEval.ok).toBe(true);
+    expect(triSeamHubEval.ok).toBe(false);
+    expect(triSeamHubEval.reason).toBe('cross_sector_disabled');
     expect(triSeamHubEval.straddlesSectorBoundary).toBe(true);
     expect(triSeamHubEval.footprintSectorIds).toEqual(['sec_0_0', 'sec_0_1', 'sec_1_0']);
     expect(
@@ -230,108 +240,126 @@ describe('W11-41 cross-sector construction footprints and D-37 placement parity'
         q: 24,
         r: 1,
       }).ok,
-    ).toBe(true);
+    ).toBe(false);
 
-    // Activate Command Hub at (21, 0) in sec_0_0 and extend territory + Pylon at (24, 0) on the seam
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 21, 0, 3, 3, 1500);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 24, 0, 1, 1, 100);
-    claimTerritoryRadius(host.state, { colonyId: 0, q: 24, r: 0, radius: 6, tick: host.tick });
+    // Activate Command Hub at (20, 0) in sec_0_0 and claim territory at (24, 0) near the seam
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 20, 0, 3, 3, 1500);
+    const claimReport = claimCrossSectorTerritory(host.state, 0, 24, 0, 6, host.tick);
+    expect(claimReport.spansMultipleSectors).toBe(false);
+    expect(claimReport.claimedSectorIds).toEqual(['sec_0_0']);
+    expect(Object.keys(claimReport.claimedBySector)).toEqual(['sec_0_0']);
+    const hex = hexIndex(host.state.grid.radius);
+    expect(host.state.grid.layers.owner[hex.indexOf(24, 0)]).toBe(0);
+    expect(host.state.grid.layers.owner[hex.indexOf(25, 0)]).toBe(-1); // sec_1_0 tile was NOT claimed!
 
-    // 2. Evaluate and enqueue a 2x2 Solar at (25, 0) straddling sec_0_1 and sec_1_0
+    // 2. Evaluate a 2x2 Solar at (24, 0) straddling sec_0_0, sec_0_1, and sec_1_0 -> blocked!
     const seamSolarEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'solar',
-      q: 25,
+      q: 24,
       r: 0,
     });
-    expect(seamSolarEval.ok).toBe(true);
+    expect(seamSolarEval.ok).toBe(false);
+    expect(seamSolarEval.reason).toBe('cross_sector_disabled');
     expect(seamSolarEval.straddlesSectorBoundary).toBe(true);
-    expect(seamSolarEval.footprintSectorIds).toEqual(['sec_0_1', 'sec_1_0']);
 
     expect(
       applyCmd(
         host,
-        mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 25, r: 0 } }),
+        mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 24, r: 0 } }),
       ).code,
-    ).toBeUndefined();
+    ).toBe('terrain_unbuildable');
 
-    // 3. Evaluate and enqueue a Pylon inside sec_0_1 at (24, 3)
+    // 3. Evaluate a Pylon inside sec_0_1 at (24, 3) -> blocked by cross_sector_disabled!
     const sec01PylonEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'pylon',
       q: 24,
       r: 3,
     });
-    expect(sec01PylonEval.ok).toBe(true);
+    expect(sec01PylonEval.ok).toBe(false);
+    expect(sec01PylonEval.reason).toBe('cross_sector_disabled');
     expect(sec01PylonEval.anchorSectorId).toBe('sec_0_1');
+    expect(sec01PylonEval.crossesFromFoundingSector).toBe(true);
+
+    // 4. Evaluate and enqueue a 2x2 Solar entirely inside sec_0_0 at (22, 0) -> succeeds!
+    const intraSolarEval = evaluateCrossSectorPlacement(host.state, {
+      colonyId: 0,
+      building: 'solar',
+      q: 22,
+      r: 0,
+    });
+    expect(intraSolarEval.ok).toBe(true);
+    expect(intraSolarEval.straddlesSectorBoundary).toBe(false);
+    expect(intraSolarEval.footprintSectorIds).toEqual(['sec_0_0']);
     expect(
       applyCmd(
         host,
-        mkCmd('enqueueTask', { task: { kind: 'build', building: 'pylon', q: 24, r: 3 } }),
+        mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 22, r: 0 } }),
       ).code,
     ).toBeUndefined();
   });
 });
 
-describe('W11-41 cross-sector D-37 placement rejection parity', () => {
-  it('rejects invalid cross-seam and adjacent-sector placements with the exact same D-37 placement blocks and reject codes', () => {
+describe('W11-41 intra-sector D-37 placement rejection parity', () => {
+  it('rejects invalid intra-sector placements with standard D-37 placement blocks and reject codes', () => {
     const host = createCrossSectorTestHost('w11-41-rejects');
-    flattenRegionForTest(host.state, 24, 0, 9);
+    flattenRegionForTest(host.state, 16, 0, 9);
 
-    expect(applyCmd(host, mkCmd('dev.land', { q: 21, r: 0 }, 0, 'dev')).code).toBeUndefined();
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 21, 0, 3, 3, 1500);
+    expect(applyCmd(host, mkCmd('dev.land', { q: 14, r: 0 }, 0, 'dev')).code).toBeUndefined();
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 14, 0, 3, 3, 1500);
 
-    // 1. Tile in sec_1_0 (30, -3) outside Hub power zone (dist 9 > 6): fails with outsidePowerZone / outside_power_zone
+    // 1. Tile in sec_0_0 (22, 0) outside Hub power zone (dist 8 > 6): fails with outsidePowerZone / outside_power_zone
     const outZoneEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'solar',
-      q: 30,
-      r: -3,
+      q: 22,
+      r: 0,
     });
     expect(outZoneEval.ok).toBe(false);
-    expect(outZoneEval.anchorSectorId).toBe('sec_1_0');
+    expect(outZoneEval.anchorSectorId).toBe('sec_0_0');
     expect(outZoneEval.block).toBe('outsidePowerZone');
     expect(outZoneEval.code).toBe('outside_power_zone');
     expect(
-      applyCmd(host, mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 30, r: -3 } })).code,
+      applyCmd(host, mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 22, r: 0 } })).code,
     ).toBe('outside_power_zone');
 
-    // 2. Extend pylon across the seam, then test foreign territory, water, and missing deposit on seam
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 24, 0, 1, 1, 100);
+    // 2. Extend pylon inside sec_0_0, then test foreign territory, water, and missing deposit
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 19, 0, 1, 1, 100);
     const hex = hexIndex(host.state.grid.radius);
-    const seamIdx = hex.indexOf(25, -1); // in sec_1_0
-    host.state.grid.layers.owner[seamIdx] = 1; // owned by foreign Colony 1
+    const targetIdx = hex.indexOf(20, 0); // in sec_0_0
+    host.state.grid.layers.owner[targetIdx] = 1; // owned by foreign Colony 1
     const foreignEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'solar',
-      q: 25,
-      r: -1,
+      q: 20,
+      r: 0,
     });
     expect(foreignEval.ok).toBe(false);
     expect(foreignEval.block).toBe('foreign');
     expect(foreignEval.code).toBe('not_own_territory');
 
-    host.state.grid.layers.owner[seamIdx] = 0;
-    host.state.grid.layers.terrain[seamIdx] = TERRAIN.deep;
+    host.state.grid.layers.owner[targetIdx] = 0;
+    host.state.grid.layers.terrain[targetIdx] = TERRAIN.deep;
     const waterEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'solar',
-      q: 25,
-      r: -1,
+      q: 20,
+      r: 0,
     });
     expect(waterEval.ok).toBe(false);
     expect(waterEval.block).toBe('water');
     expect(waterEval.code).toBe('terrain_unbuildable');
     expect(
-      applyCmd(host, mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 25, r: -1 } })).code,
+      applyCmd(host, mkCmd('enqueueTask', { task: { kind: 'build', building: 'solar', q: 20, r: 0 } })).code,
     ).toBe('terrain_unbuildable');
 
-    host.state.grid.layers.terrain[seamIdx] = TERRAIN.flat;
+    host.state.grid.layers.terrain[targetIdx] = TERRAIN.flat;
     const noDepEval = evaluateCrossSectorPlacement(host.state, {
       colonyId: 0,
       building: 'metalsExtractor',
-      q: 25,
-      r: -1,
+      q: 20,
+      r: 0,
     });
     expect(noDepEval.ok).toBe(false);
     expect(noDepEval.block).toBe('noDeposit');
@@ -339,40 +367,46 @@ describe('W11-41 cross-sector D-37 placement rejection parity', () => {
   });
 });
 
-describe('W11-41 cross-sector power relay grid and founding-seat invariant (MM-05 / MM-33)', () => {
-  it('connects solar, pylons, and consumers across sec_0_0, sec_1_0, and sec_0_1 into one online grid and preserves foundedSeats', () => {
+describe('W11-41 sector-isolated power relay grid and founding-seat invariant (MM-05 / MM-33)', () => {
+  it('isolates power relays within a single sector and prevents linking across sector boundaries', () => {
     const host = createCrossSectorTestHost('w11-41-power-and-seats');
-    flattenRegionForTest(host.state, 24, 0, 9);
+    flattenRegionForTest(host.state, 20, 0, 9);
     setPlanetTime(host.state, { timeOfDay: 12 }, 0);
 
-    // 1. Found Colony 0 in sec_0_0 at (20, 0) and claim territory across all 3 sectors
-    expect(applyCmd(host, mkCmd('dev.land', { q: 20, r: 0 }, 0, 'dev')).code).toBeUndefined();
-    claimTerritoryRadius(host.state, { colonyId: 0, q: 24, r: 0, radius: 7, tick: host.tick });
+    // 1. Found Colony 0 in sec_0_0 at (18, 0) and claim territory (clamped to sec_0_0)
+    expect(applyCmd(host, mkCmd('dev.land', { q: 18, r: 0 }, 0, 'dev')).code).toBeUndefined();
+    claimTerritoryRadius(host.state, { colonyId: 0, q: 21, r: 0, radius: 6, tick: host.tick });
 
-    // 2. Place Command Hub + Solar in sec_0_0, Pylons + Solar in sec_1_0, and Pylon + Extractor + Factory in sec_0_1
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 21, 0, 3, 3, 1500);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.solar, 19, 2, 2, 2, 400);
+    // 2. Place Command Hub + 2x Solar + Extractor + Factory in sec_0_0, and a Pylon across the seam in sec_1_0
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 18, 0, 3, 3, 1500);
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.solar, 16, 2, 2, 2, 400);
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.solar, 16, -2, 2, 2, 400);
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 22, 0, 1, 1, 100);
+    const ext = spawnActiveStructure(host.state, 0, ENTITY_KIND.metalsExtractor, 21, 1, 2, 2, 500);
+    const fac = spawnActiveStructure(host.state, 0, ENTITY_KIND.roboticsFactory, 19, 3, 3, 3, 800);
+    // Pylon in sec_1_0 at (25, -1) is within hexDistance 3 of Pylon at (22, 0), but in another sector!
     spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 25, -1, 1, 1, 100);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.solar, 27, -2, 2, 2, 400);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 24, 2, 1, 1, 100);
-    const ext = spawnActiveStructure(host.state, 0, ENTITY_KIND.metalsExtractor, 24, 3, 2, 2, 500);
-    const fac = spawnActiveStructure(host.state, 0, ENTITY_KIND.roboticsFactory, 22, 4, 3, 3, 800);
+    const crossExt = spawnActiveStructure(host.state, 0, ENTITY_KIND.metalsExtractor, 26, -1, 2, 2, 500);
 
-    // Walk HQ Commander into sec_1_0 at (29, -2) (clear of the 2x2 Solar at (27,-2))
-    const hqId = findUnitEntityId(host.state, 0, ENTITY_KIND.hq);
-    expect(applyCmd(host, mkCmd('moveUnit', { entityId: hqId, q: 29, r: -2 })).code).toBeUndefined();
-    host.step(40);
+    expect(
+      relaysLinked(
+        host.state,
+        { entityId: 1, kind: ENTITY_KIND.pylon, q: 22, r: 0, sectorId: 'sec_0_0' },
+        { entityId: 2, kind: ENTITY_KIND.pylon, q: 25, r: -1, sectorId: 'sec_1_0' },
+      ),
+    ).toBe(false);
 
-    // 3. Verify unified cross-sector power network across sec_0_0, sec_1_0, and sec_0_1
+    host.step(1);
+
+    // 3. Verify power network is strictly isolated to sec_0_0
     const powerReport = inspectCrossSectorPowerGrid(host.state, 0);
-    expect(powerReport.spansMultipleSectors).toBe(true);
-    expect(powerReport.connectedSectorIds).toEqual(['sec_0_0', 'sec_0_1', 'sec_1_0']);
-    expect(powerReport.crossSectorRelayLinks.length).toBeGreaterThanOrEqual(2);
+    expect(powerReport.spansMultipleSectors).toBe(false);
+    expect(powerReport.connectedSectorIds).toEqual(['sec_0_0']);
+    expect(powerReport.crossSectorRelayLinks).toEqual([]);
     expect(powerReport.powerSummary.brownout).toBe(false);
-    expect(powerReport.powerSummary.supply).toBeGreaterThanOrEqual(30);
-    expect(powerReport.powerSummary.demand).toBeGreaterThanOrEqual(3);
     expect(powerReport.powerSummary.entityPower?.[ext.id]?.state).toBe('online');
     expect(powerReport.powerSummary.entityPower?.[fac.id]?.state).toBe('online');
+    expect(powerReport.powerSummary.entityPower?.[crossExt.id]?.state).toBe('offline');
     expect(getColonyPower(host.state, 0)?.brownout).toBe(false);
 
     // 4. Verify Founding-Seat Invariant (MM-05 / MM-33)
@@ -381,52 +415,37 @@ describe('W11-41 cross-sector power relay grid and founding-seat invariant (MM-0
     expect(metrics.sec_0_0.livingColonies).toBe(1);
     expect(metrics.sec_0_0.presentColonies).toBe(1);
     expect(metrics.sec_0_0.freeSeats).toBe(metrics.sec_0_0.foundingCapacity - 1);
-
-    expect(metrics.sec_1_0.foundedSeats).toBe(0);
-    expect(metrics.sec_1_0.livingColonies).toBe(0);
-    expect(metrics.sec_1_0.presentColonies).toBe(1);
-    expect(metrics.sec_1_0.freeSeats).toBe(metrics.sec_1_0.foundingCapacity);
-
-    expect(metrics.sec_0_1.foundedSeats).toBe(0);
-    expect(metrics.sec_0_1.livingColonies).toBe(0);
-    expect(metrics.sec_0_1.presentColonies).toBe(1);
-    expect(metrics.sec_0_1.freeSeats).toBe(metrics.sec_0_1.foundingCapacity);
-
     expect(metrics.totalFoundedSeats).toBe(1);
     expect(metrics.totalLivingColonies).toBe(1);
-    expect(metrics.presentSectorsByColony[0]).toEqual(['sec_0_0', 'sec_0_1', 'sec_1_0']);
     expect(host.state.colonies[0]?.foundingSectorId).toBe('sec_0_0');
-    expect(host.state.colonies[0]?.presentSectorIds).toEqual(['sec_0_0', 'sec_0_1', 'sec_1_0']);
     expect(getAtlasBlob(host.state)?.foundingSectorByColony?.[0]).toBe('sec_0_0');
   });
 });
 
-describe('W11-41 cross-sector power severing, founding overrides, and colony elimination', () => {
-  it('severs cross-sector power to a 3rd sector when the bridging pylon is destroyed and supports Map/Record founding overrides + elimination', () => {
+describe('W11-41 intra-sector power severing, founding overrides, and colony elimination', () => {
+  it('severs power when a bridging pylon is destroyed and supports Map/Record founding overrides + elimination', () => {
     const host = createCrossSectorTestHost('w11-41-sever-and-elim');
-    flattenRegionForTest(host.state, 24, 0, 10);
+    flattenRegionForTest(host.state, 12, 0, 10);
     setPlanetTime(host.state, { timeOfDay: 12 }, 0);
 
-    // Hub at (17, 0) in sec_0_0 (radius 6) -> Pylon A at (22, 0) in sec_0_0 (dist 5 from Hub)
-    // -> Pylon B at (26, -1) in sec_1_0 (dist 4 from A, dist 9 from Hub)
-    // -> Pylon C at (24, 4) in sec_0_1 (dist 5 from B, dist 6 from A -> only reachable via B!)
-    expect(applyCmd(host, mkCmd('dev.land', { q: 17, r: 0 }, 0, 'dev')).code).toBeUndefined();
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 17, 0, 3, 3, 1500);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.solar, 15, 0, 2, 2, 400);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 22, 0, 1, 1, 100);
-    const pylonB = spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 26, -1, 1, 1, 100);
-    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 24, 4, 1, 1, 100);
-    const ext = spawnActiveStructure(host.state, 0, ENTITY_KIND.metalsExtractor, 24, 5, 2, 2, 500);
+    // Hub at (8, 0) in sec_0_0 -> Pylon A at (13, 0) -> Pylon B at (17, 0) -> Pylon C at (21, 0) -> Extractor at (21, 1)
+    expect(applyCmd(host, mkCmd('dev.land', { q: 8, r: 0 }, 0, 'dev')).code).toBeUndefined();
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.commandHub, 8, 0, 3, 3, 1500);
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.solar, 6, 0, 2, 2, 400);
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 13, 0, 1, 1, 100);
+    const pylonB = spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 17, 0, 1, 1, 100);
+    spawnActiveStructure(host.state, 0, ENTITY_KIND.pylon, 21, 0, 1, 1, 100);
+    const ext = spawnActiveStructure(host.state, 0, ENTITY_KIND.metalsExtractor, 21, 1, 2, 2, 500);
 
-    expect(hexDistance(22, 0, 24, 4)).toBe(6); // outside Pylon A's radius 5
-    expect(hexDistance(26, -1, 24, 4)).toBe(5); // inside Pylon B's radius 5 in sec_1_0!
+    expect(hexDistance(13, 0, 21, 0)).toBe(8); // outside Pylon A's radius 5
+    expect(hexDistance(17, 0, 21, 0)).toBe(4); // inside Pylon B's radius 5
     host.step(1);
 
     const before = inspectCrossSectorPowerGrid(host.state, 0);
-    expect(before.connectedSectorIds).toEqual(['sec_0_0', 'sec_0_1', 'sec_1_0']);
+    expect(before.connectedSectorIds).toEqual(['sec_0_0']);
     expect(before.powerSummary.entityPower?.[ext.id]?.state).toBe('online');
 
-    // Destroy bridging Pylon B at (26, -1) in sec_1_0
+    // Destroy bridging Pylon B at (17, 0)
     host.state.entities.cols.hp[pylonB.row] = 0;
     notifyPylonOrBuildingRemoved(host.state, pylonB.id, host.tick);
     const stepRes = host.step(1);
@@ -446,6 +465,5 @@ describe('W11-41 cross-sector power severing, founding overrides, and colony eli
     expect(elimMetrics.sec_0_0.foundedSeats).toBe(1);
     expect(elimMetrics.sec_0_0.livingColonies).toBe(0);
     expect(elimMetrics.sec_0_0.presentColonies).toBe(0);
-    expect(elimMetrics.sec_0_1.presentColonies).toBe(0);
   });
 });
