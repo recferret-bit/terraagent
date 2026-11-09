@@ -49,8 +49,24 @@ export class MockIdentityAdapter implements IdentityPort {
     return insertNamedAccount(this.prisma, { opId: input.opId, name: input.name });
   }
 
-  claimAccount(_input: ClaimAccountInput): Promise<ChainReceipt> {
-    return this.unavailable();
+  async claimAccount(input: ClaimAccountInput): Promise<ChainReceipt> {
+    const isClaimOp = input.opId.startsWith('account-claim:');
+    const existing = this.prisma?.nearColonyAccount
+      ? await this.prisma.nearColonyAccount.findUnique({ where: { accountId: input.accountId } })
+      : null;
+    if (!isClaimOp && !existing) {
+      return this.unavailable();
+    }
+    if (this.prisma?.nearColonyAccount) {
+      await this.prisma.nearColonyAccount.updateMany({
+        where: { accountId: input.accountId },
+        data: {
+          claimedAt: existing?.claimedAt ?? new Date(),
+          claimedByAccountId: input.walletAccountId,
+        },
+      });
+    }
+    return this.receiptFor(input.opId);
   }
 
   private fromBook(book: NamedAccountBook, input: CreateNamedAccountInput): CreateNamedAccountResult {
