@@ -177,6 +177,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       },
     });
     installAwayPolicyMetric(reg);
+    installPlanetModeGauge(reg, () => pool.stats());
     new Counter({
       name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {
