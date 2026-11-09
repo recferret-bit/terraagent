@@ -5,3 +5,4 @@ export * from './in-memory-chain';
 export * from './in-memory-chain-read';
 export * from './in-memory-deed-nft';
 export * from './in-memory-intents';
+export * from './in-memory-staking';
