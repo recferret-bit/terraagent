@@ -18,6 +18,7 @@ import { seatDevScenarioPlayer } from '../near/identity/dev-scenario-seat';
 import { FlagsService } from '../flags/flags.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
+import { createPresenceTracker } from '../game/presence';
 import { CommandPrechecks } from '../core/command-prechecks';
 import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
 import { DbHomeProvider, HOME_PROVIDER, type HomeProvider } from './home-provider';
@@ -86,6 +87,11 @@ export const env = defineEnv('ws', {
           env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
+          presence: createPresenceTracker({
+            commands: planets,
+            prisma: prisma && databaseEnabled(e) ? prisma : undefined,
+            log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
+          }),
           seatDevScenario: prisma && databaseEnabled(e)
             ? async (input) => {
                 const colonyIndex = await seatDevScenarioPlayer(prisma, input);

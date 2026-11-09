@@ -757,7 +757,17 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/notify/mock-notifier.ts`, `backend/app/src/notify/presence.ts`, `backend/app/src/ws/connection.ts` (`holdColony`), `GET /v1/dev/notify`
 - **What happens:** `NOTIFY_ADAPTER=mock` (the default) inserts one `core.mock_notify` row per `(colonyId, eventId, channel)`. A second send returns that row's id with `status: sent` and does not change title or body. While the colony has a playing `/ws` socket, `send` returns `{ id: 'skipped', status: 'skipped' }` and writes nothing. `skipped` is not a row id. The socket set is an in-memory refcount, cleared on process restart and not the 60s away timer. A dev socket that joined without owning the colony (`colonyId` null) does not suppress rows. `NOTIFY_ADAPTER=webpush`, `telegram` or `live` still selects `live`, and boot fails because no live adapter is registered. Rows are listed at `GET /v1/dev/notify`, not on the chain outbox page.
-- **Why it is like this:** W09-20 is the Postgres mock and the connected gate. Web Push and Telegram are W09-22/24. The away timer is W09-02. The chain outbox viewer is chain receipts, so a notify section there would mix two products.
+- **Why it is like this:** W09-20 is the Postgres mock and the connected gate. Web Push and Telegram are W09-22/24. The 60s away timer is a separate tracker (W09-02, BE-55). The chain outbox viewer is chain receipts, so a notify section there would mix two products.
 - **Workaround / mitigation:** Leave `NOTIFY_ADAPTER` unset or set it to `mock`. Read `GET /v1/dev/notify?colonyId=`. A repeat of the same event id is one row.
-- **To resolve:** W09-02 should replace the presence writer. W09-22/24 should register the `live` adapter. Until then, do not set `NOTIFY_ADAPTER` to `webpush`, `telegram` or `live`.
+- **To resolve:** W09-22/24 should register the `live` adapter. Until then, do not set `NOTIFY_ADAPTER` to `webpush`, `telegram` or `live`.
 - **Found:** 2026-11-09, W09-20
+
+### BE-55 · Presence away memory does not survive a process restart
+
+- **Status:** Accepted (W09-02 scope; restart recovery is a later issue)
+- **Area / code:** `backend/app/src/game/presence/tracker.ts`, `shared/sim/src/systems/presence/`
+- **What happens:** sockets and the 60s away timer live in process memory. A blip under 60s posts nothing. At 60s (inclusive) the tracker posts `system.presence { away: true }` and stamps `last_seen_at`. A later join posts `away: false`. After a restart those timers and the "already away" bit are gone. The sim blob in a snapshot still says away, so the colony stays away (CT-14), but the new process does not post `away: false` on reconnect because it does not remember the away. A colony that was connected when the process died is not put on a fresh 60s timer either. `colonyBack.awayForS` is omitted: the sim has no wall clock. `submit` results other than a thrown error (`wave_disabled`, `planet_not_loaded`, `thread_down`) do not fail the socket; `last_seen_at` is still written when the row exists. `wave_disabled` is ignored on purpose when flag `W09` is off. A `leave` that keeps the socket open does not start the timer; only the last socket's close does (CT-10).
+- **Why it is like this:** D-24 keeps presence in the one app, with no NATS and no leases. W09-02 posts the command and stamps `last_seen_at`. Snapshot resume is a later issue under `backend/app/src/game/{snapshot,restart}/`.
+- **Workaround / mitigation:** `last_seen_at` is durable. The away flag already stored in the sim snapshot is left as it was. Flag-off still records presence on the platform rows.
+- **To resolve:** on boot, or on the first join, read the `presence` blob and post `away: false` only when it says away. Arm away timers for restored colonies that have no socket.
+- **Found:** 2026-11-09, W09-02

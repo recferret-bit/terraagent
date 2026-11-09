@@ -53,6 +53,8 @@ export class Connection implements RoomMember {
   playerId: string | undefined;
   planetId: string | undefined;
   colonyId: string | null = null;
+  /** Colony index from home, when the row has one. The presence command carries it (W09-28 owns takeover). */
+  colonyIndex: number | undefined;
   welcomeTick: number | undefined;
   paused = false;
   /** W13 per-socket market pair filter; reset to "all pairs" whenever the socket leaves its planet. */
@@ -185,6 +187,7 @@ export class Connection implements RoomMember {
     this.planetId = undefined;
     this.market.reset();
     this.colonyId = null;
+    this.colonyIndex = undefined;
     this.welcomeTick = undefined;
   }
 
@@ -298,6 +301,7 @@ export class Connection implements RoomMember {
     const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;
     if (!own && !this.session?.dev) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
     this.colonyId = own ? home.colony.id : null;
+    this.colonyIndex = own ? home.colony.colonyIndex : undefined;
     this.d.rooms.join(planetId, this);
     let snap;
     try {
