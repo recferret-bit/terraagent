@@ -9,6 +9,12 @@ export { minAskUnitPrice, walkAwayUnitPrice, validRatio, type Valued } from './v
 export { askTotal, bidTotal, midPrice, referenceReasons, scarcityRatio, type MidPrice } from './quote';
 export { ceilTimes, floorTimes, principalForSpend, fitBid, type BidFit, type BidLimits } from './limits';
 export { quoteAsk, quoteBid, quoteColony } from './decide';
+export {
+  AGENT_GOALS, AGENT_RISK_POSTURES, AGENT_SPECIALISATIONS, SCRIPTED_STRATEGIES, applyStrategyToColonyInput,
+  findForbiddenPriceField, quoteColonyWithStrategy, resolveStrategyArg, validateAgentStrategy, type AgentGoal,
+  type AgentResourceTarget, type AgentRiskPosture, type AgentSpecialisation, type AgentStrategyInput,
+  type StrategyValidationErrorCode, type StrategyValidationResult,
+} from './strategy';
 export type {
   AgentColonyInput, AgentQuotes, AgentReason, ReferenceBasis, ReferenceInput, SideQuote, WalkAwayInputs,
 } from './types';
