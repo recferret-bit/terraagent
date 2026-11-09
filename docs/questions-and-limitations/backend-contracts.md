@@ -771,3 +771,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `last_seen_at` is durable. The away flag already stored in the sim snapshot is left as it was. Flag-off still records presence on the platform rows.
 - **To resolve:** on boot, or on the first join, read the `presence` blob and post `away: false` only when it says away. Arm away timers for restored colonies that have no socket.
 - **Found:** 2026-11-09, W09-02
+
+### BE-56 · Seal snapshot is admission pause; end snapshot follows a committed archive
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/lobby/lifecycle.service.ts` (`pausePlanetAdmission`, `transitionWorldLifecycle`), `backend/app/src/game/persistence/snapshot.service.ts` (`capture`), `backend/app/src/game/persistence/snapshot-scheduler.ts` (`spreadOffset`)
+- **What happens:** Canonical worlds never enter `SEALED` (MATCHMAKING §0). The operator action that stops new founders is admission pause, and that writes a `SEAL` snapshot when the planet is loaded. `END` is written only after the archive row commits, so a failed archive cannot make `livePlanetIds` skip the planet. A planet that is not on a sim thread has no bytes to save, so the save point is skipped. If the thread does not answer within 30 s, the unanswered kind is dropped and a later periodic snapshot is not retagged. More than 120 loaded planets can still share a snapshot second (60 seconds × 2); the host budget is 60 planets.
+- **Why it is like this:** W09-05 needs `SEAL` and `END` rows on the existing snapshot store. There is no second lifecycle and no `system.seal` / `system.end` command in this tree.
+- **Workaround / mitigation:** Retention still keeps the latest `SEAL` and every `END`. Periodic writes are staggered and bumped off a second that already has two planets.
+- **To resolve:** If seal should be something other than admission pause (for example the moment free seats hit zero), point `setSnapshotSavePoint` at that path. Raise the per-second cap only if a host runs more than 120 planets.
+- **Found:** 2026-11-09, W09-05
