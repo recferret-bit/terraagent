@@ -94,6 +94,38 @@ export * from './systems/supply';
 export * from './systems/queue';
 export * from './systems/dispatch';
 export * from './systems/goals';
+export {
+  applyDirectiveBatch,
+  applyDirectorPolicy,
+  applyPriorityOverlay,
+  awayGuardPoints,
+  buildColonyBrief,
+  colonyDirector,
+  goalSuppressed,
+  guardBriefText,
+  noteDirectorPlan,
+  priorityKey,
+  readDirectorView,
+  previewBatch,
+  scopeDirective,
+  screenDirective,
+  screenProposal,
+  projectW11Context,
+  restoreW11Context,
+  selectDirectorSkills,
+  spatialAllowed,
+  summarizeRelevant,
+  syntheticWorld,
+  strategyPermitted,
+  evaluateTradeSkillProposal,
+  suppressGoal,
+  type BotTradeAllowance,
+  type BotTradeOrder,
+  type ColonyDirectorRecord,
+  type StrategyPermissions,
+  type TradeProposalRejectReason,
+  type TradeSkillProposalResult,
+} from './systems/director';
 export * from './systems/progression';
 export * from './systems/progression/validate';
 export * from './systems/rule-engine';

@@ -12,6 +12,128 @@ datasource db {
   schemas  = ["core", "world", "ai", "chain", "economy"]
 }
 
+// --- ai.prisma ---
+/// Player director policy (AI §4, §10). Durable preferences, separate from expiring context.
+model DirectorPolicyRecord {
+  colonyId  String   @id @map("colony_id") @db.VarChar(64)
+  planetId   String   @map("planet_id") @db.VarChar(64)
+  revision   Int
+  document   Json
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([planetId])
+  @@map("director_policy")
+  @@schema("ai")
+}
+
+/// Short-lived brief snapshot. Expiry deletes context and leaves `director_policy` in place.
+model DirectorContextSnapshot {
+  id        String   @id @db.VarChar(80)
+  colonyId  String   @map("colony_id") @db.VarChar(64)
+  epoch     Int
+  revision  Int
+  bytes     Int
+  document  Json
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([colonyId, expiresAt])
+  @@map("director_context")
+  @@schema("ai")
+}
+
+/// One host-bound proposal. `requestId` dedupes at-least-once delivery (AI-09).
+model DirectorProposal {
+  requestId          String   @id @map("request_id") @db.VarChar(80)
+  jobId              String   @map("job_id") @db.VarChar(80)
+  colonyId           String   @map("colony_id") @db.VarChar(64)
+  fence              Int
+  epoch              Int
+  intentRevision     Int      @map("intent_revision")
+  permissionRevision Int      @map("permission_revision")
+  status             String   @db.VarChar(32)
+  document           Json
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([jobId, fence])
+  @@index([colonyId, status])
+  @@map("director_proposal")
+  @@schema("ai")
+}
+
+/// Per-action authoritative result. `proposed` is stored only until the sim acknowledges (AI-10).
+model DirectorActionResult {
+  id        String   @id @db.VarChar(80)
+  requestId String   @map("request_id") @db.VarChar(80)
+  actionId  String   @map("action_id") @db.VarChar(64)
+  colonyId  String   @map("colony_id") @db.VarChar(64)
+  state     String   @db.VarChar(32)
+  reason    String?  @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([requestId, actionId])
+  @@index([colonyId, createdAt])
+  @@map("director_action_result")
+  @@schema("ai")
+}
+
+/// One provider attempt, including reservation and reconciled usage (AI-04).
+model DirectorAttempt {
+  id              String   @id @db.VarChar(80)
+  jobId           String   @map("job_id") @db.VarChar(80)
+  colonyId        String   @map("colony_id") @db.VarChar(64)
+  model           String   @db.VarChar(64)
+  outcome         String   @db.VarChar(32)
+  inputTokens     Int      @default(0) @map("input_tokens")
+  outputTokens    Int      @default(0) @map("output_tokens")
+  reservedTokens  Int      @default(0) @map("reserved_tokens")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([colonyId, createdAt])
+  @@map("director_attempt")
+  @@schema("ai")
+}
+
+/// Decision audit kept after context expiry (30 days). No raw prompts.
+model DirectorDecision {
+  id        String   @id @db.VarChar(80)
+  colonyId  String   @map("colony_id") @db.VarChar(64)
+  requestId String?  @map("request_id") @db.VarChar(80)
+  outcome   String   @db.VarChar(32)
+  summary   String   @db.VarChar(400)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@index([colonyId, createdAt])
+  @@map("director_decision")
+  @@schema("ai")
+}
+
+/// Global, planet or colony kill switch. `scope` is `global`, `planet:<id>` or `colony:<id>`.
+model DirectorKillSwitch {
+  scope     String   @id @db.VarChar(96)
+  enabled   Boolean
+  reason    String   @db.VarChar(200)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("director_kill_switch")
+  @@schema("ai")
+}
+
+/// UTC-day token reservation. `id` is `global:YYYY-MM-DD` or `colony:<id>:YYYY-MM-DD`.
+model DirectorBudgetDay {
+  id             String @id @db.VarChar(96)
+  day            String @db.VarChar(10)
+  reservedTokens Int    @default(0) @map("reserved_tokens")
+  spentTokens    Int    @default(0) @map("spent_tokens")
+  requests       Int    @default(0)
+
+  @@index([day])
+  @@map("director_budget_day")
+  @@schema("ai")
+}
+
 // --- analytics.prisma ---
 /// Consented product-analytics events (CLIENT §10). No IP is stored. 90-day retention (job lands with W25).
 model AnalyticsEvent {

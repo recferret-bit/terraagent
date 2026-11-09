@@ -36,7 +36,14 @@ describe('selection truth table', () => {
   it('is per port', () => {
     expect(nearAdapterFor('BadgeNft', { NEAR_ADAPTER_CHAIN_READ: 'mainnet' })).toBe('mock');
   });
-  it.each([['zai', {}, 'mock'], ['zai', { AI_LIVE: '1' }, 'zai'], ['zai', { NODE_ENV: 'production' }, 'zai'], ['Zai', { AI_LIVE: '1' }, 'mock'], [undefined, { AI_LIVE: '1' }, 'mock'], ['mock', { NODE_ENV: 'production' }, 'mock']])('AI_PROVIDER %s %j -> %s', (v, extra, want) => {
+  it.each([
+    ['zai', {}, 'zai-needs-live'],
+    ['zai', { AI_LIVE: '1' }, 'zai'],
+    ['zai', { NODE_ENV: 'production' }, 'zai'],
+    ['Zai', { AI_LIVE: '1' }, 'unknown'],
+    [undefined, { AI_LIVE: '1' }, 'mock'],
+    ['mock', { NODE_ENV: 'production' }, 'mock'],
+  ])('AI_PROVIDER %s %j -> %s', (v, extra, want) => {
     expect(aiProvider({ AI_PROVIDER: v, ...extra })).toBe(want);
   });
   it.each([['live', 'live'], ['webpush', 'live'], ['telegram', 'live'], ['Live', 'mock'], [undefined, 'mock'], ['email', 'mock']])('NOTIFY_ADAPTER %s -> %s', (v, want) => {
@@ -63,6 +70,7 @@ describe('production guard', () => {
   });
   it('does not block mocks outside production', async () => {
     const { app } = await createApp({ source: base });
+    expect(app.getHttpServer()).toBeDefined();
     await app.close();
   });
   it('testnet without a registered adapter fails boot naming the port', async () => {

@@ -3761,6 +3761,99 @@
       "summary": "Turns the colony AI (autonomous goal breakdown and rule-engine autopilot) on or off. Default off: bots only run explicit player commands.",
       "wave": "W08"
     },
+    "setDirectorPolicy": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "note": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "pause": {
+            "type": "boolean"
+          },
+          "preset": {
+            "enum": [
+              "defence",
+              "resources",
+              "terraforming",
+              "expansion",
+              "aggressive",
+              "balanced"
+            ],
+            "type": "string"
+          },
+          "priorities": {
+            "additionalProperties": false,
+            "properties": {
+              "defense": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "economy": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "expansion": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "power": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "terraform": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "risk": {
+            "enum": [
+              "conservative",
+              "risky"
+            ],
+            "type": "string"
+          },
+          "skillAllow": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "skillDeny": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Patches the colony director policy (risk, preset, independent priorities, skill lists, pause).",
+      "wave": "W16"
+    },
     "setHarvestWeights": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4873,6 +4966,119 @@
       "severity": "info",
       "summary": "Dev time warp changed: the planet now steps `k` engine steps per tick slot (effective value after the thread budget cap).",
       "wave": "W00"
+    },
+    "directorAction": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "actionId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "requestId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:/-]+$",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "proposed",
+              "applied",
+              "rejected",
+              "superseded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "requestId",
+          "actionId",
+          "state"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "One director action moved to proposed, applied, rejected or superseded (AI-10).",
+      "wave": "W16"
+    },
+    "directorStatus": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "intentRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nextCallAtMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "preset": {
+            "enum": [
+              "defence",
+              "resources",
+              "terraforming",
+              "expansion",
+              "aggressive",
+              "balanced"
+            ],
+            "type": "string"
+          },
+          "requestsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "risk": {
+            "enum": [
+              "conservative",
+              "risky"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "risk",
+          "preset",
+          "paused",
+          "intentRevision",
+          "requestsRemaining"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Effective director risk, pause and remaining daily requests for one colony.",
+      "wave": "W16"
     },
     "energyCollapse": {
       "audience": "player",

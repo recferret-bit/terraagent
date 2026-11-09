@@ -5,7 +5,7 @@
 > **Depends on waves:** W08 (landed HQ goals, independent priorities and rule engine).
 > **Optional integrations:** W09 away policy/digest; W11 persistent sectors; W15 Guild (an agent on the W13 bot API); W27 streamed summaries. Test explicit capability absence when off. Later-wave skill bodies activate only when their executors land.
 > **Spec:** [AI_ORCHESTRATOR](../../spec/AI_ORCHESTRATOR.md) is the revised normative contract; historical TA-09 issues are traceability only.
-> **Owned paths:** `backend/director/`, existing `backend/app/src/ai/`, `shared/contracts/src/ai/`, `shared/db/prisma/ai.prisma`, shared sim policy/context/directive modules, existing game Director/HQ UI; workspace/stack wiring and structure checks. Match actual landed paths before implementation.
+> **Owned paths:** `backend/director/`, existing `backend/app/src/ai/`, `shared/contracts/src/ai/`, `shared/contracts/src/commands/set-director-policy.ts`, `shared/contracts/src/events/{director-action,director-status}.ts`, `shared/db/prisma/ai.prisma`, `shared/sim/src/{data/director.ts,systems/director/}`, `frontend/game/features/director/`; workspace/stack wiring and structure checks. Match actual landed paths before implementation.
 
 ## Goal
 

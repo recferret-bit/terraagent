@@ -95,6 +95,7 @@
     "shared/sim",
     "tests/scenarios",
     "backend/app",
+    "backend/director",
     "frontend/render",
     "frontend/design",
     "frontend/game",

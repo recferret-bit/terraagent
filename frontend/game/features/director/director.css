@@ -1,0 +1,52 @@
+.ta-director {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  max-width: 280px;
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  font: 500 11px/1.35 var(--ta-font-mono);
+}
+
+.ta-director__title {
+  color: var(--ta-orange);
+  font: 600 11px/1 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-director__summary {
+  color: var(--ta-text-2);
+  font: 500 10px/1.3 var(--ta-font-mono);
+}
+
+.ta-director-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s1);
+  align-items: center;
+}
+
+.ta-director-controls select,
+.ta-director-controls textarea {
+  background: var(--ta-void);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-2);
+  font: 500 10px/1.2 var(--ta-font-mono);
+  padding: 2px 4px;
+}
+
+.ta-director-controls textarea {
+  width: 100%;
+  min-height: 22px;
+  resize: none;
+}
+
+.ta-director__list { display: flex; flex-direction: column; gap: var(--ta-s1); }
+.ta-director__row { display: flex; flex-wrap: wrap; gap: var(--ta-s1); }
+.ta-director__state { color: var(--ta-blue-hi); }
+.ta-director__row[data-state='rejected'] .ta-director__state { color: var(--ta-orange-hi); }
+.ta-director__row[data-state='superseded'] .ta-director__state { color: var(--ta-steel); }
+.ta-director__reason,
+.ta-director__rationale { color: var(--ta-text-2); }

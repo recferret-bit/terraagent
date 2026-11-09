@@ -6,6 +6,8 @@ export interface LlmRequest {
   readonly temperature?: number;
   /** Ask for a JSON-only reply (the caller still validates it with zod). */
   readonly json?: boolean;
+  /** Cancels the provider call. A missing signal does not disable abort support. */
+  readonly signal?: AbortSignal;
 }
 export interface LlmResponse {
   readonly text: string;
