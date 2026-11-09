@@ -8,6 +8,7 @@ import {
 } from '../../dev/dev-command.registry.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
+import { ChainOutboxRepository } from '../application/outbox/chain-outbox.repository.js';
 import { OutboxRelayService } from '../application/outbox/outbox.module.js';
 import { mockChainControls } from '../infrastructure/mock/mock-controls.js';
 import { AccountClaimService } from '../staking/account-claim.service.js';
@@ -17,6 +18,7 @@ import { DeedMintOutboxService } from './deed-mint-outbox.service.js';
 import { DeedProjectorService, type DeedMilestonePatch } from './deed-projector.service.js';
 import { DeedSettledService } from './deed-settled.service.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
+import { buildDeedBumpPatch } from './parts/deed-dev-helpers.js';
 
 const showArgs = z
   .object({
@@ -84,6 +86,7 @@ export class DeedDevCommand implements OnModuleInit {
     @Inject(AccountClaimService) private readonly claimService: AccountClaimService,
     @Inject(StakingService) private readonly stakingService: StakingService,
     @Optional() @Inject(OutboxRelayService) private readonly outboxRelay?: OutboxRelayService,
+    @Optional() @Inject(ChainOutboxRepository) private readonly outbox?: ChainOutboxRepository,
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
   ) {}
 
@@ -115,7 +118,7 @@ export class DeedDevCommand implements OnModuleInit {
           colonyId: view.colonyId,
           planetId: view.planetId,
           tokenId: view.tokenId,
-          accountId: view.accountId,
+          accountId: view.ownerAccountId,
           version: view.version,
           status: view.status,
           settled: view.settled,
@@ -252,7 +255,14 @@ export class DeedDevCommand implements OnModuleInit {
         this.assertW20();
         const deltaMs = Math.round(seconds * 1000);
         const flushed = await this.debounce.advanceClockMs(deltaMs);
-        if (flushed.length > 0) {
+        const allDeeds = await this.deeds.listAll();
+        const pendingOpIds = allDeeds
+          .map((d) => d.pendingOpId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0);
+        if (pendingOpIds.length > 0) {
+          await this.outbox?.requeueFailed(pendingOpIds);
+        }
+        if (flushed.length > 0 || pendingOpIds.length > 0) {
           await this.outboxRelay?.pollOnce();
         }
         this.stakingService.advanceClockMs(deltaMs);
@@ -271,35 +281,7 @@ export class DeedDevCommand implements OnModuleInit {
     field: 'terraform' | 'stage' | 'walls' | 'tradeVolume' | 'truces' | 'rank',
     value: number,
   ): DeedMilestonePatch {
-    const baseMeta = record.metadata;
-    if (field === 'terraform') {
-      const curBp = prior?.terraformBp ?? baseMeta.terraformBp ?? 0;
-      const deltaBp = Math.abs(value) <= 100 ? Math.round(value * 100) : Math.round(value);
-      const nextBp = Math.max(0, Math.min(10_000, curBp + deltaBp));
-      const pct = Math.round(nextBp / 100);
-      return {
-        colonyId: record.colonyId,
-        planetId: record.planetId,
-        terraformBp: nextBp,
-        change: `Terraform ${pct} %`,
-      };
-    }
-    if (field === 'stage') {
-      const nextStage = Math.max(0, Math.min(10, Math.round(value)));
-      return {
-        colonyId: record.colonyId,
-        planetId: record.planetId,
-        stage: nextStage,
-        change: `Stage ${nextStage}`,
-      };
-    }
-    const nextVal = Math.max(0, Math.round(value));
-    return {
-      colonyId: record.colonyId,
-      planetId: record.planetId,
-      [field]: nextVal,
-      change: `${field} ${nextVal}`,
-    };
+    return buildDeedBumpPatch(record, prior, field, value);
   }
 
   private async ensureDeedRecord(

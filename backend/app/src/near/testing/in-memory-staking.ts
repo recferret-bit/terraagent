@@ -15,7 +15,7 @@ import {
   computeAccruedRewardDelta,
   GAME_DAY_MS,
   UNBONDING_DURATION_MS,
-} from '../infrastructure/adapters/mock/staking.adapter.js';
+} from '../staking/yocto.js';
 import { parseStakingPoolsConfig } from '../staking/staking-pools.config.js';
 import { InMemoryChain } from './in-memory-chain.js';
 
@@ -107,10 +107,7 @@ export class InMemoryStaking extends StakingPort {
 
   async stake(raw: StakeInput): Promise<ChainReceipt> {
     const input = StakeInput.parse(raw);
-    const pool = await this.assertPool(input.pool);
-    const amount = BigInt(input.amount);
-    if (amount <= 0n) throw new NearException('STAKE_INSUFFICIENT_BALANCE');
-    return this.chain.write(input.opId, () => {
+    return this.mutatePoolAmount(input.opId, input.accountId, input.pool, input.amount, (next, amount) => {
       const payer = input.walletAccountId ?? input.accountId;
       const bal = this.balances.get(payer) ?? 0n;
       if (bal < amount) {
@@ -119,19 +116,13 @@ export class InMemoryStaking extends StakingPort {
         });
       }
       this.balances.set(payer, bal - amount);
-      const next = this.settle(input.accountId, pool);
       next.staked += amount;
-      this.positions.set(`${input.accountId}::${pool.poolId}`, next);
-    }).receipt;
+    });
   }
 
   async unstake(raw: UnstakeInput): Promise<ChainReceipt> {
     const input = UnstakeInput.parse(raw);
-    const pool = await this.assertPool(input.pool);
-    const amount = BigInt(input.amount);
-    if (amount <= 0n) throw new NearException('STAKE_INSUFFICIENT_BALANCE');
-    return this.chain.write(input.opId, () => {
-      const next = this.settle(input.accountId, pool);
+    return this.mutatePoolAmount(input.opId, input.accountId, input.pool, input.amount, (next, amount) => {
       if (next.staked < amount) {
         throw new NearException('STAKE_INSUFFICIENT_BALANCE', {
           details: { accountId: input.accountId, staked: next.staked.toString(), requested: input.amount },
@@ -140,7 +131,23 @@ export class InMemoryStaking extends StakingPort {
       next.staked -= amount;
       next.unbonding += amount;
       next.unbondingReadyAtMs = this.clockMs + UNBONDING_DURATION_MS;
-      this.positions.set(`${input.accountId}::${pool.poolId}`, next);
+    });
+  }
+
+  private async mutatePoolAmount(
+    opId: string,
+    accountId: string,
+    poolId: string,
+    rawAmount: string,
+    mutate: (next: ReturnType<InMemoryStaking['settle']>, amount: bigint) => void,
+  ): Promise<ChainReceipt> {
+    const pool = await this.assertPool(poolId);
+    const amount = BigInt(rawAmount);
+    if (amount <= 0n) throw new NearException('STAKE_INSUFFICIENT_BALANCE');
+    return this.chain.write(opId, () => {
+      const next = this.settle(accountId, pool);
+      mutate(next, amount);
+      this.positions.set(`${accountId}::${pool.poolId}`, next);
     }).receipt;
   }
 

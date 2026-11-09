@@ -82,7 +82,27 @@ function countTerritory(state: PlanetState, colonyIndex: number): number {
 /** Extracts a normalized colony simulation state projection for deep-equality checks. */
 function extractColonyState(host: SimHost, colonyIndex = 0): ColonySnapshotState {
   const view = host.view();
-  const colony = view.colonies[colonyIndex];
+  const colony = view.colonies[colonyIndex] as
+    | {
+        stock?: Record<string, number>;
+        production?: {
+          incomePerS?: Record<string, number>;
+          familyIncomePerS?: Record<string, number>;
+          produced?: Record<string, number>;
+        };
+        power?: {
+          supply?: number;
+          demand?: number;
+          net?: number;
+          generationPerS?: number;
+          solarGrossPerS?: number;
+        };
+        stage?: number;
+        unlockStage?: number;
+        threatStage?: number;
+        tierGates?: { colonyTerraformPct?: number };
+      }
+    | undefined;
   const colonyEntities = view.entities.filter((e) => e.owner === colonyIndex);
   const units = colonyEntities.filter((e) => UNIT_KINDS.has(e.kind));
   const buildings = colonyEntities.filter((e) => !UNIT_KINDS.has(e.kind));

@@ -8,21 +8,22 @@ import type {
 import type { Disposable, FeatureContext } from '../../core/registry/types';
 import { createDeedTracker } from './deedTracker';
 import {
-  openMockWalletSignerModal,
-  type OpenSignerModalHandle,
-  type SignerModalRequest,
-} from './signerModal';
-import {
   buildStakingActionsRow,
   buildStakingClaimRow,
   buildStakingFormRow,
   buildStakingHeader,
   buildStakingPositionGrid,
   DEFAULT_STAKING_POOLS,
-  formatPoolOptionText,
   formatUnbondingSummary,
   REAL_NEAR_COPY,
-} from './stakingPanelParts';
+  renderStakingPoolOptions,
+  upsertStakingPositionList,
+} from './parts/stakingPanelParts';
+import {
+  openMockWalletSignerModal,
+  type OpenSignerModalHandle,
+  type SignerModalRequest,
+} from './signerModal';
 
 export interface StakingPanelOptions {
   readonly fetchFn?: typeof fetch;
@@ -223,7 +224,6 @@ export class StakingPanel implements Disposable {
         return true;
       }
     } catch {
-      // Fallback for offline unit test without server
       this.accountClaimed = true;
       this.claimedByAccountId = walletAccountId;
       this.statusMsgEl.textContent = `Account claimed (${this.claimedByAccountId})`;
@@ -291,7 +291,7 @@ export class StakingPanel implements Disposable {
       }
       this.lastTxHash = body.txHash;
       this.walletBalanceNear = body.walletBalanceNear;
-      this.upsertPosition(body.position);
+      this.positions = upsertStakingPositionList(this.positions, body.position);
       this.statusMsgEl.textContent = `${body.position.staked} NEAR staked (${body.txHash})`;
       tracker.stakeCompleted({
         colonyId,
@@ -334,7 +334,7 @@ export class StakingPanel implements Disposable {
       const body = (await res.json()) as StakingActionResponse;
       this.lastTxHash = body.txHash;
       this.walletBalanceNear = body.walletBalanceNear;
-      this.upsertPosition(body.position);
+      this.positions = upsertStakingPositionList(this.positions, body.position);
       this.statusMsgEl.textContent = 'Unbonding (4 epochs)';
       this.renderState();
       return true;
@@ -363,7 +363,7 @@ export class StakingPanel implements Disposable {
       const body = (await res.json()) as StakingActionResponse;
       this.lastTxHash = body.txHash;
       this.walletBalanceNear = body.walletBalanceNear;
-      this.upsertPosition(body.position);
+      this.positions = upsertStakingPositionList(this.positions, body.position);
       this.statusMsgEl.textContent = `Withdrawn to wallet (${body.txHash})`;
       createDeedTracker(this.ctx.services.track).withdrawCompleted({
         colonyId,
@@ -385,19 +385,7 @@ export class StakingPanel implements Disposable {
 
   private renderPools(pools: readonly StakingPoolInfo[]): void {
     this.pools = pools;
-    const prevVal = this.poolSelectEl.value;
-    while (this.poolSelectEl.firstChild) {
-      this.poolSelectEl.removeChild(this.poolSelectEl.firstChild);
-    }
-    for (const pool of pools) {
-      const opt = document.createElement('option');
-      opt.value = pool.poolId;
-      opt.textContent = formatPoolOptionText(pool);
-      this.poolSelectEl.appendChild(opt);
-    }
-    if (prevVal && pools.some((p) => p.poolId === prevVal)) {
-      this.poolSelectEl.value = prevVal;
-    }
+    renderStakingPoolOptions(this.poolSelectEl, pools);
   }
 
   private renderState(): void {
@@ -438,16 +426,5 @@ export class StakingPanel implements Disposable {
       this.positions[0] ??
       null
     );
-  }
-
-  private upsertPosition(next: StakingPositionDto): void {
-    const idx = this.positions.findIndex((p) => p.pool === next.pool);
-    if (idx >= 0) {
-      const copy = [...this.positions];
-      copy[idx] = next;
-      this.positions = copy;
-    } else {
-      this.positions = [next, ...this.positions];
-    }
   }
 }

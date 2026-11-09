@@ -1,4 +1,7 @@
-import type { TrackLike } from '../market/analytics/marketTracker';
+export type TrackLike = (
+  name: string,
+  props?: Record<string, string | number | boolean | null>,
+) => void;
 
 /** Event names of the Colony Deed & Staking feature (W20-26, CLIENT §10.2). */
 export const DEED_EVENTS = [

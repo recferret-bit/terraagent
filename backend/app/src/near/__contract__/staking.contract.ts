@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
 import type { StakingPort } from '../application/ports/staking.port';
-import { nearToYocto } from '../infrastructure/adapters/mock/staking.adapter';
+import { nearToYocto } from '../staking/yocto';
 import {
   defineNearContract,
   describeNearPortContract,

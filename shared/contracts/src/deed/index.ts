@@ -213,8 +213,20 @@ export type ClaimAccountRequest = z.infer<typeof ClaimAccountRequestSchema>;
 export const ClaimAccountResponseSchema = z.strictObject({
   colonyId: z.string().min(1),
   accountId: z.string().min(2).max(64),
-  claimedAt: z.number().int().nonnegative(),
+  claimedAt: z.union([z.number().int().nonnegative(), z.string().min(1)]),
   claimedByAccountId: z.string().min(2).max(64),
   txHash: z.string().min(1),
 });
 export type ClaimAccountResponse = z.infer<typeof ClaimAccountResponseSchema>;
+
+/** Computes SVG polygon points for a flat-top/point-top hex at `(cx, cy)` with radius `r`. */
+export function deedHexPolygonPoints(cx: number, cy: number, radius: number): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = ((-90 + i * 60) * Math.PI) / 180;
+    const x = Math.round((cx + radius * Math.cos(angle)) * 10) / 10;
+    const y = Math.round((cy + radius * Math.sin(angle)) * 10) / 10;
+    pts.push(`${x},${y}`);
+  }
+  return pts.join(' ');
+}

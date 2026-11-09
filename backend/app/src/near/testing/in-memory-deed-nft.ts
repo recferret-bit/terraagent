@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   DeedNftPort,
+  normalizeDeedMetadata,
   type DeedMetadataHistoryRecord,
   type DeedNftRecord,
 } from '../application/ports/deed-nft.port.js';
@@ -13,7 +14,6 @@ import {
   NftTokenRef,
   NftUpdateMetadataInput,
 } from '../domain/types.js';
-import { normalizeDeedMetadata } from '../infrastructure/adapters/mock/deed.adapter.js';
 import { assertPlainJsonMetadata } from '../infrastructure/mock/nep171.base.js';
 import { InMemoryChain } from './in-memory-chain.js';
 

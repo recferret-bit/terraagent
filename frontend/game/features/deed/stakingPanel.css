@@ -4,13 +4,13 @@
   gap: var(--ta-s3);
   padding: var(--ta-s3);
   background: var(--ta-plate-2);
-  border: var(--ta-border) solid var(--ta-edge);
-  color: var(--ta-ink-1);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text);
   box-sizing: border-box;
 }
 
 .ta-staking-panel[data-settled="true"] {
-  border-color: var(--ta-warn);
+  border-color: var(--ta-orange-hi);
 }
 
 .ta-staking-panel__header {
@@ -24,35 +24,40 @@
 .ta-staking-panel__title {
   margin: 0;
   font-family: var(--ta-font-display);
-  font-size: var(--ta-fs-sm);
-  letter-spacing: var(--ta-ls-wide);
-  color: var(--ta-warn);
+  font-size: var(--ta-fs-small);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange-hi);
   text-transform: uppercase;
 }
 
 .ta-staking-panel__copy {
   margin: 0;
   padding: var(--ta-s2) var(--ta-s3);
-  background: var(--ta-plate-1);
-  border-left: var(--ta-border-hi) solid var(--ta-blue);
+  background: var(--ta-plate);
+  border-left: 2px solid var(--ta-blue);
   font-family: var(--ta-font-body);
-  font-size: var(--ta-fs-xs);
-  color: var(--ta-ink-1);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text);
 }
 
 .ta-staking-panel__locked {
   padding: var(--ta-s2) var(--ta-s3);
-  background: var(--ta-plate-1);
-  border: var(--ta-border) solid var(--ta-edge);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
   font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-xs);
-  color: var(--ta-ink-3);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-3);
 }
 
 .ta-staking-panel__controls {
   display: flex;
   flex-direction: column;
   gap: var(--ta-s3);
+}
+
+.ta-staking-panel [hidden],
+.ta-staking-panel__controls[hidden] {
+  display: none;
 }
 
 .ta-staking-panel__claim-row {
@@ -62,8 +67,8 @@
   gap: var(--ta-s2);
   flex-wrap: wrap;
   padding: var(--ta-s2) var(--ta-s3);
-  background: var(--ta-plate-1);
-  border: var(--ta-border) solid var(--ta-edge);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
 }
 
 .ta-staking-panel__form-row {
@@ -91,11 +96,11 @@
   width: 100%;
   box-sizing: border-box;
   padding: var(--ta-s1) var(--ta-s2);
-  background: var(--ta-plate-1);
-  border: var(--ta-border) solid var(--ta-edge);
-  color: var(--ta-ink-1);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text);
   font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-xs);
+  font-size: var(--ta-fs-label);
 }
 
 .ta-staking-panel__position {
@@ -103,8 +108,8 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--ta-s2);
   padding: var(--ta-s2) var(--ta-s3);
-  background: var(--ta-plate-1);
-  border: var(--ta-border) solid var(--ta-edge);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
 }
 
 @media (max-width: 720px) {
@@ -122,15 +127,15 @@
 
 .ta-staking-panel__pos-label {
   font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-xs);
-  color: var(--ta-ink-3);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-3);
   text-transform: uppercase;
 }
 
 .ta-staking-panel__pos-value {
   font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-xs);
-  color: var(--ta-ink-1);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text);
 }
 
 .ta-staking-panel__actions-row {
@@ -150,6 +155,6 @@
 
 .ta-staking-panel__status-msg {
   font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-xs);
+  font-size: var(--ta-fs-label);
   color: var(--ta-orange);
 }

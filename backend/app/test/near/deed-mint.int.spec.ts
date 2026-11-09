@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { EventBus } from '../../src/bus/event-bus.js';
 import { FlagsService } from '../../src/flags/flags.service.js';
 import { ChainOutboxRepository } from '../../src/near/application/outbox/chain-outbox.repository.js';
@@ -66,10 +66,14 @@ describe('W20-05 DeedMintOutboxService on Postgres', () => {
       data: { colonyId: 'co_mint_pg_1', playerId: 'pl_pg_1' },
     });
 
-    await new Promise((r) => setTimeout(r, 40));
-    const beforeRelay = await repo.findByColonyId('co_mint_pg_1');
-    expect(beforeRelay).not.toBeNull();
-    expect(beforeRelay!.chainState).toBe('PENDING');
+    await vi.waitFor(
+      async () => {
+        const beforeRelay = await repo.findByColonyId('co_mint_pg_1');
+        expect(beforeRelay).not.toBeNull();
+        expect(beforeRelay!.chainState).toBe('PENDING');
+      },
+      { timeout: 3000 },
+    );
 
     const claimed = await relay.pollOnce();
     expect(claimed).toBeGreaterThanOrEqual(1);

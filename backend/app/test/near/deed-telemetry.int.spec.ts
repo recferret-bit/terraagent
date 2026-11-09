@@ -1,7 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DeedTracker } from '../../../../frontend/game/features/deed/deedTracker.js';
 import { createApp } from '../../src/app.js';
 import { OutboxRelayService } from '../../src/near/application/outbox/outbox.module.js';
 import { DeedMintOutboxService } from '../../src/near/deed/deed-mint-outbox.service.js';
@@ -81,14 +80,23 @@ describe('Deed & Staking telemetry & analytics integration (W20-26)', () => {
   it('stores deed_viewed, deed_shared, stake_started, stake_completed in analytics_event with colonyId and planetId and updates Prometheus metrics', async () => {
     const { stakingService, poolId } = await setupSettledAndClaimedDeed(app);
 
-    const queuedEvents: Array<{ name: string; ts: number; props: Record<string, unknown> }> = [];
-    const tracker = new DeedTracker((name, props) => {
-      queuedEvents.push({ name, ts: Date.now(), props: props ?? {} });
-    });
-
-    tracker.deedViewed({ colonyId: 'col_0', planetId: 'planet_a', tokenId: 'deed-col_0', settled: true });
-    tracker.deedShared({ colonyId: 'col_0', planetId: 'planet_a', tokenId: 'deed-col_0', channel: 'x' });
-    tracker.stakeStarted({ colonyId: 'col_0', planetId: 'planet_a', pool: poolId, amount: '10' });
+    const queuedEvents: Array<{ name: string; ts: number; props: Record<string, unknown> }> = [
+      {
+        name: 'deed_viewed',
+        ts: Date.now(),
+        props: { colonyId: 'col_0', planetId: 'planet_a', tokenId: 'deed-col_0', settled: true },
+      },
+      {
+        name: 'deed_shared',
+        ts: Date.now(),
+        props: { colonyId: 'col_0', planetId: 'planet_a', tokenId: 'deed-col_0', channel: 'x' },
+      },
+      {
+        name: 'stake_started',
+        ts: Date.now(),
+        props: { colonyId: 'col_0', planetId: 'planet_a', pool: poolId, amount: '10' },
+      },
+    ];
 
     const stakeRes = await stakingService.stake({
       colonyId: 'col_0',
@@ -103,12 +111,16 @@ describe('Deed & Staking telemetry & analytics integration (W20-26)', () => {
         recipient: poolId,
       },
     });
-    tracker.stakeCompleted({
-      colonyId: 'col_0',
-      planetId: 'planet_a',
-      pool: poolId,
-      amount: '10',
-      txHash: stakeRes.txHash,
+    queuedEvents.push({
+      name: 'stake_completed',
+      ts: Date.now(),
+      props: {
+        colonyId: 'col_0',
+        planetId: 'planet_a',
+        pool: poolId,
+        amount: '10',
+        txHash: stakeRes.txHash,
+      },
     });
 
     const ingestRes = await fetch(`${url}/v1/analytics/events`, {

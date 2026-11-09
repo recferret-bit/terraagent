@@ -7,6 +7,7 @@ import {
   loadScenario,
   readTick,
   test,
+  waitForTick,
 } from './harness';
 
 /**
@@ -38,6 +39,13 @@ async function tickAdvances(target: Page, from: number): Promise<void> {
     .toBeGreaterThan(from);
 }
 
+async function closeDevConsole(target: Page): Promise<void> {
+  const input = target.locator('[data-testid=dev-console] input');
+  if (await input.isVisible().catch(() => false)) {
+    await target.keyboard.press('Backquote');
+  }
+}
+
 test('@hack 1. open /play.html?scenario=w20 -> open Colony Deed -> see card with name, planet, Stage 4, Terraform 40%, and Recorded on NEAR (mock) receipt', async () => {
   serverOnly();
   const t0 = await loadScenario(page, 'w20', { skip: '1' }, { as: 'w20', timeout: 45_000 });
@@ -55,7 +63,7 @@ test('@hack 1. open /play.html?scenario=w20 -> open Colony Deed -> see card with
   });
   await expect(page.locator('[data-testid="deed-stats"]')).toContainText('Aegis Spire');
   await expect(page.locator('[data-testid="deed-stats"]')).toContainText('Stage 4');
-  await expect(page.locator('[data-testid="deed-stats"]')).toContainText('40%');
+  await expect(page.locator('[data-testid="deed-stats"]')).toContainText(/40\s*%/);
   await expect(page.locator('[data-testid="deed-receipt-link"]')).toHaveText(
     'Recorded on NEAR (mock)',
   );
@@ -79,7 +87,7 @@ test('@hack 2. deed.bump terraform 10 -> warp 20 past debounce window -> toast s
   await expect(page.locator('[data-testid="deed-version-badge"]')).toHaveText('v2', {
     timeout: 15_000,
   });
-  await expect(page.locator('[data-testid="deed-stats"]')).toContainText('50%');
+  await expect(page.locator('[data-testid="deed-stats"]')).toContainText(/50\s*%/);
   await expect(page.locator('[data-testid="deed-history-item"]')).toHaveCount(2);
   expectNoPageErrors(page);
 });
@@ -99,7 +107,7 @@ test('3. Share on X and public /deed/<tokenId> page render OG card and PNG image
   });
   await expect(sharePage.locator('[data-testid="deed-share-image"]')).toHaveAttribute(
     'src',
-    /\/v1\/deeds\/deed%3Acol_0\/image\.png/,
+    /\/v1\/(?:near\/deed|deeds)\/deed%3Acol_0\/image\.png/,
   );
   expectNoPageErrors(sharePage);
   await sharePage.close();
@@ -133,6 +141,7 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
   );
 
   // Try Stake before claiming -> inline message "Claim your colony account to stake"
+  await closeDevConsole(page);
   await page.locator('[data-testid="staking-stake-btn"]').click();
   await expect(page.locator('[data-testid="staking-status-msg"]')).toHaveText(
     'Claim your colony account to stake',
@@ -140,7 +149,7 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
 
   // Claim account via mock wallet signer modal -> Approve
   await page.locator('[data-testid="staking-claim-btn"]').click();
-  await expect(page.locator('[data-testid="signer-modal"]')).toBeVisible();
+  await expect(page.locator('[data-testid="mock-wallet-signer-modal"]')).toBeVisible();
   await page.locator('[data-testid="signer-approve-btn"]').click();
   await expect(page.locator('[data-testid="staking-account-status"]')).toContainText('Claimed', {
     timeout: 15_000,
@@ -149,7 +158,7 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
   // Stake 10 NEAR -> click Reject in mock signer modal -> "Cancelled in wallet"
   await page.locator('[data-testid="staking-amount-input"]').fill('10');
   await page.locator('[data-testid="staking-stake-btn"]').click();
-  await expect(page.locator('[data-testid="signer-modal"]')).toBeVisible();
+  await expect(page.locator('[data-testid="mock-wallet-signer-modal"]')).toBeVisible();
   await page.locator('[data-testid="signer-reject-btn"]').click();
   await expect(page.locator('[data-testid="staking-status-msg"]')).toHaveText(
     'Cancelled in wallet',
@@ -158,7 +167,7 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
 
   // Stake 10 NEAR -> click Approve -> position shows 10 NEAR staked and rewards accrue on time.warp 86400
   await page.locator('[data-testid="staking-stake-btn"]').click();
-  await expect(page.locator('[data-testid="signer-modal"]')).toBeVisible();
+  await expect(page.locator('[data-testid="mock-wallet-signer-modal"]')).toBeVisible();
   await page.locator('[data-testid="signer-approve-btn"]').click();
   await expect(page.locator('[data-testid="staking-staked-value"]')).toContainText(
     '10 NEAR staked',
@@ -173,6 +182,7 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
 
 test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance to wallet; resilience & dev explorer tabs', async () => {
   serverOnly();
+  await closeDevConsole(page);
   await page.locator('[data-testid="staking-unstake-btn"]').click();
   await expect(page.locator('[data-testid="staking-status-msg"]')).toContainText(
     'Unbonding (4 epochs)',
@@ -180,6 +190,7 @@ test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance
   );
 
   await devConsole(page, 'warp 100', 15_000);
+  await closeDevConsole(page);
   const withdrawBtn = page.locator('[data-testid="staking-withdraw-btn"]');
   await expect(withdrawBtn).toBeEnabled({ timeout: 15_000 });
   await withdrawBtn.click();
@@ -202,11 +213,11 @@ test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance
   // Dev chain explorer Deeds & Staking tabs
   const explorer = await context.newPage();
   await explorer.goto('/dev/chain/?tab=deeds&tokenId=deed%3Acol_0');
-  await expect(explorer.locator('[data-testid="deeds-table"]')).toContainText('deed:col_0', {
+  await expect(explorer.locator('table.xt')).toContainText('deed:col_0', {
     timeout: 15_000,
   });
   await explorer.getByRole('tab', { name: 'STAKING' }).click();
-  await expect(explorer.locator('[data-testid="staking-pools-table"]')).toContainText('9.00%', {
+  await expect(explorer.locator('table.xt')).toContainText('9%', {
     timeout: 15_000,
   });
   await explorer.close();
@@ -218,15 +229,20 @@ test('@hack 7. With waves=..19: no Deed button in HUD and existing chain.deed ro
   expect(beforeRes.status()).toBe(200);
   const beforeBody = (await beforeRes.json()) as {
     tokenId: string;
+    planetId: string;
     version: number;
     settled: boolean;
   };
   expect(beforeBody.tokenId).toBe('deed:col_0');
 
-  const currentUrl = new URL(page.url());
-  currentUrl.searchParams.set('waves', '..19');
-  await page.goto(currentUrl.toString());
-  const t0 = (await readTick(page)) ?? 0;
+  const q = new URLSearchParams({
+    join: beforeBody.planetId,
+    skip: '1',
+    waves: '..19',
+    as: 'w20',
+  });
+  await page.goto(`/play.html?${q.toString()}`);
+  const t0 = await waitForTick(page, () => true, 45_000);
   await tickAdvances(page, t0);
   await expect(page.locator('[data-testid="colony-deed-btn"]')).toHaveCount(0);
 

@@ -1,4 +1,5 @@
 import {
+  deedHexPolygonPoints,
   deedTokenId,
   type DeedHexCoord,
   type DeedMetadataV1,
@@ -150,20 +151,7 @@ export function resolveDeedBadgeLabel(variant: DeedVisualVariant): string {
   }
 }
 
-export function computeHexPolygonPoints(
-  cx: number,
-  cy: number,
-  radius: number,
-): string {
-  const points: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const angleRad = ((-90 + i * 60) * Math.PI) / 180;
-    const x = Math.round((cx + radius * Math.cos(angleRad)) * 10) / 10;
-    const y = Math.round((cy + radius * Math.sin(angleRad)) * 10) / 10;
-    points.push(`${x},${y}`);
-  }
-  return points.join(' ');
-}
+export const computeHexPolygonPoints = deedHexPolygonPoints;
 
 export function createHexTerritorySvg(
   hexes?: readonly DeedHexCoord[],

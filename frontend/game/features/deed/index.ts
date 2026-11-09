@@ -30,7 +30,12 @@ export {
 } from './deedShare';
 export { createDeedTracker, DeedTracker, DEED_EVENTS, type DeedEventName } from './deedTracker';
 export { DEED_DEV_COMMANDS } from './devCommands';
-export { openMockSignerModal, type SignerModalOptions, type SignerModalResult } from './signerModal';
+export {
+  openMockWalletSignerModal,
+  type OpenSignerModalHandle,
+  type SignerModalOutcome,
+  type SignerModalRequest,
+} from './signerModal';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {

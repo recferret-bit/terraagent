@@ -1,8 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { FeatureContext } from '../../../../frontend/game/core/registry/types.js';
-import { defineFeature } from '../../../../frontend/game/core/registry/types.js';
-import { CommandRunner } from '../../../../frontend/game/dev/console/runner.js';
-import { DEED_DEV_COMMANDS } from '../../../../frontend/game/features/deed/devCommands.js';
+import { describe, expect, it } from 'vitest';
 import { DevCommandRegistry } from '../../src/dev/dev-command.registry.js';
 import { FlagsService } from '../../src/flags/flags.service.js';
 import { DeedDebounceService } from '../../src/near/deed/deed-debounce.service.js';
@@ -17,28 +13,9 @@ import { StakingPositionSyncService } from '../../src/near/staking/staking-posit
 import { StakingService } from '../../src/near/staking/staking.service.js';
 import { InMemoryStaking } from '../../src/near/testing/in-memory-staking.js';
 
-const deedDevFeature = defineFeature({
-  id: 'deed-dev-test',
-  wave: 'W20',
-  devCommands: [...DEED_DEV_COMMANDS],
-});
-
-async function runClientCmd(
-  line: string,
-  services: Partial<FeatureContext['services']> = {},
-  host: FeatureContext['host'] = 'server',
-): Promise<string> {
-  const res = await new CommandRunner([deedDevFeature], {
-    flags: new Set(['W20']),
-    host,
-    services: services as FeatureContext['services'],
-  }).run(line);
-  return res?.kind === 'text' ? res.text : '';
-}
-
-function createServerCmdHarness() {
+function createServerCmdHarness(waves = 'W05,W08,W12,W20') {
   const registry = new DevCommandRegistry({ NODE_ENV: 'test' } as never);
-  const flags = new FlagsService({ TA_WAVES: 'W05,W08,W12,W20' });
+  const flags = new FlagsService({ TA_WAVES: waves } as never);
   const deeds = new DeedRepository();
   const mintService = new DeedMintOutboxService(flags, deeds);
   const projector = new DeedProjectorService(flags, deeds);
@@ -72,8 +49,8 @@ function createServerCmdHarness() {
   return { registry };
 }
 
-describe('W20-27 Dev-console commands (unit)', () => {
-  it('registers and executes all 5 commands on the server DevCommandRegistry', async () => {
+describe('W20-27 Server Dev-console commands (unit)', () => {
+  it('registers and executes all 6 commands on the server DevCommandRegistry', async () => {
     const { registry } = createServerCmdHarness();
 
     const showRes = (await registry.run('deed.show', {})) as Record<string, unknown>;
@@ -98,6 +75,12 @@ describe('W20-27 Dev-console commands (unit)', () => {
       pendingState: 'pending',
     });
 
+    const warpRes = (await registry.run('time.warp', { seconds: 600 })) as Record<string, unknown>;
+    expect(warpRes).toMatchObject({
+      seconds: 600,
+      flushedDeeds: 1,
+    });
+
     const settleRes = (await registry.run('deed.settle', {})) as Record<string, unknown>;
     expect(settleRes).toMatchObject({
       colonyId: 'col_0',
@@ -120,33 +103,16 @@ describe('W20-27 Dev-console commands (unit)', () => {
     });
   });
 
-  it('runs all 5 commands in the client CommandRunner and prints one-line results', async () => {
-    const { registry } = createServerCmdHarness();
-    const devServer = vi.fn(async (name: string, args: unknown) => registry.run(name, args));
-    const session = { planetId: () => 'planet_w20' };
-
-    const outShow = await runClientCmd('deed.show', { devServer, session });
-    expect(outShow).toContain('deed:col_0 (col_0) v1 active · Stage 4 · Terraform 40%');
-
-    const outBump = await runClientCmd('deed.bump terraform 10', { devServer, session });
-    expect(outBump).toContain('deed.bump terraform 10: Terraform 50 % (pending)');
-
-    const outSettle = await runClientCmd('deed.settle', { devServer, session });
-    expect(outSettle).toContain('settled deed:col_0');
-
-    const outFund = await runClientCmd('stake.fund 100', { devServer, session });
-    expect(outFund).toContain('balance 100 NEAR');
-
-    const outClaim = await runClientCmd('account.claim --mock', { devServer, session });
-    expect(outClaim).toContain('-> pilot.mock');
-  });
-
-  it('rejects invalid arguments and local host with clear usage/host errors', async () => {
-    const devServer = vi.fn(async () => ({}));
-    expect(await runClientCmd('deed.bump unknown 10', { devServer })).toContain('usage:');
-    expect(await runClientCmd('deed.bump terraform', { devServer })).toContain('usage:');
-    expect(await runClientCmd('stake.fund -5', { devServer })).toContain('usage:');
-    expect(await runClientCmd('account.claim --badflag', { devServer })).toContain('usage:');
-    expect(await runClientCmd('deed.show', {}, 'local')).toContain('host_unavailable');
+  it('rejects all W20 dev commands with 404 when W20 flag is disabled', async () => {
+    const { registry } = createServerCmdHarness('W05,W08,W12');
+    await expect(registry.run('deed.show', {})).rejects.toMatchObject({ status: 404 });
+    await expect(registry.run('deed.bump', { field: 'terraform', value: 10 })).rejects.toMatchObject(
+      { status: 404 },
+    );
+    await expect(registry.run('deed.settle', {})).rejects.toMatchObject({ status: 404 });
+    await expect(registry.run('stake.fund', { near: 100 })).rejects.toMatchObject({ status: 404 });
+    await expect(registry.run('account.claim', { mock: true })).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });

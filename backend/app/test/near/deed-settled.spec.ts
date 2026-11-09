@@ -75,7 +75,7 @@ async function setupSettledHarness(taWaves = '..20') {
     terraformBp: 4000,
   });
   await listeners.emitDone(
-    { opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
+    { id: 1n, opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
     { tokenId: 'deed:col_0' },
     'mock:tx_mint_1',
   );
@@ -109,6 +109,7 @@ describe('DeedSettledService transition hook (W20-15 unit)', () => {
 
     await listeners.emitDone(
       {
+        id: 2n,
         opId: 'deed-settle:col_0',
         port: 'DeedNft',
         method: 'updateMetadata',
@@ -132,7 +133,7 @@ describe('DeedSettledService transition hook (W20-15 unit)', () => {
   });
 
   it('auto-settles when a colony reaches Stage 4 + 100% Living Planet and rejects eliminated deeds', async () => {
-    const { repo, enqueued, projector, settled } = await setupSettledHarness('..20');
+    const { repo, enqueued, projector } = await setupSettledHarness('..20');
 
     await projector.projectMilestone({
       colonyId: 'col_0',

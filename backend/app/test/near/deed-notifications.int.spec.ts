@@ -40,7 +40,7 @@ describe('W20-25 Deed notifications integration (with W09 off)', () => {
         received.push({
           change: ev.payload.change,
           version: ev.payload.version,
-          settled: ev.payload.deed.settled,
+          settled: ev.payload.deed?.settled ?? ev.payload.settled,
         });
       },
       { module: 'W20-25-test' },

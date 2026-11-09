@@ -69,6 +69,7 @@ describe('DeedMintOutboxService (W20-05 unit)', () => {
     expect(pendingView.pendingState).toBe('PENDING');
 
     const claimedRow: ClaimedRow = {
+      id: 1n,
       opId: 'deed-mint:col_0',
       port: 'DeedNft',
       method: 'mint',
@@ -111,6 +112,7 @@ describe('DeedMintOutboxService idempotency & wave gating (W20-05 unit)', () => 
     expect(enqueued).toHaveLength(1);
 
     const claimedRow: ClaimedRow = {
+      id: 2n,
       opId: 'deed-mint:col_dup',
       port: 'DeedNft',
       method: 'mint',

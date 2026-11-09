@@ -1,3 +1,4 @@
+import { NearException } from '../../domain/errors.js';
 import type {
   AccountId,
   ChainReceipt,
@@ -6,6 +7,41 @@ import type {
   NftTokenRef,
   NftUpdateMetadataInput,
 } from '../../domain/types.js';
+
+export function normalizeDeedMetadata(
+  incoming: Record<string, unknown>,
+  prev?: Record<string, unknown>,
+): Record<string, unknown> {
+  const prevVersion = typeof prev?.version === 'number' && Number.isFinite(prev.version) ? prev.version : 0;
+  const rawVersion = typeof incoming.version === 'number' && Number.isFinite(incoming.version) ? incoming.version : undefined;
+  const nextVersion = prev === undefined
+    ? (rawVersion && rawVersion >= 1 ? Math.floor(rawVersion) : 1)
+    : (rawVersion !== undefined && rawVersion > prevVersion ? Math.floor(rawVersion) : prevVersion + 1);
+
+  const prevSettled = prev?.settled === true || prev?.status === 'settled';
+  if (prevSettled && incoming.settled === false) {
+    throw new NearException('NEAR_NFT_INVALID', {
+      message: 'A settled Colony Deed cannot be unsettled (settled is one-way).',
+      details: { prevSettled: true, incomingSettled: false },
+    });
+  }
+  const nextSettled = prevSettled || incoming.settled === true || incoming.status === 'settled';
+  const nextStatus = nextSettled
+    ? 'settled'
+    : typeof incoming.status === 'string'
+      ? incoming.status
+      : typeof prev?.status === 'string'
+        ? prev.status
+        : 'active';
+
+  return {
+    ...(prev ?? {}),
+    ...incoming,
+    version: nextVersion,
+    settled: nextSettled,
+    status: nextStatus,
+  };
+}
 
 export interface DeedMetadataHistoryRecord {
   readonly opId: string;

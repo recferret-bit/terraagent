@@ -85,7 +85,7 @@ async function setupDeedApiHarness(taWaves = '..20') {
     terraformBp: 4000,
   });
   await listeners.emitDone(
-    { opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
+    { id: 1n, opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
     { tokenId: 'deed:col_0' },
     'mock:tx_deed_api_1',
   );

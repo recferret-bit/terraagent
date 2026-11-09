@@ -1,6 +1,20 @@
 export const ONE_NEAR_YOCTO = 10n ** 24n;
 export const NEAR_TOKEN_ID = 'NEAR';
 export const CLAIM_ACCOUNT_PATH = '/v1/near/claim-account';
+export const GAME_DAY_MS = 86_400_000;
+export const UNBONDING_GAME_DAYS = 2;
+export const UNBONDING_DURATION_MS = UNBONDING_GAME_DAYS * GAME_DAY_MS;
+
+export function computeAccruedRewardDelta(
+  staked: bigint,
+  apyBp: number,
+  elapsedMs: number,
+): bigint {
+  if (staked <= 0n || apyBp <= 0 || elapsedMs <= 0) return 0n;
+  const num = staked * BigInt(apyBp) * BigInt(Math.floor(elapsedMs));
+  const den = 10_000n * 365n * BigInt(GAME_DAY_MS);
+  return num / den;
+}
 
 export const stakeOpId = (colonyId: string, pool: string, nonce: string | number): string =>
   `stake:${colonyId}:${pool}:${String(nonce)}`;

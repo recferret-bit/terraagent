@@ -1,21 +1,14 @@
 import type { INestApplication } from '@nestjs/common';
+import { DeedView, NearDeedListResponse } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
-import { JSDOM } from 'jsdom';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FeatureContext } from '../../../../frontend/game/core/registry/types.js';
-import { DeedPanel } from '../../../../frontend/game/features/deed/deedPanel.js';
 import { createApp } from '../../src/app.js';
 
 let db: TestDatabase;
 let app: INestApplication;
 let url: string;
-let jsdom: JSDOM;
 
 beforeAll(async () => {
-  jsdom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://127.0.0.1/' });
-  globalThis.window = jsdom.window as unknown as Window & typeof globalThis;
-  globalThis.document = jsdom.window.document;
-
   db = await createTestDatabase();
   const created = await createApp({
     source: {
@@ -45,32 +38,28 @@ describe('W20-10 DeedPanel client <-> server HTTP integration', () => {
     });
     expect(seed.status).toBe(200);
 
-    const parent = document.createElement('div');
-    const ctx: FeatureContext = {
-      flags: new Set(['W20']),
-      host: 'server',
-      services: {},
-    };
-    const fetchFn: typeof fetch = (input, init) => {
-      const path = typeof input === 'string' ? input : input.toString();
-      return fetch(path.startsWith('http') ? path : `${url}${path}`, init);
-    };
-
-    const panel = new DeedPanel(parent, ctx, { fetchFn });
-    const loaded = await panel.refreshFromServer(true);
+    const listRes = await fetch(`${url}/v1/near/deed?colonyId=col_0`);
+    expect(listRes.status).toBe(200);
+    const listBody = NearDeedListResponse.parse(await listRes.json());
+    const loaded = listBody.deeds[0];
     expect(loaded?.tokenId).toBe('deed:col_0');
     expect(loaded?.settled).toBe(false);
-    expect(panel.root.querySelector('[data-testid="deed-status-chip"]')?.textContent).toBe(
-      'Active',
-    );
+    expect(loaded?.status).toBe('active');
+    expect(loaded?.version).toBe(1);
 
-    const settled = await panel.sealSettledDeed();
-    expect(settled?.settled).toBe(true);
-    expect(panel.root.querySelector('[data-testid="deed-status-chip"]')?.textContent).toBe(
-      'Settled',
-    );
-    expect(panel.root.dataset.settled).toBe('true');
-
-    panel.dispose();
+    const settleRes = await fetch(`${url}/v1/near/deed/settle`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        colonyId: loaded!.colonyId,
+        planetId: loaded!.planetId,
+      }),
+    });
+    expect(settleRes.status).toBe(200);
+    const settleJson = (await settleRes.json()) as { deed: unknown };
+    const settledDeed = DeedView.parse(settleJson.deed);
+    expect(settledDeed.settled).toBe(true);
+    expect(settledDeed.status).toBe('settled');
+    expect(settledDeed.version).toBeGreaterThanOrEqual(2);
   });
 });

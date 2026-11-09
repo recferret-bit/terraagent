@@ -23,8 +23,8 @@ function makeDeed(settled: boolean, accountClaimed = false): DeedView {
     colonyId: 'col_0',
     planetId: 'planet_w20',
     tokenId: 'deed:col_0',
-    accountId: 'planet_w20-col_0.terraagent.mock',
-    contract: 'deeds.terraagent.mock',
+    ownerAccountId: 'planet_w20-col_0.terraagent.mock',
+    contractId: 'deeds.terraagent.mock',
     metadata,
     version: metadata.version,
     status: metadata.status,
@@ -33,10 +33,9 @@ function makeDeed(settled: boolean, accountClaimed = false): DeedView {
     pendingRetries: 0,
     accountClaimed,
     claimedByAccountId: accountClaimed ? 'pilot.mock' : null,
-    lastUpdateTx: 'mock:tx1',
-    explorerUrl: '/dev/chain/?tab=deeds&tokenId=deed%3Acol_0',
-    shareUrl: '/deed/deed%3Acol_0',
-    imageUrl: metadata.imageUrl,
+    txHash: 'mock:tx1',
+    mintedAt: 1731153600000,
+    updatedAt: 1731153600000,
     history: [],
   };
 }
@@ -74,7 +73,7 @@ describe('W20-21 StakingPanel gating & signer rejection (unit)', () => {
     const ctx: FeatureContext = {
       flags: new Set(['W20']),
       host: 'server',
-      services: {},
+      services: { track: () => {} },
     };
     const panel = new StakingPanel(parent, ctx, { openSigner: fakeSigner('approve') });
 

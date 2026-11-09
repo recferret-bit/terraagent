@@ -13,25 +13,15 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { StakingPort, type StakingPoolView } from '../application/ports/staking.port.js';
+import { yoctoToNear } from './yocto.js';
+
+export { yoctoToNear };
 
 /** Periodic sync interval (5 minutes) for `chain.staking_position` read model (W20-20 / DATA_MODEL §4.4.1). */
 export const STAKING_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Explicit marker: `chain.staking_position` is a read model only and is never queried by `@terra/sim`. */
 export const STAKING_POSITION_READ_MODEL_ONLY = true as const;
-
-const ONE_NEAR_YOCTO = 10n ** 24n;
-
-/** Formats a yoctoNEAR integer string or bigint into a decimal NEAR string (up to `maxFracDigits` decimals). */
-export function yoctoToNear(yoctoAmount: string | bigint, maxFracDigits = 6): string {
-  const val = typeof yoctoAmount === 'bigint' ? yoctoAmount : BigInt(yoctoAmount || '0');
-  if (val <= 0n) return '0';
-  const whole = val / ONE_NEAR_YOCTO;
-  const rem = val % ONE_NEAR_YOCTO;
-  if (rem === 0n || maxFracDigits <= 0) return whole.toString();
-  const fracFull = rem.toString().padStart(24, '0').slice(0, maxFracDigits).replace(/0+$/, '');
-  return fracFull.length > 0 ? `${whole.toString()}.${fracFull}` : whole.toString();
-}
 
 /** Derives a fallback `colonyId` from a colony NEAR account ID (`{colony}.{pilot}.terraagent.mock`). */
 export function deriveColonyIdFromAccountId(accountId: string): string {

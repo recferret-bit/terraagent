@@ -4,15 +4,15 @@
   gap: var(--ta-s2);
   padding: var(--ta-s3) var(--ta-s4);
   background: var(--ta-plate-2);
-  border: var(--ta-border) solid var(--ta-orange);
-  color: var(--ta-ink-1);
+  border: 1px solid var(--ta-orange);
+  color: var(--ta-text);
   min-width: 240px;
   max-width: 340px;
   pointer-events: auto;
 }
 
 .ta-deed-toast[data-settled="true"] {
-  border-color: var(--ta-warn);
+  border-color: var(--ta-orange-hi);
 }
 
 .ta-deed-toast-head {
@@ -25,21 +25,21 @@
 .ta-deed-toast-close {
   background: transparent;
   border: none;
-  color: var(--ta-ink-2);
+  color: var(--ta-text-2);
   font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-sm);
+  font-size: var(--ta-fs-small);
   cursor: pointer;
   padding: 0 var(--ta-s1);
 }
 
 .ta-deed-toast-close:hover {
-  color: var(--ta-ink-1);
+  color: var(--ta-text);
 }
 
 .ta-deed-toast-msg {
   margin: 0;
   font-family: var(--ta-font-body);
-  font-size: var(--ta-fs-sm);
-  color: var(--ta-ink-1);
-  line-height: var(--ta-lh-body);
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text);
+  line-height: 1.4;
 }

@@ -24,6 +24,10 @@ import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
+import {
+  extractEventColonyId,
+  resolveTargetDeedRecord,
+} from './parts/deed-event-helpers.js';
 
 export const TERRAFORM_STEP_BP = 1000;
 export const TRADE_VOLUME_STEP = 100;
@@ -394,31 +398,14 @@ export class DeedProjectorService implements OnModuleInit, OnModuleDestroy {
     event: { colonyIds?: readonly string[] },
     data: Record<string, unknown>,
   ): string | null {
-    if (typeof data.colonyId === 'string' && data.colonyId.length > 0) return data.colonyId;
-    if (typeof event.colonyIds?.[0] === 'string' && event.colonyIds[0].length > 0) {
-      return event.colonyIds[0];
-    }
-    if (typeof data.colonyIndex === 'number' && Number.isFinite(data.colonyIndex)) {
-      return `col_${data.colonyIndex}`;
-    }
-    return null;
+    return extractEventColonyId(event, data);
   }
 
   private async resolveTargetDeed(
     colonyId: string,
     planetId?: string,
   ): Promise<StoredDeedRecord | null> {
-    const direct = await this.deeds.findByColonyId(colonyId);
-    if (direct) return direct;
-    if (planetId) {
-      const onPlanet = await this.deeds.listForPlayerOrColony({ planetId });
-      if (onPlanet.length > 0) return onPlanet[0] ?? null;
-    }
-    if (colonyId === 'col_0' || colonyId === '0') {
-      const all = await this.deeds.listAll();
-      return all[0] ?? null;
-    }
-    return null;
+    return resolveTargetDeedRecord(this.deeds, colonyId, planetId);
   }
 
   private database(): PrismaClient | null {

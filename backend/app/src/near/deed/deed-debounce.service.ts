@@ -25,6 +25,7 @@ import { OutboxRelayService } from '../application/outbox/outbox.module.js';
 import { DeedMintOutboxService } from './deed-mint-outbox.service.js';
 import { DeedProjectorService, type DeedMilestonePatch } from './deed-projector.service.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
+import { buildDeedUpdateOutboxRow } from './parts/deed-event-helpers.js';
 
 export const DEED_DEBOUNCE_WINDOW_MS = 10 * 60 * 1000;
 
@@ -234,21 +235,7 @@ export class DeedDebounceService implements OnModuleInit, OnModuleDestroy {
     opId: string,
     change: string,
   ) {
-    return {
-      opId,
-      port: 'DeedNft',
-      method: 'updateMetadata',
-      payload: {
-        collection: 'deed',
-        tokenId: record.tokenId,
-        metadata: nextMetadata,
-        metadataJson: JSON.stringify(nextMetadata),
-        colonyId: record.colonyId,
-        planetId: record.planetId,
-        version: nextVersion,
-        change,
-      },
-    };
+    return buildDeedUpdateOutboxRow(record, nextMetadata, nextVersion, opId, change);
   }
 
   private async persistAndEnqueueUpdate(

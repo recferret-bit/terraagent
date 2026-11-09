@@ -1,22 +1,18 @@
 import type { INestApplication } from '@nestjs/common';
+import {
+  ClaimAccountResponseSchema,
+  StakingActionResponse,
+  StakingStatusResponse,
+} from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
-import { JSDOM } from 'jsdom';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FeatureContext } from '../../../../frontend/game/core/registry/types.js';
-import { DeedPanel } from '../../../../frontend/game/features/deed/deedPanel.js';
-import { buildMockNep413Signature } from '../../../../frontend/game/features/deed/signerModal.js';
 import { createApp } from '../../src/app.js';
 
 let db: TestDatabase;
 let app: INestApplication;
 let url: string;
-let jsdom: JSDOM;
 
 beforeAll(async () => {
-  jsdom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://127.0.0.1/' });
-  globalThis.window = jsdom.window as unknown as Window & typeof globalThis;
-  globalThis.document = jsdom.window.document;
-
   db = await createTestDatabase();
   const created = await createApp({
     source: {
@@ -52,70 +48,90 @@ describe('W20-21 StakingPanel end-to-end client <-> server HTTP integration', ()
     await postDevCmd('stake.fund', { near: 100 });
     await postDevCmd('deed.settle', {});
 
-    const parent = document.createElement('div');
-    const ctx: FeatureContext = {
-      flags: new Set(['W20']),
-      host: 'server',
-      services: {},
-    };
-    const fetchFn: typeof fetch = (input, init) => {
-      const path = typeof input === 'string' ? input : input.toString();
-      return fetch(path.startsWith('http') ? path : `${url}${path}`, init);
-    };
+    const status0Res = await fetch(`${url}/v1/near/staking?colonyId=col_0`);
+    expect(status0Res.status).toBe(200);
+    const status0 = StakingStatusResponse.parse(await status0Res.json());
+    expect(status0.accountClaimed).toBe(false);
+    const pool = status0.pools[0]?.poolId ?? 'astro-stakers.pool.mock';
 
-    const deedPanel = new DeedPanel(parent, ctx, {
-      fetchFn,
-      openSigner: (req) => ({
-        promise: Promise.resolve({
-          status: 'approved',
-          signature: buildMockNep413Signature({
-            accountId: req.accountId,
-            recipient: req.recipient,
-            message: req.message,
-          }),
-        }),
-        approve: () => {},
-        reject: () => {},
-        close: () => {},
-        root: document.createElement('div'),
+    const claimRes = await fetch(`${url}/v1/near/claim-account`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        colonyId: 'col_0',
+        walletAccountId: 'pilot.mock',
+        walletSignature: {
+          accountId: 'pilot.mock',
+          publicKey: 'ed25519:mockkey',
+          signature: 'mocksig',
+          message: 'claim:col_0:pilot.mock',
+          nonce: 'n-w20-21-claim',
+          recipient: 'terraagent.mock',
+        },
       }),
     });
+    expect(claimRes.status).toBe(200);
+    const claimed = ClaimAccountResponseSchema.parse(await claimRes.json());
+    expect(claimed.claimedByAccountId).toBe('pilot.mock');
 
-    await deedPanel.refreshFromServer(true);
-    const staking = deedPanel.stakingPanel;
-    await staking.refreshFromServer();
-
-    expect(staking.controlsWrapEl.hidden).toBe(false);
-    expect(await staking.claimAccountFlow()).toBe(true);
-
-    staking.amountInputEl.value = '10';
-    expect(await staking.stakeFlow()).toBe(true);
-    expect(
-      staking.root.querySelector('[data-testid="staking-staked-value"]')?.textContent,
-    ).toContain('10 NEAR staked');
+    const stakeRes = await fetch(`${url}/v1/near/stake`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        colonyId: 'col_0',
+        pool,
+        amount: '10',
+        walletSignature: {
+          accountId: 'pilot.mock',
+          publicKey: 'ed25519:mockkey',
+          signature: 'mocksig',
+          message: `stake:col_0:${pool}:10`,
+          nonce: 'n-w20-21-stake',
+          recipient: pool,
+        },
+      }),
+    });
+    expect(stakeRes.status).toBe(200);
+    const staked = StakingActionResponse.parse(await stakeRes.json());
+    expect(staked.position.staked).toBe('10');
 
     // Warp 1 day (86400s) -> rewards ~ 0.00246 NEAR
     await postDevCmd('time.warp', { seconds: 86_400 });
-    await staking.refreshFromServer();
-    const rewardsText =
-      staking.root.querySelector('[data-testid="staking-rewards-value"]')?.textContent ?? '';
-    expect(rewardsText).toContain('0.00246');
+    const status1Res = await fetch(`${url}/v1/near/staking?colonyId=col_0`);
+    const status1 = StakingStatusResponse.parse(await status1Res.json());
+    expect(status1.positions[0]?.rewards).toContain('0.00246');
 
     // Unstake -> Unbonding (4 epochs)
-    expect(await staking.unstakeFlow()).toBe(true);
-    expect(staking.statusMsgEl.textContent).toContain('Unbonding');
+    const unstakeRes = await fetch(`${url}/v1/near/unstake`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        colonyId: 'col_0',
+        pool,
+        amount: '10',
+      }),
+    });
+    expect(unstakeRes.status).toBe(200);
+    const unstaked = StakingActionResponse.parse(await unstakeRes.json());
+    expect(unstaked.position.unbonding).toBe('10');
 
-    // Warp 4 epochs (172800s) -> Withdraw enabled
+    // Warp 4 epochs (172800s) -> Withdrawable 10 NEAR
     await postDevCmd('time.warp', { seconds: 172_800 });
-    await staking.refreshFromServer();
-    expect(staking.withdrawBtnEl.disabled).toBe(false);
+    const status2Res = await fetch(`${url}/v1/near/staking?colonyId=col_0`);
+    const status2 = StakingStatusResponse.parse(await status2Res.json());
+    expect(status2.positions[0]?.withdrawable).toBe('10');
 
     // Withdraw -> balance returns to wallet
-    expect(await staking.withdrawFlow()).toBe(true);
-    const walletText =
-      staking.root.querySelector('[data-testid="staking-wallet-balance"]')?.textContent ?? '';
-    expect(walletText).toContain('100.00246');
-
-    deedPanel.dispose();
+    const withdrawRes = await fetch(`${url}/v1/near/withdraw`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        colonyId: 'col_0',
+        pool,
+      }),
+    });
+    expect(withdrawRes.status).toBe(200);
+    const withdrawn = StakingActionResponse.parse(await withdrawRes.json());
+    expect(withdrawn.walletBalanceNear).toContain('100.00246');
   });
 });

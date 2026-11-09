@@ -22,8 +22,8 @@ function buildSampleDeed(overrides: Partial<DeedView> = {}): DeedView {
     colonyId: 'col_0',
     planetId: 'planet_w20',
     tokenId: 'deed:col_0',
-    accountId: 'planet_w20-col_0.terraagent.mock',
-    contract: 'deeds.terraagent.mock',
+    ownerAccountId: 'planet_w20-col_0.terraagent.mock',
+    contractId: 'deeds.terraagent.mock',
     metadata,
     version: 1,
     status: 'active',
@@ -32,15 +32,14 @@ function buildSampleDeed(overrides: Partial<DeedView> = {}): DeedView {
     pendingRetries: 0,
     accountClaimed: false,
     claimedByAccountId: null,
-    lastUpdateTx: 'mock:tx-v1',
-    explorerUrl: '/dev/chain/?tab=deeds&tokenId=deed%3Acol_0',
-    shareUrl: '/deed/deed%3Acol_0',
-    imageUrl: metadata.imageUrl,
+    txHash: 'mock:tx-v1',
+    mintedAt: 1731153600000,
+    updatedAt: 1731153600000,
     history: [
       {
         version: 1,
         change: 'Deed minted on NEAR',
-        at: '2026-11-09T12:00:00.000Z',
+        at: 1731153600000,
         txHash: 'mock:tx-v1',
         metadata,
       },
@@ -108,7 +107,7 @@ describe('W20-10 DeedCard UI panel live updates (unit)', () => {
         {
           version: 2,
           change: 'Terraform 50 %',
-          at: '2026-11-09T12:10:00.000Z',
+          at: 1731154200000,
           txHash: 'mock:tx-v2',
           metadata: { ...initialDeed.metadata, terraformBp: 5000, version: 2 },
         },
@@ -120,6 +119,8 @@ describe('W20-10 DeedCard UI panel live updates (unit)', () => {
       tokenId: 'deed:col_0',
       version: 2,
       change: 'Terraform 50 %',
+      status: 'active',
+      settled: false,
       metadata: updatedDeed.metadata,
       deed: updatedDeed,
     });
@@ -141,7 +142,7 @@ describe('W20-10 DeedCard UI panel states (unit)', () => {
     const ctx: FeatureContext = {
       flags: new Set(['W20']),
       host: 'server',
-      services: {},
+      services: { track: () => {} },
     };
     const panel = new DeedPanel(parent, ctx);
 

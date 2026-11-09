@@ -216,7 +216,7 @@ export class DeedShareController {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
-    let decoded = rawTokenId;
+    let decoded: string;
     try {
       decoded = decodeURIComponent(rawTokenId);
     } catch {

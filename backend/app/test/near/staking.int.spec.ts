@@ -26,7 +26,7 @@ describe('W20-16 MockStakingAdapter on Postgres', () => {
       nearAdapters.some((a) => a.port === StakingPort && a.kind === 'mock' && a.useClass === MockStakingAdapter),
     ).toBe(true);
 
-    let nowMs = 1_700_000_000_000;
+    const nowMs = 1_700_000_000_000;
     const adapter = new MockStakingAdapter(db.prisma, cfg(), { sleep, now: () => nowMs });
     const accountId = 'col-pg.pilot.terraagent.mock';
     const pool = 'astro-stakers.pool.mock';

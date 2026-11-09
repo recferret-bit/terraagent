@@ -60,7 +60,7 @@ async function setupDebounceHarness(taWaves = '..20') {
     terraformBp: 1000,
   });
   await listeners.emitDone(
-    { opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
+    { id: 1n, opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
     { tokenId: 'deed:col_0' },
     'mock:tx_mint_1',
   );
@@ -111,6 +111,7 @@ describe('DeedDebounceService 10-minute coalescing (W20-07 unit)', () => {
     expect(sentMeta.truces).toBe(1);
 
     const row: ClaimedRow = {
+      id: 2n,
       opId: 'deed-meta:col_0:2',
       port: 'DeedNft',
       method: 'updateMetadata',

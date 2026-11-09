@@ -64,7 +64,7 @@ async function setupLifecycleHarness(taWaves = '..20') {
     terraformBp: 4000,
   });
   await listeners.emitDone(
-    { opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
+    { id: 1n, opId: 'deed-mint:col_0', port: 'DeedNft', method: 'mint', payload: { colonyId: 'col_0' }, attempts: 1 },
     { tokenId: 'deed:col_0' },
     'mock:tx_mint_1',
   );
@@ -99,6 +99,7 @@ describe('DeedLifecycleService terminal status transitions (W20-14 unit)', () =>
 
     await listeners.emitDone(
       {
+        id: 2n,
         opId: 'deed-final:col_0:2',
         port: 'DeedNft',
         method: 'updateMetadata',

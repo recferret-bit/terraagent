@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import type { EnvSection } from '@terra/config';
 import { z } from 'zod';
 import { OutboxModule, env as outboxEnv } from './application/outbox/outbox.module.js';
+import { GameModule } from '../game/game.module.js';
 import { NotifyModule } from '../notify/notify.module.js';
 import { CargoExportOutboxService } from './cargo/cargo-export-outbox.js';
 import { CargoImportOutboxService } from './cargo/cargo-import-outbox.js';
@@ -83,7 +84,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     NearMockCommand,
     W20ScenarioSeedService,
   ],
-  imports: [NearInfrastructureModule, OutboxModule, NotifyModule],
+  imports: [NearInfrastructureModule, OutboxModule, NotifyModule, GameModule],
   exports: [
     AccountClaimService,
     CargoExportOutboxService,

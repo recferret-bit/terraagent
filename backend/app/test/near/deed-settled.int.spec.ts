@@ -90,7 +90,7 @@ function createPgSettledHarness() {
   );
   const availability = new FamilyAvailabilityService(flags);
   const engine = new ProgressionEngine(db.prisma, availability, env as never);
-  const factsStore = new FactsStore(env as never, db.prisma);
+  const factsStore = new FactsStore(db.prisma, env as never);
   const factsUpdater = new FactsUpdaterService(factsStore, bus, undefined, engine);
 
   minter.onModuleInit();

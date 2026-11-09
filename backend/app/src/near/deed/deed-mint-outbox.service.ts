@@ -7,7 +7,6 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import {
-  DeedMetadataV1,
   deedMintOpId,
   deedTokenId,
   type DeedHexCoord,
@@ -25,6 +24,11 @@ import { ChainOutboxRepository, type ClaimedRow } from '../application/outbox/ch
 import { OutboxListeners } from '../application/outbox/outbox-listeners.js';
 import { resolveColonyAccountId } from '../cargo/cargo-export-outbox.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
+import {
+  buildInitialDeedMetadata,
+  enqueueDeedMintIfPending,
+  extractMintRowColonyId,
+} from './parts/deed-mint-helpers.js';
 
 export interface NearDeedUpdatedBusEvent {
   readonly planetId: string;
@@ -143,7 +147,7 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
 
     const tokenId = deedTokenId(colonyId);
     const opId = deedMintOpId(colonyId);
-    const metadata = this.buildInitialMetadata(input, tokenId);
+    const metadata = buildInitialDeedMetadata(this.flags, input, tokenId);
 
     const db = this.database();
     if (db) {
@@ -175,26 +179,15 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
           },
           tx,
         );
-        if (this.outbox && record.chainState !== 'ACTIVE') {
-          await this.outbox.enqueue(
-            {
-              opId,
-              port: 'DeedNft',
-              method: 'mint',
-              payload: {
-                collection: 'deed',
-                tokenId,
-                ownerAccountId: record.accountId,
-                owner: record.accountId,
-                metadata: record.metadata,
-                metadataJson: JSON.stringify(record.metadata),
-                colonyId,
-                planetId: input.planetId,
-              },
-            },
-            tx,
-          );
-        }
+        await enqueueDeedMintIfPending(
+          this.outbox,
+          opId,
+          tokenId,
+          record,
+          colonyId,
+          input.planetId,
+          tx,
+        );
         return { colonyId, tokenId, accountId: record.accountId, opId, record };
       });
     }
@@ -209,29 +202,13 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
       metadata,
       opId,
     });
-    if (this.outbox && record.chainState !== 'ACTIVE') {
-      await this.outbox.enqueue({
-        opId,
-        port: 'DeedNft',
-        method: 'mint',
-        payload: {
-          collection: 'deed',
-          tokenId,
-          ownerAccountId: record.accountId,
-          owner: record.accountId,
-          metadata: record.metadata,
-          metadataJson: JSON.stringify(record.metadata),
-          colonyId,
-          planetId: input.planetId,
-        },
-      });
-    }
+    await enqueueDeedMintIfPending(this.outbox, opId, tokenId, record, colonyId, input.planetId);
     return { colonyId, tokenId, accountId: record.accountId, opId, record };
   }
 
   async onOutboxRowDone(row: ClaimedRow, _result: object, txHash: string | null): Promise<void> {
     if (row.port !== 'DeedNft' || row.method !== 'mint') return;
-    const colonyId = this.extractColonyId(row);
+    const colonyId = extractMintRowColonyId(row);
     if (!colonyId) return;
 
     const updated = await this.deeds.markOutboxDone(colonyId, row.opId, txHash, 1);
@@ -242,7 +219,7 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
 
   async onOutboxRowFailed(row: ClaimedRow, error: string, dead: boolean): Promise<void> {
     if (row.port !== 'DeedNft' || row.method !== 'mint') return;
-    const colonyId = this.extractColonyId(row);
+    const colonyId = extractMintRowColonyId(row);
     if (!colonyId) return;
 
     const updated = await this.deeds.markOutboxFailed(colonyId, row.opId, error, dead);
@@ -347,34 +324,6 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
       });
     }
     await this.pushDeedUpdated(record, change, txHash);
-  }
-
-  private buildInitialMetadata(input: MintDeedForColonyInput, tokenId: string): DeedMetadataV1 {
-    return DeedMetadataV1.parse({
-      planet: input.planetId,
-      colony: input.colonyId,
-      ...(input.colonyName ? { colonyName: input.colonyName } : {}),
-      ...(input.planetType ? { planetType: input.planetType } : {}),
-      ...(this.flags.has('W08') ? { stage: input.stage ?? 0 } : {}),
-      ...(this.flags.has('W05') ? { terraformBp: input.terraformBp ?? 0 } : {}),
-      ...(input.territoryHexes && input.territoryHexes.length > 0
-        ? { territoryHexes: [...input.territoryHexes] }
-        : {}),
-      status: 'active',
-      settled: false,
-      version: 1,
-      imageUrl: `/v1/near/deed/${encodeURIComponent(tokenId)}/image.png?v=1`,
-    });
-  }
-
-  private extractColonyId(row: ClaimedRow): string | null {
-    if (typeof row.payload.colonyId === 'string' && row.payload.colonyId.length > 0) {
-      return row.payload.colonyId;
-    }
-    if (row.opId.startsWith('deed-mint:')) {
-      return row.opId.slice('deed-mint:'.length);
-    }
-    return null;
   }
 
   private database(): PrismaClient | null {

@@ -1,15 +1,17 @@
 import type { DeedUpdatedPayload, DeedView } from '@terra/contracts';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { createDeedCardArtElement } from './deedCardArt';
+import { createDeedTracker } from './deedTracker';
 import {
+  applyDeedHeaderBadges,
   buildDeedHistorySection,
   buildDeedPanelHeader,
   buildDeedReceiptAndActions,
+  buildDeedTriggerButton,
   defaultFallbackDeed,
   renderDeedHistoryList,
   renderDeedStatsGrid,
-} from './deedPanelParts';
-import { createDeedTracker } from './deedTracker';
+} from './parts/deedPanelParts';
 import { StakingPanel, type StakingPanelOptions } from './stakingPanel';
 
 export interface DeedPanelOptions extends StakingPanelOptions {
@@ -19,7 +21,7 @@ export interface DeedPanelOptions extends StakingPanelOptions {
 
 /**
  * W20-10: Colony Deed Card UI panel (`Colony menu -> Deed`).
- * Thin orchestrator composing `deedPanelParts` and `deedCardArt`, with live `deed.updated` WS refresh.
+ * Thin orchestrator composing `parts/deedPanelParts` and `deedCardArt`, with live `deed.updated` WS refresh.
  * Uses `createElement` + `textContent` only (never `innerHTML`).
  */
 export class DeedPanel implements Disposable {
@@ -42,6 +44,7 @@ export class DeedPanel implements Disposable {
   private isOpen = false;
   private currentDeed: DeedView | null = null;
   private lastWarp: number | undefined;
+  private readonly warpTimers = new Set< ReturnType<typeof setTimeout> >();
   private readonly offs: Array<() => void> = [];
   private readonly fetchFn: typeof fetch;
   private readonly onDeedListeners = new Set<(deed: DeedView) => void>();
@@ -54,21 +57,9 @@ export class DeedPanel implements Disposable {
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
     if (opts.onDeedChanged) this.onDeedListeners.add(opts.onDeedChanged);
 
-    this.triggerBtn = document.createElement('button');
-    this.triggerBtn.type = 'button';
-    this.triggerBtn.className = 'ta-deed-hud-trigger plate-sm';
-    this.triggerBtn.dataset.testid = 'colony-deed-btn';
-    this.triggerBtn.dataset.settled = 'false';
-
-    const triggerLabel = document.createElement('span');
-    triggerLabel.textContent = 'COLONY · DEED';
-    this.triggerStatusEl = document.createElement('span');
-    this.triggerStatusEl.className = 'ta-deed-hud-trigger__status';
-    this.triggerStatusEl.textContent = 'ACTIVE';
-
-    this.triggerBtn.appendChild(triggerLabel);
-    this.triggerBtn.appendChild(this.triggerStatusEl);
-    this.triggerBtn.onclick = () => this.setOpen(!this.isOpen);
+    const trigger = buildDeedTriggerButton(() => this.setOpen(!this.isOpen));
+    this.triggerBtn = trigger.triggerBtn;
+    this.triggerStatusEl = trigger.triggerStatusEl;
 
     this.root = document.createElement('section');
     this.root.className = 'ta-deed-panel plate';
@@ -223,31 +214,18 @@ export class DeedPanel implements Disposable {
         xp: 50,
       });
     }
-    this.root.dataset.settled = isSettled ? 'true' : 'false';
-    this.triggerBtn.dataset.settled = isSettled ? 'true' : 'false';
-    this.triggerStatusEl.textContent = isSettled ? 'SETTLED' : deed.status.toUpperCase();
-
-    this.versionBadgeEl.textContent = `v${deed.version}`;
-    const statusLabel = isSettled
-      ? 'Settled'
-      : deed.status === 'eliminated'
-        ? 'Eliminated'
-        : deed.status === 'abandoned'
-          ? 'Abandoned'
-          : 'Active';
-    this.statusChipEl.textContent = statusLabel;
-    this.statusChipEl.dataset.status = isSettled ? 'settled' : deed.status;
-
-    const retries = deed.pendingRetries ?? 0;
-    const isPendingOrRetrying =
-      deed.pendingState === 'PENDING' || deed.pendingState === 'FAILED' || retries > 0;
-    this.pendingBadgeEl.dataset.pending = isPendingOrRetrying ? 'true' : 'false';
-    this.pendingBadgeEl.textContent =
-      retries > 0
-        ? `Pending / retrying (retries: ${retries})`
-        : isPendingOrRetrying
-          ? 'Pending on NEAR'
-          : 'Confirmed';
+    applyDeedHeaderBadges(
+      {
+        root: this.root,
+        triggerBtn: this.triggerBtn,
+        triggerStatusEl: this.triggerStatusEl,
+        versionBadgeEl: this.versionBadgeEl,
+        statusChipEl: this.statusChipEl,
+        pendingBadgeEl: this.pendingBadgeEl,
+      },
+      deed,
+      isSettled,
+    );
 
     while (this.previewWrapEl.firstChild) {
       this.previewWrapEl.removeChild(this.previewWrapEl.firstChild);
@@ -281,6 +259,20 @@ export class DeedPanel implements Disposable {
       isSettled || deed.status === 'eliminated' || deed.status === 'abandoned';
     renderDeedHistoryList(this.historyListEl, deed);
 
+    if (deed.version > 1) {
+      const latest = [...deed.history].sort((a, b) => b.version - a.version)[0];
+      const latestChange = latest?.change;
+      if (latestChange) {
+        this.ctx.services.deedToasts?.handleUpdate({
+          colonyId: deed.colonyId,
+          tokenId: deed.tokenId,
+          version: deed.version,
+          change: latestChange,
+          settled: isSettled,
+        });
+      }
+    }
+
     for (const listener of this.onDeedListeners) {
       listener(deed);
     }
@@ -293,11 +285,21 @@ export class DeedPanel implements Disposable {
       if (prev !== undefined && view.warp && view.warp > 1) {
         void this.refreshFromServer(false);
         void this.stakingPanel.refreshFromServer();
+        for (const delayMs of [600, 1500]) {
+          const timer = setTimeout(() => {
+            this.warpTimers.delete(timer);
+            void this.refreshFromServer(false);
+            void this.stakingPanel.refreshFromServer();
+          }, delayMs);
+          this.warpTimers.add(timer);
+        }
       }
     }
   }
 
   dispose(): void {
+    for (const timer of this.warpTimers) clearTimeout(timer);
+    this.warpTimers.clear();
     for (const off of this.offs.splice(0)) off();
     this.triggerBtn.remove();
     this.root.remove();
