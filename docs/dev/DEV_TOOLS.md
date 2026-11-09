@@ -268,6 +268,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 |---|---|
 | `npm run dev`, `dev:restart`, `dev:client` | Full stack; restart only the app (SIGTERM → shutdown snapshot → start); Vite only |
 | `npm run scenario -- w00 [--ticks N]` | Build and step a scenario headless, print a summary |
+| `npx tsx scripts/dev/run-zai-emulation.ts [--live] [--seed N]` | Run the W16 Z.ai GLM AI Director multi-round emulation harness (`MockZaiDirectorEmulator` by default; `--live` calls Z.ai `glm-5.3` when `AI_LIVE=1` and `ZAI_API_KEY` are set) across sector selection (`SectorAdvisor`), Conservative vs Risky directives, and permission/cap enforcement |
 | `npm run check`, `npm test`, `npm run ci:fast` | Typecheck + lint + structure + codegen; unit tests; check + unit + build |
 | `npm run validate:models -- --all`, `test:models` | Validate kitbashed 3D models (geometry, animation sweeps, appearance; `--all` = 35 models: every catalog archetype, each resource deposit at all three stages, reported as `<id>`, `<id>@half`, `<id>@depleted`; an unknown id exits 2); run 48-case validator self-test |
 | `npm run validate:particles -- --all`, `test:particles` | Validate 3D object-of-interaction particle presets (60/30/10 hierarchy, CIE Lab ΔE76 ≥ 15 contrast, ground bounce, HDR bloom, triangle budget; an unknown preset id or targetKind exits 2); run 22-case particle validator self-test |

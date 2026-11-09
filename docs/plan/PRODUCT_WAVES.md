@@ -3,9 +3,8 @@
 > **NEAR Hackathon Vertical Slice Revision (2026-11-09):** Focused the entire schedule on polishing the **Tier-1 (`S0–S4`) Vertical Slice** — core colony gameplay, AI Director, persistent multiplayer & diplomacy, economy/markets, offline play, and NEAR + Web3 features:
 > - **Postponed Waves (`POSTPONED` — 0 `H` issues, skipped by `npm run wave`):** `W14` (Fortify), `W17` (Second Tier S5–S7), `W19` (Air & Endgame S8–S10), `W21` (Rocket & Settlement), `W24` (Mobile, PWA & Landing), and `W27` (450-Sector Streaming).
 > - **Skip All Tier 2/3:** All Tier 2/3 buildings, resources (`metals.t2/t3`, `minerals.t2/t3`, `bio.t2/t3`), units (`tank`, `artillery`, `radar`, `multitask`, `brute`, aircraft), and stages (`S5–S10`) are deferred out of the vertical slice.
-> - **Active Vertical Slice Order (22 Waves, 624 `H` issues):**
->   - **Landed (14):** `W00 → W26 → W01 → W02 → W06 → W10 → W03 → W07 → W05 → W04 → W08 → W12 → W11 → W13`
->   - **Ready to Land Now (1):** `W16` (AI Director, `49/49`)
+> - **Active Vertical Slice Order (22 Waves, 628 `H` issues):**
+>   - **Landed (15):** `W00 → W26 → W01 → W02 → W06 → W10 → W03 → W07 → W05 → W04 → W08 → W12 → W11 → W13 → W16`
 >   - **Remaining Build Queue (7):** `W09` (Offline & Notifications) → `W15` (Guild & Agent Wallets) → `W18` (PvP & Diplomacy) → `W20` (Colony Deed & Staking, settled at Stage 4 / 100% Living Planet) → `W22` (Treasury DAO & Bounties) → `W23` (`NEAR_MODE=mock|testnet|devnet` Switch & Real NEAR Testnet/Devnet Adapters) → `W25` (Launch Ops & Submission)
 > - **100% Working Mocked + `NEAR_MODE=mock|testnet|devnet` Switch & Full-Game E2E Gates:** Every economy, AI Director (`AI_PROVIDER=mock|zai` with `AI_LIVE=1`), offline (`NOTIFY_ADAPTER=mock|live|webpush|telegram`), and all 11 Web3 ports work 100% end-to-end when mocked (`NEAR_MODE=mock`) and switch cleanly to real NEAR testnet/devnet via `NEAR_MODE=testnet|devnet` (or per-port `NEAR_ADAPTER_<PORT>=mock|testnet|devnet|mainnet`). Every wave enforces unit + integration (positive/negative/corner cases) + full-game server E2E (`tests/e2e/wNN.spec.ts`).
 
@@ -15,7 +14,7 @@
 
 > **Status:** v2 Vertical Slice (2026-11-09). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
 > **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-45; D-42 = W02 as-built build rules; D-43 = W07 neutral hive fauna & combat/motion rules; D-44 = regional specialization & market fees; D-45 = W05 hex-tile footprint & R4 plane joining + W13 external bot participation; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**1010 issues in 28 waves, ≈ 749.5 agent-days; 624 `H` issues in 22 active Vertical Slice waves**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**1014 issues in 28 waves, ≈ 751.5 agent-days; 628 `H` issues in 22 active Vertical Slice waves**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -45,7 +44,7 @@
 | **W13** | Markets & Trading Bot API (F2, mock) | Economy/NEAR | USDC/barter/NEAR markets, buyer 1% platform + 0–1% stall fees, NEP-413 `MockIntentsAdapter` + deterministic chain fault injection (`near.mock.fault`), DB economy profiles & operator panel (`/dev/chain/?tab=economy`), recurring prestige projects (`survey_array`, `monument`) + metered cargo transport recipe, regional resource endowments + base/army logistics supply windows (`unitReserve`), reproducible AI economy experiments (`npm run economy`), standalone `/trade.html` + `/v1/trade/*` bot REST+SSE API (allowances, kill switch, rate limits, `/v1/trade/overview/:planetId`), and pure need/value quote library (`shared/sim/src/systems/trade/agent/`) + `npm run trade:bot` (D-44, D-45) | W06, W10 |
 | **W14** | **[POSTPONED]** Fortify (walls) | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice* — Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege | W05, W07 |
 | **W15** | Guild & Agents (F3, F4, mock) | Economy/NEAR | Orbital Guild NPC traders with wallets visit, quote and trade; colony director key with allowance; `autoTrade` | W09, W13 |
-| **W16** | AI Director | Autonomy | Separate director worker (mock + live Z.ai), private MCP, durable queue, W08 goals, Conservative/Risky skills, security, W11 context, HUD rationale and away story | W08 |
+| **W16** | AI Director | Autonomy | Separate `@terra/director` worker (mock + live Z.ai `glm-5.3`), private MCP, durable `PrismaDirectorStore` outbox/budget/kill-switch, W08 goals, Conservative/Risky skills, W11/W27 context & `SectorAdvisor`, W13 quote-library Guild strategy, live HUD `DIRECTOR` policy controls & rationale, and away story | W08 |
 | **W17** | **[POSTPONED]** Second Tier (S5–S7) | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice (Tier 2/3 skipped)* — Hub T2 + HQ refit, Multitask T2, T2 buildings, Factory T2, Tank, Artillery, Mobile Radar, Brute fauna | W05, W07, W08 |
 | **W18** | PvP & Diplomacy | Gameplay | Raids on colonies, newcomer shield, colony critical / elimination, HQ reprint, truces (offer, notice, Oathbreaker), AI raid opt-in | W07, W09, W11 |
 | **W19** | **[POSTPONED]** Air & Endgame (S8–S10) | Gameplay | *Postponed out of NEAR Hackathon Vertical Slice (Tier 2/3 skipped)* — Aero Hangar, Air Recon, Fighter, Gunship, Bomber, Anti-Air, Drifter, T3 structures | W08, W14, W17 |
@@ -141,7 +140,7 @@ Every wave file has: goal, demo story (the e2e script in words), dependencies, t
 ## 6. Hackathon Vertical Slice (Nov 1–14, solo + AI agents)
 
 Vertical Slice Revision (2026-11-09): every active hackathon wave ships its **complete Tier-1 (`S0–S4`) vertical slice**, tagged `H` per issue, with full unit + integration + server E2E test suites and 100% mocked execution (`NEAR_MODE=mock`) plus a live `NEAR_MODE=testnet|devnet` switch (`W23`).
-- **22 Active Vertical Slice Waves (`624 H` issues):** `W00, W26, W01, W02, W06, W10, W03, W07, W05, W04, W08, W12, W11` (landed) → `W13, W16` (ready to land) → `W09, W15, W18, W20, W22, W23, W25` (remaining build queue).
+- **22 Active Vertical Slice Waves (`628 H` issues):** `W00, W26, W01, W02, W06, W10, W03, W07, W05, W04, W08, W12, W11, W13, W16` (landed) → `W09, W15, W18, W20, W22, W23, W25` (remaining build queue).
 - **6 Postponed Waves (`0 H` issues, skipped by `npm run wave`):** `W14` (Fortify), `W17` (Second Tier S5–S7), `W19` (Air & Endgame S8–S10), `W21` (Rocket & Settlement), `W24` (Mobile, PWA & Landing), and `W27` (450-Sector Streaming), plus all Tier 2/3 buildings, resources, units, and stages (`S5–S10`).
 - Numbers, calibration rule, checkpoints and the drop order: [`HACKATHON_CUT.md`](./HACKATHON_CUT.md).
 - Generated critical path and start order: [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) (`python3 scripts/plan/index_waves.py --write`).

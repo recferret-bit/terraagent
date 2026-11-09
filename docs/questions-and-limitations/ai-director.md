@@ -52,7 +52,7 @@
 
 ### AI-06 · Director audit store is in-memory only
 
-- **Status:** Resolved (wave/w16-ai-director validation)
+- **Status:** Resolved (`wave-16`)
 - **Area / code:** `backend/app/src/ai/audit/prisma-store.ts` (`PrismaDirectorStore`), `backend/app/src/ai/audit/memory-store.ts` (`MemoryDirectorAudit`), `shared/db/prisma/ai.prisma`
 - **What happens:** `PrismaDirectorStore` implements `DirectorAuditPort` over `@terra/db` (`director_policy`, `director_context`, `director_decision`, `director_proposal`, `director_action_result`, `director_budget_day`, `director_attempt`, `director_kill_switch`), expiring context and decisions while preserving `director_policy`. `MemoryDirectorAudit` remains for fast unit tests without Postgres.
 - **Why it is like this:** unit tests run without a database while `backend/app/test/ai/director-persistence.int.spec.ts` verifies the real Postgres store.
@@ -62,7 +62,7 @@
 
 ### AI-07 · Proposal outbox is in-memory
 
-- **Status:** Resolved (wave/w16-ai-director validation)
+- **Status:** Resolved (`wave-16`)
 - **Area / code:** `backend/app/src/ai/audit/prisma-store.ts` (`PrismaDirectorStore.acceptProposal`), `backend/app/src/ai/audit/outbox.ts` (`ProposalOutbox`), `shared/db/prisma/ai.prisma` (`DirectorProposal`)
 - **What happens:** `PrismaDirectorStore.acceptProposal` persists proposals and action results in a single Postgres transaction on `director_proposal` and `director_action_result`, enforcing `(planetEpoch, stateTick)` and `intentRevision` fencing and `requestId` deduplication across restarts and workers.
 - **Why it is like this:** `ProposalOutbox` remains as the pure in-memory reference implementation for unit tests, while `PrismaDirectorStore` provides crash-safe Postgres persistence.
@@ -82,7 +82,7 @@
 
 ### AI-09 · Global token budget is process-local
 
-- **Status:** Resolved (wave/w16-ai-director validation)
+- **Status:** Resolved (`wave-16`)
 - **Area / code:** `backend/app/src/ai/audit/prisma-store.ts` (`PrismaDirectorStore.reserveAttemptBudget` / `reconcileAttemptBudget`), `backend/app/src/ai/budget/global.ts` (`GlobalTokenBudget`), `shared/db/prisma/ai.prisma` (`DirectorBudgetDay`, `DirectorAttempt`)
 - **What happens:** `PrismaDirectorStore.reserveAttemptBudget` and `reconcileAttemptBudget` persist daily token reservations and attempt rows (`attemptId`) inside a Postgres transaction using `SELECT ... FOR UPDATE` on `director_budget_day` and `director_attempt`, preventing concurrent workers from exceeding the daily cap and ensuring idempotent per-attempt reconciliation.
 - **Why it is like this:** `GlobalTokenBudget` stays available for pure unit tests while `PrismaDirectorStore` enforces multi-worker transactional caps on Postgres.
@@ -122,7 +122,7 @@
 
 ### AI-13 · The director plate does not show live policy during play
 
-- **Status:** Resolved (wave/w16-ai-director validation)
+- **Status:** Resolved (`wave-16`)
 - **Area / code:** `frontend/game/features/director/index.ts`, `DirectorPanel.ts`, `DirectorControls.ts`, `devCommands.ts`, `shared/sim/src/systems/director/store.ts` (`readDirectorView`)
 - **What happens:** `readDirectorView` reads the colony's authoritative `ColonyDirectorRecord` from `view.blobs.director`. `DirectorPanel` displays `[data-testid="director-policy-summary"]` (`conservative · resources · 15% commit / 40% reserve`, or `35% commit / 15% reserve` under `risky`, plus `PAUSED`), mounts `DirectorControls` (`risk`, `preset`, `paused`, `note`) wired to `setDirectorPolicy`, supersedes open action rows when `intentRevision` increments, and updates `director.plan` / `director.trace` from live policy.
 - **Why it is like this:** `SimView.blobs.director` is replicated to `ClientView.blobs.director` on both the server host and `?host=local`.

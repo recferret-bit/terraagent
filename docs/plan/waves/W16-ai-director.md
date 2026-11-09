@@ -1,11 +1,11 @@
 # W16 — Player-directed AI Strategy
 
-> **Status:** Replanned 2026-11-04; implementation and live-provider verification remain to be done.
+> **Status:** Landed (`wave-16`, 2026-11-09; 49/49 `H` issues complete).
 > **Track:** Autonomy · **Flag:** `W16` · **Tag:** `wave-16` · **Scenario:** `tests/scenarios/w16-director.ts` · **E2E:** `tests/e2e/w16.spec.ts`
 > **Depends on waves:** W08 (landed HQ goals, independent priorities and rule engine).
 > **Optional integrations:** W09 away policy/digest; W11 persistent sectors; W15 Guild (an agent on the W13 bot API); W27 streamed summaries. Test explicit capability absence when off. Later-wave skill bodies activate only when their executors land.
 > **Spec:** [AI_ORCHESTRATOR](../../spec/AI_ORCHESTRATOR.md) is the revised normative contract; historical TA-09 issues are traceability only.
-> **Owned paths:** `backend/director/`, existing `backend/app/src/ai/`, `shared/contracts/src/ai/`, `shared/contracts/src/commands/set-director-policy.ts`, `shared/contracts/src/events/{director-action,director-status}.ts`, `shared/db/prisma/ai.prisma`, `shared/sim/src/{data/director.ts,systems/director/}`, `frontend/game/features/director/`; workspace/stack wiring and structure checks. Match actual landed paths before implementation.
+> **Owned paths:** `backend/director/`, existing `backend/app/src/ai/`, `shared/contracts/src/ai/`, `shared/contracts/src/commands/set-director-policy.ts`, `shared/contracts/src/events/{director-action,director-status}.ts`, `shared/db/prisma/ai.prisma`, `shared/sim/src/{data/director.ts,systems/director/}`, `frontend/game/features/director/`, `scripts/dev/{zai-emulation.ts,run-zai-emulation.ts}`; workspace/stack wiring and structure checks.
 
 ## Goal
 
