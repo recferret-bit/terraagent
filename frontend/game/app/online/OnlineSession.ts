@@ -172,6 +172,7 @@ export class OnlineSession {
       this.planetId = m.d.planet.id;
       if (m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
       this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: this.search, dev: import.meta.env.DEV }));
+      this.hud.activeServices?.awayDigest?.showWelcome(m.d);
     }
   }
 

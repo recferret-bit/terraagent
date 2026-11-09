@@ -1,5 +1,6 @@
-import { flagsFromList, newId, type CargoStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
+import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
@@ -106,6 +107,8 @@ export class WorldStore {
   private readonly cargoStatuses = new Emitter<CargoStatusPayload>();
   private readonly marketBooks = new Emitter<MarketBookPayload>();
   private readonly marketTrades = new Emitter<MarketTradePayload>();
+  private latestAwayDigest: AwayDigestV1 | null = null;
+  private readonly awayDigests = new Emitter<AwayDigestV1>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -129,6 +132,10 @@ export class WorldStore {
   /** W13 `market.book` / `market.trade` pushes of the joined planet. */
   onMarketBook(fn: (p: MarketBookPayload) => void): () => void { return this.marketBooks.on(fn); }
   onMarketTrade(fn: (p: MarketTradePayload) => void): () => void { return this.marketTrades.on(fn); }
+  /** Latest join digest (`welcome.away`). Null before one arrives. A resync welcome does not clear it. */
+  latestAway(): AwayDigestV1 | null { return this.latestAwayDigest; }
+  /** Fires when a join welcome carries `away`. The rest of welcome handling is unchanged. */
+  onAwayDigest(fn: (d: AwayDigestV1) => void): () => void { return this.awayDigests.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -231,6 +238,7 @@ export class WorldStore {
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
       const state = ownBytes(m.d.state);
       w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, colonyId: m.d.colonyId, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
+      this.publishJoinAway(m.d);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
       if (m.d.events?.length) this.retune(m.d.events);
@@ -304,6 +312,13 @@ export class WorldStore {
       const next = w && applyTuned(w.overrides, t);
       if (w && next) this.welcomeData = { flags: w.flags, overrides: next };
     }
+  }
+
+  private publishJoinAway(d: { reason?: string; away?: AwayDigestV1 }): void {
+    const away = digestFromWelcome(d);
+    if (!away) return;
+    this.latestAwayDigest = away;
+    this.awayDigests.emit(away);
   }
 
   /** A diff did not fit: ask for a fresh welcome by joining again (the transport must be connected). */

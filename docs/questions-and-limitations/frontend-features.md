@@ -1420,3 +1420,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** This browser keeps the last acked mode, raids flag and session percents. A reject restores the previous ack and does not write storage.
 - **To resolve:** When the replica exposes the colony away blob, hydrate the plate from that colony and keep `localStorage` only until the first view.
 - **Found:** 2026-11-09, W09-14
+
+### FF-99 · The away modal is the headline digest, not the full CLIENT §5.3 plate
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
+- **What happens:** A join `welcome.away` opens one plate: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it and the same `colonyId` + `awayFrom` does not return until the page reloads. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
+- **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
+- **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
+- **Found:** 2026-11-09, W09-17
