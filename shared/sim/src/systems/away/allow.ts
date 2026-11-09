@@ -37,9 +37,19 @@ function matchThreatBuild(view: AwayPolicyView, order: BuildOrder | null, cost: 
   return kind && withinDirective(view, cost);
 }
 
+function withinSession(view: AwayPolicyView, cost: AwayCommand['cost']): boolean {
+  for (const family of AWAY_FAMILIES) {
+    const spend = cost?.[family] ?? 0;
+    const row = view.budget[family];
+    const cap = (row.stock.start * row.perSessionPct) / 100;
+    if (row.stock.spent + spend > cap) return false;
+  }
+  return true;
+}
+
 function matchExtractor(view: AwayPolicyView, order: BuildOrder | null, cost: AwayCommand['cost']): boolean {
   if (!order || order.tier !== 1 || !isExtractor(order.building)) return false;
-  return withinDirective(view, cost);
+  return withinDirective(view, cost) && withinSession(view, cost);
 }
 
 function matchQueued(view: AwayPolicyView, args: unknown): boolean {
