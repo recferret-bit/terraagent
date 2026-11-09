@@ -91,7 +91,9 @@ export class GamePlanets {
   private readonly threadDownListeners = new Set<(thread: number, planetIds: readonly string[]) => void>();
   /** Restores whose coarse catch-up has not posted `fastRan` yet. `load` stays pending until then. */
   private readonly catchingUp = new Set<string>();
+  private readonly fastRunStartListeners: ((planetId: string) => void)[] = [];
   private readonly fastRunListeners: ((planetId: string, seconds: number, ticks: number) => void)[] = [];
+  private readonly fastRunAbortListeners: ((planetId: string) => void)[] = [];
   /** Set by `shutdown`: threads stopping on purpose are not "down". */
   private stopping = false;
   private readonly unlisten: () => void;
@@ -140,7 +142,10 @@ export class GamePlanets {
             }
           : msg;
       this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
-      if ((normalizedMsg.catchUpTicks ?? 0) > 0) this.catchingUp.add(planetId);
+      if ((normalizedMsg.catchUpTicks ?? 0) > 0) {
+        this.catchingUp.add(planetId);
+        for (const fn of this.fastRunStartListeners) fn(planetId);
+      }
       const transfer = normalizedMsg.snapshot ? [normalizedMsg.snapshot.buffer as ArrayBuffer] : [];
       if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
@@ -157,8 +162,12 @@ export class GamePlanets {
 
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
   onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): void { this.loadedListeners.push(fn); }
+  /** Fires when a restart fast-run is marked, before the worker steps the gap. A gap of 0 does not fire. */
+  onFastRunStart(fn: (planetId: string) => void): void { this.fastRunStartListeners.push(fn); }
   /** Fires when a restart fast-run finishes (`restart_fastrun_seconds`). */
   onFastRun(fn: (planetId: string, seconds: number, ticks: number) => void): void { this.fastRunListeners.push(fn); }
+  /** Fires when a marked catch-up stops before `fastRan` (load failed, or the planet went down). */
+  onFastRunAbort(fn: (planetId: string) => void): void { this.fastRunAbortListeners.push(fn); }
   /** Every step's ledger postings of every planet, in order, subscribed or not. */
   onPlanetLedger(fn: PlanetLedgerListener): void { this.ledgerListeners.push(fn); }
   onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
@@ -424,9 +433,10 @@ export class GamePlanets {
   }
 
   private failLoad(planetId: string, e: Error): void {
-    this.catchingUp.delete(planetId);
+    const aborted = this.catchingUp.delete(planetId);
     for (const w of this.loading.get(planetId) ?? []) w.reject(e);
     this.loading.delete(planetId);
     this.hostInfo.delete(planetId);
+    if (aborted) for (const fn of this.fastRunAbortListeners) fn(planetId);
   }
 }

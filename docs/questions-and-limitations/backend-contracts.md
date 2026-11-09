@@ -814,12 +814,12 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 ### BE-60 · Restart fast-run drops a short gap and emits events while it steps
 
-- **Status:** Accepted (W09-06 scope; notification hold is W09-27)
-- **Area / code:** `backend/app/src/game/restart/` (`missedRestartTicks`, `runCoarseCatchUp`), `backend/app/src/game/thread/sim-thread.ts` (`finishCatchUp`), `backend/app/src/game/persistence/snapshot.service.ts` (`restore`)
-- **What happens:** The missed time is `now − savedAt` at 5 active ticks per wall second (`TICK_MS` 200), capped at `RESTART_FASTRUN_MAX_H` (24). The fast-run steps `dt` 5, so a remainder under 5 ticks is not simulated. Events from those steps are posted as the loop runs, not held until it finishes (CT-54). After the run the planet is scheduled `active` (BE-57), not left coarse. A periodic snapshot is requested when the run finishes so the next boot's gap is ~0. A crash before that snapshot is stored reloads the previous snapshot and runs the gap again; the lost in-memory run is not applied on top.
-- **Why it is like this:** Coarse steps are the continuity rule (CT-51). Holding notifications until the run ends is W09-27. Socket mode stays the W09-03 rule. The follow-up snapshot is what stops a second boot from repeating the catch-up.
-- **Workaround / mitigation:** Gaps shorter than one coarse step catch up on a later boot once they reach 5 ticks. Do not treat sim events during boot as already-deduped alerts.
-- **To resolve:** W09-27 should queue fast-run notifications and send them once, deduped. No change is needed for the 24 h cap or the coarse remainder.
+- **Status:** Accepted (short gap and crash replay remain; notification hold landed in W09-27)
+- **Area / code:** `backend/app/src/game/restart/` (`missedRestartTicks`, `runCoarseCatchUp`), `backend/app/src/game/thread/sim-thread.ts` (`finishCatchUp`), `backend/app/src/game/persistence/snapshot.service.ts` (`restore`), `backend/app/src/notify/alert-router.ts` (`flushFastRun`)
+- **What happens:** The missed time is `now − savedAt` at 5 active ticks per wall second (`TICK_MS` 200), capped at `RESTART_FASTRUN_MAX_H` (24). The fast-run steps `dt` 5, so a remainder under 5 ticks is not simulated. Sim events are still posted as the loop runs, so digest and other bus subscribers see them immediately. Notification sends for that planet are held until `fastRan`, then flushed once per colony and kind (CT-54). After the run the planet is scheduled `active` (BE-57), not left coarse. A periodic snapshot is requested when the run finishes so the next boot's gap is ~0. A crash before that snapshot is stored reloads the previous snapshot and runs the gap again; the lost in-memory run is not applied on top. A run that stops before `fastRan` drops its buffer (BE-62).
+- **Why it is like this:** Coarse steps are the continuity rule (CT-51). Notifications wait for `fastRan` so a catch-up that spans hours does not page the player once per raid while the process is still booting. Socket mode stays the W09-03 rule. The follow-up snapshot is what stops a second boot from repeating the catch-up.
+- **Workaround / mitigation:** Gaps shorter than one coarse step catch up on a later boot once they reach 5 ticks. `AlertRouter` is the notification dedupe. Other bus subscribers still see each sim event as it is posted.
+- **To resolve:** No change is needed for the 24 h cap or the coarse remainder. Notification flush is W09-27.
 - **Found:** 2026-11-09, W09-06
 
 ### BE-61 · Twisters sample once per step, so coarse dt is not five fine ticks
@@ -831,3 +831,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The coarse-dt parity test covers dt-scaled production, the brownout collapse timer and lightning expiry. It does not claim twister motion or raid swings.
 - **To resolve:** Inside one coarse step, advance each active twister once per tick from `tick - dt + 1` through `tick`. Same for any other hazard that samples once per step. Leave threshold timers that already key off `ctx.tick` alone.
 - **Found:** 2026-11-09, W09-04
+
+### BE-62 · A fast-run that stops before fastRan drops its notifications
+
+- **Status:** Accepted
+- **Area / code:** `backend/app/src/notify/fast-run-hold.ts` (`drop`), `backend/app/src/game/game-planets.service.ts` (`failLoad`), `backend/app/src/game/restart/notify-hold.ts`
+- **What happens:** If a restart catch-up is marked and the load then fails, or the planet goes down, before `fastRan`, the buffered notifications are discarded. `NotifierPort.send` is not called for them. A later successful recovery fast-run of the same snapshot sends once at its own flush. If nothing retries, those alerts are not sent.
+- **Why it is like this:** Flushing the failed attempt and flushing again when recovery replays the gap would send non-attack kinds twice. `under_attack` would usually fall inside the 10-minute window; the other kinds would not.
+- **Workaround / mitigation:** `wirePlanetRecovery` restores the planet from its snapshot and fast-runs again. That run flushes.
+- **To resolve:** Flush the aborted buffer only when recovery will not replay that gap.
+- **Found:** 2026-11-09, W09-27

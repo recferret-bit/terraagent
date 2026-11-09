@@ -42,6 +42,8 @@ import { SnapshotStore } from './persistence/snapshot-store';
 import { ProgressionEventForwarder } from './progression-events.service';
 import { wirePlanetRecovery } from './planet-recovery';
 import { installRestartFastRunMetric } from './restart/metric';
+import { installFastRunAlertHold } from './restart/notify-hold';
+import { AlertRouter } from '../notify/alert-router';
 import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
 import { W00_PLANET_TYPE } from './thread/protocol';
@@ -208,6 +210,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       return pool.live;
     });
     installRestartFastRunMetric(this.planets, this.metrics.registry);
+    this.wireFastRunAlerts();
     const restored = await this.snapshots.restoreAll();
     const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
     const devOpts = this.flags.has('W01')
@@ -215,6 +218,15 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
+  }
+
+  /** Notify is a sibling module. A test that boots Game alone has no router; live play does. */
+  private wireFastRunAlerts(): void {
+    try {
+      installFastRunAlertHold(this.planets, this.modules.get(AlertRouter, { strict: false }));
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.includes('AlertRouter')) throw e;
+    }
   }
 
   /** Lobby does not import this module. Resolve it after both exist so pause/archive can snapshot (SIM-H-06). */

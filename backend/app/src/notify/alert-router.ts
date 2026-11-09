@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModu
 import { NotificationKindSchema, type NotificationKind } from '@terra/contracts';
 import { EventBus, type Unsubscribe } from '../bus/event-bus.js';
 import type { PlanetEventV1 } from '../bus/channels.js';
-import { NotifierPort } from '../ports/notifier.port.js';
+import { NotifierPort, type Notification } from '../ports/notifier.port.js';
 import {
   alertNotification,
   colonyTargets,
@@ -11,6 +11,7 @@ import {
   type AlertRouteInput,
 } from './alert-map.js';
 import { AlertToggles, UnderAttackWindow } from './alert-policy.js';
+import { FastRunAlertHold } from './fast-run-hold.js';
 
 export type { AlertRouteInput } from './alert-map.js';
 
@@ -22,12 +23,14 @@ export interface AlertRouteResult {
  * CT-36 router. Planet events arrive on `planet.event`; `rocketReady`, `truceOffered` and `trade_offer`
  * are also accepted on {@link AlertRouter.route} because those producers are later waves.
  * Nothing is filtered for a connected player here: `NotifierPort` (the mock) skips that.
+ * A planet inside its restart fast-run buffers sends until {@link AlertRouter.flushFastRun} (CT-54).
  */
 @Injectable()
 export class AlertRouter implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('AlertRouter');
   private readonly toggles = new AlertToggles();
   private readonly attacks = new UnderAttackWindow();
+  private readonly fastRun = new FastRunAlertHold();
   private unsub?: Unsubscribe;
 
   constructor(
@@ -50,6 +53,25 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
     const parsed = NotificationKindSchema.safeParse(kind);
     if (!parsed.success || colonyId.length === 0) return;
     this.toggles.set(colonyId, parsed.data, on);
+  }
+
+  /** While set, `route` for this planet does not call `NotifierPort.send`. */
+  beginFastRun(planetId: string): void {
+    if (planetId.length > 0) this.fastRun.begin(planetId);
+  }
+
+  /** Sends the collapsed buffer once. An empty buffer sends nothing. */
+  async flushFastRun(planetId: string, nowMs = Date.now()): Promise<AlertRouteResult> {
+    let sent = 0;
+    for (const note of this.fastRun.flush(planetId)) {
+      if (await this.dispatch(note, nowMs)) sent += 1;
+    }
+    return { sent };
+  }
+
+  /** Drops the buffer without sending. Used when the catch-up stops before `fastRan`. */
+  dropFastRun(planetId: string): void {
+    this.fastRun.drop(planetId);
   }
 
   async route(input: AlertRouteInput, nowMs = input.nowMs ?? Date.now()): Promise<AlertRouteResult> {
@@ -84,12 +106,21 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
     if (!this.toggles.allows(colonyId, kind)) return false;
     const note = alertNotification(kind, colonyId, input, nowMs);
     if (!note) return false;
-    if (kind === 'under_attack' && !this.attacks.open(colonyId, nowMs)) return false;
+    const planetId = input.planetId;
+    if (planetId && this.fastRun.holding(planetId)) {
+      this.fastRun.push(planetId, { colonyId, kind, note });
+      return false;
+    }
+    return this.dispatch(note, nowMs);
+  }
+
+  private async dispatch(note: Notification, nowMs: number): Promise<boolean> {
+    if (note.kind === 'under_attack' && !this.attacks.open(note.colonyId, nowMs)) return false;
     try {
       await this.notifier.send(note);
       return true;
     } catch (e) {
-      this.log.error(`notify ${kind} for ${colonyId} failed: ${e instanceof Error ? e.message : String(e)}`);
+      this.log.error(`notify ${note.kind} for ${note.colonyId} failed: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }
   }
