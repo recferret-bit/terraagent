@@ -112,6 +112,37 @@ function flowTable(): Record<ResourceKey, ResourceFlow> {
 
 const isResource = (a: string): a is ResourceKey => (RESOURCE_KEYS as readonly string[]).includes(a);
 
+function applyAssetPosting(
+  p: PostingInput,
+  asset: ResourceKey,
+  basis: FlowBasis,
+  global: Record<ResourceKey, ResourceFlow>,
+  colonyFlow: (i: number) => Record<ResourceKey, ResourceFlow>,
+): void {
+  const legs = p.legs.filter((l) => l.asset === asset);
+  const hasSystem = legs.some((l) => isSystemAccount(l.account));
+  for (const l of legs) {
+    if (isSystemAccount(l.account)) continue;
+    const ci = colonyIndexOfAccount(l.account);
+    if (ci < 0) continue;
+    const delta = BigInt(l.delta);
+    for (const f of [colonyFlow(ci)[asset], global[asset]]) {
+      if (hasSystem) addTo(f, p, delta, basis);
+      else if (delta > 0n) f.transferIn += delta;
+      else f.transferOut += -delta;
+    }
+  }
+  const src = SOURCE_OF_REASON[p.reason];
+  const lost = legs.filter((l) => l.account === 'sys:overflow' && l.delta > 0).reduce((a, l) => a + BigInt(l.delta), 0n);
+  if (src && lost > 0n) {
+    global[asset].capped[src] += lost;
+    // Attributed to the colony that was credited in the same entry; a fully capped entry has no colony leg, so it
+    // shows in `global` only.
+    const credited = legs.find((l) => colonyIndexOfAccount(l.account) >= 0);
+    if (credited) colonyFlow(colonyIndexOfAccount(credited.account))[asset].capped[src] += lost;
+  }
+}
+
 /**
  * Splits the ledger postings of a window into per-colony and global flows (ECONOMY §2). The window is
  * `(startTick, endTick]`: a posting `at` tick T belongs to the step that produced T, and the opening inventory is the
@@ -130,31 +161,7 @@ export function accountFlows(postings: readonly PostingInput[], window: FlowWind
   for (const p of postings) {
     if (p.at <= window.startTick || p.at > window.endTick || p.reason === 'ledger.opening') continue;
     const assets = new Set(p.legs.map((l) => l.asset).filter(isResource));
-    for (const asset of assets) {
-      const legs = p.legs.filter((l) => l.asset === asset);
-      const hasSystem = legs.some((l) => isSystemAccount(l.account));
-      for (const l of legs) {
-        const delta = BigInt(l.delta);
-        if (isSystemAccount(l.account)) continue;
-        const ci = colonyIndexOfAccount(l.account);
-        if (ci < 0) continue;
-        const flows = [colonyFlow(ci)[asset], global[asset]];
-        for (const f of flows) {
-          if (hasSystem) addTo(f, p, delta, basis);
-          else if (delta > 0n) f.transferIn += delta;
-          else f.transferOut += -delta;
-        }
-      }
-      const src = SOURCE_OF_REASON[p.reason];
-      const lost = legs.filter((l) => l.account === 'sys:overflow' && l.delta > 0).reduce((a, l) => a + BigInt(l.delta), 0n);
-      if (src && lost > 0n) {
-        global[asset].capped[src] += lost;
-        // Attributed to the colony that was credited in the same entry; a fully capped entry has no colony leg, so it
-        // shows in `global` only.
-        const credited = legs.find((l) => colonyIndexOfAccount(l.account) >= 0);
-        if (credited) colonyFlow(colonyIndexOfAccount(credited.account))[asset].capped[src] += lost;
-      }
-    }
+    for (const asset of assets) applyAssetPosting(p, asset, basis, global, colonyFlow);
   }
   return { window, basis, byColony, global };
 }
