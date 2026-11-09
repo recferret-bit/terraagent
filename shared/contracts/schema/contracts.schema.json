@@ -3023,7 +3023,8 @@
               "fee_out_of_range",
               "order_limit",
               "order_too_small",
-              "unknown_order"
+              "unknown_order",
+              "away_policy"
             ],
             "type": "string"
           },
@@ -3761,6 +3762,82 @@
       "summary": "Turns the colony AI (autonomous goal breakdown and rule-engine autopilot) on or off. Default off: bots only run explicit player commands.",
       "wave": "W08"
     },
+    "setAutopilot": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "awayBudget": {
+            "additionalProperties": false,
+            "properties": {
+              "bio": {
+                "additionalProperties": false,
+                "properties": {
+                  "perDirectivePct": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "perSessionPct": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "metals": {
+                "additionalProperties": false,
+                "properties": {
+                  "perDirectivePct": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "perSessionPct": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "minerals": {
+                "additionalProperties": false,
+                "properties": {
+                  "perDirectivePct": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "perSessionPct": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "awayRaids": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "director",
+              "rules_only"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Sets autopilot mode, away raids, and the per-family away budget.",
+      "wave": "W09"
+    },
     "setDirectorPolicy": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4150,6 +4227,37 @@
       "summary": "Stops an owned unit: drops its current and queued commands and its route; queued auto work resumes after a short hold.",
       "wave": "W01"
     },
+    "system.presence": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "away": {
+            "type": "boolean"
+          },
+          "colonyId": {
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "colonyId",
+          "away"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Marks a colony away or back. The sim does not read sockets.",
+      "wave": "W09"
+    },
     "system.spawnColony": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4432,6 +4540,54 @@
       "severity": "warn",
       "summary": "Emitted when an alert ping occurs at hex (q, r) to drive the minimap ping ring (W04-01, W04-08).",
       "wave": "W04"
+    },
+    "awayBudgetExhausted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "atTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resource": {
+            "enum": [
+              "metals",
+              "minerals",
+              "bio"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "resource",
+          "atTick"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Automated spend hit the away-session cap for one resource family (AW-20). Notified as away_budget_exhausted.",
+      "wave": "W09"
     },
     "borderFrozen": {
       "audience": "player",
@@ -4856,6 +5012,195 @@
       "severity": "warn",
       "summary": "A failed orbital cargo export was refunded to colony stock (even above cap) or a failed import reservation was released (W10-01, W10-07).",
       "wave": "W10"
+    },
+    "colonyAway": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "atTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "atTick"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The colony has had no socket for AWAY_AFTER_S (CT-11, CT-12).",
+      "wave": "W09"
+    },
+    "colonyBack": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "atTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "awayForS": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "atTick"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The colony socket is back after an away period (CT-12).",
+      "wave": "W09"
+    },
+    "colonyCritical": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "atTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cause": {
+            "enum": [
+              "hub_destroyed",
+              "raid",
+              "fauna",
+              "environment",
+              "other"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deadlineTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "cause",
+          "atTick"
+        ],
+        "type": "object"
+      },
+      "severity": "critical",
+      "summary": "The colony Hub is down and the elimination timer is running (UO-HQ-04, D-17).",
+      "wave": "W09"
+    },
+    "colonyEliminated": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "atTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cause": {
+            "enum": [
+              "timer",
+              "hq_lost",
+              "raid",
+              "fauna",
+              "environment",
+              "other"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "cause",
+          "atTick"
+        ],
+        "type": "object"
+      },
+      "severity": "critical",
+      "summary": "The colony is eliminated. Hard mode applies while the player is away (D-17, UO-HQ-04).",
+      "wave": "W09"
     },
     "colonyFounded": {
       "audience": "player",
@@ -5677,7 +6022,8 @@
               "fee_out_of_range",
               "order_limit",
               "order_too_small",
-              "unknown_order"
+              "unknown_order",
+              "away_policy"
             ],
             "type": "string"
           },
@@ -8378,7 +8724,8 @@
                 "fee_out_of_range",
                 "order_limit",
                 "order_too_small",
-                "unknown_order"
+                "unknown_order",
+                "away_policy"
               ],
               "type": "string"
             },

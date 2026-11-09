@@ -739,3 +739,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The orbital picker in `/play.html?planet=<kind>` polls `/v1/planets` + `/v1/planets/:id/sectors` (with optional WebSocket summary bridge) and supports `Auto (recommended)` + manual sector selection + queued retry/cancel; `docs/plan/w27-readiness-manifest.md` records all 19 deferred rows.
 - **To resolve:** Implement the remaining untagged / `H+` W11 rows when full lobby party/transfer/standalone-entry scope is scheduled alongside W27.
 - **Found:** 2026-11-08, W11 delivery.
+
+### BE-53 · setAutopilot is one command; oil is not a fourth away-budget family
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/contracts/src/commands/set-autopilot.ts`, `shared/contracts/src/notify/budget.ts`, CONTINUITY AW-20, PROTOCOL away commands
+- **What happens:** `setAutopilot` takes `{ mode, awayRaids, awayBudget }` with integer percents per D-34 family (`metals`, `minerals`, `bio`). A percent outside 0..100 is rejected. PROTOCOL still shows `setAutopilot {aiDirector, awayRaids}` plus a separate `setAwayBudget`. Oil is not its own slider: Petroleum is `bio.t2` inside Bio.
+- **Why it is like this:** W09-01 and the wave file name this shape. The grill note Q-04-12 says to use it. The owner tasks (Q5) say the away budget is player-set and do not pick the wire shape. This wave uses the wave-file shape so later issues have one command to ack.
+- **Workaround / mitigation:** `autoTrade` stays out of this command. Its checker is W09-13 and its command is W15-01 `setAutoTrade`.
+- **To resolve:** Confirm the single-command shape, or split `setAwayBudget` to match PROTOCOL. Confirm Bio covers oil.
+- **Found:** 2026-11-09, W09-01 contract default
