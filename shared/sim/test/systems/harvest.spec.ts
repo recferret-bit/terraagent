@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
-  assignHarvesterSubJob,
+  assignWorkerSubJob,
   createRegistryPipeline,
   createState,
   DEPOSIT,
@@ -9,14 +9,14 @@ import {
   hexIndex,
   setTileDeposit,
   setTileTerrain,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   step,
   TERRAIN,
 } from '../../src';
 import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
-  it('1 idle Harvester -> walks to nearest deposit and credits +0.5/s; setHarvestWeights retargets it', () => {
+  it('1 idle Worker -> walks to nearest deposit and credits +0.5/s; setHarvestWeights retargets it', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -34,11 +34,11 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
     // Slightly farther deposit: minerals at (0, 2) (dist 2)
     setTileDeposit(state, idx.indexOf(0, 2), DEPOSIT.minerals, 10000, 0);
 
-    // Spawn 1 idle Harvester at (0, 0) (already adjacent dist === 1 to metals deposit at (1, 0))
-    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
+    // Spawn 1 idle Worker at (0, 0) (already adjacent dist === 1 to metals deposit at (1, 0))
+    const harvId = spawnWorkerUnit(state, { owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
-    // Harvester stays on adjacent hex (0, 0) (never steps onto deposit tile (1, 0))
+    // Worker stays on adjacent hex (0, 0) (never steps onto deposit tile (1, 0))
     step(state, [], 1, pipeline);
     expect(state.entities.cols.q[0]).toBe(0);
     expect(state.entities.cols.r[0]).toBe(0);
@@ -68,7 +68,7 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
     // Also verify Clear sub-job on a forest tile
     const forestTile = idx.indexOf(0, 1);
     setTileTerrain(state, forestTile, TERRAIN.forest, state.meta.tick);
-    expect(assignHarvesterSubJob(state, harvId, 'clear', 0, 1).ok).toBe(true);
-    expect(assignHarvesterSubJob(state, harvId, 'flatten', 0, 1)).toEqual({ ok: false, code: 'op_not_allowed' });
+    expect(assignWorkerSubJob(state, harvId, 'clear', 0, 1).ok).toBe(true);
+    expect(assignWorkerSubJob(state, harvId, 'flatten', 0, 1)).toEqual({ ok: false, code: 'op_not_allowed' });
   });
 });

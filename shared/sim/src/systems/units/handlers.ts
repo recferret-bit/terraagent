@@ -8,7 +8,7 @@ import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
 import { occupiedGroundTiles } from '../construction/occupancy';
-import { assignHarvesterDepositTarget, hasAnyPassableNeighbor } from '../harvest';
+import { assignWorkerDepositTarget, hasAnyPassableNeighbor, isWorker } from '../harvest';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { issueUnitCommand } from './registry';
 
@@ -19,7 +19,7 @@ import { issueUnitCommand } from './registry';
  */
 
 /** Resolves the commanded unit's row (the caller's own unit), or a reject code. */
-function ownUnitRow(state: PlanetState, cmd: SimCommand, id: number): number | string {
+export function ownUnitRow(state: PlanetState, cmd: SimCommand, id: number): number | string {
   const row = rowOf(state.entities, id);
   if (cmd.colonyIndex === undefined) {
     return row < 0 ? 'unknown_entity' : row;
@@ -57,8 +57,8 @@ export const moveUnit = defineCommandHandler({
       const kind = state.entities.cols.kind[row];
       if (!hasAnyPassableNeighbor(state, q, r, occupied)) return 'site_blocked';
       cancelWorkerJobs(state, args.entityId, ctx.tick); // a player order ends the unit's work jobs (and terraform chain)
-      if (kind === ENTITY_KIND.harvester) {
-        const res = assignHarvesterDepositTarget(state, args.entityId, q, r, ctx.tick, ctx);
+      if (isWorker(kind)) {
+        const res = assignWorkerDepositTarget(state, args.entityId, q, r, ctx.tick, ctx);
         return res.ok ? undefined : res.code;
       }
       if (kind === ENTITY_KIND.hq && ctx.flags.has('W02')) {

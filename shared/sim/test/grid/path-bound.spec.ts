@@ -44,6 +44,7 @@ describe('path search optimality bound (weighted A*)', () => {
       }
     }
     // Deterministic: if a change to the search moves these numbers, update them on purpose (and the HEURISTIC doc).
-    expect({ pairs, suboptimal, worst: worst.toFixed(4) }).toEqual({ pairs: 120, suboptimal: 56, worst: '1.0959' });
+    // They also move with the generated ground (deposits are impassable): GEN_VERSION 10 (deposits only on hex tiles).
+    expect({ pairs, suboptimal, worst: worst.toFixed(4) }).toEqual({ pairs: 120, suboptimal: 62, worst: '1.1775' });
   });
 });

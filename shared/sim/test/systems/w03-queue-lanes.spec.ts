@@ -70,7 +70,7 @@ describe('W03-12 Four lanes in sim — lane routing & HQ-goal shell', () => {
     const uBuilder = enqueueQueueTask(state, {
       colonyIndex: 0,
       taskId: 'u-builder',
-      task: { kind: 'buildUnit', unit: 'builder', count: 1 },
+      task: { kind: 'buildUnit', unit: 'worker', tier: 2, count: 1 },
     });
     const gGoal = enqueueQueueTask(state, {
       colonyIndex: 0,
@@ -84,7 +84,7 @@ describe('W03-12 Four lanes in sim — lane routing & HQ-goal shell', () => {
     expect(cRepair.ok && cRepair.entry.lane).toBe('construction');
     expect(tfEntry.ok && tfEntry.entry.lane).toBe('terraform');
     expect(uBuilder.ok && uBuilder.entry.lane).toBe('units');
-    expect(uBuilder.ok && uBuilder.entry.cost).toEqual({ 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 });
+    expect(uBuilder.ok && uBuilder.entry.cost).toEqual({ 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10, 'bio.water': 0 });
     expect(gGoal.ok && gGoal.entry.lane).toBe('hqGoals');
 
     expect(getColonyQueue(state, 0, 'construction').map((e) => e.taskId)).toEqual(['c-build', 'c-pylon', 'c-repair']);
@@ -135,7 +135,7 @@ describe('W03-12 Five-level precedence & multi-builder concurrency', () => {
     }
   });
 
-  it('allows multiple concurrent in_progress construction entries when the colony has both HQ and Builder Drone', () => {
+  it('allows multiple concurrent in_progress construction entries when the colony has both HQ and Worker Drone T2', () => {
     const { state, colony } = createColonyState('p-multi-builder');
 
     const hqRow = insertRow(state.entities, 1, 0);
@@ -145,7 +145,7 @@ describe('W03-12 Five-level precedence & multi-builder concurrency', () => {
     state.entities.cols.state[hqRow] = ENTITY_STATE.idle;
 
     const bRow = insertRow(state.entities, 2, 0);
-    state.entities.cols.kind[bRow] = ENTITY_KIND.builder;
+    state.entities.cols.kind[bRow] = ENTITY_KIND.worker;
     state.entities.cols.owner[bRow] = 0;
     state.entities.cols.hp[bRow] = 150;
     state.entities.cols.state[bRow] = ENTITY_STATE.idle;

@@ -1,5 +1,7 @@
+import * as THREE from 'three';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
-import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, OCCUPYING_BUILDING_KINDS } from '@terra/sim';
 
 const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
   [ENTITY_KIND.hq]: 'robot.hero',
@@ -16,24 +18,29 @@ const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
   [ENTITY_KIND.mineralsQuarry]: 'building.mine',
   [ENTITY_KIND.waterExtractor]: 'building.waterPump',
   [ENTITY_KIND.petroleumWell]: 'building.mine',
-  [ENTITY_KIND.harvester]: 'robot.miner',
-  [ENTITY_KIND.builder]: 'robot.builder',
+  [ENTITY_KIND.roboticsFactory]: 'building.roboticsFactory',
+  [ENTITY_KIND.droneControlArray]: 'building.droneArray',
+  [ENTITY_KIND.autocannon]: 'building.turret',
+  [ENTITY_KIND.laserTower]: 'building.laserTower',
+  [ENTITY_KIND.recon]: 'robot.recon',
+  [ENTITY_KIND.demoTank]: 'robot.combat',
+  [ENTITY_KIND.demoArtillery]: 'robot.combat',
+  [ENTITY_KIND.blackAnt]: 'fauna.blackAnt',
+  [ENTITY_KIND.blueBeetle]: 'fauna.blueBeetle',
+  [ENTITY_KIND.greenSpitter]: 'fauna.greenSpitter',
+  [ENTITY_KIND.hiveBlackAnt]: 'fauna.hive.blackAnt',
+  [ENTITY_KIND.hiveBlueBeetle]: 'fauna.hive.blueBeetle',
+  [ENTITY_KIND.hiveGreenSpitter]: 'fauna.hive.greenSpitter',
 };
 
-const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = new Set([
-  ENTITY_KIND.commandHub,
-  ENTITY_KIND.tradeHub,
-  ENTITY_KIND.metalsExtractor,
-  ENTITY_KIND.solar,
-  ENTITY_KIND.pylon,
-  ENTITY_KIND.capacitor,
-  ENTITY_KIND.wind,
-  ENTITY_KIND.thermal,
-  ENTITY_KIND.supplyDepot,
-  ENTITY_KIND.mineralsQuarry,
-  ENTITY_KIND.waterExtractor,
-  ENTITY_KIND.petroleumWell,
-]);
+const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = new Set(
+  [...OCCUPYING_BUILDING_KINDS].filter(
+    (k) =>
+      k !== ENTITY_KIND.hiveBlackAnt &&
+      k !== ENTITY_KIND.hiveBlueBeetle &&
+      k !== ENTITY_KIND.hiveGreenSpitter,
+  ),
+);
 
 const BUILDING_2X2_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.tradeHub,
@@ -48,6 +55,14 @@ const BUILDING_2X2_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.petroleumWell,
 ]);
 
+const FOOTPRINT_3X3_KINDS: ReadonlySet<number> = new Set([
+  ENTITY_KIND.commandHub,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
+]);
+
 const ANIMATED_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.commandHub,
   ENTITY_KIND.tradeHub,
@@ -57,9 +72,30 @@ const ANIMATED_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
 ]);
 
-export function archetypeForKind(kind: number): string {
+const TRACKED_WALKING_UNIT_KINDS: ReadonlySet<number> = new Set([
+  ENTITY_KIND.hq,
+  ENTITY_KIND.worker,
+  ENTITY_KIND.devProbe,
+  ENTITY_KIND.recon,
+  ENTITY_KIND.demoTank,
+  ENTITY_KIND.demoArtillery,
+  ENTITY_KIND.blackAnt,
+  ENTITY_KIND.blueBeetle,
+  ENTITY_KIND.greenSpitter,
+]);
+
+/** T1 uses `robot.miner`; T2 and T3 share `robot.builder`. Missing tier is T1. */
+export function archetypeForKind(kind: number, tier?: number): string {
+  if (kind === ENTITY_KIND.worker) return tier === 2 || tier === 3 ? 'robot.builder' : 'robot.miner';
   // devProbe (W00 test entity) and any kind without its own model: a registered unit archetype (XC-25)
   return ARCHETYPE_BY_KIND[kind] ?? 'robot.builder';
 }
@@ -69,17 +105,25 @@ export function isConstructibleBuilding(kind: number): boolean {
 }
 
 export function isWorkerUnitKind(kind: number): boolean {
-  return kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.devProbe;
+  return kind === ENTITY_KIND.hq || kind === ENTITY_KIND.worker || kind === ENTITY_KIND.devProbe;
+}
+
+export function isTrackedWalkingUnitKind(kind: number): boolean {
+  return TRACKED_WALKING_UNIT_KINDS.has(kind);
 }
 
 export function is2x2BuildingKind(kind: number): boolean {
   return BUILDING_2X2_KINDS.has(kind);
 }
 
+export function is3x3FootprintKind(kind: number): boolean {
+  return FOOTPRINT_3X3_KINDS.has(kind);
+}
+
 export function entityGroundY(terrain: HexTerrain | null, kind: number, q: number, r: number, wx: number, wz: number): number {
   if (!terrain) return 0;
   let maxY = terrain.heightAt(wx, wz);
-  if (kind === ENTITY_KIND.commandHub) {
+  if (is3x3FootprintKind(kind)) {
     for (let dr = -1; dr <= 1; dr++) {
       for (let dq = -1; dq <= 1; dq++) {
         const [tx, tz] = tileXZ(q + dq, r + dr);
@@ -113,4 +157,20 @@ export function hubBuildProgressForState(state: number, progress: number): numbe
 
 export function entityWorldXZ(kind: number, x: number, y: number): [number, number] {
   return is2x2BuildingKind(kind) ? tileXZ(x + 0.5, y + 0.5) : tileXZ(x, y);
+}
+
+export function planetKindForBiome(biomeKey: string): PlanetKind {
+  if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
+  if (biomeKey === 'ocean' || biomeKey === 'oceanForest') return 'oceanForest';
+  return 'forestRock';
+}
+
+export function makeGroundRing(innerR: number, outerR: number, color: number, name: string): THREE.Mesh {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(innerR, outerR, 32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
+  );
+  ring.name = name;
+  ring.visible = false;
+  return ring;
 }

@@ -1,12 +1,11 @@
-import type { QueueEntry } from '@terra/sim';
-import type { FeatureContext } from '../../core/registry/types';
+import { terraformOrdersOf, type QueueEntry, type QueueLane } from '@terra/sim';
+import type { FeatureContext, GameView } from '../../core/registry/types';
 
 export const TASK_TITLES: Readonly<Record<string, string>> = {
   tradeHub: 'Inter-Colony Trade Hub T1',
   solar: 'Solar Array T1',
   metalsExtractor: 'Resource Extractor T1',
   commandHub: 'Command Hub T1',
-  harvester: 'Harvester',
   pylon: 'Power Pylon T1',
   capacitor: 'Capacitor Bank T1',
   wind: 'Wind Turbine T1',
@@ -15,7 +14,6 @@ export const TASK_TITLES: Readonly<Record<string, string>> = {
   mineralsQuarry: 'Minerals Quarry T1',
   waterExtractor: 'Water Extractor T1',
   petroleumWell: 'Petroleum Well T1',
-  builder: 'Builder Drone',
 };
 
 export const TASK_ICONS: Readonly<Record<string, string>> = {
@@ -23,7 +21,6 @@ export const TASK_ICONS: Readonly<Record<string, string>> = {
   solar: '☀',
   metalsExtractor: '⛏',
   commandHub: '⬡',
-  harvester: '⚙',
   pylon: '⚡',
   capacitor: '🔋',
   wind: '🌀',
@@ -32,7 +29,6 @@ export const TASK_ICONS: Readonly<Record<string, string>> = {
   mineralsQuarry: '⛏',
   waterExtractor: '💧',
   petroleumWell: '🛢',
-  builder: '🔧',
 };
 
 const RESOURCE_LABELS: Readonly<Record<string, string>> = {
@@ -58,16 +54,21 @@ export function hasFlag(flags: FeatureContext['flags'] | undefined, flag: string
   return false;
 }
 
+const WORKER_TIER_ICON = ['', '⚙', '🔧', '🚜'] as const;
+
+function buildUnitChip(task: { unit: string; tier?: number }): { title: string; icon: string } {
+  const tier = task.tier === 2 || task.tier === 3 ? task.tier : 1;
+  if (task.unit === 'worker') return { title: `Worker Drone T${tier}`, icon: WORKER_TIER_ICON[tier] };
+  return { title: TASK_TITLES[task.unit] ?? task.unit, icon: TASK_ICONS[task.unit] ?? '⚙' };
+}
+
 export function resolveChipTitleAndIcon(entry: QueueEntry): { title: string; icon: string } {
   const task = entry.task;
   if (task.kind === 'build') {
     const key = task.building;
     return { title: TASK_TITLES[key] ?? key, icon: TASK_ICONS[key] ?? '▣' };
   }
-  if (task.kind === 'buildUnit') {
-    const key = task.unit;
-    return { title: TASK_TITLES[key] ?? key, icon: TASK_ICONS[key] ?? '⚙' };
-  }
+  if (task.kind === 'buildUnit') return buildUnitChip(task);
   if (task.kind === 'repair') {
     return { title: `Repair #${task.entityId}`, icon: '🔧' };
   }
@@ -90,9 +91,17 @@ export function formatChipStatus(entry: QueueEntry): string {
     return entry.waitReason ? (entry.waitDetail ?? `waiting: ${entry.waitReason}`) : `Dismantling ${Math.round((entry.progress ?? 0) * 100)}%`;
   }
   if (entry.state === 'in_progress') {
+    if (entry.waitReason === 'site' && entry.waitDetail) {
+      const m = /^waiting: site \(prep (\d+\/\d+)\)$/.exec(entry.waitDetail);
+      return m ? `waiting(site: ${m[1]} tiles prepared)` : entry.waitDetail;
+    }
     return `in_progress · ${Math.round((entry.progress ?? 0) * 100)}%`;
   }
   if (entry.state === 'waiting') {
+    if (entry.waitReason === 'site' && entry.waitDetail) {
+      const m = /^waiting: site \(prep (\d+\/\d+)\)$/.exec(entry.waitDetail);
+      if (m) return `waiting(site: ${m[1]} tiles prepared)`;
+    }
     return entry.waitDetail ?? `waiting: ${entry.waitReason ?? 'resources'}`;
   }
   return entry.state;
@@ -217,4 +226,75 @@ export function serializeLaneKey(entries: readonly QueueEntry[]): string {
 
 export function serializeStructureKey(entries: readonly QueueEntry[]): string {
   return entries.map((e) => `${e.taskId}:${e.state}`).join('|');
+}
+
+/** The kind a same-kind cancel groups by (all terraform work is one kind; builds group by building, units by unit). */
+export const chipKind = (e: QueueEntry): string => {
+  if (e.task.kind === 'build') return `build:${e.task.building}`;
+  if (e.task.kind === 'buildUnit') {
+    const tier = (e.task as { tier?: number }).tier;
+    return `buildUnit:${e.task.unit}:${tier === 2 || tier === 3 ? tier : 1}`;
+  }
+  return e.task.kind;
+};
+
+export const LANE_TABS: ReadonlyArray<{ id: QueueLane | 'all'; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'construction', label: 'Construction' },
+  { id: 'terraform', label: 'Terraform' },
+  { id: 'units', label: 'Units' },
+  { id: 'hqGoals', label: 'HQ Goals' },
+];
+
+export function reorderEntryInLane(entries: QueueEntry[], taskId: string, toIndex: number): boolean {
+  const idx = entries.findIndex((e) => e.taskId === taskId);
+  if (idx < 0) return false;
+  const target = entries[idx]!;
+  const laneIndices = entries.map((e, i) => (e.lane === target.lane ? i : -1)).filter((i) => i >= 0);
+  const pos = laneIndices.indexOf(idx);
+  const clamped = Math.max(0, Math.min(laneIndices.length - 1, toIndex));
+  if (pos < 0 || clamped === pos) return false;
+  const laneItems = laneIndices.map((i) => entries[i]!);
+  const [moved] = laneItems.splice(pos, 1);
+  laneItems.splice(clamped, 0, moved!);
+  for (let k = 0; k < laneIndices.length; k++) {
+    entries[laneIndices[k]!] = laneItems[k]!;
+  }
+  return true;
+}
+
+export function extractQueueEntriesFromView(view: GameView, colonyIndex: number): QueueEntry[] {
+  const colonies = view.colonies as Array<{ index?: number; queue?: QueueEntry[]; constructionQueue?: QueueEntry[]; unitQueue?: QueueEntry[] }> | undefined;
+  const col = colonies?.find((c) => c.index === colonyIndex) ?? colonies?.[colonyIndex] ?? {};
+  const blobEntries = (view.blobs?.queue as { value?: { entries?: QueueEntry[] }; entries?: QueueEntry[] } | undefined);
+  const fromBlob = blobEntries?.value?.entries ?? blobEntries?.entries;
+  let entries: QueueEntry[] = [];
+  if (Array.isArray(col.queue)) {
+    entries = [...col.queue];
+  } else if (Array.isArray(fromBlob)) {
+    entries = fromBlob.filter((e) => (e.colonyIndex ?? 0) === colonyIndex);
+  } else if (Array.isArray(col.constructionQueue) || Array.isArray(col.unitQueue)) {
+    entries = [...(col.constructionQueue ?? []), ...(col.unitQueue ?? [])];
+  }
+  const tfBlob = (view.blobs?.terraformTasks as { value?: unknown } | undefined)?.value ?? view.blobs?.terraformTasks;
+  const tfOrders = terraformOrdersOf(tfBlob, colonyIndex);
+  for (const o of tfOrders) {
+    const waitReason = o.waitReason ?? o.jobs[0]?.waitReason;
+    const isWaiting = o.status === 'waiting' || o.jobs[0]?.status === 'waiting' || Boolean(waitReason);
+    const total = Math.max(o.jobs.length, o.totalJobs ?? o.jobs.length);
+    const done = o.completedJobs ?? Math.max(0, total - o.jobs.length);
+    const progress = total > 0 ? Math.min(1, (done + Number(o.jobs[0]?.progress ?? 0)) / total) : 0;
+    const patch = { state: (isWaiting ? 'waiting' : 'in_progress') as QueueEntry['state'], waitReason, waitDetail: waitReason ? `waiting(${waitReason})` : undefined, progress };
+    const idx = entries.findIndex((e) => e.taskId === o.orderId || e.taskId === o.taskId);
+    if (idx >= 0) {
+      entries[idx] = { ...entries[idx]!, ...patch };
+      continue;
+    }
+    entries.push({
+      taskId: o.orderId, colonyIndex, lane: 'terraform', precedence: o.isLinkedPrep ? 'system' : 'player',
+      ...patch, task: { kind: 'terraform', op: o.op, q: o.jobs[0]?.q ?? 0, r: o.jobs[0]?.r ?? 0 },
+      cost: {}, paid: true, buildTicks: Math.max(1, total * 50), elapsedTicks: Math.round(progress * total * 50), workRate: 1, createdAt: 0,
+    });
+  }
+  return entries;
 }

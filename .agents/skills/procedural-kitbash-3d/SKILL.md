@@ -8,6 +8,8 @@ description: >-
   or modifying procedural 3D meshes in code.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Procedural 3D Kitbashing Skill (`procedural-kitbash-3d`)
 
 This skill enforces **Pillar 1 (Modular Hard-Surface Kitbashing)** so AI-generated Three.js models look like cohesive, high-detail sci-fi miniatures rather than primitive geometric snowmen.

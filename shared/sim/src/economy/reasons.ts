@@ -18,7 +18,7 @@ export interface ReasonSpec {
 export const LEDGER_REASONS = {
   'landing.cargo': { directions: ['add'], counter: 'sys:cargo', summary: 'Starting cargo unloaded by the landing pod.' },
   'terraform.yield': { directions: ['add'], counter: 'sys:world', summary: 'Resources recovered by clearing or breaking a tile.' },
-  'production.tick': { directions: ['add'], counter: 'sys:world', summary: 'Periodic output of extractors and harvesters.' },
+  'production.tick': { directions: ['add'], counter: 'sys:world', summary: 'Periodic output of extractors and workers.' },
   'production.consume': { directions: ['withdraw'], counter: 'sys:world', summary: 'Fuel and inputs burned by power plants and factories.' },
   'construction.spend': { directions: ['withdraw'], counter: 'sys:construction', summary: 'Cost paid gradually while a building is built.' },
   'construction.refund': { directions: ['add'], counter: 'sys:construction', summary: 'Share of the paid cost returned when a build is cancelled.' },

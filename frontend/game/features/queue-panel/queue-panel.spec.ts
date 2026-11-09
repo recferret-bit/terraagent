@@ -53,9 +53,10 @@ describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel
     });
     state.colonies.push(colony);
 
-    // 1 Harvester providing 0.5/s income
+    // 1 Worker Drone providing income
     const hRow = insertRow(state.entities, 10, 0);
-    state.entities.cols.kind[hRow] = ENTITY_KIND.harvester;
+    state.entities.cols.kind[hRow] = ENTITY_KIND.worker;
+    state.entities.cols.tier[hRow] = 1;
     state.entities.cols.owner[hRow] = 0;
     state.entities.cols.state[hRow] = ENTITY_STATE.idle;
 
@@ -92,7 +93,7 @@ describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel
     expect(host.querySelector('[data-task-id="solar-short"]')).toBeNull();
     expect(colony.stock['metals.t1']).toBe(100);
     expect(colony.stock['minerals.t1']).toBe(0);
-    expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'solar-short' } });
+    expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'solar-short', scope: 'sameKind' } });
 
     panel.dispose();
   });
@@ -122,7 +123,7 @@ describe('W02-25 Queue panel UI — lanes, progress, reorder, and collapsed mode
     });
     state.colonies.push(colony);
 
-    // Give enough stock for 1 Solar to start in_progress, second Solar waiting, plus 1 Harvester in Units lane
+    // Give enough stock for 1 Solar to start in_progress, second Solar waiting, plus 1 Worker Drone in the units lane
     creditResource(colony, 'metals.t1', 60, 0);
     creditResource(colony, 'minerals.t1', 75, 0);
     creditResource(colony, 'bio.biomass', 10, 0);
@@ -136,7 +137,7 @@ describe('W02-25 Queue panel UI — lanes, progress, reorder, and collapsed mode
     panel.enqueue({ taskId: 'c-1', task: { kind: 'build', building: 'solar', q: 2, r: 1 } });
     // a second Solar (an Extractor needs a metals deposit under its footprint, which this blank planet has none of)
     panel.enqueue({ taskId: 'c-2', task: { kind: 'build', building: 'solar', q: 4, r: 1 } });
-    panel.enqueue({ taskId: 'u-1', task: { kind: 'buildUnit', unit: 'harvester' } });
+    panel.enqueue({ taskId: 'u-1', task: { kind: 'buildUnit', unit: 'worker', tier: 1 } });
 
     const cLane = host.querySelector('[data-lane="construction"]');
     const uLane = host.querySelector('[data-lane="units"]');

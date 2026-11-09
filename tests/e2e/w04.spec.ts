@@ -113,7 +113,8 @@ async function openDockBuildTab(page: Page): Promise<void> {
 
 /**
  * Pairs of HUD boxes that intersect: the Command Dock and the minimap against each other, every visible child of the
- * top slots and the HQ panel; plus either one leaving the viewport. Empty when the bottom-left stack fits.
+ * top slots and the HQ panel; plus either one leaving the viewport. The minimap's own top-right panel wrapper is
+ * skipped (it contains the plate). Empty when nothing else overlaps.
  */
 const hudOverlaps = (page: Page) =>
   page.evaluate(() => {
@@ -122,11 +123,16 @@ const hudOverlaps = (page: Page) =>
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 ? r : null;
     };
-    const named = (name: string, el: Element | null) => ({ name, r: box(el) });
+    const named = (name: string, el: Element | null) => ({ name, el, r: box(el) });
     const dock = named('dock', document.querySelector('[data-testid="command-dock"]'));
-    const minimap = named('minimap', document.querySelector('[data-testid="minimap-hud"]'));
+    const minimapEl = document.querySelector('[data-testid="minimap-hud"]');
+    const minimap = named('minimap', minimapEl);
+    const partOfMinimap = (el: Element | null) =>
+      Boolean(el && minimapEl && (el === minimapEl || el.contains(minimapEl) || minimapEl.contains(el)));
     const others = [
-      ...Array.from(document.querySelectorAll(".ta-hud__slot[data-slot^='top'] > *")).map((el, i) => named(`top#${i}:${el.className}`, el)),
+      ...Array.from(document.querySelectorAll(".ta-hud__slot[data-slot^='top'] > *"))
+        .filter((el) => !partOfMinimap(el))
+        .map((el, i) => named(`top#${i}:${el.className}`, el)),
       named('hq-panel', document.querySelector('.ta-hq-panel')),
     ];
     const hit = (a: DOMRect, b: DOMRect) =>
@@ -135,13 +141,13 @@ const hudOverlaps = (page: Page) =>
     for (const m of [dock, minimap]) {
       if (!m.r) continue;
       if (m.r.top < 0 || m.r.left < 0 || m.r.bottom > innerHeight || m.r.right > innerWidth) out.push(`${m.name} off-screen`);
-      for (const o of others) if (o.r && hit(m.r, o.r)) out.push(`${m.name} x ${o.name}`);
+      for (const o of others) if (o.r && !partOfMinimap(o.el) && hit(m.r, o.r)) out.push(`${m.name} x ${o.name}`);
     }
     if (dock.r && minimap.r && hit(dock.r, minimap.r)) out.push('dock x minimap');
     return out;
   });
 
-test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at bottom-left with tile colours and a white camera trapezoid', async () => {
+test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at top-right with tile colours and a white camera trapezoid', async () => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openW04(page, { waves: '..04' });
 
@@ -151,11 +157,11 @@ test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the
   expect(box).not.toBeNull();
   expect(Math.round(box!.width)).toBe(180);
   expect(Math.round(box!.height)).toBe(180);
-  expect(box!.x).toBeLessThan(100);
-  expect(box!.y).toBeGreaterThan(350);
+  expect(box!.x).toBeGreaterThan(1000);
+  expect(box!.y).toBeLessThan(90);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
 
-  // The expanded Command Dock (Build tab) and the minimap share the bottom-left slot without overlapping each other,
-  // the top HUD or the HQ panel
+  // Top-right minimap must not overlap the expanded Command Dock, the HQ panel, or another top widget.
   await openDockBuildTab(page);
   expect(await hudOverlaps(page)).toEqual([]);
 
@@ -163,7 +169,7 @@ test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the
   const stats = await getMinimapStats(page);
   expect(stats?.entityDotCount).toBeGreaterThanOrEqual(5);
 
-  // Verify incremental repainting while harvesters may also dirty tiles in this live world.
+  // Verify incremental repainting while workers may also dirty tiles in this live world.
   // The exact one-tile case is covered by rasterCache.spec.ts with a stationary fixture.
   const beforeRepaints = (await getMinimapStats(page))?.totalRepaints ?? 0;
   await page.evaluate(() =>

@@ -1,4 +1,5 @@
 import { dataRow } from '../data';
+import { ENTITY_KIND } from '../ecs/columns';
 import { getSpawnSlots, type SpawnSlot } from '../gen/spawnSlots';
 import { starterHubSiteBlocked } from '../gen/starterSpace';
 import { HEX_DIRS, hexDistance, hexIndex, inHex } from '../grid/hex';
@@ -7,7 +8,7 @@ import { sectorIndex } from '../grid/sectors';
 import type { CompiledDataLike } from '../kernel/config';
 import type { SimState } from '../kernel/state';
 import { defaultW01Data } from '../systems/hq';
-import { colonyPresence, getLandingHistory } from './presence';
+import { colonyPresence, faunaPositions, getLandingHistory } from './presence';
 
 /**
  * Landing planner (D-39): the one function that says where the next colony lands, and the one rule that a landing
@@ -48,6 +49,15 @@ function blockers(s: SimState, colony: number, relocate = false): Array<{ q: num
   for (const p of colonyPresence(s)) {
     if (p.colony === colony) continue;
     for (const e of [...p.pods, ...p.structures, ...(p.hq ? [p.hq] : [])]) out.push({ q: e.q, r: e.r });
+  }
+  for (const f of faunaPositions(s)) {
+    if (
+      f.kind === ENTITY_KIND.hiveBlackAnt ||
+      f.kind === ENTITY_KIND.hiveBlueBeetle ||
+      f.kind === ENTITY_KIND.hiveGreenSpitter
+    ) {
+      out.push({ q: f.q, r: f.r });
+    }
   }
   return out;
 }

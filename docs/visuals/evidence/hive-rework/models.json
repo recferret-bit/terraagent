@@ -1,0 +1,110 @@
+[
+  {
+    "species": "blackAnt",
+    "biome": "dune",
+    "triangles": 1824,
+    "minY": 0,
+    "width": 4.6931233406066895,
+    "height": 2.149123191833496,
+    "opening": [
+      1.4,
+      1.05
+    ]
+  },
+  {
+    "species": "blackAnt",
+    "biome": "oceanForest",
+    "triangles": 1824,
+    "minY": 0,
+    "width": 4.6931233406066895,
+    "height": 2.149123191833496,
+    "opening": [
+      1.4,
+      1.05
+    ]
+  },
+  {
+    "species": "blackAnt",
+    "biome": "forestRock",
+    "triangles": 1824,
+    "minY": 0,
+    "width": 4.6931233406066895,
+    "height": 2.149123191833496,
+    "opening": [
+      1.4,
+      1.05
+    ]
+  },
+  {
+    "species": "blueBeetle",
+    "biome": "dune",
+    "triangles": 1924,
+    "minY": 0,
+    "width": 5.84890604019165,
+    "height": 2.8009369373321533,
+    "opening": [
+      3.15,
+      1.75
+    ]
+  },
+  {
+    "species": "blueBeetle",
+    "biome": "oceanForest",
+    "triangles": 1924,
+    "minY": 0,
+    "width": 5.84890604019165,
+    "height": 2.8009369373321533,
+    "opening": [
+      3.15,
+      1.75
+    ]
+  },
+  {
+    "species": "blueBeetle",
+    "biome": "forestRock",
+    "triangles": 1924,
+    "minY": 0,
+    "width": 5.84890604019165,
+    "height": 2.8009369373321533,
+    "opening": [
+      3.15,
+      1.75
+    ]
+  },
+  {
+    "species": "greenSpitter",
+    "biome": "dune",
+    "triangles": 1944,
+    "minY": 0,
+    "width": 5.533212900161743,
+    "height": 3.549999952316284,
+    "opening": [
+      2.05,
+      1.95
+    ]
+  },
+  {
+    "species": "greenSpitter",
+    "biome": "oceanForest",
+    "triangles": 1944,
+    "minY": 0,
+    "width": 5.533212900161743,
+    "height": 3.549999952316284,
+    "opening": [
+      2.05,
+      1.95
+    ]
+  },
+  {
+    "species": "greenSpitter",
+    "biome": "forestRock",
+    "triangles": 1944,
+    "minY": 0,
+    "width": 5.533212900161743,
+    "height": 3.549999952316284,
+    "opening": [
+      2.05,
+      1.95
+    ]
+  }
+]

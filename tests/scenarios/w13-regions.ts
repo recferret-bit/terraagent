@@ -35,14 +35,14 @@ const EXTRA_SOLAR: readonly (readonly [number, number])[] = [[4, -3], [1, -4], [
 function spawnBuilder(state: PlanetState, owner: number, q: number, r: number, st: number): void {
   const row = insertRow(state.entities, state.meta.nextEntityId++, 0);
   const c = state.entities.cols;
-  c.kind[row] = ENTITY_KIND.builder; c.owner[row] = owner; c.tier[row] = 1;
+  c.kind[row] = ENTITY_KIND.worker; c.owner[row] = owner; c.tier[row] = 1;
   placeSpawnedEntity(state.entities, row, q, r, 0);
   c.hp[row] = 100; c.hpMax[row] = 100; c.state[row] = st;
 }
 
 function seedColony(state: PlanetState, s: RegionColonySeed): void {
   const colony = ensureColonyLedger(
-    { index: s.index, id: s.id, name: s.name, color: s.color, status: 'active', stage: 2, tradeHubAtS2: true, neighborContact: true, contactFake: false, guildVisit: false, changedAt: 0 },
+    { index: s.index, id: s.id, name: s.name, color: s.color, status: 'active', stage: 2, tradeHubAtS2: true, neighborContact: true, contactFake: false, guildVisit: false, harvestWeights: { metals: 0, minerals: 0, bio: 0 }, changedAt: 0 },
     { depotCount: s.depots },
   );
   state.colonies[s.index] = colony;

@@ -3,6 +3,7 @@ import { CANCEL_REFUND_RATE, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
+import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
 import { bumpPathEpoch, setTilePrep } from '../../grid/tileModel';
@@ -16,7 +17,8 @@ import { buildingFootprints } from '../construction/occupancy';
 import { resolvePlacementRule } from '../construction/placement';
 import { buildLinkedPrepJobs } from '../construction/prep';
 import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
-import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
+import { revertFootprintLivingTiles } from '../terraform-basic/rules';
+import { BUILDING_KIND_BY_NAME, buildingKindName, ensureColony, getFootprintTileIndices, isEconomyBuildingKind, resolveBuildingRow } from './buildingRows';
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
 import { checkCostAffordability, debitCost, refundCost, resourceValue, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
@@ -24,7 +26,7 @@ import { onCommandHubCompleted } from '../progression';
 import { syncColonyThreatStage } from '../progression/threatStage';
 import { claimTerritoryRadius } from '../territory-claim';
 
-export { buildingKindName, getBuildingJobs, getFootprintTileIndices, resolveBuildingRow, type BuildingJobRecord };
+export { BUILDING_KIND_BY_NAME, buildingKindName, getBuildingJobs, getFootprintTileIndices, isEconomyBuildingKind, resolveBuildingRow, type BuildingJobRecord };
 
 /** Whether building `entityId` is being dismantled (an open dismantle work job, `terraform-basic/dismantleJob.ts`). */
 function isBeingDismantled(state: PlanetState, entityId: number): boolean {
@@ -51,7 +53,6 @@ function resolveBuilderWorkRate(state: PlanetState, owner: number, workerEntityI
   if (workerEntityId !== undefined) {
     const wRow = rowOf(e, workerEntityId);
     if (wRow < 0) return { ok: false, code: 'unknown_entity' };
-    if (cols.kind[wRow] === ENTITY_KIND.harvester) return { ok: false, code: 'tier_locked' }; // Harvester maxBuildTier = 0
     return { ok: true, workRate: cols.workRate[wRow] > 0 ? cols.workRate[wRow] : 1.5 };
   }
   if (explicitRate !== undefined && explicitRate > 0) return { ok: true, workRate: explicitRate };
@@ -108,7 +109,7 @@ function evacuateUnitsFromFootprint(
   const e = state.entities, cols = e.cols;
   for (let uRow = 0; uRow < e.count; uRow++) {
     const k = cols.kind[uRow];
-    if ((k !== ENTITY_KIND.hq && k !== ENTITY_KIND.harvester && k !== ENTITY_KIND.builder) || cols.hp[uRow] <= 0) continue;
+    if ((k !== ENTITY_KIND.hq && k !== ENTITY_KIND.worker) || cols.hp[uRow] <= 0) continue;
     const uIdx = idx.indexOf(cols.q[uRow], cols.r[uRow]);
     if (!fpSet.has(uIdx)) continue;
     const exit = findNearestExitTile(state, cols.q[uRow], cols.r[uRow], allBlocked);
@@ -229,6 +230,13 @@ export function startBuildingConstruction(
   if (!check.ok) return check;
 
   const entityId = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
+  revertFootprintLivingTiles(
+    state,
+    opts.owner,
+    fp.indices,
+    tick,
+    ctx?.emit && ctx.flags?.has('W05') ? (ev) => ctx.emit(ev) : undefined,
+  );
   if (opts.instant) {
     for (const tileIdx of fp.indices) {
       if (state.grid.layers.height && Math.abs(state.grid.layers.height[tileIdx]) > 0.15) state.grid.layers.height[tileIdx] = 0.08;
@@ -242,6 +250,7 @@ export function startBuildingConstruction(
   if (!opts.instant) {
     const building = String(row.building ?? opts.building);
     const prepOrderId = enqueueLinkedPrep(state, entityId, building, fp.coords, opts.owner, tick, data);
+    const preparedCount = fp.indices.filter((i) => isPreparedGround(state.grid.layers.prep[i])).length;
     const jobs = getBuildingJobs(state);
     jobs[entityId] = {
       entityId, building, owner: opts.owner,
@@ -250,6 +259,7 @@ export function startBuildingConstruction(
       workerEntityId: opts.workerEntityId,
       cost: { ...cost }, totalCost: { ...cost }, spentCost: {}, paid: false,
       status: 'waiting', waitReason: prepOrderId ? 'site' : 'worker',
+      preparedCount, totalTiles: fp.indices.length,
       ...(prepOrderId ? { prepOrderId } : {}),
     };
     saveBuildingJobs(state, jobs, tick);

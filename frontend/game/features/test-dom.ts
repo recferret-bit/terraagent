@@ -140,14 +140,16 @@ export class MockElement {
         const elClasses = el.className.split(/\s+/).filter(Boolean);
         return classes.every((c) => elClasses.includes(c));
       }
-      if (selector.startsWith('[') && selector.endsWith(']')) {
-        const inside = selector.slice(1, -1);
-        if (inside.includes('=')) {
-          const [k, rawV] = inside.split('=');
-          const v = rawV.replace(/^["']|["']$/g, '');
-          return el.getAttribute(k) === v;
+      if (selector.startsWith('[')) {
+        const attrs = [...selector.matchAll(/\[([^\]=\s]+)(?:=(["']?)([^"'\]]*)\2)?\]/g)];
+        const rest = selector.replace(/\[[^\]]*\]/g, '');
+        if (attrs.length > 0 && rest === '') {
+          return attrs.every((part) => {
+            const name = part[1] ?? '';
+            if (part[3] === undefined) return el.getAttribute(name) !== null;
+            return el.getAttribute(name) === part[3];
+          });
         }
-        return el.getAttribute(inside) !== null;
       }
       return el.tagName.toLowerCase() === selector.toLowerCase();
     };

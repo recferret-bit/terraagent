@@ -1,9 +1,10 @@
 // `wave:check`: bring the wave branch up to date with main, run the gates and tell the owner what to play.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { out, tryOut, fail } from './sh.mjs';
+import { out, fail } from './sh.mjs';
 import { ensureWorktreeEnv, clientUrl } from './isolation.mjs';
 import { runGates } from './gates.mjs';
+import { mergeWithAutoHeal } from './reconcile.mjs';
 
 export function demoSteps(root, w) {
   const lines = readFileSync(join(root, w.file), 'utf8').split('\n');
@@ -29,12 +30,12 @@ export function checkWave(root, w, { dryRun, e2e }) {
   }
   if (out('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: w.worktree })) fail(`${w.worktree} has uncommitted changes`);
   ensureWorktreeEnv(root, w.worktree, w.branch);
-  try {
-    console.log(out('git', ['merge', '--no-edit', 'main'], { cwd: w.worktree }));
-  } catch (e) {
-    tryOut('git', ['merge', '--abort'], { cwd: w.worktree });
-    fail(`merging main into ${w.branch} conflicts (merge aborted, nothing changed): resolve it by hand in ${w.worktree}, then re-run.\n${String(e.stdout || e.stderr || '').trim()}`);
+  const mRes = mergeWithAutoHeal(w.worktree, 'main', { abortOnConflict: true });
+  if (!mRes.ok) {
+    fail(`merging main into ${w.branch} conflicts (merge aborted, nothing changed): resolve it by hand in ${w.worktree}, then re-run.\n${mRes.output}`);
   }
+  console.log(mRes.output);
+  if (mRes.autoHealed.length) console.log(`✔ Auto-healed generated file conflicts: ${mRes.autoHealed.join(', ')}`);
   runGates(w.worktree, { waveNumber: n, e2e });
   console.log(`\n✔ ${w.id} is ready for your check.\n\n${ownerGuide(root, w)}\n\nStart the stack: cd ${w.worktree} && npm run dev\nURL: ${clientUrl(w.worktree, `/play.html?scenario=w${w.id.slice(1)}`)}`);
 }

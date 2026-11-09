@@ -15,6 +15,7 @@ import {
   queueGoalHandler,
   reorderGoalHandler,
 } from './handlers';
+import { isColonyAiEnabled, setAiEnabledHandler } from './ai';
 import { setPrioritiesHandler } from './priorities';
 import {
   cloneGoalEntry,
@@ -41,8 +42,10 @@ export * from './executors';
 export * from './catalog';
 export * from './store';
 export * from './priorities';
+export * from './ai';
 export * from './handlers';
 export * from './sites';
+export * from './defendAndClear';
 export * from './breakdown';
 
 export function normalizeGoalParams(args: Partial<QueueGoalArgs>): GoalParams {
@@ -101,7 +104,7 @@ export function queueColonyGoal(
     return { ok: false, code: 'goal_limit' };
   }
 
-  if (!isGoalExecutable(args.goal)) return { ok: false, code: 'wave_disabled' };
+  if (!isGoalExecutable(args.goal, ctx?.flags)) return { ok: false, code: 'wave_disabled' };
 
   if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normalizeGoalParams(args).resource))) {
     return { ok: false, code: 'wave_disabled' };
@@ -367,7 +370,7 @@ export const goalsSystem = defineSystem({
         saveColonyGoals(state, col.index, goals, ctx.tick);
         if (promoted) emitGoalProgress(ctx, col.index, promoted);
       }
-      stepColonyGoalsBreakdown(state, col.index, ctx);
+      if (isColonyAiEnabled(state, col.index)) stepColonyGoalsBreakdown(state, col.index, ctx);
     }
   },
 });
@@ -382,6 +385,7 @@ export default defineSimModule({
     reorderGoalHandler,
     acceptSuggestionHandler,
     setPrioritiesHandler,
+    setAiEnabledHandler,
     devGoalHandler,
   ],
 });

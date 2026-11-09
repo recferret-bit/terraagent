@@ -29,7 +29,7 @@ export function extractArchetype(id: string): ModelInput {
     let off = 0; const parts: PartDef[] = [];
     for (const m of model.parts) {
       const a = animOf(off);
-      parts.push({ index: m.index, name: m.name, zone: m.zone, kind: m.kind, ...(m.role ? { role: m.role } : {}), animType: a.animType, pivot: a.pivot, emissive: m.emissive, color: m.color, roughness: m.roughness, metalness: m.metalness, tris: slice(off, m.vertexCount) });
+      parts.push({ index: m.index, name: m.name, zone: m.zone, kind: m.kind, ...(m.role ? { role: m.role } : {}), animType: a.animType, pivot: a.pivot, emissive: m.emissive, color: m.color, roughness: m.roughness, metalness: m.metalness, tissue: m.tissue, tris: slice(off, m.vertexCount) });
       off += m.vertexCount;
     }
     return { id, label: entry.label, source: 'builder', parts };

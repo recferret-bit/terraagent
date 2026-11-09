@@ -1,14 +1,14 @@
+import type { RejectCode } from '@terra/contracts';
 import {
   DISMANTLE_REFUND_RATE,
-  enqueueAutoPrepares,
   ENTITY_KIND,
-  evaluateTerraform,
+  entityFootprint,
   getEntityBaseBuildCost,
   getBuildingFootprintTiles,
-  isTerraformOpKind,
+  occupiedTiles,
   placementWorldFromState,
+  planGroundWorkTiles,
   REPAIR_COST_RATE,
-  terraformJobKey,
   terraformWorldFrom,
   type CompiledDataLike,
   type PlanetState,
@@ -18,29 +18,30 @@ import type { GameView } from '../../core/registry/types';
 import { viewPlacementWorld } from '../shared/placementWorld';
 import type { TileCoord } from '../shared/pointer';
 import { extractColonyOrders } from './TileOverlay';
+import { colonyWorkJobs } from './workStatus';
 
-export type TerraformOpId = TerraformOpKind;
-/** The 3 buttons of the Terraform dock tab. TERRAFORM and REPAIR both go on the wire as `op: 'work'` + an `intent`. */
+/**
+ * The 3 buttons of the Terraform dock tab. TERRAFORM goes on the wire as `work` + `intent: 'terraform'` (the host picks
+ * each hex's work from its ground and chains on), REPAIR as `work` + `intent: 'repair'`, DISMANTLE as `dismantle`.
+ */
 export type TerraformPrimaryOp = 'terraform' | 'repair' | 'dismantle';
-export type TerraformButtonOp = TerraformPrimaryOp | TerraformOpId;
-
-/** A brush names either one of the 3 primary UI actions or a concrete S0 op (`grade`, `clear`, `break`; API only). */
-export type BrushOpSelection = TerraformButtonOp;
-
-export const isPrimaryOp = (op: BrushOpSelection): op is TerraformPrimaryOp =>
-  op === 'terraform' || op === 'repair' || op === 'dismantle';
 
 export interface PlannedTileJob {
   q: number;
   r: number;
-  op: TerraformButtonOp;
+  op: TerraformOpKind | 'repair';
 }
 
 export interface BrushPlan {
   jobs: PlannedTileJob[];
   queuedCount: number;
   skippedCount: number;
+  /** Why the first skipped hex was skipped (what a stroke with no valid hex is rejected with). */
+  firstReject?: RejectCode;
 }
+
+/** `45%`, `12.5%`: a rate as a percentage. */
+export const pct = (x: number): string => `${Number((x * 100).toFixed(2))}%`;
 
 /** The sim's rates (`TERRAFORM_TIME_TABLE.repair.costRate` / `.dismantle.refundRate`). */
 export const FULL_REPAIR_COST_RATIO = REPAIR_COST_RATE;
@@ -58,6 +59,7 @@ export interface InspectableEntity {
   hpMax?: number;
   /** `ENTITY_STATE` code when the view carries it. */
   state?: number;
+  tier?: number;
   footprintW: number;
   footprintD: number;
   cost?: Readonly<Record<string, number>>;
@@ -66,7 +68,7 @@ export interface InspectableEntity {
 export function normalizeEntityKindName(kind: unknown): string {
   if (kind === ENTITY_KIND.commandHub || kind === 'commandHub' || kind === 'hub') return 'commandHub';
   if (kind === ENTITY_KIND.hq || kind === 'hq' || kind === 'hqDrone') return 'hq';
-  if (kind === ENTITY_KIND.harvester || kind === 'harvester') return 'harvester';
+  if (kind === ENTITY_KIND.worker || kind === 'worker') return 'worker';
   if (kind === ENTITY_KIND.metalsExtractor || kind === 'metalsExtractor' || kind === 'extractor') return 'metalsExtractor';
   if (kind === ENTITY_KIND.solar || kind === 'solar' || kind === 'solarCollector') return 'solar';
   if (kind === ENTITY_KIND.tradeHub || kind === 'tradeHub') return 'tradeHub';
@@ -109,10 +111,10 @@ export function calculateDismantleRefund(spentCost: Readonly<Record<string, numb
   return out;
 }
 
-function defaultFootprintForKind(kindName: string): number {
-  if (kindName === 'commandHub') return 3;
-  if (kindName === 'metalsExtractor' || kindName === 'solar' || kindName === 'tradeHub') return 2;
-  return 1;
+/** Footprint of a building the view row does not size: the sim's `entityFootprint` (Hub 3, 2×2 buildings, else 1). */
+function defaultFootprintForKind(rawKind: number | string, kindName: string): number {
+  const code = typeof rawKind === 'number' ? rawKind : (ENTITY_KIND as Record<string, number>)[kindName];
+  return code === undefined ? 1 : entityFootprint(code);
 }
 
 function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | null {
@@ -122,7 +124,7 @@ function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | 
   if (!Number.isFinite(q) || !Number.isFinite(r)) return null;
   const rawKind = (raw.kind ?? raw.building ?? raw.unit ?? 'entity') as number | string;
   const kindName = normalizeEntityKindName(rawKind);
-  const defFp = defaultFootprintForKind(kindName);
+  const defFp = defaultFootprintForKind(rawKind, kindName);
   const fw = Number(raw.footprintW ?? raw.w ?? raw.footprint ?? defFp) || defFp;
   const fd = Number(raw.footprintD ?? raw.d ?? raw.h ?? raw.footprint ?? defFp) || defFp;
   return {
@@ -135,10 +137,19 @@ function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | 
     ...(typeof raw.hp === 'number' ? { hp: raw.hp } : {}),
     ...(typeof raw.hpMax === 'number' ? { hpMax: raw.hpMax } : {}),
     ...(typeof raw.state === 'number' ? { state: raw.state } : {}),
+    ...(typeof raw.tier === 'number' ? { tier: raw.tier } : {}),
     footprintW: Math.max(1, Math.trunc(fw)),
     footprintD: Math.max(1, Math.trunc(fd)),
     ...(raw.cost && typeof raw.cost === 'object' ? { cost: raw.cost as Readonly<Record<string, number>> } : {}),
   };
+}
+
+function pushInspectableItems(out: InspectableEntity[], items: readonly unknown[]): void {
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const conv = toInspectableEntity(item as Record<string, unknown>);
+    if (conv) out.push(conv);
+  }
 }
 
 export function extractViewEntities(
@@ -148,31 +159,15 @@ export function extractViewEntities(
   const out: InspectableEntity[] = [];
   const v = (view ?? {}) as { entities?: unknown; units?: unknown[]; count?: number };
   if (v.entities instanceof Float32Array) {
-    for (const e of viewPlacementWorld(view).entities) {
-      const conv = toInspectableEntity(e as unknown as Record<string, unknown>);
-      if (conv) out.push(conv);
-    }
+    pushInspectableItems(out, viewPlacementWorld(view).entities);
   } else if (Array.isArray(v.entities)) {
-    for (const item of v.entities) {
-      if (item && typeof item === 'object') {
-        const conv = toInspectableEntity(item as Record<string, unknown>);
-        if (conv) out.push(conv);
-      }
-    }
+    pushInspectableItems(out, v.entities);
   }
   if (Array.isArray(v.units)) {
-    for (const unit of v.units) {
-      if (unit && typeof unit === 'object') {
-        const conv = toInspectableEntity(unit as Record<string, unknown>);
-        if (conv) out.push(conv);
-      }
-    }
+    pushInspectableItems(out, v.units);
   }
   if (out.length === 0 && hostState) {
-    for (const e of placementWorldFromState(hostState).entities) {
-      const conv = toInspectableEntity(e as unknown as Record<string, unknown>);
-      if (conv) out.push(conv);
-    }
+    pushInspectableItems(out, placementWorldFromState(hostState).entities);
   }
   return out;
 }
@@ -206,7 +201,7 @@ export function findEntityAtTile(
   return null;
 }
 
-/** Checks whether the player has an alive HQ Drone or Harvester available to perform terraform/work orders. */
+/** Checks whether the player has an alive HQ Drone or Worker Drone available to perform terraform/work orders. */
 export function hasWorkerEntity(
   entities: readonly InspectableEntity[],
   colonyId: number,
@@ -215,43 +210,47 @@ export function hasWorkerEntity(
   for (const e of entities) {
     if (!isEntityAlive(e)) continue;
     if (e.owner !== undefined && e.owner !== colonyId) continue;
-    if (e.kindName === 'hq' || e.kindName === 'harvester') return true;
+    if (e.kindName === 'hq' || e.kindName === 'worker') return true;
   }
   const colonies = (view as { colonies?: Array<{ index?: number; hq?: { hp?: number; cell?: number } }> } | null)?.colonies;
   const col = colonies?.find((c) => c.index === colonyId) ?? colonies?.[colonyId];
   return Boolean(col?.hq && (col.hq.hp === undefined || col.hq.hp > 0));
 }
 
-/** The host's `enqueueTask` auto-prepare rule (the sim's own export, so client and host cannot drift). */
-export const hostAutoPrepares = (op: TerraformOpKind, tileCount: number): boolean => enqueueAutoPrepares(op, tileCount);
-
-/** Every `op:q,r` the colony already has queued in the view (the host skips those tiles: never worked twice). */
-function pendingJobKeys(view: GameView | null | undefined, colonyId: number): Set<string> {
+/** Tiles already named by a terraform order or a `work` job (the host skips those: never worked twice). */
+function pendingTiles(view: GameView | null | undefined, colonyId: number): Set<string> {
   const out = new Set<string>();
-  for (const o of extractColonyOrders(view, colonyId)) for (const j of o.jobs) out.add(terraformJobKey(j.op, j.q, j.r));
+  for (const o of extractColonyOrders(view, colonyId)) for (const j of o.jobs) out.add(`${j.q},${j.r}`);
+  for (const j of colonyWorkJobs(view, colonyId)) if (j.mode === 'terraform') out.add(`${j.q},${j.r}`);
   return out;
 }
 
 /**
- * Preview of a brush stroke over the replica view with the sim's own rule (`evaluateTerraform` over a read-only
- * `TerraformWorld`, the function the `enqueueTask` handler runs; D-37, FF-03).
+ * Preview of a TERRAFORM stroke with the sim's own ground rule (`planGroundWorkTiles` / `evaluateGroundWorkTile`,
+ * the function the `work` handler runs). One `work` job per hex the chain can take (trees, rock, slope, crater,
+ * water). Level flat that is already `flat`, prepared, irrigated or living is `already_terraformed` — the button
+ * does not climb into Irrigate or Seed. D-37.
  */
-export function planBrushStroke(
+export function planTerraformTiles(
   view: GameView | null | undefined,
   tiles: readonly TileCoord[],
-  opts: { op: BrushOpSelection; colonyId: number; data?: CompiledDataLike },
+  opts: { colonyId: number; data?: CompiledDataLike },
 ): BrushPlan {
   const placement = viewPlacementWorld(view);
   if (placement.tileCount === 0) return { jobs: [], queuedCount: 0, skippedCount: tiles.length };
-  const simOp: TerraformOpKind = isTerraformOpKind(opts.op) ? opts.op : 'grade';
-  const auto = opts.op === 'terraform' ? true : hostAutoPrepares(simOp, tiles.length);
-  const plan = evaluateTerraform(terraformWorldFrom(placement, opts.colonyId, opts.data), {
+  // `viewPlacementWorld` carries the host's per-colony worker tier, so Deep Reclaim unlocks with a T2 worker (W05-06).
+  const world = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  const plan = planGroundWorkTiles(world, tiles, {
     colonyId: opts.colonyId,
-    op: simOp,
-    tiles,
-    auto,
-    pending: pendingJobKeys(view, opts.colonyId),
+    deposit: placement.deposit,
+    occupied: occupiedTiles(placement, opts.data),
+    pending: pendingTiles(view, opts.colonyId),
     data: opts.data,
   });
-  return { jobs: plan.jobs, queuedCount: plan.jobs.length, skippedCount: plan.skipped.length };
+  return {
+    jobs: plan.jobs,
+    queuedCount: plan.jobs.length,
+    skippedCount: plan.skipped.length,
+    ...(plan.firstReject ? { firstReject: plan.firstReject } : {}),
+  };
 }

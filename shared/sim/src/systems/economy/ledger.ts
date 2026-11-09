@@ -14,11 +14,35 @@ import { moveMicro } from './flow';
 export const BASE_HUB_STORAGE_CAP = 500;
 export const DEPOT_STORAGE_CAP = 1000;
 
+export interface ExtractorLivingBonusRecord {
+  entityId: number;
+  q?: number;
+  r?: number;
+  family?: ResourceFamily;
+  adjacentToLiving: boolean;
+  livingBonus: number;
+  livingBonusText: string;
+  ratePerS: number;
+  unlockedTier?: 1 | 2 | 3;
+  ringRadius?: number;
+  ringTotalTiles?: number;
+  ringTerraformedTiles?: number;
+  ringLivingTiles?: number;
+  ringTerraformedRatio?: number;
+  ringLivingRatio?: number;
+  ringTerraformedPct?: number;
+  ringLivingPct?: number;
+  shares?: { t1Share: number; t2Share: number; t3Share: number };
+  incomePerSByKey?: Partial<Record<ResourceKey, number>>;
+}
+
 export interface ColonyProductionLedger {
   capped: Record<ResourceFamily, number>;
   produced: Record<ResourceKey, number>;
   incomePerS: Record<ResourceKey, number>;
   familyIncomePerS: Record<ResourceFamily, number>;
+  extractors?: Record<number, ExtractorLivingBonusRecord>;
+  tierGates?: unknown;
 }
 
 export interface ColonyLedgerFields {
@@ -103,9 +127,35 @@ export function ensureColonyLedger(
     if (typeof rawProd.produced?.[k] === 'number') produced[k] = rawProd.produced[k];
     if (typeof rawProd.incomePerS?.[k] === 'number') incomePerS[k] = rawProd.incomePerS[k];
   }
-  colony.production = { capped, produced, incomePerS, familyIncomePerS };
+  const extractors = rawProd.extractors && typeof rawProd.extractors === 'object' ? { ...rawProd.extractors } : undefined;
+  const tierGates = rawProd.tierGates && typeof rawProd.tierGates === 'object' ? rawProd.tierGates : undefined;
+  colony.production = {
+    capped,
+    produced,
+    incomePerS,
+    familyIncomePerS,
+    ...(extractors ? { extractors } : {}),
+    ...(tierGates ? { tierGates } : {}),
+  };
 
   return colony as ColonyWithLedger;
+}
+
+/** Ensures `state.colonies[colonyIndex]` exists and has a valid ledger at `tick`. */
+export function ensureColonyAt(state: PlanetState, colonyIndex: number, tick: number): ColonyWithLedger {
+  let col = state.colonies[colonyIndex];
+  if (!col) {
+    col = {
+      index: colonyIndex,
+      id: `col-${colonyIndex}`,
+      name: `Colony ${colonyIndex + 1}`,
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: tick,
+    };
+    state.colonies[colonyIndex] = col;
+  }
+  return ensureColonyLedger(col);
 }
 
 /** Recomputes the 3 family storage caps (`500` from Hub + `1000` per active Supply Depot). */
@@ -133,16 +183,20 @@ export function recomputeFamilyCaps(
 /** Entity states in which a building gives no colony capacity (storage, unit supply): not built yet, or off the grid. */
 const INACTIVE_PROVIDER_STATES: ReadonlySet<number> = new Set([
   ENTITY_STATE.constructing,
+  ENTITY_STATE.inert,
   ENTITY_STATE.offlineBrownout,
   ENTITY_STATE.offlineUnpowered,
   ENTITY_STATE.offlineOverload,
+  ENTITY_STATE.offlineNoFuel,
   ENTITY_STATE.offlineNoGrid,
 ]);
 
 /** Whether entity row `r` is an alive, completed and powered building (one rule for storage and supply caps). */
 export function isActiveCapacityProvider(state: PlanetState, r: number): boolean {
   const cols = state.entities.cols;
-  return cols.hp[r] > 0 && !INACTIVE_PROVIDER_STATES.has(cols.state[r]);
+  if (cols.hp[r] <= 0) return false;
+  if (cols.kind[r] === ENTITY_KIND.droneControlArray) return cols.state[r] === ENTITY_STATE.active;
+  return !INACTIVE_PROVIDER_STATES.has(cols.state[r]);
 }
 
 /** Counts active (completed, alive, powered) Supply Depot T1 entities owned by `colonyIndex`. */

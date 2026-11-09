@@ -24,13 +24,19 @@ export function readinessOf(st: number): UnitReadiness | null {
   return 'ready';
 }
 
+function resolveEntityKind(kindName: string): number | undefined {
+  if (kindName === 'harvester' || kindName === 'builder') return ENTITY_KIND.worker;
+  return ENTITY_KIND[kindName as Kind];
+}
+
 /** Rows `building.*` / `unit.*` of the logistics table keyed by entity kind code. */
 function loadRows(data: CompiledDataLike, prefix: 'building.' | 'unit.'): Map<number, LoadRow> {
   const table = (data.tables['logistics'] ?? {}) as Record<string, CompiledRow>;
   const out = new Map<number, LoadRow>();
   for (const [id, row] of Object.entries(table)) {
     if (!id.startsWith(prefix)) continue;
-    out.set(ENTITY_KIND[row.kind as Kind], { weight: Number(row.weight), consumption: row.consumption as Record<string, number> });
+    const code = resolveEntityKind(String(row.kind));
+    if (code !== undefined) out.set(code, { weight: Number(row.weight), consumption: row.consumption as Record<string, number> });
   }
   return out;
 }

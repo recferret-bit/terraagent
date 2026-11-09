@@ -21,7 +21,7 @@ export function isDry(s: PlanetSurface, x: number, z: number, margin = 1.5) {
 
 export interface Placement { id: string; x: number; z: number; yaw: number; wander?: { c: THREE.Vector3; r: number; wait: number; speed: number } }
 
-/** Starter colony: hub + two solar panels + miner and builder robots that wander around the hub. */
+/** Starter colony: hub + two solar panels + miner and robot.builder meshes that wander around the hub. */
 export function layoutColony(surface: PlanetSurface, spec: PlanetSpec): Placement[] {
   const rnd = rng(spec.seed ^ 0x9e3779b9);
   const L = surface.landingSite;

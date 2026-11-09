@@ -1,31 +1,33 @@
 import type { CompiledDataLike } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
+import { formatRejectToast } from '../shared/rejectText';
 import { dispatchCommand, type CommandSink, type DispatchedCommand, type InProcessHost } from '../shared/commandDispatch';
 import { bindExclusivePointer, resolvePointerTile, type TileCoord, type TilePickerFn } from '../shared/pointer';
 import {
   extractViewEntities,
   hasWorkerEntity,
-  isPrimaryOp,
-  planBrushStroke,
-  type BrushOpSelection,
   type PlannedTileJob,
-  type TerraformButtonOp,
-  type TerraformOpId,
   type TerraformPrimaryOp,
 } from './planner';
 import { planPrimaryOp, type BrushStrokeOutcome, type TerraformWireArgs, type WorkIntent } from './primaryOps';
+import { terraformTargetIdsAt } from './targets';
 
-export type { BrushOpSelection, BrushStrokeOutcome, TerraformButtonOp, TerraformOpId, TerraformPrimaryOp, TerraformWireArgs, TileCoord, WorkIntent };
+export type { BrushStrokeOutcome, TerraformPrimaryOp, TerraformWireArgs, TileCoord, WorkIntent };
 
 export interface BrushStrokeOptions {
-  op?: BrushOpSelection;
+  op?: TerraformPrimaryOp;
   colonyId?: number;
+  /**
+   * A Ctrl / Cmd + click (queue): TERRAFORM leaves the worker to the host. A terraform order naming its worker replaces
+   * that worker's chain on the host (`enqueueWorkOrder`), so naming it on every queued hex would cancel the hex before.
+   */
+  queue?: boolean;
 }
 
 export interface BrushStrokeSummary {
   /** Client-side id of this stroke (status line only; never sent: the host names its own order). */
   strokeId: string;
-  op: BrushOpSelection;
+  op: TerraformPrimaryOp;
   tiles: TileCoord[];
   jobs: PlannedTileJob[];
   queuedCount: number;
@@ -45,7 +47,7 @@ export interface BrushCommandSink extends CommandSink {
   enqueueTerraform?: (terraform: TerraformWireArgs) => unknown;
   /** The player's colony, read per stroke (FF-05). */
   getColonyId?: () => number;
-  /** The selected own unit, sent as `workerId` of TERRAFORM / REPAIR (`undefined`: the host picks the worker). */
+  /** The selected own unit, sent as `workerId` of REPAIR and of a plain TERRAFORM click (`undefined`: the host picks). */
   getWorkerId?: () => number | undefined;
   /** Another map mode owns the pointer (a placement ghost): the armed brush leaves clicks alone. */
   isBlocked?: () => boolean;
@@ -57,33 +59,38 @@ export interface BrushCommandSink extends CommandSink {
 
 let strokeSeq = 0;
 const LEFT_ONLY: ReadonlySet<number> = new Set([0]);
+/** macOS fires `contextmenu` right after a Ctrl+click press: it is a queue click, not a disarming right click. */
+const CTRL_CLICK_CONTEXT_MS = 800;
+
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /**
- * Terraform brush: picks an op (TERRAFORM / REPAIR / DISMANTLE, plus the S0 ops `grade` / `clear` / `break` through the
- * API), previews a click and sends one command per click. Map clicks act only while the brush is armed; Esc or right
- * click disarms it, and so does a map click that sent an order (one armed click = one order, like the construction
- * ghost: TERRAFORM is a continuous order the host chains hex by hex, so the next click selects again). A click the
- * preview refuses keeps the brush armed for another hex. The host's reject of the newest order replaces its status.
+ * Terraform brush: picks one of the 3 ops (TERRAFORM / REPAIR / DISMANTLE), previews a click and sends one command
+ * per click. Map clicks act only while the brush is armed; Esc or right click disarms it. A plain click that sent an
+ * order disarms it (one armed click = one order, like the construction ghost); Ctrl (or Cmd) + click sends the order
+ * and stays armed, so several hexes can be queued one after another. A click the preview refuses keeps the brush
+ * armed for another hex. The host's reject of the newest order replaces its status.
  */
 export class BrushController {
-  private selectedOp: BrushOpSelection = 'terraform';
+  private selectedOp: TerraformPrimaryOp = 'terraform';
   private armed = false;
   private lastStroke: BrushStrokeSummary | null = null;
   private lastOutcome: BrushStrokeOutcome | null = null;
   private pressTile: TileCoord | null = null;
+  private lastCtrlPressAt = -Infinity;
   private currentView: GameView | null = null;
   private cleanups: Array<() => void> = [];
 
   constructor(private readonly sink: BrushCommandSink = {}) {}
 
   /** Chooses the op and arms the brush. */
-  selectOp(op: BrushOpSelection): void {
+  selectOp(op: TerraformPrimaryOp): void {
     this.selectedOp = op;
     this.armed = true;
     this.sink.onChange?.();
   }
 
-  getSelectedOp(): BrushOpSelection {
+  getSelectedOp(): TerraformPrimaryOp {
     return this.selectedOp;
   }
 
@@ -106,10 +113,10 @@ export class BrushController {
     return this.lastOutcome;
   }
 
-  /** The host rejected the newest order (`strokeId`: only if it is still the newest): the status stops claiming it was ordered. */
+  /** The host rejected the newest order (`strokeId`: only if it is still the newest): the status shows the toast's text for it. */
   noteRejected(code: string, strokeId?: string): void {
     if (strokeId !== undefined && this.lastStroke?.strokeId !== strokeId) return;
-    const status = `Rejected by host: ${code.replace(/_/g, ' ')}`;
+    const status = formatRejectToast(code, undefined, 'enqueueTask');
     this.lastOutcome = { ...(this.lastOutcome ?? {}), ok: false, reason: code, status };
     if (this.lastStroke) this.lastStroke = { ...this.lastStroke, statusText: status, outcome: this.lastOutcome };
     this.sink.onChange?.();
@@ -124,7 +131,7 @@ export class BrushController {
     return this.resolveView();
   }
 
-  /** True when the player has an alive HQ Drone or Harvester available to execute terraform/work tasks. */
+  /** True when the player has an alive HQ or Worker Drone available to execute terraform/work tasks. */
   hasWorkerAvailable(view?: GameView | null): boolean {
     const resolved = view ?? this.resolveView();
     const entities = extractViewEntities(resolved, this.sink.host?.state);
@@ -146,47 +153,32 @@ export class BrushController {
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary {
     const tile = { q: Math.trunc(q), r: Math.trunc(r) };
     const op = opts?.op ?? this.selectedOp;
-    return isPrimaryOp(op) ? this.executePrimary(op, tile, opts) : this.executeStroke(op, tile, opts);
-  }
-
-  private recordStroke(
-    op: BrushOpSelection,
-    tile: TileCoord,
-    jobs: PlannedTileJob[],
-    queuedCount: number,
-    outcome: BrushStrokeOutcome,
-  ): BrushStrokeSummary {
-    this.lastOutcome = outcome;
-    const summary: BrushStrokeSummary = {
-      strokeId: `tf_stroke_${++strokeSeq}`,
-      op,
-      tiles: [tile],
-      jobs,
-      queuedCount,
-      skippedCount: queuedCount > 0 ? 0 : 1,
-      ...(outcome.status ? { statusText: outcome.status } : {}),
-      outcome,
-    };
-    this.lastStroke = summary;
-    this.sink.onStroke?.(summary);
-    this.sink.onChange?.();
-    return summary;
-  }
-
-  private executePrimary(op: TerraformPrimaryOp, tile: TileCoord, opts?: BrushStrokeOptions): BrushStrokeSummary {
     const colonyId = this.colonyId(opts);
     const view = this.resolveView();
     const hostState = this.sink.host?.state;
     const entities = extractViewEntities(view, hostState);
     const data = this.sink.simData?.() ?? null;
-    const workerId = this.sink.getWorkerId?.();
+    const workerId = op === 'terraform' && opts?.queue ? undefined : this.sink.getWorkerId?.();
     const plan = planPrimaryOp(op, { view, hostState, entities, colonyId, workerId, data }, tile.q, tile.r);
     let sent: DispatchedCommand | null = null;
     if (plan.terraform) {
       if (this.sink.enqueueTerraform) this.sink.enqueueTerraform(plan.terraform);
       else sent = dispatchCommand(this.sink, 'enqueueTask', { terraform: plan.terraform }, colonyId);
     }
-    const summary = this.recordStroke(op, tile, plan.job ? [plan.job] : [], plan.terraform ? 1 : 0, plan.outcome);
+    this.lastOutcome = plan.outcome;
+    const summary: BrushStrokeSummary = {
+      strokeId: `tf_stroke_${++strokeSeq}`,
+      op,
+      tiles: [tile],
+      jobs: plan.job ? [plan.job] : [],
+      queuedCount: plan.terraform ? 1 : 0,
+      skippedCount: plan.terraform ? 0 : 1,
+      ...(plan.outcome.status ? { statusText: plan.outcome.status } : {}),
+      outcome: plan.outcome,
+    };
+    this.lastStroke = summary;
+    this.sink.onStroke?.(summary);
+    this.sink.onChange?.();
     this.watchVerdict(sent, summary.strokeId);
     return summary;
   }
@@ -198,15 +190,21 @@ export class BrushController {
     });
   }
 
-  /** A concrete S0 op (`grade` / `clear` / `break`) on one tile, previewed with the sim's own rule. */
-  private executeStroke(op: TerraformOpId, tile: TileCoord, opts?: BrushStrokeOptions): BrushStrokeSummary {
-    const colonyId = this.colonyId(opts);
-    const planned = planBrushStroke(this.resolveView(), [tile], { op, colonyId, data: this.sink.simData?.() ?? undefined });
-    const sent = planned.queuedCount > 0 ? dispatchCommand(this.sink, 'enqueueTask', { terraform: { op, tiles: [tile] } }, colonyId) : null;
-    const outcome: BrushStrokeOutcome = { ok: planned.queuedCount > 0, op };
-    const summary = this.recordStroke(op, tile, planned.jobs, planned.queuedCount, outcome);
-    this.watchVerdict(sent, summary.strokeId);
-    return summary;
+  /**
+   * Ctrl+click on a hex that is already a terraform target takes it out of the queue again: cancels the orders / jobs
+   * that target it. Returns whether the hex was queued (then nothing new is ordered).
+   */
+  toggleQueued(q: number, r: number): boolean {
+    const tile = { q: Math.trunc(q), r: Math.trunc(r) };
+    const ids = terraformTargetIdsAt(this.resolveView(), this.colonyId(), tile.q, tile.r);
+    if (ids.length === 0) return false;
+    for (const id of ids) this.cancelOrder(id);
+    const status = `Terraform cancelled (${tile.q},${tile.r})`;
+    const outcome: BrushStrokeOutcome = { ok: true, op: 'terraform', status };
+    this.lastOutcome = outcome;
+    this.lastStroke = { strokeId: `tf_stroke_${++strokeSeq}`, op: 'terraform', tiles: [tile], jobs: [], queuedCount: 0, skippedCount: 0, statusText: status, outcome };
+    this.sink.onChange?.();
+    return true;
   }
 
   /**
@@ -226,8 +224,8 @@ export class BrushController {
   }
 
   /**
-   * Binds click input on `surface`. Left clicks belong to the brush only while it is armed. A right click disarms it
-   * and still reaches the map below (a unit move order is not swallowed).
+   * Binds click input on `surface`. Left clicks belong to the brush only while it is armed (Ctrl / Cmd + click queues
+   * and keeps it armed). A right click disarms it and still reaches the map below (a unit move order is not swallowed).
    */
   bindSurface(surface: HTMLElement, pickTile?: TilePickerFn): () => void {
     const offLeft = bindExclusivePointer(
@@ -235,19 +233,29 @@ export class BrushController {
       () => this.isPointerActive(),
       {
         down: (e) => {
+          if (e.ctrlKey) this.lastCtrlPressAt = now();
           this.pressTile = resolvePointerTile(e, pickTile);
         },
         up: (e) => {
           if (!this.pressTile) return;
           const tile = resolvePointerTile(e, pickTile) ?? this.pressTile;
           this.pressTile = null;
-          if (this.strokeTile(tile.q, tile.r).queuedCount > 0) this.disarm();
+          const queue = e.ctrlKey || e.metaKey;
+          if (queue && this.selectedOp === 'terraform' && this.toggleQueued(tile.q, tile.r)) return;
+          if (this.strokeTile(tile.q, tile.r, { queue }).queuedCount > 0 && !queue) this.disarm();
         },
       },
       LEFT_ONLY,
     );
     const onRight = (ev: Event) => {
-      if ((ev.type === 'contextmenu' || (ev as MouseEvent).button === 2) && this.isPointerActive()) this.disarm();
+      if (!this.isPointerActive()) return;
+      if (ev.type === 'contextmenu' && now() - this.lastCtrlPressAt < CTRL_CLICK_CONTEXT_MS) {
+        // macOS Ctrl+click: no browser menu, the brush stays armed, and the map below gets no right click (no unit order)
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        return;
+      }
+      if (ev.type === 'contextmenu' || (ev as MouseEvent).button === 2) this.disarm();
     };
     for (const type of ['pointerdown', 'contextmenu']) surface.addEventListener(type, onRight, { capture: true });
     const cleanup = () => {

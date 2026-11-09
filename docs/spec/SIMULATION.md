@@ -209,7 +209,7 @@ All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked 
 
 | Robot | Build | Cost M/Min/Pet/W | Supply | Drain E/s | HP | Speed **(proposed)** | Capability |
 |---|---|---|---|---|---|---|---|
-| Miner / Harvester | 10 s | 40/15/5/0 | 1 | −1.5 | 160 | 1.5 tiles/s | +2.0 res/s from a surface deposit tile; clears forest/rock (yields 20 Metals per clear, proposed) |
+| Miner / Worker Drone T1 | 10 s | 40/15/5/0 | 1 | −1.5 | 160 | 1.5 tiles/s | +2.0 res/s from a surface deposit tile; clears forest/rock (yields 20 Metals per clear, proposed) |
 | Builder / Repair | 12 s | 45/25/10/0 | 1 | −2.0 | 150 | 1.5 tiles/s | Build/repair rate 1.0×; repairs severed pylons |
 | Combat / Raider | 14 s | 55/30/15/0 | 1 | −2.5 | 240 | 2.5 tiles/s | 14 DPS, range 4 (proposed); nest clearing, raids |
 

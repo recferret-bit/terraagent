@@ -6,7 +6,8 @@ import { WAVE_VERT_PEAK } from '../../visuals/water/waveModel';
 import { HEX_TERRAIN, specForPlanetType } from './index';
 import { createHexWater, type HexWater } from './hexWater';
 import { tileAt, tileXZ } from './hexMath';
-import { WATER_CELL_M, WATER_SHORE_PIN_Y } from './waterBuckets';
+import { EntityProjectorRig } from '../../lighting/EntityProjectorRig';
+import { WATER_CELL_M, WATER_RENDER_ORDER, WATER_SHORE_PIN_Y } from './waterBuckets';
 
 const RADIUS = 40;
 const hx = hexIndex(RADIUS);
@@ -70,7 +71,7 @@ describe('hex water buckets', () => {
     for (const m of water.buckets) {
       expect(m.material).toBe(water.material);
       expect(m.receiveShadow).toBe(true);
-      expect(m.renderOrder).toBe(1);
+      expect(m.renderOrder).toBe(WATER_RENDER_ORDER);
       const cells = new Set<string>();
       // every triangle's owner tile (its first index in build order) lies in the bucket's cell
       const pos = m.geometry.getAttribute('position');
@@ -150,6 +151,39 @@ describe('hex water buckets', () => {
     water.update(tiles, [dry]);
     expect(water.buckets.map((m) => m.geometry)).toEqual(after);
     water.buckets.forEach((m, k) => expect(m.geometry).toBe(after[k]));
+    water.dispose();
+  });
+});
+
+describe('hex water draw order (owner W05: triangles in a lamp light pool on the lake at night)', () => {
+  /** Renderables of `root` named `name` (any name when omitted). */
+  const renderables = (root: THREE.Object3D, name?: string) => {
+    const out: THREE.Object3D[] = [];
+    root.traverse((o) => { if ((o as THREE.Mesh).isMesh && (name === undefined || o.name === name)) out.push(o); });
+    return out;
+  };
+
+  it('every bucket draws after the fauna and the projector ground pools and before the beams', () => {
+    // three sorts transparent objects by renderOrder, then by distance. At an equal order the flat, additive pool disc
+    // (y +0.02) landed per bucket before or after the depth-writing surface, whose swell rises above it: the pool was
+    // cut along the 2 m triangles and changed brightness at bucket borders. Strictly ordered, it never interleaves.
+    const { water } = makeWater();
+    const rig = new EntityProjectorRig('robot.hero');
+    const pools = renderables(rig.group, 'projector-ground-pool');
+    const beams = renderables(rig.group, 'projector-beam-cone');
+    expect(pools.length).toBeGreaterThan(0);
+    expect(beams.length).toBeGreaterThan(0);
+    const fauna = renderables(water.fauna.group);
+    for (const b of water.buckets) {
+      expect(b.renderOrder).toBe(WATER_RENDER_ORDER);
+      for (const p of pools) {
+        expect(p.renderOrder).toBeLessThan(b.renderOrder);
+        expect(((p as THREE.Mesh).material as THREE.Material).depthWrite).toBe(false); // drawn first, never cuts the surface
+      }
+      for (const c of beams) expect(c.renderOrder).toBeGreaterThan(b.renderOrder);
+      for (const f of fauna) expect(f.renderOrder).toBeLessThan(b.renderOrder);
+    }
+    rig.dispose();
     water.dispose();
   });
 });

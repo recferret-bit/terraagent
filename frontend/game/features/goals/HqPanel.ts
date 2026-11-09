@@ -1,6 +1,7 @@
 import type { FeatureContext } from '../../core/registry/types';
-import { PrioritiesPanel } from '../priorities/PrioritiesPanel';
-import '../priorities/priorities.css';
+import { PrioritiesPanel } from '../shared/priorities/PrioritiesPanel';
+import '../shared/priorities/priorities.css';
+import { AiToggle } from './AiToggle';
 import { GoalsPanel } from './GoalsPanel';
 
 /** One HQ surface; switching tabs preserves forms, slider state and subscriptions. */
@@ -8,6 +9,8 @@ export class HqPanel {
   readonly root = document.createElement('section');
   readonly goals: GoalsPanel;
   readonly priorities: PrioritiesPanel;
+  /** AI on/off row, placed above the tab strip (mount point: `[data-testid="hq-ai-toggle-row"]` in `hq-panel`). */
+  readonly ai: AiToggle;
 
   constructor(host: HTMLElement, ctx: FeatureContext) {
     this.root.className = 'ta-hq-command-panel plate-sm';
@@ -17,6 +20,7 @@ export class HqPanel {
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', 'HQ');
     const body = document.createElement('div');
+    this.ai = new AiToggle(this.root, ctx);
     this.goals = new GoalsPanel(body, ctx);
     this.priorities = new PrioritiesPanel(body, ctx);
     const panels = [this.goals.root, this.priorities.root];
@@ -56,11 +60,13 @@ export class HqPanel {
   }
 
   update(view?: unknown): void {
+    this.ai.update(view);
     this.goals.update(view);
     this.priorities.update(view);
   }
 
   dispose(): void {
+    this.ai.dispose();
     this.goals.dispose();
     this.priorities.dispose();
     this.root.remove();

@@ -16,7 +16,7 @@ import {
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
   step,
   TERRAIN,
@@ -133,15 +133,15 @@ describe('terraform chain (infinite terraform): which tiles it takes', () => {
 });
 
 describe('terraform chain: pathing, ranking, and skipped-tile retries', () => {
-  it('a chained tile with no path is skipped and the chain goes on; the ordered tile with no path ends the order', () => {
+  it('a chained tile with no path is skipped and the chain goes on', () => {
     const w = flatWorld('chain-5', 12);
     w.setTerrain(2, 0, TERRAIN.forest);
     const hx = hexIndex(12);
     for (let i = 0; i < w.state.grid.count; i++) {
       const d = Math.max(Math.abs(hx.q[i]! - 6), Math.abs(hx.r[i]!), Math.abs(hx.q[i]! - 6 + hx.r[i]!));
-      if (d >= 1 && d <= 2) setTileTerrain(w.state, i, TERRAIN.deep, 0);
+      if (d >= 2 && d <= 3) setTileTerrain(w.state, i, TERRAIN.deep, 0);
     }
-    w.setTerrain(6, 0, TERRAIN.forest); // walled in by deep water: unreachable
+    w.setTerrain(6, 0, TERRAIN.forest); // a stand next to it (E1), but walled in by deep water: no path
     w.setTerrain(-4, 0, TERRAIN.forest);
     w.run([work('w1', [{ q: 2, r: 0 }])]);
     expect(runUntil(w.run, () => Boolean(jobsOf(w.state)['w1~2']))).toBeGreaterThan(0);
@@ -184,9 +184,9 @@ describe('terraform chain: pathing, ranking, and skipped-tile retries', () => {
     const wall: number[] = [];
     for (let i = 0; i < w.state.grid.count; i++) {
       const d = Math.max(Math.abs(hx.q[i]! - 6), Math.abs(hx.r[i]!), Math.abs(hx.q[i]! - 6 + hx.r[i]!));
-      if (d >= 1 && d <= 2) { setTileTerrain(w.state, i, TERRAIN.deep, 0); wall.push(i); }
+      if (d >= 2 && d <= 3) { setTileTerrain(w.state, i, TERRAIN.deep, 0); wall.push(i); }
     }
-    w.setTerrain(6, 0, TERRAIN.forest); // walled in for now
+    w.setTerrain(6, 0, TERRAIN.forest); // walled in for now (its stand ring is level ground: E1 lets the chain try it)
     w.setTerrain(-4, 0, TERRAIN.forest);
     w.run([work('w1', [{ q: 2, r: 0 }])]);
     expect(runUntil(w.run, () => Boolean(jobsOf(w.state)['w1~2']))).toBeGreaterThan(0);
@@ -245,7 +245,7 @@ describe('terraform chain: what ends it', () => {
 describe('work intent: repair vs terraform', () => {
   it("'repair' only repairs, 'terraform' ignores the damaged entity, absent repairs first; repair never chains", () => {
     const w = flatWorld('intent-1');
-    const harv = spawnHarvesterUnit(w.state, { owner: 0, q: 2, r: 0 }) as number;
+    const harv = spawnWorkerUnit(w.state, { owner: 0, q: 2, r: 0 }) as number;
     const cols = w.state.entities.cols;
     const row = Array.from(cols.id.slice(0, w.state.entities.count)).indexOf(harv);
     cols.hp[row] = cols.hpMax[row] / 2;

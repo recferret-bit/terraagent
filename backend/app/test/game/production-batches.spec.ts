@@ -15,7 +15,7 @@ import { W00_PLANET_TYPE, type FromThread } from '../../src/game/thread/protocol
 const W02_ON = ['W00', 'W01', 'W02'];
 const W02_OFF = ['W00', 'W01'];
 const PLANET = 'pl_stockpile';
-/** Per-step production the test credits (what extractors/harvesters do through `creditResource`). */
+/** Per-step production the test credits (what extractors/workers do through `creditResource`). */
 const PER_STEP = { 'metals.t1': 0.25, 'bio.water': 0.1 } as const;
 
 function hostWith(flags: readonly string[]) {

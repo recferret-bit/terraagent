@@ -1,8 +1,8 @@
 import { flagsFromList } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
-import { compileData, createEngineConfig, createPlanet, SIM_VERSION, SimHost } from '@terra/sim';
+import { compileData, createEngineConfig, createPlanet, decodeValue, DIFF_FORMAT, encodeValue, SIM_VERSION, SimHost, touchTile } from '@terra/sim';
 import { ReplicaCore, type DeltaInput, type WelcomeInput } from './ReplicaCore';
-import { ENTITY_STRIDE, packView, unpackView } from './viewCodec';
+import { ENTITY_STRIDE, packView, readEntity, unpackView } from './viewCodec';
 import { TEST_MODULES } from './testModule';
 
 const FLAGS = ['W00'];
@@ -85,6 +85,21 @@ describe('ReplicaCore (acceptance: replica deep-equals the authority)', () => {
   it('config built the same way as the replica hashes identically', () => {
     expect(createEngineConfig({ flags: FLAGS, modules: TEST_MODULES }).data.hash).toBe(compileData(flagsFromList(FLAGS)).hash);
   });
+
+  it('rejects the previous live protocol even when its balance hash matches', () => {
+    const auth = authority(), replica = new ReplicaCore({ modules: TEST_MODULES });
+    expect(SIM_VERSION).toBeGreaterThan(2);
+    expect(DIFF_FORMAT).toBeGreaterThan(1);
+    expect(replica.welcome(welcomeOf(auth, { simVersion: 2 }))).toMatchObject({ ok: false, reason: 'simVersion' });
+    expect(replica.status).toBe('versionMismatch');
+    expect(replica.welcome(welcomeOf(auth))).toEqual({ ok: true });
+    auth.step(1);
+    const raw = decodeValue(auth.diffSince(0, { forClient: true })) as { v: number };
+    expect(raw.v).toBe(DIFF_FORMAT); // the old decoder's strict v===1 check rejects this frame
+    raw.v = 1;
+    expect(replica.delta({ fromTick: 0, toTick: auth.tick, diff: encodeValue(raw) }))
+      .toMatchObject({ ok: false, reason: 'badDiff', request: true });
+  });
 });
 
 describe('viewCodec', () => {
@@ -112,7 +127,7 @@ describe('viewCodec', () => {
     expect(u.entities.length).toBe(v.entities.length * ENTITY_STRIDE);
     v.entities.forEach((e, i) => {
       const o = i * ENTITY_STRIDE;
-      expect([...u.entities.subarray(o, o + ENTITY_STRIDE)]).toEqual([e.id, e.kind, e.owner, e.q, e.r, e.x, e.y, e.rot, e.hp, e.hpMax, e.state, e.progress].map(Math.fround));
+      expect([...u.entities.subarray(o, o + ENTITY_STRIDE)]).toEqual([e.id, e.kind, e.owner, e.q, e.r, e.x, e.y, e.rot, e.hp, e.hpMax, e.state, e.progress, e.tier].map(Math.fround));
     });
     expect(u.colonies).toEqual(v.colonies);
     expect(u.tiles?.terrain).toEqual(v.tiles.terrain);
@@ -176,5 +191,37 @@ describe('viewCodec power fields sync', () => {
     expect(unpacked.entityPower?.[10]).toEqual({ state: 'offline', reason: 'offline: overload', component: 0 });
     expect(unpacked.pylonLoads?.[20]).toEqual({ flow: 95, max: 80, overloaded: true });
     expect(unpacked.colonies[0].power?.supply).toBe(100);
+  });
+
+  it('the entity tier survives the packed wire (Worker Drone T2 / T3 mesh and label on both host paths)', () => {
+    const ent = { id: 7, kind: 3, owner: 0, tier: 3, q: 1, r: 0, x: 1, y: 0, rot: 0, hp: 160, hpMax: 160, state: 1, progress: 0 };
+    const wire = packView({ tick: 1, planet: { id: 'p', type: 'temperate' as const, radius: 4 }, entities: [ent], colonies: [] } as never, false);
+    const unpacked = unpackView(wire.view);
+    expect(readEntity(unpacked.entities, 0).tier).toBe(3);
+    expect(readEntity([ent] as never, 0).tier).toBe(3);
+  });
+});
+
+describe('ReplicaCore with chunked deltas (W05-19)', () => {
+  it('a continuation chunk re-arms tilesChanged, so the view after it carries the chunk tiles', () => {
+    const auth = authority();
+    auth.step(1);
+    const replica = new ReplicaCore({ modules: TEST_MODULES });
+    replica.welcome(welcomeOf(auth));
+    replica.markViewed();
+    const from = auth.tick;
+    auth.step(1);
+    // A brush-sized change at one tick: more tiles than one frame may carry, stamped before the window's last tick
+    // (a server window spans several ticks), so the replica's `changedAt` scan alone cannot see the later chunks.
+    for (let i = 0; i < 260; i++) { auth.state.grid.layers.terrain[i] = 1; touchTile(auth.state, i, auth.tick); }
+    auth.step(3);
+    const frames = auth.clientDeltaFrames(from);
+    expect(frames.length).toBeGreaterThan(1);
+    for (const f of frames) {
+      expect(replica.delta(f)).toEqual({ ok: true, tick: f.toTick });
+      expect(replica.tilesChanged()).toBe(true); // the worker posts a view (with tiles) after every frame
+      replica.markViewed();
+    }
+    expect(Array.from(replica.state.grid.layers.terrain.subarray(0, 260))).toEqual(Array.from(auth.state.grid.layers.terrain.subarray(0, 260)));
   });
 });

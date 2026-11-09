@@ -5,6 +5,7 @@ import {
   ENTITY_KIND,
   getColonyTerraformOrders,
   getEntityBaseBuildCost,
+  getWorkJobsMap,
   hexIndex,
   PREP,
   setTileTerrain,
@@ -17,9 +18,7 @@ import { loadFeatures } from '../../core/registry';
 import {
   calculateDismantleRefund,
   calculateRepairCost,
-  incomeReferenceRows,
   mountTerraformBasic as mountRaw,
-  timeReferenceRows,
   terraformBasicFeature,
 } from './index';
 
@@ -62,8 +61,8 @@ const press = (key: string, init: KeyboardEventInit = {}) =>
   window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
 const pickXY = (x: number, y: number) => ({ q: x, r: y });
 
-describe('W01-27: S0 ops (API), skipped tiles, and tile-state overlay', () => {
-  it('one S0 stroke = one order; a tile the op cannot work is skipped and not sent; the overlay shows progress', () => {
+describe('TERRAFORM picks each hex\'s op, skips what it cannot work, and the overlay shows progress', () => {
+  it('one click = one order; a hex nothing can work is skipped and not sent; the overlay shows progress', () => {
     const host = createMixed4x4Host();
     const state = host.state;
     const submit = vi.spyOn(host, 'submit');
@@ -74,11 +73,11 @@ describe('W01-27: S0 ops (API), skipped tiles, and tile-state overlay', () => {
     const overlayEl = container.querySelector<HTMLElement>('[data-testid="tf-tile-overlay"]')!;
     expect(overlayEl.hidden).toBe(false);
 
-    const water = tf.strokeTile(1, 3, { op: 'grade' });
+    const water = tf.strokeTile(1, 3); // deep water: only a later wave's op works it
     expect([water.queuedCount, water.skippedCount]).toEqual([0, 1]);
     expect(submit).not.toHaveBeenCalled();
 
-    const stroke = tf.strokeTile(1, 0, { op: 'grade' });
+    const stroke = tf.strokeTile(1, 0);
     expect([stroke.queuedCount, stroke.skippedCount]).toEqual([1, 0]);
     expect(submit).toHaveBeenCalledTimes(1);
     const cmd = submit.mock.calls[0][0];
@@ -88,28 +87,26 @@ describe('W01-27: S0 ops (API), skipped tiles, and tile-state overlay', () => {
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
 
     host.step(1);
-    const orders = getColonyTerraformOrders(state, 0);
-    expect(orders).toHaveLength(1);
-    expect(tf.overlay.getActiveOrder()?.orderId).toBe(orders[0].orderId);
-    expect(container.querySelector('[data-testid="tf-status"]')!.textContent).toContain('0 / 1 jobs');
+    const jobs = Object.values(getWorkJobsMap(state));
+    expect(jobs).toHaveLength(1);
+    expect(tf.overlay.getActiveOrder()?.orderId).toBe(jobs[0]!.jobId);
+    expect(container.querySelector('[data-testid="tf-status"]')!.textContent).toContain('TERRAFORM');
 
-    host.step(4);
-    expect(tf.getOverlayState().activeOrder?.currentJob?.percent).toBe(50);
-    expect(overlayEl.textContent).toContain('50%');
-
-    host.step(5);
-    expect(tf.getOverlayState().counts.prepared).toBe(1);
+    host.step(20);
+    expect(tf.getOverlayState().activeOrder?.currentJob?.percent).toBeGreaterThan(0);
     tf.dispose();
   });
 
-  it('single-op strokes: Clear / Break run their op only on their own terrain', () => {
+  it('the one button queues work for trees, rock and wild flat; deep water is skipped', () => {
     const host = createMixed4x4Host();
     const tf = mountTerraformBasic(document.createElement('div'), { host });
-    expect(tf.strokeTile(1, 1, { op: 'clear' }).jobs.map((j) => j.op)).toEqual(['clear']);
-    expect(tf.strokeTile(1, 2, { op: 'break' }).jobs.map((j) => j.op)).toEqual(['break']);
-    expect(tf.strokeTile(2, 2, { op: 'clear' }).queuedCount).toBe(0);
+    expect(tf.strokeTile(1, 1).jobs.map((j) => j.op)).toEqual(['work']);
+    expect(tf.strokeTile(1, 2).jobs.map((j) => j.op)).toEqual(['work']);
+    expect(tf.strokeTile(1, 0).jobs.map((j) => j.op)).toEqual(['work']);
+    expect(tf.strokeTile(2, 3).queuedCount).toBe(0);
     host.step(1);
-    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.op)).toEqual(['clear', 'break']);
+    expect(Object.values(getWorkJobsMap(host.state)).map((j) => j.terrainKey).sort()).toEqual(['flat', 'forest', 'rock']);
+    expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
     tf.dispose();
   });
 });
@@ -126,6 +123,7 @@ describe('Terraform brush wiring (FF-01, FF-02, FF-04, FF-09)', () => {
     click(canvas, 'pointerdown', 0, 2, 2);
     click(canvas, 'pointerup', 0, 2, 2);
     expect(sendCommand).toHaveBeenCalledTimes(1);
+    // no tile layers in the view yet: the host judges the work order
     expect(sendCommand).toHaveBeenCalledWith('enqueueTask', { terraform: { op: 'work', intent: 'terraform', tiles: [{ q: 2, r: 2 }] } });
     tf.dispose();
     canvas.remove();
@@ -148,7 +146,7 @@ describe('Terraform brush wiring (FF-01, FF-02, FF-04, FF-09)', () => {
     const submit = vi.spyOn(host, 'submit');
     const sendCommand = vi.fn();
     const tf = mountTerraformBasic(document.createElement('div'), { host, sendCommand });
-    tf.strokeTile(1, 0, { op: 'grade' });
+    tf.strokeTile(1, 0);
     tf.strokeTile(1, 1);
     expect(sendCommand).toHaveBeenCalledTimes(2);
     expect(submit).not.toHaveBeenCalled();
@@ -164,18 +162,18 @@ describe('Terraform brush wiring (FF-01, FF-02, FF-04, FF-09)', () => {
     const tf = mountTerraformBasic(container, { host });
     expect(container.querySelector('[data-testid="tf-cancel"]')).toBeNull();
 
-    tf.strokeTile(1, 0, { op: 'grade' });
+    tf.strokeTile(1, 0);
     expect(tf.cancelOrder()).toBe(false);
     expect(submit).toHaveBeenCalledTimes(1);
 
     host.step(1);
     tf.update(host.view() as never);
-    const hostId = getColonyTerraformOrders(host.state, 0)[0].orderId;
+    const hostId = Object.values(getWorkJobsMap(host.state))[0]!.jobId;
     expect(tf.cancelOrder()).toBe(true);
     expect(submit).toHaveBeenCalledTimes(2);
     expect(submit.mock.calls[1][0]).toMatchObject({ kind: 'cancelTask', args: { taskId: hostId } });
     host.step(1);
-    expect(getColonyTerraformOrders(host.state, 0)).toHaveLength(0);
+    expect(getWorkJobsMap(host.state)).toEqual({});
     tf.dispose();
   });
 
@@ -315,7 +313,7 @@ describe('Brush hotkeys and the 3-button Terraform UI (FF-07)', () => {
     done();
   });
 
-  it('renders TERRAFORM, REPAIR, DISMANTLE top to bottom, and the reference tables (no BRUSH/OVERLAY/CANCEL buttons)', () => {
+  it('renders exactly TERRAFORM, REPAIR, DISMANTLE top to bottom (no op pickers, brush, tables or stage buttons)', () => {
     const container = document.createElement('div');
     const tf = mountTerraformBasic(container, {});
     const opBtns = [...container.querySelectorAll<HTMLButtonElement>('[data-op]')];
@@ -324,12 +322,13 @@ describe('Brush hotkeys and the 3-button Terraform UI (FF-07)', () => {
       'tf-op-repair',
       'tf-op-dismantle',
     ]);
-    for (const id of ['tf-op-work', 'tf-cancel-tool', 'tf-brush-mode', 'tf-overlay-toggle', 'tf-cancel'])
+    expect(container.querySelectorAll('button')).toHaveLength(3);
+    for (const id of ['tf-op-work', 'tf-op-grade', 'tf-op-fill', 'tf-op-bridge', 'tf-area-brush', 'tf-time-table', 'tf-cancel'])
       expect(container.querySelector(`[data-testid="${id}"]`)).toBeNull();
     const [terraformBtn, repairBtn, dismantleBtn] = opBtns as [HTMLButtonElement, HTMLButtonElement, HTMLButtonElement];
     const status = container.querySelector('[data-testid="tf-status"]')!;
 
-    expect(terraformBtn.textContent).toBe('TERRAFORM [G]Flatten ground · continuous');
+    expect(terraformBtn.textContent).toBe('TERRAFORM [G]All ground work · Ctrl+click queues');
     expect(repairBtn.textContent).toBe('REPAIR [R]40% of base cost');
     expect(dismantleBtn.textContent).toBe('DISMANTLE [Z]½ build time · 50% of cost back');
     expect(status.textContent).toBe('Pick an op, then click a hex');
@@ -337,21 +336,9 @@ describe('Brush hotkeys and the 3-button Terraform UI (FF-07)', () => {
     repairBtn.click();
     expect([tf.isArmed(), tf.getSelectedOp(), repairBtn.getAttribute('aria-pressed')]).toEqual([true, 'repair', 'true']);
     expect(terraformBtn.getAttribute('aria-pressed')).toBe('false');
-    expect(status.textContent).toBe('Tool: REPAIR · click a hex');
+    expect(status.textContent).toBe('Tool: REPAIR · click a hex (Ctrl+click: queue more)');
     repairBtn.click();
     expect([tf.isArmed(), repairBtn.getAttribute('aria-pressed')]).toEqual([false, 'false']);
-
-    const timeTable = container.querySelector('[data-testid="tf-time-table"]')!;
-    const incomeTable = container.querySelector('[data-testid="tf-income-table"]')!;
-    for (const row of timeReferenceRows()) {
-      expect(timeTable.textContent).toContain(row.target);
-      expect(timeTable.textContent).toContain(row.detail);
-    }
-    expect(timeTable.textContent).toContain('Resource find1% per hex · t1 50% / t2 35% / t3 15%');
-    for (const row of incomeReferenceRows()) {
-      expect(incomeTable.textContent).toContain(row.target);
-      expect(incomeTable.textContent).toContain(row.detail);
-    }
     tf.dispose();
   });
 });
@@ -376,7 +363,7 @@ function groundFixture() {
 describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
   function mountWithEntities(workerId?: number) {
     const sendCommand = vi.fn();
-    const sel = workerId === undefined ? null : { entityId: workerId, isUnit: true, kind: workerId === 4 ? ENTITY_KIND.harvester : ENTITY_KIND.hq, hp: 1 };
+    const sel = workerId === undefined ? null : { entityId: workerId, isUnit: true, kind: workerId === 4 ? ENTITY_KIND.worker : ENTITY_KIND.hq, hp: 1 };
     const landfall = { getOwnerColonyIndex: () => 0, getSelectedEntity: () => sel };
     const tf = mountTerraformBasic(document.createElement('div'), { services: { sendCommand, landfall } as never });
     tf.update({
@@ -386,26 +373,28 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
         { id: 2, kind: 'hq', owner: 0, q: 2, r: 0, hp: 200, hpMax: 200 },
         { id: 3, kind: 'solar', owner: 0, q: 4, r: 4, hp: 150, hpMax: 300, footprint: 2 },
       ],
-      units: [{ id: 4, kind: 'harvester', owner: 0, q: 6, r: 0, hp: 80, hpMax: 160 }],
+      units: [{ id: 4, kind: 'worker', owner: 0, q: 6, r: 0, hp: 80, hpMax: 160 }],
     } as never);
     const lastTerraform = () => (sendCommand.mock.lastCall?.[1] as { terraform: unknown } | undefined)?.terraform;
     return { tf, sendCommand, lastTerraform };
   }
 
-  it('TERRAFORM sends one `work` order with intent `terraform` and the selected unit; water and prepared hexes send nothing', () => {
+  it('TERRAFORM sends a work order (trees); prepared ground is already terraformed; deep water needs a T2 worker', () => {
     const { tf, sendCommand, lastTerraform } = mountWithEntities(2);
     expect(tf.hasWorkerAvailable()).toBe(true);
     tf.selectOp('terraform');
     tf.strokeTile(8, 0);
-    expect(tf.getLastOutcome()).toMatchObject({ ok: true, op: 'terraform', yields: { 'bio.biomass': 15 } });
+    expect(tf.getLastOutcome()).toMatchObject({ ok: true, op: 'terraform' });
     expect(sendCommand).toHaveBeenLastCalledWith('enqueueTask', expect.anything());
     expect(lastTerraform()).toEqual({ op: 'work', intent: 'terraform', tiles: [{ q: 8, r: 0 }], workerId: 2 });
     expect(parseCommandArgs('enqueueTask', sendCommand.mock.lastCall?.[1]).success).toBe(true);
 
-    tf.strokeTile(9, 0);
-    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'water_tile' });
     tf.strokeTile(10, 0);
-    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'already_prepared' });
+    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'already_terraformed', status: 'Already terraformed' });
+    expect(sendCommand).toHaveBeenCalledTimes(1);
+
+    tf.strokeTile(9, 0);
+    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'worker_tier_locked', status: 'Deep water needs a T2 worker' });
     expect(sendCommand).toHaveBeenCalledTimes(1);
   });
 
@@ -431,7 +420,7 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
     expect(lastTerraform()).toEqual({ op: 'work', intent: 'repair', tiles: [{ q: 4, r: 4 }], workerId: 4 });
     expect(parseCommandArgs('enqueueTask', sendCommand.mock.lastCall?.[1]).success).toBe(true);
 
-    // The selected damaged harvester is the target, so it is not also named as the worker.
+    // The selected damaged worker is the target, so it is not also named as the worker.
     tf.strokeTile(6, 0);
     expect(lastTerraform()).toEqual({ op: 'work', intent: 'repair', tiles: [{ q: 6, r: 0 }] });
     expect(calculateRepairCost({ 'metals.t1': 100 }, 0, 100)).toEqual({ 'metals.t1': 40 });
@@ -466,8 +455,8 @@ describe('Tile overlay while hidden & feature registry (FF-08, W01-27)', () => {
     const host = createMixed4x4Host();
     const container = document.createElement('div');
     const tf = mountTerraformBasic(container, { host });
-    tf.strokeTile(1, 0, { op: 'grade' });
-    tf.strokeTile(2, 0, { op: 'grade' });
+    tf.strokeTile(1, 0);
+    tf.strokeTile(2, 0);
     host.step(1);
     tf.update(host.view() as never);
     const jobs = container.querySelector('[data-testid="tf-overlay-jobs"]')!;

@@ -15,7 +15,7 @@ export const PRECEDENCE_RANK: Readonly<Record<QueuePrecedence, number>> = {
 
 export type QueueTaskPayload =
   | { kind: 'build'; building: string; q: number; r: number; tier?: number; rotation?: number }
-  | { kind: 'buildUnit'; unit: string; count?: number; repeat?: boolean; producerId?: number }
+  | { kind: 'buildUnit'; unit: string; tier?: 1 | 2 | 3; count?: number; repeat?: boolean; producerId?: number }
   | { kind: 'terraform'; op: string; q: number; r: number }
   | { kind: 'repair'; entityId: number; q?: number; r?: number; op?: string }
   /** A building coming down (owner feedback W03 #6): follows its dismantle work job (`terraform-basic/dismantleJob.ts`). */

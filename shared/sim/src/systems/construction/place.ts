@@ -9,6 +9,7 @@ import { rowNum } from '../rows';
 import { enqueueTerraformOrder } from '../terraform-basic/queue';
 import type { TerraformOrder } from '../terraform-basic/orders';
 import { nextOrderId } from '../terraform-basic/orders';
+import { revertFootprintLivingTiles } from '../terraform-basic/rules';
 import { payConstructionCost, resolveHubBuildTimeS, resolveHubCost } from './build';
 import { readConstructionOrders, setOrderStatus, writeConstructionOrders, type ConstructionOrder } from './orders';
 import { resolveBuildingRow } from './placement';
@@ -61,6 +62,13 @@ export function placeBuildingOrder(
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const entityId = ctx?.newEntityId ? ctx.newEntityId() : state.meta.nextEntityId++;
   const hp = Math.fround(rowNum(row, 'hp'));
+  revertFootprintLivingTiles(
+    state,
+    opts.colonyId,
+    validation.tiles.map((t) => t.tileIdx),
+    tick,
+    ctx?.emit && ctx.flags?.has('W05') ? (ev) => ctx.emit!(ev) : undefined,
+  );
   const needsPrep = validation.unpreparedCount > 0;
   const entityRow = spawnPendingBuildingRow(state, opts, entityId, hp, needsPrep ? ENTITY_STATE.waiting : ENTITY_STATE.constructing, tick);
 

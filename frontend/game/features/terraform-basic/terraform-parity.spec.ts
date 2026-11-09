@@ -1,25 +1,35 @@
 import { parseWaves } from '@terra/contracts';
 import {
   buildPipeline,
-  canRunTerraformOpOnTile,
   createPlanet,
-  enqueueWorkAtTile,
+  evaluateGroundWorkTile,
   getColonyTerraformOrders,
+  getWorkJobsMap,
+  HEX_DIRS,
   hexIndex,
   inHex,
+  entityFootprint,
+  getBuildingFootprintTiles,
+  occupiesGround,
+  placementWorldFromState,
+  planGroundWorkTiles,
+  PREP,
   restore,
+  setTilePrep,
+  setTileTerrain,
   setTileOwner,
   SimHost,
   snapshot,
   spawnColonyLanding,
   spawnHqUnit,
+  TERRAIN,
+  terraformWorldFromState,
   view,
   type PlanetType,
-  type TerraformOpKind,
 } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { packView, unpackView } from '../../store/replica/viewCodec';
-import { extractViewEntities, planBrushStroke } from './planner';
+import { extractViewEntities, planTerraformTiles } from './planner';
 import { planPrimaryOp } from './primaryOps';
 
 /** Axial box `start..end` inside the planet (row-major). */
@@ -32,14 +42,13 @@ function computeBoxTiles(start: { q: number; r: number }, end: { q: number; r: n
 }
 
 /**
- * Client/server parity of the terraform rule (D-37, FF-03): the brush preview runs the sim's `evaluateTerraform` on the
- * replica view that crossed the real client path (snapshot `{ forClient: true }` → replica → view codec); for every tile
- * and op it must agree with the authoritative check on the host's state.
+ * Client/server parity of the TERRAFORM rule (D-37): the click preview runs the sim's `planGroundWorkTiles` on the
+ * replica view that crossed the real client path (snapshot `{ forClient: true }` → replica → view codec).
  */
-function hostWithPod(planetType: PlanetType, claimRing: boolean): SimHost {
-  const host = new SimHost(buildPipeline(parseWaves('..01').list, {}));
+function hostWithPod(waves: string, planetType: PlanetType, claimRing: boolean): SimHost {
+  const host = new SimHost(buildPipeline(parseWaves(waves).list, {}));
   host.load(createPlanet({ id: 'pl', seed: `tf-parity-${planetType}`, type: 'temperate', planetType, radius: 14 }));
-  const landed = spawnColonyLanding(host.state, { colonyId: 0 }); // the landing planner picks the site
+  const landed = spawnColonyLanding(host.state, { colonyId: 0 });
   if (!landed.ok) throw new Error(`landing rejected: ${landed.code}`);
   host.step(1);
   if (claimRing) {
@@ -55,85 +64,143 @@ function clientViewOf(host: SimHost) {
   return unpackView(wire);
 }
 
-function checkEveryTile(planetType: PlanetType, claimRing: boolean): Set<string> {
-  const host = hostWithPod(planetType, claimRing);
+function occupiedOf(host: SimHost): Set<number> {
   const data = host.pipeline.config.data;
-  const client = clientViewOf(host);
-  const reasons = new Set<string>();
-  const R = host.state.grid.radius;
-  for (const op of ['grade', 'clear', 'break'] as TerraformOpKind[]) {
-    for (let r = -R; r <= R; r++) {
-      for (let q = -R; q <= R; q++) {
-        if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > R) continue;
-        const s = canRunTerraformOpOnTile(host.state, 0, op, q, r, { data });
-        const c = planBrushStroke(client, [{ q, r }], { op, colonyId: 0, data });
-        expect([q, r, op, c.queuedCount]).toEqual([q, r, op, s.ok ? 1 : 0]);
-        if (!s.ok && s.reason) reasons.add(s.reason);
-      }
+  const world = placementWorldFromState(host.state);
+  const idx = hexIndex(world.radius);
+  const out = new Set<number>();
+  for (const e of world.entities) {
+    if (!occupiesGround(e)) continue;
+    for (const t of getBuildingFootprintTiles(e.q, e.r, entityFootprint(e.kind, data))) {
+      const i = idx.indexOf(t.q, t.r);
+      if (i >= 0) out.add(i);
     }
   }
-  return reasons;
+  return out;
 }
 
-/**
- * TERRAFORM (`work`, intent `terraform`) on every tile: does the click preview send an order exactly where the host
- * accepts one? The host runs on a restored copy (accepted jobs only add work; they do not change other tiles' verdict).
- */
-function checkWorkEveryTile(planetType: PlanetType, claimRing: boolean, withWorker: boolean): Set<string> {
-  const host = hostWithPod(planetType, claimRing);
-  const cols = host.state.entities.cols;
-  if (withWorker) spawnHqUnit(host.state, { owner: 0, q: cols.q[0]! + 1, r: cols.r[0]! });
+function pendingOf(host: SimHost): Set<string> {
+  const out = new Set<string>();
+  for (const o of getColonyTerraformOrders(host.state, 0)) for (const j of o.jobs) out.add(`${j.q},${j.r}`);
+  for (const j of Object.values(getWorkJobsMap(host.state))) if (j.mode === 'terraform' && j.colonyId === 0) out.add(`${j.q},${j.r}`);
+  return out;
+}
+
+function hostPlan(host: SimHost, tiles: Array<{ q: number; r: number }>) {
+  const data = host.pipeline.config.data;
+  return planGroundWorkTiles(terraformWorldFromState(host.state, 0, data), tiles, {
+    colonyId: 0,
+    deposit: host.state.grid.layers.deposit,
+    occupied: occupiedOf(host),
+    pending: pendingOf(host),
+    data,
+  });
+}
+
+/** Every tile: the preview's verdict equals the host's `planGroundWorkTiles` on authoritative state. */
+function checkEveryTile(waves: string, planetType: PlanetType, claimRing: boolean): { ops: Set<string>; reasons: Set<string>; water: boolean } {
+  const host = hostWithPod(waves, planetType, claimRing);
   const data = host.pipeline.config.data;
   const client = clientViewOf(host);
-  const entities = extractViewEntities(client as never);
-  const judge = restore(snapshot(host.state));
+  const world = terraformWorldFromState(host.state, 0, data);
+  const ops = new Set<string>();
   const reasons = new Set<string>();
+  let water = false;
   const R = host.state.grid.radius;
+  const hx = hexIndex(R);
   for (let r = -R; r <= R; r++) {
     for (let q = -R; q <= R; q++) {
       if (!inHex(q, r, R)) continue;
-      const s = enqueueWorkAtTile(judge, 0, q, r, { intent: 'terraform', data });
-      const p = planPrimaryOp('terraform', { view: client as never, entities, colonyId: 0, data }, q, r);
-      expect([q, r, p.terraform !== null]).toEqual([q, r, s.ok]);
-      reasons.add(p.outcome.ok ? 'ok' : (p.outcome.reason ?? '?'));
+      const s = hostPlan(host, [{ q, r }]);
+      const c = planTerraformTiles(client, [{ q, r }], { colonyId: 0, data });
+      expect([q, r, c.jobs.map((j) => j.op), c.firstReject]).toEqual([q, r, s.jobs.map((j) => j.op), s.firstReject]);
+      const ground = evaluateGroundWorkTile(world, 0, hx.indexOf(q, r), q, r, { deposit: host.state.grid.layers.deposit, data });
+      if (ground.ok && ground.workOp) water = true;
+      for (const j of c.jobs) ops.add(j.op);
+      if (s.firstReject) reasons.add(s.firstReject);
     }
   }
-  return reasons;
+  return { ops, reasons, water };
 }
 
 describe('terraform parity: authoritative state vs client replica view (FF-03)', () => {
-  for (const claimRing of [false, true]) {
-    it(`TERRAFORM click preview equals the host's \`work\` verdict on every tile (${claimRing ? 'with' : 'before'} territory)`, () => {
-      const reasons = checkWorkEveryTile('temperate', claimRing, true);
-      for (const r of ['ok', 'not_own_territory']) expect([r, reasons.has(r)]).toEqual([r, true]);
-    });
+  for (const waves of ['..01', '..05']) {
+    for (const planetType of ['desert', 'ocean', 'temperate'] as const) {
+      it(`${waves} ${planetType}: before territory the TERRAFORM preview picks the host's verdict on every tile`, () => {
+        const { ops, reasons } = checkEveryTile(waves, planetType, false);
+        expect(ops.has('work')).toBe(true);
+        expect(reasons.has('not_own_territory')).toBe(true);
+      });
+    }
   }
 
-  it('TERRAFORM with no worker (only the landing pod): the preview sends nothing, as the host accepts nothing', () => {
-    expect(checkWorkEveryTile('temperate', false, false).has('no_worker')).toBe(true);
+  it('..05 ocean: water hexes are workable reclaim, the same verdict the host picks', () => {
+    expect(checkEveryTile('..05', 'ocean', false).water).toBe(true);
   });
-
-  for (const planetType of ['desert', 'ocean', 'temperate'] as const) {
-    it(`${planetType}: before territory (pre-Hub radius around the pod) the preview equals the host verdict on every tile`, () => {
-      const reasons = checkEveryTile(planetType, false);
-      expect(reasons.has('site_blocked')).toBe(true);
-      expect(reasons.has('not_own_territory')).toBe(true);
-    });
-  }
 
   it('with territory (own and foreign tiles): own tiles only, on every tile', () => {
-    expect(checkEveryTile('temperate', true).has('not_own_territory')).toBe(true);
+    expect(checkEveryTile('..05', 'temperate', true).reasons.has('not_own_territory')).toBe(true);
   });
 
-  it('a multi-tile Grade stroke previews exactly the jobs the host queues', () => {
-    const host = hostWithPod('temperate', false);
-    const tiles = computeBoxTiles({ q: -3, r: -3 }, { q: 3, r: 3 }, 14);
-    const preview = planBrushStroke(clientViewOf(host), tiles, { op: 'grade', colonyId: 0, data: host.pipeline.config.data });
-    host.submit({ colonyIndex: 0, source: 'player', commandId: 'p1', kind: 'enqueueTask', args: { terraform: { op: 'grade', tiles } } });
+  it('the click plan sends work where the host accepts, or nothing where it refuses', () => {
+    const host = hostWithPod('..05', 'temperate', false);
+    const cols = host.state.entities.cols;
+    spawnHqUnit(host.state, { owner: 0, q: cols.q[0]! + 1, r: cols.r[0]! });
+    const data = host.pipeline.config.data;
+    const client = clientViewOf(host);
+    const entities = extractViewEntities(client as never);
+    let sent = 0;
+    for (const t of computeBoxTiles({ q: -3, r: -3 }, { q: 3, r: 3 }, 14)) {
+      const p = planPrimaryOp('terraform', { view: client as never, entities, colonyId: 0, data }, t.q, t.r);
+      const s = hostPlan(host, [t]);
+      if (s.jobs.length > 0) {
+        expect(p.terraform).toMatchObject({ op: 'work', intent: 'terraform', tiles: [t] });
+        sent++;
+      } else {
+        expect([t.q, t.r, p.terraform]).toEqual([t.q, t.r, null]);
+      }
+    }
+    expect(sent).toBeGreaterThan(0);
+  });
+});
+
+describe('terraform parity: no-op targets get the same typed reason on client and host', () => {
+  it('Living, queued, and already-flat hexes: the preview matches the host and does not climb to Irrigate or Seed', () => {
+    const host = hostWithPod('..05', 'temperate', false);
+    const data = host.pipeline.config.data;
+    const idx = hexIndex(host.state.grid.radius);
+    const cols = host.state.entities.cols;
+    const [pq, pr] = [cols.q[0]!, cols.r[0]!];
+    const levelFlat = (q: number, r: number, prep: number) => {
+      const i = idx.indexOf(q, r);
+      setTileTerrain(host.state.grid, i, TERRAIN.flat);
+      setTilePrep(host.state.grid, i, prep);
+      host.state.grid.layers.height[i] = 0;
+      for (const [dq, dr] of HEX_DIRS) {
+        const j = idx.indexOf(q + dq, r + dr);
+        if (j < 0) continue;
+        setTileTerrain(host.state.grid, j, TERRAIN.flat);
+        host.state.grid.layers.height[j] = 0;
+      }
+      return i;
+    };
+    const living = { q: pq + 1, r: pr };
+    levelFlat(living.q, living.r, PREP.living);
+    const s = hostPlan(host, [living]);
+    const c = planTerraformTiles(clientViewOf(host), [living], { colonyId: 0, data });
+    expect([s.firstReject, c.firstReject, c.jobs.length]).toEqual(['already_terraformed', 'already_terraformed', 0]);
+
+    const queued = { q: pq - 1, r: pr };
+    host.submit({ commandId: 'tp-1', colonyIndex: 0, source: 'player', kind: 'enqueueTask', args: { terraform: { op: 'grade', tiles: [queued] } } } as never);
     host.step(1);
-    const order = getColonyTerraformOrders(host.state, 0).find((o) => !o.isLinkedPrep);
-    expect(preview.queuedCount).toBeGreaterThan(0);
-    expect(order?.jobs.map((j) => `${j.op}:${j.q},${j.r}`)).toEqual(preview.jobs.map((j) => `${j.op}:${j.q},${j.r}`));
-    expect(order?.skippedCount).toBe(preview.skippedCount);
+    expect(planTerraformTiles(clientViewOf(host), [queued], { colonyId: 0, data }).firstReject).toBe('already_queued');
+
+    for (const prep of [PREP.flat, PREP.prepared, PREP.irrigated]) {
+      const t = { q: pq, r: pr + 1 };
+      levelFlat(t.q, t.r, prep);
+      const p = planTerraformTiles(clientViewOf(host), [t], { colonyId: 0, data });
+      const h = hostPlan(host, [t]);
+      expect([prep, p.jobs, p.firstReject, h.firstReject]).toEqual([prep, [], 'already_terraformed', 'already_terraformed']);
+    }
   });
 });

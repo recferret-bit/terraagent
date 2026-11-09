@@ -46,7 +46,7 @@ function drawsFromCell(state: PlanetState, row: number, dtTicks: number, data?: 
   const cols = state.entities.cols;
   if (cols.state[row] !== ENTITY_STATE.working) return false;
   const job = colonyTerraformOrders(state, cols.owner[row])
-    .map((o) => o.jobs[0])
+    .flatMap((o) => o.jobs)
     .find((j) => j && j.q === cols.targetQ[row] && j.r === cols.targetR[row]);
   if (!job) return false;
   const remaining = Math.max(0, 1 - (job.progress ?? 0));
@@ -136,6 +136,7 @@ export interface StepTerraformWorkOpts {
   dtS?: number;
   remainingProgress?: number;
   remainingEnergyE?: number;
+  gridPowered?: boolean;
   tick?: number;
   data?: CompiledDataLike;
 }
@@ -152,7 +153,13 @@ export interface StepTerraformWorkResult {
  */
 export function stepTerraformWorkWithCell(state: SimState, hqRow: number, opts: StepTerraformWorkOpts): StepTerraformWorkResult {
   const e = state.entities;
-  if (Number.isInteger(hqRow) && hqRow >= 0 && hqRow < e.count && e.cols.kind[hqRow] === ENTITY_KIND.builder) {
+  if (
+    Number.isInteger(hqRow) &&
+    hqRow >= 0 &&
+    hqRow < e.count &&
+    (opts.gridPowered ||
+      e.cols.kind[hqRow] === ENTITY_KIND.worker)
+  ) {
     const d = stepDemand(workRateOf(state, hqRow, opts.data), opts, opts.dtS ?? TICK_MS / 1000, opts.remainingProgress, opts.remainingEnergyE);
     return { progressDelta: d ? d.desiredProgress : 1, energyDrawnE: d ? d.neededE : 0 };
   }

@@ -2,7 +2,7 @@ import { RegionsContent, parseWaves } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   compileData, createPlanet, createRegistryPipeline, createState, DEPOSIT, ENTITY_KIND, ENTITY_STATE, ensureColonyLedger, GEN_VERSION, hexIndex, insertRow,
-  placeMetalsExtractor, resolvePlanetRegion, restore, setTileDeposit, snapshot, step, writeRegionPin,
+  placeMetalsExtractor, PREP, resolvePlanetRegion, restore, revealSubsurface, setTileDeposit, snapshot, step, TERRAIN, writeRegionPin,
   getRegionPin, regionViewOf, regionalSourcePolicy, REGION_PIN_BLOB, resolveRegion, type PlanetState, type ResolvedRegion, type StepContext,
 } from '../../src';
 import { spawnTerraformDeposit } from '../../src/systems/terraform-basic/resourceSpawn';
@@ -22,6 +22,18 @@ const ridge = ok(resolvePlanetRegion({ regions: ridgeContent }, { ...desertCtx, 
 
 const make = (region?: ResolvedRegion, seed = 'regional-1'): PlanetState =>
   createPlanet({ id: 'pl_dune', seed, type: 'desert', planetType: 'desert', radius: 40, worldSalt: 'salt', ...(region ? { region } : {}) });
+
+/** Levels wild dunes/rock to hex tiles and reveals buried subsurface veins (`D-45`: desert ore lies under the dunes until levelled). */
+function unearthDesert(s: PlanetState): PlanetState {
+  const L = s.grid.layers;
+  for (let i = 0; i < s.grid.count; i++) {
+    L.terrain[i] = TERRAIN.flat;
+    L.prep[i] = PREP.prepared;
+    L.height[i] = 0;
+  }
+  for (let i = 0; i < s.grid.count; i++) revealSubsurface(s, i, 0);
+  return s;
+}
 
 /** Tier-3 share among all minerals deposits (visible layer). */
 function crystalShare(s: PlanetState): { t3: number; all: number } {
@@ -58,7 +70,7 @@ describe('regional sources (ECON-GEO-01/02, W13-51)', () => {
       return w('minerals.t3') / (w('minerals.t1') + w('minerals.t2') + w('minerals.t3'));
     };
     expect(regionalSourcePolicy(desert, 'minerals.t3', 'surfaceDeposit').weightBp).toBe(1500);
-    const base = make(desert);
+    const base = unearthDesert(make(desert));
     const genShare = crystalShare(base);
     expect(genShare.all).toBeGreaterThan(40);
     expect(genShare.t3 / genShare.all).toBeLessThan(0.15); // nowhere near the old 20 % standard share
@@ -73,7 +85,7 @@ describe('regional sources (ECON-GEO-01/02, W13-51)', () => {
     const again = restore(snapshot(restore(snapshot(reloaded))));
     expect(crystalShare(again)).toEqual(afterFinds);
 
-    const ridgeShare = crystalShare(make(ridge));
+    const ridgeShare = crystalShare(unearthDesert(make(ridge)));
     expect(policyShare(ridge)).toBeGreaterThan(0.25);
     expect(ridgeShare.t3 / ridgeShare.all).toBeGreaterThan(crystalShare(base).t3 / genShare.all);
     expect(ridgeShare.t3 / ridgeShare.all).toBeGreaterThan(0.15);

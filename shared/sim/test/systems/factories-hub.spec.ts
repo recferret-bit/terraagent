@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
+  cancelHubUnit,
   createRegistryPipeline,
   createState,
   creditResource,
@@ -16,7 +17,7 @@ import {
 import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively, 10s build, supply cap 10', () => {
-  it('queue 1 Harvester -> 40/15/5/0 paid progressively, spawns after 10 s; queue an 11th -> waits on waiting(supply)', () => {
+  it('queue 1 Worker -> 40/15/5/0 paid progressively, spawns after 10 s; queue an 11th -> waits on waiting(supply)', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -46,8 +47,8 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively,
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
-    // Queue 1 Harvester: starts in_progress, cost (40/15/5) is deducted progressively across 50 ticks
-    const q1 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'harvester' });
+    // Queue 1 Worker: starts in_progress, cost (40/15/5) is deducted progressively across 50 ticks
+    const q1 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
     expect(q1.ok).toBe(true);
     if (!q1.ok) throw new Error('expected ok');
     expect(q1.entry.state).toBe('in_progress');
@@ -58,7 +59,7 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively,
     expect(getHubUnitQueue(state, 0)).toHaveLength(1);
     expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(460.8, 4);
 
-    // Step 1 more tick (50 ticks = 10.0 s) -> Harvester spawns at Hub edge and full 40/15/5 is deducted!
+    // Step 1 more tick (50 ticks = 10.0 s) -> Worker spawns at Hub edge and full 40/15/5 is deducted!
     const doneRes = step(state, [], 1, pipeline);
     expect(doneRes.events.some((e) => e.kind === 'unitProduced')).toBe(true);
     expect(getHubUnitQueue(state, 0)).toHaveLength(0);
@@ -67,18 +68,18 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively,
     expect(resourceValue(colony, 'minerals.t1')).toBe(485);
     expect(resourceValue(colony, 'bio.biomass')).toBe(495);
 
-    // Spawn 9 more Harvesters so total active Harvesters = 10 (at Hub T1 supply cap 10)
+    // Spawn 9 more Workers so total active Workers = 10 (at Hub T1 supply cap 10)
     for (let i = 0; i < 9; i++) {
       const r = insertRow(state.entities, state.meta.nextEntityId++, state.meta.tick);
-      state.entities.cols.kind[r] = ENTITY_KIND.harvester;
+      state.entities.cols.kind[r] = ENTITY_KIND.worker;
       state.entities.cols.owner[r] = 0;
       state.entities.cols.hp[r] = 160;
       state.entities.cols.state[r] = ENTITY_STATE.idle;
     }
     expect(computeColonySupply(state, 0)).toMatchObject({ used: 10, cap: 10, available: 0 });
 
-    // Queue an 11th Harvester -> waits on waiting(supply) and does NOT debit resources
-    const q11 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'harvester' });
+    // Queue an 11th Worker -> waits on waiting(supply) and does NOT debit resources
+    const q11 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
     expect(q11.ok).toBe(true);
     if (!q11.ok) throw new Error('expected ok');
     expect(q11.entry.state).toBe('waiting');
@@ -86,5 +87,85 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively,
     expect(q11.entry.waitDetail).toBe('waiting(supply)');
     expect(q11.entry.paid).toBe(false);
     expect(resourceValue(colony, 'metals.t1')).toBe(460);
+  });
+});
+
+describe('W02-10 Hub worker production — negative and corner/boundary cases', () => {
+  it('rejects unknown unit, lane overflow (queue_full), unknown cancel taskId, and wrong-colony cancel', () => {
+    const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02-neg', radius: 8 });
+    const colony = ensureColonyLedger({
+      index: 0,
+      id: 'col-0',
+      name: 'Alpha',
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: 0,
+    });
+    state.colonies.push(colony);
+
+    const badUnit = enqueueHubUnit(state, { colonyIndex: 0, unit: 'unknown_bot' });
+    expect(badUnit.ok).toBe(false);
+    if (!badUnit.ok) expect(badUnit.code).toBe('invalid_args');
+
+    for (let i = 0; i < 10; i++) {
+      const res = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
+      expect(res.ok).toBe(true);
+    }
+    const overflow = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
+    expect(overflow.ok).toBe(false);
+    if (!overflow.ok) expect(overflow.code).toBe('queue_full');
+
+    const missingCancel = cancelHubUnit(state, 'non-existent-task', 0);
+    expect(missingCancel.ok).toBe(false);
+    if (!missingCancel.ok) expect(missingCancel.code).toBe('unknown_task');
+
+    const firstTaskId = getHubUnitQueue(state, 0)[0]!.taskId;
+    const wrongOwner = cancelHubUnit(state, firstTaskId, 1);
+    expect(wrongOwner.ok).toBe(false);
+    if (!wrongOwner.ok) expect(wrongOwner.code).toBe('not_own_colony');
+  });
+
+  it('refunds 50% of spent progressive cost on mid-progress cancel and promotes the next queued entry', () => {
+    const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02-cancel', radius: 8 });
+    const colony = ensureColonyLedger({
+      index: 0,
+      id: 'col-0',
+      name: 'Alpha',
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: 0,
+    });
+    state.colonies.push(colony);
+
+    const hubRow = insertRow(state.entities, state.meta.nextEntityId++, 0);
+    state.entities.cols.kind[hubRow] = ENTITY_KIND.commandHub;
+    state.entities.cols.owner[hubRow] = 0;
+    state.entities.cols.hp[hubRow] = 1500;
+    state.entities.cols.state[hubRow] = ENTITY_STATE.active;
+
+    creditResource(colony, 'metals.t1', 200, 0);
+    creditResource(colony, 'minerals.t1', 200, 0);
+    creditResource(colony, 'bio.biomass', 200, 0);
+
+    const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
+    const first = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
+    const second = enqueueHubUnit(state, { colonyIndex: 0, unit: 'worker' });
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) throw new Error('expected ok');
+    expect(first.entry.state).toBe('in_progress');
+    expect(second.entry.state).toBe('queued');
+
+    // Step halfway (25 of 50 ticks -> 20 metals spent)
+    step(state, [], 25, pipeline);
+    expect(colony.stock['metals.t1']).toBeCloseTo(180, 4);
+
+    // Cancel first entry -> 50% of 20 metals (10 metals) refunded -> 190 metals, second entry becomes in_progress
+    const cancelled = cancelHubUnit(state, first.entry.taskId, 0, state.meta.tick);
+    expect(cancelled).toEqual({ ok: true, refunded: true });
+    expect(colony.stock['metals.t1']).toBeCloseTo(190, 4);
+    const remaining = getHubUnitQueue(state, 0);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.taskId).toBe(second.entry.taskId);
+    expect(remaining[0]!.state).toBe('in_progress');
   });
 });

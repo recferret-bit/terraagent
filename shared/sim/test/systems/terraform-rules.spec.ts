@@ -54,7 +54,7 @@ describe('GP-01: one tile pays its yield once', () => {
     expect(order.jobs).toHaveLength(1);
     expect(order.skippedCount).toBe(4);
     // The same tile again: already queued for Clear, so nothing is left to queue.
-    expect(send(host, 'enqueueTask', { terraform: { op: 'clear', tiles: [tile] } }).outcome.code).toBe('site_blocked');
+    expect(send(host, 'enqueueTask', { terraform: { op: 'clear', tiles: [tile] } }).outcome.code).toBe('already_queued');
     const events = runUntilIdle(host);
     expect(events.filter((e) => e.kind === 'obstacleRemoved')).toHaveLength(1);
     expect(getColonyStock(host.state, 0)['bio.biomass']).toBe(15);
@@ -176,7 +176,7 @@ describe('GP-32 / GP-34: one pure terraform rule, mapping from the data rows', (
     const tiles = [{ q: 1, r: 0 }, { q: 2, r: 0 }, { q: 3, r: 0 }, { q: 4, r: 0 }, { q: 1, r: 0 }];
     const plan = evaluateTerraform(terraformWorldFromState(host.state, 0), { colonyId: 0, op: 'grade', tiles, auto: true });
     expect(plan.jobs).toEqual([{ q: 1, r: 0, op: 'grade' }, { q: 2, r: 0, op: 'clear' }, { q: 3, r: 0, op: 'break' }]);
-    expect(plan.skipped.map((s) => s.reason)).toEqual(['not_own_territory', 'site_blocked']);
+    expect(plan.skipped.map((s) => s.reason)).toEqual(['not_own_territory', 'already_queued']);
     expect(send(host, 'enqueueTask', { terraform: { op: 'grade', tiles } }).outcome.code).toBeUndefined();
     const [order] = getColonyTerraformOrders(host.state, 0);
     expect(order.jobs.map(({ q, r, op }) => ({ q, r, op }))).toEqual(plan.jobs);

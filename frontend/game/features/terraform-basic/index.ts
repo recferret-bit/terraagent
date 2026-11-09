@@ -17,8 +17,6 @@ import {
   type BrushStrokeOptions,
   type BrushStrokeOutcome,
   type BrushStrokeSummary,
-  type TerraformButtonOp,
-  type TerraformOpId,
   type TerraformPrimaryOp,
   type TerraformWireArgs,
   type TileCoord,
@@ -29,12 +27,12 @@ import {
   calculateRepairCost,
   DISMANTLE_REFUND_RATIO,
   FULL_REPAIR_COST_RATIO,
-  planBrushStroke,
-  type BrushOpSelection,
+  planTerraformTiles,
   type PlannedTileJob,
 } from './planner';
 import { bindResourceFoundToasts, resourceFoundText, type ResourceFoundSource } from './resourceFound';
-import { incomeReferenceRows, resourceFindRow, timeReferenceRows, type ReferenceTableRow } from './referenceTables';
+import { TargetHighlight3D } from './TargetHighlight3D';
+import { terraformTargetIdsAt, terraformTargetTiles } from './targets';
 import { PRIMARY_OP_DEFS, TerraformMenu, type TerraformPrimaryOpDef } from './TerraformMenu';
 import {
   computeOverlayState,
@@ -56,16 +54,15 @@ export {
   DISMANTLE_REFUND_RATIO,
   extractColonyOrders,
   FULL_REPAIR_COST_RATIO,
-  planBrushStroke,
-  incomeReferenceRows,
+  planTerraformTiles,
   PRIMARY_OP_DEFS,
   resourceFoundText,
-  resourceFindRow,
+  TargetHighlight3D,
   TerraformMenu,
-  timeReferenceRows,
+  terraformTargetIdsAt,
+  terraformTargetTiles,
   TileOverlay,
   type BrushCommandSink,
-  type BrushOpSelection,
   type BrushStrokeOptions,
   type BrushStrokeOutcome,
   type BrushStrokeSummary,
@@ -73,9 +70,6 @@ export {
   type OverlayOrderProgress,
   type OverlayTileEntry,
   type PlannedTileJob,
-  type ReferenceTableRow,
-  type TerraformButtonOp,
-  type TerraformOpId,
   type TerraformPrimaryOp,
   type TerraformPrimaryOpDef,
   type TerraformWireArgs,
@@ -91,11 +85,15 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
   readonly menu: TerraformMenu;
   readonly brush: BrushController;
   readonly overlay: TileOverlay;
-  selectOp(op: BrushOpSelection): void;
-  getSelectedOp(): BrushOpSelection;
+  selectOp(op: TerraformPrimaryOp): void;
+  getSelectedOp(): TerraformPrimaryOp;
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
   /** Cancels the host order `orderId` (default: the active order in the view); false when there is none. */
   cancelOrder(orderId?: string): boolean;
+  /** The hexes lit as terraform targets now (the colony's open terraform jobs); empty without a 3D scene. */
+  getTargetTiles(): readonly TileCoord[];
+  /** The hex the armed brush previews under the pointer, or `null`. */
+  getHoverTile(): TileCoord | null;
   disarm(): void;
   isArmed(): boolean;
   hasWorkerAvailable(): boolean;
@@ -146,6 +144,75 @@ export interface MountTerraformOptions {
   services?: Partial<FeatureContext['services']>;
 }
 
+function resolveSelectedWorkerId(services: Partial<FeatureContext['services']>): number | undefined {
+  const sel = services.landfall?.getSelectedEntity?.();
+  const isWorker =
+    sel?.isUnit &&
+    (sel.kind === ENTITY_KIND.hq || sel.kind === ENTITY_KIND.worker) &&
+    !(sel.hp <= 0);
+  return isWorker ? sel.entityId : undefined;
+}
+
+function bindHoverHighlight(
+  surface: HTMLElement | null | undefined,
+  pickTile: TilePickerFn | undefined,
+  brush: BrushController,
+  getTargets: () => TargetHighlight3D | null,
+): () => void {
+  if (!surface) return () => {};
+  let hoverAt = 0;
+  const onMove = (e: PointerEvent) => {
+    const targets = getTargets();
+    if (!pickTile || !brush.isPointerActive()) return targets?.setHover(null);
+    const t = performance.now();
+    if (t - hoverAt < 50) return;
+    hoverAt = t;
+    targets?.setHover(pickTile(e.clientX, e.clientY));
+  };
+  const onLeave = () => getTargets()?.setHover(null);
+  surface.addEventListener('pointermove', onMove);
+  surface.addEventListener('pointerleave', onLeave);
+  return () => {
+    surface.removeEventListener('pointermove', onMove);
+    surface.removeEventListener('pointerleave', onLeave);
+  };
+}
+
+function buildTerraformHandle(params: {
+  menu: TerraformMenu;
+  brush: BrushController;
+  overlay: TileOverlay;
+  getTargets: () => TargetHighlight3D | null;
+  syncView: (v?: GameView | null) => void;
+  ensureLatestHostSync: () => void;
+  disposeAll: () => void;
+}): TerraformFeatureHandle {
+  const { menu, brush, overlay, getTargets, syncView, ensureLatestHostSync, disposeAll } = params;
+  return {
+    el: menu.el,
+    overlayEl: overlay.el,
+    menu,
+    brush,
+    overlay,
+    selectOp: (op) => { brush.selectOp(op); menu.render(); },
+    getSelectedOp: () => brush.getSelectedOp(),
+    strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
+    cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
+    getTargetTiles: () => getTargets()?.getTiles() ?? [],
+    getHoverTile: () => getTargets()?.getHover() ?? null,
+    disarm: () => brush.disarm(),
+    isArmed: () => brush.isArmed(),
+    hasWorkerAvailable: () => brush.hasWorkerAvailable(),
+    toggleOverlay: (on) => { const next = overlay.setVisible(on); menu.render(); return next; },
+    getOverlayState: () => { ensureLatestHostSync(); return overlay.getState(); },
+    getLastStroke: () => brush.getLastStroke(),
+    getLastOutcome: () => brush.getLastOutcome(),
+    bindSurface: (surf, pick) => brush.bindSurface(surf, pick),
+    update: (view) => syncView(view),
+    dispose: disposeAll,
+  };
+}
+
 /** Mounts the `terraform-basic` menu, brush controller, and tile-state overlay into `el`. */
 export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptions): TerraformFeatureHandle {
   const container = el ?? document.body;
@@ -156,15 +223,11 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
   const isBlocked = () =>
     isGameInputBlocked() ||
     services.hubPlacement?.isPlacementActive() === true || (services.getPlacementGhostState?.() ?? null) !== null;
-  /** The selected own alive worker (HQ Drone, Harvester) works the order; else (a building, a deposit, nothing) the host picks. */
-  const getWorkerId = () => {
-    const sel = services.landfall?.getSelectedEntity?.();
-    const isWorker = sel?.isUnit && (sel.kind === ENTITY_KIND.hq || sel.kind === ENTITY_KIND.harvester) && !(sel.hp <= 0);
-    return isWorker ? sel.entityId : undefined;
-  };
+  const getWorkerId = () => resolveSelectedWorkerId(services);
 
   const overlay = new TileOverlay(container, getColonyId);
   let menu: TerraformMenu | null = null;
+  let targets: TargetHighlight3D | null = null;
   let lastSyncedTick = -1;
 
   const syncView = (v?: GameView | null) => {
@@ -174,6 +237,9 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
       brush.setView(resolved);
     }
     overlay.update(resolved);
+    if (!targets && services.scene3d) targets = new TargetHighlight3D(services.scene3d);
+    targets?.update(resolved, getColonyId());
+    if (!brush.isPointerActive()) targets?.setHover(null);
     menu?.render();
   };
 
@@ -184,17 +250,17 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     host: simHost,
     getColonyId,
     getWorkerId,
-    // an armed tool on a hidden / collapsed dock tab never takes map clicks (the menu disarms it on its next render)
     isBlocked: () => isBlocked() || (menu !== null && !isDockPaneShown(menu.el)),
     simData: () => store?.simData?.(),
     onChange: () => syncView(),
   });
 
-  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, simData: () => store?.simData?.(), flags: opts?.flags });
+  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, flags: opts?.flags });
 
   const surface = opts?.surface ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;
   if (surface) brush.bindSurface(surface, pickTile);
+  const offHover = bindHoverHighlight(surface, pickTile, brush, () => targets);
 
   const offHostEvents = simHost?.onEvents ? simHost.onEvents(() => syncView(simHost.view())) : null;
   const offFound = bindResourceFoundToasts(store as ResourceFoundSource | undefined, getColonyId, (m) =>
@@ -202,49 +268,19 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
   );
   syncView();
 
-  const handle: TerraformFeatureHandle = {
-    el: menu.el,
-    overlayEl: overlay.el,
+  const handle = buildTerraformHandle({
     menu,
     brush,
     overlay,
-    selectOp: (op) => {
-      brush.selectOp(op);
-      menu?.render();
+    getTargets: () => targets,
+    syncView,
+    ensureLatestHostSync: () => {
+      if (simHost && (simHost.tick ?? -1) !== lastSyncedTick) syncView(simHost.view());
     },
-    getSelectedOp: () => brush.getSelectedOp(),
-    strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
-    cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
-    disarm: () => brush.disarm(),
-    isArmed: () => brush.isArmed(),
-    hasWorkerAvailable: () => brush.hasWorkerAvailable(),
-    toggleOverlay: (on) => {
-      const next = overlay.setVisible(on);
-      menu?.render();
-      return next;
-    },
-    getOverlayState: () => {
-      if (simHost && (simHost.tick ?? -1) !== lastSyncedTick) {
-        syncView(simHost.view());
-      }
-      return overlay.getState();
-    },
-    getLastStroke: () => brush.getLastStroke(),
-    getLastOutcome: () => brush.getLastOutcome(),
-    bindSurface: (surf, pick) => brush.bindSurface(surf, pick),
-    update: (view) => syncView(view),
-    dispose: () => {
-      offHostEvents?.();
-      offFound();
-      brush.dispose();
-      menu?.dispose();
-      overlay.dispose();
-    },
-  };
+    disposeAll: () => { offHover(); offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); targets?.dispose(); },
+  });
 
-  if (opts?.services) {
-    opts.services.terraform = handle;
-  }
+  if (opts?.services) opts.services.terraform = handle;
   return handle;
 }
 

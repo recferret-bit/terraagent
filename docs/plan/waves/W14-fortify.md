@@ -17,7 +17,7 @@
 
 ## Demo story (e2e `tests/e2e/w14.spec.ts`)
 
-1. Open `/play.html?scenario=w14`: an S4 colony (demo build unlock), a Terraformer, Prepared ground around the core, a nest 25 tiles away, and an Autocannon inside the planned wall line.
+1. Open `/play.html?scenario=w14`: an S4 colony (demo build unlock), a Worker Drone T3, Prepared ground around the core, a nest 25 tiles away, and an Autocannon inside the planned wall line.
 2. Terraform menu → **Raise Ridge**, then drag a wall line around the core, leaving one gap → the ghost shows cost (15 M + 10 Min + 150 E per tile) and time.
 3. Close the gap fully → the confirm plate warns "isolates Quarry #12" and the order is rejected `would_isolate`. Place a **Wall Gate** in the gap instead → accepted.
 4. Dig a **Moat** segment on the far side → impassable, but turrets can fire across it.
@@ -96,9 +96,11 @@
 | W14-22 | Analytics: `first_wall`, `first_gate`, `first_siege`, `first_breach` | client | S |  | W14-15 | Raise the first ridge → one `first_wall` row | CLIENT §10 | — |
 | W14-23 | Dev console: `wallLine <q1> <r1> <q2> <r2>`, `breach <q> <r>`, `siegeDebug` (shows fauna path and siege timer) | server | S | H+ | W00-40 | `wallLine` → a ridge line appears instantly (dev only) | PRODUCT_WAVES §3 | — |
 | W14-24 | Tests: `AC-14` property test (no ground unit or creature ever on Ridge/Moat; air never blocked), `AC-16` would-isolate property test, Terraform % regression (raise 10 Ridges → W05-10's Terraform % unchanged); the `AC-15` line-of-fire fixtures are W14-07's acceptance | test | M | H+ | W14-05, W14-08, W05-10 | `npm test -w @terra/sim -- walls` → green | `AC-14`, `AC-16` | TA-14.4 |
-| W14-25 | Balance check: cost of a ~60-tile ring from Flat ≈ 900 M + 600 Min + 10 200 E and ~15 min of one Terraformer, recorded in the scenario report | test | S |  | W14-02 | `npm run scenario w14 -- --report` → the cost line matches `UO-W-09` within 10 % | `UO-W-09` | — |
+| W14-25 | Balance check: cost of a ~60-tile ring from Flat ≈ 900 M + 600 Min + 10 200 E and ~15 min of one Worker Drone T3, recorded in the scenario report | test | S |  | W14-02 | `npm run scenario w14 -- --report` → the cost line matches `UO-W-09` within 10 % | `UO-W-09` | — |
 | W14-26 | D-27 demo override: data key `unlockOverrides.walls = 'S4'` (declared in W14-01) set by the hackathon build; the full game keeps S7 (enforced only when W08 is on; without W08 the wave flag alone controls availability) | data | S | H | W14-01 | With W08 on and `unlockOverrides.walls = 'S4'` → walls show in the S4 menu; without the override → locked until S7 | D-27, units spec §8.1 | — |
 | W14-27 | Perf: nav rebuild after a 60-tile wall op ≤ 5 ms; flood fill ≤ 2 ms | test | S |  | W14-05, W14-08 | Bench → both budgets hold | SIM §12 | — |
+| W14-29 | Integrate W07 species hive wave cohorts, moveGroup flow-field replanning, and faunaMotionReplica with Ridge/Moat walls and Wall Gate | sim | S | H | W14-05, W14-10, W07-15, W07-33 | Complete a Ridge across an active moveGroup march or blackAnt/blueBeetle/greenSpitter wave cohort → flow-field slots and faunaMotionSeed routes replan to the nearest WallGate or siege position | D-43, UO-W-01, UO-W-07 | — |
+| W14-30 | Integrate W05 unified Worker Drone T1–T3 (`ENTITY_KIND.worker`), auto per-hex Terraform/Repair/Dismantle tool, D-45 hex-tile footprint rule, and R4 plane joining with Ridge/Moat wall ops and Wall Gate | sim | S | H | W14-02, W14-12, W14-15, W05-02, W05-20 | Queue Raise Ridge, Dig Moat, Lower, and Wall Gate with unified Worker Drone T1–T3 → R4 plane joining splits wall steps cleanly and Dismantle/Repair respect Wall Gate footprints | D-45, UO-W | — |
 | W14-28 | Wave e2e + scenario `w14-fortify` + tag `wave-14` | test | M | H | all W14 | `npm run e2e -- --waves ..14` → the demo passes and earlier suites still pass | PRODUCT_WAVES §3 | TA-13.3 |
 
 ## Wave DoD

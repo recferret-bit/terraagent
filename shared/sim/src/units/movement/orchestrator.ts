@@ -4,7 +4,8 @@ import { pathBlockedFor } from '../../grid/pathProfiles';
 import { cancelPathRequest, enqueuePathRequest, PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue } from '../../grid/pathQueue';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
-import { mobileStats, notifyUnitChanged } from '../mobility';
+import { mobileStats, movementProfile, notifyUnitChanged } from '../mobility';
+import { applyGroupField, detachMember, groupMotionFor, replanGroupMember } from './groupMarch';
 import { advanceAlongRoute, type Route } from './locomotion';
 
 /**
@@ -32,11 +33,19 @@ export interface UnitMotion extends Route {
   /** Id of the pending path request, or `null` once solved. */
   reqId: string | null;
   status: MotionStatus;
+  /** Tiles per tick when a group march holds this unit below its data speed. Never written back onto the stat cache. */
+  marchSpeed?: number;
 }
 
 interface MotionBlobValue {
   nextReq: number;
   byId: Record<string, UnitMotion>;
+  /** Material route transitions only; waypoint progress never stamps this sparse transport journal. */
+  changeTicks?: Record<string, number>;
+}
+
+function markRouteChange(motions: MotionBlobValue, id: number, tick: number): void {
+  (motions.changeTicks ??= {})[String(id)] = tick;
 }
 
 function readMotions(state: PlanetState): MotionBlobValue {
@@ -62,7 +71,6 @@ function enqueueFor(state: PlanetState, motions: MotionBlobValue, row: number, g
   const tick = ctx.tick;
   const prev = motions.byId[String(id)];
   if (prev?.reqId) cancelPathRequest(state, prev.reqId, tick);
-  const stats = mobileStats(cols.kind[row], ctx.data);
   const reqId = `mv${motions.nextReq++}`;
   enqueuePathRequest(
     state,
@@ -72,13 +80,14 @@ function enqueueFor(state: PlanetState, motions: MotionBlobValue, row: number, g
       from: { q: cols.q[row], r: cols.r[row] },
       to: { q: goal.q, r: goal.r },
       radius: state.grid.radius,
-      profile: stats?.profile ?? 'ground',
+      profile: movementProfile(cols.kind[row], ctx.data),
       ...(goal.maxDist > 0 ? { band: { minDist: goal.minDist, maxDist: goal.maxDist } } : {}),
     },
     tick,
   );
   const motion: UnitMotion = { goal: { ...goal }, reqId, status: 'pending', path: [], next: 0 };
   motions.byId[String(id)] = motion;
+  markRouteChange(motions, id, tick);
   return motion;
 }
 
@@ -87,17 +96,26 @@ export function requestMove(state: PlanetState, row: number, goal: MoveGoal, ctx
   const motions = readMotions(state);
   const prev = motions.byId[String(state.entities.cols.id[row])];
   if (prev && sameGoal(prev.goal, goal) && prev.status !== 'failed') return;
+  const joined = groupMotionFor(state, row, goal);
+  if (joined) {
+    motions.byId[String(state.entities.cols.id[row])] = joined;
+    markRouteChange(motions, state.entities.cols.id[row], ctx.tick);
+    writeMotions(state, motions, ctx.tick);
+    return;
+  }
   enqueueFor(state, motions, row, goal, ctx);
   writeMotions(state, motions, ctx.tick);
 }
 
 /** Drops the unit's route and any pending path request (the unit stops where it is). */
 export function cancelMove(state: PlanetState, entityId: number, tick: number): void {
+  detachMember(state, entityId, tick);
   const motions = readMotions(state);
   const prev = motions.byId[String(entityId)];
   if (!prev) return;
   if (prev.reqId) cancelPathRequest(state, prev.reqId, tick);
   delete motions.byId[String(entityId)];
+  markRouteChange(motions, entityId, tick);
   writeMotions(state, motions, tick);
 }
 
@@ -113,7 +131,8 @@ function routeFrom(state: PlanetState, row: number, path: readonly { q: number; 
   const atStart = x === path[0].q && y === path[0].r;
   const towardSecond = path.length > 1 && hexDistance(x, y, path[1].q, path[1].r) < 1 - 1e-6;
   const startIdx = hexIndex(state.grid.radius).indexOf(path[0].q, path[0].r);
-  const startBlocked = path.length > 1 && (pathBlockedFor(state, mobileStats(cols.kind[row], ctx.data)?.profile, -1, ctx.data)?.(startIdx) ?? false);
+  const effProfile = movementProfile(cols.kind[row], ctx.data);
+  const startBlocked = path.length > 1 && (pathBlockedFor(state, effProfile, -1, ctx.data)?.(startIdx) ?? false);
   return atStart || towardSecond || startBlocked ? path.slice(1) : path.slice();
 }
 
@@ -121,11 +140,16 @@ function assignRoutes(state: PlanetState, motions: MotionBlobValue, ctx: StepCon
   const solved = stepPathQueue(state, PATH_EXPANSION_BUDGET_PER_STEP, ctx.data, ctx.tick).resolved;
   let changed = false;
   for (const res of solved) {
+    if (res.fieldParents || res.fieldSeeds) {
+      if (applyGroupField(state, motions, res, ctx, ended, (row, path) => routeFrom(state, row, path, ctx))) changed = true;
+      continue;
+    }
     if (res.entityId === undefined) continue;
     const m = motions.byId[String(res.entityId)];
     if (!m || m.reqId !== res.id) continue;
     changed = true;
     m.reqId = null;
+    markRouteChange(motions, res.entityId, ctx.tick);
     if (!res.ok) {
       m.status = 'failed';
       ended.push(res.entityId);
@@ -149,6 +173,9 @@ function assignRoutes(state: PlanetState, motions: MotionBlobValue, ctx: StepCon
 export function runMovement(state: PlanetState, ctx: StepContext): number[] {
   const motions = readMotions(state);
   const ended: number[] = [];
+  for (const id of Object.keys(motions.changeTicks ?? {})) {
+    if (rowOf(state.entities, Number(id)) < 0) delete motions.changeTicks![id];
+  }
   let changed = assignRoutes(state, motions, ctx, ended);
 
   const ids = Object.keys(motions.byId).map(Number).sort((a, b) => a - b);
@@ -164,16 +191,21 @@ export function runMovement(state: PlanetState, ctx: StepContext): number[] {
     if (m.status !== 'following') continue;
     const stats = mobileStats(state.entities.cols.kind[row], ctx.data);
     if (!stats) continue;
+    const stepStats = m.marchSpeed !== undefined && m.marchSpeed < stats.speedPerTick ? { ...stats, speedPerTick: m.marchSpeed } : stats;
     const before = m.next;
     const here = hexIndex(state.grid.radius).indexOf(state.entities.cols.q[row], state.entities.cols.r[row]);
-    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, stats.profile, here, ctx.data));
+    const effProfile = movementProfile(state.entities.cols.kind[row], ctx.data);
+    const res = advanceAlongRoute(state, row, m, stepStats, ctx, pathBlockedFor(state, effProfile, here, ctx.data));
     if (m.next !== before) changed = true;
     if (res === 'arrived') {
       m.status = 'arrived';
+      markRouteChange(motions, id, ctx.tick);
       ended.push(id);
       changed = true;
     } else if (res === 'blocked') {
-      enqueueFor(state, motions, row, m.goal, ctx); // the map changed under the route: re-plan from here
+      if (!replanGroupMember(state, motions, row, ctx, (blockedRow, path) => routeFrom(state, blockedRow, path, ctx))) {
+        enqueueFor(state, motions, row, m.goal, ctx); // the map changed under the route: re-plan from here
+      }
       changed = true;
     }
     notifyUnitChanged(state, row, ctx.tick, ctx.data);

@@ -1,4 +1,5 @@
 import type { LedgerState } from '@terra/ledger';
+import { canMigrateSnapshot } from '@terra/sim';
 
 /** One saved local planet (`terra-local:<scenario>`). */
 export interface LocalSnapshot {
@@ -32,7 +33,7 @@ export const snapshotKey = (scenario: string): string => `terra-local:${scenario
 export interface ResumeExpect { readonly simVersion: number; readonly dataHash: string; readonly flags: readonly string[] }
 
 export const compatible = (s: LocalSnapshot, e: ResumeExpect): boolean =>
-  s.simVersion === e.simVersion && s.dataHash === e.dataHash && s.flags.length === e.flags.length && s.flags.every((f, i) => f === e.flags[i]);
+  canMigrateSnapshot(s.simVersion, e.simVersion) && s.dataHash === e.dataHash && s.flags.length === e.flags.length && s.flags.every((f, i) => f === e.flags[i]);
 
 /** In-memory store (tests, and the fallback when IndexedDB is unavailable). */
 export function memorySnapshotStore(): SnapshotStore & { readonly map: Map<string, LocalSnapshot> } {

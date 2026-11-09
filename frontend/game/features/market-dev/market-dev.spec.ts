@@ -42,7 +42,7 @@ describe('market dev console commands (W13-30)', () => {
 });
 
 describe('reserve dev console command (W13-57)', () => {
-  const unitRows = [[11, ENTITY_KIND.builder, 0], [12, ENTITY_KIND.harvester, 0], [13, ENTITY_KIND.builder, 1], [14, ENTITY_KIND.commandHub, 0]];
+  const unitRows = [[11, ENTITY_KIND.worker, 0], [12, ENTITY_KIND.worker, 0], [13, ENTITY_KIND.worker, 1], [14, ENTITY_KIND.commandHub, 0]];
   const entities = new Float32Array(unitRows.length * ENTITY_STRIDE);
   unitRows.forEach(([id, kind, owner], i) => { entities[i * ENTITY_STRIDE + E.id] = id; entities[i * ENTITY_STRIDE + E.kind] = kind; entities[i * ENTITY_STRIDE + E.owner] = owner; });
   const store = { latest: { entities, count: unitRows.length } } as unknown as FeatureContext['services']['store'];

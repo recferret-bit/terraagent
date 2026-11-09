@@ -17,5 +17,5 @@ export const command = defineCommand({
       weights: HarvestFamilyWeights,
     }),
   ]),
-  summary: 'Immediately updates the per-family harvest weights for standing Harvester jobs (UO-L-01, W02-12).',
+  summary: 'Immediately updates the per-family harvest weights for standing Worker jobs (UO-L-01, W02-12).',
 });

@@ -6,6 +6,7 @@ import {
   DEPOSIT,
   ensureColonyLedger,
   ensureColonyRecord,
+  setColonyAiEnabled,
   ENTITY_KIND,
   ENTITY_STATE,
   enqueueQueueTask,
@@ -26,6 +27,7 @@ function createS0ColonyPlanet(seed = 'w08-17') {
   const state = createState({ planetId: `pl-${seed}`, planetType: 'temperate', seed, radius: 10 });
   const colony = ensureColonyLedger(ensureColonyRecord(state, 0, 0));
   colony.status = 'active';
+  setColonyAiEnabled(state, 0, true); // AI is off by default; goal breakdown only runs while on
   colony.stock['metals.t1'] = 600;
   colony.stock['minerals.t1'] = 350;
   colony.stock['bio.water'] = 200;
@@ -231,8 +233,8 @@ describe('W08-17 Goal breakdown: grow_economy', () => {
     });
   });
 
-  it('queues hq-tagged harvester buildUnit order when target is minerals or all metals deposits are occupied', () => {
-    const { state, pipeline } = createS0ColonyPlanet('grow-harvester');
+  it('queues hq-tagged worker buildUnit order when target is minerals or all metals deposits are occupied', () => {
+    const { state, pipeline } = createS0ColonyPlanet('grow-worker');
     startBuildingConstruction(state, {
       owner: 0,
       building: 'commandHub',
@@ -262,7 +264,7 @@ describe('W08-17 Goal breakdown: grow_economy', () => {
     const unitOrders = getColonyQueue(state, 0, 'units').filter((e) => e.goalId === active.id);
     expect(unitOrders).toHaveLength(1);
     expect(unitOrders[0].precedence).toBe('hq');
-    expect(unitOrders[0].task).toMatchObject({ kind: 'buildUnit', unit: 'harvester' });
+    expect(unitOrders[0].task).toMatchObject({ kind: 'buildUnit', unit: 'worker' });
   });
 });
 

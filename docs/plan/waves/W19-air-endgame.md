@@ -88,6 +88,7 @@ The air layer and the top tier:
 | W19-29 | Dev console `spawnAir <type> <n> [enemy]`, `spawnDrifters <n>` | server | S |  | W00-40 | `spawnAir gunship 4 enemy` → 4 hostile Gunships spawn at the map edge | PRODUCT_WAVES §3 | — |
 | W19-30 | Touch: Hangar menu and air selection in landscape | client | S |  | W24-11 | On 844×390, tap Hangar → queue Fighter works | D-22 | — |
 | W19-31 | Perf check: 40 air units + 60 ground in one planet stays within the sim step budget | test | S |  | W19-04 | Bench scenario → step p99 within SIMULATION §12 budget | SIM §12 | — |
+| W19-33 | Wire W19 air units and Drifter flocks into W07 WeaponRig, CombatBurstSystem, F6 Combat Lab, and stationary robot.recon duel matrix | sim | S |  | W19-05, W19-12, W19-27, W07-22 | Spawn Gunships and Drifters and tune air weapons in F6 Combat Lab → air evasive steering, WeaponRig AA tracking, and air duel rows pass | D-43, UO-C-01, UO-C-04 | — |
 | W19-32 | Wave e2e `tests/e2e/w19.spec.ts` + scenario `w19-air-endgame` + tag `wave-19` | test | M |  | all W19 | `npm run e2e -- --waves ..19` passes the demo; `TA_WAVES=..18` hides Hangar, air units, T3 | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD

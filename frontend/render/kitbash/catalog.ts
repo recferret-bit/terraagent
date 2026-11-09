@@ -1,3 +1,9 @@
+import { attachInsectAnimator, getInsectAnimator } from '../animation/insects/InsectAnimationController';
+import { INSECT_SPECIES, stampInsectRig } from '../animation/insects/rig';
+import { INSECT_ANIMATION } from '../animation/insects/shader';
+import { attachWeaponRig, getWeaponRig } from '../combat/WeaponRig';
+import { WeaponRigRegistry, stampWeaponRig } from '../combat/weaponRigs';
+import { WEAPON_RIG } from '../combat/weaponShader';
 import * as THREE from 'three';
 import { SELECTION_PULSE } from '../visuals/unified/selectionPulse';
 import '../visuals/biomes';
@@ -6,6 +12,10 @@ import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
+import { BUILDING_LIT } from '../visuals/unified/buildingLit';
+import { getBuildingLightLevel } from '../lighting/buildingLights';
+
+export * from './faunaVisualRegistry';
 
 export type DepositVisualStage = 'full' | 'half' | 'depleted';
 export const DEPOSIT_STAGES: readonly DepositVisualStage[] = ['full', 'half', 'depleted'];
@@ -99,6 +109,17 @@ export const REQUIRED_IDS = ['robot.hero', 'ship.carrier', 'ship.dropPod'] as co
 const entries = new Map<string, ArchetypeEntry>();
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 
+const ARCHETYPE_ALIAS_MAP: Readonly<Record<string, string>> = {
+  'unit.recon': 'robot.recon',
+  'building.droneControlArray': 'building.droneArray',
+  'robot.tank': 'robot.combat',
+  'robot.artillery': 'robot.combat',
+};
+
+function resolveCanonicalArchetypeId(id: string): string {
+  return ARCHETYPE_ALIAS_MAP[id] ?? id;
+}
+
 export const ArchetypeCatalog = {
   register(entry: ArchetypeEntry) {
     entries.set(entry.id, entry);
@@ -108,13 +129,15 @@ export const ArchetypeCatalog = {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },
   get(id: string): ArchetypeEntry {
-    const e = entries.get(id) ?? entries.get(resolveDepositArchetype(id)?.id ?? '');
+    const canonical = resolveCanonicalArchetypeId(id);
+    const e = entries.get(canonical) ?? entries.get(resolveDepositArchetype(canonical)?.id ?? '');
     if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys()].join(', ')}`);
     return e;
   },
   /** Returns a clone of the cached merged BufferGeometry so runtime unit spawns skip procedural generation. */
   getGeometry(id: string, stage?: DepositVisualStage): THREE.BufferGeometry {
-    const dep = resolveDepositArchetype(id);
+    const canonical = resolveCanonicalArchetypeId(id);
+    const dep = resolveDepositArchetype(canonical);
     if (dep) {
       const effStage = stage ?? dep.stage ?? getDepositPreviewStage();
       const cacheKey = `${dep.id}:${effStage}`;
@@ -125,10 +148,10 @@ export const ArchetypeCatalog = {
       }
       return cached.clone();
     }
-    let cached = geometryCache.get(id);
+    let cached = geometryCache.get(canonical);
     if (!cached) {
-      cached = this.get(id).create();
-      geometryCache.set(id, cached);
+      cached = this.get(canonical).create();
+      geometryCache.set(canonical, cached);
     }
     const cloned = cached.clone();
     if (cached.userData?.partRanges) {
@@ -136,7 +159,10 @@ export const ArchetypeCatalog = {
     }
     return cloned;
   },
-  has: (id: string) => entries.has(id) || resolveDepositArchetype(id) !== null,
+  has: (id: string) => {
+    const canonical = resolveCanonicalArchetypeId(id);
+    return entries.has(canonical) || resolveDepositArchetype(canonical) !== null;
+  },
 };
 
 /** Uniforms of an archetype mesh: the unified material plus the `buildScaffold` modifier's per-mesh state. */
@@ -145,6 +171,8 @@ export type ArchetypeUniforms = ReturnType<typeof createUnifiedColonyMaterial>['
   uBuildStage: THREE.IUniform<number>;
   /** Model height (m) the scaffold cut fractions refer to. */
   uBuildHeight: THREE.IUniform<number>;
+  /** Drawn light level 0..1 of the emissive parts (`applyBuildingLight` only). */
+  uLit: THREE.IUniform<number>;
 };
 
 export interface ArchetypeMesh extends THREE.Mesh {
@@ -153,10 +181,18 @@ export interface ArchetypeMesh extends THREE.Mesh {
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind) and optional deposit stage. */
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
-  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE] });
+  const rig = WeaponRigRegistry.get(id);
+  const insect = INSECT_SPECIES[id];
+  const made = createUnifiedColonyMaterial({
+    biome: biomeKey,
+    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0,
+    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
+  });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   const geometry = ArchetypeCatalog.getGeometry(id, stage);
+  if (rig) stampWeaponRig(geometry, rig);
+  if (insect) stampInsectRig(geometry);
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
@@ -166,19 +202,43 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
   mesh.receiveShadow = true;
   mesh.name = id;
   mesh.userData = { archetypeId: id, uniforms };
+  if (rig) attachWeaponRig(mesh, rig);
+  if (insect) attachInsectAnimator(mesh);
   attachEntityProjectorRig(mesh, id);
   return mesh;
+}
+
+/**
+ * Rig power from the night factor, the F8 projector intensity and the drawn light level (`applyBuildingLight`).
+ * In the game `entityVisionSync` → `applyBuildingLight` also writes the rig power (night-gated, on replica updates);
+ * this per-frame write runs after it and is what renders (open question: one writer).
+ */
+function refreshProjectorRig(mesh: THREE.Object3D, stage: number): void {
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
 }
 
 /** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */
 export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number, workWeight?: number) {
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
-  if (u?.uTime) u.uTime.value = time;
+  if (u?.uTime) {
+    const id = mesh.userData?.archetypeId as string | undefined;
+    const rate = id === 'fauna.blackAnt' ? 1.22 : id === 'fauna.blueBeetle' ? 0.68 : id === 'fauna.greenSpitter' ? 0.92 : 1;
+    if (rate !== 1) {
+      mesh.userData.faunaPhase ??= Math.abs(Math.sin(mesh.position.x * 12.9898 + mesh.position.z * 78.233)) * 1.25;
+      u.uTime.value = time * rate + mesh.userData.faunaPhase;
+    } else u.uTime.value = time;
+  }
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
+  getWeaponRig(mesh)?.update(0);
+  const insect = getInsectAnimator(mesh);
+  if (insect) {
+    if (walkWeight !== undefined) insect.setMoving(walkWeight > 0.05);
+    insect.update(0);
+  }
   const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
-  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  refreshProjectorRig(mesh, stage);
 }
 
 /** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
@@ -199,8 +259,7 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
   if (u?.uBuildStage) u.uBuildStage.value = stage;
   if (mesh.userData) (mesh.userData as any).buildStage = stage;
-  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  refreshProjectorRig(mesh, stage);
   return stage;
 }
 

@@ -30,9 +30,9 @@ Numbers are **proposed** and owner-tunable. They will live in `shared/sim/src/da
 | # | Id | Name | Role | Layer | Built at | Stage | Visual archetype (kitbash) |
 |---|---|---|---|---|---|---|---|
 | 1 | `hq` | **HQ Drone** (Commander) | Terraforms and builds from landing (prepares the Hub site, then builds the Command Hub), holds the HQ goal queue, negotiates; adds harvesting at T2 | Ground | Drop pod / reprinted by Hub | S0 | `robot.hero` (exists) |
-| 2 | `harvester` | Harvester Drone (T1) | Harvests surface deposits; Clear and Break (forest, rock) | Ground | Command Hub T1+ | S1 | `robot.miner` (exists) |
-| 3 | `builder` | Builder / Repair Drone (T1) | Builds T1 structures, repairs anything | Ground | Command Hub T1+ | S2 | `robot.builder` (exists) |
-| 4 | `terraformer` | Terraform Drone (T1) | Prepares ground (grade, clear, break, level, fill, reclaim) and restores land (irrigate, seed) | Ground | Command Hub T1+ | S1 | `robot.terraformer` (new) |
+| 2 | `worker` | **Worker Drone T1** (W02) | Harvest; build tier ≤ 1; terraform except deep water | Ground | Command Hub T1+ | S1 | `robot.miner` (exists) |
+| 3 | `worker` | **Worker Drone T2** (W03) | Same, plus deep water and build tier ≤ 2 | Ground | Command Hub T1+ | S2 | `robot.builder` (exists) |
+| 4 | `worker` | **Worker Drone T3** (W05) | Same; build tier ≤ 3 | Ground | Command Hub T1+ | W05 | `robot.builder` (exists) |
 | 5 | `multitask` | Multitask Drone (T2, T3) | Any worker lane; builds T2 (T3) structures | Ground | Command Hub T2 (T3) | S5 / S10 | `robot.multitask` (new) |
 | 6 | `recon` | Recon Battle Drone | Fast skirmisher, scouting, kills light targets | Ground | Robotics Factory T1+ | S3 | `robot.combat` (exists, re-skin) |
 | 7 | `tank` | Close-Combat Tank | Heavy line holder; fast rockets hit evasive units | Ground | Robotics Factory T2+ | S6 | `unit.tank` (new) |
@@ -44,7 +44,7 @@ Numbers are **proposed** and owner-tunable. They will live in `shared/sim/src/da
 | 13 | `gunship` | Air Gunship | Hovering anti-light-ground | Air | Aero Hangar T2+ | S9 | `air.gunship` (new) |
 | 14 | `bomber` | Air Bomber | Strategic siege of heavy units and structures | Air | Aero Hangar T3 | S10 | `air.bomber` (new) |
 
-There are three worker lanes and one army. There are no tiers inside combat types: variety comes from **types**, as in Total Annihilation, not from Mk.II versions of the same unit. Workers have tiers only where the user asked for them: specialists are T1, Multitask is T2/T3, and the HQ is T1–T3.
+There are three worker lanes and one army. There are no tiers inside combat types: variety comes from **types**, as in Total Annihilation, not from Mk.II versions of the same unit. Worker Drone T1, T2 and T3 are one produced unit (`unit: 'worker'`, `ENTITY_KIND.worker`), not three kinds. Command: `buildUnit { unit: 'worker', tier: 1|2|3 }`. Cards use `data-unit="worker"` and `data-tier`. The colony list is `col.workers`. Cancel ids use the prefix `worker:<id>`. The HQ Drone is not a worker drone. Multitask stays T2/T3, and the HQ is T1–T3.
 
 New 3D archetypes follow `AGENTS.md` Pillar 1 (`procedural-kitbash-3d`): at least 7 parts, a silhouette breaker, and the 60/30/10 material split. Each role should be readable from its silhouette: AA has upward barrels, artillery a long barrel, radar a dish, the tank is low and wide, and recon is small and tall-legged.
 
@@ -59,14 +59,14 @@ New 3D archetypes follow `AGENTS.md` Pillar 1 (`procedural-kitbash-3d`): at leas
 | HQ T1 | ✔ | — | ✔ (every unlocked op) | T1 + Command Hub (any tier) | 1.5× |
 | HQ T2 | ✔ | ✔ | ✔ | T2 + Command Hub | 2.5× |
 | HQ T3 | ✔ | ✔ | ✔ | All ("build all") | 4.0× |
-| Harvester | — | ✔ | Clear, Break only | — | 1.0× |
-| Builder | ✔ (+ repair) | — | — (see `UO-TF-03`) | T1 | 1.0× |
-| Terraformer | — | — | ✔ | — | 1.0× |
+| Worker Drone T1 | ✔ (tier ≤ 1) | ✔ | except deep water | 1 | 1.0× |
+| Worker Drone T2 | ✔ (tier ≤ 2) | ✔ | ✔ including deep water | 2 | 1.0× |
+| Worker Drone T3 | ✔ (tier ≤ 3) | ✔ | ✔ including deep water | 3 | 1.0× |
 | Multitask T2 | ✔ | ✔ | ✔ | T2 | 2.0× |
 | Multitask T3 | ✔ | ✔ | ✔ | T3 | 5.0× |
 
 - `UO-L-01` **Harvest is a standing job, not a queue.** Harvest-capable workers that are not busy work the nearest surface deposit of the most-needed resource. The weighting comes from the `economy` priority and the per-resource harvest weights in the Construction menu. They never need an order.
-- `UO-L-02` **Tech rule.** A worker can build or upgrade a structure only up to its own max tier. **Repair has no tier limit.** Every worker that can build can repair, and the Builder repairs at 1.5× its build rate. This keeps the cheap Builder useful late in the game.
+- `UO-L-02` **Tech rule.** A worker can build or upgrade a structure only up to its own max tier. **Repair has no tier limit.** Every worker that can build can repair, and Worker Drone T2 repairs at 1.5× its build rate.
 - `UO-L-03` **The Command Hub is HQ-only.** Only the HQ Drone can build a Command Hub or upgrade one in place. Hub tier is the colony's tech level. A structure of tier N needs Hub tier ≥ N **and** a worker of tier ≥ N. This breaks the "T2 worker needs a T2 Hub, which needs a T2 worker" loop.
 - `UO-L-04` **Assist.** Up to 4 workers can work on one construction job, and their rates add. A terraform area order splits its tiles across up to 8 workers.
 - `UO-L-05` "Build time" in every table means seconds at **1.0×**. Actual time = build time ÷ Σ assigned rates.
@@ -132,7 +132,7 @@ Dispatch runs every 10 ticks per lane, staggered like the rule engine.
 
 - `UO-D-01` The dispatcher scans entries in precedence order (§4.4). It starts the **first** entry that is affordable and has an eligible worker or factory slot free. A blocked entry does not block the entries behind it.
 - `UO-D-02` **Earmark (anti-starvation).** Once an entry has waited on resources for ≥ 60 s, the amounts it is short of are earmarked. Later entries can spend only stock above the earmark. The oldest blocked entry earmarks first. Earmarks are shown in the HUD. The total earmark per resource never exceeds 80 % of the storage cap, and entries in `waiting(storage)` never earmark.
-- `UO-D-03` Worker choice: the nearest idle eligible worker. Ties go to the lowest tier first, so expensive multirole workers stay free for jobs only they can do. Workers busy on a lower-precedence job get pre-empted only by `player` entries. *(As built in W02: one builder per colony, the HQ, pulls its work, so the choice is trivial and there is no pre-emption yet; a Harvester never builds. W03-32 builds the real choice, GP-58, D-42.)*
+- `UO-D-03` Worker choice: the nearest idle eligible worker. Ties go to the lowest tier first, so expensive multirole workers stay free for jobs only they can do. Workers busy on a lower-precedence job get pre-empted only by `player` entries. *(As built in W02: the HQ pulls work, and Worker Drone T1 builds tier ≤ 1 and terraforms except deep water. Worker Drone T2 arrives in W03. W03-32 builds the real choice, GP-58, D-42.)*
 - `UO-D-04` Units lane: each entry is sent to the least-loaded production building that can build that type. Each production building has a 5-slot local buffer.
 
 ### 4.4 Precedence and limits (`UO-P`)
@@ -169,18 +169,18 @@ Deep water ─Deep Reclaim (T2 workers)─► Shallow water ─Reclaim─► Fla
 
 | Op | From → to | Time / tile @1.0× | **Energy / tile** | Cost / tile | Who | Unlock |
 |---|---|---|---|---|---|---|
-| Grade | Flat or Deposit → **Prepared** | 3 s | 20 E | — | HQ, Terraformer, Multitask | S0 |
-| Clear | Forest → Flat | 5 s | 30 E | 0 · yields +5 `bio.biomass` | HQ, Terraformer, Harvester, Multitask | S0 |
-| Break | Rock → Flat | 6 s | 60 E | 0 · yields +10 M | HQ, Terraformer, Harvester, Multitask | S0 |
-| Level | Slope → Flat | 8 s | 60 E | 2 Min | HQ, Terraformer, Multitask | S1 |
-| Fill | Hole / crater → Flat | 10 s | 100 E | 10 M + 5 Min | HQ, Terraformer, Multitask | S2 |
-| Reclaim | Shallow water → Flat | 14 s | 200 E | 20 M + 10 Min | HQ, Terraformer, Multitask | S4 |
-| Deep Reclaim | Deep water → Shallow water | 28 s | 400 E | 40 M + 20 Min | **HQ T2+, Multitask T2+ only** (tier-gated like T2 structures, `UO-L-02`) | S5 |
-| Irrigate | Prepared → Irrigated | 10 s | 80 E | 15 `bio.water` (×2 on Desert) | HQ, Terraformer, Multitask | S4 |
-| Seed | Irrigated → **Living** | 15 s | 90 E | 10 `bio.water` + 5 Min | HQ, Terraformer, Multitask | S4 |
-| Raise Ridge | Prepared → **Ridge** (wall) | 12 s | 150 E | 15 M + 10 Min | HQ, Terraformer, Multitask | S7 |
-| Dig Moat | Prepared → **Moat** (wall) | 10 s | 120 E | 0 · yields +5 Min | HQ, Terraformer, Multitask | S7 |
-| Lower | Ridge or Moat → Prepared | 8 s | 60 E | 0 · a Ridge refunds 50 % | HQ, Terraformer, Multitask | S7 |
+| Grade | Flat or Deposit → **Prepared** | 3 s | 20 E | — | HQ, Worker Drone T1+, Multitask | S0 |
+| Clear | Forest → Flat | 5 s | 30 E | 0 · yields +5 `bio.biomass` | HQ, Worker Drone T1+, Multitask | S0 |
+| Break | Rock → Flat | 6 s | 60 E | 0 · yields +10 M | HQ, Worker Drone T1+, Multitask | S0 |
+| Level | Slope → Flat | 8 s | 60 E | 2 Min | HQ, Worker Drone T1+, Multitask | S1 |
+| Fill | Hole / crater → Flat | 10 s | 100 E | 10 M + 5 Min | HQ, Worker Drone T1+, Multitask | S2 |
+| Reclaim | Shallow water → Flat | 14 s | 200 E | 20 M + 10 Min | HQ, Worker Drone T1+, Multitask | S4 |
+| Deep Reclaim | Deep water → Shallow water | 28 s | 400 E | 40 M + 20 Min | **HQ T2+, Worker Drone T2+, Multitask T2+** | S5 |
+| Irrigate | Prepared → Irrigated | 10 s | 80 E | 15 `bio.water` (×2 on Desert) | HQ, Worker Drone T1+, Multitask | S4 |
+| Seed | Irrigated → **Living** | 15 s | 90 E | 10 `bio.water` + 5 Min | HQ, Worker Drone T1+, Multitask | S4 |
+| Raise Ridge | Prepared → **Ridge** (wall) | 12 s | 150 E | 15 M + 10 Min | HQ, Worker Drone T1+, Multitask | S7 |
+| Dig Moat | Prepared → **Moat** (wall) | 10 s | 120 E | 0 · yields +5 Min | HQ, Worker Drone T1+, Multitask | S7 |
+| Lower | Ridge or Moat → Prepared | 8 s | 60 E | 0 · a Ridge refunds 50 % | HQ, Worker Drone T1+, Multitask | S7 |
 
 Full cost to make one tile buildable:
 
@@ -191,8 +191,8 @@ Full cost to make one tile buildable:
 | Resources | — | +5 biomass | +10 M | 2 Min | 10 M + 5 Min | 20 M + 10 Min | 60 M + 30 Min |
 
 - `UO-TF-02` **Terraforming eats energy.** An op's energy per tile is drawn evenly over its work time, so the draw grows with the worker's rate. Example: Grade with a 1.0× worker draws about 6.7 E/s; Reclaim draws about 14 E/s.
-  - Op energy joins the robot drain on the **Hub's grid component**, the same abstraction as SIMULATION §7.2, so a Terraformer can prepare a frontier beacon site outside pylon range. The HQ draws from its cell (`UO-HQ-06`).
-  - Terraform load joins brownout **shed group 1**, together with the Terraforming Processor and the Rocket Silo. A shed op pauses, keeps its progress and shows `waiting(power)`. So in a brownout terraforming always stops first, and defenses never go dark because a terraformer is working.
+  - Op energy joins the robot drain on the **Hub's grid component**, the same abstraction as SIMULATION §7.2, so a Worker Drone T3 can prepare a frontier beacon site outside pylon range. The HQ draws from its cell (`UO-HQ-06`).
+  - Terraform load joins brownout **shed group 1**, together with the Terraforming Processor and the Rocket Silo. A shed op pauses, keeps its progress and shows `waiting(power)`. So in a brownout terraforming always stops first, and defenses never go dark because a Worker Drone is working.
 - `UO-TF-03` **Placing on Flat ground that is not yet Prepared is allowed and auto-links the Grade; placing on trees, rock or resources is not (D-37, 2026-11-01, owner).** Placement runs through one shared pure function, `evaluatePlacement` (`shared/sim/src/systems/construction/placement.ts`), used by the `placeBuilding` handler on the server and in the browser-local host and by the client ghost, so both always agree and the server re-checks every client placement. A footprint tile is acceptable only if it is inside the map, owned (or unclaimed for the Hub, `UO-TF-05`), free of other buildings and **Flat** terrain (wild, flat or prepared) with no deposit (extractors will invert the deposit rule per building). **Trees, rock, water, slope, hole, ridge and deposits are rejected as `terrain_unbuildable`**: the player first clears, breaks or otherwise terraforms them with the Terraform ops (a player op, never auto-linked). The ghost footprint shows the prep bill and tints red per tile with the reason. Confirming creates the construction order plus **one linked terraform order** covering the missing **Grade** ops. *(Before D-37 the linked order also cleared forest and broke rock; later waves that extend linked prep to slope and hole, W05-09 and W17-03, must re-open this rule.)*
   - The linked order runs in the Terraform lane with the same source and precedence as its construction order. Linked prep does not count toward the Terraform lane's 20-entry limit.
   - The construction waits as `waiting(site: n/m tiles prepared)`.
@@ -202,7 +202,7 @@ Full cost to make one tile buildable:
   - A **meteor impact** turns the tiles within radius 1 into **Hole**. Rebuilding there needs Fill + Grade. A meteor that hits a wall **breaches** it: a Ridge becomes Rock and a Moat becomes Hole, and both are passable (`UO-W-06`).
   - Living tiles are buildable. A footprint placed on Living tiles reverts them to Prepared, so they no longer count toward Terraform %.
 - `UO-TF-05` **Own territory only, with one exception.** All ops need owned tiles, like construction. **Exception:** a Command Hub placement and its linked site prep may use **unclaimed** tiles (never foreign ones). The Hub claims R 10 on completion as before. Without this exception the landing site could never be prepared, because the colony owns nothing at S0. The same exception covers the "Re-establish" path (`UO-HQ-04`) after anchor grace has expired. Clear/Break yields are lump sums, not scaled by `ECONOMY_RATE_SCALE`, and come from one data table for every path (`opsBasic.<op>.yields` / `RESOURCE_INCOME_TABLE` in `shared/sim/src/data/resources.ts`, with durations/energy in `TERRAFORM_TIME_TABLE` in `shared/sim/src/data/ops-basic.ts`: Clear `+15 bio.biomass`, Break `+8 metals.t1 +4 minerals.t1`; owner 2026-11-02, was 5 / 10).
-- `UO-TF-11` **Player TERRAFORM is continuous; each hex may find a resource; deposits are finite and multi-harvester (owner, 2026-11-02, W02).** A TERRAFORM order on one hex (Terraform dock: `TERRAFORM [G]` / `REPAIR [R]` / `DISMANTLE [Z]`, or simplified 2-button `[X] DISMANTLE` / `[E] WORK`, `enqueueTask { terraform: { op: 'work', intent } }`) sends the worker there; when the hex is flat + Prepared it moves on by itself to the obstacle hex (forest, rock, slope, hole, uneven ground; never level grass) the colony may terraform that is closest to the clicked hex (ties: closest to the hex just finished; owner 2026-11-03, so the worker stays around its order instead of drifting along a line of trees), until none is left or the player gives the unit another order (move, stop, cancel or a new TERRAFORM order; a REPAIR order for that unit queues behind its current hex and the chain resumes after it). A follow-up hex it cannot reach is skipped silently; only the clicked hex reports `no_path`. The clicked hex follows the same territory rule as the chain (`UO-TF-05`; before the first Hub, unclaimed tiles within `preHubTerraformRadius` of the pod). Each finished hex keeps its fixed yield and buried-deposit reveal, then has a **1 %** chance to spawn a full deposit (metals / minerals / oil, uniform) of tier **t1 50 % / t2 35 % / t3 15 %** (data row `terraformFinds.deposit`, `shared/sim/src/data/terraform-finds.ts`, tunable); a Harvester or Extractor on it pays that tier. Surface deposits hold **500 units** (`richnessBp = 10000`), allow up to **6 harvesters** working from adjacent hexes (`hexDistance === 1`), and transition through `full` ($>50\%$), `half` ($1\text{–}50\%$), and `depleted` ($0\%$ rubble) visual stages (owner). Prepared ground is drawn as plain flat ground.
+- `UO-TF-11` **Player TERRAFORM is continuous; each hex may find a resource; deposits are finite (several workers on one deposit) (owner, 2026-11-02, W02).** A TERRAFORM order on one hex (Terraform dock: `TERRAFORM [G]` / `REPAIR [R]` / `DISMANTLE [Z]`, or simplified 2-button `[X] DISMANTLE` / `[E] WORK`, `enqueueTask { terraform: { op: 'work', intent } }`) sends the worker there; when the hex is flat + Prepared it moves on by itself to the obstacle hex (forest, rock, slope, hole, uneven ground; never level grass) the colony may terraform that is closest to the clicked hex (ties: closest to the hex just finished; owner 2026-11-03, so the worker stays around its order instead of drifting along a line of trees), until none is left or the player gives the unit another order (move, stop, cancel or a new TERRAFORM order; a REPAIR order for that unit queues behind its current hex and the chain resumes after it). A follow-up hex it cannot reach is skipped silently; only the clicked hex reports `no_path`. The clicked hex follows the same territory rule as the chain (`UO-TF-05`; before the first Hub, unclaimed tiles within `preHubTerraformRadius` of the pod). Each finished hex keeps its fixed yield and buried-deposit reveal, then has a **1 %** chance to spawn a full deposit (metals / minerals / oil, uniform) of tier **t1 50 % / t2 35 % / t3 15 %** (data row `terraformFinds.deposit`, `shared/sim/src/data/terraform-finds.ts`, tunable); a Worker Drone T1 or Extractor on it pays that tier. Surface deposits hold **500 units** (`richnessBp = 10000`), allow up to **6 workers** working from adjacent hexes (`hexDistance === 1`), and transition through `full` ($>50\%$), `half` ($1\text{–}50\%$), and `depleted` ($0\%$ rubble) visual stages (owner). Prepared ground is drawn as plain flat ground.
 - `UO-TF-06` Colony **Terraform %** = Living tiles ÷ owned tiles, excluding Deep Water that has not been reclaimed, and Ridge/Moat tiles (walls do not lower your score). It feeds colony score and the "control % + terraforming level" goal in `docs/game/autonomous-colony-spec.md` §9.
 - `UO-TF-10` **Deep water is reclaimable from S5** (owner decision, Q11). The full cost to buildable land is about 3× shallow water, and only T2+ workers can do the Deep Reclaim step. Hydro stations must keep at least one adjacent water tile (Shallow or Deep). Reclaiming the last one switches the station off until it is rebuilt next to water. The ghost footprint warns about this before the player confirms.
 - `UO-TF-07` Living tiles give +10 % move speed to ground units and +5 % output to adjacent extractors, so restoring land pays back in more than score.
@@ -230,7 +230,7 @@ A goal is a target state. The HQ (rule engine, or the AI director when it has bu
 | Goal | Unlock | Parameters | Breaks down into | Done when | Default budget |
 |---|---|---|---|---|---|
 | Establish Colony | S0 (pre-queued) | — | Prepare the Hub site, Hub, 1 extractor, 1 generator (with their ground prep) | all built | full stock |
-| Grow Economy | S1 | target income per resource | extractors, harvesters, depots | income reached | 50 % of stock |
+| Grow Economy | S1 | target income per resource | extractors, Worker Drones, depots | income reached | 50 % of stock |
 | Secure Power | S2 | target net E/s **at night** | generators, capacitors, pylons | target held for 1 night | 50 % |
 | Defend Area | S3 | area, strength (low/med/high); from S7 also "fortify: yes/no" | turrets, combat units, Drone Control Arrays, Defend stance; from S7 also ridge/moat lines with Wall Gates | strength reached | 40 % |
 | Clear Nest | S3 | nest | rally combat units, attack | nest destroyed | 30 % |
@@ -291,7 +291,7 @@ Reverse terraforming turns Prepared ground into **walls**. Walls cannot be destr
 - `UO-W-06` **Meteor breach.** A meteor turns a Ridge into Rock and a Moat into Hole (`UO-TF-04`). The breach is passable until it is re-raised. Repairing it is an `AW-02` rebuild, so it is allowed while the player is away.
 - `UO-W-07` **Fauna against walls.** If a raid has no ground path to any colony structure, ground fauna attack the nearest **Wall Gate**. With no gate, they besiege the wall for 5 min and then leave, and the raid counts as repelled. A fully walled core is immune to ground fauna. That is the reward for the investment. Extractors and pylons outside the walls stay exposed, and Drifters (air, S8) ignore walls.
 - `UO-W-08` **PvP.** Raid Colony and attack-move path to the nearest **gate** when the walls are closed. Artillery and air units in the army work over the walls; direct-fire units wait at the parapet line. The newcomer shield (`UO-T-05`) ends at S6, before walls unlock at S7, so walls are a mid-game answer, not a newcomer fortress.
-- `UO-W-09` **Wall cost reality check.** A ring around a Hub's R 10 claim is about 60 tiles. From Flat that costs about 900 M + 600 Min + 10 200 E and about 15 min of one Terraformer. That is affordable at S7, but not free. Walling every distant extractor is not.
+- `UO-W-09` **Wall cost reality check.** A ring around a Hub's R 10 claim is about 60 tiles. From Flat that costs about 900 M + 600 Min + 10 200 E and about 15 min of one Worker Drone T3. That is affordable at S7, but not free. Walling every distant extractor is not.
 
 **New building: Wall Gate** (T1 only; destructible weak point)
 
@@ -316,16 +316,16 @@ Reverse terraforming turns Prepared ground into **walls**. Walls cannot be destr
 
 Columns follow the economy spec: Cost `M / Min / Pet / W`, supply, grid draw (−E/s, idle 50 %), HP, build time at 1.0×. Speed and range are in tiles. DPS is base damage before the multiplier.
 
-**Cost tier of a unit (D-34 tier rule, proposed).** Combat units have no tiers (§2), so they pay as **T1 items**. Workers pay at their stated tier: Harvester, Builder and Terraformer T1, Multitask T2 / T3, and the HQ reprint at the HQ's tier (§3.2).
+**Cost tier of a unit (D-34 tier rule, proposed).** Combat units have no tiers (§2), so they pay as **T1 items**. Workers pay at their stated tier: Worker Drone T1, T2 and T3, Multitask T2 / T3, and the HQ reprint at the HQ's tier (§3.2).
 
 ### 5.1 Workers
 
 | Unit | Built at | Build | Cost | Supply | −E/s | HP | Speed | Vision | Rate & lanes |
 |---|---|---|---|---|---|---|---|---|---|
 | HQ T1 / T2 / T3 | see §3.2 | — | — | 0 | 0 (power cell) | 900 / 2 200 / 5 000 | 1.6 / 1.8 / 2.0 | 9 / 10 / 12 | §3.1 |
-| Harvester | Hub T1+ | 10 s | 40 / 15 / 5 / 0 | 1 | 1.5 | 160 | 1.5 | 7 | Harvest 2.0 res/s × `ECONOMY_RATE_SCALE` (= 0.5/s): T1 of a surface deposit's family, `bio.biomass` from forest, and `bio.t3` gene-stock on Living ground once the colony meets the T3 gates (economy spec §3.0, proposed); Clear, Break |
-| Builder | Hub T1+ | 12 s | 45 / 25 / 10 / 0 | 1 | 2.0 | 150 | 1.5 | 7 | Build 1.0× (≤ T1); repair 1.5× (any tier) |
-| Terraformer | Hub T1+ | 14 s | 50 / 30 / 5 / 10 | 1 | 2.5 | 170 | 1.3 | 7 | Terraform 1.0×, every op; the op energy (§4.5) is drawn on top of its own 2.5 E/s |
+| Worker Drone T1 | Hub T1+ | 10 s | 40 / 15 / 5 / 0 | 1 | 1.5 | 160 | 1.5 | 7 | Harvest 2.0 res/s × `ECONOMY_RATE_SCALE` (= 0.5/s); build tier ≤ 1; terraform except deep water. Mesh `robot.miner` |
+| Worker Drone T2 | Hub T1+ | 12 s | 45 / 25 / 10 / 0 | 1 | 2.0 | 150 | 1.5 | 7 | Same as T1, plus deep water and build tier ≤ 2; repair 1.5×. Mesh `robot.builder` |
+| Worker Drone T3 | Hub T1+ | 14 s | 50 / 30 / 5 / 10 | 1 | 2.5 | 170 | 1.3 | 7 | Same as T2; build tier ≤ 3. Mesh `robot.builder` (not a separate archetype) |
 | Multitask T2 | Hub T2+ | 26 s | 130 / 90 / 30 / 15 | 2 | 5.0 | 420 | 1.8 | 8 | All lanes 2.0×, builds ≤ T2 |
 | Multitask T3 | Hub T3 | 55 s | 360 / 260 / 100 / 40 | 4 | 12.0 | 1 100 | 2.0 | 9 | All lanes 5.0×, builds ≤ T3 |
 
@@ -461,10 +461,10 @@ Times are targets for an engaged new player under `ECONOMY_RATE_SCALE = 0.25`. T
 | Stage | Name | Trigger (all of) · min dwell | Teaches (the one mechanic) | New units | New buildings / orders | Target time | Suggested HQ goal |
 |---|---|---|---|---|---|---|---|
 | **S0** | Landfall | Colony spawned | **Prepare ground, then build** | HQ T1 | Command Hub (player picks the site; auto-placed after 60 s if idle); Terraform → Grade / Clear / Break | 0:00 | Establish Colony |
-| **S1** | First Light | Hub T1 complete | Resources flow, and **everything costs energy**, terraforming included | Harvester, Terraformer | Metals Extractor, Solar T1; Terraform → Level | ~1:00 | Grow Economy |
-| **S2** | The Grid | Extractor and generator complete · dwell 2 min | Grid reach, parallel workers, storage, night | Builder | Pylon, Capacitor, Wind, Supply Depot, Minerals Quarry, Water Extractor, Petroleum Well (yields `bio.t2` only once the T2 gates are met, D-34); Terraform → Fill (meteors start, `UO-T-07`) | ~3:00 | Secure Power (first night is at 12:00) |
+| **S1** | First Light | Hub T1 complete | Resources flow, and **everything costs energy**, terraforming included | Worker Drone T1 | Metals Extractor, Solar T1; Terraform → Level | ~1:00 | Grow Economy |
+| **S2** | The Grid | Extractor and generator complete · dwell 2 min | Grid reach, parallel workers, storage, night | Worker Drone T2 | Pylon, Capacitor, Wind, Supply Depot, Minerals Quarry, Water Extractor, Petroleum Well (yields `bio.t2` only once the T2 gates are met, D-34); Terraform → Fill (meteors start, `UO-T-07`) | ~3:00 | Secure Power (first night is at 12:00) |
 | **S3** | First Contact | S2 dwell 5 min, **or** fauna seen within 15 tiles (override) | Threat and defense, supply cap | Recon | Robotics Factory T1, Autocannon T1, **Laser Tower T1** (B7), Drone Control Array T1, Thermal Plant (its pollution attracts fauna) | ~8:00 | Defend Area → Clear Nest |
-| **S4** | Shape the Land | Factory T1 built and 1 combat unit · dwell 6 min | Territory and **reclaiming land** (water, Living tiles) | — (a 2nd Terraformer is the suggestion) | Territory Beacon T1; Terraform → Reclaim / Irrigate / Seed; Hub T2 upgrade orderable **after 8 min in S4** | ~15:00 | Expand Toward, Terraform Zone, Tech Up |
+| **S4** | Shape the Land | Factory T1 built and 1 combat unit · dwell 6 min | Territory and **reclaiming land** (water, Living tiles) | Worker Drone T3 (a 2nd is the suggestion) | Territory Beacon T1; Terraform → Reclaim / Irrigate / Seed; Hub T2 upgrade orderable **after 8 min in S4** | ~15:00 | Expand Toward, Terraform Zone, Tech Up |
 | **S5** | Second Tier | **Hub T2 complete** (an HQ upgrade order, Δ 400/250/150/100) | Tiers and multirole: lanes merge | Multitask T2 (HQ → T2 refit) | T2 of Beacon, Solar, Extractors, Depot, DCA, Autocannon ("Turret T2"), Factory; Terraforming Processor T1; Trade Hub T1 if not yet unlocked | ~25:00 | Tech Up (Factory T2) |
 | **S6** | Combined Arms | Factory T2 complete · dwell 5 min in S5 | Counters (the ground triangle) | Tank, Artillery | Army stances, attack-move, Build Army preset "counter what you see"; Brute fauna starts | ~32:00 | Build Army, Clear Nest (Brute) |
 | **S7** | High Ground | First artillery built · dwell 5 min, or S6 + 10 min | **Terrain as defense**: walls stop ground units and direct fire; artillery, air and radar reach over | Mobile Radar | Terraform → Raise Ridge / Dig Moat / Lower; Wall Gate; Beacon T2 vision; Aero Hangar T2 orderable; Hub T3 upgrade orderable **after 10 min in S7** (proposed, tunable D-35) | ~40:00 | Defend Area (fortify: yes) |
@@ -500,15 +500,15 @@ Why the shield is needed: planets admit players for 24 h (D-12). A new player ca
 
 > **Stale under D-34 (re-run before tuning).** The table below predates resource tiers: read "Pet" as `bio.biomass` (Thermal fuel, Clear yields) or `bio.t2` (Petroleum Well output, T2 costs) and "W" as `bio.water`. The Petroleum Well yields only `bio.t2` under the T2 gates, so the S3 "paced by Petroleum" row now reads biomass, and S5 needs T2 sub-resources (§6.2 D-34 note).
 
-Hand-computed from a reference build order. Rates use the scale: Metals Extractor T1 1.0/s, Quarry 0.75/s, Petroleum Well 0.625/s, Water 0.875/s, Harvester 0.5/s, Thermal upkeep −0.375 Pet/s. A working 1.0× Terraformer adds about 7–14 E/s of grid load on top of its 2.5 E/s drain.
+Hand-computed from a reference build order. Rates use the scale: Metals Extractor T1 1.0/s, Quarry 0.75/s, Petroleum Well 0.625/s, Water 0.875/s, Worker Drone T1 0.5/s, Thermal upkeep −0.375 Pet/s. A working 1.0× Worker Drone T3 adds about 7–14 E/s of grid load on top of its 2.5 E/s drain.
 
 | Window | Key purchases (sum M/Min/Pet/W) | Stock at start | Income at end (M/Min/Pet/W per s) | Supply used / cap | Power at end, day / night (E/s) | What actually paces the window |
 |---|---|---|---|---|---|---|
 | S0 0:00–1:00 | Hub site prep (~300 E from the HQ cell) + Hub 200/100/50/50 | 600/350/200/200 (pod cargo) | 0 | 1 / 10 | +3 / +3 (Founder Core +8, Hub −5) | HQ time: ~29 s prep + 20 s build |
-| S1 1:00–3:00 | Harvester, Terraformer, Metals Extractor, Solar = 215/140/20/25 (+ ~200 E of ground prep) | ~410/255/155/150 (prep yields) | 1.5 / 0.5 / 0 / 0 | 3 / 10 | +14 / **−6**; about −8 more while the Terraformer works | **Minerals and power**: terraforming at night is most players' first brownout. Being shed first, it only pauses the Terraformer |
-| S2 3:00–8:00 | Builder, Quarry, Pet Well, Water, 3 Wind, 1 Solar, Depot, 3 pylons, 1 Harvester ≈ 685/370/80/40 (+ ~40 tiles of prep ≈ 1 600 E) | ~320/165/135/125 | 1.5 / 1.75 / 0.6 / 0.9 | 5 / 10 | +48 / **+8** (idle Terraformer) | **Minerals**, then night power (if the S2 suggestion is ignored, the first night at 12:00 browns out) |
+| S1 1:00–3:00 | Worker Drone T1, Worker Drone T3, Metals Extractor, Solar = 215/140/20/25 (+ ~200 E of ground prep) | ~410/255/155/150 (prep yields) | 1.5 / 0.5 / 0 / 0 | 3 / 10 | +14 / **−6**; about −8 more while the Worker Drone T3 works | **Minerals and power**: terraforming at night is most players' first brownout. Being shed first, it only pauses the Worker Drone T3 |
+| S2 3:00–8:00 | Worker Drone T2, Quarry, Pet Well, Water, 3 Wind, 1 Solar, Depot, 3 pylons, 1 Worker Drone T1 ≈ 685/370/80/40 (+ ~40 tiles of prep ≈ 1 600 E) | ~320/165/135/125 | 1.5 / 1.75 / 0.6 / 0.9 | 5 / 10 | +48 / **+8** (idle Worker Drone T3) | **Minerals**, then night power (if the S2 suggestion is ignored, the first night at 12:00 browns out) |
 | S3 8:00–15:00 | Factory, 2 Autocannons, 2 Recon, DCA, Thermal, 2nd Metals Extractor ≈ 540/255/110/45 | ~280/180/155/225 | 2.5 / 1.75 / 0.2 net / 0.9 | 7 / 18 | +42 / +2 | **Petroleum** (Thermal upkeep eats ⅔ of one well) |
-| S4 15:00–25:00 | 2nd Terraformer, 2 Beacons, 2 extractors, some Reclaim, ~20 Living tiles, Hub T2 Δ 400/250/150/100 ≈ 885/605/180/650 | ~370/660/220/560 | 3.5 / 1.75 / 0.6 / 1.75 | 9 / 18 | +35 / +5 | **Storage cap (1 500) and dwell.** Water only binds if the player terraforms > 60 tiles |
+| S4 15:00–25:00 | 2nd Worker Drone T3, 2 Beacons, 2 extractors, some Reclaim, ~20 Living tiles, Hub T2 Δ 400/250/150/100 ≈ 885/605/180/650 | ~370/660/220/560 | 3.5 / 1.75 / 0.6 / 1.75 | 9 / 18 | +35 / +5 | **Storage cap (1 500) and dwell.** Water only binds if the player terraforms > 60 tiles |
 | S5 25:00–32:00 | 1–2 Multitask T2, Factory T2 Δ 220/160/70/40, DCA, T2 extractor | — | 6+ / 4+ / 1.5 / 2.5 | 13 / 41 (the Hub T2's +25 replaces T1's +10; 2nd DCA) | — | Dwell (5 min) |
 
 What the check shows:
@@ -530,16 +530,16 @@ Docs and contracts that must change if D-16 is accepted. The lead lands them in 
 | # | Where | Change |
 |---|---|---|
 | 1 | `docs/game/colony-economy-and-buildings-spec.md` §4 | Robot table superseded by §5.1–5.2 here (pointer added). Add the Aero Hangar rows (§5.3). Mark the Autocannon `hitsAir`. Laser Tower can hit air. |
-| 2 | `SIMULATION.md` §7.2, §7.3 | Robots per §5. Starting kit: HQ T1 + 1 Harvester + pod cargo 600/350/200/200; **the Hub is built by the HQ (30 s at 1.0×), not spawned instantly**. |
+| 2 | `SIMULATION.md` §7.2, §7.3 | Robots per §5. Starting kit: HQ T1 + 1 Worker Drone T1 + pod cargo 600/350/200/200; **the Hub is built by the HQ (30 s at 1.0×), not spawned instantly**. |
 | 3 | `SIMULATION.md` `SIM-C-03` / `SIM-C-04` | Pay-on-start (`UO-Q-01`) for units; **structures are paid as they are built since the 2026-11-01 owner amendment** (start gate = full cost affordable, then whole units in proportion to progress, pause on shortage; refund 50 % of what was spent, W02 amendment). Lanes, precedence `system > player > hq > ai > auto`, and per-lane limits (§4.4) replace the 50-task cap. |
 | 4 | `SIMULATION.md` §7.6, §7.7 | Threat scaling `UO-T-*`, Brute and Drifter, newcomer shield, elimination per `UO-HQ-04`. |
 | 5 | `SIMULATION.md` §3 tick pipeline | Add a `progression` sub-step for stage evaluation (it already exists as system 12). Add a dispatch step inside `robots`. Air movement skips A\*. Combat gains layers, multipliers, min range, splash and spotting. |
-| 6 | `PROTOCOL.md` `CommandKind` / `enqueueTask` | `task` adds `terraform {op, tiles}`, `buildUnit {unit, count, repeat}`, `queueGoal {goal, params}`, `setStance`, `attackMove`, `setRally`, `setHarvestWeights`. Remove `buildRobot`. Rejection codes add `worker_tier_locked` and `stage_locked`. |
+| 6 | `PROTOCOL.md` `CommandKind` / `enqueueTask` | `task` adds `terraform {op, tiles}`, `buildUnit { unit, tier, count, repeat }` (Worker Drone: `unit: 'worker'`, `tier: 1|2|3`), `queueGoal {goal, params}`, `setStance`, `attackMove`, `setRally`, `setHarvestWeights`. Remove `buildRobot`. Rejection codes add `worker_tier_locked` and `stage_locked`. |
 | 7 | `AI_ORCHESTRATOR.md` `DirectiveV1` | v2: `queueRobot` → `queueUnit {unit: UnitId (14 ids), count}`, add `queueGoal`. `queueBuild.tier` becomes 1–3, limited by the colony's **Hub tier** and by `unlockStage`. The Hub tier matters on its own: a veteran's fresh colony has `unlockStage` 10 but a T1 Hub. Brief adds `stage` and `threatStage`. |
 | 8 | Priority sliders (SIM vs AI_ORCHESTRATOR mismatch) | Canonical set: **`economy, expansion, defense, power, terraform`**. `rocket` stops being a slider and becomes the "Prepare Rocket" goal. |
 | 9 | `CONTINUITY.md` `AW-04` | "produce T1 robots" → "produce worker and combat units up to the supply cap to replace losses (types already owned, ≤ current `unlockStage`)". |
 | 10 | `DECISIONS.md` | D-16 (this spec + MVP cut). D-15's robot list is superseded by D-16. |
-| 11 | Kitbash catalog | New archetypes: `robot.terraformer`, `robot.multitask`, `unit.tank`, `unit.artillery`, `unit.radar`, `unit.aa`, `air.recon`, `air.fighter`, `air.gunship`, `air.bomber`, `fauna.brute`, `building.aeroHangar`. Re-skin `robot.combat` as Recon. |
+| 11 | Kitbash catalog | New archetypes: `robot.multitask`, `unit.tank`, `unit.artillery`, `unit.radar`, `unit.aa`, `air.recon`, `air.fighter`, `air.gunship`, `air.bomber`, `fauna.brute`, `building.aeroHangar`. Re-skin `robot.combat` as Recon. Worker Drone T1 uses `robot.miner`; T2 and T3 use `robot.builder`. Do not add `robot.terraformer`. |
 | 12 | `docs/game/colony-economy-and-buildings-spec.md` §1 | New hard constraint 6, **Prepared ground** (`UO-TF-01`); pointer added. Brownout shed group 1 gains terraform-op load. Extractors must sit on **Graded** deposit tiles. Hydro must be on Prepared tiles next to water. |
 | 13 | `SIMULATION.md` §5 state, §7.4, §7.5, §7.6, §10 | Per-tile `terrain` and `prep` (small integer enums) in the tile arrays. Placement requires own **and** Prepared tiles, except that a Command Hub and its site prep may use unclaimed tiles (`UO-TF-05`), so `not_own_territory` validation changes for Hubs. Terraform-op energy joins the robot drain on the Hub's component. Terraform load in shed group 1. Meteors create Holes. SIM-GEN emits the terrain classes and mix (§4.5) and enforces the spawn guarantee `UO-TF-09`. |
 | 14 | `PROTOCOL.md` | `placeBuilding` / `upgradeBuilding` on unprepared tiles succeed and return the linked terraform order id. `terraform.op` ∈ `grade, clear, break, level, fill, reclaim, deepReclaim, irrigate, seed`. `terrain_unbuildable` is used only for Deep Water before S5. Diplomacy commands: `diplomacy.proposeTruce {targetColonyId, hours}`, `diplomacy.respondTruce {offerId, accept}`, `diplomacy.cancelTruce {truceId}`. Rejection codes `truce_active`, `oathbreaker` and `recent_hostility`. Events `truceOffered`, `truceSigned`, `truceNotice`, `truceEnded`. View deltas carry tile `prep` changes. |
@@ -556,14 +556,14 @@ Docs and contracts that must change if D-16 is accepted. The lead lands them in 
 | Ships in MVP (hackathon) | Data present, `enabled: false` |
 |---|---|
 | Stages **S0–S7**; Rocket Silo T2 orderable at S5, launch gate `UO-R-01`, Settled colonies | S8–S10 |
-| HQ T1–T2, Harvester, Builder, Terraformer, Multitask T2 | Multitask T3, HQ T3 |
+| HQ T1–T2, Worker Drone T1–T3, Multitask T2 | Multitask T3, HQ T3 |
 | Recon, Tank, Artillery (full ground triangle), Mobile Radar; terrain walls + Wall Gate + line of fire | Anti-Air, all air units, Aero Hangar |
 | Skitter, Brute | Drifter |
 | All 9 terraform ops (Deep Reclaim from S5) and the Prepared-ground rule; HQ goals up to S6; Negotiate: trade offers **and truces** | Truce on-chain receipts |
 
-That is 9 unit types against D-15's 3. **Fallback "MVP-lite"** if time runs short: drop Multitask T2 (HQ T2 covers multirole). That leaves 8 types and still keeps the full ground triangle and walls. The Terraformer cannot be dropped any more: ground prep is core from S1.
+That is 9 unit types against D-15's 3. **Fallback "MVP-lite"** if time runs short: drop Multitask T2 (HQ T2 covers multirole). That leaves 8 types and still keeps the full ground triangle and walls. The Worker Drone cannot be dropped: ground prep is core from S1 (T1), and T3 is the same unit.
 
-**Hackathon demo cut (D-27):** Temperate only, stages **S0–S4**, units HQ, Harvester, Builder, Terraformer and Recon. **Terrain walls are unlocked at S4 in the demo build** through a data flag; the full game keeps them at S7. Everything else in the table above ships after the hackathon. Ticks in this spec assume 10 TPS design units; `compileData` converts them to seconds for the simplified server simulation (D-24: 5 TPS active, coarse when the planet is empty).
+**Hackathon demo cut (D-27):** Temperate only, stages **S0–S4**, units HQ, Worker Drone T1–T3 and Recon. **Terrain walls are unlocked at S4 in the demo build** through a data flag; the full game keeps them at S7. Everything else in the table above ships after the hackathon. Ticks in this spec assume 10 TPS design units; `compileData` converts them to seconds for the simplified server simulation (D-24: 5 TPS active, coarse when the planet is empty).
 
 ### 8.2 Phases
 

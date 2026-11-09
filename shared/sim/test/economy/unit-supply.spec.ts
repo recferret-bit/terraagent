@@ -31,7 +31,7 @@ function setup(stock: Partial<Record<ResourceKey, number>>) {
   };
   put('hub', ENTITY_KIND.commandHub, 0, 0, 3, 1500);
   for (let i = 0; i < 3; i++) put(`solar${i}`, ENTITY_KIND.solar, 3 + i * 3, -4, 2, 400);
-  put('unit', ENTITY_KIND.builder, 2, 4, 1, 100);
+  put('unit', ENTITY_KIND.worker, 2, 4, 1, 100);
   const pipeline = createRegistryPipeline({ flags, data });
   const postings: LedgerPosting[] = [];
   const run = (n = 1, cmds: SimCommand[] = []): string[] => {

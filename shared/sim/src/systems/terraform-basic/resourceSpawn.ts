@@ -3,6 +3,7 @@ import { rollRegionalDeposit, type RegionView } from '../../economy/regions/sour
 import { findSpecFromRow, TERRAFORM_RESOURCE_SPAWN, type TerraformFindSpec } from '../../data/terraform-finds';
 import type { CompiledDataLike } from '../../kernel/config';
 import { hexIndex } from '../../grid/hex';
+import { isHexTile } from '../../grid/hexTile';
 import { DEPOSIT } from '../../grid/layers';
 import { DEPOSIT_KEYS } from '../../grid/tileModel';
 import { setTileDeposit } from '../../grid/tileModel';
@@ -96,8 +97,8 @@ function unitStandsOn(state: PlanetState, tileIdx: number): boolean {
 }
 
 /**
- * After a ground terraform job on `tileIdx` finished (and the buried deposit was revealed): if the hex still has no
- * deposit and no unit stands on it, roll; on a hit write the deposit with its tier (stamped, so the delta carries it)
+ * After a ground terraform job on `tileIdx` finished (and the buried deposit was revealed): if the hex is a hex tile
+ * (open, level one-ring), still has no deposit and no unit stands on it, roll; on a hit write the deposit with its tier (stamped, so the delta carries it)
  * and emit `resourceSpawned` to `who` (the colony's `colonyId` / `playerId`).
  */
 export function spawnTerraformDeposit(
@@ -108,7 +109,10 @@ export function spawnTerraformDeposit(
   rand: () => number = () => nextFloat(ctx.rng('misc')),
 ): DepositSpawn | null {
   const { tileIdx, q, r } = tile;
-  if (state.grid.layers.deposit[tileIdx] !== DEPOSIT.none || unitStandsOn(state, tileIdx)) return null;
+  const L = state.grid.layers;
+  if (L.deposit[tileIdx] !== DEPOSIT.none || unitStandsOn(state, tileIdx)) return null;
+  // A visible deposit only ever lies on a hex tile (`grid/hexTile.ts`): no roll on wild ground (no rng draw either).
+  if (!isHexTile(state.grid.radius, tileIdx, { terrain: L.terrain, prep: L.prep, height: L.height })) return null;
   const spec = terraformFindSpec(ctx.data);
   const view = regionViewOf(state);
   const spawn = view ? regionalFind(state, view, tileIdx, spec) : rollTerraformSpawn(rand, spec);

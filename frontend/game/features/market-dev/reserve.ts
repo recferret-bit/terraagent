@@ -8,7 +8,7 @@ import { ownColonyIndex } from '../shared/colony';
 const USAGE = 'reserve on|off [all|<id,id,…>]';
 const MAX_IDS = 64; // `unitReserve` takes at most 64 ids per command
 /** Entity kinds with a `logistics` unit row (`data/logistics.ts`): the units that load the supply window. */
-const LOGISTICS_KINDS: ReadonlySet<number> = new Set([ENTITY_KIND.builder, ENTITY_KIND.harvester]);
+const LOGISTICS_KINDS: ReadonlySet<number> = new Set([ENTITY_KIND.worker]);
 
 /** Ids of the colony's own units with a logistics row in the latest view. */
 function ownLogisticsUnits(ctx: FeatureContext): number[] {

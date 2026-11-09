@@ -133,7 +133,7 @@ describe('W08-23 · Rule-engine needs scoring (supply, repair, defense)', () => 
     const state = makeTestPlanet();
     spawnEntity(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0 });
     for (let i = 0; i < 9; i++) {
-      spawnEntity(state, { kind: ENTITY_KIND.harvester, owner: 0, q: i + 1, r: 0 });
+      spawnEntity(state, { kind: ENTITY_KIND.worker, owner: 0, q: i + 1, r: 0 });
     }
 
     const res = evaluateColonyNeeds(state, 0);
@@ -162,7 +162,7 @@ describe('W08-23 · Rule-engine needs scoring (supply, repair, defense)', () => 
   it('scores defense >= 8000 bp when a hostile entity is within 15 hex tiles', () => {
     const state = makeTestPlanet();
     spawnEntity(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0 });
-    spawnEntity(state, { kind: ENTITY_KIND.harvester, owner: 1, q: 10, r: 2, hp: 120, hpMax: 120 });
+    spawnEntity(state, { kind: ENTITY_KIND.worker, owner: 1, q: 10, r: 2, hp: 120, hpMax: 120 });
 
     const res = evaluateColonyNeeds(state, 0);
     expect(res.detail.hostilesWithin15).toBe(1);
@@ -170,7 +170,7 @@ describe('W08-23 · Rule-engine needs scoring (supply, repair, defense)', () => 
 
     const farState = makeTestPlanet();
     spawnEntity(farState, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0 });
-    spawnEntity(farState, { kind: ENTITY_KIND.harvester, owner: 1, q: 12, r: 8, hp: 120, hpMax: 120 });
+    spawnEntity(farState, { kind: ENTITY_KIND.worker, owner: 1, q: 12, r: 8, hp: 120, hpMax: 120 });
     expect(evaluateColonyNeeds(farState, 0).defense).toBe(0);
   });
 });
@@ -226,5 +226,31 @@ describe('W08-23 · Rule-engine needs scoring (expand, extraction, table)', () =
     for (const row of table) {
       expect(row.actual, `expected ${row.need} >= ${row.minBp}`).toBeGreaterThanOrEqual(row.minBp);
     }
+  });
+});
+
+
+describe('Sustainable power demand forecasts', () => {
+  it.each([0, 20])('keeps existing wind and thermal generation in the night forecast (solar %s E/s)', (solar) => {
+    const state = makeTestPlanet();
+    setBlob(state, 'power', { byColony: { 0: {
+      founderCorePerS: 8, solarNetPerS: solar, solarInternalDrainPerS: 1,
+      windNetPerS: 15, thermalNetPerS: 10, generationPerS: 33 + solar,
+      supply: 33 + solar, rawDemand: 17, net: 16 + solar, brownout: false,
+    } } }, 0);
+    const needs = evaluateColonyNeeds(state, 0);
+    expect(needs.detail.nightNetPerS).toBe(16);
+    expect(needs.energy).toBeLessThan(5000);
+  });
+
+  it('does not count battery discharge as sustainable generation', () => {
+    const state = makeTestPlanet();
+    setBlob(state, 'power', { byColony: { 0: {
+      founderCorePerS: 8, solarNetPerS: 0, generationPerS: 8,
+      supply: 17, rawDemand: 17, net: 0, hqCellDischargePerS: 9, brownout: false,
+    } } }, 0);
+    const needs = evaluateColonyNeeds(state, 0);
+    expect(needs.detail.nightNetPerS).toBe(-9);
+    expect(needs.energy).toBeGreaterThanOrEqual(6000);
   });
 });

@@ -1,0 +1,66 @@
+/* Env panel: time of day, wind and Terraform meter (bottom-left slot, order 6; under or beside the Command Dock). */
+.ta-env-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-sizing: border-box;
+  min-width: 180px;
+  width: max-content;
+  max-width: calc(100vw - var(--ta-s6));
+  padding: var(--ta-s2) var(--ta-s3);
+  position: relative;
+  isolation: isolate;
+  color: var(--ta-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  pointer-events: auto;
+  user-select: none;
+}
+
+/* Chamfered backdrop only (as the header): a clip-path on the panel would clip the Terraform popover. */
+.ta-env-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--ta-plate) 86%, transparent);
+  border: 1px solid var(--ta-seam-2);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ta-env-panel[hidden],
+.ta-env-panel__row[hidden] {
+  display: none;
+}
+
+.ta-env-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.ta-env-panel__wind {
+  color: var(--ta-blue-hi);
+  font-weight: 600;
+}
+
+.ta-env-panel .ta-hud-min__terraform {
+  cursor: help;
+}
+
+/* The panel sits at the screen bottom: the Terraform breakdown opens upward. */
+.ta-env-panel .ta-res-chip .ta-res-chip__breakdown {
+  top: auto;
+  bottom: calc(100% + var(--ta-s1));
+}

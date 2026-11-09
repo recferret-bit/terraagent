@@ -1,16 +1,19 @@
 import { createState, type PlanetState } from '../../kernel/state';
+import { buryWildDeposits } from '../depositGround';
 import { registerGenerator, type PlanetGenerator } from '../generators';
 import { DEFAULT_SPAWN_CAPACITY } from '../spawnSlots';
 import { writeRegionPin } from '../../economy/regions/pin';
 import { createContext, type WorldStage } from './context';
 import { applyRegionalDeposits } from './regionalDeposits';
 import { classifyDesert } from './stages/classifyDesert';
+import { faunaHives, getWorldgenHiveSites, planWorldgenHiveSites, type PlanHiveSitesOptions } from './stages/faunaHives';
 import { landing } from './stages/landing';
 import { reliefDesert } from './stages/reliefDesert';
 import { subsurface } from './stages/subsurface';
 import { deposits, temperateTerrain } from './stages/temperate';
 
 export { worldProfile, type WorldGenContext, type WorldStage } from './context';
+export { faunaHives, getWorldgenHiveSites, planWorldgenHiveSites, type PlanHiveSitesOptions };
 
 import { GEN_VERSION } from '../generators';
 
@@ -22,12 +25,14 @@ export function registerWorldStage(stage: WorldStage): void {
   if (STAGES.has(stage.id)) throw new Error(`world stage ${stage.id} already registered`);
   STAGES.set(stage.id, stage);
 }
-for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subsurface, landing]) registerWorldStage(st);
+for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subsurface, landing, faunaHives]) registerWorldStage(st);
 
 /**
  * World generation orchestrator (D-38): builds an empty planet, then runs the planet type's profile stages in order —
- * relief → classes → visible deposits → spawn slots + levelled landing zones → hidden subsurface. Every stage is a
- * small part in `stages/`; per-sector seeds keep sectors independent. Pure: the same params give the same planet.
+ * relief → classes → visible deposits → spawn slots + levelled landing zones → hidden subsurface — and last, for every
+ * profile, the deposit ground rule (`buryWildDeposits`: no visible deposit on wild ground, `depositGround.ts`). Every
+ * stage is a small part in `stages/`; per-sector seeds keep sectors independent. Pure: the same params give the same
+ * planet.
  */
 export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: string) => void): PlanetState {
   const state = createState({ planetId: p.planetId, planetType: p.planetType, seed: p.seed, radius: p.radius });
@@ -38,6 +43,11 @@ export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: 
     if (!stage) throw new Error(`world profile ${ctx.profile.id}: unknown stage ${id}`);
     stage.run(ctx);
     onStage?.(id);
+  }
+  buryWildDeposits(state);
+  if (!ctx.profile.stages.includes('faunaHives')) {
+    faunaHives.run(ctx);
+    onStage?.('faunaHives');
   }
   if (p.region) { // W13 (W13-51): compose the visible deposits by the regional policy and pin the endowment; W13 off never gets here
     applyRegionalDeposits(ctx, p.region);

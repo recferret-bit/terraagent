@@ -60,7 +60,20 @@ const DEFAULT_LABELS: Record<string, string> = {
   waterExtractor: 'Water Extractor',
   petroleumWell: 'Petroleum Well',
   tradeHub: 'Inter-Colony Trade Hub',
+  roboticsFactory: 'Robotics Factory',
+  droneControlArray: 'Drone Control Array',
+  autocannon: 'Autocannon Turret',
+  laserTower: 'Laser Tower',
 };
+
+const ONE_BY_ONE_BUILDINGS = new Set<string>(['pylon', 'droneControlArray', 'autocannon', 'laserTower', 'turret']);
+const ONE_BY_ONE_KINDS = new Set<number>([
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.pod,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+]);
 
 const TWO_BY_TWO_KINDS = new Set<number>([
   ENTITY_KIND.tradeHub,
@@ -91,7 +104,7 @@ export function resolveBuildingMeta(data: CompiledDataLike, building: string): B
     }
   }
   const label = typeof row?.label === 'string' ? row.label : (DEFAULT_LABELS[building] ?? building);
-  const defFp = building === 'commandHub' ? 3 : building === 'pylon' ? 1 : 2;
+  const defFp = building === 'commandHub' || building === 'roboticsFactory' ? 3 : ONE_BY_ONE_BUILDINGS.has(building) ? 1 : 2;
   const footprintW = typeof row?.footprintW === 'number' ? row.footprintW : defFp;
   const footprintD = typeof row?.footprintD === 'number' ? row.footprintD : defFp;
   const fallbackDep =
@@ -138,9 +151,9 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
   if (v.entities) {
     forEachEntity(v.entities, v.count, (e) => {
       if (e.hpMax > 0 && e.hp <= 0) return;
-      const size = e.kind === ENTITY_KIND.commandHub
+      const size = e.kind === ENTITY_KIND.commandHub || e.kind === ENTITY_KIND.roboticsFactory
         ? 3
-        : (TWO_BY_TWO_KINDS.has(e.kind) ? 2 : (e.kind === ENTITY_KIND.pylon || e.kind === ENTITY_KIND.pod ? 1 : 0));
+        : (TWO_BY_TWO_KINDS.has(e.kind) ? 2 : (ONE_BY_ONE_KINDS.has(e.kind) ? 1 : 0));
       if (size > 0) markFootprintIndices(occupied, hIndex, e.q, e.r, size, size, e.rot);
     });
   }
@@ -148,7 +161,7 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
     if (!entry || entry.state === 'done' || entry.state === 'cancelled') continue;
     const t = entry.task;
     if (t?.kind === 'build' && typeof t.q === 'number' && typeof t.r === 'number') {
-      const sz = t.building === 'commandHub' ? 3 : t.building === 'pylon' ? 1 : 2;
+      const sz = t.building === 'commandHub' || t.building === 'roboticsFactory' ? 3 : ONE_BY_ONE_BUILDINGS.has(t.building ?? '') ? 1 : 2;
       markFootprintIndices(occupied, hIndex, t.q, t.r, sz, sz, t.rotation ?? 0);
     }
   }

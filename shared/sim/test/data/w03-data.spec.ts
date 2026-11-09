@@ -1,25 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import { compileData, dataRow } from '../../src/data';
+import { resolveItemUnlockStage } from '../../src/systems/progression/validate';
 
 describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)', () => {
   it('compiles out all W03 rows when wave set is ..02', () => {
     const compiled = compileData(parseWaves('..02'));
     expect(Object.keys(compiled.tables.grid ?? {})).toHaveLength(0);
-    expect(compiled.tables.unitsWorkersBasic.builder).toBeUndefined();
+    expect(compiled.tables.unitsWorkersBasic.t2).toBeUndefined();
   });
 
   it('includes Builder and all 8 W03 building rows when W03 is enabled', () => {
     const compiled = compileData(parseWaves('..03'));
 
-    // Builder Drone (12s -> 60 ticks, speed 1.5 t/s -> 0.3 t/tick, workRate 1.0, repairRateMultiplier 1.5, maxBuildTier 1)
-    const builder = dataRow(compiled, 'grid', 'builder');
-    expect(builder.buildS).toBe(60);
-    expect(builder.workRate).toBe(1.0);
-    expect(builder.repairRateMultiplier).toBe(1.5);
-    expect(builder.maxBuildTier).toBe(1);
-    expect(builder.powerDrainPerS).toBe(3);
-    expect(builder.hp).toBe(150);
+    // Worker Drone T2 (12s -> 60 ticks, speed 1.5 t/s -> 0.3 t/tick, workRate 1.0, repairRateMultiplier 1.5, maxBuildTier 2)
+    const t2 = dataRow(compiled, 'unitsWorkersBasic', 't2');
+    expect(t2.buildS).toBe(60);
+    expect(t2.workRate).toBe(1.0);
+    expect(t2.repairRateMultiplier).toBe(1.5);
+    expect(t2.maxBuildTier).toBe(2);
+    expect(t2.tier).toBe(2);
+    expect(t2.label).toBe('Worker Drone T2');
+    expect(t2.powerDrainPerS).toBe(3);
+    expect(t2.hp).toBe(150);
 
     // Pylon T1 (4s -> 20 ticks, power zone radius 5 (Hub 6), maxLoadPerS 80)
     const pylon = dataRow(compiled, 'grid', 'pylon');
@@ -73,5 +76,25 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
     expect(well.buildS).toBe(100);
     expect(well.requiresDeposit).toBe('oil');
     expect(well.outputPerS).toBeCloseTo(0.625, 5);
+  });
+
+  it('each placeable grid row unlockStage equals the stage table placement reads', () => {
+    const compiled = compileData(parseWaves('..03'));
+    const expected: Record<string, number> = {
+      pylon: 2,
+      capacitor: 2,
+      wind: 2,
+      thermal: 3,
+      supplyDepot: 2,
+      waterExtractor: 2,
+      petroleumWell: 2,
+    };
+    for (const [id, stage] of Object.entries(expected)) {
+      const row = dataRow(compiled, 'grid', id);
+      expect(row.unlockStage).toBe(stage);
+      expect(resolveItemUnlockStage(String(row.building))).toBe(stage);
+    }
+    expect(dataRow(compiled, 'economyT1Basic', 'metalsExtractor').unlockStage).toBe(1);
+    expect(dataRow(compiled, 'economyT1Basic', 'solar').unlockStage).toBe(1);
   });
 });

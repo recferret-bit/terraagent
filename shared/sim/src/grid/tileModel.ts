@@ -1,6 +1,7 @@
 import terrainTable from '../data/terrain';
 import { decodeValue } from '../codec/values';
 import type { EngineDiff } from '../host/diff';
+import { isPreparedGround } from './geo';
 import { noteTileStamp } from './sectors';
 import type { CompiledDataLike } from '../kernel/config';
 import type { Grid, PlanetMeta, PlanetState } from '../kernel/state';
@@ -161,6 +162,16 @@ function lookupTerrainConfig(terrainCode: number, data?: CompiledDataLike): { pa
 function lookupLivingMoveBp(data?: CompiledDataLike): number {
   const terrainRows = data?.tables.terrain as Record<string, Record<string, unknown>> | undefined;
   const row = terrainRows?.temperate;
+  const tfCfg = (data?.tables.terraform as Record<string, Record<string, unknown>> | undefined)?.terraformConfig;
+  if (typeof row?.livingMoveMult === 'number' && row.livingMoveMult !== 1.1) {
+    return Math.round(row.livingMoveMult * 10000);
+  }
+  if (typeof tfCfg?.livingMoveSpeedMult === 'number') {
+    return Math.round(tfCfg.livingMoveSpeedMult * 10000);
+  }
+  if (typeof tfCfg?.livingMoveSpeedBonus === 'number') {
+    return Math.round((1 + tfCfg.livingMoveSpeedBonus) * 10000);
+  }
   if (typeof row?.livingMoveMult === 'number') return Math.round(row.livingMoveMult * 10000);
   return DEFAULT_LIVING_MOVE_BP;
 }
@@ -176,6 +187,19 @@ export function terrainMoveMultiplierBp(terrainCode: number, prepCode: number = 
   if (prepCode === PREP.living) return lookupLivingMoveBp(data);
   if (prepCode === PREP.prepared || prepCode === PREP.irrigated || prepCode === PREP.flat) return 10000;
   return cfg.moveMultBp;
+}
+
+/**
+ * Returns `true` if `terrainCode` (and optional `prepCode`) can be entered by units (`TERRAIN.deep`, `TERRAIN.hole`,
+ * `PREP.ridge`, and `PREP.moat` are impassable).
+ */
+export function isPassableTerrain(terrainCode: number, prepCode: number = PREP.wild): boolean {
+  if (prepCode === PREP.ridge || prepCode === PREP.moat) return false;
+  return (
+    terrainCode !== TERRAIN.deep &&
+    terrainCode !== TERRAIN.hole &&
+    Boolean(DEFAULT_TERRAIN_BY_CODE[terrainCode]?.passable)
+  );
 }
 
 /**
@@ -205,14 +229,14 @@ export function blocksDirectFire(grid: GridLike, tileIdx: number): boolean {
 }
 
 /**
- * Returns `true` iff `tileIdx` is valid buildable ground (`PREP.prepared` or `PREP.living` and not Deep water, `UO-TF-01`).
+ * Returns `true` iff `tileIdx` is valid buildable ground (`isPreparedGround`: Prepared, Irrigated or Living, and not
+ * Deep water, `UO-TF-01`).
  */
 export function isBuildablePrepared(grid: GridLike, tileIdx: number): boolean {
   if (!isValidTileIndex(grid, tileIdx)) return false;
   const { layers } = resolveTileLayers(grid);
   if (layers.terrain[tileIdx] === TERRAIN.deep) return false;
-  const prep = layers.prep[tileIdx];
-  return prep === PREP.prepared || prep === PREP.living;
+  return isPreparedGround(layers.prep[tileIdx]);
 }
 
 /** Ground passability may have changed (see `PlanetMeta.pathEpoch`). */
@@ -233,22 +257,29 @@ function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx
   noteTileStamp(layers.changedAt, tileIdx, nextStamp);
 }
 
-/** Sets a tile's `prep` state (`PREP.*`) and stamps `changedAt` so the next delta carries the change. */
-export function setTilePrep(grid: GridLike, tileIdx: number, prep: number, tick?: number): void {
+function setTileLayerAndBumpPathEpoch(
+  grid: GridLike,
+  tileIdx: number,
+  layerKey: 'prep' | 'terrain',
+  value: number,
+  tick?: number,
+): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
   const { layers, meta } = resolveTileLayers(grid);
-  if (layers.prep[tileIdx] !== prep) bumpPathEpoch(meta);
-  layers.prep[tileIdx] = prep;
+  const layer = layers[layerKey];
+  if (layer[tileIdx] !== value) bumpPathEpoch(meta);
+  layer[tileIdx] = value;
   stampTile(layers, meta, tileIdx, tick);
+}
+
+/** Sets a tile's `prep` state (`PREP.*`) and stamps `changedAt` so the next delta carries the change. */
+export function setTilePrep(grid: GridLike, tileIdx: number, prep: number, tick?: number): void {
+  setTileLayerAndBumpPathEpoch(grid, tileIdx, 'prep', prep, tick);
 }
 
 /** Sets a tile's `terrain` class (`TERRAIN.*`) and stamps `changedAt` so the next delta carries the change. */
 export function setTileTerrain(grid: GridLike, tileIdx: number, terrain: number, tick?: number): void {
-  if (!isValidTileIndex(grid, tileIdx)) return;
-  const { layers, meta } = resolveTileLayers(grid);
-  if (layers.terrain[tileIdx] !== terrain) bumpPathEpoch(meta);
-  layers.terrain[tileIdx] = terrain;
-  stampTile(layers, meta, tileIdx, tick);
+  setTileLayerAndBumpPathEpoch(grid, tileIdx, 'terrain', terrain, tick);
 }
 
 /** Sets a tile's `owner` colony index (`-1` for unclaimed) and stamps `changedAt`. */

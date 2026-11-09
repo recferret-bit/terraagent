@@ -82,6 +82,16 @@ export const hudMinFeature: Feature & { mount(ctx: MountMinimalHudCtx): MountedM
           return mountMinimalHud({ el, services: ctx.services, flags: ctx.flags });
         },
       },
+      {
+        // Time of day, wind and the Terraform meter: bottom-left, under or beside the Command Dock (not the minimap).
+        id: 'env-panel',
+        slot: 'bottom-left',
+        order: 6,
+        mount(el, ctx) {
+          ctx.services.hudMin?.attachEnvPanel(el);
+          return { dispose() {} };
+        },
+      },
     ],
   }),
   mount: mountMinimalHud,

@@ -7,12 +7,70 @@ import {
   type DayNightParams,
 } from '@terra/render/core/dayNightConfig';
 import { computePlanetTimeAtTick, getPlanetTimeAnchor, type PlanetTimeView } from '@terra/sim';
-import { getWindParams, setWindParams } from '@terra/render/core/windConfig';
+import { getWindParams, isUserEditingWind, onWindUserEdit, setWindParams } from '@terra/render/core/windConfig';
 import { readColonyPower } from '../../features/shared/power';
 import type { CommandBus } from '../../net/commandBus';
 import type { WorldStore } from '../../store/WorldStore';
 
 const THROTTLE_MS = 120;
+
+interface WindSyncHandle {
+  syncFrame(v: NonNullable<WorldStore['latest']>, nowMs: number): void;
+  dispose(): void;
+}
+
+function bindWindUserSync(store: WorldStore, commands: Pick<CommandBus, 'send'>): WindSyncHandle {
+  let pendingPct: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastSentMs = -Infinity;
+  let inFlight = 0;
+  let minSyncTick = -1;
+  let lastSentPct = Math.round(getWindParams().strength * 100);
+
+  const flush = () => {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    if (pendingPct === null) return;
+    if (!store.latest) { timer = setTimeout(flush, THROTTLE_MS); return; }
+    const pct = pendingPct;
+    pendingPct = null;
+    lastSentMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    inFlight++;
+    void commands
+      .send('dev.setwind', { pct })
+      .then((res) => { if (res.ok) minSyncTick = Math.max(minSyncTick, res.appliedAtTick); })
+      .catch(() => { /* ignore transient socket/reject during slider scrub */ })
+      .finally(() => { inFlight = Math.max(0, inFlight - 1); });
+  };
+
+  const offWind = onWindUserEdit((params) => {
+    const pct = Math.round(params.strength * 100);
+    if (pct === lastSentPct && pendingPct === null) return;
+    lastSentPct = pct;
+    pendingPct = pct;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const elapsed = now - lastSentMs;
+    if (elapsed >= THROTTLE_MS) flush();
+    else if (timer === null) timer = setTimeout(flush, Math.max(16, THROTTLE_MS - elapsed));
+  });
+
+  return {
+    syncFrame(v, nowMs) {
+      const wf = readColonyPower(v, 0)?.windFactor;
+      const awaitingAck = (inFlight > 0 || v.tick < minSyncTick) && nowMs - lastSentMs < 1500;
+      if (typeof wf === 'number' && !isUserEditingWind(nowMs) && timer === null && !awaitingAck) {
+        if (Math.abs(getWindParams().strength - wf) > 1e-3) {
+          lastSentPct = Math.round(wf * 100);
+          setWindParams({ strength: wf }, 'sync');
+        }
+      }
+    },
+    dispose() {
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      pendingPct = null;
+      offWind();
+    },
+  };
+}
 
 export interface OnlineDayNightSync {
   syncFrame(nowMs?: number): PlanetTimeView | null;
@@ -81,13 +139,13 @@ export function bindOnlineDayNightSync(
   };
 
   const offEdit = onDayNightUserEdit((patch) => queueSend(patch));
+  const windSync = bindWindUserSync(store, commands);
 
   return {
     syncFrame(nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now()): PlanetTimeView | null {
       const v = store.latest;
       if (!v) return null;
-      const wind = readColonyPower(v, 0)?.windFactor;
-      if (typeof wind === 'number' && getWindParams().strength !== wind) setWindParams({ strength: wind });
+      windSync.syncFrame(v, nowMs);
       const data = store.simData() ?? undefined;
       const anchor = getPlanetTimeAnchor(v.blobs, data);
       const tickF = v.tick + Math.max(0, store.serverTickF() - store.confirmedTick) * Math.max(1, getWarp());
@@ -108,6 +166,7 @@ export function bindOnlineDayNightSync(
       if (timer !== null) { clearTimeout(timer); timer = null; }
       pending = null;
       offEdit();
+      windSync.dispose();
       setDayNightExternalSync(false);
     },
   };

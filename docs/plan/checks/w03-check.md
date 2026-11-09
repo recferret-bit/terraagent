@@ -22,7 +22,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
   - **Metals Extractor T1** (`#2`) at `(3, 0)`
   - **Solar Array T1** (`#3`) at `(-3, 2)`
   - **HQ Drone** (`#4`) at `(2, -1)`
-  - **2 Harvesters** (`#5`, `#6`) at `(2, 2)` and `(-2, 2)`
+  - **2 Worker Drones (T1)** (`#5`, `#6`) at `(2, 2)` and `(-2, 2)`
   - **Distant Minerals Deposit** at `(10, 0)` (outside the Hub's power zone)
 - **Power zones (new):** only the **Command Hub** may stand anywhere. Every other building, Power Pylons included, must stand inside a **power zone**: 6 tiles around the Hub, 5 tiles around each Power Pylon. Outside it the game refuses with **"outside the power zone"**. The zone is drawn in **blue** on the ground while a building card is armed.
 - Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
@@ -33,7 +33,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 
 ### 1. Morning colony from the end of W02
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w03`
-- **See on map:** A temperate hex planet at `06:00` morning with a finished **Command Hub T1** at `(0, 0)`, **Metals Extractor T1** at `(3, 0)`, **Solar Array T1** at `(-3, 2)`, **HQ Drone** at `(2, -1)`, and **2 Harvesters** at `(2, 2)` and `(-2, 2)`. Dark cables run from the Hub to the Extractor and the Solar, with **cyan lightning pulses** travelling outward along them.
+- **See on map:** A temperate hex planet at `06:00` morning with a finished **Command Hub T1** at `(0, 0)`, **Metals Extractor T1** at `(3, 0)`, **Solar Array T1** at `(-3, 2)`, **HQ Drone** at `(2, -1)`, and **2 Worker Drones (T1)** at `(2, 2)` and `(-2, 2)`. Dark cables run from the Hub to the Extractor and the Solar, with **cyan lightning pulses** travelling outward along them.
 - **See in top bar:**
   - **Metals:** `400 / 500` · **Minerals:** `250 / 500` · **Bio:** `400 / 500` (hover: `Biomass: 200 · Water: 200`)
   - **Supply:** `2 / 10` (hover: `Units: 2`, `In production: 0`, `Command Hub ×1 +10`)
@@ -41,15 +41,15 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
   - **Planet clock:** **`☀ 06:00 100%`**
 - **Optional:** dev console (**`` ` ``**) → `power` → `supply 29 (core 16, solar 13 …)`, `demand 19 (buildings 15, units 4)`.
 
-### 2. Produce a Builder Drone at the Hub & run 2 constructions in parallel
-- **Do (queue Builder):**
-  1. Press **`U`** (or click **`PRODUCTION [U]`**). The Builder Drone card shows its cost and **`Supply 1`**.
-  2. Click **Builder Drone**, then open the dev console (**`` ` ``**), run `warp 10`, and close it with **`` ` ``**.
-- **See:** After ~1–2 s the **Builder Drone** rolls out of the Hub; the top bar reads **`Supply: 3 / 10`**.
+### 2. Produce a Worker Drone T2 at the Hub & run 2 constructions in parallel
+- **Do (queue Worker Drone T2):**
+  1. Press **`U`** (or click **`PRODUCTION [U]`**). The Worker Drone T2 card shows its cost and **`Supply 1`**.
+  2. Click **Worker Drone T2**, then open the dev console (**`` ` ``**), run `warp 10`, and close it with **`` ` ``**.
+- **See:** After ~1–2 s the **Worker Drone T2** rolls out of the Hub; the top bar reads **`Supply: 3 / 10`**.
 - **Do (parallel build):**
   1. Press **`B`**, click **Power Pylon** (`15 Metals · 5 Minerals · −2.5 E/s`) — the **blue power zone** appears on the ground around the Hub.
   2. Click `(4, -2)`; click **Power Pylon** again and click `(-4, -2)`.
-- **See:** Both orders go **`IN PROGRESS`** at the same time — the HQ Drone and the Builder each take one site. When a pylon finishes, a cable with lightning pulses connects it.
+- **See:** Both orders go **`IN PROGRESS`** at the same time — the HQ Drone and the Worker Drone T2 each take one site. When a pylon finishes, a cable with lightning pulses connects it.
 - **Reset speed:** `warp 1`.
 
 ### 3. Power zones: one Power Pylon card, the zone grows pylon by pylon
@@ -87,7 +87,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 - **See:**
   - Clock switches to **`☾`**, Solar shows **`offline: night`** — but **no brownout banner**, the Extractor keeps working.
   - The **HQ Power Cell** chip drains slowly: `800` → about `600` after ~70 s. Hover: **`Income +16`**, **`Spending −19`**, **`Net −3 E/s`**, **`Stored: −3 E/s (draining)`**.
-  - The cell lasts most of a night with working Harvesters (all night when they idle) and refills within ~70 s after sunrise.
+  - The cell lasts most of a night with working Worker Drones (T1) (all night when they idle) and refills within ~70 s after sunrise.
 - **Do (force a brownout):** run `addLoad 200`.
 - **See:** Within a moment the top-right banner reads **`BROWNOUT — SHEDDING GROUP 3 · 8 E/S OFFLINE`** (the stores can give at most 30 E/s); clicking the **Metals Extractor** shows **`OFFLINE: BROWNOUT`**; its cable goes dark and the remaining cables sputter amber.
 - **Optional:** `cell 0` instead of `addLoad`: with the HQ store empty, the night deficit sheds at once.
@@ -104,11 +104,11 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 
 ### 8. Building `#id`, auto-repair that costs resources, crews that speed it up
 - **Do:**
-  1. Order a **Builder Drone** (step 2) if you don't have one. Click the **Metals Extractor** at `(3, 0)`: the bottom bar shows the badge **`#2`**.
+  1. Order a **Worker Drone T2** (step 2) if you don't have one. Click the **Metals Extractor** at `(3, 0)`: the bottom bar shows the badge **`#2`**.
   2. Note the Metals / Minerals values, then run `damage 2 60`.
 - **See:**
   - HP drops to `200 / 500`; an auto-queued **`Repair #2`** appears in the Construction lane (`SYS`).
-  - A Builder walks to `(3, 0)` and repairs it to `500 / 500` (Builder works at `1.5×`).
+  - A Worker Drone T2 walks to `(3, 0)` and repairs it to `500 / 500` (Worker Drone T2 works at `1.5×`).
   - **New:** Metals / Minerals **drop a little while it repairs** (repair costs 40 % of the building cost × the missing HP share, paid as it goes; with an empty stock it waits on `resources`).
   - **Crews:** with two Builders, both join and the repair finishes visibly faster for the same total cost (each extra worker adds 60 %, 36 %, … of its speed; max 4).
 
@@ -134,24 +134,24 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 
 ### 12. Earlier waves stay clean (`?waves=..02`)
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w03&waves=..02`
-- **See:** no lane tab bar in the Queue panel, no W03 building cards (**Power Pylon**, **Capacitor Bank**, **Wind Turbine**, **Thermal Plant**, **Supply Depot**, **Minerals Quarry**, **Water Extractor**, **Petroleum Well**) under **`BUILD [B]`**, no **Builder Drone** under **`PRODUCTION [U]`**.
+- **See:** no lane tab bar in the Queue panel, no W03 building cards (**Power Pylon**, **Capacitor Bank**, **Wind Turbine**, **Thermal Plant**, **Supply Depot**, **Minerals Quarry**, **Water Extractor**, **Petroleum Well**) under **`BUILD [B]`**, no **Worker Drone T2** under **`PRODUCTION [U]`**.
 
 ### 13. Unit supply (owner feedback #2)
-- **Do:** fresh `http://127.0.0.1:5273/play.html?scenario=w03`; press **`U`** and queue **Harvesters** one by one (8 in total); `warp 20`.
+- **Do:** fresh `http://127.0.0.1:5273/play.html?scenario=w03`; press **`U`** and queue **Worker Drones (T1)** one by one (8 in total); `warp 20`.
 - **See:**
   - The top-bar **Supply** chip counts up: `3 / 10` … it turns **orange at `8 / 10`** and **red at `10 / 10`**; hover shows `Units`, `In production` and the cap sources.
-  - At the cap the Harvester's **QUEUE** button is disabled with **"Supply cap reached — build a Supply Depot"**; a queued Harvester waits with **`waiting: supply`** and a **`BUILD SUPPLY DEPOT`** button.
-  - Build a **Supply Depot** (step 5): when it is finished and powered the chip shows **`… / 18`** and the waiting Harvester starts.
-- **Optional (host validation):** in the browser DevTools console, at the cap: `__online.commands.send('enqueueTask',{task:{kind:'buildUnit',unit:'harvester'}})` → toast **"Supply cap reached — build a Supply Depot"** (`supply_cap`).
+  - At the cap the Worker Drone T1's **QUEUE** button is disabled with **"Supply cap reached — build a Supply Depot"**; a queued Worker Drone T1 waits with **`waiting: supply`** and a **`BUILD SUPPLY DEPOT`** button.
+  - Build a **Supply Depot** (step 5): when it is finished and powered the chip shows **`… / 18`** and the waiting Worker Drone T1 starts.
+- **Optional (host validation):** in the browser DevTools console, at the cap: `__online.commands.send('enqueueTask',{task:{kind:'buildUnit',unit:'worker',tier:1}})` → toast **"Supply cap reached — build a Supply Depot"** (`supply_cap`).
 
 ### 14. Dismantle takes time and refunds step by step (owner feedback #6)
-- **Do:** order a **Builder Drone** (step 2). Click the **Solar Array** at `(-3, 2)`. Press **`T`** (TERRAFORM), then **`Z`** (DISMANTLE), and click the Solar.
+- **Do:** order a **Worker Drone T2** (step 2). Click the **Solar Array** at `(-3, 2)`. Press **`T`** (TERRAFORM), then **`Z`** (DISMANTLE), and click the Solar.
 - **See:**
-  - The **`QUEUE`** tab shows **`Dismantle Solar Array T1`** — `waiting: worker (en route)` for a few seconds, then **`Dismantling n%`**; the Builder walks over (no teleport) and works with sparks; the Solar goes offline and comes down.
+  - The **`QUEUE`** tab shows **`Dismantle Solar Array T1`** — `waiting: worker (en route)` for a few seconds, then **`Dismantling n%`**; the Worker Drone T2 walks over (no teleport) and works with sparks; the Solar goes offline and comes down.
   - Metals / Minerals / Bio rise **in small steps**; after ~9 s of work (half the Solar's build time) the Solar is gone, and you got back **50 %** of its cost in total (`30 Metals · 37.5 Minerals · 5 Biomass · 2.5 Water`).
   - Pressing **`Z`** on it again while it is being dismantled → **`Rejected: Already being dismantled`**.
-  - **Cancel:** on another building, press **CANCEL JOB** halfway → it stays standing but damaged, and a Builder repairs it (which costs resources again — no free refund loop).
-  - Without a Builder, the **HQ Drone** does the job.
+  - **Cancel:** on another building, press **CANCEL JOB** halfway → it stays standing but damaged, and a Worker Drone T2 repairs it (which costs resources again — no free refund loop).
+  - Without a Worker Drone T2, the **HQ Drone** does the job.
 
 ### 15. Pylon light & grid cables (owner feedback #4, #5)
 - **Do:** after step 3, zoom in on a pylon; run `time night`.
@@ -161,14 +161,14 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 ### 16. W04 Maps & Camera alongside the W03 HUD
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w04` (the `w03` scenario runs with waves `..03`, so it has no minimap; `w04` has the W03 HUD and the maps).
 - **Do:** at a 1280×720-ish window, open **`BUILD [B]`**; then press **`M`**; press **`B`**, **`U`**, **`Z`**, **`X`**, `R`; press **`` ` ``**; then **`M`** / **Esc**.
-- **See:** the **minimap** (bottom-left) and the **Command Dock** stack without overlapping, and the dock never leaves the screen; buildings are small squares and units dots on the minimap. While the global map is open the game hotkeys do nothing (no dock toggles, no ghost rotation, no unit stop); the dev console opens **above** the map and keeps typing focus. Closing the map returns the camera; it does not open while the game is paused (`Esc` pause → `M` does nothing).
+- **See:** the **minimap** (top-right) and the **Command Dock** (bottom-left) do not overlap, and the dock never leaves the screen; buildings are small squares and units dots on the minimap. While the global map is open the game hotkeys do nothing (no dock toggles, no ghost rotation, no unit stop); the dev console opens **above** the map and keeps typing focus. Closing the map returns the camera; it does not open while the game is paused (`Esc` pause → `M` does nothing).
 
 ---
 
 ## 3D Kitbash & Playground QA (Pillar 1 & Pillar 4)
 
 Open the W03 kitbash archetypes in the 3D Playground with `&validate=1` (all pass `npm run validate:models -- --all` with 0 errors and 0 warnings):
-- **Builder Drone (`robot.builder`):** `http://127.0.0.1:5273/playground.html?inspect=robot.builder&validate=1`
+- **Worker Drone T2 (`robot.builder`):** `http://127.0.0.1:5273/playground.html?inspect=robot.builder&validate=1`
 - **Power Pylon (`building.pylon`):** `http://127.0.0.1:5273/playground.html?inspect=building.pylon&validate=1`
 - **Wind Turbine (`building.wind`):** `http://127.0.0.1:5273/playground.html?inspect=building.wind&validate=1`
 - **Thermal Plant (`building.coalGen`):** `http://127.0.0.1:5273/playground.html?inspect=building.coalGen&validate=1`

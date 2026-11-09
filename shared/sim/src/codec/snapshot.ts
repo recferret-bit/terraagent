@@ -6,6 +6,7 @@ import type { PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { migrate, type SnapshotObject } from './migrations';
 import { decodeValue, encodeValue } from './values';
+import { FAUNA_MOTION_SEED, faunaMotionSeed } from './faunaMotionSeed';
 
 /**
  * Snapshot codec (SIM-S-01). `snapshot(state)` is MessagePack of `{ header, state }`; the host gzips it (Node
@@ -29,12 +30,39 @@ export function clientMeta(meta: PlanetState['meta']): PlanetState['meta'] {
   return rest;
 }
 
+/** Internal engine blobs omitted from client-bound snapshots and diffs (`forClient: true`). */
+export const CLIENT_OMIT_BLOBS: ReadonlySet<string> = new Set([
+  'unitMotion',
+  'groupMarch',
+  'pathQueue',
+  'pathStats',
+  'combatVision',
+  'combatEvasive',
+  'combatDamage',
+  'combatStanceChanges',
+  'faunaAggression',
+]);
+
+export function clientBlobs(blobs: PlanetState['blobs']): PlanetState['blobs'] {
+  const out: PlanetState['blobs'] = {};
+  for (const [k, v] of Object.entries(blobs)) {
+    if (!CLIENT_OMIT_BLOBS.has(k)) out[k] = v;
+  }
+  return out;
+}
+
 export function snapshot(state: PlanetState, opts: SnapshotOpts = {}): Uint8Array {
   const header: SnapshotHeader = { simVersion: SIM_VERSION, codec: 'msgpack', tick: state.meta.tick, planetId: state.meta.planetId };
   if (!opts.forClient) return encodeValue({ header, state });
   const layers: Record<string, TypedArray> = {};
   for (const l of tileLayers()) if (!l.hidden && state.grid.layers[l.name]) layers[l.name] = state.grid.layers[l.name];
-  return encodeValue({ header, state: { ...state, meta: clientMeta(state.meta), grid: { ...state.grid, layers } } });
+  const blobs = clientBlobs(state.blobs);
+  const motionSeed = faunaMotionSeed(state);
+  if (motionSeed) blobs[FAUNA_MOTION_SEED] = motionSeed;
+  return encodeValue({
+    header,
+    state: { ...state, meta: clientMeta(state.meta), grid: { ...state.grid, layers }, blobs },
+  });
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

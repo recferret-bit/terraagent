@@ -351,7 +351,7 @@ describe('Prepared (terraformed) ground renders as plain flat ground', () => {
     expect(chunk.aAO[v(preparedIdx)]).toBe(chunk.aAO[v(flatIdx)]);
     expect(chunk.aRock[v(preparedIdx)]).toBe(0);
     expect(chunk.aRock[v(hx.indexOf(2, 0))]).toBe(0);
-    expect(chunk.aHexFlat[v(preparedIdx)]).toBe(1);
+    expect(createHexTileTint(r, { terrain, prep, height }).hexGrid[preparedIdx]).toBe(1); // cleared ground is on the grid
     expect(chunk.position[v(preparedIdx) * 3 + 1]).toBe(0);
     expect(chunk.position[v(hx.indexOf(2, 0)) * 3 + 1]).toBe(0);
 
@@ -379,59 +379,43 @@ describe('Prepared (terraformed) ground renders as plain flat ground', () => {
   });
 });
 
-describe('Hexagon edge visibility on terraformed flat ground', () => {
-  it('draws hexagons strictly on flat, level, buildable tiles (aHexFlat = 1) and removes them on mountains, dunes, water, and uneven borders', () => {
+describe('Hexagon edge visibility: the grid exists only on hex tiles (sim `hexTileMask`)', () => {
+  it('flags hex tiles per cell (uHexGrid) and takes every obstacle, step and ridge off the grid with its whole one-ring', () => {
     const r = 6;
     const count = hexCount(r);
     const hx = hexIndex(r);
     const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
     const prep = new Uint8Array(count).fill(HEX_PREP.flat);
     const height = new Float32Array(count);
+    const at = (q: number, rr: number) => hx.indexOf(q, rr);
+    const ring = (q: number, rr: number) => [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].map(([a, b]) => at(q + a!, rr + b!));
 
-    const rockIdx = hx.indexOf(2, 0);
-    const duneIdx = hx.indexOf(-2, 0);
-    const forestIdx = hx.indexOf(0, 2);
-    const holeIdx = hx.indexOf(0, -2);
-    const shallowIdx = hx.indexOf(2, -2);
-    const deepIdx = hx.indexOf(-2, 2);
-    const ridgeIdx = hx.indexOf(1, -2);
-    const unevenRampIdx = hx.indexOf(3, 0);
-    const mesaRimIdx = hx.indexOf(3, -1);
-
-    terrain[rockIdx] = HEX_TERRAIN.rock;
-    height[rockIdx] = 1.4;
-    terrain[duneIdx] = HEX_TERRAIN.slope;
-    height[duneIdx] = 0.7;
-    terrain[forestIdx] = HEX_TERRAIN.forest;
-    terrain[holeIdx] = HEX_TERRAIN.hole;
-    terrain[shallowIdx] = HEX_TERRAIN.shallow;
-    terrain[deepIdx] = HEX_TERRAIN.deep;
-    prep[ridgeIdx] = HEX_PREP.ridge;
-    // Sloped ramp tile marked flat in terrain but with raw height > 0.15 m
-    height[unevenRampIdx] = 0.45;
-    // Raised mesa rim tile (height 1.1 m) bordering a steep cliff drop to 0.0 m
-    height[mesaRimIdx] = 1.1;
-    height[hx.indexOf(3, -2)] = 1.1;
-
-    const allTiles = Array.from({ length: count }, (_, i) => i);
-    const chunk = buildChunk(r, allTiles, { terrain, prep, height, kind: 'dune' });
-    const flatByTile = new Map<number, number>();
-    for (let v = 0; v < chunk.vertexTile.length; v++) {
-      flatByTile.set(chunk.vertexTile[v]!, chunk.aHexFlat[v]!);
-    }
-
-    expect(flatByTile.get(hx.indexOf(0, 0))).toBe(1.0);
-    expect(flatByTile.get(rockIdx)).toBe(0.0);
-    expect(flatByTile.get(duneIdx)).toBe(0.0);
-    expect(flatByTile.get(forestIdx)).toBe(0.0);
-    expect(flatByTile.get(holeIdx)).toBe(0.0);
-    expect(flatByTile.get(shallowIdx)).toBe(0.0);
-    expect(flatByTile.get(deepIdx)).toBe(0.0);
-    expect(flatByTile.get(ridgeIdx)).toBe(0.0);
-    expect(flatByTile.get(unevenRampIdx)).toBe(0.0);
-    expect(flatByTile.get(mesaRimIdx)).toBe(0.0);
+    const obstacles: Array<[number, number, number, number]> = [ // q, r, terrain, height
+      [2, 0, HEX_TERRAIN.rock, 1.4], [-2, 0, HEX_TERRAIN.slope, 0.7], [0, 2, HEX_TERRAIN.forest, 0], [0, -2, HEX_TERRAIN.hole, 0],
+      [2, -2, HEX_TERRAIN.shallow, 0], [-2, 2, HEX_TERRAIN.deep, 0],
+      [3, 0, HEX_TERRAIN.flat, 0.45], // a Flat ramp tile above the plane: a step, not level with its neighbours
+    ];
+    for (const [q, rr, t, h] of obstacles) { terrain[at(q, rr)] = t; height[at(q, rr)] = h; }
+    prep[at(1, -2)] = HEX_PREP.ridge;
 
     const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('desert') });
+    const n = 2 * r + 1;
+    const grid = (q: number, rr: number) => ((hexTerrain.uniforms.uHexGrid!.value as THREE.DataTexture).image.data as Uint8Array)[((rr + r) * n + q + r) * 4];
+    expect(grid(0, 0)).toBe(255); // level open ground with a level open one-ring
+    expect(grid(-4, 0)).toBe(255);
+    for (const [q, rr] of [...obstacles.map(([q, rr]) => [q, rr] as const), [1, -2] as const]) {
+      expect(grid(q, rr), `obstacle (${q}, ${rr})`).toBe(0);
+      for (const j of ring(q, rr)) if (j >= 0) expect(grid(hx.q[j]!, hx.r[j]!), `ring of (${q}, ${rr})`).toBe(0);
+    }
+
+    // Incremental: planting one rock takes its tile and one-ring off the grid; clearing it puts them back.
+    hexTerrain.setTileState(-4, 0, HEX_TERRAIN.rock, HEX_PREP.wild, 1.2);
+    expect(grid(-4, 0)).toBe(0);
+    for (const j of ring(-4, 0)) expect(grid(hx.q[j]!, hx.r[j]!)).toBe(0);
+    hexTerrain.setTileState(-4, 0, HEX_TERRAIN.flat, HEX_PREP.flat, 0);
+    expect(grid(-4, 0)).toBe(255);
+    expect(grid(-4, 1)).toBe(255);
+
     const mockShader: THREE.WebGLProgramParametersWithUniforms = {
       uniforms: {},
       vertexShader: '#include <common>\nvoid main() {\n#include <begin_vertex>\n}',
@@ -439,10 +423,12 @@ describe('Hexagon edge visibility on terraformed flat ground', () => {
         '#include <common>\nvoid main() {\n#include <color_fragment>\n#include <alphatest_fragment>\n#include <roughnessmap_fragment>\n#include <normal_fragment_maps>\n#include <emissivemap_fragment>\n#include <fog_fragment>\n}',
     } as unknown as THREE.WebGLProgramParametersWithUniforms;
     hexTerrain.material.onBeforeCompile(mockShader, null as unknown as THREE.WebGLRenderer);
-    expect(mockShader.vertexShader).toContain('attribute float aHexFlat;');
-    expect(mockShader.vertexShader).toContain('vFlatPos = aHexFlat *');
-    expect(mockShader.fragmentShader).toContain('hexFlatMask');
+    expect(mockShader.vertexShader).not.toContain('aHexFlat');
+    expect(mockShader.fragmentShader).toContain('uniform sampler2D uHexGrid;');
+    expect(mockShader.fragmentShader).toContain('float hexGrid = max(hexGridCell(ownAx), hexGridCell(ownAx + nbStep));');
+    expect(mockShader.fragmentShader).not.toContain('vFlatPos');
     expect(mockShader.fragmentShader).not.toContain('duneSlopeFade');
+    for (const chunkMesh of hexTerrain.chunks) expect(chunkMesh.geometry.getAttribute('aHexFlat')).toBeUndefined();
     hexTerrain.dispose();
   });
 

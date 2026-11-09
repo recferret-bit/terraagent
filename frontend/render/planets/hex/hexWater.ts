@@ -9,6 +9,7 @@ import {
 import { HEX_TERRAIN, isClearedPrep, type HexTileLayers } from './chunkMesh';
 import { TILE_M, planetExtent } from './hexMath';
 import { createWaterBucketSet } from './waterBuckets';
+import { registerReflectiveWater } from '../../visuals/water/reflection/reflectionRegistry';
 
 export const HEX_WATER_LEVEL = 0.0;
 
@@ -80,6 +81,8 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
   group.position.y = HEX_WATER_LEVEL;
   const fauna = createWaterFauna({ time: water.uniforms.uTime!, deepColor: { value: new THREE.Color(deepCol) }, seed: look.seed });
   group.add(surface.group, fauna.group);
+  // Mirror pass: plane = the group's y (the level); hides surface + fauna; bounds = the buckets `cullToFocus` left shown.
+  const offReflect = registerReflectiveWater({ object: group, parts: () => surface.meshes });
 
   const hasWater = look.kind !== 'dune';
   let waterTileCount = 0;
@@ -137,6 +140,7 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
       fauna.cullToFocus();
     },
     dispose() {
+      offReflect();
       fauna.dispose();
       surface.dispose();
       fieldTex.dispose();

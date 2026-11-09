@@ -5,19 +5,17 @@ import { PlanetaryLightingSystem } from './PlanetaryLightingSystem';
 
 interface ActiveBolt {
   mesh: THREE.Mesh;
-  shockwave?: THREE.Mesh;
   age: number;
   duration: number;
 }
 
 /**
  * Generates procedural 3D midpoint-displacement lightning bolts, branching forks,
- * ground plasma shockwave rings, and power-grid overload arcs.
+ * jagged ground-skimming discharge tendrils, and power-grid overload arcs.
  */
 export class LightningStrikeSystem {
   private readonly activeBolts: ActiveBolt[] = [];
   private readonly boltMaterial: THREE.MeshBasicMaterial;
-  private readonly ringGeo: THREE.RingGeometry;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -30,9 +28,7 @@ export class LightningStrikeSystem {
       transparent: true,
       opacity: 1.0,
     });
-
-    this.ringGeo = new THREE.RingGeometry(0.3, 0.55, 32);
-    this.ringGeo.rotateX(-Math.PI / 2);
+    this.boltMaterial.userData.waterReflect = true;
   }
 
   /**
@@ -101,16 +97,29 @@ export class LightningStrikeSystem {
 
     const geo = this.buildJaggedBoltGeometry(skyOrigin, targetPos, 5, 0.085, true);
     const mat = this.boltMaterial.clone();
+    mat.userData.waterReflect = true;
     const mesh = new THREE.Mesh(geo, mat);
     this.scene.add(mesh);
+    this.activeBolts.push({ mesh, age: 0, duration: 0.24 });
 
-    // Expanding ground plasma shockwave ring
-    const ringMat = this.boltMaterial.clone();
-    const shockwave = new THREE.Mesh(this.ringGeo, ringMat);
-    shockwave.position.set(targetPos.x, targetPos.y + 0.06, targetPos.z);
-    this.scene.add(shockwave);
-
-    this.activeBolts.push({ mesh, shockwave, age: 0, duration: 0.24 });
+    // Jagged 3D ground-skimming lightning tendrils radiating outward at irregular distances & angles
+    const tendrilOrigin = new THREE.Vector3(targetPos.x, targetPos.y + 0.08, targetPos.z);
+    const baseRotation = Math.random() * Math.PI * 2;
+    for (let i = 0; i < 3; i++) {
+      const ang = baseRotation + (i / 3) * Math.PI * 2 + (Math.random() - 0.5) * 0.95;
+      const dist = 1.4 + Math.random() * 1.4;
+      const tendrilEnd = new THREE.Vector3(
+        targetPos.x + Math.cos(ang) * dist,
+        targetPos.y + 0.08,
+        targetPos.z + Math.sin(ang) * dist
+      );
+      const tendrilGeo = this.buildJaggedBoltGeometry(tendrilOrigin, tendrilEnd, 4, 0.042, true);
+      const tendrilMat = this.boltMaterial.clone();
+      tendrilMat.userData.waterReflect = true;
+      const tendrilMesh = new THREE.Mesh(tendrilGeo, tendrilMat);
+      this.scene.add(tendrilMesh);
+      this.activeBolts.push({ mesh: tendrilMesh, age: 0, duration: 0.22 });
+    }
 
     // Trigger synchronized sky flash & local PointLight via PlanetaryLightingSystem
     if (this.lightingSystem) {
@@ -131,6 +140,7 @@ export class LightningStrikeSystem {
   public spawnGridOverloadArc(p1: THREE.Vector3, p2: THREE.Vector3): void {
     const geo = this.buildJaggedBoltGeometry(p1, p2, 4, 0.028, false);
     const mat = this.boltMaterial.clone();
+    mat.userData.waterReflect = true;
     const mesh = new THREE.Mesh(geo, mat);
     this.scene.add(mesh);
     this.activeBolts.push({ mesh, age: 0, duration: 0.12 });
@@ -144,21 +154,12 @@ export class LightningStrikeSystem {
         this.scene.remove(b.mesh);
         b.mesh.geometry.dispose();
         (b.mesh.material as THREE.Material).dispose();
-        if (b.shockwave) {
-          this.scene.remove(b.shockwave);
-          (b.shockwave.material as THREE.Material).dispose();
-        }
         this.activeBolts.splice(i, 1);
       } else {
         const t = b.age / b.duration;
         // Rapid flicker envelope
         const flicker = Math.sin(t * Math.PI * 6) > -0.2 ? 1.0 - t : 0.2;
         (b.mesh.material as THREE.MeshBasicMaterial).opacity = flicker;
-        if (b.shockwave) {
-          const s = 1.0 + t * 6.5;
-          b.shockwave.scale.set(s, s, s);
-          (b.shockwave.material as THREE.MeshBasicMaterial).opacity = (1.0 - t) * 0.85;
-        }
       }
     }
   }

@@ -417,7 +417,7 @@ describe('Bottom-left switches bar and F8 tabbed visual settings dialog', () => 
     expect(dlg.textContent).not.toContain('FULL RGB');
 
     const tabs = [...dlg.querySelectorAll<HTMLElement>('.pd-tab')].map((t) => t.dataset.tab);
-    expect(tabs).toEqual(['crt', 'pixel', 'shadow', 'daynight', 'wind', 'water', 'perf']);
+    expect(tabs).toEqual(['crt', 'pixel', 'shadow', 'daynight', 'wind', 'water', 'weather', 'perf']);
 
     // Switch through all tabs and verify every parameter slider is rendered and interactive
     selectVisualTab('crt');

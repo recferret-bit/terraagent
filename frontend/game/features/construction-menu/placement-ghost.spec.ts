@@ -2,6 +2,7 @@ import { DEPOSIT, ENTITY_KIND, PREP, TERRAIN, hexCount, hexIndex } from '@terra/
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConstructionMenu } from './ConstructionMenu';
 import { evaluatePlacementGhost } from './PlacementGhost';
+import { E, ENTITY_STRIDE } from '../../store/replica/viewCodec';
 
 class MockElement {
   tagName: string;
@@ -418,13 +419,11 @@ describe('PlacementGhostController - cancellation', () => {
   it('rejects occupied tiles and snaps initial Solar and Metals Extractor ghosts to valid sites', () => {
     const { view, setTile } = createPlanetView(5);
     setTile(3, 0, { deposit: DEPOSIT.metals });
-    const entities = new Float32Array(12);
-    entities[0] = 1;
-    entities[1] = ENTITY_KIND.commandHub;
-    entities[3] = 0;
-    entities[4] = 0;
-    entities[8] = 500;
-    entities[9] = 500;
+    const entities = new Float32Array(ENTITY_STRIDE);
+    entities[E.id] = 1;
+    entities[E.kind] = ENTITY_KIND.commandHub;
+    entities[E.hp] = 500;
+    entities[E.hpMax] = 500;
     const viewWithHub = { ...view, entities, count: 1 };
 
     const blockedAtHub = evaluatePlacementGhost({

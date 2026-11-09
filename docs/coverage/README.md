@@ -1,5 +1,7 @@
 # Test coverage reference
 
+Latest wave review: [W07 review — updated 2026-11-07](./w07-review-2026-11-06.md).
+
 Unit-test coverage (vitest + v8) on branch `wave/w01-landfall`, 2026-11-01: the **baseline** taken at `615fb72` (before the
 review-fix round) and the state **after** that round. Integration (`*.int.spec.ts`, Postgres) and e2e (Playwright) suites
 are not included. Use it as a reference: compare a new run against it.
@@ -9,7 +11,7 @@ Regenerate: per package `npx vitest run --config tests/vitest.config.ts --covera
 
 ## Specs added by W02 (not measured yet)
 
-The numbers below are the W01 snapshot. Specs added since, to include in the next snapshot: `shared/sim/test/units/dispatch-build.spec.ts`, `shared/sim/test/systems/w02-review-fixes.spec.ts`, `shared/sim/test/systems/harvester-snapshot.spec.ts`, `shared/sim/test/systems/power-extractor-brownout.spec.ts`, `frontend/game/features/shared/power.spec.ts`, `shared/sim/test/systems/queue-nonblocking.spec.ts`, `backend/app/test/game/production-batches.spec.ts`, `frontend/game/features/construction-menu/ghost-context.spec.ts`, `frontend/game/features/construction-menu/placement-ghost.spec.ts`, `frontend/game/app/online/unitHealthBars.spec.ts`, and e2e `tests/e2e/w02.spec.ts` (steps 1 to 10; step 10 is the `?waves=..01` check). Regenerate with the command above and move *after* to *baseline*.
+The numbers below are the W01 snapshot. Specs added since, to include in the next snapshot: `shared/sim/test/units/dispatch-build.spec.ts`, `shared/sim/test/systems/w02-review-fixes.spec.ts`, `shared/sim/test/systems/worker-snapshot.spec.ts`, `shared/sim/test/systems/power-extractor-brownout.spec.ts`, `frontend/game/features/shared/power.spec.ts`, `shared/sim/test/systems/queue-nonblocking.spec.ts`, `backend/app/test/game/production-batches.spec.ts`, `frontend/game/features/construction-menu/ghost-context.spec.ts`, `frontend/game/features/construction-menu/placement-ghost.spec.ts`, `frontend/game/app/online/unitHealthBars.spec.ts`, and e2e `tests/e2e/w02.spec.ts` (steps 1 to 10; step 10 is the `?waves=..01` check). Regenerate with the command above and move *after* to *baseline*.
 
 ## Totals per package (lines · branches · functions)
 

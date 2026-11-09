@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
-import { getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type SimPlanetType } from '@terra/render/planets/hex';
+import { createHexTerrain, getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type SimPlanetType } from '@terra/render/planets/hex';
 import type { LocalTransport } from '../../net/LocalTransport';
-import type { ClientTiles } from '../../store/replica/viewCodec';
+import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
+import { RTSCamera } from '../RTSCamera';
+import { hexSurface } from './hexSurface';
 
 export const PLANET_KIND_SESSION_KEY = 'terra.planetKind';
 
@@ -124,7 +127,7 @@ export function resolveOnlinePlanetLook(planetType: SimPlanetType | string, pref
 
 /**
  * Tile indices whose height, terrain, prep, deposit (kind or tier), deposit stage or owner differs between two tile
- * snapshots. Richness counts only when it crosses a visual stage (`getDepositVisualStage`): a harvester drains it every
+ * snapshots. Richness counts only when it crosses a visual stage (`getDepositVisualStage`): a worker drains it every
  * tick, and nothing else the terrain draws depends on it.
  */
 export function changedTiles(a: ClientTiles, b: ClientTiles): number[] {
@@ -206,4 +209,58 @@ export function createSafeViewport(root: HTMLElement, provided?: ColonyViewport)
       domElement.remove();
     },
   };
+}
+
+export function syncOrRebuildSessionTerrain(params: {
+  viewport: ColonyViewport;
+  prevTerrain: HexTerrain | null;
+  prevTiles: ClientTiles | null;
+  prevCam: RTSCamera | null;
+  prevBiomeKey: string;
+  view: ClientView;
+  tiles: ClientTiles;
+  planetKind: PlanetKind | null;
+  inSpace: boolean;
+  showSpaceTerrain: boolean;
+  cameraTargetTile: { q: number; r: number };
+}): { terrain: HexTerrain; cam: RTSCamera | null; biomeKey: string; rebuilt: boolean } {
+  const { viewport, prevTerrain, prevTiles, prevCam, prevBiomeKey, view, tiles, planetKind, inSpace, showSpaceTerrain, cameraTargetTile } = params;
+  const look = resolveOnlinePlanetLook(view.planet.type, planetKind);
+  if (!prevTerrain || prevTerrain.radius !== view.planet.radius || prevBiomeKey !== look.biomeKey) {
+    if (prevTerrain) {
+      viewport.scene.remove(prevTerrain.group);
+      prevTerrain.dispose();
+    }
+    if (!inSpace) {
+      try {
+        applyPlanetLook(viewport, look);
+      } catch {
+        /* Ignore in headless tests */
+      }
+    }
+    const terrain = createHexTerrain({ radius: view.planet.radius, tiles: tiles as HexTiles, look });
+    viewport.scene.add(terrain.group);
+    prevCam?.dispose();
+    const [tx, tz] = tileXZ(cameraTargetTile.q, cameraTargetTile.r);
+    const ty = terrain.heightAt(tx, tz);
+    const savedPos = viewport.camera.position.clone();
+    const savedQuat = viewport.camera.quaternion.clone();
+    const cam = new RTSCamera(
+      viewport.camera,
+      viewport.renderer.domElement,
+      hexSurface(terrain, look),
+      new THREE.Vector3(tx + 42, ty + 46, tz + 42),
+      new THREE.Vector3(tx, ty, tz),
+    );
+    if (inSpace) {
+      viewport.camera.position.copy(savedPos);
+      viewport.camera.quaternion.copy(savedQuat);
+      syncSpaceTerrainOffset(terrain, true, showSpaceTerrain, cameraTargetTile);
+    }
+    return { terrain, cam, biomeKey: look.biomeKey, rebuilt: true };
+  }
+  if (prevTiles) {
+    applyTerrainTileChanges(prevTerrain, prevTiles, tiles, view.planet.radius);
+  }
+  return { terrain: prevTerrain, cam: prevCam, biomeKey: prevBiomeKey, rebuilt: false };
 }

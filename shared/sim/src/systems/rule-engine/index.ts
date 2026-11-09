@@ -2,6 +2,7 @@ import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
 import { parseArgs } from '../command';
 import { defineSimModule } from '../define';
+import { isColonyAiEnabled } from '../goals/ai';
 import {
   applyAutopilotStep,
   resolveColonyStage,
@@ -42,6 +43,7 @@ export const ruleEngineSystem = defineSystem({
 
     for (const col of state.colonies) {
       if (!col || col.status === 'eliminated' || col.status === 'settled') continue;
+      if (!isColonyAiEnabled(state, col.index)) continue;
       if (col.lastAutopilotEvalTick === nextTick && nextTick > 0 && prevTick !== nextTick) continue;
       const stage = resolveColonyStage(state, col.index);
       const stageChanged = stage >= 1 && col.lastAutopilotEvalStage !== stage;

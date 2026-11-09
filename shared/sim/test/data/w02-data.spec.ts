@@ -42,14 +42,14 @@ describe('W02-01 data rows: resources, economyT1Basic, unitsWorkersBasic', () =>
     expect(dayCycle.dayLengthS).toBe(6000);
     expect((dayCycle.nightShareByPlanetType as Record<string, number>).temperate).toBe(0.45);
 
-    // Harvester T1 (10s -> 50 ticks, speed 1.5 t/s -> 0.3 t/tick)
-    const harvester = dataRow(compiled, 'unitsWorkersBasic', 'harvester');
-    expect(harvester.buildS).toBe(50);
-    expect(harvester.supply).toBe(1);
-    expect(harvester.powerDrainPerS).toBe(2);
-    expect(harvester.hp).toBe(160);
-    expect(harvester.speedTilesPerS).toBeCloseTo(0.3, 5);
-    expect(harvester.viewRadius).toBe(7);
-    expect(harvester.radius).toBe(0.4);
+    // Worker T1 (10s -> 50 ticks, speed 1.5 t/s -> 0.3 t/tick)
+    const worker = dataRow(compiled, 'unitsWorkersBasic', 't1');
+    expect(worker.buildS).toBe(50);
+    expect(worker.supply).toBe(1);
+    expect(worker.powerDrainPerS).toBe(2);
+    expect(worker.hp).toBe(160);
+    expect(worker.speedTilesPerS).toBeCloseTo(0.3, 5);
+    expect(worker.viewRadius).toBe(7);
+    expect(worker.radius).toBe(0.4);
   });
 });

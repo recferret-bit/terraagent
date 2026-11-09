@@ -70,7 +70,7 @@
 | Treasury share | 20 % of the platform fee *(proposed)* |
 
 **Where resources come from and go (as designed)**
-- **Sources:** extractors, harvesters and terrain-shaping yields in the simulation. Exports mint tokens only from stock that already exists. **Mock-only grants:** Guild fixture inventory and dev cargo grants are separately labeled and excluded from organic demand. Real Guild cargo must be purchased or exported from treasury-owned stock.
+- **Sources:** extractors, Worker Drones and terrain-shaping yields in the simulation. Exports mint tokens only from stock that already exists. **Mock-only grants:** Guild fixture inventory and dev cargo grants are separately labeled and excluded from organic demand. Real Guild cargo must be purchased or exported from treasury-owned stock.
 - **Sinks:** construction and unit costs, running upkeep, terraforming (water), and treasury project costs (where these tokens end up is undefined; Q6).
 - **Transfers, not sinks:** market trades, fees to stall owners, the treasury share, bounty escrow.
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
+import { getWeatherUniforms } from '../../core/weatherConfig';
 import { getWindUniforms, WIND_GLSL } from '../../core/windConfig';
 import { bindViewFocusUniforms, VIEW_FOCUS_GLSL } from '../../core/viewFocus';
 import { Noise2, mulberry32 } from './noise';
@@ -279,7 +280,7 @@ export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubl
       .replace('#include <begin_vertex>', FOLIAGE_SWAY_BEGIN);
   };
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, getColonyVisionUniforms(), getWindUniforms());
+    Object.assign(sh.uniforms, getColonyVisionUniforms(), getWindUniforms(), getWeatherUniforms());
     sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>\n${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN;`)
@@ -292,7 +293,14 @@ export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubl
   vFN = normalize(mat3(modelMatrix) * objectNormal);
 #endif`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+if (uWetness > 0.001) {
+  float fUp = clamp(vFN.y, 0.0, 1.0);
+  diffuseColor.rgb *= mix(1.0, 0.66, uWetness);
+  diffuseColor.rgb += vec3(0.04, 0.07, 0.11) * (uWetness * pow(fUp, 2.0));
+}`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= mix(1.0, 0.32, uWetness);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vFW, vFN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vFW, gl_FragColor.rgb);');
   };
@@ -310,7 +318,7 @@ export function createRockMaterial(opts: { rough?: number; metal?: number; flat?
   m.shadowSide = THREE.DoubleSide;
   m.userData.receiveShadow = false;
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, getColonyVisionUniforms());
+    Object.assign(sh.uniforms, getColonyVisionUniforms(), getWeatherUniforms());
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -322,13 +330,19 @@ export function createRockMaterial(opts: { rough?: number; metal?: number; flat?
   vRN = normalize(mat3(modelMatrix) * objectNormal);
 #endif`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vRW; varying vec3 vRN;\n${COLONY_VISION_AND_LIGHTS_GLSL}\nfloat rH(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y);} \nfloat rN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(rH(i),rH(i+vec2(1,0)),f.x),mix(rH(i+vec2(0,1)),rH(i+vec2(1,1)),f.x),f.y);}`)
+      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nvarying vec3 vRW; varying vec3 vRN;\n${COLONY_VISION_AND_LIGHTS_GLSL}\nfloat rH(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y);} \nfloat rN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(rH(i),rH(i+vec2(1,0)),f.x),mix(rH(i+vec2(0,1)),rH(i+vec2(1,1)),f.x),f.y);}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 { float g = rN(vRW.xz*3.1 + vRW.y*1.7)*0.6 + rN(vRW.xz*9.0 - vRW.y*4.0)*0.4;
   float st = rN(vec2(vRW.x*0.4+vRW.z*0.3, vRW.y*2.2));
   diffuseColor.rgb *= 0.78 + 0.4*g;
   diffuseColor.rgb *= 0.85 + 0.3*st;
-  diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(-0.2, 1.4, vRW.y)); }`)
+  diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(-0.2, 1.4, vRW.y));
+  if (uWetness > 0.001) {
+    float rUp = clamp(vRN.y, 0.0, 1.0);
+    diffuseColor.rgb *= mix(1.0, 0.66, uWetness);
+    diffuseColor.rgb += vec3(0.05, 0.08, 0.12) * (uWetness * pow(rUp, 2.0));
+  } }`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= mix(1.0, 0.32, uWetness);')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vRW, vRN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vRW, gl_FragColor.rgb);');
   };

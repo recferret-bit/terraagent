@@ -29,6 +29,7 @@ export interface SessionHudDeps {
   transport: Transport;
   landfall: LandfallController;
   terrain(): HexTerrain | null;
+  renderedEntityPosition?(entityId: number): Readonly<THREE.Vector3> | null;
   biomeKey(): string;
   /** The in-process fallback host, once attached (its dev server and ledger replace the server's). */
   localHost(): LocalHost | null;
@@ -56,6 +57,10 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     scene: d.scene,
     tileToWorld: (x, y) => { const [wx, wz] = tileXZ(x, y); return { x: wx, y: d.terrain()?.heightAt(wx, wz) ?? 0, z: wz }; },
     biomeKey: d.biomeKey,
+    renderedEntityGroundPosition: (entityId) => {
+      const p = d.renderedEntityPosition?.(entityId);
+      return p ? { x: p.x, y: d.terrain()?.heightAt(p.x, p.z) ?? 0, z: p.z } : null;
+    },
   };
   const baseDev = d.local ? d.local.devServer : httpDevServer();
   // an attached in-process fallback answers like `?host=local`; never send tune / scenario to a real server planet

@@ -4,14 +4,16 @@ import { defineCommand } from './define';
 
 export const command = defineCommand({
   kind: 'dev.spawnunit',
-  wave: 'W13',
+  wave: 'W07',
   origin: 'client',
   dev: true,
   args: z.strictObject({
-    unit: z.enum(['builder', 'harvester']),
-    q: TileCoord,
-    r: TileCoord,
-    count: z.number().int().min(1).max(32).optional(),
+    unit: z.string().min(1),
+    q: TileCoord.optional(),
+    r: TileCoord.optional(),
+    count: z.number().int().positive().optional(),
+    colonyIndex: z.number().int().nonnegative().optional(),
+    owner: z.number().int().min(-1).optional(),
   }),
-  summary: 'Dev console: inserts `count` (default 1) idle units of a kind with a logistics row for the caller colony around tile (q, r), to grow the logistics load (W13-57).',
+  summary: 'Dev console (`spawnUnit` / `spawn builder|harvester`): spawns colony combat/worker units or neutral fauna bugs at (q, r) (W07-29, W13-57).',
 });

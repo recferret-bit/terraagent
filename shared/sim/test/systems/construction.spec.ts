@@ -160,7 +160,7 @@ describe('W01/W02 construction coexistence & GP-11 cap preservation', () => {
 });
 
 describe('W02 building footprints, unit collision & perimeter spawn', () => {
-  it('centers 3x3 Command Hub footprints on (q, r), blocks HQ and Harvester movement onto buildings, and evacuates units under new footprints', () => {
+  it('centers 3x3 Command Hub footprints on (q, r), blocks HQ and Worker movement onto buildings, and evacuates units under new footprints', () => {
     const state = createState({ planetId: 'p-fp', planetType: 'temperate', seed: 'w02-fp', radius: 12 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -210,10 +210,10 @@ describe('W02 building footprints, unit collision & perimeter spawn', () => {
     });
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
-    // Queue and produce a Harvester via enqueueTask -> spawns at Hub perimeter (not (0, 0))
+    // Queue and produce a Worker via enqueueTask -> spawns at Hub perimeter (not (0, 0))
     step(
       state,
-      [{ commandId: 'q-hrv', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask', args: { task: { kind: 'buildUnit', unit: 'harvester' } } }],
+      [{ commandId: 'q-hrv', colonyIndex: 0, source: 'player' as const, kind: 'enqueueTask', args: { task: { kind: 'buildUnit', unit: 'worker' } } }],
       55,
       pipeline,
     );
@@ -221,7 +221,7 @@ describe('W02 building footprints, unit collision & perimeter spawn', () => {
     let hrvQ = 0;
     let hrvR = 0;
     for (let r = 0; r < state.entities.count; r++) {
-      if (state.entities.cols.kind[r] === ENTITY_KIND.harvester) {
+      if (state.entities.cols.kind[r] === ENTITY_KIND.worker) {
         hrvId = state.entities.cols.id[r];
         hrvQ = state.entities.cols.q[r];
         hrvR = state.entities.cols.r[r];
@@ -230,7 +230,7 @@ describe('W02 building footprints, unit collision & perimeter spawn', () => {
     expect(hrvId).toBeGreaterThan(0);
     expect(Math.max(Math.abs(hrvQ), Math.abs(hrvR))).toBeGreaterThanOrEqual(2);
 
-    // Both HQ and Harvester reject moveUnit into Command Hub (0, 0) or Solar (3, 0) with site_blocked
+    // Both HQ and Worker reject moveUnit into Command Hub (0, 0) or Solar (3, 0) with site_blocked
     const moveRes = step(
       state,
       [

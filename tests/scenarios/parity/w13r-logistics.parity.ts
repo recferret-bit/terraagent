@@ -9,6 +9,6 @@ export default defineParityCase({
   scenario: 'w13r',
   ticks: 650,
   log: [
-    { atTick: 1, kind: 'enqueueTask', args: { task: { kind: 'buildUnit', unit: 'builder', count: 2 } } },
+    { atTick: 1, kind: 'enqueueTask', args: { task: { kind: 'buildUnit', unit: 'worker', count: 2 } } },
   ],
 });

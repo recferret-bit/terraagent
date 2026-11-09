@@ -1,6 +1,7 @@
-/* Floating Faction-Plate dialog to live-tune the visual effects (CRT, Pixel-Art, Shadow / Sun, Day/Night, Wind, Water, Perf).
+/* Floating Faction-Plate dialog to live-tune the visual effects (CRT, Pixel-Art, Shadow / Sun, Day/Night, Wind, Water, Weather, Perf).
    Toggle open/closed with F8 (or Shift+P), or via the F8 gear button beside the bottom-left switches. Draggable by its header.
    The tabs, their stores and head widgets are a registry (`visualLabTabs.ts`); this file only renders and dispatches. */
+import { onWeatherChange } from '../core/weatherConfig';
 import { VISUAL_LAB_CSS } from './visualLabCss';
 import type { SliderSpec } from './visualLabSpecs';
 import { getVisualLabTab, VISUAL_LAB_TABS, type VisualLabTab, type VisualTabId } from './visualLabTabs';
@@ -166,6 +167,9 @@ export function initPixelDialog() {
   window.addEventListener('keydown', onKey);
   cleanups.push(
     () => window.removeEventListener('keydown', onKey),
+    onWeatherChange(() => {
+      if (box.classList.contains('open')) syncDialog(box);
+    }),
     ...VISUAL_LAB_TABS.map((t) => t.onChange((always) => {
       if (always || box.classList.contains('open')) syncDialog(box);
     })),

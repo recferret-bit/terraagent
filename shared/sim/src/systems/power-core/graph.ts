@@ -203,7 +203,23 @@ const POWERED_BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.petroleumWell,
   ENTITY_KIND.supplyDepot,
   ENTITY_KIND.tradeHub,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
 ]);
+
+function defaultBuildingFootprint(kind: number): number {
+  if (kind === ENTITY_KIND.roboticsFactory) return 3;
+  if (
+    kind === ENTITY_KIND.droneControlArray ||
+    kind === ENTITY_KIND.autocannon ||
+    kind === ENTITY_KIND.laserTower
+  ) {
+    return 1;
+  }
+  return 2;
+}
 
 function attachBuildingsToRelays(
   state: PlanetState,
@@ -251,8 +267,9 @@ function attachBuildingsToRelays(
     if (!POWERED_BUILDING_KINDS.has(cols.kind[row])) continue;
     const bId = cols.id[row];
 
-    const w = cols.footprintW?.[row] || 2;
-    const d = cols.footprintD?.[row] || 2;
+    const defFp = defaultBuildingFootprint(cols.kind[row]);
+    const w = cols.footprintW?.[row] || defFp;
+    const d = cols.footprintD?.[row] || defFp;
     const bTiles = getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]);
 
     let bestRelay: RelayNode | null = null;

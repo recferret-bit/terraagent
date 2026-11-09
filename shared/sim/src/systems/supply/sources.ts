@@ -7,8 +7,7 @@ import { defaultHubData } from '../factories-hub/unit';
  * Where unit supply numbers come from (data only, XC-01): what each unit kind uses and what each building kind provides.
  *
  * - A unit uses `supply` of its row: any row with `kind: 'unit'` and a `unit` name that is an `ENTITY_KIND`
- *   (harvester, builder, …), plus the HQ (`hq.t1.supply`, 0: the HQ never counts). A unit row that sits in two tables
- *   (the builder: `grid` and `unitsWorkersBasic`) is read from the first table by name, as `resolveBuilderRow` does.
+ *   (`worker`, …), plus the HQ (`hq.t1.supply`, 0: the HQ never counts). The first row of a repeated unit name wins.
  * - A building provides `supplyProvided` of its row: any row with a `building` name that is an `ENTITY_KIND`
  *   (Command Hub `hub.t1`, Supply Depot `grid.supplyDepot`, …). Other buildings provide 0.
  * - The colony cap is clamped to `hub.t1.supplyCapMax`.
@@ -23,7 +22,7 @@ export interface SupplyProvider {
 export interface SupplySources {
   /** Supply used per alive unit, by `ENTITY_KIND`; kinds absent here use 0. */
   readonly unitSupplyByKind: ReadonlyMap<number, number>;
-  /** Supply of a producible unit by its order name (`'harvester'`, `'builder'`). */
+  /** Supply of a producible unit by its order name (`'worker'`). */
   readonly unitSupplyByName: ReadonlyMap<string, number>;
   /** Cap providers by `ENTITY_KIND`. */
   readonly providers: ReadonlyMap<number, SupplyProvider>;
@@ -34,7 +33,13 @@ export interface SupplySources {
 const ENTITY_KIND_BY_NAME = ENTITY_KIND as Readonly<Record<string, number>>;
 const cache = new WeakMap<object, SupplySources>();
 
-/** The data a supply read uses: the step's compiled data when it has the Hub table, else the W00–W03 defaults. */
+export const UNIT_SUPPLY_TABLE_PATHS: Readonly<Record<string, readonly [string, string, string]>> = {
+  harvester: ['unitsWorkersBasic', 'harvester', 'supply'],
+  builder: ['grid', 'builder', 'supply'],
+  recon: ['combatUnits', 'recon', 'supplyCost'],
+};
+
+/** The data a supply read uses: the step's compiled data when it has the Hub table, else the W00–W07 defaults. */
 export function supplyData(data?: CompiledDataLike): CompiledDataLike {
   return data?.tables?.hub ? data : defaultHubData();
 }
@@ -53,21 +58,34 @@ function kindOf(name: unknown): number | undefined {
   return typeof name === 'string' ? ENTITY_KIND_BY_NAME[name] : undefined;
 }
 
-function collect(data: CompiledDataLike): SupplySources {
-  const unitSupplyByKind = new Map<number, number>();
-  const unitSupplyByName = new Map<string, number>();
-  const providers = new Map<number, SupplyProvider>();
-  for (const [table, row] of tableRows(data)) {
+function scanRows(
+  rows: ReadonlyArray<[string, CompiledRow]>,
+  unitSupplyByKind: Map<number, number>,
+  unitSupplyByName: Map<string, number>,
+  providers: Map<number, SupplyProvider>,
+): void {
+  for (const [table, row] of rows) {
     const unitKind = row.kind === 'unit' ? kindOf(row.unit) : undefined;
-    if (unitKind !== undefined && typeof row.supply === 'number' && !unitSupplyByName.has(String(row.unit))) {
-      unitSupplyByKind.set(unitKind, row.supply);
-      unitSupplyByName.set(String(row.unit), row.supply);
+    const supplyVal = typeof row.supply === 'number' ? row.supply : typeof row.supplyCost === 'number' ? row.supplyCost : undefined;
+    if (unitKind !== undefined && supplyVal !== undefined && !unitSupplyByName.has(String(row.unit))) {
+      unitSupplyByKind.set(unitKind, supplyVal);
+      unitSupplyByName.set(String(row.unit), supplyVal);
     }
     const buildingKind = kindOf(row.building);
     if (buildingKind !== undefined && typeof row.supplyProvided === 'number' && !providers.has(buildingKind)) {
       const label = typeof row.label === 'string' ? row.label : table === 'hub' ? 'Command Hub' : String(row.building);
       providers.set(buildingKind, { kind: buildingKind, building: String(row.building), label, provided: row.supplyProvided });
     }
+  }
+}
+
+function collect(data: CompiledDataLike): SupplySources {
+  const unitSupplyByKind = new Map<number, number>();
+  const unitSupplyByName = new Map<string, number>();
+  const providers = new Map<number, SupplyProvider>();
+  scanRows(tableRows(data), unitSupplyByKind, unitSupplyByName, providers);
+  if (!providers.has(ENTITY_KIND.droneControlArray) || !unitSupplyByKind.has(ENTITY_KIND.recon)) {
+    scanRows(tableRows(defaultHubData()), unitSupplyByKind, unitSupplyByName, providers);
   }
   const tables = data.tables as Record<string, Record<string, CompiledRow> | undefined>;
   const hq = tables.hq?.t1;

@@ -3,18 +3,13 @@ import { hexDistance, placementPowerZoneSources, powerZoneTiles, type CompiledDa
 import type { GameView } from '../../core/registry/types';
 import type { Scene3dService } from '../shared/scene3d';
 import { viewPlacementWorld } from '../shared/placementWorld';
+import { hexTileTriangles, setMeshPositions, waterTileTest } from '../shared/hexTiles3d';
 
 /** Signal blue of the design system (`--ta-blue-hi` / `--ta-blue`): systems, here the colony's power zone. */
 const ZONE_EDGE = 0x5b8cff;
 const ZONE_FILL = 0x1e5bff;
-/** Axial neighbour directions in angular order: corner `k` sits between directions `k` and `k + 1`. */
-const DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
-/** Edge ribbon width as a share of the corner-to-centre distance. */
-const EDGE_INSET = 0.22;
 /** Rebuild at most this often while the zone is shown (terraform may move the ground under it). */
 const REBUILD_MIN_MS = 400;
-
-interface Vec2 { x: number; z: number }
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -75,35 +70,11 @@ export class PowerZoneOverlay3D {
   private rebuild(sources: readonly PowerZoneSource[], mapRadius?: number): void {
     const inMap = (q: number, r: number) => mapRadius === undefined || hexDistance(0, 0, q, r) <= mapRadius;
     const tiles = powerZoneTiles(sources).filter((t) => inMap(t.q, t.r));
-    const inZone = new Set(tiles.map((t) => `${t.q},${t.r}`));
-    const o = this.s3.tileToWorld(0, 0), eq = this.s3.tileToWorld(1, 0), er = this.s3.tileToWorld(0, 1);
-    const offs: Vec2[] = DIRS.map(([dq, dr]) => ({ x: dq * (eq.x - o.x) + dr * (er.x - o.x), z: dq * (eq.z - o.z) + dr * (er.z - o.z) }));
-    // the corner shared by a tile and its neighbours k, k+1 is the centroid of the three centres
-    const corners: Vec2[] = offs.map((a, k) => ({ x: (a.x + offs[(k + 1) % 6].x) / 3, z: (a.z + offs[(k + 1) % 6].z) / 3 }));
-    const fill: number[] = [], edge: number[] = [];
-    for (const t of tiles) {
-      const c = this.s3.tileToWorld(t.q, t.r);
-      const y = c.y + 0.05;
-      for (let k = 0; k < 6; k++) {
-        const a = corners[(k + 5) % 6], b = corners[k]; // the side facing neighbour k
-        fill.push(c.x, y, c.z, c.x + a.x, y, c.z + a.z, c.x + b.x, y, c.z + b.z);
-        if (inZone.has(`${t.q + DIRS[k][0]},${t.r + DIRS[k][1]}`)) continue;
-        const ia = { x: a.x * (1 - EDGE_INSET), z: a.z * (1 - EDGE_INSET) }, ib = { x: b.x * (1 - EDGE_INSET), z: b.z * (1 - EDGE_INSET) };
-        const ye = y + 0.02;
-        edge.push(c.x + a.x, ye, c.z + a.z, c.x + b.x, ye, c.z + b.z, c.x + ib.x, ye, c.z + ib.z);
-        edge.push(c.x + a.x, ye, c.z + a.z, c.x + ib.x, ye, c.z + ib.z, c.x + ia.x, ye, c.z + ia.z);
-      }
-    }
-    this.setPositions(this.fill, fill);
-    this.setPositions(this.edge, edge);
-  }
-
-  private setPositions(mesh: THREE.Mesh, positions: number[]): void {
-    mesh.geometry.dispose();
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    g.computeBoundingSphere();
-    mesh.geometry = g;
+    const terrain = (this.seenTiles as { terrain?: ArrayLike<number> } | null)?.terrain;
+    // draped on the ground (on the water surface over a lake), see `hexTileTriangles`
+    const { fill, edge } = hexTileTriangles(this.s3, tiles, { isWater: waterTileTest(terrain, mapRadius) });
+    setMeshPositions(this.fill, fill);
+    setMeshPositions(this.edge, edge);
   }
 
   dispose(): void {

@@ -31,7 +31,7 @@ function addUnits(host: SimHost, n: number, st: number): void {
   for (let i = 0; i < n; i++) {
     const row = insertRow(s.entities, s.meta.nextEntityId++, host.tick);
     const c = s.entities.cols;
-    c.kind[row] = ENTITY_KIND.builder; c.owner[row] = 0; c.tier[row] = 1;
+    c.kind[row] = ENTITY_KIND.worker; c.owner[row] = 0; c.tier[row] = 1;
     placeSpawnedEntity(s.entities, row, -13 + (i % 6), 5 + Math.floor(i / 6), host.tick);
     c.hp[row] = 100; c.hpMax[row] = 100; c.state[row] = st;
   }

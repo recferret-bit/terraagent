@@ -13,7 +13,7 @@ import { createScenarioPlanet } from '../_loader';
 
 /**
  * Owner feedback (W03): "all works by day, all dies at night; it must just spend the energy". The W03 start colony
- * (Command Hub, 1 Metals Extractor, 1 Solar, HQ + 2 Harvesters) runs a surplus by day, a deficit at night that the HQ
+ * (Command Hub, 1 Metals Extractor, 1 Solar, HQ + 2 Worker Drones T1) runs a surplus by day, a deficit at night that the HQ
  * cell (the top-bar chip) carries, and sheds by groups only once the cell is empty (`power-core/hqCell.ts`).
  */
 type Host = ReturnType<typeof createScenarioPlanet>['host'];

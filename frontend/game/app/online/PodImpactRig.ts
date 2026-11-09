@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { getColonyVisionUniforms } from '@terra/render/lighting/ColonyVisionAndLights';
+import { applyColonyProjectorLight } from '@terra/render/lighting/projectorLitMaterial';
 import { clamp, smoothstep } from '../../descent/math';
 
 /** Forward egress direction from the pod bay down the ramp onto the spawn hex center `(wx, wz)`. */
@@ -140,24 +142,17 @@ export class PodImpactRig {
     }
   }
 
+  /** Egress-pod surfaces are lit like any other surface: sun / moon / hemi plus the colony projectors (headlights). */
+  private litMat(params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
+    return this.trackMat(applyColonyProjectorLight(new THREE.MeshStandardMaterial(params)));
+  }
+
   private buildEgressPod(): void {
-    const hullPrimary = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: 0xd8dce3, roughness: 0.5, metalness: 0.35 }),
-    );
-    const hullSecondary = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: 0xe86a24, roughness: 0.48, metalness: 0.3 }),
-    );
-    const gunmetal = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x262a32, roughness: 0.55, metalness: 0.68 }),
-    );
-    this.coreLightMat = this.trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0x102838,
-        emissive: 0x30d8ff,
-        emissiveIntensity: 3.8,
-        roughness: 0.35,
-      }),
-    );
+    const hullPrimary = this.litMat({ color: 0xd8dce3, roughness: 0.5, metalness: 0.35 });
+    const hullSecondary = this.litMat({ color: 0xe86a24, roughness: 0.48, metalness: 0.3 });
+    const gunmetal = this.litMat({ color: 0x262a32, roughness: 0.55, metalness: 0.68 });
+    // Deck light ring + ramp strips: emissive only while the pod opens and, once settled, by daylight (see updateEgress).
+    this.coreLightMat = this.litMat({ color: 0x102838, emissive: 0x30d8ff, emissiveIntensity: 3.8, roughness: 0.35 });
 
     const shieldProfile: [number, number][] = [
       [0.02, 0],
@@ -307,7 +302,12 @@ export class PodImpactRig {
     this.egressGroup.rotation.y = yaw;
     this.egressGroup.position.y = -2.3 * dismantle;
     this.egressGroup.scale.setScalar(Math.max(0.01, 1 - 0.55 * dismantle));
-    this.coreLightMat.emissiveIntensity = (0.7 + 3.3 * (1 - smoothstep(0.65, 1.0, open))) * open * (1 - dismantle);
+    // The opening burst is the pod powering its deck lights for egress; the steady 0.7 afterwards is a dead shell's
+    // light ring, so it fades with daylight (`uNightFactor` is 0 by day, with day/night off and during descent) and the
+    // ring is dark at night unless a projector lights it.
+    const nightFactor = clamp((getColonyVisionUniforms().uNightFactor.value as number) ?? 0, 0, 1);
+    const burst = 3.3 * (1 - smoothstep(0.65, 1.0, open));
+    this.coreLightMat.emissiveIntensity = (0.7 * (1 - nightFactor) + burst) * open * (1 - dismantle);
 
     for (let i = 0; i < this.petals.length; i++) {
       const p = this.petals[i]!;

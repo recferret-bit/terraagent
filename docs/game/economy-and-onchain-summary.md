@@ -61,7 +61,7 @@
 | Treasury share | 20 % of the platform fee (`TREASURY_FEE_SHARE_BP=2000`) *(proposed)* | NEAR-101, W22-07 |
 
 **Sources and sinks (as designed today):**
-- **Sources:** extractors, harvester and terrain-op yields (sim); cargo mints happen only on export, as stock that already exists. **Mock-only grants:** Guild fixture inventory and dev cargo grants are separately labeled and excluded from organic demand. Real Guild cargo must be purchased or exported from treasury-owned stock.
+- **Sources:** extractors, Worker Drones and terrain-op yields (sim); cargo mints happen only on export, as stock that already exists. **Mock-only grants:** Guild fixture inventory and dev cargo grants are separately labeled and excluded from organic demand. Real Guild cargo must be purchased or exported from treasury-owned stock.
 - **Sinks:** construction and unit costs, running upkeep, terraform ops (`bio.water`), treasury project costs (where the paid tokens end up is undefined, Q6).
 - **Transfers (not sinks):** market trades, fee legs to stall owners, the treasury leg, bounty escrow.
 

@@ -21,7 +21,10 @@ export interface WorkJobRecord extends CrewTally {
   mode: 'repair' | 'terraform' | 'dismantle';
   workerEntityId: number;
   targetEntityId?: number;
-  terrainKey?: TerraformTimeKey;
+  /** Time-table key, or `shallow` / `deep` when the job is a reclaim op (`workOp`). */
+  terrainKey?: TerraformTimeKey | 'shallow' | 'deep';
+  /** Water reclaim: duration and cost come from this op (`reclaim` / `deepReclaim`). */
+  workOp?: 'reclaim' | 'deepReclaim';
   q: number;
   r: number;
   tileIdx: number;

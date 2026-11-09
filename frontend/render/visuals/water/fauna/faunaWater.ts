@@ -5,7 +5,7 @@ import { WATER_STAGE_COMMON_GLSL } from '../glsl/waves';
 
 /**
  * What makes the fauna read as BELOW the surface (fish and jellies share it):
- * - they are drawn before the water (default render order, the water is `renderOrder` 1), so the surface's alpha,
+ * - they are drawn before the water (default render order, the water is `WATER_RENDER_ORDER`), so the surface's alpha,
  *   glints, foam and sky reflection lie over them;
  * - their apparent position wobbles with the surface waves above them (refraction: the image shifts against the local
  *   wave slope, more the deeper it is), using the same Gerstner sum as the water itself;

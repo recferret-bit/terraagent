@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SimCommandV1 } from '@terra/contracts';
 import {
-  allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, getColonyStock, mergeOverrides, nextLandingSite, restore, snapshot, step,
+  allModules, applyTunedEntityHealth, buildPipeline, clientDeltaFrames, createPlanet, effectiveOverrides, getColonyStock, mergeOverrides, nextLandingSite, restore, snapshot, step,
   StepError, tune,
   type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
   type SimModule, type TuneRequest,
@@ -260,7 +260,7 @@ export class PlanetHost {
 
   /**
    * Called after every scheduler pass: for each subscribed planet whose delta is due and whose tick advanced, posts one
-   * `delta` (`diffSince(lastDeltaTick)` + the window's events). Unsubscribed planets build nothing (SIM-H-04).
+   * `delta` (`clientDeltaFrames(lastDeltaTick)`: one frame, or capped chunks for a large tile change, W05-19, + the window's events). Unsubscribed planets build nothing (SIM-H-04).
    */
   flushDeltas(): void {
     const now = this.now();
@@ -279,11 +279,16 @@ export class PlanetHost {
     const toTick = p.state.meta.tick;
     if (toTick <= p.lastDeltaTick) return;
     const t0 = performance.now();
-    const diff = diffSince(p.state, p.lastDeltaTick, { forClient: true }); // hidden ground never leaves the server (D-38)
+    // One shared path with the local host (W05-19): hidden ground never leaves the server (D-38), a large tile change
+    // goes as capped chunks; the window's events ride with the first frame.
+    const frames = clientDeltaFrames(p.state, p.lastDeltaTick);
     p.deltaMs = performance.now() - t0;
-    p.deltaBytes = diff.byteLength;
-    const buf = owned(diff);
-    this.post({ t: 'delta', planetId, fromTick: p.lastDeltaTick, toTick, diff: buf, events: p.windowEvents.splice(0) }, [buf.buffer as ArrayBuffer]);
+    p.deltaBytes = frames.reduce((n, f) => n + f.diff.byteLength, 0);
+    frames.forEach((f, i) => {
+      const buf = owned(f.diff);
+      const events = i === 0 ? p.windowEvents.splice(0) : [];
+      this.post({ t: 'delta', planetId, fromTick: f.fromTick, toTick: f.toTick, diff: buf, events }, [buf.buffer as ArrayBuffer]);
+    });
     p.lastDeltaTick = toTick;
   }
 
@@ -330,6 +335,7 @@ export class PlanetHost {
     try {
       const out = tune(p.tuning, req, this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined);
       if (out.next) {
+        applyTunedEntityHealth(p.state, p.pipeline.config.data, out.next.pipeline.config.data);
         p.pipeline = out.next.pipeline;
         p.tuning.live = out.next.live;
       }

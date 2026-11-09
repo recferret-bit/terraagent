@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { createArchetypeMesh, stripBuildingPlinth } from '@terra/render/kitbash';
-import { TILE_M } from '@terra/render/planets/hex';
+import { TERRAIN } from '@terra/sim';
 import type { FeatureContext, RendererInstance } from '../../core/registry/types';
+import { applyGhostMaterialTint, HexFootprint3D } from '../shared/hexFootprint3d';
 import type { Scene3dService } from '../shared/scene3d';
 import { ghostData } from './ghostContext';
 import type { PlacementGhostState } from './PlacementGhost';
@@ -13,7 +14,6 @@ export const GHOST_IDLE_PICK_MS = 150;
 
 const VALID = 0x39ff88;
 const INVALID = 0xff3b3b;
-const HEX_R = TILE_M / Math.sqrt(3);
 
 const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   commandHub: 'building.commandHub',
@@ -28,23 +28,19 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   waterExtractor: 'building.waterPump',
   petroleumWell: 'building.oilWell',
   tradeHub: 'building.tradeHub',
+  roboticsFactory: 'building.roboticsFactory',
+  droneControlArray: 'building.droneArray',
+  autocannon: 'building.turret',
+  turret: 'building.turret',
+  laserTower: 'building.laserTower',
 };
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-const hexGeo = (): THREE.BufferGeometry => {
-  const g = new THREE.CircleGeometry(HEX_R * 0.96, 6);
-  g.rotateX(-Math.PI / 2);
-  g.rotateY(Math.PI / 6);
-  return g;
-};
-
-/** Translucent 3D footprint hexes + building mesh for the W02 construction placement ghost. */
+/** Translucent 3D footprint hexes (draped on the ground) + building mesh for the W02 construction placement ghost. */
 export class ConstructionGhostRig3D {
   readonly group = new THREE.Group();
-  private readonly geo = hexGeo();
-  private readonly tiles: THREE.Mesh[] = [];
-  private readonly mats = { ok: this.mat(VALID, 0.38), bad: this.mat(INVALID, 0.42) };
+  private readonly footprint: HexFootprint3D;
   private readonly bodyMats = { ok: this.mat(VALID, 0.45), bad: this.mat(INVALID, 0.5) };
   private body: THREE.Object3D | null = null;
   private bodyBuilding = '';
@@ -55,6 +51,8 @@ export class ConstructionGhostRig3D {
   constructor(private readonly s3: Scene3dService) {
     this.group.name = 'construction-ghost-3d';
     this.group.visible = false;
+    this.footprint = new HexFootprint3D(s3, { ok: VALID, bad: INVALID });
+    this.group.add(this.footprint.group);
     s3.scene.add(this.group);
   }
 
@@ -108,20 +106,7 @@ export class ConstructionGhostRig3D {
   }
 
   private tint(valid: boolean): void {
-    if (!this.body || this.bodyTint === valid) return;
-    const m = valid ? this.bodyMats.ok : this.bodyMats.bad;
-    const ghostMats = new Set<THREE.Material>([this.bodyMats.ok, this.bodyMats.bad]);
-    const replaced = new Set<THREE.Material>();
-    this.body.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      for (const old of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-        if (old && !ghostMats.has(old)) replaced.add(old);
-      }
-      mesh.material = m;
-    });
-    for (const old of replaced) old.dispose();
-    this.bodyTint = valid;
+    this.bodyTint = applyGhostMaterialTint(this.body, this.bodyTint, valid, this.bodyMats);
   }
 
   update(state: PlacementGhostState | null, dt: number): void {
@@ -130,30 +115,20 @@ export class ConstructionGhostRig3D {
     if (!state) return;
     this.pulse += dt;
     const k = 0.85 + 0.15 * Math.sin(this.pulse * 5);
-    while (this.tiles.length < state.tiles.length) {
-      const m = new THREE.Mesh(this.geo, this.mats.ok);
-      m.renderOrder = 5;
-      this.tiles.push(m);
-      this.group.add(m);
-    }
+    const water = (t: number) => t === TERRAIN.shallow || t === TERRAIN.deep;
+    this.footprint.update(state.tiles.map((t) => ({ q: t.q, r: t.r, valid: state.valid, water: water(t.terrain) })));
+    this.footprint.setPulse(k);
     let sumX = 0;
     let sumZ = 0;
     let maxY = -Infinity;
     let count = 0;
-    this.tiles.forEach((m, i) => {
-      const t = state.tiles[i];
-      m.visible = Boolean(t);
-      if (!t) return;
+    for (const t of state.tiles) {
       const p = this.s3.tileToWorld(t.q, t.r);
-      m.position.set(p.x, p.y + 0.12, p.z);
-      m.material = state.valid ? this.mats.ok : this.mats.bad;
       sumX += p.x;
       sumZ += p.z;
       if (p.y > maxY) maxY = p.y;
       count++;
-    });
-    this.mats.ok.opacity = 0.3 + 0.1 * k;
-    this.mats.bad.opacity = 0.34 + 0.1 * k;
+    }
     this.ensureBody(state.building);
     if (this.body) {
       if (count > 0) {
@@ -170,8 +145,8 @@ export class ConstructionGhostRig3D {
   dispose(): void {
     this.clearBody();
     this.s3.scene.remove(this.group);
-    this.geo.dispose();
-    for (const m of [...Object.values(this.mats), ...Object.values(this.bodyMats)]) m.dispose();
+    this.footprint.dispose();
+    for (const m of Object.values(this.bodyMats)) m.dispose();
   }
 }
 

@@ -27,11 +27,11 @@ function enqueue(host: SimHost, id: string, task: Record<string, unknown>): void
 function play(host: SimHost, from: number, to: number): void {
   for (let t = from; t < to; t++) {
     if (t === 0) {
-      enqueue(host, 'h1', { kind: 'buildUnit', unit: 'harvester' });
-      enqueue(host, 'sol', { kind: 'build', building: 'solar', q: 5, r: -4 });
+      enqueue(host, 'h1', { kind: 'buildUnit', unit: 'worker' });
+      enqueue(host, 'sol', { kind: 'build', building: 'solar', q: 3, r: -2 });
     }
     if (t === 400) enqueue(host, 'ext2', { kind: 'build', building: 'metalsExtractor', q: 6, r: 0 });
-    if (t === 60) host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-cancel', kind: 'cancelTask', args: { taskId: 'sol' } });
+    if (t === 80) host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-cancel', kind: 'cancelTask', args: { taskId: 'sol' } });
     host.step(1);
   }
 }

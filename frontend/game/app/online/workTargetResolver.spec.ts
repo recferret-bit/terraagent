@@ -93,8 +93,8 @@ describe('workTargetResolver: workJobs & orientation', () => {
 
 describe('workTargetResolver: harvest assignments & tile fallbacks', () => {
   it('resolves harvest assignments and tile terrain/deposit codes across biomes', () => {
-    const harvester = makeRecord({ id: 5, kind: ENTITY_KIND.harvester, q: 0, r: 0, state: ENTITY_STATE.harvesting });
-    const records = new Map<number, EntityMeshRecord>([[5, harvester]]);
+    const worker = makeRecord({ id: 5, kind: ENTITY_KIND.worker, tier: 1, q: 0, r: 0, state: ENTITY_STATE.harvesting });
+    const records = new Map<number, EntityMeshRecord>([[5, worker]]);
 
     const harvestView = {
       planet: { radius: 2 },
@@ -117,9 +117,9 @@ describe('workTargetResolver: harvest assignments & tile fallbacks', () => {
     expect(mineralSites).toHaveLength(1);
     expect(mineralSites[0].targetKind).toBe('minerals');
 
-    harvester.state = ENTITY_STATE.working;
-    harvester.q = 0;
-    harvester.r = 0;
+    worker.state = ENTITY_STATE.working;
+    worker.q = 0;
+    worker.r = 0;
     const tiles: ClientTiles = {
       q: [0],
       r: [0],
@@ -195,8 +195,8 @@ describe('workTargetResolver: idle work-decay suppression & terraformTasks', () 
 
   it('computes computeWorkTarget for units and buildings', () => {
     expect(computeWorkTarget(ENTITY_KIND.hq, ENTITY_STATE.working, true)).toBe(1);
-    expect(computeWorkTarget(ENTITY_KIND.harvester, ENTITY_STATE.harvesting, false)).toBe(1);
-    expect(computeWorkTarget(ENTITY_KIND.harvester, ENTITY_STATE.moving, true)).toBe(0);
+    expect(computeWorkTarget(ENTITY_KIND.worker, ENTITY_STATE.harvesting, false)).toBe(1);
+    expect(computeWorkTarget(ENTITY_KIND.worker, ENTITY_STATE.moving, true)).toBe(0);
     expect(computeWorkTarget(ENTITY_KIND.solar, ENTITY_STATE.active, true)).toBe(1);
     expect(computeWorkTarget(ENTITY_KIND.solar, ENTITY_STATE.active, false)).toBe(0);
   });

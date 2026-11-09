@@ -22,11 +22,27 @@ const ITEM_STAGE_ALIASES: Readonly<Record<string, string>> = {
   trade_hub: 'tradeHub',
   combat_engineer: 'combatEngineer',
   recon: 'scout',
+  autocannon: 'turret',
+  autocannon_turret: 'turret',
+  laserTower: 'pulseTurret',
+  laser_tower: 'pulseTurret',
+  droneControlArray: 'roboticsFactory',
+  drone_control_array: 'roboticsFactory',
+  droneArray: 'roboticsFactory',
 };
 
 function snakeToCamel(id: string): string {
   return id.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
 }
+
+const TERRAFORM_OP_STAGE_UNLOCKS: Readonly<Record<string, number>> = {
+  level: 2,
+  fill: 2,
+  reclaim: 4,
+  irrigate: 4,
+  seed: 4,
+  deepReclaim: 5,
+};
 
 /**
  * Resolves the stage index (`0..10`) at which a building, unit, or order (`itemId`) unlocks in `stages.ts`.
@@ -34,6 +50,9 @@ function snakeToCamel(id: string): string {
  */
 export function resolveItemUnlockStage(itemId: string): number {
   if (!itemId) return 0;
+  if (typeof TERRAFORM_OP_STAGE_UNLOCKS[itemId] === 'number') {
+    return TERRAFORM_OP_STAGE_UNLOCKS[itemId]!;
+  }
   const direct = getItemUnlockStage(itemId);
   if (direct > 0) return direct;
   const aliased = ITEM_STAGE_ALIASES[itemId];

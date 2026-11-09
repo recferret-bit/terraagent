@@ -4,13 +4,14 @@ import {
   createState, createRegistryPipeline, ensureColonyLedger, ensureColonyRecord,
   spawnHqUnit, startBuildingConstruction, hexIndex, DEPOSIT, step,
   getColonyGoals, getColonyQueue, computeColonyResourceRatePerMin, setPlanetTime,
-  getColonyHarvestWeights,
+  getColonyHarvestWeights, queueColonyGoal, setColonyAiEnabled,
 } from '../../src';
 
 function fixture() {
   const state = createState({ planetId: 'goal-regression', planetType: 'temperate', seed: 'goals', radius: 10 });
   const colony = ensureColonyLedger(ensureColonyRecord(state, 0, 0));
   colony.status = 'active';
+  setColonyAiEnabled(state, 0, true); // AI is off by default
   colony.stock['metals.t1'] = 500;
   colony.stock['minerals.t1'] = 300;
   colony.stock['bio.biomass'] = 200;
@@ -47,10 +48,15 @@ describe('W08 owner goal regressions', () => {
 
   it('unsupported goals and water growth are rejected without occupying a queue slot', () => {
     const { state, pipeline } = fixture();
-    for (const args of [{ goal: 'defend_colony' }, { goal: 'grow_economy', resource: 'bio.water' }]) {
+    for (const args of [{ goal: 'expand_territory' }, { goal: 'grow_economy', resource: 'bio.water' }]) {
       const result = step(state, [{ commandId: String(state.meta.tick), colonyIndex: 0, source: 'player', kind: 'queueGoal', args }], 1, pipeline);
       expect(result.outcomes[0].code).toBe('wave_disabled');
     }
+    const w06Res = queueColonyGoal(state, 0, { goal: 'defend_colony' }, state.meta.tick, {
+      flags: parseWaves('..06'),
+    } as never);
+    expect(w06Res.ok).toBe(false);
+    if (!w06Res.ok) expect(w06Res.code).toBe('wave_disabled');
     expect(getColonyGoals(state, 0)).toHaveLength(0);
   });
 
@@ -73,6 +79,10 @@ describe('W08 owner goal regressions', () => {
     expect(getColonyGoals(state, 0)[0].status).toBe('active');
     for (let i = 0; i < 10; i++) step(state, [], 1, pipeline);
     expect(getColonyGoals(state, 0)[0].status).toBe('done');
+    const goalId = getColonyGoals(state, 0)[0].id;
+    for (let i = 0; i < 20; i++) step(state, [], 5, pipeline);
+    expect(getColonyGoals(state, 0)[0].status).toBe('done');
+    expect(getColonyQueue(state, 0).filter((entry) => entry.goalId === goalId)).toHaveLength(0);
   });
 
   it('night deficit stays explained and does not build an endless queue of solar panels', () => {

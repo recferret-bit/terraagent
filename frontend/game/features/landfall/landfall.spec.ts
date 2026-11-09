@@ -12,7 +12,7 @@ import {
   setHqCellEnergy,
   setTileDeposit,
   spawnColonyLanding,
-  spawnHarvesterUnit,
+  spawnWorkerUnit,
   spawnHqUnit,
 } from '@terra/sim';
 import { PROGRESS_BAR_COLOR, UnitHealthBars } from '../../app/online/unitHealthBars';
@@ -168,12 +168,12 @@ describe('HQ view reading: no invented ids, live maxima, state mapping (FF-23, F
   });
 });
 
-describe('W02: Harvester selection, moveUnit, empty-click deselect, and 3D unit health bars', () => {
-  it('selects Harvester on left-click, orders moveUnit on right-click, and hides panel when clicking empty ground', () => {
+describe('W02: Worker Drone selection, moveUnit, empty-click deselect, and 3D unit health bars', () => {
+  it('selects a Worker Drone on left-click, orders moveUnit on right-click, and hides panel when clicking empty ground', () => {
     const body = freshBody();
     const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
     const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
-    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: 3, r: 0 });
+    const harvId = spawnWorkerUnit(host.state, { owner: 0, q: 3, r: 0, tier: 1 });
     host.sync(true);
 
     const hudRoot = document.createElement('div');
@@ -202,16 +202,16 @@ describe('W02: Harvester selection, moveUnit, empty-click deselect, and 3D unit 
     expect(slotEl.textContent).toBe('HQ');
     expect(countEl.textContent).toBe('1');
 
-    // Left-click Harvester at (3, 0) -> selects Harvester
+    // Left-click Worker Drone at (3, 0) -> selects it
     mouse(canvas, 'pointerdown', 0, 200, 100);
     mouse(canvas, 'pointerup', 0, 200, 100);
     expect(mounted.getSelectedEntityId()).toBe(harvId);
     expect(panel.hidden).toBe(false);
-    expect(titleEl.textContent).toBe('HARVESTER DRONE');
+    expect(titleEl.textContent).toBe('WORKER DRONE T1');
     expect(hpEl.textContent).toBe('160 / 160');
-    expect(slotEl.textContent).toBe('HRV');
+    expect(slotEl.textContent).toBe('WRK');
 
-    // Right-click (6, 0) -> orders moveUnit for Harvester
+    // Right-click (6, 0) -> orders moveUnit for the Worker Drone
     const ctx = new MouseEvent('contextmenu', { button: 2, clientX: 300, clientY: 100, bubbles: true, cancelable: true });
     canvas.dispatchEvent(ctx);
     expect(sendSpy).toHaveBeenCalledWith({ type: 'moveUnit', entityId: harvId, q: 6, r: 0 });
@@ -232,7 +232,7 @@ describe('W02: Harvester selection, moveUnit, empty-click deselect, and 3D unit 
 });
 
 describe('W02: 3D unit health and blue progress bars', () => {
-  it('creates one 3D unit health bar per unit for HQ and Harvester', () => {
+  it('creates one 3D unit health bar per unit for HQ and a Worker Drone', () => {
     const scene = new THREE.Scene();
     const bars = new UnitHealthBars(scene);
     const hqMesh = new THREE.Object3D();
@@ -242,7 +242,7 @@ describe('W02: 3D unit health and blue progress bars', () => {
 
     bars.sync([
       { id: 1, kind: ENTITY_KIND.hq, hp: 450, hpMax: 900, mesh: hqMesh },
-      { id: 2, kind: ENTITY_KIND.harvester, hp: 160, hpMax: 160, mesh: harvMesh },
+      { id: 2, kind: ENTITY_KIND.worker, hp: 160, hpMax: 160, mesh: harvMesh },
     ]);
 
     expect(bars.group.children.length).toBe(2);
@@ -265,7 +265,7 @@ describe('W02: 3D unit health and blue progress bars', () => {
     hubMesh.position.set(8, 0.5, 4);
     bars.sync([
       { id: 1, kind: ENTITY_KIND.hq, hp: 900, hpMax: 900, progress: 0.6, mesh: hqMesh },
-      { id: 2, kind: ENTITY_KIND.harvester, hp: 160, hpMax: 160, progress: 0.4, mesh: harvMesh },
+      { id: 2, kind: ENTITY_KIND.worker, hp: 160, hpMax: 160, progress: 0.4, mesh: harvMesh },
       { id: 3, kind: ENTITY_KIND.commandHub, hp: 1500, hpMax: 1500, progress: 0.5, mesh: hubMesh },
     ]);
     expect(bars.group.children.length).toBe(3);
@@ -285,12 +285,12 @@ describe('W02: 3D unit health and blue progress bars', () => {
   });
 });
 
-describe('W02: Reselection while harvester works, deposit reserves inspection, and cancelTask', () => {
-  it('reselects units/buildings while harvester works and dispatches cancelTask', () => {
+describe('W02: Reselection while a worker works, deposit reserves inspection, and cancelTask', () => {
+  it('reselects units/buildings while a worker works and dispatches cancelTask', () => {
     const body = freshBody();
     const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
     const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
-    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: 2, r: 0 });
+    const harvId = spawnWorkerUnit(host.state, { owner: 0, q: 2, r: 0, tier: 1 });
     const bldgId = 88;
     const bRow = insertRow(host.state.entities, bldgId, host.tick);
     setField(host.state.entities, bRow, 'kind', ENTITY_KIND.solar, host.tick);
@@ -322,7 +322,7 @@ describe('W02: Reselection while harvester works, deposit reserves inspection, a
     expect(progBar.style.width).toBe('50%');
     expect(cancelBtn.hidden).toBe(false);
     cancelBtn.click();
-    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `harvester:${harvId}` });
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `worker:${harvId}` });
 
     expect(mounted.clickTile(1, 0)).toBe(true);
     expect(mounted.getSelectedEntityId()).toBe(bldgId);
@@ -378,7 +378,7 @@ describe('W02: Resource deposit inspection and right-click move', () => {
 
     const norm = extractSelectableEntities({
       units: { byId: { '55': { id: 55, q: 3, r: -1, hp: 160, hpMax: 160 } } },
-      harvesters: { '55': { progress: 0.75, state: 'harvesting' } },
+      workers: { '55': { progress: 0.75, state: 'harvesting' } },
     });
     expect(norm.get(55)?.x).toBe(3);
     expect(norm.get(55)?.y).toBe(-1);
@@ -418,7 +418,7 @@ describe('CANCEL on a unit doing a terraform job', () => {
     expect(cancelBtn.hidden).toBe(false);
     expect(cancelBtn.textContent).toBe('CANCEL JOB');
     cancelBtn.click();
-    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `harvester:${hqId}` });
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `worker:${hqId}` });
     mounted.dispose();
   });
 });
@@ -427,7 +427,7 @@ describe('CANCEL JOB: one command per click; the Command Hub cancels only its ru
   it('store and bus both set (the online wiring) -> exactly one cancelTask, through the store', () => {
     freshBody();
     const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
-    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: 2, r: 0 });
+    const harvId = spawnWorkerUnit(host.state, { owner: 0, q: 2, r: 0, tier: 1 });
     host.sync(true);
     const storeSpy = vi.spyOn(host.store, 'sendCommand');
     const busSpy = vi.fn(async () => ({ ok: true as const, appliedAtTick: 1 }));

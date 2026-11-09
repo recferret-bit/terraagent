@@ -148,7 +148,7 @@ export class RegionSampler {
     for (let r = 0; r < state.entities.count; r++) {
       if (cols.hp[r] <= 0 || !colonies.includes(cols.owner[r]!)) continue;
       if (cols.kind[r] === ENTITY_KIND.supplyDepot) depots++;
-      if (cols.kind[r] === ENTITY_KIND.builder) units++;
+      if (cols.kind[r] === ENTITY_KIND.worker) units++;
     }
     const built = Math.max(0, depots - (this.depotsSeen.get(scope) ?? depots));
     this.depotsSeen.set(scope, depots);

@@ -115,10 +115,42 @@ float windStrengthAt(vec2 p) {
 }
 `;
 
+let lastUserWindEditMs = -10_000;
+const userWindListeners = new Set<(params: Readonly<WindParams>) => void>();
+
 export const isWindOn = (): boolean => store.isOn();
 export const setWind = (on: boolean): boolean => store.setOn(on);
 export const toggleWind = (): boolean => store.toggle();
 export const getWindParams = (): Readonly<WindParams> => store.get();
-export const setWindParams = (patch: Partial<WindParams>): Readonly<WindParams> => store.set(patch);
-export const resetWindParams = (): Readonly<WindParams> => store.reset();
+
+export function setWindParams(
+  patch: Partial<WindParams>,
+  source: 'user' | 'sync' = 'user',
+): Readonly<WindParams> {
+  const next = store.set(patch);
+  if (source === 'user') {
+    lastUserWindEditMs = performance.now();
+    for (const fn of userWindListeners) fn(next);
+  }
+  return next;
+}
+
+export function resetWindParams(): Readonly<WindParams> {
+  const next = store.reset();
+  lastUserWindEditMs = performance.now();
+  for (const fn of userWindListeners) fn(next);
+  return next;
+}
+
 export const onWindChange = (fn: (on: boolean, params: Readonly<WindParams>) => void): (() => void) => store.onChange(fn);
+
+export function onWindUserEdit(fn: (params: Readonly<WindParams>) => void): () => void {
+  userWindListeners.add(fn);
+  return () => {
+    userWindListeners.delete(fn);
+  };
+}
+
+export function isUserEditingWind(nowMs = performance.now(), windowMs = 2000): boolean {
+  return nowMs - lastUserWindEditMs < windowMs;
+}

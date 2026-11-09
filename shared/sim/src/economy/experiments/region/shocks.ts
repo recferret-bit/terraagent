@@ -52,7 +52,7 @@ function toggleReserve(host: SimHost, on: boolean, nextId: () => string): void {
   for (const c of host.state.colonies) {
     if (!c) continue;
     const ids: number[] = [];
-    for (let r = 0; r < host.state.entities.count; r++) if (cols.owner[r] === c.index && cols.kind[r] === ENTITY_KIND.builder && cols.hp[r] > 0) ids.push(cols.id[r]!);
+    for (let r = 0; r < host.state.entities.count; r++) if (cols.owner[r] === c.index && cols.kind[r] === ENTITY_KIND.worker && cols.hp[r] > 0) ids.push(cols.id[r]!);
     if (ids.length > 0) host.submit({ colonyIndex: c.index, source: 'player', commandId: nextId(), kind: 'unitReserve', args: { entityIds: ids.slice(0, 64), reserve: on } });
   }
 }

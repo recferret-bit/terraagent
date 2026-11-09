@@ -48,7 +48,7 @@ function hubZoneTiles(ho: number): [number, number][] {
 
 /** Colony `i` of the fixture: Hub, depots, solar plant and its logistics load, all on the seeded regional planet. */
 function placeColony(state: PlanetState, spec: RegionFixtureSpec, i: number): void {
-  state.colonies[i] = { index: i, id: `col_${i}`, name: `Colony ${i}`, color: 0xff6b00, status: 'active', changedAt: 0 };
+  state.colonies[i] = { index: i, id: `col_${i}`, name: `Colony ${i}`, color: 0xff6b00, status: 'active', harvestWeights: { metals: 0, minerals: 0, bio: 0 }, changedAt: 0 };
   const col = ensureColonyLedger(state.colonies[i]!);
   for (const [k, v] of Object.entries(spec.stock)) creditResource(col, k as ResourceKey, v, 0);
   const ho = i * 12; // hubs on the r axis, clear of each other
@@ -65,7 +65,7 @@ function placeColony(state: PlanetState, spec: RegionFixtureSpec, i: number): vo
     for (let p = 0; p < 1 + Math.floor(spec.extractors / 3); p++) put(state, i, ENTITY_KIND.pylon, spec.routeTiles + (p % 8), ho + 1 - Math.floor(p / 8), 1, 200, ENTITY_STATE.active);
     for (let e = 0; e < spec.extractors; e++) put(state, i, ENTITY_KIND.metalsExtractor, spec.routeTiles + (e % 5), ho + 3 + Math.floor(e / 5), 2, 300, ENTITY_STATE.active);
   }
-  for (let u = 0; u < spec.units; u++) put(state, i, ENTITY_KIND.builder, 2, ho + 4 + u, 1, 100, ENTITY_STATE.idle);
+  for (let u = 0; u < spec.units; u++) put(state, i, ENTITY_KIND.worker, 2, ho + 4 + u, 1, 100, ENTITY_STATE.idle);
 }
 
 /**

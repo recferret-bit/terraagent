@@ -27,6 +27,7 @@ export interface HotkeyDef {
  * `features/` (camera, stop, console, pause) are listed for completeness; each owner reads its key itself.
  */
 export const HOTKEYS: readonly HotkeyDef[] = [
+  { key: 'f6', owner: 'combat-tuning', action: 'open the live Combat Lab' },
   { key: 'g', owner: 'terraform-basic', action: 'arm TERRAFORM while the Terraform tab is open (click a hex: the worker terraforms it, then the nearest obstacles)' },
   { key: 'r', owner: 'terraform-basic / construction-menu', action: 'arm REPAIR while the Terraform tab is open; rotates the building ghost while one is up (the brush is blocked then)' },
   { key: 'b', owner: 'core/hud/CommandDock', action: 'toggle the Build tab' },
