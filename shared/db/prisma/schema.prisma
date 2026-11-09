@@ -167,7 +167,7 @@ model Colony {
 // --- economy.prisma ---
 /// W13 economy profile management (ECONOMY §5, W13-37). Exact amounts are `numeric(78,0)` (market atomic units),
 /// JSON carries them as decimal strings. Content of a non-DRAFT version is immutable (triggers in the
-/// `0013_w13_economy` migration); DRAFT edits are optimistic (`revision`). W13-50 (migration `0015_w13_regions`) adds the
+/// `0014_w13_economy` migration); DRAFT edits are optimistic (`revision`). W13-50 (migration `0016_w13_regions`) adds the
 /// region/logistics tables below; their child rows follow the same immutability rule.
 
 /// A named baseline or candidate family.

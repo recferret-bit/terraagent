@@ -7,7 +7,7 @@
 > **Track:** Economy/NEAR (E) · **Flag:** `W13` · **Tag:** `wave-13` · **Scenario:** `tests/scenarios/w13-markets.ts` · **E2E:** `tests/e2e/w13.spec.ts`
 > **Depends on waves:** W10 (Trade Hub, cargo in orbit, `CargoTokenPort`), via W06 (colony accounts, keys, relayer). The Negotiate-goal hook plugs into W08 when it is on. The market map layer is rendered by W04 when it is on.
 > **Specs:** [`NEAR.md`](../../spec/NEAR.md) §1a, §6 (`NEAR-60..65`), §12 (`MARKET_FEE_BP_MAX`), §14, §15 · [`near-economy-features-spec.md`](../../game/near-economy-features-spec.md) F2, §2 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) `market.*`, `market.book`, `market.trade` · [`DATA_MODEL.md`](../../spec/DATA_MODEL.md) `chain.market_order`, `chain.intent_trade` · [`SIMULATION.md`](../../spec/SIMULATION.md) `market.reserve/release/settled` · [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §4.6 Negotiate goal · [`CLIENT.md`](../../spec/CLIENT.md) §8a, §8b (Market layer) · [`player-profile-and-achievements-spec.md`](../../game/player-profile-and-achievements-spec.md) (Merchant, Port Authority) · D-19, D-25, D-26, D-30, D-45 · [`ECONOMY.md`](../../spec/ECONOMY.md) §3/§4 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) §8a `/v1/trade/*`
-> **Owned paths:** `backend/app/src/market/**`, `backend/app/src/near/intents/**`, `backend/app/src/near/infrastructure/adapters/mock/intents*`, `backend/app/src/near/__contract__/intents.contract.ts`, `shared/contracts/src/{commands,events}/market.ts`, `shared/sim/src/systems/trade/market-*.ts`, `shared/sim/src/systems/trade/agent/**`, `backend/app/src/trade/**` (bot API), `frontend/trade.html`, `frontend/trade/**`, `frontend/game/features/market/**`, `backend/app/src/economy/**`, `shared/sim/src/economy/**`, `scripts/economy/**`, `tests/economy/**`, shared DB migrations (lead-owned), `tests/scenarios/w13-*.ts`, `tests/e2e/w13.spec.ts`. Uses from W00 without owning: `IntentsPort` (W00-30), mock base (W00-32), outbox + relay (W00-37), contract harness (W00-38).
+> **Owned paths:** `backend/app/src/market/**`, `backend/app/src/near/intents/**`, `backend/app/src/near/infrastructure/adapters/mock/intents*`, `backend/app/src/near/__contract__/intents.contract.ts`, `shared/contracts/src/{commands,events}/market*.ts`, `shared/contracts/src/commands/unit-reserve.ts`, `shared/contracts/src/events/prestige-completed.ts`, `shared/sim/src/data/{logistics,market,prestige,regions}.ts`, `shared/sim/src/systems/trade/market-*.ts`, `shared/sim/src/systems/trade/agent/**`, `backend/app/src/trade/**` (bot API), `frontend/trade.html`, `frontend/trade/**`, `frontend/game/features/{market,market-dev,near-dev,projects,queue-panel}/**`, `backend/app/src/economy/**`, `shared/sim/src/economy/**`, `scripts/economy/**`, `tests/economy/**`, shared DB migrations (lead-owned), `tests/scenarios/w13-*.ts`, `tests/e2e/w13.spec.ts`. Uses from W00 without owning: `IntentsPort` (W00-30), mock base (W00-32), outbox + relay (W00-37), contract harness (W00-38).
 
 ## Goal
 
@@ -49,9 +49,9 @@ Every Trade Hub is a market stall. USDC is the default quote; barter and optiona
 
 ## Features covered
 
-- [ ] Market commands, module commands, push and events, errors (on W00-30's `IntentsPort`) — W13-01
+- [ ] Market commands (`market-place-order`, `market-cancel-order`, `market-set-hub-fee`, `unit-reserve`), module commands (`market-reserve`, `market-release`, `market-settled`), push and events (`market-order-requested`, `market-order-rejected`, `market-cancel-requested`, `market-hub-fee-set`, `market-settlement-failed`, `trade-settled`, `fee-earned`, `prestige-completed`), errors (on W00-30's `IntentsPort`) — W13-01
 - [ ] Decisions on partial fills, fee payer and self-trade (recorded) — W13-02
-- [ ] Market config: `MARKET_FEE_BP_MAX`, TTL options, min size, price tick, open-order limit — W13-03
+- [ ] Market, logistics, prestige and regions data tables (`market`, `logistics`, `prestige`, `regions`): `MARKET_FEE_BP_MAX`, TTL options, min size, price tick, open-order limit — W13-03, W13-43, W13-51, W13-52
 - [ ] `MockIntentsAdapter`: verifier ledger, `deposit` (mt_transfer_call semantics), `withdraw`, `simulate` (sum to zero, balances, deadline, nonce), `execute` (atomic) — W13-04, W13-05
 - [ ] Intents contract suite — W13-06
 - [ ] `IntentsPort.signTokenDiff` in the mock adapter: NEP-413 `token_diff` signing with custodial colony keys — W13-07
@@ -73,7 +73,7 @@ Every Trade Hub is a market stall. USDC is the default quote; barter and optiona
 - [ ] Market map-layer data feed for W04 — W13-25
 - [ ] Negotiate-goal hook (trade side) for W08 — W13-26
 - [ ] Achievement progress events: Merchant, Port Authority — W13-27
-- [ ] Analytics — W13-28 · Telemetry — W13-29 · Dev console — W13-30
+- [ ] Analytics — W13-28 · Telemetry — W13-29 · Dev console & client features (`market-dev`, `near-dev`, `projects`, `queue-panel`) — W13-30, W13-43
 - [ ] Matcher unit tests (priority, partial, fee, zero-sum, self-trade) — W13-31
 - [ ] Mobile acceptance — W13-32 · Docs — W13-33 · Perf — W13-34 · E2E — W13-35
 - [ ] Bot API (D-45): API keys and `/v1/trade/*` REST+stream, actor kind `bot` — W13-58 · allowances, kill switch, idempotency, rate limits — W13-59 · sim command source `'bot'` — W13-60
