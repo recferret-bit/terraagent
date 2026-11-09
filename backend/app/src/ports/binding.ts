@@ -1,4 +1,4 @@
-import { Module, type Type } from '@nestjs/common';
+import { Module, type ModuleMetadata, type Provider, type Type } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { APP_ENV } from '../core/tokens.js';
 import type { AdapterDef } from './adapters.js';
@@ -10,9 +10,28 @@ export interface PortSlot {
   readonly select: (env: Record<string, unknown>) => string;
 }
 
+/** Extra providers and controllers. Adapter classes stay discovered; the binding module does not import them. */
+export interface BindExtras {
+  readonly controllers?: NonNullable<ModuleMetadata['controllers']>;
+  readonly providers?: NonNullable<ModuleMetadata['providers']>;
+  readonly exports?: NonNullable<ModuleMetadata['exports']>;
+}
+
 /** Ports with no adapter at all stay unbound (later waves add them); a port with adapters but none of the selected kind fails boot. */
-export function bindPorts(moduleName: string, slots: readonly PortSlot[], adapters: readonly AdapterDef[]) {
-  const providers = slots.flatMap((slot) => {
+export function bindPorts(moduleName: string, slots: readonly PortSlot[], adapters: readonly AdapterDef[], extras?: BindExtras) {
+  const ports = slotProviders(slots, adapters);
+  class Binding {}
+  Object.defineProperty(Binding, 'name', { value: moduleName });
+  Module({
+    controllers: [...(extras?.controllers ?? [])],
+    providers: [...ports, ...(extras?.providers ?? [])],
+    exports: [...ports.map((p) => p.provide), ...(extras?.exports ?? [])],
+  })(Binding);
+  return Binding;
+}
+
+function slotProviders(slots: readonly PortSlot[], adapters: readonly AdapterDef[]): Array<Provider & { provide: PortSlot['token'] }> {
+  return slots.flatMap((slot) => {
     const mine = adapters.filter((a) => a.port === slot.token);
     if (!mine.length) return [];
     return [{
@@ -26,8 +45,4 @@ export function bindPorts(moduleName: string, slots: readonly PortSlot[], adapte
       },
     }];
   });
-  class Binding {}
-  Object.defineProperty(Binding, 'name', { value: moduleName });
-  Module({ providers, exports: providers.map((p) => p.provide) })(Binding);
-  return Binding;
 }

@@ -4,7 +4,9 @@ import { NotifierPort } from '../ports/notifier.port.js';
 import { discoverAdapters } from '../ports/adapters.js';
 import { bindPorts } from '../ports/binding.js';
 import { guardedEnv } from '../ports/prod-guard.js';
+import { NotifyDevController } from './notify-dev.controller.js';
 import { notifyAdapter } from './notify-selection.js';
+import { PRESENCE, colonyPresence } from './presence.js';
 
 export const notifyAdapters = await discoverAdapters(fileURLToPath(new URL('./adapters/', import.meta.url)));
 
@@ -12,4 +14,13 @@ export const env = guardedEnv('notify', { NOTIFY_ADAPTER: z.string().optional() 
   [{ name: 'Notifier', token: NotifierPort, key: 'NOTIFY_ADAPTER', kind: notifyAdapter }], notifyAdapters);
 
 /** Binds `NotifierPort` to the adapter selected by `NOTIFY_ADAPTER` (the only importer of `notify/adapters`). */
-export const NotifyModule = bindPorts('NotifyModule', [{ name: 'Notifier', token: NotifierPort, select: (e) => notifyAdapter(e as Record<string, string>) }], notifyAdapters);
+export const NotifyModule = bindPorts(
+  'NotifyModule',
+  [{ name: 'Notifier', token: NotifierPort, select: (e) => notifyAdapter(e as Record<string, string>) }],
+  notifyAdapters,
+  {
+    controllers: [NotifyDevController],
+    providers: [{ provide: PRESENCE, useValue: colonyPresence }],
+    exports: [PRESENCE],
+  },
+);
