@@ -4,6 +4,7 @@ import { setAutopilotHandler } from './autopilot';
 export { awayPolicy } from './policy';
 export { allowRule, withinDirective } from './allow';
 export { denyRule } from './deny';
+export { withinAutoTrade } from './auto-trade';
 export { applyAutopilot, readAwaySettings, type ColonyAwaySettings } from './store';
 export type { AwayCommand, AwayDecision, AwayPolicyView } from './types';
 
