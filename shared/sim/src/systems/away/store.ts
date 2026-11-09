@@ -66,11 +66,34 @@ export function emptySettings(data: CompiledDataLike): ColonyAwaySettings {
   };
 }
 
+function cloneSettings(row: ColonyAwaySettings): ColonyAwaySettings {
+  const budget = {} as ColonyAwaySettings['budget'];
+  for (const family of AWAY_FAMILIES) {
+    const src = row.budget[family];
+    budget[family] = { perDirectivePct: src.perDirectivePct, perSessionPct: src.perSessionPct };
+  }
+  const session = row.session;
+  return {
+    mode: row.mode,
+    awayRaids: row.awayRaids,
+    budget,
+    session: session
+      ? {
+          open: session.open,
+          colonyId: session.colonyId,
+          start: { ...session.start },
+          spent: { ...session.spent },
+          exhausted: { ...session.exhausted },
+        }
+      : closedSession(),
+  };
+}
+
 export function readAwaySettings(state: PlanetState, colonyIndex: number): ColonyAwaySettings | undefined {
   const blob = state.blobs[BLOB]?.value as AwayBlob | undefined;
   const row = blob?.byColony?.[String(colonyIndex)];
   if (!row) return undefined;
-  const copy = structuredClone(row);
+  const copy = cloneSettings(row);
   if (!copy.session) copy.session = closedSession();
   return copy;
 }

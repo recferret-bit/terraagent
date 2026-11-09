@@ -4,8 +4,7 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { awayPolicy } from './policy';
 import { readAwaySettings } from './store';
-import type { AwayActor, AwayPolicyView } from './types';
-import { AWAY_FAMILIES } from './types';
+import type { AwayActor, AwayFamily, AwayPolicyView } from './types';
 
 const EXEMPT = new Set(['player', 'dev', 'admin']);
 const PRIORITIES = { economy: 50, expansion: 50, defense: 50, power: 50, terraform: 50 } as Record<PriorityKey, number>;
@@ -33,19 +32,23 @@ export function colonyIsAway(state: PlanetState, colonyIndex: number): boolean {
   return presenceAway(state, colonyIndex);
 }
 
+function familyBudget(settings: ReturnType<typeof readAwaySettings>, family: AwayFamily): AwayPolicyView['budget'][AwayFamily] {
+  const row = settings?.budget[family];
+  const session = settings?.session;
+  return {
+    perDirectivePct: row?.perDirectivePct ?? 40,
+    perSessionPct: row?.perSessionPct ?? 60,
+    stock: { start: session?.start[family] ?? 0, spent: session?.spent[family] ?? 0 },
+  };
+}
+
 function budgetOf(state: PlanetState, colonyIndex: number): AwayPolicyView['budget'] {
   const settings = readAwaySettings(state, colonyIndex);
-  const out = {} as AwayPolicyView['budget'];
-  for (const family of AWAY_FAMILIES) {
-    const row = settings?.budget[family];
-    const session = settings?.session;
-    out[family] = {
-      perDirectivePct: row?.perDirectivePct ?? 40,
-      perSessionPct: row?.perSessionPct ?? 60,
-      stock: { start: session?.start[family] ?? 0, spent: session?.spent[family] ?? 0 },
-    };
-  }
-  return out;
+  return {
+    metals: familyBudget(settings, 'metals'),
+    minerals: familyBudget(settings, 'minerals'),
+    bio: familyBudget(settings, 'bio'),
+  };
 }
 
 function guardPoints(ctx: StepContext): number {
