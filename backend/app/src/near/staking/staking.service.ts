@@ -88,7 +88,8 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     this.stops.push(
       this.planets.onWarp((_planetId, k) => {
         if (k > 1 && this.flags.has('W20')) {
-          this.advanceClockMs(k * 60_000);
+          this.advanceClockMs(k * 3_600_000);
+          void this.positionSync.syncAll().catch(() => undefined);
         }
       }),
     );

@@ -15,6 +15,7 @@ import {
 } from '../../application/ports/cargo-token.port.js';
 import { NearException, type NearErrorCode } from '../../domain/errors.js';
 import { CargoStatusService } from '../../cargo/cargo-status.service.js';
+import { OutboxRelayService } from '../../application/outbox/outbox.module.js';
 import { mockOauthSecret, signMockToken } from '../../identity/mock-token.js';
 import { SocialAuthService } from '../../identity/social-auth.service.js';
 import { FAULT_KINDS } from '../mock/fault-plan.js';
@@ -71,6 +72,7 @@ export class NearMockCommand implements OnModuleInit {
     private readonly social: SocialAuthService,
     @Optional() @Inject(NEAR_ADAPTER_CARGO) private readonly cargo?: CargoTokenPort,
     @Optional() @Inject(CargoStatusService) private readonly cargoStatus?: CargoStatusService,
+    @Optional() @Inject(OutboxRelayService) private readonly outboxRelay?: OutboxRelayService,
   ) {}
 
   onModuleInit(): void {
@@ -88,8 +90,15 @@ export class NearMockCommand implements OnModuleInit {
       name: 'near.mock.fail',
       help: 'Set the mock fail rate (0..1) for one port. 0 forces success.',
       args: failArgs,
-      run: ({ port, rate }) => {
+      run: async ({ port, rate }) => {
         mockChainControls.setFail(port, rate);
+        if (rate === 0 && 'chainOutbox' in this.prisma && this.prisma.chainOutbox) {
+          await this.prisma.chainOutbox.updateMany({
+            where: { status: 'FAILED' },
+            data: { nextAttemptAt: new Date(0) },
+          });
+          await this.outboxRelay?.pollOnce();
+        }
         return { port, rate };
       },
     });
