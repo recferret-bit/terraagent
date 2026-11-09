@@ -30,6 +30,7 @@ import { DeedImageRendererService } from './deed-image.renderer.js';
 import { DeedMintOutboxService } from './deed-mint-outbox.service.js';
 import { DeedSettledService } from './deed-settled.service.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
+import { W20ScenarioSeedService } from './w20-scenario-seed.service.js';
 
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
@@ -79,6 +80,7 @@ export class NearDeedController {
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
     @Optional() @Inject(OutboxRelayService) private readonly outboxRelay?: OutboxRelayService,
+    @Optional() @Inject(W20ScenarioSeedService) private readonly w20Seed?: W20ScenarioSeedService,
   ) {}
 
   @Get()
@@ -90,6 +92,7 @@ export class NearDeedController {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
+    await this.w20Seed?.waitForSeed();
     const playerId = this.extractOptionalPlayerId(req);
     await this.debounceService.flushReady();
 

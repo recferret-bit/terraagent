@@ -31,6 +31,7 @@ import { DeedSettledService } from './deed/deed-settled.service.js';
 import { DeedShareController } from './deed/deed-share.controller.js';
 import { DeedTelemetryService } from './deed/deed-telemetry.service.js';
 import { DeedRepository } from './deed/deed.repository.js';
+import { W20ScenarioSeedService } from './deed/w20-scenario-seed.service.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
@@ -80,6 +81,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     StakingPositionSyncService,
     StakingService,
     NearMockCommand,
+    W20ScenarioSeedService,
   ],
   imports: [NearInfrastructureModule, OutboxModule, NotifyModule],
   exports: [

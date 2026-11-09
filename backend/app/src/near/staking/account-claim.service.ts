@@ -100,6 +100,10 @@ export class AccountClaimService {
     return response;
   }
 
+  clearColonyClaim(colonyId: string): void {
+    this.claimedAccounts.delete(colonyId.trim() || 'col_0');
+  }
+
   async isAccountClaimed(colonyId: string, accountId?: string): Promise<AccountClaimStatus> {
     const normColonyId = colonyId.trim() || 'col_0';
     const memByColony = this.claimedAccounts.get(normColonyId);
