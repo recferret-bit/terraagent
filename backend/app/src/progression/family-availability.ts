@@ -17,7 +17,10 @@ export function isFamilyAvailable(
   hasWave: (wave: string) => boolean,
 ): boolean {
   const spec = ACHIEVEMENT_FAMILY_BY_ID.get(familyId);
-  return Boolean(spec && hasWave(spec.producerWave));
+  if (!spec) return false;
+  if (hasWave(spec.producerWave)) return true;
+  if (familyId === 'settler' && hasWave('W20')) return true;
+  return false;
 }
 
 /** Returns 'available' when the family's wave is enabled, otherwise 'coming_soon'. */
@@ -37,7 +40,7 @@ export function resolveAchievementStatus(
   if (earnedIds.has(def.id)) {
     return 'earned';
   }
-  if (!hasWave(def.producerWave)) {
+  if (!hasWave(def.producerWave) && !(def.familyId === 'settler' && hasWave('W20'))) {
     return 'coming_soon';
   }
   return 'locked';
@@ -47,7 +50,7 @@ export function resolveAchievementStatus(
 export function availableFamilyIds(hasWave: (wave: string) => boolean): Set<AchievementFamilyId> {
   const available = new Set<AchievementFamilyId>();
   for (const family of ACHIEVEMENT_FAMILIES) {
-    if (hasWave(family.producerWave)) {
+    if (hasWave(family.producerWave) || (family.familyId === 'settler' && hasWave('W20'))) {
       available.add(family.familyId);
     }
   }

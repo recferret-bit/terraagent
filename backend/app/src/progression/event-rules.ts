@@ -35,6 +35,7 @@ export const PROGRESSION_EVENT_RULES: Readonly<
   faunaKilled: { family: 'exterminator', fields: ['count'], fallback: 1 },
   nestDestroyed: { family: 'nest-breaker', fields: ['count'], fallback: 1 },
   raidRepelled: { family: 'unbreached', fields: ['count'], fallback: 1, predicate: (d) => d.unbreached === true },
+  deedSettled: { family: 'settler', fields: ['count'], fallback: 1 },
 };
 
 export function progressEventId(event: unknown): string {
