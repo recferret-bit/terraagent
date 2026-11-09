@@ -61,6 +61,9 @@ export class PilotAccess {
   }
 
   private async restore(): Promise<void> {
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('host') === 'local') {
+      return;
+    }
     const epoch = this.loginEpoch;
     try {
       const response = await fetch('/v1/auth/refresh', { method: 'POST', credentials: 'include' });

@@ -127,6 +127,32 @@
   margin-top: var(--ta-s3);
 }
 
+.ta-orbital-splash__queue {
+  margin-top: var(--ta-s2);
+  padding: var(--ta-s3) var(--ta-s4);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s4);
+}
+
+.ta-orbital-splash__queue[hidden] {
+  display: none;
+}
+
+.ta-orbital-splash__queue-text {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-text-2);
+}
+
+.ta-orbital-splash__cancel {
+  flex-shrink: 0;
+}
+
 /* Dev-build local fallback host (no game server): always visible, above the HUD, never interactive. */
 .ta-offline-badge {
   position: fixed;

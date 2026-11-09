@@ -44,11 +44,12 @@ export function createSessionBootRig(params: {
   opts: OnlineSessionOptions;
   getBootOverlay: () => BootOverlay | null;
   onBooted: (boot: BootAuthResult) => void;
+  onQueueCancelled: () => void;
 }): SessionBootRig {
   const {
     mode, search, flags, planetKind, allowLocalFallback,
     skipDescent, fromSpaceDescent, uiParent, scene, opts,
-    getBootOverlay, onBooted,
+    getBootOverlay, onBooted, onQueueCancelled,
   } = params;
 
   const loc = typeof location !== 'undefined'
@@ -62,8 +63,20 @@ export function createSessionBootRig(params: {
       storage: opts.storage,
       search,
       planetType: devPlanetTypeOfKind(planetKind),
+      planetId: opts.planetId,
+      sectorIntent: opts.sectorIntent,
+      pollQueuedHome: opts.pollQueuedHome ?? flags.set.has('W11'),
+      enqueueOnNew: opts.enqueueOnNew ?? Boolean(opts.sectorIntent),
+      pollIntervalMs: opts.pollIntervalMs,
+      wait: opts.wait,
       allowLocalFallback,
       onStatus: (s) => getBootOverlay()?.setSplashStatus(s),
+      onQueueStatus: (status, cancel) => getBootOverlay()?.showQueueStatus(status, cancel),
+      onQueueCancelled: (ticketId) => {
+        getBootOverlay()?.hideQueueStatus();
+        opts.onQueueCancelled?.(ticketId);
+        onQueueCancelled();
+      },
       onError: (m) => {
         const bo = getBootOverlay();
         return bo ? bo.showError(m) : Promise.reject(new Error(m));

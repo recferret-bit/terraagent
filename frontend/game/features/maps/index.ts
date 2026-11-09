@@ -1,7 +1,10 @@
 import type * as THREE from 'three';
 import {
   MAP_LAYER_META,
+  type AtlasManifestV1,
   type MapLayerId,
+  type PlanetSummaryV1,
+  type SectorId,
 } from '@terra/contracts';
 import type { RTSCamera } from '../../app/RTSCamera';
 import {
@@ -10,6 +13,7 @@ import {
   type HudPanelInstance,
 } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
+import type { SectorIntentInput, SectorIntentV1 } from '../../ui/lobby';
 import {
   mapLayerRegistry,
   MapsController,
@@ -18,6 +22,7 @@ import {
   type MapLayer,
   type MapLayerRegistry,
   type MinimapStats,
+  type PlanetRasterUpdateOptions,
 } from '../../maps';
 
 export interface MapsFeatureService {
@@ -28,11 +33,30 @@ export interface MapsFeatureService {
   getRegisteredLayers(): MapLayer[];
   getVisibleLayers(): MapLayer[];
   isEnabled(): boolean;
-  updateTiles(tiles: ClientTiles, opts?: { planetId?: string; radius?: number; changedIndices?: readonly number[] }): number;
+  updateTiles(tiles: ClientTiles, opts?: PlanetRasterUpdateOptions): number;
   openGlobalMap(): void;
   closeGlobalMap(): void;
   toggleLayer(id: MapLayerId, force?: boolean): boolean;
   panToTile(q: number, r: number): void;
+  selectSector(sectorId: SectorId | 'auto' | null): SectorIntentV1;
+  selectSectorAtTile(q: number, r: number): SectorIntentV1 | null;
+  setSectorIntent(intent: SectorIntentInput): SectorIntentV1;
+  getSectorIntent(): SectorIntentV1;
+  getSelectedSectorId(): SectorId | null;
+  setHomeContext(opts: {
+    readonly homeSectorId?: SectorId | null;
+    readonly homeTile?: { readonly q: number; readonly r: number } | null;
+    readonly currentSectorId?: SectorId | null;
+    readonly cameraTile?: { readonly q: number; readonly r: number } | null;
+  }): void;
+  setPlanetSummary(summary: PlanetSummaryV1 | null): void;
+  setAtlasManifest(manifest: AtlasManifestV1 | null): void;
+  bindSectorPicker(
+    container: HTMLElement,
+    summary: PlanetSummaryV1,
+    onSelect?: (intent: SectorIntentV1) => void,
+    queuePaused?: boolean,
+  ): () => void;
 }
 
 declare module '../../core/registry/types' {
@@ -86,6 +110,16 @@ export function mountMapsFeature(
     closeGlobalMap: () => controller.openClose.close(),
     toggleLayer: (id, force) => controller.chipController.toggleLayer(id, force),
     panToTile: (q, r) => controller.panToTile(q, r),
+    selectSector: (sectorId) => controller.selectSector(sectorId),
+    selectSectorAtTile: (q, r) => controller.selectSectorAtTile(q, r),
+    setSectorIntent: (intent) => controller.setSectorIntent(intent),
+    getSectorIntent: () => controller.getSectorIntent(),
+    getSelectedSectorId: () => controller.getSelectedSectorId(),
+    setHomeContext: (opts) => controller.setHomeContext(opts),
+    setPlanetSummary: (summary) => controller.setPlanetSummary(summary),
+    setAtlasManifest: (manifest) => controller.setAtlasManifest(manifest),
+    bindSectorPicker: (container, summary, onSelect, queuePaused) =>
+      controller.bindSectorPicker(container, summary, onSelect, queuePaused),
   };
   ctx.services.maps = service;
 

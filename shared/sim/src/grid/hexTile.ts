@@ -98,3 +98,63 @@ export function hexTileRing(radius: number, i: number): number[] {
   }
   return out;
 }
+
+/**
+ * Lookup table mapping `(2q - r) mod 7` (`0..6`) to the `[dq, dr]` offset that reaches the unique
+ * 7-sub-tile radius-1 macro-hex center (`(2 * cq - cr) mod 7 === 0`) within `hexDistance <= 1`.
+ */
+const HEX_TILE_CENTER_OFFSET_BY_REM: readonly (readonly [number, number])[] = [
+  [0, 0], // rem 0 -> (0, 0)
+  [0, 1], // rem 1 -> + (0, 1) gives rem 0
+  [-1, 0], // rem 2 -> + (-1, 0) gives rem 0
+  [-1, 1], // rem 3 -> + (-1, 1) gives rem 0
+  [1, -1], // rem 4 -> + (1, -1) gives rem 0
+  [1, 0], // rem 5 -> + (1, 0) gives rem 0
+  [0, -1], // rem 6 -> + (0, -1) gives rem 0
+];
+
+/**
+ * Whether global axial coordinate `(q, r)` is a center of the canonical 7-sub-tile radius-1 hex-tile lattice
+ * (`bq = [3, -1], br = [1, 2]`, determinant 7, where `(2q - r) mod 7 === 0`).
+ */
+export function isHexTileCenter(q: number, r: number): boolean {
+  if (!Number.isSafeInteger(q) || !Number.isSafeInteger(r)) return false;
+  return (((2 * q - r) % 7) + 7) % 7 === 0;
+}
+
+/**
+ * Maps any global axial tile `(q, r)` in O(1) to the unique 7-sub-tile lattice center `{ q, r }`
+ * whose radius-1 disk (`hexDistance <= 1`) contains `(q, r)`.
+ */
+export function hexTileCenter(q: number, r: number): { q: number; r: number } {
+  const rem = (((2 * q - r) % 7) + 7) % 7;
+  const [dq, dr] = HEX_TILE_CENTER_OFFSET_BY_REM[rem]!;
+  return { q: q + dq + 0, r: r + dr + 0 };
+}
+
+/**
+ * Returns the 7 sub-tiles (`hexDistance(tq, tr, cq, cr) <= 1`, center first followed by the 6 `HEX_DIRS` neighbours)
+ * of the D-45 hex-tile disk centered at `(cq, cr)`. Filters to tiles inside `planetRadius` when given.
+ */
+export function hexTileDisk(
+  qOrCenter: number | { readonly q: number; readonly r: number },
+  rOrRadius?: number,
+  planetRadius?: number,
+): Array<{ q: number; r: number }> {
+  const cq = typeof qOrCenter === 'number' ? qOrCenter : qOrCenter.q;
+  const cr = typeof qOrCenter === 'number' ? rOrRadius! : qOrCenter.r;
+  const limitRadius = typeof qOrCenter === 'number' ? planetRadius : rOrRadius;
+  const hx = typeof limitRadius === 'number' && limitRadius >= 0 ? hexIndex(limitRadius) : null;
+  const out: Array<{ q: number; r: number }> = [];
+  if (!hx || hx.indexOf(cq, cr) >= 0) {
+    out.push({ q: cq + 0, r: cr + 0 });
+  }
+  for (const [dq, dr] of HEX_DIRS) {
+    const nq = cq + dq + 0;
+    const nr = cr + dr + 0;
+    if (!hx || hx.indexOf(nq, nr) >= 0) {
+      out.push({ q: nq, r: nr });
+    }
+  }
+  return out;
+}

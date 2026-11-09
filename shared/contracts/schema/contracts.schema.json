@@ -3425,6 +3425,10 @@
             "minLength": 1,
             "type": "string"
           },
+          "landingSlotId": {
+            "pattern": "^slot_sec_-?\\d+_-?\\d+_\\d+$",
+            "type": "string"
+          },
           "name": {
             "maxLength": 64,
             "minLength": 1,
@@ -3443,6 +3447,10 @@
             "maximum": 32767,
             "minimum": -32768,
             "type": "integer"
+          },
+          "sectorId": {
+            "pattern": "^sec_-?\\d+_-?\\d+$",
+            "type": "string"
           },
           "slotIndex": {
             "maximum": 9007199254740991,

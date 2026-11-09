@@ -114,7 +114,7 @@ declare module '../../core/registry/types' {
       terrain: Uint8Array;
       prep: Uint8Array;
       height?: Float32Array;
-      owner: Int8Array;
+      owner: Int16Array | Int8Array;
       deposit?: Uint8Array;
       explored?: Uint8Array;
     };

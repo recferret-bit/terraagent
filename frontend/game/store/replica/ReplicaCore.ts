@@ -138,6 +138,7 @@ export class ReplicaCore {
   tilesChanged(): boolean {
     const stamp = this.state.grid.layers.changedAt;
     if (this.continuationTiles) return true;
+    if ((this.state.blobs.colonyExplored?.changedAt ?? -1) > this.lastViewTick) return true;
     for (let i = 0; i < stamp.length; i++) if (stamp[i] > this.lastViewTick) return true;
     return this.lastViewTick < 0;
   }

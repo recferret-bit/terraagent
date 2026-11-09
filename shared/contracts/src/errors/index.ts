@@ -62,6 +62,9 @@ export const REST_ERROR_CODES = [
   'planet_not_recruiting', 'queue_full', 'near_unavailable', 'internal',
   // W01 `/me/home`: the new colony's landing was refused (409, `errorCode: COLONY_SEAT_REJECTED`, the reject code in `details.code`)
   'seat_rejected',
+  // W11 persistent worlds & sector admission (MATCHMAKING §0):
+  'unsupported_mode', 'ticket_open', 'already_has_colony', 'planet_paused', 'planet_faulted', 'planet_archived',
+  'sector_full', 'invalid_sector', 'too_late', 'party_full', 'same_planet_transfer', 'flag_incompatible',
   // generic fallbacks by status when the domain code has no REST code of its own (BE-17): 409, 503, 413, 429
   'conflict', 'unavailable', 'payload_too_large', 'rate_limited',
 ] as const;

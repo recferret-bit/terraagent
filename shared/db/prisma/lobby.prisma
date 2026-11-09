@@ -1,0 +1,164 @@
+/// Immutable pinned atlas manifest versions per planet (`(planetId, atlasVersion)` unique, W11-02).
+model PlanetAtlasVersion {
+  id                  String   @id
+  planetId            String   @map("planet_id")
+  atlasVersion        Int      @map("atlas_version")
+  topologyVersion     Int      @map("topology_version")
+  genVersion          Int      @map("gen_version")
+  configVersion       Int      @map("config_version")
+  configHash          String   @map("config_hash")
+  atlasHash           String   @map("atlas_hash")
+  resourceProfileId   String   @map("resource_profile_id")
+  resourceProfileHash String   @map("resource_profile_hash")
+  manifestJson        Json     @map("manifest_json")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([planetId, atlasVersion])
+  @@index([planetId])
+  @@map("planet_atlas_version")
+  @@schema("core")
+}
+
+/// Gameplay sector admission & seat accounting (`(planetId, sectorId)` unique, W11-02).
+model PlanetSector {
+  id                String   @id
+  planetId          String   @map("planet_id")
+  sectorId          String   @map("sector_id")
+  continentId       String?  @map("continent_id")
+  macroQ            Int      @map("macro_q")
+  macroR            Int      @map("macro_r")
+  centerQ           Int      @map("center_q")
+  centerR           Int      @map("center_r")
+  kind              String   @default("land")
+  radius            Int      @default(24)
+  foundingCapacity  Int      @default(4) @map("founding_capacity")
+  validatedCapacity Int      @default(4) @map("validated_capacity")
+  reservedSeats     Int      @default(0) @map("reserved_seats")
+  foundedSeats      Int      @default(0) @map("founded_seats")
+  mainResource      String?  @map("main_resource")
+  scarceResources   Json?    @map("scarce_resources")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([planetId, sectorId])
+  @@index([planetId])
+  @@map("planet_sector")
+  @@schema("core")
+}
+
+/// Safe landing slots inside gameplay sectors (`(planetId, landingSlotId)` and `(planetId, sectorId, slotIndex)` unique, W11-02).
+model SectorLandingSlot {
+  id            String    @id
+  planetId      String    @map("planet_id")
+  sectorId      String    @map("sector_id")
+  landingSlotId String    @map("landing_slot_id")
+  slotIndex     Int       @map("slot_index")
+  q             Int
+  r             Int
+  state         String    @default("FREE")
+  reservationId String?   @map("reservation_id")
+  colonyId      String?   @map("colony_id")
+  epoch         Int       @default(0)
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([planetId, landingSlotId])
+  @@unique([planetId, sectorId, slotIndex])
+  @@index([planetId, sectorId, state])
+  @@map("sector_landing_slot")
+  @@schema("core")
+}
+
+/// Atomic sector landing-slot reservation record (`ticketId` and `colonyId` unique, W11-02).
+model SectorReservation {
+  id            String   @id
+  ticketId      String   @unique @map("ticket_id")
+  colonyId      String   @unique @map("colony_id")
+  playerId      String   @map("player_id")
+  planetId      String   @map("planet_id")
+  sectorId      String   @map("sector_id")
+  landingSlotId String   @map("landing_slot_id")
+  slotIndex     Int      @map("slot_index")
+  q             Int
+  r             Int
+  epoch         Int      @default(0)
+  state         String   @default("HELD")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([planetId, sectorId, state])
+  @@index([playerId, state])
+  @@map("sector_reservation")
+  @@schema("core")
+}
+
+/// Matchmaking admission ticket (`colonyId` unique, `(playerId, idempotencyKey)` unique, W11-02).
+model MatchTicket {
+  id                    String    @id
+  playerId              String    @map("player_id")
+  partyId               String?   @map("party_id")
+  idempotencyKey        String?   @map("idempotency_key")
+  mode                  String
+  planetId              String    @map("planet_id")
+  planetType            String    @map("planet_type")
+  sectorIntentKind      String    @default("auto") @map("sector_intent_kind")
+  requestedSectorId     String?   @map("requested_sector_id")
+  state                 String    @default("QUEUED")
+  priority              Int       @default(0)
+  colonyId              String    @unique @map("colony_id")
+  reservedPlanetId      String?   @map("reserved_planet_id")
+  reservedSectorId      String?   @map("reserved_sector_id")
+  reservedLandingSlotId String?   @map("reserved_landing_slot_id")
+  reservationEpoch      Int?      @map("reservation_epoch")
+  reservationExpiresAt  DateTime? @map("reservation_expires_at") @db.Timestamptz(3)
+  attempts              Int       @default(0)
+  failureCode           String?   @map("failure_code")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, state])
+  @@index([state, priority, createdAt])
+  @@map("match_ticket")
+  @@schema("core")
+}
+
+/// Persistent party row (5-member cap enforced in persistence store, W11-02).
+model Party {
+  id                String        @id
+  code              String        @unique
+  leaderId          String        @map("leader_id")
+  planetId          String?       @map("planet_id")
+  sectorIntentKind  String?       @map("sector_intent_kind")
+  requestedSectorId String?       @map("requested_sector_id")
+  state             String        @default("OPEN")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  members PartyMember[]
+
+  @@index([leaderId])
+  @@map("party")
+  @@schema("core")
+}
+
+/// Party membership row (`(partyId, playerId)` primary key, W11-02).
+model PartyMember {
+  partyId               String   @map("party_id")
+  playerId              String   @map("player_id")
+  handle                String
+  joinedAt              DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+  colonyId              String?  @map("colony_id")
+  reservedSectorId      String?  @map("reserved_sector_id")
+  reservedLandingSlotId String?  @map("reserved_landing_slot_id")
+  spawnStatus           String   @default("PENDING") @map("spawn_status")
+
+  party Party @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@id([partyId, playerId])
+  @@index([playerId])
+  @@map("party_member")
+  @@schema("core")
+}

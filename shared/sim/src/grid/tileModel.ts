@@ -4,8 +4,25 @@ import type { EngineDiff } from '../host/diff';
 import { isPreparedGround } from './geo';
 import { noteTileStamp } from './sectors';
 import type { CompiledDataLike } from '../kernel/config';
-import type { Grid, PlanetMeta, PlanetState } from '../kernel/state';
+import type { Blob, Grid, PlanetMeta, PlanetState } from '../kernel/state';
 import type { TypedArray } from '../kernel/types';
+import {
+  checkGridTileExplored,
+  clearColonyExploration,
+  COLONY_EXPLORED_BLOB,
+  colonyBitsetByteLength,
+  getColonyExploredBit,
+  getExploredByColony,
+  hydrateColonyBitsetsFromExploredLayer,
+  hydrateLegacyExplorationOnSnapshotObject,
+  hydrateStateColonyExplored,
+  isColonyTileExplored,
+  linkGridExploration,
+  recordColonyTileExplored,
+  setColonyExploredBit,
+  type ColonyExploredBlobValue,
+  type ExplorableTilesLike,
+} from './exploration';
 import {
   DEPOSIT,
   PREP,
@@ -19,7 +36,30 @@ import {
   type TerrainKey,
 } from './layers';
 
-export { DEPOSIT, PREP, TERRAIN, type DepositCode, type DepositKey, type PrepCode, type PrepKey, type TerrainCode, type TerrainKey };
+export {
+  clearColonyExploration,
+  COLONY_EXPLORED_BLOB,
+  colonyBitsetByteLength,
+  DEPOSIT,
+  getColonyExploredBit,
+  getExploredByColony,
+  hydrateColonyBitsetsFromExploredLayer,
+  hydrateLegacyExplorationOnSnapshotObject,
+  hydrateStateColonyExplored,
+  isColonyTileExplored,
+  linkGridExploration,
+  PREP,
+  setColonyExploredBit,
+  TERRAIN,
+  type ColonyExploredBlobValue,
+  type DepositCode,
+  type DepositKey,
+  type ExplorableTilesLike,
+  type PrepCode,
+  type PrepKey,
+  type TerrainCode,
+  type TerrainKey,
+};
 
 export interface TileLayersLike {
   count?: number;
@@ -28,12 +68,13 @@ export interface TileLayersLike {
   deposit?: Uint8Array;
   richness?: Float32Array;
   height?: Float32Array;
-  owner?: Int8Array;
+  owner?: Int16Array | Int8Array;
   explored?: Uint8Array;
+  exploredByColony?: Record<number, Uint8Array>;
   anchors?: Uint8Array;
   graceUntil?: Float64Array;
   changedAt?: Uint32Array;
-  [layer: string]: TypedArray | ArrayLike<number> | number | undefined;
+  [layer: string]: TypedArray | ArrayLike<number> | Record<number, Uint8Array> | number | undefined;
 }
 
 export type GridLike = PlanetState | Grid | TileLayersLike;
@@ -107,11 +148,17 @@ const DEFAULT_LIVING_MOVE_BP = (() => {
 })();
 
 const gridMetaMap = new WeakMap<object, PlanetMeta>();
+const gridBlobsMap = new WeakMap<object, Record<string, Blob>>();
 
-/** Associates a `Grid` and its `layers` with the owning `PlanetMeta` so tile mutations know the current tick. */
-export function linkGridMeta(grid: Grid, meta: PlanetMeta): void {
+/** Associates a `Grid` and its `layers` with the owning `PlanetMeta` and `blobs` so tile mutations know the current tick and per-colony exploration store. */
+export function linkGridMeta(grid: Grid, meta: PlanetMeta, blobs?: Record<string, Blob>): void {
   gridMetaMap.set(grid, meta);
   gridMetaMap.set(grid.layers, meta);
+  if (blobs) {
+    gridBlobsMap.set(grid, blobs);
+    gridBlobsMap.set(grid.layers, blobs);
+  }
+  linkGridExploration(grid, meta, blobs ?? gridBlobsMap.get(grid));
   for (const l of tileLayers()) {
     if (!Object.prototype.hasOwnProperty.call(grid, l.name)) {
       Object.defineProperty(grid, l.name, {
@@ -123,11 +170,21 @@ export function linkGridMeta(grid: Grid, meta: PlanetMeta): void {
   }
 }
 
-/** The layers, tile count and (if linked) planet meta behind any grid shape. */
-export function resolveTileLayers(src: GridLike): { layers: TileLayersLike; count: number; meta?: PlanetMeta } {
+/** The layers, tile count and (if linked) planet meta and blobs behind any grid shape. */
+export function resolveTileLayers(src: GridLike): {
+  layers: TileLayersLike;
+  count: number;
+  meta?: PlanetMeta;
+  blobs?: Record<string, Blob>;
+} {
   if ('grid' in src && 'meta' in src) {
     const state = src as PlanetState;
-    return { layers: state.grid.layers as unknown as TileLayersLike, count: state.grid.count, meta: state.meta };
+    return {
+      layers: state.grid.layers as unknown as TileLayersLike,
+      count: state.grid.count,
+      meta: state.meta,
+      blobs: state.blobs,
+    };
   }
   if ('layers' in src && typeof src.count === 'number') {
     const grid = src as Grid;
@@ -135,11 +192,12 @@ export function resolveTileLayers(src: GridLike): { layers: TileLayersLike; coun
       layers: grid.layers as unknown as TileLayersLike,
       count: grid.count,
       meta: gridMetaMap.get(grid) ?? gridMetaMap.get(grid.layers),
+      blobs: gridBlobsMap.get(grid) ?? gridBlobsMap.get(grid.layers),
     };
   }
   const direct = src as TileLayersLike;
   const count = typeof direct.count === 'number' ? direct.count : direct.terrain.length;
-  return { layers: direct, count, meta: gridMetaMap.get(direct) };
+  return { layers: direct, count, meta: gridMetaMap.get(direct), blobs: gridBlobsMap.get(direct) };
 }
 
 /** Returns `true` when `tileIdx` is an integer within `[0, count)`. */
@@ -244,17 +302,13 @@ export function bumpPathEpoch(meta: PlanetMeta | undefined): void {
   if (meta) meta.pathEpoch = (meta.pathEpoch ?? 0) + 1;
 }
 
-function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx: number, tick?: number): void {
-  if (!layers.changedAt) return;
-  if (tick !== undefined) {
-    layers.changedAt[tileIdx] = tick;
-    noteTileStamp(layers.changedAt, tileIdx, tick);
-    return;
-  }
+function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx: number, tick?: number): number {
   const baseTick = meta ? meta.tick + 1 : 1;
-  const nextStamp = Math.max(baseTick, (layers.changedAt[tileIdx] ?? 0) + 1);
+  const nextStamp = tick !== undefined ? tick : Math.max(baseTick, (layers.changedAt?.[tileIdx] ?? 0) + 1);
+  if (!layers.changedAt) return nextStamp;
   layers.changedAt[tileIdx] = nextStamp;
   noteTileStamp(layers.changedAt, tileIdx, nextStamp);
+  return nextStamp;
 }
 
 function setTileLayerAndBumpPathEpoch(
@@ -322,19 +376,25 @@ export function setTileHeight(grid: GridLike, tileIdx: number, height: number, t
   stampTile(layers, meta, tileIdx, tick);
 }
 
-/** Marks `tileIdx` as explored by `colonyIdx` (sets bit `1 << colonyIdx` on `explored`) and stamps `changedAt`. */
+/**
+ * Marks `tileIdx` as explored by `colonyIdx` (updates per-colony bitset for any `colonyIdx >= 0`, plus legacy `u8`
+ * bitmask `1 << colonyIdx` when `0 <= colonyIdx < 8`) and stamps `changedAt`.
+ */
 export function markTileExplored(grid: GridLike, tileIdx: number, colonyIdx: number, tick?: number): void {
-  if (!isValidTileIndex(grid, tileIdx) || colonyIdx < 0 || colonyIdx >= 8) return;
-  const { layers, meta } = resolveTileLayers(grid);
-  if (layers.explored) layers.explored[tileIdx] |= 1 << colonyIdx;
-  stampTile(layers, meta, tileIdx, tick);
+  if (!isValidTileIndex(grid, tileIdx) || !Number.isInteger(colonyIdx) || colonyIdx < 0) return;
+  const { layers, count, meta, blobs } = resolveTileLayers(grid);
+  const stamp = stampTile(layers, meta, tileIdx, tick);
+  recordColonyTileExplored(layers, count, tileIdx, colonyIdx, stamp, meta, blobs);
 }
 
-/** Returns `true` if `colonyIdx` has explored `tileIdx` (`(explored & (1 << colonyIdx)) !== 0`). */
+/**
+ * Returns `true` if `colonyIdx >= 0` has explored `tileIdx` (via per-colony bitset, or legacy `u8` bitmask for `0..7`;
+ * never reads `layers.explored` for `colonyIdx >= 8`).
+ */
 export function isTileExplored(grid: GridLike, tileIdx: number, colonyIdx: number): boolean {
-  if (!isValidTileIndex(grid, tileIdx) || colonyIdx < 0 || colonyIdx >= 8) return false;
-  const { layers } = resolveTileLayers(grid);
-  return ((layers.explored?.[tileIdx] ?? 0) & (1 << colonyIdx)) !== 0;
+  if (!isValidTileIndex(grid, tileIdx) || !Number.isInteger(colonyIdx) || colonyIdx < 0) return false;
+  const { layers, count } = resolveTileLayers(grid);
+  return checkGridTileExplored(layers, count, tileIdx, colonyIdx);
 }
 
 export interface TileChangeOp {

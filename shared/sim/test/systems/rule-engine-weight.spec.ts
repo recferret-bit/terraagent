@@ -35,7 +35,7 @@ function makeTestPlanet(radius = 20): PlanetState {
 
 function claimTerritoryRadiusForTest(state: PlanetState, colonyIndex: number, cq: number, cr: number, radius: number): void {
   const hx = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const terrainLayer = state.grid.layers.terrain as Uint8Array;
   const prepLayer = state.grid.layers.prep as Uint8Array;
   for (let i = 0; i < state.grid.count; i++) {

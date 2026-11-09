@@ -13,6 +13,7 @@ import scn_w07_first_contact from './w07-first-contact';
 import scn_w07_stress from './w07-stress';
 import scn_w08_stages_goals from './w08-stages-goals';
 import scn_w10_cargo_trade_hub from './w10-cargo-trade-hub';
+import scn_w11_lobby from './w11-lobby';
 import scn_w12_profile from './w12-profile';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
@@ -29,5 +30,6 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w07-stress', def: scn_w07_stress },
   { file: 'w08-stages-goals', def: scn_w08_stages_goals },
   { file: 'w10-cargo-trade-hub', def: scn_w10_cargo_trade_hub },
+  { file: 'w11-lobby', def: scn_w11_lobby },
   { file: 'w12-profile', def: scn_w12_profile },
 ];

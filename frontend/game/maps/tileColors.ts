@@ -1,4 +1,5 @@
 import { PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
+import { isColonyTileExplored } from '@terra/sim';
 import type { ClientTiles } from '../store/replica/viewCodec';
 
 export type TileColorStateKey =
@@ -105,7 +106,7 @@ export function classifyTileState(
   index: number,
   colonyIndex = 0,
 ): TileColorStateKey {
-  if (tiles.explored && (colonyIndex < 0 || colonyIndex >= 8 || ((tiles.explored[index] ?? 0) & (1 << colonyIndex)) === 0)) {
+  if ((tiles.explored || tiles.exploredByColony) && !isColonyTileExplored(tiles, index, colonyIndex)) {
     return 'unexplored';
   }
   const prep = tiles.prep ? (tiles.prep[index] ?? PREP_CODES.wild) : PREP_CODES.wild;

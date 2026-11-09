@@ -1,3 +1,4 @@
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
@@ -29,10 +30,10 @@ export interface SpawnHqOpts {
 
 /**
  * Marks every tile within `viewRadius` of `(centerQ, centerR)` as explored for `owner` (`markTileExplored`; only tiles
- * not explored yet are written and stamped). `explored` is a `u8` bit mask, so colony indices 0..7 only (GP-17).
+ * not explored yet are written and stamped). Supports all non-negative colony indices (`W11-39`).
  */
 export function revealVision(state: PlanetState, owner: number, centerQ: number, centerR: number, viewRadius: number, tick: number): void {
-  if (owner < 0 || owner >= 8) return;
+  if (!Number.isInteger(owner) || owner < 0) return;
   const idx = hexIndex(state.grid.radius);
   for (let dr = -viewRadius; dr <= viewRadius; dr++) {
     const dqMin = Math.max(-viewRadius, -dr - viewRadius);
@@ -77,6 +78,8 @@ export function spawnHqUnit(state: PlanetState, opts: SpawnHqOpts, ctx?: StepCon
 
   revealVision(state, opts.owner, opts.q, opts.r, rowNum(hqRow, 'viewRadius'), tick);
   syncHqView(state, row, tick, data);
+  recordAtlasColonyFounding(state, opts.owner, opts.q, opts.r, tick);
+  syncAtlasColonySectorState(state, tick);
   return id;
 }
 

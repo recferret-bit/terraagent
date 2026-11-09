@@ -214,7 +214,7 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
 /** Own obstacle hexes (forest / rock, no deposit) on screen right of the command dock, nearest the HQ first. */
 const ownObstaclesOnScreen = (page: Page) =>
   page.evaluate(() => {
-    const o = (window as unknown as { __online: { colonyIndex?: number; tileToScreen(q: number, r: number): { x: number; y: number } | null; store: { latest: { planet: { radius: number }; entities: Float32Array; count: number } | null; latestTiles: { terrain: Uint8Array; owner: Int8Array; deposit: Uint8Array } | null } } }).__online;
+    const o = (window as unknown as { __online: { colonyIndex?: number; tileToScreen(q: number, r: number): { x: number; y: number } | null; store: { latest: { planet: { radius: number }; entities: Float32Array; count: number } | null; latestTiles: { terrain: Uint8Array; owner: Int16Array; deposit: Uint8Array } | null } } }).__online;
     const v = o.store.latest!, t = o.store.latestTiles!, R = v.planet.radius, stride = v.entities.length / v.count;
     // The HQ row (kind 3) names the player's colony when the session index is not set yet.
     let hq = { q: 0, r: 0, owner: o.colonyIndex ?? 0 };

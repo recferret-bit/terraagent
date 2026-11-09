@@ -14,6 +14,7 @@ export * from './ecs/columns';
 export * from './ecs/store';
 export * from './grid/hex';
 export * from './grid/layers';
+export * from './grid/exploration';
 export * from './grid/tileModel';
 export * from './grid/path';
 export * from './grid/geo';
@@ -21,6 +22,7 @@ export * from './grid/hexTile';
 export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
 export { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType, type DevPlanetType } from './gen/flat';
+export { buryWildDeposits, depositGroundMask } from './gen/depositGround';
 export { getDepositRichnessBp } from './gen/temperate';
 export {
   faunaHives,
@@ -37,6 +39,7 @@ export {
 } from './gen/world';
 export * from './grid/sectors';
 export * from './grid/subsurface';
+export * from './atlas';
 export * from './world/presence';
 export * from './world/landingPlanner';
 export * from './gen/spawnSlots';

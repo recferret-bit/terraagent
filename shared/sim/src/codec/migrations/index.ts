@@ -1,3 +1,5 @@
+import { hydrateLegacyExplorationOnSnapshotObject } from '../../grid/exploration';
+
 /**
  * Snapshot migration registry (SIM-D-07). A migration upgrades the DECODED plain snapshot object (envelope with
  * `header` and `state`) from one `SIM_VERSION` to a later one. Chains are followed greedily (largest step that does
@@ -7,8 +9,42 @@ export type SnapshotObject = { header: { simVersion: number; [k: string]: unknow
 export type MigrationFn = (snapshot: SnapshotObject) => SnapshotObject;
 
 interface Migration { from: number; to: number; fn: MigrationFn }
-// Version 3 changes the live transport contract, not canonical persisted state.
-const builtins: readonly Migration[] = [{ from: 2, to: 3, fn: (snapshot) => snapshot }];
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const toInt16 = (v: unknown): Int16Array | undefined => {
+  if (v instanceof Int16Array) return v;
+  if (v && typeof (v as ArrayLike<number>).length === 'number') {
+    return Int16Array.from(v as ArrayLike<number>);
+  }
+  return undefined;
+};
+
+/** W11-37: widen tile and entity `owner` columns from `i8` (`Int8Array`) to `i16` (`Int16Array`), preserving `-1` and `0..32767`. */
+function migrateV3ToV4(snapshot: SnapshotObject): SnapshotObject {
+  const state = snapshot.state;
+  if (!isRecord(state)) return snapshot;
+  if (isRecord(state.grid) && isRecord(state.grid.layers)) {
+    const owner = toInt16(state.grid.layers.owner);
+    if (owner) state.grid.layers.owner = owner;
+  }
+  if (isRecord(state.entities) && isRecord(state.entities.cols)) {
+    const owner = toInt16(state.entities.cols.owner);
+    if (owner) state.entities.cols.owner = owner;
+  }
+  hydrateLegacyExplorationOnSnapshotObject(state);
+  if (isRecord(state.meta)) {
+    state.meta.simVersion = 4;
+  }
+  return snapshot;
+}
+
+// Version 3 changes the live transport contract, not canonical persisted state; version 4 widens owner identity to i16 (W11-37).
+const builtins: readonly Migration[] = [
+  { from: 2, to: 3, fn: (snapshot) => snapshot },
+  { from: 3, to: 4, fn: migrateV3ToV4 },
+];
 const migrations: Migration[] = [];
 
 const nextMigration = (from: number, target: number): Migration | undefined =>

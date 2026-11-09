@@ -1,4 +1,5 @@
 import { inHex, planeToAxial } from '@terra/sim/grid/hex';
+import type { AtlasMapAdapter } from './atlasMapAdapter';
 import { canvasPixelToAxial, mapScaleForRadius } from './rasterCache';
 
 export interface MinimapInputOptions {
@@ -6,6 +7,7 @@ export interface MinimapInputOptions {
   readonly canvas: HTMLCanvasElement;
   readonly expandButton?: HTMLElement | null;
   readonly getRadius: () => number;
+  readonly getAdapter?: () => AtlasMapAdapter | null;
   readonly onPanToTile: (q: number, r: number) => void;
 }
 
@@ -73,6 +75,7 @@ export function clientToClampedAxial(
   clientY: number,
   canvas: HTMLCanvasElement,
   radius: number,
+  adapter?: AtlasMapAdapter | null,
 ): { q: number; r: number } {
   const rect = canvas.getBoundingClientRect();
   const canvasWidth = canvas.width || 180;
@@ -81,6 +84,9 @@ export function clientToClampedAxial(
   const h = rect.height > 0 ? rect.height : canvasHeight;
   const cx = ((clientX - rect.left) / w) * canvasWidth;
   const cy = ((clientY - rect.top) / h) * canvasHeight;
+  if (adapter && adapter.isAtlas) {
+    return adapter.clampPixelToAxial(cx, cy, canvasWidth);
+  }
   return clampPixelToAxial(cx, cy, canvasWidth, radius);
 }
 
@@ -111,6 +117,7 @@ export function bindMinimapInput(
       e.clientY,
       opts.canvas,
       opts.getRadius(),
+      opts.getAdapter?.(),
     );
     opts.onPanToTile(q, r);
   };
@@ -125,6 +132,7 @@ export function bindMinimapInput(
       e.clientY,
       opts.canvas,
       opts.getRadius(),
+      opts.getAdapter?.(),
     );
     opts.onPanToTile(q, r);
   };

@@ -162,7 +162,7 @@ describe('viewCodec power fields sync', () => {
         prep: new Uint8Array(1),
         deposit: new Uint8Array(1),
         height: new Float32Array(1),
-        owner: new Int8Array(1),
+        owner: new Int16Array(1),
         explored: new Uint8Array(1),
       },
       entities: [
