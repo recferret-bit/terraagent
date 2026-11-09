@@ -58,6 +58,7 @@ describe('W13-28 market analytics aggregate', () => {
     expect(r.executionCostBpByQuote.USDC).toBe(200);
     expect(r.feeLeakage.source).toBe('assumption');
     expect(r.feeLeakage.estimatedLeakedFeeByQuote.USDC).toBe('50000');
+    expect(r.botVolumeByResource).toEqual({});
     expect(JSON.stringify(r)).not.toMatch(/mock|fixture\.bot|"b"/);
   });
 

@@ -17,11 +17,11 @@ export class MarketAnalyticsService {
     const since = new Date(Date.now() - h * 3_600_000);
     const rows = await this.prisma.intentTrade.findMany({
       where: { planetId, state: 'FINAL', settledAt: { gte: since } },
-      select: { quote: true, buyerColonyId: true, sellerColonyId: true, buyerActorKind: true, sellerActorKind: true, organic: true, notional: true, platformFee: true, stallFee: true },
+      select: { base: true, amount: true, quote: true, buyerColonyId: true, sellerColonyId: true, buyerActorKind: true, sellerActorKind: true, organic: true, notional: true, platformFee: true, stallFee: true },
     });
     const platformFeeBp = this.policy.current().platformFeeBp;
     return computeMarketAnalytics(rows.map((r) => ({
-      ...r, notional: BigInt(r.notional.toFixed(0)), platformFee: BigInt(r.platformFee.toFixed(0)), stallFee: BigInt(r.stallFee.toFixed(0)),
+      ...r, amount: BigInt(r.amount.toFixed(0)), notional: BigInt(r.notional.toFixed(0)), platformFee: BigInt(r.platformFee.toFixed(0)), stallFee: BigInt(r.stallFee.toFixed(0)),
     })), h, platformFeeBp);
   }
 }
