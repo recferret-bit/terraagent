@@ -236,6 +236,12 @@ export class GamePlanets {
     return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'mode', planetId, mode });
   }
 
+  /** One synthetic event to joined sockets. Not tapped: the caller emits `planet.event` itself. */
+  fanEvent(planetId: string, event: SimEvent): void {
+    if (!this.loaded.has(planetId)) return;
+    this.each(planetId, (s) => s.onEvent?.([event]));
+  }
+
   /** Effective warp of a planet (1 when never warped). */
   warpOf(planetId: string): number {
     return this.warps.get(planetId) ?? 1;

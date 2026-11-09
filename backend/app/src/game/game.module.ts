@@ -29,6 +29,8 @@ import { attachAwayDigest, AwayDigestService, createDigestStory, liveBaselineRea
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { DevPresence } from './presence/dev-presence';
+import { HardModeClock } from './presence/hard-mode-clock';
 import { gameLandingHost } from './home-landing-host';
 import { DevLedgerController } from './ledger/dev-ledger.controller';
 import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
@@ -125,6 +127,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
     EconomyTelemetry,
     SnapshotService,
     ProgressionEventForwarder,
+    HardModeClock,
+    DevPresence,
     {
       provide: AwayDigestService,
       inject: [APP_ENV, PRISMA, GamePlanets, LOGGER],
@@ -136,7 +140,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
       }),
     },
   ],
-  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;

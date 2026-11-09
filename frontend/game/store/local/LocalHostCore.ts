@@ -8,6 +8,7 @@ import { describeJournalProblem, resumeJournal } from './hostJournal';
 import { LocalCargoRelay } from './localCargoRelay';
 import { scenarioSource, type PlanetSource, type SeededPlanet } from './planetSource';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
+import { colonyPresenceAway, LocalHardModeClock, planLocalPresence } from './devPresence';
 import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
 
 export interface LocalHostDeps {
@@ -62,6 +63,8 @@ export class LocalHostCore {
   private readonly sched: PlanetScheduler;
   private readonly playerId = newId('pr');
   private readonly cargoRelay = new LocalCargoRelay();
+  /** `?host=local` hard-mode clock. The server copy W09-19 reads is `HardModeClock`. */
+  private readonly hardMode = new LocalHardModeClock();
 
   /** `waves`: the flags a dev `scenario` switch runs with (intersected with the scenario's waves). */
   private constructor(private readonly waves: readonly string[], private readonly deps: LocalHostDeps, private readonly post: LocalPost) {
@@ -338,9 +341,9 @@ export class LocalHostCore {
     this.queue.push({ colonyIndex: hasColony ? 0 : null, source: pre.dev ? 'dev' : 'player', commandId: id, kind, args: pre.args });
   }
 
-  // ---- dev server (warp, time, scenario, tune, local.reset, ledger) -----------------------------------------------
+  // ---- dev server (warp, time, scenario, tune, local.reset, ledger, away, back, colony.eliminate) -----
 
-  /** The local `DevServer` (`warp`, `time`, `scenario`, `local.reset`, `tune`, `ledger`): what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
+  /** The local `DevServer`: what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
   async devCommand(name: string, args: unknown): Promise<unknown> {
     const a = (args ?? {}) as Record<string, unknown>;
     switch (name) {
@@ -355,8 +358,32 @@ export class LocalHostCore {
       case 'ledger': return this.ledger.view(this.planetId, String(a.account ?? 'colony:0'), Number(a.limit ?? 10) || 10);
       case 'near.mock.fail': return this.cargoRelay.devFail(a);
       case 'cargo.grant': return this.cargoRelay.devGrant(a, this.queue);
+      case 'away':
+      case 'back':
+      case 'colony.eliminate': return this.applyDevPresence(name, a);
       default: throw new LocalDevError('host_unavailable', `"${name}" needs the game server; not available on this host`);
     }
+  }
+
+  /** `away` / `back` apply on the next step (one tick). `colony.eliminate` rejects `not_away` and does not start the clock. */
+  private applyDevPresence(name: string, args: Record<string, unknown>): unknown {
+    if (this.down) throw new LocalDevError('host_unavailable', 'the local planet is down');
+    const plan = planLocalPresence({
+      name, args, waves: this.waves, state: this.host.state, tick: this.host.tick,
+      nowMs: Math.round(this.deps.wallMs()), queued: this.queue, clock: this.hardMode,
+    });
+    if (!plan.ok) throw new LocalDevError(plan.code, plan.message);
+    if (plan.command) this.queue.push(plan.command);
+    if (plan.step) {
+      this.stepOnce(1);
+      this.flushDelta();
+      if (colonyPresenceAway(this.host.state, plan.colonyIndex) !== plan.expectAway) {
+        throw new LocalDevError('rejected', 'system.presence was not applied');
+      }
+    }
+    if (plan.event) this.server({ v: 1, t: 'event', tick: plan.event.atTick, d: plan.event });
+    if (!plan.step) return plan.reply;
+    return { ...plan.reply, tick: this.host.tick, appliedAtTick: this.host.tick };
   }
 
   private devTime(a: Record<string, unknown>): Record<string, unknown> {

@@ -861,3 +861,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The structured digest is unchanged. The paragraph stays at most 600 characters and cannot add commands. With the provider off, or with W16 off, the body has no `story` field.
 - **To resolve:** Stamp `after` before the one story call on the welcome path, or have W09-34 recompute the paragraph after that stamp.
 - **Found:** 2026-11-09, W09-18
+
+### BE-65 · Dev hard-mode clock is process memory and does not eliminate the sim colony
+
+- **Status:** Accepted (W09-31 starts the clock; W09-19 owns the hard-mode path)
+- **Area / code:** `backend/app/src/game/presence/hard-mode-clock.ts` (`HardModeClock`), `backend/app/src/game/presence/dev-presence.ts` (`eliminate`), `frontend/game/store/local/devPresence.ts` (`LocalHardModeClock`)
+- **What happens:** `colony eliminate` while the presence blob is away emits `colonyEliminated` (`cause: other`) on `planet.event` and to joined sockets, and stores `{ startedAtMs, atTick, cause }` on `HardModeClock`. The first mark wins. A later eliminate emits again but does not move `startedAtMs`. A restart drops the map. The sim colony is not marked `eliminated` and buildings are not ruins (W18). The presence tracker is not told, so a socket that stays open keeps the dev away flag; after the last socket has been gone for 60s the tracker posts away again (no second `colonyAway`), and the next join posts `away: false`. `?host=local` keeps a separate page clock that W09-19 will not see.
+- **Why it is like this:** W09-31 only has to fire the event and start a timestamp W09-19 can read. The sim has no wall clock (SIM-D-06). Ruins and home `ELIMINATED` are later issues.
+- **Workaround / mitigation:** In the same process, `HardModeClock.get(planetId, colonyId)`. While the dev socket stays connected, `away` and `back` stick.
+- **To resolve:** W09-19 reads `HardModeClock`, persists the mark if a restart must keep it, and routes the notification and home `ELIMINATED`. Sync the presence tracker if a reconnect must not clear a dev away.
+- **Found:** 2026-11-09, W09-31
