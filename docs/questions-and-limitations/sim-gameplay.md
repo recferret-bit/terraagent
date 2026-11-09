@@ -1261,3 +1261,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Call `awayPolicy` before applying an automated command. Do not treat a sim ack as an away-policy allow until W09-12.
 - **To resolve:** W09-12 consults `awayPolicy` inside the command path, logs `cmd.reject`, and increments `away_policy_rejections_total`. Leave the 10-point step unless the owner wants a 1-point band.
 - **Found:** 2026-11-09, W09-09, updated W09-10
+
+### GP-115 · Away session spend is a function the economy spend sites do not call yet
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/away/session.ts` (`chargeAwaySpend`, `openAwaySession`)
+- **What happens:** Automated spend stops at the session percent, defense and repair do not, and `awayBudgetExhausted` fires once per family. Nothing in construction, production, or the command pipeline calls `chargeAwaySpend` yet, so a live automated build does not move the counter.
+- **Why it is like this:** Those spend sites belong to earlier waves. W09-11 adds the one accounting function instead of editing each of them. W09-12's pipeline gate is the place that should call it for an automated command that carries a cost.
+- **Workaround / mitigation:** `awayPolicy` already rejects an extractor whose view says session spend is at the cap. The view's `stock.spent` has to be filled from `chargeAwaySpend` by the caller.
+- **To resolve:** W09-12 (or the economy spend path) calls `openAwaySession` when `system.presence` goes away and `chargeAwaySpend` before an automated debit.
+- **Found:** 2026-11-09, W09-11

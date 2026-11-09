@@ -15,10 +15,19 @@ export interface FamilyBudget {
   perSessionPct: number;
 }
 
+export interface AwaySession {
+  open: boolean;
+  colonyId: string;
+  start: Record<AwayFamily, number>;
+  spent: Record<AwayFamily, number>;
+  exhausted: Record<AwayFamily, boolean>;
+}
+
 export interface ColonyAwaySettings {
   mode: AutopilotMode;
   awayRaids: boolean;
   budget: Record<AwayFamily, FamilyBudget>;
+  session: AwaySession;
 }
 
 interface AwayBlob {
@@ -41,19 +50,29 @@ export function defaultFamily(data: CompiledDataLike): FamilyBudget {
   };
 }
 
+const ZERO: Record<AwayFamily, number> = { metals: 0, minerals: 0, bio: 0 };
+
+export function closedSession(): AwaySession {
+  return { open: false, colonyId: '', start: { ...ZERO }, spent: { ...ZERO }, exhausted: { metals: false, minerals: false, bio: false } };
+}
+
 export function emptySettings(data: CompiledDataLike): ColonyAwaySettings {
   const family = defaultFamily(data);
   return {
     mode: 'director',
     awayRaids: false,
     budget: { metals: { ...family }, minerals: { ...family }, bio: { ...family } },
+    session: closedSession(),
   };
 }
 
 export function readAwaySettings(state: PlanetState, colonyIndex: number): ColonyAwaySettings | undefined {
   const blob = state.blobs[BLOB]?.value as AwayBlob | undefined;
   const row = blob?.byColony?.[String(colonyIndex)];
-  return row ? structuredClone(row) : undefined;
+  if (!row) return undefined;
+  const copy = structuredClone(row);
+  if (!copy.session) copy.session = closedSession();
+  return copy;
 }
 
 function write(state: PlanetState, colonyIndex: number, settings: ColonyAwaySettings, tick: number): void {
