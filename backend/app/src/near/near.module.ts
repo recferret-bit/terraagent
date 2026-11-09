@@ -26,6 +26,7 @@ import { DeedLifecycleService } from './deed/deed-lifecycle.service.js';
 import { DeedMintOutboxService } from './deed/deed-mint-outbox.service.js';
 import { DeedProjectorService } from './deed/deed-projector.service.js';
 import { DeedSettledService } from './deed/deed-settled.service.js';
+import { DeedShareController } from './deed/deed-share.controller.js';
 import { DeedTelemetryService } from './deed/deed-telemetry.service.js';
 import { DeedRepository } from './deed/deed.repository.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
@@ -45,6 +46,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoStatusController,
     ChainDevController,
     ChainExplorerController,
+    DeedShareController,
     MockOauthController,
     NearDeedController,
     NearHealthController,
