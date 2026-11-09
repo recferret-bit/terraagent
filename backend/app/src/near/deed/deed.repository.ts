@@ -76,17 +76,19 @@ export class DeedRepository {
   }
 
   async findByTokenId(tokenId: string, tx?: DbClient): Promise<StoredDeedRecord | null> {
-    const normalized = deedTokenId(tokenId);
+    const raw = tokenId.trim();
+    const bare = raw.replace(/^deed[:-]/, '');
+    const candidates = Array.from(new Set([deedTokenId(raw), deedTokenId(bare), raw]));
     const client = tx ?? this.db;
     if (client && 'deed' in client && client.deed) {
-      const row = await client.deed.findUnique({
-        where: { tokenId: normalized },
-        include: { history: { orderBy: { version: 'asc' } } },
-      });
-      return row ? this.fromDbRow(row) : null;
+      for (const candidate of candidates) {
+        const row = await client.deed.findUnique({ where: { tokenId: candidate }, include: { history: { orderBy: { version: 'asc' } } } });
+        if (row) return this.fromDbRow(row);
+      }
+      return bare ? this.findByColonyId(bare, tx) : null;
     }
     for (const r of this.mem.values()) {
-      if (r.tokenId === normalized || r.colonyId === tokenId) return r;
+      if (candidates.includes(r.tokenId) || r.colonyId === raw || r.colonyId === bare) return r;
     }
     return null;
   }
@@ -432,35 +434,12 @@ export class DeedRepository {
   }
 
   private fromDbRow(row: {
-    colonyId: string;
-    planetId: string;
-    playerId: string | null;
-    accountId: string;
-    tokenId: string;
-    contract: string;
-    metadata: unknown;
-    metadataVersion: number;
-    status: string;
-    settled: boolean;
-    chainState: string;
-    pendingOpId: string | null;
-    lastUpdateTx: string | null;
-    lastError: string | null;
-    lastDispatchedAt: Date | null;
-    lastDispatchedSimMs: bigint;
-    pendingMilestone: unknown;
-    createdAt: Date;
-    updatedAt: Date;
-    history?: Array<{
-      colonyId: string;
-      tokenId: string;
-      version: number;
-      change: string;
-      metadata: unknown;
-      opId: string;
-      txHash: string | null;
-      createdAt: Date;
-    }>;
+    colonyId: string; planetId: string; playerId: string | null; accountId: string; tokenId: string;
+    contract: string; metadata: unknown; metadataVersion: number; status: string; settled: boolean;
+    chainState: string; pendingOpId: string | null; lastUpdateTx: string | null; lastError: string | null;
+    lastDispatchedAt: Date | null; lastDispatchedSimMs: bigint; pendingMilestone: unknown;
+    createdAt: Date; updatedAt: Date;
+    history?: Array<{ colonyId: string; tokenId: string; version: number; change: string; metadata: unknown; opId: string; txHash: string | null; createdAt: Date }>;
   }): StoredDeedRecord {
     return {
       colonyId: row.colonyId,
