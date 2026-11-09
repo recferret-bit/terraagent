@@ -19,6 +19,14 @@ import { RelayStatusService } from './identity/relay-status.service.js';
 import { SocialAuthService } from './identity/social-auth.service.js';
 import { SocialLink } from './identity/social-link.js';
 import { NearMockCommand } from './infrastructure/dev/near-mock.command.js';
+import { NearDeedController, PublicDeedController } from './deed/deed.controller.js';
+import { DeedDebounceService } from './deed/deed-debounce.service.js';
+import { DeedImageRendererService } from './deed/deed-image.renderer.js';
+import { DeedLifecycleService } from './deed/deed-lifecycle.service.js';
+import { DeedMintOutboxService } from './deed/deed-mint-outbox.service.js';
+import { DeedProjectorService } from './deed/deed-projector.service.js';
+import { DeedSettledService } from './deed/deed-settled.service.js';
+import { DeedTelemetryService } from './deed/deed-telemetry.service.js';
 import { DeedRepository } from './deed/deed.repository.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
@@ -38,7 +46,9 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     ChainDevController,
     ChainExplorerController,
     MockOauthController,
+    NearDeedController,
     NearHealthController,
+    PublicDeedController,
     RelayStatusController,
     SocialAuthController,
     StakingController,
@@ -49,7 +59,14 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    DeedDebounceService,
+    DeedImageRendererService,
+    DeedLifecycleService,
+    DeedMintOutboxService,
+    DeedProjectorService,
     DeedRepository,
+    DeedSettledService,
+    DeedTelemetryService,
     FreeVerifierService,
     ColonyAccounts,
     RelayStatusService,
@@ -65,7 +82,14 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    DeedDebounceService,
+    DeedImageRendererService,
+    DeedLifecycleService,
+    DeedMintOutboxService,
+    DeedProjectorService,
     DeedRepository,
+    DeedSettledService,
+    DeedTelemetryService,
     FreeVerifierService,
     NearInfrastructureModule,
     OutboxModule,

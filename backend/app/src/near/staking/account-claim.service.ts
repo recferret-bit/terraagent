@@ -186,7 +186,7 @@ export class AccountClaimService {
     }
 
     const deed = await prisma.deed.findUnique({ where: { colonyId: input.colonyId } });
-    const resolvedAccountId = deed?.accountId ?? defaultAccountId;
+    const resolvedAccountId = (deed?.accountId ?? defaultAccountId).replace(/[-_]{2,}/g, '-');
     const playerId = input.playerId ?? deed?.playerId ?? 'dev_pilot';
     await this.ensurePlayerRow(prisma, playerId);
 
