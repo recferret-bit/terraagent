@@ -31,6 +31,8 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
   private readonly toggles = new AlertToggles();
   private readonly attacks = new UnderAttackWindow();
   private readonly fastRun = new FastRunAlertHold();
+  /** `colonyId` + event id already passed to `NotifierPort` for `colony_eliminated`. A later tick still sends. */
+  private readonly eliminatedSent = new Set<string>();
   private unsub?: Unsubscribe;
 
   constructor(
@@ -115,15 +117,29 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
   }
 
   private async dispatch(note: Notification, nowMs: number): Promise<boolean> {
+    if (note.kind === 'colony_eliminated' && !this.claimEliminated(note.colonyId, note.eventId)) return false;
     if (note.kind === 'under_attack' && !this.attacks.open(note.colonyId, nowMs)) return false;
     try {
       await this.notifier.send(note);
       return true;
     } catch (e) {
+      if (note.kind === 'colony_eliminated') this.eliminatedSent.delete(eliminatedKey(note.colonyId, note.eventId));
       this.log.error(`notify ${note.kind} for ${note.colonyId} failed: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }
   }
+
+  /** Claimed before the port call. The bus does not await, so a second emit in the same turn must see this. */
+  private claimEliminated(colonyId: string, eventId: string): boolean {
+    const key = eliminatedKey(colonyId, eventId);
+    if (this.eliminatedSent.has(key)) return false;
+    this.eliminatedSent.add(key);
+    return true;
+  }
+}
+
+function eliminatedKey(colonyId: string, eventId: string): string {
+  return `${colonyId}\0${eventId}`;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

@@ -162,6 +162,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly digests: AwayDigestService,
     @Inject(LOGGER) root: Logger,
     private readonly modules: ModuleRef,
+    private readonly hardMode: HardModeClock,
     @Optional() private readonly homeService?: HomeService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
@@ -182,6 +183,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
       home.setLandingHost(gameLandingHost(this.snapshots, this.planets, host));
       home.setAwayHeadline(this.digests);
+      home.setHardModeClock(this.hardMode);
     }
     this.unsubRecovery = wirePlanetRecovery(this.planets, this.pool, this.snapshots, this.log);
     const pool = this.pool;
