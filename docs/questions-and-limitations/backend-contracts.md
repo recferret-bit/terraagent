@@ -851,3 +851,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `leaveRoom` clears `colonyId` before close. The table remembers the join key and only drops a socket that is still registered under it, so the replacement stays.
 - **To resolve:** If a colony join should also drop that player's lobby socket, close the `player:` entry from the colony join. Do not key colony sockets by player id again.
 - **Found:** 2026-11-09, W09-28
+
+### BE-64 · Away story is sealed at close, before the welcome end baseline
+
+- **Status:** Accepted (W09-18 scope)
+- **Area / code:** `backend/app/src/game/digest/service.ts` (`sealStory`), `backend/app/src/game/digest/story.ts`, `backend/app/src/ai/story/away.ts`
+- **What happens:** The paragraph is written once when the row closes (`colonyBack`, a presence return, or welcome's close of a still-open row). It joins duration (if non-zero), attack counts, and the first non-zero resource net already on the body. `deliverWelcome` may then stamp `after` from the snapshot bytes (BE-59). That stamp keeps the paragraph it already stored, so the sentence can omit a net the structured digest shows. A paragraph that opens with build, attack, buy, sell, move, or destroy is dropped and the token reserve is reconciled to 0. A null paragraph, or a provider that throws, does not set `story` and does not fail the close. The text is the joined facts, not an LLM call.
+- **Why it is like this:** CT-34's model call is the W16 provider. W09-34 wires that provider. This hook must not call the network, and a second call when welcome stamps `after` would charge the daily budget again.
+- **Workaround / mitigation:** The structured digest is unchanged. The paragraph stays at most 600 characters and cannot add commands. With the provider off, or with W16 off, the body has no `story` field.
+- **To resolve:** Stamp `after` before the one story call on the welcome path, or have W09-34 recompute the paragraph after that stamp.
+- **Found:** 2026-11-09, W09-18

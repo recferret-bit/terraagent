@@ -16,6 +16,16 @@ describe('W16-20 away story', () => {
     expect(result.commands).toEqual([]);
   });
 
+  it('drops a paragraph that opens as an order and reconciles nothing', () => {
+    const budget = new GlobalTokenBudget(10_000);
+    const result = awayStory(
+      { enabled: true, day: '2026-11-04', colonyId: 'co_1', facts: ['Build the south wall'] },
+      budget,
+    );
+    expect(result).toEqual({ paragraph: null, commands: [] });
+    expect(budget.snapshot().days).toEqual([{ day: '2026-11-04', spent: 0, outstanding: [] }]);
+  });
+
   it('omits the paragraph when disabled or the shared budget is exhausted', () => {
     const off = awayStory({ enabled: false, day: '2026-11-04', colonyId: 'co_1', facts: ['x'] }, new GlobalTokenBudget(10_000));
     expect(off).toEqual({ paragraph: null, commands: [] });

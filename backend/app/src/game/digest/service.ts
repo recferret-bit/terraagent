@@ -4,7 +4,9 @@ import { baselineFromState, stateOf } from './baseline';
 import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline, stampAfter, stampBaseline } from './body';
 import { digestSignal } from './events';
 import { foldAttack, mergeBodies } from './folder';
+import { awayFacts, withAwayParagraph } from './story';
 import { awaySummary } from './summary';
+import type { DigestStory } from './story';
 import type {
   AttackFold,
   BaselineReader,
@@ -20,12 +22,15 @@ export interface DigestDeps {
   readonly reader?: BaselineReader;
   readonly now?: () => Date;
   readonly log?: DigestLog;
+  /** Empty when W16 is off. Asked once at close, never while folding a raid. */
+  readonly story?: DigestStory;
 }
 
 /**
  * Opens one digest when the sim emits `colonyAway`, folds raids while that row is open, and closes it on
  * `colonyBack` or a presence return. Snapshot writes call {@link flushPlanet} (CT-31).
  * {@link deliverWelcome} closes a still-open row, stamps `after` from the welcome snapshot, and marks it seen.
+ * The away paragraph is attached once at close. A null paragraph does not add a `story` key.
  */
 export class AwayDigestService {
   private readonly open = new Map<string, OpenDigest>();
@@ -126,6 +131,28 @@ export class AwayDigestService {
     await this.deps.store.save(live.id, live.body, live.lastEventSeq, at);
     this.open.delete(colonyId);
     await this.mergeUnseen(colonyId);
+    await this.sealStory(colonyId, at);
+  }
+
+  /** One paragraph after the close merge. A throw or a null paragraph leaves the closed body without `story`. */
+  private async sealStory(colonyId: string, at: Date): Promise<void> {
+    const story = this.deps.story;
+    if (!story) return;
+    const row = await this.deps.store.latestUnseen(colonyId);
+    if (!row?.closedAt) return;
+    const paragraph = this.askStory(colonyId, at, row.body);
+    const next = withAwayParagraph(row.body, paragraph);
+    if (next === row.body) return;
+    await this.deps.store.save(row.id, next, row.lastEventSeq, row.closedAt);
+  }
+
+  private askStory(colonyId: string, at: Date, body: AwayDigestV1): string | null {
+    try {
+      return this.deps.story?.paragraph(colonyId, at, awayFacts(body)) ?? null;
+    } catch (err) {
+      this.deps.log?.warn({ colonyId, err: err instanceof Error ? err.message : String(err) }, 'away story omitted');
+      return null;
+    }
   }
 
   private async fold(colonyId: string, event: AttackFold): Promise<void> {
