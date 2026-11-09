@@ -1410,3 +1410,13 @@ Open items, see the format in `README.md`:
 - **What happens:** The owner's e2e edit expected `Worker Drone T1` in the S1 reveal; the stage rows only say `worker`, so the toast cannot name the tier and reads `Worker Drone` (the same at the T2 stage). The review changed the e2e assertion to `Worker Drone` so the suite matches the code.
 - **To resolve:** Owner: list `worker_t1` / `worker_t2` in the stage rows (and teach the unlock-stage resolver those ids), then restore the `Worker Drone T1` assertion.
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
+
+### FF-98 · Away settings remember this browser's last ack, not the colony
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/away/` (`AwayPanel`, `storage.ts` key `ta.away.autopilot`), sim blob `away` in `shared/sim/src/systems/away/store.ts`
+- **What happens:** Saving metals at 30% persists only after `setAutopilot` acks, in one browser-wide `localStorage` record. A reload shows 30 before any snapshot. The plate does not read `blobs.away`, so another colony, another browser, or a budget changed only on the server still shows this browser's last ack (or the defaults: director, raids off, session 60). The directive line always says 40% and is not sent. A store `sendCommand` that returns an id string is not an ack, so that path does not mark the budget saved; the online HUD uses the command bus, which does ack.
+- **Why it is like this:** W09-14 asked for a reload to show 30 even before a snapshot echo exists. The client view has no away-settings field yet.
+- **Workaround / mitigation:** This browser keeps the last acked mode, raids flag and session percents. A reject restores the previous ack and does not write storage.
+- **To resolve:** When the replica exposes the colony away blob, hydrate the plate from that colony and keep `localStorage` only until the first view.
+- **Found:** 2026-11-09, W09-14
