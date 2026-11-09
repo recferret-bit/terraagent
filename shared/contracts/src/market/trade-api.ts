@@ -91,6 +91,38 @@ export type TradeKeyListResponse = z.infer<typeof TradeKeyListResponse>;
 export const RevokeTradeKeyResponse = z.object({ keyId: z.string(), revoked: z.literal(true), cancelledUnsubmitted: z.number().int(), cancelRequested: z.number().int() });
 export type RevokeTradeKeyResponse = z.infer<typeof RevokeTradeKeyResponse>;
 
+export const TradeMeResponse = z.object({
+  actorKind: z.enum(['player', 'bot']),
+  ownerId: z.string(),
+  keyId: z.string().nullable(),
+  planetId: z.string(),
+  colonyId: z.string(),
+  accountId: z.string(),
+  scopes: z.array(TradeScope),
+  allowance: TradeAllowance.nullable(),
+  dailySpent: AtomicAmount.nullable(),
+  dailyRemaining: AtomicAmount.nullable(),
+  openOrders: z.number().int().nonnegative(),
+  killSwitch: z.boolean(),
+});
+export type TradeMeResponse = z.infer<typeof TradeMeResponse>;
+
+export const KillTradeRequest = z.strictObject({
+  keyId: SafeId.optional(),
+  planetId: SafeId.optional(),
+});
+export type KillTradeRequest = z.infer<typeof KillTradeRequest>;
+
+export const KillTradeResponse = z.object({
+  keyId: z.string().nullable(),
+  planetId: z.string(),
+  colonyId: z.string(),
+  killSwitch: z.literal(true),
+  cancelledUnsubmitted: z.number().int().nonnegative(),
+  cancelRequested: z.number().int().nonnegative(),
+});
+export type KillTradeResponse = z.infer<typeof KillTradeResponse>;
+
 // --- orders ------------------------------------------------------------------------------------------------------
 export const PlaceTradeOrderRequest = z.strictObject({
   /** Required for session callers; a key is bound to one planet and rejects a different value (`wrong_planet`). */
@@ -297,11 +329,14 @@ export const TRADE_API_ROUTES = {
   listKeys: { method: 'GET', path: '/v1/trade/keys', auth: 'session', summary: 'List the caller\'s keys', response: TradeKeyListResponse },
   updateAllowance: { method: 'PATCH', path: '/v1/trade/keys/:keyId/allowance', auth: 'session', summary: 'Change a key\'s allowance / kill switch', request: TradeAllowanceUpdate, response: TradeKeyView },
   revokeKey: { method: 'DELETE', path: '/v1/trade/keys/:keyId', auth: 'session', summary: 'Revoke a key: unsubmitted orders are cancelled, open orders get a cancel request', response: RevokeTradeKeyResponse },
+  me: { method: 'GET', path: '/v1/trade/me', auth: 'either', scope: 'read', summary: 'Caller identity, colony, allowance, daily usage and kill-switch state', response: TradeMeResponse },
+  kill: { method: 'POST', path: '/v1/trade/kill', auth: 'either', summary: 'Emergency kill switch: engages killSwitch on the key (or caller keys on the planet), cancels unsubmitted requests and submits cancels for resting orders once', request: KillTradeRequest, response: KillTradeResponse },
   placeOrder: { method: 'POST', path: '/v1/trade/orders', auth: 'either', scope: 'trade', idempotent: true, summary: 'Place a limit order (same sim reservation path as the game client)', request: PlaceTradeOrderRequest, response: PlaceTradeOrderResponse },
   cancelOrder: { method: 'DELETE', path: '/v1/trade/orders/:orderId', auth: 'either', scope: 'trade', idempotent: true, summary: 'Cancel one of the caller\'s open orders', response: CancelTradeOrderResponse },
   listOrders: { method: 'GET', path: '/v1/trade/orders', auth: 'either', scope: 'read', summary: 'The caller\'s orders (filter state, pair)', request: ListTradeOrdersQuery, response: TradeOrdersResponse },
   listFills: { method: 'GET', path: '/v1/trade/fills', auth: 'either', scope: 'read', summary: 'The caller\'s fills, newest first', response: TradeFillsResponse },
   balances: { method: 'GET', path: '/v1/trade/balances', auth: 'either', scope: 'read', summary: 'Quote balances and the caller\'s in-orbit cargo, reserved vs free', response: TradeBalancesResponse },
+  cargo: { method: 'GET', path: '/v1/trade/cargo', auth: 'either', scope: 'read', summary: 'Alias of /v1/trade/balances: caller quote balances and in-orbit cargo, reserved vs free', response: TradeBalancesResponse },
   book: { method: 'GET', path: '/v1/trade/book/:planetId/:pair', auth: 'none', summary: 'Book depth (query levels=N) and reference price', response: TradeBookResponse },
   bookOrders: { method: 'GET', path: '/v1/trade/book/:planetId/:pair/orders', auth: 'none', summary: 'Every resting order of a pair (query side, limit); with a bearer/dev identity each order carries `mine`', response: TradeBookOrdersResponse },
   board: { method: 'GET', path: '/v1/trade/board/:planetId', auth: 'none', summary: 'Price board of a planet', response: TradeBoardResponse },

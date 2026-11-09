@@ -1,9 +1,9 @@
 import type { IncomingMessage } from 'node:http';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseFilters, UseGuards } from '@nestjs/common';
 import {
-  AgentQuoteQuery, CreateTradeKeyRequest, TradeFillsQuery, TradeBookQuery, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, PutTradeStallRequest, TradeAllowanceUpdate, TradeStallQuery,
-  type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
-  type TradeBoardResponse, type TradeBookOrdersResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
+  AgentQuoteQuery, CreateTradeKeyRequest, KillTradeRequest, TradeFillsQuery, TradeBookQuery, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, PutTradeStallRequest, TradeAllowanceUpdate, TradeStallQuery,
+  type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type KillTradeResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
+  type TradeBoardResponse, type TradeBookOrdersResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeMeResponse, type TradeOrdersResponse,
   type TradeOverviewResponse, type TradePairsResponse, type TradePolicyResponse, type TradeStallResponse,
 } from '@terra/contracts';
 import type { ZodType } from 'zod';
@@ -80,6 +80,17 @@ export class TradeController {
     return this.keys.revoke(await this.who(req, as), keyId);
   }
 
+  @Get('me')
+  async me(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('as') as?: string): Promise<TradeMeResponse> {
+    return this.keys.me(await this.who(req, as), planetId);
+  }
+
+  @Post('kill')
+  @HttpCode(200)
+  async kill(@Req() req: IncomingMessage, @Body() body: unknown, @Query('as') as?: string): Promise<KillTradeResponse> {
+    return this.keys.kill(await this.who(req, as), parseBody(KillTradeRequest, body));
+  }
+
   // --- orders -------------------------------------------------------------------------------------------------
   @Post('orders')
   async place(
@@ -110,6 +121,11 @@ export class TradeController {
 
   @Get('balances')
   async balances(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('as') as?: string): Promise<TradeBalancesResponse> {
+    return this.read.balances(await this.who(req, as), planetId);
+  }
+
+  @Get('cargo')
+  async cargo(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('as') as?: string): Promise<TradeBalancesResponse> {
     return this.read.balances(await this.who(req, as), planetId);
   }
 
