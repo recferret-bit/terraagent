@@ -25,6 +25,7 @@ import {
   type SeatSlot,
 } from './home-resolve.helpers';
 import { attachAwaySummary, type AwayHeadline } from './away-headline';
+import { eliminatedHomeFromClock, type HardModeHomeClock } from './hard-mode-home';
 import { type ColonyRecord, HomeRepository, type PlanetRecord } from './home.repository';
 
 export const HOME_SEAT_NOTIFIER = Symbol('HOME_SEAT_NOTIFIER');
@@ -87,6 +88,7 @@ export class HomeService {
   private readonly colonyStatusOverrides = new Map<string, string>();
   private landingHost: HomeLandingHost | undefined;
   private awayHeadline: AwayHeadline | undefined;
+  private hardMode: HardModeHomeClock | undefined;
   private seatChain: Promise<void> = Promise.resolve();
 
   constructor(
@@ -118,6 +120,11 @@ export class HomeService {
   /** Game module wires this after boot. Core does not import the digest service. */
   setAwayHeadline(source: AwayHeadline | undefined): void {
     this.awayHeadline = source;
+  }
+
+  /** Game module wires the dev hard-mode clock after boot. Core does not import it. */
+  setHardModeClock(clock: HardModeHomeClock | undefined): void {
+    this.hardMode = clock;
   }
 
   async setColonyStatus(colonyId: string, status: string): Promise<ColonyRecord | null> {
@@ -454,6 +461,9 @@ export class HomeService {
       const planets = await listCanonicalPlanetSummaries(this.lobbyPersistence, alwaysIncludeCanonicalPlanets);
       return buildTerminalHomeResponse('ELIMINATED', colony, colonySummary, planetSummary, planets, recapSeen);
     }
+
+    const mark = this.hardMode?.get(planet.id, colony.id);
+    if (mark) return eliminatedHomeFromClock(colonySummary, planetSummary, mark, recapSeen);
 
     return attachAwaySummary(
       { state: 'ACTIVE', colony: colonySummary, planet: planetSummary },
