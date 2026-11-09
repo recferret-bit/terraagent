@@ -791,3 +791,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** the last socket to leave still switches that planet within the stepping loop. Empty-from-boot planets stay on the active cadence until someone joins and later leaves.
 - **To resolve:** after `loaded`, if `socketsOn` is 0, send coarse, and retune the lag check for that cadence. W09-06 fast-run should force coarse for the gap and then restore the socket mode.
 - **Found:** 2026-11-09, W09-03
+
+### BE-58 · Alert kind toggles do not survive a process restart
+
+- **Status:** Accepted (W09-21 scope)
+- **Area / code:** `backend/app/src/notify/alert-policy.ts` (`AlertToggles`, `UnderAttackWindow`), `backend/app/src/notify/alert-router.ts`
+- **What happens:** Per-colony notification toggles live in process memory and default to on. Turning `trade_offer` off stops that kind until the process restarts, which turns every kind back on. The `under_attack` 10-minute mark is the same memory, so a restart can send another `under_attack` immediately. A failed `send` still consumes that window. The router does not read `core.notification_subscription`: it asks `NotifierPort` for one `webpush` payload whose `to` is the colony id (no push endpoint and no Telegram chat). An event that only carries a numeric colony index (today `energyCollapse`) is ignored, because that index is not a colony id.
+- **Why it is like this:** W09-21 routes and debounces. Durable toggles and real channel endpoints are W09-22/24/25. The subscription table already has a `kinds` json column. The router must not write notify rows itself.
+- **Workaround / mitigation:** Defaults are all on, which matches CT-36. The mock still records a row per send, and it writes nothing while the colony's socket is held.
+- **To resolve:** Load `notification_subscription.kinds` plus the endpoint or chat id when sending. Persist the debounce mark, or leave restart dedupe to W09-27. Put a string colony id on `energyCollapse`.
+- **Found:** 2026-11-09, W09-21
