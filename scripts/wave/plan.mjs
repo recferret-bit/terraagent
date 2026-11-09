@@ -18,25 +18,32 @@ export const worktreeDir = (root, wave) => resolve(root, '..', 'TerraAgent-wt', 
 export function loadPlan(root) {
   const json = JSON.parse(out('python3', ['scripts/plan/index_waves.py', '--waves-json'], { cwd: root }));
   if (json.problems.length) fail(`the plan has problems; run: python3 scripts/plan/index_waves.py\n${json.problems.slice(0, 5).join('\n')}`);
+  const postponedSet = new Set(json.postponedWaves ?? ['W14', 'W17', 'W19', 'W21', 'W24', 'W27']);
   const waves = Object.entries(json.waves).map(([id, w]) => {
     const slug = basename(w.file, '.md').toLowerCase();
+    const postponed = Boolean(w.postponed || postponedSet.has(id));
     return {
       id,
       file: w.file,
       slug,
       branch: `wave/${slug}`,
       tag: `wave-${id.slice(1)}`,
+      postponed,
       deps: [...new Set(w.deps)],
       tags: w.tags,
       issues: w.issues ?? {},
     };
   });
-  return { waves, valueOrder: json.valueOrder };
+  return { waves, valueOrder: json.valueOrder, postponedWaves: [...postponedSet] };
 }
 
-/** Hackathon value order first, then every other wave by number. */
+/** Hackathon value order first, then other active waves, then POSTPONED waves by number. */
 export function ordered(plan) {
-  const rank = (w) => { const i = plan.valueOrder.indexOf(w.id); return i < 0 ? 100 + Number(w.id.slice(1)) : i; };
+  const rank = (w) => {
+    if (w.postponed) return 200 + Number(w.id.slice(1));
+    const i = plan.valueOrder.indexOf(w.id);
+    return i < 0 ? 100 + Number(w.id.slice(1)) : i;
+  };
   return [...plan.waves].sort((a, b) => rank(a) - rank(b));
 }
 
@@ -60,18 +67,25 @@ function runningWaves() {
   return active;
 }
 
-/** Issue ids merged into the wave branch: only commit subjects that start with `WNN-XX:` count (a stray id in a body or later in a subject does not). */
+/** Issue ids merged into the wave branch: commit subjects starting with `WNN-XX:` or explicit `WNN-AA..BB` ranges count (a single stray id mid-subject does not). */
 export function mergedIssueIds(root, w) {
   const log = tryOut('git', ['log', `main..${w.branch}`, '--format=%s'], { cwd: root }) ?? '';
   const re = new RegExp(`^(${w.id}-\\d{2}):`);
-  return new Set(log.split('\n').map((l) => re.exec(l)?.[1]).filter(Boolean));
+  const ids = new Set(log.split('\n').map((l) => re.exec(l)?.[1]).filter(Boolean));
+  const rangeRe = new RegExp(`\\b(${w.id})-(\\d{2})\\.\\.(\\d{2})\\b`, 'g');
+  for (const m of log.matchAll(rangeRe)) {
+    for (let k = Number(m[2]); k <= Number(m[3]); k++) {
+      ids.add(`${m[1]}-${String(k).padStart(2, '0')}`);
+    }
+  }
+  return ids;
 }
 
 /** Adds `landed`, `open`, `running`, `worktree` and `merged` (Set of merged issue IDs) to every wave. */
 export function withState(root, plan) {
   const b = branches(root), t = tags(root), r = runningWaves();
   for (const w of plan.waves) {
-    w.landed = [...t].some((x) => x === w.tag || x.startsWith(`${w.tag}.`));
+    w.landed = !w.postponed && [...t].some((x) => x === w.tag || x.startsWith(`${w.tag}.`));
     w.open = b.has(w.branch);
     w.running = r.has(w.id);
     w.worktree = worktreeDir(root, w.id);
@@ -95,7 +109,7 @@ export function waveProgress(w, activeTags) {
  */
 export function readiness(plan, w) {
   const byId = Object.fromEntries(plan.waves.map((x) => [x.id, x]));
-  const deps = w.deps.map((d) => byId[d]).filter(Boolean);
+  const deps = w.deps.map((d) => byId[d]).filter((d) => d && !d.postponed);
   const missing = deps.filter((d) => !d.landed && !d.open);
   const waiting = deps.filter((d) => !d.landed && d.open);
   return { ready: missing.length === 0 && waiting.length === 0, missing, waiting, unlanded: [...waiting, ...missing] };
@@ -111,7 +125,7 @@ export function currentWave(plan) {
 export function issueTitle(root, plan, issueId) {
   const w = plan.waves.find((x) => x.id === issueId.slice(0, 3)) ?? fail(`unknown wave for issue ${issueId}`);
   const row = readFileSync(join(root, w.file), 'utf8').split('\n').find((l) => l.startsWith(`| ${issueId} |`)) ?? fail(`issue ${issueId} is not in ${w.file}`);
-  const full = row.split('|')[2].trim();
+  const full = row.split(/(?<!\\)\|/)[2].replace(/\\\|/g, '|').trim();
   const cut = full.split(/: |\s\(/)[0].trim() || full;
   return cut.length > 72 ? `${cut.slice(0, 71).replace(/\s+\S*$/, '')}…` : cut;
 }

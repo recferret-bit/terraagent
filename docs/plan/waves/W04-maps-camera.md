@@ -115,3 +115,8 @@ Layers and markers belonging to waves that are not enabled stay hidden. W04 depe
 - With `TA_WAVES=..03` there is no minimap, no global map and no `M` handling, and the camera behaves as in W01.
 - Tag `wave-04` exists.
 - Every row of the features table is covered by a closed issue.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope:** Telephoto diorama camera, minimap, and global planetary map with pluggable data layers (resources, power, sectors, shields, bounties, markets).
+2. **Test Pyramid & Online E2E (`tests/e2e/w04.spec.ts`):** Unit specs for coordinate projection, fog-of-war visibility, and layer registry + online Playwright E2E + `TA_WAVES=..03` flag-off check.

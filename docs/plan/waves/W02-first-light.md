@@ -146,3 +146,8 @@ Content follows stage S1, limited to what this wave owns: Worker Drone T1, Metal
 - `?waves=..01` hides every W02 menu item, the panels, the Worker Drone T1 and the day/night lighting (e2e step 10; the W02 3D and dock pieces that still show under `..01` are listed in `docs/questions-and-limitations/frontend-features.md` FF-51). The W01 demo still passes.
 - The pacing test (W02-32) and `sim:bench` (W02-33) are deferred past the hackathon. All 35 kitbash models, the bound archetypes and the deposit `@half` / `@depleted` stages included, pass `npm run validate:models -- --all` with 0 errors and 0 warnings, and all 9 object-of-interaction 3D particle presets pass `npm run validate:particles -- --all` (`npm run test:particles`) with 0 errors and 0 warnings.
 - Tag `wave-02` is created.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S0–S1` Power & Planetary Lighting):** Solar/wind/battery energy grid, authoritative `@terra/sim` orbital solar clock, brownout handling, and lightning strikes.
+2. **Test Pyramid & Online E2E (`tests/e2e/w02.spec.ts`):** Positive/negative/corner unit specs (brownout priority, battery charge/discharge bounds, nightfall −6 E/s) + multi-tick `SimHost` integration + online server/client E2E + `?host=local` parity.

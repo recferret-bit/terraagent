@@ -51,8 +51,11 @@ export function addFutureWaveIssue(cwd, {
 
   const filePath = findWaveFile(cwd, wid);
   const original = readFileSync(filePath, 'utf8');
+  if (/^#\s+.*\[POSTPONED\]/m.test(original) && cleanTag === 'H') {
+    fail(`cannot add an H-tagged issue to postponed wave ${wid} (pass --tag - or target an active wave)`);
+  }
   const lines = original.split('\n');
-  const rowRe = new RegExp(`^\\|\\s*(${wid}-(\\d{2}))\\s*\\|([^|]*)\\|`);
+  const rowRe = new RegExp(`^\\|\\s*(${wid}-(\\d{2}))\\s*\\|((?:\\\\\\||[^|])*)\\|`);
 
   let maxNum = 0;
   let lastRowIdx = -1;

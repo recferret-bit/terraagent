@@ -64,7 +64,7 @@ export function parseWaveSpec(markdown) {
   for (const l of lines) {
     const m = /^\|\s*(W\d{2}-\d{2})\s*\|(.+)\|$/.exec(l.trim());
     if (!m) continue;
-    const cells = m[2].split('|').map((c) => c.trim());
+    const cells = m[2].split(/(?<!\\)\|/).map((c) => c.trim());
     if (cells.length >= 6) {
       issueRows.push({
         id: m[1],

@@ -72,18 +72,21 @@ function classifyDiffFiles(diffLines) {
 
 function parseWaveTableRows(markdownText, waveId) {
   const rows = new Map();
-  const re = new RegExp(`^\\|\\s*(${waveId}-\\d{2})\\s*\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|`);
+  const idRe = new RegExp(`^${waveId}-\\d{2}$`);
   for (const line of markdownText.split('\n')) {
-    const m = re.exec(line);
-    if (!m) continue;
-    rows.set(m[1], {
-      id: m[1],
-      title: m[2].trim(),
-      type: m[3].trim(),
-      size: m[4].trim(),
-      tag: m[5].trim(),
-      deps: m[6].trim(),
-      acceptance: m[7].trim(),
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) continue;
+    const cells = trimmed.split(/(?<!\\)\|/).map((c) => c.trim());
+    const id = cells[1];
+    if (!id || !idRe.test(id) || cells.length < 8) continue;
+    rows.set(id, {
+      id,
+      title: cells[2],
+      type: cells[3],
+      size: cells[4],
+      tag: cells[5],
+      deps: cells[6],
+      acceptance: cells[7],
     });
   }
   return rows;
@@ -104,7 +107,7 @@ function computeFutureWaveImpacts(root, plan, w, buckets, selfReviewCommits) {
   };
   const impacts = [];
   for (const fw of plan.waves) {
-    if (fw.id === w.id || fw.landed) continue;
+    if (fw.id === w.id || fw.landed || fw.postponed) continue;
     const fwNum = Number(fw.id.slice(1)), wNum = Number(w.id.slice(1));
     const direct = fw.deps.includes(w.id);
     const trans = !direct && transitiveDeps(fw).has(w.id);

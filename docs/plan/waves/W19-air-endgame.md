@@ -1,5 +1,6 @@
-# W19 — Air & Endgame (S8–S10)
+# W19 — Air & Endgame (S8–S10) [POSTPONED]
 
+> **Status:** POSTPONED — Deferred out of the NEAR Hackathon Vertical Slice (post-hackathon backlog). All Tier 2/3 content (buildings, resources, units, stages S5–S10) and non-core scope are skipped so the hackathon vertical slice focuses on Tier 1 (`S0–S4`) gameplay polish, AI Director, persistent sector multiplayer, economy, offline play, and NEAR/Web3 features.
 > **Track:** Gameplay (G) · **Flag:** `W19` · **Scenario:** `tests/scenarios/w19-air-endgame.ts` · **Tag:** `wave-19` · **Depends on:** W08, W14, W17. Optional: W04 (minimap air icons, W19-19), W24 (touch menus, W19-30).
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §3.1–3.2 (`UO-HQ-01`), §5.1, §5.2, §5.3 (`UO-B`), §5.4 (`UO-C-01/04/08`), §5.5 (`AC-04`), §5.6, §6.1 (`UO-LC-04`), §6.2, §6.3 (`UO-T-03/08`) · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3 · D-28, D-34, D-35 · [`OWNER_TASKS.md`](../OWNER_TASKS.md) B3, B4, B6
 > **Costs and balance:** T3 rows pay through the D-34 tier rule: 40 % of their M and Min in T1, 30 % in T2 and 30 % in T3 (`metals.t3`, `minerals.t3`), Pet in `bio.t2`, plus 10 % of their M as `bio.t3`; T3 sub-resources come from the W05-34 gate at Terraform ≥ 70 % or from the market (W13). Every number here is a data row, tunable with W00-59 (D-35); the accepted OWNER_TASKS defaults B3 (Hub T3 dwell), B4 (air targeting) and B6 (no special effects) are the starting rows.

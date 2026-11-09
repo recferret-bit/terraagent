@@ -125,3 +125,9 @@ Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, 
 ### Hardening completion (2026-11-04)
 
 Checkpoint-coupled input persistence, incarnation IDs, replay, atomic rewards, catch-up evaluation, stage/archive projection, selected-colony resume, one-hour mock badge delivery and an in-app achievement inbox are implemented. The full W12 browser suite now checks colony cards and pending/minted badge UI; full history filtering/pagination remains explicitly skipped. Remaining extended scope and external adapter prerequisites are tracked in [BE-47, BE-49 and BE-51](../../questions-and-limitations/backend-contracts.md), with recommendations. Future producer waves must populate explicit authoritative state/events rather than infer achievements from UI or dev grants.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (Profile, Progression Facts & Soulbound Badges):** Authoritative progression fact ledger, achievement evaluation, `/me` player profile drawer/page, and NEP-171 soulbound achievement badges (`BadgeNftPort`).
+2. **Test Pyramid & Online E2E (`tests/e2e/w12.spec.ts`):** Shared `badge.contract.ts` suite + Postgres fact-replay/idempotency/concurrency integration tests + online Playwright E2E.
+3. **100% Working Mock Mode + `NEAR_MODE` Switch:** 100% working in `NEAR_MODE=mock` (`MockBadgeNftAdapter`) and switchable to real NEAR testnet (`NEAR_MODE=testnet` / `NEAR_ADAPTER_BADGE=testnet` in `W23`).

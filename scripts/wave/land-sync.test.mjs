@@ -125,6 +125,21 @@ test('wave:propagate inspects self-review extensions and --add-issue injects a v
   assert.ok(delta.buckets.commands.includes('orbital-beacon'));
   assert.ok(delta.undocumentedExtensions.some((u) => u.name === 'orbital-beacon'));
   assert.ok(delta.futureWaveImpacts.some((fw) => fw.waveId === 'W01'));
+  for (const postponedId of ['W14', 'W17', 'W19', 'W21', 'W24', 'W27']) {
+    assert.equal(delta.futureWaveImpacts.some((fw) => fw.waveId === postponedId), false, `postponed ${postponedId} should be excluded from futureWaveImpacts`);
+  }
+
+  // Refuses adding an H-tagged issue to a postponed wave (W14)
+  const postponedAdd = sb.run([
+    'propagate', '00',
+    '--add-issue', 'W14',
+    '--title', 'Should not add H issue to postponed W14',
+    '--type', 'sim',
+    '--size', 'S',
+    '--tag', 'H',
+  ]);
+  assert.notEqual(postponedAdd.status, 0);
+  assert.match(postponedAdd.out, /postponed wave W14/);
 
   // Inject a new follow-up issue into future wave W01
   const addRes = sb.run([

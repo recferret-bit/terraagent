@@ -137,3 +137,16 @@ Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, 
 ## W16 director compatibility
 
 Expose stable planet/colony/global tile/sector IDs, epoch, observation timestamps and bounded colony-relevant summaries through the existing game read views for [W16](./W16-ai-director.md). Distinguish founding capacity from expansion/occupied sectors. W16's worker never controls admission, generates a replacement world or writes sim state directly. Test border-crossing context and restart invalidation when both flags are on; W11 remains independent of the optional director.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S0–S4` & Canonical Sector Atlas):**
+   - `W27` (450-sector streaming) and `W17`/`W19` (Tier 2/3) are **POSTPONED**. The 3 canonical persistent worlds (`living`, `desert`, `ocean`) with small connected macro-hex sector atlases (`W11-34..47`) are the authoritative multiplayer world model for the NEAR Hackathon Vertical Slice.
+   - All sector resources, starter-site checks, and cross-sector construction/walking operate strictly on Tier 1 (`metals.t1`, `minerals.t1`, `bio.water`, `bio.biomass`, `Energy`, `worker`, `robot.recon`).
+2. **Unit & Integration Test Matrix (Positive / Negative / Corner):**
+   - **Unit (`*.spec.ts`):** macro-hex coordinate math, seam adjacency, safe landing-site validator, per-colony fog-of-war bitset/map, capacity guard, and manifest hash pinning across positive, negative (`NEW_PLANET` rejected, full sector rejected, invalid sector ID), and corner cases (hex seam boundary `r = R`, 0 remaining seats, simultaneous ticket enqueue).
+   - **Integration (`*.int.spec.ts`):** real Postgres admission/reservation concurrency, ticket TTL expiry sweep, idempotent spawn saga retry/fencing, and server restart/resume preserving canonical world state and sector occupancy.
+3. **Full Game Integration + Online Server E2E (`tests/e2e/w11.spec.ts`):**
+   - End-to-end verification against the live NestJS backend + Postgres + `PlanetHost` worker threads + WS diff stream + `?host=local` parity (`npm run test:parity -- w11`) + `TA_WAVES=..10` flag fencing.
+4. **100% Working Mocked Mode + `NEAR_MODE` Switch:**
+   - Runs 100% mocked out of the box (`NEAR_MODE=mock`: colony accounts provisioned via `MockIdentityAdapter` / `MockRelayerAdapter`) and switches cleanly to real NEAR testnet/devnet (`NEAR_MODE=testnet|devnet` in `W23`) without touching lobby or sector code.
