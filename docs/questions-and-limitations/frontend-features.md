@@ -1410,3 +1410,13 @@ Open items, see the format in `README.md`:
 - **What happens:** The owner's e2e edit expected `Worker Drone T1` in the S1 reveal; the stage rows only say `worker`, so the toast cannot name the tier and reads `Worker Drone` (the same at the T2 stage). The review changed the e2e assertion to `Worker Drone` so the suite matches the code.
 - **To resolve:** Owner: list `worker_t1` / `worker_t2` in the stage rows (and teach the unlock-stage resolver those ids), then restore the `Worker Drone T1` assertion.
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
+
+### FF-98 · The away modal is the headline digest, not the full CLIENT §5.3 plate
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
+- **What happens:** A join `welcome.away` opens one plate: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it and the same `colonyId` + `awayFrom` does not return until the page reloads. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
+- **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
+- **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
+- **Found:** 2026-11-09, W09-17

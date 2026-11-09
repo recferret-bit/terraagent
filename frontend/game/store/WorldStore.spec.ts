@@ -1,4 +1,4 @@
-import { flagsFromList } from '@terra/contracts';
+import { flagsFromList, type AwayDigestV1 } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
 import { compileData, createPlanet, SIM_VERSION, SimHost } from '@terra/sim';
 import type { ServerMessage } from '@terra/contracts';
@@ -125,6 +125,36 @@ describe('WorldStore', () => {
     expect(x()).toBe(x0);
     expect(store.predictionInfo.pending).toBe(0);
     expect(rejected).toEqual(['cm_lost:timeout']);
+    store.dispose();
+  });
+});
+
+describe('WorldStore away digest', () => {
+  it('publishes a join away digest and ignores a welcome that has none', () => {
+    const t = new FakeTransport();
+    const store = new WorldStore(t, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
+    store.start(['W09']);
+    const seen: string[] = [];
+    store.onAwayDigest((d) => seen.push(`${d.colonyId}:${d.awayFrom}`));
+    const away = { colonyId: 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV', awayFrom: 't0', durationS: 600 } as AwayDigestV1;
+    const welcome = (reason: 'join' | 'resync', withAway: boolean) => ({
+      v: 1 as const,
+      t: 'welcome' as const,
+      d: {
+        reason, colonyId: away.colonyId, planet: { id: 'pl_x', type: 'temperate' as const, name: 'x' },
+        state: new Uint8Array(), simVersion: 1, dataHash: 'h', tick: 0, serverTimeMs: 1,
+        tickMs: 200 as const, deltaHz: 5 as const, flags: ['W09'], ...(withAway ? { away } : {}),
+      },
+    });
+    t.msgs.emit(welcome('join', false) as never);
+    expect(seen).toEqual([]);
+    expect(store.latestAway()).toBeNull();
+    t.msgs.emit(welcome('join', true) as never);
+    expect(seen).toEqual(['co_01ARZ3NDEKTSV4RRFFQ69G5FAV:t0']);
+    expect(store.latestAway()).toBe(away);
+    t.msgs.emit(welcome('resync', true) as never);
+    expect(seen).toEqual(['co_01ARZ3NDEKTSV4RRFFQ69G5FAV:t0']);
+    expect(store.latestAway()?.awayFrom).toBe('t0');
     store.dispose();
   });
 });

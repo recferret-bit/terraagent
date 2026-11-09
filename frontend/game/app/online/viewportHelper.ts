@@ -34,6 +34,8 @@ export function isEscapeBlockedByHudOverlay(): boolean {
   if (devCon && !devCon.hidden && devCon.style.display !== 'none') return true;
   const globalMap = document.querySelector<HTMLElement>('[data-testid="global-map-overlay"]');
   if (globalMap && globalMap.dataset.open === 'true' && !globalMap.hidden && globalMap.style.display !== 'none') return true;
+  const away = document.querySelector<HTMLElement>('[data-testid="away-digest"]');
+  if (away && !away.hidden && away.style.display !== 'none') return true;
   return false;
 }
 

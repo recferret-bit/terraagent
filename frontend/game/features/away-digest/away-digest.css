@@ -1,0 +1,98 @@
+.ta-away-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s5);
+  background: color-mix(in srgb, var(--ta-void) 72%, transparent);
+  pointer-events: auto;
+}
+
+.ta-away-plate {
+  width: min(520px, 94vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s4);
+  padding: var(--ta-s6);
+  background: var(--ta-plate);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-2);
+  clip-path: polygon(
+    var(--ta-chamfer-m) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-m)),
+    calc(100% - var(--ta-chamfer-m)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-m)
+  );
+}
+
+.ta-away-title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-h2);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ta-text);
+}
+
+.ta-away-story,
+.ta-away-duration,
+.ta-away-attacks {
+  margin: 0;
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-small);
+  line-height: 1.45;
+  color: var(--ta-text);
+}
+
+.ta-away-duration,
+.ta-away-attacks {
+  font-family: var(--ta-font-mono);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-away-nets,
+.ta-away-alerts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text-2);
+}
+
+.ta-away-dismiss {
+  appearance: none;
+  align-self: flex-start;
+  margin: 0;
+  padding: var(--ta-s3) var(--ta-s5);
+  border: 0;
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-small);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-away-dismiss:hover {
+  background: var(--ta-orange-hi);
+  color: var(--ta-void);
+}
