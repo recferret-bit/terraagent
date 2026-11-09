@@ -57,6 +57,14 @@ describe('W09-31 dev presence', () => {
     expect(submits).toHaveLength(2);
   });
 
+  it('posts a home co_ id against a fixture sim row', async () => {
+    const home = 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV';
+    const { presence, submits } = harness(world(false));
+    const first = await presence.setAway({ planetId: 'pl_dev', colonyIndex: 0, colonyId: home, away: true });
+    expect(first).toMatchObject({ colonyId: home, posted: true, away: true });
+    expect(submits[0]).toMatchObject({ colonyIndex: 0, args: { colonyId: home, away: true } });
+  });
+
   it('rejects colony eliminate while present and does not start the clock', async () => {
     const { presence, clock, events, fanned } = harness(world(false));
     await expect(presence.eliminate(seat)).rejects.toMatchObject({ errorCode: 'NOT_AWAY', message: 'not_away' });

@@ -10,7 +10,7 @@ declare module '../../core/registry/types' {
   }
   interface FeatureServices {
     /** The session's planet (online flow); null before the first welcome. */
-    session?: { planetId(): string | null };
+    session?: { planetId(): string | null; colonyId?(): string | null };
   }
 }
 

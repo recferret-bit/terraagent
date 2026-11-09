@@ -49,6 +49,23 @@ describe('W09 dev console away, back, colony eliminate', () => {
     expect(devServer).toHaveBeenNthCalledWith(3, 'colony.eliminate', seat);
   });
 
+  it('sends the welcome colony id when the session has a co_ id', async () => {
+    const home = 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV';
+    const devServer = vi.fn(async () => ({ posted: true, away: true, tick: 4, appliedAtTick: 4 }));
+    const runner = new CommandRunner([devPresence], {
+      flags: new Set(['W09']),
+      host: 'server',
+      services: {
+        devServer,
+        session: { planetId: () => 'pl_dev', colonyId: () => home },
+        colonyId: 2,
+        store: { latest: view },
+      } as FeatureContext['services'],
+    });
+    expect((await runner.run('away'))?.kind).toBe('text');
+    expect(devServer).toHaveBeenCalledWith('away', { planetId: 'pl_dev', colonyIndex: 2, colonyId: home });
+  });
+
   it('rejects a present colony as not_away and does not call the server for a bad line', async () => {
     const devServer = vi.fn(async () => {
       throw new DevServerError('http_409', '409 not_away', 'NOT_AWAY');

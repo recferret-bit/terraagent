@@ -9458,6 +9458,570 @@
       "properties": {
         "d": {
           "properties": {
+            "away": {
+              "additionalProperties": false,
+              "properties": {
+                "ai": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "decisions": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "highlights": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "at": {
+                            "maxLength": 40,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "summary": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "at",
+                          "summary"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 20,
+                      "type": "array"
+                    },
+                    "rejected": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "decisions",
+                    "rejected",
+                    "highlights"
+                  ],
+                  "type": "object"
+                },
+                "alerts": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "rocket_ready",
+                          "power_deficit",
+                          "storage_full",
+                          "supply_cap",
+                          "under_attack"
+                        ],
+                        "type": "string"
+                      },
+                      "message": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "attacks": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "byColony": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "displayName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "displayName",
+                          "count"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 20,
+                      "type": "array"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "repelled": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "count",
+                    "repelled",
+                    "byColony"
+                  ],
+                  "type": "object"
+                },
+                "awayFrom": {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "awayTo": {
+                  "maxLength": 40,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "built": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "tier": {
+                        "maximum": 10,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "tier",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "colonyId": {
+                  "anyOf": [
+                    {
+                      "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "durationS": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "energy": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "type": "number"
+                    },
+                    "before": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "before",
+                    "after"
+                  ],
+                  "type": "object"
+                },
+                "hazards": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "damage": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "kind": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "at",
+                      "damage"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "lost": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cause": {
+                        "enum": [
+                          "fauna",
+                          "raid",
+                          "lightning",
+                          "meteor",
+                          "other"
+                        ],
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "tier": {
+                        "maximum": 10,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "tier",
+                      "count",
+                      "cause"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "resources": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bio.biomass": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "bio.t2": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "bio.t3": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "bio.water": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "metals.t1": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "metals.t2": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "metals.t3": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "minerals.t1": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "minerals.t2": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    },
+                    "minerals.t3": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "type": "number"
+                        },
+                        "before": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "before",
+                        "after"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "metals.t1",
+                    "metals.t2",
+                    "metals.t3",
+                    "minerals.t1",
+                    "minerals.t2",
+                    "minerals.t3",
+                    "bio.water",
+                    "bio.biomass",
+                    "bio.t2",
+                    "bio.t3"
+                  ],
+                  "type": "object"
+                },
+                "robots": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "before": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "lost": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "produced": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "before",
+                    "after",
+                    "produced",
+                    "lost"
+                  ],
+                  "type": "object"
+                },
+                "story": {
+                  "maxLength": 600,
+                  "type": "string"
+                },
+                "territory": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "before": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "before",
+                    "after"
+                  ],
+                  "type": "object"
+                },
+                "trades": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "gave": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "got": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "with": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "with",
+                          "gave",
+                          "got"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 20,
+                      "type": "array"
+                    },
+                    "settled": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "settled",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "colonyId",
+                "awayFrom",
+                "awayTo",
+                "durationS",
+                "resources",
+                "energy",
+                "built",
+                "lost",
+                "robots",
+                "territory",
+                "attacks",
+                "hazards",
+                "ai",
+                "trades",
+                "alerts"
+              ],
+              "type": "object"
+            },
             "colonyId": {
               "anyOf": [
                 {

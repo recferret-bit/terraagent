@@ -11,7 +11,7 @@ declare module '../core/registry/types' {
     /** The host's resource ledger of one account (dev console `ledger`): server dev route, or the browser host's in-memory one. */
     ledgerQuery?: LedgerQuery;
     /** The joined planet of this session (`null` before the welcome). Provided by the online session. */
-    session?: { planetId(): string | null };
+    session?: { planetId(): string | null; colonyId?(): string | null };
     /** Dev overlay counters (online session). */
     netStats?: NetStatsBoard;
   }

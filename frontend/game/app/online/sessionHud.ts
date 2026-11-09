@@ -36,6 +36,8 @@ export interface SessionHudDeps {
   planetId(): string | null;
   /** Own colony index (changes when the boot seats the colony). */
   colonyIndex(): number;
+  /** Home colony id from the welcome (`co_…`), or null before one arrives. */
+  homeColonyId(): string | null;
   pickAt(clientX: number, clientY: number): HexPick | null;
   camera?(): THREE.PerspectiveCamera;
   rtsCamera?(): RTSCamera | null;
@@ -68,7 +70,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
   const services: Partial<FeatureServices> = {
     sendCommand: d.commandBus.send, devServer,
     ledgerQuery: sessionLedgerQuery(d.localHost, d.local ? d.local.devServer : null, d.planetId),
-    session: { planetId: d.planetId },
+    session: { planetId: d.planetId, colonyId: d.homeColonyId },
     scene3d, netStats: d.netStats, transport: d.transport, store: d.store,
     getView: () => d.store.latest ?? undefined,
     landfall: d.landfall, pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas, surface: d.canvas,

@@ -129,6 +129,7 @@ export class OnlineSession {
       uiParent, flags: this.flags, local: rig.local, scene: this.viewport.scene, canvas: this.viewport.renderer.domElement,
       store: this.store, commandBus: this.commandBus, netStats: this.netStats, transport: this.transport, landfall: this.landfall,
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
+      homeColonyId: () => this.colonyId,
       planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
       camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
       pilot: this.pilot, token: () => this.bootTarget.accessToken,
