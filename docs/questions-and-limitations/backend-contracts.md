@@ -781,3 +781,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Retention still keeps the latest `SEAL` and every `END`. Periodic writes are staggered and bumped off a second that already has two planets.
 - **To resolve:** If seal should be something other than admission pause (for example the moment free seats hit zero), point `setSnapshotSavePoint` at that path. Raise the per-second cap only if a host runs more than 120 planets.
 - **Found:** 2026-11-09, W09-05
+
+### BE-57 · A planet nobody has joined still steps at 5 TPS
+
+- **Status:** Accepted (W09-03 switches on socket crossings, not on load)
+- **Area / code:** `backend/app/src/game/presence/planet-mode.ts` (`syncPlanetMode`), `backend/app/src/game/thread/sim-thread.ts` (`scheduler.add`), `shared/sim/src/host/scheduler.ts` (`setMode`)
+- **What happens:** a loaded planet starts `active` (`dt` 1 every 200 ms). Coarse (`dt` 5 every 1 s) starts only when its socket count falls from ≥1 to 0. A dev planet or a restored planet that no socket has joined keeps 5 TPS, so `ta_game_planet_mode{mode="active"}` counts it. The first join sends `active` again and does not move `nextDueMs`. A join onto a coarse planet waits for the step already scheduled (at most one coarse interval) and that step uses `dt` 1. The 60 s away timer does not change the mode.
+- **Why it is like this:** W09-03 follows sockets at `presence.join` / `presence.close`. Sending coarse on every load would change the W00 lag check: a 2 s stall of a coarse planet is about 2 steps behind, not ≥4. `setMode` leaves the due time so a second join cannot burst catch-up steps.
+- **Workaround / mitigation:** the last socket to leave still switches that planet within the stepping loop. Empty-from-boot planets stay on the active cadence until someone joins and later leaves.
+- **To resolve:** after `loaded`, if `socketsOn` is 0, send coarse, and retune the lag check for that cadence. W09-06 fast-run should force coarse for the gap and then restore the socket mode.
+- **Found:** 2026-11-09, W09-03

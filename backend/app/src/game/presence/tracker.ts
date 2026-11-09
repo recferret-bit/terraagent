@@ -62,6 +62,19 @@ export class PresenceTracker {
     return this.tail;
   }
 
+  /** Connected sockets on this planet, every colony. Zero is the coarse-step line (CT-14). */
+  socketsOn(planetId: string): number {
+    let n = 0;
+    for (const rec of this.colonies.values()) if (rec.planetId === planetId) n += rec.sockets.size;
+    return n;
+  }
+
+  /** Planet of a socket that is still tracked. Read this before `close`; close drops the id. */
+  planetOf(socketId: string): string | undefined {
+    const colonyId = this.socketColony.get(socketId);
+    return colonyId ? this.colonies.get(colonyId)?.planetId : undefined;
+  }
+
   private ensure(session: PresenceJoin): ColonyRec {
     const prev = this.colonies.get(session.colonyId);
     if (prev) {

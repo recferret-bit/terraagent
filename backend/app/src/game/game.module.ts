@@ -17,6 +17,7 @@ import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { EconomyActivationService } from '../economy/activation/activation.service';
 import { installAwayPolicyMetric } from './away-rejections';
+import { installPlanetModeGauge } from './planet-mode-metric';
 import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-activation-bridge';
 import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
@@ -159,6 +160,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
         for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.planets.length);
       },
     });
+    installPlanetModeGauge(reg, () => pool.stats());
     new Gauge({
       name: 'ta_game_tick_lag_steps', help: 'Max steps a planet is behind its due time, per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {

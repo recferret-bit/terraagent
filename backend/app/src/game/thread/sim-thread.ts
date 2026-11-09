@@ -30,6 +30,7 @@ scheduler.onWarp = (planetId, k, requested) => post({ t: 'warp', planetId, k, re
 
 const host = new PlanetHost(init.thread, init.flags, post, {
   info: (id) => scheduler.info(id),
+  setMode: (id, mode) => scheduler.setMode(id, mode),
   get maxLag() { return scheduler.maxLag; },
   recentPasses: () => [...ring],
 }, {
