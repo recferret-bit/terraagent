@@ -128,6 +128,11 @@ export class DeedDebounceService implements OnModuleInit, OnModuleDestroy {
     return this.pendingByColony.size;
   }
 
+  clearColony(colonyId: string): void {
+    this.pendingByColony.delete(colonyId);
+    this.lastDispatchedAtByColony.delete(colonyId);
+  }
+
   async advanceClockMs(deltaMs: number): Promise<FlushedDeedUpdate[]> {
     if (Number.isFinite(deltaMs) && deltaMs > 0) {
       this.clockOffsetMs += Math.floor(deltaMs);

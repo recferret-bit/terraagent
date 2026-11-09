@@ -41,6 +41,7 @@ export class DeedPanel implements Disposable {
 
   private isOpen = false;
   private currentDeed: DeedView | null = null;
+  private lastWarp: number | undefined;
   private readonly offs: Array<() => void> = [];
   private readonly fetchFn: typeof fetch;
   private readonly onDeedListeners = new Set<(deed: DeedView) => void>();
@@ -210,8 +211,18 @@ export class DeedPanel implements Disposable {
   }
 
   renderDeed(deed: DeedView): void {
+    const wasSettled = Boolean(this.currentDeed?.settled || this.currentDeed?.status === 'settled');
     this.currentDeed = deed;
     const isSettled = deed.settled || deed.status === 'settled';
+    if (isSettled && !wasSettled && this.ctx.flags.has('W12')) {
+      this.ctx.services.achievementToasts?.show({
+        achievementId: 'settler',
+        familyId: 'settler',
+        familyName: 'Settler',
+        tierName: 'Bronze',
+        xp: 50,
+      });
+    }
     this.root.dataset.settled = isSettled ? 'true' : 'false';
     this.triggerBtn.dataset.settled = isSettled ? 'true' : 'false';
     this.triggerStatusEl.textContent = isSettled ? 'SETTLED' : deed.status.toUpperCase();
@@ -275,8 +286,15 @@ export class DeedPanel implements Disposable {
     }
   }
 
-  update(_view: GameView): void {
-    // Live updates arrive via WS `deed.updated` and server events
+  update(view: GameView): void {
+    if (view.warp !== this.lastWarp) {
+      const prev = this.lastWarp;
+      this.lastWarp = view.warp;
+      if (prev !== undefined && view.warp && view.warp > 1) {
+        void this.refreshFromServer(false);
+        void this.stakingPanel.refreshFromServer();
+      }
+    }
   }
 
   dispose(): void {
