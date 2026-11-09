@@ -29,6 +29,11 @@ const REST_BY_STATUS: Readonly<Record<number, (typeof REST_ERROR_CODES)[number]>
 /** Domain codes with a REST code of their own (else the status decides). */
 const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[number]>> = {
   COLONY_SEAT_REJECTED: 'seat_rejected',
+  DEED_NOT_FOUND: 'deed_not_found',
+  DEED_NOT_SETTLED: 'deed_not_settled',
+  ACCOUNT_NOT_CLAIMED: 'account_not_claimed',
+  POOL_NOT_WHITELISTED: 'pool_not_whitelisted',
+  STAKE_INSUFFICIENT_BALANCE: 'stake_insufficient_balance',
 };
 
 /**
