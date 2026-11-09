@@ -1162,6 +1162,92 @@ model MockChainReceipt {
   @@schema("chain")
 }
 
+// --- near-deed.prisma ---
+/// W20 Colony Deed & Staking tables (DATA_MODEL `chain.deed`, `chain.staking_position`, NEAR §6, §9).
+model Deed {
+  colonyId            String        @id @map("colony_id") @db.VarChar(64)
+  planetId            String        @map("planet_id") @db.VarChar(64)
+  playerId            String?       @map("player_id") @db.VarChar(64)
+  accountId           String        @map("account_id") @db.VarChar(64)
+  tokenId             String        @unique @map("token_id") @db.VarChar(128)
+  contract            String        @default("deeds.terraagent.mock") @db.VarChar(64)
+  metadata            Json
+  metadataVersion     Int           @default(1) @map("metadata_version")
+  status              String        @default("active") @db.VarChar(16)
+  settled             Boolean       @default(false)
+  chainState          String        @default("PENDING") @map("chain_state") @db.VarChar(16)
+  pendingOpId         String?       @map("pending_op_id") @db.VarChar(200)
+  lastUpdateTx        String?       @map("last_update_tx") @db.VarChar(128)
+  lastError           String?       @map("last_error")
+  lastDispatchedAt    DateTime?     @map("last_dispatched_at") @db.Timestamptz(3)
+  lastDispatchedSimMs BigInt        @default(0) @map("last_dispatched_sim_ms")
+  pendingMilestone    Json?         @map("pending_milestone")
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  history DeedHistory[]
+
+  @@index([playerId])
+  @@index([planetId])
+  @@index([accountId])
+  @@map("deed")
+  @@schema("chain")
+}
+
+model DeedHistory {
+  id        BigInt   @id @default(autoincrement())
+  colonyId  String   @map("colony_id") @db.VarChar(64)
+  tokenId   String   @map("token_id") @db.VarChar(128)
+  version   Int
+  change    String   @db.VarChar(200)
+  metadata  Json
+  opId      String   @map("op_id") @db.VarChar(200)
+  txHash    String?  @map("tx_hash") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  deed Deed @relation(fields: [colonyId], references: [colonyId], onDelete: Cascade)
+
+  @@unique([colonyId, version])
+  @@index([tokenId, version])
+  @@map("deed_history")
+  @@schema("chain")
+}
+
+/// Read-only projection of `StakingPort.position` (W20-20, NEAR §9). Never authoritative over the chain/mock port.
+model StakingPosition {
+  colonyId             String    @map("colony_id") @db.VarChar(64)
+  poolId               String    @map("pool_id") @db.VarChar(64)
+  accountId            String    @map("account_id") @db.VarChar(64)
+  stakedSnapshot       Decimal   @default(0) @map("staked_snapshot") @db.Decimal(40, 0)
+  unbondingSnapshot    Decimal   @default(0) @map("unbonding_snapshot") @db.Decimal(40, 0)
+  unbondingReadyAt     DateTime? @map("unbonding_ready_at") @db.Timestamptz(3)
+  withdrawableSnapshot Decimal   @default(0) @map("withdrawable_snapshot") @db.Decimal(40, 0)
+  rewardsSnapshot      Decimal   @default(0) @map("rewards_snapshot") @db.Decimal(40, 0)
+  updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([colonyId, poolId])
+  @@index([accountId])
+  @@map("staking_position")
+  @@schema("chain")
+}
+
+/// Mock NEAR staking pool ledger (W20-16). Written only by `MockStakingAdapter`.
+model MockChainStaking {
+  accountId        String    @map("account_id") @db.VarChar(64)
+  poolId           String    @map("pool_id") @db.VarChar(64)
+  staked           Decimal   @default(0) @db.Decimal(40, 0)
+  unbonding        Decimal   @default(0) @db.Decimal(40, 0)
+  unbondingReadyAt DateTime? @map("unbonding_ready_at") @db.Timestamptz(3)
+  withdrawable     Decimal   @default(0) @db.Decimal(40, 0)
+  rewardsAccrued   Decimal   @default(0) @map("rewards_accrued") @db.Decimal(40, 0)
+  lastAccruedAt    DateTime  @default(now()) @map("last_accrued_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([accountId, poolId])
+  @@map("mock_chain_staking")
+  @@schema("chain")
+}
+
 // --- progression.prisma ---
 /// Per-player lifetime progression facts (`counter` += delta, `max` = GREATEST(old, new), W12-02).
 model PlayerFact {

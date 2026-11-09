@@ -99,3 +99,7 @@ export {
 } from './commands/set-director-policy';
 export { DirectorActionDataSchema, event as directorAction, type DirectorActionData } from './events/director-action';
 export { DirectorStatusDataSchema, event as directorStatus, type DirectorStatusData } from './events/director-status';
+export * from './deed';
+export { DeedMintedDataSchema, event as deedMinted, type DeedMintedData } from './events/deed-minted';
+export { DeedUpdatedDataSchema, event as deedUpdated, type DeedUpdatedData } from './events/deed-updated';
+export { DeedSettledDataSchema, event as deedSettled, type DeedSettledData } from './events/deed-settled';

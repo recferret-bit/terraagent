@@ -4897,6 +4897,164 @@
       "summary": "Emitted when a colony completes its Command Hub T1 and claims its initial territory (W01-17, W01-31).",
       "wave": "W01"
     },
+    "deedMinted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ownerAccountId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "planetId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "tokenId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "txHash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "planetId",
+          "tokenId",
+          "ownerAccountId",
+          "version"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a Colony Deed NFT is minted on colonyFounded (W20-01, W20-05).",
+      "wave": "W20"
+    },
+    "deedSettled": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "imageUrl": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "planetId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "tokenId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "txHash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "planetId",
+          "tokenId",
+          "version"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a Colony Deed NFT is permanently sealed as Settled (W20-01, W20-15).",
+      "wave": "W20"
+    },
+    "deedUpdated": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "planetId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "settled": {
+            "type": "boolean"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "settled",
+              "eliminated",
+              "abandoned"
+            ],
+            "type": "string"
+          },
+          "terraformBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tokenId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "txHash": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "planetId",
+          "tokenId",
+          "version",
+          "status",
+          "settled"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a Colony Deed NFT metadata is updated after a milestone (W20-01, W20-07).",
+      "wave": "W20"
+    },
     "dev.pong": {
       "audience": "player",
       "data": {
@@ -8407,6 +8565,594 @@
         },
         "t": {
           "const": "cmd.reject",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "deed.updated": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "additionalProperties": false,
+          "properties": {
+            "change": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "colonyId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "deed": {
+              "additionalProperties": false,
+              "properties": {
+                "accountClaimed": {
+                  "type": "boolean"
+                },
+                "canSettle": {
+                  "type": "boolean"
+                },
+                "claimedByAccountId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "colonyId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "contractId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "history": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "change": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "metadata": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "colony": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "colonyName": {
+                            "maxLength": 80,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "imageUrl": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "planet": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "planetType": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "desert",
+                                  "ocean",
+                                  "temperate"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "dune",
+                                  "oceanForest",
+                                  "forestRock"
+                                ],
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rank": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "type": "integer"
+                          },
+                          "settled": {
+                            "type": "boolean"
+                          },
+                          "stage": {
+                            "maximum": 10,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "active",
+                              "settled",
+                              "eliminated",
+                              "abandoned"
+                            ],
+                            "type": "string"
+                          },
+                          "terraformBp": {
+                            "maximum": 10000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "territoryHexes": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "q": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "r": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "q",
+                                "r"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 512,
+                            "type": "array"
+                          },
+                          "tradeVolume": {
+                            "minimum": 0,
+                            "type": "number"
+                          },
+                          "truces": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "version": {
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "type": "integer"
+                          },
+                          "walls": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "planet",
+                          "colony",
+                          "status",
+                          "settled",
+                          "version",
+                          "imageUrl"
+                        ],
+                        "type": "object"
+                      },
+                      "txHash": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "at",
+                      "change",
+                      "metadata"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "lastError": {
+                  "type": "string"
+                },
+                "metadata": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "colony": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "colonyName": {
+                      "maxLength": 80,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "imageUrl": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "planet": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "planetType": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "desert",
+                            "ocean",
+                            "temperate"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "dune",
+                            "oceanForest",
+                            "forestRock"
+                          ],
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "rank": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "settled": {
+                      "type": "boolean"
+                    },
+                    "stage": {
+                      "maximum": 10,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "active",
+                        "settled",
+                        "eliminated",
+                        "abandoned"
+                      ],
+                      "type": "string"
+                    },
+                    "terraformBp": {
+                      "maximum": 10000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "territoryHexes": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "q": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "r": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "q",
+                          "r"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 512,
+                      "type": "array"
+                    },
+                    "tradeVolume": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "truces": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "version": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "walls": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "planet",
+                    "colony",
+                    "status",
+                    "settled",
+                    "version",
+                    "imageUrl"
+                  ],
+                  "type": "object"
+                },
+                "mintedAt": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "ownerAccountId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "pendingRetries": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "pendingState": {
+                  "enum": [
+                    "NONE",
+                    "PENDING",
+                    "FINAL",
+                    "FAILED"
+                  ],
+                  "type": "string"
+                },
+                "planetId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "playerId": {
+                  "type": "string"
+                },
+                "settled": {
+                  "type": "boolean"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "settled",
+                    "eliminated",
+                    "abandoned"
+                  ],
+                  "type": "string"
+                },
+                "tokenId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "txHash": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "version": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "tokenId",
+                "colonyId",
+                "planetId",
+                "ownerAccountId",
+                "contractId",
+                "status",
+                "settled",
+                "version",
+                "metadata",
+                "history",
+                "pendingState",
+                "mintedAt",
+                "updatedAt"
+              ],
+              "type": "object"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "colony": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "colonyName": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "imageUrl": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "planet": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "planetType": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "desert",
+                        "ocean",
+                        "temperate"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "dune",
+                        "oceanForest",
+                        "forestRock"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                },
+                "rank": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "settled": {
+                  "type": "boolean"
+                },
+                "stage": {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "settled",
+                    "eliminated",
+                    "abandoned"
+                  ],
+                  "type": "string"
+                },
+                "terraformBp": {
+                  "maximum": 10000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "territoryHexes": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "q": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "q",
+                      "r"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 512,
+                  "type": "array"
+                },
+                "tradeVolume": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "truces": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "version": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "walls": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "planet",
+                "colony",
+                "status",
+                "settled",
+                "version",
+                "imageUrl"
+              ],
+              "type": "object"
+            },
+            "pendingState": {
+              "enum": [
+                "NONE",
+                "PENDING",
+                "FINAL",
+                "FAILED"
+              ],
+              "type": "string"
+            },
+            "planetId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "settled": {
+              "type": "boolean"
+            },
+            "status": {
+              "enum": [
+                "active",
+                "settled",
+                "eliminated",
+                "abandoned"
+              ],
+              "type": "string"
+            },
+            "tokenId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "txHash": {
+              "type": "string"
+            },
+            "version": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "colonyId",
+            "planetId",
+            "tokenId",
+            "version",
+            "change",
+            "status",
+            "settled",
+            "metadata"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "deed.updated",
           "type": "string"
         },
         "tick": {
