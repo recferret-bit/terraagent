@@ -58,6 +58,19 @@ export class MemoryDigestStore implements DigestStore {
       .map(copy);
   }
 
+  async latestUnseen(colonyId: string): Promise<DigestRecord | null> {
+    const row = this.rows
+      .filter((r) => r.colonyId === colonyId && r.seenAt === null)
+      .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime() || Number(b.id - a.id))[0];
+    return row ? copy(row) : null;
+  }
+
+  async markClosedUnseen(colonyId: string, seenAt: Date): Promise<void> {
+    for (const row of this.rows) {
+      if (row.colonyId === colonyId && row.seenAt === null && row.closedAt !== null) row.seenAt = seenAt;
+    }
+  }
+
   async purgeOpenedBefore(cutoff: Date): Promise<number> {
     const before = this.rows.length;
     const keep = this.rows.filter((r) => r.openedAt.getTime() >= cutoff.getTime());

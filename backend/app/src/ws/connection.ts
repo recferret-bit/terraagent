@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
-import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode, type HomeResponse } from '@terra/contracts';
+import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type AwayDigestV1, type ClientMessageOf, type CloseCode, type HomeResponse } from '@terra/contracts';
 import type { RawData, WebSocket } from 'ws';
+import type { AwayDigestService } from '../game/digest';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
 import { holdColonySocket, releaseColonySocket } from '../game/presence/socket-presence';
 import type { CommandIngress } from './command-ingress';
@@ -8,6 +9,7 @@ import { DEFAULT_HOME, type HomeProvider } from './home-provider';
 import { MarketTopics } from './market-topics';
 import type { PlanetRooms, RoomMember } from './rooms';
 import { BadHelloTokenError, type SessionVerifier, type VerifiedSession } from './session-verifier';
+import { welcomeFields } from './welcome-digest';
 
 export const TICK_MS = 200;
 export const PROTO_VERSION = 1;
@@ -18,6 +20,8 @@ export interface ConnectionDeps {
   readonly rooms: PlanetRooms;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  /** Closed away digest for `welcome.away` (CT-32). Absent in gateway fixtures that do not boot digests. */
+  readonly digests?: Pick<AwayDigestService, 'deliverWelcome'>;
   readonly flags: readonly string[];
   readonly log: Logger;
   readonly helloTimeoutMs: number;
@@ -311,7 +315,9 @@ export class Connection implements RoomMember {
       return this.bye(CLOSE_CODES.forbidden, 'planet_unavailable');
     }
     if (this.state !== 'joining') return; // closed or left meanwhile
-    this.sendWelcome('join', planetId, snap);
+    const away = await this.readReturnDigest(snap.bytes);
+    if (this.state !== 'joining') return;
+    this.sendWelcome('join', planetId, snap, away);
     this.welcomeTick = snap.tick;
     this.state = 'playing';
     this.holdColony();
@@ -319,7 +325,7 @@ export class Connection implements RoomMember {
     this.d.onJoined(this);
   }
 
-  private sendWelcome(reason: 'join' | 'resync', planetId: string, snap: FullState): void {
+  private sendWelcome(reason: 'join' | 'resync', planetId: string, snap: FullState, away: AwayDigestV1 | null = null): void {
     const type = PlanetType.safeParse(snap.planetType);
     this.sendMsg({
       v: 1, t: 'welcome', tick: snap.tick,
@@ -330,8 +336,22 @@ export class Connection implements RoomMember {
         ...(snap.overrides && Object.keys(snap.overrides).length ? { overrides: snap.overrides } : {}),
         serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: this.d.planets.deltaHz, flags: this.d.flags,
         ...(snap.warp > 1 ? { warp: snap.warp } : {}),
+        ...welcomeFields(reason, away),
       },
     });
+  }
+
+  /** Closes the open digest and takes it. A failure still lets the join welcome go out. */
+  private async readReturnDigest(raw: Uint8Array): Promise<AwayDigestV1 | null> {
+    const colonyId = this.colonyId;
+    const digests = this.d.digests;
+    if (!colonyId || !digests) return null;
+    try {
+      return await digests.deliverWelcome(colonyId, new Date(), raw);
+    } catch (e) {
+      this.d.log.warn({ err: e, colonyId }, 'away digest unread');
+      return null;
+    }
   }
 
   private async onCmd(msg: ClientMessageOf<'cmd'>): Promise<void> {

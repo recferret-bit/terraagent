@@ -24,6 +24,7 @@ import {
   type ResolveHomeOptions,
   type SeatSlot,
 } from './home-resolve.helpers';
+import { attachAwaySummary, type AwayHeadline } from './away-headline';
 import { type ColonyRecord, HomeRepository, type PlanetRecord } from './home.repository';
 
 export const HOME_SEAT_NOTIFIER = Symbol('HOME_SEAT_NOTIFIER');
@@ -85,6 +86,7 @@ export class HomeService {
   private readonly recapSeenPlayerIds = new Set<string>();
   private readonly colonyStatusOverrides = new Map<string, string>();
   private landingHost: HomeLandingHost | undefined;
+  private awayHeadline: AwayHeadline | undefined;
   private seatChain: Promise<void> = Promise.resolve();
 
   constructor(
@@ -111,6 +113,11 @@ export class HomeService {
 
   setLandingHost(host: HomeLandingHost | undefined): void {
     this.landingHost = host;
+  }
+
+  /** Game module wires this after boot. Core does not import the digest service. */
+  setAwayHeadline(source: AwayHeadline | undefined): void {
+    this.awayHeadline = source;
   }
 
   async setColonyStatus(colonyId: string, status: string): Promise<ColonyRecord | null> {
@@ -448,11 +455,10 @@ export class HomeService {
       return buildTerminalHomeResponse('ELIMINATED', colony, colonySummary, planetSummary, planets, recapSeen);
     }
 
-    return {
-      state: 'ACTIVE',
-      colony: colonySummary,
-      planet: planetSummary,
-    };
+    return attachAwaySummary(
+      { state: 'ACTIVE', colony: colonySummary, planet: planetSummary },
+      this.awayHeadline,
+    );
   }
 
   private withSeatLock<T>(fn: () => Promise<T>): Promise<T> {

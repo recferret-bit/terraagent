@@ -120,7 +120,7 @@ W16 does not add a client or module `ai.directive` kind. The director proposes a
 
 ### 4.3 App → client messages
 
-> **As built (W01):** the code (`shared/contracts/src/ws/{client,server,sim}.ts`) is the source of truth where it differs from the target sketch below: `ready {playerId, home?, flags}`; `welcome {reason, colonyId | null, planet {id, type, name, …lobby fields optional}, state (snapshot bytes), simVersion, dataHash, overrides?, tick, serverTimeMs, tickMs, deltaHz, flags, warp?}` (no `away`); `delta {fromTick, toTick, diff (bytes), events?}` (no `ops`); `planetId` is a `HomePlanetId` (`pl_…`), not a ULID; `cmd.kind` is any string of 1–64 characters, unknown kinds are rejected `unknown_kind` by `precheckClientCommand`. `CommandKind` in W01 also includes `moveUnit`, `stopUnit`, `landPod` and the `dev.*` kinds (`COMMAND_KINDS`, generated).
+> **As built (W01):** the code (`shared/contracts/src/ws/{client,server,sim}.ts`) is the source of truth where it differs from the target sketch below: `ready {playerId, home?, flags}`; `welcome {reason, colonyId | null, planet {id, type, name, …lobby fields optional}, state (snapshot bytes), simVersion, dataHash, overrides?, tick, serverTimeMs, tickMs, deltaHz, flags, warp?, away?}` (`away` is `AwayDigestV1`, omitted when the colony has no unseen digest); `delta {fromTick, toTick, diff (bytes), events?}` (no `ops`); `planetId` is a `HomePlanetId` (`pl_…`), not a ULID; `cmd.kind` is any string of 1–64 characters, unknown kinds are rejected `unknown_kind` by `precheckClientCommand`. `CommandKind` in W01 also includes `moveUnit`, `stopUnit`, `landPod` and the `dev.*` kinds (`COMMAND_KINDS`, generated).
 
 ```ts
 const Ready   = Envelope("ready", z.object({ playerId: PlayerId, home: HomeResponse }));

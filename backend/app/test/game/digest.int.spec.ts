@@ -1,3 +1,4 @@
+import type { AwayDigestV1 } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { emptyDigest } from '../../src/game/digest/body';
@@ -110,5 +111,41 @@ describe('away digest on Postgres', () => {
     const seen = await db.prisma.planetEventDigest.findMany({ where: { colonyId: COLONY, seenAt: { not: null } } });
     expect(seen).toHaveLength(1);
     expect((seen[0]?.body as { attacks: { count: number } }).attacks.count).toBe(1);
+  });
+});
+
+async function closeDigest(colonyId: string, body: AwayDigestV1, openedAt: string, closedAt: string): Promise<void> {
+  const row = await store.insert({
+    colonyId,
+    planetId: PLANET,
+    openedAt: new Date(openedAt),
+    lastEventSeq: 0n,
+    body,
+  });
+  await store.save(row.id, body, 0n, new Date(closedAt));
+}
+
+describe('welcome reads one digest row', () => {
+  it('delivers the latest closed digest once and leaves another colony unseen', async () => {
+    const older = emptyDigest(COLONY, '2026-11-09T10:00:00.000Z');
+    older.durationS = 10;
+    older.attacks.count = 1;
+    const newer = emptyDigest(COLONY, '2026-11-09T11:00:00.000Z');
+    newer.durationS = 120;
+    newer.attacks.count = 4;
+    const other = emptyDigest(OTHER, '2026-11-09T11:00:00.000Z');
+    await closeDigest(COLONY, older, '2026-11-09T10:00:00.000Z', '2026-11-09T10:10:00.000Z');
+    await closeDigest(COLONY, newer, '2026-11-09T11:00:00.000Z', '2026-11-09T11:02:00.000Z');
+    await closeDigest(OTHER, other, '2026-11-09T11:00:00.000Z', '2026-11-09T11:01:00.000Z');
+    const at = new Date('2026-11-09T12:00:00.000Z');
+    const svc = new AwayDigestService({ store, now: () => at });
+    expect((await svc.headline(COLONY, at))?.durationS).toBe(120);
+    const body = await svc.deliverWelcome(COLONY, at);
+    expect(body?.attacks.count).toBe(4);
+    expect(body?.durationS).toBe(120);
+    expect(await svc.deliverWelcome(COLONY, at)).toBeNull();
+    expect(await svc.headline(COLONY, at)).toBeNull();
+    expect(await store.latestUnseen(OTHER)).not.toBeNull();
+    expect(await db.prisma.planetEventDigest.count({ where: { colonyId: COLONY, seenAt: { not: null } } })).toBe(2);
   });
 });

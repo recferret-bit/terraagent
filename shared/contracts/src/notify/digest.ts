@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HomeColonyId } from '../rest/home';
+import { HomeColonyId } from '../rest/ids';
 import { ResourceKey } from '../ws/sim';
 import { AWAY_STORY_MAX_CHARS, DIGEST_LIST_CAP } from './limits';
 
