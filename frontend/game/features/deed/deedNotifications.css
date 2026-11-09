@@ -1,0 +1,45 @@
+.ta-deed-toast {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s3) var(--ta-s4);
+  background: var(--ta-plate-2);
+  border: var(--ta-border) solid var(--ta-orange);
+  color: var(--ta-ink-1);
+  min-width: 240px;
+  max-width: 340px;
+  pointer-events: auto;
+}
+
+.ta-deed-toast[data-settled="true"] {
+  border-color: var(--ta-warn);
+}
+
+.ta-deed-toast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-deed-toast-close {
+  background: transparent;
+  border: none;
+  color: var(--ta-ink-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-sm);
+  cursor: pointer;
+  padding: 0 var(--ta-s1);
+}
+
+.ta-deed-toast-close:hover {
+  color: var(--ta-ink-1);
+}
+
+.ta-deed-toast-msg {
+  margin: 0;
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-sm);
+  color: var(--ta-ink-1);
+  line-height: var(--ta-lh-body);
+}

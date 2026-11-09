@@ -11,6 +11,7 @@ import type { PlanetEventV1 } from '../../bus/channels.js';
 import { EventBus } from '../../bus/event-bus.js';
 import { CoreException } from '../../core/errors/index.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { NotifierPort } from '../../ports/notifier.port.js';
 import type { ClaimedRow } from '../application/outbox/chain-outbox.repository.js';
 import { OutboxListeners } from '../application/outbox/outbox-listeners.js';
 import { DeedDebounceService } from './deed-debounce.service.js';
@@ -31,6 +32,7 @@ export class DeedSettledService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(DeedSettledService.name);
   private readonly stops: Array<() => void> = [];
   private readonly settlingColonies = new Set<string>();
+  private readonly notifiedSettledColonies = new Set<string>();
 
   constructor(
     @Inject(FlagsService) private readonly flags: FlagsService,
@@ -41,6 +43,7 @@ export class DeedSettledService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(DeedImageRendererService) private readonly imageRenderer?: DeedImageRendererService,
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
     @Optional() @Inject(OutboxListeners) private readonly listeners?: OutboxListeners,
+    @Optional() @Inject(NotifierPort) private readonly notifier?: NotifierPort,
   ) {}
 
   onModuleInit(): void {
@@ -168,6 +171,7 @@ export class DeedSettledService implements OnModuleInit, OnModuleDestroy {
       // Emit immediate WS push so UI switches to Gold Settled variant right away
       await this.mintService.pushDeedUpdated(updated, change, updated.lastUpdateTx);
       await this.emitSettledProgressionFact(updated);
+      await this.notifySettledIfEnabled(updated, change);
 
       return this.deeds.toDeedView(updated);
     } finally {
@@ -216,6 +220,36 @@ export class DeedSettledService implements OnModuleInit, OnModuleDestroy {
       });
     }
     await this.emitSettledProgressionFact(updated);
+    await this.notifySettledIfEnabled(updated, 'Colony settled — Gold Deed sealed');
+  }
+
+  /**
+   * W20-25: Push / Telegram notification via `NotifierPort` (W09) is sent ONLY on deed settled.
+   * When W09 is off or `NotifierPort` is unbound, skips silently without error.
+   */
+  private async notifySettledIfEnabled(record: StoredDeedRecord, change: string): Promise<void> {
+    if (!this.flags.has('W20') || !this.flags.has('W09') || !this.notifier) return;
+    if (this.notifiedSettledColonies.has(record.colonyId)) return;
+    this.notifiedSettledColonies.add(record.colonyId);
+    try {
+      await this.notifier.send({
+        channel: 'telegram',
+        to: record.playerId ?? record.accountId,
+        title: 'Colony Deed Settled',
+        body: `Your Colony Deed (${record.tokenId}) was settled: ${change}`,
+        data: {
+          colonyId: record.colonyId,
+          planetId: record.planetId,
+          tokenId: record.tokenId,
+          version: record.metadataVersion,
+          settled: true,
+        },
+      });
+    } catch (err: unknown) {
+      this.log.warn(
+        `deed settled notify failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async emitSettledProgressionFact(record: StoredDeedRecord): Promise<void> {

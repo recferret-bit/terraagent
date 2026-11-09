@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type CargoStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type CargoStatusPayload, type DeedUpdatedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
@@ -106,6 +106,7 @@ export class WorldStore {
   private readonly cargoStatuses = new Emitter<CargoStatusPayload>();
   private readonly marketBooks = new Emitter<MarketBookPayload>();
   private readonly marketTrades = new Emitter<MarketTradePayload>();
+  private readonly deedUpdates = new Emitter<DeedUpdatedPayload>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -129,6 +130,8 @@ export class WorldStore {
   /** W13 `market.book` / `market.trade` pushes of the joined planet. */
   onMarketBook(fn: (p: MarketBookPayload) => void): () => void { return this.marketBooks.on(fn); }
   onMarketTrade(fn: (p: MarketTradePayload) => void): () => void { return this.marketTrades.on(fn); }
+  /** W20 `deed.updated` pushes for the joined planet/colony. */
+  onDeedUpdated(fn: (p: DeedUpdatedPayload) => void): () => void { return this.deedUpdates.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -259,6 +262,8 @@ export class WorldStore {
       this.marketBooks.emit(m.d);
     } else if (m.t === 'market.trade') {
       this.marketTrades.emit(m.d);
+    } else if (m.t === 'deed.updated') {
+      this.deedUpdates.emit(m.d);
     }
   }
 
