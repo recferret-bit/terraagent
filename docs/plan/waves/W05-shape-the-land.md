@@ -140,3 +140,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 - **Weather & hazard dev commands and events:** Added dev-console and protocol commands `dev-storm`, `dev-rain`, `dev-twister`, `dev-lightning`, `dev-meteor` and events `storm-ended`, `twister-started` alongside `stormStarted`, `lightningStrike`, and `meteorImpact`.
 - **Planar water reflections (`WaterReflectionPass`) & projector cone alignment:** Added stencil-masked planar reflection pass for calm water tiles (`WaterReflectionPass`, `waterReflectionMask`) with storm roughness gating, and aligned Worker Drone projector beam cones and dust clouds with the terrain surface target (`RobotProjectorDust`).
 
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S2–S4` Terraforming & Living Planet):** Dig/fill/flatten, irrigate, seed biomass, and Living Planet % across `living`, `desert`, and `ocean` worlds.
+2. **Test Pyramid & Online E2E (`tests/e2e/w05.spec.ts`):** Positive/negative/corner unit & multi-tick `SimHost` integration tests (tile height bounds, water flow, 0%→100% Living progression, chunked tile diffs) + online server/client Playwright E2E + `?host=local` parity.

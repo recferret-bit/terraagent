@@ -1,6 +1,6 @@
-# W27 — Planet Scale, Streaming & Ground-to-Globe Navigation
+# W27 — Planet Scale, Streaming & Ground-to-Globe Navigation [POSTPONED]
 
-> **Status:** Replanned 2026-11-04 as the second half of W11/W27; documentation only, no implementation claimed.
+> **Status:** POSTPONED — Deferred out of the NEAR Hackathon Vertical Slice (post-hackathon backlog). All Tier 2/3 content (buildings, resources, units, stages S5–S10) and non-core scope are skipped so the hackathon vertical slice focuses on Tier 1 (`S0–S4`) gameplay polish, AI Director, persistent sector multiplayer, economy, offline play, and NEAR/Web3 features.
 > **Track:** Sim / Meta / Client · **Flag:** `W27` · **Tag:** `wave-27`
 > **Scenario:** `tests/scenarios/w27-planet-sectors.ts` · **E2E:** `tests/e2e/w27.spec.ts`
 > **Depends on:** W04 (maps and camera), W05 (territory and terrain operations), W11 (persistent sector worlds, topology, identity, saves, admission, parties and home).

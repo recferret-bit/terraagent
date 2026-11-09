@@ -109,3 +109,8 @@ The colony teaches itself. A data-driven **stage engine** (S0–S10) unlocks con
 Deliver replayable S0–S10 guidance, one tabbed HQ panel, actual resource-rate goals and explicit unavailable capabilities.
 
 Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S0–S4` Stages, Goals & Priority Engine):** Stages `S0–S4` unlock progression, HQ Goals queue, 5 canonical priority sliders, and deterministic rule-engine autopilot (`S5–S10` are **POSTPONED** with `W17`/`W19`).
+2. **Test Pyramid & Online E2E (`tests/e2e/w08.spec.ts`):** Stage trigger/dwell unit tests, goal breakdown & priority slider integration tests (positive, negative, blocked/resume, reload persistence) per `W08-PROGRESSION-CONTRACT.md` + online server/client Playwright E2E + `?host=local` parity.

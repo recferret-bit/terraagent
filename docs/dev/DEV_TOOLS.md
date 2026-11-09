@@ -226,6 +226,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `WS_HELLO_TIMEOUT_MS`, `WS_IDLE_TIMEOUT_MS` | 5000, 60000 | Socket timeouts |
 | `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`, `MOCK_FAIL_RATE`, `MOCK_SEED` | 300, 1500, 0, — | Mock chain behaviour |
 | `MOCK_OAUTH_SECRET` | `terra-dev-mock-oauth-secret` | HMAC secret for the dev mock OAuth token (`signMockToken` / `verifyMockToken`, `/dev/mock-oauth`). Unset or empty uses the default. Not in the Nest boot env schema. Token TTL is 5 minutes |
+| `NEAR_MODE` | mock | Global Web3 feature flag / switch (`mock\|testnet\|devnet\|mainnet`, W23): sets the default adapter mode for all 11 NEAR ports (`Identity`, `Relayer`, `CargoToken`, `Intents`, `AgentWallet`, `DeedNft`, `BadgeNft`, `Staking`, `TreasuryDao`, `Escrow`, `ChainRead`). Can be overridden per port via `NEAR_ADAPTER_<PORT>` |
 | `NEAR_KEK` | dev 32-byte `DEV_KEK` (not in production) | Base64 of 32 bytes. Seals ed25519 seeds (AES-256-GCM). Production `loadKekRing` refuses a missing key or `DEV_KEK` |
 | `NEAR_KEK_VERSION` | 1 | Integer version stored on new key rows |
 | `NEAR_KEK_RING` | — | JSON `{"1":"<base64>",...}` of older keys so a rotated version still decrypts |
