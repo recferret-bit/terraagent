@@ -841,3 +841,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `wirePlanetRecovery` restores the planet from its snapshot and fast-runs again. That run flushes.
 - **To resolve:** Flush the aborted buffer only when recovery will not replay that gap.
 - **Found:** 2026-11-09, W09-27
+
+### BE-63 · A colony join does not close a no-colony socket of the same player
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/ws/playing-sockets.ts` (`playingKey`), `backend/app/src/ws/ws.gateway.ts` (`replaceOlder`)
+- **What happens:** A join with a `colonyId` is keyed `colony:<colonyId>`. A second join of that colony closes the older socket with `4001 replaced`. A different colony stays open. A join with no `colonyId` (dev session or pre-home) is keyed `player:<playerId>` and replaces only another no-colony socket of that player. It does not close a colony socket, and a colony join does not close the no-colony socket. One player can hold a lobby or dev socket and one playing socket per colony. Two playing sockets for one colony are not allowed. The same socket joining again does not close itself.
+- **Why it is like this:** W09-28 stops a second colony of the same player from dropping the first (CT-15, CT-16). Dev welcomes still have a null colony id, and that path kept the old per-player takeover. The two keys are distinct so they cannot close each other.
+- **Workaround / mitigation:** `leaveRoom` clears `colonyId` before close. The table remembers the join key and only drops a socket that is still registered under it, so the replacement stays.
+- **To resolve:** If a colony join should also drop that player's lobby socket, close the `player:` entry from the colony join. Do not key colony sockets by player id again.
+- **Found:** 2026-11-09, W09-28

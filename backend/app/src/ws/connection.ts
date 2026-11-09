@@ -31,7 +31,7 @@ export interface ConnectionDeps {
    * Absent in unit tests that have no database.
    */
   seatDevScenario?(input: { playerId: string; handle: string; planetId: string; colonyIndices?: readonly number[] }): Promise<void>;
-  /** Called after the welcome of a join was sent; the gateway closes the player's older planet socket with 4001. */
+  /** Called after the welcome of a join was sent; the gateway closes the older socket for this colony with 4001. */
   onJoined(conn: Connection): void;
   onClosed(conn: Connection): void;
   onWelcome(): void;
@@ -195,7 +195,7 @@ export class Connection implements RoomMember {
     this.welcomeTick = undefined;
   }
 
-  /** Holds presence only after `playing`, and before the previous socket of this player is closed. */
+  /** Holds presence only after `playing`, and before replace closes the colony's previous socket. */
   private holdColony(): void {
     if (this.colonyHeld || !this.colonyId) return;
     holdColonySocket(this.colonyId);
