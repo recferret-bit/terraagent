@@ -1,4 +1,10 @@
-import { AWAY_DIRECTIVE_PCT_DEFAULT, AWAY_SESSION_PCT_DEFAULT, type AutopilotMode, type AwayBudget } from '@terra/contracts';
+import {
+  AWAY_DIRECTIVE_PCT_DEFAULT,
+  AWAY_POLICY_VERSION,
+  AWAY_SESSION_PCT_DEFAULT,
+  type AutopilotMode,
+  type AwayBudget,
+} from '@terra/contracts';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { AwayFamily } from './types';
@@ -16,6 +22,7 @@ export interface ColonyAwaySettings {
 }
 
 interface AwayBlob {
+  policyVersion: number;
   byColony: Record<string, ColonyAwaySettings>;
 }
 
@@ -51,7 +58,7 @@ export function readAwaySettings(state: PlanetState, colonyIndex: number): Colon
 
 function write(state: PlanetState, colonyIndex: number, settings: ColonyAwaySettings, tick: number): void {
   const prev = (state.blobs[BLOB]?.value as AwayBlob | undefined)?.byColony ?? {};
-  setBlob(state, BLOB, { byColony: { ...prev, [String(colonyIndex)]: settings } }, tick);
+  setBlob(state, BLOB, { policyVersion: AWAY_POLICY_VERSION, byColony: { ...prev, [String(colonyIndex)]: settings } }, tick);
 }
 
 export function applyAutopilot(state: PlanetState, colonyIndex: number, patch: { mode?: AutopilotMode; awayRaids?: boolean; awayBudget?: AwayBudget }, data: CompiledDataLike, tick: number): ColonyAwaySettings {
