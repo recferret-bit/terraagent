@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
-import type { CreateTradeKeyRequest, CreateTradeKeyResponse, RevokeTradeKeyResponse, TradeAllowanceUpdate, TradeKeyListResponse, TradeKeyView } from '@terra/contracts';
+import type {
+  CreateTradeKeyRequest, CreateTradeKeyResponse, KillTradeRequest, KillTradeResponse, RevokeTradeKeyResponse,
+  TradeAllowanceUpdate, TradeKeyListResponse, TradeKeyView, TradeMeResponse,
+} from '@terra/contracts';
 import { withTransaction, type PrismaClient } from '@terra/db';
 import { PRISMA } from '../../db/db.module.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
@@ -55,6 +58,62 @@ export class TradeKeysService implements OnModuleInit {
   async list(p: TradePrincipal): Promise<TradeKeyListResponse> {
     this.sessionOnly(p);
     return { keys: await Promise.all((await this.keys.listByOwner(p.ownerId)).map((k) => this.withUsage(keyView(k)))) };
+  }
+
+  /** `GET /v1/trade/me`: caller identity, colony, allowance, daily usage and kill-switch state (W13-58). */
+  async me(p: TradePrincipal, planetIdIn?: string): Promise<TradeMeResponse> {
+    this.orders.gate();
+    TradeAuth.require(p, 'read');
+    const planetId = this.orders.planetOf(p, planetIdIn);
+    const colony = await this.orders.colonyOrThrow(p, planetId);
+    if (p.key) {
+      const fresh = (await this.keys.find(p.key.keyId)) ?? p.key;
+      const view = await this.withUsage(keyView(fresh));
+      return {
+        actorKind: 'bot', ownerId: p.ownerId, keyId: view.keyId, planetId, colonyId: colony.colonyId, accountId: colony.accountId,
+        scopes: view.scopes, allowance: view.allowance, dailySpent: view.dailySpent ?? '0', dailyRemaining: view.dailyRemaining ?? '0',
+        openOrders: view.openOrders ?? 0, killSwitch: view.allowance.killSwitch,
+      };
+    }
+    const openOrders = await this.prisma.marketOrder.count({ where: { planetId, colonyId: colony.colonyId, state: { in: ['PENDING', 'OPEN', 'PARTIAL'] } } });
+    return {
+      actorKind: 'player', ownerId: p.ownerId, keyId: null, planetId, colonyId: colony.colonyId, accountId: colony.accountId,
+      scopes: [...p.scopes], allowance: null, dailySpent: null, dailyRemaining: null, openOrders, killSwitch: false,
+    };
+  }
+
+  /** `POST /v1/trade/kill`: emergency kill switch for a key or the caller's keys on a planet; cancels unsubmitted and resting orders once (W13-59). */
+  async kill(p: TradePrincipal, body: KillTradeRequest): Promise<KillTradeResponse> {
+    this.orders.gate();
+    if (p.key) {
+      if (body.keyId && body.keyId !== p.key.keyId) throw new TradeError('forbidden_scope', 'A key may only switch its own kill switch on.');
+      if (body.planetId && body.planetId !== p.key.planetId) throw new TradeError('wrong_planet', `This key trades on ${p.key.planetId}.`, { planetId: p.key.planetId });
+      await this.keys.updateAllowance(p.key.keyId, { killSwitch: true });
+      const cancelledUnsubmitted = await this.requests.cancelUnsubmitted(p.key.keyId);
+      const cancelRequested = await this.cancelOpen(p.key);
+      setTimeout(() => void this.cancelOpen(p.key!).catch(() => undefined), 1500).unref();
+      return { keyId: p.key.keyId, planetId: p.key.planetId, colonyId: p.key.colonyId, killSwitch: true, cancelledUnsubmitted, cancelRequested };
+    }
+    if (body.keyId) {
+      const key = await this.owned(p, body.keyId);
+      if (body.planetId && body.planetId !== key.planetId) throw new TradeError('wrong_planet', `This key trades on ${key.planetId}.`, { planetId: key.planetId });
+      await this.keys.updateAllowance(key.keyId, { killSwitch: true });
+      const cancelledUnsubmitted = await this.requests.cancelUnsubmitted(key.keyId);
+      const cancelRequested = await this.cancelOpen(key);
+      setTimeout(() => void this.cancelOpen(key).catch(() => undefined), 1500).unref();
+      return { keyId: key.keyId, planetId: key.planetId, colonyId: key.colonyId, killSwitch: true, cancelledUnsubmitted, cancelRequested };
+    }
+    const planetId = this.orders.planetOf(p, body.planetId);
+    const colony = await this.orders.colonyOrThrow(p, planetId);
+    const keys = (await this.keys.listByOwner(p.ownerId)).filter((k) => k.planetId === planetId && !k.revokedAt);
+    let cancelledUnsubmitted = 0;
+    let cancelRequested = 0;
+    for (const k of keys) {
+      await this.keys.updateAllowance(k.keyId, { killSwitch: true });
+      cancelledUnsubmitted += await this.requests.cancelUnsubmitted(k.keyId);
+      cancelRequested += await this.cancelOpen(k);
+    }
+    return { keyId: null, planetId, colonyId: colony.colonyId, killSwitch: true, cancelledUnsubmitted, cancelRequested };
   }
 
   /** Owner session: any field. A key holding `manage`: only its own `killSwitch: true` (an agent may stop itself, never loosen its rails). */
