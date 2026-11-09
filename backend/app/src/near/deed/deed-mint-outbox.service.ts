@@ -148,13 +148,21 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
     const db = this.database();
     if (db) {
       return withTransaction(db, async (tx) => {
-        const accountId = await resolveColonyAccountId(
+        const rawAccountId = await resolveColonyAccountId(
           tx,
           colonyId,
           input.playerId ?? null,
           input.planetId,
           input.colonyIndex ?? 0,
         );
+        const accountId = rawAccountId.replace(/[-_]{2,}/g, '-');
+        if (accountId !== rawAccountId) {
+          await tx.mockChainAccount.upsert({
+            where: { accountId },
+            create: { accountId, kind: 'colony' },
+            update: {},
+          });
+        }
         const { record } = await this.deeds.upsertInitialMint(
           {
             colonyId,

@@ -9,6 +9,7 @@ import type { EventBus } from '../bus/event-bus';
 import type { MarketBookBusEvent } from '../market/api/market-book-push.service';
 import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.service';
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
+import type { NearDeedUpdatedBusEvent } from '../near/deed/deed-mint-outbox.service';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
@@ -46,6 +47,7 @@ export class WsGateway {
   private readonly unwarp: () => void;
   private readonly undown: () => void;
   private readonly uncargo: (() => void) | undefined;
+  private readonly undeed: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
 
@@ -60,6 +62,7 @@ export class WsGateway {
       for (const c of [...this.conns]) if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
     });
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
+    this.undeed = o.bus?.on('near.deed.updated', (ev) => this.broadcastDeedUpdated(ev), { module: 'WsGateway' });
     this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
     // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
     this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
@@ -126,12 +129,29 @@ export class WsGateway {
     }
   }
 
+  private broadcastDeedUpdated(ev: NearDeedUpdatedBusEvent): void {
+    const frame = encodeWire({ v: 1, t: 'deed.updated', d: ev.payload });
+    if (ev.planetId) this.rooms.broadcast(ev.planetId, frame);
+    for (const c of this.conns) {
+      if (ev.planetId && c.planetId === ev.planetId && c.welcomeTick !== undefined) continue;
+      if (
+        !ev.planetId ||
+        (ev.playerId && c.playerId === ev.playerId) ||
+        (c.colonyId && c.colonyId === ev.colonyId) ||
+        c.session?.dev
+      ) {
+        c.send(frame);
+      }
+    }
+  }
+
   /** Shutdown: `bye 4012` to everyone, then wait briefly for the closing handshakes. Must run before the sim threads stop. */
   async closeAll(graceMs = 1000): Promise<void> {
     this.detach?.();
     this.unwarp();
     this.undown();
     this.uncargo?.();
+    this.undeed?.();
     this.unmarket?.();
     this.unbook?.();
     const all = [...this.conns];

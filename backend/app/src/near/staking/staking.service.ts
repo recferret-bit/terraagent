@@ -22,6 +22,7 @@ import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { StakingPort } from '../application/ports/staking.port.js';
+import { DeedTelemetryService } from '../deed/deed-telemetry.service.js';
 import { DeedRepository, type StoredDeedRecord } from '../deed/deed.repository.js';
 import { NearException } from '../domain/errors.js';
 import { AccountClaimService, type AccountClaimStatus } from './account-claim.service.js';
@@ -79,6 +80,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
+    @Optional() @Inject(DeedTelemetryService) private readonly telemetry?: DeedTelemetryService,
   ) {}
 
   onModuleInit(): void {
@@ -197,6 +199,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       amount: amountYocto,
       ...(payerAccountId !== claimInfo.accountId ? { walletAccountId: payerAccountId } : {}),
     });
+    this.telemetry?.recordTx('stake');
 
     const synced = await this.positionSync.syncAccount(claimInfo.accountId, {
       colonyId: deed.colonyId,
