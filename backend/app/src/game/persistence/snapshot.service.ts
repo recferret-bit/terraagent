@@ -20,6 +20,7 @@ import { GamePlanets, type LoadOptions } from '../game-planets.service';
 import { hasLiveColony, liveColonyIndices } from '../live-colony';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
 import { persistenceEnabled } from '../../core/persistence';
+import { missedRestartTicks } from '../restart/missed-ticks';
 import { SnapshotScheduler } from './snapshot-scheduler';
 import { SnapshotStore } from './snapshot-store';
 import { devSnapshotVerdict } from './dev-planet-verdict';
@@ -64,6 +65,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
   readonly enabled: boolean;
   /** Open away-digest bodies, flushed after a snapshot row is stored (CT-31). */
   private digestFlush?: (planetId: string, raw: Uint8Array) => Promise<void>;
+  /** Wall ms for the restart gap (`now − savedAt`). Tests replace it; boot uses `Date.now`. */
+  nowMs: () => number = () => Date.now();
 
   constructor(
     private readonly planets: GamePlanets,
@@ -231,8 +234,11 @@ export class SnapshotService implements BeforeApplicationShutdown {
       if (!isDev && hasLiveColony(state) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
         this.planets.markScenarioColonyPlanet(id, liveColonyIndices(state));
       }
-      const tick = await this.planets.load(id, { snapshot: snap.raw });
-      this.log.info({ planetId: id, tick, savedAt: snap.savedAt }, `restored ${id} at tick ${tick}`);
+      const catchUpTicks = missedRestartTicks(this.nowMs(), snap.savedAt.getTime()).ticks;
+      const tick = await this.planets.load(id, { snapshot: snap.raw, ...(catchUpTicks > 0 ? { catchUpTicks } : {}) });
+      // Fresh savedAt so a second boot does not run this gap again. Skipped when the gap was already under one coarse step.
+      if (catchUpTicks > 0) this.scheduler.request(id, 'PERIODIC');
+      this.log.info({ planetId: id, tick, savedAt: snap.savedAt, catchUpTicks }, `restored ${id} at tick ${tick}`);
       return 'restored';
     } catch (e) {
       this.log.error({ planetId: id, err: errText(e) }, 'snapshot restore failed');

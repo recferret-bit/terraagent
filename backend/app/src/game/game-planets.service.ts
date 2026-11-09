@@ -89,6 +89,9 @@ export class GamePlanets {
   private readonly eventListeners = new Set<PlanetEventsListener>();
   private readonly downListeners = new Set<PlanetDownListener>();
   private readonly threadDownListeners = new Set<(thread: number, planetIds: readonly string[]) => void>();
+  /** Restores whose coarse catch-up has not posted `fastRan` yet. `load` stays pending until then. */
+  private readonly catchingUp = new Set<string>();
+  private readonly fastRunListeners: ((planetId: string, seconds: number, ticks: number) => void)[] = [];
   /** Set by `shutdown`: threads stopping on purpose are not "down". */
   private stopping = false;
   private readonly unlisten: () => void;
@@ -137,6 +140,7 @@ export class GamePlanets {
             }
           : msg;
       this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
+      if ((normalizedMsg.catchUpTicks ?? 0) > 0) this.catchingUp.add(planetId);
       const transfer = normalizedMsg.snapshot ? [normalizedMsg.snapshot.buffer as ArrayBuffer] : [];
       if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
@@ -153,6 +157,8 @@ export class GamePlanets {
 
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
   onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): void { this.loadedListeners.push(fn); }
+  /** Fires when a restart fast-run finishes (`restart_fastrun_seconds`). */
+  onFastRun(fn: (planetId: string, seconds: number, ticks: number) => void): void { this.fastRunListeners.push(fn); }
   /** Every step's ledger postings of every planet, in order, subscribed or not. */
   onPlanetLedger(fn: PlanetLedgerListener): void { this.ledgerListeners.push(fn); }
   onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
@@ -345,14 +351,24 @@ export class GamePlanets {
     switch (msg.t) {
       case 'loaded':
         this.loaded.add(msg.planetId);
-        for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
-        this.loading.delete(msg.planetId);
+        // Catch-up still running: keep the load promise pending so boot does not resume early. Listeners (ledger)
+        // still see the snapshot tick, and the following `ledger` messages are the coarse steps.
+        if (!this.catchingUp.has(msg.planetId)) {
+          for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
+          this.loading.delete(msg.planetId);
+        }
         {
           const host = this.hostInfo.get(msg.planetId);
           this.hostInfo.delete(msg.planetId);
           const info: LoadedInfo = { restored: msg.restored ?? false, genesis: msg.genesis ?? false, stocks: msg.stocks ?? [], ...host };
           for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick, info);
         }
+        return;
+      case 'fastRan':
+        this.catchingUp.delete(msg.planetId);
+        for (const fn of this.fastRunListeners) fn(msg.planetId, msg.seconds, msg.ticks);
+        for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
+        this.loading.delete(msg.planetId);
         return;
       case 'ledger':
         for (const fn of this.ledgerListeners) fn(msg.planetId, msg.tick, msg.postings);
@@ -408,6 +424,7 @@ export class GamePlanets {
   }
 
   private failLoad(planetId: string, e: Error): void {
+    this.catchingUp.delete(planetId);
     for (const w of this.loading.get(planetId) ?? []) w.reject(e);
     this.loading.delete(planetId);
     this.hostInfo.delete(planetId);
