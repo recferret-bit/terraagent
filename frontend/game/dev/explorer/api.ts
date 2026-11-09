@@ -1,16 +1,26 @@
 /** Read-only dev routes of the mock chain (`/v1/dev/chain/*`, 404 in production). */
-export type TabId = 'accounts' | 'receipts' | 'balances' | 'nfts' | 'dao' | 'escrow' | 'outbox';
+export type TabId = 'accounts' | 'receipts' | 'balances' | 'nfts' | 'deeds' | 'staking' | 'dao' | 'escrow' | 'outbox';
 export type Row = Record<string, unknown>;
 
-export interface Query { account: string }
+export interface Query { account: string; tokenId?: string }
 
-const PATH: Record<TabId, string> = {
-  accounts: 'accounts', receipts: 'receipts', balances: 'balances', nfts: 'nfts', dao: 'dao', escrow: 'escrow', outbox: 'outbox',
+export const PATH: Record<TabId, string> = {
+  accounts: 'accounts',
+  receipts: 'receipts',
+  balances: 'balances',
+  nfts: 'nfts',
+  deeds: 'deeds',
+  staking: 'staking',
+  dao: 'dao',
+  escrow: 'escrow',
+  outbox: 'outbox',
 };
 
 export async function fetchRows(tab: TabId, q: Query, signal?: AbortSignal): Promise<Row[]> {
   const params = new URLSearchParams({ limit: '100' });
   if (q.account && tab !== 'dao') params.set('account', q.account);
+  const tokenId = q.tokenId ?? (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('tokenId') ?? '' : '');
+  if (tokenId && tab === 'deeds') params.set('tokenId', tokenId);
   const res = await fetch(`/v1/dev/chain/${PATH[tab]}?${params}`, { signal });
   if (!res.ok) throw new Error(res.status === 404 ? 'dev routes not available (production or non-mock chain)' : `HTTP ${res.status}`);
   return (await res.json()) as Row[];

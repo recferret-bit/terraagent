@@ -6,9 +6,14 @@ export interface TabDef { id: TabId; label: string; empty: string; key: (r: Row)
 const s = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v));
 const short = (v: unknown, n = 48): string => { const t = s(v); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 const receiptHref = (hash: string): string | null => (hash ? `/dev/chain/tx/${encodeURIComponent(hash)}` : null);
+export const deedExplorerHref = (tokenId: string): string => `/dev/chain/?tab=deeds&tokenId=${encodeURIComponent(tokenId)}`;
 const fmtBalance = (r: Row): string => {
   const raw = s(r.amount);
   return /^\d{19,}$/.test(raw) && raw.endsWith('000000000000000000') && s(r.tokenId).includes('.') ? `${raw.slice(0, -18)} (${raw})` : raw;
+};
+const fmtDeedHistory = (raw: unknown): string => {
+  const list = Array.isArray(raw) ? (raw as Row[]) : [];
+  return list.length ? list.map((h) => `v${s(h.version)}: ${s(h.change)}`).join(' → ') : '0';
 };
 
 export function age(ms: unknown, now = Date.now()): string {
@@ -38,6 +43,26 @@ export const TABS: TabDef[] = [
     columns: [
       { head: 'COLLECTION', cell: (r) => s(r.collection) }, { head: 'TOKEN', cell: (r) => short(r.tokenId, 36) }, { head: 'OWNER', cell: (r) => s(r.ownerAccountId) },
       { head: 'METADATA', cell: (r) => short(r.metadata, 60) }, { head: 'AGE', cell: (r) => age(r.updatedAt), cls: 'num' },
+    ] },
+  { id: 'deeds', label: 'Deeds', empty: 'No deeds yet.', key: (r) => `${s(r.tokenId)}|${s(r.version)}|${s(r.settled)}|${s(r.status)}|${s(r.lastUpdateTx)}`,
+    columns: [
+      { head: 'TOKEN', cell: (r) => s(r.tokenId) },
+      { head: 'COLONY', cell: (r) => s(r.colonyId) },
+      { head: 'OWNER', cell: (r) => s(r.accountId) },
+      { head: 'VER', cell: (r) => `v${s(r.version ?? 1)}`, cls: 'num' },
+      { head: 'STATUS', cell: (r) => (r.settled ? 'SETTLED' : s(r.status)), cls: 'status' },
+      { head: 'HISTORY', cell: (r) => fmtDeedHistory(r.history) },
+      { head: 'HASH', cell: (r) => s(r.lastUpdateTx), cls: 'hash', href: (r) => receiptHref(s(r.lastUpdateTx)) },
+    ] },
+  { id: 'staking', label: 'Staking', empty: 'No staking pools or positions.', key: (r) => `${s(r.kind)}|${s(r.pool)}|${s(r.accountId)}|${s(r.staked)}|${s(r.rewards)}`,
+    columns: [
+      { head: 'KIND', cell: (r) => s(r.kind) },
+      { head: 'POOL', cell: (r) => s(r.pool) },
+      { head: 'ACCOUNT', cell: (r) => s(r.accountId) },
+      { head: 'COLONY', cell: (r) => s(r.colonyId) },
+      { head: 'STAKED', cell: (r) => s(r.staked), cls: 'num' },
+      { head: 'REWARDS', cell: (r) => s(r.rewards), cls: 'num' },
+      { head: 'APY', cell: (r) => (r.apyBp ? `${Number(r.apyBp) / 100}%` : ''), cls: 'num' },
     ] },
   { id: 'dao', label: 'DAO', empty: 'No DAOs.', key: (r) => `${s(r.id)}|${s(r.proposals && (r.proposals as unknown[]).length)}|${short(r.proposals, 400)}`,
     columns: [
