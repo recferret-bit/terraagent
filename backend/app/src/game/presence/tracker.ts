@@ -1,5 +1,5 @@
 import { AWAY_AFTER_S } from '@terra/contracts';
-import type { LastSeenPort, PresenceClock, PresenceCommandPort, PresenceJoin, PresenceLog } from './types';
+import type { LastSeenPort, PresenceClock, PresenceCommandPort, PresenceJoin, PresenceLog, PresenceTransition } from './types';
 import { postPresence, presenceCommand } from './post';
 
 interface ColonyRec {
@@ -19,6 +19,8 @@ export interface PresenceTrackerDeps {
   readonly commands: PresenceCommandPort;
   readonly lastSeen: LastSeenPort;
   readonly log?: PresenceLog;
+  /** Fired when the colony flips away or back, before the sim command is posted. */
+  readonly onTransition?: (info: PresenceTransition) => void | Promise<void>;
   /** Override for tests. Production uses `AWAY_AFTER_S` (60s). The boundary is inclusive. */
   readonly awayAfterMs?: number;
 }
@@ -136,7 +138,23 @@ export class PresenceTracker {
     if (rec.away === away) return;
     rec.away = away;
     const at = new Date(this.deps.clock.now());
+    this.notify(rec, away, at);
     this.enqueue(() => this.apply(rec, away, at));
+  }
+
+  private notify(rec: ColonyRec, away: boolean, at: Date): void {
+    const fn = this.deps.onTransition;
+    if (!fn) return;
+    try {
+      const out = fn({ planetId: rec.planetId, colonyId: rec.colonyId, away, at });
+      if (out instanceof Promise) out.catch((err: unknown) => this.warn(err));
+    } catch (err) {
+      this.warn(err);
+    }
+  }
+
+  private warn(err: unknown): void {
+    this.deps.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'presence transition failed');
   }
 
   private async apply(rec: ColonyRec, away: boolean, at: Date): Promise<void> {

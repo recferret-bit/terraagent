@@ -62,6 +62,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
   private readonly recoveries = new Map<string, number[]>();
   /** `SNAPSHOTS=on|off`; unset → on, except under NODE_ENV=test so unit tests never touch the dev database. */
   readonly enabled: boolean;
+  /** Open away-digest bodies, flushed after a snapshot row is stored (CT-31). */
+  private digestFlush?: (planetId: string, raw: Uint8Array) => Promise<void>;
 
   constructor(
     private readonly planets: GamePlanets,
@@ -271,6 +273,11 @@ export class SnapshotService implements BeforeApplicationShutdown {
     return this.capture(planetId, 'END');
   }
 
+  /** Called by the game module. A failed flush is logged and does not fail the snapshot. */
+  setDigestFlush(flush: (planetId: string, raw: Uint8Array) => Promise<void>): void {
+    this.digestFlush = flush;
+  }
+
   async beforeApplicationShutdown(): Promise<void> {
     if (!this.enabled) return;
     const t0 = Date.now();
@@ -293,6 +300,9 @@ export class SnapshotService implements BeforeApplicationShutdown {
     this.bytes.set(saved.sizeBytes);
     this.total.inc({ kind: s.kind });
     this.log.debug({ planetId, tick: s.tick, kind: s.kind, sizeBytes: saved.sizeBytes }, 'snapshot saved');
+    void this.digestFlush?.(planetId, s.bytes)?.catch((e: unknown) => {
+      this.log.warn({ planetId, err: errText(e) }, 'digest flush failed');
+    });
     void this.store.prune(planetId).catch((e: unknown) => this.log.warn({ planetId, err: String(e) }, 'snapshot prune failed'));
   }
 }
