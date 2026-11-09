@@ -14,6 +14,7 @@ export default defineConfig({
     environment: 'node',
     reporters: ['verbose'], // shows the [test-db] created/migrated/dropped log lines
     pool: 'threads', // sim worker threads (game module) misbehave under the default forks pool
+    vmMemoryLimit: '512MB',
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,

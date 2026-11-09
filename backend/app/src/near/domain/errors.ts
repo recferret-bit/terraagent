@@ -10,6 +10,10 @@ export interface NearErrorDef {
 export const NEAR_ERROR_CODES = {
   NEAR_INSUFFICIENT_BALANCE: { status: 409, description: 'The account holds less of the token than the operation needs.' },
   NEAR_INTENT_DIFF_NOT_ZERO: { status: 422, description: 'Token diffs of an intent do not sum to zero per token.' },
+  // W13 Intents (NEAR-61, NEAR-62): a batch is rejected as a whole, with no balance change
+  NEAR_INTENT_NONCE_REUSED: { status: 409, description: 'The intent nonce was already used by this signer (replay).' },
+  NEAR_INTENT_EXPIRED: { status: 422, description: 'The intent deadline has passed.' },
+  NEAR_INTENT_BAD_SIGNATURE: { status: 422, description: 'The NEP-413 signature does not verify against the signer key and payload.' },
   NEAR_ACCOUNT_EXISTS: { status: 409, description: 'The account id is already registered.' },
   NEAR_ACCOUNT_NOT_FOUND: { status: 404, description: 'The account id does not exist on chain.' },
   NEAR_NFT_EXISTS: { status: 409, description: 'An NFT with this collection and token id already exists.' },

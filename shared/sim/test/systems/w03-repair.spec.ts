@@ -23,6 +23,7 @@ import {
   TERRAIN,
   type PlanetState,
 } from '../../src';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 function createW03RepairWorld(seed = 'w03-repair') {
   const state = createState({ planetId: `p-${seed}`, planetType: 'temperate', seed, radius: 10 });
@@ -98,8 +99,8 @@ describe('W03-03 critical auto-repair and Builder 1.5x repair rate', () => {
 
     // Place a constructed Metals Extractor at (5, 0) damaged to 40% HP (120 / 300 HP, missing 60%).
     const extId = spawnConstructedExtractor(state, 5, 0, 120, 300, 1);
-    const startMetals = colony.stock['metals.t1']!;
-    const startMinerals = colony.stock['minerals.t1']!;
+    const startMetals = resourceValue(colony, 'metals.t1');
+    const startMinerals = resourceValue(colony, 'minerals.t1');
 
     // Step 1 tick: auto-repair detects 40% HP (< 50%) and queues a 'system' repair entry assigned to the Builder.
     step(state, [], 1, pipeline);
@@ -122,8 +123,8 @@ describe('W03-03 critical auto-repair and Builder 1.5x repair rate', () => {
       const curHp = state.entities.cols.hp[rowOf(state.entities, extId)];
       if (curHp > 120 && curHp < 300) {
         midStockChecked = true;
-        expect(colony.stock['metals.t1']!).toBeLessThan(startMetals);
-        expect(colony.stock['metals.t1']!).toBeGreaterThan(startMetals - 15.6);
+        expect(resourceValue(colony, 'metals.t1')).toBeLessThan(startMetals);
+        expect(resourceValue(colony, 'metals.t1')).toBeGreaterThan(startMetals - 15.6);
       }
     }
 
@@ -131,8 +132,8 @@ describe('W03-03 critical auto-repair and Builder 1.5x repair rate', () => {
     expect(state.entities.cols.hp[rowOf(state.entities, extId)]).toBe(300);
     // 48 base ticks at 1.5x = 32 work ticks + ~7 walk ticks < 45 total ticks (vs >= 54 ticks at 1.0x).
     expect(ticks).toBeLessThanOrEqual(45);
-    expect(startMetals - colony.stock['metals.t1']!).toBeCloseTo(15.6, 4);
-    expect(startMinerals - colony.stock['minerals.t1']!).toBeCloseTo(4.8, 4);
+    expect(startMetals - resourceValue(colony, 'metals.t1')).toBeCloseTo(15.6, 4);
+    expect(startMinerals - resourceValue(colony, 'minerals.t1')).toBeCloseTo(4.8, 4);
     expect(getColonyQueue(state, 0, 'construction').some((e) => e.task.kind === 'repair')).toBe(false);
   });
 });

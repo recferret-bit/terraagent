@@ -1,5 +1,7 @@
 # Master plan review — fit, track rules and grand-prize odds
 
+> **D-44 supersedes the fee figures in this review (2026-11-04).** The buyer pays platform 100 bp plus the maker stall's 0-100 bp (default 100) in the quote token; no 0-3 % range, no taker-received fee. See [ECONOMY](../spec/ECONOMY.md) §3.
+
 > **Status:** 2026-10-31, review of [`../terraagent-master-plan-final.md`](../terraagent-master-plan-final.md) (the "master economy, on-chain, AI orchestrator & monetization plan") against the repo's decisions (`spec/DECISIONS.md` D-16..D-36), the hackathon cut (`HACKATHON_CUT.md`), the wave files, the official track brief and the numbers in [`economy-balance-simulation.md`](./economy-balance-simulation.md).
 > **Sources checked today:** nearhackathon.com (prizes, judging, timeline, submission), the organisers' prompt repo `nearai/near-hackathon-prompt-examples` (`tracks/09-games.md`, `07-agents.md`, `05-swarms.md`, `SUBMITTING.md`), auth.near.org, docs.near.ai/cloud/verification.
 > **Pass 4 (2026-11-02):** rules, tracks and judges re-checked against nearhackathon.com and https://nearhackathon.com/HACKATHON.md (fetched 2026-11-02); unit numbers moved to the current cut (H = 395 issues, ≈ 299.5 units); repo/LICENSE status, the W26 `terraagent.fun` hosts, tracks 06/03 and the W16-21 dependency added. D-37 is now Accepted as hosting on `main`; **D-MP here is a provisional id** (the W01 wave branch already has Accepted D-37..D-41 with other meanings).

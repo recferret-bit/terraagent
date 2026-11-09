@@ -1,5 +1,7 @@
 # TerraAgent — Economy & Terraforming Balance Simulation
 
+> **D-44 supersedes the fee rules below (2026-11-04).** The buyer pays the platform fee (100 bp) and the maker stall's fee (0-100 bp, default 100) in the pair's **quote token**, independent of maker/taker role; the fee is never taken from the received token and there is no 50-300 bp or 0-3 % range. W22's treasury share is carved out of the platform fee. See [ECONOMY](../spec/ECONOMY.md) §3 and [NEAR](../spec/NEAR.md) `NEAR-61`. Older fee statements in this file are historical.
+
 > **Status:** 2026-10-31, design-time calculation for the hackathon build; pass 4 (2026-11-02): every mode re-run and diffed, inputs checked against the specs, the W01/W02 worktree data tables (`../TerraAgent-wt/w01|w02/shared/sim/src/data/`) and the dev commands on main; §5.1 re-runs the key scenarios with the inputs that moved. Every number here is either taken from the specs (`colony-economy-and-buildings-spec.md`, `units-orders-and-progression-spec.md`, `SIMULATION.md`, `near-economy-features-spec.md`, the W10/W13/W15/W22 wave files) or marked **(proposed)**. Proposed values are D-35 data rows: the owner tunes them in playtests with `tune`.
 > **Calculator:** [`tools/economy_sim.py`](./tools/economy_sim.py) (`python3 -I -B docs/hackathon/tools/economy_sim.py matrix|colony|terraform|planet|raids|hex|current`; no argument runs every mode except `colony` and `current`). It is a design tool, not game code: a 1-second colony model (Model A) and a 1-slot-per-30-min planet model (Model B). The headless reference bot of the units spec (§8, P-H) must confirm these numbers before anyone tunes the tables.
 > **Companion:** [`MASTER_PLAN_REVIEW.md`](./MASTER_PLAN_REVIEW.md) grills the master plan against this data and the track rules.
@@ -27,7 +29,7 @@
 | Beacon T1 | R 8; placed 10 tiles from the Hub it adds **136** new tiles (217 − overlap) | economy spec §3.1, hex arithmetic |
 | Trade Hub T1 | 250 units/min export; daily mint cap 20 000 per sub-resource per colony | W10-02, W10-06 |
 | Guild | 2 NPCs, inventory cap 5 000 per sub-resource, spread 4 % → 15 %, docks 12 min every 20–40 min, `mid = ref × (target/inventory)^k` | W15-02, W15-06 |
-| Fees | stall fee 0–3 % (taker pays), treasury 20 % of the fee, protocol fee 0.25 % **(master plan, proposed)** | W13-12, W22, master plan §7 |
+| Fees | buyer pays platform 100 bp + stall 0–100 bp (default 100) in the quote token; W22 treasury 20 % of the platform fee **(D-44; older 0–3 % / 0.25 % figures are historical)** | W13-12, W22, master plan §7 |
 | Load shedding | group 1 terraform → group 2 Factory / Trade Hub → group 3 extractors / depots; defenses, Hub, DCA and robots stay on | economy spec §1 rule 2 |
 | Raids | `2 + threatStage` Skitters (120 HP, 8 DPS, one bite/s), cap 12, +1 per Thermal Plant; every 10 min with 10 % + 5 % × Thermal chance; not before S3 + 5 min | units spec §6.3 (`UO-T-01..04`), §5.6, B11; W07-14, W07-15 (Planned) |
 
@@ -329,5 +331,5 @@ Not the tick engine. An **aggregate economy fast-forward** is Model B: productio
 | Q3 | Does `ECONOMY_RATE_SCALE` apply to the Processor's tiles/s, to Clear/Break yields and to terraform water? `UO-TF-05` says Clear/Break yields are lump sums (not scaled). `UO-S-03` lists "terraform water use" as scaled, but the §4.5 op table lists Irrigate/Seed water as a cost per tile, and costs are not scaled. W02 `_compile.ts` scales only `outputPerS`, `harvestRatePerS`, `upkeepPerS`, `waterPerS` and `ammoPerS`, so a Processor `waterPerS` row would be scaled (−4 → −1 W/s) and a tiles/s row would not. If terraform water is scaled, the water bill of §4.1 drops 4× and "water is the binding input" no longer holds | no (water unscaled) |
 | Q4 | Does the Construction lane take precedence over the Units lane when stock is short? The model assumes yes; the spec's precedence string is `system > …` | yes |
 | Q5 | Guild reference prices for T2/T3 (nothing in the repo sets them) | 4× / 5× / 4× T1; T3 12× |
-| Q6 | Who pays the protocol fee leg: taker (with the stall fee) or both sides? | taker, from the received token |
+| Q6 | Who pays the protocol fee leg: taker (with the stall fee) or both sides? | Resolved by D-44: the buyer, in the quote token |
 | Q7 | Starting kit: OWNER_TASKS R11's default (SIMULATION §7.3, 400 / 250 / 150 / 150) or the units spec pod cargo the W01 code ships (600 / 350 / 200 / 200, pod-hold caps 600 / 500 / 500)? → OWNER_TASKS R11 | baseline: R11 kit; `current`: W01 kit |

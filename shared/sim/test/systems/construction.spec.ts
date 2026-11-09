@@ -23,6 +23,7 @@ import {
   step,
   TERRAIN,
 } from '../../src';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-09 Generic T1 construction & demolish refund', () => {
   it('build a Solar (18 s -> 12 s at HQ 1.5x), then demolish -> 50% cost refunded and footprint stays prepared', () => {
@@ -67,24 +68,24 @@ describe('W02-09 Generic T1 construction & demolish refund', () => {
     if (!started.ok) throw new Error('expected ok');
 
     // Cost is deducted progressively across construction ticks (not 100% upfront at tick 0)
-    expect(colony.stock['metals.t1']).toBe(60);
-    expect(colony.stock['minerals.t1']).toBe(75);
-    expect(colony.stock['bio.biomass']).toBe(10);
-    expect(colony.stock['bio.water']).toBe(5);
+    expect(resourceValue(colony, 'metals.t1')).toBe(60);
+    expect(resourceValue(colony, 'minerals.t1')).toBe(75);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(10);
+    expect(resourceValue(colony, 'bio.water')).toBe(5);
 
     // Step 59 ticks (11.8s) -> still constructing, ~59/60 of cost paid progressively
     step(state, [], 59, pipeline);
     expect(state.entities.cols.state[1]).toBe(ENTITY_STATE.constructing);
-    expect(colony.stock['metals.t1']).toBeCloseTo(1, 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(1, 4);
 
     // Step 1 more tick (total 60 ticks = 12.0s) -> completed and 100% of cost deducted!
     const doneStep = step(state, [], 1, pipeline);
     expect(state.entities.cols.state[1]).toBe(ENTITY_STATE.active);
     expect(doneStep.events.some((e) => e.kind === 'buildingCompleted')).toBe(true);
-    expect(colony.stock['metals.t1']).toBe(0);
-    expect(colony.stock['minerals.t1']).toBe(0);
-    expect(colony.stock['bio.biomass']).toBe(0);
-    expect(colony.stock['bio.water']).toBe(0);
+    expect(resourceValue(colony, 'metals.t1')).toBe(0);
+    expect(resourceValue(colony, 'minerals.t1')).toBe(0);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(0);
+    expect(resourceValue(colony, 'bio.water')).toBe(0);
 
     // Demolish via command -> 50% cost refunded (30 / 37.5 / 5 / 2.5) and footprint stays prepared
     const demStep = step(
@@ -94,10 +95,10 @@ describe('W02-09 Generic T1 construction & demolish refund', () => {
       pipeline,
     );
     expect(demStep.outcomes[0].code).toBeUndefined();
-    expect(colony.stock['metals.t1']).toBe(30);
-    expect(colony.stock['minerals.t1']).toBe(37.5);
-    expect(colony.stock['bio.biomass']).toBe(5);
-    expect(colony.stock['bio.water']).toBe(2.5);
+    expect(resourceValue(colony, 'metals.t1')).toBe(30);
+    expect(resourceValue(colony, 'minerals.t1')).toBe(37.5);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(5);
+    expect(resourceValue(colony, 'bio.water')).toBe(2.5);
 
     const fp = getFootprintTileIndices(state, 2, 1, 2, 2);
     for (const tileIdx of fp.indices) {

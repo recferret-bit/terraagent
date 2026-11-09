@@ -25,6 +25,7 @@ import {
   type SimCommand,
 } from '../../src';
 import { executeDismantleAtTile } from '../../src/systems/terraform-basic';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 /**
  * Owner bug W05: "my drone self-dismantled" and "dismantle of drones works remotely". Dismantle is a worker action on a
@@ -73,7 +74,12 @@ const run = (s: PlanetState, p: ReturnType<typeof world>['pipeline'], cmds: SimC
   for (let i = 1; i < n; i++) step(s, [], 1, p);
   return first;
 };
-const stock = (s: PlanetState) => ({ ...(s.colonies[0]!.stock as Record<string, number>) });
+const stock = (s: PlanetState) => ({
+  'metals.t1': resourceValue(s.colonies[0]!, 'metals.t1'),
+  'minerals.t1': resourceValue(s.colonies[0]!, 'minerals.t1'),
+  'bio.biomass': resourceValue(s.colonies[0]!, 'bio.biomass'),
+  'bio.water': resourceValue(s.colonies[0]!, 'bio.water'),
+});
 
 describe('dismantle target rule (shared by the host and the client preview)', () => {
   it('units, the worker itself, HQ / Hub and unfinished sites are never a target', () => {

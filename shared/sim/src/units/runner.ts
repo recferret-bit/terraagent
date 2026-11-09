@@ -40,7 +40,7 @@ const isOut = (state: PlanetState, row: number): boolean => {
 };
 
 function propose(reg: UnitRegistry, u: UnitCtx, book: UnitBook): UnitCommand | null {
-  if (u.ctx.tick < u.record.holdUntil) return null;
+  if (u.ctx.tick < u.record.holdUntil || u.record.reserve) return null; // on hold, or in reserve (no work)
   if (u.ctx.flags.has('W07') && u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq) {
     const hpMax = Math.max(1, u.state.entities.cols.hpMax[u.row]);
     if (u.state.entities.cols.hp[u.row] / hpMax < 0.4) return null;
@@ -111,6 +111,10 @@ function runCurrent(reg: UnitRegistry, u: UnitCtx, book: UnitBook): void {
 
 function think(reg: UnitRegistry, u: UnitCtx, book: UnitBook): void {
   const rec = u.record;
+  if (rec.reserve?.mode === 'activating' && u.ctx.tick >= rec.reserve.readyAt) {
+    delete rec.reserve; // deployment delay over
+    book.touch();
+  }
   if (!rec.current && rec.queue.length > 0) {
     rec.current = rec.queue.shift() ?? null;
     book.touch();
@@ -203,7 +207,8 @@ export function stepUnitWork(reg: UnitRegistry, phase: UnitWorkPhase, state: Pla
   for (let row = 0; row < e.count; row++) {
     if (isOut(state, row) || e.cols.hp[row] <= 0) continue;
     const id = e.cols.id[row];
-    const cur = book.peek(id)?.current;
+    const rec = book.peek(id);
+    const cur = rec?.reserve ? null : rec?.current; // a unit in reserve neither attacks nor works
     const def = cur ? reg.commands.get(cur.kind) : undefined;
     if (!cur || !def?.work || def.phase !== phase) continue;
     const u = unitCtx(state, ctx, book, row);
@@ -233,6 +238,7 @@ export function issueUnitCommand(
   if (state.entities.cols.state[row] === ENTITY_STATE.inert || state.entities.cols.hp[row] <= 0) return 'invalid_args';
   const def = reg.commands.get(cmd.kind);
   if (!def) return 'unknown_kind';
+  if (u.record.reserve && def.work) return 'invalid_args'; // reserve: no attack / build / terraform (move and retreat stay)
   const code = def.validate?.(u, cmd as never);
   if (code) return code;
   const prevCmd = u.record.current;

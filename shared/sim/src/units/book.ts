@@ -15,6 +15,11 @@ export interface UnitRecord {
   fails?: Record<string, number>;
   /** The last player command that failed (e.g. its target was unreachable), or `null`. Clients toast it once per `tick`. */
   lastFailure: UnitFailure | null;
+  /**
+   * W13 reserve mode: set while the unit is in reserve or still deploying (`readyAt`). No work provider hands it work and no
+   * attack/build/terraform command is accepted; movement stays possible. Ownership and control-slot use are untouched.
+   */
+  reserve?: { mode: 'reserve' | 'activating'; readyAt: number; version: number };
 }
 
 export interface UnitFailure {
@@ -111,4 +116,9 @@ export function getUnitCommand(state: PlanetState, id: number): UnitCommand | nu
 /** The full command record of entity `id`, or `null` if it never received a command. */
 export function getUnitRecord(state: PlanetState, id: number): UnitRecord | null {
   return new UnitBook(state).peek(id);
+}
+
+/** Whether entity `id` is in reserve mode or still deploying out of it (no work, no attack). */
+export function isUnitReserved(state: PlanetState, id: number): boolean {
+  return new UnitBook(state).peek(id)?.reserve !== undefined;
 }

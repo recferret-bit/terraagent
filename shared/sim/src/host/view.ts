@@ -31,6 +31,7 @@ export interface ViewPylonLoad {
   max: number;
   overloaded?: boolean;
 }
+import { supplyTradeView, type SupplyTradeView } from './supplyTradeView';
 import { getColonyProgression } from '../systems/progression';
 import { getLastAutopilotDecision, type AutopilotDecision, type AutopilotOrderSuggestion } from '../systems/rule-engine';
 
@@ -83,6 +84,8 @@ export interface ViewColony {
   dwellRemainingTicks?: number | null;
   nextStageConditionText?: string;
   lastAutopilotDecision?: AutopilotDecision | null;
+  /** W13-55: Supply & trade panel data (badges, shopping basket, logistics bill); absent without a region pin / logistics state. */
+  supplyTrade?: SupplyTradeView;
   activeSuggestion?: AutopilotOrderSuggestion | null;
   [field: string]: unknown;
 }
@@ -175,6 +178,8 @@ function buildViewColonies(
         ? k.nextStageConditionText
         : prog.nextStageConditionText || (getStageSpec((out.stage ?? 0) + 1)?.unlockConditionText ?? '');
     out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
+    const supply = supplyTradeView(state, k);
+    if (supply) out.supplyTrade = supply;
     return out;
   });
 }

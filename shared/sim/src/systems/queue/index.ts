@@ -8,6 +8,7 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { buildSiteReject } from '../economy/siteTerrain';
 import { resolveUnitRowForHub } from '../factories-hub/unit';
+import { prestigeProjectRow } from '../prestige/rows';
 import { checkUnitSupply, unitSupplyOfName } from '../supply';
 import {
   applyReorderQueueTask,
@@ -17,7 +18,7 @@ import {
   refundEntrySpent,
   tryCancelSpecialTaskId,
 } from './cancel';
-import { dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
+import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
 import {
@@ -169,6 +170,9 @@ export function enqueueQueueTask(
   ) {
     return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   }
+  if (opts.task.kind === 'project' && !prestigeProjectRow(opts.task.project, data)) {
+    return { ok: false, code: 'invalid_args', detail: 'unknown project' };
+  }
   const prodRes = resolveUnitTaskProducer(state, colonyIndex, opts.task, activeLane);
   if (!prodRes.ok) return prodRes;
   const task = prodRes.task;
@@ -213,6 +217,7 @@ export function enqueueQueueTask(
     elapsedTicks: 0,
     workRate,
     ...(opts.goalId ? { goalId: opts.goalId } : {}),
+    ...(opts.task.kind === 'project' && data ? { pinned: { dataHash: data.hash } } : {}),
     createdAt: tick,
   };
 
@@ -300,6 +305,10 @@ export const enqueueTaskHandler = defineCommandHandler({
           return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
         }
       }
+    }
+    if (norm.task.kind === 'project') {
+      if (!ctx.flags.has('W13')) return 'wave_disabled';
+      if (!colonyHasActiveHub(state, colIdx)) return { code: 'invalid_args', detail: 'A prestige project needs a Command Hub.' };
     }
     if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
       return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);

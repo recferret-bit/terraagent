@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "id": "stress-mature-flat-population",
+  "version": 1,
+  "description": "Mature colonies with deep stock and a flat population (no growth): small lots against a deep inventory.",
+  "waves": "..13",
+  "populations": [
+    {
+      "cohort": "mature-flat",
+      "colonies": 4,
+      "params": {
+        "populationGrowthBp": 0
+      }
+    }
+  ],
+  "shocks": [],
+  "assumptions": {
+    "label": "ASSUMPTIONS, NOT OBSERVATIONS: every number here is a stress-suite assumption; demand source is 'assumed'.",
+    "assumptionsVersion": 1,
+    "demandSource": "assumed",
+    "baseScenario": "stress",
+    "tradeResources": [
+      "bio.water",
+      "bio.biomass",
+      "metals.t1",
+      "minerals.t1"
+    ],
+    "behavior": {
+      "exportLot": 40,
+      "buyLot": 30,
+      "keepUnits": 150,
+      "exportAbove": 320,
+      "buyBelow": 280
+    },
+    "stress": {
+      "colonies": 4,
+      "extractors": 1,
+      "radius": 80,
+      "planetType": "temperate",
+      "starterStock": {
+        "bio.water": 400,
+        "bio.biomass": 300,
+        "metals.t1": 400,
+        "minerals.t1": 400,
+        "minerals.t2": 60
+      },
+      "stockByColony": {
+        "0": {
+          "bio.water": 900,
+          "bio.biomass": 300,
+          "metals.t1": 400,
+          "minerals.t1": 400,
+          "minerals.t2": 60
+        },
+        "1": {
+          "bio.water": 150,
+          "bio.biomass": 300,
+          "metals.t1": 400,
+          "minerals.t1": 400,
+          "minerals.t2": 60
+        },
+        "2": {
+          "bio.water": 900,
+          "bio.biomass": 300,
+          "metals.t1": 400,
+          "minerals.t1": 400,
+          "minerals.t2": 60
+        },
+        "3": {
+          "bio.water": 150,
+          "bio.biomass": 300,
+          "metals.t1": 400,
+          "minerals.t1": 400,
+          "minerals.t2": 60
+        }
+      },
+      "behavior": {
+        "projectId": "project.survey_array",
+        "projectEveryTicks": 300
+      }
+    },
+    "gates": [
+      {
+        "gateId": "econ.position_nonnegative",
+        "gateVersion": 1,
+        "metricKey": "inventory.position",
+        "scope": "global",
+        "resource": "bio.water",
+        "aggregate": "min",
+        "op": "gte",
+        "threshold": "0"
+      },
+      {
+        "gateId": "stress.production_flows_exist",
+        "gateVersion": 1,
+        "metricKey": "flow.production",
+        "scope": "global",
+        "resource": "metals.t1",
+        "aggregate": "max",
+        "op": "gte",
+        "threshold": "1"
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability, payProgressiveSlice } from '../economy/ledger';
 import { produceReconAtFactoryEdge, produceWorkerAtHubEdge, selectRoboticsFactoryProducer } from '../factories-hub';
 import { isCrewKind, isWorker, workerTierOf } from '../harvest/unit';
+import { completePrestigeProject } from '../prestige/project';
 import { checkUnitSupply } from '../supply';
 import { enqueueRepairForEntity } from '../terraform-basic/dismantleAndWork';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
@@ -335,6 +336,7 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     finishUnit(state, entry, colIdx, ctx);
     return;
   }
+  if (entry.task.kind === 'project') completePrestigeProject(state, colIdx, entry.task.project, ctx);
   entry.progress = 1;
   entry.state = 'done';
   entry.resourceWaitSinceTick = undefined;

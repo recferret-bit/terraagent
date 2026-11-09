@@ -5,11 +5,12 @@ import { hydrateLegacyExplorationOnSnapshotObject } from '../../grid/exploration
  * `header` and `state`) from one `SIM_VERSION` to a later one. Chains are followed greedily (largest step that does
  * not overshoot). Built-in migrations always remain available; tests may register additional migrations.
  */
+import { migrateWholeStock } from './wholeStock';
+
 export type SnapshotObject = { header: { simVersion: number; [k: string]: unknown }; state: Record<string, unknown> };
 export type MigrationFn = (snapshot: SnapshotObject) => SnapshotObject;
 
 interface Migration { from: number; to: number; fn: MigrationFn }
-
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -23,6 +24,7 @@ const toInt16 = (v: unknown): Int16Array | undefined => {
 
 /** W11-37: widen tile and entity `owner` columns from `i8` (`Int8Array`) to `i16` (`Int16Array`), preserving `-1` and `0..32767`. */
 function migrateV3ToV4(snapshot: SnapshotObject): SnapshotObject {
+  migrateWholeStock(snapshot);
   const state = snapshot.state;
   if (!isRecord(state)) return snapshot;
   if (isRecord(state.grid) && isRecord(state.grid.layers)) {
@@ -40,9 +42,9 @@ function migrateV3ToV4(snapshot: SnapshotObject): SnapshotObject {
   return snapshot;
 }
 
-// Version 3 changes the live transport contract, not canonical persisted state; version 4 widens owner identity to i16 (W11-37).
+// Version 3 splits fractional colony stock into whole units + residual (LED-16); version 4 widens owner identity to i16 (W11-37).
 const builtins: readonly Migration[] = [
-  { from: 2, to: 3, fn: (snapshot) => snapshot },
+  { from: 2, to: 3, fn: migrateWholeStock },
   { from: 3, to: 4, fn: migrateV3ToV4 },
 ];
 const migrations: Migration[] = [];

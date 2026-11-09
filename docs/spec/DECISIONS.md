@@ -1,5 +1,7 @@
 # TerraAgent — Architecture Decisions
 
+> **D-45 (2026-11-07):** LLM-controlled bots and humans trade on the same per-planet books through the bot API; organic fills are `player`/`bot` pairs with different colonies and owners. See [ECONOMY](ECONOMY.md) §3/§4.
+
 > **D-44 (2026-11-04):** owner-approved resource economy, database profiles and reproducible experiments amend D-19/D-26/D-35. See [ECONOMY](ECONOMY.md).
 
 > Numbered, append-only. Status: `Proposed` (awaiting owner grill) · `Accepted` · `Superseded by D-NN`.
@@ -51,6 +53,7 @@
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
 | D-43 | Neutral hive fauna | Accepted (2026-11-04, owner) |
 | D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
+| D-45 | Bot participation on the shared exchange (bot API `/v1/trade/*`, actor kind `bot`, allowances, deterministic need/value quotes, strategy-only LLMs) and the organic-fill rule (`player`/`bot`, different colony and owner) | Accepted (2026-11-07, lead default; owner may change) |
 
 | D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
 
@@ -599,7 +602,7 @@ The log stays append-only; these notes record where the code built in W00–W01 
 
 ## D-44 — Resource demand, cash fees and database-managed experiments
 
-**Decision (owner, 2026-11-04).** Adopt [ECONOMY](ECONOMY.md) as the implementation contract. Useful recurring consumption, mixed-tier recipes and regional specialization create trading opportunities; prices remain market-discovered and no farming return is guaranteed. USDC is the default cash quote. Buyer pays quote-token fees: platform 100 bp plus stall 0–100 bp (default 100), independent of maker/taker role; W22 treasury allocation comes from platform fees. Exact arithmetic, versioned order terms and funded reservations are mandatory.
+**Decision (owner, 2026-11-04).** Adopt [ECONOMY](ECONOMY.md) as the implementation contract. Useful recurring consumption, mixed-tier recipes and regional specialization create trading opportunities; prices remain market-discovered and no farming return is guaranteed. USDC is the default cash quote. Buyer pays quote-token fees: platform 100 bp plus stall 0–100 bp (default 100), independent of maker/taker role; W22 treasury allocation comes from platform fees. Exact arithmetic, versioned order terms and funded reservations are mandatory. Orders pin policy and fee snapshots; custodial accounts fill partially, claimed accounts are all-or-nothing; same-colony orders never match; related, Guild and fixture fills are excluded from organic price and volume metrics.
 
 **D-19/D-26 amendment.** Our books remain planet-local, but unrestricted cargo transfers and imports permit external trading and cross-planet access. Accept external fee leakage; Guild NPCs offer a service, not an enforceable transport monopoly. Real Guild cargo is stock-backed or purchased, cash is explicitly allocated, and inventory/cash/loss caps and thin-market pauses are required. D-25 permits bots; limits govern economic exposure, not human identity.
 
@@ -638,3 +641,19 @@ Readers, and nothing else decides these:
 **Consequences.** The desert is ~93 % dunes, so its visible deposits drop from ~368 to ~15 per planet (the starter guarantees); the rest stay buried until dunes are flattened (WE-35). Hand-placed scenario deposits and `dev.spawndeposit` bypass the rule (GP-98). Limits: RN-80, FF-90.
 
 **Alternatives.** A stricter grid rule also used for placement and movement (would forbid building or walking next to any tree); stamping a level pad under every generated deposit (keeps desert deposit counts but cuts flat patches into the dunes — owner question WE-35); rebuilding the mesh so hex tiles are true flat hexagons with transitions on the wild side (large render rework).
+
+## D-46 — Bot participation and the organic-fill rule
+
+**Decision (lead default, 2026-11-07; the owner may change it).** The W13 exchange runs fully automatically: LLM-controlled bots and humans trade on the same per-planet order book, and prices come from real demand.
+
+- **Bot actor.** New actor kind `bot` (agent-operated account). A bot uses a REST+stream trading API at `/v1/trade/*` with an API key bound to one colony account. Keys carry allowances: max open orders, max order notional, daily spend/loss budget, allowed pairs, price band versus the reference price, kill switch, idempotency keys and rate limits. The sim accepts command source `'bot'` on `market.placeOrder`; there is one order path for humans, bots, Guild NPCs and directors. Fees, reservations, rounding and minimum notional are the human rules.
+- **Strategy versus price.** A pure deterministic need/value quote library (`shared/sim/src/systems/trade/agent/`) derives desired quantity from `potentialBuy`, walk-away bid/ask from unit cost and alternatives, applies the ECONOMY §4 inventory-skew quote and hard reservation/budget/staleness limits, and returns reason codes. An LLM (W16 director, external agent) sets strategy only (specialisation, reserve targets, risk, goals); it never types a free price.
+- **Organic rule (amends D-44).** A fill is organic when both sides are actor kind `player` or `bot`, are different colonies and have different owners. Same-owner, fixture, subsidy, `npc` and Guild fills are never organic. The earlier rule (organic only when both sides are `player`) blocked a bot-only market from establishing a reference price and is superseded. The no-identity-verification stance of D-25 stands: owner identity is the account owner known to the platform, not a proof of human independence.
+- **Credibility hypothesis.** Bot demand is only credible if the bot consumes what it buys; this is tracked (intermediary versus consumed volume) and calibrated in LED-18, not asserted.
+- **Surfaces.** Standalone `/trade.html` (all pairs' depth, all my orders, fills, board, my orbital cargo only) plus a simplified in-game Trade Hub. Supply & trade pricing is depth-aware.
+- **Testing.** W13 ships a fully emulated NEAR chain with deterministic fault injection (fail-before-submit, unknown outcome, delayed finality, duplicate delivery, insufficient funds). Real cash settlement stays W23; W23 swaps real FT/Intents behind the same ports and puts bot API keys on real accounts behind the pilot gates.
+- **Guild.** Guild NPCs (W15) become one kind of agent on the same bot API and quote library; their bootstrap session is labelled subsidy and is never organic.
+
+**Alternatives.** Keep organic = both `player` (a bot-only market never gets a reference price; the exchange needs humans online). Let LLMs quote free prices (unbounded loss, prompt-injection exposure). A separate bot-only venue (splits liquidity, hides bot behaviour from humans). Count every distinct-wallet fill as organic (wash trading by one owner).
+
+**Consequences.** Bot-to-bot volume can move the reference price, so allowance, price-band and concentration limits are hard gates; real-cash exposure of bots stays behind W23-48/49.

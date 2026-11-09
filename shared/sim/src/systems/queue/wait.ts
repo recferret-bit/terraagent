@@ -9,6 +9,7 @@ import { resolveBuildingRow } from '../economy/construction';
 import { findColonyRoboticsFactories, resolveReconRow } from '../factories-hub';
 import { resolveUnitRowForHub } from '../factories-hub/unit';
 import { isCrewKind, isWorker } from '../harvest/unit';
+import { prestigeProjectRow } from '../prestige/rows';
 import { normalizeRichness } from '../production';
 import { getTerraformJobCost, getTerraformOpSpec, isTerraformOpKind, isW01TerraformOpKind } from '../terraform-basic/ops';
 import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
@@ -20,7 +21,7 @@ export const PRODUCER_BUFFER_LIMIT = 5;
 export const HQ_GOALS_LANE_LIMIT = 20;
 
 export function laneForTask(task: QueueTaskPayload): QueueLane {
-  if (task.kind === 'buildUnit') return 'units';
+  if (task.kind === 'buildUnit' || task.kind === 'project') return 'units';
   if (task.kind === 'terraform') return 'terraform';
   if (task.kind === 'hqGoal') return 'hqGoals';
   return 'construction';
@@ -64,6 +65,10 @@ export function resolveTaskCostAndTicks(
   }
   if (task.kind === 'hqGoal') {
     return { cost: {}, buildTicks: 1, workRate: 1.0 };
+  }
+  if (task.kind === 'project') {
+    const row = prestigeProjectRow(task.project, data);
+    return { cost: row ? { ...row.cost } : {}, buildTicks: row ? row.buildTicks : 1, workRate: 1.0 };
   }
   if (
     task.kind === 'terraform' &&
@@ -306,6 +311,10 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
       ...base,
       task: { kind: 'hqGoal', goal: g.goal, target: g.target, q: g.q, r: g.r },
     };
+  }
+  if (raw.project && typeof raw.project === 'object') {
+    const p = raw.project as { project?: unknown };
+    if (typeof p.project === 'string') return { ...base, task: { kind: 'project', project: p.project } };
   }
   if (raw.repair && typeof raw.repair === 'object') {
     const r = raw.repair as { entityId: number; q?: number; r?: number };

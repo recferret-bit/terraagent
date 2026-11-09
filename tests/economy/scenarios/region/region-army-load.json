@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "region-army-load",
+  "version": 1,
+  "description": "Intended load 300 (15 operating extractors) on one Hub (K=100); the variant adds depots.",
+  "waves": "..13",
+  "populations": [
+    {
+      "cohort": "specialist",
+      "colonies": 1,
+      "params": {}
+    }
+  ],
+  "shocks": [],
+  "assumptions": {
+    "region": {
+      "planetType": "temperate",
+      "extractors": 15,
+      "depots": 0,
+      "routeTiles": 4,
+      "stock": {
+        "bio.water": 400,
+        "metals.t1": 400,
+        "minerals.t1": 100
+      }
+    },
+    "tradeResources": [
+      "bio.water",
+      "metals.t1",
+      "minerals.t1",
+      "minerals.t3"
+    ],
+    "gates": [
+      {
+        "gateId": "logistics.service_floor",
+        "gateVersion": 1,
+        "metricKey": "logistics.min_service_bp",
+        "scope": "sector:0",
+        "aggregate": "min",
+        "op": "gte",
+        "threshold": "5000"
+      }
+    ]
+  }
+}

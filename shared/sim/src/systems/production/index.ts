@@ -1,5 +1,7 @@
 import { RESOURCE_FAMILY_OF, type ResourceFamily, type ResourceKey } from '@terra/contracts';
-import { consumeDepositRichness, type CompiledRow } from '../../data';
+import { type CompiledRow } from '../../data';
+import { regionViewOf } from '../../economy/regions/pin';
+import { drawDeposit, renewableAllowance } from '../../economy/regions/sources';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { DEPOSIT } from '../../grid/layers';
@@ -16,6 +18,8 @@ import {
   isFamilyAtCap,
   type ExtractorLivingBonusRecord,
 } from '../economy/ledger';
+import { deliveredServiceBp, serviceScaled } from '../logistics/state';
+import { depositFamilyAndKey } from '../harvest/adjacency';
 import {
   checkExtractorDepositCoverage,
   ensureColonyForOwner,
@@ -93,11 +97,21 @@ function extractTiered(
   let remaining = desired;
   for (const depTileIdx of depositTiles) {
     if (remaining <= 0) break;
-    const got = consumeDepositRichness(state, depTileIdx, remaining, tick);
-    if (got <= 0) continue;
-    remaining -= got;
     const tier = tiers?.[depTileIdx] ?? 0;
-    creditExtractedDepositSlice(colony, depositKind, tier, got, tick, tierGate, fallbackKey, out);
+    const key =
+      fallbackKey && depositKind === DEPOSIT.oil && tier !== 3
+        ? fallbackKey
+        : depositFamilyAndKey(depositKind, tier)!.key;
+    // Regional policy (W13-51): the tile's own tier decides the key; a pinned region scales removal and credit together.
+    const { got, spent } = drawDeposit(state, depTileIdx, remaining, tick, key);
+    if (got <= 0) continue;
+    remaining -= spent;
+    if (regionViewOf(state)) {
+      creditResource(colony, key, got, tick);
+      out.set(key, (out.get(key) ?? 0) + got);
+    } else {
+      creditExtractedDepositSlice(colony, depositKind, tier, got, tick, tierGate, fallbackKey, out);
+    }
   }
   return out;
 }
@@ -178,8 +192,12 @@ function stepDepositExtractorRow(
   const rowTier = Math.max(1, Number(rowDef.tier ?? 1));
   const mkRateMult = entityTier > rowTier ? entityTier / rowTier : 1;
   const baseOutputPerS = Number(rowDef.outputPerS ?? 1.0);
-  const ratePerS = baseOutputPerS * mkRateMult * cov.richnessMult * livingBonus.mult;
-
+  // W13 logistics: throughput scales once by the delivered-service ratio (exactly unchanged at full service / W13 off)
+  const ratePerS = serviceScaled(baseOutputPerS * mkRateMult * cov.richnessMult * livingBonus.mult, deliveredServiceBp(state, owner, cols.id[row]));
+  if (ratePerS <= 0) {
+    recordExtractorBonus(colony, cols.id[row], q, r, family, livingBonus, 0, tierGate, {});
+    return;
+  }
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
   const byKey = extractTiered(state, colony, cov.depositTiles, desiredAmount, ctx.tick, depositKind, fallbackKey, tierGate);
   let extracted = 0;
@@ -200,6 +218,16 @@ function stepDepositExtractorRow(
   if (isFamilyAtCap(colony, family)) setField(e, row, 'state', ENTITY_STATE.offlineCapped, ctx.tick);
 }
 
+/** Water extractors that can draw now (alive, not offline): the producers that share the regional renewable budget. */
+function activeWaterExtractors(state: PlanetState): number {
+  const cols = state.entities.cols;
+  let n = 0;
+  for (let row = 0; row < state.entities.count; row++) {
+    if (cols.kind[row] === ENTITY_KIND.waterExtractor && cols.hp[row] > 0 && !isOfflineExtractorState(cols.state[row])) n++;
+  }
+  return n;
+}
+
 function stepWaterExtractorRow(
   state: PlanetState,
   row: number,
@@ -207,6 +235,7 @@ function stepWaterExtractorRow(
   waterRow: CompiledRow,
   extractorIncomeByOwner: IncomeMapByOwner,
   pctOf: TerraformPctOf,
+  waterProducers?: { perProducer: number; yieldScale: number },
 ): void {
   const e = state.entities, cols = e.cols;
   const st = cols.state[row];
@@ -227,10 +256,16 @@ function stepWaterExtractorRow(
   const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data, pctOf(owner));
   const baseWaterPerS = Number(waterRow.outputPerS ?? 0.875);
   const planetMult = state.meta.planetType === 'desert' ? Number(waterRow.desertOutputMult ?? 0.5) : 1.0;
-  const ratePerS = baseWaterPerS * planetMult * livingBonus.mult;
+  const ratePerS = serviceScaled(baseWaterPerS * planetMult * livingBonus.mult, deliveredServiceBp(state, owner, cols.id[row]));
+  if (ratePerS <= 0) {
+    recordExtractorBonus(colony, cols.id[row], q, r, 'bio', livingBonus, 0, tierGate, { 'bio.water': 0 });
+    return;
+  }
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
-  const { credited } = creditResource(colony, 'bio.water', desiredAmount, ctx.tick);
-  const keyRate = credited > 0 ? (ratePerS * credited) / desiredAmount : 0;
+  // Regional renewable allowance (W13-51): the sector budget is shared by all active water extractors; none pinned = unlimited.
+  const grant = waterProducers === undefined ? desiredAmount : Math.min(desiredAmount * waterProducers.yieldScale, waterProducers.perProducer);
+  const { credited } = creditResource(colony, 'bio.water', grant, ctx.tick);
+  const keyRate = credited > 0 && desiredAmount > 0 ? (ratePerS * credited) / desiredAmount : 0;
   recordExtractorBonus(colony, cols.id[row], q, r, 'bio', livingBonus, ratePerS, tierGate, {
     'bio.water': Number(keyRate.toFixed(4)),
   });
@@ -288,6 +323,7 @@ const extractorProductionSystem = defineSystem({
     const wellRow = resolvePetroleumWellRow(ctx.data);
     const e = state.entities, cols = e.cols;
     const extractorIncomeByOwner: IncomeMapByOwner = new Map();
+    const water = renewableAllowance(state, 'bio.water', activeWaterExtractors(state), ctx.dt);
     const pctOf = terraformPctMemo(state);
 
     for (let row = 0; row < e.count; row++) {
@@ -299,7 +335,7 @@ const extractorProductionSystem = defineSystem({
       } else if (k === ENTITY_KIND.mineralsQuarry) {
         stepDepositExtractorRow(state, row, ctx, quarryRow, DEPOSIT.minerals, 'minerals', extractorIncomeByOwner, pctOf);
       } else if (k === ENTITY_KIND.waterExtractor) {
-        stepWaterExtractorRow(state, row, ctx, waterRow, extractorIncomeByOwner, pctOf);
+        stepWaterExtractorRow(state, row, ctx, waterRow, extractorIncomeByOwner, pctOf, water);
       } else if (k === ENTITY_KIND.petroleumWell) {
         stepDepositExtractorRow(state, row, ctx, wellRow, DEPOSIT.oil, 'bio', extractorIncomeByOwner, pctOf, 'bio.t2');
       }

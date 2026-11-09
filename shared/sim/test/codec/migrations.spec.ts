@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { canMigrateSnapshot, clearMigrations, createState, decodeValue, encodeValue, registerMigration, restore, SIM_VERSION, snapshot, entityColumns } from '../../src';
 
 const mk = () => createState({ planetId: 'pl_m', planetType: 'desert', seed: 's', radius: 3 });
@@ -7,6 +7,8 @@ const asVersion = (v: number) => {
   d.header.simVersion = v;
   return encodeValue(d);
 };
+// the built-in migrations (2 -> 3, LED-16) would clash with the ones these tests register: start from an empty registry
+beforeEach(clearMigrations);
 afterEach(clearMigrations);
 
 describe('migrations and envelope', () => {

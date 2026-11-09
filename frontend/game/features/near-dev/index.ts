@@ -1,21 +1,13 @@
-import { defineFeature, type DevCommandDef, type FeatureContext } from '../../core/registry/types';
-import { DevServerError } from '../../net/devServer';
+import { defineFeature, type DevCommandDef } from '../../core/registry/types';
 import '../../net/services';
+import { serverFor, usage } from '../shared/devCommand';
+
+export { serverFor, usage };
 
 const FAIL_USAGE = 'near.mock.fail <port> <rate>';
 const LATENCY_USAGE = 'near.mock.latency <port> <minMs> <maxMs>';
 const RESET_USAGE = 'account.reset <player>';
 const UPGRADE_USAGE = 'account.upgrade <provider> <subject>';
-
-function serverFor(ctx: FeatureContext, name: string): NonNullable<FeatureContext['services']['devServer']> {
-  const server = ctx.services.devServer;
-  if (!server) throw new DevServerError('host_unavailable', `${name} needs the game server; not available on this host`);
-  return server;
-}
-
-function usage(line: string): never {
-  throw new Error(`usage: ${line}`);
-}
 
 function wholeMs(raw: string, line: string): number {
   if (!/^(0|[1-9]\d*)$/.test(raw)) usage(line);

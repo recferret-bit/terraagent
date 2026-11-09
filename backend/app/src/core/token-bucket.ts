@@ -4,6 +4,8 @@ export interface TokenBucketOptions {
   /** Bucket size (the burst a fresh key may spend at once). */
   readonly burst: number;
   readonly now?: () => number;
+  /** Most keys kept at once (default 10 000): past it the oldest bucket is dropped, so a flood of distinct keys cannot grow the map. */
+  readonly maxKeys?: number;
 }
 
 const IDLE_FORGET_MS = 60_000;
@@ -17,10 +19,12 @@ export class TokenBucketLimiter {
   private readonly burst: number;
   private readonly now: () => number;
   private lastSweep = 0;
+  private readonly maxKeys: number;
 
   constructor(o: TokenBucketOptions) {
     this.perMs = o.perSecond / 1000;
     this.burst = o.burst;
+    this.maxKeys = o.maxKeys ?? 10_000;
     this.now = o.now ?? (() => performance.now()); // monotonic: a wall-clock step back must not starve a bucket
   }
 
@@ -32,9 +36,18 @@ export class TokenBucketLimiter {
     b.tokens = Math.min(this.burst, b.tokens + Math.max(0, now - b.at) * this.perMs);
     b.at = now;
     this.buckets.set(key, b);
+    if (this.buckets.size > this.maxKeys) this.buckets.delete(this.buckets.keys().next().value as string);
     if (b.tokens < 1) return false;
     b.tokens -= 1;
     return true;
+  }
+
+  /** Milliseconds until `key` has a whole token again (0 when it already has one): the basis of `Retry-After`. */
+  retryAfterMs(key: string): number {
+    const b = this.buckets.get(key);
+    if (!b) return 0;
+    const tokens = Math.min(this.burst, b.tokens + Math.max(0, this.now() - b.at) * this.perMs);
+    return tokens >= 1 ? 0 : Math.ceil((1 - tokens) / this.perMs);
   }
 
   /** Forgets keys idle for a minute whose bucket is full again anyway. */

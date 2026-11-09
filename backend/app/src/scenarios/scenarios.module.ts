@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { defineDevCommand, DevCommandRegistry } from '../dev/dev-command.registry';
 import { GameModule } from '../game/game.module';
 import { ScenariosController } from './scenarios.controller';
+import { EconomyModule } from '../economy/economy.module';
 import { ScenariosService } from './scenarios.service';
 
 /** Dev command `scenario { id }` → `{ planetId }` (same call as `POST /v1/dev/scenarios/:id`). */
@@ -22,7 +23,7 @@ class ScenarioDevCommand implements OnModuleInit {
 
 /** Seed scenarios (W00): fresh dev planets from `tests/scenarios/*.ts` through the thread's snapshot load. */
 @Module({
-  imports: [GameModule],
+  imports: [GameModule, EconomyModule],
   controllers: [ScenariosController],
   providers: [ScenariosService, ScenarioDevCommand],
 })

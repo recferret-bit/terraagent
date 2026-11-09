@@ -206,8 +206,17 @@ export const devSpawnUnit = defineCommandHandler({
     const spec = resolveColonyUnitSpec(unitRaw, ctx);
     if (!spec) return 'invalid_args';
 
+    const spreadRow = (unitRaw === 'builder' || unitRaw === 'harvester') && count > 1 && args.q !== undefined && args.r !== undefined;
+    if (spreadRow) {
+      for (let i = 0; i < count; i++) {
+        if (!inHex(baseQ + (i % 6), baseR + Math.floor(i / 6), state.grid.radius)) return 'invalid_args';
+      }
+    }
+
     const owner = args.owner !== undefined ? args.owner : colonyIndex;
     for (let i = 0; i < count; i++) {
+      const uQ = spreadRow ? baseQ + (i % 6) : baseQ;
+      const uR = spreadRow ? baseR + Math.floor(i / 6) : baseR;
       const entityId = ctx.newEntityId();
       const row = insertRow(state.entities, entityId, ctx.tick);
       const cols = state.entities.cols;
@@ -218,12 +227,12 @@ export const devSpawnUnit = defineCommandHandler({
       cols.hpMax[row] = Math.fround(spec.hp);
       cols.state[row] = ENTITY_STATE.idle;
       cols.workRate[row] = 1.0;
-      placeSpawnedEntity(state.entities, row, baseQ, baseR, ctx.tick);
+      placeSpawnedEntity(state.entities, row, uQ, uR, ctx.tick);
       if (owner >= 0) {
-        revealVision(state, owner, baseQ, baseR, spec.viewRadius, ctx.tick);
+        revealVision(state, owner, uQ, uR, spec.viewRadius, ctx.tick);
       }
       syncSpawnedColonyUnitView(state, row, spec, ctx);
-      setUnitStance(state, entityId, 'defend', { q: baseQ, r: baseR }, ctx.tick);
+      setUnitStance(state, entityId, 'defend', { q: uQ, r: uR }, ctx.tick);
     }
 
     if (owner >= 0) {

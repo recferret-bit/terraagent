@@ -17,7 +17,7 @@ import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { HomeRepository } from '../../core/home/home.repository';
 import { FlagsService } from '../../flags/flags.service';
 import { GamePlanets, type LoadOptions } from '../game-planets.service';
-import { hasLiveColony } from '../live-colony';
+import { hasLiveColony, liveColonyIndices } from '../live-colony';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
 import { persistenceEnabled } from '../../core/persistence';
 import { SnapshotScheduler } from './snapshot-scheduler';
@@ -227,7 +227,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
       // A planet with colony rows is never marked: its colonies belong to their players (BE-07).
       const isDev = devPlanetTypeOf(id) !== null;
       if (!isDev && hasLiveColony(state) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
-        this.planets.markScenarioColonyPlanet(id);
+        this.planets.markScenarioColonyPlanet(id, liveColonyIndices(state));
       }
       const tick = await this.planets.load(id, { snapshot: snap.raw });
       this.log.info({ planetId: id, tick, savedAt: snap.savedAt }, `restored ${id} at tick ${tick}`);

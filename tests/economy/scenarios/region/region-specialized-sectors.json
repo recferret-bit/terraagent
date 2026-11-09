@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "region-specialized-sectors",
+  "version": 1,
+  "description": "Two colonies: a desert sector and a crystal-ridge sector (specialized) versus the homogeneous desert fixture.",
+  "waves": "..13",
+  "populations": [
+    {
+      "cohort": "specialist",
+      "colonies": 2,
+      "params": {}
+    }
+  ],
+  "shocks": [],
+  "assumptions": {
+    "region": {
+      "planetType": "desert",
+      "regions": {
+        "profiles": [
+          {
+            "regionProfileId": "crystal-ridge",
+            "resources": {
+              "minerals.t3": {
+                "occurrenceWeightBp": 8000
+              }
+            }
+          }
+        ],
+        "bindings": [
+          {
+            "scopeKind": "sectorArchetype",
+            "archetype": "crystal-ridge",
+            "regionProfileId": "crystal-ridge"
+          }
+        ]
+      },
+      "sectors": {
+        "0": {
+          "sectorId": "s_desert"
+        },
+        "1": {
+          "sectorId": "s_ridge",
+          "archetype": "crystal-ridge"
+        }
+      },
+      "colonies": 2,
+      "extractors": 2,
+      "depots": 0,
+      "routeTiles": 4,
+      "stock": {
+        "bio.water": 60,
+        "metals.t1": 60,
+        "minerals.t1": 60
+      }
+    },
+    "tradeResources": [
+      "bio.water",
+      "metals.t1",
+      "minerals.t1",
+      "minerals.t3"
+    ],
+    "gates": []
+  }
+}

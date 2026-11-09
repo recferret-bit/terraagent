@@ -86,7 +86,7 @@ Command kinds (summary; arguments in PROTOCOL.md):
 |---|---|---|
 | Colony control | `setPriorities`, `enqueueTask` (build / upgrade / repair / terraform / buildUnit / queueGoal / raid / launchRocket), `cancelTask`, `placeBuilding`, `upgradeBuilding`, `demolish`, `setAutopilot`, `setAwayBudget`, `setHarvestWeights`, `setStance`, `attackMove`, `setRally`, `setPlanetTime` | player, ai |
 | AI | `ai.directive` (DirectiveV1/v2) | ai |
-| Cargo & market (D-26) | `cargo.export {resource, amount}` (moves stock to "in orbit" pending mint), `cargo.import {resource, amount}` (credited after the burn confirms), `cargo.settled {ref, ok}`, `market.reserve` / `market.release` / `market.settled {tradeId, deltas}` | player, ai, near |
+| Cargo & market (D-26) | `cargo.export {resource, amount}` (moves stock to "in orbit" pending mint), `cargo.import {resource, amount}` (credited after the burn confirms), `cargo.settled {ref, ok}`, `market.reserve` / `market.release` / `market.settled {tradeId, deltas}` (module-only, whole-unit resource deltas; client market commands go sim-first, see PROTOCOL §4.4.1) | player, ai, near |
 | Diplomacy & bounties | `diplomacy.proposeTruce` / `respondTruce` / `cancelTruce`, `bounty.post` / `bounty.claim` / `bounty.paid` | player, ai, near |
 | System | `system.spawnColony`, `system.retireColony`, `system.seal`, `system.end`, `system.presence {colonyId, away}`, `system.arrive` | lobby, game |
 
@@ -298,7 +298,7 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 | `raidStarted` / `raidRepelled` | warn | raid begins / all raiders dead |
 | `rocketReady` / `rocketLaunched` / `colonySettled` | info | silo complete / launch / settled |
 | `colonyCritical` / `colonyEliminated` | critical | units spec `UO-HQ-04` |
-| `cargoExportRequested` / `marketOrderMatched` / `truceSigned` / `bountyCompleted` | info | inputs for the `near` module (D-26) |
+| `cargoExportRequested` / `marketOrderRequested` / `marketCancelRequested` / `marketHubFeeSet` / `truceSigned` / `bountyCompleted` | info | inputs for the `near` module (D-26) |
 | (no event) | — | rejections are command outcomes (`StepResult.outcomes` → `cmd.reject` to the issuing socket or module only), not events |
 
 ---

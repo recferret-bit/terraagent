@@ -92,8 +92,8 @@ Every NEAR feature, the LLM director and notifications sit behind ports (abstrac
 | ChainRead | receipts, health | mock (Postgres) | W23 |
 | BadgeNft | achievements | mock (Postgres, NEP-171) | W23 |
 | Identity, Relayer | F5 accounts, gasless tx | mock (Postgres) | W23 |
-| CargoToken | F1 cargo (NEP-245) | — (W10 mock) | W23 |
-| Intents | F2 markets | — (W13 mock) | W23 |
+| CargoToken | F1 cargo (NEP-245) | mock (Postgres, W10) | W23 |
+| Intents | F2 markets | mock (Postgres verifier ledger, W13) | W23 |
 | AgentWallet | F3/F4 | — (W15 mock) | W23 |
 | DeedNft, Staking | F6 | — (W20 mock) | W23 |
 | TreasuryDao, Escrow | F7/F8 | — (W22 mock) | W23 |
@@ -111,7 +111,8 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`frontend/v
 | `/` | [`frontend/index.html`](./frontend/index.html) | **Hub.** Cards linking to Landing, Play, Playground and the design system, with deep links to each world and a few models. Static HTML + CSS, no JS. | — |
 | `/landing.html` | [`frontend/landing.html`](./frontend/landing.html) | **Landing** (terraagent.com): hero = the game's real orbit stage (morphs between the 3 worlds every 10 s, terraforming each in 4 steps; `?world=<kind>` picks the start), Canvas 2D hex colony, economy, planets, AI Director, FAQ. Planet cards render the real `PlanetGlobe`; sections 07 Roadmap (scroll-driven flight plan, `frontend/landing/sections/roadmap.ts`) and 08 Road to market (route + split-flap lane board); the economy section has resource tabs (Metals default) with a live 3D model and technical sheet. | [`frontend/landing/`](./frontend/landing/) (`main.ts` → `LandingPage`; `sections/`, `hero/`, `colony/`, `resources/`), CSS [`landing.css`](./frontend/landing/landing.css) |
 | `/play.html` | [`frontend/play.html`](./frontend/play.html) | **Game**: orbital world picker → drop-pod descent cinematic → colony diorama with RTS camera and HUD. | [`frontend/game/main.ts`](./frontend/game/main.ts) → [`frontend/game/app/Game.ts`](./frontend/game/app/Game.ts), UI in [`frontend/game/ui/`](./frontend/game/ui/) |
-| `/playground.html` | [`frontend/playground.html`](./frontend/playground.html) | **3D playground**, a storybook for 3D models: every registered kitbash archetype on a calibrated pedestal, 4 diagnostic views, biome switch, triangle budget and ground-contact checks. | [`frontend/playground/PlaygroundApp.ts`](./frontend/playground/PlaygroundApp.ts) |
+| `/playground.html` | [`frontend/playground.html`](./frontend/playground.html) | **3D playground**, a storybook for 3D models: every registered kitbash archetype on a calibrated pedestal, 4 diagnostic views, biome switch, triangle budget and ground-contact checks, PNG and 4-view contact-sheet export. | [`frontend/playground/PlaygroundApp.ts`](./frontend/playground/PlaygroundApp.ts) |
+| `/trade.html` | [`frontend/trade.html`](./frontend/trade.html) | **Trading page (W13, mock USDC):** depth ladder, price board, order ticket with exact fee preview, all resting orders of a pair, my orders and fills, own in-orbit cargo only, bot API keys. The in-game Trade Hub is the simplified version. | [`frontend/trade/`](./frontend/trade/) |
 | `/design/` | [`frontend/design/index.html`](./frontend/design/index.html) | **Design system** reference: Foundations, Storybook (UI components), Motion. | [`frontend/design/`](./frontend/design/) |
 
 ### URL parameters

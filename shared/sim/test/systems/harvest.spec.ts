@@ -13,6 +13,7 @@ import {
   step,
   TERRAIN,
 } from '../../src';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
   it('1 idle Worker -> walks to nearest deposit and credits +0.5/s; setHarvestWeights retargets it', () => {
@@ -42,10 +43,10 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
     expect(state.entities.cols.q[0]).toBe(0);
     expect(state.entities.cols.r[0]).toBe(0);
 
-    const beforeMetals = colony.stock['metals.t1'];
+    const beforeMetals = resourceValue(colony, 'metals.t1');
     // Harvest for 5 ticks (1.0 second at 5 TPS) -> credits +0.5 metals.t1
     step(state, [], 5, pipeline);
-    expect(colony.stock['metals.t1'] - beforeMetals).toBeCloseTo(0.5, 5);
+    expect(resourceValue(colony, 'metals.t1') - beforeMetals).toBeCloseTo(0.5, 5);
 
     // Send setHarvestWeights to prioritize Minerals (metals: 0, minerals: 100, bio: 0) -> retargets to (0, 2)
     const retargetStep = step(
@@ -60,9 +61,9 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
     for (let i = 0; i < 8; i++) step(state, [], 1, pipeline);
     expect(state.entities.cols.q[0]).toBe(0);
     expect(state.entities.cols.r[0]).toBe(1);
-    const beforeMinerals = colony.stock['minerals.t1'];
+    const beforeMinerals = resourceValue(colony, 'minerals.t1');
     step(state, [], 5, pipeline);
-    expect(colony.stock['minerals.t1'] - beforeMinerals).toBeCloseTo(0.5, 5);
+    expect(resourceValue(colony, 'minerals.t1') - beforeMinerals).toBeCloseTo(0.5, 5);
 
     // Also verify Clear sub-job on a forest tile
     const forestTile = idx.indexOf(0, 1);

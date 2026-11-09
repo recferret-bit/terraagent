@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
+import { resourceValue } from '../../src/systems/economy/ledger';
 import {
   colonyTerraformStats,
   createRegistryPipeline,
@@ -142,11 +143,11 @@ describe('W05-10 · Living adjacency extractor bonus (+5 %)', () => {
       label: '+5 %',
     });
 
-    const prevMetals = colony.stock['metals.t1'];
-    const prevWater = colony.stock['bio.water'];
+    const prevMetals = resourceValue(colony, 'metals.t1');
+    const prevWater = resourceValue(colony, 'bio.water');
     step(state, [], 5, pipeline);
 
-    expect(colony.stock['metals.t1'] - prevMetals).toBeCloseTo(1.05, 5);
+    expect(resourceValue(colony, 'metals.t1') - prevMetals).toBeCloseTo(1.05, 5);
     expect(colony.production.incomePerS['metals.t1']).toBeCloseTo(1.05, 4);
     expect(colony.production.extractors?.[placedMetals.entityId]).toMatchObject({
       entityId: placedMetals.entityId,
@@ -160,7 +161,7 @@ describe('W05-10 · Living adjacency extractor bonus (+5 %)', () => {
         placedMetals.entityId
       ]?.livingBonusText,
     ).toBe('+5 %');
-    expect(colony.stock['bio.water'] - prevWater).toBeCloseTo(0.875 * 1.05, 5);
+    expect(resourceValue(colony, 'bio.water') - prevWater).toBeCloseTo(0.875 * 1.05, 5);
     expect(colony.production.extractors?.[placedWater.entityId]?.livingBonusText).toBe('+5 %');
   });
 });

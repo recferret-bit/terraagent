@@ -79,6 +79,9 @@ export function resolveChipTitleAndIcon(entry: QueueEntry): { title: string; ico
     const name = task.building ? (TASK_TITLES[task.building] ?? task.building) : `#${task.entityId}`;
     return { title: `Dismantle ${name}`, icon: '⛏' };
   }
+  if (task.kind === 'project') {
+    return { title: `Project: ${task.project.replace(/^project\./, '').replace(/_/g, ' ')}`, icon: '★' };
+  }
   return { title: `Terraform: ${task.op}`, icon: '⛰' };
 }
 

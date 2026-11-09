@@ -9,6 +9,6 @@ export const COARSE_DT = 5;
  * discarded (dev planets regenerate, a browser local save is dropped, any other v1 snapshot fails to restore).
  * From the first real (non-dev) planet on, every bump registers a migration in `codec/migrations` (WE-01).
  */
-export const SIM_VERSION = 4; // 4: wider i16 owner identity for tiles and entities (W11-37); v2/v3 persisted state migrates via codec/migrations.
+export const SIM_VERSION = 4; // 3: compact combat diffs, fauna route reconstruction, and whole-unit `col.stock` + `col.residual` micro-units (LED-16; migration `codec/migrations/wholeStock.ts`); 4: wider i16 owner identity for tiles and entities (W11-37).
 /** Number of pipeline slots (SIMULATION §3): 0 commands … 14 finalize. */
 export const PIPELINE_SLOTS = 15;

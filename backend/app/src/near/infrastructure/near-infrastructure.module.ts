@@ -4,6 +4,7 @@ import { discoverAdapters } from '../../ports/adapters.js';
 import { bindPorts } from '../../ports/binding.js';
 import { guardedEnv } from '../../ports/prod-guard.js';
 import { PORTS } from '../application/ports/index.js';
+import { IntentsBalanceReadPort } from '../application/ports/intents-balance-read.port.js';
 import type { NearPortName } from '../domain/types.js';
 import { nearAdapterFor, NEAR_PORT_KEYS } from './adapter-selection.js';
 
@@ -31,7 +32,11 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]) =>
 
 /** The only place NEAR ports are bound: one `{ provide: XPort, useClass: <selected adapter> }` per registered port. */
 export const nearInfrastructureModuleFor = (adapters: Parameters<typeof bindPorts>[2]) =>
-  bindPorts('NearInfrastructureModule', nearPorts.map((p) => ({ name: p.name, token: p.token, select: (env) => nearAdapterFor(p.name as NearPortName, env as Record<string, string>) })), adapters);
+  bindPorts('NearInfrastructureModule', [
+    ...nearPorts.map((p) => ({ name: p.name, token: p.token, select: (env: Record<string, unknown>) => nearAdapterFor(p.name as NearPortName, env as Record<string, string>) })),
+    // Read-only companion of `Intents` (not a 12th port: no env key, no prod-guard entry); follows `NEAR_ADAPTER_INTENTS`.
+    { name: 'IntentsBalanceRead', token: IntentsBalanceReadPort, select: (env: Record<string, unknown>) => nearAdapterFor('Intents', env as Record<string, string>) },
+  ], adapters);
 
 export const NearInfrastructureModule = nearInfrastructureModuleFor(nearAdapters);
 export const nearEnv = nearEnvFor(nearAdapters);

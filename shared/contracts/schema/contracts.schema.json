@@ -198,6 +198,107 @@
       ],
       "type": "object"
     },
+    "market.subscribe": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "d": {
+          "additionalProperties": false,
+          "properties": {
+            "pairs": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            "planetId": {
+              "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "planetId",
+            "pairs"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "market.subscribe",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "market.unsubscribe": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "d": {
+          "additionalProperties": false,
+          "properties": {
+            "pairs": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            "planetId": {
+              "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "planetId"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "market.unsubscribe",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
     "ping": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -1925,7 +2026,7 @@
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev console (`spawnUnit`): spawns colony combat/worker units or neutral fauna bugs at (q, r) (W07-29).",
+      "summary": "Dev console (`spawnUnit` / `spawn builder|harvester`): spawns colony combat/worker units or neutral fauna bugs at (q, r) (W07-29, W13-57).",
       "wave": "W07"
     },
     "dev.stage": {
@@ -2429,6 +2530,29 @@
           {
             "additionalProperties": false,
             "properties": {
+              "project": {
+                "additionalProperties": false,
+                "properties": {
+                  "project": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "project"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "project"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
               "costOverride": {
                 "additionalProperties": {
                   "minimum": 0,
@@ -2663,6 +2787,25 @@
                       "goal"
                     ],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "project",
+                        "type": "string"
+                      },
+                      "project": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "project"
+                    ],
+                    "type": "object"
                   }
                 ]
               },
@@ -2680,7 +2823,7 @@
         ]
       },
       "origin": "client",
-      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order) in the colony queue.",
+      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order), or a prestige project order (W13) in the colony queue.",
       "wave": "W01"
     },
     "landPod": {
@@ -2693,6 +2836,527 @@
       "origin": "client",
       "summary": "Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.",
       "wave": "W01"
+    },
+    "market.cancelOrder": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "orderId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "orderId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Cancels one of the colony's open orders (owner only); its principal and fee reservations are released exactly once (W13-15).",
+      "wave": "W13"
+    },
+    "market.placeOrder": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxStallFeeBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "price": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "token": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3",
+                  "USDC",
+                  "NEAR"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "token",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "stallId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            ]
+          },
+          "ttlS": {
+            "exclusiveMinimum": 0,
+            "maximum": 604800,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "side",
+          "resource",
+          "amount",
+          "price",
+          "ttlS"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Places a limit order on the planet book `resource/price.token` at the colony's online Trade Hub (NEAR-60, NEAR-63). The sim checks the Hub, size, TTL and fee range and emits `marketOrderRequested`; the market module reserves funds and matches (W13-09).",
+      "wave": "W13"
+    },
+    "market.release": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid_args",
+              "unknown_kind",
+              "not_own_colony",
+              "colony_inactive",
+              "not_own_territory",
+              "site_blocked",
+              "terrain_unbuildable",
+              "insufficient_resources",
+              "supply_cap",
+              "unknown_entity",
+              "tier_locked",
+              "worker_tier_locked",
+              "stage_locked",
+              "no_trade_hub",
+              "raid_protected",
+              "truce_active",
+              "would_isolate",
+              "launch_gate",
+              "mint_cap",
+              "market_unavailable",
+              "planet_ended",
+              "wave_disabled",
+              "host_unavailable",
+              "internal",
+              "rate_limited",
+              "already_landed",
+              "landing_site_taken",
+              "queue_full",
+              "planet_full",
+              "cannot_dismantle_hq",
+              "unknown_task",
+              "lane_full",
+              "outside_power_zone",
+              "already_dismantling",
+              "cannot_dismantle_unit",
+              "cannot_dismantle_self",
+              "dismantle_unfinished",
+              "no_worker_in_reach",
+              "already_terraformed",
+              "already_queued",
+              "already_at_target",
+              "goal_limit",
+              "unknown_goal",
+              "insufficient_stock",
+              "insufficient_cargo",
+              "storage_full",
+              "hub_offline",
+              "fee_out_of_range",
+              "order_limit",
+              "order_too_small",
+              "unknown_order"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deltas": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "detail": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "orderId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "cancelled",
+              "expired",
+              "rejected",
+              "settlement_failed",
+              "filled"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "deltas",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Module command: an order's reservation was released (cancel, TTL expiry, server-side reject or final settlement failure); the sim lowers `reservedInOrbit` and, on `rejected`, emits `marketOrderRejected` (W13-10).",
+      "wave": "W13"
+    },
+    "market.reserve": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deltas": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "orderId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "deltas"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Module command from the market module: the order's reservation is held in the DB; the sim mirrors it in `reservedInOrbit` for the HUD (W13-10, SIMULATION market.*). No sim stock changes.",
+      "wave": "W13"
+    },
+    "market.setHubFee": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "hubId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bp"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Sets the stall fee the colony's Trade Hub charges buyers on fills where it is the maker's stall (D-44). Orders already open keep their pinned fee.",
+      "wave": "W13"
+    },
+    "market.settled": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deltas": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "released": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "role": {
+            "enum": [
+              "buyer",
+              "seller",
+              "stall"
+            ],
+            "type": "string"
+          },
+          "trade": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "base": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "makerSide": {
+                "enum": [
+                  "buy",
+                  "sell"
+                ],
+                "type": "string"
+              },
+              "notional": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "platformFee": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "quote": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3",
+                  "USDC",
+                  "NEAR"
+                ],
+                "type": "string"
+              },
+              "stallFee": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "stallFeeBp": {
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "stallName": {
+                "maxLength": 64,
+                "type": "string"
+              },
+              "txHash": {
+                "maxLength": 128,
+                "type": "string"
+              }
+            },
+            "required": [
+              "base",
+              "amount",
+              "quote",
+              "notional",
+              "platformFee",
+              "stallFee",
+              "stallFeeBp",
+              "makerSide"
+            ],
+            "type": "object"
+          },
+          "tradeId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tradeId",
+          "role",
+          "deltas",
+          "trade"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Module command after a trade batch is FINAL: updates the colony's in-orbit mirror and emits `tradeSettled` (and `feeEarned` for the stall) (W13-10, W13-13). No sim stock changes.",
+      "wave": "W13"
     },
     "moveGroup": {
       "args": {
@@ -3472,6 +4136,35 @@
       "origin": "module",
       "summary": "Spawns a colony drop pod at a free spawn slot with starting pod cargo (W01-09).",
       "wave": "W01"
+    },
+    "unitReserve": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "reserve": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entityIds",
+          "reserve"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Puts owned units in reserve (stops attack and production, keeps control slots) or deploys them again (activation recipe and delay apply).",
+      "wave": "W13"
     }
   },
   "events": {
@@ -4282,6 +4975,66 @@
       "summary": "Emitted when a fauna unit is killed by a colony, driving the Exterminator achievement family (W07-01, W07-27).",
       "wave": "W07"
     },
+    "feeEarned": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "pattern": "^(0|[1-9]\\d{0,77})$",
+            "type": "string"
+          },
+          "bp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "token": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3",
+              "USDC",
+              "NEAR"
+            ],
+            "type": "string"
+          },
+          "tradeId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tradeId",
+          "colonyId",
+          "token",
+          "amount",
+          "bp"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The colony's Trade Hub earned a stall fee on a FINAL trade (realized, in the quote token); Port Authority progress input (W13-22, W13-27).",
+      "wave": "W13"
+    },
     "goalDone": {
       "audience": "player",
       "data": {
@@ -4581,6 +5334,353 @@
       "severity": "warn",
       "summary": "Emitted when a lightning bolt strikes a tile or 4-hex cluster, damaging buildings and overloading electricity (W05-01).",
       "wave": "W05"
+    },
+    "marketCancelRequested": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "orderId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "colonyIndex",
+          "orderId"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The sim accepted `market.cancelOrder`; the market module cancels the order (owner only) and releases its reservations once (W13-15). Server-only input.",
+      "wave": "W13"
+    },
+    "marketHubFeeSet": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hubEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "previousBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "colonyIndex",
+          "hubEntityId",
+          "bp"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The colony's Trade Hub stall fee changed (applies to new orders only); the market module records it for new maker orders (W13-22).",
+      "wave": "W13"
+    },
+    "marketOrderRejected": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid_args",
+              "unknown_kind",
+              "not_own_colony",
+              "colony_inactive",
+              "not_own_territory",
+              "site_blocked",
+              "terrain_unbuildable",
+              "insufficient_resources",
+              "supply_cap",
+              "unknown_entity",
+              "tier_locked",
+              "worker_tier_locked",
+              "stage_locked",
+              "no_trade_hub",
+              "raid_protected",
+              "truce_active",
+              "would_isolate",
+              "launch_gate",
+              "mint_cap",
+              "market_unavailable",
+              "planet_ended",
+              "wave_disabled",
+              "host_unavailable",
+              "internal",
+              "rate_limited",
+              "already_landed",
+              "landing_site_taken",
+              "queue_full",
+              "planet_full",
+              "cannot_dismantle_hq",
+              "unknown_task",
+              "lane_full",
+              "outside_power_zone",
+              "already_dismantling",
+              "cannot_dismantle_unit",
+              "cannot_dismantle_self",
+              "dismantle_unfinished",
+              "no_worker_in_reach",
+              "already_terraformed",
+              "already_queued",
+              "already_at_target",
+              "goal_limit",
+              "unknown_goal",
+              "insufficient_stock",
+              "insufficient_cargo",
+              "storage_full",
+              "hub_offline",
+              "fee_out_of_range",
+              "order_limit",
+              "order_too_small",
+              "unknown_order"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "detail": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "code"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "The market module refused an order the sim had accepted (funds changed under lock, policy, limit); nothing stays reserved (W13-09).",
+      "wave": "W13"
+    },
+    "marketOrderRequested": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "actorKind": {
+            "enum": [
+              "player",
+              "bot",
+              "npc",
+              "guild",
+              "fixture",
+              "subsidy"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commandId": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "hubEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxStallFeeBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "orderSeq": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "price": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "token": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3",
+                  "USDC",
+                  "NEAR"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "token",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "stallFeeBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stallName": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "ttlS": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref",
+          "orderSeq",
+          "colonyId",
+          "colonyIndex",
+          "side",
+          "resource",
+          "amount",
+          "price",
+          "ttlS",
+          "stallFeeBp",
+          "hubEntityId"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The sim accepted `market.placeOrder` (Hub online, size, TTL, fee range); the market module creates the order, reserves funds and matches (W13-09). Server-only input.",
+      "wave": "W13"
+    },
+    "marketSettlementFailed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A trade the colony's order was part of definitely failed on settlement and the order ended with its reservation released; nothing changed hands: \"Contract failed\" toast (W13-24).",
+      "wave": "W13"
     },
     "meteorImpact": {
       "audience": "player",
@@ -4916,6 +6016,42 @@
       "severity": "warn",
       "summary": "Emitted when destroying or demolishing a pylon/generator splits the colony power graph or disconnects buildings (W03-05).",
       "wave": "W03"
+    },
+    "prestigeCompleted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "project": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "project",
+          "count"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A colony finished a prestige project (a non-tradable fact: no cash, no production multiplier); repeating it consumes its inputs again (W13-43).",
+      "wave": "W13"
     },
     "projectileFired": {
       "audience": "player",
@@ -6062,6 +7198,127 @@
       "summary": "Emitted when a tile changes terrain class or prep state (e.g. Level, Fill, Reclaim, Irrigate, Seed, or building footprint revert; W05-01).",
       "wave": "W05"
     },
+    "tradeSettled": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "base": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "makerSide": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "notional": {
+            "pattern": "^(0|[1-9]\\d{0,77})$",
+            "type": "string"
+          },
+          "platformFee": {
+            "pattern": "^(0|[1-9]\\d{0,77})$",
+            "type": "string"
+          },
+          "quote": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3",
+              "USDC",
+              "NEAR"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "buyer",
+              "seller"
+            ],
+            "type": "string"
+          },
+          "stallFee": {
+            "pattern": "^(0|[1-9]\\d{0,77})$",
+            "type": "string"
+          },
+          "stallFeeBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stallName": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "tradeId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "txHash": {
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tradeId",
+          "colonyId",
+          "role",
+          "base",
+          "amount",
+          "quote",
+          "notional",
+          "platformFee",
+          "stallFee",
+          "stallFeeBp",
+          "makerSide"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A trade the colony took part in is FINAL: \"Contract signed: X for Y at <Stall> (n % fee)\" (W13-24); Merchant progress input (W13-27).",
+      "wave": "W13"
+    },
     "treasuryRejected": {
       "audience": "server",
       "data": {
@@ -6727,6 +7984,28 @@
               },
               "type": "array"
             },
+            "reserved": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
             "throughputCapPerMin": {
               "minimum": 0,
               "type": "number"
@@ -6889,7 +8168,11 @@
                 "insufficient_stock",
                 "insufficient_cargo",
                 "storage_full",
-                "hub_offline"
+                "hub_offline",
+                "fee_out_of_range",
+                "order_limit",
+                "order_too_small",
+                "unknown_order"
               ],
               "type": "string"
             },
@@ -7096,6 +8379,405 @@
         },
         "t": {
           "const": "event",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "market.book": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "asks": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "den": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "pattern": "^(0|[1-9]\\d{0,77})$",
+                    "type": "string"
+                  },
+                  "orders": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den",
+                  "amount",
+                  "orders"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "bids": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "den": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "num": {
+                    "pattern": "^(0|[1-9]\\d{0,77})$",
+                    "type": "string"
+                  },
+                  "orders": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "num",
+                  "den",
+                  "amount",
+                  "orders"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "last": {
+              "properties": {
+                "actorKind": {
+                  "enum": [
+                    "player",
+                    "bot",
+                    "npc",
+                    "guild",
+                    "fixture",
+                    "subsidy"
+                  ],
+                  "type": "string"
+                },
+                "amount": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "atMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "base": {
+                  "enum": [
+                    "metals.t1",
+                    "metals.t2",
+                    "metals.t3",
+                    "minerals.t1",
+                    "minerals.t2",
+                    "minerals.t3",
+                    "bio.water",
+                    "bio.biomass",
+                    "bio.t2",
+                    "bio.t3"
+                  ],
+                  "type": "string"
+                },
+                "makerSide": {
+                  "enum": [
+                    "buy",
+                    "sell"
+                  ],
+                  "type": "string"
+                },
+                "notional": {
+                  "pattern": "^(0|[1-9]\\d{0,77})$",
+                  "type": "string"
+                },
+                "organic": {
+                  "type": "boolean"
+                },
+                "pair": {
+                  "type": "string"
+                },
+                "platformFee": {
+                  "pattern": "^(0|[1-9]\\d{0,77})$",
+                  "type": "string"
+                },
+                "quote": {
+                  "enum": [
+                    "metals.t1",
+                    "metals.t2",
+                    "metals.t3",
+                    "minerals.t1",
+                    "minerals.t2",
+                    "minerals.t3",
+                    "bio.water",
+                    "bio.biomass",
+                    "bio.t2",
+                    "bio.t3",
+                    "USDC",
+                    "NEAR"
+                  ],
+                  "type": "string"
+                },
+                "stallFee": {
+                  "pattern": "^(0|[1-9]\\d{0,77})$",
+                  "type": "string"
+                },
+                "stallFeeBp": {
+                  "maximum": 10000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "state": {
+                  "enum": [
+                    "PENDING",
+                    "SUBMITTED",
+                    "FINAL",
+                    "FAILED",
+                    "UNKNOWN"
+                  ],
+                  "type": "string"
+                },
+                "tradeId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "txHash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tradeId",
+                "pair",
+                "base",
+                "quote",
+                "amount",
+                "notional",
+                "platformFee",
+                "stallFee",
+                "stallFeeBp",
+                "makerSide",
+                "state",
+                "atMs"
+              ],
+              "type": "object"
+            },
+            "pair": {
+              "type": "string"
+            },
+            "planetId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "seq": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "planetId",
+            "pair",
+            "bids",
+            "asks",
+            "seq"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "market.book",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "market.trade": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "planetId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "trade": {
+              "properties": {
+                "actorKind": {
+                  "enum": [
+                    "player",
+                    "bot",
+                    "npc",
+                    "guild",
+                    "fixture",
+                    "subsidy"
+                  ],
+                  "type": "string"
+                },
+                "amount": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "atMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "base": {
+                  "enum": [
+                    "metals.t1",
+                    "metals.t2",
+                    "metals.t3",
+                    "minerals.t1",
+                    "minerals.t2",
+                    "minerals.t3",
+                    "bio.water",
+                    "bio.biomass",
+                    "bio.t2",
+                    "bio.t3"
+                  ],
+                  "type": "string"
+                },
+                "makerSide": {
+                  "enum": [
+                    "buy",
+                    "sell"
+                  ],
+                  "type": "string"
+                },
+                "notional": {
+                  "pattern": "^(0|[1-9]\\d{0,77})$",
+                  "type": "string"
+                },
+                "organic": {
+                  "type": "boolean"
+                },
+                "pair": {
+                  "type": "string"
+                },
+                "platformFee": {
+                  "pattern": "^(0|[1-9]\\d{0,77})$",
+                  "type": "string"
+                },
+                "quote": {
+                  "enum": [
+                    "metals.t1",
+                    "metals.t2",
+                    "metals.t3",
+                    "minerals.t1",
+                    "minerals.t2",
+                    "minerals.t3",
+                    "bio.water",
+                    "bio.biomass",
+                    "bio.t2",
+                    "bio.t3",
+                    "USDC",
+                    "NEAR"
+                  ],
+                  "type": "string"
+                },
+                "stallFee": {
+                  "pattern": "^(0|[1-9]\\d{0,77})$",
+                  "type": "string"
+                },
+                "stallFeeBp": {
+                  "maximum": 10000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "state": {
+                  "enum": [
+                    "PENDING",
+                    "SUBMITTED",
+                    "FINAL",
+                    "FAILED",
+                    "UNKNOWN"
+                  ],
+                  "type": "string"
+                },
+                "tradeId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "txHash": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tradeId",
+                "pair",
+                "base",
+                "quote",
+                "amount",
+                "notional",
+                "platformFee",
+                "stallFee",
+                "stallFeeBp",
+                "makerSide",
+                "state",
+                "atMs"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planetId",
+            "trade"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "market.trade",
           "type": "string"
         },
         "tick": {

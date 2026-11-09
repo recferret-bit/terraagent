@@ -81,6 +81,8 @@ export default defineFeature({
           if (tab) panel.setTab(tab);
           panel.setOpen(open);
         };
+        ctx.services.registerTradeHubTab = (def) => panel.extensions.register(def);
+        ctx.services.showTradeHubTab = (id) => { panel.setOpen(true); panel.extensions.show(id); };
         ctx.services.setCargoStatus = (status: CargoStatusPayload | null) => {
           ctx.services.cargoStatus = status;
           panel.setCargoStatus(status);
@@ -94,6 +96,8 @@ export default defineFeature({
             if (ctx.services.getTradeHubPanel) ctx.services.getTradeHubPanel = undefined;
             if (ctx.services.openTradeHubPanel) ctx.services.openTradeHubPanel = undefined;
             if (ctx.services.setCargoStatus) ctx.services.setCargoStatus = undefined;
+            ctx.services.registerTradeHubTab = undefined;
+            ctx.services.showTradeHubTab = undefined;
             panel.dispose();
           },
         };

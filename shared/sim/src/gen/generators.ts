@@ -1,3 +1,4 @@
+import type { ResolvedRegion } from '../economy/regions/resolve';
 import type { PlanetState, PlanetType } from '../kernel/state';
 
 /** Parameters every planet generator receives (SIMULATION §10). */
@@ -13,9 +14,14 @@ export interface PlanetParams {
   capacity?: number;
   /** Host secret for the hidden subsurface (`meta.worldSalt`, never sent to clients). */
   worldSalt?: string;
+  /**
+   * W13 only: the resolved regional endowment of the planet (`resolvePlanetRegion`). Present = deposits are composed by the
+   * regional source policy and the region is pinned in the state (W13-51); absent = generation is byte-identical to before W13.
+   */
+  region?: ResolvedRegion;
 }
 
-export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity' | 'worldSalt'>> & { capacity?: number; worldSalt?: string }) => PlanetState;
+export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity' | 'worldSalt' | 'region'>> & { capacity?: number; worldSalt?: string; region?: ResolvedRegion }) => PlanetState;
 
 /**
  * Bumped when generation output changes; `createPlanet` stamps it into `meta.genVersion` so hosts can tell planets

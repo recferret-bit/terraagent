@@ -1,0 +1,12 @@
+.ta-stall { display: flex; flex-direction: column; gap: var(--ta-s2); margin-top: var(--ta-s2); }
+.ta-stall__panel { display: flex; flex-direction: column; gap: 2px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam); padding: var(--ta-s2); }
+.ta-stall__line { display: flex; justify-content: space-between; gap: var(--ta-s2); font-family: var(--ta-font-mono); }
+.ta-stall__k { color: var(--ta-text-2); }
+.ta-stall__v { color: var(--ta-text); }
+.ta-stall__src { color: var(--ta-text-3); font-size: var(--ta-fs-eyebrow); text-align: right; }
+.ta-stall__control { display: flex; align-items: center; gap: var(--ta-s2); }
+.ta-stall__slider { flex: 1 1 auto; min-width: 0; accent-color: var(--ta-orange); }
+.ta-stall__apply { background: var(--ta-orange); color: var(--ta-void); border: 0; padding: var(--ta-s1) var(--ta-s3); font-family: var(--ta-font-display); font-size: var(--ta-fs-label); cursor: pointer; }
+.ta-stall__apply:disabled { background: var(--ta-plate-3, var(--ta-seam-2)); color: var(--ta-text-3); cursor: not-allowed; }
+.ta-stall__apply:focus-visible { outline: 2px solid var(--ta-blue-hi); outline-offset: 1px; }
+.ta-stall__msg { color: var(--ta-blue-hi); min-height: 1em; }

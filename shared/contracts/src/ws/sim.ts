@@ -77,7 +77,7 @@ export type SimEventWire = z.infer<typeof SimEventWire>;
 /** A command as the engine receives it (SIMULATION §4): after zod and ownership checks on the host. */
 export const SimCommandV1 = z.object({
   colonyIndex: z.number().int().nonnegative().nullable(), // null = planet-level (system/admin/dev)
-  source: z.enum(['player', 'ai', 'near', 'admin', 'system', 'dev']),
+  source: z.enum(['player', 'bot', 'ai', 'near', 'admin', 'system', 'dev']),
   commandId: z.string().min(1).max(40), // echoed in ack/reject
   kind: z.string().min(1).max(64),
   args: z.unknown(),

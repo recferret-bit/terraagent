@@ -1,6 +1,7 @@
 import { eventDef, parseWaves } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
 import { createScenarioPlanet } from '../../../../tests/scenarios';
+import { resourceValue } from '../../src/systems/economy/ledger';
 import {
   compileData,
   createRegistryPipeline,
@@ -154,11 +155,20 @@ describe('W05-34 Tiered yield split and tierUnlocked event', () => {
     run(state, { tick: 1, dt: 5, data, flags: parseWaves('..05'), emit: (e: { kind: string; data: unknown }) => events.push(e) } as unknown as StepContext);
 
     // T2 open -> 70% metals.t1 / 30% metals.t2
-    const totMetals = colony.stock['metals.t1'] + colony.stock['metals.t2'] + colony.stock['metals.t3'];
+    const m1 = () => resourceValue(colony, 'metals.t1');
+    const m2 = () => resourceValue(colony, 'metals.t2');
+    const m3 = () => resourceValue(colony, 'metals.t3');
+    const resetMetals = () => {
+      for (const k of ['metals.t1', 'metals.t2', 'metals.t3'] as const) {
+        colony.stock[k] = 0;
+        colony.residual[k] = 0;
+      }
+    };
+    const totMetals = m1() + m2() + m3();
     expect(totMetals).toBeGreaterThan(0);
-    expect(colony.stock['metals.t1'] / totMetals).toBeCloseTo(0.7, 5);
-    expect(colony.stock['metals.t2'] / totMetals).toBeCloseTo(0.3, 5);
-    expect(colony.stock['metals.t3']).toBe(0);
+    expect(m1() / totMetals).toBeCloseTo(0.7, 5);
+    expect(m2() / totMetals).toBeCloseTo(0.3, 5);
+    expect(m3()).toBe(0);
 
     expect(events).toHaveLength(1);
     expect(events[0]!.kind).toBe('tierUnlocked');
@@ -180,17 +190,15 @@ describe('W05-34 Tiered yield split and tierUnlocked event', () => {
     }
     syncColonyTerraformStats(state, 0, 1);
 
-    colony.stock['metals.t1'] = 0;
-    colony.stock['metals.t2'] = 0;
-    colony.stock['metals.t3'] = 0;
+    resetMetals();
 
     run(state, { tick: 2, dt: 5, data, flags: parseWaves('..05'), emit: (e: { kind: string; data: unknown }) => events.push(e) } as unknown as StepContext);
 
-    const totT3 = colony.stock['metals.t1'] + colony.stock['metals.t2'] + colony.stock['metals.t3'];
+    const totT3 = m1() + m2() + m3();
     expect(totT3).toBeGreaterThan(0);
-    expect(colony.stock['metals.t1'] / totT3).toBeCloseTo(0.5, 5);
-    expect(colony.stock['metals.t2'] / totT3).toBeCloseTo(0.3, 5);
-    expect(colony.stock['metals.t3'] / totT3).toBeCloseTo(0.2, 5);
+    expect(m1() / totT3).toBeCloseTo(0.5, 5);
+    expect(m2() / totT3).toBeCloseTo(0.3, 5);
+    expect(m3() / totT3).toBeCloseTo(0.2, 5);
     expect(events).toHaveLength(2);
     expect(events[1]!.data).toMatchObject({ colonyId: 'col-0', family: 'metals', tier: 3 });
 
@@ -198,15 +206,13 @@ describe('W05-34 Tiered yield split and tierUnlocked event', () => {
     const extRowIdx = 0;
     expect(state.entities.cols.kind[extRowIdx]).toBe(ENTITY_KIND.metalsExtractor);
     state.entities.cols.tier[extRowIdx] = 2;
-    colony.stock['metals.t1'] = 0;
-    colony.stock['metals.t2'] = 0;
-    colony.stock['metals.t3'] = 0;
+    resetMetals();
     run(state, { tick: 3, dt: 5, data, flags: parseWaves('..05') } as unknown as StepContext);
-    const totMk2 = colony.stock['metals.t1'] + colony.stock['metals.t2'] + colony.stock['metals.t3'];
+    const totMk2 = m1() + m2() + m3();
     expect(totMk2).toBeCloseTo(totT3 * 2, 4);
-    expect(colony.stock['metals.t1'] / totMk2).toBeCloseTo(0.5, 5);
-    expect(colony.stock['metals.t2'] / totMk2).toBeCloseTo(0.3, 5);
-    expect(colony.stock['metals.t3'] / totMk2).toBeCloseTo(0.2, 5);
+    expect(m1() / totMk2).toBeCloseTo(0.5, 5);
+    expect(m2() / totMk2).toBeCloseTo(0.3, 5);
+    expect(m3() / totMk2).toBeCloseTo(0.2, 5);
   });
 });
 

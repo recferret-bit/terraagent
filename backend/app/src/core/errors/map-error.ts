@@ -65,6 +65,7 @@ const mapZod = (e: z.ZodError): MappedError => ({
 function mapPrisma(e: { code: string; meta?: unknown }): MappedError {
   if (e.code === 'P2002') return { status: 409, errorCode: 'CONFLICT', message: 'Resource already exists', details: e.meta };
   if (e.code === 'P2025') return { status: 404, errorCode: 'NOT_FOUND', message: 'Resource not found', details: e.meta };
+  if (e.code === 'P2024') return { status: 503, errorCode: 'SERVER_BUSY', message: 'The server is busy, retry shortly', details: { retryAfterMs: 1000 } };
   return { status: 500, errorCode: 'INTERNAL', message: 'Database error' };
 }
 
@@ -76,12 +77,14 @@ function mapHttp(e: HttpException): MappedError {
   return { status, errorCode: HTTP_NAME_CODES[status] ?? (status >= 500 ? 'INTERNAL' : 'HTTP_ERROR'), message, details };
 }
 
-/** Core, zod, prisma, http, then the fallback (500 `INTERNAL`; the real message is only shown outside production). */
-export function mapError(e: unknown, production: boolean): MappedError {
+/**
+ * Core, zod, prisma, http, then the fallback (500 `INTERNAL` with a generic message). The real message of an unexpected error
+ * (database text included) is never sent to a client, in any environment: the filter logs it with the request id.
+ */
+export function mapError(e: unknown, _production?: boolean): MappedError {
   if (e instanceof CoreException) return mapCore(e);
   if (isZodError(e)) return mapZod(e);
   if (isPrismaKnown(e)) return mapPrisma(e);
   if (e instanceof HttpException) return mapHttp(e);
-  const message = production || !(e instanceof Error) ? 'Internal server error' : e.message;
-  return { status: 500, errorCode: 'INTERNAL', message };
+  return { status: 500, errorCode: 'INTERNAL', message: 'Internal server error' };
 }

@@ -1,0 +1,156 @@
+/// W13 F2 markets (DATA_MODEL `chain.market_order`, `chain.intent_trade`; ECONOMY §3; NEAR-60..62).
+/// Exact atomic amounts are `numeric(78,0)` (market atomic units: resources whole units, USDC micro, NEAR yocto);
+/// JSON carries them as decimal strings. `id` (autoincrement) is the time priority inside a price level.
+
+/// One resting or historical order. Created idempotently from the sim's `marketOrderRequested` (`(planetId, ref)` unique: scenario planets reuse `col_0`).
+/// Terms (price, fees, policy, beneficiaries, deadline) are pinned at creation and never change; fills, reservations
+/// and cumulative rounding buckets change only under a row lock (`SELECT … FOR UPDATE`).
+model MarketOrder {
+  id                BigInt   @id @default(autoincrement())
+  orderId           String   @unique @map("order_id") @db.VarChar(64)
+  ref               String   @db.VarChar(160)
+  planetId          String   @map("planet_id") @db.VarChar(64)
+  pair              String   @db.VarChar(48)
+  base              String   @db.VarChar(32)
+  quote             String   @db.VarChar(32)
+  side              String   @db.VarChar(4)
+  colonyId          String   @map("colony_id") @db.VarChar(64)
+  colonyIndex       Int?     @map("colony_index")
+  playerId          String?  @map("player_id") @db.VarChar(64)
+  accountId         String   @map("account_id") @db.VarChar(64)
+  /// Maker stall of this order (its own Trade Hub): beneficiary of the stall fee when this order is the maker.
+  stallColonyId     String   @map("stall_colony_id") @db.VarChar(64)
+  stallAccountId    String   @map("stall_account_id") @db.VarChar(64)
+  stallHubEntityId  Int?     @map("stall_hub_entity_id")
+  platformAccountId String   @map("platform_account_id") @db.VarChar(64)
+  /// Whole base units ordered / filled so far.
+  amount            Decimal  @db.Decimal(78, 0)
+  filled            Decimal  @default(0) @db.Decimal(78, 0)
+  /// Total quote atomic for the full `amount` (limit price = priceAmount / amount).
+  priceAmount       Decimal  @map("price_amount") @db.Decimal(78, 0)
+  fillPolicy        String   @map("fill_policy") @db.VarChar(16)
+  policyVersion     String   @map("policy_version") @db.VarChar(64)
+  policyHash        String   @map("policy_hash") @db.VarChar(80)
+  platformFeeBp     Int      @map("platform_fee_bp")
+  /// Stall rate this order's stall charges when this order is the maker.
+  stallFeeBp        Int      @map("stall_fee_bp")
+  /// Buyer's explicit maximum maker-stall rate (reserved in full); null for sells.
+  maxStallFeeBp     Int?     @map("max_stall_fee_bp")
+  /// Remaining principal reservation: base units (sell) or quote atomic (buy).
+  reservedPrincipal Decimal  @default(0) @map("reserved_principal") @db.Decimal(78, 0)
+  /// Remaining fee reservation (buy: platform + max stall fee on the unfilled part); 0 for sells.
+  reservedFees      Decimal  @default(0) @map("reserved_fees") @db.Decimal(78, 0)
+  /// Cumulative quote charged/credited so far, for cumulative floor rounding (ECONOMY §3).
+  cumNotional       Decimal  @default(0) @map("cum_notional") @db.Decimal(78, 0)
+  /// `{ "<quote>|<rateBp>|<beneficiary>|<policyVersion>": { "base": "…", "fee": "…" } }` cumulative fee buckets.
+  feeBuckets        Json     @default("{}") @map("fee_buckets")
+  actorKind         String   @default("player") @map("actor_kind") @db.VarChar(16)
+  state             String   @default("PENDING") @db.VarChar(16)
+  /// Signed NEP-413 order terms (claimed accounts) or the custodial signing record.
+  signedTerms       Json?    @map("signed_terms")
+  ttlS              Int      @map("ttl_s")
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(3)
+  lastError         String?  @map("last_error") @db.VarChar(400)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([planetId, ref])
+  @@index([planetId, pair, state])
+  @@index([colonyId, state])
+  @@index([state, expiresAt])
+  @@map("market_order")
+  @@schema("chain")
+}
+
+/// One matched fill and its settlement batch. `tradeId` is the outbox op key (`trade:{tradeId}`); the row is written
+/// with the order fill updates and the outbox row in one transaction, and reaches FINAL exactly once.
+model IntentTrade {
+  id                 BigInt    @id @default(autoincrement())
+  tradeId            String    @unique @map("trade_id") @db.VarChar(64)
+  planetId           String    @map("planet_id") @db.VarChar(64)
+  pair               String    @db.VarChar(48)
+  base               String    @db.VarChar(32)
+  quote              String    @db.VarChar(32)
+  makerOrderId       String    @map("maker_order_id") @db.VarChar(64)
+  takerOrderId       String    @map("taker_order_id") @db.VarChar(64)
+  makerSide          String    @map("maker_side") @db.VarChar(4)
+  buyerColonyId      String    @map("buyer_colony_id") @db.VarChar(64)
+  sellerColonyId     String    @map("seller_colony_id") @db.VarChar(64)
+  buyerAccountId     String    @map("buyer_account_id") @db.VarChar(64)
+  sellerAccountId    String    @map("seller_account_id") @db.VarChar(64)
+  stallColonyId      String    @map("stall_colony_id") @db.VarChar(64)
+  stallAccountId     String    @map("stall_account_id") @db.VarChar(64)
+  platformAccountId  String    @map("platform_account_id") @db.VarChar(64)
+  treasuryAccountId  String?   @map("treasury_account_id") @db.VarChar(64)
+  amount             Decimal   @db.Decimal(78, 0)
+  notional           Decimal   @db.Decimal(78, 0)
+  platformFee        Decimal   @map("platform_fee") @db.Decimal(78, 0)
+  stallFee           Decimal   @map("stall_fee") @db.Decimal(78, 0)
+  /// Carved out of the platform fee (W22), never an extra buyer charge; 0 while W22 is off.
+  treasuryAllocation Decimal   @default(0) @map("treasury_allocation") @db.Decimal(78, 0)
+  platformFeeBp      Int       @map("platform_fee_bp")
+  stallFeeBp         Int       @map("stall_fee_bp")
+  policyVersion      String    @map("policy_version") @db.VarChar(64)
+  policyHash         String    @map("policy_hash") @db.VarChar(80)
+  /// Zero-sum batch legs `[{ accountId, token, delta, kind }]` (kind: principal | platform_fee | stall_fee | treasury).
+  legs               Json
+  batchHash          String    @map("batch_hash") @db.VarChar(80)
+  buyerActorKind     String    @default("player") @map("buyer_actor_kind") @db.VarChar(16)
+  sellerActorKind    String    @default("player") @map("seller_actor_kind") @db.VarChar(16)
+  /// False for fixture/Guild/known-related fills: excluded from organic reference prices (D-44).
+  organic            Boolean   @default(true)
+  state              String    @default("PENDING") @db.VarChar(16)
+  txHash             String?   @map("tx_hash") @db.VarChar(96)
+  lastError          String?   @map("last_error") @db.VarChar(400)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  settledAt          DateTime? @map("settled_at") @db.Timestamptz(3)
+
+  @@index([planetId, pair, state, settledAt])
+  @@index([buyerColonyId, createdAt])
+  @@index([sellerColonyId, createdAt])
+  @@index([stallColonyId, state])
+  @@map("intent_trade")
+  @@schema("chain")
+}
+
+/// Current stall (Trade Hub) fee per colony on a planet. Orders pin the rate at placement; this is only the default
+/// for new maker orders (W13-22).
+model MarketStall {
+  planetId     String   @map("planet_id") @db.VarChar(64)
+  colonyId     String   @map("colony_id") @db.VarChar(64)
+  colonyIndex  Int?     @map("colony_index")
+  hubEntityId  Int?     @map("hub_entity_id")
+  accountId    String?  @map("account_id") @db.VarChar(64)
+  name         String?  @db.VarChar(64)
+  feeBp        Int      @map("fee_bp")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([planetId, colonyId])
+  @@map("market_stall")
+  @@schema("chain")
+}
+
+/// Mock `intents.near` verifier ledger (W13-04): `tokenId` is the verifier id (`nep245:res.terraagent.mock:<ResourceKey>`,
+/// `native:near`, `nep141:usdc.mock`), `amount` in chain base units. Written only by `MockIntentsAdapter`.
+model MockChainIntentsBalance {
+  accountId String  @map("account_id") @db.VarChar(64)
+  tokenId   String  @map("token_id") @db.VarChar(96)
+  amount    Decimal @default(0) @db.Decimal(78, 0)
+
+  @@id([accountId, tokenId])
+  @@map("mock_chain_intents_balance")
+  @@schema("chain")
+}
+
+/// Used NEP-413 nonces per signer (replay protection, W13-05).
+model MockChainIntentNonce {
+  signer String   @db.VarChar(64)
+  nonce  String   @db.VarChar(96)
+  opId   String?  @map("op_id") @db.VarChar(200)
+  usedAt DateTime @default(now()) @map("used_at") @db.Timestamptz(3)
+
+  @@id([signer, nonce])
+  @@map("mock_chain_intent_nonce")
+  @@schema("chain")
+}

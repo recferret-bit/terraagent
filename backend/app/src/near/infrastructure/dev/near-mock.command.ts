@@ -17,6 +17,7 @@ import { NearException, type NearErrorCode } from '../../domain/errors.js';
 import { CargoStatusService } from '../../cargo/cargo-status.service.js';
 import { mockOauthSecret, signMockToken } from '../../identity/mock-token.js';
 import { SocialAuthService } from '../../identity/social-auth.service.js';
+import { FAULT_KINDS } from '../mock/fault-plan.js';
 import { mockChainControls } from '../mock/mock-controls.js';
 
 const portSchema = z.string().min(1);
@@ -26,6 +27,14 @@ const latencyArgs = z.object({
   port: portSchema,
   minMs: z.number().int().min(0),
   maxMs: z.number().int().min(0),
+}).strict();
+const faultArgs = z.object({
+  kind: z.enum([...FAULT_KINDS, 'reset']),
+  port: portSchema.optional(),
+  method: z.string().min(1).optional(),
+  opIdPrefix: z.string().optional(),
+  times: z.number().int().min(1).optional(),
+  skip: z.number().int().min(0).optional(),
 }).strict();
 const resetArgs = z.object({ player: z.string().min(1) }).strict();
 const upgradeArgs = z.object({
@@ -67,6 +76,7 @@ export class NearMockCommand implements OnModuleInit {
   onModuleInit(): void {
     this.registry.register(this.failCommand());
     this.registry.register(this.latencyCommand());
+    this.registry.register(this.faultCommand());
     this.registry.register(this.resetCommand());
     this.registry.register(this.upgradeCommand());
     this.registry.register(this.errorCommand());
@@ -81,6 +91,22 @@ export class NearMockCommand implements OnModuleInit {
       run: ({ port, rate }) => {
         mockChainControls.setFail(port, rate);
         return { port, rate };
+      },
+    });
+  }
+
+  private faultCommand(): DevCommand<typeof faultArgs> {
+    return defineDevCommand({
+      name: 'near.mock.fault',
+      help: 'Arm a deterministic mock-chain fault: kind fail_before|fail_after|insufficient_funds|duplicate|hold, optional port/method/opIdPrefix/times/skip; kind reset disarms all.',
+      args: faultArgs,
+      run: ({ kind, ...rule }) => {
+        if (kind === 'reset') {
+          mockChainControls.faults.reset();
+          return { reset: true };
+        }
+        mockChainControls.faults.inject({ kind, ...rule });
+        return { armed: { kind, ...rule } };
       },
     });
   }

@@ -5,6 +5,7 @@ import { PRISMA } from '../../../db/db.module';
 import { NearException, type NearErrorCode } from '../../domain/errors';
 import type { ChainReceipt } from '../../domain/types';
 import { parseMockChainConfig, seededRandom, type MockChainConfig } from './mock-chain.config';
+import { FaultPlan } from './fault-plan';
 import { mockChainControls } from './mock-controls';
 import { mockTxHashFor, randomMockTxHash } from './tx-hash';
 
@@ -70,13 +71,15 @@ export abstract class MockChainBase {
       const prior = await this.prisma.mockChainReceipt.findUnique({ where: { opId } });
       if (prior) return { value: prior.payload as T, receipt: toReceipt(prior) };
     }
+    const call = { port, method, ...(opId === undefined ? {} : { opId }) };
+    const pending = await mockChainControls.faults.before(call);
     const rolled = mockChainControls.overlay(port, this.config);
     if (this.random() < rolled.failRate) {
       const code = opts.failCode ?? 'NEAR_MOCK_INJECTED_FAILURE';
       throw new NearMockException(code, { message: `mock ${port}.${method} failed by injection (MOCK_FAIL_RATE=${rolled.failRate})`, details: { port, method, opId } });
     }
     const txHash = opId === undefined ? randomMockTxHash(this.random) : mockTxHashFor(opId);
-    return withTransaction(this.prisma, async (tx) => {
+    const done = await withTransaction(this.prisma, async (tx) => {
       const value = await fn(tx);
       const [{ h }] = await tx.$queryRaw<{ h: bigint }[]>`SELECT nextval('chain.mock_chain_block_height_seq') AS h`;
       const row = await tx.mockChainReceipt.create({
@@ -84,6 +87,9 @@ export abstract class MockChainBase {
       });
       return { value, receipt: toReceipt(row) };
     });
+    FaultPlan.after(pending, call); // fail_after: committed, caller sees NEAR_UNAVAILABLE
+    // duplicate: the same delivery arrives a second time; the stored receipt must answer it without a second effect
+    return pending === 'duplicate' && opId !== undefined ? this.callWithResult(port, method, opId, fn, opts) : done;
   }
 
   /**

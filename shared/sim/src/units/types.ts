@@ -17,10 +17,11 @@ export interface MoveCommand { kind: 'move'; source: CommandSource; q: number; r
 export interface StopCommand { kind: 'stop'; source: CommandSource }
 export interface DieCommand { kind: 'die'; source: CommandSource }
 export interface AttackCommand { kind: 'attack'; source: CommandSource; targetId: number }
+export interface ReserveCommand { kind: 'reserve'; source: CommandSource; on: boolean }
 export interface BuildCommand { kind: 'build'; source: CommandSource; orderId: string; q: number; r: number }
 export interface TerraformCommand { kind: 'terraform'; source: CommandSource; orderId: string; q: number; r: number }
 
-export type UnitCommand = MoveCommand | StopCommand | DieCommand | AttackCommand | BuildCommand | TerraformCommand;
+export type UnitCommand = MoveCommand | StopCommand | DieCommand | AttackCommand | ReserveCommand | BuildCommand | TerraformCommand;
 export type UnitCommandKind = UnitCommand['kind'];
 
 /** `running` keeps the command current; `done` and `failed` end it (a failed `auto` command is skipped for a while). */

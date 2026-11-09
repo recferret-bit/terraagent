@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
+import { resourceValue } from '../../src/systems/economy/ledger';
 import {
   cancelTerraformOrder,
   colonyTerraformOrders,
@@ -98,8 +99,8 @@ describe('W05-03 · Level op (Slope -> Flat, 8 s, 60 E, 2 Min)', () => {
       events.push(...r.events);
     }
     expect(state.grid.layers.terrain[tIdx]).toBe(TERRAIN.slope);
-    expect(colony.stock['minerals.t1']).toBeLessThan(startMin);
-    expect(colony.stock['minerals.t1']).toBeGreaterThan(startMin - 2);
+    expect(resourceValue(colony, 'minerals.t1')).toBeLessThan(startMin);
+    expect(resourceValue(colony, 'minerals.t1')).toBeGreaterThan(startMin - 2);
 
     // Complete the remaining ticks to reach 8.0 s (40 work ticks at 1.0x)
     for (let t = 0; t < 3; t++) {
@@ -110,7 +111,7 @@ describe('W05-03 · Level op (Slope -> Flat, 8 s, 60 E, 2 Min)', () => {
     expect(state.grid.layers.terrain[tIdx]).toBe(TERRAIN.flat);
     expect(state.grid.layers.prep[tIdx]).toBe(PREP.flat);
     expect(state.grid.layers.height[tIdx]).toBe(0);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(startMin - 2, 5);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(startMin - 2, 5);
     expect(colonyTerraformOrders(state, 0)).toHaveLength(0);
 
     const removed = events.find((e) => e.kind === 'obstacleRemoved');
@@ -157,11 +158,11 @@ describe('W05-03 · Level op resource wait & cancel refund', () => {
     expect(order.jobs[0]!.progress).toBeCloseTo(0.5, 2);
     expect(order.jobs[0]!.waitReason).toBe('resources');
     expect(state.entities.cols.state[rowOf(state.entities, hqId)]).toBe(ENTITY_STATE.waiting);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(0, 5);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(0, 5);
 
     // Cancelling refunds 50% of the 1 Min spent (= 0.5 Min)
     expect(cancelTerraformOrder(state, 0, order.orderId, state.meta.tick)).toBe(true);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(0.5, 5);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(0.5, 5);
   });
 });
 

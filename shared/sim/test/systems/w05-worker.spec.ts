@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
+import { resourceValue } from '../../src/systems/economy/ledger';
 import {
   calculateUnitDemand,
   DEPOSIT,
@@ -217,8 +218,8 @@ describe('W05-02 Worker Drone T3: wave gate and harvest', () => {
     const pipeline = createRegistryPipeline({ flags });
     step(state, [], 1, pipeline);
     expect(state.entities.cols.state[rowOf(state.entities, id)]).toBe(ENTITY_STATE.harvesting);
-    const before = colony.stock['metals.t1'];
+    const before = resourceValue(colony, 'metals.t1');
     step(state, [], 5, pipeline); // 1 s
-    expect(colony.stock['metals.t1'] - before).toBeCloseTo(0.75, 5); // T1 credits 0.5/s (harvest.spec.ts)
+    expect(resourceValue(colony, 'metals.t1') - before).toBeCloseTo(0.75, 5); // T1 credits 0.5/s (harvest.spec.ts)
   });
 });

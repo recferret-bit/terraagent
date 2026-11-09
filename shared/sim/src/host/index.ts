@@ -7,3 +7,4 @@ export * from './scheduler';
 export * from './tuning';
 export * from './tunedHealth';
 export * from './journal';
+export * from './supplyTradeView';

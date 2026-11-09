@@ -3,6 +3,7 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
+import { regionalClearingYields } from '../../economy/regions/sources';
 import { revealAroundChanged, type RevealedDeposit } from '../../grid/subsurface';
 import { prepKeyFromId, setTilePrep, setTileTerrain, terrainIdFromKey, terrainKeyFromId } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
@@ -141,8 +142,8 @@ function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepCon
   }
 
   const colony = ensureColony(state, job.colonyId, ctx.tick);
-  for (const [k, v] of Object.entries(job.yields) as [ResourceKey, number][]) {
-    if (v && v > 0) creditResource(colony, k, v, ctx.tick);
+  for (const [k, v] of Object.entries(regionalClearingYields(state, job.yields)) as [ResourceKey, number][]) { // W13-51: regional clearing yield
+    if (v && v > 0) creditResource(colony, k, v, ctx.tick, { reason: 'terraform.yield' });
   }
   const at = { count: prepared, q: job.q, r: job.r };
   // The dock does the obstacle op and the grade in one job: the ground always ends Prepared (`tilePrepared`,

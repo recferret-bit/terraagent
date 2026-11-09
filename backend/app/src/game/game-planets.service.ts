@@ -72,6 +72,7 @@ export class GamePlanets {
   private readonly loading = new Map<string, Waiter<number>[]>();
   private readonly loaded = new Set<string>();
   private readonly scenarioColonyPlanets = new Set<string>();
+  private readonly scenarioSeats = new Map<string, number[]>();
   private readonly cmdWaiters = new Map<string, Waiter<CommandOutcomeMsg>[]>();
   private readonly requests = new ThreadRequests();
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
@@ -262,8 +263,15 @@ export class GamePlanets {
     return this.loaded.has(planetId);
   }
 
-  markScenarioColonyPlanet(planetId: string): void {
+  /** Marks a scenario planet whose colonies are playable by dev sessions; `colonyIndices` are the seats that exist in its sim state (default `[0]`). */
+  markScenarioColonyPlanet(planetId: string, colonyIndices: readonly number[] = [0]): void {
     this.scenarioColonyPlanets.add(planetId);
+    this.scenarioSeats.set(planetId, colonyIndices.length > 0 ? [...colonyIndices] : [0]);
+  }
+
+  /** Colony indices a dev session can be seated on in a scenario planet (`[0]` when unknown). */
+  scenarioColonyIndices(planetId: string): readonly number[] {
+    return this.scenarioSeats.get(planetId) ?? [0];
   }
 
   isScenarioColonyPlanet(planetId: string): boolean {

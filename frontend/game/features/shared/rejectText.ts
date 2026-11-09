@@ -56,6 +56,10 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   already_terraformed: 'Rejected: Already terraformed',
   already_queued: 'Rejected: Already queued: a terraform job is waiting or running on this hex',
   already_at_target: 'Rejected: Nothing to change: the hex is already in that state',
+  fee_out_of_range: 'Rejected: Stall fee is outside the allowed range',
+  order_limit: 'Rejected: Open-order limit reached',
+  order_too_small: 'Rejected: Order is below the minimum size',
+  unknown_order: 'Rejected: No such open order',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

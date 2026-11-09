@@ -4,7 +4,8 @@ import {
   type ResourceKey,
 } from '@terra/contracts';
 import { goalHarvestResource, goalHarvestWeights } from '../goals/harvestWeights';
-import { consumeDepositRichness, TERRAFORM_TIME_TABLE } from '../../data';
+import { TERRAFORM_TIME_TABLE } from '../../data';
+import { drawDeposit, regionalClearingYields } from '../../economy/regions/sources';
 import { groundWorkYields, terraformYields } from '../terraform-basic/ops';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
@@ -17,6 +18,7 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { deliveredServiceBp, serviceScaled } from '../logistics/state';
 import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
@@ -271,7 +273,7 @@ const standingHarvestAssignSystem = defineSystem({
       let cur = assignments[id];
 
       const uRec = book.peek(id);
-      if (uRec && (uRec.current !== null || uRec.queue.length > 0 || ctx.tick < uRec.holdUntil)) {
+      if (uRec && (uRec.current !== null || uRec.queue.length > 0 || ctx.tick < uRec.holdUntil || uRec.reserve)) {
         if (cur && cur.mode === 'harvest' && !cur.playerAssigned) { delete assignments[id]; changed = true; }
         continue;
       }
@@ -280,6 +282,7 @@ const standingHarvestAssignSystem = defineSystem({
         stepWorkerSubJobMove(state, row, id, st, cur, ctx);
         continue;
       }
+      if (!cur && (st === ENTITY_STATE.working || st === ENTITY_STATE.constructing || st === ENTITY_STATE.repairing)) continue;
 
       const colony = ensureColony(state, owner, ctx.tick);
       const weights = getColonyHarvestWeights(state, owner, ctx.flags.has('W08'));
@@ -360,11 +363,11 @@ function completeWorkerWorkJob(
   const prevTerrain = state.grid.layers.terrain[cur.tileIdx];
   setTileTerrain(state, cur.tileIdx, TERRAIN.flat, tick);
   setTilePrep(state, cur.tileIdx, cur.mode === 'work' ? PREP.prepared : PREP.flat, tick);
-  const yields =
+  const yields = regionalClearingYields(state,
     cur.mode === 'clear' ? terraformYields('clear', data)
     : cur.mode === 'break' ? terraformYields('break', data)
-    : groundWorkYields(prevTerrain === TERRAIN.forest ? 'forest' : prevTerrain === TERRAIN.rock ? 'rock' : 'flat', data);
-  for (const [k, v] of Object.entries(yields) as [ResourceKey, number][]) if (v > 0) creditResource(colony, k, v, tick);
+    : groundWorkYields(prevTerrain === TERRAIN.forest ? 'forest' : prevTerrain === TERRAIN.rock ? 'rock' : 'flat', data));
+  for (const [k, v] of Object.entries(yields) as [ResourceKey, number][]) if (v > 0) creditResource(colony, k, v, tick, { reason: 'terraform.yield' });
 }
 
 const standingHarvestYieldSystem = defineSystem({
@@ -372,6 +375,7 @@ const standingHarvestYieldSystem = defineSystem({
   slot: 8,
   wave: 'W02',
   run(state, ctx) {
+    const reservedBook = new UnitBook(state);
     const e = state.entities, cols = e.cols;
     const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, WorkerTargetAssignment> } | undefined) ?? {};
     const assignments = { ...(rawBlob.assignments ?? {}) };
@@ -392,6 +396,8 @@ const standingHarvestYieldSystem = defineSystem({
       if (!isWorker(cols.kind[row]) || cols.hp[row] <= 0) continue;
       const id = cols.id[row], owner = cols.owner[row];
       const cur = assignments[id];
+      if (reservedBook.peek(id)?.reserve) continue; // reserve mode stops production
+      const workBp = deliveredServiceBp(state, owner, id);
 
       if (cur && (cur.mode === 'clear' || cur.mode === 'break' || cur.mode === 'work') && hexDistance(cols.q[row], cols.r[row], cur.q, cur.r) <= 1) {
         cur.elapsedTicks += ctx.dt;
@@ -436,9 +442,9 @@ const standingHarvestYieldSystem = defineSystem({
           const cycleProg = ((cur.elapsedTicks - 1) % HARVEST_CYCLE_TICKS + 1) / HARVEST_CYCLE_TICKS;
           setField(e, row, 'progress', Math.fround(cycleProg), ctx.tick);
           faceTowards(state, row, cur.q, cur.r, ctx.tick);
-          const ratePerS = harvestRateForWorker(cols.tier[row] || 1, ctx.data);
-          const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
-          const actualAmount = consumeDepositRichness(state, cur.tileIdx, desiredAmount, ctx.tick);
+          const ratePerS = serviceScaled(harvestRateForWorker(cols.tier[row] || 1, ctx.data), workBp);
+          const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000; // W13 delivered-service ratio, once
+          const actualAmount = drawDeposit(state, cur.tileIdx, desiredAmount, ctx.tick, cur.resourceKey).got; // W13-51: regional yield
           if (actualAmount > 0) {
             creditResource(colony, cur.resourceKey, actualAmount, ctx.tick);
             colony.production.incomePerS[cur.resourceKey] = Number(

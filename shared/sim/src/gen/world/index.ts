@@ -2,7 +2,9 @@ import { createState, type PlanetState } from '../../kernel/state';
 import { buryWildDeposits } from '../depositGround';
 import { registerGenerator, type PlanetGenerator } from '../generators';
 import { DEFAULT_SPAWN_CAPACITY } from '../spawnSlots';
+import { writeRegionPin } from '../../economy/regions/pin';
 import { createContext, type WorldStage } from './context';
+import { applyRegionalDeposits } from './regionalDeposits';
 import { classifyDesert } from './stages/classifyDesert';
 import { faunaHives, getWorldgenHiveSites, planWorldgenHiveSites, type PlanHiveSitesOptions } from './stages/faunaHives';
 import { landing } from './stages/landing';
@@ -46,6 +48,10 @@ export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: 
   if (!ctx.profile.stages.includes('faunaHives')) {
     faunaHives.run(ctx);
     onStage?.('faunaHives');
+  }
+  if (p.region) { // W13 (W13-51): compose the visible deposits by the regional policy and pin the endowment; W13 off never gets here
+    applyRegionalDeposits(ctx, p.region);
+    writeRegionPin(state, p.region, 0);
   }
   state.meta.genVersion = GEN_VERSION;
   return state;

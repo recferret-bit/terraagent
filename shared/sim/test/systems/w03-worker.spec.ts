@@ -26,6 +26,7 @@ import {
   TERRAIN,
   view,
 } from '../../src';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W03-02 Worker Drone T2 in sim: Hub production (12 s / 60 ticks)', () => {
   it('queues a Builder at the Hub -> pays 45/25/10 progressively and spawns after 12 s (60 ticks) with workRate 1.0x', () => {
@@ -76,16 +77,16 @@ describe('W03-02 Worker Drone T2 in sim: Hub production (12 s / 60 ticks)', () =
     // Step 59 ticks (11.8 s): not spawned yet, progressive cost deducted
     step(state, [], 59, pipeline);
     expect(getHubUnitQueue(state, 0)).toHaveLength(1);
-    expect(colony.stock['metals.t1']).toBeCloseTo(500 - 45 * (59 / 60), 3);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(500 - 45 * (59 / 60), 3);
 
     // Step 1 more tick (60 ticks = 12.0 s): Builder spawns at Hub edge
     const doneStep = step(state, [], 1, pipeline);
     expect(doneStep.events.some((e) => e.kind === 'unitProduced' && (e.data as { unit?: string }).unit === 'worker')).toBe(true);
     expect(getHubUnitQueue(state, 0)).toHaveLength(0);
     expect(computeColonySupply(state, 0).units).toBe(1);
-    expect(colony.stock['metals.t1']).toBeCloseTo(455, 4);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(475, 4);
-    expect(colony.stock['bio.biomass']).toBeCloseTo(490, 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(455, 4);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(475, 4);
+    expect(resourceValue(colony, 'bio.biomass')).toBeCloseTo(490, 4);
 
     // Verify spawned Builder entity and SimView projection
     const simView = view(state);

@@ -1,5 +1,7 @@
 # 07 — Gaps and grooming (cross-cutting view)
 
+> **D-44 supersedes the fee rules below (2026-11-04).** The buyer pays the platform fee (100 bp) and the maker stall's fee (0-100 bp, default 100) in the pair's **quote token**, independent of maker/taker role; the fee is never taken from the received token and there is no 50-300 bp or 0-3 % range. W22's treasury share is carved out of the platform fee. See [ECONOMY](../../spec/ECONOMY.md) §3 and [NEAR](../../spec/NEAR.md) `NEAR-61`. Older fee statements in this file are historical.
+
 > **Status:** 2026-10-31, grooming reference, pass 4 (2026-11-02; log §12) (legend, precedence, abbreviations: [`README.md`](./README.md)). This file restates no rule: every cell points to a rule (`R0x-n`), a question (`Q-0x-n`), an owner decision (`OD-nn`, §7) or a number (`N-nn`, §8) in files [01](./01-accounts-keys-relayer.md)–[06](./06-near-tools-and-adapters.md). Wave agendas that use these ids: [`08-wave-grill-checklist.md`](./08-wave-grill-checklist.md). Spec wins over this file.
 
 ## 1. Coverage of the owner's six topics
@@ -176,7 +178,7 @@ Deadline "Nov 1" = Pivot §8 checklist, D-MP / D-PIVOT, or an issue that starts 
 | OD-01 | Login provider and custody | NEAR Auth · HOT / other · custodial named accounts | NEAR Auth with custodial fallback (MP §0, Review C6, R01-5) | Q-01-3, Q-01-2 / Q-06-7, Q-06-8, Q-01-1, Q-01-4 | W23-09..12 (H2); W06-02 mock "X"; D-18 claim if MPC | Nov 1 (mainnet application) |
 | OD-02 | NEAR pairs in the demo (Bet B) | none (MP §0) · 3 T1/NEAR pairs + 10 NEAR float (Pivot Bet B) | none until owner records D-PIVOT (MP §0, Review C7); kill switch D11 | Q-03-15, Q-03-14, Q-03-27, Q-06-2, Q-04-7 | W13-17 tag, W15-12 → H, W23-25, W23-26/28, toast fee line | Nov 1 |
 | OD-03 | Real-NEAR start | D10 gate (D-27, cut §3) · D6 (Pivot §4, Review change 2) | D10 gate (Decided) unless D-PIVOT | Q-06-13 | W23 H2 rows; staffing (two extra agents) | Nov 1 |
-| OD-04 | Protocol fee: payer, recipient account, issue | taker from received token · both sides; new S issue in W13 · none | taker (Balance §10 Q6); one S issue in W13 (Review C4); account Gap | Q-03-7, R03-26, R03-28 | W13-12, W13-24, README (W25-26), 01 §2 registry | before W13-12 (u12) |
+| OD-04 | Protocol fee: payer, recipient account, issue | taker from received token · both sides; new S issue in W13 · none | buyer, quote token (D-44); one S issue in W13 (Review C4); account Gap | Q-03-7, R03-26, R03-28 | W13-12, W13-24, README (W25-26), 01 §2 registry | before W13-12 (u12) |
 | OD-05 | Treasury leg | carve-out of stall fee · additive | carve-out (NEAR-101, W22-07, Balance §7.2) | Q-03-1, Q-03-2 (rounding) | W13-02 note (u1), W13-31, W22-07 | Nov 1 (W13-02) |
 | OD-06 | Tags W13-22 (fee slider) and W15-12 (float guard) | H+ · H | W13-22 → H (Review C3); W15-12 → H only with OD-02 | Q-03-16, Q-04-7 | regenerate HACKATHON_SCHEDULE | Nov 1 |
 | OD-07 | Default stall fee and `setHubFee` owner | 100 bp in W13-03 · other | `defaultFeeBp = 100`; handler in W13-09 or W13-12 (Q-03-26 default) | Q-03-26, N-07 | W13-03, W13-09/12, W13-35 | before W13-03 (u13) |
@@ -214,7 +216,7 @@ Status = the status of the pack default (one per row); the id after "·" is the 
 | N-03 | Storage caps | per family | per family (W02-02) | per family | per sub-resource, T2/T3 half | — | per family | Decided |
 | N-04 | T2 / T3 gate | 30 % / 70 % share (D-34) | W05-34 | "by terraform %" | 100 / 230 Living tiles | — | share | Decided (value proposed) |
 | N-05 | Trade Hub throughput / min | 250 / 900 / 3 500 | W10-06; demo exports 300 at T1 | same | same | — | same; demo 200 + 100 | Decided · Q-02-18 |
-| N-06 | Stall fee range | 0–3 %, max 300 bp | W13-03 | 0–3 % | 1 % modelled | — | same | Decided |
+| N-06 | Stall fee range | 0–100 bp, default 100 (D-44; was 0–3 %, max 300 bp) | W13-03 | 0–3 % | 1 % modelled | — | same | Decided |
 | N-07 | Default stall fee | — | e2e asserts 1 %, unset | — | 1 % | — | 100 bp | Gap · Q-03-26 |
 | N-08 | Treasury share | 2 000 bp of stall fee | carved (W22-07) | 20 %, additive example | 20 % carved | — | carve-out | Decided (value proposed) · Q-03-1 |
 | N-09 | Treasury leg on Guild fills | — | — | — | 0.2 % | — | none until OD-20 | Proposed |
@@ -422,7 +424,7 @@ Deduplicated across 01–06; closed ids are omitted (Q-01-6, Q-01-18, Q-02-9, Q-
 | In orbit | cargo on the colony account plus its free verifier balance (R02-29, R03-35) |
 | Stall | a Trade Hub as a market place; earns the fee leg of trades listed there (R03-1, R03-59) |
 | Contract | player-facing word for a settled trade (R03-45) |
-| Maker / taker | resting order / crossing order; the taker pays the stall fee (R03-22) |
+| Maker / taker | resting order / crossing order; fees follow the buyer in the quote token, not the taker role (D-44) |
 | `opId` | deterministic idempotency key of a chain write, e.g. `cargo-export:{colonyId}:{exportSeq}` (R02-25) |
 | Outbox | Postgres table written in the game change's transaction; the relay drains it (R06-46, Q-06-15) |
 | Verifier | `intents.near`, holds deposits and executes zero-sum batches (R06-2..R06-5) |
@@ -559,13 +561,13 @@ The orchestrator issued these after the three pass-2 reviews so that every fact 
 - **C4** Function-call key semantics — OWNER 06 (new rows + question). NEAR access keys (to verify on docs.near.org): a FunctionCall permission has ONE receiver_id (no wildcard), its allowance is GAS (and under NEP-366 the relayer pays gas), and it cannot attach a deposit, while `mt_batch_transfer_call` / `ft_transfer_call` need 1 yoctoNEAR. Consequences: "FC key scoped to intents.near + res.*" needs two keys or a different design; token allowances, director limits and agent limits are enforced by the server, not the key; after claim the app's FC key cannot deposit cargo into the verifier; signer keys may need registering on `intents.near` (`add_public_key`, to verify). Whitepaper §3 "enforced by the key, not by a prompt" depends on this. Files 01 and 04 state their key rules as design and point to the 06 question.
 - **C5** Claim — OWNER 01 (Q-01-11). Full-access key passes to the player: Decided (NEAR §2, D-18). Residual app FC key: NEAR §2 / W23-14 keep it; D-18 wording / W21-15 "drop game key" remove it → Conflict → Q-01-11. 05 states "app keys until claim; after claim the player's full-access key, plus (per NEAR §2) an app FC key — Q-01-11".
 - **C6** Guild NEAR float — OWNER 04. "Seeded from the owner treasury, capped": Decided (NEAR-73). "5 NEAR" cap: Planned W15-02 (H), scope (per NPC or total) unstated. "5 per NPC, 10 total": Proposed (Pivot Bet B). W23-28 funds 3 NPCs vs W15-02's 2 → Conflict → new Q in 04. MP §0 locks the "safest" float (no NEAR pairs in demo, float unused for trading) vs Pivot Bet B → Q-03-15 (owner 03).
-- **C7** Protocol fee — OWNER 03 (Q-03-7). 0.25 %: Proposed (MP §7); no issue (Review C4 proposes one S issue in W13); payer default "taker, from the received token": Proposed (Balance §10 Q6); recipient account: Gap.
+- **C7** Protocol fee — OWNER 03 (Q-03-7). 0.25 %: Proposed (MP §7); no issue (Review C4 proposes one S issue in W13); payer: the buyer in the quote token (D-44; the old "taker, from the received token" default is superseded); recipient account: Gap.
 - **C8** Outbox table name — OWNER 06 (Q-06-15). code `chain.chain_outbox` (shared/db/prisma/chain-outbox.prisma, W00-37) vs NEAR §1a `chain_outbox` vs NEAR §13 `chain.near_tx` vs DATA_MODEL §4.4 `chain.near_job` (§4.2 note `chain.near_tx`) → Conflict → Q-06-15. Q-02-11 closes → Q-06-15.
 - **C9** Adapter env and port names — OWNER 06 (Q-06-11). Code key `NEAR_ADAPTER_<UPPER_SNAKE(port)>`: `NEAR_ADAPTER_CARGO_TOKEN`, `_DEED_NFT`, `_TREASURY_DAO`, `_AGENT_WALLET`; `contract-real.mjs` takes PascalCase `--port`, no `--dry`; `test:contract` filters on `CONTRACT_PORT` env. Waves use other names (list in 06). Fail-closed → typo selects mock silently.
 - **C10** NEAR Auth facts — OWNER 06. Not in any spec → status Gap, tagged [X4]/[X5] verified 2026-10-31, plus Review C6. MP §0 "NEAR Auth locked" is Proposed. Key derivation via MPC: inferred, not stated. 01 R01-4 uses the same status and points to 06.
 - **C11** NEAR §12 cost estimates — status "Decided (value proposed)" with "estimate; W23-16 measures" in the source cell, in every file.
 - **C12** Unreachable chain — NEAR §1 p4 + PROTOCOL §10 agree: cargo/market commands rejected `market_unavailable` when NEAR or the verifier is unreachable; accepted exports settle async (Decided). Open: how "unreachable" is detected before accept, and W10-01 lacks the code (Q-02-6). Landed code also has `NEAR_UNAVAILABLE` (503) in backend/app/src/near/domain/errors.ts.
-- **C13** W13 header-note rules (partial fills, taker pays, no self-trade, over-cap refund) implemented by H issues → Planned, source `W13-11 / W13-12 (H) · spec gap (W13 note)`; W13-02 writes them into NEAR.md.
+- **C13** W13 header-note rules (custodial partial fills, buyer pays quote-token fees, no self-trade, over-cap refund) are written in NEAR.md (`NEAR-60`, `NEAR-61`, D-44).
 - **C14** Deny list for agents/director — OWNER 04. Proposed: WP §3 ("spend beyond allowance, move player's NEAR, claim, stake"), media-plan diagram 3, landing `director` section. Media plan puts "votes" inside the allowance but the key scope excludes DAO receivers → Conflict in 04.
 - **C15** Mixed real/mock — OWNER 06 (rule + Q), 04 points. With Intents real (W23-22, H2) and AgentWallet mock (W23-26, untagged): Guild accounts `guild-N.npc.terraagent.mock` and mock director keys cannot sign `token_diff` on `intents.near`, so Guild and director orders cannot settle on real books; Bet B needs W23-26/28 real.
 - **C16** Guild LLM strategy owner — OWNER 04 (Q-04-8). One place for: provider (D-09 Z.ai vs NEAR AI Cloud, Review C1), home (W16-21 hook untagged vs a new W15 row), and the minimal budget gate + decision row (W16-07/08/15 untagged). 06 Q-06-5 / Q-06-16 point to Q-04-8.

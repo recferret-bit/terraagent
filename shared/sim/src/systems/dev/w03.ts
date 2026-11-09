@@ -3,7 +3,7 @@ import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { applyDamage } from '../combat/damage';
 import { commandColony } from '../command';
-import { ensureColonyLedger } from '../economy/ledger';
+import { ensureColonyLedger, zeroResource } from '../economy/ledger';
 import { recomputeAllColonyPower, resetThermalTracking } from '../power-core';
 
 function ensureDevColony(state: PlanetState, colonyIndex: number, tick: number) {
@@ -63,7 +63,7 @@ export const devDrainFuel = defineCommandHandler({
     if (typeof colIdx === 'string') return colIdx;
     const colony = ensureDevColony(s, colIdx, ctx.tick);
 
-    colony.stock['bio.biomass'] = 0;
+    zeroResource(colony, 'bio.biomass', ctx.tick);
     colony.changedAt = ctx.tick;
     resetThermalTracking();
     recomputeAllColonyPower(s, ctx.data, ctx.tick);

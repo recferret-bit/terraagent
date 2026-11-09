@@ -30,7 +30,7 @@ Track 09 asks for three things: **NPCs with wallets, player-owned markets, and e
 | **Client** | Rendering and inputs only | Nothing |
 
 - **Mint authority is the server.** Export mints only from simulated stock. A modified client cannot invent production.
-- **No anti-cheat or anti-bot checks (D-25).** Multi-accounting and farm bots *can* play for value, and **cargo is open (swappable for NEAR/USDC) in beta (D-26)**. The owner accepts that risk for beta.
+- **No anti-cheat or anti-bot checks (D-25).** Multi-accounting and farm bots *can* play for value, and **cargo is open (swappable for NEAR/USDC) in beta (D-26)**. The owner accepts that risk for beta. *Amended by D-45 (2026-11-07): bots are first-class traders on the W13 exchange through the bot API `/v1/trade/*` (actor kind `bot`) with per-key allowances, kill switch and rate limits; there is still no identity verification. A fill is organic only for `player`/`bot` pairs of different colonies and owners.*
 - **Mint caps stay as economic pacing:** export ≤ Trade Hub throughput, plus a daily per-colony ceiling. These shape supply and price; they are not security.
 - **Real money from the game:** none. Staking yield comes from validators on the player's own NEAR (D-18). Treasury (F7) and bounties (F8) move only tokens that players already hold.
 - **Mainnet.** `intents.near` has no testnet. Build with dev accounts, tiny amounts, and `dry: true` quotes.

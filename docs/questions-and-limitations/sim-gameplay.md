@@ -1239,3 +1239,15 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **What happens:** Per owner direction, Wave 5 weather effects (`meteor`, `twister`, `lightning`, `storm`, `rain`) run without a background random scheduler or hazard orchestrator. They are triggered on demand via dev console commands (`meteor [q r]`, `twister [q r] [dirDeg]`, `lightning [q r] [+ rain]`, `storm [on|off]`, `rain [none|minor|heavy|0..1]`) or via the `F8` Visual Shader Lab → `WEATHER` tab. `weatherSystem` (`slot: 5`, `wave: 'W05'`) only steps active console-spawned twisters and expires lightning electrical overload timers (`overloadUntilByEntity`).
 - **Why it is like this:** Simplified by explicit owner request so weather hazards are deterministic, inspectable on demand, and never interrupt gameplay unprompted.
 - **Found:** 2026-11-07, W05 weather implementation
+
+## W13 Regional Markets
+
+### GP-113 · Legacy leaked open-order refs are healed lazily, not migrated
+
+- **Status:** Resolved for new orders (SIM-LEAK fix); Open for already-persisted colonies (trade-off)
+- **Area / code:** `shared/sim/src/systems/trade/market-lifecycle.ts` (`endOrder`, `applyFill`, `healLeakedSlots`), `module-commands.ts`
+- **What happens:** Before the fix a filled USDC-paid buy kept its `market.openOrders[ref]` forever (no reservation, so no `market.release`), and 20 of them blocked `market.placeOrder` with `order_limit`. Now every release reason ends the slot and a fill ends it once `filled >= amount`. Colonies persisted earlier still hold leaked refs: orders written by `market.reserve` now carry `filled`, legacy ones do not. When the limit is reached, `healLeakedSlots` drops the oldest refs with no reservation and no `filled` counter until a slot is free.
+- **Why it is like this:** The sim mirror cannot tell a leaked ref from a genuinely open legacy USDC buy (both have an empty reservation); the DB is authoritative and the backend does not push a prune.
+- **Workaround / mitigation:** A genuinely open legacy USDC order loses only its HUD mirror entry (a player cancel of it may answer `unknown_order` until the next reserve). New orders are unaffected.
+- **To resolve:** Optional: a backend one-shot that re-sends `market.reserve` for open DB orders after deploy, or drop the heal once no pre-fix colony remains.
+- **Found:** 2026-11-08, real-sim integration agent (SIM-LEAK).

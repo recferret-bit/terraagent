@@ -5,6 +5,7 @@ import type { FeatureServices } from '../../core/registry/types';
 import type { Scene3dService } from '../../features/shared/scene3d';
 import type { LandfallController } from '../../features/landfall';
 import type { CommandBus } from '../../net/commandBus';
+import { fetchMarketSnapshot } from '../../net/marketApi';
 import { httpDevServer, sessionLedgerQuery, type DevServer } from '../../net/devServer';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { NetStatsBoard } from '../../net/netStats';
@@ -41,6 +42,8 @@ export interface SessionHudDeps {
   focusTile?(q: number, r: number, snap?: boolean): void;
   /** Identity chip (W06). The session bridge; the panel subscribes. */
   pilot: FeatureServices['pilot'];
+  /** Bearer of the session (the market REST snapshot sends it). */
+  token?(): string | null;
 }
 
 /**
@@ -71,6 +74,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     landfall: d.landfall, pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas, surface: d.canvas,
     focusTile: d.focusTile,
     pilot: d.pilot,
+    marketSnapshot: (planetId) => fetchMarketSnapshot(planetId, d.token?.() ?? null),
   };
   Object.defineProperties(services, {
     colonyId: { get: d.colonyIndex, enumerable: true, configurable: true },

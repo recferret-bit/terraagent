@@ -9,7 +9,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["core", "world", "ai", "chain"]
+  schemas  = ["core", "world", "ai", "chain", "economy"]
 }
 
 // --- analytics.prisma ---
@@ -162,6 +162,396 @@ model Colony {
   @@index([playerId])
   @@map("colony")
   @@schema("core")
+}
+
+// --- economy.prisma ---
+/// W13 economy profile management (ECONOMY §5, W13-37). Exact amounts are `numeric(78,0)` (market atomic units),
+/// JSON carries them as decimal strings. Content of a non-DRAFT version is immutable (triggers in the
+/// `0014_w13_economy` migration); DRAFT edits are optimistic (`revision`). W13-50 (migration `0016_w13_regions`) adds the
+/// region/logistics tables below; their child rows follow the same immutability rule.
+
+/// A named baseline or candidate family.
+model EconomyProfile {
+  id             String   @id @db.VarChar(64)
+  name           String   @unique @db.VarChar(120)
+  description    String   @default("") @db.VarChar(1000)
+  /// Latest APPROVED/VALIDATED version number and the open DRAFT version number (plain numbers, no FK cycle).
+  currentVersion Int?     @map("current_version")
+  draftVersion   Int?     @map("draft_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  versions EconomyProfileVersion[]
+
+  @@map("profile")
+  @@schema("economy")
+}
+
+/// One immutable-after-validation version. `contentHash` = sha256 of the canonical `ProfileContent` JSON.
+model EconomyProfileVersion {
+  id                  String    @id @db.VarChar(64)
+  profileId           String    @map("profile_id") @db.VarChar(64)
+  version             Int
+  parentId            String?   @map("parent_id") @db.VarChar(64)
+  /// DRAFT | VALIDATED | APPROVED
+  status              String    @default("DRAFT") @db.VarChar(12)
+  schemaVersion       Int       @map("schema_version")
+  engineCompatibility String    @map("engine_compatibility") @db.VarChar(80)
+  contentHash         String    @map("content_hash") @db.VarChar(80)
+  author              String    @db.VarChar(120)
+  rationale           String    @default("") @db.VarChar(2000)
+  /// Optimistic edit counter of a DRAFT: `UPDATE … WHERE revision = expected`.
+  revision            Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  validatedAt         DateTime? @map("validated_at") @db.Timestamptz(3)
+  approvedAt          DateTime? @map("approved_at") @db.Timestamptz(3)
+
+  profile          EconomyProfile          @relation(fields: [profileId], references: [id])
+  parent           EconomyProfileVersion?  @relation("VersionParent", fields: [parentId], references: [id])
+  children         EconomyProfileVersion[] @relation("VersionParent")
+  parameters       EconomyParameter[]
+  recipes          EconomyRecipe[]
+  resourcePolicies EconomyResourcePolicy[]
+  marketPolicies   EconomyMarketPolicy[]
+  agentPolicies    EconomyAgentPolicy[]
+  regionProfiles   EconomyRegionProfile[]
+  regionResources  EconomyRegionResource[]
+  scopeBindings    EconomyScopeBinding[]
+  logisticsPolicies EconomyLogisticsPolicy[]
+  activations      EconomyActivation[]
+  auditEvents      EconomyAuditEvent[]
+  runs             EconomyExperimentRun[]
+
+  @@unique([profileId, version])
+  @@index([contentHash])
+  @@index([parentId])
+  @@map("profile_version")
+  @@schema("economy")
+}
+
+/// Registered parameter override: path from the W13-36 registry, typed value (JSONB), unit.
+model EconomyParameter {
+  versionId String @map("version_id") @db.VarChar(64)
+  path      String @db.VarChar(200)
+  value     Json
+  unit      String @db.VarChar(24)
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, path])
+  @@map("parameter")
+  @@schema("economy")
+}
+
+model EconomyRecipe {
+  versionId     String @map("version_id") @db.VarChar(64)
+  recipeId      String @map("recipe_id") @db.VarChar(80)
+  activityKind  String @map("activity_kind") @db.VarChar(80)
+  durationTicks Int    @map("duration_ticks")
+  /// Registered eligibility rule ids.
+  eligibility   Json   @default("[]")
+  /// `{kind:'resource',resource,amount}` or `{kind:'fact',factId}` (RecipeOutput).
+  output        Json
+  enabledWave   String @map("enabled_wave") @db.VarChar(3)
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  inputs  EconomyRecipeInput[]
+
+  @@id([versionId, recipeId])
+  @@map("recipe")
+  @@schema("economy")
+}
+
+model EconomyRecipeInput {
+  versionId    String  @map("version_id") @db.VarChar(64)
+  recipeId     String  @map("recipe_id") @db.VarChar(80)
+  resourceKey  String  @map("resource_key") @db.VarChar(16)
+  amountAtomic Decimal @map("amount_atomic") @db.Decimal(78, 0)
+
+  recipe EconomyRecipe @relation(fields: [versionId, recipeId], references: [versionId, recipeId], onDelete: Cascade)
+
+  @@id([versionId, recipeId, resourceKey])
+  @@map("recipe_input")
+  @@schema("economy")
+}
+
+/// One row per ResourceKey and version (CHECK: the ten keys); full coverage is checked by `checkProfileContent`.
+model EconomyResourcePolicy {
+  versionId           String   @map("version_id") @db.VarChar(64)
+  resourceKey         String   @map("resource_key") @db.VarChar(16)
+  sources             String[]
+  consumers           String[]
+  producerCohorts     String[] @map("producer_cohorts")
+  buyerCohorts        String[] @map("buyer_cohorts")
+  reserveHorizonTicks Int      @map("reserve_horizon_ticks")
+  targetLoBp          Int      @map("target_lo_bp")
+  targetHiBp          Int      @map("target_hi_bp")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, resourceKey])
+  @@map("resource_policy")
+  @@schema("economy")
+}
+
+model EconomyMarketPolicy {
+  versionId         String  @map("version_id") @db.VarChar(64)
+  pairId            String  @map("pair_id") @db.VarChar(48)
+  tokenMetadataRef  String  @map("token_metadata_ref") @db.VarChar(16)
+  platformFeeBp     Int     @map("platform_fee_bp")
+  stallFeeBp        Int     @map("stall_fee_bp")
+  lotUnits          Decimal @map("lot_units") @db.Decimal(78, 0)
+  tickAtomic        Decimal @map("tick_atomic") @db.Decimal(78, 0)
+  minNotionalAtomic Decimal @map("min_notional_atomic") @db.Decimal(78, 0)
+  treasuryShareBp   Int     @map("treasury_share_bp")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, pairId])
+  @@map("market_policy")
+  @@schema("economy")
+}
+
+model EconomyAgentPolicy {
+  versionId            String  @map("version_id") @db.VarChar(64)
+  actorId              String  @map("actor_id") @db.VarChar(80)
+  targets              Json    @default("{}")
+  cashLimitAtomic      Decimal @map("cash_limit_atomic") @db.Decimal(78, 0)
+  spendLimitAtomic     Decimal @map("spend_limit_atomic") @db.Decimal(78, 0)
+  lossLimitAtomic      Decimal @map("loss_limit_atomic") @db.Decimal(78, 0)
+  /// `{ "<ResourceKey>": "<atomic decimal string>" }`, validated against the ten keys by the contract schema.
+  inventoryLimits      Json    @default("{}") @map("inventory_limits")
+  referenceWindowTicks Int     @map("reference_window_ticks")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, actorId])
+  @@map("agent_policy")
+  @@schema("economy")
+}
+
+/// Activation is a per-scope record, separate from the version lifecycle. At most one ACTIVE row per scope
+/// (partial unique index in the migration). `scope`: `global`, `planetType:<t>`, `planet:<id>`, `archetype:<a>`, `sector:<id>`.
+model EconomyActivation {
+  id            String   @id @db.VarChar(64)
+  scope         String   @db.VarChar(120)
+  versionId     String   @map("version_id") @db.VarChar(64)
+  previousId    String?  @map("previous_id") @db.VarChar(64)
+  requestedTick BigInt?  @map("requested_tick")
+  appliedTick   BigInt?  @map("applied_tick")
+  /// PENDING | ACTIVE | SUPERSEDED | FAILED
+  state         String   @default("PENDING") @db.VarChar(12)
+  operator      String   @db.VarChar(120)
+  evidenceRunId String?  @map("evidence_run_id") @db.VarChar(64)
+  payloadHash   String?  @map("payload_hash") @db.VarChar(80)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  version     EconomyProfileVersion @relation(fields: [versionId], references: [id])
+  previous    EconomyActivation?    @relation("ActivationPrevious", fields: [previousId], references: [id])
+  next        EconomyActivation[]   @relation("ActivationPrevious")
+  evidenceRun EconomyExperimentRun? @relation(fields: [evidenceRunId], references: [id])
+
+  @@index([scope, state])
+  @@map("activation")
+  @@schema("economy")
+}
+
+/// Append-only (UPDATE/DELETE rejected by trigger). `requestId` makes every mutation idempotent.
+model EconomyAuditEvent {
+  id        BigInt   @id @default(autoincrement())
+  actor     String   @db.VarChar(120)
+  action    String   @db.VarChar(64)
+  versionId String?  @map("version_id") @db.VarChar(64)
+  requestId String   @unique @map("request_id") @db.VarChar(120)
+  diff      Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  version EconomyProfileVersion? @relation(fields: [versionId], references: [id])
+
+  @@index([versionId, createdAt])
+  @@map("audit_event")
+  @@schema("economy")
+}
+
+/// Immutable versioned scenario (seeds, populations, shocks, assumptions).
+model EconomyScenario {
+  id        String   @db.VarChar(80)
+  version   Int
+  manifest  Json
+  hash      String   @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  runs EconomyExperimentRun[]
+
+  @@id([id, version])
+  @@map("scenario")
+  @@schema("economy")
+}
+
+model EconomyExperiment {
+  id             String    @id @db.VarChar(64)
+  requestId      String    @unique @map("request_id") @db.VarChar(120)
+  manifest       Json
+  manifestHash   String    @map("manifest_hash") @db.VarChar(80)
+  /// queued | running | completed | failed | cancelled | incomplete
+  status         String    @default("queued") @db.VarChar(12)
+  leaseOwner     String?   @map("lease_owner") @db.VarChar(120)
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(3)
+  progress       Json      @default("{}")
+  failure        String?   @db.VarChar(2000)
+  parentId       String?   @map("parent_id") @db.VarChar(64)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  parent   EconomyExperiment?    @relation("ExperimentParent", fields: [parentId], references: [id])
+  children EconomyExperiment[]   @relation("ExperimentParent")
+  runs     EconomyExperimentRun[]
+
+  @@index([status, leaseExpiresAt])
+  @@map("experiment")
+  @@schema("economy")
+}
+
+model EconomyExperimentRun {
+  id              String   @id @db.VarChar(64)
+  experimentId    String   @map("experiment_id") @db.VarChar(64)
+  /// The candidate profile version id.
+  candidateId     String   @map("candidate_id") @db.VarChar(64)
+  scenarioId      String   @map("scenario_id") @db.VarChar(80)
+  scenarioVersion Int      @map("scenario_version")
+  seed            BigInt
+  hashes          Json     @default("{}")
+  status          String   @default("queued") @db.VarChar(12)
+  artifactRefs    Json     @default("[]") @map("artifact_refs")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  experiment  EconomyExperiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  candidate   EconomyProfileVersion @relation(fields: [candidateId], references: [id])
+  scenario    EconomyScenario       @relation(fields: [scenarioId, scenarioVersion], references: [id, version])
+  metrics     EconomyMetric[]
+  gates       EconomyGateResult[]
+  activations EconomyActivation[]
+
+  @@unique([experimentId, candidateId, scenarioId, scenarioVersion, seed])
+  @@map("experiment_run")
+  @@schema("economy")
+}
+
+/// Sampled series, not per-tick writes. `value` null (undefined metric) needs a `reason` (CHECK).
+model EconomyMetric {
+  id              BigInt   @id @default(autoincrement())
+  runId           String   @map("run_id") @db.VarChar(64)
+  windowStartTick BigInt   @map("window_start_tick")
+  windowEndTick   BigInt   @map("window_end_tick")
+  scope           String   @db.VarChar(120)
+  resourceKey     String?  @map("resource_key") @db.VarChar(16)
+  pair            String?  @db.VarChar(48)
+  cohort          String?  @db.VarChar(80)
+  metricKey       String   @map("metric_key") @db.VarChar(80)
+  value           Decimal? @db.Decimal
+  reason          String?  @db.VarChar(120)
+  unit            String   @db.VarChar(24)
+
+  run EconomyExperimentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, windowStartTick, metricKey])
+  @@map("metric")
+  @@schema("economy")
+}
+
+model EconomyGateResult {
+  id          BigInt   @id @default(autoincrement())
+  runId       String   @map("run_id") @db.VarChar(64)
+  gateId      String   @map("gate_id") @db.VarChar(80)
+  gateVersion Int      @map("gate_version")
+  /// pass | fail | insufficient_data
+  outcome     String   @db.VarChar(20)
+  observed    Decimal? @db.Decimal
+  threshold   String   @db.VarChar(80)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  run EconomyExperimentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, gateId, gateVersion])
+  @@map("gate_result")
+  @@schema("economy")
+}
+
+/// Named set of PARTIAL regional overrides (ECONOMY §2.2). A scope binding attaches it to a resolution level.
+/// Null columns mean "inherit"; 0 is a deliberate value. `main_resource` is display intent, validated by the resolver.
+model EconomyRegionProfile {
+  versionId                 String  @map("version_id") @db.VarChar(64)
+  regionProfileId           String  @map("region_profile_id") @db.VarChar(64)
+  sectorArchetype           String  @default("") @map("sector_archetype") @db.VarChar(64)
+  depositDensityPer1000Tiles Int?   @map("deposit_density_per_1000_tiles")
+  mainResource              String? @map("main_resource") @db.VarChar(32)
+
+  version   EconomyProfileVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  resources EconomyRegionResource[]
+  bindings  EconomyScopeBinding[]
+
+  @@id([versionId, regionProfileId])
+  @@map("region_profile")
+  @@schema("economy")
+}
+
+/// One resource row of a region profile; every value column nullable (omitted = inherit).
+model EconomyRegionResource {
+  versionId                String  @map("version_id") @db.VarChar(64)
+  regionProfileId          String  @map("region_profile_id") @db.VarChar(64)
+  resourceKey              String  @map("resource_key") @db.VarChar(32)
+  occurrenceWeightBp       Int?    @map("occurrence_weight_bp")
+  reserveUnitsMin          BigInt? @map("reserve_units_min")
+  reserveUnitsMax          BigInt? @map("reserve_units_max")
+  terraformFindWeightBp    Int?    @map("terraform_find_weight_bp")
+  starterGuarantee         BigInt? @map("starter_guarantee")
+  extractionYieldBp        Int?    @map("extraction_yield_bp")
+  renewableUnitsPerSimHour BigInt? @map("renewable_units_per_sim_hour")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  profile EconomyRegionProfile  @relation(fields: [versionId, regionProfileId], references: [versionId, regionProfileId], onDelete: Cascade)
+
+  @@id([versionId, regionProfileId, resourceKey])
+  @@map("region_resource")
+  @@schema("economy")
+}
+
+/// Attaches a region profile to a scope level. Scope columns are '' when unused (so the unique key has no NULLs).
+/// Unique (version, kind, ids, priority): two bindings at the same level and priority cannot both exist.
+model EconomyScopeBinding {
+  versionId       String @map("version_id") @db.VarChar(64)
+  scopeKind       String @map("scope_kind") @db.VarChar(16)
+  planetType      String @default("") @map("planet_type") @db.VarChar(60)
+  planetId        String @default("") @map("planet_id") @db.VarChar(64)
+  sectorId        String @default("") @map("sector_id") @db.VarChar(64)
+  archetype       String @default("") @db.VarChar(64)
+  priority        Int    @default(0)
+  regionProfileId String @map("region_profile_id") @db.VarChar(64)
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  profile EconomyRegionProfile  @relation(fields: [versionId, regionProfileId], references: [versionId, regionProfileId], onDelete: NoAction)
+
+  @@id([versionId, scopeKind, planetType, planetId, sectorId, archetype, priority])
+  @@map("scope_binding")
+  @@schema("economy")
+}
+
+/// Building / unit / supply-node logistics row (ECONOMY §2.3). Loads and throughput in thousandths of a load unit.
+model EconomyLogisticsPolicy {
+  versionId       String  @map("version_id") @db.VarChar(64)
+  kind            String  @db.VarChar(12)
+  subjectId       String  @map("subject_id") @db.VarChar(80)
+  tier            Int     @default(1)
+  loadWeightMilli BigInt  @map("load_weight_milli")
+  throughputMilli BigInt? @map("throughput_milli")
+  reachTiles      Int?    @map("reach_tiles")
+  /// { "<ResourceKey>": whole units per supply window }
+  baseConsumption Json    @default("{}") @map("base_consumption")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, kind, subjectId, tier])
+  @@map("logistics_policy")
+  @@schema("economy")
 }
 
 // --- identity.prisma ---
@@ -368,6 +758,164 @@ model PartyMember {
   @@index([playerId])
   @@map("party_member")
   @@schema("core")
+}
+
+// --- market.prisma ---
+/// W13 F2 markets (DATA_MODEL `chain.market_order`, `chain.intent_trade`; ECONOMY §3; NEAR-60..62).
+/// Exact atomic amounts are `numeric(78,0)` (market atomic units: resources whole units, USDC micro, NEAR yocto);
+/// JSON carries them as decimal strings. `id` (autoincrement) is the time priority inside a price level.
+
+/// One resting or historical order. Created idempotently from the sim's `marketOrderRequested` (`(planetId, ref)` unique: scenario planets reuse `col_0`).
+/// Terms (price, fees, policy, beneficiaries, deadline) are pinned at creation and never change; fills, reservations
+/// and cumulative rounding buckets change only under a row lock (`SELECT … FOR UPDATE`).
+model MarketOrder {
+  id                BigInt   @id @default(autoincrement())
+  orderId           String   @unique @map("order_id") @db.VarChar(64)
+  ref               String   @db.VarChar(160)
+  planetId          String   @map("planet_id") @db.VarChar(64)
+  pair              String   @db.VarChar(48)
+  base              String   @db.VarChar(32)
+  quote             String   @db.VarChar(32)
+  side              String   @db.VarChar(4)
+  colonyId          String   @map("colony_id") @db.VarChar(64)
+  colonyIndex       Int?     @map("colony_index")
+  playerId          String?  @map("player_id") @db.VarChar(64)
+  accountId         String   @map("account_id") @db.VarChar(64)
+  /// Maker stall of this order (its own Trade Hub): beneficiary of the stall fee when this order is the maker.
+  stallColonyId     String   @map("stall_colony_id") @db.VarChar(64)
+  stallAccountId    String   @map("stall_account_id") @db.VarChar(64)
+  stallHubEntityId  Int?     @map("stall_hub_entity_id")
+  platformAccountId String   @map("platform_account_id") @db.VarChar(64)
+  /// Whole base units ordered / filled so far.
+  amount            Decimal  @db.Decimal(78, 0)
+  filled            Decimal  @default(0) @db.Decimal(78, 0)
+  /// Total quote atomic for the full `amount` (limit price = priceAmount / amount).
+  priceAmount       Decimal  @map("price_amount") @db.Decimal(78, 0)
+  fillPolicy        String   @map("fill_policy") @db.VarChar(16)
+  policyVersion     String   @map("policy_version") @db.VarChar(64)
+  policyHash        String   @map("policy_hash") @db.VarChar(80)
+  platformFeeBp     Int      @map("platform_fee_bp")
+  /// Stall rate this order's stall charges when this order is the maker.
+  stallFeeBp        Int      @map("stall_fee_bp")
+  /// Buyer's explicit maximum maker-stall rate (reserved in full); null for sells.
+  maxStallFeeBp     Int?     @map("max_stall_fee_bp")
+  /// Remaining principal reservation: base units (sell) or quote atomic (buy).
+  reservedPrincipal Decimal  @default(0) @map("reserved_principal") @db.Decimal(78, 0)
+  /// Remaining fee reservation (buy: platform + max stall fee on the unfilled part); 0 for sells.
+  reservedFees      Decimal  @default(0) @map("reserved_fees") @db.Decimal(78, 0)
+  /// Cumulative quote charged/credited so far, for cumulative floor rounding (ECONOMY §3).
+  cumNotional       Decimal  @default(0) @map("cum_notional") @db.Decimal(78, 0)
+  /// `{ "<quote>|<rateBp>|<beneficiary>|<policyVersion>": { "base": "…", "fee": "…" } }` cumulative fee buckets.
+  feeBuckets        Json     @default("{}") @map("fee_buckets")
+  actorKind         String   @default("player") @map("actor_kind") @db.VarChar(16)
+  state             String   @default("PENDING") @db.VarChar(16)
+  /// Signed NEP-413 order terms (claimed accounts) or the custodial signing record.
+  signedTerms       Json?    @map("signed_terms")
+  ttlS              Int      @map("ttl_s")
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(3)
+  lastError         String?  @map("last_error") @db.VarChar(400)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([planetId, ref])
+  @@index([planetId, pair, state])
+  @@index([colonyId, state])
+  @@index([state, expiresAt])
+  @@map("market_order")
+  @@schema("chain")
+}
+
+/// One matched fill and its settlement batch. `tradeId` is the outbox op key (`trade:{tradeId}`); the row is written
+/// with the order fill updates and the outbox row in one transaction, and reaches FINAL exactly once.
+model IntentTrade {
+  id                 BigInt    @id @default(autoincrement())
+  tradeId            String    @unique @map("trade_id") @db.VarChar(64)
+  planetId           String    @map("planet_id") @db.VarChar(64)
+  pair               String    @db.VarChar(48)
+  base               String    @db.VarChar(32)
+  quote              String    @db.VarChar(32)
+  makerOrderId       String    @map("maker_order_id") @db.VarChar(64)
+  takerOrderId       String    @map("taker_order_id") @db.VarChar(64)
+  makerSide          String    @map("maker_side") @db.VarChar(4)
+  buyerColonyId      String    @map("buyer_colony_id") @db.VarChar(64)
+  sellerColonyId     String    @map("seller_colony_id") @db.VarChar(64)
+  buyerAccountId     String    @map("buyer_account_id") @db.VarChar(64)
+  sellerAccountId    String    @map("seller_account_id") @db.VarChar(64)
+  stallColonyId      String    @map("stall_colony_id") @db.VarChar(64)
+  stallAccountId     String    @map("stall_account_id") @db.VarChar(64)
+  platformAccountId  String    @map("platform_account_id") @db.VarChar(64)
+  treasuryAccountId  String?   @map("treasury_account_id") @db.VarChar(64)
+  amount             Decimal   @db.Decimal(78, 0)
+  notional           Decimal   @db.Decimal(78, 0)
+  platformFee        Decimal   @map("platform_fee") @db.Decimal(78, 0)
+  stallFee           Decimal   @map("stall_fee") @db.Decimal(78, 0)
+  /// Carved out of the platform fee (W22), never an extra buyer charge; 0 while W22 is off.
+  treasuryAllocation Decimal   @default(0) @map("treasury_allocation") @db.Decimal(78, 0)
+  platformFeeBp      Int       @map("platform_fee_bp")
+  stallFeeBp         Int       @map("stall_fee_bp")
+  policyVersion      String    @map("policy_version") @db.VarChar(64)
+  policyHash         String    @map("policy_hash") @db.VarChar(80)
+  /// Zero-sum batch legs `[{ accountId, token, delta, kind }]` (kind: principal | platform_fee | stall_fee | treasury).
+  legs               Json
+  batchHash          String    @map("batch_hash") @db.VarChar(80)
+  buyerActorKind     String    @default("player") @map("buyer_actor_kind") @db.VarChar(16)
+  sellerActorKind    String    @default("player") @map("seller_actor_kind") @db.VarChar(16)
+  /// False for fixture/Guild/known-related fills: excluded from organic reference prices (D-44).
+  organic            Boolean   @default(true)
+  state              String    @default("PENDING") @db.VarChar(16)
+  txHash             String?   @map("tx_hash") @db.VarChar(96)
+  lastError          String?   @map("last_error") @db.VarChar(400)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  settledAt          DateTime? @map("settled_at") @db.Timestamptz(3)
+
+  @@index([planetId, pair, state, settledAt])
+  @@index([buyerColonyId, createdAt])
+  @@index([sellerColonyId, createdAt])
+  @@index([stallColonyId, state])
+  @@map("intent_trade")
+  @@schema("chain")
+}
+
+/// Current stall (Trade Hub) fee per colony on a planet. Orders pin the rate at placement; this is only the default
+/// for new maker orders (W13-22).
+model MarketStall {
+  planetId     String   @map("planet_id") @db.VarChar(64)
+  colonyId     String   @map("colony_id") @db.VarChar(64)
+  colonyIndex  Int?     @map("colony_index")
+  hubEntityId  Int?     @map("hub_entity_id")
+  accountId    String?  @map("account_id") @db.VarChar(64)
+  name         String?  @db.VarChar(64)
+  feeBp        Int      @map("fee_bp")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([planetId, colonyId])
+  @@map("market_stall")
+  @@schema("chain")
+}
+
+/// Mock `intents.near` verifier ledger (W13-04): `tokenId` is the verifier id (`nep245:res.terraagent.mock:<ResourceKey>`,
+/// `native:near`, `nep141:usdc.mock`), `amount` in chain base units. Written only by `MockIntentsAdapter`.
+model MockChainIntentsBalance {
+  accountId String  @map("account_id") @db.VarChar(64)
+  tokenId   String  @map("token_id") @db.VarChar(96)
+  amount    Decimal @default(0) @db.Decimal(78, 0)
+
+  @@id([accountId, tokenId])
+  @@map("mock_chain_intents_balance")
+  @@schema("chain")
+}
+
+/// Used NEP-413 nonces per signer (replay protection, W13-05).
+model MockChainIntentNonce {
+  signer String   @db.VarChar(64)
+  nonce  String   @db.VarChar(96)
+  opId   String?  @map("op_id") @db.VarChar(200)
+  usedAt DateTime @default(now()) @map("used_at") @db.Timestamptz(3)
+
+  @@id([signer, nonce])
+  @@map("mock_chain_intent_nonce")
+  @@schema("chain")
 }
 
 // --- mock-chain.prisma ---
@@ -630,6 +1178,86 @@ model PlayerNotification {
   @@index([playerId, createdAt])
   @@map("player_notification")
   @@schema("core")
+}
+
+// --- trade-api.prisma ---
+/// API key of a bot / agent bound to one colony account (W13 trade API). Only the SHA-256 of the secret is stored; the
+/// secret is shown once at creation. `scopes`: read | trade | manage.
+model TradeApiKey {
+  keyId         String    @id @map("key_id") @db.VarChar(40)
+  secretHash    String    @unique @map("secret_hash") @db.VarChar(64)
+  ownerId       String    @map("owner_id") @db.VarChar(64)
+  label         String    @db.VarChar(64)
+  planetId      String    @map("planet_id") @db.VarChar(64)
+  colonyId      String    @map("colony_id") @db.VarChar(64)
+  colonyIndex   Int       @map("colony_index")
+  accountId     String    @map("account_id") @db.VarChar(64)
+  scopes        String[]
+  /// Per-key rate limit; null = module default.
+  ratePerSecond Int?      @map("rate_per_second")
+  rateBurst     Int?      @map("rate_burst")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@index([ownerId])
+  @@map("trade_api_key")
+  @@schema("chain")
+}
+
+/// Safety rails of one key (W13 agent allowance). Amounts are quote atomic (USDC unless the pair's quote differs).
+model TradeApiAllowance {
+  keyId            String   @id @map("key_id") @db.VarChar(40)
+  maxOpenOrders    Int      @map("max_open_orders")
+  maxOrderNotional Decimal  @map("max_order_notional") @db.Decimal(78, 0)
+  dailyBudget      Decimal  @map("daily_budget") @db.Decimal(78, 0)
+  allowedPairs     String[] @map("allowed_pairs")
+  /// Max distance of the order's unit price from the reference (organic VWAP) in bp; null = no band.
+  priceBandBp      Int?     @map("price_band_bp")
+  killSwitch       Boolean  @default(false) @map("kill_switch")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("trade_api_allowance")
+  @@schema("chain")
+}
+
+/// One mutating trade API request (place / cancel): the idempotency record AND the allowance ledger (outstanding orders
+/// count from the moment the row exists, before any fill). `ownerRef` = `key:<keyId>` or `player:<playerId>`.
+model TradeApiRequest {
+  requestId     String   @id @map("request_id") @db.VarChar(40)
+  ownerRef      String   @map("owner_ref") @db.VarChar(80)
+  keyId         String?  @map("key_id") @db.VarChar(40)
+  idemKey       String   @map("idem_key") @db.VarChar(80)
+  bodyHash      String   @map("body_hash") @db.VarChar(64)
+  kind          String   @db.VarChar(8)
+  planetId      String   @map("planet_id") @db.VarChar(64)
+  colonyId      String   @map("colony_id") @db.VarChar(64)
+  colonyIndex   Int      @map("colony_index")
+  ownerId       String   @map("owner_id") @db.VarChar(64)
+  pair          String?  @db.VarChar(48)
+  side          String?  @db.VarChar(4)
+  resource      String?  @db.VarChar(32)
+  amount        Decimal? @db.Decimal(78, 0)
+  priceAmount   Decimal? @map("price_amount") @db.Decimal(78, 0)
+  /// Quote atomic this request commits against the allowance (the order's total quote).
+  notional      Decimal  @default(0) @db.Decimal(78, 0)
+  /// PENDING (row written, sim not called) | SUBMITTED | ACCEPTED (order exists) | REJECTED | CANCELLED | FAILED
+  state         String   @default("PENDING") @db.VarChar(12)
+  commandId     String?  @map("command_id") @db.VarChar(40)
+  orderId       String?  @map("order_id") @db.VarChar(64)
+  targetOrderId String?  @map("target_order_id") @db.VarChar(64)
+  errorCode     String?  @map("error_code") @db.VarChar(48)
+  errorDetail   String?  @map("error_detail") @db.VarChar(400)
+  /// Structured `error.details` of the rejection (allowance numbers, ...), replayed with the first answer.
+  errorDetails  Json?    @map("error_details")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([ownerRef, idemKey])
+  @@index([keyId, createdAt])
+  @@index([colonyId, state])
+  @@map("trade_api_request")
+  @@schema("chain")
 }
 
 // --- world.prisma ---
