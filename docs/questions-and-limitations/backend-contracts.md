@@ -811,3 +811,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The next snapshot fill replaces an all-zero baseline. Attack counts survive a restart because the body is flushed in the same write as the snapshot.
 - **To resolve:** W09-16 can write the end baseline (`after`) on return. A schema addition would be needed before terraform percent or per-type building counts can be stored.
 - **Found:** 2026-11-09, W09-15
+
+### BE-60 · Twisters sample once per step, so coarse dt is not five fine ticks
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/weather/index.ts` (`stepWeather`), `shared/sim/src/systems/weather/twister.ts` (`applyTwisterVortexAt`), `shared/sim/src/systems/weather/types.ts` (`TWISTER_SPEED_HEX_PER_TICK`)
+- **What happens:** An active twister moves and hits once per `step`, not once per tick. `TWISTER_SPEED_HEX_PER_TICK` (0.22) is added once, and a building in the vortex loses 25 HP once, even when `dt` is 5. Five `dt=1` steps move and hit five times; one `dt=5` step does each once. A lightning overload that expires inside a coarse step is cleared before later systems in that same step, and those systems then apply the whole `dt`, so a store that charges only while online can gain up to 4 extra ticks on the clearing step. The expiry itself matches when `until` is a multiple of `dt`: both paths are back online at that tick. Insect attacks release once when the interval elapses and stamp `lastAttackTick` to `ctx.tick` (`fauna/step.ts`), so the next swing can slip by up to 4 ticks. A depleting metals tile that passes through 1..10 bp is read by `normalizeRichness` as a multiplier (`production/helpers.ts`), so one fine tick can pull extra ore from the next tile; a `dt=5` step removes 20 bp and skips that band (3600 ticks: 721.4 vs 720 metals). Water, thermal fuel, thermal pollution and `brownoutTicks` multiply by `dt` and match across those 3600 ticks.
+- **Why it is like this:** Weather hazards are console-spawned and were written as one sample per step. Replaying the vortex `dt` times is not a multiply: the path turns, bounces and deals 25 HP only while the building is still inside it. Substepping the whole pipeline is a different change.
+- **Workaround / mitigation:** The coarse-dt parity test covers dt-scaled production, the brownout collapse timer and lightning expiry. It does not claim twister motion or raid swings.
+- **To resolve:** Inside one coarse step, advance each active twister once per tick from `tick - dt + 1` through `tick`. Same for any other hazard that samples once per step. Leave threshold timers that already key off `ctx.tick` alone.
+- **Found:** 2026-11-09, W09-04
