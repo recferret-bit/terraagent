@@ -1,0 +1,196 @@
+/* Mock NEAR wallet signer modal — Faction Plate tokens only */
+.ta-signer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s4);
+  background: var(--ta-black-hole);
+}
+
+.ta-signer-modal {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s4);
+  padding: var(--ta-s5);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  clip-path: polygon(
+    var(--ta-chamfer-m) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-m)),
+    calc(100% - var(--ta-chamfer-m)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-m)
+  );
+}
+
+.ta-signer-modal__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-signer-modal__title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-h3);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-text);
+}
+
+.ta-signer-modal__subtitle {
+  margin: 0;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-eyebrow);
+  color: var(--ta-steel);
+}
+
+.ta-signer-modal__summary {
+  padding: var(--ta-s3) var(--ta-s4);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-body);
+  color: var(--ta-text-2);
+  line-height: 1.4;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-signer-modal__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-signer-modal__field-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-signer-modal__field-label {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-steel);
+}
+
+.ta-signer-modal__field-value {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.ta-signer-modal__notice {
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-deep);
+  border-left: 2px solid var(--ta-orange);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-eyebrow);
+  color: var(--ta-orange-hi);
+  line-height: 1.35;
+}
+
+.ta-signer-modal__status {
+  min-height: 18px;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-fault-text);
+}
+
+.ta-signer-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ta-s3);
+  margin-top: var(--ta-s2);
+}
+
+.ta-signer-modal__btn-reject {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: var(--ta-s2) var(--ta-s4);
+  background: transparent;
+  border: 1.5px solid var(--ta-seam-3);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-small);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  transition: border-color var(--ta-dur-quick) ease, color var(--ta-dur-quick) ease;
+}
+
+.ta-signer-modal__btn-reject:hover {
+  border-color: var(--ta-fault);
+  color: var(--ta-fault-text);
+}
+
+.ta-signer-modal__btn-approve {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: var(--ta-s2) var(--ta-s5);
+  background: var(--ta-orange);
+  border: 0;
+  color: var(--ta-void);
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-small);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  transition: background-color var(--ta-dur-quick) ease;
+}
+
+.ta-signer-modal__btn-approve:hover {
+  background: var(--ta-orange-hi);
+  color: var(--ta-void);
+}
