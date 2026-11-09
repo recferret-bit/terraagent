@@ -304,6 +304,7 @@ export class PlanetHost {
       const production = p.production?.collect(p.state, true) ?? [];
       if (production.length) this.publish(id, p, production);
       this.flushEvents(id, p); // checkpoint must follow every event it commits, including the open delta window
+      // Encode only. gzip and the Postgres write run later, on the main thread (`SnapshotStore.save`).
       const bytes = owned(snapshot(p.state));
       this.post({ t: 'snapshot', planetId: id, tick: p.state.meta.tick, bytes }, [bytes.buffer as ArrayBuffer]);
     }

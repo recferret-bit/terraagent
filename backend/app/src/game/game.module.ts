@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, mergeOverrides, type BalanceOverrides } from '@terra/sim';
@@ -19,6 +20,7 @@ import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-ac
 import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
 import { EconomyProfileService } from '../economy/profile/profile.service';
+import { WorldLifecycleService } from '../lobby/lifecycle.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
@@ -129,12 +131,14 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly bus: EventBus,
     private readonly progressionForwarder: ProgressionEventForwarder,
     @Inject(LOGGER) root: Logger,
+    private readonly modules: ModuleRef,
     @Optional() private readonly homeService?: HomeService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    this.wireSnapshotSavePoints();
     await this.pool.start();
     this.unsubBridge = bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
     const home = this.homeService;
@@ -187,6 +191,16 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
+  }
+
+  /** Lobby does not import this module. Resolve it after both exist so pause/archive can snapshot (SIM-H-06). */
+  private wireSnapshotSavePoints(): void {
+    try {
+      const lifecycle = this.modules.get(WorldLifecycleService, { strict: false });
+      lifecycle.setSnapshotSavePoint((planetId, kind) => this.snapshots.capture(planetId, kind));
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.includes('WorldLifecycleService')) throw e;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {

@@ -51,12 +51,19 @@ export * from './lifecycle.types';
  *   `lifecycle` (`ACTIVE`) or `admission` (`OPEN`); releasing/expiring 1 reservation immediately restores `open`.
  * - Enforces audited operator `pausePlanetAdmission` / `resumePlanetAdmission` / `setQueuePaused` with required
  *   `actor` + `reason` and optimistic concurrency (`expectedUpdatedAt` -> HTTP 409 `ConcurrencyConflictError`).
+ * - After a successful admission pause or archive commit, asks the game module for a SEAL or END snapshot (SIM-H-06).
  */
 @Injectable()
 export class WorldLifecycleService {
   private readonly auditLog: WorldAdmissionAuditEntry[] = [];
   private queuePaused = false;
   private queueUpdatedAt: Date = new Date(0);
+  /** SIM-H-06: pause → SEAL, archive commit → END. Unset when the game module is not wired. */
+  private savePoint?: (planetId: string, kind: 'SEAL' | 'END') => Promise<void>;
+
+  setSnapshotSavePoint(fn: ((planetId: string, kind: 'SEAL' | 'END') => Promise<void>) | undefined): void {
+    this.savePoint = fn;
+  }
 
   constructor(@Inject(LobbyPersistenceService) private readonly persistence: LobbyPersistenceService) {}
 
@@ -191,6 +198,7 @@ export class WorldLifecycleService {
     });
 
     const sectors = await this.persistence.listSectors(updated.id);
+    await this.savePoint?.(updated.id, 'SEAL');
     return buildWorldStatusSnapshot(updated, sectors, recordedAudit);
   }
 
@@ -387,6 +395,8 @@ export class WorldLifecycleService {
       },
     });
 
+    // After the row commits: an END snapshot written first would make `livePlanetIds` skip a planet whose archive then failed.
+    if (targetLifecycle === 'ARCHIVED') await this.savePoint?.(updated.id, 'END');
     const sectors = await this.persistence.listSectors(updated.id);
     return buildWorldStatusSnapshot(updated, sectors, recordedAudit);
   }

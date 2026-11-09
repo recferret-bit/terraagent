@@ -238,6 +238,39 @@ export class SnapshotService implements BeforeApplicationShutdown {
     }
   }
 
+  /**
+   * SIM-H-06 extra save point. No-op when persistence is off or the planet is not loaded (there are no sim bytes).
+   * Gives up after `budgetMs` and drops the unanswered kind so a later periodic snapshot is not retagged.
+   */
+  capture(planetId: string, kind: 'SEAL' | 'END', budgetMs = SHUTDOWN_BUDGET_MS): Promise<void> {
+    if (!this.enabled || !this.planets.isLoaded(planetId)) return Promise.resolve();
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      timer = setTimeout(() => {
+        this.scheduler.cancelUnanswered(planetId, finish);
+        finish();
+      }, budgetMs);
+      this.scheduler.request(planetId, kind, finish);
+    });
+  }
+
+  /** Admission pause: one `SEAL` row (retention keeps the latest). */
+  seal(planetId: string): Promise<void> {
+    return this.capture(planetId, 'SEAL');
+  }
+
+  /** Archive committed: one `END` row. `livePlanetIds` then skips the planet. */
+  end(planetId: string): Promise<void> {
+    return this.capture(planetId, 'END');
+  }
+
   async beforeApplicationShutdown(): Promise<void> {
     if (!this.enabled) return;
     const t0 = Date.now();
