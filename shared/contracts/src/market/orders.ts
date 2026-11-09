@@ -73,3 +73,17 @@ export const TradeView = z.object({
   atMs: z.number().int().nonnegative(),
 });
 export type TradeView = z.infer<typeof TradeView>;
+
+/** Common fields of a settled-trade summary (`market.settled` sim command and `tradeSettled` event, W13-02). */
+export const SettledTradeFields = {
+  base: ResourceKey,
+  amount: z.number().int().positive(),
+  quote: QuoteToken,
+  notional: AtomicAmount,
+  platformFee: AtomicAmount,
+  stallFee: AtomicAmount,
+  stallFeeBp: z.number().int().min(0).max(10_000),
+  makerSide: OrderSide,
+  stallName: z.string().max(64).optional(),
+  txHash: z.string().max(128).optional(),
+} as const;
