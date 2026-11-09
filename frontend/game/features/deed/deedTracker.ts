@@ -107,3 +107,7 @@ export class DeedTracker {
     });
   }
 }
+
+export function createDeedTracker(track: TrackLike | undefined): DeedTracker {
+  return new DeedTracker(track);
+}
