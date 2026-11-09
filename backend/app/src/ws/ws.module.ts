@@ -16,6 +16,7 @@ import { APP_ENV, LOGGER, type AppEnv, type RootLogger } from '../core/tokens';
 import { PRISMA } from '../db/db.module';
 import { seatDevScenarioPlayer } from '../near/identity/dev-scenario-seat';
 import { FlagsService } from '../flags/flags.service';
+import { AwayDigestService } from '../game/digest';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
 import { createPresenceTracker } from '../game/presence';
@@ -70,7 +71,7 @@ export const env = defineEnv('ws', {
     },
     {
       provide: WsGateway,
-      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER, { token: PRISMA, optional: true }, { token: EventBus, optional: true }],
+      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER, AwayDigestService, { token: PRISMA, optional: true }, { token: EventBus, optional: true }],
       useFactory: (
         e: AppEnv,
         root: RootLogger,
@@ -80,6 +81,7 @@ export const env = defineEnv('ws', {
         verifier: SessionVerifier,
         ingress: CommandIngress,
         home: HomeProvider,
+        digests: AwayDigestService,
         prisma?: PrismaClient,
         bus?: EventBus,
       ) =>
@@ -91,6 +93,7 @@ export const env = defineEnv('ws', {
             commands: planets,
             prisma: prisma && databaseEnabled(e) ? prisma : undefined,
             log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
+            onTransition: (info) => digests.onPresence(info),
           }),
           seatDevScenario: prisma && databaseEnabled(e)
             ? async (input) => {

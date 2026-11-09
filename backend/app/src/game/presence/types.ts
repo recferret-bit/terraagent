@@ -35,6 +35,13 @@ export interface PresenceLog {
   warn(obj: Record<string, unknown>, msg?: string): void;
 }
 
+export interface PresenceTransition {
+  readonly planetId: string;
+  readonly colonyId: string;
+  readonly away: boolean;
+  readonly at: Date;
+}
+
 export const noopLastSeen: LastSeenPort = {
   async touch(input) {
     return { colonyIndex: input.colonyIndex };

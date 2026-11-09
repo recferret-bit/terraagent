@@ -781,3 +781,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Retention still keeps the latest `SEAL` and every `END`. Periodic writes are staggered and bumped off a second that already has two planets.
 - **To resolve:** If seal should be something other than admission pause (for example the moment free seats hit zero), point `setSnapshotSavePoint` at that path. Raise the per-second cap only if a host runs more than 120 planets.
 - **Found:** 2026-11-09, W09-05
+
+### BE-57 · Away digest baseline has no building inventory or terraform percent
+
+- **Status:** Accepted (W09-15 scope)
+- **Area / code:** `backend/app/src/game/digest/` (`baselineFromState`, `AwayDigestService`), `shared/contracts/src/notify/digest.ts` (`AwayDigestV1`)
+- **What happens:** A row opens on `colonyAway` and closes on `colonyBack` or the presence tracker's return (`away: false`), with `durationS` and `closed_at`. The body stores resources (the 10 stock keys), energy (`colony.power.net`, E/s), robot count (live worker, recon, demoTank, demoArtillery) and owned tiles as `before = after`. Those numbers come from `fullState` at open, or from the snapshot bytes on the next successful snapshot flush when that read missed. Until a read lands they stay 0, including a colony that truly has nothing. `built` stays empty: it is the while-away construction list, not a baseline inventory. Terraform percent has no field on `AwayDigestV1`, so it is not stored. Close does not rewrite `after` from a new read (the end baseline is CT-32 / W09-16). An away while the planet is not loaded does not open a row, because open waits for `colonyAway`. A join still closes an open row. `raidStarted` and `underAttack` increment `attacks.count`; `raidRepelled` increments `attacks.repelled`. Each appends one `byColony` item. The 21st list item is dropped; counts are not capped. Purge deletes `opened_at` strictly older than 7 days. A row opened exactly 7 days ago is kept. Older unseen digests merge into the newest (sums, then lists capped at 20) and are marked seen.
+- **Why it is like this:** `AwayDigestV1` is a strict object. Building counts and terraform percent from CT-30 do not fit a field without overloading `built` or breaking the contract. The sim state is on a worker thread, so the open path cannot read it inline.
+- **Workaround / mitigation:** The next snapshot fill replaces an all-zero baseline. Attack counts survive a restart because the body is flushed in the same write as the snapshot.
+- **To resolve:** W09-16 can write the end baseline (`after`) on return. A schema addition would be needed before terraform percent or per-type building counts can be stored.
+- **Found:** 2026-11-09, W09-15

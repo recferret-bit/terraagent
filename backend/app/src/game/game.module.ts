@@ -24,6 +24,7 @@ import { EconomyProfileService } from '../economy/profile/profile.service';
 import { WorldLifecycleService } from '../lobby/lifecycle.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
+import { attachAwayDigest, AwayDigestService, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
@@ -112,11 +113,21 @@ const POOL = Symbol('SIM_THREAD_POOL');
     EconomyTelemetry,
     SnapshotService,
     ProgressionEventForwarder,
+    {
+      provide: AwayDigestService,
+      inject: [APP_ENV, PRISMA, GamePlanets, LOGGER],
+      useFactory: (e: AppEnv, prisma: PrismaClient, planets: GamePlanets, root: Logger) => new AwayDigestService({
+        store: persistenceEnabled(e) ? new PrismaDigestStore(prisma) : new MemoryDigestStore(),
+        reader: liveBaselineReader(planets),
+        log: layerLogger(root, 'sim', e.LOG_LEVELS as string | undefined),
+      }),
+    },
   ],
-  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;
+  private unsubDigest: (() => void) | undefined;
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
   private readonly log: Logger;
@@ -131,6 +142,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
     private readonly progressionForwarder: ProgressionEventForwarder,
+    private readonly digests: AwayDigestService,
     @Inject(LOGGER) root: Logger,
     private readonly modules: ModuleRef,
     @Optional() private readonly homeService?: HomeService,
@@ -139,6 +151,11 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    this.snapshots.setDigestFlush((planetId, raw) => this.digests.flushPlanet(planetId, raw));
+    this.unsubDigest = attachAwayDigest(this.bus, this.digests);
+    try { await this.digests.restoreOpen(); } catch (err) {
+      this.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'digest restore failed');
+    }
     this.wireSnapshotSavePoints();
     await this.pool.start();
     this.unsubBridge = bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
@@ -208,6 +225,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   async onApplicationShutdown(): Promise<void> {
     this.unsubBridge?.();
     this.unsubBridge = undefined;
+    this.unsubDigest?.();
+    this.unsubDigest = undefined;
     this.unsubHomeSeat?.();
     this.unsubHomeSeat = undefined;
     this.unsubRecovery?.();
