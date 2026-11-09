@@ -1,5 +1,6 @@
 import { canonicalPlanetById, newId, W11_DEFAULT_SECTOR_RADIUS, type SimCommandV1 } from '@terra/contracts';
 import { globalTileToSector, hexDistance, type BalanceOverrides, type LedgerPosting, type SimEvent, type TuneRequest } from '@terra/sim';
+import { noteAwayPolicyRejection } from './away-rejections';
 import type { SimThreadPool } from './sim-thread-pool';
 import { ThreadRequests } from './thread-requests';
 import type { FromThread, LandingSiteAnswer, LoadedInfo, LoadMsg } from './thread/protocol';
@@ -353,6 +354,7 @@ export class GamePlanets {
         return;
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
+        if (msg.code === 'away_policy') noteAwayPolicyRejection(msg.detail ?? 'AW-15', 'auto');
         return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, {
           ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick, ...(msg.detail ? { detail: msg.detail } : {}), ...(msg.unlocksAt ? { unlocksAt: msg.unlocksAt } : {}),
         });

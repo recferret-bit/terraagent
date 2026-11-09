@@ -1256,10 +1256,10 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/systems/away/policy.ts`, `shared/sim/src/systems/director/overlay.ts` (`awayGuardPoints`)
-- **What happens:** `awayPolicy` allows AW-01..07, a player command, an opted-in raid, and a defensive shot. Everything else an away actor tries is `reject` with `away_policy` and a rule id. A priority step is the landed director guard, 10 points (`awayGuardBp` 1000). The sim command pipeline does not call `awayPolicy` yet, so a demolish command still applies.
+- **What happens:** `awayPolicy` allows AW-01..07, a player command, an opted-in raid, and a defensive shot. Everything else an away actor tries is `reject` with `away_policy` and a rule id. A priority step is the landed director guard, 10 points (`awayGuardBp` 1000). The command pipeline calls that function for `ai`, `bot`, `near` and `system` commands once the colony session is open or the presence blob says away. `player`, `dev`, `admin` and `system.*` pass. A colony is not away until something opens the session or sets the presence blob.
 - **Why it is like this:** W09-09 and W09-10 land the pure function and its table tests. W09-12 is the rejection log and the pipeline gate. The slider step is already 10 in `setPriorities` and in the W16 overlay.
-- **Workaround / mitigation:** Call `awayPolicy` before applying an automated command. Do not treat a sim ack as an away-policy allow until W09-12.
-- **To resolve:** W09-12 consults `awayPolicy` inside the command path, logs `cmd.reject`, and increments `away_policy_rejections_total`. Leave the 10-point step unless the owner wants a 1-point band.
+- **Workaround / mitigation:** Open the away session (or set the presence blob) before expecting rejects. `away_policy_rejections_total` increments on the main thread when a reject arrives; the label `actor` is `auto` because the reject message carries the rule in `detail`, not the source.
+- **To resolve:** W09-02's `system.presence` should open and close the away session. Leave the 10-point step unless the owner wants a 1-point band.
 - **Found:** 2026-11-09, W09-09, updated W09-10
 
 ### GP-115 · Away session spend is a function the economy spend sites do not call yet

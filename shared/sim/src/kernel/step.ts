@@ -1,4 +1,5 @@
 import { pruneRemovals } from '../ecs/store';
+import { gateAwayCommand } from '../systems/away/gate';
 import type { CommandHandlerDef, CommandOutcome, SimCommand } from './commands';
 import type { EngineConfig } from './config';
 import type { LedgerPosting, StepContext } from './context';
@@ -75,8 +76,10 @@ function applyCommands(state: PlanetState, cmds: readonly SimCommand[], ctx: Ste
   for (const cmd of cmds) {
     const h = p.handlers.get(cmd.kind);
     let res: string | { code: string; detail?: string; unlocksAt?: string } | undefined;
+    const gated = h && ctx.flags.has(h.wave) ? gateAwayCommand(state, cmd, ctx) : undefined;
     if (!h) res = 'unknown_kind';
     else if (!ctx.flags.has(h.wave)) res = 'wave_disabled';
+    else if (gated) res = gated;
     else res = h.handle(state, cmd, ctx) ?? undefined;
     const rej = typeof res === 'string' ? { code: res } : res;
     out.push({
