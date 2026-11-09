@@ -247,6 +247,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | Director worker | — | `npm run start -w @terra/director -- --check` prints `director director up db=none` and exits. It does not join the game or open a database. The play page keeps ticking. |
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |
 | `ANALYTICS_DISABLED` | — | `true` drops analytics intake |
+| `AWAY_STORY_ENABLED` | on in production, off elsewhere | CT-34 paragraph on the away digest. Unset follows that default. `true` forces on, `false` forces off. Any other value aborts boot. With W16 off the slot stays empty and the digest has no `story` field. The paragraph is at most 600 characters, is not an order, and adds no commands |
 | `TA_DB_POOL_SIZE` | 20 | Prisma connection pool |
 | `TA_DOMAIN` | `terraagent.fun` | Public site domain. `npm run deploy` refuses any other value. Operator `.env`, not the app env schema |
 | `DEPLOY_HOST` | empty | SSH host for `npm run deploy`. Empty refuses the deploy and names the variable |

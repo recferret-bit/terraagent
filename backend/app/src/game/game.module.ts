@@ -25,7 +25,7 @@ import { EconomyProfileService } from '../economy/profile/profile.service';
 import { WorldLifecycleService } from '../lobby/lifecycle.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
-import { attachAwayDigest, AwayDigestService, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
+import { attachAwayDigest, AwayDigestService, createDigestStory, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
@@ -67,6 +67,14 @@ export const env = defineEnv('game', {
   PLANET_DAY_HOURS: z.coerce.number().min(0.005).max(168).optional(),
   /** Default planetary time-scale multiplier; unset = data table default (1). */
   PLANET_TIME_SCALE: z.coerce.number().min(0).max(1000).optional(),
+  /**
+   * CT-34 away paragraph. Unset is on in production and off elsewhere.
+   * Only `true` or `false`; any other value aborts boot.
+   */
+  AWAY_STORY_ENABLED: z
+    .string()
+    .optional()
+    .refine((v) => v === undefined || v === '' || v === 'true' || v === 'false', { message: 'must be true or false' }),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
@@ -124,6 +132,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
         store: persistenceEnabled(e) ? new PrismaDigestStore(prisma) : new MemoryDigestStore(),
         reader: liveBaselineReader(planets),
         log: layerLogger(root, 'sim', e.LOG_LEVELS as string | undefined),
+        story: createDigestStory(e),
       }),
     },
   ],
