@@ -1,7 +1,7 @@
 import { defineFeature, type DevCommandDef, type FeatureContext } from '../../core/registry/types';
 import '../../net/services';
 import { DevServerError } from '../../net/devServer';
-import { serverFor, usage } from '../near-dev';
+import { serverFor, usage } from '../shared/devCommand';
 import { reserveCommand } from './reserve';
 
 const FAUCET_USAGE = 'faucet near|usdc <amount>';
