@@ -21,6 +21,7 @@ import { SocialLink } from './identity/social-link.js';
 import { NearMockCommand } from './infrastructure/dev/near-mock.command.js';
 import { NearDeedController, PublicDeedController } from './deed/deed.controller.js';
 import { DeedDebounceService } from './deed/deed-debounce.service.js';
+import { DeedDevCommand } from './deed/deed-dev.command.js';
 import { DeedImageRendererService } from './deed/deed-image.renderer.js';
 import { DeedLifecycleService } from './deed/deed-lifecycle.service.js';
 import { DeedMintOutboxService } from './deed/deed-mint-outbox.service.js';
@@ -60,6 +61,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoImportOutboxService,
     CargoStatusService,
     DeedDebounceService,
+    DeedDevCommand,
     DeedImageRendererService,
     DeedLifecycleService,
     DeedMintOutboxService,
@@ -83,6 +85,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoImportOutboxService,
     CargoStatusService,
     DeedDebounceService,
+    DeedDevCommand,
     DeedImageRendererService,
     DeedLifecycleService,
     DeedMintOutboxService,

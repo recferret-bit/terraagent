@@ -21,6 +21,7 @@ import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { ChainOutboxRepository, type ClaimedRow } from '../application/outbox/chain-outbox.repository.js';
 import { OutboxListeners } from '../application/outbox/outbox-listeners.js';
+import { OutboxRelayService } from '../application/outbox/outbox.module.js';
 import { DeedMintOutboxService } from './deed-mint-outbox.service.js';
 import { DeedProjectorService, type DeedMilestonePatch } from './deed-projector.service.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
@@ -66,6 +67,7 @@ export class DeedDebounceService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
+    @Optional() @Inject(OutboxRelayService) private readonly outboxRelay?: OutboxRelayService,
   ) {}
 
   onModuleInit(): void {
@@ -85,11 +87,15 @@ export class DeedDebounceService implements OnModuleInit, OnModuleDestroy {
       this.stops.push(
         this.planets.onWarp((_planetId, k) => {
           if (k > 1) {
-            void this.advanceClockMs(k * 60_000).catch((err: unknown) => {
-              this.log.warn(
-                `deed debounce warp flush failed: ${err instanceof Error ? err.message : String(err)}`,
-              );
-            });
+            void this.advanceClockMs(k * 60_000)
+              .then(async (flushed) => {
+                if (flushed.length > 0) await this.outboxRelay?.pollOnce();
+              })
+              .catch((err: unknown) => {
+                this.log.warn(
+                  `deed debounce warp flush failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              });
           }
         }),
       );
