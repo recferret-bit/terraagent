@@ -1,5 +1,6 @@
 import {
   DEFAULT_DIRECTOR_POLICY,
+  type AutopilotMode,
   type DirectorPolicyV1,
   type IndependentPriorities,
 } from '@terra/contracts';
@@ -16,11 +17,10 @@ export interface ColonyDirectorRecord {
   policy: DirectorPolicyV1;
   /** Bumped on player intent changes. Open plans from an older revision are superseded. */
   intentRevision: number;
-  /**
-   * Mirror so a risk change can be checked. This module never writes `true`.
-   * W09 owns the real away-raid opt-in; it is not in this tree yet (AI-05).
-   */
+  /** Player away-raid opt-in. `setAutopilot` writes it. `setDirectorPolicy` does not. Default false. */
   awayRaids: boolean;
+  /** `setAutopilot` mode. `setDirectorPolicy` does not write it. Default `director`. */
+  autopilotMode: AutopilotMode;
   plans: DirectorPlanRef[];
   baselined: boolean;
   seenPriorities: string;
@@ -61,6 +61,7 @@ function emptyRecord(): ColonyDirectorRecord {
     policy: clonePolicy(DEFAULT_DIRECTOR_POLICY),
     intentRevision: 0,
     awayRaids: false,
+    autopilotMode: 'director',
     plans: [],
     baselined: false,
     seenPriorities: '',
@@ -78,8 +79,21 @@ function readBlob(state: PlanetState): DirectorBlob {
   return { byColony: byColony && typeof byColony === 'object' ? byColony : {} };
 }
 
+/** A snapshot from before W09-34 has no mode. Missing or unknown becomes `director`. */
+function settleMode(record: ColonyDirectorRecord): ColonyDirectorRecord {
+  if (record.autopilotMode === 'director' || record.autopilotMode === 'rules_only') return record;
+  const autopilotMode: AutopilotMode = 'director';
+  try {
+    record.autopilotMode = autopilotMode;
+    return record;
+  } catch {
+    return { ...record, autopilotMode };
+  }
+}
+
 export function directorRecord(state: PlanetState, colonyIndex: number): ColonyDirectorRecord | undefined {
-  return readBlob(state).byColony[String(colonyIndex)];
+  const row = readBlob(state).byColony[String(colonyIndex)];
+  return row ? settleMode(row) : undefined;
 }
 
 /** Reads a colony's director record from either a `PlanetState` (`blobs.director.value`) or a `SimView` / `ClientView` (`blobs.director`). */
@@ -91,7 +105,8 @@ export function readDirectorView(view: unknown, colonyIndex = 0): ColonyDirector
   const inner = 'value' in raw && raw.value && typeof raw.value === 'object' ? raw.value : raw;
   const byColony = (inner as DirectorBlob).byColony;
   if (!byColony || typeof byColony !== 'object') return undefined;
-  return byColony[String(colonyIndex)];
+  const row = byColony[String(colonyIndex)];
+  return row ? settleMode(row) : undefined;
 }
 
 export function saveDirectorRecord(state: PlanetState, colonyIndex: number, record: ColonyDirectorRecord, tick: number): void {
@@ -106,6 +121,24 @@ export function ensureDirectorRecord(state: PlanetState, colonyIndex: number, ti
   const created = emptyRecord();
   saveDirectorRecord(state, colonyIndex, created, tick);
   return created;
+}
+
+/** Omitted patch fields stay. A throw is ignored so a missing director table cannot fail `setAutopilot`. */
+export function mirrorAutopilotOnDirector(
+  state: PlanetState,
+  colonyIndex: number,
+  patch: { mode?: AutopilotMode; awayRaids?: boolean },
+  tick: number,
+): void {
+  if (patch.mode === undefined && patch.awayRaids === undefined) return;
+  try {
+    const record = ensureDirectorRecord(state, colonyIndex, tick);
+    if (patch.awayRaids !== undefined) record.awayRaids = patch.awayRaids;
+    if (patch.mode !== undefined) record.autopilotMode = patch.mode;
+    saveDirectorRecord(state, colonyIndex, record, tick);
+  } catch {
+    // Missing director data must not fail setAutopilot.
+  }
 }
 
 /** Drops the oldest superseded plans so the blob stays bounded. */

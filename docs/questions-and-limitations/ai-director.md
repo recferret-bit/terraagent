@@ -30,15 +30,15 @@
 - **To resolve:** W16-28 and W16-48 record versions, measured usage/cost and real contract results.
 - **Found:** 2026-11-04, W16 planning review.
 
-### AI-05 · Director away-raid mirror is not the W09 setting yet
+### AI-05 · Director away-raid mirror is written by setAutopilot
 
-- **Status:** Open
-- **Area / code:** `shared/sim/src/systems/director/store.ts` (`awayRaids`)
-- **What happens:** director state stores `awayRaids: false`. `setDirectorPolicy`, including a switch to Risky, never writes `true`. The W09 away opt-in is not in this tree, so there is no second writer.
-- **Why it is like this:** W16 must prove risk does not grant raids (AI-12) before W09's `setAutopilot` lands. The mirror is the checkable stand-in.
-- **Workaround / mitigation:** the field stays false. A command that sends `awayRaids` is `invalid_args` because the policy schema has no such key.
-- **To resolve:** when W09 away policy is in the sim, read that setting here and delete the mirror.
-- **Found:** 2026-11-04, W16-34.
+- **Status:** Resolved (W09-34)
+- **Area / code:** `shared/sim/src/systems/director/store.ts` (`mirrorAutopilotOnDirector`, `awayRaids`, `autopilotMode`), `shared/sim/src/systems/away/autopilot.ts`, `shared/sim/src/systems/director/policy.ts`
+- **What happens:** `setAutopilot` writes `awayRaids` and `autopilotMode` (`director` | `rules_only`, default `director`) onto that colony's director record in the same tick. A patch that omits a field leaves the record's current value. `setDirectorPolicy` does not write either field, so Risky neither grants nor clears raids. The mirror stays. `coreSkillLimits` still returns `awayRaids: false`; the away gate reads the away blob. A throw from the director helpers is ignored so `setAutopilot` still stores the away blob when the W16 table is missing.
+- **Why it is like this:** W09-34 is the writer. Deleting the mirror would make W16 re-read the away blob. Risk must still not grant raids (AI-12).
+- **Workaround / mitigation:** a `setDirectorPolicy` payload with `awayRaids` is `invalid_args`. Callers that build preview limits pass `awayRaids` themselves.
+- **To resolve:** resolved in W09-34. Do not have `setDirectorPolicy` write these fields.
+- **Found:** 2026-11-04, W16-34. Resolved 2026-11-09, W09-34.
 
 ### AI-04 · Separate worker and large-world performance are unmeasured
 
