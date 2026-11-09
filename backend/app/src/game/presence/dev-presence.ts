@@ -130,13 +130,19 @@ function eliminatedMark(planetId: string, colony: LoadedColony, startedAtMs: num
 function findColony(state: PlanetState, input: PresenceSeat): { id: string; index: number } | undefined {
   if (input.colonyId) {
     const byId = state.colonies.find((colony) => colony?.id === input.colonyId);
-    if (!byId) return undefined;
-    if (input.colonyIndex !== undefined && byId.index !== input.colonyIndex) return undefined;
-    return { id: byId.id, index: byId.index };
+    if (byId) {
+      if (input.colonyIndex !== undefined && byId.index !== input.colonyIndex) return undefined;
+      return { id: byId.id, index: byId.index };
+    }
   }
   const index = input.colonyIndex ?? 0;
   const row = state.colonies[index] ?? state.colonies.find((colony) => colony?.index === index);
-  return row ? { id: row.id, index: row.index } : undefined;
+  if (!row) return undefined;
+  const home = input.colonyId;
+  // Welcome stores `co_…` (BE-45). The sim row may still be `col_w09`. The command keeps the home id so the digest matches.
+  if (home && home.startsWith('co_') && !row.id.startsWith('co_')) return { id: home, index: row.index };
+  if (home && home !== row.id) return undefined;
+  return { id: row.id, index: row.index };
 }
 
 function readAway(state: PlanetState, index: number): boolean {

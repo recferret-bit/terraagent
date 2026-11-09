@@ -881,3 +881,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** In the same process, `HardModeClock.get(planetId, colonyId)` is what home reads. After a restart the player is `ACTIVE` on the same colony.
 - **To resolve:** Persist the mark, or set the colony row `ELIMINATED`, and build the PROTOCOL recap (survived time, peak stats, open planets). Clear the mark when the recap is seen if a new colony should be seatable. Fold `colonyEliminated` into the digest if the away modal must mention it. A local home, if one is added, should read `LocalHardModeClock`.
 - **Found:** 2026-11-09, W09-19
+
+### BE-67 · A scenario away digest is keyed by the home id, so its baseline stays zero
+
+- **Status:** Accepted (W09-33)
+- **Area / code:** `backend/app/src/game/presence/dev-presence.ts` (`findColony`), `shared/sim/src/systems/presence/resolve.ts` (`colonyAt`), `backend/app/src/game/digest/baseline.ts` (`baselineFromState`), `backend/app/src/notify/notify-test.ts`
+- **What happens:** A dev scenario seat writes a `co_` colony row and leaves the sim colony id as the fixture (`col_w09`, BE-45). `away` / `back` post `system.presence` with the `co_` id so `welcome.away` finds the digest. The snapshot still names `col_w09`, so `baselineFromState` misses the colony and `before` stays equal to `after` (BE-59). `POST /v1/dev/notify/test` routes `under_attack` through the alert router only. It does not emit a sim raid, so the plate's attack count stays 0 unless something else folded one. The local host has no `welcome.away`; its console lines are the away record.
+- **Why it is like this:** Rewriting the sim colony id on the first away would move every id lookup in the same step. The plate still shows the duration and the attacks line. The mock row is the attack the e2e checks.
+- **Workaround / mitigation:** Read nets only when the snapshot colony id equals the digest colony id. For a scenario, treat a zero net as "not measured", not as "nothing changed".
+- **To resolve:** On scenario seat, set the sim colony id to the `co_` row (or stamp `after` by colony index). Fold a sim `underAttack` in the dev notify route only if the plate must count that test ping.
+- **Found:** 2026-11-09, W09-33

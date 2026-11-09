@@ -26,7 +26,14 @@ function seat(ctx: FeatureContext, cmd: string): SeatBody {
   if (!planetId) throw new Error(`${cmd}: not connected to a planet yet`);
   const colonyIndex = ownColonyIndex(ctx.services);
   const row = viewColony(ctx.services.store?.latest, colonyIndex);
-  return { planetId, colonyIndex, ...(row?.id ? { colonyId: row.id } : {}) };
+  const colonyId = homeColonyId(ctx) ?? row?.id;
+  return { planetId, colonyIndex, ...(colonyId ? { colonyId } : {}) };
+}
+
+/** The welcome colony id. A scenario sim row may still be a fixture id; the server maps `co_` onto that seat. */
+function homeColonyId(ctx: FeatureContext): string | undefined {
+  const id = ctx.services.session?.colonyId?.();
+  return id && id.startsWith('co_') ? id : undefined;
 }
 
 async function call(ctx: FeatureContext, cmd: string, name: string, body: SeatBody): Promise<unknown> {

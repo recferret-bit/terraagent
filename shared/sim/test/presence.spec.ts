@@ -75,6 +75,15 @@ describe('system.presence', () => {
     expect(state.blobs.presence).toBeUndefined();
   });
 
+  it('accepts a home co_ id on a fixture colony row and emits that id', () => {
+    const state = planet();
+    const home = 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV';
+    const res = step(state, [presenceCmd(true, 'cm_home', { args: { colonyId: home, away: true } })], 1, pipeline());
+    expect(res.outcomes[0]?.code).toBeUndefined();
+    expect(presenceEvents(res.events)[0]?.data).toMatchObject({ colonyId: home, colonyIndex: 0, atTick: 1 });
+    expect(presenceAway(state, 0)).toBe(true);
+  });
+
   it('resolves the colony by id when colonyIndex is null, and keys the blob by index', () => {
     const state = planet();
     state.colonies.push({ index: 1, id: 'col_1', name: 'D', color: 2, status: 'active', changedAt: 0 });

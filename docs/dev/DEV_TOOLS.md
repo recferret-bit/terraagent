@@ -209,6 +209,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 | `GET /v1/near/cargo[?colonyId=&accountId=]` | Per-colony orbital cargo read model (`inOrbit`, `pending`, `pendingExport`, `pendingImport`, `mintedToday`, `dailyCap`, `throughputUsedPerMin`, `throughputCapPerMin`, plus `colonies` map); also pushed over WebSocket as `cargo.status` on export/import/settle/refund. 404 when `W10` is off (W10-14, not dev-only) |
 | `GET /v1/dev/chain/{receipts,balances,nfts,dao,escrow,outbox}` | Explorer data (`?account=`, `?limit=`, `?status=`, `?collection=`) |
 | `GET /v1/dev/notify?colonyId=&limit=` | Recent mock notifier rows from `core.mock_notify` (newest first). `limit` is 1–200, default 50. One row per `(colonyId, eventId, channel)`. A send while that colony has a playing socket writes nothing (`status: skipped`). 404 in production (W09-20). The chain outbox stays `GET /v1/dev/chain/outbox` |
+| `POST /v1/dev/notify/test` | Dev-only. Body `{ colonyId, planetId?, tick?, eventId? }` asks the alert router for one `under_attack` (`eventId` defaults to `dev:under_attack:<colonyId>:<nowMs>`). Returns `{ kind: 'under_attack', colonyId, sent }`. `sent` is 0 when the 10-minute window is closed. A playing socket for that colony still writes no row (`status: skipped`) and still uses the window. 404 in production, 400 when `colonyId` is not a home colony id (W09-33) |
 | `POST /v1/analytics/events` | Analytics intake (`AnalyticsBatchV1`, not dev-only) |
 
 ## Environment variables
