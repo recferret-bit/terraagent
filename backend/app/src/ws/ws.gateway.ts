@@ -16,6 +16,7 @@ import type { PresenceTracker } from '../game/presence/tracker';
 import type { CommandIngress } from './command-ingress';
 import { Connection, type ConnectionDeps } from './connection';
 import type { HomeProvider } from './home-provider';
+import { PlayingSockets } from './playing-sockets';
 import { PlanetRooms } from './rooms';
 import type { SessionVerifier } from './session-verifier';
 
@@ -39,11 +40,11 @@ export interface GatewayOptions {
   readonly presence?: PresenceTracker;
 }
 
-/** `/ws` upgrade handling, origin allow-list, connection registry and the one-planet-socket-per-player rule (WS-13). */
+/** `/ws` upgrade handling, origin allow-list, connection registry and one playing socket per colony (CT-41). */
 export class WsGateway {
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, perMessageDeflate: { threshold: 1024 } });
   private readonly conns = new Set<Connection>();
-  private readonly byPlayer = new Map<string, Connection>();
+  private readonly playing = new PlayingSockets();
   private readonly rooms: PlanetRooms;
   private readonly originOk: ReturnType<typeof corsOrigin>;
   private readonly welcomes: Counter;
@@ -104,7 +105,7 @@ export class WsGateway {
       onJoined: (c) => { this.notePresenceJoin(c); this.replaceOlder(c); },
       onClosed: (c) => {
         this.conns.delete(c);
-        if (c.playerId && this.byPlayer.get(c.playerId) === c) this.byPlayer.delete(c.playerId);
+        this.playing.forget(c);
         this.notePresenceClose(c);
       },
     };
@@ -140,12 +141,9 @@ export class WsGateway {
     return { setMode: (planetId: string, mode: 'active' | 'coarse') => { planets.setMode(planetId, mode); } };
   }
 
-  /** The new welcome is already sent: close the player's previous planet socket with 4001. */
+  /** The new welcome is already sent. Close the older socket for this colony with 4001. */
   private replaceOlder(c: Connection): void {
-    if (!c.playerId) return;
-    const older = this.byPlayer.get(c.playerId);
-    this.byPlayer.set(c.playerId, c);
-    if (older && older !== c) older.bye(CLOSE_CODES.replaced, 'replaced');
+    this.playing.replace(c);
   }
 
   private broadcastCargoStatus(ev: NearCargoStatusBusEvent): void {

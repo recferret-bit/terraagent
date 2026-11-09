@@ -148,7 +148,8 @@ describe('WS gateway: join, leave, shutdown', () => {
     expect((await c.closed).code).toBe(4003);
   });
 
-  it('a second join by the same player replaces the older socket with 4001 after the new welcome', async () => {
+  it('a second dev join with no colony replaces the older socket with 4001 after the new welcome', async () => {
+    // Dev welcomes have colonyId null, so this path still replaces by player. A different colony does not: colony-socket.spec.ts.
     const { url } = await boot();
     const a = await Client.open(url);
     a.hello('bob');
