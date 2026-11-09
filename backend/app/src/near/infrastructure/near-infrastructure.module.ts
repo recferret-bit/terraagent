@@ -6,6 +6,7 @@ import { guardedEnv } from '../../ports/prod-guard.js';
 import { PORTS } from '../application/ports/index.js';
 import { IntentsBalanceReadPort } from '../application/ports/intents-balance-read.port.js';
 import type { NearPortName } from '../domain/types.js';
+import { NearStakingPoolsEnvSchema } from '../staking/staking-pools.config.js';
 import { nearAdapterFor, NEAR_PORT_KEYS } from './adapter-selection.js';
 
 /** Adapters are discovered from `./adapters/**\/*.adapter.ts` at load; see `near/README.md`. */
@@ -27,6 +28,7 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]) =>
     NEAR_KEK: z.string().optional(),
     NEAR_KEK_VERSION: z.string().optional(),
     NEAR_KEK_RING: z.string().optional(),
+    NEAR_STAKING_POOLS: NearStakingPoolsEnvSchema,
   }, 'NEAR_ALLOW_MOCK_IN_PROD',
     nearPorts.map((p) => ({ name: p.name, token: p.token, key: keyOf(p.name), kind: (s) => nearAdapterFor(p.name as NearPortName, s) })), adapters);
 
