@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode, type HomeResponse } from '@terra/contracts';
 import type { RawData, WebSocket } from 'ws';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
+import { holdColonySocket, releaseColonySocket } from '../game/presence/socket-presence';
 import type { CommandIngress } from './command-ingress';
 import { DEFAULT_HOME, type HomeProvider } from './home-provider';
 import { MarketTopics } from './market-topics';
@@ -59,6 +60,8 @@ export class Connection implements RoomMember {
   private resyncing = false;
   /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
   private readonly colonyMemo: { planetId?: string; colony?: null } = {};
+  /** This socket has incremented the colony presence refcount (CT-38). Released once in `leaveRoom`. */
+  private colonyHeld = false;
   private chain: Promise<void> = Promise.resolve();
   private helloTimer: NodeJS.Timeout | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
@@ -175,6 +178,7 @@ export class Connection implements RoomMember {
   }
 
   private leaveRoom(): void {
+    this.releaseColony();
     if (this.planetId) this.d.rooms.leave(this.planetId, this);
     delete this.colonyMemo.planetId;
     delete this.colonyMemo.colony;
@@ -182,6 +186,20 @@ export class Connection implements RoomMember {
     this.market.reset();
     this.colonyId = null;
     this.welcomeTick = undefined;
+  }
+
+  /** Holds presence only after `playing`, and before the previous socket of this player is closed. */
+  private holdColony(): void {
+    if (this.colonyHeld || !this.colonyId) return;
+    holdColonySocket(this.colonyId);
+    this.colonyHeld = true;
+  }
+
+  private releaseColony(): void {
+    if (!this.colonyHeld) return;
+    const id = this.colonyId;
+    this.colonyHeld = false;
+    if (id) releaseColonySocket(id);
   }
 
   private parse(frame: string | Uint8Array): ClientMessage | undefined {
@@ -292,6 +310,7 @@ export class Connection implements RoomMember {
     this.sendWelcome('join', planetId, snap);
     this.welcomeTick = snap.tick;
     this.state = 'playing';
+    this.holdColony();
     this.d.onWelcome();
     this.d.onJoined(this);
   }

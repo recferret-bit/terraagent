@@ -15,7 +15,7 @@ export interface Notification {
   readonly deepLink?: string;
   readonly data?: Readonly<Record<string, unknown>>;
 }
-export interface NotificationResult { readonly id: string; readonly status: 'sent' | 'queued' | 'failed' }
+export interface NotificationResult { readonly id: string; readonly status: 'sent' | 'queued' | 'failed' | 'skipped' }
 
 export abstract class NotifierPort {
   abstract send(n: Notification): Promise<NotificationResult>;

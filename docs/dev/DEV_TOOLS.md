@@ -205,6 +205,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 | `POST /v1/dev/mock-oauth/token` | Mock OAuth: `{ provider: 'google'\|'x', subject (1–64), email? }` → `{ token }` (HMAC-SHA256, `MOCK_OAUTH_SECRET`, 5 min). 404 in production, when Identity is not the mock adapter, or when `W06` is off |
 | `GET /v1/near/cargo[?colonyId=&accountId=]` | Per-colony orbital cargo read model (`inOrbit`, `pending`, `pendingExport`, `pendingImport`, `mintedToday`, `dailyCap`, `throughputUsedPerMin`, `throughputCapPerMin`, plus `colonies` map); also pushed over WebSocket as `cargo.status` on export/import/settle/refund. 404 when `W10` is off (W10-14, not dev-only) |
 | `GET /v1/dev/chain/{receipts,balances,nfts,dao,escrow,outbox}` | Explorer data (`?account=`, `?limit=`, `?status=`, `?collection=`) |
+| `GET /v1/dev/notify?colonyId=&limit=` | Recent mock notifier rows from `core.mock_notify` (newest first). `limit` is 1–200, default 50. One row per `(colonyId, eventId, channel)`. A send while that colony has a playing socket writes nothing (`status: skipped`). 404 in production (W09-20). The chain outbox stays `GET /v1/dev/chain/outbox` |
 | `POST /v1/analytics/events` | Analytics intake (`AnalyticsBatchV1`, not dev-only) |
 
 ## Environment variables
@@ -240,7 +241,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `OUTBOX_RELAY_ENABLED`, `OUTBOX_POLL_MS`, `OUTBOX_LEASE_MS`, `OUTBOX_MAX_ATTEMPTS` | on, 1000, 30000, 8 | Chain outbox relay |
 | `NEAR_ADAPTER_IDENTITY` | mock | `IdentityPort` (W06). Anything but `testnet` or `mainnet` is the mock |
 | `NEAR_ADAPTER_RELAYER` | mock | `RelayerPort` (W06). Anything but `testnet` or `mainnet` is the mock |
-| `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection for the other ports (see above). `AI_PROVIDER=zai` outside production also needs `AI_LIVE=1` or boot fails. `ZAI_API_KEY` is read from the environment when a live call runs. Put it in `infra/.env` (gitignored). Do not commit it. |
+| `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection for the other ports (see above). `AI_PROVIDER=zai` outside production also needs `AI_LIVE=1` or boot fails. `ZAI_API_KEY` is read from the environment when a live call runs. Put it in `infra/.env` (gitignored). Do not commit it. `NOTIFY_ADAPTER=mock` (the default, and anything except the exact strings `live` / `webpush` / `telegram`) writes idempotent rows in `core.mock_notify`, listed at `GET /v1/dev/notify`. `webpush` and `telegram` still select `live`, which has no adapter yet, so that boot fails until W09-22/24. |
 | `AI_MODEL`, `AI_BASE_URL` | `glm-5.3`, `https://api.z.ai/api/paas/v4` | Live Z.ai model and OpenAI-compatible base URL |
 | `director.plan`, `director.trace` | — | In-game dev console (`` ` ``). Dev builds only. `director.plan` prints a forced mock plan, its trace, and queue depth. Absent when `NODE_ENV=production`. |
 | Director worker | — | `npm run start -w @terra/director -- --check` prints `director director up db=none` and exits. It does not join the game or open a database. The play page keeps ticking. |

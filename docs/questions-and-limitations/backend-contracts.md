@@ -749,3 +749,15 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `autoTrade` stays out of this command. Its checker is W09-13 and its command is W15-01 `setAutoTrade`.
 - **To resolve:** Confirm the single-command shape, or split `setAwayBudget` to match PROTOCOL. Confirm Bio covers oil.
 - **Found:** 2026-11-09, W09-01 contract default
+
+## W09 Offline notifications
+
+### BE-54 · Mock notify is silent only while a socket is held; live push is not registered
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/notify/mock-notifier.ts`, `backend/app/src/notify/presence.ts`, `backend/app/src/ws/connection.ts` (`holdColony`), `GET /v1/dev/notify`
+- **What happens:** `NOTIFY_ADAPTER=mock` (the default) inserts one `core.mock_notify` row per `(colonyId, eventId, channel)`. A second send returns that row's id with `status: sent` and does not change title or body. While the colony has a playing `/ws` socket, `send` returns `{ id: 'skipped', status: 'skipped' }` and writes nothing. `skipped` is not a row id. The socket set is an in-memory refcount, cleared on process restart and not the 60s away timer. A dev socket that joined without owning the colony (`colonyId` null) does not suppress rows. `NOTIFY_ADAPTER=webpush`, `telegram` or `live` still selects `live`, and boot fails because no live adapter is registered. Rows are listed at `GET /v1/dev/notify`, not on the chain outbox page.
+- **Why it is like this:** W09-20 is the Postgres mock and the connected gate. Web Push and Telegram are W09-22/24. The away timer is W09-02. The chain outbox viewer is chain receipts, so a notify section there would mix two products.
+- **Workaround / mitigation:** Leave `NOTIFY_ADAPTER` unset or set it to `mock`. Read `GET /v1/dev/notify?colonyId=`. A repeat of the same event id is one row.
+- **To resolve:** W09-02 should replace the presence writer. W09-22/24 should register the `live` adapter. Until then, do not set `NOTIFY_ADAPTER` to `webpush`, `telegram` or `live`.
+- **Found:** 2026-11-09, W09-20
