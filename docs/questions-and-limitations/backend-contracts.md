@@ -788,8 +788,8 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Area / code:** `backend/app/src/game/presence/planet-mode.ts` (`syncPlanetMode`), `backend/app/src/game/thread/sim-thread.ts` (`scheduler.add`), `shared/sim/src/host/scheduler.ts` (`setMode`)
 - **What happens:** a loaded planet starts `active` (`dt` 1 every 200 ms). Coarse (`dt` 5 every 1 s) starts only when its socket count falls from ≥1 to 0. A dev planet or a restored planet that no socket has joined keeps 5 TPS, so `ta_game_planet_mode{mode="active"}` counts it. The first join sends `active` again and does not move `nextDueMs`. A join onto a coarse planet waits for the step already scheduled (at most one coarse interval) and that step uses `dt` 1. The 60 s away timer does not change the mode.
 - **Why it is like this:** W09-03 follows sockets at `presence.join` / `presence.close`. Sending coarse on every load would change the W00 lag check: a 2 s stall of a coarse planet is about 2 steps behind, not ≥4. `setMode` leaves the due time so a second join cannot burst catch-up steps.
-- **Workaround / mitigation:** the last socket to leave still switches that planet within the stepping loop. Empty-from-boot planets stay on the active cadence until someone joins and later leaves.
-- **To resolve:** after `loaded`, if `socketsOn` is 0, send coarse, and retune the lag check for that cadence. W09-06 fast-run should force coarse for the gap and then restore the socket mode.
+- **Workaround / mitigation:** the last socket to leave still switches that planet within the stepping loop. Empty-from-boot planets stay on the active cadence until someone joins and later leaves. A restart fast-run (W09-06) steps the gap with coarse `dt` before the planet is scheduled, then `scheduler.add` leaves it `active`.
+- **To resolve:** after `loaded`, if `socketsOn` is 0, send coarse, and retune the lag check for that cadence. The restart fast-run already steps the gap coarse and then schedules `active` (W09-06).
 - **Found:** 2026-11-09, W09-03
 
 ### BE-58 · Alert kind toggles do not survive a process restart
@@ -811,3 +811,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The next snapshot fill replaces an all-zero baseline. Attack counts survive a restart because the body is flushed in the same write as the snapshot.
 - **To resolve:** W09-16 can write the end baseline (`after`) on return. A schema addition would be needed before terraform percent or per-type building counts can be stored.
 - **Found:** 2026-11-09, W09-15
+
+### BE-60 · Restart fast-run drops a short gap and emits events while it steps
+
+- **Status:** Accepted (W09-06 scope; notification hold is W09-27)
+- **Area / code:** `backend/app/src/game/restart/` (`missedRestartTicks`, `runCoarseCatchUp`), `backend/app/src/game/thread/sim-thread.ts` (`finishCatchUp`), `backend/app/src/game/persistence/snapshot.service.ts` (`restore`)
+- **What happens:** The missed time is `now − savedAt` at 5 active ticks per wall second (`TICK_MS` 200), capped at `RESTART_FASTRUN_MAX_H` (24). The fast-run steps `dt` 5, so a remainder under 5 ticks is not simulated. Events from those steps are posted as the loop runs, not held until it finishes (CT-54). After the run the planet is scheduled `active` (BE-57), not left coarse. A periodic snapshot is requested when the run finishes so the next boot's gap is ~0. A crash before that snapshot is stored reloads the previous snapshot and runs the gap again; the lost in-memory run is not applied on top.
+- **Why it is like this:** Coarse steps are the continuity rule (CT-51). Holding notifications until the run ends is W09-27. Socket mode stays the W09-03 rule. The follow-up snapshot is what stops a second boot from repeating the catch-up.
+- **Workaround / mitigation:** Gaps shorter than one coarse step catch up on a later boot once they reach 5 ticks. Do not treat sim events during boot as already-deduped alerts.
+- **To resolve:** W09-27 should queue fast-run notifications and send them once, deduped. No change is needed for the 24 h cap or the coarse remainder.
+- **Found:** 2026-11-09, W09-06

@@ -41,6 +41,7 @@ import { PlanetHeldError, SnapshotService } from './persistence/snapshot.service
 import { SnapshotStore } from './persistence/snapshot-store';
 import { ProgressionEventForwarder } from './progression-events.service';
 import { wirePlanetRecovery } from './planet-recovery';
+import { installRestartFastRunMetric } from './restart/metric';
 import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
 import { W00_PLANET_TYPE } from './thread/protocol';
@@ -205,6 +206,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
     });
+    installRestartFastRunMetric(this.planets, this.metrics.registry);
     const restored = await this.snapshots.restoreAll();
     const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
     const devOpts = this.flags.has('W01')
