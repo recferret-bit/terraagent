@@ -48,12 +48,13 @@ export interface ClientTiles {
   terrain: Uint8Array;
   prep: Uint8Array;
   height: Float32Array;
-  owner: Int8Array;
+  owner: Int16Array | Int8Array;
   deposit?: Uint8Array;
   /** Tier of the visible deposit: 0 = legacy (tier 1), 1..3 explicit (sim `depositTier` layer). */
   depositTier?: Uint8Array;
   richness?: Float32Array;
   explored?: Uint8Array;
+  exploredByColony?: Record<number, Uint8Array>;
 }
 
 /** What the main thread sees. `tiles` is present on the first view after a welcome and whenever a tile changed. */
@@ -85,6 +86,7 @@ export interface WireView {
     depositTier?: ArrayBuffer;
     richness?: ArrayBuffer;
     explored?: ArrayBuffer;
+    exploredByColony?: Record<number, ArrayBuffer>;
   };
   entities: ArrayBuffer;
   count: number;
@@ -104,7 +106,7 @@ export function packEntities(entities: SimView['entities']): Float32Array {
   return out;
 }
 
-const copy = <T extends Uint8Array | Int8Array | Float32Array>(a: T): T => a.slice() as T;
+const copy = <T extends Uint8Array | Int8Array | Int16Array | Float32Array>(a: T): T => a.slice() as T;
 
 /** Packs a view; `withTiles` copies the tile layers (welcome / changed tiles), otherwise they are omitted. */
 export function packView(v: SimView, withTiles: boolean): { view: WireView; transfer: ArrayBuffer[] } {
@@ -131,11 +133,20 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
   };
   if (withTiles) {
     const t = v.tiles;
-    const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = copy(t.owner);
+    const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = Int16Array.from(t.owner);
     const deposit = t.deposit ? copy(t.deposit) : undefined;
     const depositTier = t.depositTier ? copy(t.depositTier) : undefined;
     const richness = t.richness ? copy(t.richness) : undefined;
     const explored = t.explored ? copy(t.explored) : undefined;
+    let exploredByColony: Record<number, ArrayBuffer> | undefined;
+    if (t.exploredByColony) {
+      exploredByColony = {};
+      for (const [k, bits] of Object.entries(t.exploredByColony)) {
+        const cloned = copy(bits);
+        exploredByColony[Number(k)] = cloned.buffer as ArrayBuffer;
+        transfer.push(cloned.buffer as ArrayBuffer);
+      }
+    }
     view.tiles = {
       count: t.count,
       terrain: terrain.buffer as ArrayBuffer,
@@ -146,6 +157,7 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
       ...(depositTier ? { depositTier: depositTier.buffer as ArrayBuffer } : {}),
       ...(richness ? { richness: richness.buffer as ArrayBuffer } : {}),
       ...(explored ? { explored: explored.buffer as ArrayBuffer } : {}),
+      ...(exploredByColony ? { exploredByColony } : {}),
     };
     transfer.push(view.tiles.terrain, view.tiles.prep, view.tiles.height, view.tiles.owner);
   }
@@ -165,16 +177,35 @@ export function unpackView(w: WireView, serverTimeMs?: number): ClientView {
   };
   if (serverTimeMs !== undefined) out.serverTimeMs = serverTimeMs;
   if (w.tiles) {
+    let exploredByColony: Record<number, Uint8Array> | undefined;
+    if (w.tiles.exploredByColony) {
+      exploredByColony = {};
+      for (const [k, buf] of Object.entries(w.tiles.exploredByColony)) {
+        exploredByColony[Number(k)] = new Uint8Array(buf);
+      }
+    } else {
+      const blob = w.blobs?.colonyExplored as { byColony?: Record<number, Uint8Array> } | undefined;
+      if (blob?.byColony) {
+        exploredByColony = {};
+        for (const [k, bits] of Object.entries(blob.byColony)) {
+          exploredByColony[Number(k)] = bits instanceof Uint8Array ? bits : Uint8Array.from(bits);
+        }
+      }
+    }
     out.tiles = {
       count: w.tiles.count,
       terrain: new Uint8Array(w.tiles.terrain),
       prep: new Uint8Array(w.tiles.prep),
       height: new Float32Array(w.tiles.height),
-      owner: new Int8Array(w.tiles.owner),
+      owner:
+        w.tiles.owner.byteLength === w.tiles.count * 2
+          ? new Int16Array(w.tiles.owner)
+          : Int16Array.from(new Int8Array(w.tiles.owner)),
       ...(w.tiles.deposit ? { deposit: new Uint8Array(w.tiles.deposit) } : {}),
       ...(w.tiles.depositTier ? { depositTier: new Uint8Array(w.tiles.depositTier) } : {}),
       ...(w.tiles.richness ? { richness: new Float32Array(w.tiles.richness) } : {}),
       ...(w.tiles.explored ? { explored: new Uint8Array(w.tiles.explored) } : {}),
+      ...(exploredByColony ? { exploredByColony } : {}),
     };
   }
   return out;

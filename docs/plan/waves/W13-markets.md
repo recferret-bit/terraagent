@@ -185,3 +185,15 @@ Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, 
 Extend the owner demo with a desert metal specialist and a crystal-ridge supplier, then a growing army at fixed logistics capacity. Show the same operation before/after buying supplies or building a depot; larger recurring material quantities/costs are explicit, market unit price/fees remain unchanged. Demonstrate reserve mode, exhausted supply response and safe retreat, then replay the matching experiment. Use single-region fixtures with W11 off; no invented renderer sectors. New-world endowment changes do not overwrite an existing world.
 
 W13-50–57 are required scope. The profile editor and experiment reports expose all knobs; coefficients are calibration fixtures, not claims of validated balance. See LED-19 for unresolved calibration and multi-colony trade-offs.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S0–S4` Only):**
+   - `W17` (Tier 2) and `W19` (Tier 3) are **POSTPONED**. Active gameplay trading, Supply & Trade shortages, and bot quoting in the vertical slice center on the 4 Tier-1 tradable resources (`metals.t1`, `minerals.t1`, `bio.water`, `bio.biomass`) plus `USDC` and `NEAR` quotes (the schema registry retains all `ResourceKey` definitions so compiled profiles remain forward-compatible).
+2. **Unit & Integration Test Matrix (Positive / Negative / Corner):**
+   - **Unit (`*.spec.ts`):** price-time matcher, exact integer fee/batch builder (buyer pays 1% platform + 0–1% stall fee), need/value deterministic quote library (`W13-61`), organic-fill classifier (`W13-62`), and logistics/flow calculators covering positive, negative (`no_trade_hub`, `hub_offline`, `insufficient_cargo`, `NEAR_INTENT_DIFF_NOT_ZERO`, `bot_order_limit`, `bot_notional_limit`, `bot_budget_exhausted`, `bot_price_band`, `rate_limited`, self-trade), and corner cases (7-unit 1% rounding = 0 dust, partial fill across policy buckets, duplicate `Idempotency-Key`, kill-switch race).
+   - **Integration (`*.int.spec.ts` & Emulated Chain `W13-65`):** real Postgres order-book + outbox settlement recovery across injected faults (`fail-before-submit`, `unknown outcome`, `delayed finality`, `duplicate delivery`, `insufficient funds`) and mid-settlement server restarts.
+3. **Full Game Integration + Online Server E2E (`tests/e2e/w13.spec.ts`):**
+   - Full integration across `shared/sim` (`market.reserve/release/settled`, logistics windows, unit reserve mode), `backend/app` (`/v1/market/*`, `/v1/trade/*` bot API, `/v1/economy/*` profiles), `frontend/game` (Trade Hub Market tab, Supply & Trade bar, price board), and standalone `/trade.html`, verified by multi-context Playwright E2E against the live server and `TA_WAVES=..12` flag-off check.
+4. **100% Working Mocked Mode + `NEAR_MODE` Switch:**
+   - 100% working in `NEAR_MODE=mock` (`MockIntentsAdapter` + emulated chain + mock USDC/NEAR faucet + `/dev/chain/?tab=economy`) and switchable via `NEAR_MODE=testnet|devnet|mainnet` (`NEAR_ADAPTER_INTENTS`) in `W23` behind the same `IntentsPort` contract suite (`intents.contract.ts`).

@@ -97,3 +97,9 @@ A player can go from **guest → social login → a named account ("Pilot ID")**
 - The `identity` and `relayer` contract suites pass against the mocks.
 - No player-facing chain wording (W06-21 green).
 - Tag `wave-06` created on the merge commit.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (F5 Invisible Chain):** Custodial colony sub-accounts (`{colony}.terraagent.*`), KEK-encrypted keystore, NEP-366 meta-tx relayer, and `/dev/chain` explorer.
+2. **Test Pyramid & Online E2E (`tests/e2e/w06.spec.ts`):** Shared `identity.contract.ts` & `relayer.contract.ts` suites + Postgres outbox retry/failure-injection integration specs + online Playwright E2E.
+3. **100% Working Mock Mode + `NEAR_MODE` Switch:** 100% working in `NEAR_MODE=mock` (`MockIdentityAdapter`, `MockRelayerAdapter`) and switchable to real NEAR testnet (`NEAR_MODE=testnet` / `NEAR_ADAPTER_IDENTITY=testnet` / `NEAR_ADAPTER_RELAYER=testnet` in `W23`).

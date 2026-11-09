@@ -1,5 +1,5 @@
 import { DEPOSIT_CODES } from '@terra/contracts/tiles/codes';
-import { hexIndex } from '@terra/sim/grid/hex';
+import { resolveMapAdapterForView } from './atlasMapAdapter';
 import { isMapTileExplored } from './visibility';
 import { RESOURCE_LEGEND } from './tileColors';
 import type { MapLayerDrawView } from './types';
@@ -18,20 +18,22 @@ export function drawResourcesLayer(ctx: CanvasRenderingContext2D, view: MapLayer
   const tiles = view.tiles;
   const deposit = tiles?.deposit;
   if (!tiles || !deposit) return 0;
-  const hx = hexIndex(view.radius);
-  const limit = Math.min(hx.count, tiles.count);
+  const adapter = resolveMapAdapterForView(view);
+  const drawableTiles = adapter.getDrawableTiles(tiles.count);
   const dot = Math.max(1.6, view.tilePixelRadius * 0.36);
   let drawn = 0;
   ctx.save();
   ctx.lineWidth = Math.max(1, dot * 0.28);
   ctx.strokeStyle = 'rgba(11, 14, 19, 0.9)';
-  for (let i = 0; i < limit; i++) {
+  for (let idx = 0; idx < drawableTiles.length; idx++) {
+    const t = drawableTiles[idx]!;
+    const i = t.bufferIndex;
     const code = deposit[i] ?? 0;
     if (code === 0) continue;
     if (!isMapTileExplored(view, i)) continue;
     const color = DEPOSIT_COLOR[code];
     if (!color) continue;
-    const { x, y } = view.axialToPixel(hx.q[i]!, hx.r[i]!);
+    const { x, y } = view.axialToPixel(t.q, t.r);
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, dot, 0, Math.PI * 2);

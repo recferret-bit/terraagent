@@ -1,5 +1,6 @@
 import { getStageSpec, type CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
+import { getExploredByColony } from '../grid/tileModel';
 import type { PlanetState, PlanetType } from '../kernel/state';
 import {
   getColonyGoals,
@@ -101,8 +102,9 @@ export interface SimView {
     depositTier?: Uint8Array;
     richness?: Float32Array;
     height: Float32Array;
-    owner: Int8Array;
+    owner: Int16Array;
     explored: Uint8Array;
+    exploredByColony?: Record<number, Uint8Array>;
   };
   entities: ViewEntity[];
   colonies: ViewColony[];
@@ -245,8 +247,9 @@ export function view(state: PlanetState): SimView {
       depositTier: L.depositTier as Uint8Array,
       richness: L.richness as Float32Array,
       height: L.height as Float32Array,
-      owner: L.owner as Int8Array,
+      owner: L.owner as Int16Array,
       explored: L.explored as Uint8Array,
+      exploredByColony: getExploredByColony(state),
     },
     entities,
     colonies,

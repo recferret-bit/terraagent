@@ -83,3 +83,8 @@ Installing `infra/hosts/local.hosts` and opening the names in a browser is the o
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Identify any new statistics producers and reuse the W12 catalogue, transaction and effect queue; do not introduce parallel counters or reward callbacks.
 
 Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Hosting Foundation:** Serves the 8 public/dev hosts (`terraagent.fun`, `play`, `docs`, `pitch`, `whitepaper`, `design`, `playground`, `dev`), nginx reverse proxy, and Docker Compose stack.
+2. **Test Pyramid & Online E2E (`tests/e2e/w26.spec.ts`):** Compose port & host routing unit/integration tests + `npm run stack:local:smoke` + Playwright E2E across all catalog hosts.

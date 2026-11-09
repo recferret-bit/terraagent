@@ -5,6 +5,13 @@ import { LocalHost } from '../../store/local/LocalHost';
 import { builtPlanetSource } from '../../store/local/planetSource';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { planetTypeForKind } from '@terra/render/planets/hex/planetKind';
+import type { SectorIntentInput } from '../../ui/lobby/orbitalPickerModel';
+import {
+  BootCancelledError,
+  JoinQueueCoordinator,
+  extractActiveHomePayload,
+  type QueuedHomeStatus,
+} from './joinQueueFlow';
 
 export const DEVICE_SECRET_KEY = 'ta_device_secret';
 
@@ -56,6 +63,8 @@ export interface BootColonySummary {
   name: string;
   color: number;
   state: string;
+  foundingSectorId?: string;
+  landingSlotId?: string;
   spawnQ: number;
   spawnR: number;
   spawn: { q: number; r: number };
@@ -85,6 +94,9 @@ export interface BootAuthResult {
   state: string;
   planet: BootPlanetSummary;
   colony: BootColonySummary;
+  foundingSectorId?: string;
+  ticketId?: string;
+  wasQueued?: boolean;
   localHost?: LocalHost;
 }
 
@@ -101,6 +113,19 @@ export interface BootAuthOptions {
   onStatus?: (status: string) => void;
   /** Planet type for a NEW colony (the orbit pick): `GET /v1/me/home?type=`, and the type of the local fallback. */
   planetType?: DevPlanetType;
+  /** Canonical planet id for W11 ticket enqueue (`POST /v1/match/tickets`). */
+  planetId?: string;
+  /** Sector placement intent (`{ mode: 'auto' }` or `{ mode: 'chosen', sectorId }`) from the orbital picker. */
+  sectorIntent?: SectorIntentInput;
+  /** When true, polls `/v1/me/home` while `state === 'QUEUED'` until `ACTIVE` or cancelled. */
+  pollQueuedHome?: boolean;
+  /** When true, enqueues a match ticket if `/v1/me/home` returns `NEW`. */
+  enqueueOnNew?: boolean;
+  /** Poll interval (ms) while waiting in the planet queue (default 1000 ms). */
+  pollIntervalMs?: number;
+  onQueueStatus?: (status: QueuedHomeStatus, cancel: () => void) => void;
+  onQueueCancelled?: (ticketId: string | null) => void;
+  onCoordinator?: (coordinator: JoinQueueCoordinator) => void;
   /** Waits `ms` between `/me/home` retries (default `setTimeout`; tests pass a fake). */
   wait?: (ms: number) => Promise<void>;
   /** Jitter source of the retry backoff (default `Math.random`). */
@@ -262,9 +287,18 @@ const HOME_STATE_TEXT: Record<string, string> = {
  * state (`NEW` with its `newPlanetTypes`, `QUEUED`, `ELIMINATED`, `PLANET_ENDED`) is a `BootError` naming it, never a
  * made-up colony on a default planet.
  */
-function normalizeHomePayload(raw: unknown): { state: string; planet: BootPlanetSummary; colony: BootColonySummary } {
+function normalizeHomePayload(raw: unknown): {
+  state: string;
+  planet: BootPlanetSummary;
+  colony: BootColonySummary;
+  foundingSectorId?: string;
+} {
   const parsed = HomeResponse.safeParse(raw);
-  if (!parsed.success) throw new BootError('GET /v1/me/home: unexpected answer', 200, 'BAD_HOME');
+  if (!parsed.success) {
+    const fallbackActive = extractActiveHomePayload(raw);
+    if (fallbackActive) return fallbackActive;
+    throw new BootError('GET /v1/me/home: unexpected answer', 200, 'BAD_HOME');
+  }
   const home = parsed.data;
   if (home.state !== 'ACTIVE') {
     const types = 'newPlanetTypes' in home ? ` (new colonies: ${home.newPlanetTypes.join(', ')})` : '';
@@ -275,7 +309,19 @@ function normalizeHomePayload(raw: unknown): { state: string; planet: BootPlanet
   return {
     state: home.state,
     planet: { id: p.id, name: p.name, type: p.type, seed: p.seed, radius: p.radius, state: p.state },
-    colony: { id: c.id, colonyIndex: c.colonyIndex ?? 0, name: c.name, color: c.color, state: c.state, spawnQ: spawn.q, spawnR: spawn.r, spawn },
+    colony: {
+      id: c.id,
+      colonyIndex: c.colonyIndex ?? 0,
+      name: c.name,
+      color: c.color,
+      state: c.state,
+      ...(c.foundingSectorId ? { foundingSectorId: c.foundingSectorId } : {}),
+      ...(c.landingSlotId ? { landingSlotId: c.landingSlotId } : {}),
+      spawnQ: spawn.q,
+      spawnR: spawn.r,
+      spawn,
+    },
+    ...(c.foundingSectorId ? { foundingSectorId: c.foundingSectorId } : {}),
   };
 }
 
@@ -379,21 +425,62 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
     const { accessToken, expiresIn, home } = await fetchHomeWithRetry(auth.accessToken, {
       deviceSecret, doFetch, colonyId: new URLSearchParams(search).get('colonyId') ?? undefined, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
     });
-    const { state, planet, colony } = normalizeHomePayload(home);
+    const playerId = auth.player?.id ?? 'pr_guest';
+    const handle = auth.player?.handle ?? 'Colonist';
+    const isGuest = auth.player?.isGuest !== false;
+    const accountId = readAccountId(auth);
+    const tokenExpiresInS = expiresIn ?? auth.expiresIn;
+
+    if (opts.pollQueuedHome || opts.enqueueOnNew || opts.onQueueStatus) {
+      const coord = new JoinQueueCoordinator({
+        fetch: doFetch,
+        storage,
+        search,
+        planetType: opts.planetType,
+        planetId: opts.planetId,
+        sectorIntent: opts.sectorIntent,
+        enqueueOnNew: opts.enqueueOnNew,
+        pollIntervalMs: opts.pollIntervalMs,
+        wait: opts.wait,
+        random: opts.random,
+        onStatus: opts.onStatus,
+        onQueueStatus: opts.onQueueStatus,
+        onCancel: opts.onQueueCancelled,
+        showDescentOnAssign: false,
+        strictAuth: true,
+        preloaded: {
+          accessToken,
+          tokenExpiresInS,
+          deviceSecret,
+          playerId,
+          handle,
+          isGuest,
+          accountId,
+          initialHome: home,
+        },
+      });
+      opts.onCoordinator?.(coord);
+      const res = await coord.start();
+      if (!res) throw new BootCancelledError(coord.currentQueueStatus?.ticketId ?? null);
+      return res;
+    }
+
+    const { state, planet, colony, foundingSectorId } = normalizeHomePayload(home);
     opts.onStatus?.(`Entering orbit: ${planet.id}…`);
 
     return {
       mode: 'online',
       accessToken,
-      tokenExpiresInS: expiresIn ?? auth.expiresIn,
+      tokenExpiresInS,
       deviceSecret,
-      playerId: auth.player?.id ?? 'pr_guest',
-      handle: auth.player?.handle ?? 'Colonist',
-      isGuest: auth.player?.isGuest !== false,
-      accountId: readAccountId(auth),
+      playerId,
+      handle,
+      isGuest,
+      accountId,
       state,
       planet,
       colony,
+      ...(foundingSectorId ? { foundingSectorId } : {}),
     };
   } catch (e) {
     if ((opts.allowLocalFallback ?? import.meta.env.DEV) && backendUnreachable(e)) {

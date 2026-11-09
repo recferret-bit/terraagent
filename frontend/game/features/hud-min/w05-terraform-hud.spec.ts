@@ -196,7 +196,7 @@ describe('W05-22: Wave gating, hover hints, and Living overlay mode (L)', () => 
         count: planet.grid.count,
         terrain: L.terrain as Uint8Array,
         prep: L.prep as Uint8Array,
-        owner: L.owner as Int8Array,
+        owner: L.owner as Int16Array,
       },
     });
 

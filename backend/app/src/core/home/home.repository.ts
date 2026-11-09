@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { newId, type PlanetType } from '@terra/contracts';
+import { canonicalPlanetById, newId, W11_DEFAULT_SECTOR_RADIUS, type PlanetType } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import {
   DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, devPlanetTypeOf, MAX_COLONIES_PER_PLANET, type DevPlanetType,
@@ -30,6 +30,9 @@ export interface CreateColonyInput {
   readonly name: string;
   readonly color?: number;
   readonly status?: string;
+  readonly foundingSectorId?: string;
+  readonly landingSlotId?: string | null;
+  readonly recapSeen?: boolean;
   readonly spawnQ: number;
   readonly spawnR: number;
 }
@@ -87,14 +90,15 @@ export class HomeRepository {
   async upsertDevPlanet(id: string, input: Partial<CreatePlanetInput> = {}): Promise<PlanetRecord> {
     const existing = await this.store.findPlanet(id);
     if (existing) return this.fixDevPlanetType(existing);
+    const canonical = canonicalPlanetById(id);
     return this.store.upsertPlanet({
       id,
-      name: input.name ?? (id === 'pl_dev' ? 'Dev Planet' : id),
-      type: input.type ?? devPlanetTypeOf(id) ?? DEV_PLANET_TYPE, // the id names its family's type
-      seed: input.seed ?? DEV_PLANET_SEED,
-      radius: input.radius ?? DEV_PLANET_RADIUS,
+      name: input.name ?? canonical?.name ?? (id === 'pl_dev' ? 'Dev Planet' : id),
+      type: input.type ?? canonical?.type ?? devPlanetTypeOf(id) ?? DEV_PLANET_TYPE, // the id names its family's type
+      seed: input.seed ?? canonical?.seed ?? DEV_PLANET_SEED,
+      radius: input.radius ?? (canonical ? W11_DEFAULT_SECTOR_RADIUS : DEV_PLANET_RADIUS),
       state: input.state ?? 'ACTIVE',
-      capacity: input.capacity ?? DEV_PLANET_CAPACITY,
+      capacity: input.capacity ?? (canonical ? 28 : DEV_PLANET_CAPACITY),
     });
   }
 
@@ -158,10 +162,29 @@ export class HomeRepository {
   async createColony(input: CreateColonyInput): Promise<{ colony: ColonyRecord; planet: PlanetRecord }> {
     const basePlanet = await this.upsertDevPlanet(input.planetId);
     const { colony, planet } = await this.store.createColony({
-      id: input.id ?? newId('co'), playerId: input.playerId, planetId: input.planetId, colonyIndex: input.colonyIndex,
-      name: input.name, color: input.color ?? input.colonyIndex, status: input.status ?? 'ACTIVE', spawnQ: input.spawnQ, spawnR: input.spawnR,
+      id: input.id ?? newId('co'),
+      playerId: input.playerId,
+      planetId: input.planetId,
+      colonyIndex: input.colonyIndex,
+      name: input.name,
+      color: input.color ?? input.colonyIndex,
+      status: input.status ?? 'ACTIVE',
+      foundingSectorId: input.foundingSectorId ?? 'sec_0_0',
+      landingSlotId: input.landingSlotId ?? null,
+      recapSeen: input.recapSeen ?? false,
+      spawnQ: input.spawnQ,
+      spawnR: input.spawnR,
     });
     return { colony: this.remember(colony), planet: planet ?? basePlanet };
+  }
+
+  /** Marks a player's latest (or specified) colony recap/results as seen. */
+  async markRecapSeen(playerId: string, colonyId?: string): Promise<ColonyRecord | null> {
+    const target = colonyId
+      ? await this.findColonyById(colonyId)
+      : await this.findLatestColonyByPlayerId(playerId);
+    if (!target || target.playerId !== playerId) return null;
+    return this.remember(await this.store.setColonyRecapSeen(target.id, true));
   }
 
   /** Removes a colony whose landing failed (seat rollback) and recounts its planet's seats. */

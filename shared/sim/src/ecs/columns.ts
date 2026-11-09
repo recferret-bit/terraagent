@@ -8,7 +8,7 @@ import type { DType, FieldDef, WaveId } from '../kernel/types';
 const BASE: FieldDef[] = [
   { name: 'id', dtype: 'u32', wave: 'W00' }, // monotonic entity id, never recycled (SIM-D-05)
   { name: 'kind', dtype: 'u8', wave: 'W00' }, // archetype index (data table)
-  { name: 'owner', dtype: 'i8', wave: 'W00' }, // colony index, -1 = none
+  { name: 'owner', dtype: 'i16', wave: 'W00' }, // colony index (0..32767), -1 = none (W11-37)
   { name: 'tier', dtype: 'u8', wave: 'W00' },
   { name: 'q', dtype: 'i16', wave: 'W00' }, // axial tile
   { name: 'r', dtype: 'i16', wave: 'W00' },

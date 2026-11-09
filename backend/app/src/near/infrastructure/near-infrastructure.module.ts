@@ -18,7 +18,11 @@ const keyOf = (name: string) => NEAR_PORT_KEYS.find((k) => k.port === name)!.key
 export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]) =>
   guardedEnv('near', {
     ...Object.fromEntries(NEAR_PORT_KEYS.map((k) => [k.key, z.string().optional()])),
+    NEAR_MODE: z.string().optional(),
     NEAR_ADAPTER_CARGO: z.string().optional(),
+    NEAR_ADAPTER_DEED: z.string().optional(),
+    NEAR_ADAPTER_BADGE: z.string().optional(),
+    NEAR_ADAPTER_TREASURY: z.string().optional(),
     // Optional: boot must not require a KEK. `loadKekRing` still refuses the dev key in production when a key is sealed (BE-34).
     NEAR_KEK: z.string().optional(),
     NEAR_KEK_VERSION: z.string().optional(),

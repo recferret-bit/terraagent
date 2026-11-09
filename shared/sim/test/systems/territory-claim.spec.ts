@@ -46,7 +46,7 @@ function verifyOverlappingDisks(
   expectedColony0Anchors: number,
 ): { overlapFrozenCount: number; colony0OwnedCount: number } {
   const hex = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const anchorsLayer = state.grid.layers.anchors as Uint8Array;
   let overlapFrozenCount = 0;
   let colony0OwnedCount = 0;
@@ -78,7 +78,7 @@ describe('W01-17: Territory claim R 10 & immutable border collision (SIM-G-TER)'
     const host = createW01Host(20);
     const state = host.state;
     const hex = hexIndex(state.grid.radius);
-    const ownerLayer = state.grid.layers.owner as Int8Array;
+    const ownerLayer = state.grid.layers.owner as Int16Array;
     const anchorsLayer = state.grid.layers.anchors as Uint8Array;
 
     // 1. Pre-claim neighbour colony 1 territory at (12, 0) with radius 6

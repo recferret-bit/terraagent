@@ -8,7 +8,7 @@ import { insertRow, rowOf } from '../../ecs/store';
 import { createPlanet } from '../../gen/createPlanet';
 import { hasGenerator } from '../../gen/generators';
 import { forgetTileStamps } from '../../grid/sectors';
-import { bumpPathEpoch, isTileExplored, markTileExplored } from '../../grid/tileModel';
+import { bumpPathEpoch, clearColonyExploration, isTileExplored, markTileExplored } from '../../grid/tileModel';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { seedRng } from '../../kernel/rng';
@@ -288,7 +288,7 @@ const reveal = defineCommandHandler({
   handle(s, c, ctx) {
     const colony = devColony(c);
     if (typeof colony === 'string') return colony;
-    if (colony >= MAX_COLONIES_PER_PLANET) return 'invalid_args';
+    if (colony < 0 || (!ctx.flags.has('W11') && colony >= MAX_COLONIES_PER_PLANET)) return 'invalid_args';
     for (let i = 0; i < s.grid.count; i++) if (!isTileExplored(s.grid, i, colony)) markTileExplored(s.grid, i, colony, ctx.tick);
   },
 });
@@ -312,6 +312,7 @@ const seed = defineCommandHandler({
     for (const layer of SEED_LAYERS) {
       if (temp.grid.layers[layer] && s.grid.layers[layer]) s.grid.layers[layer].set(temp.grid.layers[layer]);
     }
+    clearColonyExploration(s);
     if (temp.blobs.spawnSlots) {
       setBlob(s, 'spawnSlots', temp.blobs.spawnSlots.value, ctx.tick);
     }

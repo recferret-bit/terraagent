@@ -1,6 +1,6 @@
-# W27 — Planet Scale, Streaming & Ground-to-Globe Navigation
+# W27 — Planet Scale, Streaming & Ground-to-Globe Navigation [POSTPONED]
 
-> **Status:** Replanned 2026-11-04 as the second half of W11/W27; documentation only, no implementation claimed.
+> **Status:** POSTPONED — Deferred out of the NEAR Hackathon Vertical Slice (post-hackathon backlog). All Tier 2/3 content (buildings, resources, units, stages S5–S10) and non-core scope are skipped so the hackathon vertical slice focuses on Tier 1 (`S0–S4`) gameplay polish, AI Director, persistent sector multiplayer, economy, offline play, and NEAR/Web3 features.
 > **Track:** Sim / Meta / Client · **Flag:** `W27` · **Tag:** `wave-27`
 > **Scenario:** `tests/scenarios/w27-planet-sectors.ts` · **E2E:** `tests/e2e/w27.spec.ts`
 > **Depends on:** W04 (maps and camera), W05 (territory and terrain operations), W11 (persistent sector worlds, topology, identity, saves, admission, parties and home).
@@ -16,7 +16,7 @@ Expand W11's persistent sector worlds to large continent configurations with bou
 
 The globe, selection screen, landing summary, W04 map and playable ground describe the same generated geography. A colony may occupy multiple sectors without transfer or duplicate seats. Zoom continuously from ground through sector and continent scale to the existing shaded planet renderer, then back to the same location with camera/home/selection cues intact.
 
-**Approved split:** [W11](./W11-lobby-planets.md) ships three small persistent worlds, exact sector partition, safe landings, wide identities/fog, versioned saves, sector reservations and real border crossings. W27 adds large continent generation, sparse storage/pathing, interest subscriptions/partial replicas, summary maps, globe alignment and continuous zoom. There is no warm pool, overflow creation, age sealing or automatic planet expiry in either wave.
+**Approved split:** [W11](./W11-lobby-planets.md) ships three persistent 19-sector worlds (`7` land + `12` ocean halo sectors) with `4×` basic sector size (`R=48`, `7,057` tiles/sector, `134,083` total manifest tiles) as **isolated in-game sectors** (`PlanetState.grid.radius = 48`; cross-sector movement, building placement, power links, territory claims and seam terraforming blocked with `reason: 'cross_sector_disabled'`), while displaying all `19` surrounding sectors on the Orbital Picker and Global Map (`M` dialog), along with exact sector partition, safe landings, wide identities/fog, versioned saves and sector reservations. **W27** unlocks infinite/streaming multi-sector loading and seamless cross-sector gameplay traversal, plus large continent generation, sparse storage/pathing, interest subscriptions/partial replicas, summary maps, globe alignment and continuous zoom. There is no warm pool, overflow creation, age sealing or automatic planet expiry in either wave.
 
 **Readiness beyond a wave tag:** W04 map/camera rows W04-03/-15/-20/-26, W05 territory rows W05-12/-13, and the complete W11 foundation including party/recovery/cross-border/upgrade rows W11-18/-19/-40/-44/-45 must be landed. An H-only tag is insufficient. Reopen owning waves for missing rows; do not recreate their systems here. W27 follows these dependencies, not all W06–W26.
 
@@ -43,8 +43,8 @@ The original 2026-11-03 review motivated this split. Foundation ownership above 
 | Setting | Initial value / rule |
 |---|---|
 | `sectorPlayerCapacity` (X) | 4; validate positive bounded integers; acceptance presets exercise 3, 4 and 5 |
-| `sectorRadiusTiles` (R) | 24; complete hex-ring footprint gives Y = `1 + 3R(R + 1)` = 1,801 tiles |
-| `tilesPerSector` (Y) | Derived and displayed; accept Y input only if it maps to a supported integer R, otherwise explain validation failure |
+| `sectorRadiusTiles` (R) | 48 (4× basic sector hex area); complete hex-ring footprint gives Y = `1 + 3R(R + 1)` = 7,057 tiles |
+| `tilesPerSector` (Y) | Derived and displayed (`7,057` at `R=48`); accept Y input only if it maps to a supported integer R, otherwise explain validation failure |
 | `continentCount` | Kharon 1 supercontinent; Thalassa 3; Granite 3; all profiles support 1 and 3 |
 | `sectorsPerContinent` | 150, configurable; means 150 connected land-bearing gameplay sectors per continent, including coastal sectors |
 | Ocean sectors | Separately counted, zero founding seats; total planet sectors = land-bearing + ocean sectors |
@@ -147,7 +147,7 @@ Open the existing in-game console with backtick (`); support its shifted `~` key
 |---|---|
 | `planet.info` | Manifest/version/hash, counts, admission state and cache budget |
 | `planet.verify` | Exact component/sector counts, unique tile coverage, shared edges, spawn guarantees and identity limits |
-| `planet.preview desert --continents 1 --sectors 150 --players 4 --radius 24 --seed 27` | Generate an isolated dev preview, never reset the current planet; variants accept ocean/temperate and 3/5 players |
+| `planet.preview desert --continents 1 --sectors 150 --players 4 --radius 48 --seed 27` | Generate an isolated dev preview, never reset the current planet; variants accept ocean/temperate and 3/5 players |
 | `sector.goto <id>` | Camera fly/load to sector; never move a unit |
 | `sector.inspect <id>` | Continent, neighbours, founding/reserved/present/online counts and revisions |
 | `sector.overlay on` | Toggle sector outlines and loaded/prefetch/eviction states |
@@ -186,7 +186,7 @@ Existing IDs remain stable for downstream references; rows below now extend/test
 | Pinned saves and recovery | W11-40/-45 | W27-14/-15: consistent sector checkpoints and upgrade |
 | Canonical worlds and sector admission | W11-03/-06/-07/-11/-13 | W27-16/-17: sparse runtime and nonresident spawn dependencies |
 | Parties, counters and simple selection | W11-08/-18/-19/-22 | W27-18/-19/-31: streaming integration, aggregates and globe selection |
-| Cross-sector rules | W11-41/-44 | W27-12/-25: sparse query adaptation and streamed outlines/selection |
+| Cross-sector boundary guard & traversal | W11-41/-44 (isolated single-sector guard `cross_sector_disabled` in W11) | W27-11/-12/-25: unlock seamless cross-sector walking/placement/power/territory over streamed sparse storage |
 
 ## Issues
 
@@ -255,7 +255,7 @@ Lead first: verify W11 readiness, freeze streaming/projection contracts and the 
 
 ## Scope limits and references
 
-Continuous navigation is planned here, not implemented by this documentation; WE-32 records the planar-to-globe boundary and WE-33 records small-world rollout, reclaim/rejoin and occupied-world growth decisions. Planning defaults (R=24, X=4, continent assignments, finite atlas projection) are recorded in [WE-32](../../questions-and-limitations/sim-world-engine.md). Production instance provisioning, cross-instance migration/sharding and geodesic/polar gameplay are deferred; this wave includes measured single-authority capacity validation and rejects unsupported configurations. Existing small-world issues WE-06 and WE-29 remain open/accepted until implementation proves their fixes.
+Continuous navigation is planned here, not implemented by this documentation; WE-32 records the planar-to-globe boundary and WE-33 records small-world rollout, reclaim/rejoin and occupied-world growth decisions. Planning defaults (R=48 / 7,057 tiles per sector, X=4, continent assignments, finite atlas projection) are recorded in [WE-32](../../questions-and-limitations/sim-world-engine.md). Production instance provisioning, cross-instance migration/sharding and geodesic/polar gameplay are deferred; this wave includes measured single-authority capacity validation and rejects unsupported configurations. Existing small-world issues WE-06 and WE-29 remain open/accepted until implementation proves their fixes.
 
 Algorithm references, consulted 2026-11-03: [Red Blob Games: axial hex geometry and coordinate conversions](https://www.redblobgames.com/grids/hexagons/) supports the coordinate foundation; [terrain from noise](https://www.redblobgames.com/maps/terrain-from-noise/) describes frequency/mask techniques, extended here with explicit continent quota/connectivity constraints. [H3 overview](https://h3geo.org/docs/core-library/overview/) documents spherical exceptional cells; [H3 indexing](https://h3geo.org/docs/highlights/indexing/) distinguishes logical from geometric containment. These inform topology constraints; H3 is not a required dependency or a substitute for the existing sim grid.
 

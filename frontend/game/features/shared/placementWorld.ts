@@ -84,7 +84,7 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
     terrain: tiles?.terrain ?? new Uint8Array(0),
     prep: tiles?.prep ?? new Uint8Array(0),
     deposit: tiles?.deposit ?? null,
-    owner: tiles?.owner ?? new Int8Array(0),
+    owner: tiles?.owner ?? new Int16Array(0),
     height: tiles?.height ?? null,
     entities: entitiesFromView(v.entities, v.count),
     plannedSites: plannedSitesFromQueue(viewQueueEntries(source)),

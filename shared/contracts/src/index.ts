@@ -74,6 +74,7 @@ export * from './precheck';
 export * from './progression';
 export * from './profile';
 export * from './maps';
+export * from './lobby';
 export * from './market';
 export { MarketPlaceOrderArgs } from './commands/market-place-order';
 export { MarketCancelOrderArgs } from './commands/market-cancel-order';

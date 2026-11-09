@@ -1,6 +1,5 @@
-import type { SimCommandV1 } from '@terra/contracts';
-import type { BalanceOverrides, LedgerPosting, SimEvent } from '@terra/sim';
-import type { TuneRequest } from '@terra/sim';
+import { canonicalPlanetById, newId, W11_DEFAULT_SECTOR_RADIUS, type SimCommandV1 } from '@terra/contracts';
+import { globalTileToSector, hexDistance, type BalanceOverrides, type LedgerPosting, type SimEvent, type TuneRequest } from '@terra/sim';
 import type { SimThreadPool } from './sim-thread-pool';
 import { ThreadRequests } from './thread-requests';
 import type { FromThread, LandingSiteAnswer, LoadedInfo, LoadMsg } from './thread/protocol';
@@ -123,9 +122,22 @@ export class GamePlanets {
       }
       this.loading.set(planetId, [{ resolve, reject }]);
       const { setupPostings, noSnapshots, ...msg } = opts;
+      const canonical = canonicalPlanetById(planetId);
+      const normalizedMsg =
+        canonical && !msg.snapshot && msg.params?.radius === undefined
+          ? {
+              ...msg,
+              params: {
+                type: msg.params?.type ?? canonical.type,
+                seed: msg.params?.seed ?? canonical.seed,
+                radius: W11_DEFAULT_SECTOR_RADIUS,
+                capacity: msg.params?.capacity ?? 28,
+              },
+            }
+          : msg;
       this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
-      const transfer = msg.snapshot ? [msg.snapshot.buffer as ArrayBuffer] : [];
-      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...msg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
+      const transfer = normalizedMsg.snapshot ? [normalizedMsg.snapshot.buffer as ArrayBuffer] : [];
+      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
   }
 
@@ -145,8 +157,7 @@ export class GamePlanets {
   onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
   onPlanetSnapshot(fn: (planetId: string, s: { tick: number; bytes: Uint8Array }) => void): void { this.snapshotListeners.push(fn); }
 
-  /** Queues a command for the planet's next step; resolves with the ack/reject outcome. */
-  submit(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
+  private sendSingleCmd(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
     return new Promise<CommandOutcomeMsg>((resolve, reject) => {
       const key = `${planetId}\0${cmd.commandId}`;
       const list = this.cmdWaiters.get(key) ?? [];
@@ -156,6 +167,34 @@ export class GamePlanets {
         this.settleCmd(key, { ok: false, commandId: cmd.commandId, code: 'thread_down' });
       }
     });
+  }
+
+  /** Queues a command for the planet's next step; resolves with the ack/reject outcome. */
+  async submit(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
+    const isCanonical = canonicalPlanetById(planetId) !== null;
+    let normalizedCmd = cmd;
+    if (isCanonical && cmd.kind === 'system.spawnColony' && cmd.args && typeof cmd.args === 'object') {
+      const args = cmd.args as Record<string, unknown>;
+      if (typeof args.q === 'number' && typeof args.r === 'number' && hexDistance(0, 0, args.q, args.r) > W11_DEFAULT_SECTOR_RADIUS) {
+        const local = globalTileToSector(args.q, args.r, W11_DEFAULT_SECTOR_RADIUS);
+        normalizedCmd = { ...cmd, args: { ...args, q: local.localQ, r: local.localR } };
+      }
+    }
+    const out = await this.sendSingleCmd(planetId, normalizedCmd);
+    if (
+      !out.ok &&
+      isCanonical &&
+      cmd.kind === 'system.spawnColony' &&
+      (out.code === 'landing_site_taken' || out.code === 'invalid_args') &&
+      cmd.args &&
+      typeof cmd.args === 'object'
+    ) {
+      const { q: _q, r: _r, sectorId: _s, landingSlotId: _l, ...restArgs } = cmd.args as Record<string, unknown>;
+      const retryCmd: SimCommandV1 = { ...cmd, commandId: newId('cm'), args: restArgs };
+      const retryOut = await this.sendSingleCmd(planetId, retryCmd);
+      return { ...retryOut, commandId: cmd.commandId };
+    }
+    return out;
   }
 
   /** Registers delta/event handlers for a planet; the thread publishes only while someone is subscribed. Returns unsubscribe. */

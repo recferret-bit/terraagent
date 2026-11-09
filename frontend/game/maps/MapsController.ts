@@ -1,11 +1,9 @@
-import type { MapLayerId } from '@terra/contracts';
+import type { AtlasManifestV1, PlanetSummaryV1, SectorId } from '@terra/contracts';
 import type { FeatureContext, GameView } from '../core/registry/types';
 import type { ClientTiles, ClientView } from '../store/replica/viewCodec';
-import {
-  createBuiltinW04Layers,
-  renderCompositeMapLayers,
-  type CompositeMapRenderResult,
-} from './builtinLayers';
+import type { SectorIntentInput, SectorIntentV1 } from '../ui/lobby';
+import { createAtlasMapAdapter, type AtlasMapAdapter } from './atlasMapAdapter';
+import { createBuiltinW04Layers, renderCompositeMapLayers, type CompositeMapRenderResult } from './builtinLayers';
 import { drawCameraTrapezoid, type TrapezoidCorner } from './cameraTrapezoid';
 import { drawEntityDots } from './entityDots';
 import { GLOBAL_MAP_CANVAS_SIZE, GlobalMapOverlay } from './GlobalMapOverlay';
@@ -15,19 +13,22 @@ import { mapLayerRegistry, type MapLayerRegistry } from './layerRegistry';
 import { MinimapHud } from './MinimapHud';
 import { bindMinimapInput } from './minimapInput';
 import { GlobalMapOpenCloseController, type MapNavAction } from './openCloseController';
-import { drawResourcesLayer } from './resourceLayer';
-import { inHex } from '@terra/sim/grid/hex';
-import {
-  axialToCanvasPixel,
-  canvasPixelToAxial,
-  mapScaleForRadius,
-  PlanetRasterCache,
-  type PlanetRasterEntry,
-} from './rasterCache';
+import { PlanetRasterCache, type PlanetRasterEntry } from './rasterCache';
 import { MapRedrawScheduler } from './redrawScheduler';
-import { drawMapFog } from './visibility';
+import { drawResourcesLayer } from './resourceLayer';
+import {
+  bindGlobalOverlayPointerInteraction,
+  buildGlobalMapDrawView,
+  createMinimapStatsProxy,
+  extractViewAtlasBlob,
+  formatGlobalMapReadoutText,
+  projectGlobalCanvasPxToTile,
+  projectTileToGlobalCanvasPx,
+  SectorSelectionController,
+} from './sectorSelection';
 import { resolveTileColorFromTokens } from './tileColors';
-import type { MapLayer, MapLayerDrawView, MinimapStats } from './types';
+import type { MapLayerDrawView, MinimapStats } from './types';
+import { drawMapFog } from './visibility';
 
 export interface MapsControllerOptions {
   readonly el: HTMLElement;
@@ -45,26 +46,42 @@ export class MapsController {
   readonly chipController: MapLayerChipController;
   readonly openClose: GlobalMapOpenCloseController;
   readonly scheduler: MapRedrawScheduler;
+  readonly sectorSelection: SectorSelectionController;
   readonly stats: MinimapStats;
 
   private readonly ctx: FeatureContext;
   private readonly inputHandle: { dispose(): void; isDragging(): boolean };
+  private readonly unbindOverlayPointer: () => void;
   private unregisterLayers: (() => void) | null = null;
   private lastEntry: PlanetRasterEntry | null = null;
   private lastTiles: ClientTiles | null = null;
   private lastClientView: ClientView | null = null;
+  private currentAdapter: AtlasMapAdapter | null = null;
+  private lastWorldContextKey = '';
+  private lastPlanetId: string | null = null;
+  private lastAtlasHash: string | null = null;
   private lastDotCount = 0;
   private lastTrapezoid: TrapezoidCorner[] = [];
   private lastComposite: CompositeMapRenderResult | null = null;
   private initialPainted = false;
   private prevCamKey = '';
+  private cursorPx: { x: number; y: number } | null = null;
+  private registeredFlagKey = '';
 
   constructor(opts: MapsControllerOptions) {
     this.ctx = opts.ctx;
     this.registry = opts.registry ?? mapLayerRegistry;
     this.rasterCache = opts.rasterCache ?? new PlanetRasterCache(resolveTileColorFromTokens);
-    this.rasterCache.setColorResolver((tiles, index) => resolveTileColorFromTokens(tiles, index, this.ctx.services.colonyId ?? 0));
-
+    this.rasterCache.setColorResolver((tiles, idx, col) =>
+      resolveTileColorFromTokens(tiles, idx, col ?? this.ctx.services.colonyId ?? 0),
+    );
+    this.sectorSelection = new SectorSelectionController({
+      onStateChange: () => {
+        this.updateReadout();
+        this.scheduler.markDirty({ minimap: true, globalMap: true });
+        if (this.openClose.isOpen) this.globalOverlay.render();
+      },
+    });
     this.chipController = new MapLayerChipController({
       registry: this.registry,
       getFlags: () => this.ctx.flags,
@@ -75,7 +92,6 @@ export class MapsController {
         this.scheduler.forceRedrawGlobalMap();
       },
     });
-
     this.openClose = new GlobalMapOpenCloseController({
       isWaveEnabled: () => this.ctx.flags.has('W04'),
       getRtsCamera: () => this.ctx.services.rtsCamera ?? null,
@@ -88,7 +104,6 @@ export class MapsController {
         }
       },
     });
-
     this.minimapHud = new MinimapHud({
       parent: opts.el,
       rasterCache: this.rasterCache,
@@ -96,68 +111,72 @@ export class MapsController {
       onResourcesToggle: (next) => this.chipController.setLayerActive('resources', next),
       onOverlayDraw: (ctx2d, drawView) => this.drawMinimapOverlays(ctx2d, drawView),
     });
-
     this.inputHandle = bindMinimapInput({
       container: this.minimapHud.el,
       canvas: this.minimapHud.canvas,
       expandButton: this.minimapHud.expandBtn,
-      getRadius: () => this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12,
+      getRadius: () => this.getActiveRadius(),
+      getAdapter: () => this.getActiveAdapter(),
       onPanToTile: (q, r) => this.panToTile(q, r),
     });
-
-    const overlayParent = opts.el.ownerDocument?.body ?? opts.el;
     this.globalOverlay = new GlobalMapOverlay({
-      parent: overlayParent,
+      parent: opts.el.ownerDocument?.body ?? opts.el,
       onCloseClick: () => this.openClose.close(),
-      onChipToggle: (id, active) => {
-        this.chipController.setLayerActive(id, active);
-      },
+      onChipToggle: (id, active) => this.chipController.setLayerActive(id, active),
       onRender: (ctx2d, canvas) => this.drawGlobalMap(ctx2d, canvas),
       onRecenterClick: () => this.globalViewport.reset(),
     });
-
     this.globalViewport = new GlobalMapViewport({
       canvas: this.globalOverlay.canvas,
       baseSize: GLOBAL_MAP_CANVAS_SIZE,
-      onChange: () => {
-        if (this.openClose.isOpen) {
-          this.globalOverlay.render();
-        }
-      },
+      onChange: () => { if (this.openClose.isOpen) this.globalOverlay.render(); },
     });
-
     this.scheduler = new MapRedrawScheduler({
       isGlobalMapOpen: () => this.openClose.isOpen,
       onRedrawMinimap: () => this.minimapHud.render(),
       onRedrawGlobalMap: () => this.globalOverlay.render(),
     });
-
-    this.globalOverlay.watchResize(() => this.globalOverlay.render());
-    this.globalOverlay.canvas.addEventListener('pointermove', this.onGlobalPointerMove);
-    this.globalOverlay.canvas.addEventListener('pointerleave', this.onGlobalPointerLeave);
-
-    this.stats = this.createStatsProxy();
+    this.unbindOverlayPointer = this.initOverlayPointer();
+    this.stats = this.initStatsProxy();
     this.syncRegistration();
     this.syncOverlayChips();
   }
 
-  private cursorPx: { x: number; y: number } | null = null;
+  private initOverlayPointer(): () => void {
+    return bindGlobalOverlayPointerInteraction({
+      overlay: this.globalOverlay,
+      onHoverPx: (pt) => {
+        this.cursorPx = pt;
+        this.updateReadout();
+      },
+      onClickPx: (pt) => {
+        if (this.ctx.flags.has('W11') && this.chipController.isLayerActive('sectors')) {
+          this.selectSectorAtCanvasPx(pt.x, pt.y);
+        }
+      },
+    });
+  }
 
-  private readonly onGlobalPointerMove = (e: PointerEvent): void => {
-    const canvas = this.globalOverlay.canvas;
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-    this.cursorPx = {
-      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
-    };
-    this.updateReadout();
-  };
+  private initStatsProxy(): MinimapStats {
+    return createMinimapStatsProxy({
+      rasterCache: this.rasterCache,
+      scheduler: this.scheduler,
+      openClose: this.openClose,
+      chipController: this.chipController,
+      registry: this.registry,
+      globalViewport: this.globalViewport,
+      sectorSelection: this.sectorSelection,
+      getDotCount: () => this.lastDotCount,
+      setDotCount: (v) => { this.lastDotCount = v; },
+      getTrapezoid: () => this.lastTrapezoid,
+      getLastComposite: () => this.lastComposite,
+      getLastAtlasHash: () => this.lastAtlasHash,
+    });
+  }
 
-  private readonly onGlobalPointerLeave = (): void => {
-    this.cursorPx = null;
-    this.updateReadout();
-  };
+  get atlasAdapter(): AtlasMapAdapter | null {
+    return this.currentAdapter;
+  }
 
   private navigateGlobalMap(action: MapNavAction): void {
     const vp = this.globalViewport;
@@ -169,85 +188,149 @@ export class MapsController {
     }
   }
 
-  /** Planet-square side used by the global map (shorter canvas edge). */
-  private globalSquare(): number {
-    const c = this.globalOverlay.canvas;
-    return Math.max(1, Math.min(c.width, c.height));
+  private getActiveRadius(): number {
+    if (this.currentAdapter?.isAtlas) return this.currentAdapter.projectionRadius;
+    return this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12;
   }
 
-  /** Canvas pixel → axial tile on the planet (unclamped; `inside` tells whether it is a real tile). */
-  private canvasPxToTile(px: number, py: number): { q: number; r: number; inside: boolean } {
-    const c = this.globalOverlay.canvas;
-    const { zoom, panX, panY } = this.globalViewport.transform;
-    const S = this.globalSquare();
-    const sx = (px - c.width / 2 - panX) / zoom + c.width / 2 - (c.width - S) / 2;
-    const sy = (py - c.height / 2 - panY) / zoom + c.height / 2 - (c.height - S) / 2;
-    const radius = this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12;
-    const { q, r } = canvasPixelToAxial(sx, sy, S, radius);
-    return { q, r, inside: inHex(q, r, radius) };
+  getActiveAdapter(): AtlasMapAdapter {
+    if (this.currentAdapter) return this.currentAdapter;
+    return createAtlasMapAdapter({
+      w11Enabled: this.ctx.flags.has('W11'),
+      radius: this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12,
+      tileCount: this.lastTiles?.count,
+      manifest: this.sectorSelection.atlasManifest,
+      planetSummary: this.sectorSelection.planetSummary,
+    });
+  }
+
+  tileToGlobalCanvasPx(q: number, r: number): { x: number; y: number } {
+    return projectTileToGlobalCanvasPx(q, r, this.globalOverlay.canvas, this.globalViewport, this.getActiveAdapter());
+  }
+
+  globalCanvasPxToTile(px: number, py: number) {
+    return projectGlobalCanvasPxToTile(
+      px, py, this.globalOverlay.canvas, this.globalViewport,
+      this.getActiveAdapter(), this.getActiveRadius(), this.lastTiles?.count,
+    );
   }
 
   private updateReadout(): void {
     if (!this.openClose.isOpen) return;
     const c = this.globalOverlay.canvas;
-    const { zoom } = this.globalViewport.transform;
-    const centre = this.canvasPxToTile(c.width / 2, c.height / 2);
-    const fmt = (t: { q: number; r: number; inside: boolean }) =>
-      `${t.q},${t.r}${t.inside ? '' : ' (out)'}`;
-    let text = `ZOOM ${zoom.toFixed(2)}×   CENTER ${fmt(centre)}`;
-    if (this.cursorPx) text += `   CURSOR ${fmt(this.canvasPxToTile(this.cursorPx.x, this.cursorPx.y))}`;
-    this.globalOverlay.setReadout(text);
+    this.globalOverlay.setReadout(
+      formatGlobalMapReadoutText({
+        zoom: this.globalViewport.transform.zoom,
+        centre: this.globalCanvasPxToTile(c.width / 2, c.height / 2),
+        cursor: this.cursorPx ? this.globalCanvasPxToTile(this.cursorPx.x, this.cursorPx.y) : null,
+        w11Enabled: this.ctx.flags.has('W11'),
+        selectedSectorId: this.sectorSelection.selectedSectorId,
+        homeSectorId: this.sectorSelection.homeSectorId,
+      }),
+    );
   }
 
-  private drawMinimapOverlays(
-    ctx2d: CanvasRenderingContext2D,
-    drawView: MapLayerDrawView,
-  ): void {
+  selectSector(sectorId: SectorId | 'auto' | null): SectorIntentV1 {
+    return this.ctx.flags.has('W11')
+      ? this.sectorSelection.selectSector(sectorId, this.getActiveAdapter())
+      : { mode: 'auto' };
+  }
+
+  setSectorIntent(intent: SectorIntentInput): SectorIntentV1 {
+    return this.ctx.flags.has('W11')
+      ? this.sectorSelection.setSectorIntent(intent, this.getActiveAdapter())
+      : { mode: 'auto' };
+  }
+
+  getSectorIntent(): SectorIntentV1 { return this.sectorSelection.sectorIntent; }
+  getSelectedSectorId(): SectorId | null { return this.sectorSelection.selectedSectorId; }
+
+  selectSectorAtTile(q: number, r: number): SectorIntentV1 | null {
+    return this.ctx.flags.has('W11')
+      ? this.sectorSelection.selectSectorAtTile(q, r, this.getActiveAdapter())
+      : null;
+  }
+
+  selectSectorAtCanvasPx(px: number, py: number): SectorIntentV1 | null {
+    if (!this.ctx.flags.has('W11')) return null;
+    const tile = this.globalCanvasPxToTile(px, py);
+    return tile.inside && tile.playable && tile.sectorId ? this.selectSector(tile.sectorId) : null;
+  }
+
+  setHomeContext(opts: {
+    readonly homeSectorId?: SectorId | null;
+    readonly homeTile?: { readonly q: number; readonly r: number } | null;
+    readonly currentSectorId?: SectorId | null;
+    readonly cameraTile?: { readonly q: number; readonly r: number } | null;
+  }): void {
+    this.sectorSelection.setHomeContext(opts);
+  }
+
+  setPlanetSummary(summary: PlanetSummaryV1 | null): void {
+    const prevId = this.sectorSelection.planetSummary?.id ?? null;
+    const prevHash = this.sectorSelection.planetSummary?.atlasHash ?? null;
+    if (summary && (prevId !== summary.id || prevHash !== (summary.atlasHash ?? null))) {
+      this.sectorSelection.reset();
+      this.currentAdapter = null;
+      this.lastTiles = null;
+    }
+    this.sectorSelection.planetSummary = summary;
+    this.scheduler.markDirty({ minimap: true, globalMap: true });
+  }
+
+  setAtlasManifest(manifest: AtlasManifestV1 | null): void {
+    const prevHash = this.sectorSelection.atlasManifest?.atlasHash ?? null;
+    if (manifest && prevHash && prevHash !== manifest.atlasHash) {
+      this.sectorSelection.reset();
+      this.currentAdapter = null;
+      this.lastTiles = null;
+    }
+    this.sectorSelection.atlasManifest = manifest;
+    this.scheduler.markDirty({ minimap: true, globalMap: true });
+  }
+
+  bindSectorPicker(
+    container: HTMLElement,
+    summary: PlanetSummaryV1,
+    onSelect?: (intent: SectorIntentV1) => void,
+    queuePaused = false,
+  ): () => void {
+    return this.sectorSelection.bindSectorPicker(container, summary, onSelect, queuePaused);
+  }
+
+  private drawMinimapOverlays(ctx2d: CanvasRenderingContext2D, drawView: MapLayerDrawView): void {
     if (this.chipController.isLayerActive('resources')) drawResourcesLayer(ctx2d, drawView);
     drawMapFog(ctx2d, drawView);
-    const dots = drawEntityDots(ctx2d, drawView);
-    this.lastDotCount = dots.length;
+    this.lastDotCount = drawEntityDots(ctx2d, drawView).length;
     this.lastTrapezoid = drawCameraTrapezoid(ctx2d, drawView, {
       camera: this.ctx.services.camera ?? null,
       rtsCamera: this.ctx.services.rtsCamera ?? null,
     });
   }
 
-  private drawGlobalMap(
-    ctx2d: CanvasRenderingContext2D,
-    canvas: HTMLCanvasElement,
-  ): void {
+  private drawGlobalMap(ctx2d: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
     const w = canvas.width || GLOBAL_MAP_CANVAS_SIZE;
     const h = canvas.height || GLOBAL_MAP_CANVAS_SIZE;
     const size = Math.max(1, Math.min(w, h));
-    const radius = this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12;
-    const scale = mapScaleForRadius(size, radius);
-    const drawView: MapLayerDrawView = {
-      width: size,
-      height: size,
-      planetId: this.lastEntry?.planetKey ?? undefined,
-      radius,
-      tiles: this.lastTiles,
-      clientView: this.lastClientView,
-      simData: this.ctx.services.store?.simData?.() ?? undefined,
-      ownColonySlot: this.ctx.services.colonyId ?? 0,
-      axialToPixel: (q, r) => axialToCanvasPixel(q, r, size, radius),
-      pixelToAxial: (x, y) => canvasPixelToAxial(x, y, size, radius),
-      tilePixelRadius: Math.max(2, scale / Math.sqrt(3)),
-      transform: this.globalViewport.transform,
-      rasterCanvas: this.lastEntry?.canvas ?? null,
-    };
-
+    const drawView = buildGlobalMapDrawView({
+      size,
+      radius: this.getActiveRadius(),
+      adapter: this.getActiveAdapter(),
+      lastEntry: this.lastEntry,
+      lastTiles: this.lastTiles,
+      lastClientView: this.lastClientView,
+      ctx: this.ctx,
+      viewport: this.globalViewport,
+      sectorSelection: this.sectorSelection,
+    });
     ctx2d.save();
     this.globalViewport.applyToContext(ctx2d, w, h);
     ctx2d.translate((w - size) / 2, (h - size) / 2);
     ctx2d.imageSmoothingEnabled = false;
-    const active = this.chipController.getActiveSet();
-    const visible = this.chipController.getVisibleLayers();
-    this.lastComposite = renderCompositeMapLayers(ctx2d, drawView, active, visible);
-    if (this.lastComposite.unitDots > 0) {
-      this.lastDotCount = this.lastComposite.unitDots;
-    }
+    this.lastComposite = renderCompositeMapLayers(
+      ctx2d, drawView, this.chipController.getActiveSet(), this.chipController.getVisibleLayers(),
+    );
+    if (this.lastComposite.unitDots > 0) this.lastDotCount = this.lastComposite.unitDots;
     drawCameraTrapezoid(ctx2d, drawView, {
       camera: this.ctx.services.camera ?? null,
       rtsCamera: this.ctx.services.rtsCamera ?? null,
@@ -258,38 +341,37 @@ export class MapsController {
 
   panToTile(q: number, r: number): void {
     this.ctx.services.focusTile?.(q, r, true);
-    // A click / drag answers at once (counted in the scheduler's stats); camera follow-ups go through markDirty.
     this.scheduler.forceRedrawMinimap();
     if (this.openClose.isOpen) this.scheduler.forceRedrawGlobalMap();
   }
 
-  private registeredFlagKey = '';
-
   syncRegistration(): void {
     const enabled = this.ctx.flags.has('W04');
+    const w11Enabled = this.ctx.flags.has('W11');
     this.minimapHud.setVisible(enabled);
     const flagKey = enabled ? [...this.ctx.flags].sort().join(',') : '';
     if (enabled && flagKey !== this.registeredFlagKey) {
-      if (this.unregisterLayers) {
-        this.unregisterLayers();
-        this.unregisterLayers = null;
-      }
+      this.unregisterLayers?.();
       const builtins = createBuiltinW04Layers();
       const cleanups: Array<() => void> = [];
       for (const layer of Object.values(builtins)) {
-        if (this.ctx.flags.has(layer.wave)) {
-          cleanups.push(this.registry.register(layer));
-        }
+        if (this.ctx.flags.has(layer.wave)) cleanups.push(this.registry.register(layer));
       }
-      this.unregisterLayers = () => {
-        for (const fn of cleanups) fn();
-      };
+      this.unregisterLayers = () => { for (const fn of cleanups) fn(); };
+      if (!w11Enabled) {
+        this.sectorSelection.reset();
+        this.currentAdapter = null;
+        this.lastTiles = null;
+      }
       this.registeredFlagKey = flagKey;
       this.syncOverlayChips();
     } else if (!enabled && this.unregisterLayers) {
       this.unregisterLayers();
       this.unregisterLayers = null;
       this.registeredFlagKey = '';
+      this.sectorSelection.reset();
+      this.currentAdapter = null;
+      this.lastTiles = null;
       this.openClose.close();
       this.rasterCache.clear();
     }
@@ -309,20 +391,54 @@ export class MapsController {
 
     const cv = (view.sim?.view ?? this.ctx.services.getView?.() ?? view) as Partial<ClientView>;
     const tiles = (view.tiles ?? cv.tiles) as ClientTiles | undefined;
-    if (cv && typeof cv.count === 'number' && cv.entities) {
-      this.lastClientView = cv as ClientView;
+    if (cv && typeof cv.count === 'number' && cv.entities) this.lastClientView = cv as ClientView;
+
+    const planetId =
+      cv.planet?.id ?? view.planet?.id ?? this.ctx.services.session?.planetId?.() ?? 'default';
+    const radius = cv.planet?.radius ?? view.planet?.radius;
+    const viewerColony = this.ctx.services.colonyId ?? 0;
+    const w11Enabled = this.ctx.flags.has('W11');
+    const atlasBlob = extractViewAtlasBlob(cv, view);
+    const manifest = this.sectorSelection.atlasManifest ?? atlasBlob?.manifest ?? null;
+    const atlasHash =
+      manifest?.atlasHash ?? atlasBlob?.atlasHash ?? this.sectorSelection.planetSummary?.atlasHash ?? null;
+    const atlasVersion =
+      manifest?.atlasVersion ?? atlasBlob?.atlasVersion ?? this.sectorSelection.planetSummary?.atlasVersion ?? null;
+    const worldContextKey = `${planetId}|${atlasHash ?? ''}|${atlasVersion ?? ''}|${viewerColony}|${w11Enabled ? 1 : 0}`;
+    if (worldContextKey !== this.lastWorldContextKey) {
+      if (
+        (this.lastPlanetId !== null && this.lastPlanetId !== planetId) ||
+        (this.lastAtlasHash !== null && this.lastAtlasHash !== atlasHash) ||
+        !w11Enabled
+      ) {
+        this.sectorSelection.reset();
+      }
+      this.lastWorldContextKey = worldContextKey;
+      this.lastPlanetId = planetId;
+      this.lastAtlasHash = atlasHash;
+      this.currentAdapter = null;
+      this.lastTiles = null;
     }
-    // Tile layers are fresh copies whenever a tile changed (`ClientTiles`): the same object again (every rendered
-    // frame re-sends the latest view) has nothing new, so the per-tile dirty scan is skipped.
+
     if (tiles && tiles !== this.lastTiles && tiles.terrain && tiles.prep && tiles.owner) {
       this.lastTiles = tiles;
-      const planetId =
-        cv.planet?.id ??
-        view.planet?.id ??
-        this.ctx.services.session?.planetId?.() ??
-        'default';
-      const radius = cv.planet?.radius ?? view.planet?.radius;
-      const { entry } = this.rasterCache.update(tiles, { planetId, radius });
+      this.currentAdapter = createAtlasMapAdapter({
+        w11Enabled,
+        radius,
+        tileCount: tiles.count,
+        manifest,
+        atlasBlob,
+        planetSummary: this.sectorSelection.planetSummary,
+      });
+      const useMetaKeys = Boolean(this.currentAdapter.isAtlas || atlasHash || viewerColony !== 0);
+      const { entry } = this.rasterCache.update(tiles, {
+        planetId,
+        radius,
+        ...(useMetaKeys
+          ? { atlasHash, atlasVersion, viewerColony, flagKey: w11Enabled ? 'W11' : 'W04' }
+          : {}),
+        adapter: this.currentAdapter.isAtlas ? this.currentAdapter : null,
+      });
       this.lastEntry = entry;
     }
 
@@ -332,7 +448,8 @@ export class MapsController {
       tiles: this.lastTiles,
       clientView: this.lastClientView,
       simData: this.ctx.services.store?.simData?.() ?? undefined,
-      ownColonySlot: this.ctx.services.colonyId ?? 0,
+      ownColonySlot: viewerColony,
+      atlasAdapter: this.currentAdapter?.isAtlas ? this.currentAdapter : null,
     });
 
     if (!this.initialPainted && this.lastEntry) {
@@ -355,61 +472,20 @@ export class MapsController {
     const key = `${rts.target.x.toFixed(2)},${rts.target.z.toFixed(2)},${cx.toFixed(2)},${cy.toFixed(2)},${cz.toFixed(2)}`;
     if (key !== this.prevCamKey) {
       this.prevCamKey = key;
-      // Through the scheduler (≤ 4 Hz minimap, ≤ 2 Hz global map), never a redraw per panning frame.
       this.scheduler.markDirty({ minimap: true, globalMap: true });
     }
   }
 
-  private createStatsProxy(): MinimapStats {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
-    return {
-      get dirtyTiles() { return self.rasterCache.dirtyTiles; },
-      set dirtyTiles(v: number) { self.rasterCache.dirtyTiles = v; },
-      get totalRepaints() { return self.rasterCache.totalRepaints; },
-      set totalRepaints(v: number) { self.rasterCache.totalRepaints = v; },
-      get lastRadius() { return self.rasterCache.lastRadius; },
-      set lastRadius(v: number) { self.rasterCache.lastRadius = v; },
-      get lastPlanetId() { return self.rasterCache.lastPlanetKey; },
-      set lastPlanetId(v: string | null) { self.rasterCache.lastPlanetKey = v; },
-      get minimapRedraws() { return self.scheduler.minimapRedraws; },
-      set minimapRedraws(_v: number) {},
-      get globalMapRedraws() { return self.scheduler.globalMapRedraws; },
-      set globalMapRedraws(_v: number) {},
-      get minimapHz() { return self.scheduler.minimapHz(); },
-      set minimapHz(_v: number) {},
-      get globalMapHz() { return self.scheduler.globalMapHz(); },
-      set globalMapHz(_v: number) {},
-      get entityDotCount() { return self.lastDotCount; },
-      set entityDotCount(v: number) { self.lastDotCount = v; },
-      get globalMapOpen() { return self.openClose.isOpen; },
-      set globalMapOpen(v: boolean) { if (v) self.openClose.open(); else self.openClose.close(); },
-      get activeLayers() { return self.chipController.getActiveLayerIds(); },
-      set activeLayers(_v: MapLayerId[]) {},
-      get registeredLayers() { return self.registry.all().map((l: MapLayer) => l.id); },
-      set registeredLayers(_v: MapLayerId[]) {},
-      get visibleLayers() { return self.chipController.getVisibleLayers().map((l: MapLayer) => l.id); },
-      get trapezoid() { return self.lastTrapezoid; },
-      get zoom() { return self.globalViewport.transform.zoom; },
-      get panX() { return self.globalViewport.transform.panX; },
-      get panY() { return self.globalViewport.transform.panY; },
-      get lastComposite() { return self.lastComposite; },
-    };
-  }
-
   dispose(): void {
-    this.globalOverlay.canvas.removeEventListener('pointermove', this.onGlobalPointerMove);
-    this.globalOverlay.canvas.removeEventListener('pointerleave', this.onGlobalPointerLeave);
+    this.unbindOverlayPointer();
     this.scheduler.dispose();
     this.inputHandle.dispose();
     this.globalViewport.dispose();
     this.openClose.dispose();
     this.globalOverlay.dispose();
     this.minimapHud.dispose();
-    if (this.unregisterLayers) {
-      this.unregisterLayers();
-      this.unregisterLayers = null;
-    }
+    this.unregisterLayers?.();
+    this.unregisterLayers = null;
     this.rasterCache.clear();
   }
 }

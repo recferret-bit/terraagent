@@ -51,6 +51,11 @@ export function regenerateInWorktree(cwd) {
   if (!process.env.TA_WAVE_NO_GEN && existsSync(join(cwd, 'scripts', 'gen', 'run.mjs'))) {
     const r = spawnSync(process.execPath, ['scripts/gen/run.mjs'], { cwd, encoding: 'utf8' });
     if (r.status === 0) ran.push('npm run gen');
+    const prismaBin = join(cwd, 'node_modules', '.bin', 'prisma');
+    if (existsSync(prismaBin) && existsSync(join(cwd, 'shared', 'db', 'prisma', 'schema.prisma'))) {
+      const p = spawnSync(prismaBin, ['generate', '--schema', 'shared/db/prisma/schema.prisma'], { cwd, encoding: 'utf8' });
+      if (p.status === 0) ran.push('prisma generate');
+    }
   }
   if (!process.env.TA_WAVE_NO_PLAN_WRITE && existsSync(join(cwd, 'scripts', 'plan', 'index_waves.py'))) {
     const check = spawnSync('python3', ['scripts/plan/index_waves.py', '--waves-json'], { cwd, encoding: 'utf8' });
@@ -81,21 +86,26 @@ export function mergeWithAutoHeal(cwd, branch, { noFf = false, message = null, a
     return { ok: false, merged: false, autoHealed: [], remainingConflicts: [], output: `${r.stdout}${r.stderr}`.trim() };
   }
   const genConflicts = conflicts.filter((f) => ALL_GENERATED_FILES.has(f));
-  if (genConflicts.length > 0) {
+  const wavePlanConflicts = branch === 'main'
+    ? conflicts.filter((f) => /^docs\/plan\/waves\/W\d{2}-.+\.md$/.test(f))
+    : [];
+  const autoHealed = [...genConflicts, ...wavePlanConflicts];
+  if (autoHealed.length > 0) {
     for (const f of genConflicts) tryOut('git', ['checkout', '--ours', '--', f], { cwd });
+    for (const f of wavePlanConflicts) tryOut('git', ['checkout', '--theirs', '--', f], { cwd });
     regenerateInWorktree(cwd);
-    tryOut('git', ['add', '--', ...genConflicts], { cwd });
+    tryOut('git', ['add', '--', ...autoHealed, ...GENERATED_PLAN_FILES.filter((f) => existsSync(join(cwd, f)))], { cwd });
   }
   const remaining = unmergedFiles(cwd);
   if (remaining.length === 0) {
     const commitArgs = ['commit', ...(message ? ['-m', message] : ['--no-edit'])];
     const c = spawnSync('git', commitArgs, { cwd, encoding: 'utf8' });
     if (c.status === 0) {
-      return { ok: true, merged: true, autoHealed: genConflicts, remainingConflicts: [], output: `${c.stdout}${c.stderr}`.trim() };
+      return { ok: true, merged: true, autoHealed, remainingConflicts: [], output: `${c.stdout}${c.stderr}`.trim() };
     }
   }
   if (abortOnConflict) tryOut('git', ['merge', '--abort'], { cwd });
-  return { ok: false, merged: false, autoHealed: genConflicts, remainingConflicts: remaining, output: `${r.stdout}${r.stderr}`.trim() };
+  return { ok: false, merged: false, autoHealed, remainingConflicts: remaining, output: `${r.stdout}${r.stderr}`.trim() };
 }
 
 function parseNumericMap(text, constName) {

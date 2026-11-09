@@ -186,3 +186,9 @@ Every mechanism from PRODUCT_WAVES §3–§4 exists and is usable by the next wa
 
 - **Rescoped in the 2026-10-30 layout review:** W00-04 no longer moves the app (it already lives in `frontend/`); it only turns the five `frontend/` folders into workspaces and wires the `@terra/*` packages, so it shrank from M to S. W00-28 now builds the terrain from the sim's hex tiles as CLIENT §8 requires. Before, it put a hex overlay on the noise heightfield, which would not match the generator's tiles from W01-06 on.
 - **Removed in the 2026-10-30 cross-check:** W00-34 (mock Cargo/Intents adapters, built by W10-10 and W13-04/05) and W00-36 (mock DAO/Escrow/LLM/Notifier adapters, built by W22-03, W22-17, W16-02 and W09-20). W00-33 now holds only the ChainRead mock, and W00-35 the shared NEP-171/Badge mock (was W20-02). Each feature wave owns its port's mock and contract suite.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Foundation:** Provides the shared contracts, deterministic `SimHost`, NestJS `PlanetHost` worker pool, WebSocket diff protocol, Postgres snapshot/outbox persistence, and all 11 `NearPort` plus `LlmProviderPort` and `NotifierPort` abstractions (`W00-30..38`).
+2. **Test Pyramid & Online E2E (`tests/e2e/w00.spec.ts`):** Unit tests (positive, negative, corner cases) + real Postgres integration specs (`outbox`, `snapshots`, `contract` harness) + full online server/client Playwright E2E.
+3. **100% Working Mock Mode + `NEAR_MODE` Switch:** All ports default to fail-closed Postgres mocks (`NEAR_MODE=mock`) and switch cleanly via `NEAR_MODE=testnet|devnet` / `NEAR_ADAPTER_<PORT>` (`W00-31`, `W23`).

@@ -147,7 +147,7 @@ function findColonySupportNodes(
 
   let fallbackAnchor = hubAnchor ?? hqAnchor ?? podAnchor;
   if (!fallbackAnchor) {
-    const ownerLayer = state.grid.layers.owner as Int8Array;
+    const ownerLayer = state.grid.layers.owner as Int16Array;
     const hx = hexIndex(state.grid.radius);
     for (let i = 0; i < state.grid.count; i++) {
       if (ownerLayer[i] === colonyIndex) {
@@ -165,7 +165,7 @@ function detectGridFlags(state: PlanetState, colonyIndex: number): {
   colonyHasTerritory: boolean;
   planetHasRichness: boolean;
 } {
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   const richnessLayer = state.grid.layers.richness as Float32Array | undefined;
   let colonyHasTerritory = false;
   let planetHasRichness = false;
@@ -396,7 +396,7 @@ export function selectDeterministicBuildSite(
   };
 
   const hx = hexIndex(state.grid.radius);
-  const ownerLayer = state.grid.layers.owner as Int8Array;
+  const ownerLayer = state.grid.layers.owner as Int16Array;
   let best: BuildSiteSelection | null = null;
   let tieCount = 0;
 

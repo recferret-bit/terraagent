@@ -297,7 +297,7 @@ export function analyzeWaveFiles(cwd, relFiles) {
     fileEntries.push({ rel, text });
     const lineCount = text.split('\n').length;
 
-    if (lineCount > AST_LIMITS.maxFileLines && !/^docs\//.test(rel)) {
+    if (lineCount > AST_LIMITS.maxFileLines && !isDataOrGen(rel)) {
       issues.push({
         code: 'FILE_OVER_LIMIT',
         severity: 'error',

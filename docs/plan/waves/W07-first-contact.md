@@ -146,3 +146,8 @@ Also in this wave:
 Register Defend Area and Clear Nest executors; make defense priority affect protection and test actual combat completion.
 
 Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S2–S4` Combat & Species Hives):** Tier-1 combat roster (`robot.recon`, `building.turret.laser`) vs organic insect fauna (`bug.biter`, `bug.beetle`, `bug.spitter`) and species hives (`hiveBlackAnt`, `hiveBlueBeetle`, `hiveGreenSpitter`). Tier 2/3 combat waves (`W14`, `W17`, `W19`) are **POSTPONED**.
+2. **Test Pyramid & Online E2E (`tests/e2e/w07.spec.ts`):** Unit & duel balance specs (`duels.spec.ts`, flow-field `moveGroup`, spotting gate, hive lifecycle) + online server/client Playwright E2E + `?host=local` parity.

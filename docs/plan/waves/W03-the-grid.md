@@ -126,3 +126,8 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 Complete the S2 grid/storage/night-power lesson and connect Secure Power to real night generators. Unblock Grow Economy storage expansion.
 
 Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
+## Vertical Slice Testing, Full-Game Integration & Mock/Real Switch Gates
+
+1. **Tier-1 Vertical Slice Scope (`S1–S2` Tier-1 Economy):** Tier-1 resource extraction (`metals.t1`, `minerals.t1`, `bio.water`, `bio.biomass`), storage caps, T1 `worker` build/harvest queues, and whole-unit residual reconciliation (`LED-16`).
+2. **Test Pyramid & Online E2E (`tests/e2e/w03.spec.ts`):** Unit + multi-tick `SimHost` integration tests (cap-full halt, brownout pause, refund on cancel, worker pathing edge cases) + online server/client Playwright E2E + `?host=local` parity.

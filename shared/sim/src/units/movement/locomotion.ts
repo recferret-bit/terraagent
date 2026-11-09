@@ -1,3 +1,6 @@
+import { getAtlasBlob } from '../../atlas/generateAtlas';
+import { globalTileToSector } from '../../atlas/partition';
+import { syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
 import { PREP } from '../../grid/layers';
@@ -103,14 +106,22 @@ export function advanceAlongRoute(
   let budget = Math.fround(effectiveSpeedPerTick * ctx.dt);
   let result: LocomotionResult = 'moving';
   const waypoints = route.path.length / 2;
+  const atlasBlob = getAtlasBlob(state);
+  const startSectorId = atlasBlob ? globalTileToSector(prevQ, prevR, atlasBlob.sectorRadius).sectorId : null;
 
   while (route.next < waypoints) {
     const tx = route.path[route.next * 2];
     const ty = route.path[route.next * 2 + 1];
     const tileIdx = idx.indexOf(tx, ty);
+    const crossesSector =
+      startSectorId !== null && globalTileToSector(tx, ty, atlasBlob!.sectorRadius).sectorId !== startSectorId;
     // the tile the unit already stands in never blocks it (it may only walk out), like A*'s exempt start tile
     const inside = tx === prevQ && ty === prevR;
-    if (tileIdx < 0 || (!inside && (!isGroundPassable(state.grid, tileIdx, ctx.data) || (blocked?.(tileIdx) ?? false)))) {
+    if (
+      tileIdx < 0 ||
+      crossesSector ||
+      (!inside && (!isGroundPassable(state.grid, tileIdx, ctx.data) || (blocked?.(tileIdx) ?? false)))
+    ) {
       result = 'blocked';
       break;
     }
@@ -136,6 +147,12 @@ export function advanceAlongRoute(
   setField(e, row, 'r', nr, ctx.tick);
   if (nq !== prevQ || nr !== prevR) {
     revealVision(state, cols.owner[row], nq, nr, stats.viewRadius, ctx.tick);
+    const atlasBlob = getAtlasBlob(state);
+    if (atlasBlob && cols.owner[row] >= 0) {
+      const prevSec = globalTileToSector(prevQ, prevR, atlasBlob.sectorRadius).sectorId;
+      const nextSec = globalTileToSector(nq, nr, atlasBlob.sectorRadius).sectorId;
+      if (prevSec !== nextSec) syncAtlasColonySectorState(state, ctx.tick);
+    }
   }
   return result;
 }

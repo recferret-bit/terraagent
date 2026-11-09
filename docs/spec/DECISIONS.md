@@ -20,7 +20,7 @@
 | D-09 | Z.ai `glm-5.3` via OpenAI-compatible API, behind a provider port | Accepted (2026-10-29): general endpoint, 20M tokens/day, raw logs 14 d |
 | D-10 | Guest-first auth, optional NEAR wallet link (NEP-413) | Proposed |
 | D-11 | Trades settle in-game in MVP with on-chain receipt; real NEAR Intents later | Superseded by D-19 |
-| D-12 | Persistent canonical planets and sector founding capacity | Amended by owner 2026-11-04: W11 foundation, W27 scale/navigation; supersedes instance lifetimes/warm pools |
+| D-12 | Persistent canonical planets and sector founding capacity | Amended by owner 2026-11-04 & 2026-11-09: W11 foundation (4× isolated `R=48` sectors + 19-sector Orbital Picker/Global Map), W27 multi-sector streaming/navigation; supersedes instance lifetimes/warm pools |
 | D-13 | Planets always tick at full rate (no dormant fast-forward in MVP) | Superseded by D-24 (empty planets tick coarse) |
 | D-14 | All backend services are NestJS | Amended by D-24 (one NestJS app; sim threads plain TS) |
 | D-15 | MVP gameplay scope for the online build | Proposed — robot list superseded by D-16 if accepted |
@@ -129,7 +129,7 @@
 
 ## D-12 — Persistent canonical planets and sector admission
 
-**Owner amendment (2026-11-04).** W11 becomes a small playable version of W27. Three canonical planets, one per existing type, persist from W11 onward. Founding capacity and safe landing slots belong to gameplay sectors; full worlds queue new players. No automatic overflow instances, warm pools, age sealing, lifetime expiry or extinction/all-settled ending. W11 includes small connected sectors and real border crossings; W27 expands scale, streaming and ground-to-globe navigation using the same admission model.
+**Owner amendment (2026-11-04; simplified 2026-11-09).** W11 becomes a simplified playable version of W27. Three canonical planets, one per existing type, persist from W11 onward. Founding capacity and safe landing slots belong to gameplay sectors (`R=48`, `7,057` tiles/sector — 4× basic sector hex area — across the 19-sector small-atlas manifest: `7` land sectors = `49,399` land tiles + `12` ocean halo sectors = `84,684` ocean tiles, `134,083` total tiles); full worlds queue new players. No automatic overflow instances, warm pools, age sealing, lifetime expiry or extinction/all-settled ending. In W11, in-game `PlanetState.grid` loads only a single isolated sector (`radius = 48`, `7,057` tiles) and crossing sector boundaries in gameplay is blocked (`reason: 'cross_sector_disabled'`), while all `19` surrounding sectors remain visible on the Orbital Picker and Global Map (`M` dialog). W27 unlocks infinite/streaming multi-sector loading, seamless cross-sector boundary traversal, large continent scale and ground-to-globe navigation using the same admission model.
 
 **Superseded history.** The 2026-10-29 decision used capacity five per instance, 24-hour admission, 14-day lifetime, two-hour refill and warm pools. Those numbers are not current W11/W27 requirements. Pre-W11 dev seating remains a compatibility path.
 
