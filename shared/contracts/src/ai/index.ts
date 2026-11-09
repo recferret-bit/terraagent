@@ -9,4 +9,5 @@ export * from './directive';
 export * from './jobs';
 export * from './brief';
 export * from './tools';
+export * from './sector-advisor';
 export * from './parse';

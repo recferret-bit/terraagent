@@ -70,6 +70,7 @@ describe('production guard', () => {
   });
   it('does not block mocks outside production', async () => {
     const { app } = await createApp({ source: base });
+    expect(app.getHttpServer()).toBeDefined();
     await app.close();
   });
   it('testnet without a registered adapter fails boot naming the port', async () => {

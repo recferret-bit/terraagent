@@ -105,6 +105,7 @@ export {
   guardBriefText,
   noteDirectorPlan,
   priorityKey,
+  readDirectorView,
   previewBatch,
   scopeDirective,
   screenDirective,
@@ -116,8 +117,14 @@ export {
   summarizeRelevant,
   syntheticWorld,
   strategyPermitted,
+  evaluateTradeSkillProposal,
   suppressGoal,
+  type BotTradeAllowance,
+  type BotTradeOrder,
+  type ColonyDirectorRecord,
   type StrategyPermissions,
+  type TradeProposalRejectReason,
+  type TradeSkillProposalResult,
 } from './systems/director';
 export * from './systems/progression';
 export * from './systems/progression/validate';

@@ -19,4 +19,18 @@ describe('W16-17 kill switch', () => {
     kill.kill('colony:co_1', 'admin-token', 0);
     expect(kill.acceptResult('colony:co_2', 'worker').code).toBe('ok');
   });
+
+  it('stops bound W13 bot trading keys when colony or global kill switch fires (D-45)', () => {
+    const kill = new DirectorKillSwitch('admin-token');
+    kill.bindBotKey('colony:co_1', 'bk_col1');
+    kill.bindBotKey('colony:co_2', 'bk_col2');
+    expect(kill.isBotKeyKilled('bk_col1')).toBe(false);
+
+    kill.kill('colony:co_1', 'admin-token', 100);
+    expect(kill.isBotKeyKilled('bk_col1')).toBe(true);
+    expect(kill.isBotKeyKilled('bk_col2')).toBe(false);
+
+    kill.kill('global', 'admin-token', 200);
+    expect(kill.isBotKeyKilled('bk_col2')).toBe(true);
+  });
 });

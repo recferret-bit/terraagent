@@ -22,23 +22,35 @@
 
 1. **Plate, goals, priorities, mock plan.**
    - **Where:** `<client>/play.html?scenario=w16&as=w16`
-   - **How:** wait until the **TICK** chip (top left) shows a number. It keeps increasing (about 5 per second). Press **`` ` ``**, then `director.plan`, then `director.trace`. Click the **Priorities** tab on the HQ panel (right side).
-   - **See:** a flat hex planet and the HQ drone. Top right, under the wave chips, a plate whose only text is **DIRECTOR**. The wave chips show **26/26** and **W16** lit, source `server`. **HQ GOALS 0 / 2** offers **Establish Colony** (“Prepare site, place Command Hub, and build 1 extractor + 1 generator”) with **ACCEPT** and **DO IT MYSELF**. The add list also shows Grow Economy, Secure Power, and two “coming in a future wave” rows. **Priorities** shows **HQ PRIORITIES**, Economy **70**, Expansion **40**, Defense **50**, Power **60**, Terraform **30**, total **250**. The console prints:
+   - **How:** wait until the **TICK** chip (top left) shows a number. It keeps increasing (about 5 per second). Press **`` ` ``**, then `flags`, `director.plan`, then `director.trace`. Click the **Priorities** tab on the HQ panel (right side).
+   - **See:** a flat hex planet and the HQ drone. Top right, the **DIRECTOR** plate displays the live policy summary `conservative · resources · 15% commit / 40% reserve`, interactive risk (`conservative` / `risky`), preset (`balanced` / `defense` / `expansion` / `resources` / `terraforming` / `trade`), pause, and note controls, plus the action list. **HQ GOALS 0 / 2** offers **Establish Colony** (“Prepare site, place Command Hub, and build 1 extractor + 1 generator”) with **ACCEPT** and **DO IT MYSELF**. **Priorities** shows **HQ PRIORITIES**, Economy **70**, Expansion **40**, Defense **50**, Power **60**, Terraform **30**, total **250**. The console prints:
 
      ```
      plan forced trigger=resource.shortage risk=conservative queue=1 trace=mock
      trace mock queue=1 outcome=proposed
      ```
 
-     The plate does not print Conservative, a budget, or a rationale. Those stay in the sim seed and the console line (AI-13). `curl <app>/v1/readyz` returns `{"db":"ok","simThreads":17}` on this machine (threads follow the CPU).
+     The plate's action list renders `grow-economy · applied — 15% commit · Hold one grow_economy goal at the conservative commitment.` `curl <app>/v1/readyz` returns `{"db":"ok","simThreads":17}` on this machine (threads follow the CPU).
 
-2. **Risky comparison — not on the page.** `director.plan` always prints `risk=conservative`. There is no risk control in the HUD. Skip the click. The scenario unit test stores Conservative and refuses away raids: `npm test -w @terra/scenarios -- test/w16-director.spec.ts`.
+2. **Risky comparison.**
+   - **Where:** same page (`<client>/play.html?scenario=w16&as=w16`).
+   - **How:** on the **DIRECTOR** plate, change the Risk dropdown from `conservative` to `risky`. Press **`` ` ``** and run `director.plan`, then `director.trace`.
+   - **See:** the policy summary updates to `risky · resources · 35% commit / 15% reserve`, any previous open row transitions to `superseded` as `intentRevision` increments, and `director.plan` prints `plan forced trigger=resource.shortage risk=risky queue=1 trace=mock` while rendering 2 actions (`grow-economy` at `35% commit` and `harvest-metals`).
 
-3. **Protect a goal — not exercised.** **DO IT MYSELF** is on the Establish Colony card. This check did not click it, and a conflicting director proposal is not shown on the plate. Skip.
+3. **Protect a goal (`locked_goal`).**
+   - **Where:** same page.
+   - **How:** in the dev console (`` ` ``), run `director.plan locked_goal`.
+   - **See:** the console prints `plan forced trigger=resource.shortage risk=risky fault=locked_goal outcome=rejected queue=1 trace=mock` and the **DIRECTOR** plate shows `cancel-manual · rejected (locked_goal) — Player-locked goal preserved.`
 
-4. **Supersede and reload — not on the page.** Nothing delays a provider call or writes the policy into a reloadable game save from this HUD. Skip.
+4. **Supersede (`stale_revision` / policy change).**
+   - **Where:** same page.
+   - **How:** run `director.plan` so an `applied` row is visible on the **DIRECTOR** plate, then toggle the Preset dropdown (e.g. to `defense`) or run `director.plan stale_revision`.
+   - **See:** changing policy increments `intentRevision` and marks prior `applied` rows `superseded`; running `director.plan stale_revision` prints `outcome=superseded` and renders `grow-economy · superseded (stale_revision) — Superseded by newer player intent.`
 
-5. **Raid fault — not on the page.** Risky does not add a raid button. Skip. Policy tests keep `awayRaids` false.
+5. **Raid fault (`raid_proposal`).**
+   - **Where:** same page (even with Risk set to `risky`).
+   - **How:** in the dev console (`` ` ``), run `director.plan raid_proposal`.
+   - **See:** the console prints `plan forced trigger=resource.shortage risk=risky fault=raid_proposal outcome=unauthorized queue=1 trace=mock` and the **DIRECTOR** plate shows `act-raid · rejected (away_raids) — Raid proposals are outside director authority.`
 
 6. **Hostile input and admin kill — not on the page.** There is no injection box and no admin token to type. Do not invent a credential. Skip. Regression coverage is `backend/app/test/ai/` (policy, outbox, kill switch). The kill switch is in memory.
 

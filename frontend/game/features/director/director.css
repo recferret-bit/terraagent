@@ -16,6 +16,33 @@
   letter-spacing: var(--ta-track-label);
 }
 
+.ta-director__summary {
+  color: var(--ta-text-2);
+  font: 500 10px/1.3 var(--ta-font-mono);
+}
+
+.ta-director-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s1);
+  align-items: center;
+}
+
+.ta-director-controls select,
+.ta-director-controls textarea {
+  background: var(--ta-void);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-2);
+  font: 500 10px/1.2 var(--ta-font-mono);
+  padding: 2px 4px;
+}
+
+.ta-director-controls textarea {
+  width: 100%;
+  min-height: 22px;
+  resize: none;
+}
+
 .ta-director__list { display: flex; flex-direction: column; gap: var(--ta-s1); }
 .ta-director__row { display: flex; flex-wrap: wrap; gap: var(--ta-s1); }
 .ta-director__state { color: var(--ta-blue-hi); }

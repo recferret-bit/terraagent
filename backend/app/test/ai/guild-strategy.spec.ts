@@ -18,5 +18,33 @@ describe('W16-21 guild strategy', () => {
     expect(result.outcome).toBe('ok');
     expect(result.readColonyIds).toEqual(['co_npc']);
     expect(result.commands).toEqual([]);
+    expect(result.strategy?.specialisation).toBe('balanced');
+    expect(result.strategy?.route).toBe('guild_hub');
+  });
+
+  it('rejects a free price in NPC strategy output with free_price_forbidden and spends zero tokens', () => {
+    const budget = new GlobalTokenBudget(100);
+    const rejected = guildStrategy(
+      {
+        npcColonyId: 'co_npc',
+        targetColonyId: 'co_npc',
+        day: '2026-11-04',
+        proposal: {
+          specialisation: 'miner',
+          risk: 'conservative',
+          goals: ['surplus_export'],
+          reserveTargets: {},
+          price: 999,
+        },
+      },
+      budget,
+      100,
+    );
+    expect(rejected.ok).toBe(false);
+    expect(rejected.outcome).toBe('invalid');
+    expect(rejected.reason).toBe('free_price_forbidden');
+    expect(rejected.commands).toEqual([]);
+    // Budget remains untouched because invalid strategy is rejected before reservation
+    expect(budget.reserve('2026-11-04', 100).ok).toBe(true);
   });
 });

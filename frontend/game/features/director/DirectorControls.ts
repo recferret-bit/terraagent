@@ -1,18 +1,50 @@
-import { DIRECTOR_PRESETS, DIRECTOR_RISKS, type DirectorPreset, type DirectorRisk, type SetDirectorPolicyArgs } from '@terra/contracts';
+import {
+  DIRECTOR_PRESETS,
+  DIRECTOR_RISKS,
+  type DirectorPolicyV1,
+  type DirectorPreset,
+  type DirectorRisk,
+  type SetDirectorPolicyArgs,
+} from '@terra/contracts';
 
 /** Player director controls. There is no away-raid field. Risk cannot add one. */
 export class DirectorControls {
-  constructor(private readonly host: HTMLElement) {
+  private readonly riskEl: HTMLSelectElement;
+  private readonly presetEl: HTMLSelectElement;
+  private readonly noteEl: HTMLTextAreaElement;
+  private readonly pauseEl: HTMLInputElement;
+
+  constructor(
+    private readonly host: HTMLElement,
+    private readonly onChange?: (patch: SetDirectorPolicyArgs) => void,
+  ) {
     this.host.classList.add('ta-director-controls');
-    const risk = select('risk', DIRECTOR_RISKS);
-    const preset = select('preset', DIRECTOR_PRESETS);
-    const note = document.createElement('textarea');
-    note.name = 'note';
-    note.maxLength = 500;
-    const pause = document.createElement('input');
-    pause.type = 'checkbox';
-    pause.name = 'pause';
-    this.host.append(risk, preset, note, pause);
+    this.riskEl = select('risk', DIRECTOR_RISKS);
+    this.presetEl = select('preset', DIRECTOR_PRESETS);
+    this.noteEl = document.createElement('textarea');
+    this.noteEl.name = 'note';
+    this.noteEl.maxLength = 500;
+    this.pauseEl = document.createElement('input');
+    this.pauseEl.type = 'checkbox';
+    this.pauseEl.name = 'pause';
+
+    const emit = () => this.onChange?.(this.read());
+    this.riskEl.addEventListener('change', emit);
+    this.presetEl.addEventListener('change', emit);
+    this.pauseEl.addEventListener('change', emit);
+    this.noteEl.addEventListener('change', emit);
+
+    this.host.append(this.riskEl, this.presetEl, this.noteEl, this.pauseEl);
+  }
+
+  /** Syncs controls from authoritative colony policy without emitting a synthetic change event. */
+  sync(policy: DirectorPolicyV1): void {
+    this.riskEl.value = policy.risk;
+    this.presetEl.value = policy.preset;
+    this.pauseEl.checked = policy.pause;
+    if (typeof document === 'undefined' || document.activeElement !== this.noteEl) {
+      this.noteEl.value = policy.note ?? '';
+    }
   }
 
   /** Args for `setDirectorPolicy`. Unknown controls are ignored. */

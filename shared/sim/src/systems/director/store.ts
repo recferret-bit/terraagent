@@ -82,6 +82,18 @@ export function directorRecord(state: PlanetState, colonyIndex: number): ColonyD
   return readBlob(state).byColony[String(colonyIndex)];
 }
 
+/** Reads a colony's director record from either a `PlanetState` (`blobs.director.value`) or a `SimView` / `ClientView` (`blobs.director`). */
+export function readDirectorView(view: unknown, colonyIndex = 0): ColonyDirectorRecord | undefined {
+  if (!view || typeof view !== 'object') return undefined;
+  const blobs = (view as { blobs?: Record<string, unknown> }).blobs;
+  const raw = blobs?.[BLOB];
+  if (!raw || typeof raw !== 'object') return undefined;
+  const inner = 'value' in raw && raw.value && typeof raw.value === 'object' ? raw.value : raw;
+  const byColony = (inner as DirectorBlob).byColony;
+  if (!byColony || typeof byColony !== 'object') return undefined;
+  return byColony[String(colonyIndex)];
+}
+
 export function saveDirectorRecord(state: PlanetState, colonyIndex: number, record: ColonyDirectorRecord, tick: number): void {
   const blob = readBlob(state);
   blob.byColony[String(colonyIndex)] = record;

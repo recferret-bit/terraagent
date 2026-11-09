@@ -4,10 +4,10 @@
 
 - **Status:** Open
 - **Area / code:** [W16](../plan/waves/W16-ai-director.md), [AI spec](../spec/AI_ORCHESTRATOR.md), `backend/app/src/ai/`
-- **What happens:** contracts, sim policy, the mock planner, the director plate, and one redacted glm-5.3 ping are in the tree. The director worker still prints `db=none` and does not plan against a live colony. pg-boss is installed and not connected to Postgres. The HUD does not show goals, priorities, or budget during play (AI-13).
-- **Why it is like this:** W16-01 through W16-49 (except the owner play-through) landed as in-memory or mock slices. A second paid call was not required after the one ping in `docs/plan/w16-live-report.md`.
-- **Workaround / mitigation:** play `/play.html?scenario=w16` for the plate and `director.plan` / `director.trace`. Treat the load and restart reports as the measurements they name, not as a saturated database pool.
-- **To resolve:** connect the worker to the game through the existing proposal path, and paint policy on the plate from the sim view.
+- **What happens:** contracts, sim policy, the mock planner, the director plate with live policy summary & controls, the Prisma repository (`PrismaDirectorStore`), and one redacted glm-5.3 ping are in the tree. The standalone director worker still prints `db=none` on `--check` and does not poll a live colony loop on its own. pg-boss is installed and not started automatically by `npm run dev`.
+- **Why it is like this:** W16-01 through W16-49 landed with deterministic mock/eval adapters, a real Postgres store (`PrismaDirectorStore`), and the live HUD plate, while keeping automatic background LLM polling off during local dev. A second paid call was not required after the one ping in `docs/plan/w16-live-report.md`.
+- **Workaround / mitigation:** play `/play.html?scenario=w16` for the live policy plate, controls, and `director.plan` / `director.trace`. Treat the load report as the measurement it names, not as a saturated database pool.
+- **To resolve:** connect the background worker loop to the live game session scheduler when background autonomous ticks are enabled.
 - **Found:** 2026-11-04, W16 planning review.
 
 ### AI-02 · Risk profiles need gameplay calibration
@@ -52,22 +52,22 @@
 
 ### AI-06 · Director audit store is in-memory only
 
-- **Status:** Open
-- **Area / code:** `backend/app/src/ai/audit/memory-store.ts` (`MemoryDirectorAudit`), `shared/db/prisma/ai.prisma`
-- **What happens:** policy, context and decision rows round-trip in memory. `expire` deletes context and decisions with `expiresAtMs <= now` and leaves `director_policy`. `director_attempt`, `director_proposal` and `director_action_result` have tables and no writer. Nothing here connects to Postgres. `loadUnchecked` exists so a test can plant corrupt policy JSON.
-- **Why it is like this:** W16-15's acceptance is the expiry rule without a database. The Prisma class waits for worker wiring and must not be required by unit tests when Postgres is down.
-- **Workaround / mitigation:** `partitionExpired` does not take policy rows. A later repository should implement `DirectorAuditPort` in `backend/app/src/ai/audit/types.ts`. Callers pass `expiresAtMs` (short-lived context, 30-day decision audit); this store does not choose those windows or redact secrets (W16-16).
-- **To resolve:** add a Prisma `DirectorAuditPort` against the generated client, plus attempt and action-result writers, without expiring `director_policy`.
+- **Status:** Resolved (wave/w16-ai-director validation)
+- **Area / code:** `backend/app/src/ai/audit/prisma-store.ts` (`PrismaDirectorStore`), `backend/app/src/ai/audit/memory-store.ts` (`MemoryDirectorAudit`), `shared/db/prisma/ai.prisma`
+- **What happens:** `PrismaDirectorStore` implements `DirectorAuditPort` over `@terra/db` (`director_policy`, `director_context`, `director_decision`, `director_proposal`, `director_action_result`, `director_budget_day`, `director_attempt`, `director_kill_switch`), expiring context and decisions while preserving `director_policy`. `MemoryDirectorAudit` remains for fast unit tests without Postgres.
+- **Why it is like this:** unit tests run without a database while `backend/app/test/ai/director-persistence.int.spec.ts` verifies the real Postgres store.
+- **Workaround / mitigation:** use `PrismaDirectorStore` for durable Postgres persistence and `MemoryDirectorAudit` for unit tests.
+- **To resolve:** resolved in `backend/app/src/ai/audit/prisma-store.ts`.
 - **Found:** 2026-11-04, W16-15.
 
 ### AI-07 · Proposal outbox is in-memory
 
-- **Status:** Open
-- **Area / code:** `backend/app/src/ai/audit/outbox.ts` (`ProposalOutbox`), `shared/db/prisma/ai.prisma` (`DirectorProposal`)
-- **What happens:** `accept` keeps the first action list for a `requestId` in process memory. A lower fence than that colony's latest accepted fence, or an `intentRevision` below `noteIntent`, returns `superseded` and stores nothing. A repeat `requestId` returns `duplicate: true` and does not append actions. Nothing is written to `director_proposal` or `director_action_result`. A process restart drops accepted proposals.
-- **Why it is like this:** W16-12's acceptance is fencing and request-id dedupe. The task forbids Prisma edits, so the durable table stays unused.
-- **Workaround / mitigation:** callers can read the one stored list with `results(requestId)`. Do not treat this object as crash-safe, and do not replay a superseded proposal under the same request id after raising the fence elsewhere.
-- **To resolve:** persist the same accept rules in one transaction on `director_proposal`, still deduping `requestId`, without applying a stale fence or an older intent revision.
+- **Status:** Resolved (wave/w16-ai-director validation)
+- **Area / code:** `backend/app/src/ai/audit/prisma-store.ts` (`PrismaDirectorStore.acceptProposal`), `backend/app/src/ai/audit/outbox.ts` (`ProposalOutbox`), `shared/db/prisma/ai.prisma` (`DirectorProposal`)
+- **What happens:** `PrismaDirectorStore.acceptProposal` persists proposals and action results in a single Postgres transaction on `director_proposal` and `director_action_result`, enforcing `(planetEpoch, stateTick)` and `intentRevision` fencing and `requestId` deduplication across restarts and workers.
+- **Why it is like this:** `ProposalOutbox` remains as the pure in-memory reference implementation for unit tests, while `PrismaDirectorStore` provides crash-safe Postgres persistence.
+- **Workaround / mitigation:** use `PrismaDirectorStore.acceptProposal` and `results(requestId)` when backed by Postgres.
+- **To resolve:** resolved in `backend/app/src/ai/audit/prisma-store.ts`.
 - **Found:** 2026-11-04, W16-12.
 
 ### AI-08 · Director metrics are in-memory counters, not alerts
@@ -82,12 +82,12 @@
 
 ### AI-09 · Global token budget is process-local
 
-- **Status:** Open
-- **Area / code:** `backend/app/src/ai/budget/global.ts` (`GlobalTokenBudget`), `shared/db/prisma/ai.prisma` (`DirectorBudgetDay`)
-- **What happens:** `reserve` / `reconcile` keep spent and outstanding tokens in a `Map` keyed by the day string. Another process, or this process after a restart, does not see those counters, so two workers can each reserve the full daily cap. `reconcile` closes the oldest outstanding reservation of the same token count. A repeat for that count, while another reservation of the same size is still open, closes the other one. Usage above the reservation is added to spent. Dollars are not tracked.
-- **Why it is like this:** W16-08's acceptance is the reservation rule (retry, unknown usage, UTC day) without a database. `DirectorBudgetDay` has no writer.
-- **Workaround / mitigation:** one process. Unknown usage (`actual: null`) charges the full reservation. A reconcile that matches no outstanding reservation does not lower spent. Callers that retry reconcile while another reservation of the same size is open can close the wrong one.
-- **To resolve:** persist the same rules in one transaction (W16-44), with a reservation id so a retry cannot match a different row. The cost ceiling stays a separate check (AI §7).
+- **Status:** Resolved (wave/w16-ai-director validation)
+- **Area / code:** `backend/app/src/ai/audit/prisma-store.ts` (`PrismaDirectorStore.reserveAttemptBudget` / `reconcileAttemptBudget`), `backend/app/src/ai/budget/global.ts` (`GlobalTokenBudget`), `shared/db/prisma/ai.prisma` (`DirectorBudgetDay`, `DirectorAttempt`)
+- **What happens:** `PrismaDirectorStore.reserveAttemptBudget` and `reconcileAttemptBudget` persist daily token reservations and attempt rows (`attemptId`) inside a Postgres transaction using `SELECT ... FOR UPDATE` on `director_budget_day` and `director_attempt`, preventing concurrent workers from exceeding the daily cap and ensuring idempotent per-attempt reconciliation.
+- **Why it is like this:** `GlobalTokenBudget` stays available for pure unit tests while `PrismaDirectorStore` enforces multi-worker transactional caps on Postgres.
+- **Workaround / mitigation:** pass a unique `id` per provider attempt to `reserveAttemptBudget` and `reconcileAttemptBudget`.
+- **To resolve:** resolved in `backend/app/src/ai/audit/prisma-store.ts` and tested in `backend/app/test/ai/director-persistence.int.spec.ts`.
 - **Found:** 2026-11-04, W16-08.
 
 ### AI-10 · Library pins are loaded, live model behavior is not
@@ -110,24 +110,24 @@
 - **To resolve:** W16-48 runs the live provider against these fixtures and fills the outcome map from validator results.
 - **Found:** 2026-11-04, W16-22.
 
-### AI-12 · Restart replay and the load bench are in-process
+### AI-12 · Load bench is in-process
 
 - **Status:** Open
-- **Area / code:** `backend/app/src/ai/budget/global.ts`, `backend/app/src/ai/audit/outbox.ts`, `backend/director/src/claim.ts`, `backend/director/src/bench.ts`, `docs/plan/w16-director-load.md`
-- **What happens:** W16-44 saves and restores `GlobalTokenBudget`, `ProposalOutbox`, and `JobClaims` as JSON in the same process. It does not kill Postgres or a second worker. W16-47 times `summarizeRelevant` on a 450-sector synthetic world (50 samples, p95 0.014 ms, RSS 145 MB on the machine named in the load report). The pool line is `in-memory 1` and the oldest job age is 0. That is not a saturated pg-boss pool.
-- **Why it is like this:** the acceptance tests for those issues forbid a live database dependency. pg-boss is a library pin, not the scheduler the game runs.
-- **Workaround / mitigation:** read the two reports as measurements of those functions. Do not quote them as crash-safe delivery or as the §12 database bounds.
-- **To resolve:** run the same fences and token rules through Postgres, kill the worker around commit, and publish a new load report from that pool.
+- **Area / code:** `backend/director/src/bench.ts`, `docs/plan/w16-director-load.md`, `backend/app/test/ai/director-persistence.int.spec.ts`
+- **What happens:** multi-worker budget contention, proposal fencing, and kill-switch persistence now run against real Postgres in `backend/app/test/ai/director-persistence.int.spec.ts`. W16-47 (`bench.ts`) still times `summarizeRelevant` on a 450-sector synthetic world in-process (50 samples, p95 0.014 ms, RSS 145 MB on the machine named in the load report; pool `in-memory 1`, oldest job age `0`).
+- **Why it is like this:** the W16-47 benchmark measures context-summarizer CPU/RSS bounds deterministically without background worker noise.
+- **Workaround / mitigation:** read `docs/plan/w16-director-load.md` as the summarizer benchmark and `director-persistence.int.spec.ts` as the Postgres transactional proof.
+- **To resolve:** publish a combined pg-boss + W27 live sector load report when W27 lands.
 - **Found:** 2026-11-04, W16-27.
 
 ### AI-13 · The director plate does not show live policy during play
 
-- **Status:** Open
-- **Area / code:** `frontend/game/features/director/index.ts`, `DirectorPanel.ts`, `DirectorControls.ts`
-- **What happens:** with W16 on, the top-right plate title is `DIRECTOR` and the action list stays empty. Nothing in the session calls `render`. The risk, preset, and note controls are built in tests and are not mounted. `director.plan` and `director.trace` print fixed mock lines. They do not read the colony policy. `&waves=..15` removes the plate.
-- **Why it is like this:** W16-18 and W16-19 landed the plate and the control widget. The client view has no director policy field, so the session cannot fill the plate without a new snapshot field.
-- **Workaround / mitigation:** the `w16` scenario still stores Conservative Resources in the sim (`tests/scenarios/w16-director.ts`). Confirm that with the scenario unit test. The owner steps that need a visible goal, a budget, a rejected raid, or a delayed plan are deferred until the plate is fed from the sim.
-- **To resolve:** add a client-safe director view and call `render` from the feature `update`. Mount the controls only when that command path exists.
+- **Status:** Resolved (wave/w16-ai-director validation)
+- **Area / code:** `frontend/game/features/director/index.ts`, `DirectorPanel.ts`, `DirectorControls.ts`, `devCommands.ts`, `shared/sim/src/systems/director/store.ts` (`readDirectorView`)
+- **What happens:** `readDirectorView` reads the colony's authoritative `ColonyDirectorRecord` from `view.blobs.director`. `DirectorPanel` displays `[data-testid="director-policy-summary"]` (`conservative · resources · 15% commit / 40% reserve`, or `35% commit / 15% reserve` under `risky`, plus `PAUSED`), mounts `DirectorControls` (`risk`, `preset`, `paused`, `note`) wired to `setDirectorPolicy`, supersedes open action rows when `intentRevision` increments, and updates `director.plan` / `director.trace` from live policy.
+- **Why it is like this:** `SimView.blobs.director` is replicated to `ClientView.blobs.director` on both the server host and `?host=local`.
+- **Workaround / mitigation:** none needed; the plate updates live and hides when `&waves=..15`.
+- **To resolve:** resolved in `frontend/game/features/director/`.
 - **Found:** 2026-11-04, W16-27.
 
 ## W05 AI switch (2026-11-05)
