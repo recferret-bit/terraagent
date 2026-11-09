@@ -13,11 +13,22 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''):
   return e;
 };
 
+export function parseExplorerSearch(search: string): { tab: TabId; account: string; tokenId: string } {
+  const params = new URLSearchParams(search);
+  const rawTab = params.get('tab')?.trim().toLowerCase() ?? '';
+  const validTab = TABS.find((t) => t.id === rawTab)?.id;
+  const tokenId = params.get('tokenId')?.trim() ?? '';
+  const account = params.get('account')?.trim() ?? '';
+  const tab: TabId = validTab ?? (tokenId ? 'deeds' : 'receipts');
+  return { tab, account, tokenId };
+}
+
 /** Mock chain explorer (`/dev/chain/`): polls the read-only dev routes and renders the active tab. */
-class Explorer {
+export class Explorer {
   private tab: TabId = 'receipts';
   private paused = false;
   private account = '';
+  private tokenId = '';
   private readonly seen = new Map<TabId, Set<string>>();
   private readonly panel = el('section', 'xpanel plate-sm');
   private readonly err = el('span', 'xerr');
@@ -27,7 +38,11 @@ class Explorer {
   private pingBtn!: HTMLButtonElement;
   private pauseBtn!: HTMLButtonElement;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, search = typeof location !== 'undefined' ? location.search : '') {
+    const init = parseExplorerSearch(search);
+    this.tab = init.tab;
+    this.account = init.account;
+    this.tokenId = init.tokenId;
     root.append(this.header(), this.bar(), this.tabs(), this.panel, this.stamp);
     void this.refresh();
     setInterval(() => { if (!this.paused && !document.hidden) void this.refresh(); }, REFRESH_MS);
@@ -46,6 +61,7 @@ class Explorer {
     const input = el('input', 'input');
     input.placeholder = 'Filter by account (e.g. alice.test)';
     input.setAttribute('aria-label', 'Filter by account');
+    input.value = this.account;
     input.addEventListener('input', () => { this.account = input.value.trim(); this.seen.clear(); void this.refresh(); });
     this.pauseBtn = el('button', 'btn btn-ghost btn-sm', 'PAUSE');
     this.pauseBtn.addEventListener('click', () => {
@@ -88,7 +104,7 @@ class Explorer {
     const tab = this.tab;
     let rows: Row[];
     try {
-      rows = await fetchRows(tab, { account: this.account }, ctl.signal);
+      rows = await fetchRows(tab, { account: this.account, tokenId: this.tokenId || undefined }, ctl.signal);
     } catch (e) {
       if (!ctl.signal.aborted) this.err.textContent = String(e instanceof Error ? e.message : e);
       return;
@@ -127,5 +143,5 @@ async function boot(root: HTMLElement): Promise<void> {
   new Explorer(root);
 }
 
-const root = document.getElementById('app');
+const root = typeof document !== 'undefined' ? document.getElementById('app') : null;
 if (root) void boot(root);
