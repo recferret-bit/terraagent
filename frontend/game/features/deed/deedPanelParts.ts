@@ -6,6 +6,8 @@ import type { FeatureContext } from '../../core/registry/types';
 export function defaultFallbackDeed(planetId = 'planet_w20', colonyId = 'col_0'): DeedView {
   const tokenId = `deed:${colonyId}`;
   const encoded = encodeURIComponent(tokenId);
+  const now = Date.now();
+  const ownerAccountId = `${planetId}-${colonyId}.terraagent.mock`.replace(/[-_]{2,}/g, '-');
   const metadata = {
     planet: planetId,
     colony: colonyId,
@@ -22,8 +24,8 @@ export function defaultFallbackDeed(planetId = 'planet_w20', colonyId = 'col_0')
     colonyId,
     planetId,
     tokenId,
-    accountId: `${planetId}-${colonyId}.terraagent.mock`.replace(/[-_]{2,}/g, '-'),
-    contract: 'deeds.terraagent.mock',
+    ownerAccountId,
+    contractId: 'deeds.terraagent.mock',
     metadata,
     version: 1,
     status: 'active',
@@ -32,15 +34,14 @@ export function defaultFallbackDeed(planetId = 'planet_w20', colonyId = 'col_0')
     pendingRetries: 0,
     accountClaimed: false,
     claimedByAccountId: null,
-    lastUpdateTx: 'mock:deed-mint-v1',
-    explorerUrl: `/dev/chain/?tab=deeds&tokenId=${encoded}`,
-    shareUrl: `/deed/${encoded}`,
-    imageUrl: metadata.imageUrl,
+    txHash: 'mock:deed-mint-v1',
+    mintedAt: now,
+    updatedAt: now,
     history: [
       {
         version: 1,
         change: 'Deed minted on NEAR',
-        at: new Date().toISOString(),
+        at: now,
         txHash: 'mock:deed-mint-v1',
         metadata,
       },
@@ -196,7 +197,7 @@ export function renderDeedStatsGrid(statsGridEl: HTMLElement, deed: DeedView): v
     ['Planet', deed.planetId, 'deed-stat-planet'],
     ['Stage', `Stage ${deed.metadata.stage ?? 0}`, 'deed-stat-stage'],
     ['Terraform', tfPct, 'deed-stat-terraform'],
-    ['Owner Account', deed.claimedByAccountId ?? deed.accountId, 'deed-stat-account'],
+    ['Owner Account', deed.claimedByAccountId ?? deed.ownerAccountId, 'deed-stat-account'],
     ['Token ID', deed.tokenId, 'deed-stat-token'],
   ];
   for (const [label, value, testid] of rows) {
@@ -226,8 +227,8 @@ export function renderDeedHistoryList(historyListEl: HTMLUListElement, deed: Dee
           {
             version: deed.version,
             change: 'Deed minted on NEAR',
-            at: new Date().toISOString(),
-            txHash: deed.lastUpdateTx,
+            at: Date.now(),
+            txHash: deed.txHash,
             metadata: deed.metadata,
           },
         ];
@@ -240,7 +241,14 @@ export function renderDeedHistoryList(historyListEl: HTMLUListElement, deed: Dee
     left.textContent = `v${entry.version} · ${entry.change}`;
 
     const right = document.createElement('span');
-    const shortDate = entry.at ? entry.at.slice(0, 19).replace('T', ' ') : '';
+    const rawAt = entry.at as number | string | undefined;
+    const iso =
+      typeof rawAt === 'number'
+        ? new Date(rawAt).toISOString()
+        : typeof rawAt === 'string'
+          ? rawAt
+          : '';
+    const shortDate = iso ? iso.slice(0, 19).replace('T', ' ') : '';
     right.textContent = entry.txHash ? `${shortDate} (${entry.txHash})` : shortDate;
 
     li.appendChild(left);

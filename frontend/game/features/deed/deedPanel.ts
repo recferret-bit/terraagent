@@ -10,9 +10,9 @@ import {
   renderDeedStatsGrid,
 } from './deedPanelParts';
 import { createDeedTracker } from './deedTracker';
+import { StakingPanel, type StakingPanelOptions } from './stakingPanel';
 
-export interface DeedPanelOptions {
-  readonly fetchFn?: typeof fetch;
+export interface DeedPanelOptions extends StakingPanelOptions {
   readonly openWindow?: (url: string) => void;
   readonly onDeedChanged?: (deed: DeedView) => void;
 }
@@ -27,6 +27,7 @@ export class DeedPanel implements Disposable {
   readonly triggerStatusEl: HTMLSpanElement;
   readonly root: HTMLElement;
   readonly stakingSlotEl: HTMLElement;
+  readonly stakingPanel: StakingPanel;
 
   private readonly versionBadgeEl: HTMLSpanElement;
   private readonly statusChipEl: HTMLSpanElement;
@@ -119,6 +120,11 @@ export class DeedPanel implements Disposable {
     this.stakingSlotEl = document.createElement('div');
     this.stakingSlotEl.className = 'ta-deed-panel__staking-slot';
     this.stakingSlotEl.dataset.testid = 'deed-staking-slot';
+    this.stakingPanel = new StakingPanel(this.stakingSlotEl, this.ctx, {
+      fetchFn: this.fetchFn,
+      openSigner: opts.openSigner,
+    });
+    this.onDeedListeners.add((d) => this.stakingPanel.syncDeed(d));
 
     this.root.appendChild(header.headerEl);
     this.root.appendChild(body);
@@ -150,6 +156,7 @@ export class DeedPanel implements Disposable {
     this.root.dataset.open = open ? 'true' : 'false';
     if (open) {
       void this.refreshFromServer(true);
+      void this.stakingPanel.refreshFromServer();
     }
   }
 
@@ -244,7 +251,7 @@ export class DeedPanel implements Disposable {
         },
         {
           tokenId: deed.tokenId,
-          ownerAccountId: deed.claimedByAccountId ?? deed.accountId,
+          ownerAccountId: deed.claimedByAccountId ?? deed.ownerAccountId,
         },
       ),
     );
@@ -252,10 +259,10 @@ export class DeedPanel implements Disposable {
     renderDeedStatsGrid(this.statsGridEl, deed);
 
     const encodedToken = encodeURIComponent(deed.tokenId);
-    this.receiptLinkEl.href = deed.explorerUrl || `/dev/chain/?tab=deeds&tokenId=${encodedToken}`;
+    this.receiptLinkEl.href = `/dev/chain/?tab=deeds&tokenId=${encodedToken}`;
     this.receiptLinkEl.textContent = 'Recorded on NEAR (mock)';
 
-    const sharePath = deed.shareUrl || `/deed/${encodedToken}`;
+    const sharePath = `/deed/${encodedToken}`;
     this.shareLinkEl.href = sharePath;
     this.shareLinkEl.textContent = sharePath;
 
@@ -317,11 +324,11 @@ export class DeedPanel implements Disposable {
     }
   }
 
-  private resolvePlanetId(): string {
+  private resolvePlanetId(): string | undefined {
     return (
       this.ctx.services.session?.planetId() ??
       this.ctx.services.store?.currentPlanetId?.() ??
-      'planet_w20'
+      undefined
     );
   }
 }
