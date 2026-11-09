@@ -7,6 +7,7 @@ import { noopLastSeen, type PresenceCommandPort, type PresenceLog, type Presence
 export { ManualPresenceClock, SystemPresenceClock } from './clock';
 export { PrismaLastSeen } from './last-seen';
 export { PresenceTracker } from './tracker';
+export { HardModeClock, type HardModeMark } from './hard-mode-clock';
 export { noopLastSeen, type PresenceJoin, type PresenceLog } from './types';
 
 /** Platform tracker. Pass `prisma` only when this process may write the dev/prod database. */
