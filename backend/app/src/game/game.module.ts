@@ -25,7 +25,7 @@ import { EconomyProfileService } from '../economy/profile/profile.service';
 import { WorldLifecycleService } from '../lobby/lifecycle.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
-import { attachAwayDigest, AwayDigestService, createDigestStory, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
+import { attachAwayDigest, AwayDigestService, createDigestStory, installDigestRowsGauge, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
@@ -46,6 +46,7 @@ import { wirePlanetRecovery } from './planet-recovery';
 import { installRestartFastRunMetric } from './restart/metric';
 import { installFastRunAlertHold } from './restart/notify-hold';
 import { AlertRouter } from '../notify/alert-router';
+import { installNotifyMetrics } from '../notify/metrics';
 import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
 import { W00_PLANET_TYPE } from './thread/protocol';
@@ -211,6 +212,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       },
     });
     installAwayPolicyMetric(reg);
+    installNotifyMetrics(reg);
+    installDigestRowsGauge(reg, () => this.digests.rowCount());
     new Counter({
       name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {

@@ -54,6 +54,10 @@ export interface DigestStore {
   markClosedUnseen(colonyId: string, seenAt: Date): Promise<void>;
   /** `opened_at` strictly before `cutoff`. A row opened at `cutoff` stays. */
   purgeOpenedBefore(cutoff: Date): Promise<number>;
+  /** Cached row total. O(1) after `warm`; a scrape must not scan the table. */
+  rowCount(): number;
+  /** Seeds `rowCount` once. Memory is a no-op. Not called from a scrape. */
+  warm(): Promise<void>;
 }
 
 export interface OpenDigest {

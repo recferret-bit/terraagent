@@ -69,8 +69,14 @@ export class AwayDigestService {
   }
 
   async restoreOpen(): Promise<void> {
+    await this.deps.store.warm();
     await this.purge();
     for (const row of await this.deps.store.listOpen()) this.remember(row);
+  }
+
+  /** Rows in `world.planet_event_digest`. O(1); a scrape must not scan the table. */
+  rowCount(): number {
+    return this.deps.store.rowCount();
   }
 
   /**

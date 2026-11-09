@@ -8,9 +8,15 @@ export interface MockNotifyRow {
   readonly channel: string;
 }
 
+export interface MockNotifyPut {
+  readonly row: MockNotifyRow;
+  /** False when `(colonyId, eventId, channel)` already had a row. */
+  readonly inserted: boolean;
+}
+
 /** Idempotent insert of one `core.mock_notify` row. The key is `(colonyId, eventId, channel)`. */
 export interface MockNotifyStore {
-  put(payload: NotificationPayload): Promise<MockNotifyRow>;
+  put(payload: NotificationPayload): Promise<MockNotifyPut>;
 }
 
 type NotifyIdRow = { id: bigint; colonyId: string; eventId: string; channel: string };
@@ -19,7 +25,7 @@ type NotifyIdRow = { id: bigint; colonyId: string; eventId: string; channel: str
 export class PrismaMockNotifyStore implements MockNotifyStore {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async put(payload: NotificationPayload): Promise<MockNotifyRow> {
+  async put(payload: NotificationPayload): Promise<MockNotifyPut> {
     const data = {
       colonyId: payload.colonyId,
       eventId: payload.eventId,
@@ -28,14 +34,14 @@ export class PrismaMockNotifyStore implements MockNotifyStore {
       payload: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue,
     };
     try {
-      return toRow(await this.prisma.mockNotify.create({ data }));
+      return { row: toRow(await this.prisma.mockNotify.create({ data })), inserted: true };
     } catch (e) {
       if (!isUnique(e)) throw e;
       const existing = await this.prisma.mockNotify.findUnique({
         where: { colonyId_eventId_channel: { colonyId: data.colonyId, eventId: data.eventId, channel: data.channel } },
       });
       if (!existing) throw e;
-      return toRow(existing);
+      return { row: toRow(existing), inserted: false };
     }
   }
 }

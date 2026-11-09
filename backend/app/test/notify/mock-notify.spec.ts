@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { discoverAdapters } from '../../src/ports/adapters';
 import { NotifierPort } from '../../src/ports/notifier.port';
 import { MockNotifier, SKIPPED_NOTIFY_ID } from '../../src/notify/mock-notifier';
-import { PrismaMockNotifyStore, type MockNotifyRow, type MockNotifyStore } from '../../src/notify/mock-notify.store';
+import { PrismaMockNotifyStore, type MockNotifyPut, type MockNotifyRow, type MockNotifyStore } from '../../src/notify/mock-notify.store';
 import { notifyListLimit } from '../../src/notify/notify-list';
 import { MemoryPresence } from '../../src/notify/presence';
 import { holdColonySocket, releaseColonySocket } from '../../src/game/presence/socket-presence';
@@ -27,12 +27,12 @@ const note = (over: Partial<NotificationPayload> = {}): NotificationPayload => (
 
 class FakeStore implements MockNotifyStore {
   readonly rows: MockNotifyRow[] = [];
-  async put(payload: NotificationPayload): Promise<MockNotifyRow> {
+  async put(payload: NotificationPayload): Promise<MockNotifyPut> {
     const hit = this.rows.find((r) => r.colonyId === payload.colonyId && r.eventId === payload.eventId && r.channel === payload.channel);
-    if (hit) return hit;
+    if (hit) return { row: hit, inserted: false };
     const row = { id: String(this.rows.length + 1), colonyId: payload.colonyId, eventId: payload.eventId, channel: payload.channel };
     this.rows.push(row);
-    return row;
+    return { row, inserted: true };
   }
 }
 
@@ -124,7 +124,16 @@ describe('prisma mock store idempotency', () => {
       },
     } as unknown as PrismaClient;
     const row = await new PrismaMockNotifyStore(prisma).put(note());
-    expect(row).toEqual({ id: '7', colonyId: COLONY, eventId: 'evt_raid', channel: 'webpush' });
+    expect(row).toEqual({ row: { id: '7', colonyId: COLONY, eventId: 'evt_raid', channel: 'webpush' }, inserted: false });
+  });
+
+  it('marks a fresh insert so the send counter can ignore a later duplicate', async () => {
+    const created = { id: 3n, colonyId: COLONY, eventId: 'evt_raid', channel: 'webpush' };
+    const prisma = {
+      mockNotify: { create: () => Promise.resolve(created) },
+    } as unknown as PrismaClient;
+    const put = await new PrismaMockNotifyStore(prisma).put(note());
+    expect(put).toEqual({ row: { id: '3', colonyId: COLONY, eventId: 'evt_raid', channel: 'webpush' }, inserted: true });
   });
 
   it('rethrows a unique violation when the row is gone', async () => {

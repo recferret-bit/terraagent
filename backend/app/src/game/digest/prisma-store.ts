@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { AwayDigestV1Schema, type AwayDigestV1 } from '@terra/contracts';
+import { DigestRowTally } from './row-tally';
 import type { DigestInsert, DigestMerge, DigestRecord, DigestStore } from './types';
 
 type Row = {
@@ -15,9 +16,25 @@ type Row = {
 
 /** `world.planet_event_digest` (CT-30..33). */
 export class PrismaDigestStore implements DigestStore {
+  private readonly tally = new DigestRowTally();
+
   constructor(private readonly prisma: PrismaClient) {}
 
-  async insert(row: DigestInsert): Promise<DigestRecord> {
+  /** O(1) after `warm` or the first insert/purge. A scrape must not `COUNT(*)`. */
+  rowCount(): number {
+    return this.tally.value();
+  }
+
+  warm(): Promise<void> {
+    return this.tally.exclusive(() => this.seed());
+  }
+
+  insert(row: DigestInsert): Promise<DigestRecord> {
+    return this.tally.exclusive(() => this.insertRow(row));
+  }
+
+  private async insertRow(row: DigestInsert): Promise<DigestRecord> {
+    await this.seed();
     const saved = await this.prisma.planetEventDigest.create({
       data: {
         colonyId: row.colonyId,
@@ -27,9 +44,16 @@ export class PrismaDigestStore implements DigestStore {
         body: json(row.body),
       },
     });
+    this.tally.add(1);
     const body = readBody(saved.body);
     if (!body) throw new Error(`digest ${saved.id.toString()} was stored with a body the contract rejects`);
     return { ...saved, body };
+  }
+
+  /** One `COUNT(*)` per process, on the write/boot path, never from a scrape. */
+  private async seed(): Promise<void> {
+    if (this.tally.isWarmed()) return;
+    this.tally.seed(await this.prisma.planetEventDigest.count());
   }
 
   async save(id: bigint, body: AwayDigestV1, lastEventSeq: bigint, closedAt?: Date): Promise<void> {
@@ -94,8 +118,14 @@ export class PrismaDigestStore implements DigestStore {
     });
   }
 
-  async purgeOpenedBefore(cutoff: Date): Promise<number> {
+  purgeOpenedBefore(cutoff: Date): Promise<number> {
+    return this.tally.exclusive(() => this.purgeRows(cutoff));
+  }
+
+  private async purgeRows(cutoff: Date): Promise<number> {
+    await this.seed();
     const deleted = await this.prisma.planetEventDigest.deleteMany({ where: { openedAt: { lt: cutoff } } });
+    this.tally.add(-deleted.count);
     return deleted.count;
   }
 }

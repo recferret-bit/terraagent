@@ -79,7 +79,16 @@ export class MemoryDigestStore implements DigestStore {
   }
 
   async count(): Promise<number> {
+    return this.rowCount();
+  }
+
+  /** The in-memory list. `length` is O(1); this is the whole table. */
+  rowCount(): number {
     return this.rows.length;
+  }
+
+  warm(): Promise<void> {
+    return Promise.resolve();
   }
 }
 
