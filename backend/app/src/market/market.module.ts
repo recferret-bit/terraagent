@@ -51,6 +51,7 @@ import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
 import { DirectorColonySource, SimDirectorSource } from './director/director-source.js';
 import { DirectorDigestRecorder } from './director/digest-recorder.js';
+import { DirectorMatchGuard } from './director/director-match-guard.js';
 import { DirectorLoopService } from './director/director-loop.service.js';
 import { DirectorMarketPort, DirectorSimMarket } from './director/director-market.js';
 import { GuildModule } from './guild/guild.module.js';
@@ -116,6 +117,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     { provide: DirectorMarketPort, useExisting: DirectorSimMarket },
     { provide: DirectorColonySource, useExisting: SimDirectorSource },
     DirectorLoopService,
+    DirectorMatchGuard,
     DirectorDigestRecorder,
   ],
   controllers: [

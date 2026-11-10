@@ -182,6 +182,7 @@ describe('W15-21 director loop', () => {
       resource: 'metals.t1',
       amount: 300,
       price: priced?.price,
+      director: true,
     });
     expect(events.map((event) => event.kind)).toEqual(['directorOrderRequested', 'directorTrade']);
     expect(events[1]?.data).toMatchObject({
@@ -197,7 +198,6 @@ describe('W15-21 director loop', () => {
       available: '300',
       allowance: '600',
     });
-
     const again = await service.runDirectorOnce('co_dir');
     expect(again).toEqual({ ok: false, skip: 'session_cap' });
     expect(market.placed).toHaveLength(1);

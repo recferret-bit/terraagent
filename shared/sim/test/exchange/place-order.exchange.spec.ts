@@ -262,6 +262,13 @@ describe('exchange place-order: success payload', () => {
     expect(mkt(s).requested[marketOrderRef('col_0', 1)]).toEqual({ side: 'sell', resource: 'bio.water', amount: 10 });
     expect(ev[0]!.colonyIds).toEqual(['col_0']);
   });
+  it('copies director: true onto the request and omits the flag for a player order', () => {
+    const { s } = setup();
+    const flagged = reqEvents(run(s, cmd(sellArgs({ director: true }))))[0]!.data;
+    expect(flagged.director).toBe(true);
+    const plain = reqEvents(run(s, cmd(sellArgs())))[0]!.data;
+    expect('director' in plain).toBe(false);
+  });
   it('omits maxStallFeeBp when not given and strips unknown price fields', () => {
     const { s } = setup();
     const r = run(s, cmd(sellArgs({ price: { token: 'metals.t1', amount: '50', evil: 'x' } })));

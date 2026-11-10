@@ -2895,6 +2895,9 @@
             "minLength": 1,
             "type": "string"
           },
+          "director": {
+            "type": "boolean"
+          },
           "maxStallFeeBp": {
             "maximum": 10000,
             "minimum": 0,
@@ -6764,6 +6767,9 @@
             "maxLength": 40,
             "minLength": 1,
             "type": "string"
+          },
+          "director": {
+            "type": "boolean"
           },
           "hubEntityId": {
             "maximum": 9007199254740991,

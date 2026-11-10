@@ -18,8 +18,9 @@ export abstract class DirectorMarketPort {
 }
 
 /**
- * `market.placeOrder` as the colony (`source: 'player'` plus `colonyIndex`).
- * A `bot` source would hit the away gate while the player is away; player orders are exempt.
+ * `market.placeOrder` as the colony (`source: 'player'` plus `colonyIndex`) with `director: true`.
+ * A `bot` source would hit the away gate while the player is away; player orders omit the flag and are not autoTrade-capped.
+ * The market module reads that flag and calls `withinAutoTrade` again before the order can match.
  */
 export function directorPlaceCommand(args: {
   colonyIndex: number;
@@ -35,7 +36,14 @@ export function directorPlaceCommand(args: {
     source: 'player',
     commandId: args.commandId,
     kind: 'market.placeOrder',
-    args: { side: args.side, resource: args.resource, amount: args.amount, price: args.price, ttlS: args.ttlS },
+    args: {
+      side: args.side,
+      resource: args.resource,
+      amount: args.amount,
+      price: args.price,
+      ttlS: args.ttlS,
+      director: true,
+    },
   };
 }
 
