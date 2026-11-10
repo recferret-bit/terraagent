@@ -23,3 +23,23 @@ model GuildNpc {
   @@map("guild_npc")
   @@schema("chain")
 }
+
+/// One Guild dock (W15-09). `cadence` is the seeded schedule; `extra` is `scheduleExtraVisit` and does not move it.
+/// `offers` stays empty until W15-11. `departed` is written once, at `depart_at`. En route is the gap between rows.
+model GuildVisit {
+  id        String   @id @db.VarChar(160)
+  npcId     String   @map("npc_id") @db.VarChar(32)
+  shipId    String   @map("ship_id") @db.VarChar(64)
+  planetId  String   @map("planet_id") @db.VarChar(64)
+  arriveAt  DateTime @map("arrive_at") @db.Timestamptz(3)
+  departAt  DateTime @map("depart_at") @db.Timestamptz(3)
+  offers    Json     @default("[]")
+  status    String   @default("docked") @db.VarChar(16)
+  kind      String   @default("cadence") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([npcId, planetId, kind, arriveAt])
+  @@index([planetId, status, departAt])
+  @@map("guild_visit")
+  @@schema("chain")
+}
