@@ -12,7 +12,10 @@ export * from './player-commands';
 export * from './module-commands';
 export * from './command-source';
 export * from './agent';
-export { guildAgentParams, guildPolicy, type GuildNpc, type GuildPolicy } from './guild';
+export {
+  guildAgentParams, guildColonyInput, guildPolicy, guildQuoteParams, quoteGuild,
+  type GuildNpc, type GuildPolicy, type GuildQuoteFixture,
+} from './guild';
 export * from './autotrade';
 
 export default defineSimModule({

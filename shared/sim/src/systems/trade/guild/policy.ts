@@ -36,6 +36,8 @@ export interface GuildPolicy {
   readonly dailyLossAtomic: string;
   readonly dailySpendAtomic: string;
   readonly minEligibleTrades: number;
+  /** Half-spread (bp) `quoteGuild` copies onto the thin side. Not an `AgentParams` field. */
+  readonly thinHalfSpreadBp: number;
   readonly params: AgentParams;
   readonly roster: readonly GuildNpc[];
 }
@@ -94,6 +96,7 @@ function readLimits(row: Row): Omit<GuildPolicy, 'params' | 'roster'> {
     dailyLossAtomic: atomic(row, 'policy', 'dailyLossAtomic'),
     dailySpendAtomic: atomic(row, 'policy', 'dailySpendAtomic'),
     minEligibleTrades: intField(row, 'policy', 'minEligibleTrades', 1, 1000),
+    thinHalfSpreadBp: intField(row, 'policy', 'thinHalfSpreadBp', 0, MAX_SPREAD_BP),
   };
 }
 

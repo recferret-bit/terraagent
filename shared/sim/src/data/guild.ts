@@ -3,7 +3,8 @@ import { defineTable } from './_define';
 /**
  * Guild roster and quote policy (NEAR-71..73, W15-02). Numbers are calibration hypotheses (LED-32), not facts.
  * Seconds stay in seconds (not listed in `units`), matching `market.agent`, so the W13 quote library reads them as seconds.
- * Half-spreads and the other `AgentParams` fields start equal to `market.agent`, so a default quote matches that library.
+ * Half-spreads and the other `AgentParams` fields start equal to `market.agent`, so `guildAgentParams` matches that library.
+ * `thinHalfSpreadBp` is not an agent field: `quoteGuild` applies it to the ask below target and the bid above target.
  * Real cash bids stay off (`cashEnabled` 0). Float caps are stored and are not spent while cash is off.
  * Tier-1 pairs only. `route` is the one-planet loop token `loop-local` (planet ids are runtime; W11 off loops locally).
  */
@@ -33,6 +34,7 @@ export default defineTable({
       clampHighBp: 20000,
       bidHalfSpreadBp: 200,
       askHalfSpreadBp: 200,
+      thinHalfSpreadBp: 1500,
       minSavingBp: 200,
       reserveMarginBp: 500,
       maxOrderUnits: 100,

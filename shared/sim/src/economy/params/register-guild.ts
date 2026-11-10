@@ -44,6 +44,7 @@ function registerPolicy(r: ParamRegistry): void {
   int('clampHighBp', 'Guild quote: upper scarcity clamp, bp of 1.0.', 'ratio_bp', 10000, 1_000_000);
   int('bidHalfSpreadBp', 'Guild bid = mid * (1 - this). Max legal is 9999 (10000 is rejected).', 'bp', 0, 9999);
   int('askHalfSpreadBp', 'Guild ask = mid * (1 + this). Max legal is 9999.', 'bp', 0, 9999);
+  int('thinHalfSpreadBp', 'Half-spread on the thin side (bp of mid). Ask when inventory is below the NPC target, bid when above. quoteGuild applies max(that side, this).', 'bp', 0, 9999);
   int('minSavingBp', 'Guild bid must stay this far below the walk-away price.', 'bp', 0, 10000);
   int('reserveMarginBp', 'Guild ask markup over own unit cost.', 'bp', 0, 100_000);
   int('maxOrderUnits', 'Largest Guild order, whole base units.', 'whole_units', 1, 1_000_000_000);
