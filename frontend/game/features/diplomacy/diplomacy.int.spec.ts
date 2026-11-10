@@ -88,7 +88,7 @@ describe('W18-20 Acceptance: offerTruce to active badge flow', () => {
 
     expect(sentCommands).toContainEqual({
       kind: 'dev.offerTruce',
-      args: { fromColony: 1, toColony: 0, durationHours: 6 },
+      args: { fromColony: 1, toColony: 0, hours: 6, durationHours: 6 },
     });
 
     emitEvents([{
