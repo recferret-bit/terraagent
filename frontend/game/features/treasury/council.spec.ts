@@ -85,6 +85,7 @@ describe('council view', () => {
     expect(view.proposals).toEqual([]);
     expect(view.projects).toEqual([]);
     expect(view.error).toBeNull();
+    expect(paint(view).querySelectorAll('option')).toHaveLength(0);
     const features = loadFeatures({ flags: new Set(['W00', 'W21']), host: 'server' });
     expect(features.some((f) => f.id === 'treasury')).toBe(false);
     expect(features.flatMap((f) => f.menus ?? []).some((m) => m.id === 'council' || m.label === 'Council')).toBe(false);

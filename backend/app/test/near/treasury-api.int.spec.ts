@@ -1,7 +1,10 @@
 import 'reflect-metadata';
+import { parseWaves, type FlagSet } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
+import { compileData } from '@terra/sim';
 import type { IncomingMessage } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { treasuryProject } from '../../src/near/treasury/costs';
 import { EventBus } from '../../src/bus/event-bus';
 import { FlagsService } from '../../src/flags/flags.service';
 import { ChainOutboxRepository } from '../../src/near/application/outbox/chain-outbox.repository';
@@ -199,5 +202,43 @@ describe('W22-08 treasury proposals API corner', () => {
     await expect(dev.controller.propose('pl-devmode', proposeBody('meteor_shield', A), req()))
       .rejects.toMatchObject({ errorCode: 'UNAUTHORIZED', status: 401 });
     expect(await db.prisma.mockChainDao.findUnique({ where: { id: daoAccountIdFor('pl-devmode') } })).toBeNull();
+  });
+});
+
+/** `00,01,…` through `last`, skipping one wave so `TA_WAVES` can turn W15 off while W22 stays on. */
+function waveSpec(last: number, skip?: number): string {
+  const parts: string[] = [];
+  for (let n = 0; n <= last; n += 1) {
+    if (n !== skip) parts.push(String(n).padStart(2, '0'));
+  }
+  return parts.join(',');
+}
+
+function tableCosts(flags: FlagSet): { kind: string; cost: string }[] {
+  const table = compileData(flags).tables.treasury ?? {};
+  return Object.values(table).map((row) => ({ kind: row.id, cost: String(row.cost) }));
+}
+
+describe('W22-13 council project costs', () => {
+  it('positive: GET projects include the treasury-table costs', async () => {
+    const flags = parseWaves('..22');
+    const expected = tableCosts(flags);
+    expect(expected.length).toBeGreaterThan(0);
+    const council = await harness('..22').controller.council('pl-w22-13-costs');
+    expect(council.projects.map((project) => ({ kind: project.kind, cost: project.cost }))).toEqual(expected);
+  });
+
+  it('corner: an unknown kind is omitted and guild_subsidy stays when W15 is off', async () => {
+    const spec = waveSpec(22, 15);
+    const flags = parseWaves(spec);
+    expect(flags.has('W15')).toBe(false);
+    expect(flags.has('W22')).toBe(true);
+    expect(treasuryProject(flags, 'laser_beam')).toBeNull();
+    const expected = tableCosts(flags);
+    const council = await harness(spec).controller.council('pl-w22-13-no-w15');
+    expect(expected.some((row) => row.kind === 'guild_subsidy')).toBe(true);
+    expect(council.projects.map((project) => project.kind)).not.toContain('laser_beam');
+    expect(council.projects.map((project) => ({ kind: project.kind, cost: project.cost }))).toEqual(expected);
+    expect(council.projects.some((project) => project.kind === 'guild_subsidy')).toBe(true);
   });
 });
