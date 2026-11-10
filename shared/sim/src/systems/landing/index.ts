@@ -16,6 +16,7 @@ import { recordLanding } from '../../world/presence';
 import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { hqViewRadius, revealVision, spawnHqUnit } from '../hq';
+import { initColonyNewcomerShield, isW18PvpActive } from '../pvp';
 import { resolveStartingKitRow, rowNum } from '../rows';
 import { stepHqRespawns } from './hqRespawn';
 
@@ -243,6 +244,9 @@ export function spawnColonyLanding(
   setBlob(state, 'landingPods', pods, tick);
   recordAtlasColonyFounding(state, colonyId, slot?.q ?? opts.q ?? q, slot?.r ?? opts.r ?? r, tick);
   syncAtlasColonySectorState(state, tick);
+  if (isW18PvpActive(data)) {
+    initColonyNewcomerShield(state, colonyId, tick, data);
+  }
 
   return { ok: true, podEntityId, q, r };
 }
