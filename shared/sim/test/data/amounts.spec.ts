@@ -13,6 +13,7 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
       hq: ['cargo'],
       hub: ['cost', 'storageCapPerFamily'],
       logistics: ['consumption', 'activationCost'],
+      mercenary: ['pricePerGameHour'],
       opsBasic: ['yields'],
       prestige: ['cost'],
       regions: ['reserveUnitsMin', 'reserveUnitsMax', 'starterGuarantee', 'renewableUnitsPerSimHour'],

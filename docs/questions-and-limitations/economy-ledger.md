@@ -394,3 +394,13 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
   - `colonyRef` refs change on restart unless `TA_COLONY_REF_SECRET` is set.
   - Pool-gate spec guards regressions only (it also passes with a larger cap in the harness); the real protection is observed in the e2e burst (9f-18).
 - **Found:** 2026-11-08, W13 hardening round.
+
+### LED-32 · Mercenary squad prices are a proposed default
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/data/mercenary.ts`
+- **What happens:** With W22 on, the roster is three NPC accounts. Light (`merc-1.npc.terraagent.mock`) is 4 × `robot.recon` at 100 `metals.t1` per game-hour. Heavy (`merc-2.npc.terraagent.mock`) is 6 × `robot.recon` at 200 `metals.t1` per game-hour. Reserve (`merc-3.npc.terraagent.mock`) matches the light squad and the light price. There is no Tank or Artillery row while W17 is postponed.
+- **Why it is like this:** W22-27 names the squad sizes and the `merc-N.npc.terraagent.mock` accounts, but not the price. W22-02 records this proposed price so later hire code reads the table instead of a constant.
+- **Workaround / mitigation:** `tune mercenary.<light|heavy|reserve>.pricePerGameHour` changes the price. The value must stay a whole number of a known resource.
+- **To resolve:** Owner confirms or replaces the 100 / 200 `metals.t1` per game-hour prices, and whether the third account should stay a second light squad.
+- **Found:** 2026-11-10, W22-02

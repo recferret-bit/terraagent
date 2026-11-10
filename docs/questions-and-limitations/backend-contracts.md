@@ -913,3 +913,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The send is skipped when W09 is off, when no notifier is bound, or when both `playerId` and `accountId` are empty. A send that fails is logged and does not fail the seal.
 - **To resolve:** Owner: add a player toggle and route the seal through the alert router, or keep this one-shot telegram push.
 - **Found:** 2026-11-10, merge of main into W09.
+
+### BE-70 · Escrow `open` still requires a beneficiary
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/application/ports/escrow.port.ts` (`EscrowOpenInput.beneficiary`), Q-05-26
+- **What happens:** `EscrowPort.open` still requires `beneficiary`. A bounty posted before anyone claims it has no payee (NEAR-110, W22-19). Only a mercenary hire knows the payee at open (W22-28). W22-02 added `get` and left `open`, `claim`, and `refund` on the W00-30 fields. `claim` still pays `caller`.
+- **Why it is like this:** W22-02 keeps the landed `open` / `claim` / `refund` shapes and adds `get`. Making `beneficiary` optional would answer Q-05-26 without the owner.
+- **Workaround / mitigation:** W22-17 can open to a holding account and pass the real payee as `caller` on `claim`.
+- **To resolve:** Owner: keep a holding-account beneficiary, or make `beneficiary` optional and name the payee only on `claim`.
+- **Found:** 2026-11-10, W22-02

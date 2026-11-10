@@ -735,6 +735,192 @@
       "summary": "Orders one or more owned combat units to pursue and attack a specific target entity or hive (W07-12).",
       "wave": "W07"
     },
+    "bounty.claim": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Registers this colony as a claimer of an open bounty.",
+      "wave": "W22"
+    },
+    "bounty.paid": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "claimerId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "claimerId",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Credits the claimer after `EscrowPort.claim` pays the bounty reward.",
+      "wave": "W22"
+    },
+    "bounty.post": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "reward": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "resource": {
+                "enum": [
+                  "metals.t1",
+                  "minerals.t1",
+                  "bio.water",
+                  "bio.biomass"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "resource",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "clear_nest",
+                    "type": "string"
+                  },
+                  "nestId": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "nestId"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "durationH": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "kind": {
+                    "const": "defend_area",
+                    "type": "string"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "radius": {
+                    "maximum": 8,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "q",
+                  "r",
+                  "radius",
+                  "durationH"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "deliver_units",
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "minerals.t1",
+                      "bio.water",
+                      "bio.biomass"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "reward",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Posts a bounty (clear a nest, defend an area, or deliver Tier-1 cargo) with a reward held in escrow until `expiresAt`.",
+      "wave": "W22"
+    },
     "cancelGoal": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4661,6 +4847,353 @@
       "summary": "Emitted when territory border expansion freezes (e.g. beacon unpowered; W05-01).",
       "wave": "W05"
     },
+    "bountyClaimed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "claimer": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "clear_nest",
+              "defend_area",
+              "deliver_units"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "claimer",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A colony or mercenary registered as a claimer of an open bounty (W22-02, NEAR-111).",
+      "wave": "W22"
+    },
+    "bountyCompleted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "claimer": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "clear_nest",
+              "defend_area",
+              "deliver_units"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "claimer",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The bounty target was met. `claimer` is who the escrow pays (W22-02, NEAR-111).",
+      "wave": "W22"
+    },
+    "bountyExpired": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expiresAt": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "posterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "posterId",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A bounty passed `expiresAt` without being completed (W22-02, NEAR-110).",
+      "wave": "W22"
+    },
+    "bountyPaid": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "claimerId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "minerals.t1",
+              "bio.water",
+              "bio.biomass"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "claimerId",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Escrow released the reward to the claimer (W22-02, NEAR-111).",
+      "wave": "W22"
+    },
+    "bountyPosted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expiresAt": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "posterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reward": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "resource": {
+                "enum": [
+                  "metals.t1",
+                  "minerals.t1",
+                  "bio.water",
+                  "bio.biomass"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "resource",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "clear_nest",
+                    "type": "string"
+                  },
+                  "nestId": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "nestId"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "durationH": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "kind": {
+                    "const": "defend_area",
+                    "type": "string"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "radius": {
+                    "maximum": 8,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "q",
+                  "r",
+                  "radius",
+                  "durationH"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "deliver_units",
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "minerals.t1",
+                      "bio.water",
+                      "bio.biomass"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "bountyId",
+          "posterId",
+          "target",
+          "reward",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A colony posted a bounty and the reward is held in escrow (W22-02, NEAR-110).",
+      "wave": "W22"
+    },
+    "bountyRefunded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "posterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "expired",
+              "cancelled",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "minerals.t1",
+              "bio.water",
+              "bio.biomass"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "posterId",
+          "resource",
+          "amount",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "An expired, cancelled, or failed bounty returned its reward to the poster (W22-02, NEAR-110).",
+      "wave": "W22"
+    },
     "brownout": {
       "audience": "player",
       "data": {
@@ -6436,6 +6969,141 @@
       "severity": "warn",
       "summary": "A trade the colony's order was part of definitely failed on settlement and the order ended with its reservation released; nothing changed hands: \"Contract failed\" toast (W13-24).",
       "wave": "W13"
+    },
+    "mercenaryArrived": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "rosterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "rosterId",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A hired mercenary squad spawned on the poster's territory (W22-02, NEAR-112).",
+      "wave": "W22"
+    },
+    "mercenaryHired": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "durationH": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "mercenaryAccountId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "posterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pricePerGameHour": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "minerals.t1",
+              "bio.water",
+              "bio.biomass"
+            ],
+            "type": "string"
+          },
+          "rosterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "posterId",
+          "rosterId",
+          "mercenaryAccountId",
+          "durationH",
+          "resource",
+          "pricePerGameHour"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A mercenary squad was reserved on a defend-area bounty (W22-02, NEAR-112).",
+      "wave": "W22"
+    },
+    "mercenaryLeft": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "ended",
+              "wiped",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "rosterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bountyId",
+          "rosterId",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A mercenary squad left: the contract ended, the squad was wiped, or the hire was cancelled (W22-02, NEAR-112).",
+      "wave": "W22"
     },
     "meteorImpact": {
       "audience": "player",
