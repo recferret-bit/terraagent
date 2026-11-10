@@ -56,6 +56,7 @@ export function mountRaidFeature(
       if (send) void send(kind as any, args as any);
     },
     ownColonyIndex: ownColonyIndex(ctx.services),
+    getOwnColonyIndex: () => ownColonyIndex(ctx.services),
     initialView: ctx.services.store?.latest,
     ...opts,
   });

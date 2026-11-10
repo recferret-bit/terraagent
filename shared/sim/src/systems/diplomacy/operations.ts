@@ -2,6 +2,7 @@ import type { RejectCode, TruceDurationHours } from '@terra/contracts';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
+import { getAutopilot, isAway } from '../away';
 import {
   cancelNoticeTicks,
   getColonyHqRowAndTier,
@@ -152,10 +153,9 @@ export function respondTruce(
 
   const fromCap = maxActiveTrucesForHqTier(fromHq.tier, ctx?.data);
   const toCap = maxActiveTrucesForHqTier(toHq.tier, ctx?.data);
-  if (
-    getActiveTrucesForColony(state, fromColony, tick).length >= fromCap ||
-    getActiveTrucesForColony(state, toColony, tick).length >= toCap
-  ) {
+  const fromActive = getActiveTrucesForColony(state, fromColony, tick).filter((t) => t.status === 'active').length;
+  const toActive = getActiveTrucesForColony(state, toColony, tick).filter((t) => t.status === 'active').length;
+  if (fromActive >= fromCap || toActive >= toCap) {
     return { ok: false, code: 'truce_cap', detail: 'active truce cap reached' };
   }
 
@@ -366,6 +366,20 @@ export function stepDiplomacy(state: PlanetState, ctx: StepContext): void {
     if (offer.status === 'pending' && tick >= offer.expiresAtTick) {
       offer.status = 'expired';
       changed = true;
+    } else if (
+      offer.status === 'pending' &&
+      ctx.flags.has('W16') &&
+      tick >= offer.offeredAtTick + TICKS_PER_SECOND &&
+      isAway(state, offer.toColonyIndex) &&
+      getAutopilot(state, offer.toColonyIndex)?.mode !== 'rules_only' &&
+      state.colonies[offer.toColonyIndex]?.aiAllowed !== false
+    ) {
+      if (changed) {
+        writeDiplomacyBlob(state, blob, tick);
+        changed = false;
+      }
+      respondTruce(state, offer.toColonyIndex, offer.offerId, true, tick, ctx);
+      Object.assign(blob, readDiplomacyBlob(state));
     }
   }
 

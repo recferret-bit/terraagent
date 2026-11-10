@@ -56,6 +56,7 @@ export interface DiplomacyPanelActions {
 export interface DiplomacyPanelOptions {
   actions?: Partial<DiplomacyPanelActions>;
   ownColonyIndex?: number;
+  getOwnColonyIndex?: () => number;
   colonyId?: string;
 }
 

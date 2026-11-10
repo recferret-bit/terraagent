@@ -67,10 +67,34 @@ export const devOfferTruceCommand: DevCommandDef = {
   name: 'dev.offerTruce',
 };
 
+export const presenceCommand: DevCommandDef = {
+  name: 'presence',
+  help: 'presence <away|back> [colonyIndex]  Mark a colony away or present (W09/W18)',
+  async run(a, ctx) {
+    const mode = a[0];
+    if (mode !== 'away' && mode !== 'back') throw new Error('usage: presence <away|back> [colonyIndex]');
+    const server = ctx.services.devServer;
+    if (!server) throw new Error('presence needs devServer');
+    const planetId = ctx.services.session?.planetId() ?? 'local';
+    const colonyIndex = a[1] !== undefined ? Number(a[1]) : ownColonyIndex(ctx.services);
+    const homeId = ctx.services.session?.colonyId?.();
+    const colonyId =
+      a[1] === undefined && homeId && homeId.startsWith('co_')
+        ? homeId
+        : `co_${String(colonyIndex).padStart(10, '0')}`;
+    const reply = (await server(mode, { planetId, colonyIndex, colonyId })) as {
+      appliedAtTick?: number;
+      tick?: number;
+    };
+    return `${mode} at tick ${reply?.appliedAtTick ?? reply?.tick ?? 0}`;
+  },
+};
+
 export const w18DevCommands: DevCommandDef[] = [
   killHqCommand,
   killHubCommand,
   setShieldCommand,
   offerTruceCommand,
   devOfferTruceCommand,
+  presenceCommand,
 ];

@@ -323,6 +323,15 @@ export class OnlineSession {
   }
 
   private onView(v: ClientView): void {
+    if (!this.guest && this.colonyIndex === 0) {
+      const asParam = new URLSearchParams(this.search).get('as')?.trim().toLowerCase() ?? '';
+      const asIdx = /^[a-e]$/.test(asParam) ? asParam.charCodeAt(0) - 97 : 0;
+      if (asIdx > 0 && Array.isArray(v.colonies) && v.colonies.some((c) => c && c.index === asIdx)) {
+        this.colonyIndex = asIdx;
+        this.entities.setOwnerColonyIndex(asIdx);
+        this.landfall.setOwnerColonyIndex(asIdx);
+      }
+    }
     if (v.tiles) this.onTiles(v, v.tiles);
     if (!this.entities.podTouchdown.isSpacePhaseActive()) this.dayNightSync?.syncFrame();
     const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);

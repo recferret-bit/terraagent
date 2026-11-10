@@ -1,4 +1,5 @@
 import type { FeatureContext } from '../../core/registry/types';
+import { ownColonyIndex as resolveOwnColonyIndex } from '../shared/colony';
 import {
   extractNeighborColonyMarkers,
   formatCountdownSeconds,
@@ -101,7 +102,7 @@ export class NeighborHudStrip {
   }
 
   update(rawView: unknown): void {
-    const ownColonyIndex = this.ctx.services.colonyId ?? 0;
+    const ownColonyIndex = resolveOwnColonyIndex(this.ctx.services);
     const markers = extractNeighborColonyMarkers(rawView, ownColonyIndex);
 
     while (this.hudStripEl.firstChild) {

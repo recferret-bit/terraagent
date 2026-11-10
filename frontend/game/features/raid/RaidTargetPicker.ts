@@ -12,6 +12,7 @@ export interface RaidTargetPickerOptions {
   actions?: RaidTargetPickerActions;
   sendCommand?: (kind: string, args: unknown) => Promise<unknown> | void;
   ownColonyIndex?: number;
+  getOwnColonyIndex?: () => number;
   initialView?: unknown;
   initiallyOpen?: boolean;
 }
@@ -116,7 +117,8 @@ export class RaidTargetPicker {
   }
 
   update(rawView: unknown): void {
-    const targets = extractRaidTargets(rawView, this.ownColonyIndex);
+    const ownIdx = this.opts.getOwnColonyIndex ? this.opts.getOwnColonyIndex() : this.ownColonyIndex;
+    const targets = extractRaidTargets(rawView, ownIdx);
     this.renderTargets(targets);
   }
 

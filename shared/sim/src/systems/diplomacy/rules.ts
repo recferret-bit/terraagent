@@ -212,13 +212,13 @@ export function validateTruceProposal(
     return { ok: false, code: 'tier_locked', detail: `HQ T${fromHq.tier} max truce duration is ${maxHours}h` };
   }
 
-  const fromActive = getActiveTrucesForColony(state, fromColony, tick).length;
+  const fromActive = getActiveTrucesForColony(state, fromColony, tick).filter((t) => t.status === 'active').length;
   const fromCap = maxActiveTrucesForHqTier(fromHq.tier, data);
   if (fromActive >= fromCap) {
     return { ok: false, code: 'truce_cap', detail: `HQ T${fromHq.tier} active truce cap (${fromCap}) reached` };
   }
 
-  const toActive = getActiveTrucesForColony(state, toColony, tick).length;
+  const toActive = getActiveTrucesForColony(state, toColony, tick).filter((t) => t.status === 'active').length;
   const toCap = maxActiveTrucesForHqTier(toHq.tier, data);
   if (toActive >= toCap) {
     return { ok: false, code: 'truce_cap', detail: `target HQ T${toHq.tier} active truce cap (${toCap}) reached` };

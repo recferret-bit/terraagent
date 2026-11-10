@@ -82,9 +82,18 @@ export function resolveColonyIndex(state: PlanetState, ref: number | string | un
     return byId ? byId.index : parsed;
   }
   const found = state.colonies.find(
-    (c) => c && (c.id === trimmed || c.name.toLowerCase() === trimmed.toLowerCase()),
+    (c) =>
+      c &&
+      (c.id === trimmed ||
+        c.name.toLowerCase() === trimmed.toLowerCase() ||
+        c.name.toLowerCase() === `colony ${trimmed.toLowerCase()}`),
   );
-  return found ? found.index : -1;
+  if (found) return found.index;
+  if (/^[a-e]$/i.test(trimmed)) {
+    const letterIdx = trimmed.toLowerCase().charCodeAt(0) - 97;
+    if (state.colonies[letterIdx]) return letterIdx;
+  }
+  return -1;
 }
 
 export function pairKey(colA: number, colB: number): string {

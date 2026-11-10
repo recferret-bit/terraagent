@@ -35,10 +35,9 @@ export function mountColonyStatusHud(
   }
 
   el.hidden = false;
-  const ownIndex = ownColonyIndex(ctx.services, options?.ownColonyIndex);
   const hud = createColonyStatusHud(el, ctx, {
     ...options,
-    ownColonyIndex: ownIndex,
+    ownColonyIndex: options?.ownColonyIndex,
   });
 
   activeColonyStatusHud = hud;
