@@ -952,6 +952,6 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/escrow.adapter.ts` (`get`), `shared/db/prisma/mock-chain.prisma` (`MockChainEscrow`)
 - **What happens:** `EscrowOpenInput` requires `expiresAtMs`, but `mock_chain_escrow` has no expiry column. `MockEscrowAdapter.get` always returns `expiresAtMs: 0`. A replay of `open` does not move tokens again; it also does not remember the original expiry.
 - **Why it is like this:** W22-17 must not alter the W00 escrow table. The bounty service (W22-19, W22-24) owns the 2–48 h expiry and the refund job. Adding a column would need a new Prisma fragment and a migration this issue does not own.
-- **Workaround / mitigation:** Callers that need the deadline keep it on the bounty row, not on the escrow. `0` means "not tracked here", and `EscrowView` still parses.
-- **To resolve:** If a later contract suite requires the deadline to round-trip, store it in a new `near-treasury` fragment (do not edit `mock-chain.prisma`) or keep it only on the bounty.
+- **Workaround / mitigation:** Callers that need the deadline keep it on the bounty row, not on the escrow. `0` means "not tracked here", and `EscrowView` still parses. The W22-18 contract suite asserts `expiresAtMs === 0` after an open that passed a non-zero deadline, and does not treat the dropped deadline as a failure.
+- **To resolve:** Keep the deadline on the bounty (W22-19, W22-24). Do not make this suite require a round-trip. A real escrow (W23-38) may store expiry on chain; this mock still answers `0`.
 - **Found:** 2026-11-10, W22-17
