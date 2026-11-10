@@ -95,6 +95,16 @@ export class ChainOutboxRepository extends RepositoryBase {
     await this.prisma.$executeRaw`UPDATE chain.chain_outbox SET payload = payload || ${patch}::jsonb WHERE op_id = ${opId}`;
   }
 
+  /**
+   * DONE rows whose opId starts with `prefix` and whose payload JSON lacks `flag`.
+   * `opId` is aliased; `doneWithoutFlag` returns raw column names.
+   */
+  doneMissingFlag(prefix: string, flag: string): Promise<Array<{ opId: string }>> {
+    return this.prisma.$queryRaw<Array<{ opId: string }>>`
+      SELECT op_id AS "opId" FROM chain.chain_outbox
+      WHERE op_id LIKE ${`${prefix}%`} AND status = 'DONE'::chain.outbox_status AND NOT (payload ? ${flag})`;
+  }
+
   /** DONE rows of `opIdPrefix` whose payload lacks `flag` (the owning module's follow-up step did not finish). */
   async doneWithoutFlag(opIdPrefix: string, flag: string): Promise<OutboxRow[]> {
     return this.prisma.$queryRaw<OutboxRow[]>`SELECT * FROM chain.chain_outbox WHERE op_id LIKE ${`${opIdPrefix}%`} AND status = 'DONE'::chain.outbox_status AND NOT (payload ? ${flag})`;

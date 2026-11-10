@@ -18,3 +18,16 @@ export class BountyPostError extends CoreException {
     this.code = screen.code;
   }
 }
+
+const CLAIM_STATUS = { invalid_args: 400, queue_full: 409 } as const;
+export type BountyClaimCode = keyof typeof CLAIM_STATUS;
+
+/** Domain rejection of `bounty.claim`. `queue_full` is a second claimer on a one-claimer bounty. */
+export class BountyClaimError extends CoreException {
+  readonly code: BountyClaimCode;
+
+  constructor(code: BountyClaimCode, detail: string) {
+    super(code, { status: CLAIM_STATUS[code], message: detail, details: { code } });
+    this.code = code;
+  }
+}

@@ -37,6 +37,44 @@ export class BountyRepository {
     return this.prisma.chainBounty.count({ where: { posterColonyId: colonyId, state: { in: [...ACTIVE] } } });
   }
 
+  /** `completed` rows that still have a claimer. Boot repay uses this after a crash mid-payout. */
+  completed(): Promise<BountyRow[]> {
+    return this.prisma.chainBounty.findMany({
+      where: { state: 'completed', claimerAccountId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * One column. `replace` is only for `clear_nest`, which may have several claimers;
+   * defend and deliver keep the first caller (`queue_full` otherwise).
+   */
+  async markClaimed(id: string, accountId: string, replace: boolean): Promise<boolean> {
+    const claimer = replace ? {} : { OR: [{ claimerAccountId: null }, { claimerAccountId: accountId }] };
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { id, state: { in: [...ACTIVE] }, ...claimer },
+      data: { state: 'claimed', claimerAccountId: accountId },
+    });
+    return result.count === 1;
+  }
+
+  /** Winner and `completed` in one write, so a crash before pay is retried from `completed()`. */
+  async completeForPayout(id: string, accountId: string): Promise<boolean> {
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { id, state: { in: [...ACTIVE] } },
+      data: { state: 'completed', claimerAccountId: accountId },
+    });
+    return result.count === 1;
+  }
+
+  async markPaid(id: string): Promise<boolean> {
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { id, state: 'completed' },
+      data: { state: 'paid' },
+    });
+    return result.count === 1;
+  }
+
   insert(row: NewBountyRow): Promise<BountyRow> {
     return this.prisma.chainBounty.create({
       data: {

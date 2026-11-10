@@ -3,7 +3,9 @@ import { CARGO_MINTER_ACCOUNT, toCargoBaseUnits } from '../../src/near/applicati
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ChainOutboxRepository } from '../../src/near/application/outbox/chain-outbox.repository.js';
 import { BountyRepository } from '../../src/near/bounty/bounty.repository.js';
+import { BountyClaimService } from '../../src/near/bounty/claim.service.js';
 import { BountyDeliverService } from '../../src/near/bounty/deliver.service.js';
+import { BountyPayService } from '../../src/near/bounty/pay.service.js';
 import { BountyPostService, type BountyPostInput } from '../../src/near/bounty/post.service.js';
 import { HOUR_MS } from '../../src/near/bounty/validate.js';
 import type { PostedBounty } from '../../src/near/bounty/view.js';
@@ -19,6 +21,7 @@ const waves = { w22: true };
 
 let db: TestDatabase;
 let posts: BountyPostService;
+let claims: BountyClaimService;
 let deliver: BountyDeliverService;
 let cargo: MockCargoTokenAdapter;
 let escrow: MockEscrowAdapter;
@@ -27,15 +30,19 @@ beforeAll(async () => {
   db = await createTestDatabase();
   cargo = new MockCargoTokenAdapter(db.prisma, cfg(), { sleep });
   escrow = new MockEscrowAdapter(db.prisma, cfg(), { sleep });
+  const flags = { has: (wave: string) => wave === 'W22' && waves.w22 };
+  const repo = new BountyRepository(db.prisma);
+  const outbox = new ChainOutboxRepository(db.prisma);
   posts = new BountyPostService(
     escrow,
     cargo,
-    new BountyRepository(db.prisma),
-    new ChainOutboxRepository(db.prisma),
+    repo,
+    outbox,
     { load: async () => { throw new Error('deliver_units must not load a world'); } },
     { has: () => true },
   );
-  deliver = new BountyDeliverService(db.prisma, escrow, { has: (wave) => wave === 'W22' && waves.w22 });
+  claims = new BountyClaimService(repo, flags);
+  deliver = new BountyDeliverService(db.prisma, new BountyPayService(escrow, outbox, repo, flags), flags);
   deliver.onModuleInit();
 });
 
@@ -52,7 +59,7 @@ describe('deliver_units tracking (W22-22)', () => {
     await claim(posted.id, claimer);
     await giveWater(claimer, 100);
     await send(claimer, poster, 100, 'w2222:full');
-    expect(await stateOf(posted.id)).toBe('completed');
+    expect(await stateOf(posted.id)).toBe('paid');
     expect((await escrow.get({ escrowId: posted.escrowId })).status).toBe('claimed');
     expect(await db.prisma.mockChainReceipt.count({ where: { opId: 'bounty-pay:bt_full' } })).toBe(1);
   });
@@ -103,7 +110,7 @@ describe('deliver_units tracking (W22-22)', () => {
     await send(claimer, poster, 60, 'w2222:sum60');
     expect(await stateOf(posted.id)).toBe('claimed');
     await send(claimer, poster, 40, 'w2222:sum40');
-    expect(await stateOf(posted.id)).toBe('completed');
+    expect(await stateOf(posted.id)).toBe('paid');
 
     const againPoster = 'w2222-poster-again.terraagent.mock';
     const againClaimer = 'w2222-claimer-again.terraagent.mock';
@@ -112,7 +119,7 @@ describe('deliver_units tracking (W22-22)', () => {
     await giveWater(againClaimer, 200);
     await send(againClaimer, againPoster, 100, 'w2222:again1');
     await send(againClaimer, againPoster, 100, 'w2222:again2');
-    expect(await stateOf(again.id)).toBe('completed');
+    expect(await stateOf(again.id)).toBe('paid');
     expect(await db.prisma.mockChainReceipt.count({ where: { opId: 'bounty-pay:bt_again' } })).toBe(1);
 
     const latePoster = 'w2222-poster-late.terraagent.mock';
@@ -146,7 +153,7 @@ async function postDeliver(poster: string, colonyId: string, bountyId: string): 
 }
 
 async function claim(id: string, claimerAccountId: string): Promise<void> {
-  await db.prisma.chainBounty.update({ where: { id }, data: { state: 'claimed', claimerAccountId } });
+  await claims.claim({ planetId: PLANET, bountyId: id, accountId: claimerAccountId });
 }
 
 async function giveWater(accountId: string, major: number): Promise<void> {
