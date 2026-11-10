@@ -135,3 +135,16 @@ export { TreasuryProposalPassedDataSchema, event as treasuryProposalPassed } fro
 export { TreasuryProposalFailedDataSchema, event as treasuryProposalFailed } from './events/treasury-proposal-failed';
 export { TreasuryEffectStartedDataSchema, event as treasuryEffectStarted } from './events/treasury-effect-started';
 export { TreasuryEffectEndedDataSchema, event as treasuryEffectEnded } from './events/treasury-effect-ended';
+export * from './bounty';
+export { command as bountyPost } from './commands/bounty-post';
+export { command as bountyClaim } from './commands/bounty-claim';
+export { command as bountyPaidCommand } from './commands/bounty-paid';
+export { BountyPostedDataSchema, event as bountyPosted } from './events/bounty-posted';
+export { BountyClaimedDataSchema, event as bountyClaimed } from './events/bounty-claimed';
+export { BountyCompletedDataSchema, event as bountyCompleted } from './events/bounty-completed';
+export { BountyPaidDataSchema, event as bountyPaid } from './events/bounty-paid';
+export { BountyRefundedDataSchema, event as bountyRefunded } from './events/bounty-refunded';
+export { BountyExpiredDataSchema, event as bountyExpired } from './events/bounty-expired';
+export { MercenaryHiredDataSchema, event as mercenaryHired } from './events/mercenary-hired';
+export { MercenaryArrivedDataSchema, event as mercenaryArrived } from './events/mercenary-arrived';
+export { MercenaryLeftDataSchema, event as mercenaryLeft } from './events/mercenary-left';
