@@ -332,8 +332,9 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
     reservationId: string,
     reason?: 'RELEASED' | 'EXPIRED',
     expectedEpoch?: number,
+    options?: { readonly allowCommitted?: boolean },
   ): Promise<{ readonly released: boolean; readonly reservation: SectorReservationRecord }> {
-    return this.reservationOps.releaseReservation(reservationId, reason, expectedEpoch);
+    return this.reservationOps.releaseReservation(reservationId, reason, expectedEpoch, options);
   }
   expireReservations(now?: Date): Promise<SectorReservationRecord[]> {
     return this.reservationOps.expireReservations(now);

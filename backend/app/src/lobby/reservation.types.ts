@@ -141,6 +141,7 @@ export interface CommitReservationOptions {
 export interface ReleaseReservationOptions {
   readonly expectedEpoch?: number;
   readonly requeueTicket?: boolean;
+  readonly allowCommitted?: boolean;
   readonly now?: Date;
 }
 

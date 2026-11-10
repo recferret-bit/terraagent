@@ -76,8 +76,27 @@ export interface AttackFold {
   readonly kind: 'raidStarted' | 'underAttack' | 'raidRepelled';
   readonly tick: number;
   readonly species?: string;
+  readonly attackerName?: string;
+  readonly byColony?: string;
+  readonly attackerColonyId?: string;
+  readonly pvp?: boolean;
   readonly q?: number;
   readonly r?: number;
+}
+
+export interface LossFold {
+  readonly kind: 'buildingDestroyed' | 'unitDestroyed';
+  readonly tick: number;
+  readonly buildingKind?: string;
+  readonly tier?: number;
+  readonly count: number;
+  readonly cause: 'fauna' | 'raid' | 'lightning' | 'meteor' | 'other';
+}
+
+export interface AlertFold {
+  readonly kind: 'colonyCritical' | 'colonyEliminated';
+  readonly tick: number;
+  readonly cause?: string;
 }
 
 export interface DigestLog {

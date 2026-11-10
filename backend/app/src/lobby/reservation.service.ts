@@ -401,11 +401,13 @@ export class SectorReservationService {
     options?: ReleaseReservationOptions | number,
   ): Promise<ReleaseReservationResult> {
     const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
+    const allowCommitted = typeof options === 'object' ? options?.allowCommitted : undefined;
     return this.runWithReservationMutex(reservationId, async () => {
       const out = await this.persistence.releaseReservation(
         reservationId,
         reason,
         expectedEpoch,
+        allowCommitted ? { allowCommitted } : undefined,
       );
       const ticket = await this.persistence.getTicketById(out.reservation.ticketId);
       return {
