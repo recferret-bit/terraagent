@@ -1281,3 +1281,23 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** The counter is the effect. The HUD badge and any visual strike are later issues (W22-15).
 - **To resolve:** Only if the owner wants automatic craters that avoid buildings. That would be a new hazard path, not this counter.
 - **Found:** 2026-11-10, W22-10
+
+### GP-117 · clear_nest: the lower colony index wins a damage tie
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/bounty/resolve.ts` (`topDamageColony`, `settle`)
+- **What happens:** When a hive entity dies, each open or claimed `clear_nest` bounty whose `nestId` equals `String(entityId)` sums damage where `tick - hit.tick <= damageWindowTicks` (300, so a hit exactly 60 s old still counts). The greatest sum wins. Equal sums go to the lower colony index, decided before the poster check. That colony completes the bounty only when it is a claimer and not the poster. `bountyCompleted.data.claimer` is `colonies[index].id` (`col_<index>` until the colony has its own id), not the numeric index. If that top colony is the poster, the bounty is `refunded` with reason `cancelled`, even when the poster had claimed. If there is no in-window damage, or the top colony is not a claimer, it is `refunded` with reason `failed`. A claimer who dealt less than a non-claimer does not complete it. The sim does not move cargo. `bounty.paid` only flips `completed` to `paid` and emits nothing.
+- **Why it is like this:** W22-20. Escrow payment is W22-23. The tie-break is the lower colony index so the result does not depend on map iteration order.
+- **Workaround / mitigation:** None. The refund event is what a later server issue pays on.
+- **To resolve:** Only if the owner wants another tie-break, or wants a lesser claimer to win when a non-claimer dealt more.
+- **Found:** 2026-11-10, W22-20
+
+### GP-118 · clear_nest ring starts at the post; other bounty kinds are not tracked
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/bounty/damage.ts` (`noteClearNestHit`), `shared/sim/src/systems/bounty/handlers.ts` (`postBounty`)
+- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `defend_area` or `deliver_units` is `invalid_args`. A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` matches the hive entity id as a string, not a separate catalog id.
+- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-21, W22-22, and W22-37 own the other kinds and the species-hive binding.
+- **Workaround / mitigation:** Post before the fight, and use the hive's entity id as `nestId`.
+- **To resolve:** W22-21 and W22-22 accept their kinds. W22-37 binds spotted species hives if that id is not the entity id. Record pre-post hits if the owner wants the full 60 s before the post.
+- **Found:** 2026-11-10, W22-20

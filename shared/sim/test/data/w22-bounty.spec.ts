@@ -11,7 +11,7 @@ describe('W22-02 bounty and mercenary data rows', () => {
 
   it('keeps the three target kinds, the posting bounds, and the proposed roster when W22 is on', () => {
     const on = compileData(parseWaves('..22'));
-    expect(dataRow(on, 'bounty', 'clear_nest')).toMatchObject({ damageWindowS: 60 });
+    expect(dataRow(on, 'bounty', 'clear_nest')).toMatchObject({ damageWindowS: 60, damageWindowTicks: 300 });
     expect(dataRow(on, 'bounty', 'defend_area')).toMatchObject({ radiusMin: 1, radiusMax: 8, presenceMinBp: 8000 });
     expect(dataRow(on, 'bounty', 'deliver_units')).toMatchObject({ amountMin: 1 });
     expect(dataRow(on, 'bounty', 'policy')).toMatchObject({ maxActive: 3, expiryMinH: 2, expiryMaxH: 48 });
