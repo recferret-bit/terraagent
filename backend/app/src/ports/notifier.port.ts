@@ -1,4 +1,4 @@
-import type { NotificationChannel, NotificationKind } from '@terra/contracts';
+import type { NotificationChannel, NotifierKind } from '@terra/contracts';
 
 /**
  * Payload for `NotifierPort.send`. The zod source of truth is `NotificationPayloadSchema`
@@ -7,7 +7,7 @@ import type { NotificationChannel, NotificationKind } from '@terra/contracts';
 export interface Notification {
   readonly colonyId: string;
   readonly eventId: string;
-  readonly kind: NotificationKind;
+  readonly kind: NotifierKind;
   readonly channel: NotificationChannel;
   readonly to: string;
   readonly title: string;

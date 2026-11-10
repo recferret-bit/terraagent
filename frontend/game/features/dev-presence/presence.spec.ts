@@ -22,7 +22,8 @@ const run = async (line: string, devServer: FeatureContext['services']['devServe
       session: { planetId: () => 'pl_dev' },
       colonyId: 2,
       store: { latest: view },
-    } as FeatureContext['services'],
+      track: () => {},
+    } as unknown as FeatureContext['services'],
   });
   const result = await runner.run(line);
   return result?.kind === 'text' ? result.text : '';
@@ -60,7 +61,8 @@ describe('W09 dev console away, back, colony eliminate', () => {
         session: { planetId: () => 'pl_dev', colonyId: () => home },
         colonyId: 2,
         store: { latest: view },
-      } as FeatureContext['services'],
+        track: () => {},
+      } as unknown as FeatureContext['services'],
     });
     expect((await runner.run('away'))?.kind).toBe('text');
     expect(devServer).toHaveBeenCalledWith('away', { planetId: 'pl_dev', colonyIndex: 2, colonyId: home });

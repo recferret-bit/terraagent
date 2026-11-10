@@ -73,6 +73,9 @@ describe('W20-25 NotifierPort integration on DeedSettledService (unit)', () => {
     expect(sendSpy).toHaveBeenCalledTimes(1);
     expect(sendSpy).toHaveBeenCalledWith(
       expect.objectContaining({
+        colonyId: 'col_1',
+        eventId: 'deed-settled:col_1',
+        kind: 'deed_settled',
         channel: 'telegram',
         title: 'Colony Deed Settled',
       }),

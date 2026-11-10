@@ -60,6 +60,7 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   order_limit: 'Rejected: Open-order limit reached',
   order_too_small: 'Rejected: Order is below the minimum size',
   unknown_order: 'Rejected: No such open order',
+  away_policy: 'Rejected: Not allowed while the colony is away',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

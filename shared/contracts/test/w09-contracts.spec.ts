@@ -115,6 +115,16 @@ describe('W09-01 events, digest, notify schemas', () => {
       'under_attack', 'colony_critical', 'colony_eliminated', 'energy_collapse',
       'rocket_ready', 'truce_offered', 'trade_offer', 'away_budget_exhausted',
     ]);
+    expect(NOTIFICATION_KINDS).not.toContain('deed_settled');
+    expect(NotificationPayloadSchema.safeParse({
+      colonyId: COLONY,
+      eventId: 'deed-settled:co_01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      kind: 'deed_settled',
+      channel: 'telegram',
+      to: PLAYER,
+      title: 'Colony Deed Settled',
+      body: 'sealed',
+    }).success).toBe(true);
   });
 
   it('parses the away events and rejects an unknown resource family', () => {

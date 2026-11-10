@@ -903,3 +903,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Both `DeedNftPort` (`describeNearPortContract('deed')`) and `StakingPort` (`describeNearPortContract('staking')`) contract suites are enforced in CI against the Postgres-backed mocks so `W23` can drop in live adapters behind `NEAR_ADAPTER_DEED` and `NEAR_ADAPTER_STAKING` without changing any game, sim, or UI code.
 - **To resolve:** Connect `W21` rocket departure to `colonySettled` when `W21` opens, and wire live NEAR key rotation and contract adapters in `W23-14`, `W23-31`, and `W23-33`.
 - **Found:** 2026-11-09, W20 delivery.
+
+### BE-69 · A settled Colony Deed push is not one of the eight away-alert toggles
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/deed/deed-settled.service.ts` (`notifySettledIfEnabled`), `shared/contracts/src/notify/kinds.ts` (`NOTIFIER_EXTRA_KINDS`), `backend/app/src/ports/notifier.port.ts`
+- **What happens:** When W09 and W20 are both on, sealing a Colony Deed calls `NotifierPort.send` once per colony per process. The payload kind is `deed_settled`, the channel is always `telegram`, and `to` is the deed's `playerId` or else its `accountId`. That kind is not in `NOTIFICATION_KINDS`, so the away alert toggles do not list it and cannot turn it off. The alert router does not turn a `deedSettled` planet event into this push. A repeat seal in the same process does not send again. The idempotency key is `deed-settled:<colonyId>` plus the channel.
+- **Why it is like this:** CT-36 fixes eight player-configurable alerts. W20-25 asks for one push on settle and was written against an older port shape (`channel`, `to`, `title`, `body`). The port now requires `colonyId`, `eventId` and `kind`. Adding a ninth toggle would change that closed list.
+- **Workaround / mitigation:** The send is skipped when W09 is off, when no notifier is bound, or when both `playerId` and `accountId` are empty. A send that fails is logged and does not fail the seal.
+- **To resolve:** Owner: add a player toggle and route the seal through the alert router, or keep this one-shot telegram push.
+- **Found:** 2026-11-10, merge of main into W09.

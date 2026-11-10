@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { HomeColonyId } from '../rest/home';
-import { NotificationChannelSchema, NotificationKindSchema } from './kinds';
+import { NotificationChannelSchema, NotifierKindSchema } from './kinds';
 
 /**
  * What `NotifierPort.send` carries (CT-38). Idempotency key is `(colonyId, eventId, channel)`.
@@ -9,7 +9,7 @@ import { NotificationChannelSchema, NotificationKindSchema } from './kinds';
 export const NotificationPayloadSchema = z.strictObject({
   colonyId: HomeColonyId,
   eventId: z.string().min(1).max(128),
-  kind: NotificationKindSchema,
+  kind: NotifierKindSchema,
   channel: NotificationChannelSchema,
   to: z.string().min(1).max(500),
   title: z.string().min(1).max(120),
