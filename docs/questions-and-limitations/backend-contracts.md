@@ -923,3 +923,25 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** W22-17 can open to a holding account and pass the real payee as `caller` on `claim`.
 - **To resolve:** Owner: keep a holding-account beneficiary, or make `beneficiary` optional and name the payee only on `claim`.
 - **Found:** 2026-11-10, W22-02
+
+## W22 Treasury DAO mock
+
+### BE-71 · Mock DAO balance lives in policy JSON and a short deciding vote is rolled back
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/treasury.adapter.ts`, `backend/app/src/near/treasury/policy.ts` (`settleCost`), `backend/app/src/near/treasury/actions.ts` (`approvePassed`)
+- **What happens:** `deposit` adds `balances[tokenId]` inside `MockChainDao.policy`. It does not debit `from` on `chain.mock_chain_balance`. A second `createDao` for the same slug with a new opId keeps the existing members and balances. `Rejected` is never written: a `remove` vote counts as no, and a failed `finalize` becomes `Expired`. When the vote that would pass cannot pay `payload.cost`, the adapter throws `TREASURY_INSUFFICIENT` inside the mock transaction, so that vote is not stored and the proposal stays `InProgress`.
+- **Why it is like this:** W22-03 stores members, `canPropose` and balances in the policy JSON so the landed `mock_chain_dao` tables need no new migration. `MockChainBase.call` rolls the callback and the receipt back together; persisting the vote and still throwing would leave a success receipt for the same opId on retry.
+- **Workaround / mitigation:** After a top-up, the same member can vote again. `finalize` of an already `Approved` proposal does not debit a second time.
+- **To resolve:** Keep this. A real Sputnik adapter (W23-36) maps chain state onto the same port errors.
+- **Found:** 2026-11-10, W22-03
+
+### BE-72 · Mock finalize ignores the proposal deadline, and removed members' votes still count
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/treasury/actions.ts` (`finalizeProposal`, `rulePasses`), `shared/sim/src/data/treasury-policy.ts` (`proposalTtlH`)
+- **What happens:** `finalize` does not read the clock. An `InProgress` proposal that fails the pass rule becomes `Expired` as soon as `finalize` is called, even inside the 6 h window. A member removed with `removeMember` leaves their votes in the proposal JSON, and those votes still count toward yes and no.
+- **Why it is like this:** W22-03 was told not to implement the deadline. W22-09 owns the 6 h job. W22-06 owns "open votes of an eliminated colony are ignored at finalize".
+- **Workaround / mitigation:** Callers that need a deadline must not call `finalize` early. Do not remove a member who has already voted if that vote must be dropped; this adapter will not drop it.
+- **To resolve:** W22-09 expires only past `proposalTtlH`. W22-06 skips votes whose voter is no longer a member when it finalizes.
+- **Found:** 2026-11-10, W22-03

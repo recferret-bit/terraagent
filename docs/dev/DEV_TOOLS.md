@@ -318,7 +318,7 @@ Account list and receipt detail for the mock chain explorer (`/dev/chain/`). Sam
 
 ## W06-25
 
-Dev console commands for mock-port failure and latency, and for resetting or upgrading a player. They are not player-facing. The client feature is `frontend/game/features/near-dev` (wave `W06`, both hosts). A host with no game server answers `host_unavailable`. The server registers them on `DevCommandRegistry` (`POST /v1/dev/commands/:name`, 404 in production). Port names are case-insensitive (`relayer` matches `Relayer`). An unset port keeps the boot config (`MOCK_FAIL_RATE`, `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`).
+Dev console commands for mock-port failure and latency, and for resetting or upgrading a player. They are not player-facing. The client feature is `frontend/game/features/near-dev` (wave `W06`, both hosts). A host with no game server answers `host_unavailable`. The server registers them on `DevCommandRegistry` (`POST /v1/dev/commands/:name`, 404 in production). Port names are case-insensitive (`relayer` matches `Relayer`). `CargoToken` is `cargo`, `DeedNft` is `deed`, and `TreasuryDao` is `treasury` (W22-03). An unset port keeps the boot config (`MOCK_FAIL_RATE`, `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`).
 
 | Command | What |
 |---|---|
