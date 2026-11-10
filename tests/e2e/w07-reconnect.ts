@@ -105,7 +105,7 @@ export async function checkServerCombatReconnect(page: Page): Promise<void> {
       return { url: location.href, online: Boolean(online), tick: online?.store?.latest?.tick,
         storeTick: online?.store?.tick, confirmedTick: online?.store?.confirmedTick,
         status: online?.store?.status, connection: online?.transport?.state,
-        hudTicks: Array.from(document.querySelectorAll('.ta-tick__n'), el => el.textContent), body: document.body.innerText.slice(0, 2000) };
+        body: document.body.innerText.slice(0, 2000) };
     }), new Promise(resolve => setTimeout(() => resolve('join diagnostics timed out'), 5000))]);
     console.log('[w07 reconnect diagnostics]', diagnostic, errors);
     throw error;

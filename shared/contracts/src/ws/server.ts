@@ -7,6 +7,7 @@ import { AwayDigestV1Schema } from '../notify/digest';
 import { HomeColonyId, HomePlanetId } from '../rest/home';
 import { MarketBookPayload, MarketTradePayload } from '../market/views';
 import { CargoStatusPayload } from '../rest/near-cargo';
+import { DeedUpdatedPayload } from '../deed';
 import { PlanetType, SimDiffFrame, SimEventWire, SimSnapshotFrame } from './sim';
 
 /** App → client messages (PROTOCOL §4.3). Parsed permissively by clients (PR-01). */
@@ -66,7 +67,9 @@ export const CargoStatus = ServerEnvelope('cargo.status', CargoStatusPayload);
 /** W13 market pushes (PROTOCOL §6): book depth debounced to 1 Hz per pair, and one message per FINAL trade. */
 export const MarketBook = ServerEnvelope('market.book', MarketBookPayload);
 export const MarketTrade = ServerEnvelope('market.trade', MarketTradePayload);
+/** W20 colony deed live push (PROTOCOL §6): sent when a deed is minted, updated, or settled. */
+export const DeedUpdated = ServerEnvelope('deed.updated', DeedUpdatedPayload);
 
-export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade]);
+export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade, DeedUpdated]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 export type ServerMessageOf<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;

@@ -93,3 +93,40 @@ describe('Combat Lab controls', () => {
     expect(devServer).toHaveBeenCalledWith('tune', { planetId: 'pl_test', op: 'export' });
   });
 });
+
+describe('Combat Lab in the Colony book (launcher section in the pane, dialog in the HUD overlay)', () => {
+  function mountWithOverlay() {
+    const el = document.createElement('div'); const overlay = document.createElement('div');
+    document.body.append(el, overlay);
+    const ctx: FeatureContext = { flags, host: 'server', services: { track: vi.fn(), hudOverlay: overlay, session: { planetId: () => 'pl_test' }, store: { simData: () => data } } };
+    const panel = new CombatTuningPanel(el, ctx); panels.push(panel);
+    return { el, overlay, panel };
+  }
+
+  it('keeps the COMBAT F6 launcher as a titled section in the pane and the dialog in the overlay', () => {
+    const { el, overlay } = mountWithOverlay();
+    const section = el.querySelector('[data-testid="combat-tuning-launcher"]')!;
+    expect(section.textContent).toContain('COMBAT LAB');
+    expect(section.querySelector('[data-testid="combat-tuning-toggle"]')?.textContent).toBe('COMBAT F6');
+    expect(el.querySelector('[role="dialog"]')).toBeNull();
+    expect(overlay.querySelector<HTMLElement>('[data-testid="combat-tuning-panel"]')!.hidden).toBe(true);
+  });
+
+  it('opens the overlay dialog from the launcher and from F6, and closes it with Escape', () => {
+    const { el, overlay } = mountWithOverlay();
+    const dialog = overlay.querySelector<HTMLElement>('[role="dialog"]')!;
+    open(el);
+    expect(dialog.hidden).toBe(false);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(dialog.hidden).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'F6' }));
+    expect(dialog.hidden).toBe(false);
+  });
+
+  it('removes both the launcher and the overlay dialog on dispose', () => {
+    const { el, overlay, panel } = mountWithOverlay();
+    panel.dispose();
+    expect(el.childElementCount).toBe(0);
+    expect(overlay.childElementCount).toBe(0);
+  });
+});

@@ -14,7 +14,7 @@ export default defineFeature({
   hud: [
     {
       id: 'power-hud',
-      slot: 'top-right',
+      slot: 'bottom-right',
       order: 10,
       mount(el, ctx) {
         const hud = new PowerHud(el, ctx);

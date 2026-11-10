@@ -12,7 +12,7 @@ export type AwayFamilyBudget = z.infer<typeof AwayFamilyBudgetSchema>;
 
 /**
  * Away budget patch, one entry per D-34 family (Metals, Minerals, Bio).
- * Oil is `bio.t2` (Petroleum) inside Bio, not a fourth family (owner default, BE-53).
+ * Oil is `bio.t2` (Petroleum) inside Bio, not a fourth family (owner default, BE-68).
  */
 export const AwayBudgetSchema = z.strictObject({
   metals: AwayFamilyBudgetSchema.optional(),

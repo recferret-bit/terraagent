@@ -29,12 +29,14 @@ export default defineFeature({
     slot: 'top-center',
     mount(el, ctx) {
       el.hidden = true;
-      const modal = new AwayDigestModal(parentOf(el));
+      const modal = new AwayDigestModal(ctx.services.hudOverlay ?? parentOf(el));
       ctx.services.awayDigest = modal;
       const off = watchStore(modal, ctx);
+      const offCloser = ctx.services.registerHudCloser?.(() => modal.dismiss());
       return {
         dispose() {
           off();
+          offCloser?.();
           if (ctx.services.awayDigest === modal) ctx.services.awayDigest = undefined;
           modal.dispose();
         },

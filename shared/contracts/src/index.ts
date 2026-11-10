@@ -123,3 +123,7 @@ export {
   type ColonyEliminatedCause,
   type ColonyEliminatedData,
 } from './events/colony-eliminated';
+export * from './deed';
+export { DeedMintedDataSchema, event as deedMinted, type DeedMintedData } from './events/deed-minted';
+export { DeedUpdatedDataSchema, event as deedUpdated, type DeedUpdatedData } from './events/deed-updated';
+export { DeedSettledDataSchema, event as deedSettled, type DeedSettledData } from './events/deed-settled';

@@ -267,6 +267,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     services.hudMin?.showToast(m, 'info', 6000, `found:${m}`),
   );
   syncView();
+  const offCloser = services.registerHudCloser?.(() => brush.disarm());
 
   const handle = buildTerraformHandle({
     menu,
@@ -277,7 +278,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     ensureLatestHostSync: () => {
       if (simHost && (simHost.tick ?? -1) !== lastSyncedTick) syncView(simHost.view());
     },
-    disposeAll: () => { offHover(); offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); targets?.dispose(); },
+    disposeAll: () => { offCloser?.(); offHover(); offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); targets?.dispose(); },
   });
 
   if (opts?.services) opts.services.terraform = handle;

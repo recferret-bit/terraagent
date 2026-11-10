@@ -1,6 +1,7 @@
 import { CargoFlights } from './CargoFlights';
 import type { CargoStatusPayload } from '@terra/contracts';
-import { defineFeature } from '../../core/registry/types';
+import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
+import { TradeHubLauncher } from './hubLauncher';
 import {
   computeTransferBounds,
   formatCargoCount,
@@ -63,53 +64,73 @@ declare module '../../core/registry/types' {
 }
 
 let activePanel: TradeHubPanel | null = null;
+/** Opens the active panel from code / the menu and switches its HUD tab book to it (selection-driven opens never do). */
+let openActive: ((tab?: TradeHubTab) => void) | null = null;
+
+export function mountTradeHubPanel(el: HTMLElement, ctx: FeatureContext): HudPanelInstance & { panel: TradeHubPanel } {
+  const panel = new TradeHubPanel(el, ctx);
+  const s = ctx.services;
+  const offCloser = s.registerHudCloser?.(() => { if (panel.isOpenState()) panel.setOpen(false); });
+  const launcher = new TradeHubLauncher(el, {
+    openHub: () => open(),
+    openContracts: () => s.contracts?.setOpen(true),
+    hasContracts: () => Boolean(s.contracts) && !s.contracts?.isOpen,
+  });
+  const syncLauncher = (): void => launcher.sync(panel.isOpenState() && panel.root.parentElement === el);
+  // Reveal after opening: a selected hub keeps the panel in the selection bar, where the reveal is a no-op.
+  const open = (tab?: TradeHubTab, extId?: string): void => {
+    if (tab) panel.setTab(tab);
+    panel.setOpen(true);
+    if (extId) panel.extensions.show(extId);
+    s.revealHudPanel?.(panel.root);
+    syncLauncher();
+  };
+  activePanel = panel;
+  openActive = (tab) => open(tab);
+  s.getTradeHubPanel = () => activePanel;
+  s.openTradeHubPanel = (isOpen = true, tab?: TradeHubTab) => {
+    if (isOpen) return open(tab);
+    if (tab) panel.setTab(tab);
+    panel.setOpen(false);
+    syncLauncher();
+  };
+  s.registerTradeHubTab = (def) => panel.extensions.register(def);
+  s.showTradeHubTab = (id) => open(undefined, id);
+  s.setCargoStatus = (status: CargoStatusPayload | null) => {
+    s.cargoStatus = status;
+    panel.setCargoStatus(status);
+  };
+  return {
+    panel,
+    update(view) {
+      panel.update(view);
+      syncLauncher();
+    },
+    dispose() {
+      offCloser?.();
+      if (activePanel === panel) { activePanel = null; openActive = null; }
+      if (s.getTradeHubPanel) s.getTradeHubPanel = undefined;
+      if (s.openTradeHubPanel) s.openTradeHubPanel = undefined;
+      if (s.setCargoStatus) s.setCargoStatus = undefined;
+      s.registerTradeHubTab = undefined;
+      s.showTradeHubTab = undefined;
+      launcher.dispose();
+      panel.dispose();
+    },
+  };
+}
 
 export default defineFeature({
   id: 'trade-hub',
   wave: 'W10',
   renderers: [{ id: 'cargo-flights', mount: (ctx) => new CargoFlights(ctx) }],
-  hud: [
-    {
-      id: 'trade-hub-panel',
-      slot: 'bottom-right',
-      order: 25,
-      mount(el, ctx) {
-        const panel = new TradeHubPanel(el, ctx);
-        activePanel = panel;
-        ctx.services.getTradeHubPanel = () => activePanel;
-        ctx.services.openTradeHubPanel = (open = true, tab?: TradeHubTab) => {
-          if (tab) panel.setTab(tab);
-          panel.setOpen(open);
-        };
-        ctx.services.registerTradeHubTab = (def) => panel.extensions.register(def);
-        ctx.services.showTradeHubTab = (id) => { panel.setOpen(true); panel.extensions.show(id); };
-        ctx.services.setCargoStatus = (status: CargoStatusPayload | null) => {
-          ctx.services.cargoStatus = status;
-          panel.setCargoStatus(status);
-        };
-        return {
-          update(view) {
-            panel.update(view);
-          },
-          dispose() {
-            if (activePanel === panel) activePanel = null;
-            if (ctx.services.getTradeHubPanel) ctx.services.getTradeHubPanel = undefined;
-            if (ctx.services.openTradeHubPanel) ctx.services.openTradeHubPanel = undefined;
-            if (ctx.services.setCargoStatus) ctx.services.setCargoStatus = undefined;
-            ctx.services.registerTradeHubTab = undefined;
-            ctx.services.showTradeHubTab = undefined;
-            panel.dispose();
-          },
-        };
-      },
-    },
-  ],
+  hud: [{ id: 'trade-hub-panel', slot: 'bottom-right', order: 25, mount: mountTradeHubPanel }],
   menus: [
     {
       id: 'trade-hub',
       label: 'Trade Hub',
       open() {
-        activePanel?.setOpen(true);
+        openActive?.();
       },
     },
   ],

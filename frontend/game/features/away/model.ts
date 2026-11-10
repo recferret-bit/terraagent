@@ -5,7 +5,7 @@ import {
   type SetAutopilotArgs,
 } from '@terra/contracts';
 
-/** D-34 families. Oil is bio, not a fourth slider (BE-53). */
+/** D-34 families. Oil is bio, not a fourth slider (BE-68). */
 export const AWAY_FAMILIES = ['metals', 'minerals', 'bio'] as const;
 export type AwayFamily = (typeof AWAY_FAMILIES)[number];
 

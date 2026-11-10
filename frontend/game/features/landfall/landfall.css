@@ -5,12 +5,13 @@
 .ta-hq-panel {
   position: fixed;
   bottom: var(--ta-s3);
-  left: calc(50% + 52px);
+  /* Centred in the free strip between the bottom-left minimap + env row (~416 px) and the bottom-right stack (~170 px). */
+  left: calc(50% + 123px);
   transform: translateX(-50%);
   z-index: 25;
   min-width: auto;
   min-height: 76px;
-  max-width: calc(100vw - 440px);
+  max-width: calc(100vw - 602px);
   padding: var(--ta-s3) var(--ta-s4);
   background: var(--ta-plate);
   border: 1.5px solid var(--ta-seam-2);
@@ -196,17 +197,19 @@
   color: var(--ta-text-2);
 }
 
-.ta-hq-panel { flex-wrap: wrap; gap: var(--ta-s2); max-width: calc(100vw - 32px); }
-.ta-hq-panel[data-expanded='true'] { width: min(800px, calc(100vw - 32px)); }
+.ta-hq-panel { flex-wrap: wrap; gap: var(--ta-s2); max-width: calc(100vw - 602px); }
+/* Expanded details (e.g. a Trade Hub) are a temporary wide sheet: they may cover the corner stacks while open. */
+.ta-hq-panel[data-expanded='true'] { width: min(800px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
 .ta-selection-details { flex-basis: 100%; min-width: 0; border-top: 1px solid var(--ta-seam); padding-top: var(--ta-s2); }
 .ta-selection-details[hidden] { display: none; }
 
-/* Short screens (phone landscape): the dock column fills the left edge, so the panel sits right of it, not centred. */
+/* Short screens (phone landscape): the panel starts right of the bottom-left minimap + env row (~368 px with the
+   140 px minimap) and stops left of the bottom-right stack (~170 px). */
 @media (max-height: 500px) {
   .ta-hq-panel {
-    left: auto;
-    right: var(--ta-s3);
+    left: 376px;
+    right: auto;
     transform: none;
-    max-width: calc(100vw - 396px);
+    max-width: calc(100vw - 376px - 178px);
   }
 }

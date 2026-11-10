@@ -13,7 +13,7 @@
 ## Steps
 
 1. **Server is up.** In a terminal: `curl <app>/v1/readyz` → `{"db":"ok","simThreads":N}` (N = CPU cores − 1).
-2. **Planet renders and ticks.** Open `<client>/play.html?scenario=w00` → a flat green hex-tiled planet with a small builder robot in the middle (the test entity), no orbit menu or descent. The **TICK** chip (top left) counts up about 5 per second. Mouse wheel zooms, WASD pans, Q/E rotates.
+2. **Planet renders and ticks.** Open `<client>/play.html?scenario=w00` → a flat green hex-tiled planet with a small builder robot in the middle (the test entity), no orbit menu or descent. The console command `tick` (press **`` ` ``**) counts up about 5 per second. Mouse wheel zooms, WASD pans, Q/E rotates.
 3. **Time warp.** Dev console: `help` → the command list. `warp 10` → the tick counter runs about 50/s and an orange **`×10`** badge appears. `warp 1` → back to about 5/s, badge gone.
 4. **State inspector** — *not in this landing* (W00-43 is H+). Skip.
 5. **Wave flags.** There is no **WAVES** panel. In the dev console (press **`` ` ``**), `flags` prints the enabled set (all 26 waves on). Open `<client>/play.html?scenario=w00&waves=..00` → `flags` prints only **W00** (the URL still narrows waves; there is no panel to look at).

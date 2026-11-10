@@ -39,13 +39,16 @@ export function login(page: Page, name = 'e2e'): string {
   return `as=${encodeURIComponent(name)}`;
 }
 
-/** Tick shown by the HUD chip (`TICK n`), or null while it shows the dash. */
+/** Tick of the newest replica view (`window.__online.store.tick`; the HUD tick chip is gone), or null before the first view. */
 export async function readTick(page: Page): Promise<number | null> {
-  const t = await page.locator('.ta-tick__n').first().textContent({ timeout: 2000 }).catch(() => null);
-  return t !== null && /^\d+$/.test(t.trim()) ? Number(t) : null;
+  const t = await page.evaluate(() => {
+    const online = (window as unknown as { __online?: { store?: { tick?: number } } }).__online;
+    return typeof online?.store?.tick === 'number' ? online.store.tick : -1;
+  }).catch(() => -1);
+  return t >= 0 ? t : null;
 }
 
-/** Waits until the tick chip satisfies `minTick` (>=) or the predicate; returns the tick. */
+/** Waits until the newest view's tick satisfies `minTick` (>=) or the predicate; returns the tick. */
 export async function waitForTick(page: Page, until: number | ((tick: number) => boolean), timeout = 15_000): Promise<number> {
   const ok = typeof until === 'number' ? (t: number) => t >= until : until;
   let seen: number | null = null;
@@ -53,7 +56,7 @@ export async function waitForTick(page: Page, until: number | ((tick: number) =>
   return seen as unknown as number;
 }
 
-/** Opens `/play.html?scenario=<id>&as=<name>&…` and waits for the first view (tick chip shows a number). */
+/** Opens `/play.html?scenario=<id>&as=<name>&…` and waits for the first view (a tick is known). */
 export async function loadScenario(page: Page, id: string, params: Record<string, string> = {}, opts: { as?: string; timeout?: number } = {}): Promise<number> {
   const q = new URLSearchParams({ scenario: id, ...params });
   const [k, v] = login(page, opts.as).split('=');

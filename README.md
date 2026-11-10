@@ -18,7 +18,7 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 | Do | See |
 |---|---|
 | `curl 127.0.0.1:4001/v1/healthz` and `/v1/readyz` | `{"ok":true}` and `{"db":"ok","simThreads":N}` (N = cores − 1 unless `SIM_THREADS` is set) |
-| Open http://127.0.0.1:5173/play.html?scenario=w00 | A flat hex planet; the HUD `TICK` chip rises about 5 per second |
+| Open http://127.0.0.1:5173/play.html?scenario=w00 | A flat hex planet; the dev console (`` ` ``) command `tick` rises about 5 per second |
 | Press `` ` `` and type `warp 10` (`warp 1` to undo) | The tick rate rises to about 50/s and a `×10` badge appears |
 | Add `&waves=..00` to the URL | `W00` on, every later wave off |
 | `npm run dev:restart` while the page is open | "Reconnecting…", then the tick continues from the saved snapshot, not 0 |

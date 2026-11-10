@@ -1383,7 +1383,7 @@ Open items, see the format in `README.md`:
 
 ### FF-94 · The bottom-left dock shrinks to stay below the top-left HUD stack
 
-- **Status:** Accepted (by design)
+- **Status:** Resolved (W20 HUD tab-book refactor, FF-98: the dock moved top right; `slotFit.ts` now bounds both top slots above the bottom stacks)
 - **Area / code:** `frontend/game/core/hud/slotFit.ts`, `frontend/game/core/hud/hud.css` (`--ta-hud-top-left-h`), `frontend/game/features/landfall/landfall.css` (`@media (max-height: 500px)`)
 - **What happens:** The dock plus the env panel grew until the pilot chip covered the dock tabs (e2e w03 9&10, w05 1&2 could not click QUEUE / TERRAFORM), and at 844×390 the dock overlapped the HQ panel (w04 3). The bottom-left slot now starts below the measured top-left slot and only the dock shrinks (its body scrolls); on short screens the HQ panel sits right of the dock. Side effects: an expanding top-left plate (pilot chip's Save progress menu) makes the dock jump; at ≤ 500 px height the HQ panel covers the dev PREDICT plate.
 - **Found:** 2026-11-07, W05 full review (client agent, from the e2e baseline)
@@ -1411,22 +1411,52 @@ Open items, see the format in `README.md`:
 - **To resolve:** Owner: list `worker_t1` / `worker_t2` in the stage rows (and teach the unlock-stage resolver those ids), then restore the `Worker Drone T1` assertion.
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
 
-### FF-98 · Away settings remember this browser's last ack, not the colony
+### FF-101 · Away settings remember this browser's last ack, not the colony
 
 - **Status:** Open
-- **Area / code:** `frontend/game/features/away/` (`AwayPanel`, `storage.ts` key `ta.away.autopilot`), sim blob `away` in `shared/sim/src/systems/away/store.ts`
-- **What happens:** Saving metals at 30% persists only after `setAutopilot` acks, in one browser-wide `localStorage` record. A reload shows 30 before any snapshot. The plate does not read `blobs.away`, so another colony, another browser, or a budget changed only on the server still shows this browser's last ack (or the defaults: director, raids off, session 60). The directive line always says 40% and is not sent. A store `sendCommand` that returns an id string is not an ack, so that path does not mark the budget saved; the online HUD uses the command bus, which does ack.
+- **Area / code:** Colony book `AWAY` tab (`frontend/game/core/hud/ColonyBook.ts`), `frontend/game/features/away/` (`AwayPanel`, `storage.ts` key `ta.away.autopilot`), sim blob `away` in `shared/sim/src/systems/away/store.ts`
+- **What happens:** The settings sit in the Colony book's `AWAY` tab (the tab opens and folds the page; the old floating plate beside Save progress is gone). Saving metals at 30% persists only after `setAutopilot` acks, in one browser-wide `localStorage` record. A reload shows 30 before any snapshot. The plate does not read `blobs.away`, so another colony, another browser, or a budget changed only on the server still shows this browser's last ack (or the defaults: director, raids off, session 60). The directive line always says 40% and is not sent. A store `sendCommand` that returns an id string is not an ack, so that path does not mark the budget saved; the online HUD uses the command bus, which does ack.
 - **Why it is like this:** W09-14 asked for a reload to show 30 even before a snapshot echo exists. The client view has no away-settings field yet.
 - **Workaround / mitigation:** This browser keeps the last acked mode, raids flag and session percents. A reject restores the previous ack and does not write storage.
 - **To resolve:** When the replica exposes the colony away blob, hydrate the plate from that colony and keep `localStorage` only until the first view.
 - **Found:** 2026-11-09, W09-14
 
-### FF-99 · The away modal is the headline digest, not the full CLIENT §5.3 plate
+### FF-102 · The away modal is the headline digest, not the full CLIENT §5.3 plate
 
 - **Status:** Accepted (by design)
-- **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
-- **What happens:** A join `welcome.away` opens one plate: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it and the same `colonyId` + `awayFrom` does not return until the page reloads. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`, mounted on `services.hudOverlay`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
+- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it and the same `colonyId` + `awayFrom` does not return until the page reloads. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
 - **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
 - **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
 - **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
 - **Found:** 2026-11-09, W09-17
+
+### FF-98 · HUD tab books: default homes for panels the owner did not place
+
+- **Status:** Question for the owner
+- **Area / code:** `frontend/game/core/hud/{TabBook,CommandDock,ColonyBook,HudRoot}.ts`, `hud.css`, `tabBook.css`; slots in `features/{maps,power-hud,territory-border}/index.ts`
+- **What happens:** The owner asked (2026-11-09) for the Command Dock as a right-edge vertical tab book under the FPS counter, a mirrored left book under the Guest Pilot chip with Deed, Goals, HQ AI, Director, Combat, Supply and Trade, the minimap in the bottom-left corner and no tick chip (`tick` console command instead). Panels the request did not name got these defaults: warp `×k` badge and achievements pilot-tracking stay in the top-left stack with the pilot chip; the env panel, army stance, landfall HQ panel and NEAR error toast stay bottom left, in a row beside the minimap; power widget and territory border toggle moved from top right to bottom right (with netstats and toasts); `GOALS` is the Stage Track button and `HQ AI` the whole HQ panel (AI toggle + Goals / Priorities, not split); `market-tab` and `contracts` sit in `TRADE`. Both books open on their first tab at load (Build, Deed) and do not remember the tab across reloads.
+- **Why it is like this:** keep every surface reachable with the fewest moves. (2026-11-10, owner) the minimap moved to the top-left corner and the Guest pilot chip became the first Colony book tab, `PLAYER`; achievements pilot-tracking moved with it.
+- **Workaround / mitigation:** (updated 2026-11-10 after owner feedback) tabs are a column of horizontal labels beside the page; an open page sizes to its content down to the screen bottom and draws above every other HUD plate, so it covers the minimap, env panel, selection bar or bottom-right stack while open (fold it to see them). On phone landscape (844×390) the left tab column scrolls and the auto-opened Stage dialog covers the middle (FF-99).
+- **To resolve:** owner to confirm the defaults (recommendation: keep; consider persisting the open tab per book in `localStorage`, and opening the left book folded on small screens).
+- **Found:** 2026-11-09, HUD de-clutter refactor (lead)
+
+### FF-99 · Colony book follow-ups (overlay modals, Combat Lab, book helper)
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/{stages,combat-tuning,market}/`, `frontend/game/core/hud/TabBook.ts`
+- **What happens:** (1) With `?scenario=w20` the server's stage-reached notice opens the Goals dialog at load and it stays open after its toast closes (old behaviour; now more visible because the dialog lives in `services.hudOverlay`). (2) The Combat Lab dialog (F6) still covers the Command Dock on the right edge, and F6 does not switch the left book to `COMBAT` (the dialog is an overlay, so it does not need to). (3) Resolved in W20 pre-landing validation: `isInHudBook` (`[data-tab-pane]` ancestor check) now lives in `core/hud/TabBook.ts` (re-exported by `market/hudBook.ts`). (4) Selecting a hub building still moves the Trade Hub panel into the selection bar without switching the left book; deselecting puts it back into the `TRADE` pane.
+- **Why it is like this:** scope of the HUD de-clutter pass; behaviour kept as before where the owner did not ask for a change.
+- **Workaround / mitigation:** the e2e helper closes the stage dialog; Combat Lab closes with F6 / Esc.
+- **To resolve:** auto-close the stage dialog with its toast; anchor Combat Lab to the centre or left of the dock.
+- **Found:** 2026-11-09, HUD de-clutter refactor (panels agent)
+
+### FF-100 · HUD tab-book refactor: small gaps and an e2e step not tied to the HUD
+
+- **Status:** Open
+- **Area / code:** `frontend/game/core/hud/HudRoot.ts` (`mountPanel`, `pruneEmptyBookTabs`), `tests/e2e/w13.spec.ts` step 12, `tests/e2e/harness/vite.e2e.config.ts`
+- **What happens:** (1) Resolved in W20 pre-landing validation: `HudRoot.pruneEmptyBookTabs()` now removes any book spine tab whose pane has no mounted panels after `mountPanel` (and disposes the book if every tab fails). (2) `w13` full-suite runs on 2026-11-10: run 1 failed step 11 (`waiting for tick (last null)` in `loadLocal` on `?host=local&waves=..12`, which now reads `window.__online.store.tick`; a manual load of the same URL showed `__online.store.tick` set within 5 s) and did not reach step 12; run 2 passed step 11 and failed step 12 ("logistics load after spawning 20 builders", `Expected > 210, Received 210`, page showed `RECONNECTING…`), right after step 11 restarts the app; a manual probe of the same scenario on the dev stack showed the Supply tab's logistics load rising 210 → 260 one supply window after `spawn builder -13 5 20`, so the HUD updates. Not diagnosed further. (3) The e2e Vite client now runs without a file watcher (`E2E_WATCH=1` restores it), because saves during a run full-reloaded the page under test.
+- **Why it is like this:** (2) out of scope of the HUD pass; (3) deliberate.
+- **Workaround / mitigation:** (2) run `w13` step 12 on a quiet machine / fresh stack.
+- **To resolve:** (2) check the post-restart supply window timing in step 12 (wait for one more window, or for the spawned builders to exist).
+- **Found:** 2026-11-10, HUD de-clutter refactor (tests agent + lead)

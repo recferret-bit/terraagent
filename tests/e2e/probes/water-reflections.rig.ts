@@ -78,7 +78,7 @@ export async function openReflectionScene(page: Page, opts: OpenOpts = {}): Prom
   await loadLocal(page, 'w05-terrain', { crt: '0', pixel: '0', scale: '1', daynight: '0', shadow: '0', skip: '1', ...opts.params }, 90_000);
   if (opts.noon !== false) await devConsole(page, 'time noon', 20_000);
   await installRig(page);
-  // The first frames after the tick chip can still be empty (boot overlay, shader compile): wait for real pixels.
+  // The first frames after the first tick can still be empty (boot overlay, shader compile): wait for real pixels.
   // Unrendered = transparent black (reads as 0, 0, 0); the planet always covers the middle of the opening view.
   await expect.poll(async () => {
     const lost = await page.evaluate(() => (window as unknown as { __online: { viewport: { renderer: { getContext(): WebGL2RenderingContext } } } }).__online.viewport.renderer.getContext().isContextLost());

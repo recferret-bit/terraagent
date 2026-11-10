@@ -1,0 +1,167 @@
+.ta-deed-share-root {
+  min-height: 100vh;
+  width: 100%;
+  background: var(--ta-void);
+  color: var(--ta-text);
+  padding-bottom: var(--ta-s8);
+}
+
+.ta-deed-share-topbar {
+  background: var(--ta-deep);
+  border-bottom: 1px solid var(--ta-seam);
+  padding: var(--ta-s3) var(--ta-s4);
+}
+
+.ta-deed-share-topbar-inner {
+  max-width: var(--ta-container);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s4);
+  flex-wrap: wrap;
+}
+
+.ta-deed-share-brand {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-eyebrow);
+  color: var(--ta-orange);
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.ta-deed-share-main {
+  max-width: 960px;
+  margin: var(--ta-s6) auto 0;
+  padding: 0 var(--ta-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s5);
+}
+
+.ta-deed-share-hero {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  border-top: 3px solid var(--ta-orange);
+  padding: var(--ta-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s4);
+  clip-path: polygon(
+    var(--ta-chamfer-m) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-m)),
+    calc(100% - var(--ta-chamfer-m)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-m)
+  );
+}
+
+.ta-deed-share-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ta-s4);
+  flex-wrap: wrap;
+}
+
+.ta-deed-share-preview-img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-black-hole);
+}
+
+.ta-deed-share-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s3);
+  flex-wrap: wrap;
+}
+
+.ta-deed-share-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--ta-s3);
+  margin: 0;
+}
+
+.ta-deed-share-meta-item {
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  padding: var(--ta-s3);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-deed-share-meta-item dt {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-steel);
+  margin-bottom: var(--ta-s1);
+}
+
+.ta-deed-share-meta-item dd {
+  margin: 0;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text);
+  word-break: break-all;
+}
+
+.ta-deed-share-history {
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  padding: var(--ta-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+  clip-path: polygon(
+    var(--ta-chamfer-m) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-m)),
+    calc(100% - var(--ta-chamfer-m)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-m)
+  );
+}
+
+.ta-deed-share-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-deed-share-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s3);
+  flex-wrap: wrap;
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-deep);
+  border-left: 3px solid var(--ta-orange);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+}
+
+.ta-deed-share-status {
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+}

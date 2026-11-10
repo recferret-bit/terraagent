@@ -4,7 +4,7 @@ import { defineCommand } from './define';
 
 /**
  * Player away settings (AW-11, AW-20). `autoTrade` limits are W09-13's checker and W15-01's
- * `setAutoTrade` command, not this payload (owner default BE-53: one command, not PROTOCOL's split).
+ * `setAutoTrade` command, not this payload (owner default BE-68: one command, not PROTOCOL's split).
  * Every field is a patch. An empty object is rejected.
  */
 export const SetAutopilotArgsSchema = z.strictObject({

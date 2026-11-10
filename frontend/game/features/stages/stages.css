@@ -1,15 +1,24 @@
 /* Faction Plate styling for Stage Track HUD (W08-12) */
 
-.ta-hud__slot[data-slot="top-left"]:has(.ta-stage-launcher) {
-  z-index: 30;
+/* The launcher + summary sit in the Colony book's Goals tab; the dialog (.ta-stage-track-hud) floats in the HUD overlay. */
+.ta-stage-summary {
+  display: none;
+  margin: 0;
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-label);
+  line-height: 1.4;
+  color: var(--ta-text-3);
 }
 
-.ta-hud__panel[data-feature="stages"] {
-  position: absolute;
-  top: var(--ta-s4);
-  left: 140px;
-  pointer-events: auto;
-  z-index: 15;
+.ta-colony-book .ta-stage-summary {
+  display: block;
+}
+
+.ta-colony-book .ta-stage-launcher {
+  width: 100%;
+  height: auto;
+  min-height: 32px;
+  justify-content: flex-start;
 }
 
 .ta-stage-launcher {
@@ -49,6 +58,7 @@
     0 var(--ta-chamfer-s)
   );
   position: fixed;
+  z-index: 22; /* overlay: under combat edge pings (25), deed modal (40) and the Combat Lab (90) */
   top: 52px;
   left: 50vw;
   transform: translateX(-50%);

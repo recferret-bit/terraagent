@@ -1,6 +1,6 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import {
-  CONSOLE, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, test, urls,
+  CONSOLE, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, test, urls, waitForTick,
 } from './harness';
 
 /**
@@ -59,7 +59,7 @@ test('@hack rejoin shows the away digest and the mock notifier recorded an attac
   expect(body.rows.filter((row) => row.kind === 'under_attack' && row.colonyId === colonyId)).toHaveLength(1);
 
   await page.goto(`/play.html?${new URLSearchParams({ join: seat.planetId, as: 'e2e' })}`);
-  await expect(page.locator('.ta-tick__n').first()).toHaveText(/^\d+$/, { timeout: 90_000 });
+  await waitForTick(page, () => true, 90_000);
   const plate = page.locator('[data-testid=away-digest]');
   await expect(plate).toBeVisible({ timeout: 15_000 });
   await expect(plate).toContainText(/while you were away/i);

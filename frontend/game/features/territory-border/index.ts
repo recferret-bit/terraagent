@@ -194,7 +194,7 @@ export const territoryBorderFeature = defineFeature({
   hud: [
     {
       id: 'territory-border-toggle',
-      slot: 'top-right',
+      slot: 'bottom-right',
       order: 25,
       mount(el, ctx) {
         return mountTerritoryBorder({ el, services: ctx.services });

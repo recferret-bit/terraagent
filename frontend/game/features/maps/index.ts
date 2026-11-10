@@ -122,12 +122,14 @@ export function mountMapsFeature(
       controller.bindSectorPicker(container, summary, onSelect, queuePaused),
   };
   ctx.services.maps = service;
+  const offCloser = ctx.services.registerHudCloser?.(() => { if (controller.openClose.isOpen) controller.openClose.close(); });
 
   return {
     update(view) {
       controller.updateFromView(view);
     },
     dispose() {
+      offCloser?.();
       controller.dispose();
       if (ctx.services.maps === service) {
         delete ctx.services.maps;
@@ -142,8 +144,8 @@ export const mapsFeature = defineFeature({
   hud: [
     {
       id: 'minimap',
-      slot: 'top-right',
-      order: -100,
+      slot: 'top-left',
+      order: -100, // top-left corner, above the Colony book
       mount(el, ctx) {
         return mountMapsFeature(el, ctx);
       },
