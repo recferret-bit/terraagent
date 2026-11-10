@@ -60,6 +60,18 @@ export function bountyOpenOpId(bountyId: string): string {
   return opId('bounty-open', bountyId);
 }
 
+const PAY_PREFIX = 'bounty-pay:';
+
+/** Escrow claim op. A repeated pay of the same bounty replays this receipt (W22-23). */
+export function bountyPayOpId(bountyId: string): string {
+  return opId('bounty-pay', bountyId);
+}
+
+/** Bounty id stored in `bountyPayOpId`, or null when `op` is some other outbox row. */
+export function bountyIdFromPayOp(op: string): string | null {
+  return op.startsWith(PAY_PREFIX) && op.length > PAY_PREFIX.length ? op.slice(PAY_PREFIX.length) : null;
+}
+
 function policyNum(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) throw new Error('bounty policy row is not a number');
