@@ -4,6 +4,7 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { commandColony, parseArgs } from '../command';
 import { defendAreaRecord } from './defend';
+import { clearNestTargetReject } from './nest';
 import { bountyAudience, bountyColonyId, isOpenBounty, readBounty, writeBounty, type BountyBlobValue, type BountyRecord } from './blob';
 
 /** Module sources only. Clients are already refused (`origin: 'module'`). */
@@ -36,6 +37,8 @@ function postBounty(state: PlanetState, cmd: SimCommand, ctx: StepContext): stri
   const blob = readBounty(state);
   if (blob.bounties.some((bounty) => bounty.id === id)) return 'already_posted';
   if (args.target.kind === 'clear_nest') {
+    const unseen = clearNestTargetReject(state, colony, args.target.nestId, ctx.data);
+    if (unseen) return unseen;
     return publishBounty(state, blob, colony, {
       id,
       poster: colony,

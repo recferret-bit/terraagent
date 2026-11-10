@@ -12,7 +12,9 @@ import {
   dataRow,
   ensureColonyRecord,
   ENTITY_KIND,
+  hexIndex,
   insertRow,
+  markTileExplored,
   placeSpawnedEntity,
   step,
   type PlanetState,
@@ -39,6 +41,8 @@ function spawnHive(state: PlanetState): number {
   state.entities.cols.hp[row] = 1500;
   state.entities.cols.hpMax[row] = 1500;
   placeSpawnedEntity(state.entities, row, 8, -4, state.meta.tick);
+  const tile = hexIndex(state.grid.radius).indexOf(8, -4);
+  markTileExplored(state.grid, tile, 0, state.meta.tick);
   return hiveId;
 }
 
