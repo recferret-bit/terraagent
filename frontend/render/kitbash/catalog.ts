@@ -125,6 +125,10 @@ export const ArchetypeCatalog = {
     entries.set(entry.id, entry);
     geometryCache.delete(entry.id);
   },
+  /** Forget a baked mesh so the next `getGeometry` rebuilds it (faction preview). */
+  dropGeometry(id: string): void {
+    geometryCache.delete(resolveCanonicalArchetypeId(id));
+  },
   list(category?: ArchetypeCategory): ArchetypeEntry[] {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },

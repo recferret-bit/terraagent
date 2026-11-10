@@ -7,6 +7,7 @@ import { addArchetypeLight, exportArchetypeLightsCode, getArchetypeLights, onArc
 import { initPixelDialog } from '@terra/render/ui/pixelDialog';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { ArchetypeCatalog, setDepositPreviewStage, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
+import { setReconFactionPreview } from '@terra/render/kitbash/archetypes/units/reconFaction';
 import { validateArchetype } from '@terra/render/kitbash/validate';
 import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
@@ -57,6 +58,7 @@ export class PlaygroundApp {
 
   constructor(private params: URLSearchParams) {
     this.state = createState(params);
+    setReconFactionPreview(this.state.faction);
     setDayNightExternalSync(true);
     const vp = this.viewport = createColonyViewport($('#viewport'));
     this.surface = new SurfaceHost(vp.scene);
