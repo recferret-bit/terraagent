@@ -1,5 +1,4 @@
-import type { FlagSet } from '@terra/contracts';
-import { TreasuryEffectKind, TreasuryProposalPush } from '@terra/contracts';
+import { TREASURY_EFFECT_KINDS, TreasuryEffectKind, TreasuryProposalPush, type FlagSet } from '@terra/contracts';
 import type { DaoProposalView, DaoView } from '../application/ports/treasury-dao.port.js';
 import { treasuryProject } from './costs.js';
 import type { NearTreasuryProposalBusEvent } from './proposal-push.js';
@@ -17,7 +16,19 @@ export interface TreasuryProposalResponse {
   readonly votes: DaoProposalView['votes'];
 }
 
-/** `effects` stays empty until W22-09 starts `system.treasuryEffect`. */
+/** One council project and its table cost (`shared/sim/src/data/treasury.ts`). */
+export interface TreasuryProjectResponse {
+  readonly kind: string;
+  readonly cost: string;
+  readonly durationH: number;
+  readonly magnitudeBp: number;
+  readonly visits: number;
+}
+
+/**
+ * `effects` stays empty until W22-09 starts `system.treasuryEffect`.
+ * `projects` is every treasury-table row still enabled, including `guild_subsidy` while W15 is off.
+ */
 export interface TreasuryCouncilResponse {
   readonly planetId: string;
   readonly daoAccountId: string;
@@ -25,6 +36,7 @@ export interface TreasuryCouncilResponse {
   readonly members: DaoView['members'];
   readonly effects: readonly [];
   readonly proposals: readonly TreasuryProposalResponse[];
+  readonly projects: readonly TreasuryProjectResponse[];
 }
 
 export interface StoredProposalMeta {
@@ -45,7 +57,25 @@ export function toCouncil(
     members: view.members,
     effects: [],
     proposals: view.proposals.map((row) => toProposal(row, meta.get(row.proposalId), flags)),
+    projects: listedProjects(flags),
   };
+}
+
+/** Table costs for the Council form. A kind whose wave is off is omitted; `guild_subsidy` is wave W22. */
+function listedProjects(flags: FlagSet): TreasuryProjectResponse[] {
+  const projects: TreasuryProjectResponse[] = [];
+  for (const kind of TREASURY_EFFECT_KINDS) {
+    const row = treasuryProject(flags, kind);
+    if (!row) continue;
+    projects.push({
+      kind: row.kind,
+      cost: row.cost,
+      durationH: row.durationH,
+      magnitudeBp: row.magnitudeBp,
+      visits: row.visits,
+    });
+  }
+  return projects;
 }
 
 export function toProposal(row: DaoProposalView, meta: StoredProposalMeta | undefined, flags: FlagSet): TreasuryProposalResponse {

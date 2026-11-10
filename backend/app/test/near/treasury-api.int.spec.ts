@@ -100,6 +100,11 @@ describe('W22-08 treasury proposals API positive', () => {
     expect(council.members).toHaveLength(3);
     expect(council.balance[TOKEN]).toBe('500');
     expect(council.proposals).toHaveLength(1);
+    expect(council.projects).toEqual([
+      { kind: 'meteor_shield', cost: '1500', durationH: 6, magnitudeBp: 7500, visits: 0 },
+      { kind: 'terraform_boost', cost: '1000', durationH: 12, magnitudeBp: 2500, visits: 0 },
+      { kind: 'guild_subsidy', cost: '800', durationH: 0, magnitudeBp: 0, visits: 1 },
+    ]);
     expect(h.pushes.map((event) => event.payload.state)).toEqual(['InProgress', 'InProgress', 'Approved']);
     expect(h.pushes.at(-1)?.payload).toMatchObject({ kind: 'meteor_shield', cost: '1500', members: 3, yes: 2 });
     const outbox = await db.prisma.chainOutbox.findUnique({ where: { opId: `dao-propose:${planetId}:${A}:1` } });
