@@ -74,6 +74,7 @@ function portKey(port: string): string {
   const lower = port.toLowerCase();
   if (lower === 'cargotoken') return 'cargo';
   if (lower === 'deednft') return 'deed';
+  if (lower === 'treasurydao') return 'treasury';
   return lower;
 }
 
