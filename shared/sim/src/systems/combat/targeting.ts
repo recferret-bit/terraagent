@@ -3,6 +3,7 @@ import { rowOf, type Columns } from '../../ecs/store';
 import { HEX_DIRS, hexDistance, inHex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { hasActiveTruce } from '../diplomacy/store';
 import { canWeaponHitTarget } from './layers';
 import { lookupWeaponById, resolveKindWeaponRow } from './weaponRows';
 import { isTargetSpottedByColony, updateColonyVisionCache } from './vision';
@@ -185,6 +186,9 @@ export function isHostileTargetForAttacker(
   const attackerOwner = cols.owner[attackerRow]!;
   const targetOwner = cols.owner[targetRow]!;
   if (targetOwner === attackerOwner) return false;
+  if (attackerOwner >= 0 && targetOwner >= 0 && hasActiveTruce(state, attackerOwner, targetOwner)) {
+    return false;
+  }
 
   if (!opts?.includePassiveFauna && attackerOwner >= 0 && targetOwner < 0) {
     const targetId = cols.id[targetRow]!;

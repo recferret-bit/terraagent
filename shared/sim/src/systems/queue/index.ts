@@ -21,6 +21,7 @@ import {
 import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
+import { hasActiveTruce, resolveColonyIndex } from '../diplomacy/store';
 import {
   PRECEDENCE_RANK,
   type QueueEntry,
@@ -312,6 +313,15 @@ export const enqueueTaskHandler = defineCommandHandler({
     }
     if (norm.task.kind === 'raid') {
       if (!ctx.flags.has('W18')) return 'wave_disabled';
+      const raidTask = norm.task as Record<string, unknown>;
+      const targetRef = (raidTask.targetColonyId ?? raidTask.targetColonyIndex ?? raidTask.targetColony) as
+        | string
+        | number
+        | undefined;
+      const toColony = resolveColonyIndex(state, targetRef);
+      if (toColony >= 0 && hasActiveTruce(state, colIdx, toColony, ctx.tick)) {
+        return 'truce_active';
+      }
     }
     if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
       return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
