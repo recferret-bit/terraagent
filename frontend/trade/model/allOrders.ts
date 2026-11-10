@@ -8,6 +8,12 @@ export const ACTOR_ORDER: readonly ActorKind[] = ['player', 'bot', 'npc', 'guild
 /** Badge style per actor kind (`tr-badge-*`): fixtures dashed, bots blue-outline, subsidy system blue. */
 export const ACTOR_BADGE: Readonly<Record<ActorKind, string>> = { player: 'ok', bot: 'info', npc: 'dim', guild: 'warn', fixture: 'fixture', subsidy: 'system' };
 
+/** Guild makers on the book. `npc` is the Guild's actor kind; `guild` is the same badge. */
+export const isGuildQuote = (kind: ActorKind): boolean => kind === 'npc' || kind === 'guild';
+
+/** Book-row badge. Guild quotes read `Guild`; other kinds keep their name. */
+export const actorBadgeLabel = (kind: ActorKind): string => (isGuildQuote(kind) ? 'Guild' : kind);
+
 /** Rows of the all-orders table: the API order (best price first per side, bids then asks), optionally narrowed to one side. */
 export function visibleOrders(orders: readonly TradeBookOrderView[], side: OrderSide | null): TradeBookOrderView[] {
   return side ? orders.filter((o) => o.side === side) : [...orders];
