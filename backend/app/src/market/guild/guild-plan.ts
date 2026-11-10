@@ -1,6 +1,7 @@
 import { pairId, ResourceKey } from '@terra/contracts';
 import { compileData, guildPolicy, type GuildNpc as RosterNpc, type GuildPolicy } from '@terra/sim';
 import { GuildProvisionError } from './guild-error.js';
+import { barterPairIds } from './maker/pairs.js';
 
 export type { RosterNpc, GuildPolicy };
 
@@ -115,12 +116,14 @@ export function withCargo(cache: InventoryCache, resource: string, amount: numbe
   return { label: FIXTURE_LABEL, organic: false, lines: [...cache.lines, line] };
 }
 
+/** USDC books from provisioning, plus the Tier-1 barter books the maker rests while cash is off. */
 export function tradePairs(pairs: readonly string[]): string[] {
-  return pairs.map((base) => {
+  const usdc = pairs.map((base) => {
     const parsed = ResourceKey.safeParse(base);
     if (!parsed.success) throw new GuildProvisionError('bad_amount', `Guild pair ${base} is not a resource`);
     return pairId(parsed.data, 'USDC');
   });
+  return [...usdc, ...barterPairIds()];
 }
 
 export function accountName(accountId: string): string {

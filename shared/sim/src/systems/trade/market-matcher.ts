@@ -1,3 +1,4 @@
+import { sameGuild } from './guild/match';
 import { OrderBook, remainingOf, priceOfOrder, type RestingOrder } from './market-book';
 import { crosses, type LimitPrice } from './market-price';
 
@@ -10,6 +11,8 @@ export interface MatchableOrder extends RestingOrder {
   readonly stallFeeBp: number;
   /** Buyer's explicit maximum maker-stall rate; null for sells. */
   readonly maxStallFeeBp: number | null;
+  /** Present on persisted orders. Guild (`npc` or `guild`) does not cross another Guild order. */
+  readonly actorKind?: string;
 }
 
 /** One match. The price is always the maker's rational (`priceAmount / amount` of the maker order). */
@@ -66,6 +69,7 @@ function makeFill(maker: MatchableOrder, taker: MatchableOrder, qty: bigint): Fi
  * caller persists the fills and updates it). Rules:
  *  - execution price is the maker's; a fill needs bid >= ask;
  *  - resting orders of the incoming order's colony are skipped, never cancelled (self-trade prevention);
+ *  - two Guild orders (`actorKind` `npc` or `guild`) are skipped the same way;
  *  - incompatible policies and a maker stall rate above the buyer's maximum are skipped;
  *  - a `partial` incoming order fills as much as it can; an `all_or_nothing` incoming order fills only if it can
  *    complete now, otherwise it returns no fills and rests unfilled (it is never rejected here);
@@ -81,7 +85,7 @@ export function matchIncoming(book: OrderBook<MatchableOrder>, incoming: Matchab
     const bid = incoming.side === 'buy' ? incoming : maker;
     const ask = incoming.side === 'buy' ? maker : incoming;
     if (!crosses(priceOfOrder(bid), priceOfOrder(ask))) break; // sorted: nothing further crosses
-    if (maker.orderId === incoming.orderId || maker.colonyId === incoming.colonyId) continue;
+    if (maker.orderId === incoming.orderId || maker.colonyId === incoming.colonyId || sameGuild(maker, incoming)) continue;
     if (!policiesCompatible(maker, incoming) || !stallFits(maker, incoming)) continue;
     const avail = remainingOf(maker);
     if (avail <= 0n) continue;

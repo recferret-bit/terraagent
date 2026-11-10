@@ -7,6 +7,7 @@ import { TradeKeysService } from '../../trade/trade-keys.service.js';
 import { GuildProvisionError } from '../guild-error.js';
 import { GuildNpcRepository } from '../guild-npc.repository.js';
 import { ownerIdOf } from '../guild-plan.js';
+import { GuildMakerService } from '../maker/guild-maker.service.js';
 import { fundingEnabled, inventoryCapOf } from './caps.js';
 import { GuildFundingRepository } from './funding.repository.js';
 
@@ -32,9 +33,25 @@ export class GuildKillSwitch {
       npcId,
       inventoryCapOf((wave) => this.flags.has(wave)),
     );
+    await this.cancelQuotes(npcId);
     const keys = this.moduleRef.get(TradeKeysService, { strict: false });
     await keys.kill(principal(npcId), { keyId: row.tradeKeyId });
     return { npcId, keyId: row.tradeKeyId, killed: true };
+  }
+
+  /** The maker is optional here so a funding test can construct the switch without the loop. */
+  private async cancelQuotes(npcId: string): Promise<void> {
+    const maker = this.maker();
+    if (maker) await maker.onKilled(npcId);
+  }
+
+  private maker(): GuildMakerService | null {
+    try {
+      const found = this.moduleRef.get(GuildMakerService, { strict: false });
+      return typeof found?.onKilled === 'function' ? found : null;
+    } catch {
+      return null;
+    }
   }
 }
 
