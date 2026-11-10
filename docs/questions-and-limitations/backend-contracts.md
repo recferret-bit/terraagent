@@ -955,3 +955,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Callers that need the deadline keep it on the bounty row, not on the escrow. `0` means "not tracked here", and `EscrowView` still parses. The W22-18 contract suite asserts `expiresAtMs === 0` after an open that passed a non-zero deadline, and does not treat the dropped deadline as a failure.
 - **To resolve:** Keep the deadline on the bounty (W22-19, W22-24). Do not make this suite require a round-trip. A real escrow (W23-38) may store expiry on chain; this mock still answers `0`.
 - **Found:** 2026-11-10, W22-17
+
+### BE-74 · Treasury fee credit looks up `{planetId}.dao.mock` and does not move verifier USDC again
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/market/settlement/treasury-fee.service.ts` (`termsFor`, `depositSettled`, `signerFor`), `backend/app/src/market/settlement/treasury-terms.ts`, `shared/sim/src/systems/trade/market-batch.ts` (`carveTreasury`)
+- **What happens:** While W22 is on, each fill stores `treasury:{planetId}` or the DAO account from `daoAccountIdFor(planetId)` (`{slug}.dao.mock`). `TreasuryDaoPort.deposit` (`opId = treasury-fee:{tradeId}`) runs after the trade is FINAL, and only when `get` succeeds. A missing DAO leaves the trade FINAL with `treasuryAllocation` stored. `deposit` adds `balances[tokenId]` in the DAO policy and does not debit the verifier. The verifier already received the carve-out on the batch account. Dev and test seal a custodial key for that account on first use so the leg can be signed. In production a missing key is signed by `treasury.terraagent.mock` instead, so the stored leg account and the verifier credit can differ. A rollback rebuilds the treasury bucket only for fills that stored `treasuryAccountId`.
+- **Why it is like this:** W22-05 owns creating the DAO. This issue must not create one, and a missing council must not fail a W13 trade. The buyer total and the stall fee stay the amounts W13 already charged.
+- **Workaround / mitigation:** Create the DAO with `name` equal to the planet id before expecting a council balance. The allocation is still on `chain.intent_trade` when the DAO does not exist yet.
+- **To resolve:** W22-05 should create `{planetId}.dao.mock` (or teach this lookup the stored dao account). A real chain adapter (W23) should not seal a dev key.
+- **Found:** 2026-11-10, W22-07
