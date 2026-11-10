@@ -147,6 +147,6 @@ describe('W18-07 · HQ destruction & reprint unit tests', () => {
     onHqDestroyed(state, 0, 10, { data: w18Data, attackerOwner: 1 });
     expect(state.colonies[0]?.status).toBe('eliminated');
     expect(getColonyEliminationRecord(state, 0)?.eliminatedAtTick).toBe(10);
-    expect(rowOf(state.entities, hqId)).toBeGreaterThanOrEqual(0);
+    expect(rowOf(state.entities, hqId)).toBe(-1);
   });
 });

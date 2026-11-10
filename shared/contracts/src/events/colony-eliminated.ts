@@ -9,7 +9,10 @@ export const ColonyEliminatedDataSchema = z.strictObject({
   colonyId: z.string().min(1).max(64).optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
   playerId: z.string().optional(),
-  cause: ColonyEliminatedCauseSchema,
+  cause: ColonyEliminatedCauseSchema.optional(),
+  reason: z.string().optional(),
+  byColony: z.string().optional(),
+  killerColonyId: z.string().optional(),
   atTick: z.number().int().nonnegative().optional(),
 });
 export type ColonyEliminatedData = z.infer<typeof ColonyEliminatedDataSchema>;

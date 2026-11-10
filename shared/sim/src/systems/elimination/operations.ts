@@ -5,7 +5,6 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { applyDamage, type ApplyDamageOptions } from '../combat/damage';
-import { resolveColonyIdStr } from '../diplomacy/store';
 import { findHubEdgeSpawnTile } from '../factories-hub';
 import { colonyWho } from '../find';
 import { getColonyGoals, saveColonyGoals } from '../goals/store';
@@ -17,6 +16,7 @@ import {
   scanAndStartQueueEntries,
   type QueueEntry,
 } from '../queue';
+import { eliminateColony } from './ruins';
 import {
   colonyHasAliveHub,
   ensureColonyEliminationRecord,
@@ -189,40 +189,7 @@ export function onHqDestroyed(
     return;
   }
 
-  const store = getEliminationStore(state);
-  const rec = ensureColonyEliminationRecord(store, colonyIndex);
-  rec.hqDown = true;
-  rec.eliminatedAtTick = tick;
-  const attackerOwner =
-    opts?.attackerOwner !== undefined
-      ? opts.attackerOwner
-      : opts?.attackerId !== undefined && rowOf(state.entities, opts.attackerId) >= 0
-        ? state.entities.cols.owner[rowOf(state.entities, opts.attackerId)]
-        : undefined;
-  if (typeof attackerOwner === 'number' && attackerOwner >= 0 && attackerOwner !== colonyIndex) {
-    rec.eliminatedByColonyId = resolveColonyIdStr(state, attackerOwner);
-  }
-  saveEliminationStore(state, store, tick);
-
-  const col = ensureColonyRecord(state, colonyIndex, tick);
-  col.status = 'eliminated';
-  (col as Record<string, unknown>).hqDown = true;
-  col.changedAt = tick;
-
-  if (opts?.ctx) {
-    const { colonyIdStr, who } = colonyWho(state, colonyIndex);
-    opts.ctx.emit({
-      kind: 'colonyEliminated',
-      severity: 'critical',
-      colonyIds: rec.eliminatedByColonyId ? [colonyIdStr, rec.eliminatedByColonyId] : [colonyIdStr],
-      data: {
-        ...who,
-        colonyIndex,
-        reason: 'both_lost',
-        ...(rec.eliminatedByColonyId ? { byColony: rec.eliminatedByColonyId, killerColonyId: rec.eliminatedByColonyId } : {}),
-      },
-    });
-  }
+  eliminateColony(state, colonyIndex, 'both_lost', tick, opts);
 }
 
 export function killColonyHq(state: PlanetState, colonyIndex: number, ctx: StepContext): boolean {

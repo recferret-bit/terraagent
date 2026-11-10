@@ -17,8 +17,15 @@ export interface ColonyEliminationRecord {
   revertedAnchors?: boolean;
 }
 
+export interface RuinRecord {
+  entityId: number;
+  formerOwner: number;
+  createdAtTick: number;
+}
+
 export interface EliminationStore {
   byColony: Record<number, ColonyEliminationRecord>;
+  ruins: Record<number, RuinRecord>;
 }
 
 const DEFAULT_REPRINT_COST: Readonly<Partial<Record<ResourceKey, number>>> = {
@@ -38,11 +45,24 @@ export function getEliminationStore(state: PlanetState): EliminationStore {
       }
     }
   }
-  return { byColony };
+  const ruins: Record<number, RuinRecord> = {};
+  if (raw?.ruins && typeof raw.ruins === 'object') {
+    for (const [k, v] of Object.entries(raw.ruins)) {
+      if (v && typeof v === 'object') {
+        ruins[Number(k)] = { ...v, entityId: Number(k) };
+      }
+    }
+  }
+  return { byColony, ruins };
 }
 
 export function saveEliminationStore(state: PlanetState, store: EliminationStore, tick: number): void {
-  setBlob(state, 'elimination', { byColony: store.byColony }, tick);
+  setBlob(state, 'elimination', { byColony: store.byColony, ruins: store.ruins }, tick);
+}
+
+export function isEntityRuin(state: PlanetState, entityId: number): boolean {
+  const store = getEliminationStore(state);
+  return Boolean(store.ruins[entityId]);
 }
 
 export function ensureColonyEliminationRecord(
