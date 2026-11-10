@@ -175,6 +175,7 @@ describe('exchange fees: cumulative rounding', () => {
     expect(treasuryAllocation(7n, 2000, true)).toBe(1n);
     expect(treasuryAllocation(7n, 10_000, true)).toBe(7n);
     expect(treasuryAllocation(7n, 0, true)).toBe(0n);
+    expect(treasuryAllocation(1n, 2000, true)).toBe(0n);
   });
 });
 

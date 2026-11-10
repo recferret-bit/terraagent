@@ -92,9 +92,11 @@ export async function expectLedgerDelta(ex: Exchange, planetId: string, before: 
   const add = (acc: string, token: string, d: bigint) => want.set(`${acc}|${MARKET_TOKENS[token as MarketTokenKey].verifierId}`, (want.get(`${acc}|${MARKET_TOKENS[token as MarketTokenKey].verifierId}`) ?? 0n) + toChainUnits(token as MarketTokenKey, d));
   for (const t of (await ex.tradesOf(planetId)).filter((r) => r.state === 'FINAL')) {
     const [n, pf, sf] = [dec(t.notional), dec(t.platformFee), dec(t.stallFee)];
+    const treasury = dec(t.treasuryAllocation);
     add(t.buyerAccountId, t.quote, -(n + pf + sf));
     add(t.sellerAccountId, t.quote, n);
-    add(t.platformAccountId, t.quote, pf);
+    add(t.platformAccountId, t.quote, pf - treasury);
+    if (treasury > 0n && t.treasuryAccountId) add(t.treasuryAccountId, t.quote, treasury);
     add(t.stallAccountId, t.quote, sf);
     add(t.buyerAccountId, t.base, dec(t.amount));
     add(t.sellerAccountId, t.base, -dec(t.amount));

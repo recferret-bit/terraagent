@@ -17,9 +17,9 @@ import { IntentTradeRepository } from './intent-trade.repository.js';
 import { planParties, rollbackOf, type TradePlan } from './trade-plan.js';
 import { signTradeLegs, TRADE_INTENT_TTL_MS } from './trade-intents.js';
 import { legsToJson } from '@terra/sim/systems/trade/market-batch';
+import { TreasuryFeeService } from './treasury-fee.service.js';
 
-/** Treasury account of the W22 share (only used while W22 is on; the carve-out is 0 before). */
-export const TREASURY_ACCOUNT_ID = 'treasury.terraagent.mock';
+export { TREASURY_ACCOUNT_ID } from './treasury-terms.js';
 
 /** Deterministic trade id of one fill: taker, maker and the taker's filled quantity before it identify it. */
 export const tradeIdOf = (fill: Fill, takerFilledBefore: bigint): string =>
@@ -41,6 +41,7 @@ export class SettlementFillsHook extends MarketFillsHook {
     private readonly outbox: ChainOutboxRepository,
     private readonly intents: IntentsPort,
     private readonly policy: MarketPolicyProvider,
+    private readonly treasuryFees: TreasuryFeeService,
   ) {
     super();
   }
@@ -52,15 +53,16 @@ export class SettlementFillsHook extends MarketFillsHook {
     for (const fill of outcome.fills) {
       const taker = cur.get(fill.takerOrderId)!;
       const tradeId = await this.freshTradeId(tradeIdOf(fill, taker.filled), tx);
-      const batch = buildFillBatch({ tradeId, fill, orders: cur, treasury: { enabled: false, shareBp: this.policy.current().treasuryShareBp, accountId: TREASURY_ACCOUNT_ID } });
       const buyer = cur.get(fill.buyerOrderId)!;
+      const treasury = await this.treasuryFees.termsFor(buyer.planetId);
+      const batch = buildFillBatch({ tradeId, fill, orders: cur, treasury });
       const seller = cur.get(fill.sellerOrderId)!;
       const maker = cur.get(fill.makerOrderId)!;
       const rollback = [rollbackOf(buyer, batch.buyer), rollbackOf(seller, batch.seller)];
       cur.set(buyer.orderId, await this.persist(buyer, batch.buyer, tx));
       cur.set(seller.orderId, await this.persist(seller, batch.seller, tx));
       touched.add(buyer.orderId).add(seller.orderId);
-      await this.enqueue(tx, batch, buyer, seller, maker, rollback);
+      await this.enqueue(tx, batch, buyer, seller, maker, rollback, treasury.enabled ? treasury.accountId : null);
     }
     return [...touched];
   }
@@ -81,16 +83,16 @@ export class SettlementFillsHook extends MarketFillsHook {
     return this.orders.updateReservation(o.orderId, { reservedPrincipal: u.reservedPrincipal, reservedFees: u.reservedFees, state }, tx);
   }
 
-  private async enqueue(tx: TransactionClient, batch: TradeBatch, buyer: MarketOrderRecord, seller: MarketOrderRecord, maker: MarketOrderRecord, rollback: TradePlan['rollback']): Promise<void> {
+  private async enqueue(tx: TransactionClient, batch: TradeBatch, buyer: MarketOrderRecord, seller: MarketOrderRecord, maker: MarketOrderRecord, rollback: TradePlan['rollback'], treasuryAccountId: string | null): Promise<void> {
     const cfg = this.policy.current();
-    const organic = isPlayerPair(buyer, seller);
+    const organic = isPlayerPair(buyer, seller); // D-45: the carve-out does not change this bit
     const pair = `${batch.base}/${batch.quote}`;
     const { created } = await this.trades.insert({
       tradeId: batch.tradeId, planetId: buyer.planetId, pair, base: batch.base, quote: batch.quote, makerOrderId: maker.orderId,
       takerOrderId: maker.orderId === buyer.orderId ? seller.orderId : buyer.orderId, makerSide: maker.side,
       buyerColonyId: buyer.colonyId, sellerColonyId: seller.colonyId, buyerAccountId: buyer.accountId, sellerAccountId: seller.accountId,
       stallColonyId: maker.stallColonyId, stallAccountId: maker.stallAccountId, platformAccountId: buyer.platformAccountId,
-      treasuryAccountId: batch.treasuryAllocation > 0n ? TREASURY_ACCOUNT_ID : null,
+      treasuryAccountId,
       amount: batch.qty, notional: batch.notional, platformFee: batch.platformFee, stallFee: batch.stallFee, treasuryAllocation: batch.treasuryAllocation,
       platformFeeBp: batch.platformFeeBp, stallFeeBp: batch.stallFeeBp, policyVersion: cfg.policyVersion, policyHash: cfg.policyHash,
       legs: legsToJson(batch.legs), batchHash: batch.batchHash, buyerActorKind: buyer.actorKind, sellerActorKind: seller.actorKind, organic,
@@ -102,7 +104,8 @@ export class SettlementFillsHook extends MarketFillsHook {
       makerKind: maker.actorKind, treasuryFee: batch.treasuryAllocation.toString(),
       parties: planParties(batch, buyer, seller, maker), rollback,
     };
-    const intents = await signTradeLegs(this.intents, batch.tradeId, batch.legs, Date.now() + TRADE_INTENT_TTL_MS);
+    const legs = await this.treasuryFees.legsToSign(batch.legs, treasuryAccountId);
+    const intents = await signTradeLegs(this.intents, batch.tradeId, legs, Date.now() + TRADE_INTENT_TTL_MS);
     await this.outbox.enqueue({ opId: marketTradeOpId(batch.tradeId), port: 'Intents', method: 'execute', payload: { intents, trade: plan } }, tx);
   }
 }

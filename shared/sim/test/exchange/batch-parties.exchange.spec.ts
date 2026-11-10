@@ -4,7 +4,7 @@ import {
 } from '../../src/systems/trade/market-batch';
 import { matchIncoming } from '../../src/systems/trade/market-matcher';
 import { planParties, type PartyOrder } from '../../src/systems/trade/market-parties';
-import { maxBuyerFees } from '../../src/systems/trade/market-fees';
+import { maxBuyerFees, treasuryAllocation } from '../../src/systems/trade/market-fees';
 import { randBig, randInt, rng, SEEDS, xbook, xo, type XOrder } from './exchange-kit';
 
 const off: TreasuryTerms = { enabled: false, shareBp: 2000, accountId: 'treasury' };
@@ -125,6 +125,51 @@ describe('exchange batch: fee attribution', () => {
     expect(bat.platformFee).toBe(0n);
     expect(bat.legs.every((l) => l.delta !== 0n)).toBe(true);
     assertZeroSum(bat.legs);
+  });
+  it('10 USDC at 1% + 1% with a 2 000 bp share: buyer 10.20, seller 10, stall 0.10, platform 0.08, treasury 0.02', () => {
+    // USDC market atomic is micro (6 dp): 10 USDC = 10_000_000. 100 bp is 100_000; 2 000 bp of that is 20_000.
+    const buy = xo('buy', 1n, 10_000_000n, { platformAccountId: 'plat', platformFeeBp: 100, stallFeeBp: 100 });
+    const sell = xo('sell', 1n, 10_000_000n, { stallFeeBp: 100, stallAccountId: 'stall-S' });
+    const bat = fillBatch(buy, sell, 'buyer', on);
+    expect(bat.notional).toBe(10_000_000n);
+    expect([bat.platformFee, bat.stallFee, bat.treasuryAllocation, bat.platformRetained]).toEqual([100_000n, 100_000n, 20_000n, 80_000n]);
+    expect(net(bat, buy.accountId, 'USDC')).toBe(-(bat.notional + bat.platformFee + bat.stallFee));
+    expect(net(bat, sell.accountId, 'USDC')).toBe(bat.notional);
+    expect(net(bat, 'stall-S', 'USDC')).toBe(100_000n);
+    expect(net(bat, 'plat', 'USDC')).toBe(80_000n);
+    expect(net(bat, 'treasury', 'USDC')).toBe(20_000n);
+    assertZeroSum(bat.legs);
+    assertZeroSum(bat.attribution);
+    const offBat = fillBatch(buy, sell, 'buyer', off);
+    expect(offBat.treasuryAllocation).toBe(0n);
+    expect(offBat.platformRetained).toBe(offBat.platformFee);
+    expect(net(offBat, buy.accountId, 'USDC')).toBe(net(bat, buy.accountId, 'USDC'));
+    expect(net(offBat, sell.accountId, 'USDC')).toBe(net(bat, sell.accountId, 'USDC'));
+    expect(net(offBat, 'stall-S', 'USDC')).toBe(100_000n);
+    expect(net(offBat, 'plat', 'USDC')).toBe(100_000n);
+  });
+  it('a 1-atomic platform fee keeps the unit; the next fill in the bucket does not floor the treasury share away', () => {
+    let buyer = xo('buy', 5n, 500n, { platformFeeBp: 100, stallFeeBp: 0, platformAccountId: 'plat', reservedPrincipal: 500n, reservedFees: 20n });
+    let seller = xo('sell', 5n, 500n, { stallFeeBp: 0, stallAccountId: 'stall-S' });
+    const step = (qty: bigint, tradeId: string): TradeBatch => {
+      const fill = matchIncoming(xbook(seller), { ...buyer, amount: buyer.filled + qty }).fills[0]!;
+      const b = buildTradeBatch({ tradeId, base: 'bio.water', quote: 'USDC', fill, buyer, seller, treasury: on });
+      buyer = { ...buyer, ...b.buyer, amount: 5n };
+      seller = { ...seller, ...b.seller, amount: 5n };
+      return b;
+    };
+    const dust = fillBatch(xo('buy', 1n, 100n, { platformFeeBp: 100, stallFeeBp: 0, reservedPrincipal: 100n, reservedFees: 5n }), xo('sell', 1n, 100n, { stallFeeBp: 0 }), 'buyer', on);
+    expect([dust.platformFee, dust.treasuryAllocation, dust.platformRetained]).toEqual([1n, 0n, 1n]);
+    expect(dust.treasuryAllocation).toBe(treasuryAllocation(1n, 2000, true));
+    const first = step(4n, 't-a');
+    expect([first.notional, first.platformFee, first.treasuryAllocation, first.platformRetained]).toEqual([400n, 4n, 0n, 4n]);
+    const second = step(1n, 't-b');
+    expect([second.notional, second.platformFee, second.treasuryAllocation, second.platformRetained]).toEqual([100n, 1n, 1n, 0n]);
+    expect(first.treasuryAllocation + second.treasuryAllocation).toBe(treasuryAllocation(5n, 2000, true));
+    expect(net(second, 'plat', 'USDC') + net(first, 'plat', 'USDC')).toBe(4n);
+    expect(net(first, 'treasury', 'USDC') + net(second, 'treasury', 'USDC')).toBe(1n);
+    assertZeroSum(first.legs);
+    assertZeroSum(second.legs);
   });
   it('treasury share 100% moves the whole platform fee; treasury on with zero fee adds no leg', () => {
     const t = fillBatch(buyer(), seller(), 'buyer', { enabled: true, shareBp: 10_000, accountId: 'treasury' });

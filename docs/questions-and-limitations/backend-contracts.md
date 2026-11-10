@@ -965,3 +965,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `GET /v1/near/treasury/:planetId` (W22-08) calls `ensurePlanetDao`. The outbox id is `dao-create:{planetId}`; a replay does not insert a second row.
 - **To resolve:** Keep both hooks. Do not also call `ensurePlanetDao` from the two planet stores unless those stores gain one shared create function.
 - **Found:** 2026-11-10, W22-05
+
+### BE-75 · Treasury fee credit looks up `{planetId}.dao.mock` and does not move verifier USDC again
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/market/settlement/treasury-fee.service.ts` (`termsFor`, `depositSettled`, `signerFor`), `backend/app/src/market/settlement/treasury-terms.ts`, `shared/sim/src/systems/trade/market-batch.ts` (`carveTreasury`)
+- **What happens:** While W22 is on, each fill stores `treasury:{planetId}` or the DAO account from `daoAccountIdFor(planetId)` (`{slug}.dao.mock`). `TreasuryDaoPort.deposit` (`opId = treasury-fee:{tradeId}`) runs after the trade is FINAL, and only when `get` succeeds. A missing DAO leaves the trade FINAL with `treasuryAllocation` stored. `deposit` adds `balances[tokenId]` in the DAO policy and does not debit the verifier. The verifier already received the carve-out on the batch account. Dev and test seal a custodial key for that account on first use so the leg can be signed. In production a missing key is signed by `treasury.terraagent.mock` instead, so the stored leg account and the verifier credit can differ. A rollback rebuilds the treasury bucket only for fills that stored `treasuryAccountId`.
+- **Why it is like this:** W22-05 owns creating the DAO. This issue must not create one, and a missing council must not fail a W13 trade. The buyer total and the stall fee stay the amounts W13 already charged.
+- **Workaround / mitigation:** Create the DAO with `name` equal to the planet id before expecting a council balance. The allocation is still on `chain.intent_trade` when the DAO does not exist yet.
+- **To resolve:** W22-05 should create `{planetId}.dao.mock` (or teach this lookup the stored dao account). A real chain adapter (W23) should not seal a dev key.
+- **Found:** 2026-11-10, W22-07
