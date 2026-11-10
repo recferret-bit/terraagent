@@ -8,7 +8,7 @@ export const PVP_BLOB_KEY = 'pvp';
 export const TICKS_PER_HOUR = 3600 * TICKS_PER_SECOND;
 export const DEFAULT_SHIELD_DURATION_TICKS = 6 * TICKS_PER_HOUR; // 21,600s = 108,000 ticks
 export const DEFAULT_SHIELD_DROP_STAGE = 4; // S4 in Tier-1 vertical slice (S0..S4)
-export const DEFAULT_SIPHON_RATE_PER_TICK = 2 / TICKS_PER_SECOND; // 2 units/s = 0.4/tick
+export const DEFAULT_SIPHON_RATE_PER_TICK = 1 / TICKS_PER_SECOND; // 1 unit/s = 0.2/tick per Recon per sub-resource
 export const DEFAULT_SIPHON_CARRY_CAP = 40;
 export const DEFAULT_SIPHON_RANGE_TILES = 1;
 
