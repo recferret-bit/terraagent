@@ -4,13 +4,11 @@ import { DEV_PLANET_TYPE, type DevPlanetType } from '@terra/sim';
 import { WorldLifecycleService } from '../../lobby/lifecycle.service';
 import { LobbyPersistenceService } from '../../lobby/lobby-persistence.service';
 import type { CanonicalWorldRecord } from '../../lobby/lobby-persistence.types';
-import { CoreConflict, CoreException } from '../errors';
+import { CoreException } from '../errors';
 import {
   buildBasicColonySummary,
   buildBasicPlanetSummary,
-  buildEnrichedPlanetSummary,
   buildQueuedHomeResponse,
-  buildTerminalHomeResponse,
   createSpawnColonyCommand,
   enrichColonyWithReservation,
   findCommittedReservationColony,
@@ -24,13 +22,22 @@ import {
   type ResolveHomeOptions,
   type SeatSlot,
 } from './home-resolve.helpers';
-import { attachAwaySummary, type AwayHeadline } from './away-headline';
-import { eliminatedHomeFromClock, type HardModeHomeClock } from './hard-mode-home';
+import type { AwayHeadline } from './away-headline';
+import type { HardModeHomeClock } from './hard-mode-home';
 import { type ColonyRecord, HomeRepository, type PlanetRecord } from './home.repository';
+import {
+  buildHomeResponseForColony,
+  errText,
+  markPlanetIndexLanded,
+  SEAT_ATTEMPTS,
+  SEAT_PLANETS,
+  seatNewColony,
+  type SeatContext,
+} from './parts/home-seating';
 
 export const HOME_SEAT_NOTIFIER = Symbol('HOME_SEAT_NOTIFIER');
 
-export { createSpawnColonyCommand };
+export { createSpawnColonyCommand, SEAT_ATTEMPTS, SEAT_PLANETS };
 export type {
   ColonySeatAssignment,
   ColonySeatListener,
@@ -48,35 +55,6 @@ export function toColonySummary(colony: ColonyRecord): ColonySummary {
 export function toPlanetSummary(planet: PlanetRecord): PlanetSummary {
   return buildBasicPlanetSummary(planet);
 }
-
-/** Landing attempts per `getOrAssignHome` (each asks a planet's sim for a site, seats there or moves on). */
-export const SEAT_ATTEMPTS = 8;
-/** Planets tried per `getOrAssignHome`: one whose sim has no landing site left is marked and the next of its family tried. */
-export const SEAT_PLANETS = 2;
-
-const NO_SITE_CODES: readonly string[] = ['landing_site_taken', 'planet_full'];
-type SeatMiss = 'no_site' | 'index_landed' | 'retry';
-
-function isSeatRejected(e: unknown, code: string): boolean {
-  if (!(e instanceof CoreException) || e.errorCode !== 'COLONY_SEAT_REJECTED') return false;
-  return (e.details as { code?: unknown } | undefined)?.code === code;
-}
-
-function noLandingSite(planetIds: readonly string[]): CoreConflict {
-  return new CoreConflict('COLONY_SEAT_REJECTED', {
-    message: `no landing site left on ${planetIds.join(', ')}: their sims have no free landing site`,
-    details: { code: 'landing_site_taken', planetIds },
-  });
-}
-
-function hostUnavailable(planetId: string, message: string, cause?: string): CoreConflict {
-  return new CoreConflict('COLONY_SEAT_REJECTED', {
-    message,
-    details: { code: 'host_unavailable', planetId, ...(cause ? { cause } : {}) },
-  });
-}
-
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 @Injectable()
 export class HomeService {
@@ -275,11 +253,37 @@ export class HomeService {
         }
         return this.answerExisting(recheck.colony, recheck.planet, false);
       }
-      return this.seatNew(
+      return seatNewColony(
+        this.seatContext(),
         { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` },
         preferredType ?? DEV_PLANET_TYPE,
       );
     });
+  }
+
+  adoptLateLanding(assignment: ColonySeatAssignment): Promise<boolean> {
+    return this.withSeatLock(async () => {
+      const { player, colony } = assignment;
+      if (await this.repo.findLatestColonyByPlayerId(player.id)) {
+        markPlanetIndexLanded(this.landedIndices, colony.planetId, colony.colonyIndex);
+        return false;
+      }
+      await this.repo.createColony({ ...colony });
+      return true;
+    });
+  }
+
+  private seatContext(): SeatContext {
+    return {
+      repo: this.repo,
+      exhausted: this.exhausted,
+      landedIndices: this.landedIndices,
+      recapSeenPlayerIds: this.recapSeenPlayerIds,
+      landingHost: this.landingHost,
+      notifier: this.notifier,
+      seatListeners: this.seatListeners,
+      buildHomeResponse: (col, pl, canonical) => this.buildHomeResponseAsync(col, pl, canonical),
+    };
   }
 
   private isRecapSeenFor(playerId: string, colony: ColonyRecord): boolean {
@@ -340,135 +344,21 @@ export class HomeService {
     return home;
   }
 
-  private async seatNew(player: { id: string; handle: string }, type: DevPlanetType): Promise<HomeResponse> {
-    const tried: string[] = [];
-    for (let attempt = 0; attempt < SEAT_ATTEMPTS; attempt++) {
-      const { planet, colonyIndex } = await this.repo.findOrCreateOpenDevPlanet(type, this.exhausted, this.landedIndices);
-      if (!tried.includes(planet.id)) {
-        if (tried.length >= SEAT_PLANETS) break;
-        tried.push(planet.id);
-      }
-      const out = await this.seatOnPlanet(player, planet, colonyIndex);
-      if (typeof out === 'object') return out;
-      if (out === 'no_site') this.exhausted.add(planet.id);
-      else if (out === 'index_landed') this.markLanded(planet.id, colonyIndex);
-    }
-    throw noLandingSite(tried);
-  }
-
-  private async seatOnPlanet(
-    player: { id: string; handle: string },
-    openPlanet: PlanetRecord,
-    colonyIndex: number,
-  ): Promise<HomeResponse | SeatMiss> {
-    const site = await this.askLandingSite(openPlanet, colonyIndex);
-    if (!site.ok) {
-      if (site.code === 'already_landed') return 'index_landed';
-      if (NO_SITE_CODES.includes(site.code)) return 'no_site';
-      throw hostUnavailable(
-        openPlanet.id,
-        `planet ${openPlanet.id} has no landing site for colony ${colonyIndex}: ${site.code}`,
-        site.code,
-      );
-    }
-    this.recapSeenPlayerIds.delete(player.id);
-    const { colony, planet } = await this.repo.createColony({
-      playerId: player.id,
-      planetId: openPlanet.id,
-      colonyIndex,
-      name: `${player.handle.slice(0, 22)}'s Colony`,
-      color: colonyIndex,
-      status: 'ACTIVE',
-      foundingSectorId: site.sectorId ?? 'sec_0_0',
-      landingSlotId: site.landingSlotId ?? null,
-      spawnQ: site.q,
-      spawnR: site.r,
-    });
-    try {
-      await this.notifySeated({
-        player,
-        colony,
-        planet,
-        slot: {
-          index: site.slotIndex ?? colonyIndex,
-          q: site.q,
-          r: site.r,
-          ...(site.sectorId ? { sectorId: site.sectorId } : {}),
-          ...(site.landingSlotId ? { landingSlotId: site.landingSlotId } : {}),
-        },
-      });
-      return this.buildHomeResponseAsync(colony, planet, false);
-    } catch (e) {
-      if (isSeatRejected(e, 'already_landed')) return 'index_landed';
-      if (isSeatRejected(e, 'landing_site_taken')) return 'retry';
-      if (isSeatRejected(e, 'planet_full')) return 'no_site';
-      throw e;
-    }
-  }
-
-  private async askLandingSite(planet: PlanetRecord, colonyIndex: number): Promise<HomeLandingSite> {
-    if (!this.landingHost) throw hostUnavailable(planet.id, `no game host to land a colony on ${planet.id}`);
-    try {
-      return await this.landingHost.landingSite(planet, colonyIndex);
-    } catch (e) {
-      throw hostUnavailable(planet.id, `planet ${planet.id} cannot be asked for a landing site: ${errText(e)}`);
-    }
-  }
-
-  private markLanded(planetId: string, colonyIndex: number): void {
-    let set = this.landedIndices.get(planetId);
-    if (!set) this.landedIndices.set(planetId, (set = new Set()));
-    set.add(colonyIndex);
-  }
-
-  adoptLateLanding(assignment: ColonySeatAssignment): Promise<boolean> {
-    return this.withSeatLock(async () => {
-      const { player, colony } = assignment;
-      if (await this.repo.findLatestColonyByPlayerId(player.id)) {
-        this.markLanded(colony.planetId, colony.colonyIndex);
-        return false;
-      }
-      await this.repo.createColony({ ...colony });
-      return true;
-    });
-  }
-
-  private async notifySeated(assignment: ColonySeatAssignment): Promise<void> {
-    try {
-      if (this.notifier) await this.notifier.onColonySeated(assignment);
-      for (const listener of this.seatListeners) await listener(assignment);
-    } catch (e) {
-      await this.repo.deleteColony(assignment.colony.id).catch(() => undefined);
-      throw e;
-    }
-  }
-
-  private async buildHomeResponseAsync(
+  private buildHomeResponseAsync(
     colony: ColonyRecord,
     planet: PlanetRecord,
     alwaysIncludeCanonicalPlanets: boolean,
   ): Promise<HomeResponse> {
-    const colonySummary = toColonySummary(colony);
-    const { summary: planetSummary, world } = await buildEnrichedPlanetSummary(planet, this.lobbyPersistence);
-    const recapSeen = this.isRecapSeenFor(colony.playerId, colony);
-
-    if (isPlanetEndedOrArchived(planet, world)) {
-      const planets = await listCanonicalPlanetSummaries(this.lobbyPersistence, alwaysIncludeCanonicalPlanets);
-      return buildTerminalHomeResponse('PLANET_ENDED', colony, colonySummary, planetSummary, planets, recapSeen);
-    }
-
-    if (colony.status === 'ELIMINATED' || colony.state === 'ELIMINATED') {
-      const planets = await listCanonicalPlanetSummaries(this.lobbyPersistence, alwaysIncludeCanonicalPlanets);
-      return buildTerminalHomeResponse('ELIMINATED', colony, colonySummary, planetSummary, planets, recapSeen);
-    }
-
-    const mark = this.hardMode?.get(planet.id, colony.id);
-    if (mark) return eliminatedHomeFromClock(colonySummary, planetSummary, mark, recapSeen);
-
-    return attachAwaySummary(
-      { state: 'ACTIVE', colony: colonySummary, planet: planetSummary },
-      this.awayHeadline,
-    );
+    return buildHomeResponseForColony({
+      colony,
+      colonySummary: toColonySummary(colony),
+      planet,
+      alwaysIncludeCanonicalPlanets,
+      recapSeen: this.isRecapSeenFor(colony.playerId, colony),
+      lobbyPersistence: this.lobbyPersistence,
+      hardMode: this.hardMode,
+      awayHeadline: this.awayHeadline,
+    });
   }
 
   private withSeatLock<T>(fn: () => Promise<T>): Promise<T> {

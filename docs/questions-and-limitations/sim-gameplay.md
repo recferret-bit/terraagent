@@ -1252,15 +1252,15 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Optional: a backend one-shot that re-sends `market.reserve` for open DB orders after deploy, or drop the heal once no pre-fix colony remains.
 - **Found:** 2026-11-08, real-sim integration agent (SIM-LEAK).
 
-### GP-114 · Away policy rejects in the pure function; the command pipeline does not consult it yet
+### GP-114 · Away policy pipeline gate uses a static baseline view until economy spend sites wire session spend
 
-- **Status:** Open
-- **Area / code:** `shared/sim/src/systems/away/policy.ts`, `shared/sim/src/systems/director/overlay.ts` (`awayGuardPoints`)
-- **What happens:** `awayPolicy` allows AW-01..07, a player command, an opted-in raid, and a defensive shot. Everything else an away actor tries is `reject` with `away_policy` and a rule id. A priority step is the landed director guard, 10 points (`awayGuardBp` 1000). The command pipeline calls that function for `ai`, `bot`, `near` and `system` commands once the colony session is open or the presence blob says away. `player`, `dev`, `admin` and `system.*` pass. A colony is not away until something opens the session or sets the presence blob.
-- **Why it is like this:** W09-09 and W09-10 land the pure function and its table tests. W09-12 is the rejection log and the pipeline gate. The slider step is already 10 in `setPriorities` and in the W16 overlay.
-- **Workaround / mitigation:** Open the away session (or set the presence blob) before expecting rejects. `away_policy_rejections_total` increments on the main thread when a reject arrives; the label `actor` is `auto` because the reject message carries the rule in `detail`, not the source.
-- **To resolve:** W09-02's `system.presence` should open and close the away session. Leave the 10-point step unless the owner wants a 1-point band.
-- **Found:** 2026-11-09, W09-09, updated W09-10
+- **Status:** Partially Resolved (pipeline gate wired in W09-12; dynamic view tracked in GP-115)
+- **Area / code:** `shared/sim/src/systems/away/gate.ts`, `shared/sim/src/systems/away/policy.ts`, `shared/sim/src/systems/director/overlay.ts` (`awayGuardPoints`)
+- **What happens:** `awayPolicy` allows AW-01..07, a player command, an opted-in raid, and a defensive shot. Everything else an away actor tries is `reject` with `away_policy` and a rule id. A priority step is the landed director guard, 10 points (`awayGuardBp` 1000). `gateAwayCommand` in the command pipeline calls that function for `ai`, `bot`, `near` and `system` commands once the colony session is open or the presence blob says away. `player`, `dev`, `admin` and `system.*` pass.
+- **Why it is like this:** W09-09 and W09-10 land the pure function and its table tests; W09-12 wires the rejection counter and pipeline gate (`gateAwayCommand`). The slider step is already 10 in `setPriorities` and in the W16 overlay.
+- **Workaround / mitigation:** Open the away session (or set the presence blob via `system.presence`) before expecting rejects. `away_policy_rejections_total` increments on the main thread when a reject arrives; the label `actor` is `auto` because the reject message carries the rule in `detail`, not the source.
+- **To resolve:** Economy spend sites (`GP-115`) can populate dynamic baseline/loss lists and session spend when invoking `awayPolicy`. Leave the 10-point step unless the owner wants a 1-point band.
+- **Found:** 2026-11-09, W09-09, updated W09-10, W09-12
 
 ### GP-115 · Away session spend is a function the economy spend sites do not call yet
 

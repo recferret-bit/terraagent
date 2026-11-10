@@ -1,12 +1,19 @@
 import type { AwayDigestV1, AwaySummary } from '@terra/contracts';
 import type { PlanetState } from '@terra/sim';
-import { baselineFromState, stateOf } from './baseline';
-import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline, stampAfter, stampBaseline } from './body';
+import { stateOf } from './baseline';
+import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline } from './body';
 import { digestSignal } from './events';
-import { foldAttack, mergeBodies } from './folder';
-import { awayFacts, withAwayParagraph } from './story';
-import { awaySummary } from './summary';
+import { foldAttack } from './folder';
+import {
+  fillOpenBaseline,
+  mergeUnseenDigests,
+  readDigestBaseline,
+  sealDigestStory,
+  toOpenDigest,
+  withEndBaseline,
+} from './parts/digest-ops';
 import type { DigestStory } from './story';
+import { awaySummary } from './summary';
 import type {
   AttackFold,
   BaselineReader,
@@ -46,7 +53,7 @@ export class AwayDigestService {
       return Promise.resolve();
     }
     this.suppressAway.add(info.colonyId);
-    return this.noteBack(info.colonyId, info.at);
+    return this.enqueue(info.colonyId, () => this.closeRow(info.colonyId, info.at));
   }
 
   onPlanetEvent(event: PlanetEventLike): Promise<void> {
@@ -54,9 +61,13 @@ export class AwayDigestService {
     if (signal.type === 'ignore') return Promise.resolve();
     if (signal.type === 'away') {
       if (this.suppressAway.has(signal.colonyId)) return Promise.resolve();
-      return this.noteAway(signal.planetId, signal.colonyId, this.now());
+      const at = this.now();
+      return this.enqueue(signal.colonyId, () => this.openRow(signal.planetId, signal.colonyId, at));
     }
-    if (signal.type === 'back') return this.noteBack(signal.colonyId, this.now());
+    if (signal.type === 'back') {
+      const at = this.now();
+      return this.enqueue(signal.colonyId, () => this.closeRow(signal.colonyId, at));
+    }
     return this.enqueue(signal.colonyId, () => this.fold(signal.colonyId, signal.attack));
   }
 
@@ -102,14 +113,6 @@ export class AwayDigestService {
     return removed;
   }
 
-  private noteAway(planetId: string, colonyId: string, at: Date): Promise<void> {
-    return this.enqueue(colonyId, () => this.openRow(planetId, colonyId, at));
-  }
-
-  private noteBack(colonyId: string, at: Date): Promise<void> {
-    return this.enqueue(colonyId, () => this.closeRow(colonyId, at));
-  }
-
   private async openRow(planetId: string, colonyId: string, at: Date): Promise<void> {
     if (this.suppressAway.has(colonyId) || this.open.has(colonyId)) return;
     const existing = await this.deps.store.findOpen(colonyId);
@@ -122,10 +125,10 @@ export class AwayDigestService {
       this.deps.log?.warn({ colonyId }, 'digest skipped: colony id is not a home id');
       return;
     }
-    const { body, filled } = await this.readBaseline(planetId, colonyId, drafted);
+    const { body, filled } = await readDigestBaseline(this.deps.reader, this.deps.log, planetId, colonyId, drafted);
     const row = await this.deps.store.insert({ colonyId, planetId, openedAt: at, lastEventSeq: 0n, body });
     this.remember(row, filled);
-    await this.mergeUnseen(colonyId);
+    await mergeUnseenDigests(this.deps.store, this.open, colonyId, this.now());
     await this.purge();
   }
 
@@ -136,29 +139,8 @@ export class AwayDigestService {
     live.body = checkedDigest({ ...live.body, awayTo: at.toISOString(), durationS });
     await this.deps.store.save(live.id, live.body, live.lastEventSeq, at);
     this.open.delete(colonyId);
-    await this.mergeUnseen(colonyId);
-    await this.sealStory(colonyId, at);
-  }
-
-  /** One paragraph after the close merge. A throw or a null paragraph leaves the closed body without `story`. */
-  private async sealStory(colonyId: string, at: Date): Promise<void> {
-    const story = this.deps.story;
-    if (!story) return;
-    const row = await this.deps.store.latestUnseen(colonyId);
-    if (!row?.closedAt) return;
-    const paragraph = this.askStory(colonyId, at, row.body);
-    const next = withAwayParagraph(row.body, paragraph);
-    if (next === row.body) return;
-    await this.deps.store.save(row.id, next, row.lastEventSeq, row.closedAt);
-  }
-
-  private askStory(colonyId: string, at: Date, body: AwayDigestV1): string | null {
-    try {
-      return this.deps.story?.paragraph(colonyId, at, awayFacts(body)) ?? null;
-    } catch (err) {
-      this.deps.log?.warn({ colonyId, err: err instanceof Error ? err.message : String(err) }, 'away story omitted');
-      return null;
-    }
+    await mergeUnseenDigests(this.deps.store, this.open, colonyId, this.now());
+    await sealDigestStory(this.deps.store, this.deps.story, this.deps.log, colonyId, at);
   }
 
   private async fold(colonyId: string, event: AttackFold): Promise<void> {
@@ -173,38 +155,11 @@ export class AwayDigestService {
   private async persist(colonyId: string, state: PlanetState | null): Promise<void> {
     const live = this.open.get(colonyId);
     if (!live) return;
-    if (state && !live.baselineFilled) this.fill(live, state);
+    if (state && !live.baselineFilled) fillOpenBaseline(live, state);
     if (!live.dirty) return;
     const body = live.body;
     await this.deps.store.save(live.id, body, live.lastEventSeq);
     if (live.body === body) live.dirty = false;
-  }
-
-  private fill(live: OpenDigest, state: PlanetState): void {
-    const base = baselineFromState(state, live.colonyId);
-    if (!base) return;
-    live.body = checkedDigest(stampBaseline(live.body, base));
-    live.baselineFilled = true;
-    live.dirty = true;
-  }
-
-  private async readBaseline(
-    planetId: string,
-    colonyId: string,
-    body: AwayDigestV1,
-  ): Promise<{ body: AwayDigestV1; filled: boolean }> {
-    if (!this.deps.reader) return { body, filled: false };
-    try {
-      const base = await this.deps.reader.read(planetId, colonyId);
-      if (!base) return { body, filled: false };
-      return { body: checkedDigest(stampBaseline(body, base)), filled: true };
-    } catch (err) {
-      this.deps.log?.warn(
-        { planetId, colonyId, err: err instanceof Error ? err.message : String(err) },
-        'digest baseline unread',
-      );
-      return { body, filled: false };
-    }
   }
 
   private async live(colonyId: string): Promise<OpenDigest | null> {
@@ -215,50 +170,16 @@ export class AwayDigestService {
   }
 
   private remember(row: DigestRecord, filled = !isZeroBaseline(row.body)): OpenDigest {
-    const live: OpenDigest = {
-      id: row.id,
-      planetId: row.planetId,
-      colonyId: row.colonyId,
-      openedAt: row.openedAt,
-      body: row.body,
-      lastEventSeq: row.lastEventSeq,
-      dirty: false,
-      baselineFilled: filled,
-    };
+    const live = toOpenDigest(row, filled);
     this.open.set(row.colonyId, live);
     return live;
-  }
-
-  private async mergeUnseen(colonyId: string): Promise<void> {
-    const rows = await this.deps.store.listUnseen(colonyId);
-    if (rows.length < 2) return;
-    const newest = rows[rows.length - 1];
-    if (!newest) return;
-    const older = rows.slice(0, -1);
-    const liveHead = this.open.get(colonyId);
-    const head = liveHead && liveHead.id === newest.id ? liveHead.body : newest.body;
-    const merged = checkedDigest(mergeBodies([...older.map((row) => row.body), head]));
-    const seq = older.reduce((n, row) => (row.lastEventSeq > n ? row.lastEventSeq : n), this.seqOf(newest));
-    await this.deps.store.commitMerge({
-      newestId: newest.id,
-      body: merged,
-      lastEventSeq: seq,
-      olderIds: older.map((row) => row.id),
-      seenAt: this.now(),
-    });
-    const live = this.open.get(colonyId);
-    if (live && live.id === newest.id) {
-      live.body = merged;
-      live.lastEventSeq = seq;
-      live.dirty = false;
-    }
   }
 
   private async deliver(colonyId: string, at: Date, raw?: Uint8Array): Promise<AwayDigestV1 | null> {
     await this.closeRow(colonyId, at);
     const row = await this.deps.store.latestUnseen(colonyId);
     if (!row?.closedAt) return null;
-    const body = this.withEnd(row.body, raw);
+    const body = withEndBaseline(row.body, raw);
     if (body !== row.body) await this.deps.store.save(row.id, body, row.lastEventSeq, row.closedAt);
     await this.deps.store.markClosedUnseen(colonyId, at);
     return body;
@@ -270,21 +191,6 @@ export class AwayDigestService {
     const live = this.open.get(colonyId);
     const body = live?.id === row.id ? live.body : row.body;
     return awaySummary({ ...row, body }, at);
-  }
-
-  /** End baseline from bytes already in hand. A miss leaves `before === after` (BE-59). */
-  private withEnd(body: AwayDigestV1, raw?: Uint8Array): AwayDigestV1 {
-    if (!raw) return body;
-    const state = stateOf(raw);
-    if (!state) return body;
-    const base = baselineFromState(state, body.colonyId);
-    if (!base) return body;
-    return checkedDigest(stampAfter(body, base));
-  }
-
-  private seqOf(row: DigestRecord): bigint {
-    const live = this.open.get(row.colonyId);
-    return live && live.id === row.id ? live.lastEventSeq : row.lastEventSeq;
   }
 
   private enqueue<T>(colonyId: string, work: () => Promise<T>): Promise<T> {

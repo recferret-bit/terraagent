@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { newId, type SectorId } from '@terra/contracts';
+import type { SectorId } from '@terra/contracts';
 import {
   assertValidHealthState,
   assertValidLifecycleTransition,
@@ -16,7 +16,6 @@ import {
   ConcurrencyConflictError,
   InvalidLifecycleTransitionError,
   type AdmissionEligibilityResult,
-  type AdmissionEligibilityStatus,
   type ElapsedAgeEvaluationResult,
   type MarkWorldProvisionedInput,
   type PauseResumePlanetAdmissionInput,
@@ -30,6 +29,13 @@ import {
 } from './lifecycle.types';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import { LobbyPersistenceConflictError } from './lobby-persistence.types';
+import {
+  buildTransitionEntry,
+  createAuditEntry,
+  evaluateAdmissionEligibility,
+  normalizeQueuePauseInput,
+  toElapsedAgeResult,
+} from './parts/lifecycle-ops';
 
 export {
   AuditMetadataRequiredError,
@@ -121,50 +127,17 @@ export class WorldLifecycleService {
    * Pure/transactional admission eligibility check used by ticket enqueue and the matchmaker.
    * Reports `'open'` vs `'full' | 'paused' | 'faulted' | 'archived' | 'ocean_sector'`.
    */
-  async checkAdmissionEligibility(
+  checkAdmissionEligibility(
     planetId: string,
     sectorId?: SectorId,
   ): Promise<AdmissionEligibilityResult> {
-    const worldStatus = await this.getWorldStatus(planetId);
-    let sectorFreeSeats: number | null = null;
-    let status: AdmissionEligibilityStatus;
-
-    if (worldStatus.lifecycle === 'ARCHIVED' || worldStatus.admission === 'ARCHIVED') {
-      status = 'archived';
-    } else if (worldStatus.lifecycle !== 'ACTIVE' || worldStatus.health !== 'OK') {
-      status = 'faulted';
-    } else if (worldStatus.admission === 'PAUSED') {
-      status = 'paused';
-    } else if (sectorId !== undefined) {
-      const sec = await this.getSectorStatus(planetId, sectorId);
-      sectorFreeSeats = sec.freeSeats;
-      if (sec.kind === 'ocean') {
-        status = 'ocean_sector';
-      } else if (sec.freeSeats <= 0) {
-        status = 'full';
-      } else {
-        status = 'open';
-      }
-    } else if (worldStatus.freeSeats <= 0) {
-      status = 'full';
-    } else {
-      status = 'open';
-    }
-
-    return {
-      eligible: status === 'open',
+    return evaluateAdmissionEligibility(
       planetId,
-      sectorId: sectorId ?? null,
-      status,
-      reason: status,
-      lifecycle: worldStatus.lifecycle,
-      health: worldStatus.health,
-      admission: worldStatus.admission,
-      availability: worldStatus.availability,
-      freeSeats: worldStatus.freeSeats,
-      sectorFreeSeats,
-      queuePaused: this.queuePaused,
-    };
+      sectorId,
+      this.queuePaused,
+      (id) => this.getWorldStatus(id),
+      (id, secId) => this.getSectorStatus(id, secId),
+    );
   }
 
   /**
@@ -181,19 +154,7 @@ export class WorldLifecycleService {
       expectedUpdatedAt: input.expectedUpdatedAt,
       now: input.now,
       onTransition: (prev, next) => {
-        recordedAudit = this.appendAuditEntry({
-          planetId: next.id,
-          action: 'PAUSE',
-          fromLifecycle: prev.lifecycle,
-          toLifecycle: next.lifecycle,
-          fromHealth: prev.health,
-          toHealth: next.health,
-          fromAdmission: prev.admission,
-          toAdmission: next.admission,
-          actor,
-          reason,
-          at: next.updatedAt.toISOString(),
-        });
+        recordedAudit = this.appendAuditEntry(buildTransitionEntry(prev, next, 'PAUSE', actor, reason));
       },
     });
 
@@ -215,19 +176,7 @@ export class WorldLifecycleService {
       expectedUpdatedAt: input.expectedUpdatedAt,
       now: input.now,
       onTransition: (prev, next) => {
-        recordedAudit = this.appendAuditEntry({
-          planetId: next.id,
-          action: 'RESUME',
-          fromLifecycle: prev.lifecycle,
-          toLifecycle: next.lifecycle,
-          fromHealth: prev.health,
-          toHealth: next.health,
-          fromAdmission: prev.admission,
-          toAdmission: next.admission,
-          actor,
-          reason,
-          at: next.updatedAt.toISOString(),
-        });
+        recordedAudit = this.appendAuditEntry(buildTransitionEntry(prev, next, 'RESUME', actor, reason));
       },
     });
 
@@ -266,45 +215,21 @@ export class WorldLifecycleService {
   /**
    * Operator convenience action: pauses global matchmaking queue processing (MM-46, MM-49).
    */
-  async pauseQueue(
+  pauseQueue(
     inputOrActor?: Partial<Omit<SetQueuePausedInput, 'paused'>> | string,
     reason?: string,
   ): Promise<QueuePauseStatus> {
-    if (typeof inputOrActor === 'string') {
-      return this.setQueuePaused({
-        paused: true,
-        actor: inputOrActor,
-        reason: reason ?? 'queue paused by operator',
-      });
-    }
-    return this.setQueuePaused({
-      paused: true,
-      actor: inputOrActor?.actor ?? 'system:ops',
-      reason: inputOrActor?.reason ?? 'queue paused by operator',
-      ...(inputOrActor?.now ? { now: inputOrActor.now } : {}),
-    });
+    return this.setQueuePaused(normalizeQueuePauseInput(true, 'queue paused by operator', inputOrActor, reason));
   }
 
   /**
    * Operator convenience action: resumes global matchmaking queue processing (MM-46, MM-49).
    */
-  async resumeQueue(
+  resumeQueue(
     inputOrActor?: Partial<Omit<SetQueuePausedInput, 'paused'>> | string,
     reason?: string,
   ): Promise<QueuePauseStatus> {
-    if (typeof inputOrActor === 'string') {
-      return this.setQueuePaused({
-        paused: false,
-        actor: inputOrActor,
-        reason: reason ?? 'queue resumed by operator',
-      });
-    }
-    return this.setQueuePaused({
-      paused: false,
-      actor: inputOrActor?.actor ?? 'system:ops',
-      reason: inputOrActor?.reason ?? 'queue resumed by operator',
-      ...(inputOrActor?.now ? { now: inputOrActor.now } : {}),
-    });
+    return this.setQueuePaused(normalizeQueuePauseInput(false, 'queue resumed by operator', inputOrActor, reason));
   }
 
   /**
@@ -330,19 +255,7 @@ export class WorldLifecycleService {
       expectedUpdatedAt: input.expectedUpdatedAt,
       now: input.now,
       onTransition: (prev, next) => {
-        recordedAudit = this.appendAuditEntry({
-          planetId: next.id,
-          action: 'HEALTH_CHANGE',
-          fromLifecycle: prev.lifecycle,
-          toLifecycle: next.lifecycle,
-          fromHealth: prev.health,
-          toHealth: next.health,
-          fromAdmission: prev.admission,
-          toAdmission: next.admission,
-          actor,
-          reason,
-          at: next.updatedAt.toISOString(),
-        });
+        recordedAudit = this.appendAuditEntry(buildTransitionEntry(prev, next, 'HEALTH_CHANGE', actor, reason));
       },
     });
 
@@ -379,19 +292,8 @@ export class WorldLifecycleService {
       expectedUpdatedAt: input.expectedUpdatedAt,
       now: input.now,
       onTransition: (prev, next) => {
-        recordedAudit = this.appendAuditEntry({
-          planetId: prev.id,
-          action: targetLifecycle === 'ARCHIVED' ? 'ARCHIVE' : 'LIFECYCLE_CHANGE',
-          fromLifecycle: prev.lifecycle,
-          toLifecycle: next.lifecycle,
-          fromHealth: prev.health,
-          toHealth: next.health,
-          fromAdmission: prev.admission,
-          toAdmission: next.admission,
-          actor,
-          reason,
-          at: next.updatedAt.toISOString(),
-        });
+        const action = targetLifecycle === 'ARCHIVED' ? 'ARCHIVE' : 'LIFECYCLE_CHANGE';
+        recordedAudit = this.appendAuditEntry(buildTransitionEntry(prev, next, action, actor, reason));
       },
     });
 
@@ -444,22 +346,7 @@ export class WorldLifecycleService {
    */
   async evaluateElapsedAge(planetId: string, elapsedMs: number): Promise<ElapsedAgeEvaluationResult> {
     const snapshot = await this.getWorldStatus(planetId);
-    return {
-      planetId: snapshot.id,
-      elapsedMs: Math.max(0, elapsedMs),
-      ageSealed: false,
-      expired: false,
-      changed: false,
-      lifecycle: snapshot.lifecycle,
-      health: snapshot.health,
-      admission: snapshot.admission,
-      availability: snapshot.availability,
-      freeSeats: snapshot.freeSeats,
-      reservedSeats: snapshot.reservedSeats,
-      foundedSeats: snapshot.foundedSeats,
-      validatedCapacity: snapshot.validatedCapacity,
-      world: snapshot.world,
-    };
+    return toElapsedAgeResult(snapshot, elapsedMs);
   }
 
   /**
@@ -482,10 +369,7 @@ export class WorldLifecycleService {
   private appendAuditEntry(
     entry: Omit<WorldAdmissionAuditEntry, 'id'>,
   ): WorldAdmissionAuditEntry {
-    const fullEntry: WorldAdmissionAuditEntry = {
-      id: `aud_${newId('mt').slice(3)}`,
-      ...entry,
-    };
+    const fullEntry = createAuditEntry(entry);
     this.auditLog.push(fullEntry);
     return fullEntry;
   }

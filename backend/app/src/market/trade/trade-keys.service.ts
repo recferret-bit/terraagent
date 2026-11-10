@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleInit } from '@nestjs/common';
 import type {
   CreateTradeKeyRequest, CreateTradeKeyResponse, KillTradeRequest, KillTradeResponse, RevokeTradeKeyResponse,
   TradeAllowanceUpdate, TradeKeyListResponse, TradeKeyView, TradeMeResponse,
 } from '@terra/contracts';
 import { withTransaction, type PrismaClient } from '@terra/db';
+import { databaseEnabled } from '../../core/persistence.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
 import { TradeAuth, type TradePrincipal } from './trade-auth.js';
@@ -30,10 +32,12 @@ export class TradeKeysService implements OnModuleInit {
     private readonly sim: TradeSimPort,
     private readonly streams: TradeStreamService,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   /** A request still PENDING at boot never reached the sim (the process died between the row and the submit): it is cancelled, so it stops counting. */
   async onModuleInit(): Promise<void> {
+    if (this.env && !databaseEnabled(this.env)) return;
     await this.prisma.tradeApiRequest.updateMany({
       where: { state: 'PENDING' }, data: { state: 'CANCELLED', errorCode: 'unsubmitted', errorDetail: 'the server restarted before the order was submitted' },
     }).catch(() => undefined);

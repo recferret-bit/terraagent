@@ -1,9 +1,19 @@
-import { canonicalPlanetById, newId, W11_DEFAULT_SECTOR_RADIUS, type SimCommandV1 } from '@terra/contracts';
-import { globalTileToSector, hexDistance, type BalanceOverrides, type LedgerPosting, type SimEvent, type TuneRequest } from '@terra/sim';
+import { canonicalPlanetById, type SimCommandV1 } from '@terra/contracts';
+import type { BalanceOverrides, LedgerPosting, SimEvent, TuneRequest } from '@terra/sim';
 import { noteAwayPolicyRejection } from './away-rejections';
+import {
+  buildCanonicalSpawnRetryCmd,
+  collectThreadPlanetIds,
+  normalizeCanonicalSpawnCmd,
+  normalizeLoadOptions,
+  type HostLoadInfo,
+  type LoadOptions,
+} from './parts/game-planets-ops';
 import type { SimThreadPool } from './sim-thread-pool';
 import { ThreadRequests } from './thread-requests';
-import type { FromThread, LandingSiteAnswer, LoadedInfo, LoadMsg } from './thread/protocol';
+import type { FromThread, LandingSiteAnswer, LoadedInfo } from './thread/protocol';
+
+export type { LoadOptions };
 
 export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
@@ -54,11 +64,6 @@ export type PlanetDownListener = (planetId: string, reason: PlanetDownReason, de
 
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
 export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[]) => void;
-
-/** Main-thread facts about a load, handed to `onPlanetLoaded` with the thread's `loaded` (never sent to the thread). */
-type HostLoadInfo = Pick<LoadedInfo, 'setupPostings' | 'noSnapshots'>;
-
-export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'> & HostLoadInfo;
 
 /** Ledger postings of one step leaving a thread (host-side only, see `PlanetLedgerService`). */
 export type PlanetLedgerListener = (planetId: string, tick: number, postings: readonly LedgerPosting[]) => void;
@@ -127,27 +132,16 @@ export class GamePlanets {
         return;
       }
       this.loading.set(planetId, [{ resolve, reject }]);
-      const { setupPostings, noSnapshots, ...msg } = opts;
-      const canonical = canonicalPlanetById(planetId);
-      const normalizedMsg =
-        canonical && !msg.snapshot && msg.params?.radius === undefined
-          ? {
-              ...msg,
-              params: {
-                type: msg.params?.type ?? canonical.type,
-                seed: msg.params?.seed ?? canonical.seed,
-                radius: W11_DEFAULT_SECTOR_RADIUS,
-                capacity: msg.params?.capacity ?? 28,
-              },
-            }
-          : msg;
-      this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
+      const { normalizedMsg, hostInfo } = normalizeLoadOptions(planetId, opts);
+      this.hostInfo.set(planetId, hostInfo);
       if ((normalizedMsg.catchUpTicks ?? 0) > 0) {
         this.catchingUp.add(planetId);
         for (const fn of this.fastRunStartListeners) fn(planetId);
       }
       const transfer = normalizedMsg.snapshot ? [normalizedMsg.snapshot.buffer as ArrayBuffer] : [];
-      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
+      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) {
+        this.failLoad(planetId, new Error('sim thread is not running'));
+      }
     });
   }
 
@@ -188,25 +182,10 @@ export class GamePlanets {
   /** Queues a command for the planet's next step; resolves with the ack/reject outcome. */
   async submit(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
     const isCanonical = canonicalPlanetById(planetId) !== null;
-    let normalizedCmd = cmd;
-    if (isCanonical && cmd.kind === 'system.spawnColony' && cmd.args && typeof cmd.args === 'object') {
-      const args = cmd.args as Record<string, unknown>;
-      if (typeof args.q === 'number' && typeof args.r === 'number' && hexDistance(0, 0, args.q, args.r) > W11_DEFAULT_SECTOR_RADIUS) {
-        const local = globalTileToSector(args.q, args.r, W11_DEFAULT_SECTOR_RADIUS);
-        normalizedCmd = { ...cmd, args: { ...args, q: local.localQ, r: local.localR } };
-      }
-    }
+    const normalizedCmd = normalizeCanonicalSpawnCmd(isCanonical, cmd);
     const out = await this.sendSingleCmd(planetId, normalizedCmd);
-    if (
-      !out.ok &&
-      isCanonical &&
-      cmd.kind === 'system.spawnColony' &&
-      (out.code === 'landing_site_taken' || out.code === 'invalid_args') &&
-      cmd.args &&
-      typeof cmd.args === 'object'
-    ) {
-      const { q: _q, r: _r, sectorId: _s, landingSlotId: _l, ...restArgs } = cmd.args as Record<string, unknown>;
-      const retryCmd: SimCommandV1 = { ...cmd, commandId: newId('cm'), args: restArgs };
+    const retryCmd = buildCanonicalSpawnRetryCmd(isCanonical, cmd, out.ok, !out.ok ? out.code : undefined);
+    if (retryCmd) {
       const retryOut = await this.sendSingleCmd(planetId, retryCmd);
       return { ...retryOut, commandId: cmd.commandId };
     }
@@ -356,8 +335,7 @@ export class GamePlanets {
 
   /** Every planet the dead thread owned or was asked about: loaded, loading, or with commands in flight. */
   private threadDown(thread: number): void {
-    const ids = new Set<string>([...this.loaded, ...this.loading.keys(), ...[...this.cmdWaiters.keys()].map((k) => k.split('\0')[0] ?? '')]);
-    const down = [...ids].filter((id) => id && this.threadOf(id) === thread);
+    const down = collectThreadPlanetIds(this.loaded, this.loading.keys(), this.cmdWaiters.keys(), (id) => this.threadOf(id), thread);
     for (const id of down) this.planetDown(id, 'thread_down', `sim thread ${thread} stopped`);
     for (const fn of this.threadDownListeners) fn(thread, down);
   }

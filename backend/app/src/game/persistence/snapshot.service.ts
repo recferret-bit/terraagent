@@ -1,14 +1,6 @@
 import { CheckpointProgression } from '../../progression/checkpoint-progression.js';
 import { Inject, Injectable, Optional, type BeforeApplicationShutdown } from '@nestjs/common';
-import { parseWaves } from '@terra/contracts';
-import {
-  devPlanetTypeOf,
-  GEN_VERSION,
-  restore,
-  validateAtlasSaveCompatibility,
-  type AtlasSaveCompatibilityOptions,
-  type WaveFlagsInput,
-} from '@terra/sim';
+import type { AtlasSaveCompatibilityOptions } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge, Histogram } from 'prom-client';
 import { MetricsRegistry } from '../../core/metrics.registry';
@@ -17,13 +9,11 @@ import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { HomeRepository } from '../../core/home/home.repository';
 import { FlagsService } from '../../flags/flags.service';
 import { GamePlanets, type LoadOptions } from '../game-planets.service';
-import { hasLiveColony, liveColonyIndices } from '../live-colony';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
 import { persistenceEnabled } from '../../core/persistence';
-import { missedRestartTicks } from '../restart/missed-ticks';
+import { capturePlanetSnapshot, errText, restoreOnePlanet } from './parts/snapshot-restore';
 import { SnapshotScheduler } from './snapshot-scheduler';
 import { SnapshotStore } from './snapshot-store';
-import { devSnapshotVerdict } from './dev-planet-verdict';
 
 /** A planet that went down is restored from its snapshot at most this many times per {@link RECOVER_WINDOW_MS}, then held. */
 export const RECOVER_LIMIT = 3;
@@ -31,8 +21,6 @@ export const RECOVER_WINDOW_MS = 10 * 60_000;
 
 /** SIM-H-06 budget for the SIGTERM snapshot of every loaded planet. */
 export const SHUTDOWN_BUDGET_MS = 30_000;
-
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** What the boot restore did (see {@link SnapshotService.restoreAll}). */
 export interface RestoreReport {
@@ -188,62 +176,22 @@ export class SnapshotService implements BeforeApplicationShutdown {
     this.log.warn({ planetId }, `wiped ${planetId} (dev planet.wipe)`);
   }
 
-  private resolveActiveFlags(override?: WaveFlagsInput): WaveFlagsInput | undefined {
-    if (override !== undefined) return override;
-    if (this.flags) return this.flags.list;
-    if (typeof this.env.TA_WAVES === 'string') return parseWaves(this.env.TA_WAVES).list;
-    return undefined;
-  }
-
   /** One live planet: restored, held (snapshots kept, not loaded) or wiped (an old dev planet: generated fresh later). */
-  async restore(id: string, options?: AtlasSaveCompatibilityOptions): Promise<'restored' | 'held' | 'wiped'> {
-    try {
-      const snap = await this.store.latest(id, (tick) => this.log.warn({ planetId: id, tick: Number(tick) }, 'corrupt snapshot skipped'));
-      if (!snap) {
-        this.log.error({ planetId: id }, `held ${id}: every snapshot is corrupt`);
-        return 'held';
-      }
-      const verdict = devSnapshotVerdict(id, snap.raw);
-      if (verdict.kind === 'newer') {
-        // Written by a newer build: never delete it; leave it unloaded until that build runs again.
-        this.log.warn({ planetId: id, reason: verdict.reason }, `skipped ${id}: snapshot from a newer build`);
-        return 'held';
-      }
-      if (verdict.kind === 'wipe') {
-        // Old ground (pre-D-38), an older sim, or not the type its family names: wipe, boot recreates it fresh.
-        await this.store.wipePlanet(id); // the verdict only ever wipes dev planets
-        this.log.warn({ planetId: id, reason: verdict.reason, now: GEN_VERSION }, `wiped ${id}: ${verdict.reason}`);
-        return 'wiped';
-      }
-      const state = verdict.state ?? restore(snap.raw);
-      const compat = validateAtlasSaveCompatibility(state, {
-        ...options,
-        planetId: id,
-        flags: this.resolveActiveFlags(options?.flags),
-      });
-      if (!compat.ok) {
-        this.log.error(
-          { planetId: id, code: compat.code, reason: compat.reason },
-          `held ${id}: incompatible atlas save (${compat.code})`,
-        );
-        return 'held';
-      }
-      // A scenario planet (no colony rows: its colonies are the scenario's) stays playable as colony 0 by dev sessions.
-      // A planet with colony rows is never marked: its colonies belong to their players (BE-07).
-      const isDev = devPlanetTypeOf(id) !== null;
-      if (!isDev && hasLiveColony(state) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
-        this.planets.markScenarioColonyPlanet(id, liveColonyIndices(state));
-      }
-      const catchUpTicks = missedRestartTicks(this.nowMs(), snap.savedAt.getTime()).ticks;
-      const tick = await this.planets.load(id, { snapshot: snap.raw, ...(catchUpTicks > 0 ? { catchUpTicks } : {}) });
-      // Fresh savedAt so a second boot does not run this gap again. Skipped when the gap was already under one coarse step.
-      if (catchUpTicks > 0) this.scheduler.request(id, 'PERIODIC');
-      this.log.info({ planetId: id, tick, savedAt: snap.savedAt, catchUpTicks }, `restored ${id} at tick ${tick}`);
-      return 'restored';
-    } catch (e) {
-      this.log.error({ planetId: id, err: errText(e) }, 'snapshot restore failed');
-      return 'held';
-    }
+  restore(id: string, options?: AtlasSaveCompatibilityOptions): Promise<'restored' | 'held' | 'wiped'> {
+    return restoreOnePlanet(
+      {
+        store: this.store,
+        planets: this.planets,
+        scheduler: this.scheduler,
+        homes: this.homes,
+        log: this.log,
+        env: this.env,
+        flags: this.flags,
+        nowMs: () => this.nowMs(),
+      },
+      id,
+      options,
+    );
   }
 
   /**
@@ -252,20 +200,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
    */
   capture(planetId: string, kind: 'SEAL' | 'END', budgetMs = SHUTDOWN_BUDGET_MS): Promise<void> {
     if (!this.enabled || !this.planets.isLoaded(planetId)) return Promise.resolve();
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve();
-      };
-      const timer = setTimeout(() => {
-        this.scheduler.cancelUnanswered(planetId, finish);
-        finish();
-      }, budgetMs);
-      this.scheduler.request(planetId, kind, finish);
-    });
+    return capturePlanetSnapshot(this.scheduler, planetId, kind, budgetMs);
   }
 
   /** Admission pause: one `SEAL` row (retention keeps the latest). */

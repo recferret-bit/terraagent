@@ -6,6 +6,7 @@ import { Gauge, Counter } from 'prom-client';
 import { z } from 'zod';
 import { layerLogger } from '../../../core/logging/logger.js';
 import { MetricsRegistry } from '../../../core/metrics.registry.js';
+import { databaseEnabled } from '../../../core/persistence.js';
 import { APP_ENV, LOGGER, type AppEnv } from '../../../core/tokens.js';
 import { CargoRelaySettlementService } from '../../cargo/cargo-relay-settlement.js';
 import { PORTS } from '../ports/index.js';
@@ -52,10 +53,11 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
       pollMs: Number(e.OUTBOX_POLL_MS ?? 250), leaseMs: Number(e.OUTBOX_LEASE_MS ?? 30_000), maxAttempts: Number(e.OUTBOX_MAX_ATTEMPTS ?? 8),
       batch: 10, backoffBaseMs: 1000, backoffMaxMs: 600_000,
     };
+    const collectCounts = async () => (this.enabled || databaseEnabled(appEnv) ? repo.counts() : { pending: 0, dead: 0 });
     const registers = [metrics.registry];
     const relayed = new Counter({ name: 'ta_chain_outbox_relayed_total', help: 'Outbox rows processed by the relay', labelNames: ['port', 'status'], registers });
-    new Gauge({ name: 'ta_chain_outbox_pending', help: 'Outbox rows waiting to be relayed', registers, collect: async function (this: Gauge) { this.set((await repo.counts()).pending); } });
-    new Gauge({ name: 'ta_chain_outbox_dead', help: 'Outbox rows given up on (alert)', registers, collect: async function (this: Gauge) { this.set((await repo.counts()).dead); } });
+    new Gauge({ name: 'ta_chain_outbox_pending', help: 'Outbox rows waiting to be relayed', registers, collect: async function (this: Gauge) { this.set((await collectCounts()).pending); } });
+    new Gauge({ name: 'ta_chain_outbox_dead', help: 'Outbox rows given up on (alert)', registers, collect: async function (this: Gauge) { this.set((await collectCounts()).dead); } });
     const tokens = new Map(PORTS.map((p) => [p.name as string, p.token]));
     this.relay = new OutboxRelay(repo, cfg, {
       resolve: (name) => {

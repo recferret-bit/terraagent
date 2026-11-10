@@ -1,5 +1,7 @@
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OrderBook } from '@terra/sim/systems/trade/market-book';
+import { databaseEnabled } from '../../core/persistence.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { isBookable, type MarketOrderRecord } from './market-order.record.js';
 import { MarketOrderRepository } from './market-order.repository.js';
 
@@ -19,11 +21,15 @@ export class MarketBooks implements OnModuleInit, OnModuleDestroy {
   private unsubscribe: (() => void) | undefined;
   private readonly changeListeners = new Set<BookChangeListener>();
 
-  constructor(private readonly repo: MarketOrderRepository) {
+  constructor(
+    private readonly repo: MarketOrderRepository,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+  ) {
     this.unsubscribe = repo.onWrite((o) => void this.apply(o));
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.env && !databaseEnabled(this.env)) return;
     try {
       await this.rebuildAll();
     } catch (err) {
