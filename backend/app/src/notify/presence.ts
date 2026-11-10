@@ -27,10 +27,21 @@ export class MemoryPresence implements PresenceQuery {
     return this.counts.has(colonyId);
   }
 
+  isAway(colonyId: string): boolean {
+    return !this.counts.has(colonyId);
+  }
+
+  setAway(colonyId: string, away: boolean): void {
+    if (away) this.counts.delete(colonyId);
+    else if (!this.counts.has(colonyId)) this.counts.set(colonyId, 1);
+  }
+
   clear(): void {
     this.counts.clear();
   }
 }
+
+export { MemoryPresence as ColonyPresenceRegistry };
 
 /** Process-wide set. Tests and the socket writer share it until W09-02 replaces the writer. */
 export const colonyPresence = new MemoryPresence();

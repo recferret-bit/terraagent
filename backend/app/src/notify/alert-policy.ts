@@ -37,4 +37,8 @@ export class UnderAttackWindow {
     this.sentAtMs.set(colonyId, nowMs);
     return true;
   }
+
+  release(colonyId: string, nowMs: number): void {
+    if (this.sentAtMs.get(colonyId) === nowMs) this.sentAtMs.delete(colonyId);
+  }
 }
