@@ -51,6 +51,8 @@ import { BountyRepository } from './bounty/bounty.repository.js';
 import { PlanetBountyWorld } from './bounty/world.js';
 import { MercenaryAccountsService } from './mercenary/accounts.service.js';
 import { MercenaryHireService } from './mercenary/hire.service.js';
+import { MercenaryPayoutListener } from './mercenary/payout.listener.js';
+import { MercenaryPayoutService } from './mercenary/payout.service.js';
 import { TreasuryAwayNoticeService } from './treasury/away-notice.service.js';
 import { W22DevCommands } from './treasury/dev-console.command.js';
 import { TreasuryFinalizeService } from './treasury/finalize.service.js';
@@ -98,6 +100,8 @@ export const env = {
     BountyRepository,
     MercenaryAccountsService,
     MercenaryHireService,
+    MercenaryPayoutListener,
+    MercenaryPayoutService,
     PlanetBountyWorld,
     CargoExportOutboxService,
     CargoImportOutboxService,
