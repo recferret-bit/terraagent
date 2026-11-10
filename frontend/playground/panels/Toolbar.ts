@@ -17,14 +17,14 @@ export interface ToolbarHandlers {
   onTileState(preset: TileStatePreset): void;
 }
 
-const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', work: 'work pose', row: 'spawn row', validate: 'validate parts', lights: 'Lights [L]', human: '1.8m human' };
+const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', work: 'work pose', row: 'spawn row', validate: 'validate parts', lights: 'Lights [L]', human: '1.8m human', ruin: 'ruin' };
 
 type BarTab = 'view' | 'world' | 'look' | 'work';
 
 const ORDER = {
   view: ['turntable'],
   world: ['surface', 'hexTerrain'],
-  look: ['wire', 'human'],
+  look: ['wire', 'human', 'ruin'],
   work: ['work', 'row', 'validate', 'lights'],
 } as const satisfies Record<'view' | 'world' | 'look' | 'work', readonly ToggleKey[]>;
 
