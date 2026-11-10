@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { BountyTarget } from '@terra/contracts';
 import { CoreException } from '../../core/errors/core-exception.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { AccountId } from '../domain/types.js';
+import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { BountyRepository } from './bounty.repository.js';
 import { BountyClaimError } from './errors.js';
 import { toBountyView, type BountyRow, type BountyView } from './view.js';
@@ -27,6 +28,7 @@ export class BountyClaimService {
   constructor(
     @Inject(BountyRepository) private readonly repo: BountyRepository,
     @Inject(FlagsService) private readonly flags: WaveFlags,
+    @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
   ) {}
 
   async claim(input: BountyClaimInput): Promise<BountyView> {
@@ -41,7 +43,9 @@ export class BountyClaimService {
     if (row.claimerAccountId && row.claimerAccountId !== input.accountId && !replace) {
       throw new BountyClaimError('queue_full', 'This bounty already has a claimer');
     }
-    return toBountyView(await this.write(row.id, input.accountId, replace));
+    const stored = await this.write(row.id, input.accountId, replace);
+    if (stored.fresh) await this.telemetry?.bountyClaimed(target.kind);
+    return toBountyView(stored.row);
   }
 
   private async openRow(input: BountyClaimInput): Promise<BountyRow> {
@@ -55,11 +59,11 @@ export class BountyClaimService {
     return row;
   }
 
-  private async write(id: string, accountId: string, replace: boolean): Promise<BountyRow> {
+  private async write(id: string, accountId: string, replace: boolean): Promise<{ row: BountyRow; fresh: boolean }> {
     const wrote = await this.repo.markClaimed(id, accountId, replace);
     const next = await this.repo.find(id);
-    if (wrote && next) return next;
-    if (next?.claimerAccountId === accountId) return next;
+    if (wrote && next) return { row: next, fresh: true };
+    if (next?.claimerAccountId === accountId) return { row: next, fresh: false };
     if (next?.claimerAccountId) throw new BountyClaimError('queue_full', 'This bounty already has a claimer');
     throw new BountyClaimError('invalid_args', 'Bounty is not open');
   }

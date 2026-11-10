@@ -1,10 +1,11 @@
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { BountyReward, newId, type SimCommandV1 } from '@terra/contracts';
+import { BountyReward, BountyTarget, newId, type SimCommandV1 } from '@terra/contracts';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { EscrowPort } from '../application/ports/escrow.port.js';
 import { ChainOutboxRepository, type ClaimedRow } from '../application/outbox/chain-outbox.repository.js';
 import { OutboxListeners } from '../application/outbox/outbox-listeners.js';
+import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { BountyRepository } from './bounty.repository.js';
 import { bountyIdFromPayOp, bountyPayOpId } from './validate.js';
 import type { BountyRow } from './view.js';
@@ -35,6 +36,7 @@ export class BountyPayService implements OnModuleInit, OnModuleDestroy {
     @Inject(FlagsService) private readonly flags: WaveFlags,
     @Optional() @Inject(GamePlanets) private readonly sim?: SimHost,
     @Optional() @Inject(OutboxListeners) private readonly listeners?: OutboxListeners,
+    @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
   ) {}
 
   onModuleInit(): void {
@@ -69,8 +71,14 @@ export class BountyPayService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async finish(row: BountyRow, claimerId: string): Promise<void> {
-    if (row.state === 'completed') await this.repo.markPaid(row.id);
+    if (row.state === 'completed' && await this.repo.markPaid(row.id)) await this.notePaid(row);
     if (await this.tellSim(row, claimerId)) await this.outbox.flagPayload(bountyPayOpId(row.id), 'simPaid');
+  }
+
+  /** One `bounty_paid` when `completed` becomes `paid`. A replay of `bounty-pay:{id}` does not. */
+  private notePaid(row: BountyRow): Promise<void> {
+    const parsed = BountyTarget.safeParse(row.target);
+    return this.telemetry?.bountyPaid(parsed.success ? parsed.data.kind : 'unknown') ?? Promise.resolve();
   }
 
   /** Module command. No planet loaded, or no reward amount, means try again on the next pay or boot. */

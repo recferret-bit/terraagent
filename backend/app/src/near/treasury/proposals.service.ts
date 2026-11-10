@@ -23,6 +23,7 @@ import {
   type TreasuryCouncilResponse,
   type TreasuryProposalResponse,
 } from './council-view.js';
+import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { PlanetDaoLifecycleService, type EnsuredPlanetDao } from './lifecycle.service.js';
 import {
   assertNoOpenProposal,
@@ -52,6 +53,7 @@ export class TreasuryProposalsService {
     @Optional() @Inject(ChainOutboxRepository) private readonly outbox?: ChainOutboxRepository,
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
+    @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
   ) {}
 
   async council(planetId: string): Promise<TreasuryCouncilResponse> {
@@ -79,7 +81,9 @@ export class TreasuryProposalsService {
       kind: project.kind,
       payload,
     }));
-    return this.publish(planetId, ensured.daoAccountId, created.proposalId);
+    const response = await this.publish(planetId, ensured.daoAccountId, created.proposalId);
+    await this.telemetry?.proposalOpened(planetId, response.kind);
+    return response;
   }
 
   async vote(planetId: string, id: string, raw: unknown, req: IncomingMessage): Promise<TreasuryProposalResponse> {
@@ -101,7 +105,9 @@ export class TreasuryProposalsService {
       const receipt = await this.dao.vote({ opId: op, daoAccountId: ensured.daoAccountId, proposalId, voter: accountId, vote });
       return { receipt };
     });
-    return this.publish(planetId, ensured.daoAccountId, proposalId);
+    const response = await this.publish(planetId, ensured.daoAccountId, proposalId);
+    await this.telemetry?.voteCast(planetId, response.kind, response.state);
+    return response;
   }
 
   /** Open away digest for this account. No colony row means present, so existing votes still land. */

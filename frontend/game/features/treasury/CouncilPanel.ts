@@ -1,4 +1,5 @@
 import type { FeatureContext, GameView } from '../../core/registry/types';
+import { TreasuryTracker } from './analytics/treasuryTracker';
 import { fetchCouncil, postProposal, postVote, readApiErrorCode, type CouncilFetch } from './councilApi';
 import { mountCouncilSheet, type CouncilDom } from './councilDom';
 import { councilSignature, councilView, mergeProposalPush } from './councilModel';
@@ -20,6 +21,7 @@ export class CouncilPanel {
   private sheetOpen = false;
   private readonly offs: Array<() => void> = [];
   private readonly fetchImpl: CouncilFetch;
+  private readonly tracker: TreasuryTracker;
 
   constructor(
     host: HTMLElement,
@@ -27,6 +29,7 @@ export class CouncilPanel {
     private readonly ctx: FeatureContext,
     opts: CouncilPanelOptions = {},
   ) {
+    this.tracker = new TreasuryTracker(ctx.services.track);
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
     this.menu = new PlanetMenu(host);
     if (ctx.flags.has('W22')) this.offs.push(this.menu.register({ id: 'council', label: 'Council', open: () => { void this.open(); } }));
@@ -48,6 +51,7 @@ export class CouncilPanel {
     this.menu.closeList();
     this.sheetOpen = true;
     this.dom.root.hidden = false;
+    if (this.ctx.flags.has('W22')) this.tracker.councilOpened();
     return this.refresh();
   }
 
