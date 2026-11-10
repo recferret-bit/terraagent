@@ -3211,7 +3211,8 @@
               "order_too_small",
               "unknown_order",
               "away_policy",
-              "already_posted"
+              "already_posted",
+              "invalid_target"
             ],
             "type": "string"
           },
@@ -5168,7 +5169,8 @@
             "enum": [
               "expired",
               "cancelled",
-              "failed"
+              "failed",
+              "building_lost"
             ],
             "type": "string"
           },
@@ -5192,7 +5194,7 @@
         "type": "object"
       },
       "severity": "warn",
-      "summary": "An expired, cancelled, or failed bounty returned its reward to the poster (W22-02, NEAR-110).",
+      "summary": "An expired, cancelled, failed, or lost-building bounty returned its reward to the poster (W22-02, W22-21, NEAR-110).",
       "wave": "W22"
     },
     "brownout": {
@@ -6761,7 +6763,8 @@
               "order_too_small",
               "unknown_order",
               "away_policy",
-              "already_posted"
+              "already_posted",
+              "invalid_target"
             ],
             "type": "string"
           },
@@ -9897,7 +9900,8 @@
                 "order_too_small",
                 "unknown_order",
                 "away_policy",
-                "already_posted"
+                "already_posted",
+                "invalid_target"
               ],
               "type": "string"
             },
