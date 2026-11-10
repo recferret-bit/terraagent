@@ -1492,3 +1492,23 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** A `treasury.proposal` push updates the open sheet's vote count. Change a cost in `shared/sim/src/data/treasury.ts` and reload; the form shows `projects` from the API. Another feature can add a Planet menu row with `registerPlanetMenuItem` while this feature is mounted.
 - **To resolve:** When W22-09 fills `effects`, the sheet already reads that array. Hide `guild_subsidy` only if the API stops sending it.
 - **Found:** 2026-11-10, W22-14
+
+### FF-106 · The bounty board shows state text, not a defend or deliver meter
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/bounty/bountyModel.ts` (`progressOf`), `backend/app/src/near/bounty/view.ts` (`BountyView`)
+- **What happens:** `GET /v1/bounties/:planetId` returns id, target, reward, state, expiry, escrow, and claimer. It does not return a defend percent or a delivered/target pair. The board prints the state word (Open, Claimed, Completed, Paid, Expired, Refunded). If a row ever includes `defendPercent`, `defendBp`, or both `delivered` and `deliverTarget`, that text is shown too. The client does not keep its own progress counter.
+- **Why it is like this:** W22-25 said not to invent a second progress store when the API has no such fields. Defend presence and delivery sums live on the sim and `chain.bounty_delivery`, not on this GET.
+- **Workaround / mitigation:** Open and claimed rows stay on the board until the next GET (the open sheet polls every 4 s) moves them to Paid or Expired. A paid row links its escrow receipt.
+- **To resolve:** Add the two numbers to `BountyView` when a later issue owns them. The board already prints them and should not grow a parallel store.
+- **Found:** 2026-11-10, W22-25
+
+### FF-107 · Bounty post takes typed target fields, not a map click
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/bounty/bountyDom.ts` (post form), W22-25 in `docs/plan/waves/W22-treasury-bounties.md`
+- **What happens:** The post form is a target kind (clear nest, defend area, deliver units), the fields that kind needs (nest id, tile q/r, radius, defend hours, deliver resource and amount), a reward resource and amount, and expiry hours. Nothing listens for a click on a nest or a tile.
+- **Why it is like this:** The issue acceptance for this change is a form with a target, a reward, and an expiry. A map picker needs the live nest id under the cursor, which this GET does not provide, and W22-26 owns the map layer. No browser was opened. The 740×360 fit is the same max box as Council (420×320 inside a 16 px gutter, body scrolls).
+- **Workaround / mitigation:** Type the nest id or the tile. The server still rejects an unseen nest with `invalid_target`, and the sheet shows that code.
+- **To resolve:** When a pick returns a hive id or a tile, fill those inputs. Do not post from the click itself.
+- **Found:** 2026-11-10, W22-25
