@@ -32,3 +32,19 @@ model MockChainAgentAllowance {
   @@map("mock_chain_agent_allowance")
   @@schema("chain")
 }
+
+/// One director limited key per colony (W15-18, NEAR-80). `allowance` and `spent` mirror the primary resource.
+/// `tokens` is the per-token ledger. `director.status` is built from `keyStatus`, not from this row (BE-73).
+model DirectorKey {
+  colonyId  String    @id @map("colony_id") @db.VarChar(64)
+  accountId String    @map("account_id") @db.VarChar(64)
+  publicKey String    @unique @map("public_key") @db.VarChar(128)
+  allowance Decimal   @db.Decimal(78, 0)
+  spent     Decimal   @default(0) @db.Decimal(78, 0)
+  tokens    Json
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@map("director_key")
+  @@schema("chain")
+}

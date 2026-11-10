@@ -8,6 +8,9 @@ import { CargoExportOutboxService } from './cargo/cargo-export-outbox.js';
 import { CargoImportOutboxService } from './cargo/cargo-import-outbox.js';
 import { CargoStatusController } from './cargo/cargo-status.controller.js';
 import { CargoStatusService } from './cargo/cargo-status.service.js';
+import { DirectorKeyController } from './director-key/director-key.controller.js';
+import { DirectorKeyRepository } from './director-key/director-key.repository.js';
+import { DirectorKeyService } from './director-key/director-key.service.js';
 import { FreeVerifierService } from './cargo/free-verifier.service.js';
 import { ChainDevController } from './infrastructure/dev/chain-dev.controller.js';
 import { ChainExplorerController } from './infrastructure/dev/chain-explorer.controller.js';
@@ -48,6 +51,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
   controllers: [
     AccountClaimController,
     CargoStatusController,
+    DirectorKeyController,
     ChainDevController,
     ChainExplorerController,
     DeedShareController,
@@ -65,6 +69,8 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    DirectorKeyRepository,
+    DirectorKeyService,
     DeedDebounceService,
     DeedDevCommand,
     DeedImageRendererService,
@@ -90,6 +96,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    DirectorKeyService,
     DeedDebounceService,
     DeedDevCommand,
     DeedImageRendererService,
