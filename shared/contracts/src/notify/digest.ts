@@ -32,6 +32,14 @@ const lostByCause = countByKind.extend({
 
 const capped = <T extends z.ZodType>(item: T) => z.array(item).max(DIGEST_LIST_CAP);
 
+/** One director fill on the away digest (W15-24). The sentence is `directorDigestLine`. */
+export const DIGEST_DIRECTOR_TRADE = 'digest.directorTrade' as const;
+export const DigestDirectorTradeSchema = z.strictObject({
+  kind: z.literal(DIGEST_DIRECTOR_TRADE),
+  line: z.string().min(1).max(200),
+});
+export type DigestDirectorTrade = z.infer<typeof DigestDirectorTradeSchema>;
+
 /**
  * `AwayDigestV1` (CONTINUITY CT-30..34). Lists are capped at 20 (CT-31).
  * `story` is the optional CT-34 paragraph; it is omitted when no provider runs.
@@ -88,6 +96,8 @@ export const AwayDigestV1Schema = z.strictObject({
     code: z.enum(['rocket_ready', 'power_deficit', 'storage_full', 'supply_cap', 'under_attack']),
     message: z.string().min(1).max(200),
   })),
+  /** Director fills folded while this away row is open. Omitted when there are none. Capped at 20 (CT-31). */
+  items: capped(DigestDirectorTradeSchema).optional(),
   story: z.string().max(AWAY_STORY_MAX_CHARS).optional(),
 });
 export type AwayDigestV1 = z.infer<typeof AwayDigestV1Schema>;
