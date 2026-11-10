@@ -34,6 +34,7 @@ describe('W04-01 contracts and flag W04', () => {
       'threats',
       'market',
       'walls',
+      'bounties',
     ]);
     expect(ALERT_PING_KINDS).toEqual([
       'underAttack',

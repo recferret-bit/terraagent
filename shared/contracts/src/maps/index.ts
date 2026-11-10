@@ -18,6 +18,7 @@ export const MAP_LAYER_IDS = [
   'threats',
   'market',
   'walls',
+  'bounties',
 ] as const;
 
 export type MapLayerId = (typeof MAP_LAYER_IDS)[number];
@@ -42,6 +43,7 @@ export const MAP_LAYER_META: Record<MapLayerId, MapLayerMeta> = {
   threats: { id: 'threats', label: 'Threats', wave: 'W07', defaultOn: false, order: 60 },
   market: { id: 'market', label: 'Market', wave: 'W13', defaultOn: false, order: 70 },
   walls: { id: 'walls', label: 'Walls', wave: 'W14', defaultOn: false, order: 80 },
+  bounties: { id: 'bounties', label: 'Bounties', wave: 'W22', defaultOn: true, order: 90 },
 };
 
 export const MapLayerMetaSchema = z.strictObject({

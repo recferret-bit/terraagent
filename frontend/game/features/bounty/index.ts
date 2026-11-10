@@ -1,5 +1,6 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import { BountyBoard } from './BountyBoard';
+import { attachBountyMapLayer } from './mapLayer';
 import './bounty.css';
 
 function veilHost(el: HTMLElement): HTMLElement {
@@ -12,8 +13,14 @@ function mountBoard(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
   el.hidden = true;
   const panel = new BountyBoard(el, veilHost(el), ctx);
   board = panel;
+  const layer = attachBountyMapLayer(ctx);
+  layer.sync();
   return {
+    update() {
+      layer.sync();
+    },
     dispose() {
+      layer.dispose();
       if (board === panel) board = null;
       panel.dispose();
     },
