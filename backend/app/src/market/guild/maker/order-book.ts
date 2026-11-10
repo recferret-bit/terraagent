@@ -6,7 +6,8 @@ import { requirementOf } from '../../orders/order-funds.js';
 import { PLATFORM_ACCOUNT_ID } from '../../orders/market-policy.provider.js';
 import { orderIdOf } from '../../orders/place-order.service.js';
 import type { FundingBucket } from '../funding/exposure.js';
-import type { GuildOrderIntent } from './plan.js';
+import { quoteSeqOf } from '../offers/quote-row.js';
+import { departOf, type GuildOrderIntent } from './plan.js';
 
 export interface RestingGuildOrder {
   readonly orderId: string;
@@ -18,6 +19,11 @@ export interface RestingGuildOrder {
   readonly bucket: FundingBucket;
   readonly reserve: bigint;
   readonly notional: bigint;
+  readonly quote: string;
+  readonly amount: bigint;
+  readonly ref: string;
+  readonly departAt: number;
+  readonly quoteSeq: number;
 }
 
 export interface GuildOrderPort {
@@ -48,7 +54,8 @@ export class GuildOrderBook implements GuildOrderPort {
         ...(planetId ? { planetId } : {}),
       },
       select: {
-        orderId: true, planetId: true, colonyId: true, base: true, side: true, actorKind: true, signedTerms: true, priceAmount: true,
+        orderId: true, planetId: true, colonyId: true, base: true, quote: true, side: true, actorKind: true,
+        signedTerms: true, priceAmount: true, amount: true, ref: true,
       },
     });
     return rows.map(toResting);
@@ -121,22 +128,31 @@ function toResting(row: {
   planetId: string;
   colonyId: string;
   base: string;
+  quote: string;
   side: string;
   actorKind: string;
   signedTerms: Prisma.JsonValue | null;
   priceAmount: Prisma.Decimal;
+  amount: Prisma.Decimal;
+  ref: string;
 }): RestingGuildOrder {
   const terms = termsFrom(row.signedTerms);
+  const parsed = departOf(row.ref);
   return {
     orderId: row.orderId,
     planetId: row.planetId,
     colonyId: row.colonyId,
     base: row.base,
+    quote: row.quote,
     side: row.side === 'buy' ? 'buy' : 'sell',
     actorKind: row.actorKind,
     bucket: terms.bucket === 'cash' ? 'cash' : 'inventory',
     reserve: reserveOf(terms.reserve),
     notional: decimalToBigint(row.priceAmount),
+    amount: decimalToBigint(row.amount),
+    ref: row.ref,
+    departAt: parsed?.departAt ?? 0,
+    quoteSeq: quoteSeqOf(row.signedTerms) || parsed?.quoteSeq || 0,
   };
 }
 
