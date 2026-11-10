@@ -1,4 +1,5 @@
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
+import { ownColonyIndex } from '../shared/colony';
 import {
   applyColonyStatusSimEvent,
   extractColonyStatusView,
@@ -56,6 +57,10 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
 
     this.el = parentEl;
     this.el.classList.add('ta-colony-status-hud');
+    const hostEl = this.ctx.services?.hudOverlay ?? parentEl;
+    if (this.ctx.services?.hudOverlay && this.ctx.services.hudOverlay !== parentEl) {
+      this.el.hidden = true;
+    }
 
     // 1. Critical Banner DOM
     this.bannerEl = document.createElement('div');
@@ -88,7 +93,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
 
     this.bannerEl.appendChild(bannerHeader);
     this.bannerEl.appendChild(this.placeHubBtn);
-    this.el.appendChild(this.bannerEl);
+    hostEl.appendChild(this.bannerEl);
 
     // 2. Eliminated Screen DOM
     this.eliminatedEl = document.createElement('div');
@@ -127,7 +132,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
     card.appendChild(this.foundNewColonyBtn);
 
     this.eliminatedEl.appendChild(card);
-    this.el.appendChild(this.eliminatedEl);
+    hostEl.appendChild(this.eliminatedEl);
 
     this.render();
   }
@@ -138,14 +143,16 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
 
   update(rawView?: unknown): void {
     if (rawView === undefined || rawView === null) return;
-    const nextView = extractColonyStatusView(rawView, this.options.ownColonyIndex ?? this.currentView.colonyIndex);
+    const ownIdx = ownColonyIndex(this.ctx.services, this.options.ownColonyIndex);
+    const nextView = extractColonyStatusView(rawView, ownIdx);
     this.applyView(nextView);
   }
 
   ingestSimEvents(events?: readonly unknown[] | unknown): void {
     if (!events) return;
     const list = Array.isArray(events) ? events : [events];
-    let next = this.currentView;
+    const ownIdx = ownColonyIndex(this.ctx.services, this.options.ownColonyIndex);
+    let next = { ...this.currentView, colonyIndex: ownIdx };
     for (const ev of list) {
       if (!ev) continue;
       next = applyColonyStatusSimEvent(next, ev);

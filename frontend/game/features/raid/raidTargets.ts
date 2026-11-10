@@ -57,7 +57,7 @@ export function extractRaidTargets(
         : typeof col.shieldRemainingSeconds === 'number' && col.shieldRemainingSeconds > 0
           ? col.shieldRemainingSeconds
           : 0;
-    const shieldRemainingHours = shieldActive ? Math.floor(shieldRemainingSeconds / 3600) : 0;
+    const shieldRemainingHours = shieldActive ? Math.round(shieldRemainingSeconds / 3600) : 0;
     const truceActive = Boolean(marker.truceActive || col.truceActive);
     const crossSectorDisabled = Boolean(
       col.crossSectorDisabled ?? (marker as any).crossSectorDisabled ?? false,

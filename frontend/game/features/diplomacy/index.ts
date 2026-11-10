@@ -55,6 +55,7 @@ export function mountDiplomacyHud(
   const panel = createDiplomacyPanel(el, {
     actions,
     ownColonyIndex: ownColonyIndex(ctx.services),
+    getOwnColonyIndex: () => ownColonyIndex(ctx.services),
   });
 
   activeDiplomacyPanel = panel;

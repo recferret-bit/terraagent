@@ -70,13 +70,17 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
     this.render();
   }
 
+  private resolveOwnIndex(): number {
+    return this.opts.getOwnColonyIndex ? this.opts.getOwnColonyIndex() : (this.opts.ownColonyIndex ?? 0);
+  }
+
   update(snapshotOrView: unknown): void {
     if (snapshotOrView && typeof snapshotOrView === 'object' && 'incomingOffers' in snapshotOrView) {
       this.currentView = snapshotOrView as DiplomacyColonyView;
     } else {
       this.currentView = extractDiplomacyColonyView(
         snapshotOrView,
-        this.opts.ownColonyIndex ?? 0,
+        this.resolveOwnIndex(),
         this.currentView.currentTick,
       );
     }
@@ -84,9 +88,10 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   }
 
   ingestSimEvents(events: readonly { kind: string; data?: Record<string, unknown> }[]): void {
-    let view = this.currentView;
+    const ownIdx = this.resolveOwnIndex();
+    let view = { ...this.currentView, colonyIndex: ownIdx };
     for (const ev of events) {
-      view = applyDiplomacySimEvent(view, ev, this.opts.ownColonyIndex ?? 0);
+      view = applyDiplomacySimEvent(view, ev, ownIdx);
     }
     this.currentView = view;
     this.render();

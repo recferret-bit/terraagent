@@ -17,7 +17,7 @@ export interface DevScenarioSeat {
  */
 export async function seatDevScenarioPlayer(prisma: PrismaClient, input: DevScenarioSeat): Promise<number | undefined> {
   await ensurePlayer(prisma, input.playerId, input.handle);
-  return ensureSeat(prisma, input.playerId, input.planetId, input.colonyIndices ?? [0]);
+  return ensureSeat(prisma, input.playerId, input.planetId, input.colonyIndices ?? [0], input.handle);
 }
 
 async function ensurePlayer(prisma: PrismaClient, id: string, handle: string): Promise<void> {
@@ -36,18 +36,40 @@ async function ensurePlayer(prisma: PrismaClient, id: string, handle: string): P
   throw new Error(`could not seat dev player ${id}`);
 }
 
+const HANDLE_COLONY_INDEX: Readonly<Record<string, number>> = {
+  a: 0,
+  b: 1,
+  c: 2,
+  d: 3,
+  e: 4,
+};
+
 /** The lowest scenario colony index with no `core.colony` row on the planet; undefined when every seat is taken. */
-export function nextFreeSeat(indices: readonly number[], taken: ReadonlySet<number>): number | undefined {
+export function nextFreeSeat(
+  indices: readonly number[],
+  taken: ReadonlySet<number>,
+  handle?: string,
+): number | undefined {
+  const preferred = handle ? HANDLE_COLONY_INDEX[handle.trim().toLowerCase()] : undefined;
+  if (preferred !== undefined && indices.includes(preferred) && !taken.has(preferred)) {
+    return preferred;
+  }
   return [...indices].sort((a, b) => a - b).find((i) => !taken.has(i));
 }
 
 /** The seated colony index (the existing seat's, or the new one); undefined when every seat is taken. */
-async function ensureSeat(prisma: PrismaClient, playerId: string, planetId: string, indices: readonly number[]): Promise<number | undefined> {
+async function ensureSeat(
+  prisma: PrismaClient,
+  playerId: string,
+  planetId: string,
+  indices: readonly number[],
+  handle?: string,
+): Promise<number | undefined> {
   const mine = await prisma.colony.findFirst({ where: { playerId, planetId }, select: { colonyIndex: true } });
   if (mine) return mine.colonyIndex;
   for (let attempt = 0; attempt < 3; attempt++) {
     const taken = new Set((await prisma.colony.findMany({ where: { planetId }, select: { colonyIndex: true } })).map((c) => c.colonyIndex));
-    const index = nextFreeSeat(indices, taken);
+    const index = nextFreeSeat(indices, taken, handle);
     if (index === undefined) return undefined; // every scenario colony is taken: this session stays on the synthetic colony 0
     try {
       await prisma.colony.create({

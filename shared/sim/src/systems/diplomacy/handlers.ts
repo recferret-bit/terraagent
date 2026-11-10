@@ -1,4 +1,5 @@
 import { defineCommandHandler } from '../../kernel/commands';
+import { isAway } from '../away';
 import { commandColony, parseArgs } from '../command';
 import { cancelTruce, devOfferTruce, proposeTruce, respondTruce } from './operations';
 import { resolveColonyIndex } from './store';
@@ -52,14 +53,19 @@ export const devOfferTruceHandler = defineCommandHandler({
   handle(state, cmd, ctx) {
     const parsed = parseArgs('dev.offerTruce', cmd.args);
     if (!parsed) return 'invalid_args';
-    const toColony =
+    let toColony =
       parsed.toColony !== undefined
         ? resolveColonyIndex(state, parsed.toColony)
         : typeof cmd.colonyIndex === 'number' && cmd.colonyIndex >= 0
           ? cmd.colonyIndex
           : 0;
     const fromRef = parsed.fromColony ?? parsed.colony ?? (toColony === 0 ? 1 : 0);
-    const fromColony = resolveColonyIndex(state, fromRef);
+    let fromColony = resolveColonyIndex(state, fromRef);
+    if (fromColony >= 0 && toColony >= 0 && isAway(state, fromColony) && !isAway(state, toColony)) {
+      const tmp = fromColony;
+      fromColony = toColony;
+      toColony = tmp;
+    }
     const hours = parsed.hours ?? parsed.durationHours ?? 6;
     const offer = devOfferTruce(state, fromColony, toColony, hours, ctx.tick, ctx);
     if (!offer) return 'invalid_args';

@@ -8,14 +8,23 @@
 .ta-neighbor-hud-strip {
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s2);
-  padding: var(--ta-s2);
+  gap: var(--ta-s1);
+  padding: var(--ta-s1) var(--ta-s2);
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam);
   color: var(--ta-text);
   font-family: var(--ta-font-body);
   font-size: var(--ta-fs-small);
-  margin-top: var(--ta-s2);
+  margin-top: var(--ta-s1);
+  max-height: 76px;
+  max-width: 210px;
+  overflow-y: auto;
+}
+
+@media (max-height: 500px) {
+  .ta-neighbor-hud-strip {
+    max-height: 36px;
+  }
 }
 
 .ta-neighbor-hud-strip:empty {
@@ -91,10 +100,14 @@
 }
 
 .ta-minimap-neighbor-markers {
-  position: relative;
+  position: absolute;
+  top: 24px;
+  left: 4px;
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s1);
+  gap: 2px;
+  max-height: 64px;
+  overflow: hidden;
   pointer-events: none;
 }
 
