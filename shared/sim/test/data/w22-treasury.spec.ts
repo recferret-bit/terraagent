@@ -15,6 +15,7 @@ describe('W22-01 treasury data rows', () => {
     expect(dataRow(on, 'treasury', 'terraform_boost')).toMatchObject({ durationH: 12, magnitudeBp: 2500, cost: 1000 });
     expect(dataRow(on, 'treasury', 'guild_subsidy')).toMatchObject({ durationH: 0, magnitudeBp: 0, cost: 800, visits: 1 });
     expect(dataRow(on, 'treasuryPolicy', 'vote')).toMatchObject({ proposalTtlH: 6, passAboveBp: 5000, passMinYes: 2 });
+    expect(dataRow(on, 'treasuryPolicy', 'hazard')).toMatchObject({ intervalTicks: 180, baseStrikeBp: 10000 });
     expect(dataRow(on, 'market', 'policy').treasuryShareBp).toBe(2000);
   });
 

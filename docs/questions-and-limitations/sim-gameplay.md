@@ -1271,3 +1271,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** `awayPolicy` already rejects an extractor whose view says session spend is at the cap. The view's `stock.spent` has to be filled from `chargeAwaySpend` by the caller.
 - **To resolve:** W09-12 (or the economy spend path) calls `openAwaySession` when `system.presence` goes away and `chargeAwaySpend` before an automated debit.
 - **Found:** 2026-11-09, W09-11
+
+### GP-116 · Meteor shield counts strikes and does not crater the map
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/treasury/clock.ts` (`stepTreasuryHazards`), `shared/sim/src/data/treasury-policy.ts` (`hazard`)
+- **What happens:** `system.treasuryEffect` stores `meteor_shield` on `blobs.treasury` until `untilTick`. The hazard clock (slot 2, every `intervalTicks`) rolls a strike from the planet seed and the attempt tick. A hit increments `hazardStrikes`. A hit on an even attempt also increments `lightningStrikes`. While the shield is active and the attempt tick is before `untilTick`, the chance is `baseStrikeBp * (10000 - magnitudeBp) / 10000` (7500 leaves 25 % of the base rate). The roll never calls `dev.meteor` and never writes a tile, so the map is not cratered. At `untilTick` the effect is deleted and `treasuryEffectEnded` fires once.
+- **Why it is like this:** Wiring the automatic roll to a destructive meteor would raze the colony the shield is there to protect. W22-10 needs a counter the shield can reduce. Console `dev.meteor` is still the way to dig a crater (GP-112).
+- **Workaround / mitigation:** The counter is the effect. The HUD badge and any visual strike are later issues (W22-15).
+- **To resolve:** Only if the owner wants automatic craters that avoid buildings. That would be a new hazard path, not this counter.
+- **Found:** 2026-11-10, W22-10
