@@ -1512,3 +1512,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Type the nest id or the tile. The server still rejects an unseen nest with `invalid_target`, and the sheet shows that code.
 - **To resolve:** When a pick returns a hive id or a tile, fill those inputs. Do not post from the click itself.
 - **Found:** 2026-11-10, W22-25
+
+### FF-108 · Bounty map tags read the sim blob, not a bounty poll
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/bounty/mapLayer.ts` (`bountyMarkersForView`), `frontend/game/maps/MapsController.ts` (`drawMinimapOverlays`)
+- **What happens:** With W22 and W04 on, the Bounties chip (on by default) paints the reward amount on a live `clear_nest` at the hive tile, and on a `defend_area` at its q,r. The list is `blobs.bounty` already on the client view. A hive position comes from that view's entities or `faunaHives`. `deliver_units` has no tile, so it draws nothing. Completed, paid, expired, and refunded rows draw nothing. The minimap calls this one extra layer; other extra layers stay on the global map. W22 off does not register the layer. A missing map registry returns a no-op and does not throw. No browser was opened.
+- **Why it is like this:** W22-26 says to prefer data the client already has. The sim writes `blobs.bounty` on `bounty.post`. Polling `GET /v1/bounties/:planetId` would be a second copy of the board's fetch. The global map already draws registered extra layers; the minimap did not, so only Bounties was added there.
+- **Workaround / mitigation:** Open the global map or look at the minimap after the sim blob arrives. The tag is the amount (`200`), not the resource name. Turn the Bounties chip off to hide it.
+- **To resolve:** If a chain row can exist without `blobs.bounty`, feed that GET into `bountyMapMarkers` without a second poll. Give `deliver_units` a tile only when the payload has one.
+- **Found:** 2026-11-10, W22-26
