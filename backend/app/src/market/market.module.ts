@@ -47,6 +47,9 @@ import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
+import { DirectorColonySource, SimDirectorSource } from './director/director-source.js';
+import { DirectorLoopService } from './director/director-loop.service.js';
+import { DirectorMarketPort, DirectorSimMarket } from './director/director-market.js';
 import { GuildModule } from './guild/guild.module.js';
 import { EconomyModule } from '../economy/economy.module.js';
 import { TradeHistoryProducer } from './progression/trade-history.producer.js';
@@ -103,6 +106,11 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeStreamService,
     TradeAgentService,
     TradeStallService,
+    DirectorSimMarket,
+    SimDirectorSource,
+    { provide: DirectorMarketPort, useExisting: DirectorSimMarket },
+    { provide: DirectorColonySource, useExisting: SimDirectorSource },
+    DirectorLoopService,
   ],
   controllers: [
     MarketController,
