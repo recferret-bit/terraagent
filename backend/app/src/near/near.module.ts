@@ -50,6 +50,7 @@ import { BountyPostService } from './bounty/post.service.js';
 import { BountyRepository } from './bounty/bounty.repository.js';
 import { PlanetBountyWorld } from './bounty/world.js';
 import { MercenaryAccountsService } from './mercenary/accounts.service.js';
+import { W22DevCommands } from './treasury/dev-console.command.js';
 import { TreasuryFinalizeService } from './treasury/finalize.service.js';
 import { GuildSubsidyService } from './treasury/guild-subsidy.js';
 import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
@@ -59,7 +60,10 @@ import { TreasuryProposalsService } from './treasury/proposals.service.js';
 import { TreasuryController } from './treasury/treasury.controller.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
-export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
+export const env = {
+  name: nearEnv.name,
+  schema: z.intersection(nearEnv.schema, outboxEnv.schema),
+} as unknown as EnvSection;
 
 /** NEAR integration: port bindings, chain outbox, dev chain routes, mock OAuth, social login, relay status, and `/v1/near/health`. */
 @Module({
@@ -107,6 +111,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     FreeVerifierService,
     GuildSubsidyService,
     TreasuryFinalizeService,
+    W22DevCommands,
     ColonyAccounts,
     RelayStatusService,
     SocialAuthService,

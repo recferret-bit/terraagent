@@ -1,5 +1,6 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import { CouncilPanel } from './CouncilPanel';
+import { TREASURY_DEV_COMMANDS } from './devCommands';
 import { EffectHud } from './EffectHud';
 import './council.css';
 import './treasury.css';
@@ -45,5 +46,14 @@ export default defineFeature({
     { id: 'effect-badges', slot: 'top-center', order: 2, mount: mountEffects },
     { id: 'council', slot: 'top-center', order: 3, mount: mountCouncil },
   ],
-  menus: [{ id: 'council', label: 'Council', open() { void council?.open(); } }],
+  menus: [
+    {
+      id: 'council',
+      label: 'Council',
+      open() {
+        void council?.open();
+      },
+    },
+  ],
+  devCommands: [...TREASURY_DEV_COMMANDS],
 });
