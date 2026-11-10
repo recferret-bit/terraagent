@@ -33,6 +33,7 @@ function classifyFoundedColonies(
   secColonies: readonly ColonyRecord[],
   eliminatedColonyIds: ReadonlySet<string>,
   settledColonyIds: ReadonlySet<string>,
+  releasedEliminatedCount = 0,
 ): {
   readonly livingColonies: number;
   readonly eliminatedColonies: number;
@@ -40,20 +41,43 @@ function classifyFoundedColonies(
 } {
   const repoById = new Map(secColonies.map((c) => [c.id, c]));
   let settledColonies = 0;
-  let eliminatedColonies = 0;
+  let eliminatedInFounded = 0;
   for (const colId of foundedColonyIds) {
     const status = repoById.get(colId)?.status ?? 'ACTIVE';
     if (settledColonyIds.has(colId) || status === 'TRANSFERRED' || status === 'SETTLED') {
       settledColonies++;
     } else if (eliminatedColonyIds.has(colId) || status === 'ELIMINATED' || status === 'RETIRED') {
-      eliminatedColonies++;
+      eliminatedInFounded++;
     }
   }
   return {
-    livingColonies: Math.max(0, foundedSeats - eliminatedColonies - settledColonies),
-    eliminatedColonies,
+    livingColonies: Math.max(0, foundedSeats - eliminatedInFounded - settledColonies),
+    eliminatedColonies: eliminatedInFounded + releasedEliminatedCount,
     settledColonies,
   };
+}
+
+function countReleasedEliminatedInSector(
+  releasedIds: ReadonlySet<string>,
+  foundedColonyIds: ReadonlySet<string>,
+  repoColonies: readonly ColonyRecord[],
+  sectorId: string,
+  eliminatedColonyIds: ReadonlySet<string>,
+): number {
+  let count = 0;
+  for (const colId of releasedIds) {
+    if (foundedColonyIds.has(colId)) continue;
+    const repoCol = repoColonies.find((c) => c.id === colId);
+    if (repoCol && (repoCol.foundingSectorId ?? 'sec_0_0') !== sectorId) continue;
+    if (
+      eliminatedColonyIds.has(colId) ||
+      repoCol?.status === 'ELIMINATED' ||
+      repoCol?.status === 'RETIRED'
+    ) {
+      count++;
+    }
+  }
+  return count;
 }
 
 function buildOceanSectorCounts(
@@ -155,6 +179,13 @@ export function computeAuthoritativeSectorCounts(params: {
     secColonies,
     eliminatedColonyIds,
     settledColonyIds,
+    countReleasedEliminatedInSector(
+      releasedIds,
+      foundedColonyIds,
+      repoColonies,
+      sector.sectorId,
+      eliminatedColonyIds,
+    ),
   );
   const occ = deriveSectorOccupancy({
     kind: sector.kind,

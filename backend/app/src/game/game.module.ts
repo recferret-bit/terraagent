@@ -23,6 +23,7 @@ import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
 import { EconomyProfileService } from '../economy/profile/profile.service';
 import { WorldLifecycleService } from '../lobby/lifecycle.service';
+import { WorldReconciliationService } from '../lobby/reconciliation.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { attachAwayDigest, AwayDigestService, createDigestStory, installDigestRowsGauge, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
@@ -177,7 +178,13 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     }
     this.wireSnapshotSavePoints();
     await this.pool.start();
-    this.unsubBridge = bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
+    this.unsubBridge = bridgePlanetEvents(
+      this.planets,
+      this.bus,
+      this.progressionForwarder,
+      this.log,
+      this.resolveReconciliation(),
+    );
     const home = this.homeService;
     if (home) {
       const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
@@ -254,6 +261,14 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       lifecycle.setSnapshotSavePoint((planetId, kind) => this.snapshots.capture(planetId, kind));
     } catch (e) {
       if (!(e instanceof Error) || !e.message.includes('WorldLifecycleService')) throw e;
+    }
+  }
+
+  private resolveReconciliation(): WorldReconciliationService | undefined {
+    try {
+      return this.modules.get(WorldReconciliationService, { strict: false });
+    } catch {
+      return undefined;
     }
   }
 

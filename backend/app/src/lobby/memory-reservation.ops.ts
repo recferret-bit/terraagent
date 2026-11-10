@@ -278,6 +278,7 @@ export class MemoryReservationOps {
     reservationId: string,
     reason: 'RELEASED' | 'EXPIRED' = 'RELEASED',
     expectedEpoch?: number,
+    options?: { readonly allowCommitted?: boolean },
   ): Promise<{ readonly released: boolean; readonly reservation: SectorReservationRecord }> {
     const res = this.reservationsById.get(reservationId);
     if (!res) {
@@ -294,7 +295,8 @@ export class MemoryReservationOps {
       if (current.state === 'RELEASED' || current.state === 'EXPIRED') {
         return { released: false, reservation: current };
       }
-      if (current.state === 'COMMITTED') {
+      const wasCommitted = current.state === 'COMMITTED';
+      if (wasCommitted && !options?.allowCommitted) {
         throw new LobbyPersistenceConflictError(
           'reservation_fenced',
           `cannot release committed reservation "${reservationId}": founded seats remain held`,
@@ -306,7 +308,7 @@ export class MemoryReservationOps {
 
       const slotKey = `${current.planetId}:${current.landingSlotId}`;
       const slot = this.landingSlots.get(slotKey);
-      if (slot && slot.reservationId === reservationId) {
+      if (slot && (slot.reservationId === reservationId || slot.colonyId === current.colonyId)) {
         this.landingSlots.set(slotKey, {
           ...slot,
           state: 'FREE',
@@ -319,16 +321,18 @@ export class MemoryReservationOps {
       const secKey = `${current.planetId}:${current.sectorId}`;
       const sector = this.sectors.get(secKey);
       if (sector) {
-        const reservedSeats = Math.max(0, sector.reservedSeats - 1);
+        const reservedSeats = wasCommitted ? sector.reservedSeats : Math.max(0, sector.reservedSeats - 1);
+        const foundedSeats = wasCommitted ? Math.max(0, sector.foundedSeats - 1) : sector.foundedSeats;
         this.sectors.set(secKey, {
           ...sector,
           reservedSeats,
+          foundedSeats,
           freeSeats: computeFreeSectorSeats(
             sector.kind,
             sector.foundingCapacity,
             sector.validatedCapacity,
             reservedSeats,
-            sector.foundedSeats,
+            foundedSeats,
           ),
           updatedAt: now,
         });
