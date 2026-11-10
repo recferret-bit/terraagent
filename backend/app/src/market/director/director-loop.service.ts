@@ -153,6 +153,7 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
     const key = await this.keys.find(colonyId);
     if (!key) return { ok: false, skip: 'director_key_missing' };
     const status = await this.wallet.keyStatus({ accountId: key.accountId, publicKey: key.publicKey });
+    // BE-83: the W16 AI kill switch is not in this process. A revoked director key is what stops autoTrade.
     if (status.revoked || key.revokedAt) {
       this.stopRevoked(view, key, status);
       return { ok: false, skip: 'director_key_revoked' };

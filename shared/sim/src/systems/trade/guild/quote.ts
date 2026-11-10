@@ -32,6 +32,11 @@ export interface GuildQuoteFixture {
   readonly lotUnits?: number;
   readonly minNotionalAtomic?: bigint;
   readonly budgetLeft?: bigint | null;
+  /**
+   * Whole-unit stockpile goal for `resource` from an accepted guild strategy.
+   * When set, this replaces the guild-table target. It is not a price.
+   */
+  readonly stockpileTarget?: bigint;
 }
 
 /**
@@ -91,6 +96,7 @@ function withSpread(base: AgentParams, side: 'bidHalfSpreadBp' | 'askHalfSpreadB
 }
 
 function targetOf(policy: GuildPolicy, fixture: GuildQuoteFixture): bigint {
+  if (fixture.stockpileTarget !== undefined) return fixture.stockpileTarget;
   const id = fixture.npcId ?? 'kestrel';
   const npc = policy.roster.find((n) => n.id === id);
   if (!npc) throw new RangeError(`guild npc ${id} is not on the roster`);
