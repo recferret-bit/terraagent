@@ -11,6 +11,7 @@ import { FlagsService } from '../../flags/flags.service.js';
 import { ChainOutboxRepository } from '../application/outbox/chain-outbox.repository.js';
 import { opId } from '../application/outbox/op-id.js';
 import { TreasuryDaoPort } from '../application/ports/treasury-dao.port.js';
+import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { treasuryProject } from './costs.js';
 import { proposalBusEvent, storedProposalMeta, toProposal } from './council-view.js';
 import {
@@ -60,6 +61,7 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(ChainOutboxRepository) private readonly outbox?: ChainOutboxRepository,
     @Optional() @Inject(GamePlanets) private readonly planets?: TreasurySimPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
   ) {}
 
   onModuleInit(): void {
@@ -112,12 +114,25 @@ export class TreasuryFinalizeService implements OnModuleInit, OnModuleDestroy {
     if (!fresh) return EMPTY_FINALIZE;
     if (fresh.status === 'Expired' && before === 'InProgress') {
       await this.emitExpired(scope, fresh);
+      this.noteTerminal(fresh);
       return { expired: 1, approved: 0, effects: 0 };
+    }
+    if (fresh.status === 'Rejected' && before === 'InProgress') {
+      this.noteTerminal(fresh);
+      return EMPTY_FINALIZE;
     }
     if (fresh.status !== 'Approved') return EMPTY_FINALIZE;
     const effects = (await this.sendEffect(scope, fresh, nowMs)) ? 1 : 0;
-    if (before === 'InProgress') await this.emitPush(scope, fresh.id);
+    if (before === 'InProgress') {
+      await this.emitPush(scope, fresh.id);
+      this.noteTerminal(fresh);
+    }
     return { expired: 0, approved: before === 'InProgress' ? 1 : 0, effects };
+  }
+
+  /** `approved` / `rejected` / `expired` once, when finalize newly stores that status. */
+  private noteTerminal(row: ProposalRow): void {
+    this.telemetry?.proposalTerminal(readProposal(row).kind, row.status);
   }
 
   private async finalizeChain(daoAccountId: string, proposalId: number): Promise<void> {

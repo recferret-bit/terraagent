@@ -64,6 +64,7 @@ import { PlanetDaoLifecycleService } from './treasury/lifecycle.service.js';
 import { PlanetDaoMembershipService } from './treasury/membership.service.js';
 import { TreasuryProposalsService } from './treasury/proposals.service.js';
 import { TreasuryController } from './treasury/treasury.controller.js';
+import { W22TelemetryService } from './telemetry/w22-telemetry.service.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
 export const env = {
@@ -123,6 +124,7 @@ export const env = {
     GuildSubsidyService,
     TreasuryAwayNoticeService,
     TreasuryFinalizeService,
+    W22TelemetryService,
     W22DevCommands,
     ColonyAccounts,
     RelayStatusService,

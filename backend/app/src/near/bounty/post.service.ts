@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { newId, type BountyPostArgs } from '@terra/contracts';
 import { CargoTokenPort, toCargoBaseUnits } from '../application/ports/cargo-token.port.js';
 import type { EscrowOpenResult } from '../application/ports/escrow.port.js';
@@ -9,6 +9,7 @@ import { NearException } from '../domain/errors.js';
 import { escrowHoldAccount, escrowIdFromOp } from '../application/escrow-id.js';
 import { CoreException } from '../../core/errors/core-exception.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 
 interface WaveFlags {
   has(wave: string): boolean;
@@ -30,6 +31,8 @@ export interface BountyPostInput {
   readonly nowMs?: number;
   /** When set, the expiry floor may drop to 1 h. Player posts omit it (2–48 h). */
   readonly expiryMinMs?: number;
+  /** False for a mercenary hire: that path records `mercenary_hired`, not `bounty_posted` (BE-91). */
+  readonly playerPost?: boolean;
 }
 
 /**
@@ -45,6 +48,7 @@ export class BountyPostService {
     @Inject(ChainOutboxRepository) private readonly outbox: ChainOutboxRepository,
     @Inject(PlanetBountyWorld) private readonly world: BountyWorldSource,
     @Inject(FlagsService) private readonly flags: WaveFlags,
+    @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
   ) {}
 
   async list(planetId: string): Promise<BountyView[]> {
@@ -76,9 +80,10 @@ export class BountyPostService {
     const problem = await this.screen(input);
     if (problem) throw new BountyPostError(problem);
     const opened = await this.openEscrow(input, bountyId);
-    const row = await this.save(this.draft(input, bountyId, opened));
+    const saved = await this.save(this.draft(input, bountyId, opened));
     await this.outbox.markDoneByOpId(bountyOpenOpId(bountyId), opened, opened.receipt.txHash).catch(() => false);
-    return { ...toBountyView(row), receipt: opened.receipt };
+    if (saved.inserted && input.playerPost !== false) await this.telemetry?.bountyPosted(input.args.target.kind);
+    return { ...toBountyView(saved.row), receipt: opened.receipt };
   }
 
   private async replay(existing: BountyRow, input: BountyPostInput, bountyId: string): Promise<PostedBounty> {
@@ -116,14 +121,14 @@ export class BountyPostService {
     return null;
   }
 
-  private async save(row: NewBountyRow): Promise<BountyRow> {
+  private async save(row: NewBountyRow): Promise<{ row: BountyRow; inserted: boolean }> {
     try {
-      return await this.repo.insert(row);
+      return { row: await this.repo.insert(row), inserted: true };
     } catch (err) {
       if (!isUnique(err)) throw err;
       const found = await this.repo.find(row.id);
       if (!found) throw err;
-      return found;
+      return { row: found, inserted: false };
     }
   }
 

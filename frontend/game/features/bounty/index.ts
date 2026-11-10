@@ -1,4 +1,5 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
+import { BOUNTY_EVENTS } from './bountyEvents';
 import { BountyBoard } from './BountyBoard';
 import { attachBountyMapLayer } from './mapLayer';
 import './bounty.css';
@@ -31,6 +32,7 @@ function mountBoard(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
 export default defineFeature({
   id: 'bounty',
   wave: 'W22',
+  analytics: [...BOUNTY_EVENTS],
   hud: [{ id: 'bounties', slot: 'top-center', order: 4, mount: mountBoard }],
   menus: [
     {

@@ -1,4 +1,5 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
+import { TREASURY_EVENTS } from './analytics/treasuryTracker';
 import { CouncilPanel } from './CouncilPanel';
 import { TREASURY_DEV_COMMANDS } from './devCommands';
 import { EffectHud } from './EffectHud';
@@ -42,6 +43,7 @@ function mountCouncil(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
 export default defineFeature({
   id: 'treasury',
   wave: 'W22',
+  analytics: [...TREASURY_EVENTS],
   hud: [
     { id: 'effect-badges', slot: 'top-center', order: 2, mount: mountEffects },
     { id: 'council', slot: 'top-center', order: 3, mount: mountCouncil },

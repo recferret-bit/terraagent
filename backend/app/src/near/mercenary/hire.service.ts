@@ -12,6 +12,7 @@ import { BountyPostService, type BountyPostInput } from '../bounty/post.service.
 import { expiryScreen, expiryWithMin, HOUR_MS } from '../bounty/validate.js';
 import type { BountyRow } from '../bounty/view.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { quoteHire, refundSplit, type HireQuote, type RefundSplit } from './hire-math.js';
 import { mercenaryRoster } from './roster.js';
 import { submitSpawn, type MercenaryPlanetHost } from './spawn-submit.js';
@@ -75,6 +76,7 @@ export class MercenaryHireService {
     @Inject(ChainOutboxRepository) private readonly outbox: ChainOutboxRepository,
     @Inject(FlagsService) private readonly flags: WaveFlags,
     @Optional() @Inject(GamePlanets) private readonly planets?: MercenaryPlanetHost,
+    @Optional() @Inject(W22TelemetryService) private readonly telemetry?: W22TelemetryService,
   ) {}
 
   async hire(input: MercenaryHireInput): Promise<MercenaryHireResult> {
@@ -84,8 +86,10 @@ export class MercenaryHireService {
     const expiry = this.expiry(quote, now);
     const area = this.area(input);
     await this.assertCap(quote);
+    const prior = input.bountyId ? await this.bounties.find(input.bountyId) : null;
     const posted = await this.posts.post(this.postBody(input, quote, area, expiry));
     await this.bounties.reserveClaimer(posted.id, quote.accountId);
+    if (!prior) await this.telemetry?.mercenaryHired();
     const spawn = await this.spawn(input, quote, area, posted.id);
     return {
       bountyId: posted.id,
@@ -166,6 +170,7 @@ export class MercenaryHireService {
       bountyId: input.bountyId,
       nowMs: input.nowMs,
       expiryMinMs: HOUR_MS,
+      playerPost: false,
       args: {
         target: { kind: 'defend_area', ...area, durationH: quote.hours },
         reward: BountyReward.parse({ resource: quote.resource, amount: quote.total }),

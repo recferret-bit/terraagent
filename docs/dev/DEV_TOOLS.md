@@ -167,6 +167,24 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 
 **Adding a command:** a client feature (`frontend/game/features/<id>/index.ts`) lists it in `devCommands` (`{ name, help, run(args, ctx) }`); it can send sim commands (`ctx.services.sendCommand(kind, args)`), server dev commands (`ctx.services.devServer(name, args)`) or ask the host's ledger (`ctx.services.ledgerQuery(account, limit)`). A server dev command registers in `DevCommandRegistry` (`backend/app/src/dev/`) with `defineDevCommand({ name, help, args: zod, run })`. The game rule itself goes in `shared/sim` (D-31).
 
+## W22 metrics and analytics (W22-34)
+
+Prometheus series on the shared `MetricsRegistry` (`GET /v1/metrics`). Funnel rows are in `core.analytics_event`. W22 off inserts nothing and does not move the counters. One writer per event name (BE-91): the client sends only `council_opened`; the server inserts the other six.
+
+| Name | What |
+|---|---|
+| `treasury_balance{planet}` | Gauge. Whole `metals.t1` units from the DAO policy JSON (the same balance as `GET /v1/near/treasury/:planetId`). Read at scrape time, so a restart does not reset it. No DAO row omits that planet. A DAO with no `metals.t1` is 0. W22 off leaves the series empty and does not throw |
+| `treasury_proposals_total{kind,result}` | Counter. `result=open` when a proposal is stored `InProgress`. `approved`, `rejected` or `expired` when that status is newly stored (vote or finalize). A vote that stays `InProgress` does not increment again |
+| `bounties_total{kind,state}` | Counter. `kind` is `clear_nest`, `defend_area` or `deliver_units`. `state` is the transition just stored (`open`, `claimed`, `paid`) |
+| `mercenary_contracts_total` | Counter. +1 when `MercenaryHireService` opens a hire. Not on cancel, not on a pro-rata payout, and not on the `merc.hire` console spawn (BE-86) |
+| `council_opened` | Client `track()` when the Council sheet opens. Consent-gated. No account, colony or wallet id. The server does not insert it |
+| `proposal_created` | Server row when a proposal is stored. Not on `TREASURY_INSUFFICIENT`, `PROPOSAL_OPEN` or an unknown kind |
+| `vote_cast` | Server row when a vote is stored. Not on `NOT_A_MEMBER`, `ALREADY_VOTED` or `away_policy` |
+| `bounty_posted` | Server row when a player bounty becomes `open`. Not on `invalid_target`, `queue_full` or `invalid_args`. A mercenary hire does not insert this |
+| `bounty_claimed` | Server row when a claim is stored. Not when a second defend or deliver claimer gets `queue_full` |
+| `bounty_paid` | Server row when pay marks `paid`. A replay of `bounty-pay:{id}` does not insert a second row or increment the counter |
+| `mercenary_hired` | Server row when a hire opens. Cancel is not a hire |
+
 ## HUD and overlays (online flow)
 
 - **HUD layout (two tab books):** top left the **minimap** in the corner (`×k` warp badge above it), under it the **Colony book** (`[data-testid=colony-book]`, a column of tabs `colony-tab-<id>` one below another with horizontal labels, page to their right): `PLAYER` (first and open at load: Guest pilot chip / Save progress / NEAR identity, achievements tracking), `AWAY` (W09 away budget, autopilot mode, away raids), `DEED`, `GOALS` (Stage Track button), `HQ AI` (AI toggle + HQ Goals / Priorities), `DIRECTOR`, `COMBAT` (threat alerts, red count badge on the tab while alerts are live; Combat Lab button), `SUPPLY`, `TRADE` (Trade Hub, contracts). Top right, under the FPS counter, the **Command Dock** (its mirror: tabs on the right, page to their left). One tab is open at a time; the open tab and its page are one borderless plate (orange edge on the outer side). Clicking the open tab (or the `◂`/`▸` button under the tabs) folds the page away. Only tabs of enabled waves exist. An open page sizes to its content up to the screen bottom and draws **above** every other HUD plate (it may cover the minimap, env panel, selection bar and the bottom-right stack). Bottom left: env panel (and army stance). Bottom right: power widget, territory border toggle, netstats, toasts. Modals (Deed, Stage Reached, Combat Lab, signer) open in the overlay layer (`services.hudOverlay`, above both books). When the HQ dies, the **HQ respawn dialog** opens on the same blurred scrim as the `Esc` pause menu (`core/ui/scrim.css`) and calls `services.closeHudMenus()`: both books fold and every registered closer runs (deed modal, stage dialog, Combat Lab, Trade Hub, global map, build ghost, terraform brush; features add theirs with `services.registerHudCloser`). There is no tick chip: use the console command `tick` (e2e reads `window.__online.store.tick`).
