@@ -37,6 +37,8 @@ export const NEAR_ERROR_CODES = {
   ACCOUNT_NOT_CLAIMED: { status: 409, description: 'Claim your colony account before staking NEAR.' },
   POOL_NOT_WHITELISTED: { status: 422, description: 'Staking pool is not in NEAR_STAKING_POOLS.' },
   STAKE_INSUFFICIENT_BALANCE: { status: 409, description: 'Insufficient NEAR balance in your wallet for this stake.' },
+  // F3/F4 (W15). Limited-key principal is exhausted. Gas is a separate allowance and does not use this code.
+  NEAR_ALLOWANCE_EXHAUSTED: { status: 409, description: 'The limited key has no remaining allowance for this token.' },
 } as const satisfies Record<string, NearErrorDef>;
 
 export type NearErrorCode = keyof typeof NEAR_ERROR_CODES;

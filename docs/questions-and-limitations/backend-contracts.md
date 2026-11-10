@@ -904,6 +904,16 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** Connect `W21` rocket departure to `colonySettled` when `W21` opens, and wire live NEAR key rotation and contract adapters in `W23-14`, `W23-31`, and `W23-33`.
 - **Found:** 2026-11-09, W20 delivery.
 
+### BE-70 · Director allowance is per token; revoke is DELETE; guild offers may carry a reason
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/application/ports/agent-wallet.port.ts`, `shared/contracts/src/guild/offers.ts`, `shared/contracts/src/commands/set-auto-trade.ts`, NEAR-80, NEAR-81, PROTOCOL `POST /v1/near/director-key`
+- **What happens:** A limited key stores a NEAR gas allowance and a separate per-token principal ledger (`allowance`, `reserved`, `spent`, `available`). Signing does not spend principal. `director.status` is a WebSocket push and is not the W16 event `directorStatus`. Revoke is specified as `DELETE` by W15-18; PROTOCOL still says `POST` add/revoke. Each `guild.arrived` offer may include a `reason` string and may omit it. `setAutoTrade` carries the W09 limit row (`maxPerTrade`, `maxPerSession`, `minStock`, `partners`). The "sell above 80% storage" trigger is not on that row yet.
+- **Why it is like this:** Q-04-1 conflicts on allowance basis (away budget vs per-session caps) and unit (per token vs one NEAR number). The wave text for W15-03 and W15-18 is per-token principal plus a separate gas allowance, so that is the default. Q-04-12 leaves the revoke verb open; W15-18's `DELETE` is the default. Q-04-5 asks for a reason on offers; the field is optional so a missing reason still parses.
+- **Workaround / mitigation:** Command rejects use `allowance_exhausted`. The port throws `NEAR_ALLOWANCE_EXHAUSTED`. W15-19 extends the autoTrade row if the storage-percent trigger is required. W15-18 implements `DELETE`.
+- **To resolve:** Confirm per-token principal, `DELETE` revoke, and optional offer reasons. Confirm whether "sell above N% storage" belongs on `setAutoTrade` or only in the director decision.
+- **Found:** 2026-11-10, W15-01
+
 ### BE-69 · A settled Colony Deed push is not one of the eight away-alert toggles
 
 - **Status:** Accepted (by design)
