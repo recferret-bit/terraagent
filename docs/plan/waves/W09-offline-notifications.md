@@ -25,8 +25,8 @@ Leaving is safe and honest. A colony keeps running while its player is away: the
 
 > Column `H`: **H** must for Nov 1–14 · **H+** stretch · **H2** real NEAR after the D10 gate · blank = after the hackathon. Plan and calendar: [`HACKATHON_CUT.md`](../HACKATHON_CUT.md), [`HACKATHON_SCHEDULE.md`](../HACKATHON_SCHEDULE.md).
 
-- **The hackathon e2e covers demo steps:** 3, 4 (the colony survives; hard-mode elimination is post), 5 (snapshot load + fast-run; the once-only fast-run notification of W09-27 is post), 6 (reopen normally; deep links are post), 8. `W09-33` tags these steps `@hack`; `npm run e2e -- --hack` runs only them, and the other steps run once their rows land.
-- **Deferred:** the Away settings panel (step 1), Web Push and Telegram (step 2; the mock notifier's dev viewer shows the rows), one socket per colony (step 7), coarse-dt parity test.
+- **The hackathon e2e covers demo steps:** 1 (`ColonyBook` `AWAY` tab), 3, 4 (mock `under_attack` notification + debounce), 5 (snapshot load + 24 h capped fast-run + post-fastrun notification flush), 6 (reload-after-away scenario seat resume + "While you were away" headline plate + W16 `awayStory`), 7 (one playing socket per colony with `bye 4001` takeover), 8 (`TA_WAVES=..08` flag-off check), and 9 (`colony eliminate` hard mode while away). `W09-33` tags these steps `@hack`; `npm run e2e -- --hack` runs only them, and the other steps run once their rows land.
+- **Deferred (`H+`):** graceful SIGTERM deploy socket close (`W09-07`), fault quarantine player banner (`W09-08`), live Web Push and Telegram adapters + notification settings UI (`W09-22..25`; `NOTIFY_ADAPTER=mock` with `/v1/dev/notify` ships in `H`), push deep links (`W09-26`), and opt-in analytics (`W09-30`).
 - **Still true:** with `TA_WAVES` below this wave the app behaves exactly as the previous wave's tag.
 
 ## Features covered

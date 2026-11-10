@@ -63,7 +63,7 @@ The colony **director** gets its own capped key (allowance = the trading share o
 > Column `H`: **H** must for Nov 1–14 · **H+** stretch · **H2** real NEAR after the D10 gate · blank = after the hackathon. Plan and calendar: [`HACKATHON_CUT.md`](../HACKATHON_CUT.md), [`HACKATHON_SCHEDULE.md`](../HACKATHON_SCHEDULE.md).
 
 - **The hackathon e2e covers demo steps:** 1–11 (including Guild ship arrival toast, `ship.guildTrader` docking VFX, quotes, director key + `autoTrade`, cross-planet carry across W11 worlds, and funded-policy budget guards). `W15-34` tags these steps `@hack`.
-- **In H (full vertical slice):** All 34 issues (`W15-01..30, W15-32..35`) are in `H`; only mobile touch (`W15-31`) is deferred with postponed `W24`.
+- **In H (full vertical slice):** All 35 issues (`W15-01..30, W15-32..36`) are in `H`; only mobile touch (`W15-31`) is deferred with postponed `W24`.
 - **Still true:** with `TA_WAVES` below this wave the app behaves exactly as the previous wave's tag.
 
 ## Features covered
@@ -131,6 +131,7 @@ The colony **director** gets its own capped key (allowance = the trading share o
 | W15-32 | Docs: README "mock vs real" row F3/F4 (`AgentWalletPort` = mock); `ENVS.md`: `NEAR_ADAPTER_AGENT_WALLET`, `GUILD_ENABLED`, `GUILD_NPC_COUNT`; a short "How the Guild prices" section for judges | docs | S | H | W15-04 | README lists `AgentWalletPort` as "mock" and explains pricing in ≤ 10 lines | D-27, near-economy F3 | — |
 | W15-33 | Perf: 2 NPCs quoting on 60 planets' books (when W11 is on) re-quote within 1 s of a fill and use < 5 % of one core | test | S | H | W15-08 | `npm run bench -- guild-60-planets` → p99 re-quote ≤ 1 s, CPU < 5 % | ARCHITECTURE capacity | — |
 | W15-35 | Wire W16 runGuildStrategy (W13 quotePair binding) and director_key allowance/kill-switch sync into W15 Guild visits and director autoTrade | server | S | H | W15-13, W15-18, W16-21, W16-38 | Run Guild visit with W16 enabled -> runGuildStrategy prices pairs via W13 quotePair and rejects free_price; revoking director_key or tripping AI kill switch blocks proposeBotTradeOrder and resolveEffectivePermissions | AI §6, NEAR-71, NEAR-80, D-45 | — |
+| W15-36 | Integrate W09 ColonyBook AWAY tab, dev-presence away/back seat resume, AwayDigestStore, and AlertRouter away_budget_exhausted into W15 autoTrade | server | S | H | W15-20, W15-22, W15-23, W15-24, W09-13, W09-14, W09-15, W09-21 | Configure autoTrade in ColonyBook AWAY tab, run away then warp and reload -> director trade folds into AwayDigestStore welcome plate and directorAllowanceExhausted routes to MockNotifier as away_budget_exhausted | AW-13, AW-20, CT-32, CT-36, W09 handoff | — |
 | W15-34 | Wave e2e `tests/e2e/w15.spec.ts` (demo story 1–11; Guild quotes appear in the same W13 book and `/trade.html` depth as bots and humans) + seed scenario `w15-guild-agents` (solo colony at S2 with a Trade Hub, near-full metals storage, low water, 2 NPCs, a dock in 30 s) + tag `wave-15` | test | M | H | all above | Demo and funded-policy owner checks pass; W13 experiment reports include real Guild policies, held-out seeds and loss-limit assertions | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
