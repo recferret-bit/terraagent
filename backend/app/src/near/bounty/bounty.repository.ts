@@ -37,6 +37,14 @@ export class BountyRepository {
     return this.prisma.chainBounty.count({ where: { posterColonyId: colonyId, state: { in: [...ACTIVE] } } });
   }
 
+  /** Open or claimed rows whose `expiresAt` is due. The clock is this column, not escrow `get` (BE-73). */
+  dueForRefund(now: Date): Promise<BountyRow[]> {
+    return this.prisma.chainBounty.findMany({
+      where: { state: { in: [...ACTIVE] }, expiresAt: { lte: now } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   /** `completed` rows that still have a claimer. Boot repay uses this after a crash mid-payout. */
   completed(): Promise<BountyRow[]> {
     return this.prisma.chainBounty.findMany({
@@ -114,6 +122,15 @@ export class BountyRepository {
 
   markRefunded(id: string): Promise<BountyRow> {
     return this.prisma.chainBounty.update({ where: { id }, data: { state: 'refunded' } });
+  }
+
+  /** Only an open or claimed row. A pay that already moved the row is left alone. */
+  async markRefundedIfActive(id: string): Promise<boolean> {
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { id, state: { in: [...ACTIVE] } },
+      data: { state: 'refunded' },
+    });
+    return result.count === 1;
   }
 
   insert(row: NewBountyRow): Promise<BountyRow> {

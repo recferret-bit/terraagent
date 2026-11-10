@@ -72,6 +72,11 @@ export function bountyIdFromPayOp(op: string): string | null {
   return op.startsWith(PAY_PREFIX) && op.length > PAY_PREFIX.length ? op.slice(PAY_PREFIX.length) : null;
 }
 
+/** Escrow refund op. A repeated expiry of the same bounty replays this receipt (W22-24). */
+export function bountyRefundOpId(bountyId: string): string {
+  return opId('bounty-refund', bountyId);
+}
+
 function policyNum(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) throw new Error('bounty policy row is not a number');

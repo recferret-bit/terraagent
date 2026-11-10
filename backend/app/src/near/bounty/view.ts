@@ -13,6 +13,8 @@ export interface BountyView {
   readonly target: BountyTarget;
   readonly reward: BountyReward;
   readonly state: string;
+  /** Board word. `refunded` after `expiresAt` is `Expired` (no reason column, BE-86). */
+  readonly board: string;
   readonly expiresAt: number;
   readonly escrowId: string;
   readonly escrowTx: string;
@@ -24,7 +26,23 @@ export interface PostedBounty extends BountyView {
   readonly receipt: ChainReceipt;
 }
 
-export function toBountyView(row: BountyRow): BountyView {
+const BOARD: Readonly<Record<string, string>> = {
+  open: 'Open',
+  claimed: 'Claimed',
+  completed: 'Completed',
+  paid: 'Paid',
+  refunded: 'Refunded',
+  expired: 'Expired',
+};
+
+/** `refunded` once `expiresAt` has passed reads Expired. Any other state keeps its own word. */
+export function bountyBoardLabel(state: string, expiresAtMs: number, nowMs: number): string {
+  if (state === 'refunded' && expiresAtMs <= nowMs) return 'Expired';
+  return BOARD[state] ?? state;
+}
+
+export function toBountyView(row: BountyRow, nowMs = Date.now()): BountyView {
+  const expiresAt = row.expiresAt.getTime();
   return {
     id: row.id,
     planetId: row.planetId,
@@ -34,7 +52,8 @@ export function toBountyView(row: BountyRow): BountyView {
     target: BountyTarget.parse(row.target),
     reward: BountyReward.parse(row.reward),
     state: row.state,
-    expiresAt: row.expiresAt.getTime(),
+    board: bountyBoardLabel(row.state, expiresAt, nowMs),
+    expiresAt,
     escrowId: row.escrowId,
     escrowTx: row.escrowTx,
     opId: row.opId,

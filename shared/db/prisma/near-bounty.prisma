@@ -11,7 +11,8 @@ model ChainBounty {
   escrowTx         String    @map("escrow_tx") @db.VarChar(128)
   opId             String    @unique @map("op_id") @db.VarChar(200)
   claimerAccountId String?   @map("claimer_account_id") @db.VarChar(64)
-  /// `open` | `claimed` | `completed` | `paid` | `refunded` | `expired`. Active = open or claimed.
+  /// `open` | `claimed` | `completed` | `paid` | `refunded`. Active = open or claimed.
+  /// The board word Expired is `refunded` after `expiresAt` (no reason column, BE-86).
   state            String    @db.VarChar(16)
   expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

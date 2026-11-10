@@ -42,6 +42,7 @@ import { StakingService } from './staking/staking.service.js';
 import { BountyController } from './bounty/bounty.controller.js';
 import { BountyClaimService } from './bounty/claim.service.js';
 import { BountyDeliverService } from './bounty/deliver.service.js';
+import { BountyExpiryService } from './bounty/expiry.service.js';
 import { BountyLifecycleListener } from './bounty/lifecycle.listener.js';
 import { BountyPayService } from './bounty/pay.service.js';
 import { BountyPostPrecheck } from './bounty/precheck.js';
@@ -92,6 +93,7 @@ export const env = {
     AccountClaimService,
     BountyClaimService,
     BountyDeliverService,
+    BountyExpiryService,
     BountyLifecycleListener,
     BountyPayService,
     BountyPostPrecheck,
