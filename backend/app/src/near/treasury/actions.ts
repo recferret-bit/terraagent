@@ -62,6 +62,7 @@ export async function addProposal(tx: DbClient, input: ProposeInput): Promise<{ 
     cost: priced.cost,
     tokenId: priced.tokenId,
     debited: false,
+    effectPosted: false,
   };
   await tx.mockChainDaoProposal.create({
     data: {

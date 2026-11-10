@@ -36,7 +36,7 @@ import {
 
 /**
  * Planet council reads and votes (W22-08). Passing a vote debits through the DAO port.
- * This service does not send `system.treasuryEffect` and does not run the 6 h finalize job (W22-09).
+ * `TreasuryFinalizeService` owns the 6 h deadline and posts `system.treasuryEffect` once (W22-09).
  */
 @Injectable()
 export class TreasuryProposalsService {

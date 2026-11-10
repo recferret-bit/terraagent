@@ -17,7 +17,7 @@ export interface TreasuryProposalResponse {
   readonly votes: DaoProposalView['votes'];
 }
 
-/** `effects` stays empty until W22-09 starts `system.treasuryEffect`. */
+/** `effects` stays empty. The finalize job posts `system.treasuryEffect`; the sim holds the timer (BE-82). */
 export interface TreasuryCouncilResponse {
   readonly planetId: string;
   readonly daoAccountId: string;

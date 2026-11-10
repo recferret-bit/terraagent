@@ -34,6 +34,10 @@ export interface StoredProposal {
   readonly cost?: string;
   readonly tokenId?: string;
   readonly debited: boolean;
+  /** Set by the finalize job after `system.treasuryEffect` is built once (W22-09). */
+  readonly effectPosted: boolean;
+  /** The module command that was built. Present once the job has claimed the effect. */
+  readonly effectCommand?: unknown;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,6 +140,8 @@ export function proposalKindJson(proposal: StoredProposal): Prisma.InputJsonValu
     payload: asJson(proposal.payload),
     ...(proposal.cost !== undefined ? { cost: proposal.cost, tokenId: proposal.tokenId ?? DEFAULT_COST_TOKEN } : {}),
     debited: proposal.debited,
+    ...(proposal.effectPosted ? { effectPosted: true } : {}),
+    ...(isRecord(proposal.effectCommand) ? { effectCommand: asJson(proposal.effectCommand) } : {}),
   };
 }
 
@@ -154,6 +160,8 @@ export function readProposal(row: { id: number; proposer: string; status: string
     cost: priced.cost,
     tokenId: priced.tokenId,
     debited: kind.debited === true,
+    effectPosted: kind.effectPosted === true,
+    ...(isRecord(kind.effectCommand) ? { effectCommand: kind.effectCommand } : {}),
   };
 }
 

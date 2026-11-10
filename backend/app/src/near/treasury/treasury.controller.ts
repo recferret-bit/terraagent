@@ -9,7 +9,7 @@ import { TreasuryProposalsService } from './proposals.service.js';
  * `GET/POST /v1/near/treasury/:planetId` (W22-08, PROTOCOL F7).
  * The caller is the session colony's account. Under `NODE_ENV=test` only, body `colonyAccountId`
  * or header `x-colony-account-id` names that account (integration tests have no session).
- * 404 when W22 is off. Active effects stay empty until W22-09 sends `system.treasuryEffect`.
+ * 404 when W22 is off. `effects` stays empty: the finalize job posts the sim command (BE-82).
  */
 @Controller('near/treasury')
 export class TreasuryController {

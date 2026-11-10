@@ -86,3 +86,12 @@ export function toDaoView(daoAccountId: string, policy: DaoPolicy, proposals: re
 export function nextProposalId(proposals: readonly StoredProposal[]): number {
   return proposals.reduce((max, proposal) => Math.max(max, proposal.id), -1) + 1;
 }
+
+/** One claim of the sim effect. A second caller sees `effectPosted` and gets `false`. */
+export async function claimProposalEffect(tx: DbClient, daoAccountId: string, proposalId: number, effectCommand: unknown): Promise<boolean> {
+  const dao = await requireDao(tx, daoAccountId);
+  const proposal = requireProposal(dao, proposalId);
+  if (proposal.status !== 'Approved' || proposal.effectPosted) return false;
+  await writeProposal(tx, daoAccountId, { ...proposal, effectPosted: true, effectCommand });
+  return true;
+}
