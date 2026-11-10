@@ -946,7 +946,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** W22-09 expires only past `proposalTtlH`. The removed-member vote half is resolved (W22-06).
 - **Found:** 2026-11-10, W22-03
 
-### BE-75 · DAO membership follows the colony account row and `deedSettled`
+### BE-77 · DAO membership follows the colony account row and `deedSettled`
 
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/near/treasury/membership.service.ts`, `backend/app/src/near/treasury/lifecycle.bind.ts`, `backend/app/src/near/identity/colony-accounts.ts`, `backend/app/src/near/deed/deed-settled.service.ts`
