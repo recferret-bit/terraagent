@@ -4,7 +4,7 @@ import './guild-toast.css';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
-    /** W15-17 reads this: set true when the arrival toast is tapped (Trade Hub opens; no Guild tab yet). */
+    /** Set when the arrival toast is tapped. The Guild tab opens on it and then clears it. */
     guildTab?: boolean;
   }
 }

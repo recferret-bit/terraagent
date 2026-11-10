@@ -1475,10 +1475,10 @@ Open items, see the format in `README.md`:
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/guild-toast/` (`GuildVisitMemory`, `FeatureServices.guildTab`), `frontend/game/store/WorldStore.ts` (`onGuildArrived`, `onGuildDeparted`)
-- **What happens:** An arrival toast reads `Guild trader ${name} has docked — ${offers.length} offers`. The same `shipId` + `departAt` does not toast again on this page. A departure toast reads `Guild trader ${name} has departed`, using the display name from this page's last `guild.arrived` for that `shipId`, or the `shipId` itself when no arrival was seen (`guild.departed` has no name). Joining while a ship is already docked does not toast: welcome does not replay the visit, and a reload forgets the seen key. A tap calls `openTradeHubPanel(true)` and sets `services.guildTab = true`. There is no Guild tab yet (W15-17). The flag is not a URL query and is cleared if the HUD builds a new services object. W15 off drops the feature from the registry; a mount whose flags lack `W15` ignores both pushes.
+- **What happens:** An arrival toast reads `Guild trader ${name} has docked — ${offers.length} offers`. The same `shipId` + `departAt` does not toast again on this page. A departure toast reads `Guild trader ${name} has departed`, using the display name from this page's last `guild.arrived` for that `shipId`, or the `shipId` itself when no arrival was seen (`guild.departed` has no name). Joining while a ship is already docked does not toast: welcome does not replay the visit, and a reload forgets the seen key. A tap calls `openTradeHubPanel(true)` and sets `services.guildTab = true`. The Guild tab consumes that flag (FF-106). The flag is not a URL query and is cleared if the HUD builds a new services object before the Guild tab mounts. W15 off drops the feature from the registry; a mount whose flags lack `W15` ignores both pushes.
 - **Why it is like this:** W15-16 is the toast only. The departed payload is `shipId`, `planetId`, and `npcId`.
-- **Workaround / mitigation:** Open the Trade Hub from the Colony book `TRADE` tab. W15-17 reads `guildTab` after the tap.
-- **To resolve:** W15-17 selects the Guild tab when `guildTab` is true and then clears it. Put the display name on `guild.departed`, or replay an open visit on welcome, if a mid-dock join should toast.
+- **Workaround / mitigation:** With W15 on, the tap opens the Trade Hub on the GUILD tab. A missed arrival still has no toast.
+- **To resolve:** Put the display name on `guild.departed`, or replay an open visit on welcome, if a mid-dock join should toast.
 - **Found:** 2026-11-10, W15-16
 
 ### FF-105 · The director sentence is the away plate or the HUD log, not both
@@ -1490,3 +1490,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Turn W09 on to keep the line on the digest until return. The log keeps the last 20 lines of this page.
 - **To resolve:** W15-36 if the ColonyBook plate should repeat the same items. Replay missed fills on welcome when W09 is off only if the owner wants a log after a disconnect.
 - **Found:** 2026-11-10, W15-24
+
+### FF-106 · Guild tab keeps one visit and does not replay a missed dock
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/guild-tab/` (`GuildVisitModel`, `GuildOffers`), `frontend/trade/view/marketView.ts` (`actorBadgeLabel`)
+- **What happens:** The Trade Hub GUILD tab (W15 only) lists at most 6 offers from the latest `guild.arrived` on this page. A second docked ship replaces the first. `guild.departed` for that ship, or wall time at or after `departAt`, shows `Departed` and disables Accept. The countdown is `MMm SSs`, or `Hh MMm SSs` when an hour or more remains, and it ticks once a second while the tab is shown. Accept sends `market.acceptGuildOffer` once per offer id. A reject uses `formatRejectToast` (`offer_expired` is `Rejected: That Guild offer has expired`). A successful accept does not add its own toast: `tradeSettled` still uses the Contracts toast. Reloading, or opening the tab before this page saw `guild.arrived`, shows `No offers`. Setting `services.guildTab` opens the tab and clears the flag once the tab is registered. On `/trade.html`, a book row whose actor is `npc` or `guild` shows the badge `Guild`. The actor-mix chips still use the raw kind.
+- **Why it is like this:** W15-17 draws the push the toast already receives. There is no snapshot of the open visit. Two NPCs can be routed, but the tab is one countdown. The mix chips count kinds, so they stay `npc` and `guild`.
+- **Workaround / mitigation:** Stay on the page through the dock. After a re-quote, Accept the new offer id. Read `data-actor` on the book row when the badge says Guild.
+- **To resolve:** Keep every ship that has not reached `departAt`, and replay the open visit on welcome. Use one Guild label on the mix chips if the owner wants that everywhere.
+- **Found:** 2026-11-10, W15-17
