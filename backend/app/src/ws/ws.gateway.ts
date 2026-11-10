@@ -11,6 +11,7 @@ import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { NearDeedUpdatedBusEvent } from '../near/deed/deed-mint-outbox.service';
 import type { DirectorStatusBusEvent } from '../near/director-key/director-key.status';
+import type { GuildArrivedBusEvent, GuildDepartedBusEvent } from '../market/guild/visit/guild-visit.publisher';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
 import { presenceClosed, presenceJoined } from '../game/presence/planet-mode';
@@ -56,6 +57,8 @@ export class WsGateway {
   private readonly uncargo: (() => void) | undefined;
   private readonly undeed: (() => void) | undefined;
   private readonly undirector: (() => void) | undefined;
+  private readonly unarrived: (() => void) | undefined;
+  private readonly undeparted: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
   private readonly presenceIds = new WeakMap<Connection, string>();
@@ -74,6 +77,8 @@ export class WsGateway {
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
     this.undeed = o.bus?.on('near.deed.updated', (ev) => this.broadcastDeedUpdated(ev), { module: 'WsGateway' });
     this.undirector = o.bus?.on('director.status', (ev) => this.broadcastDirectorStatus(ev), { module: 'WsGateway' });
+    this.unarrived = o.bus?.on('guild.arrived', (ev) => this.broadcastGuildArrived(ev), { module: 'WsGateway' });
+    this.undeparted = o.bus?.on('guild.departed', (ev) => this.broadcastGuildDeparted(ev), { module: 'WsGateway' });
     this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
     // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
     this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
@@ -164,6 +169,15 @@ export class WsGateway {
     this.sendToColony(ev, encodeWire({ v: 1, t: 'director.status', d: ev.payload }));
   }
 
+  /** Planet room only: every joined player of that planet, not one colony. */
+  private broadcastGuildArrived(ev: GuildArrivedBusEvent): void {
+    this.rooms.broadcast(ev.planetId, encodeWire({ v: 1, t: 'guild.arrived', d: ev.payload }));
+  }
+
+  private broadcastGuildDeparted(ev: GuildDepartedBusEvent): void {
+    this.rooms.broadcast(ev.planetId, encodeWire({ v: 1, t: 'guild.departed', d: ev.payload }));
+  }
+
   /** Planet room, plus any socket for that colony or player that has not joined the room yet. */
   private sendToColony(ev: { planetId?: string; playerId?: string; colonyId: string }, frame: string | Uint8Array): void {
     if (ev.planetId) this.rooms.broadcast(ev.planetId, frame);
@@ -183,6 +197,8 @@ export class WsGateway {
     this.uncargo?.();
     this.undeed?.();
     this.undirector?.();
+    this.unarrived?.();
+    this.undeparted?.();
     this.unmarket?.();
     this.unbook?.();
     const all = [...this.conns];
