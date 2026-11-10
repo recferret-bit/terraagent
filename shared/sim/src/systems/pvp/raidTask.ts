@@ -9,15 +9,15 @@ import { seedStream } from '../../kernel/rng';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { isUnitReserved, UnitBook } from '../../units/book';
 import { mobileStats } from '../../units/mobility';
-import { getUnitStanceRecord, orderUnitAttackMove } from '../combat/stances';
+import { getUnitStanceRecord } from '../combat/stances';
 import { resolveAttackerWeaponRow } from '../combat/targeting';
 import { hasActiveTruce, recordHostilityBetween, resolveColonyIndex } from '../diplomacy/store';
 import { completeColonyGoal } from '../goals';
 import { emitGoalProgress, saveColonyGoals } from '../goals/store';
 import type { ColonyGoalEntry } from '../goals/types';
 import { isWorker } from '../harvest/unit';
-import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { updateColonyVisionCache } from '../combat/vision';
+import { orderRaidGroupFlowMarch } from './raidFlowMarch';
 import { selectSpottedRaidTarget } from './raidPathing';
 import { canRaidTargetSector } from './sectorGuard';
 import { dropColonyShield, isColonyRaidProtected } from './shield';
@@ -313,10 +313,7 @@ export function launchColonyRaid(
   });
 
   const stepCtx = ensureStepCtx(state, tick, ctx, data);
-  for (const unitId of unitIds) {
-    cancelWorkerJobs(state, unitId, tick);
-    orderUnitAttackMove(state, unitId, { q: dest.q, r: dest.r }, stepCtx);
-  }
+  orderRaidGroupFlowMarch(state, unitIds, { q: dest.q, r: dest.r }, stepCtx, 'together');
 
   ensureColonyPvpRecord(state, attackerColony, tick, data);
   const pvpState = getPvpState(state);
