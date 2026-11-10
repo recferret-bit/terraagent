@@ -10,6 +10,8 @@ export interface AwayPanelOptions {
   colonyId?: () => string | null;
   accessToken?: () => string | null;
   fetchImpl?: typeof fetch;
+  /** Consent-gated product analytics (`ctx.services.track`). */
+  track?: (name: string, props?: Record<string, string | number | boolean | null>) => void;
   /** `director.status` pushes. The same payload as POST and DELETE `/v1/near/director-key`. */
   subscribeDirector?: (fn: (payload: DirectorKeyStatusPayload) => void) => () => void;
 }

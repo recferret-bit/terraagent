@@ -21,6 +21,7 @@ function optionsFrom(ctx: FeatureContext): AwayPanelOptions {
     flags: ctx.flags,
     colonyId: () => services.session?.colonyId?.() ?? null,
     accessToken: () => services.pilot?.view().accessToken || null,
+    track: services.track,
     subscribeDirector: (fn) => services.store?.onDirectorStatus?.(fn) ?? (() => {}),
   };
 }

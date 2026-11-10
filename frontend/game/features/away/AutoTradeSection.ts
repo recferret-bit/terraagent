@@ -12,6 +12,7 @@ import {
   type TradeDraft,
 } from './autotrade';
 import { buildAutoTradeDom, type AutoTradeDom } from './autotradeDom';
+import { GuildAnalytics } from '../guild-analytics/tracker';
 import { requestDirectorKey } from './directorKey';
 import type { AwayPanelOptions } from './options';
 import { loadAutoTrade, saveAutoTrade } from './storage';
@@ -27,12 +28,14 @@ export class AutoTradeSection {
   private lastKey: DirectorKeyStatusPayload | null = null;
   private offDirector: (() => void) | null = null;
   private busy = false;
+  private readonly analytics: GuildAnalytics;
 
   constructor(
     parent: HTMLElement,
     private readonly opts: AwayPanelOptions,
   ) {
     this.w18 = opts.flags?.has('W18') ?? false;
+    this.analytics = new GuildAnalytics(opts.track, () => opts.flags?.has('W15') ?? false);
     this.saved = loadAutoTrade();
     this.dom = buildAutoTradeDom(parent, autoTradePartners(this.w18));
     this.bind();
@@ -120,6 +123,7 @@ export class AutoTradeSection {
     }
     this.saved = { resource: built.resource, limits: built.limits };
     saveAutoTrade(this.saved);
+    this.analytics.configured(built.resource);
     this.paint();
     this.setTradeStatus('saved', 'saved');
   }
@@ -145,7 +149,9 @@ export class AutoTradeSection {
     this.busy = true;
     this.dom.toggle.disabled = true;
     try {
-      this.paintKey(await requestDirectorKey('POST', { colonyId, limits: built.limits }, this.opts));
+      const payload = await requestDirectorKey('POST', { colonyId, limits: built.limits }, this.opts);
+      this.paintKey(payload);
+      if (payload.state === 'active') this.analytics.keyEnabled();
     } catch (err) {
       this.setKeyStatus(`rejected: ${messageOf(err)}`, 'rejected');
     } finally {
@@ -166,7 +172,8 @@ export class AutoTradeSection {
     try {
       const payload = await requestDirectorKey('DELETE', { colonyId }, this.opts);
       this.paintKey(payload);
-      if (payload.state !== 'revoked') this.setKeyStatus('rejected: key still active', 'rejected');
+      if (payload.state === 'revoked') this.analytics.keyRevoked();
+      else this.setKeyStatus('rejected: key still active', 'rejected');
     } catch (err) {
       this.dom.revoke.disabled = false;
       this.setKeyStatus(`rejected: ${messageOf(err)}`, 'rejected');
