@@ -22,6 +22,7 @@ import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/disma
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
 import { hasActiveTruce, resolveColonyIndex } from '../diplomacy/store';
+import { canRaidTargetSector } from '../pvp/sectorGuard';
 import { dropColonyShield, isColonyRaidProtected } from '../pvp/shield';
 import {
   PRECEDENCE_RANK,
@@ -321,6 +322,9 @@ export const enqueueTaskHandler = defineCommandHandler({
         | number
         | undefined;
       const toColony = resolveColonyIndex(state, targetRef);
+      if (toColony >= 0 && !canRaidTargetSector(state, colIdx, toColony).ok) {
+        return 'cross_sector_disabled';
+      }
       if (toColony >= 0 && hasActiveTruce(state, colIdx, toColony, ctx.tick)) {
         return 'truce_active';
       }
