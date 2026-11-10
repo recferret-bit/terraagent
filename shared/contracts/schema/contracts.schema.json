@@ -4338,6 +4338,51 @@
       "summary": "Spawns a colony drop pod at a free spawn slot with starting pod cargo (W01-09).",
       "wave": "W01"
     },
+    "system.treasuryEffect": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "meteor_shield",
+              "terraform_boost",
+              "guild_subsidy"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "magnitudeBp": {
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "visits": {
+                "exclusiveMinimum": 0,
+                "maximum": 8,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "untilTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "untilTick"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Starts a planet treasury effect (meteor shield, terraform boost, or guild subsidy) until `untilTick`.",
+      "wave": "W22"
+    },
     "unitReserve": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8029,6 +8074,244 @@
       "summary": "A trade the colony took part in is FINAL: \"Contract signed: X for Y at <Stall> (n % fee)\" (W13-24); Merchant progress input (W13-27).",
       "wave": "W13"
     },
+    "treasuryEffectEnded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "atTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "meteor_shield",
+              "terraform_boost",
+              "guild_subsidy"
+            ],
+            "type": "string"
+          },
+          "planetId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "planetId",
+          "kind",
+          "atTick"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A planet treasury effect reached `untilTick` and stopped (W22-01, NEAR-102).",
+      "wave": "W22"
+    },
+    "treasuryEffectStarted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "meteor_shield",
+              "terraform_boost",
+              "guild_subsidy"
+            ],
+            "type": "string"
+          },
+          "magnitudeBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "planetId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "untilTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "visits": {
+            "exclusiveMinimum": 0,
+            "maximum": 8,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "planetId",
+          "kind",
+          "untilTick"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A passed council project is active on the planet until `untilTick` (W22-01, NEAR-102).",
+      "wave": "W22"
+    },
+    "treasuryProposalCreated": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cost": {
+            "pattern": "^(0|[1-9]\\d*)$",
+            "type": "string"
+          },
+          "daoAccountId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "type": "string"
+          },
+          "deadlineMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "meteor_shield",
+              "terraform_boost",
+              "guild_subsidy"
+            ],
+            "type": "string"
+          },
+          "planetId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposalId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proposer": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "planetId",
+          "daoAccountId",
+          "proposalId",
+          "kind",
+          "proposer",
+          "cost",
+          "deadlineMs"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A colony opened a planet-council proposal (W22-01, NEAR-102).",
+      "wave": "W22"
+    },
+    "treasuryProposalFailed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "daoAccountId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "meteor_shield",
+              "terraform_boost",
+              "guild_subsidy"
+            ],
+            "type": "string"
+          },
+          "planetId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposalId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "rejected",
+              "expired"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "planetId",
+          "daoAccountId",
+          "proposalId",
+          "kind",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A treasury proposal was rejected or expired. No funds moved (W22-01, NEAR-102).",
+      "wave": "W22"
+    },
+    "treasuryProposalPassed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cost": {
+            "pattern": "^(0|[1-9]\\d*)$",
+            "type": "string"
+          },
+          "daoAccountId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "meteor_shield",
+              "terraform_boost",
+              "guild_subsidy"
+            ],
+            "type": "string"
+          },
+          "planetId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposalId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "planetId",
+          "daoAccountId",
+          "proposalId",
+          "kind",
+          "cost"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A treasury proposal passed and its cost left the DAO (W22-01, NEAR-102).",
+      "wave": "W22"
+    },
     "treasuryRejected": {
       "audience": "server",
       "data": {
@@ -8070,6 +8353,66 @@
       "severity": "warn",
       "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
+    },
+    "treasuryVoteCast": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "daoAccountId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "type": "string"
+          },
+          "no": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "planetId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposalId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "vote": {
+            "enum": [
+              "approve",
+              "reject",
+              "remove"
+            ],
+            "type": "string"
+          },
+          "voter": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "yes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "planetId",
+          "daoAccountId",
+          "proposalId",
+          "voter",
+          "vote",
+          "yes",
+          "no"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A council member voted on an open treasury proposal (W22-01, NEAR-102).",
+      "wave": "W22"
     },
     "twisterStarted": {
       "audience": "player",
@@ -10180,6 +10523,109 @@
         },
         "t": {
           "const": "ready",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "treasury.proposal": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "additionalProperties": false,
+          "properties": {
+            "cost": {
+              "pattern": "^(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "daoAccountId": {
+              "maxLength": 64,
+              "minLength": 2,
+              "type": "string"
+            },
+            "deadlineMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "meteor_shield",
+                "terraform_boost",
+                "guild_subsidy"
+              ],
+              "type": "string"
+            },
+            "members": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "no": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "planetId": {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "proposalId": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "state": {
+              "enum": [
+                "InProgress",
+                "Approved",
+                "Rejected",
+                "Expired"
+              ],
+              "type": "string"
+            },
+            "yes": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "planetId",
+            "daoAccountId",
+            "proposalId",
+            "kind",
+            "state",
+            "yes",
+            "no",
+            "members",
+            "deadlineMs",
+            "cost"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "treasury.proposal",
           "type": "string"
         },
         "tick": {
