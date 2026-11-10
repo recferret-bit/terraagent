@@ -58,6 +58,17 @@ export class MockEscrowAdapter extends MockChainBase implements EscrowPort {
     return this.viewOf(row);
   }
 
+  /**
+   * Test seam, not on `EscrowPort`. Raises `accountId` up to `amount` of `tokenId`.
+   * A second call with the same target does not add. Does not spend an opId.
+   */
+  async creditCargo(accountId: string, tokenId: string, amount: string): Promise<void> {
+    const have = BigInt(await this.balanceOf(this.prisma, accountId, tokenId));
+    const target = BigInt(amount);
+    if (have >= target) return;
+    await this.credit(this.prisma, accountId, tokenId, (target - have).toString());
+  }
+
   /** Debit the funder, credit the hold. Same SQL as `CargoTokenPort.transfer`, inside this transaction. */
   private async fundHold(tx: DbClient, input: EscrowOpenInput, escrowId: string): Promise<void> {
     const hold = escrowHoldAccount(escrowId);
