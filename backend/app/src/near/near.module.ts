@@ -42,6 +42,7 @@ import { StakingService } from './staking/staking.service.js';
 import { BountyController } from './bounty/bounty.controller.js';
 import { BountyClaimService } from './bounty/claim.service.js';
 import { BountyDeliverService } from './bounty/deliver.service.js';
+import { BountyExpiryService } from './bounty/expiry.service.js';
 import { BountyLifecycleListener } from './bounty/lifecycle.listener.js';
 import { BountyPayService } from './bounty/pay.service.js';
 import { BountyPostPrecheck } from './bounty/precheck.js';
@@ -61,7 +62,10 @@ import { TreasuryProposalsService } from './treasury/proposals.service.js';
 import { TreasuryController } from './treasury/treasury.controller.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
-export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
+export const env = {
+  name: nearEnv.name,
+  schema: z.intersection(nearEnv.schema, outboxEnv.schema),
+} as unknown as EnvSection;
 
 /** NEAR integration: port bindings, chain outbox, dev chain routes, mock OAuth, social login, relay status, and `/v1/near/health`. */
 @Module({
@@ -86,6 +90,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     AccountClaimService,
     BountyClaimService,
     BountyDeliverService,
+    BountyExpiryService,
     BountyLifecycleListener,
     BountyPayService,
     BountyPostPrecheck,

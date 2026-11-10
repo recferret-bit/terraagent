@@ -7,11 +7,13 @@ import { FlagsService } from '../../flags/flags.service.js';
 import { resolveColonyAccountId } from '../cargo/cargo-export-outbox.js';
 import { BountyRepository } from './bounty.repository.js';
 import { BountyClaimService } from './claim.service.js';
+import { BountyExpiryService } from './expiry.service.js';
 import { BountyPayService } from './pay.service.js';
 
 /**
  * Sim `bountyClaimed` stores the caller on the chain row.
  * Sim `bountyCompleted` names the winner, then `BountyPayService` pays that account once.
+ * Sim `bountyRefunded` returns the hold to the poster (`bounty-refund:{id}`).
  */
 @Injectable()
 export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
@@ -22,6 +24,7 @@ export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
     private readonly bus: EventBus,
     @Inject(BountyClaimService) private readonly claims: BountyClaimService,
     @Inject(BountyPayService) private readonly pay: BountyPayService,
+    @Inject(BountyExpiryService) private readonly expiry: BountyExpiryService,
     @Inject(BountyRepository) private readonly repo: BountyRepository,
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
@@ -45,6 +48,9 @@ export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
     } else if (event.kind === 'bountyCompleted') {
       const { bountyId, claimer } = event.data;
       void this.completed(event.planetId, bountyId, claimer).catch((err) => this.warn(bountyId, err));
+    } else if (event.kind === 'bountyRefunded') {
+      const { bountyId } = event.data;
+      void this.expiry.refundIfOpen(event.planetId, bountyId).catch((err) => this.warn(bountyId, err));
     }
   }
 
