@@ -37,6 +37,29 @@ export class BountyRepository {
     return this.prisma.chainBounty.count({ where: { posterColonyId: colonyId, state: { in: [...ACTIVE] } } });
   }
 
+  /** Sum of `open` or `claimed` rewards for this claimer and resource (major units). */
+  async claimedReward(accountId: string, resource: string): Promise<number> {
+    const rows = await this.prisma.chainBounty.findMany({
+      where: { claimerAccountId: accountId, state: { in: [...ACTIVE] } },
+      select: { reward: true },
+    });
+    let sum = 0;
+    for (const row of rows) sum += rewardUnits(row.reward, resource);
+    return sum;
+  }
+
+  /** Mercenary hire: the squad account is the reserved claimer (W22-28). */
+  reserveClaimer(id: string, claimerAccountId: string): Promise<BountyRow> {
+    return this.prisma.chainBounty.update({
+      where: { id },
+      data: { claimerAccountId, state: 'claimed' },
+    });
+  }
+
+  markRefunded(id: string): Promise<BountyRow> {
+    return this.prisma.chainBounty.update({ where: { id }, data: { state: 'refunded' } });
+  }
+
   insert(row: NewBountyRow): Promise<BountyRow> {
     return this.prisma.chainBounty.create({
       data: {
@@ -55,4 +78,11 @@ export class BountyRepository {
       },
     });
   }
+}
+
+function rewardUnits(reward: unknown, resource: string): number {
+  if (!reward || typeof reward !== 'object') return 0;
+  const row = reward as { resource?: unknown; amount?: unknown };
+  if (row.resource !== resource || typeof row.amount !== 'number' || !Number.isInteger(row.amount) || row.amount < 0) return 0;
+  return row.amount;
 }

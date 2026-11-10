@@ -37,6 +37,11 @@ export const EscrowActionInput = z.strictObject({
   opId: OpId,
   escrowId: EscrowId,
   caller: AccountId,
+  /**
+   * Base units `refund` returns to the opener. Omit it to return the whole hold and close the escrow.
+   * A smaller amount leaves the row `open` with the rest (W22-28). `0` moves nothing. `claim` ignores it.
+   */
+  amount: TokenAmount.optional(),
 });
 export type EscrowActionInput = z.infer<typeof EscrowActionInput>;
 
@@ -59,7 +64,8 @@ export type EscrowView = z.infer<typeof EscrowView>;
 
 /**
  * Bounty escrow (`EscrowPort`, W00-30 + W22-02, NEAR-110..111).
- * `claim` is the operator call that pays the claimer. `refund` returns the hold to the poster.
+ * `claim` is the operator call that pays the claimer the current hold. `refund` returns the opener
+ * the whole hold, or `amount` when that is set (the unused part of a mercenary hire).
  */
 export abstract class EscrowPort {
   abstract open(input: EscrowOpenInput): Promise<EscrowOpenResult>;
