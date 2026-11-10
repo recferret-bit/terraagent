@@ -3796,6 +3796,10 @@
             "additionalProperties": {
               "additionalProperties": false,
               "properties": {
+                "buyBelowStock": {
+                  "minimum": 0,
+                  "type": "number"
+                },
                 "maxPerSession": {
                   "minimum": 0,
                   "type": "number"
@@ -3815,6 +3819,11 @@
                     "anyone"
                   ],
                   "type": "string"
+                },
+                "sellAboveStoragePct": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
                 }
               },
               "required": [

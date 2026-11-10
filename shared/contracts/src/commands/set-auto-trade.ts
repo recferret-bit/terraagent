@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AutoTradeLimitsSchema } from '../notify/auto-trade';
 import { defineCommand } from './define';
 
-/** Player autoTrade limits (AW-13). The row shape is W09's; W15-19 may extend it. An empty map clears every limit. */
+/** Player autoTrade limits (AW-13). Optional `sellAboveStoragePct` and `buyBelowStock` extend the W09 row (BE-72). An empty map clears every limit. */
 export const SetAutoTradeArgs = z.strictObject({
   limits: AutoTradeLimitsSchema,
 });

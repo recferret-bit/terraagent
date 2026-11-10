@@ -908,10 +908,10 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Question for the owner
 - **Area / code:** `backend/app/src/near/application/ports/agent-wallet.port.ts`, `shared/contracts/src/guild/offers.ts`, `shared/contracts/src/commands/set-auto-trade.ts`, NEAR-80, NEAR-81, PROTOCOL `POST /v1/near/director-key`
-- **What happens:** A limited key stores a NEAR gas allowance and a separate per-token principal ledger (`allowance`, `reserved`, `spent`, `available`). Signing does not spend principal. `director.status` is a WebSocket push and is not the W16 event `directorStatus`. Revoke is specified as `DELETE` by W15-18; PROTOCOL still says `POST` add/revoke. Each `guild.arrived` offer may include a `reason` string and may omit it. `setAutoTrade` carries the W09 limit row (`maxPerTrade`, `maxPerSession`, `minStock`, `partners`). The "sell above 80% storage" trigger is not on that row yet.
+- **What happens:** A limited key stores a NEAR gas allowance and a separate per-token principal ledger (`allowance`, `reserved`, `spent`, `available`). Signing does not spend principal. `director.status` is a WebSocket push and is not the W16 event `directorStatus`. Revoke is specified as `DELETE` by W15-18; PROTOCOL still says `POST` add/revoke. Each `guild.arrived` offer may include a `reason` string and may omit it. `setAutoTrade` carries the W09 limit row (`maxPerTrade`, `maxPerSession`, `minStock`, `partners`) plus optional `sellAboveStoragePct` and `buyBelowStock` (BE-72).
 - **Why it is like this:** Q-04-1 conflicts on allowance basis (away budget vs per-session caps) and unit (per token vs one NEAR number). The wave text for W15-03 and W15-18 is per-token principal plus a separate gas allowance, so that is the default. Q-04-12 leaves the revoke verb open; W15-18's `DELETE` is the default. Q-04-5 asks for a reason on offers; the field is optional so a missing reason still parses.
-- **Workaround / mitigation:** Command rejects use `allowance_exhausted`. The port throws `NEAR_ALLOWANCE_EXHAUSTED`. W15-03 stores that ledger on `chain.mock_chain_agent_key` and `chain.mock_chain_agent_allowance` (available is computed) and does not write `chain.director_key`. W15-19 extends the autoTrade row if the storage-percent trigger is required. W15-18 implements `DELETE`.
-- **To resolve:** Confirm per-token principal, `DELETE` revoke, and optional offer reasons. Confirm whether "sell above N% storage" belongs on `setAutoTrade` or only in the director decision.
+- **Workaround / mitigation:** Command rejects use `allowance_exhausted`. The port throws `NEAR_ALLOWANCE_EXHAUSTED`. W15-03 stores that ledger on `chain.mock_chain_agent_key` and `chain.mock_chain_agent_allowance` (available is computed) and does not write `chain.director_key`. The storage-percent trigger is the optional field in BE-72. W15-18 implements `DELETE`.
+- **To resolve:** Confirm per-token principal, `DELETE` revoke, and optional offer reasons.
 - **Found:** 2026-11-10, W15-01
 
 ### BE-71 · Mock agent-wallet principal is one pool per token, and gas is not metered
@@ -923,6 +923,16 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Callers that overlap two holds must consume and release amounts that fit the combined reserved total. Read balances through `keyStatus`, not `chain.director_key`.
 - **To resolve:** W15-18 can project `keyStatus` into `chain.director_key`. W23 registers the testnet class. Gas metering, if it is required, is a later change.
 - **Found:** 2026-11-10, W15-03
+
+### BE-72 · autoTrade storage percent and buy floor are optional
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/contracts/src/notify/auto-trade.ts`, `shared/sim/src/systems/away/auto-trade.ts` (`withinAutoTrade`), `shared/sim/src/systems/trade/autotrade/`, planet blob `autoTrade`
+- **What happens:** `sellAboveStoragePct` (0..100) and `buyBelowStock` may be omitted. A W09 row still parses, and `withinAutoTrade` then ignores those rules. When the percent is set, a sell is allowed at that fill or above (inclusive); a sell with no `storagePct` and no positive `storageCap` is refused. A buy is allowed only when stock is at or below `buyBelowStock` (inclusive). `setAutoTrade` stores the map on blob `autoTrade` under the colony index. `partners: 'truce'` is rejected and not stored while W18 is off; the row is not rewritten to `guild`. The forecast defaults `tier1Only` to true (`metals.t1`, `minerals.t1`, `bio.water`, `bio.biomass`). T2/T3 keys still parse on the command. Surplus is stock after queues, open reservations and the service window; the reserve floor feeds shortage, not that surplus. A buy is preferred only when `withinAutoTrade` accepts it. Haul, produce, depot and reserve are not partner trades.
+- **Why it is like this:** W15-19 requires existing rows to keep parsing. BE-70 left the storage-percent trigger open; the issue makes it optional rather than required. The id is BE-72 because W15-03 already took BE-71.
+- **Workaround / mitigation:** Send `sellAboveStoragePct: 80` for the demo rule. Pass `tier1Only: false` to forecast a T2 key. Turn W18 on before storing `partners: 'truce'`.
+- **To resolve:** Owner can require the percent on every row later. AW-13 still lists fewer fields than this row.
+- **Found:** 2026-11-10, W15-19
 
 ### BE-69 · A settled Colony Deed push is not one of the eight away-alert toggles
 

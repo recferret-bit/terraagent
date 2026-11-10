@@ -51,10 +51,12 @@ export {
   AUTO_TRADE_PARTNERS,
   AutoTradeLimitSchema,
   AutoTradeLimitsSchema,
+  AutoTradeSideSchema,
   AutoTradeOrderSchema,
   AutoTradePartnerSchema,
   type AutoTradeLimit,
   type AutoTradeLimits,
   type AutoTradeOrder,
   type AutoTradePartner,
+  type AutoTradeSide,
 } from './auto-trade';
