@@ -45,10 +45,10 @@ function settle(state: PlanetState, ctx: StepContext, bounty: BountyRecord, tota
     return;
   }
   bounty.state = 'refunded';
-  emitRefund(state, ctx, bounty, top === bounty.poster ? 'cancelled' : 'failed');
+  emitBountyRefund(state, ctx, bounty, top === bounty.poster ? 'cancelled' : 'failed');
 }
 
-function emitRefund(state: PlanetState, ctx: StepContext, bounty: BountyRecord, reason: BountyRefundReason): void {
+export function emitBountyRefund(state: PlanetState, ctx: StepContext, bounty: BountyRecord, reason: BountyRefundReason): void {
   const posterId = bountyColonyId(state, bounty.poster);
   ctx.emit({
     kind: 'bountyRefunded',

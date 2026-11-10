@@ -9,5 +9,5 @@ export const event = defineEvent({
   severity: 'warn',
   audience: 'player',
   data: BountyRefundedData,
-  summary: 'An expired, cancelled, or failed bounty returned its reward to the poster (W22-02, NEAR-110).',
+  summary: 'An expired, cancelled, failed, or lost-building bounty returned its reward to the poster (W22-02, W22-21, NEAR-110).',
 });

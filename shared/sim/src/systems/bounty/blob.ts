@@ -15,16 +15,37 @@ export interface ClearNestTarget {
   nestId: string;
 }
 
+export interface DefendAreaTarget {
+  kind: 'defend_area';
+  q: number;
+  r: number;
+  radius: number;
+  durationH: number;
+}
+
+export type BountyTarget = ClearNestTarget | DefendAreaTarget;
+
 export interface BountyRecord {
   id: string;
   /** Poster colony index. */
   poster: number;
-  target: ClearNestTarget;
-  /** Claimer colony indexes. The poster may be one of them. */
+  target: BountyTarget;
+  /** Claimer colony indexes. The poster may be one of them. `defend_area` keeps one. */
   claimers: number[];
   state: BountyState;
   reward: { resource: T1ResourceKey; amount: number };
   expiresAt: number;
+  /** Defend window, inclusive start and exclusive end. Absent on `clear_nest`. */
+  startTick?: number;
+  endTick?: number;
+  presentTicks?: number;
+}
+
+export interface DefendBounty extends BountyRecord {
+  target: DefendAreaTarget;
+  startTick: number;
+  endTick: number;
+  presentTicks: number;
 }
 
 export interface NestDamageHit {
@@ -50,7 +71,15 @@ export function bountyAudience(claimer: string, poster: string): string[] {
 
 /** An open or claimed clear_nest bounty on `nestId`. */
 export function isLiveClearNest(bounty: BountyRecord, nestId: string): boolean {
-  return bounty.target.nestId === nestId && (bounty.state === 'open' || bounty.state === 'claimed');
+  return bounty.target.kind === 'clear_nest' && bounty.target.nestId === nestId && isOpenBounty(bounty);
+}
+
+export function isDefendBounty(bounty: BountyRecord): bounty is DefendBounty {
+  return bounty.target.kind === 'defend_area' && isTick(bounty.startTick) && isTick(bounty.endTick) && isTick(bounty.presentTicks);
+}
+
+export function isOpenBounty(bounty: BountyRecord): boolean {
+  return bounty.state === 'open' || bounty.state === 'claimed';
 }
 
 export function readBounty(state: PlanetState): BountyBlobValue {
@@ -86,7 +115,7 @@ function readBountyRecord(raw: unknown): BountyRecord | null {
   if (!isId(row.id) || !isIndex(row.poster) || !target || !reward) return null;
   if (typeof row.expiresAt !== 'number' || !Number.isInteger(row.expiresAt) || row.expiresAt <= 0) return null;
   if (!isState(row.state)) return null;
-  return {
+  const record: BountyRecord = {
     id: row.id,
     poster: row.poster,
     target,
@@ -95,11 +124,18 @@ function readBountyRecord(raw: unknown): BountyRecord | null {
     reward,
     expiresAt: row.expiresAt,
   };
+  if (target.kind !== 'defend_area') return record;
+  if (!isTick(row.startTick) || !isTick(row.endTick) || !isTick(row.presentTicks) || row.endTick <= row.startTick) return null;
+  return { ...record, startTick: row.startTick, endTick: row.endTick, presentTicks: row.presentTicks };
 }
 
-function readTarget(raw: BountyRecord['target'] | undefined): ClearNestTarget | null {
-  if (!raw || raw.kind !== 'clear_nest' || !isId(raw.nestId)) return null;
-  return { kind: 'clear_nest', nestId: raw.nestId };
+function readTarget(raw: unknown): BountyTarget | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as { kind?: unknown; nestId?: unknown; q?: unknown; r?: unknown; radius?: unknown; durationH?: unknown };
+  if (row.kind === 'clear_nest' && isId(row.nestId)) return { kind: 'clear_nest', nestId: row.nestId };
+  if (row.kind !== 'defend_area' || !isTile(row.q) || !isTile(row.r)) return null;
+  if (!isRadius(row.radius) || typeof row.durationH !== 'number' || !Number.isFinite(row.durationH) || row.durationH <= 0) return null;
+  return { kind: 'defend_area', q: row.q, r: row.r, radius: row.radius, durationH: row.durationH };
 }
 
 function readReward(raw: BountyRecord['reward'] | undefined): BountyRecord['reward'] | null {
@@ -128,6 +164,18 @@ function isState(value: unknown): value is BountyState {
 
 function isIndex(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isTick(value: unknown): value is number {
+  return isIndex(value);
+}
+
+function isTile(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
+function isRadius(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 8;
 }
 
 function isId(value: unknown): value is string {
