@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type DeedUpdatedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
@@ -85,6 +85,7 @@ export class WorldStore {
   private latestAwayDigest: AwayDigestV1 | null = null;
   private readonly awayDigests = new Emitter<AwayDigestV1>();
   private readonly deedUpdates = new Emitter<DeedUpdatedPayload>();
+  private readonly directorStatuses = new Emitter<DirectorKeyStatusPayload>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -114,6 +115,8 @@ export class WorldStore {
   onAwayDigest(fn: (d: AwayDigestV1) => void): () => void { return this.awayDigests.on(fn); }
   /** W20 `deed.updated` pushes for the joined planet/colony. */
   onDeedUpdated(fn: (p: DeedUpdatedPayload) => void): () => void { return this.deedUpdates.on(fn); }
+  /** W15 `director.status` (allowance and spent, or revoked). */
+  onDirectorStatus(fn: (p: DirectorKeyStatusPayload) => void): () => void { return this.directorStatuses.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -217,6 +220,7 @@ export class WorldStore {
       marketBooks: this.marketBooks,
       marketTrades: this.marketTrades,
       deedUpdates: this.deedUpdates,
+      directorStatuses: this.directorStatuses,
     })) return;
     switch (m.t) {
       case 'welcome': {
