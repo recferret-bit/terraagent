@@ -104,7 +104,7 @@ export async function bootStack(): Promise<Stack> {
   };
   try {
     await startApp();
-    vite = logged(process.execPath, [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--config', 'frontend/vite.config.ts', '--host', '127.0.0.1', '--port', String(u.clientPort), '--strictPort'], ROOT, { ...appEnv }, 'vite.log');
+    vite = logged(process.execPath, [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--config', 'tests/e2e/harness/vite.e2e.config.ts', '--host', '127.0.0.1', '--port', String(u.clientPort), '--strictPort'], ROOT, { ...appEnv }, 'vite.log');
     await waitFor(u.client, 'client');
     control = await listenControl({ startApp, stopApp });
     process.env.E2E_CONTROL = `http://127.0.0.1:${(control.address() as { port: number }).port}`;
@@ -117,7 +117,7 @@ export async function bootStack(): Promise<Stack> {
 
 /** `--host local`: the browser local host needs no app and no database, only the page server (D-31, SIM-X-06). */
 async function bootViteOnly(u: ReturnType<typeof urls>): Promise<Stack> {
-  const vite = logged(process.execPath, [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--config', 'frontend/vite.config.ts', '--host', '127.0.0.1', '--port', String(u.clientPort), '--strictPort'], ROOT, { ...process.env }, 'vite.log');
+  const vite = logged(process.execPath, [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--config', 'tests/e2e/harness/vite.e2e.config.ts', '--host', '127.0.0.1', '--port', String(u.clientPort), '--strictPort'], ROOT, { ...process.env }, 'vite.log');
   try { await waitFor(u.client, 'client'); } catch (e) { await terminate(vite); throw e; }
   process.env.E2E_CONTROL = '';
   return { stop: () => terminate(vite) };

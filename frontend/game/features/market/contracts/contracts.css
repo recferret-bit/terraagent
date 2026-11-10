@@ -16,3 +16,5 @@
 .ta-contracts-row--failed { border-left-color: var(--ta-hull); opacity: 0.8; }
 .ta-contracts-badge { flex: none; color: var(--ta-blue); }
 .ta-contracts-empty { font-size: 13px; opacity: 0.7; }
+/* Colony book Trade tab: the Contracts list is a section of the page, not a second plate. */
+.ta-colony-book .ta-contracts { width: 100%; box-sizing: border-box; max-height: none; padding: var(--ta-s2) 0 0; background: transparent; border: 0; border-top: 1px solid var(--ta-seam); clip-path: none; }

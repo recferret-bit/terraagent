@@ -4,10 +4,7 @@ import { createDeedCardArtElement } from './deedCardArt';
 import { createDeedTracker } from './deedTracker';
 import {
   applyDeedHeaderBadges,
-  buildDeedHistorySection,
-  buildDeedPanelHeader,
-  buildDeedReceiptAndActions,
-  buildDeedTriggerButton,
+  buildDeedPanelDom,
   defaultFallbackDeed,
   renderDeedHistoryList,
   renderDeedStatsGrid,
@@ -27,6 +24,8 @@ export interface DeedPanelOptions extends StakingPanelOptions {
 export class DeedPanel implements Disposable {
   readonly triggerBtn: HTMLButtonElement;
   readonly triggerStatusEl: HTMLSpanElement;
+  /** One-line hint under the trigger; shown only inside the Colony book's Deed tab (deedPanel.css). */
+  private readonly hintEl: HTMLParagraphElement;
   readonly root: HTMLElement;
   readonly stakingSlotEl: HTMLElement;
   readonly stakingPanel: StakingPanel;
@@ -57,73 +56,38 @@ export class DeedPanel implements Disposable {
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
     if (opts.onDeedChanged) this.onDeedListeners.add(opts.onDeedChanged);
 
-    const trigger = buildDeedTriggerButton(() => this.setOpen(!this.isOpen));
-    this.triggerBtn = trigger.triggerBtn;
-    this.triggerStatusEl = trigger.triggerStatusEl;
+    const offCloser = ctx.services.registerHudCloser?.(() => { if (this.isOpen) this.setOpen(false); });
+    if (offCloser) this.offs.push(offCloser);
 
-    this.root = document.createElement('section');
-    this.root.className = 'ta-deed-panel plate';
-    this.root.dataset.testid = 'deed-panel';
-    this.root.dataset.open = 'false';
-    this.root.dataset.settled = 'false';
-
-    const header = buildDeedPanelHeader(() => this.setOpen(false));
-    this.versionBadgeEl = header.versionBadge;
-    this.statusChipEl = header.statusChip;
-    this.pendingBadgeEl = header.pendingBadge;
-
-    const body = document.createElement('div');
-    body.className = 'ta-deed-panel__body';
-
-    this.previewWrapEl = document.createElement('div');
-    this.previewWrapEl.className = 'ta-deed-panel__preview-wrap';
-    this.previewWrapEl.dataset.testid = 'deed-card-preview';
-
-    const details = document.createElement('div');
-    details.className = 'ta-deed-panel__details';
-
-    this.statsGridEl = document.createElement('div');
-    this.statsGridEl.className = 'ta-deed-panel__stats';
-    this.statsGridEl.dataset.testid = 'deed-stats';
-
-    const receiptRow = buildDeedReceiptAndActions({
-      getCurrentDeed: () => this.currentDeed,
-      onSettle: () => {
-        void this.sealSettledDeed();
-      },
+    const dom = buildDeedPanelDom({
+      parent: this.parent,
       ctx: this.ctx,
+      onToggle: () => this.setOpen(!this.isOpen),
+      onClose: () => this.setOpen(false),
+      getCurrentDeed: () => this.currentDeed,
+      onSettle: () => { void this.sealSettledDeed(); },
       openWindow: opts.openWindow,
     });
-    this.receiptLinkEl = receiptRow.receiptLink;
-    this.shareLinkEl = receiptRow.shareLink;
-    this.settleBtnEl = receiptRow.settleBtn;
+    this.triggerBtn = dom.triggerBtn;
+    this.triggerStatusEl = dom.triggerStatusEl;
+    this.hintEl = dom.hintEl;
+    this.root = dom.root;
+    this.stakingSlotEl = dom.stakingSlotEl;
+    this.versionBadgeEl = dom.versionBadgeEl;
+    this.statusChipEl = dom.statusChipEl;
+    this.pendingBadgeEl = dom.pendingBadgeEl;
+    this.previewWrapEl = dom.previewWrapEl;
+    this.statsGridEl = dom.statsGridEl;
+    this.receiptLinkEl = dom.receiptLinkEl;
+    this.shareLinkEl = dom.shareLinkEl;
+    this.settleBtnEl = dom.settleBtnEl;
+    this.historyListEl = dom.historyListEl;
 
-    const historyBox = buildDeedHistorySection();
-    this.historyListEl = historyBox.list;
-
-    details.appendChild(this.statsGridEl);
-    details.appendChild(receiptRow.receiptWrap);
-    details.appendChild(receiptRow.actionsWrap);
-    details.appendChild(historyBox.section);
-
-    body.appendChild(this.previewWrapEl);
-    body.appendChild(details);
-
-    this.stakingSlotEl = document.createElement('div');
-    this.stakingSlotEl.className = 'ta-deed-panel__staking-slot';
-    this.stakingSlotEl.dataset.testid = 'deed-staking-slot';
     this.stakingPanel = new StakingPanel(this.stakingSlotEl, this.ctx, {
       fetchFn: this.fetchFn,
       openSigner: opts.openSigner,
     });
     this.onDeedListeners.add((d) => this.stakingPanel.syncDeed(d));
-
-    this.root.appendChild(header.headerEl);
-    this.root.appendChild(body);
-    this.root.appendChild(this.stakingSlotEl);
-
-    this.parent.appendChild(this.triggerBtn);
-    this.parent.appendChild(this.root);
 
     this.bindRealtimeUpdates();
     this.renderDeed(defaultFallbackDeed(this.resolvePlanetId(), 'col_0'));
@@ -302,6 +266,7 @@ export class DeedPanel implements Disposable {
     this.warpTimers.clear();
     for (const off of this.offs.splice(0)) off();
     this.triggerBtn.remove();
+    this.hintEl.remove();
     this.root.remove();
   }
 

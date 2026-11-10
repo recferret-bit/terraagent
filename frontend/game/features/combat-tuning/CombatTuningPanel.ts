@@ -5,7 +5,6 @@ import { makeBtn, makeDiv } from '../shared/dom';
 import { isTypingTarget } from '../shared/hotkeys';
 import { combatTuneTypes, readTuneValue, tuneDesignValue, validateTuneRange, type CombatTuneField, type CombatTuneType } from './catalog';
 import '../../net/services';
-import '../landfall';
 
 const BLOCK = 'combat-tuning';
 
@@ -21,10 +20,12 @@ export class CombatTuningPanel implements HudPanelInstance {
   private busy = false;
   private disposed = false;
   private open = false;
+  private readonly offCloser: (() => void) | undefined;
 
   constructor(private readonly el: HTMLElement, private readonly ctx: FeatureContext) {
-    this.button = makeBtn('btn', 'combat-tuning-toggle', 'COMBAT F6', () => this.toggle());
+    this.button = makeBtn('btn btn-ghost btn-sm ta-combat-tuning-launcher__btn', 'combat-tuning-toggle', 'COMBAT F6', () => this.toggle());
     this.button.title = 'Combat balance tuning (F6)';
+    this.offCloser = ctx.services.registerHudCloser?.(() => { if (this.open) this.toggle(false); });
     this.button.setAttribute('aria-expanded', 'false');
     this.dialog.hidden = true;
     this.dialog.setAttribute('role', 'dialog');
@@ -43,7 +44,12 @@ export class CombatTuningPanel implements HudPanelInstance {
     this.exported.readOnly = true;
     this.exported.setAttribute('aria-label', 'Planet balance overrides JSON');
     this.dialog.append(header, note, this.picker, this.fields, actions, this.status, this.exported);
-    this.el.append(this.button, this.dialog);
+    // The launcher is a section of the Colony book's Combat tab; the dialog floats in the HUD overlay (F6 opens it from any tab).
+    const section = makeDiv('ta-combat-tuning-launcher', 'combat-tuning-launcher');
+    section.append(makeDiv('ta-combat-tuning-launcher__title', undefined, 'COMBAT LAB'),
+      makeDiv('ta-combat-tuning-launcher__note', undefined, 'Live balance per unit type on this planet.'), this.button);
+    this.el.append(section);
+    (ctx.services?.hudOverlay ?? this.el).append(this.dialog);
     window.addEventListener('keydown', this.onKey, true);
   }
 
@@ -152,8 +158,9 @@ export class CombatTuningPanel implements HudPanelInstance {
 
   dispose(): void {
     this.disposed = true;
+    this.offCloser?.();
     window.removeEventListener('keydown', this.onKey, true);
     setGameInputBlocked(BLOCK, false);
-    this.button.remove(); this.dialog.remove();
+    this.el.querySelector('.ta-combat-tuning-launcher')?.remove(); this.dialog.remove();
   }
 }

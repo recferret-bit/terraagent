@@ -8,7 +8,7 @@
 - **Ports:** this worktree's `.env.worktree` sets `TA_PORT_BASE=4100` → app **4101**, client **5273** (`TA_DB_NAME=terra_wave_w02_first_light`). Below, `<client>` = `http://127.0.0.1:5273`, `<app>` = `http://127.0.0.1:4101`.
 - **Start the stack** (if it isn't running): `cd ../TerraAgent-wt/w02 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat scripts/dev/.out/runner.pid)` if it was started in the background.
 - **Dev console:** in the game page press **`` ` ``** (the key under Esc). A dark panel opens at the bottom; type commands there and press Enter. It is **not** the browser's DevTools console. Click the game first if DevTools has focus. `tune` needs the game server (it does not work with `?host=local`).
-- **Menus & queue shortcuts:** the menus are tabs of one Command Dock (bottom-left, `HIDE` / `SHOW`): press **`B`** (or click **`BUILD [B]`**) for the Construction menu, **`U`** (or click **`PRODUCTION [U]`**) for the Units menu, **`T`** (or click **`TERRAFORM [T]`**) for the Terraform tools, and click **`QUEUE`** for the Order Queue (**`Q`** collapses / expands it).
+- **Menus & queue shortcuts:** the menus are tabs of one Command Dock (top right under the FPS counter, a vertical tab book; click the open spine or `▸` to fold it): press **`B`** (or click **`BUILD [B]`**) for the Construction menu, **`U`** (or click **`PRODUCTION [U]`**) for the Units menu, **`T`** (or click **`TERRAFORM [T]`**) for the Terraform tools, and click **`QUEUE`** for the Order Queue (**`Q`** collapses / expands it).
 - **Hex coordinates** below are `(q, r)` with the Command Hub at `(0, 0)`; the HQ drone starts at `(2, -1)`.
 - Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 

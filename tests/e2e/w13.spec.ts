@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { registerExtraSteps } from './w13-register';
-import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, stack, test, urls, waitForTick } from './harness';
+import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, openColonyTab, stack, test, urls, waitForTick } from './harness';
 
 /**
  * W13 Markets (F2, mock) wave E2E suite, part 1 (W13-35): demo story `docs/plan/waves/W13-markets.md` steps 1, 3-11 through the
@@ -194,7 +194,8 @@ test('@hack 4. B places the preview (order form) and buys 300 water for 10 USDC:
       w.__online.store.onServerEvents?.((e) => w.__ev.push(...e));
     });
   }
-  const toasts = Promise.all([a, b].map((p) => p.getByText(toast).first().waitFor({ state: 'visible', timeout: 100_000 })));
+  // the HUD toast, not the Contracts row with the same text (that row sits, maybe hidden, in the Colony book's TRADE tab)
+  const toasts = Promise.all([a, b].map((p) => p.getByTestId('hud-toast').filter({ hasText: toast }).first().waitFor({ state: 'visible', timeout: 100_000 })));
   toasts.catch(() => undefined);
   await ids(b, 'order-submit').click();
   await expect.poll(async () => (await snap('a')).recentTrades.length, { timeout: 40_000 }).toBe(1);
@@ -397,11 +398,11 @@ registerExtraSteps({ app: APP, planetId: () => planetId, usdc: USDC, water: WATE
 
 test('@hack 9c. Supply & trade panel: open it, BUY prefills the MARKET order form with side and amount and never submits', async () => {
   test.setTimeout(120_000);
-  // the open Trade Hub panel covers the HQ panel that holds Supply & trade: close it first (BUY re-opens the MARKET tab)
+  // close the open Trade Hub panel first (BUY re-opens it on the MARKET tab)
   if ((await ids(a, 'trade-hub-panel').getAttribute('data-open')) === 'true') await ids(a, 'trade-hub-close').click();
   await expect(ids(a, 'trade-hub-panel')).toHaveAttribute('data-open', 'false');
   const mine = (await snap('a')).myOrders?.length ?? 0;
-  await ids(a, 'supply-toggle').click();
+  await openColonyTab(a, 'supply'); // Supply & trade lives in the Colony book's SUPPLY tab and starts open there
   await expect(ids(a, 'supply-body')).toBeVisible();
   const buy = ids(a, 'supply-buy-act').first();
   const hasBuy = await buy.isVisible().catch(() => false);
@@ -466,9 +467,8 @@ test('@hack 12. /play.html?scenario=w13r&as=a: region badges show desert scarcit
   const r = await (await browser.newContext()).newPage();
   try {
     await loadScenario(r, 'w13r', { skip: '1' }, { as: 'a', timeout: 120_000 }); // `as=a` is free again once the w13 pages are closed
-    const toggle = ids(r, 'supply-toggle');
-    await expect(toggle).toBeVisible({ timeout: 30_000 });
-    await toggle.click();
+    await expect(ids(r, 'colony-tab-supply')).toBeVisible({ timeout: 30_000 });
+    await openColonyTab(r, 'supply'); // the Supply panel starts open in the Colony book's SUPPLY tab
     await expect(ids(r, 'supply-badges')).toBeVisible();
     const chips = await ids(r, 'supply-badges').locator('.ta-supply__chip').allInnerTexts();
     test.info().annotations.push({ type: 'observed', description: `step 12 badges: ${chips.join(' | ')}` });

@@ -8,14 +8,7 @@
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam);
   color: var(--ta-text);
-  clip-path: polygon(
-    var(--ta-chamfer-s) 0,
-    100% 0,
-    100% calc(100% - var(--ta-chamfer-s)),
-    calc(100% - var(--ta-chamfer-s)) 100%,
-    0 100%,
-    0 var(--ta-chamfer-s)
-  );
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
   min-width: 220px;
   max-width: 240px;
   box-sizing: border-box;
@@ -43,14 +36,7 @@
   background: var(--ta-plate-3);
   border: 1px solid var(--ta-seam-2);
   color: var(--ta-orange-hi);
-  clip-path: polygon(
-    var(--ta-chamfer-s) 0,
-    100% 0,
-    100% calc(100% - var(--ta-chamfer-s)),
-    calc(100% - var(--ta-chamfer-s)) 100%,
-    0 100%,
-    0 var(--ta-chamfer-s)
-  );
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
 
 .ta-goals-panel__collapse-btn {
@@ -61,14 +47,7 @@
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   letter-spacing: var(--ta-track-button);
-  clip-path: polygon(
-    var(--ta-chamfer-s) 0,
-    100% 0,
-    100% calc(100% - var(--ta-chamfer-s)),
-    calc(100% - var(--ta-chamfer-s)) 100%,
-    0 100%,
-    0 var(--ta-chamfer-s)
-  );
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
   cursor: pointer;
   transition: color var(--ta-dur-quick) var(--ta-ease-servo), border-color var(--ta-dur-quick) var(--ta-ease-servo);
 }
@@ -96,14 +75,7 @@
   padding: var(--ta-s2);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-blue);
-  clip-path: polygon(
-    var(--ta-chamfer-s) 0,
-    100% 0,
-    100% calc(100% - var(--ta-chamfer-s)),
-    calc(100% - var(--ta-chamfer-s)) 100%,
-    0 100%,
-    0 var(--ta-chamfer-s)
-  );
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
 
 .ta-goal-suggestion-card__tag {
@@ -144,14 +116,7 @@
   font-weight: 600;
   padding: var(--ta-s1) var(--ta-s2);
   cursor: pointer;
-  clip-path: polygon(
-    var(--ta-s1) 0,
-    100% 0,
-    100% calc(100% - var(--ta-s1)),
-    calc(100% - var(--ta-s1)) 100%,
-    0 100%,
-    0 var(--ta-s1)
-  );
+  clip-path: polygon(var(--ta-s1) 0, 100% 0, 100% calc(100% - var(--ta-s1)), calc(100% - var(--ta-s1)) 100%, 0 100%, 0 var(--ta-s1));
 }
 
 .ta-goal-suggestion-card__dismiss-btn {
@@ -162,14 +127,7 @@
   font-size: var(--ta-fs-label);
   padding: var(--ta-s1) var(--ta-s2);
   cursor: pointer;
-  clip-path: polygon(
-    var(--ta-s1) 0,
-    100% 0,
-    100% calc(100% - var(--ta-s1)),
-    calc(100% - var(--ta-s1)) 100%,
-    0 100%,
-    0 var(--ta-s1)
-  );
+  clip-path: polygon(var(--ta-s1) 0, 100% 0, 100% calc(100% - var(--ta-s1)), calc(100% - var(--ta-s1)) 100%, 0 100%, 0 var(--ta-s1));
 }
 
 /* Add Goal Form */
@@ -180,14 +138,7 @@
   padding: var(--ta-s2);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam);
-  clip-path: polygon(
-    var(--ta-chamfer-s) 0,
-    100% 0,
-    100% calc(100% - var(--ta-chamfer-s)),
-    calc(100% - var(--ta-chamfer-s)) 100%,
-    0 100%,
-    0 var(--ta-chamfer-s)
-  );
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
 
 .ta-goal-form__row {
@@ -216,14 +167,7 @@
   font-size: var(--ta-fs-label);
   padding: var(--ta-s1);
   outline: none;
-  clip-path: polygon(
-    var(--ta-s1) 0,
-    100% 0,
-    100% calc(100% - var(--ta-s1)),
-    calc(100% - var(--ta-s1)) 100%,
-    0 100%,
-    0 var(--ta-s1)
-  );
+  clip-path: polygon(var(--ta-s1) 0, 100% 0, 100% calc(100% - var(--ta-s1)), calc(100% - var(--ta-s1)) 100%, 0 100%, 0 var(--ta-s1));
 }
 
 .ta-goal-form__params {
@@ -270,14 +214,7 @@
   letter-spacing: var(--ta-track-button);
   padding: var(--ta-s1) var(--ta-s2);
   cursor: pointer;
-  clip-path: polygon(
-    var(--ta-s1) 0,
-    100% 0,
-    100% calc(100% - var(--ta-s1)),
-    calc(100% - var(--ta-s1)) 100%,
-    0 100%,
-    0 var(--ta-s1)
-  );
+  clip-path: polygon(var(--ta-s1) 0, 100% 0, 100% calc(100% - var(--ta-s1)), calc(100% - var(--ta-s1)) 100%, 0 100%, 0 var(--ta-s1));
   transition: opacity var(--ta-dur-quick) var(--ta-ease-servo);
 }
 
@@ -300,14 +237,7 @@
   padding: var(--ta-s2);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam);
-  clip-path: polygon(
-    var(--ta-chamfer-s) 0,
-    100% 0,
-    100% calc(100% - var(--ta-chamfer-s)),
-    calc(100% - var(--ta-chamfer-s)) 100%,
-    0 100%,
-    0 var(--ta-chamfer-s)
-  );
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
 
 .ta-goal-item[data-goal-status="active"] {
@@ -449,3 +379,10 @@
 .ta-ai-toggle__label { font-family: var(--ta-font-display); font-size: var(--ta-fs-label); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ta-text-2); }
 .ta-ai-toggle__hint { font: var(--ta-fs-label) var(--ta-font-body); color: var(--ta-text-2); }
 .ta-ai-toggle[data-enabled="true"] .ta-ai-toggle__hint { color: var(--ta-text); }
+
+/* Colony book HQ AI tab: the page is the plate, so the HQ panel drops its own frame, fills the page and scrolls with it. */
+.ta-colony-book .ta-hq-command-panel { width: 100%; box-sizing: border-box; background: transparent; border: 0; clip-path: none; }
+.ta-colony-book .ta-hq-command-panel .ta-goals-panel,
+.ta-colony-book .ta-hq-command-panel .ta-priorities-panel { padding-left: 0; padding-right: 0; background: transparent; clip-path: none; }
+.ta-colony-book .ta-hq-command-panel [role="tabpanel"] { max-height: none; overflow: visible; }
+.ta-colony-book .ta-hq-tabs, .ta-colony-book .ta-ai-toggle { padding-left: 0; padding-right: 0; }

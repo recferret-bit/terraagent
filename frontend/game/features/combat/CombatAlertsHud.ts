@@ -1,17 +1,25 @@
-import { TILE_M } from '@terra/render/planets/hex';
-import { axialToPlane, hexDistance } from '@terra/sim/grid/hex';
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { ownColonyIndex } from '../shared/colony';
-import { makeDiv, makeSpan } from '../shared/dom';
+import {
+  ALERT_PING_DURATION_MS,
+  buildCombatHudDom,
+  COMBAT_LOG_KINDS,
+  computeCameraFocusTile,
+  formatCombatLogLabel,
+  MAX_COMBAT_LOG_ENTRIES,
+  normalizeCombatEventData,
+  OFF_SCREEN_TILE_RADIUS,
+  renderCombatLogRows,
+  renderEdgePingButtons,
+  resolveScreenEdge,
+} from './parts/combatHudParts';
 import {
   createThreatsMapLayer,
   type CombatAlertPing,
   type ScreenEdge,
 } from './threatsLayer';
 
-export const ALERT_PING_DURATION_MS = 5000;
-export const OFF_SCREEN_TILE_RADIUS = 8;
-const MAX_COMBAT_LOG_ENTRIES = 12;
+export { ALERT_PING_DURATION_MS, OFF_SCREEN_TILE_RADIUS, resolveScreenEdge, type ScreenEdge };
 
 export type CombatLogEventKind =
   | 'underAttack'
@@ -20,15 +28,6 @@ export type CombatLogEventKind =
   | 'buildingDestroyed'
   | 'unitDestroyed'
   | 'nestDestroyed';
-
-const COMBAT_LOG_KINDS: ReadonlySet<string> = new Set<CombatLogEventKind>([
-  'underAttack',
-  'raidStarted',
-  'raidRepelled',
-  'buildingDestroyed',
-  'unitDestroyed',
-  'nestDestroyed',
-]);
 
 export interface CombatEventInput {
   readonly id?: string;
@@ -61,43 +60,13 @@ export interface PushUnderAttackPingOptions {
   readonly nowMs?: number;
 }
 
-export function resolveScreenEdge(focusQ: number, focusR: number, targetQ: number, targetR: number): ScreenEdge | null {
-  const dist = hexDistance(Math.round(focusQ), Math.round(focusR), Math.round(targetQ), Math.round(targetR));
-  if (dist <= OFF_SCREEN_TILE_RADIUS) return null;
-  const dq = targetQ - focusQ;
-  const dr = targetR - focusR;
-  const [dx, dy] = axialToPlane(dq, dr);
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? 'right' : 'left';
-  }
-  return dy >= 0 ? 'bottom' : 'top';
-}
-
-function formatCombatLogLabel(kind: CombatLogEventKind, data: Record<string, unknown>): string {
-  if (kind === 'underAttack') return 'Colony under attack';
-  if (kind === 'raidStarted') {
-    const species = typeof data.species === 'string' && data.species ? ` (${data.species})` : '';
-    return `Raid incoming${species}`;
-  }
-  if (kind === 'raidRepelled') {
-    return data.unbreached === true ? 'Raid repelled (Unbreached)' : 'Raid repelled';
-  }
-  if (kind === 'buildingDestroyed') {
-    const bldg = typeof data.building === 'string' && data.building ? `: ${data.building}` : '';
-    return `Building lost${bldg}`;
-  }
-  if (kind === 'unitDestroyed') {
-    const unit = typeof data.unit === 'string' && data.unit ? `: ${data.unit}` : '';
-    return `Unit destroyed${unit}`;
-  }
-  return 'Fauna nest destroyed';
-}
-
 export class CombatAlertsHud {
   readonly el: HTMLElement;
   readonly edgeContainerEl: HTMLElement;
   readonly logEl: HTMLElement;
   readonly logListEl: HTMLElement;
+  /** Muted "no threats" line; shown only inside the Colony book's Combat tab while the log is empty (combat.css). */
+  readonly emptyEl: HTMLElement;
 
   private readonly pings: CombatAlertPing[] = [];
   private readonly logEntries: CombatLogEntry[] = [];
@@ -115,25 +84,12 @@ export class CombatAlertsHud {
     opts?: { now?: () => number },
   ) {
     this.now = opts?.now ?? (() => Date.now());
-    this.el = makeDiv('ta-combat-hud', 'combat-hud');
-    this.el.setAttribute('role', 'region');
-    this.el.setAttribute('aria-label', 'Combat alerts and event log');
-
-    this.edgeContainerEl = makeDiv('ta-combat-edge-pings', 'combat-edge-pings');
-    this.edgeContainerEl.setAttribute('aria-live', 'assertive');
-
-    this.logEl = makeDiv('ta-combat-log plate-sm', 'combat-log');
-    this.logEl.setAttribute('data-combat-log', 'true');
-    this.logEl.setAttribute('data-empty', 'true');
-    this.logEl.setAttribute('aria-live', 'polite');
-
-    const header = makeDiv('ta-combat-log__header');
-    header.appendChild(makeSpan('ta-combat-log__title', undefined, 'COMBAT LOG'));
-    this.logListEl = makeDiv('ta-combat-log__list', 'combat-log-list');
-    this.logEl.append(header, this.logListEl);
-
-    this.el.append(this.edgeContainerEl, this.logEl);
-    parent.appendChild(this.el);
+    const dom = buildCombatHudDom(parent, ctx);
+    this.el = dom.el;
+    this.edgeContainerEl = dom.edgeContainerEl;
+    this.logEl = dom.logEl;
+    this.logListEl = dom.logListEl;
+    this.emptyEl = dom.emptyEl;
 
     this.syncThreatsLayerRegistration();
     this.bindEventSources();
@@ -181,24 +137,7 @@ export class CombatAlertsHud {
   }
 
   getCameraFocusTile(): { q: number; r: number } {
-    if (this.focusOverride) return this.focusOverride;
-    const rts = this.ctx.services.rtsCamera;
-    if (rts?.target) {
-      const px = rts.target.x / TILE_M;
-      const py = rts.target.z / TILE_M;
-      const r = (2 * py) / Math.sqrt(3);
-      const q = px - r * 0.5;
-      if (Number.isFinite(q) && Number.isFinite(r)) return { q, r };
-    }
-    const cam = this.ctx.services.camera;
-    if (cam?.position && (cam.position.x !== 0 || cam.position.z !== 0) && !rts) {
-      const px = cam.position.x / TILE_M;
-      const py = cam.position.z / TILE_M;
-      const r = (2 * py) / Math.sqrt(3);
-      const q = px - r * 0.5;
-      if (Number.isFinite(q) && Number.isFinite(r)) return { q, r };
-    }
-    return { q: 0, r: 0 };
+    return computeCameraFocusTile(this.focusOverride, this.ctx);
   }
 
   getActivePings(nowMs = this.now()): readonly CombatAlertPing[] {
@@ -241,11 +180,7 @@ export class CombatAlertsHud {
 
   private ingestEvent(ev: CombatEventInput, deduplicate: boolean): void {
     if (!ev || typeof ev.kind !== 'string' || !COMBAT_LOG_KINDS.has(ev.kind)) return;
-    const data: Record<string, unknown> = { ...(ev.data ?? {}) };
-    if (ev.q !== undefined && data.q === undefined) data.q = ev.q;
-    if (ev.r !== undefined && data.r === undefined) data.r = ev.r;
-    if (ev.colonyIndex !== undefined && data.colonyIndex === undefined) data.colonyIndex = ev.colonyIndex;
-    if (ev.unbreached !== undefined && data.unbreached === undefined) data.unbreached = ev.unbreached;
+    const data = normalizeCombatEventData(ev);
 
     const ownColony = ownColonyIndex(this.ctx.services);
     const evColony = typeof data.colonyIndex === 'number' ? data.colonyIndex : undefined;
@@ -335,49 +270,18 @@ export class CombatAlertsHud {
     this.refreshEdgePings();
   }
 
+  /** Live alert count on the Combat tab spine (every active ping, on- or off-screen); cleared when none. */
+  private syncTabBadge(): void {
+    this.ctx.services?.setHudTabBadge?.(this.el, this.pings.length > 0 ? this.pings.length : null);
+  }
+
   private renderEdgePings(): void {
-    this.edgeContainerEl.replaceChildren();
-    for (const ping of this.pings) {
-      if (!ping.edge) continue;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'ta-combat-edge-ping plate-sm';
-      btn.setAttribute('data-under-attack-ping', 'true');
-      btn.setAttribute('data-testid', 'under-attack-ping');
-      btn.setAttribute('data-edge', ping.edge);
-      btn.setAttribute('data-q', String(ping.q));
-      btn.setAttribute('data-r', String(ping.r));
-      const label = ping.kind === 'raidStarted' ? 'RAID INCOMING' : 'UNDER ATTACK';
-      btn.textContent = `⚠ ${label} (${ping.q}, ${ping.r})`;
-      btn.onclick = () => this.jumpToTile(ping.q, ping.r);
-      this.edgeContainerEl.appendChild(btn);
-    }
+    this.syncTabBadge();
+    renderEdgePingButtons(this.edgeContainerEl, this.pings, (q, r) => this.jumpToTile(q, r));
   }
 
   private renderLog(): void {
-    this.logListEl.replaceChildren();
-    this.logEl.setAttribute('data-empty', String(this.logEntries.length === 0));
-    for (const item of this.logEntries) {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'ta-combat-log__entry';
-      row.setAttribute('data-combat-log-entry', 'true');
-      row.setAttribute('data-event-kind', item.kind);
-      if (item.unbreached !== undefined) {
-        row.setAttribute('data-unbreached', String(item.unbreached));
-      }
-      if (item.q !== undefined && item.r !== undefined) {
-        row.setAttribute('data-q', String(item.q));
-        row.setAttribute('data-r', String(item.r));
-        row.onclick = () => this.jumpToTile(item.q!, item.r!);
-      }
-      const fullText =
-        item.q !== undefined && item.r !== undefined
-          ? `${item.label} [${item.q}, ${item.r}]`
-          : item.label;
-      row.textContent = fullText;
-      this.logListEl.appendChild(row);
-    }
+    renderCombatLogRows(this.logEl, this.emptyEl, this.logListEl, this.logEntries, (q, r) => this.jumpToTile(q, r));
   }
 
   dispose(): void {
@@ -388,6 +292,8 @@ export class CombatAlertsHud {
     this.registeredRegistry = null;
     this.pings.length = 0;
     this.logEntries.length = 0;
+    this.syncTabBadge();
+    this.edgeContainerEl.remove();
     this.el.remove();
   }
 }

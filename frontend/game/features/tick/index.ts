@@ -1,5 +1,4 @@
-import { defineFeature } from '../../core/registry/types';
-import './tick.css';
+import { defineFeature, type DevCommandDef, type GameView } from '../../core/registry/types';
 
 declare module '../../core/registry/types' {
   interface GameView {
@@ -8,24 +7,34 @@ declare module '../../core/registry/types' {
   }
 }
 
-/** `TICK 12345` chip: updates from `HudRoot.update(view)`; shows a dash until a view with a tick arrives. */
+/** Newest tick seen by the `tick-tracker` renderer (one per mounted session), or null before the first view. */
+let latestTick: number | null = null;
+
+/** Records the newest view's tick; the HUD no longer shows a tick chip (use the `tick` console command). */
+export function trackTick(view: GameView): void {
+  if (typeof view.tick === 'number' && view.tick >= 0) latestTick = view.tick;
+}
+
+export const tickCommand: DevCommandDef = {
+  name: 'tick',
+  help: 'tick  Current server tick of the newest replica view',
+  run(_args, ctx) {
+    const t = ctx.services.store?.latest?.tick ?? latestTick;
+    if (typeof t !== 'number' || t < 0) return 'tick: no view yet';
+    return `tick ${t}`;
+  },
+};
+
+/** `tick` console command (replaces the old `TICK n` HUD chip). */
 export default defineFeature({
   id: 'tick',
   wave: 'W00',
-  hud: [{
-    id: 'tick', slot: 'top-left',
-    mount(el) {
-      const root = document.createElement('div');
-      root.className = 'ta-tick plate-sm';
-      const n = document.createElement('span');
-      n.className = 'ta-tick__n';
-      n.textContent = '-';
-      root.append('TICK ', n);
-      el.appendChild(root);
-      return {
-        update(view) { if (view.tick !== undefined) n.textContent = String(view.tick); },
-        dispose: () => root.remove(),
-      };
+  renderers: [{
+    id: 'tick-tracker',
+    mount() {
+      latestTick = null;
+      return { update: (view) => trackTick(view), dispose: () => { latestTick = null; } };
     },
   }],
+  devCommands: [tickCommand],
 });

@@ -13,7 +13,7 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
 - **Two players:** A in one browser window, B in a **second browser profile** (or a private window). Each player name may only be open once.
 - **In-game dev console:** click the game, press **`` ` ``** (the key under Esc), type a command, press **Enter**, **Esc** to close. This is not the browser DevTools console.
 - **Trade Hub panel:** click **your Trade Hub** in the 3D view. It is the 2×2 building just east of your Command Hub (A: tile −6,1; B: tile 10,1). The bottom bar shows **TRADE HUB**. Click **SHOW DETAILS** if it is collapsed, then the **MARKET** tab. The in-game Market tab is a compact quick-trade panel: **OPEN FULL TRADING PAGE** button at the top (opens `/trade.html?planet=<planetId>` in a new tab; that page holds every order, the stall-fee editor, candles, analytics and API keys), the pair picker (short list, mock USDC / NEAR), **BEST BID / BEST ASK / LAST / 24H**, a 5-level depth, the ticket (**ADVANCED** is collapsed), **MY OPEN ORDERS**, **LAST FILLS** (5) and, at the bottom, the read-only stall fee and your **IN ORBIT** resources.
-- **Market launcher bar** (bottom right, above the stats box): **SUPPLY & TRADE · SHOW · BOARD · CONTRACTS** (**BOARD** opens `/trade.html?planet=<planetId>#board` in a new tab; **CONTRACTS** is the small in-game list of the last 5 contracts). It sits below the Trade Hub panel; close the Trade Hub panel (**CLOSE**) to reach it.
+- **Supply & trade** (left-hand Colony book, **SUPPLY** spine tab; it opens already expanded): **SUPPLY & TRADE · BOARD · CONTRACTS** (**BOARD** opens `/trade.html?planet=<planetId>#board` in a new tab; **CONTRACTS** opens the small in-game list of the last 5 contracts in the **TRADE** tab, which also has **OPEN TRADE HUB**).
 - Reference: [DEV_TOOLS.md → W13 markets and economy tooling](../../dev/DEV_TOOLS.md#w13-markets-and-economy-tooling-d-44), [ECONOMY_OPERATOR.md](../../dev/ECONOMY_OPERATOR.md), [ECONOMY_REVIEW.md](../../dev/ECONOMY_REVIEW.md).
 
 ## Steps
@@ -37,7 +37,7 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
    - **Explorer:** <http://127.0.0.1:5473/dev/chain/> → **RECEIPTS**: one `Intents.execute_intents` receipt whose op id is `trade:tr_…` (one atomic batch for all legs). (The explorer's balance views show the cargo ledger, not the verifier; check the verifier balances with the REST snapshot above: B `USDC 9800000`, A `USDC 10100000`.)
 
 5. **Price board.**
-   - **How:** close A's Trade Hub panel, click **BOARD** in the launcher bar: it opens `/trade.html?planet=<planetId>#board` in a new tab; find **bio.water / USDC** there. (The in-game price board panel was removed.)
+   - **How:** open the **SUPPLY** tab of the left-hand Colony book and click **BOARD**: it opens `/trade.html?planet=<planetId>#board` in a new tab; find **bio.water / USDC** there. (The in-game price board panel was removed.)
    - **See:** last price **0.0333** (gross execution price), volume **300**, label **INSUFFICIENT DATA** with reason `insufficient_data` (one trade, 2 counterparties: below the 3-trade / 3-counterparty minimum, so it can't set a reference price or drive bot bids). Other pairs show **INSUFFICIENT DATA** too. `market.seed here bio.water/USDC` (dev console) adds a labelled **FIXTURE** bot; its fills never count as organic.
 
 6. **Partial fills and the resting buy (e2e checks the exact numbers).**
@@ -72,7 +72,7 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
 
 12. **Regional scarcity and logistics (owner revision of 2026-11-04).**
     - **Where:** close the A and B windows first (a player name may only be open once), then open <http://127.0.0.1:5473/play.html?scenario=w13r&as=a> (desert planet, **Dune Works** = you, plus **Crystal Ridge** with 400 crystals (`minerals.t3`) and **Iron Guard** with a depot).
-    - **How:** launcher bar → **SHOW** (Supply & trade).
+    - **How:** open the **SUPPLY** spine tab of the left-hand Colony book (Supply & trade is already expanded there).
     - **See:** **Regional abundance** chips like *Minerals T3 SCARCE*, *Minerals T1 ABUNDANT*; **Shopping basket and surplus** with reasons and **BUY/SELL** buttons (they prefill the MARKET order form; they never submit); a **Logistics** section: Load, Capacity **K 100**, congestion **×M**, next-window bill.
     - Dev console: `spawn builder -13 5 20` → after the next supply window (≈ 60 s) Load and the bill rise. Build a **Supply Depot** (BUILD tab) → capacity rises and the bill drops. `reserve on` → reserved units stop billing; `reserve off` redeploys them (activation cost 1 water + 1 metals each, 10 s delay).
 

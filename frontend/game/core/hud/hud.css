@@ -21,17 +21,47 @@
 }
 
 .ta-hud__slot[data-slot='top-left'] {
+  /* Minimap in the corner, the Colony book under it (Player tab first). The book's page grows with its content down to the screen bottom and
+     draws over every other HUD plate (minimap, env panel, selection bar): an open book is the player's focus. */
   top: 0;
+  bottom: 40px; /* stops above the CRT / PIXEL / SHADOW / F8 toggle row (#fx-bar), which draws over the HUD */
   left: 0;
   align-items: flex-start;
-  z-index: 1; /* an opened top-left plate (the pilot chip's Save progress) drops over the bottom-left Command Dock */
+  z-index: 30; /* above the bottom slots, the selection bar and edge pings (25); below the overlay layer */
 }
 
 .ta-hud__slot[data-slot='top-right'] {
+  /* The Command Dock, under the fixed FPS counter (render/ui/fps.ts); grows down to the screen bottom like the left book. */
   top: 0;
+  bottom: 0;
   right: 0;
   align-items: flex-end;
-  padding-top: var(--ta-s7); /* clears the fixed FPS counter (render/ui/fps.ts) */
+  padding-top: var(--ta-s7);
+  z-index: 30;
+}
+
+.ta-hud__slot[data-slot='top-left'] > *,
+.ta-hud__slot[data-slot='top-right'] > * {
+  flex-shrink: 0;
+}
+
+/* Narrow screens: the top-centre resource bar (~590 px) reaches the corner minimap, so the left stack starts below it. */
+@media (max-width: 1000px) {
+  .ta-hud__slot[data-slot='top-left'] {
+    padding-top: var(--ta-s7);
+  }
+}
+
+/* No minimap (maps wave off): the Colony book starts below the top-centre resource bar. */
+.ta-hud__slot[data-slot='top-left']:not(:has(> [data-panel='minimap'])) > .ta-book {
+  margin-top: 40px;
+}
+
+/* Only the books shrink (their page scrolls); they sit after the slot's own plates. */
+.ta-hud__slot > .ta-book {
+  order: 1;
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 .ta-hud__slot[data-slot='top-center'] {
@@ -42,22 +72,13 @@
 }
 
 .ta-hud__slot[data-slot='bottom-left'] {
-  /* Top edge: below the top-left stack (`slotFit.ts` publishes its height), so the dock never slides under it. */
-  top: var(--ta-hud-top-left-h, 0px);
+  /* Env panel and army stance; clears the CRT / PIXEL / SHADOW toggles along the bottom edge. An open Colony book may
+     cover this row. */
   bottom: 56px;
   left: 0;
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
-/* The env panel and the other plates keep their size; only the Command Dock shrinks (its body scrolls). */
-.ta-hud__slot[data-slot='bottom-left'] > * {
-  flex-shrink: 0;
-}
-
-.ta-hud__slot[data-slot='bottom-left'] > .ta-command-dock {
-  flex-shrink: 1;
-  min-height: 0;
+  flex-direction: row;
+  align-items: flex-end;
+  padding-bottom: var(--ta-s2);
 }
 
 .ta-hud__slot[data-slot='bottom-right'] {
@@ -65,6 +86,18 @@
   right: 0;
   align-items: flex-end;
   justify-content: flex-end;
+}
+
+/* Fixed-position overlays (modals, edge pings) live here, outside the books' panes and clip paths. */
+.ta-hud__overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50; /* modals and pings opened from a book stay above both books */
+}
+
+:where(.ta-hud__overlay) > * {
+  pointer-events: auto;
 }
 
 .ta-hud__panel {
@@ -88,128 +121,10 @@
   text-transform: uppercase;
 }
 
-/* Unified Command Dock */
-.ta-command-dock {
-  pointer-events: auto;
-  width: 348px;
-  max-width: calc(100vw - var(--ta-s6));
-  background: var(--ta-plate);
-  border: 1px solid var(--ta-seam-2);
-  display: flex;
-  flex-direction: column;
-  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
-}
-
-.ta-command-dock[data-collapsed='true'] {
-  width: auto;
-}
-
-.ta-command-dock__bar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ta-s1);
-  padding: var(--ta-s1) var(--ta-s2);
-  background: var(--ta-deep);
-  border-bottom: 1px solid var(--ta-seam);
-}
-
-.ta-command-dock[data-collapsed='true'] .ta-command-dock__bar {
-  border-bottom: 0;
-}
-
-.ta-command-dock__tabs {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--ta-s1);
-}
-
-.ta-command-dock__tab {
-  all: unset;
-  cursor: pointer;
-  box-sizing: border-box;
-  padding: var(--ta-s1) var(--ta-s2);
-  font-family: var(--ta-font-display);
-  font-weight: 700;
-  font-size: var(--ta-fs-label);
-  letter-spacing: var(--ta-track-button);
-  text-transform: uppercase;
-  color: var(--ta-steel);
-  background: var(--ta-plate-2);
-  border: 1px solid var(--ta-seam);
-  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
-  user-select: none;
-}
-
-.ta-command-dock__tab:hover {
-  color: var(--ta-orange-hi);
-  border-color: var(--ta-orange);
-  background: var(--ta-plate-3);
-}
-
-.ta-command-dock__tab[data-active='true'] {
-  color: var(--ta-void);
-  background: var(--ta-orange);
-  border-color: var(--ta-orange-hi);
-}
-
-.ta-command-dock__tab:focus-visible,
-.ta-command-dock__toggle:focus-visible {
-  outline: 2px solid var(--ta-orange);
-}
-
-.ta-command-dock__toggle {
-  all: unset;
-  cursor: pointer;
-  box-sizing: border-box;
-  padding: var(--ta-s1) var(--ta-s2);
-  font-family: var(--ta-font-mono);
-  font-weight: 600;
-  font-size: var(--ta-fs-label);
-  letter-spacing: var(--ta-track-label);
-  text-transform: uppercase;
-  color: var(--ta-text-2);
-  background: var(--ta-plate-2);
-  border: 1px solid var(--ta-seam-2);
-  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
-  user-select: none;
-}
-
-.ta-command-dock__toggle:hover {
-  color: var(--ta-orange-hi);
-  border-color: var(--ta-orange);
-}
-
-.ta-command-dock__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ta-s2);
-  padding: var(--ta-s2) var(--ta-s3);
-  /* The bottom-left slot bounds the dock's height (see its rule); this caps it on tall screens. */
-  max-height: 520px;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--ta-seam-2) var(--ta-deep);
-}
-
-.ta-command-dock__body::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.ta-command-dock__body::-webkit-scrollbar-track {
-  background: var(--ta-deep);
-}
-
-.ta-command-dock__body::-webkit-scrollbar-thumb {
-  background: var(--ta-seam-2);
-}
-
-.ta-command-dock__body::-webkit-scrollbar-thumb:hover {
-  background: var(--ta-orange);
+/* Command Dock (right tab book): page width and the queue pane that rides under Build / Production. */
+.ta-command-dock .ta-book__page {
+  /* Each book keeps to its half of the screen (minus spine and gutters) so the two never meet on narrow screens. */
+  width: min(348px, calc(50vw - var(--ta-book-spine-w) - var(--ta-s6)));
 }
 
 .ta-command-dock .ta-construction__cards,
@@ -218,16 +133,9 @@
   overflow: visible;
 }
 
-.ta-command-dock[data-collapsed='true'] .ta-command-dock__body {
-  display: none;
-}
-
-.ta-command-dock__pane[data-active='false'] {
-  display: none;
-}
-
-.ta-command-dock[data-active-tab='terraform'] .ta-command-dock__queue {
-  display: none;
+.ta-command-dock[data-active-tab='build'] .ta-command-dock__queue,
+.ta-command-dock[data-active-tab='production'] .ta-command-dock__queue {
+  display: flex;
 }
 
 .ta-command-dock:not([data-active-tab='queue']) .ta-queue-panel[data-empty='true'] {
@@ -268,4 +176,10 @@
 .ta-command-dock .ta-construction[data-open='false'] .ta-construction__cards,
 .ta-command-dock .ta-units[data-open='false'] .ta-units__body {
   display: flex;
+}
+
+/* Colony book (left tab book): the page fits its tab's panel, within bounds. */
+.ta-colony-book .ta-book__page {
+  min-width: min(240px, calc(50vw - var(--ta-book-spine-w) - var(--ta-s6)));
+  max-width: min(440px, calc(50vw - var(--ta-book-spine-w) - var(--ta-s6)));
 }

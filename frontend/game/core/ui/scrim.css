@@ -1,0 +1,53 @@
+/*
+ * Full-screen modal scrim shared by the pause dialog (Esc) and the HQ respawn dialog: the game stays visible behind a
+ * dark tint with a blur, and one Faction Plate box sits in the centre with a hazard stripe on top.
+ */
+.ta-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s5);
+  background: rgba(7, 8, 10, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.ta-scrim[hidden] {
+  display: none;
+}
+
+.ta-scrim__box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+  max-width: min(520px, 100%);
+  box-sizing: border-box;
+  padding: 0 24px 24px;
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-plate);
+  color: var(--ta-text);
+}
+
+.ta-scrim__hazard {
+  height: 8px;
+  margin: 0 -24px 10px;
+}
+
+.ta-scrim__title {
+  margin: 0 0 6px;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--ta-blue-hi);
+  font-size: 20px;
+  text-align: center;
+}
+
+.ta-scrim__title--alert {
+  color: var(--ta-fault-text);
+}

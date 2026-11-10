@@ -14,6 +14,28 @@
   pointer-events: auto;
 }
 
+/* Inside the Colony book's Deed tab the trigger is a full-width row and a short hint explains it. */
+.ta-colony-book .ta-deed-hud-trigger {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  justify-content: space-between;
+  background: var(--ta-plate-2);
+}
+
+.ta-deed-hud-hint {
+  display: none;
+  margin: 0;
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-label);
+  line-height: 1.4;
+  color: var(--ta-text-3);
+}
+
+.ta-colony-book .ta-deed-hud-hint {
+  display: block;
+}
+
 .ta-deed-hud-trigger:hover {
   border-color: var(--ta-orange);
   color: var(--ta-orange);

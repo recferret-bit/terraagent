@@ -25,7 +25,7 @@
 
 1. **Open the Colony Deed card (`v1`, Active).**
    - **Where:** `<client>/play.html?scenario=w20&skip=1&as=w20`
-   - **How:** wait until the **TICK** chip (top left) is advancing (~5 ticks/s). In the top-left HUD bar, click **COLONY · DEED** (`[data-testid="colony-deed-btn"]`) — or open the Colony menu and select **Deed**.
+   - **How:** press **`` ` ``**, run `tick` twice a second apart and check it advances (~5 ticks/s), close the console. In the left-hand Colony book (top left, under the minimap), open the **DEED** spine tab (`[data-testid="colony-tab-deed"]`) and click **COLONY · DEED** (`[data-testid="colony-deed-btn"]`) — or open the Colony menu and select **Deed**.
    - **See:** the **COLONY DEED** modal opens (`[data-testid="deed-panel"]`) showing version badge `v1`, status chip `Active`, chain status `Confirmed`, the live Faction Plate card preview (`Aegis Spire`, `STAGE S4`, `HEX TERRITORY (7)`, `TERRAFORM PROGRESS 40%`), the stats grid (`Aegis Spire`, `Stage 4`, `40 %`, `deed:col_0`), the receipt link **Recorded on NEAR (mock)** (`/dev/chain/?tab=deeds&tokenId=deed%3Acol_0`), and the `METADATA HISTORY` entry `v1 · Colony founded — Deed minted`.
 
 2. **Milestone update + 10-minute debounce flush (`v2`).**
@@ -89,7 +89,7 @@
 
 7. **Flag-off check (`waves=..19`).**
    - **Where:** `<client>/play.html?scenario=w20&skip=1&as=w20&waves=..19` (or restart the stack with `TA_WAVES=..19 npm run dev:restart`).
-   - **How:** load the page and wait for the **TICK** chip to advance; query `curl <app>/v1/deeds/deed%3Acol_0`.
+   - **How:** load the page and wait until the console command `tick` prints a number; query `curl <app>/v1/deeds/deed%3Acol_0`.
    - **See:** the **COLONY · DEED** HUD button and Colony menu **Deed** entry are absent (`[data-testid="colony-deed-btn"]` count is `0`), no new deed mints or `deed.*` pushes occur, and existing `chain.deed` rows in Postgres remain untouched.
 
 ## Automated checks

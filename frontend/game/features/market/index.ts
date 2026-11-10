@@ -3,6 +3,7 @@ import { ContractsController } from './contracts/ContractsController';
 import { ContractsLog } from './contracts/contractsLog';
 import { ContractsPanel } from './contracts/ContractsPanel';
 import { MARKET_EVENTS } from './analytics/marketTracker';
+import { isInHudBook } from './hudBook';
 import { registerMarketTab } from './tab/register';
 import './contracts/contracts.css';
 import './tab/market-tab.css';
@@ -36,8 +37,10 @@ export default defineFeature({
       order: 60,
       mount(el, ctx: FeatureContext) {
         const log = new ContractsLog();
-        const panel = new ContractsPanel(el, log);
         const s = ctx.services;
+        // Inside a HUD tab book (Colony book → Trade) the tab shows and hides the list, so it starts open; any later
+        // open (menu, Supply's CONTRACTS, Trade Hub) switches the book to that tab.
+        const panel = new ContractsPanel(el, log, { reveal: (root) => s.revealHudPanel?.(root), open: isInHudBook(el) });
         const controller = new ContractsController(
           log,
           (msg, sev, ms, key) => s.hudMin?.showToast(msg, sev, ms, key),

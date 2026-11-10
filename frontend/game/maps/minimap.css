@@ -99,7 +99,7 @@
   outline: none;
 }
 
-/* Short viewports and phone landscape: the plate shrinks. It sits in the top-right slot, not beside the dock. */
+/* Short viewports and phone landscape: the plate shrinks (it sits in the bottom-left corner, under the Colony book). */
 @media (max-height: 500px), (max-width: 900px) and (orientation: landscape) {
   .ta-minimap {
     width: 140px !important;

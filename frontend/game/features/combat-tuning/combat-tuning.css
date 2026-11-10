@@ -41,3 +41,31 @@
 .ta-combat-tuning textarea { min-height: 160px; resize: vertical; }
 .ta-combat-tuning :disabled { opacity: 0.55; cursor: wait; }
 @media (max-width: 480px) { .ta-combat-tuning__row label { grid-template-columns: 1fr 70px; } }
+
+/* Launcher section in the Colony book's Combat tab (the dialog above floats in the HUD overlay). */
+.ta-combat-tuning-launcher {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding-top: var(--ta-s2);
+  border-top: 1px solid var(--ta-seam);
+}
+.ta-combat-tuning-launcher__title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange);
+}
+.ta-combat-tuning-launcher__note {
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-label);
+  line-height: 1.4;
+  color: var(--ta-text-3);
+}
+.ta-combat-tuning-launcher__btn {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: var(--ta-s2) var(--ta-s3);
+  font-size: var(--ta-fs-label);
+}

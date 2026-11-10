@@ -5,6 +5,7 @@ import {
   expectNoPageErrors,
   hostMode,
   loadScenario,
+  openColonyTab,
   readTick,
   test,
   waitForTick,
@@ -52,6 +53,8 @@ test('@hack 1. open /play.html?scenario=w20 -> open Colony Deed -> see card with
   await tickAdvances(page, t0);
 
   const trigger = page.locator('[data-testid="colony-deed-btn"]');
+  await expect(page.getByTestId('colony-tab-deed')).toBeVisible({ timeout: 15_000 });
+  await openColonyTab(page, 'deed'); // the Deed button lives in the Colony book's Deed tab
   await expect(trigger).toBeVisible({ timeout: 15_000 });
   await trigger.click();
 
@@ -245,6 +248,7 @@ test('@hack 7. With waves=..19: no Deed button in HUD and existing chain.deed ro
   const t0 = await waitForTick(page, () => true, 45_000);
   await tickAdvances(page, t0);
   await expect(page.locator('[data-testid="colony-deed-btn"]')).toHaveCount(0);
+  await expect(page.getByTestId('colony-tab-deed')).toHaveCount(0); // no empty Deed tab in the Colony book
 
   // Verify existing deed row in DB remained untouched while W20 was off on client
   const afterRes = await page.request.get('/v1/deeds/deed%3Acol_0');

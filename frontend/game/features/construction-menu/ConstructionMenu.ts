@@ -11,6 +11,7 @@ export { formatResourceLabel } from './catalog';
 export class ConstructionMenu implements Disposable {
   readonly root: HTMLElement;
   readonly ghost: PlacementGhostController;
+  private offCloser: (() => void) | undefined;
   private readonly headBtn: HTMLButtonElement;
   private readonly tierBar: HTMLElement;
   private readonly cardsContainer: HTMLElement;
@@ -97,6 +98,7 @@ export class ConstructionMenu implements Disposable {
     s.rotatePlacement = () => this.rotate();
     s.confirmPlacement = () => this.confirm();
     s.cancelPlacement = () => this.cancel();
+    this.offCloser = this.ctx.services.registerHudCloser?.(() => this.cancel());
     s.getPlacementGhostState = () => this.getGhostState();
 
     this.renderCards();
@@ -191,6 +193,7 @@ export class ConstructionMenu implements Disposable {
   }
 
   dispose(): void {
+    this.offCloser?.();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown);
     }

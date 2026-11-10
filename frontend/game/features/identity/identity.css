@@ -72,3 +72,15 @@
   color: var(--ta-fault-text);
   font: 600 12px/1.35 var(--ta-font-mono);
 }
+
+/* Inside the Colony book's PLAYER tab the page is the plate: no second frame, full width. */
+.ta-colony-book .ta-pilot {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ta-colony-book .ta-pilot__plate {
+  align-self: stretch;
+}

@@ -1,4 +1,5 @@
 import { setGameInputBlocked } from '../../core/input/gameInputBlock';
+import '../../core/ui/scrim.css';
 
 /** Input-block source of the pause dialog: game hotkeys stay quiet and the global map does not open while paused. */
 export const PAUSE_INPUT_SOURCE = 'pause';
@@ -18,19 +19,19 @@ export class PauseOverlay {
 
   constructor(parent: HTMLElement, private readonly cb: PauseOverlayCallbacks) {
     this.el = document.createElement('div');
-    this.el.className = 'ta-online-pause';
+    this.el.className = 'ta-online-pause ta-scrim';
     this.el.setAttribute('data-testid', 'online-pause');
     this.el.dataset.testid = 'online-pause';
     this.el.hidden = true;
 
     const box = document.createElement('div');
-    box.className = 'ta-online-pause__box plate';
+    box.className = 'ta-online-pause__box ta-scrim__box plate';
 
     const hazard = document.createElement('div');
-    hazard.className = 'ta-online-pause__hazard hazard';
+    hazard.className = 'ta-online-pause__hazard ta-scrim__hazard hazard';
 
     const title = document.createElement('h2');
-    title.className = 'ta-online-pause__title';
+    title.className = 'ta-online-pause__title ta-scrim__title';
     title.textContent = 'PAUSED';
 
     const resumeBtn = document.createElement('button');

@@ -24,6 +24,9 @@ export class DirectorControls {
     this.noteEl = document.createElement('textarea');
     this.noteEl.name = 'note';
     this.noteEl.maxLength = 500;
+    this.noteEl.rows = 2;
+    this.noteEl.placeholder = 'Note for the director (optional)';
+    this.noteEl.setAttribute('aria-label', 'Director note');
     this.pauseEl = document.createElement('input');
     this.pauseEl.type = 'checkbox';
     this.pauseEl.name = 'pause';
@@ -34,7 +37,10 @@ export class DirectorControls {
     this.pauseEl.addEventListener('change', emit);
     this.noteEl.addEventListener('change', emit);
 
-    this.host.append(this.riskEl, this.presetEl, this.noteEl, this.pauseEl);
+    const pauseLabel = document.createElement('label');
+    pauseLabel.className = 'ta-director-controls__pause';
+    pauseLabel.append(this.pauseEl, ' Pause director');
+    this.host.append(this.riskEl, this.presetEl, this.noteEl, pauseLabel);
   }
 
   /** Syncs controls from authoritative colony policy without emitting a synthetic change event. */
@@ -69,6 +75,8 @@ export class DirectorControls {
 function select(name: string, options: readonly string[]): HTMLSelectElement {
   const el = document.createElement('select');
   el.name = name;
+  el.setAttribute('aria-label', `Director ${name}`);
+  el.title = `Director ${name}`;
   for (const option of options) {
     const item = document.createElement('option');
     item.value = option;

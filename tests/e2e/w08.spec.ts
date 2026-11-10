@@ -4,8 +4,10 @@ import {
   expectNoPageErrors,
   hostMode,
   login,
+  openColonyTab,
   screenshot,
   test,
+  waitForTick,
 } from './harness';
 
 /**
@@ -82,7 +84,7 @@ async function openW08(page: Page, params: Record<string, string> = {}): Promise
   } else {
     await page.goto(`/play.html?${new URLSearchParams({ scenario: 'w08', ...merged, as: 'e2e' })}`);
   }
-  await expect(page.locator('.ta-tick__n').first()).toHaveText(/^\d+$/, { timeout: 90_000 });
+  await waitForTick(page, 0, 90_000);
 }
 
 const getColony0 = (page: Page) =>
@@ -106,6 +108,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
 }) => {
   await openW08(page);
 
+  await openColonyTab(page, 'goals'); // the stage launcher lives in the Colony book's Goals tab
   await page.getByTestId('stage-goals-launcher').click();
 
   // Step 1: Start at S0 Landing
@@ -143,7 +146,8 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await page.locator('[data-testid="dock-tab-build"]').click();
   await screenshot(page, '1-s0-landfall');
 
-  // Step 2: Guided first step — HQ Goals panel offers Establish Colony; click ACCEPT
+  // Step 2: Guided first step — HQ Goals panel (Colony book HQ AI tab) offers Establish Colony; click ACCEPT
+  await openColonyTab(page, 'hq');
   const suggestionCard = page.locator('[data-testid="goal-suggestion-card"]');
   await expect(suggestionCard).toBeVisible();
   await expect(suggestionCard).toContainText('Establish Colony');
@@ -208,6 +212,7 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   await runConsole(page, 'stage set 2');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0).toBe(2);
 
+  await openColonyTab(page, 'hq');
   await page.locator('[data-testid=hq-tab-priorities]').click();
 
   // Priorities panel: 5 sliders at 50, sum = 250
@@ -291,6 +296,7 @@ test('@hack 8. Goal queue limit: HQ T1 allows 2 active+queued goals, rejects a 3
   page,
 }) => {
   await openW08(page);
+  await openColonyTab(page, 'hq');
   await runConsole(page, 'goal clear');
   await expect.poll(async () => ((await getColony0(page))?.goals ?? []).length).toBe(0);
 
@@ -330,6 +336,8 @@ test('@hack 8. Goal queue limit: HQ T1 allows 2 active+queued goals, rejects a 3
 test('owner fixes: compact Goals launcher, clickable stages, minus and HQ tabs', async ({ page }) => {
   await openW08(page);
   await expect(page.getByTestId('stage-track-hud')).toBeHidden();
+  await openColonyTab(page, 'goals');
+  await expect(page.getByTestId('stage-goals-launcher')).toBeVisible();
   await expect(page.getByTestId('stage-goals-launcher')).toHaveText('Goals · S0');
   await runConsole(page, 'stage set 2');
   await page.keyboard.press('Backquote');
@@ -349,6 +357,8 @@ test('owner fixes: compact Goals launcher, clickable stages, minus and HQ tabs',
   await page.getByTestId('stage-segment-S10').click();
   await expect(page.getByTestId('stage-guide-text')).toContainText('W21');
   await expect(page.getByTestId('stage-guide-text')).toContainText('Preview');
+  await openColonyTab(page, 'hq');
+  await expect(page.getByTestId('stage-track-hud')).toBeVisible(); // the stage dialog floats outside the book: a tab switch keeps it
   await page.getByTestId('hq-tab-priorities').click();
   await expect(page.getByTestId('priorities-panel')).toBeVisible();
   await expect(page.getByTestId('goals-panel')).toBeHidden();
@@ -362,6 +372,7 @@ test('owner fixes: compact Goals launcher, clickable stages, minus and HQ tabs',
 test('owner fixes: Grow Metals issues real work and completes from production', async ({ page }) => {
   test.setTimeout(120_000);
   await openW08(page);
+  await openColonyTab(page, 'hq');
   await page.getByTestId('goal-suggestion-accept').click();
   await runConsole(page, 'warp 20');
   await expect.poll(async () => (await getColony0(page))?.goals?.find((g) => g.goal === 'establish_colony')?.status,

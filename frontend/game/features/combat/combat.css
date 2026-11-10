@@ -11,7 +11,7 @@
 .ta-combat-edge-pings {
   position: fixed;
   inset: 0;
-  pointer-events: none;
+  pointer-events: none; /* full-screen layer in the HUD overlay: only the pings take clicks */
   z-index: 25;
 }
 
@@ -170,4 +170,36 @@
 .ta-combat-log__coords {
   color: var(--ta-dim);
   white-space: nowrap;
+}
+
+/* Colony book Combat tab: the log becomes a section of the page (no second plate), plus an empty-state line. */
+.ta-combat-empty {
+  display: none;
+}
+
+.ta-colony-book .ta-combat-empty:not([hidden]) {
+  display: block;
+  margin: 0;
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-label);
+  line-height: 1.4;
+  color: var(--ta-text-3);
+}
+
+.ta-colony-book .ta-combat-hud {
+  width: 100%;
+  max-width: none;
+  align-items: stretch;
+}
+
+.ta-colony-book .ta-combat-log {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  clip-path: none;
+}
+
+.ta-colony-book .ta-combat-log__list {
+  max-height: none;
+  overflow: visible;
 }

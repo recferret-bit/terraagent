@@ -73,7 +73,9 @@ export class StakingPanel implements Disposable {
     opts: StakingPanelOptions = {},
   ) {
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
-    this.openSigner = opts.openSigner ?? openMockWalletSignerModal;
+    const openSigner = opts.openSigner ?? openMockWalletSignerModal;
+    // The signer modal joins the HUD overlay (above the deed modal) when the HUD provides one; else document.body.
+    this.openSigner = (req) => openSigner({ container: this.ctx.services?.hudOverlay, ...req });
 
     this.root = document.createElement('section');
     this.root.className = 'ta-staking-panel plate-sm';

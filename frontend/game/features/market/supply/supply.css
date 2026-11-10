@@ -17,3 +17,18 @@
 .ta-supply__remedy { color: var(--ta-orange-hi); }
 .ta-supply__empty { color: var(--ta-text-3); }
 @media (max-width: 480px) { .ta-supply__option { grid-template-columns: 1fr; } }
+/* Header and row buttons: Faction Plate ghost buttons (orange only for the BUY / SELL action). */
+.ta-supply .ta-supply__toggle, .ta-supply .ta-supply__btn { min-height: 28px; padding: var(--ta-s1) var(--ta-s2); background: var(--ta-plate-2); color: var(--ta-text); border: 1px solid var(--ta-seam-3); font-family: var(--ta-font-display); font-size: var(--ta-fs-label); font-weight: 600; letter-spacing: var(--ta-track-label); text-transform: uppercase; cursor: pointer; }
+.ta-supply .ta-supply__toggle:hover, .ta-supply .ta-supply__btn:hover { border-color: var(--ta-orange); color: var(--ta-orange-hi); }
+.ta-supply .ta-supply__btn--act, .ta-supply .ta-supply__btn--act:hover { background: var(--ta-orange); color: var(--ta-void); border-color: var(--ta-orange-hi); }
+/* Colony book Supply tab: the page is the plate and scrolls; the tab replaces SHOW / HIDE. */
+.ta-colony-book .ta-supply { padding: 0; background: transparent; border: 0; clip-path: none; max-height: none; overflow: visible; }
+.ta-colony-book .ta-supply__showhide { display: none; }
+.ta-colony-book .ta-supply__head { flex-wrap: wrap; justify-content: flex-start; }
+.ta-colony-book .ta-supply__heading { flex: 1 1 100%; color: var(--ta-orange); }
+.ta-supply-empty { margin: 0; color: var(--ta-text-3); font-family: var(--ta-font-body); font-size: var(--ta-fs-label); }
+.ta-supply-empty[hidden] { display: none; }
+/* Regional abundance: chips wrap in rows under the section title. */
+.ta-supply__section--chips { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.ta-supply__section--chips > .ta-supply__title, .ta-supply__section--chips > .ta-supply__empty { flex: 1 1 100%; }
+.ta-supply__section--chips > .ta-supply__chip { margin-right: 0; }

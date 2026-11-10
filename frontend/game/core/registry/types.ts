@@ -24,6 +24,22 @@ export interface FeatureServices {
   showTradeHubTab?: (id: string) => void;
   registerTradeHubTab?: (def: TradeHubTabDef) => () => void;
   pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
+  /**
+   * Full-screen HUD layer outside the tab books (provided by `HudRoot`). Put fixed-position overlays (modals, edge
+   * pings, toasts) here, not inside the panel `el`: a panel in an inactive book tab is hidden, and the book clips.
+   */
+  hudOverlay?: HTMLElement;
+  /** Opens the tab book page that holds `el` (no-op outside a book). Call before showing a panel programmatically. */
+  revealHudPanel?: (el: Element) => void;
+  /** A badge on the book spine of the tab holding `el` (e.g. live combat alerts); null / 0 clears it. */
+  setHudTabBadge?: (el: Element, value: number | string | null) => void;
+  /**
+   * Registers a "close everything" hook (open dialog, armed ghost or brush, global map …) run by `closeHudMenus`.
+   * Returns the unregister. Provided by `HudRoot`.
+   */
+  registerHudCloser?: (close: () => void) => () => void;
+  /** Folds both tab books and runs every registered closer (e.g. when the HQ dies and the respawn dialog opens). */
+  closeHudMenus?: () => void;
 }
 
 /** The part of `WorldStore` features use; optional members, so a spec can pass a stand-in with only what it needs. */

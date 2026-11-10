@@ -206,6 +206,80 @@ export function buildDeedHistorySection() {
   return { section, list };
 }
 
+export function buildDeedPanelDom(opts: {
+  parent: HTMLElement;
+  ctx: FeatureContext;
+  onToggle: () => void;
+  onClose: () => void;
+  getCurrentDeed: () => DeedView | null;
+  onSettle: () => void;
+  openWindow?: (url: string) => void;
+}) {
+  const trigger = buildDeedTriggerButton(opts.onToggle);
+
+  const root = document.createElement('section');
+  root.className = 'ta-deed-panel plate';
+  root.dataset.testid = 'deed-panel';
+  root.dataset.open = 'false';
+  root.dataset.settled = 'false';
+
+  const header = buildDeedPanelHeader(opts.onClose);
+
+  const body = document.createElement('div');
+  body.className = 'ta-deed-panel__body';
+
+  const previewWrapEl = document.createElement('div');
+  previewWrapEl.className = 'ta-deed-panel__preview-wrap';
+  previewWrapEl.dataset.testid = 'deed-card-preview';
+
+  const details = document.createElement('div');
+  details.className = 'ta-deed-panel__details';
+
+  const statsGridEl = document.createElement('div');
+  statsGridEl.className = 'ta-deed-panel__stats';
+  statsGridEl.dataset.testid = 'deed-stats';
+
+  const receiptRow = buildDeedReceiptAndActions({
+    getCurrentDeed: opts.getCurrentDeed,
+    onSettle: opts.onSettle,
+    ctx: opts.ctx,
+    openWindow: opts.openWindow,
+  });
+  const historyBox = buildDeedHistorySection();
+
+  details.append(statsGridEl, receiptRow.receiptWrap, receiptRow.actionsWrap, historyBox.section);
+  body.append(previewWrapEl, details);
+
+  const stakingSlotEl = document.createElement('div');
+  stakingSlotEl.className = 'ta-deed-panel__staking-slot';
+  stakingSlotEl.dataset.testid = 'deed-staking-slot';
+
+  root.append(header.headerEl, body, stakingSlotEl);
+
+  const hintEl = document.createElement('p');
+  hintEl.className = 'ta-deed-hud-hint';
+  hintEl.textContent = 'Open the deed card: territory, stage history, settle and staking.';
+  opts.parent.append(trigger.triggerBtn, hintEl);
+  (opts.ctx.services?.hudOverlay ?? opts.parent).appendChild(root);
+
+  return {
+    triggerBtn: trigger.triggerBtn,
+    triggerStatusEl: trigger.triggerStatusEl,
+    hintEl,
+    root,
+    stakingSlotEl,
+    versionBadgeEl: header.versionBadge,
+    statusChipEl: header.statusChip,
+    pendingBadgeEl: header.pendingBadge,
+    previewWrapEl,
+    statsGridEl,
+    receiptLinkEl: receiptRow.receiptLink,
+    shareLinkEl: receiptRow.shareLink,
+    settleBtnEl: receiptRow.settleBtn,
+    historyListEl: historyBox.list,
+  };
+}
+
 export function renderDeedStatsGrid(statsGridEl: HTMLElement, deed: DeedView): void {
   while (statsGridEl.firstChild) {
     statsGridEl.removeChild(statsGridEl.firstChild);
