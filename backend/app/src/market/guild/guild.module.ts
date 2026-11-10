@@ -9,11 +9,12 @@ import { GuildNpcRepository } from './guild-npc.repository.js';
 import { GuildProvisionService } from './guild-provision.service.js';
 import { GuildTradeKeyBinder } from './guild-trade-key.binder.js';
 import { GuildWalletBinder } from './guild-wallet.binder.js';
+import { GuildMakerService } from './maker/guild-maker.service.js';
 import { GuildVisitPublisher } from './visit/guild-visit.publisher.js';
 import { GuildVisitRepository } from './visit/guild-visit.repository.js';
 import { GuildVisitService } from './visit/guild-visit.service.js';
 
-/** W15 Guild provisioning, funding book, and visit schedule. Does nothing while wave W15 is off. */
+/** W15 Guild provisioning, funding book, visit schedule, and the docked market maker. Does nothing while wave W15 is off. */
 @Module({
   imports: [NearModule, GameModule],
   providers: [
@@ -28,7 +29,8 @@ import { GuildVisitService } from './visit/guild-visit.service.js';
     GuildVisitRepository,
     GuildVisitPublisher,
     GuildVisitService,
+    GuildMakerService,
   ],
-  exports: [GuildProvisionService, GuildFundingService, GuildKillSwitch, GuildVisitService],
+  exports: [GuildProvisionService, GuildFundingService, GuildKillSwitch, GuildVisitService, GuildMakerService],
 })
 export class GuildModule {}

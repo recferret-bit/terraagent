@@ -13,7 +13,7 @@ export * from './module-commands';
 export * from './command-source';
 export * from './agent';
 export {
-  guildAgentParams, guildColonyInput, guildPolicy, guildQuoteParams, quoteGuild,
+  guildAgentParams, guildColonyInput, guildPolicy, guildQuoteParams, quoteGuild, sameGuild,
   type GuildNpc, type GuildPolicy, type GuildQuoteFixture,
 } from './guild';
 export * from './autotrade';
