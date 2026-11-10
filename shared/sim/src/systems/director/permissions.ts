@@ -8,6 +8,14 @@ import {
   type StrategyValidationErrorCode,
 } from '../trade/agent';
 
+export {
+  checkDirectorActionPermission,
+  evaluateAggressionSkillProposal,
+  type AggressionSkillProposalResult,
+  type DirectorActionPermissionInput,
+  type DirectorActionPermissionResult,
+} from './w18-pvp-adapter';
+
 /** Player flags for later-wave strategies. Risk is not a flag and never grants one. */
 export interface StrategyPermissions {
   readonly raids: boolean;
