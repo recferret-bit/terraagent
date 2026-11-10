@@ -24,6 +24,7 @@ import {
   type TreasuryProposalResponse,
 } from './council-view.js';
 import { PlanetDaoLifecycleService, type EnsuredPlanetDao } from './lifecycle.service.js';
+import { rejectEndedPlanet } from './planet-ended.js';
 import {
   assertNoOpenProposal,
   assertNotVoted,
@@ -38,6 +39,7 @@ import {
 /**
  * Planet council reads and votes (W22-08). Passing a vote debits through the DAO port.
  * `TreasuryFinalizeService` owns the 6 h deadline and posts `system.treasuryEffect` once (W22-09).
+ * An ended or archived planet rejects `propose` with `planet_ended` (W22-33).
  * An away colony abstains (W22-16, AW-14): `vote` rejects `away_policy` and writes nothing.
  * No job and no director casts a vote for them. `TreasuryAwayNoticeService` only queues a W09 note.
  */
@@ -65,6 +67,7 @@ export class TreasuryProposalsService {
     const accountId = await this.account(req, raw, planetId);
     const project = treasuryProject(this.flags.flags, body.kind);
     if (!project) throw new CoreException('invalid_args', { status: 400, message: 'Unknown council project.' });
+    await rejectEndedPlanet(this.prisma, planetId);
     const ensured = await this.requireDao(planetId);
     const view = await this.dao.get({ daoAccountId: ensured.daoAccountId });
     assertNoOpenProposal(view, accountId);
