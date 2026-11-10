@@ -56,12 +56,14 @@ export function mountStageTrackHud(el: HTMLElement, ctx: FeatureContext): HudPan
     ctx.services.showStageToast = (stage, opts) => activeHud?.showStageToast(stage, opts) ?? null;
   }
 
+  const offCloser = ctx.services?.registerHudCloser?.(() => hud.closePanel());
   return {
     hud,
     update(view) {
       hud.update(view);
     },
     dispose() {
+      offCloser?.();
       if (activeHud === hud) activeHud = null;
       hud.dispose();
     },

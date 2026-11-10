@@ -22,8 +22,8 @@
 
 1. **Plate, goals, priorities, mock plan.**
    - **Where:** `<client>/play.html?scenario=w16&as=w16`
-   - **How:** wait until the **TICK** chip (top left) shows a number. It keeps increasing (about 5 per second). Press **`` ` ``**, then `flags`, `director.plan`, then `director.trace`. Click the **Priorities** tab on the HQ panel (right side).
-   - **See:** a flat hex planet and the HQ drone. Top right, the **DIRECTOR** plate displays the live policy summary `conservative · resources · 15% commit / 40% reserve`, interactive risk (`conservative` / `risky`), preset (`balanced` / `defense` / `expansion` / `resources` / `terraforming` / `trade`), pause, and note controls, plus the action list. **HQ GOALS 0 / 2** offers **Establish Colony** (“Prepare site, place Command Hub, and build 1 extractor + 1 generator”) with **ACCEPT** and **DO IT MYSELF**. **Priorities** shows **HQ PRIORITIES**, Economy **70**, Expansion **40**, Defense **50**, Power **60**, Terraform **30**, total **250**. The console prints:
+   - **How:** press **`` ` ``** and run `tick`: it prints a number that keeps increasing (about 5 per second). Then run `flags`, `director.plan`, then `director.trace`. Open the **HQ AI** spine tab of the left-hand Colony book and click its **Priorities** tab.
+   - **See:** a flat hex planet and the HQ drone. In the left-hand Colony book, the **DIRECTOR** spine tab (`[data-testid="colony-tab-director"]`) displays the live policy summary `conservative · resources · 15% commit / 40% reserve`, interactive risk (`conservative` / `risky`), preset (`balanced` / `defense` / `expansion` / `resources` / `terraforming` / `trade`), pause, and note controls, plus the action list. **HQ GOALS 0 / 2** offers **Establish Colony** (“Prepare site, place Command Hub, and build 1 extractor + 1 generator”) with **ACCEPT** and **DO IT MYSELF**. **Priorities** shows **HQ PRIORITIES**, Economy **70**, Expansion **40**, Defense **50**, Power **60**, Terraform **30**, total **250**. The console prints:
 
      ```
      plan forced trigger=resource.shortage risk=conservative queue=1 trace=mock
@@ -59,7 +59,7 @@
 8. **Worker and load numbers.**
    - **Where:** a second terminal in the worktree, with step 1’s page still open.
    - **How:** `npm run start -w @terra/director -- --check`
-   - **See:** `director director up db=none`, then the prompt returns. The **TICK** chip keeps increasing. The process does not stay running, so there is nothing to Ctrl-C. The published load figures are in [`docs/plan/w16-director-load.md`](../w16-director-load.md): Apple M5 Pro, 50 samples, p95 **0.014 ms**, RSS **145 MB**, pool **in-memory 1**. That is not a Postgres queue (AI-12). The restart test restores in-memory objects in one process. It does not kill the database.
+   - **See:** `director director up db=none`, then the prompt returns. The console command `tick` keeps increasing. The process does not stay running, so there is nothing to Ctrl-C. The published load figures are in [`docs/plan/w16-director-load.md`](../w16-director-load.md): Apple M5 Pro, 50 samples, p95 **0.014 ms**, RSS **145 MB**, pool **in-memory 1**. That is not a Postgres queue (AI-12). The restart test restores in-memory objects in one process. It does not kill the database.
 
 9. **W16 off.**
    - **Where:** `<client>/play.html?scenario=w16&as=w16&waves=..15`

@@ -1,10 +1,12 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import {
   expect,
+  expectCleanHudLayout,
   expectNoPageErrors,
   hostMode,
   loadLocal,
   loadScenario,
+  openDockTab,
   screenshot,
   test,
 } from './harness';
@@ -104,50 +106,17 @@ const getCamState = (page: Page) =>
 
 /** Opens the Command Dock on its Build tab (W03; the tallest pane), when the dock is mounted. */
 async function openDockBuildTab(page: Page): Promise<void> {
-  const dock = page.getByTestId('command-dock');
-  if ((await dock.count()) === 0) return;
-  const open = async () => (await dock.getAttribute('data-collapsed')) !== 'true' && (await dock.getAttribute('data-active-tab')) === 'build';
-  if (!(await open())) await page.getByTestId('dock-tab-build').click();
-  await expect.poll(open).toBe(true);
+  if ((await page.getByTestId('command-dock').count()) > 0) await openDockTab(page, 'build');
 }
 
 /**
- * Pairs of HUD boxes that intersect: the Command Dock and the minimap against each other, every visible child of the
- * top slots and the HQ panel; plus either one leaving the viewport. The minimap's own top-right panel wrapper is
- * skipped (it contains the plate). Empty when nothing else overlaps.
+ * The tab-book HUD stays clean: the Command Dock (top right, under the FPS counter) clears the top-center bar and the
+ * bottom-right stack, the minimap sits in the top-left corner (the Colony book goes under it), nothing leaves the viewport.
+ * W04 has no Colony book (its first tab arrives with W07+); the left book is checked in w20.spec.ts.
  */
-const hudOverlaps = (page: Page) =>
-  page.evaluate(() => {
-    const box = (el: Element | null) => {
-      if (!el || (el as HTMLElement).hidden) return null;
-      const r = el.getBoundingClientRect();
-      return r.width > 0 && r.height > 0 ? r : null;
-    };
-    const named = (name: string, el: Element | null) => ({ name, el, r: box(el) });
-    const dock = named('dock', document.querySelector('[data-testid="command-dock"]'));
-    const minimapEl = document.querySelector('[data-testid="minimap-hud"]');
-    const minimap = named('minimap', minimapEl);
-    const partOfMinimap = (el: Element | null) =>
-      Boolean(el && minimapEl && (el === minimapEl || el.contains(minimapEl) || minimapEl.contains(el)));
-    const others = [
-      ...Array.from(document.querySelectorAll(".ta-hud__slot[data-slot^='top'] > *"))
-        .filter((el) => !partOfMinimap(el))
-        .map((el, i) => named(`top#${i}:${el.className}`, el)),
-      named('hq-panel', document.querySelector('.ta-hq-panel')),
-    ];
-    const hit = (a: DOMRect, b: DOMRect) =>
-      a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-    const out: string[] = [];
-    for (const m of [dock, minimap]) {
-      if (!m.r) continue;
-      if (m.r.top < 0 || m.r.left < 0 || m.r.bottom > innerHeight || m.r.right > innerWidth) out.push(`${m.name} off-screen`);
-      for (const o of others) if (o.r && !partOfMinimap(o.el) && hit(m.r, o.r)) out.push(`${m.name} x ${o.name}`);
-    }
-    if (dock.r && minimap.r && hit(dock.r, minimap.r)) out.push('dock x minimap');
-    return out;
-  });
+const expectCleanW04Layout = (page: Page) => expectCleanHudLayout(page, ['rightBook', 'minimap', 'topCenter', 'bottomLeft', 'bottomRight']);
 
-test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at top-right with tile colours and a white camera trapezoid', async () => {
+test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at top-left with tile colours and a white camera trapezoid', async () => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openW04(page, { waves: '..04' });
 
@@ -157,13 +126,13 @@ test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the
   expect(box).not.toBeNull();
   expect(Math.round(box!.width)).toBe(180);
   expect(Math.round(box!.height)).toBe(180);
-  expect(box!.x).toBeGreaterThan(1000);
-  expect(box!.y).toBeLessThan(90);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(1280);
+  expect(box!.x).toBeLessThan(40); // top-left corner, inside the slot padding
+  expect(box!.y).toBeLessThan(40);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
 
-  // Top-right minimap must not overlap the expanded Command Dock, the HQ panel, or another top widget.
+  // The expanded Command Dock (top right) must not overlap the minimap, the top bar or the bottom-right plates.
   await openDockBuildTab(page);
-  expect(await hudOverlaps(page)).toEqual([]);
+  await expectCleanW04Layout(page);
 
   await expect.poll(async () => (await getMinimapStats(page))?.trapezoid?.length ?? 0, { timeout: 25_000 }).toBe(4);
   const stats = await getMinimapStats(page);
@@ -249,13 +218,13 @@ test('@hack 3. Drag on the minimap -> the camera pans continuously along the dra
   const mmBox = (await page.getByTestId('minimap-hud').boundingBox())!;
   expect(Math.round(mmBox.height)).toBe(140);
   await openDockBuildTab(page);
-  await expect.poll(() => hudOverlaps(page)).toEqual([]);
+  await expectCleanW04Layout(page);
 
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await expect.poll(() => hudOverlaps(page)).toEqual([]);
+  await expectCleanW04Layout(page);
 
   await page.setViewportSize({ width: 1280, height: 720 });
-  await expect.poll(() => hudOverlaps(page)).toEqual([]);
+  await expectCleanW04Layout(page);
   expectNoPageErrors(page);
 });
 

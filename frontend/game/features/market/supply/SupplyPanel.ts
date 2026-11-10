@@ -44,7 +44,7 @@ export class SupplyPanel {
 
   constructor(private readonly actions: SupplyActions) {
     const head = makeDiv('ta-supply__head');
-    head.append(el('span', 'ta-supply__heading', 'SUPPLY & TRADE'), makeBtn('ta-supply__toggle btn-sm plate-sm', 'supply-toggle', 'SHOW', () => this.setOpen(!this.open)));
+    head.append(el('span', 'ta-supply__heading', 'SUPPLY & TRADE'), makeBtn('ta-supply__toggle ta-supply__showhide btn-sm plate-sm', 'supply-toggle', 'SHOW', () => this.setOpen(!this.open)));
     // The market's only on-screen entry points: the feature menus are not rendered by the HUD, so the bar launches them.
     if (actions.openBoard) head.append(makeBtn('ta-supply__toggle btn-sm plate-sm', 'market-open-board', 'BOARD', () => actions.openBoard?.()));
     if (actions.openContracts) head.append(makeBtn('ta-supply__toggle btn-sm plate-sm', 'market-open-contracts', 'CONTRACTS', () => actions.openContracts?.()));
@@ -90,7 +90,9 @@ export class SupplyPanel {
       c.dataset.testid = `supply-badge-${b.resource}`;
       return c;
     });
-    return section('Regional abundance', 'supply-badges', ...(chips.length ? chips : [el('div', 'ta-supply__empty', 'No region data for this planet.')]));
+    const s = section('Regional abundance', 'supply-badges', ...(chips.length ? chips : [el('div', 'ta-supply__empty', 'No region data for this planet.')]));
+    s.classList.add('ta-supply__section--chips');
+    return s;
   }
 
   private basket(v: SupplyTradeView): HTMLElement {

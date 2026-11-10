@@ -12,7 +12,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
   - App API: `http://127.0.0.1:4101`
 - **Start / restart the stack:** `cd ../TerraAgent-wt/w03 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat scripts/dev/.out/runner.pid)` if it was started in the background.
 - **In-game dev console (`` ` `` key):** press **`` ` ``** (the backtick key under `Esc`) inside the game page to toggle the dark terminal plate at the bottom. Type commands there and press `Enter`. Press **`` ` ``** or `Esc` to close it so it doesn't cover the bottom Command Dock. *(This is **not** the browser's DevTools console. Note: `tune` requires the server host and does not work on `?host=local`.)*
-- **Command Dock shortcuts (bottom-left):**
+- **Command Dock shortcuts (top right, vertical tab book under the FPS counter):**
   - **`B`** (or click **`BUILD [B]`**) → Construction menu
   - **`U`** (or click **`PRODUCTION [U]`**) → Units menu
   - **`T`** (or click **`TERRAFORM [T]`**) → Terraform tools
@@ -89,7 +89,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
   - The **HQ Power Cell** chip drains slowly: `800` → about `600` after ~70 s. Hover: **`Income +16`**, **`Spending −19`**, **`Net −3 E/s`**, **`Stored: −3 E/s (draining)`**.
   - The cell lasts most of a night with working Worker Drones (T1) (all night when they idle) and refills within ~70 s after sunrise.
 - **Do (force a brownout):** run `addLoad 200`.
-- **See:** Within a moment the top-right banner reads **`BROWNOUT — SHEDDING GROUP 3 · 8 E/S OFFLINE`** (the stores can give at most 30 E/s); clicking the **Metals Extractor** shows **`OFFLINE: BROWNOUT`**; its cable goes dark and the remaining cables sputter amber.
+- **See:** Within a moment the power banner (bottom right) reads **`BROWNOUT — SHEDDING GROUP 3 · 8 E/S OFFLINE`** (the stores can give at most 30 E/s); clicking the **Metals Extractor** shows **`OFFLINE: BROWNOUT`**; its cable goes dark and the remaining cables sputter amber.
 - **Optional:** `cell 0` instead of `addLoad`: with the HQ store empty, the night deficit sheds at once.
 - **Reset:** `addLoad 0`, `time day`.
 
@@ -161,7 +161,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 ### 16. W04 Maps & Camera alongside the W03 HUD
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w04` (the `w03` scenario runs with waves `..03`, so it has no minimap; `w04` has the W03 HUD and the maps).
 - **Do:** at a 1280×720-ish window, open **`BUILD [B]`**; then press **`M`**; press **`B`**, **`U`**, **`Z`**, **`X`**, `R`; press **`` ` ``**; then **`M`** / **Esc**.
-- **See:** the **minimap** (top-right) and the **Command Dock** (bottom-left) do not overlap, and the dock never leaves the screen; buildings are small squares and units dots on the minimap. While the global map is open the game hotkeys do nothing (no dock toggles, no ghost rotation, no unit stop); the dev console opens **above** the map and keeps typing focus. Closing the map returns the camera; it does not open while the game is paused (`Esc` pause → `M` does nothing).
+- **See:** the **minimap** (bottom-left corner) and the **Command Dock** (top right) do not overlap, and the dock never leaves the screen; buildings are small squares and units dots on the minimap. While the global map is open the game hotkeys do nothing (no dock toggles, no ghost rotation, no unit stop); the dev console opens **above** the map and keeps typing focus. Closing the map returns the camera; it does not open while the game is paused (`Esc` pause → `M` does nothing).
 
 ---
 

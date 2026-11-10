@@ -1,13 +1,25 @@
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Optional, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { z } from 'zod';
 import { CoreException, ZodPipe } from '../../../core/errors/index.js';
 import { DevOnlyGuard } from '../../../core/dev-only.guard.js';
 import { PRISMA } from '../../../db/db.module.js';
+import { FlagsService } from '../../../flags/flags.service.js';
 import { ChainReadPort } from '../../application/ports/chain-read.port.js';
+import { StakingPort } from '../../application/ports/staking.port.js';
+import { StakingPositionSyncService } from '../../staking/staking-position-sync.service.js';
 import { MockChainReadAdapter } from '../adapters/chain-read/mock-chain-read.adapter.js';
 import { listExplorerAccounts } from './explorer-accounts.js';
 import { readExplorerTx } from './explorer-tx.js';
+import {
+  type ExplorerDeedHistoryItem,
+  type ExplorerDeedRow,
+  type ExplorerStakingRow,
+  listExplorerDeeds,
+  listExplorerStaking,
+} from './parts/explorer-deed-staking.js';
+
+export type { ExplorerDeedHistoryItem, ExplorerDeedRow, ExplorerStakingRow };
 
 /** Page size cap for every explorer list (default 50). */
 export const EXPLORER_MAX = 200;
@@ -19,6 +31,8 @@ const AccountsQuery = z.object({ account, limit });
 const TxQuery = z.object({ hash: z.string().trim().min(1).max(64) });
 const BalancesQuery = z.object({ account, limit });
 const NftsQuery = z.object({ account, collection: z.string().trim().min(1).max(64).optional(), limit });
+const DeedsQuery = z.object({ account, tokenId: z.string().trim().min(1).max(128).optional(), limit });
+const StakingQuery = z.object({ account, limit });
 const EscrowQuery = z.object({ account, limit });
 const OutboxQuery = z.object({ account, status: z.enum(['PENDING', 'RUNNING', 'DONE', 'FAILED', 'DEAD']).optional(), limit });
 const DaoQuery = z.object({ limit: z.coerce.number().int().min(1).max(EXPLORER_MAX).default(20) });
@@ -46,11 +60,22 @@ export class ChainExplorerController {
   constructor(
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly chainRead: ChainReadPort,
+    @Optional() @Inject(FlagsService) private readonly flags?: FlagsService,
+    @Optional() @Inject(StakingPort) private readonly stakingPort?: StakingPort,
+    @Optional() @Inject(StakingPositionSyncService) private readonly stakingSync?: StakingPositionSyncService,
   ) {}
 
   /** 404 first (production: `DevOnlyGuard`; ChainRead not the mock), then zod validation of the query (400 on failure). */
   private query<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
     this.guard();
+    return new ZodPipe(schema).transform(raw);
+  }
+
+  private queryW20<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
+    this.guard();
+    if (this.flags && !this.flags.has('W20')) {
+      throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
+    }
     return new ZodPipe(schema).transform(raw);
   }
 
@@ -106,6 +131,18 @@ export class ChainExplorerController {
       orderBy: [{ updatedAt: 'desc' }, { tokenId: 'asc' }], take: q.limit,
     });
     return rows.map((r) => ({ collection: r.collection, tokenId: r.tokenId, ownerAccountId: r.ownerAccountId, metadata: r.metadata, opId: r.opId, mintedAt: r.mintedAt.getTime(), updatedAt: r.updatedAt.getTime() }));
+  }
+
+  @Get('deeds')
+  async deeds(@Query() raw: unknown): Promise<ExplorerDeedRow[]> {
+    const q = this.queryW20(DeedsQuery, raw);
+    return listExplorerDeeds(this.prisma, q);
+  }
+
+  @Get('staking')
+  async staking(@Query() raw: unknown): Promise<ExplorerStakingRow[]> {
+    const q = this.queryW20(StakingQuery, raw);
+    return listExplorerStaking(this.prisma, this.stakingPort, this.stakingSync, q);
   }
 
   @Get('dao')

@@ -1,0 +1,64 @@
+/* Trade tab resting state (hubLauncher.ts): only inside the Colony book; elsewhere the panel keeps its own entry points. */
+.ta-trade-hub-launcher {
+  display: none;
+}
+
+.ta-colony-book .ta-trade-hub-launcher:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-trade-hub-launcher__title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange);
+}
+
+.ta-trade-hub-launcher__note {
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-label);
+  line-height: 1.4;
+  color: var(--ta-text-3);
+}
+
+.ta-trade-hub-launcher__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s2);
+}
+
+.ta-trade-hub-launcher__actions .btn {
+  min-height: 32px;
+  padding: var(--ta-s2) var(--ta-s3);
+  font-size: var(--ta-fs-label);
+}
+
+.ta-trade-hub-launcher__actions .btn[hidden] {
+  display: none;
+}
+
+/* The Trade Hub panel inside the Colony book: the page is the plate and scrolls; one column fits the page width. */
+.ta-colony-book .ta-trade-hub {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  clip-path: none;
+}
+
+.ta-colony-book .ta-trade-hub__content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The floating cargo toast sits in the HUD overlay (shown while the panel is closed or its tab inactive). */
+.ta-hud__overlay > .ta-cargo-toast {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+}

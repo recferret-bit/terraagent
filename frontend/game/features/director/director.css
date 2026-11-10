@@ -50,3 +50,30 @@
 .ta-director__row[data-state='superseded'] .ta-director__state { color: var(--ta-steel); }
 .ta-director__reason,
 .ta-director__rationale { color: var(--ta-text-2); }
+
+.ta-director-controls textarea { box-sizing: border-box; }
+.ta-director-controls__pause {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s1);
+  color: var(--ta-text-2);
+  font: 500 10px/1.2 var(--ta-font-mono);
+  cursor: pointer;
+}
+.ta-director-controls__pause input { accent-color: var(--ta-orange); margin: 0; }
+
+/* Colony book Director tab: the page is the plate (no second frame); an empty plan list says so. */
+.ta-colony-book .ta-director {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  clip-path: none;
+}
+.ta-colony-book .ta-director__list:empty::before {
+  content: 'No director plans yet.';
+  color: var(--ta-text-3);
+  font-family: var(--ta-font-body);
+}

@@ -228,7 +228,9 @@ const ownObstaclesOnScreen = (page: Page) =>
       for (let q = Math.max(-R, -r - R); q <= Math.min(R, -r + R); q++, i++) {
         if (t.owner[i] !== hq.owner || (t.terrain[i] !== 1 && t.terrain[i] !== 2) || t.deposit[i] !== 0) continue;
         const p = o.tileToScreen(q, r);
-        if (!p || p.x < 420 || p.x > innerWidth - 260 || p.y < 120 || p.y > innerHeight - 140) continue;
+        if (!p || p.x < 40 || p.x > innerWidth - 40 || p.y < 120 || p.y > innerHeight - 140) continue;
+        // Not under a HUD plate (the Command Dock is top right, the Colony book top left): the click must reach the scene.
+        if (document.elementFromPoint(p.x, p.y)?.tagName !== 'CANVAS') continue;
         out.push({ q, r, d: (Math.abs(q - hq.q) + Math.abs(r - hq.r) + Math.abs(q + r - hq.q - hq.r)) / 2 });
       }
     }

@@ -79,7 +79,7 @@ See [the current review report](../../coverage/w07-review-2026-11-06.md#verifica
 
 ## Combat Lab and armored scout check (2026-11-07)
 
-1. Open http://127.0.0.1:5273/play.html?scenario=w07&waves=..07 and click **COMBAT F6** (or press F6). F8 still opens the visual lab.
+1. Open http://127.0.0.1:5273/play.html?scenario=w07&waves=..07 open the **COMBAT** spine tab of the left-hand Colony book and click **COMBAT F6** under **COMBAT LAB** (or press F6). F8 still opens the visual lab.
 2. Select **Recon Armored Scout**. Edit Maximum health, Damage / hit, Rate / second or Range, then use that field's **APPLY**. Existing scouts retain their health percentage; changes apply to every scout on this planet. Range rings follow the new range. Test **EXPORT JSON** to copy balance overrides.
 3. Close the panel, select a scout and move it near a hive. It has six wheels, an armored hull, an independently aiming cannon turret and twin antennas. In weapon range it holds position and fires instead of dodging; normal movement still follows orders and ground paths.
 4. Inspect the model at http://127.0.0.1:5273/playground.html?inspect=robot.recon and use keys 1–4 for iso/front/side/top. Expect 2,652 triangles, ground contact and zero validator issues.

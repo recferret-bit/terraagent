@@ -31,6 +31,12 @@ export const NEAR_ERROR_CODES = {
   NEAR_NAME_TAKEN: { status: 409, description: 'That Pilot ID is already in use.' },
   NEAR_RELAY_FAILED: { status: 503, description: "Couldn't save to orbit. Retrying." },
   NEAR_RELAY_RECEIVER_NOT_ALLOWED: { status: 403, description: 'That save is not allowed for this colony.' },
+  // F6 (W20). Colony Deed & Staking error codes (NEAR §6, §9).
+  DEED_NOT_FOUND: { status: 404, description: 'Colony Deed not found.' },
+  DEED_NOT_SETTLED: { status: 409, description: 'Available after your colony is Settled.' },
+  ACCOUNT_NOT_CLAIMED: { status: 409, description: 'Claim your colony account before staking NEAR.' },
+  POOL_NOT_WHITELISTED: { status: 422, description: 'Staking pool is not in NEAR_STAKING_POOLS.' },
+  STAKE_INSUFFICIENT_BALANCE: { status: 409, description: 'Insufficient NEAR balance in your wallet for this stake.' },
 } as const satisfies Record<string, NearErrorDef>;
 
 export type NearErrorCode = keyof typeof NEAR_ERROR_CODES;

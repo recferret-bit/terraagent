@@ -14,7 +14,7 @@
 
 ## Steps
 
-1. **Guest with a colony.** Open `<client>/play.html?scenario=w06`. A temperate planet loads (no orbit menu). Top left, a chip reads **Guest pilot** with **Save progress**. The **TICK** chip counts up. There is no wallet, gas, or transaction wording.
+1. **Guest with a colony.** Open `<client>/play.html?scenario=w06`. A temperate planet loads (no orbit menu). In the left-hand Colony book (under the minimap), the **PLAYER** tab is open and reads **Guest pilot** with **Save progress**. The console command `tick` (press **`` ` ``**) prints a rising number. There is no wallet, gas, or transaction wording.
 2. **Save progress.** Click **Save progress**, then **Continue with Google (mock)**. A popup titled **Google (mock)** opens. Click **test-pilot**. The popup closes. The game page does not reload. The chip now reads **Pilot ID test-pilot.terraagent.mock** and has a **Copy** button. Copy puts `test-pilot.terraagent.mock` on the clipboard (the button shows it copied). For a second or so you may also see **Saving to orbit…**; it fades when the save settles.
 3. **Settings → Account** — *not in this landing* (Pilot ID, providers, sessions, Take custody). Skip.
 4. **Dev chain.** Open `<client>/dev/chain/` in a second tab. Click **ACCOUNTS**. Within a few seconds you see `test-pilot.terraagent.mock` and a colony account ending in `.test-pilot.terraagent.mock`. Click **RECEIPTS**. A row whose call is `Relayer.submitMetaTx` has a `mock:` hash. Click that hash. The receipt page shows **FINAL**, signer `relayer.terraagent.mock`, and receiver `res.terraagent.mock`. The payload names `storage_deposit` and the colony account. (The colony row in the database is a new `co_…` id, not the sim's `col_0`. That is BE-45.)

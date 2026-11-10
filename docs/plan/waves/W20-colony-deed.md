@@ -20,8 +20,9 @@ Every colony owns a **living Colony Deed** (dynamic NEP-171 NFT, mocked). The de
 
 ## Owned paths
 
-`backend/app/src/near/{deed,staking}/**`, `backend/app/src/near/infrastructure/adapters/mock/{deed,staking}*`, `backend/app/src/near/__contract__/{deed,staking}.contract.ts`, `frontend/game/features/deed/**`, `frontend/game/pages/deed/**` (public share page), `tests/scenarios/w20-colony-deed.ts`, `tests/e2e/w20.spec.ts`, `shared/db/prisma/near-deed.prisma`.
+`backend/app/src/near/{deed,staking}/**`, `backend/app/src/near/infrastructure/adapters/mock/{deed,staking}*`, `backend/app/src/near/__contract__/{deed,staking}.contract.ts`, `frontend/game/features/deed/**`, `frontend/game/pages/deed/**` (public share page), `frontend/game/core/hud/{TabBook,ColonyBook,CommandDock,HudRoot}.ts`, `tests/scenarios/w20-colony-deed.ts`, `tests/e2e/w20.spec.ts`, `shared/db/prisma/near-deed.prisma`.
 Uses from W00 without owning: `DeedNftPort` / `StakingPort` (W00-30), the shared NEP-171 mock base (W00-35), mock base (W00-32), outbox (W00-37), contract harness (W00-38).
+Self-review HUD TabBook unification touches `frontend/game/features/{combat,combat-tuning,construction-menu,deed,director,goals,identity,landfall,maps,market,power-hud,stages,terraform-basic,territory-border,tick,trade-hub,weather}/**` and `tests/e2e/harness/hudLayout.ts`.
 
 ## Hackathon slice
 

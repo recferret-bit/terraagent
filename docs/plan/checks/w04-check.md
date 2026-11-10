@@ -15,7 +15,7 @@
 
 1. **Minimap HUD, tile-state colours, entity dots & camera footprint trapezoid.**
    - Open `<client>/play.html?scenario=w04` → the W04 scenario planet loads with Colony A at `(0, 0)` (Command Hub, HQ drone, 2 Worker Drones (T1), prepared pad and living ring) and Colony B at `(10, -8)` (Command Hub and HQ drone), plus flat grass, sand, rock, forest, water, and surface deposits across the disc.
-   - At the **top-right** (`180 × 180 px` chamfered Faction Plate, first in that column, not above the Command Dock), **see** the **Minimap**:
+   - In the **top-left corner** (`180 × 180 px` chamfered Faction Plate, the Colony book below it; the Command Dock is top right), **see** the **Minimap**:
      - Hex tiles coloured by state and terrain class from the `--ta-*` Faction Plate palette (Prepared pad grey, Living ring green, Wild flat/sand/rock/forest/water in their distinct terrain colours, deposits highlighted).
      - **Entity dots** on top of the terrain raster: your colony's Hub, HQ and Worker Drones (T1) in **Signal Orange**, and Colony B's Hub and HQ in its foreign colony colour.
      - A crisp **white camera footprint trapezoid** showing the 3D camera's ground-plane frustum around `(0, 0)`.

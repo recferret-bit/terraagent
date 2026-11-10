@@ -739,3 +739,15 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The orbital picker in `/play.html?planet=<kind>` polls `/v1/planets` + `/v1/planets/:id/sectors` (with optional WebSocket summary bridge) and supports `Auto (recommended)` + manual sector selection + queued retry/cancel; `docs/plan/w27-readiness-manifest.md` records all 19 deferred rows.
 - **To resolve:** Implement the remaining untagged / `H+` W11 rows when full lobby party/transfer/standalone-entry scope is scheduled alongside W27.
 - **Found:** 2026-11-08, W11 delivery.
+
+## W20 Colony Deed & Staking (F6, mock)
+
+### BE-53 · Tier-1 vertical slice settlement (`Stage 4 + 100% Living Planet` / `Seal Settled Deed`) and mock NEP-413 account claim while W14, W21, and W23 are deferred
+
+- **Status:** Accepted (by design, W20 Tier-1 vertical slice)
+- **Area / code:** `backend/app/src/near/deed/deed-settled.service.ts`, `backend/app/src/near/deed/deed-projector.service.ts`, `backend/app/src/near/staking/account-claim.service.ts`, `shared/contracts/src/deed/index.ts`, [`docs/plan/waves/W20-colony-deed.md`](../plan/waves/W20-colony-deed.md)
+- **What happens:** Because `W14` (walls) and `W21` (Silo T2 / Rocket departure) are postponed outside the Tier-1 vertical slice (`S0–S4`), a Colony Deed transitions to `settled: true` upon reaching Stage 4 (`S4`) + `100 %` Living Planet (`terraformBp: 10000`), via the `colonySettled` event, via the in-panel **Seal Settled Deed** button (`POST /v1/near/deed/settle`), or via the `deed.settle` dev console command (`opId = deed-settle:{colonyId}`, bypassing the 10-minute metadata debounce). The `walls` field in `DeedMetadataV1` remains omitted unless `W14` is enabled in `TA_WAVES`. Account claiming (`POST /v1/near/claim-account` and `account.claim --mock`) verifies a NEP-413-shaped signature payload against `MockIdentityAdapter` and marks the `near_colony_account` row claimed (`ClaimAccountResponseSchema` accepts both epoch ms and ISO string `claimedAt`); real testnet/mainnet full-access key rotation is deferred to `W23-14`, and live `DeedNftPort` / `StakingPort` RPC adapters are deferred to `W23-31` / `W23-33`.
+- **Why it is like this:** `W20-colony-deed.md` specifies that the full Colony Deed + Settled Deed + Account Claim + Own-NEAR Staking loop must work 100 % end-to-end in `NEAR_MODE=mock` within the `S0–S4` vertical slice without requiring postponed `W14`/`W21` or live NEAR credentials before `W23`.
+- **Workaround / mitigation:** Both `DeedNftPort` (`describeNearPortContract('deed')`) and `StakingPort` (`describeNearPortContract('staking')`) contract suites are enforced in CI against the Postgres-backed mocks so `W23` can drop in live adapters behind `NEAR_ADAPTER_DEED` and `NEAR_ADAPTER_STAKING` without changing any game, sim, or UI code.
+- **To resolve:** Connect `W21` rocket departure to `colonySettled` when `W21` opens, and wire live NEAR key rotation and contract adapters in `W23-14`, `W23-31`, and `W23-33`.
+- **Found:** 2026-11-09, W20 delivery.

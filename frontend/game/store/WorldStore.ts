@@ -1,10 +1,14 @@
-import { flagsFromList, newId, type CargoStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type CargoStatusPayload, type DeedUpdatedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
+import {
+  createDefaultSimWorker,
+  handleFeatureServerMessage,
+  normalizeWorldCommand,
+} from './parts/worldStoreFrames';
 import type { FromWorker, ToWorker } from './worker/protocol';
-import { SimWorkerController } from './worker/SimWorkerController';
 import { unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
 import type { ReplicaStatus } from './replica/ReplicaCore';
 import { applyTuned, tunedEvents } from './replica/tuneEvent';
@@ -19,22 +23,6 @@ export type CommandInput =
       [key: string]: unknown;
     };
 
-function normalizeCommand(input: CommandInput | unknown, maybeArgs?: unknown): { kind: string; args: unknown } {
-  if (typeof input === 'string') {
-    return { kind: input, args: maybeArgs ?? {} };
-  }
-  const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
-  const kind = String(obj.kind ?? obj.type ?? '');
-  if (obj.args !== undefined) {
-    return { kind, args: obj.args };
-  }
-  const rest: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (k !== 'type' && k !== 'kind') rest[k] = v;
-  }
-  return { kind, args: rest };
-}
-
 /** The bits of a `Worker` the store uses (tests pass an in-process fake). */
 export interface WorkerLike {
   postMessage(msg: ToWorker, transfer: Transferable[]): void;
@@ -42,20 +30,7 @@ export interface WorkerLike {
   terminate(): void;
 }
 
-export const createSimWorker = (): WorkerLike => {
-  if (typeof Worker === 'function') {
-    return new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
-  }
-  const w: WorkerLike = {
-    onmessage: null,
-    terminate() {},
-    postMessage(msg) {
-      queueMicrotask(() => ctl.handle(msg));
-    },
-  };
-  const ctl = new SimWorkerController((m) => queueMicrotask(() => w.onmessage?.({ data: m })));
-  return w;
-};
+export const createSimWorker = createDefaultSimWorker;
 
 export interface WorldStatus { status: ReplicaStatus | 'idle'; detail?: string }
 
@@ -106,6 +81,7 @@ export class WorldStore {
   private readonly cargoStatuses = new Emitter<CargoStatusPayload>();
   private readonly marketBooks = new Emitter<MarketBookPayload>();
   private readonly marketTrades = new Emitter<MarketTradePayload>();
+  private readonly deedUpdates = new Emitter<DeedUpdatedPayload>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -129,6 +105,8 @@ export class WorldStore {
   /** W13 `market.book` / `market.trade` pushes of the joined planet. */
   onMarketBook(fn: (p: MarketBookPayload) => void): () => void { return this.marketBooks.on(fn); }
   onMarketTrade(fn: (p: MarketTradePayload) => void): () => void { return this.marketTrades.on(fn); }
+  /** W20 `deed.updated` pushes for the joined planet/colony. */
+  onDeedUpdated(fn: (p: DeedUpdatedPayload) => void): () => void { return this.deedUpdates.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -151,7 +129,7 @@ export class WorldStore {
    * Accepts either `(kind, args)` or `({ type, ...args })`.
    */
   sendCommand(input: CommandInput | unknown, maybeArgs?: unknown): string {
-    const { kind, args } = normalizeCommand(input, maybeArgs);
+    const { kind, args } = normalizeWorldCommand(input, maybeArgs);
     const id = newId('cm');
     this.transport.send({ t: 'cmd', id, d: { kind, args } });
     this.notifySent(id, kind, args);
@@ -224,41 +202,72 @@ export class WorldStore {
   private fromServer(m: ServerMessage): void {
     const w = this.worker;
     if (!w) return;
-    if (m.t === 'welcome') {
-      this.planetId = m.d.planet.id;
-      this.welcomeData = { flags: [...m.d.flags], overrides: m.d.overrides as BalanceOverrides | undefined };
-      this.offsetMs = m.d.serverTimeMs - this.now();
-      this.baseTick = m.d.tick; this.baseLocalMs = this.now();
-      const state = ownBytes(m.d.state);
-      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, colonyId: m.d.colonyId, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
-    } else if (m.t === 'delta') {
-      this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
-      if (m.d.events?.length) this.retune(m.d.events);
-      const diff = ownBytes(m.d.diff);
-      w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff }, [diff.buffer]);
-      if (m.d.events?.length) this.serverEvents.emit(m.d.events);
-    } else if (m.t === 'event') {
-      this.retune([m.d]);
-      this.serverEvents.emit([m.d]);
-    } else if (m.t === 'pong') {
-      const rtt = this.now() - m.d.clientTimeMs;
-      this.offsetMs = m.d.serverTimeMs + rtt / 2 - this.now();
-      w.postMessage({ t: 'clock', serverNowMs: this.serverTimeMs() }, []);
-    } else if (m.t === 'cmd.ack') {
-      w.postMessage({ t: 'ack', id: m.d.id, appliedAtTick: m.d.appliedAtTick }, []);
-    } else if (m.t === 'cmd.reject') {
-      w.postMessage({ t: 'reject', id: m.d.id, code: m.d.code }, []);
-    } else if (m.t === 'cargo.status') {
-      this.latestCargoStatus = m.d;
-      if (this.latestView) {
-        (this.latestView as unknown as Record<string, unknown>).cargoStatus = m.d;
-        this.views.emit(this.latestView);
+    if (
+      handleFeatureServerMessage(m, {
+        setCargoStatus: (s) => {
+          this.latestCargoStatus = s;
+        },
+        latestView: this.latestView,
+        views: this.views,
+        cargoStatuses: this.cargoStatuses,
+        marketBooks: this.marketBooks,
+        marketTrades: this.marketTrades,
+        deedUpdates: this.deedUpdates,
+      })
+    ) {
+      return;
+    }
+    switch (m.t) {
+      case 'welcome': {
+        this.planetId = m.d.planet.id;
+        this.welcomeData = { flags: [...m.d.flags], overrides: m.d.overrides as BalanceOverrides | undefined };
+        this.offsetMs = m.d.serverTimeMs - this.now();
+        this.baseTick = m.d.tick;
+        this.baseLocalMs = this.now();
+        const state = ownBytes(m.d.state);
+        w.postMessage(
+          {
+            t: 'welcome',
+            state,
+            tick: m.d.tick,
+            flags: [...m.d.flags],
+            dataHash: m.d.dataHash,
+            simVersion: m.d.simVersion,
+            serverTimeMs: m.d.serverTimeMs,
+            colonyId: m.d.colonyId,
+            overrides: m.d.overrides as BalanceOverrides | undefined,
+          },
+          [state.buffer],
+        );
+        return;
       }
-      this.cargoStatuses.emit(m.d);
-    } else if (m.t === 'market.book') {
-      this.marketBooks.emit(m.d);
-    } else if (m.t === 'market.trade') {
-      this.marketTrades.emit(m.d);
+      case 'delta': {
+        this.baseTick = m.d.toTick;
+        this.baseLocalMs = this.now();
+        if (m.d.events?.length) this.retune(m.d.events);
+        const diff = ownBytes(m.d.diff);
+        w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff }, [diff.buffer]);
+        if (m.d.events?.length) this.serverEvents.emit(m.d.events);
+        return;
+      }
+      case 'event':
+        this.retune([m.d]);
+        this.serverEvents.emit([m.d]);
+        return;
+      case 'pong': {
+        const rtt = this.now() - m.d.clientTimeMs;
+        this.offsetMs = m.d.serverTimeMs + rtt / 2 - this.now();
+        w.postMessage({ t: 'clock', serverNowMs: this.serverTimeMs() }, []);
+        return;
+      }
+      case 'cmd.ack':
+        w.postMessage({ t: 'ack', id: m.d.id, appliedAtTick: m.d.appliedAtTick }, []);
+        return;
+      case 'cmd.reject':
+        w.postMessage({ t: 'reject', id: m.d.id, code: m.d.code }, []);
+        return;
+      default:
+        return;
     }
   }
 
@@ -266,33 +275,44 @@ export class WorldStore {
     if ((m.t === 'view' && (m.pred?.pending ?? 0) > 0) || m.t === 'cmdRejected' || m.t === 'status') {
       this.awaitingPredictionSince = 0;
     }
-    if (m.t === 'view') {
-      if ((m.pred?.pending ?? 0) > 0) this.hadLagPending = true;
-      else if (this.hadLagPending) { this.hadLagPending = false; this.lagDirtyRender = true; }
-      this.lastApplyMs = m.applyMs;
-      if (m.pred) this.info = { pending: m.pred.pending, p95Ms: m.pred.p95Ms };
-      const v = unpackView(m.view, this.serverTimeMs());
-      if (v.tiles) this.tiles = v.tiles;
-      if (this.latestCargoStatus) {
-        (v as unknown as Record<string, unknown>).cargoStatus = this.latestCargoStatus;
-      }
-      this.latestView = v;
-      this.views.emit(v);
-    } else if (m.t === 'cmdRejected') {
-      this.rejects.emit({ id: m.id, kind: m.kind, code: m.code });
-    } else if (m.t === 'renderEvents') {
-      this.renderEvents.emit(m.events);
-    } else if (m.t === 'status') {
-      if (m.status === 'predictionOff') {
-        this.mode = 'auto-off';
-        this.info = { ...this.info, p95Ms: m.p95Ms ?? this.info.p95Ms };
-        console.warn(`[world] prediction off: ${m.detail ?? ''}`);
+    switch (m.t) {
+      case 'view': {
+        if ((m.pred?.pending ?? 0) > 0) {
+          this.hadLagPending = true;
+        } else if (this.hadLagPending) {
+          this.hadLagPending = false;
+          this.lagDirtyRender = true;
+        }
+        this.lastApplyMs = m.applyMs;
+        if (m.pred) this.info = { pending: m.pred.pending, p95Ms: m.pred.p95Ms };
+        const v = unpackView(m.view, this.serverTimeMs());
+        if (v.tiles) this.tiles = v.tiles;
+        if (this.latestCargoStatus) {
+          (v as unknown as Record<string, unknown>).cargoStatus = this.latestCargoStatus;
+        }
+        this.latestView = v;
+        this.views.emit(v);
         return;
       }
-      this.currentStatus = { status: m.status, detail: m.detail };
-      this.statuses.emit(this.currentStatus);
-    } else {
-      this.requestResync();
+      case 'cmdRejected':
+        this.rejects.emit({ id: m.id, kind: m.kind, code: m.code });
+        return;
+      case 'renderEvents':
+        this.renderEvents.emit(m.events);
+        return;
+      case 'status':
+        if (m.status === 'predictionOff') {
+          this.mode = 'auto-off';
+          this.info = { ...this.info, p95Ms: m.p95Ms ?? this.info.p95Ms };
+          console.warn(`[world] prediction off: ${m.detail ?? ''}`);
+          return;
+        }
+        this.currentStatus = { status: m.status, detail: m.detail };
+        this.statuses.emit(this.currentStatus);
+        return;
+      default:
+        this.requestResync();
+        return;
     }
   }
 

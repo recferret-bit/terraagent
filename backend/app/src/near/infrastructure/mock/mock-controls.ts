@@ -27,6 +27,10 @@ class MockChainControls {
     this.failRates.set(portKey(port), rate);
   }
 
+  getFail(port: string): number | undefined {
+    return this.failRates.get(portKey(port));
+  }
+
   setLatency(port: string, minMs: number, maxMs: number): void {
     if (!isLatencyBound(minMs) || !isLatencyBound(maxMs)) throw new Error('latency bounds must be integers >= 0');
     if (maxMs < minMs) throw new Error(`maxMs (${maxMs}) must be >= minMs (${minMs})`);
@@ -68,7 +72,9 @@ class MockChainControls {
 
 function portKey(port: string): string {
   const lower = port.toLowerCase();
-  return lower === 'cargotoken' ? 'cargo' : lower;
+  if (lower === 'cargotoken') return 'cargo';
+  if (lower === 'deednft') return 'deed';
+  return lower;
 }
 
 function isLatencyBound(ms: number): boolean {

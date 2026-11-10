@@ -46,6 +46,13 @@ function rewriteMePage(req: { url?: string }): void {
   req.url = `/me.html${search}`;
 }
 
+/** `/deed` and `/deed/*` serve `deed.html` (W20-12 public share page). */
+function rewriteDeedPage(req: { url?: string }): void {
+  const { path, search } = splitUrl(req.url ?? '');
+  if (path !== '/deed' && !path.startsWith('/deed/')) return;
+  req.url = `/deed.html${search}`;
+}
+
 const chainTxPage: Plugin = {
   name: 'chain-tx-page',
   configureServer(server) {
@@ -53,6 +60,7 @@ const chainTxPage: Plugin = {
       rewriteChainTx(req);
       rewriteMockOauth(req);
       rewriteMePage(req);
+      rewriteDeedPage(req);
       next();
     });
   },
@@ -61,6 +69,7 @@ const chainTxPage: Plugin = {
       rewriteChainTx(req);
       rewriteMockOauth(req);
       rewriteMePage(req);
+      rewriteDeedPage(req);
       next();
     });
   },
@@ -82,6 +91,7 @@ export default defineConfig({
         landing: resolve(frontend, 'landing.html'),
         play: resolve(frontend, 'play.html'),
         me: resolve(frontend, 'me.html'),
+        deed: resolve(frontend, 'deed.html'),
         trade: resolve(frontend, 'trade.html'),
         playground: resolve(frontend, 'playground.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
