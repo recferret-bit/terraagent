@@ -47,6 +47,7 @@ import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
+import { GuildModule } from './guild/guild.module.js';
 import { EconomyModule } from '../economy/economy.module.js';
 import { TradeHistoryProducer } from './progression/trade-history.producer.js';
 import { MarketProgressionProducer } from './progression/market-progression.producer.js';
@@ -114,6 +115,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     NearModule,
     EconomyModule,
     GameModule,
+    GuildModule,
   ],
   exports: [
     OrderRelease,

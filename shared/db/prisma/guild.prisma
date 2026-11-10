@@ -1,0 +1,25 @@
+/// Guild NPC wallet and its one explicit funding allocation (W15-05, NEAR-70, NEAR-73).
+/// Mock cargo, when any, is only `inventory_cache` lines labelled `fixture`. The quote budget is a finite `subsidy`.
+/// `cash_enabled` stays 0. Spend and loss move only when a later issue records them; boot does not reset them.
+model GuildNpc {
+  id                String   @id @db.VarChar(32)
+  accountId         String   @unique @map("account_id") @db.VarChar(64)
+  strategy          Json
+  inventoryCache    Json     @map("inventory_cache")
+  homeRoute         Json     @map("home_route")
+  allocationId      String   @unique @map("allocation_id") @db.VarChar(96)
+  quoteBudgetAtomic Decimal  @map("quote_budget_atomic") @db.Decimal(78, 0)
+  spendAtomic       Decimal  @default(0) @map("spend_atomic") @db.Decimal(78, 0)
+  lossAtomic        Decimal  @default(0) @map("loss_atomic") @db.Decimal(78, 0)
+  cargoLabel        String   @default("fixture") @map("cargo_label") @db.VarChar(16)
+  quoteLabel        String   @default("subsidy") @map("quote_label") @db.VarChar(16)
+  cashEnabled       Int      @default(0) @map("cash_enabled")
+  actorKind         String   @default("npc") @map("actor_kind") @db.VarChar(16)
+  publicKey         String   @map("public_key") @db.VarChar(128)
+  tradeKeyId        String   @unique @map("trade_key_id") @db.VarChar(40)
+  policyVersion     String   @map("policy_version") @db.VarChar(64)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("guild_npc")
+  @@schema("chain")
+}

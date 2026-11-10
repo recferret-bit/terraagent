@@ -24,6 +24,7 @@ the headless experiment runner uses the same code. Chain effects go through the 
 | Progression and history producers | `progression/` (Merchant, Port Authority, `history.trade`) | W13-27, W13-24 |
 | Metrics | `telemetry/market-metrics.ts` | W13-29 |
 | Trade API (keys, allowance, orders, reads, SSE, agent quote) | `trade/` | W13 bots |
+| Guild NPC provisioning (one allocation, fixture cargo, subsidy quote budget) | `guild/` | W15-05 |
 
 ## Trade API for humans and bots (`trade/`)
 
