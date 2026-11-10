@@ -384,7 +384,9 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileConte
 function landingBlock(world: PlacementWorld, opts: EvaluatePlacementOpts): PlacementBlock | null {
   const pod = world.entities.find((e) => e.kind === ENTITY_KIND.pod && e.owner === opts.colonyId);
   if (!pod) return null;
-  const own = hexDistance(opts.q, opts.r, pod.q, pod.r);
+  const hq = world.entities.find((e) => e.kind === ENTITY_KIND.hq && e.owner === opts.colonyId && isAlive(e));
+  const distPod = hexDistance(opts.q, opts.r, pod.q, pod.r);
+  const own = hq ? Math.min(distPod, hexDistance(opts.q, opts.r, hq.q, hq.r)) : distPod;
   if (own > rowNum(resolveStartingKitRow(opts.data), 'hubMaxDistFromLanding')) return 'farFromLanding';
   const others = world.entities.filter((e) => (e.kind === ENTITY_KIND.pod || e.kind === ENTITY_KIND.hub) && e.owner >= 0 && e.owner !== opts.colonyId && isAlive(e));
   return others.some((e) => hexDistance(opts.q, opts.r, e.q, e.r) < own) ? 'nearOtherColony' : null;

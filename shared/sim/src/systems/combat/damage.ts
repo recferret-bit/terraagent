@@ -15,6 +15,7 @@ import { getFootprintTileIndices } from '../economy/buildingRows';
 import { syncColonyDepotCaps } from '../economy/ledger';
 import { colonyWho } from '../find';
 import { hasActiveTruce, recordHostilityBetween, resolveColonyIdStr } from '../diplomacy/store';
+import { onHubDestroyed } from '../elimination/critical';
 import { onHqDestroyed } from '../elimination/operations';
 import { isW18EliminationActive } from '../elimination/store';
 import { syncHqView } from '../hq/view';
@@ -329,11 +330,15 @@ function handleBuildingDestruction(
   emitBuildingDestructionEvent(state, targetId, kind, owner, q, r, opts);
 
   const wasSupplyDepot = kind === ENTITY_KIND.supplyDepot;
+  const wasCommandHub = kind === ENTITY_KIND.commandHub;
   removeRow(state.entities, targetId, tick);
   bumpPathEpoch(state.meta);
   if (owner >= 0 && state.colonies[owner]) {
     if (wasSupplyDepot) syncColonyDepotCaps(state, owner, tick);
     syncColonyThreatStage(state, owner, tick);
+  }
+  if (wasCommandHub && owner >= 0 && isW18EliminationActive(state, opts)) {
+    onHubDestroyed(state, owner, targetId, tick, opts);
   }
 
   return { applied: Math.max(0, prevHp), hpAfter: 0, destroyed: true, clampedHq: false, retreatedHq: false };

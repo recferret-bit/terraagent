@@ -259,6 +259,13 @@ function stepEstablishColonyGoal(
 
   if (step2Hub) syncHubColonyActivation(state, colonyIndex, tick);
 
+  const isReestablish = (goal.params as Record<string, unknown> | undefined)?.reestablish === true;
+  if (isReestablish && step2Hub) {
+    saveColonyGoals(state, colonyIndex, goals, tick);
+    completeColonyGoal(state, colonyIndex, goal.id, tick, ctx);
+    return;
+  }
+
   const stepsCompleted = (step1Prep ? 1 : 0) + (step2Hub ? 1 : 0) + (step3Ext ? 1 : 0) + (step4Solar ? 1 : 0);
   const stepsTotal = 4;
   if (step2Hub && step3Ext && step4Solar) {
