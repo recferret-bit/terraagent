@@ -36,6 +36,15 @@ export function bountyPolicy(): BountyPolicy {
   };
 }
 
+/**
+ * Lowers the expiry floor, never below 1 h and never past the policy max.
+ * Mercenary hire uses 1 h (W22-31). A player post does not pass this, so it stays 2–48 h.
+ */
+export function expiryWithMin(minMs: number, policy: BountyPolicy = bountyPolicy()): BountyPolicy {
+  if (!Number.isInteger(minMs) || minMs < HOUR_MS || minMs >= policy.expiryMaxMs) return policy;
+  return { ...policy, expiryMinMs: Math.min(policy.expiryMinMs, minMs) };
+}
+
 /** `invalid_args` when `expiresAt` is outside the policy window from `nowMs` (inclusive). */
 export function expiryScreen(expiresAt: number, nowMs: number, policy: BountyPolicy = bountyPolicy()): BountyScreen | null {
   const span = expiresAt - nowMs;

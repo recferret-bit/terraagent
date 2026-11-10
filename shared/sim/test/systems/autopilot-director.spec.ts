@@ -57,6 +57,18 @@ describe('W09-34 setAutopilot writes the director record', () => {
     expect(view(sim)).toEqual({ awayRaids: true, autopilotMode: 'rules_only' });
   });
 
+  it('stores hire mercenaries and keeps the max when a later budget patch omits it', () => {
+    const sim = host();
+    sim.submit(cmd('setAutopilot', { hireMercenaries: true, mercenaryMaxSpend: 100 }));
+    expect(sim.step(1).outcomes[0]?.code).toBeUndefined();
+    expect(readAwaySettings(sim.state, 0)).toMatchObject({ hireMercenaries: true, mercenaryMaxSpend: 100, awayRaids: false });
+    sim.submit(cmd('setAutopilot', { awayBudget: { metals: { perSessionPct: 30 } } }));
+    expect(sim.step(1).outcomes[0]?.code).toBeUndefined();
+    expect(readAwaySettings(sim.state, 0)?.hireMercenaries).toBe(true);
+    expect(readAwaySettings(sim.state, 0)?.mercenaryMaxSpend).toBe(100);
+    expect(readAwaySettings(sim.state, 0)?.budget.metals.perSessionPct).toBe(30);
+  });
+
   it('still stores the away blob when W16 is off', () => {
     const sim = host('..09');
     sim.submit(cmd('setAutopilot', { mode: 'rules_only', awayRaids: true }));

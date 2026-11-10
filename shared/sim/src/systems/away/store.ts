@@ -26,6 +26,10 @@ export interface AwaySession {
 export interface ColonyAwaySettings {
   mode: AutopilotMode;
   awayRaids: boolean;
+  /** Hire a squad when this colony is attacked while away (W22-31). Default off. */
+  hireMercenaries: boolean;
+  /** Whole metals that hire may spend. Default 0, which fits no squad. */
+  mercenaryMaxSpend: number;
   budget: Record<AwayFamily, FamilyBudget>;
   session: AwaySession;
 }
@@ -61,6 +65,8 @@ export function emptySettings(data: CompiledDataLike): ColonyAwaySettings {
   return {
     mode: 'director',
     awayRaids: false,
+    hireMercenaries: false,
+    mercenaryMaxSpend: 0,
     budget: { metals: { ...family }, minerals: { ...family }, bio: { ...family } },
     session: closedSession(),
   };
@@ -76,6 +82,8 @@ function cloneSettings(row: ColonyAwaySettings): ColonyAwaySettings {
   return {
     mode: row.mode,
     awayRaids: row.awayRaids,
+    hireMercenaries: row.hireMercenaries === true,
+    mercenaryMaxSpend: wholeSpend(row.mercenaryMaxSpend),
     budget,
     session: session
       ? {
@@ -98,15 +106,21 @@ export function readAwaySettings(state: PlanetState, colonyIndex: number): Colon
   return copy;
 }
 
+function wholeSpend(value: number | undefined): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
 function write(state: PlanetState, colonyIndex: number, settings: ColonyAwaySettings, tick: number): void {
   const prev = (state.blobs[BLOB]?.value as AwayBlob | undefined)?.byColony ?? {};
   setBlob(state, BLOB, { policyVersion: AWAY_POLICY_VERSION, byColony: { ...prev, [String(colonyIndex)]: settings } }, tick);
 }
 
-export function applyAutopilot(state: PlanetState, colonyIndex: number, patch: { mode?: AutopilotMode; awayRaids?: boolean; awayBudget?: AwayBudget }, data: CompiledDataLike, tick: number): ColonyAwaySettings {
+export function applyAutopilot(state: PlanetState, colonyIndex: number, patch: { mode?: AutopilotMode; awayRaids?: boolean; awayBudget?: AwayBudget; hireMercenaries?: boolean; mercenaryMaxSpend?: number }, data: CompiledDataLike, tick: number): ColonyAwaySettings {
   const current = readAwaySettings(state, colonyIndex) ?? emptySettings(data);
   if (patch.mode) current.mode = patch.mode;
   if (patch.awayRaids !== undefined) current.awayRaids = patch.awayRaids;
+  if (patch.hireMercenaries !== undefined) current.hireMercenaries = patch.hireMercenaries;
+  if (patch.mercenaryMaxSpend !== undefined) current.mercenaryMaxSpend = patch.mercenaryMaxSpend;
   if (patch.awayBudget) {
     for (const family of AWAY_FAMILIES) {
       const next = patch.awayBudget[family];

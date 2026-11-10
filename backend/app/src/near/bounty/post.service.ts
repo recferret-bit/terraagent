@@ -16,7 +16,7 @@ interface WaveFlags {
 import { BountyRepository, type NewBountyRow } from './bounty.repository.js';
 import { BountyPostError } from './errors.js';
 import { screenTarget } from './target.js';
-import { activeScreen, bountyOpenOpId, expiryScreen, type BountyScreen } from './validate.js';
+import { activeScreen, bountyOpenOpId, expiryScreen, expiryWithMin, type BountyScreen } from './validate.js';
 import { toBountyView, type BountyRow, type BountyView, type PostedBounty } from './view.js';
 import { PlanetBountyWorld, type BountyWorldSource } from './world.js';
 
@@ -28,6 +28,8 @@ export interface BountyPostInput {
   readonly bountyId?: string;
   readonly args: BountyPostArgs;
   readonly nowMs?: number;
+  /** When set, the expiry floor may drop to 1 h. Player posts omit it (2–48 h). */
+  readonly expiryMinMs?: number;
 }
 
 /**
@@ -52,7 +54,10 @@ export class BountyPostService {
 
   /** Read-only checks (expiry, target, cap, cargo). The WS precheck calls this and does not open escrow. */
   async screen(input: BountyPostInput): Promise<BountyScreen | null> {
-    const expiry = expiryScreen(input.args.expiresAt, input.nowMs ?? Date.now());
+    const now = input.nowMs ?? Date.now();
+    const expiry = input.expiryMinMs === undefined
+      ? expiryScreen(input.args.expiresAt, now)
+      : expiryScreen(input.args.expiresAt, now, expiryWithMin(input.expiryMinMs));
     if (expiry) return expiry;
     const world = input.args.target.kind === 'deliver_units' ? null : await this.world.load(input.planetId);
     const target = screenTarget(world, input.colonyIndex, input.args.target);
