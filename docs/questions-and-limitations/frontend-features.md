@@ -1460,3 +1460,25 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** (2) run `w13` step 12 on a quiet machine / fresh stack.
 - **To resolve:** (2) check the post-restart supply window timing in step 12 (wait for one more window, or for the spawned builders to exist).
 - **Found:** 2026-11-10, HUD de-clutter refactor (tests agent + lead)
+
+## W22 treasury HUD (2026-11-10)
+
+### FF-103 · Meteor shield shimmer is a CSS veil, not a scene pass
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/shieldVeil.ts`, `treasury.css` (`.ta-shield-shimmer`); CLIENT §9
+- **What happens:** While `meteor_shield` is active the HUD inserts one transparent element over the viewport. A slow cool gradient band moves in CSS (`mix-blend-mode: screen`). It is not a terrain uniform, an extra draw, or a post-process pass. `prefers-reduced-motion` leaves a static faint wash. The element is created once and only toggled.
+- **Why it is like this:** The frame budget is 60 FPS with no per-frame allocation. A shader or composer pass would add a draw and a uniform for a glint the player should barely see. The HUD already updates at 4 Hz (`sessionViewSync`, 250 ms), so the veil stays on the compositor.
+- **Workaround / mitigation:** The veil is `pointer-events: none`, `z-index: 0` under the HUD plates, and hidden when the shield badge drops (`tick >= untilTick`) or when wave `W22` is off.
+- **To resolve:** If the glint must sit in the terrain lighting, drive one existing tint uniform from the same badge model. Do not add a pass.
+- **Found:** 2026-11-10, W22-15
+
+### FF-104 · Terraform boost tints Irrigate and Seed chips, not dock orders
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/livingOps.ts`; `frontend/game/features/terraform-basic/TerraformMenu.ts`; GP-101
+- **What happens:** During `terraform_boost` the HUD shows two chips, IRRIGATE and SEED, with a teal border and text (`color-mix` of `--ta-energy` and `--ta-terra`). They are `aria-disabled` and send no command. The rest of the HUD is not recolored. The dock still has one TERRAFORM button, which does not queue Irrigate or Seed.
+- **Why it is like this:** W22-15 asks for a tint on the Living-op controls. Those controls are not on the dock (GP-101). This issue must not add an order path.
+- **Workaround / mitigation:** Any later control marked `data-living-op` in the HUD gets the same `data-boosted` flag. The chips hide when the boost ends.
+- **To resolve:** When Irrigate and Seed become real dock buttons, keep `data-living-op` on them and drop these chips.
+- **Found:** 2026-11-10, W22-15
