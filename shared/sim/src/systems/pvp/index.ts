@@ -8,12 +8,14 @@ import { registerGoalExecutor } from '../goals/executors';
 import { stepActiveRaids } from './raidPathing';
 import { launchColonyRaid, stepRaidTargetGoal } from './raidTask';
 import { setColonyShieldHours, syncAllColonyShields } from './shield';
+import { stepRaidSiphon } from './siphon';
 
 export * from './store';
 export * from './shield';
 export * from './sectorGuard';
 export * from './raidPathing';
 export * from './raidTask';
+export * from './siphon';
 
 registerGoalExecutor('raid_target', stepRaidTargetGoal, { wave: 'W18' });
 
@@ -65,6 +67,7 @@ export const pvpSystem = defineSystem({
   run(state, ctx) {
     syncAllColonyShields(state, ctx.tick, ctx.data);
     stepActiveRaids(state, ctx);
+    stepRaidSiphon(state, ctx);
   },
 });
 

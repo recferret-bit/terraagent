@@ -41,7 +41,7 @@ export default defineTable({
       shieldDurationS: 21600,
       shieldDropStage: 4,
       shieldDropStageFull: 6,
-      siphonRatePerS: 2,
+      siphonRatePerS: 1,
       siphonCarryCap: 40,
       siphonRangeTiles: 1,
     },
