@@ -60,10 +60,7 @@ export interface CollectEntityDotsOptions {
 export function resolveCssToken(tokenName: string, fallback: string): string {
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     try {
-      const val = window
-        .getComputedStyle(document.documentElement)
-        .getPropertyValue(tokenName)
-        .trim();
+      const val = window.getComputedStyle(document.documentElement).getPropertyValue(tokenName).trim();
       if (val) return val;
     } catch {
       // Fallback if DOM style query is unavailable
@@ -136,7 +133,8 @@ export function classifyEntityRole(
   kind?: number,
 ): EntityDotRole {
   const desc = (archetypeOrDesc ?? '').toLowerCase();
-  if (owner === OWNER_GUILD || desc.includes('guild') || desc.includes('freighter') || desc.includes('barge')) return 'guild';
+  if (owner === OWNER_GUILD || desc.includes('guild') || desc.includes('freighter') || desc.includes('barge'))
+    return 'guild';
   const faunaKind = kind !== undefined && presenceRoleOf(kind) === 'fauna';
   if (owner === OWNER_FAUNA || desc.includes('fauna') || faunaKind) return 'fauna';
   if (owner === ownColonySlot) return 'own';
@@ -229,10 +227,7 @@ function makeDot(c: DotContext, row: EntityRow, raw: Record<string, unknown> | u
  * Map markers for every visible entity: buildings first (drawn under), then units. Under `MAX_ENTITY_DOTS` units
  * are kept first and buildings fill the remaining room.
  */
-export function collectEntityDots(
-  view: MapLayerDrawView,
-  options?: CollectEntityDotsOptions,
-): EntityDot[] {
+export function collectEntityDots(view: MapLayerDrawView, options?: CollectEntityDotsOptions): EntityDot[] {
   if (!view.clientView?.entities) return [];
   const ctx: DotContext = {
     view,
@@ -252,6 +247,29 @@ export function collectEntityDots(
   });
   if (buildings.length > MAX_ENTITY_DOTS - units.length) buildings.length = MAX_ENTITY_DOTS - units.length;
   return buildings.concat(units);
+}
+
+/**
+ * Marks drawn with the unit dots (minimap and global map share this pass). Not a second map.
+ * Callers that run with W04 off should not call `setExtraMapDot`.
+ */
+export interface ExtraMapDot {
+  readonly id: string;
+  readonly q: number;
+  readonly r: number;
+  readonly color: string;
+  /** `ship` is the Guild chevron; `dot` matches a unit. */
+  readonly shape?: 'dot' | 'ship';
+}
+
+const extraMapDots = new Map<string, ExtraMapDot>();
+
+export function setExtraMapDot(dot: ExtraMapDot): void {
+  extraMapDots.set(dot.id, dot);
+}
+
+export function clearExtraMapDot(id: string): void {
+  extraMapDots.delete(id);
 }
 
 export function drawEntityDots(
@@ -279,7 +297,33 @@ export function drawEntityDots(
     ctx.arc(dot.x, dot.y, dot.radiusPx, 0, Math.PI * 2);
     ctx.fill();
   }
+  drawExtraMapDots(ctx, view);
   return dots;
+}
+
+/** Chevron (nose up). Drawn in the current fillStyle. */
+function drawShipMark(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y - 5);
+  ctx.lineTo(x + 3.6, y + 3.2);
+  ctx.lineTo(x, y + 1);
+  ctx.lineTo(x - 3.6, y + 3.2);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawExtraMapDots(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
+  if (extraMapDots.size === 0) return;
+  for (const dot of extraMapDots.values()) {
+    const { x, y } = view.axialToPixel(dot.q, dot.r);
+    ctx.fillStyle = dot.color;
+    if (dot.shape === 'ship') drawShipMark(ctx, x, y);
+    else {
+      ctx.beginPath();
+      ctx.arc(x, y, DEFAULT_DOT_RADIUS_PX, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 export function createUnitsMapLayer(): MapLayer {
