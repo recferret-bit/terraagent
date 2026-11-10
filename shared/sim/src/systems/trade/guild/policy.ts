@@ -20,7 +20,7 @@ export interface GuildNpc {
 
 /**
  * Versioned Guild policy plus the `AgentParams` the W13 quote library already understands.
- * Funding ceilings are carried here and are not enforced (W15-12). Cash stays a stored flag.
+ * Funding ceilings are carried here. The server funding book enforces them (W15-12); this module does not reserve.
  */
 export interface GuildPolicy {
   readonly policyVersion: string;
