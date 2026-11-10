@@ -910,9 +910,19 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Area / code:** `backend/app/src/near/application/ports/agent-wallet.port.ts`, `shared/contracts/src/guild/offers.ts`, `shared/contracts/src/commands/set-auto-trade.ts`, NEAR-80, NEAR-81, PROTOCOL `POST /v1/near/director-key`
 - **What happens:** A limited key stores a NEAR gas allowance and a separate per-token principal ledger (`allowance`, `reserved`, `spent`, `available`). Signing does not spend principal. `director.status` is a WebSocket push and is not the W16 event `directorStatus`. Revoke is specified as `DELETE` by W15-18; PROTOCOL still says `POST` add/revoke. Each `guild.arrived` offer may include a `reason` string and may omit it. `setAutoTrade` carries the W09 limit row (`maxPerTrade`, `maxPerSession`, `minStock`, `partners`). The "sell above 80% storage" trigger is not on that row yet.
 - **Why it is like this:** Q-04-1 conflicts on allowance basis (away budget vs per-session caps) and unit (per token vs one NEAR number). The wave text for W15-03 and W15-18 is per-token principal plus a separate gas allowance, so that is the default. Q-04-12 leaves the revoke verb open; W15-18's `DELETE` is the default. Q-04-5 asks for a reason on offers; the field is optional so a missing reason still parses.
-- **Workaround / mitigation:** Command rejects use `allowance_exhausted`. The port throws `NEAR_ALLOWANCE_EXHAUSTED`. W15-19 extends the autoTrade row if the storage-percent trigger is required. W15-18 implements `DELETE`.
+- **Workaround / mitigation:** Command rejects use `allowance_exhausted`. The port throws `NEAR_ALLOWANCE_EXHAUSTED`. W15-03 stores that ledger on `chain.mock_chain_agent_key` and `chain.mock_chain_agent_allowance` (available is computed) and does not write `chain.director_key`. W15-19 extends the autoTrade row if the storage-percent trigger is required. W15-18 implements `DELETE`.
 - **To resolve:** Confirm per-token principal, `DELETE` revoke, and optional offer reasons. Confirm whether "sell above N% storage" belongs on `setAutoTrade` or only in the director decision.
 - **Found:** 2026-11-10, W15-01
+
+### BE-71 · Mock agent-wallet principal is one pool per token, and gas is not metered
+
+- **Status:** Accepted (by design, W15-03)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`, `shared/db/prisma/agent-wallet.prisma`, NEAR-80, NEAR-81
+- **What happens:** `MockAgentWalletAdapter` stores a limited key in `chain.mock_chain_agent_key` and principal in `chain.mock_chain_agent_allowance` (`allowance`, `reserved`, `spent`). Available is `allowance - reserved - spent` and is not a column. Reserve, consume, and release take an amount from that pool. They are not tied to a reservation id, so two holds on one key share one reserved total. `gasSpent` stays `0`. `addLimitedKey` records the gas allowance and does not move principal. Revoke sets `revoked` and `revoked_at` and leaves the totals. A later reserve, consume, or release throws `NEAR_KEY_REVOKED`. A second `addLimitedKey` for the same key with a new opId throws `NEAR_ACCOUNT_EXISTS` and does not change the caps. `NEAR_ADAPTER_AGENT_WALLET=testnet` fails boot. Only the mock class is registered.
+- **Why it is like this:** The port methods are amount-based. `chain.director_key` belongs to W15-18. Real function-call allowance is gas only (NEAR-81). The real adapter is W23.
+- **Workaround / mitigation:** Callers that overlap two holds must consume and release amounts that fit the combined reserved total. Read balances through `keyStatus`, not `chain.director_key`.
+- **To resolve:** W15-18 can project `keyStatus` into `chain.director_key`. W23 registers the testnet class. Gas metering, if it is required, is a later change.
+- **Found:** 2026-11-10, W15-03
 
 ### BE-69 · A settled Colony Deed push is not one of the eight away-alert toggles
 
