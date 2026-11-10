@@ -23,7 +23,7 @@ export const HQ_GOALS_LANE_LIMIT = 20;
 export function laneForTask(task: QueueTaskPayload): QueueLane {
   if (task.kind === 'buildUnit' || task.kind === 'project') return 'units';
   if (task.kind === 'terraform') return 'terraform';
-  if (task.kind === 'hqGoal') return 'hqGoals';
+  if (task.kind === 'hqGoal' || task.kind === 'raid') return 'hqGoals';
   return 'construction';
 }
 
@@ -315,6 +315,30 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
   if (raw.project && typeof raw.project === 'object') {
     const p = raw.project as { project?: unknown };
     if (typeof p.project === 'string') return { ...base, task: { kind: 'project', project: p.project } };
+  }
+  if (raw.raid && typeof raw.raid === 'object') {
+    const rd = raw.raid as {
+      targetColonyId?: number | string;
+      targetColonyIndex?: number;
+      targetColony?: number | string;
+      unitIds?: number[];
+      entityIds?: number[];
+      q?: number;
+      r?: number;
+    };
+    return {
+      ...base,
+      task: {
+        kind: 'raid',
+        targetColonyId: rd.targetColonyId,
+        targetColonyIndex: rd.targetColonyIndex,
+        targetColony: rd.targetColony,
+        unitIds: rd.unitIds,
+        entityIds: rd.entityIds,
+        q: rd.q,
+        r: rd.r,
+      },
+    };
   }
   if (raw.repair && typeof raw.repair === 'object') {
     const r = raw.repair as { entityId: number; q?: number; r?: number };

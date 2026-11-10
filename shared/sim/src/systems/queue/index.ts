@@ -310,6 +310,9 @@ export const enqueueTaskHandler = defineCommandHandler({
       if (!ctx.flags.has('W13')) return 'wave_disabled';
       if (!colonyHasActiveHub(state, colIdx)) return { code: 'invalid_args', detail: 'A prestige project needs a Command Hub.' };
     }
+    if (norm.task.kind === 'raid') {
+      if (!ctx.flags.has('W18')) return 'wave_disabled';
+    }
     if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
       return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }

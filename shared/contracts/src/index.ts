@@ -127,3 +127,28 @@ export * from './deed';
 export { DeedMintedDataSchema, event as deedMinted, type DeedMintedData } from './events/deed-minted';
 export { DeedUpdatedDataSchema, event as deedUpdated, type DeedUpdatedData } from './events/deed-updated';
 export { DeedSettledDataSchema, event as deedSettled, type DeedSettledData } from './events/deed-settled';
+export * from './diplomacy';
+export { RaidArgsSchema, command as raid, type RaidArgs } from './commands/raid';
+export {
+  ProposeTruceArgsSchema,
+  command as proposeTruce,
+  type ProposeTruceArgs,
+} from './commands/diplomacy-propose-truce';
+export {
+  RespondTruceArgsSchema,
+  command as respondTruce,
+  type RespondTruceArgs,
+} from './commands/diplomacy-respond-truce';
+export {
+  CancelTruceArgsSchema,
+  command as cancelTruce,
+  type CancelTruceArgs,
+} from './commands/diplomacy-cancel-truce';
+export { DevKillHqArgsSchema, command as devKillHq, type DevKillHqArgs } from './commands/dev-kill-hq';
+export { DevKillHubArgsSchema, command as devKillHub, type DevKillHubArgs } from './commands/dev-kill-hub';
+export { DevSetShieldArgsSchema, command as devSetShield, type DevSetShieldArgs } from './commands/dev-set-shield';
+export { DevOfferTruceArgsSchema, command as devOfferTruce, type DevOfferTruceArgs } from './commands/dev-offer-truce';
+export { TruceOfferedDataSchema, event as truceOffered, type TruceOfferedData } from './events/truce-offered';
+export { TruceSignedDataSchema, event as truceSigned, type TruceSignedData } from './events/truce-signed';
+export { TruceNoticeDataSchema, event as truceNotice, type TruceNoticeData } from './events/truce-notice';
+export { TruceEndedDataSchema, event as truceEnded, type TruceEndedData } from './events/truce-ended';

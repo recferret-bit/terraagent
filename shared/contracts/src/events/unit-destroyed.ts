@@ -9,6 +9,10 @@ export const UnitDestroyedDataSchema = z.strictObject({
   unit: z.string().optional(),
   kind: z.number().int().optional(),
   attackerId: z.number().int().optional(),
+  attackerColonyIndex: z.number().int().nonnegative().optional(),
+  attackerColonyId: z.string().optional(),
+  pvp: z.boolean().optional(),
+  count: z.number().int().positive().optional(),
   q: z.number().int(),
   r: z.number().int(),
 });
