@@ -1,6 +1,7 @@
 import { defineSimModule } from '../define';
 import { setAutoTradeHandler } from './autotrade';
 import { marketReleaseHandler, marketReserveHandler, marketSettledHandler } from './module-commands';
+import { marketAcceptGuildOfferHandler } from './accept-guild-offer';
 import { marketPlaceOrderHandler } from './place-order';
 import { marketCancelOrderHandler, marketSetHubFeeHandler } from './player-commands';
 
@@ -23,6 +24,7 @@ export default defineSimModule({
   wave: 'W13',
   handlers: [
     marketPlaceOrderHandler,
+    marketAcceptGuildOfferHandler,
     marketCancelOrderHandler,
     marketSetHubFeeHandler,
     marketReserveHandler,

@@ -14,7 +14,7 @@ export const GUILD_VISIT_TICK_MS = 5_000;
 
 /**
  * Seeded Guild visits (W15-09). Each NPC loops one planet: dock for `dockWindowS`, en route for `visitGapS`, then the same planet.
- * W15 off writes nothing and pushes nothing. Offers are empty until W15-11.
+ * W15 off writes nothing and pushes nothing. Offers come from the maker's resting quotes when that source is wired.
  */
 @Injectable()
 export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
@@ -72,7 +72,9 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
     const window = extraVisit({ npcId: npc.id, planetId, nowMs: now, dockWindowMs: this.policy().dockWindowS * 1000 });
     const id = extraVisitId(npc.id, planetId, window.arriveAt, randomBytes(4).toString('hex'));
     await this.repo.insertExtra(draft(npc, window, id, 'extra'));
-    return this.publisher.arrived(arrivedOf(npc, window));
+    const push = await this.publisher.arrived(arrivedOf(npc, window));
+    if ('offers' in push.d) await this.repo.saveOffers(id, push.d.offers);
+    return push;
   }
 
   private async sweep(): Promise<void> {
@@ -112,10 +114,16 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
     const id = cadenceId(npc.id, window.planetId, window.arriveAt);
     const { created } = await this.repo.insertCadence(draft(npc, window, id, 'cadence'));
     const pushes: GuildPush[] = [];
-    if (created) pushes.push(this.publisher.arrived(arrivedOf(npc, window)));
+    if (created) pushes.push(await this.publishArrived(id, npc, window));
     if (now >= window.departAt && (await this.repo.markDeparted(id)))
       pushes.push(this.publisher.departed(departedOf(npc, window.planetId)));
     return pushes;
+  }
+
+  private async publishArrived(id: string, npc: RosterNpc, window: VisitWindow): Promise<GuildPush> {
+    const push = await this.publisher.arrived(arrivedOf(npc, window));
+    if ('offers' in push.d) await this.repo.saveOffers(id, push.d.offers);
+    return push;
   }
 
   private input(npc: RosterNpc, planetId: string, policy: GuildPolicy): ScheduleInput {

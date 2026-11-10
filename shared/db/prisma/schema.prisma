@@ -777,7 +777,7 @@ model GuildFunding {
 }
 
 /// One Guild dock (W15-09). `cadence` is the seeded schedule; `extra` is `scheduleExtraVisit` and does not move it.
-/// `offers` stays empty until W15-11. `departed` is written once, at `depart_at`. En route is the gap between rows.
+/// `offers` is the top 6 curated quotes for that dock (W15-11). `departed` is written once, at `depart_at`. En route is the gap between rows.
 model GuildVisit {
   id        String   @id @db.VarChar(160)
   npcId     String   @map("npc_id") @db.VarChar(32)

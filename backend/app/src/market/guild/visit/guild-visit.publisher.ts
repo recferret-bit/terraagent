@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { GuildArrivedPayload, GuildDepartedPayload } from '@terra/contracts';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { GuildArrivedPayload, GuildDepartedPayload, type GuildOffer } from '@terra/contracts';
 import { EventBus } from '../../../bus/event-bus.js';
 
 export interface GuildArrivedBusEvent {
@@ -38,13 +38,24 @@ export interface DepartedInput {
   readonly npcId: string;
 }
 
-/** Builds `guild.arrived` / `guild.departed` and pushes them on the same bus as `director.status`. Offers stay empty (W15-11). */
+/** Resting NPC quotes for one dock, already capped at 6. Absent in tests that do not place quotes. */
+export interface GuildOfferSource {
+  offersFor(input: ArrivedInput): Promise<GuildOffer[]>;
+}
+
+export const GUILD_OFFER_SOURCE = Symbol('GUILD_OFFER_SOURCE');
+
+/** Builds `guild.arrived` / `guild.departed` and pushes them on the same bus as `director.status`. */
 @Injectable()
 export class GuildVisitPublisher {
-  constructor(private readonly bus: EventBus) {}
+  constructor(
+    private readonly bus: EventBus,
+    @Optional() @Inject(GUILD_OFFER_SOURCE) private readonly offers?: GuildOfferSource,
+  ) {}
 
-  arrived(input: ArrivedInput): GuildPush {
-    const payload = GuildArrivedPayload.parse({ ...input, offers: [] });
+  async arrived(input: ArrivedInput): Promise<GuildPush> {
+    const listed = this.offers ? await this.offers.offersFor(input) : [];
+    const payload = GuildArrivedPayload.parse({ ...input, offers: listed });
     this.bus.emit('guild.arrived', { planetId: payload.planetId, payload });
     return { t: 'guild.arrived', d: payload };
   }

@@ -112,6 +112,7 @@ function termsOf(intent: GuildOrderIntent): Prisma.InputJsonValue {
     bucket: intent.bucket,
     reserve: intent.reserve.toString(),
     npcId: intent.npcId,
+    quoteSeq: intent.quoteSeq,
   };
 }
 

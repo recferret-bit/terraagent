@@ -6267,6 +6267,49 @@
       "summary": "Emitted when a Clear / Break uncovers a buried deposit from the hidden subsurface (D-38).",
       "wave": "W01"
     },
+    "guildOfferAcceptRequested": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commandId": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "offerId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "playerId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "offerId",
+          "colonyId",
+          "colonyIndex"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The sim accepted market.acceptGuildOffer. The market module crosses that id against the NPC quote (W15-11). Server-only.",
+      "wave": "W15"
+    },
     "guildTradeSettled": {
       "audience": "player",
       "data": {
