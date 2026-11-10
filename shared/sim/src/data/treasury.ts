@@ -7,7 +7,8 @@ import { defineTable } from './_define';
  * `magnitudeBp` is 7500 for a −75 % hazard rate and 2500 for a −25 % Living-op cost.
  * `visits` is the extra Orbital Guild visit for `guild_subsidy`.
  * The platform-fee share stays on `market.policy.treasuryShareBp` (2 000 bp, NEAR-101).
- * The vote window and pass rule live in `treasury-policy.ts`. Rows drop out when flag W22 is off.
+ * The vote window, pass rule, and hazard clock (`intervalTicks`, `baseStrikeBp`) live in `treasury-policy.ts`.
+ * Rows drop out when flag W22 is off.
  */
 export default defineTable({
   name: 'treasury',
