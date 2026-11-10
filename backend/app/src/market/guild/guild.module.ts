@@ -15,6 +15,8 @@ import { GuildOffersService } from './offers/guild-offers.service.js';
 import { DeterministicGuildStrategy } from './strategy/deterministic.js';
 import { GuildStrategyPort } from './strategy/port.js';
 import { GUILD_OFFER_SOURCE, GuildVisitPublisher } from './visit/guild-visit.publisher.js';
+import { GuildDevCommand } from './dev/guild-dev.command.js';
+import { GuildDevService } from './dev/guild-dev.service.js';
 import { GuildVisitRepository } from './visit/guild-visit.repository.js';
 import { GuildVisitService } from './visit/guild-visit.service.js';
 
@@ -33,6 +35,8 @@ import { GuildVisitService } from './visit/guild-visit.service.js';
     GuildVisitRepository,
     GuildVisitPublisher,
     GuildVisitService,
+    GuildDevService,
+    GuildDevCommand,
     GuildMakerService,
     { provide: GUILD_FILL_SINK, useExisting: GuildMakerService },
     GuildOffersService,

@@ -40,6 +40,25 @@ export function mirrorAmounts(tokens: readonly { token: string; allowance: strin
   return { allowance: row?.allowance ?? '0', spent: row?.spent ?? '0' };
 }
 
+/**
+ * Caps for a replacement key. The named resource becomes `amount`. Other tokens keep their allowance.
+ * Spent is not copied: a new key starts at 0 (the port cannot edit an existing cap).
+ */
+export function replacedTokenCaps(
+  tokens: readonly { token: string; allowance: string }[],
+  resource: string,
+  amount: number,
+): DirectorTokenCap[] {
+  let seen = false;
+  const caps = tokens.map((row) => {
+    if (row.token !== resource) return { token: row.token, allowance: row.allowance };
+    seen = true;
+    return { token: row.token, allowance: String(amount) };
+  });
+  if (!seen) caps.push({ token: resource, allowance: String(amount) });
+  return caps;
+}
+
 /** Next public key for this colony. A revoked key stays on the mock wallet, so a re-add uses a new suffix. */
 export function nextDirectorPublicKey(colonyId: string, previous: string | null): string {
   const stem = `ed25519:d:${colonyId.toLowerCase()}`;

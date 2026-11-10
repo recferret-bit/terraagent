@@ -31,6 +31,18 @@ export function stockOf(cache: InventoryCache, resource: string): number {
 }
 
 /**
+ * Set one resource to an absolute whole-unit stock. Negative or fractional amounts are refused and
+ * the cache is left as it was, so stock never goes negative. Other resources stay.
+ */
+export function setAbsoluteStock(npc: NpcCargo, resource: string, amount: number, planetId = ''): CargoFillResult {
+  if (!Number.isSafeInteger(amount) || amount < 0) return refused('bad_fill', { resource, side: 'buy', amount: 0, planetId }, npc.inventory);
+  const stock = stockOf(npc.inventory, resource);
+  if (amount === stock) return { ok: true, planetId, inventory: npc.inventory, stock };
+  const delta = amount > stock ? amount - stock : stock - amount;
+  return applyFill(npc, { resource, side: amount > stock ? 'buy' : 'sell', amount: delta, planetId });
+}
+
+/**
  * Apply one guild fill to the carried cache. A sell larger than the stock is refused and the cache
  * is left as it was, so stock never goes negative. The planet id is echoed and is not stored.
  */

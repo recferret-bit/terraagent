@@ -40,6 +40,16 @@ export class GuildVisitRepository {
       .then((row) => (row ? toRow(row) : null));
   }
 
+  /** Every dock still open for this NPC on this planet, oldest first. */
+  openDocked(npcId: string, planetId: string): Promise<GuildVisitRow[]> {
+    return this.prisma.guildVisit
+      .findMany({
+        where: { npcId, planetId, status: 'docked' },
+        orderBy: { arriveAt: 'asc' },
+      })
+      .then((rows) => rows.map(toRow));
+  }
+
   /** Docks whose departure is due, cadence and extra. Already-departed rows are not returned. */
   openDue(npcId: string, planetId: string, nowMs: number): Promise<GuildVisitRow[]> {
     return this.prisma.guildVisit

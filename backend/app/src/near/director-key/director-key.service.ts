@@ -17,6 +17,7 @@ import {
   DIRECTOR_RECEIVER,
   mirrorAmounts,
   nextDirectorPublicKey,
+  replacedTokenCaps,
   tokenCapsFromLimits,
   type DirectorTokenCap,
 } from './director-key.allowance.js';
@@ -25,6 +26,15 @@ import { parseDirectorKeyBody, type DirectorKeyRequest } from './director-key.re
 import { directorStatusFromKey, type DirectorStatusBusEvent } from './director-key.status.js';
 
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
+
+export interface DevAllowanceResult {
+  readonly colonyId: string;
+  readonly resource: string;
+  readonly allowance: string;
+  readonly spent: string;
+  readonly publicKey: string;
+  readonly replaced: true;
+}
 
 /**
  * `POST` / `DELETE /v1/near/director-key` (W15-18).
@@ -48,6 +58,22 @@ export class DirectorKeyService {
     const existing = await this.repo.find(colony.colonyId);
     if (existing && existing.revokedAt === null) return this.current(colony, existing);
     return this.createKey(colony, existing, caps);
+  }
+
+  /**
+   * Dev `director.allowance`. The port cannot change a key that already exists (BE-71), so the current
+   * key is revoked and a new one is added. Spent on the new key is 0. Other token allowances are kept.
+   */
+  async setDevAllowance(colonyId: string, resource: string, amount: number): Promise<DevAllowanceResult> {
+    this.assertWave();
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      throw new CoreException('INVALID_REQUEST', { status: 400, message: 'allowance must be a whole number of units' });
+    }
+    const colony = await this.repo.locate(colonyId);
+    if (!colony) throw new CoreException('NOT_FOUND', { status: 404, message: 'Colony not found' });
+    const existing = await this.repo.find(colonyId);
+    if (!existing) throw new CoreException('director_key_missing', { status: 404, message: 'No director key' });
+    return this.replaceKey(colony, existing, resource, amount);
   }
 
   async remove(req: IncomingMessage, raw: unknown): Promise<DirectorKeyStatusPayload> {
@@ -91,6 +117,42 @@ export class DirectorKeyService {
     }
     await this.persist(colony.colonyId, accountId, publicKey, status, null);
     return this.emit(colony, status);
+  }
+
+  private async replaceKey(
+    colony: OwnedColony,
+    existing: DirectorKeyRow,
+    resource: string,
+    amount: number,
+  ): Promise<DevAllowanceResult> {
+    const prior = await this.wallet.keyStatus({ accountId: existing.accountId, publicKey: existing.publicKey });
+    const publicKey = nextDirectorPublicKey(colony.colonyId, existing.publicKey);
+    await this.wallet.revokeKey({
+      opId: `director-key:dev-revoke:${existing.accountId}:${existing.publicKey}:${publicKey}`,
+      accountId: existing.accountId,
+      publicKey: existing.publicKey,
+    });
+    await this.wallet.addLimitedKey({
+      opId: `director-key:dev-add:${existing.accountId}:${publicKey}`,
+      accountId: existing.accountId,
+      publicKey,
+      allowance: DIRECTOR_GAS_ALLOWANCE,
+      receiverId: DIRECTOR_RECEIVER,
+      methodNames: DIRECTOR_METHODS,
+      tokens: replacedTokenCaps(prior.tokens, resource, amount),
+    });
+    const status = await this.wallet.keyStatus({ accountId: existing.accountId, publicKey });
+    await this.persist(colony.colonyId, existing.accountId, publicKey, status, null);
+    this.emit(colony, status);
+    const row = status.tokens.find((token) => token.token === resource);
+    return {
+      colonyId: colony.colonyId,
+      resource,
+      allowance: row?.allowance ?? String(amount),
+      spent: row?.spent ?? '0',
+      publicKey,
+      replaced: true,
+    };
   }
 
   private async addOrKeep(accountId: string, publicKey: string, caps: DirectorTokenCap[]): Promise<void> {

@@ -46,6 +46,16 @@ export class DirectorKeyRepository {
     return { colonyId, playerId, planetId: colony.planetId, colonyIndex: colony.colonyIndex };
   }
 
+  /** Colony row for a dev allowance change. Does not check the caller. */
+  async locate(colonyId: string): Promise<OwnedColony | null> {
+    const colony = await this.prisma.colony.findUnique({
+      where: { id: colonyId },
+      select: { playerId: true, planetId: true, colonyIndex: true },
+    });
+    if (!colony) return null;
+    return { colonyId, playerId: colony.playerId, planetId: colony.planetId, colonyIndex: colony.colonyIndex };
+  }
+
   async find(colonyId: string): Promise<DirectorKeyRow | null> {
     const row = await this.prisma.directorKey.findUnique({ where: { colonyId } });
     if (!row) return null;

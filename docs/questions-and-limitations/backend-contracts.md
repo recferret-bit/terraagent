@@ -1003,3 +1003,23 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Do not treat a player or bot `market.placeOrder` as autoTrade-capped. Do not expect a second match of an OPEN director row to refuse. If the loop reserved and the market then refuses, release that key reserve yourself; this path does not.
 - **To resolve:** Carry the claim on the book row and refuse inside the match lock, and release the director-key reserve when the market returns `autotrade_limit`.
 - **Found:** 2026-11-10, W15-20
+
+### BE-80 · Dev `director.allowance` revokes the key and adds a new one
+
+- **Status:** Accepted (by design, W15-28)
+- **Area / code:** `backend/app/src/near/director-key/director-key.service.ts` (`setDevAllowance`), `backend/app/src/near/application/ports/agent-wallet.port.ts`, `backend/app/src/market/guild/dev/guild-dev.command.ts`, BE-71, BE-73
+- **What happens:** `director.allowance [resource] <amt>` sets one Tier-1 token allowance (`metals.t1` when the resource is omitted). `AgentWalletPort` has no method that changes the allowance of a key that already exists. A second `addLimitedKey` for the same public key throws `NEAR_ACCOUNT_EXISTS` and does not raise the cap. The command revokes the current key and adds a new public key (`nextDirectorPublicKey`) with the new cap. Other tokens keep their allowance numbers. Spent, reserved, and available on the new key start at 0. Gas stays `0`. The numeric `chain.director_key.allowance` column still mirrors the primary resource (BE-73), not necessarily the resource just edited. If the add fails after the revoke, the row still names the old public key, which is now revoked, until the command is run again. No row is `director_key_missing` and nothing is written. W15 off is `wave_disabled` and the wallet is not called.
+- **Why it is like this:** The mock ledger is insert-only for caps (BE-71). Editing the row in place would diverge from the port the real adapter has to implement.
+- **Workaround / mitigation:** Read the new numbers from `director.status` or `keyStatus`. A session that had already spent part of the old cap starts again at spent 0. The director loop's once-latch is per public key, so the new key can emit `directorAllowanceExhausted` again (BE-75).
+- **To resolve:** Add an allowance-update method on `AgentWalletPort` if a later wave needs to change a cap without rotating the key.
+- **Found:** 2026-11-10, W15-28
+
+### BE-79 · `away.simulate` posts `system.presence`; it is not a second director flag
+
+- **Status:** Accepted (by design, W15-28)
+- **Area / code:** `backend/app/src/market/guild/dev/guild-dev.service.ts` (`simulateAway`), `backend/app/src/game/presence/dev-presence.ts`, `backend/app/src/market/director/director-source.ts` (`listAway`), `shared/sim/src/systems/away/gate.ts` (`colonyIsAway`)
+- **What happens:** `away.simulate on|off` calls `DevPresence.setAway`, which posts module `system.presence`. The director sweep's `SimDirectorSource.listAway` restores the planet and keeps colonies where `colonyIsAway` is true (presence blob or an open away session). There is no separate away bit on the director loop. W15 off throws `wave_disabled` before that post. W09 off throws `WAVE_DISABLED` from `DevPresence`, and the sim would reject `system.presence` as `wave_disabled` anyway, so the blob does not change and the sweep does not see the colony.
+- **Why it is like this:** The loop already reads the sim blob. A second in-memory flag would disagree with `colonyIsAway` after a restart and with the `away` / `back` commands.
+- **Workaround / mitigation:** Run with W09 on (W15 depends on it). `away` and `back` write the same blob. `runDirectorOnce` itself does not re-check away; only the sweep's `listAway` does.
+- **To resolve:** If a demo must force the director while W09 is off, add a dev override inside `listAway` and document that it is not the sim blob.
+- **Found:** 2026-11-10, W15-28
