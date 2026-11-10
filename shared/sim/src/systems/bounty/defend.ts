@@ -6,6 +6,7 @@ import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { mercenaryAlliedTo } from '../mercenary/blob';
 import { rowNum } from '../rows';
 import {
   bountyAudience,
@@ -115,14 +116,17 @@ function claimerPresent(state: PlanetState, bounty: DefendBounty): boolean {
   if (claimer === undefined) return false;
   const cols = state.entities.cols;
   for (let row = 0; row < state.entities.count; row++) {
-    if (!isPresentCombatUnit(cols.owner[row]!, cols.kind[row]!, cols.hp[row]!, cols.state[row]!, claimer)) continue;
+    if (!isLivingCombat(cols.kind[row]!, cols.hp[row]!, cols.state[row]!)) continue;
+    const owned = cols.owner[row] === claimer;
+    const hired = mercenaryAlliedTo(state, cols.id[row]!, bounty.poster);
+    if (!owned && !hired) continue;
     if (hexDistance(cols.q[row]!, cols.r[row]!, bounty.target.q, bounty.target.r) <= bounty.target.radius) return true;
   }
   return false;
 }
 
-function isPresentCombatUnit(owner: number, kind: number, hp: number, unitState: number, claimer: number): boolean {
-  if (owner !== claimer || hp <= 0 || !COMBAT_KINDS.has(kind)) return false;
+function isLivingCombat(kind: number, hp: number, unitState: number): boolean {
+  if (hp <= 0 || !COMBAT_KINDS.has(kind)) return false;
   return unitState !== ENTITY_STATE.constructing && unitState !== ENTITY_STATE.inert && unitState !== ENTITY_STATE.descending;
 }
 

@@ -156,3 +156,18 @@ export const MercenaryLeftData = z.strictObject({
   reason: MercenaryLeaveReason,
 });
 export type MercenaryLeftData = z.infer<typeof MercenaryLeftData>;
+
+/**
+ * Module command `mercenary.spawn` (W22-29, NEAR-112).
+ * `count` is checked against a `robot.recon` roster row (4 light, 6 heavy). The poster is `colonyIndex`.
+ */
+export const MercenarySpawnArgsSchema = z.strictObject({
+  q: TileCoord,
+  r: TileCoord,
+  radius: z.number().int().min(1).max(8),
+  endTick: z.number().int().positive(),
+  count: z.number().int().min(1).max(8),
+  bountyId: Id.optional(),
+  rosterId: Id.optional(),
+});
+export type MercenarySpawnArgs = z.infer<typeof MercenarySpawnArgsSchema>;

@@ -3547,6 +3547,60 @@
       "summary": "Module command after a trade batch is FINAL: updates the colony's in-orbit mirror and emits `tradeSettled` (and `feeEarned` for the stall) (W13-10, W13-13). No sim stock changes.",
       "wave": "W13"
     },
+    "mercenary.spawn": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bountyId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "count": {
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "endTick": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "radius": {
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "rosterId": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "q",
+          "r",
+          "radius",
+          "endTick",
+          "count"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Spawns faction-mercenary recon at the poster hub edge until `endTick`. They cost the poster no supply.",
+      "wave": "W22"
+    },
     "moveGroup": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

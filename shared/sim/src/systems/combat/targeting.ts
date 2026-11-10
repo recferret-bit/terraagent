@@ -3,6 +3,7 @@ import { rowOf, type Columns } from '../../ecs/store';
 import { HEX_DIRS, hexDistance, inHex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { mercenariesKeepPeace } from '../mercenary/blob';
 import { canWeaponHitTarget } from './layers';
 import { lookupWeaponById, resolveKindWeaponRow } from './weaponRows';
 import { isTargetSpottedByColony, updateColonyVisionCache } from './vision';
@@ -163,6 +164,7 @@ function isFaunaTargetPassiveToAttacker(
  * Checks whether `targetRow` is a valid hostile target for `attackerRow`:
  * - Target must be alive (`hp > 0`) and not `inert` or `descending`.
  * - Target must belong to a different owner (`cols.owner[targetRow] !== cols.owner[attackerRow]`).
+ * - A mercenary recon allied to a colony does not fight that colony (W22-29).
  * - Respects the passive fauna contract (`fauna-hives-spec.md` §2): colony attackers skip fauna marked
  *   passive (and not aggressive toward `attackerOwner`) unless `opts?.includePassiveFauna === true`.
  */
@@ -185,6 +187,7 @@ export function isHostileTargetForAttacker(
   const attackerOwner = cols.owner[attackerRow]!;
   const targetOwner = cols.owner[targetRow]!;
   if (targetOwner === attackerOwner) return false;
+  if (mercenariesKeepPeace(state, cols.id[attackerRow]!, attackerOwner, cols.id[targetRow]!, targetOwner)) return false;
 
   if (!opts?.includePassiveFauna && attackerOwner >= 0 && targetOwner < 0) {
     const targetId = cols.id[targetRow]!;
