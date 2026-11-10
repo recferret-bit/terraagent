@@ -147,6 +147,7 @@ describe('treasury bounty edges (W22-33)', () => {
       bus,
       {} as never,
       {} as never,
+      { refundIfOpen: async () => false } as never,
       new BountyRepository(db),
       new FlagsService(ENV as never),
       db,
