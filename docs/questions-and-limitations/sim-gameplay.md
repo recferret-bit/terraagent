@@ -1281,3 +1281,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** The counter is the effect. The HUD badge and any visual strike are later issues (W22-15).
 - **To resolve:** Only if the owner wants automatic craters that avoid buildings. That would be a new hazard path, not this counter.
 - **Found:** 2026-11-10, W22-10
+
+### GP-117 · Terraform boost price is locked at enqueue; the queue chip does not show it
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/treasury/boost.ts`, `shared/sim/src/systems/terraform-basic/orders.ts` (`newTerraformJob`), `shared/sim/src/systems/queue/wait.ts` (`resolveTaskCostAndTicks`), `frontend/game/features/queue-panel/queueChipHelpers.ts`
+- **What happens:** `terraform_boost` cuts Irrigate and Seed only. Each resource and the job's `totalEnergyE` become `floor(amount * (10000 - magnitudeBp) / 10000)` (2500 bp: water 10 → 7, minerals 5 → 3, 90 E → 67). The cut is stored on the queue entry and on the terraform job at enqueue. `work.ts` pays that stored bill and does not scale it again. A boost that starts after the order is queued does not reprice it, and one that ends while the job is in progress does not put the full price back. At `untilTick` the effect is already over (`tick < untilTick`, and the treasury clock deletes it). Magnitude 0 leaves the bill unchanged. A cost of 1 floors to 0; `payProgressiveSlice` skips non-positive totals, so stock does not go negative. When W05 is off, `seed` is not in the compiled `opsBasic` table and the discount no-ops even if the effect is stored. Clear, break, level and fill stay full price. The W03 queue entry has no energy field, so only the terraform job's `totalEnergyE` is discounted. The queue panel's synthetic terraform chip still copies `cost: {}` and does not show `job.totalCost`.
+- **Why it is like this:** The queue entry and the terraform order are priced in two places and withdrawn from the stored copy. Discounting again at withdrawal would charge a Seed twice. The chip's empty cost is older than this effect (the panel never read terraform resource bills).
+- **Workaround / mitigation:** The charged amount is the stored `totalCost`. Whole units only; the floor is the 25 % cut, not a rounded 7.5.
+- **To resolve:** If the owner wants the chip to show the bill, copy `job.totalCost` in `extractQueueEntriesFromView`. Repricing open jobs when the effect starts or ends would be a different rule.
+- **Found:** 2026-11-10, W22-11

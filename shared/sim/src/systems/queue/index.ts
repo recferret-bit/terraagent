@@ -199,7 +199,7 @@ export function enqueueQueueTask(
     if (site) return { ok: false, ...site };
   }
 
-  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(task, data);
+  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(task, data, state, tick);
   const resolvedCost = opts.costOverride ? { ...opts.costOverride } : cost;
   const entry: QueueEntry = {
     taskId: opts.taskId ?? nextAutoTaskId(entries, colonyIndex, tick),
