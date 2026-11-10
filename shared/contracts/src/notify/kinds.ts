@@ -20,9 +20,10 @@ export type NotificationKind = z.infer<typeof NotificationKindSchema>;
 
 /**
  * `NotifierPort.send` kinds that are not player toggles. `deed_settled` is W20's one-shot
- * push when a Colony Deed seals. It stays out of `NOTIFICATION_KINDS` (CT-36 is eight).
+ * push when a Colony Deed seals. `council_proposal` is W22-16's away note for an open
+ * planet-council vote. Both stay out of `NOTIFICATION_KINDS` (CT-36 is eight).
  */
-export const NOTIFIER_EXTRA_KINDS = ['deed_settled'] as const;
+export const NOTIFIER_EXTRA_KINDS = ['deed_settled', 'council_proposal'] as const;
 export const NotifierKindSchema = z.union([NotificationKindSchema, z.enum(NOTIFIER_EXTRA_KINDS)]);
 export type NotifierKind = z.infer<typeof NotifierKindSchema>;
 

@@ -11,6 +11,7 @@ import { ChainOutboxRepository } from '../application/outbox/chain-outbox.reposi
 import { TreasuryDaoPort, type DaoView } from '../application/ports/treasury-dao.port.js';
 import type { ChainReceipt } from '../domain/types.js';
 import { NearException } from '../domain/errors.js';
+import { accountIsAway } from './away-colonies.js';
 import { resolveColonyAccount } from './caller.js';
 import { proposalDeadlineMs, TREASURY_COST_TOKEN, treasuryProject } from './costs.js';
 import {
@@ -37,6 +38,8 @@ import {
 /**
  * Planet council reads and votes (W22-08). Passing a vote debits through the DAO port.
  * `TreasuryFinalizeService` owns the 6 h deadline and posts `system.treasuryEffect` once (W22-09).
+ * An away colony abstains (W22-16, AW-14): `vote` rejects `away_policy` and writes nothing.
+ * No job and no director casts a vote for them. `TreasuryAwayNoticeService` only queues a W09 note.
  */
 @Injectable()
 export class TreasuryProposalsService {
@@ -83,6 +86,13 @@ export class TreasuryProposalsService {
     const vote = parseVoteBody(raw);
     const proposalId = parseProposalId(id);
     const accountId = await this.account(req, raw, planetId);
+    if (await this.callerIsAway(planetId, accountId)) {
+      throw new CoreException('away_policy', {
+        status: 409,
+        message: 'Away colonies abstain from council votes.',
+        details: { rule: 'AW-14' },
+      });
+    }
     const ensured = await this.requireDao(planetId);
     const view = await this.dao.get({ daoAccountId: ensured.daoAccountId });
     assertNotVoted(view, proposalId, accountId);
@@ -92,6 +102,12 @@ export class TreasuryProposalsService {
       return { receipt };
     });
     return this.publish(planetId, ensured.daoAccountId, proposalId);
+  }
+
+  /** Open away digest for this account. No colony row means present, so existing votes still land. */
+  private callerIsAway(planetId: string, accountId: string): Promise<boolean> {
+    if (!this.prisma) return Promise.resolve(false);
+    return accountIsAway(this.prisma, planetId, accountId);
   }
 
   private account(req: IncomingMessage, body: unknown, planetId: string): Promise<string> {

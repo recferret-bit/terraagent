@@ -1055,3 +1055,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Call `BountyClaimService.claim` for a deliver bounty. A second `pay` with the same opId does not credit the claimer again.
 - **To resolve:** A claimer list would be a schema change. W22-25's claim button should call `BountyClaimService` for `deliver_units`.
 - **Found:** 2026-11-10, W22-23
+
+### BE-84 · Away colonies abstain; the director is not asked to vote
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/proposals.service.ts` (`vote`), `backend/app/src/near/treasury/away-notice.service.ts`, `backend/app/src/near/treasury/away-colonies.ts`
+- **What happens:** No process calls `TreasuryDaoPort.vote` for an away colony. The AI director is not invoked. `POST …/proposals/:id/vote` while that colony has an open `world.planet_event_digest` row (`closedAt` null) on the planet throws `away_policy` (HTTP 409) and writes no vote. A colony with no open digest, including a present member, still votes. `TreasuryAwayNoticeService` polls every 60s and never votes. When W09 and W22 are on, each away member gets one `NotifierPort` payload, kind `council_proposal` (not a CT-36 toggle), body `Planet council: N open proposal` or `proposals`. The event id is `council-open:<planetId>:<sorted proposal ids>`. The mock store's unique key means a second poll of the same open set does not insert another row. A newly opened proposal changes the id and queues a new note. W09 off sends nothing. Away is the open digest, not a live read of `blobs.presence`. A colony marked away in the sim before that row exists is treated as present for this guard and is not notified. The HTTP reject is not counted in `away_policy_rejections_total` (that counter is sim `cmd.reject` only).
+- **Why it is like this:** W22-16 abstains by not calling the director (AW-14). AW-23 would let a player command through, but a council vote is a chain action and the issue asked for no automatic vote plus a guard while away. The digest is the server row `colonyAway` already opens.
+- **Workaround / mitigation:** Come back (`colonyBack` closes the digest) and vote. The note says how many proposals are open.
+- **To resolve:** If the owner wants AW-23 to win, drop the HTTP reject and keep the missing auto-vote. Reading `blobs.presence` would catch away before the digest opens.
+- **Found:** 2026-11-10, W22-16
