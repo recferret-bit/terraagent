@@ -2,10 +2,13 @@ import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModu
 import { EventBus } from '../../bus/event-bus.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { PlanetDaoLifecycleService } from './lifecycle.service.js';
+import { PlanetDaoMembershipService } from './membership.service.js';
 
 /**
  * No single service inserts every planet (lobby provision, home upsert, and the sim thread).
  * The DAO opens when the sim planet loads, and on `colonyFounded` if that planet still has none.
+ * That same founding event adds the colony account. Elimination removes it.
+ * `deedSettled` (W20) keeps the member and clears propose rights. `colonySettled` is not a contract event here.
  */
 @Injectable()
 export class PlanetDaoLifecycleBind implements OnModuleInit, OnModuleDestroy {
@@ -18,6 +21,7 @@ export class PlanetDaoLifecycleBind implements OnModuleInit, OnModuleDestroy {
     @Inject(PlanetDaoLifecycleService) private readonly lifecycle: PlanetDaoLifecycleService,
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
+    @Optional() @Inject(PlanetDaoMembershipService) private readonly membership?: PlanetDaoMembershipService,
   ) {}
 
   onModuleInit(): void {
@@ -26,6 +30,13 @@ export class PlanetDaoLifecycleBind implements OnModuleInit, OnModuleDestroy {
     if (this.bus) {
       this.stops.push(this.bus.onPlanetEvent('colonyFounded', (event) => {
         this.ensure(event.planetId);
+        this.membership?.onFounded(event.planetId, event.data.colonyId);
+      }, { module: 'PlanetDaoLifecycleBind' }));
+      this.stops.push(this.bus.onPlanetEvent('colonyEliminated', (event) => {
+        this.membership?.onEliminated(event.planetId, event.data.colonyId);
+      }, { module: 'PlanetDaoLifecycleBind' }));
+      this.stops.push(this.bus.onPlanetEvent('deedSettled', (event) => {
+        this.membership?.onSettled(event.planetId, event.data.colonyId);
       }, { module: 'PlanetDaoLifecycleBind' }));
     }
     this.planets?.onPlanetLoaded((planetId) => {

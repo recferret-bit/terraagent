@@ -18,7 +18,7 @@ export interface EnsuredPlanetDao {
 
 /**
  * Opens `{planetId}`'s treasury DAO once (`opId = dao-create:{planetId}`).
- * Council list is empty; colony members arrive in W22-06.
+ * The council starts empty. `PlanetDaoMembershipService` adds colony accounts.
  */
 @Injectable()
 export class PlanetDaoLifecycleService {

@@ -1,7 +1,7 @@
 import type { DbClient } from '@terra/db';
 import { NearException } from '../domain/errors.js';
 import type { DaoView } from '../application/ports/treasury-dao.port.js';
-import { tallyVotes } from './pass-rule.js';
+import { tallyMemberVotes } from './pass-rule.js';
 import {
   asJson,
   initialPolicy,
@@ -68,7 +68,7 @@ export function toDaoView(daoAccountId: string, policy: DaoPolicy, proposals: re
     members: policy.members.map((member) => ({ accountId: member.accountId, canPropose: member.canPropose })),
     balances: { ...policy.balances },
     proposals: proposals.map((proposal) => {
-      const tally = tallyVotes(proposal.votes);
+      const tally = tallyMemberVotes(proposal.votes, policy.members.map((member) => member.accountId));
       return {
         proposalId: proposal.id,
         proposer: proposal.proposer,
