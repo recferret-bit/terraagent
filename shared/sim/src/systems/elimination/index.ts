@@ -3,13 +3,13 @@ import { defineSystem } from '../../kernel/system';
 import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { resolveColonyIndex } from '../diplomacy/store';
-import { clearColonyCriticalOnHubRebuilt } from './critical';
 import { killColonyHq, killColonyHub } from './operations';
-import { colonyHasAliveHub, getEliminationStore, saveEliminationStore } from './store';
+import { stepEliminationAndRuins } from './ruins';
 
 export * from './store';
 export * from './operations';
 export * from './critical';
+export * from './ruins';
 
 export const devKillHqHandler = defineCommandHandler({
   kind: 'dev.killHq',
@@ -52,15 +52,7 @@ export const eliminationSystem = defineSystem({
   slot: 11,
   wave: 'W18',
   run(state, ctx) {
-    const store = getEliminationStore(state);
-    if (!state.blobs.elimination) {
-      saveEliminationStore(state, store, ctx.tick);
-    }
-    for (const rec of Object.values(store.byColony)) {
-      if (rec.criticalDeadlineTick !== undefined && colonyHasAliveHub(state, rec.colonyIndex)) {
-        clearColonyCriticalOnHubRebuilt(state, rec.colonyIndex, ctx.tick, ctx);
-      }
-    }
+    stepEliminationAndRuins(state, ctx);
   },
 });
 

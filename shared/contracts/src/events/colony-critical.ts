@@ -9,10 +9,13 @@ export const ColonyCriticalDataSchema = z.strictObject({
   colonyId: z.string().min(1).max(64).optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
   playerId: z.string().optional(),
-  cause: ColonyCriticalCauseSchema,
+  cause: ColonyCriticalCauseSchema.optional(),
+  hubEntityId: z.number().int().nonnegative().optional(),
   atTick: z.number().int().nonnegative().optional(),
   deadlineTick: z.number().int().nonnegative().optional(),
   timerS: z.number().int().nonnegative().optional(),
+  remainingSeconds: z.number().int().nonnegative().optional(),
+  durationSeconds: z.number().int().nonnegative().optional(),
 });
 export type ColonyCriticalData = z.infer<typeof ColonyCriticalDataSchema>;
 

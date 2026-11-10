@@ -1,14 +1,13 @@
-import { rowOf } from '../../ecs/store';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import type { ApplyDamageOptions } from '../combat/damage';
-import { resolveColonyIdStr } from '../diplomacy/store';
 import { colonyWho } from '../find';
 import { completeColonyGoal } from '../goals';
 import { emitGoalProgress, getColonyGoals, promoteOpenGoals, saveColonyGoals } from '../goals/store';
 import { DEFAULT_GOAL_BUDGET_BP, type ColonyGoalEntry } from '../goals/types';
+import { eliminateColony } from './ruins';
 import {
   colonyHasAliveHq,
   colonyHasAliveHub,
@@ -127,39 +126,7 @@ export function onHubDestroyed(
   const rec = ensureColonyEliminationRecord(store, colonyIndex);
 
   if (!colonyHasAliveHq(state, colonyIndex)) {
-    rec.hqDown = true;
-    rec.eliminatedAtTick = tick;
-    delete rec.criticalDeadlineTick;
-    const attackerOwner =
-      opts?.attackerOwner !== undefined
-        ? opts.attackerOwner
-        : opts?.attackerId !== undefined && rowOf(state.entities, opts.attackerId) >= 0
-          ? state.entities.cols.owner[rowOf(state.entities, opts.attackerId)]
-          : undefined;
-    if (typeof attackerOwner === 'number' && attackerOwner >= 0 && attackerOwner !== colonyIndex) {
-      rec.eliminatedByColonyId = resolveColonyIdStr(state, attackerOwner);
-    }
-    saveEliminationStore(state, store, tick);
-
-    const col = ensureColonyRecord(state, colonyIndex, tick);
-    col.status = 'eliminated';
-    delete (col as Record<string, unknown>).criticalDeadlineTick;
-    col.changedAt = tick;
-
-    if (opts?.ctx) {
-      const { colonyIdStr, who } = colonyWho(state, colonyIndex);
-      opts.ctx.emit({
-        kind: 'colonyEliminated',
-        severity: 'critical',
-        colonyIds: rec.eliminatedByColonyId ? [colonyIdStr, rec.eliminatedByColonyId] : [colonyIdStr],
-        data: {
-          ...who,
-          colonyIndex,
-          reason: 'both_lost',
-          ...(rec.eliminatedByColonyId ? { byColony: rec.eliminatedByColonyId, killerColonyId: rec.eliminatedByColonyId } : {}),
-        },
-      });
-    }
+    eliminateColony(state, colonyIndex, 'both_lost', tick, opts);
     return;
   }
 
@@ -184,8 +151,10 @@ export function onHubDestroyed(
       data: {
         ...who,
         colonyIndex,
+        cause: 'hub_destroyed',
         hubEntityId,
         deadlineTick,
+        timerS: durationSeconds,
         remainingSeconds: durationSeconds,
         durationSeconds,
       },

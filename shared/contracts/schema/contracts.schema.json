@@ -5710,8 +5710,23 @@
             "minimum": 0,
             "type": "integer"
           },
+          "durationSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hubEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "playerId": {
             "type": "string"
+          },
+          "remainingSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "timerS": {
             "maximum": 9007199254740991,
@@ -5719,9 +5734,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "cause"
-        ],
         "type": "object"
       },
       "severity": "critical",
@@ -5738,6 +5750,9 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "byColony": {
+            "type": "string"
           },
           "cause": {
             "enum": [
@@ -5761,13 +5776,16 @@
             "minimum": 0,
             "type": "integer"
           },
+          "killerColonyId": {
+            "type": "string"
+          },
           "playerId": {
+            "type": "string"
+          },
+          "reason": {
             "type": "string"
           }
         },
-        "required": [
-          "cause"
-        ],
         "type": "object"
       },
       "severity": "critical",
@@ -8376,6 +8394,22 @@
           },
           "colonyId": {
             "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graceSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "reverted": {
+            "type": "boolean"
           },
           "tiles": {
             "maximum": 9007199254740991,
