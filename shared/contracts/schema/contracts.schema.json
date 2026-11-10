@@ -1735,6 +1735,26 @@
               }
             ]
           },
+          "durationHours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
           "fromColony": {
             "anyOf": [
               {
@@ -2494,6 +2514,26 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "durationHours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
           "hours": {
             "anyOf": [
               {
@@ -2546,11 +2586,22 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "toColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
           }
         },
-        "required": [
-          "hours"
-        ],
         "type": "object"
       },
       "origin": "client",
@@ -8674,19 +8725,56 @@
         "additionalProperties": false,
         "properties": {
           "cancelledBy": {
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
           },
           "colonyA": {
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyAId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
           },
           "colonyB": {
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyBId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
           },
           "colonyId": {
             "type": "string"
@@ -8699,6 +8787,11 @@
           "count": {
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "endedAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "oathbreakerUntilTick": {
@@ -9125,7 +9218,23 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "killerColonyId": {
+            "type": "string"
+          },
+          "killerOwner": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "killerPlayerId": {
+            "type": "string"
+          },
           "kind": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "owner": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -9148,13 +9257,11 @@
           },
           "unit": {
             "type": "string"
+          },
+          "victimColonyId": {
+            "type": "string"
           }
         },
-        "required": [
-          "entityId",
-          "q",
-          "r"
-        ],
         "type": "object"
       },
       "severity": "warn",

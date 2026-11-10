@@ -36,6 +36,32 @@ export const PROGRESSION_EVENT_RULES: Readonly<
   nestDestroyed: { family: 'nest-breaker', fields: ['count'], fallback: 1 },
   raidRepelled: { family: 'unbreached', fields: ['count'], fallback: 1, predicate: (d) => d.unbreached === true },
   deedSettled: { family: 'settler', fields: ['count'], fallback: 1 },
+  unitDestroyed: {
+    family: 'warlord',
+    fields: ['count'],
+    fallback: 1,
+    predicate: (d) =>
+      d.pvp !== false &&
+      (d.pvp === true ||
+        (typeof d.killerColonyId === 'string' &&
+          d.killerColonyId.length > 0 &&
+          d.killerColonyId !== d.colonyId &&
+          d.killerColonyId !== d.victimColonyId) ||
+        (typeof d.attackerColonyId === 'string' &&
+          d.attackerColonyId.length > 0 &&
+          d.attackerColonyId !== d.colonyId &&
+          d.attackerColonyId !== d.victimColonyId) ||
+        (typeof d.killerOwner === 'number' &&
+          d.killerOwner >= 0 &&
+          typeof d.owner === 'number' &&
+          d.killerOwner !== d.owner)),
+  },
+  truceEnded: {
+    family: 'diplomat',
+    fields: ['count'],
+    fallback: 1,
+    predicate: (d) => d.reason === 'expired',
+  },
 };
 
 export function progressEventId(event: unknown): string {
