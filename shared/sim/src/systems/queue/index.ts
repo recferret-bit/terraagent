@@ -22,6 +22,7 @@ import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/disma
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
 import { hasActiveTruce, resolveColonyIndex } from '../diplomacy/store';
+import { dropColonyShield, isColonyRaidProtected } from '../pvp/shield';
 import {
   PRECEDENCE_RANK,
   type QueueEntry,
@@ -323,6 +324,10 @@ export const enqueueTaskHandler = defineCommandHandler({
       if (toColony >= 0 && hasActiveTruce(state, colIdx, toColony, ctx.tick)) {
         return 'truce_active';
       }
+      if (toColony >= 0 && isColonyRaidProtected(state, toColony, ctx.tick, ctx.data)) {
+        return 'raid_protected';
+      }
+      dropColonyShield(state, colIdx, ctx.tick, ctx.data);
     }
     if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
       return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);

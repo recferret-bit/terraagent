@@ -23,7 +23,7 @@ function bootTermsSim(tiers: Array<1 | 2 | 3> = [1, 1, 1]): SimHost {
     sim.state.entities.cols.hp[r] = 500;
     sim.state.entities.cols.hpMax[r] = 500;
     sim.state.entities.cols.state[r] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[r] = idx * 4;
+    sim.state.entities.cols.q[r] = idx * 8;
     sim.state.entities.cols.r[r] = 0;
   });
   for (let i = 0; i < tiers.length; i++) {

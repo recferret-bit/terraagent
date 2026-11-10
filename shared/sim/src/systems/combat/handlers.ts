@@ -6,6 +6,7 @@ import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
 import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
+import { isColonyRaidProtected } from '../pvp/shield';
 import { setFactoryRallyPoint } from '../factories-hub/robotics';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { canWeaponHitTarget } from './layers';
@@ -143,12 +144,18 @@ export const attackMoveHandler = defineCommandHandler({
         if (tileOwner >= 0 && tileOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, tileOwner, ctx.tick)) {
           return 'truce_active';
         }
+        if (tileOwner >= 0 && tileOwner !== attackerOwner && isColonyRaidProtected(state, tileOwner, ctx.tick, ctx.data)) {
+          return 'raid_protected';
+        }
         for (let r = 0; r < state.entities.count; r++) {
           if (cols.hp[r]! <= 0 || cols.state[r] === ENTITY_STATE.inert) continue;
           if (cols.q[r] === args.q && cols.r[r] === args.r) {
             const entOwner = cols.owner[r]!;
             if (entOwner >= 0 && entOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, entOwner, ctx.tick)) {
               return 'truce_active';
+            }
+            if (entOwner >= 0 && entOwner !== attackerOwner && isColonyRaidProtected(state, entOwner, ctx.tick, ctx.data)) {
+              return 'raid_protected';
             }
           }
         }
