@@ -554,9 +554,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -1421,9 +1430,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -4041,9 +4059,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -8287,9 +8314,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
