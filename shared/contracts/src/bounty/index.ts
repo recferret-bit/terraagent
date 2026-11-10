@@ -72,7 +72,8 @@ export const BountyPaidArgsSchema = z.strictObject({
 });
 export type BountyPaidArgs = z.infer<typeof BountyPaidArgsSchema>;
 
-export const BOUNTY_REFUND_REASONS = ['expired', 'cancelled', 'failed'] as const;
+/** `building_lost`: a poster building inside a `defend_area` was destroyed (W22-21). */
+export const BOUNTY_REFUND_REASONS = ['expired', 'cancelled', 'failed', 'building_lost'] as const;
 export const BountyRefundReason = z.enum(BOUNTY_REFUND_REASONS);
 export type BountyRefundReason = z.infer<typeof BountyRefundReason>;
 

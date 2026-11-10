@@ -1302,12 +1302,22 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Only if the owner wants another tie-break, or wants a lesser claimer to win when a non-claimer dealt more.
 - **Found:** 2026-11-10, W22-20
 
-### GP-119 · clear_nest ring starts at the post; other bounty kinds are not tracked
+### GP-119 · clear_nest ring starts at the post; deliver_units is not tracked
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/systems/bounty/damage.ts` (`noteClearNestHit`), `shared/sim/src/systems/bounty/handlers.ts` (`postBounty`)
-- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `defend_area` or `deliver_units` is `invalid_args`. A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` matches the hive entity id as a string, not a separate catalog id.
-- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-21, W22-22, and W22-37 own the other kinds and the species-hive binding.
+- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `deliver_units` is still `invalid_args`. `defend_area` is tracked (GP-120). A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` matches the hive entity id as a string, not a separate catalog id.
+- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-22 owns `deliver_units`. W22-37 owns the species-hive binding.
 - **Workaround / mitigation:** Post before the fight, and use the hive's entity id as `nestId`.
-- **To resolve:** W22-21 and W22-22 accept their kinds. W22-37 binds spotted species hives if that id is not the entity id. Record pre-post hits if the owner wants the full 60 s before the post.
+- **To resolve:** W22-22 accepts `deliver_units`. W22-37 binds spotted species hives if that id is not the entity id. Record pre-post hits if the owner wants the full 60 s before the post.
 - **Found:** 2026-11-10, W22-20
+
+### GP-120 · defend_area counts claimer combat units on a half-open window
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/bounty/defend.ts` (`stepDefendAreas`, `noteDefendBuildingLost`), `shared/sim/src/data/bounty.ts` (`presenceMinBp`), `shared/sim/src/systems/combat/damage.ts` (`handleBuildingDestruction`)
+- **What happens:** `bounty.post` of `defend_area` stores the area and `endTick = startTick + round(durationH * 18000)`. A second colony claiming it is `queue_full`; the same colony claiming again is a no-op. While the bounty is `claimed`, each tick in `[startTick, endTick)` with at least one living recon, demo tank, or demo artillery of the claimer inside the radius (axial hex distance of the unit's tile, inclusive) adds to `presentTicks`. A coarse step samples the pose once and applies it to every tick of that step inside the window. At `endTick`, `presentTicks * 10000 >= durationTicks * presenceMinBp` (8000, so exactly 80% completes) and no poster building lost completes with `bountyCompleted`. Otherwise `bountyRefunded` reason `failed`. A poster building (not a hive) whose anchor tile is inside the radius, destroyed while the bounty is still open or claimed, refunds immediately with `building_lost`. Workers, turrets, and units owned by someone else do not count. A duration that rounds to 0 ticks is `invalid_args`. The sim does not move cargo.
+- **Why it is like this:** W22-21. One claimer is the W22-23 rule; `queue_full` is the existing capacity code. `presenceMinBp` was already the data row. Escrow payment is W22-23. Mercenary squads that are not owned by the claimer colony are W22-29.
+- **Workaround / mitigation:** Keep a claimer recon on a tile inside the radius for 80% of the ticks. A building counts only by its anchor tile, so a footprint that merely overlaps the ring does not fail the bounty.
+- **To resolve:** W22-29 if mercenary presence must count when the owner column is not the claimer. Count footprint tiles only if the owner wants any overlapping building to fail the contract.
+- **Found:** 2026-11-10, W22-21

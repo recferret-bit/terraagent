@@ -1,8 +1,10 @@
+import type { BountyPostArgs } from '@terra/contracts';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { commandColony, parseArgs } from '../command';
-import { bountyAudience, bountyColonyId, readBounty, writeBounty, type BountyRecord } from './blob';
+import { defendAreaRecord } from './defend';
+import { bountyAudience, bountyColonyId, isOpenBounty, readBounty, writeBounty, type BountyBlobValue, type BountyRecord } from './blob';
 
 /** Module sources only. Clients are already refused (`origin: 'module'`). */
 const MODULE_SOURCES: ReadonlySet<string> = new Set(['system', 'near', 'admin', 'dev']);
@@ -29,25 +31,42 @@ function postBounty(state: PlanetState, cmd: SimCommand, ctx: StepContext): stri
   const colony = commandColony(cmd);
   if (colony === 'not_own_colony') return colony;
   const args = parseArgs('bounty.post', cmd.args);
-  if (!args || args.target.kind !== 'clear_nest') return 'invalid_args';
+  if (!args) return 'invalid_args';
   const id = `bt:${colony}:${ctx.tick}`;
   const blob = readBounty(state);
   if (blob.bounties.some((bounty) => bounty.id === id)) return 'already_posted';
-  const posterId = bountyColonyId(state, colony);
-  blob.bounties.push({
-    id,
-    poster: colony,
-    target: { kind: 'clear_nest', nestId: args.target.nestId },
-    claimers: [],
-    state: 'open',
-    reward: { resource: args.reward.resource, amount: args.reward.amount },
-    expiresAt: args.expiresAt,
-  });
+  if (args.target.kind === 'clear_nest') {
+    return publishBounty(state, blob, colony, {
+      id,
+      poster: colony,
+      target: { kind: 'clear_nest', nestId: args.target.nestId },
+      claimers: [],
+      state: 'open',
+      reward: { resource: args.reward.resource, amount: args.reward.amount },
+      expiresAt: args.expiresAt,
+    }, args, ctx);
+  }
+  if (args.target.kind !== 'defend_area') return 'invalid_args';
+  const record = defendAreaRecord(colony, id, args, ctx.tick);
+  if (typeof record === 'string') return record;
+  return publishBounty(state, blob, colony, record, args, ctx);
+}
+
+function publishBounty(
+  state: PlanetState,
+  blob: BountyBlobValue,
+  colony: number,
+  record: BountyRecord,
+  args: Pick<BountyPostArgs, 'target' | 'reward' | 'expiresAt'>,
+  ctx: StepContext,
+): void {
+  blob.bounties.push(record);
   writeBounty(state, blob, ctx.tick);
+  const posterId = bountyColonyId(state, colony);
   ctx.emit({
     kind: 'bountyPosted',
     colonyIds: [posterId],
-    data: { bountyId: id, posterId, target: args.target, reward: args.reward, expiresAt: args.expiresAt },
+    data: { bountyId: record.id, posterId, target: args.target, reward: args.reward, expiresAt: args.expiresAt },
   });
 }
 
@@ -58,8 +77,9 @@ function claimBounty(state: PlanetState, cmd: SimCommand, ctx: StepContext): str
   if (!args) return 'invalid_args';
   const blob = readBounty(state);
   const bounty = blob.bounties.find((row) => row.id === args.bountyId);
-  if (!bounty || !isOpen(bounty)) return 'unknown_entity';
+  if (!bounty || !isOpenBounty(bounty)) return 'unknown_entity';
   if (bounty.claimers.includes(colony)) return;
+  if (bounty.target.kind === 'defend_area' && bounty.claimers.length > 0) return 'queue_full';
   bounty.claimers.push(colony);
   bounty.state = 'claimed';
   writeBounty(state, blob, ctx.tick);
@@ -67,7 +87,7 @@ function claimBounty(state: PlanetState, cmd: SimCommand, ctx: StepContext): str
   ctx.emit({
     kind: 'bountyClaimed',
     colonyIds: bountyAudience(claimer, bountyColonyId(state, bounty.poster)),
-    data: { bountyId: bounty.id, claimer, kind: 'clear_nest' },
+    data: { bountyId: bounty.id, claimer, kind: bounty.target.kind },
   });
 }
 
@@ -84,6 +104,4 @@ function markBountyPaid(state: PlanetState, cmd: SimCommand, ctx: StepContext): 
   writeBounty(state, blob, ctx.tick);
 }
 
-function isOpen(bounty: BountyRecord): boolean {
-  return bounty.state === 'open' || bounty.state === 'claimed';
-}
+

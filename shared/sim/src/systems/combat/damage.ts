@@ -14,6 +14,7 @@ import { getBuildingJobs, saveBuildingJobs } from '../economy/buildJob';
 import { getFootprintTileIndices } from '../economy/buildingRows';
 import { syncColonyDepotCaps } from '../economy/ledger';
 import { noteClearNestHit } from '../bounty/damage';
+import { noteDefendBuildingLost } from '../bounty/defend';
 import { colonyWho } from '../find';
 import { syncHqView } from '../hq/view';
 import { syncColonyThreatStage } from '../progression/threatStage';
@@ -308,6 +309,7 @@ function handleBuildingDestruction(
   clearEntityDamaged(state, targetId, tick);
 
   emitBuildingDestructionEvent(state, targetId, kind, owner, q, r, opts);
+  if (!isFaunaHiveKind(kind)) noteDefendBuildingLost(state, owner, q, r, tick, opts?.ctx);
 
   const wasSupplyDepot = kind === ENTITY_KIND.supplyDepot;
   removeRow(state.entities, targetId, tick);
