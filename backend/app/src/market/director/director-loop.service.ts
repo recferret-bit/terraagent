@@ -44,10 +44,6 @@ function whole(amount: string | undefined): number {
   return Number.isSafeInteger(n) ? n : 0;
 }
 
-function tokenSpent(status: WalletKey, token: string): number {
-  return whole(status.tokens.find((row) => row.token === token)?.spent);
-}
-
 function commandIdOf(index: number, resource: string, spent: number, amount: number): string {
   const id = `d${index}-${resource}-${spent}-${amount}`;
   return id.length <= 40 ? id : id.slice(0, 40);
@@ -90,11 +86,14 @@ function pricedSkip(input: DirectorResourceView['forecast'], pick: DirectorTrade
  * Away director loop (W15-21). The sim (`proposeDirectorTrade`) picks one order; this service reserves the
  * director key, places `market.placeOrder` as the colony, and consumes the allowance only on a fill.
  * A second tick against the same stock reading does not place another order (the 600 cap still has room).
+ * A spent allowance or a revoked key stops that resource and emits `directorAllowanceExhausted` once (W15-22).
  */
 @Injectable()
 export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(DirectorLoopService.name);
   private readonly readings = new Map<string, number>();
+  /** One exhaustion event per resource and public key. A replaced key can emit again (BE-75). */
+  private readonly stopped = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private terms: DirectorMarketTerms | null | undefined;
 
@@ -152,7 +151,10 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
     const key = await this.keys.find(colonyId);
     if (!key) return { ok: false, skip: 'director_key_missing' };
     const status = await this.wallet.keyStatus({ accountId: key.accountId, publicKey: key.publicKey });
-    if (status.revoked || key.revokedAt) return { ok: false, skip: 'director_key_revoked' };
+    if (status.revoked || key.revokedAt) {
+      this.stopRevoked(view, key, status);
+      return { ok: false, skip: 'director_key_revoked' };
+    }
     return this.tradeRows(view, key, status);
   }
 
@@ -163,7 +165,14 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
   ): Promise<DirectorLoopResult> {
     let skip = 'no_limit';
     for (const row of view.rows) {
-      const spent = tokenSpent(status, row.forecast.resource);
+      const held = status.tokens.find((token) => token.token === row.forecast.resource);
+      const spent = whole(held?.spent);
+      const allowance = whole(held?.allowance);
+      if (held && (whole(held.available) === 0 || spent >= allowance)) {
+        this.noteStop(view, key, row.forecast.resource, spent, allowance, 'allowance_exhausted');
+        skip = 'allowance_exhausted';
+        continue;
+      }
       const decision = this.decideRow(view.colonyId, row, spent);
       if (!isDirectorTrade(decision)) {
         skip = decision.skip;
@@ -311,7 +320,55 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
         allowance,
       },
     });
+    if (row && (spent >= allowance || whole(row.available) === 0)) {
+      this.noteStop(view, key, pick.resource, spent, allowance, 'allowance_exhausted');
+    }
     return { ok: true, side: pick.side, resource: pick.resource, amount: pick.amount, spent, allowance };
+  }
+
+  /** Revoke stops every limited resource and does not place. */
+  private stopRevoked(view: DirectorColonyView, key: DirectorKeyRow, status: WalletKey): void {
+    for (const row of view.rows) {
+      const held = status.tokens.find((token) => token.token === row.forecast.resource);
+      this.noteStop(
+        view,
+        key,
+        row.forecast.resource,
+        whole(held?.spent),
+        whole(held?.allowance),
+        'director_key_revoked',
+      );
+    }
+  }
+
+  /** Emit once. A later tick with the same public key logs nothing and does not emit again. */
+  private noteStop(
+    view: DirectorColonyView,
+    key: DirectorKeyRow,
+    resource: ResourceKey,
+    spent: number,
+    allowance: number,
+    reason: 'allowance_exhausted' | 'director_key_revoked',
+  ): void {
+    const id = `${key.publicKey}\0${view.colonyId}\0${resource}\0${reason}`;
+    if (this.stopped.has(id)) return;
+    this.stopped.add(id);
+    this.log.log(`director ${view.colonyId} ${resource} skipped: ${reason}`);
+    this.bus.emit('planet.event', {
+      planetId: view.planetId,
+      tick: view.tick,
+      kind: 'directorAllowanceExhausted',
+      severity: 'warn',
+      colonyIds: [view.colonyId],
+      data: {
+        colonyId: view.colonyId,
+        colonyIndex: view.colonyIndex,
+        resource,
+        spent,
+        allowance,
+        reason,
+      },
+    });
   }
 
   private emitRequested(

@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/bus/event-bus';
 import type { PlanetEventV1 } from '../../src/bus/channels';
+import { FlagsService } from '../../src/flags/flags.service';
 import { AlertRouter, type AlertRouteInput } from '../../src/notify/alert-router';
 import { MockNotifier } from '../../src/notify/mock-notifier';
 import type { MockNotifyPut, MockNotifyRow, MockNotifyStore } from '../../src/notify/mock-notify.store';
@@ -215,6 +216,51 @@ describe('kind map', () => {
     expect(port.sent.map((n) => n.kind)).toEqual(['under_attack']);
     expect(port.sent[0]?.eventId).toBe(`underAttack:pl_dev:5`);
     router.onModuleDestroy();
+  });
+
+  it('notifies a spent director allowance as away_budget_exhausted only while W09 is on', async () => {
+    const data = {
+      colonyId: COLONY,
+      resource: 'metals.t1',
+      spent: 300,
+      allowance: 300,
+      reason: 'allowance_exhausted' as const,
+    };
+    const on = new RecordingNotifier();
+    const flags = new FlagsService({ TA_WAVES: 'all' } as never);
+    expect(
+      await new AlertRouter(on, undefined, flags).route({
+        colonyId: COLONY,
+        kind: 'directorAllowanceExhausted',
+        data,
+        nowMs: 0,
+        eventId: 'spent',
+      }),
+    ).toEqual({ sent: 1 });
+    expect(on.sent[0]).toMatchObject({ kind: 'away_budget_exhausted', colonyId: COLONY });
+
+    const off = new RecordingNotifier();
+    expect(
+      await new AlertRouter(off, undefined, new FlagsService({ TA_WAVES: '..08' } as never)).route({
+        colonyId: COLONY,
+        kind: 'directorAllowanceExhausted',
+        data,
+        nowMs: 0,
+        eventId: 'off',
+      }),
+    ).toEqual({ sent: 0 });
+    const revoked = new RecordingNotifier();
+    expect(
+      await new AlertRouter(revoked, undefined, flags).route({
+        colonyId: COLONY,
+        kind: 'directorAllowanceExhausted',
+        data: { ...data, reason: 'director_key_revoked' },
+        nowMs: 0,
+        eventId: 'revoked',
+      }),
+    ).toEqual({ sent: 0 });
+    expect(off.sent).toHaveLength(0);
+    expect(revoked.sent).toHaveLength(0);
   });
 });
 

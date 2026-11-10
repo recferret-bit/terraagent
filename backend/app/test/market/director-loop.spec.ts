@@ -25,7 +25,7 @@ const limit: AutoTradeLimit = {
 const reference = { num: 1_000_000n, den: 1n };
 const ownUnitCost = { num: 800_000n, den: 1n };
 
-function view(colonyId = 'co_dir'): DirectorColonyView {
+function view(colonyId = 'co_dir', rowLimit: AutoTradeLimit = limit): DirectorColonyView {
   return {
     colonyId,
     colonyIndex: 0,
@@ -46,7 +46,7 @@ function view(colonyId = 'co_dir'): DirectorColonyView {
           reserveHorizon: 0,
           sessionSpent: 0,
           partner: 'guild',
-          limit,
+          limit: rowLimit,
         },
         reference,
         ownUnitCost,
@@ -91,7 +91,9 @@ class MemKeys {
   }
 }
 
-async function openKey(tag: string) {
+const tight: AutoTradeLimit = { ...limit, maxPerSession: 300 };
+
+async function openKey(tag: string, allowance = '600') {
   const wallet = new InMemoryAgentWallet();
   const name = `${tag}${Math.random().toString(36).slice(2, 8)}`;
   const created = await wallet.createSubAccount({ opId: `acct:${name}`, parent: 'npc.terraagent.mock', name });
@@ -103,7 +105,7 @@ async function openKey(tag: string) {
     allowance: '0',
     receiverId: 'intents.near',
     methodNames: ['execute_intents'],
-    tokens: [{ token: 'metals.t1', allowance: '600' }],
+    tokens: [{ token: 'metals.t1', allowance }],
   });
   return { wallet, accountId: created.accountId, publicKey };
 }
@@ -237,5 +239,139 @@ describe('W15-21 director loop', () => {
       spent: '0',
       available: '600',
     });
+  });
+});
+
+function exhausted(events: { kind: string; data: unknown }[]) {
+  return events.filter((event) => event.kind === 'directorAllowanceExhausted');
+}
+
+async function spendMetal(
+  wallet: InMemoryAgentWallet,
+  accountId: string,
+  publicKey: string,
+  amount: string,
+): Promise<void> {
+  await wallet.reserveAllowance({ opId: `pre-r:${publicKey}`, accountId, publicKey, token: 'metals.t1', amount });
+  await wallet.consumeAllowance({ opId: `pre-c:${publicKey}`, accountId, publicKey, token: 'metals.t1', amount });
+}
+
+describe('W15-22 director allowance stop', () => {
+  it('sells one 300 against allowance 300, emits once, and a second tick is silent', async () => {
+    const opened = await openKey('cap', '300');
+    const market = new MemMarket();
+    const keys = new MemKeys({
+      colonyId: 'co_cap',
+      accountId: opened.accountId,
+      publicKey: opened.publicKey,
+      revokedAt: null,
+    });
+    const { service, events } = loop('all', new MemSource(view('co_cap', tight)), market, keys, opened.wallet);
+
+    const sold = await service.runDirectorOnce('co_cap');
+    expect(sold).toEqual({ ok: true, side: 'sell', resource: 'metals.t1', amount: 300, spent: 300, allowance: 300 });
+    expect(market.placed).toHaveLength(1);
+    expect(exhausted(events)).toEqual([
+      {
+        kind: 'directorAllowanceExhausted',
+        data: {
+          colonyId: 'co_cap',
+          colonyIndex: 0,
+          resource: 'metals.t1',
+          spent: 300,
+          allowance: 300,
+          reason: 'allowance_exhausted',
+        },
+      },
+    ]);
+
+    const again = await service.runDirectorOnce('co_cap');
+    expect(again).toEqual({ ok: false, skip: 'allowance_exhausted' });
+    expect(market.placed).toHaveLength(1);
+    expect(exhausted(events)).toHaveLength(1);
+    expect(await metals(opened.wallet, opened.accountId, opened.publicKey)).toMatchObject({
+      spent: '300',
+      available: '0',
+      allowance: '300',
+    });
+  });
+
+  it('a revoked key emits director_key_revoked once and places nothing', async () => {
+    const opened = await openKey('rev', '300');
+    await opened.wallet.revokeKey({
+      opId: `rev:${opened.publicKey}`,
+      accountId: opened.accountId,
+      publicKey: opened.publicKey,
+    });
+    const market = new MemMarket();
+    const keys = new MemKeys({
+      colonyId: 'co_rev',
+      accountId: opened.accountId,
+      publicKey: opened.publicKey,
+      revokedAt: null,
+    });
+    const { service, events } = loop('all', new MemSource(view('co_rev', tight)), market, keys, opened.wallet);
+
+    expect(await service.runDirectorOnce('co_rev')).toEqual({ ok: false, skip: 'director_key_revoked' });
+    expect(market.placed).toHaveLength(0);
+    expect(exhausted(events)).toEqual([
+      {
+        kind: 'directorAllowanceExhausted',
+        data: {
+          colonyId: 'co_rev',
+          colonyIndex: 0,
+          resource: 'metals.t1',
+          spent: 0,
+          allowance: 300,
+          reason: 'director_key_revoked',
+        },
+      },
+    ]);
+    expect(await service.runDirectorOnce('co_rev')).toEqual({ ok: false, skip: 'director_key_revoked' });
+    expect(exhausted(events)).toHaveLength(1);
+    expect(market.placed).toHaveLength(0);
+  });
+});
+
+describe('W15-22 director allowance corners', () => {
+  it('available 0 before the tick emits once and places nothing', async () => {
+    const opened = await openKey('zero', '300');
+    await spendMetal(opened.wallet, opened.accountId, opened.publicKey, '300');
+    const market = new MemMarket();
+    const keys = new MemKeys({
+      colonyId: 'co_zero',
+      accountId: opened.accountId,
+      publicKey: opened.publicKey,
+      revokedAt: null,
+    });
+    const { service, events } = loop('all', new MemSource(view('co_zero', tight)), market, keys, opened.wallet);
+
+    expect(await service.runDirectorOnce('co_zero')).toEqual({ ok: false, skip: 'allowance_exhausted' });
+    expect(market.placed).toHaveLength(0);
+    expect(exhausted(events)[0]?.data).toMatchObject({
+      spent: 300,
+      allowance: 300,
+      reason: 'allowance_exhausted',
+      resource: 'metals.t1',
+    });
+    expect(await service.runDirectorOnce('co_zero')).toEqual({ ok: false, skip: 'allowance_exhausted' });
+    expect(exhausted(events)).toHaveLength(1);
+    expect(market.placed).toHaveLength(0);
+  });
+
+  it('W15 off does not emit exhaustion', async () => {
+    const opened = await openKey('off22', '300');
+    await spendMetal(opened.wallet, opened.accountId, opened.publicKey, '300');
+    const market = new MemMarket();
+    const keys = new MemKeys({
+      colonyId: 'co_off22',
+      accountId: opened.accountId,
+      publicKey: opened.publicKey,
+      revokedAt: null,
+    });
+    const off = loop('..14', new MemSource(view('co_off22', tight)), market, keys, opened.wallet);
+    expect(await off.service.runDirectorOnce('co_off22')).toEqual({ ok: false, skip: 'wave_disabled' });
+    expect(off.events).toEqual([]);
+    expect(market.placed).toHaveLength(0);
   });
 });
