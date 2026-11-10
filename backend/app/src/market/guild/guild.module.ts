@@ -10,6 +10,8 @@ import { GuildProvisionService } from './guild-provision.service.js';
 import { GuildTradeKeyBinder } from './guild-trade-key.binder.js';
 import { GuildWalletBinder } from './guild-wallet.binder.js';
 import { GuildMakerService } from './maker/guild-maker.service.js';
+import { DeterministicGuildStrategy } from './strategy/deterministic.js';
+import { GuildStrategyPort } from './strategy/port.js';
 import { GuildVisitPublisher } from './visit/guild-visit.publisher.js';
 import { GuildVisitRepository } from './visit/guild-visit.repository.js';
 import { GuildVisitService } from './visit/guild-visit.service.js';
@@ -30,7 +32,15 @@ import { GuildVisitService } from './visit/guild-visit.service.js';
     GuildVisitPublisher,
     GuildVisitService,
     GuildMakerService,
+    { provide: GuildStrategyPort, useClass: DeterministicGuildStrategy },
   ],
-  exports: [GuildProvisionService, GuildFundingService, GuildKillSwitch, GuildVisitService, GuildMakerService],
+  exports: [
+    GuildProvisionService,
+    GuildFundingService,
+    GuildKillSwitch,
+    GuildVisitService,
+    GuildMakerService,
+    GuildStrategyPort,
+  ],
 })
 export class GuildModule {}
