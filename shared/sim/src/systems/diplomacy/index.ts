@@ -1,55 +1,25 @@
-import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
-import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
+import {
+  cancelTruceHandler,
+  devOfferTruceHandler,
+  proposeTruceHandler,
+  respondTruceHandler,
+} from './handlers';
+import { stepDiplomacy } from './operations';
 
-export const proposeTruceHandler = defineCommandHandler({
-  kind: 'diplomacy.proposeTruce',
-  wave: 'W18',
-  handle(_state, cmd, _ctx) {
-    const colIdx = commandColony(cmd);
-    if (typeof colIdx === 'string') return colIdx;
-    const parsed = parseArgs('diplomacy.proposeTruce', cmd.args);
-    if (!parsed) return 'invalid_args';
-  },
-});
-
-export const respondTruceHandler = defineCommandHandler({
-  kind: 'diplomacy.respondTruce',
-  wave: 'W18',
-  handle(_state, cmd, _ctx) {
-    const colIdx = commandColony(cmd);
-    if (typeof colIdx === 'string') return colIdx;
-    const parsed = parseArgs('diplomacy.respondTruce', cmd.args);
-    if (!parsed) return 'invalid_args';
-  },
-});
-
-export const cancelTruceHandler = defineCommandHandler({
-  kind: 'diplomacy.cancelTruce',
-  wave: 'W18',
-  handle(_state, cmd, _ctx) {
-    const colIdx = commandColony(cmd);
-    if (typeof colIdx === 'string') return colIdx;
-    const parsed = parseArgs('diplomacy.cancelTruce', cmd.args);
-    if (!parsed) return 'invalid_args';
-  },
-});
-
-export const devOfferTruceHandler = defineCommandHandler({
-  kind: 'dev.offerTruce',
-  wave: 'W18',
-  handle(_state, cmd, _ctx) {
-    const parsed = parseArgs('dev.offerTruce', cmd.args);
-    if (!parsed) return 'invalid_args';
-  },
-});
+export * from './store';
+export * from './rules';
+export * from './operations';
+export * from './handlers';
 
 export const diplomacySystem = defineSystem({
   id: 'diplomacy.manager',
   slot: 11,
   wave: 'W18',
-  run() {},
+  run(state, ctx) {
+    stepDiplomacy(state, ctx);
+  },
 });
 
 export const diplomacy = defineSimModule({

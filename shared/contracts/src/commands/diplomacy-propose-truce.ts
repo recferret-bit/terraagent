@@ -7,15 +7,21 @@ export const ProposeTruceArgsSchema = z
     targetColonyId: ColonyTargetIdSchema.optional(),
     targetColonyIndex: z.number().int().nonnegative().optional(),
     targetColony: ColonyTargetIdSchema.optional(),
-    hours: TruceDurationHoursSchema,
+    toColony: ColonyTargetIdSchema.optional(),
+    hours: TruceDurationHoursSchema.optional(),
+    durationHours: TruceDurationHoursSchema.optional(),
   })
   .refine(
     (v) =>
       v.targetColonyId !== undefined ||
       v.targetColonyIndex !== undefined ||
-      v.targetColony !== undefined,
-    { message: 'proposeTruce requires targetColonyId, targetColonyIndex, or targetColony.' },
-  );
+      v.targetColony !== undefined ||
+      v.toColony !== undefined,
+    { message: 'proposeTruce requires targetColonyId, targetColonyIndex, targetColony, or toColony.' },
+  )
+  .refine((v) => v.hours !== undefined || v.durationHours !== undefined, {
+    message: 'proposeTruce requires hours or durationHours.',
+  });
 export type ProposeTruceArgs = z.infer<typeof ProposeTruceArgsSchema>;
 
 export const command = defineCommand({

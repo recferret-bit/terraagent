@@ -10,6 +10,7 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
     expect(() => compileData(flags)).not.toThrow();
     const declared = Object.fromEntries(allTables().filter((t) => t.amounts).map((t) => [t.name, t.amounts]));
     expect(declared).toEqual({
+      diplomacy: ['reprintCost'],
       hq: ['cargo'],
       hub: ['cost', 'storageCapPerFamily'],
       logistics: ['consumption', 'activationCost'],

@@ -7,6 +7,7 @@ export const DevOfferTruceArgsSchema = z.strictObject({
   toColony: ColonyTargetIdSchema.optional(),
   colony: ColonyTargetIdSchema.optional(),
   hours: TruceDurationHoursSchema.optional(),
+  durationHours: TruceDurationHoursSchema.optional(),
 });
 export type DevOfferTruceArgs = z.infer<typeof DevOfferTruceArgsSchema>;
 
