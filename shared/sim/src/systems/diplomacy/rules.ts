@@ -21,37 +21,49 @@ function getTruceRow(data?: CompiledDataLike): CompiledRow | undefined {
 }
 
 export function hostilityCooldownTicks(data?: CompiledDataLike): number {
-  const rawS = Number(getTruceRow(data)?.hostilityCooldownS ?? 600);
-  return Math.max(1, Math.round((Number.isFinite(rawS) ? rawS : 600) * TICKS_PER_SECOND));
+  const row = getTruceRow(data);
+  const compiled = Number(row?.hostilityWindowS);
+  if (Number.isFinite(compiled) && compiled > 0) return Math.round(compiled);
+  return 600 * TICKS_PER_SECOND;
 }
 
 export function offerExpiryTicks(data?: CompiledDataLike): number {
-  const rawS = Number(getTruceRow(data)?.offerExpiryS ?? 600);
-  return Math.max(1, Math.round((Number.isFinite(rawS) ? rawS : 600) * TICKS_PER_SECOND));
+  const row = getTruceRow(data);
+  const compiled = Number(row?.offerExpiryS);
+  if (Number.isFinite(compiled) && compiled > 0) return Math.round(compiled);
+  return 600 * TICKS_PER_SECOND;
 }
 
 export function cancelNoticeTicks(data?: CompiledDataLike): number {
-  const rawS = Number(getTruceRow(data)?.cancelNoticeS ?? 600);
-  return Math.max(1, Math.round((Number.isFinite(rawS) ? rawS : 600) * TICKS_PER_SECOND));
+  const row = getTruceRow(data);
+  const compiled = Number(row?.noticeS);
+  if (Number.isFinite(compiled) && compiled > 0) return Math.round(compiled);
+  return 600 * TICKS_PER_SECOND;
 }
 
 export function oathbreakerDurationTicks(data?: CompiledDataLike): number {
-  const rawH = Number(getTruceRow(data)?.oathbreakerHours ?? 24);
-  return Math.max(1, Math.round((Number.isFinite(rawH) ? rawH : 24) * 3600 * TICKS_PER_SECOND));
+  const row = getTruceRow(data);
+  const compiled = Number(row?.oathbreakerS);
+  if (Number.isFinite(compiled) && compiled > 0) return Math.round(compiled);
+  return 24 * 3600 * TICKS_PER_SECOND;
 }
 
 export function maxTruceHoursForHqTier(tier: number, data?: CompiledDataLike): number {
-  const row = getTruceRow(data);
-  if (tier >= 3) return Number(row?.maxHoursT3 ?? 72);
-  if (tier === 2) return Number(row?.maxHoursT2 ?? 72);
-  return Number(row?.maxHoursT1 ?? 24);
+  const map = getTruceRow(data)?.maxHoursByHqTier as Record<string, number> | undefined;
+  const key = tier >= 3 ? '3' : tier === 2 ? '2' : '1';
+  const fromData = Number(map?.[key]);
+  if (Number.isFinite(fromData) && fromData > 0) return fromData;
+  return tier >= 2 ? 72 : 24;
 }
 
 export function maxActiveTrucesForHqTier(tier: number, data?: CompiledDataLike): number {
-  const row = getTruceRow(data);
-  if (tier >= 3) return Number(row?.capT3 ?? 4);
-  if (tier === 2) return Number(row?.capT2 ?? 2);
-  return Number(row?.capT1 ?? 1);
+  const map = getTruceRow(data)?.activeCapsByHqTier as Record<string, number> | undefined;
+  const key = tier >= 3 ? '3' : tier === 2 ? '2' : '1';
+  const fromData = Number(map?.[key]);
+  if (Number.isFinite(fromData) && fromData > 0) return fromData;
+  if (tier >= 3) return 4;
+  if (tier === 2) return 2;
+  return 1;
 }
 
 export function getColonyHqRowAndTier(
