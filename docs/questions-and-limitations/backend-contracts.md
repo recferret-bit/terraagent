@@ -936,15 +936,15 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** Keep this. A real Sputnik adapter (W23-36) maps chain state onto the same port errors.
 - **Found:** 2026-11-10, W22-03
 
-### BE-72 · Mock finalize ignores the proposal deadline
+### BE-72 · The finalize job owns the 6 h deadline
 
-- **Status:** Open
-- **Area / code:** `backend/app/src/near/treasury/actions.ts` (`finalizeProposal`), `shared/sim/src/data/treasury-policy.ts` (`proposalTtlH`)
-- **What happens:** `finalize` does not read the clock. An `InProgress` proposal that fails the pass rule becomes `Expired` as soon as `finalize` is called, even inside the 6 h window. Removed members' votes no longer count: `rulePasses` and the council yes/no tally skip a voter who is not a current member (resolved in W22-06). The proposal JSON still stores that vote.
-- **Why it is like this:** W22-03 was told not to implement the deadline. W22-09 owns the 6 h job. W22-06 drops an eliminated colony's open votes at finalize.
-- **Workaround / mitigation:** Callers that need a deadline must not call `finalize` early.
-- **To resolve:** W22-09 expires only past `proposalTtlH`. The removed-member vote half is resolved (W22-06).
-- **Found:** 2026-11-10, W22-03
+- **Status:** Resolved (W22-09)
+- **Area / code:** `backend/app/src/near/treasury/finalize.service.ts` (`finalizeDue`), `backend/app/src/near/treasury/actions.ts` (`finalizeProposal`), `shared/sim/src/data/treasury-policy.ts` (`proposalTtlH`)
+- **What happens:** `TreasuryFinalizeService.finalizeDue` calls port `finalize` only when `now >= payload.deadlineMs`. The hours are `treasuryPolicy.vote.proposalTtlH` (6 real hours, `TREASURY_PROPOSAL_TTL_H`). One yes of three past that deadline becomes `Expired` and the DAO balance does not change. The same proposal stays `InProgress` when `finalizeDue` runs earlier. The mock `finalize` function still does not read a clock: a direct call expires a failing `InProgress` proposal immediately. An already `Approved` proposal is not debited again. Removed members' votes still do not count (W22-06).
+- **Why it is like this:** W22-03 was told not to implement the deadline. The contract suite still calls `finalize` immediately, so the mock must keep expiring when asked. W22-09 is the clock.
+- **Workaround / mitigation:** Call `finalizeDue`. Do not call port `finalize` before the deadline. The job does not.
+- **To resolve:** Done for the deadline. A direct `finalize` stays immediate on purpose.
+- **Found:** 2026-11-10, W22-03. Resolved 2026-11-10, W22-09.
 
 ### BE-77 · DAO membership follows the colony account row and `deedSettled`
 
@@ -1000,10 +1000,10 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/near/treasury/guild-subsidy.ts` (`applyGuildSubsidy`, `scheduleExtraVisit`), `shared/db/prisma/near-treasury.prisma` (`ChainGuildVisit`)
-- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council form lists `guild_subsidy` whenever `GET /v1/near/treasury/:planetId` includes it in `projects` (W22-14). It does not check W15. Approving a proposal through the council API does not call this hook yet (BE-80). The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
+- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council form lists `guild_subsidy` whenever `GET /v1/near/treasury/:planetId` includes it in `projects` (W22-14). It does not check W15. `TreasuryFinalizeService` calls `applyGuildSubsidy` once when it posts an approved `guild_subsidy` effect (W22-09). A second `finalizeDue` does not insert another row. The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
 - **Why it is like this:** W15-09's `scheduleExtraVisit` and quote engine are absent. D-45 says a subsidy visit is never organic. The `organic` column false is that guarantee.
-- **Workaround / mitigation:** Call `applyGuildSubsidy(planetId)` when a `guild_subsidy` effect is applied. The inserted row stays `organic` false.
-- **To resolve:** W22-08 should call `applyGuildSubsidy` when a `guild_subsidy` proposal is Approved. W15 should add quotes without setting `organic`. Hide `guild_subsidy` in the Council form only when the API omits that project. W22-14 was told to keep the kind.
+- **Workaround / mitigation:** The finalize job inserts the row. It stays `organic` false.
+- **To resolve:** W15 should add quotes without setting `organic`. Hide `guild_subsidy` in the Council form only when the API omits that project.
 - **Found:** 2026-11-10, W22-12
 
 ### BE-79 · deliver_units completes the chain row from cargo transfers
@@ -1018,13 +1018,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 ### BE-80 · Council propose does not start the sim effect
 
-- **Status:** Open
-- **Area / code:** `backend/app/src/near/treasury/proposals.service.ts`, `backend/app/src/near/treasury/treasury.controller.ts`, `backend/app/src/near/treasury/caller.ts`, `backend/app/src/ws/ws.gateway.ts` (`broadcastTreasuryProposal`)
-- **What happens:** `GET /v1/near/treasury/:planetId` returns `effects: []`. A vote that passes still debits the DAO on that vote (the mock, BE-71) but this API does not send `system.treasuryEffect`. Kinds are the three W22 table rows; W05/W15 do not hide `terraform_boost` or `guild_subsidy`. The caller is the bearer session's colony account on that planet (`core.colony` plus `near_colony_account`). When `NODE_ENV=test`, body `colonyAccountId` or header `x-colony-account-id` is accepted instead (body wins) and is ignored otherwise. One open proposal per colony is checked on the DAO view before `propose`. Two concurrent first proposes from the same colony share `opId` `dao-propose:{planet}:{account}:1`, so the mock replays one row. `near.treasury.proposal` is emitted and the gateway broadcasts `treasury.proposal` to the planet room.
-- **Why it is like this:** W22-08 was told not to run the 6 h finalize job and not to start the sim effect. Those belong to W22-09. Integration tests have no session, so the test account field exists only there. Hiding a kind when another wave is off is W22-11 and W22-12.
-- **Workaround / mitigation:** A project the balance cannot cover throws `TREASURY_INSUFFICIENT` (HTTP 409) and writes no proposal. The shield, the boost, and the extra Guild visit wait until something sends `system.treasuryEffect`.
-- **To resolve:** W22-09 finalizes at `proposalTtlH`, pays from the DAO, and sends the effect command. W22-11 and W22-12 drop kinds whose waves are off.
-- **Found:** 2026-11-10, W22-08
+- **Status:** Resolved (W22-09)
+- **Area / code:** `backend/app/src/near/treasury/proposals.service.ts`, `backend/app/src/near/treasury/finalize.service.ts`, `backend/app/src/near/treasury/treasury.controller.ts`, `backend/app/src/ws/ws.gateway.ts` (`broadcastTreasuryProposal`)
+- **What happens:** A vote that passes still debits the DAO on that vote (the mock, BE-71) and this API still does not send `system.treasuryEffect`. `TreasuryFinalizeService` sends that command once for an `Approved` proposal, including one that already passed before the deadline (W22-09). `GET /v1/near/treasury/:planetId` still returns `effects: []` (BE-82). Kinds are the three W22 table rows; W05/W15 do not hide `terraform_boost` or `guild_subsidy`. The caller is the bearer session's colony account on that planet (`core.colony` plus `near_colony_account`). When `NODE_ENV=test`, body `colonyAccountId` or header `x-colony-account-id` is accepted instead (body wins) and is ignored otherwise. One open proposal per colony is checked on the DAO view before `propose`. Two concurrent first proposes from the same colony share `opId` `dao-propose:{planet}:{account}:1`, so the mock replays one row. `near.treasury.proposal` is emitted and the gateway broadcasts `treasury.proposal` to the planet room.
+- **Why it is like this:** W22-08 was told not to run the 6 h finalize job and not to start the sim effect. The job does that now. Integration tests have no session, so the test account field exists only there. Hiding a kind when another wave is off is W22-11 and W22-12.
+- **Workaround / mitigation:** A project the balance cannot cover throws `TREASURY_INSUFFICIENT` (HTTP 409) and writes no proposal. The shield and the boost start when the finalize job can post into a loaded planet.
+- **To resolve:** Done for the effect command. The empty `effects` list is BE-82. W22-11 and W22-12 drop kinds whose waves are off.
+- **Found:** 2026-11-10, W22-08. Resolved 2026-11-10, W22-09.
 
 ### BE-81 · Mock agent wallet only creates mercenary sub-accounts
 
@@ -1035,3 +1035,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Hire and payout code must keep using the roster `fundingCap`. Do not treat a successful boot as a funded balance.
 - **To resolve:** When W15-03 lands, replace this adapter with its allowance ledger. The seeder's stable `merc-account:{accountId}` opId still replays, and `NEAR_ACCOUNT_EXISTS` is treated as already created.
 - **Found:** 2026-11-10, W22-27
+
+### BE-82 · Council effect list stays empty and a missed sim post is not retried
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/treasury/finalize.service.ts` (`post`, `tickOf`), `backend/app/src/near/treasury/council-view.ts` (`effects`), `backend/app/src/game/game-planets.service.ts` (`submit`)
+- **What happens:** `GET /v1/near/treasury/:planetId` still returns `effects: []`. The finalize job stores `system.treasuryEffect` on the proposal JSON (`effectCommand`, `effectPosted`) and calls `GamePlanets.submit` once. If the planet is not loaded, `submit` returns `thread_down` and the job does not try again. `untilTick` is the loaded planet tick, else the latest snapshot tick, else 0, plus `durationH` at 200 ms per tick. A command built at tick 0 is already over on a planet that has moved past that `untilTick`. `guild_subsidy` still inserts one `chain.guild_visit` when the effect is claimed. A direct `TreasuryDaoPort.finalize` still expires an `InProgress` proposal immediately (BE-72).
+- **Why it is like this:** W22-09 posts the module command. It does not own the council read model (W22-14) and does not keep a retry queue after the one stored command.
+- **Workaround / mitigation:** Load the planet before `finalizeDue` if the shield must start at the live tick. Do not call port `finalize` before the deadline.
+- **To resolve:** Read active effects from the sim blob on the council GET, and retry `submit` while the planet is down without sending a second command after `ok`.
+- **Found:** 2026-11-10, W22-09

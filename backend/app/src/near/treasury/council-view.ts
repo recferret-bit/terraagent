@@ -26,7 +26,7 @@ export interface TreasuryProjectResponse {
 }
 
 /**
- * `effects` stays empty until W22-09 starts `system.treasuryEffect`.
+ * `effects` stays empty. The finalize job posts `system.treasuryEffect`; the sim holds the timer (BE-82).
  * `projects` is every treasury-table row still enabled, including `guild_subsidy` while W15 is off.
  */
 export interface TreasuryCouncilResponse {
