@@ -12,6 +12,7 @@ import { TradeRequestLinker, type OrderLink } from '../trade/trade-request-linke
 import { MarketBooks } from '../book/market-books.js';
 import type { MarketOrderRecord } from '../book/market-order.record.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
+import { DirectorMatchGuard } from '../director/director-match-guard.js';
 import { GUILD_FILL_SINK, type GuildFillSink } from '../guild/maker/fill-sink.js';
 import { MarketMatcher, type MatchOutcome } from '../matching/market-matcher.service.js';
 import { resolveMarketAccountId } from './colony-account.js';
@@ -72,6 +73,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() private readonly linker?: TradeRequestLinker,
     @Optional() @Inject(GUILD_FILL_SINK) private readonly guild?: GuildFillSink,
+    @Optional() private readonly directorGuard?: DirectorMatchGuard,
   ) {}
 
   onModuleInit(): void {
@@ -104,7 +106,8 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     const actorKind = opts.actorKind ?? link?.actorKind ?? parsed.actorKind;
     const target: SimTarget = { planetId: event.planetId, colonyId: d.colonyId, colonyIndex: d.colonyIndex };
     const accountId = await resolveMarketAccountId(this.prisma, d.colonyId, d.playerId ?? null, event.planetId, d.colonyIndex);
-    const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, actorKind));
+    const blocked = d.director === true ? await this.directorBlock(d) : undefined;
+    const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, actorKind, blocked));
     if (d.stallName) await this.rememberStall(event.planetId, d, accountId);
     await this.books.sync(result.order.orderId);
     if (opts.answerSim !== false) this.answerSim(target, result);
@@ -165,7 +168,20 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async place(tx: TransactionClient, planetId: string, d: Requested['data'], accountId: string, actorKind?: ActorKind): Promise<PlaceOrderResult> {
+  /** Director flag with no guard, or a guard refusal, is `autotrade_limit`. Player orders never call this. */
+  private directorBlock(d: Requested['data']): Promise<'autotrade_limit' | undefined> {
+    if (!this.directorGuard) return Promise.resolve('autotrade_limit');
+    return this.directorGuard.block({ colonyId: d.colonyId, resource: d.resource, amount: d.amount, side: d.side });
+  }
+
+  private async place(
+    tx: TransactionClient,
+    planetId: string,
+    d: Requested['data'],
+    accountId: string,
+    actorKind?: ActorKind,
+    blocked?: 'autotrade_limit',
+  ): Promise<PlaceOrderResult> {
     const cfg = this.policy.current();
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-funds:${accountId}`}, 0))`;
     const claimed = (await tx.nearColonyAccount.findUnique({ where: { accountId }, select: { claimedAt: true } }))?.claimedAt != null;
@@ -180,6 +196,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
       ...(actorKind ? { actorKind } : {}),
     }, tx);
     if (!created) return { order, created, depositChain: 0n };
+    if (blocked) return this.reject(tx, order, blocked, 'That trade is outside the autoTrade limits.');
 
     await this.repo.lockForUpdate((await this.repo.listOpenByColony(planetId, d.colonyId, tx)).map((o) => o.orderId), tx);
     const open = (await this.repo.listOpenByColony(planetId, d.colonyId, tx)).length;

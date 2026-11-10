@@ -19,6 +19,11 @@ export const MarketPlaceOrderArgs = z
     stallId: z.union([z.string().min(1).max(64), z.number().int().nonnegative()]).optional(),
     /** Buyer's explicit maximum maker-stall fee (bp); default: the policy's stall maximum. Reserved in full (ECONOMY §3). */
     maxStallFeeBp: z.number().int().min(0).max(10_000).optional(),
+    /**
+     * Director autoTrade order (W15-20). The market module calls `withinAutoTrade` again before matching.
+     * Player and bot orders omit it and are not subject to autoTrade limits.
+     */
+    director: z.boolean().optional(),
   })
   .refine((a) => (a.resource as string) !== a.price.token, { message: 'base and quote must differ', path: ['price', 'token'] });
 export type MarketPlaceOrderArgs = z.infer<typeof MarketPlaceOrderArgs>;

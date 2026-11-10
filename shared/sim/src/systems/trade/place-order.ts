@@ -138,6 +138,7 @@ export const marketPlaceOrderHandler = defineCommandHandler({
         ...(colony.name ? { stallName: String(colony.name).slice(0, 64) } : {}),
         ...(typeof cmd.commandId === 'string' && cmd.commandId ? { commandId: cmd.commandId } : {}),
         actorKind: (cmd.source as string) === BOT_SOURCE ? 'bot' : 'player',
+        ...(order.director === true ? { director: true } : {}),
       },
     });
     return undefined;

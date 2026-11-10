@@ -993,3 +993,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Read `directorTrade` on the bus. With W09 on, return while a digest row is open so welcome carries `items`. With W09 off, stay connected if the log must show the line.
 - **To resolve:** W15-36 can fold the same `items` into the ColonyBook welcome plate. Persist a line that arrives with no open row only if the owner wants it when the player was not marked away.
 - **Found:** 2026-11-10, W15-24
+
+### BE-78 · The market re-checks autoTrade only when the order is flagged director
+
+- **Status:** Accepted (by design, W15-20)
+- **Area / code:** `shared/sim/src/systems/trade/market-matcher.ts` (`directorAutoTradeCode`, `matchIncoming`), `backend/app/src/market/director/director-match-guard.ts`, `backend/app/src/market/orders/place-order.service.ts` (`directorBlock`), `backend/app/src/market/director/director-market.ts` (`directorPlaceCommand`)
+- **What happens:** `decideDirectorTrade` already calls `withinAutoTrade`. A director `market.placeOrder` also sets `director: true`. Before that order is opened for matching, `DirectorMatchGuard` calls `withinAutoTrade` again with the colony limit and the director key's `spent` for that resource. False, a missing limit, a missing key, a revoked key, or a resource with no token row is `autotrade_limit` and the order is not matched. `matchIncoming` does the same when the in-memory order carries an `autoTrade` claim, and it uses the book amount as `give` even if the claim still says 300. An order without the flag or the claim is not capped: a player sell of 400 still matches. The persisted book row does not store the claim, so a later match of an already OPEN row does not run this check again. The loop may already have reserved the key before this refusal; that reserve is not released here (BE-74 still treats a sim accept as `open`).
+- **Why it is like this:** The cap function stays `withinAutoTrade`. The flag is how a forged or stale director command is told apart from a player order after the sim has already accepted `market.placeOrder`. Player orders are not subject to autoTrade limits. Reading the key at match time is the session number; the sim forecast still stores session spend as 0 (BE-74).
+- **Workaround / mitigation:** Do not treat a player or bot `market.placeOrder` as autoTrade-capped. Do not expect a second match of an OPEN director row to refuse. If the loop reserved and the market then refuses, release that key reserve yourself; this path does not.
+- **To resolve:** Carry the claim on the book row and refuse inside the match lock, and release the director-key reserve when the market returns `autotrade_limit`.
+- **Found:** 2026-11-10, W15-20
