@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { KitbashBuilder } from '../../KitbashRegistry';
 import { rbox, cyl, strut, mirror, type V3 } from '../../greebles/unitParts';
 import { register } from './common';
+import { activeReconPalette, stampMercenaryMarks } from './reconFaction';
 
 /** Three driven axles, with independently stamped wheel pivots and visible rims/hubs. */
 function runningGear(b: KitbashBuilder): void {
@@ -64,8 +65,16 @@ function turret(b: KitbashBuilder): void {
   });
 }
 
+function buildRecon(b: KitbashBuilder): void {
+  runningGear(b);
+  armoredBody(b);
+  turret(b);
+  if (activeReconPalette().marks) stampMercenaryMarks(b);
+}
+
 register({
   id: 'robot.recon', label: 'Recon Armored Scout', category: 'robot', footprint: [1, 1],
-  notes: 'Six-wheel light armored recon vehicle: driven wheels, independent autocannon turret, driver optics and twin radio antennas. Holds position while firing.',
-  build(b) { runningGear(b); armoredBody(b); turret(b); },
+  notes: 'Six-wheel light armored recon vehicle: driven wheels, independent autocannon turret, driver optics and twin radio antennas. Holds position while firing. faction=mercenary repaints the hull grey-teal and adds a roof emblem plus an emissive marker.',
+  zones: () => activeReconPalette().zones,
+  build: buildRecon,
 });
