@@ -6,10 +6,10 @@
 
 | Set | Issues | Effort (units) | Critical path (units) |
 |---|---|---|---|
-| **H** (must) | 628 | 479.5 | 23.0 |
-| H + H+ (stretch) | 680 | 515.0 | 23.0 |
-| H + H2 (real NEAR) | 631 | 482.5 | 23.0 |
-| Whole plan | 1014 | 751.5 | 32.0 |
+| **H** (must) | 630 | 480.5 | 23.0 |
+| H + H+ (stretch) | 682 | 516.0 | 23.0 |
+| H + H2 (real NEAR) | 633 | 483.5 | 23.0 |
+| Whole plan | 1016 | 752.5 | 32.0 |
 
 One **unit** = one M issue (an S is ½). The critical path is the longest chain of dependencies, including each wave e2e waiting for the e2e of the waves it depends on. No number of agents finishes faster than it.
 
@@ -17,11 +17,11 @@ One **unit** = one M issue (an S is ½). The critical path is the longest chain 
 
 | Agents | 4 | 6 | 8 | 10 | 12 | 16 | 20 |
 |---|---|---|---|---|---|---|---|
-| Units to finish | 121.5 | 82.0 | 63.0 | 51.5 | 44.0 | 35.5 | 30.5 |
-| Merges per unit (avg) | 5.2 | 7.7 | 10.0 | 12.2 | 14.3 | 17.7 | 20.6 |
-| Days at 1 unit/agent/day | 121.5 | 82.0 | 63.0 | 51.5 | 44.0 | 35.5 | 30.5 |
-| Days at 2 units/agent/day | 60.8 | 41.0 | 31.5 | 25.8 | 22.0 | 17.8 | 15.2 |
-| Days at 3 units/agent/day | 40.5 | 27.3 | 21.0 | 17.2 | 14.7 | 11.8 | 10.2 |
+| Units to finish | 121.5 | 82.5 | 63.0 | 51.5 | 44.0 | 35.5 | 30.5 |
+| Merges per unit (avg) | 5.2 | 7.6 | 10.0 | 12.2 | 14.3 | 17.7 | 20.7 |
+| Days at 1 unit/agent/day | 121.5 | 82.5 | 63.0 | 51.5 | 44.0 | 35.5 | 30.5 |
+| Days at 2 units/agent/day | 60.8 | 41.2 | 31.5 | 25.8 | 22.0 | 17.8 | 15.2 |
+| Days at 3 units/agent/day | 40.5 | 27.5 | 21.0 | 17.2 | 14.7 | 11.8 | 10.2 |
 
 The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units/agent/day is the measured throughput of one agent including review, CI and merge; see the calibration rule in HACKATHON_CUT.md.
 
@@ -110,8 +110,8 @@ Issues grouped by the unit in which they start (`--plan-agents 10`); ★ = on th
 | 45 | W22 W23 | W22-04, W22-06, W22-12, W22-13, W22-15, W22-16, W22-18, W22-21, W22-22, W22-31, W22-33, W23-14 |
 | 46 | W22 W23 | W22-24, W22-26, W22-30, W22-32, W22-34, W22-35, W22-37, W22-36★, W23-02, W23-07, W23-10, W23-20, W23-21, W23-26, W23-30, W23-32, W23-36, W23-39 |
 | 47 | W23 | W23-06, W23-08, W23-11, W23-12, W23-22, W23-27, W23-28, W23-31, W23-33, W23-37, W23-40 |
-| 48 | W23 W25 | W23-23, W23-41, W23-42, W23-43, W23-44, W23-45, W23-46, W25-01, W25-03, W25-04, W25-05, W25-06, W25-09, W25-11, W25-12, W25-25 |
-| 49 | W23 W25 | W23-47★, W25-26, W25-27, W25-28, W25-34 |
+| 48 | W23 W25 | W23-23, W23-41, W23-42, W23-43, W23-44, W23-45, W23-46, W23-50, W25-01, W25-03, W25-04, W25-05, W25-06, W25-09, W25-11, W25-12, W25-25 |
+| 49 | W23 W25 | W23-47★, W25-26, W25-27, W25-28, W25-34, W25-35 |
 | 50 | W25 | W25-29★ |
 | 51 | W25 | W25-30★, W25-31★ |
 | 52 | W25 | W25-33★ |
