@@ -1,5 +1,6 @@
 import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
+import { checkAiRaidAwayPolicy } from '../away/gate';
 import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { resolveColonyIndex } from '../diplomacy/store';
@@ -20,6 +21,8 @@ export const raidHandler = defineCommandHandler({
   handle(state, cmd, ctx) {
     const colIdx = commandColony(cmd);
     if (typeof colIdx === 'string') return colIdx;
+    const awayGate = checkAiRaidAwayPolicy(state, colIdx, cmd, ctx);
+    if (awayGate) return awayGate;
     const parsed = parseArgs('raid', cmd.args);
     if (!parsed) return 'invalid_args';
     const targetRef = parsed.targetColonyId ?? parsed.targetColonyIndex ?? parsed.targetColony;
