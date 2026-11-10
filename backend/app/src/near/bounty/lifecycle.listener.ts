@@ -12,6 +12,7 @@ import { BountyPayService } from './pay.service.js';
 /**
  * Sim `bountyClaimed` stores the caller on the chain row.
  * Sim `bountyCompleted` names the winner, then `BountyPayService` pays that account once.
+ * `colonyEliminated` reopens that colony's `claimed` bounties and leaves the poster's escrow (W22-33).
  */
 @Injectable()
 export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
@@ -39,13 +40,21 @@ export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
 
   private onPlanet(event: PlanetEventV1): void {
     if (!this.flags.has('W22')) return;
-    if (event.kind === 'bountyClaimed') {
-      const { bountyId, claimer } = event.data;
-      void this.claimed(event.planetId, bountyId, claimer).catch((err) => this.warn(bountyId, err));
-    } else if (event.kind === 'bountyCompleted') {
-      const { bountyId, claimer } = event.data;
-      void this.completed(event.planetId, bountyId, claimer).catch((err) => this.warn(bountyId, err));
-    }
+    const job = this.follow(event);
+    if (job) void job.catch((err) => this.warn(labelOf(event), err));
+  }
+
+  private follow(event: PlanetEventV1): Promise<void> | null {
+    if (event.kind === 'bountyClaimed') return this.claimed(event.planetId, event.data.bountyId, event.data.claimer);
+    if (event.kind === 'bountyCompleted')
+      return this.completed(event.planetId, event.data.bountyId, event.data.claimer);
+    if (event.kind === 'colonyEliminated') return this.reopen(event.planetId, event.data.colonyId);
+    return null;
+  }
+
+  /** `claimed` and not completed. The escrow row stays with the poster. */
+  private async reopen(planetId: string, colonyId: string): Promise<void> {
+    await this.repo.reopenClaimedBy(await this.account(planetId, colonyId));
   }
 
   private async claimed(planetId: string, bountyId: string, claimer: string): Promise<void> {
@@ -78,4 +87,10 @@ export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
 function colonyIndex(id: string): number | undefined {
   const match = /^col_(\d+)$/.exec(id);
   return match ? Number(match[1]) : undefined;
+}
+
+function labelOf(event: PlanetEventV1): string {
+  if (event.kind === 'bountyClaimed' || event.kind === 'bountyCompleted') return event.data.bountyId;
+  if (event.kind === 'colonyEliminated') return event.data.colonyId;
+  return event.kind;
 }

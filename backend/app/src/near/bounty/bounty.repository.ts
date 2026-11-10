@@ -116,6 +116,18 @@ export class BountyRepository {
     return this.prisma.chainBounty.update({ where: { id }, data: { state: 'refunded' } });
   }
 
+  /**
+   * Claimer eliminated (W22-33): `claimed` rows go back to `open` and the claimer is cleared.
+   * Completed and paid rows stay. Escrow id and the poster's hold are not touched.
+   */
+  async reopenClaimedBy(accountId: string): Promise<number> {
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { claimerAccountId: accountId, state: 'claimed' },
+      data: { state: 'open', claimerAccountId: null },
+    });
+    return result.count;
+  }
+
   insert(row: NewBountyRow): Promise<BountyRow> {
     return this.prisma.chainBounty.create({
       data: {

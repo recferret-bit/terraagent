@@ -1095,3 +1095,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Call `payout` with `nowMs` at the wipe. Do not call it for a `cancelled` leave. If W22-23 has already claimed the id, do not expect a poster refund.
 - **To resolve:** Put the served fraction on `mercenaryLeft`, or settle from the planet tick, and retry unsettled hires after a restart.
 - **Found:** 2026-11-10, W22-30
+
+### BE-88 · An eliminated claimer reopens the chain bounty, not the sim blob
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/bounty/bounty.repository.ts` (`reopenClaimedBy`), `backend/app/src/near/bounty/lifecycle.listener.ts` (`reopen`), `shared/sim/src/systems/bounty/blob.ts`
+- **What happens:** `colonyEliminated` resolves the colony account and sets every `chain.bounty` row in `claimed` for that account back to `open`, with `claimerAccountId` cleared. `completed`, `paid`, and other claimers stay. The escrow id and the poster's hold are not refunded. W22 off ignores the event. The sim bounty blob still lists that colony index in `claimers`. A later `bountyCompleted` from the sim can name them again, and the listener will mark the chain row `completed` and pay that account.
+- **Why it is like this:** W22-33 reopens the chain row the board reads and says not to drop the poster's escrow. The sim blob has no `colonyEliminated` handler, and clearing it would be a second store.
+- **Workaround / mitigation:** The chain board shows the bounty `open` with no claimer, so another colony can `bounty.claim`. Do not expect the sim claimer list to drop on the same event.
+- **To resolve:** On `colonyEliminated`, drop that colony from sim bounty `claimers` while the bounty is not completed, and ignore an eliminated colony in `bountyCompleted`.
+- **Found:** 2026-11-10, W22-33
