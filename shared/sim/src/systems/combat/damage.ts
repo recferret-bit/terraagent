@@ -14,6 +14,7 @@ import { getBuildingJobs, saveBuildingJobs } from '../economy/buildJob';
 import { getFootprintTileIndices } from '../economy/buildingRows';
 import { syncColonyDepotCaps } from '../economy/ledger';
 import { colonyWho } from '../find';
+import { hasActiveTruce, recordHostilityBetween, resolveColonyIdStr } from '../diplomacy/store';
 import { syncHqView } from '../hq/view';
 import { syncColonyThreatStage } from '../progression/threatStage';
 import { resolveHqT1Row, rowNum } from '../rows';
@@ -175,10 +176,19 @@ function emitUnitDestructionEvent(
   }
   const colonyIdx = Math.max(0, owner);
   const { colonyIdStr, who } = colonyWho(state, colonyIdx);
+  const attackerColony =
+    opts?.attackerOwner !== undefined
+      ? opts.attackerOwner
+      : opts?.attackerId !== undefined && rowOf(state.entities, opts.attackerId) >= 0
+        ? state.entities.cols.owner[rowOf(state.entities, opts.attackerId)]
+        : undefined;
+  const isPvpKill =
+    typeof attackerColony === 'number' && attackerColony >= 0 && attackerColony !== colonyIdx;
+  const killerColonyId = isPvpKill ? resolveColonyIdStr(state, attackerColony) : undefined;
   opts.ctx.emit({
     kind: 'unitDestroyed',
     severity: 'warn',
-    colonyIds: [colonyIdStr],
+    colonyIds: killerColonyId ? [colonyIdStr, killerColonyId] : [colonyIdStr],
     data: {
       ...who,
       colonyIndex: colonyIdx,
@@ -188,6 +198,14 @@ function emitUnitDestructionEvent(
       q,
       r,
       ...(opts.attackerId !== undefined ? { attackerId: opts.attackerId } : {}),
+      ...(isPvpKill
+        ? {
+            pvp: true,
+            killerOwner: attackerColony,
+            killerColonyId,
+            byColony: killerColonyId,
+          }
+        : {}),
     },
   });
 }
@@ -366,12 +384,27 @@ export function applyDamage(
 
   const cols = state.entities.cols;
   const owner = cols.owner[row];
+  const tick = opts?.tick ?? opts?.ctx?.tick ?? state.meta.tick;
+  const attackerOwner =
+    opts?.attackerOwner !== undefined
+      ? opts.attackerOwner
+      : opts?.attackerId !== undefined && rowOf(state.entities, opts.attackerId) >= 0
+        ? cols.owner[rowOf(state.entities, opts.attackerId)]
+        : undefined;
+  if (
+    owner >= 0 &&
+    typeof attackerOwner === 'number' &&
+    attackerOwner >= 0 &&
+    attackerOwner !== owner &&
+    hasActiveTruce(state, attackerOwner, owner, tick)
+  ) {
+    return { applied: 0, hpAfter: cols.hp[row], destroyed: false, clampedHq: false, retreatedHq: false };
+  }
   const rawDamage = isCombatDryFire(state) || (owner >= 0 && isColonyGodMode(state, owner)) ? 0 : amount;
   if (rawDamage <= 0) {
     return { applied: 0, hpAfter: cols.hp[row], destroyed: false, clampedHq: false, retreatedHq: false };
   }
 
-  const tick = opts?.tick ?? opts?.ctx?.tick ?? state.meta.tick;
   const data = opts?.data ?? opts?.ctx?.data;
   const kind = cols.kind[row];
   const q = cols.q[row];
@@ -409,6 +442,9 @@ export function applyDamage(
   }
 
   if (result.applied > 0 && owner >= 0 && isHostileDamage(state, owner, opts)) {
+    if (typeof attackerOwner === 'number' && attackerOwner >= 0 && attackerOwner !== owner) {
+      recordHostilityBetween(state, attackerOwner, owner, tick);
+    }
     emitUnderAttackIfDue(state, owner, { targetId, attackerId: opts?.attackerId, q, r, tick }, opts?.ctx);
   }
 

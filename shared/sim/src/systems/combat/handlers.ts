@@ -5,6 +5,7 @@ import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
+import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
 import { setFactoryRallyPoint } from '../factories-hub/robotics';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { canWeaponHitTarget } from './layers';
@@ -129,6 +130,7 @@ export const attackMoveHandler = defineCommandHandler({
     if (ids.length === 0) return 'invalid_args';
 
     const cols = state.entities.cols;
+    const tileOwner = state.grid.layers.owner?.[tileIdx] ?? -1;
     for (const id of ids) {
       const row = ownEntityRow(state, cmd, id);
       if (typeof row === 'string') return row;
@@ -136,9 +138,28 @@ export const attackMoveHandler = defineCommandHandler({
       const isMobile = mobileStats(cols.kind[row]!, ctx.data) !== null;
       const hasWeapon = resolveAttackerWeaponRow(state, row, ctx.data) !== undefined;
       if (!isMobile && !hasWeapon) return 'invalid_args';
+      const attackerOwner = cols.owner[row]!;
+      if (ctx.flags.has('W18') && attackerOwner >= 0) {
+        if (tileOwner >= 0 && tileOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, tileOwner, ctx.tick)) {
+          return 'truce_active';
+        }
+        for (let r = 0; r < state.entities.count; r++) {
+          if (cols.hp[r]! <= 0 || cols.state[r] === ENTITY_STATE.inert) continue;
+          if (cols.q[r] === args.q && cols.r[r] === args.r) {
+            const entOwner = cols.owner[r]!;
+            if (entOwner >= 0 && entOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, entOwner, ctx.tick)) {
+              return 'truce_active';
+            }
+          }
+        }
+      }
     }
 
     for (const id of ids) {
+      const row = rowOf(state.entities, id);
+      if (ctx.flags.has('W18') && row >= 0 && tileOwner >= 0 && cols.owner[row]! >= 0 && tileOwner !== cols.owner[row]!) {
+        recordHostilityBetween(state, cols.owner[row]!, tileOwner, ctx.tick);
+      }
       cancelWorkerJobs(state, id, ctx.tick);
       orderUnitAttackMove(state, id, { q: args.q, r: args.r }, ctx);
     }
@@ -172,6 +193,14 @@ export const attackTargetHandler = defineCommandHandler({
       if (typeof row === 'string') return row;
       if (row === tRow || cols.owner[row] === cols.owner[tRow]) return 'invalid_args';
       if (cols.hp[row]! <= 0 || cols.state[row] === ENTITY_STATE.inert) return 'invalid_args';
+      if (
+        ctx.flags.has('W18') &&
+        cols.owner[row]! >= 0 &&
+        cols.owner[tRow]! >= 0 &&
+        hasActiveTruce(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick)
+      ) {
+        return 'truce_active';
+      }
       const weaponRow = resolveAttackerWeaponRow(state, row, ctx.data);
       if (!weaponRow || !canWeaponHitTarget(state, weaponRow, tRow, ctx.data)) {
         return 'invalid_args';
@@ -179,6 +208,10 @@ export const attackTargetHandler = defineCommandHandler({
     }
 
     for (const id of ids) {
+      const row = rowOf(state.entities, id);
+      if (ctx.flags.has('W18') && row >= 0 && cols.owner[row]! >= 0 && cols.owner[tRow]! >= 0) {
+        recordHostilityBetween(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick);
+      }
       cancelWorkerJobs(state, id, ctx.tick);
       orderUnitAttackTarget(state, id, args.targetId, ctx);
     }
