@@ -21,6 +21,7 @@ import {
 import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
+import { checkAiRaidAwayPolicy } from '../away/gate';
 import { resolveColonyIndex } from '../diplomacy/store';
 import { launchColonyRaid } from '../pvp/raidTask';
 import {
@@ -315,6 +316,8 @@ export const enqueueTaskHandler = defineCommandHandler({
     }
     if (norm.task.kind === 'raid') {
       if (!ctx.flags.has('W18')) return 'wave_disabled';
+      const awayGate = checkAiRaidAwayPolicy(state, colIdx, cmd, ctx);
+      if (awayGate) return awayGate;
       const raidTask = norm.task as Record<string, unknown>;
       const targetRef = (raidTask.targetColonyId ?? raidTask.targetColonyIndex ?? raidTask.targetColony) as
         | string

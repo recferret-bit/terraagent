@@ -35,7 +35,7 @@ function bootSim(away = true, awayRaids = false): SimHost {
     sim.state.entities.cols.hp[r] = 500;
     sim.state.entities.cols.hpMax[r] = 500;
     sim.state.entities.cols.state[r] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[r] = idx * 4;
+    sim.state.entities.cols.q[r] = idx * 8;
     sim.state.entities.cols.r[r] = 0;
   }
   markColonyContact(sim.state, 0, 1, sim.tick);
