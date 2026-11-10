@@ -9,9 +9,11 @@ import {
   setColonyShieldHours,
   syncAllColonyShields,
 } from './shield';
+import { canRaidTargetSector } from './sectorGuard';
 
 export * from './store';
 export * from './shield';
+export * from './sectorGuard';
 
 export const raidHandler = defineCommandHandler({
   kind: 'raid',
@@ -24,6 +26,7 @@ export const raidHandler = defineCommandHandler({
     const targetRef = parsed.targetColonyId ?? parsed.targetColonyIndex ?? parsed.targetColony;
     const toColony = resolveColonyIndex(state, targetRef);
     if (toColony < 0 || toColony === colIdx) return 'invalid_args';
+    if (!canRaidTargetSector(state, colIdx, toColony).ok) return 'cross_sector_disabled';
     if (hasActiveTruce(state, colIdx, toColony, ctx.tick)) return 'truce_active';
     if (isColonyRaidProtected(state, toColony, ctx.tick, ctx.data)) return 'raid_protected';
     dropColonyShield(state, colIdx, ctx.tick, ctx.data);

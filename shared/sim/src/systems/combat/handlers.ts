@@ -6,6 +6,7 @@ import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
 import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
+import { canAttackMoveToTileSector, canRaidTargetSector } from '../pvp/sectorGuard';
 import { isColonyRaidProtected } from '../pvp/shield';
 import { setFactoryRallyPoint } from '../factories-hub/robotics';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
@@ -141,6 +142,9 @@ export const attackMoveHandler = defineCommandHandler({
       if (!isMobile && !hasWeapon) return 'invalid_args';
       const attackerOwner = cols.owner[row]!;
       if (ctx.flags.has('W18') && attackerOwner >= 0) {
+        if (!canAttackMoveToTileSector(state, attackerOwner, args.q, args.r).ok) {
+          return 'cross_sector_disabled';
+        }
         if (tileOwner >= 0 && tileOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, tileOwner, ctx.tick)) {
           return 'truce_active';
         }
@@ -203,10 +207,14 @@ export const attackTargetHandler = defineCommandHandler({
       if (
         ctx.flags.has('W18') &&
         cols.owner[row]! >= 0 &&
-        cols.owner[tRow]! >= 0 &&
-        hasActiveTruce(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick)
+        cols.owner[tRow]! >= 0
       ) {
-        return 'truce_active';
+        if (!canRaidTargetSector(state, cols.owner[row]!, cols.owner[tRow]!).ok) {
+          return 'cross_sector_disabled';
+        }
+        if (hasActiveTruce(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick)) {
+          return 'truce_active';
+        }
       }
       const weaponRow = resolveAttackerWeaponRow(state, row, ctx.data);
       if (!weaponRow || !canWeaponHitTarget(state, weaponRow, tRow, ctx.data)) {
