@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
-import { compileData, createPlanet, SimHost, type SimCommand } from '../../index';
+import {
+  compileData,
+  createPlanet,
+  ensureColonyRecord,
+  ENTITY_KIND,
+  ENTITY_STATE,
+  insertRow,
+  SimHost,
+  type SimCommand,
+} from '../../index';
+import { markColonyContact } from '../diplomacy';
 import {
   applyAutopilot,
   awayPolicyRejectionCount,
@@ -14,7 +24,21 @@ const COLONY_ID = 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV';
 function bootSim(away = true, awayRaids = false): SimHost {
   resetAwayPolicyRejections();
   const sim = new SimHost({ flags: parseWaves('..18') });
-  sim.load(createPlanet({ type: 'flat', seed: 'w18-15-away-diplomacy', radius: 6 }));
+  sim.load(createPlanet({ type: 'flat', seed: 'w18-15-away-diplomacy', radius: 12 }));
+  for (const idx of [0, 1]) {
+    const col = ensureColonyRecord(sim.state, idx, sim.tick);
+    col.status = 'active';
+    const r = insertRow(sim.state.entities, sim.state.meta.nextEntityId++, sim.tick);
+    sim.state.entities.cols.kind[r] = ENTITY_KIND.hq;
+    sim.state.entities.cols.owner[r] = idx;
+    sim.state.entities.cols.tier[r] = 1;
+    sim.state.entities.cols.hp[r] = 500;
+    sim.state.entities.cols.hpMax[r] = 500;
+    sim.state.entities.cols.state[r] = ENTITY_STATE.idle;
+    sim.state.entities.cols.q[r] = idx * 4;
+    sim.state.entities.cols.r[r] = 0;
+  }
+  markColonyContact(sim.state, 0, 1, sim.tick);
   sim.submit({
     colonyIndex: 0,
     source: 'player',
@@ -35,41 +59,43 @@ function submitCmd(
   kind: string,
   args: unknown,
   commandId: string,
+  colonyIndex = 0,
 ) {
-  sim.submit({ colonyIndex: 0, source, commandId, kind, args });
-  return sim.step(1).outcomes[0];
+  sim.submit({ colonyIndex, source, commandId, kind, args });
+  return sim.step(1);
 }
 
 describe('W18-15 integration — SimHost gateAwayCommand for diplomacy & raids', () => {
   it('allows AI proposeTruce and respondTruce while away, and allows player cancelTruce', () => {
     const sim = bootSim(true, false);
 
-    const proposeOut = submitCmd(
+    const proposeStep = submitCmd(
       sim,
       'ai',
       'diplomacy.proposeTruce',
       { targetColonyId: 1, hours: 6 },
       'cm_ai_propose',
     );
-    expect(proposeOut?.code).toBeUndefined();
+    expect(proposeStep.outcomes[0]?.code).toBeUndefined();
 
-    const respondOut = submitCmd(
+    submitCmd(sim, 'dev', 'dev.offerTruce', { fromColony: 1, toColony: 0, hours: 6 }, 'cm_dev_of');
+    const respondStep = submitCmd(
       sim,
       'ai',
       'diplomacy.respondTruce',
-      { offerId: 'offer_0_1_10', accept: true },
+      { offerId: 'of_2', accept: true },
       'cm_ai_respond',
     );
-    expect(respondOut?.code).toBeUndefined();
+    expect(respondStep.outcomes[0]?.code).toBeUndefined();
 
-    const playerCancelOut = submitCmd(
+    const playerCancelStep = submitCmd(
       sim,
       'player',
       'diplomacy.cancelTruce',
-      { truceId: 'truce_0_1_10' },
+      { truceId: 'tr_1' },
       'cm_player_cancel',
     );
-    expect(playerCancelOut?.code).toBeUndefined();
+    expect(playerCancelStep.outcomes[0]?.code).toBeUndefined();
     expect(awayPolicyRejectionCount('AW-13')).toBe(0);
   });
 
@@ -82,7 +108,7 @@ describe('W18-15 integration — SimHost gateAwayCommand for diplomacy & raids',
       'diplomacy.cancelTruce',
       { truceId: 'truce_0_1_10' },
       'cm_ai_cancel',
-    );
+    ).outcomes[0];
     expect(aiCancel?.code).toBe('away_policy');
     expect(aiCancel?.detail).toBe('AW-13');
 
@@ -92,7 +118,7 @@ describe('W18-15 integration — SimHost gateAwayCommand for diplomacy & raids',
       'diplomacy.cancelTruce',
       { truceId: 'truce_0_1_10' },
       'cm_bot_cancel',
-    );
+    ).outcomes[0];
     expect(botCancel?.code).toBe('away_policy');
     expect(botCancel?.detail).toBe('AW-13');
     expect(awayPolicyRejectionCount('AW-13')).toBe(2);
@@ -103,7 +129,7 @@ describe('W18-15 integration — raid opt-in & present colony boundaries', () =>
   it('gates AI raid and enqueueTask raid by awayRaids while never permitting AI cancelTruce', () => {
     const sim = bootSim(true, false);
 
-    const raidBlocked = submitCmd(sim, 'ai', 'raid', { targetColonyId: 1 }, 'cm_ai_raid_1');
+    const raidBlocked = submitCmd(sim, 'ai', 'raid', { targetColonyId: 1 }, 'cm_ai_raid_1').outcomes[0];
     expect(raidBlocked?.code).toBe('away_policy');
     expect(raidBlocked?.detail).toBe('AW-11');
 
@@ -113,7 +139,7 @@ describe('W18-15 integration — raid opt-in & present colony boundaries', () =>
       'enqueueTask',
       { raid: { targetColonyId: 1 } },
       'cm_ai_enq_raid_1',
-    );
+    ).outcomes[0];
     expect(enqueueRaidBlocked?.code).toBe('away_policy');
     expect(enqueueRaidBlocked?.detail).toBe('AW-11');
     expect(awayPolicyRejectionCount('AW-11')).toBe(2);
@@ -127,7 +153,7 @@ describe('W18-15 integration — raid opt-in & present colony boundaries', () =>
       'enqueueTask',
       { raid: { targetColonyId: 1 } },
       'cm_ai_enq_raid_2',
-    );
+    ).outcomes[0];
     expect(enqueueRaidAllowed?.code).not.toBe('away_policy');
 
     const cancelStillBlocked = submitCmd(
@@ -136,7 +162,7 @@ describe('W18-15 integration — raid opt-in & present colony boundaries', () =>
       'diplomacy.cancelTruce',
       { truceId: 'truce_0_1_10' },
       'cm_ai_cancel_with_raids',
-    );
+    ).outcomes[0];
     expect(cancelStillBlocked?.code).toBe('away_policy');
     expect(cancelStillBlocked?.detail).toBe('AW-13');
     expect(awayPolicyRejectionCount('AW-13')).toBe(1);
@@ -144,14 +170,16 @@ describe('W18-15 integration — raid opt-in & present colony boundaries', () =>
 
   it('allows AI cancelTruce when colony is present (away session closed)', () => {
     const sim = bootSim(false, false);
+    submitCmd(sim, 'dev', 'dev.offerTruce', { fromColony: 1, toColony: 0, hours: 6 }, 'cm_dev_of_pres');
+    submitCmd(sim, 'ai', 'diplomacy.respondTruce', { offerId: 'of_1', accept: true }, 'cm_ai_acc_pres');
 
     const presentCancel = submitCmd(
       sim,
       'ai',
       'diplomacy.cancelTruce',
-      { truceId: 'truce_0_1_10' },
+      { truceId: 'tr_1' },
       'cm_ai_cancel_present',
-    );
+    ).outcomes[0];
     expect(presentCancel?.code).toBeUndefined();
     expect(awayPolicyRejectionCount()).toBe(0);
   });
