@@ -1023,3 +1023,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Run with W09 on (W15 depends on it). `away` and `back` write the same blob. `runDirectorOnce` itself does not re-check away; only the sweep's `listAway` does.
 - **To resolve:** If a demo must force the director while W09 is off, add a dev override inside `listAway` and document that it is not the sim blob.
 - **Found:** 2026-11-10, W15-28
+
+### BE-81 · Guild Contact counts a committed NPC fill and does not undo a later failure
+
+- **Status:** Accepted (by design, W15-25)
+- **Area / code:** `backend/app/src/market/progression/guild-contact.producer.ts` (`note`, `noteOutcome`), `backend/app/src/market/orders/place-order.service.ts` (`noteGuild`), `backend/app/src/market/guild/offers/accept-guild-offer.service.ts` (`noteContact`)
+- **What happens:** A committed fill with `actorKind === 'npc'` on exactly one side and `player` or `bot` on the other adds fact `guild-contact` +1 for that owner (`progress.guildContact`). The receipt id is `guild:guildContact:<tradeId>:<playerId>`. The same trade id does not add again. W15 off adds nothing. Amount 0, a player-player fill, the same colony, and the same owner add nothing. Actor kind `guild` is not the signal (live quotes are stored as `npc`). The count is written when the match commits. Accept emits `guildTradeSettled` at that moment; a book fill is counted from the same committed outcome. It is not written when the intent later reaches FINAL. If that row becomes FAILED, the fact is not reduced. A retry stored as `tradeId~n` counts as its own trade once that row is the live one. This producer does not write unlock rows; W12's progression engine evaluates the catalogue when it applies the fact, so Guild Contact tiers unlock at 5 / 50 / 250.
+- **Why it is like this:** W15-25 hooks the committed guild fill. Lifetime facts are not deleted (PROGRESSION_ENGINE). Achievement tiers stay in the W12 catalogue.
+- **Workaround / mitigation:** Do not expect the fact before the match commits, and do not expect a failed settlement to subtract it. A book-path id is `tradeIdOf` until a FAILED row forces the live retry id.
+- **To resolve:** Emit only from `TradeSettlement.notify` (FINAL) if chain finality should gate the fact, and add an explicit compensating event if a counted trade later fails.
+- **Found:** 2026-11-11, W15-25
