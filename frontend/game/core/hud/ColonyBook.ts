@@ -1,9 +1,10 @@
 import { TabBook, type BookTabDef } from './TabBook';
 
-export type ColonyTabId = 'player' | 'deed' | 'goals' | 'hq' | 'director' | 'combat' | 'supply' | 'trade';
+export type ColonyTabId = 'player' | 'away' | 'deed' | 'goals' | 'hq' | 'director' | 'combat' | 'supply' | 'trade';
 
 const TAB_DEFS: readonly BookTabDef<ColonyTabId>[] = [
   { id: 'player', label: 'PLAYER' },
+  { id: 'away', label: 'AWAY' },
   { id: 'deed', label: 'DEED' },
   { id: 'goals', label: 'GOALS' },
   { id: 'hq', label: 'HQ AI' },
@@ -17,6 +18,7 @@ const TAB_DEFS: readonly BookTabDef<ColonyTabId>[] = [
 const PANEL_TABS: Readonly<Record<string, ColonyTabId>> = {
   'identity/pilot': 'player',
   'achievements/pilot-tracking': 'player',
+  'away/away-settings': 'away',
   'deed/colony-deed': 'deed',
   'stages/stage-track-hud': 'goals',
   'goals/goals-panel': 'hq',
@@ -36,7 +38,7 @@ export function resolveColonyTab(featureId: string, panelId: string): ColonyTabI
 
 /**
  * The Colony book: the left tab book (top left, under the minimap), the mirror of the Command Dock. One tab per
- * colony surface: Player (guest pilot / NEAR identity, opens first), Deed, Goals (stage track), HQ AI (AI toggle, HQ
+ * colony surface: Player (guest pilot / NEAR identity, opens first), Away (W09 budget), Deed, Goals (stage track), HQ AI (AI toggle, HQ
  * goals, priorities), Director, Combat, Supply and Trade. Only tabs whose panels are mounted exist.
  */
 export class ColonyBook {

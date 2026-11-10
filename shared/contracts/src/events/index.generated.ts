@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { event as event_accountCreated } from './account-created';
 import { event as event_achievementEarned } from './achievement-earned';
 import { event as event_alertPing } from './alert-ping';
+import { event as event_awayBudgetExhausted } from './away-budget-exhausted';
 import { event as event_borderFrozen } from './border-frozen';
 import { event as event_brownoutShed } from './brownout-shed';
 import { event as event_brownout } from './brownout';
@@ -12,6 +13,10 @@ import { event as event_buildingDestroyed } from './building-destroyed';
 import { event as event_cargoExported } from './cargo-exported';
 import { event as event_cargoImported } from './cargo-imported';
 import { event as event_cargoRefunded } from './cargo-refunded';
+import { event as event_colonyAway } from './colony-away';
+import { event as event_colonyBack } from './colony-back';
+import { event as event_colonyCritical } from './colony-critical';
+import { event as event_colonyEliminated } from './colony-eliminated';
 import { event as event_colonyFounded } from './colony-founded';
 import { event as event_deedMinted } from './deed-minted';
 import { event as event_deedSettled } from './deed-settled';
@@ -69,7 +74,7 @@ import { event as event_unitDestroyed } from './unit-destroyed';
 import { event as event_unitProduced } from './unit-produced';
 import { event as event_xpLevelUp } from './xp-level-up';
 
-export const EVENTS = [event_accountCreated, event_achievementEarned, event_alertPing, event_borderFrozen, event_brownoutShed, event_brownout, event_buildingCompleted, event_buildingDestroyed, event_cargoExported, event_cargoImported, event_cargoRefunded, event_colonyFounded, event_deedMinted, event_deedSettled, event_deedUpdated, event_devPong, event_devTuned, event_devWarp, event_directorAction, event_directorStatus, event_energyCollapse, event_faunaKilled, event_feeEarned, event_goalDone, event_goalProgress, event_groundRevealed, event_hqLanded, event_lightningStrike, event_marketCancelRequested, event_marketHubFeeSet, event_marketOrderRejected, event_marketOrderRequested, event_marketSettlementFailed, event_meteorImpact, event_nestDestroyed, event_nightSurvived, event_obstacleRemoved, event_powerOverload, event_powerSevered, event_prestigeCompleted, event_projectileFired, event_projectileImpact, event_raidRepelled, event_raidStarted, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_stageReached, event_stageUnlocked, event_stormEnded, event_stormStarted, event_suggestionOffered, event_territoryClaimed, event_territoryReverting, event_tierUnlocked, event_tilePrepared, event_tileStateChanged, event_tradeSettled, event_treasuryRejected, event_twisterStarted, event_underAttack, event_unitDestroyed, event_unitProduced, event_xpLevelUp] as const;
+export const EVENTS = [event_accountCreated, event_achievementEarned, event_alertPing, event_awayBudgetExhausted, event_borderFrozen, event_brownoutShed, event_brownout, event_buildingCompleted, event_buildingDestroyed, event_cargoExported, event_cargoImported, event_cargoRefunded, event_colonyAway, event_colonyBack, event_colonyCritical, event_colonyEliminated, event_colonyFounded, event_deedMinted, event_deedSettled, event_deedUpdated, event_devPong, event_devTuned, event_devWarp, event_directorAction, event_directorStatus, event_energyCollapse, event_faunaKilled, event_feeEarned, event_goalDone, event_goalProgress, event_groundRevealed, event_hqLanded, event_lightningStrike, event_marketCancelRequested, event_marketHubFeeSet, event_marketOrderRejected, event_marketOrderRequested, event_marketSettlementFailed, event_meteorImpact, event_nestDestroyed, event_nightSurvived, event_obstacleRemoved, event_powerOverload, event_powerSevered, event_prestigeCompleted, event_projectileFired, event_projectileImpact, event_raidRepelled, event_raidStarted, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_stageReached, event_stageUnlocked, event_stormEnded, event_stormStarted, event_suggestionOffered, event_territoryClaimed, event_territoryReverting, event_tierUnlocked, event_tilePrepared, event_tileStateChanged, event_tradeSettled, event_treasuryRejected, event_twisterStarted, event_underAttack, event_unitDestroyed, event_unitProduced, event_xpLevelUp] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

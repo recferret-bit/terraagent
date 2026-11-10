@@ -232,9 +232,14 @@ export class DeedSettledService implements OnModuleInit, OnModuleDestroy {
     if (this.notifiedSettledColonies.has(record.colonyId)) return;
     this.notifiedSettledColonies.add(record.colonyId);
     try {
+      const to = record.playerId ?? record.accountId;
+      if (!to) return;
       await this.notifier.send({
+        colonyId: record.colonyId,
+        eventId: `deed-settled:${record.colonyId}`,
+        kind: 'deed_settled',
         channel: 'telegram',
-        to: record.playerId ?? record.accountId,
+        to,
         title: 'Colony Deed Settled',
         body: `Your Colony Deed (${record.tokenId}) was settled: ${change}`,
         data: {

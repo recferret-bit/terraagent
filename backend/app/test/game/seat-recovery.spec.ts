@@ -22,6 +22,7 @@ function fakePlanets(loadedIds: string[] = []) {
   const loads: string[] = [];
   const planets = {
     onPlanetLoaded: () => () => {}, onPlanetUnloaded: () => () => {}, onPlanetSnapshot: () => () => {},
+    requestSnapshot: () => {},
     isLoaded: (id: string) => loaded.has(id), markScenarioColonyPlanet: (id: string) => { marked.push(id); },
     load: async (id: string) => { loads.push(id); loaded.add(id); return 0; },
     ensureLoaded: async (id: string) => { loads.push(`new:${id}`); loaded.add(id); return 0; },

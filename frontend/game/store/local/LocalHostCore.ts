@@ -1,14 +1,18 @@
-import { commandGate, flagsFromList, newId, parseCommandArgs, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
+import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
-  applyTunedEntityHealth, buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, previewPlanetTimePatch, SIM_VERSION, SimHost, TICK_MS, tune,
-  type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTimePatch, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
+  applyTunedEntityHealth, buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS,
+  type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
 import { describeJournalProblem, resumeJournal } from './hostJournal';
 import { LocalCargoRelay } from './localCargoRelay';
+import { LocalDevError, runLocalDevCommand } from './parts/localDevCommands';
 import { scenarioSource, type PlanetSource, type SeededPlanet } from './planetSource';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
+import { LocalHardModeClock } from './devPresence';
 import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
+
+export { LocalDevError };
 
 export interface LocalHostDeps {
   /** Monotonic ms (the scheduler's clock). */
@@ -20,11 +24,6 @@ export interface LocalHostDeps {
   store: SnapshotStore;
   /** Snapshot cadence (default 10 s). */
   saveEveryMs?: number;
-}
-
-/** A dev command failed; `code` is what the console shows (`host_unavailable`, `invalid_args`, `not_found`). */
-export class LocalDevError extends Error {
-  constructor(readonly code: string, message: string) { super(message); this.name = 'LocalDevError'; }
 }
 
 const SAVE_EVERY_MS = 10_000;
@@ -62,6 +61,8 @@ export class LocalHostCore {
   private readonly sched: PlanetScheduler;
   private readonly playerId = newId('pr');
   private readonly cargoRelay = new LocalCargoRelay();
+  /** `?host=local` hard-mode clock. The server copy W09-19 reads is `HardModeClock`. */
+  private readonly hardMode = new LocalHardModeClock();
 
   /** `waves`: the flags a dev `scenario` switch runs with (intersected with the scenario's waves). */
   private constructor(private readonly waves: readonly string[], private readonly deps: LocalHostDeps, private readonly post: LocalPost) {
@@ -261,7 +262,6 @@ export class LocalHostCore {
     for (const o of outcomes) {
       if (this.cargoRelay.isInternalCommand(o.commandId)) continue;
       if (!o.code) { this.server({ v: 1, t: 'cmd.ack', d: { id: o.commandId, appliedAtTick: o.appliedAtTick } }); continue; }
-      // a handler may name the cause (`{ code, detail }`, GP-31); a code outside the contract is `internal` with the code as detail
       const code: RejectCode = isRejectCode(o.code) ? o.code : 'internal';
       const detail = code === o.code ? o.detail : o.detail ? `${o.code}: ${o.detail}` : o.code;
       this.server({
@@ -280,7 +280,6 @@ export class LocalHostCore {
   private flushDelta(): void {
     const toTick = this.host.tick;
     if (!this.joined || toTick <= this.lastDeltaTick) return;
-    // The same frames the server planet host sends (W05-19): a large tile change goes out in capped chunks; events ride frame 0.
     this.host.clientDeltaFrames(this.lastDeltaTick).forEach((f, i) => {
       const events = i === 0 ? this.window.splice(0) : [];
       this.server({ v: 1, t: 'delta', tick: f.toTick, d: { fromTick: f.fromTick, toTick: f.toTick, diff: ownBytes(f.diff), events } });
@@ -338,75 +337,22 @@ export class LocalHostCore {
     this.queue.push({ colonyIndex: hasColony ? 0 : null, source: pre.dev ? 'dev' : 'player', commandId: id, kind, args: pre.args });
   }
 
-  // ---- dev server (warp, time, scenario, tune, local.reset, ledger) -----------------------------------------------
+  // ---- dev server (warp, time, scenario, tune, local.reset, ledger, away, back, colony.eliminate) -----
 
-  /** The local `DevServer` (`warp`, `time`, `scenario`, `local.reset`, `tune`, `ledger`): what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
-  async devCommand(name: string, args: unknown): Promise<unknown> {
-    const a = (args ?? {}) as Record<string, unknown>;
-    switch (name) {
-      case 'warp': return this.devWarp(a);
-      case 'scenario': {
-        if (typeof a.id !== 'string' || !a.id) throw new LocalDevError('invalid_args', 'scenario needs { id }');
-        return this.restart(scenarioSource(a.id.toLowerCase(), this.waves)).catch((e: unknown) => { throw new LocalDevError('not_found', e instanceof Error ? e.message : String(e)); });
-      }
-      case 'local.reset': return this.restart(this.source);
-      case 'tune': return this.devTune(a);
-      case 'time': return this.devTime(a);
-      case 'ledger': return this.ledger.view(this.planetId, String(a.account ?? 'colony:0'), Number(a.limit ?? 10) || 10);
-      case 'near.mock.fail': return this.cargoRelay.devFail(a);
-      case 'cargo.grant': return this.cargoRelay.devGrant(a, this.queue);
-      default: throw new LocalDevError('host_unavailable', `"${name}" needs the game server; not available on this host`);
-    }
-  }
-
-  private devTime(a: Record<string, unknown>): Record<string, unknown> {
-    const { planetId: _ignored, ...rest } = a;
-    const parsed = parseCommandArgs('dev.time', rest);
-    if (!parsed.success) throw new LocalDevError('invalid_args', parsed.error.issues[0]?.message ?? 'invalid time args');
-    const patch = parsed.data as PlanetTimePatch;
-    if (patch.timeOfDay !== undefined || patch.realHoursPerDay !== undefined || patch.timeScale !== undefined) {
-      this.queue.push({ colonyIndex: null, source: 'dev', commandId: newId('cm'), kind: 'dev.time', args: patch });
-    }
-    const mergedPatch: PlanetTimePatch = {};
-    for (const c of this.queue) {
-      if (c.kind === 'dev.time' || c.kind === 'setPlanetTime') {
-        Object.assign(mergedPatch, c.args as PlanetTimePatch);
-      }
-    }
-    const pt = previewPlanetTimePatch(this.host.state, mergedPatch, this.host.tick, this.host.pipeline.config.data);
-    return {
-      planetId: this.planetId,
-      tick: this.host.tick,
-      hour: pt.hour,
-      timeOfDay: pt.timeOfDay,
-      phase: pt.phase,
-      cyclePhase: pt.cyclePhase,
-      day: pt.day,
-      daylight: pt.daylight,
-      isNight: pt.isNight,
-      realHoursPerDay: pt.realHoursPerDay,
-      timeScale: pt.timeScale,
-    };
-  }
-
-  private devWarp(a: Record<string, unknown>): { planetId: string; k: number } {
-    const k = a.k;
-    if (typeof k !== 'number' || !Number.isInteger(k) || k < 1 || k > 100) throw new LocalDevError('invalid_args', 'warp needs an integer k in 1..100');
-    this.sched.setWarp('local', k);
-    return { planetId: this.planetId, k: this.warp };
-  }
-
-  private devTune(a: Record<string, unknown>): { dataHash: string; overrides: BalanceOverrides; text?: string } {
-    const req = (a.op === 'set' ? { op: 'set', path: String(a.path ?? ''), value: a.value } : { op: a.op }) as TuneRequest;
-    if (!['set', 'reset', 'export'].includes(req.op)) throw new LocalDevError('invalid_args', 'tune op must be set, reset or export');
-    try {
-      const out = tune(this.tuning, req);
-      if (out.next) this.swapPipeline(out.next.pipeline, out.next.live);
-      if (out.event && this.joined) this.window.push({ ...out.event, atTick: this.host.tick });
-      return { dataHash: this.host.pipeline.config.data.hash, overrides: effectiveOverrides(this.tuning), ...(out.text !== undefined ? { text: out.text } : {}) };
-    } catch (e) {
-      throw new LocalDevError('invalid_args', e instanceof Error ? e.message : String(e));
-    }
+  /** The local `DevServer`: what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
+  devCommand(name: string, args: unknown): Promise<unknown> {
+    return runLocalDevCommand(
+      {
+        down: this.down, waves: this.waves, source: this.source, host: this.host, planetId: this.planetId,
+        warp: this.warp, joined: this.joined, tuning: this.tuning, queue: this.queue, window: this.window,
+        ledger: this.ledger, cargoRelay: this.cargoRelay, hardMode: this.hardMode, sched: this.sched,
+        wallMs: () => this.deps.wallMs(), restart: (s) => this.restart(s),
+        swapPipeline: (next, live) => this.swapPipeline(next, live),
+        stepOnce: (dt) => this.stepOnce(dt), flushDelta: () => this.flushDelta(), server: (m) => this.server(m),
+      },
+      name,
+      args,
+    );
   }
 
   // ---- persistence ------------------------------------------------------------------------------------------------

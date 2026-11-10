@@ -14,6 +14,7 @@ describe('resolveColonyTab routing', () => {
   it.each([
     ['identity', 'pilot', 'player'],
     ['achievements', 'pilot-tracking', 'player'],
+    ['away', 'away-settings', 'away'],
     ['deed', 'colony-deed', 'deed'],
     ['stages', 'stage-track-hud', 'goals'],
     ['goals', 'goals-panel', 'hq'],
@@ -51,10 +52,10 @@ describe('ColonyBook (left tab book)', () => {
   });
 
   it('PLAYER is the first tab and opens first when present', () => {
-    const colony = makeColony(['trade', 'deed', 'player']);
+    const colony = makeColony(['trade', 'deed', 'player', 'away']);
     expect(colony.book.getActiveTab()).toBe('player');
     expect([...colony.el.querySelectorAll('[data-testid^=colony-tab-]')].map((b) => b.getAttribute('data-testid')))
-      .toEqual(['colony-tab-player', 'colony-tab-deed', 'colony-tab-trade']);
+      .toEqual(['colony-tab-player', 'colony-tab-away', 'colony-tab-deed', 'colony-tab-trade']);
     expect(document.querySelector('[data-testid=colony-tab-player]')!.textContent).toBe('PLAYER');
   });
 

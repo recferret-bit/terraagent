@@ -37,6 +37,8 @@ export const REJECT_CODES = [
   // W13 markets: stall fee outside the policy range, open-order limit reached, below lot / minimum notional, no such open
   // order of the colony (`no_trade_hub`, `hub_offline`, `insufficient_cargo`, `market_unavailable` are reused)
   'fee_out_of_range', 'order_limit', 'order_too_small', 'unknown_order',
+  // W09 away policy (AW-22): an automated command the away rules refuse. Player commands are exempt.
+  'away_policy',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

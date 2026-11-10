@@ -1,5 +1,6 @@
-import { flagsFromList, newId, type CargoStatusPayload, type DeedUpdatedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type DeedUpdatedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
+import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
@@ -81,6 +82,8 @@ export class WorldStore {
   private readonly cargoStatuses = new Emitter<CargoStatusPayload>();
   private readonly marketBooks = new Emitter<MarketBookPayload>();
   private readonly marketTrades = new Emitter<MarketTradePayload>();
+  private latestAwayDigest: AwayDigestV1 | null = null;
+  private readonly awayDigests = new Emitter<AwayDigestV1>();
   private readonly deedUpdates = new Emitter<DeedUpdatedPayload>();
 
   constructor(
@@ -105,6 +108,10 @@ export class WorldStore {
   /** W13 `market.book` / `market.trade` pushes of the joined planet. */
   onMarketBook(fn: (p: MarketBookPayload) => void): () => void { return this.marketBooks.on(fn); }
   onMarketTrade(fn: (p: MarketTradePayload) => void): () => void { return this.marketTrades.on(fn); }
+  /** Latest join digest (`welcome.away`). Null before one arrives. A resync welcome does not clear it. */
+  latestAway(): AwayDigestV1 | null { return this.latestAwayDigest; }
+  /** Fires when a join welcome carries `away`. The rest of welcome handling is unchanged. */
+  onAwayDigest(fn: (d: AwayDigestV1) => void): () => void { return this.awayDigests.on(fn); }
   /** W20 `deed.updated` pushes for the joined planet/colony. */
   onDeedUpdated(fn: (p: DeedUpdatedPayload) => void): () => void { return this.deedUpdates.on(fn); }
 
@@ -202,21 +209,15 @@ export class WorldStore {
   private fromServer(m: ServerMessage): void {
     const w = this.worker;
     if (!w) return;
-    if (
-      handleFeatureServerMessage(m, {
-        setCargoStatus: (s) => {
-          this.latestCargoStatus = s;
-        },
-        latestView: this.latestView,
-        views: this.views,
-        cargoStatuses: this.cargoStatuses,
-        marketBooks: this.marketBooks,
-        marketTrades: this.marketTrades,
-        deedUpdates: this.deedUpdates,
-      })
-    ) {
-      return;
-    }
+    if (handleFeatureServerMessage(m, {
+      setCargoStatus: (s) => { this.latestCargoStatus = s; },
+      latestView: this.latestView,
+      views: this.views,
+      cargoStatuses: this.cargoStatuses,
+      marketBooks: this.marketBooks,
+      marketTrades: this.marketTrades,
+      deedUpdates: this.deedUpdates,
+    })) return;
     switch (m.t) {
       case 'welcome': {
         this.planetId = m.d.planet.id;
@@ -239,6 +240,7 @@ export class WorldStore {
           },
           [state.buffer],
         );
+        this.publishJoinAway(m.d);
         return;
       }
       case 'delta': {
@@ -324,6 +326,13 @@ export class WorldStore {
       const next = w && applyTuned(w.overrides, t);
       if (w && next) this.welcomeData = { flags: w.flags, overrides: next };
     }
+  }
+
+  private publishJoinAway(d: { reason?: string; away?: AwayDigestV1 }): void {
+    const away = digestFromWelcome(d);
+    if (!away) return;
+    this.latestAwayDigest = away;
+    this.awayDigests.emit(away);
   }
 
   /** A diff did not fit: ask for a fresh welcome by joining again (the transport must be connected). */

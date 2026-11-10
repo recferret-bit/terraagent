@@ -90,6 +90,24 @@ describe('SnapshotStore', () => {
     for (let i = 22; i <= 30; i++) expect(left).toContain(i); // last 10 includes 100 + 22..30
     expect(left.length).toBeLessThan(31);
   });
+
+  it('persists SEAL and END with a savedAt age inside the 60 s period', async () => {
+    const now = new Date();
+    const raw = snapshot(state('kind'));
+    const periodMs = 60_000;
+    await store.save('pl_seal_k', 4, 'SEAL', raw, now);
+    await store.save('pl_end_k', 5, 'END', raw, new Date(now.getTime() - (periodMs - 1_000)));
+    const seal = await db.prisma.planetSnapshot.findFirstOrThrow({ where: { planetId: 'pl_seal_k' } });
+    const end = await db.prisma.planetSnapshot.findFirstOrThrow({ where: { planetId: 'pl_end_k' } });
+    expect(seal.kind).toBe('SEAL');
+    expect(end.kind).toBe('END');
+    expect(now.getTime() - seal.savedAt.getTime()).toBeLessThanOrEqual(periodMs);
+    expect(now.getTime() - end.savedAt.getTime()).toBeLessThanOrEqual(periodMs);
+    const staleAt = new Date(now.getTime() - (periodMs + 1_000));
+    await store.save('pl_stale_k', 1, 'PERIODIC', raw, staleAt);
+    const stale = await db.prisma.planetSnapshot.findFirstOrThrow({ where: { planetId: 'pl_stale_k' } });
+    expect(now.getTime() - stale.savedAt.getTime()).toBeGreaterThan(periodMs);
+  });
 });
 
 describe('boot restore', () => {

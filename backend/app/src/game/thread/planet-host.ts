@@ -1,43 +1,38 @@
 import { randomUUID } from 'node:crypto';
 import type { SimCommandV1 } from '@terra/contracts';
 import {
-  allModules, applyTunedEntityHealth, buildPipeline, clientDeltaFrames, createPlanet, effectiveOverrides, getColonyStock, mergeOverrides, nextLandingSite, restore, snapshot, step,
-  StepError, tune,
-  type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
-  type SimModule, type TuneRequest,
-  regionForNewPlanet, type ResolvedRegion,
+  allModules,
+  buildPipeline,
+  clientDeltaFrames,
+  createPlanet,
+  effectiveOverrides,
+  getColonyStock,
+  mergeOverrides,
+  restore,
+  snapshot,
+  step,
+  StepError,
+  type BalanceOverrides,
+  type CommandOutcome,
+  type LedgerPosting,
+  type SimEvent,
+  type SimModule,
+  type TuneRequest,
 } from '@terra/sim';
+import {
+  applyDueProfile,
+  collectPlanetStats,
+  owned,
+  regionParam,
+  replyLandingSite,
+  runPlanetTune,
+  type Planet,
+  type SchedulerView,
+} from './parts/planet-host-ops';
 import { ProductionBatches } from './production-batches';
-import { type LoadMsg, type PassStat, type Post, type PlanetStats, type ToThread, W00_PLANET_TYPE } from './protocol';
+import { type LoadMsg, type PlanetStats, type Post, type ToThread, W00_PLANET_TYPE } from './protocol';
 
-/** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
-export interface SchedulerView {
-  info(planetId: string): PlanetSchedule | undefined;
-  readonly maxLag: number;
-  recentPasses(): PassStat[];
-}
-
-interface Planet {
-  state: PlanetState;
-  pipeline: Pipeline;
-  /** Balance overrides (D-35): `base` = file ⊕ scenario, `live` = dev tunes. */
-  tuning: PlanetTuning;
-  /** Scenario overrides of the load, kept so a profile swap can rebuild `tuning.base` (swap ⊕ scenario). */
-  scenario: BalanceOverrides;
-  /** Economy profile waiting for its effective tick (W13-39). */
-  pendingProfile?: { readonly overrides: BalanceOverrides; readonly effectiveTick: number; readonly profileHash: string };
-  pending: SimCommandV1[];
-  subscribed: boolean;
-  /** Tick of the last delta sent (or of the subscription); the next delta starts here (D-31). */
-  lastDeltaTick: number;
-  nextDeltaMs: number;
-  /** Events of the open delta window; they travel inside the delta (subscribed planets only). */
-  windowEvents: SimEvent[];
-  deltaMs: number;
-  deltaBytes: number;
-  /** Stockpile `resourceProduced` batches (W02-28); only when the planet runs with W02 on. */
-  production?: ProductionBatches;
-}
+export type { SchedulerView };
 
 export interface HostOptions {
   /** Extra sim modules on top of the discovered ones (tests/tools). */
@@ -47,17 +42,6 @@ export interface HostOptions {
   readonly now?: () => number;
   /** Balance overrides from `TA_BALANCE_OVERRIDES`, under every planet's scenario overrides. */
   readonly overrides?: BalanceOverrides;
-}
-
-/** New planets with W13 on get the server's resolved region (`params.region`) or, without one, the bootstrap-table region. */
-function regionParam(msg: LoadMsg, flags: readonly string[]): { region?: ResolvedRegion } {
-  const region = msg.params?.region ?? regionForNewPlanet({ flags, planetType: msg.params?.type, planetId: msg.planetId });
-  return region ? { region } : {};
-}
-
-/** Exact-size copy so the buffer can be transferred without dragging along unrelated bytes. */
-function owned(bytes: Uint8Array): Uint8Array {
-  return bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes : bytes.slice();
 }
 
 /**
@@ -212,37 +196,13 @@ export class PlanetHost {
     this.post({ t: 'profileScheduled', thread: this.thread, reqId: msg.reqId, profileHash: msg.profileHash, planets: this.planets.size });
   }
 
-  /**
-   * Swaps a planet to the pending economy profile once its tick reached the effective tick: the pipeline is rebuilt from the
-   * profile ⊕ scenario ⊕ live tunes, state is kept, and a `dev.tuned` reset event (new dataHash) makes subscribed clients
-   * fetch a fresh welcome, which carries the new overrides. A profile that fails to compile leaves the planet untouched.
-   */
   private applyProfileIfDue(planetId: string, p: Planet): void {
-    const pp = p.pendingProfile;
-    if (!pp || p.state.meta.tick < pp.effectiveTick) return;
-    p.pendingProfile = undefined;
-    try {
-      const base = mergeOverrides(pp.overrides, p.scenario);
-      const pipeline = buildPipeline(p.tuning.flags, mergeOverrides(base, p.tuning.live), this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined);
-      p.pipeline = pipeline;
-      p.tuning = { flags: p.tuning.flags, base, live: p.tuning.live };
-      const dataHash = pipeline.config.data.hash;
-      this.publish(planetId, p, [{ kind: 'dev.tuned', severity: 'info', colonyIds: [], data: { op: 'reset', dataHash }, atTick: p.state.meta.tick }]);
-      this.post({ t: 'profileApplied', planetId, tick: p.state.meta.tick, profileHash: pp.profileHash, dataHash });
-    } catch (e) {
-      this.post({ t: 'error', thread: this.thread, planetId, message: `profile ${pp.profileHash}: ${e instanceof Error ? e.message : String(e)}` });
-    }
+    applyDueProfile(this.thread, planetId, p, this.opts.modules, this.post, (id, pl, ev) => this.publish(id, pl, ev));
   }
 
   /** Reply to `landingSite`: the landing planner on the live state, with the planet's compiled data (LED-14). */
   private landingSite(planetId: string, reqId: number, colony: number): void {
-    const p = this.planets.get(planetId);
-    if (!p) return this.post({ t: 'landingSite', planetId, reqId, answer: { ok: false, code: 'planet_not_loaded' } });
-    const next = nextLandingSite(p.state, colony, { slotIndex: colony, data: p.pipeline.config.data });
-    const answer = next.ok
-      ? { ok: true as const, q: next.site.q, r: next.site.r, ...(next.site.slot ? { slotIndex: next.site.slot.index } : {}) }
-      : { ok: false as const, code: next.code };
-    this.post({ t: 'landingSite', planetId, reqId, answer });
+    replyLandingSite(this.planets.get(planetId), planetId, reqId, colony, this.post);
   }
 
   private setSubscribed(planetId: string, p: Planet, on: boolean): void {
@@ -279,8 +239,6 @@ export class PlanetHost {
     const toTick = p.state.meta.tick;
     if (toTick <= p.lastDeltaTick) return;
     const t0 = performance.now();
-    // One shared path with the local host (W05-19): hidden ground never leaves the server (D-38), a large tile change
-    // goes as capped chunks; the window's events ride with the first frame.
     const frames = clientDeltaFrames(p.state, p.lastDeltaTick);
     p.deltaMs = performance.now() - t0;
     p.deltaBytes = frames.reduce((n, f) => n + f.diff.byteLength, 0);
@@ -313,8 +271,6 @@ export class PlanetHost {
   private fullState(planetId: string, reqId: number): void {
     const p = this.planets.get(planetId);
     if (!p) return this.post({ t: 'error', thread: this.thread, planetId, message: `fullState: planet ${planetId} is not loaded` });
-    // The welcome at tick T must be followed by a delta starting at T: close the open window first. Message order on the
-    // port guarantees main sees this delta (toTick T, ignored by the joining socket) before the snapshot at T.
     if (p.subscribed) this.sendDelta(planetId, p);
     const bytes = owned(snapshot(p.state, { forClient: true })); // welcome: no hidden layers (D-38)
     this.post({
@@ -328,22 +284,7 @@ export class PlanetHost {
    * the new numbers, and records a `dev.tuned` event (event log / bus). A bad path or value leaves the planet untouched.
    */
   private tune(planetId: string, reqId: number, req: TuneRequest): void {
-    const p = this.planets.get(planetId);
-    if (!p) return this.post({ t: 'error', thread: this.thread, planetId, message: `tune: planet ${planetId} is not loaded` });
-    const reply = (extra: { ok: boolean; text?: string; error?: string }) =>
-      this.post({ t: 'tuned', planetId, reqId, dataHash: p.pipeline.config.data.hash, overrides: effectiveOverrides(p.tuning), ...extra });
-    try {
-      const out = tune(p.tuning, req, this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined);
-      if (out.next) {
-        applyTunedEntityHealth(p.state, p.pipeline.config.data, out.next.pipeline.config.data);
-        p.pipeline = out.next.pipeline;
-        p.tuning.live = out.next.live;
-      }
-      if (out.event) this.publish(planetId, p, [{ ...out.event, atTick: p.state.meta.tick }]);
-      reply({ ok: true, ...(out.text !== undefined ? { text: out.text } : {}) });
-    } catch (e) {
-      reply({ ok: false, error: e instanceof Error ? e.message : String(e) });
-    }
+    runPlanetTune(this.thread, planetId, this.planets.get(planetId), reqId, req, this.opts.modules, this.post, (id, pl, ev) => this.publish(id, pl, ev));
   }
 
   /** Each event leaves the thread exactly once: inside a delta when the planet is subscribed, else as a bare `event`. */
@@ -353,15 +294,7 @@ export class PlanetHost {
   }
 
   stats(): PlanetStats[] {
-    return [...this.planets].map(([planetId, p]) => {
-      const s = this.sched?.info(planetId);
-      return {
-        planetId, tick: p.state.meta.tick, entities: p.state.entities.count, pendingCmds: p.pending.length, subscribed: p.subscribed,
-        deltaMs: p.deltaMs, deltaBytes: p.deltaBytes,
-        lagSteps: s?.lagSteps ?? 0, mode: s?.mode ?? 'active', nextDueMs: s?.nextDueMs ?? 0, stepsLastPass: s?.stepsLastPass ?? 0,
-        warp: s?.warp ?? 1, warpRequested: s?.warpRequested ?? 1,
-      };
-    });
+    return collectPlanetStats(this.planets, this.sched);
   }
 
   private ctl(msg: Extract<ToThread, { t: 'ctl' }>): void {
@@ -376,6 +309,8 @@ export class PlanetHost {
       if (process.env.NODE_ENV === 'production') return;
       const end = performance.now() + msg.ms;
       while (performance.now() < end) { /* busy-wait: simulates a stalled thread */ }
+    } else if (msg.op === 'mode') {
+      this.sched?.setMode(msg.planetId, msg.mode);
     }
     // 'warp' and 'stop' are handled by the thread entry (it owns the port and the timer).
   }

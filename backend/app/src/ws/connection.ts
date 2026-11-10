@@ -1,15 +1,33 @@
 import type { Logger } from 'pino';
-import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode, type HomeResponse } from '@terra/contracts';
-import type { RawData, WebSocket } from 'ws';
+import {
+  CLOSE_CODES,
+  encodeWire,
+  type AwayDigestV1,
+  type ClientMessageOf,
+  type CloseCode,
+  type HomeResponse,
+} from '@terra/contracts';
+import type { WebSocket } from 'ws';
+import type { AwayDigestService } from '../game/digest';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
+import { holdColonySocket, releaseColonySocket } from '../game/presence/socket-presence';
 import type { CommandIngress } from './command-ingress';
 import { DEFAULT_HOME, type HomeProvider } from './home-provider';
 import { MarketTopics } from './market-topics';
+import {
+  buildWelcomeMessage,
+  parseClientFrame,
+  PROTO_VERSION,
+  rawToFrame,
+  readConnectionReturnDigest,
+  resolveConnectionHome,
+  seatConnectionScenario,
+  TICK_MS,
+} from './parts/connection-helpers';
 import type { PlanetRooms, RoomMember } from './rooms';
 import { BadHelloTokenError, type SessionVerifier, type VerifiedSession } from './session-verifier';
 
-export const TICK_MS = 200;
-export const PROTO_VERSION = 1;
+export { PROTO_VERSION, TICK_MS };
 
 export interface ConnectionDeps {
   readonly verifier: SessionVerifier;
@@ -17,6 +35,8 @@ export interface ConnectionDeps {
   readonly rooms: PlanetRooms;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  /** Closed away digest for `welcome.away` (CT-32). Absent in gateway fixtures that do not boot digests. */
+  readonly digests?: Pick<AwayDigestService, 'deliverWelcome'>;
   readonly flags: readonly string[];
   readonly log: Logger;
   readonly helloTimeoutMs: number;
@@ -26,18 +46,13 @@ export interface ConnectionDeps {
    * Absent in unit tests that have no database.
    */
   seatDevScenario?(input: { playerId: string; handle: string; planetId: string; colonyIndices?: readonly number[] }): Promise<void>;
-  /** Called after the welcome of a join was sent; the gateway closes the player's older planet socket with 4001. */
+  /** Called after the welcome of a join was sent; the gateway closes the older socket for this colony with 4001. */
   onJoined(conn: Connection): void;
   onClosed(conn: Connection): void;
   onWelcome(): void;
 }
 
 type State = 'new' | 'lobby' | 'joining' | 'playing' | 'closed';
-
-const rawToFrame = (data: RawData, isBinary: boolean): string | Uint8Array => {
-  const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data);
-  return isBinary ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) : buf.toString('utf8');
-};
 
 /**
  * One WebSocket: hello (5 s) -> lobby -> join -> playing (PROTOCOL §4.1, WS-10..16). Frames are handled one at a time
@@ -52,6 +67,8 @@ export class Connection implements RoomMember {
   playerId: string | undefined;
   planetId: string | undefined;
   colonyId: string | null = null;
+  /** Colony index from home, when the row has one. The presence command carries it (W09-28 owns takeover). */
+  colonyIndex: number | undefined;
   welcomeTick: number | undefined;
   paused = false;
   /** W13 per-socket market pair filter; reset to "all pairs" whenever the socket leaves its planet. */
@@ -59,6 +76,8 @@ export class Connection implements RoomMember {
   private resyncing = false;
   /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
   private readonly colonyMemo: { planetId?: string; colony?: null } = {};
+  /** This socket has incremented the colony presence refcount (CT-38). Released once in `leaveRoom`. */
+  private colonyHeld = false;
   private chain: Promise<void> = Promise.resolve();
   private helloTimer: NodeJS.Timeout | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
@@ -152,52 +171,39 @@ export class Connection implements RoomMember {
     this.expTimer.unref?.();
   }
 
-  /** Best-effort. A failure leaves the dev session on the synthetic colony 0 (BE-07). */
-  private async seatScenario(planetId: string): Promise<void> {
-    const seat = this.d.seatDevScenario;
-    const playerId = this.playerId;
-    if (!seat || !playerId || !this.session?.dev || !this.d.planets.isScenarioColonyPlanet(planetId)) return;
-    try {
-      await seat({ playerId, handle: this.session.handle ?? 'pilot', planetId, colonyIndices: this.d.planets.scenarioColonyIndices?.(planetId) ?? [0] });
-    } catch (e) {
-      this.d.log.warn({ err: e, playerId, planetId }, 'scenario colony seat failed');
-    }
-  }
-
-  private async resolveHome(playerId: string, planetId?: string): Promise<HomeResponse> {
-    if (!this.d.home) return DEFAULT_HOME;
-    try {
-      return await this.d.home.getHome(playerId, planetId);
-    } catch (e) {
-      this.d.log.warn({ err: e, playerId }, 'home lookup failed: answered as NEW (a join is refused until it works)');
-      return DEFAULT_HOME;
-    }
+  private resolveHome(playerId: string, planetId?: string): Promise<HomeResponse> {
+    return resolveConnectionHome(this.d.home, this.d.log, playerId, planetId);
   }
 
   private leaveRoom(): void {
+    this.releaseColony();
     if (this.planetId) this.d.rooms.leave(this.planetId, this);
     delete this.colonyMemo.planetId;
     delete this.colonyMemo.colony;
     this.planetId = undefined;
     this.market.reset();
     this.colonyId = null;
+    this.colonyIndex = undefined;
     this.welcomeTick = undefined;
   }
 
-  private parse(frame: string | Uint8Array): ClientMessage | undefined {
-    try {
-      const r = ClientMessage.safeParse(decodeWire(frame));
-      if (r.success) return r.data;
-      this.d.log.debug({ issues: r.error.issues.slice(0, 3) }, 'invalid ws frame');
-    } catch {
-      this.d.log.debug('undecodable ws frame');
-    }
-    return undefined;
+  /** Holds presence only after `playing`, and before replace closes the colony's previous socket. */
+  private holdColony(): void {
+    if (this.colonyHeld || !this.colonyId) return;
+    holdColonySocket(this.colonyId);
+    this.colonyHeld = true;
+  }
+
+  private releaseColony(): void {
+    if (!this.colonyHeld) return;
+    const id = this.colonyId;
+    this.colonyHeld = false;
+    if (id) releaseColonySocket(id);
   }
 
   private async onFrame(frame: string | Uint8Array): Promise<void> {
     if (this.state === 'closed') return;
-    const msg = this.parse(frame);
+    const msg = parseClientFrame(frame, this.d.log);
     if (this.state === 'new') {
       if (msg?.t !== 'hello') return this.bye(CLOSE_CODES.bad_hello, 'expected_hello');
       return this.onHello(msg);
@@ -274,14 +280,22 @@ export class Connection implements RoomMember {
     if (!this.d.planets.isLoaded(planetId)) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     this.state = 'joining';
     this.planetId = planetId;
-    await this.seatScenario(planetId);
+    await seatConnectionScenario({
+      seat: this.d.seatDevScenario,
+      playerId: this.playerId,
+      session: this.session,
+      planets: this.d.planets,
+      planetId,
+      log: this.d.log,
+    });
     const home = this.playerId ? await this.resolveHome(this.playerId, planetId) : DEFAULT_HOME;
     if (this.state !== 'joining') return; // closed or left meanwhile
     const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;
     if (!own && !this.session?.dev) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
     this.colonyId = own ? home.colony.id : null;
+    this.colonyIndex = own ? home.colony.colonyIndex : undefined;
     this.d.rooms.join(planetId, this);
-    let snap;
+    let snap: FullState;
     try {
       snap = await this.d.planets.fullState(planetId);
     } catch (e) {
@@ -289,26 +303,28 @@ export class Connection implements RoomMember {
       return this.bye(CLOSE_CODES.forbidden, 'planet_unavailable');
     }
     if (this.state !== 'joining') return; // closed or left meanwhile
-    this.sendWelcome('join', planetId, snap);
+    const away = await readConnectionReturnDigest(this.colonyId, this.d.digests, this.d.log, snap.bytes);
+    if (this.state !== 'joining') return;
+    this.sendWelcome('join', planetId, snap, away);
     this.welcomeTick = snap.tick;
     this.state = 'playing';
+    this.holdColony();
     this.d.onWelcome();
     this.d.onJoined(this);
   }
 
-  private sendWelcome(reason: 'join' | 'resync', planetId: string, snap: FullState): void {
-    const type = PlanetType.safeParse(snap.planetType);
-    this.sendMsg({
-      v: 1, t: 'welcome', tick: snap.tick,
-      d: {
-        reason, colonyId: this.colonyId,
-        planet: { id: planetId, type: type.success ? type.data : 'temperate', name: planetId },
-        state: snap.bytes, simVersion: snap.simVersion, dataHash: snap.dataHash, tick: snap.tick,
-        ...(snap.overrides && Object.keys(snap.overrides).length ? { overrides: snap.overrides } : {}),
-        serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: this.d.planets.deltaHz, flags: this.d.flags,
-        ...(snap.warp > 1 ? { warp: snap.warp } : {}),
-      },
-    });
+  private sendWelcome(reason: 'join' | 'resync', planetId: string, snap: FullState, away: AwayDigestV1 | null = null): void {
+    this.sendMsg(
+      buildWelcomeMessage({
+        reason,
+        colonyId: this.colonyId,
+        planetId,
+        snap,
+        deltaHz: this.d.planets.deltaHz,
+        flags: this.d.flags,
+        away,
+      }),
+    );
   }
 
   private async onCmd(msg: ClientMessageOf<'cmd'>): Promise<void> {

@@ -3,6 +3,7 @@ import { ServerEnvelope } from '../envelope';
 import { CloseCode, RejectCode } from '../errors';
 import { WaveId } from '../flags';
 import { PlayerId } from '../ids';
+import { AwayDigestV1Schema } from '../notify/digest';
 import { HomeColonyId, HomePlanetId } from '../rest/home';
 import { MarketBookPayload, MarketTradePayload } from '../market/views';
 import { CargoStatusPayload } from '../rest/near-cargo';
@@ -40,6 +41,7 @@ export const Welcome = ServerEnvelope('welcome', z.object({
   deltaHz: z.literal(5),
   flags: z.array(WaveId), // PRODUCT_WAVES §3: the enabled wave set
   warp: z.number().int().min(1).max(100).optional(), // dev time warp in effect
+  away: AwayDigestV1Schema.optional(), // CT-32: latest closed digest; omitted when there is none
 }));
 
 export const Delta = ServerEnvelope('delta', z.object({

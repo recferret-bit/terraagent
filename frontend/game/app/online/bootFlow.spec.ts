@@ -298,6 +298,7 @@ describe('W01-38: returning profile & local fallback', () => {
     expect(onlineMode('?scenario=w01')).toBe('boot');
     expect(onlineMode('?host=local&scenario=w01')).toBe('boot');
     expect(onlineMode('?scenario=w00&as=e2e')).toBe('scenario');
+    expect(onlineMode('?scenario=w09')).toBe('scenario');
     expect(onlineMode('?scenario=w00&waves=..00&as=e2e')).toBe('scenario');
     expect(onlineMode('?waves=..00')).toBeNull();
     expect(onlineMode('?host=local')).toBeNull();

@@ -1,8 +1,19 @@
-import { canonicalPlanetById, newId, W11_DEFAULT_SECTOR_RADIUS, type SimCommandV1 } from '@terra/contracts';
-import { globalTileToSector, hexDistance, type BalanceOverrides, type LedgerPosting, type SimEvent, type TuneRequest } from '@terra/sim';
+import { canonicalPlanetById, type SimCommandV1 } from '@terra/contracts';
+import type { BalanceOverrides, LedgerPosting, SimEvent, TuneRequest } from '@terra/sim';
+import { noteAwayPolicyRejection } from './away-rejections';
+import {
+  buildCanonicalSpawnRetryCmd,
+  collectThreadPlanetIds,
+  normalizeCanonicalSpawnCmd,
+  normalizeLoadOptions,
+  type HostLoadInfo,
+  type LoadOptions,
+} from './parts/game-planets-ops';
 import type { SimThreadPool } from './sim-thread-pool';
 import { ThreadRequests } from './thread-requests';
-import type { FromThread, LandingSiteAnswer, LoadedInfo, LoadMsg } from './thread/protocol';
+import type { FromThread, LandingSiteAnswer, LoadedInfo } from './thread/protocol';
+
+export type { LoadOptions };
 
 export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
@@ -54,11 +65,6 @@ export type PlanetDownListener = (planetId: string, reason: PlanetDownReason, de
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
 export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[]) => void;
 
-/** Main-thread facts about a load, handed to `onPlanetLoaded` with the thread's `loaded` (never sent to the thread). */
-type HostLoadInfo = Pick<LoadedInfo, 'setupPostings' | 'noSnapshots'>;
-
-export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'> & HostLoadInfo;
-
 /** Ledger postings of one step leaving a thread (host-side only, see `PlanetLedgerService`). */
 export type PlanetLedgerListener = (planetId: string, tick: number, postings: readonly LedgerPosting[]) => void;
 
@@ -88,6 +94,11 @@ export class GamePlanets {
   private readonly eventListeners = new Set<PlanetEventsListener>();
   private readonly downListeners = new Set<PlanetDownListener>();
   private readonly threadDownListeners = new Set<(thread: number, planetIds: readonly string[]) => void>();
+  /** Restores whose coarse catch-up has not posted `fastRan` yet. `load` stays pending until then. */
+  private readonly catchingUp = new Set<string>();
+  private readonly fastRunStartListeners: ((planetId: string) => void)[] = [];
+  private readonly fastRunListeners: ((planetId: string, seconds: number, ticks: number) => void)[] = [];
+  private readonly fastRunAbortListeners: ((planetId: string) => void)[] = [];
   /** Set by `shutdown`: threads stopping on purpose are not "down". */
   private stopping = false;
   private readonly unlisten: () => void;
@@ -121,23 +132,16 @@ export class GamePlanets {
         return;
       }
       this.loading.set(planetId, [{ resolve, reject }]);
-      const { setupPostings, noSnapshots, ...msg } = opts;
-      const canonical = canonicalPlanetById(planetId);
-      const normalizedMsg =
-        canonical && !msg.snapshot && msg.params?.radius === undefined
-          ? {
-              ...msg,
-              params: {
-                type: msg.params?.type ?? canonical.type,
-                seed: msg.params?.seed ?? canonical.seed,
-                radius: W11_DEFAULT_SECTOR_RADIUS,
-                capacity: msg.params?.capacity ?? 28,
-              },
-            }
-          : msg;
-      this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
+      const { normalizedMsg, hostInfo } = normalizeLoadOptions(planetId, opts);
+      this.hostInfo.set(planetId, hostInfo);
+      if ((normalizedMsg.catchUpTicks ?? 0) > 0) {
+        this.catchingUp.add(planetId);
+        for (const fn of this.fastRunStartListeners) fn(planetId);
+      }
       const transfer = normalizedMsg.snapshot ? [normalizedMsg.snapshot.buffer as ArrayBuffer] : [];
-      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
+      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...normalizedMsg }, transfer)) {
+        this.failLoad(planetId, new Error('sim thread is not running'));
+      }
     });
   }
 
@@ -152,6 +156,12 @@ export class GamePlanets {
 
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
   onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): void { this.loadedListeners.push(fn); }
+  /** Fires when a restart fast-run is marked, before the worker steps the gap. A gap of 0 does not fire. */
+  onFastRunStart(fn: (planetId: string) => void): void { this.fastRunStartListeners.push(fn); }
+  /** Fires when a restart fast-run finishes (`restart_fastrun_seconds`). */
+  onFastRun(fn: (planetId: string, seconds: number, ticks: number) => void): void { this.fastRunListeners.push(fn); }
+  /** Fires when a marked catch-up stops before `fastRan` (load failed, or the planet went down). */
+  onFastRunAbort(fn: (planetId: string) => void): void { this.fastRunAbortListeners.push(fn); }
   /** Every step's ledger postings of every planet, in order, subscribed or not. */
   onPlanetLedger(fn: PlanetLedgerListener): void { this.ledgerListeners.push(fn); }
   onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
@@ -172,25 +182,10 @@ export class GamePlanets {
   /** Queues a command for the planet's next step; resolves with the ack/reject outcome. */
   async submit(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
     const isCanonical = canonicalPlanetById(planetId) !== null;
-    let normalizedCmd = cmd;
-    if (isCanonical && cmd.kind === 'system.spawnColony' && cmd.args && typeof cmd.args === 'object') {
-      const args = cmd.args as Record<string, unknown>;
-      if (typeof args.q === 'number' && typeof args.r === 'number' && hexDistance(0, 0, args.q, args.r) > W11_DEFAULT_SECTOR_RADIUS) {
-        const local = globalTileToSector(args.q, args.r, W11_DEFAULT_SECTOR_RADIUS);
-        normalizedCmd = { ...cmd, args: { ...args, q: local.localQ, r: local.localR } };
-      }
-    }
+    const normalizedCmd = normalizeCanonicalSpawnCmd(isCanonical, cmd);
     const out = await this.sendSingleCmd(planetId, normalizedCmd);
-    if (
-      !out.ok &&
-      isCanonical &&
-      cmd.kind === 'system.spawnColony' &&
-      (out.code === 'landing_site_taken' || out.code === 'invalid_args') &&
-      cmd.args &&
-      typeof cmd.args === 'object'
-    ) {
-      const { q: _q, r: _r, sectorId: _s, landingSlotId: _l, ...restArgs } = cmd.args as Record<string, unknown>;
-      const retryCmd: SimCommandV1 = { ...cmd, commandId: newId('cm'), args: restArgs };
+    const retryCmd = buildCanonicalSpawnRetryCmd(isCanonical, cmd, out.ok, !out.ok ? out.code : undefined);
+    if (retryCmd) {
       const retryOut = await this.sendSingleCmd(planetId, retryCmd);
       return { ...retryOut, commandId: cmd.commandId };
     }
@@ -213,6 +208,17 @@ export class GamePlanets {
   /** Dev time warp: asks the planet's thread to run `k` (1..100) steps per due slot. The thread answers with the effective value (see `onWarp`). */
   setWarp(planetId: string, k: number): boolean {
     return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'warp', planetId, k });
+  }
+
+  /** CT-14. The thread keeps the planet's due time; the new `dt` applies on the next step. */
+  setMode(planetId: string, mode: 'active' | 'coarse'): boolean {
+    return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'mode', planetId, mode });
+  }
+
+  /** One synthetic event to joined sockets. Not tapped: the caller emits `planet.event` itself. */
+  fanEvent(planetId: string, event: SimEvent): void {
+    if (!this.loaded.has(planetId)) return;
+    this.each(planetId, (s) => s.onEvent?.([event]));
   }
 
   /** Effective warp of a planet (1 when never warped). */
@@ -329,8 +335,7 @@ export class GamePlanets {
 
   /** Every planet the dead thread owned or was asked about: loaded, loading, or with commands in flight. */
   private threadDown(thread: number): void {
-    const ids = new Set<string>([...this.loaded, ...this.loading.keys(), ...[...this.cmdWaiters.keys()].map((k) => k.split('\0')[0] ?? '')]);
-    const down = [...ids].filter((id) => id && this.threadOf(id) === thread);
+    const down = collectThreadPlanetIds(this.loaded, this.loading.keys(), this.cmdWaiters.keys(), (id) => this.threadOf(id), thread);
     for (const id of down) this.planetDown(id, 'thread_down', `sim thread ${thread} stopped`);
     for (const fn of this.threadDownListeners) fn(thread, down);
   }
@@ -339,8 +344,12 @@ export class GamePlanets {
     switch (msg.t) {
       case 'loaded':
         this.loaded.add(msg.planetId);
-        for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
-        this.loading.delete(msg.planetId);
+        // Catch-up still running: keep the load promise pending so boot does not resume early. Listeners (ledger)
+        // still see the snapshot tick, and the following `ledger` messages are the coarse steps.
+        if (!this.catchingUp.has(msg.planetId)) {
+          for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
+          this.loading.delete(msg.planetId);
+        }
         {
           const host = this.hostInfo.get(msg.planetId);
           this.hostInfo.delete(msg.planetId);
@@ -348,11 +357,18 @@ export class GamePlanets {
           for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick, info);
         }
         return;
+      case 'fastRan':
+        this.catchingUp.delete(msg.planetId);
+        for (const fn of this.fastRunListeners) fn(msg.planetId, msg.seconds, msg.ticks);
+        for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
+        this.loading.delete(msg.planetId);
+        return;
       case 'ledger':
         for (const fn of this.ledgerListeners) fn(msg.planetId, msg.tick, msg.postings);
         return;
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
+        if (msg.code === 'away_policy') noteAwayPolicyRejection(msg.detail ?? 'AW-15', 'auto');
         return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, {
           ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick, ...(msg.detail ? { detail: msg.detail } : {}), ...(msg.unlocksAt ? { unlocksAt: msg.unlocksAt } : {}),
         });
@@ -401,8 +417,10 @@ export class GamePlanets {
   }
 
   private failLoad(planetId: string, e: Error): void {
+    const aborted = this.catchingUp.delete(planetId);
     for (const w of this.loading.get(planetId) ?? []) w.reject(e);
     this.loading.delete(planetId);
     this.hostInfo.delete(planetId);
+    if (aborted) for (const fn of this.fastRunAbortListeners) fn(planetId);
   }
 }

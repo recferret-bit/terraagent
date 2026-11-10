@@ -1411,6 +1411,26 @@ Open items, see the format in `README.md`:
 - **To resolve:** Owner: list `worker_t1` / `worker_t2` in the stage rows (and teach the unlock-stage resolver those ids), then restore the `Worker Drone T1` assertion.
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
 
+### FF-101 · Away settings remember this browser's last ack, not the colony
+
+- **Status:** Open
+- **Area / code:** Colony book `AWAY` tab (`frontend/game/core/hud/ColonyBook.ts`), `frontend/game/features/away/` (`AwayPanel`, `storage.ts` key `ta.away.autopilot`), sim blob `away` in `shared/sim/src/systems/away/store.ts`
+- **What happens:** The settings sit in the Colony book's `AWAY` tab (the tab opens and folds the page; the old floating plate beside Save progress is gone). Saving metals at 30% persists only after `setAutopilot` acks, in one browser-wide `localStorage` record. A reload shows 30 before any snapshot. The plate does not read `blobs.away`, so another colony, another browser, or a budget changed only on the server still shows this browser's last ack (or the defaults: director, raids off, session 60). The directive line always says 40% and is not sent. A store `sendCommand` that returns an id string is not an ack, so that path does not mark the budget saved; the online HUD uses the command bus, which does ack.
+- **Why it is like this:** W09-14 asked for a reload to show 30 even before a snapshot echo exists. The client view has no away-settings field yet.
+- **Workaround / mitigation:** This browser keeps the last acked mode, raids flag and session percents. A reject restores the previous ack and does not write storage.
+- **To resolve:** When the replica exposes the colony away blob, hydrate the plate from that colony and keep `localStorage` only until the first view.
+- **Found:** 2026-11-09, W09-14
+
+### FF-102 · The away modal is the headline digest, not the full CLIENT §5.3 plate
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`, mounted on `services.hudOverlay`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
+- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
+- **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
+- **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
+- **Found:** 2026-11-09, W09-17
+
 ### FF-98 · HUD tab books: default homes for panels the owner did not place
 
 - **Status:** Question for the owner
@@ -1440,4 +1460,3 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** (2) run `w13` step 12 on a quiet machine / fresh stack.
 - **To resolve:** (2) check the post-restart supply window timing in step 12 (wait for one more window, or for the spawned builders to exist).
 - **Found:** 2026-11-10, HUD de-clutter refactor (tests agent + lead)
-

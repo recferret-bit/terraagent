@@ -59,7 +59,7 @@ export class LocalHost {
   /** Host-side resource journal (dev console `ledger`); the bound stores only get `col.stock`. */
   get ledger(): PlanetJournal { return this.core.journal; }
 
-  /** Dev console server commands, answered by the core as on `?host=local` (`warp`, `time`, `scenario`, `tune`, `local.reset`, `ledger`). */
+  /** Dev console server commands, answered by the core as on `?host=local` (`warp`, `time`, `scenario`, `tune`, `local.reset`, `ledger`, `away`, `back`, `colony.eliminate`). */
   readonly devServer: DevServer = async (name, args = {}) => {
     try { return await this.core.devCommand(name, args); } catch (e) {
       throw e instanceof LocalDevError ? new DevServerError(e.code, e.message) : e;

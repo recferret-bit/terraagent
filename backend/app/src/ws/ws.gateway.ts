@@ -12,9 +12,12 @@ import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service
 import type { NearDeedUpdatedBusEvent } from '../near/deed/deed-mint-outbox.service';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
+import { presenceClosed, presenceJoined } from '../game/presence/planet-mode';
+import type { PresenceTracker } from '../game/presence/tracker';
 import type { CommandIngress } from './command-ingress';
 import { Connection, type ConnectionDeps } from './connection';
 import type { HomeProvider } from './home-provider';
+import { PlayingSockets } from './playing-sockets';
 import { PlanetRooms } from './rooms';
 import type { SessionVerifier } from './session-verifier';
 
@@ -26,6 +29,7 @@ export interface GatewayOptions {
   readonly verifier: SessionVerifier;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  readonly digests?: ConnectionDeps['digests'];
   readonly flags: readonly string[];
   readonly seatDevScenario?: ConnectionDeps['seatDevScenario'];
   readonly log: Logger;
@@ -33,13 +37,15 @@ export interface GatewayOptions {
   readonly helloTimeoutMs: number;
   readonly idleTimeoutMs: number;
   readonly bus?: EventBus;
+  /** In-memory away timer (CT-10). Absent in gateway unit fixtures that do not boot the game module. */
+  readonly presence?: PresenceTracker;
 }
 
-/** `/ws` upgrade handling, origin allow-list, connection registry and the one-planet-socket-per-player rule (WS-13). */
+/** `/ws` upgrade handling, origin allow-list, connection registry and one playing socket per colony (CT-41). */
 export class WsGateway {
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, perMessageDeflate: { threshold: 1024 } });
   private readonly conns = new Set<Connection>();
-  private readonly byPlayer = new Map<string, Connection>();
+  private readonly playing = new PlayingSockets();
   private readonly rooms: PlanetRooms;
   private readonly originOk: ReturnType<typeof corsOrigin>;
   private readonly welcomes: Counter;
@@ -50,6 +56,8 @@ export class WsGateway {
   private readonly undeed: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
+  private readonly presenceIds = new WeakMap<Connection, string>();
+  private presenceSeq = 0;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
@@ -92,25 +100,53 @@ export class WsGateway {
 
   private accept(ws: import('ws').WebSocket): void {
     const deps: ConnectionDeps = {
-      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, flags: this.o.flags,
+      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, digests: this.o.digests, flags: this.o.flags,
       seatDevScenario: this.o.seatDevScenario,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),
-      onJoined: (c) => this.replaceOlder(c),
+      // Join is recorded before replaceOlder: its `bye 4001` is a close, and this join must cancel that timer.
+      onJoined: (c) => { this.notePresenceJoin(c); this.replaceOlder(c); },
       onClosed: (c) => {
         this.conns.delete(c);
-        if (c.playerId && this.byPlayer.get(c.playerId) === c) this.byPlayer.delete(c.playerId);
+        this.playing.forget(c);
+        this.notePresenceClose(c);
       },
     };
     this.conns.add(new Connection(ws, deps));
   }
 
-  /** The new welcome is already sent: close the player's previous planet socket with 4001. */
+  private presenceId(c: Connection): string {
+    let id = this.presenceIds.get(c);
+    if (!id) { id = `s${++this.presenceSeq}`; this.presenceIds.set(c, id); }
+    return id;
+  }
+
+  /** `leaveRoom` clears colonyId before `onClosed`, so the colony is captured here, at welcome. */
+  private notePresenceJoin(c: Connection): void {
+    const presence = this.o.presence;
+    if (!presence || !c.playerId || !c.planetId || !c.colonyId) return;
+    const planetId = c.planetId;
+    const id = this.presenceId(c);
+    const session = { socketId: id, planetId, colonyId: c.colonyId, playerId: c.playerId, colonyIndex: c.colonyIndex };
+    presenceJoined(presence, this.planetModes(), id, planetId, () => presence.join(session));
+  }
+
+  /** `leaveRoom` has already cleared `planetId`. The tracker still knows which planet the socket was on. */
+  private notePresenceClose(c: Connection): void {
+    const presence = this.o.presence;
+    if (!presence) return;
+    const id = this.presenceId(c);
+    presenceClosed(presence, this.planetModes(), id, () => presence.close(id));
+  }
+
+  private planetModes() {
+    const planets = this.o.planets;
+    return { setMode: (planetId: string, mode: 'active' | 'coarse') => { planets.setMode(planetId, mode); } };
+  }
+
+  /** The new welcome is already sent. Close the older socket for this colony with 4001. */
   private replaceOlder(c: Connection): void {
-    if (!c.playerId) return;
-    const older = this.byPlayer.get(c.playerId);
-    this.byPlayer.set(c.playerId, c);
-    if (older && older !== c) older.bye(CLOSE_CODES.replaced, 'replaced');
+    this.playing.replace(c);
   }
 
   private broadcastCargoStatus(ev: NearCargoStatusBusEvent): void {
@@ -156,6 +192,7 @@ export class WsGateway {
     this.unbook?.();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
+    this.o.presence?.stop();
     await new Promise<void>((resolve) => {
       const t = setTimeout(() => { for (const c of all) c.terminate(); resolve(); }, graceMs);
       const poll = setInterval(() => {

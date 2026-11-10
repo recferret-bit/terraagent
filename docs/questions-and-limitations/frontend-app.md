@@ -494,3 +494,13 @@ transports, dev console wiring). Entry format: [README](./README.md). Ledger jou
 - **Workaround / mitigation:** Already-loaded older JavaScript cannot gain the new notice retroactively. Refresh that page manually after restarting the stack. No automatic reload loop is introduced.
 - **To resolve:** No current-client fix pending. Deploy compatible frontend/backend versions together.
 - **Found:** 2026-11-07, independent final codec review.
+
+### FA-40 · After `away`, this tab's `?scenario=` reload rejoins that planet
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/app/online/scenarioSeat.ts` (`ta.scenario.seat`), `frontend/game/app/online/scenarioPlanet.ts` (`ta.scenario.live`), `frontend/game/app/online/sessionTarget.ts` (`createSessionTarget`), `frontend/game/features/dev-presence/presence.ts` (`away`)
+- **What happens:** A reload of `?scenario=` used to create a new planet and a new random `pilot-xxxxxx`, so the welcome had no away digest and the while-you-were-away plate never appeared. After `away` succeeds, this tab stores the planet id and dev player name in `sessionStorage`. The next reload of the same scenario rejoins that colony, the join welcome carries the digest, and a further reload does not, because the server marked the row seen. A reload before `away`, while no other tab is playing that scenario, still creates a new planet: the tab drops its live claim on `pagehide`. A second tab opened while the first is still up does not. It joins the planet the open tab claimed in `localStorage`, as the same dev player, so the newer socket closes the older one with `4001` and the welcome tick is the live tick. A different `&as=` does not take that planet. `?fresh=1` creates another. `?host=local` does not store a seat. If the remembered planet is no longer loaded, the next load creates a fresh one and the plate does not appear.
+- **Why it is like this:** The owner check reloads `play.html?scenario=w09` after `away`, and also opens that URL in two tabs. The away seat stays in `sessionStorage` so a lone reload before `away` is still a fresh planet. The live claim is what makes the second tab the same colony.
+- **Workaround / mitigation:** `?fresh=1` on the scenario URL forgets the away seat and starts a new planet. Close the first tab before opening another if the new tab should be its own world. A claim with no heartbeat for 20 seconds is ignored.
+- **To resolve:** No change unless a reload after `away` should start a new planet again. In that case the check has to open the `?join=` link the `planet` command prints, with the same `&as=`.
+- **Found:** 2026-11-10, owner check of the W09 welcome plate

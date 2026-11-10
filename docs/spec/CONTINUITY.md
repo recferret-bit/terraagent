@@ -224,7 +224,9 @@ sequenceDiagram
 | `ws_takeover_total` | counter (game) | CT-41 |
 | `restart_fastrun_seconds{planet}` | histogram (game) | CT-51 |
 | `planet_faulted_total` | counter (game) | CT-53 |
-| `notify_sent_total{channel,kind}` | counter (notify) | CT-35..38 |
+| `notify_sent_total{kind,channel}` | counter (notify) | CT-35..38; first insert only, not a duplicate send |
+| `notify_suppressed_connected_total` | counter (notify) | skipped while the colony has a socket |
+| `digest_rows` | gauge (game) | rows in `world.planet_event_digest` |
 | `client.resume_ms` | client beacon | CT-45 |
 
 ---

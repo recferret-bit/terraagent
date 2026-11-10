@@ -23,6 +23,8 @@ export type CtlOp =
   | { readonly op: 'stats'; readonly reqId: number }
   /** Dev time warp: `k` engine steps per due slot (1..100); the thread may run less (budget cap) and answers with a `warp` message. */
   | { readonly op: 'warp'; readonly planetId: string; readonly k: number }
+  /** CT-14: `active` steps `dt` 1 every tick; `coarse` steps `dt` 5 every second. The thread applies it on the next due step. */
+  | { readonly op: 'mode'; readonly planetId: string; readonly mode: 'active' | 'coarse' }
   /** Test/dev only (ignored in production): busy-wait the thread for `ms`. */
   | { readonly op: 'block'; readonly ms: number }
   /** Test/dev only (ignored in production): step the planet by `dt` now, in message order (engine parity test, run with `autoStep: false`). */
@@ -55,6 +57,11 @@ export interface LoadMsg {
    * opening balances instead of replaying a journal. Echoed back in `loaded`.
    */
   readonly genesis?: boolean;
+  /**
+   * Restart fast-run (CT-51): coarse steps (`dt` 5) before the scheduler starts.
+   * The planet is not scheduled until they finish, then it joins as `active` (BE-57).
+   */
+  readonly catchUpTicks?: number;
 }
 
 /** Generator of a load without `params` or `snapshot`: the W00 empty flat planet (tests, `GAME_DEV_PLANETS` without W01). */
@@ -160,6 +167,11 @@ export type FromThread =
    */
   | { readonly t: 'planetFailed'; readonly planetId: string; readonly message: string }
   | { readonly t: 'error'; readonly thread: number; readonly planetId?: string; readonly commandId?: string; readonly message: string }
-  | { readonly t: 'stopped'; readonly thread: number };
+  | { readonly t: 'stopped'; readonly thread: number }
+  /**
+   * Restart fast-run finished (CT-51). `tick` is after the coarse steps; `seconds` is wall time.
+   * Posted only when the planet is still loaded, so `GamePlanets.load` can resolve.
+   */
+  | { readonly t: 'fastRan'; readonly planetId: string; readonly tick: number; readonly ticks: number; readonly seconds: number };
 
 export type Post = (msg: FromThread, transfer?: ArrayBuffer[]) => void;

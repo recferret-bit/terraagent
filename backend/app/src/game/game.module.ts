@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, mergeOverrides, type BalanceOverrides } from '@terra/sim';
@@ -15,15 +16,21 @@ import { ReadinessRegistry } from '../core/readiness.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { EconomyActivationService } from '../economy/activation/activation.service';
+import { installAwayPolicyMetric } from './away-rejections';
+import { installPlanetModeGauge } from './planet-mode-metric';
 import { EconomyActivationBridge, STATIC_OVERRIDES, SWAPPER } from './economy-activation-bridge';
 import { ProfileSwapper } from './profile-swap';
 import { EconomyModule } from '../economy/economy.module';
 import { EconomyProfileService } from '../economy/profile/profile.service';
+import { WorldLifecycleService } from '../lobby/lifecycle.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
+import { attachAwayDigest, AwayDigestService, createDigestStory, installDigestRowsGauge, liveBaselineReader, MemoryDigestStore, PrismaDigestStore } from './digest';
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { DevPresence } from './presence/dev-presence';
+import { HardModeClock } from './presence/hard-mode-clock';
 import { gameLandingHost } from './home-landing-host';
 import { DevLedgerController } from './ledger/dev-ledger.controller';
 import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
@@ -36,6 +43,10 @@ import { PlanetHeldError, SnapshotService } from './persistence/snapshot.service
 import { SnapshotStore } from './persistence/snapshot-store';
 import { ProgressionEventForwarder } from './progression-events.service';
 import { wirePlanetRecovery } from './planet-recovery';
+import { installRestartFastRunMetric } from './restart/metric';
+import { installFastRunAlertHold } from './restart/notify-hold';
+import { AlertRouter } from '../notify/alert-router';
+import { installNotifyMetrics } from '../notify/metrics';
 import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
 import { W00_PLANET_TYPE } from './thread/protocol';
@@ -59,6 +70,14 @@ export const env = defineEnv('game', {
   PLANET_DAY_HOURS: z.coerce.number().min(0.005).max(168).optional(),
   /** Default planetary time-scale multiplier; unset = data table default (1). */
   PLANET_TIME_SCALE: z.coerce.number().min(0).max(1000).optional(),
+  /**
+   * CT-34 away paragraph. Unset is on in production and off elsewhere.
+   * Only `true` or `false`; any other value aborts boot.
+   */
+  AWAY_STORY_ENABLED: z
+    .string()
+    .optional()
+    .refine((v) => v === undefined || v === '' || v === 'true' || v === 'false', { message: 'must be true or false' }),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
@@ -109,11 +128,24 @@ const POOL = Symbol('SIM_THREAD_POOL');
     EconomyTelemetry,
     SnapshotService,
     ProgressionEventForwarder,
+    HardModeClock,
+    DevPresence,
+    {
+      provide: AwayDigestService,
+      inject: [APP_ENV, PRISMA, GamePlanets, LOGGER],
+      useFactory: (e: AppEnv, prisma: PrismaClient, planets: GamePlanets, root: Logger) => new AwayDigestService({
+        store: persistenceEnabled(e) ? new PrismaDigestStore(prisma) : new MemoryDigestStore(),
+        reader: liveBaselineReader(planets),
+        log: layerLogger(root, 'sim', e.LOG_LEVELS as string | undefined),
+        story: createDigestStory(e),
+      }),
+    },
   ],
-  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;
+  private unsubDigest: (() => void) | undefined;
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
   private readonly log: Logger;
@@ -128,13 +160,22 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
     private readonly progressionForwarder: ProgressionEventForwarder,
+    private readonly digests: AwayDigestService,
     @Inject(LOGGER) root: Logger,
+    private readonly modules: ModuleRef,
+    private readonly hardMode: HardModeClock,
     @Optional() private readonly homeService?: HomeService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    this.snapshots.setDigestFlush((planetId, raw) => this.digests.flushPlanet(planetId, raw));
+    this.unsubDigest = attachAwayDigest(this.bus, this.digests);
+    try { await this.digests.restoreOpen(); } catch (err) {
+      this.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'digest restore failed');
+    }
+    this.wireSnapshotSavePoints();
     await this.pool.start();
     this.unsubBridge = bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
     const home = this.homeService;
@@ -142,6 +183,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
       this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
       home.setLandingHost(gameLandingHost(this.snapshots, this.planets, host));
+      home.setAwayHeadline(this.digests);
+      home.setHardModeClock(this.hardMode);
     }
     this.unsubRecovery = wirePlanetRecovery(this.planets, this.pool, this.snapshots, this.log);
     const pool = this.pool;
@@ -154,6 +197,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
         for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.planets.length);
       },
     });
+    installPlanetModeGauge(reg, () => pool.stats());
     new Gauge({
       name: 'ta_game_tick_lag_steps', help: 'Max steps a planet is behind its due time, per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {
@@ -169,6 +213,9 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
         for (const [id, k] of planets.warped()) this.set({ planet: id }, k);
       },
     });
+    installAwayPolicyMetric(reg);
+    installNotifyMetrics(reg);
+    installDigestRowsGauge(reg, () => this.digests.rowCount());
     new Counter({
       name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {
@@ -180,6 +227,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
     });
+    installRestartFastRunMetric(this.planets, this.metrics.registry);
+    this.wireFastRunAlerts();
     const restored = await this.snapshots.restoreAll();
     const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
     const devOpts = this.flags.has('W01')
@@ -189,9 +238,30 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
   }
 
+  /** Notify is a sibling module. A test that boots Game alone has no router; live play does. */
+  private wireFastRunAlerts(): void {
+    try {
+      installFastRunAlertHold(this.planets, this.modules.get(AlertRouter, { strict: false }));
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.includes('AlertRouter')) throw e;
+    }
+  }
+
+  /** Lobby does not import this module. Resolve it after both exist so pause/archive can snapshot (SIM-H-06). */
+  private wireSnapshotSavePoints(): void {
+    try {
+      const lifecycle = this.modules.get(WorldLifecycleService, { strict: false });
+      lifecycle.setSnapshotSavePoint((planetId, kind) => this.snapshots.capture(planetId, kind));
+    } catch (e) {
+      if (!(e instanceof Error) || !e.message.includes('WorldLifecycleService')) throw e;
+    }
+  }
+
   async onApplicationShutdown(): Promise<void> {
     this.unsubBridge?.();
     this.unsubBridge = undefined;
+    this.unsubDigest?.();
+    this.unsubDigest = undefined;
     this.unsubHomeSeat?.();
     this.unsubHomeSeat = undefined;
     this.unsubRecovery?.();

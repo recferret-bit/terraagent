@@ -26,7 +26,8 @@ export function onlineMode(search: string): OnlineMode | null {
   const hasW01 = flags.has('W01');
 
   if (scenario) {
-    if (!hasW01 || scenario.startsWith('w00')) return 'scenario';
+    // w00 and w09 are landed dev planets. They skip the drop-pod boot, which hides the HUD until an HQ deploys.
+    if (!hasW01 || scenario.startsWith('w00') || scenario === 'w09' || scenario.startsWith('w09-')) return 'scenario';
     return 'boot';
   }
   if (q.has('host')) {

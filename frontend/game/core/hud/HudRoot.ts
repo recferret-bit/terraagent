@@ -8,9 +8,10 @@ interface PanelDef { f: Feature; p: HudPanelDef }
 
 /**
  * pointer-events:none overlay with five slot containers and two vertical tab books: the Command Dock (top right:
- * Build, Production, Terraform, Queue) and its mirror, the Colony book (top left, under the pilot chip: Deed, Goals,
- * HQ AI, Director, Combat, Supply, Trade). Mounts every enabled feature's HUD panels into their book tab or slot, and
- * gives features `services.hudOverlay` (un-clipped layer for modals) plus `revealHudPanel` / `setHudTabBadge`.
+ * Build, Production, Terraform, Queue) and its mirror, the Colony book (top left, under the minimap: Player, Away,
+ * Deed, Goals, HQ AI, Director, Combat, Supply, Trade). Mounts every enabled feature's HUD panels into their book
+ * tab or slot, and gives features `services.hudOverlay` (un-clipped layer for modals) plus `revealHudPanel` /
+ * `setHudTabBadge`.
  */
 export class HudRoot {
   readonly el: HTMLElement;

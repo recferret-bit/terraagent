@@ -740,6 +740,158 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** Implement the remaining untagged / `H+` W11 rows when full lobby party/transfer/standalone-entry scope is scheduled alongside W27.
 - **Found:** 2026-11-08, W11 delivery.
 
+### BE-68 · setAutopilot is one command; oil is not a fourth away-budget family
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/contracts/src/commands/set-autopilot.ts`, `shared/contracts/src/notify/budget.ts`, CONTINUITY AW-20, PROTOCOL away commands
+- **What happens:** `setAutopilot` takes `{ mode, awayRaids, awayBudget }` with integer percents per D-34 family (`metals`, `minerals`, `bio`). A percent outside 0..100 is rejected. PROTOCOL still shows `setAutopilot {aiDirector, awayRaids}` plus a separate `setAwayBudget`. Oil is not its own slider: Petroleum is `bio.t2` inside Bio.
+- **Why it is like this:** W09-01 and the wave file name this shape. The grill note Q-04-12 says to use it. The owner tasks (Q5) say the away budget is player-set and do not pick the wire shape. This wave uses the wave-file shape so later issues have one command to ack.
+- **Workaround / mitigation:** `autoTrade` stays out of this command. Its checker is W09-13 and its command is W15-01 `setAutoTrade`.
+- **To resolve:** Confirm the single-command shape, or split `setAwayBudget` to match PROTOCOL. Confirm Bio covers oil.
+- **Found:** 2026-11-09, W09-01 contract default
+
+## W09 Offline notifications
+
+### BE-54 · Mock notify is silent only while a socket is held; live push is not registered
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/notify/mock-notifier.ts`, `backend/app/src/notify/presence.ts`, `backend/app/src/ws/connection.ts` (`holdColony`), `GET /v1/dev/notify`
+- **What happens:** `NOTIFY_ADAPTER=mock` (the default) inserts one `core.mock_notify` row per `(colonyId, eventId, channel)`. A second send returns that row's id with `status: sent` and does not change title or body. While the colony has a playing `/ws` socket, `send` returns `{ id: 'skipped', status: 'skipped' }` and writes nothing. `skipped` is not a row id. The socket set is an in-memory refcount, cleared on process restart and not the 60s away timer. A dev socket that joined without owning the colony (`colonyId` null) does not suppress rows. `NOTIFY_ADAPTER=webpush`, `telegram` or `live` still selects `live`, and boot fails because no live adapter is registered. Rows are listed at `GET /v1/dev/notify`, not on the chain outbox page.
+- **Why it is like this:** W09-20 is the Postgres mock and the connected gate. Web Push and Telegram are W09-22/24. The 60s away timer is a separate tracker (W09-02, BE-55). The chain outbox viewer is chain receipts, so a notify section there would mix two products.
+- **Workaround / mitigation:** Leave `NOTIFY_ADAPTER` unset or set it to `mock`. Read `GET /v1/dev/notify?colonyId=`. A repeat of the same event id is one row.
+- **To resolve:** W09-22/24 should register the `live` adapter. Until then, do not set `NOTIFY_ADAPTER` to `webpush`, `telegram` or `live`.
+- **Found:** 2026-11-09, W09-20
+
+### BE-55 · Presence away memory does not survive a process restart
+
+- **Status:** Accepted (W09-02 scope; restart recovery is a later issue)
+- **Area / code:** `backend/app/src/game/presence/tracker.ts`, `shared/sim/src/systems/presence/`
+- **What happens:** sockets and the 60s away timer live in process memory. A blip under 60s posts nothing. At 60s (inclusive) the tracker posts `system.presence { away: true }` and stamps `last_seen_at`. A later join posts `away: false`. After a restart those timers and the "already away" bit are gone. The sim blob in a snapshot still says away, so the colony stays away (CT-14), but the new process does not post `away: false` on reconnect because it does not remember the away. A colony that was connected when the process died is not put on a fresh 60s timer either. `colonyBack.awayForS` is omitted: the sim has no wall clock. `submit` results other than a thrown error (`wave_disabled`, `planet_not_loaded`, `thread_down`) do not fail the socket; `last_seen_at` is still written when the row exists. `wave_disabled` is ignored on purpose when flag `W09` is off. A `leave` that keeps the socket open does not start the timer; only the last socket's close does (CT-10).
+- **Why it is like this:** D-24 keeps presence in the one app, with no NATS and no leases. W09-02 posts the command and stamps `last_seen_at`. Snapshot resume is a later issue under `backend/app/src/game/{snapshot,restart}/`.
+- **Workaround / mitigation:** `last_seen_at` is durable. The away flag already stored in the sim snapshot is left as it was. Flag-off still records presence on the platform rows.
+- **To resolve:** on boot, or on the first join, read the `presence` blob and post `away: false` only when it says away. Arm away timers for restored colonies that have no socket.
+- **Found:** 2026-11-09, W09-02
+
+### BE-56 · Seal snapshot is admission pause; end snapshot follows a committed archive
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/lobby/lifecycle.service.ts` (`pausePlanetAdmission`, `transitionWorldLifecycle`), `backend/app/src/game/persistence/snapshot.service.ts` (`capture`), `backend/app/src/game/persistence/snapshot-scheduler.ts` (`spreadOffset`)
+- **What happens:** Canonical worlds never enter `SEALED` (MATCHMAKING §0). The operator action that stops new founders is admission pause, and that writes a `SEAL` snapshot when the planet is loaded. `END` is written only after the archive row commits, so a failed archive cannot make `livePlanetIds` skip the planet. A planet that is not on a sim thread has no bytes to save, so the save point is skipped. If the thread does not answer within 30 s, the unanswered kind is dropped and a later periodic snapshot is not retagged. More than 120 loaded planets can still share a snapshot second (60 seconds × 2); the host budget is 60 planets.
+- **Why it is like this:** W09-05 needs `SEAL` and `END` rows on the existing snapshot store. There is no second lifecycle and no `system.seal` / `system.end` command in this tree.
+- **Workaround / mitigation:** Retention still keeps the latest `SEAL` and every `END`. Periodic writes are staggered and bumped off a second that already has two planets.
+- **To resolve:** If seal should be something other than admission pause (for example the moment free seats hit zero), point `setSnapshotSavePoint` at that path. Raise the per-second cap only if a host runs more than 120 planets.
+- **Found:** 2026-11-09, W09-05
+
+### BE-57 · A planet nobody has joined still steps at 5 TPS
+
+- **Status:** Accepted (W09-03 switches on socket crossings, not on load)
+- **Area / code:** `backend/app/src/game/presence/planet-mode.ts` (`syncPlanetMode`), `backend/app/src/game/thread/sim-thread.ts` (`scheduler.add`), `shared/sim/src/host/scheduler.ts` (`setMode`)
+- **What happens:** a loaded planet starts `active` (`dt` 1 every 200 ms). Coarse (`dt` 5 every 1 s) starts only when its socket count falls from ≥1 to 0. A dev planet or a restored planet that no socket has joined keeps 5 TPS, so `ta_game_planet_mode{mode="active"}` counts it. The first join sends `active` again and does not move `nextDueMs`. A join onto a coarse planet waits for the step already scheduled (at most one coarse interval) and that step uses `dt` 1. The 60 s away timer does not change the mode.
+- **Why it is like this:** W09-03 follows sockets at `presence.join` / `presence.close`. Sending coarse on every load would change the W00 lag check: a 2 s stall of a coarse planet is about 2 steps behind, not ≥4. `setMode` leaves the due time so a second join cannot burst catch-up steps.
+- **Workaround / mitigation:** the last socket to leave still switches that planet within the stepping loop. Empty-from-boot planets stay on the active cadence until someone joins and later leaves. A restart fast-run (W09-06) steps the gap with coarse `dt` before the planet is scheduled, then `scheduler.add` leaves it `active`.
+- **To resolve:** after `loaded`, if `socketsOn` is 0, send coarse, and retune the lag check for that cadence. The restart fast-run already steps the gap coarse and then schedules `active` (W09-06).
+- **Found:** 2026-11-09, W09-03
+
+### BE-58 · Alert kind toggles do not survive a process restart
+
+- **Status:** Accepted (W09-21 scope)
+- **Area / code:** `backend/app/src/notify/alert-policy.ts` (`AlertToggles`, `UnderAttackWindow`), `backend/app/src/notify/alert-router.ts`
+- **What happens:** Per-colony notification toggles live in process memory and default to on. Turning `trade_offer` off stops that kind until the process restarts, which turns every kind back on. The `under_attack` 10-minute mark is the same memory, so a restart can send another `under_attack` immediately. A failed `send` still consumes that window. The router does not read `core.notification_subscription`: it asks `NotifierPort` for one `webpush` payload whose `to` is the colony id (no push endpoint and no Telegram chat). An event that only carries a numeric colony index (today `energyCollapse`) is ignored, because that index is not a colony id.
+- **Why it is like this:** W09-21 routes and debounces. Durable toggles and real channel endpoints are W09-22/24/25. The subscription table already has a `kinds` json column. The router must not write notify rows itself.
+- **Workaround / mitigation:** Defaults are all on, which matches CT-36. The mock still records a row per send, and it writes nothing while the colony's socket is held.
+- **To resolve:** Load `notification_subscription.kinds` plus the endpoint or chat id when sending. Persist the debounce mark, or leave restart dedupe to W09-27. Put a string colony id on `energyCollapse`.
+- **Found:** 2026-11-09, W09-21
+
+### BE-59 · Away digest baseline has no building inventory or terraform percent
+
+- **Status:** Accepted (W09-15 scope)
+- **Area / code:** `backend/app/src/game/digest/` (`baselineFromState`, `AwayDigestService`), `shared/contracts/src/notify/digest.ts` (`AwayDigestV1`)
+- **What happens:** A row opens on `colonyAway` and closes on `colonyBack`, the presence tracker's return (`away: false`), or the join welcome, with `durationS` and `closed_at`. The body stores resources (the 10 stock keys), energy (`colony.power.net`, E/s), robot count (live worker, recon, demoTank, demoArtillery) and owned tiles. The start numbers come from `fullState` at open, or from the snapshot bytes on the next successful snapshot flush when that read missed. Until a read lands they stay 0, including a colony that truly has nothing. `built` stays empty: it is the while-away construction list, not a baseline inventory. Terraform percent has no field on `AwayDigestV1`, so it is not stored. `colonyBack` and presence return do not read stock again (the live reader waits up to 750 ms). The join welcome stamps `after` on resources, energy, robots and territory from the snapshot bytes it already loaded, then copies that one digest onto `welcome.away` and marks every closed unseen row seen. If those bytes cannot be read, or the colony is not in them, `before` stays equal to `after`. `/me/home` reads the newest unseen row (open or closed) by `(colony_id, opened_at)` and omits `awaySummary` if that read exceeds 250 ms. It does not mark the row seen. An open row's headline `durationS` is `now - opened_at`; its `resourcesNet` stays empty until `after` is stamped, so a home call before the welcome reports a zero net. An away while the planet is not loaded does not open a row, because open waits for `colonyAway`. `raidStarted` and `underAttack` increment `attacks.count`; `raidRepelled` increments `attacks.repelled`. Each appends one `byColony` item. The 21st list item is dropped; counts are not capped. Purge deletes `opened_at` strictly older than 7 days. A row opened exactly 7 days ago is kept. Older unseen digests merge into the newest on open and on close (sums, then lists capped at 20) and are marked seen. Two already-closed unseen rows that were never merged are not merged again on welcome: only the latest body is attached, and the older row is marked seen.
+- **Why it is like this:** `AwayDigestV1` is a strict object. Building counts and terraform percent from CT-30 do not fit a field without overloading `built` or breaking the contract. The sim state is on a worker thread, so the open path cannot read it inline. A second `fullState` on the welcome path would wait up to 750 ms and can miss the home budget, so the end baseline reuses the snapshot welcome already has.
+- **Workaround / mitigation:** The next snapshot fill replaces an all-zero start baseline. Attack counts survive a restart because the body is flushed in the same write as the snapshot. The welcome still carries `before === after` when the snapshot bytes do not name the colony.
+- **To resolve:** A schema addition is still needed before terraform percent or per-type building counts can be stored. Home net resources stay zero when `/me/home` runs before the welcome stamps `after`.
+- **Found:** 2026-11-09, W09-15
+
+### BE-60 · Restart fast-run drops a short gap and emits events while it steps
+
+- **Status:** Accepted (short gap and crash replay remain; notification hold landed in W09-27)
+- **Area / code:** `backend/app/src/game/restart/` (`missedRestartTicks`, `runCoarseCatchUp`), `backend/app/src/game/thread/sim-thread.ts` (`finishCatchUp`), `backend/app/src/game/persistence/snapshot.service.ts` (`restore`), `backend/app/src/notify/alert-router.ts` (`flushFastRun`)
+- **What happens:** The missed time is `now − savedAt` at 5 active ticks per wall second (`TICK_MS` 200), capped at `RESTART_FASTRUN_MAX_H` (24). The fast-run steps `dt` 5, so a remainder under 5 ticks is not simulated. Sim events are still posted as the loop runs, so digest and other bus subscribers see them immediately. Notification sends for that planet are held until `fastRan`, then flushed once per colony and kind (CT-54). After the run the planet is scheduled `active` (BE-57), not left coarse. A periodic snapshot is requested when the run finishes so the next boot's gap is ~0. A crash before that snapshot is stored reloads the previous snapshot and runs the gap again; the lost in-memory run is not applied on top. A run that stops before `fastRan` drops its buffer (BE-62).
+- **Why it is like this:** Coarse steps are the continuity rule (CT-51). Notifications wait for `fastRan` so a catch-up that spans hours does not page the player once per raid while the process is still booting. Socket mode stays the W09-03 rule. The follow-up snapshot is what stops a second boot from repeating the catch-up.
+- **Workaround / mitigation:** Gaps shorter than one coarse step catch up on a later boot once they reach 5 ticks. `AlertRouter` is the notification dedupe. Other bus subscribers still see each sim event as it is posted.
+- **To resolve:** No change is needed for the 24 h cap or the coarse remainder. Notification flush is W09-27.
+- **Found:** 2026-11-09, W09-06
+
+### BE-61 · Twisters sample once per step, so coarse dt is not five fine ticks
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/weather/index.ts` (`stepWeather`), `shared/sim/src/systems/weather/twister.ts` (`applyTwisterVortexAt`), `shared/sim/src/systems/weather/types.ts` (`TWISTER_SPEED_HEX_PER_TICK`)
+- **What happens:** An active twister moves and hits once per `step`, not once per tick. `TWISTER_SPEED_HEX_PER_TICK` (0.22) is added once, and a building in the vortex loses 25 HP once, even when `dt` is 5. Five `dt=1` steps move and hit five times; one `dt=5` step does each once. A lightning overload that expires inside a coarse step is cleared before later systems in that same step, and those systems then apply the whole `dt`, so a store that charges only while online can gain up to 4 extra ticks on the clearing step. The expiry itself matches when `until` is a multiple of `dt`: both paths are back online at that tick. Insect attacks release once when the interval elapses and stamp `lastAttackTick` to `ctx.tick` (`fauna/step.ts`), so the next swing can slip by up to 4 ticks. A depleting metals tile that passes through 1..10 bp is read by `normalizeRichness` as a multiplier (`production/helpers.ts`), so one fine tick can pull extra ore from the next tile; a `dt=5` step removes 20 bp and skips that band (3600 ticks: 721.4 vs 720 metals). Water, thermal fuel, thermal pollution and `brownoutTicks` multiply by `dt` and match across those 3600 ticks.
+- **Why it is like this:** Weather hazards are console-spawned and were written as one sample per step. Replaying the vortex `dt` times is not a multiply: the path turns, bounces and deals 25 HP only while the building is still inside it. Substepping the whole pipeline is a different change.
+- **Workaround / mitigation:** The coarse-dt parity test covers dt-scaled production, the brownout collapse timer and lightning expiry. It does not claim twister motion or raid swings.
+- **To resolve:** Inside one coarse step, advance each active twister once per tick from `tick - dt + 1` through `tick`. Same for any other hazard that samples once per step. Leave threshold timers that already key off `ctx.tick` alone.
+- **Found:** 2026-11-09, W09-04
+
+### BE-62 · A fast-run that stops before fastRan drops its notifications
+
+- **Status:** Accepted
+- **Area / code:** `backend/app/src/notify/fast-run-hold.ts` (`drop`), `backend/app/src/game/game-planets.service.ts` (`failLoad`), `backend/app/src/game/restart/notify-hold.ts`
+- **What happens:** If a restart catch-up is marked and the load then fails, or the planet goes down, before `fastRan`, the buffered notifications are discarded. `NotifierPort.send` is not called for them. A later successful recovery fast-run of the same snapshot sends once at its own flush. If nothing retries, those alerts are not sent.
+- **Why it is like this:** Flushing the failed attempt and flushing again when recovery replays the gap would send non-attack kinds twice. `under_attack` would usually fall inside the 10-minute window; the other kinds would not.
+- **Workaround / mitigation:** `wirePlanetRecovery` restores the planet from its snapshot and fast-runs again. That run flushes.
+- **To resolve:** Flush the aborted buffer only when recovery will not replay that gap.
+- **Found:** 2026-11-09, W09-27
+
+### BE-63 · A colony join does not close a no-colony socket of the same player
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/ws/playing-sockets.ts` (`playingKey`), `backend/app/src/ws/ws.gateway.ts` (`replaceOlder`)
+- **What happens:** A join with a `colonyId` is keyed `colony:<colonyId>`. A second join of that colony closes the older socket with `4001 replaced`. A different colony stays open. A join with no `colonyId` (dev session or pre-home) is keyed `player:<playerId>` and replaces only another no-colony socket of that player. It does not close a colony socket, and a colony join does not close the no-colony socket. One player can hold a lobby or dev socket and one playing socket per colony. Two playing sockets for one colony are not allowed. The same socket joining again does not close itself.
+- **Why it is like this:** W09-28 stops a second colony of the same player from dropping the first (CT-15, CT-16). Dev welcomes still have a null colony id, and that path kept the old per-player takeover. The two keys are distinct so they cannot close each other.
+- **Workaround / mitigation:** `leaveRoom` clears `colonyId` before close. The table remembers the join key and only drops a socket that is still registered under it, so the replacement stays.
+- **To resolve:** If a colony join should also drop that player's lobby socket, close the `player:` entry from the colony join. Do not key colony sockets by player id again.
+- **Found:** 2026-11-09, W09-28
+
+### BE-64 · Away story is sealed at close, before the welcome end baseline
+
+- **Status:** Accepted (W09-18 scope)
+- **Area / code:** `backend/app/src/game/digest/service.ts` (`sealStory`), `backend/app/src/game/digest/story.ts`, `backend/app/src/ai/story/away.ts`
+- **What happens:** The paragraph is written once when the row closes (`colonyBack`, a presence return, or welcome's close of a still-open row). It joins duration (if non-zero), attack counts, and the first non-zero resource net already on the body. `deliverWelcome` may then stamp `after` from the snapshot bytes (BE-59). That stamp keeps the paragraph it already stored, so the sentence can omit a net the structured digest shows. A paragraph that opens with build, attack, buy, sell, move, or destroy is dropped and the token reserve is reconciled to 0. A null paragraph, or a provider that throws, does not set `story` and does not fail the close. The text is the joined facts, not an LLM call.
+- **Why it is like this:** CT-34's model call is the W16 provider. W09-34 wires that provider. This hook must not call the network, and a second call when welcome stamps `after` would charge the daily budget again.
+- **Workaround / mitigation:** The structured digest is unchanged. The paragraph stays at most 600 characters and cannot add commands. With the provider off, or with W16 off, the body has no `story` field.
+- **To resolve:** Stamp `after` before the one story call on the welcome path, or have W09-34 recompute the paragraph after that stamp.
+- **Found:** 2026-11-09, W09-18
+
+### BE-65 · Dev hard-mode clock is process memory and does not eliminate the sim colony
+
+- **Status:** Accepted (W09-31 starts the clock; W09-19 owns the hard-mode path)
+- **Area / code:** `backend/app/src/game/presence/hard-mode-clock.ts` (`HardModeClock`), `backend/app/src/game/presence/dev-presence.ts` (`eliminate`), `frontend/game/store/local/devPresence.ts` (`LocalHardModeClock`)
+- **What happens:** `colony eliminate` while the presence blob is away emits `colonyEliminated` (`cause: other`) on `planet.event` and to joined sockets, and stores `{ startedAtMs, atTick, cause }` on `HardModeClock`. The first mark wins. A later eliminate emits again but does not move `startedAtMs`. A restart drops the map. The sim colony is not marked `eliminated` and buildings are not ruins (W18). The presence tracker is not told, so a socket that stays open keeps the dev away flag; after the last socket has been gone for 60s the tracker posts away again (no second `colonyAway`), and the next join posts `away: false`. `?host=local` keeps a separate page clock that W09-19 will not see.
+- **Why it is like this:** W09-31 only has to fire the event and start a timestamp. The sim has no wall clock (SIM-D-06). Ruins stay W18. Home `ELIMINATED` from this clock is BE-66.
+- **Workaround / mitigation:** In the same process, `HardModeClock.get(planetId, colonyId)`. While the dev socket stays connected, `away` and `back` stick.
+- **To resolve:** Persist the mark if a restart must keep it. Sync the presence tracker if a reconnect must not clear a dev away. W18 turns the sim colony into ruins.
+- **Found:** 2026-11-09, W09-31
+
+### BE-66 · Hard-mode home is the in-memory clock, not a stored elimination
+
+- **Status:** Accepted (W09-19)
+- **Area / code:** `backend/app/src/core/home/hard-mode-home.ts` (`eliminatedHomeFromClock`), `backend/app/src/core/home/home.service.ts` (`buildHomeResponseAsync`), `backend/app/src/notify/alert-router.ts` (`claimEliminated`), `backend/app/src/game/presence/hard-mode-clock.ts`
+- **What happens:** `GET /v1/me/home` returns `ELIMINATED` when `HardModeClock` has a mark for that colony and the row is still `ACTIVE`, while the sim is not eliminated (BE-65). A colony row already `ELIMINATED` keeps its stored recap. A planet that is already ended still returns `PLANET_ENDED`. `recap` is `{ startedAtMs, atTick, cause }` only. `planets` is a one-element list of the current planet, not the recruiting picker, and `newPlanetTypes` is `[]`. A restart clears the clock, so home is `ACTIVE` again. `POST /v1/me/home/recap-seen` does not clear the mark, so the same process keeps returning `ELIMINATED` and does not seat a new colony. A second `colony eliminate` still emits `planet.event` (BE-65). The router sends `colony_eliminated` once per colony and event id, so that repeat (same planet and tick) does not call `NotifierPort` again; a later elimination at a new tick still notifies. A failed send drops the claim so the same id can be tried again. There is no `?host=local` home, so `LocalHardModeClock` does not change `/v1/me/home`. `digestSignal` ignores `colonyEliminated`, so the away digest gains no elimination line.
+- **Why it is like this:** W09-19 reads the dev clock. It does not scan the event log and does not add a store (BE-65 is process memory). The home schema allows this recap. Full ruins, the picker, and a digest line are later waves.
+- **Workaround / mitigation:** In the same process, `HardModeClock.get(planetId, colonyId)` is what home reads. After a restart the player is `ACTIVE` on the same colony.
+- **To resolve:** Persist the mark, or set the colony row `ELIMINATED`, and build the PROTOCOL recap (survived time, peak stats, open planets). Clear the mark when the recap is seen if a new colony should be seatable. Fold `colonyEliminated` into the digest if the away modal must mention it. A local home, if one is added, should read `LocalHardModeClock`.
+- **Found:** 2026-11-09, W09-19
+
+### BE-67 · A scenario away digest is keyed by the home id, so its baseline stays zero
+
+- **Status:** Accepted (W09-33)
+- **Area / code:** `backend/app/src/game/presence/dev-presence.ts` (`findColony`), `shared/sim/src/systems/presence/resolve.ts` (`colonyAt`), `backend/app/src/game/digest/baseline.ts` (`baselineFromState`), `backend/app/src/notify/notify-test.ts`
+- **What happens:** A dev scenario seat writes a `co_` colony row and leaves the sim colony id as the fixture (`col_w09`, BE-45). `away` / `back` post `system.presence` with the `co_` id so `welcome.away` finds the digest. The snapshot still names `col_w09`, so `baselineFromState` misses the colony and `before` stays equal to `after` (BE-59). `POST /v1/dev/notify/test` routes `under_attack` through the alert router only. It does not emit a sim raid, so the plate's attack count stays 0 unless something else folded one. The local host has no `welcome.away`; its console lines are the away record.
+- **Why it is like this:** Rewriting the sim colony id on the first away would move every id lookup in the same step. The plate still shows the duration and the attacks line. The mock row is the attack the e2e checks.
+- **Workaround / mitigation:** Read nets only when the snapshot colony id equals the digest colony id. For a scenario, treat a zero net as "not measured", not as "nothing changed".
+- **To resolve:** On scenario seat, set the sim colony id to the `co_` row (or stamp `after` by colony index). Fold a sim `underAttack` in the dev notify route only if the plate must count that test ping.
+- **Found:** 2026-11-09, W09-33
+
 ## W20 Colony Deed & Staking (F6, mock)
 
 ### BE-53 · Tier-1 vertical slice settlement (`Stage 4 + 100% Living Planet` / `Seal Settled Deed`) and mock NEP-413 account claim while W14, W21, and W23 are deferred
@@ -751,3 +903,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Both `DeedNftPort` (`describeNearPortContract('deed')`) and `StakingPort` (`describeNearPortContract('staking')`) contract suites are enforced in CI against the Postgres-backed mocks so `W23` can drop in live adapters behind `NEAR_ADAPTER_DEED` and `NEAR_ADAPTER_STAKING` without changing any game, sim, or UI code.
 - **To resolve:** Connect `W21` rocket departure to `colonySettled` when `W21` opens, and wire live NEAR key rotation and contract adapters in `W23-14`, `W23-31`, and `W23-33`.
 - **Found:** 2026-11-09, W20 delivery.
+
+### BE-69 · A settled Colony Deed push is not one of the eight away-alert toggles
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/deed/deed-settled.service.ts` (`notifySettledIfEnabled`), `shared/contracts/src/notify/kinds.ts` (`NOTIFIER_EXTRA_KINDS`), `backend/app/src/ports/notifier.port.ts`
+- **What happens:** When W09 and W20 are both on, sealing a Colony Deed calls `NotifierPort.send` once per colony per process. The payload kind is `deed_settled`, the channel is always `telegram`, and `to` is the deed's `playerId` or else its `accountId`. That kind is not in `NOTIFICATION_KINDS`, so the away alert toggles do not list it and cannot turn it off. The alert router does not turn a `deedSettled` planet event into this push. A repeat seal in the same process does not send again. The idempotency key is `deed-settled:<colonyId>` plus the channel.
+- **Why it is like this:** CT-36 fixes eight player-configurable alerts. W20-25 asks for one push on settle and was written against an older port shape (`channel`, `to`, `title`, `body`). The port now requires `colonyId`, `eventId` and `kind`. Adding a ninth toggle would change that closed list.
+- **Workaround / mitigation:** The send is skipped when W09 is off, when no notifier is bound, or when both `playerId` and `accountId` are empty. A send that fails is logged and does not fail the seal.
+- **To resolve:** Owner: add a player toggle and route the seal through the alert router, or keep this one-shot telegram push.
+- **Found:** 2026-11-10, merge of main into W09.

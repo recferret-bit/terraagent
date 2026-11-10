@@ -1,14 +1,9 @@
 import { z } from 'zod';
-import { ColonyId } from '../ids';
+import { AwaySummarySchema } from '../notify/digest';
 import { PlanetType } from '../ws/sim';
+import { HomeColonyId, HomePlanetId } from './ids';
 
-/**
- * Planet ids of the home flow: ULID `pl_…` ids (`PlanetId`) and the dev planet family ids (`pl_dev`, `pl_dev_ocean_2`).
- * Colony ids: new colonies get ULID `co_…` ids (`ColonyId`); rows written before 2026-11-01 keep `col_<base36>_<hex>`
- * (BE-21, owner question: drop the legacy pattern after a DB reset).
- */
-export const HomePlanetId = z.string().regex(/^pl_[A-Za-z0-9_-]{1,64}$/);
-export const HomeColonyId = z.union([ColonyId, z.string().regex(/^col_[A-Za-z0-9_-]{1,64}$/)]);
+export { HomeColonyId, HomePlanetId };
 
 export const PlanetSummary = z.object({
   id: HomePlanetId,
@@ -86,7 +81,14 @@ export const HomeResponse = z.discriminatedUnion('state', [
     position: z.number().int(),
     etaS: z.number().int().nullable(),
   }),
-  z.object({ state: z.literal('ACTIVE'), colony: ColonySummary, planet: PlanetSummary, away: z.record(z.string(), z.unknown()).optional() }),
+  z.object({
+    state: z.literal('ACTIVE'),
+    colony: ColonySummary,
+    planet: PlanetSummary,
+    away: z.record(z.string(), z.unknown()).optional(),
+    /** CT-32 headline. Omitted when the colony has no unseen digest, or the read misses its budget. */
+    awaySummary: AwaySummarySchema.optional(),
+  }),
   // PROTOCOL §8: the recap / results, the open planets and the new planet types are required (BE-21).
   z.object({
     state: z.literal('ELIMINATED'),

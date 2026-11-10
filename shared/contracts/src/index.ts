@@ -99,6 +99,30 @@ export {
 } from './commands/set-director-policy';
 export { DirectorActionDataSchema, event as directorAction, type DirectorActionData } from './events/director-action';
 export { DirectorStatusDataSchema, event as directorStatus, type DirectorStatusData } from './events/director-status';
+export * from './notify';
+export { SetAutopilotArgsSchema, command as setAutopilot, type SetAutopilotArgs } from './commands/set-autopilot';
+export { SystemPresenceArgsSchema, command as systemPresence, type SystemPresenceArgs } from './commands/system-presence';
+export { ColonyAwayDataSchema, event as colonyAway, type ColonyAwayData } from './events/colony-away';
+export { ColonyBackDataSchema, event as colonyBack, type ColonyBackData } from './events/colony-back';
+export {
+  AwayBudgetExhaustedDataSchema,
+  event as awayBudgetExhausted,
+  type AwayBudgetExhaustedData,
+} from './events/away-budget-exhausted';
+export {
+  ColonyCriticalCauseSchema,
+  ColonyCriticalDataSchema,
+  event as colonyCritical,
+  type ColonyCriticalCause,
+  type ColonyCriticalData,
+} from './events/colony-critical';
+export {
+  ColonyEliminatedCauseSchema,
+  ColonyEliminatedDataSchema,
+  event as colonyEliminated,
+  type ColonyEliminatedCause,
+  type ColonyEliminatedData,
+} from './events/colony-eliminated';
 export * from './deed';
 export { DeedMintedDataSchema, event as deedMinted, type DeedMintedData } from './events/deed-minted';
 export { DeedUpdatedDataSchema, event as deedUpdated, type DeedUpdatedData } from './events/deed-updated';
