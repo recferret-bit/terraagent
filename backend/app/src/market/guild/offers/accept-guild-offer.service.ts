@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { RejectCode } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { EventBus } from '../../../bus/event-bus.js';
@@ -11,6 +11,7 @@ import { MarketOrderRepository } from '../../book/market-order.repository.js';
 import { MarketFillsHook } from '../../orders/market-fills.hook.js';
 import { resolveMarketAccountId } from '../../orders/colony-account.js';
 import { PLATFORM_ACCOUNT_ID } from '../../orders/market-policy.provider.js';
+import { GUILD_FILL_SINK, type GuildFillSink } from '../maker/fill-sink.js';
 import { crossGuildOffer } from './cross-offer.js';
 import { GuildOffersService } from './guild-offers.service.js';
 import { ensureMockSigners } from './signers.js';
@@ -45,6 +46,7 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     private readonly bus: EventBus,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    @Optional() @Inject(GUILD_FILL_SINK) private readonly guild?: GuildFillSink,
   ) {}
 
   onModuleInit(): void {
@@ -82,6 +84,7 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     await ensureMockSigners(this.env, this.prisma, [accountId, judged.quote.npcAccountId, PLATFORM_ACCOUNT_ID]);
     const crossed = await crossGuildOffer(this.prisma, this.repo, this.fills, this.books, { ...input, accountId }, judged.quote, judged.offer);
     if (!crossed.ok) return crossed;
+    await this.requote(input.planetId, judged);
     this.bus.emit('planet.event', {
       planetId: input.planetId,
       tick: 0,
@@ -102,5 +105,24 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
       },
     });
     return { ok: true, tradeId: crossed.tradeId, npcAccountId: crossed.npcAccountId };
+  }
+
+  /** The trade is already committed. The maker re-reads the filled row for the hold and the depart time. */
+  private async requote(planetId: string, judged: Extract<Awaited<ReturnType<GuildOffersService['judge']>>, { ok: true }>): Promise<void> {
+    if (!this.guild) return;
+    const quote = judged.quote;
+    await this.guild.onGuildFill({
+      npcId: quote.npcId,
+      planetId,
+      base: quote.base,
+      quote: quote.quote,
+      side: quote.side,
+      amount: judged.offer.amount,
+      orderId: quote.orderId,
+      reserve: 0n,
+      orderAmount: quote.amount,
+      departAt: 0,
+      quoteSeq: quote.quoteSeq,
+    }).catch((err: unknown) => this.log.warn(`guild re-quote failed: ${err instanceof Error ? err.message : String(err)}`));
   }
 }

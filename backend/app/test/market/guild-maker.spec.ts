@@ -201,11 +201,16 @@ class MemoryOrders implements GuildOrderPort {
       planetId: intent.planetId,
       colonyId: intent.npcId,
       base: intent.base,
+      quote: intent.quote,
       side: intent.side,
       actorKind: 'npc',
       bucket: intent.bucket,
       reserve: intent.reserve,
       notional: intent.priceAmount,
+      amount: intent.amount,
+      ref: intent.ref,
+      departAt: intent.departAt,
+      quoteSeq: intent.quoteSeq,
     });
     return Promise.resolve({ orderId, created: true });
   }

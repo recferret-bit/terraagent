@@ -17,9 +17,17 @@ import { GuildNpcRepository } from '../guild-npc.repository.js';
 import { loadPolicy } from '../guild-plan.js';
 import { applyFill, type CargoFillResult, type GuildCargoFill } from '../inventory.js';
 import { compileData, type CompiledDataLike } from '@terra/sim';
+import { decimalToBigint } from '../../book/decimal.js';
+import type { MatchOutcome } from '../../matching/market-matcher.service.js';
+import type { GuildFillSink } from './fill-sink.js';
 import { GuildOrderBook, type GuildOrderPort, type RestingGuildOrder } from './order-book.js';
 import { barterPairIds } from './pairs.js';
 import { cancelIds, planQuotes, type GuildOrderIntent, type MakerNpc } from './plan.js';
+import {
+  consumedHold, lossBlocksBid, noticeFromFill, termsMeta, withQuoteSeq,
+  type GuildFillNotice, type OrderMeta, type RequoteReport,
+} from './requote.js';
+import { NpcTurnQueue } from './turn-queue.js';
 
 export interface DockReport {
   readonly placed: readonly string[];
@@ -38,10 +46,12 @@ export const GUILD_BOOK_DISCOVERY = Symbol('GUILD_BOOK_DISCOVERY');
  * While a Guild NPC is docked, rest one bid and one ask per Tier-1 barter pair that `quoteGuild` prices.
  * Actor kind is `npc`. The command source recorded on the order is `bot`. One overview call discovers the book.
  * Departure and the kill switch cancel those orders and release the funding hold.
+ * A guild fill records cargo, consumes the funding hold, and replaces that quote in the same turn.
  */
 @Injectable()
-export class GuildMakerService implements OnModuleInit, OnModuleDestroy {
+export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFillSink {
   private readonly log = new Logger(GuildMakerService.name);
+  private readonly turns = new NpcTurnQueue();
   private off: Array<() => void> = [];
   private book: GuildOrderPort | null = null;
 
@@ -93,12 +103,36 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Record one guild fill on the NPC row. A player buy is `side: 'sell'` and decreases stock.
-   * The matcher does not call this; callers (and tests) do. W15 off writes nothing.
-   * Departure does not clear the cache: the next dock on any planet reads the same row.
+   * Does not re-quote. Fills that must re-quote go through `onGuildFill` (it writes the same cache).
+   * W15 off writes nothing. Departure does not clear the cache.
    */
   recordFill(npcId: string, fill: GuildCargoFill): Promise<CargoFillResult | null> {
     if (!this.live()) return Promise.resolve(null);
-    return this.npcs.withLock(npcId, (db) => this.writeFill(npcId, fill, db));
+    return this.turns.run(npcId, () => this.npcs.withLock(npcId, (db) => this.writeFill(npcId, fill, db)));
+  }
+
+  /**
+   * After the match transaction commits: one guild leg becomes one re-quote.
+   * W15 off does nothing. A zero-qty leg is ignored inside `onGuildFill`.
+   */
+  async onMatched(outcome: MatchOutcome): Promise<void> {
+    if (!this.live()) return;
+    const orders = [outcome.incoming, ...outcome.makers.values()];
+    for (const fill of outcome.fills) {
+      const notice = noticeFromFill(fill, orders);
+      if (notice) await this.onGuildFill(notice);
+    }
+  }
+
+  /**
+   * Serialize this NPC's inventory, consume the filled hold, cancel the old quote, and rest a new one.
+   * A non-positive amount does not write and does not re-quote. W15 off returns null.
+   * Do not call this from inside `recordFill`: both take the same per-NPC turn.
+   */
+  onGuildFill(notice: GuildFillNotice): Promise<RequoteReport | null> {
+    if (!this.live()) return Promise.resolve(null);
+    if (!Number.isSafeInteger(notice.amount) || notice.amount <= 0) return Promise.resolve({ requoted: false, reason: 'zero' });
+    return this.turns.run(notice.npcId, () => this.requote(notice));
   }
 
   private async arrive(payload: GuildArrivedPayload): Promise<DockReport> {
@@ -189,6 +223,78 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy {
     return ids;
   }
 
+  private async requote(notice: GuildFillNotice): Promise<RequoteReport> {
+    const meta = await this.metaOf(notice);
+    const wrote = await this.npcs.withLock(notice.npcId, (db) => this.writeFill(notice.npcId, cargoOf(notice), db));
+    if (!wrote?.ok) return { requoted: false, reason: wrote ? wrote.reason : 'no_npc', previousOrderId: notice.orderId };
+    await this.settleHold(notice, meta);
+    return this.placeNext(notice, meta);
+  }
+
+  private async metaOf(notice: GuildFillNotice): Promise<OrderMeta> {
+    const open = await this.openQuote(notice);
+    const stored = await this.storedMeta(notice.orderId);
+    return {
+      reserve: open?.reserve ?? stored?.reserve ?? notice.reserve,
+      departAt: open?.departAt || stored?.departAt || notice.departAt,
+      quoteSeq: open?.quoteSeq ?? stored?.quoteSeq ?? notice.quoteSeq,
+      orderAmount: open && open.amount > 0n ? open.amount : stored?.orderAmount ?? notice.orderAmount,
+      bucket: open?.bucket ?? stored?.bucket ?? 'inventory',
+    };
+  }
+
+  private async storedMeta(orderId: string): Promise<OrderMeta | null> {
+    if (!this.prisma) return null;
+    const row = await this.prisma.marketOrder.findUnique({
+      where: { orderId }, select: { signedTerms: true, ref: true, amount: true },
+    });
+    return row ? termsMeta(row.signedTerms, row.ref, decimalToBigint(row.amount)) : null;
+  }
+
+  private async settleHold(notice: GuildFillNotice, meta: OrderMeta): Promise<void> {
+    const qty = BigInt(notice.amount);
+    const size = meta.orderAmount > 0n ? meta.orderAmount : qty;
+    const held = consumedHold(meta.reserve, size, qty);
+    if (held > 0n) await this.funding.consume(notice.npcId, meta.bucket, held);
+    const open = await this.openQuote(notice);
+    if (!open) return;
+    const left = meta.reserve > held ? meta.reserve - held : 0n;
+    if (left > 0n) await this.funding.release(notice.npcId, open.bucket, left);
+    await this.port().cancel(open);
+  }
+
+  private async placeNext(notice: GuildFillNotice, meta: OrderMeta): Promise<RequoteReport> {
+    const npc = await this.npcOf(notice.npcId);
+    const previousOrderId = notice.orderId;
+    if (!npc) return { requoted: false, reason: 'no_npc', previousOrderId };
+    const quoteSeq = meta.quoteSeq + 1;
+    if (notice.side === 'buy' && lossBlocksBid(npc.lossAtomic, loadPolicy((wave) => this.flags.has(wave)).dailyLossAtomic)) {
+      return { requoted: false, reason: 'loss', quoteSeq, previousOrderId };
+    }
+    const key = await this.keys.find(npc.tradeKeyId);
+    if (!key || key.revokedAt) return { requoted: false, reason: 'no_key', previousOrderId };
+    const overview = await this.overview(notice.planetId);
+    const dock = { planetId: notice.planetId, departAt: meta.departAt || notice.departAt };
+    const intent = planQuotes(this.data(), npc, dock, overview.overview)
+      .find((row) => row.base === notice.base && row.quote === notice.quote && row.side === notice.side);
+    if (!intent) return { requoted: false, reason: 'paused', previousOrderId };
+    const stamped = withQuoteSeq(intent, quoteSeq);
+    const open = await this.port().resting(npc.npcId, notice.planetId);
+    const committed = open.reduce((sum, row) => sum + row.notional, 0n);
+    const reason = await this.gate(npc, key, stamped, open.length, committed);
+    if (reason) return { requoted: false, reason, previousOrderId };
+    const orderId = await this.placeOrRelease(npc.npcId, stamped);
+    if (!orderId) return { requoted: false, reason: 'duplicate', previousOrderId };
+    return { requoted: true, orderId, quoteSeq, bid: stamped.priceAmount, previousOrderId };
+  }
+
+  private async openQuote(notice: GuildFillNotice): Promise<RestingGuildOrder | null> {
+    const rows = await this.port().resting(notice.npcId, notice.planetId);
+    return rows.find((row) => row.orderId === notice.orderId)
+      ?? rows.find((row) => row.base === notice.base && row.side === notice.side)
+      ?? null;
+  }
+
   private async writeFill(npcId: string, fill: GuildCargoFill, db: DbClient): Promise<CargoFillResult | null> {
     const row = await this.npcs.find(npcId, db);
     if (!row || row.actorKind !== 'npc') return null;
@@ -200,7 +306,7 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy {
   private async npcOf(npcId: string): Promise<MakerNpc | null> {
     const row = await this.npcs.find(npcId);
     if (!row || row.actorKind !== 'npc') return null;
-    return { npcId: row.npcId, accountId: row.accountId, tradeKeyId: row.tradeKeyId, inventory: row.inventory };
+    return { npcId: row.npcId, accountId: row.accountId, tradeKeyId: row.tradeKeyId, inventory: row.inventory, lossAtomic: row.lossAtomic };
   }
 
   private overview(planetId: string): Promise<TradeOverviewResponse> {
@@ -251,16 +357,25 @@ function quoteRequest(npcId: string, intent: GuildOrderIntent, has: (wave: strin
   };
 }
 
+function cargoOf(notice: GuildFillNotice): GuildCargoFill {
+  return { resource: notice.base, side: notice.side, amount: notice.amount, planetId: notice.planetId };
+}
+
 function restingFrom(intent: GuildOrderIntent, orderId: string): RestingGuildOrder {
   return {
     orderId,
     planetId: intent.planetId,
     colonyId: intent.npcId,
     base: intent.base,
+    quote: intent.quote,
     side: intent.side,
     actorKind: 'npc',
     bucket: intent.bucket,
     reserve: intent.reserve,
     notional: intent.priceAmount,
+    amount: intent.amount,
+    ref: intent.ref,
+    departAt: intent.departAt,
+    quoteSeq: intent.quoteSeq,
   };
 }

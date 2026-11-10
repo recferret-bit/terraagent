@@ -19,6 +19,8 @@ export interface MakerNpc {
   readonly accountId: string;
   readonly tradeKeyId: string;
   readonly inventory: InventoryCache;
+  /** Stored loss counter. Absent on older callers; a missing value does not block a bid. */
+  readonly lossAtomic?: string;
 }
 
 export interface MakerDock {
@@ -73,9 +75,23 @@ export function cargoUnits(cache: InventoryCache, resource: string): bigint {
   return BigInt(stockOf(cache, resource));
 }
 
-/** Stable ref for one visit. A second place with the same depart time hits the same row. */
-export function quoteRef(npcId: string, planetId: string, base: string, side: string, departAt: number): string {
-  return `gqm:${npcId}:${planetId}:${base}:${side}:${departAt}`;
+/**
+ * Stable ref for one visit. Sequence 0 keeps the original ref, so a second place at the same depart time
+ * hits the same row. A later sequence is a new row.
+ */
+export function quoteRef(npcId: string, planetId: string, base: string, side: string, departAt: number, quoteSeq = 0): string {
+  const stem = `gqm:${npcId}:${planetId}:${base}:${side}:${departAt}`;
+  return quoteSeq > 0 ? `${stem}:${quoteSeq}` : stem;
+}
+
+/** Depart time and quote sequence encoded by `quoteRef`. Null when `ref` is not a guild quote. */
+export function departOf(ref: string): { departAt: number; quoteSeq: number } | null {
+  const parts = ref.split(':');
+  if (parts.length < 6 || parts[0] !== 'gqm') return null;
+  const departAt = Number(parts[5]);
+  const quoteSeq = parts.length > 6 ? Number(parts[6]) : 0;
+  if (!Number.isSafeInteger(departAt) || !Number.isInteger(quoteSeq) || quoteSeq < 0) return null;
+  return { departAt, quoteSeq };
 }
 
 /** Inventory the funding book holds: base units on a sell, quote units (fee-inclusive) on a barter bid. */

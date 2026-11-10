@@ -12,7 +12,8 @@ import { TradeRequestLinker, type OrderLink } from '../trade/trade-request-linke
 import { MarketBooks } from '../book/market-books.js';
 import type { MarketOrderRecord } from '../book/market-order.record.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
-import { MarketMatcher } from '../matching/market-matcher.service.js';
+import { GUILD_FILL_SINK, type GuildFillSink } from '../guild/maker/fill-sink.js';
+import { MarketMatcher, type MatchOutcome } from '../matching/market-matcher.service.js';
 import { resolveMarketAccountId } from './colony-account.js';
 import { MarketFillsHook } from './market-fills.hook.js';
 import { MarketPolicyProvider, PLATFORM_ACCOUNT_ID } from './market-policy.provider.js';
@@ -70,6 +71,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() private readonly linker?: TradeRequestLinker,
+    @Optional() @Inject(GUILD_FILL_SINK) private readonly guild?: GuildFillSink,
   ) {}
 
   onModuleInit(): void {
@@ -112,6 +114,14 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
+  /** The fill is already committed. A re-quote failure must not look like a failed match. */
+  private async requoteGuild(outcome: MatchOutcome | null): Promise<void> {
+    if (!outcome || outcome.fills.length === 0 || !this.guild) return;
+    await this.guild.onMatched(outcome).catch((err: unknown) => {
+      this.log.warn(`guild re-quote failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
   /** The stall's display name (the colony's) for the contract toast; the fee column keeps the policy default until `market.setHubFee` is persisted. */
   private async rememberStall(planetId: string, d: Requested['data'], accountId: string): Promise<void> {
     await this.prisma.marketStall.upsert({
@@ -134,11 +144,14 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
   async matchAndSettle(orderId: string): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       try {
+        const found: { outcome: MatchOutcome | null } = { outcome: null };
         const touched = await withTransaction(this.prisma, async (tx) => {
           const outcome = await this.matcher.matchOrder(orderId, tx);
+          found.outcome = outcome;
           return outcome.fills.length > 0 ? this.fills.onFills(outcome, tx) : [];
         });
         if (touched.length > 0) await this.books.sync(...touched);
+        await this.requoteGuild(found.outcome);
         return;
       } catch (err) {
         // A lock conflict with another writer (deadlock 40P01 / serialization 40001) rolled the whole match back: the order still rests, try again.
