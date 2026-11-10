@@ -52,6 +52,8 @@ export interface GuildOrderIntent {
   readonly maxStallFeeBp: number;
   readonly policyVersion: string;
   readonly policyHash: string;
+  /** Bumped when this quote is replaced. The curated offer id includes it. Starts at 0. */
+  readonly quoteSeq: number;
   /** Overview last, when that pair had one. The allowance band uses it; a missing last stays null. */
   readonly reference: { readonly num: bigint; readonly den: bigint } | null;
 }
@@ -219,6 +221,7 @@ function intentOf(ctx: QuoteContext, side: SideQuote, terms: Terms): GuildOrderI
     maxStallFeeBp: terms.maxStallFeeBp,
     policyVersion: terms.policyVersion,
     policyHash: terms.policyHash,
+    quoteSeq: 0,
     reference: ctx.reference,
   };
 }

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { GuildOffer } from '@terra/contracts';
 import { Prisma, type PrismaClient } from '@terra/db';
 import { PRISMA } from '../../../db/db.module.js';
 
@@ -62,6 +63,10 @@ export class GuildVisitRepository {
 
   insertExtra(draft: GuildVisitInsert): Promise<GuildVisitRow> {
     return this.prisma.guildVisit.create({ data: dataOf(draft) }).then(toRow);
+  }
+
+  saveOffers(id: string, offers: readonly GuildOffer[]): Promise<void> {
+    return this.prisma.guildVisit.update({ where: { id }, data: { offers: offers as unknown as Prisma.InputJsonValue } }).then(() => undefined);
   }
 
   /** One writer wins. A second tick in the same departure gets `false` and must not push again. */

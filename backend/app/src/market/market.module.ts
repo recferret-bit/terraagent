@@ -25,6 +25,8 @@ import { MarketFillsHook } from './orders/market-fills.hook.js';
 import { MarketPolicyProvider } from './orders/market-policy.provider.js';
 import { MarketSimGateway } from './orders/market-sim-gateway.js';
 import { OrderFunds } from './orders/order-funds.js';
+import { AcceptGuildOfferPrecheck } from './guild/offers/accept-guild-offer.precheck.js';
+import { AcceptGuildOfferService } from './guild/offers/accept-guild-offer.service.js';
 import { PlaceOrderPrecheck } from './orders/place-order.precheck.js';
 import { PlaceOrderService } from './orders/place-order.service.js';
 import { TradeAgentService } from './trade/trade-agent.service.js';
@@ -70,6 +72,8 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketSimGateway,
     OrderFunds,
     PlaceOrderPrecheck,
+    AcceptGuildOfferPrecheck,
+    AcceptGuildOfferService,
     PlaceOrderService,
     OrderRelease,
     CancelOrderHandler,
