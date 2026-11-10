@@ -24,6 +24,10 @@ import {
   type MinimapStats,
   type PlanetRasterUpdateOptions,
 } from '../../maps';
+import { NeighborHudStrip } from './NeighborHudStrip';
+
+export * from './neighborMarkers';
+export * from './NeighborHudStrip';
 
 export interface MapsFeatureService {
   readonly controller: MapsController;
@@ -124,13 +128,33 @@ export function mountMapsFeature(
   ctx.services.maps = service;
   const offCloser = ctx.services.registerHudCloser?.(() => { if (controller.openClose.isOpen) controller.openClose.close(); });
 
+  let neighborHud: NeighborHudStrip | null = null;
+  const syncNeighborHud = (view?: unknown) => {
+    if (ctx.flags.has('W18')) {
+      if (!neighborHud) {
+        neighborHud = new NeighborHudStrip({ container: el, ctx });
+      }
+      if (view !== undefined) {
+        neighborHud.update(view);
+      }
+    } else if (neighborHud) {
+      neighborHud.dispose();
+      neighborHud = null;
+    }
+  };
+
+  syncNeighborHud();
+
   return {
     update(view) {
       controller.updateFromView(view);
+      syncNeighborHud(view);
     },
     dispose() {
       offCloser?.();
       controller.dispose();
+      neighborHud?.dispose();
+      neighborHud = null;
       if (ctx.services.maps === service) {
         delete ctx.services.maps;
       }
