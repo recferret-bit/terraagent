@@ -82,6 +82,8 @@ describe('Guild visit schedule (W15-09)', () => {
     expect(await svc.advance('pl_test', NOW, 'kestrel')).toEqual([]);
     expect(await svc.tick('pl_test')).toEqual([]);
     expect(await svc.scheduleExtraVisit('pl_test')).toBeNull();
+    await expect(svc.dockNow('pl_test', 'kestrel')).rejects.toMatchObject({ errorCode: 'wave_disabled' });
+    await expect(svc.departNow('pl_test', 'kestrel')).rejects.toMatchObject({ errorCode: 'wave_disabled' });
   });
 
   it('dock is exactly 720_000 ms and a zero-length extra visit is rejected', () => {
