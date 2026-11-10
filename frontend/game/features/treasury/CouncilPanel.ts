@@ -1,3 +1,4 @@
+import { sendPlanetRequest } from '../../core/net/planetHttp';
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { TreasuryTracker } from './analytics/treasuryTracker';
 import { fetchCouncil, postProposal, postVote, readApiErrorCode, type CouncilFetch } from './councilApi';
@@ -127,20 +128,8 @@ export class CouncilPanel {
     await this.refresh();
   }
 
-  private async send(run: (planetId: string) => Promise<Response>): Promise<boolean> {
-    const planetId = this.planetId();
-    if (!planetId) return false;
-    try {
-      const res = await run(planetId);
-      if (!res.ok) {
-        this.fail((await readApiErrorCode(res)) ?? 'REQUEST_FAILED');
-        return false;
-      }
-    } catch {
-      this.fail('REQUEST_FAILED');
-      return false;
-    }
-    return true;
+  private send(run: (planetId: string) => Promise<Response>): Promise<boolean> {
+    return sendPlanetRequest(this.planetId(), run, (code) => this.fail(code));
   }
 
   private fail(code: string): void {

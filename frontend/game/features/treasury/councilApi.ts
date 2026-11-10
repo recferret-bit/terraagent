@@ -1,4 +1,8 @@
+import { readApiErrorCode } from '../../core/net/planetHttp';
+
 export type CouncilFetch = (input: string, init?: RequestInit) => Promise<Response>;
+
+export { readApiErrorCode };
 
 export function councilUrl(planetId: string): string {
   return `/v1/near/treasury/${encodeURIComponent(planetId)}`;
@@ -10,18 +14,6 @@ export function proposeUrl(planetId: string): string {
 
 export function voteUrl(planetId: string, proposalId: string): string {
   return `${proposeUrl(planetId)}/${encodeURIComponent(proposalId)}/vote`;
-}
-
-/** `errorCode` from the JSON envelope. A body that is not JSON is a null code, not a throw. */
-export async function readApiErrorCode(res: Response): Promise<string | null> {
-  try {
-    const body = (await res.json()) as { errorCode?: unknown; error?: { code?: unknown } };
-    if (typeof body?.errorCode === 'string') return body.errorCode;
-    if (typeof body?.error?.code === 'string') return body.error.code;
-  } catch {
-    return null;
-  }
-  return null;
 }
 
 function headers(token: string | null, json: boolean): HeadersInit {

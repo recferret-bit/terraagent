@@ -1,4 +1,4 @@
-import { readApiErrorCode } from '../treasury/councilApi';
+import { readApiErrorCode } from '../../core/net/planetHttp';
 
 export type BountyFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
