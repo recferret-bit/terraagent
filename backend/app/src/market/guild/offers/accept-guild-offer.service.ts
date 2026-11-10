@@ -12,6 +12,7 @@ import { MarketFillsHook } from '../../orders/market-fills.hook.js';
 import { resolveMarketAccountId } from '../../orders/colony-account.js';
 import { PLATFORM_ACCOUNT_ID } from '../../orders/market-policy.provider.js';
 import { GUILD_FILL_SINK, type GuildFillSink } from '../maker/fill-sink.js';
+import { GuildContactProducer } from '../../progression/guild-contact.producer.js';
 import { crossGuildOffer } from './cross-offer.js';
 import { GuildOffersService } from './guild-offers.service.js';
 import { ensureMockSigners } from './signers.js';
@@ -47,18 +48,25 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() @Inject(GUILD_FILL_SINK) private readonly guild?: GuildFillSink,
+    @Optional() private readonly guildContact?: GuildContactProducer,
   ) {}
 
   onModuleInit(): void {
-    this.off ??= this.bus.onPlanetEvent('guildOfferAcceptRequested', (ev) => {
-      void this.accept({
-        offerId: ev.data.offerId,
-        planetId: ev.planetId,
-        colonyId: ev.data.colonyId,
-        colonyIndex: ev.data.colonyIndex,
-        playerId: ev.data.playerId ?? ev.data.colonyId,
-      }).catch((err: unknown) => this.log.warn(`guild accept failed: ${err instanceof Error ? err.message : String(err)}`));
-    }, { module: 'AcceptGuildOfferService' });
+    this.off ??= this.bus.onPlanetEvent(
+      'guildOfferAcceptRequested',
+      (ev) => {
+        void this.accept({
+          offerId: ev.data.offerId,
+          planetId: ev.planetId,
+          colonyId: ev.data.colonyId,
+          colonyIndex: ev.data.colonyIndex,
+          playerId: ev.data.playerId ?? ev.data.colonyId,
+        }).catch((err: unknown) =>
+          this.log.warn(`guild accept failed: ${err instanceof Error ? err.message : String(err)}`),
+        );
+      },
+      { module: 'AcceptGuildOfferService' },
+    );
   }
 
   onModuleDestroy(): void {
@@ -79,11 +87,29 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async settle(input: AcceptGuildOfferInput, judged: Extract<Awaited<ReturnType<GuildOffersService['judge']>>, { ok: true }>): Promise<AcceptGuildOfferResult> {
-    const accountId = await resolveMarketAccountId(this.prisma, input.colonyId, input.playerId, input.planetId, input.colonyIndex);
+  private async settle(
+    input: AcceptGuildOfferInput,
+    judged: Extract<Awaited<ReturnType<GuildOffersService['judge']>>, { ok: true }>,
+  ): Promise<AcceptGuildOfferResult> {
+    const accountId = await resolveMarketAccountId(
+      this.prisma,
+      input.colonyId,
+      input.playerId,
+      input.planetId,
+      input.colonyIndex,
+    );
     await ensureMockSigners(this.env, this.prisma, [accountId, judged.quote.npcAccountId, PLATFORM_ACCOUNT_ID]);
-    const crossed = await crossGuildOffer(this.prisma, this.repo, this.fills, this.books, { ...input, accountId }, judged.quote, judged.offer);
+    const crossed = await crossGuildOffer(
+      this.prisma,
+      this.repo,
+      this.fills,
+      this.books,
+      { ...input, accountId },
+      judged.quote,
+      judged.offer,
+    );
     if (!crossed.ok) return crossed;
+    await this.noteContact(input, crossed.tradeId, judged.quote.npcId, judged.offer.action, judged.offer.amount);
     await this.requote(input.planetId, judged);
     this.bus.emit('planet.event', {
       planetId: input.planetId,
@@ -107,22 +133,54 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     return { ok: true, tradeId: crossed.tradeId, npcAccountId: crossed.npcAccountId };
   }
 
+  /** The trade row is already committed. Player `buy` means the NPC was the seller. */
+  private async noteContact(
+    input: AcceptGuildOfferInput,
+    tradeId: string,
+    npcId: string,
+    action: 'buy' | 'sell',
+    amount: number,
+  ): Promise<void> {
+    if (!this.guildContact) return;
+    const player = { actorKind: 'player', colonyId: input.colonyId, playerId: input.playerId };
+    const npc = { actorKind: 'npc', colonyId: npcId, playerId: null };
+    const buy = action === 'buy';
+    await this.guildContact
+      .note({
+        tradeId,
+        planetId: input.planetId,
+        amount,
+        buyer: buy ? player : npc,
+        seller: buy ? npc : player,
+      })
+      .catch((err: unknown) =>
+        this.log.warn(`guild contact fact failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
+  }
+
   /** The trade is already committed. The maker re-reads the filled row for the hold and the depart time. */
-  private async requote(planetId: string, judged: Extract<Awaited<ReturnType<GuildOffersService['judge']>>, { ok: true }>): Promise<void> {
+  private async requote(
+    planetId: string,
+    judged: Extract<Awaited<ReturnType<GuildOffersService['judge']>>, { ok: true }>,
+  ): Promise<void> {
     if (!this.guild) return;
     const quote = judged.quote;
-    await this.guild.onGuildFill({
-      npcId: quote.npcId,
-      planetId,
-      base: quote.base,
-      quote: quote.quote,
-      side: quote.side,
-      amount: judged.offer.amount,
-      orderId: quote.orderId,
-      reserve: 0n,
-      orderAmount: quote.amount,
-      departAt: 0,
-      quoteSeq: quote.quoteSeq,
-    }).catch((err: unknown) => this.log.warn(`guild re-quote failed: ${err instanceof Error ? err.message : String(err)}`));
+    await this.guild
+      .onGuildFill({
+        npcId: quote.npcId,
+        planetId,
+        base: quote.base,
+        quote: quote.quote,
+        side: quote.side,
+        amount: judged.offer.amount,
+        orderId: quote.orderId,
+        reserve: 0n,
+        orderAmount: quote.amount,
+        departAt: 0,
+        quoteSeq: quote.quoteSeq,
+      })
+      .catch((err: unknown) =>
+        this.log.warn(`guild re-quote failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
   }
 }

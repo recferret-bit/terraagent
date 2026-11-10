@@ -57,6 +57,7 @@ import { DirectorMarketPort, DirectorSimMarket } from './director/director-marke
 import { GuildModule } from './guild/guild.module.js';
 import { EconomyModule } from '../economy/economy.module.js';
 import { TradeHistoryProducer } from './progression/trade-history.producer.js';
+import { GuildContactProducer } from './progression/guild-contact.producer.js';
 import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
 /**
@@ -98,6 +99,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketSeedService,
     MarketSeedCommand,
     MarketProgressionProducer,
+    GuildContactProducer,
     TradeHistoryProducer,
     MarketMetrics,
     MarketAnalyticsService,
@@ -127,12 +129,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeController,
     TradeDevController,
   ],
-  imports: [
-    NearModule,
-    EconomyModule,
-    GameModule,
-    GuildModule,
-  ],
+  imports: [NearModule, EconomyModule, GameModule, GuildModule],
   exports: [
     OrderRelease,
     MarketOrderRepository,
