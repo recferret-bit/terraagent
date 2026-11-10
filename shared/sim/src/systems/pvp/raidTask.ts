@@ -1,7 +1,7 @@
 import { compileData } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
-import { hexDistance, hexIndex } from '../../grid/hex';
+import { hexIndex } from '../../grid/hex';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
@@ -17,6 +17,8 @@ import { emitGoalProgress, saveColonyGoals } from '../goals/store';
 import type { ColonyGoalEntry } from '../goals/types';
 import { isWorker } from '../harvest/unit';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
+import { updateColonyVisionCache } from '../combat/vision';
+import { selectSpottedRaidTarget } from './raidPathing';
 import { canRaidTargetSector } from './sectorGuard';
 import { dropColonyShield, isColonyRaidProtected } from './shield';
 import {
@@ -233,19 +235,13 @@ function computeRaiderOrigin(state: PlanetState, colonyIndex: number, unitIds: r
   return { q: 0, r: 0 };
 }
 
-function priorityScoreForTargetKind(kind: number): number {
-  if (kind === ENTITY_KIND.autocannon || kind === ENTITY_KIND.laserTower) return 0;
-  if (kind === ENTITY_KIND.supplyDepot || kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.hq) return 1;
-  return 2;
-}
-
-/** Resolves the target hex `(q, r)` and target entity ID in `targetColony` for a raid. */
+/** Resolves the target hex `(q, r)` and target entity ID in `targetColony` for a raid (`W18-02`, `W18-04`). */
 export function resolveRaidTargetDestination(
   state: PlanetState,
   attackerColony: number,
   targetColony: number,
   unitIds: readonly number[] = [],
-  explicit?: { q?: number; r?: number },
+  explicit?: { q?: number; r?: number; data?: CompiledDataLike },
 ): { q: number; r: number; targetEntityId: number | null } {
   const idx = hexIndex(state.grid.radius);
   if (
@@ -256,57 +252,16 @@ export function resolveRaidTargetDestination(
     return { q: explicit.q, r: explicit.r, targetEntityId: null };
   }
 
+  updateColonyVisionCache(state, state.meta.tick, explicit?.data, true);
   const origin = computeRaiderOrigin(state, attackerColony, unitIds);
-  const cols = state.entities.cols;
-  let bestRow = -1;
-  let bestPrio = Infinity;
-  let bestDist = Infinity;
-  let bestId = Infinity;
-
-  for (let r = 0; r < state.entities.count; r++) {
-    if (cols.owner[r] !== targetColony || cols.hp[r]! <= 0) continue;
-    const st = cols.state[r]!;
-    if (st === ENTITY_STATE.inert || st === ENTITY_STATE.descending) continue;
-    const prio = priorityScoreForTargetKind(cols.kind[r]!);
-    const dist = hexDistance(origin.q, origin.r, cols.q[r]!, cols.r[r]!);
-    const id = cols.id[r]!;
-    if (
-      prio < bestPrio ||
-      (prio === bestPrio && (dist < bestDist || (dist === bestDist && id < bestId)))
-    ) {
-      bestPrio = prio;
-      bestDist = dist;
-      bestId = id;
-      bestRow = r;
-    }
-  }
-
-  if (bestRow >= 0) {
-    return {
-      q: cols.q[bestRow]!,
-      r: cols.r[bestRow]!,
-      targetEntityId: cols.id[bestRow]!,
-    };
-  }
-
-  const ownerLayer = state.grid.layers.owner;
-  if (ownerLayer) {
-    let bestTile = -1;
-    let bestTileDist = Infinity;
-    for (let i = 0; i < idx.count; i++) {
-      if (ownerLayer[i] !== targetColony) continue;
-      const d = hexDistance(origin.q, origin.r, idx.q[i]!, idx.r[i]!);
-      if (d < bestTileDist) {
-        bestTileDist = d;
-        bestTile = i;
-      }
-    }
-    if (bestTile >= 0) {
-      return { q: idx.q[bestTile]!, r: idx.r[bestTile]!, targetEntityId: null };
-    }
-  }
-
-  return { q: 0, r: 0, targetEntityId: null };
+  const sel = selectSpottedRaidTarget(state, attackerColony, targetColony, origin.q, origin.r, {
+    data: explicit?.data,
+  });
+  return {
+    q: sel.q,
+    r: sel.r,
+    targetEntityId: sel.targetEntityId,
+  };
 }
 
 /**
@@ -354,6 +309,7 @@ export function launchColonyRaid(
   const dest = resolveRaidTargetDestination(state, attackerColony, targetColony, unitIds, {
     q: opts?.q,
     r: opts?.r,
+    data,
   });
 
   const stepCtx = ensureStepCtx(state, tick, ctx, data);
