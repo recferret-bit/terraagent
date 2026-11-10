@@ -2,18 +2,17 @@ import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
 import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
-import { hasActiveTruce, resolveColonyIndex } from '../diplomacy/store';
-import {
-  dropColonyShield,
-  isColonyRaidProtected,
-  setColonyShieldHours,
-  syncAllColonyShields,
-} from './shield';
-import { canRaidTargetSector } from './sectorGuard';
+import { resolveColonyIndex } from '../diplomacy/store';
+import { registerGoalExecutor } from '../goals/executors';
+import { launchColonyRaid, stepRaidTargetGoal } from './raidTask';
+import { setColonyShieldHours, syncAllColonyShields } from './shield';
 
 export * from './store';
 export * from './shield';
 export * from './sectorGuard';
+export * from './raidTask';
+
+registerGoalExecutor('raid_target', stepRaidTargetGoal, { wave: 'W18' });
 
 export const raidHandler = defineCommandHandler({
   kind: 'raid',
@@ -25,11 +24,13 @@ export const raidHandler = defineCommandHandler({
     if (!parsed) return 'invalid_args';
     const targetRef = parsed.targetColonyId ?? parsed.targetColonyIndex ?? parsed.targetColony;
     const toColony = resolveColonyIndex(state, targetRef);
-    if (toColony < 0 || toColony === colIdx) return 'invalid_args';
-    if (!canRaidTargetSector(state, colIdx, toColony).ok) return 'cross_sector_disabled';
-    if (hasActiveTruce(state, colIdx, toColony, ctx.tick)) return 'truce_active';
-    if (isColonyRaidProtected(state, toColony, ctx.tick, ctx.data)) return 'raid_protected';
-    dropColonyShield(state, colIdx, ctx.tick, ctx.data);
+    const res = launchColonyRaid(state, colIdx, toColony, ctx, {
+      unitIds: parsed.unitIds ?? parsed.entityIds,
+      q: parsed.q,
+      r: parsed.r,
+      data: ctx.data,
+    });
+    return res.ok ? undefined : res.code;
   },
 });
 

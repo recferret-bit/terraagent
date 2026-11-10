@@ -71,7 +71,7 @@ export function resolveTaskCostAndTicks(
       workRate: Number(row?.workRate ?? 1.0),
     };
   }
-  if (task.kind === 'hqGoal') {
+  if (task.kind === 'hqGoal' || task.kind === 'raid') {
     return { cost: {}, buildTicks: 1, workRate: 1.0 };
   }
   if (task.kind === 'project') {

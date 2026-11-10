@@ -5,7 +5,11 @@ import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { cancelQueueTask, getAllQueueEntries } from '../queue';
-import { isGoalExecutable } from './executors';
+import { hasActiveTruce, resolveColonyIndex } from '../diplomacy/store';
+import { canRaidTargetSector } from '../pvp/sectorGuard';
+import { isColonyRaidProtected } from '../pvp/shield';
+import { stepRaidTargetGoal } from '../pvp/raidTask';
+import { getGoalExecutor, isGoalExecutable, registerGoalExecutor } from './executors';
 import { GOAL_CATALOG, getSuggestedGoalForStage } from './catalog';
 import { stepColonyGoalsBreakdown } from './breakdown';
 import {
@@ -48,6 +52,25 @@ export * from './sites';
 export * from './defendAndClear';
 export * from './breakdown';
 
+registerGoalExecutor('raid_target', stepRaidTargetGoal, { wave: 'W18' });
+
+function validateRaidGoalTarget(
+  state: PlanetState,
+  colonyIndex: number,
+  params: GoalParams,
+  tick: number,
+  data?: CompiledDataLike,
+): 'invalid_args' | 'cross_sector_disabled' | 'truce_active' | 'raid_protected' | null {
+  const rawRef = params.targetColonyId ?? params.target;
+  if (rawRef === undefined) return null;
+  const toColony = resolveColonyIndex(state, rawRef as string | number);
+  if (toColony < 0 || toColony === colonyIndex) return 'invalid_args';
+  if (!canRaidTargetSector(state, colonyIndex, toColony).ok) return 'cross_sector_disabled';
+  if (hasActiveTruce(state, colonyIndex, toColony, tick)) return 'truce_active';
+  if (isColonyRaidProtected(state, toColony, tick, data)) return 'raid_protected';
+  return null;
+}
+
 export function normalizeGoalParams(args: Partial<QueueGoalArgs>): GoalParams {
   return {
     ...(args.params ?? {}),
@@ -80,7 +103,18 @@ export function queueColonyGoal(
   maybeArgs?: QueueGoalArgs,
   maybeTick?: number,
   maybeCtx?: StepContext,
-): { ok: true; goal: ColonyGoalEntry; entry: ColonyGoalEntry } | { ok: false; code: 'goal_limit' | 'invalid_args' | 'wave_disabled' } {
+):
+  | { ok: true; goal: ColonyGoalEntry; entry: ColonyGoalEntry }
+  | {
+      ok: false;
+      code:
+        | 'goal_limit'
+        | 'invalid_args'
+        | 'wave_disabled'
+        | 'cross_sector_disabled'
+        | 'truce_active'
+        | 'raid_protected';
+    } {
   const colonyIndex = typeof colonyIndexOrOpts === 'number' ? colonyIndexOrOpts : (colonyIndexOrOpts.colonyIndex ?? 0);
   const args = typeof colonyIndexOrOpts === 'number' ? maybeArgs : colonyIndexOrOpts;
   const tick =
@@ -106,8 +140,13 @@ export function queueColonyGoal(
 
   if (!isGoalExecutable(args.goal, ctx?.flags)) return { ok: false, code: 'wave_disabled' };
 
-  if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normalizeGoalParams(args).resource))) {
+  const normParams = normalizeGoalParams(args);
+  if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normParams.resource))) {
     return { ok: false, code: 'wave_disabled' };
+  }
+  if (args.goal === 'raid_target') {
+    const raidErr = validateRaidGoalTarget(state, colonyIndex, normParams, tick, ctx?.data);
+    if (raidErr) return { ok: false, code: raidErr };
   }
 
   const seq = nextGoalSequence(state, colonyIndex, goals);
@@ -116,7 +155,7 @@ export function queueColonyGoal(
     id: `goal_${colonyIndex}_${seq}`,
     goal: args.goal,
     status,
-    params: normalizeGoalParams(args),
+    params: normParams,
     progress: 0,
     stepsCompleted: 0,
     stepsTotal: Math.max(1, cat.defaultStepsTotal),
@@ -131,7 +170,11 @@ export function queueColonyGoal(
   goals.push(entry);
   promoteOpenGoals(goals, tick);
   saveColonyGoals(state, colonyIndex, goals, tick);
-  emitGoalProgress(ctx, colonyIndex, entry);
+  if (entry.status === 'active' && args.goal === 'raid_target') {
+    getGoalExecutor('raid_target', ctx?.flags)?.(state, colonyIndex, entry, goals, tick, ctx);
+  } else {
+    emitGoalProgress(ctx, colonyIndex, entry);
+  }
   const saved = cloneGoalEntry(entry);
   return { ok: true, goal: saved, entry: saved };
 }
@@ -264,7 +307,7 @@ export function acceptColonySuggestion(
   args: AcceptSuggestionArgs = {},
   tick: number = state.meta.tick,
   ctx?: StepContext,
-): { ok: true; goal: ColonyGoalEntry; entry: ColonyGoalEntry } | { ok: false; code: 'goal_limit' | 'invalid_args' | 'wave_disabled' } {
+): ReturnType<typeof queueColonyGoal> {
   const colony = ensureColonyRecord(state, colonyIndex, tick);
   const activeSuggestion = colony.suggestion as ColonySuggestion | null | undefined;
   const stage = args.stage ?? (typeof colony.stage === 'number' ? colony.stage : 0);
