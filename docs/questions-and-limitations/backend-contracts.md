@@ -920,6 +920,16 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Area / code:** `backend/app/src/near/application/ports/escrow.port.ts` (`EscrowOpenInput.beneficiary`), Q-05-26
 - **What happens:** `EscrowPort.open` still requires `beneficiary`. A bounty posted before anyone claims it has no payee (NEAR-110, W22-19). Only a mercenary hire knows the payee at open (W22-28). W22-02 added `get` and left `open`, `claim`, and `refund` on the W00-30 fields. `claim` still pays `caller`.
 - **Why it is like this:** W22-02 keeps the landed `open` / `claim` / `refund` shapes and adds `get`. Making `beneficiary` optional would answer Q-05-26 without the owner.
-- **Workaround / mitigation:** W22-17 can open to a holding account and pass the real payee as `caller` on `claim`.
+- **Workaround / mitigation:** `MockEscrowAdapter` (W22-17) stores `beneficiary` and holds the tokens on the escrow id. `claim` pays `caller`, not that beneficiary. The bounty service passes the real payee as `caller`.
 - **To resolve:** Owner: keep a holding-account beneficiary, or make `beneficiary` optional and name the payee only on `claim`.
 - **Found:** 2026-11-10, W22-02
+
+### BE-71 · Mock escrow does not store `expiresAtMs`
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/escrow.adapter.ts` (`get`), `shared/db/prisma/mock-chain.prisma` (`MockChainEscrow`)
+- **What happens:** `EscrowOpenInput` requires `expiresAtMs`, but `mock_chain_escrow` has no expiry column. `MockEscrowAdapter.get` always returns `expiresAtMs: 0`. A replay of `open` does not move tokens again; it also does not remember the original expiry.
+- **Why it is like this:** W22-17 must not alter the W00 escrow table. The bounty service (W22-19, W22-24) owns the 2–48 h expiry and the refund job. Adding a column would need a new Prisma fragment and a migration this issue does not own.
+- **Workaround / mitigation:** Callers that need the deadline keep it on the bounty row, not on the escrow. `0` means "not tracked here", and `EscrowView` still parses.
+- **To resolve:** If a later contract suite requires the deadline to round-trip, store it in a new `near-treasury` fragment (do not edit `mock-chain.prisma`) or keep it only on the bounty.
+- **Found:** 2026-11-10, W22-17
