@@ -1,5 +1,6 @@
 import { formatAtomic, mockLabel, type GuildOffer } from '@terra/contracts';
 import type { FeatureContext, TradeHubTabInstance } from '../../core/registry/types';
+import { GuildAnalytics } from '../guild-analytics/tracker';
 import { formatRejectToast } from '../shared/rejectText';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { resourceLabel } from '../market/tab/pairs';
@@ -33,6 +34,7 @@ export class GuildOffers implements TradeHubTabInstance {
   private readonly rejectEl: HTMLElement;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly off: () => void;
+  private readonly analytics: GuildAnalytics;
 
   constructor(
     private readonly root: HTMLElement,
@@ -44,6 +46,7 @@ export class GuildOffers implements TradeHubTabInstance {
     this.countdownEl = makeDiv('ta-guild__countdown', 'guild-countdown');
     this.listEl = makeDiv('ta-guild__list', 'guild-offers');
     this.rejectEl = makeDiv('ta-guild__reject', 'guild-reject');
+    this.analytics = new GuildAnalytics(ctx.services.track, () => ctx.flags.has('W15'));
     this.root.append(makeDiv('label ta-guild__title', undefined, 'GUILD OFFERS'), this.countdownEl, this.listEl, this.rejectEl);
     this.off = model.onChange(() => this.paint());
     this.paint();
@@ -95,6 +98,7 @@ export class GuildOffers implements TradeHubTabInstance {
   private async send(offerId: string, generation: number): Promise<void> {
     const send = this.ctx.services.sendCommand;
     if (!send) return;
+    this.analytics.offerAccepted(offerId);
     const result = await send('market.acceptGuildOffer', { offerId });
     if (generation !== this.model.generation) return;
     if (result.ok) this.model.clearReject();

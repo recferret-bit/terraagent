@@ -1500,3 +1500,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Stay on the page through the dock. After a re-quote, Accept the new offer id. Read `data-actor` on the book row when the badge says Guild.
 - **To resolve:** Keep every ship that has not reached `departAt`, and replay the open visit on welcome. Use one Guild label on the mix chips if the owner wants that everywhere.
 - **Found:** 2026-11-10, W15-17
+
+### FF-107 · Guild analytics is the consent-gated client batch
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/guild-analytics/` (`GuildAnalytics`), `frontend/game/core/analytics/client.ts`, `backend/app/src/analytics/analytics.service.ts` (`core.analytics_event`), `frontend/game/app/online/featureHud.ts` (`noTrack` on `?host=local`)
+- **What happens:** The six W15-26 names are `track()` calls. After consent they batch to `POST /v1/analytics/events` and land in `core.analytics_event`. Without consent, and on `?host=local`, the call is a no-op and nothing is stored. `guild_docked_seen` is once per `shipId` + `departAt` on this page (same key as the arrival toast); a reload can record that dock again. `guild_offer_accepted` fires when Accept sends `market.acceptGuildOffer`, including a later `offer_expired`. `autotrade_configured` fires only after `setAutoTrade` acks. The key events fire only when POST returns `active` or DELETE returns `revoked`; a `director.status` push does not record them again. `director_trade_executed` fires when this page receives `directorTrade` with a positive integer amount (the same `tradeId` once). A player who missed the socket does not get that fill from the away digest later. W15 off does not mount the listener, the Guild tab, or the autoTrade section.
+- **Why it is like this:** CLIENT §10 and CL-11 already own the pipeline. W15-26 adds names, not a second store. The digest is a sentence, not a replay of the event.
+- **Workaround / mitigation:** Opt in, stay on the server host, and keep the page open through the dock and the away fill. In dev, `window.__track.setConsent(true)` then `await __track.flush()`.
+- **To resolve:** Replay a missed `directorTrade` from the welcome digest only if the owner wants analytics after a disconnect.
+- **Found:** 2026-11-11, W15-26
