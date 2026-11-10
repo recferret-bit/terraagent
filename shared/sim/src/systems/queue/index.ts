@@ -166,8 +166,9 @@ export function enqueueQueueTask(
 
   if (
     opts.task.kind === 'buildUnit' &&
-    !resolveUnitRowForHub(opts.task.unit, data, opts.task.tier) &&
-    (opts.task.unit === 'worker' || unitSupplyOfName(opts.task.unit, unitSupplyData(opts.task.unit, data)) === undefined)
+    ((opts.task.unit === 'hq' && incomingPrecedence !== 'system') ||
+      (!resolveUnitRowForHub(opts.task.unit, data, opts.task.tier) &&
+        (opts.task.unit === 'worker' || unitSupplyOfName(opts.task.unit, unitSupplyData(opts.task.unit, data)) === undefined)))
   ) {
     return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   }

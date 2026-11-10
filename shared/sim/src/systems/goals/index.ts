@@ -370,7 +370,12 @@ export const goalsSystem = defineSystem({
         saveColonyGoals(state, col.index, goals, ctx.tick);
         if (promoted) emitGoalProgress(ctx, col.index, promoted);
       }
-      if (isColonyAiEnabled(state, col.index)) stepColonyGoalsBreakdown(state, col.index, ctx);
+      const activeGoal = goals.find((g) => g.status === 'active');
+      const hqDown = (col as Record<string, unknown>).hqDown === true;
+      const goalPaused = (activeGoal as unknown as { paused?: boolean } | undefined)?.paused === true;
+      if (isColonyAiEnabled(state, col.index) && !hqDown && !goalPaused) {
+        stepColonyGoalsBreakdown(state, col.index, ctx);
+      }
     }
   },
 });
