@@ -24,10 +24,18 @@ import { GuildOrderBook, type GuildOrderPort, type RestingGuildOrder } from './o
 import { barterPairIds } from './pairs.js';
 import { cancelIds, planQuotes, type GuildOrderIntent, type MakerNpc } from './plan.js';
 import {
-  consumedHold, lossBlocksBid, noticeFromFill, termsMeta, withQuoteSeq,
-  type GuildFillNotice, type OrderMeta, type RequoteReport,
+  consumedHold,
+  lossBlocksBid,
+  noticeFromFill,
+  termsMeta,
+  withQuoteSeq,
+  type GuildFillNotice,
+  type OrderMeta,
+  type RequoteReport,
 } from './requote.js';
 import { NpcTurnQueue } from './turn-queue.js';
+import { stockpileTargets } from '../strategy/apply.js';
+import { GuildStrategyPort } from '../strategy/port.js';
 import { GuildMetrics } from '../telemetry/guild-metrics.js';
 
 export interface DockReport {
@@ -69,6 +77,7 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     @Optional() @Inject(GUILD_ORDER_PORT) private readonly orders?: GuildOrderPort,
     @Optional() @Inject(GUILD_BOOK_DISCOVERY) private readonly discovery?: GuildBookDiscovery,
     @Optional() private readonly telemetry?: GuildMetrics,
+    @Optional() @Inject(GuildStrategyPort) private readonly strategy?: GuildStrategyPort,
   ) {}
 
   onModuleInit(): void {
@@ -134,7 +143,8 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
    */
   onGuildFill(notice: GuildFillNotice): Promise<RequoteReport | null> {
     if (!this.live()) return Promise.resolve(null);
-    if (!Number.isSafeInteger(notice.amount) || notice.amount <= 0) return Promise.resolve({ requoted: false, reason: 'zero' });
+    if (!Number.isSafeInteger(notice.amount) || notice.amount <= 0)
+      return Promise.resolve({ requoted: false, reason: 'zero' });
     return this.turns.run(notice.npcId, () => this.requote(notice));
   }
 
@@ -144,11 +154,22 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     const key = await this.keys.find(npc.tradeKeyId);
     if (!key || key.revokedAt) return report([], ['no_key']);
     const overview = await this.overview(payload.planetId);
-    const planned = planQuotes(this.data(), npc, { planetId: payload.planetId, departAt: payload.departAt }, overview.overview);
+    const planned = planQuotes(
+      this.data(),
+      npc,
+      { planetId: payload.planetId, departAt: payload.departAt },
+      overview.overview,
+      await this.quoteTargets(npc.npcId),
+    );
     return this.admit(npc, key, planned, payload.planetId);
   }
 
-  private async admit(npc: MakerNpc, key: KeyRecord, planned: readonly GuildOrderIntent[], planetId: string): Promise<DockReport> {
+  private async admit(
+    npc: MakerNpc,
+    key: KeyRecord,
+    planned: readonly GuildOrderIntent[],
+    planetId: string,
+  ): Promise<DockReport> {
     const placed: string[] = [];
     const skipped: string[] = [];
     let open = await this.port().resting(npc.npcId, planetId);
@@ -234,7 +255,8 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   private async requote(notice: GuildFillNotice): Promise<RequoteReport> {
     const meta = await this.metaOf(notice);
     const wrote = await this.npcs.withLock(notice.npcId, (db) => this.writeFill(notice.npcId, cargoOf(notice), db));
-    if (!wrote?.ok) return { requoted: false, reason: wrote ? wrote.reason : 'no_npc', previousOrderId: notice.orderId };
+    if (!wrote?.ok)
+      return { requoted: false, reason: wrote ? wrote.reason : 'no_npc', previousOrderId: notice.orderId };
     await this.settleHold(notice, meta);
     return this.placeNext(notice, meta);
   }
@@ -246,7 +268,7 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
       reserve: open?.reserve ?? stored?.reserve ?? notice.reserve,
       departAt: open?.departAt || stored?.departAt || notice.departAt,
       quoteSeq: open?.quoteSeq ?? stored?.quoteSeq ?? notice.quoteSeq,
-      orderAmount: open && open.amount > 0n ? open.amount : stored?.orderAmount ?? notice.orderAmount,
+      orderAmount: open && open.amount > 0n ? open.amount : (stored?.orderAmount ?? notice.orderAmount),
       bucket: open?.bucket ?? stored?.bucket ?? 'inventory',
     };
   }
@@ -254,7 +276,8 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   private async storedMeta(orderId: string): Promise<OrderMeta | null> {
     if (!this.prisma) return null;
     const row = await this.prisma.marketOrder.findUnique({
-      where: { orderId }, select: { signedTerms: true, ref: true, amount: true },
+      where: { orderId },
+      select: { signedTerms: true, ref: true, amount: true },
     });
     return row ? termsMeta(row.signedTerms, row.ref, decimalToBigint(row.amount)) : null;
   }
@@ -276,15 +299,19 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     const previousOrderId = notice.orderId;
     if (!npc) return { requoted: false, reason: 'no_npc', previousOrderId };
     const quoteSeq = meta.quoteSeq + 1;
-    if (notice.side === 'buy' && lossBlocksBid(npc.lossAtomic, loadPolicy((wave) => this.flags.has(wave)).dailyLossAtomic)) {
+    if (
+      notice.side === 'buy' &&
+      lossBlocksBid(npc.lossAtomic, loadPolicy((wave) => this.flags.has(wave)).dailyLossAtomic)
+    ) {
       return { requoted: false, reason: 'loss', quoteSeq, previousOrderId };
     }
     const key = await this.keys.find(npc.tradeKeyId);
     if (!key || key.revokedAt) return { requoted: false, reason: 'no_key', previousOrderId };
     const overview = await this.overview(notice.planetId);
     const dock = { planetId: notice.planetId, departAt: meta.departAt || notice.departAt };
-    const intent = planQuotes(this.data(), npc, dock, overview.overview)
-      .find((row) => row.base === notice.base && row.quote === notice.quote && row.side === notice.side);
+    const intent = planQuotes(this.data(), npc, dock, overview.overview, await this.quoteTargets(npc.npcId)).find(
+      (row) => row.base === notice.base && row.quote === notice.quote && row.side === notice.side,
+    );
     if (!intent) return { requoted: false, reason: 'paused', previousOrderId };
     const stamped = withQuoteSeq(intent, quoteSeq);
     const open = await this.port().resting(npc.npcId, notice.planetId);
@@ -298,9 +325,11 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
 
   private async openQuote(notice: GuildFillNotice): Promise<RestingGuildOrder | null> {
     const rows = await this.port().resting(notice.npcId, notice.planetId);
-    return rows.find((row) => row.orderId === notice.orderId)
-      ?? rows.find((row) => row.base === notice.base && row.side === notice.side)
-      ?? null;
+    return (
+      rows.find((row) => row.orderId === notice.orderId) ??
+      rows.find((row) => row.base === notice.base && row.side === notice.side) ??
+      null
+    );
   }
 
   private async writeFill(npcId: string, fill: GuildCargoFill, db: DbClient): Promise<CargoFillResult | null> {
@@ -314,7 +343,13 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   private async npcOf(npcId: string): Promise<MakerNpc | null> {
     const row = await this.npcs.find(npcId);
     if (!row || row.actorKind !== 'npc') return null;
-    return { npcId: row.npcId, accountId: row.accountId, tradeKeyId: row.tradeKeyId, inventory: row.inventory, lossAtomic: row.lossAtomic };
+    return {
+      npcId: row.npcId,
+      accountId: row.accountId,
+      tradeKeyId: row.tradeKeyId,
+      inventory: row.inventory,
+      lossAtomic: row.lossAtomic,
+    };
   }
 
   private overview(planetId: string): Promise<TradeOverviewResponse> {
@@ -338,6 +373,12 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
 
   private data(): CompiledDataLike {
     return compileData(this.flags.flags);
+  }
+
+  /** Strategy stockpile, or `undefined` when there is no port or the payload is rejected. Prices stay in `quoteGuild`. */
+  private async quoteTargets(npcId: string): Promise<ReadonlyMap<string, bigint> | undefined> {
+    if (!this.strategy) return undefined;
+    return stockpileTargets(await this.strategy.choose({ id: npcId }, { nowMs: Date.now() }));
   }
 
   private live(): boolean {

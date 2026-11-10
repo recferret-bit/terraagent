@@ -7,6 +7,8 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { GamePlanets } from '../../../game/game-planets.service.js';
 import { GuildProvisionError } from '../guild-error.js';
 import { loadPolicy, type GuildPolicy, type RosterNpc } from '../guild-plan.js';
+import { routeAfterStrategy } from '../strategy/apply.js';
+import { GuildStrategyPort } from '../strategy/port.js';
 import { GuildVisitClock } from './guild-visit.clock.js';
 import { GuildVisitPublisher, type ArrivedInput, type DepartedInput, type GuildPush } from './guild-visit.publisher.js';
 import { GuildVisitRepository, type GuildVisitInsert, type GuildVisitRow } from './guild-visit.repository.js';
@@ -26,12 +28,15 @@ export const GUILD_VISIT_TICK_MS = 5_000;
 
 /**
  * Seeded Guild visits (W15-09). Each NPC loops one planet: dock for `dockWindowS`, en route for `visitGapS`, then the same planet.
+ * A planned visit calls `GuildStrategyPort.choose` (W15-35). Prices stay in `quoteGuild`.
  * W15 off writes nothing and pushes nothing. Offers come from the maker's resting quotes when that source is wired.
  */
 @Injectable()
 export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(GuildVisitService.name);
   private readonly clock = new GuildVisitClock();
+  /** Last accepted route per NPC. Absent means the data-table route. */
+  private readonly routes = new Map<string, readonly string[]>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
 
@@ -41,6 +46,7 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
     private readonly publisher: GuildVisitPublisher,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
+    @Optional() @Inject(GuildStrategyPort) private readonly strategy?: GuildStrategyPort,
   ) {}
 
   onModuleInit(): void {
@@ -82,6 +88,7 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
   async dockNow(planetId: string, npcId: string): Promise<OpenDock> {
     this.requireOn();
     const npc = this.npcOf(npcId);
+    await this.noteStrategy(npc, planetId);
     const open = await this.repo.openDocked(npc.id, planetId);
     const current = open[open.length - 1];
     if (current) return { id: current.id, input: arrivedOf(npc, windowOf(current)) };
@@ -118,6 +125,7 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
     if (!this.enabled()) return null;
     const npc = this.policy().roster[0];
     if (!npc) return null;
+    await this.noteStrategy(npc, planetId);
     const now = this.clock.now(planetId);
     const window = extraVisit({ npcId: npc.id, planetId, nowMs: now, dockWindowMs: this.policy().dockWindowS * 1000 });
     const id = extraVisitId(npc.id, planetId, window.arriveAt, randomBytes(4).toString('hex'));
@@ -149,6 +157,7 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async syncNpc(npc: RosterNpc, planetId: string, now: number, policy: GuildPolicy): Promise<GuildPush[]> {
+    await this.noteStrategy(npc, planetId);
     const last = await this.repo.latestCadence(npc.id, planetId);
     const pushes: GuildPush[] = [];
     for (const window of dueWindows(this.input(npc, planetId, policy), last?.arriveAt ?? null, now)) {
@@ -181,7 +190,7 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
       seed: policy.policyVersion,
       npcId: npc.id,
       planetId,
-      route: npc.route,
+      route: this.routeOf(npc),
       dockWindowMs: policy.dockWindowS * 1000,
       visitGapMs: policy.visitGapS * 1000,
       enabled: true,
@@ -190,6 +199,17 @@ export class GuildVisitService implements OnModuleInit, OnModuleDestroy {
 
   private policy(): GuildPolicy {
     return loadPolicy((wave) => this.flags.has(wave));
+  }
+
+  /** `choose` before the window is opened. A rejected payload keeps the data route and does not price. */
+  private async noteStrategy(npc: RosterNpc, planetId: string): Promise<void> {
+    if (!this.strategy) return;
+    const choice = await this.strategy.choose({ id: npc.id }, { nowMs: this.clock.now(planetId) });
+    this.routes.set(npc.id, routeAfterStrategy(npc.route, choice));
+  }
+
+  private routeOf(npc: RosterNpc): readonly string[] {
+    return this.routes.get(npc.id) ?? npc.route;
   }
 
   private requireOn(): void {

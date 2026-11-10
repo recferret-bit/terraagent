@@ -79,7 +79,14 @@ export function cargoUnits(cache: InventoryCache, resource: string): bigint {
  * Stable ref for one visit. Sequence 0 keeps the original ref, so a second place at the same depart time
  * hits the same row. A later sequence is a new row.
  */
-export function quoteRef(npcId: string, planetId: string, base: string, side: string, departAt: number, quoteSeq = 0): string {
+export function quoteRef(
+  npcId: string,
+  planetId: string,
+  base: string,
+  side: string,
+  departAt: number,
+  quoteSeq = 0,
+): string {
   const stem = `gqm:${npcId}:${planetId}:${base}:${side}:${departAt}`;
   return quoteSeq > 0 ? `${stem}:${quoteSeq}` : stem;
 }
@@ -104,7 +111,12 @@ export function reserveOf(side: SideQuote): bigint {
  * Intents for the sides the library returned. A null bid or ask is absent — this does not fill in a price.
  * Cash bids are not special-cased here: `quoteGuild` already paused them.
  */
-export function intentsOf(ctx: QuoteContext, bid: SideQuote | null, ask: SideQuote | null, terms: Terms): GuildOrderIntent[] {
+export function intentsOf(
+  ctx: QuoteContext,
+  bid: SideQuote | null,
+  ask: SideQuote | null,
+  terms: Terms,
+): GuildOrderIntent[] {
   const out: GuildOrderIntent[] = [];
   if (bid) out.push(intentOf(ctx, bid, terms));
   if (ask) out.push(intentOf(ctx, ask, terms));
@@ -117,12 +129,13 @@ export function planQuotes(
   npc: MakerNpc,
   dock: MakerDock,
   rows: readonly TradeOverviewRow[],
+  targets?: ReadonlyMap<string, bigint>,
 ): GuildOrderIntent[] {
   const terms = termsOf(data);
   const out: GuildOrderIntent[] = [];
   for (const pair of tier1BarterPairs()) {
     const row = rows.find((r) => r.pair === pairId(pair.base, pair.quote));
-    const built = fixtureFor(data, npc, dock, pair.base, pair.quote, row);
+    const built = fixtureFor(data, npc, dock, pair.base, pair.quote, row, targets?.get(pair.base));
     const quotes = quoteGuild(data, built.fixture);
     out.push(...intentsOf(built.ctx, quotes.bid, quotes.ask, terms));
   }
@@ -162,6 +175,7 @@ function fixtureFor(
   base: Tier1Resource,
   quote: Tier1Resource,
   row: TradeOverviewRow | undefined,
+  stockpileTarget?: bigint,
 ): { fixture: GuildQuoteFixture; ctx: QuoteContext } {
   const cfg = marketConfigFromData(data);
   const ref = referenceOf(row);
@@ -185,6 +199,7 @@ function fixtureFor(
     walkAway: { localUnitCost: cost, localMinutesPerUnit: null, minuteValue: null, needValue: null },
     lotUnits: cfg.baseLotUnits,
     minNotionalAtomic: readMinNotionalAtomic(data, quote),
+    ...(stockpileTarget === undefined ? {} : { stockpileTarget }),
   };
   return {
     fixture,
