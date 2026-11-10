@@ -1,0 +1,119 @@
+/* Neighbor HUD strip and minimap markers (W18-23) */
+:root {
+  --ta-amber: var(--ta-orange-hi);
+  --ta-green: var(--ta-terra);
+  --ta-cyan: var(--ta-energy);
+}
+
+.ta-neighbor-hud-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-small);
+  margin-top: var(--ta-s2);
+}
+
+.ta-neighbor-hud-strip:empty {
+  display: none;
+}
+
+.ta-neighbor-hud-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--ta-dur-quick) ease, border-color var(--ta-dur-quick) ease;
+}
+
+.ta-neighbor-hud-item:hover {
+  background: var(--ta-plate-3);
+  border-color: var(--ta-orange);
+}
+
+.ta-neighbor-ring {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--ta-orange);
+  background: transparent;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.ta-neighbor-name {
+  font-family: var(--ta-font-display);
+  font-weight: 600;
+  color: var(--ta-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.ta-neighbor-shield-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s1);
+  padding: 2px var(--ta-s1);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-blue-hi);
+  color: var(--ta-blue-hi);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+}
+
+.ta-neighbor-truce-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s1);
+  padding: 2px var(--ta-s1);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-terra);
+  color: var(--ta-terra);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+}
+
+.ta-neighbor-shield-badge[hidden],
+.ta-neighbor-truce-badge[hidden] {
+  display: none !important;
+}
+
+.ta-minimap-neighbor-markers {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  pointer-events: none;
+}
+
+.ta-minimap-neighbor-markers:empty {
+  display: none;
+}
+
+.ta-minimap-neighbor-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s1);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  padding: 2px var(--ta-s1);
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.ta-minimap-neighbor-marker:hover {
+  border-color: var(--ta-orange);
+}
