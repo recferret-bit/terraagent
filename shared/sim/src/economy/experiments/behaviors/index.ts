@@ -1,5 +1,6 @@
 import type { BehaviorProfile } from '../types';
 import { demandAgentsV1 } from './demand-agents-v1';
+import { guildPricing } from './guild-pricing';
 import { specialistsV1 } from './specialists-v1';
 import { stressV1 } from './stress-v1';
 
@@ -8,6 +9,7 @@ const FACTORIES: Readonly<Record<string, (overrides?: Readonly<Record<string, un
   'specialists-v1': specialistsV1,
   'stress-v1': stressV1,
   'demand-agents-v1': demandAgentsV1,
+  'guild-pricing': guildPricing,
 };
 
 export const behaviorIds = (): string[] => Object.keys(FACTORIES).sort();
