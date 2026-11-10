@@ -955,3 +955,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Callers that need the deadline keep it on the bounty row, not on the escrow. `0` means "not tracked here", and `EscrowView` still parses. The W22-18 contract suite asserts `expiresAtMs === 0` after an open that passed a non-zero deadline, and does not treat the dropped deadline as a failure.
 - **To resolve:** Keep the deadline on the bounty (W22-19, W22-24). Do not make this suite require a round-trip. A real escrow (W23-38) may store expiry on chain; this mock still answers `0`.
 - **Found:** 2026-11-10, W22-17
+
+### BE-74 · A planet row insert does not itself open the treasury DAO
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/lifecycle.service.ts` (`ensurePlanetDao`), `backend/app/src/near/treasury/lifecycle.bind.ts`, `backend/app/src/lobby/prisma-lobby.store.ts` (`provisionCanonicalWorld`), `backend/app/src/core/home/prisma-home.store.ts` (`upsertPlanet`)
+- **What happens:** Inserting `core.planet` does not create `{planet}.dao.mock`. Lobby provision and home upsert are two writers, and the sim thread loads the world without going through either. The DAO opens when that sim planet finishes loading, and on `colonyFounded` if the planet still has none. `ensurePlanetDao` is the lazy path for a planet that already existed before W22 (Council, W22-08). A second call, including two in flight, keeps the one DAO. W22 off returns null and writes nothing. `GamePlanets.onPlanetLoaded` has no unsubscribe; after shutdown the bind ignores it.
+- **Why it is like this:** W22-05 asked for one create path. There is not one. The DAO has to exist before W22-06 adds members on `colonyFounded`, so load is the earlier hook, and the colony event covers a planet that was already running.
+- **Workaround / mitigation:** `GET /v1/near/treasury/:planetId` (W22-08) calls `ensurePlanetDao`. The outbox id is `dao-create:{planetId}`; a replay does not insert a second row.
+- **To resolve:** Keep both hooks. Do not also call `ensurePlanetDao` from the two planet stores unless those stores gain one shared create function.
+- **Found:** 2026-11-10, W22-05
