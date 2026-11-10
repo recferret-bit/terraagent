@@ -1075,3 +1075,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Come back (`colonyBack` closes the digest) and vote. The note says how many proposals are open.
 - **To resolve:** If the owner wants AW-23 to win, drop the HTTP reject and keep the missing auto-vote. Reading `blobs.presence` would catch away before the digest opens.
 - **Found:** 2026-11-10, W22-16
+
+### BE-86 · Treasury console spawns mercenaries and completes chain bounties without the hire escrow
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/dev-console.command.ts`, `backend/app/src/near/treasury/dev-console.handlers.ts`, `frontend/game/features/treasury/devCommands.ts`
+- **What happens:** `treasury.effect` asks the server to submit module `system.treasuryEffect` (source `system`). A client `cmd` of that kind stays `unknown_kind`. `untilTick` is the loaded planet tick plus the table duration (6 h shield, 12 h boost, 0 h subsidy). `treasury.fund` calls `TreasuryDaoPort.deposit` of whole `metals.t1` from `dev.treasury.terraagent.mock` and creates the DAO when it is missing; the `from` account is not debited. `bounty.post` calls `BountyPostService` only, so the chain row and escrow exist and the sim blob does not (BE-76). `bounty.complete` sets `completed`. `BountyPayService.pay` runs when the row already has a claimer, or when the console passes one. With neither, the row stays `completed` and pay is skipped. `merc.hire` submits `mercenary.spawn` for the light roster (4 recon, radius 3 around the HQ or the passed tile). It does not open escrow. W22 off hides the client commands and the server answers 404. No browser was opened for this issue.
+- **Why it is like this:** `merc.hire` submits `mercenary.spawn` only. `MercenaryHireService` (W22-28) is the escrow path and this console command does not call it. The pay service returns false without a claimer. The chain post and the sim post are already two paths (BE-76).
+- **Workaround / mitigation:** Claim the bounty first, or pass `bounty.complete <id> <claimerAccount>`, so pay runs. Use `near.mock.fail escrow|treasury <rate>` for injected failures. `dev.meteor` is still the crater (GP-112); the shield badge is the HUD reading `blobs.treasury`.
+- **To resolve:** Point `merc.hire` at `MercenaryHireService` so the console opens the defend escrow. A board post should keep using the socket so the sim id and the chain id stay one bounty.
+- **Found:** 2026-11-10, W22-35

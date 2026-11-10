@@ -67,6 +67,15 @@ export class BountyRepository {
     return result.count === 1;
   }
 
+  /** `completed` with the claimer left unset. `BountyPayService.pay` then returns false (W22-35). */
+  async markCompleted(id: string): Promise<boolean> {
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { id, state: { in: [...ACTIVE] } },
+      data: { state: 'completed' },
+    });
+    return result.count === 1;
+  }
+
   async markPaid(id: string): Promise<boolean> {
     const result = await this.prisma.chainBounty.updateMany({
       where: { id, state: 'completed' },
