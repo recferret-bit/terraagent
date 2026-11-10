@@ -55,6 +55,13 @@ export class GuildNpcRepository {
     }
   }
 
+  /** Replaces the carried cache. Does not touch the quote budget or the spend and loss counters. */
+  async saveInventory(id: string, inventory: InventoryCache, db: DbClient = this.prisma): Promise<GuildAllocation> {
+    const row = await db.guildNpc.findUnique({ where: { id } });
+    if (!row) throw new GuildProvisionError('not_provisioned', `Guild NPC ${id} is not provisioned`);
+    return toAllocation(await db.guildNpc.update({ where: { id }, data: { inventoryCache: json(inventory) } }));
+  }
+
   /** Adds one fixture line. Does not touch the quote budget or the spend and loss counters. */
   async appendFixture(id: string, resource: string, amount: number): Promise<GuildAllocation> {
     const row = await this.prisma.guildNpc.findUnique({ where: { id } });

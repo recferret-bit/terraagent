@@ -11,6 +11,7 @@ import {
 import type { FundingBucket } from '../funding/exposure.js';
 import type { InventoryCache } from '../guild-plan.js';
 import { slotOf } from '../guild-plan.js';
+import { stockOf } from '../inventory.js';
 import { tier1BarterPairs, type Tier1Resource } from './pairs.js';
 
 export interface MakerNpc {
@@ -65,11 +66,9 @@ export interface QuoteContext {
   readonly reference: { readonly num: bigint; readonly den: bigint } | null;
 }
 
-/** Whole units of one resource on the fixture cargo cache. Lines are summed; nothing is minted. */
+/** Whole units of one resource on the NPC's carried cache. Lines are summed; nothing is minted. */
 export function cargoUnits(cache: InventoryCache, resource: string): bigint {
-  let n = 0n;
-  for (const line of cache.lines) if (line.resource === resource) n += BigInt(line.amount);
-  return n;
+  return BigInt(stockOf(cache, resource));
 }
 
 /** Stable ref for one visit. A second place with the same depart time hits the same row. */
@@ -156,6 +155,7 @@ function fixtureFor(
     resource: base,
     quote,
     inventory: baseStock,
+    freeUnits: baseStock,
     cash: quoteStock,
     referencePrice: ref.price,
     referenceAgeS: ref.ageS,
