@@ -444,3 +444,13 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Workaround / mitigation:** Call `advance(planetId, toMs)` to step the clock in tests. `TA_WAVES` without W15 stores nothing. An extra visit's `departed` uses the same `shipId` as kestrel's cadence visit; nothing in this issue labels it as a subsidy.
 - **To resolve:** Decide whether `warp k` should shorten the dock, whether an extra visit should be a different ship, and whether a long outage should backfill more than 8 windows. W15-10 owns a real multi-planet route. W15-11 fills `offers`.
 - **Found:** 2026-11-10, W15-09
+
+### LED-37 · `GUILD_ENABLED` and `GUILD_NPC_COUNT` are not read
+
+- **Status:** Accepted (by design)
+- **Area / code:** `docs/dev/ENVS.md`, `shared/sim/src/data/guild.ts`, `shared/sim/src/systems/trade/guild/policy.ts` (`readRoster`), `backend/app/src/market/guild/guild-provision.service.ts` (`flags.has('W15')`)
+- **What happens:** Nothing in the process reads `GUILD_ENABLED` or `GUILD_NPC_COUNT`. Setting either does not change quotes, the roster, or provisioning. The guild runs when `TA_WAVES` includes `W15` (default `all`). `readRoster` accepts only the data rows `kestrel` and `vanguard`, in that order, and throws otherwise. `quoteGuild` does not take a count. `NEAR_ADAPTER_AGENT_WALLET` is read: unset is `mock`; `testnet`, `devnet`, or `mainnet` fails boot because only `MockAgentWalletAdapter` is registered (BE-71).
+- **Why it is like this:** W15-32 asked for those two names in `ENVS.md`. A reader that nothing in the quote path calls would be a fake switch. The wave flag and the data table are the controls that exist.
+- **Workaround / mitigation:** Turn the guild off with `TA_WAVES` that omits `W15` (for example `..14`). The roster stays those two ids until the table changes.
+- **To resolve:** If an operator count is required, add a reader that provisioning and `readRoster` both honour, without a second pricer. Until then the names stay documented as unread.
+- **Found:** 2026-11-10, W15-32

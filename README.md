@@ -94,13 +94,21 @@ Every NEAR feature, the LLM director and notifications sit behind ports (abstrac
 | Identity, Relayer | F5 accounts, gasless tx | mock (Postgres) | W23 |
 | CargoToken | F1 cargo (NEP-245) | mock (Postgres, W10) | W23 |
 | Intents | F2 markets | mock (Postgres verifier ledger, W13) | W23 |
-| AgentWallet | F3/F4 | — (W15 mock) | W23 |
+| AgentWallet | F3/F4 | mock (`AgentWalletPort`, Postgres, W15) | W23 |
 | DeedNft, Staking | F6 | — (W20 mock) | W23 |
 | TreasuryDao, Escrow | F7/F8 | — (W22 mock) | W23 |
 | LlmProvider | AI director | — (W16) | Z.ai `glm-5.3` |
 | Notifier | push / Telegram | — (W09) | Web Push, Telegram |
 
 W25 finalises this table for the submission. W06's adapter variables and their defaults are in [`docs/dev/ENVS.md`](./docs/dev/ENVS.md).
+
+### How the Guild prices
+
+Guild quotes call `quoteColony` (`shared/sim/src/systems/trade/agent/`). `guildAgentParams` supplies that library's params from the `guild` table; `quoteGuild` (`shared/sim/src/systems/trade/guild/quote.ts`) passes them after the thin-side widen.
+Spreads, `thinHalfSpreadBp` and the cash pause live in `shared/sim/src/data/guild.ts` and that `quote.ts`.
+Inventory below the NPC target widens the ask half-spread to `max(askHalfSpreadBp, thinHalfSpreadBp)` (1500 bp). Inventory above the target widens the bid the same way. At the target both sides stay at 200 bp.
+Cash bids are off while `cashEnabled` is 0: a USDC or NEAR quote is given a zero balance, so the library pauses that bid (`no_cash`, unless the reference is already `stale_reference` or `thin_reference`). Barter keeps its quote-resource balance.
+Guild, fixture, subsidy and npc fills are not organic (`isOrganicFill`), so they stay out of VWAP. Details: LED-32, LED-33.
 
 ## Pages
 
