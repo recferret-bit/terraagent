@@ -139,6 +139,7 @@ export * from './bounty';
 export { command as bountyPost } from './commands/bounty-post';
 export { command as bountyClaim } from './commands/bounty-claim';
 export { command as bountyPaidCommand } from './commands/bounty-paid';
+export { command as mercenarySpawn } from './commands/mercenary-spawn';
 export { BountyPostedDataSchema, event as bountyPosted } from './events/bounty-posted';
 export { BountyClaimedDataSchema, event as bountyClaimed } from './events/bounty-claimed';
 export { BountyCompletedDataSchema, event as bountyCompleted } from './events/bounty-completed';
