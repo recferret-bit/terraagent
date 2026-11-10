@@ -1,5 +1,5 @@
 import { recordStanceChanges } from './stanceChanges';
-import { combatApproachBand } from './approachBand';
+import { combatApproachBand, footprintAttackRange } from './approachBand';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { setField, type Columns } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
@@ -248,6 +248,11 @@ export function engageTargetInRangeOrApproach(
   const dist = hexDistance(ax, ay, tx, ty);
   const minRange = Math.max(0, Number(weaponRow.minRange ?? 0));
   const maxRange = Math.max(1, Number(weaponRow.range ?? 4));
+  const targetFootprintW = Math.max(
+    1,
+    cols.footprintW[targetRow] || cols.footprintD[targetRow] || 1,
+  );
+  const effectiveMaxRange = footprintAttackRange(maxRange, targetFootprintW);
 
   rec.targetId = targetId;
 
@@ -259,7 +264,7 @@ export function engageTargetInRangeOrApproach(
     return;
   }
 
-  if (dist <= maxRange + 1e-5) {
+  if (dist <= effectiveMaxRange + 1e-5) {
     tryFireUnitWeapon(state, row, targetRow, weaponRow, rec, ctx);
     if (opts?.allowEvasive !== false && isUnitEvasive(cols.kind[row]!, ctx.data)) {
       const book = new UnitBook(state);
@@ -270,7 +275,7 @@ export function engageTargetInRangeOrApproach(
         book.touch(stamp);
         book.flush(ctx.tick);
       }
-      stepEvasiveUnit(state, row, targetId, ctx, maxRange);
+      stepEvasiveUnit(state, row, targetId, ctx, effectiveMaxRange);
       if (opts?.maxLeashFromAnchor !== undefined) {
         const ev = getEvasiveState(state, entityId);
         if (ev && hexDistance(ev.headingQ, ev.headingR, rec.anchorQ, rec.anchorR) > opts.maxLeashFromAnchor) {
@@ -285,7 +290,7 @@ export function engageTargetInRangeOrApproach(
 
   clearEvasiveState(state, entityId, ctx.tick);
   const tileDist = hexDistance(cols.q[row]!, cols.r[row]!, cols.q[targetRow]!, cols.r[targetRow]!);
-  const band = combatApproachBand(maxRange, minRange, tileDist, hexDistance(tx, ty, cols.q[targetRow], cols.r[targetRow]));
+  const band = combatApproachBand(effectiveMaxRange, minRange, tileDist, hexDistance(tx, ty, cols.q[targetRow], cols.r[targetRow]));
   orderCombatUnitMove(
     state,
     row,

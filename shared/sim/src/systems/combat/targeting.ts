@@ -4,6 +4,8 @@ import { HEX_DIRS, hexDistance, inHex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { hasActiveTruce } from '../diplomacy/store';
+import { isColonyRaidProtected } from '../pvp/shield';
+import { footprintAttackRange } from './approachBand';
 import { canWeaponHitTarget } from './layers';
 import { lookupWeaponById, resolveKindWeaponRow } from './weaponRows';
 import { isTargetSpottedByColony, updateColonyVisionCache } from './vision';
@@ -21,6 +23,7 @@ export interface CombatTargetsBlob {
 
 export interface HostileCheckOptions {
   includePassiveFauna?: boolean;
+  data?: CompiledDataLike;
 }
 
 export interface AcquireTargetOptions extends HostileCheckOptions {
@@ -186,8 +189,9 @@ export function isHostileTargetForAttacker(
   const attackerOwner = cols.owner[attackerRow]!;
   const targetOwner = cols.owner[targetRow]!;
   if (targetOwner === attackerOwner) return false;
-  if (attackerOwner >= 0 && targetOwner >= 0 && hasActiveTruce(state, attackerOwner, targetOwner)) {
-    return false;
+  if (attackerOwner >= 0 && targetOwner >= 0) {
+    if (hasActiveTruce(state, attackerOwner, targetOwner)) return false;
+    if (isColonyRaidProtected(state, targetOwner, state.meta.tick, opts?.data)) return false;
   }
 
   if (!opts?.includePassiveFauna && attackerOwner >= 0 && targetOwner < 0) {
@@ -277,7 +281,12 @@ export function isTargetValidInRange(
   const [ax, ay] = getEntityAxialCoords(cols, attackerRow);
   const [tx, ty] = getEntityAxialCoords(cols, targetRow);
   const dist = hexDistance(ax, ay, tx, ty);
-  if (dist < minRange - 1e-5 || dist > maxRange + 1e-5) return false;
+  const targetFootprintW = Math.max(
+    1,
+    cols.footprintW[targetRow] || cols.footprintD[targetRow] || 1,
+  );
+  const effectiveMaxRange = footprintAttackRange(maxRange, targetFootprintW);
+  if (dist < minRange - 1e-5 || dist > effectiveMaxRange + 1e-5) return false;
 
   if (!canWeaponHitTarget(state, weaponRow, targetRow, opts?.data)) return false;
 
@@ -346,7 +355,9 @@ export function acquireClosestTargetInRange(
 
     const [tx, ty] = getEntityAxialCoords(cols, r);
     const dist = hexDistance(ax, ay, tx, ty);
-    if (dist < minRange - 1e-5 || dist > maxRange + 1e-5) continue;
+    const targetFootprintW = Math.max(1, cols.footprintW[r] || cols.footprintD[r] || 1);
+    const effectiveMaxRange = footprintAttackRange(maxRange, targetFootprintW);
+    if (dist < minRange - 1e-5 || dist > effectiveMaxRange + 1e-5) continue;
 
     if (!canWeaponHitTarget(state, weaponRow, r, opts?.data)) continue;
 
