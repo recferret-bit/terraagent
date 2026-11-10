@@ -18,6 +18,8 @@ import { takeOpenEscrow, type OpenEscrowRow } from './escrow-move.js';
 /**
  * Postgres escrow (`EscrowPort`, W22-17, NEAR-110).
  * `open` / `claim` / `refund` are idempotent on `opId` via `MockChainBase`.
+ * `refund` without `amount` returns the whole hold and closes the row. A smaller `amount` returns
+ * only that many base units and leaves the row `open` so a later `claim` pays the rest (W22-28).
  * Expiry is not stored: the bounty service owns it, and `get` reports `expiresAtMs: 0` (BE-73).
  */
 @Injectable()
@@ -44,11 +46,7 @@ export class MockEscrowAdapter extends MockChainBase implements EscrowPort {
 
   async refund(raw: EscrowActionInput): Promise<ChainReceipt> {
     const input = EscrowActionInput.parse(raw);
-    return this.call('Escrow', 'refund', input.opId, async (tx) => {
-      const row = await takeOpenEscrow(tx, input.escrowId, 'refunded');
-      await this.release(tx, row, row.opener);
-      return { escrowId: row.id, status: 'refunded', to: row.opener };
-    });
+    return this.call('Escrow', 'refund', input.opId, (tx) => this.refundOpen(tx, input));
   }
 
   async get(raw: EscrowGetInput): Promise<EscrowView> {
@@ -84,6 +82,38 @@ export class MockEscrowAdapter extends MockChainBase implements EscrowPort {
         status: 'open',
       },
     });
+  }
+
+  /** Whole hold closes the row. A part leaves it `open` with the remainder. `0` changes nothing. */
+  private async refundOpen(tx: DbClient, input: EscrowActionInput): Promise<{ escrowId: string; status: string; to: string; amount: string }> {
+    const row = await tx.mockChainEscrow.findUnique({ where: { id: input.escrowId } });
+    if (!row) throw new NearException('NEAR_ESCROW_NOT_FOUND', { details: { escrowId: input.escrowId } });
+    if (row.status !== 'open') {
+      throw new NearException('NEAR_ESCROW_STATE', { details: { escrowId: row.id, status: row.status } });
+    }
+    const whole = BigInt(row.amount.toFixed(0));
+    const requested = input.amount === undefined ? whole : BigInt(input.amount);
+    if (requested > whole) {
+      throw new NearException('NEAR_ESCROW_STATE', { details: { escrowId: row.id, amount: input.amount } });
+    }
+    if (requested === whole) return this.refundAll(tx, row);
+    if (requested === 0n) return { escrowId: row.id, status: 'open', to: row.opener, amount: '0' };
+    return this.refundPart(tx, row, requested.toString());
+  }
+
+  private async refundAll(tx: DbClient, row: OpenEscrowRow): Promise<{ escrowId: string; status: string; to: string; amount: string }> {
+    const taken = await takeOpenEscrow(tx, row.id, 'refunded');
+    await this.release(tx, taken, taken.opener);
+    return { escrowId: taken.id, status: 'refunded', to: taken.opener, amount: taken.amount.toFixed(0) };
+  }
+
+  private async refundPart(tx: DbClient, row: OpenEscrowRow, amount: string): Promise<{ escrowId: string; status: string; to: string; amount: string }> {
+    const moved = await tx.$executeRaw`UPDATE chain.mock_chain_escrow SET amount = amount - ${amount}::numeric
+      WHERE id = ${row.id} AND status = 'open' AND amount >= ${amount}::numeric`;
+    if (Number(moved) !== 1) throw new NearException('NEAR_ESCROW_STATE', { details: { escrowId: row.id } });
+    await this.debit(tx, escrowHoldAccount(row.id), row.tokenId, amount);
+    await this.credit(tx, row.opener, row.tokenId, amount);
+    return { escrowId: row.id, status: 'open', to: row.opener, amount };
   }
 
   /** Debit the hold, credit `to`. Same SQL as `CargoTokenPort.transfer`, inside this transaction. */
