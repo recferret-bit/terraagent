@@ -42,7 +42,9 @@ async function call(ctx: FeatureContext, cmd: string, name: string, body: SeatBo
   try {
     return await server(name, body);
   } catch (err) {
-    if (err instanceof DevServerError && (err.errorCode === 'NOT_AWAY' || err.code === 'not_away')) throw new Error('not_away');
+    if (err instanceof DevServerError && (err.errorCode === 'NOT_AWAY' || err.code === 'not_away')) {
+      throw new Error('not_away', { cause: err });
+    }
     throw err;
   }
 }

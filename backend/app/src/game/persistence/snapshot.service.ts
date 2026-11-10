@@ -254,14 +254,13 @@ export class SnapshotService implements BeforeApplicationShutdown {
     if (!this.enabled || !this.planets.isLoaded(planetId)) return Promise.resolve();
     return new Promise((resolve) => {
       let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
       const finish = () => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         resolve();
       };
-      timer = setTimeout(() => {
+      const timer = setTimeout(() => {
         this.scheduler.cancelUnanswered(planetId, finish);
         finish();
       }, budgetMs);
