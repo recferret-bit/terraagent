@@ -7,6 +7,7 @@ import type { PlanetState } from '../../kernel/state';
 import { defineSystem, type SimSystem } from '../../kernel/system';
 import { parseArgs } from '../command';
 import { defineSimModule } from '../define';
+import { clearColonyCriticalOnHubRebuilt } from '../elimination/critical';
 import { getColonyGoalHistory, getColonyGoals } from '../goals/store';
 import { ticksToRemainingSeconds } from './dwell';
 import { getColonyProgression, saveColonyProgression } from './store';
@@ -317,8 +318,9 @@ export function onCommandHubCompleted(
   colonyIndex: number,
   ctx?: Partial<StepContext>,
 ): void {
+  const tick = ctx?.tick ?? state.meta.tick;
+  clearColonyCriticalOnHubRebuilt(state, colonyIndex, tick, ctx);
   if (!ctx?.flags || !ctx.flags.has('W08')) return;
-  const tick = ctx.tick ?? state.meta.tick;
   const data = ctx.data;
   const prog = getColonyProgression(state, colonyIndex, data);
   if (prog.stage > 0) return;
