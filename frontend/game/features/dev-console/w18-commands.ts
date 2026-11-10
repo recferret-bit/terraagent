@@ -78,10 +78,7 @@ export const presenceCommand: DevCommandDef = {
     const planetId = ctx.services.session?.planetId() ?? 'local';
     const colonyIndex = a[1] !== undefined ? Number(a[1]) : ownColonyIndex(ctx.services);
     const homeId = ctx.services.session?.colonyId?.();
-    const colonyId =
-      a[1] === undefined && homeId && homeId.startsWith('co_')
-        ? homeId
-        : `co_${String(colonyIndex).padStart(10, '0')}`;
+    const colonyId = a[1] === undefined && homeId ? homeId : `col_${colonyIndex}`;
     const reply = (await server(mode, { planetId, colonyIndex, colonyId })) as {
       appliedAtTick?: number;
       tick?: number;

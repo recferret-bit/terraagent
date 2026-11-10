@@ -2,7 +2,7 @@ import type { RejectCode, TruceDurationHours } from '@terra/contracts';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import { getAutopilot, isAway } from '../away';
+import { colonyIsAway, readAwaySettings } from '../away';
 import {
   cancelNoticeTicks,
   getColonyHqRowAndTier,
@@ -370,8 +370,8 @@ export function stepDiplomacy(state: PlanetState, ctx: StepContext): void {
       offer.status === 'pending' &&
       ctx.flags.has('W16') &&
       tick >= offer.offeredAtTick + TICKS_PER_SECOND &&
-      isAway(state, offer.toColonyIndex) &&
-      getAutopilot(state, offer.toColonyIndex)?.mode !== 'rules_only' &&
+      colonyIsAway(state, offer.toColonyIndex) &&
+      readAwaySettings(state, offer.toColonyIndex).mode !== 'rules_only' &&
       state.colonies[offer.toColonyIndex]?.aiAllowed !== false
     ) {
       if (changed) {

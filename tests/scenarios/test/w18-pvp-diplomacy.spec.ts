@@ -185,7 +185,7 @@ describe('W18 PvP & Diplomacy scenario — Steps 4–7 diplomacy & wave gate', (
       colonyIndex: 3,
       source: 'dev',
       kind: 'system.presence',
-      args: { colonyId: 'co_0000000003', away: true },
+      args: { colonyId: 'col_3', away: true },
     });
     expect(host.step(1).outcomes[0]?.code).toBeUndefined();
 
