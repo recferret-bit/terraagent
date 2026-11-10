@@ -6,6 +6,7 @@ import { indexOf } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { resolveBuildingRow } from '../economy/construction';
+import { hqReprintCost, hqReprintTicks } from '../elimination/store';
 import { findColonyRoboticsFactories, resolveReconRow } from '../factories-hub';
 import { resolveUnitRowForHub } from '../factories-hub/unit';
 import { isCrewKind, isWorker } from '../harvest/unit';
@@ -48,6 +49,13 @@ export function resolveTaskCostAndTicks(
     };
   }
   if (task.kind === 'buildUnit') {
+    if (task.unit === 'hq') {
+      return {
+        cost: hqReprintCost(data),
+        buildTicks: hqReprintTicks(data, false),
+        workRate: 1.0,
+      };
+    }
     if (task.unit === 'recon') {
       const reconRow = resolveReconRow(data);
       return {

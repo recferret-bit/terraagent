@@ -89,7 +89,10 @@ function collect(data: CompiledDataLike): SupplySources {
   }
   const tables = data.tables as Record<string, Record<string, CompiledRow> | undefined>;
   const hq = tables.hq?.t1;
-  if (hq && typeof hq.supply === 'number') unitSupplyByKind.set(ENTITY_KIND.hq, hq.supply);
+  if (hq && typeof hq.supply === 'number') {
+    unitSupplyByKind.set(ENTITY_KIND.hq, hq.supply);
+    unitSupplyByName.set('hq', hq.supply);
+  }
   const hub = tables.hub?.t1;
   const capMax = hub && typeof hub.supplyCapMax === 'number' ? hub.supplyCapMax : 0;
   return { unitSupplyByKind, unitSupplyByName, providers, capMax };

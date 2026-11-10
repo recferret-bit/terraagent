@@ -15,6 +15,8 @@ import { getFootprintTileIndices } from '../economy/buildingRows';
 import { syncColonyDepotCaps } from '../economy/ledger';
 import { colonyWho } from '../find';
 import { hasActiveTruce, recordHostilityBetween, resolveColonyIdStr } from '../diplomacy/store';
+import { onHqDestroyed } from '../elimination/operations';
+import { isW18EliminationActive } from '../elimination/store';
 import { syncHqView } from '../hq/view';
 import { syncColonyThreatStage } from '../progression/threatStage';
 import { resolveHqT1Row, rowNum } from '../rows';
@@ -416,21 +418,26 @@ export function applyDamage(
 
   let result: DamageResult;
   if (kind === ENTITY_KIND.hq) {
-    const hpAfter = Math.fround(Math.max(1, rawHp));
-    setField(state.entities, row, 'hp', hpAfter, tick);
-    const hpMax = Math.max(1, cols.hpMax[row] > 0 ? cols.hpMax[row] : rowNum(resolveHqT1Row(data), 'hp'));
-    let retreatedHq = false;
-    if (hpAfter / hpMax < hqRetreatHpRatio(data)) {
-      retreatedHq = retreatHqToSafety(state, row, tick, opts?.ctx);
+    if (rawHp <= 0 && isW18EliminationActive(state, opts)) {
+      result = handleUnitDestruction(state, row, targetId, prevHp, tick, opts);
+      onHqDestroyed(state, owner, tick, opts);
+    } else {
+      const hpAfter = Math.fround(Math.max(1, rawHp));
+      setField(state.entities, row, 'hp', hpAfter, tick);
+      const hpMax = Math.max(1, cols.hpMax[row] > 0 ? cols.hpMax[row] : rowNum(resolveHqT1Row(data), 'hp'));
+      let retreatedHq = false;
+      if (hpAfter / hpMax < hqRetreatHpRatio(data)) {
+        retreatedHq = retreatHqToSafety(state, row, tick, opts?.ctx);
+      }
+      syncHqView(state, row, tick, data);
+      result = {
+        applied: Math.max(0, prevHp - hpAfter),
+        hpAfter,
+        destroyed: false,
+        clampedHq: rawHp <= 1,
+        retreatedHq,
+      };
     }
-    syncHqView(state, row, tick, data);
-    result = {
-      applied: Math.max(0, prevHp - hpAfter),
-      hpAfter,
-      destroyed: false,
-      clampedHq: rawHp <= 1,
-      retreatedHq,
-    };
   } else if (rawHp > 0) {
     const hpAfter = Math.fround(rawHp);
     setField(state.entities, row, 'hp', hpAfter, tick);

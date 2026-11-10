@@ -7,6 +7,7 @@ import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability, payProgressiveSlice } from '../economy/ledger';
+import { completeHqReprint } from '../elimination/operations';
 import { produceReconAtFactoryEdge, produceWorkerAtHubEdge, selectRoboticsFactoryProducer } from '../factories-hub';
 import { isCrewKind, isWorker, workerTierOf } from '../harvest/unit';
 import { completePrestigeProject } from '../prestige/project';
@@ -276,7 +277,9 @@ function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
-  if (task?.unit === 'recon') {
+  if (task?.unit === 'hq') {
+    completeHqReprint(state, colIdx, ctx);
+  } else if (task?.unit === 'recon') {
     produceReconAtFactoryEdge(state, colIdx, ctx, task.producerId);
   } else {
     produceWorkerAtHubEdge(state, colIdx, ctx, task?.unit === 'worker' ? workerTierOf(task.tier) : 1);
