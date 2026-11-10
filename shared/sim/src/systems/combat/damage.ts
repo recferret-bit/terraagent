@@ -13,6 +13,7 @@ import { entityFootprint, getBuildingFootprintTiles } from '../construction/plac
 import { getBuildingJobs, saveBuildingJobs } from '../economy/buildJob';
 import { getFootprintTileIndices } from '../economy/buildingRows';
 import { syncColonyDepotCaps } from '../economy/ledger';
+import { noteClearNestHit } from '../bounty/damage';
 import { colonyWho } from '../find';
 import { syncHqView } from '../hq/view';
 import { syncColonyThreatStage } from '../progression/threatStage';
@@ -411,6 +412,16 @@ export function applyDamage(
   if (result.applied > 0 && owner >= 0 && isHostileDamage(state, owner, opts)) {
     emitUnderAttackIfDue(state, owner, { targetId, attackerId: opts?.attackerId, q, r, tick }, opts?.ctx);
   }
+  if (isFaunaHiveKind(kind)) {
+    noteClearNestHit(state, targetId, result.applied, result.destroyed, tick, creditedColony(state, opts), opts?.ctx);
+  }
 
   return result;
+}
+
+function creditedColony(state: PlanetState, opts?: ApplyDamageOptions): number {
+  if (typeof opts?.attackerOwner === 'number') return opts.attackerOwner;
+  if (opts?.attackerId === undefined) return -1;
+  const row = rowOf(state.entities, opts.attackerId);
+  return row < 0 ? -1 : state.entities.cols.owner[row];
 }

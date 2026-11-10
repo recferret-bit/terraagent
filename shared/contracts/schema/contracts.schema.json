@@ -3210,7 +3210,8 @@
               "order_limit",
               "order_too_small",
               "unknown_order",
-              "away_policy"
+              "away_policy",
+              "already_posted"
             ],
             "type": "string"
           },
@@ -6759,7 +6760,8 @@
               "order_limit",
               "order_too_small",
               "unknown_order",
-              "away_policy"
+              "away_policy",
+              "already_posted"
             ],
             "type": "string"
           },
@@ -9894,7 +9896,8 @@
                 "order_limit",
                 "order_too_small",
                 "unknown_order",
-                "away_policy"
+                "away_policy",
+                "already_posted"
               ],
               "type": "string"
             },

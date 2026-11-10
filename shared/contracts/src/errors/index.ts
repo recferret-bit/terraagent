@@ -39,6 +39,8 @@ export const REJECT_CODES = [
   'fee_out_of_range', 'order_limit', 'order_too_small', 'unknown_order',
   // W09 away policy (AW-22): an automated command the away rules refuse. Player commands are exempt.
   'away_policy',
+  // W22 clear_nest: a second bounty.post from the same colony in the same tick reuses `bt:{colony}:{tick}`.
+  'already_posted',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;
