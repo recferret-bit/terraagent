@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import type { GuildArrivedPayload, GuildDepartedPayload, TradeOverviewResponse } from '@terra/contracts';
-import type { PrismaClient } from '@terra/db';
+import type { DbClient, PrismaClient } from '@terra/db';
 import { checkAllowance, type ReferencePrice } from '../../trade/allowance.js';
 import { TradeKeyRepository, type KeyRecord } from '../../trade/trade-key.repository.js';
 import { TradeReadService } from '../../trade/trade-read.service.js';
@@ -15,6 +15,7 @@ import { fundingEnabled } from '../funding/caps.js';
 import { GuildFundingService, type AllowQuoteRequest } from '../funding/guild-funding.service.js';
 import { GuildNpcRepository } from '../guild-npc.repository.js';
 import { loadPolicy } from '../guild-plan.js';
+import { applyFill, type CargoFillResult, type GuildCargoFill } from '../inventory.js';
 import { compileData, type CompiledDataLike } from '@terra/sim';
 import { GuildOrderBook, type GuildOrderPort, type RestingGuildOrder } from './order-book.js';
 import { barterPairIds } from './pairs.js';
@@ -88,6 +89,16 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy {
   onKilled(npcId: string): Promise<string[]> {
     if (!this.live()) return Promise.resolve([]);
     return this.cancelNpc(npcId);
+  }
+
+  /**
+   * Record one guild fill on the NPC row. A player buy is `side: 'sell'` and decreases stock.
+   * The matcher does not call this; callers (and tests) do. W15 off writes nothing.
+   * Departure does not clear the cache: the next dock on any planet reads the same row.
+   */
+  recordFill(npcId: string, fill: GuildCargoFill): Promise<CargoFillResult | null> {
+    if (!this.live()) return Promise.resolve(null);
+    return this.npcs.withLock(npcId, (db) => this.writeFill(npcId, fill, db));
   }
 
   private async arrive(payload: GuildArrivedPayload): Promise<DockReport> {
@@ -176,6 +187,14 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy {
       if (row.reserve > 0n) await this.funding.release(npcId, row.bucket, row.reserve);
     }
     return ids;
+  }
+
+  private async writeFill(npcId: string, fill: GuildCargoFill, db: DbClient): Promise<CargoFillResult | null> {
+    const row = await this.npcs.find(npcId, db);
+    if (!row || row.actorKind !== 'npc') return null;
+    const result = applyFill(row, fill);
+    if (result.ok) await this.npcs.saveInventory(npcId, result.inventory, db);
+    return result;
   }
 
   private async npcOf(npcId: string): Promise<MakerNpc | null> {
