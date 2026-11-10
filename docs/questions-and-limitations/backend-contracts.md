@@ -988,11 +988,11 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Accepted (by design, W15-24)
 - **Area / code:** `backend/app/src/market/director/digest-line.ts` (`directorDigestLine`), `backend/app/src/market/director/digest-recorder.ts`, `backend/app/src/game/digest/service.ts` (`noteDirectorTrade`), `shared/contracts/src/notify/digest.ts` (`items`), `frontend/game/features/director-log/`, `frontend/game/features/away-digest/render.ts`
-- **What happens:** `directorDigestLine` turns a fill into `Director sold 300 metals to the Guild.` (buy says `bought` … `from`). The names are metals, minerals, water, and biomass. `bio.t2` and `bio.t3` are not a line. Amount 0 is not a line. The sentence does not depend on W09. When W09 is on, `DirectorDigestRecorder` appends `{ kind: 'digest.directorTrade', line }` on the open away digest (`AwayDigestService`, not a second store). The 21st line is dropped (CT-31). No open row means the line is not stored. The same fill is fanned to joined sockets with `data.line`. When W09 is off the digest is not written; the HUD event log shows the sentence from the event fields. A player with no socket and W09 off never sees that fill. `?host=local` does not run this loop. Buy uses `from the <counterparty>`.
-- **Why it is like this:** W15-24 renders through the existing W09 digest when that wave is on, and through the HUD log when it is off. The away plate was not rebuilt (W15-36 still owns the ColonyBook welcome fold). The formatter stays on the server; the HUD calls the same function.
-- **Workaround / mitigation:** Read `directorTrade` on the bus. With W09 on, return while a digest row is open so welcome carries `items`. With W09 off, stay connected if the log must show the line.
-- **To resolve:** W15-36 can fold the same `items` into the ColonyBook welcome plate. Persist a line that arrives with no open row only if the owner wants it when the player was not marked away.
-- **Found:** 2026-11-10, W15-24
+- **What happens:** `directorDigestLine` turns a fill into `Director sold 300 metals to the Guild.` (buy says `bought` … `from`). The names are metals, minerals, water, and biomass. `bio.t2` and `bio.t3` are not a line. Amount 0 is not a line. The sentence does not depend on W09. When the loop fills while `view.away` is true and both W09 and W15 are on, it calls `AwayDigestService.ensureOpen` before it emits `directorTrade`, then `DirectorDigestRecorder` appends `{ kind: 'digest.directorTrade', line }` on that row (the same store, not a second one). The 21st line is dropped (CT-31). A fill while the colony is present does not open a row, and `noteDirectorTrade` still drops the line if none is open. `suppressAway` (the player already returned) does not reopen. The same fill is fanned to joined sockets with `data.line`. When W09 is off, or W15 is off, the digest is not written. W09 off still fans the sentence; the HUD event log shows it from the event fields. W15 off does not emit and does not notify. `directorAllowanceExhausted` with reason `allowance_exhausted` is `away_budget_exhausted` only while W09 and W15 are both on. A player with no socket and W09 off never sees that fill. `?host=local` does not run this loop. Buy uses `from the <counterparty>`.
+- **Why it is like this:** W15-24 renders through the existing W09 digest when that wave is on, and through the HUD log when it is off. W15-36 opens the row on an away fill so the welcome plate (`renderAwayDigest`) can list `items`. The formatter stays on the server; the HUD calls the same function.
+- **Workaround / mitigation:** Read `directorTrade` on the bus. With W09 and W15 on, an away fill opens the row, and welcome carries `items`. With W09 off, stay connected if the log must show the line.
+- **To resolve:** Persist a line that arrives while the colony is present only if the owner wants that. Replay a fill that lands after `suppressAway` only if a late trade should reopen the plate.
+- **Found:** 2026-11-10, W15-24 (updated 2026-11-11, W15-36)
 
 ### BE-78 · The market re-checks autoTrade only when the order is flagged director
 
@@ -1023,3 +1023,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Run with W09 on (W15 depends on it). `away` and `back` write the same blob. `runDirectorOnce` itself does not re-check away; only the sweep's `listAway` does.
 - **To resolve:** If a demo must force the director while W09 is off, add a dev override inside `listAway` and document that it is not the sim blob.
 - **Found:** 2026-11-10, W15-28
+
+### BE-81 · An away director fill opens the digest; a present fill does not
+
+- **Status:** Accepted (by design, W15-36)
+- **Area / code:** `backend/app/src/market/director/director-loop.service.ts` (`openAwayDigest`), `backend/app/src/game/digest/service.ts` (`ensureOpen`), `frontend/game/features/away-digest/render.ts` (`renderAwayDigest`)
+- **What happens:** The welcome plate is `renderAwayDigest` (`[data-testid="away-digest"]`). Director lines are `[data-kind="digest.directorTrade"]` inside `[data-testid="away-director-trades"]`. The ColonyBook AWAY tab stays the settings editor and does not repeat those lines. `ensureOpen` uses the loop's `view.away`. A fill while the player is present does not open a row. A colony already marked returned (`suppressAway`) is not reopened, so that fill is not stored. The line sits on the in-memory body until a snapshot flush or welcome close, the same as a raid fold. A colony id that is not a home id is skipped by `draftDigest` and the line is not stored.
+- **Why it is like this:** BE-77 dropped a fill with no open row. Opening on every fill would write an away digest while the player is still here. The plate already listed `items`; the AWAY tab is the limits editor (W15-23).
+- **Workaround / mitigation:** Go away (presence blob or an open away session) before the director sells. Return through welcome to read the line. Do not look for it on the AWAY tab.
+- **To resolve:** Store a present-colony fill, or copy the same lines onto the AWAY tab, only if the owner asks.
+- **Found:** 2026-11-11, W15-36

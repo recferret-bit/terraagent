@@ -11,7 +11,7 @@ type TradeEvent = PlanetEventOf<'directorTrade'>;
 
 /**
  * Appends `digest.directorTrade` on the open W09 digest, and fans the same sentence to joined sockets.
- * W09 off still returns the sentence and still fans it. It does not write a digest row.
+ * W09 off, or W15 off, still returns the sentence and still fans it. It does not write a digest row.
  */
 @Injectable()
 export class DirectorDigestRecorder implements OnModuleInit, OnModuleDestroy {
@@ -34,12 +34,14 @@ export class DirectorDigestRecorder implements OnModuleInit, OnModuleDestroy {
     this.unsub = undefined;
   }
 
-  /** The sentence, or null when the fill is not a line. W09 only chooses the digest store. */
+  /** The sentence, or null when the fill is not a line. W09 and W15 choose the digest store. */
   async record(event: TradeEvent): Promise<string | null> {
     const line = directorDigestLine(event.data);
     if (!line) return null;
     this.fan(event, line);
-    if (this.flags.has('W09')) await this.digests.noteDirectorTrade(event.data.colonyId, line, event.tick);
+    if (this.flags.has('W09') && this.flags.has('W15')) {
+      await this.digests.noteDirectorTrade(event.data.colonyId, line, event.tick);
+    }
     return line;
   }
 
