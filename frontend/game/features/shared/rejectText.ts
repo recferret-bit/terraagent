@@ -62,6 +62,7 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   unknown_order: 'Rejected: No such open order',
   away_policy: 'Rejected: Not allowed while the colony is away',
   already_posted: 'Rejected: A bounty was already posted this tick',
+  invalid_target: 'Rejected: That target is not visible',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };
