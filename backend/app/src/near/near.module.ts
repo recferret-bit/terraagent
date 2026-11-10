@@ -45,6 +45,7 @@ import { BountyPostedListener } from './bounty/posted.listener.js';
 import { BountyPostService } from './bounty/post.service.js';
 import { BountyRepository } from './bounty/bounty.repository.js';
 import { PlanetBountyWorld } from './bounty/world.js';
+import { GuildSubsidyService } from './treasury/guild-subsidy.js';
 import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
 import { PlanetDaoLifecycleService } from './treasury/lifecycle.service.js';
 import { PlanetDaoMembershipService } from './treasury/membership.service.js';
@@ -90,6 +91,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     DeedSettledService,
     DeedTelemetryService,
     FreeVerifierService,
+    GuildSubsidyService,
     ColonyAccounts,
     RelayStatusService,
     SocialAuthService,
@@ -120,6 +122,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     DeedSettledService,
     DeedTelemetryService,
     FreeVerifierService,
+    GuildSubsidyService,
     NearInfrastructureModule,
     OutboxModule,
     PlanetDaoLifecycleService,

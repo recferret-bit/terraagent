@@ -995,3 +995,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The precheck stops an unseen nest before the sim. A retried chain id reuses `bounty-open:{bountyId}`, so cargo is not taken twice. Expiry is the bounty row (`expiresAt`), not escrow `get` (BE-73).
 - **To resolve:** Have the board post over the socket. When W22-22 lands, teach the sim `deliver_units` and keep one id for the chain row and the sim blob. Require the session colony on `POST /v1/bounties/:planetId`.
 - **Found:** 2026-11-10, W22-19
+
+### BE-78 · A guild subsidy schedules a visit row and does not quote
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/guild-subsidy.ts` (`applyGuildSubsidy`, `scheduleExtraVisit`), `shared/db/prisma/near-treasury.prisma` (`ChainGuildVisit`)
+- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council does not hide the kind yet (W22-14). Approving a mock DAO proposal does not call this hook: the proposals API (W22-08) is not in this tree. The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
+- **Why it is like this:** W15-09's `scheduleExtraVisit` and quote engine are absent. D-45 says a subsidy visit is never organic. The `organic` column false is that guarantee.
+- **Workaround / mitigation:** Call `applyGuildSubsidy(planetId)` when a `guild_subsidy` effect is applied. The inserted row stays `organic` false.
+- **To resolve:** W22-08 should call `applyGuildSubsidy` when a `guild_subsidy` proposal is Approved. W15 should add quotes without setting `organic`. W22-14 hides the kind when W15 is off.
+- **Found:** 2026-11-10, W22-12
