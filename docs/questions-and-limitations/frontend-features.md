@@ -1470,3 +1470,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** This browser keeps the last acked Tier-1 limits. A rejected command does not write storage and does not show an allowance. Revoke hides the button and sets the status to `Revoked` for the rest of the page.
 - **To resolve:** When the replica exposes `autoTrade`, hydrate from that colony and keep `localStorage` only until the first view. Add a read of the director key (or push status on welcome) so allowance and revoked survive a reload.
 - **Found:** 2026-11-10, W15-23
+
+### FF-104 · Guild toasts are push-only, and departure has no display name
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/guild-toast/` (`GuildVisitMemory`, `FeatureServices.guildTab`), `frontend/game/store/WorldStore.ts` (`onGuildArrived`, `onGuildDeparted`)
+- **What happens:** An arrival toast reads `Guild trader ${name} has docked — ${offers.length} offers`. The same `shipId` + `departAt` does not toast again on this page. A departure toast reads `Guild trader ${name} has departed`, using the display name from this page's last `guild.arrived` for that `shipId`, or the `shipId` itself when no arrival was seen (`guild.departed` has no name). Joining while a ship is already docked does not toast: welcome does not replay the visit, and a reload forgets the seen key. A tap calls `openTradeHubPanel(true)` and sets `services.guildTab = true`. There is no Guild tab yet (W15-17). The flag is not a URL query and is cleared if the HUD builds a new services object. W15 off drops the feature from the registry; a mount whose flags lack `W15` ignores both pushes.
+- **Why it is like this:** W15-16 is the toast only. The departed payload is `shipId`, `planetId`, and `npcId`.
+- **Workaround / mitigation:** Open the Trade Hub from the Colony book `TRADE` tab. W15-17 reads `guildTab` after the tap.
+- **To resolve:** W15-17 selects the Guild tab when `guildTab` is true and then clears it. Put the display name on `guild.departed`, or replay an open visit on welcome, if a mid-dock join should toast.
+- **Found:** 2026-11-10, W15-16

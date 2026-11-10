@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
@@ -86,6 +86,8 @@ export class WorldStore {
   private readonly awayDigests = new Emitter<AwayDigestV1>();
   private readonly deedUpdates = new Emitter<DeedUpdatedPayload>();
   private readonly directorStatuses = new Emitter<DirectorKeyStatusPayload>();
+  private readonly guildArrivals = new Emitter<GuildArrivedPayload>();
+  private readonly guildDepartures = new Emitter<GuildDepartedPayload>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -117,6 +119,10 @@ export class WorldStore {
   onDeedUpdated(fn: (p: DeedUpdatedPayload) => void): () => void { return this.deedUpdates.on(fn); }
   /** W15 `director.status` (allowance and spent, or revoked). */
   onDirectorStatus(fn: (p: DirectorKeyStatusPayload) => void): () => void { return this.directorStatuses.on(fn); }
+  /** W15 `guild.arrived`. The toast feature ignores it when W15 is off. */
+  onGuildArrived(fn: (p: GuildArrivedPayload) => void): () => void { return this.guildArrivals.on(fn); }
+  /** W15 `guild.departed`. The toast feature ignores it when W15 is off. */
+  onGuildDeparted(fn: (p: GuildDepartedPayload) => void): () => void { return this.guildDepartures.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -221,6 +227,8 @@ export class WorldStore {
       marketTrades: this.marketTrades,
       deedUpdates: this.deedUpdates,
       directorStatuses: this.directorStatuses,
+      guildArrivals: this.guildArrivals,
+      guildDepartures: this.guildDepartures,
     })) return;
     switch (m.t) {
       case 'welcome': {
