@@ -920,8 +920,8 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`, `shared/db/prisma/agent-wallet.prisma`, NEAR-80, NEAR-81
 - **What happens:** `MockAgentWalletAdapter` stores a limited key in `chain.mock_chain_agent_key` and principal in `chain.mock_chain_agent_allowance` (`allowance`, `reserved`, `spent`). Available is `allowance - reserved - spent` and is not a column. Reserve, consume, and release take an amount from that pool. They are not tied to a reservation id, so two holds on one key share one reserved total. `gasSpent` stays `0`. `addLimitedKey` records the gas allowance and does not move principal. Revoke sets `revoked` and `revoked_at` and leaves the totals. A later reserve, consume, or release throws `NEAR_KEY_REVOKED`. A second `addLimitedKey` for the same key with a new opId throws `NEAR_ACCOUNT_EXISTS` and does not change the caps. `NEAR_ADAPTER_AGENT_WALLET=testnet` fails boot. Only the mock class is registered.
 - **Why it is like this:** The port methods are amount-based. `chain.director_key` belongs to W15-18. Real function-call allowance is gas only (NEAR-81). The real adapter is W23.
-- **Workaround / mitigation:** Callers that overlap two holds must consume and release amounts that fit the combined reserved total. Read balances through `keyStatus`, not `chain.director_key`.
-- **To resolve:** W15-18 can project `keyStatus` into `chain.director_key`. W23 registers the testnet class. Gas metering, if it is required, is a later change.
+- **Workaround / mitigation:** Callers that overlap two holds must consume and release amounts that fit the combined reserved total. Read live balances through `keyStatus`. W15-18 copies that ledger onto `chain.director_key` (`tokens` jsonb, plus one numeric pair for the primary resource) and the `director.status` push is still built from `keyStatus` (BE-73).
+- **To resolve:** W23 registers the testnet class. Gas metering, if it is required, is a later change. The W15-18 projection is BE-73.
 - **Found:** 2026-11-10, W15-03
 
 ### BE-72 · autoTrade storage percent and buy floor are optional
@@ -943,3 +943,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The send is skipped when W09 is off, when no notifier is bound, or when both `playerId` and `accountId` are empty. A send that fails is logged and does not fail the seal.
 - **To resolve:** Owner: add a player toggle and route the seal through the alert router, or keep this one-shot telegram push.
 - **Found:** 2026-11-10, merge of main into W09.
+
+### BE-73 · Director key gas is zero; the numeric columns mirror one resource
+
+- **Status:** Accepted (by design, W15-18)
+- **Area / code:** `backend/app/src/near/director-key/`, `shared/db/prisma/agent-wallet.prisma` (`DirectorKey`), `chain.director_key`, NEAR-80, NEAR-81
+- **What happens:** `POST /v1/near/director-key` turns each autoTrade `maxPerSession` into that resource's principal allowance (whole units, decimal string). The function-call gas allowance passed to `addLimitedKey` is `0`, because no data row names a gas budget. Signing does not spend principal. `chain.director_key.allowance` and `spent` mirror the first resource in `RESOURCE_KEYS` order that the limits name (`metals.t1` when it is present). The full ledger is jsonb `tokens`. `director.status` is built from `AgentWalletPort.keyStatus`, not from those columns. A second POST while the key is active returns the same key and does not raise the caps. After revoke, a later POST stores a new public key on the same row. The limited key names only `intents.near` (the port takes one receiver). A body `limits` map wins over the sim blob `autoTrade`. An empty map, or no blob and no body limits, is 400 and writes nothing. W15 off is 403 `wave_disabled` and writes nothing.
+- **Why it is like this:** DATA_MODEL sketches one numeric allowance. The wave is per-token principal plus a separate gas allowance (BE-70). There is no gas constant in data, so the issue's fallback is `0`. Revoke stays DELETE (BE-70).
+- **Workaround / mitigation:** Read per-token numbers from `director.status` or `keyStatus`. Do not treat the numeric column as a sum, and do not treat gas `0` as a principal cap.
+- **To resolve:** The owner can set a gas constant (W23-26's 0.1 NEAR) and a second receiver when the real adapter lands.
+- **Found:** 2026-11-10, W15-18

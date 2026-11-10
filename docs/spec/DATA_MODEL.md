@@ -466,7 +466,7 @@ Column details are decided in the TA-10 / TA-14 pre-step. The chain is the truth
 | `chain.mock_chain_intent_nonce` | F2 (mock) | `(signer, nonce)` key, `op_id`, `used_at` | Used NEP-413 nonces for replay protection (W13-05). |
 | `chain.guild_npc` | F3 | `id`, `account_id`, `strategy jsonb`, `inventory_cache jsonb`, `home_route jsonb` | NPC trader wallets (sub-accounts of `npc.terraagent.near`). |
 | `chain.guild_visit` | F3 | `id`, `npc_id`, `planet_id`, `arrive_at`, `depart_at`, `offers jsonb` | Schedule and offers shown as `guild.arrived`. |
-| `chain.director_key` | F4 | `colony_id`, `public_key`, `allowance numeric`, `spent numeric`, `created_at`, `revoked_at` | Capped key used by the AI director while the player is away. |
+| `chain.director_key` | F4 | `colony_id`, `account_id`, `public_key`, `allowance numeric`, `spent numeric`, `tokens jsonb`, `created_at`, `revoked_at` | One row per colony. `allowance`/`spent` mirror the primary resource; `tokens` is the per-token ledger. The push reads `keyStatus` (BE-73). |
 | `core.social_identity` | F5 | `player_id`, `provider`, `subject`, `account_id`, `created_at` | Extends `auth_identity`; named account `name.terraagent.near`. |
 | `chain.deed` | F6 | `colony_id`, `token_id`, `contract`, `metadata_version`, `last_update_tx`, `settled` | Dynamic NEP-171 metadata outbox. |
 | `chain.staking_position` | F6 | `colony_id`, `pool_id`, `staked_snapshot numeric`, `updated_at` | Read model only; the chain is the truth. |
