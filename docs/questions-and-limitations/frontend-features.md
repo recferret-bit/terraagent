@@ -1425,7 +1425,7 @@ Open items, see the format in `README.md`:
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`, mounted on `services.hudOverlay`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
-- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, the story when it is a non-empty string, and each `digest.directorTrade` line when the body has `items` (W15-24, BE-76). Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
 - **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
 - **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
 - **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
@@ -1480,3 +1480,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Open the Trade Hub from the Colony book `TRADE` tab. W15-17 reads `guildTab` after the tap.
 - **To resolve:** W15-17 selects the Guild tab when `guildTab` is true and then clears it. Put the display name on `guild.departed`, or replay an open visit on welcome, if a mid-dock join should toast.
 - **Found:** 2026-11-10, W15-16
+
+### FF-105 · The director sentence is the away plate or the HUD log, not both
+
+- **Status:** Accepted (by design, W15-24)
+- **Area / code:** `frontend/game/features/director-log/` (`DirectorEventLog`), `frontend/game/features/away-digest/render.ts` (`appendDirectorTrades`), `backend/app/src/market/director/digest-line.ts`
+- **What happens:** With W15 on and W09 off, `directorTrade` server events become lines in the HUD event log (`data-testid="director-event-log"`). The text is `directorDigestLine` (`Director sold 300 metals to the Guild.`). Amount 0 adds nothing. With W09 on, that log stays empty and the away plate lists `digest.directorTrade` items. W15 off does not mount the log. The plate does not show the line until welcome carries `items`. A missed socket (the player was away and W09 is off) has no later line (BE-76).
+- **Why it is like this:** W09 already owns the away plate. The log is only the fallback the issue asks for when that plate is not mounted.
+- **Workaround / mitigation:** Turn W09 on to keep the line on the digest until return. The log keeps the last 20 lines of this page.
+- **To resolve:** W15-36 if the ColonyBook plate should repeat the same items. Replay missed fills on welcome when W09 is off only if the owner wants a log after a disconnect.
+- **Found:** 2026-11-10, W15-24

@@ -4,6 +4,7 @@ import type { AutoTradeLimit } from '@terra/contracts';
 import { priceDirectorOrder } from '@terra/sim';
 import { EventBus } from '../../src/bus/event-bus.js';
 import { FlagsService } from '../../src/flags/flags.service.js';
+import { directorDigestLine } from '../../src/market/director/digest-line.js';
 import { DirectorLoopService } from '../../src/market/director/director-loop.service.js';
 import {
   DirectorMarketPort,
@@ -373,5 +374,24 @@ describe('W15-22 director allowance corners', () => {
     expect(await off.service.runDirectorOnce('co_off22')).toEqual({ ok: false, skip: 'wave_disabled' });
     expect(off.events).toEqual([]);
     expect(market.placed).toHaveLength(0);
+  });
+});
+
+describe('W15-24 director trade sentence', () => {
+  it('formats the loop 300 sell as the digest line', async () => {
+    const opened = await openKey('line');
+    const market = new MemMarket();
+    const keys = new MemKeys({
+      colonyId: 'co_dir',
+      accountId: opened.accountId,
+      publicKey: opened.publicKey,
+      revokedAt: null,
+    });
+    const { service, events } = loop('all', new MemSource(view()), market, keys, opened.wallet);
+    expect(await service.runDirectorOnce('co_dir')).toMatchObject({ ok: true, amount: 300 });
+    const trade = events.find((event) => event.kind === 'directorTrade');
+    expect(directorDigestLine(trade!.data as { resource: string; side: string; amount: number; counterparty: string })).toBe(
+      'Director sold 300 metals to the Guild.',
+    );
   });
 });

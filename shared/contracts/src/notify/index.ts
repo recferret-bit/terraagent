@@ -36,9 +36,12 @@ export {
   AwayDigestV1Schema,
   AwayResourcesSchema,
   AwaySummarySchema,
+  DIGEST_DIRECTOR_TRADE,
+  DigestDirectorTradeSchema,
   type AwayDigestV1,
   type AwayResources,
   type AwaySummary,
+  type DigestDirectorTrade,
 } from './digest';
 export {
   NotificationPayloadSchema,

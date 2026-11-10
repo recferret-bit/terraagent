@@ -125,7 +125,7 @@ Drop order when behind (HACKATHON_CUT §3): W22 goes 4th and W20 5th. W06, W10, 
 - **autoTrade limits (W15-19, per sub-resource):** sell above % of family storage, buy below a floor, max per trade, max per away session, min stock floor; partners `guild` / `truce partners` / `anyone`. One checker, `withinAutoTrade` (W09-13), is called in both the sim and the market module.
 - **Loop:** "While you were away: Director sold 400 iron to the Guild". Exhaustion → `directorAllowanceExhausted` → `away_budget_exhausted` notification.
 - **Port:** `AgentWalletPort` (`createSubAccount`, `addLimitedKey`, `revokeKey`, `keyStatus`).
-- **Deferred:** digest items (W15-24), policy tests (H+), analytics.
+- **Deferred:** policy tests (H+), analytics. Digest lines are W15-24 (BE-76): the away plate when W09 is on, the HUD event log when it is off.
 
 ### F6 — Colony Deed (dynamic NEP-171) + own-NEAR staking (W20)
 - **Primitive:** `deed.terraagent.near` mints one NFT per colony at founding, owned by the colony account. The operator updates its metadata on milestones (stage, Terraform % in 10 % steps, walls, trade volume, truces, rank), debounced to at most one update per colony per 10 min. The image is server-rendered (SVG → PNG card).

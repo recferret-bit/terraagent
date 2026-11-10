@@ -1,0 +1,28 @@
+.ta-director-log {
+  position: absolute;
+  left: var(--ta-s4);
+  bottom: var(--ta-s4);
+  z-index: 24;
+  margin: 0;
+  padding: var(--ta-s3);
+  width: min(420px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  list-style: none;
+  background: var(--ta-plate);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.ta-director-log[hidden] {
+  display: none;
+}
+
+.ta-director-log__line {
+  margin: 0;
+}
