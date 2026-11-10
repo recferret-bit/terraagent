@@ -1,0 +1,269 @@
+import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
+import {
+  applyColonyStatusSimEvent,
+  extractColonyStatusView,
+  formatCriticalCountdown,
+  type ColonyStatusHudOptions,
+  type ColonyStatusView,
+} from './types';
+declare module '../../core/registry/types' {
+  interface FeatureServices {
+    startHubPlacement?: () => void;
+    selectBuildItem?: (item: string) => void;
+  }
+}
+
+export interface ColonyStatusHudInstance extends HudPanelInstance {
+  readonly el: HTMLElement;
+  readonly bannerEl: HTMLElement;
+  readonly eliminatedEl: HTMLElement;
+  getView(): ColonyStatusView;
+  update(view?: unknown): void;
+  ingestSimEvents(events?: readonly unknown[] | unknown): void;
+  dispose(): void;
+}
+
+export class ColonyStatusHud implements ColonyStatusHudInstance {
+  readonly el: HTMLElement;
+  readonly bannerEl: HTMLElement;
+  readonly eliminatedEl: HTMLElement;
+
+  private readonly titleEl: HTMLElement;
+  private readonly placeHubBtn: HTMLButtonElement;
+  private readonly eliminatedTitleEl: HTMLElement;
+  private readonly eliminatedDetailEl: HTMLElement;
+  private readonly foundNewColonyBtn: HTMLButtonElement;
+
+  private currentView: ColonyStatusView;
+  private timerId: ReturnType<typeof setInterval> | null = null;
+
+  constructor(
+    parentEl: HTMLElement,
+    private readonly ctx: FeatureContext,
+    private readonly options: ColonyStatusHudOptions = {},
+  ) {
+    this.currentView = {
+      colonyIndex: options.ownColonyIndex ?? 0,
+      status: 'active',
+      hqDown: false,
+      criticalDeadlineTick: null,
+      criticalRemainingSeconds: 0,
+      eliminatedAtTick: null,
+      eliminatedReason: null,
+      eliminatedByColonyId: null,
+      currentTick: 0,
+    };
+
+    this.el = parentEl;
+    this.el.classList.add('ta-colony-status-hud');
+
+    // 1. Critical Banner DOM
+    this.bannerEl = document.createElement('div');
+    this.bannerEl.className = 'ta-colony-critical-banner';
+    this.bannerEl.dataset.testid = 'colony-critical-banner';
+    this.bannerEl.hidden = true;
+    this.bannerEl.setAttribute('hidden', '');
+
+    const bannerHeader = document.createElement('div');
+    bannerHeader.className = 'ta-colony-critical__header';
+
+    const bannerIcon = document.createElement('span');
+    bannerIcon.className = 'ta-colony-critical__icon';
+    bannerIcon.textContent = '⚠';
+    bannerHeader.appendChild(bannerIcon);
+
+    this.titleEl = document.createElement('h2');
+    this.titleEl.className = 'ta-colony-critical__title';
+    this.titleEl.dataset.testid = 'colony-critical-title';
+    this.titleEl.textContent = 'HUB LOST — REBUILD WITHIN 00:00';
+    bannerHeader.appendChild(this.titleEl);
+
+    this.placeHubBtn = document.createElement('button');
+    this.placeHubBtn.type = 'button';
+    this.placeHubBtn.className = 'ta-colony-critical__btn';
+    this.placeHubBtn.dataset.testid = 'colony-critical-place-hub';
+    this.placeHubBtn.dataset.action = 'place-hub';
+    this.placeHubBtn.textContent = 'Place Hub';
+    this.placeHubBtn.addEventListener('click', () => this.handlePlaceHub());
+
+    this.bannerEl.appendChild(bannerHeader);
+    this.bannerEl.appendChild(this.placeHubBtn);
+    this.el.appendChild(this.bannerEl);
+
+    // 2. Eliminated Screen DOM
+    this.eliminatedEl = document.createElement('div');
+    this.eliminatedEl.className = 'ta-colony-eliminated-screen';
+    this.eliminatedEl.dataset.testid = 'colony-eliminated-screen';
+    this.eliminatedEl.hidden = true;
+    this.eliminatedEl.setAttribute('hidden', '');
+
+    const card = document.createElement('div');
+    card.className = 'ta-colony-eliminated__card';
+
+    const elimIcon = document.createElement('div');
+    elimIcon.className = 'ta-colony-eliminated__icon';
+    elimIcon.textContent = '☠';
+    card.appendChild(elimIcon);
+
+    this.eliminatedTitleEl = document.createElement('h1');
+    this.eliminatedTitleEl.className = 'ta-colony-eliminated__title';
+    this.eliminatedTitleEl.dataset.testid = 'colony-eliminated-title';
+    this.eliminatedTitleEl.textContent = 'COLONY ELIMINATED';
+    card.appendChild(this.eliminatedTitleEl);
+
+    this.eliminatedDetailEl = document.createElement('p');
+    this.eliminatedDetailEl.className = 'ta-colony-eliminated__detail';
+    this.eliminatedDetailEl.dataset.testid = 'colony-eliminated-detail';
+    this.eliminatedDetailEl.textContent = 'Hub lost — critical timer expired';
+    card.appendChild(this.eliminatedDetailEl);
+
+    this.foundNewColonyBtn = document.createElement('button');
+    this.foundNewColonyBtn.type = 'button';
+    this.foundNewColonyBtn.className = 'ta-colony-eliminated__btn';
+    this.foundNewColonyBtn.dataset.testid = 'found-new-colony-btn';
+    this.foundNewColonyBtn.dataset.action = 'found-new-colony';
+    this.foundNewColonyBtn.textContent = 'Found New Colony';
+    this.foundNewColonyBtn.addEventListener('click', () => this.handleFoundNewColony());
+    card.appendChild(this.foundNewColonyBtn);
+
+    this.eliminatedEl.appendChild(card);
+    this.el.appendChild(this.eliminatedEl);
+
+    this.render();
+  }
+
+  getView(): ColonyStatusView {
+    return { ...this.currentView };
+  }
+
+  update(rawView?: unknown): void {
+    if (rawView === undefined || rawView === null) return;
+    const nextView = extractColonyStatusView(rawView, this.options.ownColonyIndex ?? this.currentView.colonyIndex);
+    this.applyView(nextView);
+  }
+
+  ingestSimEvents(events?: readonly unknown[] | unknown): void {
+    if (!events) return;
+    const list = Array.isArray(events) ? events : [events];
+    let next = this.currentView;
+    for (const ev of list) {
+      if (!ev) continue;
+      next = applyColonyStatusSimEvent(next, ev);
+    }
+    this.applyView(next);
+  }
+
+  private applyView(nextView: ColonyStatusView): void {
+    this.currentView = nextView;
+    this.render();
+  }
+
+  private render(): void {
+    const { status, criticalRemainingSeconds } = this.currentView;
+
+    if (status === 'critical') {
+      this.bannerEl.hidden = false;
+      this.bannerEl.removeAttribute('hidden');
+      this.eliminatedEl.hidden = true;
+      this.eliminatedEl.setAttribute('hidden', '');
+      this.titleEl.textContent = `HUB LOST — REBUILD WITHIN ${formatCriticalCountdown(criticalRemainingSeconds)}`;
+      this.startCountdownTimer();
+    } else if (status === 'eliminated') {
+      this.stopCountdownTimer();
+      this.bannerEl.hidden = true;
+      this.bannerEl.setAttribute('hidden', '');
+      this.eliminatedEl.hidden = false;
+      this.eliminatedEl.removeAttribute('hidden');
+      this.eliminatedTitleEl.textContent = 'COLONY ELIMINATED';
+      this.renderEliminatedDetail();
+    } else {
+      this.stopCountdownTimer();
+      this.bannerEl.hidden = true;
+      this.bannerEl.setAttribute('hidden', '');
+      this.eliminatedEl.hidden = true;
+      this.eliminatedEl.setAttribute('hidden', '');
+    }
+  }
+
+  private renderEliminatedDetail(): void {
+    const killer = this.currentView.eliminatedByColonyId;
+    const reason = this.currentView.eliminatedReason;
+    if (killer) {
+      this.eliminatedDetailEl.textContent = `Eliminated by Colony ${killer}. Command Hub and defensive perimeter lost.`;
+    } else if (reason) {
+      this.eliminatedDetailEl.textContent = `Colony eliminated: ${reason}. Command Hub not restored in time.`;
+    } else {
+      this.eliminatedDetailEl.textContent = 'Command Hub destroyed — rebuild deadline expired.';
+    }
+  }
+
+  private startCountdownTimer(): void {
+    if (this.timerId !== null) return;
+    this.timerId = setInterval(() => {
+      if (this.currentView.status !== 'critical') {
+        this.stopCountdownTimer();
+        return;
+      }
+      if (this.currentView.criticalRemainingSeconds > 0) {
+        this.currentView.criticalRemainingSeconds = Math.max(0, this.currentView.criticalRemainingSeconds - 1);
+        this.titleEl.textContent = `HUB LOST — REBUILD WITHIN ${formatCriticalCountdown(this.currentView.criticalRemainingSeconds)}`;
+      } else {
+        this.titleEl.textContent = 'HUB LOST — REBUILD WITHIN 00:00';
+      }
+    }, 1000);
+  }
+
+  private stopCountdownTimer(): void {
+    if (this.timerId !== null) {
+      clearInterval(this.timerId);
+      this.timerId = null;
+    }
+  }
+
+  private handlePlaceHub(): void {
+    this.options.onPlaceHub?.();
+    const services = this.ctx.services;
+    if (typeof services.startHubPlacement === 'function') {
+      services.startHubPlacement();
+    } else if (typeof services.hubPlacement?.startPlacement === 'function') {
+      services.hubPlacement.startPlacement();
+    } else if (typeof services.selectBuildItem === 'function') {
+      services.selectBuildItem('commandHub');
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ta:place-hub', { detail: { buildingId: 'commandHub' } }));
+    }
+  }
+
+  private handleFoundNewColony(): void {
+    this.options.onFoundNewColony?.();
+    if (typeof this.options.navigate === 'function') {
+      this.options.navigate('/play.html');
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ta:found-new-colony'));
+      const isTestEnv = typeof process !== 'undefined' && Boolean(process.env?.VITEST);
+      if (!isTestEnv && !this.options.navigate && typeof window.location?.assign === 'function') {
+        try {
+          window.location.assign('/play.html');
+        } catch {
+          // ignore navigation errors in test / embedded contexts
+        }
+      }
+    }
+  }
+
+  dispose(): void {
+    this.stopCountdownTimer();
+    this.bannerEl.remove();
+    this.eliminatedEl.remove();
+  }
+}
+
+export function createColonyStatusHud(
+  el: HTMLElement,
+  ctx: FeatureContext,
+  options?: ColonyStatusHudOptions,
+): ColonyStatusHudInstance {
+  return new ColonyStatusHud(el, ctx, options);
+}
