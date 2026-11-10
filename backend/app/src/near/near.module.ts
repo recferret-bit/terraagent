@@ -51,6 +51,7 @@ import { BountyRepository } from './bounty/bounty.repository.js';
 import { PlanetBountyWorld } from './bounty/world.js';
 import { MercenaryAccountsService } from './mercenary/accounts.service.js';
 import { MercenaryHireService } from './mercenary/hire.service.js';
+import { TreasuryAwayNoticeService } from './treasury/away-notice.service.js';
 import { TreasuryFinalizeService } from './treasury/finalize.service.js';
 import { GuildSubsidyService } from './treasury/guild-subsidy.js';
 import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
@@ -108,6 +109,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     DeedTelemetryService,
     FreeVerifierService,
     GuildSubsidyService,
+    TreasuryAwayNoticeService,
     TreasuryFinalizeService,
     ColonyAccounts,
     RelayStatusService,
