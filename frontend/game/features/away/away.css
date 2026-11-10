@@ -105,6 +105,59 @@
   color: var(--ta-terra);
 }
 
+.ta-away__autotrade {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  margin-top: var(--ta-s2);
+  padding-top: var(--ta-s2);
+  border-top: 1px solid var(--ta-seam);
+}
+
+.ta-away__kicker {
+  color: var(--ta-orange);
+  font: 600 11px/1 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-away__num {
+  width: 76px;
+  min-height: 32px;
+  margin-left: auto;
+  background: var(--ta-void);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-2);
+  font: 500 10px/1.2 var(--ta-font-mono);
+  padding: 2px 4px;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-away__director {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ta-s2);
+}
+
+.ta-away__key-label {
+  color: var(--ta-text-2);
+}
+
+.ta-away__revoke[hidden] {
+  display: none;
+}
+
+.ta-away__status[data-state='revoked'] {
+  color: var(--ta-fault-text);
+}
+
 @media (max-height: 500px) {
   .ta-away__body {
     max-height: calc(100vh - 120px);

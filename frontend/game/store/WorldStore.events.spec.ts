@@ -55,4 +55,19 @@ describe('WorldStore event split', () => {
     expect(store.predictionMode).toBe('on');
     store.dispose();
   });
+
+  it('forwards director.status to onDirectorStatus', async () => {
+    const { msgs, store } = await setup();
+    const seen: unknown[] = [];
+    store.onDirectorStatus((payload) => seen.push(payload));
+    const d = {
+      colonyId: 'co_1',
+      state: 'active' as const,
+      tokens: [{ token: 'metals.t1' as const, allowance: '600', reserved: '0', spent: '0', available: '600' }],
+    };
+    msgs.emit({ v: 1, t: 'director.status', d });
+    await settle();
+    expect(seen).toEqual([d]);
+    store.dispose();
+  });
 });

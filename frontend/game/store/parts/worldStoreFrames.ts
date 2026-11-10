@@ -1,6 +1,7 @@
 import type {
   CargoStatusPayload,
   DeedUpdatedPayload,
+  DirectorKeyStatusPayload,
   MarketBookPayload,
   MarketTradePayload,
   ServerMessage,
@@ -59,6 +60,7 @@ export function handleFeatureServerMessage(
     marketBooks: Emitter<MarketBookPayload>;
     marketTrades: Emitter<MarketTradePayload>;
     deedUpdates: Emitter<DeedUpdatedPayload>;
+    directorStatuses: Emitter<DirectorKeyStatusPayload>;
   },
 ): boolean {
   switch (m.t) {
@@ -79,6 +81,9 @@ export function handleFeatureServerMessage(
       return true;
     case 'deed.updated':
       deps.deedUpdates.emit(m.d);
+      return true;
+    case 'director.status':
+      deps.directorStatuses.emit(m.d);
       return true;
     default:
       return false;

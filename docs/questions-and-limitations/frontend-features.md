@@ -1460,3 +1460,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** (2) run `w13` step 12 on a quiet machine / fresh stack.
 - **To resolve:** (2) check the post-restart supply window timing in step 12 (wait for one more window, or for the spawned builders to exist).
 - **Found:** 2026-11-10, HUD de-clutter refactor (tests agent + lead)
+
+### FF-103 · Away autoTrade remembers this browser, and the director key status does not
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/away/` (`AutoTradeSection`, `storage.ts` key `ta.away.autotrade`), `POST`/`DELETE /v1/near/director-key`, sim blob `autoTrade`
+- **What happens:** Saving limits persists only after `setAutoTrade` acks, in one browser-wide `localStorage` record. A reload shows those numbers before any snapshot. The section does not read the sim `autoTrade` blob, so another colony or a limit changed only on the server still shows this browser's last ack (or the demo defaults: metals.t1, sell above 80, 300 / 600 / 200, Guild). T2/T3 are not in the editor; a save sends only Tier-1 rows and replaces the colony map. `truce` is not offered while W18 is off. `buyBelowStock` is not on the form. Enable posts the form limits but does not send `setAutoTrade`; a key can exist without an acked blob. There is no GET for the key, so a reload clears the allowance line until the next `director.status` push or a new enable. `Revoked` does not survive a reload. A `store.sendCommand` that returns an id string is not an ack, so that path does not mark the limits saved (the online HUD uses the command bus, which does).
+- **Why it is like this:** W15-23 asked for a reload to show the saved numbers before a server echo, and the director routes are POST and DELETE only. W17/W19 are postponed, and the sim rejects `truce` without W18.
+- **Workaround / mitigation:** This browser keeps the last acked Tier-1 limits. A rejected command does not write storage and does not show an allowance. Revoke hides the button and sets the status to `Revoked` for the rest of the page.
+- **To resolve:** When the replica exposes `autoTrade`, hydrate from that colony and keep `localStorage` only until the first view. Add a read of the director key (or push status on welcome) so allowance and revoked survive a reload.
+- **Found:** 2026-11-10, W15-23
