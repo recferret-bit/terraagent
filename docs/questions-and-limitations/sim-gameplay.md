@@ -1306,10 +1306,10 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/systems/bounty/damage.ts` (`noteClearNestHit`), `shared/sim/src/systems/bounty/handlers.ts` (`postBounty`)
-- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `deliver_units` is still `invalid_args`. `defend_area` is tracked (GP-120). A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` matches the hive entity id as a string, not a separate catalog id.
-- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-22 owns `deliver_units`. W22-37 owns the species-hive binding.
+- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `deliver_units` is still `invalid_args`. `defend_area` is tracked (GP-120). A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` is the hive entity id as a decimal string, not a separate catalog id. A post that is not a living spotted species hive is `invalid_target` (GP-121).
+- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-22 owns `deliver_units`. W22-37 kept the entity id and added the species-hive gate.
 - **Workaround / mitigation:** Post before the fight, and use the hive's entity id as `nestId`.
-- **To resolve:** W22-22 accepts `deliver_units`. W22-37 binds spotted species hives if that id is not the entity id. Record pre-post hits if the owner wants the full 60 s before the post.
+- **To resolve:** W22-22 accepts `deliver_units`. Record pre-post hits if the owner wants the full 60 s before the post.
 - **Found:** 2026-11-10, W22-20
 
 ### GP-120 · defend_area counts claimer combat units on a half-open window
@@ -1321,3 +1321,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Keep a claimer recon on a tile inside the radius for 80% of the ticks. A building counts only by its anchor tile, so a footprint that merely overlaps the ring does not fail the bounty.
 - **To resolve:** W22-29 if mercenary presence must count when the owner column is not the claimer. Count footprint tiles only if the owner wants any overlapping building to fail the contract.
 - **Found:** 2026-11-10, W22-21
+
+### GP-121 · clear_nest post accepts an explored tile or a live W07 spot
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/bounty/nest.ts` (`clearNestTargetReject`), `backend/app/src/near/bounty/target.ts` (`screenNest`)
+- **What happens:** `bounty.post` of `clear_nest` is `invalid_target` unless `nestId` is the decimal entity id of a living species hive (`hiveBlackAnt`, `hiveBlueBeetle`, or `hiveGreenSpitter`) and the poster's colony has explored that hive's anchor tile or a living unit currently spots it (`computeColonySpottedTileIndices`, W07 view). A dead hive (`hp <= 0`), a removed hive, a non-hive, and an unspotted living hive are all `invalid_target`. Explored-but-not-currently-in-view still posts, matching the W22-19 server precheck. A live spot posts even when the fog bit has not been written yet. The check does not write the vision cache. Destroying the hive still emits `nestDestroyed` and completes the bounty for the top-damage claimer (GP-118).
+- **Why it is like this:** W22-37. The server already rejects an unexplored nest. Requiring only the live view would reject a post the server had accepted after the scout walked away. Requiring only the fog bit would reject a hive a unit can see before the vision cache marks the tile. The sim uses the union of those two existing checks and does not add a third vision model.
+- **Workaround / mitigation:** Explore the anchor tile or keep a unit whose view radius covers it, then post. `nestId` is `String(entityId)`.
+- **To resolve:** Only if the owner wants the sim to require a current spot even after the tile is explored, or explored only.
+- **Found:** 2026-11-10, W22-37
