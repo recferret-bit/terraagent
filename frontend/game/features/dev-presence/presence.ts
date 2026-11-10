@@ -1,3 +1,4 @@
+import { rememberPageAway } from '../../app/online/scenarioSeat';
 import { defineFeature, type DevCommandDef, type FeatureContext } from '../../core/registry/types';
 import { DevServerError } from '../../net/devServer';
 import '../../net/services';
@@ -55,12 +56,25 @@ function presenceText(kind: 'away' | 'back', reply: PresenceReply): string {
   return reply.posted ? `back at tick ${tick}` : `already present (tick ${reply.tick})`;
 }
 
+function pageSearch(): string {
+  const loc = (globalThis as { location?: { search?: string } }).location;
+  return typeof loc?.search === 'string' ? loc.search : '';
+}
+
+/** This tab rejoins the same planet and dev player on reload, so the welcome digest can be delivered. */
+function rememberAwayPage(ctx: FeatureContext): void {
+  const planetId = ctx.services.session?.planetId() ?? '';
+  const token = ctx.services.pilot?.view().accessToken ?? '';
+  rememberPageAway(pageSearch(), planetId, token);
+}
+
 const awayCommand: DevCommandDef = {
   name: 'away',
-  help: 'away  Mark this colony away on the next sim tick (W09). A repeat does not post again.',
+  help: 'away  Mark this colony away on the next sim tick (W09). A repeat does not post again. This tab rejoins that planet on reload.',
   async run(args, ctx) {
     if (args.length !== 0) throw new Error('usage: away');
     const reply = (await call(ctx, 'away', 'away', seat(ctx, 'away'))) as PresenceReply;
+    rememberAwayPage(ctx);
     return presenceText('away', reply);
   },
 };

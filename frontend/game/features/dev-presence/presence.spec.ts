@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SCENARIO_SEAT_KEY } from '../../app/online/scenarioSeat';
 import { selectFeatures, type FeatureContext } from '../../core/registry';
 import { CommandRunner } from '../../dev/console/runner';
 import { DevServerError } from '../../net/devServer';
@@ -66,6 +67,34 @@ describe('W09 dev console away, back, colony eliminate', () => {
     });
     expect((await runner.run('away'))?.kind).toBe('text');
     expect(devServer).toHaveBeenCalledWith('away', { planetId: 'pl_dev', colonyIndex: 2, colonyId: home });
+  });
+
+  it('remembers the scenario seat so a reload rejoins this dev player', async () => {
+    const mem = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => mem.get(key) ?? null,
+      setItem: (key: string, value: string) => { mem.set(key, value); },
+      removeItem: (key: string) => { mem.delete(key); },
+    });
+    vi.stubGlobal('location', { search: '?scenario=w09' });
+    const devServer = vi.fn(async () => ({ posted: true, away: true, tick: 4, appliedAtTick: 4 }));
+    const runner = new CommandRunner([devPresence], {
+      flags: new Set(['W09']),
+      host: 'server',
+      services: {
+        devServer,
+        session: { planetId: () => 'pl_kept' },
+        colonyId: 0,
+        store: { latest: view },
+        pilot: { view: () => ({ isGuest: true, handle: 'p', accountId: null, accessToken: 'dev:pilot-kept' }) },
+        track: () => {},
+      } as unknown as FeatureContext['services'],
+    });
+    expect((await runner.run('away'))?.kind).toBe('text');
+    expect(JSON.parse(mem.get(SCENARIO_SEAT_KEY) ?? '')).toEqual({
+      scenario: 'w09', planetId: 'pl_kept', as: 'pilot-kept', resume: true,
+    });
+    vi.unstubAllGlobals();
   });
 
   it('rejects a present colony as not_away and does not call the server for a bad line', async () => {

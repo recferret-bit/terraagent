@@ -5,7 +5,7 @@ import {
 
 /**
  * W09 offline notifications — hackathon slice (W09-33).
- * `@hack`: a rejoin shows the while-you-were-away plate, and the mock notifier has one `under_attack` row.
+ * `@hack`: a reload after `away` shows the while-you-were-away plate once, and the mock notifier has one `under_attack` row.
  * The local-host case only checks that `away` then `back` prints the tick lines. The digest is server-only:
  * `?host=local` has no join `welcome.away`.
  * Not covered here (the wave file defers them): Away settings, Web Push, a second tab, coarse-dt parity.
@@ -65,6 +65,26 @@ test('@hack rejoin shows the away digest and the mock notifier recorded an attac
   await expect(plate).toContainText(/while you were away/i);
   await expect(page.locator('[data-testid=away-duration]')).toContainText(/\d/);
   await expect(page.locator('[data-testid=away-attacks]')).toContainText(/Attacks/);
+  expectNoPageErrors(page);
+});
+
+test('@hack reload after away shows the welcome plate once', async ({ page }) => {
+  test.setTimeout(120_000);
+  serverOnly();
+  await loadScenario(page, 'w09');
+  expect(await devConsole(page, 'away')).toMatch(/away at tick \d+/);
+  await page.reload();
+  await waitForTick(page, () => true, 90_000);
+  const plate = page.locator('[data-testid=away-digest]');
+  await expect(plate).toBeVisible({ timeout: 15_000 });
+  await expect(plate).toContainText(/while you were away/i);
+  await expect(page.locator('[data-testid=away-duration]')).toContainText(/\d/);
+  await expect(page.locator('[data-testid=away-attacks]')).toContainText(/Attacks/);
+  await page.locator('[data-testid=away-dismiss]').click();
+  await expect(plate).toHaveCount(0);
+  await page.reload();
+  await waitForTick(page, () => true, 90_000);
+  await expect(page.locator('[data-testid=away-digest]')).toHaveCount(0);
   expectNoPageErrors(page);
 });
 

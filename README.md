@@ -125,7 +125,7 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`frontend/v
 | Play | `&deploy=1` | Deploy immediately (plays the descent). |
 | Play | `&skip=1` | Deploy and skip the descent, straight into gameplay. |
 | Play | `&t=<seconds>` | Deploy and fast-forward the descent by `t` seconds. |
-| Play (online) | `?scenario=<id>` | Online flow: create a fresh planet from `tests/scenarios/<id>` (e.g. `w00`) and join it; skips the prototype menu and descent. |
+| Play (online) | `?scenario=<id>` | Online flow: play `tests/scenarios/<id>` (e.g. `w00`). The first tab creates the planet; a second tab of the same URL joins it and replaces the first socket. `&fresh=1` starts another. Skips the prototype menu and descent. |
 | Play (online) | `?host=local` | Run the engine in the browser alone (no app or Postgres); snapshots in IndexedDB. Needs `&scenario=w00\|w01`: `?host=local` alone opens the prototype world picker. |
 | Play (online) | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's set). |
 | Play (online) | `&lag=<ms>` | Dev: delay the connection both ways (prediction testing). |
