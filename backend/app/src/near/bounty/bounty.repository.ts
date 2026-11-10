@@ -75,6 +75,15 @@ export class BountyRepository {
     return result.count === 1;
   }
 
+  /** Mercenary settlement. `claimed`, `completed`, or a cancel `refunded` row becomes `paid` (W22-30). */
+  async markSettled(id: string): Promise<boolean> {
+    const result = await this.prisma.chainBounty.updateMany({
+      where: { id, state: { in: ['claimed', 'completed', 'refunded'] } },
+      data: { state: 'paid' },
+    });
+    return result.count === 1;
+  }
+
   /** Sum of `open` or `claimed` rewards for this claimer and resource (major units). */
   async claimedReward(accountId: string, resource: string): Promise<number> {
     const rows = await this.prisma.chainBounty.findMany({
