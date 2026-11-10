@@ -41,6 +41,8 @@ export const REJECT_CODES = [
   'away_policy',
   // W22 clear_nest: a second bounty.post from the same colony in the same tick reuses `bt:{colony}:{tick}`.
   'already_posted',
+  // W22-19: the nest is missing, dead, or outside the poster's explored tiles.
+  'invalid_target',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;
@@ -78,6 +80,8 @@ export const REST_ERROR_CODES = [
   // W22 planet treasury (NEAR §10):
   'dao_not_found', 'not_a_member', 'already_voted', 'treasury_insufficient', 'proposal_closed',
   'DAO_NOT_FOUND', 'NOT_A_MEMBER', 'ALREADY_VOTED', 'TREASURY_INSUFFICIENT', 'PROPOSAL_CLOSED',
+  // W22-19 bounty post:
+  'invalid_target', 'insufficient_cargo', 'not_own_territory',
   // generic fallbacks by status when the domain code has no REST code of its own (BE-17): 409, 503, 413, 429
   'conflict', 'unavailable', 'payload_too_large', 'rate_limited',
 ] as const;

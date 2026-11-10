@@ -10,6 +10,8 @@ export type EscrowStatus = z.infer<typeof EscrowStatus>;
 
 const EscrowId = z.string().min(1).max(80);
 const TokenId = z.string().min(1).max(64);
+/** Colony account, or the escrow hold id (`escrow:` + 32 hex) when nobody has claimed yet (BE-70, W22-19). */
+const EscrowBeneficiary = z.union([AccountId, z.string().regex(/^escrow:[0-9a-f]{32}$/)]);
 
 /**
  * `beneficiary` stays required (W00-30). A bounty has no claimer at post (Q-05-26, BE-70):
@@ -18,7 +20,7 @@ const TokenId = z.string().min(1).max(64);
 export const EscrowOpenInput = z.strictObject({
   opId: OpId,
   funder: AccountId,
-  beneficiary: AccountId,
+  beneficiary: EscrowBeneficiary,
   tokenId: TokenId,
   amount: TokenAmount,
   expiresAtMs: z.number().int().nonnegative(),
@@ -48,7 +50,7 @@ export const EscrowView = z.strictObject({
   escrowId: EscrowId,
   status: EscrowStatus,
   funder: AccountId,
-  beneficiary: AccountId,
+  beneficiary: EscrowBeneficiary,
   tokenId: TokenId,
   amount: TokenAmount,
   expiresAtMs: z.number().int().nonnegative(),

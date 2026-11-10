@@ -920,7 +920,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Area / code:** `backend/app/src/near/application/ports/escrow.port.ts` (`EscrowOpenInput.beneficiary`), Q-05-26
 - **What happens:** `EscrowPort.open` still requires `beneficiary`. A bounty posted before anyone claims it has no payee (NEAR-110, W22-19). Only a mercenary hire knows the payee at open (W22-28). W22-02 added `get` and left `open`, `claim`, and `refund` on the W00-30 fields. `claim` still pays `caller`.
 - **Why it is like this:** W22-02 keeps the landed `open` / `claim` / `refund` shapes and adds `get`. Making `beneficiary` optional would answer Q-05-26 without the owner.
-- **Workaround / mitigation:** `MockEscrowAdapter` (W22-17) stores `beneficiary` and holds the tokens on the escrow id. `claim` pays `caller`, not that beneficiary. The bounty service passes the real payee as `caller`.
+- **Workaround / mitigation:** `MockEscrowAdapter` (W22-17) stores `beneficiary` and holds the tokens on the escrow id. `claim` pays `caller`, not that beneficiary. W22-19 passes that hold id (`escrow:` + 32 hex of the open op) as `beneficiary`. `EscrowOpenInput` and `EscrowView` accept that id as well as a colony account. The payee is still named only on `claim`, as `caller`.
 - **To resolve:** Owner: keep a holding-account beneficiary, or make `beneficiary` optional and name the payee only on `claim`.
 - **Found:** 2026-11-10, W22-02
 
@@ -975,3 +975,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Create the DAO with `name` equal to the planet id before expecting a council balance. The allocation is still on `chain.intent_trade` when the DAO does not exist yet.
 - **To resolve:** W22-05 should create `{planetId}.dao.mock` (or teach this lookup the stored dao account). A real chain adapter (W23) should not seal a dev key.
 - **Found:** 2026-11-10, W22-07
+
+### BE-76 · A chain bounty and the sim bounty are not the same post
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/bounty/post.service.ts`, `backend/app/src/near/bounty/posted.listener.ts`, `backend/app/src/near/bounty/bounty.controller.ts`, `shared/sim/src/systems/bounty/handlers.ts`
+- **What happens:** `POST /v1/bounties/:planetId` opens escrow and writes `chain.bounty`. It does not send `bounty.post` to the sim, and it does not check that the caller owns the colony. A socket `bounty.post` is screened first (vision, territory, cargo, the 3-active cap, the 2–48 h window). The sim then records `clear_nest` and `defend_area` under `bt:{colony}:{tick}`. Escrow for that id opens when `bountyPosted` arrives. If that open throws, the sim bounty stays and the chain row is absent; cargo is unchanged. `deliver_units` can open a chain escrow over HTTP, but the sim handler still rejects it, so it is not tracked there.
+- **Why it is like this:** W22-20 already records `clear_nest` inside the sim and must keep doing so. The chain id is not known until that handler runs. W22-21 and W22-22 own the other two targets. W22-25 owns the board, which should post on the player's socket.
+- **Workaround / mitigation:** The precheck stops an unseen nest before the sim. A retried chain id reuses `bounty-open:{bountyId}`, so cargo is not taken twice. Expiry is the bounty row (`expiresAt`), not escrow `get` (BE-73).
+- **To resolve:** Have the board post over the socket. When W22-22 lands, teach the sim `deliver_units` and keep one id for the chain row and the sim blob. Require the session colony on `POST /v1/bounties/:planetId`.
+- **Found:** 2026-11-10, W22-19

@@ -39,6 +39,12 @@ import { StakingController } from './staking/staking.controller.js';
 import { StakingPoolsController } from './staking/staking-pools.controller.js';
 import { StakingPositionSyncService } from './staking/staking-position-sync.service.js';
 import { StakingService } from './staking/staking.service.js';
+import { BountyController } from './bounty/bounty.controller.js';
+import { BountyPostPrecheck } from './bounty/precheck.js';
+import { BountyPostedListener } from './bounty/posted.listener.js';
+import { BountyPostService } from './bounty/post.service.js';
+import { BountyRepository } from './bounty/bounty.repository.js';
+import { PlanetBountyWorld } from './bounty/world.js';
 import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
 import { PlanetDaoLifecycleService } from './treasury/lifecycle.service.js';
 
@@ -49,6 +55,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
 @Module({
   controllers: [
     AccountClaimController,
+    BountyController,
     CargoStatusController,
     ChainDevController,
     ChainExplorerController,
@@ -64,6 +71,11 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
   ],
   providers: [
     AccountClaimService,
+    BountyPostPrecheck,
+    BountyPostedListener,
+    BountyPostService,
+    BountyRepository,
+    PlanetBountyWorld,
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
@@ -91,6 +103,8 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
   imports: [NearInfrastructureModule, OutboxModule, NotifyModule, GameModule],
   exports: [
     AccountClaimService,
+    BountyPostService,
+    BountyRepository,
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,

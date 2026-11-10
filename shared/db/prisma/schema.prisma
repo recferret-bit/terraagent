@@ -1164,6 +1164,32 @@ model MockChainReceipt {
   @@schema("chain")
 }
 
+// --- near-bounty.prisma ---
+/// Posted bounty mirror (`chain.bounty`, W22-19, NEAR-110). Expiry lives here: escrow `get` returns `expiresAtMs: 0` (BE-73).
+model ChainBounty {
+  id               String    @id @db.VarChar(80)
+  planetId         String    @map("planet_id") @db.VarChar(64)
+  posterColonyId   String    @map("poster_colony_id") @db.VarChar(64)
+  colonyIndex      Int       @map("colony_index")
+  accountId        String    @map("account_id") @db.VarChar(64)
+  target           Json
+  reward           Json
+  escrowId         String    @map("escrow_id") @db.VarChar(64)
+  escrowTx         String    @map("escrow_tx") @db.VarChar(128)
+  opId             String    @unique @map("op_id") @db.VarChar(200)
+  claimerAccountId String?   @map("claimer_account_id") @db.VarChar(64)
+  /// `open` | `claimed` | `completed` | `paid` | `refunded` | `expired`. Active = open or claimed.
+  state            String    @db.VarChar(16)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([planetId, state])
+  @@index([posterColonyId, state])
+  @@map("bounty")
+  @@schema("chain")
+}
+
 // --- near-deed.prisma ---
 /// W20 Colony Deed & Staking tables (DATA_MODEL `chain.deed`, `chain.staking_position`, NEAR §6, §9).
 model Deed {

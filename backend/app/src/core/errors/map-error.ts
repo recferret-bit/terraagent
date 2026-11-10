@@ -39,6 +39,11 @@ const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[numb
   ALREADY_VOTED: 'already_voted',
   TREASURY_INSUFFICIENT: 'treasury_insufficient',
   PROPOSAL_CLOSED: 'proposal_closed',
+  invalid_target: 'invalid_target',
+  insufficient_cargo: 'insufficient_cargo',
+  queue_full: 'queue_full',
+  not_own_territory: 'not_own_territory',
+  invalid_args: 'validation_error',
 };
 
 /**
