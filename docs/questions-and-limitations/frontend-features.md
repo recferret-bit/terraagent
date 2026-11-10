@@ -1522,3 +1522,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Open the global map or look at the minimap after the sim blob arrives. The tag is the amount (`200`), not the resource name. Turn the Bounties chip off to hide it.
 - **To resolve:** If a chain row can exist without `blobs.bounty`, feed that GET into `bountyMapMarkers` without a second poll. Give `deliver_units` a tile only when the payload has one.
 - **Found:** 2026-11-10, W22-26
+
+### FF-109 · Council cost spec is outside the frontend typecheck
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/council-costs.spec.ts`, `frontend/tsconfig.json` (exclude), `backend/app/src/near/treasury/proposal-push.ts` (`declare module`)
+- **What happens:** The spec imports `toCouncil` and paints the Council form with the `treasury` table costs. `tsc -p frontend` then loads `proposal-push.ts`. Its `declare module '../../bus/channels.js'` resolves to `channels.ts`, and tsc still reports TS2664. The spec is excluded from `frontend/tsconfig.json`. Vitest runs it. Backend `tsc` does not see it.
+- **Why it is like this:** The augmentation is valid in the backend program, where `channels.ts` is a root file. The frontend program is not that compilation. Moving the spec into `backend/app/test` would typecheck `toCouncil` and then fail on the DOM types in `councilDom.ts`.
+- **Workaround / mitigation:** `npm test -w @terra/game -- features/treasury/council-costs.spec.ts` runs the three cases. Do not drop the tsconfig exclude unless TS2664 is gone.
+- **To resolve:** Point the augmentation at a module name both programs accept, or typecheck this spec in a program that already contains `channels.ts` and the DOM lib.
+- **Found:** 2026-11-11, W22-13
