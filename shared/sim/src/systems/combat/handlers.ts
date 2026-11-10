@@ -7,7 +7,7 @@ import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
 import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
 import { canAttackMoveToTileSector, canRaidTargetSector } from '../pvp/sectorGuard';
-import { isColonyRaidProtected } from '../pvp/shield';
+import { dropColonyShield, isColonyRaidProtected } from '../pvp/shield';
 import { setFactoryRallyPoint } from '../factories-hub/robotics';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { canWeaponHitTarget } from './layers';
@@ -168,8 +168,22 @@ export const attackMoveHandler = defineCommandHandler({
 
     for (const id of ids) {
       const row = rowOf(state.entities, id);
-      if (ctx.flags.has('W18') && row >= 0 && tileOwner >= 0 && cols.owner[row]! >= 0 && tileOwner !== cols.owner[row]!) {
-        recordHostilityBetween(state, cols.owner[row]!, tileOwner, ctx.tick);
+      if (ctx.flags.has('W18') && row >= 0 && cols.owner[row]! >= 0) {
+        const attackerOwner = cols.owner[row]!;
+        let foreignOwner = tileOwner >= 0 && tileOwner !== attackerOwner ? tileOwner : -1;
+        if (foreignOwner < 0) {
+          for (let r = 0; r < state.entities.count; r++) {
+            if (cols.hp[r]! <= 0 || cols.state[r] === ENTITY_STATE.inert) continue;
+            if (cols.q[r] === args.q && cols.r[r] === args.r && cols.owner[r]! >= 0 && cols.owner[r]! !== attackerOwner) {
+              foreignOwner = cols.owner[r]!;
+              break;
+            }
+          }
+        }
+        if (foreignOwner >= 0) {
+          dropColonyShield(state, attackerOwner, ctx.tick, ctx.data);
+          recordHostilityBetween(state, attackerOwner, foreignOwner, ctx.tick);
+        }
       }
       cancelWorkerJobs(state, id, ctx.tick);
       orderUnitAttackMove(state, id, { q: args.q, r: args.r }, ctx);
