@@ -11,6 +11,7 @@ import { GuildTradeKeyBinder } from './guild-trade-key.binder.js';
 import { GuildWalletBinder } from './guild-wallet.binder.js';
 import { GUILD_FILL_SINK } from './maker/fill-sink.js';
 import { GuildMakerService } from './maker/guild-maker.service.js';
+import { GuildMetrics } from './telemetry/guild-metrics.js';
 import { GuildOffersService } from './offers/guild-offers.service.js';
 import { DeterministicGuildStrategy } from './strategy/deterministic.js';
 import { GuildStrategyPort } from './strategy/port.js';
@@ -37,6 +38,7 @@ import { GuildVisitService } from './visit/guild-visit.service.js';
     GuildVisitService,
     GuildDevService,
     GuildDevCommand,
+    GuildMetrics,
     GuildMakerService,
     { provide: GUILD_FILL_SINK, useExisting: GuildMakerService },
     GuildOffersService,
@@ -48,6 +50,7 @@ import { GuildVisitService } from './visit/guild-visit.service.js';
     GuildFundingService,
     GuildKillSwitch,
     GuildVisitService,
+    GuildMetrics,
     GuildMakerService,
     GUILD_FILL_SINK,
     GuildOffersService,
