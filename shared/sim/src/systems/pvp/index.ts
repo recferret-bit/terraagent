@@ -13,6 +13,7 @@ import { stepRaidSiphon } from './siphon';
 export * from './store';
 export * from './shield';
 export * from './sectorGuard';
+export * from './raidFlowMarch';
 export * from './raidPathing';
 export * from './raidTask';
 export * from './siphon';

@@ -6,9 +6,9 @@ import { isGroundPassable, isTileExplored } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import { orderUnitAttackMove } from '../combat/stances';
 import { isTargetSpottedByColony, updateColonyVisionCache } from '../combat/vision';
 import { hasActiveTruce, resolveColonyIdStr } from '../diplomacy/store';
+import { orderRaidGroupFlowMarch } from './raidFlowMarch';
 import { getPvpState, savePvpState, type ActiveRaidGroupState } from './store';
 
 export interface RaidTargetSelection {
@@ -364,9 +364,7 @@ function advanceSingleActiveRaid(
     raid.currentTargetEntityId = next.targetEntityId;
     raid.currentTargetQ = next.q;
     raid.currentTargetR = next.r;
-    for (const unitId of livingIds) {
-      orderUnitAttackMove(state, unitId, { q: next.q, r: next.r }, ctx);
-    }
+    orderRaidGroupFlowMarch(state, livingIds, { q: next.q, r: next.r }, ctx, 'together');
   }
   return true;
 }

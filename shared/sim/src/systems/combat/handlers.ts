@@ -6,6 +6,7 @@ import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
 import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
+import { orderRaidGroupFlowMarch } from '../pvp/raidFlowMarch';
 import { canAttackMoveToTileSector, canRaidTargetSector } from '../pvp/sectorGuard';
 import { dropColonyShield, isColonyRaidProtected } from '../pvp/shield';
 import { setFactoryRallyPoint } from '../factories-hub/robotics';
@@ -185,8 +186,14 @@ export const attackMoveHandler = defineCommandHandler({
           recordHostilityBetween(state, attackerOwner, foreignOwner, ctx.tick);
         }
       }
-      cancelWorkerJobs(state, id, ctx.tick);
-      orderUnitAttackMove(state, id, { q: args.q, r: args.r }, ctx);
+    }
+    if (ctx.flags.has('W18') && ids.length >= 2) {
+      orderRaidGroupFlowMarch(state, ids, { q: args.q, r: args.r }, ctx, 'own');
+    } else {
+      for (const id of ids) {
+        cancelWorkerJobs(state, id, ctx.tick);
+        orderUnitAttackMove(state, id, { q: args.q, r: args.r }, ctx);
+      }
     }
     return undefined;
   },
