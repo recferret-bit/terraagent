@@ -504,3 +504,13 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Workaround / mitigation:** Read `guild_inventory` for cargo after a fill. Do not treat the PnL gauges or `guild_reference_quality` as a mark-to-market. Rejection totals are since process start only.
 - **To resolve:** Post `loss_atomic` on a fill if realized PnL should move (LED-41). Store a reference snapshot if quality should leave 0. Have W15-29 call `guildGaugeSamples`. Decide whether unvalued inventory should omit the conservative series instead of marking it at 0.
 - **Found:** 2026-11-11, W15-27
+
+### LED-43 · The 60-planet guild re-quote bench does not measure live host CPU
+
+- **Status:** Open
+- **Area / code:** `shared/sim/test/systems/guild-requote-bench.spec.ts` (`guild-60-planets`), `shared/sim/src/systems/trade/guild/quote.ts` (`quoteGuild`), `backend/app/src/market/guild/maker/plan.ts` (`planQuotes`). `npm run bench` (`scripts/economy/bench.ts`) is the W13 matcher only. `scripts/dev/sim-bench.mjs` is still a stub.
+- **What happens:** W15-33 asks for 2 NPCs on 60 planets to re-quote within 1 s of a fill and to use under 5% of one core. The bench builds 60 synthetic books in memory (kestrel and vanguard alternating, four Tier-1 barter pairs on each) and times `quoteGuild` on that plan. It asserts the total is under 1000 ms. It does not open Postgres, does not boot 60 planet hosts, and does not sample CPU%. A live re-quote also writes the cargo cache, consumes the funding hold, and inserts orders. Those steps are outside this timer.
+- **Why it is like this:** Sixty live Postgres planets are not a default unit test. The number CI can check is the pure re-quote, which is the part that has to stay under 1 s.
+- **Workaround / mitigation:** `npx vitest run shared/sim/test/systems/guild-requote-bench.spec.ts`. The log line is `guild-60-planets re-quote <ms> ms`. That wall time is one core of `quoteGuild` only.
+- **To resolve:** When a 60-planet host can run, measure CPU% of the maker re-quote (cache, funding, insert, and `quoteGuild`) and keep p99 ≤ 1 s and CPU < 5%.
+- **Found:** 2026-11-11, W15-33
