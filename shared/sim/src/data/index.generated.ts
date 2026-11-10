@@ -7,6 +7,7 @@ import table_director from './director';
 import table_economy_t1_basic from './economy-t1-basic';
 import table_fauna from './fauna';
 import table_grid from './grid';
+import table_guild from './guild';
 import table_hq from './hq';
 import table_hub from './hub';
 import table_logistics from './logistics';
@@ -26,4 +27,4 @@ import table_weapons from './weapons';
 import table_work_crew from './work-crew';
 import table_worldgen from './worldgen';
 
-export const DATA_TABLES: readonly TableDef[] = [table_away, table_combat_units, table_dev, table_director, table_economy_t1_basic, table_fauna, table_grid, table_hq, table_hub, table_logistics, table_market, table_ops_basic, table_prestige, table_regions, table_resources, table_stages, table_terraform, table_terraform_finds, table_terrain, table_time, table_trade_hub, table_units_workers_basic, table_weapons, table_work_crew, table_worldgen];
+export const DATA_TABLES: readonly TableDef[] = [table_away, table_combat_units, table_dev, table_director, table_economy_t1_basic, table_fauna, table_grid, table_guild, table_hq, table_hub, table_logistics, table_market, table_ops_basic, table_prestige, table_regions, table_resources, table_stages, table_terraform, table_terraform_finds, table_terrain, table_time, table_trade_hub, table_units_workers_basic, table_weapons, table_work_crew, table_worldgen];
