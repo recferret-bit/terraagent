@@ -3,6 +3,7 @@ import { treasuryHazardSystem } from './clock';
 import { treasuryEffectHandler } from './handler';
 
 export { TREASURY_BLOB, readTreasury, type TreasuryBlobValue, type TreasuryEffectRecord } from './blob';
+export { discountTerraformCost, discountTerraformEnergy, terraformBoostMultiplierBp } from './boost';
 
 /** Council effects on the planet. Duration is `untilTick` (the sim has no wall clock). */
 export default defineSimModule({

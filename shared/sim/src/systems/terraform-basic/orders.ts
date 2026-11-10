@@ -1,6 +1,7 @@
 import type { ResourceKey } from '@terra/contracts';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { discountTerraformCost, discountTerraformEnergy } from '../treasury/boost';
 import { METEOR_CRATER_TERRAFORM_MULTIPLIER } from './groundWorkRule';
 import { meteorCraterWorkTiles } from './meteorCraterFootprint';
 import { getTerraformJobCost, getTerraformOpSpec, type TerraformOpKind } from './ops';
@@ -27,7 +28,11 @@ export interface TerraformJob {
   assignedUnitId?: number;
 }
 
-/** A fresh job of `op` on `(q, r)`: time, energy and cost from the op row (`planetType` applies Irrigate's desert ×2). */
+/**
+ * A fresh job of `op` on `(q, r)`: time, energy and cost from the op row (`planetType` applies Irrigate's desert ×2).
+ * Living-op resource and energy bills are discounted once here when `state` is passed (`terraform_boost`).
+ * `work.ts` pays the stored `totalCost` and `totalEnergyE` and must not scale them again.
+ */
 export function newTerraformJob(
   q: number,
   r: number,
@@ -35,9 +40,13 @@ export function newTerraformJob(
   data?: CompiledDataLike,
   planetType?: string,
   state?: PlanetState,
+  tick?: number,
 ): TerraformJob {
   const spec = getTerraformOpSpec(op, data);
-  const totalCost = getTerraformJobCost(op, data, planetType);
+  const at = tick ?? state?.meta.tick ?? 0;
+  const rawCost = getTerraformJobCost(op, data, planetType);
+  const totalCost = state ? discountTerraformCost(rawCost, state, at, op, data) : rawCost;
+  const totalEnergyE = state ? discountTerraformEnergy(spec.energyCostE, state, at, op, data) : spec.energyCostE;
   const isCraterHole =
     op === 'fill' &&
     state !== undefined &&
@@ -48,7 +57,7 @@ export function newTerraformJob(
     op,
     progress: 0,
     baseTimeS: isCraterHole ? spec.baseTimeS * METEOR_CRATER_TERRAFORM_MULTIPLIER : spec.baseTimeS,
-    totalEnergyE: spec.energyCostE,
+    totalEnergyE,
     energyDrawnE: 0,
     ...(Object.keys(totalCost).length > 0 ? { totalCost, spentCost: {} } : {}),
   };
