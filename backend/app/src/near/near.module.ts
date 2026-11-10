@@ -41,6 +41,7 @@ import { StakingPositionSyncService } from './staking/staking-position-sync.serv
 import { StakingService } from './staking/staking.service.js';
 import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
 import { PlanetDaoLifecycleService } from './treasury/lifecycle.service.js';
+import { PlanetDaoMembershipService } from './treasury/membership.service.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
 export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
@@ -86,6 +87,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     NearMockCommand,
     PlanetDaoLifecycleBind,
     PlanetDaoLifecycleService,
+    PlanetDaoMembershipService,
     W20ScenarioSeedService,
   ],
   imports: [NearInfrastructureModule, OutboxModule, NotifyModule, GameModule],

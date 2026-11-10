@@ -39,6 +39,16 @@ export function tallyVotes(votes: readonly StoredVote[]): { yes: number; no: num
 }
 
 /**
+ * Yes/no among `memberIds` only. A voter who has left the council is ignored.
+ * `members` is the full council size, including members who did not vote.
+ */
+export function tallyMemberVotes(votes: readonly StoredVote[], memberIds: readonly string[]): VoteTally {
+  const allowed = new Set(memberIds);
+  const tally = tallyVotes(votes.filter((vote) => allowed.has(vote.voter)));
+  return { yes: tally.yes, no: tally.no, members: memberIds.length };
+}
+
+/**
  * Passes when `yes / members` is strictly above `passAboveBp`, or when `yes >= passMinYes` and `no === 0`.
  * The ratio uses integer basis points (`yes * 10000 > passAboveBp * members`), so 50 % exactly does not pass.
  */

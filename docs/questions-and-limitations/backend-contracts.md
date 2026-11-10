@@ -936,15 +936,25 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** Keep this. A real Sputnik adapter (W23-36) maps chain state onto the same port errors.
 - **Found:** 2026-11-10, W22-03
 
-### BE-72 · Mock finalize ignores the proposal deadline, and removed members' votes still count
+### BE-72 · Mock finalize ignores the proposal deadline
 
 - **Status:** Open
-- **Area / code:** `backend/app/src/near/treasury/actions.ts` (`finalizeProposal`, `rulePasses`), `shared/sim/src/data/treasury-policy.ts` (`proposalTtlH`)
-- **What happens:** `finalize` does not read the clock. An `InProgress` proposal that fails the pass rule becomes `Expired` as soon as `finalize` is called, even inside the 6 h window. A member removed with `removeMember` leaves their votes in the proposal JSON, and those votes still count toward yes and no.
-- **Why it is like this:** W22-03 was told not to implement the deadline. W22-09 owns the 6 h job. W22-06 owns "open votes of an eliminated colony are ignored at finalize".
-- **Workaround / mitigation:** Callers that need a deadline must not call `finalize` early. Do not remove a member who has already voted if that vote must be dropped; this adapter will not drop it.
-- **To resolve:** W22-09 expires only past `proposalTtlH`. W22-06 skips votes whose voter is no longer a member when it finalizes.
+- **Area / code:** `backend/app/src/near/treasury/actions.ts` (`finalizeProposal`), `shared/sim/src/data/treasury-policy.ts` (`proposalTtlH`)
+- **What happens:** `finalize` does not read the clock. An `InProgress` proposal that fails the pass rule becomes `Expired` as soon as `finalize` is called, even inside the 6 h window. Removed members' votes no longer count: `rulePasses` and the council yes/no tally skip a voter who is not a current member (resolved in W22-06). The proposal JSON still stores that vote.
+- **Why it is like this:** W22-03 was told not to implement the deadline. W22-09 owns the 6 h job. W22-06 drops an eliminated colony's open votes at finalize.
+- **Workaround / mitigation:** Callers that need a deadline must not call `finalize` early.
+- **To resolve:** W22-09 expires only past `proposalTtlH`. The removed-member vote half is resolved (W22-06).
 - **Found:** 2026-11-10, W22-03
+
+### BE-75 · DAO membership follows the colony account row and `deedSettled`
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/membership.service.ts`, `backend/app/src/near/treasury/lifecycle.bind.ts`, `backend/app/src/near/identity/colony-accounts.ts`, `backend/app/src/near/deed/deed-settled.service.ts`
+- **What happens:** A member is the `near_colony_account` row for that colony, not the colony id. `colonyFounded` looks up the row (a few retries, then again after `ColonyAccounts` commits it) and calls `addMember` with `canPropose: true` (`opId = dao-member:{planetId}:{colonyId}`). A guest has no row, so they are not added. Accounts created later by social login (`ensureForLinkedPlayer`) are not backfilled onto the DAO. Elimination of a colony with no account, or of an account that was never a member, does not throw and does not change the count. `colonySettled` is not a registered event in this tree. `deedSettled` (emitted when the W20 settle outbox finishes) is the live wire: the colony stays a member with `canPropose: false`, or is added that way if they were not a member. W22 off adds and removes nothing.
+- **Why it is like this:** W22-06 asked for colony accounts and for a settled event. The deed service already emits `deedSettled`. The sim `colonySettled` kind is not in the contract catalogue, so the bus rejects it outside production.
+- **Workaround / mitigation:** Link the player before the colony is founded, or rely on the second `onFounded` after the account row is written. Seal the deed (`deedSettled`) to clear propose rights.
+- **To resolve:** When `colonySettled` becomes a contract event, listen for it as well. Backfill login-time accounts only if the owner wants colonies that predate the link to sit on the council.
+- **Found:** 2026-11-10, W22-06
 
 ### BE-73 · Mock escrow does not store `expiresAtMs`
 

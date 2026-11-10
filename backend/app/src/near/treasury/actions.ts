@@ -10,7 +10,7 @@ import type {
 import { NearException } from '../domain/errors.js';
 import { assertCanPropose, assertMember, withMember, withoutMember } from './members.js';
 import { covers, creditBalance, proposalKindJson, readCost, settleCost, type ProposalStatus, type StoredProposal } from './policy.js';
-import { proposalPasses, tallyVotes } from './pass-rule.js';
+import { proposalPasses, tallyMemberVotes } from './pass-rule.js';
 import {
   nextProposalId,
   requireDao,
@@ -105,9 +105,10 @@ export async function finalizeProposal(tx: DbClient, input: FinalizeInput): Prom
   return approvePassed(tx, input.daoAccountId, dao, proposal);
 }
 
+/** Open votes from accounts that are no longer members do not count (W22-06). */
 function rulePasses(dao: LoadedDao, proposal: StoredProposal): boolean {
-  const tally = tallyVotes(proposal.votes);
-  return proposalPasses({ yes: tally.yes, no: tally.no, members: dao.policy.members.length });
+  const memberIds = dao.policy.members.map((member) => member.accountId);
+  return proposalPasses(tallyMemberVotes(proposal.votes, memberIds));
 }
 
 /** Debits on the deciding vote. A short balance throws and the transaction drops the vote. */
