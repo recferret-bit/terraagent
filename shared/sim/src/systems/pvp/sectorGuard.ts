@@ -41,6 +41,9 @@ export function resolveColonySectorId(state: PlanetState, colonyIndex: number): 
   if (typeof col?.sectorId === 'string' && col.sectorId.startsWith('sec_')) {
     return col.sectorId as SectorId;
   }
+  if (typeof col?.sectorId === 'number' && Number.isFinite(col.sectorId)) {
+    return `sec_${Math.floor(col.sectorId)}_0` as SectorId;
+  }
   const map = resolveColonyFoundingSectorMap(state);
   const fromMap = map.get(colonyIndex);
   if (fromMap) return fromMap;

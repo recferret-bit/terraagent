@@ -21,9 +21,8 @@ import {
 import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
-import { hasActiveTruce, resolveColonyIndex } from '../diplomacy/store';
-import { canRaidTargetSector } from '../pvp/sectorGuard';
-import { dropColonyShield, isColonyRaidProtected } from '../pvp/shield';
+import { resolveColonyIndex } from '../diplomacy/store';
+import { launchColonyRaid } from '../pvp/raidTask';
 import {
   PRECEDENCE_RANK,
   type QueueEntry,
@@ -322,16 +321,13 @@ export const enqueueTaskHandler = defineCommandHandler({
         | number
         | undefined;
       const toColony = resolveColonyIndex(state, targetRef);
-      if (toColony >= 0 && !canRaidTargetSector(state, colIdx, toColony).ok) {
-        return 'cross_sector_disabled';
-      }
-      if (toColony >= 0 && hasActiveTruce(state, colIdx, toColony, ctx.tick)) {
-        return 'truce_active';
-      }
-      if (toColony >= 0 && isColonyRaidProtected(state, toColony, ctx.tick, ctx.data)) {
-        return 'raid_protected';
-      }
-      dropColonyShield(state, colIdx, ctx.tick, ctx.data);
+      const raidRes = launchColonyRaid(state, colIdx, toColony, ctx, {
+        unitIds: (raidTask.unitIds ?? raidTask.entityIds) as number[] | undefined,
+        q: typeof raidTask.q === 'number' ? raidTask.q : undefined,
+        r: typeof raidTask.r === 'number' ? raidTask.r : undefined,
+        data: ctx.data,
+      });
+      if (!raidRes.ok) return raidRes.code;
     }
     if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
       return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);

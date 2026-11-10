@@ -98,7 +98,7 @@ export const GOAL_CATALOG: Readonly<Record<GoalKind, GoalCatalogEntry>> = {
   raid_target: {
     id: 'raid_target',
     label: 'Raid Colony',
-    unlockStage: 6,
+    unlockStage: 4,
     defaultBudgetBp: 4000,
     defaultStepsTotal: 1,
     wave: 'W18',
