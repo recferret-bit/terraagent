@@ -37,6 +37,23 @@ function save(host: HTMLElement): void {
   host.querySelector<HTMLButtonElement>('[data-testid="away-save"]')!.click();
 }
 
+function mercPanel(send: Send): { host: HTMLElement; panel: AwayPanel } {
+  const host = document.createElement('div');
+  return { host, panel: new AwayPanel(host, { sendCommand: send, mercenary: true }) };
+}
+
+function hireBox(host: HTMLElement): HTMLInputElement {
+  const el = host.querySelector<HTMLInputElement>('[data-testid="away-mercenaries"]');
+  if (!el) throw new Error('missing mercenary switch');
+  return el;
+}
+
+function maxBox(host: HTMLElement): HTMLInputElement {
+  const el = host.querySelector<HTMLInputElement>('[data-testid="away-mercenary-max"]');
+  if (!el) throw new Error('missing max spend');
+  return el;
+}
+
 beforeEach(() => {
   localStorage.clear();
 });
@@ -137,5 +154,103 @@ describe('away settings panel', () => {
     }));
     live?.dispose();
     expect(shown.childElementCount).toBe(0);
+  });
+});
+
+describe('away mercenary hire switch', () => {
+  it('sends hireMercenaries and max 100, then a new panel shows them', async () => {
+    const send = fakeSend({ ok: true, appliedAtTick: 5 });
+    const { host } = mercPanel(send);
+    expect(host.textContent).toContain('Hire mercenaries when attacked while away');
+    hireBox(host).checked = true;
+    maxBox(host).value = '100';
+    save(host);
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="away-status"]')?.textContent).toBe('saved'));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('setAutopilot', { hireMercenaries: true, mercenaryMaxSpend: 100 });
+    expect(JSON.parse(localStorage.getItem(AWAY_STORAGE_KEY) ?? '{}')).toMatchObject({
+      hireMercenaries: true,
+      mercenaryMaxSpend: 100,
+    });
+    const again = mercPanel(fakeSend());
+    expect(hireBox(again.host).checked).toBe(true);
+    expect(maxBox(again.host).value).toBe('100');
+    again.panel.dispose();
+
+    const shown = document.createElement('div');
+    const live = awayFeature.hud?.[0]?.mount(shown, ctx(fakeSend(), ['W09', 'W22']));
+    expect(shown.querySelector('[data-testid="away-mercenaries"]')).not.toBeNull();
+    expect(shown.textContent).toContain('Hire mercenaries when attacked while away');
+    live?.dispose();
+  });
+
+  it('hides the hire switch when W22 is off and does not send hireMercenaries', async () => {
+    localStorage.setItem(AWAY_STORAGE_KEY, JSON.stringify({
+      mode: 'director',
+      awayRaids: false,
+      hireMercenaries: true,
+      mercenaryMaxSpend: 100,
+      session: { metals: 60, minerals: 60, bio: 60 },
+    }));
+    const send = fakeSend({ ok: true, appliedAtTick: 6 });
+    const { host } = panel(send);
+    expect(host.querySelector('[data-testid="away-mercenaries"]')).toBeNull();
+    expect(host.textContent).not.toContain('Hire mercenaries');
+    setPct(host, 'metals', 30);
+    save(host);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send).toHaveBeenCalledWith('setAutopilot', { awayBudget: { metals: { perSessionPct: 30 } } });
+
+    const mounted = document.createElement('div');
+    const live = awayFeature.hud?.[0]?.mount(mounted, ctx(fakeSend(), ['W09']));
+    expect(mounted.querySelector('[data-testid="away-mercenaries"]')).toBeNull();
+    live?.dispose();
+
+    const hidden = document.createElement('div');
+    const off = awayFeature.hud?.[0]?.mount(hidden, ctx(fakeSend(), ['W22']));
+    expect(hidden.hidden).toBe(true);
+    expect(hidden.querySelector('[data-testid="away-mercenaries"]')).toBeNull();
+    off?.dispose();
+  });
+
+  it('stores a max of 50 and sends it', async () => {
+    const send = fakeSend({ ok: true, appliedAtTick: 7 });
+    const { host } = mercPanel(send);
+    hireBox(host).checked = true;
+    maxBox(host).value = '50';
+    save(host);
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="away-status"]')?.textContent).toBe('saved'));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('setAutopilot', { hireMercenaries: true, mercenaryMaxSpend: 50 });
+    expect(JSON.parse(localStorage.getItem(AWAY_STORAGE_KEY) ?? '{}')).toMatchObject({
+      hireMercenaries: true,
+      mercenaryMaxSpend: 50,
+    });
+    expect(maxBox(host).value).toBe('50');
+  });
+
+  it('does not send an empty or fractional max', async () => {
+    const send = fakeSend();
+    const { host } = mercPanel(send);
+    hireBox(host).checked = true;
+    maxBox(host).value = '';
+    save(host);
+    await Promise.resolve();
+    expect(send).not.toHaveBeenCalled();
+    expect(host.querySelector('[data-testid="away-status"]')?.textContent).toMatch(/whole number/i);
+    expect(localStorage.getItem(AWAY_STORAGE_KEY)).toBeNull();
+    expect(maxBox(host).value).toBe('0');
+
+    maxBox(host).value = '50.5';
+    save(host);
+    await Promise.resolve();
+    expect(send).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain('50.5');
+
+    maxBox(host).value = '1000001';
+    save(host);
+    await Promise.resolve();
+    expect(send).not.toHaveBeenCalled();
+    expect(maxBox(host).value).toBe('0');
   });
 });

@@ -13,8 +13,11 @@ declare module '../../core/registry/types' {
 
 let active: AwayPanel | null = null;
 
-function optionsFrom(services: { sendCommand?: AwayPanelOptions['sendCommand']; store?: AwayPanelOptions['store'] }): AwayPanelOptions {
-  return { sendCommand: services.sendCommand, store: services.store };
+function optionsFrom(
+  services: { sendCommand?: AwayPanelOptions['sendCommand']; store?: AwayPanelOptions['store'] },
+  flags: { has(wave: string): boolean },
+): AwayPanelOptions {
+  return { sendCommand: services.sendCommand, store: services.store, mercenary: flags.has('W22') };
 }
 
 export default defineFeature({
@@ -30,7 +33,7 @@ export default defineFeature({
         return { dispose() {} };
       }
       el.hidden = false;
-      const panel = new AwayPanel(el, optionsFrom(ctx.services));
+      const panel = new AwayPanel(el, optionsFrom(ctx.services, ctx.flags));
       active = panel;
       ctx.services.getAwayPanel = () => active;
       return {

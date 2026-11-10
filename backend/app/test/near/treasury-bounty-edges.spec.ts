@@ -138,38 +138,40 @@ describe('treasury bounty edges (W22-33)', () => {
     expect(cargo.writes).toBe(0);
   });
 
-  it('reopens a claimed bounty when the claimer is eliminated', async () => {
-    const rows = seedRows();
-    const calls: Array<{ data: { state: string; claimerAccountId: string | null } }> = [];
-    const db = eliminationDb(rows, calls);
-    const bus = new EventBus();
-    const listener = new BountyLifecycleListener(
-      bus,
-      {} as never,
-      {} as never,
-      { refundIfOpen: async () => false } as never,
-      new BountyRepository(db),
-      new FlagsService(ENV as never),
-      db,
-    );
-    listener.onModuleInit();
-    bus.emit('planet.event', {
-      planetId: 'pl_edge',
-      tick: 4,
-      kind: 'colonyEliminated',
-      severity: 'critical',
-      colonyIds: ['col_1'],
-      data: { colonyId: 'col_1', colonyIndex: 1, cause: 'raid', atTick: 4 },
-    });
-    await flush();
-    listener.onModuleDestroy();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.data).toEqual({ state: 'open', claimerAccountId: null });
-    expect(rows[0]).toMatchObject({ id: 'bt_claimed', state: 'open', claimerAccountId: null, escrowId: 'esc_keep' });
-    expect(rows[1]).toMatchObject({ state: 'completed', claimerAccountId: CLAIMER, escrowId: 'esc_done' });
-    expect(rows[2]).toMatchObject({ state: 'claimed', claimerAccountId: OTHER, escrowId: 'esc_other' });
-  });
+  it('reopens a claimed bounty when the claimer is eliminated', reopenClaimed);
 });
+
+async function reopenClaimed(): Promise<void> {
+  const rows = seedRows();
+  const calls: Array<{ data: { state: string; claimerAccountId: string | null } }> = [];
+  const db = eliminationDb(rows, calls);
+  const bus = new EventBus();
+  const listener = new BountyLifecycleListener(
+    bus,
+    {} as never,
+    {} as never,
+    {} as never,
+    new BountyRepository(db),
+    new FlagsService(ENV as never),
+    db,
+  );
+  listener.onModuleInit();
+  bus.emit('planet.event', {
+    planetId: 'pl_edge',
+    tick: 4,
+    kind: 'colonyEliminated',
+    severity: 'critical',
+    colonyIds: ['col_1'],
+    data: { colonyId: 'col_1', colonyIndex: 1, cause: 'raid', atTick: 4 },
+  });
+  await flush();
+  listener.onModuleDestroy();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.data).toEqual({ state: 'open', claimerAccountId: null });
+  expect(rows[0]).toMatchObject({ id: 'bt_claimed', state: 'open', claimerAccountId: null, escrowId: 'esc_keep' });
+  expect(rows[1]).toMatchObject({ state: 'completed', claimerAccountId: CLAIMER, escrowId: 'esc_done' });
+  expect(rows[2]).toMatchObject({ state: 'claimed', claimerAccountId: OTHER, escrowId: 'esc_other' });
+}
 
 function council(planets: Map<string, PlanetMark>, dao: MemoryDao): TreasuryProposalsService {
   const flags = new FlagsService(ENV as never);

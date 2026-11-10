@@ -38,7 +38,7 @@ export function resolveColonyTab(featureId: string, panelId: string): ColonyTabI
 
 /**
  * The Colony book: the left tab book (top left, under the minimap), the mirror of the Command Dock. One tab per
- * colony surface: Player (guest pilot / NEAR identity, opens first), Away (W09 budget), Deed, Goals (stage track), HQ AI (AI toggle, HQ
+ * colony surface: Player (guest pilot / NEAR identity, opens first), Away (W09 budget; W22 adds the mercenary hire switch and max spend), Deed, Goals (stage track), HQ AI (AI toggle, HQ
  * goals, priorities), Director, Combat, Supply and Trade. Only tabs whose panels are mounted exist.
  */
 export class ColonyBook {

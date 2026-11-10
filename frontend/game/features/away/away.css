@@ -58,18 +58,34 @@
   gap: var(--ta-s2);
 }
 
+.ta-away__merc {
+  align-items: flex-start;
+}
+
+.ta-away__merc span {
+  flex: 1;
+  min-width: 0;
+}
+
 .ta-away__family {
   display: grid;
   grid-template-columns: 64px 1fr auto;
 }
 
-.ta-away select {
+.ta-away select,
+.ta-away__spend {
   min-height: 32px;
   background: var(--ta-void);
   color: var(--ta-text);
   border: 1px solid var(--ta-seam-2);
+  border-radius: 0;
   font: 500 10px/1.2 var(--ta-font-mono);
   padding: 2px 4px;
+}
+
+.ta-away__spend {
+  width: 72px;
+  box-sizing: border-box;
 }
 
 .ta-away__check {
