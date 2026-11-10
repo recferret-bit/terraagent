@@ -80,7 +80,10 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
   }
 
   async route(input: AlertRouteInput, nowMs = input.nowMs ?? Date.now()): Promise<AlertRouteResult> {
-    if (!directorBudgetNotifies(input.kind, input.data, this.flags?.has('W09') === true)) return { sent: 0 };
+    const flags = this.flags;
+    if (!directorBudgetNotifies(input.kind, input.data, flags?.has('W09') === true, flags?.has('W15') === true)) {
+      return { sent: 0 };
+    }
     const kind = notificationKindOf(input.kind);
     if (!kind) return { sent: 0 };
     if (kind === 'trade_offer' && !notifiesTradeOffer(input)) return { sent: 0 };

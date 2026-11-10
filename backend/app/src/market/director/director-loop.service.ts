@@ -14,6 +14,7 @@ import { EventBus } from '../../bus/event-bus.js';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { AwayDigestService } from '../../game/digest/service.js';
 import { AgentWalletPort, type KeyStatus as WalletKey } from '../../near/application/ports/agent-wallet.port.js';
 import { mirrorAmounts } from '../../near/director-key/director-key.allowance.js';
 import { DirectorKeyRepository, type DirectorKeyRow } from '../../near/director-key/director-key.repository.js';
@@ -105,6 +106,7 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
     @Inject(DirectorColonySource) private readonly source: DirectorColonySource,
     @Inject(DirectorMarketPort) private readonly market: DirectorMarketPort,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(AwayDigestService) private readonly digests?: AwayDigestService,
   ) {}
 
   onModuleInit(): void {
@@ -302,6 +304,7 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
       colonyId: view.colonyId,
       payload: directorStatusFromKey(view.colonyId, consumed.status),
     });
+    await this.openAwayDigest(view);
     this.bus.emit('planet.event', {
       planetId: view.planetId,
       tick: view.tick,
@@ -324,6 +327,12 @@ export class DirectorLoopService implements OnModuleInit, OnModuleDestroy {
       this.noteStop(view, key, pick.resource, spent, allowance, 'allowance_exhausted');
     }
     return { ok: true, side: pick.side, resource: pick.resource, amount: pick.amount, spent, allowance };
+  }
+
+  /** An away fill needs an open W09 row or the sentence is dropped (BE-77). A present colony is left alone. */
+  private async openAwayDigest(view: DirectorColonyView): Promise<void> {
+    if (!view.away || !this.flags.has('W09') || !this.flags.has('W15')) return;
+    await this.digests?.ensureOpen(view.planetId, view.colonyId);
   }
 
   /** Revoke stops every limited resource and does not place. */

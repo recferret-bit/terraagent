@@ -1485,11 +1485,11 @@ Open items, see the format in `README.md`:
 
 - **Status:** Accepted (by design, W15-24)
 - **Area / code:** `frontend/game/features/director-log/` (`DirectorEventLog`), `frontend/game/features/away-digest/render.ts` (`appendDirectorTrades`), `backend/app/src/market/director/digest-line.ts`
-- **What happens:** With W15 on and W09 off, `directorTrade` server events become lines in the HUD event log (`data-testid="director-event-log"`). The text is `directorDigestLine` (`Director sold 300 metals to the Guild.`). Amount 0 adds nothing. With W09 on, that log stays empty and the away plate lists `digest.directorTrade` items. W15 off does not mount the log. The plate does not show the line until welcome carries `items`. A missed socket (the player was away and W09 is off) has no later line (BE-76).
-- **Why it is like this:** W09 already owns the away plate. The log is only the fallback the issue asks for when that plate is not mounted.
+- **What happens:** With W15 on and W09 off, `directorTrade` server events become lines in the HUD event log (`data-testid="director-event-log"`). The text is `directorDigestLine` (`Director sold 300 metals to the Guild.`). Amount 0 adds nothing. With W09 on, that log stays empty and the away plate lists `digest.directorTrade` items (`renderAwayDigest`, `[data-testid="away-director-trades"]`). W15 off does not mount the log. The plate does not show the line until welcome carries `items`. The ColonyBook AWAY tab does not repeat the lines (BE-81). A missed socket (the player was away and W09 is off) has no later line (BE-76).
+- **Why it is like this:** W09 already owns the away plate. The log is only the fallback the issue asks for when that plate is not mounted. W15-36 kept that split.
 - **Workaround / mitigation:** Turn W09 on to keep the line on the digest until return. The log keeps the last 20 lines of this page.
-- **To resolve:** W15-36 if the ColonyBook plate should repeat the same items. Replay missed fills on welcome when W09 is off only if the owner wants a log after a disconnect.
-- **Found:** 2026-11-10, W15-24
+- **To resolve:** Copy the same lines onto the ColonyBook AWAY tab, or replay missed fills on welcome when W09 is off, only if the owner asks.
+- **Found:** 2026-11-10, W15-24 (updated 2026-11-11, W15-36)
 
 ### FF-106 · Guild tab keeps one visit and does not replay a missed dock
 

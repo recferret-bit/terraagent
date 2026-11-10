@@ -68,6 +68,21 @@ describe('director digest recorder', () => {
     expect(fanned[0]?.kind).toBe('directorTrade');
   });
 
+  it('W15 off still returns the sentence and does not write the digest', async () => {
+    const { digests, store, fanned, recorder } = harness('..14');
+    await digests.onPlanetEvent({
+      planetId: PLANET,
+      tick: 1,
+      kind: 'colonyAway',
+      colonyIds: [COLONY],
+      data: { colonyId: COLONY, atTick: 1 },
+    });
+    expect(await recorder.record(trade())).toBe(SOLD);
+    await digests.flushPlanet(PLANET);
+    expect((await store.findOpen(COLONY))!.body.items).toBeUndefined();
+    expect(fanned[0]?.data.line).toBe(SOLD);
+  });
+
   it('still returns the sentence when W09 is off and does not write the digest', async () => {
     const { digests, store, fanned, recorder } = harness('..08');
     await digests.onPlanetEvent({

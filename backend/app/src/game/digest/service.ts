@@ -149,6 +149,17 @@ export class AwayDigestService {
     return this.enqueue(colonyId, () => this.foldTrade(colonyId, line, tick));
   }
 
+  /**
+   * Opens the away row when the director fills and none is open yet.
+   * A colony the player already returned to stays closed (`suppressAway`).
+   */
+  ensureOpen(planetId: string, colonyId: string): Promise<void> {
+    if (planetId.length === 0 || colonyId.length === 0) return Promise.resolve();
+    if (this.suppressAway.has(colonyId)) return Promise.resolve();
+    const at = this.now();
+    return this.enqueue(colonyId, () => this.openRow(planetId, colonyId, at));
+  }
+
   private async fold(colonyId: string, event: AttackFold): Promise<void> {
     const live = await this.live(colonyId);
     if (!live) return;
