@@ -50,6 +50,8 @@ import { GuildSubsidyService } from './treasury/guild-subsidy.js';
 import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
 import { PlanetDaoLifecycleService } from './treasury/lifecycle.service.js';
 import { PlanetDaoMembershipService } from './treasury/membership.service.js';
+import { TreasuryProposalsService } from './treasury/proposals.service.js';
+import { TreasuryController } from './treasury/treasury.controller.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
 export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
@@ -71,6 +73,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     SocialAuthController,
     StakingController,
     StakingPoolsController,
+    TreasuryController,
   ],
   providers: [
     AccountClaimService,
@@ -104,6 +107,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     PlanetDaoLifecycleBind,
     PlanetDaoLifecycleService,
     PlanetDaoMembershipService,
+    TreasuryProposalsService,
     W20ScenarioSeedService,
   ],
   imports: [NearInfrastructureModule, OutboxModule, NotifyModule, GameModule],

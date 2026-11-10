@@ -1000,7 +1000,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/near/treasury/guild-subsidy.ts` (`applyGuildSubsidy`, `scheduleExtraVisit`), `shared/db/prisma/near-treasury.prisma` (`ChainGuildVisit`)
-- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council does not hide the kind yet (W22-14). Approving a mock DAO proposal does not call this hook: the proposals API (W22-08) is not in this tree. The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
+- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council does not hide the kind yet (W22-14). Approving a proposal through the council API does not call this hook yet (BE-80). The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
 - **Why it is like this:** W15-09's `scheduleExtraVisit` and quote engine are absent. D-45 says a subsidy visit is never organic. The `organic` column false is that guarantee.
 - **Workaround / mitigation:** Call `applyGuildSubsidy(planetId)` when a `guild_subsidy` effect is applied. The inserted row stays `organic` false.
 - **To resolve:** W22-08 should call `applyGuildSubsidy` when a `guild_subsidy` proposal is Approved. W15 should add quotes without setting `organic`. W22-14 hides the kind when W15 is off.
@@ -1015,3 +1015,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Set `state = claimed` and `claimerAccountId` before the transfer (the test writes the row; W22-23 will own the command). Water sent before that, or while W22 was off, does not count later. A real cargo adapter must call `notifyCargoTransferred` or its transfers never complete a bounty.
 - **To resolve:** W23's cargo adapter should call the same hook. W22-23 should pay a `completed` row whose escrow is still `open`, using `bounty-pay:{id}`. Do not add a sim `deliver_units` rule unless the owner wants one id in both places.
 - **Found:** 2026-11-10, W22-22
+
+### BE-80 · Council propose does not start the sim effect
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/treasury/proposals.service.ts`, `backend/app/src/near/treasury/treasury.controller.ts`, `backend/app/src/near/treasury/caller.ts`, `backend/app/src/ws/ws.gateway.ts` (`broadcastTreasuryProposal`)
+- **What happens:** `GET /v1/near/treasury/:planetId` returns `effects: []`. A vote that passes still debits the DAO on that vote (the mock, BE-71) but this API does not send `system.treasuryEffect`. Kinds are the three W22 table rows; W05/W15 do not hide `terraform_boost` or `guild_subsidy`. The caller is the bearer session's colony account on that planet (`core.colony` plus `near_colony_account`). When `NODE_ENV=test`, body `colonyAccountId` or header `x-colony-account-id` is accepted instead (body wins) and is ignored otherwise. One open proposal per colony is checked on the DAO view before `propose`. Two concurrent first proposes from the same colony share `opId` `dao-propose:{planet}:{account}:1`, so the mock replays one row. `near.treasury.proposal` is emitted and the gateway broadcasts `treasury.proposal` to the planet room.
+- **Why it is like this:** W22-08 was told not to run the 6 h finalize job and not to start the sim effect. Those belong to W22-09. Integration tests have no session, so the test account field exists only there. Hiding a kind when another wave is off is W22-11 and W22-12.
+- **Workaround / mitigation:** A project the balance cannot cover throws `TREASURY_INSUFFICIENT` (HTTP 409) and writes no proposal. The shield, the boost, and the extra Guild visit wait until something sends `system.treasuryEffect`.
+- **To resolve:** W22-09 finalizes at `proposalTtlH`, pays from the DAO, and sends the effect command. W22-11 and W22-12 drop kinds whose waves are off.
+- **Found:** 2026-11-10, W22-08

@@ -43,6 +43,7 @@ export const NEAR_ERROR_CODES = {
   ALREADY_VOTED: { status: 409, description: 'This colony already voted on that proposal.' },
   TREASURY_INSUFFICIENT: { status: 409, description: 'The planet treasury cannot cover this project.' },
   PROPOSAL_CLOSED: { status: 409, description: 'That proposal is no longer open.' },
+  PROPOSAL_OPEN: { status: 409, description: 'This colony already has an open council proposal.' },
 } as const satisfies Record<string, NearErrorDef>;
 
 export type NearErrorCode = keyof typeof NEAR_ERROR_CODES;
