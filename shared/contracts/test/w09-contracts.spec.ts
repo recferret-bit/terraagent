@@ -85,6 +85,15 @@ describe('W09-01 setAutopilot', () => {
     expect(parseCommandArgs('setAutopilot', { mode: 'director', awayRaids: true }).success).toBe(true);
   });
 
+  it('accepts an away mercenary patch and rejects a fractional or negative max spend', () => {
+    expect(parseCommandArgs('setAutopilot', { hireMercenaries: true, mercenaryMaxSpend: 100 }).success).toBe(true);
+    expect(parseCommandArgs('setAutopilot', { hireMercenaries: false }).success).toBe(true);
+    expect(parseCommandArgs('setAutopilot', { mercenaryMaxSpend: 0 }).success).toBe(true);
+    expect(parseCommandArgs('setAutopilot', { mercenaryMaxSpend: 50.5 }).success).toBe(false);
+    expect(parseCommandArgs('setAutopilot', { mercenaryMaxSpend: -1 }).success).toBe(false);
+    expect(parseCommandArgs('setAutopilot', { mercenaryMaxSpend: 1_000_001 }).success).toBe(false);
+  });
+
   it('rejects an empty command, a fractional percent, oil as a family, and unknown keys', () => {
     expect(parseCommandArgs('setAutopilot', {}).success).toBe(false);
     expect(parseCommandArgs('setAutopilot', { awayBudget: { metals: { perSessionPct: 30.5 } } }).success).toBe(false);

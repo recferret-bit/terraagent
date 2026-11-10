@@ -45,6 +45,15 @@ export class BountyRepository {
     });
   }
 
+  /** Claimer accounts on this colony's open or claimed bounties. */
+  async activeClaimers(colonyId: string): Promise<string[]> {
+    const rows = await this.prisma.chainBounty.findMany({
+      where: { posterColonyId: colonyId, state: { in: [...ACTIVE] }, claimerAccountId: { not: null } },
+      select: { claimerAccountId: true },
+    });
+    return rows.flatMap((row) => (row.claimerAccountId ? [row.claimerAccountId] : []));
+  }
+
   /** `completed` rows that still have a claimer. Boot repay uses this after a crash mid-payout. */
   completed(): Promise<BountyRow[]> {
     return this.prisma.chainBounty.findMany({

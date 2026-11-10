@@ -4066,6 +4066,14 @@
           "awayRaids": {
             "type": "boolean"
           },
+          "hireMercenaries": {
+            "type": "boolean"
+          },
+          "mercenaryMaxSpend": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "director",
@@ -4077,7 +4085,7 @@
         "type": "object"
       },
       "origin": "client",
-      "summary": "Sets autopilot mode, away raids, and the per-family away budget.",
+      "summary": "Sets autopilot mode, away raids, the per-family away budget, and away mercenary hire.",
       "wave": "W09"
     },
     "setDirectorPolicy": {

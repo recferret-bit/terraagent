@@ -51,6 +51,7 @@ import { BountyPostService } from './bounty/post.service.js';
 import { BountyRepository } from './bounty/bounty.repository.js';
 import { PlanetBountyWorld } from './bounty/world.js';
 import { MercenaryAccountsService } from './mercenary/accounts.service.js';
+import { MercenaryAwayService } from './mercenary/away.service.js';
 import { MercenaryHireService } from './mercenary/hire.service.js';
 import { MercenaryPayoutListener } from './mercenary/payout.listener.js';
 import { MercenaryPayoutService } from './mercenary/payout.service.js';
@@ -101,6 +102,7 @@ export const env = {
     BountyPostService,
     BountyRepository,
     MercenaryAccountsService,
+    MercenaryAwayService,
     MercenaryHireService,
     MercenaryPayoutListener,
     MercenaryPayoutService,

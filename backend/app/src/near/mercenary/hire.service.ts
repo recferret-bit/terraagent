@@ -9,7 +9,7 @@ import { opId } from '../application/outbox/op-id.js';
 import { BountyRepository } from '../bounty/bounty.repository.js';
 import { BountyPostError } from '../bounty/errors.js';
 import { BountyPostService, type BountyPostInput } from '../bounty/post.service.js';
-import { expiryScreen, HOUR_MS } from '../bounty/validate.js';
+import { expiryScreen, expiryWithMin, HOUR_MS } from '../bounty/validate.js';
 import type { BountyRow } from '../bounty/view.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { quoteHire, refundSplit, type HireQuote, type RefundSplit } from './hire-math.js';
@@ -123,7 +123,7 @@ export class MercenaryHireService {
 
   private expiry(quote: HireQuote, now: number): number {
     const expiresAt = now + quote.hours * HOUR_MS;
-    const problem = expiryScreen(expiresAt, now);
+    const problem = expiryScreen(expiresAt, now, expiryWithMin(HOUR_MS));
     if (problem) throw new BountyPostError(problem);
     return expiresAt;
   }
@@ -165,6 +165,7 @@ export class MercenaryHireService {
       accountId: input.accountId,
       bountyId: input.bountyId,
       nowMs: input.nowMs,
+      expiryMinMs: HOUR_MS,
       args: {
         target: { kind: 'defend_area', ...area, durationH: quote.hours },
         reward: BountyReward.parse({ resource: quote.resource, amount: quote.total }),
