@@ -1043,3 +1043,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** Do not expect the fact before the match commits, and do not expect a failed settlement to subtract it. A book-path id is `tradeIdOf` until a FAILED row forces the live retry id.
 - **To resolve:** Emit only from `TradeSettlement.notify` (FINAL) if chain finality should gate the fact, and add an explicit compensating event if a counted trade later fails.
 - **Found:** 2026-11-11, W15-25
+
+### BE-83 · A released director reserve is not taken again, but the same command is submitted again
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/market/director/director-loop.service.ts` (`reserve`, `placePick`), `backend/app/src/near/testing/in-memory-agent-wallet.ts`, `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`
+- **What happens:** The wallet op id is `dir:rsv:` plus `d{colonyIndex}-{resource}-{spent}-{amount}`. A reject releases that hold. The next `runDirectorOnce` with the same index, resource, spent, and amount hits the stored op. The adapter returns the first receipt and does not reserve again. The loop still treats that as a new hold and calls `place`. If that attempt reports `filled`, `consumeAllowance` throws `NEAR_ALLOWANCE_EXHAUSTED` (`reserved` is 0, the amount is 300) and spent stays at the earlier consumed part. Revoke between reserve and consume also leaves the unconsumed hold: consume and release both throw `NEAR_KEY_REVOKED` (BE-71) and do not add to spent.
+- **Why it is like this:** W15-30 adds tests for the races the ledger already enforces. It does not change the loop. The command id is the order id, so a released attempt cannot buy a second hold without a new id.
+- **Workaround / mitigation:** One tick is safe: a reject releases the full hold, an open order keeps it, and a filled order consumes it. Do not run the same decision again after a release and expect either a new hold or a quiet skip.
+- **To resolve:** If the live reserved total did not grow by this order's amount, skip `place`. Give a released attempt a new op id only when a retry should be allowed to reserve again.
+- **Found:** 2026-11-11, W15-30
