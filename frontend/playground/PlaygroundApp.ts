@@ -154,7 +154,7 @@ export class PlaygroundApp {
     return {
       state: this.state, select: (id: string) => this.select(id), validate: (id = this.state.id) => validateArchetype(id), setView: (v: View) => this.setView(v),
       setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), contactSheet: () => this.contactSheet(),
-      viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s),
+      viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s), setRuin: (on: boolean) => { if (this.state.ruin !== on) this.toggle('ruin'); },
       setWorkTarget: (t: InteractionTargetKind, enableWork = true) => this.setWorkTarget(t, enableWork),
       validateParticles: (targetOrId: string = this.state.workTarget) => {
         const preset = ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind);
@@ -382,6 +382,7 @@ export class PlaygroundApp {
     const { state, spawns } = this;
     spawns.rebuild(spawns.idsFor(state.row, state.id), PLANET_SPECS[state.kind].biomeKey, state.wire, state.depositStage);
     spawns.applyBuild(state.build);
+    spawns.applyRuin(state.ruin);
     spawns.updateRing(state.id, state.row);
     this.rig.placeHuman();
     this.applyValidation();
@@ -462,6 +463,7 @@ export class PlaygroundApp {
       case 'hexTerrain': if (state.hexTerrain) state.surface = false; this.buildStage(); this.syncSurface(); break;
       case 'validate': this.applyValidation(); this.refreshInfo(); break;
       case 'lights': this.lightsPanel.render(); this.syncStageLighting(); break;
+      case 'ruin': this.spawns.applyRuin(state.ruin); break;
     }
     this.toolbar.syncToggles(); syncURL(state);
   }

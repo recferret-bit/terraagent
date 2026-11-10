@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import {
   ArchetypeCatalog,
   createArchetypeMesh,
+  isArchetypeRuin,
   setArchetypeBuildProgress,
+  setArchetypeRuin,
   tickArchetypeMesh,
   type ArchetypeCategory,
   type ArchetypeMesh,
@@ -81,6 +83,9 @@ export class SpawnSet {
   /** Construction scaffold stage of every shown archetype (1 = complete). */
   applyBuild(stage: number) { for (const s of this.spawns) setArchetypeBuildProgress(s.mesh, stage); }
 
+  /** Ruin variant (W18-22: charred, cracked, unlit) of every shown archetype. */
+  applyRuin(ruin: boolean) { for (const s of this.spawns) setArchetypeRuin(s.mesh, ruin); }
+
   find(id: string) { return this.spawns.find((s) => s.id === id); }
 
   updateRing(id: string, row: ArchetypeCategory | null) {
@@ -123,6 +128,7 @@ export class SpawnSet {
     const projectors: ColonyProjectorDesc[] = [];
     const boost = nightMode ? 1.35 : lightsMode ? 1.0 : 0.35;
     for (const s of ordered) {
+      if (isArchetypeRuin(s.mesh)) continue;
       const lights = peekArchetypeLights(s.id); // per frame: no copy
       for (const l of lights) {
         if (projectors.length >= MAX_COLONY_PROJECTORS) break;

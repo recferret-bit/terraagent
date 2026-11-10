@@ -9,8 +9,10 @@ import {
 } from './unified/shaderChunks';
 import { injectAll } from './shaderInject';
 import './unified/buildScaffold';
+import './unified/ruinVariant';
+import { RUIN_VARIANT } from './unified/ruinVariant';
 
-export { BiomeMaterialRegistry, ShaderPluginRegistry };
+export { BiomeMaterialRegistry, ShaderPluginRegistry, RUIN_VARIANT };
 export type { BiomeWeatheringPreset, ShaderModifierPlugin } from './unified/registries';
 
 export interface UnifiedColonyMaterialOptions {
@@ -20,6 +22,8 @@ export interface UnifiedColonyMaterialOptions {
   triplanarScale?: number;
   rimStrength?: number;
   plugins?: string[];
+  /** Optional initial ruin state (`true` or `0..1`, W18-22: charred, cracked, unlit). */
+  ruin?: boolean | number;
 }
 
 export interface UnifiedColonyMaterialUniforms {
@@ -76,13 +80,17 @@ export function createUnifiedColonyMaterial(
     uRimStrength: { value: options.rimStrength ?? 0.28 },
   };
 
-  const activePlugins = (options.plugins ?? [])
+  const pluginNames = [...new Set([...(options.plugins ?? []), ...(options.ruin !== undefined ? [RUIN_VARIANT] : [])])];
+  const activePlugins = pluginNames
     .map((n) => ShaderPluginRegistry.getModifier(n))
     .filter((p): p is ShaderModifierPlugin => Boolean(p));
 
   for (const plugin of activePlugins) {
     if (plugin.uniforms) Object.assign(uniforms, plugin.uniforms);
     if (plugin.createUniforms) Object.assign(uniforms, plugin.createUniforms());
+  }
+  if (options.ruin !== undefined && uniforms.uRuin) {
+    uniforms.uRuin.value = typeof options.ruin === 'number' ? Math.max(0, Math.min(1, options.ruin)) : options.ruin ? 1 : 0;
   }
 
   const offTune = onColonyShaderTune((weatheringMul, rimStrength) => {
@@ -112,7 +120,7 @@ export function createUnifiedColonyMaterial(
       ['#include <common>', `${FRAG_COMMON}\n${joinPlugins((p) => p.fragmentDeclarations)}`],
       ['#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk))],
       ['#include <roughnessmap_fragment>', FRAG_ROUGHNESS],
-      ['#include <metalnessmap_fragment>', FRAG_METALNESS],
+      ['#include <metalnessmap_fragment>', `${FRAG_METALNESS}\n${joinPlugins((p) => p.fragmentRoughnessChunk)}`],
       ['#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + ORGANIC_NORMAL],
       ['#include <opaque_fragment>', FRAG_RIM],
     ], 'unified colony fragment');
