@@ -35,7 +35,7 @@ function asBearer(token: string): IncomingMessage {
   return { headers: { authorization: `Bearer ${token}` } } as IncomingMessage;
 }
 
-function demoView(colonyId: string, colonyIndex: number): DirectorColonyView {
+function demoView(colonyId: string, colonyIndex: number, rowLimit: AutoTradeLimit = limit): DirectorColonyView {
   return {
     colonyId,
     colonyIndex,
@@ -56,7 +56,7 @@ function demoView(colonyId: string, colonyIndex: number): DirectorColonyView {
           reserveHorizon: 0,
           sessionSpent: 0,
           partner: 'guild',
-          limit,
+          limit: rowLimit,
         },
         reference: { num: 1_000_000n, den: 1n },
         ownUnitCost: { num: 800_000n, den: 1n },
@@ -186,5 +186,86 @@ describe('W15-21 director sell on Postgres', () => {
     expect(offMarket.placed).toHaveLength(0);
     const still = await wallet.keyStatus({ accountId: offRow.accountId, publicKey: offRow.publicKey });
     expect(still.tokens[0]).toMatchObject({ spent: '0', available: '600' });
+  });
+});
+
+const tight: AutoTradeLimit = { ...limit, maxPerSession: 300 };
+
+async function spendMetal(
+  wallet: MockAgentWalletAdapter,
+  accountId: string,
+  publicKey: string,
+  amount: string,
+): Promise<void> {
+  await wallet.reserveAllowance({ opId: `pre-r:${publicKey}`, accountId, publicKey, token: 'metals.t1', amount });
+  await wallet.consumeAllowance({ opId: `pre-c:${publicKey}`, accountId, publicKey, token: 'metals.t1', amount });
+}
+
+describe('W15-22 allowance exhaustion on Postgres', () => {
+  it('one 300 sell emits directorAllowanceExhausted once and the next tick places nothing', async () => {
+    const { wallet, bus, flags, repo, controller } = harness();
+    const colonyId = 'co_cap22';
+    const index = seat;
+    await seatColony(colonyId);
+    await controller.add(asBearer('dev:owner'), { colonyId, limits: { 'metals.t1': tight } });
+    const market = new MemMarket();
+    const seen: { kind: string; data: unknown }[] = [];
+    bus.on('planet.event', (event) => seen.push({ kind: event.kind, data: event.data }), { module: 'test' });
+    const loop = new DirectorLoopService(flags, wallet, repo, bus, new MemSource(demoView(colonyId, index, tight)), market);
+
+    const sold = await loop.runDirectorOnce(colonyId);
+    expect(sold).toMatchObject({ ok: true, side: 'sell', resource: 'metals.t1', amount: 300, spent: 300, allowance: 300 });
+    expect(market.placed).toHaveLength(1);
+    expect(seen.map((event) => event.kind)).toEqual([
+      'directorOrderRequested',
+      'directorTrade',
+      'directorAllowanceExhausted',
+    ]);
+    expect(seen[2]?.data).toEqual({
+      colonyId,
+      colonyIndex: index,
+      resource: 'metals.t1',
+      spent: 300,
+      allowance: 300,
+      reason: 'allowance_exhausted',
+    });
+
+    expect(await loop.runDirectorOnce(colonyId)).toEqual({ ok: false, skip: 'allowance_exhausted' });
+    expect(market.placed).toHaveLength(1);
+    expect(seen.filter((event) => event.kind === 'directorAllowanceExhausted')).toHaveLength(1);
+  });
+
+  it('available 0 before the tick emits once and places nothing', async () => {
+    const { wallet, bus, flags, repo, controller } = harness();
+    const colonyId = 'co_zero22';
+    const index = seat;
+    await seatColony(colonyId);
+    await controller.add(asBearer('dev:owner'), { colonyId, limits: { 'metals.t1': tight } });
+    const row = await db.prisma.directorKey.findUniqueOrThrow({ where: { colonyId } });
+    await spendMetal(wallet, row.accountId, row.publicKey, '300');
+    const before = await wallet.keyStatus({ accountId: row.accountId, publicKey: row.publicKey });
+    expect(before.tokens.find((token) => token.token === 'metals.t1')).toMatchObject({
+      spent: '300',
+      available: '0',
+      allowance: '300',
+    });
+    const market = new MemMarket();
+    const seen: { kind: string; data: unknown }[] = [];
+    bus.on('planet.event', (event) => seen.push({ kind: event.kind, data: event.data }), { module: 'test' });
+    const loop = new DirectorLoopService(flags, wallet, repo, bus, new MemSource(demoView(colonyId, index, tight)), market);
+
+    expect(await loop.runDirectorOnce(colonyId)).toEqual({ ok: false, skip: 'allowance_exhausted' });
+    expect(market.placed).toHaveLength(0);
+    expect(seen.map((event) => event.kind)).toEqual(['directorAllowanceExhausted']);
+    expect(seen[0]?.data).toMatchObject({
+      colonyId,
+      resource: 'metals.t1',
+      spent: 300,
+      allowance: 300,
+      reason: 'allowance_exhausted',
+    });
+    expect(await loop.runDirectorOnce(colonyId)).toEqual({ ok: false, skip: 'allowance_exhausted' });
+    expect(market.placed).toHaveLength(0);
+    expect(seen).toHaveLength(1);
   });
 });
