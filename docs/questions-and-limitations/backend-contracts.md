@@ -995,3 +995,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The precheck stops an unseen nest before the sim. A retried chain id reuses `bounty-open:{bountyId}`, so cargo is not taken twice. Expiry is the bounty row (`expiresAt`), not escrow `get` (BE-73).
 - **To resolve:** Have the board post over the socket. When W22-22 lands, teach the sim `deliver_units` and keep one id for the chain row and the sim blob. Require the session colony on `POST /v1/bounties/:planetId`.
 - **Found:** 2026-11-10, W22-19
+
+### BE-78 · Mock agent wallet only creates mercenary sub-accounts
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`, `backend/app/src/near/mercenary/accounts.service.ts`
+- **What happens:** W15-03 has not landed, so this branch's mock `AgentWalletPort` implements `createSubAccount` only. The same `opId` replays the stored receipt. The same account id does not insert a second row. `addLimitedKey` and `revokeKey` reject with `NEAR_UNAVAILABLE` and store no allowance. The parent `npc.terraagent.mock` is not created. A database error on boot is logged and does not stop the app; the next boot tries again.
+- **Why it is like this:** W22-27 has to create `merc-N.npc.terraagent.mock` through the port. Copying the unlanded W15 key ledger would collide with that wave. The funding cap stays on the roster row (LED-33) and is not minted.
+- **Workaround / mitigation:** Hire and payout code must keep using the roster `fundingCap`. Do not treat a successful boot as a funded balance.
+- **To resolve:** When W15-03 lands, replace this adapter with its allowance ledger. The seeder's stable `merc-account:{accountId}` opId still replays, and `NEAR_ACCOUNT_EXISTS` is treated as already created.
+- **Found:** 2026-11-10, W22-27

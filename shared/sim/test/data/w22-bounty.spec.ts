@@ -20,23 +20,27 @@ describe('W22-02 bounty and mercenary data rows', () => {
       archetype: 'robot.recon',
       count: 4,
       pricePerGameHour: { 'metals.t1': 100 },
+      fundingCap: { 'metals.t1': 10000 },
     });
     expect(dataRow(on, 'mercenary', 'heavy')).toMatchObject({
       accountId: 'merc-2.npc.terraagent.mock',
       count: 6,
       pricePerGameHour: { 'metals.t1': 200 },
+      fundingCap: { 'metals.t1': 10000 },
     });
     expect(dataRow(on, 'mercenary', 'reserve')).toMatchObject({
       accountId: 'merc-3.npc.terraagent.mock',
       archetype: 'robot.recon',
       count: 4,
       pricePerGameHour: { 'metals.t1': 100 },
+      fundingCap: { 'metals.t1': 10000 },
     });
   });
 
   it('rejects a fractional or unknown mercenary price', () => {
     const flags = parseWaves('..22');
     expect(() => compileData(flags, { mercenary: { light: { pricePerGameHour: { 'metals.t1': 100.5 } } } })).toThrow(/metals\.t1/);
+    expect(() => compileData(flags, { mercenary: { light: { fundingCap: { 'metals.t1': 10000.5 } } } })).toThrow(/fundingCap/);
     expect(() => compileData(flags, { mercenary: { heavy: { pricePerGameHour: { gold: 200 } } } })).toThrow(/unknown resource "gold"/);
     expect(dataRow(compileData(flags, { mercenary: { light: { pricePerGameHour: { 'metals.t1': 80 } } } }), 'mercenary', 'light').pricePerGameHour).toEqual({ 'metals.t1': 80 });
   });
