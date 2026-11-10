@@ -1,4 +1,5 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
+import { devOfferTruceCommand, offerTruceCommand } from '../dev-console';
 import { ownColonyIndex } from '../shared/colony';
 import { DiplomacyPanel, createDiplomacyPanel, type DiplomacyPanelInstance } from './DiplomacyPanel';
 import {
@@ -80,14 +81,6 @@ export function mountDiplomacyHud(
   };
 }
 
-function handleDevOfferTruce(args: string[], ctx: FeatureContext): string {
-  const fromColony = args[0] ? Number(args[0]) : 1;
-  const hours = (args[1] ? Number(args[1]) : 6) as TruceDurationHours;
-  const toColony = ownColonyIndex(ctx.services);
-  sendCommandToHost(ctx, 'dev.offerTruce', { fromColony, toColony, durationHours: hours });
-  return `Offered ${hours}h truce from colony #${fromColony} to colony #${toColony}`;
-}
-
 export const diplomacyFeature: GameFeature = defineFeature({
   id: 'diplomacy',
   wave: 'W18',
@@ -99,18 +92,7 @@ export const diplomacyFeature: GameFeature = defineFeature({
       mount: mountDiplomacyHud,
     },
   ],
-  devCommands: [
-    {
-      name: 'offerTruce',
-      help: 'offerTruce <colony> <hours> - Injects a truce offer from neighbor colony to player colony',
-      run: handleDevOfferTruce,
-    },
-    {
-      name: 'dev.offerTruce',
-      help: 'dev.offerTruce <colony> <hours> - Injects a truce offer from neighbor colony to player colony',
-      run: handleDevOfferTruce,
-    },
-  ],
+  devCommands: [offerTruceCommand, devOfferTruceCommand],
 });
 
 export default diplomacyFeature;

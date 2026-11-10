@@ -18,7 +18,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--ta-seam-1);
+  border-bottom: 1px solid var(--ta-seam);
   padding-bottom: var(--ta-s1);
 }
 
@@ -58,7 +58,7 @@
   flex-direction: column;
   gap: var(--ta-s2);
   padding: var(--ta-s2) var(--ta-s3);
-  background: var(--ta-plate-hi);
+  background: var(--ta-plate-3);
   border: 1px solid var(--ta-orange);
   box-shadow: 0 0 8px rgba(255, 138, 0, 0.15);
 }
@@ -116,7 +116,7 @@
 }
 
 .ta-diplomacy-truce-badge[data-status="notice"] {
-  border-color: var(--ta-warning);
+  border-color: var(--ta-orange);
 }
 
 .ta-diplomacy-truce-badge__main {
@@ -136,19 +136,19 @@
   font-size: 10px;
   font-weight: 700;
   letter-spacing: var(--ta-track-label);
-  background: var(--ta-plate-hi);
+  background: var(--ta-plate-3);
   border: 1px solid var(--ta-seam-3);
   color: var(--ta-text-2);
 }
 
 .ta-diplomacy-truce-badge[data-status="active"] .ta-diplomacy-truce-badge__pill {
-  color: var(--ta-cyan);
-  border-color: var(--ta-cyan);
+  color: var(--ta-energy);
+  border-color: var(--ta-energy);
 }
 
 .ta-diplomacy-truce-badge[data-status="notice"] .ta-diplomacy-truce-badge__pill {
-  color: var(--ta-warning);
-  border-color: var(--ta-warning);
+  color: var(--ta-orange);
+  border-color: var(--ta-orange);
 }
 
 .ta-diplomacy-truce-badge__footer {
@@ -174,7 +174,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--ta-s2);
-  border-top: 1px solid var(--ta-seam-1);
+  border-top: 1px solid var(--ta-seam);
   padding-top: var(--ta-s2);
 }
 
