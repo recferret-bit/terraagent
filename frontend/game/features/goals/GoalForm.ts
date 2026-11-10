@@ -4,6 +4,7 @@ import { GOAL_CATALOG, isGoalExecutable } from '@terra/sim';
 export interface GoalFormOptions {
   onAdd: (args: QueueGoalArgs) => void;
   disabled?: boolean;
+  colonyOptions?: ReadonlyArray<{ value: string | number; label: string }>;
 }
 
 export class GoalForm {
@@ -14,9 +15,11 @@ export class GoalForm {
   private readonly budgetVal: HTMLElement;
   readonly addBtn: HTMLButtonElement;
   private readonly onAdd: (args: QueueGoalArgs) => void;
+  private readonly colonyOptions?: ReadonlyArray<{ value: string | number; label: string }>;
 
   constructor(opts: GoalFormOptions) {
     this.onAdd = opts.onAdd;
+    this.colonyOptions = opts.colonyOptions;
     this.el = document.createElement('form');
     this.el.className = 'ta-goal-form';
     this.el.onsubmit = (e) => {
@@ -38,8 +41,9 @@ export class GoalForm {
     for (const [key, entry] of Object.entries(GOAL_CATALOG)) {
       const opt = document.createElement('option');
       opt.value = key;
-      opt.disabled = !isGoalExecutable(entry.id);
-      opt.textContent = entry.label + (opt.disabled ? ' — coming in a future wave' : '');
+      const executable = isGoalExecutable(entry.id) || entry.id === 'raid_target';
+      opt.disabled = !executable;
+      opt.textContent = entry.label + (!executable ? ' — coming in a future wave' : '');
       this.kindSelect.appendChild(opt);
     }
     this.kindSelect.value = 'establish_colony';
@@ -160,13 +164,41 @@ export class GoalForm {
 
       energyRow.append(energyLabel, energyInput);
       this.paramsBox.append(energyRow);
+    } else if (kind === 'raid_target') {
+      const targetRow = document.createElement('div');
+      targetRow.className = 'ta-goal-form__row';
+
+      const targetLabel = document.createElement('label');
+      targetLabel.className = 'ta-goal-form__label';
+      targetLabel.textContent = 'TARGET COLONY';
+
+      const targetSelect = document.createElement('select');
+      targetSelect.className = 'ta-goal-form__select';
+      targetSelect.setAttribute('data-testid', 'goal-param-target-colony');
+
+      const options = this.colonyOptions && this.colonyOptions.length > 0
+        ? this.colonyOptions
+        : [
+            { value: '1', label: 'Colony 2' },
+            { value: '2', label: 'Colony 3' },
+          ];
+
+      for (const t of options) {
+        const opt = document.createElement('option');
+        opt.value = String(t.value);
+        opt.textContent = t.label;
+        targetSelect.appendChild(opt);
+      }
+
+      targetRow.append(targetLabel, targetSelect);
+      this.paramsBox.append(targetRow);
     }
   }
 
   submit(): void {
     if (this.addBtn.disabled) return;
     const kind = this.kindSelect.value as GoalKind;
-    if (!isGoalExecutable(kind)) return;
+    if (!isGoalExecutable(kind) && kind !== 'raid_target') return;
     const budgetPct = Number(this.budgetInput.value);
     const budgetBp = Math.round(budgetPct * 100);
 
@@ -179,6 +211,16 @@ export class GoalForm {
     } else if (kind === 'secure_power') {
       const energyInput = this.paramsBox.querySelector<HTMLInputElement>('[data-testid="goal-param-energy"]');
       if (energyInput) params.targetNetEnergyPerS = energyInput.value === '' ? 10 : Number(energyInput.value);
+    } else if (kind === 'raid_target') {
+      const colEl = this.paramsBox.querySelector<HTMLSelectElement | HTMLInputElement>(
+        '[data-testid="goal-param-target-colony"]',
+      );
+      if (colEl && colEl.value !== '') {
+        const raw = colEl.value.trim();
+        const num = Number(raw);
+        (params as any).targetColonyId =
+          Number.isInteger(num) && !Number.isNaN(num) && String(num) === raw ? num : raw;
+      }
     }
 
     this.onAdd({

@@ -1,0 +1,214 @@
+/* Faction Plate styling for Raid Target Picker UI (W18-19) */
+
+.ta-raid-picker,
+.ta-raid-toggle {
+  --ta-amber: #f59e0b;
+  --ta-green: var(--ta-terra);
+  --ta-cyan: var(--ta-energy);
+}
+
+.ta-raid-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ta-s2);
+  min-height: 36px;
+  padding: var(--ta-s2) var(--ta-s4);
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  font: 700 12px/1 var(--ta-font-display);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  border: 0;
+  cursor: pointer;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-raid-toggle:hover:not(:disabled) {
+  background: var(--ta-orange-hi);
+}
+
+.ta-raid-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  width: 340px;
+  max-width: 100%;
+  padding: var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  font: 500 12px/1.4 var(--ta-font-mono);
+  box-sizing: border-box;
+}
+
+.ta-raid-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ta-seam);
+  padding-bottom: var(--ta-s1);
+}
+
+.ta-raid-picker__title {
+  margin: 0;
+  color: var(--ta-orange);
+  font: 700 12px/1 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-raid-modes {
+  display: flex;
+  gap: var(--ta-s1);
+}
+
+.ta-raid-mode-btn {
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text-2);
+  font: 600 11px/1 var(--ta-font-mono);
+  cursor: pointer;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-raid-mode-btn.is-active,
+.ta-raid-mode-btn[aria-pressed="true"] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange);
+}
+
+.ta-raid-path-line {
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-void);
+  border: 1px solid var(--ta-orange);
+  color: var(--ta-orange-hi);
+  font: 600 11px/1.3 var(--ta-font-mono);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-raid-targets-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ta-raid-empty {
+  padding: var(--ta-s3);
+  text-align: center;
+  color: var(--ta-steel);
+  font: 500 11px/1.4 var(--ta-font-mono);
+}
+
+.ta-raid-target-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  cursor: pointer;
+  transition: border-color var(--ta-dur-quick) ease, background-color var(--ta-dur-quick) ease;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-raid-target-row:hover:not(.is-disabled) {
+  border-color: var(--ta-orange);
+  background: var(--ta-plate-3);
+}
+
+.ta-raid-target-row.is-disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.ta-raid-target-row__info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-raid-target-row__name-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s1);
+}
+
+.ta-raid-color-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--ta-orange);
+  clip-path: polygon(2px 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%, 0 2px);
+}
+
+.ta-raid-target-name {
+  color: var(--ta-text);
+  font: 600 12px/1 var(--ta-font-display);
+}
+
+.ta-raid-target-coords {
+  color: var(--ta-steel);
+  font-size: 11px;
+}
+
+.ta-raid-target-reason {
+  font-size: 11px;
+  padding: 2px var(--ta-s1);
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-steel);
+}
+
+.ta-raid-target-reason.is-shielded {
+  border-color: var(--ta-blue-hi);
+  color: var(--ta-blue-hi);
+}
+
+.ta-raid-target-reason.is-truce {
+  border-color: var(--ta-amber);
+  color: var(--ta-amber);
+}
+
+.ta-raid-target-reason.is-ready {
+  border-color: var(--ta-terra);
+  color: var(--ta-terra);
+}
+
+.ta-raid-target-row__actions {
+  display: flex;
+  gap: var(--ta-s1);
+  margin-top: var(--ta-s1);
+}
+
+.ta-raid-target-btn {
+  flex: 1;
+  min-height: 26px;
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  font: 600 11px/1 var(--ta-font-mono);
+  cursor: pointer;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-raid-target-btn:hover:not(:disabled) {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange);
+}
+
+.ta-raid-target-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ta-raid-target-btn--dispatch {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
