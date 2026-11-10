@@ -61,6 +61,13 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   order_too_small: 'Rejected: Order is below the minimum size',
   unknown_order: 'Rejected: No such open order',
   away_policy: 'Rejected: Not allowed while the colony is away',
+  recent_hostility: 'Rejected: Recent hostility (wait 10 min after combat)',
+  oathbreaker: 'Rejected: Oathbreaker mark active (cannot propose truce)',
+  cross_sector_disabled: 'Rejected: Target colony is in an isolated founding sector',
+  no_contact: 'Rejected: No first contact with target colony',
+  truce_cap: 'Rejected: Active truce cap reached for HQ tier',
+  unknown_offer: 'Rejected: Truce offer no longer active',
+  unknown_truce: 'Rejected: Truce no longer active',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

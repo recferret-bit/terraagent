@@ -10,6 +10,12 @@ export const RaidStartedDataSchema = z.strictObject({
   waveIndex: z.number().int().positive().optional(),
   budget: z.number().int().nonnegative().optional(),
   count: z.number().int().nonnegative().optional(),
+  raidId: z.string().min(1).max(64).optional(),
+  attackerColony: z.number().int().nonnegative().optional(),
+  attackerColonyId: z.string().min(1).max(64).optional(),
+  targetColony: z.number().int().nonnegative().optional(),
+  targetColonyId: z.string().min(1).max(64).optional(),
+  unitIds: z.array(z.number().int().positive()).optional(),
   q: z.number().int(),
   r: z.number().int(),
 });
