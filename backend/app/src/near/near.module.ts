@@ -40,6 +40,7 @@ import { StakingPoolsController } from './staking/staking-pools.controller.js';
 import { StakingPositionSyncService } from './staking/staking-position-sync.service.js';
 import { StakingService } from './staking/staking.service.js';
 import { BountyController } from './bounty/bounty.controller.js';
+import { BountyDeliverService } from './bounty/deliver.service.js';
 import { BountyPostPrecheck } from './bounty/precheck.js';
 import { BountyPostedListener } from './bounty/posted.listener.js';
 import { BountyPostService } from './bounty/post.service.js';
@@ -71,6 +72,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
   ],
   providers: [
     AccountClaimService,
+    BountyDeliverService,
     BountyPostPrecheck,
     BountyPostedListener,
     BountyPostService,

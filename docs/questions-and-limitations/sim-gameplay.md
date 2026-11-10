@@ -1306,10 +1306,10 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 - **Status:** Open
 - **Area / code:** `shared/sim/src/systems/bounty/damage.ts` (`noteClearNestHit`), `shared/sim/src/systems/bounty/handlers.ts` (`postBounty`)
-- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `deliver_units` is still `invalid_args`. `defend_area` is tracked (GP-120). A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` matches the hive entity id as a string, not a separate catalog id.
-- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-22 owns `deliver_units`. W22-37 owns the species-hive binding.
-- **Workaround / mitigation:** Post before the fight, and use the hive's entity id as `nestId`.
-- **To resolve:** W22-22 accepts `deliver_units`. W22-37 binds spotted species hives if that id is not the entity id. Record pre-post hits if the owner wants the full 60 s before the post.
+- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `deliver_units` is still `invalid_args`. That target is completed on the chain row from cargo transfers (BE-77), not in the sim. `defend_area` is tracked (GP-120). A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` matches the hive entity id as a string, not a separate catalog id.
+- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-22 was told not to add a sim rule for `deliver_units`. W22-37 owns the species-hive binding.
+- **Workaround / mitigation:** Post before the fight, and use the hive's entity id as `nestId`. Deliver water through the chain bounty (BE-77).
+- **To resolve:** W22-37 binds spotted species hives if that id is not the entity id. Record pre-post hits if the owner wants the full 60 s before the post. Add a sim `deliver_units` blob only if the owner wants the same id in the sim and on `chain.bounty`.
 - **Found:** 2026-11-10, W22-20
 
 ### GP-120 · defend_area counts claimer combat units on a half-open window

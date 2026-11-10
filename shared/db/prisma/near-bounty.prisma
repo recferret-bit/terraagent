@@ -22,3 +22,15 @@ model ChainBounty {
   @@map("bounty")
   @@schema("chain")
 }
+
+/// Cargo counted toward a `deliver_units` bounty (W22-22). One row per bounty and transfer op.
+model ChainBountyDelivery {
+  bountyId  String   @map("bounty_id") @db.VarChar(80)
+  opId      String   @map("op_id") @db.VarChar(200)
+  amount    Decimal  @db.Decimal(40, 0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([bountyId, opId])
+  @@map("bounty_delivery")
+  @@schema("chain")
+}
