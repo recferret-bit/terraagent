@@ -1182,3 +1182,13 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **What happens:** With no water on screen the pass skips and reports `reflectW = 0` but keeps its render target; it frees it only at strength 0 (`?water=0`, LOW tier, MIRROR REFLECTION slider at 0). `?perf=0` and the PERF tab do not touch the pass.
 - **Why it is like this:** Avoids re-allocating the target every time the camera pans over water.
 - **Found:** 2026-11-07, W05 full review (render agent)
+
+### RN-89 · Guild trader round parts are 6-sided so the cargo pods fit the triangle cap
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/kitbash/archetypes/units/ships.ts` (`buildCarrierHull` `roundSeg`), `frontend/render/kitbash/archetypes/units/guild.ts` (`addCargoPods`)
+- **What happens:** `ship.guildTrader` is the carrier hull at scale 0.35 with Guild-blue `hullSecondary` and four side cargo pods. Nineteen cylinders that are 8-sided on `ship.carrier` are 6-sided on the trader, and each pod's strap is a `BoxGeometry`. The trader reports 3,448 triangles and minY 0.000. `ship.carrier` is unchanged (3,472 triangles, minY -5.850).
+- **Why it is like this:** the carrier hull is already 3,472 triangles. A rounded strap is 108 triangles, so four of them on the 8-sided hull would pass 3,500. The hull stays one function; only the guild call sets `roundSeg: 6`.
+- **Workaround / mitigation:** at 0.35 scale the missing two facets are smaller than a pixel at RTS distance. The straps still overlap the canisters by about 4 cm after scale.
+- **To resolve:** raise the ship triangle budget, or drop another carrier sub-assembly on the guild variant, then restore `roundSeg: 8` and rounded straps.
+- **Found:** 2026-11-10, W15-14
