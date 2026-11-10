@@ -17,6 +17,7 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
       prestige: ['cost'],
       regions: ['reserveUnitsMin', 'reserveUnitsMax', 'starterGuarantee', 'renewableUnitsPerSimHour'],
       tradeHub: ['cost', 'dailyMintCapPerResource'],
+      treasury: ['cost'],
     });
   });
 
