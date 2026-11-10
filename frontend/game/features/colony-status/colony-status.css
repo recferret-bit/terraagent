@@ -1,0 +1,210 @@
+/* Faction Plate styling for Colony Status HUD (W18-21)
+   Rules: Only var(--ta-*) tokens, zero raw hex, zero border-radius. */
+
+.ta-colony-status-hud {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  width: 100%;
+}
+
+.ta-colony-status-hud > * {
+  pointer-events: auto;
+}
+
+/* Colony Critical Banner (top notification) */
+.ta-colony-critical-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s4);
+  min-width: 480px;
+  max-width: 90vw;
+  padding: var(--ta-s3) var(--ta-s5);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-fault);
+  box-shadow: 0 0 20px rgba(255, 59, 59, 0.35);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  animation: ta-pulse-critical 2s infinite ease-in-out;
+}
+
+@keyframes ta-pulse-critical {
+  0%, 100% {
+    border-color: var(--ta-fault);
+    box-shadow: 0 0 16px rgba(255, 59, 59, 0.35);
+  }
+  50% {
+    border-color: var(--ta-fault-text);
+    box-shadow: 0 0 28px rgba(255, 59, 59, 0.65);
+  }
+}
+
+.ta-colony-critical-banner[hidden] {
+  display: none;
+}
+
+.ta-colony-critical__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s3);
+}
+
+.ta-colony-critical__icon {
+  color: var(--ta-fault);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-h3);
+  line-height: 1;
+}
+
+.ta-colony-critical__title {
+  margin: 0;
+  color: var(--ta-fault-text);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-body-l);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-colony-critical__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s2) var(--ta-s4);
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border: 0;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-small);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  transition: transform var(--ta-dur-quick) ease, background-color var(--ta-dur-quick) ease;
+}
+
+.ta-colony-critical__btn:hover {
+  background: var(--ta-orange-hi);
+  transform: translateY(-2px);
+}
+
+.ta-colony-critical__btn:active {
+  transform: translateY(1px);
+}
+
+/* Colony Eliminated Screen (end-state overlay) */
+.ta-colony-eliminated-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 8, 10, 0.88);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  padding: var(--ta-s4);
+}
+
+.ta-colony-eliminated-screen[hidden] {
+  display: none;
+}
+
+.ta-colony-eliminated__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--ta-s5);
+  max-width: 480px;
+  width: 100%;
+  padding: var(--ta-s7) var(--ta-s6);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-fault);
+  box-shadow: 0 0 40px rgba(255, 59, 59, 0.4);
+  clip-path: polygon(
+    var(--ta-chamfer-m) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-m)),
+    calc(100% - var(--ta-chamfer-m)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-m)
+  );
+}
+
+.ta-colony-eliminated__icon {
+  color: var(--ta-fault);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-h1);
+  line-height: 1;
+}
+
+.ta-colony-eliminated__title {
+  margin: 0;
+  color: var(--ta-fault);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-h2);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-colony-eliminated__detail {
+  margin: 0;
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  line-height: 1.5;
+}
+
+.ta-colony-eliminated__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: var(--ta-s3) var(--ta-s6);
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border: 0;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-body);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-m) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-m)),
+    calc(100% - var(--ta-chamfer-m)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-m)
+  );
+  transition: transform var(--ta-dur-quick) ease, background-color var(--ta-dur-quick) ease;
+}
+
+.ta-colony-eliminated__btn:hover {
+  background: var(--ta-orange-hi);
+  transform: translateY(-2px);
+}
+
+.ta-colony-eliminated__btn:active {
+  transform: translateY(1px);
+}
