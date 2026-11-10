@@ -733,7 +733,7 @@ model EconomyLogisticsPolicy {
 // --- guild.prisma ---
 /// Guild NPC wallet and its one explicit funding allocation (W15-05, NEAR-70, NEAR-73).
 /// Mock cargo, when any, is only `inventory_cache` lines labelled `fixture`. The quote budget is a finite `subsidy`.
-/// `cash_enabled` stays 0. Spend and loss move only when a later issue records them; boot does not reset them.
+/// `cash_enabled` stays 0. The live exposure book is `guild_funding` (W15-12). Boot does not reset counters.
 model GuildNpc {
   id                String   @id @db.VarChar(32)
   accountId         String   @unique @map("account_id") @db.VarChar(64)
@@ -754,6 +754,25 @@ model GuildNpc {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("guild_npc")
+  @@schema("chain")
+}
+
+/// Per-NPC and global cash and inventory exposure (W15-12, NEAR-73). `scope` is the npc id or `global`.
+/// A missing npc row is seeded once from `guild_npc.quote_budget_atomic`. Only `topUp` raises a cash cap.
+model GuildFunding {
+  scope              String   @id @db.VarChar(32)
+  kind               String   @db.VarChar(16)
+  allocationId       String?  @unique @map("allocation_id") @db.VarChar(96)
+  cashCapAtomic      Decimal  @default(0) @map("cash_cap_atomic") @db.Decimal(78, 0)
+  cashReservedAtomic Decimal  @default(0) @map("cash_reserved_atomic") @db.Decimal(78, 0)
+  cashSpentAtomic    Decimal  @default(0) @map("cash_spent_atomic") @db.Decimal(78, 0)
+  inventoryCapUnits  Decimal  @default(0) @map("inventory_cap_units") @db.Decimal(78, 0)
+  inventoryReserved  Decimal  @default(0) @map("inventory_reserved") @db.Decimal(78, 0)
+  inventorySpent     Decimal  @default(0) @map("inventory_spent") @db.Decimal(78, 0)
+  killed             Boolean  @default(false)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("guild_funding")
   @@schema("chain")
 }
 
