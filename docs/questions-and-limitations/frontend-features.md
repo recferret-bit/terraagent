@@ -1482,3 +1482,13 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Any later control marked `data-living-op` in the HUD gets the same `data-boosted` flag. The chips hide when the boost ends.
 - **To resolve:** When Irrigate and Seed become real dock buttons, keep `data-living-op` on them and drop these chips.
 - **Found:** 2026-11-10, W22-15
+
+### FF-105 · Council timers read the sim blob; the form reads API project costs
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/councilModel.ts`, `frontend/game/features/treasury/CouncilPanel.ts`, `backend/app/src/near/treasury/council-view.ts` (`projects`)
+- **What happens:** `GET /v1/near/treasury/:planetId` still returns `effects: []` (BE-80). The Council sheet shows a timer only when `blobs.treasury` or that array has `untilTick` ahead of the view tick. Form costs are the `projects` array on that GET (the `treasury` table: meteor shield 1500, terraform boost 1000, guild subsidy 800). The component does not keep its own copy. `guild_subsidy` stays in the list while the API sends it (BE-78). The Planet menu is a HUD button mounted by the treasury feature; wave W22 off removes the feature, so the Council item is absent. Phone landscape was checked with the sheet's max box (420×320 inside a 16 px gutter, scroll on the body) against 740×360, not with a screenshot.
+- **Why it is like this:** W22-09 has not started `system.treasuryEffect`, so the live clock is the sim blob the badges already use. W22-14 was told not to hide `guild_subsidy`. No browser was opened for this issue.
+- **Workaround / mitigation:** A `treasury.proposal` push updates the open sheet's vote count. Change a cost in `shared/sim/src/data/treasury.ts` and reload; the form shows `projects` from the API. Another feature can add a Planet menu row with `registerPlanetMenuItem` while this feature is mounted.
+- **To resolve:** When W22-09 fills `effects`, the sheet already reads that array. Hide `guild_subsidy` only if the API stops sending it.
+- **Found:** 2026-11-10, W22-14

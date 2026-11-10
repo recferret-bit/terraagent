@@ -1000,10 +1000,10 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/near/treasury/guild-subsidy.ts` (`applyGuildSubsidy`, `scheduleExtraVisit`), `shared/db/prisma/near-treasury.prisma` (`ChainGuildVisit`)
-- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council does not hide the kind yet (W22-14). Approving a proposal through the council API does not call this hook yet (BE-80). The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
+- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council form lists `guild_subsidy` whenever `GET /v1/near/treasury/:planetId` includes it in `projects` (W22-14). It does not check W15. Approving a proposal through the council API does not call this hook yet (BE-80). The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
 - **Why it is like this:** W15-09's `scheduleExtraVisit` and quote engine are absent. D-45 says a subsidy visit is never organic. The `organic` column false is that guarantee.
 - **Workaround / mitigation:** Call `applyGuildSubsidy(planetId)` when a `guild_subsidy` effect is applied. The inserted row stays `organic` false.
-- **To resolve:** W22-08 should call `applyGuildSubsidy` when a `guild_subsidy` proposal is Approved. W15 should add quotes without setting `organic`. W22-14 hides the kind when W15 is off.
+- **To resolve:** W22-08 should call `applyGuildSubsidy` when a `guild_subsidy` proposal is Approved. W15 should add quotes without setting `organic`. Hide `guild_subsidy` in the Council form only when the API omits that project. W22-14 was told to keep the kind.
 - **Found:** 2026-11-10, W22-12
 
 ### BE-79 · deliver_units completes the chain row from cargo transfers

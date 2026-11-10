@@ -4,6 +4,7 @@ import type {
   MarketBookPayload,
   MarketTradePayload,
   ServerMessage,
+  TreasuryProposalPush,
 } from '@terra/contracts';
 import type { Emitter } from '../../net/emitter';
 import type { ClientView } from '../replica/viewCodec';
@@ -59,6 +60,7 @@ export function handleFeatureServerMessage(
     marketBooks: Emitter<MarketBookPayload>;
     marketTrades: Emitter<MarketTradePayload>;
     deedUpdates: Emitter<DeedUpdatedPayload>;
+    treasuryProposals: Emitter<TreasuryProposalPush>;
   },
 ): boolean {
   switch (m.t) {
@@ -79,6 +81,9 @@ export function handleFeatureServerMessage(
       return true;
     case 'deed.updated':
       deps.deedUpdates.emit(m.d);
+      return true;
+    case 'treasury.proposal':
+      deps.treasuryProposals.emit(m.d);
       return true;
     default:
       return false;

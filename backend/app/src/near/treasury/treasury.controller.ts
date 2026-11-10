@@ -10,6 +10,7 @@ import { TreasuryProposalsService } from './proposals.service.js';
  * The caller is the session colony's account. Under `NODE_ENV=test` only, body `colonyAccountId`
  * or header `x-colony-account-id` names that account (integration tests have no session).
  * 404 when W22 is off. Active effects stay empty until W22-09 sends `system.treasuryEffect`.
+ * `projects` lists table costs from `shared/sim/src/data/treasury.ts`, including `guild_subsidy`.
  */
 @Controller('near/treasury')
 export class TreasuryController {
