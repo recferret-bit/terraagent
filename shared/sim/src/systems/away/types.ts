@@ -48,6 +48,8 @@ export interface AwayCommand {
   readonly defensive?: boolean;
   /** Result of `withinAutoTrade` (W09-13). Absent on a trade means outside the limits. */
   readonly withinAutoTrade?: boolean;
+  /** Optional explicit diplomacy policy check result (`UO-DIP-05`, `AW-13`). */
+  readonly withinDiplomacy?: boolean;
 }
 
 export type AwayDecision =

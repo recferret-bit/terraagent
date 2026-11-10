@@ -1,6 +1,16 @@
 import type { AwayAllowRule, AwayCommand, AwayPolicyView, BuildOrder } from './types';
 import { AWAY_FAMILIES } from './types';
-import { beaconTile, buildOrder, priorityPatch, repairOrder, unitOrder } from './orders';
+import {
+  beaconTile,
+  buildOrder,
+  isCancelTruce,
+  isRaidCommand,
+  isTruceCommand,
+  priorityPatch,
+  repairOrder,
+  unitOrder,
+  withinDiplomacyPolicy,
+} from './orders';
 
 const DEFENSE = new Set(['turret', 'pulseTurret', 'laserTower', 'watchtower', 'wall']);
 const POWER = new Set(['solar', 'battery', 'generator']);
@@ -87,6 +97,8 @@ function matchBeacon(view: AwayPolicyView, args: unknown): boolean {
 
 /** The first matching allow rule, or null when none of AW-01..07 apply. */
 export function allowRule(view: AwayPolicyView, command: AwayCommand): AwayAllowRule | null {
+  if (isCancelTruce(command) || isRaidCommand(command)) return null;
+  if (isTruceCommand(command)) return withinDiplomacyPolicy(view, command) ? 'AW-01' : null;
   if (command.kind === 'shedLoad') return 'AW-05';
   if (command.kind === 'setPriorities') return matchPriorities(view, command.args);
   const order = command.kind === 'enqueueTask' || command.kind === 'placeBuilding' ? buildOrder(command.args) : null;
