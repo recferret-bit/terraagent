@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "guild-pricing",
+  "version": 1,
+  "description": "W15-29: twenty quoteGuild asks on the compiled guild policy. No buyer population and no reference price. Not demand evidence.",
+  "waves": "..15",
+  "populations": [{ "cohort": "guild", "colonies": 0, "params": {} }],
+  "shocks": [],
+  "assumptions": {
+    "label": "NO DEMAND: this scenario does not invent buyers, volumes, or a reference price.",
+    "demandSource": "none",
+    "pricingSeed": 101,
+    "pricingSteps": 20,
+    "baseScenario": "w13",
+    "tradeResources": ["bio.water", "bio.biomass", "metals.t1", "minerals.t1"],
+    "gates": [
+      { "gateId": "econ.position_nonnegative", "gateVersion": 1, "metricKey": "inventory.position", "scope": "global", "resource": "bio.water", "aggregate": "min", "op": "gte", "threshold": "0" }
+    ]
+  }
+}
