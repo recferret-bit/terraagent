@@ -1276,6 +1276,21 @@ model MockChainStaking {
   @@schema("chain")
 }
 
+// --- near-treasury.prisma ---
+/// Subsidy Guild visit (`chain.guild_visit`, W22-12, NEAR-72). W15's scheduler is not in this tree.
+/// `organic` defaults false: there is no Guild quote engine here (D-45).
+model ChainGuildVisit {
+  id        String   @id @db.VarChar(64)
+  planetId  String   @map("planet_id") @db.VarChar(64)
+  arrivesAt DateTime @map("arrives_at") @db.Timestamptz(3)
+  subsidy   Boolean
+  organic   Boolean  @default(false)
+
+  @@index([planetId, arrivesAt])
+  @@map("guild_visit")
+  @@schema("chain")
+}
+
 // --- notify.prisma ---
 /// Web Push or Telegram subscription (DATA_MODEL, CT-35). A set `revoked_at` means the row is dead.
 model NotificationSubscription {
