@@ -12,6 +12,7 @@ import type { GuildFundingService } from '../../src/market/guild/funding/guild-f
 import type { GuildNpcRepository } from '../../src/market/guild/guild-npc.repository.js';
 import type { InventoryCache } from '../../src/market/guild/guild-plan.js';
 import { GuildMakerService, type GuildBookDiscovery } from '../../src/market/guild/maker/guild-maker.service.js';
+import type { GuildMetrics } from '../../src/market/guild/telemetry/guild-metrics.js';
 import type { GuildOrderPort, RestingGuildOrder } from '../../src/market/guild/maker/order-book.js';
 import { barterPairIds, tier1BarterPairs, TIER1_RESOURCES } from '../../src/market/guild/maker/pairs.js';
 import { cancelIds, intentsOf, planQuotes, type GuildOrderIntent, type MakerNpc, type QuoteContext } from '../../src/market/guild/maker/plan.js';
@@ -110,6 +111,34 @@ describe('guild maker loop (W15-08)', () => {
     expect(report.skipped).toContain('funding_cap');
     expect(harness.orders.placed).toHaveLength(1);
     expect(harness.funding.topped).toBe(false);
+  });
+
+  it('counts funding pauses from the gate and ignores a duplicate skip', async () => {
+    const reasons: string[] = [];
+    const harness = loop(flags, { reject: (reason) => reasons.push(reason) });
+    await harness.maker.onArrived(arrived());
+    await harness.maker.onArrived(arrived());
+    expect(reasons).toEqual([]);
+
+    harness.orders.rows.splice(0);
+    harness.funding.left = 0n;
+    const capped = await harness.maker.onArrived(arrived());
+    const caps = capped.skipped.filter((reason) => reason === 'funding_cap');
+    expect(caps.length).toBeGreaterThan(0);
+    expect(reasons).toEqual(caps);
+
+    const gate = harness.funding as unknown as {
+      allowQuote: () => Promise<{ ok: true }>;
+      reserve: () => Promise<{ ok: false; reason: string }>;
+    };
+    gate.allowQuote = () => Promise.resolve({ ok: true });
+    gate.reserve = () => Promise.resolve({ ok: false, reason: 'inventory_short' });
+    harness.orders.rows.splice(0);
+    reasons.length = 0;
+    const shorts = await harness.maker.onArrived(arrived());
+    expect(shorts.skipped).toContain('inventory_short');
+    expect(reasons.every((reason) => reason === 'inventory_short')).toBe(true);
+    expect(reasons).toHaveLength(shorts.skipped.length);
   });
 
   it('kill cancels the resting guild quotes', async () => {
@@ -250,7 +279,10 @@ class CapFunding {
   }
 }
 
-function loop(wave: FlagsService = flags): { maker: GuildMakerService; orders: MemoryOrders; funding: CapFunding; calls: number } {
+function loop(
+  wave: FlagsService = flags,
+  telemetry?: { reject(reason: string): void },
+): { maker: GuildMakerService; orders: MemoryOrders; funding: CapFunding; calls: number } {
   const orders = new MemoryOrders();
   const funding = new CapFunding();
   let calls = 0;
@@ -271,6 +303,7 @@ function loop(wave: FlagsService = flags): { maker: GuildMakerService; orders: M
     undefined,
     orders,
     discovery,
+    telemetry as GuildMetrics | undefined,
   );
   return { maker, orders, funding, get calls() { return calls; } };
 }

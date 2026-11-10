@@ -26,6 +26,7 @@ the headless experiment runner uses the same code. Chain effects go through the 
 | Trade API (keys, allowance, orders, reads, SSE, agent quote) | `trade/` | W13 bots |
 | Guild NPC provisioning (one allocation, fixture cargo, subsidy quote budget) | `guild/` | W15-05 |
 | Guild strategy port (deterministic route and stockpile; LLM slot is not registered) | `guild/strategy/` | W15-13 |
+| Guild inventory, cash, PnL, exposure, subsidy and reference gauges | `guild/telemetry/` | W15-27 |
 
 ## Trade API for humans and bots (`trade/`)
 

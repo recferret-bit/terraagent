@@ -28,6 +28,7 @@ import {
   type GuildFillNotice, type OrderMeta, type RequoteReport,
 } from './requote.js';
 import { NpcTurnQueue } from './turn-queue.js';
+import { GuildMetrics } from '../telemetry/guild-metrics.js';
 
 export interface DockReport {
   readonly placed: readonly string[];
@@ -47,6 +48,7 @@ export const GUILD_BOOK_DISCOVERY = Symbol('GUILD_BOOK_DISCOVERY');
  * Actor kind is `npc`. The command source recorded on the order is `bot`. One overview call discovers the book.
  * Departure and the kill switch cancel those orders and release the funding hold.
  * A guild fill records cargo, consumes the funding hold, and replaces that quote in the same turn.
+ * A funding pause (`funding_cap`, `killed`, `cash_paused`, `inventory_short`) increments `guild_quote_rejected_total`.
  */
 @Injectable()
 export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFillSink {
@@ -66,6 +68,7 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(GUILD_ORDER_PORT) private readonly orders?: GuildOrderPort,
     @Optional() @Inject(GUILD_BOOK_DISCOVERY) private readonly discovery?: GuildBookDiscovery,
+    @Optional() private readonly telemetry?: GuildMetrics,
   ) {}
 
   onModuleInit(): void {
@@ -198,9 +201,14 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     const allowance = this.allowanceOf(key, intent, outstanding, committed);
     if (allowance) return allowance;
     const preview = await this.funding.allowQuote(quoteRequest(npc.npcId, intent, (wave) => this.flags.has(wave)));
-    if (!preview.ok) return preview.reason;
+    if (!preview.ok) return this.note(preview.reason);
     const held = await this.funding.reserve(npc.npcId, intent.bucket, intent.reserve);
-    return held.ok ? null : held.reason;
+    return held.ok ? null : this.note(held.reason);
+  }
+
+  private note(reason: string): string {
+    this.telemetry?.reject(reason);
+    return reason;
   }
 
   private allowanceOf(key: KeyRecord, intent: GuildOrderIntent, outstanding: number, committed: bigint): string | null {
