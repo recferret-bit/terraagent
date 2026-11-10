@@ -1025,3 +1025,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** A project the balance cannot cover throws `TREASURY_INSUFFICIENT` (HTTP 409) and writes no proposal. The shield, the boost, and the extra Guild visit wait until something sends `system.treasuryEffect`.
 - **To resolve:** W22-09 finalizes at `proposalTtlH`, pays from the DAO, and sends the effect command. W22-11 and W22-12 drop kinds whose waves are off.
 - **Found:** 2026-11-10, W22-08
+
+### BE-81 · Mock agent wallet only creates mercenary sub-accounts
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`, `backend/app/src/near/mercenary/accounts.service.ts`
+- **What happens:** W15-03 has not landed, so this branch's mock `AgentWalletPort` implements `createSubAccount` only. The same `opId` replays the stored receipt. The same account id does not insert a second row. `addLimitedKey` and `revokeKey` reject with `NEAR_UNAVAILABLE` and store no allowance. The parent `npc.terraagent.mock` is not created. A database error on boot is logged and does not stop the app; the next boot tries again.
+- **Why it is like this:** W22-27 has to create `merc-N.npc.terraagent.mock` through the port. Copying the unlanded W15 key ledger would collide with that wave. The funding cap stays on the roster row (LED-33) and is not minted.
+- **Workaround / mitigation:** Hire and payout code must keep using the roster `fundingCap`. Do not treat a successful boot as a funded balance.
+- **To resolve:** When W15-03 lands, replace this adapter with its allowance ledger. The seeder's stable `merc-account:{accountId}` opId still replays, and `NEAR_ACCOUNT_EXISTS` is treated as already created.
+- **Found:** 2026-11-10, W22-27

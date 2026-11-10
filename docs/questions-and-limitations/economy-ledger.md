@@ -404,3 +404,13 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Workaround / mitigation:** `tune mercenary.<light|heavy|reserve>.pricePerGameHour` changes the price. The value must stay a whole number of a known resource.
 - **To resolve:** Owner confirms or replaces the 100 / 200 `metals.t1` per game-hour prices, and whether the third account should stay a second light squad.
 - **Found:** 2026-11-10, W22-02
+
+### LED-33 · Mercenary funding cap is a proposed default
+
+- **Status:** Question for the owner
+- **Area / code:** `shared/sim/src/data/mercenary.ts` (`fundingCap`), `backend/app/src/near/mercenary/accounts.service.ts`
+- **What happens:** Each roster row carries `fundingCap` of 10000 `metals.t1`. W22-27 does not mint that balance. The number is the most that NPC may be paid. There is still no Tank or Artillery row.
+- **Why it is like this:** W22-27 requires a finite cap per NPC (NEAR-73) and the table had no cap column. 10000 `metals.t1` is the proposed default, same status as the LED-32 prices.
+- **Workaround / mitigation:** `tune mercenary.<light|heavy|reserve>.fundingCap` changes the ceiling. The value must stay a whole number of a known resource. Boot does not credit the account.
+- **To resolve:** Owner confirms or replaces 10000 `metals.t1`, and whether the cap is per resource or one shared pool.
+- **Found:** 2026-11-10, W22-27
