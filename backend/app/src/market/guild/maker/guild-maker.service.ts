@@ -149,9 +149,18 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     return { npcId: row.npcId, accountId: row.accountId, tradeKeyId: row.tradeKeyId, inventory: row.inventory, lossAtomic: row.lossAtomic };
   }
 
-  private overview(planetId: string): Promise<TradeOverviewResponse> {
+  private async overview(planetId: string): Promise<TradeOverviewResponse> {
     if (this.discovery) return this.discovery.overview(planetId);
-    return this.moduleRef.get(TradeReadService, { strict: false }).overview(planetId);
+    const res = await this.moduleRef.get(TradeReadService, { strict: false }).overview(planetId);
+    if (this.env?.TA_SEED_RIVAL_AI !== '1' && this.env?.TA_SEED_RIVAL_AI !== 'true') return res;
+    return {
+      ...res,
+      overview: res.overview.map((row) =>
+        row.last === null && row.bestBid === null && row.bestAsk === null
+          ? { ...row, last: { num: '1', den: 1 }, volume24h: Math.max(100, row.volume24h) }
+          : row,
+      ),
+    };
   }
 
   private port(): GuildOrderPort {

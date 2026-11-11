@@ -4,8 +4,9 @@ import {
   resolveTileSector,
 } from '../../atlas/crossSectorGameplay';
 import { ENTITY_STATE } from '../../ecs/columns';
-import { hexIndex } from '../../grid/hex';
+import { hexDistance, hexIndex } from '../../grid/hex';
 import type { PlanetState } from '../../kernel/state';
+import { isRivalAiColony, readRivalAiBlob } from '../rival-ai/store';
 import { getPvpState, savePvpState } from './store';
 
 /**
@@ -71,6 +72,9 @@ export function canRaidTargetSector(
   targetColony: number,
 ): SectorRaidGuardResult {
   const attackerSectorId = resolveColonySectorId(state, attackerColony);
+  if (isRivalAiColony(state, attackerColony) || isRivalAiColony(state, targetColony)) {
+    return { ok: true, sectorId: attackerSectorId };
+  }
   const targetSectorId = resolveColonySectorId(state, targetColony);
   if (attackerSectorId !== targetSectorId && !isCrossSectorRaidEnabled(state)) {
     return {
@@ -95,7 +99,9 @@ export function canAttackMoveToTileSector(
   q: number,
   r: number,
 ): { ok: true } | { ok: false; code: 'cross_sector_disabled' } {
-  if (isCrossSectorRaidEnabled(state)) return { ok: true };
+  if (isCrossSectorRaidEnabled(state) || isRivalAiColony(state, attackerColony)) return { ok: true };
+  const rivals = Object.values(readRivalAiBlob(state).rivals);
+  if (rivals.some((rv) => hexDistance(rv.anchorQ, rv.anchorR, q, r) <= 12)) return { ok: true };
 
   const tileIdx = hexIndex(state.grid.radius).indexOf(q, r);
   if (tileIdx >= 0) {

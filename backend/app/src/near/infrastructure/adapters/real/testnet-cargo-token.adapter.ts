@@ -1,5 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { PrismaClient } from '@terra/db';
+import { databaseEnabled } from '../../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
+import { PRISMA } from '../../../../db/db.module.js';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
   CARGO_MINTER_ACCOUNT,
@@ -22,11 +25,16 @@ import { OpReceiptCache } from './op-receipt-cache.js';
 @Injectable()
 export class TestnetCargoTokenAdapter implements CargoTokenPort {
   private readonly rpc: NearRpcClient;
+  private readonly prisma: PrismaClient | null;
   private readonly cache = new OpReceiptCache<ChainReceipt>();
 
-  constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
+  constructor(
+    @Optional() @Inject(APP_ENV) env?: AppEnv,
+    @Optional() @Inject(PRISMA) prisma?: PrismaClient,
+  ) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
     this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.prisma = databaseEnabled(env) ? (prisma ?? null) : null;
   }
 
   async mint(input: MintCargoInput): Promise<ChainReceipt> {
@@ -45,6 +53,7 @@ export class TestnetCargoTokenAdapter implements CargoTokenPort {
           amount: input.amount,
         },
       });
+      await this.mirrorBalanceDelta(input.to, input.tokenId, BigInt(input.amount));
       return receipt;
     });
   }
@@ -65,6 +74,7 @@ export class TestnetCargoTokenAdapter implements CargoTokenPort {
           amount: input.amount,
         },
       });
+      await this.mirrorBalanceDelta(input.from, input.tokenId, -BigInt(input.amount));
       return receipt;
     });
   }
@@ -85,7 +95,30 @@ export class TestnetCargoTokenAdapter implements CargoTokenPort {
           amount: input.amount,
         },
       });
+      await this.mirrorBalanceDelta(input.from, input.tokenId, -BigInt(input.amount));
+      await this.mirrorBalanceDelta(input.to, input.tokenId, BigInt(input.amount));
       return receipt;
+    });
+  }
+
+  private async mirrorBalanceDelta(accountId: string, tokenId: string, delta: bigint): Promise<void> {
+    if (!this.prisma?.mockChainBalance || delta === 0n) return;
+    await this.prisma.mockChainAccount.upsert({
+      where: { accountId },
+      create: { accountId, kind: 'colony' },
+      update: {},
+    });
+    const current = await this.prisma.mockChainBalance.findUnique({
+      where: { accountId_tokenId: { accountId, tokenId } },
+      select: { amount: true },
+    });
+    const have = current ? BigInt(current.amount.toFixed(0)) : 0n;
+    const next = have + delta;
+    const clamped = next > 0n ? next : 0n;
+    await this.prisma.mockChainBalance.upsert({
+      where: { accountId_tokenId: { accountId, tokenId } },
+      create: { accountId, tokenId, amount: clamped.toString() },
+      update: { amount: clamped.toString() },
     });
   }
 

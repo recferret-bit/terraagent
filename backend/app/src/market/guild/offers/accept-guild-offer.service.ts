@@ -15,7 +15,7 @@ import { GUILD_FILL_SINK, type GuildFillSink } from '../maker/fill-sink.js';
 import { GuildContactProducer } from '../../progression/guild-contact.producer.js';
 import { crossGuildOffer } from './cross-offer.js';
 import { GuildOffersService } from './guild-offers.service.js';
-import { ensureMockSigners } from './signers.js';
+import { ensureMockSigners, ensureVerifierBalance } from './signers.js';
 
 export interface AcceptGuildOfferInput {
   readonly offerId: string;
@@ -99,6 +99,14 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
       input.colonyIndex,
     );
     await ensureMockSigners(this.env, this.prisma, [accountId, judged.quote.npcAccountId, PLATFORM_ACCOUNT_ID]);
+    const npcSellToken = judged.quote.side === 'sell' ? judged.quote.base : judged.quote.quote;
+    const npcSellUnits = judged.quote.side === 'sell' ? judged.quote.amount : judged.quote.priceAmount * 2n;
+    await ensureVerifierBalance(this.prisma, judged.quote.npcAccountId, npcSellToken, npcSellUnits);
+    if (this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true') {
+      const playerSellToken = judged.quote.side === 'sell' ? judged.quote.quote : judged.quote.base;
+      const playerSellUnits = judged.quote.side === 'sell' ? judged.quote.priceAmount * 2n : judged.quote.amount * 2n;
+      await ensureVerifierBalance(this.prisma, accountId, playerSellToken, playerSellUnits);
+    }
     const crossed = await crossGuildOffer(
       this.prisma,
       this.repo,

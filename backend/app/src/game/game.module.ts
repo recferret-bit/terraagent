@@ -185,10 +185,14 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       this.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'digest restore failed');
     }
     this.wireSnapshotSavePoints();
-    if (this.env.TA_SEED_RIVAL_AI === '1' && this.flags.has('W18')) {
+    const seedRivalAi = this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true';
+    if (seedRivalAi && this.flags.has('W18')) {
       this.planets.onPlanetLoaded((planetId, _tick, info) => {
         if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
       });
+      if (this.env.NODE_ENV !== 'test') {
+        this.colonyAgentLoop.start();
+      }
     }
     await this.pool.start();
     this.unsubBridge = bridgePlanetEvents(
@@ -286,6 +290,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.colonyAgentLoop.stop();
     this.unsubBridge?.();
     this.unsubBridge = undefined;
     this.unsubDigest?.();

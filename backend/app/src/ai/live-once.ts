@@ -26,9 +26,11 @@ function redactAll(text: string, secrets: readonly (string | undefined)[]): stri
 /** One live completion. The report never includes the API key. */
 export async function liveOnce(env: Record<string, string | undefined>): Promise<LiveReport> {
   const started = Date.now();
-  const useNearAi = env.AI_PROVIDER === 'nearai' || (env.AI_PROVIDER !== 'zai' && Boolean(env.NEAR_AI_API_KEY || env.NEARAI_CLOUD_API_KEY));
+  const useNearAi =
+    env.AI_PROVIDER === 'nearai' ||
+    (env.AI_PROVIDER !== 'zai' && Boolean(env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY));
   const model = useNearAi
-    ? env.NEAR_AI_MODEL || env.AI_MODEL || 'deepseek-ai/DeepSeek-V3.1'
+    ? env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || 'deepseek-ai/DeepSeek-V3.1'
     : env.AI_MODEL || 'glm-5.3';
   try {
     const adapter = useNearAi ? new NearAiLlmAdapter() : new ZaiLlmAdapter();
@@ -52,7 +54,7 @@ export async function liveOnce(env: Record<string, string | undefined>): Promise
       latencyMs: Date.now() - started,
       inputTokens: null,
       outputTokens: null,
-      error: redactAll(name, [env.ZAI_API_KEY, env.NEAR_AI_API_KEY, env.NEARAI_CLOUD_API_KEY]),
+      error: redactAll(name, [env.ZAI_API_KEY, env.NEAR_AI_API_KEY, env.NEARAI_API_KEY, env.NEARAI_CLOUD_API_KEY]),
     };
   }
 }

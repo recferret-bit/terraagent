@@ -27,7 +27,7 @@ export class MarketAccountsBootstrap implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    if (this.env.NODE_ENV === 'production' || !databaseEnabled(this.env)) return;
+    if (!databaseEnabled(this.env)) return;
     try {
       await this.ensure();
     } catch (err) {

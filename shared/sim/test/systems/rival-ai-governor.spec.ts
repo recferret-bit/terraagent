@@ -134,6 +134,7 @@ describe('Rival AI diplomacy, raids, terraforming, slot yielding & AW-13 block',
     expect(out.outcomes[0]?.code).toBeUndefined();
     expect(isRivalAiColony(host.state, 4)).toBe(false);
     expect(host.state.colonies[4]?.name).toBe('Human Settler');
+    expect(readDiplomacyBlob(host.state).contactsByColony[4]).toContain(5);
   });
 
   it('enforces AW-13 hard block: AI and director can NEVER cancel an active truce early even while online', () => {

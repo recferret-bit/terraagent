@@ -40,9 +40,40 @@ export class TestnetRelayerAdapter implements RelayerPort {
       const realDelegate = await this.buildTestDelegate();
       return this.rpc.relaySignedDelegate(realDelegate);
     }
+    if (signedDelegate.trim().startsWith('{')) {
+      const storageDepositReceipt = await this.tryExecuteStorageDepositJson(signedDelegate);
+      if (storageDepositReceipt) return storageDepositReceipt;
+    }
     void signerId;
     void receiverId;
     return this.rpc.relaySignedDelegate(signedDelegate);
+  }
+
+  private async tryExecuteStorageDepositJson(signedDelegate: string): Promise<ChainReceipt | null> {
+    let parsed: { action?: string; account_id?: string };
+    try {
+      parsed = JSON.parse(signedDelegate) as { action?: string; account_id?: string };
+    } catch {
+      return null;
+    }
+    if (parsed.action !== 'storage_deposit') return null;
+    const secretKey = this.rpc.config.secrets.relayerSecretKey ?? this.rpc.config.secrets.minterSecretKey;
+    if (!secretKey) {
+      throw new NearException('NEAR_UNAVAILABLE', {
+        message: 'Missing NEAR_RELAYER_SECRET_KEY or NEAR_MINTER_SECRET_KEY for Relayer storage_deposit',
+      });
+    }
+    const signerAccountId = this.rpc.config.secrets.relayerSecretKey
+      ? this.rpc.config.accounts.relayer
+      : this.rpc.config.accounts.minter;
+    const { receipt } = await this.rpc.call({
+      signerAccountId,
+      signerSecretKey: secretKey,
+      contractId: this.rpc.config.contracts.res,
+      methodName: 'storage_deposit',
+      args: parsed.account_id ? { account_id: parsed.account_id } : {},
+    });
+    return receipt;
   }
 
   private async buildTestDelegate(): Promise<string> {

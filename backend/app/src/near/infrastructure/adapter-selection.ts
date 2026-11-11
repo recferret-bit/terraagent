@@ -13,6 +13,8 @@ const PORT_ALIASES: Partial<Record<NearPortName, string>> = {
   TreasuryDao: 'NEAR_ADAPTER_TREASURY',
 };
 
+const TESTNET_MOCK_FALLBACK_PORTS: ReadonlySet<NearPortName> = new Set(['BadgeNft', 'Staking', 'TreasuryDao']);
+
 const parseNearKind = (raw: string | undefined): NearAdapterKind | undefined => {
   if (raw === 'testnet' || raw === 'devnet') return 'testnet';
   if (raw === 'mainnet') return 'mainnet';
@@ -25,6 +27,8 @@ const parseNearKind = (raw: string | undefined): NearAdapterKind | undefined => 
  * Fail-closed: only the exact strings `testnet`, `devnet` (mapped to `testnet`), `mainnet`, and `mock`
  * count; unset, a typo or different case (`Mainnet`) all mean `mock`. Per-port `NEAR_ADAPTER_<PORT>`
  * (or its short alias) overrides the global `NEAR_MODE` default when explicitly set.
+ * Under `NEAR_MODE=testnet` (or `devnet`), the 3 ports that remain mock (`BadgeNft`, `Staking`,
+ * `TreasuryDao`) default to `'mock'` unless explicitly overridden via `NEAR_ADAPTER_<PORT>`.
  */
 export function nearAdapterFor(port: NearPortName, env: Source): NearAdapterKind {
   const alias = PORT_ALIASES[port];
@@ -32,7 +36,11 @@ export function nearAdapterFor(port: NearPortName, env: Source): NearAdapterKind
   if (rawPort !== undefined && rawPort !== '') {
     return parseNearKind(rawPort) ?? 'mock';
   }
-  return parseNearKind(env.NEAR_MODE) ?? 'mock';
+  const mode = parseNearKind(env.NEAR_MODE) ?? 'mock';
+  if (mode === 'testnet' && TESTNET_MOCK_FALLBACK_PORTS.has(port)) {
+    return 'mock';
+  }
+  return mode;
 }
 
 export const NEAR_PORT_KEYS: readonly { port: NearPortName; key: string }[] = NEAR_PORT_NAMES.map((port) => ({ port, key: nearAdapterKey(port) }));

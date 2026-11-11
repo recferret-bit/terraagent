@@ -16,6 +16,7 @@ import {
 } from './guild-plan.js';
 import { GuildTradeKeyBinder } from './guild-trade-key.binder.js';
 import { GuildWalletBinder } from './guild-wallet.binder.js';
+import { TIER1_RESOURCES } from './maker/pairs.js';
 
 /**
  * Boot provisioning for the Guild roster (W15-05). One sub-account, one limited key, one bot API key
@@ -46,10 +47,25 @@ export class GuildProvisionService implements OnModuleInit {
     if (!this.enabled()) return [];
     const policy = this.policy();
     const ready = await this.ready(policy);
-    if (ready) return ready;
+    if (ready) return this.seedColdStartIfRequested(ready);
     const out: GuildAllocation[] = [];
     for (const npc of policy.roster) out.push(await this.ensureKnown(npc, policy));
-    return out;
+    return this.seedColdStartIfRequested(out);
+  }
+
+  private async seedColdStartIfRequested(rows: readonly GuildAllocation[]): Promise<readonly GuildAllocation[]> {
+    if (this.env?.TA_SEED_RIVAL_AI !== '1' && this.env?.TA_SEED_RIVAL_AI !== 'true') return rows;
+    const updated: GuildAllocation[] = [];
+    for (const row of rows) {
+      let current = row;
+      if (current.inventory.lines.length === 0) {
+        for (const res of TIER1_RESOURCES) {
+          current = (await this.allocateFixtureCargo(current.npcId, res, 2500)) ?? current;
+        }
+      }
+      updated.push(current);
+    }
+    return updated;
   }
 
   async ensureNpc(npcId: string): Promise<GuildAllocation | null> {

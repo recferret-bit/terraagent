@@ -26,15 +26,14 @@ describe('W23 real NEAR testnet infrastructure & adapters', () => {
     const ctrl = new NearStatusController(new InMemoryChainRead(), {
       NODE_ENV: 'test',
       NEAR_MODE: 'testnet',
-      NEAR_ADAPTER_BADGE: 'mock',
-      NEAR_ADAPTER_STAKING: 'mock',
-      NEAR_ADAPTER_TREASURY: 'mock',
       NEAR_ROOT_SECRET_KEY: 'ed25519:super-secret-do-not-expose',
     } as never);
     const status = await ctrl.status();
     expect(status.nearMode).toBe('testnet');
     expect(status.ports.find((p) => p.port === 'CargoToken')?.mode).toBe('testnet');
     expect(status.ports.find((p) => p.port === 'BadgeNft')?.mode).toBe('mock');
+    expect(status.ports.find((p) => p.port === 'Staking')?.mode).toBe('mock');
+    expect(status.ports.find((p) => p.port === 'TreasuryDao')?.mode).toBe('mock');
     expect(JSON.stringify(status)).not.toContain('super-secret-do-not-expose');
   });
 

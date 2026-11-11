@@ -1,4 +1,5 @@
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { systemActor, treasury, treasuryCtx } from '../../economy';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { colonyIsAway, resolveColonyAwayRaids } from '../away/gate';
@@ -233,6 +234,28 @@ function tryStage4WarTerraformOrExpand(
   }
 
   const tfStats = colonyTerraformStats(state, colonyIndex);
+  if (
+    tfStats.livingTiles < 6 &&
+    Number(stock['metals.t1'] ?? 0) >= 260 &&
+    (Number(stock['bio.water'] ?? 0) < 35 || Number(stock['minerals.t1'] ?? 0) < 20)
+  ) {
+    const t = treasury(state, treasuryCtx(tick, ctx));
+    const sub = t.withdraw({
+      colony: colonyIndex,
+      amounts: { 'metals.t1': 40 },
+      reason: 'trade',
+      actor: systemActor('rival-ai'),
+    });
+    if (sub.ok) {
+      t.add({
+        colony: colonyIndex,
+        amounts: { 'bio.water': 40, 'minerals.t1': 25 },
+        reason: 'trade',
+        actor: systemActor('rival-ai'),
+        clampToCap: true,
+      });
+    }
+  }
   if (Number(stock['bio.water'] ?? 0) >= 35 && Number(stock['minerals.t1'] ?? 0) >= 20 && tfStats.livingTiles < 6) {
     const q = queueColonyGoal(state, colonyIndex, { goal: 'terraform_zone', params: { target: tfStats.livingTiles + 2 } }, tick, ctx);
     if (q.ok) return { colonyIndex, action: 'terraform_zone', detail: `Queued terraform_zone → ${tfStats.livingTiles + 2} Living hexes` };
@@ -253,7 +276,7 @@ function tryStage4WarTerraformOrExpand(
 }
 
 export function runPlanetGovernorTick(state: PlanetState, ctx: StepContext): void {
-  if (!isPlanetGovernorEnabled(state)) return;
+  if (!isPlanetGovernorEnabled(state) && !state.colonies.some((c) => c && colonyIsAway(state, c.index))) return;
   const blob = readRivalAiBlob(state);
   let changed = false;
   for (const col of state.colonies) {

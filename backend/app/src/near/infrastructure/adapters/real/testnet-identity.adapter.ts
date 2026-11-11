@@ -15,6 +15,7 @@ import {
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { labelChoices } from '../../../identity/account-allocate.js';
+import { registerPreSealedAccountKey } from '../../../identity/colony-account-write.js';
 import { kekEnv } from '../../../identity/colony-accounts.js';
 import { mockOauthSecret, verifyMockToken } from '../../../identity/mock-token.js';
 import { KeyStore, loadKekRing } from '../../../keystore/index.js';
@@ -117,6 +118,7 @@ export class TestnetIdentityAdapter implements IdentityPort {
           initialNear: '0.02',
         });
         this.createdKeys.set(accountId, { seed: generated.seed, publicKey: generated.row.publicKey });
+        registerPreSealedAccountKey(accountId, generated.row);
         return { accountId, receipt };
       }
       throw new NearException('NEAR_NAME_TAKEN');
@@ -133,9 +135,9 @@ export class TestnetIdentityAdapter implements IdentityPort {
     }
 
     return this.claimCache.run(input.opId, async () => {
-      const seed = storedRow ? this.keys().open(storedRow) : memKey!.seed;
-      const signerSecret = seedToNearSecretKey(seed);
-      const receipt = await this.rpc.addFullAccessKey(input.accountId, signerSecret, input.walletPublicKey);
+      const target = await this.resolveClaimTarget(input.accountId, storedRow, memKey);
+      const signerSecret = seedToNearSecretKey(target.seed);
+      const receipt = await this.rpc.addFullAccessKey(target.accountId, signerSecret, input.walletPublicKey);
       if (this.prisma?.nearColonyAccount && storedRow) {
         await this.prisma.nearColonyAccount.updateMany({
           where: { accountId: input.accountId },
@@ -147,6 +149,23 @@ export class TestnetIdentityAdapter implements IdentityPort {
       }
       return receipt;
     });
+  }
+
+  private async resolveClaimTarget(
+    requestedAccountId: string,
+    storedRow: { accountId: string; ownerAccountId: string; publicKey: string; encryptedSecret: string; kekVersion: number } | null,
+    memKey: { seed: Buffer; publicKey: string } | undefined,
+  ): Promise<{ accountId: string; seed: Buffer }> {
+    if (memKey) return { accountId: requestedAccountId, seed: memKey.seed };
+    if (storedRow && storedRow.accountId.endsWith('.mock') && !storedRow.ownerAccountId.endsWith('.mock')) {
+      const ownerMem = this.createdKeys.get(storedRow.ownerAccountId);
+      if (ownerMem) return { accountId: storedRow.ownerAccountId, seed: ownerMem.seed };
+      const ownerRow = await this.prisma?.nearColonyAccount.findUnique({
+        where: { accountId: storedRow.ownerAccountId },
+      });
+      if (ownerRow) return { accountId: ownerRow.accountId, seed: this.keys().open(ownerRow) };
+    }
+    return { accountId: requestedAccountId, seed: this.keys().open(storedRow!) };
   }
 
   private keys(): KeyStore {

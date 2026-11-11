@@ -21,8 +21,8 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 | Do | See |
 |---|---|
 | `curl 127.0.0.1:4001/v1/healthz` and `/v1/readyz` | `{"ok":true}` and `{"db":"ok","simThreads":N}` (N = cores − 1 unless `SIM_THREADS` is set) |
-| Open http://127.0.0.1:5173/dev/economy-sim/ and click **RUN 7-DAY FAST-FORWARD** | 3 autonomous colonies (*Verdant Collective*, *Iron Guild Outpost*, *Crimson Vanguard*) simulate 7 days in `< 1 s`: SVG spot-price curves, NPC Guild VWAP quotes, Living hex cultivation, raids, peace truces, and all 3 Track `07` safety guardrail blocks (`AW-13`, `D-18`, allowance cap) |
-| Open http://127.0.0.1:5173/play.html?scenario=w18 | Persistent multi-colony planet: colony stays **100% manual** while `AI AUTOPILOT: OFF`; open **Colony → DIRECTOR** and click **`AI AUTOPILOT: ON`** (plus **`Allow War & Diplomacy`**) to hand your colony to the autonomous governor |
+| Open http://127.0.0.1:5173/dev/economy-sim/ and click **FAST-FORWARD 7 DAYS** | 3 autonomous colonies (*Verdant Collective*, *Iron Guild Outpost*, *Crimson Vanguard*) simulate 7 days in `< 1 s`: SVG spot-price curves, NPC Guild VWAP quotes, Living hex cultivation, raids, peace truces, and all 3 Track `07` safety guardrail blocks (`AW-13`, `D-18`, allowance cap) |
+| Open http://127.0.0.1:5173/play.html?scenario=w18 | Persistent multi-colony planet: colony stays **100% manual** while `AI AUTOPILOT: OFF`; open the top-right HUD **DIRECTOR** button and click **`AI AUTOPILOT: ON`** (plus **`Allow War & Diplomacy`**) to hand your colony to the autonomous governor |
 | Open http://127.0.0.1:5173/play.html?scenario=w05 → **Terraform (`[T]`)** → **`CULTIVATE [V]`** | Click Prepared/Flat hexes to step `Grade → Irrigate → Seed → Living` (`Terraform %` rises and unlocks D-34 T2/T3 extractor tiers) |
 | Open http://127.0.0.1:5173/play.html?scenario=w00 and type `warp 10` in the dev console (`` ` ``) | Flat hex planet; tick rate rises from 5/s to 50/s (`×10` badge); `npm run dev:restart` reconnects and resumes from the saved snapshot tick |
 | Open http://127.0.0.1:5173/dev/chain/ in a second tab, then run `chain.ping` in the play console | A receipt appears in the chain explorer (`mock:` locally, or real NEAR Testnet tx hash under `NEAR_MODE=testnet`) |
@@ -35,12 +35,12 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 # Run live against deployed *.terraagent.testnet contracts + NEAR AI Cloud TEE:
 NEAR_MODE=testnet \
 NEAR_ADAPTER_BADGE=mock NEAR_ADAPTER_STAKING=mock NEAR_ADAPTER_TREASURY=mock \
-AI_PROVIDER=nearai NEARAI_API_KEY=<your_nearai_key> \
+AI_PROVIDER=nearai AI_LIVE=1 NEARAI_API_KEY=<your_nearai_key> \
 TA_SEED_RIVAL_AI=1 \
 npm run dev
 
 # Verify live NEAR Testnet contract suites directly against rpc.testnet.fastnear.com:
-npm run contract:real
+npm run contract:real -- --port ChainRead
 ```
 
 Full developer reference (every URL parameter, dev console command, REST route, env variable, and debug handle): [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md).
@@ -55,7 +55,7 @@ npm run check          # typecheck + lint + check:structure + gen:check
 npm test               # unit tests (no Postgres)
 npm run test:integration   # tests against a fresh, throwaway Postgres database
 npm run test:contract  # NEAR port contract suites against the mocks
-npm run contract:real  # Live NEAR Testnet contract suites against *.terraagent.testnet
+npm run contract:real -- --port <Port>  # Live NEAR Testnet contract suite against *.terraagent.testnet
 npm run e2e -- --waves ..00 [--hack] [--host local]   # headless-Chrome wave suites
 npm run test:parity    # same scenario + command log on the server host and the browser host
 npm run ci:fast        # check + unit + build

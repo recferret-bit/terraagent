@@ -87,7 +87,7 @@ function pickRivalAnchors(state: PlanetState, count: number): Array<{ q: number;
     }
   }
   const candidates: Array<{ q: number; r: number }> = getSpawnSlots(state).map((s) => ({ q: s.q, r: s.r }));
-  const r = Math.max(6, Math.floor(state.grid.radius * 0.55));
+  const r = Math.max(6, Math.floor(Math.min(state.grid.radius, 42) * 0.55));
   candidates.push({ q: r, r: 0 }, { q: -r, r: r }, { q: 0, r: -r }, { q: -r, r: 0 });
 
   const chosen: Array<{ q: number; r: number }> = [];
@@ -121,7 +121,7 @@ function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy
   if (mineralTile >= 0) state.grid.layers.deposit[mineralTile] = DEPOSIT.minerals;
 }
 
-function linkAllActiveColonyContacts(state: PlanetState, tick: number): void {
+export function linkAllActiveColonyContacts(state: PlanetState, tick: number): void {
   const activeIndices = state.colonies
     .filter((c): c is NonNullable<typeof c> => Boolean(c && c.status !== 'eliminated'))
     .map((c) => c.index);

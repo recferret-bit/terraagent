@@ -2,6 +2,7 @@ import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { parseArgs } from '../command';
+import { enablePlanetGovernor } from '../rival-ai/store';
 import { presenceAway, writePresence } from './blob';
 import { resolvePresenceIndex } from './resolve';
 
@@ -24,6 +25,9 @@ function applyPresence(state: PlanetState, cmd: SimCommand, ctx: StepContext): s
   if (index === 'not_own_colony') return index;
   if (presenceAway(state, index) === args.away) return;
   writePresence(state, index, args.away, ctx.tick);
+  if (args.away && ctx.flags.has('W18')) {
+    enablePlanetGovernor(state, true, ctx.tick);
+  }
   ctx.emit({
     kind: args.away ? 'colonyAway' : 'colonyBack',
     colonyIds: [args.colonyId],

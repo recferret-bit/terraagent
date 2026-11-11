@@ -16,7 +16,7 @@ export const DEFAULT_NEAR_AI_MODEL = 'deepseek-ai/DeepSeek-V3.1';
 export type FetchLike = typeof globalThis.fetch;
 
 export function nearAiKey(env: Readonly<Record<string, string | undefined>>): string {
-  const key = env.NEAR_AI_API_KEY || env.NEARAI_CLOUD_API_KEY;
+  const key = env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY;
   if (!key) throw new Error(NEAR_AI_KEY_MISSING);
   return key;
 }
@@ -121,8 +121,8 @@ export class NearAiLlmAdapter extends LlmProviderPort {
 
   async complete(req: LlmRequest, env: Readonly<Record<string, string | undefined>> = process.env): Promise<LlmResponse> {
     const key = nearAiKey(env);
-    const baseUrl = (env.NEAR_AI_BASE_URL || env.AI_BASE_URL || DEFAULT_NEAR_AI_BASE).replace(/\/+$/, '');
-    const modelId = env.NEAR_AI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL;
+    const baseUrl = (env.NEAR_AI_BASE_URL || env.NEARAI_BASE_URL || env.AI_BASE_URL || DEFAULT_NEAR_AI_BASE).replace(/\/+$/, '');
+    const modelId = env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL;
     const messages = [
       ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
       ...req.messages.map((m) => ({ role: m.role, content: m.content })),

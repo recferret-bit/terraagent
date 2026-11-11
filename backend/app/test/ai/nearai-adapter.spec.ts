@@ -13,6 +13,7 @@ describe('NEAR AI Cloud LLM adapter & TEE attestation', () => {
   it('refuses to start without NEAR_AI_API_KEY and never leaks sibling secrets', async () => {
     const secret = 'sk-do-not-leak-me';
     expect(() => nearAiKey({})).toThrow(NEAR_AI_KEY_MISSING);
+    expect(nearAiKey({ NEARAI_API_KEY: 'nearai-alias-key' })).toBe('nearai-alias-key');
     await expect(
       new NearAiLlmAdapter().complete(
         { system: 'sys', messages: [{ role: 'user', content: 'hi' }], maxTokens: 16 },

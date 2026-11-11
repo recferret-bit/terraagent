@@ -86,6 +86,8 @@ function afterUp(stack, target, catalog) {
   if (stack === 'backend') {
     steps.push(ssh(target, healthWait()));
     steps.push(ssh(target, 'docker exec terra-app npx prisma migrate deploy --schema shared/db/prisma/schema.prisma'));
+    steps.push(ssh(target, 'docker restart terra-app'));
+    steps.push(ssh(target, healthWait()));
   }
   for (const host of hostsByStack(catalog, stack)) steps.push(ssh(target, curlHost(host)));
   return steps;

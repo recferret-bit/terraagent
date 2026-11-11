@@ -9,6 +9,20 @@ import { colonyAccountCandidates } from './colony-account-id.js';
 /** Extra attempts after a unique clash (two logins, or login racing `colonyFounded`). */
 const RACE_RETRIES = 4;
 const PLAYER_SLOT = 'player';
+const PRE_SEALED_KEYS = new Map<string, ColonyKeyRow>();
+
+/**
+ * Registers a KEK-sealed key row already created on-chain (e.g. by `TestnetIdentityAdapter.createNamedAccount`)
+ * so `ensurePlayerRow` persists the exact on-chain keypair rather than generating a mismatched second key.
+ */
+export function registerPreSealedAccountKey(accountId: string, row: ColonyKeyRow): void {
+  const { publicKey, encryptedSecret, kekVersion } = row;
+  PRE_SEALED_KEYS.set(accountId, { publicKey, encryptedSecret, kekVersion });
+}
+
+export function getPreSealedAccountKey(accountId: string): ColonyKeyRow | undefined {
+  return PRE_SEALED_KEYS.get(accountId);
+}
 
 export interface EnsureColonyAccountsInput {
   readonly playerId: string;
@@ -75,7 +89,7 @@ async function ensurePlayerRow(tx: TransactionClient, keys: KeyStore, playerId: 
     await upsertMock(tx, existing.accountId, 'named', null);
     return existing.accountId;
   }
-  const sealed = seal(keys);
+  const sealed = getPreSealedAccountKey(ownerAccountId) ?? seal(keys);
   await tx.nearColonyAccount.create({
     data: {
       accountId: ownerAccountId,

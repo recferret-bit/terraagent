@@ -69,7 +69,7 @@ export interface ColonyObservation {
 }
 
 export const DEFAULT_AGENT_ALLOWANCE: TradeAllowance = {
-  allowedPairs: ['metals.t1/minerals.t1', 'bio.water/minerals.t1', 'bio.biomass/minerals.t1'],
+  allowedPairs: ['metals.t1/minerals.t1', 'metals.t1/bio.water', 'bio.water/minerals.t1', 'bio.biomass/minerals.t1'],
   maxOrderNotional: '500000000',
   maxOpenOrders: 4,
   dailyBudget: '2000000000',
@@ -148,6 +148,16 @@ export function deterministicDirective(obs: ColonyObservation): AgentDirective {
       rationale: 'Cultivating prepared hexes into Living ground.',
     };
   }
+  if (obs.stage >= 3 && (obs.stock['metals.t1'] ?? 0) >= 220 && ((obs.stock['bio.water'] ?? 0) < 35 || (obs.stock['minerals.t1'] ?? 0) < 25)) {
+    const scarce = (obs.stock['bio.water'] ?? 0) < 35 ? 'bio.water' : 'minerals.t1';
+    return {
+      action: 'trade',
+      tradePair: `metals.t1/${scarce}`,
+      tradeAmount: 25,
+      tradeNotionalAtomic: '25000000',
+      rationale: `Bartering surplus metals.t1 for scarce ${scarce}.`,
+    };
+  }
   return {
     action: 'queue_goal',
     goal: 'grow_economy',
@@ -209,6 +219,23 @@ export function buildSimCommandFromDirective(obs: ColonyObservation, directive: 
               ? { targetNetEnergyPerS: 10 }
               : undefined;
     return { ...base, kind: 'queueGoal', args: { goal: directive.goal, ...(params ? { params } : {}) } };
+  }
+  if (directive.action === 'trade') {
+    const [baseRes = 'metals.t1', quoteRes = 'minerals.t1'] = (directive.tradePair ?? 'metals.t1/minerals.t1').split('/');
+    const amount = directive.tradeAmount ?? 25;
+    return {
+      ...base,
+      kind: 'market.placeOrder',
+      args: {
+        side: 'sell',
+        resource: baseRes,
+        amount,
+        price: { token: quoteRes, amount: String(amount) },
+        ttlS: 600,
+        fillPolicy: 'partial',
+        director: true,
+      },
+    };
   }
   return null;
 }

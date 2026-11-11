@@ -60,7 +60,7 @@ export class TestnetEscrowAdapter implements EscrowPort {
           beneficiary: input.beneficiary,
           token_id: input.tokenId,
           amount: input.amount,
-          expires_at_ms: 0,
+          expires_at_ms: input.expiresAtMs ?? 0,
         },
       });
       return EscrowOpenResult.parse({ escrowId, receipt });

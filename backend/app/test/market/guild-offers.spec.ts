@@ -26,6 +26,7 @@ describe('curated Guild offers (W15-11)', () => {
     const kept = curateGuildOffers([worse, best]);
     expect(kept).toHaveLength(1);
     expect(kept[0]).toMatchObject({ offerId: guildOfferId('best', 0), action: 'buy', amount: 10, price: { token: 'minerals.t1', amount: '8' } });
+    expect(kept[0]?.reason).toContain('Guild kestrel selling surplus metals.t1');
 
     const higher = quote({ orderId: 'high', base: 'metals.t1', quote: 'minerals.t1', side: 'buy', priceAmount: 12n });
     const lower = quote({ orderId: 'low', base: 'metals.t1', quote: 'minerals.t1', side: 'buy', priceAmount: 5n });

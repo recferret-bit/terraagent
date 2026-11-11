@@ -28,13 +28,40 @@ export interface TickPlanetAgentsOptions {
   readonly usageByColony?: Record<number, AllowanceUsage>;
 }
 
+export const COLONY_AGENT_LOOP_MS = 45_000;
+
 @Injectable()
 export class ColonyAgentLoopService {
+  private timer: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private readonly planets: GamePlanets,
     @Inject(LlmProviderPort) private readonly llm: LlmProviderPort,
     @Optional() private readonly digests?: AwayDigestService,
   ) {}
+
+  start(intervalMs = COLONY_AGENT_LOOP_MS): void {
+    if (this.timer) return;
+    this.timer = setInterval(() => {
+      void this.sweepLoadedPlanets();
+    }, intervalMs);
+    this.timer.unref?.();
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  async sweepLoadedPlanets(): Promise<void> {
+    for (const planetId of this.planets.loadedIds()) {
+      try {
+        await this.tickPlanetAgents(planetId);
+      } catch {
+        // Non-fatal background agent sweep error
+      }
+    }
+  }
 
   /** Seeds 2 Stage-4 unshielded Rival AI Colonies (`Iron Guild Outpost` + `Crimson Vanguard`) on `planetId`. */
   async seedRivalsOnPlanet(planetId: string, count: 1 | 2 = 2): Promise<{ ok: boolean; planetId: string; appliedAtTick?: number; code?: string }> {

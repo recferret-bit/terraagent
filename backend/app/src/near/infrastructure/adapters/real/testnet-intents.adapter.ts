@@ -1,5 +1,6 @@
 import { createPublicKey, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { RESOURCE_KEYS, tokenKeyOfVerifierId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
@@ -79,8 +80,43 @@ export class TestnetIntentsAdapter implements IntentsPort {
 
   async deposit(input: IntentsDepositInput): Promise<ChainReceipt> {
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents deposit requires DB ledger' });
+    await this.syncOnChainCargoForDeposit(input);
     const r = await this.delegate.deposit(input);
     return this.asTestnetReceipt(r);
+  }
+
+  private async syncOnChainCargoForDeposit(input: IntentsDepositInput): Promise<void> {
+    if (!this.prisma?.mockChainBalance) return;
+    const key = tokenKeyOfVerifierId(input.tokenId);
+    if (!key || !(RESOURCE_KEYS as readonly string[]).includes(key)) return;
+    const needed = BigInt(input.amount);
+    const local = await this.prisma.mockChainBalance.findUnique({
+      where: { accountId_tokenId: { accountId: input.accountId, tokenId: key } },
+      select: { amount: true },
+    });
+    const have = local ? BigInt(local.amount.toFixed(0)) : 0n;
+    if (have >= needed) return;
+    try {
+      const rawChain = await this.rpc.view<string>(this.rpc.config.contracts.res, 'mt_balance_of', {
+        account_id: input.accountId,
+        token_id: key,
+      });
+      const chainBal = BigInt(rawChain);
+      if (chainBal > have) {
+        await this.prisma.mockChainAccount.upsert({
+          where: { accountId: input.accountId },
+          create: { accountId: input.accountId, kind: 'colony' },
+          update: {},
+        });
+        await this.prisma.mockChainBalance.upsert({
+          where: { accountId_tokenId: { accountId: input.accountId, tokenId: key } },
+          create: { accountId: input.accountId, tokenId: key, amount: chainBal.toString() },
+          update: { amount: chainBal.toString() },
+        });
+      }
+    } catch {
+      // Ignore RPC read errors and fall back to DB ledger state
+    }
   }
 
   async withdraw(input: IntentsWithdrawInput): Promise<ChainReceipt> {

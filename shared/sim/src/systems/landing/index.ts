@@ -15,7 +15,8 @@ import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { spawnHqUnit } from '../hq';
 import { initColonyNewcomerShield, isW18PvpActive } from '../pvp';
-import { yieldRivalAiSlotIfNeeded } from '../rival-ai/store';
+import { linkAllActiveColonyContacts } from '../rival-ai/seed';
+import { readRivalAiBlob, yieldRivalAiSlotIfNeeded } from '../rival-ai/store';
 import { resolveStartingKitRow, rowNum } from '../rows';
 import { stepHqRespawns } from './hqRespawn';
 import {
@@ -164,6 +165,9 @@ export function spawnColonyLanding(
   syncAtlasColonySectorState(state, tick);
   if (isW18PvpActive(data)) {
     initColonyNewcomerShield(state, colonyId, tick, data);
+  }
+  if (readRivalAiBlob(state).seeded) {
+    linkAllActiveColonyContacts(state, tick);
   }
 
   return { ok: true, podEntityId, q, r };
