@@ -1078,7 +1078,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 ### BE-86 · Treasury console spawns mercenaries and completes chain bounties without the hire escrow
 
-- **Status:** Resolved (W22-36)
+- **Status:** Resolved (1fbdc801)
 - **Area / code:** `backend/app/src/near/treasury/dev-console.command.ts`, `backend/app/src/near/treasury/dev-console.handlers.ts` (`runMercHire`), `frontend/game/features/treasury/devCommands.ts`
 - **What happens:** `merc.hire <hours>` now calls `MercenaryHireService.hire` for the light roster. That opens the defend escrow (whole hours × the table price) and submits `mercenary.spawn`. A fractional hour is rejected. `bounty.complete` is unchanged: pay still runs only when a claimer is stored or passed. W22 off still answers 404.
 - **Why it is like this:** W22-36 needed the console squad to be the hire, not a spawn that skipped escrow. The chain post and the sim post stay two paths (BE-76).
