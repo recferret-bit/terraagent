@@ -159,8 +159,13 @@ export class AccountClaimService {
     });
     if (byColony) return byColony;
     if (colonyId === 'col_0' || colonyId === '0') {
-      return prisma.nearColonyAccount.findFirst({
+      const nonPlayer = await prisma.nearColonyAccount.findFirst({
         where: { slot: { notIn: ['player', 'system'] } },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (nonPlayer) return nonPlayer;
+      return prisma.nearColonyAccount.findFirst({
+        where: { slot: 'player' },
         orderBy: { createdAt: 'asc' },
       });
     }

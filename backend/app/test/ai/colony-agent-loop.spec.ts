@@ -132,6 +132,31 @@ describe('ColonyAgentLoopService — human manual gate, NEAR AI Cloud attestatio
     expect(evals.find((e) => e.colonyIndex === 4)?.guardrailRejected).toBe('AW-13_CANCEL_TRUCE_FORBIDDEN');
     expect(evals.find((e) => e.colonyIndex === 5)?.guardrailRejected).toBe('kill_switch');
   });
+
+  it('executes allowed barter trade directives on the live planet sim via market.placeOrder', async () => {
+    const { planets, submitted } = createFakePlanetHarness();
+    const llm: LlmProviderPort = {
+      complete: async (): Promise<LlmResponse> => ({
+        text: JSON.stringify({
+          action: 'trade',
+          tradePair: 'metals.t1/bio.water',
+          tradeAmount: 25,
+          tradeNotionalAtomic: '25000000',
+          rationale: 'Bartering surplus metals.t1 for scarce bio.water.',
+        }),
+        usage: { inputTokens: 20, outputTokens: 20 },
+        model: 'mock',
+      }),
+    };
+    const svc = new ColonyAgentLoopService(planets, llm);
+    const evals = await svc.tickPlanetAgents('pl_loop');
+    const trader = evals.find((e) => e.colonyIndex === 4);
+    expect(trader?.governed).toBe(true);
+    expect(trader?.guardrailRejected).toBeUndefined();
+    expect(trader?.submittedCommand?.kind).toBe('market.placeOrder');
+    expect(trader?.commandOutcome).toEqual({ ok: true });
+    expect(submitted.some((c) => c.colonyIndex === 4 && c.kind === 'market.placeOrder')).toBe(true);
+  });
 });
 
 describe('StakingController — D-18 human-only guardrail', () => {

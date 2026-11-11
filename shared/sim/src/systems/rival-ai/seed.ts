@@ -8,6 +8,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { applyAutopilot } from '../away/store';
+import { ensureColonyCargoState } from '../cargo/state';
 import { mirrorAutopilotOnDirector } from '../director/store';
 import { readDiplomacyBlob, writeDiplomacyBlob } from '../diplomacy/store';
 import { setColonyStock, treasuryCtx } from '../../economy';
@@ -93,7 +94,7 @@ function pickRivalAnchors(state: PlanetState, count: number): Array<{ q: number;
   const chosen: Array<{ q: number; r: number }> = [];
   for (const cand of candidates) {
     if (chosen.length >= count) break;
-    if (hexDistance(0, 0, cand.q, cand.r) + 5 > state.grid.radius) continue;
+    if (hexDistance(0, 0, cand.q, cand.r) + 7 > state.grid.radius) continue;
     const allPlaced = [...occupiedCenters, ...chosen];
     if (allPlaced.some((p) => hexDistance(p.q, p.r, cand.q, cand.r) < 10)) continue;
     chosen.push({ q: cand.q, r: cand.r });
@@ -103,9 +104,9 @@ function pickRivalAnchors(state: PlanetState, count: number): Array<{ q: number;
 
 function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy: number, tick: number): void {
   const hx = hexIndex(state.grid.radius);
-  for (let dq = -6; dq <= 6; dq++) {
-    for (let dr = -6; dr <= 6; dr++) {
-      if (hexDistance(0, 0, dq, dr) > 6) continue;
+  for (let dq = -7; dq <= 7; dq++) {
+    for (let dr = -7; dr <= 7; dr++) {
+      if (hexDistance(0, 0, dq, dr) > 7) continue;
       const i = hx.indexOf(cx + dq, cy + dr);
       if (i < 0) continue;
       if (state.grid.layers.valid && state.grid.layers.valid[i] === 0) continue;
@@ -113,11 +114,13 @@ function prepareRivalPad(state: PlanetState, colonyIndex: number, cx: number, cy
       setTilePrep(state.grid, i, PREP.prepared, tick);
       setTileHeight(state.grid, i, 0, tick);
       setTileOwner(state.grid, i, colonyIndex);
+      state.grid.layers.deposit[i] = 0;
+      if (state.grid.layers.feature) state.grid.layers.feature[i] = 0;
     }
   }
-  const metalTile = hx.indexOf(cx - 3, cy);
+  const metalTile = hx.indexOf(cx - 5, cy + 2);
   if (metalTile >= 0) state.grid.layers.deposit[metalTile] = DEPOSIT.metals;
-  const mineralTile = hx.indexOf(cx - 3, cy + 3);
+  const mineralTile = hx.indexOf(cx - 5, cy + 4);
   if (mineralTile >= 0) state.grid.layers.deposit[mineralTile] = DEPOSIT.minerals;
 }
 
@@ -184,6 +187,8 @@ export function seedRivalAiColonies(
     colRec.awayRaids = spec.awayRaids;
 
     setColonyStock(state, colonyIndex, spec.stock, opts.ctx ? treasuryCtx(tick, opts.ctx) : undefined);
+    const cargo = ensureColonyCargoState(col);
+    cargo.inOrbit = { ...cargo.inOrbit, 'metals.t1': 180, 'minerals.t1': 120, 'bio.water': 120, 'bio.biomass': 80 };
     setColonyPriorities(state, colonyIndex, spec.priorities, tick);
     applyAutopilot(
       state,
@@ -194,16 +199,17 @@ export function seedRivalAiColonies(
     );
     mirrorAutopilotOnDirector(state, colonyIndex, { mode: 'director', awayRaids: spec.awayRaids }, tick);
 
-    spawnHqUnit(state, { owner: colonyIndex, q: anchor.q - 2, r: anchor.r });
+    spawnHqUnit(state, { owner: colonyIndex, q: anchor.q - 1, r: anchor.r + 2 });
     startBuildingConstruction(state, { owner: colonyIndex, building: 'commandHub', q: anchor.q, r: anchor.r, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 3, r: anchor.r, instant: true, costOverride: {}, data });
+    startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
+    startBuildingConstruction(state, { owner: colonyIndex, building: 'solar', q: anchor.q + 1, r: anchor.r + 3, instant: true, costOverride: {}, data });
     startBuildingConstruction(state, { owner: colonyIndex, building: 'wind', q: anchor.q + 3, r: anchor.r - 3, instant: true, costOverride: {}, data });
     startBuildingConstruction(state, { owner: colonyIndex, building: 'depot', q: anchor.q - 4, r: anchor.r + 2, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'tradeHub', q: anchor.q + 2, r: anchor.r + 3, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'roboticsFactory', q: anchor.q - 2, r: anchor.r - 3, instant: true, costOverride: {}, data });
-    startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q + 4, r: anchor.r + 1, instant: true, costOverride: {}, data });
+    startBuildingConstruction(state, { owner: colonyIndex, building: 'tradeHub', q: anchor.q - 3, r: anchor.r - 1, instant: true, costOverride: {}, data });
+    startBuildingConstruction(state, { owner: colonyIndex, building: 'roboticsFactory', q: anchor.q, r: anchor.r - 3, instant: true, costOverride: {}, data });
+    startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q + 3, r: anchor.r + 1, instant: true, costOverride: {}, data });
     if (spec.persona === 'warlord') {
-      startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q - 4, r: anchor.r - 1, instant: true, costOverride: {}, data });
+      startBuildingConstruction(state, { owner: colonyIndex, building: 'turret', q: anchor.q - 4, r: anchor.r, instant: true, costOverride: {}, data });
     }
 
     spawnWorkerUnit(state, { owner: colonyIndex, q: anchor.q + 2, r: anchor.r - 1, tick, data }, opts.ctx);

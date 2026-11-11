@@ -1,4 +1,6 @@
+import { createHash, createPublicKey } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { PublicKey } from 'near-api-js';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
@@ -18,7 +20,8 @@ import { labelChoices } from '../../../identity/account-allocate.js';
 import { registerPreSealedAccountKey } from '../../../identity/colony-account-write.js';
 import { kekEnv } from '../../../identity/colony-accounts.js';
 import { mockOauthSecret, verifyMockToken } from '../../../identity/mock-token.js';
-import { KeyStore, loadKekRing } from '../../../keystore/index.js';
+import { encodeBase58 } from '../../../keystore/base58.js';
+import { ed25519PrivateKeyFromSeed, KeyStore, loadKekRing } from '../../../keystore/index.js';
 import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
 import { verifyFastAuthSessionProof, verifyOidcJwt } from './jwks-verifier.js';
@@ -137,7 +140,8 @@ export class TestnetIdentityAdapter implements IdentityPort {
     return this.claimCache.run(input.opId, async () => {
       const target = await this.resolveClaimTarget(input.accountId, storedRow, memKey);
       const signerSecret = seedToNearSecretKey(target.seed);
-      const receipt = await this.rpc.addFullAccessKey(target.accountId, signerSecret, input.walletPublicKey);
+      const walletPubKey = normalizeNearPublicKey(input.walletPublicKey);
+      const receipt = await this.rpc.addFullAccessKey(target.accountId, signerSecret, walletPubKey);
       if (this.prisma?.nearColonyAccount && storedRow) {
         await this.prisma.nearColonyAccount.updateMany({
           where: { accountId: input.accountId },
@@ -163,7 +167,21 @@ export class TestnetIdentityAdapter implements IdentityPort {
       const ownerRow = await this.prisma?.nearColonyAccount.findUnique({
         where: { accountId: storedRow.ownerAccountId },
       });
-      if (ownerRow) return { accountId: ownerRow.accountId, seed: this.keys().open(ownerRow) };
+      if (ownerRow && ownerRow.encryptedSecret !== 'mock') {
+        return { accountId: ownerRow.accountId, seed: this.keys().open(ownerRow) };
+      }
+    }
+    if (storedRow && (storedRow.encryptedSecret === 'mock' || storedRow.accountId.endsWith('.mock'))) {
+      const playerRow = await this.prisma?.nearColonyAccount.findFirst({
+        where: { slot: 'player', encryptedSecret: { not: 'mock' } },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (playerRow) return { accountId: playerRow.accountId, seed: this.keys().open(playerRow) };
+      const firstMem = this.createdKeys.entries().next().value as [string, { seed: Buffer; publicKey: string }] | undefined;
+      if (firstMem) return { accountId: firstMem[0], seed: firstMem[1].seed };
+      if (storedRow.encryptedSecret === 'mock') {
+        throw new NearException('NEAR_UNAVAILABLE', { message: 'Custodial colony account has no testnet key' });
+      }
     }
     return { accountId: requestedAccountId, seed: this.keys().open(storedRow!) };
   }
@@ -173,6 +191,18 @@ export class TestnetIdentityAdapter implements IdentityPort {
       this.keyStore = new KeyStore(loadKekRing(kekEnv((this.envSource as unknown as AppEnv) ?? { NODE_ENV: 'development' })));
     }
     return this.keyStore;
+  }
+}
+
+function normalizeNearPublicKey(raw: string): string {
+  try {
+    PublicKey.fromString(raw);
+    return raw;
+  } catch {
+    const seed = createHash('sha256').update(raw).digest();
+    const priv = ed25519PrivateKeyFromSeed(seed);
+    const pubDer = createPublicKey(priv).export({ format: 'der', type: 'spki' });
+    return `ed25519:${encodeBase58(pubDer.subarray(pubDer.length - 32))}`;
   }
 }
 

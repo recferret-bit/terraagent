@@ -224,16 +224,16 @@ export function buildSimCommandFromDirective(obs: ColonyObservation, directive: 
     const [baseRes = 'metals.t1', quoteRes = 'minerals.t1'] = (directive.tradePair ?? 'metals.t1/minerals.t1').split('/');
     const amount = directive.tradeAmount ?? 25;
     return {
-      ...base,
+      colonyIndex: obs.colonyIndex,
+      source: 'player',
+      commandId: newId('cm'),
       kind: 'market.placeOrder',
       args: {
         side: 'sell',
         resource: baseRes,
         amount,
         price: { token: quoteRes, amount: String(amount) },
-        ttlS: 600,
-        fillPolicy: 'partial',
-        director: true,
+        ttlS: 900,
       },
     };
   }

@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
-import type { DbClient } from '@terra/db';
+import type { DbClient, PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
+import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GuildProvisionError } from './guild-error.js';
 import { GuildNpcRepository } from './guild-npc.repository.js';
@@ -17,6 +18,7 @@ import {
 import { GuildTradeKeyBinder } from './guild-trade-key.binder.js';
 import { GuildWalletBinder } from './guild-wallet.binder.js';
 import { TIER1_RESOURCES } from './maker/pairs.js';
+import { ensureMockSigners, ensureVerifierBalance } from './offers/signers.js';
 
 /**
  * Boot provisioning for the Guild roster (W15-05). One sub-account, one limited key, one bot API key
@@ -33,6 +35,7 @@ export class GuildProvisionService implements OnModuleInit {
     private readonly wallet: GuildWalletBinder,
     private readonly keys: GuildTradeKeyBinder,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
   ) {}
 
   /** A down database must not stop the rest of the app (the dead-url market boot still has to come up). */
@@ -55,12 +58,24 @@ export class GuildProvisionService implements OnModuleInit {
 
   private async seedColdStartIfRequested(rows: readonly GuildAllocation[]): Promise<readonly GuildAllocation[]> {
     if (this.env?.TA_SEED_RIVAL_AI !== '1' && this.env?.TA_SEED_RIVAL_AI !== 'true') return rows;
+    if (this.prisma && this.env) {
+      await ensureMockSigners(
+        this.env,
+        this.prisma,
+        rows.map((r) => r.accountId),
+      );
+    }
     const updated: GuildAllocation[] = [];
     for (const row of rows) {
       let current = row;
       if (current.inventory.lines.length === 0) {
         for (const res of TIER1_RESOURCES) {
           current = (await this.allocateFixtureCargo(current.npcId, res, 2500)) ?? current;
+        }
+      }
+      if (this.prisma) {
+        for (const res of TIER1_RESOURCES) {
+          await ensureVerifierBalance(this.prisma, current.accountId, res, 2500n);
         }
       }
       updated.push(current);
