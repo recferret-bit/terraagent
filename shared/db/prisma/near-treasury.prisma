@@ -1,4 +1,4 @@
-/// Subsidy Guild visit (`chain.guild_visit`, W22-12, NEAR-72). W15's scheduler is not in this tree.
+/// Subsidy Guild visit (`chain.guild_subsidy_visit`, W22-12, NEAR-72).
 /// `organic` defaults false: there is no Guild quote engine here (D-45).
 model ChainGuildVisit {
   id        String   @id @db.VarChar(64)
@@ -8,6 +8,6 @@ model ChainGuildVisit {
   organic   Boolean  @default(false)
 
   @@index([planetId, arrivesAt])
-  @@map("guild_visit")
+  @@map("guild_subsidy_visit")
   @@schema("chain")
 }
