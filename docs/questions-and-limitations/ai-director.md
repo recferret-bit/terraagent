@@ -2,13 +2,13 @@
 
 ### AI-01 · Revised W16 is a plan, not a live integration
 
-- **Status:** Open
-- **Area / code:** [W16](../plan/waves/W16-ai-director.md), [AI spec](../spec/AI_ORCHESTRATOR.md), `backend/app/src/ai/`
-- **What happens:** contracts, sim policy, the mock planner, the director plate with live policy summary & controls, the Prisma repository (`PrismaDirectorStore`), and one redacted glm-5.3 ping are in the tree. The standalone director worker still prints `db=none` on `--check` and does not poll a live colony loop on its own. pg-boss is installed and not started automatically by `npm run dev`.
-- **Why it is like this:** W16-01 through W16-49 landed with deterministic mock/eval adapters, a real Postgres store (`PrismaDirectorStore`), and the live HUD plate, while keeping automatic background LLM polling off during local dev. A second paid call was not required after the one ping in `docs/plan/w16-live-report.md`.
-- **Workaround / mitigation:** play `/play.html?scenario=w16` for the live policy plate, controls, and `director.plan` / `director.trace`. Treat the load report as the measurement it names, not as a saturated database pool.
-- **To resolve:** connect the background worker loop to the live game session scheduler when background autonomous ticks are enabled.
-- **Found:** 2026-11-04, W16 planning review.
+- **Status:** Resolved (`3105e2dc`, `1d5a59e7`, `6c7631ad`)
+- **Area / code:** [W16](../plan/waves/W16-ai-director.md), [AI spec](../spec/AI_ORCHESTRATOR.md), `backend/app/src/ai/colony-agent/colony-agent-loop.service.ts`, `backend/app/src/ai/adapters/nearai-llm.adapter.ts`, `shared/sim/src/systems/rival-ai/governor.ts`, `frontend/game/features/director/DirectorPanel.ts`
+- **What happens:** `ColonyAgentLoopService` (`backend/app/src/ai/colony-agent/`) connects the autonomous governor (`stepColonyAutonomousGovernor` in `@terra/sim`) and `LlmProviderPort` (`NearAiLlmAdapter` with `/v1/signature/{chat_id}` TEE SHA-256 verification, `ZaiLlmAdapter`, or deterministic `MockLlmAdapter`) directly to live `SimThreadPool` planets. Human colonies stay 100% manual while online by default (`AI AUTOPILOT: OFF`) and are governed only when the player toggles `AI AUTOPILOT: ON` (`[data-testid="director-autopilot-toggle"]`, `setAiEnabled`) or goes offline (`colonyIsAway`), while 2 seeded Rival AI Colonies (`Iron Guild Outpost` & `Crimson Vanguard`, `TA_SEED_RIVAL_AI=1`) run continuously.
+- **Why it is like this:** Preserves human-first RTS agency while delivering real autonomous multi-colony diplomacy, raids, trading, and terraforming with 3 hard server-enforced Track `07` guardrails (`AW-13` Oathbreaker truce-cancel block, `403 AI_STAKING_FORBIDDEN`, and trade allowance cap + kill switch).
+- **Workaround / mitigation:** Set `TA_SEED_RIVAL_AI=1` (or call `POST /v1/dev/ai-colonies/seed` / `/dev/economy-sim/`) to inspect multi-agent equilibrium on demand while keeping deterministic unit/E2E suites isolated by default.
+- **To resolve:** Resolved in `3105e2dc`, `1d5a59e7`, and `6c7631ad`.
+- **Found:** 2026-11-04, W16 planning review. Resolved 2026-11-11.
 
 ### AI-02 · Risk profiles need gameplay calibration
 
