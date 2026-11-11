@@ -1,8 +1,6 @@
 import type { RejectCode, TruceDurationHours } from '@terra/contracts';
-import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import { colonyIsAway, readAwaySettings } from '../away';
 import {
   cancelNoticeTicks,
   getColonyHqRowAndTier,
@@ -17,7 +15,6 @@ import {
   getLastHostilityTick,
   hasActiveTruce,
   isValidTruceDurationHours,
-  markColonyContact,
   readDiplomacyBlob,
   resolveColonyIdStr,
   resolveColonyIndex,
@@ -111,6 +108,54 @@ function findMatchingPendingOffer(
   );
 }
 
+function finalizeAcceptedTruce(
+  state: PlanetState,
+  blob: ReturnType<typeof readDiplomacyBlob>,
+  offer: StoredTruceOffer,
+  tick: number,
+  ctx?: StepContext,
+): StoredTruceRecord {
+  offer.status = 'accepted';
+  const truceId = `tr_${blob.nextTruceSeq++}`;
+  const hours = offer.hours;
+  const expiresAtTick = tick + hours * 3600 * TICKS_PER_SECOND;
+  const truce: StoredTruceRecord = {
+    truceId,
+    colonyA: offer.fromColonyIndex,
+    colonyB: offer.toColonyIndex,
+    colonyAId: offer.fromColonyId,
+    colonyBId: offer.toColonyId,
+    colonyAIndex: offer.fromColonyIndex,
+    colonyBIndex: offer.toColonyIndex,
+    hours,
+    durationHours: hours,
+    signedAtTick: tick,
+    startedAtTick: tick,
+    expiresAtTick,
+    status: 'active',
+  };
+  blob.truces[truceId] = truce;
+  writeDiplomacyBlob(state, blob, tick);
+  ctx?.emit({
+    kind: 'truceSigned',
+    severity: 'info',
+    colonyIds: [offer.fromColonyId, offer.toColonyId],
+    data: {
+      truceId,
+      offerId: offer.offerId,
+      colonyA: offer.fromColonyId,
+      colonyB: offer.toColonyId,
+      colonyAIndex: offer.fromColonyIndex,
+      colonyBIndex: offer.toColonyIndex,
+      hours,
+      durationHours: hours,
+      startedAtTick: tick,
+      expiresAtTick,
+    },
+  });
+  return truce;
+}
+
 export function respondTruce(
   state: PlanetState,
   responderColony: number,
@@ -159,46 +204,7 @@ export function respondTruce(
     return { ok: false, code: 'truce_cap', detail: 'active truce cap reached' };
   }
 
-  offer.status = 'accepted';
-  const truceId = `tr_${blob.nextTruceSeq++}`;
-  const hours = offer.hours;
-  const expiresAtTick = tick + hours * 3600 * TICKS_PER_SECOND;
-  const truce: StoredTruceRecord = {
-    truceId,
-    colonyA: fromColony,
-    colonyB: toColony,
-    colonyAId: offer.fromColonyId,
-    colonyBId: offer.toColonyId,
-    colonyAIndex: fromColony,
-    colonyBIndex: toColony,
-    hours,
-    durationHours: hours,
-    signedAtTick: tick,
-    startedAtTick: tick,
-    expiresAtTick,
-    status: 'active',
-  };
-  blob.truces[truceId] = truce;
-  writeDiplomacyBlob(state, blob, tick);
-
-  ctx?.emit({
-    kind: 'truceSigned',
-    severity: 'info',
-    colonyIds: [offer.fromColonyId, offer.toColonyId],
-    data: {
-      truceId,
-      offerId: offer.offerId,
-      colonyA: offer.fromColonyId,
-      colonyB: offer.toColonyId,
-      colonyAIndex: fromColony,
-      colonyBIndex: toColony,
-      hours,
-      durationHours: hours,
-      startedAtTick: tick,
-      expiresAtTick,
-    },
-  });
-
+  const truce = finalizeAcceptedTruce(state, blob, offer, tick, ctx);
   return { ok: true, offer, truce };
 }
 
@@ -261,171 +267,9 @@ export function cancelTruce(
   return { ok: true, truce, noticeEndsAtTick, oathbreakerUntilTick };
 }
 
-export function cancelColonyTrucesOnElimination(
-  state: PlanetState,
-  eliminatedColony: number,
-  tick: number = state.meta.tick,
-  ctx?: StepContext,
-): void {
-  const blob = readDiplomacyBlob(state);
-  let changed = false;
-  for (const offer of Object.values(blob.offers)) {
-    if (
-      offer.status === 'pending' &&
-      (offer.fromColonyIndex === eliminatedColony || offer.toColonyIndex === eliminatedColony)
-    ) {
-      offer.status = 'expired';
-      changed = true;
-    }
-  }
-  for (const truce of Object.values(blob.truces)) {
-    if (
-      (truce.status === 'active' || truce.status === 'notice') &&
-      (truce.colonyAIndex === eliminatedColony || truce.colonyBIndex === eliminatedColony)
-    ) {
-      truce.status = 'ended';
-      truce.endReason = 'eliminated';
-      changed = true;
-      ctx?.emit({
-        kind: 'truceEnded',
-        severity: 'info',
-        colonyIds: [truce.colonyAId, truce.colonyBId],
-        data: {
-          truceId: truce.truceId,
-          colonyA: truce.colonyAId,
-          colonyB: truce.colonyBId,
-          reason: 'eliminated',
-          endedAtTick: tick,
-        },
-      });
-    }
-  }
-  if (changed) writeDiplomacyBlob(state, blob, tick);
-}
+export {
+  cancelColonyTrucesOnElimination,
+  devOfferTruce,
+  stepDiplomacy,
+} from './parts/truceLifecycle';
 
-export function devOfferTruce(
-  state: PlanetState,
-  fromColony: number,
-  toColony: number,
-  durationHours: number,
-  tick: number = state.meta.tick,
-  ctx?: StepContext,
-): StoredTruceOffer | null {
-  if (fromColony < 0 || toColony < 0 || fromColony === toColony) return null;
-  const hours: TruceDurationHours = isValidTruceDurationHours(durationHours) ? durationHours : 6;
-  markColonyContact(state, fromColony, toColony, tick);
-  const blob = readDiplomacyBlob(state);
-  const offerId = `of_${blob.nextOfferSeq++}`;
-  const fromColonyId = resolveColonyIdStr(state, fromColony);
-  const toColonyId = resolveColonyIdStr(state, toColony);
-  const expiresAtTick = tick + offerExpiryTicks(ctx?.data);
-  const offer: StoredTruceOffer = {
-    offerId,
-    fromColony,
-    toColony,
-    fromColonyId,
-    toColonyId,
-    fromColonyIndex: fromColony,
-    toColonyIndex: toColony,
-    hours,
-    durationHours: hours,
-    offeredAtTick: tick,
-    expiresAtTick,
-    status: 'pending',
-  };
-  blob.offers[offerId] = offer;
-  writeDiplomacyBlob(state, blob, tick);
-  ctx?.emit({
-    kind: 'truceOffered',
-    severity: 'info',
-    colonyIds: [fromColonyId, toColonyId],
-    data: {
-      offerId,
-      fromColony,
-      toColony,
-      fromColonyId,
-      toColonyId,
-      fromColonyIndex: fromColony,
-      toColonyIndex: toColony,
-      hours,
-      durationHours: hours,
-      expiresAtTick,
-    },
-  });
-  return offer;
-}
-
-export function stepDiplomacy(state: PlanetState, ctx: StepContext): void {
-  const raw = state.blobs.diplomacy?.value;
-  if (!raw) return;
-  const blob = readDiplomacyBlob(state);
-  const tick = ctx.tick;
-  let changed = false;
-
-  for (const offer of Object.values(blob.offers)) {
-    if (offer.status === 'pending' && tick >= offer.expiresAtTick) {
-      offer.status = 'expired';
-      changed = true;
-    } else if (
-      offer.status === 'pending' &&
-      ctx.flags.has('W16') &&
-      tick >= offer.offeredAtTick + TICKS_PER_SECOND &&
-      colonyIsAway(state, offer.toColonyIndex) &&
-      readAwaySettings(state, offer.toColonyIndex).mode !== 'rules_only' &&
-      state.colonies[offer.toColonyIndex]?.aiAllowed !== false
-    ) {
-      if (changed) {
-        writeDiplomacyBlob(state, blob, tick);
-        changed = false;
-      }
-      respondTruce(state, offer.toColonyIndex, offer.offerId, true, tick, ctx);
-      Object.assign(blob, readDiplomacyBlob(state));
-    }
-  }
-
-  for (const truce of Object.values(blob.truces)) {
-    if (truce.status === 'notice' && tick >= (truce.noticeEndsAtTick ?? truce.expiresAtTick)) {
-      truce.status = 'ended';
-      truce.endReason = 'cancelled';
-      changed = true;
-      ctx.emit({
-        kind: 'truceEnded',
-        severity: 'warn',
-        colonyIds: [truce.colonyAId, truce.colonyBId],
-        data: {
-          truceId: truce.truceId,
-          colonyA: truce.colonyAId,
-          colonyB: truce.colonyBId,
-          reason: 'cancelled',
-          ...(truce.cancelledById ? { cancelledBy: truce.cancelledById } : {}),
-          endedAtTick: tick,
-        },
-      });
-    } else if (truce.status === 'active' && tick >= truce.expiresAtTick) {
-      truce.status = 'ended';
-      truce.endReason = 'expired';
-      changed = true;
-      ctx.emit({
-        kind: 'truceEnded',
-        severity: 'info',
-        colonyIds: [truce.colonyAId, truce.colonyBId],
-        data: {
-          truceId: truce.truceId,
-          colonyA: truce.colonyAId,
-          colonyB: truce.colonyBId,
-          reason: 'expired',
-          endedAtTick: tick,
-        },
-      });
-    }
-  }
-
-  for (const [colKey, until] of Object.entries(blob.oathbreakerUntilByColony)) {
-    if (tick >= until) {
-      delete blob.oathbreakerUntilByColony[Number(colKey)];
-      changed = true;
-    }
-  }
-
-  if (changed) writeDiplomacyBlob(state, blob, tick);
-}

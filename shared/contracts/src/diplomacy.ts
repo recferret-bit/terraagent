@@ -63,21 +63,26 @@ export const DiplomacyStateSchema = z.strictObject({
 });
 export type DiplomacyState = z.infer<typeof DiplomacyStateSchema>;
 
+export const RaidTaskFields = {
+  targetColonyId: ColonyTargetIdSchema.optional(),
+  targetColonyIndex: z.number().int().nonnegative().optional(),
+  targetColony: ColonyTargetIdSchema.optional(),
+  unitIds: z.array(z.number().int().positive()).min(1).max(64).optional(),
+  entityIds: z.array(z.number().int().positive()).min(1).max(64).optional(),
+  q: TileCoord.optional(),
+  r: TileCoord.optional(),
+} as const;
+
+export const hasRaidTargetField = (v: {
+  targetColonyId?: unknown;
+  targetColonyIndex?: unknown;
+  targetColony?: unknown;
+}): boolean =>
+  v.targetColonyId !== undefined || v.targetColonyIndex !== undefined || v.targetColony !== undefined;
+
 export const RaidTaskPayloadSchema = z
-  .strictObject({
-    targetColonyId: ColonyTargetIdSchema.optional(),
-    targetColonyIndex: z.number().int().nonnegative().optional(),
-    targetColony: ColonyTargetIdSchema.optional(),
-    unitIds: z.array(z.number().int().positive()).min(1).max(64).optional(),
-    entityIds: z.array(z.number().int().positive()).min(1).max(64).optional(),
-    q: TileCoord.optional(),
-    r: TileCoord.optional(),
-  })
-  .refine(
-    (v) =>
-      v.targetColonyId !== undefined ||
-      v.targetColonyIndex !== undefined ||
-      v.targetColony !== undefined,
-    { message: 'A raid requires targetColonyId, targetColonyIndex, or targetColony.' },
-  );
+  .strictObject(RaidTaskFields)
+  .refine(hasRaidTargetField, {
+    message: 'A raid requires targetColonyId, targetColonyIndex, or targetColony.',
+  });
 export type RaidTaskPayload = z.infer<typeof RaidTaskPayloadSchema>;

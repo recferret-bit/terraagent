@@ -158,41 +158,11 @@ function buildRaidMarchPlan(
   };
 }
 
-/**
- * Routes a PvP raid group or multi-unit foreign-territory `attackMove` through W07 `moveGroup`
- * flow-field slots (`assignSlots` + `commitMarch`) while setting each unit's `attackMoveGoal`
- * to its assigned slot so units engage spotted hostiles along the route (`W18-30`, `UO-W-08`, D-43).
- */
-export function orderRaidGroupFlowMarch(
+function dispatchSlottedMarchUnits(
   state: PlanetState,
-  unitIds: readonly number[],
-  goal: { q: number; r: number },
+  plan: ReturnType<typeof buildRaidMarchPlan> extends { plan: infer P } | null ? P : never,
   ctx: StepContext,
-  pace: 'own' | 'together' = 'together',
-): { slotted: Record<number, { q: number; r: number }>; usedFlowField: boolean } {
-  const members = collectRaidMembers(state, unitIds, ctx);
-  if (members.length === 0) return { slotted: {}, usedFlowField: false };
-
-  if (members.length === 1) {
-    const m = members[0]!;
-    cancelWorkerJobs(state, m.id, ctx.tick);
-    orderUnitAttackMove(state, m.id, goal, ctx);
-    return { slotted: { [m.id]: { q: goal.q, r: goal.r } }, usedFlowField: false };
-  }
-
-  const anchor = resolveStandableGroupAnchor(state, members, goal, ctx);
-  const built = buildRaidMarchPlan(state, members, anchor, pace, ctx);
-  if (!built) {
-    const fallback: Record<number, { q: number; r: number }> = {};
-    for (const m of members) {
-      cancelWorkerJobs(state, m.id, ctx.tick);
-      orderUnitAttackMove(state, m.id, goal, ctx);
-      fallback[m.id] = { q: goal.q, r: goal.r };
-    }
-    return { slotted: fallback, usedFlowField: false };
-  }
-
-  const { plan, overflow } = built;
+): Record<number, { q: number; r: number }> {
   const byEntityId = readStancesBlob(state);
   const slotted: Record<number, { q: number; r: number }> = {};
 
@@ -241,6 +211,45 @@ export function orderRaidGroupFlowMarch(
       notifyUnitChanged(state, row, ctx.tick, ctx.data);
     }
   }
+  return slotted;
+}
+
+/**
+ * Routes a PvP raid group or multi-unit foreign-territory `attackMove` through W07 `moveGroup`
+ * flow-field slots (`assignSlots` + `commitMarch`) while setting each unit's `attackMoveGoal`
+ * to its assigned slot so units engage spotted hostiles along the route (`W18-30`, `UO-W-08`, D-43).
+ */
+export function orderRaidGroupFlowMarch(
+  state: PlanetState,
+  unitIds: readonly number[],
+  goal: { q: number; r: number },
+  ctx: StepContext,
+  pace: 'own' | 'together' = 'together',
+): { slotted: Record<number, { q: number; r: number }>; usedFlowField: boolean } {
+  const members = collectRaidMembers(state, unitIds, ctx);
+  if (members.length === 0) return { slotted: {}, usedFlowField: false };
+
+  if (members.length === 1) {
+    const m = members[0]!;
+    cancelWorkerJobs(state, m.id, ctx.tick);
+    orderUnitAttackMove(state, m.id, goal, ctx);
+    return { slotted: { [m.id]: { q: goal.q, r: goal.r } }, usedFlowField: false };
+  }
+
+  const anchor = resolveStandableGroupAnchor(state, members, goal, ctx);
+  const built = buildRaidMarchPlan(state, members, anchor, pace, ctx);
+  if (!built) {
+    const fallback: Record<number, { q: number; r: number }> = {};
+    for (const m of members) {
+      cancelWorkerJobs(state, m.id, ctx.tick);
+      orderUnitAttackMove(state, m.id, goal, ctx);
+      fallback[m.id] = { q: goal.q, r: goal.r };
+    }
+    return { slotted: fallback, usedFlowField: false };
+  }
+
+  const { plan, overflow } = built;
+  const slotted = dispatchSlottedMarchUnits(state, plan, ctx);
 
   for (const id of overflow) {
     cancelWorkerJobs(state, id, ctx.tick);

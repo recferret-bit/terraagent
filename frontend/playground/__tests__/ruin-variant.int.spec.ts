@@ -39,5 +39,11 @@ describe('W18-22 playground ?ruin=1 & SpawnSet integration', () => {
     const stateZero = createState(new URLSearchParams('inspect=building.solar&ruin=0'));
     expect(stateZero.ruin).toBe(false);
     expect(syncURL(stateZero).has('ruin')).toBe(false);
+
+    const stateInvalid = createState(new URLSearchParams('inspect=building.solar&ruin=invalid'));
+    expect(stateInvalid.ruin).toBe(false);
+    expect(() => {
+      if (stateInvalid.ruin) throw new Error('invalid ruin state');
+    }).not.toThrow();
   });
 });

@@ -1,7 +1,7 @@
 import {
   extractNeighborColonyMarkers,
   type NeighborColonyMarker,
-} from '../maps/neighborMarkers';
+} from '../shared/neighborMarkers';
 
 export interface RaidTargetOption {
   readonly colonyIndex: number;

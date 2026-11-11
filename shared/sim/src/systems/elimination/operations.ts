@@ -192,20 +192,24 @@ export function onHqDestroyed(
   eliminateColony(state, colonyIndex, 'both_lost', tick, opts);
 }
 
-export function killColonyHq(state: PlanetState, colonyIndex: number, ctx: StepContext): boolean {
-  const hqId = findColonyEntityIdByKind(state, colonyIndex, ENTITY_KIND.hq);
-  if (hqId < 0) return false;
-  const row = rowOf(state.entities, hqId);
+function killColonyCoreEntity(
+  state: PlanetState,
+  colonyIndex: number,
+  kind: number,
+  ctx: StepContext,
+): boolean {
+  const entityId = findColonyEntityIdByKind(state, colonyIndex, kind);
+  if (entityId < 0) return false;
+  const row = rowOf(state.entities, entityId);
   const hp = row >= 0 ? Math.max(1, state.entities.cols.hp[row]) : 9999;
-  applyDamage(state, hqId, hp + 1000, { tick: ctx.tick, ctx, data: ctx.data });
+  applyDamage(state, entityId, hp + 1000, { tick: ctx.tick, ctx, data: ctx.data });
   return true;
 }
 
+export function killColonyHq(state: PlanetState, colonyIndex: number, ctx: StepContext): boolean {
+  return killColonyCoreEntity(state, colonyIndex, ENTITY_KIND.hq, ctx);
+}
+
 export function killColonyHub(state: PlanetState, colonyIndex: number, ctx: StepContext): boolean {
-  const hubId = findColonyEntityIdByKind(state, colonyIndex, ENTITY_KIND.commandHub);
-  if (hubId < 0) return false;
-  const row = rowOf(state.entities, hubId);
-  const hp = row >= 0 ? Math.max(1, state.entities.cols.hp[row]) : 9999;
-  applyDamage(state, hubId, hp + 1000, { tick: ctx.tick, ctx, data: ctx.data });
-  return true;
+  return killColonyCoreEntity(state, colonyIndex, ENTITY_KIND.commandHub, ctx);
 }

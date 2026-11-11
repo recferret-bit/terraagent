@@ -1,5 +1,4 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
-import { devOfferTruceCommand, offerTruceCommand } from '../dev-console';
 import { ownColonyIndex } from '../shared/colony';
 import { DiplomacyPanel, createDiplomacyPanel, type DiplomacyPanelInstance } from './DiplomacyPanel';
 import {
@@ -93,7 +92,6 @@ export const diplomacyFeature: GameFeature = defineFeature({
       mount: mountDiplomacyHud,
     },
   ],
-  devCommands: [offerTruceCommand, devOfferTruceCommand],
 });
 
 export default diplomacyFeature;

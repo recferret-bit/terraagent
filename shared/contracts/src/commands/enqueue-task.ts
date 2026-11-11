@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ColonyTargetIdSchema, RaidTaskPayloadSchema } from '../diplomacy';
+import { hasRaidTargetField, RaidTaskFields, RaidTaskPayloadSchema } from '../diplomacy';
 import { TerraformOp, TileCoord, TilePos } from '../ws/sim';
 import { defineCommand } from './define';
 
@@ -119,21 +119,11 @@ export const EnqueueDirectTask = z.strictObject({
     z
       .strictObject({
         kind: z.literal('raid'),
-        targetColonyId: ColonyTargetIdSchema.optional(),
-        targetColonyIndex: z.number().int().nonnegative().optional(),
-        targetColony: ColonyTargetIdSchema.optional(),
-        unitIds: z.array(z.number().int().positive()).min(1).max(64).optional(),
-        entityIds: z.array(z.number().int().positive()).min(1).max(64).optional(),
-        q: TileCoord.optional(),
-        r: TileCoord.optional(),
+        ...RaidTaskFields,
       })
-      .refine(
-        (v) =>
-          v.targetColonyId !== undefined ||
-          v.targetColonyIndex !== undefined ||
-          v.targetColony !== undefined,
-        { message: 'A raid task requires targetColonyId, targetColonyIndex, or targetColony.' },
-      ),
+      .refine(hasRaidTargetField, {
+        message: 'A raid task requires targetColonyId, targetColonyIndex, or targetColony.',
+      }),
   ]),
 });
 

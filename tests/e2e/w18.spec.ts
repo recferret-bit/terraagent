@@ -112,11 +112,10 @@ test('@hack 1. Open ?scenario=w18 -> Colony A (S4, 4 Recons) raids Colony B (S4,
   const raidPicker = pageA.getByTestId('raid-target-picker');
   await expect(raidPicker).toBeVisible();
 
-  const bOption = pageA.getByTestId('raid-target-option-col_1');
-  await expect(bOption).toBeVisible();
-  await expect(bOption).toHaveAttribute('data-shielded', 'false');
-  await bOption.click();
-  await pageA.getByTestId('raid-launch-btn').click();
+  const bRow = pageA.locator('[data-testid="raid-target-row"][data-colony-id="col_1"]');
+  await expect(bRow).toBeVisible();
+  await expect(bRow).toHaveAttribute('data-disabled', 'false');
+  await bRow.getByTestId('raid-target-dispatch').click();
 
   await devConsole(pageA, 'warp 50');
   await expect.poll(async () => (await getColony(pageA, 0))?.stock?.['metals.t1'] ?? 0, { timeout: 25_000 }).toBeGreaterThan(aMetalsBefore);
@@ -129,10 +128,10 @@ test('@hack 1. Open ?scenario=w18 -> Colony A (S4, 4 Recons) raids Colony B (S4,
 
 test('@hack 2. Colony C (aged 1 h at S3) shows newcomer shield: 5 h left, rejects raid with raid_protected, and setShield updates shield', async () => {
   await openColonyTab(pageA, 'hq');
-  const cOption = pageA.getByTestId('raid-target-option-col_2');
-  await expect(cOption).toBeVisible();
-  await expect(cOption).toHaveAttribute('data-shielded', 'true');
-  await expect(pageA.getByTestId('raid-target-shield-col_2')).toContainText('newcomer shield: 5 h left');
+  const cRow = pageA.locator('[data-testid="raid-target-row"][data-colony-id="col_2"]');
+  await expect(cRow).toBeVisible();
+  await expect(cRow).toHaveAttribute('data-disabled', 'true');
+  await expect(cRow.getByTestId('raid-target-reason')).toContainText('newcomer shield: 5 h left');
 
   const rej = await sendSimCmd(pageA, 'raid', { targetColonyId: 'col_2' });
   expect(rej.ok).toBe(false);
@@ -148,7 +147,7 @@ test('@hack 2. Colony C (aged 1 h at S3) shows newcomer shield: 5 h left, reject
     expect(shieldOut).toContain('dev.setShield');
   }
 
-  await expect(pageA.getByTestId('raid-target-shield-col_2')).toContainText('newcomer shield: 3 h left');
+  await expect(cRow.getByTestId('raid-target-reason')).toContainText('newcomer shield: 3 h left');
   await screenshot(pageA, '2-w18-newcomer-shield');
   expectNoPageErrors(pageA);
 });
@@ -184,7 +183,7 @@ test('@hack 3. In Colony B: killHq reprints HQ at Basic Hub -> killHub puts B in
 
   if (!local) {
     await expect(pageB.getByTestId('colony-critical-banner')).toBeVisible();
-    await expect(pageB.getByTestId('colony-critical-timer')).toContainText(/\d+:\d{2}/);
+    await expect(pageB.getByTestId('colony-critical-title')).toContainText(/\d+:\d{2}/);
   }
 
   const killHq2 = await devConsole(pageB, local ? 'killHq 1' : 'killHq');
@@ -216,8 +215,9 @@ test('@hack 4 & 5. Colony A offers 6 h truce to D -> D accepts -> A attackMove i
   const dipPanelA = pageA.getByTestId('diplomacy-panel');
   await expect(dipPanelA).toBeVisible();
 
-  await pageA.getByTestId('truce-duration-chip-6').click();
-  await pageA.getByTestId('truce-propose-btn-col_3').click();
+  await dipPanelA.getByTestId('propose-target-colony').selectOption('3');
+  await dipPanelA.getByTestId('duration-chip-6h').click();
+  await dipPanelA.locator('[data-action="propose-truce"]').click();
 
   await expect.poll(async () => {
     const blob = await getDiplomacyBlob(pageA);
@@ -227,7 +227,7 @@ test('@hack 4 & 5. Colony A offers 6 h truce to D -> D accepts -> A attackMove i
   if (!local) {
     const pageD = await openJoinSeat(pageA, 'd');
     await openColonyTab(pageD, 'hq');
-    const acceptBtn = pageD.locator('[data-testid^="truce-accept-btn-"]').first();
+    const acceptBtn = pageD.locator('[data-action="accept-truce"]').first();
     await expect(acceptBtn).toBeVisible({ timeout: 15_000 });
     await acceptBtn.click();
     await pageD.close();
@@ -257,13 +257,13 @@ test('@hack 4 & 5. Colony A offers 6 h truce to D -> D accepts -> A attackMove i
     expect(amRej.ok).toBe(false);
     expect(amRej.code).toBe('truce_active');
 
-    const cancelBtn = pageA.locator('[data-testid^="truce-cancel-btn-"]').first();
+    const cancelBtn = dipPanelA.locator('[data-action="cancel-truce"]').first();
     await expect(cancelBtn).toBeVisible();
     await cancelBtn.click();
 
-    await expect(pageA.getByTestId('diplomacy-oathbreaker-badge')).toBeVisible();
-    await expect(pageA.getByTestId('diplomacy-oathbreaker-badge')).toContainText('Oathbreaker');
-    await expect(pageA.locator('[data-testid^="truce-notice-timer-"]').first()).toBeVisible();
+    await expect(dipPanelA.getByTestId('diplomacy-oathbreaker')).toBeVisible();
+    await expect(dipPanelA.getByTestId('diplomacy-oathbreaker')).toContainText(/OATHBREAKER/i);
+    await expect(dipPanelA.getByTestId('truce-timer').first()).toContainText(/Notice:/i);
   }
 
   await screenshot(pageA, '5-w18-truce-notice-oathbreaker');

@@ -1,5 +1,6 @@
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
 import { ownColonyIndex } from '../shared/colony';
+import { createColonyStatusDom } from './parts/statusDom';
 import {
   applyColonyStatusSimEvent,
   extractColonyStatusView,
@@ -62,77 +63,18 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
       this.el.hidden = true;
     }
 
-    // 1. Critical Banner DOM
-    this.bannerEl = document.createElement('div');
-    this.bannerEl.className = 'ta-colony-critical-banner';
-    this.bannerEl.dataset.testid = 'colony-critical-banner';
-    this.bannerEl.hidden = true;
-    this.bannerEl.setAttribute('hidden', '');
-
-    const bannerHeader = document.createElement('div');
-    bannerHeader.className = 'ta-colony-critical__header';
-
-    const bannerIcon = document.createElement('span');
-    bannerIcon.className = 'ta-colony-critical__icon';
-    bannerIcon.textContent = '⚠';
-    bannerHeader.appendChild(bannerIcon);
-
-    this.titleEl = document.createElement('h2');
-    this.titleEl.className = 'ta-colony-critical__title';
-    this.titleEl.dataset.testid = 'colony-critical-title';
-    this.titleEl.textContent = 'HUB LOST — REBUILD WITHIN 00:00';
-    bannerHeader.appendChild(this.titleEl);
-
-    this.placeHubBtn = document.createElement('button');
-    this.placeHubBtn.type = 'button';
-    this.placeHubBtn.className = 'ta-colony-critical__btn';
-    this.placeHubBtn.dataset.testid = 'colony-critical-place-hub';
-    this.placeHubBtn.dataset.action = 'place-hub';
-    this.placeHubBtn.textContent = 'Place Hub';
-    this.placeHubBtn.addEventListener('click', () => this.handlePlaceHub());
-
-    this.bannerEl.appendChild(bannerHeader);
-    this.bannerEl.appendChild(this.placeHubBtn);
-    hostEl.appendChild(this.bannerEl);
-
-    // 2. Eliminated Screen DOM
-    this.eliminatedEl = document.createElement('div');
-    this.eliminatedEl.className = 'ta-colony-eliminated-screen';
-    this.eliminatedEl.dataset.testid = 'colony-eliminated-screen';
-    this.eliminatedEl.hidden = true;
-    this.eliminatedEl.setAttribute('hidden', '');
-
-    const card = document.createElement('div');
-    card.className = 'ta-colony-eliminated__card';
-
-    const elimIcon = document.createElement('div');
-    elimIcon.className = 'ta-colony-eliminated__icon';
-    elimIcon.textContent = '☠';
-    card.appendChild(elimIcon);
-
-    this.eliminatedTitleEl = document.createElement('h1');
-    this.eliminatedTitleEl.className = 'ta-colony-eliminated__title';
-    this.eliminatedTitleEl.dataset.testid = 'colony-eliminated-title';
-    this.eliminatedTitleEl.textContent = 'COLONY ELIMINATED';
-    card.appendChild(this.eliminatedTitleEl);
-
-    this.eliminatedDetailEl = document.createElement('p');
-    this.eliminatedDetailEl.className = 'ta-colony-eliminated__detail';
-    this.eliminatedDetailEl.dataset.testid = 'colony-eliminated-detail';
-    this.eliminatedDetailEl.textContent = 'Hub lost — critical timer expired';
-    card.appendChild(this.eliminatedDetailEl);
-
-    this.foundNewColonyBtn = document.createElement('button');
-    this.foundNewColonyBtn.type = 'button';
-    this.foundNewColonyBtn.className = 'ta-colony-eliminated__btn';
-    this.foundNewColonyBtn.dataset.testid = 'found-new-colony-btn';
-    this.foundNewColonyBtn.dataset.action = 'found-new-colony';
-    this.foundNewColonyBtn.textContent = 'Found New Colony';
-    this.foundNewColonyBtn.addEventListener('click', () => this.handleFoundNewColony());
-    card.appendChild(this.foundNewColonyBtn);
-
-    this.eliminatedEl.appendChild(card);
-    hostEl.appendChild(this.eliminatedEl);
+    const dom = createColonyStatusDom(
+      hostEl,
+      () => this.handlePlaceHub(),
+      () => this.handleFoundNewColony(),
+    );
+    this.bannerEl = dom.bannerEl;
+    this.titleEl = dom.titleEl;
+    this.placeHubBtn = dom.placeHubBtn;
+    this.eliminatedEl = dom.eliminatedEl;
+    this.eliminatedTitleEl = dom.eliminatedTitleEl;
+    this.eliminatedDetailEl = dom.eliminatedDetailEl;
+    this.foundNewColonyBtn = dom.foundNewColonyBtn;
 
     this.render();
   }

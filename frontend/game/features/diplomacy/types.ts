@@ -60,20 +60,9 @@ export interface DiplomacyPanelOptions {
   colonyId?: string;
 }
 
-export function formatCountdownSeconds(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '00:00';
-  const rounded = Math.floor(seconds);
-  if (rounded < 3600) {
-    const mm = Math.floor(rounded / 60);
-    const ss = rounded % 60;
-    return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-  }
-  const hh = Math.floor(rounded / 3600);
-  const rem = rounded % 3600;
-  const mm = Math.floor(rem / 60);
-  const ss = rem % 60;
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-}
+import { formatCountdownSeconds } from '../shared/neighborMarkers';
+
+export { formatCountdownSeconds };
 
 export function formatTickRemaining(targetTick: number, currentTick: number): string {
   const remTicks = Math.max(0, targetTick - currentTick);

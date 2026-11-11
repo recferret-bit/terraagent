@@ -1271,3 +1271,25 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** `awayPolicy` already rejects an extractor whose view says session spend is at the cap. The view's `stock.spent` has to be filled from `chargeAwaySpend` by the caller.
 - **To resolve:** W09-12 (or the economy spend path) calls `openAwaySession` when `system.presence` goes away and `chargeAwaySpend` before an automated debit.
 - **Found:** 2026-11-09, W09-11
+
+## W18 PvP & Diplomacy
+
+### GP-116 · W18 Tier-1 vertical slice: W14 walls/gates and T2/T3 HQ reprint tiers are dormant while W14/W17/W19 are postponed
+
+- **Status:** Accepted (by design, W18 Tier-1 vertical slice)
+- **Area / code:** `shared/sim/src/data/pvp.ts` (`pvp.raid.reprintCosts`, `pvp.raid.reprintTimesS`), `shared/sim/src/systems/elimination/operations.ts` (`handleHqDestruction`), `shared/sim/src/systems/pvp/raidTask.ts`, `docs/plan/waves/W18-pvp-diplomacy.md` §"Vertical Slice Scope (Tier-1 Cut)"
+- **What happens:** In the Tier-1 vertical slice (`S0–S4`), HQ loss while a Command Hub stands queues a free `T1` HQ reprint (`cost = {}`, `timeS = 60s`). Data rows for `t2` (`90s`, `300 metals.t2`, `150 minerals.t2`, `60 bio.t2`) and `t3` (`120s`, `500 metals.t3`, `250 minerals.t3`, `120 bio.t3`) are defined in `pvp.raid` (`W18-01`) and honored when a colony has `hqTier >= 2`, while runtime HQ T2/T3 upgrade paths and W14 fortification walls/gates remain dormant until postponed waves `W14`, `W17`, and `W19` land.
+- **Why it is like this:** Explicit Tier-1 vertical-slice cut in `docs/plan/waves/W18-pvp-diplomacy.md`.
+- **Workaround / mitigation:** `pvp.raid` rows are live-tunable via `tune`; unit tests (`w18-hq-reprint.spec.ts`) cover T1/T2/T3 reprint costs and times.
+- **To resolve:** Enable runtime HQ T2/T3 upgrades and wall/gate breach targeting when `W14`, `W17`, and `W19` open.
+- **Found:** 2026-11-11, W18 wave implementation (lead)
+
+### GP-117 · Colony elimination decrements W11 living population count while retaining the provisional founded-seat reservation
+
+- **Status:** Accepted (by design, W11-06 / WE-33 provisional rule)
+- **Area / code:** `shared/sim/src/systems/elimination/operations.ts` (`eliminateColony`), `backend/app/src/game/sectors/sector-population.service.ts` (`onColonyEliminated`), `docs/plan/waves/W18-pvp-diplomacy.md` (`W18-16`)
+- **What happens:** When a colony is eliminated into neutral ruins (`colony.status = 'eliminated'`, `colonyEliminated` event), `SectorPopulationService.onColonyEliminated` decrements `liveColonies` for the colony's `foundingSectorId` while preserving the sector's `foundedSeats` count (`reclaimableSeats = 0`) per the W11-06 / `WE-33` provisional seat-retention rule.
+- **Why it is like this:** Preserves ruin footprints and avoids double-seating over ruined colony pads until the cross-sector ruin-reclaim policy is finalized in `W27`.
+- **Workaround / mitigation:** Eliminated players can click `"Found New Colony"` on the eliminated modal (`ColonyStatusHud`) to return to `/play.html?planet=forestRock` and found a new colony in an open sector.
+- **To resolve:** When `W27` lands, decide whether decayed ruins release `foundedSeats` back to `freeSeats`.
+- **Found:** 2026-11-11, W18 wave implementation (lead)

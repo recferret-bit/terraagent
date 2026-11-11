@@ -2,7 +2,7 @@
 
 .ta-raid-picker,
 .ta-raid-toggle {
-  --ta-amber: #f59e0b;
+  --ta-amber: var(--ta-warning);
   --ta-green: var(--ta-terra);
   --ta-cyan: var(--ta-energy);
 }
