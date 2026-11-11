@@ -9,10 +9,15 @@ export { previewBatch, type BatchPreview, type PreviewLimits, type PreviewReason
 export { coreSkillAction, coreSkillLimits, type CoreSkill } from './strategies';
 export { directorSkillIds, selectDirectorSkills, type SkillSelectInput } from './skills';
 export {
+  checkDirectorActionPermission,
+  evaluateAggressionSkillProposal,
   evaluateTradeSkillProposal,
   strategyPermitted,
+  type AggressionSkillProposalResult,
   type BotTradeAllowance,
   type BotTradeOrder,
+  type DirectorActionPermissionInput,
+  type DirectorActionPermissionResult,
   type StrategyPermissions,
   type TradeProposalRejectReason,
   type TradeSkillProposalResult,
@@ -29,6 +34,7 @@ export {
   buildSectorAdvisorBrief,
   applySectorDirectives,
   shouldRunSectorAdvisor,
+  computeColonyPvpThreatScore,
   type AppliedSectorDirectives,
   type SectorCadenceCheck,
 } from './sector-advisor';

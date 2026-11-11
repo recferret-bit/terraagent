@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
+import { NearAiLlmAdapter } from './adapters/nearai-llm.adapter.js';
 import { ZaiLlmAdapter } from './adapters/zai-llm.adapter.js';
 
 export interface LiveReport {
@@ -16,17 +17,22 @@ function loadEnv(path: string): Record<string, string | undefined> {
   return parseEnv(readFileSync(path, 'utf8'));
 }
 
-function redact(text: string, secret: string | undefined): string {
-  if (!secret) return text;
-  return text.split(secret).join('[redacted]');
+function redactAll(text: string, secrets: readonly (string | undefined)[]): string {
+  let out = text;
+  for (const s of secrets) if (s) out = out.split(s).join('[redacted]');
+  return out;
 }
 
 /** One live completion. The report never includes the API key. */
 export async function liveOnce(env: Record<string, string | undefined>): Promise<LiveReport> {
   const started = Date.now();
-  const model = env.AI_MODEL || 'glm-5.3';
+  const useNearAi = env.AI_PROVIDER === 'nearai' || (env.AI_PROVIDER !== 'zai' && Boolean(env.NEAR_AI_API_KEY || env.NEARAI_CLOUD_API_KEY));
+  const model = useNearAi
+    ? env.NEAR_AI_MODEL || env.AI_MODEL || 'deepseek-ai/DeepSeek-V3.1'
+    : env.AI_MODEL || 'glm-5.3';
   try {
-    const result = await new ZaiLlmAdapter().complete(
+    const adapter = useNearAi ? new NearAiLlmAdapter() : new ZaiLlmAdapter();
+    const result = await adapter.complete(
       { system: 'Reply with the single word pong.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 16 },
       env,
     );
@@ -40,7 +46,14 @@ export async function liveOnce(env: Record<string, string | undefined>): Promise
     };
   } catch (error) {
     const name = error instanceof Error ? error.name : 'Error';
-    return { ok: false, model, latencyMs: Date.now() - started, inputTokens: null, outputTokens: null, error: redact(name, env.ZAI_API_KEY) };
+    return {
+      ok: false,
+      model,
+      latencyMs: Date.now() - started,
+      inputTokens: null,
+      outputTokens: null,
+      error: redactAll(name, [env.ZAI_API_KEY, env.NEAR_AI_API_KEY, env.NEARAI_CLOUD_API_KEY]),
+    };
   }
 }
 

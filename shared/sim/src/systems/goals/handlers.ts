@@ -1,4 +1,5 @@
 import { defineCommandHandler } from '../../kernel/commands';
+import { checkAiRaidAwayPolicy } from '../away/gate';
 import { commandColony, parseArgs } from '../command';
 import {
   acceptColonySuggestion,
@@ -15,6 +16,8 @@ export const queueGoalHandler = defineCommandHandler({
   handle(state, cmd, ctx) {
     const colIdx = commandColony(cmd);
     if (typeof colIdx === 'string') return colIdx;
+    const awayGate = checkAiRaidAwayPolicy(state, colIdx, cmd, ctx);
+    if (awayGate) return awayGate;
     const parsed = parseArgs('queueGoal', cmd.args);
     if (!parsed) return 'invalid_args';
     const res = queueColonyGoal(state, colIdx, parsed, ctx.tick, ctx);

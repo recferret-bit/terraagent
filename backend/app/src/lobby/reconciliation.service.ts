@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { EventBus } from '../bus/event-bus';
 import { HomeRepository } from '../core/home/home.repository';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
@@ -8,20 +9,23 @@ import { PlanetsService } from './planets.service';
 import { CanonicalWorldProvisioningService } from './provisioning.service';
 import {
   buildPlanetEventOutcomeResult,
-  buildWorldSnapshotsHelper,
-  maybeRetryFaultedWorldsHelper,
   reconcileWorldSectorsAndBuildSnapshot,
 } from './reconciliation-sector.helpers';
 import {
-  discoverAndReconcileOrphanColonies,
-  finalizeExpiredReservationsTickets,
+  bindReconciliationBus,
   normalizeHandlePlanetEventArgs,
   resolveCanonicalWorldOrThrow,
   resolveDateInput,
   resolveSweepOptions,
   sweepOverdueQueuedTicketsHelper,
+  transitionAllColoniesStatusHelper,
   transitionColonyStatusHelper,
+  type ReconciliationEventBusLike,
 } from './reconciliation.helpers';
+import {
+  applyPlanetEventColonyTransitions,
+  executeReconciliationSweepPipeline,
+} from './parts/reconciliation-service-parts';
 import {
   type ColonyEliminationReconcileResult,
   type HandlePlanetEventInput,
@@ -61,6 +65,7 @@ export class WorldReconciliationService {
   private readonly planetsService?: PlanetsService;
   private readonly eliminatedColonyIds = new Set<string>();
   private readonly settledColonyIds = new Set<string>();
+  private readonly boundBuses = new WeakSet<object>();
   private readonly sweepHistory: ReconciliationSweepReport[] = [];
   private readonly recordedOutcomes: RecordedPlanetOutcome[] = [];
   private readonly repairedSectorsHistory: SectorCounterDriftRepairRecord[] = [];
@@ -74,8 +79,9 @@ export class WorldReconciliationService {
     @Optional() @Inject(CanonicalWorldProvisioningService) arg5?: unknown,
     @Optional() @Inject(HomeRepository) arg6?: unknown,
     @Optional() @Inject(PlanetsService) arg7?: unknown,
+    @Optional() @Inject(EventBus) arg8?: unknown,
   ) {
-    const candidates = [arg2, arg3, arg4, arg5, arg6, arg7];
+    const candidates = [arg2, arg3, arg4, arg5, arg6, arg7, arg8];
     this.lifecycle =
       candidates.find((c): c is WorldLifecycleService => c instanceof WorldLifecycleService) ??
       new WorldLifecycleService(this.persistence);
@@ -96,6 +102,14 @@ export class WorldReconciliationService {
       ) ??
       new CanonicalWorldProvisioningService(this.persistence, this.lifecycle, this.homeRepo);
     this.planetsService = candidates.find((c): c is PlanetsService => c instanceof PlanetsService);
+    const bus = candidates.find((c): c is EventBus => c instanceof EventBus);
+    if (bus) this.bindEventBus(bus);
+  }
+
+  bindEventBus(bus: ReconciliationEventBusLike): () => void {
+    return bindReconciliationBus(bus, this.boundBuses, (colonyId, opts) =>
+      this.eliminateColony(colonyId, opts),
+    );
   }
 
   getHomeRepository(): HomeRepository {
@@ -231,7 +245,7 @@ export class WorldReconciliationService {
 
   eliminateColony(
     colonyId: string,
-    options: { readonly planetId?: string; readonly now?: Date } = {},
+    options: { readonly planetId?: string; readonly releaseSeat?: boolean; readonly now?: Date } = {},
   ): Promise<ColonyEliminationReconcileResult> {
     return transitionColonyStatusHelper({
       persistence: this.persistence,
@@ -241,6 +255,7 @@ export class WorldReconciliationService {
       colonyId,
       targetStatus: 'ELIMINATED',
       planetId: options.planetId,
+      releaseSeat: options.releaseSeat ?? true,
       now: options.now,
     });
   }
@@ -292,23 +307,16 @@ export class WorldReconciliationService {
     const world = await resolveCanonicalWorldOrThrow(this.persistence, planetIdOrType);
     const now = resolveDateInput(options.now);
 
-    if (
-      (event === 'extinct' || event === 'all_eliminated') &&
-      options.preserveColonyStatus !== true
-    ) {
-      await this.eliminateAllColonies(world.id, { now });
-    } else if (
-      (event === 'settled' || event === 'all_settled') &&
-      options.preserveColonyStatus !== true
-    ) {
-      if (options.colonyIds && options.colonyIds.length > 0) {
-        for (const colId of options.colonyIds) {
-          await this.settleColony(colId, { planetId: world.id, now });
-        }
-      } else {
-        await this.settleAllColonies(world.id, { now });
-      }
-    }
+    await applyPlanetEventColonyTransitions({
+      event,
+      options,
+      worldId: world.id,
+      now,
+      eliminateAllColonies: (wId, o) => this.eliminateAllColonies(wId, o),
+      eliminateColony: (cId, o) => this.eliminateColony(cId, o),
+      settleColony: (cId, o) => this.settleColony(cId, o),
+      settleAllColonies: (wId, o) => this.settleAllColonies(wId, o),
+    });
 
     const { snapshot } = await reconcileWorldSectorsAndBuildSnapshot({
       persistence: this.persistence,
@@ -351,135 +359,37 @@ export class WorldReconciliationService {
     nowOrOpts?: Date | number | string | ReconciliationSweepOptions,
     maybeOpts?: ReconciliationSweepOptions,
   ): Promise<ReconciliationSweepReport> {
-    const { now, maxTicketWaitMs, maxTicketAttempts, opts } = resolveSweepOptions(
-      nowOrOpts,
-      maybeOpts,
-    );
-    const queuePaused = this.lifecycle.isQueuePaused();
-    const targetWorlds = opts.planetId
-      ? [await resolveCanonicalWorldOrThrow(this.persistence, opts.planetId)]
-      : await this.persistence.listCanonicalWorlds();
-    const preQueuedTickets = await this.persistence.listTickets({
-      state: 'QUEUED',
-      ...(opts.planetId ? { planetId: opts.planetId } : {}),
-    });
-    const expiredReservations = await this.reservations.sweepExpiredReservations({
-      now,
-      ...(opts.planetId ? { planetId: opts.planetId } : {}),
-      ...(opts.ignoreQueuePause ? { ignoreQueuePause: opts.ignoreQueuePause } : {}),
-    });
-    const { requeuedTickets, failedSpawnTickets } = await finalizeExpiredReservationsTickets({
+    const report = await executeReconciliationSweepPipeline({
       persistence: this.persistence,
-      homeRepo: this.homeRepo,
-      expiredReservations,
-      maxTicketAttempts,
-      now,
-    });
-    const expiredTickets = await sweepOverdueQueuedTicketsHelper({
-      persistence: this.persistence,
-      preQueuedTicketIds: new Set(preQueuedTickets.map((t) => t.id)),
-      planetId: opts.planetId,
-      queuePaused,
-      ignoreQueuePause: opts.ignoreQueuePause,
-      maxTicketWaitMs,
-      now,
-    });
-    const reconciledOrphans = await discoverAndReconcileOrphanColonies({
-      persistence: this.persistence,
-      homeRepo: this.homeRepo,
+      lifecycle: this.lifecycle,
+      reservations: this.reservations,
       spawnSaga: this.spawnSaga,
-      worlds: targetWorlds,
-      explicitOrphans: opts.orphanColonies,
-      now,
-    });
-    const retriedWorlds = await maybeRetryFaultedWorldsHelper(
-      this.provisioning,
-      targetWorlds,
-      opts,
-    );
-    const refreshedWorlds = opts.planetId
-      ? [await resolveCanonicalWorldOrThrow(this.persistence, opts.planetId)]
-      : await this.persistence.listCanonicalWorlds();
-    await this.lifecycle.sweepLifecycleForElapsedTime(now);
-    const { worldSnapshots, byPlanet, repairedSectors } = await buildWorldSnapshotsHelper({
-      persistence: this.persistence,
+      provisioning: this.provisioning,
       homeRepo: this.homeRepo,
-      worlds: refreshedWorlds,
-      expiredReservations,
       eliminatedColonyIds: this.eliminatedColonyIds,
       settledColonyIds: this.settledColonyIds,
       repairedSectorsHistory: this.repairedSectorsHistory,
-      now,
+      nowOrOpts,
+      maybeOpts,
     });
-    const allPersistedWorlds = await this.persistence.listCanonicalWorlds();
-    const report: ReconciliationSweepReport = {
-      sweptAt: now.toISOString(),
-      nowMs: now.getTime(),
-      queuePaused,
-      canonicalWorldsCount: allPersistedWorlds.length,
-      warmPoolCount: 0,
-      overflowWorldsCount: 0,
-      ageSealedCount: 0,
-      endedWorldsCount: 0,
-      archivedBySweepCount: 0,
-      replacedWorldsCount: 0,
-      evictedFoundedSeatsCount: 0,
-      expiredReservationsCount: expiredReservations.length,
-      expiredReservations,
-      requeuedTicketsCount: requeuedTickets.length,
-      requeuedTickets,
-      failedSpawnTicketsCount: failedSpawnTickets.length,
-      failedSpawnTickets,
-      expiredTicketsCount: expiredTickets.length,
-      expiredTickets,
-      reconciledOrphansCount: reconciledOrphans.length,
-      reconciledOrphans,
-      repairedSectorsCount: repairedSectors.length,
-      repairedSectors,
-      retriedWorldsCount: retriedWorlds.length,
-      retriedWorlds,
-      worlds: worldSnapshots,
-      byPlanet: byPlanet as ReconciliationSweepReport['byPlanet'],
-    };
     this.sweepHistory.push(report);
     return report;
   }
 
-  private async transitionAllColoniesStatus(
+  private transitionAllColoniesStatus(
     targetStatus: 'ELIMINATED' | 'TRANSFERRED',
     planetIdOrType?: string,
     options: { readonly now?: Date } = {},
   ): Promise<readonly ColonyEliminationReconcileResult[]> {
-    const worlds = planetIdOrType
-      ? [await resolveCanonicalWorldOrThrow(this.persistence, planetIdOrType)]
-      : await this.persistence.listCanonicalWorlds();
-    const results: ColonyEliminationReconcileResult[] = [];
-
-    for (const world of worlds) {
-      const [reservations, repoColonies] = await Promise.all([
-        this.persistence.listReservations(world.id),
-        this.homeRepo.listColoniesByPlanetId(world.id),
-      ]);
-      const colonyIds = new Set<string>([
-        ...reservations.filter((r) => r.state === 'COMMITTED').map((r) => r.colonyId),
-        ...repoColonies.filter((c) => c.status !== 'ABANDONED').map((c) => c.id),
-      ]);
-      for (const colId of colonyIds) {
-        results.push(
-          await transitionColonyStatusHelper({
-            persistence: this.persistence,
-            homeRepo: this.homeRepo,
-            eliminatedColonyIds: this.eliminatedColonyIds,
-            settledColonyIds: this.settledColonyIds,
-            colonyId: colId,
-            targetStatus,
-            planetId: world.id,
-            now: options.now,
-          }),
-        );
-      }
-    }
-    return results;
+    return transitionAllColoniesStatusHelper({
+      persistence: this.persistence,
+      homeRepo: this.homeRepo,
+      eliminatedColonyIds: this.eliminatedColonyIds,
+      settledColonyIds: this.settledColonyIds,
+      targetStatus,
+      planetIdOrType,
+      now: options.now,
+    });
   }
 }
 

@@ -31,11 +31,13 @@ export interface SkillSelectInput {
   readonly stage: number;
   readonly allow?: readonly string[];
   readonly deny?: readonly string[];
+  readonly raidsPermitted?: boolean;
 }
 
 function eligible(row: SkillRow, input: SkillSelectInput): boolean {
   if (input.stage < row.minStage) return false;
   if (row.requiredWaves.some((wave) => !input.waves.has(wave))) return false;
+  if (row.id === 'diplomacy' && !input.raidsPermitted) return false;
   if (!isGoalExecutable(row.goal, input.waves)) return false;
   if (input.deny?.includes(row.id)) return false;
   if (input.allow && input.allow.length > 0 && !input.allow.includes(row.id)) return false;

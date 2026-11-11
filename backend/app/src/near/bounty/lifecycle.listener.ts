@@ -51,7 +51,13 @@ export class BountyLifecycleListener implements OnModuleInit, OnModuleDestroy {
     if (event.kind === 'bountyClaimed') return this.claimed(event.planetId, event.data.bountyId, event.data.claimer);
     if (event.kind === 'bountyCompleted') return this.completed(event.planetId, event.data.bountyId, event.data.claimer);
     if (event.kind === 'bountyRefunded') return this.expiry.refundIfOpen(event.planetId, event.data.bountyId);
-    if (event.kind === 'colonyEliminated') return this.reopen(event.planetId, event.data.colonyId);
+    if (event.kind === 'colonyEliminated') {
+      const colId =
+        event.data.colonyId ??
+        event.colonyIds[0] ??
+        (event.data.colonyIndex !== undefined ? `col_${event.data.colonyIndex}` : undefined);
+      return colId ? this.reopen(event.planetId, colId) : null;
+    }
     return null;
   }
 
@@ -96,6 +102,6 @@ function labelOf(event: PlanetEventV1): string {
   if (event.kind === 'bountyClaimed' || event.kind === 'bountyCompleted' || event.kind === 'bountyRefunded') {
     return event.data.bountyId;
   }
-  if (event.kind === 'colonyEliminated') return event.data.colonyId;
+  if (event.kind === 'colonyEliminated') return event.data.colonyId ?? event.colonyIds[0] ?? 'colonyEliminated';
   return event.kind;
 }

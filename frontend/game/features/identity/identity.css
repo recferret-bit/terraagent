@@ -40,6 +40,16 @@
   border: 1px solid var(--ta-seam);
 }
 .ta-pilot__plate .btn { width: 100%; }
+.ta-pilot__email-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ta-pilot__hint {
+  margin: 0;
+  color: var(--ta-text-2);
+  font: 500 10px/1.35 var(--ta-font-mono);
+}
 .ta-pilot__fault {
   margin: 0;
   color: var(--ta-fault-text);

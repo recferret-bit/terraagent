@@ -5,6 +5,10 @@ import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
+import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
+import { orderRaidGroupFlowMarch } from '../pvp/raidFlowMarch';
+import { canAttackMoveToTileSector, canRaidTargetSector } from '../pvp/sectorGuard';
+import { dropColonyShield, isColonyRaidProtected } from '../pvp/shield';
 import { setFactoryRallyPoint } from '../factories-hub/robotics';
 import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { canWeaponHitTarget } from './layers';
@@ -115,6 +119,62 @@ export const setRallyHandler = defineCommandHandler({
   },
 });
 
+function checkW18AttackMoveTargetTile(
+  state: PlanetState,
+  attackerOwner: number,
+  tileOwner: number,
+  q: number,
+  r: number,
+  tick: number,
+  data: Parameters<typeof isColonyRaidProtected>[3],
+): 'cross_sector_disabled' | 'truce_active' | 'raid_protected' | null {
+  if (!canAttackMoveToTileSector(state, attackerOwner, q, r).ok) {
+    return 'cross_sector_disabled';
+  }
+  if (tileOwner >= 0 && tileOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, tileOwner, tick)) {
+    return 'truce_active';
+  }
+  if (tileOwner >= 0 && tileOwner !== attackerOwner && isColonyRaidProtected(state, tileOwner, tick, data)) {
+    return 'raid_protected';
+  }
+  const cols = state.entities.cols;
+  for (let row = 0; row < state.entities.count; row++) {
+    if (cols.hp[row]! <= 0 || cols.state[row] === ENTITY_STATE.inert) continue;
+    if (cols.q[row] !== q || cols.r[row] !== r) continue;
+    const entOwner = cols.owner[row]!;
+    if (entOwner < 0 || entOwner === attackerOwner) continue;
+    if (hasActiveTruce(state, attackerOwner, entOwner, tick)) return 'truce_active';
+    if (isColonyRaidProtected(state, entOwner, tick, data)) return 'raid_protected';
+  }
+  return null;
+}
+
+function recordW18AttackMoveHostility(
+  state: PlanetState,
+  attackerOwner: number,
+  tileOwner: number,
+  q: number,
+  r: number,
+  tick: number,
+  data: Parameters<typeof dropColonyShield>[3],
+): void {
+  const cols = state.entities.cols;
+  let foreignOwner = tileOwner >= 0 && tileOwner !== attackerOwner ? tileOwner : -1;
+  if (foreignOwner < 0) {
+    for (let row = 0; row < state.entities.count; row++) {
+      if (cols.hp[row]! <= 0 || cols.state[row] === ENTITY_STATE.inert) continue;
+      if (cols.q[row] === q && cols.r[row] === r && cols.owner[row]! >= 0 && cols.owner[row]! !== attackerOwner) {
+        foreignOwner = cols.owner[row]!;
+        break;
+      }
+    }
+  }
+  if (foreignOwner >= 0) {
+    dropColonyShield(state, attackerOwner, tick, data);
+    recordHostilityBetween(state, attackerOwner, foreignOwner, tick);
+  }
+}
+
 export const attackMoveHandler = defineCommandHandler({
   kind: 'attackMove',
   wave: 'W07',
@@ -129,6 +189,7 @@ export const attackMoveHandler = defineCommandHandler({
     if (ids.length === 0) return 'invalid_args';
 
     const cols = state.entities.cols;
+    const tileOwner = state.grid.layers.owner?.[tileIdx] ?? -1;
     for (const id of ids) {
       const row = ownEntityRow(state, cmd, id);
       if (typeof row === 'string') return row;
@@ -136,11 +197,26 @@ export const attackMoveHandler = defineCommandHandler({
       const isMobile = mobileStats(cols.kind[row]!, ctx.data) !== null;
       const hasWeapon = resolveAttackerWeaponRow(state, row, ctx.data) !== undefined;
       if (!isMobile && !hasWeapon) return 'invalid_args';
+      const attackerOwner = cols.owner[row]!;
+      if (ctx.flags.has('W18') && attackerOwner >= 0) {
+        const w18Block = checkW18AttackMoveTargetTile(state, attackerOwner, tileOwner, args.q, args.r, ctx.tick, ctx.data);
+        if (w18Block) return w18Block;
+      }
     }
 
     for (const id of ids) {
-      cancelWorkerJobs(state, id, ctx.tick);
-      orderUnitAttackMove(state, id, { q: args.q, r: args.r }, ctx);
+      const row = rowOf(state.entities, id);
+      if (ctx.flags.has('W18') && row >= 0 && cols.owner[row]! >= 0) {
+        recordW18AttackMoveHostility(state, cols.owner[row]!, tileOwner, args.q, args.r, ctx.tick, ctx.data);
+      }
+    }
+    if (ctx.flags.has('W18') && ids.length >= 2) {
+      orderRaidGroupFlowMarch(state, ids, { q: args.q, r: args.r }, ctx, 'own');
+    } else {
+      for (const id of ids) {
+        cancelWorkerJobs(state, id, ctx.tick);
+        orderUnitAttackMove(state, id, { q: args.q, r: args.r }, ctx);
+      }
     }
     return undefined;
   },
@@ -172,6 +248,18 @@ export const attackTargetHandler = defineCommandHandler({
       if (typeof row === 'string') return row;
       if (row === tRow || cols.owner[row] === cols.owner[tRow]) return 'invalid_args';
       if (cols.hp[row]! <= 0 || cols.state[row] === ENTITY_STATE.inert) return 'invalid_args';
+      if (
+        ctx.flags.has('W18') &&
+        cols.owner[row]! >= 0 &&
+        cols.owner[tRow]! >= 0
+      ) {
+        if (!canRaidTargetSector(state, cols.owner[row]!, cols.owner[tRow]!).ok) {
+          return 'cross_sector_disabled';
+        }
+        if (hasActiveTruce(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick)) {
+          return 'truce_active';
+        }
+      }
       const weaponRow = resolveAttackerWeaponRow(state, row, ctx.data);
       if (!weaponRow || !canWeaponHitTarget(state, weaponRow, tRow, ctx.data)) {
         return 'invalid_args';
@@ -179,6 +267,10 @@ export const attackTargetHandler = defineCommandHandler({
     }
 
     for (const id of ids) {
+      const row = rowOf(state.entities, id);
+      if (ctx.flags.has('W18') && row >= 0 && cols.owner[row]! >= 0 && cols.owner[tRow]! >= 0) {
+        recordHostilityBetween(state, cols.owner[row]!, cols.owner[tRow]!, ctx.tick);
+      }
       cancelWorkerJobs(state, id, ctx.tick);
       orderUnitAttackTarget(state, id, args.targetId, ctx);
     }

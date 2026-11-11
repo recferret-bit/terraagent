@@ -10,10 +10,10 @@ import '../visuals/biomes';
 import { getDayNightParams } from '../core/dayNightConfig';
 import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
-import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
+import { createUnifiedColonyMaterial, RUIN_VARIANT } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 import { BUILDING_LIT } from '../visuals/unified/buildingLit';
-import { getBuildingLightLevel } from '../lighting/buildingLights';
+import { applyBuildingLight, getBuildingLightLevel } from '../lighting/buildingLights';
 
 export * from './faunaVisualRegistry';
 
@@ -177,10 +177,12 @@ export type ArchetypeUniforms = ReturnType<typeof createUnifiedColonyMaterial>['
   uBuildHeight: THREE.IUniform<number>;
   /** Drawn light level 0..1 of the emissive parts (`applyBuildingLight` only). */
   uLit: THREE.IUniform<number>;
+  /** Ruin intensity 0..1 (`setArchetypeRuin`, W18-22: charred, cracked, unlit). */
+  uRuin: THREE.IUniform<number>;
 };
 
 export interface ArchetypeMesh extends THREE.Mesh {
-  userData: { archetypeId: string; uniforms: ArchetypeUniforms };
+  userData: { archetypeId: string; uniforms: ArchetypeUniforms; ruin?: boolean };
 }
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind) and optional deposit stage. */
@@ -190,7 +192,7 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
   const made = createUnifiedColonyMaterial({
     biome: biomeKey,
     shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0,
-    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
+    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, RUIN_VARIANT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
   });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
@@ -218,8 +220,37 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
  * this per-frame write runs after it and is what renders (open question: one writer).
  */
 function refreshProjectorRig(mesh: THREE.Object3D, stage: number): void {
+  if (isArchetypeRuin(mesh)) {
+    updateEntityProjectorRig(mesh, 0, stage);
+    return;
+  }
   const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
   updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
+}
+
+/** Returns `true` when `mesh` is currently rendered in the W18 ruin state (`uRuin > 0`). */
+export function isArchetypeRuin(mesh: THREE.Object3D): boolean {
+  const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
+  return Boolean((mesh.userData as any)?.ruin || (typeof u?.uRuin?.value === 'number' && u.uRuin.value > 0.001));
+}
+
+/**
+ * Sets or clears the W18 ruin variant (`0..1`, `true` = 1, `false` = 0) on an archetype mesh (`W18-22`):
+ * chars/cracks the material (`uRuin`), extinguishes emissives (`uLit = 0`), and turns off its projector rig.
+ */
+export function setArchetypeRuin(mesh: THREE.Object3D, ruin: boolean | number): number {
+  const val = typeof ruin === 'number' ? Math.max(0, Math.min(1, Number.isFinite(ruin) ? ruin : 0)) : ruin ? 1 : 0;
+  const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
+  if (u?.uRuin) u.uRuin.value = val;
+  if (mesh.userData) (mesh.userData as any).ruin = val > 0.001;
+  const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
+  if (val > 0.001) {
+    applyBuildingLight(mesh, 0, 0, stage);
+  } else {
+    applyBuildingLight(mesh, 1, 0, stage);
+    refreshProjectorRig(mesh, stage);
+  }
+  return val;
 }
 
 /** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */

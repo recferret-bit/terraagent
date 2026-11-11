@@ -3,13 +3,10 @@ import { commandColony } from '../command';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, type PlanetState } from '../../kernel/state';
+import type { PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
-import { buildSiteReject } from '../economy/siteTerrain';
-import { resolveUnitRowForHub } from '../factories-hub/unit';
-import { prestigeProjectRow } from '../prestige/rows';
-import { checkUnitSupply, unitSupplyOfName } from '../supply';
+import { checkUnitSupply } from '../supply';
 import {
   applyReorderQueueTask,
   CANCEL_IN_PROGRESS_REFUND_RATIO,
@@ -21,10 +18,12 @@ import {
 import { colonyHasActiveHub, dismantleQueueTask } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import { checkItemUnlockStage } from '../progression/validate';
+import { checkAiRaidAwayPolicy } from '../away/gate';
+import { resolveColonyIndex } from '../diplomacy/store';
+import { launchColonyRaid } from '../pvp/raidTask';
 import {
   PRECEDENCE_RANK,
   type QueueEntry,
-  type QueueLane,
   type QueuePrecedence,
   type QueueTaskPayload,
 } from './types';
@@ -35,67 +34,29 @@ import {
   updateColonyEarmarks,
 } from './earmarks';
 import {
+  buildNewQueueEntry,
+  ensureQueueLaneCapacityAndSite,
+  getAllQueueEntries,
+  getColonyQueue,
+  saveQueueEntries,
+  validateEnqueuePayload,
+} from './parts/queueParts';
+import {
   enqueueAuthority,
-  findOldestAutoIndex,
-  isW03QueueActive,
   laneForTask,
-  laneLimitFor,
-  nextAutoTaskId,
   normalizeEnqueueArgs,
-  resolveTaskCostAndTicks,
 } from './wait';
 
 export * from './types';
 export * from './wait';
 export * from './earmarks';
-export { CANCEL_IN_PROGRESS_REFUND_RATIO };
+export {
+  CANCEL_IN_PROGRESS_REFUND_RATIO,
+  getAllQueueEntries,
+  getColonyQueue,
+  saveQueueEntries,
+};
 export { sameKindTaskIds } from './cancelGroup';
-
-export function getColonyQueue(state: PlanetState, colonyIndex = 0, lane?: QueueLane): QueueEntry[] {
-  const all = getAllQueueEntries(state).filter(
-    (e) => e.colonyIndex === colonyIndex && e.state !== 'done' && e.state !== 'cancelled',
-  );
-  return lane ? all.filter((e) => e.lane === lane) : all;
-}
-
-export function getAllQueueEntries(state: PlanetState): QueueEntry[] {
-  const raw = (state.blobs.queue?.value as { entries?: QueueEntry[] } | undefined)?.entries;
-  return raw
-    ? raw.map((e) => ({
-        ...e,
-        cost: { ...e.cost },
-        totalCost: e.totalCost ? { ...e.totalCost } : { ...e.cost },
-        spentCost: e.spentCost ? { ...e.spentCost } : {},
-        earmarked: e.earmarked ? { ...e.earmarked } : undefined,
-      }))
-    : [];
-}
-
-export function saveQueueEntries(state: PlanetState, entries: QueueEntry[], tick: number): void {
-  const active = entries.filter((e) => e.state !== 'done' && e.state !== 'cancelled');
-  setBlob(state, 'queue', { entries: active }, tick);
-  const colonies = new Set<number>([0]);
-  for (const c of state.colonies) if (c) colonies.add(c.index);
-  for (const e of active) colonies.add(e.colonyIndex);
-  for (const idx of colonies) {
-    const col = ensureColony(state, idx, tick);
-    const colActive = active.filter((e) => e.colonyIndex === idx);
-    col.queue = colActive;
-    col.constructionQueue = colActive.filter((e) => e.lane === 'construction');
-    col.terraformQueue = colActive.filter((e) => e.lane === 'terraform');
-    col.unitQueue = colActive.filter((e) => e.lane === 'units');
-    col.hqGoalQueue = colActive.filter((e) => e.lane === 'hqGoals');
-    const earmarks: Partial<Record<ResourceKey, number>> = {};
-    for (const e of colActive) {
-      if (!e.earmarked) continue;
-      for (const [k, v] of Object.entries(e.earmarked) as [ResourceKey, number][]) {
-        if (v && v > 0) earmarks[k] = (earmarks[k] ?? 0) + v;
-      }
-    }
-    col.earmarks = earmarks;
-    col.changedAt = tick;
-  }
-}
 
 export interface EnqueueQueueTaskOptions {
   colonyIndex?: number;
@@ -160,67 +121,28 @@ export function enqueueQueueTask(
   const activeLane = entries.filter(
     (e) => e.colonyIndex === colonyIndex && e.lane === lane && e.state !== 'done' && e.state !== 'cancelled',
   );
-  const limit = laneLimitFor(lane);
-  const fullCode = isW03QueueActive(state, data) ? 'lane_full' : 'queue_full';
 
-  if (
-    opts.task.kind === 'buildUnit' &&
-    !resolveUnitRowForHub(opts.task.unit, data, opts.task.tier) &&
-    (opts.task.unit === 'worker' || unitSupplyOfName(opts.task.unit, unitSupplyData(opts.task.unit, data)) === undefined)
-  ) {
-    return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
-  }
-  if (opts.task.kind === 'project' && !prestigeProjectRow(opts.task.project, data)) {
-    return { ok: false, code: 'invalid_args', detail: 'unknown project' };
-  }
+  const payloadErr = validateEnqueuePayload(opts.task, incomingPrecedence, data);
+  if (payloadErr) return payloadErr;
+
   const prodRes = resolveUnitTaskProducer(state, colonyIndex, opts.task, activeLane);
   if (!prodRes.ok) return prodRes;
   const task = prodRes.task;
 
-  if (activeLane.length >= limit) {
-    const oldestAutoIdx =
-      PRECEDENCE_RANK[incomingPrecedence] > PRECEDENCE_RANK.auto
-        ? findOldestAutoIndex(entries, colonyIndex, lane)
-        : -1;
-    if (oldestAutoIdx < 0) {
-      return { ok: false, code: fullCode, detail: `${lane} lane full` };
-    }
-    if (task.kind === 'build') {
-      const site = buildSiteReject(state, colonyIndex, task, data);
-      if (site) return { ok: false, ...site };
-    }
-    const evicted = entries[oldestAutoIdx];
-    const colony = ensureColony(state, colonyIndex, tick);
-    refundEntrySpent(state, evicted, colony, tick, data);
-    evicted.state = 'cancelled';
-    entries.splice(oldestAutoIdx, 1);
-  } else if (task.kind === 'build') {
-    const site = buildSiteReject(state, colonyIndex, task, data);
-    if (site) return { ok: false, ...site };
-  }
-
-  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(task, data, state, tick);
-  const resolvedCost = opts.costOverride ? { ...opts.costOverride } : cost;
-  const entry: QueueEntry = {
-    taskId: opts.taskId ?? nextAutoTaskId(entries, colonyIndex, tick),
+  const capErr = ensureQueueLaneCapacityAndSite(
+    state,
+    entries,
+    activeLane.length,
     colonyIndex,
     lane,
-    precedence: incomingPrecedence,
-    state: 'queued',
+    incomingPrecedence,
     task,
-    cost: resolvedCost,
-    totalCost: { ...resolvedCost },
-    spentCost: {},
-    paid: false,
-    progress: 0,
-    buildTicks,
-    elapsedTicks: 0,
-    workRate,
-    ...(opts.goalId ? { goalId: opts.goalId } : {}),
-    ...(opts.task.kind === 'project' && data ? { pinned: { dataHash: data.hash } } : {}),
-    createdAt: tick,
-  };
+    tick,
+    data,
+  );
+  if (capErr) return capErr;
 
+  const entry = buildNewQueueEntry(state, entries, colonyIndex, lane, incomingPrecedence, task, opts, tick, data);
   entries.push(entry);
   scanAndStartQueueEntries(state, entries, colonyIndex, tick, data, ctx);
   saveQueueEntries(state, entries, tick);
@@ -309,6 +231,24 @@ export const enqueueTaskHandler = defineCommandHandler({
     if (norm.task.kind === 'project') {
       if (!ctx.flags.has('W13')) return 'wave_disabled';
       if (!colonyHasActiveHub(state, colIdx)) return { code: 'invalid_args', detail: 'A prestige project needs a Command Hub.' };
+    }
+    if (norm.task.kind === 'raid') {
+      if (!ctx.flags.has('W18')) return 'wave_disabled';
+      const awayGate = checkAiRaidAwayPolicy(state, colIdx, cmd, ctx);
+      if (awayGate) return awayGate;
+      const raidTask = norm.task as Record<string, unknown>;
+      const targetRef = (raidTask.targetColonyId ?? raidTask.targetColonyIndex ?? raidTask.targetColony) as
+        | string
+        | number
+        | undefined;
+      const toColony = resolveColonyIndex(state, targetRef);
+      const raidRes = launchColonyRaid(state, colIdx, toColony, ctx, {
+        unitIds: (raidTask.unitIds ?? raidTask.entityIds) as number[] | undefined,
+        q: typeof raidTask.q === 'number' ? raidTask.q : undefined,
+        r: typeof raidTask.r === 'number' ? raidTask.r : undefined,
+        data: ctx.data,
+      });
+      if (!raidRes.ok) return raidRes.code;
     }
     if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
       return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);

@@ -1,6 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { SectorId } from '@terra/contracts';
-import { extractPinnedAtlasManifest } from '@terra/sim';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import {
@@ -13,16 +12,16 @@ import {
 } from './lobby-persistence.types';
 import { KeyedMutex } from './lobby-store.helpers';
 import {
+  checkIdempotentTicketReservation,
+  tryCandidateSlotsWithAuthorityHelper,
+} from './parts/reservation-service-parts';
+import {
   evaluateSectorCapacityGuard,
   evaluateWorldAdmissionGuard,
-  extractManifestSlotForCandidate,
   findCandidateFreeSlots,
-  invokeSimAuthorityValidator,
   makeFailureResult,
-  resolveReservationTtlMs,
   resolveTargetSectorForTicket,
   toManagedReservationRecord,
-  toSectorReservationV1,
 } from './reservation.helpers';
 import {
   SIM_LANDING_AUTHORITY_VALIDATOR,
@@ -207,37 +206,13 @@ export class SectorReservationService {
     input: ReserveSectorSlotRequest,
     ticket: MatchTicketRecord | null,
   ): Promise<SectorReservationResult | null> {
-    const existing = await this.persistence.getReservationByTicketId(input.ticketId);
-    if (!existing) return null;
-    const isActive =
-      existing.state === 'HELD' ||
-      existing.state === 'COMMITTED' ||
-      this.spawningStateById.has(existing.reservationId);
-    if (!isActive) return null;
-
-    if (
-      existing.planetId === input.planetId &&
-      existing.sectorId === input.sectorId &&
-      existing.playerId === input.playerId &&
-      existing.colonyId === input.colonyId &&
-      (!input.landingSlotId || existing.landingSlotId === input.landingSlotId)
-    ) {
-      const slot = await this.persistence.getLandingSlot(existing.planetId, existing.landingSlotId);
-      const sector = await this.persistence.getSector(existing.planetId, existing.sectorId);
-      if (slot && sector) {
-        const managed = this.decorateRecord(existing);
-        return {
-          ok: true,
-          idempotent: true,
-          reservation: managed,
-          reservationV1: toSectorReservationV1(managed),
-          slot,
-          sector,
-          ticket,
-        };
-      }
-    }
-    return null;
+    return checkIdempotentTicketReservation({
+      persistence: this.persistence,
+      input,
+      ticket,
+      spawningStateById: this.spawningStateById,
+      decorateRecord: (r) => this.decorateRecord(r),
+    });
   }
 
   private async tryCandidateSlotsWithAuthority(
@@ -247,81 +222,16 @@ export class SectorReservationService {
     candidates: readonly SectorLandingSlotRecord[],
     ticket: MatchTicketRecord | null,
   ): Promise<SectorReservationResult> {
-    const pinnedAtlas = await this.persistence.getAtlasVersion(world.id, world.atlasVersion);
-    const pinnedManifest =
-      pinnedAtlas?.manifest ?? extractPinnedAtlasManifest(input.simState ?? undefined);
-    const validator = input.authorityValidator ?? this.authorityValidator;
-    const now = input.now ?? new Date();
-    const ttlMs = resolveReservationTtlMs(input.ttlMs, input.ttlS);
-    const rejectedSlotIds: string[] = [];
-
-    for (const candidate of candidates) {
-      const manifestSlot = extractManifestSlotForCandidate(
-        pinnedManifest,
-        sector.sectorId,
-        candidate.landingSlotId,
-      );
-      const authorityDecision = await invokeSimAuthorityValidator(validator, {
-        planetId: world.id,
-        world,
-        sector,
-        slot: candidate,
-        manifestSlot,
-        pinnedManifest,
-        ticketId: input.ticketId,
-        playerId: input.playerId,
-        colonyId: input.colonyId,
-        epoch: candidate.epoch + 1,
-        now,
-        simState: input.simState,
-        generatedAtlas: input.generatedAtlas,
-      });
-
-      if (!authorityDecision.ok) {
-        rejectedSlotIds.push(candidate.landingSlotId);
-        continue;
-      }
-
-      const outcome = await this.persistence.reserveSectorSlot({
-        planetId: input.planetId,
-        sectorId: input.sectorId,
-        landingSlotId: candidate.landingSlotId,
-        playerId: input.playerId,
-        ticketId: input.ticketId,
-        colonyId: input.colonyId,
-        reservationId: input.reservationId,
-        ttlMs,
-        now,
-      });
-
-      if (!outcome.ok) {
-        if (outcome.reason === 'slot_taken' && !input.landingSlotId) {
-          rejectedSlotIds.push(candidate.landingSlotId);
-          continue;
-        }
-        const mappedCode =
-          outcome.reason === 'admission_closed' ? 'admission_paused' : outcome.reason;
-        return makeFailureResult(mappedCode, outcome.message, { ticket });
-      }
-
-      const updatedTicket = await this.persistence.getTicketById(input.ticketId);
-      const managed = this.decorateRecord(outcome.reservation);
-      return {
-        ok: true,
-        idempotent: outcome.idempotent,
-        reservation: managed,
-        reservationV1: toSectorReservationV1(managed),
-        slot: outcome.slot,
-        sector: outcome.sector,
-        ticket: updatedTicket,
-      };
-    }
-
-    return makeFailureResult(
-      'no_safe_slot',
-      `Sim authority rejected all ${rejectedSlotIds.length} candidate landing slot(s) in ${sector.sectorId}`,
-      { rejectedSlotIds, ticket },
-    );
+    return tryCandidateSlotsWithAuthorityHelper({
+      persistence: this.persistence,
+      input,
+      world,
+      sector,
+      candidates,
+      ticket,
+      defaultValidator: this.authorityValidator,
+      decorateRecord: (r) => this.decorateRecord(r),
+    });
   }
 
   async markReservationSpawning(
@@ -401,11 +311,13 @@ export class SectorReservationService {
     options?: ReleaseReservationOptions | number,
   ): Promise<ReleaseReservationResult> {
     const expectedEpoch = typeof options === 'number' ? options : options?.expectedEpoch;
+    const allowCommitted = typeof options === 'object' ? options?.allowCommitted : undefined;
     return this.runWithReservationMutex(reservationId, async () => {
       const out = await this.persistence.releaseReservation(
         reservationId,
         reason,
         expectedEpoch,
+        allowCommitted ? { allowCommitted } : undefined,
       );
       const ticket = await this.persistence.getTicketById(out.reservation.ticketId);
       return {

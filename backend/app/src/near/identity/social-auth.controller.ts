@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, Inject, Optional, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { SocialAuthRequestSchema, type SocialAuthResponse } from '@terra/contracts';
+import { SocialAuthRequestSchema, type SocialAuthRequest, type SocialAuthResponse } from '@terra/contracts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AuthTokenService, extractBearerPlayer, formatRefreshCookie } from '../../core/auth/index.js';
 import { ZodPipe } from '../../core/errors/zod.pipe.js';
@@ -56,7 +56,7 @@ export class SocialAuthController {
   @HttpCode(200)
   @UseGuards(IpThrottleGuard)
   async socialLogin(
-    @Body(new ZodPipe(SocialAuthRequestSchema)) body: { provider: 'google' | 'x'; token: string },
+    @Body(new ZodPipe(SocialAuthRequestSchema)) body: SocialAuthRequest,
     @Req() req: IncomingMessage,
     @Res({ passthrough: true }) res: ReplyLike,
   ): Promise<SocialAuthResponse> {

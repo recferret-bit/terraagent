@@ -4,6 +4,7 @@ import table_away from './away';
 import table_bounty from './bounty';
 import table_combat_units from './combat-units';
 import table_dev from './dev';
+import table_diplomacy from './diplomacy';
 import table_director from './director';
 import table_economy_t1_basic from './economy-t1-basic';
 import table_fauna from './fauna';
@@ -30,4 +31,4 @@ import table_weapons from './weapons';
 import table_work_crew from './work-crew';
 import table_worldgen from './worldgen';
 
-export const DATA_TABLES: readonly TableDef[] = [table_away, table_bounty, table_combat_units, table_dev, table_director, table_economy_t1_basic, table_fauna, table_grid, table_hq, table_hub, table_logistics, table_market, table_mercenary, table_ops_basic, table_prestige, table_regions, table_resources, table_stages, table_terraform, table_terraform_finds, table_terrain, table_time, table_trade_hub, table_treasury, table_treasury_policy, table_units_workers_basic, table_weapons, table_work_crew, table_worldgen];
+export const DATA_TABLES: readonly TableDef[] = [table_away, table_bounty, table_combat_units, table_dev, table_diplomacy, table_director, table_economy_t1_basic, table_fauna, table_grid, table_hq, table_hub, table_logistics, table_market, table_mercenary, table_ops_basic, table_prestige, table_regions, table_resources, table_stages, table_terraform, table_terraform_finds, table_terrain, table_time, table_trade_hub, table_treasury, table_treasury_policy, table_units_workers_basic, table_weapons, table_work_crew, table_worldgen];

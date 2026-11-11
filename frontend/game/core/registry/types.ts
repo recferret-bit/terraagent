@@ -3,7 +3,7 @@ import type { WorldStore } from '../../store/WorldStore';
 /** Client feature registry: the public, stable API a feature folder codes against. */
 
 export type HostKind = 'server' | 'local';
-export type HudSlot = 'top-left' | 'top-right' | 'top-center' | 'bottom-left' | 'bottom-right';
+export type HudSlot = 'top-left' | 'top-right' | 'top-center' | 'bottom-left' | 'bottom-right' | 'top';
 export const HUD_SLOTS: readonly HudSlot[] = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-right'];
 
 /** Opaque per-frame view of the game. The sim view arrives later; extend by declaration merging. */

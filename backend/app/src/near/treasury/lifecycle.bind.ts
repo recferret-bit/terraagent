@@ -33,7 +33,11 @@ export class PlanetDaoLifecycleBind implements OnModuleInit, OnModuleDestroy {
         this.membership?.onFounded(event.planetId, event.data.colonyId);
       }, { module: 'PlanetDaoLifecycleBind' }));
       this.stops.push(this.bus.onPlanetEvent('colonyEliminated', (event) => {
-        this.membership?.onEliminated(event.planetId, event.data.colonyId);
+        const colId =
+          event.data.colonyId ??
+          event.colonyIds[0] ??
+          (event.data.colonyIndex !== undefined ? `col_${event.data.colonyIndex}` : undefined);
+        if (colId) this.membership?.onEliminated(event.planetId, colId);
       }, { module: 'PlanetDaoLifecycleBind' }));
       this.stops.push(this.bus.onPlanetEvent('deedSettled', (event) => {
         this.membership?.onSettled(event.planetId, event.data.colonyId);

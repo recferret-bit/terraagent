@@ -2,6 +2,7 @@ import { getStageSpec } from '../../data';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
+import { isW18PvpActive, syncColonyNewcomerShield } from '../pvp';
 import { ticksToRemainingSeconds } from './dwell';
 import { resolveCompiledStageRow } from './triggers';
 import { computeColonyThreatStage } from './threatStage';
@@ -136,4 +137,7 @@ export function saveColonyProgression(
   colony.emittedStages = [...prog.emittedStages];
   colony.stageOverride = prog.stageOverride;
   colony.changedAt = tick;
+  if (isW18PvpActive(data) && (state.blobs.pvp || typeof colony.raidProtectedUntil === 'number')) {
+    syncColonyNewcomerShield(state, colonyIndex, tick, data);
+  }
 }

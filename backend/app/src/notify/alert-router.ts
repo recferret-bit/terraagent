@@ -120,10 +120,16 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
     if (note.kind === 'colony_eliminated' && !this.claimEliminated(note.colonyId, note.eventId)) return false;
     if (note.kind === 'under_attack' && !this.attacks.open(note.colonyId, nowMs)) return false;
     try {
-      await this.notifier.send(note);
+      const res = await this.notifier.send(note);
+      if (res?.status === 'skipped' || res?.status === 'failed') {
+        if (note.kind === 'colony_eliminated') this.eliminatedSent.delete(eliminatedKey(note.colonyId, note.eventId));
+        if (note.kind === 'under_attack') this.attacks.release(note.colonyId, nowMs);
+        return false;
+      }
       return true;
     } catch (e) {
       if (note.kind === 'colony_eliminated') this.eliminatedSent.delete(eliminatedKey(note.colonyId, note.eventId));
+      if (note.kind === 'under_attack') this.attacks.release(note.colonyId, nowMs);
       this.log.error(`notify ${note.kind} for ${note.colonyId} failed: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }

@@ -74,9 +74,14 @@ describe('production guard', () => {
     await app.close();
   });
   it('testnet without a registered adapter fails boot naming the port', async () => {
-    const err = await createApp({ source: { ...base, NEAR_ADAPTER_CHAIN_READ: 'testnet' } }).catch((e) => e);
+    const err = await createApp({ source: { ...base, NEAR_ADAPTER_BADGE_NFT: 'testnet' } }).catch((e) => e);
     expect(err).toBeInstanceOf(EnvError);
-    expect(err.message).toContain('ChainRead: "testnet" adapter selected but none is registered');
+    expect(err.message).toContain('BadgeNft: "testnet" adapter selected but none is registered');
+  });
+  it('boots with real testnet ChainRead adapter when NEAR_ADAPTER_CHAIN_READ=testnet', async () => {
+    const { app } = await createApp({ source: { ...base, NEAR_ADAPTER_CHAIN_READ: 'testnet' } });
+    expect(app.get(ChainReadPort).constructor.name).toBe('TestnetChainReadAdapter');
+    await app.close();
   });
 });
 

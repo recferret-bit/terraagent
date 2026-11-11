@@ -42,6 +42,6 @@ The 2026-10-30 review made every demo step name its URL, console command and vis
 | W09 · 4 | URL or panel of the mock notifier viewer (W09-20) is not named |
 | W16 · revised story | Settled in [`w16-check.md`](./w16-check.md): steps 1 and 9 are on the page; 2–8 and the admin kill have no play control yet (AI-13). Unit tests cover policy, raids, and the in-memory restart. |
 | W16 · admin controls | No admin token is printed. The kill switch is in-memory and not on the page. The guide does not ask for a credential. |
-| W13, W18, W22, W23 (second player) | Join with the link printed by the dev console `planet <name>` (`?join=<planet id>&as=<name>`, W00); the wave's scenario must give each named player its colony (W18 assumes `as=b`, `c`, `d`) |
+| W13, W18, W22, W23 (second player) | Join with the link printed by the dev console `planet <name>` (`?join=<planet id>&as=<name>`, W00); the wave's scenario must give each named player its colony (W18 settled in [`w18-check.md`](./w18-check.md): `?scenario=w18` seats `as=b` into Colony B, `as=c` into Colony C, `as=d` into Colony D, and `as=e` into Colony E) |
 | W23 · 1–3 | Need real testnet/mainnet credentials (after the H2 gate) |
 | W24 · 2–3 | Android orientation lock and iOS standalone need a real device; browser device mode only approximates them |

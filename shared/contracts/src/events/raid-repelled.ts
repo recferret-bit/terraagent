@@ -9,6 +9,12 @@ export const RaidRepelledDataSchema = z.strictObject({
   species: z.string().optional(),
   unbreached: z.boolean(),
   count: z.number().int().nonnegative().optional(),
+  raidId: z.string().min(1).max(64).optional(),
+  attackerColony: z.number().int().nonnegative().optional(),
+  attackerColonyId: z.string().min(1).max(64).optional(),
+  targetColony: z.number().int().nonnegative().optional(),
+  targetColonyId: z.string().min(1).max(64).optional(),
+  siphoned: z.record(z.string(), z.number().nonnegative()).optional(),
   q: z.number().int().optional(),
   r: z.number().int().optional(),
 });

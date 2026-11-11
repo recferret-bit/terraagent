@@ -55,7 +55,7 @@ export interface ColonyState {
   id: string;
   name: string;
   color: number;
-  status: 'founding' | 'active' | 'eliminated' | 'settled';
+  status: 'founding' | 'active' | 'critical' | 'eliminated' | 'settled';
   changedAt: number;
   [field: string]: unknown;
 }

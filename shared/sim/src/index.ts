@@ -137,5 +137,8 @@ export * from './systems/fauna';
 export * from './systems/fauna/directives';
 export * from './systems/fauna/directivePayloads';
 export * from './systems/fauna/checkpoints';
+export * from './systems/pvp';
+export * from './systems/diplomacy';
+export * from './systems/elimination';
 export * from './data';
 export * from './host';

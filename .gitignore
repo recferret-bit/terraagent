@@ -23,3 +23,6 @@ scripts/dev/.out/
 
 # W13-45 experiment artifacts (checksummed run outputs)
 tests/economy/artifacts/
+
+# Rust / NEAR smart contract build artifacts
+backend/near-contracts/target/

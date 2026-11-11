@@ -1,0 +1,220 @@
+/* Faction Plate styling for Diplomacy HUD panel (W18-20) */
+
+.ta-diplomacy-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  width: 320px;
+  max-width: 100%;
+  padding: var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  font: 500 12px/1.4 var(--ta-font-mono);
+  box-sizing: border-box;
+}
+
+.ta-diplomacy__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ta-seam);
+  padding-bottom: var(--ta-s1);
+}
+
+.ta-diplomacy__title {
+  margin: 0;
+  color: var(--ta-orange);
+  font: 700 11px/1 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+/* Oathbreaker Indicator */
+.ta-diplomacy-oathbreaker {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2);
+  background: var(--ta-void);
+  border: 1px solid var(--ta-fault);
+  color: var(--ta-fault);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.ta-diplomacy-oathbreaker__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.ta-diplomacy-oathbreaker__label {
+  flex: 1;
+}
+
+/* Incoming Offer Banner */
+.ta-diplomacy-offer-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-orange);
+  box-shadow: 0 0 8px rgba(255, 138, 0, 0.15);
+}
+
+.ta-diplomacy-offer-banner__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ta-diplomacy-offer-banner__title {
+  color: var(--ta-orange);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-diplomacy-offer-banner__timer {
+  color: var(--ta-orange-hi);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ta-diplomacy-offer-banner__meta {
+  color: var(--ta-text-2);
+  font-size: 11px;
+}
+
+.ta-diplomacy-offer-banner__actions {
+  display: flex;
+  gap: var(--ta-s2);
+}
+
+.ta-diplomacy-offer-banner__actions button {
+  flex: 1;
+  min-height: 32px;
+  font-size: 11px;
+}
+
+/* Active Truce Badges */
+.ta-diplomacy-truces {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-diplomacy-truce-badge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-diplomacy-truce-badge[data-status="notice"] {
+  border-color: var(--ta-orange);
+}
+
+.ta-diplomacy-truce-badge__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ta-diplomacy-truce-badge__partner {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--ta-text);
+}
+
+.ta-diplomacy-truce-badge__pill {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-text-2);
+}
+
+.ta-diplomacy-truce-badge[data-status="active"] .ta-diplomacy-truce-badge__pill {
+  color: var(--ta-energy);
+  border-color: var(--ta-energy);
+}
+
+.ta-diplomacy-truce-badge[data-status="notice"] .ta-diplomacy-truce-badge__pill {
+  color: var(--ta-orange);
+  border-color: var(--ta-orange);
+}
+
+.ta-diplomacy-truce-badge__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.ta-diplomacy-truce-badge__timer {
+  font-size: 11px;
+  color: var(--ta-dim);
+}
+
+.ta-diplomacy-truce-badge button {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* Propose Truce Section */
+.ta-diplomacy-propose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  border-top: 1px solid var(--ta-seam);
+  padding-top: var(--ta-s2);
+}
+
+.ta-diplomacy-propose__label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ta-dim);
+  text-transform: uppercase;
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-diplomacy-propose select {
+  background: var(--ta-void);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s1);
+  font: 500 11px var(--ta-font-mono);
+}
+
+.ta-diplomacy-chips {
+  display: flex;
+  gap: var(--ta-s1);
+}
+
+.ta-diplomacy-chip {
+  flex: 1;
+  min-height: 28px;
+  padding: 4px 0;
+  font-size: 11px;
+  text-align: center;
+}
+
+.ta-diplomacy-chip.ta-chip--active {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange);
+  font-weight: 700;
+}
+
+.ta-diplomacy-propose__submit {
+  width: 100%;
+  min-height: 34px;
+}

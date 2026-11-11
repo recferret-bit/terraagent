@@ -41,13 +41,13 @@ interface AwayBlob {
 
 const BLOB = 'away';
 
-function pct(data: CompiledDataLike, field: 'perDirectivePct' | 'perSessionPct', fallback: number): number {
-  const row = (data.tables['away'] as Record<string, Record<string, unknown>> | undefined)?.defaults;
+function pct(data: CompiledDataLike | undefined, field: 'perDirectivePct' | 'perSessionPct', fallback: number): number {
+  const row = (data?.tables?.['away'] as Record<string, Record<string, unknown>> | undefined)?.defaults;
   const n = row?.[field];
   return typeof n === 'number' ? n : fallback;
 }
 
-export function defaultFamily(data: CompiledDataLike): FamilyBudget {
+export function defaultFamily(data?: CompiledDataLike): FamilyBudget {
   return {
     perDirectivePct: pct(data, 'perDirectivePct', AWAY_DIRECTIVE_PCT_DEFAULT),
     perSessionPct: pct(data, 'perSessionPct', AWAY_SESSION_PCT_DEFAULT),
@@ -60,7 +60,7 @@ export function closedSession(): AwaySession {
   return { open: false, colonyId: '', start: { ...ZERO }, spent: { ...ZERO }, exhausted: { metals: false, minerals: false, bio: false } };
 }
 
-export function emptySettings(data: CompiledDataLike): ColonyAwaySettings {
+export function emptySettings(data?: CompiledDataLike): ColonyAwaySettings {
   const family = defaultFamily(data);
   return {
     mode: 'director',
@@ -115,7 +115,13 @@ function write(state: PlanetState, colonyIndex: number, settings: ColonyAwaySett
   setBlob(state, BLOB, { policyVersion: AWAY_POLICY_VERSION, byColony: { ...prev, [String(colonyIndex)]: settings } }, tick);
 }
 
-export function applyAutopilot(state: PlanetState, colonyIndex: number, patch: { mode?: AutopilotMode; awayRaids?: boolean; awayBudget?: AwayBudget; hireMercenaries?: boolean; mercenaryMaxSpend?: number }, data: CompiledDataLike, tick: number): ColonyAwaySettings {
+export function applyAutopilot(
+  state: PlanetState,
+  colonyIndex: number,
+  patch: { mode?: AutopilotMode; awayRaids?: boolean; awayBudget?: AwayBudget; hireMercenaries?: boolean; mercenaryMaxSpend?: number },
+  data?: CompiledDataLike,
+  tick: number = state.meta.tick,
+): ColonyAwaySettings {
   const current = readAwaySettings(state, colonyIndex) ?? emptySettings(data);
   if (patch.mode) current.mode = patch.mode;
   if (patch.awayRaids !== undefined) current.awayRaids = patch.awayRaids;

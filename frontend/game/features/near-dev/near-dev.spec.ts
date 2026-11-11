@@ -39,4 +39,29 @@ describe('near-dev commands', () => {
     expect(await run('account.upgrade facebook ada', { devServer })).toBe('error: usage: account.upgrade <provider> <subject>');
     expect(await run('near.mock.latency relayer 20 0', { devServer })).toBe('error: usage: near.mock.latency <port> <minMs> <maxMs>');
   });
+
+  it('near.ports and near.quote inspect active adapters and 1Click dry quotes', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/v1/near/status')) {
+        return new Response(
+          JSON.stringify({
+            nearMode: 'testnet',
+            rootAccount: 'terraagent.testnet',
+            health: { ok: true, latencyMs: 31 },
+            ports: [{ port: 'CargoToken', mode: 'testnet', target: 'res.terraagent.testnet' }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ source: '1click', amountIn: '100', amountOut: '450', minAmountOut: '445' }),
+        { status: 200 },
+      );
+    });
+    expect(await run('near.ports')).toContain('NEAR_MODE=testnet root=terraagent.testnet rpc=ok(31ms) | CargoToken:testnet');
+    expect(await run('near.quote 100')).toBe('quote[1click] in=100 -> out=450 (min=445)');
+    expect(await run('near.ports', {}, 'local')).toContain('host_unavailable');
+    vi.restoreAllMocks();
+  });
 });
