@@ -12,7 +12,7 @@ import {
   type TradeDraft,
 } from './autotrade';
 import { buildAutoTradeDom, type AutoTradeDom } from './autotradeDom';
-import { GuildAnalytics } from '../guild-analytics/tracker';
+import { GuildAnalytics } from '../shared/guildAnalytics';
 import { requestDirectorKey } from './directorKey';
 import type { AwayPanelOptions } from './options';
 import { loadAutoTrade, saveAutoTrade } from './storage';

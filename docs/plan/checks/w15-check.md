@@ -14,7 +14,7 @@ The demo story in [`waves/W15-guild-agents.md`](../waves/W15-guild-agents.md). A
 ## Steps
 
 1. **Scenario.** Open `<client>/play.html?scenario=w15`. See a colony already on the ground (no orbit menu), a Trade Hub, metals near 1400 / 1500, water near 200. The Trade Hub panel has a **GUILD** tab. Settings → Away has an autoTrade section.
-2. **Dock.** Dev console: `guild.summon kestrel`. See `Kestrel docked — N quotes`. The socket gets `guild.arrived`. If N is 0, the book has no reference price yet (LED-38); the Guild tab still opens and can say there are no offers. A toast `Guild trader Kestrel has docked — N offers` and the ship descending are the visual half (RN-90). Confirm those by eye.
+2. **Dock.** Dev console: `guild.summon kestrel`. See `Kestrel docked — N quotes`. The socket gets `guild.arrived`. If N is 0, the book has no reference price yet (LED-38); the Guild tab still opens and can say there are no offers. A toast `Guild trader Kestrel has docked — N offers` sits at the bottom center of the screen, clear of the supply chip. The ship descending is the other visual half (RN-90). Confirm both by eye.
 3. **Accept.** If the Guild tab lists an offer, tap **Accept**. See a contract toast, or `Rejected: That Guild offer has expired` if the quote moved. The counterparty account is `guild-1.npc.terraagent.mock` on `<client>/dev/chain/` when a trade actually settles. If the list is empty, this step is the empty-book case in BE-85. Do not treat an empty list as a failed dock.
 4. **Price moves after a fill.** Dev console: `guild.setInventory kestrel metals.t1 600` → the command succeeds. A live sell of 600 metals into a Guild bid, and a lower next bid, is the integration spec `guild-requote` (LED-41), not this click, unless the book already showed a metals bid.
 5. **Away limits.** Settings → Away. Set metals: sell above 80%, max 300 per trade, max 600 per session, keep at least 200, partner Guild. Save. Reload the page. The same numbers are still there.
@@ -27,11 +27,17 @@ The demo story in [`waves/W15-guild-agents.md`](../waves/W15-guild-agents.md). A
 
 ## Automated checks
 
-Already run on this branch during the build: `npm run check:structure`, `npm run gen:check`, `npm test -w @terra/sim -- guild-quote guild-policy guild-stress guild-requote-bench director-decide`, `npm test -w @terra/scenarios -- test/w15-guild-agents.spec.ts`, and `npx playwright test -c tests/e2e/playwright.config.ts tests/e2e/w15.spec.ts` (12 passed, before this guide was added).
+Pre-landing run on 2026-11-11, from this worktree:
 
-Before land, from this worktree:
+- `npm run ci:fast` passed (765 test files, structure check, build).
+- `npm run test:parity`, `npm run test:contract`, `npm run validate:models -- --all`, and `npm run validate:particles -- --all` passed.
+- `npm run validate:wave -- 15` passed with one warning: owned-path drift (the wave hooks W09 digest, W13 orders, and contracts outside the declared owned paths).
+- `npm run test:integration` was 523 passed and 4 failed. The failures are outbox relay timing and one deed version bump. Those two files passed when run alone. See [BE-86](../../questions-and-limitations/backend-contracts.md).
+- `tests/e2e/w15.spec.ts` passed all 12, twice. `npm run e2e -- --waves ..15 --hack` was 83 passed, 5 failed, 64 not run. The five are earlier waves (BE-86). The W15 file is not one of them.
 
-`npm run ci:fast` · `npm run test:integration` · `npm run test:contract` · `npm run e2e -- tests/e2e/w15.spec.ts` · `npm run e2e -- --waves ..15` (every earlier wave plus this one).
+Before land, from this worktree, still worth a quiet re-run:
+
+`npm run test:integration` · `npm run e2e -- --waves ..15 --hack`
 
 `npm run wave -- land 15` runs `ci:fast` again. It does not run the full e2e unless you pass the wave number the way the land script expects.
 

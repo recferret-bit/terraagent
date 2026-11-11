@@ -1073,3 +1073,13 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** `guild.summon` docks now. An empty offer list is a pass plus the Guild tab. Funding, re-quote, and W15-off writes stay in the integration specs named above. Do not treat this e2e as proof of a 300-metal director sale or of cross-planet carry.
 - **To resolve:** Seed one organic (or labelled) reference last on the four Tier-1 barter books before summon if step 3 must accept. Drive one `runDirectorOnce` from a dev command if steps 6–7 must show spent 300 and the digest line. A W11 planet pair is required before step 9 can show cargo on the next world.
 - **Found:** 2026-11-11, W15-34
+
+### BE-86 · Combined hack e2e through W15 still fails five earlier-wave tests
+
+- **Status:** Open
+- **Area / code:** `tests/e2e/w00.spec.ts`, `tests/e2e/w03.spec.ts`, `tests/e2e/w09.spec.ts`, `tests/e2e/w10.spec.ts`, `tests/e2e/w13.spec.ts`
+- **What happens:** `npm run e2e -- --waves ..15 --hack` on 2026-11-11 finished 83 passed, 5 failed, 64 not run. `tests/e2e/w15.spec.ts` passed all 12. The failures were: w00 `?lag=300` predicted nudge (`movedAfterMs` −1), w03 dismantle water stock 96.48 against 102.5, w09 reload welcome plate (`[data-testid=away-digest]` not in the document; the frame was 3.3 s), w10 export confirm covered by a top-right book page, w13 market tab covered by the locked Thermal Plant card. A first run also failed w03 supply hover because the Guild toast sat on `hud-supply`. That toast is now at the bottom center and that hover failure did not return. The same day, `npm run test:integration` was 523 passed and 4 failed (`outbox.int.spec.ts` relay timing, `deed-lifecycle.int.spec.ts` version). Those two files passed alone (10 tests).
+- **Why it is like this:** The combined suite runs every earlier wave with W15 on, on a shared Postgres that already holds connections from other worktrees. The W15 file does not depend on those five clicks. The outbox and deed files do not import the guild maker.
+- **Workaround / mitigation:** Trust `tests/e2e/w15.spec.ts` and `npm run ci:fast` for this wave. Re-run a single failed file before treating it as a Guild defect.
+- **To resolve:** Re-run `npm run e2e -- --waves ..15 --hack` when the machine and Postgres are quiet. If w09, w10, or w13 still fail, the plate and the top-right hit targets need a layout fix that is not the Guild toast.
+- **Found:** 2026-11-11, W15 pre-landing validation

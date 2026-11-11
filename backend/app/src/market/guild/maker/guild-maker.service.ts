@@ -2,46 +2,32 @@ import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModu
 import { ModuleRef } from '@nestjs/core';
 import type { GuildArrivedPayload, GuildDepartedPayload, TradeOverviewResponse } from '@terra/contracts';
 import type { DbClient, PrismaClient } from '@terra/db';
-import { checkAllowance, type ReferencePrice } from '../../trade/allowance.js';
-import { TradeKeyRepository, type KeyRecord } from '../../trade/trade-key.repository.js';
-import { TradeReadService } from '../../trade/trade-read.service.js';
-import { MarketOrderRepository } from '../../book/market-order.repository.js';
-import { OrderRelease } from '../../orders/cancel-order.service.js';
+import { compileData, type CompiledDataLike } from '@terra/sim';
 import { EventBus } from '../../../bus/event-bus.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
-import { fundingEnabled } from '../funding/caps.js';
-import { GuildFundingService, type AllowQuoteRequest } from '../funding/guild-funding.service.js';
-import { GuildNpcRepository } from '../guild-npc.repository.js';
-import { loadPolicy } from '../guild-plan.js';
-import { applyFill, type CargoFillResult, type GuildCargoFill } from '../inventory.js';
-import { compileData, type CompiledDataLike } from '@terra/sim';
-import { decimalToBigint } from '../../book/decimal.js';
+import { MarketOrderRepository } from '../../book/market-order.repository.js';
 import type { MatchOutcome } from '../../matching/market-matcher.service.js';
-import type { GuildFillSink } from './fill-sink.js';
-import { GuildOrderBook, type GuildOrderPort, type RestingGuildOrder } from './order-book.js';
-import { barterPairIds } from './pairs.js';
-import { cancelIds, planQuotes, type GuildOrderIntent, type MakerNpc } from './plan.js';
-import {
-  consumedHold,
-  lossBlocksBid,
-  noticeFromFill,
-  termsMeta,
-  withQuoteSeq,
-  type GuildFillNotice,
-  type OrderMeta,
-  type RequoteReport,
-} from './requote.js';
-import { NpcTurnQueue } from './turn-queue.js';
+import { OrderRelease } from '../../orders/cancel-order.service.js';
+import { TradeKeyRepository, type KeyRecord } from '../../trade/trade-key.repository.js';
+import { TradeReadService } from '../../trade/trade-read.service.js';
+import { fundingEnabled } from '../funding/caps.js';
+import { GuildFundingService } from '../funding/guild-funding.service.js';
+import { GuildNpcRepository } from '../guild-npc.repository.js';
+import { applyFill, type CargoFillResult, type GuildCargoFill } from '../inventory.js';
 import { stockpileTargets } from '../strategy/apply.js';
 import { GuildStrategyPort } from '../strategy/port.js';
 import { GuildMetrics } from '../telemetry/guild-metrics.js';
+import type { GuildFillSink } from './fill-sink.js';
+import { GuildOrderBook, type GuildOrderPort } from './order-book.js';
+import { admitQuotes, cancelResting, gateIntent, type DockIo, type DockReport } from './parts/dock-pass.js';
+import { runRequote, type RequoteIo } from './parts/requote-pass.js';
+import { planQuotes, type GuildOrderIntent, type MakerNpc } from './plan.js';
+import { noticeFromFill, type GuildFillNotice, type RequoteReport } from './requote.js';
+import { NpcTurnQueue } from './turn-queue.js';
 
-export interface DockReport {
-  readonly placed: readonly string[];
-  readonly skipped: readonly string[];
-}
+export type { DockReport };
 
 export interface GuildBookDiscovery {
   overview(planetId: string): Promise<TradeOverviewResponse>;
@@ -53,10 +39,7 @@ export const GUILD_BOOK_DISCOVERY = Symbol('GUILD_BOOK_DISCOVERY');
 
 /**
  * While a Guild NPC is docked, rest one bid and one ask per Tier-1 barter pair that `quoteGuild` prices.
- * Actor kind is `npc`. The command source recorded on the order is `bot`. One overview call discovers the book.
- * Departure and the kill switch cancel those orders and release the funding hold.
- * A guild fill records cargo, consumes the funding hold, and replaces that quote in the same turn.
- * A funding pause (`funding_cap`, `killed`, `cash_paused`, `inventory_short`) increments `guild_quote_rejected_total`.
+ * Actor kind is `npc`. Departure, kill, and a fill delegate to `parts/`.
  */
 @Injectable()
 export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFillSink {
@@ -93,40 +76,36 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   }
 
   async onArrived(payload: GuildArrivedPayload): Promise<DockReport> {
-    if (!this.live()) return report([], ['wave_disabled']);
+    if (!this.live()) return { placed: [], skipped: ['wave_disabled'] };
     try {
       return await this.arrive(payload);
     } catch (err) {
       this.log.warn(`guild quote failed: ${err instanceof Error ? err.message : String(err)}`);
-      return report([], ['failed']);
+      return { placed: [], skipped: ['failed'] };
     }
   }
 
   async onDeparted(payload: GuildDepartedPayload): Promise<string[]> {
     if (!this.live()) return [];
-    return this.cancelNpc(payload.npcId, payload.planetId);
+    return cancelResting(this.dockIo(), payload.npcId, payload.planetId);
   }
 
   /** Kill switch: drop every resting guild quote for this NPC and do not place another. */
   onKilled(npcId: string): Promise<string[]> {
     if (!this.live()) return Promise.resolve([]);
-    return this.cancelNpc(npcId);
+    return cancelResting(this.dockIo(), npcId);
   }
 
   /**
    * Record one guild fill on the NPC row. A player buy is `side: 'sell'` and decreases stock.
-   * Does not re-quote. Fills that must re-quote go through `onGuildFill` (it writes the same cache).
-   * W15 off writes nothing. Departure does not clear the cache.
+   * Does not re-quote. Fills that must re-quote go through `onGuildFill`.
    */
   recordFill(npcId: string, fill: GuildCargoFill): Promise<CargoFillResult | null> {
     if (!this.live()) return Promise.resolve(null);
     return this.turns.run(npcId, () => this.npcs.withLock(npcId, (db) => this.writeFill(npcId, fill, db)));
   }
 
-  /**
-   * After the match transaction commits: one guild leg becomes one re-quote.
-   * W15 off does nothing. A zero-qty leg is ignored inside `onGuildFill`.
-   */
+  /** After the match transaction commits: one guild leg becomes one re-quote. */
   async onMatched(outcome: MatchOutcome): Promise<void> {
     if (!this.live()) return;
     const orders = [outcome.incoming, ...outcome.makers.values()];
@@ -138,198 +117,22 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
 
   /**
    * Serialize this NPC's inventory, consume the filled hold, cancel the old quote, and rest a new one.
-   * A non-positive amount does not write and does not re-quote. W15 off returns null.
-   * Do not call this from inside `recordFill`: both take the same per-NPC turn.
+   * A non-positive amount does not write and does not re-quote.
    */
   onGuildFill(notice: GuildFillNotice): Promise<RequoteReport | null> {
     if (!this.live()) return Promise.resolve(null);
-    if (!Number.isSafeInteger(notice.amount) || notice.amount <= 0)
-      return Promise.resolve({ requoted: false, reason: 'zero' });
-    return this.turns.run(notice.npcId, () => this.requote(notice));
+    if (!Number.isSafeInteger(notice.amount) || notice.amount <= 0) return Promise.resolve({ requoted: false, reason: 'zero' });
+    return this.turns.run(notice.npcId, () => runRequote(this.requoteIo(), notice));
   }
 
   private async arrive(payload: GuildArrivedPayload): Promise<DockReport> {
     const npc = await this.npcOf(payload.npcId);
-    if (!npc) return report([], ['not_provisioned']);
+    if (!npc) return { placed: [], skipped: ['not_provisioned'] };
     const key = await this.keys.find(npc.tradeKeyId);
-    if (!key || key.revokedAt) return report([], ['no_key']);
+    if (!key || key.revokedAt) return { placed: [], skipped: ['no_key'] };
     const overview = await this.overview(payload.planetId);
-    const planned = planQuotes(
-      this.data(),
-      npc,
-      { planetId: payload.planetId, departAt: payload.departAt },
-      overview.overview,
-      await this.quoteTargets(npc.npcId),
-    );
-    return this.admit(npc, key, planned, payload.planetId);
-  }
-
-  private async admit(
-    npc: MakerNpc,
-    key: KeyRecord,
-    planned: readonly GuildOrderIntent[],
-    planetId: string,
-  ): Promise<DockReport> {
-    const placed: string[] = [];
-    const skipped: string[] = [];
-    let open = await this.port().resting(npc.npcId, planetId);
-    let committed = open.reduce((sum, row) => sum + row.notional, 0n);
-    for (const intent of planned) {
-      if (open.some((row) => row.base === intent.base && row.side === intent.side)) {
-        skipped.push('duplicate');
-        continue;
-      }
-      const reason = await this.gate(npc, key, intent, open.length, committed);
-      if (reason === 'killed') {
-        await this.cancelNpc(npc.npcId, planetId);
-        return report(placed, [...skipped, 'killed']);
-      }
-      if (reason) {
-        skipped.push(reason);
-        continue;
-      }
-      const row = await this.placeOrRelease(npc.npcId, intent);
-      if (!row) {
-        skipped.push('duplicate');
-        continue;
-      }
-      placed.push(row);
-      committed += intent.priceAmount;
-      open = [...open, restingFrom(intent, row)];
-    }
-    return report(placed, skipped);
-  }
-
-  private async placeOrRelease(npcId: string, intent: GuildOrderIntent): Promise<string | null> {
-    try {
-      const row = await this.port().place(intent);
-      if (row.created) return row.orderId;
-      await this.funding.release(npcId, intent.bucket, intent.reserve);
-      return null;
-    } catch (err) {
-      await this.funding.release(npcId, intent.bucket, intent.reserve);
-      throw err;
-    }
-  }
-
-  private async gate(
-    npc: MakerNpc,
-    key: KeyRecord,
-    intent: GuildOrderIntent,
-    outstanding: number,
-    committed: bigint,
-  ): Promise<string | null> {
-    const allowance = this.allowanceOf(key, intent, outstanding, committed);
-    if (allowance) return allowance;
-    const preview = await this.funding.allowQuote(quoteRequest(npc.npcId, intent, (wave) => this.flags.has(wave)));
-    if (!preview.ok) return this.note(preview.reason);
-    const held = await this.funding.reserve(npc.npcId, intent.bucket, intent.reserve);
-    return held.ok ? null : this.note(held.reason);
-  }
-
-  private note(reason: string): string {
-    this.telemetry?.reject(reason);
-    return reason;
-  }
-
-  private allowanceOf(key: KeyRecord, intent: GuildOrderIntent, outstanding: number, committed: bigint): string | null {
-    const reference: ReferencePrice | null = intent.reference;
-    const rejection = checkAllowance(
-      { ...key.allowance, allowedPairs: [...new Set([...key.allowance.allowedPairs, ...barterPairIds()])] },
-      { pair: intent.pair, amount: intent.amount, notional: intent.priceAmount },
-      { outstandingOrders: outstanding, committedToday: committed, reference },
-    );
-    return rejection?.code ?? null;
-  }
-
-  private async cancelNpc(npcId: string, planetId?: string): Promise<string[]> {
-    const rows = await this.port().resting(npcId, planetId);
-    const ids = cancelIds(rows);
-    for (const row of rows) {
-      await this.port().cancel(row);
-      if (row.reserve > 0n) await this.funding.release(npcId, row.bucket, row.reserve);
-    }
-    return ids;
-  }
-
-  private async requote(notice: GuildFillNotice): Promise<RequoteReport> {
-    const meta = await this.metaOf(notice);
-    const wrote = await this.npcs.withLock(notice.npcId, (db) => this.writeFill(notice.npcId, cargoOf(notice), db));
-    if (!wrote?.ok)
-      return { requoted: false, reason: wrote ? wrote.reason : 'no_npc', previousOrderId: notice.orderId };
-    await this.settleHold(notice, meta);
-    return this.placeNext(notice, meta);
-  }
-
-  private async metaOf(notice: GuildFillNotice): Promise<OrderMeta> {
-    const open = await this.openQuote(notice);
-    const stored = await this.storedMeta(notice.orderId);
-    return {
-      reserve: open?.reserve ?? stored?.reserve ?? notice.reserve,
-      departAt: open?.departAt || stored?.departAt || notice.departAt,
-      quoteSeq: open?.quoteSeq ?? stored?.quoteSeq ?? notice.quoteSeq,
-      orderAmount: open && open.amount > 0n ? open.amount : (stored?.orderAmount ?? notice.orderAmount),
-      bucket: open?.bucket ?? stored?.bucket ?? 'inventory',
-    };
-  }
-
-  private async storedMeta(orderId: string): Promise<OrderMeta | null> {
-    if (!this.prisma) return null;
-    const row = await this.prisma.marketOrder.findUnique({
-      where: { orderId },
-      select: { signedTerms: true, ref: true, amount: true },
-    });
-    return row ? termsMeta(row.signedTerms, row.ref, decimalToBigint(row.amount)) : null;
-  }
-
-  private async settleHold(notice: GuildFillNotice, meta: OrderMeta): Promise<void> {
-    const qty = BigInt(notice.amount);
-    const size = meta.orderAmount > 0n ? meta.orderAmount : qty;
-    const held = consumedHold(meta.reserve, size, qty);
-    if (held > 0n) await this.funding.consume(notice.npcId, meta.bucket, held);
-    const open = await this.openQuote(notice);
-    if (!open) return;
-    const left = meta.reserve > held ? meta.reserve - held : 0n;
-    if (left > 0n) await this.funding.release(notice.npcId, open.bucket, left);
-    await this.port().cancel(open);
-  }
-
-  private async placeNext(notice: GuildFillNotice, meta: OrderMeta): Promise<RequoteReport> {
-    const npc = await this.npcOf(notice.npcId);
-    const previousOrderId = notice.orderId;
-    if (!npc) return { requoted: false, reason: 'no_npc', previousOrderId };
-    const quoteSeq = meta.quoteSeq + 1;
-    if (
-      notice.side === 'buy' &&
-      lossBlocksBid(npc.lossAtomic, loadPolicy((wave) => this.flags.has(wave)).dailyLossAtomic)
-    ) {
-      return { requoted: false, reason: 'loss', quoteSeq, previousOrderId };
-    }
-    const key = await this.keys.find(npc.tradeKeyId);
-    if (!key || key.revokedAt) return { requoted: false, reason: 'no_key', previousOrderId };
-    const overview = await this.overview(notice.planetId);
-    const dock = { planetId: notice.planetId, departAt: meta.departAt || notice.departAt };
-    const intent = planQuotes(this.data(), npc, dock, overview.overview, await this.quoteTargets(npc.npcId)).find(
-      (row) => row.base === notice.base && row.quote === notice.quote && row.side === notice.side,
-    );
-    if (!intent) return { requoted: false, reason: 'paused', previousOrderId };
-    const stamped = withQuoteSeq(intent, quoteSeq);
-    const open = await this.port().resting(npc.npcId, notice.planetId);
-    const committed = open.reduce((sum, row) => sum + row.notional, 0n);
-    const reason = await this.gate(npc, key, stamped, open.length, committed);
-    if (reason) return { requoted: false, reason, previousOrderId };
-    const orderId = await this.placeOrRelease(npc.npcId, stamped);
-    if (!orderId) return { requoted: false, reason: 'duplicate', previousOrderId };
-    return { requoted: true, orderId, quoteSeq, bid: stamped.priceAmount, previousOrderId };
-  }
-
-  private async openQuote(notice: GuildFillNotice): Promise<RestingGuildOrder | null> {
-    const rows = await this.port().resting(notice.npcId, notice.planetId);
-    return (
-      rows.find((row) => row.orderId === notice.orderId) ??
-      rows.find((row) => row.base === notice.base && row.side === notice.side) ??
-      null
-    );
+    const planned = planQuotes(this.data(), npc, { planetId: payload.planetId, departAt: payload.departAt }, overview.overview, await this.quoteTargets(npc.npcId));
+    return admitQuotes(this.dockIo(), npc, key, planned, payload.planetId);
   }
 
   private async writeFill(npcId: string, fill: GuildCargoFill, db: DbClient): Promise<CargoFillResult | null> {
@@ -343,30 +146,19 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   private async npcOf(npcId: string): Promise<MakerNpc | null> {
     const row = await this.npcs.find(npcId);
     if (!row || row.actorKind !== 'npc') return null;
-    return {
-      npcId: row.npcId,
-      accountId: row.accountId,
-      tradeKeyId: row.tradeKeyId,
-      inventory: row.inventory,
-      lossAtomic: row.lossAtomic,
-    };
+    return { npcId: row.npcId, accountId: row.accountId, tradeKeyId: row.tradeKeyId, inventory: row.inventory, lossAtomic: row.lossAtomic };
   }
 
   private overview(planetId: string): Promise<TradeOverviewResponse> {
     if (this.discovery) return this.discovery.overview(planetId);
-    const read = this.moduleRef.get(TradeReadService, { strict: false });
-    return read.overview(planetId);
+    return this.moduleRef.get(TradeReadService, { strict: false }).overview(planetId);
   }
 
   private port(): GuildOrderPort {
     if (this.orders) return this.orders;
     if (!this.book) {
       if (!this.prisma) throw new Error('guild maker has no order book');
-      this.book = new GuildOrderBook(
-        this.prisma,
-        this.moduleRef.get(MarketOrderRepository, { strict: false }),
-        this.moduleRef.get(OrderRelease, { strict: false }),
-      );
+      this.book = new GuildOrderBook(this.prisma, this.moduleRef.get(MarketOrderRepository, { strict: false }), this.moduleRef.get(OrderRelease, { strict: false }));
     }
     return this.book;
   }
@@ -375,7 +167,7 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     return compileData(this.flags.flags);
   }
 
-  /** Strategy stockpile, or `undefined` when there is no port or the payload is rejected. Prices stay in `quoteGuild`. */
+  /** Strategy stockpile, or `undefined` when there is no port or the payload is rejected. */
   private async quoteTargets(npcId: string): Promise<ReadonlyMap<string, bigint> | undefined> {
     if (!this.strategy) return undefined;
     return stockpileTargets(await this.strategy.choose({ id: npcId }, { nowMs: Date.now() }));
@@ -384,47 +176,41 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   private live(): boolean {
     return fundingEnabled(this.flags, this.env);
   }
-}
 
-function report(placed: readonly string[], skipped: readonly string[]): DockReport {
-  return { placed, skipped };
-}
+  private note(reason: string): string {
+    this.telemetry?.reject(reason);
+    return reason;
+  }
 
-function quoteRequest(npcId: string, intent: GuildOrderIntent, has: (wave: string) => boolean): AllowQuoteRequest {
-  const policy = loadPolicy(has);
-  return {
-    npcId,
-    side: intent.side,
-    quote: 'inventory',
-    size: intent.reserve,
-    stock: intent.stock,
-    cashEnabled: policy.cashEnabled,
-    referenceAgeS: 0,
-    eligibleVolume: policy.params.minReferenceVolume,
-    referenceMaxAgeS: policy.params.referenceMaxAgeS,
-    minReferenceVolume: policy.params.minReferenceVolume,
-  };
-}
+  private dockIo(): DockIo {
+    return {
+      port: () => this.port(),
+      funding: this.funding,
+      has: (wave) => this.flags.has(wave),
+      note: (reason) => this.note(reason),
+      cancelNpc: (npcId, planetId) => cancelResting(this.dockIo(), npcId, planetId),
+      gate: (npc, key, intent, outstanding, committed) => this.gate(key, npc.npcId, intent, outstanding, committed),
+    };
+  }
 
-function cargoOf(notice: GuildFillNotice): GuildCargoFill {
-  return { resource: notice.base, side: notice.side, amount: notice.amount, planetId: notice.planetId };
-}
+  private gate(key: KeyRecord, npcId: string, intent: GuildOrderIntent, outstanding: number, committed: bigint): Promise<string | null> {
+    return gateIntent(this.dockIo(), key, npcId, intent, outstanding, committed);
+  }
 
-function restingFrom(intent: GuildOrderIntent, orderId: string): RestingGuildOrder {
-  return {
-    orderId,
-    planetId: intent.planetId,
-    colonyId: intent.npcId,
-    base: intent.base,
-    quote: intent.quote,
-    side: intent.side,
-    actorKind: 'npc',
-    bucket: intent.bucket,
-    reserve: intent.reserve,
-    notional: intent.priceAmount,
-    amount: intent.amount,
-    ref: intent.ref,
-    departAt: intent.departAt,
-    quoteSeq: intent.quoteSeq,
-  };
+  private requoteIo(): RequoteIo {
+    return {
+      prisma: this.prisma,
+      npcs: this.npcs,
+      keys: this.keys,
+      funding: this.funding,
+      port: () => this.port(),
+      data: () => this.data(),
+      has: (wave) => this.flags.has(wave),
+      note: (reason) => this.note(reason),
+      overview: (planetId) => this.overview(planetId),
+      quoteTargets: (npcId) => this.quoteTargets(npcId),
+      writeFill: (npcId, fill, db) => this.writeFill(npcId, fill, db),
+      npcOf: (npcId) => this.npcOf(npcId),
+    };
+  }
 }

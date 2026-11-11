@@ -1,9 +1,9 @@
 import { formatAtomic, mockLabel, type GuildOffer } from '@terra/contracts';
 import type { FeatureContext, TradeHubTabInstance } from '../../core/registry/types';
-import { GuildAnalytics } from '../guild-analytics/tracker';
 import { formatRejectToast } from '../shared/rejectText';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
-import { resourceLabel } from '../market/tab/pairs';
+import { GuildAnalytics } from '../shared/guildAnalytics';
+import { resourceLabel } from '../shared/resources';
 import { formatDepartCountdown } from './countdown';
 import { type GuildVisit, type GuildVisitModel } from './model';
 

@@ -1,7 +1,9 @@
 .ta-guild-toasts {
+  /* Below the top-center stock row. A toast on that row covers hud-supply and steals its hover. */
   position: absolute;
-  top: var(--ta-s4);
+  bottom: var(--ta-s8);
   left: 50%;
+  z-index: 60;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;

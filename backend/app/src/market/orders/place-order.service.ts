@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
   eventDef,
@@ -6,7 +5,6 @@ import {
   type ActorKind,
   marketToken,
   isResourceToken,
-  pairId,
   type MarketTokenKey,
   type RejectCode,
   type ResourceKey,
@@ -28,9 +26,12 @@ import { GuildContactProducer } from '../progression/guild-contact.producer.js';
 import { MarketMatcher, type MatchOutcome } from '../matching/market-matcher.service.js';
 import { resolveMarketAccountId } from './colony-account.js';
 import { MarketFillsHook } from './market-fills.hook.js';
-import { MarketPolicyProvider, PLATFORM_ACCOUNT_ID } from './market-policy.provider.js';
+import { MarketPolicyProvider } from './market-policy.provider.js';
 import { MarketSimGateway, type SimTarget } from './market-sim-gateway.js';
 import { OrderFunds, requirementOf, type FundsView, type Requirement } from './order-funds.js';
+import { orderDraft, orderIdOf, stallCap } from './parts/place-draft.js';
+
+export { orderIdOf };
 
 type Requested = PlanetEventOf<'marketOrderRequested'>;
 
@@ -43,10 +44,6 @@ export interface PlaceOrderResult {
   /** Chain units enqueued for the verifier deposit (0 when funds were already there or the token is not a resource). */
   readonly depositChain: bigint;
 }
-
-/** Deterministic order id of a sim ref on one planet (refs repeat across planets: every scenario planet has `col_0`). */
-export const orderIdOf = (planetId: string, ref: string): string =>
-  `mo_${createHash('sha256').update(`${planetId}\u0000${ref}`).digest('hex').slice(0, 40)}`;
 
 /** The sim's echo of the API command id (absent until the sim emits it; read from the raw event so the contract schema need not know it). */
 const commandIdOf = (data: unknown): string | undefined => {
@@ -260,38 +257,8 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-funds:${accountId}`}, 0))`;
     const claimed =
       (await tx.nearColonyAccount.findUnique({ where: { accountId }, select: { claimedAt: true } }))?.claimedAt != null;
-    const maxStall = d.maxStallFeeBp ?? cfg.stallFeeMaxBp;
-    const { order, created } = await this.repo.createFromRequest(
-      {
-        orderId: orderIdOf(planetId, d.ref),
-        ref: d.ref,
-        planetId,
-        pair: pairId(d.resource, d.price.token),
-        base: d.resource,
-        quote: d.price.token,
-        side: d.side,
-        colonyId: d.colonyId,
-        colonyIndex: d.colonyIndex,
-        playerId: d.playerId ?? null,
-        accountId,
-        stallColonyId: d.colonyId,
-        stallAccountId: accountId,
-        stallHubEntityId: d.hubEntityId,
-        platformAccountId: PLATFORM_ACCOUNT_ID,
-        amount: BigInt(d.amount),
-        priceAmount: BigInt(d.price.amount),
-        fillPolicy: claimed ? 'all_or_nothing' : 'partial',
-        policyVersion: cfg.policyVersion,
-        policyHash: cfg.policyHash,
-        platformFeeBp: cfg.platformFeeBp,
-        stallFeeBp: d.stallFeeBp,
-        maxStallFeeBp: d.side === 'buy' ? maxStall : null,
-        ttlS: d.ttlS,
-        expiresAt: new Date(Date.now() + d.ttlS * 1000),
-        ...(actorKind ? { actorKind } : {}),
-      },
-      tx,
-    );
+    const maxStall = stallCap(d, cfg);
+    const { order, created } = await this.repo.createFromRequest(orderDraft(planetId, d, accountId, cfg, claimed, actorKind), tx);
     if (!created) return { order, created, depositChain: 0n };
     if (blocked) return this.reject(tx, order, blocked, 'That trade is outside the autoTrade limits.');
 

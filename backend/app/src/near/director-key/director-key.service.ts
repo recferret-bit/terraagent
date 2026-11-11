@@ -53,7 +53,7 @@ export class DirectorKeyService {
   ) {}
 
   async add(req: IncomingMessage, raw: unknown): Promise<DirectorKeyStatusPayload> {
-    const { playerId, body, colony } = await this.opened(req, raw);
+    const { body, colony } = await this.opened(req, raw);
     const caps = await this.capsFor(body, colony);
     const existing = await this.repo.find(colony.colonyId);
     if (existing && existing.revokedAt === null) return this.current(colony, existing);
@@ -77,7 +77,7 @@ export class DirectorKeyService {
   }
 
   async remove(req: IncomingMessage, raw: unknown): Promise<DirectorKeyStatusPayload> {
-    const { body, colony } = await this.opened(req, raw);
+    const { colony } = await this.opened(req, raw);
     const existing = await this.repo.find(colony.colonyId);
     if (!existing) throw new CoreException('director_key_missing', { status: 404, message: 'No director key' });
     await this.wallet.revokeKey({
