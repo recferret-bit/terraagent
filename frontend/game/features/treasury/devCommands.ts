@@ -9,6 +9,7 @@ const FUND_USAGE = 'treasury.fund <planet> <amount>';
 const POST_USAGE =
   'bounty.post clear_nest <nestId> <reward> [resource] | defend_area <q> <r> <radius> <hours> <reward> [resource] | deliver_units <resource> <amount> <reward> [rewardResource]';
 const COMPLETE_USAGE = 'bounty.complete <id> [claimerAccount]';
+const EXPIRE_USAGE = 'bounty.expire <id>';
 const HIRE_USAGE = 'merc.hire <hours>';
 
 const EFFECTS = new Set<string>(TREASURY_EFFECT_KINDS);
@@ -169,12 +170,31 @@ export const bountyCompleteCmd: DevCommandDef = {
   },
 };
 
+export const bountyExpireCmd: DevCommandDef = {
+  name: 'bounty.expire',
+  help: `${EXPIRE_USAGE}  Server: refund one player bounty whose deadline is forced into the past. A mercenary claimer is skipped`,
+  async run(a, ctx) {
+    if (a.length !== 1 || !a[0]) usage(EXPIRE_USAGE);
+    const id = a[0];
+    const r = (await serverFor(ctx, 'bounty.expire')('bounty.expire', { id })) as {
+      state?: string;
+      refunded?: boolean;
+      skipped?: string;
+      board?: string;
+    };
+    if (r.skipped === 'mercenary') return `bounty ${id} not refunded (mercenary claimer)`;
+    const word = r.board ?? r.state ?? 'refunded';
+    return `bounty ${id} ${word} (${r.refunded ? 'refunded' : 'not refunded'})`;
+  },
+};
+
 export const mercHireCmd: DevCommandDef = {
   name: 'merc.hire',
-  help: `${HIRE_USAGE}  Server: spawn the light recon squad around this colony's HQ (no escrow hire)`,
+  help: `${HIRE_USAGE}  Server: hire the light recon squad (escrow + spawn) for a whole number of hours`,
   async run(a, ctx) {
     if (a.length !== 1) usage(HIRE_USAGE);
     const hours = hoursOf(a[0], HIRE_USAGE, 168);
+    if (!Number.isInteger(hours)) usage(HIRE_USAGE);
     const placed = seat(ctx, HIRE_USAGE);
     const anchor = hqAnchor(ctx);
     const r = (await serverFor(ctx, 'merc.hire')('merc.hire', {
@@ -182,8 +202,8 @@ export const mercHireCmd: DevCommandDef = {
       colonyIndex: placed.colonyIndex,
       hours,
       ...(anchor ?? {}),
-    })) as { count?: number; endTick?: number; q?: number; r?: number };
-    return `hired light squad (${r.count ?? 4} recon) until tick ${r.endTick ?? '?'} at (${r.q ?? '?'},${r.r ?? '?'}); escrow hire is not on this branch`;
+    })) as { count?: number; q?: number; r?: number; bountyId?: string; escrowId?: string; mercenaryAccountId?: string; total?: number };
+    return `hired light squad (${r.count ?? 4} recon) at (${r.q ?? '?'},${r.r ?? '?'}) bounty ${r.bountyId ?? '?'} escrow ${r.escrowId ?? '?'} pays ${r.mercenaryAccountId ?? '?'} ${r.total ?? '?'} metals.t1`;
   },
 };
 
@@ -192,5 +212,6 @@ export const TREASURY_DEV_COMMANDS: readonly DevCommandDef[] = [
   treasuryEffectCmd,
   bountyPostCmd,
   bountyCompleteCmd,
+  bountyExpireCmd,
   mercHireCmd,
 ];

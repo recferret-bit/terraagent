@@ -65,7 +65,8 @@ describe('W22-35 treasury dev console', () => {
       if (name === 'treasury.fund') return { balance: '1500' };
       if (name === 'bounty.post') return { id: 'bt_1', state: 'open', escrowId: 'esc_1' };
       if (name === 'bounty.complete') return { state: 'paid', paid: true, claimer: 'b.mock' };
-      return { count: 4, endTick: 37_000, q: 2, r: -3 };
+      if (name === 'bounty.expire') return { state: 'refunded', refunded: true, board: 'Expired' };
+      return { count: 4, q: 2, r: -3, bountyId: 'bt_hire', escrowId: 'esc_hire', mercenaryAccountId: 'merc-1.npc.terraagent.mock', total: 200 };
     });
     const session = { planetId: () => 'pl_dune', colonyId: () => 'co_a' } as FeatureContext['services']['session'];
     expect(await text('treasury.fund pl_dune 1500', { devServer, session })).toBe(
@@ -84,8 +85,11 @@ describe('W22-35 treasury dev console', () => {
     );
     expect(await text('bounty.post nuke 1', { devServer, session })).toContain('usage:');
     expect(await text('bounty.complete bt_1', { devServer, session })).toBe('bounty bt_1 paid (paid) claimer b.mock');
+    expect(await text('bounty.expire bt_1', { devServer, session })).toBe('bounty bt_1 Expired (refunded)');
+    expect(devServer).toHaveBeenCalledWith('bounty.expire', { id: 'bt_1' });
     expect(await text('merc.hire 2', { devServer, session })).toContain('hired light squad (4 recon)');
-    expect(await text('merc.hire 2', { devServer, session })).toContain('escrow hire is not on this branch');
+    expect(await text('merc.hire 2', { devServer, session })).toContain('escrow esc_hire');
+    expect(await text('merc.hire 1.5', { devServer, session })).toContain('usage:');
     expect(devServer).toHaveBeenCalledWith('merc.hire', expect.objectContaining({ planetId: 'pl_dune', hours: 2 }));
   });
 });

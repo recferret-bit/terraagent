@@ -7,12 +7,15 @@ import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { BountyRepository } from '../bounty/bounty.repository.js';
+import { BountyExpiryService } from '../bounty/expiry.service.js';
 import { BountyPayService } from '../bounty/pay.service.js';
 import { BountyPostService } from '../bounty/post.service.js';
+import { MercenaryHireService } from '../mercenary/hire.service.js';
 import { TreasuryDaoPort } from '../application/ports/treasury-dao.port.js';
 import { PlanetBountyWorld } from '../bounty/world.js';
 import {
   runBountyComplete,
+  runBountyExpire,
   runBountyPost,
   runMercHire,
   runTreasuryEffect,
@@ -42,11 +45,12 @@ const completeArgs = z
     claimer: z.string().min(2).max(64).optional(),
   })
   .strict();
+const expireArgs = z.object({ id: z.string().min(1).max(80) }).strict();
 const hireArgs = z
   .object({
     planetId,
     colonyIndex,
-    hours: z.number().positive().max(168),
+    hours: z.number().int().positive().max(168),
     q: tile.optional(),
     r: tile.optional(),
   })
@@ -69,6 +73,8 @@ export class W22DevCommands implements OnModuleInit {
     private readonly repo: BountyRepository,
     private readonly world: PlanetBountyWorld,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly expiry: BountyExpiryService,
+    private readonly hires: MercenaryHireService,
   ) {}
 
   onModuleInit(): void {
@@ -106,8 +112,16 @@ export class W22DevCommands implements OnModuleInit {
     );
     this.registry.register(
       defineDevCommand({
+        name: 'bounty.expire',
+        help: 'Set one player bounty expiresAt to the past and refund it once. A mercenary claimer is skipped.',
+        args: expireArgs,
+        run: (args) => runBountyExpire(this.deps(), args),
+      }),
+    );
+    this.registry.register(
+      defineDevCommand({
         name: 'merc.hire',
-        help: 'Spawn the light recon squad (mercenary.spawn). Does not open escrow.',
+        help: 'Hire the light recon squad (escrow + mercenary.spawn) for a whole number of hours.',
         args: hireArgs,
         run: (args) => runMercHire(this.deps(), args),
       }),
@@ -125,6 +139,8 @@ export class W22DevCommands implements OnModuleInit {
       repo: this.repo,
       world: this.world,
       prisma: this.prisma,
+      expiry: this.expiry,
+      hire: this.hires,
     };
   }
 }
