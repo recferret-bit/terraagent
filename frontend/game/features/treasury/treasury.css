@@ -41,7 +41,6 @@
 
 .ta-living-op {
   appearance: none;
-  border-radius: 0;
   cursor: default;
   font-family: var(--ta-font-display);
   letter-spacing: var(--ta-track-button);
