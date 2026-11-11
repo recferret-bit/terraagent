@@ -19,7 +19,7 @@ export function recordLaunchedRaid(
   targetColony: number,
   unitIds: readonly number[],
   groupId: number,
-  dest: { q: number; r: number; targetEntityId?: number },
+  dest: { q: number; r: number; targetEntityId?: number | null },
   tick: number,
   ctx?: StepContext,
 ): ActiveRaidGroupState {
@@ -33,7 +33,7 @@ export function recordLaunchedRaid(
     startedAtTick: tick,
     unitIds: [...unitIds],
     groupId,
-    currentTargetEntityId: dest.targetEntityId,
+    currentTargetEntityId: dest.targetEntityId ?? null,
     currentTargetQ: dest.q,
     currentTargetR: dest.r,
     repelled: false,

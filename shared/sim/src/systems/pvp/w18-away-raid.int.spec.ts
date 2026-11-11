@@ -7,6 +7,7 @@ import {
   ENTITY_STATE,
   getUnitGroupId,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 import { applyAutopilot, openAwaySession } from '../away';
@@ -38,8 +39,7 @@ function bootAwayRaidSim() {
   const rRow = insertRow(state.entities, reconId, 0);
   state.entities.cols.kind[rRow] = ENTITY_KIND.recon;
   state.entities.cols.owner[rRow] = 0;
-  state.entities.cols.q[rRow] = 2;
-  state.entities.cols.r[rRow] = 0;
+  placeSpawnedEntity(state.entities, rRow, 2, 0, 0);
   state.entities.cols.hp[rRow] = 220;
   state.entities.cols.hpMax[rRow] = 220;
   state.entities.cols.state[rRow] = ENTITY_STATE.idle;
@@ -48,8 +48,7 @@ function bootAwayRaidSim() {
   const h1Row = insertRow(state.entities, hub1, 0);
   state.entities.cols.kind[h1Row] = ENTITY_KIND.commandHub;
   state.entities.cols.owner[h1Row] = 1;
-  state.entities.cols.q[h1Row] = 10;
-  state.entities.cols.r[h1Row] = 0;
+  placeSpawnedEntity(state.entities, h1Row, 10, 0, 0);
   state.entities.cols.hp[h1Row] = 1500;
   state.entities.cols.hpMax[h1Row] = 1500;
   state.entities.cols.state[h1Row] = ENTITY_STATE.active;

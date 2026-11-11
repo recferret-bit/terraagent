@@ -7,6 +7,7 @@ import {
   ENTITY_STATE,
   hexIndex,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 import { markColonyContact } from './index';
@@ -28,8 +29,7 @@ function bootEffectsSim(): {
     sim.state.entities.cols.hp[hq] = 500;
     sim.state.entities.cols.hpMax[hq] = 500;
     sim.state.entities.cols.state[hq] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[hq] = idx * 6;
-    sim.state.entities.cols.r[hq] = 0;
+    placeSpawnedEntity(sim.state.entities, hq, idx * 6, 0, sim.tick);
   }
 
   const unit0Id = sim.state.meta.nextEntityId++;
@@ -39,10 +39,7 @@ function bootEffectsSim(): {
   sim.state.entities.cols.hp[u0] = 80;
   sim.state.entities.cols.hpMax[u0] = 80;
   sim.state.entities.cols.state[u0] = ENTITY_STATE.idle;
-  sim.state.entities.cols.q[u0] = 0;
-  sim.state.entities.cols.r[u0] = 0;
-  sim.state.entities.cols.x[u0] = 0;
-  sim.state.entities.cols.y[u0] = 0;
+  placeSpawnedEntity(sim.state.entities, u0, 4, 0, sim.tick);
 
   const turret1Id = sim.state.meta.nextEntityId++;
   const t1 = insertRow(sim.state.entities, turret1Id, sim.tick);
@@ -51,10 +48,7 @@ function bootEffectsSim(): {
   sim.state.entities.cols.hp[t1] = 200;
   sim.state.entities.cols.hpMax[t1] = 200;
   sim.state.entities.cols.state[t1] = ENTITY_STATE.idle;
-  sim.state.entities.cols.q[t1] = 5;
-  sim.state.entities.cols.r[t1] = 0;
-  sim.state.entities.cols.x[t1] = 5;
-  sim.state.entities.cols.y[t1] = 0;
+  placeSpawnedEntity(sim.state.entities, t1, 5, 0, sim.tick);
 
   const tileIdx = hexIndex(sim.state.grid.radius).indexOf(5, 0);
   sim.state.grid.layers.owner[tileIdx] = 1;
@@ -85,9 +79,6 @@ describe('W18-13 SimHost integration — active truce blocks raid, attackMove, a
       args: { offerId, accept: true },
     });
     sim.step(1);
-
-    sim.state.entities.cols.q[2] = 4;
-    sim.state.entities.cols.x[2] = 4;
 
     sim.submit({
       colonyIndex: 0,

@@ -8,6 +8,7 @@ import {
   getUnitGroupId,
   hexDistance,
   insertRow,
+  placeSpawnedEntity,
   rowOf,
   SimHost,
   type PlanetState,
@@ -38,10 +39,7 @@ function addEntity(
   const row = insertRow(state.entities, id, 0);
   state.entities.cols.kind[row] = spec.kind;
   state.entities.cols.owner[row] = spec.owner;
-  state.entities.cols.q[row] = spec.q;
-  state.entities.cols.r[row] = spec.r;
-  state.entities.cols.x[row] = spec.q;
-  state.entities.cols.y[row] = spec.r;
+  placeSpawnedEntity(state.entities, row, spec.q, spec.r, 0);
   state.entities.cols.hp[row] = spec.hp;
   state.entities.cols.hpMax[row] = spec.hp;
   state.entities.cols.state[row] = spec.state;

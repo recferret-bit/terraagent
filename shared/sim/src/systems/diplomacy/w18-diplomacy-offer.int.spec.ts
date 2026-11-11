@@ -6,6 +6,7 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 import {
@@ -29,8 +30,7 @@ function bootDiplomacySim(waveSpec = '..18'): SimHost {
   sim.state.entities.cols.hp[r0] = 500;
   sim.state.entities.cols.hpMax[r0] = 500;
   sim.state.entities.cols.state[r0] = ENTITY_STATE.idle;
-  sim.state.entities.cols.q[r0] = 0;
-  sim.state.entities.cols.r[r0] = 0;
+  placeSpawnedEntity(sim.state.entities, r0, 0, 0, sim.tick);
 
   const r1 = insertRow(sim.state.entities, sim.state.meta.nextEntityId++, sim.tick);
   sim.state.entities.cols.kind[r1] = ENTITY_KIND.hq;
@@ -39,8 +39,7 @@ function bootDiplomacySim(waveSpec = '..18'): SimHost {
   sim.state.entities.cols.hp[r1] = 500;
   sim.state.entities.cols.hpMax[r1] = 500;
   sim.state.entities.cols.state[r1] = ENTITY_STATE.idle;
-  sim.state.entities.cols.q[r1] = 20;
-  sim.state.entities.cols.r[r1] = 0;
+  placeSpawnedEntity(sim.state.entities, r1, 20, 0, sim.tick);
 
   return sim;
 }

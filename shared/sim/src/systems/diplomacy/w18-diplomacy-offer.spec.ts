@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { markTileExplored } from '../../grid/tileModel';
@@ -35,8 +36,7 @@ function makePlanetWithTwoColonies(hqDist = 20): PlanetState {
   state.entities.cols.hp[r0] = 500;
   state.entities.cols.hpMax[r0] = 500;
   state.entities.cols.state[r0] = ENTITY_STATE.idle;
-  state.entities.cols.q[r0] = 0;
-  state.entities.cols.r[r0] = 0;
+  placeSpawnedEntity(state.entities, r0, 0, 0, 100);
 
   const r1 = insertRow(state.entities, state.meta.nextEntityId++, 100);
   state.entities.cols.kind[r1] = ENTITY_KIND.hq;
@@ -45,8 +45,7 @@ function makePlanetWithTwoColonies(hqDist = 20): PlanetState {
   state.entities.cols.hp[r1] = 500;
   state.entities.cols.hpMax[r1] = 500;
   state.entities.cols.state[r1] = ENTITY_STATE.idle;
-  state.entities.cols.q[r1] = hqDist;
-  state.entities.cols.r[r1] = 0;
+  placeSpawnedEntity(state.entities, r1, hqDist, 0, 100);
 
   return state;
 }

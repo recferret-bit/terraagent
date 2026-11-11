@@ -8,7 +8,6 @@ import { createState } from '../../kernel/state';
 import {
   markColonyOathbreaker,
   writeDiplomacyBlob,
-  type DiplomacyBlobValue,
   type StoredTruceRecord,
 } from '../diplomacy/store';
 import {

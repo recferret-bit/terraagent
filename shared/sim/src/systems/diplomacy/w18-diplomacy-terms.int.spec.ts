@@ -6,6 +6,7 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 import { markColonyContact, readDiplomacyBlob } from './index';
@@ -23,8 +24,7 @@ function bootTermsSim(tiers: Array<1 | 2 | 3> = [1, 1, 1]): SimHost {
     sim.state.entities.cols.hp[r] = 500;
     sim.state.entities.cols.hpMax[r] = 500;
     sim.state.entities.cols.state[r] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[r] = idx * 8;
-    sim.state.entities.cols.r[r] = 0;
+    placeSpawnedEntity(sim.state.entities, r, idx * 8, 0, sim.tick);
   });
   for (let i = 0; i < tiers.length; i++) {
     for (let j = i + 1; j < tiers.length; j++) {

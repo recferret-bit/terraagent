@@ -10,6 +10,7 @@ import {
   getColonyGoals,
   getColonyQueue,
   insertRow,
+  placeSpawnedEntity,
   PREP,
   queueColonyGoal,
   rowOf,
@@ -38,8 +39,7 @@ function createW18Host(waves = '..18') {
   const hubRow = insertRow(state.entities, hubId, 0);
   state.entities.cols.kind[hubRow] = ENTITY_KIND.commandHub;
   state.entities.cols.owner[hubRow] = 0;
-  state.entities.cols.q[hubRow] = 0;
-  state.entities.cols.r[hubRow] = 0;
+  placeSpawnedEntity(state.entities, hubRow, 0, 0, 0);
   state.entities.cols.hp[hubRow] = 1500;
   state.entities.cols.hpMax[hubRow] = 1500;
   state.entities.cols.state[hubRow] = ENTITY_STATE.active;

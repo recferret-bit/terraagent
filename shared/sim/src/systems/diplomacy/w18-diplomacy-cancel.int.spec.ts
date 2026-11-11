@@ -6,6 +6,7 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 import { hasActiveTruce, isColonyOathbreaker, markColonyContact } from './index';
@@ -23,8 +24,7 @@ function bootCancelSim(): SimHost {
     sim.state.entities.cols.hp[r] = 500;
     sim.state.entities.cols.hpMax[r] = 500;
     sim.state.entities.cols.state[r] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[r] = idx * 4;
-    sim.state.entities.cols.r[r] = 0;
+    placeSpawnedEntity(sim.state.entities, r, idx * 4, 0, sim.tick);
   }
   markColonyContact(sim.state, 0, 1, sim.tick);
   return sim;

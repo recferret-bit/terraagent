@@ -2,12 +2,9 @@ import { defineFeature, type FeatureContext, type HudPanelInstance } from '../..
 import { ownColonyIndex } from '../shared/colony';
 import { DiplomacyPanel, createDiplomacyPanel, type DiplomacyPanelInstance } from './DiplomacyPanel';
 import {
-  type DiplomacyColonyView,
   type DiplomacyPanelActions,
-  type DiplomacyPanelOptions,
   type GameFeature,
   type TruceDurationHours,
-  extractDiplomacyColonyView,
 } from './types';
 import './diplomacy.css';
 

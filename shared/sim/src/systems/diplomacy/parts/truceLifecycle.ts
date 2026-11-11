@@ -3,13 +3,11 @@ import { TICKS_PER_SECOND } from '../../../kernel/constants';
 import type { StepContext } from '../../../kernel/context';
 import type { PlanetState } from '../../../kernel/state';
 import { colonyIsAway, readAwaySettings } from '../../away';
-import { respondTruce } from '../operations';
-import { offerExpiryTicks } from '../rules';
+import { createAndEmitTruceOffer, respondTruce } from '../operations';
 import {
   isValidTruceDurationHours,
   markColonyContact,
   readDiplomacyBlob,
-  resolveColonyIdStr,
   writeDiplomacyBlob,
   type StoredTruceOffer,
 } from '../store';
@@ -67,45 +65,7 @@ export function devOfferTruce(
   if (fromColony < 0 || toColony < 0 || fromColony === toColony) return null;
   const hours: TruceDurationHours = isValidTruceDurationHours(durationHours) ? durationHours : 6;
   markColonyContact(state, fromColony, toColony, tick);
-  const blob = readDiplomacyBlob(state);
-  const offerId = `of_${blob.nextOfferSeq++}`;
-  const fromColonyId = resolveColonyIdStr(state, fromColony);
-  const toColonyId = resolveColonyIdStr(state, toColony);
-  const expiresAtTick = tick + offerExpiryTicks(ctx?.data);
-  const offer: StoredTruceOffer = {
-    offerId,
-    fromColony,
-    toColony,
-    fromColonyId,
-    toColonyId,
-    fromColonyIndex: fromColony,
-    toColonyIndex: toColony,
-    hours,
-    durationHours: hours,
-    offeredAtTick: tick,
-    expiresAtTick,
-    status: 'pending',
-  };
-  blob.offers[offerId] = offer;
-  writeDiplomacyBlob(state, blob, tick);
-  ctx?.emit({
-    kind: 'truceOffered',
-    severity: 'info',
-    colonyIds: [fromColonyId, toColonyId],
-    data: {
-      offerId,
-      fromColony,
-      toColony,
-      fromColonyId,
-      toColonyId,
-      fromColonyIndex: fromColony,
-      toColonyIndex: toColony,
-      hours,
-      durationHours: hours,
-      expiresAtTick,
-    },
-  });
-  return offer;
+  return createAndEmitTruceOffer(state, fromColony, toColony, hours, tick, ctx);
 }
 
 export function stepDiplomacy(state: PlanetState, ctx: StepContext): void {
@@ -124,7 +84,7 @@ export function stepDiplomacy(state: PlanetState, ctx: StepContext): void {
       ctx.flags.has('W16') &&
       tick >= offer.offeredAtTick + TICKS_PER_SECOND &&
       colonyIsAway(state, offer.toColonyIndex) &&
-      readAwaySettings(state, offer.toColonyIndex).mode !== 'rules_only' &&
+      readAwaySettings(state, offer.toColonyIndex)?.mode !== 'rules_only' &&
       state.colonies[offer.toColonyIndex]?.aiAllowed !== false
     ) {
       if (changed) {

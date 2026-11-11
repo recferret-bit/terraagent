@@ -63,8 +63,8 @@ export function extractRaidTargets(
       col.crossSectorDisabled ?? (marker as any).crossSectorDisabled ?? false,
     );
 
-    let disabled = false;
-    let disabledReason: string | null = null;
+    let disabled: boolean;
+    let disabledReason: string | null;
 
     if (shieldActive) {
       disabled = true;

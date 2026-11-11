@@ -7,6 +7,7 @@ import {
   ENTITY_STATE,
   hexIndex,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 
@@ -42,8 +43,7 @@ function bootSectorGuardSim(): { sim: SimHost; reconId: number; target2Id: numbe
   sim.state.entities.cols.hp[r0] = 80;
   sim.state.entities.cols.hpMax[r0] = 80;
   sim.state.entities.cols.state[r0] = ENTITY_STATE.idle;
-  sim.state.entities.cols.q[r0] = 0;
-  sim.state.entities.cols.r[r0] = 0;
+  placeSpawnedEntity(sim.state.entities, r0, 0, 0, 0);
 
   const target2Id = sim.state.meta.nextEntityId++;
   const r2 = insertRow(sim.state.entities, target2Id, 0);
@@ -52,8 +52,7 @@ function bootSectorGuardSim(): { sim: SimHost; reconId: number; target2Id: numbe
   sim.state.entities.cols.hp[r2] = 80;
   sim.state.entities.cols.hpMax[r2] = 80;
   sim.state.entities.cols.state[r2] = ENTITY_STATE.idle;
-  sim.state.entities.cols.q[r2] = 12;
-  sim.state.entities.cols.r[r2] = 0;
+  placeSpawnedEntity(sim.state.entities, r2, 12, 0, 0);
 
   const tile2Idx = hexIndex(sim.state.grid.radius).indexOf(12, 0);
   sim.state.grid.layers.owner[tile2Idx] = 2;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import { compileData } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
 import { PREP, TERRAIN } from '../../grid/layers';
 import { ensureColonyRecord } from '../../kernel/colonies';
@@ -18,7 +19,7 @@ import { colonyHasAliveHub, criticalTimerTicks, getColonyEliminationRecord } fro
 
 const w18Data = compileData(parseWaves('..18'));
 
-function setupColonyWithHubAndHq(radius = 16): {
+function setupColonyWithHubAndHq(radius = 16, hqQ = 4): {
   state: PlanetState;
   hubId: number;
   hqId: number;
@@ -38,8 +39,7 @@ function setupColonyWithHubAndHq(radius = 16): {
   const podRow = insertRow(state.entities, podId, 0);
   state.entities.cols.kind[podRow] = ENTITY_KIND.pod;
   state.entities.cols.owner[podRow] = 0;
-  state.entities.cols.q[podRow] = 0;
-  state.entities.cols.r[podRow] = 0;
+  placeSpawnedEntity(state.entities, podRow, 0, 0, 0);
   state.entities.cols.hp[podRow] = 500;
   state.entities.cols.hpMax[podRow] = 500;
 
@@ -47,8 +47,7 @@ function setupColonyWithHubAndHq(radius = 16): {
   const hubRow = insertRow(state.entities, hubId, 0);
   state.entities.cols.kind[hubRow] = ENTITY_KIND.commandHub;
   state.entities.cols.owner[hubRow] = 0;
-  state.entities.cols.q[hubRow] = 0;
-  state.entities.cols.r[hubRow] = 0;
+  placeSpawnedEntity(state.entities, hubRow, 0, 0, 0);
   state.entities.cols.hp[hubRow] = 1500;
   state.entities.cols.hpMax[hubRow] = 1500;
   state.entities.cols.state[hubRow] = ENTITY_STATE.active;
@@ -56,7 +55,7 @@ function setupColonyWithHubAndHq(radius = 16): {
   state.entities.cols.footprintD[hubRow] = 3;
   col.hubEntityId = hubId;
 
-  const hqId = spawnHqUnit(state, { owner: 0, q: 4, r: 0, tick: 0, data: w18Data });
+  const hqId = spawnHqUnit(state, { owner: 0, q: hqQ, r: 0, tick: 0, data: w18Data });
   return { state, hubId, hqId, podId };
 }
 
@@ -86,13 +85,8 @@ describe('W18-08 · Colony Critical unit tests', () => {
   });
 
   it('allows Hub placement on unclaimed tiles near the HQ even when far from original landing pod', () => {
-    const { state, hubId, hqId } = setupColonyWithHubAndHq(18);
+    const { state, hubId } = setupColonyWithHubAndHq(18, 12);
     applyDamage(state, hubId, 9999, { tick: 10, data: w18Data });
-
-    // Move HQ far from original pod at (0, 0) onto unclaimed tiles at (12, 0)
-    const hqRow = rowOf(state.entities, hqId);
-    state.entities.cols.q[hqRow] = 12;
-    state.entities.cols.r[hqRow] = 0;
 
     const world = placementWorldFromState(state);
     const evalRes = evaluatePlacement(world, {

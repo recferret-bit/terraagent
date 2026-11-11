@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import { compileData } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
@@ -38,8 +39,7 @@ function setupColonyWithBuildingsAndTerritory(): {
   const hubRow = insertRow(state.entities, hubId, 0);
   state.entities.cols.kind[hubRow] = ENTITY_KIND.commandHub;
   state.entities.cols.owner[hubRow] = 0;
-  state.entities.cols.q[hubRow] = 0;
-  state.entities.cols.r[hubRow] = 0;
+  placeSpawnedEntity(state.entities, hubRow, 0, 0, 0);
   state.entities.cols.hp[hubRow] = 1500;
   state.entities.cols.hpMax[hubRow] = 1500;
   state.entities.cols.state[hubRow] = ENTITY_STATE.active;
@@ -51,8 +51,7 @@ function setupColonyWithBuildingsAndTerritory(): {
   const solarRow = insertRow(state.entities, solarId, 0);
   state.entities.cols.kind[solarRow] = ENTITY_KIND.solar;
   state.entities.cols.owner[solarRow] = 0;
-  state.entities.cols.q[solarRow] = 4;
-  state.entities.cols.r[solarRow] = 0;
+  placeSpawnedEntity(state.entities, solarRow, 4, 0, 0);
   state.entities.cols.hp[solarRow] = 400;
   state.entities.cols.hpMax[solarRow] = 400;
   state.entities.cols.state[solarRow] = ENTITY_STATE.active;
@@ -63,8 +62,7 @@ function setupColonyWithBuildingsAndTerritory(): {
   const workerRow = insertRow(state.entities, workerId, 0);
   state.entities.cols.kind[workerRow] = ENTITY_KIND.worker;
   state.entities.cols.owner[workerRow] = 0;
-  state.entities.cols.q[workerRow] = 2;
-  state.entities.cols.r[workerRow] = 0;
+  placeSpawnedEntity(state.entities, workerRow, 2, 0, 0);
   state.entities.cols.hp[workerRow] = 120;
   state.entities.cols.hpMax[workerRow] = 120;
   state.entities.cols.state[workerRow] = ENTITY_STATE.idle;

@@ -10,6 +10,7 @@ import {
   ENTITY_STATE,
   hexIndex,
   insertRow,
+  placeSpawnedEntity,
   PREP,
   rowOf,
   SimHost,
@@ -43,8 +44,7 @@ function createW18EliminationHost() {
   const hub0Row = insertRow(state.entities, hub0, 0);
   state.entities.cols.kind[hub0Row] = ENTITY_KIND.commandHub;
   state.entities.cols.owner[hub0Row] = 0;
-  state.entities.cols.q[hub0Row] = 0;
-  state.entities.cols.r[hub0Row] = 0;
+  placeSpawnedEntity(state.entities, hub0Row, 0, 0, 0);
   state.entities.cols.hp[hub0Row] = 1500;
   state.entities.cols.hpMax[hub0Row] = 1500;
   state.entities.cols.state[hub0Row] = ENTITY_STATE.active;
@@ -56,8 +56,7 @@ function createW18EliminationHost() {
   const solar0Row = insertRow(state.entities, solar0, 0);
   state.entities.cols.kind[solar0Row] = ENTITY_KIND.solar;
   state.entities.cols.owner[solar0Row] = 0;
-  state.entities.cols.q[solar0Row] = 4;
-  state.entities.cols.r[solar0Row] = 0;
+  placeSpawnedEntity(state.entities, solar0Row, 4, 0, 0);
   state.entities.cols.hp[solar0Row] = 400;
   state.entities.cols.hpMax[solar0Row] = 400;
   state.entities.cols.state[solar0Row] = ENTITY_STATE.active;

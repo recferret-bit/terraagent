@@ -7,6 +7,7 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
   type SimCommand,
 } from '../../index';
@@ -35,8 +36,7 @@ function bootSim(away = true, awayRaids = false): SimHost {
     sim.state.entities.cols.hp[r] = 500;
     sim.state.entities.cols.hpMax[r] = 500;
     sim.state.entities.cols.state[r] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[r] = idx * 8;
-    sim.state.entities.cols.r[r] = 0;
+    placeSpawnedEntity(sim.state.entities, r, idx * 8, 0, sim.tick);
   }
   markColonyContact(sim.state, 0, 1, sim.tick);
   sim.submit({

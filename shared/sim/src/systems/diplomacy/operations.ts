@@ -1,4 +1,5 @@
 import type { RejectCode, TruceDurationHours } from '@terra/contracts';
+import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import {
@@ -14,7 +15,6 @@ import {
   getActiveTrucesForColony,
   getLastHostilityTick,
   hasActiveTruce,
-  isValidTruceDurationHours,
   readDiplomacyBlob,
   resolveColonyIdStr,
   resolveColonyIndex,
@@ -35,18 +35,14 @@ export type CancelTruceResult =
   | { ok: true; truce: StoredTruceRecord; noticeEndsAtTick: number; oathbreakerUntilTick: number }
   | { ok: false; code: RejectCode; detail: string };
 
-export function proposeTruce(
+export function createAndEmitTruceOffer(
   state: PlanetState,
   fromColony: number,
-  targetRef: number | string,
+  toColony: number,
   durationHours: TruceDurationHours,
-  tick: number = state.meta.tick,
+  tick: number,
   ctx?: StepContext,
-): ProposeTruceResult {
-  const toColony = resolveColonyIndex(state, targetRef);
-  const check = validateTruceProposal(state, fromColony, toColony, durationHours, tick, ctx?.data);
-  if (!check.ok) return check;
-
+): StoredTruceOffer {
   const blob = readDiplomacyBlob(state);
   const offerId = `of_${blob.nextOfferSeq++}`;
   const fromColonyId = resolveColonyIdStr(state, fromColony);
@@ -87,7 +83,21 @@ export function proposeTruce(
       expiresAtTick,
     },
   });
+  return offer;
+}
 
+export function proposeTruce(
+  state: PlanetState,
+  fromColony: number,
+  targetRef: number | string,
+  durationHours: TruceDurationHours,
+  tick: number = state.meta.tick,
+  ctx?: StepContext,
+): ProposeTruceResult {
+  const toColony = resolveColonyIndex(state, targetRef);
+  const check = validateTruceProposal(state, fromColony, toColony, durationHours, tick, ctx?.data);
+  if (!check.ok) return check;
+  const offer = createAndEmitTruceOffer(state, fromColony, toColony, durationHours, tick, ctx);
   return { ok: true, offer };
 }
 

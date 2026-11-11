@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import { createState, type PlanetState } from '../../kernel/state';
@@ -37,8 +38,7 @@ function makeCombatTruceState(): {
     state.entities.cols.hp[hq] = 500;
     state.entities.cols.hpMax[hq] = 500;
     state.entities.cols.state[hq] = ENTITY_STATE.idle;
-    state.entities.cols.q[hq] = idx * 6;
-    state.entities.cols.r[hq] = 0;
+    placeSpawnedEntity(state.entities, hq, idx * 6, 0, 100);
   }
 
   const turretRow = insertRow(state.entities, state.meta.nextEntityId++, 100);
@@ -47,8 +47,7 @@ function makeCombatTruceState(): {
   state.entities.cols.hp[turretRow] = 200;
   state.entities.cols.hpMax[turretRow] = 200;
   state.entities.cols.state[turretRow] = ENTITY_STATE.idle;
-  state.entities.cols.q[turretRow] = 1;
-  state.entities.cols.r[turretRow] = 0;
+  placeSpawnedEntity(state.entities, turretRow, 1, 0, 100);
 
   const partnerUnitRow = insertRow(state.entities, state.meta.nextEntityId++, 100);
   state.entities.cols.kind[partnerUnitRow] = ENTITY_KIND.recon;
@@ -56,8 +55,7 @@ function makeCombatTruceState(): {
   state.entities.cols.hp[partnerUnitRow] = 100;
   state.entities.cols.hpMax[partnerUnitRow] = 100;
   state.entities.cols.state[partnerUnitRow] = ENTITY_STATE.idle;
-  state.entities.cols.q[partnerUnitRow] = 2;
-  state.entities.cols.r[partnerUnitRow] = 0;
+  placeSpawnedEntity(state.entities, partnerUnitRow, 2, 0, 100);
 
   const enemyUnitRow = insertRow(state.entities, state.meta.nextEntityId++, 100);
   state.entities.cols.kind[enemyUnitRow] = ENTITY_KIND.recon;
@@ -65,8 +63,7 @@ function makeCombatTruceState(): {
   state.entities.cols.hp[enemyUnitRow] = 100;
   state.entities.cols.hpMax[enemyUnitRow] = 100;
   state.entities.cols.state[enemyUnitRow] = ENTITY_STATE.idle;
-  state.entities.cols.q[enemyUnitRow] = 3;
-  state.entities.cols.r[enemyUnitRow] = 0;
+  placeSpawnedEntity(state.entities, enemyUnitRow, 3, 0, 100);
 
   markColonyContact(state, 0, 1, 100);
   return { state, turretRow, partnerUnitRow, enemyUnitRow };

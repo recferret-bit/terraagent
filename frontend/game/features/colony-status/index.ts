@@ -1,7 +1,5 @@
 import { defineFeature, type Feature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
 import {
-  ColonyStatusHud,
   createColonyStatusHud,
   type ColonyStatusHudInstance,
 } from './ColonyStatusHud';

@@ -5,7 +5,6 @@ import {
   LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
   type MatchTicketRecord,
-  type SectorReservationRecord,
 } from './lobby-persistence.types';
 import { resolveCanonicalPlanetType } from './planets.helpers';
 import {

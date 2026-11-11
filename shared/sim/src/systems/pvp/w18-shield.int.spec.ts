@@ -7,6 +7,7 @@ import {
   ENTITY_STATE,
   hexIndex,
   insertRow,
+  placeSpawnedEntity,
   SimHost,
 } from '../../index';
 import { isColonyRaidProtected, TICKS_PER_HOUR } from './index';
@@ -39,8 +40,7 @@ describe('W18-06 SimHost integration — newcomer shield raid_protected & offens
     sim.state.entities.cols.hp[rRow] = 80;
     sim.state.entities.cols.hpMax[rRow] = 80;
     sim.state.entities.cols.state[rRow] = ENTITY_STATE.idle;
-    sim.state.entities.cols.q[rRow] = 0;
-    sim.state.entities.cols.r[rRow] = 0;
+    placeSpawnedEntity(sim.state.entities, rRow, 0, 0, 0);
 
     const col1Tile = hexIndex(sim.state.grid.radius).indexOf(5, 0);
     sim.state.grid.layers.owner[col1Tile] = 1;

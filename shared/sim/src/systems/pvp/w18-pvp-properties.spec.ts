@@ -108,7 +108,7 @@ describe('W18-27 · Spec 2: Truce no-damage & no-targeting property (AC-12)', ()
 describe('W18-27 · Spec 3: Away AI never cancels truces property (AC-13)', () => {
   it('enforces AC-13: while away, AI may propose or respond to truces but diplomacy.cancelTruce is always rejected away_policy', () => {
     const state = createState({ planetId: 'pl-ac13', planetType: 'temperate', seed: 'ac13', radius: 16 });
-    const col0 = ensureColonyAt(state, 0, 0);
+    ensureColonyAt(state, 0, 0);
     applyAutopilot(state, 0, { mode: 'director', awayRaids: true });
     openAwaySession(state, 0, 'col_0', { metals: 0, minerals: 0, bio: 0 }, 0);
 

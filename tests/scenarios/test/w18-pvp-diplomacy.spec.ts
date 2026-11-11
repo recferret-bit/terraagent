@@ -14,7 +14,7 @@ import { createScenarioPlanet, getScenario } from '../_loader';
 
 describe('W18 PvP & Diplomacy scenario (w18 / w18-pvp-diplomacy)', () => {
   it('discovers w18 by id and file name and seeds 5 colonies A..E in sec_0_0 with deterministic shield states', () => {
-    expect(getScenario('w18').id).toBe('w18');
+    expect(getScenario('w18')?.id).toBe('w18');
     expect(getScenario('w18-pvp-diplomacy')).toBe(getScenario('w18'));
 
     const { host } = createScenarioPlanet('w18');

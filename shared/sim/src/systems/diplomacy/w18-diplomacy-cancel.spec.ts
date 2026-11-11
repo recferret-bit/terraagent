@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import { createState, type PlanetState } from '../../kernel/state';
@@ -35,8 +36,7 @@ function makePlanetWithSignedTruce(hours: 2 | 6 | 24 | 72 = 2): {
     state.entities.cols.hp[r] = 500;
     state.entities.cols.hpMax[r] = 500;
     state.entities.cols.state[r] = ENTITY_STATE.idle;
-    state.entities.cols.q[r] = idx * 4;
-    state.entities.cols.r[r] = 0;
+    placeSpawnedEntity(state.entities, r, idx * 4, 0, 100);
   }
   markColonyContact(state, 0, 1, 100);
   markColonyContact(state, 0, 2, 100);

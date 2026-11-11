@@ -1,5 +1,5 @@
 import { syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_STATE } from '../../ecs/columns';
 import { removeRow, rowOf, setField } from '../../ecs/store';
 import { PREP } from '../../grid/layers';
 import { bumpPathEpoch, setTileOwner, setTilePrep } from '../../grid/tileModel';
