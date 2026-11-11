@@ -1,7 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
-import type { FlagsService } from '../../../flags/flags.service.js';
+import { FlagsService } from '../../../flags/flags.service.js';
 import type { TradePrincipal } from '../../trade/trade-auth.js';
 import { TradeKeysService } from '../../trade/trade-keys.service.js';
 import { GuildProvisionError } from '../guild-error.js';

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
-import type { FlagsService } from '../../../flags/flags.service.js';
+import { FlagsService } from '../../../flags/flags.service.js';
 import { GuildProvisionError } from '../guild-error.js';
 import { allowCashBid, type CashBidView } from './cash-bid.js';
 import { fundingEnabled, inventoryCapOf } from './caps.js';
