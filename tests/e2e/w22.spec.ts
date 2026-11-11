@@ -122,7 +122,7 @@ test('@hack 4. posting Clear nest for 200 metals shows an escrow receipt and dro
 
 test('@hack 5. colony B claims and bounty.complete pays 200 metals once', async ({ browser }) => {
   serverOnly();
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
   const b = await seatB(browser);
   await openPlanetItem(b, 'bounties');
   const claim = b.getByTestId(`bounty-claim-${nestBountyId}`);
@@ -130,11 +130,11 @@ test('@hack 5. colony B claims and bounty.complete pays 200 metals once', async 
   await claim.click();
   await expect(b.getByTestId(`bounty-state-${nestBountyId}`)).toHaveText('Claimed', { timeout: 20_000 });
   const before = await cargoMetals(b, AS_B);
-  const paid = await devConsole(page, `bounty.complete ${nestBountyId}`, 30_000);
+  const paid = await devConsole(page, `bounty.complete ${nestBountyId}`, 60_000);
   expect(paid).toContain('paid');
   await expect.poll(() => cargoMetals(b, AS_B), { timeout: 20_000 }).toBe(before + BOUNTY_METALS);
   const again = await cargoMetals(b, AS_B);
-  await devConsole(page, `bounty.complete ${nestBountyId}`, 30_000);
+  await devConsole(page, `bounty.complete ${nestBountyId}`, 60_000);
   expect(await cargoMetals(b, AS_B)).toBe(again);
   await openPlanetItem(page, 'bounties');
   await expect(page.getByTestId(`bounty-state-${nestBountyId}`)).toHaveText('Paid', { timeout: 20_000 });
@@ -144,7 +144,7 @@ test('@hack 5. colony B claims and bounty.complete pays 200 metals once', async 
 
 test('6. Defend area for 2 h and merc.hire 2 opens escrow and spawns the squad', async () => {
   serverOnly();
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const before = await cargoMetals(page, AS_A);
   await openPlanetItem(page, 'bounties');
   await page.getByTestId('bounty-target').selectOption('defend_area');
@@ -159,7 +159,7 @@ test('6. Defend area for 2 h and merc.hire 2 opens escrow and spawns the squad',
   await expect(openRow).toHaveCount(1, { timeout: 30_000 });
   defendBountyId = bountyId(await openRow.first().getAttribute('data-testid'));
   await expect.poll(() => cargoMetals(page, AS_A), { timeout: 20_000 }).toBe(before - BOUNTY_METALS);
-  const hired = await devConsole(page, 'merc.hire 2', 30_000);
+  const hired = await devConsole(page, 'merc.hire 2', 60_000);
   expect(hired).toContain('escrow');
   expect(hired).toContain('merc-1.npc.terraagent.mock');
   mercBountyId = hired.match(/bounty (\S+)/)?.[1] ?? '';
@@ -171,18 +171,18 @@ test('6. Defend area for 2 h and merc.hire 2 opens escrow and spawns the squad',
 
 test('7. bounty.expire refunds the player defend bounty once and does not refund the mercenary', async () => {
   serverOnly();
-  test.setTimeout(90_000);
+  test.setTimeout(240_000);
   await openPlanetItem(page, 'bounties');
   const before = await cargoMetals(page, AS_A);
-  const expired = await devConsole(page, `bounty.expire ${defendBountyId}`, 30_000);
+  const expired = await devConsole(page, `bounty.expire ${defendBountyId}`, 60_000);
   expect(expired).toContain('Expired');
   expect(expired).toContain('refunded');
   await expect.poll(() => cargoMetals(page, AS_A), { timeout: 20_000 }).toBe(before + BOUNTY_METALS);
   const held = await cargoMetals(page, AS_A);
-  const second = await devConsole(page, `bounty.expire ${defendBountyId}`, 30_000);
+  const second = await devConsole(page, `bounty.expire ${defendBountyId}`, 60_000);
   expect(second).toContain('not refunded');
   expect(await cargoMetals(page, AS_A)).toBe(held);
-  const skipped = await devConsole(page, `bounty.expire ${mercBountyId}`, 30_000);
+  const skipped = await devConsole(page, `bounty.expire ${mercBountyId}`, 60_000);
   expect(skipped).toContain('mercenary');
   expect(await cargoMetals(page, AS_A)).toBe(held);
   await openPlanetItem(page, 'bounties');

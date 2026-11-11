@@ -1076,7 +1076,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** If the owner wants AW-23 to win, drop the HTTP reject and keep the missing auto-vote. Reading `blobs.presence` would catch away before the digest opens.
 - **Found:** 2026-11-10, W22-16
 
-### BE-86 · Treasury console spawns mercenaries and completes chain bounties without the hire escrow
+### BE-86 · Treasury console hire now opens escrow; bounty.complete still needs a claimer
 
 - **Status:** Resolved (1fbdc801)
 - **Area / code:** `backend/app/src/near/treasury/dev-console.command.ts`, `backend/app/src/near/treasury/dev-console.handlers.ts` (`runMercHire`), `frontend/game/features/treasury/devCommands.ts`
