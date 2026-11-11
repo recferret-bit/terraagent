@@ -108,7 +108,9 @@ export function bountyPostArgs(draft: BountyDraft, nowMs: number): BountyPostArg
   if (!amount || !hours || !isResource(draft.rewardResource)) return null;
   const target = targetOf(draft);
   if (!target) return null;
-  return { target, reward: { resource: draft.rewardResource, amount }, expiresAt: nowMs + hours * HOUR_MS };
+  // The server rejects a span even 1 ms under 2 h. The post round-trip is that 1 ms.
+  const slack = hours < 48 ? 5_000 : 0;
+  return { target, reward: { resource: draft.rewardResource, amount }, expiresAt: nowMs + hours * HOUR_MS + slack };
 }
 
 function splitRows(rows: readonly BountyRowView[]): BountyView['sections'] {
@@ -133,15 +135,16 @@ function oneRow(row: unknown): BountyRowView | null {
   const rec = row as Record<string, unknown>;
   if (typeof rec.id !== 'string' || rec.id.length === 0) return null;
   const rawState = typeof rec.state === 'string' ? rec.state : 'open';
+  const board = typeof rec.board === 'string' && rec.board.length > 0 ? rec.board : null;
   return {
     id: rec.id,
     section: sectionOf(rawState),
     title: titleOf(rec.target),
-    state: bountyStateLabel(rawState),
+    state: board ?? bountyStateLabel(rawState),
     detail: rewardOf(rec.reward),
     progress: progressOf(rec),
     claim: rawState === 'open',
-    receiptHref: rawState === 'paid' ? receiptOf(rec) : null,
+    receiptHref: receiptOf(rec),
   };
 }
 

@@ -35,9 +35,12 @@ const BOARD: Readonly<Record<string, string>> = {
   expired: 'Expired',
 };
 
-/** `refunded` once `expiresAt` has passed reads Expired. Any other state keeps its own word. */
-export function bountyBoardLabel(state: string, expiresAtMs: number, nowMs: number): string {
-  if (state === 'refunded' && expiresAtMs <= nowMs) return 'Expired';
+/**
+ * A `refunded` row's board word is Expired (W22-24). `expiresAt` is still stored;
+ * the list does not keep a second word for a refund that landed before that instant.
+ */
+export function bountyBoardLabel(state: string, _expiresAtMs: number, _nowMs: number): string {
+  if (state === 'refunded') return 'Expired';
   return BOARD[state] ?? state;
 }
 

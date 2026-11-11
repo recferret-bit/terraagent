@@ -18,6 +18,19 @@ function harness(flags = flagsOn) {
     if (row) row = { ...row, state: 'paid' };
     return true;
   });
+  const refundDue = vi.fn(async () => {
+    if (!row || (row.state !== 'open' && row.state !== 'claimed')) return { refunded: 0 };
+    row = { ...row, state: 'refunded' };
+    return { refunded: 1 };
+  });
+  const hire = vi.fn(async (input: { hours: number; q: number; r: number; radius?: number }) => ({
+    bountyId: 'bt_hire',
+    rosterId: 'light',
+    escrowId: 'esc_hire',
+    mercenaryAccountId: 'merc-1.npc.terraagent.mock',
+    total: 200,
+    spawn: { args: { count: 4, q: input.q, r: input.r, radius: input.radius ?? 3 } },
+  }));
   const registered = new Map<string, DevCommand>();
   const cmd = new W22DevCommands(
     {
@@ -62,7 +75,16 @@ function harness(flags = flagsOn) {
       },
     } as never,
     { load: async () => null } as never,
-    {} as never,
+    {
+      colony: { findFirst: async () => null },
+      nearColonyAccount: { findFirst: async () => null, findUnique: async () => null },
+      mockChainAccount: { upsert: async () => ({}) },
+      chainBounty: {
+        update: async () => row,
+      },
+    } as never,
+    { refundDue } as never,
+    { hire } as never,
   );
   cmd.onModuleInit();
   return {
@@ -70,6 +92,8 @@ function harness(flags = flagsOn) {
     submitted,
     deposits,
     pay,
+    refundDue,
+    hire,
     row: () => row,
     setRow: (next: typeof row) => {
       row = next;
@@ -97,8 +121,8 @@ describe('W22-35 dev console commands', () => {
     });
   });
 
-  it('funds metals.t1, completes a claimed bounty, and spawns the light squad', async () => {
-    const { registered, deposits, submitted, pay } = harness();
+  it('funds metals.t1, completes a claimed bounty, and hires the light squad', async () => {
+    const { registered, deposits, hire, pay } = harness();
     const funded = (await registered.get('treasury.fund')!.run({ planetId: 'pl_dune', amount: 1500 })) as {
       balance: string;
       tokenId: string;
@@ -126,16 +150,21 @@ describe('W22-35 dev console commands', () => {
       hours: 2,
       q: 4,
       r: -2,
-    })) as { count: number; escrow: boolean; endTick: number };
+    })) as { count: number; escrow: boolean; escrowId: string; bountyId: string };
     expect(hired.count).toBe(4);
-    expect(hired.escrow).toBe(false);
-    expect(hired.endTick).toBe(1_000 + (2 * 3_600_000) / 200);
-    expect(submitted.at(-1)).toMatchObject({
-      source: 'dev',
+    expect(hired.escrow).toBe(true);
+    expect(hired.escrowId).toBe('esc_hire');
+    expect(hired.bountyId).toBe('bt_hire');
+    expect(hire).toHaveBeenCalledWith(expect.objectContaining({
+      planetId: 'pl_dune',
       colonyIndex: 0,
-      kind: 'mercenary.spawn',
-      args: { q: 4, r: -2, count: 4, rosterId: 'light', radius: 3, endTick: hired.endTick },
-    });
+      rosterId: 'light',
+      hours: 2,
+      q: 4,
+      r: -2,
+      radius: 3,
+    }));
+    expect(registered.get('merc.hire')?.args.safeParse({ planetId: 'pl_dune', colonyIndex: 0, hours: 1.5 }).success).toBe(false);
   });
 
   it('skips pay when the bounty has no claimer and rejects the commands when W22 is off', async () => {
@@ -155,6 +184,43 @@ describe('W22-35 dev console commands', () => {
     await expect(
       off.registered.get('treasury.effect')!.run({ kind: 'meteor_shield', planetId: 'pl_dune' }),
     ).rejects.toMatchObject({
+      errorCode: 'NOT_FOUND',
+      status: 404,
+    });
+  });
+});
+
+describe('W22-36 bounty.expire', () => {
+  it('refunds one player bounty once and does not refund a mercenary claimer', async () => {
+    const open = harness();
+    open.setRow({ id: 'bt_open', state: 'open', claimerAccountId: 'a.terraagent.mock' });
+    const first = (await open.registered.get('bounty.expire')!.run({ id: 'bt_open' })) as {
+      state: string;
+      refunded: boolean;
+      board: string;
+    };
+    expect(first).toMatchObject({ state: 'refunded', refunded: true, board: 'Expired' });
+    expect(open.refundDue).toHaveBeenCalledTimes(1);
+    const second = (await open.registered.get('bounty.expire')!.run({ id: 'bt_open' })) as { refunded: boolean };
+    expect(second.refunded).toBe(false);
+    expect(open.refundDue).toHaveBeenCalledTimes(2);
+
+    const merc = harness();
+    merc.setRow({ id: 'bt_merc', state: 'claimed', claimerAccountId: 'merc-1.npc.terraagent.mock' });
+    const skipped = (await merc.registered.get('bounty.expire')!.run({ id: 'bt_merc' })) as { skipped?: string };
+    expect(skipped.skipped).toBe('mercenary');
+    expect(merc.refundDue).not.toHaveBeenCalled();
+    expect(merc.row()?.state).toBe('claimed');
+
+    const missing = harness();
+    missing.setRow(null);
+    await expect(missing.registered.get('bounty.expire')!.run({ id: 'bt_missing' })).rejects.toMatchObject({
+      errorCode: 'NOT_FOUND',
+      status: 404,
+    });
+
+    const off = harness({ has: () => false, flags: parseWaves('..21') });
+    await expect(off.registered.get('bounty.expire')!.run({ id: 'bt_open' })).rejects.toMatchObject({
       errorCode: 'NOT_FOUND',
       status: 404,
     });

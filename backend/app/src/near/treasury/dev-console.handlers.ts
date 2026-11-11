@@ -1,6 +1,6 @@
 import { newId, type BountyReward, type BountyTarget, type FlagSet, type SimCommandV1 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
-import { compileData, type PlanetState } from '@terra/sim';
+import type { PlanetState } from '@terra/sim';
 import { findColonyHqRow } from '@terra/sim/systems/find';
 import { CoreException } from '../../core/errors/core-exception.js';
 import { resolveColonyAccountId } from '../cargo/cargo-export-outbox.js';
@@ -81,6 +81,37 @@ export interface BountyCompleteBody {
   readonly claimer?: string;
 }
 
+export interface BountyExpireBody {
+  readonly id: string;
+}
+
+/** `refundDue` after this command has moved one row's `expiresAt` into the past. */
+export interface ConsoleExpiry {
+  refundDue(nowMs: number): Promise<{ refunded: number }>;
+}
+
+/** `MercenaryHireService.hire`. The console opens escrow here instead of spawning alone. */
+export interface ConsoleHire {
+  hire(input: {
+    planetId: string;
+    colonyId: string;
+    colonyIndex: number;
+    accountId: string;
+    rosterId: string;
+    hours: number;
+    q: number;
+    r: number;
+    radius?: number;
+  }): Promise<{
+    bountyId: string;
+    rosterId: string;
+    escrowId: string;
+    mercenaryAccountId: string;
+    total: number;
+    spawn: { args?: unknown };
+  }>;
+}
+
 export interface MercHireBody {
   readonly planetId: string;
   readonly colonyIndex: number;
@@ -99,6 +130,8 @@ export interface ConsoleDeps {
   readonly repo: Pick<BountyRepository, 'find' | 'completeForPayout' | 'markCompleted'>;
   readonly world: ConsoleWorld;
   readonly prisma: PrismaClient;
+  readonly expiry: ConsoleExpiry;
+  readonly hire: ConsoleHire;
 }
 
 export async function runTreasuryFund(deps: ConsoleDeps, body: TreasuryFundBody) {
@@ -181,40 +214,66 @@ export async function runBountyComplete(deps: ConsoleDeps, body: BountyCompleteB
 }
 
 /**
- * Light squad through module `mercenary.spawn`.
- * W22-28 escrow hire is not on this branch, so this does not open escrow.
+ * Light squad through `MercenaryHireService` (W22-28). Opens the defend escrow and spawns.
+ * Hours are whole. A fractional hour is rejected before the hire service quotes a price.
  */
 export async function runMercHire(deps: ConsoleDeps, body: MercHireBody) {
   assertW22(deps.flags);
-  const count = lightCount(deps.flags.flags);
-  if (count === null)
-    throw new CoreException('NOT_FOUND', { status: 404, message: 'Light mercenary roster is not available' });
-  const tick = await loadedTick(deps.sim, body.planetId);
-  const endTick = effectUntilTick(tick, body.hours);
-  if (endTick <= tick) {
-    throw new CoreException('VALIDATION_ERROR', { status: 400, message: 'hours are too small to reach a later tick' });
+  if (!Number.isInteger(body.hours)) {
+    throw new CoreException('VALIDATION_ERROR', { status: 400, message: 'hours must be a whole number' });
   }
+  const poster = await posterAccount(deps, body.planetId, body.colonyIndex);
   const center = await defendCenter(deps, body);
-  const command: SimCommandV1 = {
+  const hired = await deps.hire.hire({
+    planetId: body.planetId,
+    colonyId: poster.colonyId,
     colonyIndex: body.colonyIndex,
-    source: 'dev',
-    commandId: newId('cm'),
-    kind: 'mercenary.spawn',
-    args: { q: center.q, r: center.r, radius: LIGHT_RADIUS, endTick, count, rosterId: LIGHT_ROSTER },
-  };
-  const out = await deps.sim.submit(body.planetId, command);
-  if (!out.ok) throw rejected(out);
+    accountId: poster.accountId,
+    rosterId: LIGHT_ROSTER,
+    hours: body.hours,
+    q: center.q,
+    r: center.r,
+    radius: LIGHT_RADIUS,
+  });
   return {
     planetId: body.planetId,
     colonyIndex: body.colonyIndex,
     hours: body.hours,
-    count,
-    rosterId: LIGHT_ROSTER,
+    count: spawnCount(hired.spawn.args),
+    rosterId: hired.rosterId,
     q: center.q,
     r: center.r,
     radius: LIGHT_RADIUS,
-    endTick,
-    escrow: false as const,
+    bountyId: hired.bountyId,
+    escrowId: hired.escrowId,
+    mercenaryAccountId: hired.mercenaryAccountId,
+    total: hired.total,
+    escrow: true as const,
+  };
+}
+
+const MERC_SUFFIX = '.npc.terraagent.mock';
+
+/**
+ * Player bounties only. Sets `expiresAt` into the past, then `refundDue`.
+ * A mercenary claimer is left for W22-30 (BE-88). A second call does not pay again.
+ */
+export async function runBountyExpire(deps: ConsoleDeps, body: BountyExpireBody) {
+  assertW22(deps.flags);
+  const row = await deps.repo.find(body.id);
+  if (!row) throw new CoreException('NOT_FOUND', { status: 404, message: `Bounty "${body.id}" was not found` });
+  if (row.claimerAccountId?.endsWith(MERC_SUFFIX)) {
+    return { id: row.id, state: row.state, refunded: false, skipped: 'mercenary' as const };
+  }
+  const now = Date.now();
+  await deps.prisma.chainBounty.update({ where: { id: row.id }, data: { expiresAt: new Date(now - 1000) } });
+  const sweep = await deps.expiry.refundDue(now);
+  const next = await deps.repo.find(row.id);
+  return {
+    id: row.id,
+    state: next?.state ?? row.state,
+    refunded: sweep.refunded > 0,
+    board: next?.state === 'refunded' ? 'Expired' : next?.state ?? row.state,
   };
 }
 
@@ -235,12 +294,6 @@ async function loadedTick(sim: ConsoleSim, planetId: string): Promise<number> {
 
 function rejected(out: { code?: string; detail?: string }): CoreException {
   return new CoreException('VALIDATION_ERROR', { status: 400, message: out.detail ?? out.code ?? 'rejected' });
-}
-
-function lightCount(flags: FlagSet): number | null {
-  const count = compileData(flags).tables.mercenary?.light?.count;
-  if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 8) return null;
-  return count;
 }
 
 function expiresAtFor(target: BountyTarget, nowMs: number): number {
@@ -271,6 +324,27 @@ async function tryPay(deps: ConsoleDeps, id: string, claimer: string | null): Pr
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+async function posterAccount(
+  deps: ConsoleDeps,
+  planetId: string,
+  colonyIndex: number,
+): Promise<{ colonyId: string; accountId: string }> {
+  const seated = await deps.prisma.colony.findFirst({
+    where: { planetId, colonyIndex },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  const colonyId = seated?.id ?? `col_${colonyIndex}`;
+  const accountId = await resolveColonyAccountId(deps.prisma, colonyId, null, planetId, colonyIndex);
+  return { colonyId, accountId };
+}
+
+function spawnCount(args: unknown): number {
+  if (!args || typeof args !== 'object' || !('count' in args)) return 0;
+  const count = (args as { count: unknown }).count;
+  return typeof count === 'number' && Number.isInteger(count) ? count : 0;
 }
 
 async function defendCenter(deps: ConsoleDeps, body: MercHireBody): Promise<{ q: number; r: number }> {
