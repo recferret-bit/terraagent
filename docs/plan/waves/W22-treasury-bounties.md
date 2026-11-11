@@ -3,7 +3,7 @@
 > **Track:** Economy/NEAR (E) · **Flag:** `W22` · **Scenario:** `tests/scenarios/w22-treasury-bounties.ts` · **Tag:** `wave-22`
 > **Depends on waves:**
 > - W13: market fee legs, intent batch builder, `IntentsPort` mock. The treasury share applies to every settled fill whatever the actor kind (`player`, `bot`, `npc`, Guild; D-45); it is carved from the platform fee the buyer already pays, so bot volume adds no extra charge and no treasury reward for volume.
-> - W18 (optional; only mercenaries and `defend_area` need it): PvP, elimination, defend-area semantics.
+> - W18 (optional; landed — mercenaries, `defend_area`, and DAO membership sync integrate with W18 PvP raids, `colonyEliminated` ruins, and bilateral truces).
 > - W10: cargo tokens used for rewards and escrow.
 > - W07: nests and combat units for mercenary squads.
 > - W06: colony accounts and the relayer (members, escrow parties).
