@@ -1,5 +1,7 @@
 import { defineSimModule } from '../define';
+import { setAutoTradeHandler } from './autotrade';
 import { marketReleaseHandler, marketReserveHandler, marketSettledHandler } from './module-commands';
+import { marketAcceptGuildOfferHandler } from './accept-guild-offer';
 import { marketPlaceOrderHandler } from './place-order';
 import { marketCancelOrderHandler, marketSetHubFeeHandler } from './player-commands';
 
@@ -11,16 +13,23 @@ export * from './player-commands';
 export * from './module-commands';
 export * from './command-source';
 export * from './agent';
+export {
+  guildAgentParams, guildColonyInput, guildPolicy, guildQuoteParams, quoteGuild, sameGuild,
+  type GuildNpc, type GuildPolicy, type GuildQuoteFixture,
+} from './guild';
+export * from './autotrade';
 
 export default defineSimModule({
   id: 'trade',
   wave: 'W13',
   handlers: [
     marketPlaceOrderHandler,
+    marketAcceptGuildOfferHandler,
     marketCancelOrderHandler,
     marketSetHubFeeHandler,
     marketReserveHandler,
     marketReleaseHandler,
     marketSettledHandler,
+    setAutoTradeHandler,
   ],
 });

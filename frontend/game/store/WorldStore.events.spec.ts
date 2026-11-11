@@ -1,4 +1,4 @@
-import { flagsFromList, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, type GuildArrivedPayload, type GuildDepartedPayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
 import { compileData, createPlanet, SIM_VERSION, SimHost } from '@terra/sim';
 import { Emitter } from '../net/emitter';
@@ -53,6 +53,39 @@ describe('WorldStore event split', () => {
   it('reports the prediction mode', async () => {
     const { store } = await setup();
     expect(store.predictionMode).toBe('on');
+    store.dispose();
+  });
+
+  it('forwards director.status to onDirectorStatus', async () => {
+    const { msgs, store } = await setup();
+    const seen: unknown[] = [];
+    store.onDirectorStatus((payload) => seen.push(payload));
+    const d = {
+      colonyId: 'co_1',
+      state: 'active' as const,
+      tokens: [{ token: 'metals.t1' as const, allowance: '600', reserved: '0', spent: '0', available: '600' }],
+    };
+    msgs.emit({ v: 1, t: 'director.status', d });
+    await settle();
+    expect(seen).toEqual([d]);
+    store.dispose();
+  });
+
+  it('forwards guild.arrived and guild.departed', async () => {
+    const { msgs, store } = await setup();
+    const arrived: GuildArrivedPayload[] = [];
+    const departed: GuildDepartedPayload[] = [];
+    store.onGuildArrived((payload) => arrived.push(payload));
+    store.onGuildDeparted((payload) => departed.push(payload));
+    const a: GuildArrivedPayload = {
+      shipId: 'kestrel', planetId: 'pl_1', npcId: 'kestrel', name: 'Kestrel', departAt: 10, offers: [],
+    };
+    const d: GuildDepartedPayload = { shipId: 'kestrel', planetId: 'pl_1', npcId: 'kestrel' };
+    msgs.emit({ v: 1, t: 'guild.arrived', d: a });
+    msgs.emit({ v: 1, t: 'guild.departed', d });
+    await settle();
+    expect(arrived).toEqual([a]);
+    expect(departed).toEqual([d]);
     store.dispose();
   });
 });

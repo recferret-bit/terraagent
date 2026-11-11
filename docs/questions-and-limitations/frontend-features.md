@@ -1425,7 +1425,7 @@ Open items, see the format in `README.md`:
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`, mounted on `services.hudOverlay`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
-- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, and the story when it is a non-empty string. Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The away mercenary hire is one of those highlights (`Hired light squad for 100 metals.t1`). `deliverWelcome` keeps the line on the digest; this plate still does not draw it. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, the story when it is a non-empty string, and each `digest.directorTrade` line when the body has `items` (W15-24). Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The away mercenary hire is one of those highlights (`Hired light squad for 100 metals.t1`). `deliverWelcome` keeps the line on the digest; this plate still does not draw it. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
 - **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
 - **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
 - **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
@@ -1461,6 +1461,55 @@ Open items, see the format in `README.md`:
 - **To resolve:** (2) check the post-restart supply window timing in step 12 (wait for one more window, or for the spawned builders to exist).
 - **Found:** 2026-11-10, HUD de-clutter refactor (tests agent + lead)
 
+### FF-110 · Away autoTrade remembers this browser, and the director key status does not
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/away/` (`AutoTradeSection`, `storage.ts` key `ta.away.autotrade`), `POST`/`DELETE /v1/near/director-key`, sim blob `autoTrade`
+- **What happens:** Saving limits persists only after `setAutoTrade` acks, in one browser-wide `localStorage` record. A reload shows those numbers before any snapshot. The section does not read the sim `autoTrade` blob, so another colony or a limit changed only on the server still shows this browser's last ack (or the demo defaults: metals.t1, sell above 80, 300 / 600 / 200, Guild). T2/T3 are not in the editor; a save sends only Tier-1 rows and replaces the colony map. `truce` is not offered while W18 is off. `buyBelowStock` is not on the form. Enable posts the form limits but does not send `setAutoTrade`; a key can exist without an acked blob. There is no GET for the key, so a reload clears the allowance line until the next `director.status` push or a new enable. `Revoked` does not survive a reload. A `store.sendCommand` that returns an id string is not an ack, so that path does not mark the limits saved (the online HUD uses the command bus, which does).
+- **Why it is like this:** W15-23 asked for a reload to show the saved numbers before a server echo, and the director routes are POST and DELETE only. W17/W19 are postponed, and the sim rejects `truce` without W18.
+- **Workaround / mitigation:** This browser keeps the last acked Tier-1 limits. A rejected command does not write storage and does not show an allowance. Revoke hides the button and sets the status to `Revoked` for the rest of the page.
+- **To resolve:** When the replica exposes `autoTrade`, hydrate from that colony and keep `localStorage` only until the first view. Add a read of the director key (or push status on welcome) so allowance and revoked survive a reload.
+- **Found:** 2026-11-10, W15-23
+
+### FF-111 · Guild toasts are push-only, and departure has no display name
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/guild-toast/` (`GuildVisitMemory`, `FeatureServices.guildTab`), `frontend/game/store/WorldStore.ts` (`onGuildArrived`, `onGuildDeparted`)
+- **What happens:** An arrival toast reads `Guild trader ${name} has docked — ${offers.length} offers`. The same `shipId` + `departAt` does not toast again on this page. A departure toast reads `Guild trader ${name} has departed`, using the display name from this page's last `guild.arrived` for that `shipId`, or the `shipId` itself when no arrival was seen (`guild.departed` has no name). Joining while a ship is already docked does not toast: welcome does not replay the visit, and a reload forgets the seen key. A tap calls `openTradeHubPanel(true)` and sets `services.guildTab = true`. The Guild tab consumes that flag (FF-113). The flag is not a URL query and is cleared if the HUD builds a new services object before the Guild tab mounts. W15 off drops the feature from the registry; a mount whose flags lack `W15` ignores both pushes.
+- **Why it is like this:** W15-16 is the toast only. The departed payload is `shipId`, `planetId`, and `npcId`.
+- **Workaround / mitigation:** With W15 on, the tap opens the Trade Hub on the GUILD tab. A missed arrival still has no toast.
+- **To resolve:** Put the display name on `guild.departed`, or replay an open visit on welcome, if a mid-dock join should toast.
+- **Found:** 2026-11-10, W15-16
+
+### FF-112 · The director sentence is the away plate or the HUD log, not both
+
+- **Status:** Accepted (by design, W15-24)
+- **Area / code:** `frontend/game/features/director-log/` (`DirectorEventLog`), `frontend/game/features/away-digest/render.ts` (`appendDirectorTrades`), `backend/app/src/market/director/digest-line.ts`
+- **What happens:** With W15 on and W09 off, `directorTrade` server events become lines in the HUD event log (`data-testid="director-event-log"`). The text is `directorDigestLine` (`Director sold 300 metals to the Guild.`). Amount 0 adds nothing. With W09 on, that log stays empty and the away plate lists `digest.directorTrade` items (`renderAwayDigest`, `[data-testid="away-director-trades"]`). W15 off does not mount the log. The plate does not show the line until welcome carries `items`. The ColonyBook AWAY tab does not repeat the lines (BE-81). A missed socket (the player was away and W09 is off) has no later line (BE-76).
+- **Why it is like this:** W09 already owns the away plate. The log is only the fallback the issue asks for when that plate is not mounted. W15-36 kept that split.
+- **Workaround / mitigation:** Turn W09 on to keep the line on the digest until return. The log keeps the last 20 lines of this page.
+- **To resolve:** Copy the same lines onto the ColonyBook AWAY tab, or replay missed fills on welcome when W09 is off, only if the owner asks.
+- **Found:** 2026-11-10, W15-24 (updated 2026-11-11, W15-36)
+
+### FF-113 · Guild tab keeps one visit and does not replay a missed dock
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/guild-tab/` (`GuildVisitModel`, `GuildOffers`), `frontend/trade/view/marketView.ts` (`actorBadgeLabel`)
+- **What happens:** The Trade Hub GUILD tab (W15 only) lists at most 6 offers from the latest `guild.arrived` on this page. A second docked ship replaces the first. `guild.departed` for that ship, or wall time at or after `departAt`, shows `Departed` and disables Accept. The countdown is `MMm SSs`, or `Hh MMm SSs` when an hour or more remains, and it ticks once a second while the tab is shown. Accept sends `market.acceptGuildOffer` once per offer id. A reject uses `formatRejectToast` (`offer_expired` is `Rejected: That Guild offer has expired`). A successful accept does not add its own toast: `tradeSettled` still uses the Contracts toast. Reloading, or opening the tab before this page saw `guild.arrived`, shows `No offers`. Setting `services.guildTab` opens the tab and clears the flag once the tab is registered. On `/trade.html`, a book row whose actor is `npc` or `guild` shows the badge `Guild`. The actor-mix chips still use the raw kind.
+- **Why it is like this:** W15-17 draws the push the toast already receives. There is no snapshot of the open visit. Two NPCs can be routed, but the tab is one countdown. The mix chips count kinds, so they stay `npc` and `guild`.
+- **Workaround / mitigation:** Stay on the page through the dock. After a re-quote, Accept the new offer id. Read `data-actor` on the book row when the badge says Guild.
+- **To resolve:** Keep every ship that has not reached `departAt`, and replay the open visit on welcome. Use one Guild label on the mix chips if the owner wants that everywhere.
+- **Found:** 2026-11-10, W15-17
+
+### FF-114 · Guild analytics is the consent-gated client batch
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/guild-analytics/` (`GuildAnalytics`), `frontend/game/core/analytics/client.ts`, `backend/app/src/analytics/analytics.service.ts` (`core.analytics_event`), `frontend/game/app/online/featureHud.ts` (`noTrack` on `?host=local`)
+- **What happens:** The six W15-26 names are `track()` calls. After consent they batch to `POST /v1/analytics/events` and land in `core.analytics_event`. Without consent, and on `?host=local`, the call is a no-op and nothing is stored. `guild_docked_seen` is once per `shipId` + `departAt` on this page (same key as the arrival toast); a reload can record that dock again. `guild_offer_accepted` fires when Accept sends `market.acceptGuildOffer`, including a later `offer_expired`. `autotrade_configured` fires only after `setAutoTrade` acks. The key events fire only when POST returns `active` or DELETE returns `revoked`; a `director.status` push does not record them again. `director_trade_executed` fires when this page receives `directorTrade` with a positive integer amount (the same `tradeId` once). A player who missed the socket does not get that fill from the away digest later. W15 off does not mount the listener, the Guild tab, or the autoTrade section.
+- **Why it is like this:** CLIENT §10 and CL-11 already own the pipeline. W15-26 adds names, not a second store. The digest is a sentence, not a replay of the event.
+- **Workaround / mitigation:** Opt in, stay on the server host, and keep the page open through the dock and the away fill. In dev, `window.__track.setConsent(true)` then `await __track.flush()`.
+- **To resolve:** Replay a missed `directorTrade` from the welcome digest only if the owner wants analytics after a disconnect.
+- **Found:** 2026-11-11, W15-26
 ## W22 treasury HUD (2026-11-10)
 
 ### FF-103 · Meteor shield shimmer is a CSS veil, not a scene pass

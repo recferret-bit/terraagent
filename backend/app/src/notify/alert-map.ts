@@ -22,7 +22,22 @@ const SIM_TO_KIND: Readonly<Record<string, NotificationKind>> = {
   rocketReady: 'rocket_ready',
   truceOffered: 'truce_offered',
   awayBudgetExhausted: 'away_budget_exhausted',
+  directorAllowanceExhausted: 'away_budget_exhausted',
 };
+
+/**
+ * A director stop notifies only when the allowance is spent and both W09 and W15 are on.
+ * `director_key_revoked` stays the planet event. Other kinds are unchanged.
+ */
+export function directorBudgetNotifies(
+  kind: string,
+  data: Readonly<Record<string, unknown>> | undefined,
+  w09: boolean,
+  w15: boolean,
+): boolean {
+  if (kind !== 'directorAllowanceExhausted') return true;
+  return w09 && w15 && data?.reason === 'allowance_exhausted';
+}
 
 const ALERT_COPY: Record<NotificationKind, { readonly title: string; readonly body: string }> = {
   under_attack: { title: 'Under attack', body: 'Hostile forces are hitting the colony.' },

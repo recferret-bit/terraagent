@@ -2,10 +2,12 @@ import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModu
 import { NotificationKindSchema, type NotificationKind } from '@terra/contracts';
 import { EventBus, type Unsubscribe } from '../bus/event-bus.js';
 import type { PlanetEventV1 } from '../bus/channels.js';
+import { FlagsService } from '../flags/flags.service.js';
 import { NotifierPort, type Notification } from '../ports/notifier.port.js';
 import {
   alertNotification,
   colonyTargets,
+  directorBudgetNotifies,
   notificationKindOf,
   notifiesTradeOffer,
   type AlertRouteInput,
@@ -38,6 +40,7 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(NotifierPort) private readonly notifier: NotifierPort,
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
+    @Optional() @Inject(FlagsService) private readonly flags?: FlagsService,
   ) {}
 
   onModuleInit(): void {
@@ -77,6 +80,10 @@ export class AlertRouter implements OnModuleInit, OnModuleDestroy {
   }
 
   async route(input: AlertRouteInput, nowMs = input.nowMs ?? Date.now()): Promise<AlertRouteResult> {
+    const flags = this.flags;
+    if (!directorBudgetNotifies(input.kind, input.data, flags?.has('W09') === true, flags?.has('W15') === true)) {
+      return { sent: 0 };
+    }
     const kind = notificationKindOf(input.kind);
     if (!kind) return { sent: 0 };
     if (kind === 'trade_offer' && !notifiesTradeOffer(input)) return { sent: 0 };

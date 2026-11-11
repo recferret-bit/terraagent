@@ -1,0 +1,42 @@
+.ta-guild-toasts {
+  /* Below the top-center stock row. A toast on that row covers hud-supply and steals its hover. */
+  position: absolute;
+  bottom: var(--ta-s8);
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ta-s2);
+  width: max-content;
+  max-width: min(420px, 92vw);
+  pointer-events: none;
+}
+
+.ta-guild-toasts[hidden] {
+  display: none;
+}
+
+.ta-guild-toast {
+  appearance: none;
+  pointer-events: auto;
+  margin: 0;
+  max-width: 100%;
+  padding: var(--ta-s2) var(--ta-s4);
+  border: 1.5px solid var(--ta-blue-hi);
+  background: var(--ta-plate-2);
+  color: var(--ta-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  line-height: 1.35;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ta-guild-toast[data-kind='departed'] {
+  border-color: var(--ta-seam-3);
+  color: var(--ta-steel);
+}

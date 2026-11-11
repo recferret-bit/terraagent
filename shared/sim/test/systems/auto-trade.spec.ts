@@ -41,3 +41,49 @@ describe('W09-13 withinAutoTrade', () => {
     expect(AutoTradeLimitSchema.safeParse(limit).success).toBe(true);
   });
 });
+
+const demo: AutoTradeLimit = {
+  maxPerTrade: 300, maxPerSession: 600, minStock: 200, partners: 'guild', sellAboveStoragePct: 80,
+};
+
+describe('W15-19 withinAutoTrade', () => {
+  it('accepts a 300 give at the per-trade max that leaves minStock', () => {
+    expect(withinAutoTrade(demo, order({ give: 300, stock: 500, storagePct: 90 }))).toBe(true);
+  });
+
+  it('rejects 301, a partner outside guild, and truce when the feature is off', () => {
+    expect(withinAutoTrade(demo, order({ give: 301, stock: 800, storagePct: 90 }))).toBe(false);
+    expect(withinAutoTrade(demo, order({ give: 300, stock: 500, storagePct: 90, partner: 'anyone' }))).toBe(false);
+    expect(withinAutoTrade(
+      { ...demo, partners: 'truce' },
+      order({ give: 100, stock: 500, storagePct: 90, partner: 'truce' }),
+      { truceEnabled: false },
+    )).toBe(false);
+    expect(withinAutoTrade(demo, order({ partner: 'nope' as AutoTradeOrder['partner'] }))).toBe(false);
+  });
+
+  it('corners: zero give, the exact session cap, and storage at 80 versus just below', () => {
+    expect(withinAutoTrade(demo, order({ give: 0, stock: 500, storagePct: 90 }))).toBe(true);
+    expect(withinAutoTrade(demo, order({ give: 300, stock: 800, sessionSpent: 300, storagePct: 90 }))).toBe(true);
+    expect(withinAutoTrade(demo, order({ give: 300, stock: 800, sessionSpent: 301, storagePct: 90 }))).toBe(false);
+    expect(withinAutoTrade(demo, order({ give: 100, stock: 800, storagePct: 80 }))).toBe(true);
+    expect(withinAutoTrade(demo, order({ give: 100, stock: 799, storageCap: 1000 }))).toBe(false);
+    expect(withinAutoTrade(demo, order({ give: 100, stock: 800, storagePct: 79.9 }))).toBe(false);
+  });
+
+  it('ignores the new fields when they are absent, and applies an inclusive buy floor when set', () => {
+    expect(withinAutoTrade(limit, order())).toBe(true);
+    expect(AutoTradeLimitSchema.parse(limit).sellAboveStoragePct).toBeUndefined();
+    expect(AutoTradeLimitSchema.parse(limit).buyBelowStock).toBeUndefined();
+    const buy = { ...demo, buyBelowStock: 200 };
+    expect(withinAutoTrade(buy, order({ side: 'buy', give: 50, stock: 200, storagePct: 10 }))).toBe(true);
+    expect(withinAutoTrade(buy, order({ side: 'buy', give: 50, stock: 201, storagePct: 10 }))).toBe(false);
+    expect(AutoTradeLimitSchema.safeParse({ ...demo, sellAboveStoragePct: 101 }).success).toBe(false);
+    expect(AutoTradeLimitSchema.safeParse({ ...demo, buyBelowStock: -1 }).success).toBe(false);
+    expect(AutoTradeLimitSchema.safeParse({ ...demo, sellAboveStoragePct: 0, buyBelowStock: 0 }).success).toBe(true);
+  });
+
+  it('refuses a sell-above rule when the order has no fill percent', () => {
+    expect(withinAutoTrade(demo, order({ give: 10, stock: 500 }))).toBe(false);
+  });
+});

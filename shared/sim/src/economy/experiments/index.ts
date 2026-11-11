@@ -9,6 +9,8 @@ export * from './run-experiment';
 export * from './run-scenario';
 export * from './types';
 export { behaviorIds, createBehavior, SPECIALISTS_V1_PARAMS, specialistsParams, DEMAND_AGENTS_V1_PARAMS, demandAgentParams, OrderLog, actAgent, observedReference } from './behaviors';
+export { GUILD_PRICING_STEPS, capProbeUnitCost, guildPricingFixture, guildSideOrganic, replayGuildPricing } from './guild-pricing';
+export type { GuildPricingFill, GuildPricingReplay, GuildPricingStatus, GuildPricingStep } from './guild-pricing';
 export type { AgentWorld, DemandAgentParams, DemandCounters } from './behaviors';
 export * from './artifacts';
 export * from './compare';

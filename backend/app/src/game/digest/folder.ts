@@ -1,4 +1,4 @@
-import { DIGEST_LIST_CAP, type AwayDigestV1 } from '@terra/contracts';
+import { DIGEST_DIRECTOR_TRADE, DIGEST_LIST_CAP, type AwayDigestV1 } from '@terra/contracts';
 import type { AlertFold, AttackFold, LossFold } from './types';
 
 /** Keeps the first 20. The 21st appended item is dropped (CT-31). */
@@ -27,6 +27,12 @@ export function foldAttack(body: AwayDigestV1, event: AttackFold): AwayDigestV1 
   };
   const alerts = event.kind === 'underAttack' ? capList([...body.alerts, underAttackAlert(event)]) : body.alerts;
   return { ...body, attacks, alerts };
+}
+
+/** Appends one director sentence. Past 20 the new line is dropped and the earlier lines stay (CT-31). */
+export function foldDirectorTrade(body: AwayDigestV1, line: string): AwayDigestV1 {
+  const items = capList([...(body.items ?? []), { kind: DIGEST_DIRECTOR_TRADE, line }]);
+  return { ...body, items };
 }
 
 /** One while-away line. Past 20, the new line is dropped and the earlier lines stay (CT-31). */
@@ -70,6 +76,7 @@ export function mergeBodies(parts: readonly AwayDigestV1[]): AwayDigestV1 {
   if (!first || !last) throw new Error('merge needs a digest');
   if (parts.length === 1) return first;
   const story = lastStory(parts);
+  const items = capList(parts.flatMap((b) => b.items ?? []));
   return {
     colonyId: last.colonyId,
     awayFrom: first.awayFrom,
@@ -97,6 +104,7 @@ export function mergeBodies(parts: readonly AwayDigestV1[]): AwayDigestV1 {
       items: capList(parts.flatMap((b) => b.trades.items)),
     },
     alerts: capList(parts.flatMap((b) => b.alerts)),
+    ...(items.length > 0 ? { items } : {}),
     ...(story ? { story } : {}),
   };
 }

@@ -3,7 +3,7 @@ import type { PlanetState } from '@terra/sim';
 import { stateOf } from './baseline';
 import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline } from './body';
 import { digestSignal } from './events';
-import { foldAlert, foldAttack, foldHighlight, foldLoss } from './folder';
+import { foldAlert, foldAttack, foldDirectorTrade, foldHighlight, foldLoss } from './folder';
 import {
   fillOpenBaseline,
   mergeUnseenDigests,
@@ -161,6 +161,23 @@ export class AwayDigestService {
     await sealDigestStory(this.deps.store, this.deps.story, this.deps.log, colonyId, at);
   }
 
+  /** One director sentence on the open away row. No open row means the line is not stored. */
+  noteDirectorTrade(colonyId: string, line: string, tick = 0): Promise<void> {
+    if (colonyId.length === 0 || line.length === 0) return Promise.resolve();
+    return this.enqueue(colonyId, () => this.foldTrade(colonyId, line, tick));
+  }
+
+  /**
+   * Opens the away row when the director fills and none is open yet.
+   * A colony the player already returned to stays closed (`suppressAway`).
+   */
+  ensureOpen(planetId: string, colonyId: string): Promise<void> {
+    if (planetId.length === 0 || colonyId.length === 0) return Promise.resolve();
+    if (this.suppressAway.has(colonyId)) return Promise.resolve();
+    const at = this.now();
+    return this.enqueue(colonyId, () => this.openRow(planetId, colonyId, at));
+  }
+
   private async addHighlight(colonyId: string, at: Date, summary: string): Promise<boolean> {
     const atIso = at.toISOString();
     if (atIso.length > 40 || summary.length < 1 || summary.length > 200) return false;
@@ -186,6 +203,15 @@ export class AwayDigestService {
     live.body = checkedDigest(fn(live.body));
     const tick = BigInt(Math.max(0, Math.floor(eventTick)));
     if (tick > live.lastEventSeq) live.lastEventSeq = tick;
+    live.dirty = true;
+  }
+
+  private async foldTrade(colonyId: string, line: string, tick: number): Promise<void> {
+    const live = await this.live(colonyId);
+    if (!live) return;
+    live.body = checkedDigest(foldDirectorTrade(live.body, line));
+    const at = BigInt(Math.max(0, Math.floor(tick)));
+    if (at > live.lastEventSeq) live.lastEventSeq = at;
     live.dirty = true;
   }
 

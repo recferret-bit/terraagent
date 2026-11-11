@@ -1,0 +1,19 @@
+import type { DirectorKeyStatusPayload } from '@terra/contracts';
+import type { CommandSink } from '../shared/commandDispatch';
+
+/** Channels the away plate and its autoTrade section share. */
+export interface AwayPanelOptions {
+  sendCommand?: CommandSink['sendCommand'];
+  store?: CommandSink['store'];
+  /** `W15` shows autoTrade. `W18` adds the `truce` partner (the sim rejects it otherwise). */
+  flags?: ReadonlySet<string>;
+  /** W22. Off hides the hire switch and does not send `hireMercenaries`. */
+  mercenary?: boolean;
+  colonyId?: () => string | null;
+  accessToken?: () => string | null;
+  fetchImpl?: typeof fetch;
+  /** Consent-gated product analytics (`ctx.services.track`). */
+  track?: (name: string, props?: Record<string, string | number | boolean | null>) => void;
+  /** `director.status` pushes. The same payload as POST and DELETE `/v1/near/director-key`. */
+  subscribeDirector?: (fn: (payload: DirectorKeyStatusPayload) => void) => () => void;
+}

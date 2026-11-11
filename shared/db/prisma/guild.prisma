@@ -1,0 +1,64 @@
+/// Guild NPC wallet and its one explicit funding allocation (W15-05, NEAR-70, NEAR-73).
+/// Mock cargo, when any, is only `inventory_cache` lines labelled `fixture`. The quote budget is a finite `subsidy`.
+/// `cash_enabled` stays 0. The live exposure book is `guild_funding` (W15-12). Boot does not reset counters.
+model GuildNpc {
+  id                String   @id @db.VarChar(32)
+  accountId         String   @unique @map("account_id") @db.VarChar(64)
+  strategy          Json
+  inventoryCache    Json     @map("inventory_cache")
+  homeRoute         Json     @map("home_route")
+  allocationId      String   @unique @map("allocation_id") @db.VarChar(96)
+  quoteBudgetAtomic Decimal  @map("quote_budget_atomic") @db.Decimal(78, 0)
+  spendAtomic       Decimal  @default(0) @map("spend_atomic") @db.Decimal(78, 0)
+  lossAtomic        Decimal  @default(0) @map("loss_atomic") @db.Decimal(78, 0)
+  cargoLabel        String   @default("fixture") @map("cargo_label") @db.VarChar(16)
+  quoteLabel        String   @default("subsidy") @map("quote_label") @db.VarChar(16)
+  cashEnabled       Int      @default(0) @map("cash_enabled")
+  actorKind         String   @default("npc") @map("actor_kind") @db.VarChar(16)
+  publicKey         String   @map("public_key") @db.VarChar(128)
+  tradeKeyId        String   @unique @map("trade_key_id") @db.VarChar(40)
+  policyVersion     String   @map("policy_version") @db.VarChar(64)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("guild_npc")
+  @@schema("chain")
+}
+
+/// Per-NPC and global cash and inventory exposure (W15-12, NEAR-73). `scope` is the npc id or `global`.
+/// A missing npc row is seeded once from `guild_npc.quote_budget_atomic`. Only `topUp` raises a cash cap.
+model GuildFunding {
+  scope              String   @id @db.VarChar(32)
+  kind               String   @db.VarChar(16)
+  allocationId       String?  @unique @map("allocation_id") @db.VarChar(96)
+  cashCapAtomic      Decimal  @default(0) @map("cash_cap_atomic") @db.Decimal(78, 0)
+  cashReservedAtomic Decimal  @default(0) @map("cash_reserved_atomic") @db.Decimal(78, 0)
+  cashSpentAtomic    Decimal  @default(0) @map("cash_spent_atomic") @db.Decimal(78, 0)
+  inventoryCapUnits  Decimal  @default(0) @map("inventory_cap_units") @db.Decimal(78, 0)
+  inventoryReserved  Decimal  @default(0) @map("inventory_reserved") @db.Decimal(78, 0)
+  inventorySpent     Decimal  @default(0) @map("inventory_spent") @db.Decimal(78, 0)
+  killed             Boolean  @default(false)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("guild_funding")
+  @@schema("chain")
+}
+
+/// One Guild dock (W15-09). `cadence` is the seeded schedule; `extra` is `scheduleExtraVisit` and does not move it.
+/// `offers` is the top 6 curated quotes for that dock (W15-11). `departed` is written once, at `depart_at`. En route is the gap between rows.
+model GuildVisit {
+  id        String   @id @db.VarChar(160)
+  npcId     String   @map("npc_id") @db.VarChar(32)
+  shipId    String   @map("ship_id") @db.VarChar(64)
+  planetId  String   @map("planet_id") @db.VarChar(64)
+  arriveAt  DateTime @map("arrive_at") @db.Timestamptz(3)
+  departAt  DateTime @map("depart_at") @db.Timestamptz(3)
+  offers    Json     @default("[]")
+  status    String   @default("docked") @db.VarChar(16)
+  kind      String   @default("cadence") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([npcId, planetId, kind, arriveAt])
+  @@index([planetId, status, departAt])
+  @@map("guild_visit")
+  @@schema("chain")
+}

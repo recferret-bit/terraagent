@@ -5,6 +5,7 @@ import { WaveId } from '../flags';
 import { PlayerId } from '../ids';
 import { AwayDigestV1Schema } from '../notify/digest';
 import { HomeColonyId, HomePlanetId } from '../rest/home';
+import { DirectorKeyStatusPayload, GuildArrivedPayload, GuildDepartedPayload } from '../guild';
 import { MarketBookPayload, MarketTradePayload } from '../market/views';
 import { CargoStatusPayload } from '../rest/near-cargo';
 import { DeedUpdatedPayload } from '../deed';
@@ -70,9 +71,16 @@ export const MarketBook = ServerEnvelope('market.book', MarketBookPayload);
 export const MarketTrade = ServerEnvelope('market.trade', MarketTradePayload);
 /** W20 colony deed live push (PROTOCOL §6): sent when a deed is minted, updated, or settled. */
 export const DeedUpdated = ServerEnvelope('deed.updated', DeedUpdatedPayload);
+/** W15 Guild visit pushes (PROTOCOL §6) and the director-key allowance status (NEAR-80). */
+export const GuildArrived = ServerEnvelope('guild.arrived', GuildArrivedPayload);
+export const GuildDeparted = ServerEnvelope('guild.departed', GuildDepartedPayload);
+export const DirectorStatus = ServerEnvelope('director.status', DirectorKeyStatusPayload);
 /** W22 planet council live push (PROTOCOL F7): one message when a proposal is opened, voted, or finalized. */
 export const TreasuryProposal = ServerEnvelope('treasury.proposal', TreasuryProposalPush);
 
-export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade, DeedUpdated, TreasuryProposal]);
+export const ServerMessage = z.discriminatedUnion('t', [
+  Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade, DeedUpdated,
+  GuildArrived, GuildDeparted, DirectorStatus, TreasuryProposal,
+]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 export type ServerMessageOf<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;

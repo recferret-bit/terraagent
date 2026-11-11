@@ -1,6 +1,9 @@
 import type {
   CargoStatusPayload,
   DeedUpdatedPayload,
+  DirectorKeyStatusPayload,
+  GuildArrivedPayload,
+  GuildDepartedPayload,
   MarketBookPayload,
   MarketTradePayload,
   ServerMessage,
@@ -60,6 +63,9 @@ export function handleFeatureServerMessage(
     marketBooks: Emitter<MarketBookPayload>;
     marketTrades: Emitter<MarketTradePayload>;
     deedUpdates: Emitter<DeedUpdatedPayload>;
+    directorStatuses: Emitter<DirectorKeyStatusPayload>;
+    guildArrivals: Emitter<GuildArrivedPayload>;
+    guildDepartures: Emitter<GuildDepartedPayload>;
     treasuryProposals: Emitter<TreasuryProposalPush>;
   },
 ): boolean {
@@ -81,6 +87,15 @@ export function handleFeatureServerMessage(
       return true;
     case 'deed.updated':
       deps.deedUpdates.emit(m.d);
+      return true;
+    case 'director.status':
+      deps.directorStatuses.emit(m.d);
+      return true;
+    case 'guild.arrived':
+      deps.guildArrivals.emit(m.d);
+      return true;
+    case 'guild.departed':
+      deps.guildDepartures.emit(m.d);
       return true;
     case 'treasury.proposal':
       deps.treasuryProposals.emit(m.d);

@@ -56,7 +56,8 @@
 }
 
 .ta-away-nets,
-.ta-away-alerts {
+.ta-away-alerts,
+.ta-away-trades {
   margin: 0;
   padding: 0;
   list-style: none;

@@ -36,9 +36,12 @@ export {
   AwayDigestV1Schema,
   AwayResourcesSchema,
   AwaySummarySchema,
+  DIGEST_DIRECTOR_TRADE,
+  DigestDirectorTradeSchema,
   type AwayDigestV1,
   type AwayResources,
   type AwaySummary,
+  type DigestDirectorTrade,
 } from './digest';
 export {
   NotificationPayloadSchema,
@@ -51,10 +54,12 @@ export {
   AUTO_TRADE_PARTNERS,
   AutoTradeLimitSchema,
   AutoTradeLimitsSchema,
+  AutoTradeSideSchema,
   AutoTradeOrderSchema,
   AutoTradePartnerSchema,
   type AutoTradeLimit,
   type AutoTradeLimits,
   type AutoTradeOrder,
   type AutoTradePartner,
+  type AutoTradeSide,
 } from './auto-trade';

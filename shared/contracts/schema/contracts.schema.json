@@ -3537,6 +3537,26 @@
       "summary": "Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.",
       "wave": "W01"
     },
+    "market.acceptGuildOffer": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "offerId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "offerId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Crosses a docked Guild offer immediately through the W13 settlement path (NEAR-70, PROTOCOL market.acceptGuildOffer). A stale offerId is offer_expired.",
+      "wave": "W15"
+    },
     "market.cancelOrder": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3574,6 +3594,9 @@
           "colonyId": {
             "minLength": 1,
             "type": "string"
+          },
+          "director": {
+            "type": "boolean"
           },
           "maxStallFeeBp": {
             "maximum": 10000,
@@ -3725,6 +3748,11 @@
               "order_too_small",
               "unknown_order",
               "away_policy",
+              "offer_expired",
+              "director_key_missing",
+              "director_key_revoked",
+              "allowance_exhausted",
+              "autotrade_limit",
               "recent_hostility",
               "oathbreaker",
               "cross_sector_disabled",
@@ -4608,6 +4636,80 @@
       "origin": "client",
       "summary": "Turns the colony AI (autonomous goal breakdown and rule-engine autopilot) on or off. Default off: bots only run explicit player commands.",
       "wave": "W08"
+    },
+    "setAutoTrade": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "limits": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "buyBelowStock": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "maxPerSession": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "maxPerTrade": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "minStock": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "partners": {
+                  "enum": [
+                    "guild",
+                    "truce",
+                    "anyone"
+                  ],
+                  "type": "string"
+                },
+                "sellAboveStoragePct": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "maxPerTrade",
+                "maxPerSession",
+                "minStock",
+                "partners"
+              ],
+              "type": "object"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "limits"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Sets per-resource autoTrade limits used by the director while the player is away (AW-13, NEAR-81).",
+      "wave": "W15"
     },
     "setAutopilot": {
       "args": {
@@ -6780,6 +6882,179 @@
       "summary": "One director action moved to proposed, applied, rejected or superseded (AI-10).",
       "wave": "W16"
     },
+    "directorAllowanceExhausted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "allowance": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "allowance_exhausted",
+              "director_key_revoked"
+            ],
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "spent": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "colonyId",
+          "resource",
+          "spent",
+          "allowance",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Director autoTrade stopped for one resource because the key allowance is spent or the key was revoked (CT-36, AW-20). Distinct from W09 awayBudgetExhausted.",
+      "wave": "W15"
+    },
+    "directorOrderRequested": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commandId": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "partner": {
+            "enum": [
+              "guild",
+              "truce",
+              "anyone"
+            ],
+            "type": "string"
+          },
+          "price": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "token": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3",
+                  "USDC",
+                  "NEAR"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "token",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "sessionSpent": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "stock": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "colonyId",
+          "colonyIndex",
+          "resource",
+          "side",
+          "amount",
+          "price",
+          "partner",
+          "stock",
+          "sessionSpent"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The sim accepted a director autoTrade order after withinAutoTrade (NEAR-81). The market module re-checks, signs with the director key and places.",
+      "wave": "W15"
+    },
     "directorStatus": {
       "audience": "player",
       "data": {
@@ -6842,6 +7117,88 @@
       "severity": "info",
       "summary": "Effective director risk, pause and remaining daily requests for one colony.",
       "wave": "W16"
+    },
+    "directorTrade": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "allowance": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "counterparty": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "npcId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "spent": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "tradeId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "resource",
+          "side",
+          "amount",
+          "counterparty",
+          "spent",
+          "allowance"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The director filled an autoTrade while the player was away (F4). Digest text is built from this event.",
+      "wave": "W15"
     },
     "energyCollapse": {
       "audience": "player",
@@ -7173,6 +7530,161 @@
       "summary": "Emitted when a Clear / Break uncovers a buried deposit from the hidden subsurface (D-38).",
       "wave": "W01"
     },
+    "guildOfferAcceptRequested": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commandId": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "offerId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "playerId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "offerId",
+          "colonyId",
+          "colonyIndex"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The sim accepted market.acceptGuildOffer. The market module crosses that id against the NPC quote (W15-11). Server-only.",
+      "wave": "W15"
+    },
+    "guildTradeSettled": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "npcAccountId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "type": "string"
+          },
+          "npcId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "price": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "pattern": "^(0|[1-9]\\d{0,77})$",
+                "type": "string"
+              },
+              "token": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3",
+                  "USDC",
+                  "NEAR"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "token",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "shipId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tradeId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "tradeId",
+          "colonyId",
+          "npcId",
+          "npcAccountId",
+          "shipId",
+          "action",
+          "resource",
+          "amount",
+          "price"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A Guild offer settled with the NPC account as counterparty (W15-11). Feeds Guild Contact progress.",
+      "wave": "W15"
+    },
     "hqLanded": {
       "audience": "player",
       "data": {
@@ -7442,6 +7954,11 @@
               "order_too_small",
               "unknown_order",
               "away_policy",
+              "offer_expired",
+              "director_key_missing",
+              "director_key_revoked",
+              "allowance_exhausted",
+              "autotrade_limit",
               "recent_hostility",
               "oathbreaker",
               "cross_sector_disabled",
@@ -7519,6 +8036,9 @@
             "maxLength": 40,
             "minLength": 1,
             "type": "string"
+          },
+          "director": {
+            "type": "boolean"
           },
           "hubEntityId": {
             "maximum": 9007199254740991,
@@ -11075,6 +11595,11 @@
                 "order_too_small",
                 "unknown_order",
                 "away_policy",
+                "offer_expired",
+                "director_key_missing",
+                "director_key_revoked",
+                "allowance_exhausted",
+                "autotrade_limit",
                 "recent_hostility",
                 "oathbreaker",
                 "cross_sector_disabled",
@@ -11822,6 +12347,115 @@
       ],
       "type": "object"
     },
+    "director.status": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "colonyId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "gasAllowance": {
+              "pattern": "^(0|[1-9]\\d{0,77})$",
+              "type": "string"
+            },
+            "gasSpent": {
+              "pattern": "^(0|[1-9]\\d{0,77})$",
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "missing",
+                "active",
+                "revoked"
+              ],
+              "type": "string"
+            },
+            "tokens": {
+              "items": {
+                "properties": {
+                  "allowance": {
+                    "pattern": "^(0|[1-9]\\d{0,77})$",
+                    "type": "string"
+                  },
+                  "available": {
+                    "pattern": "^(0|[1-9]\\d{0,77})$",
+                    "type": "string"
+                  },
+                  "reserved": {
+                    "pattern": "^(0|[1-9]\\d{0,77})$",
+                    "type": "string"
+                  },
+                  "spent": {
+                    "pattern": "^(0|[1-9]\\d{0,77})$",
+                    "type": "string"
+                  },
+                  "token": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3",
+                      "USDC",
+                      "NEAR"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token",
+                  "allowance",
+                  "reserved",
+                  "spent",
+                  "available"
+                ],
+                "type": "object"
+              },
+              "maxItems": 16,
+              "type": "array"
+            }
+          },
+          "required": [
+            "colonyId",
+            "state",
+            "tokens"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "director.status",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
     "event": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -11878,6 +12512,235 @@
         },
         "t": {
           "const": "event",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "guild.arrived": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "departAt": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "npcId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "offers": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "buy",
+                      "sell"
+                    ],
+                    "type": "string"
+                  },
+                  "amount": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000000,
+                    "type": "integer"
+                  },
+                  "npcAccountId": {
+                    "maxLength": 64,
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "npcId": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "offerId": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "price": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "amount": {
+                        "pattern": "^(0|[1-9]\\d{0,77})$",
+                        "type": "string"
+                      },
+                      "token": {
+                        "enum": [
+                          "metals.t1",
+                          "metals.t2",
+                          "metals.t3",
+                          "minerals.t1",
+                          "minerals.t2",
+                          "minerals.t3",
+                          "bio.water",
+                          "bio.biomass",
+                          "bio.t2",
+                          "bio.t3",
+                          "USDC",
+                          "NEAR"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "token",
+                      "amount"
+                    ],
+                    "type": "object"
+                  },
+                  "quoteSeq": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "maxLength": 240,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "shipId": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "offerId",
+                  "shipId",
+                  "npcId",
+                  "npcAccountId",
+                  "action",
+                  "resource",
+                  "amount",
+                  "price",
+                  "quoteSeq"
+                ],
+                "type": "object"
+              },
+              "maxItems": 6,
+              "type": "array"
+            },
+            "planetId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "shipId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "shipId",
+            "planetId",
+            "npcId",
+            "name",
+            "departAt",
+            "offers"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "guild.arrived",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "guild.departed": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "npcId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "planetId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "shipId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "shipId",
+            "planetId",
+            "npcId"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "guild.departed",
           "type": "string"
         },
         "tick": {
@@ -12725,6 +13588,29 @@
                       "kind",
                       "at",
                       "damage"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "items": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "digest.directorTrade",
+                        "type": "string"
+                      },
+                      "line": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "line"
                     ],
                     "type": "object"
                   },

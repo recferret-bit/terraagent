@@ -94,13 +94,22 @@ Every NEAR feature, the LLM director and notifications sit behind ports (abstrac
 | Identity, Relayer | F5 accounts, gasless tx | mock (Postgres) | W23 |
 | CargoToken | F1 cargo (NEP-245) | mock (Postgres, W10) | W23 |
 | Intents | F2 markets | mock (Postgres verifier ledger, W13) | W23 |
-| AgentWallet | F3/F4 | — (W15 mock) | W23 |
+| AgentWallet | F3/F4 | mock (`AgentWalletPort`, Postgres, W15) | W23 |
 | DeedNft, Staking | F6 | — (W20 mock) | W23 |
 | TreasuryDao, Escrow | F7/F8 | — (W22 mock) | W23 |
 | LlmProvider | AI director | — (W16) | Z.ai `glm-5.3` |
 | Notifier | push / Telegram | — (W09) | Web Push, Telegram |
 
 W25 finalises this table for the submission. W06's adapter variables and their defaults are in [`docs/dev/ENVS.md`](./docs/dev/ENVS.md).
+
+### How the Guild prices
+
+Guild quotes call `quoteColony` (`shared/sim/src/systems/trade/agent/`). `guildAgentParams` supplies that library's params from the `guild` table; `quoteGuild` (`shared/sim/src/systems/trade/guild/quote.ts`) passes them after the thin-side widen.
+Spreads, `thinHalfSpreadBp` and the cash pause live in `shared/sim/src/data/guild.ts` and that `quote.ts`.
+Inventory below the NPC target widens the ask half-spread to `max(askHalfSpreadBp, thinHalfSpreadBp)` (1500 bp). Inventory above the target widens the bid the same way. At the target both sides stay at 200 bp.
+Cash bids are off while `cashEnabled` is 0: a USDC or NEAR quote is given a zero balance, so the library pauses that bid (`no_cash`, unless the reference is already `stale_reference` or `thin_reference`). Barter keeps its quote-resource balance.
+While an NPC is docked, the maker (`backend/app/src/market/guild/maker/`) calls the trade overview once and rests whatever `quoteGuild` returns on the four Tier-1 barter books (`metals.t1/minerals.t1`, `minerals.t1/bio.water`, `bio.water/bio.biomass`, `bio.biomass/metals.t1`). The book row's actor kind is `npc` (the guild badge is the same non-organic kind). A paused side is left off the book. Departure and the guild kill switch cancel those orders. Two guild orders do not match. A guild fill updates that NPC's cargo, consumes the funding hold for the filled size, and rests a new quote from `quoteGuild` in the same turn. Details: LED-38, LED-41.
+Guild, fixture, subsidy and npc fills are not organic (`isOrganicFill`), so they stay out of VWAP. Details: LED-32, LED-33.
 
 ## Pages
 
