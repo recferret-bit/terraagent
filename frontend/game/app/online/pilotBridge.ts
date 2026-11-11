@@ -59,7 +59,7 @@ export class PilotBridge {
     this.emit();
   }
 
-  async loginSocial(provider: 'google' | 'x', token: string): Promise<void> {
+  async loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email', token: string): Promise<void> {
     const accessToken = this.view().accessToken || this.deps.sessionToken?.() || '';
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;

@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { AuthResponse } from './auth';
 import { NearAccountId } from './near-account';
 
-/** Mock providers on the dev OAuth screen (W06-02). The real provider is chosen in W23. */
-export const SocialProvider = z.enum(['google', 'x']);
+/** Social providers: mock dev OAuth (`google`, `x`) plus W23 real NEAR FastAuth (`fastauth`) and pilot `email`. */
+export const SocialProvider = z.enum(['google', 'x', 'fastauth', 'email']);
 export type SocialProvider = z.infer<typeof SocialProvider>;
 
 /** `POST /v1/auth/social` (PROTOCOL §8). Bearer is optional: a guest token upgrades that player. */

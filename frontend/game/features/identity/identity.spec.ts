@@ -7,10 +7,10 @@ import identity from './index';
 import { readMockToken } from './mockToken';
 
 interface PilotDouble {
-  calls: Array<['google' | 'x', string]>;
+  calls: Array<['google' | 'x' | 'fastauth' | 'email', string]>;
   view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string };
   subscribe(fn: () => void): () => void;
-  loginSocial(provider: 'google' | 'x', token: string): Promise<void>;
+  loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email', token: string): Promise<void>;
 }
 
 function fakePilot(): PilotDouble {
@@ -136,6 +136,36 @@ describe('identity pilot chip (W06-15)', () => {
     expect(() => copy.click()).not.toThrow();
     await vi.waitFor(() => expect(copy.getAttribute('data-copied')).toBe('fail'));
     expect(writeText).toHaveBeenCalledWith('test-pilot.terraagent.mock');
+    panel.dispose();
+  });
+});
+
+describe('identity pilot chip in NEAR testnet mode (W23-09)', () => {
+  it('renders testnet email + NEAR Auth controls and validates email format', async () => {
+    const pilot = fakePilot();
+    document.body.replaceChildren();
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const ctx = {
+      flags: new Set(['W06']),
+      host: 'server',
+      services: { pilot, identityMode: 'testnet' },
+    } as unknown as FeatureContext;
+    const panel = identity.hud![0]!.mount(el, ctx);
+
+    (el.querySelector('[data-testid="save-progress"]') as HTMLButtonElement).click();
+    const input = el.querySelector('[data-testid="pilot-email-input"]') as HTMLInputElement;
+    const submit = el.querySelector('[data-testid="continue-email"]') as HTMLButtonElement;
+    expect(el.querySelector('[data-testid="continue-fastauth"]')?.textContent).toContain('NEAR Auth');
+
+    input.value = 'not-an-email';
+    submit.click();
+    expect(el.querySelector('.ta-pilot__fault')?.textContent).toBe('Enter a valid email address.');
+    expect(pilot.calls).toEqual([]);
+
+    input.value = 'Judge@TerraAgent.fun';
+    submit.click();
+    await vi.waitFor(() => expect(pilot.calls).toEqual([['email', 'judge@terraagent.fun']]));
     panel.dispose();
   });
 });
