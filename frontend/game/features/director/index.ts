@@ -1,12 +1,12 @@
 import { readDirectorView } from '@terra/sim';
 import { defineFeature } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { ownColonyIndex, viewColony } from '../shared/colony';
 import { DirectorPanel } from './DirectorPanel';
 import { directorDevCommands } from './devCommands';
 import './director.css';
 
 export { DirectorPanel } from './DirectorPanel';
-export type { DirectorActionRow } from './DirectorPanel';
+export type { DirectorActionRow, DirectorAutopilotState } from './DirectorPanel';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
@@ -39,13 +39,27 @@ export default defineFeature({
             preset: patch.preset ?? 'resources',
           });
         },
+        onToggleAutopilot(enabled) {
+          const send = ctx.services.sendCommand ?? ctx.services.store?.sendCommand;
+          if (send) void send('setAiEnabled', { enabled });
+        },
+        onToggleWarDiplomacy(enabled) {
+          const send = ctx.services.sendCommand ?? ctx.services.store?.sendCommand;
+          if (send) void send('setAutopilot', { awayRaids: enabled });
+        },
       });
       activeDirectorPanel = panel;
       ctx.services.getDirectorPanel = () => activeDirectorPanel;
 
       const sync = (view: unknown) => {
         if (!view) return;
-        panel.syncPolicy(readDirectorView(view, ownColonyIndex(ctx.services)));
+        const idx = ownColonyIndex(ctx.services);
+        const rec = readDirectorView(view, idx);
+        panel.syncPolicy(rec);
+        panel.syncAutopilot({
+          aiEnabled: viewColony(view, idx)?.aiEnabled === true,
+          warDiplomacy: rec?.awayRaids === true,
+        });
       };
       if (ctx.services.store?.latest) sync(ctx.services.store.latest);
       const offView = ctx.services.store?.onView?.((v) => sync(v));

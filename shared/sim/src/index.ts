@@ -140,5 +140,6 @@ export * from './systems/fauna/checkpoints';
 export * from './systems/pvp';
 export * from './systems/diplomacy';
 export * from './systems/elimination';
+export * from './systems/rival-ai';
 export * from './data';
 export * from './host';

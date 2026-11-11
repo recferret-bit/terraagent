@@ -1,17 +1,19 @@
 import { HomeResponse, type AuthResponse, type PlanetType } from '@terra/contracts';
-import { createPlanet, DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, type DevPlanetType, getSpawnSlots, type PlanetState } from '@terra/sim';
+import { type DevPlanetType } from '@terra/sim';
 import { backoffDelay } from '../../net/backoff';
-import { LocalHost } from '../../store/local/LocalHost';
-import { builtPlanetSource } from '../../store/local/planetSource';
+import type { LocalHost } from '../../store/local/LocalHost';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { planetTypeForKind } from '@terra/render/planets/hex/planetKind';
 import type { SectorIntentInput } from '../../ui/lobby/orbitalPickerModel';
+import { createLocalBootFallback } from './localBootFallback';
 import {
   BootCancelledError,
   JoinQueueCoordinator,
   extractActiveHomePayload,
   type QueuedHomeStatus,
 } from './joinQueueFlow';
+
+export { createLocalBootFallback } from './localBootFallback';
 
 export const DEVICE_SECRET_KEY = 'ta_device_secret';
 
@@ -322,75 +324,6 @@ function normalizeHomePayload(raw: unknown): {
       spawn,
     },
     ...(c.foundingSectorId ? { foundingSectorId: c.foundingSectorId } : {}),
-  };
-}
-
-/**
- * Graceful local fallback when no backend server is running (dev builds, FA-06): an in-process `LocalHost` (the
- * `LocalHostCore` of `?host=local`, run on the page) on `pl_dev` (`DEV_PLANET_TYPE` = desert, `DEV_PLANET_SEED`,
- * `DEV_PLANET_RADIUS`) with colony 0 seated at the first spawn slot by `system.spawnColony` (a `local.reset` or a
- * restore after a failed step seats it again).
- */
-export function createLocalBootFallback(
-  deviceSecret: string,
-  onStatus?: (status: string) => void,
-  spawnOverride?: { q: number; r: number },
-  planetType: DevPlanetType = DEV_PLANET_TYPE,
-): BootAuthResult {
-  const planetId = devPlanetIdFor(planetType, 1); // same dev planet family as the server (pl_dev = desert)
-  onStatus?.(`Entering orbit: ${planetId}…`);
-  const make = () => createPlanet({
-    id: planetId,
-    planetId,
-    type: planetType,
-    planetType,
-    seed: DEV_PLANET_SEED,
-    radius: DEV_PLANET_RADIUS,
-    capacity: DEV_PLANET_CAPACITY,
-  });
-  let first: PlanetState | null = make(); // generated once for the slot pick and the first seed
-  const slot = spawnOverride ?? getSpawnSlots(first)[0] ?? { q: 0, r: 0 };
-  const flags = ['W00', 'W01'];
-  const fresh = (): PlanetState => { const p = first ?? make(); first = null; return p; };
-  const source = builtPlanetSource(planetId, flags, fresh, (host) => {
-    host.submit({
-      colonyIndex: 0,
-      source: 'system',
-      commandId: 'cm_boot_spawn',
-      kind: 'system.spawnColony',
-      args: { colonyId: 'col_0', colonyIndex: 0, name: "Colonist's Colony", q: slot.q, r: slot.r },
-    });
-    host.step(1);
-  });
-  const localHost = new LocalHost({ flags, source });
-
-  return {
-    mode: 'local',
-    accessToken: `local:${deviceSecret.slice(0, 16)}`,
-    deviceSecret,
-    playerId: 'pr_local',
-    handle: 'Colonist',
-    isGuest: true,
-    state: 'ACTIVE',
-    planet: {
-      id: planetId,
-      name: 'Dev Planet',
-      type: planetType,
-      seed: DEV_PLANET_SEED,
-      radius: DEV_PLANET_RADIUS,
-      state: 'ACTIVE',
-    },
-    colony: {
-      id: 'col_0',
-      colonyIndex: 0,
-      name: "Colonist's Colony",
-      color: 0,
-      state: 'ACTIVE',
-      spawnQ: slot.q,
-      spawnR: slot.r,
-      spawn: { q: slot.q, r: slot.r },
-    },
-    localHost,
   };
 }
 

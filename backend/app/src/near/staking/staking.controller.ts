@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Query } from '@nestjs/common';
 import {
   StakeRequestSchema,
   UnstakeRequestSchema,
@@ -32,27 +32,41 @@ export class StakingController {
 
   @Post('stake')
   @HttpCode(200)
-  stake(@Body() raw: unknown): Promise<StakingActionResponse> {
+  stake(@Body() raw: unknown, @Headers('x-actor') actorHeader?: string): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
+    this.assertHumanCaller(actorHeader, raw);
     const body = this.stakePipe.transform(raw ?? {});
     return this.stakingService.stake(body);
   }
 
   @Post('unstake')
   @HttpCode(200)
-  unstake(@Body() raw: unknown): Promise<StakingActionResponse> {
+  unstake(@Body() raw: unknown, @Headers('x-actor') actorHeader?: string): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
+    this.assertHumanCaller(actorHeader, raw);
     const body = this.unstakePipe.transform(raw ?? {});
     return this.stakingService.unstake(body);
   }
 
   @Post('withdraw')
   @HttpCode(200)
-  withdraw(@Body() raw: unknown): Promise<StakingActionResponse> {
+  withdraw(@Body() raw: unknown, @Headers('x-actor') actorHeader?: string): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
+    this.assertHumanCaller(actorHeader, raw);
     const normalized = this.normalizeWithdrawBody(raw);
     const body = this.withdrawPipe.transform(normalized);
     return this.stakingService.withdraw(body);
+  }
+
+  private assertHumanCaller(actorHeader: string | undefined, raw: unknown): void {
+    const bodyObj = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+    const actor = String(actorHeader ?? bodyObj.actor ?? bodyObj.source ?? '').trim().toLowerCase();
+    if (actor === 'ai' || actor === 'director' || actor === 'agent') {
+      throw new CoreException('AI_STAKING_FORBIDDEN', {
+        status: 403,
+        message: 'D-18: Staking requires explicit human wallet approval; AI agents cannot stake, unstake, or withdraw.',
+      });
+    }
   }
 
   private normalizeWithdrawBody(raw: unknown): unknown {

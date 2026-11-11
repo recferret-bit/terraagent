@@ -12,14 +12,25 @@ export interface DirectorActionRow {
 
 export interface DirectorPanelOptions {
   readonly onPolicyChange?: (patch: SetDirectorPolicyArgs) => void;
+  readonly onToggleAutopilot?: (enabled: boolean) => void;
+  readonly onToggleWarDiplomacy?: (enabled: boolean) => void;
+}
+
+export interface DirectorAutopilotState {
+  readonly aiEnabled: boolean;
+  readonly warDiplomacy: boolean;
 }
 
 /** Status plate for director policy & actions. Rationale and reason are untrusted text, never HTML. */
 export class DirectorPanel {
+  private readonly autopilotBar: HTMLElement | null;
+  private readonly autopilotBtn: HTMLButtonElement | null;
+  private readonly warToggleInput: HTMLInputElement | null;
   private readonly summaryEl: HTMLElement;
   private readonly controlsHost: HTMLElement;
   private readonly controls: DirectorControls | null;
   private readonly list: HTMLElement;
+  private aiEnabled = false;
   private currentRows: DirectorActionRow[] = [];
   private planIntentRevision: number | null = null;
 
@@ -28,6 +39,16 @@ export class DirectorPanel {
     const title = document.createElement('div');
     title.className = 'ta-director__title';
     title.textContent = 'DIRECTOR';
+
+    const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
+      this.aiEnabled = next;
+      this.renderAutopilotBtn();
+      opts?.onToggleAutopilot?.(next);
+    });
+    this.autopilotBar = autoParts?.bar ?? null;
+    this.autopilotBtn = autoParts?.btn ?? null;
+    this.warToggleInput = autoParts?.warInput ?? null;
+    this.renderAutopilotBtn();
 
     this.summaryEl = document.createElement('div');
     this.summaryEl.className = 'ta-director__summary';
@@ -41,7 +62,27 @@ export class DirectorPanel {
 
     this.list = document.createElement('div');
     this.list.className = 'ta-director__list';
-    this.host.append(title, this.summaryEl, this.controlsHost, this.list);
+    if (this.autopilotBar) {
+      this.host.append(title, this.autopilotBar, this.summaryEl, this.controlsHost, this.list);
+    } else {
+      this.host.append(title, this.summaryEl, this.controlsHost, this.list);
+    }
+  }
+
+  /** Mirrors replica `aiEnabled` (`setAiEnabled`) and `awayRaids` (`setAutopilot`) onto the plate. */
+  syncAutopilot(state: DirectorAutopilotState): void {
+    this.aiEnabled = state.aiEnabled;
+    this.renderAutopilotBtn();
+    if (this.warToggleInput) {
+      this.warToggleInput.checked = state.warDiplomacy;
+    }
+  }
+
+  private renderAutopilotBtn(): void {
+    if (!this.autopilotBtn) return;
+    this.autopilotBtn.textContent = this.aiEnabled ? 'AI AUTOPILOT: ON' : 'AI AUTOPILOT: OFF';
+    this.autopilotBtn.className = this.aiEnabled ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
+    this.autopilotBtn.setAttribute('aria-pressed', String(this.aiEnabled));
   }
 
   /** Syncs the live colony director policy onto the plate and marks older open plans as superseded. */
@@ -85,6 +126,36 @@ export class DirectorPanel {
     this.host.replaceChildren();
     this.host.classList.remove('ta-director', 'plate-sm');
   }
+}
+
+function buildAutopilotBar(
+  opts: DirectorPanelOptions | undefined,
+  readEnabled: () => boolean,
+  onFlipAutopilot: (next: boolean) => void,
+): { bar: HTMLElement; btn: HTMLButtonElement | null; warInput: HTMLInputElement | null } | null {
+  if (!opts?.onToggleAutopilot && !opts?.onToggleWarDiplomacy) return null;
+  const bar = document.createElement('div');
+  bar.className = 'ta-director__autopilot';
+  let btn: HTMLButtonElement | null = null;
+  let warInput: HTMLInputElement | null = null;
+  if (opts.onToggleAutopilot) {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.testid = 'director-autopilot-toggle';
+    btn.addEventListener('click', () => onFlipAutopilot(!readEnabled()));
+    bar.appendChild(btn);
+  }
+  if (opts.onToggleWarDiplomacy) {
+    const label = document.createElement('label');
+    label.className = 'ta-director__war-opt';
+    warInput = document.createElement('input');
+    warInput.type = 'checkbox';
+    warInput.dataset.testid = 'director-war-diplomacy-toggle';
+    warInput.addEventListener('change', () => opts.onToggleWarDiplomacy?.(Boolean(warInput?.checked)));
+    label.append(warInput, 'Allow War & Diplomacy');
+    bar.appendChild(label);
+  }
+  return { bar, btn, warInput };
 }
 
 function actionRow(row: DirectorActionRow): HTMLElement {

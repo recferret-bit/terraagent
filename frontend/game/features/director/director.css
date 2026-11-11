@@ -16,6 +16,27 @@
   letter-spacing: var(--ta-track-label);
 }
 
+.ta-director__autopilot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ta-s1) var(--ta-s2);
+}
+
+.ta-director__war-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s1);
+  color: var(--ta-text-2);
+  font: 500 10px/1.2 var(--ta-font-mono);
+  cursor: pointer;
+}
+
+.ta-director__war-opt input {
+  accent-color: var(--ta-orange);
+  margin: 0;
+}
+
 .ta-director__summary {
   color: var(--ta-text-2);
   font: 500 10px/1.3 var(--ta-font-mono);

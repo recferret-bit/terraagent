@@ -28,6 +28,7 @@ import mod_production from './production/index';
 import mod_progression from './progression/index';
 import mod_pvp from './pvp/index';
 import mod_queue from './queue/index';
+import mod_rival_ai from './rival-ai/index';
 import mod_rule_engine from './rule-engine/index';
 import mod_supply from './supply/index';
 import mod_terraform_basic from './terraform-basic/index';
@@ -38,4 +39,4 @@ import mod_treasury from './treasury/index';
 import mod_units from './units/index';
 import mod_weather from './weather/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_away, mod_bounty, mod_cargo, mod_combat, mod_construction, mod_dev, mod_diplomacy, mod_director, mod_dispatch, mod_economy, mod_elimination, mod_environment, mod_factories_hub, mod_fauna, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_logistics, mod_mercenary, mod_power_core, mod_presence, mod_prestige, mod_production, mod_progression, mod_pvp, mod_queue, mod_rule_engine, mod_supply, mod_terraform_basic, mod_territory_claim, mod_time, mod_trade, mod_treasury, mod_units, mod_weather];
+export const SIM_MODULES: readonly SimModule[] = [mod_away, mod_bounty, mod_cargo, mod_combat, mod_construction, mod_dev, mod_diplomacy, mod_director, mod_dispatch, mod_economy, mod_elimination, mod_environment, mod_factories_hub, mod_fauna, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_logistics, mod_mercenary, mod_power_core, mod_presence, mod_prestige, mod_production, mod_progression, mod_pvp, mod_queue, mod_rival_ai, mod_rule_engine, mod_supply, mod_terraform_basic, mod_territory_claim, mod_time, mod_trade, mod_treasury, mod_units, mod_weather];
