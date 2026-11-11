@@ -36,6 +36,11 @@ describe('mockChainControls.overlay', () => {
     expect(mockChainControls.overlay('relayer', base(0)).failRate).toBe(1);
   });
 
+  it('maps TreasuryDao onto the treasury fail key', () => {
+    mockChainControls.setFail('treasury', 1);
+    expect(mockChainControls.overlay('TreasuryDao', base(0)).failRate).toBe(1);
+  });
+
   it('setFail 0 forces success even when the base fail rate is 1', () => {
     mockChainControls.setFail('relayer', 0);
     expect(mockChainControls.overlay('Relayer', base(1)).failRate).toBe(0);

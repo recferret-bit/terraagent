@@ -19,6 +19,7 @@ function optionsFrom(ctx: FeatureContext): AwayPanelOptions {
     sendCommand: services.sendCommand,
     store: services.store,
     flags: ctx.flags,
+    mercenary: ctx.flags.has('W22'),
     colonyId: () => services.session?.colonyId?.() ?? null,
     accessToken: () => services.pilot?.view().accessToken || null,
     track: services.track,

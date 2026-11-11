@@ -36,11 +36,12 @@ export function register(opts: {
   snap?: boolean;
   /** Uniform scale applied after build. */
   scale?: number;
-  /** Optional species-specific material zone overrides. */
-  zones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>>;
+  /** Zone overrides, or a getter read on each build (faction paint). */
+  zones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>> | (() => Partial<Record<MaterialZoneId, MaterialZoneSpec>> | undefined);
 }) {
   const create = () => {
-    const b = new KitbashBuilder(opts.zones);
+    const zones = typeof opts.zones === 'function' ? opts.zones() : opts.zones;
+    const b = new KitbashBuilder(zones);
     opts.build(b);
     return finalizeBuiltGeometry(b.build(), opts);
   };

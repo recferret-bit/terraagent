@@ -302,6 +302,7 @@ export class MapsController {
     if (this.chipController.isLayerActive('resources')) drawResourcesLayer(ctx2d, drawView);
     drawMapFog(ctx2d, drawView);
     this.lastDotCount = drawEntityDots(ctx2d, drawView).length;
+    if (this.chipController.isLayerActive('bounties')) this.registry.get('bounties')?.draw(ctx2d, drawView);
     this.lastTrapezoid = drawCameraTrapezoid(ctx2d, drawView, {
       camera: this.ctx.services.camera ?? null,
       rtsCamera: this.ctx.services.rtsCamera ?? null,

@@ -11,8 +11,9 @@ import {
   type KeyStatusQuery,
   type RevokeKeyInput,
 } from '../../../application/ports/agent-wallet.port.js';
-import type { ChainReceipt } from '../../../domain/types.js';
+import { AccountId, ChainReceipt, type OpId } from '../../../domain/types.js';
 import { MockChainBase } from '../../mock/mock-chain.base.js';
+import { mockTxHashFor } from '../../mock/tx-hash.js';
 import {
   assertAddLimitedKey,
   assertKeyRef,
@@ -35,12 +36,50 @@ import {
  */
 @Injectable()
 export class MockAgentWalletAdapter extends MockChainBase implements AgentWalletPort {
+  /** Sub-accounts created in this process. W22 mercenary tests read this without a receipt table. */
+  private readonly memoryAccounts = new Set<string>();
+  private readonly memoryByOp = new Map<string, CreateSubAccountResult>();
+  private readonly memoryReceipts = new Map<string, ChainReceipt>();
+
+  /** Account ids inserted in this process, sorted. A repeated id does not grow the set. */
+  accountIds(): readonly string[] {
+    return [...this.memoryAccounts].sort();
+  }
+
   async createSubAccount(input: CreateSubAccountInput): Promise<CreateSubAccountResult> {
+    if (typeof this.prisma.mockChainReceipt?.findUnique !== 'function') return this.createSubAccountInMemory(input);
     const accountId = composeSubAccountId(input.parent, input.name);
     const done = await this.callWithResult('AgentWallet', 'createSubAccount', input.opId, (tx) =>
       insertSubAccount(tx, input.parent, accountId),
     );
+    this.memoryAccounts.add(done.value.accountId);
     return { accountId: done.value.accountId, receipt: done.receipt };
+  }
+
+  /** Unit-test chain: no receipt table, so idempotency is the op id and the account id in this process. */
+  private async createSubAccountInMemory(input: CreateSubAccountInput): Promise<CreateSubAccountResult> {
+    const prior = this.memoryByOp.get(input.opId);
+    if (prior) return prior;
+    const accountId = AccountId.parse(`${input.name}.${input.parent}`);
+    if (!this.memoryAccounts.has(accountId)) {
+      await this.prisma.mockChainAccount.upsert({
+        where: { accountId },
+        create: { accountId, kind: 'npc' },
+        update: {},
+      });
+      this.memoryAccounts.add(accountId);
+    }
+    const result = { accountId, receipt: this.memoryReceipt(input.opId) };
+    this.memoryByOp.set(input.opId, result);
+    return result;
+  }
+
+  private memoryReceipt(opId: OpId): ChainReceipt {
+    const prior = this.memoryReceipts.get(opId);
+    if (prior) return prior;
+    const receipt = ChainReceipt.parse({ txHash: mockTxHashFor(opId), status: 'success', network: 'mock', at: Date.now() });
+    this.memoryReceipts.set(opId, receipt);
+    return receipt;
   }
 
   async addLimitedKey(input: AddLimitedKeyInput): Promise<ChainReceipt> {

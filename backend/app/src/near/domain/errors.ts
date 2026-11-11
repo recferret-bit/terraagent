@@ -41,6 +41,13 @@ export const NEAR_ERROR_CODES = {
   NEAR_ALLOWANCE_EXHAUSTED: { status: 409, description: 'The limited key has no remaining allowance for this token.' },
   NEAR_KEY_REVOKED: { status: 409, description: 'The limited key has been revoked.' },
   NEAR_INVALID_INPUT: { status: 400, description: 'The agent-wallet input is not a valid account, key, token, or amount.' },
+  // F7 (W22). Planet treasury DAO (NEAR §10).
+  DAO_NOT_FOUND: { status: 404, description: 'No planet council with this id.' },
+  NOT_A_MEMBER: { status: 403, description: 'That colony is not a member of this planet council.' },
+  ALREADY_VOTED: { status: 409, description: 'This colony already voted on that proposal.' },
+  TREASURY_INSUFFICIENT: { status: 409, description: 'The planet treasury cannot cover this project.' },
+  PROPOSAL_CLOSED: { status: 409, description: 'That proposal is no longer open.' },
+  PROPOSAL_OPEN: { status: 409, description: 'This colony already has an open council proposal.' },
 } as const satisfies Record<string, NearErrorDef>;
 
 export type NearErrorCode = keyof typeof NEAR_ERROR_CODES;

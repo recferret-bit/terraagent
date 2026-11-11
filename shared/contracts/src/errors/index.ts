@@ -44,6 +44,10 @@ export const REJECT_CODES = [
   'offer_expired', 'director_key_missing', 'director_key_revoked', 'allowance_exhausted', 'autotrade_limit',
   // W18 PvP & Diplomacy (UO-DIP-01..06, UO-T-05, W18-01, W18-31):
   'recent_hostility', 'oathbreaker', 'cross_sector_disabled', 'no_contact', 'truce_cap', 'unknown_offer', 'unknown_truce',
+  // W22 clear_nest: a second bounty.post from the same colony in the same tick reuses `bt:{colony}:{tick}`.
+  'already_posted',
+  // W22-19: the nest is missing, dead, or outside the poster's explored tiles.
+  'invalid_target',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;
@@ -78,6 +82,11 @@ export const REST_ERROR_CODES = [
   // W20 colony deed & staking (NEAR §6, §9):
   'deed_not_found', 'deed_not_settled', 'account_not_claimed', 'pool_not_whitelisted', 'stake_insufficient_balance',
   'DEED_NOT_FOUND', 'DEED_NOT_SETTLED', 'ACCOUNT_NOT_CLAIMED', 'POOL_NOT_WHITELISTED', 'STAKE_INSUFFICIENT_BALANCE',
+  // W22 planet treasury (NEAR §10):
+  'dao_not_found', 'not_a_member', 'already_voted', 'treasury_insufficient', 'proposal_closed',
+  'DAO_NOT_FOUND', 'NOT_A_MEMBER', 'ALREADY_VOTED', 'TREASURY_INSUFFICIENT', 'PROPOSAL_CLOSED',
+  // W22-19 bounty post:
+  'invalid_target', 'insufficient_cargo', 'not_own_territory',
   // generic fallbacks by status when the domain code has no REST code of its own (BE-17): 409, 503, 413, 429
   'conflict', 'unavailable', 'payload_too_large', 'rate_limited',
 ] as const;

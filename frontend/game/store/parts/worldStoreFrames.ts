@@ -7,6 +7,7 @@ import type {
   MarketBookPayload,
   MarketTradePayload,
   ServerMessage,
+  TreasuryProposalPush,
 } from '@terra/contracts';
 import type { Emitter } from '../../net/emitter';
 import type { ClientView } from '../replica/viewCodec';
@@ -65,6 +66,7 @@ export function handleFeatureServerMessage(
     directorStatuses: Emitter<DirectorKeyStatusPayload>;
     guildArrivals: Emitter<GuildArrivedPayload>;
     guildDepartures: Emitter<GuildDepartedPayload>;
+    treasuryProposals: Emitter<TreasuryProposalPush>;
   },
 ): boolean {
   switch (m.t) {
@@ -94,6 +96,9 @@ export function handleFeatureServerMessage(
       return true;
     case 'guild.departed':
       deps.guildDepartures.emit(m.d);
+      return true;
+    case 'treasury.proposal':
+      deps.treasuryProposals.emit(m.d);
       return true;
     default:
       return false;

@@ -83,7 +83,9 @@ describe('W13-29 market telemetry', () => {
     const text = await app.get(MetricsRegistry).render();
     expect(text).toContain(`market_trades_total{planet="${planetId}",maker_kind="player"} 2`);
     expect(text).toContain(`market_fees_total{planet="${planetId}",token="USDC",kind="stall"} 100000`);
-    expect(text).toContain(`market_fees_total{planet="${planetId}",token="USDC",kind="platform"} 100000`);
+    // Gross platform fee is 100000. W22 records 80000 on platform and 20000 on treasury.
+    expect(text).toContain(`market_fees_total{planet="${planetId}",token="USDC",kind="platform"} 80000`);
+    expect(text).toContain(`market_fees_total{planet="${planetId}",token="USDC",kind="treasury"} 20000`);
     expect(text).toContain(`market_orders_open{planet="${planetId}"} 1`);
     expect(text).toContain(`market_reserved_principal{planet="${planetId}",token="bio.water"} 300`);
     expect(text).toMatch(/ta_economy_profile_info\{profile_hash="[^"]+",data_hash="[^"]+"\} 1/);

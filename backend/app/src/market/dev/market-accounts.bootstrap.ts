@@ -7,7 +7,7 @@ import { kekEnv } from '../../near/identity/colony-accounts.js';
 import { loadKekRing } from '../../near/keystore/kek.js';
 import { KeyStore } from '../../near/keystore/keys.js';
 import { PLATFORM_ACCOUNT_ID } from '../orders/market-policy.provider.js';
-import { TREASURY_ACCOUNT_ID } from '../settlement/settlement-fills.hook.js';
+import { TREASURY_ACCOUNT_ID } from '../settlement/treasury-terms.js';
 
 /** Fee beneficiaries every settlement batch touches: they need a custodial key because the verifier batch carries one signed diff per account. */
 export const MARKET_SYSTEM_ACCOUNTS: readonly string[] = [PLATFORM_ACCOUNT_ID, TREASURY_ACCOUNT_ID];

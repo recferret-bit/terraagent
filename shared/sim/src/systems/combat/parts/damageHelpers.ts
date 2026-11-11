@@ -10,6 +10,7 @@ import { UnitBook } from '../../../units/book';
 import { isUnitKind } from '../../../units/mobility';
 import { cancelMove } from '../../../units/movement/orchestrator';
 import { entityFootprint, getBuildingFootprintTiles } from '../../construction/placement';
+import { noteDefendBuildingLost } from '../../bounty/defend';
 import { resolveColonyIdStr } from '../../diplomacy/store';
 import { getBuildingJobs, saveBuildingJobs } from '../../economy/buildJob';
 import { getFootprintTileIndices } from '../../economy/buildingRows';
@@ -308,6 +309,7 @@ export function handleBuildingDestruction(
   clearEntityDamaged(state, targetId, tick);
 
   emitBuildingDestructionEvent(state, targetId, kind, owner, q, r, opts);
+  if (!isFaunaHiveKind(kind)) noteDefendBuildingLost(state, owner, q, r, tick, opts?.ctx);
 
   const wasSupplyDepot = kind === ENTITY_KIND.supplyDepot;
   const wasCommandHub = kind === ENTITY_KIND.commandHub;

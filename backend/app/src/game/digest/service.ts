@@ -3,7 +3,7 @@ import type { PlanetState } from '@terra/sim';
 import { stateOf } from './baseline';
 import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline } from './body';
 import { digestSignal } from './events';
-import { foldAlert, foldAttack, foldDirectorTrade, foldLoss } from './folder';
+import { foldAlert, foldAttack, foldDirectorTrade, foldHighlight, foldLoss } from './folder';
 import {
   fillOpenBaseline,
   mergeUnseenDigests,
@@ -108,6 +108,14 @@ export class AwayDigestService {
     return this.enqueue(colonyId, () => this.deliver(colonyId, at, raw));
   }
 
+  /**
+   * Appends one highlight on the open digest and saves it. False when no row is open,
+   * or the line does not fit the contract (at ≤ 40, summary 1..200).
+   */
+  noteHighlight(colonyId: string, at: Date, summary: string): Promise<boolean> {
+    return this.enqueue(colonyId, () => this.addHighlight(colonyId, at, summary));
+  }
+
   /** Headline of the newest unseen row. Does not mark it seen, so welcome can still carry the digest. */
   headline(colonyId: string, at = this.now()): Promise<AwaySummary | null> {
     return this.enqueue(colonyId, () => this.summarize(colonyId, at));
@@ -168,6 +176,17 @@ export class AwayDigestService {
     if (this.suppressAway.has(colonyId)) return Promise.resolve();
     const at = this.now();
     return this.enqueue(colonyId, () => this.openRow(planetId, colonyId, at));
+  }
+
+  private async addHighlight(colonyId: string, at: Date, summary: string): Promise<boolean> {
+    const atIso = at.toISOString();
+    if (atIso.length > 40 || summary.length < 1 || summary.length > 200) return false;
+    const live = await this.live(colonyId);
+    if (!live) return false;
+    live.body = checkedDigest(foldHighlight(live.body, atIso, summary));
+    await this.deps.store.save(live.id, live.body, live.lastEventSeq);
+    live.dirty = false;
+    return true;
   }
 
   private async fold(colonyId: string, event: AttackFold): Promise<void> {

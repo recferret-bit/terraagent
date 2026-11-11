@@ -607,3 +607,13 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **What happens:** On the server host the page shows 2 `me-past-colony` cards and the test expects 1. Neither file changed in the W05 branch (pre-existing on `main`; the step was never reached in earlier W05 runs because `@hack 1` timed out first).
 - **To resolve:** Align the test with the scenario (expect 2) or the scenario with the test; W12 owner.
 - **Found:** 2026-11-07, W05 full review (lead, e2e)
+
+### XC-48 · W22 validator warnings are pre-existing files the wave only nudged
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/maps/MapsController.ts` (+1 line), `frontend/playground/PlaygroundApp.ts` (+2), `shared/sim/src/systems/combat/damage.ts` (+13), `shared/sim/src/systems/combat/targeting.ts` (+3), `shared/sim/src/systems/queue/index.ts`, `shared/sim/src/systems/queue/wait.ts`, `shared/sim/src/systems/terraform-basic/work.ts` (+1)
+- **What happens:** `npm run validate:wave -- 22` reports `FILE_NEAR_LIMIT` and `GOD_ORCHESTRATOR` on these files. Each was already a large module on `main`. W22 added the bounty minimap call, the mercenary playground faction, the meteor-shield strike count, and the terraform-boost cost lock.
+- **Why it is like this:** Splitting combat, the queue, terraform, the map controller, and the playground app to clear a near-limit warning would rewrite systems this wave does not own.
+- **Workaround / mitigation:** The wave's own new files stay under 500 lines and 100 lines per function. The duplicate Council/bounty `send` path was extracted to `frontend/game/core/net/planetHttp.ts`.
+- **To resolve:** A later cleanup wave can split those modules without changing W22 behaviour.
+- **Found:** 2026-11-11, W22 pre-landing validator

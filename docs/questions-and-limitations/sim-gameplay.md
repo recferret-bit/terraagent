@@ -1293,3 +1293,75 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Eliminated players can click `"Found New Colony"` on the eliminated modal (`ColonyStatusHud`) to return to `/play.html?planet=forestRock` and found a new colony in an open sector.
 - **To resolve:** When `W27` lands, decide whether decayed ruins release `foundedSeats` back to `freeSeats`.
 - **Found:** 2026-11-11, W18 wave implementation (lead)
+
+## W22 Planet Treasury & Bounties
+
+### GP-118 · Meteor shield counts strikes and does not crater the map
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/treasury/clock.ts` (`stepTreasuryHazards`), `shared/sim/src/data/treasury-policy.ts` (`hazard`)
+- **What happens:** `system.treasuryEffect` stores `meteor_shield` on `blobs.treasury` until `untilTick`. The hazard clock (slot 2, every `intervalTicks`) rolls a strike from the planet seed and the attempt tick. A hit increments `hazardStrikes`. A hit on an even attempt also increments `lightningStrikes`. While the shield is active and the attempt tick is before `untilTick`, the chance is `baseStrikeBp * (10000 - magnitudeBp) / 10000` (7500 leaves 25 % of the base rate). The roll never calls `dev.meteor` and never writes a tile, so the map is not cratered. At `untilTick` the effect is deleted and `treasuryEffectEnded` fires once.
+- **Why it is like this:** Wiring the automatic roll to a destructive meteor would raze the colony the shield is there to protect. W22-10 needs a counter the shield can reduce. Console `dev.meteor` is still the way to dig a crater (GP-112).
+- **Workaround / mitigation:** The counter is the effect. The HUD badge and any visual strike are later issues (W22-15).
+- **To resolve:** Only if the owner wants automatic craters that avoid buildings. That would be a new hazard path, not this counter.
+- **Found:** 2026-11-10, W22-10
+
+### GP-119 · Terraform boost price is locked at enqueue; the queue chip does not show it
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/treasury/boost.ts`, `shared/sim/src/systems/terraform-basic/orders.ts` (`newTerraformJob`), `shared/sim/src/systems/queue/wait.ts` (`resolveTaskCostAndTicks`), `frontend/game/features/queue-panel/queueChipHelpers.ts`
+- **What happens:** `terraform_boost` cuts Irrigate and Seed only. Each resource and the job's `totalEnergyE` become `floor(amount * (10000 - magnitudeBp) / 10000)` (2500 bp: water 10 → 7, minerals 5 → 3, 90 E → 67). The cut is stored on the queue entry and on the terraform job at enqueue. `work.ts` pays that stored bill and does not scale it again. A boost that starts after the order is queued does not reprice it, and one that ends while the job is in progress does not put the full price back. At `untilTick` the effect is already over (`tick < untilTick`, and the treasury clock deletes it). Magnitude 0 leaves the bill unchanged. A cost of 1 floors to 0; `payProgressiveSlice` skips non-positive totals, so stock does not go negative. When W05 is off, `seed` is not in the compiled `opsBasic` table and the discount no-ops even if the effect is stored. Clear, break, level and fill stay full price. The W03 queue entry has no energy field, so only the terraform job's `totalEnergyE` is discounted. The queue panel's synthetic terraform chip still copies `cost: {}` and does not show `job.totalCost`.
+- **Why it is like this:** The queue entry and the terraform order are priced in two places and withdrawn from the stored copy. Discounting again at withdrawal would charge a Seed twice. The chip's empty cost is older than this effect (the panel never read terraform resource bills).
+- **Workaround / mitigation:** The charged amount is the stored `totalCost`. Whole units only; the floor is the 25 % cut, not a rounded 7.5.
+- **To resolve:** If the owner wants the chip to show the bill, copy `job.totalCost` in `extractQueueEntriesFromView`. Repricing open jobs when the effect starts or ends would be a different rule.
+- **Found:** 2026-11-10, W22-11
+
+### GP-120 · clear_nest: the lower colony index wins a damage tie
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/bounty/resolve.ts` (`topDamageColony`, `settle`)
+- **What happens:** When a hive entity dies, each open or claimed `clear_nest` bounty whose `nestId` equals `String(entityId)` sums damage where `tick - hit.tick <= damageWindowTicks` (300, so a hit exactly 60 s old still counts). The greatest sum wins. Equal sums go to the lower colony index, decided before the poster check. That colony completes the bounty only when it is a claimer and not the poster. `bountyCompleted.data.claimer` is `colonies[index].id` (`col_<index>` until the colony has its own id), not the numeric index. If that top colony is the poster, the bounty is `refunded` with reason `cancelled`, even when the poster had claimed. If there is no in-window damage, or the top colony is not a claimer, it is `refunded` with reason `failed`. A claimer who dealt less than a non-claimer does not complete it. The sim does not move cargo. `bounty.paid` only flips `completed` to `paid` and emits nothing.
+- **Why it is like this:** W22-20. Escrow payment is W22-23. The tie-break is the lower colony index so the result does not depend on map iteration order.
+- **Workaround / mitigation:** None. The refund event is what a later server issue pays on.
+- **To resolve:** Only if the owner wants another tie-break, or wants a lesser claimer to win when a non-claimer dealt more.
+- **Found:** 2026-11-10, W22-20
+
+### GP-121 · clear_nest ring starts at the post; deliver_units is not tracked
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/bounty/damage.ts` (`noteClearNestHit`), `shared/sim/src/systems/bounty/handlers.ts` (`postBounty`)
+- **What happens:** Hits are stored only while a `clear_nest` bounty on that nest is `open` or `claimed`, so damage from before `bounty.post` does not count. `bounty.post` of `deliver_units` is still `invalid_args`. That target is completed on the chain row from cargo transfers (BE-79), not in the sim. `defend_area` is tracked (GP-122). A second post from the same colony in the same tick reuses `bt:{colony}:{tick}` and is `already_posted`. `nestId` is the hive entity id as a decimal string. A post that is not a living spotted species hive is `invalid_target` (GP-123).
+- **Why it is like this:** W22-20 only tracks `clear_nest`. Writing the ring on every hive hit would add `blobs.bounty` to planets with no bounty. W22-22 completes the chain row and does not add a sim rule. W22-37 added the species-hive gate.
+- **Workaround / mitigation:** Post before the fight, and use the hive's entity id as `nestId`. Deliver water through the chain bounty (BE-79).
+- **To resolve:** Record pre-post hits if the owner wants the full 60 s before the post. Add a sim `deliver_units` blob only if the owner wants the same id in the sim and on `chain.bounty`.
+- **Found:** 2026-11-10, W22-20
+
+### GP-122 · defend_area counts claimer combat units on a half-open window
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/bounty/defend.ts` (`stepDefendAreas`, `noteDefendBuildingLost`), `shared/sim/src/data/bounty.ts` (`presenceMinBp`), `shared/sim/src/systems/combat/parts/damageHelpers.ts` (`handleBuildingDestruction`)
+- **What happens:** `bounty.post` of `defend_area` stores the area and `endTick = startTick + round(durationH * 18000)`. A second colony claiming it is `queue_full`; the same colony claiming again is a no-op. While the bounty is `claimed`, each tick in `[startTick, endTick)` with at least one living recon, demo tank, or demo artillery of the claimer inside the radius (axial hex distance of the unit's tile, inclusive) adds to `presentTicks`. A living combat unit on an active mercenary contract also counts when its faction is `mercenary` and it is allied to the poster, even though `owner` is not the claimer (W22-29, GP-124). A coarse step samples the pose once and applies it to every tick of that step inside the window. At `endTick`, `presentTicks * 10000 >= durationTicks * presenceMinBp` (8000, so exactly 80% completes) and no poster building lost completes with `bountyCompleted`. Otherwise `bountyRefunded` reason `failed`. A poster building (not a hive) whose anchor tile is inside the radius, destroyed while the bounty is still open or claimed, refunds immediately with `building_lost`. Workers, turrets, and units owned by someone else do not count. A duration that rounds to 0 ticks is `invalid_args`. The sim does not move cargo.
+- **Why it is like this:** W22-21. One claimer is the W22-23 rule; `queue_full` is the existing capacity code. `presenceMinBp` was already the data row. Escrow payment is W22-23. Mercenary presence is the contract blob, not `owner === claimer` (GP-124).
+- **Workaround / mitigation:** Keep a claimer recon, or a hired mercenary recon, on a tile inside the radius for 80% of the ticks. A building counts only by its anchor tile, so a footprint that merely overlaps the ring does not fail the bounty.
+- **To resolve:** Count footprint tiles only if the owner wants any overlapping building to fail the contract.
+- **Found:** 2026-11-10, W22-21
+
+### GP-123 · clear_nest post accepts an explored tile or a live W07 spot
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/bounty/nest.ts` (`clearNestTargetReject`), `backend/app/src/near/bounty/target.ts` (`screenNest`)
+- **What happens:** `bounty.post` of `clear_nest` is `invalid_target` unless `nestId` is the decimal entity id of a living species hive (`hiveBlackAnt`, `hiveBlueBeetle`, or `hiveGreenSpitter`) and the poster's colony has explored that hive's anchor tile or a living unit currently spots it (`computeColonySpottedTileIndices`, W07 view). A dead hive (`hp <= 0`), a removed hive, a non-hive, and an unspotted living hive are all `invalid_target`. Explored-but-not-currently-in-view still posts, matching the W22-19 server precheck. A live spot posts even when the fog bit has not been written yet. The check does not write the vision cache. Destroying the hive still emits `nestDestroyed` and completes the bounty for the top-damage claimer (GP-120).
+- **Why it is like this:** W22-37. The server already rejects an unexplored nest. Requiring only the live view would reject a post the server had accepted after the scout walked away. Requiring only the fog bit would reject a hive a unit can see before the vision cache marks the tile. The sim uses the union of those two existing checks and does not add a third vision model.
+- **Workaround / mitigation:** Explore the anchor tile or keep a unit whose view radius covers it, then post. `nestId` is `String(entityId)`.
+- **To resolve:** Only if the owner wants the sim to require a current spot even after the tile is explored, or explored only.
+- **Found:** 2026-11-10, W22-37
+
+### GP-124 · Mercenary recon are owner -2, not the poster's units
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/mercenary/` (`mercenary.spawn`, `mercenary.squad`), `shared/sim/src/systems/bounty/defend.ts` (`claimerPresent`), `shared/sim/src/systems/combat/targeting.ts` (`mercenariesKeepPeace`)
+- **What happens:** `mercenary.spawn` (module-only) places 4 or 6 `robot.recon` on free tiles in the first three rings around the poster's Command Hub, or the HQ when no Hub exists. `owner` is `-2` (`MERCENARY_OWNER`), not the poster. Faction `mercenary` and the allied poster live on `blobs.mercenary`, not an entity column. They start in defend stance anchored on the contract center. Outside the radius, the squad system issues a move toward that center (`maxDist` = radius). At `endTick`, survivors are removed with `applyDamage` and no step ctx, so the death path runs (`removeRow`) without a poster `unitDestroyed`. `mercenaryLeft` reason `ended` is the leave signal. If every recon is already dead, the reason is `wiped`. Recon's data supply stays 1, but colony supply only sums `owner === colonyIndex`, so the poster's `used` does not rise. They count for any claimed `defend_area` of that poster while they stand inside it. They do not shoot that poster. A combat kill still emits `unitDestroyed` for colony 0, because damage uses `Math.max(0, owner)` and `-2` becomes 0. `bounty.post` does not spawn a squad; the hire service has to send `mercenary.spawn`. Their vision is not written onto the poster (`revealVision` ignores `owner < 0`).
+- **Why it is like this:** W22-29. An entity column would change every snapshot. Owning them as the poster would charge recon supply. Owner `-1` is fauna, so a squad on `-1` would not fight insect raids. `-2` is hostile to fauna and, via the peace check, not to the poster. Escrow pay for the mercenary account is W22-30. Tank and Artillery stay out while W17 is postponed.
+- **Workaround / mitigation:** Send `mercenary.spawn` with the defend center, radius, `endTick`, and count 4 or 6. Keep the Hub (or HQ) alive so the edge tiles exist. Read `mercenaryLeft`, not `unitDestroyed`, for a contract that ended.
+- **To resolve:** Attribute a combat death to the poster without giving the unit the poster's owner, if the owner wants that event. Reveal the poster's vision from the squad if scouting must count. Spawn from `bounty.post` only if the owner wants the sim to hire without the module command.
+- **Found:** 2026-11-10, W22-29

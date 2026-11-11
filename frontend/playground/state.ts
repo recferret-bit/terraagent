@@ -1,6 +1,7 @@
 import { PLANET_KINDS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { isPixelArtOn } from '@terra/render/core/pixelArtPass';
 import { DEPOSIT_STAGES, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
+import { reconFactionPalette } from '@terra/render/kitbash/archetypes/units/reconFaction';
 import type { InteractionTargetKind } from '@terra/render/particles';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 
@@ -33,6 +34,11 @@ const parseFaunaScene = (v: string | null): FaunaSceneKind | null =>
 const parseFaunaMode = (v: string | null): FaunaMode =>
   v === 'turrets' || v === 'units' ? 'gallery' : FAUNA_MODES.includes(v as FaunaMode) ? (v as FaunaMode) : 'bugs';
 const parseMarch = (v: string | null): MarchPace | null => (v === '1' || v === 'own' ? 'own' : v === 'together' ? 'together' : null);
+/** `mercenary` selects that paint; a missing or unknown value stays the default recon. */
+const parseFaction = (v: string | null): string | null => {
+  const palette = reconFactionPalette(v);
+  return palette.id === 'default' ? null : palette.id;
+};
 const parseFaunaSeed = (v: string | null): number => {
   if (v === null || v.trim() === '') return 42;
   const n = Number(v);
@@ -62,6 +68,8 @@ export interface PgState {
   march: MarchPace | null;
   /** Block the ordered hex with rock (`&marchRock=1`). */
   marchRock: boolean;
+  /** Kitbash paint (`&faction=mercenary`). Null keeps the default palette. */
+  faction: string | null;
   row: ArchetypeCategory | null; filter: string;
 }
 
@@ -88,6 +96,7 @@ export function createState(params: URLSearchParams): PgState {
     faunaSeed: parseFaunaSeed(params.get('faunaSeed')),
     march,
     marchRock: params.get('marchRock') === '1',
+    faction: parseFaction(params.get('faction')),
     row: row && CATS.includes(row) ? row : null,
     filter: '',
   };
@@ -117,6 +126,7 @@ export function syncURL(state: PgState): URLSearchParams {
   }
   if (state.march) q.set('march', state.march);
   if (state.marchRock) q.set('marchRock', '1');
+  if (state.faction) q.set('faction', state.faction);
   if (typeof history !== 'undefined' && typeof location !== 'undefined') {
     history.replaceState(null, '', `${location.pathname}?${q}`);
   }

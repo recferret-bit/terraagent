@@ -69,7 +69,7 @@ flowchart LR
 | `AgentWalletPort` | F3, F4 | `createSubAccount`, `addLimitedKey(allowance)`, `revokeKey` | Mock keys with allowance accounting | Sub-accounts + function-call keys |
 | `DeedNftPort` / `BadgeNftPort` | F6, achievements | `mint`, `updateMetadata`, `ownerOf` | Postgres NFTs with a metadata JSON history | NEP-171 contract |
 | `StakingPort` | F6 | `stake`, `unstake`, `rewards` | Fake validator pool at 9 % APY over game time | Whitelisted staking pools |
-| `TreasuryDaoPort` | F7 | `createDao`, `propose`, `vote`, `finalize`, `deposit` | Postgres DAO with SputnikDAO-like states | SputnikDAO / Trezu |
+| `TreasuryDaoPort` | F7 | `createDao`, `propose`, `vote`, `finalize`, `deposit`, `addMember`, `removeMember`, `get` | Postgres DAO with SputnikDAO-like states | SputnikDAO / Trezu |
 | `EscrowPort` | F8 | `open`, `claim`, `refund` | Postgres escrow | Escrow contract |
 | `ChainReadPort` | all | `explorerUrl`, `receipt`, `health` | `mock:` receipts; no explorer link | RPC (FastNEAR + fallback) |
 

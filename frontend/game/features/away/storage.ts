@@ -1,5 +1,5 @@
 import { normalizeAutoTradeRecord, type AutoTradeRecord } from './autotrade';
-import { AWAY_FAMILIES, defaultAwaySettings, isSessionPct, type AwaySettings } from './model';
+import { AWAY_FAMILIES, defaultAwaySettings, isMercenarySpend, isSessionPct, type AwaySettings } from './model';
 
 /** Last acked away settings. A reload shows these before any snapshot echo. */
 export const AWAY_STORAGE_KEY = 'ta.away.autopilot';
@@ -63,10 +63,13 @@ export function saveAutoTrade(record: AutoTradeRecord, storage: Store | null = b
 function normalize(raw: Partial<AwaySettings>, base: AwaySettings): AwaySettings {
   const mode = raw.mode === 'rules_only' || raw.mode === 'director' ? raw.mode : base.mode;
   const awayRaids = typeof raw.awayRaids === 'boolean' ? raw.awayRaids : base.awayRaids;
+  const hireMercenaries = typeof raw.hireMercenaries === 'boolean' ? raw.hireMercenaries : base.hireMercenaries;
+  const spend = raw.mercenaryMaxSpend;
+  const mercenaryMaxSpend = typeof spend === 'number' && isMercenarySpend(spend) ? spend : base.mercenaryMaxSpend;
   const session = { ...base.session };
   for (const family of AWAY_FAMILIES) {
     const pct = raw.session?.[family];
     if (typeof pct === 'number' && isSessionPct(pct)) session[family] = pct;
   }
-  return { mode, awayRaids, session };
+  return { mode, awayRaids, hireMercenaries, mercenaryMaxSpend, session };
 }

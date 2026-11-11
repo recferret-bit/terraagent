@@ -4,6 +4,7 @@ import { HEX_DIRS, hexDistance, inHex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { hasActiveTruce } from '../diplomacy/store';
+import { mercenariesKeepPeace } from '../mercenary/blob';
 import { isColonyRaidProtected } from '../pvp/shield';
 import { footprintAttackRange } from './approachBand';
 import { canWeaponHitTarget } from './layers';
@@ -50,6 +51,7 @@ export interface AcquireTargetOptions extends HostileCheckOptions {
  * Checks whether `targetRow` is a valid hostile target for `attackerRow`:
  * - Target must be alive (`hp > 0`) and not `inert` or `descending`.
  * - Target must belong to a different owner (`cols.owner[targetRow] !== cols.owner[attackerRow]`).
+ * - A mercenary recon allied to a colony does not fight that colony (W22-29).
  * - Respects the passive fauna contract (`fauna-hives-spec.md` §2): colony attackers skip fauna marked
  *   passive (and not aggressive toward `attackerOwner`) unless `opts?.includePassiveFauna === true`.
  */
@@ -72,6 +74,7 @@ export function isHostileTargetForAttacker(
   const attackerOwner = cols.owner[attackerRow]!;
   const targetOwner = cols.owner[targetRow]!;
   if (targetOwner === attackerOwner) return false;
+  if (mercenariesKeepPeace(state, cols.id[attackerRow]!, attackerOwner, cols.id[targetRow]!, targetOwner)) return false;
   if (attackerOwner >= 0 && targetOwner >= 0) {
     if (hasActiveTruce(state, attackerOwner, targetOwner)) return false;
     const pvpBlob = state.blobs.pvp?.value as { byColony?: Record<string, unknown> } | undefined;

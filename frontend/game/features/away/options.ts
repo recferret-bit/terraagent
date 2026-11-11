@@ -7,6 +7,8 @@ export interface AwayPanelOptions {
   store?: CommandSink['store'];
   /** `W15` shows autoTrade. `W18` adds the `truce` partner (the sim rejects it otherwise). */
   flags?: ReadonlySet<string>;
+  /** W22. Off hides the hire switch and does not send `hireMercenaries`. */
+  mercenary?: boolean;
   colonyId?: () => string | null;
   accessToken?: () => string | null;
   fetchImpl?: typeof fetch;

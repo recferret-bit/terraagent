@@ -11,6 +11,7 @@ import {
   type MintCargoInput,
   type TransferCargoInput,
 } from '../../../application/ports/cargo-token.port.js';
+import { notifyCargoTransferred } from '../../../cargo/cargo-transfer.hook.js';
 import { NearException } from '../../../domain/errors.js';
 import { TokenAmount, type AccountId, type ChainReceipt, type OpId } from '../../../domain/types.js';
 import { MockChainBase } from '../../mock/mock-chain.base.js';
@@ -69,7 +70,7 @@ export class MockCargoTokenAdapter extends MockChainBase implements CargoTokenPo
   async transfer(input: TransferCargoInput): Promise<ChainReceipt> {
     this.assertTokenId(input.tokenId);
     this.assertPositiveAmount(input.amount);
-    return this.call('CargoToken', 'mt_transfer', input.opId, async (tx) => {
+    const receipt = await this.call('CargoToken', 'mt_transfer', input.opId, async (tx) => {
       await this.debit(tx, input.from, input.tokenId, input.amount);
       await this.credit(tx, input.to, input.tokenId, input.amount);
       return {
@@ -85,6 +86,9 @@ export class MockCargoTokenAdapter extends MockChainBase implements CargoTokenPo
         decimals: CARGO_DECIMALS,
       };
     });
+    // After commit. A repeated opId notifies again; the delivery row ignores it.
+    await notifyCargoTransferred(input);
+    return receipt;
   }
 
   async storageDeposit(accountId: AccountId, opId?: OpId): Promise<ChainReceipt> {

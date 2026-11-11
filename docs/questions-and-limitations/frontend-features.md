@@ -1415,9 +1415,9 @@ Open items, see the format in `README.md`:
 
 - **Status:** Open
 - **Area / code:** Colony book `AWAY` tab (`frontend/game/core/hud/ColonyBook.ts`), `frontend/game/features/away/` (`AwayPanel`, `storage.ts` key `ta.away.autopilot`), sim blob `away` in `shared/sim/src/systems/away/store.ts`
-- **What happens:** The settings sit in the Colony book's `AWAY` tab (the tab opens and folds the page; the old floating plate beside Save progress is gone). Saving metals at 30% persists only after `setAutopilot` acks, in one browser-wide `localStorage` record. A reload shows 30 before any snapshot. The plate does not read `blobs.away`, so another colony, another browser, or a budget changed only on the server still shows this browser's last ack (or the defaults: director, raids off, session 60). The directive line always says 40% and is not sent. A store `sendCommand` that returns an id string is not an ack, so that path does not mark the budget saved; the online HUD uses the command bus, which does ack.
+- **What happens:** The settings sit in the Colony book's `AWAY` tab (the tab opens and folds the page; the old floating plate beside Save progress is gone). Saving metals at 30% persists only after `setAutopilot` acks, in one browser-wide `localStorage` record. The W22 hire switch and max spend are in that same record (default off, max 0). A reload shows 30 before any snapshot. The plate does not read `blobs.away`, so another colony, another browser, or a budget changed only on the server still shows this browser's last ack (or the defaults: director, raids off, session 60, hire off). The directive line always says 40% and is not sent. A store `sendCommand` that returns an id string is not an ack, so that path does not mark the budget saved; the online HUD uses the command bus, which does ack. W22 off hides the hire controls even when this browser's record still has them, and a save then does not send `hireMercenaries`.
 - **Why it is like this:** W09-14 asked for a reload to show 30 even before a snapshot echo exists. The client view has no away-settings field yet.
-- **Workaround / mitigation:** This browser keeps the last acked mode, raids flag and session percents. A reject restores the previous ack and does not write storage.
+- **Workaround / mitigation:** This browser keeps the last acked mode, raids flag, session percents, hire switch and max spend. A reject restores the previous ack and does not write storage. W22 has to be on for the hire controls to show.
 - **To resolve:** When the replica exposes the colony away blob, hydrate the plate from that colony and keep `localStorage` only until the first view.
 - **Found:** 2026-11-09, W09-14
 
@@ -1425,7 +1425,7 @@ Open items, see the format in `README.md`:
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/features/away-digest/` (`renderAwayDigest`, mounted on `services.hudOverlay`), `frontend/game/store/WorldStore.ts` (`publishJoinAway`), CLIENT §5.3, W09-17
-- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, the story when it is a non-empty string, and each `digest.directorTrade` line when the body has `items` (W15-24, BE-76). Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
+- **What happens:** A join `welcome.away` opens one plate on the HUD overlay: duration, non-zero resource nets (`after - before`), attack count and repelled, at most 3 alert lines, the story when it is a non-empty string, and each `digest.directorTrade` line when the body has `items` (W15-24). Dismiss (Continue or Esc) hides it for the rest of that page. The server marks the row seen on that join, so a later reload of the same colony does not open the plate again. A welcome with no `away`, and any resync welcome, adds no plate. Built, lost, hazards, AI highlights, trades, planet name, colony status and "Show me" camera pans from CLIENT §5.3 are not on this plate. The away mercenary hire is one of those highlights (`Hired light squad for 100 metals.t1`). `deliverWelcome` keeps the line on the digest; this plate still does not draw it. The plate does not pause the sim. Wave `W09` off means the feature is not mounted.
 - **Why it is like this:** W09-17's acceptance for this change is that headline. The wider §5.3 sections stay out so the plate matches the digest fields the task names.
 - **Workaround / mitigation:** The structured fields that are omitted stay on the digest object if a later plate wants them. Esc is held back from the pause dialog while the plate is open.
 - **To resolve:** Owner: add the remaining §5.3 sections (built, lost, hazards, AI, trades, camera pan) on this plate, or keep the headline.
@@ -1461,7 +1461,7 @@ Open items, see the format in `README.md`:
 - **To resolve:** (2) check the post-restart supply window timing in step 12 (wait for one more window, or for the spawned builders to exist).
 - **Found:** 2026-11-10, HUD de-clutter refactor (tests agent + lead)
 
-### FF-103 · Away autoTrade remembers this browser, and the director key status does not
+### FF-110 · Away autoTrade remembers this browser, and the director key status does not
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/away/` (`AutoTradeSection`, `storage.ts` key `ta.away.autotrade`), `POST`/`DELETE /v1/near/director-key`, sim blob `autoTrade`
@@ -1471,17 +1471,17 @@ Open items, see the format in `README.md`:
 - **To resolve:** When the replica exposes `autoTrade`, hydrate from that colony and keep `localStorage` only until the first view. Add a read of the director key (or push status on welcome) so allowance and revoked survive a reload.
 - **Found:** 2026-11-10, W15-23
 
-### FF-104 · Guild toasts are push-only, and departure has no display name
+### FF-111 · Guild toasts are push-only, and departure has no display name
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/guild-toast/` (`GuildVisitMemory`, `FeatureServices.guildTab`), `frontend/game/store/WorldStore.ts` (`onGuildArrived`, `onGuildDeparted`)
-- **What happens:** An arrival toast reads `Guild trader ${name} has docked — ${offers.length} offers`. The same `shipId` + `departAt` does not toast again on this page. A departure toast reads `Guild trader ${name} has departed`, using the display name from this page's last `guild.arrived` for that `shipId`, or the `shipId` itself when no arrival was seen (`guild.departed` has no name). Joining while a ship is already docked does not toast: welcome does not replay the visit, and a reload forgets the seen key. A tap calls `openTradeHubPanel(true)` and sets `services.guildTab = true`. The Guild tab consumes that flag (FF-106). The flag is not a URL query and is cleared if the HUD builds a new services object before the Guild tab mounts. W15 off drops the feature from the registry; a mount whose flags lack `W15` ignores both pushes.
+- **What happens:** An arrival toast reads `Guild trader ${name} has docked — ${offers.length} offers`. The same `shipId` + `departAt` does not toast again on this page. A departure toast reads `Guild trader ${name} has departed`, using the display name from this page's last `guild.arrived` for that `shipId`, or the `shipId` itself when no arrival was seen (`guild.departed` has no name). Joining while a ship is already docked does not toast: welcome does not replay the visit, and a reload forgets the seen key. A tap calls `openTradeHubPanel(true)` and sets `services.guildTab = true`. The Guild tab consumes that flag (FF-113). The flag is not a URL query and is cleared if the HUD builds a new services object before the Guild tab mounts. W15 off drops the feature from the registry; a mount whose flags lack `W15` ignores both pushes.
 - **Why it is like this:** W15-16 is the toast only. The departed payload is `shipId`, `planetId`, and `npcId`.
 - **Workaround / mitigation:** With W15 on, the tap opens the Trade Hub on the GUILD tab. A missed arrival still has no toast.
 - **To resolve:** Put the display name on `guild.departed`, or replay an open visit on welcome, if a mid-dock join should toast.
 - **Found:** 2026-11-10, W15-16
 
-### FF-105 · The director sentence is the away plate or the HUD log, not both
+### FF-112 · The director sentence is the away plate or the HUD log, not both
 
 - **Status:** Accepted (by design, W15-24)
 - **Area / code:** `frontend/game/features/director-log/` (`DirectorEventLog`), `frontend/game/features/away-digest/render.ts` (`appendDirectorTrades`), `backend/app/src/market/director/digest-line.ts`
@@ -1491,7 +1491,7 @@ Open items, see the format in `README.md`:
 - **To resolve:** Copy the same lines onto the ColonyBook AWAY tab, or replay missed fills on welcome when W09 is off, only if the owner asks.
 - **Found:** 2026-11-10, W15-24 (updated 2026-11-11, W15-36)
 
-### FF-106 · Guild tab keeps one visit and does not replay a missed dock
+### FF-113 · Guild tab keeps one visit and does not replay a missed dock
 
 - **Status:** Open
 - **Area / code:** `frontend/game/features/guild-tab/` (`GuildVisitModel`, `GuildOffers`), `frontend/trade/view/marketView.ts` (`actorBadgeLabel`)
@@ -1501,7 +1501,7 @@ Open items, see the format in `README.md`:
 - **To resolve:** Keep every ship that has not reached `departAt`, and replay the open visit on welcome. Use one Guild label on the mix chips if the owner wants that everywhere.
 - **Found:** 2026-11-10, W15-17
 
-### FF-107 · Guild analytics is the consent-gated client batch
+### FF-114 · Guild analytics is the consent-gated client batch
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/features/guild-analytics/` (`GuildAnalytics`), `frontend/game/core/analytics/client.ts`, `backend/app/src/analytics/analytics.service.ts` (`core.analytics_event`), `frontend/game/app/online/featureHud.ts` (`noTrack` on `?host=local`)
@@ -1510,3 +1510,74 @@ Open items, see the format in `README.md`:
 - **Workaround / mitigation:** Opt in, stay on the server host, and keep the page open through the dock and the away fill. In dev, `window.__track.setConsent(true)` then `await __track.flush()`.
 - **To resolve:** Replay a missed `directorTrade` from the welcome digest only if the owner wants analytics after a disconnect.
 - **Found:** 2026-11-11, W15-26
+## W22 treasury HUD (2026-11-10)
+
+### FF-103 · Meteor shield shimmer is a CSS veil, not a scene pass
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/shieldVeil.ts`, `treasury.css` (`.ta-shield-shimmer`); CLIENT §9
+- **What happens:** While `meteor_shield` is active the HUD inserts one transparent element over the viewport. A slow cool gradient band moves in CSS (`mix-blend-mode: screen`). It is not a terrain uniform, an extra draw, or a post-process pass. `prefers-reduced-motion` leaves a static faint wash. The element is created once and only toggled.
+- **Why it is like this:** The frame budget is 60 FPS with no per-frame allocation. A shader or composer pass would add a draw and a uniform for a glint the player should barely see. The HUD already updates at 4 Hz (`sessionViewSync`, 250 ms), so the veil stays on the compositor.
+- **Workaround / mitigation:** The veil is `pointer-events: none`, `z-index: 0` under the HUD plates, and hidden when the shield badge drops (`tick >= untilTick`) or when wave `W22` is off.
+- **To resolve:** If the glint must sit in the terrain lighting, drive one existing tint uniform from the same badge model. Do not add a pass.
+- **Found:** 2026-11-10, W22-15
+
+### FF-104 · Terraform boost tints Irrigate and Seed chips, not dock orders
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/livingOps.ts`; `frontend/game/features/terraform-basic/TerraformMenu.ts`; GP-101
+- **What happens:** During `terraform_boost` the HUD shows two chips, IRRIGATE and SEED, with a teal border and text (`color-mix` of `--ta-energy` and `--ta-terra`). They are `aria-disabled` and send no command. The rest of the HUD is not recolored. The dock still has one TERRAFORM button, which does not queue Irrigate or Seed.
+- **Why it is like this:** W22-15 asks for a tint on the Living-op controls. Those controls are not on the dock (GP-101). This issue must not add an order path.
+- **Workaround / mitigation:** Any later control marked `data-living-op` in the HUD gets the same `data-boosted` flag. The chips hide when the boost ends.
+- **To resolve:** When Irrigate and Seed become real dock buttons, keep `data-living-op` on them and drop these chips.
+- **Found:** 2026-11-10, W22-15
+
+### FF-105 · Council timers read the sim blob; the form reads API project costs
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/councilModel.ts`, `frontend/game/features/treasury/CouncilPanel.ts`, `backend/app/src/near/treasury/council-view.ts` (`projects`)
+- **What happens:** `GET /v1/near/treasury/:planetId` still returns `effects: []` (BE-80). The Council sheet shows a timer only when `blobs.treasury` or that array has `untilTick` ahead of the view tick. Form costs are the `projects` array on that GET (the `treasury` table: meteor shield 1500, terraform boost 1000, guild subsidy 800). The component does not keep its own copy. `guild_subsidy` stays in the list while the API sends it (BE-78). The Planet menu is a HUD button mounted by the treasury feature; wave W22 off removes the feature, so the Council item is absent. Phone landscape was checked with the sheet's max box (420×320 inside a 16 px gutter, scroll on the body) against 740×360, not with a screenshot.
+- **Why it is like this:** W22-09 has not started `system.treasuryEffect`, so the live clock is the sim blob the badges already use. W22-14 was told not to hide `guild_subsidy`. No browser was opened for this issue.
+- **Workaround / mitigation:** A `treasury.proposal` push updates the open sheet's vote count. Change a cost in `shared/sim/src/data/treasury.ts` and reload; the form shows `projects` from the API. Another feature can add a Planet menu row with `registerPlanetMenuItem` while this feature is mounted.
+- **To resolve:** When W22-09 fills `effects`, the sheet already reads that array. Hide `guild_subsidy` only if the API stops sending it.
+- **Found:** 2026-11-10, W22-14
+
+### FF-106 · The bounty board shows state text, not a defend or deliver meter
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/bounty/bountyModel.ts` (`progressOf`), `backend/app/src/near/bounty/view.ts` (`BountyView`)
+- **What happens:** `GET /v1/bounties/:planetId` returns id, target, reward, state, expiry, escrow, and claimer. It does not return a defend percent or a delivered/target pair. The board prints the state word (Open, Claimed, Completed, Paid, Expired, Refunded). If a row ever includes `defendPercent`, `defendBp`, or both `delivered` and `deliverTarget`, that text is shown too. The client does not keep its own progress counter.
+- **Why it is like this:** W22-25 said not to invent a second progress store when the API has no such fields. Defend presence and delivery sums live on the sim and `chain.bounty_delivery`, not on this GET.
+- **Workaround / mitigation:** Open and claimed rows stay on the board until the next GET (the open sheet polls every 4 s) moves them to Paid or Expired. A paid row links its escrow receipt.
+- **To resolve:** Add the two numbers to `BountyView` when a later issue owns them. The board already prints them and should not grow a parallel store.
+- **Found:** 2026-11-10, W22-25
+
+### FF-107 · Bounty post takes typed target fields, not a map click
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/bounty/bountyDom.ts` (post form), W22-25 in `docs/plan/waves/W22-treasury-bounties.md`
+- **What happens:** The post form is a target kind (clear nest, defend area, deliver units), the fields that kind needs (nest id, tile q/r, radius, defend hours, deliver resource and amount), a reward resource and amount, and expiry hours. Nothing listens for a click on a nest or a tile.
+- **Why it is like this:** The issue acceptance for this change is a form with a target, a reward, and an expiry. A map picker needs the live nest id under the cursor, which this GET does not provide, and W22-26 owns the map layer. No browser was opened. The 740×360 fit is the same max box as Council (420×320 inside a 16 px gutter, body scrolls).
+- **Workaround / mitigation:** Type the nest id or the tile. The server still rejects an unseen nest with `invalid_target`, and the sheet shows that code.
+- **To resolve:** When a pick returns a hive id or a tile, fill those inputs. Do not post from the click itself.
+- **Found:** 2026-11-10, W22-25
+
+### FF-108 · Bounty map tags read the sim blob, not a bounty poll
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/bounty/mapLayer.ts` (`bountyMarkersForView`), `frontend/game/maps/MapsController.ts` (`drawMinimapOverlays`)
+- **What happens:** With W22 and W04 on, the Bounties chip (on by default) paints the reward amount on a live `clear_nest` at the hive tile, and on a `defend_area` at its q,r. The list is `blobs.bounty` already on the client view. A hive position comes from that view's entities or `faunaHives`. `deliver_units` has no tile, so it draws nothing. Completed, paid, expired, and refunded rows draw nothing. The minimap calls this one extra layer; other extra layers stay on the global map. W22 off does not register the layer. A missing map registry returns a no-op and does not throw. No browser was opened.
+- **Why it is like this:** W22-26 says to prefer data the client already has. The sim writes `blobs.bounty` on `bounty.post`. Polling `GET /v1/bounties/:planetId` would be a second copy of the board's fetch. The global map already draws registered extra layers; the minimap did not, so only Bounties was added there.
+- **Workaround / mitigation:** Open the global map or look at the minimap after the sim blob arrives. The tag is the amount (`200`), not the resource name. Turn the Bounties chip off to hide it.
+- **To resolve:** If a chain row can exist without `blobs.bounty`, feed that GET into `bountyMapMarkers` without a second poll. Give `deliver_units` a tile only when the payload has one.
+- **Found:** 2026-11-10, W22-26
+
+### FF-109 · Council cost spec is outside the frontend typecheck
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/treasury/council-costs.spec.ts`, `frontend/tsconfig.json` (exclude), `backend/app/src/near/treasury/proposal-push.ts` (`declare module`)
+- **What happens:** The spec imports `toCouncil` and paints the Council form with the `treasury` table costs. `tsc -p frontend` then loads `proposal-push.ts`. Its `declare module '../../bus/channels.js'` resolves to `channels.ts`, and tsc still reports TS2664. The spec is excluded from `frontend/tsconfig.json`. Vitest runs it. Backend `tsc` does not see it.
+- **Why it is like this:** The augmentation is valid in the backend program, where `channels.ts` is a root file. The frontend program is not that compilation. Moving the spec into `backend/app/test` would typecheck `toCouncil` and then fail on the DOM types in `councilDom.ts`.
+- **Workaround / mitigation:** `npm test -w @terra/game -- features/treasury/council-costs.spec.ts` runs the three cases. Do not drop the tsconfig exclude unless TS2664 is gone.
+- **To resolve:** Point the augmentation at a module name both programs accept, or typecheck this spec in a program that already contains `channels.ts` and the DOM lib.
+- **Found:** 2026-11-11, W22-13

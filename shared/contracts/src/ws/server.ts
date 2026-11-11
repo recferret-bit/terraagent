@@ -9,6 +9,7 @@ import { DirectorKeyStatusPayload, GuildArrivedPayload, GuildDepartedPayload } f
 import { MarketBookPayload, MarketTradePayload } from '../market/views';
 import { CargoStatusPayload } from '../rest/near-cargo';
 import { DeedUpdatedPayload } from '../deed';
+import { TreasuryProposalPush } from '../treasury';
 import { PlanetType, SimDiffFrame, SimEventWire, SimSnapshotFrame } from './sim';
 
 /** App → client messages (PROTOCOL §4.3). Parsed permissively by clients (PR-01). */
@@ -74,10 +75,12 @@ export const DeedUpdated = ServerEnvelope('deed.updated', DeedUpdatedPayload);
 export const GuildArrived = ServerEnvelope('guild.arrived', GuildArrivedPayload);
 export const GuildDeparted = ServerEnvelope('guild.departed', GuildDepartedPayload);
 export const DirectorStatus = ServerEnvelope('director.status', DirectorKeyStatusPayload);
+/** W22 planet council live push (PROTOCOL F7): one message when a proposal is opened, voted, or finalized. */
+export const TreasuryProposal = ServerEnvelope('treasury.proposal', TreasuryProposalPush);
 
 export const ServerMessage = z.discriminatedUnion('t', [
   Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade, DeedUpdated,
-  GuildArrived, GuildDeparted, DirectorStatus,
+  GuildArrived, GuildDeparted, DirectorStatus, TreasuryProposal,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 export type ServerMessageOf<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;

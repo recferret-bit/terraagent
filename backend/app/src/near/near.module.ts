@@ -36,20 +36,51 @@ import { DeedShareController } from './deed/deed-share.controller.js';
 import { DeedTelemetryService } from './deed/deed-telemetry.service.js';
 import { DeedRepository } from './deed/deed.repository.js';
 import { W20ScenarioSeedService } from './deed/w20-scenario-seed.service.js';
+import { W22ScenarioSeedService } from './treasury/w22-scenario-seed.service.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
 import { StakingPoolsController } from './staking/staking-pools.controller.js';
 import { StakingPositionSyncService } from './staking/staking-position-sync.service.js';
 import { StakingService } from './staking/staking.service.js';
+import { BountyController } from './bounty/bounty.controller.js';
+import { BountyClaimService } from './bounty/claim.service.js';
+import { BountyDeliverService } from './bounty/deliver.service.js';
+import { BountyExpiryService } from './bounty/expiry.service.js';
+import { BountyLifecycleListener } from './bounty/lifecycle.listener.js';
+import { BountyPayService } from './bounty/pay.service.js';
+import { BountyPostPrecheck } from './bounty/precheck.js';
+import { BountyPostedListener } from './bounty/posted.listener.js';
+import { BountyPostService } from './bounty/post.service.js';
+import { BountyRepository } from './bounty/bounty.repository.js';
+import { PlanetBountyWorld } from './bounty/world.js';
+import { MercenaryAccountsService } from './mercenary/accounts.service.js';
+import { MercenaryAwayService } from './mercenary/away.service.js';
+import { MercenaryHireService } from './mercenary/hire.service.js';
+import { MercenaryPayoutListener } from './mercenary/payout.listener.js';
+import { MercenaryPayoutService } from './mercenary/payout.service.js';
+import { TreasuryAwayNoticeService } from './treasury/away-notice.service.js';
+import { W22DevCommands } from './treasury/dev-console.command.js';
+import { TreasuryFinalizeService } from './treasury/finalize.service.js';
+import { GuildSubsidyService } from './treasury/guild-subsidy.js';
+import { PlanetDaoLifecycleBind } from './treasury/lifecycle.bind.js';
+import { PlanetDaoLifecycleService } from './treasury/lifecycle.service.js';
+import { PlanetDaoMembershipService } from './treasury/membership.service.js';
+import { TreasuryProposalsService } from './treasury/proposals.service.js';
+import { TreasuryController } from './treasury/treasury.controller.js';
+import { W22TelemetryService } from './telemetry/w22-telemetry.service.js';
 
 /** One env section per module: the port-binding guard plus the chain outbox variables. */
-export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, outboxEnv.schema) } as unknown as EnvSection;
+export const env = {
+  name: nearEnv.name,
+  schema: z.intersection(nearEnv.schema, outboxEnv.schema),
+} as unknown as EnvSection;
 
 /** NEAR integration: port bindings, chain outbox, dev chain routes, mock OAuth, social login, relay status, and `/v1/near/health`. */
 @Module({
   controllers: [
     AccountClaimController,
+    BountyController,
     CargoStatusController,
     DirectorKeyController,
     ChainDevController,
@@ -63,9 +94,25 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     SocialAuthController,
     StakingController,
     StakingPoolsController,
+    TreasuryController,
   ],
   providers: [
     AccountClaimService,
+    BountyClaimService,
+    BountyDeliverService,
+    BountyExpiryService,
+    BountyLifecycleListener,
+    BountyPayService,
+    BountyPostPrecheck,
+    BountyPostedListener,
+    BountyPostService,
+    BountyRepository,
+    MercenaryAccountsService,
+    MercenaryAwayService,
+    MercenaryHireService,
+    MercenaryPayoutListener,
+    MercenaryPayoutService,
+    PlanetBountyWorld,
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
@@ -81,6 +128,11 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     DeedSettledService,
     DeedTelemetryService,
     FreeVerifierService,
+    GuildSubsidyService,
+    TreasuryAwayNoticeService,
+    TreasuryFinalizeService,
+    W22TelemetryService,
+    W22DevCommands,
     ColonyAccounts,
     RelayStatusService,
     SocialAuthService,
@@ -88,11 +140,18 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     StakingPositionSyncService,
     StakingService,
     NearMockCommand,
+    PlanetDaoLifecycleBind,
+    PlanetDaoLifecycleService,
+    PlanetDaoMembershipService,
+    TreasuryProposalsService,
     W20ScenarioSeedService,
+    W22ScenarioSeedService,
   ],
   imports: [NearInfrastructureModule, OutboxModule, NotifyModule, GameModule],
   exports: [
     AccountClaimService,
+    BountyPostService,
+    BountyRepository,
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
@@ -108,8 +167,10 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     DeedSettledService,
     DeedTelemetryService,
     FreeVerifierService,
+    GuildSubsidyService,
     NearInfrastructureModule,
     OutboxModule,
+    PlanetDaoLifecycleService,
     SocialLink,
     StakingPositionSyncService,
     StakingService,

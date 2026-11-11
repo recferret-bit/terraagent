@@ -12,6 +12,7 @@ import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service
 import type { NearDeedUpdatedBusEvent } from '../near/deed/deed-mint-outbox.service';
 import type { DirectorStatusBusEvent } from '../near/director-key/director-key.status';
 import type { GuildArrivedBusEvent, GuildDepartedBusEvent } from '../market/guild/visit/guild-visit.publisher';
+import type { NearTreasuryProposalBusEvent } from '../near/treasury/proposal-push';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
 import { presenceClosed, presenceJoined } from '../game/presence/planet-mode';
@@ -59,6 +60,7 @@ export class WsGateway {
   private readonly undirector: (() => void) | undefined;
   private readonly unarrived: (() => void) | undefined;
   private readonly undeparted: (() => void) | undefined;
+  private readonly untreasury: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
   private readonly presenceIds = new WeakMap<Connection, string>();
@@ -79,6 +81,7 @@ export class WsGateway {
     this.undirector = o.bus?.on('director.status', (ev) => this.broadcastDirectorStatus(ev), { module: 'WsGateway' });
     this.unarrived = o.bus?.on('guild.arrived', (ev) => this.broadcastGuildArrived(ev), { module: 'WsGateway' });
     this.undeparted = o.bus?.on('guild.departed', (ev) => this.broadcastGuildDeparted(ev), { module: 'WsGateway' });
+    this.untreasury = o.bus?.on('near.treasury.proposal', (ev) => this.broadcastTreasuryProposal(ev), { module: 'WsGateway' });
     this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
     // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
     this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
@@ -161,6 +164,15 @@ export class WsGateway {
     this.sendToColony(ev, encodeWire({ v: 1, t: 'cargo.status', d: ev.status }));
   }
 
+  private broadcastTreasuryProposal(ev: NearTreasuryProposalBusEvent): void {
+    const frame = encodeWire({ v: 1, t: 'treasury.proposal', d: ev.payload });
+    if (ev.planetId) this.rooms.broadcast(ev.planetId, frame);
+    for (const c of this.conns) {
+      if (ev.planetId && c.planetId === ev.planetId && c.welcomeTick !== undefined) continue;
+      if (!ev.planetId || c.planetId === ev.planetId || c.session?.dev) c.send(frame);
+    }
+  }
+
   private broadcastDeedUpdated(ev: NearDeedUpdatedBusEvent): void {
     this.sendToColony(ev, encodeWire({ v: 1, t: 'deed.updated', d: ev.payload }));
   }
@@ -199,6 +211,7 @@ export class WsGateway {
     this.undirector?.();
     this.unarrived?.();
     this.undeparted?.();
+    this.untreasury?.();
     this.unmarket?.();
     this.unbook?.();
     const all = [...this.conns];

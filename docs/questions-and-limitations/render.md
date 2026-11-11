@@ -1183,7 +1183,7 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Why it is like this:** Avoids re-allocating the target every time the camera pans over water.
 - **Found:** 2026-11-07, W05 full review (render agent)
 
-### RN-89 · Guild trader round parts are 6-sided so the cargo pods fit the triangle cap
+### RN-91 · Guild trader round parts are 6-sided so the cargo pods fit the triangle cap
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/render/kitbash/archetypes/units/ships.ts` (`buildCarrierHull` `roundSeg`), `frontend/render/kitbash/archetypes/units/guild.ts` (`addCargoPods`)
@@ -1202,3 +1202,12 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** Dish spin still advances through `tickArchetypeMesh`. The mark is drawn only while the phase is `docked`, and only if the Units layer is on. W04 off never touches `services.maps`.
 - **To resolve:** Owner: a chase camera would need its own camera, not `CameraRig` on the gameplay camera. A market-volume "busiest" needs a per-hub score passed into `pickBusiestDock`.
 - **Found:** 2026-11-10, W15-15
+### RN-89 · Mercenary recon emblem is static, and the faction bake is a playground preview
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/kitbash/archetypes/units/reconFaction.ts` (`stampMercenaryMarks`, `setReconFactionPreview`), playground `?faction=mercenary`
+- **What happens:** `faction=mercenary` repaints the shared `robot.recon` hull grey-teal and adds a hullSecondary roof diamond plus an emissive stud (`emissiveIntensity` 3.6). The emblem has no GPU anim channel. Zone colours are baked into the mesh, so the preview is one global build: in-game recon units stay on the default bake until a spawn path calls the same preview. This change was checked with the model validator and unit tests, not a browser screenshot of the four playground views.
+- **Why it is like this:** A rank plate is painted insignia, not a moving part. No browser was open in this session. Per-entity faction paint needs a second baked mesh (or an instance tint) beside the one archetype id; the playground URL only selects the preview.
+- **Workaround / mitigation:** Open `/playground.html?inspect=robot.recon&faction=mercenary` and check iso, front, side and top (`minY 0.000`). Omit `faction` for the default recon the validator scores.
+- **To resolve:** Owner visual check of the four views. Wire sim faction `mercenary` to the same palette when those units spawn, if they must not share the player paint.
+- **Found:** 2026-11-10, W22-32

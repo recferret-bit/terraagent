@@ -1,6 +1,7 @@
 import { ENTITY_KIND } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import type { PlanetState } from '../../kernel/state';
+import { noteClearNestHit } from '../bounty/damage';
 import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
 import { emitUnderAttackIfDue } from './events';
 import { isCombatDryFire } from './firingRange';
@@ -139,6 +140,16 @@ export function applyDamage(
     }
     emitUnderAttackIfDue(state, owner, { targetId, attackerId: opts?.attackerId, q, r, tick }, opts?.ctx);
   }
+  if (isFaunaHiveKind(kind)) {
+    noteClearNestHit(state, targetId, result.applied, result.destroyed, tick, creditedColony(state, opts), opts?.ctx);
+  }
 
   return result;
+}
+
+function creditedColony(state: PlanetState, opts?: ApplyDamageOptions): number {
+  if (typeof opts?.attackerOwner === 'number') return opts.attackerOwner;
+  if (opts?.attackerId === undefined) return -1;
+  const row = rowOf(state.entities, opts.attackerId);
+  return row < 0 ? -1 : state.entities.cols.owner[row];
 }
