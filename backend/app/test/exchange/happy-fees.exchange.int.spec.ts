@@ -139,9 +139,12 @@ describe('quote tokens and fee legs', () => {
     const platformBefore = await ex.balOf(PLATFORM, 'USDC');
     const { t, seller, buyer } = await trio(bp, 'sell', total);
     expect(t.stallFeeBp).toBe(bp);
-    expect(BigInt(t.platformFee.toFixed())).toBe(floorBp(total, 100));
+    const platformFee = floorBp(total, 100);
+    // W22 keeps 2 000 bp of the platform fee for the planet DAO. The buyer still pays the full platform fee.
+    const treasuryFee = (platformFee * 2000n) / 10000n;
+    expect(BigInt(t.platformFee.toFixed())).toBe(platformFee);
     expect(BigInt(t.stallFee.toFixed())).toBe(floorBp(total, bp));
-    expect((await ex.balOf(PLATFORM, 'USDC')) - platformBefore).toBe(floorBp(total, 100));
+    expect((await ex.balOf(PLATFORM, 'USDC')) - platformBefore).toBe(platformFee - treasuryFee);
     expect(await seller.bal('USDC')).toBe(total + floorBp(total, bp)); // seller is the maker stall
     expect(await buyer.bal('USDC')).toBe(2_000_000_000n - total - floorBp(total, 100) - floorBp(total, bp));
   });
