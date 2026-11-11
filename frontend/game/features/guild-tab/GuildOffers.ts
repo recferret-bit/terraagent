@@ -17,6 +17,7 @@ const lineOf = (o: GuildOffer): string => {
 function offerRow(o: GuildOffer, disabled: boolean, onAccept: (id: string) => void): HTMLElement {
   const row = makeDiv('ta-guild__row', 'guild-offer');
   row.dataset.offerId = o.offerId;
+  if (o.reason) row.title = o.reason;
   const btn = makeBtn('btn btn-primary btn-sm ta-guild__accept', 'guild-accept', 'Accept', () => onAccept(o.offerId));
   btn.dataset.offerId = o.offerId;
   btn.disabled = disabled;
