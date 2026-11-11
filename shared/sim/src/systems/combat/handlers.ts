@@ -119,6 +119,62 @@ export const setRallyHandler = defineCommandHandler({
   },
 });
 
+function checkW18AttackMoveTargetTile(
+  state: PlanetState,
+  attackerOwner: number,
+  tileOwner: number,
+  q: number,
+  r: number,
+  tick: number,
+  data: Parameters<typeof isColonyRaidProtected>[3],
+): 'cross_sector_disabled' | 'truce_active' | 'raid_protected' | null {
+  if (!canAttackMoveToTileSector(state, attackerOwner, q, r).ok) {
+    return 'cross_sector_disabled';
+  }
+  if (tileOwner >= 0 && tileOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, tileOwner, tick)) {
+    return 'truce_active';
+  }
+  if (tileOwner >= 0 && tileOwner !== attackerOwner && isColonyRaidProtected(state, tileOwner, tick, data)) {
+    return 'raid_protected';
+  }
+  const cols = state.entities.cols;
+  for (let row = 0; row < state.entities.count; row++) {
+    if (cols.hp[row]! <= 0 || cols.state[row] === ENTITY_STATE.inert) continue;
+    if (cols.q[row] !== q || cols.r[row] !== r) continue;
+    const entOwner = cols.owner[row]!;
+    if (entOwner < 0 || entOwner === attackerOwner) continue;
+    if (hasActiveTruce(state, attackerOwner, entOwner, tick)) return 'truce_active';
+    if (isColonyRaidProtected(state, entOwner, tick, data)) return 'raid_protected';
+  }
+  return null;
+}
+
+function recordW18AttackMoveHostility(
+  state: PlanetState,
+  attackerOwner: number,
+  tileOwner: number,
+  q: number,
+  r: number,
+  tick: number,
+  data: Parameters<typeof dropColonyShield>[3],
+): void {
+  const cols = state.entities.cols;
+  let foreignOwner = tileOwner >= 0 && tileOwner !== attackerOwner ? tileOwner : -1;
+  if (foreignOwner < 0) {
+    for (let row = 0; row < state.entities.count; row++) {
+      if (cols.hp[row]! <= 0 || cols.state[row] === ENTITY_STATE.inert) continue;
+      if (cols.q[row] === q && cols.r[row] === r && cols.owner[row]! >= 0 && cols.owner[row]! !== attackerOwner) {
+        foreignOwner = cols.owner[row]!;
+        break;
+      }
+    }
+  }
+  if (foreignOwner >= 0) {
+    dropColonyShield(state, attackerOwner, tick, data);
+    recordHostilityBetween(state, attackerOwner, foreignOwner, tick);
+  }
+}
+
 export const attackMoveHandler = defineCommandHandler({
   kind: 'attackMove',
   wave: 'W07',
@@ -143,48 +199,15 @@ export const attackMoveHandler = defineCommandHandler({
       if (!isMobile && !hasWeapon) return 'invalid_args';
       const attackerOwner = cols.owner[row]!;
       if (ctx.flags.has('W18') && attackerOwner >= 0) {
-        if (!canAttackMoveToTileSector(state, attackerOwner, args.q, args.r).ok) {
-          return 'cross_sector_disabled';
-        }
-        if (tileOwner >= 0 && tileOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, tileOwner, ctx.tick)) {
-          return 'truce_active';
-        }
-        if (tileOwner >= 0 && tileOwner !== attackerOwner && isColonyRaidProtected(state, tileOwner, ctx.tick, ctx.data)) {
-          return 'raid_protected';
-        }
-        for (let r = 0; r < state.entities.count; r++) {
-          if (cols.hp[r]! <= 0 || cols.state[r] === ENTITY_STATE.inert) continue;
-          if (cols.q[r] === args.q && cols.r[r] === args.r) {
-            const entOwner = cols.owner[r]!;
-            if (entOwner >= 0 && entOwner !== attackerOwner && hasActiveTruce(state, attackerOwner, entOwner, ctx.tick)) {
-              return 'truce_active';
-            }
-            if (entOwner >= 0 && entOwner !== attackerOwner && isColonyRaidProtected(state, entOwner, ctx.tick, ctx.data)) {
-              return 'raid_protected';
-            }
-          }
-        }
+        const w18Block = checkW18AttackMoveTargetTile(state, attackerOwner, tileOwner, args.q, args.r, ctx.tick, ctx.data);
+        if (w18Block) return w18Block;
       }
     }
 
     for (const id of ids) {
       const row = rowOf(state.entities, id);
       if (ctx.flags.has('W18') && row >= 0 && cols.owner[row]! >= 0) {
-        const attackerOwner = cols.owner[row]!;
-        let foreignOwner = tileOwner >= 0 && tileOwner !== attackerOwner ? tileOwner : -1;
-        if (foreignOwner < 0) {
-          for (let r = 0; r < state.entities.count; r++) {
-            if (cols.hp[r]! <= 0 || cols.state[r] === ENTITY_STATE.inert) continue;
-            if (cols.q[r] === args.q && cols.r[r] === args.r && cols.owner[r]! >= 0 && cols.owner[r]! !== attackerOwner) {
-              foreignOwner = cols.owner[r]!;
-              break;
-            }
-          }
-        }
-        if (foreignOwner >= 0) {
-          dropColonyShield(state, attackerOwner, ctx.tick, ctx.data);
-          recordHostilityBetween(state, attackerOwner, foreignOwner, ctx.tick);
-        }
+        recordW18AttackMoveHostility(state, cols.owner[row]!, tileOwner, args.q, args.r, ctx.tick, ctx.data);
       }
     }
     if (ctx.flags.has('W18') && ids.length >= 2) {

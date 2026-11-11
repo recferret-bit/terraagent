@@ -160,15 +160,7 @@ export async function transitionColonyStatusHelper(params: {
   readonly releaseSeat?: boolean;
   readonly now?: Date;
 }): Promise<ColonyEliminationReconcileResult> {
-  const {
-    persistence,
-    homeRepo,
-    eliminatedColonyIds,
-    settledColonyIds,
-    colonyId,
-    targetStatus,
-    planetId,
-  } = params;
+  const { persistence, homeRepo, eliminatedColonyIds, settledColonyIds, colonyId, targetStatus, planetId } = params;
   const now = params.now ?? new Date();
   if (targetStatus === 'ELIMINATED') {
     eliminatedColonyIds.add(colonyId);
@@ -178,12 +170,7 @@ export async function transitionColonyStatusHelper(params: {
     eliminatedColonyIds.delete(colonyId);
   }
 
-  const located = await locateColonyAndCommittedReservation(
-    persistence,
-    homeRepo,
-    colonyId,
-    planetId,
-  );
+  const located = await locateColonyAndCommittedReservation(persistence, homeRepo, colonyId, planetId);
   const updatedColony = await upsertTransitionedColony(homeRepo, colonyId, targetStatus, located);
   const { reservationReleased, reservationState } = await maybeReleaseEliminatedSeat(
     persistence,

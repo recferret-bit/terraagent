@@ -2,7 +2,6 @@ import {
   AtlasManifestV1Schema,
   type AtlasManifestV1,
   type LandingSlotId,
-  type PartyV1,
   type PlanetType,
   type SectorId,
 } from '@terra/contracts';
@@ -11,26 +10,14 @@ import { assertAtlasVersionImmutable } from './atlas-manifest.helper';
 import {
   LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
-  type CreatePartyInput,
-  type EnqueueTicketInput,
-  type EnqueueTicketResult,
-  type JoinPartyInput,
-  type LeavePartyInput,
   type LobbyPersistenceStore,
-  type MatchTicketRecord,
   type PinAtlasVersionResult,
   type PinnedAtlasVersionRecord,
   type PlanetSectorRecord,
   type ProvisionCanonicalWorldInput,
   type ProvisionCanonicalWorldResult,
-  type ReserveSectorSlotInput,
-  type ReserveSectorSlotOutcome,
   type SectorLandingSlotRecord,
-  type SectorReservationRecord,
-  type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
-  type UpdateTicketInput,
-  type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
 import {
@@ -47,6 +34,11 @@ import {
   mapLandingSlotRow,
   mapSectorRow,
 } from './prisma-lobby-mappers';
+import {
+  buildAtlasVersionBaseFields,
+  buildPrismaSectorUpsertData,
+  LobbyStoreDelegatorBase,
+} from './parts/lobby-store-parts';
 import { PrismaReservationOps } from './prisma-reservation.ops';
 import { PrismaTicketPartyOps } from './prisma-ticket-party.ops';
 
@@ -59,17 +51,18 @@ function isUniqueConstraintError(err: unknown): boolean {
   );
 }
 
-export class PrismaLobbyStore implements LobbyPersistenceStore {
+export class PrismaLobbyStore extends LobbyStoreDelegatorBase implements LobbyPersistenceStore {
   private readonly mutex = new KeyedMutex();
   private readonly worldAttempts = new Map<string, { retryCount: number; placementAttempts: number }>();
-  private readonly reservationOps: PrismaReservationOps;
-  private readonly ticketPartyOps: PrismaTicketPartyOps;
+  protected readonly reservationOps: PrismaReservationOps;
+  protected readonly ticketPartyOps: PrismaTicketPartyOps;
 
   private mapWorld(row: Parameters<typeof mapCanonicalWorldRow>[0]): CanonicalWorldRecord {
     return mapCanonicalWorldRow(row, this.worldAttempts.get(row.id));
   }
 
   constructor(private readonly prisma: PrismaClient) {
+    super();
     this.reservationOps = new PrismaReservationOps(this.prisma, this.mutex);
     this.ticketPartyOps = new PrismaTicketPartyOps(
       this.prisma,
@@ -213,16 +206,7 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
     }
     const createdRow = await this.prisma.planetAtlasVersion.create({
       data: {
-        id: `av_${manifest.planetId}_v${manifest.atlasVersion}`,
-        planetId: manifest.planetId,
-        atlasVersion: manifest.atlasVersion,
-        topologyVersion: manifest.topologyVersion,
-        genVersion: manifest.genVersion,
-        configVersion: manifest.configVersion,
-        configHash: manifest.configHash,
-        atlasHash: manifest.atlasHash,
-        resourceProfileId: manifest.resourceProfileId,
-        resourceProfileHash: manifest.resourceProfileHash,
+        ...buildAtlasVersionBaseFields(manifest),
         manifestJson: JSON.parse(JSON.stringify(manifest)) as object,
       },
     });
@@ -268,40 +252,11 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
     input: UpsertSectorWithSlotsInput,
   ): Promise<{ readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }> {
     const norm = normalizeSectorSlotsInput(input);
+    const upsertData = buildPrismaSectorUpsertData(norm, input);
     const secRow = await this.prisma.planetSector.upsert({
       where: { planetId_sectorId: { planetId: norm.planetId, sectorId: norm.sectorId } },
-      create: {
-        id: `psec_${norm.planetId}_${norm.sectorId}`,
-        planetId: norm.planetId,
-        sectorId: norm.sectorId,
-        continentId: norm.continentId,
-        macroQ: norm.macroQ,
-        macroR: norm.macroR,
-        centerQ: norm.centerQ,
-        centerR: norm.centerR,
-        kind: norm.kind,
-        radius: norm.radius,
-        foundingCapacity: norm.foundingCapacity,
-        validatedCapacity: norm.validatedCapacity,
-        ...(input.reservedSeats !== undefined ? { reservedSeats: Math.max(0, input.reservedSeats) } : {}),
-        ...(input.foundedSeats !== undefined ? { foundedSeats: Math.max(0, input.foundedSeats) } : {}),
-        mainResource: norm.mainResource ?? null,
-        ...(norm.scarceResources ? { scarceResources: [...norm.scarceResources] } : {}),
-      },
-      update: {
-        continentId: norm.continentId,
-        macroQ: norm.macroQ,
-        macroR: norm.macroR,
-        centerQ: norm.centerQ,
-        centerR: norm.centerR,
-        kind: norm.kind,
-        radius: norm.radius,
-        foundingCapacity: norm.foundingCapacity,
-        validatedCapacity: norm.validatedCapacity,
-        ...(input.reservedSeats !== undefined ? { reservedSeats: Math.max(0, input.reservedSeats) } : {}),
-        ...(input.foundedSeats !== undefined ? { foundedSeats: Math.max(0, input.foundedSeats) } : {}),
-        mainResource: norm.mainResource ?? null,
-      },
+      create: upsertData.create,
+      update: upsertData.update,
     });
     const outSlots: SectorLandingSlotRecord[] = [];
     for (const s of norm.slots) {
@@ -353,74 +308,5 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
       orderBy: [{ sectorId: 'asc' }, { slotIndex: 'asc' }],
     });
     return rows.map(mapLandingSlotRow);
-  }
-
-  reserveSectorSlot(input: ReserveSectorSlotInput): Promise<ReserveSectorSlotOutcome> {
-    return this.reservationOps.reserveSectorSlot(input);
-  }
-  commitReservation(reservationId: string, expectedEpoch?: number): Promise<SectorReservationRecord> {
-    return this.reservationOps.commitReservation(reservationId, expectedEpoch);
-  }
-  releaseReservation(
-    reservationId: string,
-    reason?: 'RELEASED' | 'EXPIRED',
-    expectedEpoch?: number,
-    options?: { readonly allowCommitted?: boolean },
-  ): Promise<{ readonly released: boolean; readonly reservation: SectorReservationRecord }> {
-    return this.reservationOps.releaseReservation(reservationId, reason, expectedEpoch, options);
-  }
-  expireReservations(now?: Date): Promise<SectorReservationRecord[]> {
-    return this.reservationOps.expireReservations(now);
-  }
-  getReservationById(reservationId: string): Promise<SectorReservationRecord | null> {
-    return this.reservationOps.getReservationById(reservationId);
-  }
-  getReservationByTicketId(ticketId: string): Promise<SectorReservationRecord | null> {
-    return this.reservationOps.getReservationByTicketId(ticketId);
-  }
-  listReservations(planetId: string, sectorId?: SectorId): Promise<SectorReservationRecord[]> {
-    return this.reservationOps.listReservations(planetId, sectorId);
-  }
-  enqueueTicket(input: EnqueueTicketInput): Promise<EnqueueTicketResult> {
-    return this.ticketPartyOps.enqueueTicket(input);
-  }
-  getTicketById(ticketId: string): Promise<MatchTicketRecord | null> {
-    return this.ticketPartyOps.getTicketById(ticketId);
-  }
-  findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null> {
-    return this.ticketPartyOps.findActiveTicketByPlayer(playerId);
-  }
-  listTickets(filter?: {
-    readonly planetId?: string;
-    readonly state?: MatchTicketRecord['state'];
-  }): Promise<MatchTicketRecord[]> {
-    return this.ticketPartyOps.listTickets(filter);
-  }
-  updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
-    return this.ticketPartyOps.updateTicketState(input);
-  }
-  updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {
-    return this.ticketPartyOps.updateTicket(input);
-  }
-  cancelTicket(ticketId: string, playerId: string): Promise<MatchTicketRecord> {
-    return this.ticketPartyOps.cancelTicket(ticketId, playerId);
-  }
-  createParty(input: CreatePartyInput): Promise<PartyV1> {
-    return this.ticketPartyOps.createParty(input);
-  }
-  getPartyById(partyId: string): Promise<PartyV1 | null> {
-    return this.ticketPartyOps.getPartyById(partyId);
-  }
-  getPartyByCode(code: string): Promise<PartyV1 | null> {
-    return this.ticketPartyOps.getPartyByCode(code);
-  }
-  joinParty(input: JoinPartyInput): Promise<PartyV1> {
-    return this.ticketPartyOps.joinParty(input);
-  }
-  leaveParty(input: LeavePartyInput): Promise<PartyV1> {
-    return this.ticketPartyOps.leaveParty(input);
-  }
-  setPartyIntent(input: SetPartyIntentInput): Promise<PartyV1> {
-    return this.ticketPartyOps.setPartyIntent(input);
   }
 }

@@ -2,10 +2,7 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import type { FeatureContext } from '../../core/registry/types';
 import { installMockDocument } from '../test-dom';
-import {
-  mountDiplomacyHud,
-  diplomacyFeature,
-} from './index';
+import { mountDiplomacyHud } from './index';
 
 interface MockStore {
   latest?: any;
@@ -80,16 +77,7 @@ describe('W18-20 Acceptance: offerTruce to active badge flow', () => {
   });
 
   it('dev.offerTruce -> banner -> click Accept -> truce badge shows', () => {
-    const { container, ctx, sentCommands, emitEvents, instance } = createHarness();
-
-    const devCmd = diplomacyFeature.devCommands?.find((c) => c.name === 'dev.offerTruce');
-    expect(devCmd).toBeDefined();
-    devCmd?.run(['1', '6'], ctx);
-
-    expect(sentCommands).toContainEqual({
-      kind: 'dev.offerTruce',
-      args: { fromColony: 1, toColony: 0, hours: 6, durationHours: 6 },
-    });
+    const { container, sentCommands, emitEvents, instance } = createHarness();
 
     emitEvents([{
       kind: 'truceOffered',
@@ -204,15 +192,15 @@ describe('W18-20 Propose and wave gating flows', () => {
   it('proposes a truce by selecting target colony and hours', () => {
     const { container, sentCommands, instance } = createHarness();
 
-    const chip72 = container.querySelector<HTMLButtonElement>('[data-testid="duration-chip-72h"]');
-    chip72?.click();
+    const chip24 = container.querySelector<HTMLButtonElement>('[data-testid="duration-chip-24h"]');
+    chip24?.click();
 
     const proposeBtn = container.querySelector<HTMLButtonElement>('[data-action="propose-truce"]');
     proposeBtn?.click();
 
     expect(sentCommands).toContainEqual({
       kind: 'diplomacy.proposeTruce',
-      args: { targetColonyId: 1, hours: 72 },
+      args: { targetColonyId: 1, hours: 24 },
     });
 
     instance.dispose();

@@ -25,7 +25,7 @@ import type { FeatureHud } from './featureHud';
 import type { GuestBootTarget } from './guestBoot';
 import type { OnlineMode } from './onlineMode';
 import { createSessionBootRig } from './parts/sessionBoot';
-import { applySessionSpacePhase, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
+import { applySessionSpacePhase, resolveSeatIndexFromSearch, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
 import { PauseOverlay } from './PauseOverlay';
 import { createUnitControl } from './unitControl';
 import type { PodLandingStateName } from './PodTouchdownFx';
@@ -274,22 +274,14 @@ export class OnlineSession {
     this.bootOverlay?.hideQueueStatus();
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
     if (!this.skipDescent) {
-      if (boot.wasQueued) {
-        this.bootOverlay?.showDescent({ progress: 0, q: this.spawn.q, r: this.spawn.r, landed: false });
-      } else {
-        this.bootOverlay?.setSplashStatus('Deploying drop pod…');
-      }
+      if (boot.wasQueued) this.bootOverlay?.showDescent({ progress: 0, q: this.spawn.q, r: this.spawn.r, landed: false });
+      else this.bootOverlay?.setSplashStatus('Deploying drop pod…');
     }
   }
 
-  /**
-   * An in-process host takes the commands and feeds the store (FA-07: the `LocalHostCore` of `?host=local`, its colony
-   * is 0). `autoStep`: it steps on its own scheduler (5 TPS, dev warp). `offline`: a fallback for a missing server:
-   * badge on, connection banner (and its Retry) gone (FA-06).
-   */
+  /** In-process host (`?host=local` or offline fallback): routes commands, binds store, and hides banner when offline. */
   private attachLocalHost(lh: LocalHost, autoStep: boolean, offline: boolean): void {
     this.localHost = lh;
-    // Route commands to the local host before bindStore: its first view may send `landPod` synchronously.
     this.cleanups.push(lh.onMessage((m) => { this.commandBus.handleMessage(m); this.onHostMessage(m); }));
     const origSend = this.transport.send.bind(this.transport);
     this.transport.send = (m) => (this.localHost ? this.localHost.send(m) : origSend(m));
@@ -305,11 +297,7 @@ export class OnlineSession {
     if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
     const onKey = (e: KeyboardEvent) => {
       if (this.entities.podTouchdown.isSpacePhaseActive() || isTypingTarget(e)) return;
-      if ((e.key === 'Escape' || e.key === ' ') && this.landingSkippable()) {
-        e.preventDefault();
-        this.skipLanding();
-        return;
-      }
+      if ((e.key === 'Escape' || e.key === ' ') && this.landingSkippable()) { e.preventDefault(); this.skipLanding(); return; }
       if (e.key === 'Escape' && !isEscapeBlockedByHudOverlay()) this.setPaused(!this.pauseOverlay.paused);
     };
     window.addEventListener('keydown', onKey);
@@ -324,9 +312,8 @@ export class OnlineSession {
 
   private onView(v: ClientView): void {
     if (!this.guest && this.colonyIndex === 0) {
-      const asParam = new URLSearchParams(this.search).get('as')?.trim().toLowerCase() ?? '';
-      const asIdx = /^[a-e]$/.test(asParam) ? asParam.charCodeAt(0) - 97 : 0;
-      if (asIdx > 0 && Array.isArray(v.colonies) && v.colonies.some((c) => c && c.index === asIdx)) {
+      const asIdx = resolveSeatIndexFromSearch(this.search, v);
+      if (asIdx !== null) {
         this.colonyIndex = asIdx;
         this.entities.setOwnerColonyIndex(asIdx);
         this.landfall.setOwnerColonyIndex(asIdx);

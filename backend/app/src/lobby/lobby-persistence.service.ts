@@ -15,7 +15,6 @@ import {
   type BuildCanonicalAtlasManifestOptions,
 } from './atlas-manifest.helper';
 import {
-  LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
   type CreatePartyInput,
   type EnqueueTicketInput,
@@ -42,6 +41,11 @@ import {
 } from './lobby-persistence.types';
 import { KeyedMutex } from './lobby-store.helpers';
 import { MemoryLobbyStore } from './memory-lobby.store';
+import {
+  reserveSectorSlotOrThrowInStore,
+  updateSectorCountersInStore,
+  upsertSectorsBatchInStore,
+} from './parts/lobby-persistence-parts';
 import { PrismaLobbyStore } from './prisma-lobby.store';
 
 export const LOBBY_STORE = Symbol('LOBBY_STORE');
@@ -137,15 +141,7 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     planetIdOrSectors: string | readonly UpsertSectorWithSlotsInput[],
     sectors?: readonly (Omit<UpsertSectorWithSlotsInput, 'planetId'> & { readonly planetId?: string })[],
   ): Promise<readonly { readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }[]> {
-    const items: UpsertSectorWithSlotsInput[] =
-      typeof planetIdOrSectors === 'string'
-        ? (sectors ?? []).map((s) => ({ ...s, planetId: s.planetId ?? planetIdOrSectors }))
-        : [...planetIdOrSectors];
-    const out: { readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }[] = [];
-    for (const item of items) {
-      out.push(await this.store.upsertSectorWithSlots(item));
-    }
-    return out;
+    return upsertSectorsBatchInStore(this.store, planetIdOrSectors, sectors);
   }
 
   getSector(planetId: string, sectorId: SectorId): Promise<PlanetSectorRecord | null> {
@@ -153,41 +149,7 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
   }
 
   async updateSectorCounters(input: UpdateSectorCountersInput): Promise<PlanetSectorRecord> {
-    const existing = await this.store.getSector(input.planetId, input.sectorId);
-    if (!existing) {
-      throw new LobbyPersistenceConflictError(
-        'sector_not_found',
-        `sector "${input.sectorId}" on "${input.planetId}" not found`,
-        { planetId: input.planetId, sectorId: input.sectorId },
-      );
-    }
-    const existingSlots = await this.store.listLandingSlots(input.planetId, input.sectorId);
-    const out = await this.store.upsertSectorWithSlots({
-      planetId: existing.planetId,
-      sectorId: existing.sectorId,
-      continentId: existing.continentId,
-      macroQ: existing.macroQ,
-      macroR: existing.macroR,
-      centerQ: existing.centerQ,
-      centerR: existing.centerR,
-      kind: existing.kind,
-      radius: existing.radius,
-      foundingCapacity: existing.foundingCapacity,
-      validatedCapacity: existing.validatedCapacity,
-      reservedSeats:
-        input.reservedSeats !== undefined ? input.reservedSeats : existing.reservedSeats,
-      foundedSeats:
-        input.foundedSeats !== undefined ? input.foundedSeats : existing.foundedSeats,
-      mainResource: existing.mainResource,
-      scarceResources: existing.scarceResources,
-      slots: existingSlots.map((s) => ({
-        slotId: s.landingSlotId,
-        slotIndex: s.slotIndex,
-        q: s.q,
-        r: s.r,
-      })),
-    });
-    return out.sector;
+    return updateSectorCountersInStore(this.store, input);
   }
 
   listSectors(planetId: string): Promise<PlanetSectorRecord[]> {
@@ -212,22 +174,7 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     readonly slot: SectorLandingSlotRecord;
     readonly sector: PlanetSectorRecord;
   }> {
-    const out = await this.store.reserveSectorSlot(input);
-    if (!out.ok) {
-      const code = out.reason === 'slot_taken' ? 'slot_already_reserved' : 'sector_capacity_exceeded';
-      throw new LobbyPersistenceConflictError(code, out.message, {
-        planetId: input.planetId,
-        sectorId: input.sectorId,
-        landingSlotId: input.landingSlotId,
-        reason: out.reason,
-      });
-    }
-    return {
-      idempotent: out.idempotent,
-      reservation: out.reservation,
-      slot: out.slot,
-      sector: out.sector,
-    };
+    return reserveSectorSlotOrThrowInStore(this.store, input);
   }
 
   commitReservation(reservationId: string, expectedEpoch?: number): Promise<SectorReservationRecord> {

@@ -14,6 +14,15 @@ import {
   DEFAULT_RESERVATION_TTL_MS,
   type KeyedMutex,
 } from './lobby-store.helpers';
+import {
+  assertCanCommitReservationState,
+  assertCanReleaseReservationState,
+  assertFencedEpochMatches,
+  checkSectorCapacityForReservation,
+  checkWorldAdmissionForReservation,
+  isActiveReservationState,
+  matchesIdempotentReservationInput,
+} from './parts/reservation-ops-parts';
 
 export class MemoryReservationOps {
   constructor(
@@ -30,59 +39,33 @@ export class MemoryReservationOps {
       const existingRes = this.findExistingReservationForInput(input);
       if (existingRes) return existingRes;
 
-      const world = this.worldsById.get(input.planetId);
-      if (world && (world.admission !== 'OPEN' || world.lifecycle !== 'ACTIVE' || world.health !== 'OK')) {
-        return {
-          ok: false,
-          reason: 'admission_closed',
-          message: `planet ${input.planetId} is not open for admission`,
-        };
-      }
+      const admissionCheck = checkWorldAdmissionForReservation(
+        input.planetId,
+        this.worldsById.get(input.planetId),
+      );
+      if (admissionCheck) return admissionCheck;
 
       const secKey = `${input.planetId}:${input.sectorId}`;
       const sector = this.sectors.get(secKey);
-      if (!sector) {
-        throw new LobbyPersistenceConflictError(
-          'sector_not_found',
-          `sector ${input.sectorId} on ${input.planetId} not found`,
-          { planetId: input.planetId, sectorId: input.sectorId },
-        );
-      }
-      if (sector.kind === 'ocean') {
-        return { ok: false, reason: 'ocean_sector', message: `ocean sector ${input.sectorId} has zero founding seats` };
-      }
-      const effectiveCap = Math.min(sector.foundingCapacity, sector.validatedCapacity);
-      if (sector.reservedSeats + sector.foundedSeats >= effectiveCap) {
-        return {
-          ok: false,
-          reason: 'sector_full',
-          message: `sector ${input.sectorId} is at capacity (${sector.reservedSeats + sector.foundedSeats}/${effectiveCap})`,
-        };
-      }
+      const capacityCheck = checkSectorCapacityForReservation(input.planetId, input.sectorId, sector);
+      if (capacityCheck) return capacityCheck;
 
       const targetSlot = this.pickSlotForReservation(input.planetId, input.sectorId, input.landingSlotId);
       if (!targetSlot.ok) return targetSlot;
 
-      return this.applySlotReservation(input, sector, targetSlot.slot);
+      return this.applySlotReservation(input, sector!, targetSlot.slot);
     });
   }
 
   private findExistingReservationForInput(input: ReserveSectorSlotInput): ReserveSectorSlotOutcome | null {
     for (const r of [...this.reservationsById.values()]) {
-      const isActive = r.state === 'HELD' || r.state === 'COMMITTED' || (r.state as string) === 'SPAWNING';
+      const isActive = isActiveReservationState(r.state);
       if (r.ticketId === input.ticketId || r.colonyId === input.colonyId) {
         if (!isActive) {
           this.reservationsById.delete(r.reservationId);
           continue;
         }
-        if (
-          r.ticketId === input.ticketId &&
-          r.colonyId === input.colonyId &&
-          r.playerId === input.playerId &&
-          r.planetId === input.planetId &&
-          r.sectorId === input.sectorId &&
-          (!input.landingSlotId || r.landingSlotId === input.landingSlotId)
-        ) {
+        if (matchesIdempotentReservationInput(r, input)) {
           const slot = this.landingSlots.get(`${r.planetId}:${r.landingSlotId}`)!;
           const sector = this.sectors.get(`${r.planetId}:${r.sectorId}`)!;
           return { ok: true, idempotent: true, reservation: r, slot, sector };
@@ -219,19 +202,9 @@ export class MemoryReservationOps {
     }
     return this.mutex.run(`planet:${res.planetId}`, async () => {
       const current = this.reservationsById.get(reservationId)!;
-      if (expectedEpoch !== undefined && current.epoch !== expectedEpoch) {
-        throw new LobbyPersistenceConflictError(
-          'reservation_fenced',
-          `reservation "${reservationId}" epoch mismatch (${current.epoch} !== ${expectedEpoch})`,
-        );
-      }
+      assertFencedEpochMatches(reservationId, current.epoch, expectedEpoch);
       if (current.state === 'COMMITTED') return current;
-      if (current.state !== 'HELD' && (current.state as string) !== 'SPAWNING') {
-        throw new LobbyPersistenceConflictError(
-          'reservation_fenced',
-          `cannot commit reservation "${reservationId}" in state ${current.state}`,
-        );
-      }
+      assertCanCommitReservationState(reservationId, current.state);
       const now = new Date();
       const committed: SectorReservationRecord = { ...current, state: 'COMMITTED', updatedAt: now };
       this.reservationsById.set(reservationId, committed);
@@ -286,22 +259,15 @@ export class MemoryReservationOps {
     }
     return this.mutex.run(`planet:${res.planetId}`, async () => {
       const current = this.reservationsById.get(reservationId)!;
-      if (expectedEpoch !== undefined && current.epoch !== expectedEpoch) {
-        throw new LobbyPersistenceConflictError(
-          'reservation_fenced',
-          `reservation "${reservationId}" epoch mismatch (${current.epoch} !== ${expectedEpoch})`,
-        );
-      }
+      assertFencedEpochMatches(reservationId, current.epoch, expectedEpoch);
       if (current.state === 'RELEASED' || current.state === 'EXPIRED') {
         return { released: false, reservation: current };
       }
-      const wasCommitted = current.state === 'COMMITTED';
-      if (wasCommitted && !options?.allowCommitted) {
-        throw new LobbyPersistenceConflictError(
-          'reservation_fenced',
-          `cannot release committed reservation "${reservationId}": founded seats remain held`,
-        );
-      }
+      const wasCommitted = assertCanReleaseReservationState(
+        reservationId,
+        current.state,
+        options?.allowCommitted,
+      );
       const now = new Date();
       const nextRes: SectorReservationRecord = { ...current, state: reason, updatedAt: now };
       this.reservationsById.set(reservationId, nextRes);

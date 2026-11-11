@@ -51,6 +51,41 @@ if (uBuildStage < 0.999) {
   if (vLocalPos.y > cutFrac * uBuildHeight) discard;
 }`;
 
+function createUnifiedDepthMaterial(
+  uniforms: UnifiedColonyMaterialUniforms,
+  activePlugins: ShaderModifierPlugin[],
+  vertPluginChunk: string,
+  hasScaffold: boolean,
+  joinPlugins: (pick: (p: ShaderModifierPlugin) => string | undefined) => string,
+): THREE.MeshDepthMaterial {
+  const depthMaterial = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking,
+  });
+  depthMaterial.customProgramCacheKey = () => `unified-depth:${activePlugins.map((p) => p.name).join(',')}`;
+  depthMaterial.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = injectAll(
+      shader.vertexShader,
+      [
+        ['#include <common>', VERT_COMMON + joinPlugins((p) => p.vertexDeclarations)],
+        ['#include <begin_vertex>', vertBeginVertex(vertPluginChunk)],
+      ],
+      'unified colony depth vertex',
+    );
+    if (hasScaffold) {
+      shader.fragmentShader = injectAll(
+        shader.fragmentShader,
+        [
+          ['#include <common>', DEPTH_SCAFFOLD_DECL],
+          ['#include <clipping_planes_fragment>', DEPTH_SCAFFOLD_CLIP],
+        ],
+        'unified colony depth fragment',
+      );
+    }
+  };
+  return depthMaterial;
+}
+
 /**
  * Creates the Unified Colony PBR Material that harmonizes both procedural
  * kitbashed geometries and external AI-generated .glb models, plus a matching
@@ -58,26 +93,15 @@ if (uBuildStage < 0.999) {
  * cast accurate dynamic shadows at zero CPU cost.
  */
 export function createUnifiedColonyMaterial(
-  options: UnifiedColonyMaterialOptions = {}
-): {
-  material: THREE.MeshStandardMaterial;
-  depthMaterial: THREE.MeshDepthMaterial;
-  uniforms: UnifiedColonyMaterialUniforms;
-} {
+  options: UnifiedColonyMaterialOptions = {},
+): { material: THREE.MeshStandardMaterial; depthMaterial: THREE.MeshDepthMaterial; uniforms: UnifiedColonyMaterialUniforms } {
   const biome = BiomeMaterialRegistry.getBiome(options.biome ?? 'desert');
   const baseWeathering = biome.weatheringIntensity;
-
   const uniforms: UnifiedColonyMaterialUniforms = {
-    uShadowNormalBias: { value: options.shadowNormalBias ?? 0 },
-    uTime: { value: 0 },
-    uWalkWeight: { value: 1.0 },
-    uWorkWeight: { value: 0.0 },
-    uBiomeDustColor: { value: new THREE.Color(biome.dustColor) },
-    uRimTint: { value: new THREE.Color(biome.rimTint) },
-    uWeatheringHeight: { value: biome.weatheringHeight },
-    uWeatheringIntensity: { value: baseWeathering },
-    uTriplanarScale: { value: options.triplanarScale ?? 2.0 },
-    uRimStrength: { value: options.rimStrength ?? 0.28 },
+    uShadowNormalBias: { value: options.shadowNormalBias ?? 0 }, uTime: { value: 0 }, uWalkWeight: { value: 1.0 }, uWorkWeight: { value: 0.0 },
+    uBiomeDustColor: { value: new THREE.Color(biome.dustColor) }, uRimTint: { value: new THREE.Color(biome.rimTint) },
+    uWeatheringHeight: { value: biome.weatheringHeight }, uWeatheringIntensity: { value: baseWeathering },
+    uTriplanarScale: { value: options.triplanarScale ?? 2.0 }, uRimStrength: { value: options.rimStrength ?? 0.28 },
   };
 
   const pluginNames = [...new Set([...(options.plugins ?? []), ...(options.ruin !== undefined ? [RUIN_VARIANT] : [])])];
@@ -127,24 +151,7 @@ export function createUnifiedColonyMaterial(
   };
 
   material.customProgramCacheKey = () => `unified:${activePlugins.map(p => p.name).join(',')}`;
-
-  const depthMaterial = new THREE.MeshDepthMaterial({
-    depthPacking: THREE.RGBADepthPacking,
-  });
-  depthMaterial.customProgramCacheKey = () => `unified-depth:${activePlugins.map(p => p.name).join(',')}`;
-  depthMaterial.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = injectAll(shader.vertexShader, [
-      ['#include <common>', VERT_COMMON + joinPlugins((p) => p.vertexDeclarations)],
-      ['#include <begin_vertex>', vertBeginVertex(vertPluginChunk)],
-    ], 'unified colony depth vertex');
-    if (hasScaffold) {
-      shader.fragmentShader = injectAll(shader.fragmentShader, [
-        ['#include <common>', DEPTH_SCAFFOLD_DECL],
-        ['#include <clipping_planes_fragment>', DEPTH_SCAFFOLD_CLIP],
-      ], 'unified colony depth fragment');
-    }
-  };
+  const depthMaterial = createUnifiedDepthMaterial(uniforms, activePlugins, vertPluginChunk, hasScaffold, joinPlugins);
 
   const origDispose = material.dispose.bind(material);
   material.dispose = () => {

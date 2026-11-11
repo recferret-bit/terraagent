@@ -8,6 +8,15 @@ import {
   type SectorReservationRecord,
 } from './lobby-persistence.types';
 import { DEFAULT_RESERVATION_TTL_MS, type KeyedMutex } from './lobby-store.helpers';
+import {
+  assertCanCommitReservationState,
+  assertCanReleaseReservationState,
+  assertFencedEpochMatches,
+  checkSectorCapacityForReservation,
+  checkWorldAdmissionForReservation,
+  isActiveReservationState,
+  matchesIdempotentReservationInput,
+} from './parts/reservation-ops-parts';
 import { mapLandingSlotRow, mapReservationRow, mapSectorRow } from './prisma-lobby-mappers';
 
 export class PrismaReservationOps {
@@ -23,34 +32,14 @@ export class PrismaReservationOps {
         if (existingRes) return existingRes;
 
         const planet = await tx.planet.findUnique({ where: { id: input.planetId } });
-        if (planet && (planet.admission !== 'OPEN' || planet.lifecycle !== 'ACTIVE' || planet.health !== 'OK')) {
-          return {
-            ok: false,
-            reason: 'admission_closed',
-            message: `planet ${input.planetId} is not open for admission`,
-          };
-        }
+        const admissionCheck = checkWorldAdmissionForReservation(input.planetId, planet);
+        if (admissionCheck) return admissionCheck;
 
         const sectorRow = await tx.planetSector.findUnique({
           where: { planetId_sectorId: { planetId: input.planetId, sectorId: input.sectorId } },
         });
-        if (!sectorRow) {
-          throw new LobbyPersistenceConflictError(
-            'sector_not_found',
-            `sector ${input.sectorId} on ${input.planetId} not found`,
-          );
-        }
-        if (sectorRow.kind === 'ocean') {
-          return { ok: false, reason: 'ocean_sector', message: `ocean sector ${input.sectorId} has zero founding seats` };
-        }
-        const effectiveCap = Math.min(sectorRow.foundingCapacity, sectorRow.validatedCapacity);
-        if (sectorRow.reservedSeats + sectorRow.foundedSeats >= effectiveCap) {
-          return {
-            ok: false,
-            reason: 'sector_full',
-            message: `sector ${input.sectorId} is at capacity (${sectorRow.reservedSeats + sectorRow.foundedSeats}/${effectiveCap})`,
-          };
-        }
+        const capacityCheck = checkSectorCapacityForReservation(input.planetId, input.sectorId, sectorRow);
+        if (capacityCheck) return capacityCheck;
 
         const slotPick = await this.pickSlotTx(tx, input.planetId, input.sectorId, input.landingSlotId);
         if (!slotPick.ok) return slotPick;
@@ -74,20 +63,13 @@ export class PrismaReservationOps {
       },
     });
     for (const r of conflicts) {
-      const isActive = r.state === 'HELD' || r.state === 'COMMITTED' || r.state === 'SPAWNING';
+      const isActive = isActiveReservationState(r.state);
       if (r.ticketId === input.ticketId || r.colonyId === input.colonyId) {
         if (!isActive) {
           await tx.sectorReservation.delete({ where: { id: r.id } });
           continue;
         }
-        if (
-          r.ticketId === input.ticketId &&
-          r.colonyId === input.colonyId &&
-          r.playerId === input.playerId &&
-          r.planetId === input.planetId &&
-          r.sectorId === input.sectorId &&
-          (!input.landingSlotId || r.landingSlotId === input.landingSlotId)
-        ) {
+        if (matchesIdempotentReservationInput(r, input)) {
           const slot = await tx.sectorLandingSlot.findUniqueOrThrow({
             where: { planetId_landingSlotId: { planetId: r.planetId, landingSlotId: r.landingSlotId } },
           });
@@ -224,12 +206,7 @@ export class PrismaReservationOps {
     return this.mutex.run(`planet:${res.planetId}`, () =>
       this.prisma.$transaction(async (tx) => {
         const current = await tx.sectorReservation.findUniqueOrThrow({ where: { id: reservationId } });
-        if (expectedEpoch !== undefined && current.epoch !== expectedEpoch) {
-          throw new LobbyPersistenceConflictError(
-            'reservation_fenced',
-            `reservation "${reservationId}" epoch mismatch (${current.epoch} !== ${expectedEpoch})`,
-          );
-        }
+        assertFencedEpochMatches(reservationId, current.epoch, expectedEpoch);
         return fn(tx, current);
       }),
     );
@@ -238,12 +215,7 @@ export class PrismaReservationOps {
   async commitReservation(reservationId: string, expectedEpoch?: number): Promise<SectorReservationRecord> {
     return this.runWithFencedReservation(reservationId, expectedEpoch, async (tx, current) => {
       if (current.state === 'COMMITTED') return mapReservationRow(current);
-      if (current.state !== 'HELD' && current.state !== 'SPAWNING') {
-        throw new LobbyPersistenceConflictError(
-          'reservation_fenced',
-          `cannot commit reservation "${reservationId}" in state ${current.state}`,
-        );
-      }
+      assertCanCommitReservationState(reservationId, current.state);
       const committed = await tx.sectorReservation.update({
         where: { id: reservationId },
         data: { state: 'COMMITTED' },
@@ -274,13 +246,11 @@ export class PrismaReservationOps {
       if (current.state === 'RELEASED' || current.state === 'EXPIRED') {
         return { released: false, reservation: mapReservationRow(current) };
       }
-      const wasCommitted = current.state === 'COMMITTED';
-      if (wasCommitted && !options?.allowCommitted) {
-        throw new LobbyPersistenceConflictError(
-          'reservation_fenced',
-          `cannot release committed reservation "${reservationId}": founded seats remain held`,
-        );
-      }
+      const wasCommitted = assertCanReleaseReservationState(
+        reservationId,
+        current.state,
+        options?.allowCommitted,
+      );
       const updated = await tx.sectorReservation.update({
         where: { id: reservationId },
         data: { state: reason },

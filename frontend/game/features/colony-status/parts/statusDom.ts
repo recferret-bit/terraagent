@@ -9,11 +9,10 @@ export interface ColonyStatusDomElements {
   readonly foundNewColonyBtn: HTMLButtonElement;
 }
 
-export function createColonyStatusDom(
+function createCriticalBannerDom(
   hostEl: HTMLElement,
   onPlaceHub: () => void,
-  onFoundNewColony: () => void,
-): ColonyStatusDomElements {
+): { bannerEl: HTMLElement; titleEl: HTMLElement; placeHubBtn: HTMLButtonElement } {
   const bannerEl = document.createElement('div');
   bannerEl.className = 'ta-colony-critical-banner';
   bannerEl.dataset.testid = 'colony-critical-banner';
@@ -42,18 +41,20 @@ export function createColonyStatusDom(
   placeHubBtn.textContent = 'Place Hub';
   placeHubBtn.addEventListener('click', onPlaceHub);
 
-  bannerEl.appendChild(bannerHeader);
-  bannerEl.appendChild(placeHubBtn);
+  bannerEl.append(bannerHeader, placeHubBtn);
   hostEl.appendChild(bannerEl);
+  return { bannerEl, titleEl, placeHubBtn };
+}
 
-  const hqReprintEl = document.createElement('div');
-  hqReprintEl.className = 'ta-hq-reprint-status plate-sm';
-  hqReprintEl.dataset.testid = 'hq-reprint-status';
-  hqReprintEl.textContent = 'HQ REPRINTING AT HUB';
-  hqReprintEl.hidden = true;
-  hqReprintEl.setAttribute('hidden', '');
-  hostEl.appendChild(hqReprintEl);
-
+function createEliminatedModalDom(
+  hostEl: HTMLElement,
+  onFoundNewColony: () => void,
+): {
+  eliminatedEl: HTMLElement;
+  eliminatedTitleEl: HTMLElement;
+  eliminatedDetailEl: HTMLElement;
+  foundNewColonyBtn: HTMLButtonElement;
+} {
   const eliminatedEl = document.createElement('div');
   eliminatedEl.className = 'ta-colony-eliminated-screen';
   eliminatedEl.dataset.testid = 'colony-eliminated-screen';
@@ -67,19 +68,16 @@ export function createColonyStatusDom(
   const elimIcon = document.createElement('div');
   elimIcon.className = 'ta-colony-eliminated__icon';
   elimIcon.textContent = '☠';
-  card.appendChild(elimIcon);
 
   const eliminatedTitleEl = document.createElement('h1');
   eliminatedTitleEl.className = 'ta-colony-eliminated__title';
   eliminatedTitleEl.dataset.testid = 'colony-eliminated-title';
   eliminatedTitleEl.textContent = 'COLONY ELIMINATED';
-  card.appendChild(eliminatedTitleEl);
 
   const eliminatedDetailEl = document.createElement('p');
   eliminatedDetailEl.className = 'ta-colony-eliminated__detail';
   eliminatedDetailEl.dataset.testid = 'colony-eliminated-detail';
   eliminatedDetailEl.textContent = 'Hub lost — critical timer expired';
-  card.appendChild(eliminatedDetailEl);
 
   const foundNewColonyBtn = document.createElement('button');
   foundNewColonyBtn.type = 'button';
@@ -88,19 +86,35 @@ export function createColonyStatusDom(
   foundNewColonyBtn.dataset.action = 'found-new-colony';
   foundNewColonyBtn.textContent = 'Found New Colony';
   foundNewColonyBtn.addEventListener('click', onFoundNewColony);
-  card.appendChild(foundNewColonyBtn);
 
+  card.append(elimIcon, eliminatedTitleEl, eliminatedDetailEl, foundNewColonyBtn);
   eliminatedEl.appendChild(card);
   hostEl.appendChild(eliminatedEl);
+  return { eliminatedEl, eliminatedTitleEl, eliminatedDetailEl, foundNewColonyBtn };
+}
+
+export function createColonyStatusDom(
+  hostEl: HTMLElement,
+  onPlaceHub: () => void,
+  onFoundNewColony: () => void,
+): ColonyStatusDomElements {
+  const { bannerEl, titleEl, placeHubBtn } = createCriticalBannerDom(hostEl, onPlaceHub);
+
+  const hqReprintEl = document.createElement('div');
+  hqReprintEl.className = 'ta-hq-reprint-status plate-sm';
+  hqReprintEl.dataset.testid = 'hq-reprint-status';
+  hqReprintEl.textContent = 'HQ REPRINTING AT HUB';
+  hqReprintEl.hidden = true;
+  hqReprintEl.setAttribute('hidden', '');
+  hostEl.appendChild(hqReprintEl);
+
+  const elim = createEliminatedModalDom(hostEl, onFoundNewColony);
 
   return {
     bannerEl,
     titleEl,
     placeHubBtn,
     hqReprintEl,
-    eliminatedEl,
-    eliminatedTitleEl,
-    eliminatedDetailEl,
-    foundNewColonyBtn,
+    ...elim,
   };
 }

@@ -86,13 +86,8 @@ export class PlaygroundApp {
       onClose: () => { if (this.state.lights) this.toggle('lights'); },
     });
     this.faunaPanel = new FaunaScenePanel(this.state, () => this.faunaHost.getStats(), {
-      onScene: (scene) => this.setFaunaScene(scene),
-      onMode: (mode) => this.setFaunaMode(mode),
-      onSeed: (seed) => this.setFaunaSeed(seed),
-      onPauseToggle: () => this.pauseFauna(),
-      onStep: (ticks) => this.stepFauna(ticks),
-      onReset: () => this.resetFauna(),
-      onAcidPreview: () => this.triggerAcidPreview(),
+      onScene: (scene) => this.setFaunaScene(scene), onMode: (mode) => this.setFaunaMode(mode), onSeed: (seed) => this.setFaunaSeed(seed),
+      onPauseToggle: () => this.pauseFauna(), onStep: (ticks) => this.stepFauna(ticks), onReset: () => this.resetFauna(), onAcidPreview: () => this.triggerAcidPreview(),
     });
     this.marchPanel = new MarchPanel(this.state, () => this.marchHost.getStats(), {
       onPace: (pace) => this.setMarch(pace),
@@ -156,35 +151,16 @@ export class PlaygroundApp {
       setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), contactSheet: () => this.contactSheet(),
       viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s), setRuin: (on: boolean) => { if (this.state.ruin !== on) this.toggle('ruin'); },
       setWorkTarget: (t: InteractionTargetKind, enableWork = true) => this.setWorkTarget(t, enableWork),
-      validateParticles: (targetOrId: string = this.state.workTarget) => {
-        const preset = ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind);
-        return validateParticlePreset(preset);
-      },
-      setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s),
-      setTileState: (ts: TileStatePreset) => this.setTileState(ts),
-      getTileState: () => this.state.tileState,
-      hexTerrain: () => this.hexSample.hexTerrain,
-      getLights: (id = this.state.id) => getArchetypeLights(id),
-      addLight: (patch?: Partial<ArchetypeLightSource>, id = this.state.id) => addArchetypeLight(id, patch),
-      removeLight: (idx: number | string, id = this.state.id) => removeArchetypeLight(id, idx),
-      updateLight: (idx: number, patch: Partial<ArchetypeLightSource>, id = this.state.id) => updateArchetypeLight(id, idx, patch),
-      resetLights: (id = this.state.id) => resetArchetypeLights(id),
-      exportLightsCode: (id = this.state.id) => exportArchetypeLightsCode(id),
-      faunaHost: this.faunaHost,
-      setFaunaScene: (scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) => this.setFaunaScene(scene, opts),
-      setFaunaMode: (mode: FaunaMode) => this.setFaunaMode(mode),
-      setFaunaSeed: (seed: number) => this.setFaunaSeed(seed),
-      pauseFauna: (paused?: boolean) => this.pauseFauna(paused),
-      stepFauna: (ticks = 1) => this.stepFauna(ticks),
-      resetFauna: (seed?: number) => this.resetFauna(seed),
-      triggerAcidPreview: () => this.triggerAcidPreview(),
-      getFaunaStats: () => this.faunaHost.getStats(),
-      setMarch: (pace: MarchPace | null) => this.setMarch(pace),
-      setMarchRock: (rock: boolean) => this.setMarchRock(rock),
-      orderMarch: () => this.marchHost.order(),
-      stepMarch: (ticks = 1) => { this.marchHost.stepTicks(ticks); this.marchPanel.renderStats(); return this.marchHost.getStats(); },
-      resetMarch: () => this.resetMarch(),
-      getMarchStats: () => this.marchHost.getStats(),
+      validateParticles: (targetOrId: string = this.state.workTarget) => validateParticlePreset(ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind)),
+      setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s), setTileState: (ts: TileStatePreset) => this.setTileState(ts), getTileState: () => this.state.tileState, hexTerrain: () => this.hexSample.hexTerrain,
+      getLights: (id = this.state.id) => getArchetypeLights(id), addLight: (patch?: Partial<ArchetypeLightSource>, id = this.state.id) => addArchetypeLight(id, patch),
+      removeLight: (idx: number | string, id = this.state.id) => removeArchetypeLight(id, idx), updateLight: (idx: number, patch: Partial<ArchetypeLightSource>, id = this.state.id) => updateArchetypeLight(id, idx, patch),
+      resetLights: (id = this.state.id) => resetArchetypeLights(id), exportLightsCode: (id = this.state.id) => exportArchetypeLightsCode(id),
+      faunaHost: this.faunaHost, setFaunaScene: (scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) => this.setFaunaScene(scene, opts),
+      setFaunaMode: (mode: FaunaMode) => this.setFaunaMode(mode), setFaunaSeed: (seed: number) => this.setFaunaSeed(seed), pauseFauna: (paused?: boolean) => this.pauseFauna(paused),
+      stepFauna: (ticks = 1) => this.stepFauna(ticks), resetFauna: (seed?: number) => this.resetFauna(seed), triggerAcidPreview: () => this.triggerAcidPreview(), getFaunaStats: () => this.faunaHost.getStats(),
+      setMarch: (pace: MarchPace | null) => this.setMarch(pace), setMarchRock: (rock: boolean) => this.setMarchRock(rock), orderMarch: () => this.marchHost.order(),
+      stepMarch: (ticks = 1) => { this.marchHost.stepTicks(ticks); this.marchPanel.renderStats(); return this.marchHost.getStats(); }, resetMarch: () => this.resetMarch(), getMarchStats: () => this.marchHost.getStats(),
     };
   }
 
@@ -213,23 +189,14 @@ export class PlaygroundApp {
     this.spawns.content.visible = !active && !state.march;
     if (active) this.spawns.ring.visible = false;
     else this.spawns.updateRing(state.id, state.row);
-    this.faunaHost.setScene(state.faunaScene, {
-      mode: state.faunaMode,
-      seed: state.faunaSeed,
-      biomeKey: PLANET_SPECS[state.kind].biomeKey,
-      wire: state.wire,
-    });
+    this.faunaHost.setScene(state.faunaScene, { mode: state.faunaMode, seed: state.faunaSeed, biomeKey: PLANET_SPECS[state.kind].biomeKey, wire: state.wire });
     this.syncSurface();
     this.faunaPanel?.render();
     this.refreshInfo();
   }
 
   private setFaunaScene(scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) {
-    if (scene && this.state.march) {
-      this.state.march = null;
-      this.marchHost.setActive(false);
-      this.marchPanel.render();
-    }
+    if (scene && this.state.march) { this.state.march = null; this.marchHost.setActive(false); this.marchPanel.render(); }
     this.state.faunaScene = scene;
     if (opts?.mode) this.state.faunaMode = opts.mode;
     else if (scene && this.state.faunaMode !== 'robots') this.state.faunaMode = 'bugs';
@@ -256,8 +223,7 @@ export class PlaygroundApp {
 
   private setMarch(pace: MarchPace | null) {
     this.state.march = pace;
-    if (pace) this.state.faunaScene = null;
-    if (pace) this.syncFaunaStage();
+    if (pace) { this.state.faunaScene = null; this.syncFaunaStage(); }
     this.syncMarch();
     this.setView(this.state.view);
     syncURL(this.state);
@@ -272,11 +238,7 @@ export class PlaygroundApp {
     return this.marchHost.getStats();
   }
 
-  private resetMarch() {
-    this.marchHost.reset();
-    this.marchPanel.render();
-    return this.marchHost.getStats();
-  }
+  private resetMarch() { this.marchHost.reset(); this.marchPanel.render(); return this.marchHost.getStats(); }
 
   private setFaunaMode(mode: FaunaMode) {
     this.state.faunaMode = mode;
@@ -304,11 +266,7 @@ export class PlaygroundApp {
     return this.faunaHost.getStats();
   }
 
-  private stepFauna(ticks = 1) {
-    this.faunaHost.stepTick(ticks);
-    this.faunaPanel?.render();
-    return this.faunaHost.getStats();
-  }
+  private stepFauna(ticks = 1) { this.faunaHost.stepTick(ticks); this.faunaPanel?.render(); return this.faunaHost.getStats(); }
 
   private resetFauna(seed?: number) {
     if (seed !== undefined && Number.isFinite(seed)) this.state.faunaSeed = Math.trunc(seed);
@@ -318,32 +276,20 @@ export class PlaygroundApp {
     return this.faunaHost.getStats();
   }
 
-  private triggerAcidPreview() {
-    this.faunaHost.triggerAcidPreview();
-    this.faunaPanel?.render();
-    return this.faunaHost.getStats();
-  }
-
-  private syncStageLighting() {
-    this.rig.syncLighting(this.viewport, this.state.kind, !!this.lightsPanel?.isNightPreview);
-  }
-
+  private triggerAcidPreview() { this.faunaHost.triggerAcidPreview(); this.faunaPanel?.render(); return this.faunaHost.getStats(); }
+  private syncStageLighting() { this.rig.syncLighting(this.viewport, this.state.kind, !!this.lightsPanel?.isNightPreview); }
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
     const { kind, surface, hexTerrain, hatch, depositStage, tileState, faunaScene } = this.state;
     const showHex = !surface && (hexTerrain || faunaScene !== null);
-    const onSurface = this.surface.sync(kind, surface, tileState); // both always run: each disposes what it showed before
+    const onSurface = this.surface.sync(kind, surface, tileState);
     const onHex = this.hexSample.sync(kind, showHex, hatch, depositStage, tileState);
     if (onSurface || onHex) this.rig.hidePedestal();
     else this.buildStage();
   }
 
-  private setBuild(stage: BuildStage) {
-    this.state.build = stage;
-    this.spawns.applyBuild(stage);
-    this.toolbar.syncToggles(); syncURL(this.state);
-  }
+  private setBuild(stage: BuildStage) { this.state.build = stage; this.spawns.applyBuild(stage); this.toolbar.syncToggles(); syncURL(this.state); }
 
   private setWorkTarget(target: InteractionTargetKind, enableWork = false) {
     if (!WORK_TARGETS.includes(target)) return;
@@ -366,14 +312,8 @@ export class PlaygroundApp {
   private setTileState(preset: TileStatePreset) {
     if (!TILE_STATE_PRESETS.includes(preset)) return;
     this.state.tileState = preset;
-    if (!this.state.hexTerrain && !this.state.surface) {
-      this.state.hexTerrain = true;
-      this.buildStage();
-      this.syncSurface();
-    } else {
-      this.surface.setTileState(preset);
-      this.hexSample.setTileState(preset);
-    }
+    if (!this.state.hexTerrain && !this.state.surface) { this.state.hexTerrain = true; this.buildStage(); this.syncSurface(); }
+    else { this.surface.setTileState(preset); this.hexSample.setTileState(preset); }
     this.toolbar.syncToggles();
     syncURL(this.state);
   }
