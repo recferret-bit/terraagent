@@ -2,6 +2,7 @@ import type { FeatureContext, HudPanelInstance } from '../../core/registry/types
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { copyText, type TextClipboard } from './copyText';
 import { readMockToken } from './mockToken';
+import { loginWithFastAuthPopup, probeIdentityAdapterMode } from './real/fastAuthClient';
 
 const FAULT = 'That sign-in could not be confirmed.';
 
@@ -23,14 +24,51 @@ function guestLine(onSave: () => void): HTMLElement {
   return line;
 }
 
-function guestNodes(open: boolean, fault: string, act: { save(): void; google(): void; x(): void }): HTMLElement[] {
+interface GuestActions {
+  readonly mode: 'mock' | 'testnet' | 'mainnet';
+  save(): void;
+  google(): void;
+  x(): void;
+  fastAuth(): void;
+  email(addr: string): void;
+}
+
+function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
+  const row = makeDiv('ta-pilot__email-row');
+  const input = document.createElement('input');
+  input.type = 'email';
+  input.className = 'input';
+  input.placeholder = 'pilot@terraagent.fun';
+  input.setAttribute('data-testid', 'pilot-email-input');
+  const submitEmail = makeBtn('btn btn-primary btn-sm', 'continue-email', 'Mint Testnet Pilot (Email)', () => {
+    act.email(input.value);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') act.email(input.value);
+  });
+  row.append(input, submitEmail);
+  plate.append(
+    row,
+    makeBtn('btn btn-ghost btn-sm', 'continue-fastauth', 'NEAR Auth (Testnet Popup)', act.fastAuth),
+  );
+  const hint = document.createElement('p');
+  hint.className = 'ta-pilot__hint';
+  hint.textContent = 'Provisions a real *.terraagent.testnet account (gasless).';
+  plate.append(hint);
+}
+
+function guestNodes(open: boolean, fault: string, act: GuestActions): HTMLElement[] {
   const nodes: HTMLElement[] = [guestLine(act.save)];
   if (!open) return nodes;
   const plate = makeDiv('ta-pilot__plate plate');
-  plate.append(
-    makeBtn('btn btn-primary btn-sm', 'continue-google', 'Continue with Google (mock)', act.google),
-    makeBtn('btn btn-ghost btn-sm', 'continue-x', 'Continue with X (mock)', act.x),
-  );
+  if (act.mode === 'mock') {
+    plate.append(
+      makeBtn('btn btn-primary btn-sm', 'continue-google', 'Continue with Google (mock)', act.google),
+      makeBtn('btn btn-ghost btn-sm', 'continue-x', 'Continue with X (mock)', act.x),
+    );
+  } else {
+    buildTestnetPlate(plate, act);
+  }
   if (fault) {
     const note = document.createElement('p');
     note.className = 'ta-pilot__fault';
@@ -77,7 +115,17 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
   let open = false;
   let fault = '';
   let busy = false;
+  let disposed = false;
+  let mode: 'mock' | 'testnet' | 'mainnet' = ctx.services.identityMode ?? 'mock';
   let popup: Window | null = null;
+
+  const runLogin = (provider: 'google' | 'x' | 'fastauth' | 'email', token: string): void => {
+    if (!pilot || busy) return;
+    busy = true;
+    void pilot.loginSocial(provider, token)
+      .then(() => { fault = ''; }, () => { fault = FAULT; open = true; })
+      .finally(() => { busy = false; if (!disposed) render(); });
+  };
 
   const render = (): void => {
     const view = pilot?.view();
@@ -87,18 +135,44 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
       return;
     }
     root.append(...guestNodes(open, fault, {
+      mode,
       save: () => { open = true; render(); },
       google: () => { if (!busy) popup = openMockProvider('google'); },
       x: () => { if (!busy) popup = openMockProvider('x'); },
+      fastAuth: () => {
+        if (busy || !pilot) return;
+        busy = true;
+        void loginWithFastAuthPopup()
+          .then((res) => pilot.loginSocial('fastauth', res.rawIdToken))
+          .then(() => { fault = ''; }, () => { fault = FAULT; open = true; })
+          .finally(() => { busy = false; if (!disposed) render(); });
+      },
+      email: (addr) => {
+        const clean = addr.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+          fault = 'Enter a valid email address.';
+          open = true;
+          render();
+          return;
+        }
+        runLogin('email', clean);
+      },
     }));
   };
 
+  if (!ctx.services.identityMode) {
+    void probeIdentityAdapterMode().then((detected) => {
+      if (!disposed && detected !== mode) {
+        mode = detected;
+        render();
+      }
+    });
+  }
+
   const onMessage = (event: MessageEvent): void => {
     const hit = readMockToken(event, popup, location.origin);
-    if (!hit || !pilot || busy) return;
-    busy = true;
-    void pilot.loginSocial(hit.provider, hit.token).then(() => { fault = ''; }, () => { fault = FAULT; open = true; })
-      .finally(() => { busy = false; render(); });
+    if (!hit) return;
+    runLogin(hit.provider, hit.token);
   };
 
   window.addEventListener('message', onMessage);
@@ -106,6 +180,7 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
   render();
   return {
     dispose() {
+      disposed = true;
       off?.();
       window.removeEventListener('message', onMessage);
       root.remove();

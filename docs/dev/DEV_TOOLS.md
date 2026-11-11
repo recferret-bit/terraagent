@@ -259,6 +259,8 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`, `MOCK_FAIL_RATE`, `MOCK_SEED` | 300, 1500, 0, — | Mock chain behaviour |
 | `MOCK_OAUTH_SECRET` | `terra-dev-mock-oauth-secret` | HMAC secret for the dev mock OAuth token (`signMockToken` / `verifyMockToken`, `/dev/mock-oauth`). Unset or empty uses the default. Not in the Nest boot env schema. Token TTL is 5 minutes |
 | `NEAR_MODE` | mock | Global Web3 feature flag / switch (`mock\|testnet\|devnet\|mainnet`, W23): sets the default adapter mode for all 11 NEAR ports (`Identity`, `Relayer`, `CargoToken`, `Intents`, `AgentWallet`, `DeedNft`, `BadgeNft`, `Staking`, `TreasuryDao`, `Escrow`, `ChainRead`). Can be overridden per port via `NEAR_ADAPTER_<PORT>` |
+| `NEAR_ROOT_ACCOUNT`, `NEAR_RELAYER_DAILY_CAP` | `terraagent.testnet`, `5` | Root NEAR account for sub-accounts & contracts (`res.<root>`, `deed.<root>`, `bounty.<root>`) and daily relayer spend cap in NEAR (`GET /v1/near/status`, `POST /v1/near/intents/quote`) |
+| `NEARAI_API_KEY`, `NEARAI_MODEL`, `NEARAI_BASE_URL` | —, `deepseek-ai/DeepSeek-V3.1`, `https://cloud-api.near.ai/v1` | NEAR AI Cloud TEE-verifiable LLM provider (`AI_PROVIDER=nearai`, `/v1/signature/{chat_id}` SHA-256 attestation) |
 | `NEAR_KEK` | dev 32-byte `DEV_KEK` (not in production) | Base64 of 32 bytes. Seals ed25519 seeds (AES-256-GCM). Production `loadKekRing` refuses a missing key or `DEV_KEK` |
 | `NEAR_KEK_VERSION` | 1 | Integer version stored on new key rows |
 | `NEAR_KEK_RING` | — | JSON `{"1":"<base64>",...}` of older keys so a rotated version still decrypts |
@@ -332,6 +334,7 @@ Dev console commands for mock-port failure and latency, and for resetting or upg
 | `near.mock.latency <port> <minMs> <maxMs>` | Set the sleep range for one mock port. Both bounds are integers ≥ 0, and `maxMs` must be ≥ `minMs` (otherwise 400 `VALIDATION_ERROR`). |
 | `account.reset <player>` | Revoke every session of the player (id or handle) and delete that player's `social_identity` rows. The player and their colonies stay. Unknown player: 404 `NOT_FOUND`. |
 | `account.upgrade <provider> <subject>` | `provider` is `google` or `x`, `subject` is 1–64 characters. Signs a short-lived mock token and runs social login. Returns `{ playerId, accountId, accessToken }`. When the database is on, this writes `core.social_identity` (W06-06). With the database off, the subject map stays in memory (BE-36). The refresh token is not returned. |
+| `near.ports`, `near.quote [amount]` | Print active `NEAR_MODE`, RPC health, and the 11-port adapter matrix (`GET /v1/near/status`; also shown in `Settings -> Chain status`), or request a live 1Click dry quote (`POST /v1/near/intents/quote`). |
 
 `POST /v1/dev/commands/near.mock.fail` body:
 

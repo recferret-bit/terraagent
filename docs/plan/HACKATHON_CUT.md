@@ -115,11 +115,11 @@ Never dropped: `W00–W13`, `W15`, `W16`, `W20`, `W22` core DAO/bounties, `W23` 
 
 - [ ] Project name: **TerraAgent**
 - [ ] Team lead, email, team size: **solo**
-- [ ] Tracks: **09** Games With Real Economies, **07** Agent Economy, **05** AI Swarms; add **10** NFTs (F6 Colony Deed) and **12** Social Money (F7 Planet Treasury DAO)
+- [ ] Tracks: `["games", "agents", "swarms"]` (**09** Games With Real Economies, **07** Agent Economy, **05** AI Swarms — omit `social` `12` and `nfts` `10` per track brief rules)
 - [ ] Prize payout: a **mainnet** NEAR wallet (the team's own)
-- [ ] Repository link (public) and demo post link (X)
-- [ ] Description, 20–2 000 characters: "autonomous colony builder where the economy is the gameplay", with NPC traders with wallets, player-owned markets on NEAR Intents, NEP-245 cargo, an AI Director, and an invisible chain (`NEAR_MODE=mock|testnet|devnet`)
-- [ ] Optional website (hosted demo URL)
+- [ ] Repository link (public) and demo post link (X, with attached video tagging `@NEARProtocol` + `#NEARHackathon`)
+- [ ] Description (`idea`, 20–2 000 characters): "autonomous colony builder where the economy is the gameplay", including hosted demo URL `https://play.terraagent.fun`, NPC traders & Rival AI colonies with wallets, NEAR Intents quotes, NEP-245 cargo, NEP-171 Colony Deed, Bounty Escrow, NEAR AI Cloud Director, and `NEAR_MODE=mock|testnet`
+- [ ] **LEAVE `website` OMITTED / EMPTY (`""`)**: in `POST /api/applications`, `website` is a **spam-trap honeypot** — any non-empty value auto-rejects the submission!
 
 ## 4. Postponed to Post-Hackathon (`W14, W17, W19, W21, W24, W27` & All Tier 2/3)
 

@@ -8,6 +8,8 @@ const FAIL_USAGE = 'near.mock.fail <port> <rate>';
 const LATENCY_USAGE = 'near.mock.latency <port> <minMs> <maxMs>';
 const RESET_USAGE = 'account.reset <player>';
 const UPGRADE_USAGE = 'account.upgrade <provider> <subject>';
+const PORTS_USAGE = 'near.ports';
+const QUOTE_USAGE = 'near.quote [amountInBaseUnits]';
 
 function wholeMs(raw: string, line: string): number {
   if (!/^(0|[1-9]\d*)$/.test(raw)) usage(line);
@@ -68,9 +70,46 @@ const upgrade: DevCommandDef = {
   },
 };
 
-/** Mock-chain and account dev commands. Both hosts load them; a missing server answers `host_unavailable`. */
+const ports: DevCommandDef = {
+  name: 'near.ports',
+  help: `${PORTS_USAGE}  Server: show active NEAR_MODE, RPC health, and the 11-port adapter matrix`,
+  async run(a, ctx) {
+    if (a.length > 0) usage(PORTS_USAGE);
+    if (ctx.host !== 'server') return 'error: host_unavailable: near.ports requires the game server';
+    const res = await fetch('/v1/near/status', { headers: { accept: 'application/json' } });
+    if (!res.ok) return `error: status HTTP ${res.status}`;
+    const body = (await res.json()) as {
+      nearMode: string;
+      rootAccount: string;
+      health?: { ok: boolean; latencyMs?: number };
+      ports?: ReadonlyArray<{ port: string; mode: string; target: string }>;
+    };
+    const summary = (body.ports ?? []).map((p) => `${p.port}:${p.mode}`).join(', ');
+    return `NEAR_MODE=${body.nearMode} root=${body.rootAccount} rpc=${body.health?.ok ? 'ok' : 'down'}(${body.health?.latencyMs ?? 0}ms) | ${summary}`;
+  },
+};
+
+const quote: DevCommandDef = {
+  name: 'near.quote',
+  help: `${QUOTE_USAGE}  Server: request a live NEAR Intents 1Click dry quote`,
+  async run(a, ctx) {
+    if (a.length > 1) usage(QUOTE_USAGE);
+    if (ctx.host !== 'server') return 'error: host_unavailable: near.quote requires the game server';
+    const amount = a[0] ?? '1000000000000000000000000';
+    const res = await fetch('/v1/near/intents/quote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ amount }),
+    });
+    if (!res.ok) return `error: quote HTTP ${res.status}`;
+    const q = (await res.json()) as { source: string; amountIn: string; amountOut: string; minAmountOut: string };
+    return `quote[${q.source}] in=${q.amountIn} -> out=${q.amountOut} (min=${q.minAmountOut})`;
+  },
+};
+
+/** Mock-chain, live-testnet port status, and account dev commands. */
 export default defineFeature({
   id: 'near-dev',
   wave: 'W06',
-  devCommands: [fail, latency, reset, upgrade],
+  devCommands: [fail, latency, reset, upgrade, ports, quote],
 });

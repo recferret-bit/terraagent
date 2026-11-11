@@ -34,15 +34,17 @@ export const contract = defineNearContract<IdentityPort>({
     });
 
     test('createNamedAccount suffixes a taken name and replays the first opId', async (a) => {
-      const firstOp = namedAccountOpId('google', 'subj-a');
-      const first = await a.port.createNamedAccount({ opId: firstOp, name: 'test-pilot' });
-      expect(first.accountId).toBe('test-pilot.terraagent.mock');
+      const uid = a.kind === 'mock' ? 'test-pilot' : `pilot-${Date.now().toString(36)}`;
+      const suffix = a.kind === 'mock' ? 'terraagent.mock' : (process.env.NEAR_ROOT_ACCOUNT || 'terraagent.testnet');
+      const firstOp = namedAccountOpId('google', `${uid}-a`);
+      const first = await a.port.createNamedAccount({ opId: firstOp, name: uid });
+      expect(first.accountId).toBe(`${uid}.${suffix}`);
       expectReceipt(first.receipt, a);
 
-      const second = await a.port.createNamedAccount({ opId: namedAccountOpId('google', 'subj-b'), name: 'test-pilot' });
-      expect(second.accountId).toBe('test-pilot-2.terraagent.mock');
+      const second = await a.port.createNamedAccount({ opId: namedAccountOpId('google', `${uid}-b`), name: uid });
+      expect(second.accountId).toBe(`${uid}-2.${suffix}`);
 
-      const replay = await a.port.createNamedAccount({ opId: firstOp, name: 'test-pilot' });
+      const replay = await a.port.createNamedAccount({ opId: firstOp, name: uid });
       expect(replay.accountId).toBe(first.accountId);
     });
 
