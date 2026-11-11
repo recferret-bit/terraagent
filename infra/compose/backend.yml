@@ -27,6 +27,9 @@ services:
     logging: *json-log
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       TA_HOST: 0.0.0.0
       PORT: "3000"
