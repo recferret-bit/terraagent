@@ -5,27 +5,18 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
-import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability, payProgressiveSlice } from '../economy/ledger';
+import { completeHqReprint } from '../elimination/operations';
 import { produceReconAtFactoryEdge, produceWorkerAtHubEdge, selectRoboticsFactoryProducer } from '../factories-hub';
 import { isCrewKind, isWorker, workerTierOf } from '../harvest/unit';
 import { completePrestigeProject } from '../prestige/project';
 import { checkUnitSupply } from '../supply';
-import { enqueueRepairForEntity } from '../terraform-basic/dismantleAndWork';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import { checkStartMissing } from './earmarks';
+import { tryStartBuildOrRepairJob } from './parts/queueParts';
 import type { QueueEntry, QueueTaskPayload } from './types';
 import { computeResourceWaitState, isBlockedByPower, maxConcurrentInLane, PRODUCER_BUFFER_LIMIT } from './wait';
-
-/** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
-const SITE_CODES: ReadonlySet<string> = new Set([
-  'site_blocked',
-  'terrain_unbuildable',
-  'not_own_territory',
-  'outside_power_zone',
-  'invalid_args',
-]);
 
 export function unitSupplyData(unit: string, data?: CompiledDataLike): CompiledDataLike | undefined {
   return unit === 'recon' && !data?.tables?.combatUnits ? undefined : data;
@@ -125,35 +116,8 @@ export function tryStartQueueEntry(
     return;
   }
 
-  if (entry.task.kind === 'build' && entry.entityId === undefined) {
-    const started = startBuildingConstruction(
-      state,
-      { owner: entry.colonyIndex, building: entry.task.building, q: entry.task.q, r: entry.task.r, rot: entry.task.rotation ?? 0, workRate: entry.workRate, tick, data, costOverride: entry.cost },
-      ctx,
-    );
-    if (!started.ok) {
-      const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
-      const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
-      markWaiting(entry, reason, detail, null, tick);
-      return;
-    }
-    entry.entityId = started.entityId;
-  } else if (entry.task.kind === 'repair') {
-    const started = enqueueRepairForEntity(state, entry.colonyIndex, entry.task.entityId, {
-      taskId: entry.taskId,
-      tick,
-      data,
-    });
-    if (started.ok) {
-      entry.cost = { ...started.job.totalCost };
-      entry.totalCost = { ...started.job.totalCost };
-      entry.buildTicks = started.job.durationTicks;
-      entry.workerEntityId = started.job.workerEntityId;
-    } else if (started.reason !== 'unknown_entity') {
-      markWaiting(entry, 'worker', 'waiting: worker', null, tick);
-      return;
-    }
-  }
+  if (!tryStartBuildOrRepairJob(state, entry, tick, data, ctx)) return;
+
   entry.totalCost ??= { ...entry.cost };
   entry.spentCost ??= {};
   if (entry.lane === 'terraform' && entry.workerEntityId === undefined) assignTerraformQueueWorker(state, entry, allEntries);
@@ -276,7 +240,9 @@ function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
-  if (task?.unit === 'recon') {
+  if (task?.unit === 'hq') {
+    completeHqReprint(state, colIdx, ctx);
+  } else if (task?.unit === 'recon') {
     produceReconAtFactoryEdge(state, colIdx, ctx, task.producerId);
   } else {
     produceWorkerAtHubEdge(state, colIdx, ctx, task?.unit === 'worker' ? workerTierOf(task.tier) : 1);

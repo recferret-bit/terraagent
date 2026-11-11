@@ -18,6 +18,8 @@ describe('resolveColonyTab routing', () => {
     ['deed', 'colony-deed', 'deed'],
     ['stages', 'stage-track-hud', 'goals'],
     ['goals', 'goals-panel', 'hq'],
+    ['diplomacy', 'diplomacy-panel', 'hq'],
+    ['raid', 'raid-target-picker', 'hq'],
     ['director', 'director-status', 'director'],
     ['combat', 'combat-alerts', 'combat'],
     ['combat-tuning', 'combat-tuning', 'combat'],

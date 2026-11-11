@@ -3,7 +3,7 @@ import type { PlanetState } from '@terra/sim';
 import { stateOf } from './baseline';
 import { checkedDigest, digestCutoff, draftDigest, isZeroBaseline } from './body';
 import { digestSignal } from './events';
-import { foldAttack, foldDirectorTrade } from './folder';
+import { foldAlert, foldAttack, foldDirectorTrade, foldLoss } from './folder';
 import {
   fillOpenBaseline,
   mergeUnseenDigests,
@@ -67,6 +67,16 @@ export class AwayDigestService {
     if (signal.type === 'back') {
       const at = this.now();
       return this.enqueue(signal.colonyId, () => this.closeRow(signal.colonyId, at));
+    }
+    if (signal.type === 'loss') {
+      return this.enqueue(signal.colonyId, () =>
+        this.applyFold(signal.colonyId, signal.loss.tick, (body) => foldLoss(body, signal.loss)),
+      );
+    }
+    if (signal.type === 'alert') {
+      return this.enqueue(signal.colonyId, () =>
+        this.applyFold(signal.colonyId, signal.alert.tick, (body) => foldAlert(body, signal.alert)),
+      );
     }
     return this.enqueue(signal.colonyId, () => this.fold(signal.colonyId, signal.attack));
   }
@@ -161,10 +171,18 @@ export class AwayDigestService {
   }
 
   private async fold(colonyId: string, event: AttackFold): Promise<void> {
+    return this.applyFold(colonyId, event.tick, (body) => foldAttack(body, event));
+  }
+
+  private async applyFold(
+    colonyId: string,
+    eventTick: number,
+    fn: (body: AwayDigestV1) => AwayDigestV1,
+  ): Promise<void> {
     const live = await this.live(colonyId);
     if (!live) return;
-    live.body = checkedDigest(foldAttack(live.body, event));
-    const tick = BigInt(Math.max(0, Math.floor(event.tick)));
+    live.body = checkedDigest(fn(live.body));
+    const tick = BigInt(Math.max(0, Math.floor(eventTick)));
     if (tick > live.lastEventSeq) live.lastEventSeq = tick;
     live.dirty = true;
   }

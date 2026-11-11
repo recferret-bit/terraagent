@@ -1,26 +1,41 @@
 import { W11_MAX_SMALL_ATLAS_COLONIES } from '@terra/contracts';
 import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
-import { checkMove, initialCaps, systemActor, treasury, treasuryCtx, type Amounts, type AddRequest } from '../../economy';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { placeSpawnedEntity } from '../../ecs/placement';
-import { insertRow, rowOf, setField } from '../../ecs/store';
+import { checkMove, initialCaps, treasury, treasuryCtx } from '../../economy';
+import { ENTITY_STATE } from '../../ecs/columns';
+import { rowOf, setField } from '../../ecs/store';
 import { ensureStarterHubSpace, getSpawnSlots, type SpawnSlot } from '../../gen/spawnSlots';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
-import { ensureColonyRecord } from '../../kernel/colonies';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, type ColonyState, type PlanetState, type SimState } from '../../kernel/state';
+import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
-import { minLandingSeparation, nextLandingSite } from '../../world/landingPlanner';
+import { nextLandingSite } from '../../world/landingPlanner';
 import { recordLanding } from '../../world/presence';
 import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
-import { hqViewRadius, revealVision, spawnHqUnit } from '../hq';
+import { spawnHqUnit } from '../hq';
+import { initColonyNewcomerShield, isW18PvpActive } from '../pvp';
 import { resolveStartingKitRow, rowNum } from '../rows';
 import { stepHqRespawns } from './hqRespawn';
+import {
+  cargoCredit,
+  ensureColony,
+  getLandingPods,
+  initColonyStagesOnLanding,
+  insertDescendingPodAndVision,
+  resolveDescentTicks,
+  resolveMinLandingSeparation,
+  resolveStartingCargo,
+} from './parts/landingSpawnParts';
 
 export { resolveStartingKitRow } from '../rows';
 export * from './hqRespawn';
+export {
+  getLandingPods,
+  resolveDescentTicks,
+  resolveMinLandingSeparation,
+  resolveStartingCargo,
+};
 
 /**
  * Colonies per planet: `grid.explored` is a `u8` bit mask (one bit per colony), so a planet takes 8 colonies (GP-17).
@@ -58,51 +73,6 @@ export interface SpawnColonyLandingOpts {
 }
 
 /**
- * The landing pod's cargo (`hq.startingKit.cargo`, zero entries dropped): what a new colony starts with. Anything that
- * is not a whole amount (a fraction, a negative, a non-number) is kept, so the landing check refuses it instead of
- * landing a colony without its cargo.
- */
-export function resolveStartingCargo(data?: CompiledDataLike): Amounts {
-  const raw = resolveStartingKitRow(data).cargo;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('data row hq.startingKit.cargo is not a resource map');
-  const out: Amounts = {};
-  for (const [k, v] of Object.entries(raw as Amounts)) if (v !== 0) out[k as keyof Amounts] = v;
-  return out;
-}
-
-/** The `landing.cargo` credit of colony `colonyId`'s pod. */
-function cargoCredit(colonyId: number, data?: CompiledDataLike): AddRequest {
-  return { colony: colonyId, amounts: resolveStartingCargo(data), reason: 'landing.cargo', actor: systemActor('landing'), ref: `colony:${colonyId}` };
-}
-
-/** The pod's descent in ticks (`hq.startingKit.podDescentS`, compiled to ticks; at least one tick). */
-export function resolveDescentTicks(data?: CompiledDataLike): number {
-  return Math.max(1, Math.round(rowNum(resolveStartingKitRow(data), 'podDescentS')));
-}
-
-function ensureColony(
-  state: SimState,
-  colonyId: number,
-  tick: number,
-  meta?: { id?: string; playerId?: string; handle?: string; name?: string; color?: number },
-): ColonyState {
-  const col = ensureColonyRecord(state, colonyId, tick);
-  if (meta?.id) col.id = meta.id;
-  if (meta?.name) col.name = meta.name;
-  if (meta?.playerId !== undefined) col.playerId = meta.playerId;
-  if (meta?.handle !== undefined) col.handle = meta.handle;
-  if (typeof meta?.color === 'number') col.color = meta.color;
-  col.changedAt = tick;
-  return col;
-}
-
-/** The colony landing pods (`state.blobs.landingPods`). */
-export function getLandingPods(state: SimState): LandingPodState[] {
-  const raw = state.blobs.landingPods?.value;
-  return Array.isArray(raw) ? (raw as LandingPodState[]) : [];
-}
-
-/**
  * Why a colony may not land: it already has a pod, the spot is another colony's (its slot, or too close to its pod),
  * the spot is off the map, or the pod's cargo is not whole resource amounts (`invalid_args`).
  */
@@ -116,11 +86,6 @@ interface SpawnPlan {
   q: number;
   r: number;
   slot?: SpawnSlot;
-}
-
-/** Minimum hex distance between two landings (`hq.startingKit.minLandingSeparation`); see `world/landingPlanner.ts`. */
-export function resolveMinLandingSeparation(data?: CompiledDataLike): number {
-  return minLandingSeparation(data);
 }
 
 /**
@@ -173,26 +138,7 @@ export function spawnColonyLanding(
     name: opts.name ?? opts.handle,
     color: opts.color,
   });
-  const stageNum = typeof col.stage === 'number' ? col.stage : 0;
-  col.stage = stageNum;
-  const prevUnlockStage = typeof col.unlockStage === 'number' ? col.unlockStage : 0;
-  const nextUnlockStage =
-    typeof opts.unlockStage === 'number' && Number.isFinite(opts.unlockStage) && opts.unlockStage >= 0
-      ? Math.max(prevUnlockStage, Math.floor(opts.unlockStage), stageNum)
-      : Math.max(prevUnlockStage, stageNum);
-  col.unlockStage = nextUnlockStage;
-  if (typeof col.threatStage !== 'number') col.threatStage = 0;
-  if (ctx && nextUnlockStage > prevUnlockStage) {
-    ctx.emit({
-      kind: 'stageUnlocked',
-      colonyIds: [colonyId],
-      data: {
-        colonyIndex: colonyId,
-        unlockStage: nextUnlockStage,
-        previousUnlockStage: prevUnlockStage,
-      },
-    });
-  }
+  initColonyStagesOnLanding(col, colonyId, opts, ctx);
 
   const { q, r, slot } = check.plan;
   if (slot) {
@@ -212,37 +158,12 @@ export function spawnColonyLanding(
   treasury(state, treasuryCtx(tick, ctx)).add(cargoCredit(colonyId, data));
   col.changedAt = tick;
 
-  const podEntityId = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
-  const row = insertRow(state.entities, podEntityId, tick);
-  const cols = state.entities.cols;
-  cols.kind[row] = ENTITY_KIND.pod;
-  cols.owner[row] = colonyId;
-  cols.tier[row] = 1;
-  placeSpawnedEntity(state.entities, row, q, r, tick);
-  cols.rot[row] = 0;
-  const podHp = Math.fround(rowNum(resolveStartingKitRow(data), 'podHp'));
-  cols.hp[row] = podHp;
-  cols.hpMax[row] = podHp;
-  cols.state[row] = ENTITY_STATE.descending;
-  cols.progress[row] = 0;
-  cols.createdAt[row] = tick;
-  cols.changedAt[row] = tick;
-
-  revealVision(state, colonyId, q, r, hqViewRadius(data), tick);
-
-  const pods = [...getLandingPods(state)];
-  pods.push({
-    podEntityId,
-    colonyId,
-    q,
-    r,
-    ticksRemaining: totalTicks,
-    totalTicks,
-    deployed: false,
-  });
-  setBlob(state, 'landingPods', pods, tick);
+  const podEntityId = insertDescendingPodAndVision(state, colonyId, q, r, totalTicks, tick, data, ctx);
   recordAtlasColonyFounding(state, colonyId, slot?.q ?? opts.q ?? q, slot?.r ?? opts.r ?? r, tick);
   syncAtlasColonySectorState(state, tick);
+  if (isW18PvpActive(data)) {
+    initColonyNewcomerShield(state, colonyId, tick, data);
+  }
 
   return { ok: true, podEntityId, q, r };
 }

@@ -19,6 +19,49 @@ export interface MockNotifyStore {
   put(payload: NotificationPayload): Promise<MockNotifyPut>;
 }
 
+export interface StoredMockNotification extends MockNotifyRow {
+  readonly kind: NotificationPayload['kind'];
+  readonly payload: NotificationPayload;
+}
+
+/** In-memory `MockNotifyStore` for unit and integration tests without Postgres. */
+export class InMemoryMockNotifyStore implements MockNotifyStore {
+  readonly rows: StoredMockNotification[] = [];
+
+  async put(payload: NotificationPayload): Promise<MockNotifyPut> {
+    const existing = this.rows.find(
+      (r) => r.colonyId === payload.colonyId && r.eventId === payload.eventId && r.channel === payload.channel,
+    );
+    if (existing) {
+      return {
+        row: { id: existing.id, colonyId: existing.colonyId, eventId: existing.eventId, channel: existing.channel },
+        inserted: false,
+      };
+    }
+    const row: StoredMockNotification = {
+      id: String(this.rows.length + 1),
+      colonyId: payload.colonyId,
+      eventId: payload.eventId,
+      channel: payload.channel,
+      kind: payload.kind,
+      payload,
+    };
+    this.rows.push(row);
+    return {
+      row: { id: row.id, colonyId: row.colonyId, eventId: row.eventId, channel: row.channel },
+      inserted: true,
+    };
+  }
+
+  list(colonyId?: string): NotificationPayload[] {
+    return this.rows.filter((r) => !colonyId || r.colonyId === colonyId).map((r) => r.payload);
+  }
+
+  clear(): void {
+    this.rows.length = 0;
+  }
+}
+
 type NotifyIdRow = { id: bigint; colonyId: string; eventId: string; channel: string };
 
 /** Postgres store. A unique violation is success: the existing row is returned, not a second insert. */

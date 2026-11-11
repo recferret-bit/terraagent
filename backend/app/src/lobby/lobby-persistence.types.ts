@@ -393,6 +393,7 @@ export interface LobbyPersistenceStore {
     reservationId: string,
     reason?: 'RELEASED' | 'EXPIRED',
     expectedEpoch?: number,
+    options?: { readonly allowCommitted?: boolean },
   ): Promise<{ readonly released: boolean; readonly reservation: SectorReservationRecord }>;
   expireReservations(now?: Date): Promise<SectorReservationRecord[]>;
   getReservationById(reservationId: string): Promise<SectorReservationRecord | null>;

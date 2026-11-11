@@ -66,6 +66,13 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   director_key_revoked: 'Rejected: The director key was revoked',
   allowance_exhausted: 'Rejected: The director allowance is spent',
   autotrade_limit: 'Rejected: That trade is outside the autoTrade limits',
+  recent_hostility: 'Rejected: Recent hostility (wait 10 min after combat)',
+  oathbreaker: 'Rejected: Oathbreaker mark active (cannot propose truce)',
+  cross_sector_disabled: 'Rejected: Target colony is in an isolated founding sector',
+  no_contact: 'Rejected: No first contact with target colony',
+  truce_cap: 'Rejected: Active truce cap reached for HQ tier',
+  unknown_offer: 'Rejected: Truce offer no longer active',
+  unknown_truce: 'Rejected: Truce no longer active',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

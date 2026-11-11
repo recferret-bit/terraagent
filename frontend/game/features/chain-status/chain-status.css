@@ -1,0 +1,116 @@
+.ta-chain-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s4);
+  background: color-mix(in srgb, var(--ta-void) 78%, transparent);
+}
+
+.ta-chain-modal {
+  width: min(680px, 96vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+  padding: var(--ta-s4);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+}
+
+.ta-chain-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-bottom: var(--ta-s2);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-chain-title {
+  margin: 0;
+  font: 700 15px/1.2 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-chain-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s3);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  font: 500 12px/1.4 var(--ta-font-mono);
+  color: var(--ta-text-2);
+}
+
+.ta-chain-badge {
+  padding: 2px 8px;
+  font: 600 11px/1.3 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  border: 1px solid var(--ta-seam-3);
+}
+
+.ta-chain-badge--testnet,
+.ta-chain-badge--mainnet {
+  color: var(--ta-terra);
+  border-color: var(--ta-terra);
+}
+
+.ta-chain-badge--mock {
+  color: var(--ta-blue-hi);
+  border-color: var(--ta-blue-hi);
+}
+
+.ta-chain-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 500 12px/1.4 var(--ta-font-mono);
+}
+
+.ta-chain-table th,
+.ta-chain-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-chain-table th {
+  font: 600 11px/1.3 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-dim);
+}
+
+.ta-chain-link {
+  color: var(--ta-blue-hi);
+  text-decoration: underline;
+}
+
+.ta-chain-quote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-chain-quote__out {
+  font: 500 11px/1.35 var(--ta-font-mono);
+  color: var(--ta-text-2);
+}
+
+.ta-chain-fault {
+  margin: 0;
+  color: var(--ta-fault-text);
+  font: 500 12px/1.35 var(--ta-font-mono);
+}

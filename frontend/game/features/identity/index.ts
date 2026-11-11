@@ -13,7 +13,7 @@ declare module '../../core/registry/types' {
     pilot?: {
       view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string; saveEpoch?: number };
       subscribe(fn: () => void): () => void;
-      loginSocial(provider: 'google' | 'x', token: string): Promise<void>;
+      loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email', token: string): Promise<void>;
       /** Colony deposit poll. Absent in specs that only cover the guest chip. */
       watchRelay?(): {
         poll(): Promise<{ state: 'none' | 'pending' | 'settled' | 'failed'; opId?: string }>;
@@ -22,6 +22,8 @@ declare module '../../core/registry/types' {
     };
     /** When set, the pilot chip copies through this writer instead of `navigator.clipboard`. */
     clipboard?: TextClipboard;
+    /** Optional override for identity adapter mode in tests (`mock` | `testnet` | `mainnet`). */
+    identityMode?: 'mock' | 'testnet' | 'mainnet';
   }
 }
 

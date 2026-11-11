@@ -1,16 +1,19 @@
 import { z } from 'zod';
-import { HomeColonyId } from '../rest/home';
 import { defineEvent } from './define';
 
-export const ColonyEliminatedCauseSchema = z.enum(['timer', 'hq_lost', 'raid', 'fauna', 'environment', 'other']);
+export const ColonyEliminatedCauseSchema = z.enum(['timer', 'hq_lost', 'both_lost', 'raid', 'fauna', 'environment', 'other']);
 export type ColonyEliminatedCause = z.infer<typeof ColonyEliminatedCauseSchema>;
 
 /** Declared here so W09-19 and W11-16 can consume it; W18-01 reuses this kind. */
 export const ColonyEliminatedDataSchema = z.strictObject({
-  colonyId: HomeColonyId,
+  colonyId: z.string().min(1).max(64).optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
-  cause: ColonyEliminatedCauseSchema,
-  atTick: z.number().int().nonnegative(),
+  playerId: z.string().optional(),
+  cause: ColonyEliminatedCauseSchema.optional(),
+  reason: z.string().optional(),
+  byColony: z.string().optional(),
+  killerColonyId: z.string().optional(),
+  atTick: z.number().int().nonnegative().optional(),
 });
 export type ColonyEliminatedData = z.infer<typeof ColonyEliminatedDataSchema>;
 

@@ -28,6 +28,8 @@ export const TICKET_TIMEOUT_FAILURE_CODE = 'timeout';
 export type PlanetLifecycleEventKind =
   | 'extinct'
   | 'all_eliminated'
+  | 'colonyEliminated'
+  | 'colony_eliminated'
   | 'settled'
   | 'all_settled'
   | 'victory'
@@ -152,7 +154,9 @@ export interface ReconciliationSweepReport {
 export interface HandlePlanetEventOptions {
   readonly now?: Date | number | string;
   readonly winnerColonyId?: string | null;
+  readonly colonyId?: string;
   readonly colonyIds?: readonly string[];
+  readonly data?: Readonly<Record<string, unknown>>;
   readonly preserveColonyStatus?: boolean;
   readonly elapsedMs?: number;
   readonly details?: Readonly<Record<string, unknown>>;
@@ -212,6 +216,8 @@ export interface ColonyEliminationReconcileResult {
   readonly status: 'ELIMINATED' | 'TRANSFERRED';
   readonly foundedSeatHeld: true;
   readonly seatEvicted: false;
+  readonly reservationReleased?: boolean;
+  readonly reservationState?: string | null;
   readonly sectorFoundedSeats: number;
   readonly sectorReservedSeats: number;
   readonly sectorFreeSeats: number;

@@ -21,6 +21,7 @@ import scn_w13_markets_multi from './w13-markets-multi';
 import scn_w13_regions from './w13-regions';
 import scn_w15_guild_agents from './w15-guild-agents';
 import scn_w16_director from './w16-director';
+import scn_w18_pvp_diplomacy from './w18-pvp-diplomacy';
 import scn_w20_colony_deed from './w20-colony-deed';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
@@ -45,5 +46,6 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w13-regions', def: scn_w13_regions },
   { file: 'w15-guild-agents', def: scn_w15_guild_agents },
   { file: 'w16-director', def: scn_w16_director },
+  { file: 'w18-pvp-diplomacy', def: scn_w18_pvp_diplomacy },
   { file: 'w20-colony-deed', def: scn_w20_colony_deed },
 ];

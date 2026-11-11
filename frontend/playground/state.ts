@@ -8,8 +8,8 @@ export type View = 'iso' | 'front' | 'side' | 'top';
 export const VIEWS: View[] = ['iso', 'front', 'side', 'top'];
 export const CATS: ArchetypeCategory[] = ['robot', 'building', 'ship', 'resource', 'fauna', 'prop'];
 export const PLANET_LABEL: Record<PlanetKind, string> = { dune: 'Dune', oceanForest: 'Ocean', forestRock: 'Forest' };
-export type ToggleKey = 'turntable' | 'bloom' | 'pixel' | 'wire' | 'shadows' | 'human' | 'surface' | 'hexTerrain' | 'work' | 'row' | 'validate' | 'lights';
-export const TOGGLES: ToggleKey[] = ['turntable', 'bloom', 'pixel', 'wire', 'shadows', 'human', 'surface', 'hexTerrain', 'work', 'row', 'validate', 'lights'];
+export type ToggleKey = 'turntable' | 'bloom' | 'pixel' | 'wire' | 'shadows' | 'human' | 'surface' | 'hexTerrain' | 'work' | 'row' | 'validate' | 'lights' | 'ruin';
+export const TOGGLES: ToggleKey[] = ['turntable', 'bloom', 'pixel', 'wire', 'shadows', 'human', 'surface', 'hexTerrain', 'work', 'row', 'validate', 'lights', 'ruin'];
 /** Construction scaffold stages the `build` button cycles through (`&build=0|33|66|100`). */
 export const BUILD_STAGES = [1, 0, 0.33, 0.66] as const;
 export type BuildStage = (typeof BUILD_STAGES)[number];
@@ -41,7 +41,7 @@ const parseFaunaSeed = (v: string | null): number => {
 
 export interface PgState {
   id: string; kind: PlanetKind; view: View;
-  turntable: boolean; bloom: boolean; pixel: boolean; wire: boolean; grid: boolean; shadows: boolean; hex: boolean; human: boolean; ruler: boolean; surface: boolean; validate: boolean; lights: boolean;
+  turntable: boolean; bloom: boolean; pixel: boolean; wire: boolean; grid: boolean; shadows: boolean; hex: boolean; human: boolean; ruler: boolean; surface: boolean; validate: boolean; lights: boolean; ruin: boolean;
   /** Hex terrain sample scene (`hexterrain=1`) and the biped work pose (`uWorkWeight` 1). */
   hexTerrain: boolean; hatch: boolean; work: boolean;
   /** Target interaction object when `work` is enabled (`&workTarget=tree|rock|dune|...`). */
@@ -77,7 +77,7 @@ export function createState(params: URLSearchParams): PgState {
     kind: (PLANET_KINDS.includes(params.get('biome') as PlanetKind) ? params.get('biome') : 'dune') as PlanetKind,
     view: (VIEWS.includes(params.get('view') as View) ? params.get('view') : 'iso') as View,
     turntable: params.get('turntable') === '1',
-    bloom: true, pixel: params.has('pixel') ? params.get('pixel') === '1' : isPixelArtOn(), wire: false, grid: true, shadows: true, hex: false, human: false, ruler: false, surface, validate: params.get('validate') === '1', lights: params.get('lights') === '1',
+    bloom: true, pixel: params.has('pixel') ? params.get('pixel') === '1' : isPixelArtOn(), wire: false, grid: true, shadows: true, hex: false, human: false, ruler: false, surface, validate: params.get('validate') === '1', lights: params.get('lights') === '1', ruin: params.get('ruin') === '1',
     hexTerrain, hatch: false, work: params.get('work') === '1',
     workTarget: parseWorkTarget(params.get('workTarget')),
     build: parseBuild(params.get('build')),
@@ -109,6 +109,7 @@ export function syncURL(state: PgState): URLSearchParams {
   if (state.pixel) q.set('pixel', '1');
   if (state.validate) q.set('validate', '1');
   if (state.lights) q.set('lights', '1');
+  if (state.ruin) q.set('ruin', '1');
   if (state.faunaScene !== null) {
     q.set('faunaScene', state.faunaScene);
     q.set('faunaMode', state.faunaMode);

@@ -4,8 +4,8 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
-import { cancelQueueTask, getAllQueueEntries } from '../queue';
-import { isGoalExecutable } from './executors';
+import { stepRaidTargetGoal } from '../pvp/raidTask';
+import { getGoalExecutor, isGoalExecutable, registerGoalExecutor } from './executors';
 import { GOAL_CATALOG, getSuggestedGoalForStage } from './catalog';
 import { stepColonyGoalsBreakdown } from './breakdown';
 import {
@@ -16,6 +16,16 @@ import {
   reorderGoalHandler,
 } from './handlers';
 import { isColonyAiEnabled, setAiEnabledHandler } from './ai';
+import {
+  buildQueuedGoalEntry,
+  cancelGoalWaitingOrders,
+  computeReorderedOpenGoalPos,
+  nextGoalSequence,
+  normalizeGoalParams,
+  parseReorderGoalCallArgs,
+  resolveQueueGoalCallArgs,
+  validateRaidGoalTarget,
+} from './parts/goalIndexParts';
 import { setPrioritiesHandler } from './priorities';
 import {
   cloneGoalEntry,
@@ -27,14 +37,13 @@ import {
   promoteOpenGoals,
   saveColonyGoals,
 } from './store';
-import {
-  DEFAULT_GOAL_BUDGET_BP,
-  type AcceptSuggestionArgs,
-  type ColonyGoalEntry,
-  type ColonySuggestion,
-  type GoalKind,
-  type GoalParams,
-  type QueueGoalArgs,
+import type {
+  AcceptSuggestionArgs,
+  ColonyGoalEntry,
+  ColonySuggestion,
+  GoalKind,
+  GoalParams,
+  QueueGoalArgs,
 } from './types';
 
 export * from './types';
@@ -47,32 +56,9 @@ export * from './handlers';
 export * from './sites';
 export * from './defendAndClear';
 export * from './breakdown';
+export { normalizeGoalParams };
 
-export function normalizeGoalParams(args: Partial<QueueGoalArgs>): GoalParams {
-  return {
-    ...(args.params ?? {}),
-    ...(args.resource !== undefined ? { resource: args.resource } : {}),
-    ...(args.targetRatePerMin !== undefined ? { targetRatePerMin: args.targetRatePerMin } : {}),
-    ...(args.targetNetEnergyPerS !== undefined ? { targetNetEnergyPerS: args.targetNetEnergyPerS } : {}),
-    ...(args.target !== undefined ? { target: args.target } : {}),
-  };
-}
-
-function nextGoalSequence(state: PlanetState, colonyIndex: number, existing: ColonyGoalEntry[]): number {
-  const colony = ensureColonyRecord(state, colonyIndex, state.meta.tick);
-  let maxSeq = typeof colony.nextGoalSeq === 'number' ? colony.nextGoalSeq : 0;
-  const all = [...existing, ...getColonyGoalHistory(state, colonyIndex)];
-  const prefix = `goal_${colonyIndex}_`;
-  for (const g of all) {
-    if (g.id.startsWith(prefix)) {
-      const parsed = Number(g.id.slice(prefix.length));
-      if (Number.isInteger(parsed) && parsed > maxSeq) maxSeq = parsed;
-    }
-  }
-  const next = maxSeq + 1;
-  colony.nextGoalSeq = next;
-  return next;
-}
+registerGoalExecutor('raid_target', stepRaidTargetGoal, { wave: 'W18' });
 
 export function queueColonyGoal(
   state: PlanetState,
@@ -80,13 +66,25 @@ export function queueColonyGoal(
   maybeArgs?: QueueGoalArgs,
   maybeTick?: number,
   maybeCtx?: StepContext,
-): { ok: true; goal: ColonyGoalEntry; entry: ColonyGoalEntry } | { ok: false; code: 'goal_limit' | 'invalid_args' | 'wave_disabled' } {
-  const colonyIndex = typeof colonyIndexOrOpts === 'number' ? colonyIndexOrOpts : (colonyIndexOrOpts.colonyIndex ?? 0);
-  const args = typeof colonyIndexOrOpts === 'number' ? maybeArgs : colonyIndexOrOpts;
-  const tick =
-    typeof colonyIndexOrOpts === 'number'
-      ? (maybeTick ?? maybeCtx?.tick ?? state.meta.tick)
-      : (colonyIndexOrOpts.tick ?? maybeTick ?? maybeCtx?.tick ?? state.meta.tick);
+):
+  | { ok: true; goal: ColonyGoalEntry; entry: ColonyGoalEntry }
+  | {
+      ok: false;
+      code:
+        | 'goal_limit'
+        | 'invalid_args'
+        | 'wave_disabled'
+        | 'cross_sector_disabled'
+        | 'truce_active'
+        | 'raid_protected';
+    } {
+  const { colonyIndex, args, tick } = resolveQueueGoalCallArgs(
+    state,
+    colonyIndexOrOpts,
+    maybeArgs,
+    maybeTick,
+    maybeCtx,
+  );
   const ctx = maybeCtx;
 
   if (!args || !args.goal || !(args.goal in GOAL_CATALOG)) {
@@ -99,60 +97,33 @@ export function queueColonyGoal(
 
   const goals = getColonyGoals(state, colonyIndex);
   const openCount = goals.filter((g) => g.status === 'queued' || g.status === 'active').length;
-  const limit = getHqGoalLimit(state, colonyIndex);
-  if (openCount >= limit) {
+  if (openCount >= getHqGoalLimit(state, colonyIndex)) {
     return { ok: false, code: 'goal_limit' };
   }
-
   if (!isGoalExecutable(args.goal, ctx?.flags)) return { ok: false, code: 'wave_disabled' };
 
-  if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normalizeGoalParams(args).resource))) {
+  const normParams = normalizeGoalParams(args);
+  if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normParams.resource))) {
     return { ok: false, code: 'wave_disabled' };
+  }
+  if (args.goal === 'raid_target') {
+    const raidErr = validateRaidGoalTarget(state, colonyIndex, normParams, tick, ctx?.data);
+    if (raidErr) return { ok: false, code: raidErr };
   }
 
   const seq = nextGoalSequence(state, colonyIndex, goals);
-  const status = openCount === 0 ? 'active' : 'queued';
-  const entry: ColonyGoalEntry = {
-    id: `goal_${colonyIndex}_${seq}`,
-    goal: args.goal,
-    status,
-    params: normalizeGoalParams(args),
-    progress: 0,
-    stepsCompleted: 0,
-    stepsTotal: Math.max(1, cat.defaultStepsTotal),
-    budgetBp: args.budgetBp ?? DEFAULT_GOAL_BUDGET_BP,
-    spent: {},
-    childTaskIds: [],
-    createdAtTick: tick,
-    ...(status === 'active' ? { startedAtTick: tick } : {}),
-    ...(args.goal === 'secure_power' ? { nightHeldTicks: 0 } : {}),
-  };
+  const entry = buildQueuedGoalEntry(colonyIndex, seq, args, normParams, cat.defaultStepsTotal, openCount, tick);
 
   goals.push(entry);
   promoteOpenGoals(goals, tick);
   saveColonyGoals(state, colonyIndex, goals, tick);
-  emitGoalProgress(ctx, colonyIndex, entry);
+  if (entry.status === 'active' && args.goal === 'raid_target') {
+    getGoalExecutor('raid_target', ctx?.flags)?.(state, colonyIndex, entry, goals, tick, ctx);
+  } else {
+    emitGoalProgress(ctx, colonyIndex, entry);
+  }
   const saved = cloneGoalEntry(entry);
   return { ok: true, goal: saved, entry: saved };
-}
-
-function cancelGoalWaitingOrders(
-  state: PlanetState,
-  colonyIndex: number,
-  goal: ColonyGoalEntry,
-  tick: number,
-  data?: CompiledDataLike,
-): void {
-  const childSet = new Set(goal.childTaskIds);
-  const queueEntries = getAllQueueEntries(state).filter(
-    (e) =>
-      e.colonyIndex === colonyIndex &&
-      (e.state === 'queued' || e.state === 'waiting') &&
-      (e.goalId === goal.id || childSet.has(e.taskId)),
-  );
-  for (const qEntry of queueEntries) {
-    cancelQueueTask(state, qEntry.taskId, colonyIndex, tick, data);
-  }
 }
 
 export function cancelColonyGoal(
@@ -211,23 +182,13 @@ export function reorderColonyGoal(
   maybeOpts?: ReorderGoalOptions,
   maybeTick?: number,
 ): { ok: true; goals: ColonyGoalEntry[] } | { ok: false; code: 'unknown_goal' | 'invalid_args' } {
-  let colonyIndex = 0;
-  let goalId = '';
-  let opts: ReorderGoalOptions = {};
-  if (typeof colonyIndexOrGoalId === 'number') {
-    colonyIndex = colonyIndexOrGoalId;
-    goalId = typeof goalIdOrOpts === 'string' ? goalIdOrOpts : '';
-    opts = maybeOpts ?? {};
-  } else if (typeof colonyIndexOrGoalId === 'string') {
-    goalId = colonyIndexOrGoalId;
-    opts = (typeof goalIdOrOpts === 'object' && goalIdOrOpts ? goalIdOrOpts : {}) as ReorderGoalOptions;
-    colonyIndex = opts.colonyIndex ?? 0;
-  } else if (colonyIndexOrGoalId && typeof colonyIndexOrGoalId === 'object') {
-    goalId = colonyIndexOrGoalId.goalId;
-    opts = colonyIndexOrGoalId;
-    colonyIndex = colonyIndexOrGoalId.colonyIndex ?? 0;
-  }
-  const tick = maybeTick ?? opts.tick ?? state.meta.tick;
+  const { colonyIndex, goalId, opts, tick } = parseReorderGoalCallArgs(
+    state,
+    colonyIndexOrGoalId,
+    goalIdOrOpts,
+    maybeOpts,
+    maybeTick,
+  );
   if (!goalId) return { ok: false, code: 'invalid_args' };
 
   const goals = getColonyGoals(state, colonyIndex);
@@ -237,14 +198,7 @@ export function reorderColonyGoal(
   const posInOpen = openIndices.findIndex((i) => goals[i].id === goalId);
   if (posInOpen < 0) return { ok: false, code: 'unknown_goal' };
 
-  let nextPos = posInOpen;
-  if (typeof opts.toIndex === 'number') {
-    nextPos = Math.max(0, Math.min(openIndices.length - 1, opts.toIndex));
-  } else if (opts.direction === 'up') nextPos = Math.max(0, posInOpen - 1);
-  else if (opts.direction === 'down') nextPos = Math.min(openIndices.length - 1, posInOpen + 1);
-  else if (opts.direction === 'top') nextPos = 0;
-  else if (opts.direction === 'bottom') nextPos = openIndices.length - 1;
-
+  const nextPos = computeReorderedOpenGoalPos(posInOpen, openIndices.length, opts);
   if (nextPos !== posInOpen) {
     const openItems = openIndices.map((i) => goals[i]);
     const [moved] = openItems.splice(posInOpen, 1);
@@ -264,7 +218,7 @@ export function acceptColonySuggestion(
   args: AcceptSuggestionArgs = {},
   tick: number = state.meta.tick,
   ctx?: StepContext,
-): { ok: true; goal: ColonyGoalEntry; entry: ColonyGoalEntry } | { ok: false; code: 'goal_limit' | 'invalid_args' | 'wave_disabled' } {
+): ReturnType<typeof queueColonyGoal> {
   const colony = ensureColonyRecord(state, colonyIndex, tick);
   const activeSuggestion = colony.suggestion as ColonySuggestion | null | undefined;
   const stage = args.stage ?? (typeof colony.stage === 'number' ? colony.stage : 0);
@@ -370,7 +324,12 @@ export const goalsSystem = defineSystem({
         saveColonyGoals(state, col.index, goals, ctx.tick);
         if (promoted) emitGoalProgress(ctx, col.index, promoted);
       }
-      if (isColonyAiEnabled(state, col.index)) stepColonyGoalsBreakdown(state, col.index, ctx);
+      const activeGoal = goals.find((g) => g.status === 'active');
+      const hqDown = (col as Record<string, unknown>).hqDown === true;
+      const goalPaused = (activeGoal as unknown as { paused?: boolean } | undefined)?.paused === true;
+      if (isColonyAiEnabled(state, col.index) && !hqDown && !goalPaused) {
+        stepColonyGoalsBreakdown(state, col.index, ctx);
+      }
     }
   },
 });

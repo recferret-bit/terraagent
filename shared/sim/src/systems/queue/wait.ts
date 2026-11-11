@@ -1,18 +1,33 @@
 import type { ResourceKey } from '@terra/contracts';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
-import { DEPOSIT } from '../../grid/layers';
-import { indexOf } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { resolveBuildingRow } from '../economy/construction';
+import { hqReprintCost, hqReprintTicks } from '../elimination/store';
 import { findColonyRoboticsFactories, resolveReconRow } from '../factories-hub';
 import { resolveUnitRowForHub } from '../factories-hub/unit';
-import { isCrewKind, isWorker } from '../harvest/unit';
+import { isWorker } from '../harvest/unit';
 import { prestigeProjectRow } from '../prestige/rows';
-import { normalizeRichness } from '../production';
 import { getTerraformJobCost, getTerraformOpSpec, isTerraformOpKind, isW01TerraformOpKind } from '../terraform-basic/ops';
-import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
+import {
+  accumulateEntityIncome,
+  enqueueAuthority,
+  extractQueueTaskPayloadFromRaw,
+  findOldestAutoIndex,
+  isW03QueueActive,
+  maxConcurrentInLane,
+  nextAutoTaskId,
+} from './parts/waitParts';
+import type { QueueEntry, QueueLane, QueuePrecedence, QueueTaskPayload } from './types';
+
+export {
+  enqueueAuthority,
+  findOldestAutoIndex,
+  isW03QueueActive,
+  maxConcurrentInLane,
+  nextAutoTaskId,
+};
 
 export const CONSTRUCTION_LANE_LIMIT = 20;
 export const TERRAFORM_LANE_LIMIT = 20;
@@ -23,7 +38,7 @@ export const HQ_GOALS_LANE_LIMIT = 20;
 export function laneForTask(task: QueueTaskPayload): QueueLane {
   if (task.kind === 'buildUnit' || task.kind === 'project') return 'units';
   if (task.kind === 'terraform') return 'terraform';
-  if (task.kind === 'hqGoal') return 'hqGoals';
+  if (task.kind === 'hqGoal' || task.kind === 'raid') return 'hqGoals';
   return 'construction';
 }
 
@@ -48,6 +63,13 @@ export function resolveTaskCostAndTicks(
     };
   }
   if (task.kind === 'buildUnit') {
+    if (task.unit === 'hq') {
+      return {
+        cost: hqReprintCost(data),
+        buildTicks: hqReprintTicks(data, false),
+        workRate: 1.0,
+      };
+    }
     if (task.unit === 'recon') {
       const reconRow = resolveReconRow(data);
       return {
@@ -63,7 +85,7 @@ export function resolveTaskCostAndTicks(
       workRate: Number(row?.workRate ?? 1.0),
     };
   }
-  if (task.kind === 'hqGoal') {
+  if (task.kind === 'hqGoal' || task.kind === 'raid') {
     return { cost: {}, buildTicks: 1, workRate: 1.0 };
   }
   if (task.kind === 'project') {
@@ -100,13 +122,6 @@ export const RESOURCE_DISPLAY_LABELS: Readonly<Record<ResourceKey, string>> = {
   'bio.t3': 'Biopolymers',
 };
 
-function depositCodeToResourceKey(dep: number): ResourceKey | null {
-  if (dep === DEPOSIT.metals) return 'metals.t1';
-  if (dep === DEPOSIT.minerals) return 'minerals.t1';
-  if (dep === DEPOSIT.oil) return 'bio.biomass';
-  return null;
-}
-
 /** Whether a Worker Drone of `colonyIndex` harvests now (the production ledger then holds the real per-key rates). */
 function workersAtWork(state: PlanetState, colonyIndex: number): boolean {
   const { count, cols } = state.entities;
@@ -141,24 +156,9 @@ export function estimateResourceIncomePerS(
   const { count, cols } = state.entities;
   for (let r = 0; r < count; r++) {
     if (cols.owner[r] !== colony.index) continue;
-    const kind = cols.kind[r];
-    const st = cols.state[r];
-    if (kind === ENTITY_KIND.metalsExtractor && st === ENTITY_STATE.active && key === 'metals.t1') {
-      const tileIdx = indexOf(state.grid.radius, cols.q[r], cols.r[r]);
-      const rawRich = tileIdx >= 0 ? state.grid.layers.richness[tileIdx] : 10000;
-      rate += 1.0 * normalizeRichness(rawRich || 10000);
-    } else if (isWorker(kind)) {
-      if (st === ENTITY_STATE.harvesting) {
-        const tileIdx = indexOf(state.grid.radius, cols.q[r], cols.r[r]);
-        const dep = tileIdx >= 0 ? state.grid.layers.deposit[tileIdx] : DEPOSIT.none;
-        const depKey = depositCodeToResourceKey(dep);
-        if (depKey === key || dep === DEPOSIT.none) {
-          rate += 0.5;
-        }
-      } else if (st === ENTITY_STATE.idle || st === ENTITY_STATE.moving) {
-        idleOrMovingWorkers++;
-      }
-    }
+    const contrib = accumulateEntityIncome(state, r, key);
+    rate += contrib.rateDelta;
+    idleOrMovingWorkers += contrib.idleWorkerDelta;
   }
 
   if (rate === 0 && idleOrMovingWorkers > 0 && (key === 'metals.t1' || key === 'minerals.t1' || key === 'bio.biomass')) {
@@ -261,154 +261,12 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
   taskId?: string;
   costOverride?: Partial<Record<ResourceKey, number>>;
 } {
-  const base = {
+  const task = extractQueueTaskPayloadFromRaw(raw);
+  if (!task) return {};
+  return {
     taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
     precedence: typeof raw.precedence === 'string' ? (raw.precedence as QueuePrecedence) : undefined,
     costOverride: raw.costOverride as Partial<Record<ResourceKey, number>> | undefined,
+    task,
   };
-  if (raw.task && typeof (raw.task as { kind?: unknown }).kind === 'string') {
-    return { ...base, task: raw.task as QueueTaskPayload };
-  }
-  if (raw.build && typeof raw.build === 'object') {
-    const b = raw.build as { building: string; q: number; r: number; rotation?: number; rot?: number; tier?: number };
-    return {
-      ...base,
-      task: { kind: 'build', building: b.building, q: b.q, r: b.r, tier: b.tier, rotation: b.rotation ?? b.rot },
-    };
-  }
-  if (typeof raw.buildUnit === 'string') {
-    return {
-      ...base,
-      task: {
-        kind: 'buildUnit',
-        unit: raw.buildUnit,
-        count: typeof raw.count === 'number' ? raw.count : undefined,
-        repeat: typeof raw.repeat === 'boolean' ? raw.repeat : undefined,
-        producerId: typeof raw.producerId === 'number' ? raw.producerId : undefined,
-      },
-    };
-  }
-  if (raw.buildUnit && typeof raw.buildUnit === 'object') {
-    const u = raw.buildUnit as { unit: string; tier?: 1 | 2 | 3; count?: number; repeat?: boolean; producerId?: number };
-    return {
-      ...base,
-      task: { kind: 'buildUnit', unit: u.unit, tier: u.tier, count: u.count, repeat: u.repeat, producerId: u.producerId },
-    };
-  }
-  if (raw.terraform && typeof raw.terraform === 'object') {
-    const tf = raw.terraform as { op: string; q?: number; r?: number; tiles?: Array<{ q: number; r: number }> };
-    const first = tf.tiles?.[0] ?? (typeof tf.q === 'number' && typeof tf.r === 'number' ? { q: tf.q, r: tf.r } : undefined);
-    if (first) {
-      return {
-        ...base,
-        task: { kind: 'terraform', op: tf.op, q: first.q, r: first.r },
-      };
-    }
-  }
-  if (raw.hqGoal && typeof raw.hqGoal === 'object') {
-    const g = raw.hqGoal as { goal: string; target?: string; q?: number; r?: number };
-    return {
-      ...base,
-      task: { kind: 'hqGoal', goal: g.goal, target: g.target, q: g.q, r: g.r },
-    };
-  }
-  if (raw.project && typeof raw.project === 'object') {
-    const p = raw.project as { project?: unknown };
-    if (typeof p.project === 'string') return { ...base, task: { kind: 'project', project: p.project } };
-  }
-  if (raw.repair && typeof raw.repair === 'object') {
-    const r = raw.repair as { entityId: number; q?: number; r?: number };
-    return {
-      ...base,
-      task: { kind: 'repair', entityId: r.entityId, q: r.q, r: r.r },
-    };
-  }
-  return {};
 }
-
-/** The contract's precedence words (`enqueueTask.precedence`) in the queue's terms (`system > player > hq > ai > auto`). */
-const CONTRACT_PRECEDENCE: Readonly<Record<string, QueuePrecedence>> = {
-  explicit: 'player',
-  queued: 'player',
-  standing: 'auto',
-  autoSitePrep: 'system',
-  system: 'system',
-  player: 'player',
-  hq: 'hq',
-  ai: 'ai',
-  auto: 'auto',
-};
-
-/** Command sources that may set an entry's cost or raise its precedence (dev tools, the sim's own systems, admins). */
-const TRUSTED_SOURCES: ReadonlySet<string> = new Set(['dev', 'system', 'admin']);
-
-/**
- * What an `enqueueTask` command may decide about its entry: a player (or AI / chain) command never sets `costOverride`
- * (a free building) and never ranks above `player` (it may lower its own entry to `hq` / `ai` / `auto`); trusted sources may do both.
- */
-export function enqueueAuthority(
-  source: string,
-  norm: { precedence?: string; costOverride?: Partial<Record<ResourceKey, number>> },
-): { precedence?: QueuePrecedence; costOverride?: Partial<Record<ResourceKey, number>> } {
-  const word = norm.precedence;
-  const asked =
-    word === undefined
-      ? undefined
-      : (CONTRACT_PRECEDENCE[word] ??
-        (word === 'system' || word === 'player' || word === 'hq' || word === 'ai' || word === 'auto' ? word : undefined));
-  if (TRUSTED_SOURCES.has(source)) return { precedence: asked, costOverride: norm.costOverride };
-  if (source === 'ai') {
-    return { precedence: asked && PRECEDENCE_RANK[asked] <= PRECEDENCE_RANK.ai ? asked : 'ai' };
-  }
-  if (asked === undefined) return { precedence: undefined };
-  return { precedence: PRECEDENCE_RANK[asked] <= PRECEDENCE_RANK.player ? asked : 'player' };
-}
-
-export function isW03QueueActive(state: PlanetState, data?: CompiledDataLike): boolean {
-  if (data?.tables) {
-    return Boolean(data.tables.grid && Object.keys(data.tables.grid).length > 0);
-  }
-  return state.meta.seed !== 'w02';
-}
-
-export function findOldestAutoIndex(entries: readonly QueueEntry[], colonyIndex: number, lane: QueueLane): number {
-  let bestIdx = -1;
-  let bestCreatedAt = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < entries.length; i++) {
-    const e = entries[i];
-    if (
-      e.colonyIndex === colonyIndex &&
-      e.lane === lane &&
-      e.state !== 'done' &&
-      e.state !== 'cancelled' &&
-      e.precedence === 'auto' &&
-      e.createdAt < bestCreatedAt
-    ) {
-      bestCreatedAt = e.createdAt;
-      bestIdx = i;
-    }
-  }
-  return bestIdx;
-}
-
-export function nextAutoTaskId(entries: readonly QueueEntry[], colonyIndex: number, tick: number): string {
-  let seq = entries.length + 1;
-  let candidate = `q-${colonyIndex}-${tick}-${seq}`;
-  while (entries.some((e) => e.taskId === candidate)) {
-    seq++;
-    candidate = `q-${colonyIndex}-${tick}-${seq}`;
-  }
-  return candidate;
-}
-
-/** The terraform and construction lanes run one entry per live crew unit (HQ or Worker Drone); other lanes one. */
-export function maxConcurrentInLane(state: PlanetState, colonyIndex: number, lane: QueueLane): number {
-  if (lane !== 'terraform' && lane !== 'construction') return 1;
-  let crew = 0;
-  const { count, cols } = state.entities;
-  for (let r = 0; r < count; r++) {
-    if (cols.owner[r] === colonyIndex && cols.hp[r] > 0 && isCrewKind(cols.kind[r])) crew++;
-  }
-  return Math.max(1, crew);
-}
-

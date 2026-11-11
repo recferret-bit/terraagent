@@ -10,11 +10,6 @@ import { assertAtlasVersionImmutable } from './atlas-manifest.helper';
 import {
   LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
-  type CreatePartyInput,
-  type EnqueueTicketInput,
-  type EnqueueTicketResult,
-  type JoinPartyInput,
-  type LeavePartyInput,
   type LobbyPersistenceStore,
   type MatchTicketRecord,
   type PinAtlasVersionResult,
@@ -22,29 +17,27 @@ import {
   type PlanetSectorRecord,
   type ProvisionCanonicalWorldInput,
   type ProvisionCanonicalWorldResult,
-  type ReserveSectorSlotInput,
-  type ReserveSectorSlotOutcome,
   type SectorLandingSlotRecord,
   type SectorReservationRecord,
-  type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
-  type UpdateTicketInput,
-  type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
 import {
   assertCanonicalWorldCompatible,
-  computeFreeSectorSeats,
   KeyedMutex,
   normalizeCanonicalWorldInput,
-  normalizeSectorSlotsInput,
   seedManifestSectorsWithUpsert,
 } from './lobby-store.helpers';
 import { validateCanonicalWorldStateUpdate } from './lifecycle-policy.helpers';
 import { MemoryReservationOps } from './memory-reservation.ops';
 import { MemoryTicketPartyOps } from './memory-ticket-party.ops';
+import {
+  buildAtlasVersionBaseFields,
+  LobbyStoreDelegatorBase,
+  upsertMemorySectorAndSlots,
+} from './parts/lobby-store-parts';
 
-export class MemoryLobbyStore implements LobbyPersistenceStore {
+export class MemoryLobbyStore extends LobbyStoreDelegatorBase implements LobbyPersistenceStore {
   private readonly mutex = new KeyedMutex();
   private readonly worldsById = new Map<string, CanonicalWorldRecord>();
   private readonly worldIdByType = new Map<PlanetType, string>();
@@ -55,10 +48,11 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
   private readonly ticketsById = new Map<string, MatchTicketRecord>();
   private readonly partiesById = new Map<string, PartyV1>();
   private readonly partyIdByCode = new Map<string, string>();
-  private readonly reservationOps: MemoryReservationOps;
-  private readonly ticketPartyOps: MemoryTicketPartyOps;
+  protected readonly reservationOps: MemoryReservationOps;
+  protected readonly ticketPartyOps: MemoryTicketPartyOps;
 
   constructor() {
+    super();
     this.reservationOps = new MemoryReservationOps(
       this.mutex,
       this.worldsById,
@@ -171,16 +165,7 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
       return { record: existing, created: false };
     }
     const record: PinnedAtlasVersionRecord = {
-      id: `av_${manifest.planetId}_v${manifest.atlasVersion}`,
-      planetId: manifest.planetId,
-      atlasVersion: manifest.atlasVersion,
-      topologyVersion: manifest.topologyVersion,
-      genVersion: manifest.genVersion,
-      configVersion: manifest.configVersion,
-      configHash: manifest.configHash,
-      atlasHash: manifest.atlasHash,
-      resourceProfileId: manifest.resourceProfileId,
-      resourceProfileHash: manifest.resourceProfileHash,
+      ...buildAtlasVersionBaseFields(manifest),
       manifest: structuredClone(manifest),
       createdAt: new Date(),
     };
@@ -223,83 +208,7 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
   private async upsertSectorWithSlotsInternal(
     input: UpsertSectorWithSlotsInput,
   ): Promise<{ readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }> {
-    const norm = normalizeSectorSlotsInput(input);
-    const secKey = `${norm.planetId}:${norm.sectorId}`;
-    const prevSec = this.sectors.get(secKey);
-    const now = new Date();
-    const reservedSeats =
-      input.reservedSeats !== undefined ? Math.max(0, input.reservedSeats) : (prevSec?.reservedSeats ?? 0);
-    const foundedSeats =
-      input.foundedSeats !== undefined ? Math.max(0, input.foundedSeats) : (prevSec?.foundedSeats ?? 0);
-    const sectorUnchanged =
-      prevSec !== undefined &&
-      prevSec.kind === norm.kind &&
-      prevSec.foundingCapacity === norm.foundingCapacity &&
-      prevSec.validatedCapacity === norm.validatedCapacity &&
-      prevSec.reservedSeats === reservedSeats &&
-      prevSec.foundedSeats === foundedSeats;
-    const sector: PlanetSectorRecord = {
-      id: prevSec?.id ?? `psec_${norm.planetId}_${norm.sectorId}`,
-      planetId: norm.planetId,
-      sectorId: norm.sectorId,
-      continentId: norm.continentId,
-      macroQ: norm.macroQ,
-      macroR: norm.macroR,
-      centerQ: norm.centerQ,
-      centerR: norm.centerR,
-      kind: norm.kind,
-      radius: norm.radius,
-      foundingCapacity: norm.foundingCapacity,
-      validatedCapacity: norm.validatedCapacity,
-      reservedSeats,
-      foundedSeats,
-      freeSeats: computeFreeSectorSeats(
-        norm.kind,
-        norm.foundingCapacity,
-        norm.validatedCapacity,
-        reservedSeats,
-        foundedSeats,
-      ),
-      ...(norm.mainResource ? { mainResource: norm.mainResource } : {}),
-      ...(norm.scarceResources ? { scarceResources: [...norm.scarceResources] } : {}),
-      createdAt: prevSec?.createdAt ?? now,
-      updatedAt: sectorUnchanged ? prevSec.updatedAt : now,
-    };
-    this.sectors.set(secKey, sector);
-
-    const outSlots: SectorLandingSlotRecord[] = [];
-    for (const s of norm.slots) {
-      const slotKey = `${norm.planetId}:${s.landingSlotId}`;
-      const prevSlot = this.landingSlots.get(slotKey);
-      const nextQ = input.slots !== undefined ? s.q : (prevSlot?.q ?? s.q);
-      const nextR = input.slots !== undefined ? s.r : (prevSlot?.r ?? s.r);
-      const slotRec: SectorLandingSlotRecord = prevSlot
-        ? {
-            ...prevSlot,
-            q: nextQ,
-            r: nextR,
-            updatedAt: prevSlot.q === nextQ && prevSlot.r === nextR ? prevSlot.updatedAt : now,
-          }
-        : {
-            id: `pslot_${norm.planetId}_${s.landingSlotId}`,
-            planetId: norm.planetId,
-            sectorId: norm.sectorId,
-            landingSlotId: s.landingSlotId,
-            slotIndex: s.slotIndex,
-            q: nextQ,
-            r: nextR,
-            state: 'FREE',
-            reservationId: null,
-            colonyId: null,
-            epoch: 0,
-            expiresAt: null,
-            createdAt: now,
-            updatedAt: now,
-          };
-      this.landingSlots.set(slotKey, slotRec);
-      outSlots.push(slotRec);
-    }
-    return { sector, slots: outSlots };
+    return upsertMemorySectorAndSlots(this.sectors, this.landingSlots, input);
   }
 
   async getSector(planetId: string, sectorId: SectorId): Promise<PlanetSectorRecord | null> {
@@ -320,73 +229,5 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
     return [...this.landingSlots.values()]
       .filter((s) => s.planetId === planetId && (sectorId === undefined || s.sectorId === sectorId))
       .sort((a, b) => a.sectorId.localeCompare(b.sectorId) || a.slotIndex - b.slotIndex);
-  }
-
-  reserveSectorSlot(input: ReserveSectorSlotInput): Promise<ReserveSectorSlotOutcome> {
-    return this.reservationOps.reserveSectorSlot(input);
-  }
-  commitReservation(reservationId: string, expectedEpoch?: number): Promise<SectorReservationRecord> {
-    return this.reservationOps.commitReservation(reservationId, expectedEpoch);
-  }
-  releaseReservation(
-    reservationId: string,
-    reason?: 'RELEASED' | 'EXPIRED',
-    expectedEpoch?: number,
-  ): Promise<{ readonly released: boolean; readonly reservation: SectorReservationRecord }> {
-    return this.reservationOps.releaseReservation(reservationId, reason, expectedEpoch);
-  }
-  expireReservations(now?: Date): Promise<SectorReservationRecord[]> {
-    return this.reservationOps.expireReservations(now);
-  }
-  getReservationById(reservationId: string): Promise<SectorReservationRecord | null> {
-    return this.reservationOps.getReservationById(reservationId);
-  }
-  getReservationByTicketId(ticketId: string): Promise<SectorReservationRecord | null> {
-    return this.reservationOps.getReservationByTicketId(ticketId);
-  }
-  listReservations(planetId: string, sectorId?: SectorId): Promise<SectorReservationRecord[]> {
-    return this.reservationOps.listReservations(planetId, sectorId);
-  }
-  enqueueTicket(input: EnqueueTicketInput): Promise<EnqueueTicketResult> {
-    return this.ticketPartyOps.enqueueTicket(input);
-  }
-  getTicketById(ticketId: string): Promise<MatchTicketRecord | null> {
-    return this.ticketPartyOps.getTicketById(ticketId);
-  }
-  findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null> {
-    return this.ticketPartyOps.findActiveTicketByPlayer(playerId);
-  }
-  listTickets(filter?: {
-    readonly planetId?: string;
-    readonly state?: MatchTicketRecord['state'];
-  }): Promise<MatchTicketRecord[]> {
-    return this.ticketPartyOps.listTickets(filter);
-  }
-  updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
-    return this.ticketPartyOps.updateTicketState(input);
-  }
-  updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {
-    return this.ticketPartyOps.updateTicket(input);
-  }
-  cancelTicket(ticketId: string, playerId: string, now?: Date): Promise<MatchTicketRecord> {
-    return this.ticketPartyOps.cancelTicket(ticketId, playerId, now);
-  }
-  createParty(input: CreatePartyInput): Promise<PartyV1> {
-    return this.ticketPartyOps.createParty(input);
-  }
-  getPartyById(partyId: string): Promise<PartyV1 | null> {
-    return this.ticketPartyOps.getPartyById(partyId);
-  }
-  getPartyByCode(code: string): Promise<PartyV1 | null> {
-    return this.ticketPartyOps.getPartyByCode(code);
-  }
-  joinParty(input: JoinPartyInput): Promise<PartyV1> {
-    return this.ticketPartyOps.joinParty(input);
-  }
-  leaveParty(input: LeavePartyInput): Promise<PartyV1> {
-    return this.ticketPartyOps.leaveParty(input);
-  }
-  setPartyIntent(input: SetPartyIntentInput): Promise<PartyV1> {
-    return this.ticketPartyOps.setPartyIntent(input);
   }
 }

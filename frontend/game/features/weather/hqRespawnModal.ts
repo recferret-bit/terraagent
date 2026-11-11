@@ -7,6 +7,7 @@ import type { FeatureContext } from '../../core/registry/types';
 import '../../core/ui/scrim.css';
 import type { ClientView } from '../../store/replica/viewCodec';
 import { ownColonyIndex } from '../shared/colony';
+import { isTypingTarget } from '../shared/hotkeys';
 import {
   buildHqRespawnModalDom,
   ensureModalStyles,
@@ -65,6 +66,7 @@ export class HqRespawnModal {
     this.getImpactDelayS = getImpactDelayS;
     this.onCaptureKeyDown = (e: KeyboardEvent) => {
       if (!this.active) return;
+      if (isTypingTarget(e)) return;
       if (e.key === 'Escape' || e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
@@ -218,6 +220,16 @@ export class HqRespawnModal {
     }
 
     const colonyIndex = ownColonyIndex(this.ctx.services);
+    if (this.ctx.flags.has('W18')) {
+      const col = simView.colonies?.[colonyIndex] as
+        | { status?: string; queue?: Array<{ lane?: string; task?: { unit?: string } }> }
+        | undefined;
+      const hasHubReprint = Array.isArray(col?.queue) && col.queue.some((q) => q?.lane === 'units' && q?.task?.unit === 'hq');
+      if (col?.status === 'eliminated' || hasHubReprint) {
+        if (this.active) this.close();
+        return;
+      }
+    }
     const { aliveHq, hqPos, podDescending, descendingPodId, podQ, podR } = scanColonyHqAndPodState(
       simView,
       colonyIndex,

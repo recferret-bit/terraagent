@@ -76,17 +76,52 @@ export function notificationKindOf(kind: string): NotificationKind | null {
 /**
  * String colony ids only. A numeric colony index (how `energyCollapse` is emitted today) is not a
  * `HomeColonyId`, so it is skipped rather than addressed as `col_<index>`.
+ * For PvP raids (`under_attack`) and diplomacy (`truce_offered`), only the defending target or
+ * recipient colony is addressed — never the attacker (`attackerColonyId`) or proposer (`fromColonyId`).
  */
-export function colonyTargets(input: Pick<AlertRouteInput, 'colonyId' | 'colonyIds' | 'data'>): string[] {
+export function colonyTargets(
+  input: Pick<AlertRouteInput, 'colonyId' | 'colonyIds' | 'data'> & { readonly kind?: string },
+): string[] {
+  const kind = input.kind ? notificationKindOf(input.kind) : null;
+  const data = input.data;
+  const excluded = excludedColonies(kind, data);
+
+  if (kind === 'under_attack' || kind === null) {
+    const target = homeColony(data?.targetColonyId);
+    if (target) return excluded.has(target) ? [] : [target];
+  }
+  if (kind === 'truce_offered' || kind === null) {
+    const recipient = homeColony(data?.toColonyId);
+    if (recipient) return excluded.has(recipient) ? [] : [recipient];
+  }
+
   const found: string[] = [];
   const push = (id: unknown) => {
     const parsed = homeColony(id);
-    if (parsed && !found.includes(parsed)) found.push(parsed);
+    if (parsed && !excluded.has(parsed) && !found.includes(parsed)) found.push(parsed);
   };
   push(input.colonyId);
-  push(input.data?.colonyId);
+  push(data?.colonyId);
   for (const id of input.colonyIds ?? []) push(id);
   return found;
+}
+
+function excludedColonies(
+  kind: NotificationKind | null,
+  data: Readonly<Record<string, unknown>> | undefined,
+): ReadonlySet<string> {
+  const excluded = new Set<string>();
+  const add = (id: unknown) => {
+    const parsed = homeColony(id);
+    if (parsed) excluded.add(parsed);
+  };
+  if (kind === 'under_attack' || kind === null) {
+    add(data?.attackerColonyId);
+    add(data?.byColony);
+  }
+  if (kind === 'truce_offered' || kind === null) add(data?.fromColonyId);
+  if (kind === 'colony_eliminated' || kind === null) add(data?.killerColonyId);
+  return excluded;
 }
 
 /** `trade_offer` notifies only outside auto-trade. Every other kind is not gated here. */
@@ -112,7 +147,7 @@ export function alertNotification(
     title: copy.title,
     body: alertBody(kind, input.data),
     deepLink: `/c/${colonyId}`,
-    data: alertData(input),
+    data: alertData(kind, input),
   });
   return parsed.success ? parsed.data : null;
 }
@@ -121,20 +156,46 @@ function homeColony(id: unknown): string | null {
   return typeof id === 'string' && HomeColonyId.safeParse(id).success ? id : null;
 }
 
+function shortText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 80) : null;
+}
+
 function alertBody(kind: NotificationKind, data: Readonly<Record<string, unknown>> | undefined): string {
   const resource = data?.resource;
   if (kind === 'away_budget_exhausted' && (resource === 'metals' || resource === 'minerals' || resource === 'bio')) {
     return `Automated spending hit the away budget for ${resource}.`;
   }
+  if (kind === 'under_attack') {
+    const attacker = shortText(data?.attackerName) ?? shortText(data?.byColony);
+    if (attacker) return `Hostile forces from ${attacker} are hitting the colony.`;
+  }
   return ALERT_COPY[kind].body;
 }
 
-function alertData(input: AlertRouteInput): Record<string, unknown> {
-  return {
+const EXTRA_DATA_KEYS: Partial<Record<NotificationKind, readonly string[]>> = {
+  under_attack: ['attackerColonyId', 'targetColonyId', 'byColony', 'attackerName', 'raidId'],
+  colony_critical: ['cause', 'deadlineTick', 'timerS', 'hubEntityId'],
+  colony_eliminated: ['cause', 'killerColonyId', 'byColony'],
+  truce_offered: ['offerId', 'fromColonyId', 'toColonyId', 'durationHours', 'hours', 'expiresAtTick'],
+};
+
+function alertData(kind: NotificationKind, input: AlertRouteInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {
     sourceKind: input.kind,
     ...(input.planetId ? { planetId: input.planetId } : {}),
     ...(input.tick !== undefined ? { tick: input.tick } : {}),
   };
+  const data = input.data;
+  if (!data) return out;
+  for (const key of EXTRA_DATA_KEYS[kind] ?? []) {
+    if (data[key] !== undefined) out[key] = data[key];
+  }
+  if (kind === 'truce_offered' && out.durationHours === undefined && data.hours !== undefined) {
+    out.durationHours = data.hours;
+  }
+  return out;
 }
 
 function clipEventId(

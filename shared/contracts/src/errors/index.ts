@@ -42,6 +42,8 @@ export const REJECT_CODES = [
   // W15 Guild & director key (NEAR-80, NEAR-81). `allowance_exhausted` is the command code;
   // the chain port throws `NEAR_ALLOWANCE_EXHAUSTED` for the same fact.
   'offer_expired', 'director_key_missing', 'director_key_revoked', 'allowance_exhausted', 'autotrade_limit',
+  // W18 PvP & Diplomacy (UO-DIP-01..06, UO-T-05, W18-01, W18-31):
+  'recent_hostility', 'oathbreaker', 'cross_sector_disabled', 'no_contact', 'truce_cap', 'unknown_offer', 'unknown_truce',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

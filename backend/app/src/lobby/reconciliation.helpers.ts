@@ -5,9 +5,16 @@ import {
   LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
   type MatchTicketRecord,
-  type SectorReservationRecord,
 } from './lobby-persistence.types';
 import { resolveCanonicalPlanetType } from './planets.helpers';
+import {
+  bindReconciliationBus,
+  extractEliminatedColonyIds,
+  locateColonyAndCommittedReservation,
+  transitionAllColoniesStatusHelper,
+  transitionColonyStatusHelper,
+  type ReconciliationEventBusLike,
+} from './parts/reconciliation-elimination';
 import {
   computeAuthoritativeSectorCounts,
   reconcileWorldSectorsAndBuildSnapshot,
@@ -15,7 +22,6 @@ import {
 import {
   MATCH_TICKET_MAX_WAIT_MS,
   TICKET_TIMEOUT_FAILURE_CODE,
-  type ColonyEliminationReconcileResult,
   type HandlePlanetEventInput,
   type HandlePlanetEventOptions,
   type PlanetLifecycleEventKind,
@@ -30,12 +36,23 @@ import {
   type ReconciledOrphanColonyRecord,
 } from './spawn-saga.types';
 
-export { computeAuthoritativeSectorCounts, reconcileWorldSectorsAndBuildSnapshot };
+export {
+  bindReconciliationBus,
+  computeAuthoritativeSectorCounts,
+  extractEliminatedColonyIds,
+  locateColonyAndCommittedReservation,
+  reconcileWorldSectorsAndBuildSnapshot,
+  transitionAllColoniesStatusHelper,
+  transitionColonyStatusHelper,
+  type ReconciliationEventBusLike,
+};
 export type { SectorId };
 
 const PLANET_EVENT_KINDS = new Set<string>([
   'extinct',
   'all_eliminated',
+  'colonyEliminated',
+  'colony_eliminated',
   'settled',
   'all_settled',
   'victory',
@@ -305,129 +322,4 @@ async function reconcileWorldOrphansInHomeRepo(
       { now },
     );
   }
-}
-
-export async function locateColonyAndCommittedReservation(
-  persistence: LobbyPersistenceService,
-  homeRepo: HomeRepository,
-  colonyId: string,
-  hintPlanetId?: string,
-): Promise<{
-  readonly planetId: string;
-  readonly sectorId: string;
-  readonly landingSlotId: string | null;
-  readonly reservation: SectorReservationRecord | null;
-}> {
-  const existingColony = await homeRepo.findColonyById(colonyId);
-  const worlds = hintPlanetId
-    ? [await resolveCanonicalWorldOrThrow(persistence, hintPlanetId)]
-    : await persistence.listCanonicalWorlds();
-
-  for (const world of worlds) {
-    const reservations = await persistence.listReservations(world.id);
-    const match = reservations.find((r) => r.colonyId === colonyId && r.state === 'COMMITTED');
-    if (match) {
-      return {
-        planetId: world.id,
-        sectorId: match.sectorId,
-        landingSlotId: match.landingSlotId,
-        reservation: match,
-      };
-    }
-  }
-  if (existingColony) {
-    return {
-      planetId: existingColony.planetId,
-      sectorId: existingColony.foundingSectorId ?? 'sec_0_0',
-      landingSlotId: existingColony.landingSlotId ?? null,
-      reservation: null,
-    };
-  }
-  return {
-    planetId: hintPlanetId ?? worlds[0]?.id ?? 'desert',
-    sectorId: 'sec_0_0',
-    landingSlotId: null,
-    reservation: null,
-  };
-}
-
-export async function transitionColonyStatusHelper(params: {
-  readonly persistence: LobbyPersistenceService;
-  readonly homeRepo: HomeRepository;
-  readonly eliminatedColonyIds: Set<string>;
-  readonly settledColonyIds: Set<string>;
-  readonly colonyId: string;
-  readonly targetStatus: 'ELIMINATED' | 'TRANSFERRED';
-  readonly planetId?: string;
-  readonly now?: Date;
-}): Promise<ColonyEliminationReconcileResult> {
-  const {
-    persistence,
-    homeRepo,
-    eliminatedColonyIds,
-    settledColonyIds,
-    colonyId,
-    targetStatus,
-    planetId,
-  } = params;
-  const now = params.now ?? new Date();
-  if (targetStatus === 'ELIMINATED') {
-    eliminatedColonyIds.add(colonyId);
-    settledColonyIds.delete(colonyId);
-  } else {
-    settledColonyIds.add(colonyId);
-    eliminatedColonyIds.delete(colonyId);
-  }
-
-  const located = await locateColonyAndCommittedReservation(
-    persistence,
-    homeRepo,
-    colonyId,
-    planetId,
-  );
-  let updatedColony = await homeRepo.findColonyById(colonyId);
-  if (!updatedColony && located.reservation) {
-    const created = await homeRepo.createColony({
-      id: colonyId,
-      playerId: located.reservation.playerId,
-      planetId: located.planetId,
-      colonyIndex: located.reservation.slotIndex,
-      name: `Colony-${located.reservation.playerId.slice(-4)}`,
-      status: targetStatus,
-      foundingSectorId: located.sectorId,
-      landingSlotId: located.landingSlotId,
-      spawnQ: located.reservation.q,
-      spawnR: located.reservation.r,
-    });
-    updatedColony = created.colony;
-  } else if (updatedColony) {
-    updatedColony = await homeRepo.setColonyStatus(colonyId, targetStatus);
-  }
-
-  const world = await resolveCanonicalWorldOrThrow(persistence, located.planetId);
-  const { snapshot } = await reconcileWorldSectorsAndBuildSnapshot({
-    persistence,
-    homeRepo,
-    world,
-    expiredInWorldCount: 0,
-    eliminatedColonyIds,
-    settledColonyIds,
-    now,
-  });
-  const secSnap = snapshot.sectors.find((s) => s.sectorId === located.sectorId);
-
-  return {
-    colonyId,
-    planetId: world.id,
-    sectorId: located.sectorId,
-    landingSlotId: located.landingSlotId,
-    status: targetStatus,
-    foundedSeatHeld: true,
-    seatEvicted: false,
-    sectorFoundedSeats: secSnap?.foundedSeats ?? snapshot.foundedSeats,
-    sectorReservedSeats: secSnap?.reservedSeats ?? snapshot.reservedSeats,
-    sectorFreeSeats: secSnap?.freeSeats ?? snapshot.freeSeats,
-    sectorLivingColonies: secSnap?.livingColonies ?? snapshot.livingColonies,
-    colony: updatedColony,
-  };
 }

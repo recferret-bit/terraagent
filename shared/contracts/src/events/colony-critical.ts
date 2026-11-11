@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { HomeColonyId } from '../rest/home';
 import { defineEvent } from './define';
 
 export const ColonyCriticalCauseSchema = z.enum(['hub_destroyed', 'raid', 'fauna', 'environment', 'other']);
@@ -7,11 +6,16 @@ export type ColonyCriticalCause = z.infer<typeof ColonyCriticalCauseSchema>;
 
 /** Declared here so W09-19 and W11-16 can consume it; W18-01 reuses this kind. */
 export const ColonyCriticalDataSchema = z.strictObject({
-  colonyId: HomeColonyId,
+  colonyId: z.string().min(1).max(64).optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
-  cause: ColonyCriticalCauseSchema,
-  atTick: z.number().int().nonnegative(),
+  playerId: z.string().optional(),
+  cause: ColonyCriticalCauseSchema.optional(),
+  hubEntityId: z.number().int().nonnegative().optional(),
+  atTick: z.number().int().nonnegative().optional(),
   deadlineTick: z.number().int().nonnegative().optional(),
+  timerS: z.number().int().nonnegative().optional(),
+  remainingSeconds: z.number().int().nonnegative().optional(),
+  durationSeconds: z.number().int().nonnegative().optional(),
 });
 export type ColonyCriticalData = z.infer<typeof ColonyCriticalDataSchema>;
 

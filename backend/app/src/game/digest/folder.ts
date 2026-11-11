@@ -1,5 +1,5 @@
 import { DIGEST_DIRECTOR_TRADE, DIGEST_LIST_CAP, type AwayDigestV1 } from '@terra/contracts';
-import type { AttackFold } from './types';
+import type { AlertFold, AttackFold, LossFold } from './types';
 
 /** Keeps the first 20. The 21st appended item is dropped (CT-31). */
 export function capList<T>(items: readonly T[]): T[] {
@@ -8,13 +8,22 @@ export function capList<T>(items: readonly T[]): T[] {
 
 /**
  * `raidStarted` and `underAttack` increment `attacks.count`. `raidRepelled` increments `attacks.repelled`.
- * Every one of those appends a `byColony` row; past 20 the new row is dropped and the count still moves.
+ * Every attack appends a `byColony` row (repelled skips duplicate when its raid start already appended);
+ * past 20 the new row is dropped and the count still moves.
  */
 export function foldAttack(body: AwayDigestV1, event: AttackFold): AwayDigestV1 {
+  const name = attackName(event);
+  const skipRepelledDup =
+    event.kind === 'raidRepelled' &&
+    body.attacks.byColony.length > 0 &&
+    (body.attacks.byColony.some((row) => row.displayName === name) || !hasExplicitAttacker(event));
+  const byColony = skipRepelledDup
+    ? body.attacks.byColony
+    : capList([...body.attacks.byColony, { displayName: name, count: 1 }]);
   const attacks = {
     count: body.attacks.count + (event.kind === 'raidRepelled' ? 0 : 1),
     repelled: body.attacks.repelled + (event.kind === 'raidRepelled' ? 1 : 0),
-    byColony: capList([...body.attacks.byColony, { displayName: attackName(event), count: 1 }]),
+    byColony,
   };
   const alerts = event.kind === 'underAttack' ? capList([...body.alerts, underAttackAlert(event)]) : body.alerts;
   return { ...body, attacks, alerts };
@@ -24,6 +33,32 @@ export function foldAttack(body: AwayDigestV1, event: AttackFold): AwayDigestV1 
 export function foldDirectorTrade(body: AwayDigestV1, line: string): AwayDigestV1 {
   const items = capList([...(body.items ?? []), { kind: DIGEST_DIRECTOR_TRADE, line }]);
   return { ...body, items };
+}
+
+export function foldLoss(body: AwayDigestV1, loss: LossFold): AwayDigestV1 {
+  if (loss.kind === 'unitDestroyed') {
+    return {
+      ...body,
+      robots: { ...body.robots, lost: body.robots.lost + loss.count },
+    };
+  }
+  const item = {
+    kind: loss.buildingKind ?? 'building',
+    tier: loss.tier ?? 1,
+    count: loss.count,
+    cause: loss.cause,
+  };
+  return { ...body, lost: capList([...body.lost, item]) };
+}
+
+export function foldAlert(body: AwayDigestV1, alert: AlertFold): AwayDigestV1 {
+  const label = alert.kind === 'colonyCritical' ? 'Colony critical' : 'Colony eliminated';
+  const rawMessage = alert.cause ? `${label} (${alert.cause})` : label;
+  const message = rawMessage.slice(0, 200);
+  return {
+    ...body,
+    alerts: capList([...body.alerts, { code: 'under_attack', message }]),
+  };
 }
 
 /** Older bodies first, newest last. Counts sum. Lists concatenate, then cap at 20. */
@@ -66,10 +101,21 @@ export function mergeBodies(parts: readonly AwayDigestV1[]): AwayDigestV1 {
   };
 }
 
+function hasExplicitAttacker(event: AttackFold): boolean {
+  return Boolean(
+    event.attackerName?.trim() ||
+      event.byColony?.trim() ||
+      event.attackerColonyId?.trim() ||
+      event.species?.trim(),
+  );
+}
+
 function attackName(event: AttackFold): string {
-  const name = event.species?.trim();
-  if (name && name.length <= 64) return name;
-  return event.kind === 'underAttack' ? 'hostile' : 'fauna';
+  for (const candidate of [event.attackerName, event.byColony, event.species, event.attackerColonyId]) {
+    const name = candidate?.trim();
+    if (name && name.length <= 64) return name;
+  }
+  return event.kind === 'underAttack' || event.pvp ? 'hostile' : 'fauna';
 }
 
 function underAttackAlert(event: AttackFold): AwayDigestV1['alerts'][number] {
