@@ -66,7 +66,7 @@ export function isPlanetGovernorEnabled(state: PlanetState): boolean {
 }
 
 export function isRivalAiColony(state: PlanetState, colonyIndex: number): boolean {
-  if (Boolean(readRivalAiBlob(state).rivals[colonyIndex])) return true;
+  if (readRivalAiBlob(state).rivals[colonyIndex]) return true;
   const col = state.colonies[colonyIndex] as { isAiColony?: boolean } | undefined;
   return col?.isAiColony === true;
 }

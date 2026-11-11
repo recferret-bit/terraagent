@@ -86,7 +86,7 @@ function pickRivalAnchors(state: PlanetState, count: number): Array<{ q: number;
       occupiedCenters.push({ q: col.spawnQ, r: col.spawnR });
     }
   }
-  const candidates = [...getSpawnSlots(state)];
+  const candidates: Array<{ q: number; r: number }> = getSpawnSlots(state).map((s) => ({ q: s.q, r: s.r }));
   const r = Math.max(6, Math.floor(state.grid.radius * 0.55));
   candidates.push({ q: r, r: 0 }, { q: -r, r: r }, { q: 0, r: -r }, { q: -r, r: 0 });
 
@@ -150,7 +150,8 @@ export function seedRivalAiColonies(
   if (blob.seeded) return Object.values(blob.rivals);
 
   const count = opts.count ?? 2;
-  const capacity = Math.max(4, opts.capacity ?? state.meta.capacity ?? 8);
+  const metaCap = (state.meta as { capacity?: number }).capacity;
+  const capacity = Math.max(4, opts.capacity ?? metaCap ?? 8);
   const tick = opts.tick ?? state.meta.tick;
   const data = resolveSeedData(opts.data);
   const anchors = pickRivalAnchors(state, count);
@@ -182,7 +183,7 @@ export function seedRivalAiColonies(
     colRec.spawnR = anchor.r;
     colRec.awayRaids = spec.awayRaids;
 
-    setColonyStock(state, colonyIndex, spec.stock, opts.ctx ? treasuryCtx(opts.ctx) : undefined);
+    setColonyStock(state, colonyIndex, spec.stock, opts.ctx ? treasuryCtx(tick, opts.ctx) : undefined);
     setColonyPriorities(state, colonyIndex, spec.priorities, tick);
     applyAutopilot(
       state,

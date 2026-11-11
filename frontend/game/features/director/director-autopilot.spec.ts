@@ -42,6 +42,7 @@ describe('Director HUD AI Autopilot & War/Diplomacy opt-in', () => {
       flags: new Set(['W16', 'W18']),
       host: 'local',
       services: {
+        track: () => {},
         store: {
           sendCommand: (kind, args) => {
             sent.push({ kind: String(kind), args });

@@ -99,7 +99,7 @@ export function observeColony(state: PlanetState, colonyIndex: number): ColonyOb
     colonyIndex,
     colonyId: col.id,
     name: col.name || col.id,
-    stage: Math.max(col.stage ?? 0, col.unlockStage ?? 0),
+    stage: Math.max(Number(col.stage ?? 0), Number(col.unlockStage ?? 0)),
     away: colonyIsAway(state, colonyIndex),
     aiEnabled: col.aiEnabled === true,
     persona: meta?.persona ?? 'player',

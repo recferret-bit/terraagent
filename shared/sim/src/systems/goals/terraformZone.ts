@@ -10,7 +10,6 @@ import { evaluateGroundWorkTile } from '../terraform-basic/groundWorkRule';
 import { colonyTerraformOrders } from '../terraform-basic/orders';
 import { enqueueTerraformOrder } from '../terraform-basic/queue';
 import {
-  colonyTerraformStats,
   resolveCultivateTileOp,
   syncColonyTerraformStats,
   terraformWorldFromState,
@@ -40,7 +39,7 @@ function stockOf(state: PlanetState, colonyIndex: number, key: string): number {
 function canAffordCultivateStep(state: PlanetState, colonyIndex: number, op: CultivateOpKind): boolean {
   const water = stockOf(state, colonyIndex, 'bio.water');
   const minerals = stockOf(state, colonyIndex, 'minerals.t1');
-  const desert = state.meta.planetType === 'desert' || state.meta.planetType === 'dune';
+  const desert = String(state.meta.planetType ?? '') === 'desert';
   if (op === 'grade') return minerals >= 4;
   if (op === 'irrigate') return water >= (desert ? 40 : 25);
   return water >= 20 && minerals >= 10;

@@ -165,7 +165,7 @@ export function stepColonyAutonomousGovernor(
   }
 
   const col = state.colonies[colonyIndex]!;
-  const stage = Math.max(col.stage ?? 0, col.unlockStage ?? 0);
+  const stage = Math.max(Number(col.stage ?? 0), Number(col.unlockStage ?? 0));
   const stock = (col as { stock?: Record<string, number> }).stock ?? {};
   const power = computeEffectivePowerNetPerS(state, colonyIndex, ctx?.data);
 
@@ -239,7 +239,7 @@ function tryStage4WarTerraformOrExpand(
   }
 
   if (counts.pylons < 1 && Number(stock['metals.t1'] ?? 0) >= 80) {
-    const site = selectDeterministicBuildSite(state, colonyIndex, 'pylon', ctx?.data);
+    const site = selectDeterministicBuildSite(state, colonyIndex, 'pylon');
     if (site) {
       const enq = enqueueQueueTask(
         state,

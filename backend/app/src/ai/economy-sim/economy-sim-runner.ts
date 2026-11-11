@@ -129,9 +129,9 @@ function cultivateHexForColony(host: SimHost, colonyIndex: number, count: number
   let converted = 0;
   for (let i = 0; i < grid.count && converted < count; i++) {
     if (grid.layers.owner[i] !== colonyIndex) continue;
-    if (grid.layers.terrain[i] === TERRAIN.living) continue;
-    setTileTerrain(grid, i, TERRAIN.living, host.tick);
-    setTilePrep(grid, i, PREP.none, host.tick);
+    if (grid.layers.prep[i] === PREP.living) continue;
+    setTileTerrain(grid, i, TERRAIN.flat, host.tick);
+    setTilePrep(grid, i, PREP.living, host.tick);
     setTileOwner(grid, i, colonyIndex);
     converted++;
   }
@@ -173,7 +173,7 @@ function syncNewlySignedTruces(host: SimHost, day: number, acc: SimAccumulator):
 
 function stepDayDiplomacyAndWar(host: SimHost, day: number, acc: SimAccumulator): void {
   if (day === 2) {
-    const prop = proposeTruce(host.state, 4, 0, 12, host.tick);
+    const prop = proposeTruce(host.state, 4, 0, 6, host.tick);
     if (prop.ok) respondTruce(host.state, 0, prop.offer.offerId, true, host.tick);
   }
   if (day === 3 || day === 5) {
