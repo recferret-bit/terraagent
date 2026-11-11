@@ -51,6 +51,13 @@ export function precheckClientCommand(
 ): CommandPrecheck {
   const gate = o.gate(kind);
   if (gate) return { ok: false, code: gate };
+  if (kind === 'enqueueTask' && args && typeof args === 'object') {
+    const obj = args as { raid?: unknown; task?: { kind?: unknown } };
+    if (obj.raid !== undefined || obj.task?.kind === 'raid') {
+      const raidGate = o.gate('raid');
+      if (raidGate) return { ok: false, code: raidGate };
+    }
+  }
   if (!hasCommandKind(kind)) return { ok: false, code: 'unknown_kind' };
   const def = commandDef(kind);
   if (def.origin !== 'client' || (def.dev && o.production)) return { ok: false, code: 'unknown_kind' };

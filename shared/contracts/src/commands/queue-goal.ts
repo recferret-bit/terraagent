@@ -31,7 +31,7 @@ export const GoalParamsSchema = z.strictObject({
   radius: z.number().int().min(1).max(32).optional(),
   op: z.string().min(1).max(32).optional(),
   tier: z.number().int().min(1).max(3).optional(),
-  targetColonyId: z.number().int().nonnegative().optional(),
+  targetColonyId: z.union([z.number().int().nonnegative(), z.string().min(1).max(64)]).optional(),
 });
 
 export type GoalParams = z.infer<typeof GoalParamsSchema>;

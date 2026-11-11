@@ -118,7 +118,7 @@ export class HudRoot {
     if (dockTab && this.dock) return this.dock.containerFor(dockTab);
     const colonyTab = resolveColonyTab(f.id, p.id);
     if (colonyTab && this.colony) return this.colony.containerFor(colonyTab);
-    return this.slots.get(p.slot)!;
+    return this.slots.get(p.slot) ?? this.slots.get('top-center')!;
   }
 
   private mountPanel(def: PanelDef, ctx: FeatureContext): void {

@@ -554,9 +554,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -1421,9 +1430,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -1528,6 +1546,70 @@
       "origin": "client",
       "summary": "Dev console: adds (positive) or withdraws (negative) `amount` whole units of `resource` on the caller colony via the ledger (`dev.grant`); a withdrawal is clamped to the balance so stock stays >= 0.",
       "wave": "W01"
+    },
+    "dev.killHq": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: destroys the target colony HQ Drone (`UO-HQ-04`, W18-25).",
+      "wave": "W18"
+    },
+    "dev.killHub": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: destroys the target colony Command Hub (`UO-HQ-04`, W18-25).",
+      "wave": "W18"
     },
     "dev.land": {
       "args": {
@@ -1652,6 +1734,101 @@
       "summary": "Moves a test entity by dev.probe.nudgeTiles tiles along (dq, dr); default direction +q.",
       "wave": "W00"
     },
+    "dev.offerTruce": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "durationHours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
+          "fromColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
+          "toColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: injects a truce offer from a neighbor colony into the player colony (`UO-DIP-02`, W18-25).",
+      "wave": "W18"
+    },
     "dev.ping": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1756,6 +1933,46 @@
       "origin": "client",
       "summary": "Dev console: regenerates the dev planet terrain with the given seed.",
       "wave": "W01"
+    },
+    "dev.setShield": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hours": {
+            "maximum": 720,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "hours"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: sets newcomer raid protection (`raidProtectedUntil`) on a colony for `hours` hours (`UO-T-05`, W18-25).",
+      "wave": "W18"
     },
     "dev.setwind": {
       "args": {
@@ -2290,6 +2507,149 @@
       "summary": "Dev console: spawns a rising twister that travels in a random direction, damages buildings, and sucks up units and trees (requires high wind and minor rain, W05).",
       "wave": "W05"
     },
+    "diplomacy.cancelTruce": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "truceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "truceId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Starts the 10-minute cancellation notice on an active truce and marks the canceller Oathbreaker for 24 h (`UO-DIP-04`, W18-01, W18-14).",
+      "wave": "W18"
+    },
+    "diplomacy.proposeTruce": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "durationHours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
+          "targetColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "targetColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "targetColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "toColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Proposes a fixed-term bilateral truce (2 / 6 / 24 / 72 h) to a contacted colony (`UO-DIP-01..02`, W18-01, W18-11..12).",
+      "wave": "W18"
+    },
+    "diplomacy.respondTruce": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accept": {
+            "type": "boolean"
+          },
+          "offerId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "offerId",
+          "accept"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Accepts or declines an incoming truce offer before its 10-minute expiry (`UO-DIP-02`, W18-01, W18-12).",
+      "wave": "W18"
+    },
     "enqueueTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2553,6 +2913,84 @@
           {
             "additionalProperties": false,
             "properties": {
+              "raid": {
+                "additionalProperties": false,
+                "properties": {
+                  "entityIds": {
+                    "items": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "targetColony": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "targetColonyId": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "targetColonyIndex": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "unitIds": {
+                    "items": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "raid"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
               "costOverride": {
                 "additionalProperties": {
                   "minimum": 0,
@@ -2806,6 +3244,82 @@
                       "project"
                     ],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "entityIds": {
+                        "items": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "kind": {
+                        "const": "raid",
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "targetColony": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "targetColonyId": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "targetColonyIndex": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "unitIds": {
+                        "items": {
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
                   }
                 ]
               },
@@ -2823,7 +3337,7 @@
         ]
       },
       "origin": "client",
-      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order), or a prestige project order (W13) in the colony queue.",
+      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), a repair / HQ-goal order (W03), a prestige project order (W13), or a PvP raid order (W18) in the colony queue.",
       "wave": "W01"
     },
     "landPod": {
@@ -3024,7 +3538,14 @@
               "order_limit",
               "order_too_small",
               "unknown_order",
-              "away_policy"
+              "away_policy",
+              "recent_hostility",
+              "oathbreaker",
+              "cross_sector_disabled",
+              "no_contact",
+              "truce_cap",
+              "unknown_offer",
+              "unknown_truce"
             ],
             "type": "string"
           },
@@ -3538,9 +4059,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -3589,6 +4119,81 @@
       "origin": "client",
       "summary": "Queues an HQ goal onto the colony goal queue (subject to HQ tier limit 2 / 3 / 5, UO-P §4.6).",
       "wave": "W08"
+    },
+    "raid": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "targetColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "targetColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "targetColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unitIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Dispatches an army group to raid a target colony (`UO-W-08`, `UO-T-05`, W18-01..02).",
+      "wave": "W18"
     },
     "reorderGoal": {
       "args": {
@@ -5118,16 +5723,9 @@
             "type": "string"
           },
           "colonyId": {
-            "anyOf": [
-              {
-                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
-                "type": "string"
-              },
-              {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
-                "type": "string"
-              }
-            ]
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
           },
           "colonyIndex": {
             "maximum": 9007199254740991,
@@ -5138,13 +5736,31 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "durationSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hubEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "remainingSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "timerS": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           }
         },
-        "required": [
-          "colonyId",
-          "cause",
-          "atTick"
-        ],
         "type": "object"
       },
       "severity": "critical",
@@ -5162,10 +5778,14 @@
             "minimum": 0,
             "type": "integer"
           },
+          "byColony": {
+            "type": "string"
+          },
           "cause": {
             "enum": [
               "timer",
               "hq_lost",
+              "both_lost",
               "raid",
               "fauna",
               "environment",
@@ -5174,28 +5794,25 @@
             "type": "string"
           },
           "colonyId": {
-            "anyOf": [
-              {
-                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
-                "type": "string"
-              },
-              {
-                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
-                "type": "string"
-              }
-            ]
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
           },
           "colonyIndex": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "killerColonyId": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
           }
         },
-        "required": [
-          "colonyId",
-          "cause",
-          "atTick"
-        ],
         "type": "object"
       },
       "severity": "critical",
@@ -6181,7 +6798,14 @@
               "order_limit",
               "order_too_small",
               "unknown_order",
-              "away_policy"
+              "away_policy",
+              "recent_hostility",
+              "oathbreaker",
+              "cross_sector_disabled",
+              "no_contact",
+              "truce_cap",
+              "unknown_offer",
+              "unknown_truce"
             ],
             "type": "string"
           },
@@ -6969,6 +7593,16 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "attackerColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "attackerColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "colonyId": {
             "type": "string"
           },
@@ -7000,7 +7634,32 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "raidId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "siphoned": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "species": {
+            "type": "string"
+          },
+          "targetColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "targetColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
             "type": "string"
           },
           "unbreached": {
@@ -7022,6 +7681,16 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "attackerColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "attackerColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "budget": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -7058,8 +7727,31 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "raidId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "species": {
             "type": "string"
+          },
+          "targetColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "targetColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "unitIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
           },
           "waveIndex": {
             "exclusiveMinimum": 0,
@@ -7622,9 +8314,18 @@
                 "type": "number"
               },
               "targetColonyId": {
-                "maximum": 9007199254740991,
-                "minimum": 0,
-                "type": "integer"
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ]
               },
               "targetNetEnergyPerS": {
                 "maximum": 100000,
@@ -7729,6 +8430,22 @@
           },
           "colonyId": {
             "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graceSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "reverted": {
+            "type": "boolean"
           },
           "tiles": {
             "maximum": 9007199254740991,
@@ -8071,6 +8788,372 @@
       "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
     },
+    "truceEnded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cancelledBy": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyA": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyAId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyB": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyBId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "endedAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "oathbreakerUntilTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "expired",
+              "cancelled",
+              "settled",
+              "eliminated"
+            ],
+            "type": "string"
+          },
+          "truceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "truceId",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a truce expires on term or ends after its 10-minute cancellation notice (`UO-DIP-04`, W18-01, W18-14).",
+      "wave": "W18"
+    },
+    "truceNotice": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cancelledBy": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cancelledByColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "colonyA": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyB": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "noticeEndsAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "noticeS": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "truceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "truceId",
+          "noticeEndsAtTick"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a partner initiates the 10-minute cancellation notice on an active truce (`UO-DIP-04`, W18-01, W18-14).",
+      "wave": "W18"
+    },
+    "truceOffered": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expiresAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fromColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fromColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
+          "offerId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "offeredAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "toColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "toColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "offerId",
+          "hours"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a colony proposes a fixed-term bilateral truce to a contacted neighbor (`UO-DIP-01..02`, W18-01, W18-11..12).",
+      "wave": "W18"
+    },
+    "truceSigned": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyA": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyAId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyB": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyBId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expiresAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
+          },
+          "offerId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "signedAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "truceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a truce offer is accepted and a bilateral truce becomes active (`UO-DIP-02..03`, W18-01, W18-12).",
+      "wave": "W18"
+    },
     "twisterStarted": {
       "audience": "player",
       "data": {
@@ -8174,6 +9257,14 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "attackerColonyId": {
+            "type": "string"
+          },
+          "attackerColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "attackerId": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -8187,18 +9278,42 @@
             "minimum": 0,
             "type": "integer"
           },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
           "entityId": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "killerColonyId": {
+            "type": "string"
+          },
+          "killerOwner": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "killerPlayerId": {
+            "type": "string"
           },
           "kind": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "owner": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "playerId": {
             "type": "string"
+          },
+          "pvp": {
+            "type": "boolean"
           },
           "q": {
             "maximum": 9007199254740991,
@@ -8212,13 +9327,11 @@
           },
           "unit": {
             "type": "string"
+          },
+          "victimColonyId": {
+            "type": "string"
           }
         },
-        "required": [
-          "entityId",
-          "q",
-          "r"
-        ],
         "type": "object"
       },
       "severity": "warn",
@@ -8883,7 +9996,14 @@
                 "order_limit",
                 "order_too_small",
                 "unknown_order",
-                "away_policy"
+                "away_policy",
+                "recent_hostility",
+                "oathbreaker",
+                "cross_sector_disabled",
+                "no_contact",
+                "truce_cap",
+                "unknown_offer",
+                "unknown_truce"
               ],
               "type": "string"
             },

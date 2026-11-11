@@ -25,12 +25,138 @@ declare module '../bus/channels.js' {
   }
 }
 
-/** Maps a `planet.event` payload to a `ProgressEventV1` when it corresponds to an achievement family. */
-export function planetEventToProgress(
+function collectTruceColonies(e: PlanetEventV1, data: Record<string, unknown>): string[] {
+  const result: string[] = [];
+  const add = (c: unknown) => {
+    if (typeof c === 'string' && c.trim().length > 0 && !result.includes(c.trim())) {
+      result.push(c.trim());
+    }
+  };
+  add(data.colonyA);
+  add(data.colonyAId);
+  add(data.colonyB);
+  add(data.colonyBId);
+  add(data.colonyId);
+  if (Array.isArray(e.colonyIds)) {
+    for (const cid of e.colonyIds) add(cid);
+  }
+  if (result.length === 0) {
+    if (typeof data.colonyA === 'number' && data.colonyA >= 0) result.push(String(data.colonyA));
+    if (typeof data.colonyB === 'number' && data.colonyB >= 0) result.push(String(data.colonyB));
+  }
+  return result;
+}
+
+function resolveTrucePlayerId(
+  colonyId: string,
+  data: Record<string, unknown>,
+  allColonies: readonly string[],
+  resolvePlayerId?: (colonyId: string) => string | undefined,
+): string | undefined {
+  if (resolvePlayerId) {
+    const fromCb = resolvePlayerId(colonyId);
+    if (fromCb) return fromCb;
+  }
+  const isA = colonyId === data.colonyA || colonyId === data.colonyAId || colonyId === String(data.colonyA);
+  const isB = colonyId === data.colonyB || colonyId === data.colonyBId || colonyId === String(data.colonyB);
+  if (isA && typeof data.playerAId === 'string' && data.playerAId) return data.playerAId;
+  if (isA && typeof data.playerA === 'string' && data.playerA) return data.playerA;
+  if (isB && typeof data.playerBId === 'string' && data.playerBId) return data.playerBId;
+  if (isB && typeof data.playerB === 'string' && data.playerB) return data.playerB;
+  if (colonyId === data.colonyId && typeof data.playerId === 'string' && data.playerId) return data.playerId;
+  if (allColonies.length === 1 && typeof data.playerId === 'string' && data.playerId) return data.playerId;
+  return undefined;
+}
+
+function resolveUnitDestroyedEvents(
+  e: PlanetEventV1,
+  data: Record<string, unknown>,
+  family: AchievementFamilyId,
+  metric: AchievementMetric,
+  value: number,
+  resolvePlayerId?: (colonyId: string) => string | undefined,
+): ProgressEventV1[] {
+  const killerColony =
+    (typeof data.killerColonyId === 'string' && data.killerColonyId.trim().length > 0 && data.killerColonyId.trim()) ||
+    (typeof data.attackerColonyId === 'string' && data.attackerColonyId.trim().length > 0 && data.attackerColonyId.trim()) ||
+    '';
+  const colonyId =
+    killerColony ||
+    (typeof data.colonyId === 'string' && data.colonyId) ||
+    (typeof e.colonyIds?.[0] === 'string' && e.colonyIds[0]) ||
+    '';
+  const playerId = killerColony
+    ? (typeof data.killerPlayerId === 'string' && data.killerPlayerId) ||
+      (typeof data.attackerPlayerId === 'string' && data.attackerPlayerId) ||
+      (resolvePlayerId ? resolvePlayerId(killerColony) : undefined) ||
+      ''
+    : (typeof data.playerId === 'string' && data.playerId) ||
+      (colonyId && resolvePlayerId ? resolvePlayerId(colonyId) : undefined) ||
+      '';
+  if (!playerId || !colonyId) return [];
+  return [{
+    playerId,
+    colonyId,
+    planetId: e.planetId,
+    atTick: e.tick ?? 0,
+    eventId: progressEventId(e),
+    family,
+    metric,
+    value,
+  }];
+}
+
+function resolveTruceEndedEvents(
+  e: PlanetEventV1,
+  data: Record<string, unknown>,
+  family: AchievementFamilyId,
+  metric: AchievementMetric,
+  value: number,
+  resolvePlayerId?: (colonyId: string) => string | undefined,
+): ProgressEventV1[] {
+  const colonies = collectTruceColonies(e, data);
+  const events: ProgressEventV1[] = [];
+  for (const colonyId of colonies) {
+    const playerId = resolveTrucePlayerId(colonyId, data, colonies, resolvePlayerId);
+    if (!playerId) continue;
+    events.push({
+      playerId,
+      colonyId,
+      planetId: e.planetId,
+      atTick: e.tick ?? 0,
+      eventId: progressEventId({ ...e, colonyId }),
+      family,
+      metric,
+      value,
+    });
+  }
+  return events;
+}
+
+/** Maps a `planet.event` payload to a list of `ProgressEventV1` (e.g. bilateral truces or killer credit). */
+export function planetEventToProgressEvents(
   e: PlanetEventV1,
   resolvePlayerId?: (colonyId: string) => string | undefined,
-): ProgressEventV1 | null {
+): ProgressEventV1[] {
+  const rule = PROGRESSION_EVENT_RULES[e.kind];
+  if (!rule) return [];
   const data = (e.data ?? {}) as Record<string, unknown>;
+  if (rule.predicate && !rule.predicate(data)) return [];
+
+  const family = (typeof data.op === 'string' && rule.familyByOp?.[data.op]) || rule.family;
+  const raw = rule.fields.map(key => data[key]).find(value => typeof value === 'number');
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : rule.fallback;
+  const spec = ACHIEVEMENT_FAMILY_BY_ID.get(family);
+  if (!spec) return [];
+  const metric = spec.metric;
+
+  if (e.kind === 'unitDestroyed') {
+    return resolveUnitDestroyedEvents(e, data, family, metric, value, resolvePlayerId);
+  }
+  if (e.kind === 'truceEnded') {
+    return resolveTruceEndedEvents(e, data, family, metric, value, resolvePlayerId);
+  }
+
   const colonyId =
     (typeof data.colonyId === 'string' && data.colonyId) ||
     (typeof e.colonyIds?.[0] === 'string' && e.colonyIds[0]) ||
@@ -39,17 +165,26 @@ export function planetEventToProgress(
     (typeof data.playerId === 'string' && data.playerId) ||
     (colonyId && resolvePlayerId ? resolvePlayerId(colonyId) : undefined) ||
     '';
-  if (!playerId || !colonyId) return null;
+  if (!playerId || !colonyId) return [];
 
-  const rule = PROGRESSION_EVENT_RULES[e.kind];
-  if (!rule) return null;
-  if (rule.predicate && !rule.predicate(data)) return null;
-  const family = (typeof data.op === 'string' && rule.familyByOp?.[data.op]) || rule.family;
-  const raw = rule.fields.map(key => data[key]).find(value => typeof value === 'number');
-  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : rule.fallback;
-  return { playerId, colonyId, planetId: e.planetId, atTick: e.tick ?? 0,
-    eventId: progressEventId(e), family, metric: ACHIEVEMENT_FAMILY_BY_ID.get(family)!.metric, value };
+  return [{
+    playerId,
+    colonyId,
+    planetId: e.planetId,
+    atTick: e.tick ?? 0,
+    eventId: progressEventId(e),
+    family,
+    metric,
+    value,
+  }];
+}
 
+/** Maps a `planet.event` payload to a `ProgressEventV1` when it corresponds to an achievement family. */
+export function planetEventToProgress(
+  e: PlanetEventV1,
+  resolvePlayerId?: (colonyId: string) => string | undefined,
+): ProgressEventV1 | null {
+  return planetEventToProgressEvents(e, resolvePlayerId)[0] ?? null;
 }
 
 /**
@@ -74,10 +209,12 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
     this.unsubs.push(
       this.bus.on(
         'planet.event',
-        (ev) => {
-          const prog = planetEventToProgress(ev, (cid) => this.homeRepo?.findCachedColonyById(cid)?.playerId);
-          if (prog && this.checkpoint?.enabled) this.checkpoint.stage(prog);
-          else if (prog) return this.applyProgressEvent(prog);
+        async (ev) => {
+          const progs = planetEventToProgressEvents(ev, (cid) => this.homeRepo?.findCachedColonyById(cid)?.playerId);
+          for (const prog of progs) {
+            if (this.checkpoint?.enabled) this.checkpoint.stage(prog);
+            else await this.applyProgressEvent(prog);
+          }
         },
         { module: 'progression' },
       ),

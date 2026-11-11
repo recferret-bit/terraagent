@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasRaidTargetField, RaidTaskFields, RaidTaskPayloadSchema } from '../diplomacy';
 import { TerraformOp, TileCoord, TilePos } from '../ws/sim';
 import { defineCommand } from './define';
 
@@ -63,6 +64,11 @@ export const EnqueueProjectTask = z.strictObject({
   project: z.strictObject({ project: z.string().min(1).max(64) }),
 });
 
+/** W18: a PvP raid task (`UO-W-08`, `UO-T-05`) dispatched from the "Raid Colony" HQ goal or directly. */
+export const EnqueueRaidTask = z.strictObject({
+  raid: RaidTaskPayloadSchema,
+});
+
 export const EnqueueDirectTask = z.strictObject({
   taskId: z.string().min(1).max(64).optional(),
   precedence: z.enum(['explicit', 'autoSitePrep', 'queued', 'standing', 'system', 'player', 'hq', 'ai', 'auto']).optional(),
@@ -110,6 +116,14 @@ export const EnqueueDirectTask = z.strictObject({
       r: TileCoord.optional(),
     }),
     z.strictObject({ kind: z.literal('project'), project: z.string().min(1).max(64) }),
+    z
+      .strictObject({
+        kind: z.literal('raid'),
+        ...RaidTaskFields,
+      })
+      .refine(hasRaidTargetField, {
+        message: 'A raid task requires targetColonyId, targetColonyIndex, or targetColony.',
+      }),
   ]),
 });
 
@@ -124,8 +138,9 @@ export const command = defineCommand({
     EnqueueRepairTask,
     EnqueueHqGoalTask,
     EnqueueProjectTask,
+    EnqueueRaidTask,
     EnqueueDirectTask,
   ]),
   summary:
-    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order), or a prestige project order (W13) in the colony queue.',
+    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), a repair / HQ-goal order (W03), a prestige project order (W13), or a PvP raid order (W18) in the colony queue.',
 });

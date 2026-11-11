@@ -17,6 +17,15 @@ import { extractPodDescentStatus, type PodDescentStatus } from '../podStatus';
 import type { PodLandingStateName } from '../PodTouchdownFx';
 import { resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
 
+export function resolveSeatIndexFromSearch(search: string, v: ClientView): number | null {
+  const asParam = new URLSearchParams(search).get('as')?.trim().toLowerCase() ?? '';
+  const asIdx = /^[a-e]$/.test(asParam) ? asParam.charCodeAt(0) - 97 : 0;
+  if (asIdx > 0 && Array.isArray(v.colonies) && v.colonies.some((c) => c && c.index === asIdx)) {
+    return asIdx;
+  }
+  return null;
+}
+
 export function applySessionSpacePhase(opts: {
   readonly phase: PodLandingStateName | null;
   readonly showTerrain: boolean;

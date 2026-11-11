@@ -39,6 +39,8 @@ export const REJECT_CODES = [
   'fee_out_of_range', 'order_limit', 'order_too_small', 'unknown_order',
   // W09 away policy (AW-22): an automated command the away rules refuse. Player commands are exempt.
   'away_policy',
+  // W18 PvP & Diplomacy (UO-DIP-01..06, UO-T-05, W18-01, W18-31):
+  'recent_hostility', 'oathbreaker', 'cross_sector_disabled', 'no_contact', 'truce_cap', 'unknown_offer', 'unknown_truce',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

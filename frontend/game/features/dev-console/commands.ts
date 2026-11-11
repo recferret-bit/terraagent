@@ -1,22 +1,30 @@
-import type { DevCommandDef, FeatureContext } from '../../core/registry/types';
+import type { DevCommandDef } from '../../core/registry/types';
 import { intArg, numArg } from '../../dev/console/parse';
-import type { CommandResult } from '../../net/commandBus';
 import '../../net/services';
 import { RESOURCE_ALIASES } from '../shared/resources';
 import { ledgerCommand } from './ledger';
+import { ackText, sim } from './sim';
+import {
+  devOfferTruceCommand,
+  killHqCommand,
+  killHubCommand,
+  offerTruceCommand,
+  setShieldCommand,
+  w18DevCommands,
+} from './w18-commands';
 
-export { ledgerCommand };
-
-
-async function sim(ctx: FeatureContext, kind: string, args: unknown): Promise<CommandResult> {
-  const send = ctx.services.sendCommand;
-  return send ? send(kind, args) : { ok: false, code: 'not_connected', detail: 'no game server connection' };
-}
-
-function ackText(kind: string, r: CommandResult): string {
-  if (r.ok) return `${kind} ok, applied at tick ${r.appliedAtTick}`;
-  throw new Error(`${kind} rejected: ${r.code}${r.detail ? ` (${r.detail})` : ''}`);
-}
+export {
+  ackText,
+  devOfferTruceCommand,
+  killHqCommand,
+  killHubCommand,
+  ledgerCommand,
+  offerTruceCommand,
+  setShieldCommand,
+  sim,
+  w18DevCommands,
+};
+export * from './w18-commands';
 
 export const grantCommand: DevCommandDef = {
   name: 'grant',
@@ -91,4 +99,5 @@ export const w01DevCommands: DevCommandDef[] = [
   tpCommand,
   landCommand,
   ledgerCommand,
+  ...w18DevCommands,
 ];

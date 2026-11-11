@@ -22,7 +22,18 @@ export type QueueTaskPayload =
   | { kind: 'dismantle'; entityId: number; building?: string; q?: number; r?: number }
   | { kind: 'hqGoal'; goal: string; target?: string; q?: number; r?: number; op?: string }
   /** W13: a prestige project (`prestige` data row id) in the Hub's Units lane; completion adds to `colony.prestige` (no cash). */
-  | { kind: 'project'; project: string };
+  | { kind: 'project'; project: string }
+  /** W18: a PvP raid task (`UO-W-08`, `UO-T-05`) dispatched from the "Raid Colony" HQ goal or directly. */
+  | {
+      kind: 'raid';
+      targetColonyId?: number | string;
+      targetColonyIndex?: number;
+      targetColony?: number | string;
+      unitIds?: number[];
+      entityIds?: number[];
+      q?: number;
+      r?: number;
+    };
 
 export interface QueueEntry {
   taskId: string;

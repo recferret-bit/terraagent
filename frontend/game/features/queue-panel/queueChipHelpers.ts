@@ -82,6 +82,10 @@ export function resolveChipTitleAndIcon(entry: QueueEntry): { title: string; ico
   if (task.kind === 'project') {
     return { title: `Project: ${task.project.replace(/^project\./, '').replace(/_/g, ' ')}`, icon: '★' };
   }
+  if (task.kind === 'raid') {
+    const tgt = task.targetColonyId ?? task.targetColonyIndex ?? task.targetColony ?? '?';
+    return { title: `Raid Colony ${tgt}`, icon: '⚔' };
+  }
   return { title: `Terraform: ${task.op}`, icon: '⛰' };
 }
 
