@@ -23,11 +23,11 @@
 > - Decisions: D-17, D-19, D-26, D-30
 >
 > **Owned paths:**
-> - server: `backend/app/src/market/guild/**`, `backend/app/src/near/{agent-wallet,director-key}/**`, `backend/app/src/near/infrastructure/adapters/mock/agent-wallet*`, `backend/app/src/near/__contract__/agent-wallet.contract.ts`
-> - contracts: `shared/contracts/src/{commands,events}/{guild,autotrade}.ts`
-> - sim: `shared/sim/src/systems/trade/autotrade.ts` (the director's trade decisions, D-31)
-> - client: `frontend/game/features/{guild,autotrade}/**`
-> - kitbash: `frontend/render/kitbash/archetypes/units/guild.ts` (`ship.guildTrader` = a Guild livery variant of the existing `ship.carrier`, not a new hull)
+> - server: `backend/app/src/market/{guild,director}/**`, `backend/app/src/near/{agent-wallet,director-key}/**`, `backend/app/src/near/infrastructure/adapters/mock/agent-wallet*`, `backend/app/src/near/__contract__/agent-wallet.contract.ts`, `backend/app/src/game/digest/**`, `backend/app/src/progression/producers/guild-contact*`
+> - contracts: `shared/contracts/src/{commands,events,guild,notify}/**` (`market-accept-guild-offer`, `set-auto-trade`, `guild-offer-accept-requested`, `guild-trade-settled`, `director-trade`, `director-order-requested`, `director-allowance-exhausted`)
+> - sim: `shared/sim/src/data/guild.ts`, `shared/sim/src/economy/{params/register-guild.ts,experiments/**/guild-pricing*}`, `shared/sim/src/systems/{trade/{guild,autotrade,accept-guild-offer.ts},away/auto-trade.ts}` (the director's trade decisions, D-31)
+> - client: `frontend/game/features/{guild,guild-tab,guild-toast,guild-analytics,guild-dev,away,away-digest,director-log}/**`
+> - kitbash: `frontend/render/kitbash/archetypes/units/{guild,guildCargoPods,shipCarrier}.ts` (`ship.guildTrader` = a Guild livery variant of the existing `ship.carrier`, not a new hull)
 > - tests: `tests/scenarios/w15-*.ts`, `tests/e2e/w15.spec.ts`
 > - uses from W00 without owning: `AgentWalletPort` (W00-30), mock base (W00-32), outbox (W00-37), contract harness (W00-38)
 
@@ -68,30 +68,30 @@ The colony **director** gets its own capped key (allowance = the trading share o
 
 ## Features covered
 
-- [ ] Contracts: guild and autoTrade commands/pushes/events, errors; `keyStatus` added to W00-30's `AgentWalletPort` — W15-01
-- [ ] Guild roster and economic config (spreads, inventory caps, schedule, funding caps `NEAR-73`) — W15-02
-- [ ] `MockAgentWalletAdapter`: sub-accounts, limited keys with allowance accounting, revoke — W15-03
-- [ ] Agent-wallet contract suite — W15-04
-- [ ] Guild NPC provisioning: sub-accounts, stock-backed/purchased real cargo; labeled mock fixtures, NEAR float, `chain.guild_npc` — W15-05
-- [ ] Guild bindings for the W13 quote library: Guild profile parameters, thin-side spread widening (`NEAR-71`); no second pricing implementation — W15-06, W15-07
-- [ ] Market-maker loop: an agent on the W13 bot API path quotes both sides on docked planet books with the NPC key; withdraw on depart (`NEAR-70`) — W15-08
-- [ ] Visit scheduler + `chain.guild_visit` + `guild.arrived` / `guild.departed`; cross-planet carry, a cross-planet transport service alongside external cargo imports (`NEAR-72`) — W15-09, W15-10
-- [ ] Curated Guild offers + `market.acceptGuildOffer` — W15-11
-- [ ] Funding guardrails on top of W13-59 allowances: global/per-NPC funding and kill switch (`NEAR-73`) — W15-12
-- [ ] Optional strategy hook `GuildStrategyPort` (deterministic default; LLM in W16, strategy only, never a free price) — W15-13
-- [ ] Guild ship (livery variant of `ship.carrier`) + landing/takeoff VFX + docked marker — W15-14, W15-15
-- [ ] Guild tab UI, arrival toast, countdown — W15-16, W15-17
-- [ ] Director key `POST /v1/near/director-key` add/revoke, `chain.director_key` (`NEAR-80`) — W15-18
-- [ ] autoTrade limits model + `setAutoTrade` command (`AW-13`) — W15-19
-- [ ] autoTrade policy: W09-13's `withinAutoTrade` checked in the sim and re-checked in the market module (`NEAR-81`) — W15-20
-- [ ] Director trading loop while away: the sim decides (surplus sell / shortage buy within limits), the market module signs with the director key and places; allowance decrement — W15-21
-- [ ] Allowance exhausted → stop + `directorAllowanceExhausted` event, notified by W09 as `away_budget_exhausted` (`CT-36`) — W15-22
-- [ ] Settings → Away: autoTrade limits UI, director key status, revoke — W15-23
-- [ ] Digest items for director trades — W15-24
-- [ ] Achievement progress event: Guild Contact — W15-25
-- [ ] Analytics — W15-26 · Telemetry (`guild_inventory`, Guild PnL) — W15-27 · Dev console — W15-28
-- [ ] Tests: pricing, policy, allowance — W15-29, W15-30
-- [ ] Mobile acceptance — W15-31 · Docs — W15-32 · Perf — W15-33 · E2E — W15-34
+- [x] Contracts: guild and autoTrade commands/pushes/events (`guildOfferAcceptRequested`, `guildTradeSettled`, `directorTrade`, `directorOrderRequested`, `directorAllowanceExhausted`), errors; `keyStatus` and per-token reservation/consumption added to W00-30's `AgentWalletPort` — W15-01
+- [x] Guild roster and economic config (spreads, inventory caps, schedule, funding caps `NEAR-73`) — W15-02
+- [x] `MockAgentWalletAdapter`: sub-accounts, limited keys with per-token allowance reservation/settlement/release accounting, revoke — W15-03
+- [x] Agent-wallet contract suite — W15-04
+- [x] Guild NPC provisioning: sub-accounts, stock-backed/purchased real cargo; labeled mock fixtures, NEAR float, `chain.guild_npc` — W15-05
+- [x] Guild bindings for the W13 quote library: Guild profile parameters, thin-side spread widening (`NEAR-71`); no second pricing implementation — W15-06, W15-07
+- [x] Market-maker loop: an agent on the W13 bot API path quotes both sides on docked planet books with the NPC key; withdraw on depart (`NEAR-70`) — W15-08
+- [x] Visit scheduler + `chain.guild_visit` + `guild.arrived` / `guild.departed`; cross-planet carry, a cross-planet transport service alongside external cargo imports (`NEAR-72`) — W15-09, W15-10
+- [x] Curated Guild offers + `market.acceptGuildOffer` (with W22 planet treasury fee hook) — W15-11
+- [x] Funding guardrails on top of W13-59 allowances: global/per-NPC funding and kill switch (`NEAR-73`) — W15-12
+- [x] Optional strategy hook `GuildStrategyPort` (deterministic default; LLM in W16, strategy only, never a free price) — W15-13, W15-35
+- [x] Guild ship (livery variant of `ship.carrier`) + landing/takeoff VFX + docked marker — W15-14, W15-15
+- [x] Guild tab UI (`guild-tab`), arrival/departure/reject toasts (`guild-toast`), countdown — W15-16, W15-17
+- [x] Director key `POST /v1/near/director-key` add/revoke, `chain.director_key` (`NEAR-80`) — W15-18
+- [x] autoTrade limits model + `setAutoTrade` command (`AW-13`) — W15-19
+- [x] autoTrade policy: W09-13's `withinAutoTrade` checked in the sim and re-checked in the market module (`NEAR-81`) — W15-20
+- [x] Director trading loop while away: the sim decides (surplus sell / shortage buy within limits), the market module signs with the director key and places; allowance decrement — W15-21
+- [x] Allowance exhausted → stop + `directorAllowanceExhausted` event, notified by W09 as `away_budget_exhausted` (`CT-36`) — W15-22, W15-36
+- [x] Settings → Away (`away` / `away-digest`): autoTrade limits UI, director key status, revoke — W15-23, W15-36
+- [x] Digest items for director trades (`AwayDigestStore` + `director-log` HUD fallback) — W15-24, W15-36
+- [x] Achievement progress event: Guild Contact — W15-25
+- [x] Analytics (`guild-analytics`) — W15-26 · Telemetry (`guild_inventory`, Guild PnL) — W15-27 · Dev console (`guild-dev`) — W15-28
+- [x] Tests: pricing, policy, allowance — W15-29, W15-30
+- [ ] Mobile acceptance (deferred with postponed `W24`) — W15-31 · [x] Docs — W15-32 · [x] Perf — W15-33 · [x] E2E — W15-34
 
 ## Issues
 

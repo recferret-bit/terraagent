@@ -6,10 +6,10 @@
 
 | Set | Issues | Effort (units) | Critical path (units) |
 |---|---|---|---|
-| **H** (must) | 635 | 483.0 | 23.0 |
-| H + H+ (stretch) | 687 | 518.5 | 23.0 |
-| H + H2 (real NEAR) | 638 | 486.0 | 23.0 |
-| Whole plan | 1021 | 755.0 | 32.0 |
+| **H** (must) | 637 | 484.0 | 23.0 |
+| H + H+ (stretch) | 689 | 519.5 | 23.0 |
+| H + H2 (real NEAR) | 640 | 487.0 | 23.0 |
+| Whole plan | 1023 | 756.0 | 32.0 |
 
 One **unit** = one M issue (an S is ½). The critical path is the longest chain of dependencies, including each wave e2e waiting for the e2e of the waves it depends on. No number of agents finishes faster than it.
 
@@ -17,11 +17,11 @@ One **unit** = one M issue (an S is ½). The critical path is the longest chain 
 
 | Agents | 4 | 6 | 8 | 10 | 12 | 16 | 20 |
 |---|---|---|---|---|---|---|---|
-| Units to finish | 122.0 | 82.5 | 63.0 | 51.5 | 44.5 | 35.5 | 30.5 |
-| Merges per unit (avg) | 5.2 | 7.7 | 10.1 | 12.3 | 14.3 | 17.9 | 20.8 |
-| Days at 1 unit/agent/day | 122.0 | 82.5 | 63.0 | 51.5 | 44.5 | 35.5 | 30.5 |
-| Days at 2 units/agent/day | 61.0 | 41.2 | 31.5 | 25.8 | 22.2 | 17.8 | 15.2 |
-| Days at 3 units/agent/day | 40.7 | 27.5 | 21.0 | 17.2 | 14.8 | 11.8 | 10.2 |
+| Units to finish | 122.0 | 83.0 | 63.0 | 52.0 | 44.5 | 35.5 | 30.5 |
+| Merges per unit (avg) | 5.2 | 7.7 | 10.1 | 12.2 | 14.3 | 17.9 | 20.9 |
+| Days at 1 unit/agent/day | 122.0 | 83.0 | 63.0 | 52.0 | 44.5 | 35.5 | 30.5 |
+| Days at 2 units/agent/day | 61.0 | 41.5 | 31.5 | 26.0 | 22.2 | 17.8 | 15.2 |
+| Days at 3 units/agent/day | 40.7 | 27.7 | 21.0 | 17.3 | 14.8 | 11.8 | 10.2 |
 
 The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units/agent/day is the measured throughput of one agent including review, CI and merge; see the calibration rule in HACKATHON_CUT.md.
 
@@ -59,7 +59,7 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 
 ## 3. Start order with 10 agents (H)
 
-Issues grouped by the unit in which they start (`--plan-agents 10`); ★ = on the critical path. Finishes after **51.5 units**. An agent that runs out of H work picks the next ready H+ issue of the same wave.
+Issues grouped by the unit in which they start (`--plan-agents 10`); ★ = on the critical path. Finishes after **52.0 units**. An agent that runs out of H work picks the next ready H+ issue of the same wave.
 
 | Unit | Waves active | Starts |
 |---|---|---|
@@ -110,11 +110,11 @@ Issues grouped by the unit in which they start (`--plan-agents 10`); ★ = on th
 | 45 | W22 W23 | W22-04, W22-06, W22-11, W22-12, W22-13, W22-15, W22-16, W22-18, W22-21, W22-22, W22-33, W23-14 |
 | 46 | W22 W23 | W22-24, W22-26, W22-30, W22-32, W22-34, W22-35, W22-37, W22-38, W22-36★, W23-07, W23-10, W23-20, W23-21, W23-26, W23-30, W23-32, W23-36, W23-39 |
 | 47 | W23 | W23-02, W23-06, W23-08, W23-11, W23-12, W23-22, W23-27, W23-28, W23-31, W23-33, W23-37 |
-| 48 | W23 W25 | W23-23, W23-40, W23-41, W23-42, W23-43, W23-44, W23-45, W23-46, W23-50, W25-01, W25-03, W25-04, W25-05, W25-06, W25-11, W25-12, W25-25 |
-| 49 | W23 W25 | W23-47★, W25-09, W25-26, W25-27, W25-28, W25-34, W25-35, W25-36, W25-37 |
+| 48 | W23 W25 | W23-23, W23-40, W23-41, W23-42, W23-43, W23-44, W23-45, W23-46, W23-50, W23-51, W25-01, W25-03, W25-04, W25-05, W25-11, W25-25 |
+| 49 | W23 W25 | W23-47★, W25-06, W25-09, W25-12, W25-26, W25-27, W25-28, W25-34, W25-35, W25-36, W25-37, W25-38 |
 | 50 | W25 | W25-29★ |
-| 51 | W25 | W25-30★, W25-31★ |
-| 52 | W25 | W25-33★ |
+| 51 | W25 | W25-30★ |
+| 52 | W25 | W25-31★, W25-33★ |
 
 ## 4. Wave e2e finish (H)
 
@@ -140,7 +140,7 @@ Issues grouped by the unit in which they start (`--plan-agents 10`); ★ = on th
 | W20 | W20-28 | 16.5 | 44.5 |
 | W22 | W22-36 | 19.5 | 46.5 |
 | W23 | W23-47 | 20.5 | 49.0 |
-| W25 | W25-33 | 23.0 | 51.5 |
+| W25 | W25-33 | 23.0 | 52.0 |
 | W26 | W26-10 | 10.5 | 19.0 |
 
 ## 5. Postponed Waves (Deferred Out of NEAR Hackathon Vertical Slice)
