@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readApiErrorCode, sendPlanetRequest } from './planetHttp';
 
 function response(ok: boolean, body: unknown): Response {
-  return { ok, json: async () => body } as Response;
+  return { ok, json: async () => body } as unknown as Response;
 }
 
 describe('planet HTTP helper', () => {
@@ -12,7 +12,8 @@ describe('planet HTTP helper', () => {
   });
 
   it('returns null for a body that is not JSON and for a body with no code', async () => {
-    expect(await readApiErrorCode({ ok: false, json: async () => { throw new Error('nope'); } } as Response)).toBeNull();
+    const notJson = { ok: false, json: async () => { throw new Error('nope'); } };
+    expect(await readApiErrorCode(notJson as unknown as Response)).toBeNull();
     expect(await readApiErrorCode(response(false, { error: 'plain' }))).toBeNull();
   });
 
