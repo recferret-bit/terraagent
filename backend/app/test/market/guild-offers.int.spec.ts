@@ -26,7 +26,9 @@ import { TradeKeyRepository } from '../../src/market/trade/trade-key.repository.
 import { GuildVisitPublisher } from '../../src/market/guild/visit/guild-visit.publisher.js';
 import { IntentTradeRepository } from '../../src/market/settlement/intent-trade.repository.js';
 import { SettlementFillsHook } from '../../src/market/settlement/settlement-fills.hook.js';
+import { TreasuryFeeService } from '../../src/market/settlement/treasury-fee.service.js';
 import { MarketPolicyProvider } from '../../src/market/orders/market-policy.provider.js';
+import type { TreasuryDaoPort } from '../../src/near/application/ports/treasury-dao.port.js';
 import { ChainOutboxRepository } from '../../src/near/application/outbox/chain-outbox.repository.js';
 import type { SignedIntent } from '../../src/near/application/ports/intents.port.js';
 import { MockIntentsAdapter } from '../../src/near/infrastructure/adapters/mock/intents.adapter.js';
@@ -66,7 +68,15 @@ beforeAll(async () => {
   offers = new GuildOffersService(on, maker, db.prisma);
   intents = new MockIntentsAdapter(db.prisma, { latencyMinMs: 0, latencyMaxMs: 0, failRate: 0, seed: 11 }, { sleep: async () => undefined }, env);
   trades = new IntentTradeRepository(db.prisma);
-  const fills = new SettlementFillsHook(repo, trades, new ChainOutboxRepository(db.prisma), intents, new MarketPolicyProvider());
+  const policy = new MarketPolicyProvider();
+  const fills = new SettlementFillsHook(
+    repo,
+    trades,
+    new ChainOutboxRepository(db.prisma),
+    intents,
+    policy,
+    new TreasuryFeeService(on, policy, {} as TreasuryDaoPort, db.prisma, env),
+  );
   accept = new AcceptGuildOfferService(on, offers, repo, books, fills, bus, db.prisma, env);
   await db.prisma.guildVisit.create({
     data: { id: 'gv:offer', npcId: 'kestrel', shipId: 'kestrel', planetId: PLANET, arriveAt: new Date(DEPART - 720_000), departAt: new Date(DEPART), offers: [], status: 'docked', kind: 'extra' },
