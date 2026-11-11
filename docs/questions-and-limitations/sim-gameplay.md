@@ -1140,13 +1140,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-101 · Irrigate and Seed have no player path since the one TERRAFORM button
 
-- **Status:** Question for the owner
-- **Area / code:** `frontend/game/features/terraform-basic/planner.ts` (TERRAFORM sends `work` + `intent: 'terraform'`), `shared/sim/src/systems/terraform-basic/groundWorkRule.ts` (`finishedLevelFlat`), `chain.ts` (`isChainObstacle`), `workSystem.ts` (`completeGroundWork`)
-- **What happens:** The TERRAFORM button sends one `work` order; on Prepared, Irrigated or Living ground the host answers `already_terraformed`. The work chain stops at level Flat + Prepared and `WorkJobRecord` has no growth-ladder op, so Irrigate and Seed (W05-07) run only through a raw `enqueueTask { terraform: { op: 'irrigate' | 'seed' } }`. `tests/e2e/w05.spec.ts` step 5 sends those commands directly. Living land, Terraform % growth and the D-34 tier gate cannot be reached by a player in the UI.
-- **Why it is like this:** The uncommitted owner pass removed the client growth ladder ("the button does not climb into Irrigate or Seed"); docs elsewhere still say Irrigate/Seed run inside the TERRAFORM chain.
-- **Workaround / mitigation:** Dev console / scenarios (`w05-tiers`) seed Living ground.
-- **To resolve:** Owner: (a) restore the ladder on the button (host-side: a growth job mode after Prepared, priced from the `irrigate`/`seed` rows), or (b) add a separate GROW button that sends the explicit ops. Recommendation: (b), because a mis-click on Prepared ground no longer costs water.
-- **Found:** 2026-11-07, W05 full review (lead + audit agent)
+- **Status:** Resolved (`478eb839`)
+- **Area / code:** `frontend/game/features/terraform-basic/{primaryOps.ts,planner.ts,TerraformMenu.ts,BrushController.ts}`, `shared/sim/src/systems/terraform-basic/rules.ts` (`planCultivateTile`), `shared/sim/src/systems/goals/terraformZone.ts` (`stepTerraformZone`)
+- **What happens:** The TERRAFORM button sends one `work` order; on Prepared, Irrigated or Living ground the host answers `already_terraformed`. Previously the work chain stopped at level Flat + Prepared so Irrigate and Seed ran only through raw `enqueueTask`. Now **`CULTIVATE [V]`** (`data-testid="tf-op-cultivate"`, `wave: 'W05'`) sits directly below `TERRAFORM [G]` in the Terraform dock and steps owned flat/prepared/irrigated hexes through `Grade → Irrigate → Seed → Living` via `planCultivateTile`, while `terraform_zone` (`stepTerraformZone`) drives autonomous AI cultivation to `Living`.
+- **Why it is like this:** Keeps `TERRAFORM [G]` cheap and mis-click safe on Prepared ground (owner option `(b)`) while giving both human players (`CULTIVATE [V]`) and the AI governor (`terraform_zone`) a complete path to `Living` tiles, Terraform %, and the D-34 tier gate.
+- **Workaround / mitigation:** Resolved in `478eb839`.
+- **To resolve:** Resolved (`478eb839`).
+- **Found:** 2026-11-07, W05 full review (lead + audit agent). Resolved 2026-11-11.
 
 ### GP-102 · TERRAFORM dock work is priced from a second time table
 
@@ -1365,3 +1365,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Send `mercenary.spawn` with the defend center, radius, `endTick`, and count 4 or 6. Keep the Hub (or HQ) alive so the edge tiles exist. Read `mercenaryLeft`, not `unitDestroyed`, for a contract that ended.
 - **To resolve:** Attribute a combat death to the poster without giving the unit the poster's owner, if the owner wants that event. Reveal the poster's vision from the squad if scouting must count. Spawn from `bounty.post` only if the owner wants the sim to hire without the module command.
 - **Found:** 2026-11-10, W22-29
+
+### GP-125 · Seeded Rival AI Colonies occupy back-seat indices and yield when human players fill the planet
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/rival-ai/{seed.ts,governor.ts,store.ts}`, `shared/sim/src/systems/landing/index.ts` (`yieldRivalAiSlotIfNeeded`), `backend/app/src/ai/colony-agent/colony-agent-loop.service.ts`
+- **What happens:** When `system.seedRivalAi` runs (`TA_SEED_RIVAL_AI=1` on server planets, `createLocalBootFallback` when `W18` is enabled, or `POST /v1/dev/ai-colonies/seed`), two Stage-4 unshielded Rival AI Colonies (`Iron Guild Outpost` conservative Trader at `capacity - 2` and `Crimson Vanguard` risky Warlord at `capacity - 1`) spawn with completed Hubs, Depots, Pylons, Turrets, Trade Hubs, Robotics Factories, Workers, and Recons, and are registered in `contactsByColony` with landed human colonies. If real human players later join up to those back-seat indices, `yieldRivalAiSlotIfNeeded` cleanly clears the Rival AI's entities, tile ownership, and colony slot before `spawnColonyImpl` seats the human player.
+- **Why it is like this:** Guarantees immediate multi-agent trade, diplomacy, and PvP partners on fresh single-player or low-population planets without ever blocking a real player seat or touching the human player's Newcomer Shield (`raidProtectedUntil`).
+- **Workaround / mitigation:** Default `TA_SEED_RIVAL_AI` is off during isolated wave unit/E2E suites so fixed colony-count scenario assertions stay deterministic; enable via `TA_SEED_RIVAL_AI=1` or `/v1/dev/ai-colonies/seed`.
+- **To resolve:** —
+- **Found:** 2026-11-11, Hackathon multi-agent ship (`1d5a59e7`).

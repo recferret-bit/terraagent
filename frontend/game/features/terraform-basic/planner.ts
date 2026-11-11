@@ -9,8 +9,10 @@ import {
   placementWorldFromState,
   planGroundWorkTiles,
   REPAIR_COST_RATE,
+  resolveCultivateTileOp,
   terraformWorldFrom,
   type CompiledDataLike,
+  type CultivateOpKind,
   type PlanetState,
   type TerraformOpKind,
 } from '@terra/sim';
@@ -21,10 +23,11 @@ import { extractColonyOrders } from './TileOverlay';
 import { colonyWorkJobs } from './workStatus';
 
 /**
- * The 3 buttons of the Terraform dock tab. TERRAFORM goes on the wire as `work` + `intent: 'terraform'` (the host picks
- * each hex's work from its ground and chains on), REPAIR as `work` + `intent: 'repair'`, DISMANTLE as `dismantle`.
+ * The 4 buttons of the Terraform dock tab. TERRAFORM goes on the wire as `work` + `intent: 'terraform'` (the host picks
+ * each hex's work from its ground and chains on), CULTIVATE steps `grade → irrigate → seed` to `Living`, REPAIR sends
+ * `work` + `intent: 'repair'`, and DISMANTLE sends `dismantle`.
  */
-export type TerraformPrimaryOp = 'terraform' | 'repair' | 'dismantle';
+export type TerraformPrimaryOp = 'terraform' | 'cultivate' | 'repair' | 'dismantle';
 
 export interface PlannedTileJob {
   q: number;
@@ -252,5 +255,44 @@ export function planTerraformTiles(
     queuedCount: plan.jobs.length,
     skippedCount: plan.skipped.length,
     ...(plan.firstReject ? { firstReject: plan.firstReject } : {}),
+  };
+}
+
+/**
+ * Preview of a CULTIVATE stroke (`GP-90`, D-37): evaluates `resolveCultivateTileOp` (`grade → irrigate → seed → living`)
+ * on each hex, skipping hexes that already have a queued or running terraform/work job.
+ */
+export function planCultivateTiles(
+  view: GameView | null | undefined,
+  tiles: readonly TileCoord[],
+  opts: { colonyId: number; data?: CompiledDataLike },
+): BrushPlan & { jobs: Array<{ q: number; r: number; op: CultivateOpKind }> } {
+  const placement = viewPlacementWorld(view);
+  if (placement.tileCount === 0) return { jobs: [], queuedCount: 0, skippedCount: tiles.length };
+  const world = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  const queued = pendingTiles(view, opts.colonyId);
+  const jobs: Array<{ q: number; r: number; op: CultivateOpKind }> = [];
+  let skippedCount = 0;
+  let firstReject: RejectCode | undefined;
+  for (const { q, r } of tiles) {
+    if (queued.has(`${q},${r}`)) {
+      skippedCount++;
+      firstReject ??= 'already_queued';
+      continue;
+    }
+    const res = resolveCultivateTileOp(world, opts.colonyId, q, r, { data: opts.data, deposit: placement.deposit });
+    if (!res.ok) {
+      skippedCount++;
+      firstReject ??= res.reason;
+      continue;
+    }
+    queued.add(`${q},${r}`);
+    jobs.push({ q, r, op: res.op });
+  }
+  return {
+    jobs,
+    queuedCount: jobs.length,
+    skippedCount,
+    ...(firstReject ? { firstReject } : {}),
   };
 }

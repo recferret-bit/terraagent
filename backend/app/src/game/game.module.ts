@@ -8,6 +8,9 @@ import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
+import { AiModule } from '../ai/ai.module';
+import { ColonyAgentLoopService } from '../ai/colony-agent/colony-agent-loop.service';
+import { EconomySimService } from '../ai/economy-sim/economy-sim.service';
 import { HomeService } from '../core/home/home.service';
 import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
@@ -79,12 +82,14 @@ export const env = defineEnv('game', {
     .string()
     .optional()
     .refine((v) => v === undefined || v === '' || v === 'true' || v === 'false', { message: 'must be true or false' }),
+  /** When `'1'`, auto-seeds 2 Stage-4 Rival AI Colonies (`Iron Guild Outpost` + `Crimson Vanguard`) on freshly loaded W18+ planets. */
+  TA_SEED_RIVAL_AI: z.string().optional(),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
-  imports: [EconomyModule],
+  imports: [EconomyModule, AiModule],
   controllers: [DevPlanetsController, DevLedgerController],
   providers: [
     {
@@ -131,6 +136,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
     ProgressionEventForwarder,
     HardModeClock,
     DevPresence,
+    ColonyAgentLoopService,
+    EconomySimService,
     {
       provide: AwayDigestService,
       inject: [APP_ENV, PRISMA, GamePlanets, LOGGER],
@@ -142,7 +149,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
       }),
     },
   ],
-  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence, ColonyAgentLoopService, EconomySimService],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;
@@ -165,6 +172,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     @Inject(LOGGER) root: Logger,
     private readonly modules: ModuleRef,
     private readonly hardMode: HardModeClock,
+    private readonly colonyAgentLoop: ColonyAgentLoopService,
     @Optional() private readonly homeService?: HomeService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
@@ -177,6 +185,11 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       this.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'digest restore failed');
     }
     this.wireSnapshotSavePoints();
+    if (this.env.TA_SEED_RIVAL_AI === '1' && this.flags.has('W18')) {
+      this.planets.onPlanetLoaded((planetId, _tick, info) => {
+        if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
+      });
+    }
     await this.pool.start();
     this.unsubBridge = bridgePlanetEvents(
       this.planets,

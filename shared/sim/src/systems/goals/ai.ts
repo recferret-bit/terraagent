@@ -2,6 +2,7 @@ import { ensureColonyRecord } from '../../kernel/colonies';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { PlanetState } from '../../kernel/state';
 import { commandColony, parseArgs } from '../command';
+import { enablePlanetGovernor } from '../rival-ai/store';
 
 /**
  * Colony AI switch. The AI is the autonomous part of the colony: HQ goal breakdown (`goals.manager`) and the rule-engine
@@ -36,5 +37,8 @@ export const setAiEnabledHandler = defineCommandHandler({
     const parsed = parseArgs('setAiEnabled', cmd.args);
     if (!parsed) return 'invalid_args';
     setColonyAiEnabled(state, colIdx, parsed.enabled, ctx.tick);
+    if (parsed.enabled && ctx.flags.has('W18')) {
+      enablePlanetGovernor(state, true, ctx.tick);
+    }
   },
 });

@@ -15,6 +15,7 @@ import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { spawnHqUnit } from '../hq';
 import { initColonyNewcomerShield, isW18PvpActive } from '../pvp';
+import { yieldRivalAiSlotIfNeeded } from '../rival-ai/store';
 import { resolveStartingKitRow, rowNum } from '../rows';
 import { stepHqRespawns } from './hqRespawn';
 import {
@@ -239,6 +240,9 @@ export const spawnColony = defineCommandHandler({
   handle(state, cmd, ctx) {
     const args = (cmd.args ?? {}) as SpawnColonyCommandArgs;
     const colonyId = resolveCommandColonyIndex(state, cmd, args);
+    if (!String(args.playerId ?? '').startsWith('ai:')) {
+      yieldRivalAiSlotIfNeeded(state, colonyId, ctx.tick);
+    }
     const colonyIdStr = typeof args.colonyId === 'string' ? args.colonyId : undefined;
     const res = spawnColonyLanding(
       state,

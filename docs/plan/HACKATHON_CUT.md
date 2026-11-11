@@ -84,7 +84,7 @@ The demo can run on mocks in production (`NEAR_ALLOW_MOCK_IN_PROD=true`) or on `
 - **Landing (`frontend/landing/`):** orbit-stage hero, hex colony canvas, planet cards (the three D-33 worlds: Kharon Dunes `desert`, Thalassa Verde `ocean`, Granite Hollow `temperate`), resource viewer (its five tabs become Metals / Minerals / Bio / Energy in W24-36, H+), roadmap, road-to-market board.
 - **Design system (`frontend/design/`):** Faction Plate tokens and components for `/me` and every HUD.
 
-The prototype predates the window, so the README must disclose it as **pre-window baseline** (hackathon rule Q-002).
+100% of repository code (including the initial 2026-10-29/30 prototype commits) was authored after the `2026-10-19` hackathon window opening (`Q-001` eligible — no pre-window code exists).
 
 ## 3. Execution Order, Checkpoints and the Drop Order
 

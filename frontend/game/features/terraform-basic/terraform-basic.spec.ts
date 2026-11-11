@@ -303,32 +303,34 @@ describe('Brush hotkeys and the 3-button Terraform UI (FF-07)', () => {
     expect(tf.isArmed()).toBe(false);
     ghost = null;
 
-    for (const [key, op] of [['g', 'terraform'], ['r', 'repair'], ['z', 'dismantle']] as const) {
+    for (const [key, op] of [['g', 'terraform'], ['v', 'cultivate'], ['r', 'repair'], ['z', 'dismantle']] as const) {
       press(key);
       expect([tf.isArmed(), tf.getSelectedOp()]).toEqual([true, op]);
     }
     tf.disarm();
-    for (const key of ['b', 'c', 'w', 'v', 'x']) press(key);
+    for (const key of ['b', 'c', 'w', 'x']) press(key);
     expect(tf.isArmed()).toBe(false);
     done();
   });
 
-  it('renders exactly TERRAFORM, REPAIR, DISMANTLE top to bottom (no op pickers, brush, tables or stage buttons)', () => {
+  it('renders TERRAFORM, CULTIVATE, REPAIR, DISMANTLE top to bottom (no op pickers, brush, tables or stage buttons)', () => {
     const container = document.createElement('div');
     const tf = mountTerraformBasic(container, {});
     const opBtns = [...container.querySelectorAll<HTMLButtonElement>('[data-op]')];
     expect(opBtns.map((b) => b.dataset.testid ?? b.getAttribute('data-testid'))).toEqual([
       'tf-op-terraform',
+      'tf-op-cultivate',
       'tf-op-repair',
       'tf-op-dismantle',
     ]);
-    expect(container.querySelectorAll('button')).toHaveLength(3);
+    expect(container.querySelectorAll('button')).toHaveLength(4);
     for (const id of ['tf-op-work', 'tf-op-grade', 'tf-op-fill', 'tf-op-bridge', 'tf-area-brush', 'tf-time-table', 'tf-cancel'])
       expect(container.querySelector(`[data-testid="${id}"]`)).toBeNull();
-    const [terraformBtn, repairBtn, dismantleBtn] = opBtns as [HTMLButtonElement, HTMLButtonElement, HTMLButtonElement];
+    const [terraformBtn, cultivateBtn, repairBtn, dismantleBtn] = opBtns as [HTMLButtonElement, HTMLButtonElement, HTMLButtonElement, HTMLButtonElement];
     const status = container.querySelector('[data-testid="tf-status"]')!;
 
     expect(terraformBtn.textContent).toBe('TERRAFORM [G]All ground work · Ctrl+click queues');
+    expect(cultivateBtn.textContent).toBe('CULTIVATE [V]Grade → Irrigate → Seed (Living)');
     expect(repairBtn.textContent).toBe('REPAIR [R]40% of base cost');
     expect(dismantleBtn.textContent).toBe('DISMANTLE [Z]½ build time · 50% of cost back');
     expect(status.textContent).toBe('Pick an op, then click a hex');

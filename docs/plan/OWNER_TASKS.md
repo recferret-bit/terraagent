@@ -14,7 +14,7 @@
 >
 > If they are missing, the demo ships on mocks (`NEAR_ALLOW_MOCK_IN_PROD=true`) and the README says so.
 
-- [ ] **Public GitHub repo + LICENSE.** The repo exists (`github.com/recferret-bit/terraagent`, `main` pushed 2026-10-30). Make sure it is **public** (judges cannot open private ones) and add a `LICENSE` file before 11-01, so the pre-window baseline (the `frontend/` prototype) is on record.
+- [x] **Public GitHub repo + LICENSE.** The repo exists (`github.com/recferret-bit/terraagent`, `main` pushed 2026-10-30 — 100% authored inside the post-`2026-10-19` hackathon window per `Q-001`) with an MIT `LICENSE` at root.
 - [ ] **Mainnet dev accounts + a small NEAR balance** for NEAR Intents testing (`intents.near` has no testnet): e.g. `dev-a.terraagent.near` and `dev-b.terraagent.near`, plus the server port account for minting (`res.terraagent.near` deployer). A few NEAR is enough; mainnet costs are not reimbursed.
 - [ ] **1Click partner JWT** (optional): register at `partners.near-intents.org` to avoid the 0.2 % fee without a JWT.
 - [ ] **Pick a social-login provider** for F5 (HOT is a listed hackathon partner; check the others for NEAR named-account support). Fallback: guest + server-created custodial sub-accounts.

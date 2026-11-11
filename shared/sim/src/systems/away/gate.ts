@@ -2,7 +2,7 @@ import type { PriorityKey } from '@terra/contracts';
 import type { SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import { isRaidCommand } from './orders';
+import { isCancelTruce, isRaidCommand } from './orders';
 import { awayPolicy } from './policy';
 import { readAwaySettings } from './store';
 import type { AwayActor, AwayFamily, AwayPolicyView } from './types';
@@ -115,6 +115,19 @@ export function checkAiRaidAwayPolicy(
 }
 
 /**
+ * Hard human-only guardrail (`AW-13`): AI / director callers may NEVER cancel an active truce early into Oathbreaker,
+ * whether the colony is offline (`away`) or online (`AI AUTOPILOT: ON`).
+ */
+export function checkAiCancelTrucePolicy(
+  cmd: Pick<SimCommand, 'kind' | 'source' | 'args'>,
+): { code: 'away_policy'; detail: 'AW-13' } | undefined {
+  if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
+  if (!isCancelTruce(cmd)) return undefined;
+  rejections.set('AW-13', (rejections.get('AW-13') ?? 0) + 1);
+  return { code: 'away_policy', detail: 'AW-13' };
+}
+
+/**
  * AW-22 / AW-23. Player, dev and admin commands pass. `system.*` passes so presence can clear away.
  * Any other source is the away policy. A reject is counted under its rule.
  */
@@ -122,8 +135,10 @@ export function gateAwayCommand(state: PlanetState, cmd: SimCommand, ctx: StepCo
   if (!ctx.flags.has('W09') && !ctx.flags.has('W18')) return undefined;
   if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
   if (typeof cmd.colonyIndex !== 'number') return undefined;
-  if (ctx.flags.has('W18') && isRaidCommand(cmd)) {
-    return checkAiRaidAwayPolicy(state, cmd.colonyIndex, cmd, ctx);
+  if (ctx.flags.has('W18')) {
+    const cancelGate = checkAiCancelTrucePolicy(cmd);
+    if (cancelGate) return cancelGate;
+    if (isRaidCommand(cmd)) return checkAiRaidAwayPolicy(state, cmd.colonyIndex, cmd, ctx);
   }
   if (!colonyIsAway(state, cmd.colonyIndex)) return undefined;
   const decision = awayPolicy(viewFor(state, cmd.colonyIndex, ctx), {

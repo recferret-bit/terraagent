@@ -26,6 +26,7 @@ export interface TerraformPrimaryOpDef {
  */
 export const PRIMARY_OP_DEFS: readonly TerraformPrimaryOpDef[] = [
   { op: 'terraform', label: 'TERRAFORM [G]', subtitle: 'All ground work · Ctrl+click queues', key: 'g', testid: 'tf-op-terraform' },
+  { op: 'cultivate', label: 'CULTIVATE [V]', subtitle: 'Grade → Irrigate → Seed (Living)', key: 'v', testid: 'tf-op-cultivate', wave: 'W05' },
   { op: 'repair', label: 'REPAIR [R]', subtitle: `${pct(REPAIR_COST_RATE)} of base cost`, key: 'r', testid: 'tf-op-repair', wave: 'W02' },
   { op: 'dismantle', label: 'DISMANTLE [Z]', subtitle: `½ build time · ${pct(DISMANTLE_REFUND_RATE)} of cost back`, key: 'z', testid: 'tf-op-dismantle', wave: 'W02' },
 ];
@@ -152,8 +153,8 @@ export class TerraformMenu {
       const waitSuffix = active.waitingText ? ` · ${active.waitingText}` : '';
       return `${active.completedJobs} / ${active.totalJobs} jobs · ${curStr}${waitSuffix}`;
     }
-    if (stroke && this.workSeenFor === stroke.strokeId && (stroke.op === 'terraform' || stroke.op === 'repair')) {
-      return stroke.op === 'terraform' ? 'Terraform done' : 'Repair done';
+    if (stroke && this.workSeenFor === stroke.strokeId && (stroke.op === 'terraform' || stroke.op === 'cultivate' || stroke.op === 'repair')) {
+      return stroke.op === 'terraform' ? 'Terraform done' : stroke.op === 'cultivate' ? 'Cultivate done' : 'Repair done';
     }
     if (stroke) return stroke.statusText ?? `Queued ${stroke.queuedCount} jobs · ${stroke.skippedCount} skipped`;
     return armed ? `Tool: ${selectedOp.toUpperCase()} · click a hex (Ctrl+click: queue more)` : 'Pick an op, then click a hex';

@@ -53,6 +53,13 @@ function rewriteDeedPage(req: { url?: string }): void {
   req.url = `/deed.html${search}`;
 }
 
+/** `/dev/economy-sim` (no slash) serves `/dev/economy-sim/index.html`. */
+function rewriteEconomySim(req: { url?: string }): void {
+  const { path, search } = splitUrl(req.url ?? '');
+  if (path !== '/dev/economy-sim') return;
+  req.url = `/dev/economy-sim/index.html${search}`;
+}
+
 const chainTxPage: Plugin = {
   name: 'chain-tx-page',
   configureServer(server) {
@@ -61,6 +68,7 @@ const chainTxPage: Plugin = {
       rewriteMockOauth(req);
       rewriteMePage(req);
       rewriteDeedPage(req);
+      rewriteEconomySim(req);
       next();
     });
   },
@@ -70,6 +78,7 @@ const chainTxPage: Plugin = {
       rewriteMockOauth(req);
       rewriteMePage(req);
       rewriteDeedPage(req);
+      rewriteEconomySim(req);
       next();
     });
   },
@@ -96,6 +105,7 @@ export default defineConfig({
         playground: resolve(frontend, 'playground.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
         devChainTx: resolve(frontend, 'dev/chain/tx.html'),
+        devEconomySim: resolve(frontend, 'dev/economy-sim/index.html'),
         devMockOauth: resolve(frontend, 'dev/mock-oauth/index.html'),
         devParity: resolve(frontend, 'dev/parity/index.html'),
         design: resolve(frontend, 'design/index.html'),

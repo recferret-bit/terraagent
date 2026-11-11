@@ -141,6 +141,9 @@ test('rewriteCompose points context and nginx at /srv/terraagent without editing
   assert.equal(infra.includes('../nginx/'), false);
   const chain = rewriteCompose(readFileSync(join(root, 'infra/compose/chain.yml'), 'utf8'));
   assert.match(chain, /\/srv\/terraagent\/nginx\/hosts\/devchain\.conf:/);
+  const backendCompose = rewriteCompose(readFileSync(join(root, 'infra/compose/backend.yml'), 'utf8'));
+  assert.match(backendCompose, /path: \/srv\/terraagent\/\.env/);
+  assert.equal(backendCompose.includes('path: ../.env'), false);
   const steps = buildPlan({
     env: { TA_DOMAIN: 'terraagent.fun', DEPLOY_HOST: '203.0.113.10', DEPLOY_USER: 'deploy' },
     stacks: ['backend'],

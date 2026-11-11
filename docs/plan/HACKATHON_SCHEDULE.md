@@ -54,7 +54,7 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | 23 | [W23-47](waves/W23-real-near.md) | M | 20.5 | Wave e2e + scenario + tags: `tests/e2e/w23.spec.ts` runs the real-mode demo against testnet (and Intents simul |
 | 24 | [W25-29](waves/W25-launch-ops.md) | M | 21.5 | Demo video: a 2–3 min script covering the Tier-1 Hackathon Vertical Slice — landfall → economy → terraform → W |
 | 25 | [W25-30](waves/W25-launch-ops.md) | S | 22.0 | X post: "built at NEAR HACKATHON", video, link to the repo and demo |
-| 26 | [W25-31](waves/W25-launch-ops.md) | S | 22.5 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), main |
+| 26 | [W25-31](waves/W25-launch-ops.md) | S | 22.5 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05 ONLY — drop 10 & 12), mainnet pr |
 | 27 | [W25-33](waves/W25-launch-ops.md) | S | 23.0 | Wave e2e `tests/e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 h |
 
 ## 3. Start order with 10 agents (H)

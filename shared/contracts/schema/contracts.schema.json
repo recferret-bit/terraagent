@@ -5215,6 +5215,35 @@
       "summary": "Marks a colony away or back. The sim does not read sockets.",
       "wave": "W09"
     },
+    "system.seedRivalAi": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "capacity": {
+            "maximum": 32,
+            "minimum": 4,
+            "type": "integer"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": 2,
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Seeds established Rival AI Colonies (Trader + Warlord) on a planet and enables the autonomous governor.",
+      "wave": "W18"
+    },
     "system.spawnColony": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -5,6 +5,7 @@ import { getEnvironment } from '../environment';
 import { getColonyQueue } from '../queue';
 import { stepClearCorridorGoal, stepDefendColonyGoal } from './defendAndClear';
 import { getGoalExecutor, registerGoalExecutor } from './executors';
+import { stepTerraformZoneGoal } from './terraformZone';
 import { planGrowth } from './growth';
 import { completeColonyGoal } from './index';
 import {
@@ -238,3 +239,4 @@ registerGoalExecutor('grow_economy', stepGrowEconomyGoal);
 registerGoalExecutor('secure_power', stepSecurePowerGoal);
 registerGoalExecutor('defend_colony', stepDefendColonyGoal, { wave: 'W07' });
 registerGoalExecutor('clear_corridor', stepClearCorridorGoal, { wave: 'W07' });
+registerGoalExecutor('terraform_zone', stepTerraformZoneGoal, { wave: 'W05' });

@@ -11,6 +11,7 @@ import {
   FULL_REPAIR_COST_RATIO,
   hasWorkerEntity,
   pct,
+  planCultivateTiles,
   planTerraformTiles,
   resolveEntityBaseCost,
   type InspectableEntity,
@@ -153,9 +154,32 @@ function planTerraform(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPl
   };
 }
 
-/** Preview of one TERRAFORM / REPAIR / DISMANTLE click at `(q, r)`; the host stays the judge (it may still reject). */
+/** Preview of one TERRAFORM / CULTIVATE / REPAIR / DISMANTLE click at `(q, r)`; the host stays the judge (it may still reject). */
+function planCultivate(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan {
+  const data = ctx.data ?? undefined;
+  const preview = planCultivateTiles(ctx.view, [{ q, r }], { colonyId: ctx.colonyId, data });
+  const job = preview.jobs[0];
+  if (!job && preview.firstReject) {
+    const msg =
+      preview.firstReject === 'already_terraformed'
+        ? 'Already Living ground'
+        : preview.firstReject === 'site_blocked'
+          ? 'Clear obstacles or flatten with TERRAFORM [G] first'
+          : (SKIP_STATUS[preview.firstReject] ?? `Cannot cultivate: ${preview.firstReject.replace(/_/g, ' ')}`);
+    return skip('cultivate', preview.firstReject, msg);
+  }
+  if (job && !hasWorkerEntity(ctx.entities, ctx.colonyId, ctx.view)) return skip('cultivate', 'no_worker', NO_WORKER);
+  const wireOp = job?.op ?? 'grade';
+  return {
+    terraform: { op: wireOp, tiles: [{ q, r }], ...withWorker(ctx.workerId) },
+    outcome: { ok: true, op: 'cultivate', status: `Cultivate (${wireOp}) ordered (${q},${r})` },
+    job: { q, r, op: wireOp },
+  };
+}
+
 export function planPrimaryOp(op: TerraformPrimaryOp, ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan {
   if (op === 'dismantle') return planDismantle(ctx, q, r);
   if (op === 'repair') return planRepair(ctx, q, r);
+  if (op === 'cultivate') return planCultivate(ctx, q, r);
   return planTerraform(ctx, q, r);
 }

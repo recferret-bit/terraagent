@@ -1,5 +1,6 @@
 import { defineCommandHandler } from '../../kernel/commands';
 import { colonyIsAway } from '../away';
+import { checkAiCancelTrucePolicy } from '../away/gate';
 import { commandColony, parseArgs } from '../command';
 import { cancelTruce, devOfferTruce, proposeTruce, respondTruce } from './operations';
 import { resolveColonyIndex } from './store';
@@ -38,6 +39,8 @@ export const cancelTruceHandler = defineCommandHandler({
   kind: 'diplomacy.cancelTruce',
   wave: 'W18',
   handle(state, cmd, ctx) {
+    const awayGate = checkAiCancelTrucePolicy(cmd);
+    if (awayGate) return awayGate;
     const colIdx = commandColony(cmd);
     if (typeof colIdx === 'string') return colIdx;
     const parsed = parseArgs('diplomacy.cancelTruce', cmd.args);

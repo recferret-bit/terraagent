@@ -17,7 +17,10 @@ const REMOTE_SRC = '/srv/terraagent/src';
 const SRC_EXCLUDES = ['node_modules', '.git', 'dist', 'scripts/dev/.out', 'tests/e2e/.out', 'tests/.out', 'playwright-report', '.env', '.env.*'];
 
 export function rewriteCompose(text) {
-  return text.replaceAll('context: ../..', 'context: /srv/terraagent/src').replaceAll('../nginx/', `${REMOTE_NGINX}/`);
+  return text
+    .replaceAll('context: ../..', 'context: /srv/terraagent/src')
+    .replaceAll('../nginx/', `${REMOTE_NGINX}/`)
+    .replaceAll('path: ../.env', `path: ${SERVER_ENV}`);
 }
 
 export function buildPlan({ env, stacks, catalog, root }) {

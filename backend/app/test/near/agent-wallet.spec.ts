@@ -12,6 +12,7 @@ import {
 import { nearAdapters, nearEnvFor } from '../../src/near/infrastructure/near-infrastructure.module';
 import { AgentWalletPort } from '../../src/near/application/ports/agent-wallet.port';
 import { MockAgentWalletAdapter } from '../../src/near/infrastructure/adapters/mock/agent-wallet.adapter';
+import { TestnetAgentWalletAdapter } from '../../src/near/infrastructure/adapters/real/testnet-agent-wallet.adapter';
 import { UNIT_APP_ENV } from '../unit-app-env';
 
 const SIX_HUNDRED: AllowanceTotals = { allowance: 600n, reserved: 0n, spent: 0n };
@@ -75,20 +76,29 @@ describe('W15-03 sub-account names and adapter selection', () => {
     expect(() => composeSubAccountId('BAD', 'guild-1')).toThrowError(/outside NEAR account-id rules/);
   });
 
-  it('selects the mock by default and fails closed when testnet has no class', () => {
+  it('selects the mock by default, binds testnet when requested, and fails closed when mainnet has no class', () => {
     expect(nearAdapterKey('AgentWallet')).toBe('NEAR_ADAPTER_AGENT_WALLET');
     expect(nearAdapterFor('AgentWallet', {})).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'mock' })).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_ADAPTER_AGENT_WALLET: 'mock' })).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'testnet', NEAR_ADAPTER_AGENT_WALLET: 'mock' })).toBe('mock');
+    expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'testnet' })).toBe('testnet');
     expect(
       nearAdapters.some(
         (a) => a.port === AgentWalletPort && a.kind === 'mock' && a.useClass === MockAgentWalletAdapter,
       ),
     ).toBe(true);
-    expect(nearAdapters.some((a) => a.port === AgentWalletPort && a.kind === 'testnet')).toBe(false);
+    expect(
+      nearAdapters.some(
+        (a) => a.port === AgentWalletPort && a.kind === 'testnet' && a.useClass === TestnetAgentWalletAdapter,
+      ),
+    ).toBe(true);
     expect(() =>
       parseEnv([nearEnvFor(nearAdapters)], { ...UNIT_APP_ENV, NEAR_ADAPTER_AGENT_WALLET: 'testnet' }),
-    ).toThrow(/AgentWallet: "testnet" adapter selected but none is registered/);
+    ).not.toThrow();
+    expect(nearAdapters.some((a) => a.port === AgentWalletPort && a.kind === 'mainnet')).toBe(false);
+    expect(() =>
+      parseEnv([nearEnvFor(nearAdapters)], { ...UNIT_APP_ENV, NEAR_ADAPTER_AGENT_WALLET: 'mainnet' }),
+    ).toThrow(/AgentWallet: "mainnet" adapter selected but none is registered/);
   });
 });

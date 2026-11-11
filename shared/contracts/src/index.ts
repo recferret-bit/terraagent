@@ -103,6 +103,7 @@ export { DirectorStatusDataSchema, event as directorStatus, type DirectorStatusD
 export * from './notify';
 export { SetAutopilotArgsSchema, command as setAutopilot, type SetAutopilotArgs } from './commands/set-autopilot';
 export { SystemPresenceArgsSchema, command as systemPresence, type SystemPresenceArgs } from './commands/system-presence';
+export { SystemSeedRivalAiArgsSchema, command as systemSeedRivalAi, type SystemSeedRivalAiArgs } from './commands/system-seed-rival-ai';
 export { ColonyAwayDataSchema, event as colonyAway, type ColonyAwayData } from './events/colony-away';
 export { ColonyBackDataSchema, event as colonyBack, type ColonyBackData } from './events/colony-back';
 export {

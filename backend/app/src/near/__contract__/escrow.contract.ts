@@ -6,9 +6,10 @@ interface BalanceRow {
   amount: { toFixed(digits?: number): string };
 }
 
-/** The mock exposes these. A real adapter (W23-40) will not, until it grows the same seam. */
+/** The mock exposes these. A real adapter (W23-40) supplies creditCargo + readCargoBalance. */
 interface TestableEscrow {
   creditCargo?(accountId: string, tokenId: string, amount: string): Promise<void>;
+  readCargoBalance?(accountId: string, tokenId: string): Promise<string>;
   prisma?: {
     mockChainBalance: {
       findUnique(args: {
@@ -26,6 +27,9 @@ function helpers(port: EscrowPort): EscrowContractHelpers {
       await testable.creditCargo(accountId, tokenId, amount);
     },
     balance: async (accountId, tokenId) => {
+      if (testable.readCargoBalance) {
+        return testable.readCargoBalance(accountId, tokenId);
+      }
       const db = testable.prisma;
       if (!db) throw new Error('Escrow adapter has no prisma client; cannot read a cargo balance');
       const row = await db.mockChainBalance.findUnique({
