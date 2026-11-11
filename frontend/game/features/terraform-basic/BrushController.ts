@@ -158,7 +158,7 @@ export class BrushController {
     const hostState = this.sink.host?.state;
     const entities = extractViewEntities(view, hostState);
     const data = this.sink.simData?.() ?? null;
-    const workerId = op === 'terraform' && opts?.queue ? undefined : this.sink.getWorkerId?.();
+    const workerId = (op === 'terraform' || op === 'cultivate') && opts?.queue ? undefined : this.sink.getWorkerId?.();
     const plan = planPrimaryOp(op, { view, hostState, entities, colonyId, workerId, data }, tile.q, tile.r);
     let sent: DispatchedCommand | null = null;
     if (plan.terraform) {
@@ -241,7 +241,7 @@ export class BrushController {
           const tile = resolvePointerTile(e, pickTile) ?? this.pressTile;
           this.pressTile = null;
           const queue = e.ctrlKey || e.metaKey;
-          if (queue && this.selectedOp === 'terraform' && this.toggleQueued(tile.q, tile.r)) return;
+          if (queue && (this.selectedOp === 'terraform' || this.selectedOp === 'cultivate') && this.toggleQueued(tile.q, tile.r)) return;
           if (this.strokeTile(tile.q, tile.r, { queue }).queuedCount > 0 && !queue) this.disarm();
         },
       },

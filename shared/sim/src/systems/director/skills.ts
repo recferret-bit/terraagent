@@ -16,7 +16,7 @@ const ROWS: readonly SkillRow[] = [
   { id: 'recovery', family: 'recovery', purpose: 'Restore the colony and its power.', goal: 'establish_colony', requiredWaves: ['W08'], minStage: 0, actions: ['queueGoal'] },
   { id: 'resources', family: 'resources', purpose: 'Grow extraction inside the commitment cap.', goal: 'grow_economy', requiredWaves: ['W08'], minStage: 1, actions: ['queueGoal', 'setHarvestWeights'] },
   { id: 'power', family: 'recovery', purpose: 'Restore net power before new industry.', goal: 'secure_power', requiredWaves: ['W08'], minStage: 2, actions: ['queueGoal'] },
-  { id: 'defence', family: 'defence', purpose: 'Hold a protected approach.', goal: 'defend_colony', requiredWaves: ['W14'], minStage: 3, actions: ['queueGoal'] },
+  { id: 'defence', family: 'defence', purpose: 'Hold a protected approach.', goal: 'defend_colony', requiredWaves: ['W07'], minStage: 3, actions: ['queueGoal'] },
   { id: 'scouting', family: 'scouting', purpose: 'Clear a corridor that was already observed.', goal: 'clear_corridor', requiredWaves: ['W08'], minStage: 2, actions: ['queueGoal', 'moveUnit'] },
   { id: 'expansion', family: 'expansion', purpose: 'Extend along an observed route.', goal: 'expand_territory', requiredWaves: ['W08'], minStage: 3, actions: ['queueGoal'] },
   { id: 'terraforming', family: 'terraforming', purpose: 'Prepare ground inside a protected area.', goal: 'terraform_zone', requiredWaves: ['W05'], minStage: 2, actions: ['queueGoal', 'enqueueTask'] },
@@ -60,7 +60,11 @@ function toSpec(row: SkillRow): DirectorSkillSpec {
 
 /** At most six skills. Missing executors are omitted, not advertised (AI §6). */
 export function selectDirectorSkills(input: SkillSelectInput): DirectorSkillSpec[] {
-  return ROWS.filter((row) => eligible(row, input)).slice(0, 6).map(toSpec);
+  const matched = ROWS.filter((row) => eligible(row, input));
+  if (matched.length > 6 && input.raidsPermitted && matched.some((r) => r.id === 'diplomacy')) {
+    return matched.filter((r) => r.id !== 'scouting').slice(0, 6).map(toSpec);
+  }
+  return matched.slice(0, 6).map(toSpec);
 }
 
 export function directorSkillIds(): readonly string[] {

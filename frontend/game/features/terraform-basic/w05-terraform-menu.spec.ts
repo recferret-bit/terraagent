@@ -169,10 +169,11 @@ describe('Terraform: one button does every ground job', () => {
     expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
   });
 
-  it('the menu offers exactly Terraform, Repair, Dismantle', () => {
+  it('the menu offers Terraform, Cultivate, Repair, Dismantle on W05+', () => {
     const { container } = mountOnW05Planet();
     expect([...container.querySelectorAll('button')].map((b) => b.dataset.testid ?? b.getAttribute('data-testid'))).toEqual([
       'tf-op-terraform',
+      'tf-op-cultivate',
       'tf-op-repair',
       'tf-op-dismantle',
     ]);
@@ -264,5 +265,49 @@ describe('Terraform on ground that is already clear', () => {
       expect(stroke.outcome?.reason).toBe('already_terraformed');
       expect(stroke.statusText).toBe('Already terraformed');
     }
+  });
+});
+
+describe('CULTIVATE [V]: steps level flat through Grade → Irrigate → Seed → Living', () => {
+  it('advances flat/wild → grade → prepared → irrigate → irrigated → seed → living and skips non-flat or living', () => {
+    const { host, tf } = mountOnW05Planet();
+    const idx = hexIndex(host.state.grid.radius);
+    const i = idx.indexOf(-2, 1);
+    host.state.grid.layers.height.fill(0);
+    setTileTerrain(host.state.grid, i, TERRAIN.flat);
+    setTilePrep(host.state.grid, i, PREP.flat);
+    tf.selectOp('cultivate');
+
+    // Non-flat obstacle (forest at 2,0) is refused by CULTIVATE with hint to use TERRAFORM [G] first
+    tf.update(host.view() as never);
+    const blocked = tf.strokeTile(2, 0);
+    expect(blocked.queuedCount).toBe(0);
+    expect(blocked.outcome?.reason).toBe('site_blocked');
+
+    // Step 1: flat -> grade -> prepared
+    const s1 = tf.strokeTile(-2, 1);
+    expect(s1.jobs[0]?.op).toBe('grade');
+    host.step(40);
+    expect(host.state.grid.layers.prep[i]).toBe(PREP.prepared);
+
+    // Step 2: prepared -> irrigate -> irrigated
+    tf.update(host.view() as never);
+    const s2 = tf.strokeTile(-2, 1);
+    expect(s2.jobs[0]?.op).toBe('irrigate');
+    host.step(60);
+    expect(host.state.grid.layers.prep[i]).toBe(PREP.irrigated);
+
+    // Step 3: irrigated -> seed -> living
+    tf.update(host.view() as never);
+    const s3 = tf.strokeTile(-2, 1);
+    expect(s3.jobs[0]?.op).toBe('seed');
+    host.step(80);
+    expect(host.state.grid.layers.prep[i]).toBe(PREP.living);
+
+    // Living ground is complete and skipped
+    tf.update(host.view() as never);
+    const done = tf.strokeTile(-2, 1);
+    expect(done.queuedCount).toBe(0);
+    expect(done.outcome?.reason).toBe('already_terraformed');
   });
 });

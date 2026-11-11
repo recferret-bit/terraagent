@@ -2,7 +2,7 @@ import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { isTileUneven } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { PREP, TERRAIN } from '../../grid/layers';
+import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { setTilePrep } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
@@ -257,6 +257,44 @@ export function resolveTerraformTileOp(
   if (!op) return { ok: false, reason: 'site_blocked' };
   const check = evaluateTerraformTile(world, colonyId, op, q, r, opts);
   return check.ok ? { ok: true, op } : check;
+}
+
+export type CultivateOpKind = 'grade' | 'irrigate' | 'seed';
+
+/**
+ * Resolves the next growth-ladder step (`grade` → `irrigate` → `seed` → `living`) for level `TERRAIN.flat` at `(q, r)`
+ * (`GP-90`, D-37: shared by the client `CULTIVATE [V]` brush and `terraform_zone` goal executor).
+ * Non-flat ground, uneven slopes, deposits and building footprints return `site_blocked` (prepare with `TERRAFORM [G]` first).
+ */
+export function resolveCultivateTileOp(
+  world: TerraformWorld,
+  colonyId: number,
+  q: number,
+  r: number,
+  opts: { allowUnclaimed?: boolean; data?: CompiledDataLike; deposit?: ArrayLike<number> | null } = {},
+): { ok: true; op: CultivateOpKind } | { ok: false; reason: RejectCode } {
+  const i = tileIndex(world, q, r);
+  if (i < 0) return { ok: false, reason: 'invalid_args' };
+  const territory = ownershipBlock(world, colonyId, i, q, r, Boolean(opts.allowUnclaimed));
+  if (territory) return { ok: false, reason: territory };
+  if (world.prep[i] === PREP.living) return { ok: false, reason: 'already_terraformed' };
+  if (world.occupied?.has(i)) return { ok: false, reason: 'site_blocked' };
+  if (opts.deposit && opts.deposit[i] !== DEPOSIT.none) return { ok: false, reason: 'site_blocked' };
+  if (world.terrain[i] !== TERRAIN.flat || isTileUneven(world.radius, i, world.terrain, world.height)) {
+    return { ok: false, reason: 'site_blocked' };
+  }
+  const prep = world.prep[i];
+  const nextOp: CultivateOpKind | null =
+    prep === PREP.irrigated
+      ? 'seed'
+      : prep === PREP.prepared
+        ? 'irrigate'
+        : prep === PREP.wild || prep === PREP.flat
+          ? 'grade'
+          : null;
+  if (!nextOp) return { ok: false, reason: 'site_blocked' };
+  const check = evaluateTerraformTile(world, colonyId, nextOp, q, r, { allowUnclaimed: opts.allowUnclaimed, data: opts.data });
+  return check.ok ? { ok: true, op: nextOp } : check;
 }
 
 export interface EvaluateTerraformOpts {

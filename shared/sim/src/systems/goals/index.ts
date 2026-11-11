@@ -55,6 +55,7 @@ export * from './ai';
 export * from './handlers';
 export * from './sites';
 export * from './defendAndClear';
+export * from './terraformZone';
 export * from './breakdown';
 export { normalizeGoalParams };
 
