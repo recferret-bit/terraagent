@@ -35,6 +35,61 @@ function normalizeBusEventData(kind: string, data: unknown): unknown {
   return rest;
 }
 
+function bindNearCommandBusListeners(
+  planets: GamePlanets,
+  bus: EventBus,
+  log: Pick<Logger, 'error'>,
+): (() => void)[] {
+  if (typeof bus.on !== 'function') return [];
+  let settledSeq = 0;
+  let marketSeq = 0;
+  const unsubCargoSettled = bus.on(
+    'near.cargo.settled',
+    (ev: NearCargoSettledBusEvent) => {
+      if (typeof planets.submit !== 'function') return;
+      const commandId = `cs-${Date.now().toString(36)}-${(++settledSeq).toString(36)}`;
+      void planets
+        .submit(ev.planetId, {
+          colonyIndex: ev.colonyIndex,
+          source: 'near',
+          commandId,
+          kind: 'cargo.settled',
+          args: {
+            colonyId: ev.colonyId,
+            ref: ev.ref,
+            direction: ev.direction,
+            resource: ev.resource,
+            amount: ev.amount,
+            ok: ev.ok,
+            ...(ev.txHash ? { txHash: ev.txHash } : {}),
+            ...(ev.error ? { error: ev.error } : {}),
+          },
+        })
+        .catch((e: unknown) => {
+          log.error(
+            { planetId: ev.planetId, err: e instanceof Error ? e.message : String(e) },
+            'bus bridge: cargo.settled submit failed',
+          );
+        });
+    },
+    { module: 'GameBusBridge' },
+  );
+  const unsubMarket = bus.on(
+    'near.market.command',
+    (ev: NearMarketCommandBusEvent) => {
+      if (typeof planets.submit !== 'function') return;
+      const commandId = `mk-${Date.now().toString(36)}-${(++marketSeq).toString(36)}`;
+      void planets
+        .submit(ev.planetId, { colonyIndex: ev.colonyIndex, source: 'near', commandId, kind: ev.kind, args: ev.args })
+        .catch((e: unknown) => {
+          log.error({ planetId: ev.planetId, err: e instanceof Error ? e.message : String(e) }, `bus bridge: ${ev.kind} submit failed`);
+        });
+    },
+    { module: 'GameBusBridge' },
+  );
+  return [unsubCargoSettled, unsubMarket];
+}
+
 /**
  * Emits every sim event of every planet on the in-process bus as `planet.event` (ARCHITECTURE §6); kinds unknown to the
  * contracts are dropped. Progression events are batched per step. Also routes `near.cargo.settled` bus events into the
@@ -51,7 +106,6 @@ export function bridgePlanetEvents(
   reconciliation?: BusBridgeReconciliation,
 ): () => void {
   const forwarder = progressionForwarder ?? new ProgressionEventForwarder(bus);
-  let settledSeq = 0;
   const forwardEliminated = (planetId: string, ev: { readonly colonyIds?: readonly unknown[]; readonly data?: unknown }) => {
     if (!reconciliation) return;
     for (const colId of extractEliminatedColonyIds(ev)) {
@@ -84,60 +138,10 @@ export function bridgePlanetEvents(
             { module: 'GameBusBridgeReconciliation' },
           )
       : undefined;
-  const unsubCargoSettled =
-    typeof bus.on === 'function'
-      ? bus.on(
-          'near.cargo.settled',
-          (ev: NearCargoSettledBusEvent) => {
-            if (typeof planets.submit !== 'function') return;
-            const commandId = `cs-${Date.now().toString(36)}-${(++settledSeq).toString(36)}`;
-            void planets
-              .submit(ev.planetId, {
-                colonyIndex: ev.colonyIndex,
-                source: 'near',
-                commandId,
-                kind: 'cargo.settled',
-                args: {
-                  colonyId: ev.colonyId,
-                  ref: ev.ref,
-                  direction: ev.direction,
-                  resource: ev.resource,
-                  amount: ev.amount,
-                  ok: ev.ok,
-                  ...(ev.txHash ? { txHash: ev.txHash } : {}),
-                  ...(ev.error ? { error: ev.error } : {}),
-                },
-              })
-              .catch((e: unknown) => {
-                log.error(
-                  { planetId: ev.planetId, err: e instanceof Error ? e.message : String(e) },
-                  'bus bridge: cargo.settled submit failed',
-                );
-              });
-          },
-          { module: 'GameBusBridge' },
-        )
-      : undefined;
-  let marketSeq = 0;
-  const unsubMarket =
-    typeof bus.on === 'function'
-      ? bus.on(
-          'near.market.command',
-          (ev: NearMarketCommandBusEvent) => {
-            if (typeof planets.submit !== 'function') return;
-            void planets
-              .submit(ev.planetId, { colonyIndex: ev.colonyIndex, source: 'near', commandId: `mk-${Date.now().toString(36)}-${(++marketSeq).toString(36)}`, kind: ev.kind, args: ev.args })
-              .catch((e: unknown) => {
-                log.error({ planetId: ev.planetId, err: e instanceof Error ? e.message : String(e) }, `bus bridge: ${ev.kind} submit failed`);
-              });
-          },
-          { module: 'GameBusBridge' },
-        )
-      : undefined;
+  const nearUnsubs = bindNearCommandBusListeners(planets, bus, log);
   return () => {
     unsubEvents();
     unsubEliminated?.();
-    unsubCargoSettled?.();
-    unsubMarket?.();
+    for (const fn of nearUnsubs) fn();
   };
 }

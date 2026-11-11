@@ -48,7 +48,11 @@ export function extractColonyStatusView(rawView: unknown, ownColonyIndex = 0): C
   const colony = resolveColonyRecord(viewObj, ownColonyIndex);
   const elimRecord = resolveEliminationRecord(viewObj, ownColonyIndex);
 
-  const hqDown = Boolean(elimRecord?.hqDown ?? colony?.hqDown ?? false);
+  const queueArr = Array.isArray(colony?.queue) ? (colony.queue as Array<Record<string, unknown>>) : [];
+  const hasReprintInQueue = queueArr.some(
+    (q) => q && q.lane === 'units' && (q.task as Record<string, unknown> | undefined)?.unit === 'hq',
+  );
+  const hqDown = Boolean(elimRecord?.hqDown ?? colony?.hqDown ?? hasReprintInQueue);
 
   const rawElimTick = elimRecord?.eliminatedAtTick ?? colony?.eliminatedAtTick;
   const eliminatedAtTick = typeof rawElimTick === 'number' ? rawElimTick : null;

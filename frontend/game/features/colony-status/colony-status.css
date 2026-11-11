@@ -118,7 +118,7 @@
   justify-content: center;
   background: rgba(7, 8, 10, 0.88);
   backdrop-filter: blur(8px);
-  z-index: 100;
+  z-index: 9998;
   padding: var(--ta-s4);
 }
 

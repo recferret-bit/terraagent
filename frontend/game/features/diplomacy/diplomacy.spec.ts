@@ -304,10 +304,11 @@ describe('Diplomacy HUD mounting and wave gating', () => {
     inst.dispose();
   });
 
-  it('has devCommands registered for offerTruce and dev.offerTruce', () => {
+  it('has devCommands registered for offerTruce and dev.offerTruce via w18DevCommands', async () => {
     expect(diplomacyFeature.id).toBe('diplomacy');
     expect(diplomacyFeature.wave).toBe('W18');
-    const names = diplomacyFeature.devCommands?.map((c) => c.name) ?? [];
+    const { w18DevCommands } = await import('../dev-console/w18-commands');
+    const names = w18DevCommands.map((c) => c.name);
     expect(names).toContain('offerTruce');
     expect(names).toContain('dev.offerTruce');
   });

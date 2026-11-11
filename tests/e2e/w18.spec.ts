@@ -6,6 +6,7 @@ import {
   hostMode,
   loadLocal,
   loadScenario,
+  login,
   openColonyTab,
   screenshot,
   sendSimCmd,
@@ -58,6 +59,7 @@ interface W18DebugWindow {
 
 let context: BrowserContext;
 let pageA: Page;
+let savedPlanetId = '';
 
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext();
@@ -69,11 +71,13 @@ test.afterAll(async () => {
 });
 
 async function openW18(target: Page, params: Record<string, string> = {}, as = 'a'): Promise<number> {
-  const merged = { shadow: '0', crt: '0', wind: '0', ...params };
+  const merged = { skip: '1', shadow: '0', crt: '0', wind: '0', ...params };
   if (local) {
     return loadLocal(target, 'w18', merged, 90_000);
   }
-  return loadScenario(target, 'w18', merged, { as, timeout: 90_000 });
+  const tick = await loadScenario(target, 'w18', merged, { as, timeout: 90_000 });
+  savedPlanetId = await target.evaluate(() => (window as unknown as W18DebugWindow).__online?.planetId ?? '');
+  return tick;
 }
 
 const getColony = (target: Page, index: number): Promise<W18ColonyView | null> =>
@@ -84,20 +88,31 @@ const getDiplomacyBlob = (target: Page): Promise<Record<string, unknown> | null>
     () => ((window as unknown as W18DebugWindow).__online?.store.latest?.blobs?.diplomacy as Record<string, unknown>) ?? null,
   );
 
-async function openJoinSeat(fromPage: Page, seatLetter: 'b' | 'c' | 'd' | 'e'): Promise<Page> {
-  if (local) return fromPage;
-  const out = await devConsole(fromPage, `planet ${seatLetter}`);
-  expect(out).toContain(`as=${seatLetter}`);
-  const planetId = await fromPage.evaluate(() => (window as unknown as W18DebugWindow).__online?.planetId ?? '');
+async function joinSeat(target: Page, seatLetter: 'a' | 'b' | 'c' | 'd' | 'e'): Promise<Page> {
+  if (local) return target;
+  if (seatLetter !== 'a') {
+    const out = await devConsole(target, `planet ${seatLetter}`);
+    expect(out).toContain(`as=${seatLetter}`);
+  }
+  const planetId =
+    savedPlanetId ||
+    (await target.evaluate(() => (window as unknown as W18DebugWindow).__online?.planetId ?? ''));
   expect(planetId).toMatch(/^pl_/);
-  const p = await context.newPage();
-  await p.goto(`/play.html?join=${encodeURIComponent(planetId)}&as=${seatLetter}&shadow=0&crt=0&wind=0`);
-  await waitForTick(p, () => true, 60_000);
-  return p;
+  savedPlanetId = planetId;
+  // Release the active WebGL context before opening the joined seat view (see w06.spec.ts).
+  await target.goto('about:blank');
+  login(target, seatLetter);
+  await target.goto(
+    `/play.html?join=${encodeURIComponent(planetId)}&as=${seatLetter}&skip=1&shadow=0&crt=0&wind=0`,
+  );
+  await waitForTick(target, () => true, 60_000);
+  await target.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  return target;
 }
 
 test('@hack 1. Open ?scenario=w18 -> Colony A (S4, 4 Recons) raids Colony B (S4, unshielded) -> turrets engage and Recons beside B depot siphon resources into A', async () => {
   await openW18(pageA, {}, 'a');
+  expectNoPageErrors(pageA);
 
   const colA0 = await getColony(pageA, 0);
   const colB0 = await getColony(pageA, 1);
@@ -138,10 +153,11 @@ test('@hack 2. Colony C (aged 1 h at S3) shows newcomer shield: 5 h left, reject
   expect(rej.code).toBe('raid_protected');
 
   if (!local) {
-    const pageC = await openJoinSeat(pageA, 'c');
-    const shieldOut = await devConsole(pageC, 'setShield 3');
+    await joinSeat(pageA, 'c');
+    const shieldOut = await devConsole(pageA, 'setShield 3');
     expect(shieldOut).toContain('dev.setShield');
-    await pageC.close();
+    await joinSeat(pageA, 'a');
+    await openColonyTab(pageA, 'hq');
   } else {
     const shieldOut = await devConsole(pageA, 'setShield 3 2');
     expect(shieldOut).toContain('dev.setShield');
@@ -155,7 +171,7 @@ test('@hack 2. Colony C (aged 1 h at S3) shows newcomer shield: 5 h left, reject
 test('@hack 3. In Colony B: killHq reprints HQ at Basic Hub -> killHub puts B into critical -> second killHq eliminates B into ruins and updates W11 sector living count while retaining founded seat', async ({
   request,
 }) => {
-  const pageB = await openJoinSeat(pageA, 'b');
+  const pageB = await joinSeat(pageA, 'b');
 
   const killHq1 = await devConsole(pageB, local ? 'killHq 1' : 'killHq');
   expect(killHq1).toContain('dev.killHq');
@@ -192,8 +208,7 @@ test('@hack 3. In Colony B: killHq reprints HQ at Basic Hub -> killHub puts B in
 
   if (!local) {
     await expect(pageB.getByTestId('colony-eliminated-modal')).toBeVisible();
-    const planetId = await pageA.evaluate(() => (window as unknown as W18DebugWindow).__online?.planetId ?? '');
-    const secRes = await request.get(`/v1/planets/${encodeURIComponent(planetId)}/sectors`);
+    const secRes = await request.get(`/v1/planets/${encodeURIComponent(savedPlanetId)}/sectors`);
     if (secRes.ok()) {
       const body = (await secRes.json()) as {
         sectors?: Array<{ sectorId: string; foundedSeats?: number; liveColonies?: number }>;
@@ -203,7 +218,7 @@ test('@hack 3. In Colony B: killHq reprints HQ at Basic Hub -> killHub puts B in
         expect(sec0.foundedSeats).toBeGreaterThanOrEqual(4);
       }
     }
-    await pageB.close();
+    await joinSeat(pageA, 'a');
   }
 
   await screenshot(pageA, '3-w18-b-eliminated-ruins');
@@ -215,34 +230,34 @@ test('@hack 4 & 5. Colony A offers 6 h truce to D -> D accepts -> A attackMove i
   const dipPanelA = pageA.getByTestId('diplomacy-panel');
   await expect(dipPanelA).toBeVisible();
 
-  await dipPanelA.getByTestId('propose-target-colony').selectOption('3');
-  await dipPanelA.getByTestId('duration-chip-6h').click();
-  await dipPanelA.locator('[data-action="propose-truce"]').click();
-
-  await expect.poll(async () => {
-    const blob = await getDiplomacyBlob(pageA);
-    return Object.keys((blob?.offers as Record<string, unknown>) ?? {}).length;
-  }, { timeout: 15_000 }).toBeGreaterThan(0);
-
   if (!local) {
-    const pageD = await openJoinSeat(pageA, 'd');
-    await openColonyTab(pageD, 'hq');
-    const acceptBtn = pageD.locator('[data-action="accept-truce"]').first();
+    await dipPanelA.getByTestId('propose-target-colony').selectOption('3');
+    await dipPanelA.getByTestId('duration-chip-6h').click();
+    await dipPanelA.locator('[data-action="propose-truce"]').click();
+
+    await expect.poll(async () => {
+      const blob = await getDiplomacyBlob(pageA);
+      return Object.keys((blob?.offers as Record<string, unknown>) ?? {}).length;
+    }, { timeout: 15_000 }).toBeGreaterThan(0);
+
+    await joinSeat(pageA, 'd');
+    await openColonyTab(pageA, 'hq');
+    const acceptBtn = pageA.locator('[data-action="accept-truce"]').first();
     await expect(acceptBtn).toBeVisible({ timeout: 15_000 });
     await acceptBtn.click();
-    await pageD.close();
+
+    await joinSeat(pageA, 'a');
+    await openColonyTab(pageA, 'hq');
   } else {
-    const offerId = await pageA.evaluate(() => {
-      const blob = (window as unknown as W18DebugWindow).__online?.store.latest?.blobs?.diplomacy as
-        | { offers?: Record<string, { offerId: string }> }
-        | undefined;
-      return Object.keys(blob?.offers ?? {})[0] ?? '';
-    });
-    expect(offerId).toBeTruthy();
+    const offerOut = await devConsole(pageA, 'offerTruce 3 6');
+    expect(offerOut).toContain('dev.offerTruce');
+    const acceptBtn = dipPanelA.locator('[data-action="accept-truce"]').first();
+    await expect(acceptBtn).toBeVisible({ timeout: 15_000 });
+    await acceptBtn.click();
   }
 
-  if (!local) {
-    const aReconId = await pageA.evaluate(() => {
+  const findARecon = () =>
+    pageA.evaluate(() => {
       const s = (window as unknown as W18DebugWindow).__online?.store.latest;
       if (!s) return -1;
       const stride = s.count > 0 ? s.entities.length / s.count : 13;
@@ -252,19 +267,23 @@ test('@hack 4 & 5. Colony A offers 6 h truce to D -> D accepts -> A attackMove i
       }
       return -1;
     });
-    expect(aReconId).toBeGreaterThan(0);
-    const amRej = await sendSimCmd(pageA, 'attackMove', { entityId: aReconId, q: 0, r: -16 });
-    expect(amRej.ok).toBe(false);
-    expect(amRej.code).toBe('truce_active');
-
-    const cancelBtn = dipPanelA.locator('[data-action="cancel-truce"]').first();
-    await expect(cancelBtn).toBeVisible();
-    await cancelBtn.click();
-
-    await expect(dipPanelA.getByTestId('diplomacy-oathbreaker')).toBeVisible();
-    await expect(dipPanelA.getByTestId('diplomacy-oathbreaker')).toContainText(/OATHBREAKER/i);
-    await expect(dipPanelA.getByTestId('truce-timer').first()).toContainText(/Notice:/i);
+  let aReconId = await findARecon();
+  if (aReconId <= 0) {
+    await devConsole(pageA, 'spawnUnit recon -12 3');
+    aReconId = await findARecon();
   }
+  expect(aReconId).toBeGreaterThan(0);
+  const amRej = await sendSimCmd(pageA, 'attackMove', { entityId: aReconId, q: 0, r: -16 });
+  expect(amRej.ok).toBe(false);
+  expect(amRej.code).toBe('truce_active');
+
+  const cancelBtn = dipPanelA.locator('[data-action="cancel-truce"]').first();
+  await expect(cancelBtn).toBeVisible({ timeout: 15_000 });
+  await cancelBtn.click();
+
+  await expect(dipPanelA.getByTestId('diplomacy-oathbreaker')).toBeVisible();
+  await expect(dipPanelA.getByTestId('diplomacy-oathbreaker')).toContainText(/OATHBREAKER/i);
+  await expect(dipPanelA.getByTestId('truce-timer').first()).toContainText(/Notice:/i);
 
   await screenshot(pageA, '5-w18-truce-notice-oathbreaker');
   expectNoPageErrors(pageA);
@@ -272,27 +291,24 @@ test('@hack 4 & 5. Colony A offers 6 h truce to D -> D accepts -> A attackMove i
 
 test('@hack 6. Colony D goes away (presence away) with AI allowed and receives truce offer from E (offerTruce d 6) -> director accepts it', async () => {
   if (!local) {
-    const pageD = await openJoinSeat(pageA, 'd');
-    const awayOut = await devConsole(pageD, 'presence away');
+    await joinSeat(pageA, 'd');
+    const awayOut = await devConsole(pageA, 'presence away');
     expect(awayOut).toMatch(/away at tick \d+/);
 
-    const pageE = await openJoinSeat(pageA, 'e');
-    const offerOut = await devConsole(pageE, 'offerTruce d 6');
+    await joinSeat(pageA, 'e');
+    const offerOut = await devConsole(pageA, 'offerTruce d 6');
     expect(offerOut).toContain('dev.offerTruce');
 
-    await devConsole(pageE, 'warp 10');
+    await devConsole(pageA, 'warp 10');
     await expect.poll(async () => {
-      const blob = (await getDiplomacyBlob(pageE)) as {
+      const blob = (await getDiplomacyBlob(pageA)) as {
         truces?: Record<string, { colonyAIndex: number; colonyBIndex: number; status: string }>;
       } | null;
       return Object.values(blob?.truces ?? {}).some(
         (t) => t.status === 'active' && ((t.colonyAIndex === 3 && t.colonyBIndex === 4) || (t.colonyAIndex === 4 && t.colonyBIndex === 3)),
       );
     }, { timeout: 20_000 }).toBe(true);
-    await devConsole(pageE, 'warp 1');
-
-    await pageD.close();
-    await pageE.close();
+    await devConsole(pageA, 'warp 1');
   } else {
     const awayOut = await devConsole(pageA, 'presence away 3');
     expect(awayOut).toMatch(/away at tick \d+/);
@@ -311,7 +327,14 @@ test('@hack 7. Playground ?ruin=1 look and ?waves=..17 flag-off check -> no raid
   expect(ruinActive).toBe(true);
   await screenshot(pageA, '7a-playground-ruin-solar');
 
-  await openW18(pageA, { waves: '..17' }, 'a-w17');
+  if (!local) {
+    await openW18(pageA, { waves: '..17' }, 'a-w17');
+    await expect(pageA.getByTestId('raid-target-picker')).toHaveCount(0);
+    await expect(pageA.getByTestId('diplomacy-panel')).toHaveCount(0);
+  }
+
+  await pageA.goto('about:blank');
+  await loadLocal(pageA, 'w18', { waves: '..17' }, 30_000);
   await expect(pageA.getByTestId('raid-target-picker')).toHaveCount(0);
   await expect(pageA.getByTestId('diplomacy-panel')).toHaveCount(0);
 

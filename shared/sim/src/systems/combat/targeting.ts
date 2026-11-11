@@ -191,7 +191,15 @@ export function isHostileTargetForAttacker(
   if (targetOwner === attackerOwner) return false;
   if (attackerOwner >= 0 && targetOwner >= 0) {
     if (hasActiveTruce(state, attackerOwner, targetOwner)) return false;
-    if (isColonyRaidProtected(state, targetOwner, state.meta.tick, opts?.data)) return false;
+    const pvpBlob = state.blobs.pvp?.value as { byColony?: Record<string, unknown> } | undefined;
+    const targetCol = state.colonies[targetOwner];
+    if (
+      (pvpBlob?.byColony?.[String(targetOwner)] !== undefined ||
+        (typeof targetCol?.raidProtectedUntil === 'number' && targetCol.raidProtectedUntil > 0)) &&
+      isColonyRaidProtected(state, targetOwner, state.meta.tick, opts?.data)
+    ) {
+      return false;
+    }
   }
 
   if (!opts?.includePassiveFauna && attackerOwner >= 0 && targetOwner < 0) {

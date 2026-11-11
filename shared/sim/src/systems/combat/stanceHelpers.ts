@@ -1,6 +1,6 @@
 import { recordStanceChanges } from './stanceChanges';
 import { combatApproachBand, footprintAttackRange } from './approachBand';
-import { ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { setField, type Columns } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { pathBlockersFor } from '../../grid/pathProfiles';
@@ -246,8 +246,15 @@ export function engageTargetInRangeOrApproach(
   const [ax, ay] = getUnitContinuousCoords(cols, row);
   const [tx, ty] = getUnitContinuousCoords(cols, targetRow);
   const dist = hexDistance(ax, ay, tx, ty);
-  const minRange = Math.max(0, Number(weaponRow.minRange ?? 0));
-  const maxRange = Math.max(1, Number(weaponRow.range ?? 4));
+  const isForeignSiphonTarget =
+    ctx.flags.has('W18') &&
+    cols.owner[targetRow]! >= 0 &&
+    cols.owner[targetRow]! !== cols.owner[row]! &&
+    (cols.kind[targetRow] === ENTITY_KIND.supplyDepot ||
+      cols.kind[targetRow] === ENTITY_KIND.commandHub ||
+      cols.kind[targetRow] === ENTITY_KIND.hub);
+  const minRange = isForeignSiphonTarget ? 0 : Math.max(0, Number(weaponRow.minRange ?? 0));
+  const maxRange = isForeignSiphonTarget ? 1 : Math.max(1, Number(weaponRow.range ?? 4));
   const targetFootprintW = Math.max(
     1,
     cols.footprintW[targetRow] || cols.footprintD[targetRow] || 1,
@@ -266,7 +273,7 @@ export function engageTargetInRangeOrApproach(
 
   if (dist <= effectiveMaxRange + 1e-5) {
     tryFireUnitWeapon(state, row, targetRow, weaponRow, rec, ctx);
-    if (opts?.allowEvasive !== false && isUnitEvasive(cols.kind[row]!, ctx.data)) {
+    if (!isForeignSiphonTarget && opts?.allowEvasive !== false && isUnitEvasive(cols.kind[row]!, ctx.data)) {
       const book = new UnitBook(state);
       const uRec = book.peek(entityId);
       if (uRec?.current) {

@@ -426,6 +426,19 @@ export function stepHqRespawns(state: PlanetState, ctx: StepContext): void {
 
   for (const [colIdStr, info] of Object.entries(tracker)) {
     const colonyId = Number(colIdStr);
+    if (ctx.flags.has('W18')) {
+      const col = state.colonies[colonyId];
+      if (col?.status === 'eliminated') continue;
+      const qList = Array.isArray(col?.queue) ? col.queue : [];
+      const hasHubReprint = qList.some(
+        (item) =>
+          item &&
+          typeof item === 'object' &&
+          (item as { lane?: string }).lane === 'units' &&
+          ((item as { task?: { unit?: string } }).task?.unit === 'hq'),
+      );
+      if (hasHubReprint) continue;
+    }
     if (info.deployed && !hasAliveHq(state, colonyId) && !hasDescendingPod(state, colonyId) && !map[colonyId]) {
       initiateHqRespawn(state, colonyId, info.lastQ, info.lastR, ctx.tick, ctx);
       map = getHqRespawns(state);

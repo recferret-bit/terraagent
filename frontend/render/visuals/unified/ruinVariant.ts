@@ -31,8 +31,8 @@ ShaderPluginRegistry.registerModifier({
           } else {
             float ruinLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
             vec3 ashBase = mix(vec3(ruinLuma) * 0.26, vec3(0.105, 0.098, 0.092), 0.58);
-            float sootMacro = hash3(floor(vLocalPos * 6.5));
-            float crackCell = hash3(floor(vLocalPos * 16.0));
+            float sootMacro = hash31(floor(vLocalPos * 6.5));
+            float crackCell = hash31(floor(vLocalPos * 16.0));
             float crackWave = abs(fract(vLocalPos.x * 5.2 + vLocalPos.y * 3.7 + vLocalPos.z * 4.1 + crackCell * 0.85) - 0.5);
             float crackMask = 1.0 - smoothstep(0.025, 0.075, crackWave);
             float scorchBand = smoothstep(1.6, 0.0, vLocalPos.y) * 0.55 + smoothstep(0.35, 0.82, sootMacro) * 0.45;

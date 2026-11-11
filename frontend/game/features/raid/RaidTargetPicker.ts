@@ -30,6 +30,7 @@ export class RaidTargetPicker {
 
   private mode: RaidPickerMode = 'direct';
   private selectedTarget: RaidTargetOption | null = null;
+  private lastTargetsSig: string | null = null;
   private readonly ownColonyIndex: number;
   private readonly opts: RaidTargetPickerOptions;
 
@@ -162,35 +163,55 @@ export class RaidTargetPicker {
     this.opts.actions?.onSelectTarget?.(target);
   }
 
+  private formatReasonText(target: RaidTargetOption): {
+    text: string;
+    title: string;
+    stateClass: string | null;
+  } {
+    if (target.disabled) {
+      if (target.shieldActive) {
+        const hours = target.shieldRemainingHours;
+        if (hours >= 1) {
+          return {
+            text: `${target.disabledReason} (newcomer shield: ${hours} h left)`,
+            title: `newcomer shield: ${hours} h left`,
+            stateClass: 'is-shielded',
+          };
+        }
+        return {
+          text: target.disabledReason ?? '',
+          title: target.disabledReason ?? '',
+          stateClass: 'is-shielded',
+        };
+      }
+      if (target.truceActive) {
+        return {
+          text: target.disabledReason ?? 'Truce active',
+          title: 'Truce active',
+          stateClass: 'is-truce',
+        };
+      }
+      return {
+        text: target.disabledReason ?? 'Disabled',
+        title: target.disabledReason ?? 'Disabled',
+        stateClass: null,
+      };
+    }
+    return {
+      text: 'Ready to raid',
+      title: 'Ready to raid',
+      stateClass: 'is-ready',
+    };
+  }
+
   private renderReasonBadge(target: RaidTargetOption): HTMLElement {
     const badge = document.createElement('span');
     badge.className = 'ta-raid-target-reason';
     badge.setAttribute('data-testid', 'raid-target-reason');
-
-    if (target.disabled) {
-      if (target.shieldActive) {
-        badge.classList.add('is-shielded');
-        const hours = target.shieldRemainingHours;
-        if (hours >= 1) {
-          badge.textContent = `${target.disabledReason} (newcomer shield: ${hours} h left)`;
-          badge.title = `newcomer shield: ${hours} h left`;
-        } else {
-          badge.textContent = target.disabledReason ?? '';
-          badge.title = target.disabledReason ?? '';
-        }
-      } else if (target.truceActive) {
-        badge.classList.add('is-truce');
-        badge.textContent = target.disabledReason ?? 'Truce active';
-        badge.title = 'Truce active';
-      } else {
-        badge.textContent = target.disabledReason ?? 'Disabled';
-        badge.title = target.disabledReason ?? 'Disabled';
-      }
-    } else {
-      badge.classList.add('is-ready');
-      badge.textContent = 'Ready to raid';
-      badge.title = 'Ready to raid';
-    }
+    const { text, title, stateClass } = this.formatReasonText(target);
+    if (stateClass) badge.classList.add(stateClass);
+    badge.textContent = text;
+    badge.title = title;
     return badge;
   }
 
@@ -263,6 +284,26 @@ export class RaidTargetPicker {
   }
 
   private renderTargets(targets: RaidTargetOption[]): void {
+    const structSig = targets
+      .map(
+        (t) =>
+          `${t.colonyIndex}:${t.colonyId}:${t.name}:${t.q}:${t.r}:${t.disabled}:${t.shieldActive}:${t.truceActive}:${t.crossSectorDisabled}`,
+      )
+      .join('|');
+    if (this.lastTargetsSig === structSig) {
+      for (const target of targets) {
+        const row = this.listEl.querySelector<HTMLElement>(`[data-colony-id="${target.colonyId}"]`);
+        const badge = row?.querySelector<HTMLElement>('[data-testid="raid-target-reason"]');
+        if (badge) {
+          const { text, title } = this.formatReasonText(target);
+          if (badge.textContent !== text) badge.textContent = text;
+          if (badge.title !== title) badge.title = title;
+        }
+      }
+      return;
+    }
+    this.lastTargetsSig = structSig;
+
     while (this.listEl.firstChild) {
       this.listEl.removeChild(this.listEl.firstChild);
     }

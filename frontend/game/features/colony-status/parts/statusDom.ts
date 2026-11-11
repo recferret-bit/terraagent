@@ -2,6 +2,7 @@ export interface ColonyStatusDomElements {
   readonly bannerEl: HTMLElement;
   readonly titleEl: HTMLElement;
   readonly placeHubBtn: HTMLButtonElement;
+  readonly hqReprintEl: HTMLElement;
   readonly eliminatedEl: HTMLElement;
   readonly eliminatedTitleEl: HTMLElement;
   readonly eliminatedDetailEl: HTMLElement;
@@ -44,6 +45,14 @@ export function createColonyStatusDom(
   bannerEl.appendChild(bannerHeader);
   bannerEl.appendChild(placeHubBtn);
   hostEl.appendChild(bannerEl);
+
+  const hqReprintEl = document.createElement('div');
+  hqReprintEl.className = 'ta-hq-reprint-status plate-sm';
+  hqReprintEl.dataset.testid = 'hq-reprint-status';
+  hqReprintEl.textContent = 'HQ REPRINTING AT HUB';
+  hqReprintEl.hidden = true;
+  hqReprintEl.setAttribute('hidden', '');
+  hostEl.appendChild(hqReprintEl);
 
   const eliminatedEl = document.createElement('div');
   eliminatedEl.className = 'ta-colony-eliminated-screen';
@@ -88,6 +97,7 @@ export function createColonyStatusDom(
     bannerEl,
     titleEl,
     placeHubBtn,
+    hqReprintEl,
     eliminatedEl,
     eliminatedTitleEl,
     eliminatedDetailEl,

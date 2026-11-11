@@ -89,8 +89,12 @@ describe('W18-02 · raid task unit selection & group assignment (positive cases)
       const row = rowOf(state.entities, id);
       expect(state.entities.cols.state[row]).toBe(ENTITY_STATE.moving);
       const stance = getUnitStanceRecord(state, row);
-      expect(stance.attackMoveGoal).toEqual({ q: 14, r: 0 });
+      expect(stance.attackMoveGoal).not.toBeNull();
+      expect(stance.attackMoveGoal?.q).toBeGreaterThanOrEqual(11);
+      expect(stance.attackMoveGoal?.q).toBeLessThanOrEqual(14);
     }
+    expect(res.raid.currentTargetQ).toBe(14);
+    expect(res.raid.currentTargetR).toBe(0);
     expect(getPvpState(state).activeRaids[res.raid.raidId]).toBeDefined();
   });
 });

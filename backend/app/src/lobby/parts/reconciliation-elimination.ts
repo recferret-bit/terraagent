@@ -195,22 +195,16 @@ export async function transitionColonyStatusHelper(params: {
     async () => (await persistence.listCanonicalWorlds())[0] ?? null,
   );
   if (!world) {
-    return {
+    return buildTransitionResult(
       colonyId,
-      planetId: located.planetId,
-      sectorId: located.sectorId as SectorId,
-      landingSlotId: located.landingSlotId,
-      status: targetStatus,
-      foundedSeatHeld: true,
-      seatEvicted: false,
+      located.planetId,
+      located.sectorId as SectorId,
+      located.landingSlotId,
+      targetStatus,
       reservationReleased,
       reservationState,
-      sectorFoundedSeats: 0,
-      sectorReservedSeats: 0,
-      sectorFreeSeats: 0,
-      sectorLivingColonies: 0,
-      colony: updatedColony,
-    };
+      updatedColony,
+    );
   }
   const { snapshot } = await reconcileWorldSectorsAndBuildSnapshot({
     persistence,
@@ -222,22 +216,50 @@ export async function transitionColonyStatusHelper(params: {
     now,
   });
   const secSnap = snapshot.sectors.find((s) => s.sectorId === located.sectorId);
+  return buildTransitionResult(
+    colonyId,
+    world.id,
+    located.sectorId as SectorId,
+    located.landingSlotId,
+    targetStatus,
+    reservationReleased,
+    reservationState,
+    updatedColony,
+    secSnap ?? snapshot,
+  );
+}
 
+function buildTransitionResult(
+  colonyId: string,
+  planetId: string,
+  sectorId: SectorId,
+  landingSlotId: string | null,
+  status: 'ELIMINATED' | 'TRANSFERRED',
+  reservationReleased: boolean,
+  reservationState: string | null,
+  colony: ColonyEliminationReconcileResult['colony'],
+  counts?: {
+    readonly foundedSeats: number;
+    readonly reservedSeats: number;
+    readonly freeSeats: number;
+    readonly livingColonies: number;
+  },
+): ColonyEliminationReconcileResult {
   return {
     colonyId,
-    planetId: world.id,
-    sectorId: located.sectorId as SectorId,
-    landingSlotId: located.landingSlotId,
-    status: targetStatus,
+    planetId,
+    sectorId,
+    landingSlotId,
+    status,
     foundedSeatHeld: true,
     seatEvicted: false,
     reservationReleased,
     reservationState,
-    sectorFoundedSeats: secSnap?.foundedSeats ?? snapshot.foundedSeats,
-    sectorReservedSeats: secSnap?.reservedSeats ?? snapshot.reservedSeats,
-    sectorFreeSeats: secSnap?.freeSeats ?? snapshot.freeSeats,
-    sectorLivingColonies: secSnap?.livingColonies ?? snapshot.livingColonies,
-    colony: updatedColony,
+    sectorFoundedSeats: counts?.foundedSeats ?? 0,
+    sectorReservedSeats: counts?.reservedSeats ?? 0,
+    sectorFreeSeats: counts?.freeSeats ?? 0,
+    sectorLivingColonies: counts?.livingColonies ?? 0,
+    colony,
   };
 }
 

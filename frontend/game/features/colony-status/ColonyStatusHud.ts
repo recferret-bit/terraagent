@@ -32,6 +32,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
 
   private readonly titleEl: HTMLElement;
   private readonly placeHubBtn: HTMLButtonElement;
+  private readonly hqReprintEl: HTMLElement;
   private readonly eliminatedTitleEl: HTMLElement;
   private readonly eliminatedDetailEl: HTMLElement;
   private readonly foundNewColonyBtn: HTMLButtonElement;
@@ -71,6 +72,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
     this.bannerEl = dom.bannerEl;
     this.titleEl = dom.titleEl;
     this.placeHubBtn = dom.placeHubBtn;
+    this.hqReprintEl = dom.hqReprintEl;
     this.eliminatedEl = dom.eliminatedEl;
     this.eliminatedTitleEl = dom.eliminatedTitleEl;
     this.eliminatedDetailEl = dom.eliminatedDetailEl;
@@ -108,7 +110,15 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
   }
 
   private render(): void {
-    const { status, criticalRemainingSeconds } = this.currentView;
+    const { status, hqDown, criticalRemainingSeconds } = this.currentView;
+
+    if (hqDown && status !== 'eliminated') {
+      this.hqReprintEl.hidden = false;
+      this.hqReprintEl.removeAttribute('hidden');
+    } else {
+      this.hqReprintEl.hidden = true;
+      this.hqReprintEl.setAttribute('hidden', '');
+    }
 
     if (status === 'critical') {
       this.bannerEl.hidden = false;
@@ -205,6 +215,7 @@ export class ColonyStatusHud implements ColonyStatusHudInstance {
   dispose(): void {
     this.stopCountdownTimer();
     this.bannerEl.remove();
+    this.hqReprintEl.remove();
     this.eliminatedEl.remove();
   }
 }

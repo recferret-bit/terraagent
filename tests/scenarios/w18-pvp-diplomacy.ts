@@ -133,7 +133,7 @@ function seedW18Atlas(state: PlanetState): void {
     seed: 'w18-pvp-diplomacy',
   });
 
-  const slotDefs = W18_COLONIES.map((col) => ({
+  const slotDefs = W18_COLONIES.slice(0, manifest.foundingSeatsPerSector).map((col) => ({
     slotId: `slot_sec_0_0_${col.index}`,
     sectorId: 'sec_0_0' as const,
     slotIndex: col.index,
@@ -286,10 +286,20 @@ function seedW18Colony(state: PlanetState, s: W18ColonySeed, w18Enabled: boolean
   buildInstant(state, s.index, 'solar', q - 3, r + 2);
 
   const [depotQ, depotR] = s.frontierDepotTile ?? [q - 3, r - 2];
-  buildInstant(state, s.index, 'supplyDepot', depotQ, depotR);
+  const depotId = buildInstant(state, s.index, 'supplyDepot', depotQ, depotR);
+  if (s.frontierDepotTile) {
+    for (let rIdx = 0; rIdx < state.entities.count; rIdx++) {
+      if (state.entities.cols.id[rIdx] === depotId) {
+        state.entities.cols.hp[rIdx] = 2400;
+        state.entities.cols.hpMax[rIdx] = 2400;
+        break;
+      }
+    }
+  }
 
-  if (s.factoryTile) {
-    buildInstant(state, s.index, 'roboticsFactory', s.factoryTile[0], s.factoryTile[1]);
+  const [facQ, facR] = s.factoryTile ?? [q + 3, r - 3];
+  if (s.stage >= 3) {
+    buildInstant(state, s.index, 'roboticsFactory', facQ, facR);
   }
   if (s.frontierTurretTile) {
     buildInstant(state, s.index, 'laserTower', s.frontierTurretTile[0], s.frontierTurretTile[1]);

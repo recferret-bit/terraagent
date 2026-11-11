@@ -30,6 +30,9 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   private currentView: DiplomacyColonyView;
   private selectedHours: TruceDurationHours = 6;
   private selectedTargetColony: number = 1;
+  private lastBannerSig: string | null = null;
+  private lastTrucesSig: string | null = null;
+  private lastProposeSig: string | null = null;
   private readonly opts: DiplomacyPanelOptions;
 
   constructor(host: HTMLElement, options: DiplomacyPanelOptions = {}) {
@@ -103,47 +106,76 @@ export class DiplomacyPanel implements DiplomacyPanelInstance {
   }
 
   private render(): void {
+    const tick = this.currentView.currentTick;
     const oathUntil = this.currentView.oathbreakerUntil;
-    const isOathbreaker = typeof oathUntil === 'number' && oathUntil > this.currentView.currentTick;
+    const isOathbreaker = typeof oathUntil === 'number' && oathUntil > tick;
     this.oathbreakerEl.hidden = !isOathbreaker;
     this.oathbreakerEl.textContent =
       isOathbreaker && oathUntil !== null
-        ? `⚠ OATHBREAKER (${formatTickRemaining(oathUntil, this.currentView.currentTick)})`
+        ? `⚠ OATHBREAKER (${formatTickRemaining(oathUntil, tick)})`
         : '';
 
-    renderIncomingOfferBanner(
-      this.bannerEl,
-      this.currentView.incomingOffers[0],
-      this.currentView.currentTick,
-      this.opts.actions,
-    );
-
-    this.trucesEl.replaceChildren();
-    const activeTruces = this.currentView.truces.filter(
-      (t) => t.status !== 'ended' && t.expiresAtTick > this.currentView.currentTick,
-    );
-    for (const truce of activeTruces) {
-      this.trucesEl.appendChild(
-        buildTruceBadgeElement(truce, this.currentView.currentTick, this.opts.actions),
-      );
+    const offer = this.currentView.incomingOffers[0];
+    const hasOffer = Boolean(offer && offer.expiresAtTick > tick);
+    const bannerSig =
+      hasOffer && offer
+        ? `${offer.offerId}:${offer.fromColony}:${offer.fromColonyId ?? ''}:${offer.hours}`
+        : '';
+    if (this.lastBannerSig !== bannerSig) {
+      this.lastBannerSig = bannerSig;
+      renderIncomingOfferBanner(this.bannerEl, offer, tick, this.opts.actions);
+    } else if (hasOffer && offer) {
+      const timerEl = this.bannerEl.querySelector<HTMLElement>('[data-testid="offer-countdown"]');
+      if (timerEl) timerEl.textContent = formatTickRemaining(offer.expiresAtTick, tick);
     }
 
-    this.selectedTargetColony = renderProposeTruceSection(
-      this.proposeEl,
-      this.currentView,
-      this.selectedTargetColony,
-      this.selectedHours,
-      (target) => {
-        this.selectedTargetColony = target;
-      },
-      (hours) => {
-        this.selectedHours = hours;
-        this.render();
-      },
-      () => {
-        this.opts.actions?.onProposeTruce?.(this.selectedTargetColony, this.selectedHours);
-      },
+    const activeTruces = this.currentView.truces.filter(
+      (t) => t.status !== 'ended' && t.expiresAtTick > tick,
     );
+    const trucesSig = activeTruces
+      .map((t) => `${t.truceId}:${t.status}:${t.partnerColony}:${t.partnerColonyId ?? ''}`)
+      .join('|');
+    if (this.lastTrucesSig !== trucesSig) {
+      this.lastTrucesSig = trucesSig;
+      this.trucesEl.replaceChildren();
+      for (const truce of activeTruces) {
+        this.trucesEl.appendChild(buildTruceBadgeElement(truce, tick, this.opts.actions));
+      }
+    } else {
+      for (const truce of activeTruces) {
+        const badge = this.trucesEl.querySelector<HTMLElement>(`[data-truce-id="${truce.truceId}"]`);
+        const timerEl = badge?.querySelector<HTMLElement>('[data-testid="truce-timer"]');
+        if (timerEl) {
+          timerEl.textContent =
+            truce.status === 'notice' && typeof truce.noticeEndsAtTick === 'number'
+              ? `Notice: ${formatTickRemaining(truce.noticeEndsAtTick, tick)}`
+              : formatTickRemaining(truce.expiresAtTick, tick);
+        }
+      }
+    }
+
+    const proposeSig = `${this.currentView.colonyIndex}:${this.currentView.contacts.join(',')}#${this.selectedTargetColony}#${this.selectedHours}#${isOathbreaker}`;
+    if (this.lastProposeSig !== proposeSig) {
+      this.lastProposeSig = proposeSig;
+      this.selectedTargetColony = renderProposeTruceSection(
+        this.proposeEl,
+        this.currentView,
+        this.selectedTargetColony,
+        this.selectedHours,
+        (target) => {
+          this.selectedTargetColony = target;
+          this.lastProposeSig = `${this.currentView.colonyIndex}:${this.currentView.contacts.join(',')}#${this.selectedTargetColony}#${this.selectedHours}#${isOathbreaker}`;
+        },
+        (hours) => {
+          this.selectedHours = hours;
+          this.lastProposeSig = null;
+          this.render();
+        },
+        () => {
+          this.opts.actions?.onProposeTruce?.(this.selectedTargetColony, this.selectedHours);
+        },
+      );
+    }
   }
 }
 
