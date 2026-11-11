@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
 import { AiModule } from '../ai/ai.module';
 import { ColonyAgentLoopService } from '../ai/colony-agent/colony-agent-loop.service';
+import { EconomySimService } from '../ai/economy-sim/economy-sim.service';
 import { HomeService } from '../core/home/home.service';
 import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
@@ -136,6 +137,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
     HardModeClock,
     DevPresence,
     ColonyAgentLoopService,
+    EconomySimService,
     {
       provide: AwayDigestService,
       inject: [APP_ENV, PRISMA, GamePlanets, LOGGER],
@@ -147,7 +149,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
       }),
     },
   ],
-  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence, ColonyAgentLoopService],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService, AwayDigestService, HardModeClock, DevPresence, ColonyAgentLoopService, EconomySimService],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubBridge: (() => void) | undefined;
