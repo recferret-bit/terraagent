@@ -132,7 +132,7 @@ function directiveLine(): HTMLElement {
   return line;
 }
 
-function fieldRow(label: string, control: HTMLElement): HTMLElement {
+export function fieldRow(label: string, control: HTMLElement): HTMLElement {
   const row = document.createElement('label');
   row.className = 'ta-away__row';
   const text = document.createElement('span');

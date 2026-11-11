@@ -71,6 +71,7 @@ describe('while you were away', () => {
     expect(text).toContain('Repelled 1');
     expect(text).toContain('Raiders at the east gate');
     expect(text).toContain('The colony held the ridge.');
+    expect(document.querySelector('[data-testid="away-director-trades"]')).toBeNull();
     expect(text.indexOf('The colony held the ridge.')).toBeLessThan(text.indexOf('10 min'));
     expect(text).not.toContain('minerals.t1');
     expect(document.querySelectorAll('[data-testid="away-digest"]')).toHaveLength(1);
@@ -78,6 +79,16 @@ describe('while you were away', () => {
     expect(dismiss?.className).toBe('ta-away-dismiss');
     expect(dismiss?.classList.contains('btn')).toBe(false);
     expect(dismiss?.classList.contains('card')).toBe(false);
+  });
+
+  it('shows a director trade item on the plate', () => {
+    const { modal } = mount();
+    modal.show(digest({
+      items: [{ kind: 'digest.directorTrade', line: 'Director sold 300 metals to the Guild.' }],
+    }));
+    const row = document.querySelector('[data-kind="digest.directorTrade"]');
+    expect(row?.textContent).toBe('Director sold 300 metals to the Guild.');
+    expect(document.querySelector('[data-testid="away-director-trades"]')).not.toBeNull();
   });
 
   it('shows nothing when the welcome has no away, including a resync and while W09 is off', () => {

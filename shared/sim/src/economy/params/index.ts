@@ -10,4 +10,5 @@ export { describeSchema, PARAM_SCHEMA_VERSION } from './schema';
 export { validateValue, validatePatch, applyPatchOps, type ValidatePatchOptions } from './validate';
 export { registerField, rowsMatching, dataFields, type FieldSpec } from './fields';
 export { registerMarketParams } from './register-market';
+export { registerGuildParams } from './register-guild';
 export { registerDataParams } from './register-data';

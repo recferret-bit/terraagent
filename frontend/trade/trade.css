@@ -91,6 +91,7 @@ body { margin: 0; background: var(--ta-void); color: var(--ta-text); font-family
 .tr-table td.tr-wrap { white-space: normal; min-width: 220px; }
 .tr-table tr.tr-own td { background: rgba(255, 106, 19, 0.12); }
 .tr-table tr.tr-own td:first-child { box-shadow: inset 3px 0 0 var(--ta-orange); }
+.tr-table tr.tr-guild td:first-child { box-shadow: inset 3px 0 0 var(--ta-orange); }
 .tr-table tr.is-sel td { background: var(--ta-plate-3); }
 .tr-linkbtn { background: none; border: 0; padding: 4px 0; color: var(--ta-blue-hi); font-family: var(--ta-font-mono); font-size: 13px; cursor: pointer; text-decoration: underline; }
 
@@ -163,4 +164,6 @@ body { margin: 0; background: var(--ta-void); color: var(--ta-text); font-family
   .tr-allow { flex-direction: column; gap: 2px; }
   .tr-stack tr.tr-own { background: rgba(255, 106, 19, 0.12); box-shadow: inset 3px 0 0 var(--ta-orange); }
   .tr-stack tr.tr-own td, .tr-stack tr.tr-own td:first-child { background: none; box-shadow: none; }
+  .tr-stack tr.tr-guild { box-shadow: inset 3px 0 0 var(--ta-orange); }
+  .tr-stack tr.tr-guild td:first-child { box-shadow: none; }
 }

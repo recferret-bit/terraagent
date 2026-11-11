@@ -28,6 +28,8 @@ export const event = defineEvent({
     actorKind: ActorKind.optional(),
     /** The `SimCommandV1.commandId` of the `market.placeOrder` that caused this event (optional; absent on old events). */
     commandId: z.string().min(1).max(40).optional(),
+    /** Copied from the command when the director loop placed it. The market re-checks autoTrade before matching. */
+    director: z.boolean().optional(),
   }),
   summary: 'The sim accepted `market.placeOrder` (Hub online, size, TTL, fee range); the market module creates the order, reserves funds and matches (W13-09). Server-only input.',
 });

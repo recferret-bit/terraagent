@@ -1,3 +1,4 @@
+import { normalizeAutoTradeRecord, type AutoTradeRecord } from './autotrade';
 import { AWAY_FAMILIES, defaultAwaySettings, isMercenarySpend, isSessionPct, type AwaySettings } from './model';
 
 /** Last acked away settings. A reload shows these before any snapshot echo. */
@@ -32,6 +33,30 @@ export function saveAwaySettings(settings: AwaySettings, storage: Store | null =
     storage?.setItem(AWAY_STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // The panel still shows the ack; the next reload falls back to the previous record or the defaults.
+  }
+}
+
+/** Last acked autoTrade limits. A reload shows these before any snapshot echo. */
+export const AUTOTRADE_STORAGE_KEY = 'ta.away.autotrade';
+
+export function loadAutoTrade(storage: Store | null = browserStore()): AutoTradeRecord {
+  const empty = normalizeAutoTradeRecord(null);
+  if (!storage) return empty;
+  try {
+    const raw = storage.getItem(AUTOTRADE_STORAGE_KEY);
+    if (!raw) return empty;
+    return normalizeAutoTradeRecord(JSON.parse(raw) as unknown);
+  } catch {
+    return empty;
+  }
+}
+
+/** Writes only after `setAutoTrade` acks. A throw leaves the panel's memory as-is. */
+export function saveAutoTrade(record: AutoTradeRecord, storage: Store | null = browserStore()): void {
+  try {
+    storage?.setItem(AUTOTRADE_STORAGE_KEY, JSON.stringify(record));
+  } catch {
+    // The panel still shows the ack; the next reload falls back to the previous record or the demo defaults.
   }
 }
 

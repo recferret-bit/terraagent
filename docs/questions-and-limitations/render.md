@@ -1183,6 +1183,25 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Why it is like this:** Avoids re-allocating the target every time the camera pans over water.
 - **Found:** 2026-11-07, W05 full review (render agent)
 
+### RN-91 · Guild trader round parts are 6-sided so the cargo pods fit the triangle cap
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/kitbash/archetypes/units/ships.ts` (`buildCarrierHull` `roundSeg`), `frontend/render/kitbash/archetypes/units/guild.ts` (`addCargoPods`)
+- **What happens:** `ship.guildTrader` is the carrier hull at scale 0.35 with Guild-blue `hullSecondary` and four side cargo pods. Nineteen cylinders that are 8-sided on `ship.carrier` are 6-sided on the trader, and each pod's strap is a `BoxGeometry`. The trader reports 3,448 triangles and minY 0.000. `ship.carrier` is unchanged (3,472 triangles, minY -5.850).
+- **Why it is like this:** the carrier hull is already 3,472 triangles. A rounded strap is 108 triangles, so four of them on the 8-sided hull would pass 3,500. The hull stays one function; only the guild call sets `roundSeg: 6`.
+- **Workaround / mitigation:** at 0.35 scale the missing two facets are smaller than a pixel at RTS distance. The straps still overlap the canisters by about 4 cm after scale.
+- **To resolve:** raise the ship triangle budget, or drop another carrier sub-assembly on the guild variant, then restore `roundSeg: 8` and rounded straps.
+- **Found:** 2026-11-10, W15-14
+
+### RN-90 · Guild trader docks on the colony scene and does not drive the descent camera
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/visuals/space/GuildShipRig.ts`, `frontend/game/features/guild/GuildShipView.ts`, `frontend/game/features/guild/dockSpot.ts`, `frontend/game/maps/entityDots.ts` (`setExtraMapDot`), `frontend/game/descent/parts/CameraRig.ts`
+- **What happens:** `guild.arrived` parents `ship.guildTrader` on the colony viewport scene (`scene3d.scene`, group `guild-ship:<shipId>`). `createDropRig(..., { attachPod: false })` adds the bay ring and clamp arms under that group, the same call the descent runner uses. The rig still builds a drop-pod mesh and keeps it off the scene. Retro thrust is `createFlames`, scaled by 0.45, pointing down from the belly. The ship eases from 32 m to a 1.6 m hover in 3 s of frame time (the session's `dt`, capped at 50 ms per frame, not sim warp), bobs the whole group ±0.22 m while docked, and on `guild.departed` lifts off in 3 s. The dock tile is one step +q from the living Trade Hub with the most other living entities inside 4 hexes (tie: lower entity id). With no hub the spot is axial (2, 0). The blue chevron is an extra mark on the existing W04 units dot pass (minimap and global map). The presenter does not call the marker when W04 is off. A second `guild.arrived` for the same `shipId` while the visit is not `gone` does not start another descent. Departure during descent lifts off from the current height.
+- **Why it is like this:** `CameraRig` writes the gameplay camera along the 35 s drop curve. Stepping it for a Guild visit would yank the diorama. The trader is the ship that lands, so the pod stays unattached. The hull has spin on the dishes only, no HoverBob channel, so the bob is a group sine, not a per-vertex loop. "Busiest" is nearby entities because the market book is not per hub. The ship is the 0.35 carrier (about 18 m) on one hex, so it overhangs the pad.
+- **Workaround / mitigation:** Dish spin still advances through `tickArchetypeMesh`. The mark is drawn only while the phase is `docked`, and only if the Units layer is on. W04 off never touches `services.maps`.
+- **To resolve:** Owner: a chase camera would need its own camera, not `CameraRig` on the gameplay camera. A market-volume "busiest" needs a per-hub score passed into `pickBusiestDock`.
+- **Found:** 2026-11-10, W15-15
 ### RN-89 · Mercenary recon emblem is static, and the faction bake is a playground preview
 
 - **Status:** Accepted (by design)

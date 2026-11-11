@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { KitbashBuilder } from '../../KitbashRegistry';
+import { KitbashBuilder, type MaterialZoneId, type PartOptions } from '../../KitbashRegistry';
 import { rbox, cyl, sph, strut, sag, mirror, lathe, type V3 } from '../../greebles/unitParts';
 import { register } from './common';
 
-const dish = (b: KitbashBuilder, pos: V3, r: number, tilt = -0.6) => {
+const dish = (b: KitbashBuilder, pos: V3, r: number, tilt = -0.6, latheSeg = 12) => {
   b.addPart(cyl(r * 0.12, r * 0.15, r * 1.05, 8), 'frameGunmetal', { name: 'dish mast', position: [pos[0], pos[1] - r * 0.42, pos[2]] });
-  b.addPart(lathe([[0.02, 0], [r * 0.4, r * 0.08], [r * 0.8, r * 0.3], [r, r * 0.42], [0.02, r * 0.12]], 12), 'hullPrimary', {
+  b.addPart(lathe([[0.02, 0], [r * 0.4, r * 0.08], [r * 0.8, r * 0.3], [r, r * 0.42], [0.02, r * 0.12]], latheSeg), 'hullPrimary', {
     name: 'radar dish', position: pos, rotation: [tilt, 0, 0], animType: 1, animPivot: pos,
   });
   b.addPart(cyl(r * 0.035, r * 0.035, r * 0.52, 6), 'frameGunmetal', {
@@ -16,9 +16,82 @@ const dish = (b: KitbashBuilder, pos: V3, r: number, tilt = -0.6) => {
   });
 };
 
-// ---------------------------------------------------------------------------
-// ship.carrier — ~52 m long, local origin at hull centre, nose = +Z, belly = -Y.
-// ---------------------------------------------------------------------------
+export interface CarrierHullOpts {
+  /** Repaint a named part. Omit to keep the carrier livery. */
+  zoneFor?: (name: string, stock: MaterialZoneId) => MaterialZoneId;
+  /**
+   * Segments on the carrier's 8-side cylinders (not the dish masts). Default 8 matches ship.carrier.
+   * The guild trader drops to 6 so added cargo pods stay under the 3.5k triangle cap.
+   */
+  roundSeg?: number;
+  /** Radar-dish lathe segments. Default 12 matches ship.carrier. */
+  dishSeg?: number;
+}
+
+// ~52 m, origin at the hull centre, nose = +Z, belly = -Y. ship.carrier and ship.guildTrader both call this.
+export function buildCarrierHull(b: KitbashBuilder, opts: CarrierHullOpts = {}): void {
+  const roundSeg = opts.roundSeg ?? 8;
+  const dishSeg = opts.dishSeg ?? 12;
+  const add = (geo: THREE.BufferGeometry, zone: MaterialZoneId, options: PartOptions & { name: string }) =>
+    b.addPart(geo, opts.zoneFor ? opts.zoneFor(options.name, zone) : zone, options);
+
+  add(rbox(9, 6.4, 34, 1.6), 'hullPrimary', { name: 'carrier main hull', position: [0, 0, -2] });
+  add(rbox(9.4, 1.0, 34.4, 0.4), 'frameGunmetal', { name: 'keel armor belt', position: [0, -1.9, -2] });
+  add(lathe([[0.05, 0], [4.2, 0], [3.7, 4], [2.4, 8], [1.0, 10.5], [0.05, 11.5]], 12), 'hullPrimary', {
+    name: 'carrier nose cone', position: [0, 0, 14], rotation: [Math.PI / 2, 0, 0], scale: [1.07, 1, 0.78],
+  });
+  add(cyl(0.9, 1.5, 5.8, 6), 'hullSecondary', { name: 'nose dorsal crest', position: [0, 2.5, 18], rotation: [Math.PI / 2 + 0.28, 0, 0], scale: [1, 1, 0.22] });
+  [-10, 2].forEach((z) => add(rbox(9.6, 6.8, 1.0, 0.35), 'hullSecondary', { name: 'hull frame rib', position: [0, 0, z] }));
+  add(rbox(10.4, 7.2, 8, 1.2), 'frameGunmetal', { name: 'aft engine block', position: [0, 0, -22] });
+  [[-2.6, 1.6], [2.6, 1.6], [-2.6, -1.6], [2.6, -1.6]].forEach(([x, y]) => {
+    add(cyl(1.75, 1.75, 0.6, roundSeg), 'hullSecondary', { name: 'thruster mount collar', position: [x, y, -25.8], rotation: [Math.PI / 2, 0, 0] });
+    add(cyl(1.5, 1.1, 3, roundSeg), 'frameGunmetal', { name: 'main thruster bell', position: [x, y, -27.2], rotation: [Math.PI / 2, 0, 0] });
+    add(cyl(1.15, 1.15, 0.4, roundSeg), 'energyCyan', { name: 'thruster plasma core light', position: [x, y, -28.6], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.5 });
+  });
+
+  add(rbox(5, 3, 7, 0.8), 'hullPrimary', { name: 'command bridge superstructure', position: [0, 4.4, 8] });
+  add(rbox(4.2, 1.1, 0.5, 0.18), 'glassVisor', { name: 'bridge cockpit visor', position: [0, 4.7, 11.45], rotation: [-0.2, 0, 0] });
+  add(cyl(0.12, 0.12, 3.6, 6), 'energyCyan', { name: 'bridge brow light', position: [0, 5.25, 11.5], rotation: [0, 0, Math.PI / 2], emissiveIntensity: 4.2 });
+  add(rbox(3, 1.3, 3.5, 0.4), 'hullSecondary', { name: 'upper sensor citadel', position: [0, 6.2, 6.8] });
+  strut(b, [0, 6.6, 5.3], [0, 14, 4.0], 0.14, 'frameGunmetal', { name: 'primary comms mast' });
+  add(sph(0.28, 8, 6), 'warningAmber', { name: 'mast beacon light', position: [0, 14.05, 4.0], emissiveIntensity: 4 });
+  dish(b, [-1.1, 7.6, 7.6], 1.1, -0.6, dishSeg);
+  dish(b, [1.8, 6.3, 9.8], 0.95, -0.75, dishSeg);
+  sag(b, [0, 12.8, 4.2], [-2.1, 5.2, 6.0], 1.1, 0.07, 'frameGunmetal', { name: 'bridge telemetry cable' });
+
+  [-9, -15].forEach((z, i) => {
+    add(cyl(1.4, 1.4, 4.0, roundSeg), i % 2 ? 'hullSecondary' : 'hullPrimary', { name: 'dorsal cargo tank', position: [0, 3.8, z], rotation: [Math.PI / 2, 0, 0] });
+  });
+  add(cyl(0.22, 0.22, 14.5, roundSeg), 'frameGunmetal', { name: 'dorsal spine conduit', position: [0, 3.2, -12.5], rotation: [Math.PI / 2, 0, 0] });
+
+  mirror((s) => {
+    add(cyl(0.32, 0.38, 8.2, roundSeg), 'frameGunmetal', { name: 'wing root boom', position: [8.0 * s, 0.65, -8], rotation: [0, 0, Math.PI / 2] });
+    add(rbox(11, 0.32, 9, 0.12), 'frameGunmetal', { name: 'collector wing frame', position: [14.0 * s, 0.65, -8] });
+    for (let i = 0; i < 3; i++) {
+      add(cyl(1.4, 1.4, 8.2, 6), i === 1 ? 'hullSecondary' : 'hullPrimary', {
+        name: 'wing collector vane', position: [(10.5 + i * 3.5) * s, 0.78, -8], rotation: [Math.PI / 2, 0, 0], scale: [1, 1, 0.14],
+      });
+    }
+    add(cyl(0.12, 0.12, 8.4, 6), 'energyCyan', { name: 'wing tip plasma strip light', position: [19.45 * s, 0.65, -8], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.8 });
+  });
+
+  add(rbox(6.4, 0.9, 16, 0.25), 'hullSecondary', { name: 'drop bay coaming', position: [0, -3.35, 1] });
+  add(new THREE.BoxGeometry(5.0, 0.5, 14.6), 'frameGunmetal', { name: 'drop bay well', position: [0, -3.68, 1] });
+  mirror((s) => {
+    add(cyl(0.14, 0.14, 15.2, 6), 'warningAmber', { name: 'bay guide strip light', position: [2.85 * s, -3.78, 1], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.6 });
+    add(rbox(2.2, 0.3, 14, 0.12), 'hullPrimary', { name: 'drop bay door', position: [3.65 * s, -3.75, 1], rotation: [0, 0, 0.65 * s] });
+  });
+  [-4.0, 1.0, 6.0].forEach((z) => {
+    add(cyl(1.0, 1.0, 0.65, 10), 'frameGunmetal', { name: 'racked pod adapter', position: [0, -4.05, z] });
+    add(new THREE.ConeGeometry(0.85, 1.7, 10), 'hullPrimary', { name: 'racked drop pod', position: [0, -5.0, z], rotation: [Math.PI, 0, 0] });
+    add(cyl(0.82, 0.82, 0.14, 10), 'energyCyan', { name: 'pod clamp ring light', position: [0, -4.32, z], emissiveIntensity: 3.6 });
+  });
+  mirror((s) => {
+    strut(b, [3.6 * s, -2.2, -14], [5.6 * s, -4.55, -15], 0.26, 'frameGunmetal', { name: 'landing skid strut' });
+    add(cyl(0.35, 0.35, 4.2, roundSeg), 'frameGunmetal', { name: 'landing skid runner', position: [5.6 * s, -4.65, -15], rotation: [Math.PI / 2, 0, 0] });
+  });
+}
+
 register({
   id: 'ship.carrier',
   label: 'Orbital Carrier',
@@ -26,75 +99,7 @@ register({
   footprint: [8, 20],
   snap: false,
   notes: '52m mothership: nose cone, bridge tower, belly drop-bay with pods, 4 engines, collector wings, rotating dishes.',
-  build: (b) => {
-    // --- Main hull ---
-    b.addPart(rbox(9, 6.4, 34, 1.6), 'hullPrimary', { name: 'carrier main hull', position: [0, 0, -2] });
-    b.addPart(rbox(9.4, 1.0, 34.4, 0.4), 'frameGunmetal', { name: 'keel armor belt', position: [0, -1.9, -2] });
-    // Nose cone
-    b.addPart(lathe([[0.05, 0], [4.2, 0], [3.7, 4], [2.4, 8], [1.0, 10.5], [0.05, 11.5]], 12), 'hullPrimary', {
-      name: 'carrier nose cone', position: [0, 0, 14], rotation: [Math.PI / 2, 0, 0], scale: [1.07, 1, 0.78],
-    });
-    b.addPart(cyl(0.9, 1.5, 5.8, 6), 'hullSecondary', { name: 'nose dorsal crest', position: [0, 2.5, 18], rotation: [Math.PI / 2 + 0.28, 0, 0], scale: [1, 1, 0.22] });
-    // Hull ribs
-    [-10, 2].forEach((z) => b.addPart(rbox(9.6, 6.8, 1.0, 0.35), 'hullSecondary', { name: 'hull frame rib', position: [0, 0, z] }));
-    // Engine block
-    b.addPart(rbox(10.4, 7.2, 8, 1.2), 'frameGunmetal', { name: 'aft engine block', position: [0, 0, -22] });
-    [[-2.6, 1.6], [2.6, 1.6], [-2.6, -1.6], [2.6, -1.6]].forEach(([x, y]) => {
-      b.addPart(cyl(1.75, 1.75, 0.6, 8), 'hullSecondary', { name: 'thruster mount collar', position: [x, y, -25.8], rotation: [Math.PI / 2, 0, 0] });
-      b.addPart(cyl(1.5, 1.1, 3, 8), 'frameGunmetal', { name: 'main thruster bell', position: [x, y, -27.2], rotation: [Math.PI / 2, 0, 0] });
-      b.addPart(cyl(1.15, 1.15, 0.4, 8), 'energyCyan', { name: 'thruster plasma core light', position: [x, y, -28.6], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.5 });
-    });
-
-    // --- Bridge tower ---
-    b.addPart(rbox(5, 3, 7, 0.8), 'hullPrimary', { name: 'command bridge superstructure', position: [0, 4.4, 8] });
-    b.addPart(rbox(4.2, 1.1, 0.5, 0.18), 'glassVisor', { name: 'bridge cockpit visor', position: [0, 4.7, 11.45], rotation: [-0.2, 0, 0] });
-    b.addPart(cyl(0.12, 0.12, 3.6, 6), 'energyCyan', { name: 'bridge brow light', position: [0, 5.25, 11.5], rotation: [0, 0, Math.PI / 2], emissiveIntensity: 4.2 });
-    b.addPart(rbox(3, 1.3, 3.5, 0.4), 'hullSecondary', { name: 'upper sensor citadel', position: [0, 6.2, 6.8] });
-    // Mast + dishes (spaced with full 360-deg spin clearance)
-    strut(b, [0, 6.6, 5.3], [0, 14, 4.0], 0.14, 'frameGunmetal', { name: 'primary comms mast' });
-    b.addPart(sph(0.28, 8, 6), 'warningAmber', { name: 'mast beacon light', position: [0, 14.05, 4.0], emissiveIntensity: 4 });
-    dish(b, [-1.1, 7.6, 7.6], 1.1);
-    dish(b, [1.8, 6.3, 9.8], 0.95, -0.75);
-    sag(b, [0, 12.8, 4.2], [-2.1, 5.2, 6.0], 1.1, 0.07, 'frameGunmetal', { name: 'bridge telemetry cable' });
-
-    // --- Dorsal cargo containers + spine ---
-    [-9, -15].forEach((z, i) => {
-      b.addPart(cyl(1.4, 1.4, 4.0, 8), i % 2 ? 'hullSecondary' : 'hullPrimary', { name: 'dorsal cargo tank', position: [0, 3.8, z], rotation: [Math.PI / 2, 0, 0] });
-    });
-    b.addPart(cyl(0.22, 0.22, 14.5, 8), 'frameGunmetal', { name: 'dorsal spine conduit', position: [0, 3.2, -12.5], rotation: [Math.PI / 2, 0, 0] });
-
-    // --- Wing array on trusses ---
-    mirror((s) => {
-      b.addPart(cyl(0.32, 0.38, 8.2, 8), 'frameGunmetal', { name: 'wing root boom', position: [8.0 * s, 0.65, -8], rotation: [0, 0, Math.PI / 2] });
-      b.addPart(rbox(11, 0.32, 9, 0.12), 'frameGunmetal', { name: 'collector wing frame', position: [14.0 * s, 0.65, -8] });
-      for (let i = 0; i < 3; i++) {
-        b.addPart(cyl(1.4, 1.4, 8.2, 6), i === 1 ? 'hullSecondary' : 'hullPrimary', {
-          name: 'wing collector vane', position: [(10.5 + i * 3.5) * s, 0.78, -8], rotation: [Math.PI / 2, 0, 0], scale: [1, 1, 0.14],
-        });
-      }
-      b.addPart(cyl(0.12, 0.12, 8.4, 6), 'energyCyan', { name: 'wing tip plasma strip light', position: [19.45 * s, 0.65, -8], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.8 });
-    });
-
-    // --- Belly drop bay (-Y) ---
-    b.addPart(rbox(6.4, 0.9, 16, 0.25), 'hullSecondary', { name: 'drop bay coaming', position: [0, -3.35, 1] });
-    b.addPart(new THREE.BoxGeometry(5.0, 0.5, 14.6), 'frameGunmetal', { name: 'drop bay well', position: [0, -3.68, 1] });
-    mirror((s) => {
-      b.addPart(cyl(0.14, 0.14, 15.2, 6), 'warningAmber', { name: 'bay guide strip light', position: [2.85 * s, -3.78, 1], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.6 });
-      // open bay doors, hinged into bay coaming
-      b.addPart(rbox(2.2, 0.3, 14, 0.12), 'hullPrimary', { name: 'drop bay door', position: [3.65 * s, -3.75, 1], rotation: [0, 0, 0.65 * s] });
-    });
-    // Drop pods racked in the bay
-    [-4.0, 1.0, 6.0].forEach((z) => {
-      b.addPart(cyl(1.0, 1.0, 0.65, 10), 'frameGunmetal', { name: 'racked pod adapter', position: [0, -4.05, z] });
-      b.addPart(new THREE.ConeGeometry(0.85, 1.7, 10), 'hullPrimary', { name: 'racked drop pod', position: [0, -5.0, z], rotation: [Math.PI, 0, 0] });
-      b.addPart(cyl(0.82, 0.82, 0.14, 10), 'energyCyan', { name: 'pod clamp ring light', position: [0, -4.32, z], emissiveIntensity: 3.6 });
-    });
-    // Landing / docking skids
-    mirror((s) => {
-      strut(b, [3.6 * s, -2.2, -14], [5.6 * s, -4.55, -15], 0.26, 'frameGunmetal', { name: 'landing skid strut' });
-      b.addPart(cyl(0.35, 0.35, 4.2, 8), 'frameGunmetal', { name: 'landing skid runner', position: [5.6 * s, -4.65, -15], rotation: [Math.PI / 2, 0, 0] });
-    });
-  },
+  build: (b) => buildCarrierHull(b),
 });
 
 // ---------------------------------------------------------------------------

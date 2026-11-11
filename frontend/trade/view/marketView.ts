@@ -1,5 +1,5 @@
 import { parsePairId, type OrderSide, type TradeBookOrderView } from '@terra/contracts';
-import { ACTOR_BADGE, actorCounts, visibleOrders } from '../model/allOrders';
+import { ACTOR_BADGE, actorBadgeLabel, actorCounts, isGuildQuote, visibleOrders } from '../model/allOrders';
 import type { TradeState } from '../model/state';
 import { bpLabel, fmtAmount, fmtUnit, timeLeft } from '../model/units';
 import { badge, fill, gate, h, note, table, td } from './dom';
@@ -32,9 +32,11 @@ export function renderMarketOrders(body: HTMLElement, s: TradeState, now: number
 
 function orderRow(o: TradeBookOrderView, q: Parameters<typeof fmtUnit>[1], now: number): HTMLElement {
   const sideCls = o.side === 'buy' ? 'tr-buy' : 'tr-sell';
-  return h('tr', { class: o.mine ? 'tr-own' : '', 'data-testid': 'book-order', 'data-book-order': o.orderId, 'data-actor': o.actorKind, 'data-mine': o.mine ? '1' : null },
+  const guild = isGuildQuote(o.actorKind);
+  const cls = [o.mine ? 'tr-own' : '', guild ? 'tr-guild' : ''].filter(Boolean).join(' ');
+  return h('tr', { class: cls || undefined, 'data-testid': 'book-order', 'data-book-order': o.orderId, 'data-actor': o.actorKind, 'data-mine': o.mine ? '1' : null },
     td(`${o.side === 'buy' ? 'BID' : 'ASK'}${o.mine ? ' - YOURS' : ''}`, sideCls), td(fmtUnit(o.price, q), 'num'), td(String(o.amount), 'num'), td(String(o.remaining), 'num'),
-    td(badge(o.actorKind, ACTOR_BADGE[o.actorKind])), td(bpLabel(o.stallFeeBp), 'num'), td(timeLeft(o.expiresAtMs, now), 'num'),
+    td(badge(actorBadgeLabel(o.actorKind), guild ? 'warn' : ACTOR_BADGE[o.actorKind])), td(bpLabel(o.stallFeeBp), 'num'), td(timeLeft(o.expiresAtMs, now), 'num'),
     td(o.fillPolicy === 'all_or_nothing' ? badge('AON', 'info') : badge('partial ok', 'dim')));
 }
 

@@ -25,6 +25,8 @@ import { MarketFillsHook } from './orders/market-fills.hook.js';
 import { MarketPolicyProvider } from './orders/market-policy.provider.js';
 import { MarketSimGateway } from './orders/market-sim-gateway.js';
 import { OrderFunds } from './orders/order-funds.js';
+import { AcceptGuildOfferPrecheck } from './guild/offers/accept-guild-offer.precheck.js';
+import { AcceptGuildOfferService } from './guild/offers/accept-guild-offer.service.js';
 import { PlaceOrderPrecheck } from './orders/place-order.precheck.js';
 import { PlaceOrderService } from './orders/place-order.service.js';
 import { TradeAgentService } from './trade/trade-agent.service.js';
@@ -48,8 +50,15 @@ import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
+import { DirectorColonySource, SimDirectorSource } from './director/director-source.js';
+import { DirectorDigestRecorder } from './director/digest-recorder.js';
+import { DirectorMatchGuard } from './director/director-match-guard.js';
+import { DirectorLoopService } from './director/director-loop.service.js';
+import { DirectorMarketPort, DirectorSimMarket } from './director/director-market.js';
+import { GuildModule } from './guild/guild.module.js';
 import { EconomyModule } from '../economy/economy.module.js';
 import { TradeHistoryProducer } from './progression/trade-history.producer.js';
+import { GuildContactProducer } from './progression/guild-contact.producer.js';
 import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
 /**
@@ -66,6 +75,8 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketSimGateway,
     OrderFunds,
     PlaceOrderPrecheck,
+    AcceptGuildOfferPrecheck,
+    AcceptGuildOfferService,
     PlaceOrderService,
     OrderRelease,
     CancelOrderHandler,
@@ -90,6 +101,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketSeedService,
     MarketSeedCommand,
     MarketProgressionProducer,
+    GuildContactProducer,
     TradeHistoryProducer,
     MarketMetrics,
     MarketAnalyticsService,
@@ -104,6 +116,13 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeStreamService,
     TradeAgentService,
     TradeStallService,
+    DirectorSimMarket,
+    SimDirectorSource,
+    { provide: DirectorMarketPort, useExisting: DirectorSimMarket },
+    { provide: DirectorColonySource, useExisting: SimDirectorSource },
+    DirectorLoopService,
+    DirectorMatchGuard,
+    DirectorDigestRecorder,
   ],
   controllers: [
     MarketController,
@@ -112,11 +131,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeController,
     TradeDevController,
   ],
-  imports: [
-    NearModule,
-    EconomyModule,
-    GameModule,
-  ],
+  imports: [NearModule, EconomyModule, GameModule, GuildModule],
   exports: [
     OrderRelease,
     MarketOrderRepository,

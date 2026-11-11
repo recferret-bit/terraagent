@@ -904,6 +904,36 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** Connect `W21` rocket departure to `colonySettled` when `W21` opens, and wire live NEAR key rotation and contract adapters in `W23-14`, `W23-31`, and `W23-33`.
 - **Found:** 2026-11-09, W20 delivery.
 
+### BE-93 · Director allowance is per token; revoke is DELETE; guild offers may carry a reason
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/application/ports/agent-wallet.port.ts`, `shared/contracts/src/guild/offers.ts`, `shared/contracts/src/commands/set-auto-trade.ts`, NEAR-80, NEAR-81, PROTOCOL `POST /v1/near/director-key`
+- **What happens:** A limited key stores a NEAR gas allowance and a separate per-token principal ledger (`allowance`, `reserved`, `spent`, `available`). Signing does not spend principal. `director.status` is a WebSocket push and is not the W16 event `directorStatus`. Revoke is specified as `DELETE` by W15-18; PROTOCOL still says `POST` add/revoke. Each `guild.arrived` offer may include a `reason` string and may omit it. `setAutoTrade` carries the W09 limit row (`maxPerTrade`, `maxPerSession`, `minStock`, `partners`) plus optional `sellAboveStoragePct` and `buyBelowStock` (BE-95).
+- **Why it is like this:** Q-04-1 conflicts on allowance basis (away budget vs per-session caps) and unit (per token vs one NEAR number). The wave text for W15-03 and W15-18 is per-token principal plus a separate gas allowance, so that is the default. Q-04-12 leaves the revoke verb open; W15-18's `DELETE` is the default. Q-04-5 asks for a reason on offers; the field is optional so a missing reason still parses.
+- **Workaround / mitigation:** Command rejects use `allowance_exhausted`. The port throws `NEAR_ALLOWANCE_EXHAUSTED`. W15-03 stores that ledger on `chain.mock_chain_agent_key` and `chain.mock_chain_agent_allowance` (available is computed) and does not write `chain.director_key`. The storage-percent trigger is the optional field in BE-95. W15-18 implements `DELETE`.
+- **To resolve:** Confirm per-token principal, `DELETE` revoke, and optional offer reasons.
+- **Found:** 2026-11-10, W15-01
+
+### BE-94 · Mock agent-wallet principal is one pool per token, and gas is not metered
+
+- **Status:** Accepted (by design, W15-03)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`, `shared/db/prisma/agent-wallet.prisma`, NEAR-80, NEAR-81
+- **What happens:** `MockAgentWalletAdapter` stores a limited key in `chain.mock_chain_agent_key` and principal in `chain.mock_chain_agent_allowance` (`allowance`, `reserved`, `spent`). Available is `allowance - reserved - spent` and is not a column. Reserve, consume, and release take an amount from that pool. They are not tied to a reservation id, so two holds on one key share one reserved total. `gasSpent` stays `0`. `addLimitedKey` records the gas allowance and does not move principal. Revoke sets `revoked` and `revoked_at` and leaves the totals. A later reserve, consume, or release throws `NEAR_KEY_REVOKED`. A second `addLimitedKey` for the same key with a new opId throws `NEAR_ACCOUNT_EXISTS` and does not change the caps. `NEAR_ADAPTER_AGENT_WALLET=testnet` fails boot. Only the mock class is registered.
+- **Why it is like this:** The port methods are amount-based. `chain.director_key` belongs to W15-18. Real function-call allowance is gas only (NEAR-81). The real adapter is W23.
+- **Workaround / mitigation:** Callers that overlap two holds must consume and release amounts that fit the combined reserved total. Read live balances through `keyStatus`. W15-18 copies that ledger onto `chain.director_key` (`tokens` jsonb, plus one numeric pair for the primary resource) and the `director.status` push is still built from `keyStatus` (BE-96).
+- **To resolve:** W23 registers the testnet class. Gas metering, if it is required, is a later change. The W15-18 projection is BE-96.
+- **Found:** 2026-11-10, W15-03
+
+### BE-95 · autoTrade storage percent and buy floor are optional
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/contracts/src/notify/auto-trade.ts`, `shared/sim/src/systems/away/auto-trade.ts` (`withinAutoTrade`), `shared/sim/src/systems/trade/autotrade/`, planet blob `autoTrade`
+- **What happens:** `sellAboveStoragePct` (0..100) and `buyBelowStock` may be omitted. A W09 row still parses, and `withinAutoTrade` then ignores those rules. When the percent is set, a sell is allowed at that fill or above (inclusive); a sell with no `storagePct` and no positive `storageCap` is refused. A buy is allowed only when stock is at or below `buyBelowStock` (inclusive). `setAutoTrade` stores the map on blob `autoTrade` under the colony index. `partners: 'truce'` is rejected and not stored while W18 is off; the row is not rewritten to `guild`. The forecast defaults `tier1Only` to true (`metals.t1`, `minerals.t1`, `bio.water`, `bio.biomass`). T2/T3 keys still parse on the command. Surplus is stock after queues, open reservations and the service window; the reserve floor feeds shortage, not that surplus. A buy is preferred only when `withinAutoTrade` accepts it. Haul, produce, depot and reserve are not partner trades.
+- **Why it is like this:** W15-19 requires existing rows to keep parsing. BE-93 left the storage-percent trigger open; the issue makes it optional rather than required. The id is BE-95 because W15-03 already took BE-94.
+- **Workaround / mitigation:** Send `sellAboveStoragePct: 80` for the demo rule. Pass `tier1Only: false` to forecast a T2 key. Turn W18 on before storing `partners: 'truce'`.
+- **To resolve:** Owner can require the percent on every row later. AW-13 still lists fewer fields than this row.
+- **Found:** 2026-11-10, W15-19
+
 ### BE-69 · A settled Colony Deed push is not one of the eight away-alert toggles
 
 - **Status:** Accepted (by design)
@@ -914,6 +944,145 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **To resolve:** Owner: add a player toggle and route the seal through the alert router, or keep this one-shot telegram push.
 - **Found:** 2026-11-10, merge of main into W09.
 
+### BE-96 · Director key gas is zero; the numeric columns mirror one resource
+
+- **Status:** Accepted (by design, W15-18)
+- **Area / code:** `backend/app/src/near/director-key/`, `shared/db/prisma/agent-wallet.prisma` (`DirectorKey`), `chain.director_key`, NEAR-80, NEAR-81
+- **What happens:** `POST /v1/near/director-key` turns each autoTrade `maxPerSession` into that resource's principal allowance (whole units, decimal string). The function-call gas allowance passed to `addLimitedKey` is `0`, because no data row names a gas budget. Signing does not spend principal. `chain.director_key.allowance` and `spent` mirror the first resource in `RESOURCE_KEYS` order that the limits name (`metals.t1` when it is present). The full ledger is jsonb `tokens`. `director.status` is built from `AgentWalletPort.keyStatus`, not from those columns. A second POST while the key is active returns the same key and does not raise the caps. After revoke, a later POST stores a new public key on the same row. The limited key names only `intents.near` (the port takes one receiver). A body `limits` map wins over the sim blob `autoTrade`. An empty map, or no blob and no body limits, is 400 and writes nothing. W15 off is 403 `wave_disabled` and writes nothing.
+- **Why it is like this:** DATA_MODEL sketches one numeric allowance. The wave is per-token principal plus a separate gas allowance (BE-93). There is no gas constant in data, so the issue's fallback is `0`. Revoke stays DELETE (BE-93).
+- **Workaround / mitigation:** Read per-token numbers from `director.status` or `keyStatus`. Do not treat the numeric column as a sum, and do not treat gas `0` as a principal cap.
+- **To resolve:** The owner can set a gas constant (W23-26's 0.1 NEAR) and a second receiver when the real adapter lands.
+- **Found:** 2026-11-10, W15-18
+
+### BE-97 · A second 300 still fits the 600 cap; the loop will not sell it against the same stock reading
+
+- **Status:** Accepted (by design, W15-21)
+- **Area / code:** `shared/sim/src/systems/trade/autotrade/decide.ts`, `shared/sim/src/systems/trade/autotrade/price.ts`, `backend/app/src/market/director/director-loop.service.ts`, `backend/app/src/market/director/director-source.ts`, `backend/app/src/market/director/director-market.ts` (`DirectorSimMarket`)
+- **What happens:** `withinAutoTrade` allows `sessionSpent` 300 plus another give of 300 when `maxPerSession` is 600 (the sum is not greater than the cap). `decideDirectorTrade` returns that sell. The loop remembers the stock it just filled against. The next `runDirectorOnce` on that same reading returns `session_cap` and does not reserve or place, so one tick sells 300 and the key stays spent 300 / available 300. A later reading with a different stock can sell the remaining 300. The memory is the process. After a restart, spent 300 and a stock that is still above 80% can sell again. `priceDirectorOrder` calls `quoteColony`. The data cap `maxOrderUnits` is 100, so the call raises it to the authorized amount (300) and still uses that function. Transport is `0` (known free). If there is no measured unit cost, the board VWAP is the cost input; with neither, the loop skips `no_quote` and does not place. The away reader passes queues, reservations and the service window as 0, so surplus is the ledger stock. `DirectorSimMarket` treats a sim accept as `open` and does not consume; the loop consumes only when the market port reports `filled`. A live book does not yet report that fill, so a sweep that uses the sim port reserves the metal and leaves it reserved (`awaiting_fill`). The order is `source: 'player'` with the colony index, because a `bot` source is subject to the away gate. Revoke skips `director_key_revoked`, emits `directorAllowanceExhausted` once, and does not place (W15-22). A spent allowance emits that event once and stops that resource (BE-98). Settings are the Away autoTrade section (W15-23, FF-103). The digest line is BE-99.
+- **Why it is like this:** The cap check is the one `withinAutoTrade`. The demo's second tick must not sell another 300 while the stock number has not moved. The quote library sizes bot orders at 100 units; the player cap for this sell is 300. Settlement already consumes trade principal on its own path; this loop's consume is the director-key ledger, and the sim command result is not a fill.
+- **Workaround / mitigation:** Tests pass a market port that reports the Guild fill, so the 300 is consumed in that tick. Do not read a second 300 from `decideDirectorTrade` as a second placed order. Do not treat gas or the quote total as the metal reserve.
+- **To resolve:** Have the matcher report the fill (or the reject) back to `DirectorLoopService` so the sim port consumes and releases. Subtract real queues and open reservations in the away reader. Replace the zero transport and the VWAP-as-cost stand-in when a measured cost exists.
+- **Found:** 2026-11-10, W15-21
+
+### BE-98 · Director allowance stop is once per process and key; only a spent allowance notifies
+
+- **Status:** Accepted (by design, W15-22)
+- **Area / code:** `backend/app/src/market/director/director-loop.service.ts` (`noteStop`), `backend/app/src/notify/alert-map.ts` (`directorBudgetNotifies`), `backend/app/src/notify/alert-router.ts`
+- **What happens:** After a fill that leaves `spent >= allowance` (available 0), or when a tick starts with available 0, the loop emits `directorAllowanceExhausted` with reason `allowance_exhausted` once for that resource and public key, logs the reason, and does not place again. A later tick in the same process does not emit again. A revoked key emits once with `director_key_revoked` and does not place. The latch is the process: a restart emits again for the same key. A new public key (the key was replaced) can emit again. W09 maps only reason `allowance_exhausted` to `away_budget_exhausted`. `director_key_revoked` is the event only. A remainder above 0 that cannot cover the next order still returns `allowance_exhausted` and does not emit. W15 off returns `wave_disabled` and does not emit. The digest line is BE-100.
+- **Why it is like this:** The issue asks for one event per resource until the key is replaced, and for W09 to notify `allowance_exhausted`. The same-reading latch (BE-97) stays for a 600 cap that still has 300 left. The notify path is the existing alert router, not a second sender.
+- **Workaround / mitigation:** Read the planet event. Do not expect a second notification after a process restart, and do not expect a push for a revoked key. A positive remainder that is short of the next order is a skip, not this event.
+- **To resolve:** Persist the once-latch if a restart must stay silent. Notify revoke only if the owner wants that push.
+- **Found:** 2026-11-10, W15-22
+
+### BE-99 · Guild strategy is deterministic; the LLM slot is not called
+
+- **Status:** Accepted (by design, W15-13)
+- **Area / code:** `backend/app/src/market/guild/strategy/port.ts` (`parseGuildStrategy`), `backend/app/src/market/guild/strategy/apply.ts` (`priceGuildPair`), `backend/app/src/market/guild/strategy/deterministic.ts`, `backend/app/src/market/guild/strategy/llm.ts`, `backend/app/src/market/guild/guild.module.ts`, `backend/app/src/market/guild/visit/guild-visit.service.ts` (`noteStrategy`), `backend/app/src/market/guild/maker/guild-maker.service.ts` (`quoteTargets`)
+- **What happens:** `GuildStrategyPort.choose(npc, clock)` resolves to `{ route, stockpile, specialisation, risk }`. There is no price field. `parseGuildStrategy` rejects a payload that contains a `price` or `free_price` key, and rejects a missing or empty `stockpile`. `GuildModule` binds the port to `DeterministicGuildStrategy`. The route token is one entry of that NPC's `route` list in `shared/sim/src/data/guild.ts`, index `hashString(npcId) % route.length`, so the same id always yields the same token (`loop-local` while the list has one stop). Stockpile goals are that NPC's `targets` (`targetMetalsT1`, `targetMineralsT1`, `targetWater`, `targetBiomass`) in pair order. Specialisation is `balanced` and risk is `conservative` for every NPC. The clock does not change the deterministic result. W15-35 calls `choose` when a visit is planned and again before the maker quotes. An accepted stockpile target is copied onto the `quoteGuild` fixture (`stockpileTarget`) and replaces the guild-table target for that resource. A payload `parseGuildStrategy` rejects is not copied, so the quote stays the guild-table target. The chosen route replaces the data route only when that token is not already on it. `LlmGuildStrategy` takes an `LlmProviderPort`. Its `choose` throws `w16_off` with message `unused`, does not call the provider, and does not log, unless it was constructed with `w16` true. With that flag it calls `complete` at most once per NPC per hour and parses the JSON. `GuildModule` does not register the class and does not import an LLM adapter, so wave W16 on does not switch the binding, does not spend the AI budget, and does not make that call. `quoteColony` is unchanged. The visit service and the maker each call `choose`; the deterministic result ignores the clock, so the two calls agree.
+- **Why it is like this:** W15-13 keeps prices in the W13 quote library and requires zero LLM calls while W16 is off. The guild table has a route and stockpile targets and no specialisation or risk columns. The budgeted hourly call is W16-21. W15-35 wires `choose` into the visit and the quote fixture and still prices with `quoteGuild`. The W16 kill switch is BE-106.
+- **Workaround / mitigation:** A test passes another `GuildStrategyPort` when it needs a different route. Do not read a price from this object. Do not expect a model call from the Guild module.
+- **To resolve:** W16-21 can construct `LlmGuildStrategy` with `w16: true` behind the AI budget, still through `parseGuildStrategy`. Add guild-table columns if specialisation or risk must differ by NPC.
+- **Found:** 2026-11-10, W15-13 (updated 2026-11-11, W15-35)
+
+### BE-100 · A director trade line is stored only on an open W09 digest
+
+- **Status:** Accepted (by design, W15-24)
+- **Area / code:** `backend/app/src/market/director/digest-line.ts` (`directorDigestLine`), `backend/app/src/market/director/digest-recorder.ts`, `backend/app/src/game/digest/service.ts` (`noteDirectorTrade`), `shared/contracts/src/notify/digest.ts` (`items`), `frontend/game/features/director-log/`, `frontend/game/features/away-digest/render.ts`
+- **What happens:** `directorDigestLine` turns a fill into `Director sold 300 metals to the Guild.` (buy says `bought` … `from`). The names are metals, minerals, water, and biomass. `bio.t2` and `bio.t3` are not a line. Amount 0 is not a line. The sentence does not depend on W09. When the loop fills while `view.away` is true and both W09 and W15 are on, it calls `AwayDigestService.ensureOpen` before it emits `directorTrade`, then `DirectorDigestRecorder` appends `{ kind: 'digest.directorTrade', line }` on that row (the same store, not a second one). The 21st line is dropped (CT-31). A fill while the colony is present does not open a row, and `noteDirectorTrade` still drops the line if none is open. `suppressAway` (the player already returned) does not reopen. The same fill is fanned to joined sockets with `data.line`. When W09 is off, or W15 is off, the digest is not written. W09 off still fans the sentence; the HUD event log shows it from the event fields. W15 off does not emit and does not notify. `directorAllowanceExhausted` with reason `allowance_exhausted` is `away_budget_exhausted` only while W09 and W15 are both on. A player with no socket and W09 off never sees that fill. `?host=local` does not run this loop. Buy uses `from the <counterparty>`.
+- **Why it is like this:** W15-24 renders through the existing W09 digest when that wave is on, and through the HUD log when it is off. W15-36 opens the row on an away fill so the welcome plate (`renderAwayDigest`) can list `items`. The formatter stays on the server; the HUD calls the same function.
+- **Workaround / mitigation:** Read `directorTrade` on the bus. With W09 and W15 on, an away fill opens the row, and welcome carries `items`. With W09 off, stay connected if the log must show the line.
+- **To resolve:** Persist a line that arrives while the colony is present only if the owner wants that. Replay a fill that lands after `suppressAway` only if a late trade should reopen the plate.
+- **Found:** 2026-11-10, W15-24 (updated 2026-11-11, W15-36)
+
+### BE-101 · The market re-checks autoTrade only when the order is flagged director
+
+- **Status:** Accepted (by design, W15-20)
+- **Area / code:** `shared/sim/src/systems/trade/market-matcher.ts` (`directorAutoTradeCode`, `matchIncoming`), `backend/app/src/market/director/director-match-guard.ts`, `backend/app/src/market/orders/place-order.service.ts` (`directorBlock`), `backend/app/src/market/director/director-market.ts` (`directorPlaceCommand`)
+- **What happens:** `decideDirectorTrade` already calls `withinAutoTrade`. A director `market.placeOrder` also sets `director: true`. Before that order is opened for matching, `DirectorMatchGuard` calls `withinAutoTrade` again with the colony limit and the director key's `spent` for that resource. False, a missing limit, a missing key, a revoked key, or a resource with no token row is `autotrade_limit` and the order is not matched. `matchIncoming` does the same when the in-memory order carries an `autoTrade` claim, and it uses the book amount as `give` even if the claim still says 300. An order without the flag or the claim is not capped: a player sell of 400 still matches. The persisted book row does not store the claim, so a later match of an already OPEN row does not run this check again. The loop may already have reserved the key before this refusal; that reserve is not released here (BE-97 still treats a sim accept as `open`).
+- **Why it is like this:** The cap function stays `withinAutoTrade`. The flag is how a forged or stale director command is told apart from a player order after the sim has already accepted `market.placeOrder`. Player orders are not subject to autoTrade limits. Reading the key at match time is the session number; the sim forecast still stores session spend as 0 (BE-97).
+- **Workaround / mitigation:** Do not treat a player or bot `market.placeOrder` as autoTrade-capped. Do not expect a second match of an OPEN director row to refuse. If the loop reserved and the market then refuses, release that key reserve yourself; this path does not.
+- **To resolve:** Carry the claim on the book row and refuse inside the match lock, and release the director-key reserve when the market returns `autotrade_limit`.
+- **Found:** 2026-11-10, W15-20
+
+### BE-102 · Dev `director.allowance` revokes the key and adds a new one
+
+- **Status:** Accepted (by design, W15-28)
+- **Area / code:** `backend/app/src/near/director-key/director-key.service.ts` (`setDevAllowance`), `backend/app/src/near/application/ports/agent-wallet.port.ts`, `backend/app/src/market/guild/dev/guild-dev.command.ts`, BE-94, BE-96
+- **What happens:** `director.allowance [resource] <amt>` sets one Tier-1 token allowance (`metals.t1` when the resource is omitted). `AgentWalletPort` has no method that changes the allowance of a key that already exists. A second `addLimitedKey` for the same public key throws `NEAR_ACCOUNT_EXISTS` and does not raise the cap. The command revokes the current key and adds a new public key (`nextDirectorPublicKey`) with the new cap. Other tokens keep their allowance numbers. Spent, reserved, and available on the new key start at 0. Gas stays `0`. The numeric `chain.director_key.allowance` column still mirrors the primary resource (BE-96), not necessarily the resource just edited. If the add fails after the revoke, the row still names the old public key, which is now revoked, until the command is run again. No row is `director_key_missing` and nothing is written. W15 off is `wave_disabled` and the wallet is not called.
+- **Why it is like this:** The mock ledger is insert-only for caps (BE-94). Editing the row in place would diverge from the port the real adapter has to implement.
+- **Workaround / mitigation:** Read the new numbers from `director.status` or `keyStatus`. A session that had already spent part of the old cap starts again at spent 0. The director loop's once-latch is per public key, so the new key can emit `directorAllowanceExhausted` again (BE-98).
+- **To resolve:** Add an allowance-update method on `AgentWalletPort` if a later wave needs to change a cap without rotating the key.
+- **Found:** 2026-11-10, W15-28
+
+### BE-103 · `away.simulate` posts `system.presence`; it is not a second director flag
+
+- **Status:** Accepted (by design, W15-28)
+- **Area / code:** `backend/app/src/market/guild/dev/guild-dev.service.ts` (`simulateAway`), `backend/app/src/game/presence/dev-presence.ts`, `backend/app/src/market/director/director-source.ts` (`listAway`), `shared/sim/src/systems/away/gate.ts` (`colonyIsAway`)
+- **What happens:** `away.simulate on|off` calls `DevPresence.setAway`, which posts module `system.presence`. The director sweep's `SimDirectorSource.listAway` restores the planet and keeps colonies where `colonyIsAway` is true (presence blob or an open away session). There is no separate away bit on the director loop. W15 off throws `wave_disabled` before that post. W09 off throws `WAVE_DISABLED` from `DevPresence`, and the sim would reject `system.presence` as `wave_disabled` anyway, so the blob does not change and the sweep does not see the colony.
+- **Why it is like this:** The loop already reads the sim blob. A second in-memory flag would disagree with `colonyIsAway` after a restart and with the `away` / `back` commands.
+- **Workaround / mitigation:** Run with W09 on (W15 depends on it). `away` and `back` write the same blob. `runDirectorOnce` itself does not re-check away; only the sweep's `listAway` does.
+- **To resolve:** If a demo must force the director while W09 is off, add a dev override inside `listAway` and document that it is not the sim blob.
+- **Found:** 2026-11-10, W15-28
+
+### BE-104 · An away director fill opens the digest; a present fill does not
+
+- **Status:** Accepted (by design, W15-36)
+- **Area / code:** `backend/app/src/market/director/director-loop.service.ts` (`openAwayDigest`), `backend/app/src/game/digest/service.ts` (`ensureOpen`), `frontend/game/features/away-digest/render.ts` (`renderAwayDigest`)
+- **What happens:** The welcome plate is `renderAwayDigest` (`[data-testid="away-digest"]`). Director lines are `[data-kind="digest.directorTrade"]` inside `[data-testid="away-director-trades"]`. The ColonyBook AWAY tab stays the settings editor and does not repeat those lines. `ensureOpen` uses the loop's `view.away`. A fill while the player is present does not open a row. A colony already marked returned (`suppressAway`) is not reopened, so that fill is not stored. The line sits on the in-memory body until a snapshot flush or welcome close, the same as a raid fold. A colony id that is not a home id is skipped by `draftDigest` and the line is not stored.
+- **Why it is like this:** BE-100 dropped a fill with no open row. Opening on every fill would write an away digest while the player is still here. The plate already listed `items`; the AWAY tab is the limits editor (W15-23).
+- **Workaround / mitigation:** Go away (presence blob or an open away session) before the director sells. Return through welcome to read the line. Do not look for it on the AWAY tab.
+- **To resolve:** Store a present-colony fill, or copy the same lines onto the AWAY tab, only if the owner asks.
+- **Found:** 2026-11-11, W15-36
+
+### BE-105 · Guild Contact counts a committed NPC fill and does not undo a later failure
+
+- **Status:** Accepted (by design, W15-25)
+- **Area / code:** `backend/app/src/market/progression/guild-contact.producer.ts` (`note`, `noteOutcome`), `backend/app/src/market/orders/place-order.service.ts` (`noteGuild`), `backend/app/src/market/guild/offers/accept-guild-offer.service.ts` (`noteContact`)
+- **What happens:** A committed fill with `actorKind === 'npc'` on exactly one side and `player` or `bot` on the other adds fact `guild-contact` +1 for that owner (`progress.guildContact`). The receipt id is `guild:guildContact:<tradeId>:<playerId>`. The same trade id does not add again. W15 off adds nothing. Amount 0, a player-player fill, the same colony, and the same owner add nothing. Actor kind `guild` is not the signal (live quotes are stored as `npc`). The count is written when the match commits. Accept emits `guildTradeSettled` at that moment; a book fill is counted from the same committed outcome. It is not written when the intent later reaches FINAL. If that row becomes FAILED, the fact is not reduced. A retry stored as `tradeId~n` counts as its own trade once that row is the live one. This producer does not write unlock rows; W12's progression engine evaluates the catalogue when it applies the fact, so Guild Contact tiers unlock at 5 / 50 / 250.
+- **Why it is like this:** W15-25 hooks the committed guild fill. Lifetime facts are not deleted (PROGRESSION_ENGINE). Achievement tiers stay in the W12 catalogue.
+- **Workaround / mitigation:** Do not expect the fact before the match commits, and do not expect a failed settlement to subtract it. A book-path id is `tradeIdOf` until a FAILED row forces the live retry id.
+- **To resolve:** Emit only from `TradeSettlement.notify` (FINAL) if chain finality should gate the fact, and add an explicit compensating event if a counted trade later fails.
+- **Found:** 2026-11-11, W15-25
+
+### BE-106 · A released director reserve is not taken again, but the same command is submitted again
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/market/director/director-loop.service.ts` (`reserve`, `placePick`), `backend/app/src/near/testing/in-memory-agent-wallet.ts`, `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`
+- **What happens:** The wallet op id is `dir:rsv:` plus `d{colonyIndex}-{resource}-{spent}-{amount}`. A reject releases that hold. The next `runDirectorOnce` with the same index, resource, spent, and amount hits the stored op. The adapter returns the first receipt and does not reserve again. The loop still treats that as a new hold and calls `place`. If that attempt reports `filled`, `consumeAllowance` throws `NEAR_ALLOWANCE_EXHAUSTED` (`reserved` is 0, the amount is 300) and spent stays at the earlier consumed part. Revoke between reserve and consume also leaves the unconsumed hold: consume and release both throw `NEAR_KEY_REVOKED` (BE-94) and do not add to spent.
+- **Why it is like this:** W15-30 adds tests for the races the ledger already enforces. It does not change the loop. The command id is the order id, so a released attempt cannot buy a second hold without a new id.
+- **Workaround / mitigation:** One tick is safe: a reject releases the full hold, an open order keeps it, and a filled order consumes it. Do not run the same decision again after a release and expect either a new hold or a quiet skip.
+- **To resolve:** If the live reserved total did not grow by this order's amount, skip `place`. Give a released attempt a new op id only when a retry should be allowed to reserve again.
+- **Found:** 2026-11-11, W15-30
+
+### BE-107 · W15-35 does not trip the W16 AI kill switch
+
+- **Status:** Accepted (by design, W15-35)
+- **Area / code:** `backend/app/src/market/director/director-loop.service.ts` (`runDirectorOnce`), `backend/app/src/market/guild/funding/guild-kill.ts` (`killGuild`), `backend/app/src/ai/audit/kill.ts` (`DirectorKillSwitch`), `backend/app/src/ai/audit/prisma-store.ts` (`isKilled`)
+- **What happens:** `DirectorKillSwitch` and `PrismaDirectorStore.isKilled` are not Nest providers. The director loop and the guild maker do not read them. Revoking the director key makes `runDirectorOnce` return `director_key_revoked` and place nothing. `GuildKillSwitch.killGuild` sets that NPC's funding row to `killed` and the maker then skips new quotes. There is no `proposeBotTradeOrder` or `resolveEffectivePermissions` in this process. Turning W16 on does not switch `GuildStrategyPort` off `DeterministicGuildStrategy` and does not call an LLM.
+- **Why it is like this:** W15-35 must not invent a W16 provider. The kill-switch classes exist for W16 tests and the Prisma store, but nothing in the market process constructs them. The gates that already exist are the director key and `killGuild`.
+- **Workaround / mitigation:** Revoke the director key to stop autoTrade. `guild.disable` / `killGuild` stops that NPC's quotes. Do not expect `DirectorKillSwitch.kill`, or a row in `ai.director_kill_switch`, to stop the loop.
+- **To resolve:** When W16 wires a kill-switch provider into this process, have `runDirectorOnce` skip the same way as `director_key_revoked` when `isKilled` is true for `global` or `colony:<id>`.
+- **Found:** 2026-11-11, W15-35
+
+### BE-108 · W15 e2e does not finish the empty book, the director fill, or the second planet
+
+- **Status:** Open
+- **Area / code:** `tests/e2e/w15.spec.ts`, `tests/scenarios/w15-guild-agents.ts`, `backend/app/src/market/guild/maker/`, `backend/app/src/market/director/director-loop.service.ts`
+- **What happens:** Demo step 2 asserts `guild.summon kestrel` (`Kestrel docked — N quotes`) and a `guild.arrived` push. It does not assert the toast text, the ship mesh, or six offers. Step 3 sends `market.acceptGuildOffer` only when that push lists an offer. A fresh planet has no organic last price, so the maker rests nothing and `offers` stays `[]` (LED-38). The suite then only checks that the Guild tab button is mounted (`trade-hub-tab-guild`). The panel starts closed, so the offer list is not clicked. It does not check the 71.4 water total or `guild-1.npc.terraagent.mock` on `/dev/chain/`. Step 4 is `guild.setInventory kestrel metals.t1 600`, not a player sell, and the next metals quote is not compared. Steps 6 and 7 assert `away.simulate on` and `off`. They do not wait for a 300-metal director fill, `spent 300 / 600`, or the digest line "While you were away: Director sold 300 metals to the Guild." The loop is a timer; the suite does not warp 20 minutes. Step 8 asserts `DELETE /v1/near/director-key` returns `revoked`. It does not run another away pass to see `director_key_revoked`. Step 9 asserts `guild.depart kestrel` and `guild.departed`. It does not open a second planet or check carried cargo (W11). Step 10 asserts `guild.disable kestrel` (`quotes killed`). It does not exhaust the cash budget, race concurrent bids, or replay the W13 stress report (LED-44). Step 11 restarts the e2e app with `TA_WAVES=..14` when `E2E_CONTROL` is set. Under `E2E_REUSE=1` that step is skipped. The same flag-off is already asserted by `backend/app/test/market/guild-visit.int.spec.ts` ("W15 off writes no row") and `shared/sim/test/systems/auto-trade.int.spec.ts` (`setAutoTrade` is `wave_disabled` below W15).
+- **Why it is like this:** W15-34 asks for a serial server e2e that does not hunt pixels and does not block on wall-clock visits or an empty book. The scenario can seed sim stock. It cannot insert `chain.guild_visit` or an organic VWAP. The roster's two NPCs (Kestrel, Vanguard) already live in `shared/sim/src/data/guild.ts`. The visit clock is `dockWindowS` 720, not 30 seconds (LED-36).
+- **Workaround / mitigation:** `guild.summon` docks now. An empty offer list is a pass plus the Guild tab. Funding, re-quote, and W15-off writes stay in the integration specs named above. Do not treat this e2e as proof of a 300-metal director sale or of cross-planet carry.
+- **To resolve:** Seed one organic (or labelled) reference last on the four Tier-1 barter books before summon if step 3 must accept. Drive one `runDirectorOnce` from a dev command if steps 6–7 must show spent 300 and the digest line. A W11 planet pair is required before step 9 can show cargo on the next world.
+- **Found:** 2026-11-11, W15-34
+
+### BE-109 · Combined hack e2e through W15 still fails five earlier-wave tests
+
+- **Status:** Open
+- **Area / code:** `tests/e2e/w00.spec.ts`, `tests/e2e/w03.spec.ts`, `tests/e2e/w09.spec.ts`, `tests/e2e/w10.spec.ts`, `tests/e2e/w13.spec.ts`
+- **What happens:** `npm run e2e -- --waves ..15 --hack` on 2026-11-11 finished 83 passed, 5 failed, 64 not run. `tests/e2e/w15.spec.ts` passed all 12. The failures were: w00 `?lag=300` predicted nudge (`movedAfterMs` −1), w03 dismantle water stock 96.48 against 102.5, w09 reload welcome plate (`[data-testid=away-digest]` not in the document; the frame was 3.3 s), w10 export confirm covered by a top-right book page, w13 market tab covered by the locked Thermal Plant card. A first run also failed w03 supply hover because the Guild toast sat on `hud-supply`. That toast is now at the bottom center and that hover failure did not return. The same day, `npm run test:integration` was 523 passed and 4 failed (`outbox.int.spec.ts` relay timing, `deed-lifecycle.int.spec.ts` version). Those two files passed alone (10 tests).
+- **Why it is like this:** The combined suite runs every earlier wave with W15 on, on a shared Postgres that already holds connections from other worktrees. The W15 file does not depend on those five clicks. The outbox and deed files do not import the guild maker.
+- **Workaround / mitigation:** Trust `tests/e2e/w15.spec.ts` and `npm run ci:fast` for this wave. Re-run a single failed file before treating it as a Guild defect.
+- **To resolve:** Re-run `npm run e2e -- --waves ..15 --hack` when the machine and Postgres are quiet. If w09, w10, or w13 still fail, the plate and the top-right hit targets need a layout fix that is not the Guild toast.
+- **Found:** 2026-11-11, W15 pre-landing validation
 ### BE-70 · Escrow `open` still requires a beneficiary
 
 - **Status:** Question for the owner

@@ -1,4 +1,4 @@
-import { defineFeature } from '../../core/registry/types';
+import { defineFeature, type FeatureContext } from '../../core/registry/types';
 import { AwayPanel, type AwayPanelOptions } from './AwayPanel';
 import './away.css';
 
@@ -13,11 +13,18 @@ declare module '../../core/registry/types' {
 
 let active: AwayPanel | null = null;
 
-function optionsFrom(
-  services: { sendCommand?: AwayPanelOptions['sendCommand']; store?: AwayPanelOptions['store'] },
-  flags: { has(wave: string): boolean },
-): AwayPanelOptions {
-  return { sendCommand: services.sendCommand, store: services.store, mercenary: flags.has('W22') };
+function optionsFrom(ctx: FeatureContext): AwayPanelOptions {
+  const { services } = ctx;
+  return {
+    sendCommand: services.sendCommand,
+    store: services.store,
+    flags: ctx.flags,
+    mercenary: ctx.flags.has('W22'),
+    colonyId: () => services.session?.colonyId?.() ?? null,
+    accessToken: () => services.pilot?.view().accessToken || null,
+    track: services.track,
+    subscribeDirector: (fn) => services.store?.onDirectorStatus?.(fn) ?? (() => {}),
+  };
 }
 
 export default defineFeature({
@@ -33,7 +40,7 @@ export default defineFeature({
         return { dispose() {} };
       }
       el.hidden = false;
-      const panel = new AwayPanel(el, optionsFrom(ctx.services, ctx.flags));
+      const panel = new AwayPanel(el, optionsFrom(ctx));
       active = panel;
       ctx.services.getAwayPanel = () => active;
       return {

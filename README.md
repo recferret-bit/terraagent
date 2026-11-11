@@ -124,12 +124,21 @@ Every NEAR feature, the LLM director, and notifications sit behind typed ports (
 | `Intents` | F2 regional market settlement + live `1click.chaindefuser.com` dry quotes | Mock (Postgres verifier, W13) | **Real Testnet** (`TestnetIntentsAdapter` + 1Click API) |
 | `DeedNft` | F6 NEP-171 Colony Deed mint, milestone metadata & one-way `settle` | Mock (Postgres, W20) | **Real Testnet** (`deed.terraagent.testnet`) |
 | `Escrow` | F8 bounty & mercenary contract lock / release / refund | Mock (Postgres, W22) | **Real Testnet** (`bounty.terraagent.testnet`) |
-| `AgentWallet` | F3/F4 scoped function-call access keys & instant key revocation | Mock (Postgres, W15) | **Real Testnet** (`*.terraagent.testnet` `AddKey`/`DeleteKey`) |
+| `AgentWallet` | F3/F4 scoped function-call access keys & instant key revocation | Mock (`AgentWalletPort`, Postgres, W15) | **Real Testnet** (`TestnetAgentWalletAdapter`) |
 | `BadgeNft` | Achievement NFTs | Mock (Postgres, NEP-171) | Labeled mock (`NEAR_ADAPTER_BADGE=mock`) |
 | `Staking` | Settled Colony Deed validator staking (`D-18` human-only, `403 AI_STAKING_FORBIDDEN`) | Mock (Postgres, W20) | Labeled mock (`NEAR_ADAPTER_STAKING=mock`) |
 | `TreasuryDao` | Planet council policy votes & hazard shields | Mock (Postgres, W22) | Labeled mock (`NEAR_ADAPTER_TREASURY=mock`) |
 | `LlmProvider` | Colony AI Director & 7-day economy analyst | Deterministic `mock` | **Real NEAR AI Cloud TEE** (`AI_PROVIDER=nearai`, `/v1/signature/{chat_id}` SHA-256 verified) or Z.ai (`glm-5.3`) |
 | `Notifier` | Offline colony alerts (`under_attack`, `truce_offered`, `colony_critical`) | Mock (`core.mock_notify`, W09) | Labeled mock (`NOTIFY_ADAPTER=mock`) |
+
+### How the Guild prices
+
+Guild quotes call `quoteColony` (`shared/sim/src/systems/trade/agent/`). `guildAgentParams` supplies that library's params from the `guild` table; `quoteGuild` (`shared/sim/src/systems/trade/guild/quote.ts`) passes them after the thin-side widen.
+Spreads, `thinHalfSpreadBp` and the cash pause live in `shared/sim/src/data/guild.ts` and that `quote.ts`.
+Inventory below the NPC target widens the ask half-spread to `max(askHalfSpreadBp, thinHalfSpreadBp)` (1500 bp). Inventory above the target widens the bid the same way. At the target both sides stay at 200 bp.
+Cash bids are off while `cashEnabled` is 0: a USDC or NEAR quote is given a zero balance, so the library pauses that bid (`no_cash`, unless the reference is already `stale_reference` or `thin_reference`). Barter keeps its quote-resource balance.
+While an NPC is docked, the maker (`backend/app/src/market/guild/maker/`) calls the trade overview once and rests whatever `quoteGuild` returns on the four Tier-1 barter books (`metals.t1/minerals.t1`, `minerals.t1/bio.water`, `bio.water/bio.biomass`, `bio.biomass/metals.t1`). The book row's actor kind is `npc` (the guild badge is the same non-organic kind). A paused side is left off the book. Departure and the guild kill switch cancel those orders. Two guild orders do not match. A guild fill updates that NPC's cargo, consumes the funding hold for the filled size, and rests a new quote from `quoteGuild` in the same turn. Details: LED-38, LED-41.
+Guild, fixture, subsidy and npc fills are not organic (`isOrganicFill`), so they stay out of VWAP. Details: LED-32, LED-33.
 
 ## Pages
 

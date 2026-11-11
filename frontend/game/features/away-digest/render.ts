@@ -25,6 +25,21 @@ function appendNets(plate: HTMLElement, digest: AwayDigestV1): void {
   plate.append(list);
 }
 
+function appendDirectorTrades(plate: HTMLElement, digest: AwayDigestV1): void {
+  const lines = (digest.items ?? []).filter((item) => item.kind === 'digest.directorTrade');
+  if (!lines.length) return;
+  const list = document.createElement('ul');
+  list.className = 'ta-away-trades';
+  list.dataset.testid = 'away-director-trades';
+  for (const item of lines) {
+    const li = document.createElement('li');
+    li.dataset.kind = item.kind;
+    li.textContent = item.line;
+    list.append(li);
+  }
+  plate.append(list);
+}
+
 function appendAlerts(plate: HTMLElement, digest: AwayDigestV1): void {
   const lines = alertLines(digest.alerts);
   if (!lines.length) return;
@@ -56,6 +71,7 @@ export function renderAwayDigest(digest: AwayDigestV1, onDismiss: () => void): H
   title.textContent = 'While you were away';
   plate.append(title);
   appendStory(plate, digest);
+  appendDirectorTrades(plate, digest);
 
   const duration = document.createElement('p');
   duration.className = 'ta-away-duration';

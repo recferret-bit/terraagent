@@ -1,14 +1,11 @@
-import { dispatchCommand, type CommandOutcome, type CommandSink } from '../shared/commandDispatch';
+import { dispatchCommand, type CommandOutcome } from '../shared/commandDispatch';
+import { AutoTradeSection } from './AutoTradeSection';
 import { buildAwayDom, type AwayDom } from './dom';
 import { AWAY_FAMILIES, diffAutopilot, isSessionPct, parseMercenarySpend, type AwayFamily, type AwaySettings } from './model';
+import type { AwayPanelOptions } from './options';
 import { loadAwaySettings, saveAwaySettings } from './storage';
 
-export interface AwayPanelOptions {
-  sendCommand?: CommandSink['sendCommand'];
-  store?: CommandSink['store'];
-  /** W22. Off hides the hire switch and does not send `hireMercenaries`. */
-  mercenary?: boolean;
-}
+export type { AwayPanelOptions } from './options';
 
 /**
  * Away settings (W09-14). Session percents are the sliders. The directive percent is the stored
@@ -16,6 +13,7 @@ export interface AwayPanelOptions {
  */
 export class AwayPanel {
   private readonly dom: AwayDom;
+  private readonly trade: AutoTradeSection | null;
   private saved: AwaySettings;
   private open = true;
   private inflight = false;
@@ -23,12 +21,14 @@ export class AwayPanel {
   constructor(host: HTMLElement, private readonly opts: AwayPanelOptions = {}) {
     this.saved = loadAwaySettings();
     this.dom = buildAwayDom(host, { mercenary: opts.mercenary === true });
+    this.trade = opts.flags?.has('W15') ? new AutoTradeSection(this.dom.body, opts) : null;
     this.bind();
     this.paint();
     this.setOpen(true);
   }
 
   dispose(): void {
+    this.trade?.dispose();
     const host = this.dom.toggle.parentElement;
     if (!host) return;
     host.replaceChildren();
