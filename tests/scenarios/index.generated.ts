@@ -22,6 +22,7 @@ import scn_w13_regions from './w13-regions';
 import scn_w16_director from './w16-director';
 import scn_w18_pvp_diplomacy from './w18-pvp-diplomacy';
 import scn_w20_colony_deed from './w20-colony-deed';
+import scn_w22_treasury_bounties from './w22-treasury-bounties';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
   { file: 'w00-empty', def: scn_w00_empty },
@@ -46,4 +47,5 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w16-director', def: scn_w16_director },
   { file: 'w18-pvp-diplomacy', def: scn_w18_pvp_diplomacy },
   { file: 'w20-colony-deed', def: scn_w20_colony_deed },
+  { file: 'w22-treasury-bounties', def: scn_w22_treasury_bounties },
 ];

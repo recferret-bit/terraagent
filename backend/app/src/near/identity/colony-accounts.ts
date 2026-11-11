@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import type { PlanetEventV1 } from '../../bus/channels.js';
 import { EventBus } from '../../bus/event-bus.js';
@@ -7,6 +7,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { KeyStore } from '../keystore/keys.js';
 import { loadKekRing, type KekEnv } from '../keystore/kek.js';
+import { PlanetDaoMembershipService } from '../treasury/membership.service.js';
 import { ensureColonyAccounts, type EnsureColonyAccountsInput } from './colony-account-write.js';
 
 /**
@@ -23,6 +24,7 @@ export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {
     private readonly bus: EventBus,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
+    @Optional() @Inject(PlanetDaoMembershipService) private readonly membership?: PlanetDaoMembershipService,
   ) {}
 
   onModuleInit(): void {
@@ -46,12 +48,12 @@ export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {
     const colonyId = event.data.colonyId;
     if (!playerId || !colonyId) return;
     // The bus does not await this. A rejection is swallowed here so the log line cannot carry key material.
-    void this.ensureFounded(playerId, colonyId).catch(() => {
+    void this.ensureFounded(event.planetId, playerId, colonyId).catch(() => {
       this.log.warn('colony sub-account was not created');
     });
   }
 
-  private async ensureFounded(playerId: string, colonyId: string): Promise<void> {
+  private async ensureFounded(planetId: string, playerId: string, colonyId: string): Promise<void> {
     const prisma = this.database();
     if (!prisma) return;
     const social = await prisma.socialIdentity.findFirst({
@@ -68,6 +70,8 @@ export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {
       ownerAccountId: social.accountId,
       colonyIds: [colonyId],
     });
+    // The founding listener may have looked before this row existed. The same opId adds the member once.
+    this.membership?.onFounded(planetId, colonyId);
   }
 
   private async ensure(input: EnsureColonyAccountsInput): Promise<void> {

@@ -140,6 +140,7 @@ export function ensureQueueLaneCapacityAndSite(
 }
 
 export function buildNewQueueEntry(
+  state: PlanetState,
   entries: readonly QueueEntry[],
   colonyIndex: number,
   lane: QueueLane,
@@ -149,7 +150,7 @@ export function buildNewQueueEntry(
   tick: number,
   data?: CompiledDataLike,
 ): QueueEntry {
-  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(task, data);
+  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(task, data, state, tick);
   const resolvedCost = opts.costOverride ? { ...opts.costOverride } : cost;
   return {
     taskId: opts.taskId ?? nextAutoTaskId(entries, colonyIndex, tick),

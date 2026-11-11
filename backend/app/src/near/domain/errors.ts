@@ -37,6 +37,13 @@ export const NEAR_ERROR_CODES = {
   ACCOUNT_NOT_CLAIMED: { status: 409, description: 'Claim your colony account before staking NEAR.' },
   POOL_NOT_WHITELISTED: { status: 422, description: 'Staking pool is not in NEAR_STAKING_POOLS.' },
   STAKE_INSUFFICIENT_BALANCE: { status: 409, description: 'Insufficient NEAR balance in your wallet for this stake.' },
+  // F7 (W22). Planet treasury DAO (NEAR §10).
+  DAO_NOT_FOUND: { status: 404, description: 'No planet council with this id.' },
+  NOT_A_MEMBER: { status: 403, description: 'That colony is not a member of this planet council.' },
+  ALREADY_VOTED: { status: 409, description: 'This colony already voted on that proposal.' },
+  TREASURY_INSUFFICIENT: { status: 409, description: 'The planet treasury cannot cover this project.' },
+  PROPOSAL_CLOSED: { status: 409, description: 'That proposal is no longer open.' },
+  PROPOSAL_OPEN: { status: 409, description: 'This colony already has an open council proposal.' },
 } as const satisfies Record<string, NearErrorDef>;
 
 export type NearErrorCode = keyof typeof NEAR_ERROR_CODES;

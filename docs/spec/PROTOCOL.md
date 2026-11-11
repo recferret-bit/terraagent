@@ -112,7 +112,7 @@ const Cmd       = Envelope("cmd", z.object({ kind: CommandKind, args: z.unknown(
 | Cargo (F1) | `cargo.export {resource, amount}` · `cargo.import {resource, amount}` (`resource`: `ResourceKey`, any tier; T1 trades from day one, D-34) |
 | Market (F2/F3) | `market.placeOrder {side, resource: ResourceKey, amount, price: {token, amount}, ttlS, stallId?, maxStallFeeBp?}` · `market.cancelOrder {orderId}` · `market.setHubFee {bp}` · `market.acceptGuildOffer {offerId}` (details: §4.4.1) |
 | Diplomacy & bounties (F8) | `diplomacy.proposeTruce` · `diplomacy.respondTruce` · `diplomacy.cancelTruce` · `bounty.post {target, reward}` · `bounty.claim {bountyId}` |
-| Module-only (never from clients) | `cargo.settled` · `market.reserve` · `market.release` · `market.settled` · `bounty.paid` · `system.spawnColony` · `system.retireColony` · `system.seal` · `system.end` · `system.presence` · `system.arrive` |
+| Module-only (never from clients) | `cargo.settled` · `market.reserve` · `market.release` · `market.settled` · `bounty.paid` · `system.spawnColony` · `system.retireColony` · `system.seal` · `system.end` · `system.presence` · `system.arrive` · `system.treasuryEffect` |
 
 W16 does not add a client or module `ai.directive` kind. The director proposes a `DirectiveV2` batch whose actions reuse the landed command schemas (`queueGoal`, `cancelGoal`, `setPriorities`, `enqueueTask`, `placeBuilding`, `moveUnit`, `stopUnit`, `setHarvestWeights`). The host applies those ordinary commands. Player events: `directorAction` (proposed / applied / rejected / superseded) and `directorStatus`. Wire schemas live in `shared/contracts/src/ai/`.
 

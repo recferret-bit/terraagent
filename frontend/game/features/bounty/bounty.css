@@ -1,0 +1,125 @@
+.ta-bounty[hidden],
+.ta-bounty__section[hidden],
+.ta-bounty__empty[hidden],
+.ta-bounty__error[hidden] {
+  display: none;
+}
+
+.ta-bounty {
+  position: fixed;
+  z-index: 60;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.ta-bounty__sheet {
+  pointer-events: auto;
+  width: min(420px, calc(100vw - 16px));
+  max-height: min(320px, calc(100vh - 16px));
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-bounty__scroll {
+  overflow: auto;
+  min-height: 0;
+  max-height: min(320px, calc(100vh - 16px));
+  padding: var(--ta-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-bounty__head,
+.ta-bounty__row,
+.ta-bounty__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s2);
+  align-items: center;
+}
+
+.ta-bounty__head {
+  justify-content: space-between;
+}
+
+.ta-bounty__title,
+.ta-bounty__section-title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  color: var(--ta-text);
+}
+
+.ta-bounty__title {
+  font-size: var(--ta-fs-small);
+}
+
+.ta-bounty__section-title {
+  font-size: var(--ta-fs-label);
+}
+
+.ta-bounty__row,
+.ta-bounty__empty,
+.ta-bounty__error,
+.ta-bounty__field {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-bounty__row {
+  padding: var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text-2);
+}
+
+.ta-bounty__error {
+  margin: 0;
+  color: var(--ta-fault-text);
+}
+
+.ta-bounty__empty {
+  margin: 0;
+  color: var(--ta-steel);
+}
+
+.ta-bounty__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.ta-bounty__field .input {
+  min-width: 0;
+  min-height: 40px;
+}
+
+.ta-bounty__receipt {
+  color: var(--ta-blue-hi);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+}
+
+/* Short phone landscape: the sheet stays inside the viewport and the body scrolls. */
+@media (max-height: 400px) {
+  .ta-bounty__sheet {
+    width: calc(100vw - 16px);
+  }
+  .ta-bounty__sheet,
+  .ta-bounty__scroll {
+    max-height: calc(100vh - 16px);
+  }
+}

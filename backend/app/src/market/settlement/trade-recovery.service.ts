@@ -16,7 +16,8 @@ import { OrderFunds } from '../orders/order-funds.js';
 import { PlaceOrderService } from '../orders/place-order.service.js';
 import { IntentTradeRepository } from './intent-trade.repository.js';
 import { TradeSettlement } from './trade-settlement.service.js';
-import { chargeBucketed, feeBucketKey, type FeeBuckets } from '@terra/sim/systems/trade/market-fees';
+import { chargeFillBuckets, treasuryShareInBuckets } from '@terra/sim/systems/trade/market-batch';
+import type { FeeBuckets } from '@terra/sim/systems/trade/market-fees';
 import type { OrderRollback, TradePlan } from './trade-plan.js';
 
 /** Errors after which the chain definitely did not (and will not) apply the batch. Everything else is ambiguous. */
@@ -27,6 +28,21 @@ export const FINAL_FAILURE_CODES: readonly string[] = [
 export const RECONCILE_MS = 30_000;
 
 const codeOf = (error: string): string | undefined => /^(NEAR_[A-Z_]+)/.exec(error)?.[1];
+
+/** Replays one surviving fill onto the buyer buckets, including the treasury carve when that fill stored an account. */
+function rebuiltFillBuckets(
+  buckets: FeeBuckets,
+  t: { quote: string; notional: { toFixed(): string }; platformFeeBp: number; platformAccountId: string; policyVersion: string; stallFeeBp: number; stallAccountId: string; treasuryAccountId: string | null },
+  share: number | null,
+): FeeBuckets {
+  const treasury = t.treasuryAccountId && share !== null
+    ? { enabled: true, shareBp: share, accountId: t.treasuryAccountId }
+    : { enabled: false, shareBp: 0, accountId: '' };
+  return chargeFillBuckets(buckets, {
+    quote: t.quote, notional: BigInt(t.notional.toFixed()), platformFeeBp: t.platformFeeBp, platformAccountId: t.platformAccountId,
+    policyVersion: t.policyVersion, stallFeeBp: t.stallFeeBp, stallAccountId: t.stallAccountId, treasury,
+  }).buckets;
+}
 const planOf = (row: { readonly payload: unknown }): TradePlan | undefined => (row.payload as { trade?: TradePlan }).trade;
 const isTradeExecute = (row: Pick<ClaimedRow, 'opId' | 'port' | 'method'>): boolean => row.port === 'Intents' && row.method === 'execute' && row.opId.startsWith('trade:');
 
@@ -162,13 +178,9 @@ export class TradeRecovery implements OnModuleInit, OnModuleDestroy {
       where: { state: { not: 'FAILED' }, tradeId: { not: failedTradeId }, OR: [{ makerOrderId: o.orderId, makerSide: 'buy' }, { takerOrderId: o.orderId, makerSide: 'sell' }] },
       orderBy: { id: 'asc' },
     });
+    const share = treasuryShareInBuckets(o.feeBuckets);
     let buckets: FeeBuckets = {};
-    for (const t of fills) {
-      const platformKey = feeBucketKey(t.quote, t.platformFeeBp, t.platformAccountId, t.policyVersion);
-      const stallKey = `${feeBucketKey(t.quote, t.stallFeeBp, t.stallAccountId, t.policyVersion)}|stall`;
-      const n = BigInt(t.notional.toFixed());
-      buckets = chargeBucketed(chargeBucketed(buckets, platformKey, n, t.platformFeeBp).buckets, stallKey, n, t.stallFeeBp).buckets;
-    }
+    for (const t of fills) buckets = rebuiltFillBuckets(buckets, t, share);
     return { ...buckets };
   }
 

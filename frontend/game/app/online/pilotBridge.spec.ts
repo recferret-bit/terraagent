@@ -40,6 +40,13 @@ async function booted() {
   return { target, boot };
 }
 
+describe('PilotBridge scenario token', () => {
+  it('uses sessionToken when the guest target is absent', () => {
+    const bridge = new PilotBridge({ target: () => null, sessionToken: () => 'dev:w22a' });
+    expect(bridge.view().accessToken).toBe('dev:w22a');
+  });
+});
+
 describe('PilotBridge loginSocial (W06-15)', () => {
   it('posts the guest bearer and replaces the session access token', async () => {
     const { target, boot } = await booted();

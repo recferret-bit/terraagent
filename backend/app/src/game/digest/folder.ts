@@ -29,6 +29,14 @@ export function foldAttack(body: AwayDigestV1, event: AttackFold): AwayDigestV1 
   return { ...body, attacks, alerts };
 }
 
+/** One while-away line. Past 20, the new line is dropped and the earlier lines stay (CT-31). */
+export function foldHighlight(body: AwayDigestV1, at: string, summary: string): AwayDigestV1 {
+  return {
+    ...body,
+    ai: { ...body.ai, highlights: capList([...body.ai.highlights, { at, summary }]) },
+  };
+}
+
 export function foldLoss(body: AwayDigestV1, loss: LossFold): AwayDigestV1 {
   if (loss.kind === 'unitDestroyed') {
     return {

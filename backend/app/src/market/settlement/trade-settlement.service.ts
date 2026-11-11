@@ -11,6 +11,7 @@ import { MarketMetrics } from '../telemetry/market-metrics.js';
 import { MarketSimGateway } from '../orders/market-sim-gateway.js';
 import { IntentTradeRepository } from './intent-trade.repository.js';
 import type { SettleParty, TradePlan } from './trade-plan.js';
+import { TreasuryFeeService } from './treasury-fee.service.js';
 
 /** `market.trade` push: one message per FINAL trade, broadcast to the planet's sockets by `WsGateway`. */
 export interface MarketTradeBusEvent {
@@ -46,6 +47,7 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
     private readonly bus: EventBus,
     private readonly listeners: OutboxListeners,
     private readonly metrics: MarketMetrics,
+    private readonly treasuryFees: TreasuryFeeService,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
   ) {}
@@ -76,6 +78,7 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
 
   /** Tells the sims and the sockets, then records that it was done (`notified` in the outbox payload) so a restart does not repeat or skip it. */
   async notify(plan: TradePlan, txHash: string | null): Promise<void> {
+    await this.treasuryFees.depositSettled(plan);
     this.metrics.tradeFinal(plan);
     const stallName = await this.stallNameOf(plan); // for the contract toast and history row (W13-35)
     for (const party of plan.parties) this.settleSim(plan, party, txHash, stallName);

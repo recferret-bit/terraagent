@@ -10,6 +10,7 @@ import { resolveUnitRowForHub } from '../factories-hub/unit';
 import { isWorker } from '../harvest/unit';
 import { prestigeProjectRow } from '../prestige/rows';
 import { getTerraformJobCost, getTerraformOpSpec, isTerraformOpKind, isW01TerraformOpKind } from '../terraform-basic/ops';
+import { discountTerraformCost } from '../treasury/boost';
 import {
   accumulateEntityIncome,
   enqueueAuthority,
@@ -52,6 +53,8 @@ export function laneLimitFor(lane: QueueLane): number {
 export function resolveTaskCostAndTicks(
   task: QueueTaskPayload,
   data?: CompiledDataLike,
+  state?: PlanetState,
+  tick?: number,
 ): { cost: Partial<Record<ResourceKey, number>>; buildTicks: number; workRate: number } {
   if (task.kind === 'build') {
     const res = resolveBuildingRow(task.building, data);
@@ -100,8 +103,10 @@ export function resolveTaskCostAndTicks(
     task.op !== 'work'
   ) {
     const spec = getTerraformOpSpec(task.op, data);
+    const raw = getTerraformJobCost(task.op, data);
+    const cost = state ? discountTerraformCost(raw, state, tick ?? state.meta.tick, task.op, data) : raw;
     return {
-      cost: getTerraformJobCost(task.op, data),
+      cost,
       buildTicks: Math.max(1, Math.round(spec.baseTimeS * 5)),
       workRate: 1.0,
     };

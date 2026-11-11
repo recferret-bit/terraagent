@@ -34,6 +34,16 @@ const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[numb
   ACCOUNT_NOT_CLAIMED: 'account_not_claimed',
   POOL_NOT_WHITELISTED: 'pool_not_whitelisted',
   STAKE_INSUFFICIENT_BALANCE: 'stake_insufficient_balance',
+  DAO_NOT_FOUND: 'dao_not_found',
+  NOT_A_MEMBER: 'not_a_member',
+  ALREADY_VOTED: 'already_voted',
+  TREASURY_INSUFFICIENT: 'treasury_insufficient',
+  PROPOSAL_CLOSED: 'proposal_closed',
+  invalid_target: 'invalid_target',
+  insufficient_cargo: 'insufficient_cargo',
+  queue_full: 'queue_full',
+  not_own_territory: 'not_own_territory',
+  invalid_args: 'validation_error',
 };
 
 /**

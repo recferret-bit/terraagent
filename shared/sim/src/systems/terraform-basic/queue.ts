@@ -89,10 +89,11 @@ function laneFull(state: PlanetState, colonyId: number, newJobs: number, data?: 
 }
 
 function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: TerraformJob[]; skippedCount: number; reject?: RejectCode } {
-  const planetType = state.meta.planetType;
+  const jobAt = (q: number, r: number, op: TerraformOpKind): TerraformJob =>
+    newTerraformJob(q, r, op, opts.data, state.meta.planetType, state, opts.tick ?? state.meta.tick);
   if (Array.isArray(opts.jobs) && opts.jobs.length > 0) {
     if (opts.jobs.some((j) => !isTerraformOpKind(j.op))) return { jobs: [], skippedCount: 0, reject: 'invalid_args' };
-    return { jobs: opts.jobs.map((j) => newTerraformJob(j.q, j.r, j.op, opts.data, planetType)), skippedCount: 0 };
+    return { jobs: opts.jobs.map((j) => jobAt(j.q, j.r, j.op)), skippedCount: 0 };
   }
   const auto = Boolean(opts.autoPrepare) || opts.op === 'auto';
   if (!Array.isArray(opts.tiles) || opts.tiles.length === 0 || (!auto && !isTerraformOpKind(opts.op))) {
@@ -107,7 +108,7 @@ function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: Ter
     pending: pendingJobKeys(state, opts.colonyId),
     data: opts.data,
   });
-  const jobs = plan.jobs.map((j) => newTerraformJob(j.q, j.r, j.op, opts.data, planetType));
+  const jobs = plan.jobs.map((j) => jobAt(j.q, j.r, j.op));
   return { jobs, skippedCount: plan.skipped.length, ...(jobs.length === 0 ? { reject: plan.firstReject ?? 'site_blocked' } : {}) };
 }
 

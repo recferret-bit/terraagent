@@ -1,0 +1,91 @@
+.ta-treasury {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ta-s2);
+  pointer-events: none;
+}
+
+.ta-treasury__badges,
+.ta-living-ops {
+  display: flex;
+  gap: var(--ta-s2);
+  pointer-events: auto;
+}
+
+.ta-treasury__badge,
+.ta-living-op {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding: var(--ta-s1) var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.ta-treasury__badge[hidden],
+.ta-living-ops[hidden] {
+  display: none;
+}
+
+.ta-treasury__kind {
+  color: var(--ta-blue-hi);
+}
+
+.ta-living-op {
+  appearance: none;
+  cursor: default;
+  font-family: var(--ta-font-display);
+  letter-spacing: var(--ta-track-button);
+  color: var(--ta-text-2);
+}
+
+/* Teal from the energy and terra tokens. Only Living-op controls, not the rest of the HUD. */
+.ta-living-op[data-boosted='true'] {
+  border-color: color-mix(in srgb, var(--ta-energy) 62%, var(--ta-terra) 38%);
+  color: color-mix(in srgb, var(--ta-energy) 55%, var(--ta-terra) 45%);
+  background: color-mix(in srgb, var(--ta-energy) 14%, var(--ta-plate));
+}
+
+/* Faint cool band over the planet. Behind the HUD plates (first child of `.ta-hud`, z-index 0). */
+.ta-shield-shimmer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 40%,
+    color-mix(in srgb, var(--ta-blue-hi) 10%, transparent) 48%,
+    color-mix(in srgb, var(--ta-energy) 14%, transparent) 52%,
+    transparent 60%
+  );
+  background-size: 240% 100%;
+  animation: ta-shield-glint 8s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+.ta-shield-shimmer[hidden] {
+  display: none;
+}
+
+@keyframes ta-shield-glint {
+  0% { background-position: 130% 0; opacity: 0.45; }
+  50% { background-position: -30% 0; opacity: 0.8; }
+  100% { background-position: 130% 0; opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ta-shield-shimmer {
+    animation: none;
+    opacity: 1;
+    background: color-mix(in srgb, var(--ta-energy) 8%, transparent);
+  }
+}

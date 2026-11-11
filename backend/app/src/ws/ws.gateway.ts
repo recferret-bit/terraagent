@@ -10,6 +10,7 @@ import type { MarketBookBusEvent } from '../market/api/market-book-push.service'
 import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.service';
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { NearDeedUpdatedBusEvent } from '../near/deed/deed-mint-outbox.service';
+import type { NearTreasuryProposalBusEvent } from '../near/treasury/proposal-push';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
 import { presenceClosed, presenceJoined } from '../game/presence/planet-mode';
@@ -54,6 +55,7 @@ export class WsGateway {
   private readonly undown: () => void;
   private readonly uncargo: (() => void) | undefined;
   private readonly undeed: (() => void) | undefined;
+  private readonly untreasury: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
   private readonly unbook: (() => void) | undefined;
   private readonly presenceIds = new WeakMap<Connection, string>();
@@ -71,6 +73,7 @@ export class WsGateway {
     });
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
     this.undeed = o.bus?.on('near.deed.updated', (ev) => this.broadcastDeedUpdated(ev), { module: 'WsGateway' });
+    this.untreasury = o.bus?.on('near.treasury.proposal', (ev) => this.broadcastTreasuryProposal(ev), { module: 'WsGateway' });
     this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
     // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
     this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
@@ -165,6 +168,15 @@ export class WsGateway {
     }
   }
 
+  private broadcastTreasuryProposal(ev: NearTreasuryProposalBusEvent): void {
+    const frame = encodeWire({ v: 1, t: 'treasury.proposal', d: ev.payload });
+    if (ev.planetId) this.rooms.broadcast(ev.planetId, frame);
+    for (const c of this.conns) {
+      if (ev.planetId && c.planetId === ev.planetId && c.welcomeTick !== undefined) continue;
+      if (!ev.planetId || c.planetId === ev.planetId || c.session?.dev) c.send(frame);
+    }
+  }
+
   private broadcastDeedUpdated(ev: NearDeedUpdatedBusEvent): void {
     const frame = encodeWire({ v: 1, t: 'deed.updated', d: ev.payload });
     if (ev.planetId) this.rooms.broadcast(ev.planetId, frame);
@@ -188,6 +200,7 @@ export class WsGateway {
     this.undown();
     this.uncargo?.();
     this.undeed?.();
+    this.untreasury?.();
     this.unmarket?.();
     this.unbook?.();
     const all = [...this.conns];

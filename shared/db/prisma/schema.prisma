@@ -1164,6 +1164,45 @@ model MockChainReceipt {
   @@schema("chain")
 }
 
+// --- near-bounty.prisma ---
+/// Posted bounty mirror (`chain.bounty`, W22-19, NEAR-110). Expiry lives here: escrow `get` returns `expiresAtMs: 0` (BE-73).
+model ChainBounty {
+  id               String    @id @db.VarChar(80)
+  planetId         String    @map("planet_id") @db.VarChar(64)
+  posterColonyId   String    @map("poster_colony_id") @db.VarChar(64)
+  colonyIndex      Int       @map("colony_index")
+  accountId        String    @map("account_id") @db.VarChar(64)
+  target           Json
+  reward           Json
+  escrowId         String    @map("escrow_id") @db.VarChar(64)
+  escrowTx         String    @map("escrow_tx") @db.VarChar(128)
+  opId             String    @unique @map("op_id") @db.VarChar(200)
+  claimerAccountId String?   @map("claimer_account_id") @db.VarChar(64)
+  /// `open` | `claimed` | `completed` | `paid` | `refunded`. Active = open or claimed.
+  /// The board word Expired is `refunded` after `expiresAt` (no reason column, BE-86).
+  state            String    @db.VarChar(16)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([planetId, state])
+  @@index([posterColonyId, state])
+  @@map("bounty")
+  @@schema("chain")
+}
+
+/// Cargo counted toward a `deliver_units` bounty (W22-22). One row per bounty and transfer op.
+model ChainBountyDelivery {
+  bountyId  String   @map("bounty_id") @db.VarChar(80)
+  opId      String   @map("op_id") @db.VarChar(200)
+  amount    Decimal  @db.Decimal(40, 0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([bountyId, opId])
+  @@map("bounty_delivery")
+  @@schema("chain")
+}
+
 // --- near-deed.prisma ---
 /// W20 Colony Deed & Staking tables (DATA_MODEL `chain.deed`, `chain.staking_position`, NEAR §6, §9).
 model Deed {
@@ -1247,6 +1286,21 @@ model MockChainStaking {
 
   @@id([accountId, poolId])
   @@map("mock_chain_staking")
+  @@schema("chain")
+}
+
+// --- near-treasury.prisma ---
+/// Subsidy Guild visit (`chain.guild_subsidy_visit`, W22-12, NEAR-72).
+/// `organic` defaults false: there is no Guild quote engine here (D-45).
+model ChainGuildVisit {
+  id        String   @id @db.VarChar(64)
+  planetId  String   @map("planet_id") @db.VarChar(64)
+  arrivesAt DateTime @map("arrives_at") @db.Timestamptz(3)
+  subsidy   Boolean
+  organic   Boolean  @default(false)
+
+  @@index([planetId, arrivesAt])
+  @@map("guild_subsidy_visit")
   @@schema("chain")
 }
 

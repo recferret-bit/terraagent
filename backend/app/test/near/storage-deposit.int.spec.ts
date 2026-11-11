@@ -187,7 +187,9 @@ describe('storage_deposit per colony account (W06-12)', () => {
     await expectOneDeposit(colony.accountId);
 
     const first = relay();
-    expect(await first.relay.pollOnce()).toBe(1);
+    // W22 also queues the planet DAO create/member op on the same outbox, so the relay may drain more than the deposit.
+    const drained = await first.relay.pollOnce();
+    expect(drained).toBeGreaterThanOrEqual(1);
     await expectOneReceipt(colony.accountId);
     const done = await depositRows();
     expect(done[0]?.status).toBe('DONE');

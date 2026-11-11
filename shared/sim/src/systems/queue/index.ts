@@ -142,7 +142,7 @@ export function enqueueQueueTask(
   );
   if (capErr) return capErr;
 
-  const entry = buildNewQueueEntry(entries, colonyIndex, lane, incomingPrecedence, task, opts, tick, data);
+  const entry = buildNewQueueEntry(state, entries, colonyIndex, lane, incomingPrecedence, task, opts, tick, data);
   entries.push(entry);
   scanAndStartQueueEntries(state, entries, colonyIndex, tick, data, ctx);
   saveQueueEntries(state, entries, tick);

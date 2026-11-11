@@ -913,3 +913,235 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** The send is skipped when W09 is off, when no notifier is bound, or when both `playerId` and `accountId` are empty. A send that fails is logged and does not fail the seal.
 - **To resolve:** Owner: add a player toggle and route the seal through the alert router, or keep this one-shot telegram push.
 - **Found:** 2026-11-10, merge of main into W09.
+
+### BE-70 · Escrow `open` still requires a beneficiary
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/application/ports/escrow.port.ts` (`EscrowOpenInput.beneficiary`), Q-05-26
+- **What happens:** `EscrowPort.open` still requires `beneficiary`. A bounty posted before anyone claims it has no payee (NEAR-110, W22-19). Only a mercenary hire knows the payee at open (W22-28). W22-02 added `get` and left `open`, `claim`, and `refund` on the W00-30 fields. `claim` still pays `caller`.
+- **Why it is like this:** W22-02 keeps the landed `open` / `claim` / `refund` shapes and adds `get`. Making `beneficiary` optional would answer Q-05-26 without the owner.
+- **Workaround / mitigation:** `MockEscrowAdapter` (W22-17) stores `beneficiary` and holds the tokens on the escrow id. `claim` pays `caller`, not that beneficiary. W22-19 passes that hold id (`escrow:` + 32 hex of the open op) as `beneficiary`. `EscrowOpenInput` and `EscrowView` accept that id as well as a colony account. The payee is still named only on `claim`, as `caller`.
+- **To resolve:** Owner: keep a holding-account beneficiary, or make `beneficiary` optional and name the payee only on `claim`.
+- **Found:** 2026-11-10, W22-02
+
+## W22 Treasury DAO mock
+
+### BE-71 · Mock DAO balance lives in policy JSON and a short deciding vote is rolled back
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/treasury.adapter.ts`, `backend/app/src/near/treasury/policy.ts` (`settleCost`), `backend/app/src/near/treasury/actions.ts` (`approvePassed`)
+- **What happens:** `deposit` adds `balances[tokenId]` inside `MockChainDao.policy`. It does not debit `from` on `chain.mock_chain_balance`. A second `createDao` for the same slug with a new opId keeps the existing members and balances. `Rejected` is never written: a `remove` vote counts as no, and a failed `finalize` becomes `Expired`. When the vote that would pass cannot pay `payload.cost`, the adapter throws `TREASURY_INSUFFICIENT` inside the mock transaction, so that vote is not stored and the proposal stays `InProgress`.
+- **Why it is like this:** W22-03 stores members, `canPropose` and balances in the policy JSON so the landed `mock_chain_dao` tables need no new migration. `MockChainBase.call` rolls the callback and the receipt back together; persisting the vote and still throwing would leave a success receipt for the same opId on retry.
+- **Workaround / mitigation:** After a top-up, the same member can vote again. `finalize` of an already `Approved` proposal does not debit a second time.
+- **To resolve:** Keep this. A real Sputnik adapter (W23-36) maps chain state onto the same port errors.
+- **Found:** 2026-11-10, W22-03
+
+### BE-72 · The finalize job owns the 6 h deadline
+
+- **Status:** Resolved (W22-09)
+- **Area / code:** `backend/app/src/near/treasury/finalize.service.ts` (`finalizeDue`), `backend/app/src/near/treasury/actions.ts` (`finalizeProposal`), `shared/sim/src/data/treasury-policy.ts` (`proposalTtlH`)
+- **What happens:** `TreasuryFinalizeService.finalizeDue` calls port `finalize` only when `now >= payload.deadlineMs`. The hours are `treasuryPolicy.vote.proposalTtlH` (6 real hours, `TREASURY_PROPOSAL_TTL_H`). One yes of three past that deadline becomes `Expired` and the DAO balance does not change. The same proposal stays `InProgress` when `finalizeDue` runs earlier. The mock `finalize` function still does not read a clock: a direct call expires a failing `InProgress` proposal immediately. An already `Approved` proposal is not debited again. Removed members' votes still do not count (W22-06).
+- **Why it is like this:** W22-03 was told not to implement the deadline. The contract suite still calls `finalize` immediately, so the mock must keep expiring when asked. W22-09 is the clock.
+- **Workaround / mitigation:** Call `finalizeDue`. Do not call port `finalize` before the deadline. The job does not.
+- **To resolve:** Done for the deadline. A direct `finalize` stays immediate on purpose.
+- **Found:** 2026-11-10, W22-03. Resolved 2026-11-10, W22-09.
+
+### BE-77 · DAO membership follows the colony account row and `deedSettled`
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/membership.service.ts`, `backend/app/src/near/treasury/lifecycle.bind.ts`, `backend/app/src/near/identity/colony-accounts.ts`, `backend/app/src/near/deed/deed-settled.service.ts`
+- **What happens:** A member is the `near_colony_account` row for that colony, not the colony id. `colonyFounded` looks up the row (a few retries, then again after `ColonyAccounts` commits it) and calls `addMember` with `canPropose: true` (`opId = dao-member:{planetId}:{colonyId}`). A guest has no row, so they are not added. Accounts created later by social login (`ensureForLinkedPlayer`) are not backfilled onto the DAO. Elimination of a colony with no account, or of an account that was never a member, does not throw and does not change the count. `colonySettled` is not a registered event in this tree. `deedSettled` (emitted when the W20 settle outbox finishes) is the live wire: the colony stays a member with `canPropose: false`, or is added that way if they were not a member. W22 off adds and removes nothing.
+- **Why it is like this:** W22-06 asked for colony accounts and for a settled event. The deed service already emits `deedSettled`. The sim `colonySettled` kind is not in the contract catalogue, so the bus rejects it outside production.
+- **Workaround / mitigation:** Link the player before the colony is founded, or rely on the second `onFounded` after the account row is written. Seal the deed (`deedSettled`) to clear propose rights.
+- **To resolve:** When `colonySettled` becomes a contract event, listen for it as well. Backfill login-time accounts only if the owner wants colonies that predate the link to sit on the council.
+- **Found:** 2026-11-10, W22-06
+
+### BE-73 · Mock escrow does not store `expiresAtMs`
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/escrow.adapter.ts` (`get`), `shared/db/prisma/mock-chain.prisma` (`MockChainEscrow`)
+- **What happens:** `EscrowOpenInput` requires `expiresAtMs`, but `mock_chain_escrow` has no expiry column. `MockEscrowAdapter.get` always returns `expiresAtMs: 0`. A replay of `open` does not move tokens again; it also does not remember the original expiry.
+- **Why it is like this:** W22-17 must not alter the W00 escrow table. The bounty service (W22-19, W22-24) owns the 2–48 h expiry and the refund job. Adding a column would need a new Prisma fragment and a migration this issue does not own.
+- **Workaround / mitigation:** Callers that need the deadline keep it on the bounty row, not on the escrow. `0` means "not tracked here", and `EscrowView` still parses. The W22-18 contract suite asserts `expiresAtMs === 0` after an open that passed a non-zero deadline, and does not treat the dropped deadline as a failure.
+- **To resolve:** Keep the deadline on the bounty (W22-19, W22-24). Do not make this suite require a round-trip. A real escrow (W23-38) may store expiry on chain; this mock still answers `0`.
+- **Found:** 2026-11-10, W22-17
+
+### BE-74 · A planet row insert does not itself open the treasury DAO
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/lifecycle.service.ts` (`ensurePlanetDao`), `backend/app/src/near/treasury/lifecycle.bind.ts`, `backend/app/src/lobby/prisma-lobby.store.ts` (`provisionCanonicalWorld`), `backend/app/src/core/home/prisma-home.store.ts` (`upsertPlanet`)
+- **What happens:** Inserting `core.planet` does not create `{planet}.dao.mock`. Lobby provision and home upsert are two writers, and the sim thread loads the world without going through either. The DAO opens when that sim planet finishes loading, and on `colonyFounded` if the planet still has none. `ensurePlanetDao` is the lazy path for a planet that already existed before W22 (Council, W22-08). A second call, including two in flight, keeps the one DAO. W22 off returns null and writes nothing. `GamePlanets.onPlanetLoaded` has no unsubscribe; after shutdown the bind ignores it.
+- **Why it is like this:** W22-05 asked for one create path. There is not one. The DAO has to exist before W22-06 adds members on `colonyFounded`, so load is the earlier hook, and the colony event covers a planet that was already running.
+- **Workaround / mitigation:** `GET /v1/near/treasury/:planetId` (W22-08) calls `ensurePlanetDao`. The outbox id is `dao-create:{planetId}`; a replay does not insert a second row.
+- **To resolve:** Keep both hooks. Do not also call `ensurePlanetDao` from the two planet stores unless those stores gain one shared create function.
+- **Found:** 2026-11-10, W22-05
+
+### BE-75 · Treasury fee credit looks up `{planetId}.dao.mock` and does not move verifier USDC again
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/market/settlement/treasury-fee.service.ts` (`termsFor`, `depositSettled`, `signerFor`), `backend/app/src/market/settlement/treasury-terms.ts`, `shared/sim/src/systems/trade/market-batch.ts` (`carveTreasury`)
+- **What happens:** While W22 is on, each fill stores `treasury:{planetId}` or the DAO account from `daoAccountIdFor(planetId)` (`{slug}.dao.mock`). `TreasuryDaoPort.deposit` (`opId = treasury-fee:{tradeId}`) runs after the trade is FINAL, and only when `get` succeeds. A missing DAO leaves the trade FINAL with `treasuryAllocation` stored. `deposit` adds `balances[tokenId]` in the DAO policy and does not debit the verifier. The verifier already received the carve-out on the batch account. Dev and test seal a custodial key for that account on first use so the leg can be signed. In production a missing key is signed by `treasury.terraagent.mock` instead, so the stored leg account and the verifier credit can differ. A rollback rebuilds the treasury bucket only for fills that stored `treasuryAccountId`.
+- **Why it is like this:** W22-05 owns creating the DAO. This issue must not create one, and a missing council must not fail a W13 trade. The buyer total and the stall fee stay the amounts W13 already charged.
+- **Workaround / mitigation:** Create the DAO with `name` equal to the planet id before expecting a council balance. The allocation is still on `chain.intent_trade` when the DAO does not exist yet.
+- **To resolve:** W22-05 should create `{planetId}.dao.mock` (or teach this lookup the stored dao account). A real chain adapter (W23) should not seal a dev key.
+- **Found:** 2026-11-10, W22-07
+
+### BE-76 · A chain bounty and the sim bounty are not the same post
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/bounty/post.service.ts`, `backend/app/src/near/bounty/posted.listener.ts`, `backend/app/src/near/bounty/bounty.controller.ts`, `shared/sim/src/systems/bounty/handlers.ts`
+- **What happens:** `POST /v1/bounties/:planetId` opens escrow and writes `chain.bounty`. It does not send `bounty.post` to the sim, and it does not check that the caller owns the colony. A socket `bounty.post` is screened first (vision, territory, cargo, the 3-active cap, the 2–48 h window). The sim then records `clear_nest` and `defend_area` under `bt:{colony}:{tick}`. Escrow for that id opens when `bountyPosted` arrives. If that open throws, the sim bounty stays and the chain row is absent; cargo is unchanged. `deliver_units` can open a chain escrow over HTTP. The sim handler still rejects it. The chain row is completed from cargo transfers (BE-79), not from a sim blob.
+- **Why it is like this:** W22-20 already records `clear_nest` inside the sim and must keep doing so. The chain id is not known until that handler runs. W22-21 owns `defend_area`. W22-22 completes the chain row and does not add a sim rule. W22-25 owns the board, which should post on the player's socket.
+- **Workaround / mitigation:** The precheck stops an unseen nest before the sim. A retried chain id reuses `bounty-open:{bountyId}`, so cargo is not taken twice. Expiry is the bounty row (`expiresAt`), not escrow `get` (BE-73).
+- **To resolve:** Have the board post over the socket. Require the session colony on `POST /v1/bounties/:planetId`. Do not teach the sim `deliver_units` unless the owner wants one id in both places (BE-79).
+- **Found:** 2026-11-10, W22-19
+
+### BE-78 · A guild subsidy schedules a visit row and does not quote
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/guild-subsidy.ts` (`applyGuildSubsidy`, `scheduleExtraVisit`), `shared/db/prisma/near-treasury.prisma` (`ChainGuildVisit`)
+- **What happens:** `applyGuildSubsidy` inserts one `chain.guild_visit` row (`subsidy` true, `organic` false, `arrives_at` one hour ahead). A second call inserts a second row. W22 off writes nothing. W15 off does not skip the row. There is no Guild quote engine, so nothing labels quotes. The Council form lists `guild_subsidy` whenever `GET /v1/near/treasury/:planetId` includes it in `projects` (W22-14). It does not check W15. `TreasuryFinalizeService` calls `applyGuildSubsidy` once when it posts an approved `guild_subsidy` effect (W22-09). A second `finalizeDue` does not insert another row. The row has no `npc_id`, `depart_at`, or `offers` (DATA_MODEL sketch); W15 must alter this table, not create it.
+- **Why it is like this:** W15-09's `scheduleExtraVisit` and quote engine are absent. D-45 says a subsidy visit is never organic. The `organic` column false is that guarantee.
+- **Workaround / mitigation:** The finalize job inserts the row. It stays `organic` false.
+- **To resolve:** W15 should add quotes without setting `organic`. Hide `guild_subsidy` in the Council form only when the API omits that project.
+- **Found:** 2026-11-10, W22-12
+
+### BE-79 · deliver_units completes the chain row from cargo transfers
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/bounty/deliver.service.ts` (`onTransfer`), `backend/app/src/near/bounty/pay.service.ts` (`pay`), `backend/app/src/near/bounty/deliver.ledger.ts`, `backend/app/src/near/cargo/cargo-transfer.hook.ts`, `backend/app/src/near/infrastructure/adapters/cargo/mock-cargo-token.adapter.ts` (`transfer`), `chain.bounty_delivery`
+- **What happens:** A mock cargo `transfer` that resolves notifies one process-wide watcher. While W22 is on, a destination equal to the poster's `accountId`, a token equal to the `deliver_units` resource, and a sender equal to `claimerAccountId` inserts `chain.bounty_delivery` (primary key bounty id + opId) with the base-unit amount. The same opId does not add twice. When the sum reaches the target and `expiresAt` is still ahead, `chain.bounty.state` becomes `completed`. 99 of 100 stays `claimed`. A later transfer that makes up the rest completes it. A transfer after expiry, to another account, from an account that is not `claimerAccountId`, or while W22 is off, is not stored. A transfer after `completed` does not change the state. The same transfer is applied in full to every matching bounty. On that transition `BountyPayService.pay` calls `EscrowPort.claim` with `opId = bounty-pay:{id}` and `caller` the claimer. Success sets the row to `paid` and the escrow to `claimed`. A second pay replays the receipt and does not credit again. If `claim` throws, the row stays `completed` and the escrow stays `open`. No `bountyCompleted` sim event is emitted. The sim still rejects `bounty.post` of `deliver_units` (GP-119). Only `MockCargoTokenAdapter.transfer` notifies. A `fail_after` that throws after the receipt is stored is counted when that same opId is retried.
+- **Why it is like this:** W22-22 is observed from cargo transfers, not a sim rule. BE-76: the chain bounty and the sim bounty are different posts. W22-23 pays a `completed` row through the same opId, including `deliver_units`, and does not add a sim rule.
+- **Workaround / mitigation:** `BountyClaimService.claim` sets `state = claimed` and `claimerAccountId` before the transfer. Water sent before that, or while W22 was off, does not count later. A real cargo adapter must call `notifyCargoTransferred` or its transfers never complete a bounty.
+- **To resolve:** W23's cargo adapter should call the same hook. Do not add a sim `deliver_units` rule unless the owner wants one id in both places.
+- **Found:** 2026-11-10, W22-22
+
+### BE-80 · Council propose does not start the sim effect
+
+- **Status:** Resolved (W22-09)
+- **Area / code:** `backend/app/src/near/treasury/proposals.service.ts`, `backend/app/src/near/treasury/finalize.service.ts`, `backend/app/src/near/treasury/treasury.controller.ts`, `backend/app/src/ws/ws.gateway.ts` (`broadcastTreasuryProposal`)
+- **What happens:** A vote that passes still debits the DAO on that vote (the mock, BE-71) and this API still does not send `system.treasuryEffect`. `TreasuryFinalizeService` sends that command once for an `Approved` proposal, including one that already passed before the deadline (W22-09). `GET /v1/near/treasury/:planetId` still returns `effects: []` (BE-82). Kinds are the three W22 table rows; W05/W15 do not hide `terraform_boost` or `guild_subsidy`. The caller is the bearer session's colony account on that planet (`core.colony` plus `near_colony_account`). When `NODE_ENV=test`, body `colonyAccountId` or header `x-colony-account-id` is accepted instead (body wins) and is ignored otherwise. One open proposal per colony is checked on the DAO view before `propose`. Two concurrent first proposes from the same colony share `opId` `dao-propose:{planet}:{account}:1`, so the mock replays one row. `near.treasury.proposal` is emitted and the gateway broadcasts `treasury.proposal` to the planet room.
+- **Why it is like this:** W22-08 was told not to run the 6 h finalize job and not to start the sim effect. The job does that now. Integration tests have no session, so the test account field exists only there. Hiding a kind when another wave is off is W22-11 and W22-12.
+- **Workaround / mitigation:** A project the balance cannot cover throws `TREASURY_INSUFFICIENT` (HTTP 409) and writes no proposal. The shield and the boost start when the finalize job can post into a loaded planet.
+- **To resolve:** Done for the effect command. The empty `effects` list is BE-82. W22-11 and W22-12 drop kinds whose waves are off.
+- **Found:** 2026-11-10, W22-08. Resolved 2026-11-10, W22-09.
+
+### BE-81 · Mock agent wallet only creates mercenary sub-accounts
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/mock/agent-wallet.adapter.ts`, `backend/app/src/near/mercenary/accounts.service.ts`
+- **What happens:** W15-03 has not landed, so this branch's mock `AgentWalletPort` implements `createSubAccount` only. The same `opId` replays the stored receipt. The same account id does not insert a second row. `addLimitedKey` and `revokeKey` reject with `NEAR_UNAVAILABLE` and store no allowance. The parent `npc.terraagent.mock` is not created. A database error on boot is logged and does not stop the app; the next boot tries again.
+- **Why it is like this:** W22-27 has to create `merc-N.npc.terraagent.mock` through the port. Copying the unlanded W15 key ledger would collide with that wave. The funding cap stays on the roster row (LED-33) and is not minted.
+- **Workaround / mitigation:** Hire and payout code must keep using the roster `fundingCap`. Do not treat a successful boot as a funded balance.
+- **To resolve:** When W15-03 lands, replace this adapter with its allowance ledger. The seeder's stable `merc-account:{accountId}` opId still replays, and `NEAR_ACCOUNT_EXISTS` is treated as already created.
+- **Found:** 2026-11-10, W22-27
+
+### BE-82 · Council effect list stays empty and a missed sim post is not retried
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/treasury/finalize.service.ts` (`post`, `tickOf`), `backend/app/src/near/treasury/council-view.ts` (`effects`), `backend/app/src/game/game-planets.service.ts` (`submit`)
+- **What happens:** `GET /v1/near/treasury/:planetId` still returns `effects: []`. The finalize job stores `system.treasuryEffect` on the proposal JSON (`effectCommand`, `effectPosted`) and calls `GamePlanets.submit` once. If the planet is not loaded, `submit` returns `thread_down` and the job does not try again. `untilTick` is the loaded planet tick, else the latest snapshot tick, else 0, plus `durationH` at 200 ms per tick. A command built at tick 0 is already over on a planet that has moved past that `untilTick`. `guild_subsidy` still inserts one `chain.guild_visit` when the effect is claimed. A direct `TreasuryDaoPort.finalize` still expires an `InProgress` proposal immediately (BE-72).
+- **Why it is like this:** W22-09 posts the module command. It does not own the council read model (W22-14) and does not keep a retry queue after the one stored command.
+- **Workaround / mitigation:** Load the planet before `finalizeDue` if the shield must start at the live tick. Do not call port `finalize` before the deadline.
+- **To resolve:** Read active effects from the sim blob on the council GET, and retry `submit` while the planet is down without sending a second command after `ok`.
+- **Found:** 2026-11-10, W22-09
+
+### BE-83 · One chain claimer, and `bounty.paid` only while the planet is loaded
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/bounty/claim.service.ts`, `backend/app/src/near/bounty/pay.service.ts` (`tellSim`, `replay`), `backend/app/src/near/bounty/lifecycle.listener.ts`
+- **What happens:** `chain.bounty.claimer_account_id` stores one account. A second `clear_nest` caller overwrites it. `defend_area` and `deliver_units` reject a different caller with `queue_full`. The same caller claiming again is a no-op. W22 off rejects `claim` with 404. On `bountyCompleted`, the listener writes the sim winner's colony account (resolved the same way as a post) and sets `completed`, then `EscrowPort.claim` pays that account. `bounty.paid` is `GamePlanets.submit` with `source: 'near'` only when that planet is loaded. `unknown_entity` is treated as nothing left to mark, which is the `deliver_units` case (no sim row). If the planet is not loaded, the chain row still becomes `paid` after the receipt, and the next process start retries `bounty.paid` while the outbox payload lacks `simPaid`. A chain-only `deliver_units` post never emits `bountyClaimed`; `BountyClaimService.claim` is what records the caller. Rows left `completed` are paid again at process start, replaying `bounty-pay:{id}` when the receipt already exists.
+- **Why it is like this:** The table has one claimer column. The sim names the nest winner and does not move cargo (W22-23). The mock escrow replays `opId`.
+- **Workaround / mitigation:** Call `BountyClaimService.claim` for a deliver bounty. A second `pay` with the same opId does not credit the claimer again.
+- **To resolve:** A claimer list would be a schema change. W22-25's claim button should call `BountyClaimService` for `deliver_units`.
+- **Found:** 2026-11-10, W22-23
+
+### BE-84 · A mercenary cancel refunds the unused metals and does not pay the squad
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/mercenary/hire.service.ts`, `backend/app/src/near/mercenary/hire-math.ts` (`refundSplit`), `backend/app/src/near/mercenary/spawn-submit.ts`, `backend/app/src/near/infrastructure/adapters/mock/escrow.adapter.ts` (`refundOpen`)
+- **What happens:** A hire is a `defend_area` bounty. Escrow is `hours × pricePerGameHour` from the roster table (light 100 `metals.t1`, so 2 h is 200). The beneficiary is the escrow hold (BE-70). The squad account is `claimerAccountId` and the row is `claimed`. Cancel floors the served metals (`paid = floor(total × elapsed / duration)`) and refunds the rest, so 1 h of that 2 h hire refunds 100 and leaves 100 in the hold. The bounty row becomes `refunded`. The mercenary balance does not move. A cancel at the start refunds the whole hold and closes the escrow. A cancel at or after the end refunds 0 and leaves the full hold `open`. `refund` with an `amount` smaller than the hold is what returns only the unused part; omitting `amount` still returns everything. Hours are whole design hours (the bounty 2–48 h window and `defend.ts`'s 18000 ticks), not 1/24 of a planet day. `mercenary.spawn` is submitted only when `GamePlanets` has that planet loaded. The hire integration test has no sim thread, so it checks `spawnOrder` against the command schema and does not place units. The funding cap (LED-33) is the sum of this account's open and claimed rewards plus the new total; two hires at the same moment can both pass. The cap is not minted. A mercenary hire of 1 design hour is allowed (BE-87). A player bounty post is still 2–48 h.
+- **Why it is like this:** W22-30 owns paying the mercenary for time served. This cancel must not pay them the refunded half, and `EscrowPort.refund` previously closed the whole hold. The roster says "per game-hour" (LED-32) but the defend contract is measured in design hours.
+- **Workaround / mitigation:** Read the poster's cargo for the refund and the escrow hold for the floored served part. Cancel still does not pay the squad. `MercenaryPayoutService.payout` claims that open remainder (`opId` `bounty-pay:{id}`, caller `claimerAccountId`) and sets the row to `paid`. Load the planet before expecting units.
+- **To resolve:** Owner: confirm a billed hour is a design hour, not a solar game-hour. The open-remainder claim is W22-30.
+- **Found:** 2026-11-10, W22-28
+
+### BE-85 · Away colonies abstain; the director is not asked to vote
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/proposals.service.ts` (`vote`), `backend/app/src/near/treasury/away-notice.service.ts`, `backend/app/src/near/treasury/away-colonies.ts`
+- **What happens:** No process calls `TreasuryDaoPort.vote` for an away colony. The AI director is not invoked. `POST …/proposals/:id/vote` while that colony has an open `world.planet_event_digest` row (`closedAt` null) on the planet throws `away_policy` (HTTP 409) and writes no vote. A colony with no open digest, including a present member, still votes. `TreasuryAwayNoticeService` polls every 60s and never votes. When W09 and W22 are on, each away member gets one `NotifierPort` payload, kind `council_proposal` (not a CT-36 toggle), body `Planet council: N open proposal` or `proposals`. The event id is `council-open:<planetId>:<sorted proposal ids>`. The mock store's unique key means a second poll of the same open set does not insert another row. A newly opened proposal changes the id and queues a new note. W09 off sends nothing. Away is the open digest, not a live read of `blobs.presence`. A colony marked away in the sim before that row exists is treated as present for this guard and is not notified. The HTTP reject is not counted in `away_policy_rejections_total` (that counter is sim `cmd.reject` only).
+- **Why it is like this:** W22-16 abstains by not calling the director (AW-14). AW-23 would let a player command through, but a council vote is a chain action and the issue asked for no automatic vote plus a guard while away. The digest is the server row `colonyAway` already opens.
+- **Workaround / mitigation:** Come back (`colonyBack` closes the digest) and vote. The note says how many proposals are open.
+- **To resolve:** If the owner wants AW-23 to win, drop the HTTP reject and keep the missing auto-vote. Reading `blobs.presence` would catch away before the digest opens.
+- **Found:** 2026-11-10, W22-16
+
+### BE-86 · Treasury console hire now opens escrow; bounty.complete still needs a claimer
+
+- **Status:** Resolved (1fbdc801)
+- **Area / code:** `backend/app/src/near/treasury/dev-console.command.ts`, `backend/app/src/near/treasury/dev-console.handlers.ts` (`runMercHire`), `frontend/game/features/treasury/devCommands.ts`
+- **What happens:** `merc.hire <hours>` now calls `MercenaryHireService.hire` for the light roster. That opens the defend escrow (whole hours × the table price) and submits `mercenary.spawn`. A fractional hour is rejected. `bounty.complete` is unchanged: pay still runs only when a claimer is stored or passed. W22 off still answers 404.
+- **Why it is like this:** W22-36 needed the console squad to be the hire, not a spawn that skipped escrow. The chain post and the sim post stay two paths (BE-76).
+- **Workaround / mitigation:** None for the hire. Claim the bounty first, or pass `bounty.complete <id> <claimerAccount>`, so pay runs.
+- **To resolve:** Done for the console hire. A board post should keep using the socket so the sim id and the chain id stay one bounty (BE-76).
+- **Found:** 2026-11-10, W22-35; console hire wired 2026-11-11, W22-36
+
+### BE-87 · A wiped squad is paid from the bounty clock, and a lost leave event is not retried
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/mercenary/payout.service.ts` (`payout`, `settleOpen`), `backend/app/src/near/mercenary/payout.listener.ts`, `backend/app/src/near/bounty/pay.service.ts` (`claimEscrow`)
+- **What happens:** `mercenaryLeft` with reason `wiped` pays `floor(total × elapsed / duration)` using `Date.now()` against the chain window (`expiresAt − durationH`). Reason `ended` pays the full window even when the wall clock is short. Reason `cancelled` does nothing. A served share of 0 refunds the poster and marks the row `refunded`. A share above 0 refunds the rest, claims the open hold for the squad, and marks the row `paid`. The claim uses `bounty-pay:{id}`, the same op as W22-23, so a second claim does not move metals. If that claim already ran, this service does not refund; the claimer keeps the whole hold that claim paid. W22 off returns null and writes nothing. The leave event is in-process. A restart after the wipe does not settle the escrow. The service does not submit `bounty.paid` (the hire is a chain row plus `mercenary.spawn`, not a sim bounty).
+- **Why it is like this:** The leave event has no served fraction, and `warp` does not move `expiresAt`. Cancel (BE-84) already refunds the unused part and must keep doing so. Sharing `bounty-pay:{id}` is what stops a double pay.
+- **Workaround / mitigation:** Call `payout` with `nowMs` at the wipe. Do not call it for a `cancelled` leave. If W22-23 has already claimed the id, do not expect a poster refund.
+- **To resolve:** Put the served fraction on `mercenaryLeft`, or settle from the planet tick, and retry unsettled hires after a restart.
+- **Found:** 2026-11-10, W22-30
+
+### BE-88 · An expired bounty is stored as `refunded`; the board word is Expired
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/bounty/expiry.service.ts` (`refundDue`, `refundIfOpen`), `backend/app/src/near/bounty/view.ts` (`bountyBoardLabel`), `backend/app/src/near/bounty/lifecycle.listener.ts`, `chain.bounty`
+- **What happens:** `refundDue(nowMs)` selects `open` or `claimed` rows with `expiresAt <= nowMs`. It does not read escrow `get` (that `expiresAtMs` is 0, BE-73). `EscrowPort.refund` with `opId = bounty-refund:{id}` and no `amount` returns the whole remaining hold to the escrow opener, which is the poster's `accountId`. The row becomes `refunded`. There is no reason column. `bountyBoardLabel` (and `board` on `GET /v1/bounties/:planetId`) says `Expired` for every `refunded` row (W22-36). A refund that lands before `expiresAt` uses the same word. A second `refundDue` does not select the row and does not credit again. `paid` and `completed` are not refunded (`completed` stays for `BountyPayService`). W22 off returns `{ refunded: 0 }` and moves no cargo. Eliminating the poster drops the DAO member (W22-06) and leaves `near_colony_account` and the bounty `accountId`; the refund credits that account. A claimer ending in `.npc.terraagent.mock` is skipped by the clock so W22-30 can still `claim` the open hold. Sim `bountyRefunded` calls `refundIfOpen`, which refunds an `open` or `claimed` row even before `expiresAt` and even for a mercenary claimer. A mercenary cancel that already set `refunded` via `merc-refund` is not touched, so the floored remainder stays in the open escrow (BE-84). The job does not emit `bountyExpired`.
+- **Why it is like this:** W22-24 stores one state, `refunded`, and the board word is derived. Adding `expired` or a reason column would be a migration this issue does not own. A full clock refund must not close a mercenary contract that reached its end still `claimed`.
+- **Workaround / mitigation:** Read `board`, or `state === 'refunded'` and `expiresAt <= now`, for the Expired list. Do not treat escrow `get` as the deadline. W22-30 should `claim` a mercenary hold before relying on this job, and should not expect a clock refund of `*.npc.terraagent.mock`.
+- **To resolve:** If the owner wants the word in the database, add a reason column and keep the refund op idempotent. W22-30 should pay time served from the open hold, then refund any remainder with its own op, not by deleting this skip.
+- **Found:** 2026-11-10, W22-24
+
+### BE-89 · An eliminated claimer reopens the chain bounty, not the sim blob
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/near/bounty/bounty.repository.ts` (`reopenClaimedBy`), `backend/app/src/near/bounty/lifecycle.listener.ts` (`reopen`), `shared/sim/src/systems/bounty/blob.ts`
+- **What happens:** `colonyEliminated` resolves the colony account and sets every `chain.bounty` row in `claimed` for that account back to `open`, with `claimerAccountId` cleared. `completed`, `paid`, and other claimers stay. The escrow id and the poster's hold are not refunded. W22 off ignores the event. The sim bounty blob still lists that colony index in `claimers`. A later `bountyCompleted` from the sim can name them again, and the listener will mark the chain row `completed` and pay that account.
+- **Why it is like this:** W22-33 reopens the chain row the board reads and says not to drop the poster's escrow. The sim blob has no `colonyEliminated` handler, and clearing it would be a second store.
+- **Workaround / mitigation:** The chain board shows the bounty `open` with no claimer, so another colony can `bounty.claim`. Do not expect the sim claimer list to drop on the same event.
+- **To resolve:** On `colonyEliminated`, drop that colony from sim bounty `claimers` while the bounty is not completed, and ignore an eliminated colony in `bountyCompleted`.
+- **Found:** 2026-11-10, W22-33
+
+### BE-90 · Away mercenary hire is capped by the player max, not the session percent
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/mercenary/away.service.ts`, `backend/app/src/near/mercenary/away-pick.ts`, `shared/sim/src/systems/away/store.ts` (`hireMercenaries`, `mercenaryMaxSpend`), `shared/contracts/src/commands/set-autopilot.ts`, CONTINUITY AW-20, Q-05-15
+- **What happens:** `setAutopilot` stores `hireMercenaries` (default false) and `mercenaryMaxSpend` (default 0, whole metals, max 1_000_000) on the existing away blob. There is no second settings store. The ColonyBook AWAY tab, when W22 and W09 are on, shows "Hire mercenaries when attacked while away" and a whole-metals max. Both live in the same `ta.away.autopilot` record and go out on `setAutopilot`. W22 off hides them and does not send them. W09 off hides the tab. On `raidStarted` or `underAttack`, if W22 and W09 are on, the colony is away, the switch is on, and the 1 h price fits the max, `MercenaryHireService.hire` posts one light squad (100 `metals.t1`). Reserve is the same size and price; light wins the tie. Heavy is 200 and is not picked while light fits. A max of 50 hires nothing. A second raid hires nothing while that mercenary bounty is `open` or `claimed`. W09 off or W22 off hires nothing. The defend tile is the raid tile when the colony owns it, else the HQ, else the first owned tile. A raid with no colony index is colony 0. Away is the sim presence or open session, or an open `world.planet_event_digest` row. The hire is defense: `chargeAwaySpend` with purpose `defense` does not move `session.spent`, so a 0 % metals session still hires. The digest line is an `ai.highlights` summary `Hired light squad for 100 metals.t1`, saved on the open row. No open row means the hire still stands and the line is dropped. The 21st highlight is dropped (CT-31). A 1 h hire is inside the mercenary expiry floor; player bounty posts stay 2–48 h. The squad spawns only when the planet host is loaded (BE-84). No cargo, or no owned tile, hires nothing and writes no line.
+- **Why it is like this:** W22-31 asks for a player max and for the spend to count as defense (AW-20), which is uncapped. Q-05-15 asked which cap wins. W22-31 and W22-38 keep both (the proposed default): the player max is the mercenary cap, and the session percent does not block this hire because it is defense. "Uncapped under AW-20" means the session percent, not "ignore the player max". The bounty window is 2 h, so the hire path lowers only its own expiry floor to 1 h.
+- **Workaround / mitigation:** Set the max to at least 100 on the AWAY tab before leaving. Come back to stop a further hire after the contract ends. Read the highlight on the digest, not the headline alerts (FF-102).
+- **To resolve:** Owner confirms Q-05-15. Do not delete `mercenaryMaxSpend`. Point `merc.hire` at the same hire service if the console must open escrow (BE-86).
+- **Found:** 2026-11-10, W22-31; AWAY tab wired 2026-11-11, W22-38
+
+### BE-91 · Council analytics has one writer per name, and `open` is a counter label
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/telemetry/w22-telemetry.service.ts`, `frontend/game/features/treasury/analytics/treasuryTracker.ts`, `frontend/game/features/bounty/bountyEvents.ts`, `MercenaryHireService.hire`
+- **What happens:** The client `track()` call writes only `council_opened`, when the Council sheet opens and consent is on. The server inserts `proposal_created`, `vote_cast`, `bounty_posted`, `bounty_claimed`, `bounty_paid` and `mercenary_hired`. The treasury and bounty features list those names in `Feature.analytics`, but the client does not send the six server names. `treasury_proposals_total` uses `result=open` when a proposal is stored `InProgress`, and `approved`, `rejected` or `expired` only when that status is newly stored. A vote that stays `InProgress` does not increment again. The mock never writes `Rejected` (a failing vote stays open until the deadline, then `Expired`), so `result=rejected` is only incremented if a `Rejected` row is stored. A mercenary hire opens a `defend_area` bounty with `playerPost: false`, so it records `mercenary_hired` and not `bounty_posted` or `bounty_claimed`. Cancel and a pro-rata payout do not increment `mercenary_contracts_total`. `merc.hire` does, because it now calls `MercenaryHireService` (BE-86). `treasury_balance` omits a planet with no DAO row.
+- **Why it is like this:** Two writers for one name would put two rows in `core.analytics_event`. Counting `open` at propose, and the terminal label later, keeps both "proposals opened" and "proposals decided" on one counter. Treating a hire as a player bounty post would make the demo story show `bounty_posted` twice.
+- **Workaround / mitigation:** Read `council_opened` from the consented intake and the other six from the server recorder. Use `result=open` for proposals that are still in progress. Do not expect `bounty_posted` for a mercenary contract.
+- **To resolve:** If the owner wants a hire to count as a bounty post as well, drop `playerPost: false` and accept two `bounty_posted` rows in a story that also posts a player bounty. If `Rejected` should be reachable, store that status from a vote and the existing counter label will move.
+- **Found:** 2026-11-10, W22-34
+
+### BE-92 · `bounty.expire` runs the shared refund sweep
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/treasury/dev-console.handlers.ts` (`runBountyExpire`), `backend/app/src/near/bounty/expiry.service.ts` (`refundDue`)
+- **What happens:** `bounty.expire <id>` sets that one player row's `expiresAt` one second into the past, then calls `refundDue(now)`. The sweep refunds every open or claimed player bounty that is already due, not only `<id>`. A second call on the same id finds the row `refunded` and does not pay again. A claimer ending in `.npc.terraagent.mock` is not updated and `refundDue` is not called for that command. The 60s clock still skips those mercenary rows (BE-88). Sim `warp` still does not move `expiresAt`.
+- **Why it is like this:** W22-36 asked the console to reuse `refundDue` instead of a second refund path. The sweep is already the idempotent refund.
+- **Workaround / mitigation:** Expire a player bounty only when no other player bounty is already past `expiresAt`, or accept that those rows refund in the same call.
+- **To resolve:** Give `refundDue` an optional id filter if the console must not touch other due rows.
+- **Found:** 2026-11-11, W22-36

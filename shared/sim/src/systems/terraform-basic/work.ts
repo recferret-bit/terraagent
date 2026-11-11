@@ -207,6 +207,7 @@ function workJob(state: PlanetState, order: TerraformOrder, jobIdx: number, row:
     job.waitReason = 'power';
     return false;
   }
+  // Priced once at enqueue (boost included). Scaling `totalCost` here would charge a Seed twice.
   const totalCost = job.totalCost ?? getTerraformJobCost(job.op, ctx.data, state.meta.planetType);
   const hasCost = Object.keys(totalCost).length > 0;
   const fullRem = Math.max(0, 1 - job.progress);

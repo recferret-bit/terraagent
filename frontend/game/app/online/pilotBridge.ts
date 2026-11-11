@@ -40,7 +40,8 @@ export class PilotBridge {
   /** Live access token: the target wins once a boot or a refresh has stored one. */
   view(): PilotView {
     const live = this.deps.target()?.accessToken ?? '';
-    return { ...this.state, accessToken: live || this.state.accessToken, saveEpoch: this.saveEpoch };
+    const session = this.deps.sessionToken?.() ?? '';
+    return { ...this.state, accessToken: live || this.state.accessToken || session, saveEpoch: this.saveEpoch };
   }
 
   subscribe(fn: () => void): () => void {
