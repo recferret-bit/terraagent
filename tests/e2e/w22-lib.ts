@@ -104,7 +104,7 @@ export async function openSecondColony(
   } catch (err) {
     const text = await page.locator('body').innerText().catch(() => '');
     await opened.close(true);
-    throw new Error(`join ${page.url()} did not tick\n${text.slice(0, 400)}\n${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`join ${page.url()} did not tick\n${text.slice(0, 400)}`, { cause: err });
   }
   await expect.poll(() => cargoMetals(page, asName), { timeout: 30_000 }).toBe(CARGO_METALS);
   return { context: opened.context, page, close: () => opened.close() };

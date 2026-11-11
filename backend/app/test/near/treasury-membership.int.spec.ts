@@ -153,7 +153,7 @@ function registerCountTests(): void {
   });
 
   it('adds and removes nothing when W22 is off', async () => {
-    const { dao, bus, bind } = harness('..21');
+    const { bus, bind } = harness('..21');
     const planetId = newId('pl');
     const colonyA = newId('co');
     await seedColony(colonyA);
