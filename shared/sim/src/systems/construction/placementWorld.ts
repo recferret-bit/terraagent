@@ -55,6 +55,15 @@ export function placementWorldFromState(state: SimState): PlacementWorld {
       foundingByColony[col.index] = col.foundingSectorId;
     }
   }
+  const landingAnchorByColony: Record<number, { q: number; r: number }> = {};
+  const rawPods = state.blobs.landingPods?.value;
+  if (Array.isArray(rawPods)) {
+    for (const p of rawPods as Array<{ colonyId?: number; q?: number; r?: number }>) {
+      if (typeof p?.colonyId === 'number' && typeof p.q === 'number' && typeof p.r === 'number') {
+        landingAnchorByColony[p.colonyId] = { q: p.q, r: p.r };
+      }
+    }
+  }
   return {
     radius: state.grid.radius,
     tileCount: state.grid.count,
@@ -67,6 +76,7 @@ export function placementWorldFromState(state: SimState): PlacementWorld {
     valid: (L as { valid?: ArrayLike<number> }).valid ?? null,
     entities,
     plannedSites: plannedSitesFromQueue((state.blobs.queue?.value as { entries?: PlannedQueueEntryLike[] } | undefined)?.entries ?? []),
+    ...(Object.keys(landingAnchorByColony).length > 0 ? { landingAnchorByColony } : {}),
     ...(sectorRadius !== undefined ? { sectorRadius, colonyFoundingSectorById: foundingByColony } : {}),
   };
 }

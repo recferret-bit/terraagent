@@ -81,6 +81,8 @@ export interface PlacementWorld {
    * host publishes `colonies[].maxWorkerTier` on its view). The host leaves it out: its entities carry their tier.
    */
   maxWorkerTierByColony?: Readonly<Record<number, number>>;
+  /** Colony landing coordinates preserved from `blobs.landingPods` even if the pod entity was later cleared. */
+  landingAnchorByColony?: Readonly<Record<number, { q: number; r: number }>>;
   sectorRadius?: number;
   colonyFoundingSectorById?: Readonly<Record<number, string>>;
 }
@@ -216,9 +218,10 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileConte
  */
 function landingBlock(world: PlacementWorld, opts: EvaluatePlacementOpts): PlacementBlock | null {
   const pod = world.entities.find((e) => e.kind === ENTITY_KIND.pod && e.owner === opts.colonyId);
-  if (!pod) return null;
+  const anchor = pod ? { q: pod.q, r: pod.r } : world.landingAnchorByColony?.[opts.colonyId];
+  if (!anchor) return null;
   const hq = world.entities.find((e) => e.kind === ENTITY_KIND.hq && e.owner === opts.colonyId && isAlive(e));
-  const distPod = hexDistance(opts.q, opts.r, pod.q, pod.r);
+  const distPod = hexDistance(opts.q, opts.r, anchor.q, anchor.r);
   const own = hq ? Math.min(distPod, hexDistance(opts.q, opts.r, hq.q, hq.r)) : distPod;
   if (own > rowNum(resolveStartingKitRow(opts.data), 'hubMaxDistFromLanding')) return 'farFromLanding';
   const others = world.entities.filter((e) => (e.kind === ENTITY_KIND.pod || e.kind === ENTITY_KIND.hub) && e.owner >= 0 && e.owner !== opts.colonyId && isAlive(e));

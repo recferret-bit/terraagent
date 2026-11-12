@@ -352,6 +352,12 @@ export function enqueueWorkAtTile(
 
   const jobId = opts?.taskId ?? `work-tf-${colonyId}-${tick}-${q},${r}`;
   const job = createGroundWorkJob(jobId, colonyId, workerId, { q, r, tileIdx }, ground);
+  if (ground.terrainKey === 'pod') {
+    const podRow = findOwnEntitiesAtTile(state, colonyId, q, r, opts?.data).find(
+      (row) => cols.kind[row] === ENTITY_KIND.pod && cols.state[row] !== ENTITY_STATE.descending,
+    );
+    if (podRow !== undefined) job.targetEntityId = cols.id[podRow];
+  }
   if (opts?.chain) Object.assign(job, { chain: true, chainSeq: 0 }, rootOf);
   return storeWorkJob(state, job, tick, opts?.data);
 }

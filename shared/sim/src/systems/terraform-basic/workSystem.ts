@@ -1,11 +1,11 @@
 import type { ResourceKey } from '@terra/contracts';
-import { ENTITY_STATE } from '../../ecs/columns';
-import { rowOf, setField } from '../../ecs/store';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { removeRow, rowOf, setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
 import { regionalClearingYields } from '../../economy/regions/sources';
 import { revealAroundChanged, type RevealedDeposit } from '../../grid/subsurface';
-import { prepKeyFromId, setTilePrep, setTileTerrain, terrainIdFromKey, terrainKeyFromId } from '../../grid/tileModel';
+import { bumpPathEpoch, prepKeyFromId, setTilePrep, setTileTerrain, terrainIdFromKey, terrainKeyFromId } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
@@ -99,8 +99,42 @@ function stepRepairWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: nu
  */
 function removedOpOf(job: WorkJobRecord, data: StepContext['data']): string | null {
   if (job.workOp) return job.workOp;
-  const op = job.terrainKey ? opForTerrain(terrainIdFromKey(job.terrainKey), data) : null;
+  if (!job.terrainKey || job.terrainKey === 'pod') return null;
+  const op = opForTerrain(terrainIdFromKey(job.terrainKey), data);
   return op && op !== 'grade' ? op : null;
+}
+
+function removeLandedPodForJob(state: PlanetState, job: WorkJobRecord, tick: number): void {
+  const e = state.entities, cols = e.cols;
+  let podRow = job.targetEntityId !== undefined ? rowOf(e, job.targetEntityId) : -1;
+  if (
+    podRow < 0 ||
+    cols.kind[podRow] !== ENTITY_KIND.pod ||
+    cols.owner[podRow] !== job.colonyId ||
+    cols.hp[podRow] <= 0 ||
+    cols.state[podRow] === ENTITY_STATE.descending
+  ) {
+    podRow = -1;
+    for (let r = 0; r < e.count; r++) {
+      if (
+        cols.kind[r] === ENTITY_KIND.pod &&
+        cols.owner[r] === job.colonyId &&
+        cols.hp[r] > 0 &&
+        cols.state[r] !== ENTITY_STATE.descending &&
+        Math.round(cols.q[r]) === job.q &&
+        Math.round(cols.r[r]) === job.r
+      ) {
+        podRow = r;
+        break;
+      }
+    }
+  }
+  if (podRow < 0) return;
+  const podId = cols.id[podRow];
+  setField(e, podRow, 'hp', 0, tick);
+  setField(e, podRow, 'state', ENTITY_STATE.inert, tick);
+  removeRow(e, podId, tick);
+  bumpPathEpoch(state.meta);
 }
 
 /**
@@ -129,6 +163,13 @@ function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepCon
     const crater = flattenMeteorCraterFootprint(state, job.q, job.r, ctx.tick);
     prepared = Math.max(1, crater.count);
     revealed = crater.revealed;
+  } else if (job.terrainKey === 'pod') {
+    removeLandedPodForJob(state, job, ctx.tick);
+    if (L.terrain[job.tileIdx] === TERRAIN.flat) {
+      setTilePrep(state.grid, job.tileIdx, PREP.prepared, ctx.tick);
+      levelToAdjacentFlat(state, job.tileIdx, ctx.tick);
+    }
+    revealed = [];
   } else {
     setTileTerrain(state.grid, job.tileIdx, TERRAIN.flat, ctx.tick);
     setTilePrep(state.grid, job.tileIdx, PREP.prepared, ctx.tick);

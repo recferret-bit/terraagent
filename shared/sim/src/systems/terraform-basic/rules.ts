@@ -40,6 +40,8 @@ export interface TerraformWorld {
   maxWorkerTier?: number;
   /** Tiles under a building footprint (`occupiedTiles`): no Irrigate / Seed there (W05-07 / W05-10). */
   occupied?: ReadonlySet<number> | null;
+  /** Hex indices carrying a landed own `ENTITY_KIND.pod` eligible to be terraformed/cleared. */
+  landedPodTiles?: ReadonlySet<number> | null;
 }
 
 export type TerraformCheck = { ok: true } | { ok: false; reason: RejectCode };
@@ -56,6 +58,14 @@ export function worldHasTerritory(world: Pick<PlacementWorld, 'owner' | 'tileCou
 /** The terraform view of a placement world (the client ghost's world works too) for `colonyId`. */
 export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data?: CompiledDataLike): TerraformWorld {
   const pod = world.entities.find((e) => e.kind === ENTITY_KIND.pod && e.owner === colonyId);
+  const preHubCenter = pod ? { q: pod.q, r: pod.r } : (world.landingAnchorByColony?.[colonyId] ?? null);
+  const landedPodTiles = new Set<number>();
+  const idx = hexIndex(world.radius);
+  for (const e of world.entities) {
+    if (e.kind !== ENTITY_KIND.pod || e.owner !== colonyId || !isAlive(e) || e.state === ENTITY_STATE.descending) continue;
+    const i = idx.indexOf(Math.round(e.q), Math.round(e.r));
+    if (i >= 0) landedPodTiles.add(i);
+  }
   return {
     radius: world.radius,
     tileCount: world.tileCount,
@@ -65,10 +75,11 @@ export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data
     height: world.height ?? null,
     valid: world.valid ?? null,
     hasTerritory: worldHasTerritory(world, colonyId),
-    preHubCenter: pod ? { q: pod.q, r: pod.r } : null,
+    preHubCenter,
     preHubRadius: rowNum(resolveStartingKitRow(data), 'preHubTerraformRadius'),
     maxWorkerTier: colonyMaxWorkerTier(world, colonyId),
     occupied: occupiedTiles(world, data),
+    landedPodTiles,
   };
 }
 

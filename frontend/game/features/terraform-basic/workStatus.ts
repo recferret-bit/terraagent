@@ -24,6 +24,7 @@ const GROUND_NAME: Readonly<Record<string, string>> = {
   flat: 'GROUND',
   shallow: 'WATER',
   deep: 'DEEP WATER',
+  pod: 'DROP POD',
 };
 
 function jobText(j: WorkJobView): string {

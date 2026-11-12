@@ -11,7 +11,7 @@ import { getTerraformOpSpec, groundWorkYields, isTerraformOpCompiled } from './o
 import { terraformOwnershipBlock, type TerraformWorld } from './rules';
 
 /** Terrain key a `work` job carries (the time-table keys, plus water which is priced from the op spec). */
-export type GroundTerrainKey = TerraformTimeKey | 'shallow' | 'deep';
+export type GroundTerrainKey = TerraformTimeKey | 'shallow' | 'deep' | 'pod';
 
 /** What terraforming one ground tile by `work` takes. Water uses the `reclaim` / `deepReclaim` spec, not a second table. */
 export type GroundWork = {
@@ -76,6 +76,12 @@ export function evaluateGroundWorkTile(
   opts: { deposit?: ArrayLike<number> | null; occupied?: boolean; weather?: unknown; data?: CompiledDataLike } = {},
 ): ({ ok: true } & GroundWork) | { ok: false; reason: RejectCode } {
   if (tileIdx < 0 || tileIdx >= world.tileCount || (world.valid && world.valid[tileIdx] === 0)) return { ok: false, reason: 'invalid_args' };
+  if (world.landedPodTiles?.has(tileIdx)) {
+    const owner = world.owner[tileIdx];
+    if (owner >= 0 && owner !== colonyId) return { ok: false, reason: 'not_own_territory' };
+    if (opts.occupied) return { ok: false, reason: 'site_blocked' };
+    return { ...timedGroundWork('dismantle', opts.data), terrainKey: 'pod', yields: {} };
+  }
   const territory = terraformOwnershipBlock(world, colonyId, tileIdx, q, r);
   if (territory) return { ok: false, reason: territory };
   if (opts.occupied) return { ok: false, reason: 'site_blocked' };

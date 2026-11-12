@@ -65,6 +65,19 @@ export function viewQueueEntries(source: unknown): ViewQueueEntry[] {
   return fromColonies.length > 0 ? fromColonies : v.blobs?.queue?.entries ?? v.blobs?.queue?.value?.entries ?? [];
 }
 
+function landingAnchorByColonyFromView(blobs: unknown): Record<number, { q: number; r: number }> | undefined {
+  const raw = (blobs as { landingPods?: unknown } | undefined)?.landingPods;
+  const list = Array.isArray(raw) ? raw : (raw as { value?: unknown } | undefined)?.value;
+  if (!Array.isArray(list)) return undefined;
+  const out: Record<number, { q: number; r: number }> = {};
+  for (const p of list as Array<{ colonyId?: number; q?: number; r?: number }>) {
+    if (typeof p?.colonyId === 'number' && typeof p.q === 'number' && typeof p.r === 'number') {
+      out[p.colonyId] = { q: p.q, r: p.r };
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** Adapts any world source (authoritative state, replica view, local host view) into the shared `PlacementWorld`. */
 export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTiles | null): PlacementWorld {
   if (isPlanetState(source)) return placementWorldFromState(source);
@@ -74,9 +87,11 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
     entities?: Float32Array | ViewEntity[];
     count?: number;
     colonies?: unknown;
+    blobs?: unknown;
   };
   const tiles = v.tiles ?? fallbackTiles ?? null;
   const tiers = maxWorkerTierByColony(v.colonies);
+  const landingAnchors = landingAnchorByColonyFromView(v.blobs);
   const complete = Boolean(tiles?.terrain && tiles.prep && tiles.owner);
   return {
     radius: typeof v.planet?.radius === 'number' ? v.planet.radius : radiusOfTileCount(tiles?.count ?? 0),
@@ -89,6 +104,7 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
     entities: entitiesFromView(v.entities, v.count),
     plannedSites: plannedSitesFromQueue(viewQueueEntries(source)),
     ...(tiers ? { maxWorkerTierByColony: tiers } : {}),
+    ...(landingAnchors ? { landingAnchorByColony: landingAnchors } : {}),
   };
 }
 

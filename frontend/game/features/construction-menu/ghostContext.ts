@@ -69,10 +69,12 @@ const DEFAULT_LABELS: Record<string, string> = {
 const ONE_BY_ONE_BUILDINGS = new Set<string>(['pylon', 'droneControlArray', 'autocannon', 'laserTower', 'turret']);
 const ONE_BY_ONE_KINDS = new Set<number>([
   ENTITY_KIND.pylon,
-  ENTITY_KIND.pod,
   ENTITY_KIND.droneControlArray,
   ENTITY_KIND.autocannon,
   ENTITY_KIND.laserTower,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
 ]);
 
 const TWO_BY_TWO_KINDS = new Set<number>([
