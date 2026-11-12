@@ -40,57 +40,63 @@ const syncShadowDom = (on: boolean) => {
   shadowBtn?.setAttribute('aria-checked', String(on));
 };
 
-export function initPixelArt() {
+export interface InitPixelArtOptions {
+  showControls?: boolean;
+}
+
+export function initPixelArt(opts?: InitPixelArtOptions) {
   if (document.getElementById('pixel-css')) return;
   document.head.insertAdjacentHTML('beforeend', `<style id="pixel-css">${CSS}</style>`);
   document.body.insertAdjacentHTML('beforeend', SVG);
 
-  const bar = ensureFxBar();
+  if (opts?.showControls !== false) {
+    const bar = ensureFxBar();
 
-  btn = document.createElement('button');
-  btn.id = 'pixel-switch';
-  btn.type = 'button';
-  btn.setAttribute('role', 'switch');
-  btn.title = 'Pixel-art shader (F10)';
-  btn.innerHTML = '<span class="knob"></span><span>PIXEL</span>';
-  btn.addEventListener('click', () => { togglePixelArt(); btn?.blur(); });
-  bar.appendChild(btn);
+    btn = document.createElement('button');
+    btn.id = 'pixel-switch';
+    btn.type = 'button';
+    btn.setAttribute('role', 'switch');
+    btn.title = 'Pixel-art shader (F10)';
+    btn.innerHTML = '<span class="knob"></span><span>PIXEL</span>';
+    btn.addEventListener('click', () => { togglePixelArt(); btn?.blur(); });
+    bar.appendChild(btn);
 
-  shadowBtn = document.createElement('button');
-  shadowBtn.id = 'shadow-switch';
-  shadowBtn.type = 'button';
-  shadowBtn.setAttribute('role', 'switch');
-  shadowBtn.title = 'Dynamic sun shadows (F7)';
-  shadowBtn.innerHTML = '<span class="knob"></span><span>SHADOW</span>';
-  shadowBtn.addEventListener('click', () => { toggleShadow(); shadowBtn?.blur(); });
-  bar.appendChild(shadowBtn);
+    shadowBtn = document.createElement('button');
+    shadowBtn.id = 'shadow-switch';
+    shadowBtn.type = 'button';
+    shadowBtn.setAttribute('role', 'switch');
+    shadowBtn.title = 'Dynamic sun shadows (F7)';
+    shadowBtn.innerHTML = '<span class="knob"></span><span>SHADOW</span>';
+    shadowBtn.addEventListener('click', () => { toggleShadow(); shadowBtn?.blur(); });
+    bar.appendChild(shadowBtn);
 
-  tuneBtn = document.createElement('button');
-  tuneBtn.id = 'pixel-tune';
-  tuneBtn.type = 'button';
-  tuneBtn.title = 'Visual shader & shadow settings (F8 / Shift+P)';
-  tuneBtn.innerHTML = '<span>⚙</span><span>F8</span>';
-  tuneBtn.addEventListener('click', () => { togglePixelDialog(); tuneBtn?.blur(); });
-  bar.appendChild(tuneBtn);
+    tuneBtn = document.createElement('button');
+    tuneBtn.id = 'pixel-tune';
+    tuneBtn.type = 'button';
+    tuneBtn.title = 'Visual shader & shadow settings (F8 / Shift+P)';
+    tuneBtn.innerHTML = '<span>⚙</span><span>F8</span>';
+    tuneBtn.addEventListener('click', () => { togglePixelDialog(); tuneBtn?.blur(); });
+    bar.appendChild(tuneBtn);
 
-  const r = btn.getBoundingClientRect();
-  if (r.width > 0) {
-    tuneBtn.style.width = `${r.width}px`;
-    tuneBtn.style.height = `${r.height}px`;
-  }
-
-  initPixelDialog();
-
-  window.addEventListener('keydown', (e) => {
-    if (e.repeat || (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
-    if (e.code === 'F10') {
-      e.preventDefault();
-      togglePixelArt();
-    } else if (e.code === 'F7') {
-      e.preventDefault();
-      toggleShadow();
+    const r = btn.getBoundingClientRect();
+    if (r.width > 0) {
+      tuneBtn.style.width = `${r.width}px`;
+      tuneBtn.style.height = `${r.height}px`;
     }
-  });
+
+    initPixelDialog();
+
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat || (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
+      if (e.code === 'F10') {
+        e.preventDefault();
+        togglePixelArt();
+      } else if (e.code === 'F7') {
+        e.preventDefault();
+        toggleShadow();
+      }
+    });
+  }
 
   offChange = onPixelArtChange(syncDom);
   offShadow = onShadowChange(syncShadowDom);

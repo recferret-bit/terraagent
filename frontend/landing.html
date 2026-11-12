@@ -40,8 +40,7 @@
         <a href="#faq"><span>09</span> FAQ</a>
       </nav>
       <div class="header-right">
-        <span class="chip-live"><span class="dot-live"></span><span data-stat="planetsActive">—</span> PLANETS LIVE</span>
-        <a class="btn btn-primary btn-sm" href="/play.html">PLAY</a>
+        <a class="btn btn-primary btn-sm btn-play-header" href="/play.html?planet=dune">PLAY</a>
       </div>
     </div>
   </header>
@@ -120,19 +119,19 @@ It keeps building.</h1>
             <p class="eyebrow">02 · A COLONY, RUNNING</p>
             <h2 class="h1">Nobody is playing this.<br><span class="sub">It runs anyway.</span></h2>
           </div>
-          <p>A slice of the game's hex world, simulated live in this page. Miners haul ore to the Hub. Pylons carry power. Lightning cuts a line, and a builder goes out to fix it.</p>
+          <p>Live in-game 3D rendering on a forest world shoreline near the water and trees. A Command Hub, Solar Array, Pylon and Metal Extractor run alongside two autonomous bots hauling ore and maintaining the grid.</p>
         </div>
         <div class="colony-row">
-          <div class="viewport viewport-colony plate">
-            <canvas id="colony-canvas" role="img" aria-label="Animated isometric hex colony: robots mining, power lines, a lightning strike and a repair"></canvas>
+          <div class="viewport viewport-colony plate" id="colony-stage">
+            <canvas id="colony-canvas" role="img" aria-label="Live 3D forest planet colony near the water with trees, Command Hub, Solar Array, Pylon, Metal Extractor and 2 autonomous bots"></canvas>
             <div class="scanlines"></div>
-            <div class="viewport-tag tl"><span class="c-orange">●</span> LIVE SIM · CANVAS 2D · 10 TICKS / S</div>
+            <div class="viewport-tag tl"><span class="c-orange">●</span> LIVE RENDER · WEBGL · THALASSA FOREST COLONY</div>
           </div>
           <div class="legend">
-            <div class="legend-item"><span class="swatch" style="background:var(--ta-orange)"></span><span><b>Your territory</b>Claimed by the Hub and beacons. Borders freeze where they meet a neighbour and never move back.</span></div>
-            <div class="legend-item"><span class="swatch" style="background:var(--ta-blue)"></span><span><b>A neighbour</b>Another player's colony, running on the same server tick. Trade partner or raid target.</span></div>
-            <div class="legend-item"><span class="swatch swatch-line" style="background:var(--ta-energy)"></span><span><b>Power lines</b>Power is physical. Cut a pylon and everything down the line goes offline until it is repaired.</span></div>
-            <div class="legend-item"><span class="swatch" style="background:var(--ta-hull)"></span><span><b>Robots</b>Miners, builders, combat bots. Each one uses a supply slot and draws power from the grid.</span></div>
+            <div class="legend-item"><span class="swatch" style="background:var(--ta-orange)"></span><span><b>Command Hub (HQ)</b>Anchors the shoreline colony near the water and trees, coordinating build orders and drone logistics.</span></div>
+            <div class="legend-item"><span class="swatch" style="background:var(--ta-blue)"></span><span><b>Solar Array &amp; Pylon</b>Generates clean daytime power and distributes it across physical overhead cables to every structure.</span></div>
+            <div class="legend-item"><span class="swatch swatch-line" style="background:var(--ta-energy)"></span><span><b>Metal Extractor</b>Drills coastal ore veins continuously while fed by the pylon grid.</span></div>
+            <div class="legend-item"><span class="swatch" style="background:var(--ta-hull)"></span><span><b>2 Autonomous Bots</b>A tracked Miner hauls ore between the extractor and HQ while a wheeled Builder patrols and maintains the grid.</span></div>
           </div>
         </div>
       </div>
@@ -292,16 +291,22 @@ It keeps building.</h1>
           <article class="leg is-done" data-leg>
             <span class="leg-node" aria-hidden="true"></span>
             <div class="leg-card plate">
-              <header class="leg-h"><span class="leg-id">LEG 0</span><span class="badge badge-ok">DONE</span></header>
-              <h3 class="h3">Prototype baseline</h3>
-              <p class="leg-when">Built before the hackathon window · playable in the browser today</p>
-              <div class="leg-meter" role="img" aria-label="5 of 5 done"><i style="width:100%"></i></div>
+              <header class="leg-h"><span class="leg-id">LEG 1</span><span class="badge badge-ok">DONE</span></header>
+              <h3 class="h3">Hackathon build</h3>
+              <p class="leg-when">Nov 1 – Nov 14, 2026 23:59 UTC · solo developer plus AI agents</p>
+              <div class="leg-meter" role="img" aria-label="11 of 11 items done"><i style="width:100%"></i></div>
               <ul class="tasks">
-                <li class="t-done">Orbit menu with three procedural worlds: Kharon Dunes, Thalassa Verde, Granite Hollow</li>
-                <li class="t-done">Drop-pod descent cinematic, then the colony diorama with RTS camera and HUD</li>
-                <li class="t-done">29 kitbash models: robots, buildings, ships, deposits, fauna, satellites</li>
-                <li class="t-done">3D playground with 4-view QA, triangle budget and ground-contact checks</li>
-                <li class="t-done">Faction Plate design system, this landing page, the live orbit hero and resource viewer</li>
+                <li class="t-done">One Node app plus Postgres, with the server running the simulation</li>
+                <li class="t-done">A Temperate planet, stages S0 to S4 and terrain walls</li>
+                <li class="t-done"><b>F5</b> Invisible chain: social login, named accounts, gasless play</li>
+                <li class="t-done"><b>F1</b> Orbital Port: cargo minted as NEP-245 tokens when you export at the Trade Hub</li>
+                <li class="t-done"><b>F2</b> Player-owned markets settled with NEAR Intents</li>
+                <li class="t-done"><b>F3</b> Orbital Guild: NPC traders with their own wallets</li>
+                <li class="t-done"><b>F4</b> Colony agent: HQ trades for you while you are away, with a capped key</li>
+                <li class="t-done">Public repo with a LICENSE, a "do X, see Y" README and an X video</li>
+                <li class="t-done"><b>F6</b> Colony Deed NFT and staking your own NEAR</li>
+                <li class="t-done"><b>F7</b> Planet Treasury your colony can vote on</li>
+                <li class="t-done"><b>F8</b> Bounties and mercenary NPCs</li>
               </ul>
             </div>
           </article>
@@ -309,31 +314,7 @@ It keeps building.</h1>
           <article class="leg is-next" data-leg>
             <span class="leg-node" aria-hidden="true"></span>
             <div class="leg-card plate">
-              <header class="leg-h"><span class="leg-id">LEG 1</span><span class="badge badge-recruiting">NEXT · NOV 1</span></header>
-              <h3 class="h3">Hackathon build</h3>
-              <p class="leg-when">Nov 1 – Nov 14, 2026 23:59 UTC · solo developer plus AI agents</p>
-              <div class="leg-meter" role="img" aria-label="0 of 8 core items done"><i style="width:0%"></i></div>
-              <ul class="tasks">
-                <li class="t-next">One Node app plus Postgres, with the server running the simulation</li>
-                <li class="t-next">A Temperate planet, stages S0 to S4 and terrain walls</li>
-                <li class="t-next"><b>F5</b> Invisible chain: social login, named accounts, gasless play</li>
-                <li class="t-next"><b>F1</b> Orbital Port: cargo minted as NEP-245 tokens when you export at the Trade Hub</li>
-                <li class="t-next"><b>F2</b> Player-owned markets settled with NEAR Intents</li>
-                <li class="t-next"><b>F3</b> Orbital Guild: NPC traders with their own wallets</li>
-                <li class="t-next"><b>F4</b> Colony agent: HQ trades for you while you are away, with a capped key</li>
-                <li class="t-next">Public repo with a LICENSE, a "do X, see Y" README and an X video</li>
-                <li class="cut-line" aria-hidden="true"><span>CUT LINE · ONLY IF AHEAD OF SCHEDULE</span></li>
-                <li class="t-later"><b>F6</b> Colony Deed NFT and staking your own NEAR</li>
-                <li class="t-later"><b>F7</b> Planet Treasury your colony can vote on</li>
-                <li class="t-later"><b>F8</b> Bounties and mercenary NPCs</li>
-              </ul>
-            </div>
-          </article>
-
-          <article class="leg is-later" data-leg>
-            <span class="leg-node" aria-hidden="true"></span>
-            <div class="leg-card plate">
-              <header class="leg-h"><span class="leg-id">LEG 2</span><span class="badge badge-new">BOOKED</span></header>
+              <header class="leg-h"><span class="leg-id">LEG 2</span><span class="badge badge-recruiting">NEXT</span></header>
               <h3 class="h3">Online foundation</h3>
               <p class="leg-when">After the window · waves W0 to W2 of the 101-task plan</p>
               <div class="leg-meter" role="img" aria-label="0 of 47 tasks done"><i style="width:0%"></i></div>
@@ -454,7 +435,7 @@ It keeps building.</h1>
       <div class="hazard" aria-hidden="true" style="height:10px;opacity:.9"></div>
       <div class="container">
         <h2 class="display">Your founder is waiting in orbit.</h2>
-        <a class="btn btn-void" href="/play.html">DROP IN <span aria-hidden="true">→</span></a>
+        <a class="btn btn-void" href="/play.html?planet=dune">DROP IN <span aria-hidden="true">→</span></a>
       </div>
     </section>
   </main>
@@ -462,7 +443,7 @@ It keeps building.</h1>
   <footer class="site-footer">
     <div class="container">
       <span>TERRAAGENT · AUTONOMOUS COLONY BUILDER</span>
-      <nav aria-label="Footer"><a href="/play.html">PLAY</a><a href="#top">PRIVACY</a><a href="#top">TERMS</a><a href="#top">[X / DISCORD]</a></nav>
+      <nav aria-label="Footer"><a href="/play.html?planet=dune">PLAY</a><a href="#top">PRIVACY</a><a href="#top">TERMS</a><a href="#top">[X / DISCORD]</a></nav>
     </div>
   </footer>
 </div>

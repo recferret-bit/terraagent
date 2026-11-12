@@ -7,7 +7,7 @@ import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 import { mockOauthSecret, signMockToken, MOCK_TOKEN_TTL_S } from './mock-token.js';
 
 const TokenBody = z.object({
-  provider: z.enum(['google', 'x']),
+  provider: z.enum(['google', 'x', 'fastauth']),
   subject: z.string().min(1).max(64),
   email: z.string().min(1).max(320).optional(),
 });

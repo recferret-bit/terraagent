@@ -1,6 +1,29 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
 import { readMockToken } from './mockToken';
 
+const PILOT_DIALOG_CSS = `
+.pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:300px;max-width:360px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
+.pilot-dialog::backdrop{background:rgba(5,6,8,.74);backdrop-filter:blur(4px)}
+.pilot-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s3);margin-bottom:var(--ta-s4)}
+.pilot-dialog-list{display:flex;flex-direction:column;gap:var(--ta-s2)}
+.pilot-dialog-list .btn{width:100%;justify-content:center}
+.pilot-status{font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-fault-text)}
+`;
+
+const PROVIDERS = [
+  { id: 'google', label: 'Google', testId: 'continue-google' },
+  { id: 'x', label: 'X', testId: 'continue-x' },
+  { id: 'fastauth', label: 'NEAR', testId: 'continue-near' },
+] as const;
+
+function ensureDialogStyles(): void {
+  if (typeof document === 'undefined' || document.getElementById('pilot-dialog-css')) return;
+  const style = document.createElement('style');
+  style.id = 'pilot-dialog-css';
+  style.textContent = PILOT_DIALOG_CSS;
+  document.head.appendChild(style);
+}
+
 /** Shared landing/orbit sign-in. Refresh verifies the session before exposing the profile. */
 export class PilotAccess {
   readonly el = document.createElement('div');
@@ -11,6 +34,7 @@ export class PilotAccess {
   private loginEpoch = 0;
 
   constructor(parent: HTMLElement) {
+    ensureDialogStyles();
     this.el.className = 'plate-sm';
     this.el.dataset.testid = 'pilot-access';
     parent.append(this.el);
@@ -19,24 +43,82 @@ export class PilotAccess {
     void this.restore();
   }
 
-  private guest(message = 'Guest pilot'): void {
-    const label = document.createElement('span');
-    label.textContent = message;
-    this.el.replaceChildren(label);
-    for (const provider of ['google', 'x'] as const) {
-      const button = document.createElement('button');
-      button.className = 'btn btn-ghost btn-sm';
-      button.textContent = `Continue with ${provider === 'google' ? 'Google' : 'X'} (mock)`;
-      button.onclick = () => {
+  private guest(errorMessage = ''): void {
+    this.el.replaceChildren();
+    if (errorMessage) {
+      const status = document.createElement('span');
+      status.className = 'pilot-status';
+      status.setAttribute('role', 'status');
+      status.textContent = errorMessage;
+      this.el.append(status);
+    }
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'btn btn-ghost btn-sm';
+    trigger.dataset.testid = 'pilot-sign-in';
+    trigger.textContent = 'Sign in';
+
+    const dialog = this.buildDialog();
+    trigger.onclick = () => {
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    };
+
+    this.el.append(trigger, dialog);
+  }
+
+  private buildDialog(): HTMLDialogElement {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'plate pilot-dialog';
+    dialog.setAttribute('closedby', 'any');
+    dialog.setAttribute('aria-labelledby', 'pilot-dialog-title');
+    dialog.dataset.testid = 'pilot-provider-dialog';
+
+    const head = document.createElement('div');
+    head.className = 'pilot-dialog-head';
+    const title = document.createElement('span');
+    title.id = 'pilot-dialog-title';
+    title.className = 'label';
+    title.textContent = 'SELECT PROVIDER';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn-ghost btn-sm';
+    closeBtn.dataset.testid = 'pilot-dialog-close';
+    closeBtn.textContent = '✕';
+    closeBtn.onclick = () => this.closeDialog(dialog);
+    head.append(title, closeBtn);
+
+    const list = document.createElement('div');
+    list.className = 'pilot-dialog-list';
+    for (const p of PROVIDERS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-ghost btn-sm';
+      btn.dataset.testid = p.testId;
+      btn.textContent = p.label;
+      btn.onclick = () => {
         if (this.busy) return;
+        this.closeDialog(dialog);
         this.popup = window.open(
-          `/dev/mock-oauth?provider=${provider}&return=${encodeURIComponent(location.pathname + location.search)}`,
+          `/dev/mock-oauth?provider=${p.id}&return=${encodeURIComponent(location.pathname + location.search)}`,
           'terra-mock-oauth',
           'popup,width=480,height=640',
         );
       };
-      this.el.append(button);
+      list.append(btn);
     }
+
+    dialog.onclick = (e) => {
+      if (e.target === dialog) this.closeDialog(dialog);
+    };
+    dialog.append(head, list);
+    return dialog;
+  }
+
+  private closeDialog(dialog: HTMLDialogElement): void {
+    if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+    else dialog.removeAttribute('open');
   }
 
   private linked(body: { accessToken: string; player: { id: string; isGuest?: boolean; handle: string } }): void {

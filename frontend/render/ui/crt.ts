@@ -2,7 +2,7 @@
    bright band, soft flicker, tape grain, a vignette and a rare sideways distortion wave on the canvases.
    One absolutely-positioned layer per host (the element that holds a WebGL canvas), so HTML interface layers that sit
    above the host are never touched. Plus a small on/off switch (button, or F9). The choice and all shader parameters are remembered. */
-import { disposePixelArt, initPixelArt } from './pixelArt';
+import { disposePixelArt, initPixelArt, setPixelArt, setShadow } from './pixelArt';
 import { initFpsCounter } from './fps';
 
 const KEY = 'terraagent.crt';
@@ -174,11 +174,23 @@ export function ensureFxBar(): HTMLElement {
   return bar;
 }
 
+export interface InitCrtOptions {
+  showControls?: boolean;
+  showFps?: boolean;
+  forceEnableAll?: boolean;
+}
+
 /** Mount one overlay per host (each host must contain the WebGL canvas) + the switch. Safe to call repeatedly. */
-export function initCrt(targets: HTMLElement[]) {
+export function initCrt(targets: HTMLElement[], opts?: InitCrtOptions) {
   if (document.getElementById('crt-css')) return;
   hosts = targets.filter(Boolean);
-  on = store.get(KEY, '1') === '1';
+  if (opts?.forceEnableAll) {
+    on = true;
+    setPixelArt(true, false);
+    setShadow(true);
+  } else {
+    on = store.get(KEY, '1') === '1';
+  }
   document.head.insertAdjacentHTML('beforeend', `<style id="crt-css">${CSS}</style>`);
   for (const h of hosts) {
     if (getComputedStyle(h).position === 'static') h.style.position = 'relative';
@@ -189,23 +201,27 @@ export function initCrt(targets: HTMLElement[]) {
     h.appendChild(el);
   }
 
-  const bar = ensureFxBar();
-  btn = document.createElement('button');
-  btn.id = 'crt-switch'; btn.type = 'button'; btn.setAttribute('role', 'switch');
-  btn.title = 'Old-TV look (F9)';
-  btn.innerHTML = '<span class="knob"></span><span>CRT</span>';
-  btn.addEventListener('click', () => { toggleCrt(); btn?.blur(); });
-  bar.appendChild(btn);
+  if (opts?.showControls !== false) {
+    const bar = ensureFxBar();
+    btn = document.createElement('button');
+    btn.id = 'crt-switch'; btn.type = 'button'; btn.setAttribute('role', 'switch');
+    btn.title = 'Old-TV look (F9)';
+    btn.innerHTML = '<span class="knob"></span><span>CRT</span>';
+    btn.addEventListener('click', () => { toggleCrt(); btn?.blur(); });
+    bar.appendChild(btn);
 
-  window.addEventListener('keydown', (e) => {
-    if (e.code !== 'F9' || e.repeat || (e.target as HTMLElement | null)?.closest?.('input, textarea')) return;
-    e.preventDefault(); toggleCrt();
-  });
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'F9' || e.repeat || (e.target as HTMLElement | null)?.closest?.('input, textarea')) return;
+      e.preventDefault(); toggleCrt();
+    });
+  }
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion:reduce)').matches;
   if (!reducedMotion) { document.body.insertAdjacentHTML('beforeend', SVG); schedule(); }
   apply();
-  initPixelArt();
-  initFpsCounter();
+  initPixelArt({ showControls: opts?.showControls });
+  if (opts?.showFps !== false) {
+    initFpsCounter();
+  }
 }
 
 export function disposeCrt() {

@@ -5,7 +5,7 @@ export interface MockTokenMessage {
 }
 
 export interface MockToken {
-  provider: 'google' | 'x';
+  provider: 'google' | 'x' | 'fastauth';
   token: string;
 }
 
@@ -16,7 +16,7 @@ export function readMockToken(event: MockTokenMessage, popup: unknown, origin: s
   if (!data || typeof data !== 'object') return null;
   const rec = data as { type?: unknown; provider?: unknown; token?: unknown };
   if (rec.type !== 'terra:mock-token') return null;
-  if (rec.provider !== 'google' && rec.provider !== 'x') return null;
+  if (rec.provider !== 'google' && rec.provider !== 'x' && rec.provider !== 'fastauth') return null;
   if (typeof rec.token !== 'string' || rec.token.length === 0) return null;
   return { provider: rec.provider, token: rec.token };
 }

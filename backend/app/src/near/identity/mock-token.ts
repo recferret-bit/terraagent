@@ -8,7 +8,7 @@ export const MOCK_OAUTH_SECRET_DEFAULT = 'terra-dev-mock-oauth-secret';
 export const MOCK_TOKEN_TTL_S = 5 * 60;
 
 export interface MockTokenClaims {
-  readonly provider: 'google' | 'x';
+  readonly provider: 'google' | 'x' | 'fastauth';
   readonly subject: string;
   readonly email?: string;
   /** Unix seconds. */
@@ -71,7 +71,7 @@ function readClaims(payload: string): MockTokenClaims {
   if (typeof value !== 'object' || value === null) rejected();
   const row = value as Record<string, unknown>;
   const { provider, subject, exp, email } = row;
-  if (provider !== 'google' && provider !== 'x') rejected();
+  if (provider !== 'google' && provider !== 'x' && provider !== 'fastauth') rejected();
   if (typeof subject !== 'string' || subject.length < 1 || subject.length > 64) rejected();
   if (typeof exp !== 'number' || !Number.isSafeInteger(exp)) rejected();
   if (email !== undefined && typeof email !== 'string') rejected();

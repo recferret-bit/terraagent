@@ -19,7 +19,12 @@ export function sameOriginOpener(win: Window): Window | null {
  * Popup path: `postMessage` the token and close. Does not navigate the opener (the game page).
  * No opener (the mock page was opened directly): redirect this window to `back#mock_token=`.
  */
-export function deliverMintedToken(win: Window, provider: 'google' | 'x', token: string, back: string): TokenDelivery {
+export function deliverMintedToken(
+  win: Window,
+  provider: 'google' | 'x' | 'fastauth',
+  token: string,
+  back: string,
+): TokenDelivery {
   const opener = sameOriginOpener(win);
   if (opener) {
     opener.postMessage({ type: 'terra:mock-token', provider, token }, win.location.origin);

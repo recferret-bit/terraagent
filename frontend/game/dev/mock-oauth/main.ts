@@ -9,12 +9,16 @@ function safeReturn(raw: string | null): string {
   return FALLBACK;
 }
 
-function providerOf(raw: string | null): 'google' | 'x' {
-  return raw === 'x' ? 'x' : 'google';
+function providerOf(raw: string | null): 'google' | 'x' | 'fastauth' {
+  if (raw === 'x') return 'x';
+  if (raw === 'near' || raw === 'fastauth') return 'fastauth';
+  return 'google';
 }
 
-function plateTitle(provider: 'google' | 'x'): string {
-  return provider === 'x' ? 'X (mock)' : 'Google (mock)';
+function plateTitle(provider: 'google' | 'x' | 'fastauth'): string {
+  if (provider === 'x') return 'X (mock)';
+  if (provider === 'fastauth') return 'NEAR (mock)';
+  return 'Google (mock)';
 }
 
 const params = new URLSearchParams(window.location.search);

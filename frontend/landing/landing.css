@@ -17,6 +17,7 @@
 .nav a:hover { color: var(--ta-orange-hi); }
 .nav a span { color: var(--ta-orange); }
 .header-right { display: flex; align-items: center; gap: 12px; }
+.header-right .btn-play-header { min-width: 176px; padding-inline: 36px; justify-content: center; }
 
 /* hero */
 .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--ta-seam); }
