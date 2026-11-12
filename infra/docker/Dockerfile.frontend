@@ -5,7 +5,9 @@
 FROM node:24-bookworm AS build
 WORKDIR /src
 COPY . .
-RUN npm ci
+RUN DATABASE_URL=postgresql://terra:terra@127.0.0.1:5432/terraagent \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    npm ci
 RUN node frontend/whitepaper/render.mjs
 RUN npx vite build --config frontend/vite.config.ts
 RUN node --input-type=module <<'EOF'
