@@ -5,6 +5,7 @@ import {
   buildFastAuthLoginUrl,
   buildNearWalletLoginUrl,
   consumeNearWalletCallback,
+  openNearWalletSelectorModal,
   readMockToken,
 } from './mockToken';
 import { probeIdentityAdapterMode } from './real/fastAuthClient';
@@ -163,7 +164,15 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
         if (!busy) popup = mode === 'mock' ? openMockProvider('x') : openFastAuthProvider('x');
       },
       fastAuth: () => {
-        if (!busy) popup = openNearWalletPopup();
+        if (busy) return;
+        openNearWalletSelectorModal({
+          onPopupOpened: (pop) => {
+            popup = pop;
+          },
+          onDirectToken: (hit) => {
+            runLogin(hit.provider, hit.token);
+          },
+        });
       },
       email: (addr) => {
         const clean = addr.trim().toLowerCase();

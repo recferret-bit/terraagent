@@ -1,10 +1,10 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
 import {
   buildFastAuthLoginUrl,
-  buildNearWalletLoginUrl,
   consumeNearWalletCallback,
   readMockToken,
 } from './mockToken';
+import { openNearWalletSelectorModal } from './nearWalletModal';
 
 const PILOT_DIALOG_CSS = `
 .pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:300px;max-width:360px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
@@ -116,11 +116,19 @@ export class PilotAccess {
         this.closeDialog(dialog);
         const returnPath = location.pathname + location.search;
         if (p.id === 'fastauth') {
-          this.popup = window.open(
-            buildNearWalletLoginUrl(location.origin, returnPath),
-            'terra-near-wallet',
-            'popup,width=500,height=680',
-          );
+          openNearWalletSelectorModal({
+            onPopupOpened: (pop) => {
+              this.popup = pop;
+            },
+            onDirectToken: (hit) => {
+              if (this.busy) return;
+              this.busy = true;
+              this.loginEpoch += 1;
+              void this.login(hit).finally(() => {
+                this.busy = false;
+              });
+            },
+          });
           return;
         }
         this.popup = window.open(

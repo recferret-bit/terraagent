@@ -55,12 +55,6 @@ export class TestnetIdentityAdapter implements IdentityPort {
 
   async loginSocial(input: SocialLoginInput): Promise<SocialLoginResult> {
     const provider = input.provider.trim().toLowerCase();
-    // 2-segment HMAC token from local/testnet OAuth popup (`google`, `x`, `fastauth`):
-    if ((this.rpc.network === 'testnet' || this.envSource.NODE_ENV !== 'production') && input.token.split('.').length === 2) {
-      const claims = verifyMockToken(input.token, mockOauthSecret(), Date.now());
-      if (claims.provider !== provider) throw new NearException('NEAR_PROVIDER_REJECTED');
-      return { playerId: claims.subject, email: claims.email ?? null, isNew: true };
-    }
 
     if ((provider === 'google' || provider === 'x' || provider === 'fastauth' || provider === 'near-auth') && input.token.startsWith('fastauth-code:')) {
       const verified = await verifyFastAuthPkceCode({
@@ -71,15 +65,31 @@ export class TestnetIdentityAdapter implements IdentityPort {
       return { playerId: verified.subject, email: verified.email, isNew: true };
     }
 
-    if (provider === 'fastauth' || provider === 'near-auth') {
-      if (input.token.startsWith('near-wallet:')) {
-        const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
-        if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
-          throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEAR wallet account ID' });
-        }
-        const subject = rawAccountId.replace(/\.(testnet|near)$/i, '') || rawAccountId;
-        return { playerId: subject, email: null, isNew: true };
+    if ((provider === 'fastauth' || provider === 'near-auth') && input.token.startsWith('near-wallet:')) {
+      const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
+      if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
+        throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEAR wallet account ID' });
       }
+      const subject = rawAccountId.replace(/\.(testnet|near)$/i, '') || rawAccountId;
+      return { playerId: subject, email: null, isNew: true };
+    }
+
+    if (provider === 'email' && (this.rpc.network === 'testnet' || this.envSource.NODE_ENV !== 'production')) {
+      const email = input.token.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid pilot email address' });
+      }
+      return { playerId: `email:${email}`, email, isNew: true };
+    }
+
+    // 2-segment HMAC token from local/testnet dev OAuth popup (`google`, `x`, `fastauth`):
+    if ((this.rpc.network === 'testnet' || this.envSource.NODE_ENV !== 'production') && input.token.split('.').length === 2 && !input.token.includes(':')) {
+      const claims = verifyMockToken(input.token, mockOauthSecret(), Date.now());
+      if (claims.provider !== provider) throw new NearException('NEAR_PROVIDER_REJECTED');
+      return { playerId: claims.subject, email: claims.email ?? null, isNew: true };
+    }
+
+    if (provider === 'fastauth' || provider === 'near-auth') {
       if (input.token.split('.').length === 3) {
         return this.verifyFastAuthJwt(input.token);
       }
@@ -102,14 +112,6 @@ export class TestnetIdentityAdapter implements IdentityPort {
 
     if (provider === 'x' && input.token.split('.').length === 3) {
       return this.verifyFastAuthJwt(input.token);
-    }
-
-    if (provider === 'email' && (this.rpc.network === 'testnet' || this.envSource.NODE_ENV !== 'production')) {
-      const email = input.token.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid pilot email address' });
-      }
-      return { playerId: `email:${email}`, email, isNew: true };
     }
 
     throw new NearException('NEAR_PROVIDER_REJECTED', { message: `Unsupported social provider: ${provider}` });

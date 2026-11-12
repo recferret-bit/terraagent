@@ -8,9 +8,10 @@
 /* header */
 .site-header { position: sticky; top: 0; z-index: 10; background: rgba(7,8,10,0.86); backdrop-filter: blur(10px); border-bottom: 1px solid var(--ta-seam); }
 .site-header .container { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding-top: 14px; padding-bottom: 14px; }
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--ta-text); }
+.brand { display: flex; align-items: center; gap: 14px; text-decoration: none; color: var(--ta-text); }
 .brand:hover { color: var(--ta-text); }
-.wordmark { font-family: var(--ta-font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.14em; }
+.brand-mark { width: 46px; height: 46px; flex: none; filter: drop-shadow(0 0 10px rgba(255, 106, 19, 0.28)); }
+.wordmark { font-family: var(--ta-font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.14em; }
 .wordmark b { color: var(--ta-orange); font-weight: 700; }
 .nav { display: flex; gap: 20px; flex-wrap: wrap; flex: 1 1 420px; font-family: var(--ta-font-mono); font-size: 12px; letter-spacing: 0.1em; }
 .nav a { color: var(--ta-text-2); text-decoration: none; }

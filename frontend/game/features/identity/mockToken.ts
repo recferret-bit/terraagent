@@ -9,3 +9,8 @@ export {
   type MockToken,
   type MockTokenMessage,
 } from '../../../design/pilot/mockToken';
+export {
+  openNearWalletSelectorModal,
+  readSavedNearWallet,
+  saveNearWallet,
+} from '../../../design/pilot/nearWalletModal';

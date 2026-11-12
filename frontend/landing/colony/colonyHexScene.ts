@@ -19,29 +19,29 @@ import {
   type HexTiles,
 } from '@terra/render/planets/hex';
 
-export const COLONY_HEX_RADIUS = 18;
+export const COLONY_HEX_RADIUS = 20;
 
 /**
- * Building centers & footprints on the hex grid, spaced with clear gaps between every building
- * and a >= 3-hex gap from the shoreline (`q + r >= 5`):
+ * Building centers & footprints on the hex grid, spaced with wide gaps between every building
+ * and a clear dry gap from the shoreline (`q + r >= 7`):
  * - HQ (`building.commandHub`, 3x3): center `(0, 0)` -> `q in [-1..1], r in [-1..1]`
- * - Pylon (`building.pylon`, 1x1): `(0, -3)` -> 2-hex gap north of HQ
- * - Solar Panel (`building.solar`, 2x2): `(-4, -1)` -> `q in [-4..-3], r in [-1..0]` (2-hex gap west of HQ)
- * - Metal Extractor (`building.mine`, 2x2): `(3, -3)` -> `q in [3..4], r in [-3..-2]` (2-hex gap east of HQ, 3-hex gap from water)
+ * - Pylon (`building.pylon`, 1x1): `(0, -3)` -> 2-hex gap north-west of HQ
+ * - Solar Panel (`building.solar`, 2x2): `(-4, -1)` -> `q in [-4..-3], r in [-1..0]` (2-hex gap left of HQ)
+ * - Metal Extractor (`building.mine`, 2x2): `(5, -2)` -> `q in [5..6], r in [-2..-1]` (4-hex wide gap to the right of HQ)
  */
 const BUILDING_CENTERS: ReadonlyArray<readonly [number, number]> = [
   [0, 0],
   [0, -3],
   [-4, -1],
   [-3, 0],
-  [3, -3],
-  [4, -2],
+  [5, -2],
+  [6, -1],
 ];
 
 /** True when `(q, r)` lies inside the pod-arrival blast circle or within the clear base compound around buildings. */
 function isInBaseClearZone(q: number, r: number, d: number): boolean {
   if (isInPodBlastCircle(0, 0, q, r)) return true;
-  if (d <= 5) return true;
+  if (d <= 6) return true;
   for (const [bq, br] of BUILDING_CENTERS) {
     if (hexDistance(bq, br, q, r) <= 2) return true;
   }
@@ -86,7 +86,7 @@ export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
     const q = hx.q[i]!;
     const r = hx.r[i]!;
     const d = hexDistance(0, 0, q, r);
-    const shoreDepth = q + r - 5;
+    const shoreDepth = q + r - 7;
 
     if (shoreDepth >= 0) {
       const isShallow = shoreDepth <= 1 || (shoreDepth === 2 && tileHash01(q, r, 3) < 0.45);
@@ -95,9 +95,9 @@ export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
       continue;
     }
 
-    if (d <= 6) owner[i] = 0;
+    if (d <= 7) owner[i] = 0;
 
-    if ((q === 3 && r === -3) || (q === 4 && r === -3)) {
+    if ((q === 5 && r === -2) || (q === 6 && r === -2)) {
       terrain[i] = HEX_TERRAIN.flat;
       prep[i] = HEX_PREP.prepared;
       height[i] = 0.16;
@@ -106,7 +106,7 @@ export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
       continue;
     }
 
-    if (q === 5 && r === -3) {
+    if (q === 7 && r === -2) {
       terrain[i] = HEX_TERRAIN.flat;
       prep[i] = HEX_PREP.wild;
       height[i] = 0.18;

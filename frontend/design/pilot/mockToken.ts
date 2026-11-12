@@ -1,3 +1,5 @@
+import { sha256Base64Url } from './pkceSha256';
+
 export interface MockTokenMessage {
   origin: string;
   source: unknown;
@@ -44,8 +46,8 @@ export function buildFastAuthLoginUrl(
   authorizeUrl.searchParams.set('redirect_uri', redirectUri);
   authorizeUrl.searchParams.set('scope', 'openid profile email');
   authorizeUrl.searchParams.set('state', state);
-  authorizeUrl.searchParams.set('code_challenge', verifier);
-  authorizeUrl.searchParams.set('code_challenge_method', 'plain');
+  authorizeUrl.searchParams.set('code_challenge', sha256Base64Url(verifier));
+  authorizeUrl.searchParams.set('code_challenge_method', 'S256');
   if (!opts?.universalFallback) {
     authorizeUrl.searchParams.set('connection', provider === 'google' ? 'google-oauth2' : 'twitter');
   }
@@ -131,6 +133,16 @@ export function consumeNearWalletCallback(env?: NearWalletCallbackEnv): MockToke
 
   const token = publicKey ? `near-wallet:${accountId}:${publicKey}` : `near-wallet:${accountId}`;
   const hit: MockToken = { provider: 'fastauth', token };
+  if (!env) {
+    try {
+      localStorage.setItem(
+        'ta_near_wallet',
+        JSON.stringify({ walletId: 'near-web', walletName: 'NEAR Web Wallet', accountId, publicKey: publicKey || undefined, connectedAt: Date.now() }),
+      );
+    } catch {
+      /* ignore storage errors */
+    }
+  }
 
   if (opener && (typeof window === 'undefined' || opener !== window)) {
     try {

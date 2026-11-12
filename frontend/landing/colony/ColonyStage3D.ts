@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { setDayNight, setDayNightExternalSync, setDayNightParams } from '@terra/render/core/dayNightConfig';
 import { StageHost } from '@terra/render/core/StageHost';
 import {
   createArchetypeMesh,
@@ -123,6 +124,9 @@ export class ColonyStage3D {
   constructor(private readonly host: HTMLElement) {
     host.querySelector('#colony-canvas')?.remove();
     resetColonyVisionAndLights();
+    setDayNightExternalSync(true);
+    setDayNight(true);
+    setDayNightParams({ timeOfDay: 10.5, timeScale: 0 }, 'sync');
 
     this.vp = createColonyViewport(host);
     const look = specForPlanetType('ocean');
@@ -183,8 +187,8 @@ export class ColonyStage3D {
     const pylon = this.placeConstructibleBuilding(2, 'building.pylon', biomeKey, 0, -3, '1x1', Math.PI / 2);
     // 3. Solar Panel (2x2) at (-4, -1) -> occupies q in [-4..-3], r in [-1..0] (2-hex gap west of HQ)
     const solar = this.placeConstructibleBuilding(3, 'building.solar', biomeKey, -4, -1, '2x2', Math.PI / 2);
-    // 4. Metal Extractor (2x2) at (3, -3) -> occupies q in [3..4], r in [-3..-2] (2-hex gap east of HQ, 3-hex gap from water)
-    const mine = this.placeConstructibleBuilding(4, 'building.mine', biomeKey, 3, -3, '2x2', Math.PI / 2);
+    // 4. Metal Extractor (2x2) at (5, -2) -> occupies q in [5..6], r in [-2..-1] (wide 4-hex gap to the right of HQ)
+    const mine = this.placeConstructibleBuilding(4, 'building.mine', biomeKey, 5, -2, '2x2', Math.PI / 2);
 
     const spans = buildColonyPowerSpans({ hq, pylon, solar, mine });
     this.gridCables.setSpans(spans, (x, z) => this.terrain.heightAt(x, z));
@@ -202,10 +206,10 @@ export class ColonyStage3D {
         archetypeId: 'robot.miner',
         mesh: minerMesh,
         stops: [
-          { q: 2, r: -1, targetQ: 0, targetR: 0, targetKind: 'repair', targetOffsetY: 0.48 },
-          { q: 4, r: -2, targetQ: 5, targetR: -3, targetKind: 'metals', targetOffsetY: 0.38 },
+          { q: 2, r: 0, targetQ: 0, targetR: 0, targetKind: 'repair', targetOffsetY: 0.48 },
+          { q: 6, r: -2, targetQ: 7, targetR: -2, targetKind: 'metals', targetOffsetY: 0.38 },
         ],
-        moveDurationS: 2.5,
+        moveDurationS: 2.8,
         workDurationS: 2.8,
         phaseS: 0.5,
       },
@@ -226,13 +230,13 @@ export class ColonyStage3D {
 
   /** Applies the exact `RTSCamera` angle (`fov = 28°`, `elev = 42°`, `yaw = 45°`) and shadow-frustum tracking. */
   private applyGameplayCameraPose(): void {
-    const [tx, tz] = tileXZ(0.3, -0.3);
+    const [tx, tz] = tileXZ(1.0, -0.3);
     const ty = this.terrain.heightAt(tx, tz);
     this.lookTarget.set(tx, ty, tz);
 
     const elev = THREE.MathUtils.degToRad(42);
     const yaw = Math.PI / 4;
-    const dist = 40;
+    const dist = 42;
     const h = Math.sin(elev) * dist;
     const r = Math.cos(elev) * dist;
 
@@ -293,6 +297,7 @@ export class ColonyStage3D {
   }
 
   dispose(): void {
+    setDayNightExternalSync(false);
     this.workParticles.dispose();
     this.gridCables.dispose();
     this.terrain.dispose();

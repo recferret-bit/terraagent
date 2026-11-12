@@ -138,7 +138,10 @@ export async function verifyFastAuthPkceCode(params: {
     signal: AbortSignal.timeout(8_000),
   });
   if (!tokenRes.ok) {
-    throw new NearException('NEAR_PROVIDER_REJECTED', { message: `FastAuth token exchange HTTP ${tokenRes.status}` });
+    const errText = await tokenRes.text().catch(() => '');
+    throw new NearException('NEAR_PROVIDER_REJECTED', {
+      message: `FastAuth token exchange HTTP ${tokenRes.status}: ${errText.slice(0, 200)}`,
+    });
   }
   const body = (await tokenRes.json()) as { id_token?: string };
   if (!body.id_token || typeof body.id_token !== 'string') {

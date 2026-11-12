@@ -65,12 +65,26 @@ describe('pilot access outside gameplay', () => {
     expect(nearBtn?.textContent).toBe('NEAR');
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     nearBtn!.click();
-    expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(openSpy.mock.calls[0]?.[0]).toContain('https://testnet.mynearwallet.com/login/');
-    expect(openSpy.mock.calls[0]?.[1]).toBe('terra-near-wallet');
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  });
+    const nearModal = document.querySelector<HTMLDialogElement>('[data-testid="near-wallet-modal"]');
+    expect(nearModal).not.toBeNull();
+    expect(nearModal?.querySelector('[data-testid="near-wallet-meteor"]')).not.toBeNull();
+    expect(nearModal?.querySelector('[data-testid="near-wallet-okx"]')).not.toBeNull();
+    expect(nearModal?.querySelector('[data-testid="near-wallet-mobile"]')).not.toBeNull();
+    expect(nearModal?.querySelector('[data-testid="near-wallet-cli"]')).not.toBeNull();
+    expect(nearModal?.querySelector('[data-testid="near-wallet-intear"]')).not.toBeNull();
+    expect(nearModal?.querySelector('[data-testid="near-wallet-mynearwallet"]')).not.toBeNull();
 
+    nearModal!.querySelector<HTMLButtonElement>('[data-testid="near-wallet-cli"]')!.click();
+    const cliInput = nearModal!.querySelector<HTMLInputElement>('[data-testid="near-account-input"]')!;
+    cliInput.value = 'commander.testnet';
+    nearModal!.querySelector<HTMLButtonElement>('[data-testid="near-account-submit"]')!.click();
+    expect(JSON.parse(localStorage.getItem('ta_near_wallet')!).accountId).toBe('commander.testnet');
+    expect(openSpy).toHaveBeenCalledTimes(0);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('NEAR wallet & FastAuth OAuth URL builders', () => {
   it('builds real NEAR wallet login URLs and parses near_wallet_callback redirects', () => {
     const url = buildNearWalletLoginUrl('https://terraagent.fun', '/landing.html');
     expect(url).toContain('https://testnet.mynearwallet.com/login/?');
