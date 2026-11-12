@@ -79,7 +79,7 @@ function stepHexBot(
   }
 
   const wy = terrain.heightAt(x1, z1);
-  bot.mesh.position.set(wxOr(x1), wy, wxOr(z1));
+  bot.mesh.position.set(x1, wy, z1);
   const [tx, tz] = tileXZ(toStop.targetQ, toStop.targetR);
   const dx = tx - x1;
   const dz = tz - z1;
@@ -101,15 +101,11 @@ function stepHexBot(
   });
 }
 
-function wxOr(v: number): number {
-  return v;
-}
-
 /**
  * Exact in-game hex gameplay renderer for Section 02 (`02 · A COLONY, RUNNING`):
- * - Uses `createHexTerrain` on the `ocean` (`oceanForest`) planet spec with coastal water, forest trees, territory border & metal deposit
+ * - Uses `createHexTerrain` on the `ocean` (`oceanForest`) planet spec with a clear pod-arrival radius around the base
  * - Places HQ (`building.commandHub`), Solar Array (`building.solar`), Pylon (`building.pylon`), and Metal Extractor (`building.mine`)
- *   using in-game plinth stripping (`stripBuildingPlinth`) and `GridCableRenderer` power cables + arcs
+ *   with clean gaps between buildings and a clear gap from the shoreline water
  * - Drives 2 bots (`robot.miner`, `robot.builder`) with `WorkParticleSystem` tool beams and bouncing 3D debris chunks
  * - Uses the exact `RTSCamera` angle (`fov = 28°`, `elev = 42°`, `yaw = 45°`) and `vp.followShadow(target)` with zero user input
  */
@@ -181,14 +177,14 @@ export class ColonyStage3D {
   }
 
   private populateColony(biomeKey: string): void {
-    // 1. HQ building (Command Hub, 3x3) at (0, 0)
+    // 1. HQ building (Command Hub, 3x3) at (0, 0) -> occupies q in [-1..1], r in [-1..1]
     const hq = this.placeConstructibleBuilding(1, 'building.commandHub', biomeKey, 0, 0, '3x3', Math.PI / 2);
-    // 2. Pylon (1x1) at (-1, -2)
-    const pylon = this.placeConstructibleBuilding(2, 'building.pylon', biomeKey, -1, -2, '1x1', Math.PI / 2);
-    // 3. Solar Panel (2x2) at (-3, -1)
-    const solar = this.placeConstructibleBuilding(3, 'building.solar', biomeKey, -3, -1, '2x2', Math.PI / 2);
-    // 4. Metal Extractor (2x2) on metal deposit at (1, -2)
-    const mine = this.placeConstructibleBuilding(4, 'building.mine', biomeKey, 1, -2, '2x2', Math.PI / 2);
+    // 2. Pylon (1x1) at (0, -3) -> 2-hex gap north of HQ
+    const pylon = this.placeConstructibleBuilding(2, 'building.pylon', biomeKey, 0, -3, '1x1', Math.PI / 2);
+    // 3. Solar Panel (2x2) at (-4, -1) -> occupies q in [-4..-3], r in [-1..0] (2-hex gap west of HQ)
+    const solar = this.placeConstructibleBuilding(3, 'building.solar', biomeKey, -4, -1, '2x2', Math.PI / 2);
+    // 4. Metal Extractor (2x2) at (3, -3) -> occupies q in [3..4], r in [-3..-2] (2-hex gap east of HQ, 3-hex gap from water)
+    const mine = this.placeConstructibleBuilding(4, 'building.mine', biomeKey, 3, -3, '2x2', Math.PI / 2);
 
     const spans = buildColonyPowerSpans({ hq, pylon, solar, mine });
     this.gridCables.setSpans(spans, (x, z) => this.terrain.heightAt(x, z));
@@ -206,10 +202,10 @@ export class ColonyStage3D {
         archetypeId: 'robot.miner',
         mesh: minerMesh,
         stops: [
-          { q: 1, r: 0, targetQ: 0, targetR: 0, targetKind: 'repair', targetOffsetY: 0.48 },
-          { q: 2, r: -1, targetQ: 3, targetR: -2, targetKind: 'metals', targetOffsetY: 0.38 },
+          { q: 2, r: -1, targetQ: 0, targetR: 0, targetKind: 'repair', targetOffsetY: 0.48 },
+          { q: 4, r: -2, targetQ: 5, targetR: -3, targetKind: 'metals', targetOffsetY: 0.38 },
         ],
-        moveDurationS: 2.4,
+        moveDurationS: 2.5,
         workDurationS: 2.8,
         phaseS: 0.5,
       },
@@ -218,10 +214,10 @@ export class ColonyStage3D {
         archetypeId: 'robot.builder',
         mesh: builderMesh,
         stops: [
-          { q: -2, r: -1, targetQ: -3, targetR: 0, targetKind: 'repair', targetOffsetY: 0.48 },
-          { q: -1, r: 1, targetQ: -1, targetR: 2, targetKind: 'tree', targetOffsetY: 0.52 },
+          { q: -2, r: -1, targetQ: -3, targetR: -1, targetKind: 'repair', targetOffsetY: 0.48 },
+          { q: -3, r: 4, targetQ: -3, targetR: 5, targetKind: 'tree', targetOffsetY: 0.52 },
         ],
-        moveDurationS: 2.6,
+        moveDurationS: 2.8,
         workDurationS: 2.6,
         phaseS: 2.7,
       },
@@ -230,13 +226,13 @@ export class ColonyStage3D {
 
   /** Applies the exact `RTSCamera` angle (`fov = 28°`, `elev = 42°`, `yaw = 45°`) and shadow-frustum tracking. */
   private applyGameplayCameraPose(): void {
-    const [tx, tz] = tileXZ(0.2, -0.3);
+    const [tx, tz] = tileXZ(0.3, -0.3);
     const ty = this.terrain.heightAt(tx, tz);
     this.lookTarget.set(tx, ty, tz);
 
     const elev = THREE.MathUtils.degToRad(42);
     const yaw = Math.PI / 4;
-    const dist = 36;
+    const dist = 40;
     const h = Math.sin(elev) * dist;
     const r = Math.cos(elev) * dist;
 

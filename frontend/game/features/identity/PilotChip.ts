@@ -1,8 +1,8 @@
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { copyText, type TextClipboard } from './copyText';
-import { readMockToken } from './mockToken';
-import { loginWithFastAuthPopup, probeIdentityAdapterMode } from './real/fastAuthClient';
+import { buildNearWalletLoginUrl, consumeNearWalletCallback, readMockToken } from './mockToken';
+import { probeIdentityAdapterMode } from './real/fastAuthClient';
 
 const FAULT = 'That sign-in could not be confirmed.';
 
@@ -10,6 +10,12 @@ const FAULT = 'That sign-in could not be confirmed.';
 export function openMockProvider(provider: 'google' | 'x'): Window | null {
   const ret = encodeURIComponent(location.pathname + location.search);
   return window.open(`/dev/mock-oauth?provider=${provider}&return=` + ret, 'terra-mock-oauth', 'popup,width=480,height=640');
+}
+
+/** Opens the real NEAR Testnet Wallet sign-in dialog in a popup. */
+export function openNearWalletPopup(): Window | null {
+  const url = buildNearWalletLoginUrl(location.origin, location.pathname + location.search);
+  return window.open(url, 'terra-near-wallet', 'popup,width=500,height=680');
 }
 
 function guestLine(onSave: () => void): HTMLElement {
@@ -140,12 +146,7 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
       google: () => { if (!busy) popup = openMockProvider('google'); },
       x: () => { if (!busy) popup = openMockProvider('x'); },
       fastAuth: () => {
-        if (busy || !pilot) return;
-        busy = true;
-        void loginWithFastAuthPopup()
-          .then((res) => pilot.loginSocial('fastauth', res.rawIdToken))
-          .then(() => { fault = ''; }, () => { fault = FAULT; open = true; })
-          .finally(() => { busy = false; if (!disposed) render(); });
+        if (!busy) popup = openNearWalletPopup();
       },
       email: (addr) => {
         const clean = addr.trim().toLowerCase();
@@ -175,6 +176,10 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
     runLogin(hit.provider, hit.token);
   };
 
+  const nearCallback = consumeNearWalletCallback();
+  if (nearCallback) {
+    runLogin(nearCallback.provider, nearCallback.token);
+  }
   window.addEventListener('message', onMessage);
   const off = pilot?.subscribe(() => render());
   render();

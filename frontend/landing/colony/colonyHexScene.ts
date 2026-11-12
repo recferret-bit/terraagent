@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isInPodBlastCircle } from '@terra/sim';
 import { hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import {
   buildingCableAnchor,
@@ -18,33 +19,59 @@ import {
   type HexTiles,
 } from '@terra/render/planets/hex';
 
-export const COLONY_HEX_RADIUS = 16;
+export const COLONY_HEX_RADIUS = 18;
 
-function isPreparedColonyPad(q: number, r: number, d: number): boolean {
-  if (d <= 2 && q + r <= 2) return true;
-  // Solar Panel 2x2 footprint at (-3, -1) and Pylon at (-1, -2)
-  if (q >= -3 && q <= -1 && r >= -2 && r <= 1) return true;
-  // Metal Extractor 2x2 footprint at (1, -2) and path to HQ
-  if (q >= 0 && q <= 2 && r >= -2 && r <= 0) return true;
+/**
+ * Building centers & footprints on the hex grid, spaced with clear gaps between every building
+ * and a >= 3-hex gap from the shoreline (`q + r >= 5`):
+ * - HQ (`building.commandHub`, 3x3): center `(0, 0)` -> `q in [-1..1], r in [-1..1]`
+ * - Pylon (`building.pylon`, 1x1): `(0, -3)` -> 2-hex gap north of HQ
+ * - Solar Panel (`building.solar`, 2x2): `(-4, -1)` -> `q in [-4..-3], r in [-1..0]` (2-hex gap west of HQ)
+ * - Metal Extractor (`building.mine`, 2x2): `(3, -3)` -> `q in [3..4], r in [-3..-2]` (2-hex gap east of HQ, 3-hex gap from water)
+ */
+const BUILDING_CENTERS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],
+  [0, -3],
+  [-4, -1],
+  [-3, 0],
+  [3, -3],
+  [4, -2],
+];
+
+/** True when `(q, r)` lies inside the pod-arrival blast circle or within the clear base compound around buildings. */
+function isInBaseClearZone(q: number, r: number, d: number): boolean {
+  if (isInPodBlastCircle(0, 0, q, r)) return true;
+  if (d <= 5) return true;
+  for (const [bq, br] of BUILDING_CENTERS) {
+    if (hexDistance(bq, br, q, r) <= 2) return true;
+  }
   return false;
 }
 
-function isForestRingTile(q: number, r: number): boolean {
+function isPreparedColonyPad(q: number, r: number, d: number): boolean {
+  if (isInPodBlastCircle(0, 0, q, r) || d <= 4) return true;
+  for (const [bq, br] of BUILDING_CENTERS) {
+    if (hexDistance(bq, br, q, r) <= 1) return true;
+  }
+  return false;
+}
+
+function isOuterForestTile(q: number, r: number): boolean {
   const key = `${q},${r}`;
-  const scenicTrees = new Set([
-    '-3,2', '-2,2', '-1,2', '0,2', '1,1', '2,0', '3,-1', '4,-2',
-    '-4,1', '-4,0', '-3,-2', '-2,-3', '0,-3', '1,-3', '2,-4', '3,-3',
+  const scenicOuterTrees = new Set([
+    '-4,5', '-3,5', '-2,5', '-5,4', '-6,3', '-6,2',
+    '-5,-1', '-6,-1', '-5,-2', '-4,-3', '-3,-4', '-2,-5', '0,-6', '2,-6', '4,-6', '6,-5',
   ]);
-  if (scenicTrees.has(key)) return true;
-  return tileHash01(q, r, 7) < 0.68;
+  if (scenicOuterTrees.has(key)) return true;
+  return tileHash01(q, r, 7) < 0.65;
 }
 
 /**
  * Deterministic `HexTiles` for an `oceanForest` (Thalassa Verde) shoreline colony:
- * - Prepared colony pad around `(0, 0)` with colony territory border (`owner = 0`)
- * - Shallow & deep ocean water tiles along the south-east shoreline (`q + r >= 3`)
- * - Lush forest tree tiles framing the colony and shoreline
- * - Metal deposit tiles at `(1, -2)` (under the extractor) and `(3, -2)` (active mining vein)
+ * - Clear pod-arrival radius (`isInPodBlastCircle` + `d <= 5` around base) completely free of trees and obstacles
+ * - Shallow & deep ocean water tiles set back at `q + r >= 5` so there is a wide dry gap between buildings and water
+ * - Outer forest tree ring (`d >= 6`) framing the base clearing
+ * - Metal deposit tiles at `(3, -3)..(4, -3)` (under the extractor) and `(5, -3)` (active mining vein)
  */
 export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
   const hx = hexIndex(radius);
@@ -59,7 +86,7 @@ export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
     const q = hx.q[i]!;
     const r = hx.r[i]!;
     const d = hexDistance(0, 0, q, r);
-    const shoreDepth = q + r - 3;
+    const shoreDepth = q + r - 5;
 
     if (shoreDepth >= 0) {
       const isShallow = shoreDepth <= 1 || (shoreDepth === 2 && tileHash01(q, r, 3) < 0.45);
@@ -68,45 +95,45 @@ export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
       continue;
     }
 
-    if (d <= 5) owner[i] = 0;
+    if (d <= 6) owner[i] = 0;
 
-    if ((q === 1 && r === -2) || (q === 2 && r === -2)) {
+    if ((q === 3 && r === -3) || (q === 4 && r === -3)) {
       terrain[i] = HEX_TERRAIN.flat;
       prep[i] = HEX_PREP.prepared;
+      height[i] = 0.16;
+      deposit[i] = HEX_DEPOSIT.metals;
+      richness[i] = 10000;
+      continue;
+    }
+
+    if (q === 5 && r === -3) {
+      terrain[i] = HEX_TERRAIN.flat;
+      prep[i] = HEX_PREP.wild;
       height[i] = 0.18;
       deposit[i] = HEX_DEPOSIT.metals;
       richness[i] = 10000;
       continue;
     }
 
-    if (q === 3 && r === -2) {
+    if (isInBaseClearZone(q, r, d)) {
       terrain[i] = HEX_TERRAIN.flat;
-      prep[i] = HEX_PREP.wild;
-      height[i] = 0.2;
-      deposit[i] = HEX_DEPOSIT.metals;
-      richness[i] = 10000;
-      continue;
-    }
-
-    if (isPreparedColonyPad(q, r, d)) {
-      terrain[i] = HEX_TERRAIN.flat;
-      prep[i] = HEX_PREP.prepared;
+      prep[i] = isPreparedColonyPad(q, r, d) ? HEX_PREP.prepared : HEX_PREP.wild;
       height[i] = 0.16;
       continue;
     }
 
-    if (isForestRingTile(q, r)) {
+    if (isOuterForestTile(q, r)) {
       terrain[i] = HEX_TERRAIN.forest;
       prep[i] = HEX_PREP.wild;
       height[i] = 0.22 + tileHash01(q, r, 13) * 0.24;
-    } else if (d >= 4 && tileHash01(q, r, 19) > 0.78) {
+    } else if (d >= 7 && tileHash01(q, r, 19) > 0.8) {
       terrain[i] = HEX_TERRAIN.rock;
       prep[i] = HEX_PREP.wild;
       height[i] = 0.34 + tileHash01(q, r, 23) * 0.3;
     } else {
       terrain[i] = HEX_TERRAIN.flat;
       prep[i] = HEX_PREP.wild;
-      height[i] = 0.18 + tileHash01(q, r, 29) * 0.12;
+      height[i] = 0.18 + tileHash01(q, r, 29) * 0.1;
     }
   }
 

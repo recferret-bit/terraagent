@@ -38,6 +38,14 @@ export class MockIdentityAdapter implements IdentityPort {
   }
 
   async loginSocial(input: SocialLoginInput): Promise<SocialLoginResult> {
+    if ((input.provider === 'fastauth' || input.provider === 'near-auth') && input.token.startsWith('near-wallet:')) {
+      const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
+      if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
+        throw new NearException('NEAR_PROVIDER_REJECTED');
+      }
+      const subject = rawAccountId.replace(/\.(testnet|near)$/i, '') || rawAccountId;
+      return { playerId: subject, email: null, isNew: true };
+    }
     const claims = verifyMockToken(input.token, mockOauthSecret(), Date.now());
     if (claims.provider !== input.provider) throw new NearException('NEAR_PROVIDER_REJECTED');
     return { playerId: claims.subject, email: claims.email ?? null, isNew: true };

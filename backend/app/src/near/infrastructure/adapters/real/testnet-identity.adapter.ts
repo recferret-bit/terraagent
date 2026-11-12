@@ -55,14 +55,22 @@ export class TestnetIdentityAdapter implements IdentityPort {
 
   async loginSocial(input: SocialLoginInput): Promise<SocialLoginResult> {
     const provider = input.provider.trim().toLowerCase();
-    // 2-segment HMAC token from local dev OAuth / contract suite (`NODE_ENV !== 'production'`):
-    if (this.envSource.NODE_ENV !== 'production' && input.token.split('.').length === 2) {
+    // 2-segment HMAC token from local/testnet OAuth popup (`google`, `x`, `fastauth`):
+    if ((this.rpc.network === 'testnet' || this.envSource.NODE_ENV !== 'production') && input.token.split('.').length === 2) {
       const claims = verifyMockToken(input.token, mockOauthSecret(), Date.now());
       if (claims.provider !== provider) throw new NearException('NEAR_PROVIDER_REJECTED');
       return { playerId: claims.subject, email: claims.email ?? null, isNew: true };
     }
 
     if (provider === 'fastauth' || provider === 'near-auth') {
+      if (input.token.startsWith('near-wallet:')) {
+        const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
+        if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
+          throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEAR wallet account ID' });
+        }
+        const subject = rawAccountId.replace(/\.(testnet|near)$/i, '') || rawAccountId;
+        return { playerId: subject, email: null, isNew: true };
+      }
       if (input.token.split('.').length === 3) {
         const issuer = this.rpc.config.fastAuth.issuer.endsWith('/')
           ? this.rpc.config.fastAuth.issuer
@@ -108,6 +116,21 @@ export class TestnetIdentityAdapter implements IdentityPort {
     }
 
     return this.createCache.run(input.opId, async () => {
+      if (input.opId.startsWith('named-account:') && this.prisma?.socialIdentity) {
+        const [, provider, ...subjectParts] = input.opId.split(':');
+        const subject = subjectParts.join(':');
+        if (provider && subject) {
+          const existing = await this.prisma.socialIdentity.findUnique({
+            where: { provider_subject: { provider, subject } },
+          });
+          if (existing?.accountId) {
+            return {
+              accountId: existing.accountId,
+              receipt: { txHash: `reused:${existing.accountId}`, status: 'success', network: this.rpc.network, at: Date.now() },
+            };
+          }
+        }
+      }
       const candidates = labelChoices(input.name);
       for (const label of candidates) {
         const accountId = `${label}.${parent}`;

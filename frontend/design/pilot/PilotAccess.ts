@@ -1,5 +1,5 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
-import { readMockToken } from './mockToken';
+import { buildNearWalletLoginUrl, consumeNearWalletCallback, readMockToken } from './mockToken';
 
 const PILOT_DIALOG_CSS = `
 .pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:300px;max-width:360px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
@@ -40,7 +40,16 @@ export class PilotAccess {
     parent.append(this.el);
     this.guest();
     window.addEventListener('message', this.onMessage);
-    void this.restore();
+    const walletHit = consumeNearWalletCallback();
+    if (walletHit) {
+      this.busy = true;
+      this.loginEpoch += 1;
+      void this.login(walletHit).finally(() => {
+        this.busy = false;
+      });
+    } else {
+      void this.restore();
+    }
   }
 
   private guest(errorMessage = ''): void {
@@ -100,8 +109,17 @@ export class PilotAccess {
       btn.onclick = () => {
         if (this.busy) return;
         this.closeDialog(dialog);
+        const returnPath = location.pathname + location.search;
+        if (p.id === 'fastauth') {
+          this.popup = window.open(
+            buildNearWalletLoginUrl(location.origin, returnPath),
+            'terra-near-wallet',
+            'popup,width=500,height=680',
+          );
+          return;
+        }
         this.popup = window.open(
-          `/dev/mock-oauth?provider=${p.id}&return=${encodeURIComponent(location.pathname + location.search)}`,
+          `/dev/mock-oauth?provider=${p.id}&return=${encodeURIComponent(returnPath)}`,
           'terra-mock-oauth',
           'popup,width=480,height=640',
         );

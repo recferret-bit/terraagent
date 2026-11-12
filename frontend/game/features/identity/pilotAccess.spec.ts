@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PilotAccess } from '../../../design/pilot/PilotAccess';
-import { readMockToken } from '../../../design/pilot/mockToken';
+import { buildNearWalletLoginUrl, consumeNearWalletCallback, readMockToken } from '../../../design/pilot/mockToken';
 import { renderPlanetsSection } from '../../pages/me/sections/PlanetsHistoryPlaySections';
 import { makeW12ProfileFixture } from '../../pages/me/testFixtures';
 
@@ -56,8 +56,30 @@ describe('pilot access outside gameplay', () => {
     expect(dialog?.hasAttribute('open')).toBe(true);
     expect(parent.querySelector('[data-testid="continue-google"]')?.textContent).toBe('Google');
     expect(parent.querySelector('[data-testid="continue-x"]')?.textContent).toBe('X');
-    expect(parent.querySelector('[data-testid="continue-near"]')?.textContent).toBe('NEAR');
+    const nearBtn = parent.querySelector<HTMLButtonElement>('[data-testid="continue-near"]');
+    expect(nearBtn?.textContent).toBe('NEAR');
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    nearBtn!.click();
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy.mock.calls[0]?.[0]).toContain('https://testnet.mynearwallet.com/login/');
+    expect(openSpy.mock.calls[0]?.[1]).toBe('terra-near-wallet');
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds real NEAR wallet login URLs and parses near_wallet_callback redirects', () => {
+    const url = buildNearWalletLoginUrl('https://terraagent.fun', '/landing.html');
+    expect(url).toContain('https://testnet.mynearwallet.com/login/?');
+    expect(url).toContain(encodeURIComponent('https://terraagent.fun/landing.html?near_wallet_callback=1'));
+    const parsed = consumeNearWalletCallback({
+      search: '?near_wallet_callback=1&account_id=alice.testnet&all_keys=ed25519%3Aabc',
+      origin: 'https://terraagent.fun',
+      pathname: '/landing.html',
+      opener: null,
+    });
+    expect(parsed).toEqual({
+      provider: 'fastauth',
+      token: 'near-wallet:alice.testnet:ed25519:abc',
+    });
   });
 
   it('supports Google, X, and NEAR tokens in readMockToken', () => {
