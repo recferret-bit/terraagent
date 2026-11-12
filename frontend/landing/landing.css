@@ -60,7 +60,8 @@
 
 /* 02 colony */
 .colony-row { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 48px; }
-.viewport-colony { flex: 999 1 640px; min-width: 0; height: 560px; }
+.viewport-colony { flex: 999 1 640px; min-width: 0; height: 560px; pointer-events: none; user-select: none; }
+.viewport-colony canvas { pointer-events: none; cursor: default; }
 .legend { flex: 1 1 280px; display: flex; flex-direction: column; gap: 12px; }
 .legend-item { display: flex; gap: 14px; align-items: start; padding: 18px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam); }
 .legend-item b { display: block; color: var(--ta-text); font-family: var(--ta-font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }

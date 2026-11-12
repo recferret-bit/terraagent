@@ -12,6 +12,7 @@ import { createDescentSequence } from '../descent/createDescent';
 import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
 import { resetDeviceSecret } from './online/bootOnline';
+import { clearPendingJoinIntent } from './online/joinQueueFlow';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
 import { track } from '../core/analytics';
@@ -207,9 +208,10 @@ export class Game {
     this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
     this.skipOnlineLanding = false;
     if (this.useOnlineGameplay) {
-      // dev builds: every DEPLOY is a fresh guest, so the pick lands on a planet of that type; production keeps the
-      // guest and its colony (FA-09: no abandoned colonies piling up on real planets)
-      if (import.meta.env.DEV) resetDeviceSecret();
+      // Every explicit DEPLOY from the orbital planet selector starts a fresh guest on the selected planet family
+      // (`dune` -> desert, `oceanForest` -> ocean, `forestRock` -> temperate), ignoring any stale refresh cookie.
+      resetDeviceSecret();
+      if (typeof localStorage !== 'undefined') clearPendingJoinIntent(localStorage);
       if (!this.settings.skipCinematic) {
         this.online = new OnlineSession(this.root, 'boot', {
           viewport: this.viewport,
@@ -217,6 +219,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: false,
           fromSpaceDescent: true,
+          tryRefresh: false,
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
@@ -317,6 +320,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: true,
           fromSpaceDescent: false,
+          tryRefresh: false,
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
         });

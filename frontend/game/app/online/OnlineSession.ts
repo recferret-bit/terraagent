@@ -54,6 +54,8 @@ export interface OnlineSessionOptions {
   skipDescent?: boolean; fromSpaceDescent?: boolean; onReturnToOrbit?: (kind: PlanetKind) => void;
   /** May an unreachable game server fall back to a browser-local host (FA-06)? Default: dev builds only. */
   allowLocalFallback?: boolean;
+  /** When false, skip `/v1/auth/refresh` on initial boot and log in with `deviceSecret` directly. */
+  tryRefresh?: boolean;
 }
 
 /** Online play flow (`/play.html` short landing or `/play.html?planet=<kind>` full space-to-surface landing). */

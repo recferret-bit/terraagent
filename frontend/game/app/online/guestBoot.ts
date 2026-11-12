@@ -24,6 +24,8 @@ export interface GuestBootOptions {
   wait?(ms: number): Promise<void>;
   /** May an unreachable server fall back to a browser-local host (default: dev builds). */
   allowLocalFallback?: boolean;
+  /** When false, skip `/v1/auth/refresh` and authenticate directly with the current `deviceSecret` (e.g. fresh orbit deploy). */
+  tryRefresh?: boolean;
   /** Splash status line. */
   onStatus?(status: string): void;
   /** Queue status callback while `GET /v1/me/home` reports `QUEUED`. */
@@ -64,7 +66,8 @@ export class GuestBootTarget implements SessionTarget {
     for (;;) {
       if (this.disposed) return null;
       try {
-        return this.adopt(await bootAuthAndHome(this.authOptions(!new URLSearchParams(this.o.search).has('as'))));
+        const shouldRefresh = this.o.tryRefresh ?? !new URLSearchParams(this.o.search).has('as');
+        return this.adopt(await bootAuthAndHome(this.authOptions(shouldRefresh)));
       } catch (e) {
         if (e instanceof BootCancelledError || this.disposed) return null;
         if (!this.o.onError) throw e;

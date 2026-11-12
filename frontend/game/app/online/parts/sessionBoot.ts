@@ -70,6 +70,7 @@ export function createSessionBootRig(params: {
       pollIntervalMs: opts.pollIntervalMs,
       wait: opts.wait,
       allowLocalFallback,
+      tryRefresh: opts.tryRefresh,
       onStatus: (s) => getBootOverlay()?.setSplashStatus(s),
       onQueueStatus: (status, cancel) => getBootOverlay()?.showQueueStatus(status, cancel),
       onQueueCancelled: (ticketId) => {

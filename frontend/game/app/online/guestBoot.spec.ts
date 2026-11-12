@@ -127,6 +127,22 @@ describe('GuestBootTarget (FA-01)', () => {
     expect(f.calls).not.toContain('/v1/auth/refresh');
   });
 
+  it('skips /v1/auth/refresh when tryRefresh is false so orbital deploy seats on the newly picked planet type', async () => {
+    const f = server();
+    const target = new GuestBootTarget('ws://x/ws', {
+      fetch: f,
+      storage: memStorage(),
+      search: '',
+      planetType: 'ocean',
+      tryRefresh: false,
+      onBooted: () => undefined,
+    });
+    await target.boot();
+    expect(target.accessToken).toBe('jwt-guest');
+    expect(f.calls).not.toContain('/v1/auth/refresh');
+    expect(f.calls).toContain('/v1/me/home?type=ocean');
+  });
+
   it('keeps the token expiry from the auth response and refresh() swaps in a renewed token', async () => {
     let now = 1_000;
     const f = server();
