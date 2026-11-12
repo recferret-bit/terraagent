@@ -1,7 +1,7 @@
 import { Auth0Client } from '@auth0/auth0-spa-js';
 
-export const FASTAUTH_TESTNET_DOMAIN = 'login.testnet.fast-auth.com';
-export const FASTAUTH_TESTNET_CLIENT_ID = 'np8paqIpMWmNbzT4xAvOOapZBjsOpptl';
+export const FASTAUTH_TESTNET_DOMAIN = 'dev-ep2ml1ryu5jcs8pz.us.auth0.com';
+export const FASTAUTH_TESTNET_CLIENT_ID = 'GhPTEx5u0o5Bh16F6LWjPXOXAyQROUNL';
 
 export interface FastAuthPopupResult {
   readonly rawIdToken: string;

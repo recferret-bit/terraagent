@@ -1,7 +1,12 @@
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { copyText, type TextClipboard } from './copyText';
-import { buildNearWalletLoginUrl, consumeNearWalletCallback, readMockToken } from './mockToken';
+import {
+  buildFastAuthLoginUrl,
+  buildNearWalletLoginUrl,
+  consumeNearWalletCallback,
+  readMockToken,
+} from './mockToken';
 import { probeIdentityAdapterMode } from './real/fastAuthClient';
 
 const FAULT = 'That sign-in could not be confirmed.';
@@ -10,6 +15,12 @@ const FAULT = 'That sign-in could not be confirmed.';
 export function openMockProvider(provider: 'google' | 'x'): Window | null {
   const ret = encodeURIComponent(location.pathname + location.search);
   return window.open(`/dev/mock-oauth?provider=${provider}&return=` + ret, 'terra-mock-oauth', 'popup,width=480,height=640');
+}
+
+/** Opens the real NEAR FastAuth (Auth0 OIDC + PKCE) popup for Google or X. */
+export function openFastAuthProvider(provider: 'google' | 'x'): Window | null {
+  const url = buildFastAuthLoginUrl(location.origin, location.pathname + location.search, provider);
+  return window.open(url, 'terra-fastauth-oauth', 'popup,width=500,height=680');
 }
 
 /** Opens the real NEAR Testnet Wallet sign-in dialog in a popup. */
@@ -55,6 +66,8 @@ function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
   row.append(input, submitEmail);
   plate.append(
     row,
+    makeBtn('btn btn-ghost btn-sm', 'continue-google', 'Google', act.google),
+    makeBtn('btn btn-ghost btn-sm', 'continue-x', 'X', act.x),
     makeBtn('btn btn-ghost btn-sm', 'continue-fastauth', 'NEAR Auth (Testnet Popup)', act.fastAuth),
   );
   const hint = document.createElement('p');
@@ -143,8 +156,12 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
     root.append(...guestNodes(open, fault, {
       mode,
       save: () => { open = true; render(); },
-      google: () => { if (!busy) popup = openMockProvider('google'); },
-      x: () => { if (!busy) popup = openMockProvider('x'); },
+      google: () => {
+        if (!busy) popup = mode === 'mock' ? openMockProvider('google') : openFastAuthProvider('google');
+      },
+      x: () => {
+        if (!busy) popup = mode === 'mock' ? openMockProvider('x') : openFastAuthProvider('x');
+      },
       fastAuth: () => {
         if (!busy) popup = openNearWalletPopup();
       },

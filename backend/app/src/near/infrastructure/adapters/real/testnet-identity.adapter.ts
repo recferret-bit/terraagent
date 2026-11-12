@@ -24,7 +24,7 @@ import { encodeBase58 } from '../../../keystore/base58.js';
 import { ed25519PrivateKeyFromSeed, KeyStore, loadKekRing } from '../../../keystore/index.js';
 import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
-import { verifyFastAuthSessionProof, verifyOidcJwt } from './jwks-verifier.js';
+import { verifyFastAuthPkceCode, verifyFastAuthSessionProof, verifyOidcJwt } from './jwks-verifier.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
 /**
@@ -62,6 +62,15 @@ export class TestnetIdentityAdapter implements IdentityPort {
       return { playerId: claims.subject, email: claims.email ?? null, isNew: true };
     }
 
+    if ((provider === 'google' || provider === 'x' || provider === 'fastauth' || provider === 'near-auth') && input.token.startsWith('fastauth-code:')) {
+      const verified = await verifyFastAuthPkceCode({
+        rawToken: input.token,
+        issuer: this.rpc.config.fastAuth.issuer,
+        clientId: this.rpc.config.fastAuth.clientId,
+      });
+      return { playerId: verified.subject, email: verified.email, isNew: true };
+    }
+
     if (provider === 'fastauth' || provider === 'near-auth') {
       if (input.token.startsWith('near-wallet:')) {
         const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
@@ -72,22 +81,16 @@ export class TestnetIdentityAdapter implements IdentityPort {
         return { playerId: subject, email: null, isNew: true };
       }
       if (input.token.split('.').length === 3) {
-        const issuer = this.rpc.config.fastAuth.issuer.endsWith('/')
-          ? this.rpc.config.fastAuth.issuer
-          : `${this.rpc.config.fastAuth.issuer}/`;
-        const verified = await verifyOidcJwt({
-          token: input.token,
-          jwksUrl: `${issuer}.well-known/jwks.json`,
-          allowedIssuers: [issuer, issuer.replace(/\/$/, '')],
-          expectedAudience: this.rpc.config.fastAuth.clientId,
-        });
-        return { playerId: verified.subject, email: verified.email, isNew: true };
+        return this.verifyFastAuthJwt(input.token);
       }
       const proof = verifyFastAuthSessionProof(input.token);
       return { playerId: proof.subject, email: proof.email, isNew: true };
     }
 
     if (provider === 'google') {
+      if (input.token.split('.').length === 3 && !isDirectGoogleIssuer(input.token)) {
+        return this.verifyFastAuthJwt(input.token);
+      }
       const verified = await verifyOidcJwt({
         token: input.token,
         jwksUrl: 'https://www.googleapis.com/oauth2/v3/certs',
@@ -95,6 +98,10 @@ export class TestnetIdentityAdapter implements IdentityPort {
         expectedAudience: this.rpc.config.googleClientId,
       });
       return { playerId: verified.subject, email: verified.email, isNew: true };
+    }
+
+    if (provider === 'x' && input.token.split('.').length === 3) {
+      return this.verifyFastAuthJwt(input.token);
     }
 
     if (provider === 'email' && (this.rpc.network === 'testnet' || this.envSource.NODE_ENV !== 'production')) {
@@ -209,11 +216,33 @@ export class TestnetIdentityAdapter implements IdentityPort {
     return { accountId: requestedAccountId, seed: this.keys().open(storedRow!) };
   }
 
+  private async verifyFastAuthJwt(token: string): Promise<SocialLoginResult> {
+    const issuer = this.rpc.config.fastAuth.issuer.endsWith('/')
+      ? this.rpc.config.fastAuth.issuer
+      : `${this.rpc.config.fastAuth.issuer}/`;
+    const verified = await verifyOidcJwt({
+      token,
+      jwksUrl: `${issuer}.well-known/jwks.json`,
+      allowedIssuers: [issuer, issuer.replace(/\/$/, '')],
+      expectedAudience: this.rpc.config.fastAuth.clientId,
+    });
+    return { playerId: verified.subject, email: verified.email, isNew: true };
+  }
+
   private keys(): KeyStore {
     if (!this.keyStore) {
       this.keyStore = new KeyStore(loadKekRing(kekEnv((this.envSource as unknown as AppEnv) ?? { NODE_ENV: 'development' })));
     }
     return this.keyStore;
+  }
+}
+
+function isDirectGoogleIssuer(token: string): boolean {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')) as { iss?: unknown };
+    return payload.iss === 'https://accounts.google.com' || payload.iss === 'accounts.google.com';
+  } catch {
+    return false;
   }
 }
 

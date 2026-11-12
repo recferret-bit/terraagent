@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PilotAccess } from '../../../design/pilot/PilotAccess';
-import { buildNearWalletLoginUrl, consumeNearWalletCallback, readMockToken } from '../../../design/pilot/mockToken';
+import {
+  buildFastAuthLoginUrl,
+  buildNearWalletLoginUrl,
+  consumeNearWalletCallback,
+  readMockToken,
+} from '../../../design/pilot/mockToken';
 import { renderPlanetsSection } from '../../pages/me/sections/PlanetsHistoryPlaySections';
 import { makeW12ProfileFixture } from '../../pages/me/testFixtures';
 
@@ -79,6 +84,21 @@ describe('pilot access outside gameplay', () => {
     expect(parsed).toEqual({
       provider: 'fastauth',
       token: 'near-wallet:alice.testnet:ed25519:abc',
+    });
+
+    const googleUrl = buildFastAuthLoginUrl('https://terraagent.fun', '/landing.html', 'google', { verifier: 'v123' });
+    expect(googleUrl).toContain('https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/authorize?');
+    expect(googleUrl).toContain('client_id=GhPTEx5u0o5Bh16F6LWjPXOXAyQROUNL');
+    expect(googleUrl).toContain('connection=google-oauth2');
+    const fastAuthParsed = consumeNearWalletCallback({
+      search: '?code=authcode99&state=terra-fastauth%3Agoogle%3Av123%3Ahttps%253A%252F%252Fterraagent.fun%252Flanding.html',
+      origin: 'https://terraagent.fun',
+      pathname: '/landing.html',
+      opener: null,
+    });
+    expect(fastAuthParsed).toEqual({
+      provider: 'google',
+      token: 'fastauth-code:authcode99:v123:https%3A%2F%2Fterraagent.fun%2Flanding.html',
     });
   });
 

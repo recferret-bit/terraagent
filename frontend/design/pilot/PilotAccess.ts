@@ -1,5 +1,10 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
-import { buildNearWalletLoginUrl, consumeNearWalletCallback, readMockToken } from './mockToken';
+import {
+  buildFastAuthLoginUrl,
+  buildNearWalletLoginUrl,
+  consumeNearWalletCallback,
+  readMockToken,
+} from './mockToken';
 
 const PILOT_DIALOG_CSS = `
 .pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:300px;max-width:360px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
@@ -119,9 +124,9 @@ export class PilotAccess {
           return;
         }
         this.popup = window.open(
-          `/dev/mock-oauth?provider=${p.id}&return=${encodeURIComponent(returnPath)}`,
-          'terra-mock-oauth',
-          'popup,width=480,height=640',
+          buildFastAuthLoginUrl(location.origin, returnPath, p.id),
+          'terra-fastauth-oauth',
+          'popup,width=500,height=680',
         );
       };
       list.append(btn);

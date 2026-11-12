@@ -111,6 +111,47 @@ export async function verifyOidcJwt(params: {
   return { subject: sub, email };
 }
 
+/** Exchanges a PKCE authorization code (`fastauth-code:<code>:<verifier>:<redirectUri>`) with Auth0 `/oauth/token` and verifies the RS256 ID token. */
+export async function verifyFastAuthPkceCode(params: {
+  readonly rawToken: string;
+  readonly issuer: string;
+  readonly clientId: string;
+}): Promise<VerifiedSocialClaims> {
+  const [, rawCode = '', rawVerifier = '', rawRedirectUri = ''] = params.rawToken.split(':');
+  const code = decodeURIComponent(rawCode).trim();
+  const codeVerifier = decodeURIComponent(rawVerifier).trim();
+  const redirectUri = decodeURIComponent(rawRedirectUri).trim();
+  if (!code || !codeVerifier || !redirectUri) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Incomplete FastAuth PKCE code payload' });
+  }
+  const normalizedIssuer = params.issuer.endsWith('/') ? params.issuer : `${params.issuer}/`;
+  const tokenRes = await fetch(`${normalizedIssuer}oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'authorization_code',
+      client_id: params.clientId,
+      code,
+      code_verifier: codeVerifier,
+      redirect_uri: redirectUri,
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!tokenRes.ok) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: `FastAuth token exchange HTTP ${tokenRes.status}` });
+  }
+  const body = (await tokenRes.json()) as { id_token?: string };
+  if (!body.id_token || typeof body.id_token !== 'string') {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'FastAuth token exchange missing id_token' });
+  }
+  return verifyOidcJwt({
+    token: body.id_token,
+    jwksUrl: `${normalizedIssuer}.well-known/jwks.json`,
+    allowedIssuers: [normalizedIssuer, normalizedIssuer.replace(/\/$/, '')],
+    expectedAudience: params.clientId,
+  });
+}
+
 /** Verifies a JSON-encoded FastAuth / NEP-413 ed25519 session signature token (`@fast-auth-near/browser-sdk`). */
 export function verifyFastAuthSessionProof(rawToken: string): VerifiedSocialClaims {
   let parsed: {

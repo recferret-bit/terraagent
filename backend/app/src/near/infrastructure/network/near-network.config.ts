@@ -97,8 +97,8 @@ export function resolveNearNetworkConfig(
     accounts: { relayer, minter },
     secrets: { rootSecretKey, relayerSecretKey, minterSecretKey },
     fastAuth: {
-      issuer: env.NEAR_FASTAUTH_ISSUER?.trim() || 'https://login.testnet.fast-auth.com/',
-      clientId: env.NEAR_FASTAUTH_CLIENT_ID?.trim() || 'np8paqIpMWmNbzT4xAvOOapZBjsOpptl',
+      issuer: env.NEAR_FASTAUTH_ISSUER?.trim() || 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/',
+      clientId: env.NEAR_FASTAUTH_CLIENT_ID?.trim() || 'GhPTEx5u0o5Bh16F6LWjPXOXAyQROUNL',
     },
     googleClientId: env.NEAR_GOOGLE_CLIENT_ID?.trim() || undefined,
     oneClickUrl: (env.NEAR_ONECLICK_URL?.trim() || 'https://1click.chaindefuser.com').replace(/\/+$/, ''),

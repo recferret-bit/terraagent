@@ -17,6 +17,8 @@ import { ChainReceipt } from '../../../domain/types.js';
 import { NamedAccountBook } from '../../../identity/account-allocate.js';
 import { mockOauthSecret, verifyMockToken } from '../../../identity/mock-token.js';
 import { mockTxHashFor } from '../../mock/tx-hash.js';
+import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { verifyFastAuthPkceCode } from '../real/jwks-verifier.js';
 import { insertNamedAccount } from './named-account.db.js';
 
 /**
@@ -38,6 +40,15 @@ export class MockIdentityAdapter implements IdentityPort {
   }
 
   async loginSocial(input: SocialLoginInput): Promise<SocialLoginResult> {
+    if (input.token.startsWith('fastauth-code:')) {
+      const cfg = resolveNearNetworkConfig(process.env, 'testnet');
+      const verified = await verifyFastAuthPkceCode({
+        rawToken: input.token,
+        issuer: cfg.fastAuth.issuer,
+        clientId: cfg.fastAuth.clientId,
+      });
+      return { playerId: verified.subject, email: verified.email, isNew: true };
+    }
     if ((input.provider === 'fastauth' || input.provider === 'near-auth') && input.token.startsWith('near-wallet:')) {
       const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
       if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
