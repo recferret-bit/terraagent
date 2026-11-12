@@ -20,7 +20,12 @@ export function rewriteCompose(text) {
   return text
     .replaceAll('context: ../..', 'context: /srv/terraagent/src')
     .replaceAll('../nginx/', `${REMOTE_NGINX}/`)
-    .replaceAll('path: ../.env', `path: ${SERVER_ENV}`);
+    .replaceAll('path: ../.env', `path: ${SERVER_ENV}`)
+    .replace('      - "80:80"\n', '      - "80:80"\n      - "443:443"\n')
+    .replace(
+      '      - terra_www:/usr/share/nginx/html:ro\n',
+      '      - terra_www:/usr/share/nginx/html:ro\n      - /srv/terraagent/nginx/tls:/etc/nginx/tls:ro\n      - /etc/letsencrypt:/etc/letsencrypt:ro\n',
+    );
 }
 
 export function buildPlan({ env, stacks, catalog, root }) {
@@ -66,7 +71,7 @@ function nginxReload() {
 }
 
 function mkdirRemote() {
-  return `mkdir -p ${REMOTE_COMPOSE} ${REMOTE_NGINX}/hosts ${REMOTE_NGINX}/snippets ${REMOTE_SRC}`;
+  return `mkdir -p ${REMOTE_COMPOSE} ${REMOTE_NGINX}/hosts ${REMOTE_NGINX}/snippets ${REMOTE_NGINX}/tls ${REMOTE_SRC}`;
 }
 
 function rewriteNotes(remoteFile, text) {

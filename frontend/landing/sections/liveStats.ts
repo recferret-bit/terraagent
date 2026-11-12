@@ -1,6 +1,6 @@
 // Live stats (GET /v1/planets/stats -> { planetsActive, coloniesAlive, playersOnline, updatedAt }), refreshed every minute.
 export function initLiveStats(page: HTMLElement | null) {
-  const api = page?.dataset.api || 'https://api.terraagent.com';
+  const api = page?.dataset.api || '';
   const load = () => {
     if (!window.fetch || location.protocol === 'file:') return;
     const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 1500);
