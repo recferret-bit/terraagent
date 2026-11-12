@@ -106,6 +106,7 @@ uniform float uSaturation;
 uniform float uContrast;
 uniform float uGridStrength;
 uniform float uPaletteMode;
+uniform float uPreserveAlpha;
 varying vec2 vUv;
 
 void main() {
@@ -114,9 +115,19 @@ void main() {
   vec2 subUv = fract(vUv * grid);
   vec2 centerUv = (cell + 0.5) / grid;
   vec2 texel = 1.0 / grid;
+  vec4 src = texture2D(tDiffuse, centerUv);
   vec3 col = samplePixelEdge(tDiffuse, centerUv, texel, uEdgeStrength);
   col = quantizePixelArt(col, cell, subUv, uColorLevels, uDither, uSaturation, uContrast, uPixelSize, uGridStrength, uPaletteMode);
-  gl_FragColor = vec4(col, 1.0);
+  float alpha = 1.0;
+  if (uPreserveAlpha > 0.5) {
+    float lumSrc = max(src.r, max(src.g, src.b));
+    alpha = clamp(max(src.a, lumSrc * 1.5), 0.0, 1.0);
+    if (alpha <= 0.004) {
+      gl_FragColor = vec4(0.0);
+      return;
+    }
+  }
+  gl_FragColor = vec4(col, alpha);
 }`;
 
 export const buildPixelArtFrag = () => [BAYER_CHUNK, EDGE_CHUNK, PALETTE_CHUNK, QUANTIZE_CHUNK, PIXEL_MAIN].join('\n');
@@ -190,7 +201,12 @@ export function setPixelArtParams(next: Partial<PixelArtParams>): PixelArtParams
 
 export const resetPixelArtParams = () => setPixelArtParams({ ...DEFAULT_PIXEL_PARAMS });
 
-export function createPixelArtPass(width: number, height: number): ShaderPass {
+export interface PixelArtPassOptions {
+  /** Preserve input alpha (and additive glow) for transparent canvases; opaque viewports keep alpha = 1. */
+  preserveAlpha?: boolean;
+}
+
+export function createPixelArtPass(width: number, height: number, opts?: PixelArtPassOptions): ShaderPass {
   const pass = new ShaderPass({
     uniforms: {
       tDiffuse: { value: null },
@@ -203,6 +219,7 @@ export function createPixelArtPass(width: number, height: number): ShaderPass {
       uContrast: { value: params.contrast },
       uGridStrength: { value: params.gridStrength },
       uPaletteMode: { value: params.paletteMode },
+      uPreserveAlpha: { value: opts?.preserveAlpha ? 1 : 0 },
     },
     vertexShader: PIXEL_VERT,
     fragmentShader: buildPixelArtFrag(),

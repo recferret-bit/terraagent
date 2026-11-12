@@ -81,7 +81,7 @@ body.crt-off .crt{display:none}
 @keyframes crt-flicker{0%,100%{opacity:0}18%{opacity:var(--crt-flicker)}22%{opacity:0}61%{opacity:0}64%{opacity:var(--crt-flicker-sub)}70%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.crt i{animation:none}.crt .roll,.crt .noise,.crt .fl{display:none}}`;
 
-const SVG = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="crt-wave" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="turbulence" baseFrequency="0 ${DEFAULT_CRT_PARAMS.waveFrequency}" numOctaves="1" seed="3" result="n"/><feOffset in="n" dy="0" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="0" xChannelSelector="R" yChannelSelector="R"/></filter></svg>`;
+const SVG = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="crt-wave" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0 ${DEFAULT_CRT_PARAMS.waveFrequency}" numOctaves="1" seed="3" result="n"/><feComponentTransfer in="n" result="opaque"><feFuncA type="discrete" tableValues="1"/></feComponentTransfer><feOffset in="opaque" dy="0" result="shifted"/><feFlood flood-color="#808080" result="mid"/><feComposite in="shifted" in2="mid" operator="over" result="filled"/><feColorMatrix in="filled" type="matrix" values="1 0 0 0 0  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 1" result="map"/><feDisplacementMap in="SourceGraphic" in2="map" scale="0" xChannelSelector="R" yChannelSelector="G"/></filter></svg>`;
 
 let on = true;
 let params: CrtParams = readInitialCrtParams();
@@ -120,7 +120,12 @@ function wave() {
   waving = true;
   const dur = rnd([0.5, 0.9]) * 1000, t0 = performance.now(), speed = rnd([300, 700]), amp = params.waveAmplitude * rnd([0.6, 1]);
   const prev = els.map((e) => e.style.filter);
-  els.forEach((e) => { e.style.filter = 'url(#crt-wave)'; });
+  const pixelOn = document.body.classList.contains('pixel-on');
+  els.forEach((e, i) => {
+    const cssPixel = pixelOn && !e.hasAttribute('data-pixel-shader') ? 'url(#pixel-svg-filter)' : '';
+    const base = prev[i] && prev[i] !== 'none' ? prev[i] : cssPixel;
+    e.style.filter = base ? `${base} url(#crt-wave)` : 'url(#crt-wave)';
+  });
   const step = (now: number) => {
     const p = Math.min(1, (now - t0) / dur);
     dm.setAttribute('scale', (amp * Math.sin(Math.PI * p) ** 2).toFixed(2));

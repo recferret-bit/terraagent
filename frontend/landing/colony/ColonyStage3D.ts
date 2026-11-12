@@ -245,6 +245,7 @@ export class ColonyStage3D {
       onResize: () => {
         this.vp.resize();
         this.applyGameplayCameraPose();
+        this.vp.render();
       },
     });
     loop.start();

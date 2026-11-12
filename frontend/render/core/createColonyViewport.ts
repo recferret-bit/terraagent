@@ -168,27 +168,55 @@ function createViewportReflections(renderer: THREE.WebGLRenderer, renderPass: Re
   };
 }
 
+export interface ViewportSizeState {
+  rw: number;
+  rh: number;
+  dpr: number;
+  pixelDpr: number;
+  aspect: number;
+}
+
 // F8 → PERF → RENDER SCALE: AUTO / fixed ratio, capped at `maxDpr` (display ≤ 2 or the LOW quality cap).
-function sizeColonyViewport(
+export function sizeColonyViewport(
   renderer: THREE.WebGLRenderer, composer: EffectComposer, bloom: UnrealBloomPass, pixelArt: ShaderPass,
   renderPass: RenderPass, camera: THREE.PerspectiveCamera,
   cssW: number, cssH: number, customRes: { width: number; height: number } | null, dpr: number,
+  prev: ViewportSizeState,
 ) {
   const rw = customRes ? customRes.width : cssW;
   const rh = customRes ? customRes.height : cssH;
-  renderer.setPixelRatio(dpr);
-  renderer.setSize(rw, rh, false);
-  composer.setPixelRatio(dpr);
-  composer.setSize(rw, rh);
-  bloom.resolution.set(rw * dpr, rh * dpr);
-  setPixelArtSize(pixelArt, rw * dpr, rh * dpr);
-  Object.assign(perfTelemetry, { dpr, canvasW: renderer.domElement.width, canvasH: renderer.domElement.height });
-  for (const p of renderPass.camera ? [renderPass.camera as THREE.PerspectiveCamera] : []) {
-    p.aspect = cssW / cssH;
-    p.updateProjectionMatrix();
+  const pixelDpr = customRes ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+  const aspect = cssW / Math.max(1, cssH);
+
+  const sizeChanged = rw !== prev.rw || rh !== prev.rh;
+
+  // Skip renderer.setSize / composer.setSize when buffer dimensions and DPR are unchanged: WebGL clears the canvas
+  // whenever canvas.width/height are reassigned, so redundant ResizeObserver fires would blank a painted frame.
+  if (sizeChanged || dpr !== prev.dpr) {
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(rw, rh, false);
+    composer.setPixelRatio(dpr);
+    composer.setSize(rw, rh);
+    bloom.resolution.set(rw * dpr, rh * dpr);
+    Object.assign(perfTelemetry, { dpr, canvasW: renderer.domElement.width, canvasH: renderer.domElement.height });
+    prev.rw = rw;
+    prev.rh = rh;
+    prev.dpr = dpr;
   }
-  camera.aspect = cssW / cssH;
-  camera.updateProjectionMatrix();
+  // Keep pixel-art grid resolution tied to display DPR (not dynamic renderScale) so AUTO scale steps never change pixel size.
+  if (sizeChanged || pixelDpr !== prev.pixelDpr) {
+    setPixelArtSize(pixelArt, rw * pixelDpr, rh * pixelDpr);
+    prev.pixelDpr = pixelDpr;
+  }
+  if (aspect !== prev.aspect) {
+    for (const p of renderPass.camera ? [renderPass.camera as THREE.PerspectiveCamera] : []) {
+      p.aspect = aspect;
+      p.updateProjectionMatrix();
+    }
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+    prev.aspect = aspect;
+  }
 }
 
 function paintColonyFrame(
@@ -199,6 +227,8 @@ function paintColonyFrame(
   reflections: ReturnType<typeof createViewportReflections>,
   focusGroundY: number, customRes: { width: number; height: number } | null,
 ) {
+  // Resize before rendering so an AUTO DPR step never clears a just-painted frame to black.
+  if (renderScale.frame(performance.now()) && !customRes) vp.resize();
   stepSunOrbit(vp);
   tickWindClock();
   tickWeatherClock();
@@ -210,8 +240,6 @@ function paintColonyFrame(
   rainPass.update(undefined, renderPass.scene as THREE.Scene, renderPass.camera, { sun: vp.sun, hemi: vp.hemi, renderer: vp.renderer });
   reflections.render();
   composer.render();
-  // AUTO stepped: one resize, not per frame (a `?res=` preset renders at ratio 1: nothing to resize)
-  if (renderScale.frame(performance.now()) && !customRes) vp.resize();
 }
 
 /** Pillar 4 bootstrap: 28° FOV, ACES, PMREM RoomEnvironment, warm sun + cool hemi, bloom threshold 1.1. */
@@ -224,6 +252,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   let customRes: { width: number; height: number } | null = null;
   let focusGroundY = 0;
   let maxDpr = Math.min(window.devicePixelRatio, 2);
+  const sizeState: ViewportSizeState = { rw: -1, rh: -1, dpr: -1, pixelDpr: -1, aspect: -1 };
 
   const renderer = createColonyRenderer(container, w(), h(), maxDpr);
   const { pmrem, environment } = createEnvironment(renderer, scene);
@@ -257,7 +286,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
     resize() {
       const cw = w(), ch = h();
       const dpr = customRes ? 1 : renderScale.resolve(maxDpr);
-      sizeColonyViewport(renderer, composer, bloom, pixelArt, renderPass, camera, cw, ch, customRes, dpr);
+      sizeColonyViewport(renderer, composer, bloom, pixelArt, renderPass, camera, cw, ch, customRes, dpr, sizeState);
     },
     render() { paintColonyFrame(vp, renderPass, composer, focusRing, renderScale, rainPass, reflections, focusGroundY, customRes); },
     dispose() {

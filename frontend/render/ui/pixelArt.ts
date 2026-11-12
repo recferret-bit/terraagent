@@ -22,7 +22,7 @@ const CSS = `
 body.pixel-on [data-crt-host] canvas:not([data-pixel-shader]){filter:url(#pixel-svg-filter);image-rendering:pixelated}`;
 
 const LEVELS = '0 0.08 0.17 0.25 0.33 0.42 0.5 0.58 0.67 0.75 0.83 0.92 1';
-const SVG = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="pixel-svg-filter" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feFlood x="1" y="1" height="1" width="1"/><feComposite width="4" height="4"/><feTile result="t"/><feComposite in="SourceGraphic" in2="t" operator="in"/><feMorphology operator="dilate" radius="2" result="px"/><feComponentTransfer in="px"><feFuncR type="discrete" tableValues="${LEVELS}"/><feFuncG type="discrete" tableValues="${LEVELS}"/><feFuncB type="discrete" tableValues="${LEVELS}"/></feComponentTransfer></filter></svg>`;
+const SVG = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="pixel-svg-filter" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feFlood x="0" y="0" height="1" width="1"/><feComposite width="2" height="2"/><feTile result="t"/><feComposite in="SourceGraphic" in2="t" operator="in"/><feMorphology operator="dilate" radius="1" result="px"/><feComponentTransfer in="px"><feFuncR type="discrete" tableValues="${LEVELS}"/><feFuncG type="discrete" tableValues="${LEVELS}"/><feFuncB type="discrete" tableValues="${LEVELS}"/></feComponentTransfer></filter></svg>`;
 
 let btn: HTMLButtonElement | null = null;
 let shadowBtn: HTMLButtonElement | null = null;
