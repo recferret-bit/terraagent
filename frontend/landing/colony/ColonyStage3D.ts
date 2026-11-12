@@ -31,22 +31,16 @@ import {
   type ColonyGridNode,
 } from './colonyHexScene';
 
-interface BotStop {
+interface HexBotAgent {
+  id: string;
+  archetypeId: string;
+  mesh: THREE.Object3D;
   q: number;
   r: number;
   targetQ: number;
   targetR: number;
   targetKind: InteractionTargetKind;
   targetOffsetY: number;
-}
-
-interface HexBotAgent {
-  id: string;
-  archetypeId: string;
-  mesh: THREE.Object3D;
-  stops: [BotStop, BotStop];
-  moveDurationS: number;
-  workDurationS: number;
   phaseS: number;
 }
 
@@ -56,36 +50,17 @@ function stepHexBot(
   time: number,
   activeSites: ActiveWorkSiteInput[],
 ): void {
-  const legS = bot.moveDurationS + bot.workDurationS;
-  const cycleS = legS * 2;
-  const localT = (time + bot.phaseS) % cycleS;
-  const segIdx = localT < legS ? 0 : 1;
-  const inLeg = localT - segIdx * legS;
+  const [bx, bz] = tileXZ(bot.q, bot.r);
+  const by = terrain.heightAt(bx, bz);
+  bot.mesh.position.set(bx, by, bz);
 
-  const fromStop = bot.stops[segIdx]!;
-  const toStop = bot.stops[(segIdx + 1) % 2]!;
-  const [x0, z0] = tileXZ(fromStop.q, fromStop.r);
-  const [x1, z1] = tileXZ(toStop.q, toStop.r);
-
-  if (inLeg < bot.moveDurationS) {
-    const u = inLeg / bot.moveDurationS;
-    const s = u * u * (3 - 2 * u);
-    const wx = x0 + (x1 - x0) * s;
-    const wz = z0 + (z1 - z0) * s;
-    const wy = terrain.heightAt(wx, wz);
-    bot.mesh.position.set(wx, wy, wz);
-    bot.mesh.rotation.y = Math.atan2(x1 - x0, z1 - z0);
-    tickArchetypeMesh(bot.mesh, time, 1, 0);
-    return;
-  }
-
-  const wy = terrain.heightAt(x1, z1);
-  bot.mesh.position.set(x1, wy, z1);
-  const [tx, tz] = tileXZ(toStop.targetQ, toStop.targetR);
-  const dx = tx - x1;
-  const dz = tz - z1;
+  const [tx, tz] = tileXZ(bot.targetQ, bot.targetR);
+  const dx = tx - bx;
+  const dz = tz - bz;
   bot.mesh.rotation.y = Math.atan2(dx, dz);
-  tickArchetypeMesh(bot.mesh, time, 0, 1);
+
+  const animTime = time + bot.phaseS;
+  tickArchetypeMesh(bot.mesh, animTime, 0, 1);
 
   const groundY = terrain.heightAt(tx, tz);
   const pullX = tx - (dx / (Math.hypot(dx, dz) || 1)) * 0.1;
@@ -93,10 +68,10 @@ function stepHexBot(
   const toolOrigins = computeMeshToolOrigins(bot.mesh, bot.archetypeId, 0, 1);
   activeSites.push({
     workerId: bot.id,
-    targetKind: toStop.targetKind,
-    botOrigin: [x1, wy, z1],
+    targetKind: bot.targetKind,
+    botOrigin: [bx, by, bz],
     toolOrigins,
-    targetPos: [pullX, groundY + toStop.targetOffsetY, pullZ],
+    targetPos: [pullX, groundY + bot.targetOffsetY, pullZ],
     groundY,
     intensity: 1,
   });
@@ -107,7 +82,7 @@ function stepHexBot(
  * - Uses `createHexTerrain` on the `ocean` (`oceanForest`) planet spec with a clear pod-arrival radius around the base
  * - Places HQ (`building.commandHub`), Solar Array (`building.solar`), Pylon (`building.pylon`), and Metal Extractor (`building.mine`)
  *   with clean gaps between buildings and a clear gap from the shoreline water
- * - Drives 2 bots (`robot.miner`, `robot.builder`) with `WorkParticleSystem` tool beams and bouncing 3D debris chunks
+ * - Drives 3 stationary harvesters (`robot.miner`) — 1 terraforming rocks and 2 terraforming trees — with `WorkParticleSystem` tool beams and bouncing 3D debris chunks
  * - Uses the exact `RTSCamera` angle (`fov = 28°`, `elev = 42°`, `yaw = 45°`) and `vp.followShadow(target)` with zero user input
  */
 export class ColonyStage3D {
@@ -193,39 +168,23 @@ export class ColonyStage3D {
     const spans = buildColonyPowerSpans({ hq, pylon, solar, mine });
     this.gridCables.setSpans(spans, (x, z) => this.terrain.heightAt(x, z));
 
-    // 5. Two autonomous bots: Miner T1 + Builder T1
-    const minerMesh = createArchetypeMesh('robot.miner', biomeKey);
-    attachEntityProjectorRig(minerMesh, 'robot.miner');
-    const builderMesh = createArchetypeMesh('robot.builder', biomeKey);
-    attachEntityProjectorRig(builderMesh, 'robot.builder');
-    this.entityGroup.add(minerMesh, builderMesh);
+    // 5. Three stationary harvesters: 1 terraforming rocks, 2 terraforming trees (none touching metals).
+    const assignments: ReadonlyArray<Omit<HexBotAgent, 'archetypeId' | 'mesh'>> = [
+      { id: 'harvester-rock-1', q: 3, r: -4, targetQ: 3, targetR: -5, targetKind: 'rock', targetOffsetY: 0.42, phaseS: 0.2 },
+      { id: 'harvester-tree-1', q: -2, r: 4, targetQ: -3, targetR: 5, targetKind: 'tree', targetOffsetY: 0.52, phaseS: 1.4 },
+      { id: 'harvester-tree-2', q: -5, r: 2, targetQ: -6, targetR: 2, targetKind: 'tree', targetOffsetY: 0.52, phaseS: 2.6 },
+    ];
 
-    this.bots.push(
-      {
-        id: 'miner-1',
+    for (const spec of assignments) {
+      const mesh = createArchetypeMesh('robot.miner', biomeKey);
+      attachEntityProjectorRig(mesh, 'robot.miner');
+      this.entityGroup.add(mesh);
+      this.bots.push({
+        ...spec,
         archetypeId: 'robot.miner',
-        mesh: minerMesh,
-        stops: [
-          { q: 2, r: 0, targetQ: 0, targetR: 0, targetKind: 'repair', targetOffsetY: 0.48 },
-          { q: 6, r: -2, targetQ: 7, targetR: -2, targetKind: 'metals', targetOffsetY: 0.38 },
-        ],
-        moveDurationS: 2.8,
-        workDurationS: 2.8,
-        phaseS: 0.5,
-      },
-      {
-        id: 'builder-1',
-        archetypeId: 'robot.builder',
-        mesh: builderMesh,
-        stops: [
-          { q: -2, r: -1, targetQ: -3, targetR: -1, targetKind: 'repair', targetOffsetY: 0.48 },
-          { q: -3, r: 4, targetQ: -3, targetR: 5, targetKind: 'tree', targetOffsetY: 0.52 },
-        ],
-        moveDurationS: 2.8,
-        workDurationS: 2.6,
-        phaseS: 2.7,
-      },
-    );
+        mesh,
+      });
+    }
   }
 
   /** Applies the exact `RTSCamera` angle (`fov = 28°`, `elev = 42°`, `yaw = 45°`) and shadow-frustum tracking. */

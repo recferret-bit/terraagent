@@ -115,6 +115,20 @@ export function buildColonyHexTiles(radius = COLONY_HEX_RADIUS): HexTiles {
       continue;
     }
 
+    // Guaranteed stationary harvester work targets (1 rock, 2 trees; none on metals).
+    if (q === 3 && r === -5) {
+      terrain[i] = HEX_TERRAIN.rock;
+      prep[i] = HEX_PREP.wild;
+      height[i] = 0.36;
+      continue;
+    }
+    if ((q === -3 && r === 5) || (q === -6 && r === 2)) {
+      terrain[i] = HEX_TERRAIN.forest;
+      prep[i] = HEX_PREP.wild;
+      height[i] = 0.28;
+      continue;
+    }
+
     if (isInBaseClearZone(q, r, d)) {
       terrain[i] = HEX_TERRAIN.flat;
       prep[i] = isPreparedColonyPad(q, r, d) ? HEX_PREP.prepared : HEX_PREP.wild;
