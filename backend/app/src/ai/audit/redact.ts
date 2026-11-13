@@ -7,8 +7,8 @@ import { compileData, dataRow } from '@terra/sim';
  */
 const REDACTED = '[redacted]';
 
-/** `ZAI_API_KEY` is an alternative of its own so `AI_API_KEY` cannot match inside it. */
-const SECRET = /\bbearer\s+\S+|\bsk-\S+|\b(?:zai_api_key|ai_api_key)\s*=\s*\S+/gi;
+/** `NEAR_AI_API_KEY` and `NEARAI_API_KEY` are alternatives of their own so `AI_API_KEY` cannot match inside them. */
+const SECRET = /\bbearer\s+\S+|\bsk-\S+|\b(?:near_ai_api_key|nearai_api_key|nearai_cloud_api_key|ai_api_key)\s*=\s*\S+/gi;
 
 /** Replaces bearer tokens, `sk-` tokens and API-key assignments. The marker holds no secret. */
 export function redactSecrets(text: string): string {

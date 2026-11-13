@@ -12,6 +12,9 @@ import { nearAdapterFor, nearAdapterKey } from '../../src/near/infrastructure/ad
 import { nearEnvFor, nearInfrastructureModuleFor } from '../../src/near/infrastructure/near-infrastructure.module.js';
 import { discoverAdapters } from '../../src/ports/adapters.js';
 import { ChainReadPort } from '../../src/near/application/ports/chain-read.port.js';
+import { BadgeNftPort } from '../../src/near/application/ports/badge-nft.port.js';
+import { StakingPort } from '../../src/near/application/ports/staking.port.js';
+import { TreasuryDaoPort } from '../../src/near/application/ports/treasury-dao.port.js';
 import { APP_ENV } from '../../src/core/tokens.js';
 import { PORTS } from '../../src/near/application/ports/index.js';
 import { UNIT_APP_ENV } from '../unit-app-env';
@@ -37,10 +40,11 @@ describe('selection truth table', () => {
     expect(nearAdapterFor('BadgeNft', { NEAR_ADAPTER_CHAIN_READ: 'mainnet' })).toBe('mock');
   });
   it.each([
-    ['zai', {}, 'zai-needs-live'],
-    ['zai', { AI_LIVE: '1' }, 'zai'],
-    ['zai', { NODE_ENV: 'production' }, 'zai'],
-    ['Zai', { AI_LIVE: '1' }, 'unknown'],
+    ['nearai', {}, 'nearai-needs-live'],
+    ['nearai', { AI_LIVE: '1' }, 'nearai'],
+    ['nearai', { NODE_ENV: 'production' }, 'nearai'],
+    ['NearAi', { AI_LIVE: '1' }, 'unknown'],
+    ['zai', { AI_LIVE: '1' }, 'unknown'],
     [undefined, { AI_LIVE: '1' }, 'mock'],
     ['mock', { NODE_ENV: 'production' }, 'mock'],
   ])('AI_PROVIDER %s %j -> %s', (v, extra, want) => {
@@ -73,14 +77,21 @@ describe('production guard', () => {
     expect(app.getHttpServer()).toBeDefined();
     await app.close();
   });
-  it('testnet without a registered adapter fails boot naming the port', async () => {
-    const err = await createApp({ source: { ...base, NEAR_ADAPTER_BADGE_NFT: 'testnet' } }).catch((e) => e);
+  it('unregistered adapter kind fails boot naming the port', async () => {
+    const err = await createApp({ source: { ...base, NEAR_ADAPTER_BADGE_NFT: 'mainnet' } }).catch((e) => e);
     expect(err).toBeInstanceOf(EnvError);
-    expect(err.message).toContain('BadgeNft: "testnet" adapter selected but none is registered');
+    expect(err.message).toContain('BadgeNft: "mainnet" adapter selected but none is registered');
   });
-  it('boots with real testnet ChainRead adapter when NEAR_ADAPTER_CHAIN_READ=testnet', async () => {
-    const { app } = await createApp({ source: { ...base, NEAR_ADAPTER_CHAIN_READ: 'testnet' } });
+  it('boots all 11 ports with real testnet adapters when NEAR_MODE=testnet', async () => {
+    const nearPorts = ['Identity', 'Relayer', 'CargoToken', 'Intents', 'AgentWallet', 'BadgeNft', 'DeedNft', 'Escrow', 'Staking', 'TreasuryDao', 'ChainRead'] as const;
+    for (const p of nearPorts) {
+      expect(nearAdapterFor(p, { NEAR_MODE: 'testnet' })).toBe('testnet');
+    }
+    const { app } = await createApp({ source: { ...base, NEAR_MODE: 'testnet' } });
     expect(app.get(ChainReadPort).constructor.name).toBe('TestnetChainReadAdapter');
+    expect(app.get(BadgeNftPort).constructor.name).toBe('TestnetBadgeNftAdapter');
+    expect(app.get(StakingPort).constructor.name).toBe('TestnetStakingAdapter');
+    expect(app.get(TreasuryDaoPort).constructor.name).toBe('TestnetTreasuryDaoAdapter');
     await app.close();
   });
 });

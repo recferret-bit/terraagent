@@ -8,7 +8,8 @@ import type { AwayDigestService } from '../../src/game/digest/index.js';
 import type { GamePlanets } from '../../src/game/game-planets.service.js';
 import { StakingController } from '../../src/near/staking/staking.controller.js';
 import type { StakingService } from '../../src/near/staking/staking.service.js';
-import type { LlmProviderPort, LlmResponse } from '../../src/ports/llm-provider.port.js';
+import type { LlmProviderPort, LlmRequest, LlmResponse } from '../../src/ports/llm-provider.port.js';
+import { PlayerAiSettingsStore } from '../../src/profile/player-ai-settings.store.js';
 
 function createFakePlanetHarness() {
   const flags = parseWaves('..22').list;
@@ -156,6 +157,243 @@ describe('ColonyAgentLoopService — human manual gate, NEAR AI Cloud attestatio
     expect(trader?.submittedCommand?.kind).toBe('market.placeOrder');
     expect(trader?.commandOutcome).toEqual({ ok: true });
     expect(submitted.some((c) => c.colonyIndex === 4 && c.kind === 'market.placeOrder')).toBe(true);
+  });
+});
+
+describe('ColonyAgentLoopService — batching, cooldown cache & player NEAR.AI key routing', () => {
+  it('batches all Rival AI bots into a single NEAR.AI (z-ai/glm-5.3) request and caches unchanged states', async () => {
+    const { planets } = createFakePlanetHarness();
+    const requests: LlmRequest[] = [];
+    const llm: LlmProviderPort = {
+      complete: async (req): Promise<LlmResponse> => {
+        requests.push(req);
+        return {
+          text: JSON.stringify({
+            directives: [
+              {
+                colonyIndex: 4,
+                action: 'queue_goal',
+                goal: 'grow_economy',
+                rationale: 'Batch directive for Iron Guild Outpost.',
+              },
+              {
+                colonyIndex: 5,
+                action: 'queue_goal',
+                goal: 'secure_power',
+                rationale: 'Batch directive for Crimson Vanguard.',
+              },
+            ],
+          }),
+          usage: { inputTokens: 80, outputTokens: 45 },
+          model: req.model ?? 'z-ai/glm-5.3',
+        };
+      },
+    };
+    const svc = new ColonyAgentLoopService(planets, llm);
+    const firstEvals = await svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 1_000 });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.model).toBe('z-ai/glm-5.3');
+    expect(firstEvals.find((e) => e.colonyIndex === 4)?.directive?.goal).toBe('grow_economy');
+    expect(firstEvals.find((e) => e.colonyIndex === 5)?.directive?.goal).toBe('secure_power');
+
+    // Second sweep within cooldown window reuses cached decisions with 0 new LLM calls
+    const cachedEvals = await svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 30_000 });
+    expect(requests).toHaveLength(1);
+    expect(cachedEvals.find((e) => e.colonyIndex === 4)?.cached).toBe(true);
+    expect(cachedEvals.find((e) => e.colonyIndex === 5)?.cached).toBe(true);
+  });
+
+  it('uses server NEAR.AI only for bots, and routes player bots through the player connected NEAR.AI API key + model', async () => {
+    const { host, planets } = createFakePlanetHarness();
+    host.state.colonies[0]!.aiEnabled = true;
+
+    const store = new PlayerAiSettingsStore();
+    store.bindColonyPlayer('pl_loop', 0, 'player_1');
+
+    const requests: LlmRequest[] = [];
+    const llm: LlmProviderPort = {
+      complete: async (req): Promise<LlmResponse> => {
+        requests.push(req);
+        const body = JSON.parse(req.messages[0]?.content ?? '{}') as { colonies?: Array<{ colonyIndex: number }> };
+        const indices = body.colonies?.map((c) => c.colonyIndex) ?? [];
+        return {
+          text: JSON.stringify({
+            directives: indices.map((colonyIndex) => ({
+              colonyIndex,
+              action: 'queue_goal',
+              goal: 'grow_economy',
+              rationale: `LLM governed col_${colonyIndex}.`,
+            })),
+          }),
+          usage: { inputTokens: 50, outputTokens: 30 },
+          model: req.model ?? 'z-ai/glm-5.3',
+        };
+      },
+    };
+
+    const svc = new ColonyAgentLoopService(planets, llm, undefined, undefined, undefined, store);
+
+    // 1. Without a connected player API key: human colony 0 uses deterministic policy; only bots (4, 5) call LLM
+    const evalsNoKey = await svc.tickPlanetAgents('pl_loop');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.apiKey).toBeUndefined();
+    expect(requests[0]?.model).toBe('z-ai/glm-5.3');
+    const humanNoKey = evalsNoKey.find((e) => e.colonyIndex === 0);
+    expect(humanNoKey?.governed).toBe(true);
+    expect(humanNoKey?.usedPlayerKey).toBe(false);
+    expect(humanNoKey?.model).toBe('deterministic-policy');
+
+    // 2. Player connects their own NEAR.AI key + selects model on /me: colony 0 now uses player's key & model
+    await store.updateSettings(
+      { id: 'player_1', handle: 'pilot1' },
+      { apiKey: 'sk-player-personal-nearai-key', model: 'deepseek/deepseek-v3.2' },
+    );
+
+    const evalsWithKey = await svc.tickPlanetAgents('pl_loop');
+    expect(requests).toHaveLength(3); // +1 batched call for bots (4,5) and +1 batched call for player_1 (0)
+    const playerReq = requests.find((r) => r.apiKey === 'sk-player-personal-nearai-key');
+    expect(playerReq).toBeDefined();
+    expect(playerReq?.model).toBe('deepseek/deepseek-v3.2');
+    const humanWithKey = evalsWithKey.find((e) => e.colonyIndex === 0);
+    expect(humanWithKey?.usedPlayerKey).toBe(true);
+    expect(humanWithKey?.model).toBe('deepseek/deepseek-v3.2');
+  });
+});
+
+describe('ColonyAgentLoopService — sim playerId resolution, cache invalidation & batch error fallback', () => {
+  it('resolves col.playerId from sim state and invalidates cached decisions when player updates NEAR.AI key/model', async () => {
+    const { host, planets } = createFakePlanetHarness();
+    host.state.colonies[0]!.aiEnabled = true;
+    host.state.colonies[0]!.playerId = 'player_sim_owner';
+
+    const store = new PlayerAiSettingsStore();
+    const requests: LlmRequest[] = [];
+    const llm: LlmProviderPort = {
+      complete: async (req): Promise<LlmResponse> => {
+        requests.push(req);
+        const body = JSON.parse(req.messages[0]?.content ?? '{}') as { colonies?: Array<{ colonyIndex: number }> };
+        const indices = body.colonies?.map((c) => c.colonyIndex) ?? [];
+        return {
+          text: JSON.stringify({
+            directives: indices.map((colonyIndex) => ({
+              colonyIndex,
+              action: 'queue_goal',
+              goal: 'grow_economy',
+              rationale: `LLM governed col_${colonyIndex}.`,
+            })),
+          }),
+          usage: { inputTokens: 40, outputTokens: 20 },
+          model: req.model ?? 'z-ai/glm-5.3',
+        };
+      },
+    };
+
+    const svc = new ColonyAgentLoopService(planets, llm, undefined, undefined, undefined, store);
+
+    // 1. Initial tick with useCache at t=10_000 (no player key -> deterministic-policy cached)
+    const first = await svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 10_000 });
+    expect(first.find((e) => e.colonyIndex === 0)?.model).toBe('deterministic-policy');
+
+    // 2. Player connects key at t=20_000 (within 120s cooldown) -> cache invalidated for colony 0, LLM called!
+    await store.updateSettings(
+      { id: 'player_sim_owner', handle: 'sim_owner' },
+      { apiKey: 'sk-owner-key-1111', model: 'z-ai/glm-5.3' },
+    );
+    const second = await svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 20_000 });
+    const col0Second = second.find((e) => e.colonyIndex === 0);
+    expect(col0Second?.cached).toBeFalsy();
+    expect(col0Second?.usedPlayerKey).toBe(true);
+    expect(col0Second?.model).toBe('z-ai/glm-5.3');
+    // Bots (4, 5) remained cached at t=20_000!
+    expect(second.find((e) => e.colonyIndex === 4)?.cached).toBe(true);
+  });
+
+  it('falls back to deterministic-policy in 1 request when batch LLM returns empty/error without N-1 retries', async () => {
+    const { planets } = createFakePlanetHarness();
+    let callCount = 0;
+    const llm: LlmProviderPort = {
+      complete: async (): Promise<LlmResponse> => {
+        callCount += 1;
+        throw new Error('401 Unauthorized');
+      },
+    };
+    const svc = new ColonyAgentLoopService(planets, llm);
+    const evals = await svc.tickPlanetAgents('pl_loop');
+    expect(callCount).toBe(1);
+    expect(evals.find((e) => e.colonyIndex === 4)?.model).toBe('deterministic-policy');
+    expect(evals.find((e) => e.colonyIndex === 5)?.model).toBe('deterministic-policy');
+  });
+});
+
+describe('ColonyAgentLoopService — war, diplomacy & trade directives', () => {
+  it('supports declare_war / raid, propose_truce, respond_truce, and accept_guild_offer directives', async () => {
+    const { planets, submitted } = createFakePlanetHarness();
+    const llm: LlmProviderPort = {
+      complete: async (): Promise<LlmResponse> => ({
+        text: JSON.stringify({
+          directives: [
+            {
+              colonyIndex: 4,
+              action: 'propose_truce',
+              targetColonyIndex: 5,
+              durationHours: 6,
+              rationale: 'Trader proposing 6h bilateral peace truce with rival.',
+            },
+            {
+              colonyIndex: 5,
+              action: 'declare_war',
+              targetColonyIndex: 4,
+              rationale: 'Warlord declaring war and dispatching raid squad.',
+            },
+          ],
+        }),
+        usage: { inputTokens: 60, outputTokens: 40 },
+        model: 'z-ai/glm-5.3',
+      }),
+    };
+    const svc = new ColonyAgentLoopService(planets, llm);
+    const evals = await svc.tickPlanetAgents('pl_loop');
+    const trader = evals.find((e) => e.colonyIndex === 4);
+    const warlord = evals.find((e) => e.colonyIndex === 5);
+
+    expect(trader?.submittedCommand?.kind).toBe('diplomacy.proposeTruce');
+    expect(trader?.commandOutcome?.ok).toBe(true);
+    expect(warlord?.submittedCommand?.kind).toBe('raid');
+    expect(warlord?.commandOutcome?.ok).toBe(true);
+    expect(submitted.some((c) => c.colonyIndex === 4 && c.kind === 'diplomacy.proposeTruce')).toBe(true);
+    expect(submitted.some((c) => c.colonyIndex === 5 && c.kind === 'raid')).toBe(true);
+  });
+
+  it('supports USDC pairs (metals.t1/USDC) with atomic quote amounts on market.placeOrder', async () => {
+    const { planets, submitted } = createFakePlanetHarness();
+    const llm: LlmProviderPort = {
+      complete: async (): Promise<LlmResponse> => ({
+        text: JSON.stringify({
+          directives: [
+            {
+              colonyIndex: 4,
+              action: 'trade',
+              tradePair: 'metals.t1/USDC',
+              tradeSide: 'sell',
+              tradeAmount: 10,
+              rationale: 'Selling surplus orbital metals for USDC.',
+            },
+          ],
+        }),
+        usage: { inputTokens: 40, outputTokens: 25 },
+        model: 'z-ai/glm-5.3',
+      }),
+    };
+    const svc = new ColonyAgentLoopService(planets, llm);
+    const evals = await svc.tickPlanetAgents('pl_loop');
+    const trader = evals.find((e) => e.colonyIndex === 4);
+    expect(trader?.submittedCommand?.kind).toBe('market.placeOrder');
+    expect(trader?.commandOutcome?.ok).toBe(true);
+    const orderCmd = submitted.find((c) => c.colonyIndex === 4 && c.kind === 'market.placeOrder') as
+      | { args: { amount: number; price: { token: string; amount: string } } }
+      | undefined;
+    expect(orderCmd?.args.amount).toBe(10);
+    expect(orderCmd?.args.price).toEqual({ token: 'USDC', amount: '10000000' });
   });
 });
 

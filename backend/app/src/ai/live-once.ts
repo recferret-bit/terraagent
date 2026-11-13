@@ -1,8 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
-import { NearAiLlmAdapter } from './adapters/nearai-llm.adapter.js';
-import { ZaiLlmAdapter } from './adapters/zai-llm.adapter.js';
+import { DEFAULT_NEAR_AI_MODEL, NearAiLlmAdapter, normalizeNearAiModel } from './adapters/nearai-llm.adapter.js';
 
 export interface LiveReport {
   readonly ok: boolean;
@@ -23,19 +22,14 @@ function redactAll(text: string, secrets: readonly (string | undefined)[]): stri
   return out;
 }
 
-/** One live completion. The report never includes the API key. */
+/** One live completion via NEAR AI Cloud (`z-ai/glm-5.3`). The report never includes the API key. */
 export async function liveOnce(env: Record<string, string | undefined>): Promise<LiveReport> {
   const started = Date.now();
-  const useNearAi =
-    env.AI_PROVIDER === 'nearai' ||
-    (env.AI_PROVIDER !== 'zai' && Boolean(env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY));
-  const model = useNearAi
-    ? env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || 'deepseek-ai/DeepSeek-V3.1'
-    : env.AI_MODEL || 'glm-5.3';
+  const model = normalizeNearAiModel(env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL);
   try {
-    const adapter = useNearAi ? new NearAiLlmAdapter() : new ZaiLlmAdapter();
+    const adapter = new NearAiLlmAdapter();
     const result = await adapter.complete(
-      { system: 'Reply with the single word pong.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 16 },
+      { system: 'Reply with the single word pong.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 16, model },
       env,
     );
     return {
@@ -54,7 +48,7 @@ export async function liveOnce(env: Record<string, string | undefined>): Promise
       latencyMs: Date.now() - started,
       inputTokens: null,
       outputTokens: null,
-      error: redactAll(name, [env.ZAI_API_KEY, env.NEAR_AI_API_KEY, env.NEARAI_API_KEY, env.NEARAI_CLOUD_API_KEY]),
+      error: redactAll(name, [env.NEAR_AI_API_KEY, env.NEARAI_API_KEY, env.NEARAI_CLOUD_API_KEY]),
     };
   }
 }

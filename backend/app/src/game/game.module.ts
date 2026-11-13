@@ -186,13 +186,13 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     }
     this.wireSnapshotSavePoints();
     const seedRivalAi = this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true';
-    if (seedRivalAi && this.flags.has('W18')) {
-      this.planets.onPlanetLoaded((planetId, _tick, info) => {
-        if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
-      });
-      if (this.env.NODE_ENV !== 'test') {
-        this.colonyAgentLoop.start();
+    if (this.flags.has('W18')) {
+      if (seedRivalAi) {
+        this.planets.onPlanetLoaded((planetId, _tick, info) => {
+          if (!info.restored) void this.colonyAgentLoop.seedRivalsOnPlanet(planetId, 2);
+        });
       }
+      if (this.env.NODE_ENV !== 'test') this.colonyAgentLoop.start();
     }
     await this.pool.start();
     this.unsubBridge = bridgePlanetEvents(

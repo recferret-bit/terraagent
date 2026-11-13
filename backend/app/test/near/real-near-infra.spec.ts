@@ -20,6 +20,8 @@ describe('W23 real NEAR testnet infrastructure & adapters', () => {
     expect(cfg.contracts.res).toBe('res.terraagent.testnet');
     expect(cfg.contracts.deed).toBe('deed.terraagent.testnet');
     expect(cfg.contracts.bounty).toBe('bounty.terraagent.testnet');
+    expect(cfg.contracts.staking).toBe('staking.terraagent.testnet');
+    expect(cfg.contracts.dao).toBe('dao.terraagent.testnet');
     expect(cfg.accounts.relayer).toBe('relayer.terraagent.testnet');
     expect(cfg.explorerBaseUrl).toBe('https://testnet.nearblocks.io');
 
@@ -31,9 +33,10 @@ describe('W23 real NEAR testnet infrastructure & adapters', () => {
     const status = await ctrl.status();
     expect(status.nearMode).toBe('testnet');
     expect(status.ports.find((p) => p.port === 'CargoToken')?.mode).toBe('testnet');
-    expect(status.ports.find((p) => p.port === 'BadgeNft')?.mode).toBe('mock');
-    expect(status.ports.find((p) => p.port === 'Staking')?.mode).toBe('mock');
-    expect(status.ports.find((p) => p.port === 'TreasuryDao')?.mode).toBe('mock');
+    expect(status.ports.find((p) => p.port === 'BadgeNft')?.mode).toBe('testnet');
+    expect(status.ports.find((p) => p.port === 'Staking')?.mode).toBe('testnet');
+    expect(status.ports.find((p) => p.port === 'TreasuryDao')?.mode).toBe('testnet');
+    expect(status.ports.every((p) => p.mode === 'testnet')).toBe(true);
     expect(JSON.stringify(status)).not.toContain('super-secret-do-not-expose');
   });
 

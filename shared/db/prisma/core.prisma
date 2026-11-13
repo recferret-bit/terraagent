@@ -5,6 +5,8 @@ model Player {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(3)
+  nearAiApiKey     String?   @map("near_ai_api_key")
+  nearAiModel      String?   @map("near_ai_model") @db.VarChar(128)
 
   sessions AuthSession[]
 

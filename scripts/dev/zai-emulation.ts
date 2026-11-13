@@ -156,12 +156,12 @@ export async function runEmulationCase(
   passed: boolean;
   error?: string;
 }> {
-  const apiKey = env.ZAI_API_KEY;
-  if (!apiKey) throw new Error('ZAI_API_KEY not configured');
+  const apiKey = env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY;
+  if (!apiKey) throw new Error('NEAR_AI_API_KEY not configured');
 
   const provider = createOpenAICompatible({
-    name: 'zai',
-    baseURL: env.AI_BASE_URL || 'https://api.z.ai/api/paas/v4',
+    name: 'nearai',
+    baseURL: env.NEAR_AI_BASE_URL || env.NEARAI_BASE_URL || env.AI_BASE_URL || 'https://cloud-api.near.ai/v1',
     apiKey,
   });
 
@@ -183,7 +183,7 @@ export async function runEmulationCase(
   const start = Date.now();
   try {
     const result = await generateText({
-      model: provider.chatModel(env.AI_MODEL || 'glm-5.3'),
+      model: provider.chatModel(env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || 'z-ai/glm-5.3'),
       system,
       messages: [{ role: 'user', content: `Case: ${c.title}\nSituation:\n${c.situation}` }],
       maxOutputTokens: 1536,

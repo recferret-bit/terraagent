@@ -168,19 +168,30 @@ describe('W18-15 integration — raid opt-in & present colony boundaries', () =>
     expect(awayPolicyRejectionCount('AW-13')).toBe(1);
   });
 
-  it('allows AI cancelTruce when colony is present (away session closed)', () => {
+  it('still blocks AI cancelTruce when colony is present (AW-13), while allowing player cancelTruce', () => {
     const sim = bootSim(false, false);
     submitCmd(sim, 'dev', 'dev.offerTruce', { fromColony: 1, toColony: 0, hours: 6 }, 'cm_dev_of_pres');
     submitCmd(sim, 'ai', 'diplomacy.respondTruce', { offerId: 'of_1', accept: true }, 'cm_ai_acc_pres');
 
-    const presentCancel = submitCmd(
+    const presentAiCancel = submitCmd(
       sim,
       'ai',
       'diplomacy.cancelTruce',
       { truceId: 'tr_1' },
       'cm_ai_cancel_present',
     ).outcomes[0];
-    expect(presentCancel?.code).toBeUndefined();
-    expect(awayPolicyRejectionCount()).toBe(0);
+    expect(presentAiCancel?.code).toBe('away_policy');
+    expect(presentAiCancel?.detail).toBe('AW-13');
+    expect(awayPolicyRejectionCount('AW-13')).toBe(1);
+
+    const presentPlayerCancel = submitCmd(
+      sim,
+      'player',
+      'diplomacy.cancelTruce',
+      { truceId: 'tr_1' },
+      'cm_player_cancel_present',
+    ).outcomes[0];
+    expect(presentPlayerCancel?.code).toBeUndefined();
+    expect(awayPolicyRejectionCount('AW-13')).toBe(1);
   });
 });

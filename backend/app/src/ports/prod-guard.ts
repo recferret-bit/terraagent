@@ -13,7 +13,7 @@ export interface GuardedPort {
 /**
  * Builds a module's env section with the fail-closed guard (D-30 rule 3), evaluated before Nest starts:
  * - with `NODE_ENV=production`, any port that resolves to mock aborts boot unless `allowFlag` is exactly `true`; the message names every mocked port;
- * - a port whose selected real adapter (`testnet`/`mainnet`/`zai`/`live`) is not registered aborts boot in every environment, naming the port.
+ * - a port whose selected real adapter (`testnet`/`mainnet`/`nearai`/`live`) is not registered aborts boot in every environment, naming the port.
  * `shape` holds the selection variables; `NODE_ENV` and the allow flag are added.
  */
 export function guardedEnv(name: string, shape: z.ZodRawShape, allowFlag: string, ports: readonly GuardedPort[], adapters: readonly AdapterDef[]): EnvSection {

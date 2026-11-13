@@ -6,7 +6,7 @@ import { MeAchievementsService } from './me-achievements.service.js';
 import { MeProfileController } from './me-profile.controller.js';
 import { MeProfileService } from './me-profile.service.js';
 
-/** Player profile & achievements HTTP module (`/v1/me/profile`, `/v1/me/achievements`, W12-09, W12-12). */
+/** Player profile & achievements HTTP module (`/v1/me/profile`, `/v1/me/achievements`, `/v1/me/ai-settings`, W12-09, W12-12). */
 @Module({
   imports: [ProgressionModule],
   controllers: [MeProfileController, MeAchievementsController],

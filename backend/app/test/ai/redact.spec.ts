@@ -7,7 +7,7 @@ const DAY_MS = 86_400_000;
 
 describe('redactSecrets', () => {
   it('keeps injected secrets out of stored text', () => {
-    const stored = redactSecrets('note sk-live-SECRETVALUE and ZAI_API_KEY=supersecret Bearer abc.def');
+    const stored = redactSecrets('note sk-live-SECRETVALUE and NEAR_AI_API_KEY=supersecret Bearer abc.def');
     expect(stored).not.toContain('SECRETVALUE');
     expect(stored).not.toContain('supersecret');
     expect(stored).not.toContain('abc.def');

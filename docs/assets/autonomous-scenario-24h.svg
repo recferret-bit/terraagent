@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="1200" height="500" role="img" aria-label="24-Hour Autonomous Scenario: Offline Player, NEAR.AI Bots, Trade, War Declaration, Diplomacy">
+  <defs>
+    <style>
+      .bg { fill: #060912; }
+      .card { fill: #0b1120; stroke: #293548; stroke-width: 1.5; }
+      .card-o { fill: #0d1527; stroke: #ff5a1f; stroke-width: 1.6; }
+      .card-c { fill: #0a1426; stroke: #22d3ee; stroke-width: 1.6; }
+      .card-r { fill: #190e16; stroke: #ef4444; stroke-width: 1.6; }
+      .card-g { fill: #081814; stroke: #22c55e; stroke-width: 1.6; }
+      .title { font: 700 13px 'JetBrains Mono', ui-monospace, monospace; fill: #f8fafc; letter-spacing: 1px; }
+      .time { font: 700 12px 'JetBrains Mono', ui-monospace, monospace; fill: #f8fafc; }
+      .hdr-o { font: 700 10.5px 'JetBrains Mono', ui-monospace, monospace; fill: #ff5a1f; }
+      .hdr-c { font: 700 10.5px 'JetBrains Mono', ui-monospace, monospace; fill: #22d3ee; }
+      .hdr-r { font: 700 10.5px 'JetBrains Mono', ui-monospace, monospace; fill: #f87171; }
+      .hdr-g { font: 700 10.5px 'JetBrains Mono', ui-monospace, monospace; fill: #22c55e; }
+      .txt { font: 500 10px 'JetBrains Mono', ui-monospace, monospace; fill: #cbd5e1; }
+      .muted { font: 500 9.2px 'JetBrains Mono', ui-monospace, monospace; fill: #94a3b8; }
+      .rail { stroke: #1e293b; stroke-width: 4; }
+      .rail-glow { fill: none; stroke: #22d3ee; stroke-width: 2.5; stroke-dasharray: 8 6; animation: dash 2.2s linear infinite; }
+      .pulse { animation: pulse 2.2s ease-in-out infinite; }
+      @keyframes dash { to { stroke-dashoffset: -28; } }
+      @keyframes pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+    </style>
+  </defs>
+
+  <rect width="1200" height="500" class="bg"/>
+  <polygon points="16,14 1172,14 1184,26 1184,50 16,50" fill="#0b1222" stroke="#ff5a1f" stroke-width="1.5"/>
+  <rect x="24" y="22" width="10" height="20" fill="#ff5a1f"/>
+  <text x="44" y="36" class="title">AUTONOMOUS 24H SCENARIO: PLAYER OFFLINE &lt;-&gt; NEAR.AI + INTENTS + WAR &amp; DIPLOMACY</text>
+
+  <!-- Timeline Spine -->
+  <line x1="150" y1="88" x2="1050" y2="88" class="rail"/>
+  <line x1="150" y1="88" x2="1050" y2="88" class="rail-glow"/>
+  <circle cx="155" cy="88" r="9" fill="#ff5a1f" class="pulse"/>
+  <circle cx="450" cy="88" r="9" fill="#22d3ee" class="pulse"/>
+  <circle cx="745" cy="88" r="9" fill="#ef4444" class="pulse"/>
+  <circle cx="1040" cy="88" r="9" fill="#22c55e" class="pulse"/>
+  <circle r="5" fill="#f8fafc">
+    <animateMotion dur="6s" repeatCount="indefinite" path="M155,88 L1040,88"/>
+  </circle>
+
+  <!-- PHASE 1: T+00h OFFLINE DELEGATION -->
+  <polygon points="24,116 286,116 296,126 296,474 24,474" class="card-o"/>
+  <rect x="24" y="116" width="272" height="30" fill="#1e1210"/>
+  <text x="38" y="136" class="time">T+00h // PLAYER OFFLINE</text>
+  <text x="38" y="168" class="hdr-o">AUTOPILOT + /me BYOK KEY</text>
+  <text x="38" y="190" class="txt">1. Owner closes /play.html WS</text>
+  <text x="38" y="208" class="txt">2. World ticks @ 5 Hz continuously</text>
+  <text x="38" y="226" class="txt">3. Agent loads player's AES-256-</text>
+  <text x="38" y="242" class="txt">   GCM NEAR.AI key from /me</text>
+  <text x="38" y="264" class="hdr-c">Model: z-ai/glm-5.3 (TEE)</text>
+  <rect x="38" y="282" width="244" height="72" fill="#070c17" stroke="#334155"/>
+  <text x="48" y="302" class="txt">Limited Key Armed:</text>
+  <text x="48" y="320" class="muted">allowlist: [res, bounty]</text>
+  <text x="48" y="336" class="muted">dailyCap: 1000 tokens</text>
+  <rect x="38" y="370" width="244" height="86" fill="#07121e" stroke="#ff5a1f" stroke-width="1"/>
+  <text x="48" y="390" class="hdr-o">SIM ACTIONS EMITTED:</text>
+  <text x="48" y="408" class="txt">- assignHarvester -&gt; ore</text>
+  <text x="48" y="426" class="txt">- chargeBattery -&gt; grid</text>
+  <text x="48" y="444" class="txt">- repairTurret -&gt; perimeter</text>
+
+  <!-- PHASE 2: T+06h TRADE INTENT -->
+  <polygon points="316,116 578,116 588,126 588,474 316,474" class="card-c"/>
+  <rect x="316" y="116" width="272" height="30" fill="#0c1c2e"/>
+  <text x="330" y="136" class="time">T+06h // MARKET ARBITRAGE</text>
+  <text x="330" y="168" class="hdr-c">REAL-TIME VWAP + INTENTS</text>
+  <text x="330" y="190" class="txt">1. Planet shortage spikes</text>
+  <text x="330" y="206" class="txt">   bio.water VWAP +38%</text>
+  <text x="330" y="226" class="txt">2. Batched NEAR.AI bot tick</text>
+  <text x="330" y="242" class="txt">   decides: sell surplus metals</text>
+  <rect x="330" y="264" width="244" height="90" fill="#06101e" stroke="#22d3ee" stroke-width="1"/>
+  <text x="340" y="284" class="hdr-c">NEP-413 COUNTER-SWAP:</text>
+  <text x="340" y="302" class="txt">Offline Colony: -400 metals.t1</text>
+  <text x="340" y="320" class="txt">Rival Bot #4  : +400 metals.t1</text>
+  <text x="340" y="338" class="hdr-g">Sum(diffs) == 0 -&gt; SETTLED</text>
+  <rect x="330" y="370" width="244" height="86" fill="#07121e" stroke="#334155"/>
+  <text x="340" y="390" class="hdr-c">ON-CHAIN RECEIPT:</text>
+  <text x="340" y="408" class="txt">intents.near::execute_intents</text>
+  <text x="340" y="426" class="txt">res.terraagent::mt_transfer</text>
+  <text x="340" y="444" class="muted">Broadcast to colony WebSocket</text>
+
+  <!-- PHASE 3: T+14h WAR DECLARATION & BOUNTY -->
+  <polygon points="608,116 870,116 880,126 880,474 608,474" class="card-r"/>
+  <rect x="608" y="116" width="272" height="30" fill="#2a1015"/>
+  <text x="622" y="136" class="time">T+14h // WAR &amp; RAID DEFENSE</text>
+  <text x="622" y="168" class="hdr-r">HOSTILE AI WAR DECLARATION</text>
+  <text x="622" y="190" class="txt">1. Iron Syndicate bot evaluates</text>
+  <text x="622" y="206" class="txt">   power ratio -&gt; declareWar</text>
+  <text x="622" y="226" class="txt">2. Launches 3 Rover Raiders</text>
+  <text x="622" y="242" class="txt">   towards Western Refinery</text>
+  <rect x="622" y="264" width="244" height="90" fill="#180c12" stroke="#ef4444" stroke-width="1"/>
+  <text x="632" y="284" class="hdr-r">AUTO-DEFENSE + BOUNTY:</text>
+  <text x="632" y="302" class="txt">Turrets fire -&gt; Bounty open:</text>
+  <text x="632" y="320" class="txt">bounty.terraagent::open_escrow</text>
+  <text x="632" y="338" class="hdr-o">Reward: 85 metals.t1 for defense</text>
+  <rect x="622" y="370" width="244" height="86" fill="#160f0d" stroke="#f59e0b" stroke-width="1"/>
+  <text x="632" y="390" class="hdr-o">TRACK 07 SAFETY GUARDRAIL:</text>
+  <text x="632" y="408" class="txt">AW-13 non-transferable key +</text>
+  <text x="632" y="426" class="txt">D-18 staking gate (403) +</text>
+  <text x="632" y="444" class="muted">Allow War &amp; Diplomacy opt-in</text>
+
+  <!-- PHASE 4: T+22h DIPLOMACY + DAO SHIELD + WAKEUP -->
+  <polygon points="900,116 1166,116 1176,126 1176,474 900,474" class="card-g"/>
+  <rect x="900" y="116" width="276" height="30" fill="#0b241c"/>
+  <text x="914" y="136" class="time">T+22h // PEACE &amp; DAO VOTE</text>
+  <text x="914" y="168" class="hdr-g">DIPLOMACY + PLANET COUNCIL</text>
+  <text x="914" y="190" class="txt">1. Raid repelled; NEAR.AI signs</text>
+  <text x="914" y="206" class="txt">   peace treaty (proposeDiplomacy)</text>
+  <text x="914" y="226" class="txt">2. dao.terraagent::vote passes</text>
+  <text x="914" y="242" class="txt">   Meteor Shield (2/3 quorum)</text>
+  <rect x="914" y="264" width="244" height="90" fill="#061913" stroke="#22c55e" stroke-width="1"/>
+  <text x="924" y="284" class="hdr-g">STAKING + SETTLED DEED:</text>
+  <text x="924" y="302" class="txt">staking.terraagent: 9% APY yield</text>
+  <text x="924" y="320" class="txt">deed.terraagent: Settled v4 NFT</text>
+  <text x="924" y="338" class="txt">All txs verified on NearBlocks</text>
+  <rect x="914" y="370" width="244" height="86" fill="#07121e" stroke="#22c55e" stroke-width="1.2"/>
+  <text x="924" y="390" class="hdr-g">T+24h // PLAYER RETURNS:</text>
+  <text x="924" y="408" class="txt">Opens /play.html -&gt; Sees raid</text>
+  <text x="924" y="426" class="txt">digest, filled tanks, peace,</text>
+  <text x="924" y="444" class="txt">and signed NEAR proofs!</text>
+</svg>

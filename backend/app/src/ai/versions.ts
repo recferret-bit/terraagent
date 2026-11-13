@@ -1,7 +1,7 @@
 /**
  * Pinned on 2026-11-04 for Node 24 (W16-28). pg-boss 12 requires Node >= 22.12.
  * Remote MCP discovery, sampling, elicitation, and resource subscriptions stay off (AI §2).
- * Z.ai glm-5.3 tool and usage behavior is not verified until the live eval (W16-48).
+ * NEAR AI Cloud z-ai/glm-5.3 tool and usage behavior is verified in the live eval (W16-48).
  */
 export const DIRECTOR_LIBRARIES = {
   ai: '7.0.162',

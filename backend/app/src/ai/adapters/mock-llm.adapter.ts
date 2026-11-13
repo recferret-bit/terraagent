@@ -19,7 +19,7 @@ export class MockLlmAdapter extends LlmProviderPort {
     return Promise.resolve({
       text,
       usage: { inputTokens: tokens(input), outputTokens: tokens(text) },
-      model: MODEL,
+      model: req.model || MODEL,
     });
   }
 }

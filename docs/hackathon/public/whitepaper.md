@@ -54,21 +54,20 @@ What an agent **cannot** do without a human: spend beyond its allowance, move th
 
 The Guild's price for every pair is one readable rule: `mid = reference × (target inventory ÷ inventory)^k`, reference = the planet's 24-hour volume-weighted price, spread 4 % widening to 15 % where stock is thin, clamped so that no dump can zero a pair. Every offer shows its reason *(proposed)*: "inventory 2.1× target, 24 h VWAP 0.92 → bid −48 %". The Guild's hourly strategy (what to stockpile, where to fly) is to be computed by a model running in a trusted execution environment on NEAR AI Cloud *(proposed)*; **our goal is to verify its signature in the app and show the attested reason next to the quote. Until that check runs, treat "verified" as a goal, not a claim.**
 
-## 7. What runs on real NEAR on Nov 14
+## 7. What runs on real NEAR Testnet
 
-Every NEAR feature is built first on mock adapters with real-shaped receipts, visible in the dev chain explorer. Only three may switch to real NEAR, one at a time and in this order: login and accounts, then cargo tokens, then markets. The switch starts only if the core waves pass a check on Nov 10; if they do not, the demo ships on mocks and says so. Everything else stays mock for the hackathon.
+All 11 NEAR ports run on **mock adapters** locally by default (`NEAR_MODE=mock`) and switch cleanly to **live NEAR Testnet** (`NEAR_MODE=testnet`) against deployed contracts under `terraagent.testnet` (`res`, `deed`, `bounty`, `staking`, `dao`, `relayer`, `minter`, plus `intents.near`).
 
-| Feature | Real | Mock |
+| Feature | Live (`NEAR_MODE=testnet` / `AI_PROVIDER=nearai`) | Local Dev (`NEAR_MODE=mock` / `AI_PROVIDER=mock`) |
 |---|---|---|
-| Social login, named accounts, gasless actions | real only after the Nov 10 check (NEAR Auth *(proposed)*, NEP-366 relayer) | mock login and accounts until then; fallback: server-created custodial accounts |
-| Cargo tokens (NEP-245) | real only after the Nov 10 check, after login | mock ledger with real-shaped receipts |
-| Markets on NEAR Intents | real only after the Nov 10 check: one tiny mainnet trade between our own dev colonies, dry-run first; NEAR-priced pairs bounded by a 10 NEAR Guild float *(proposed)* | mock verifier |
-| Guild wallets, director key | no | mock |
-| Guild strategy on NEAR AI Cloud | *(proposed)*; attestation not yet verified | the deterministic pricing rule and reason strings |
-| Colony Agent API / MCP (external agents as players) | *(proposed)*, not yet in the build plan (server-side, no chain adapter needed); agents act through the colony's custodial key and the server enforces the allowance | — |
-| Deed, treasury, bounties | no | mock |
+| Social login, named accounts, gasless actions | Real NEAR Testnet sub-accounts (`minter.terraagent.testnet`) + NEP-366 meta-tx (`relayer.terraagent.testnet`) | Postgres mock identity & relayer with realistic receipts |
+| Cargo tokens (NEP-245) | Real multi-token mint/burn/transfer on `res.terraagent.testnet` | Postgres mock ledger with deterministic `opId` receipts |
+| Markets & swaps on NEAR Intents | Real `TestnetIntentsAdapter` (`NEP-413` `token_diff`) + live `1click.chaindefuser.com` dry quotes | Postgres mock verifier & Guild order matching |
+| Agent wallets, Colony Deeds, Badges, Bounties | Live `deed.terraagent.testnet` (Deed & Badge NEP-171), `bounty.terraagent.testnet` escrow & limited keys | Postgres mock tables (`chain.mock_chain_*`) |
+| Staking Vault & Planet Treasury DAO | Live `staking.terraagent.testnet` (4-epoch unbonding + APY) & `dao.terraagent.testnet` (quorum council voting) | Postgres mock staking & DAO policy tables |
+| Batched AI & Colony Autopilot (`NEAR.AI`) | Real NEAR AI Cloud TEE inference (`z-ai/glm-5.3`) with SHA-256 signature verification (`/v1/signature/{chat_id}`) + player `/me` BYOK keys | Deterministic mock LLM adapter |
 
-The README's mock/real table (written for the submission) is authoritative; if they differ, the README wins.
+The README's live Testnet contract & port matrix is authoritative.
 
 ## 8. Fourteen-day planet, what happens after
 
@@ -78,7 +77,6 @@ Planets admit colonies for 24 hours and live 14 days (the matchmaking design; du
 
 - No anti-cheat and no anti-bot in beta; mint caps pace supply but do not secure it; the Guild float is the loss limit for NEAR-priced pairs.
 - Agent and director limits are server rules (§3), not chain rules.
-- `intents.near` is mainnet-only; we test with tiny amounts and dry runs.
-- If the Nov 10 check fails, every NEAR feature in the demo is a mock, and the README says so.
+- `intents.near` 1Click quotes run live dry-runs on Testnet; settlement amounts are bounded by the Guild float and safety caps.
 - Balance numbers are proposed defaults, tuned live in playtests; the simulation that produced them is in the repo.
 - The 3D client, the landing page, the design system and the server skeleton with mock chain ports were built before the Nov 1 build start (first commit 2026-10-29) and are disclosed as baseline.

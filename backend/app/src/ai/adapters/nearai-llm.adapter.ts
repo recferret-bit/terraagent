@@ -7,11 +7,15 @@ import {
   type LlmRequest,
   type LlmResponse,
 } from '../../ports/llm-provider.port.js';
-import { usageFrom } from './zai-llm.adapter.js';
+import {
+  DEFAULT_NEAR_AI_BASE,
+  DEFAULT_NEAR_AI_MODEL,
+  NEAR_AI_MODELS,
+  normalizeNearAiModel,
+} from '../nearai-models.js';
 
+export { DEFAULT_NEAR_AI_BASE, DEFAULT_NEAR_AI_MODEL, NEAR_AI_MODELS, normalizeNearAiModel };
 export const NEAR_AI_KEY_MISSING = 'NEAR_AI_API_KEY is not set';
-export const DEFAULT_NEAR_AI_BASE = 'https://cloud-api.near.ai/v1';
-export const DEFAULT_NEAR_AI_MODEL = 'deepseek-ai/DeepSeek-V3.1';
 
 export type FetchLike = typeof globalThis.fetch;
 
@@ -19,6 +23,17 @@ export function nearAiKey(env: Readonly<Record<string, string | undefined>>): st
   const key = env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY;
   if (!key) throw new Error(NEAR_AI_KEY_MISSING);
   return key;
+}
+
+export function usageFrom(
+  raw: { inputTokens?: number; outputTokens?: number } | undefined,
+): LlmResponse['usage'] {
+  const inputTokens = raw?.inputTokens;
+  const outputTokens = raw?.outputTokens;
+  if (typeof inputTokens !== 'number' || typeof outputTokens !== 'number') {
+    throw new Error('NEAR AI response usage missing numeric inputTokens/outputTokens');
+  }
+  return { inputTokens, outputTokens };
 }
 
 export function sha256Hex(payload: string): string {
@@ -120,9 +135,9 @@ export class NearAiLlmAdapter extends LlmProviderPort {
   }
 
   async complete(req: LlmRequest, env: Readonly<Record<string, string | undefined>> = process.env): Promise<LlmResponse> {
-    const key = nearAiKey(env);
+    const key = req.apiKey?.trim() || nearAiKey(env);
     const baseUrl = (env.NEAR_AI_BASE_URL || env.NEARAI_BASE_URL || env.AI_BASE_URL || DEFAULT_NEAR_AI_BASE).replace(/\/+$/, '');
-    const modelId = env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL;
+    const modelId = normalizeNearAiModel(req.model || env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL);
     const messages = [
       ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
       ...req.messages.map((m) => ({ role: m.role, content: m.content })),

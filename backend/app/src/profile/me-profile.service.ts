@@ -10,7 +10,9 @@ import {
   type CurrentColonySummary,
   type MeProfileResponse,
   type PastColonySummary,
+  type PlayerAiSettings,
   type ProfileStats,
+  type UpdatePlayerAiSettings,
 } from '@terra/contracts';
 import { CoreException } from '../core/errors/index.js';
 import { FlagsService } from '../flags/flags.service.js';
@@ -24,6 +26,7 @@ import {
 } from './colony-history.store.js';
 import { MeAchievementsService } from './me-achievements.service.js';
 import type { ResolvedMePlayer } from './me-auth.js';
+import { PlayerAiSettingsStore } from './player-ai-settings.store.js';
 
 function unlockedTitlesForLevel(level: number): string[] {
   const out = ['Cadet'];
@@ -89,6 +92,8 @@ function buildProfileStats(
 
 @Injectable()
 export class MeProfileService {
+  private readonly aiSettings: PlayerAiSettingsStore;
+
   constructor(
     @Inject(FactsStore) private readonly facts: FactsStore,
     @Inject(XpStore) private readonly xp: XpStore,
@@ -98,12 +103,39 @@ export class MeProfileService {
     @Optional() @Inject(W12SeedService) private readonly seed?: W12SeedService,
     @Optional() @Inject(ProgressionEngine) private readonly engine?: ProgressionEngine,
     @Optional() @Inject(PRISMA) private readonly db?: PrismaClient,
+    @Optional() @Inject(PlayerAiSettingsStore) aiSettings?: PlayerAiSettingsStore,
   ) {
+    this.aiSettings = aiSettings ?? new PlayerAiSettingsStore();
     if (this.seed) {
       this.seed.onReset(async (pid) => {
         await this.colonies.reset(pid);
       });
     }
+  }
+
+  getAiSettingsStore(): PlayerAiSettingsStore {
+    return this.aiSettings;
+  }
+
+  async getAiSettings(playerId: string): Promise<PlayerAiSettings> {
+    return this.aiSettings.getSettings(playerId);
+  }
+
+  async updateAiSettings(
+    player: ResolvedMePlayer,
+    input: UpdatePlayerAiSettings,
+  ): Promise<PlayerAiSettings> {
+    if (!this.flags.has('W12')) {
+      throw new CoreException('wave_disabled', {
+        status: 403,
+        message: 'Player page is off',
+        details: { code: 'wave_disabled' },
+      });
+    }
+    return this.aiSettings.updateSettings(
+      { id: player.id, handle: player.handle },
+      input,
+    );
   }
 
   async getForPlayer(playerInput: string | ResolvedMePlayer): Promise<MeProfileResponse> {
@@ -166,6 +198,7 @@ export class MeProfileService {
     const accountId = linked?.accountId ?? (playerId === 'pr_dev_w12' ? `${handleSlug}.terraagent.mock` : null);
     const stats = buildProfileStats(facts, unlockStage, currentColonies, allPastColonies);
     const next3 = this.achievements.nextAchievements(achRes.achievements, 3);
+    const aiSettings = await this.aiSettings.getSettings(playerId);
 
     return {
       identity: {
@@ -199,6 +232,7 @@ export class MeProfileService {
       nextAchievements: next3,
       earnedAchievementsCount: achRes.earnedCount,
       totalAchievementsCount: ACHIEVEMENTS.length,
+      aiSettings,
     };
   }
 }

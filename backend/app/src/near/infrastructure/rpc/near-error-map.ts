@@ -19,6 +19,14 @@ const PANIC_CODE_MAP: readonly [string, NearErrorCode][] = [
   ['NEAR_ACCOUNT_NOT_FOUND', 'NEAR_ACCOUNT_NOT_FOUND'],
   ['AccountDoesNotExist', 'NEAR_ACCOUNT_NOT_FOUND'],
   ['does not exist', 'NEAR_ACCOUNT_NOT_FOUND'],
+  ['POOL_NOT_WHITELISTED', 'POOL_NOT_WHITELISTED'],
+  ['STAKE_INSUFFICIENT_BALANCE', 'STAKE_INSUFFICIENT_BALANCE'],
+  ['DAO_NOT_FOUND', 'DAO_NOT_FOUND'],
+  ['NOT_A_MEMBER', 'NOT_A_MEMBER'],
+  ['ALREADY_VOTED', 'ALREADY_VOTED'],
+  ['TREASURY_INSUFFICIENT', 'TREASURY_INSUFFICIENT'],
+  ['PROPOSAL_CLOSED', 'PROPOSAL_CLOSED'],
+  ['PROPOSAL_OPEN', 'PROPOSAL_OPEN'],
 ];
 
 /** True when an error represents deterministic chain/contract state rather than an RPC node outage. */

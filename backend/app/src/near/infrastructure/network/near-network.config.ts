@@ -13,6 +13,8 @@ export interface NearNetworkConfig {
     readonly res: string;
     readonly deed: string;
     readonly bounty: string;
+    readonly staking: string;
+    readonly dao: string;
     readonly intents: string;
   };
   readonly accounts: {
@@ -92,6 +94,8 @@ export function resolveNearNetworkConfig(
       res: env.NEAR_CONTRACT_RES?.trim() || `res.${rootAccount}`,
       deed: env.NEAR_CONTRACT_DEED?.trim() || `deed.${rootAccount}`,
       bounty: env.NEAR_CONTRACT_BOUNTY?.trim() || `bounty.${rootAccount}`,
+      staking: env.NEAR_CONTRACT_STAKING?.trim() || `staking.${rootAccount}`,
+      dao: env.NEAR_CONTRACT_DAO?.trim() || `dao.${rootAccount}`,
       intents: env.NEAR_CONTRACT_INTENTS?.trim() || 'intents.near',
     },
     accounts: { relayer, minter },

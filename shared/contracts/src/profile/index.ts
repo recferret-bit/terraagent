@@ -121,6 +121,32 @@ export const PastColonySummarySchema = z.strictObject({
 });
 export type PastColonySummary = z.infer<typeof PastColonySummarySchema>;
 
+export const NEAR_AI_AVAILABLE_MODELS = [
+  'z-ai/glm-5.3',
+  'z-ai/glm-5.3-flash',
+  'deepseek/deepseek-v3.2',
+  'deepseek-ai/DeepSeek-V4.1-Flash-1017',
+  'Qwen/Qwen3.8-27B',
+  'openai/gpt-5-mini',
+  'anthropic/claude-sonnet-4-6',
+] as const;
+
+export const DEFAULT_PLAYER_NEAR_AI_MODEL = 'z-ai/glm-5.3';
+
+export const PlayerAiSettingsSchema = z.strictObject({
+  hasApiKey: z.boolean(),
+  apiKeyPreview: z.string().nullable(),
+  model: z.string().min(1),
+  availableModels: z.array(z.string().min(1)),
+});
+export type PlayerAiSettings = z.infer<typeof PlayerAiSettingsSchema>;
+
+export const UpdatePlayerAiSettingsSchema = z.strictObject({
+  apiKey: z.string().max(256).optional().nullable(),
+  model: z.string().min(1).max(128),
+});
+export type UpdatePlayerAiSettings = z.infer<typeof UpdatePlayerAiSettingsSchema>;
+
 /** Response of `GET /v1/me/profile` (W12-09). */
 export const MeProfileResponseSchema = z.strictObject({
   identity: ProfileIdentitySchema,
@@ -132,5 +158,6 @@ export const MeProfileResponseSchema = z.strictObject({
   nextAchievements: z.array(PlayerAchievementEntrySchema),
   earnedAchievementsCount: z.number().int().nonnegative(),
   totalAchievementsCount: z.number().int().positive(),
+  aiSettings: PlayerAiSettingsSchema.optional(),
 });
 export type MeProfileResponse = z.infer<typeof MeProfileResponseSchema>;

@@ -10,11 +10,10 @@ describe('W16-04 fail-closed provider selection', () => {
     expect(kind).not.toContain('DO-NOT-LOG');
   });
 
-  it('refuses non-production zai and nearai until AI_LIVE=1', () => {
-    expect(aiProvider({ AI_PROVIDER: 'zai', NODE_ENV: 'development' })).toBe('zai-needs-live');
-    expect(aiProvider({ AI_PROVIDER: 'zai', NODE_ENV: 'test', AI_LIVE: '1' })).toBe('zai');
+  it('refuses non-production nearai until AI_LIVE=1 and rejects deprecated zai', () => {
     expect(aiProvider({ AI_PROVIDER: 'nearai', NODE_ENV: 'development' })).toBe('nearai-needs-live');
     expect(aiProvider({ AI_PROVIDER: 'nearai', NODE_ENV: 'test', AI_LIVE: '1' })).toBe('nearai');
     expect(aiProvider({ AI_PROVIDER: 'nearai', NODE_ENV: 'production' })).toBe('nearai');
+    expect(aiProvider({ AI_PROVIDER: 'zai', NODE_ENV: 'production' })).toBe('unknown');
   });
 });

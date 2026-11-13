@@ -15,6 +15,7 @@ import { HomeController, HomeRepository, HomeService } from './home';
 import { DEV_JWT_SECRET } from './auth/auth-token.service';
 import { MetricsRegistry } from './metrics.registry';
 import { ReadinessRegistry } from './readiness.registry';
+import { PlayerAiSettingsStore } from '../profile/player-ai-settings.store';
 
 /**
  * Env section convention: a module file may export `env` (an `EnvSection`); the app merges them all before Nest starts.
@@ -60,6 +61,7 @@ export const env: EnvSection = (() => {
     IpThrottleGuard,
     HomeRepository,
     HomeService,
+    PlayerAiSettingsStore,
   ],
   exports: [
     CommandPrechecks,
@@ -71,6 +73,7 @@ export const env: EnvSection = (() => {
     BearerAuthGuard,
     HomeRepository,
     HomeService,
+    PlayerAiSettingsStore,
   ],
 })
 export class CoreModule {}

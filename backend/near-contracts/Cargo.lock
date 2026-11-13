@@ -2274,6 +2274,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "terra-dao-contract"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "terra-deed-contract"
 version = "0.1.0"
 dependencies = [
@@ -2284,6 +2293,15 @@ dependencies = [
 
 [[package]]
 name = "terra-res-contract"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "terra-staking-contract"
 version = "0.1.0"
 dependencies = [
  "near-sdk",

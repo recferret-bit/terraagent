@@ -5,6 +5,7 @@ import { PilotAccess } from '../design/pilot/PilotAccess';
 import { initHeroCopy } from './sections/heroCopy';
 import { initLiveStats } from './sections/liveStats';
 import { initColonyCanvas } from './sections/colonyCanvas';
+import { initContractsBoard } from './sections/contractsBoard';
 import { initRoadmap } from './sections/roadmap';
 import { setCrt } from '@terra/render/ui/crt';
 import { setPixelArt, setShadow } from '@terra/render/ui/pixelArt';
@@ -25,6 +26,7 @@ class LandingPage {
     () => initHeroCopy(this.page),
     () => initLiveStats(this.page),
     initColonyCanvas,
+    initContractsBoard,
     initRoadmap,
     () => { const host = document.querySelector<HTMLElement>('.header-right'); if (host) new PilotAccess(host); },
     lazy(() => import('./hero/HeroStage').then((m) => m.initHeroStage)),

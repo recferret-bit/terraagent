@@ -8,7 +8,6 @@ import {
   restore,
   SimHost,
   snapshot,
-  spawnColony,
   view,
 } from '@terra/sim';
 import { describe, expect, it } from 'vitest';

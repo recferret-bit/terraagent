@@ -37,6 +37,8 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]) =>
     NEAR_CONTRACT_RES: z.string().optional(),
     NEAR_CONTRACT_DEED: z.string().optional(),
     NEAR_CONTRACT_BOUNTY: z.string().optional(),
+    NEAR_CONTRACT_STAKING: z.string().optional(),
+    NEAR_CONTRACT_DAO: z.string().optional(),
     NEAR_CONTRACT_INTENTS: z.string().optional(),
     NEAR_RELAYER_ACCOUNT: z.string().optional(),
     NEAR_MINTER_ACCOUNT: z.string().optional(),

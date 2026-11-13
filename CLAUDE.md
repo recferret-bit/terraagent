@@ -31,6 +31,10 @@ Automated test suites: `npm test` (unit tests), `npm run test:integration` (Post
 | `/` | Hub linking to all pages | `frontend/index.html` |
 | `/landing.html` | Landing site | `frontend/landing.html`, `frontend/landing/` (`main.ts` → `LandingPage`) |
 | `/play.html` | Game (orbit menu → descent → colony) | `frontend/game/` (`main.ts`, `app/`, `ui/`, `descent/`) |
+| `/trade.html` | Planet market orderbook, swaps & bot keys | `frontend/trade/` |
+| `/me.html` | Player profile, badges & BYOK NEAR.AI settings | `frontend/game/me/` |
+| `/deed.html` | Public Colony Deed NFT card (`/deed/:tokenId`) | `frontend/game/deed/` |
+| `/dev/economy-sim/` | 7-day multi-colony economy & AI simulator | `frontend/game/dev/economy-sim/` |
 | `/playground.html` | 3D model storybook / visual QA | `frontend/playground/` (`PlaygroundApp`) |
 | `/design/` | Faction Plate design system docs | `frontend/design/` |
 

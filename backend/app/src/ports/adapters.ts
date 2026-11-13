@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-/** One adapter for one port. `kind` is the selection value it answers to (`mock`, `testnet`, `mainnet`, `zai`, `live`). */
+/** One adapter for one port. `kind` is the selection value it answers to (`mock`, `testnet`, `mainnet`, `nearai`, `live`). */
 export interface AdapterDef {
   readonly port: abstract new () => object;
   readonly kind: string;

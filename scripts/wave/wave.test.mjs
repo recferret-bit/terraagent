@@ -262,7 +262,7 @@ test('wavePrompt includes Vertical Slice Scope, Testing, Full-Game Integration &
   assert.match(prompt, /NEAR_MODE=mock/);
   assert.match(prompt, /NEAR_MODE=testnet\|devnet/);
   assert.match(prompt, /NEAR_ADAPTER_<PORT>=mock\|testnet\|devnet\|mainnet/);
-  assert.match(prompt, /AI_PROVIDER=mock\|zai/);
+  assert.match(prompt, /AI_PROVIDER=mock\|nearai/);
   assert.match(prompt, /NOTIFY_ADAPTER=mock\|live\|webpush\|telegram/);
   assert.match(prompt, /IdentityPort, RelayerPort, CargoTokenPort, IntentsPort, AgentWalletPort, DeedNftPort, BadgeNftPort, StakingPort, TreasuryDaoPort, EscrowPort, ChainReadPort/);
 });

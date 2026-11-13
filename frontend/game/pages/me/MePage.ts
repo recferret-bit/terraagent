@@ -2,6 +2,7 @@ import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts
 import { fetchMeData, type MeFetchFn } from './api';
 import { clearChildren, el } from './dom';
 import { renderAchievementsSection } from './sections/AchievementsSection';
+import { renderAiSettingsSection } from './sections/AiSettingsSection';
 import { renderPilotSection } from './sections/PilotSection';
 import {
   renderHistorySection,
@@ -83,7 +84,12 @@ export class MePage {
     const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
 
     main.appendChild(
-      this.renderSectionPlate('pilot', 'PILOT', renderPilotSection(profile)),
+      this.renderSectionPlate(
+        'pilot',
+        'PILOT',
+        renderPilotSection(profile),
+        renderAiSettingsSection(profile, { fetch: this.opts.fetch, search: this.opts.search }),
+      ),
     );
     main.appendChild(
       this.renderSectionPlate(

@@ -2,14 +2,29 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_NEAR_AI_MODEL,
   NEAR_AI_KEY_MISSING,
+  NEAR_AI_MODELS,
   NearAiLlmAdapter,
   nearAiKey,
+  normalizeNearAiModel,
   sha256Hex,
+  usageFrom,
   verifySignatureHashes,
   type FetchLike,
 } from '../../src/ai/adapters/nearai-llm.adapter.js';
 
 describe('NEAR AI Cloud LLM adapter & TEE attestation', () => {
+  it('defaults to z-ai/glm-5.3 on NEAR AI Cloud and normalizes GLM-5 aliases', () => {
+    expect(DEFAULT_NEAR_AI_MODEL).toBe('z-ai/glm-5.3');
+    expect(NEAR_AI_MODELS).toContain('z-ai/glm-5.3');
+    expect(normalizeNearAiModel(undefined)).toBe('z-ai/glm-5.3');
+    expect(normalizeNearAiModel('glm-5')).toBe('z-ai/glm-5.3');
+    expect(normalizeNearAiModel('glm-5.3')).toBe('z-ai/glm-5.3');
+    expect(normalizeNearAiModel('glm-5-flash')).toBe('z-ai/glm-5.3-flash');
+    expect(normalizeNearAiModel('deepseek/deepseek-v3.2')).toBe('deepseek/deepseek-v3.2');
+    expect(usageFrom({ inputTokens: 3, outputTokens: 4 })).toEqual({ inputTokens: 3, outputTokens: 4 });
+    expect(() => usageFrom(undefined)).toThrow(/usage missing/);
+  });
+
   it('refuses to start without NEAR_AI_API_KEY and never leaks sibling secrets', async () => {
     const secret = 'sk-do-not-leak-me';
     expect(() => nearAiKey({})).toThrow(NEAR_AI_KEY_MISSING);
@@ -64,7 +79,9 @@ describe('NEAR AI Cloud LLM adapter & TEE attestation', () => {
     expect(res.attestation?.signatureKind).toBe('provider_tee');
     expect(res.attestation?.signingAddress).toBe('0x1111222233334444555566667777888899990000');
   });
+});
 
+describe('NEAR AI Cloud signature retry & per-request player overrides', () => {
   it('retries transient 404 on TEE node signature lookup and degrades gracefully if unavailable', async () => {
     let sigCalls = 0;
     const completionPayload = JSON.stringify({
@@ -106,5 +123,44 @@ describe('NEAR AI Cloud LLM adapter & TEE attestation', () => {
       'resH',
     );
     expect(bad.verified).toBe(false);
+  });
+
+  it('supports per-request player API key and custom NEAR.AI model overrides', async () => {
+    let capturedAuth = '';
+    let capturedModel = '';
+    const fakeFetch: FetchLike = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/chat/completions')) {
+        const headers = init?.headers as Record<string, string>;
+        capturedAuth = headers?.Authorization ?? '';
+        const body = JSON.parse(String(init?.body ?? '{}')) as { model?: string };
+        capturedModel = body.model ?? '';
+        return new Response(
+          JSON.stringify({
+            id: 'chatcmpl_player_1',
+            model: capturedModel,
+            choices: [{ message: { content: '{"action":"hold"}' } }],
+            usage: { prompt_tokens: 12, completion_tokens: 4 },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('not found', { status: 404 });
+    };
+
+    const res = await new NearAiLlmAdapter(fakeFetch).complete(
+      {
+        system: 'sys',
+        messages: [{ role: 'user', content: 'obs' }],
+        maxTokens: 32,
+        apiKey: 'player-nearai-key-999',
+        model: 'deepseek/deepseek-v3.2',
+      },
+      { NEAR_AI_ATTEST: '0' },
+    );
+    expect(capturedAuth).toBe('Bearer player-nearai-key-999');
+    expect(capturedModel).toBe('deepseek/deepseek-v3.2');
+    expect(res.model).toBe('deepseek/deepseek-v3.2');
+    expect(res.text).toBe('{"action":"hold"}');
   });
 });

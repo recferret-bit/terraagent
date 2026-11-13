@@ -6,10 +6,10 @@ function formatRow(cols: string[], widths: number[]): string {
 
 async function main() {
   const env = loadTestEnv();
-  const model = env.AI_MODEL || 'glm-5.3';
+  const model = env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || 'z-ai/glm-5.3';
 
   console.log('\n========================================================================================');
-  console.log(`🤖 TerraAgent Z.AI Strategic Director Emulation — 10 Decision Benchmark (${model})`);
+  console.log(`🤖 TerraAgent NEAR.AI Strategic Director Emulation — 10 Decision Benchmark (${model})`);
   console.log('========================================================================================\n');
 
   const results = [];

@@ -6,6 +6,10 @@ export interface LlmRequest {
   readonly temperature?: number;
   /** Ask for a JSON-only reply (the caller still validates it with zod). */
   readonly json?: boolean;
+  /** Optional per-request model override (e.g. player-selected NEAR.AI model, defaults to z-ai/glm-5.3). */
+  readonly model?: string;
+  /** Optional per-request NEAR.AI API key override (e.g. player-connected API key from /me). */
+  readonly apiKey?: string;
   /** Cancels the provider call. A missing signal does not disable abort support. */
   readonly signal?: AbortSignal;
 }

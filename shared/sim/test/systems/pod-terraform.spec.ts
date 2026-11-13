@@ -16,7 +16,6 @@ import {
   setColonyStock,
   setTileOwner,
   SimHost,
-  spawnColony,
   TERRAIN,
   type WorkJobRecord,
 } from '@terra/sim';

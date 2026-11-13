@@ -2,6 +2,7 @@ import { DEFAULT_DIRECTOR_POLICY, type DirectorPolicyV1 } from '@terra/contracts
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaDirectorStore } from '../../src/ai/audit/prisma-store.js';
+import { openPlayerApiKey, PlayerAiSettingsStore } from '../../src/profile/player-ai-settings.store.js';
 
 let db: TestDatabase;
 let store: PrismaDirectorStore;
@@ -193,5 +194,59 @@ describe('W16-44 Postgres multiworker token budget & kill switch integration', (
 
     await store.setKillSwitch('global', true, 'emergency');
     expect(await store.isKilled('colony:col_pg_10')).toBe(true);
+  });
+});
+
+describe('PlayerAiSettingsStore Postgres persistence (0032_player_nearai_settings)', () => {
+  it('persists NEAR.AI API key and model in core.player across store restarts, preserves handle, and resolves planet colonies', async () => {
+    const store1 = new PlayerAiSettingsStore(db.prisma);
+    const updated = await store1.updateSettings(
+      { id: 'pl_nearai_pg_1', handle: 'commander_nova' },
+      { apiKey: 'sk-nearai-live-pg-9876', model: 'deepseek/deepseek-v3.2' },
+    );
+    expect(updated.hasApiKey).toBe(true);
+    expect(updated.apiKeyPreview).toBe('sk-n••••9876');
+    expect(updated.model).toBe('deepseek/deepseek-v3.2');
+
+    // Verify raw Postgres row in core.player stores encrypted envelope, never plaintext
+    const row = await db.prisma.player.findUniqueOrThrow({ where: { id: 'pl_nearai_pg_1' } });
+    expect(row.handle).toBe('commander_nova');
+    expect(row.nearAiApiKey?.startsWith('enc:v1:1:')).toBe(true);
+    expect(row.nearAiApiKey).not.toContain('sk-nearai-live-pg-9876');
+    expect(openPlayerApiKey(row.nearAiApiKey)).toBe('sk-nearai-live-pg-9876');
+    expect(row.nearAiModel).toBe('deepseek/deepseek-v3.2');
+
+    // Fresh store instance without in-memory state reads from Postgres
+    const store2 = new PlayerAiSettingsStore(db.prisma);
+    const loaded = await store2.getSettings('pl_nearai_pg_1');
+    expect(loaded.hasApiKey).toBe(true);
+    expect(loaded.apiKeyPreview).toBe('sk-n••••9876');
+    expect(loaded.model).toBe('deepseek/deepseek-v3.2');
+
+    // Resolve planet colony ownership from core.colony in Postgres
+    await db.prisma.colony.create({
+      data: {
+        id: 'col_nearai_pg_0',
+        playerId: 'pl_nearai_pg_1',
+        planetId: 'planet_nearai_pg',
+        colonyIndex: 0,
+        name: 'Nova Prime',
+      },
+    });
+    const map = await store2.resolvePlanetPlayerAiConfigs('planet_nearai_pg');
+    expect(map[0]).toEqual({
+      playerId: 'pl_nearai_pg_1',
+      apiKey: 'sk-nearai-live-pg-9876',
+      model: 'deepseek/deepseek-v3.2',
+    });
+
+    // Clearing key in store2 updates Postgres and invalidates store1's in-memory entry on next DB read
+    await store2.updateSettings(
+      { id: 'pl_nearai_pg_1', handle: 'commander_nova' },
+      { model: 'deepseek/deepseek-v3.2', apiKey: null },
+    );
+    const afterClear = await store1.getCredentials('pl_nearai_pg_1');
+    expect(afterClear.apiKey).toBeNull();
+    expect(afterClear.model).toBe('deepseek/deepseek-v3.2');
   });
 });

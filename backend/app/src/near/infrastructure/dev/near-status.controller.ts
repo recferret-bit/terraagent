@@ -37,8 +37,11 @@ export class NearStatusController {
       CargoToken: cfg.contracts.res,
       Intents: cfg.contracts.intents,
       AgentWallet: cfg.rootAccount,
+      BadgeNft: cfg.contracts.deed,
       DeedNft: cfg.contracts.deed,
       Escrow: cfg.contracts.bounty,
+      Staking: cfg.contracts.staking,
+      TreasuryDao: cfg.contracts.dao,
       ChainRead: cfg.primaryRpcUrl,
     };
 

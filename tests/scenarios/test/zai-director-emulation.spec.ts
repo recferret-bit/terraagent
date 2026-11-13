@@ -7,7 +7,7 @@ import {
   runEmulationCase,
 } from '../../../scripts/dev/zai-emulation';
 
-describe('Z.AI Strategic Director 10-Case Emulation Suite', () => {
+describe('NEAR.AI (z-ai/glm-5.3) Strategic Director 10-Case Emulation Suite', () => {
   it('defines 10 distinct strategic decision scenarios across all categories', () => {
     expect(CASES).toHaveLength(10);
 
@@ -69,9 +69,10 @@ describe('Z.AI Strategic Director 10-Case Emulation Suite', () => {
     expect(parsed.rationale).toHaveLength(10);
   });
 
-  it('exercises representative cases against Z.AI provider when live key is configured', async () => {
+  it('exercises representative cases against NEAR.AI provider when live key is configured', async () => {
     const env = loadTestEnv();
-    if (!env.ZAI_API_KEY || process.env.AI_LIVE !== '1') {
+    const apiKey = env.NEAR_AI_API_KEY || env.NEARAI_API_KEY || env.NEARAI_CLOUD_API_KEY;
+    if (!apiKey || process.env.AI_LIVE !== '1') {
       // Offline fallback: verify schema validation on synthetic responses
       for (const c of CASES) {
         const synthetic = DecisionSchema.parse({

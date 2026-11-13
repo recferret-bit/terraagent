@@ -15,7 +15,6 @@ import {
   setTileTerrain,
   SimHost,
   snapshot,
-  spawnColony,
   TERRAIN,
   view,
 } from '@terra/sim';
