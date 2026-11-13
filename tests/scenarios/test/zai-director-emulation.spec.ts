@@ -7,7 +7,7 @@ import {
   runEmulationCase,
 } from '../../../scripts/dev/zai-emulation';
 
-describe('NEAR.AI (z-ai/glm-5.3) Strategic Director 10-Case Emulation Suite', () => {
+describe('NEAR.AI (z-ai/glm-5.3-flash) Strategic Director 10-Case Emulation Suite', () => {
   it('defines 10 distinct strategic decision scenarios across all categories', () => {
     expect(CASES).toHaveLength(10);
 

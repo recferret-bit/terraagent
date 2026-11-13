@@ -72,7 +72,7 @@
 
   <!-- Party A Delta -->
   <rect x="452" y="126" width="320" height="72" fill="#091326" stroke="#ff5a1f" stroke-width="1.2"/>
-  <text x="464" y="146" class="hdr-o">SIGNER A (AI BOT // z-ai/glm-5.3)</text>
+  <text x="464" y="146" class="hdr-o">SIGNER A (AI BOT // z-ai/glm-5.3-flash)</text>
   <text x="464" y="164" class="txt">metals.t1: -500  |  bio.water: +200</text>
   <text x="464" y="182" class="muted">sig: ed25519:3vK8.. + nonce + deadline</text>
 

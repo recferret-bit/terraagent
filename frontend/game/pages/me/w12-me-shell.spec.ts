@@ -34,7 +34,7 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     );
     expect(root.querySelector('[data-testid="me-ai-settings"]')).not.toBeNull();
     const modelSelect = root.querySelector('[data-testid="me-ai-model-select"]') as HTMLSelectElement | null;
-    expect(modelSelect?.value).toBe('z-ai/glm-5.3');
+    expect(modelSelect?.value).toBe('z-ai/glm-5.3-flash');
   });
 
   it('renders Player page is off plate when /v1/me/profile returns wave_disabled (403)', async () => {

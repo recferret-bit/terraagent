@@ -120,7 +120,7 @@
   <rect x="432" y="272" width="350" height="118" fill="#0c1326" stroke="#22d3ee" stroke-width="1.5"/>
   <circle cx="450" cy="292" r="5" fill="#22d3ee" class="pulse"/>
   <text x="462" y="296" class="hdr-c">NEAR.AI AUTONOMOUS DECISION ENGINE</text>
-  <text x="446" y="318" class="txt">Model: z-ai/glm-5.3 (TEE attested)</text>
+  <text x="446" y="318" class="txt">Model: z-ai/glm-5.3-flash (TEE attested)</text>
   <text x="446" y="336" class="txt">Bots: 1 batched RPC / 60s across 8 colonies</text>
   <text x="446" y="354" class="txt">Players: /me BYOK API key &amp; custom model</text>
   <text x="446" y="372" class="hdr-g">Orders: harvest / build / trade / war / peace</text>

@@ -48,7 +48,7 @@
   <text x="38" y="208" class="txt">2. World ticks @ 5 Hz continuously</text>
   <text x="38" y="226" class="txt">3. Agent loads player's AES-256-</text>
   <text x="38" y="242" class="txt">   GCM NEAR.AI key from /me</text>
-  <text x="38" y="264" class="hdr-c">Model: z-ai/glm-5.3 (TEE)</text>
+  <text x="38" y="264" class="hdr-c">Model: z-ai/glm-5.3-flash (TEE)</text>
   <rect x="38" y="282" width="244" height="72" fill="#070c17" stroke="#334155"/>
   <text x="48" y="302" class="txt">Limited Key Armed:</text>
   <text x="48" y="320" class="muted">allowlist: [res, bounty]</text>

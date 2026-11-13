@@ -13,13 +13,15 @@ import {
 } from '../../src/ai/adapters/nearai-llm.adapter.js';
 
 describe('NEAR AI Cloud LLM adapter & TEE attestation', () => {
-  it('defaults to z-ai/glm-5.3 on NEAR AI Cloud and normalizes GLM-5 aliases', () => {
-    expect(DEFAULT_NEAR_AI_MODEL).toBe('z-ai/glm-5.3');
+  it('defaults to z-ai/glm-5.3-flash on NEAR AI Cloud and normalizes GLM-5 aliases', () => {
+    expect(DEFAULT_NEAR_AI_MODEL).toBe('z-ai/glm-5.3-flash');
+    expect(NEAR_AI_MODELS).toContain('z-ai/glm-5.3-flash');
     expect(NEAR_AI_MODELS).toContain('z-ai/glm-5.3');
-    expect(normalizeNearAiModel(undefined)).toBe('z-ai/glm-5.3');
+    expect(normalizeNearAiModel(undefined)).toBe('z-ai/glm-5.3-flash');
     expect(normalizeNearAiModel('glm-5')).toBe('z-ai/glm-5.3');
     expect(normalizeNearAiModel('glm-5.3')).toBe('z-ai/glm-5.3');
     expect(normalizeNearAiModel('glm-5-flash')).toBe('z-ai/glm-5.3-flash');
+    expect(normalizeNearAiModel('glm-5.3-flash')).toBe('z-ai/glm-5.3-flash');
     expect(normalizeNearAiModel('deepseek/deepseek-v3.2')).toBe('deepseek/deepseek-v3.2');
     expect(usageFrom({ inputTokens: 3, outputTokens: 4 })).toEqual({ inputTokens: 3, outputTokens: 4 });
     expect(() => usageFrom(undefined)).toThrow(/usage missing/);
@@ -175,7 +177,7 @@ describe('NEAR AI Cloud GLM-5 reasoning control & APP_ENV fallback', () => {
       return new Response(
         JSON.stringify({
           id: 'chatcmpl_glm_1',
-          model: 'z-ai/glm-5.3',
+          model: 'z-ai/glm-5.3-flash',
           choices: [{ message: { content: 'pong' } }],
           usage: { prompt_tokens: 8, completion_tokens: 4 },
         }),

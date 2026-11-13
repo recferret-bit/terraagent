@@ -161,7 +161,7 @@ describe('ColonyAgentLoopService — human manual gate, NEAR AI Cloud attestatio
 });
 
 describe('ColonyAgentLoopService — batching, cooldown cache & player NEAR.AI key routing', () => {
-  it('batches all Rival AI bots into a single NEAR.AI (z-ai/glm-5.3) request and caches unchanged states', async () => {
+  it('batches all Rival AI bots into a single NEAR.AI (z-ai/glm-5.3-flash) request and caches unchanged states', async () => {
     const { planets } = createFakePlanetHarness();
     const requests: LlmRequest[] = [];
     const llm: LlmProviderPort = {
@@ -185,14 +185,14 @@ describe('ColonyAgentLoopService — batching, cooldown cache & player NEAR.AI k
             ],
           }),
           usage: { inputTokens: 80, outputTokens: 45 },
-          model: req.model ?? 'z-ai/glm-5.3',
+          model: req.model ?? 'z-ai/glm-5.3-flash',
         };
       },
     };
     const svc = new ColonyAgentLoopService(planets, llm);
     const firstEvals = await svc.tickPlanetAgents('pl_loop', { useCache: true, nowMs: 1_000 });
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.model).toBe('z-ai/glm-5.3');
+    expect(requests[0]?.model).toBe('z-ai/glm-5.3-flash');
     expect(firstEvals.find((e) => e.colonyIndex === 4)?.directive?.goal).toBe('grow_economy');
     expect(firstEvals.find((e) => e.colonyIndex === 5)?.directive?.goal).toBe('secure_power');
 
@@ -226,7 +226,7 @@ describe('ColonyAgentLoopService — batching, cooldown cache & player NEAR.AI k
             })),
           }),
           usage: { inputTokens: 50, outputTokens: 30 },
-          model: req.model ?? 'z-ai/glm-5.3',
+          model: req.model ?? 'z-ai/glm-5.3-flash',
         };
       },
     };
@@ -237,7 +237,7 @@ describe('ColonyAgentLoopService — batching, cooldown cache & player NEAR.AI k
     const evalsNoKey = await svc.tickPlanetAgents('pl_loop');
     expect(requests).toHaveLength(1);
     expect(requests[0]?.apiKey).toBeUndefined();
-    expect(requests[0]?.model).toBe('z-ai/glm-5.3');
+    expect(requests[0]?.model).toBe('z-ai/glm-5.3-flash');
     const humanNoKey = evalsNoKey.find((e) => e.colonyIndex === 0);
     expect(humanNoKey?.governed).toBe(true);
     expect(humanNoKey?.usedPlayerKey).toBe(false);

@@ -83,7 +83,8 @@ describe('W12-09 MeProfileController and wave gating', () => {
     const initial = await stack.controller.getAiSettings(req);
     expect(initial.hasApiKey).toBe(false);
     expect(initial.apiKeyPreview).toBeNull();
-    expect(initial.model).toBe('z-ai/glm-5.3');
+    expect(initial.model).toBe('z-ai/glm-5.3-flash');
+    expect(initial.availableModels).toContain('z-ai/glm-5.3-flash');
     expect(initial.availableModels).toContain('z-ai/glm-5.3');
 
     const saved = await stack.controller.putAiSettings(req, {
