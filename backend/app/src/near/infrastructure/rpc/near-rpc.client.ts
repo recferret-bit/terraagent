@@ -19,6 +19,20 @@ import { formatErrorText, isDeterministicChainError, toNearException } from './n
 
 type TxOutcome = Awaited<ReturnType<Account['callFunctionRaw']>> | FinalExecutionOutcome;
 
+const signerLocks = new Map<string, Promise<unknown>>();
+
+function withSignerLock<T>(signerAccountId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = signerLocks.get(signerAccountId) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  const tracked = next.finally(() => {
+    if (signerLocks.get(signerAccountId) === tracked) {
+      signerLocks.delete(signerAccountId);
+    }
+  });
+  signerLocks.set(signerAccountId, tracked);
+  return next;
+}
+
 export interface ContractCallParams {
   readonly signerAccountId: string;
   readonly signerSecretKey: string;
@@ -147,25 +161,27 @@ export class NearRpcClient {
   }
 
   async call(params: ContractCallParams): Promise<{ receipt: ChainReceipt; outcome: TxOutcome }> {
-    this.chargeDailyBudget(0.002);
-    try {
-      const signer = KeyPairSigner.fromSecretKey(params.signerSecretKey as KeyPairString);
-      const outcome = await this.withFailover(async (provider) => {
-        const account = new Account(params.signerAccountId, provider, signer);
-        return account.callFunctionRaw({
-          contractId: params.contractId,
-          methodName: params.methodName,
-          args: params.args,
-          gas: teraToGas(params.gasTgas ?? 50),
-          deposit: params.depositYocto ?? 0n,
+    return withSignerLock(params.signerAccountId, async () => {
+      this.chargeDailyBudget(0.002);
+      try {
+        const signer = KeyPairSigner.fromSecretKey(params.signerSecretKey as KeyPairString);
+        const outcome = await this.withFailover(async (provider) => {
+          const account = new Account(params.signerAccountId, provider, signer);
+          return account.callFunctionRaw({
+            contractId: params.contractId,
+            methodName: params.methodName,
+            args: params.args,
+            gas: teraToGas(params.gasTgas ?? 50),
+            deposit: params.depositYocto ?? 0n,
+          });
         });
-      });
-      assertOutcomeSucceeded(outcome);
-      const blockHeight = await this.recordOutcomeHeight(outcome);
-      return { receipt: outcomeToReceipt(outcome, this.config.network, blockHeight), outcome };
-    } catch (err) {
-      throw toNearException(err);
-    }
+        assertOutcomeSucceeded(outcome);
+        const blockHeight = await this.recordOutcomeHeight(outcome);
+        return { receipt: outcomeToReceipt(outcome, this.config.network, blockHeight), outcome };
+      } catch (err) {
+        throw toNearException(err);
+      }
+    });
   }
 
   private async recordOutcomeHeight(outcome: TxOutcome): Promise<number | undefined> {

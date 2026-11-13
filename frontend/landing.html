@@ -240,45 +240,53 @@ It keeps building.</h1>
 
     <!-- 05 DIRECTOR -->
     <section class="band" id="director">
-      <div class="container section director">
-        <div class="director-copy">
-          <p class="eyebrow">05 · THE AI DIRECTOR</p>
-          <h2 class="h1" style="margin-top:12px">Rules for routine.<br><span class="sub-blue">An AI for emergencies.</span></h2>
-          <p>Most decisions come from a rule engine that already knows your planet, hazards and resource map. The AI Director is called only on big events: a critical shortage, a raid, a new neighbour, the rocket decision. That's at most once every 5 minutes per colony.</p>
-          <div class="split">
-            <div class="split-row"><span>RULE ENGINE · EVERY TICK</span><span class="c-orange-hi">90–95 %</span></div>
-            <div class="split-bar"><span class="rules"></span><span class="ai"></span></div>
-            <div class="split-row"><span>AI DIRECTOR · EVENT-DRIVEN</span><span class="c-blue">5–10 %</span></div>
+      <div class="container section">
+        <div class="director">
+          <div class="director-copy">
+            <p class="eyebrow">05 · THE AI DIRECTOR</p>
+            <h2 class="h1" style="margin-top:12px">Rules for routine.<br><span class="sub-blue">An AI for emergencies.</span></h2>
+            <p>Most decisions come from a rule engine that already knows your planet, hazards and resource map. The AI Director is called only on big events: a critical shortage, a raid, a new neighbour, the rocket decision. That's at most once every 5 minutes per colony.</p>
+            <div class="split">
+              <div class="split-row"><span>RULE ENGINE · EVERY TICK</span><span class="c-orange-hi">90–95 %</span></div>
+              <div class="split-bar"><span class="rules"></span><span class="ai"></span></div>
+              <div class="split-row"><span>AI DIRECTOR · EVENT-DRIVEN</span><span class="c-blue">5–10 %</span></div>
+            </div>
           </div>
-        </div>
-        <div>
-          <div class="terminal plate">
-            <div class="terminal-bar"><span>DIRECTOR LOG · EXAMPLE</span><span><span class="c-terra">●</span> RULES CONTINUE IF THE AI IS SLOW</span></div>
-            <div class="terminal-body">
-              <div style="color:var(--ta-dim)">▸ trigger: water_critical · severity: critical</div>
-              <div class="gap">Planet: Desert | Water: critical | Solar: high</div>
-              <div>Neighbour offer: water for metals</div>
-              <div>Player priority: expand</div>
-              <div>Current: 3 miners, 1 solar, low defense</div>
-              <div class="gap c-blue">◆ directive</div>
-              <div style="color:var(--ta-text)">Accept the water trade, queue a water pump,</div>
-              <div style="color:var(--ta-text)">then one turret before expanding east.</div>
-              <div class="gap c-orange-hi">→ trade.respond(accept) · enqueue(pump) · enqueue(turret)</div>
-              <div style="color:var(--ta-dim);margin-top:8px">applied at next tick · validated against stock and territory<span class="blink c-orange">▌</span></div>
+          <div>
+            <div class="terminal plate">
+              <div class="terminal-bar"><span>DIRECTOR LOG · EXAMPLE</span><span><span class="c-terra">●</span> RULES CONTINUE IF THE AI IS SLOW</span></div>
+              <div class="terminal-body">
+                <div style="color:var(--ta-dim)">▸ trigger: water_critical · severity: critical</div>
+                <div class="gap">Planet: Desert | Water: critical | Solar: high</div>
+                <div>Neighbour offer: water for metals</div>
+                <div>Player priority: expand</div>
+                <div>Current: 3 miners, 1 solar, low defense</div>
+                <div class="gap c-blue">◆ directive</div>
+                <div style="color:var(--ta-text)">Accept the water trade, queue a water pump,</div>
+                <div style="color:var(--ta-text)">then one turret before expanding east.</div>
+                <div class="gap c-orange-hi">→ trade.respond(accept) · enqueue(pump) · enqueue(turret)</div>
+                <div style="color:var(--ta-dim);margin-top:8px">applied at next tick · validated against stock and territory<span class="blink c-orange">▌</span></div>
+              </div>
             </div>
           </div>
         </div>
+        <div id="director-scenarios"></div>
       </div>
     </section>
 
     <!-- 06 CHAIN -->
     <section class="container section chain" id="chain">
-      <p class="eyebrow">06 · ON NEAR, OUT OF THE WAY</p>
-      <h2 class="h1">You play a colony, not a wallet.</h2>
-      <div class="grid-auto">
-        <div class="card plate"><div class="label">GUEST FIRST</div><h3 class="h3">Start without a wallet</h3><p>Play as a guest or OAuth pilot. Every colony account uses scoped session keys and NEP-366 gasless relaying.</p></div>
-        <div class="card plate"><div class="label">NEAR.AI · BYOK ON /ME</div><h3 class="h3">Batched GLM-5.3 TEE Director</h3><p>Rival bots batch through NEAR AI Cloud (<code>z-ai/glm-5.3</code>). Connect your own encrypted NEAR.AI key &amp; model on <a href="/me.html">/me</a>.</p></div>
-        <div class="card plate"><div class="label">INTENTS &amp; 5 CONTRACTS</div><h3 class="h3">11/11 ports live on Testnet</h3><p>NEP-245 cargo, NEP-413 <code>token_diff</code> orderbooks, soulbound Colony Deeds, mercenary bounties, staking, and council DAOs.</p></div>
+      <div class="sec-head">
+        <div>
+          <p class="eyebrow">06 · ON NEAR, OUT OF THE WAY</p>
+          <h2 class="h1">You play a colony,<br><span class="sub-blue">not a wallet.</span></h2>
+        </div>
+        <p>Start without a wallet, settle trades through NEAR Intents, and let five deployed Rust smart contracts record cargo, deeds, bounties, staking, and planetary governance in the background.</p>
+      </div>
+      <div class="grid-auto chain-pillars">
+        <div class="card plate card-hover"><div class="label">01 · GUEST FIRST</div><h3 class="h3">Start without a wallet</h3><p>Drop in as a guest or social pilot. Scoped session keys and NEP-366 gasless relaying keep wallet popups out of your way.</p></div>
+        <div class="card plate card-hover"><div class="label">02 · NEAR.AI · BYOK ON /ME</div><h3 class="h3">Batched GLM-5.3 TEE Director</h3><p>Rival bots batch through NEAR AI Cloud (<code>z-ai/glm-5.3</code>). Connect your own encrypted NEAR.AI key &amp; model on <a href="/me.html">/me</a>.</p></div>
+        <div class="card plate card-hover"><div class="label">03 · INTENTS &amp; 5 CONTRACTS</div><h3 class="h3">11 / 11 ports live on Testnet</h3><p>Every resource export, swap, bounty, stake, and council vote settles across five Rust smart contracts and <code>intents.near</code>.</p></div>
       </div>
 
       <div class="contracts-board plate" id="contracts-board" aria-label="Deployed NEAR Testnet smart contracts"></div>

@@ -1,4 +1,4 @@
-import { MOCK_CARGO_CONTRACT, MOCK_RELAYER_ACCOUNT, storageDepositOpId } from '@terra/contracts';
+import { MOCK_ACCOUNT_ROOT, MOCK_CARGO_CONTRACT, MOCK_RELAYER_ACCOUNT, storageDepositOpId } from '@terra/contracts';
 import type { PrismaClient, TransactionClient } from '@terra/db';
 import { withTransaction } from '@terra/db';
 import { ChainOutboxRepository } from '../application/outbox/chain-outbox.repository.js';
@@ -119,7 +119,7 @@ async function ensureColonyRow(
     await enqueueStorageDeposit(outbox, tx, existing.accountId);
     return;
   }
-  const accountId = await freeColonyAccountId(tx, input.colonyId, input.playerName);
+  const accountId = await freeColonyAccountId(tx, input.colonyId, input.playerName, input.ownerAccountId);
   const sealed = seal(keys);
   await tx.nearColonyAccount.create({
     data: {
@@ -149,8 +149,23 @@ async function enqueueStorageDeposit(outbox: ChainOutboxRepository, tx: Transact
   }, tx);
 }
 
-async function freeColonyAccountId(tx: TransactionClient, colonyId: string, playerName: string): Promise<string> {
-  const candidates = colonyAccountCandidates(colonyId, playerName);
+function accountRootFromOwner(ownerAccountId: string): string {
+  if (ownerAccountId.endsWith('.testnet')) {
+    return process.env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.testnet';
+  }
+  if (ownerAccountId.endsWith('.near')) {
+    return process.env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.near';
+  }
+  return MOCK_ACCOUNT_ROOT;
+}
+
+async function freeColonyAccountId(
+  tx: TransactionClient,
+  colonyId: string,
+  playerName: string,
+  ownerAccountId: string,
+): Promise<string> {
+  const candidates = colonyAccountCandidates(colonyId, playerName, accountRootFromOwner(ownerAccountId));
   const where = { accountId: { in: [...candidates] } };
   const [near, mock] = await Promise.all([
     tx.nearColonyAccount.findMany({ where, select: { accountId: true } }),

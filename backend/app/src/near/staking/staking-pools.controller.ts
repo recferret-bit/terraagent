@@ -34,8 +34,8 @@ export class StakingPoolsController {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
-    const bag = this.env as { NEAR_STAKING_POOLS?: string } | undefined;
+    const bag = this.env as Record<string, string | undefined> | undefined;
     const raw = bag?.NEAR_STAKING_POOLS ?? process.env.NEAR_STAKING_POOLS;
-    return { pools: parseStakingPoolsConfig(raw) };
+    return { pools: parseStakingPoolsConfig(raw, bag ?? process.env) };
   }
 }

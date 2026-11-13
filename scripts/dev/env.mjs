@@ -9,10 +9,11 @@ export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const devDir = resolve(root, 'scripts/dev/.out');
 
 const readFile = (name) => {
-  const infraFile = resolve(root, 'infra', name);
-  if (existsSync(infraFile)) return parseEnv(readFileSync(infraFile, 'utf8'));
   const rootFile = resolve(root, name);
-  return existsSync(rootFile) ? parseEnv(readFileSync(rootFile, 'utf8')) : {};
+  const infraFile = resolve(root, 'infra', name);
+  const rootVars = existsSync(rootFile) ? parseEnv(readFileSync(rootFile, 'utf8')) : {};
+  const infraVars = existsSync(infraFile) ? parseEnv(readFileSync(infraFile, 'utf8')) : {};
+  return { ...rootVars, ...infraVars };
 };
 
 export function loadEnv() {

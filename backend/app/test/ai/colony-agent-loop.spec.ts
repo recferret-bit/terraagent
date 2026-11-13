@@ -395,6 +395,31 @@ describe('ColonyAgentLoopService — war, diplomacy & trade directives', () => {
     expect(orderCmd?.args.amount).toBe(10);
     expect(orderCmd?.args.price).toEqual({ token: 'USDC', amount: '10000000' });
   });
+
+  it('uses NEAR_AI_MODEL from APP_ENV for Rival AI bot batches', async () => {
+    const { planets } = createFakePlanetHarness();
+    const seenModels: Array<string | undefined> = [];
+    const llm: LlmProviderPort = {
+      complete: async (req: LlmRequest): Promise<LlmResponse> => {
+        seenModels.push(req.model);
+        return {
+          text: JSON.stringify({
+            directives: [
+              { colonyIndex: 4, action: 'hold', rationale: 'Wait.' },
+              { colonyIndex: 5, action: 'hold', rationale: 'Wait.' },
+            ],
+          }),
+          usage: { inputTokens: 20, outputTokens: 10 },
+          model: req.model ?? 'z-ai/glm-5.3',
+        };
+      },
+    };
+    const svc = new ColonyAgentLoopService(planets, llm, undefined, undefined, {
+      NEAR_AI_MODEL: 'deepseek/deepseek-v3.2',
+    } as never);
+    await svc.tickPlanetAgents('pl_loop');
+    expect(seenModels).toEqual(['deepseek/deepseek-v3.2']);
+  });
 });
 
 describe('StakingController — D-18 human-only guardrail', () => {

@@ -192,7 +192,15 @@ export class DeedMintOutboxService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const fallbackAccountId = `${colonyId.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}.terraagent.mock`;
+    const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
+    const mode = envBag.NEAR_ADAPTER_DEED ?? envBag.NEAR_MODE;
+    const root =
+      mode === 'testnet' || mode === 'devnet'
+        ? envBag.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.testnet'
+        : mode === 'mainnet'
+          ? envBag.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.near'
+          : 'terraagent.mock';
+    const fallbackAccountId = `${colonyId.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}.${root}`;
     const { record } = await this.deeds.upsertInitialMint({
       colonyId,
       planetId: input.planetId,

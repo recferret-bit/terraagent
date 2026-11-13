@@ -84,7 +84,7 @@ export class PlanetDaoMembershipService {
     if (!this.ready()) return;
     const member = await this.colonyAccount(colonyId, false);
     if (!member) return;
-    const daoAccountId = daoAccountIdFor(planetId);
+    const daoAccountId = daoAccountIdFor(planetId, this.env as Record<string, string | undefined> | undefined);
     const row = await this.prisma?.mockChainDao.findUnique({ where: { id: daoAccountId }, select: { id: true } });
     if (!row) return;
     const op = daoMemberRemoveOpId(planetId, colonyId);

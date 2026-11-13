@@ -114,6 +114,17 @@ export interface UpsertInitialMintInput {
   change?: string;
 }
 
+function defaultDeedContract(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  const mode = env.NEAR_ADAPTER_DEED ?? env.NEAR_ADAPTER_DEED_NFT ?? env.NEAR_MODE;
+  if (mode === 'testnet' || mode === 'devnet') {
+    return env.NEAR_CONTRACT_DEED?.trim() || `deed.${env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.testnet'}`;
+  }
+  if (mode === 'mainnet') {
+    return env.NEAR_CONTRACT_DEED?.trim() || `deed.${env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.near'}`;
+  }
+  return MOCK_DEED_CONTRACT;
+}
+
 export async function upsertInitialMintInDb(
   client: DbClient,
   input: UpsertInitialMintInput,
@@ -133,7 +144,7 @@ export async function upsertInitialMintInDb(
       playerId: input.playerId,
       accountId: input.accountId,
       tokenId: input.tokenId,
-      contract: MOCK_DEED_CONTRACT,
+      contract: defaultDeedContract(),
       metadata: input.metadata as object,
       metadataVersion: 1,
       status: input.metadata.status,
@@ -173,7 +184,7 @@ export function createInMemoryDeedRecord(
     playerId: input.playerId,
     accountId: input.accountId,
     tokenId: input.tokenId,
-    contract: MOCK_DEED_CONTRACT,
+    contract: defaultDeedContract(),
     metadata: input.metadata,
     metadataVersion: 1,
     status: input.metadata.status,

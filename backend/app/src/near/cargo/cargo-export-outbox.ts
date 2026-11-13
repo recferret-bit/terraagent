@@ -171,7 +171,8 @@ export async function resolveColonyAccountId(
     }
   }
 
-  const accountId = `${mockAccountStem(colonyId, planetId)}.${MOCK_ACCOUNT_ROOT}`;
+  const root = activeAccountRoot();
+  const accountId = `${mockAccountStem(colonyId, planetId, root)}.${root}`;
   await tx.mockChainAccount.upsert({
     where: { accountId },
     create: { accountId, kind: 'colony' },
@@ -182,17 +183,28 @@ export async function resolveColonyAccountId(
 
 const slug = (v: string): string => v.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 
+function activeAccountRoot(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  const mode = env.NEAR_ADAPTER_IDENTITY ?? env.NEAR_MODE;
+  if (mode === 'testnet' || mode === 'devnet') {
+    return env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.testnet';
+  }
+  if (mode === 'mainnet') {
+    return env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.near';
+  }
+  return MOCK_ACCOUNT_ROOT;
+}
+
 /**
  * Real colony ids (`co_<cuid>`) are globally unique, so their mock account is named by the id alone. Scenario planets seat
  * sim colonies `col_<index>` (digits only) that repeat on every planet; their account carries the planet (`<planet>--col_<index>`), so two
  * planets never share cargo, verifier funds or reservations. Long planet ids are shortened with a hash to fit `account_id`
  * (64 chars incl. the `.terraagent.mock` root).
  */
-export function mockAccountStem(colonyId: string, planetId?: string): string {
+export function mockAccountStem(colonyId: string, planetId?: string, root = MOCK_ACCOUNT_ROOT): string {
   const colony = slug(colonyId);
   if (!planetId || !/^col_\d+$/.test(colonyId)) return colony;
   const planet = slug(planetId);
-  const room = 64 - MOCK_ACCOUNT_ROOT.length - 1 - colony.length - 2;
+  const room = 64 - root.length - 1 - colony.length - 2;
   if (planet.length <= room) return `${planet}--${colony}`;
   const h = createHash('sha256').update(planetId).digest('hex').slice(0, 8);
   return `${planet.slice(0, Math.max(0, room - 9))}-${h}--${colony}`;

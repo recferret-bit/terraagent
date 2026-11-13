@@ -164,3 +164,37 @@ describe('NEAR AI Cloud signature retry & per-request player overrides', () => {
     expect(res.text).toBe('{"action":"hold"}');
   });
 });
+
+describe('NEAR AI Cloud GLM-5 reasoning control & APP_ENV fallback', () => {
+  it('sets reasoning_effort=low for z-ai/glm-5* unless NEAR_AI_THINKING=1 and reads injected defaultEnv', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    let capturedAuth = '';
+    const fakeFetch: FetchLike = async (_input, init) => {
+      capturedAuth = (init?.headers as Record<string, string>)?.Authorization ?? '';
+      bodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({
+          id: 'chatcmpl_glm_1',
+          model: 'z-ai/glm-5.3',
+          choices: [{ message: { content: 'pong' } }],
+          usage: { prompt_tokens: 8, completion_tokens: 4 },
+        }),
+        { status: 200 },
+      );
+    };
+
+    const adapter = new NearAiLlmAdapter(fakeFetch, {
+      NEAR_AI_API_KEY: 'injected-app-env-key',
+      NEAR_AI_ATTEST: '0',
+    } as never);
+    await adapter.complete({ system: 's', messages: [{ role: 'user', content: 'ping' }], maxTokens: 64 });
+    expect(capturedAuth).toBe('Bearer injected-app-env-key');
+    expect(bodies[0]?.reasoning_effort).toBe('low');
+
+    await adapter.complete(
+      { system: 's', messages: [{ role: 'user', content: 'ping' }], maxTokens: 64 },
+      { NEAR_AI_API_KEY: 'override-key', NEAR_AI_ATTEST: '0', NEAR_AI_THINKING: '1' },
+    );
+    expect(bodies[1]?.reasoning_effort).toBeUndefined();
+  });
+});

@@ -5,6 +5,9 @@ import type { StakingPoolView } from '../application/ports/staking.port.js';
 export const DEFAULT_STAKING_POOLS_RAW =
   'astro-stakers.pool.mock:Astro Stakers:900,chorus-one.pool.mock:Chorus One:900,kiln.pool.mock:Kiln Validator:900';
 
+export const DEFAULT_TESTNET_STAKING_POOLS_RAW =
+  'astro-stakers.pool.testnet:Astro Stakers:900,chorus-one.pool.testnet:Chorus One:900,kiln.pool.testnet:Kiln Validator:900';
+
 export const DEFAULT_STAKING_APY_BP = 900;
 
 function humanizePoolName(poolId: string): string {
@@ -55,8 +58,16 @@ function parseSinglePoolEntry(entry: string): StakingPoolView {
  * When unset (`undefined`), returns the default 3 mock validator pools at 9 % APY (900 bp).
  * Throws a descriptive Error when explicitly set to an empty or malformed string.
  */
-export function parseStakingPoolsConfig(raw: string | undefined): readonly StakingPoolView[] {
-  const source = raw === undefined ? DEFAULT_STAKING_POOLS_RAW : raw;
+export function parseStakingPoolsConfig(
+  raw: string | undefined,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): readonly StakingPoolView[] {
+  const stakingMode = env.NEAR_ADAPTER_STAKING ?? env.NEAR_MODE;
+  const fallback =
+    stakingMode === 'testnet' || stakingMode === 'devnet'
+      ? DEFAULT_TESTNET_STAKING_POOLS_RAW
+      : DEFAULT_STAKING_POOLS_RAW;
+  const source = raw === undefined ? fallback : raw;
   const trimmed = source.trim();
   if (!trimmed) {
     throw new Error('NEAR_STAKING_POOLS must not be empty when set');

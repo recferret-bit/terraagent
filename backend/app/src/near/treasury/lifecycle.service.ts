@@ -53,7 +53,7 @@ export class PlanetDaoLifecycleService {
 
   private async open(planetId: string): Promise<EnsuredPlanetDao> {
     const op = daoCreateOpId(planetId);
-    const daoAccountId = daoAccountIdFor(planetId);
+    const daoAccountId = daoAccountIdFor(planetId, this.env as Record<string, string | undefined> | undefined);
     const existing = await this.readId(daoAccountId);
     if (existing) return { planetId, daoAccountId: existing, opId: op };
     await this.enqueue(op, planetId);

@@ -165,7 +165,14 @@ describe('W23 NEAR Intents 1Click dry-quote client', () => {
     const spy = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          quote: { amountIn: '1000', amountOut: '4200000', amountOutFormatted: '4.20', timeEstimate: 14 },
+          quote: {
+            amountIn: '1000',
+            amountOut: '4200000',
+            minAmountOut: '4158000',
+            amountOutFormatted: '4.20',
+            timeEstimate: 14,
+          },
+          signature: 'ed25519:test-solver-sig',
           timestamp: '2026-11-11T12:00:00Z',
         }),
         { status: 200 },
@@ -174,16 +181,20 @@ describe('W23 NEAR Intents 1Click dry-quote client', () => {
     vi.stubGlobal('fetch', spy);
 
     const client = new OneClickQuoteClient('https://1click.chaindefuser.com');
-    const live = await client.dryQuote({ amount: '1000' });
+    const live = await client.dryQuote({ amount: '1000', recipient: 'pilot.terraagent.testnet' });
     expect(live.source).toBe('live-1click');
     expect(live.dry).toBe(true);
     expect(live.amountOutFormatted).toBe('4.20');
+    expect(live.minAmountOut).toBe('4158000');
+    expect(live.signature).toBe('ed25519:test-solver-sig');
     const sentBody = JSON.parse(String((spy.mock.calls[0]?.[1] as RequestInit)?.body));
     expect(sentBody.dry).toBe(true);
+    expect(sentBody.recipient).toBe('intents.near');
 
     spy.mockRejectedValueOnce(new Error('offline'));
     const fallback = await client.dryQuote({ amount: '1000' });
     expect(fallback.source).toBe('fallback');
     expect(fallback.dry).toBe(true);
+    expect(fallback.minAmountOut).toBe('4108500');
   });
 });

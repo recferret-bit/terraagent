@@ -68,8 +68,11 @@ export class TestnetStakingAdapter implements StakingPort {
   }
 
   private resolvePools(): readonly StakingPoolView[] {
-    const bag = this.env as { NEAR_STAKING_POOLS?: string } | undefined;
-    return parseStakingPoolsConfig(bag?.NEAR_STAKING_POOLS ?? process.env.NEAR_STAKING_POOLS);
+    const bag = this.env as Record<string, string | undefined> | undefined;
+    return parseStakingPoolsConfig(bag?.NEAR_STAKING_POOLS ?? process.env.NEAR_STAKING_POOLS, {
+      ...(bag ?? process.env),
+      NEAR_ADAPTER_STAKING: 'testnet',
+    });
   }
 
   private assertPoolWhitelisted(poolId: string): StakingPoolView {

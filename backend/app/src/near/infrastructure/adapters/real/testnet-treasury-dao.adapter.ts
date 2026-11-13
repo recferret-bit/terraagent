@@ -1,5 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { PrismaClient } from '@terra/db';
+import { databaseEnabled } from '../../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
+import { PRISMA } from '../../../../db/db.module.js';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
   AddMemberInput,
@@ -19,6 +22,7 @@ import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { PASS_ABOVE_BP, PASS_MIN_YES, tallyMemberVotes, type DaoVoteValue } from '../../../treasury/pass-rule.js';
 import { daoAccountIdFor, readCost } from '../../../treasury/policy.js';
+import { insertDaoIfMissing } from '../../../treasury/store.js';
 import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
@@ -54,18 +58,24 @@ function parseSuccessJson<T>(outcome: unknown): T | undefined {
 @Injectable()
 export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
   private readonly rpc: NearRpcClient;
+  private readonly envSource: Record<string, string | undefined>;
+  private readonly prisma: PrismaClient | null;
   private readonly createCache = new OpReceiptCache<CreateDaoResult>();
   private readonly proposeCache = new OpReceiptCache<ProposeResult>();
   private readonly txCache = new OpReceiptCache<ChainReceipt>();
 
-  constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
-    const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+  constructor(
+    @Optional() @Inject(APP_ENV) env?: AppEnv,
+    @Optional() @Inject(PRISMA) prisma?: PrismaClient,
+  ) {
+    this.envSource = (env ?? process.env) as Record<string, string | undefined>;
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(this.envSource, 'testnet'));
+    this.prisma = databaseEnabled(env) && prisma ? prisma : null;
   }
 
   async createDao(raw: CreateDaoInput): Promise<CreateDaoResult> {
     const input = CreateDaoInput.parse(raw);
-    const daoAccountId = daoAccountIdFor(input.name);
+    const daoAccountId = daoAccountIdFor(input.name, this.envSource);
     const signer = this.requireOperatorSigner();
     return this.createCache.run(`create:${input.opId}`, async () => {
       const { receipt } = await this.rpc.call({
@@ -80,6 +90,9 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
           council_account_ids: input.councilAccountIds,
         },
       });
+      if (this.prisma && 'mockChainDao' in this.prisma && this.prisma.mockChainDao) {
+        await insertDaoIfMissing(this.prisma, daoAccountId, input.name, input.councilAccountIds);
+      }
       return { daoAccountId, receipt };
     });
   }

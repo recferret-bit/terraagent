@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { adapterOf } from '../../ports/adapters.js';
 import {
   LlmProviderPort,
@@ -125,19 +126,42 @@ async function fetchAttestationSignature(
   return { chatId, requestHash, responseHash, verified: false };
 }
 
+function glmReasoningControl(modelId: string, env: Readonly<Record<string, string | undefined>>): Record<string, unknown> {
+  if (env.NEAR_AI_THINKING === '1') return {};
+  if (modelId.startsWith('z-ai/glm-5')) return { reasoning_effort: 'low' };
+  return {};
+}
+
 @Injectable()
 export class NearAiLlmAdapter extends LlmProviderPort {
   private readonly fetchImpl: FetchLike;
+  private readonly defaultEnv?: AppEnv;
 
-  constructor(fetchImpl?: FetchLike) {
+  constructor(
+    @Optional() fetchImpl?: FetchLike,
+    @Optional() @Inject(APP_ENV) defaultEnv?: AppEnv,
+  ) {
     super();
     this.fetchImpl = fetchImpl ?? globalThis.fetch;
+    this.defaultEnv = defaultEnv;
   }
 
-  async complete(req: LlmRequest, env: Readonly<Record<string, string | undefined>> = process.env): Promise<LlmResponse> {
-    const key = req.apiKey?.trim() || nearAiKey(env);
-    const baseUrl = (env.NEAR_AI_BASE_URL || env.NEARAI_BASE_URL || env.AI_BASE_URL || DEFAULT_NEAR_AI_BASE).replace(/\/+$/, '');
-    const modelId = normalizeNearAiModel(req.model || env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL);
+  async complete(req: LlmRequest, env?: Readonly<Record<string, string | undefined>>): Promise<LlmResponse> {
+    const resolvedEnv =
+      env ??
+      ({ ...(this.defaultEnv as Record<string, string | undefined> | undefined), ...process.env } as Readonly<
+        Record<string, string | undefined>
+      >);
+    const key = req.apiKey?.trim() || nearAiKey(resolvedEnv);
+    const baseUrl = (
+      resolvedEnv.NEAR_AI_BASE_URL ||
+      resolvedEnv.NEARAI_BASE_URL ||
+      resolvedEnv.AI_BASE_URL ||
+      DEFAULT_NEAR_AI_BASE
+    ).replace(/\/+$/, '');
+    const modelId = normalizeNearAiModel(
+      req.model || resolvedEnv.NEAR_AI_MODEL || resolvedEnv.NEARAI_MODEL || resolvedEnv.AI_MODEL || DEFAULT_NEAR_AI_MODEL,
+    );
     const messages = [
       ...(req.system ? [{ role: 'system' as const, content: req.system }] : []),
       ...req.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -149,6 +173,7 @@ export class NearAiLlmAdapter extends LlmProviderPort {
       stream: false,
       ...(typeof req.temperature === 'number' ? { temperature: req.temperature } : {}),
       ...(req.json ? { response_format: { type: 'json_object' } } : {}),
+      ...glmReasoningControl(modelId, resolvedEnv),
     };
     const requestBody = JSON.stringify(bodyObj);
     const requestHash = sha256Hex(requestBody);
@@ -176,7 +201,7 @@ export class NearAiLlmAdapter extends LlmProviderPort {
     });
     const chatId = parsed.id || '';
     const attestation =
-      chatId && env.NEAR_AI_ATTEST !== '0'
+      chatId && resolvedEnv.NEAR_AI_ATTEST !== '0'
         ? await fetchAttestationSignature(
             this.fetchImpl,
             baseUrl,

@@ -100,7 +100,7 @@ curl -fsS https://api.terraagent.fun/v1/near/status | jq '{nearMode, rootAccount
 # 3. Verify 7-day multi-agent economy sim + NEAR AI Cloud TEE attestation
 curl -fsS -X POST https://api.terraagent.fun/v1/economy-sim/run \
   -H 'content-type: application/json' \
-  -d '{"days":7,"seed":42}' | jq '{summary, ai}'
+  -d '{"days":7,"seed":"42"}' | jq '{days, seed, durationMs, guardrails, ai}'
 ```
 
 Browser checks:

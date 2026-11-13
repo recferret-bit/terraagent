@@ -7,7 +7,6 @@ export type { DaoVoteValue, StoredVote };
 export const DEFAULT_COST_TOKEN = 'metals.t1';
 const WHOLE_UNITS = /^(0|[1-9]\d*)$/;
 const DAO_SUFFIX = '.dao.mock';
-const MAX_BASE = 64 - DAO_SUFFIX.length;
 
 export interface DaoMember {
   readonly accountId: string;
@@ -48,15 +47,31 @@ export function asJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-/** `{slug}.dao.mock`: lowercase, `.` kept, other gaps become `-`. */
-export function daoAccountIdFor(name: string): string {
+function resolveDaoSuffix(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  const mode = env.NEAR_ADAPTER_TREASURY ?? env.NEAR_ADAPTER_TREASURY_DAO ?? env.NEAR_MODE;
+  if (mode === 'testnet' || mode === 'devnet') {
+    return `.dao.${env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.testnet'}`;
+  }
+  if (mode === 'mainnet') {
+    return `.dao.${env.NEAR_ROOT_ACCOUNT?.trim() || 'terraagent.near'}`;
+  }
+  return DAO_SUFFIX;
+}
+
+/** `{slug}.dao.<root>` (`.dao.mock` in mock mode, `.dao.<root>.testnet` on testnet): lowercase, `.` kept, other gaps become `-`. */
+export function daoAccountIdFor(
+  name: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  const suffix = resolveDaoSuffix(env);
+  const maxBase = 64 - suffix.length;
   const parts = name.toLowerCase().split('.').map(slugSegment).filter((part) => part.length > 0);
   let base = parts.join('.') || 'dao';
-  if (base.length > MAX_BASE) {
-    const trimmed = base.slice(0, MAX_BASE).replace(/[._-]+$/g, '');
+  if (base.length > maxBase) {
+    const trimmed = base.slice(0, maxBase).replace(/[._-]+$/g, '');
     base = trimmed.split('.').map(slugSegment).filter((part) => part.length > 0).join('.') || 'dao';
   }
-  return AccountId.parse(`${base}${DAO_SUFFIX}`);
+  return AccountId.parse(`${base}${suffix}`);
 }
 
 function slugSegment(raw: string): string {

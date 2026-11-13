@@ -192,12 +192,21 @@ export class ColonyAgentLoopService {
     return { ...fromStore, ...(overrides ?? {}) };
   }
 
+  private botModel(): string {
+    const raw =
+      (this.env?.NEAR_AI_MODEL as string | undefined) ||
+      (this.env?.NEARAI_MODEL as string | undefined) ||
+      (this.env?.AI_MODEL as string | undefined) ||
+      DEFAULT_NEAR_AI_MODEL;
+    return normalizeNearAiModel(raw);
+  }
+
   private cacheDigestFor(
     obs: ColonyObservation,
     playerCfg: PlayerColonyAiOverride | undefined,
     enforcePlayerKeyGate: boolean,
   ): string {
-    if (obs.isBot) return `${observationDigest(obs)}|bot:${DEFAULT_NEAR_AI_MODEL}`;
+    if (obs.isBot) return `${observationDigest(obs)}|bot:${this.botModel()}`;
     const apiKey = playerCfg?.apiKey?.trim();
     if (apiKey) {
       const model = normalizeNearAiModel(playerCfg?.model || DEFAULT_NEAR_AI_MODEL);
@@ -261,7 +270,7 @@ export class ColonyAgentLoopService {
 
     if (botBatch.length > 0) {
       const batchOut = await this.evaluateBatchWithLlm(botBatch, {
-        model: DEFAULT_NEAR_AI_MODEL,
+        model: this.botModel(),
         usedPlayerKey: false,
       });
       for (const obs of botBatch) {
@@ -305,7 +314,7 @@ export class ColonyAgentLoopService {
       const res = await this.llm.complete({
         system: BATCH_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: JSON.stringify({ colonies: observations }) }],
-        maxTokens: Math.min(900, observations.length * 180 + 80),
+        maxTokens: Math.min(1200, observations.length * 240 + 120),
         temperature: 0.2,
         json: true,
         model: creds.model,
@@ -365,7 +374,7 @@ export class ColonyAgentLoopService {
       const res = await this.llm.complete({
         system: BATCH_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: JSON.stringify(obs) }],
-        maxTokens: 220,
+        maxTokens: 320,
         temperature: 0.2,
         json: true,
         model: creds.model,

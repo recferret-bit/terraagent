@@ -29,7 +29,7 @@ export async function liveOnce(env: Record<string, string | undefined>): Promise
   try {
     const adapter = new NearAiLlmAdapter();
     const result = await adapter.complete(
-      { system: 'Reply with the single word pong.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 16, model },
+      { system: 'Reply with the single word pong.', messages: [{ role: 'user', content: 'ping' }], maxTokens: 64, model },
       env,
     );
     return {
