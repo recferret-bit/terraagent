@@ -30,4 +30,18 @@ describe('W12-20 Achievement ladders and family blocks', () => {
     scrollInitialLadder(gbLadder);
     expect(scrollToSpy).toHaveBeenCalledWith({ left: 260, behavior: 'auto' });
   });
+
+  it('skips scrollInitialLadder on wide viewports when all cards fit without horizontal overflow', () => {
+    const ach = makeW12AchievementsFixture();
+    const node = renderAchievementsSection(ach);
+    const gbLadder = node.querySelector<HTMLElement>('[data-testid="ach-ladder-groundbreaker"]')!;
+
+    Object.defineProperty(gbLadder, 'clientWidth', { value: 960, configurable: true });
+    Object.defineProperty(gbLadder, 'scrollWidth', { value: 960, configurable: true });
+
+    const scrollToSpy = vi.fn();
+    gbLadder.scrollTo = scrollToSpy;
+    scrollInitialLadder(gbLadder);
+    expect(scrollToSpy).not.toHaveBeenCalled();
+  });
 });

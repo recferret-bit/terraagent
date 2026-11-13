@@ -1,18 +1,20 @@
-.flip-card.is-earned {
+.flip-card.is-earned .flip-face {
   border-color: var(--ta-orange);
   background:
     linear-gradient(var(--ta-plate), var(--ta-plate)) padding-box,
     linear-gradient(135deg, var(--ta-orange), var(--ta-terra)) border-box;
-  box-shadow: 0 0 14px rgba(255, 106, 19, 0.15);
+  box-shadow: inset 0 0 18px rgba(255, 106, 19, 0.16);
 }
 
 .flip-card.is-earned .flip-back {
-  background: linear-gradient(160deg, rgba(255, 106, 19, 0.15), rgba(61, 220, 132, 0.12));
+  background:
+    linear-gradient(160deg, rgba(255, 106, 19, 0.16), rgba(61, 220, 132, 0.12)),
+    var(--ta-plate);
 }
 
-.flip-card.is-locked,
-.flip-card.is-coming_soon {
-  border-color: var(--ta-seam);
+.flip-card.is-locked .flip-face,
+.flip-card.is-coming_soon .flip-face {
+  border-color: var(--ta-seam-2);
 }
 
 .ta-ach-front-head {
@@ -23,20 +25,22 @@
 }
 
 .ta-ach-tier-label {
-  font-family: var(--font-display);
-  font-size: 11px;
+  font-family: var(--ta-font-display);
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--tier, #C8844A);
 }
 
 .ta-ach-xp-pill {
-  font-family: var(--font-mono);
+  font-family: var(--ta-font-mono);
   font-size: 11px;
-  color: var(--ta-ash);
+  color: var(--ta-text-3);
 }
 
 .ta-ach-art-wrap {
+  flex: 1 1 auto;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -44,14 +48,15 @@
 }
 
 .ta-ach-art-wrap.is-locked .ta-ach-art-img {
-  opacity: 0.85;
-  filter: saturate(0.25);
+  opacity: 0.88;
+  filter: saturate(0.28);
 }
 
 .ta-ach-art-img {
-  width: 128px;
-  height: 128px;
-  max-width: 176px;
+  width: 100%;
+  max-width: 248px;
+  height: auto;
+  aspect-ratio: 1 / 1;
   object-fit: contain;
 }
 
@@ -63,24 +68,57 @@
 
 .ta-ach-title {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 16px;
+  font-family: var(--ta-font-display);
+  font-size: 17px;
   font-weight: 600;
-  color: var(--ta-bone);
+  color: var(--ta-text);
 }
 
 .ta-ach-desc {
   margin: 0;
   font-size: 12px;
   line-height: 1.35;
-  color: var(--ta-ash);
+  color: var(--ta-text-3);
 }
 
 .ta-ach-threshold {
   margin: 4px 0 0;
-  font-family: var(--font-mono);
+  font-family: var(--ta-font-mono);
   font-size: 11px;
   color: var(--ta-steel);
+}
+
+.ta-ach-lore {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  background: rgba(5, 6, 8, 0.62);
+  border-left: 2px solid var(--tier, #C8844A);
+  border-top: 1px solid var(--ta-seam);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-ach-lore-eyebrow {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tier, #C8844A);
+  opacity: 0.9;
+}
+
+.ta-ach-lore-text {
+  margin: 0;
+  font-family: var(--ta-font-body);
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--ta-text-2);
 }
 
 .ta-ach-earned-footer {
@@ -93,7 +131,7 @@
 }
 
 .ta-ach-earned-check {
-  font-family: var(--font-mono);
+  font-family: var(--ta-font-mono);
   font-size: 12px;
   font-weight: 600;
   color: var(--ta-terra);
@@ -104,20 +142,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-display);
+  font-family: var(--ta-font-display);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ta-steel);
-  border: 1px dashed var(--ta-seam-hi);
+  border: 1px dashed var(--ta-seam-3);
 }
 
 .ta-ach-progress-bar {
   position: relative;
   height: 26px;
   background: rgba(0, 0, 0, 0.55);
-  border: 1px solid var(--ta-seam-hi);
+  border: 1px solid var(--ta-seam-3);
   clip-path: polygon(
     6px 0,
     100% 0,
@@ -142,10 +180,10 @@
 .ta-ach-progress-label {
   position: relative;
   z-index: 1;
-  font-family: var(--font-mono);
+  font-family: var(--ta-font-mono);
   font-size: 13px;
   font-weight: 600;
-  color: var(--ta-bone);
+  color: var(--ta-text);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
@@ -170,9 +208,9 @@
 }
 
 .ta-ach-nft-status {
-  font-family: var(--font-mono);
+  font-family: var(--ta-font-mono);
   font-size: 11px;
-  color: var(--ta-ash);
+  color: var(--ta-text-3);
 }
 
 .ta-ach-share-btn {

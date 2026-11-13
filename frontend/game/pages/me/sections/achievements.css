@@ -1,7 +1,7 @@
 .ta-achievements-body {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 28px;
 }
 
 .ta-ach-summary-bar {
@@ -13,47 +13,60 @@
 }
 
 .ta-ach-xp-total {
-  font-family: var(--font-mono);
+  font-family: var(--ta-font-mono);
   font-size: 13px;
-  color: var(--ta-ash);
+  color: var(--ta-text-3);
 }
 
 .ta-ach-families {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 48px;
 }
 
 .ta-ach-family-block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
+}
+
+.ta-ach-family-block + .ta-ach-family-block {
+  padding-top: 32px;
+  border-top: 1px solid var(--ta-seam-2);
 }
 
 .ta-ach-family-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  padding-left: 12px;
+  border-left: 3px solid var(--ta-orange);
 }
 
 .ta-ach-family-eyebrow {
   margin: 0;
-  font-size: 13px;
-  letter-spacing: 0.16em;
-  color: var(--ta-steel);
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ta-text);
 }
 
 .ta-ach-family-progress {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ta-ash);
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  color: var(--ta-text-3);
 }
 
 .ta-ach-ladder {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-y pinch-zoom;
   scroll-snap-type: x proximity;
   padding-bottom: 4px;
 }
@@ -61,7 +74,7 @@
 .ta-ach-card {
   flex: 0 0 100%;
   scroll-snap-align: start;
-  min-height: 290px;
+  min-height: 410px;
 }
 
 @media (min-width: 640px) {
@@ -71,7 +84,16 @@
 }
 
 @media (min-width: 960px) {
+  .ta-ach-ladder {
+    overflow-x: visible;
+    overflow-y: visible;
+    scroll-snap-type: none;
+    padding-bottom: 0;
+  }
+
   .ta-ach-card {
-    flex: 0 0 clamp(220px, calc((100% - 28px) / 3), 300px);
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: calc((100% - 32px) / 3);
   }
 }

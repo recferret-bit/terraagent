@@ -10,8 +10,10 @@ import './achievements.css';
 /**
  * Scrolls a horizontal 3-card ladder to the first locked card after the highest earned tier
  * so mobile/narrow viewports immediately focus the active tier in progress (W12-20).
+ * Skips scrolling on wide viewports where all 3 cards already fit without horizontal overflow.
  */
 export function scrollInitialLadder(ladderEl: HTMLElement): void {
+  if (ladderEl.clientWidth > 0 && ladderEl.scrollWidth <= ladderEl.clientWidth) return;
   const nextCard = ladderEl.querySelector<HTMLElement>('[data-next="true"]');
   if (!nextCard) return;
   const offset = nextCard.offsetLeft;

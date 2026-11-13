@@ -1,10 +1,15 @@
 .ta-me-root {
+  --font-display: var(--ta-font-display);
+  --font-mono: var(--ta-font-mono);
+  --ta-bone: var(--ta-text);
+  --ta-ash: var(--ta-text-3);
+  --ta-seam-hi: var(--ta-seam-3);
   min-height: 100vh;
   width: 100%;
   max-width: 100vw;
   overflow-x: clip;
   background: var(--ta-void);
-  color: var(--ta-bone);
+  color: var(--ta-text);
   padding-bottom: 64px;
 }
 
@@ -12,7 +17,7 @@
   position: sticky;
   top: 0;
   z-index: 30;
-  background: rgba(7, 8, 10, 0.92);
+  background: color-mix(in srgb, var(--ta-void) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--ta-seam);
   padding: 10px 16px;
@@ -59,7 +64,7 @@
 .ta-me-tab:focus-visible {
   color: var(--ta-bone);
   border-color: var(--ta-orange);
-  background: rgba(255, 106, 19, 0.08);
+  background: color-mix(in srgb, var(--ta-orange) 8%, transparent);
 }
 
 .ta-me-main {
@@ -122,6 +127,12 @@
   font-size: 14px;
 }
 
+.badge-blue {
+  background: color-mix(in srgb, var(--ta-blue) 22%, var(--ta-plate-2));
+  border-color: var(--ta-blue-hi);
+  color: var(--ta-blue-hi);
+}
+
 .ta-colony-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -145,7 +156,7 @@
 .ta-colony-meta {
   margin: 0;
   font-size: 13px;
-  color: var(--ta-ash);
+  color: var(--ta-text-2);
 }
 
 .ta-play-body {

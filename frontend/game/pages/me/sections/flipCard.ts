@@ -1,11 +1,15 @@
 import { el } from '../dom';
 import './flip-card.css';
 
+export type FlipDirection = 'to-back' | 'to-front';
+
 export function isFlipped(card: HTMLElement): boolean {
   return card.classList.contains('flip') || card.classList.contains('is-flipped');
 }
 
 export function setFlipped(card: HTMLElement, next: boolean): void {
+  const dir: FlipDirection = next ? 'to-back' : 'to-front';
+  card.dataset.flipDir = dir;
   card.classList.toggle('flip', next);
   card.classList.toggle('is-flipped', next);
   card.setAttribute('aria-expanded', next ? 'true' : 'false');
@@ -18,13 +22,27 @@ export function toggleFlipCard(card: HTMLElement): boolean {
 }
 
 /**
- * Binds click/tap and keyboard (`Enter` / `Space`) flip toggling and `aria-expanded` sync (W12-21, PA-02).
+ * Binds click/tap, hover direction tracking, and keyboard (`Enter` / `Space`) flip toggling
+ * and `aria-expanded` sync (W12-21, PA-02).
  * Ignores clicks on nested interactive links/buttons (e.g. Share-to-X) so they don't unflip the card.
  */
 export function bindFlipCard(card: HTMLElement): void {
   card.tabIndex = 0;
   if (!card.getAttribute('role')) card.setAttribute('role', 'button');
   if (!card.getAttribute('aria-expanded')) card.setAttribute('aria-expanded', 'false');
+  if (!card.dataset.flipDir) card.dataset.flipDir = 'to-front';
+
+  card.addEventListener('mouseenter', () => {
+    if (!isFlipped(card)) {
+      card.dataset.flipDir = 'to-back';
+    }
+  });
+
+  card.addEventListener('mouseleave', () => {
+    if (!isFlipped(card)) {
+      card.dataset.flipDir = 'to-front';
+    }
+  });
 
   card.addEventListener('click', (ev: MouseEvent) => {
     const target = ev.target as HTMLElement | null;
@@ -59,8 +77,20 @@ export function createFlipCardShell(
   frontFace.classList.add('flip-face', 'flip-front');
   backFace.classList.add('flip-face', 'flip-back');
 
-  const sheen = el('div', { className: 'flip-sheen', aria: { hidden: 'true' } });
-  const inner = el('div', { className: 'flip-inner' }, frontFace, backFace, sheen);
+  const frontSheen = el('div', {
+    className: 'flip-sheen flip-sheen-front',
+    dataset: { testid: 'ach-flip-sheen-front' },
+    aria: { hidden: 'true' },
+  });
+  const backSheen = el('div', {
+    className: 'flip-sheen flip-sheen-back',
+    dataset: { testid: 'ach-flip-sheen-back' },
+    aria: { hidden: 'true' },
+  });
+  frontFace.appendChild(frontSheen);
+  backFace.appendChild(backSheen);
+
+  const inner = el('div', { className: 'flip-inner' }, frontFace, backFace);
 
   const card = el(
     'article',
@@ -76,6 +106,7 @@ export function createFlipCardShell(
         tier: attrs.tier,
         status: attrs.status,
         next: attrs.isNextToEarn ? 'true' : 'false',
+        flipDir: 'to-front',
       },
       style: {
         '--i': String(attrs.indexInLadder),

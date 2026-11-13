@@ -1,5 +1,6 @@
 import type { PlayerAchievementEntry } from '@terra/contracts';
 import { el, formatThinInt } from '../dom';
+import { getAchievementLore, ROMAN_TIER } from './achievementLore';
 import './card-states.css';
 
 export function formatEarnedDate(iso: string | null): string {
@@ -52,8 +53,8 @@ export function renderCardFrontFace(
       className: 'ta-ach-art-img',
       src: imgSrc,
       alt: `${entry.familyName} ${entry.tierName}`,
-      width: 140,
-      height: 140,
+      width: 240,
+      height: 240,
       dataset: { testid: 'ach-card-art' },
     }),
   );
@@ -114,6 +115,8 @@ function formatNftStatusText(entry: PlayerAchievementEntry): string {
 export function renderCardBackFace(entry: PlayerAchievementEntry): HTMLElement {
   const isEarned = entry.status === 'earned';
   const isComingSoon = entry.status === 'coming_soon';
+  const romanTier = ROMAN_TIER[entry.tier] ?? String(entry.tier);
+  const loreText = getAchievementLore(entry);
 
   const topBlock = el(
     'div',
@@ -131,6 +134,17 @@ export function renderCardBackFace(entry: PlayerAchievementEntry): HTMLElement {
       { className: 'ta-ach-threshold' },
       `Target threshold: ${formatThinInt(entry.threshold)}`,
     ),
+  );
+
+  const loreBlock = el(
+    'div',
+    { className: 'ta-ach-lore', dataset: { testid: 'ach-back-lore' } },
+    el(
+      'span',
+      { className: 'ta-ach-lore-eyebrow' },
+      `RELIC INSCRIPTION · TIER ${romanTier}`,
+    ),
+    el('blockquote', { className: 'ta-ach-lore-text' }, loreText),
   );
 
   let bottomBlock: HTMLElement;
@@ -171,5 +185,5 @@ export function renderCardBackFace(entry: PlayerAchievementEntry): HTMLElement {
     );
   }
 
-  return el('div', { dataset: { testid: `ach-back-${entry.id}` } }, topBlock, bottomBlock);
+  return el('div', { dataset: { testid: `ach-back-${entry.id}` } }, topBlock, loreBlock, bottomBlock);
 }

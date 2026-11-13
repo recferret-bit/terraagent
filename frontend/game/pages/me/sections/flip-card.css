@@ -14,6 +14,7 @@
   cursor: pointer;
   position: relative;
   user-select: none;
+  overflow: clip;
   animation: taFlipCardEntry 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   animation-delay: calc(var(--i, 0) * 70ms);
 }
@@ -27,7 +28,7 @@
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 290px;
+  min-height: 410px;
   transform-style: preserve-3d;
   transition: transform 0.75s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -35,12 +36,15 @@
 .flip-face {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 16px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
 }
 
 .flip-front {
@@ -55,20 +59,24 @@
   transition: opacity 0.25s ease;
 }
 
+/* Reverse flip direction (Back -> Front, sweeping Right -> Left with 248deg mirrored gradient) */
 .flip-sheen {
   position: absolute;
-  inset: 0;
+  inset: -12% -18%;
   pointer-events: none;
   z-index: 3;
+  mix-blend-mode: screen;
   background: linear-gradient(
-    105deg,
-    transparent 20%,
-    rgba(255, 106, 19, 0.4) 40%,
-    rgba(255, 176, 32, 0.33) 50%,
-    rgba(61, 220, 132, 0.4) 60%,
-    transparent 80%
+    248deg,
+    transparent 16%,
+    rgba(57, 208, 255, 0.28) 32%,
+    rgba(61, 220, 132, 0.42) 41%,
+    rgba(255, 106, 19, 0.65) 49%,
+    rgba(255, 245, 220, 0.92) 54%,
+    rgba(255, 176, 32, 0.55) 60%,
+    transparent 76%
   );
-  transform: translateX(-130%);
+  transform: translateX(-135%);
   transition: transform 0.85s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -82,9 +90,25 @@
   visibility: hidden;
 }
 
+/* Forward flip direction (Front -> Back, sweeping Left -> Right with 112deg forward gradient) */
+.flip-card[data-flip-dir="to-back"] .flip-sheen,
 .flip-card.flip .flip-sheen,
 .flip-card.is-flipped .flip-sheen {
-  transform: translateX(130%);
+  background: linear-gradient(
+    112deg,
+    transparent 16%,
+    rgba(57, 208, 255, 0.28) 32%,
+    rgba(61, 220, 132, 0.42) 41%,
+    rgba(255, 106, 19, 0.65) 49%,
+    rgba(255, 245, 220, 0.92) 54%,
+    rgba(255, 176, 32, 0.55) 60%,
+    transparent 76%
+  );
+}
+
+.flip-card.flip .flip-sheen,
+.flip-card.is-flipped .flip-sheen {
+  transform: translateX(135%);
 }
 
 @media (hover: hover) {
@@ -97,7 +121,17 @@
   }
 
   .flip-card:hover .flip-sheen {
-    transform: translateX(130%);
+    background: linear-gradient(
+      112deg,
+      transparent 16%,
+      rgba(57, 208, 255, 0.28) 32%,
+      rgba(61, 220, 132, 0.42) 41%,
+      rgba(255, 106, 19, 0.65) 49%,
+      rgba(255, 245, 220, 0.92) 54%,
+      rgba(255, 176, 32, 0.55) 60%,
+      transparent 76%
+    );
+    transform: translateX(135%);
   }
 }
 
