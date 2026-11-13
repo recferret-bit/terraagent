@@ -122,8 +122,8 @@ export const PastColonySummarySchema = z.strictObject({
 export type PastColonySummary = z.infer<typeof PastColonySummarySchema>;
 
 export const NEAR_AI_AVAILABLE_MODELS = [
-  'z-ai/glm-5.3',
   'z-ai/glm-5.3-flash',
+  'z-ai/glm-5.3',
   'deepseek/deepseek-v3.2',
   'deepseek-ai/DeepSeek-V4.1-Flash-1017',
   'Qwen/Qwen3.8-27B',
@@ -131,7 +131,7 @@ export const NEAR_AI_AVAILABLE_MODELS = [
   'anthropic/claude-sonnet-4-6',
 ] as const;
 
-export const DEFAULT_PLAYER_NEAR_AI_MODEL = 'z-ai/glm-5.3';
+export const DEFAULT_PLAYER_NEAR_AI_MODEL = 'z-ai/glm-5.3-flash';
 
 export const PlayerAiSettingsSchema = z.strictObject({
   hasApiKey: z.boolean(),

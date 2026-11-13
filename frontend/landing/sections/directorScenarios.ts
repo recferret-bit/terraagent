@@ -145,7 +145,7 @@ export function initDirectorScenarios(): void {
       <div class="scenarios-parity plate-sm" aria-label="Autonomous decision parity between bots and offline players">
         <div class="parity-col">
           <div class="parity-tag"><span class="dot-live"></span> RIVAL AI BOTS</div>
-          <strong>NEAR AI Cloud · GLM-5.3 TEE</strong>
+          <strong>NEAR AI Cloud · GLM-5.3 Flash TEE</strong>
           <p>Seeded rival colonies evaluate borders, trade quotes, and raid windows on every planet sweep.</p>
         </div>
         <div class="parity-col is-player">

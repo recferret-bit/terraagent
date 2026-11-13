@@ -209,8 +209,9 @@ export class Game {
     this.skipOnlineLanding = false;
     if (this.useOnlineGameplay) {
       // Every explicit DEPLOY from the orbital planet selector starts a fresh guest on the selected planet family
-      // (`dune` -> desert, `oceanForest` -> ocean, `forestRock` -> temperate), ignoring any stale refresh cookie.
-      resetDeviceSecret();
+      // (`dune` -> desert, `oceanForest` -> ocean, `forestRock` -> temperate), unless the user has signed in.
+      const keepPilot = this.menu.hasLinkedPilot();
+      if (!keepPilot) resetDeviceSecret();
       if (typeof localStorage !== 'undefined') clearPendingJoinIntent(localStorage);
       if (!this.settings.skipCinematic) {
         this.online = new OnlineSession(this.root, 'boot', {
@@ -219,7 +220,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: false,
           fromSpaceDescent: true,
-          tryRefresh: false,
+          tryRefresh: keepPilot,
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
@@ -320,7 +321,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: true,
           fromSpaceDescent: false,
-          tryRefresh: false,
+          tryRefresh: this.menu.hasLinkedPilot(),
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
         });

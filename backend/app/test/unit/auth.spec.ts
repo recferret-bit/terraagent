@@ -11,6 +11,8 @@ import {
   BearerAuthGuard,
   CurrentPlayer,
   type AuthenticatedPlayer,
+  formatRefreshCookie,
+  resolveCookieDomain,
 } from '../../src/core/auth';
 
 const coreOnlyDir = fileURLToPath(new URL('../core/fixtures/base/', import.meta.url));
@@ -238,5 +240,9 @@ describe('AuthTokenService & BearerAuthGuard (W01-02)', () => {
     } as unknown as Parameters<BearerAuthGuard['canActivate']>[0];
     expect(() => guard.canActivate(badCtx)).toThrow(UnauthorizedException);
     expect(ProtectedTestModule).toBeDefined();
+    expect(resolveCookieDomain('terraagent.fun')).toBe('.terraagent.fun');
+    expect(resolveCookieDomain('play.terraagent.fun')).toBe('.terraagent.fun');
+    expect(resolveCookieDomain('127.0.0.1:3000')).toBeUndefined();
+    expect(formatRefreshCookie('rt_1', true, resolveCookieDomain('play.terraagent.fun'))).toContain('Domain=.terraagent.fun; Secure');
   });
 });

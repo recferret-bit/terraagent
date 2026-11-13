@@ -182,11 +182,15 @@ export async function runEmulationCase(
 
   const start = Date.now();
   try {
+    const modelId = env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || 'z-ai/glm-5.3-flash';
     const result = await generateText({
-      model: provider.chatModel(env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || 'z-ai/glm-5.3'),
+      model: provider.chatModel(modelId),
       system,
       messages: [{ role: 'user', content: `Case: ${c.title}\nSituation:\n${c.situation}` }],
       maxOutputTokens: 1536,
+      ...(modelId.startsWith('z-ai/glm-5') && env.NEAR_AI_THINKING !== '1'
+        ? { providerOptions: { nearai: { reasoning_effort: 'low' } } }
+        : {}),
     });
     const latencyMs = Date.now() - start;
     const decision = parseDecisionJson(result.text);

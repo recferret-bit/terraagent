@@ -18,6 +18,8 @@ const enc = encodeURIComponent;
 
 /** Typed client of `/v1/trade/*` for a session / dev identity. Every mutation carries a fresh `Idempotency-Key`. */
 export class TradeClient {
+  private planetsPromise: Promise<string[]> | null = null;
+
   constructor(readonly token: string, private readonly doFetch: FetchFn = (i, init) => fetch(i, init)) {}
 
   authHeaders(): Record<string, string> { return { authorization: `Bearer ${this.token}` }; }
@@ -66,13 +68,41 @@ export class TradeClient {
   allowance = (keyId: string, patch: TradeAllowanceUpdate): Promise<TradeKeyView> => this.call('PATCH', `/keys/${enc(keyId)}/allowance`, patch);
   revoke = (keyId: string): Promise<RevokeTradeKeyResponse> => this.call('DELETE', `/keys/${enc(keyId)}`);
 
-  /** Dev only: the planets the app has loaded (no production endpoint lists a player's planets). */
-  async devPlanets(): Promise<string[]> {
+  /** Lists planets for the picker: `/v1/dev/planets` in dev, falling back to the pilot's `/v1/me/profile` colonies + `/v1/planets` in production. */
+  devPlanets(): Promise<string[]> {
+    this.planetsPromise ??= this.loadDevPlanetsList();
+    return this.planetsPromise;
+  }
+
+  private async loadDevPlanetsList(): Promise<string[]> {
     try {
       const res = await this.doFetch('/v1/dev/planets');
-      if (!res.ok) return [];
-      return ((await res.json()) as { planets: Array<{ id: string }> }).planets.map((p) => p.id);
-    } catch { return []; }
+      if (res.ok) {
+        const ids = ((await res.json()) as { planets: Array<{ id: string }> }).planets.map((p) => p.id);
+        if (ids.length > 0) return ids;
+      }
+    } catch { /* fallback below */ }
+    const out: string[] = [];
+    try {
+      const profRes = await this.doFetch('/v1/me/profile', { headers: { accept: 'application/json', ...this.authHeaders() }, credentials: 'include' });
+      if (profRes.ok) {
+        const prof = (await profRes.json()) as { currentColonies?: Array<{ planetId?: string }> };
+        for (const c of prof.currentColonies ?? []) {
+          if (c.planetId && !out.includes(c.planetId)) out.push(c.planetId);
+        }
+      }
+    } catch { /* ignore */ }
+    try {
+      const pubRes = await this.doFetch('/v1/planets');
+      if (pubRes.ok) {
+        const pub = (await pubRes.json()) as { planets?: Array<{ planetId?: string; id?: string }> };
+        for (const p of pub.planets ?? []) {
+          const id = p.planetId ?? p.id;
+          if (id && !out.includes(id)) out.push(id);
+        }
+      }
+    } catch { /* ignore */ }
+    return out;
   }
 
   streamUrl(planetId: string): string { return `/v1/trade/stream?planetId=${enc(planetId)}`; }

@@ -1,4 +1,5 @@
 import { buildNearWalletLoginUrl, type MockToken } from './mockToken';
+import { renderVerifiedConnectPanel, verifyNearAccountOnChain } from './nearRpcVerify';
 
 export interface SavedNearWallet {
   readonly walletId: string;
@@ -22,7 +23,7 @@ const MODAL_CSS = `
 .near-wallet-opt b{font-size:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
 .near-wallet-opt span{font-family:var(--ta-font-mono);font-size:11px;color:var(--ta-text-3)}
 .near-wallet-panel{padding:12px;background:var(--ta-plate-2);border:1px solid var(--ta-seam-2);display:flex;flex-direction:column;gap:10px;margin-top:var(--ta-s2)}
-.near-wallet-panel code{display:block;padding:8px 10px;background:#07080A;border:1px solid var(--ta-seam);font-family:var(--ta-font-mono);font-size:11px;color:var(--ta-orange-hi);word-break:break-all;user-select:all}
+.near-wallet-panel code{display:block;padding:8px 10px;background:#07080A;border:1px solid var(--ta-seam);font-family:var(--ta-font-mono);font-size:11px;color:var(--ta-orange-hi);word-break:break-all;white-space:pre-wrap;user-select:all}
 .near-wallet-panel input{width:100%;box-sizing:border-box}
 .near-wallet-saved{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;margin-bottom:var(--ta-s3);background:rgba(255,106,19,.1);border:1px solid var(--ta-orange)}
 .near-wallet-saved span{font-family:var(--ta-font-mono);font-size:12px;color:var(--ta-text)}
@@ -65,19 +66,12 @@ export function saveNearWallet(entry: SavedNearWallet): void {
   }
 }
 
-function buildWebWalletUrl(baseLoginUrl: string, origin: string, returnPath: string): string {
-  const generic = new URL(buildNearWalletLoginUrl(origin, returnPath));
-  const target = new URL(baseLoginUrl);
-  generic.searchParams.forEach((v, k) => target.searchParams.set(k, v));
-  return target.toString();
-}
-
 export interface NearWalletSelectorCallbacks {
   onPopupOpened(popup: Window | null): void;
   onDirectToken(hit: MockToken): void;
 }
 
-interface InjectedOkxNear {
+interface InjectedNearExtension {
   requestSignIn?: (params?: { contractId?: string }) => Promise<{ accountId?: string; publicKey?: string } | void>;
   getAccountId?: () => string | null;
 }
@@ -96,14 +90,13 @@ function createOptionButton(testId: string, title: string, subtitle: string, onC
   return btn;
 }
 
-function renderAccountConnectPanel(
+function renderCliConnectPanel(
   panelHost: HTMLElement,
   opts: {
     readonly walletId: string;
     readonly walletName: string;
     readonly headline: string;
-    readonly commandHint?: string;
-    readonly deepLinkUrl?: string;
+    readonly commandHint: string;
     readonly onConnect: (accountId: string, publicKey?: string) => void;
   },
 ): void {
@@ -115,23 +108,8 @@ function renderAccountConnectPanel(
   const label = document.createElement('div');
   label.className = 'label';
   label.textContent = opts.headline;
-  box.append(label);
-
-  if (opts.commandHint) {
-    const code = document.createElement('code');
-    code.textContent = opts.commandHint;
-    box.append(code);
-  }
-
-  if (opts.deepLinkUrl) {
-    const deepBtn = document.createElement('a');
-    deepBtn.className = 'btn btn-ghost btn-sm';
-    deepBtn.href = opts.deepLinkUrl;
-    deepBtn.target = '_blank';
-    deepBtn.rel = 'noopener noreferrer';
-    deepBtn.textContent = `Launch ${opts.walletName} ↗`;
-    box.append(deepBtn);
-  }
+  const code = document.createElement('code');
+  code.textContent = opts.commandHint;
 
   const acctInput = document.createElement('input');
   acctInput.type = 'text';
@@ -150,6 +128,36 @@ function renderAccountConnectPanel(
   const err = document.createElement('p');
   err.className = 'near-wallet-err';
   err.style.display = 'none';
+
+  const verifyBtn = document.createElement('button');
+  verifyBtn.type = 'button';
+  verifyBtn.className = 'btn btn-ghost btn-sm';
+  verifyBtn.dataset.testid = 'near-cli-verify';
+  verifyBtn.textContent = 'Verify Account & Fetch Key on NEAR RPC';
+  verifyBtn.onclick = () => {
+    const rawAcct = acctInput.value.trim().toLowerCase();
+    if (!NEAR_ACCOUNT_RE.test(rawAcct) || rawAcct.length < 2 || rawAcct.length > 64) {
+      err.textContent = 'Enter a valid NEAR account ID (e.g. alice.testnet).';
+      err.style.display = 'block';
+      return;
+    }
+    err.style.display = 'none';
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = 'Checking NEAR RPC…';
+    void verifyNearAccountOnChain(rawAcct).then((verified) => {
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = 'Verify Account & Fetch Key on NEAR RPC';
+      if (!verified) {
+        err.textContent = `Account "${rawAcct}" was not found on NEAR Mainnet or Testnet.`;
+        err.style.display = 'block';
+        return;
+      }
+      if (verified.publicKey && !keyInput.value.trim()) {
+        keyInput.value = verified.publicKey;
+      }
+      code.textContent = `✔ Verified ${verified.accountId} on NEAR ${verified.network.toUpperCase()} (${verified.keyCount} active keys)`;
+    });
+  };
 
   const submit = document.createElement('button');
   submit.type = 'button';
@@ -170,7 +178,7 @@ function renderAccountConnectPanel(
 
   acctInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(); });
   submit.onclick = finish;
-  box.append(acctInput, keyInput, err, submit);
+  box.append(label, code, acctInput, keyInput, err, verifyBtn, submit);
   panelHost.append(box);
 }
 
@@ -205,7 +213,7 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
 
   const sub = document.createElement('p');
   sub.className = 'near-modal-sub';
-  sub.textContent = 'Choose your NEAR wallet, mobile app, or CLI account. Your selection is saved for instant sign-in.';
+  sub.textContent = 'Choose your NEAR wallet, mobile app, or CLI account. Accounts are verified on NEAR RPC before linking.';
 
   const completeWithAccount = (walletId: string, walletName: string, accountId: string, publicKey?: string): void => {
     saveNearWallet({ walletId, walletName, accountId, publicKey, connectedAt: Date.now() });
@@ -251,41 +259,66 @@ function buildWalletGrid(
   const returnPath = typeof location !== 'undefined' ? location.pathname + location.search : '/';
   const origin = typeof location !== 'undefined' ? location.origin : 'https://terraagent.fun';
 
+  const openVerifiedPanel = (walletId: string, walletName: string, headline: string, deepLinkUrl: string): void => {
+    renderVerifiedConnectPanel(panelHost, {
+      walletId,
+      walletName,
+      headline,
+      deepLinkUrl,
+      origin,
+      returnPath,
+      onPopupOpened: (pop) => callbacks.onPopupOpened(pop),
+      onConfirmAccount: (acct, pub) => completeWithAccount(walletId, walletName, acct, pub),
+      onCloseModal: close,
+    });
+  };
+
   grid.append(
     createOptionButton('near-wallet-meteor', 'Meteor Wallet', 'EXTENSION / WEB', () => {
-      const url = buildWebWalletUrl('https://wallet.meteorwallet.app/connect/testnet/login', origin, returnPath);
-      const pop = window.open(url, 'terra-near-wallet', 'popup,width=500,height=680');
-      callbacks.onPopupOpened(pop);
-      close();
-    }),
-    createOptionButton('near-wallet-okx', 'OKX Wallet', 'EXTENSION / MULTI-CHAIN', () => {
-      const okx = (window as unknown as { okxwallet?: { near?: InjectedOkxNear } }).okxwallet?.near;
-      if (okx?.requestSignIn) {
-        void okx.requestSignIn({ contractId: 'res.terraagent.testnet' }).then((res) => {
-          const acct = (res && typeof res === 'object' ? res.accountId : undefined) ?? okx.getAccountId?.() ?? '';
-          if (acct) completeWithAccount('okx', 'OKX Wallet', acct, res && typeof res === 'object' ? res.publicKey : undefined);
-        });
+      const meteor = (window as unknown as { meteorWallet?: InjectedNearExtension }).meteorWallet;
+      if (meteor?.requestSignIn) {
+        void meteor
+          .requestSignIn({ contractId: 'res.terraagent.testnet' })
+          .then((res) => {
+            const acct = (res && typeof res === 'object' ? res.accountId : undefined) ?? meteor.getAccountId?.() ?? '';
+            if (acct) {
+              completeWithAccount('meteor', 'Meteor Wallet', acct, res && typeof res === 'object' ? res.publicKey : undefined);
+            } else {
+              openVerifiedPanel('meteor', 'Meteor Wallet', 'METEOR WALLET · VERIFY & CONNECT', 'https://wallet.meteorwallet.app');
+            }
+          })
+          .catch(() => {
+            openVerifiedPanel('meteor', 'Meteor Wallet', 'METEOR WALLET · VERIFY & CONNECT', 'https://wallet.meteorwallet.app');
+          });
         return;
       }
-      renderAccountConnectPanel(panelHost, {
-        walletId: 'okx',
-        walletName: 'OKX Wallet',
-        headline: 'OKX WALLET · CONNECT NEAR ACCOUNT',
-        deepLinkUrl: 'https://web3.okx.com/download',
-        onConnect: (acct, pub) => completeWithAccount('okx', 'OKX Wallet', acct, pub),
-      });
+      openVerifiedPanel('meteor', 'Meteor Wallet', 'METEOR WALLET · VERIFY & CONNECT', 'https://wallet.meteorwallet.app');
+    }),
+    createOptionButton('near-wallet-okx', 'OKX Wallet', 'EXTENSION / MULTI-CHAIN', () => {
+      const okx = (window as unknown as { okxwallet?: { near?: InjectedNearExtension } }).okxwallet?.near;
+      if (okx?.requestSignIn) {
+        void okx
+          .requestSignIn({ contractId: 'res.terraagent.testnet' })
+          .then((res) => {
+            const acct = (res && typeof res === 'object' ? res.accountId : undefined) ?? okx.getAccountId?.() ?? '';
+            if (acct) {
+              completeWithAccount('okx', 'OKX Wallet', acct, res && typeof res === 'object' ? res.publicKey : undefined);
+            } else {
+              openVerifiedPanel('okx', 'OKX Wallet', 'OKX WALLET · VERIFY & CONNECT', 'https://web3.okx.com/download');
+            }
+          })
+          .catch(() => {
+            openVerifiedPanel('okx', 'OKX Wallet', 'OKX WALLET · VERIFY & CONNECT', 'https://web3.okx.com/download');
+          });
+        return;
+      }
+      openVerifiedPanel('okx', 'OKX Wallet', 'OKX WALLET · VERIFY & CONNECT', 'https://web3.okx.com/download');
     }),
     createOptionButton('near-wallet-mobile', 'NEAR Mobile', 'IOS / ANDROID APP', () => {
-      renderAccountConnectPanel(panelHost, {
-        walletId: 'near-mobile',
-        walletName: 'NEAR Mobile App',
-        headline: 'NEAR MOBILE APP · PAIR ACCOUNT',
-        deepLinkUrl: 'https://nearmobile.app',
-        onConnect: (acct, pub) => completeWithAccount('near-mobile', 'NEAR Mobile', acct, pub),
-      });
+      openVerifiedPanel('near-mobile', 'NEAR Mobile App', 'NEAR MOBILE APP · VERIFY & PAIR ACCOUNT', 'https://nearmobile.app');
     }),
     createOptionButton('near-wallet-cli', 'NEAR CLI (rs)', 'TERMINAL / KEYSTORE', () => {
-      renderAccountConnectPanel(panelHost, {
+      renderCliConnectPanel(panelHost, {
         walletId: 'near-cli',
         walletName: 'NEAR CLI',
         headline: 'NEAR-CLI-RS · LINK ACCOUNT',
@@ -294,10 +327,7 @@ function buildWalletGrid(
       });
     }),
     createOptionButton('near-wallet-intear', 'Intear Wallet', 'DESKTOP / WEB', () => {
-      const url = buildWebWalletUrl('https://wallet.intear.tech/connect/testnet/login', origin, returnPath);
-      const pop = window.open(url, 'terra-near-wallet', 'popup,width=500,height=680');
-      callbacks.onPopupOpened(pop);
-      close();
+      openVerifiedPanel('intear', 'Intear Wallet', 'INTEAR WALLET · VERIFY & CONNECT', 'https://wallet.intear.tech');
     }),
     createOptionButton('near-wallet-mynearwallet', 'MyNearWallet', 'TESTNET WEB WALLET', () => {
       const url = buildNearWalletLoginUrl(origin, returnPath);

@@ -195,7 +195,9 @@ export class MeProfileService {
       liveDb?.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' } }),
       liveDb?.playerNotification.findMany({ where: { playerId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50 }),
     ]);
+    if (liveDb && linked) await this.expeditePendingBadgeEffects(liveDb, playerId);
     const accountId = linked?.accountId ?? (playerId === 'pr_dev_w12' ? `${handleSlug}.terraagent.mock` : null);
+    const isGuest = liveDb ? !linked && !playerId.startsWith('pr_dev_') : resolved.isGuest;
     const stats = buildProfileStats(facts, unlockStage, currentColonies, allPastColonies);
     const next3 = this.achievements.nextAchievements(achRes.achievements, 3);
     const aiSettings = await this.aiSettings.getSettings(playerId);
@@ -203,9 +205,9 @@ export class MeProfileService {
     return {
       identity: {
         playerId,
-        handle: resolved.handle,
+        handle: player?.handle || resolved.handle,
         accountId,
-        isGuest: resolved.isGuest,
+        isGuest,
         pilotSince: player?.createdAt.toISOString() ?? (playerId === 'pr_dev_w12' ? '2026-10-01T00:00:00.000Z' : 'Unknown'),
         avatarSeed: playerId,
         frame: xpState.frame || (levelProg.level >= 4 ? 'surveyor' : 'default'),
@@ -234,5 +236,12 @@ export class MeProfileService {
       totalAchievementsCount: ACHIEVEMENTS.length,
       aiSettings,
     };
+  }
+
+  private async expeditePendingBadgeEffects(liveDb: PrismaClient, playerId: string): Promise<void> {
+    await liveDb.progressionEffect.updateMany({
+      where: { playerId, kind: 'achievement.badge', completedAt: null, availableAt: { gt: new Date() } },
+      data: { availableAt: new Date(0) },
+    });
   }
 }

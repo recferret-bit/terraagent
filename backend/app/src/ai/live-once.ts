@@ -22,7 +22,7 @@ function redactAll(text: string, secrets: readonly (string | undefined)[]): stri
   return out;
 }
 
-/** One live completion via NEAR AI Cloud (`z-ai/glm-5.3`). The report never includes the API key. */
+/** One live completion via NEAR AI Cloud (`z-ai/glm-5.3-flash`). The report never includes the API key. */
 export async function liveOnce(env: Record<string, string | undefined>): Promise<LiveReport> {
   const started = Date.now();
   const model = normalizeNearAiModel(env.NEAR_AI_MODEL || env.NEARAI_MODEL || env.AI_MODEL || DEFAULT_NEAR_AI_MODEL);

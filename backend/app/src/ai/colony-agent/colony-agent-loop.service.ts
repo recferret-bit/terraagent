@@ -29,9 +29,9 @@ import {
 } from './colony-agent-types.js';
 
 const BATCH_SYSTEM_PROMPT = [
-  'You are the TerraAgent NEAR.AI Decision Manager (z-ai/glm-5.3) governing autonomous colonies.',
-  'Given { colonies: ColonyObservation[] }, reply with strict JSON: { "directives": [ { "colonyIndex": number, "action": "queue_goal"|"propose_truce"|"respond_truce"|"declare_war"|"raid"|"trade"|"accept_guild_offer"|"hold", "goal"?: "grow_economy"|"secure_power"|"defend_colony"|"terraform_zone"|"raid_target", "targetColonyIndex"?: number, "offerId"?: string, "accept"?: boolean, "durationHours"?: 6|12|24, "tradeSide"?: "buy"|"sell", "tradePair"?: string, "tradeAmount"?: number, "tradeNotionalAtomic"?: string, "rationale": string } ] }.',
-  'Optimize economy, power grid, Living terraforming, NEAR Intents trading, war raids against unshielded rivals, and peace truces.',
+  'You are the TerraAgent NEAR.AI Decision Manager (z-ai/glm-5.3-flash) governing autonomous colonies.',
+  'Given { colonies: ColonyObservation[] }, reply with strict JSON: { "directives": [ { "colonyIndex": number, "action": "queue_goal"|"propose_truce"|"respond_truce"|"declare_war"|"raid"|"trade"|"accept_guild_offer"|"hold", "goal"?: "grow_economy"|"secure_power"|"defend_colony"|"terraform_zone"|"raid_target", "targetColonyIndex"?: number, "offerId"?: string, "accept"?: boolean, "durationHours"?: 6|12|24, "tradeSide"?: "buy"|"sell", "tradePair"?: string, "tradeAmount"?: number, "tradeNotionalAtomic"?: string, "rationale": string (<=160 chars) } ] }.',
+  'Optimize economy, power grid, Living terraforming, NEAR Intents trading (allowedPairs: metals.t1/minerals.t1, metals.t1/bio.water, bio.water/minerals.t1, bio.biomass/minerals.t1, metals.t1/USDC, minerals.t1/USDC, bio.water/USDC, bio.biomass/USDC), war raids against unshielded rivals, and peace truces.',
   'Hard guardrails: NEVER output cancel_truce (Oathbreaker is human-only) and NEVER output stake.',
 ].join(' ');
 
@@ -128,7 +128,7 @@ export class ColonyAgentLoopService {
 
   /**
    * Evaluates one batched LLM / policy decision turn across every colony on `planetId`:
-   * - Non-player AI bots (`obs.isBot === true`) are batched into a single NEAR.AI (`z-ai/glm-5.3`) completion call.
+   * - Non-player AI bots (`obs.isBot === true`) are batched into a single NEAR.AI (`z-ai/glm-5.3-flash`) completion call.
    * - Human player colonies with AI enabled use the player's connected NEAR.AI API key + selected model (batched per player);
    *   if the player has not connected a personal NEAR.AI API key, deterministic policy is used without consuming the server key.
    */

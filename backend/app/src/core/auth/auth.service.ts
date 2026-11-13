@@ -25,12 +25,20 @@ export function parseRefreshCookie(cookieHeader: string | string[] | undefined):
   return undefined;
 }
 
-export function formatRefreshCookie(refreshToken: string, secure = false): string {
-  return `${REFRESH_COOKIE_NAME}=${refreshToken}; HttpOnly; Path=/v1/auth; SameSite=Lax; Max-Age=${REFRESH_TOKEN_TTL_S}${secure ? '; Secure' : ''}`;
+export function resolveCookieDomain(hostHeader: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  const host = (raw ?? '').split(':')[0]?.trim().toLowerCase() ?? '';
+  if (host === 'terraagent.fun' || host.endsWith('.terraagent.fun')) return '.terraagent.fun';
+  if (host === 'terraagent.com' || host.endsWith('.terraagent.com')) return '.terraagent.com';
+  return undefined;
 }
 
-export function formatClearCookie(secure = false): string {
-  return `${REFRESH_COOKIE_NAME}=; HttpOnly; Path=/v1/auth; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
+export function formatRefreshCookie(refreshToken: string, secure = false, domain?: string): string {
+  return `${REFRESH_COOKIE_NAME}=${refreshToken}; HttpOnly; Path=/v1/auth; SameSite=Lax; Max-Age=${REFRESH_TOKEN_TTL_S}${domain ? `; Domain=${domain}` : ''}${secure ? '; Secure' : ''}`;
+}
+
+export function formatClearCookie(secure = false, domain?: string): string {
+  return `${REFRESH_COOKIE_NAME}=; HttpOnly; Path=/v1/auth; SameSite=Lax; Max-Age=0${domain ? `; Domain=${domain}` : ''}${secure ? '; Secure' : ''}`;
 }
 
 /** Expired sessions are deleted at most this often, from a login or refresh (no timer to stop). */

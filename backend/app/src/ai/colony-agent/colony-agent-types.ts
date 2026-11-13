@@ -396,9 +396,18 @@ function stripJsonFence(raw: string): string {
   return trimmed;
 }
 
+function clampDirectiveRationale(entry: unknown): unknown {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+  const rec = entry as Record<string, unknown>;
+  if (typeof rec.rationale === 'string' && rec.rationale.length > 180) {
+    return { ...rec, rationale: `${rec.rationale.slice(0, 177)}...` };
+  }
+  return entry;
+}
+
 export function parseDirectiveJson(raw: string): AgentDirective | null {
   try {
-    const obj = JSON.parse(stripJsonFence(raw)) as unknown;
+    const obj = clampDirectiveRationale(JSON.parse(stripJsonFence(raw)) as unknown);
     const res = AgentDirectiveSchema.safeParse(obj);
     return res.success ? res.data : null;
   } catch {
@@ -411,7 +420,14 @@ export function parseBatchedDirectivesJson(
   observations: readonly ColonyObservation[],
 ): { readonly map: Map<number, AgentDirective>; readonly isBatchedPayload: boolean } | null {
   try {
-    const obj = JSON.parse(stripJsonFence(raw)) as unknown;
+    const rawObj = JSON.parse(stripJsonFence(raw)) as unknown;
+    const obj =
+      rawObj && typeof rawObj === 'object' && !Array.isArray(rawObj) && Array.isArray((rawObj as { directives?: unknown }).directives)
+        ? {
+            ...(rawObj as Record<string, unknown>),
+            directives: (rawObj as { directives: unknown[] }).directives.map(clampDirectiveRationale),
+          }
+        : clampDirectiveRationale(rawObj);
     const batched = BatchedAgentDirectivesSchema.safeParse(obj);
     if (batched.success) {
       const map = new Map<number, AgentDirective>();
@@ -424,13 +440,14 @@ export function parseBatchedDirectivesJson(
     if (Array.isArray(obj)) {
       const map = new Map<number, AgentDirective>();
       obj.forEach((entry, idx) => {
-        const withIdx = BatchedAgentDirectiveItemSchema.safeParse(entry);
+        const clamped = clampDirectiveRationale(entry);
+        const withIdx = BatchedAgentDirectiveItemSchema.safeParse(clamped);
         if (withIdx.success) {
           const { colonyIndex, ...directive } = withIdx.data;
           map.set(colonyIndex, directive);
           return;
         }
-        const single = AgentDirectiveSchema.safeParse(entry);
+        const single = AgentDirectiveSchema.safeParse(clamped);
         const obs = observations[idx];
         if (single.success && obs) map.set(obs.colonyIndex, single.data);
       });

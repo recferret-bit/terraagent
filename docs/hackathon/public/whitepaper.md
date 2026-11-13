@@ -65,7 +65,7 @@ All 11 NEAR ports run on **mock adapters** locally by default (`NEAR_MODE=mock`)
 | Markets & swaps on NEAR Intents | Real `TestnetIntentsAdapter` (`NEP-413` `token_diff`) + live `1click.chaindefuser.com` dry quotes | Postgres mock verifier & Guild order matching |
 | Agent wallets, Colony Deeds, Badges, Bounties | Live `deed.terraagent.testnet` (Deed & Badge NEP-171), `bounty.terraagent.testnet` escrow & limited keys | Postgres mock tables (`chain.mock_chain_*`) |
 | Staking Vault & Planet Treasury DAO | Live `staking.terraagent.testnet` (4-epoch unbonding + APY) & `dao.terraagent.testnet` (quorum council voting) | Postgres mock staking & DAO policy tables |
-| Batched AI & Colony Autopilot (`NEAR.AI`) | Real NEAR AI Cloud TEE inference (`z-ai/glm-5.3`) with SHA-256 signature verification (`/v1/signature/{chat_id}`) + player `/me` BYOK keys | Deterministic mock LLM adapter |
+| Batched AI & Colony Autopilot (`NEAR.AI`) | Real NEAR AI Cloud TEE inference (`z-ai/glm-5.3-flash`) with SHA-256 signature verification (`/v1/signature/{chat_id}`) + player `/me` BYOK keys | Deterministic mock LLM adapter |
 
 The README's live Testnet contract & port matrix is authoritative.
 

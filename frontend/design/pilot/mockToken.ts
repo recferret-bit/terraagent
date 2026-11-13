@@ -14,6 +14,9 @@ export interface MockToken {
 export const NEAR_TESTNET_WALLET_LOGIN_URL = 'https://testnet.mynearwallet.com/login/';
 export const NEAR_FASTAUTH_ISSUER = 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/';
 export const NEAR_FASTAUTH_CLIENT_ID = 'GhPTEx5u0o5Bh16F6LWjPXOXAyQROUNL';
+export const OAUTH_CALLBACK_STORAGE_KEY = 'ta_oauth_callback';
+
+const POPUP_NAMES = new Set(['terra-near-wallet', 'terra-fastauth-oauth', 'terra-mock-oauth']);
 
 function randomVerifier(): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -22,6 +25,34 @@ function randomVerifier(): string {
     out += alphabet[Math.floor(Math.random() * alphabet.length)]!;
   }
   return out;
+}
+
+function broadcastPopupHit(hit: MockToken, origin: string, opener: Window | null | undefined, isSyntheticEnv: boolean): boolean {
+  if (!isSyntheticEnv) {
+    try {
+      localStorage.setItem(OAUTH_CALLBACK_STORAGE_KEY, JSON.stringify({ ...hit, at: Date.now() }));
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+  if (opener && (typeof window === 'undefined' || opener !== window)) {
+    try {
+      opener.postMessage({ type: 'terra:mock-token', ...hit }, origin);
+      window.close();
+      return true;
+    } catch {
+      /* fallback to in-window login */
+    }
+  }
+  if (!isSyntheticEnv && typeof window !== 'undefined' && POPUP_NAMES.has(window.name)) {
+    try {
+      window.close();
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -144,15 +175,7 @@ export function consumeNearWalletCallback(env?: NearWalletCallbackEnv): MockToke
     }
   }
 
-  if (opener && (typeof window === 'undefined' || opener !== window)) {
-    try {
-      opener.postMessage({ type: 'terra:mock-token', ...hit }, origin);
-      window.close();
-      return null;
-    } catch {
-      /* fallback to in-window login */
-    }
-  }
+  if (broadcastPopupHit(hit, origin, opener, Boolean(env))) return null;
   return hit;
 }
 
@@ -198,15 +221,7 @@ function consumeFastAuthRedirect(
   const token = `fastauth-code:${encodeURIComponent(code)}:${encodeURIComponent(verifier)}:${encodeURIComponent(redirectUri)}`;
   const hit: MockToken = { provider, token };
 
-  if (opener && (typeof window === 'undefined' || opener !== window)) {
-    try {
-      opener.postMessage({ type: 'terra:mock-token', ...hit }, origin);
-      window.close();
-      return null;
-    } catch {
-      /* fallback to in-window login */
-    }
-  }
+  if (broadcastPopupHit(hit, origin, opener, isSyntheticEnv)) return null;
   return hit;
 }
 
@@ -220,4 +235,27 @@ export function readMockToken(event: MockTokenMessage, popup: unknown, origin: s
   if (rec.provider !== 'google' && rec.provider !== 'x' && rec.provider !== 'fastauth') return null;
   if (typeof rec.token !== 'string' || rec.token.length === 0) return null;
   return { provider: rec.provider, token: rec.token };
+}
+
+/** Reads and clears a popup callback token written to `localStorage` (`ta_oauth_callback`) when COOP severs `window.opener`. */
+export function readOAuthStorageEvent(event: StorageEvent, hasPopup: boolean): MockToken | null {
+  if (event.key !== OAUTH_CALLBACK_STORAGE_KEY || !event.newValue || !hasPopup) return null;
+  try {
+    const parsed = JSON.parse(event.newValue) as Partial<MockToken>;
+    if (
+      (parsed.provider === 'google' || parsed.provider === 'x' || parsed.provider === 'fastauth') &&
+      typeof parsed.token === 'string' &&
+      parsed.token.length > 0
+    ) {
+      try {
+        localStorage.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      return { provider: parsed.provider, token: parsed.token };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }

@@ -7,6 +7,7 @@ import {
   type PlayerAiSettings,
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
+import { refreshPilotSession } from '../../../design/pilot/PilotAccess';
 import { readActivePilot } from '../../features/achievements/activePilot';
 
 export type MeFetchResult =
@@ -20,6 +21,10 @@ export type MeFetchResult =
       readonly message: string;
     }
   | {
+      readonly kind: 'unauthenticated';
+      readonly message: string;
+    }
+  | {
       readonly kind: 'error';
       readonly message: string;
     };
@@ -29,6 +34,13 @@ export type MeFetchFn = (input: string, init?: RequestInit) => Promise<{
   readonly status: number;
   json(): Promise<unknown>;
 }>;
+
+let cachedRefreshedToken = '';
+const defaultMeFetch: MeFetchFn = (input, init) => fetch(input, init);
+
+export function clearMeCachedToken(): void {
+  cachedRefreshedToken = '';
+}
 
 export function resolveMeBearerToken(search?: string): string {
   const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
@@ -43,9 +55,10 @@ export function resolveMeBearerToken(search?: string): string {
   }
 
   const stored = readActivePilot();
-  if (stored?.accessToken) return stored.accessToken;
-  if (stored?.playerId) return `player:${stored.playerId}`;
-  return '';
+  if (stored && stored.isGuest !== true && stored.accessToken && !stored.accessToken.startsWith('player:')) {
+    return stored.accessToken;
+  }
+  return cachedRefreshedToken;
 }
 
 function isWaveDisabledPayload(status: number, body: unknown): boolean {
@@ -59,8 +72,6 @@ function isWaveDisabledPayload(status: number, body: unknown): boolean {
   );
 }
 
-let cachedRefreshedToken = '';
-
 function buildWavesQuerySuffix(rawSearch: string): string {
   try {
     const waves = new URLSearchParams(rawSearch).get('waves')?.trim();
@@ -72,25 +83,34 @@ function buildWavesQuerySuffix(rawSearch: string): string {
 }
 
 export async function fetchMeData(
-  doFetch: MeFetchFn = (input, init) => fetch(input, init),
+  doFetch: MeFetchFn = defaultMeFetch,
   search?: string,
 ): Promise<MeFetchResult> {
   const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
   let token = resolveMeBearerToken(rawSearch);
   const params = new URLSearchParams(rawSearch);
   if (!params.has('as') && !params.has('playerId')) {
-    try {
-      const refreshed = await doFetch('/v1/auth/refresh', { method: 'POST', credentials: 'include' });
-      if (refreshed.ok) {
-        const body = await refreshed.json() as { accessToken?: string };
-        if (body.accessToken) {
-          token = body.accessToken;
-          cachedRefreshedToken = body.accessToken;
-        }
+    const refreshed = await refreshPilotSession(doFetch, doFetch === defaultMeFetch);
+    if (refreshed) {
+      if (refreshed.player?.isGuest === true) {
+        cachedRefreshedToken = '';
+        return {
+          kind: 'unauthenticated',
+          message: 'Sign in or create a pilot account to view your profile, achievements, and NEAR.AI settings.',
+        };
       }
-    } catch { /* A still-valid bearer can be used if refresh is unavailable. */ }
+      if (refreshed.accessToken) {
+        token = refreshed.accessToken;
+        cachedRefreshedToken = refreshed.accessToken;
+      }
+    }
   }
-  if (!token) return { kind: 'error', message: 'Sign in from the landing or planet selection screen to view your pilot.' };
+  if (!token) {
+    return {
+      kind: 'unauthenticated',
+      message: 'Sign in or create a pilot account to view your profile, achievements, and NEAR.AI settings.',
+    };
+  }
   const headers: Record<string, string> = {
     Accept: 'application/json',
     Authorization: `Bearer ${token}`,
@@ -115,6 +135,13 @@ export async function fetchMeData(
       return { kind: 'wave_disabled', message: 'Player page is off' };
     }
 
+    if (profRes.status === 401 || achRes.status === 401) {
+      return {
+        kind: 'unauthenticated',
+        message: 'Sign in or create a pilot account to view your profile, achievements, and NEAR.AI settings.',
+      };
+    }
+
     if (!profRes.ok || !achRes.ok) {
       return {
         kind: 'error',
@@ -124,6 +151,12 @@ export async function fetchMeData(
 
     const profile = MeProfileResponseSchema.parse(profBody);
     const achievements = MeAchievementsResponseSchema.parse(achBody);
+    if (profile.identity.isGuest && !profile.identity.accountId && !params.has('as') && !params.has('playerId')) {
+      return {
+        kind: 'unauthenticated',
+        message: 'Sign in or create a pilot account to view your profile, achievements, and NEAR.AI settings.',
+      };
+    }
     return { kind: 'ok', profile, achievements };
   } catch (err) {
     return {

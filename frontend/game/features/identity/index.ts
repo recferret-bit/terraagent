@@ -14,6 +14,7 @@ declare module '../../core/registry/types' {
       view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string; saveEpoch?: number };
       subscribe(fn: () => void): () => void;
       loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email', token: string): Promise<void>;
+      logout?(): Promise<void>;
       /** Colony deposit poll. Absent in specs that only cover the guest chip. */
       watchRelay?(): {
         poll(): Promise<{ state: 'none' | 'pending' | 'settled' | 'failed'; opId?: string }>;

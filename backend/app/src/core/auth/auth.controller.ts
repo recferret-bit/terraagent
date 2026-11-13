@@ -4,13 +4,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ZodPipe } from '../errors/zod.pipe';
 import { IpThrottleGuard } from '../ip-throttle.guard';
 import { APP_ENV, type AppEnv } from '../tokens';
-import { AuthService, formatClearCookie, formatRefreshCookie, parseRefreshCookie } from './auth.service';
+import { AuthService, formatClearCookie, formatRefreshCookie, parseRefreshCookie, resolveCookieDomain } from './auth.service';
 
 interface ReplyLike extends Partial<ServerResponse> {
-  header?: (name: string, value: string) => unknown;
+  header?: (name: string, value: string | string[]) => unknown;
 }
 
-function setSetCookie(res: ReplyLike, cookie: string): void {
+function setSetCookie(res: ReplyLike, cookie: string | string[]): void {
   if (typeof res.setHeader === 'function') {
     res.setHeader('set-cookie', cookie);
   } else if (typeof res.header === 'function') {
@@ -35,11 +35,12 @@ export class AuthController {
   @UseGuards(IpThrottleGuard)
   async guest(
     @Body() body: unknown,
+    @Req() req: IncomingMessage,
     @Res({ passthrough: true }) res: ReplyLike,
   ): Promise<AuthResponse> {
     const parsed = this.guestPipe.transform(body ?? {});
     const { response, refreshToken } = await this.auth.guestLogin(parsed);
-    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction));
+    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
     return response;
   }
 
@@ -51,7 +52,7 @@ export class AuthController {
   ): Promise<AuthResponse> {
     const rt = parseRefreshCookie(req.headers?.cookie);
     const { response, refreshToken } = await this.auth.refresh(rt);
-    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction));
+    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
     return response;
   }
 
@@ -63,7 +64,13 @@ export class AuthController {
   ): Promise<{ ok: true }> {
     const rt = parseRefreshCookie(req.headers?.cookie);
     const result = await this.auth.logout(rt);
-    setSetCookie(res, formatClearCookie(this.isProduction));
+    const domain = resolveCookieDomain(req?.headers?.host);
+    setSetCookie(
+      res,
+      domain
+        ? [formatClearCookie(this.isProduction, domain), formatClearCookie(this.isProduction)]
+        : formatClearCookie(this.isProduction),
+    );
     return result;
   }
 }

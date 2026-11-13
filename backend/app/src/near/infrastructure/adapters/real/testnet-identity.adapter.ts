@@ -70,6 +70,12 @@ export class TestnetIdentityAdapter implements IdentityPort {
       if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
         throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEAR wallet account ID' });
       }
+      if (this.envSource.NODE_ENV === 'production') {
+        const exists = await this.verifyWalletAccountExists(rawAccountId);
+        if (!exists) {
+          throw new NearException('NEAR_PROVIDER_REJECTED', { message: `NEAR account "${rawAccountId}" was not found on-chain` });
+        }
+      }
       const subject = rawAccountId.replace(/\.(testnet|near)$/i, '') || rawAccountId;
       return { playerId: subject, email: null, isNew: true };
     }
@@ -236,6 +242,30 @@ export class TestnetIdentityAdapter implements IdentityPort {
       this.keyStore = new KeyStore(loadKekRing(kekEnv((this.envSource as unknown as AppEnv) ?? { NODE_ENV: 'development' })));
     }
     return this.keyStore;
+  }
+
+  private async verifyWalletAccountExists(accountId: string): Promise<boolean> {
+    if (accountId.endsWith('.testnet')) {
+      return this.rpc.accountExists(accountId);
+    }
+    try {
+      const res = await fetch('https://rpc.mainnet.near.org', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'terra-verify',
+          method: 'query',
+          params: { request_type: 'view_account', finality: 'final', account_id: accountId },
+        }),
+      });
+      if (!res.ok) return false;
+      const body = (await res.json()) as { result?: { amount?: string }; error?: unknown };
+      if (!body.error && body.result) return true;
+    } catch {
+      /* fallback to testnet rpc check */
+    }
+    return this.rpc.accountExists(accountId);
   }
 }
 

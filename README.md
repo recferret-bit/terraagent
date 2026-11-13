@@ -17,11 +17,11 @@
 ## What Problem TerraAgent Solves & Why NEAR
 
 1. **The Problem:** Online strategy games stop progressing when you close the browser tab, price resources with static studio spreadsheets that inflate and freeze, or break immersion with seed phrases, wallet popups, and gas prompts. Meanwhile, letting autonomous AI agents manage real wallets without cryptographic and policy boundaries risks draining user funds.
-2. **The Product:** A persistent hex-planet RTS (`@terra/sim` deterministic engine + Three.js WebGL2 diorama + `@msgpack/msgpack` binary WebSockets) where humans command colonies directly while online — and click **`AI AUTOPILOT: ON`** (or go offline) to hand execution to bounded **NEAR.AI (`z-ai/glm-5.3`)** directors competing and trading alongside autonomous Rival AI colonies, external API trading bots, and scheduled NPC Orbital Guild ships.
+2. **The Product:** A persistent hex-planet RTS (`@terra/sim` deterministic engine + Three.js WebGL2 diorama + `@msgpack/msgpack` binary WebSockets) where humans command colonies directly while online — and click **`AI AUTOPILOT: ON`** (or go offline) to hand execution to bounded **NEAR.AI (`z-ai/glm-5.3-flash`)** directors competing and trading alongside autonomous Rival AI colonies, external API trading bots, and scheduled NPC Orbital Guild ships.
 3. **What NEAR Concretely Enables:**
    - **Invisible Account & Gasless Gameplay (`Identity` + `NEP-366` Relayer):** Social login (`FastAuth` PKCE/JWKS, Google/X OAuth, or NEAR wallet selector) provisions `{pilot}.terraagent.testnet` funded with `0.02 NEAR`, while `relayer.terraagent.testnet` sponsors allowlisted `SignedDelegate` meta-transactions so players never hold gas to play — with non-custodial `claimAccount` (`addFullAccessKey`) when ready.
    - **Open Commodity Liquidity & Intent Settlement (`NEP-245` + `NEP-413` + `1Click`):** Exporting colony resources mints `NEP-245` multi-tokens on `res.terraagent.testnet` (importing burns them). Player, bot, rival AI, and NPC Guild orders clear via counter-signed **`NEP-413` zero-sum `token_diff` intents** paired with live **NEAR Intents 1Click (`1click.chaindefuser.com/v0/quote`, `dry: true`)** cross-asset solver quotes.
-   - **Confidential Verifiable AI + Sandboxed Spending (`NEAR AI Cloud TEE` + `AgentWallet`):** Colony directives run in **NEAR AI Cloud TEEs (`z-ai/glm-5.3`)** verified via `/v1/signature/{chat_id}` ECDSA signatures (plus `AES-256-GCM` encrypted player BYOK keys on `/me.html`), constrained by scoped session keys, ACID per-token daily spend caps, one-click revocation, and hard server/contract guardrails (`403 AI_STAKING_FORBIDDEN`, human-only truce breaking).
+   - **Confidential Verifiable AI + Sandboxed Spending (`NEAR AI Cloud TEE` + `AgentWallet`):** Colony directives run in **NEAR AI Cloud TEEs (`z-ai/glm-5.3-flash`)** verified via `/v1/signature/{chat_id}` ECDSA signatures (plus `AES-256-GCM` encrypted player BYOK keys on `/me.html`), constrained by scoped session keys, ACID per-token daily spend caps, one-click revocation, and hard server/contract guardrails (`403 AI_STAKING_FORBIDDEN`, human-only truce breaking).
    - **Dynamic Assets, Trustless Bounties & Shared Treasuries (`NEP-171`, `Escrow`, `DAO`, `Staking`):** Every colony mints an evolving soulbound **NEP-171 Colony Deed NFT** (`deed.terraagent.testnet`) whose `Settled` status gates human-only validator staking (`staking.terraagent.testnet`), posts raid-defense cargo escrows (`bounty.terraagent.testnet`), and votes on planetary public goods in per-planet **Treasury DAOs** (`{planet}.dao.terraagent.testnet` on `dao.terraagent.testnet`).
 
 > **Specs & Rules:** [`docs/game/RULES.md`](./docs/game/RULES.md) (30s/5m/session loop, sub-accounts & AI custody checkpoint) · [`docs/game/GUILD_PRICING.md`](./docs/game/GUILD_PRICING.md) (NPC Guild AMM formula & reason tooltips) · [`docs/hackathon/DEPLOY_GUIDE.md`](./docs/hackathon/DEPLOY_GUIDE.md) (VPS + Testnet deployment) · [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md) (console commands, routes & env vars).
@@ -34,7 +34,7 @@
 
 | Do X | See Y |
 |---|---|
-| Open [`play.terraagent.fun/dev/economy-sim/`](https://play.terraagent.fun/dev/economy-sim/) → click **FAST-FORWARD 7 DAYS** | 3 autonomous colonies (*Verdant Collective*, *Iron Guild Outpost*, *Crimson Vanguard*) simulate 7 days of mining, Guild VWAP price curves, raids, bilateral truces, guardrails, and a live `NEAR.AI` (`z-ai/glm-5.3`) TEE-attested evaluation. |
+| Open [`play.terraagent.fun/dev/economy-sim/`](https://play.terraagent.fun/dev/economy-sim/) → click **FAST-FORWARD 7 DAYS** | 3 autonomous colonies (*Verdant Collective*, *Iron Guild Outpost*, *Crimson Vanguard*) simulate 7 days of mining, Guild VWAP price curves, raids, bilateral truces, guardrails, and a live `NEAR.AI` (`z-ai/glm-5.3-flash`) TEE-attested evaluation. |
 | Open [`play.terraagent.fun/play.html?planet=oceanForest&deploy=1`](https://play.terraagent.fun/play.html?planet=oceanForest&deploy=1) | Drop pod lands in 3D; open left **Colony Book → `DIRECTOR`** to toggle **`AI AUTOPILOT: ON`** + **`Allow War & Diplomacy`**, press `T` → `V` to **Cultivate** hexes (`Grade → Irrigate → Seed → Living`), or press `` ` `` and run `near.ports` / `near.quote`. |
 | Open [`play.terraagent.fun/trade.html`](https://play.terraagent.fun/trade.html) | Live planet CLOB orderbook, depth ladder, swaps across `10` NEP-245 resources + `USDC` / `NEAR`, maker stall fee controls (`0–100 bp`), and scoped `ta_bot_...` API key management. |
 | Open [`play.terraagent.fun/me.html`](https://play.terraagent.fun/me.html) | Sign in to configure your personal **BYOK NEAR.AI API Key & Model** (`AES-256-GCM` encrypted at rest), inspect achievement badges, and view colony history. |
@@ -49,7 +49,7 @@ curl -fsS https://api.terraagent.fun/v1/near/status | jq '{nearMode, rootAccount
 curl -fsS -X POST https://api.terraagent.fun/v1/near/intents/quote \
   -H 'content-type: application/json' -d '{"amount":"1000000000000000000000000"}' | jq .
 
-# 3. Run a 7-day 3-colony economy simulation + live NEAR AI Cloud (z-ai/glm-5.3) TEE attestation check:
+# 3. Run a 7-day 3-colony economy simulation + live NEAR AI Cloud (z-ai/glm-5.3-flash) TEE attestation check:
 curl -fsS -X POST https://api.terraagent.fun/v1/economy-sim/run \
   -H 'content-type: application/json' -d '{"days":7,"seed":"42"}' | jq '{days, seed, durationMs, guardrails, ai}'
 
@@ -85,7 +85,7 @@ npm run dev            # → Postgres (docker :15434), NestJS API + WS (:4001), 
 
 ```bash
 NEAR_MODE=testnet NEAR_ROOT_ACCOUNT=terraagent.testnet \
-AI_PROVIDER=nearai AI_LIVE=1 NEAR_AI_API_KEY=<your_nearai_key> NEAR_AI_MODEL=z-ai/glm-5.3 \
+AI_PROVIDER=nearai AI_LIVE=1 NEAR_AI_API_KEY=<your_nearai_key> NEAR_AI_MODEL=z-ai/glm-5.3-flash \
 TA_SEED_RIVAL_AI=1 npm run dev
 
 # Run live RPC contract-verification suites against https://test.rpc.fastnear.com:
@@ -108,7 +108,7 @@ TerraAgent is one cohesive product designed around the official NEAR Hackathon t
 | **`swarms`**<br>AI Swarms | `MULTI-AGENT SYSTEMS` · `NEAR INTENTS` · `SUB-ACCOUNTS` | Shared-planet multi-agent coordination & competition: isolated `*.terraagent.testnet` & `*.npc.terraagent.testnet` sub-accounts, central planet orderbook coordinator (`/v1/market/:planetId`), zero-sum intent batch clearing, collective public-good funding in `{planet}.dao.terraagent.testnet`, plus zero-LLM deterministic simulation mode (`useLiveLlm: false`). | `POST /v1/economy-sim/run` · [`economy-sim/`](./backend/app/src/ai/economy-sim/) · [`/trade.html`](https://play.terraagent.fun/trade.html) |
 | **`security`**<br>AI Security & Defense | `AGENT SECURITY` · `FUNCTION CALL KEYS` · `TEE ATTESTATION` | Sandboxed agent custody: scoped Ed25519 session keys (`/v1/near/director-key`, `/v1/trade/keys`) with ACID per-token spend allowances (`NEAR_ALLOWANCE_EXHAUSTED`), one-click revoke & emergency kill switch (`POST /v1/trade/kill`), relayer receiver allowlist + daily gas cap, `validateAgentGuardrails` policy engine (`403 AI_STAKING_FORBIDDEN`, no demolish `AW-10`, war opt-in `AW-11`, human-only truce cancel `AW-13`, `intentRevision` concurrency), and TEE signature verification. | `POST /v1/near/stake -H 'x-actor: ai'` · [`testnet-agent-wallet.adapter.ts`](./backend/app/src/near/infrastructure/adapters/real/testnet-agent-wallet.adapter.ts) |
 | **`nfts`**<br>NFTs That Do Something | `DYNAMIC NFTS` · `NEP-171` · `SUB-ACCOUNTS` | Soulbound **NEP-171 Colony Deeds & Achievement Badges** (`deed.terraagent.testnet`) bound to colony sub-accounts: metadata evolves on-chain (`mint_deed` → `update_metadata` across `stage`, `terraformBp`, `settled`) with dynamic PNG rendering, SSR OpenGraph cards (`/deed/:tokenId`), and real behavioral utility — a `Settled` Deed is the credential required to unlock validator staking and council membership. | `GET /v1/near/deed` · [`deed`](./backend/near-contracts/deed/src/lib.rs) · [`deed-share.controller.ts`](./backend/app/src/near/deed/deed-share.controller.ts) |
-| **`privacy`**<br>Privacy & Private AI | `PRIVATE AI` · `TEE` · `NEAR AI CLOUD` | Confidential colony & market strategy inference on **NEAR AI Cloud (`https://cloud-api.near.ai/v1`, `z-ai/glm-5.3`)** inside hardware TEEs with `/v1/signature/{chat_id}` ECDSA verification, plus envelope-encrypted (`AES-256-GCM` via `NEAR_KEK`) player BYOK API keys (`/v1/me/ai-settings`) and custodial keys (`KeyStore`). | [`nearai-llm.adapter.ts`](./backend/app/src/ai/adapters/nearai-llm.adapter.ts) · [`/me.html`](https://play.terraagent.fun/me.html) · [`keystore/`](./backend/app/src/near/keystore/) |
+| **`privacy`**<br>Privacy & Private AI | `PRIVATE AI` · `TEE` · `NEAR AI CLOUD` | Confidential colony & market strategy inference on **NEAR AI Cloud (`https://cloud-api.near.ai/v1`, `z-ai/glm-5.3-flash`)** inside hardware TEEs with `/v1/signature/{chat_id}` ECDSA verification, plus envelope-encrypted (`AES-256-GCM` via `NEAR_KEK`) player BYOK API keys (`/v1/me/ai-settings`) and custodial keys (`KeyStore`). | [`nearai-llm.adapter.ts`](./backend/app/src/ai/adapters/nearai-llm.adapter.ts) · [`/me.html`](https://play.terraagent.fun/me.html) · [`keystore/`](./backend/app/src/near/keystore/) |
 | **`social`**<br>Social Money | `DAO TREASURY` · `SHARED BUDGETS` · `NAMED ACCOUNTS` | Custom Sputnik-pattern **Planet Council Treasury DAO** (`dao.terraagent.testnet` with live `{planet}.dao.terraagent.testnet` sub-DAOs): market/Guild tax legs fund a shared planetary budget where named colony accounts propose, vote (`> 50%` quorum), and finalize `meteor_shield`, `terraform_boost`, and `guild_subsidy` effects, backed by `Oathbreaker` treaty reputation. | `GET /v1/near/treasury/pl_dev` · [`dao`](./backend/near-contracts/dao/src/lib.rs) · [`treasury/`](./backend/app/src/near/treasury/) |
 | **`defi`**<br>Unstoppable DeFi | `TRADING` · `NEAR INTENTS` · `YIELD VAULTS` | 24/7 CLOB + SSE streaming exchange (`/v1/trade/*`, 90 pairs across 10 NEP-245 commodities + `USDC` + `NEAR`), autonomous VWAP-anchored Guild liquidity, deterministic quote API (`/v1/trade/agent/quote`), `NEP-413` zero-sum settlement + live `1Click` solver quotes, and validator yield vault (`staking.terraagent.testnet` + `*.pool.testnet`). | [`/trade.html`](https://play.terraagent.fun/trade.html) · `POST /v1/near/intents/quote` · [`staking`](./backend/near-contracts/staking/src/lib.rs) |
 
@@ -152,7 +152,7 @@ $$\text{mid}_i = \text{clamp}\!\left(\text{ref}_i \cdot \left(\frac{T_i}{\max(I_
 
 1. **Batched Bot Decision Manager ([`backend/app/src/ai/colony-agent/`](./backend/app/src/ai/colony-agent/)):**
    - Sweeps active planets every **`180 s`** with a **`120 s` observation-digest cache** so unchanged colonies consume **zero LLM tokens**.
-   - Serializes all non-player Rival AI colonies on a planet into **one batched prompt** to NEAR AI Cloud (`https://cloud-api.near.ai/v1/chat/completions`, default **`z-ai/glm-5.3`**) returning typed `directives[]` (`queue_goal`, `trade`, `accept_guild_offer`, `declare_war`, `raid`, `propose_truce`, `respond_truce`, `hold`), and verifies `/v1/signature/{chat_id}` (`provider_tee` / `gateway` ECDSA signature).
+   - Serializes all non-player Rival AI colonies on a planet into **one batched prompt** to NEAR AI Cloud (`https://cloud-api.near.ai/v1/chat/completions`, default **`z-ai/glm-5.3-flash`**) returning typed `directives[]` (`queue_goal`, `trade`, `accept_guild_offer`, `declare_war`, `raid`, `propose_truce`, `respond_truce`, `hold`), and verifies `/v1/signature/{chat_id}` (`provider_tee` / `gateway` ECDSA signature).
 2. **Isolated Player BYOK NEAR.AI Vault (`/me.html` → `/v1/me/ai-settings`):**
    - Players can attach their own NEAR.AI API key and choose their model (`z-ai/glm-5.3`, `z-ai/glm-5.3-flash`, `deepseek/deepseek-v3.2`, `Qwen/Qwen3.8-27B`, `openai/gpt-5-mini`, `anthropic/claude-sonnet-4-6`).
    - Keys are encrypted at rest with **`AES-256-GCM`** (`NEAR_KEK`, migration `0032_player_nearai_settings`) and never returned in plaintext (`apiKeyPreview` only). Player autopilot never touches server bot quota and falls back cleanly to deterministic policy evaluation if no BYOK key is set.
@@ -184,11 +184,11 @@ Generated and verified by [`backend/app/src/near/intents/nep413-token-diff.ts`](
 ```
 *Verifier invariant:* Across every matched batch, $\sum_i \text{diff}_i[\text{token}] = 0$, signatures match registered colony/bot keys, and reused nonces reject with `NEAR_INTENT_NONCE_REUSED`.
 
-### 2. Batched `NEAR.AI` (`z-ai/glm-5.3`) Directive & Cryptographic Attestation
+### 2. Batched `NEAR.AI` (`z-ai/glm-5.3-flash`) Directive & Cryptographic Attestation
 
 ```json
 {
-  "model": "z-ai/glm-5.3",
+  "model": "z-ai/glm-5.3-flash",
   "directives": [
     {
       "colonyIndex": 1,
@@ -265,7 +265,7 @@ Per [`docs/hackathon/HACKATHON.md`](./docs/hackathon/HACKATHON.md) (`Q-007`, `Q-
 | `Escrow` | Postgres Mock | **Live Testnet** (`bounty.terraagent.testnet`) | Real `open_escrow`, `claim_escrow` & `refund_escrow` calls on our Bounty Escrow Rust contract. |
 | `Staking` | Postgres Mock | **Live Testnet** (`staking.terraagent.testnet`) | Real `credit_near`, `stake`, `unstake` & `withdraw` calls on our Staking Vault Rust contract against `*.pool.testnet` validator metadata (`403` for AI). |
 | `TreasuryDao` | Postgres Mock | **Live Testnet** (`dao.terraagent.testnet`) | Real `create_dao`, `deposit`, `add_member`, `propose`, `vote` & `finalize` calls on our Sputnik-pattern DAO Rust contract (`pl_dev.dao.terraagent.testnet`, etc.). |
-| `LlmProvider` | Deterministic Mock | **Live NEAR AI Cloud TEE** (`z-ai/glm-5.3`) | Real inference on `cloud-api.near.ai/v1` + cryptographic ECDSA signature verification via `/v1/signature/{chat_id}` + `AES-256-GCM` BYOK vault. |
+| `LlmProvider` | Deterministic Mock | **Live NEAR AI Cloud TEE** (`z-ai/glm-5.3-flash`) | Real inference on `cloud-api.near.ai/v1` + cryptographic ECDSA signature verification via `/v1/signature/{chat_id}` + `AES-256-GCM` BYOK vault. |
 | `Notifier` | `core.mock_notify` | Configurable (`NOTIFY_ADAPTER=mock\|live`) | Persists offline raid/truce alerts in Postgres (`NOTIFY_ADAPTER=live` enables WebPush / Telegram delivery). |
 
 ---

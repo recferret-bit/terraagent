@@ -9,6 +9,9 @@ export interface ActivePilotRecord {
   readonly playerId: string;
   readonly accessToken: string;
   readonly updatedAt: number;
+  readonly isGuest?: boolean;
+  readonly handle?: string;
+  readonly accountId?: string;
 }
 
 function saveActivePilot(record: ActivePilotRecord): void {
@@ -31,6 +34,9 @@ export function readActivePilot(): ActivePilotRecord | null {
         playerId: parsed.playerId,
         accessToken: parsed.accessToken,
         updatedAt: Number(parsed.updatedAt ?? 0),
+        ...(typeof parsed.isGuest === 'boolean' ? { isGuest: parsed.isGuest } : {}),
+        ...(typeof parsed.handle === 'string' ? { handle: parsed.handle } : {}),
+        ...(typeof parsed.accountId === 'string' ? { accountId: parsed.accountId } : {}),
       };
     }
   } catch {
@@ -132,10 +138,15 @@ export class ActivePilotTracker {
 
   private persist(): void {
     if (!this.playerId && !this.accessToken) return;
+    const pilotView = this.ctx.services.pilot?.view();
+    const isGuest = this.lockedPilot ? false : pilotView?.isGuest;
     saveActivePilot({
       playerId: this.playerId,
       accessToken: this.accessToken,
       updatedAt: Date.now(),
+      ...(typeof isGuest === 'boolean' ? { isGuest } : {}),
+      ...(pilotView?.handle ? { handle: pilotView.handle } : {}),
+      ...(pilotView?.accountId ? { accountId: pilotView.accountId } : {}),
     });
   }
 

@@ -352,6 +352,10 @@ export class MainMenu {
     this.errEl.textContent = '';
   }
 
+  hasLinkedPilot(): boolean {
+    return this.pilotAccess.hasLinkedPilot();
+  }
+
   dispose(): void {
     this.unsubscribeFeed?.();
     this.unsubscribeFeed = null;

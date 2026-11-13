@@ -54,6 +54,35 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     expect(disabled?.textContent).toContain('Player page is off');
   });
 
+  it('renders Sign in / Sign up prompt with PilotAccess when unauthenticated or guest instead of Profile Unavailable', async () => {
+    window.localStorage.setItem(
+      'ta_active_pilot',
+      JSON.stringify({ playerId: 'pr_guest_1', accessToken: 'guest-jwt', updatedAt: 1, isGuest: true }),
+    );
+    let refreshCount = 0;
+    const root = document.createElement('div');
+    const page = new MePage(root, {
+      search: '',
+      fetch: async (url) => {
+        if (url.includes('/v1/auth/refresh')) refreshCount += 1;
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ errorCode: 'UNAUTHORIZED' }),
+        };
+      },
+    });
+    await page.load();
+
+    const prompt = root.querySelector('[data-testid="me-auth-prompt"]');
+    expect(prompt).not.toBeNull();
+    expect(prompt?.textContent).toContain('Sign in or Sign up');
+    expect(prompt?.querySelector('[data-testid="pilot-sign-in"]')?.textContent).toBe('Sign in / Sign up');
+    expect(root.querySelector('[data-testid="me-error"]')).toBeNull();
+    expect(refreshCount).toBe(1);
+    window.localStorage.clear();
+  });
+
   it('escapes HTML payloads safely via textContent (PA-03) and formats numbers with spaces', () => {
     const node = el('div', null, '<img src=x onerror=alert(1)>');
     expect(node.querySelector('img')).toBeNull();
@@ -164,5 +193,6 @@ describe('/me NEAR.AI settings — cookie refresh auth token & waves query forwa
     expect(putUrl).toBe('/v1/me/ai-settings?waves=12');
     expect(putAuthHeader).toBe('Bearer refreshed-jwt-token-xyz');
     expect(root.querySelector('[data-testid="me-ai-badge"]')?.textContent).toBe('NEAR.AI CONNECTED');
+    expect(root.querySelector('[data-testid="pilot-sign-out"]')?.textContent).toBe('Sign out');
   });
 });

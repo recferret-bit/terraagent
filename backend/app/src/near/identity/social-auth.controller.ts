@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Inject, Optional, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { SocialAuthRequestSchema, type SocialAuthRequest, type SocialAuthResponse } from '@terra/contracts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AuthTokenService, extractBearerPlayer, formatRefreshCookie } from '../../core/auth/index.js';
+import { AuthTokenService, extractBearerPlayer, formatRefreshCookie, resolveCookieDomain } from '../../core/auth/index.js';
 import { ZodPipe } from '../../core/errors/zod.pipe.js';
 import { IpThrottleGuard } from '../../core/ip-throttle.guard.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
@@ -61,7 +61,7 @@ export class SocialAuthController {
     @Res({ passthrough: true }) res: ReplyLike,
   ): Promise<SocialAuthResponse> {
     const { response, refreshToken } = await this.social.login(body, optionalBearer(req, this.tokens, !this.isProduction));
-    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction));
+    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
     return response;
   }
 }

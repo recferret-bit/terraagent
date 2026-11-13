@@ -89,8 +89,45 @@ export class PilotBridge {
       accountId: body.accountId,
       playerId: body.player.id,
     });
+    try {
+      const ls = (globalThis as unknown as { localStorage?: Storage }).localStorage;
+      ls?.setItem(
+        'ta_active_pilot',
+        JSON.stringify({
+          playerId: body.player.id,
+          accessToken: body.accessToken,
+          updatedAt: Date.now(),
+          isGuest: body.player.isGuest,
+          handle: body.player.handle,
+          accountId: body.accountId,
+        }),
+      );
+      if (body.player.isGuest === false) {
+        ls?.setItem('ta_trade_token', body.accessToken);
+      }
+    } catch {
+      /* ignore */
+    }
     this.state = next;
     this.saveEpoch += 1;
+    this.emit();
+  }
+
+  async logout(): Promise<void> {
+    const doFetch: FetchLike = this.deps.fetch ?? ((input, init) => fetch(input, init));
+    try {
+      await doFetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      /* ignore */
+    }
+    try {
+      const ls = (globalThis as unknown as { localStorage?: Storage }).localStorage;
+      ls?.removeItem('ta_active_pilot');
+      ls?.removeItem('ta_trade_token');
+    } catch {
+      /* ignore */
+    }
+    this.state = { ...GUEST };
     this.emit();
   }
 

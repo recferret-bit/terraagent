@@ -7,6 +7,7 @@ import {
   consumeNearWalletCallback,
   openNearWalletSelectorModal,
   readMockToken,
+  readOAuthStorageEvent,
 } from './mockToken';
 import { probeIdentityAdapterMode } from './real/fastAuthClient';
 
@@ -113,7 +114,7 @@ function selectContents(node: HTMLElement): void {
   }
 }
 
-function linkedLine(accountId: string, clipboard?: TextClipboard): HTMLElement {
+function linkedLine(accountId: string, clipboard: TextClipboard | undefined, onSignOut: () => void): HTMLElement {
   const line = makeDiv('ta-pilot__line');
   const id = makeSpan('ta-pilot__id', 'pilot-id', `Pilot ID ${accountId}`);
   const copy = makeBtn('btn btn-ghost btn-sm', 'pilot-copy', 'Copy', () => {
@@ -122,7 +123,8 @@ function linkedLine(accountId: string, clipboard?: TextClipboard): HTMLElement {
       if (result === 'fail') selectContents(id);
     });
   });
-  line.append(id, copy);
+  const signOut = makeBtn('btn btn-ghost btn-sm', 'pilot-sign-out', 'Sign out', onSignOut);
+  line.append(id, copy, signOut);
   return line;
 }
 
@@ -151,7 +153,15 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
     const view = pilot?.view();
     root.replaceChildren();
     if (view?.accountId && !view.isGuest) {
-      root.append(linkedLine(view.accountId, clipboard));
+      root.append(linkedLine(view.accountId, clipboard, () => {
+        if (busy) return;
+        busy = true;
+        open = false;
+        void Promise.resolve(pilot?.logout?.()).finally(() => {
+          busy = false;
+          if (!disposed) render();
+        });
+      }));
       return;
     }
     root.append(...guestNodes(open, fault, {
@@ -166,12 +176,8 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
       fastAuth: () => {
         if (busy) return;
         openNearWalletSelectorModal({
-          onPopupOpened: (pop) => {
-            popup = pop;
-          },
-          onDirectToken: (hit) => {
-            runLogin(hit.provider, hit.token);
-          },
+          onPopupOpened: (pop) => { popup = pop; },
+          onDirectToken: (hit) => { runLogin(hit.provider, hit.token); },
         });
       },
       email: (addr) => {
@@ -189,24 +195,22 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
 
   if (!ctx.services.identityMode) {
     void probeIdentityAdapterMode().then((detected) => {
-      if (!disposed && detected !== mode) {
-        mode = detected;
-        render();
-      }
+      if (!disposed && detected !== mode) { mode = detected; render(); }
     });
   }
 
   const onMessage = (event: MessageEvent): void => {
     const hit = readMockToken(event, popup, location.origin);
-    if (!hit) return;
-    runLogin(hit.provider, hit.token);
+    if (hit) runLogin(hit.provider, hit.token);
   };
-
+  const onStorage = (event: StorageEvent): void => {
+    const hit = readOAuthStorageEvent(event, Boolean(popup));
+    if (hit) { popup = null; runLogin(hit.provider, hit.token); }
+  };
   const nearCallback = consumeNearWalletCallback();
-  if (nearCallback) {
-    runLogin(nearCallback.provider, nearCallback.token);
-  }
+  if (nearCallback) runLogin(nearCallback.provider, nearCallback.token);
   window.addEventListener('message', onMessage);
+  window.addEventListener('storage', onStorage);
   const off = pilot?.subscribe(() => render());
   render();
   return {
@@ -214,6 +218,7 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
       disposed = true;
       off?.();
       window.removeEventListener('message', onMessage);
+      window.removeEventListener('storage', onStorage);
       root.remove();
     },
   };

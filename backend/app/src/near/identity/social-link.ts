@@ -77,7 +77,7 @@ export class SocialLink {
     if (!prisma) return this.linkMemory(input);
     const where = { provider_subject: { provider: input.provider, subject: input.subject } };
     const existing = await prisma.socialIdentity.findUnique({ where });
-    const player = existing ? await this.mustFind(existing.playerId) : await this.playerForNew(input);
+    let player = existing ? await this.mustFind(existing.playerId) : await this.playerForNew(input);
     const email = clipEmail(input.email);
     await prisma.socialIdentity.upsert({
       where,
@@ -91,6 +91,21 @@ export class SocialLink {
       },
       // A later login with no email must not wipe one already stored.
       update: email === null ? { accountId: input.accountId } : { accountId: input.accountId, email },
+    });
+    if (/^Colonist-[A-Z0-9]{4}$/i.test(player.handle)) {
+      const preferred = deriveAccountName(input.subject);
+      if (preferred && preferred !== player.handle) {
+        try {
+          const updated = await prisma.player.update({ where: { id: player.id }, data: { handle: preferred } });
+          player = { ...player, handle: updated.handle };
+        } catch {
+          /* Keep existing handle if preferred is already taken. */
+        }
+      }
+    }
+    await prisma.progressionEffect.updateMany({
+      where: { playerId: player.id, kind: 'achievement.badge', completedAt: null },
+      data: { availableAt: new Date(0) },
     });
     return { player, created: existing === null };
   }

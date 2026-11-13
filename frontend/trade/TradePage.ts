@@ -23,7 +23,11 @@ type TabId = (typeof TABS)[number][0];
 const LAST_PLANET = 'ta_trade_planet';
 const DEFAULT_PAIR = 'bio.water/USDC';
 
-export interface PageStart { readonly planetId: string; readonly pair: string }
+export interface PageStart {
+  readonly planetId: string;
+  readonly pair: string;
+  readonly onSignOut?: () => void;
+}
 
 /** Wires the store, the loaders, the SSE stream and the panels. Panels render from state; the ticket owns its inputs. */
 export class TradePage {
@@ -50,7 +54,11 @@ export class TradePage {
     this.loaders = new Loaders(this.store, client);
     this.pickers = new Pickers(who, {
       pair: (pair) => this.selectPair(pair), planet: (id) => this.selectPlanet(id),
-      signOut: () => { signOut(); location.assign(mockOauthUrl(location.pathname)); },
+      signOut: () => {
+        signOut();
+        if (start.onSignOut) start.onSignOut();
+        else location.assign(mockOauthUrl(location.pathname));
+      },
     });
     this.p = {
       ladder: panel('book', 'Depth ladder', 'click a level to prefill the ticket'), board: panel('board', 'Price board'),

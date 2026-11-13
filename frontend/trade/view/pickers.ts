@@ -24,7 +24,7 @@ export class Pickers {
     const field = (label: string, el: HTMLElement, id: string): HTMLElement => h('div', { class: 'field tr-pick' }, h('label', { class: 'field-label', for: id }, label), el);
     this.root = h('div', { class: 'tr-pickers' },
       field('PLANET', go, 'pk-planet'), this.planets, field('RESOURCE', this.base, 'pk-base'), field('QUOTE', this.quote, 'pk-quote'),
-      h('div', { class: 'tr-who' }, this.conn, h('span', { class: 'tr-hint', id: 'tr-who' }, `as ${who}`), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => hd.signOut() }, 'SWITCH IDENTITY')));
+      h('div', { class: 'tr-who' }, this.conn, h('span', { class: 'tr-hint', id: 'tr-who' }, `as ${who}`), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-testid': 'pilot-sign-out', onclick: () => hd.signOut() }, 'SIGN OUT')));
   }
 
   setPlanets(ids: readonly string[]): void { this.planets.replaceChildren(...ids.map((id) => h('option', { value: id }))); }

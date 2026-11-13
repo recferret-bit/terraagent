@@ -39,6 +39,11 @@ describe('pilot access outside gameplay', () => {
     expect(parent.querySelector('a')?.rel).toBe('noopener noreferrer');
     expect(parent.querySelector('a')?.getAttribute('href')).toBe('/me.html');
     expect(JSON.parse(localStorage.getItem('ta_active_pilot')!).playerId).toBe('p');
+    const signOutBtn = parent.querySelector<HTMLButtonElement>('[data-testid="pilot-sign-out"]');
+    expect(signOutBtn?.textContent).toBe('Sign out');
+    signOutBtn!.click();
+    await vi.waitFor(() => expect(parent.querySelector('[data-testid="pilot-sign-in"]')?.textContent).toBe('Sign in'));
+    expect(localStorage.getItem('ta_active_pilot')).toBeNull();
   });
 
   it('does not expose ME after failed refresh or accept unsolicited OAuth messages, and opens provider dialog on click', async () => {
@@ -130,5 +135,59 @@ describe('NEAR wallet & FastAuth OAuth URL builders', () => {
   it('routes mocked Dive in through a supported scenario instead of an ignored join parameter', () => {
     const section = renderPlanetsSection(makeW12ProfileFixture());
     expect(section.querySelector('a')?.getAttribute('href')).toBe('/play.html?scenario=w12&as=w12');
+  });
+});
+
+describe('NEAR wallet on-chain RPC verification & confirmation', () => {
+  it('verifies NEAR Mobile accounts on-chain via NEAR RPC and requires explicit confirmation before linking', async () => {
+    const fetcher = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/v1/auth/refresh') return { ok: false };
+      if (url === 'https://rpc.mainnet.near.org') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { params?: { request_type?: string } };
+        if (body.params?.request_type === 'view_account') {
+          return { ok: true, json: async () => ({ result: { amount: '1000000000000000000000000' } }) };
+        }
+        return {
+          ok: true,
+          json: async () => ({ result: { keys: [{ public_key: 'ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp' }] } }),
+        };
+      }
+      if (url === '/v1/auth/social') {
+        return {
+          ok: true,
+          json: async () => ({
+            accessToken: 'jwt-near',
+            expiresIn: 900,
+            accountId: 'ferretrecovic.terraagent.testnet',
+            player: { id: 'pr_01ARZ3NDEKTSV4RRFFQ69G5FAV', handle: 'ferretrecovic', isGuest: false },
+          }),
+        };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const parent = document.createElement('div');
+    controls.push(new PilotAccess(parent));
+
+    parent.querySelector<HTMLButtonElement>('[data-testid="pilot-sign-in"]')!.click();
+    parent.querySelector<HTMLButtonElement>('[data-testid="continue-near"]')!.click();
+    const nearModal = document.querySelector<HTMLDialogElement>('[data-testid="near-wallet-modal"]')!;
+    nearModal.querySelector<HTMLButtonElement>('[data-testid="near-wallet-mobile"]')!.click();
+
+    const acctInput = nearModal.querySelector<HTMLInputElement>('[data-testid="near-account-input"]')!;
+    acctInput.value = 'ferretrecovic.near';
+    nearModal.querySelector<HTMLButtonElement>('[data-testid="near-account-verify"]')!.click();
+
+    await vi.waitFor(() =>
+      expect(nearModal.querySelector('[data-testid="near-verify-confirmation"]')).not.toBeNull(),
+    );
+    expect(nearModal.querySelector('[data-testid="near-verify-confirmation"]')?.textContent).toContain(
+      'VERIFIED ON NEAR MAINNET',
+    );
+    expect(localStorage.getItem('ta_near_wallet')).toBeNull();
+
+    nearModal.querySelector<HTMLButtonElement>('[data-testid="near-account-confirm"]')!.click();
+    await vi.waitFor(() => expect(parent.querySelector('a')?.textContent).toContain('ferretrecovic'));
+    expect(JSON.parse(localStorage.getItem('ta_near_wallet')!).accountId).toBe('ferretrecovic.near');
   });
 });

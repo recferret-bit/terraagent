@@ -13,8 +13,8 @@ export interface RenderAiSettingsOptions {
 }
 
 const MODEL_LABELS: Readonly<Record<string, string>> = {
-  'z-ai/glm-5.3': 'GLM 5.3 (z-ai/glm-5.3 · Default)',
-  'z-ai/glm-5.3-flash': 'GLM 5.3 Flash (z-ai/glm-5.3-flash)',
+  'z-ai/glm-5.3-flash': 'GLM 5.3 Flash (z-ai/glm-5.3-flash · Default)',
+  'z-ai/glm-5.3': 'GLM 5.3 (z-ai/glm-5.3)',
   'deepseek/deepseek-v3.2': 'DeepSeek V3.2 (deepseek/deepseek-v3.2)',
   'deepseek-ai/DeepSeek-V4.1-Flash-1017': 'DeepSeek V4.1 Flash (deepseek-ai/DeepSeek-V4.1-Flash-1017)',
   'Qwen/Qwen3.8-27B': 'Qwen 3.8 27B (Qwen/Qwen3.8-27B)',

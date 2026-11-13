@@ -2,11 +2,14 @@ import { SocialAuthResponseSchema } from '@terra/contracts';
 import {
   buildFastAuthLoginUrl,
   consumeNearWalletCallback,
+  OAUTH_CALLBACK_STORAGE_KEY,
   readMockToken,
+  readOAuthStorageEvent,
 } from './mockToken';
 import { openNearWalletSelectorModal } from './nearWalletModal';
 
 const PILOT_DIALOG_CSS = `
+.pilot-access-bar{display:inline-flex;align-items:center;gap:var(--ta-s2);flex-wrap:wrap}
 .pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:300px;max-width:360px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
 .pilot-dialog::backdrop{background:rgba(5,6,8,.74);backdrop-filter:blur(4px)}
 .pilot-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s3);margin-bottom:var(--ta-s4)}
@@ -21,6 +24,48 @@ const PROVIDERS = [
   { id: 'fastauth', label: 'NEAR', testId: 'continue-near' },
 ] as const;
 
+export interface PilotAccessSession {
+  readonly accessToken: string;
+  readonly accountId?: string;
+  readonly player: { readonly id: string; readonly isGuest?: boolean; readonly handle: string };
+}
+
+export interface PilotAccessOptions {
+  readonly onAuthChange?: (session: PilotAccessSession | null) => void;
+  readonly triggerLabel?: string;
+  readonly initialSession?: PilotAccessSession | null;
+  readonly skipRestore?: boolean;
+}
+
+let inFlightRefresh: Promise<PilotAccessSession | null> | null = null;
+
+/** Single-flight `/v1/auth/refresh` helper so concurrent callers in the same tab never race token rotation (`BE-04`). */
+export function refreshPilotSession(
+  doFetch: (input: string, init?: RequestInit) => Promise<{
+    readonly ok: boolean;
+    readonly status: number;
+    json(): Promise<unknown>;
+  }> = (input, init) => fetch(input, init),
+  useSharedFlight = true,
+): Promise<PilotAccessSession | null> {
+  if (useSharedFlight && inFlightRefresh) return inFlightRefresh;
+  const run = (async (): Promise<PilotAccessSession | null> => {
+    try {
+      const response = await doFetch('/v1/auth/refresh', { method: 'POST', credentials: 'include' });
+      if (!response.ok) return null;
+      return (await response.json()) as PilotAccessSession;
+    } catch {
+      return null;
+    }
+  })();
+  if (!useSharedFlight) return run;
+  const p = run.finally(() => {
+    if (inFlightRefresh === p) inFlightRefresh = null;
+  });
+  inFlightRefresh = p;
+  return p;
+}
+
 function ensureDialogStyles(): void {
   if (typeof document === 'undefined' || document.getElementById('pilot-dialog-css')) return;
   const style = document.createElement('style');
@@ -29,32 +74,50 @@ function ensureDialogStyles(): void {
   document.head.appendChild(style);
 }
 
-/** Shared landing/orbit sign-in. Refresh verifies the session before exposing the profile. */
+/** Shared landing/orbit/profile/trade sign-in & sign-out control. */
 export class PilotAccess {
   readonly el = document.createElement('div');
   private popup: Window | null = null;
   private disposed = false;
   private busy = false;
   private bearer = '';
+  private session: PilotAccessSession | null = null;
   private loginEpoch = 0;
 
-  constructor(parent: HTMLElement) {
+  constructor(
+    parent: HTMLElement,
+    private readonly opts: PilotAccessOptions = {},
+  ) {
     ensureDialogStyles();
-    this.el.className = 'plate-sm';
+    this.el.className = 'plate-sm pilot-access-bar';
     this.el.dataset.testid = 'pilot-access';
     parent.append(this.el);
     this.guest();
     window.addEventListener('message', this.onMessage);
+    window.addEventListener('storage', this.onStorage);
     const walletHit = consumeNearWalletCallback();
     if (walletHit) {
-      this.busy = true;
-      this.loginEpoch += 1;
-      void this.login(walletHit).finally(() => {
-        this.busy = false;
-      });
-    } else {
+      this.triggerLogin(walletHit);
+    } else if (opts.initialSession && opts.initialSession.player.isGuest === false) {
+      this.linked(opts.initialSession, false);
+    } else if (!opts.skipRestore) {
       void this.restore();
     }
+  }
+
+  hasLinkedPilot(): boolean {
+    return Boolean(this.session && this.session.player.isGuest === false);
+  }
+
+  getSession(): PilotAccessSession | null {
+    return this.session;
+  }
+
+  openSignInDialog(): void {
+    const dialog = this.el.querySelector<HTMLDialogElement>('[data-testid="pilot-provider-dialog"]');
+    if (!dialog) return;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
   }
 
   private guest(errorMessage = ''): void {
@@ -71,7 +134,7 @@ export class PilotAccess {
     trigger.type = 'button';
     trigger.className = 'btn btn-ghost btn-sm';
     trigger.dataset.testid = 'pilot-sign-in';
-    trigger.textContent = 'Sign in';
+    trigger.textContent = this.opts.triggerLabel ?? 'Sign in';
 
     const dialog = this.buildDialog();
     trigger.onclick = () => {
@@ -121,12 +184,7 @@ export class PilotAccess {
               this.popup = pop;
             },
             onDirectToken: (hit) => {
-              if (this.busy) return;
-              this.busy = true;
-              this.loginEpoch += 1;
-              void this.login(hit).finally(() => {
-                this.busy = false;
-              });
+              this.triggerLogin(hit);
             },
           });
           return;
@@ -152,25 +210,74 @@ export class PilotAccess {
     else dialog.removeAttribute('open');
   }
 
-  private linked(body: { accessToken: string; player: { id: string; isGuest?: boolean; handle: string } }): void {
+  private linked(body: PilotAccessSession, notify = false): void {
     if (this.disposed) return;
     this.bearer = body.accessToken;
-    try {
-      localStorage.setItem(
-        'ta_active_pilot',
-        JSON.stringify({ playerId: body.player.id, accessToken: body.accessToken, updatedAt: Date.now() }),
-      );
-    } catch {
-      /* Refresh cookie remains usable when storage is unavailable. */
+    const isGuest = body.player.isGuest !== false;
+    this.session = isGuest ? null : body;
+    if (body.accessToken && !body.accessToken.startsWith('dev:') && !body.accessToken.startsWith('player:')) {
+      try {
+        localStorage.setItem(
+          'ta_active_pilot',
+          JSON.stringify({
+            playerId: body.player.id,
+            accessToken: body.accessToken,
+            updatedAt: Date.now(),
+            isGuest,
+            handle: body.player.handle,
+            ...(body.accountId ? { accountId: body.accountId } : {}),
+          }),
+        );
+        if (!isGuest) {
+          localStorage.setItem('ta_trade_token', body.accessToken);
+        } else {
+          localStorage.removeItem('ta_trade_token');
+        }
+      } catch {
+        /* Refresh cookie remains usable when storage is unavailable. */
+      }
     }
-    if (body.player.isGuest !== false) return;
+    if (isGuest) return;
     const link = document.createElement('a');
     link.className = 'btn btn-primary btn-sm';
     link.textContent = `${body.player.handle} · PILOT / ME ↗`;
     link.href = '/me.html';
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
-    this.el.replaceChildren(link);
+
+    const signOutBtn = document.createElement('button');
+    signOutBtn.type = 'button';
+    signOutBtn.className = 'btn btn-ghost btn-sm';
+    signOutBtn.dataset.testid = 'pilot-sign-out';
+    signOutBtn.textContent = 'Sign out';
+    signOutBtn.onclick = () => {
+      void this.signOut();
+    };
+
+    this.el.replaceChildren(link, signOutBtn);
+    if (notify) this.opts.onAuthChange?.(body);
+  }
+
+  async signOut(): Promise<void> {
+    this.loginEpoch += 1;
+    this.bearer = '';
+    this.session = null;
+    try {
+      localStorage.removeItem('ta_active_pilot');
+      localStorage.removeItem('ta_trade_token');
+      localStorage.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      /* ignore network errors on logout */
+    }
+    if (!this.disposed) {
+      this.guest();
+      this.opts.onAuthChange?.(null);
+    }
   }
 
   private async restore(): Promise<void> {
@@ -178,25 +285,32 @@ export class PilotAccess {
       return;
     }
     const epoch = this.loginEpoch;
-    try {
-      const response = await fetch('/v1/auth/refresh', { method: 'POST', credentials: 'include' });
-      if (response.ok) {
-        const body = await response.json();
-        if (epoch === this.loginEpoch) this.linked(body);
-      }
-    } catch {
-      /* Guest controls remain available. */
+    const body = await refreshPilotSession();
+    if (body && epoch === this.loginEpoch) {
+      this.linked(body);
     }
   }
 
-  private onMessage = (event: MessageEvent): void => {
-    const hit = readMockToken(event, this.popup, location.origin);
-    if (!hit || this.busy) return;
+  private triggerLogin(hit: { provider: string; token: string }): void {
+    if (this.busy) return;
     this.busy = true;
     this.loginEpoch += 1;
     void this.login(hit).finally(() => {
       this.busy = false;
     });
+  }
+
+  private onMessage = (event: MessageEvent): void => {
+    const hit = readMockToken(event, this.popup, location.origin);
+    if (!hit) return;
+    this.triggerLogin(hit);
+  };
+
+  private onStorage = (event: StorageEvent): void => {
+    const hit = readOAuthStorageEvent(event, Boolean(this.popup));
+    if (!hit) return;
+    this.popup = null;
+    this.triggerLogin(hit);
   };
 
   private async login(hit: { provider: string; token: string }): Promise<void> {
@@ -211,7 +325,7 @@ export class PilotAccess {
         body: JSON.stringify(hit),
       });
       if (!response.ok) throw new Error('Sign-in failed. Please try again.');
-      this.linked(SocialAuthResponseSchema.parse(await response.json()));
+      this.linked(SocialAuthResponseSchema.parse(await response.json()), true);
     } catch {
       if (!this.disposed) this.guest('Sign-in failed. Please try again.');
     }
@@ -220,6 +334,7 @@ export class PilotAccess {
   dispose(): void {
     this.disposed = true;
     window.removeEventListener('message', this.onMessage);
+    window.removeEventListener('storage', this.onStorage);
     this.el.remove();
   }
 }

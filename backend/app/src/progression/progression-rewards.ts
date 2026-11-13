@@ -13,8 +13,10 @@ export async function recordReward(tx: TransactionClient, playerId: string, def:
   };
   await tx.achievementUnlock.create({ data: { id: unlockId, playerId, achievementId: def.id, family: def.familyId, tier: def.tier, earnedAt, nftStatus: 'pending' } });
   await tx.xpLedger.create({ data: { id: `xp:${unlockId}`, playerId, source: 'achievement', sourceId: def.id, delta: def.xp } });
+  const hasLinkedIdentity = (await tx.socialIdentity?.count?.({ where: { playerId } }).catch(() => 0)) > 0;
+  const badgeDelayMs = hasLinkedIdentity ? 0 : 3600_000;
   for (const kind of ['achievement.notification', 'achievement.badge']) {
-    await tx.progressionEffect.create({ data: { id: `${kind}:${unlockId}`, kind, playerId, availableAt: new Date(earnedAt.getTime() + (kind === 'achievement.badge' ? 3600_000 : 0)), payload: { ...event } } });
+    await tx.progressionEffect.create({ data: { id: `${kind}:${unlockId}`, kind, playerId, availableAt: new Date(earnedAt.getTime() + (kind === 'achievement.badge' ? badgeDelayMs : 0)), payload: { ...event } } });
   }
   return event;
 }

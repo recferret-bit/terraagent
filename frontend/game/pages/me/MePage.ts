@@ -1,5 +1,7 @@
 import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
-import { fetchMeData, type MeFetchFn } from './api';
+import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
+import { PilotAccess, type PilotAccessOptions, type PilotAccessSession } from '../../../design/pilot/PilotAccess';
+import { clearMeCachedToken, fetchMeData, resolveMeBearerToken, type MeFetchFn } from './api';
 import { clearChildren, el } from './dom';
 import { renderAchievementsSection } from './sections/AchievementsSection';
 import { renderAiSettingsSection } from './sections/AiSettingsSection';
@@ -27,6 +29,9 @@ export interface MountMePageOptions {
 }
 
 export class MePage {
+  private headerAuth: PilotAccess | null = null;
+  private promptAuth: PilotAccess | null = null;
+
   constructor(
     private readonly root: HTMLElement,
     private readonly opts: MountMePageOptions = {},
@@ -35,9 +40,49 @@ export class MePage {
     this.root.classList.add('ta-me-root');
   }
 
+  private disposeAuthControls(): void {
+    this.headerAuth?.dispose();
+    this.headerAuth = null;
+    this.promptAuth?.dispose();
+    this.promptAuth = null;
+  }
+
+  private async consumeRedirectLoginIfPresent(): Promise<void> {
+    const walletHit = consumeNearWalletCallback();
+    if (!walletHit) return;
+    const doFetch: MeFetchFn = this.opts.fetch ?? ((input, init) => fetch(input, init));
+    try {
+      const res = await doFetch('/v1/auth/social', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(walletHit),
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as PilotAccessSession;
+      if (!body?.accessToken || !body.player) return;
+      const isGuest = body.player.isGuest !== false;
+      localStorage.setItem(
+        'ta_active_pilot',
+        JSON.stringify({
+          playerId: body.player.id,
+          accessToken: body.accessToken,
+          updatedAt: Date.now(),
+          isGuest,
+          handle: body.player.handle,
+          ...(body.accountId ? { accountId: body.accountId } : {}),
+        }),
+      );
+      if (!isGuest) localStorage.setItem('ta_trade_token', body.accessToken);
+    } catch {
+      /* ignore */
+    }
+  }
+
   async load(): Promise<void> {
+    this.disposeAuthControls();
     clearChildren(this.root);
-    this.root.appendChild(this.renderStickyNav());
+    this.root.appendChild(this.renderStickyNav({ mountAuth: false }));
     const loading = el(
       'div',
       { className: 'plate ta-me-loading', dataset: { testid: 'me-loading' } },
@@ -45,7 +90,9 @@ export class MePage {
     );
     this.root.appendChild(loading);
 
+    await this.consumeRedirectLoginIfPresent();
     const res = await fetchMeData(this.opts.fetch, this.opts.search);
+    this.disposeAuthControls();
     clearChildren(this.root);
 
     if (res.kind === 'wave_disabled') {
@@ -61,8 +108,14 @@ export class MePage {
       return;
     }
 
+    if (res.kind === 'unauthenticated') {
+      this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
+      this.root.appendChild(this.renderAuthPrompt(res.message));
+      return;
+    }
+
     if (res.kind === 'error') {
-      this.root.appendChild(this.renderStickyNav());
+      this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
       this.root.appendChild(
         el(
           'div',
@@ -77,9 +130,43 @@ export class MePage {
     this.renderLoaded(res.profile, res.achievements);
   }
 
+  private renderAuthPrompt(message: string): HTMLElement {
+    const authSlot = el('div', { className: 'ta-ai-actions' });
+    this.promptAuth = new PilotAccess(authSlot, {
+      triggerLabel: 'Sign in / Sign up',
+      skipRestore: true,
+      onAuthChange: () => {
+        void this.load();
+      },
+    });
+    authSlot.appendChild(
+      el('a', { className: 'btn btn-ghost btn-sm', href: '/landing.html' }, '◂ Landing'),
+    );
+    return el(
+      'div',
+      { className: 'plate ta-me-error', dataset: { testid: 'me-auth-prompt' } },
+      el('h1', { className: 'ta-me-disabled-title' }, 'Sign in or Sign up'),
+      el('p', { className: 'ta-me-muted' }, message),
+      authSlot,
+    );
+  }
+
   renderLoaded(profile: MeProfileResponse, achievements: MeAchievementsResponse): void {
+    this.disposeAuthControls();
     clearChildren(this.root);
-    this.root.appendChild(this.renderStickyNav());
+    const isUnlinkedGuest = profile.identity.isGuest && !profile.identity.accountId;
+    const initialSession: PilotAccessSession | null = isUnlinkedGuest
+      ? null
+      : {
+          accessToken: resolveMeBearerToken(this.opts.search),
+          ...(profile.identity.accountId ? { accountId: profile.identity.accountId } : {}),
+          player: {
+            id: profile.identity.playerId,
+            handle: profile.identity.handle,
+            isGuest: false,
+          },
+        };
+    this.root.appendChild(this.renderStickyNav({ initialSession, skipRestore: true }));
 
     const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
 
@@ -119,7 +206,9 @@ export class MePage {
     this.root.appendChild(main);
   }
 
-  private renderStickyNav(): HTMLElement {
+  private renderStickyNav(
+    navOpts: Pick<PilotAccessOptions, 'initialSession' | 'skipRestore'> & { readonly mountAuth?: boolean } = {},
+  ): HTMLElement {
     const links = ME_SECTION_TABS.map((t) =>
       el(
         'a',
@@ -132,6 +221,18 @@ export class MePage {
       ),
     );
 
+    const authHost = el('div', { dataset: { testid: 'me-header-auth' } });
+    if (navOpts.mountAuth !== false) {
+      this.headerAuth = new PilotAccess(authHost, {
+        initialSession: navOpts.initialSession,
+        skipRestore: navOpts.skipRestore,
+        onAuthChange: (session) => {
+          if (!session) clearMeCachedToken();
+          void this.load();
+        },
+      });
+    }
+
     return el(
       'header',
       { className: 'ta-me-header', dataset: { testid: 'me-sticky-tabs' } },
@@ -140,6 +241,7 @@ export class MePage {
         { className: 'ta-me-header-inner plate-sm' },
         el('a', { className: 'ta-me-brand label c-orange', href: '/' }, 'TERRAAGENT // ME'),
         el('nav', { className: 'ta-me-tabs', aria: { label: 'Profile sections' } }, ...links),
+        authHost,
       ),
     );
   }

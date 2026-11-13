@@ -1,6 +1,7 @@
+import { refreshPilotSession } from '../../design/pilot/PilotAccess';
 import { readActivePilot } from '../../game/features/achievements/activePilot';
 
-/** Where the page keeps a token it minted from the mock OAuth redirect (own key: the game's pilot record is not touched). */
+/** Where the page keeps a token it minted from the OAuth redirect. */
 export const TRADE_TOKEN_KEY = 'ta_trade_token';
 
 export interface Identity {
@@ -21,11 +22,18 @@ export function resolveIdentity(search: string, hash: string): Identity | null {
   const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (as) return { token: `dev:${as}`, label: as };
   void hash;
-  const own = store()?.getItem(TRADE_TOKEN_KEY);
-  if (own) return { token: own, label: 'session' };
   const pilot = readActivePilot();
-  if (pilot?.accessToken) return { token: pilot.accessToken, label: pilot.playerId };
-  if (pilot?.playerId) return { token: `player:${pilot.playerId}`, label: pilot.playerId };
+  if (pilot?.isGuest === true) {
+    try { store()?.removeItem(TRADE_TOKEN_KEY); } catch { /* ignore */ }
+    return null;
+  }
+  const own = store()?.getItem(TRADE_TOKEN_KEY);
+  if (own && !own.startsWith('player:')) {
+    return { token: own, label: pilot?.accountId ?? pilot?.handle ?? 'session' };
+  }
+  if (pilot?.accessToken && !pilot.accessToken.startsWith('player:')) {
+    return { token: pilot.accessToken, label: pilot.accountId ?? pilot.handle ?? pilot.playerId };
+  }
   return null;
 }
 
@@ -40,24 +48,71 @@ export async function consumeMockToken(hash: string, doFetch: typeof fetch = fet
     body: JSON.stringify({ provider: 'google', token: decodeURIComponent(m[1]!) }),
   });
   if (!res.ok) return null;
-  const body = (await res.json()) as { accessToken?: string; player?: { id?: string } };
+  const body = (await res.json()) as { accessToken?: string; accountId?: string; player?: { id?: string; handle?: string } };
   if (!body.accessToken) return null;
   try { store()?.setItem(TRADE_TOKEN_KEY, body.accessToken); } catch { /* private mode */ }
-  return { token: body.accessToken, label: body.player?.id ?? 'session' };
+  return { token: body.accessToken, label: body.accountId ?? body.player?.handle ?? body.player?.id ?? 'session' };
 }
 
-/** A refresh-cookie session (no storage needed). */
+/** A refresh-cookie session (no storage needed). Rejects unlinked guest sessions so the user is prompted to sign in. */
 export async function refreshSession(doFetch: typeof fetch = fetch): Promise<Identity | null> {
   try {
-    const res = await doFetch('/v1/auth/refresh', { method: 'POST', credentials: 'include' });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { accessToken?: string };
-    if (!body.accessToken) return null;
-    try { store()?.setItem(TRADE_TOKEN_KEY, body.accessToken); } catch { /* private mode */ }
-    return { token: body.accessToken, label: 'session' };
+    const body = await refreshPilotSession(
+      (input, init) => doFetch(input, init),
+      doFetch === fetch,
+    );
+    if (!body?.accessToken) return null;
+    if (body.player?.isGuest !== false) {
+      try { store()?.removeItem(TRADE_TOKEN_KEY); } catch { /* ignore */ }
+      return null;
+    }
+    try {
+      store()?.setItem(TRADE_TOKEN_KEY, body.accessToken);
+      store()?.setItem(
+        'ta_active_pilot',
+        JSON.stringify({
+          playerId: body.player.id,
+          accessToken: body.accessToken,
+          updatedAt: Date.now(),
+          isGuest: false,
+          handle: body.player.handle,
+          ...(body.accountId ? { accountId: body.accountId } : {}),
+        }),
+      );
+    } catch { /* private mode */ }
+    return { token: body.accessToken, label: body.accountId ?? body.player?.handle ?? body.player?.id ?? 'session' };
   } catch { return null; }
 }
 
+export async function probeTradeAuthMode(doFetch: typeof fetch = fetch): Promise<'mock' | 'testnet' | 'mainnet'> {
+  try {
+    const res = await doFetch('/v1/near/status', { headers: { accept: 'application/json' } });
+    if (!res.ok) return 'mock';
+    const data = (await res.json()) as {
+      nearMode?: string;
+      ports?: ReadonlyArray<{ port?: string; mode?: string }> | Record<string, string>;
+    };
+    if (Array.isArray(data?.ports)) {
+      const identityPort = data.ports.find((p) => p?.port === 'Identity');
+      if (identityPort?.mode === 'testnet' || identityPort?.mode === 'mainnet') return identityPort.mode;
+      if (identityPort?.mode === 'mock') return 'mock';
+    } else if (data?.ports && typeof data.ports === 'object') {
+      const mode = (data.ports as Record<string, string>).Identity;
+      if (mode === 'testnet' || mode === 'mainnet') return mode;
+      if (mode === 'mock') return 'mock';
+    }
+    if (data?.nearMode === 'testnet' || data?.nearMode === 'mainnet') return data.nearMode;
+  } catch {
+    /* ignore */
+  }
+  return 'mock';
+}
+
 export function signOut(): void {
-  try { store()?.removeItem(TRADE_TOKEN_KEY); } catch { /* ignore */ }
+  try {
+    store()?.removeItem(TRADE_TOKEN_KEY);
+    store()?.removeItem('ta_active_pilot');
+    store()?.removeItem('ta_oauth_callback');
+  } catch { /* ignore */ }
+  void fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);
 }

@@ -1,6 +1,6 @@
 # Production Deployment Guide (`terraagent.fun`)
 
-Live deployment guide for TerraAgent across all 4 Docker Compose stacks (`infra`, `frontend`, `backend`, `chain`) with **11/11 NEAR ports** bound to NEAR Testnet (`NEAR_MODE=testnet`) and autonomous colony intelligence powered by **NEAR AI Cloud (`z-ai/glm-5.3` TEE inference)**.
+Live deployment guide for TerraAgent across all 4 Docker Compose stacks (`infra`, `frontend`, `backend`, `chain`) with **11/11 NEAR ports** bound to NEAR Testnet (`NEAR_MODE=testnet`) and autonomous colony intelligence powered by **NEAR AI Cloud (`z-ai/glm-5.3-flash` TEE inference)**.
 
 ---
 
@@ -63,7 +63,7 @@ NOTIFY_ALLOW_MOCK_IN_PROD=true
 # NEAR AI Cloud (TEE inference + SHA-256 attestation) & Seeded Stage-4 Rival AI Colonies
 AI_PROVIDER=nearai
 NEAR_AI_API_KEY=${NEARAI_KEY}
-NEAR_AI_MODEL=z-ai/glm-5.3
+NEAR_AI_MODEL=z-ai/glm-5.3-flash
 TA_SEED_RIVAL_AI=1
 EOF
 ```
