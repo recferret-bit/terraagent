@@ -2,7 +2,7 @@ use near_sdk::store::LookupMap;
 use near_sdk::{env, near, require, AccountId, PanicOnDefault};
 use serde_json::json;
 
-const VALID_TOKENS: [&str; 10] = [
+pub(crate) const VALID_TOKENS: [&str; 10] = [
     "metals.t1",
     "metals.t2",
     "metals.t3",
@@ -82,6 +82,10 @@ impl CargoContract {
             "NEAR_NOT_OWNER: only owner can update minter"
         );
         self.minter_id = minter_id;
+    }
+
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
     }
 
     pub fn get_minter(&self) -> AccountId {
@@ -242,9 +246,15 @@ impl CargoContract {
     pub fn mt_metadata(&self) -> Vec<CargoTokenMetadata> {
         [
             ("metals.t1", "Refined Metals T1", "MET1"),
+            ("metals.t2", "Conductive Alloys T2", "MET2"),
+            ("metals.t3", "Superconductors T3", "MET3"),
             ("minerals.t1", "Silicate Minerals T1", "MIN1"),
+            ("minerals.t2", "Rare Crystals T2", "MIN2"),
+            ("minerals.t3", "Quantum Lattices T3", "MIN3"),
             ("bio.water", "Purified Water", "H2O"),
             ("bio.biomass", "Living Biomass", "BIO1"),
+            ("bio.t2", "Bio-Polymers T2", "BIO2"),
+            ("bio.t3", "Neural Cultures T3", "BIO3"),
         ]
         .into_iter()
         .map(|(id, name, symbol)| CargoTokenMetadata {
@@ -293,90 +303,4 @@ impl CargoContract {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
-
-    fn acct(s: &str) -> AccountId {
-        s.parse().unwrap()
-    }
-
-    fn set_caller(predecessor: &str) {
-        let ctx = VMContextBuilder::new()
-            .predecessor_account_id(acct(predecessor))
-            .build();
-        testing_env!(ctx);
-    }
-
-    #[test]
-    fn mint_transfer_burn_and_idempotency() {
-        set_caller("owner.testnet");
-        let mut c = CargoContract::new(acct("owner.testnet"), acct("minter.testnet"));
-
-        set_caller("minter.testnet");
-        assert!(c.mt_mint(
-            "op_1".into(),
-            acct("col1.testnet"),
-            "metals.t1".into(),
-            "5000000000000000000".into()
-        ));
-        // Duplicate op_id is a safe no-op
-        assert!(!c.mt_mint(
-            "op_1".into(),
-            acct("col1.testnet"),
-            "metals.t1".into(),
-            "5000000000000000000".into()
-        ));
-        assert_eq!(
-            c.mt_balance_of(acct("col1.testnet"), "metals.t1".into()),
-            "5000000000000000000"
-        );
-
-        assert!(c.operator_transfer(
-            "op_2".into(),
-            acct("col1.testnet"),
-            acct("col2.testnet"),
-            "metals.t1".into(),
-            "2000000000000000000".into()
-        ));
-        assert_eq!(
-            c.mt_balance_of(acct("col1.testnet"), "metals.t1".into()),
-            "3000000000000000000"
-        );
-        assert_eq!(
-            c.mt_balance_of(acct("col2.testnet"), "metals.t1".into()),
-            "2000000000000000000"
-        );
-
-        assert!(c.mt_burn(
-            "op_3".into(),
-            acct("col2.testnet"),
-            "metals.t1".into(),
-            "1000000000000000000".into()
-        ));
-        assert_eq!(
-            c.mt_balance_of(acct("col2.testnet"), "metals.t1".into()),
-            "1000000000000000000"
-        );
-        assert_eq!(c.mt_metadata().len(), 4);
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_NOT_OWNER")]
-    fn rejects_non_minter_mint() {
-        set_caller("owner.testnet");
-        let mut c = CargoContract::new(acct("owner.testnet"), acct("minter.testnet"));
-        set_caller("attacker.testnet");
-        c.mt_mint("op_bad".into(), acct("attacker.testnet"), "metals.t1".into(), "100".into());
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_INSUFFICIENT_FUNDS")]
-    fn rejects_overburn() {
-        set_caller("owner.testnet");
-        let mut c = CargoContract::new(acct("owner.testnet"), acct("minter.testnet"));
-        set_caller("minter.testnet");
-        c.mt_burn("op_over".into(), acct("col1.testnet"), "bio.water".into(), "1".into());
-    }
-}
+mod tests;

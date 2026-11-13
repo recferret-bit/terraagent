@@ -1,6 +1,8 @@
 # TerraAgent — Architecture Decisions
 
-> **D-45 (2026-11-07):** LLM-controlled bots and humans trade on the same per-planet books through the bot API; organic fills are `player`/`bot` pairs with different colonies and owners. See [ECONOMY](ECONOMY.md) §3/§4.
+> **D-47 (2026-11-13):** Testnet-to-Mainnet Web3 parity: 6 Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) + `protocol.<root>`, cold-root pilot sub-account factory (`pilots.<root>`), atomic `[AddKey, DeleteKey]` non-custodial `claimAccount` key rotation, Day-1 lossless staking (`80/20` yield split + `>= 10 NEAR` fee/AI perks), and Hybrid Testnet → Direct `intents.near` Mainnet (`NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`).
+
+> **D-46 (2026-11-07):** LLM-controlled bots and humans trade on the same per-planet books through the bot API; organic fills are `player`/`bot` pairs with different colonies and owners. See [ECONOMY](ECONOMY.md) §3/§4.
 
 > **D-44 (2026-11-04):** owner-approved resource economy, database profiles and reproducible experiments amend D-19/D-26/D-35. See [ECONOMY](ECONOMY.md).
 
@@ -51,11 +53,11 @@
 | D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
-| D-43 | Neutral hive fauna | Accepted (2026-11-04, owner) |
-| D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
-| D-45 | Bot participation on the shared exchange (bot API `/v1/trade/*`, actor kind `bot`, allowances, deterministic need/value quotes, strategy-only LLMs) and the organic-fill rule (`player`/`bot`, different colony and owner) | Accepted (2026-11-07, lead default; owner may change) |
-
 | D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
+| D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
+| D-45 | Hex tiles: one rule (`shared/sim/src/grid/hexTile.ts`) for where the hex grid and visible deposits exist | Accepted (2026-11-06, owner) |
+| D-46 | Bot participation on the shared exchange (bot API `/v1/trade/*`, actor kind `bot`, allowances, deterministic need/value quotes, strategy-only LLMs) and the organic-fill rule (`player`/`bot`, different colony and owner) | Accepted (2026-11-07, lead default; owner may change) |
+| D-47 | Testnet-to-Mainnet Web3 parity: cold-root `pilots.<root>` factory, atomic non-custodial `claimAccount` (`[AddKey, DeleteKey]`), Day-1 lossless staking + `protocol.<root>`, and Hybrid Testnet → Direct `intents.near` Mainnet via `.env` switch | Accepted (2026-11-13, owner) |
 
 ---
 
@@ -657,3 +659,13 @@ Readers, and nothing else decides these:
 **Alternatives.** Keep organic = both `player` (a bot-only market never gets a reference price; the exchange needs humans online). Let LLMs quote free prices (unbounded loss, prompt-injection exposure). A separate bot-only venue (splits liquidity, hides bot behaviour from humans). Count every distinct-wallet fill as organic (wash trading by one owner).
 
 **Consequences.** Bot-to-bot volume can move the reference price, so allowance, price-band and concentration limits are hard gates; real-cash exposure of bots stays behind W23-48/49.
+
+## D-47 — Testnet-to-Mainnet Web3 parity, cold-root `pilots.<root>` factory, and Day-1 lossless staking
+
+**Decision (owner, 2026-11-13).** Adopt Option 1a (Hardened Custodial KEK → Full Non-Custodial Claim with cold root key) and Option 2b (Hybrid Testnet → Direct `intents.near` Mainnet via `.env` switch):
+
+- **6 Rust contracts + 4 core accounts:** Deploy `res.<root>`, `deed.<root>`, `bounty.<root>`, `staking.<root>`, `dao.<root>`, and `pilots.<root>` (`near-sdk 5.7`), plus `<root>`, `protocol.<root>`, `relayer.<root>`, and `minter.<root>`, via `npm run near:deploy-contracts -- --network testnet|mainnet --ensure-accounts`.
+- **Cold root key (`pilots.<root>`):** When `NEAR_ROOT_SECRET_KEY` is omitted (or `NEAR_USE_PILOTS_FACTORY=true`), `relayer.<root>` calls `pilots.<root>::create_pilot_account` (callback-confirmed via `on_pilot_created`) to mint `{pilot}.pilots.<root>` accounts so the root `FullAccess` key remains offline in production.
+- **Atomic non-custodial claim (`[AddKey, DeleteKey]`):** `POST /v1/near/claim-account` enforces `colony.playerId === request.playerId`, verifies a live `NEP-413` signature against `FullAccess` ownership on the active network at `final` finality, and atomically adds the player's key and deletes the server's custodial key (`encryptedSecret = 'claimed'`), evicting pre-claim resting custodial orders on match and rejecting subsequent server-custodial order signing (`NEAR_NOT_OWNER`).
+- **Day-1 Lossless Staking + `TerraAgent Protocol` (`protocol.<root>`):** Any claimed human account can stake `NEAR` from Day 1 (`80%` player / `20%` `protocol.<root>` yield split; `>= 10 NEAR` staked unlocks `0.50%` platform trade fee + Managed Server `NEAR.AI` Autopilot; zero simulation combat/mining buffs; `403 AI_STAKING_FORBIDDEN` for AI/bot keys).
+- **1-Env Testnet → Mainnet switch:** `NEAR_MODE=testnet` runs hybrid Postgres `token_diff` settlement + live `res.terraagent.testnet` NEP-245 sync + live 1Click `dry: true` quotes; `NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1` switches `IntentsPort` directly to `intents.near` (`current_salt` 4-byte nonces + 28-byte deterministic tail, `add_public_key`, `simulate_intents`, `execute_intents`).

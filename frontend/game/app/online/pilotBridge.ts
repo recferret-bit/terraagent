@@ -1,6 +1,16 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
 import { authenticateFastAuthEmailPopup } from '../../../design/pilot/fastAuthSpa';
-import { decodeNep413SocialToken, extractAuthApiErrorMessage } from '../../../design/pilot/nearAuthApi';
+import {
+  OAUTH_CALLBACK_STORAGE_KEY,
+  OAUTH_ERROR_STORAGE_KEY,
+  PKCE_STATE_STORAGE_KEY,
+} from '../../../design/pilot/mockToken';
+import {
+  decodeNep413SocialToken,
+  extractAuthApiErrorMessage,
+  PENDING_NEP413_STORAGE_KEY,
+  RECENT_NEP413_POPUP_KEY,
+} from '../../../design/pilot/nearAuthApi';
 import { signOutNearWalletSelector } from '../../../design/pilot/walletSelectorRuntime';
 import type { BootAuthResult, FetchLike } from './bootOnline';
 import type { GuestBootTarget } from './guestBoot';
@@ -63,10 +73,14 @@ export class PilotBridge {
     this.emit();
   }
 
-  async loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email' | 'near-wallet', token: string): Promise<void> {
+  async loginSocial(
+    provider: 'google' | 'x' | 'fastauth' | 'email' | 'near-wallet',
+    token: string,
+    options?: { readonly mode?: 'signin' | 'signup' },
+  ): Promise<void> {
     let resolvedToken = token;
     if (provider === 'email' && token.includes('@') && !token.includes(':') && token.split('.').length !== 3) {
-      resolvedToken = (await authenticateFastAuthEmailPopup({ email: token })).idToken;
+      resolvedToken = (await authenticateFastAuthEmailPopup({ email: token, mode: options?.mode })).idToken;
     }
     const accessToken = this.view().accessToken || this.deps.sessionToken?.() || '';
     const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -138,11 +152,18 @@ export class PilotBridge {
       const ls = (globalThis as unknown as { localStorage?: Storage }).localStorage;
       ls?.removeItem('ta_active_pilot');
       ls?.removeItem('ta_trade_token');
-      ls?.removeItem('ta_oauth_callback');
-      ls?.removeItem('ta_oauth_error');
-      ls?.removeItem('ta_pkce_state');
-      ls?.removeItem('ta_nep413_pending');
-      ls?.removeItem('ta_nep413_popup_result');
+      ls?.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
+      ls?.removeItem(OAUTH_ERROR_STORAGE_KEY);
+      ls?.removeItem(PKCE_STATE_STORAGE_KEY);
+      ls?.removeItem(PENDING_NEP413_STORAGE_KEY);
+      ls?.removeItem(RECENT_NEP413_POPUP_KEY);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const ss = (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage;
+      ss?.removeItem(PENDING_NEP413_STORAGE_KEY);
+      ss?.removeItem(RECENT_NEP413_POPUP_KEY);
     } catch {
       /* ignore */
     }

@@ -28,11 +28,13 @@ const signerLocks = new Map<string, Promise<unknown>>();
 function withSignerLock<T>(signerAccountId: string, fn: () => Promise<T>): Promise<T> {
   const prev = signerLocks.get(signerAccountId) ?? Promise.resolve();
   const next = prev.then(fn, fn);
-  const tracked = next.finally(() => {
-    if (signerLocks.get(signerAccountId) === tracked) {
-      signerLocks.delete(signerAccountId);
-    }
-  });
+  const tracked = next
+    .catch(() => undefined)
+    .finally(() => {
+      if (signerLocks.get(signerAccountId) === tracked) {
+        signerLocks.delete(signerAccountId);
+      }
+    });
   signerLocks.set(signerAccountId, tracked);
   return next;
 }
@@ -178,7 +180,8 @@ export class NearRpcClient {
 
   async call(params: ContractCallParams): Promise<{ receipt: ChainReceipt; outcome: TxOutcome }> {
     return withSignerLock(params.signerAccountId, async () => {
-      this.chargeDailyBudget(0.002);
+      const attachedNear = params.depositYocto ? Number(params.depositYocto) / 1e24 : 0;
+      this.chargeDailyBudget(0.002 + attachedNear);
       try {
         const signer = KeyPairSigner.fromSecretKey(params.signerSecretKey as KeyPairString);
         const outcome = await this.withFailover(async (provider) => {

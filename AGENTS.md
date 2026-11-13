@@ -70,12 +70,12 @@ One Vite app, several HTML entries (`frontend/vite.config.ts` → `rollupOptions
 | URL | Purpose | Edit here |
 | :--- | :--- | :--- |
 | `/` (`frontend/index.html`) | **Hub**: links to every page below. Static HTML + CSS. | `frontend/index.html` |
-| `/landing.html` | **Landing** (terraagent.com). Planet cards deep-link to `/play.html?planet=<kind>`. | `frontend/landing.html`, `frontend/landing/` (`main.ts`, `sections/`, `landing.css`) |
+| `/landing.html` | **Landing** (`terraagent.fun`): orbital showcase, `#economics` simulator, scroll-driven `#protocol` (`TerraAgent Protocol` schematic & live `/v1/near/protocol`), and `#chain` contract board. Planet cards deep-link to `/play.html?planet=<kind>`. | `frontend/landing.html`, `frontend/landing/` (`main.ts`, `sections/`, `landing.css`, `protocol.css`) |
 | `/play.html` | **Game**: orbit menu → descent → colony diorama. Params: `?planet=dune\|oceanForest\|forestRock&seed=<n>&skip=1\|deploy=1\|t=<s>`. | `frontend/game/app/`, `frontend/game/ui/`, `frontend/game/descent/` |
 | `/trade.html` | **Trading terminal**: planet orderbook, depth ladder, swaps, orbital cargo balances & bot keys (`/v1/trade/*`). | `frontend/trade/` |
-| `/me.html` | **Player Profile, Achievements & BYOK NEAR.AI**: stage progress, badges, colony history & encrypted `/me` NEAR.AI API key + model config (`/v1/me/ai-settings`). | `frontend/game/me/` |
-| `/deed.html` | **Colony Deed share card**: public OpenGraph milestone history (`/deed/:tokenId`). | `frontend/game/deed/` |
-| `/dev/economy-sim/` | **7-Day Economy Sim**: fast-forward multi-colony trading, war, diplomacy & NEAR.AI TEE viewer. | `frontend/game/dev/economy-sim/` |
+| `/me.html` | **Player Profile, Achievements & BYOK NEAR.AI**: stage progress, badges, colony history & encrypted `/me` NEAR.AI API key + model config (`/v1/me/ai-settings`). | `frontend/me.html`, `frontend/game/pages/me/` |
+| `/deed.html` | **Colony Deed share card**: public OpenGraph milestone history (`/deed/:tokenId`). | `frontend/deed.html`, `frontend/game/pages/deed/`, `frontend/game/features/deed/` |
+| `/dev/economy-sim/` | **7-Day Economy Sim**: fast-forward multi-colony trading, war, diplomacy & NEAR.AI TEE viewer. | `frontend/dev/economy-sim/`, `frontend/game/dev/economy-sim/` |
 | `/playground.html` | **3D playground**, the model storybook: every `ArchetypeCatalog` entry with 4 diagnostic views, biome switch, tri budget and `minY` checks. Params: `?inspect=<id>&biome=<kind>&view=iso\|front\|side\|top&turntable=1&surface=1&hexterrain=1&build=0\|33\|66&work=1&workTarget=tree\|rock\|dune\|hole\|flat\|metals\|minerals\|oil\|repair&depositStage=full\|half\|depleted&lights=1`. | `frontend/playground/` |
 | `/pitchdeck/` (`frontend/pitchdeck/index.html`) | **Pitch deck** (W26): investor / demo presentation slides. | `frontend/pitchdeck/` |
 | `/whitepaper/` (`frontend/whitepaper/index.html`) | **Whitepaper** (W26): technical & economic whitepaper. | `frontend/whitepaper/` |
@@ -135,7 +135,8 @@ frontend/
   render/       3D render engine used by 2+ apps (`@terra/render/*`): core (viewport, StageHost), kitbash (+validate/),
                 visuals, planets, orbit, descent (drop rig + handoff types), lighting, ui (CRT overlay)
 shared/         code used by frontend AND backend: `contracts/`, `config/`, `db/`, `ledger/`, `sim/` (`@terra/*`, game rules, D-31)
-backend/app/    the one NestJS app (D-24)
+backend/app/    the one NestJS app (D-24), including all 11 NEAR ports (`mock` / `testnet` / `mainnet`)
+backend/near-contracts/  6 Rust `near-sdk 5.7` smart contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) deployed via `npm run near:deploy-contracts`
 tests/          test suites: `tests/e2e/`, `tests/scenarios/`, `tests/vitest.config.ts`, `tests/vitest.integration.config.ts`, `tests/vitest.contract.config.ts`
 infra/          deploy, docker, and environment configs (`infra/.env.example`, `infra/.env.worktree`, `docker/`, `hosts/`)
 scripts/        developer, build, and operational scripts (`dev/`, `ci/`, `wave/`, etc.)

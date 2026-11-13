@@ -6,6 +6,8 @@ import { initHeroCopy } from './sections/heroCopy';
 import { initLiveStats } from './sections/liveStats';
 import { initColonyCanvas } from './sections/colonyCanvas';
 import { initDirectorScenarios } from './sections/directorScenarios';
+import { initEconomicsSection } from './sections/economicsSection';
+import { initProtocolSection } from './sections/protocolSection';
 import { initContractsBoard } from './sections/contractsBoard';
 import { initRoadmap } from './sections/roadmap';
 import { setCrt } from '@terra/render/ui/crt';
@@ -28,6 +30,8 @@ class LandingPage {
     () => initLiveStats(this.page),
     initColonyCanvas,
     initDirectorScenarios,
+    initEconomicsSection,
+    initProtocolSection,
     initContractsBoard,
     initRoadmap,
     () => { const host = document.querySelector<HTMLElement>('.header-right'); if (host) new PilotAccess(host); },

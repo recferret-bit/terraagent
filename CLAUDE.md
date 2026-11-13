@@ -20,6 +20,8 @@ npm run validate:models -- <id|--category robot|--all>   # geometry validator fo
 npm run test:models                                    # self-test of that validator
 npm run validate:particles -- <--all|id|targetKind>    # validator for 3D interaction particle presets
 npm run test:particles                                 # self-test of the particle validator
+npm run near:deploy-contracts -- --network testnet       # build/deploy/verify all 6 Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) + 4 protocol accounts (`--ensure-accounts`, `--redeploy`, or `--network mainnet` with `NEAR_ALLOW_MAINNET=1`)
+cargo test --manifest-path backend/near-contracts/Cargo.toml  # Rust smart-contract unit suite
 ```
 
 Automated test suites: `npm test` (unit tests), `npm run test:integration` (Postgres integration), `npm run test:contract` (NEAR contract ports), `npm run test:parity` (engine parity), `npm run e2e` (Playwright headless-Chrome wave suites). Verify UI changes by loading the pages in a browser.
@@ -29,13 +31,15 @@ Automated test suites: `npm test` (unit tests), `npm run test:integration` (Post
 | URL | Purpose | Code |
 |---|---|---|
 | `/` | Hub linking to all pages | `frontend/index.html` |
-| `/landing.html` | Landing site | `frontend/landing.html`, `frontend/landing/` (`main.ts` → `LandingPage`) |
+| `/landing.html` | Landing site (`#economics`, `#protocol`, `#chain`) | `frontend/landing.html`, `frontend/landing/` (`main.ts` → `LandingPage`, `sections/`) |
 | `/play.html` | Game (orbit menu → descent → colony) | `frontend/game/` (`main.ts`, `app/`, `ui/`, `descent/`) |
 | `/trade.html` | Planet market orderbook, swaps & bot keys | `frontend/trade/` |
-| `/me.html` | Player profile, badges & BYOK NEAR.AI settings | `frontend/game/me/` |
-| `/deed.html` | Public Colony Deed NFT card (`/deed/:tokenId`) | `frontend/game/deed/` |
-| `/dev/economy-sim/` | 7-day multi-colony economy & AI simulator | `frontend/game/dev/economy-sim/` |
+| `/me.html` | Player profile, badges & BYOK NEAR.AI settings | `frontend/me.html`, `frontend/game/pages/me/` |
+| `/deed.html` | Public Colony Deed NFT card (`/deed/:tokenId`) | `frontend/deed.html`, `frontend/game/pages/deed/`, `frontend/game/features/deed/` |
+| `/dev/economy-sim/` | 7-day multi-colony economy & AI simulator | `frontend/dev/economy-sim/`, `frontend/game/dev/economy-sim/` |
 | `/playground.html` | 3D model storybook / visual QA | `frontend/playground/` (`PlaygroundApp`) |
+| `/pitchdeck/` | Investor & demo presentation deck | `frontend/pitchdeck/` |
+| `/whitepaper/` | Technical & economic whitepaper (`render.mjs`) | `frontend/whitepaper/` |
 | `/design/` | Faction Plate design system docs | `frontend/design/` |
 
 Vite `root` is `frontend/`; the 3D render engine used by two or more apps lives in `frontend/render/` (alias `@terra/render/*`); code used by frontend and backend lives in top-level `shared/{contracts,config,db,ledger,sim}`, test suites in `tests/{e2e,scenarios}`. Root directory layout follows the 7-domain clean root rule (D-41): `backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/` (plus agentic, git, license, package.json). Architecture limits and layering: `AGENTS.md` §6.
@@ -58,7 +62,7 @@ Adding a page: create the HTML, add it to `rollupOptions.input` in `frontend/vit
 - **Known limitations and open questions:** when you leave something undone or traded off, skip a review finding, or pick a default for a question only the owner can decide, add/update an entry in `docs/questions-and-limitations/<area>.md` in the same change (format: its `README.md`; AGENTS.md §5). Read the area's file before working there; mark fixed entries `Resolved (<commit>)`. When you delegate, have subagents report such items and record them; name the new entries in your final message.
 - **Architecture limits:** no file over 500 lines, no function over 100 lines, no copy/paste, orchestrator classes compose small parts (details and layers in `AGENTS.md` §6). Run `npm run check:structure` after every refactor; `npm run build` runs it too.
 - **Clean root folder rule (D-41):** the repository root holds ONLY agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, `package.json` (`package-lock.json`), and the 7 domain directories (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`). Docs live in `docs/` (index: `docs/README.md`): `game/` design, `spec/` architecture (start with `DECISIONS.md`), `plan/` build plan, `hackathon/`, `coverage/`, `visuals/` 3D rules, `dev/` dev tools reference, `questions-and-limitations/` known gaps and open questions. Keep the repo root free of loose `.md` and configuration files.
-- `docs/spec/` and `docs/plan/` describe the not-yet-built online backend. `docs/spec/CLIENT.md` assumes separate `game.` and root domains; the current local build serves everything from one app.
+- **NEAR 11-port, 6-contract & `TerraAgent Protocol` architecture:** `backend/app/src/near/` binds all 11 NEAR ports across `NEAR_MODE=mock|testnet|mainnet` (`mainnet` gated by `NEAR_ALLOW_MAINNET=1`) backed by 6 Rust `near-sdk 5.7` contracts (`backend/near-contracts/{res,deed,bounty,staking,dao,pilots}`, 67 Rust unit tests) and 4 core accounts (`<root>`, `protocol.<root>`, `relayer.<root>`, `minter.<root>`). `GET /v1/near/protocol` exposes the live `TerraAgent Protocol` schedule (`NEAR_PLATFORM_FEE_BP=100`, `NEAR_STAKER_PLATFORM_FEE_BP=50`, `NEAR_DAO_FEE_SHARE_BP=2000`, `NEAR_STAKER_MIN_NEAR=10`, `NEAR_ESCROW_SLASH_PROTOCOL_BP=1000`). Set `NEAR_USE_PILOTS_FACTORY=true` so `relayer.<root>` provisions `{pilot}.pilots.<root>` while `NEAR_ROOT_SECRET_KEY` remains in cold storage; `claimAccount` performs atomic `[AddKey(userKey), DeleteKey(custodialKey)]` non-custodial rotation. `docs/spec/CLIENT.md` describes split `play.`/`api.`/`terraagent.fun` subdomains in production while `npm run dev` serves everything locally.
 - Other people or agents may edit this repo at the same time (e.g. `frontend/render/ui/crt.ts`). Re-read a file before editing it and don't revert changes you didn't make.
 - This is a git repository (`main`). Commit only the files you changed: other people's work is often uncommitted in the same tree.
 - **Validate the wave (`"validate the wave"`):** whenever the user asks to **"validate the wave"** (or **"validate wave"**, **"validate WNN"**, **"review the wave"**), read and activate [`.agents/skills/wave-landing-validator/SKILL.md`](./.agents/skills/wave-landing-validator/SKILL.md), run `npm run validate:wave` (auto-detects the current wave worktree or open wave; or pass `<NN>`), execute its **mandatory 2-iteration review-and-fix protocol** (1: compare full diff against `docs/plan/waves/WNN-*.md` and specs, fix all functional gaps, enforce full Test Pyramid coverage [every major feature covered by BOTH unit and integration tests, backend tested by E2E too, and every suite testing positive, negative, and corner/boundary cases], eliminate AST function/block duplication, split new logic across thin orchestrators and focused services/parts, verify client + server + shared sim parity, pass all tests; 2: cold-eye re-audit of the post-fix branch, second-order regression sweep, and `npm run validate:wave -- <NN> --gates`), and output the 6-part structured summary.

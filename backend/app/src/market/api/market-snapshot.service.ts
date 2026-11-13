@@ -1,9 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   MARKET_TOKEN_KEYS, type MarketBookPayload, type MarketPolicyView, type MarketSnapshotResponse, type MarketTokenKey, type MyOrderView,
   type PriceBoardRow, type QuoteToken, type TradeView,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
 import type { MarketOrderRecord } from '../book/market-order.record.js';
@@ -30,7 +31,7 @@ export const tradeView = (t: TradeRow): TradeView => ({
 export const myOrderView = (o: MarketOrderRecord): MyOrderView => ({
   orderId: o.orderId, ref: o.ref, pair: o.pair, side: o.side, resource: o.base as MyOrderView['resource'], amount: Number(o.amount), filled: Number(o.filled),
   price: { token: o.quote as QuoteToken, amount: o.priceAmount.toString() }, state: o.state as MyOrderView['state'], fillPolicy: o.fillPolicy as MyOrderView['fillPolicy'],
-  policyVersion: o.policyVersion, platformFeeBp: o.platformFeeBp, stallFeeBp: o.stallFeeBp, reserved: (o.reservedPrincipal + o.reservedFees).toString(),
+  policyVersion: o.policyVersion, platformFeeBp: o.effectivePlatformFeeBp ?? o.platformFeeBp, stallFeeBp: o.stallFeeBp, reserved: (o.reservedPrincipal + o.reservedFees).toString(),
   expiresAtMs: o.expiresAt.getTime(), createdAtMs: o.createdAt.getTime(),
 });
 
@@ -47,6 +48,7 @@ export class MarketSnapshotService {
     private readonly policy: MarketPolicyProvider,
     private readonly orders: MarketOrderRepository,
     private readonly funds: OrderFunds,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   async snapshot(planetId: string, caller: MarketCaller | null): Promise<MarketSnapshotResponse> {
@@ -60,6 +62,7 @@ export class MarketSnapshotService {
           colonyId: caller.colony.colonyId,
           accountId: caller.colony.accountId,
           standardPlatformFeeBp: basePolicy.platformFeeBp,
+          env: (this.env ?? process.env) as Record<string, string | undefined>,
         }),
       ]);
       Object.assign(out, mine);

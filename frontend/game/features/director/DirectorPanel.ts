@@ -1,5 +1,6 @@
 import type { DirectorActionState, SetDirectorPolicyArgs } from '@terra/contracts';
 import type { ColonyDirectorRecord } from '@terra/sim';
+import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { DirectorControls } from './DirectorControls';
 
 /** One director action as the HUD may show it. Only `applied` means the sim accepted it. */
@@ -30,6 +31,7 @@ export class DirectorPanel {
   private readonly controlsHost: HTMLElement;
   private readonly controls: DirectorControls | null;
   private readonly list: HTMLElement;
+  private readonly offShared: () => void;
   private aiEnabled = false;
   private currentRows: DirectorActionRow[] = [];
   private planIntentRevision: number | null = null;
@@ -43,6 +45,7 @@ export class DirectorPanel {
     const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
       this.aiEnabled = next;
       this.renderAutopilotBtn();
+      patchSharedAutopilotState({ aiEnabled: next });
       opts?.onToggleAutopilot?.(next);
     });
     this.autopilotBar = autoParts?.bar ?? null;
@@ -67,6 +70,12 @@ export class DirectorPanel {
     } else {
       this.host.append(title, this.summaryEl, this.controlsHost, this.list);
     }
+
+    this.offShared = subscribeSharedAutopilotState((st) => {
+      this.aiEnabled = st.aiEnabled;
+      this.renderAutopilotBtn();
+      if (this.warToggleInput) this.warToggleInput.checked = st.awayRaids;
+    });
   }
 
   /** Mirrors replica `aiEnabled` (`setAiEnabled`) and `awayRaids` (`setAutopilot`) onto the plate. */
@@ -76,6 +85,10 @@ export class DirectorPanel {
     if (this.warToggleInput) {
       this.warToggleInput.checked = state.warDiplomacy;
     }
+    patchSharedAutopilotState({
+      aiEnabled: state.aiEnabled,
+      awayRaids: state.warDiplomacy,
+    });
   }
 
   private renderAutopilotBtn(): void {
@@ -122,6 +135,7 @@ export class DirectorPanel {
   }
 
   dispose(): void {
+    this.offShared();
     this.controls?.dispose();
     this.host.replaceChildren();
     this.host.classList.remove('ta-director', 'plate-sm');
@@ -151,7 +165,11 @@ function buildAutopilotBar(
     warInput = document.createElement('input');
     warInput.type = 'checkbox';
     warInput.dataset.testid = 'director-war-diplomacy-toggle';
-    warInput.addEventListener('change', () => opts.onToggleWarDiplomacy?.(Boolean(warInput?.checked)));
+    warInput.addEventListener('change', () => {
+      const checked = Boolean(warInput?.checked);
+      patchSharedAutopilotState({ awayRaids: checked });
+      opts.onToggleWarDiplomacy?.(checked);
+    });
     label.append(warInput, 'Allow War & Diplomacy');
     bar.appendChild(label);
   }

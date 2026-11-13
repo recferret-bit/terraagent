@@ -1,6 +1,7 @@
 import { capsOf, TICKS_PER_SECOND, type CompiledDataLike, type ViewColony } from '@terra/sim';
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
+import { pushNotification } from '../notifications/notificationStore';
 import { viewColony } from '../shared/colony';
 import { makeDiv, makeSpan } from '../shared/dom';
 import { extractHqFromView } from '../shared/hqView';
@@ -304,6 +305,11 @@ export class MinimalHud {
     toast.onclick = () => this.dismissToast(toast);
     this.armTimer(toast, durationMs);
     this.toastContainer.appendChild(toast);
+    pushNotification({
+      category: 'system',
+      title: severity === 'error' ? 'Alert' : severity === 'warning' ? 'Notice' : 'Info',
+      message,
+    });
     return toast;
   }
 

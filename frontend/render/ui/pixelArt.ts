@@ -2,6 +2,7 @@
    plus the F8 floating visual settings dialog (pixelDialog.ts). */
 import { isPixelArtOn, onPixelArtChange, setPixelArt, togglePixelArt } from '../core/pixelArtPass';
 import { isShadowOn, onShadowChange, setShadow, toggleShadow } from '../core/shadowConfig';
+import { isProductionBuild } from './buildEnv';
 import { ensureFxBar } from './crt';
 import { disposePixelDialog, initPixelDialog, togglePixelDialog } from './pixelDialog';
 
@@ -42,14 +43,17 @@ const syncShadowDom = (on: boolean) => {
 
 export interface InitPixelArtOptions {
   showControls?: boolean;
+  production?: boolean;
 }
 
 export function initPixelArt(opts?: InitPixelArtOptions) {
   if (document.getElementById('pixel-css')) return;
+  const prod = opts?.production ?? isProductionBuild();
+  const showControls = prod ? false : (opts?.showControls ?? true);
   document.head.insertAdjacentHTML('beforeend', `<style id="pixel-css">${CSS}</style>`);
   document.body.insertAdjacentHTML('beforeend', SVG);
 
-  if (opts?.showControls !== false) {
+  if (showControls) {
     const bar = ensureFxBar();
 
     btn = document.createElement('button');
@@ -96,6 +100,9 @@ export function initPixelArt(opts?: InitPixelArtOptions) {
         toggleShadow();
       }
     });
+  } else {
+    document.getElementById('fx-bar')?.remove();
+    document.getElementById('pixel-dlg')?.remove();
   }
 
   offChange = onPixelArtChange(syncDom);

@@ -1,15 +1,26 @@
 use near_sdk::store::LookupMap;
 use near_sdk::{
-    env, near, require, AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
+    env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise,
+    PromiseError, PromiseOrValue, PublicKey,
 };
 use serde_json::json;
 
 const MIN_INITIAL_MILLINEAR: u128 = 20; // 0.02 NEAR
-const CONTRACT_RESERVE_MILLINEAR: u128 = 50; // 0.05 NEAR minimum contract storage reserve
+const CONTRACT_RESERVE_MILLINEAR: u128 = 50; // 0.05 NEAR minimum liquid buffer above storage lock
+const CALLBACK_GAS: Gas = Gas::from_tgas(12);
 
-const RESERVED_LABELS: [&str; 9] = [
+const RESERVED_LABELS: [&str; 18] = [
     "relayer",
     "minter",
+    "pilots",
+    "protocol",
+    "res",
+    "deed",
+    "bounty",
+    "staking",
+    "dao",
+    "treasury",
+    "agents",
     "npc",
     "admin",
     "root",
@@ -18,6 +29,19 @@ const RESERVED_LABELS: [&str; 9] = [
     "intents",
     "terraagent",
 ];
+
+#[allow(dead_code)]
+#[ext_contract(ext_self)]
+trait ExtSelf {
+    fn on_pilot_created(
+        &mut self,
+        op_id: String,
+        label: String,
+        new_account_id: AccountId,
+        public_key: String,
+        funded_yocto: String,
+    ) -> String;
+}
 
 fn validate_pilot_label(label: &str) {
     require!(
@@ -108,6 +132,10 @@ impl PilotFactoryContract {
         require!(!op_id.trim().is_empty(), "op_id is required");
 
         if let Some(existing) = self.processed_ops.get(&op_id) {
+            let attached = env::attached_deposit();
+            if attached > NearToken::from_yoctonear(0) {
+                let _ = Promise::new(caller).transfer(attached);
+            }
             return PromiseOrValue::Value(existing.clone());
         }
 
@@ -128,144 +156,67 @@ impl PilotFactoryContract {
 
         let min_initial = NearToken::from_millinear(MIN_INITIAL_MILLINEAR);
         let attached = env::attached_deposit();
+        let storage_locked = NearToken::from_yoctonear(
+            (env::storage_usage() as u128)
+                .saturating_mul(env::storage_byte_cost().as_yoctonear()),
+        );
+        let liquid_balance = env::account_balance().saturating_sub(storage_locked);
         let funding = if attached >= min_initial {
             attached
         } else {
             let reserve = NearToken::from_millinear(CONTRACT_RESERVE_MILLINEAR);
             require!(
-                env::account_balance() >= min_initial.saturating_add(reserve),
-                "NEAR_UNAVAILABLE: pilot factory balance below reserve"
+                liquid_balance >= min_initial.saturating_add(reserve),
+                "NEAR_UNAVAILABLE: pilot factory liquid balance below reserve"
             );
             min_initial
         };
 
-        self.created_accounts
-            .insert(label.clone(), new_account_id.to_string());
-        self.processed_ops
-            .insert(op_id.clone(), new_account_id.to_string());
+        let pk_str = String::from(&public_key);
+        let funded_str = funding.as_yoctonear().to_string();
 
+        let promise = Promise::new(new_account_id.clone())
+            .create_account()
+            .transfer(funding)
+            .add_full_access_key(public_key)
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(CALLBACK_GAS)
+                    .on_pilot_created(op_id, label, new_account_id, pk_str, funded_str),
+            );
+
+        PromiseOrValue::Promise(promise)
+    }
+
+    #[private]
+    pub fn on_pilot_created(
+        &mut self,
+        op_id: String,
+        label: String,
+        new_account_id: AccountId,
+        public_key: String,
+        funded_yocto: String,
+        #[callback_result] call_result: Result<(), PromiseError>,
+    ) -> String {
+        require!(
+            call_result.is_ok(),
+            "NEAR_NAME_TAKEN: child sub-account creation failed on-chain"
+        );
+        let id_str = new_account_id.to_string();
+        self.created_accounts.insert(label, id_str.clone());
+        self.processed_ops.insert(op_id.clone(), id_str.clone());
         emit_pilots_event(
             "pilot_account_created",
             json!({
                 "op_id": op_id,
-                "account_id": new_account_id,
-                "public_key": String::from(&public_key),
-                "funded_yocto": funding.as_yoctonear().to_string(),
+                "account_id": id_str,
+                "public_key": public_key,
+                "funded_yocto": funded_yocto,
             }),
         );
-
-        let promise = Promise::new(new_account_id)
-            .create_account()
-            .transfer(funding)
-            .add_full_access_key(public_key);
-
-        PromiseOrValue::Promise(promise)
+        id_str
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::{get_logs, VMContextBuilder};
-    use near_sdk::testing_env;
-
-    fn account(id: &str) -> AccountId {
-        id.parse().unwrap()
-    }
-
-    fn sample_pk() -> PublicKey {
-        "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
-            .parse()
-            .unwrap()
-    }
-
-    fn setup_ctx(predecessor: &str, attached_millinear: u128) {
-        let mut builder = VMContextBuilder::new();
-        builder
-            .current_account_id(account("pilots.terraagent.testnet"))
-            .predecessor_account_id(account(predecessor))
-            .account_balance(NearToken::from_near(5))
-            .attached_deposit(NearToken::from_millinear(attached_millinear));
-        testing_env!(builder.build());
-    }
-
-    #[test]
-    fn operator_creates_pilot_subaccount_and_replays_idempotently() {
-        setup_ctx("terraagent.testnet", 0);
-        let mut contract = PilotFactoryContract::new(
-            account("terraagent.testnet"),
-            account("relayer.terraagent.testnet"),
-        );
-
-        setup_ctx("relayer.terraagent.testnet", 20);
-        let res = contract.create_pilot_account(
-            "named-account:google:sub-1".to_string(),
-            "alex-pilot".to_string(),
-            sample_pk(),
-        );
-        assert!(matches!(res, PromiseOrValue::Promise(_)));
-        assert_eq!(
-            contract.get_pilot_account("alex-pilot".to_string()),
-            Some("alex-pilot.pilots.terraagent.testnet".to_string())
-        );
-        let logs = get_logs();
-        assert!(logs.iter().any(|l| l.contains("pilot_account_created")));
-
-        let replay = contract.create_pilot_account(
-            "named-account:google:sub-1".to_string(),
-            "alex-pilot".to_string(),
-            sample_pk(),
-        );
-        match replay {
-            PromiseOrValue::Value(id) => {
-                assert_eq!(id, "alex-pilot.pilots.terraagent.testnet");
-            }
-            PromiseOrValue::Promise(_) => panic!("expected cached Value on idempotent replay"),
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_NAME_TAKEN")]
-    fn rejects_duplicate_label_under_different_op() {
-        setup_ctx("relayer.terraagent.testnet", 20);
-        let mut contract = PilotFactoryContract::new(
-            account("terraagent.testnet"),
-            account("relayer.terraagent.testnet"),
-        );
-        let _ = contract.create_pilot_account("op-1".into(), "nova".into(), sample_pk());
-        let _ = contract.create_pilot_account("op-2".into(), "nova".into(), sample_pk());
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_NOT_OWNER")]
-    fn rejects_unauthorized_caller() {
-        setup_ctx("attacker.testnet", 20);
-        let mut contract = PilotFactoryContract::new(
-            account("terraagent.testnet"),
-            account("relayer.terraagent.testnet"),
-        );
-        let _ = contract.create_pilot_account("op-1".into(), "nova".into(), sample_pk());
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_NAME_TAKEN: reserved pilot label")]
-    fn rejects_reserved_label() {
-        setup_ctx("relayer.terraagent.testnet", 20);
-        let mut contract = PilotFactoryContract::new(
-            account("terraagent.testnet"),
-            account("relayer.terraagent.testnet"),
-        );
-        let _ = contract.create_pilot_account("op-1".into(), "admin".into(), sample_pk());
-    }
-
-    #[test]
-    fn owner_rotates_operator() {
-        setup_ctx("terraagent.testnet", 0);
-        let mut contract = PilotFactoryContract::new(
-            account("terraagent.testnet"),
-            account("relayer.terraagent.testnet"),
-        );
-        contract.set_operator(account("minter.terraagent.testnet"));
-        assert_eq!(contract.get_operator(), account("minter.terraagent.testnet"));
-    }
-}
+mod tests;

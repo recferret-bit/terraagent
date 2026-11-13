@@ -1,5 +1,8 @@
 import type { GuildArrivedPayload, GuildDepartedPayload } from '@terra/contracts';
 
+export type GuildArrivalToastInput = Omit<GuildArrivedPayload, 'planetId'> & { planetId?: string };
+export type GuildDepartureToastInput = Omit<GuildDepartedPayload, 'planetId'> & { planetId?: string };
+
 /** Arrival toast. The count is `offers.length`, including zero. */
 export function guildDockedLine(name: string, offers: number): string {
   return `Guild trader ${name} has docked — ${offers} offers`;
@@ -18,7 +21,7 @@ export class GuildVisitMemory {
   private readonly seen = new Set<string>();
   private readonly names = new Map<string, string>();
 
-  docked(payload: GuildArrivedPayload, enabled: boolean): string | null {
+  docked(payload: GuildArrivalToastInput, enabled: boolean): string | null {
     if (!enabled) return null;
     this.names.set(payload.shipId, payload.name);
     const key = `${payload.shipId}\0${payload.departAt}`;
@@ -27,7 +30,7 @@ export class GuildVisitMemory {
     return guildDockedLine(payload.name, payload.offers.length);
   }
 
-  departed(payload: GuildDepartedPayload, enabled: boolean): string | null {
+  departed(payload: GuildDepartureToastInput, enabled: boolean): string | null {
     if (!enabled) return null;
     return guildDepartedLine(this.names.get(payload.shipId) ?? payload.shipId);
   }

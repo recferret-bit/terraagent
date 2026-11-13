@@ -389,9 +389,12 @@
 .ta-hud-toast {
   /* a <button>: click or Enter dismisses */
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s2);
   text-align: center;
   pointer-events: auto;
-  padding: var(--ta-s2) var(--ta-s4);
+  padding: var(--ta-s2) var(--ta-s3) var(--ta-s2) var(--ta-s4);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-small);
   font-weight: 600;
@@ -401,6 +404,13 @@
   border: 1.5px solid var(--ta-seam-3);
   color: var(--ta-text);
   animation: ta-toast-in var(--ta-dur-quick) var(--ta-ease-servo);
+}
+
+.ta-hud-toast::after {
+  content: '×';
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.78;
 }
 
 .ta-hud-toast--warning {

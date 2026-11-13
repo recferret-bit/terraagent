@@ -7,6 +7,8 @@ import { decodeBase58, encodeBase58 } from '../keystore/base58.js';
 import { ed25519PublicKeyFromNear } from '../keystore/keys.js';
 
 const NONCE_TTL_MS = 5 * 60_000;
+const MAX_NONCES = 4096;
+const MAINNET_NAMED_TLD_RE = /\.(near|tg|sweat)$/i;
 const usedNonces = new Map<string, number>();
 
 export function clearNep413ReplayCache(): void {
@@ -41,13 +43,31 @@ function decodeNep413SignatureBytes(raw: string): Buffer {
   const trimmed = raw.trim();
   const bytes = trimmed.startsWith('ed25519:')
     ? Buffer.from(decodeBase58(trimmed.slice(8)))
-    : Buffer.from(trimmed, 'base64');
+    : Buffer.from(trimmed.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
   if (bytes.length !== 64) {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
       message: 'NEP-413 ed25519 signature must be 64 bytes',
     });
   }
   return bytes;
+}
+
+function validateCallbackUrlCandidates(raw?: string): readonly (string | undefined)[] {
+  if (!raw) return [undefined];
+  const trimmed = raw.trim();
+  let normalized: string;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('unsupported protocol');
+    }
+    normalized = parsed.toString();
+  } catch {
+    throw new NearException('NEAR_PROVIDER_REJECTED', {
+      message: 'NEP-413 callbackUrl must be a valid HTTP(S) URL',
+    });
+  }
+  return normalized === trimmed ? [trimmed, undefined] : [trimmed, normalized, undefined];
 }
 
 /** Computes `sha256(borsh({ tag: 2147484061, message, nonce: [u8;32], recipient, callbackUrl }))`. */
@@ -94,12 +114,18 @@ export function signNep413Message(params: {
     message: params.message,
     nonce: nonceBytes.toString('base64'),
     recipient: params.recipient,
+    ...(params.callbackUrl ? { callbackUrl: params.callbackUrl } : {}),
   };
 }
 
 function pruneExpiredNonces(nowMs: number): void {
   for (const [key, expiresAt] of usedNonces) {
     if (expiresAt <= nowMs) usedNonces.delete(key);
+  }
+  while (usedNonces.size >= MAX_NONCES) {
+    const oldest = usedNonces.keys().next().value;
+    if (!oldest) break;
+    usedNonces.delete(oldest);
   }
 }
 
@@ -110,14 +136,28 @@ export function assertWalletNetworkMatches(accountId: string, network: Exclude<N
       message: `Mock wallet account "${accountId}" cannot claim on ${network}`,
     });
   }
-  if (network === 'mainnet' && lower.endsWith('.testnet')) {
-    throw new NearException('NEAR_PROVIDER_REJECTED', {
-      message: `Testnet wallet "${accountId}" cannot claim on mainnet`,
-    });
+  if (/^[0-9a-f]{64}$/.test(lower)) return;
+  if (network === 'mainnet') {
+    if (lower.endsWith('.testnet')) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', {
+        message: `Testnet wallet "${accountId}" cannot claim on mainnet`,
+      });
+    }
+    if (!MAINNET_NAMED_TLD_RE.test(lower) && lower !== 'aurora') {
+      throw new NearException('NEAR_PROVIDER_REJECTED', {
+        message: `Invalid NEAR Mainnet account "${accountId}"`,
+      });
+    }
+    return;
   }
-  if (network === 'testnet' && lower.endsWith('.near')) {
+  if (MAINNET_NAMED_TLD_RE.test(lower) || lower === 'aurora') {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
       message: `Mainnet wallet "${accountId}" cannot claim on testnet`,
+    });
+  }
+  if (!lower.endsWith('.testnet')) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', {
+      message: `Invalid NEAR Testnet account "${accountId}"`,
     });
   }
 }
@@ -169,16 +209,23 @@ export function verifyNep413ClaimSignature(params: {
     });
   }
 
-  let verified: boolean;
+  const callbackUrlCandidates = validateCallbackUrlCandidates(signature.callbackUrl);
+  let verified = false;
   try {
     const pub = ed25519PublicKeyFromNear(signature.publicKey);
     const sigBytes = decodeNep413SignatureBytes(signature.signature);
-    const digest = computeNep413Hash({
-      message: signature.message,
-      nonce: nonceBytes,
-      recipient: signature.recipient,
-    });
-    verified = edVerify(null, digest, pub, sigBytes);
+    for (const candidateUrl of callbackUrlCandidates) {
+      const digest = computeNep413Hash({
+        message: signature.message,
+        nonce: nonceBytes,
+        recipient: signature.recipient,
+        callbackUrl: candidateUrl,
+      });
+      if (edVerify(null, digest, pub, sigBytes)) {
+        verified = true;
+        break;
+      }
+    }
   } catch (err) {
     if (err instanceof NearException) throw err;
     throw new NearException('NEAR_PROVIDER_REJECTED', {

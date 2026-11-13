@@ -72,11 +72,19 @@ export function mountTradeHubPanel(el: HTMLElement, ctx: FeatureContext): HudPan
   const s = ctx.services;
   const offCloser = s.registerHudCloser?.(() => { if (panel.isOpenState()) panel.setOpen(false); });
   const launcher = new TradeHubLauncher(el, {
-    openHub: () => open(),
+    openHub: () => {
+      if (panel.isOpenState()) {
+        panel.setOpen(false);
+        syncLauncher();
+      } else {
+        open();
+      }
+    },
     openContracts: () => s.contracts?.setOpen(true),
     hasContracts: () => Boolean(s.contracts) && !s.contracts?.isOpen,
   });
-  const syncLauncher = (): void => launcher.sync(panel.isOpenState() && panel.root.parentElement === el);
+  const syncLauncher = (): void =>
+    launcher.sync(panel.isOpenState() && (panel.root.parentElement === el || panel.root.dataset.modal === 'true'));
   // Reveal after opening: a selected hub keeps the panel in the selection bar, where the reveal is a no-op.
   const open = (tab?: TradeHubTab, extId?: string): void => {
     if (tab) panel.setTab(tab);

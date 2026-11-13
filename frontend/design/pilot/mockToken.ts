@@ -37,6 +37,7 @@ const viteEnv =
   (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string | undefined> }).env) || {};
 
 export const NEAR_TESTNET_WALLET_URL = 'https://testnet.mynearwallet.com';
+export const NEAR_MAINNET_WALLET_URL = 'https://app.mynearwallet.com';
 export const NEAR_FASTAUTH_ISSUER =
   viteEnv.VITE_NEAR_FASTAUTH_ISSUER?.trim() || 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/';
 export const NEAR_FASTAUTH_CLIENT_ID =
@@ -46,7 +47,13 @@ export const OAUTH_CALLBACK_STORAGE_KEY = 'ta_oauth_callback';
 export const OAUTH_ERROR_STORAGE_KEY = 'ta_oauth_error';
 
 const PKCE_TTL_MS = 10 * 60_000;
-const POPUP_NAMES = new Set(['terra-near-wallet', 'terra-fastauth-oauth', 'terra-mock-oauth']);
+const POPUP_NAMES = new Set([
+  'terra-near-wallet',
+  'terra-fastauth-oauth',
+  'terra-fastauth-auth0',
+  'terra-mock-oauth',
+  'MyNearWallet',
+]);
 const VALID_PROVIDERS = new Set<string>(['google', 'x', 'email', 'fastauth', 'near-wallet']);
 
 let pendingDirectOAuthError: OAuthCallbackError | null = null;
@@ -149,15 +156,17 @@ export function buildFastAuthLoginUrl(
   return authorizeUrl.toString();
 }
 
-/** Builds a NEP-413 `sign-message` URL on `https://testnet.mynearwallet.com/sign-message`. */
+/** Builds a NEP-413 `sign-message` URL on MyNearWallet (`testnet` or `mainnet`). */
 export function buildNearWalletSignMessageUrl(params: {
   readonly message: string;
   readonly nonce: string;
   readonly recipient: string;
   readonly callbackUrl: string;
   readonly state: string;
+  readonly network?: 'testnet' | 'mainnet';
 }): string {
-  const href = new URL('/sign-message', NEAR_TESTNET_WALLET_URL);
+  const baseUrl = params.network === 'mainnet' ? NEAR_MAINNET_WALLET_URL : NEAR_TESTNET_WALLET_URL;
+  const href = new URL('/sign-message', baseUrl);
   href.searchParams.set('message', params.message);
   href.searchParams.set('nonce', params.nonce);
   href.searchParams.set('recipient', params.recipient);
@@ -264,6 +273,22 @@ function consumeStoredPkceRedirect(
   return hit;
 }
 
+function isPopupRedirectWindow(opener: Window | null | undefined, isSyntheticEnv: boolean): boolean {
+  if (opener && (typeof window === 'undefined' || opener !== window)) return true;
+  return !isSyntheticEnv && typeof window !== 'undefined' && POPUP_NAMES.has(window.name);
+}
+
+function closePopupWindow(shouldClose: boolean): null {
+  if (shouldClose && typeof window !== 'undefined') {
+    try {
+      window.close();
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
 function consumeNep413WalletRedirect(
   params: URLSearchParams,
   hashParams: URLSearchParams,
@@ -288,12 +313,19 @@ function consumeNep413WalletRedirect(
   const remHash = hashParams.toString();
   cleanBrowserAddress(pathname, params, remHash ? `#${remHash}` : '', isSyntheticEnv);
 
+  const isPopup = isPopupRedirectWindow(opener, isSyntheticEnv);
+  const isSignerState = state.startsWith('signer-');
+
   if (walletErr || !accountId || !publicKey || !signature) {
+    if (isSignerState) {
+      consumePendingNep413Redirect(state);
+      return closePopupWindow(!isSyntheticEnv && isPopup);
+    }
     return recordCallbackError(
       {
         provider: 'near-wallet',
         error: walletErr || 'signature_cancelled',
-        message: 'NEAR Testnet wallet signature was cancelled or incomplete.',
+        message: 'NEAR wallet signature was cancelled or incomplete.',
       },
       origin,
       opener,
@@ -305,6 +337,7 @@ function consumeNep413WalletRedirect(
   const challengeId = pending?.challengeId ?? (env?.challengeId && env.challengeId === state ? env.challengeId : '');
   const callbackUrl = pending?.callbackUrl ?? `${origin}${pathname}`;
   if (!challengeId) {
+    if (isSignerState) return closePopupWindow(!isSyntheticEnv && isPopup);
     return recordCallbackError(
       {
         provider: 'near-wallet',
@@ -325,9 +358,8 @@ function consumeNep413WalletRedirect(
     callbackUrl,
     walletId: pending?.walletId ?? 'my-near-wallet',
   };
-  const token = encodeNep413SocialToken(verifyPayload);
   if (!isSyntheticEnv) {
-    if (opener && (typeof window === 'undefined' || opener !== window)) {
+    if (isPopup || challengeId.startsWith('signer-')) {
       saveRecentNep413PopupResult(verifyPayload);
     }
     try {
@@ -345,7 +377,10 @@ function consumeNep413WalletRedirect(
       /* ignore */
     }
   }
-  const hit: MockToken = { provider: 'near-wallet', token };
+  if (challengeId.startsWith('signer-')) {
+    return closePopupWindow(!isSyntheticEnv && isPopup);
+  }
+  const hit: MockToken = { provider: 'near-wallet', token: encodeNep413SocialToken(verifyPayload) };
   if (broadcastToOpener(OAUTH_CALLBACK_STORAGE_KEY, 'terra:mock-token', hit, origin, opener, isSyntheticEnv)) {
     return null;
   }

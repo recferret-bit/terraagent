@@ -1,8 +1,10 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import type { TextClipboard } from './copyText';
-import { mountOrbitStatus } from './orbitStatus';
-import { mountPilotChip } from './PilotChip';
+import { formatPilotDisplayName, mountPilotChip } from './PilotChip';
+import { PilotDialog } from './PilotDialog';
 import './identity.css';
+
+export { formatPilotDisplayName, mountPilotChip, PilotDialog };
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
@@ -13,7 +15,11 @@ declare module '../../core/registry/types' {
     pilot?: {
       view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string; saveEpoch?: number };
       subscribe(fn: () => void): () => void;
-      loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email' | 'near-wallet', token: string): Promise<void>;
+      loginSocial(
+        provider: 'google' | 'x' | 'fastauth' | 'email' | 'near-wallet',
+        token: string,
+        options?: { readonly mode?: 'signin' | 'signup' },
+      ): Promise<void>;
       logout?(): Promise<void>;
       /** Colony deposit poll. Absent in specs that only cover the guest chip. */
       watchRelay?(): {
@@ -25,16 +31,24 @@ declare module '../../core/registry/types' {
     clipboard?: TextClipboard;
     /** Optional override for identity adapter mode in tests (`mock` | `testnet` | `mainnet`). */
     identityMode?: 'mock' | 'testnet' | 'mainnet';
+    /** Opens or closes the full-featured Pilot Profile dialog. */
+    openPilotDialog?: (open?: boolean) => void;
   }
 }
 
 function mountIdentity(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
-  const pilot = mountPilotChip(el, ctx);
-  const orbit = mountOrbitStatus(el, ctx);
-  return { dispose() { pilot.dispose(); orbit.dispose(); } };
+  const dialog = new PilotDialog(el, ctx);
+  ctx.services.openPilotDialog = (open = true) => dialog.setOpen(open);
+  return {
+    update: (view) => dialog.update(view),
+    dispose() {
+      if (ctx.services.openPilotDialog) delete ctx.services.openPilotDialog;
+      dialog.dispose();
+    },
+  };
 }
 
-/** Guest-first pilot chip. Hidden when W06 is off and on `?host=local` (`hostOnly: 'server'`). */
+/** Guest-first pilot dialog & chip. Hidden when W06 is off and on `?host=local` (`hostOnly: 'server'`). */
 export default defineFeature({
   id: 'identity',
   wave: 'W06',

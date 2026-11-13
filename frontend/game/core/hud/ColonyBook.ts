@@ -1,20 +1,31 @@
 import { TabBook, type BookTabDef } from './TabBook';
 
-export type ColonyTabId = 'player' | 'away' | 'deed' | 'goals' | 'hq' | 'director' | 'combat' | 'supply' | 'trade';
+export type ColonyTabId =
+  | 'player'
+  | 'away'
+  | 'deed'
+  | 'goals'
+  | 'hq'
+  | 'director'
+  | 'combat'
+  | 'supply'
+  | 'trade'
+  | 'notifications';
 
 const TAB_DEFS: readonly BookTabDef<ColonyTabId>[] = [
-  { id: 'player', label: 'PLAYER' },
+  { id: 'player', label: 'PLAYER', dialogOnly: true },
   { id: 'away', label: 'AWAY' },
-  { id: 'deed', label: 'DEED' },
-  { id: 'goals', label: 'GOALS' },
+  { id: 'deed', label: 'DEED', dialogOnly: true },
+  { id: 'goals', label: 'GOALS', dialogOnly: true },
   { id: 'hq', label: 'HQ AI' },
   { id: 'director', label: 'DIRECTOR' },
   { id: 'combat', label: 'COMBAT' },
   { id: 'supply', label: 'SUPPLY' },
-  { id: 'trade', label: 'TRADE' },
+  { id: 'trade', label: 'TRADE', dialogOnly: true },
+  { id: 'notifications', label: 'NOTIFICATIONS' },
 ];
 
-/** `feature/panel` → tab of the left-hand Colony book. A feature's other panels keep their slot. */
+/** `feature/panel` → tab of the right-hand Colony book. A feature's other panels keep their slot. */
 const PANEL_TABS: Readonly<Record<string, ColonyTabId>> = {
   'identity/pilot': 'player',
   'achievements/pilot-tracking': 'player',
@@ -28,9 +39,10 @@ const PANEL_TABS: Readonly<Record<string, ColonyTabId>> = {
   'combat/combat-alerts': 'combat',
   'combat-tuning/combat-tuning': 'combat',
   'market/supply-trade': 'supply',
+  'market/contracts': 'supply',
   'trade-hub/trade-hub-panel': 'trade',
-  'market/contracts': 'trade',
   'market/market-tab': 'trade',
+  'notifications/notifications-panel': 'notifications',
 };
 
 /** The Colony book tab a HUD panel lives in, or null when it keeps its own slot. */
@@ -39,22 +51,23 @@ export function resolveColonyTab(featureId: string, panelId: string): ColonyTabI
 }
 
 /**
- * The Colony book: the left tab book (top left, under the minimap), the mirror of the Command Dock. One tab per
- * colony surface: Player (guest pilot / NEAR identity, opens first), Away (W09 budget; W22 adds the mercenary hire switch and max spend), Deed, Goals (stage track), HQ AI (AI toggle, HQ
- * goals, priorities), Director, Combat, Supply and Trade. Only tabs whose panels are mounted exist.
+ * The Colony book: combined with the Command Dock on the right side (`top-right`), housing Player, Away,
+ * Deed, Goals, HQ AI, Director, Combat, Supply, Trade, and Notifications. Dialog-only tabs (`player`, `deed`,
+ * `goals`, `trade`) open their modal dialogs directly on click without showing a side-tab pane.
  */
 export class ColonyBook {
   readonly book: TabBook<ColonyTabId>;
 
-  constructor(slotEl: HTMLElement, availableTabs: ReadonlySet<ColonyTabId>) {
+  constructor(slotEl: HTMLElement, availableTabs: ReadonlySet<ColonyTabId>, onSpineClick?: (tab: ColonyTabId) => void) {
     this.book = new TabBook(slotEl, {
-      side: 'left',
+      side: 'right',
       tabs: TAB_DEFS.filter((d) => availableTabs.has(d.id)),
       className: 'ta-colony-book',
       testId: 'colony-book',
       tabTestIdPrefix: 'colony-tab-',
       toggleTestId: 'colony-book-toggle',
       ariaLabel: 'Colony',
+      onSpineClick,
     });
   }
 

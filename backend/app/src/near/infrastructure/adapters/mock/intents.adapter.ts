@@ -59,6 +59,11 @@ export class MockIntentsAdapter extends MockChainBase implements IntentsPort {
   async signTokenDiff(input: SignTokenDiffInput): Promise<SignedIntent> {
     const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId: input.accountId } });
     if (!row) throw new NearException('NEAR_ACCOUNT_NOT_FOUND', { message: `No custodial key for ${input.accountId}` });
+    if (row.encryptedSecret === 'claimed') {
+      throw new NearException('NEAR_NOT_OWNER', {
+        message: `Account ${input.accountId} is claimed to self-custody; sign intents with your wallet`,
+      });
+    }
     const seed = this.keys().open(row);
     const nonce = input.nonce ?? randomBytes(32).toString('base64');
     return signTokenDiffPayload(ed25519PrivateKeyFromSeed(seed), row.publicKey, { accountId: input.accountId, deltas: input.deltas }, input.deadlineMs, nonce);

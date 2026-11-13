@@ -1,3 +1,12 @@
+import {
+  OAUTH_CALLBACK_STORAGE_KEY,
+  OAUTH_ERROR_STORAGE_KEY,
+  PKCE_STATE_STORAGE_KEY,
+} from '../../design/pilot/mockToken';
+import {
+  PENDING_NEP413_STORAGE_KEY,
+  RECENT_NEP413_POPUP_KEY,
+} from '../../design/pilot/nearAuthApi';
 import { refreshPilotSession } from '../../design/pilot/PilotAccess';
 import { signOutNearWalletSelector } from '../../design/pilot/walletSelectorRuntime';
 import { readActivePilot } from '../../game/features/achievements/activePilot';
@@ -113,11 +122,15 @@ export function signOut(): void {
   try {
     store()?.removeItem(TRADE_TOKEN_KEY);
     store()?.removeItem('ta_active_pilot');
-    store()?.removeItem('ta_oauth_callback');
-    store()?.removeItem('ta_oauth_error');
-    store()?.removeItem('ta_pkce_state');
-    store()?.removeItem('ta_nep413_pending');
-    store()?.removeItem('ta_nep413_popup_result');
+    store()?.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
+    store()?.removeItem(OAUTH_ERROR_STORAGE_KEY);
+    store()?.removeItem(PKCE_STATE_STORAGE_KEY);
+    store()?.removeItem(PENDING_NEP413_STORAGE_KEY);
+    store()?.removeItem(RECENT_NEP413_POPUP_KEY);
+  } catch { /* ignore */ }
+  try {
+    globalThis.sessionStorage?.removeItem(PENDING_NEP413_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(RECENT_NEP413_POPUP_KEY);
   } catch { /* ignore */ }
   void signOutNearWalletSelector().catch(() => undefined);
   void fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);

@@ -43,7 +43,25 @@ export class HudRoot {
 
     for (const def of defs) this.mountPanel(def, ctx);
     this.pruneEmptyBookTabs();
+    this.colony?.book.refresh();
+    if (this.colony && (this.dock !== null || this.colony.book.isDialogOnlyTab(this.colony.book.getActiveTab()))) {
+      this.colony.book.setCollapsed(true);
+    }
+    this.bindMutualCollapse();
     parent.appendChild(this.el);
+  }
+
+  private bindMutualCollapse(): void {
+    this.dock?.book.onChange(() => {
+      if (this.dock && !this.dock.isCollapsed() && this.colony && !this.colony.book.isCollapsed()) {
+        this.colony.book.setCollapsed(true);
+      }
+    });
+    this.colony?.book.onChange(() => {
+      if (this.colony && !this.colony.book.isCollapsed() && this.dock && !this.dock.isCollapsed()) {
+        this.dock.setCollapsed(true);
+      }
+    });
   }
 
   private pruneEmptyBookTabs(): void {
@@ -74,8 +92,32 @@ export class HudRoot {
       const colonyTab = resolveColonyTab(f.id, p.id);
       if (colonyTab) colonyTabs.add(colonyTab);
     }
-    if (dockTabs.size > 0) this.dock = new CommandDock(this.slots.get('top-right')!, ctx, dockTabs);
-    if (colonyTabs.size > 0) this.colony = new ColonyBook(this.slots.get('top-left')!, colonyTabs);
+    const rightSlot = this.slots.get('top-right')!;
+    if (dockTabs.size > 0) {
+      this.dock = new CommandDock(rightSlot, ctx, dockTabs, () => {
+        this.colony?.book.setCollapsed(true);
+      });
+    }
+    if (colonyTabs.size > 0) {
+      this.colony = new ColonyBook(rightSlot, colonyTabs, (tab) => {
+        this.dock?.setCollapsed(true);
+        if (this.colony && (this.colony.book.isCollapsed() || this.colony.book.getActiveTab() !== tab)) {
+          if (this.colony.book.isDialogOnlyTab(tab)) {
+            this.runClosers();
+          } else {
+            ctx.services.openPilotDialog?.(false);
+            ctx.services.openDeedPanel?.(false);
+            ctx.services.openTradeHubPanel?.(false);
+          }
+        }
+      });
+    }
+  }
+
+  private runClosers(): void {
+    for (const close of [...this.closers]) {
+      try { close(); } catch (e) { console.warn('HUD closer failed', e); }
+    }
   }
 
   private bookOf(el: Element): TabBook<string> | null {
@@ -108,9 +150,7 @@ export class HudRoot {
   closeAll(): void {
     this.dock?.setCollapsed(true);
     this.colony?.book.setCollapsed(true);
-    for (const close of [...this.closers]) {
-      try { close(); } catch (e) { console.warn('HUD closer failed', e); }
-    }
+    this.runClosers();
   }
 
   private containerFor({ f, p }: PanelDef, ctx: FeatureContext): HTMLElement {

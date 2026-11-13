@@ -191,6 +191,73 @@ export function buildStakingActionsRow(opts: {
   return { row, unstakeBtn, withdrawBtn, statusMsgEl };
 }
 
+export function buildStakingPanelLayout(handlers: {
+  onClaim: () => void;
+  onStake: () => void;
+  onUnstake: () => void;
+  onWithdraw: () => void;
+}) {
+  const root = document.createElement('section');
+  root.className = 'ta-staking-panel plate-sm';
+  root.dataset.testid = 'staking-panel';
+  root.dataset.settled = 'false';
+
+  const header = buildStakingHeader();
+
+  const copyEl = document.createElement('p');
+  copyEl.className = 'ta-staking-panel__copy';
+  copyEl.dataset.testid = 'staking-real-near-copy';
+  copyEl.textContent = REAL_NEAR_COPY;
+
+  const perksBannerEl = document.createElement('div');
+  perksBannerEl.className = 'ta-staking-panel__perks';
+  perksBannerEl.dataset.testid = 'staking-perks-banner';
+  perksBannerEl.textContent = formatStakerPerksBanner(0);
+
+  const lockedBannerEl = document.createElement('div');
+  lockedBannerEl.className = 'ta-staking-panel__locked';
+  lockedBannerEl.dataset.testid = 'staking-locked-banner';
+  lockedBannerEl.hidden = true;
+  lockedBannerEl.textContent = '';
+
+  const controlsWrapEl = document.createElement('div');
+  controlsWrapEl.className = 'ta-staking-panel__controls';
+  controlsWrapEl.dataset.testid = 'staking-controls';
+  controlsWrapEl.hidden = false;
+
+  const claimRow = buildStakingClaimRow(handlers.onClaim);
+  const formRow = buildStakingFormRow(handlers.onStake);
+  const posGrid = buildStakingPositionGrid();
+  const actionsRow = buildStakingActionsRow({
+    onUnstake: handlers.onUnstake,
+    onWithdraw: handlers.onWithdraw,
+  });
+
+  controlsWrapEl.append(claimRow.row, formRow.formRow, posGrid.grid, actionsRow.row);
+  root.append(header.headerEl, copyEl, perksBannerEl, lockedBannerEl, controlsWrapEl);
+
+  return {
+    root,
+    walletBalanceEl: header.walletBalanceEl,
+    copyEl,
+    perksBannerEl,
+    lockedBannerEl,
+    controlsWrapEl,
+    accountStatusEl: claimRow.accountStatusEl,
+    claimBtnEl: claimRow.claimBtnEl,
+    poolSelectEl: formRow.poolSelect,
+    amountInputEl: formRow.amountInput,
+    stakeBtnEl: formRow.stakeBtn,
+    stakedValEl: posGrid.stakedValEl,
+    rewardsValEl: posGrid.rewardsValEl,
+    unbondingValEl: posGrid.unbondingValEl,
+    withdrawableValEl: posGrid.withdrawableValEl,
+    unstakeBtnEl: actionsRow.unstakeBtn,
+    withdrawBtnEl: actionsRow.withdrawBtn,
+    statusMsgEl: actionsRow.statusMsgEl,
+  };
+}
+
 export function renderStakingPoolOptions(
   poolSelectEl: HTMLSelectElement,
   pools: readonly StakingPoolInfo[],
@@ -208,6 +275,61 @@ export function renderStakingPoolOptions(
   if (prevVal && pools.some((p) => p.poolId === prevVal)) {
     poolSelectEl.value = prevVal;
   }
+}
+
+export function extractStakingApiError(body: unknown, fallback: string): string {
+  if (!body || typeof body !== 'object') return fallback;
+  const rec = body as {
+    message?: unknown;
+    code?: unknown;
+    errorCode?: unknown;
+    error?: { message?: unknown; code?: unknown };
+  };
+  for (const candidate of [
+    rec.error?.message,
+    rec.message,
+    rec.error?.code,
+    rec.errorCode,
+    rec.code,
+  ]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return fallback;
+}
+
+export function extractStakingApiCode(body: unknown): string {
+  if (!body || typeof body !== 'object') return '';
+  const rec = body as {
+    code?: unknown;
+    errorCode?: unknown;
+    error?: { code?: unknown };
+  };
+  for (const candidate of [rec.code, rec.errorCode, rec.error?.code]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return '';
+}
+
+export function detectStakingNetwork(
+  accountCandidates: readonly (string | null | undefined)[],
+  poolIds: readonly string[],
+): 'mock' | 'testnet' | 'mainnet' {
+  for (const raw of accountCandidates) {
+    const id = (raw ?? '').toLowerCase();
+    if (id.endsWith('.testnet')) return 'testnet';
+    if (id.endsWith('.near') || id.endsWith('.tg') || id.endsWith('.sweat') || id === 'aurora') {
+      return 'mainnet';
+    }
+  }
+  const hasMockAcct = accountCandidates.some((raw) => (raw ?? '').toLowerCase().endsWith('.mock'));
+  if (!hasMockAcct) {
+    for (const poolId of poolIds) {
+      const p = poolId.toLowerCase();
+      if (p.endsWith('.testnet')) return 'testnet';
+      if (p.endsWith('.near')) return 'mainnet';
+    }
+  }
+  return 'mock';
 }
 
 export function upsertStakingPositionList(

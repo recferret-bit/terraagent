@@ -123,6 +123,13 @@
   color: var(--ta-fault-text);
 }
 
+.ta-signer-modal__wallets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ta-s2);
+}
+
 .ta-signer-modal__actions {
   display: flex;
   align-items: center;

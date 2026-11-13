@@ -83,7 +83,8 @@
 }
 .ta-director-controls__pause input { accent-color: var(--ta-orange); margin: 0; }
 
-/* Colony book Director tab: the page is the plate (no second frame); an empty plan list says so. */
+/* Colony book Director tab: the page is the plate (no second frame); an empty plan list says so.
+   HQ AI already owns the master AI on/off toggle in the Colony book, so hide the duplicate autopilot button here. */
 .ta-colony-book .ta-director {
   width: 100%;
   max-width: none;
@@ -92,6 +93,9 @@
   background: transparent;
   border: 0;
   clip-path: none;
+}
+.ta-colony-book .ta-director [data-testid='director-autopilot-toggle'] {
+  display: none;
 }
 .ta-colony-book .ta-director__list:empty::before {
   content: 'No director plans yet.';

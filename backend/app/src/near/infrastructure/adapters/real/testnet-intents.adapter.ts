@@ -27,6 +27,7 @@ import { MockIntentsAdapter } from '../mock/intents.adapter.js';
 import {
   buildMainnetSaltNonce,
   depositToMainnetIntents,
+  ensureMainnetIntentsKeyRegistered,
   executeMainnetIntents,
   normalizeMainnetDeltas,
   simulateMainnetIntents,
@@ -64,12 +65,14 @@ export class TestnetIntentsAdapter implements IntentsPort {
   async signTokenDiff(input: SignTokenDiffInput): Promise<SignedIntent> {
     const signer = await this.resolveSignerKey(input.accountId);
     const isMainnet = this.rpc.network === 'mainnet';
-    const nonce = input.nonce ?? (isMainnet ? await buildMainnetSaltNonce(this.rpc) : randomBytes(32).toString('base64'));
+    const nonce = isMainnet
+      ? await buildMainnetSaltNonce(this.rpc, input.nonce)
+      : (input.nonce ?? randomBytes(32).toString('base64'));
     const deltas = isMainnet ? normalizeMainnetDeltas(input.deltas, this.rpc.config) : input.deltas;
     return signTokenDiffPayload(
       ed25519PrivateKeyFromSeed(signer.seed),
       signer.publicKey,
-      { accountId: input.accountId, deltas },
+      { accountId: signer.accountId, deltas },
       input.deadlineMs,
       nonce,
     );
@@ -98,7 +101,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
       return this.txCache.run(`dep:${input.opId}`, async () => {
         const signer = await this.resolveSignerKey(input.accountId);
         return depositToMainnetIntents(this.rpc, {
-          input,
+          input: { ...input, accountId: signer.accountId },
           signerSecretKey: seedToNearSecretKey(signer.seed),
           signerPublicKey: signer.publicKey,
         });
@@ -149,7 +152,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
       return this.txCache.run(`wd:${input.opId}`, async () => {
         const signer = await this.resolveSignerKey(input.accountId);
         return withdrawFromMainnetIntents(this.rpc, {
-          input,
+          input: { ...input, accountId: signer.accountId },
           privateKey: ed25519PrivateKeyFromSeed(signer.seed),
           publicKey: signer.publicKey,
           fallbackSignerSecretKey: seedToNearSecretKey(signer.seed),
@@ -163,7 +166,20 @@ export class TestnetIntentsAdapter implements IntentsPort {
 
   async execute(input: IntentsExecuteInput): Promise<ChainReceipt> {
     if (this.rpc.network === 'mainnet') {
-      return this.txCache.run(`exec:${input.opId}`, () => executeMainnetIntents(this.rpc, input.intents));
+      return this.txCache.run(`exec:${input.opId}`, async () => {
+        for (const it of input.intents) {
+          const signer = await this.resolveSignerKey(it.diff.accountId).catch(() => null);
+          if (signer && signer.publicKey === it.publicKey) {
+            await ensureMainnetIntentsKeyRegistered(
+              this.rpc,
+              signer.accountId,
+              seedToNearSecretKey(signer.seed),
+              signer.publicKey,
+            );
+          }
+        }
+        return executeMainnetIntents(this.rpc, input.intents);
+      });
     }
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents execute requires DB ledger' });
     const r = await this.delegate.execute(input);
@@ -191,7 +207,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
     return { ...mockReceipt, network: this.rpc.network, txHash: mockReceipt.txHash.replace(/^mock:/, '') };
   }
 
-  private async resolveSignerKey(accountId: string): Promise<{ publicKey: string; seed: Buffer }> {
+  private async resolveSignerKey(accountId: string): Promise<{ accountId: string; publicKey: string; seed: Buffer }> {
     if (this.prisma?.nearColonyAccount) {
       const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId } });
       if (row) {
@@ -200,21 +216,32 @@ export class TestnetIntentsAdapter implements IntentsPort {
             message: `Account ${accountId} is claimed to self-custody; sign intents with your wallet`,
           });
         }
-        return { publicKey: row.publicKey, seed: this.keys().open(row) };
+        if (
+          this.rpc.network === 'mainnet' &&
+          row.ownerAccountId &&
+          row.ownerAccountId !== row.accountId &&
+          !(await this.rpc.accountExists(row.accountId).catch(() => true))
+        ) {
+          const ownerRow = await this.prisma.nearColonyAccount.findUnique({ where: { accountId: row.ownerAccountId } });
+          if (ownerRow && ownerRow.encryptedSecret !== 'claimed' && ownerRow.encryptedSecret !== 'mock') {
+            return { accountId: ownerRow.accountId, publicKey: ownerRow.publicKey, seed: this.keys().open(ownerRow) };
+          }
+        }
+        return { accountId: row.accountId, publicKey: row.publicKey, seed: this.keys().open(row) };
       }
     }
-    const configuredSecret = this.envSource.CONTRACT_INTENTS_SIGNER_SECRET_KEY ?? this.rpc.config.secrets.minterSecretKey;
+    const systemSigner = this.resolveSystemEnvSigner(accountId);
+    if (systemSigner) return systemSigner;
+    const configuredSecret = this.envSource.CONTRACT_INTENTS_SIGNER_SECRET_KEY;
     if (configuredSecret?.startsWith('ed25519:')) {
-      const raw = decodeBase58(configuredSecret.slice(8));
-      if (raw.length === 64) {
-        const seed = Buffer.from(raw.subarray(0, 32));
-        const pub = `ed25519:${encodeBase58(raw.subarray(32, 64))}`;
-        this.ephemeralSigners.set(accountId, { publicKey: pub, seed });
-        return { publicKey: pub, seed };
-      }
+      const parsed = this.parseNearEd25519Secret(accountId, configuredSecret);
+      if (parsed) return parsed;
+    }
+    if (this.prisma) {
+      throw new NearException('NEAR_ACCOUNT_NOT_FOUND', { message: `No custodial key for ${accountId}` });
     }
     const cached = this.ephemeralSigners.get(accountId);
-    if (cached) return cached;
+    if (cached) return { accountId, ...cached };
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     const pubDer = createPublicKey(publicKey).export({ format: 'der', type: 'spki' });
     const privDer = privateKey.export({ format: 'der', type: 'pkcs8' });
@@ -223,7 +250,34 @@ export class TestnetIntentsAdapter implements IntentsPort {
       seed: Buffer.from(privDer.subarray(privDer.length - 32)),
     };
     this.ephemeralSigners.set(accountId, entry);
-    return entry;
+    return { accountId, ...entry };
+  }
+
+  private resolveSystemEnvSigner(accountId: string): { accountId: string; publicKey: string; seed: Buffer } | null {
+    const { accounts, contracts, secrets } = this.rpc.config;
+    let secret: string | undefined;
+    if (accountId === accounts.protocol) secret = secrets.protocolSecretKey;
+    else if (accountId === contracts.dao) secret = secrets.daoSecretKey;
+    else if (accountId === accounts.minter) secret = secrets.minterSecretKey;
+    else if (accountId === accounts.relayer) secret = secrets.relayerSecretKey;
+    return secret ? this.parseNearEd25519Secret(accountId, secret) : null;
+  }
+
+  private parseNearEd25519Secret(
+    accountId: string,
+    secret: string,
+  ): { accountId: string; publicKey: string; seed: Buffer } | null {
+    if (!secret.startsWith('ed25519:')) return null;
+    try {
+      const raw = decodeBase58(secret.slice(8));
+      if (raw.length !== 64) return null;
+      const seed = Buffer.from(raw.subarray(0, 32));
+      const publicKey = `ed25519:${encodeBase58(raw.subarray(32, 64))}`;
+      this.ephemeralSigners.set(accountId, { publicKey, seed });
+      return { accountId, publicKey, seed };
+    } catch {
+      return null;
+    }
   }
 
   private async findRegisteredPublicKey(accountId: string): Promise<string | undefined> {
@@ -231,7 +285,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
       const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId } });
       if (row) return row.publicKey;
     }
-    return this.ephemeralSigners.get(accountId)?.publicKey;
+    return this.ephemeralSigners.get(accountId)?.publicKey ?? this.resolveSystemEnvSigner(accountId)?.publicKey;
   }
 
   private keys(): KeyStore {

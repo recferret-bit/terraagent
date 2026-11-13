@@ -3,15 +3,32 @@ import { execFileSync } from 'node:child_process';
 import type { NearAuthChallengeResponse } from '@terra/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setFastAuthPopupDriverForTests } from '../../../design/pilot/fastAuthSpa';
-import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
+import {
+  buildNearWalletSignMessageUrl,
+  consumeNearWalletCallback,
+  NEAR_MAINNET_WALLET_URL,
+  NEAR_TESTNET_WALLET_URL,
+  OAUTH_CALLBACK_STORAGE_KEY,
+} from '../../../design/pilot/mockToken';
 import {
   consumeRecentNep413PopupResult,
+  PENDING_NEP413_STORAGE_KEY,
+  RECENT_NEP413_POPUP_KEY,
   savePendingNep413Redirect,
 } from '../../../design/pilot/nearAuthApi';
-import { buildCliSignCommand, tryParseCliJsonPaste } from '../../../design/pilot/nearCliPanel';
+import {
+  buildCliSignCommand,
+  isValidCliAccountForNetwork,
+  tryParseCliJsonPaste,
+} from '../../../design/pilot/nearCliPanel';
 import { openNearWalletSelectorModal } from '../../../design/pilot/nearWalletModal';
 import { PilotAccess } from '../../../design/pilot/PilotAccess';
-import { setWalletSelectorDriverForTests } from '../../../design/pilot/walletSelectorRuntime';
+import { PKCE_STATE_STORAGE_KEY } from '../../../design/pilot/pkceState';
+import {
+  assertNetworkAccountId,
+  setWalletSelectorDriverForTests,
+} from '../../../design/pilot/walletSelectorRuntime';
+import { signOut as tradeSignOut } from '../../../trade/api/identity';
 
 afterEach(() => {
   setWalletSelectorDriverForTests(null);
@@ -37,23 +54,49 @@ const SAMPLE_CHALLENGE: NearAuthChallengeResponse = {
   expiresAt: Date.now() + 300_000,
 };
 
-describe('NEAR Wallet modal top-layer suspension for external QR / iframe wallets', () => {
-  it('suspends <dialog> modal top-layer while NEAR Mobile QR widget is active and restores dialog on cancel/error', async () => {
+interface ObservedDialogStep {
+  hasOpenAttr: boolean;
+  display: string;
+  isSigning: boolean;
+  closedBy: string | null;
+  stepText: string;
+  externalHref: string | null;
+}
+
+function captureDialogStep(dialog: HTMLDialogElement): ObservedDialogStep {
+  return {
+    hasOpenAttr: dialog.hasAttribute('open'),
+    display: dialog.style.display,
+    isSigning: dialog.classList.contains('is-signing'),
+    closedBy: dialog.getAttribute('closedby'),
+    stepText: dialog.querySelector('[data-testid="near-wallet-step"]')?.textContent ?? '',
+    externalHref: dialog.querySelector<HTMLAnchorElement>('[data-testid="near-wallet-external-link"]')?.href ?? null,
+  };
+}
+
+describe('NEAR Wallet modal top-layer suspension for external QR / iframe & extension wallets', () => {
+  it('exits #top-layer without hiding dialog (.is-signing), displays live 2/3 & 3/3 steps, and restores modal on cancel/error', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response(JSON.stringify(SAMPLE_CHALLENGE), { status: 200 })),
+      vi.fn().mockImplementation(async () => new Response(JSON.stringify(SAMPLE_CHALLENGE), { status: 200 })),
     );
 
-    let dialogStateDuringQr: { open: boolean; display: string } | null = null;
+    const observedSteps: ObservedDialogStep[] = [];
+
     setWalletSelectorDriverForTests({
-      async signChallenge(moduleId) {
-        expect(moduleId).toBe('near-mobile-wallet');
+      async signChallenge(moduleId, _challenge, _callbackUrl, progress) {
         const activeDialog = document.querySelector<HTMLDialogElement>('dialog[data-testid="near-wallet-modal"]')!;
-        dialogStateDuringQr = {
-          open: activeDialog.open,
-          display: activeDialog.style.display,
-        };
-        throw new Error('User rejected QR pairing in NEAR Mobile.');
+        if (moduleId === 'near-mobile-wallet') {
+          progress?.onStep?.('2/3 · Scan the QR code (or tap Open App) in NEAR Mobile (Testnet) and approve the signature…');
+          observedSteps.push(captureDialogStep(activeDialog));
+          throw new Error('User rejected QR pairing in NEAR Mobile.');
+        }
+
+        progress?.onStep?.('2/3 · Connect your Testnet account in Meteor Wallet…');
+        observedSteps.push(captureDialogStep(activeDialog));
+        progress?.onStep?.('3/3 · Confirm the NEP-413 sign-in message in Meteor Wallet…');
+        observedSteps.push(captureDialogStep(activeDialog));
+        throw new Error('Meteor signature declined.');
       },
       async signOutActiveWallet() {},
     });
@@ -62,17 +105,48 @@ describe('NEAR Wallet modal top-layer suspension for external QR / iframe wallet
       onDirectToken: vi.fn(),
     });
     expect(dialog.open).toBe(true);
+    expect(dialog.classList.contains('is-signing')).toBe(false);
 
+    // 1) NEAR Mobile: stays open non-modally (.is-signing), shows 2/3 QR step + Need NEAR Mobile App? link
     document.querySelector<HTMLButtonElement>('[data-testid="near-wallet-mobile"]')!.click();
     await vi.waitFor(() => {
       expect(document.querySelector('[data-testid="near-wallet-error"]')?.textContent).toContain(
         'User rejected QR pairing in NEAR Mobile.',
       );
     });
-
-    expect(dialogStateDuringQr).toEqual({ open: false, display: 'none' });
+    expect(observedSteps[0]).toMatchObject({
+      hasOpenAttr: true,
+      isSigning: true,
+      closedBy: 'none',
+    });
+    expect(observedSteps[0]!.display).not.toBe('none');
+    expect(observedSteps[0]!.stepText).toContain('2/3 · Scan the QR code');
+    expect(observedSteps[0]!.externalHref).toContain('nearmobile.app');
     expect(dialog.open).toBe(true);
-    expect(dialog.style.display).toBe('');
+    expect(dialog.classList.contains('is-signing')).toBe(false);
+    expect(dialog.getAttribute('closedby')).toBe('any');
+
+    // 2) Meteor Wallet: stays open non-modally (.is-signing) while showing both 2/3 and 3/3 step texts
+    document.querySelector<HTMLButtonElement>('[data-testid="near-wallet-meteor"]')!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[data-testid="near-wallet-error"]')?.textContent).toContain(
+        'Meteor signature declined.',
+      );
+    });
+    expect(observedSteps[1]).toMatchObject({
+      hasOpenAttr: true,
+      isSigning: true,
+      stepText: '2/3 · Connect your Testnet account in Meteor Wallet…',
+    });
+    expect(observedSteps[1]!.display).not.toBe('none');
+    expect(observedSteps[2]).toMatchObject({
+      hasOpenAttr: true,
+      isSigning: true,
+      stepText: '3/3 · Confirm the NEP-413 sign-in message in Meteor Wallet…',
+    });
+    expect(observedSteps[2]!.display).not.toBe('none');
+    expect(dialog.open).toBe(true);
+    expect(dialog.classList.contains('is-signing')).toBe(false);
   });
 });
 
@@ -154,7 +228,9 @@ describe('PilotAccess NestJS error envelope surfacing, Email popup cancel handli
     });
     access.dispose();
   });
+});
 
+describe('MyNearWallet cross-popup storage & sign-out cleanup', () => {
   it('persists MyNearWallet pending NEP-413 redirect in localStorage across popup boundaries', () => {
     savePendingNep413Redirect({
       challengeId: SAMPLE_CHALLENGE.challengeId,
@@ -176,5 +252,141 @@ describe('PilotAccess NestJS error envelope surfacing, Email popup cancel handli
     expect(res?.provider).toBe('near-wallet');
     expect(res?.token.startsWith('nep413:')).toBe(true);
     expect(consumeRecentNep413PopupResult(SAMPLE_CHALLENGE.challengeId)).toBeNull();
+  });
+});
+
+describe('MyNearWallet COOP popup recovery, signer-* isolation & sign-out cleanup', () => {
+  it('recovers MyNearWallet popup result when COOP severs window.opener and isolates signer-* redirects from login callbacks', () => {
+    const prevName = window.name;
+    const prevHash = location.hash;
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+    try {
+      window.name = 'MyNearWallet';
+      const sig64 = btoa('y'.repeat(64));
+
+      // 1) Login challenge inside a COOP-severed MyNearWallet popup (window.opener === null)
+      savePendingNep413Redirect({
+        challengeId: SAMPLE_CHALLENGE.challengeId,
+        callbackUrl: 'http://localhost:3000/',
+        walletId: 'my-near-wallet',
+        expiresAt: Date.now() + 60_000,
+      });
+      history.replaceState(
+        null,
+        '',
+        `/#accountId=mnw.testnet&publicKey=ed25519:ET2EG9EuUQweAKUfc2rkaiop27fsNscVPEv916rXYX4Q&signature=${encodeURIComponent(sig64)}&state=${SAMPLE_CHALLENGE.challengeId}`,
+      );
+      expect(consumeNearWalletCallback()).toBeNull();
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(consumeRecentNep413PopupResult(SAMPLE_CHALLENGE.challengeId)?.accountId).toBe('mnw.testnet');
+      localStorage.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
+
+      // 2) Real signer modal state (`signer-*`) inside a MyNearWallet popup: saves popup result, closes popup, never emits login token
+      savePendingNep413Redirect({
+        challengeId: 'signer-abcd1234efgh5678',
+        callbackUrl: 'http://localhost:3000/play.html',
+        walletId: 'my-near-wallet',
+      });
+      history.replaceState(
+        null,
+        '',
+        `/#accountId=mnw.testnet&publicKey=ed25519:ET2EG9EuUQweAKUfc2rkaiop27fsNscVPEv916rXYX4Q&signature=${encodeURIComponent(sig64)}&state=signer-abcd1234efgh5678`,
+      );
+      expect(consumeNearWalletCallback()).toBeNull();
+      expect(closeSpy).toHaveBeenCalledTimes(2);
+      expect(localStorage.getItem(OAUTH_CALLBACK_STORAGE_KEY)).toBeNull();
+      expect(consumeRecentNep413PopupResult('signer-abcd1234efgh5678')).toMatchObject({
+        accountId: 'mnw.testnet',
+        callbackUrl: 'http://localhost:3000/play.html',
+      });
+    } finally {
+      window.name = prevName;
+      history.replaceState(null, '', prevHash || '/');
+    }
+  });
+
+  it('clears ta_fastauth_pkce and sessionStorage NEP-413 keys on PilotAccess.signOut and trade signOut', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
+    const seedKeys = () => {
+      localStorage.setItem(PKCE_STATE_STORAGE_KEY, '[{"stateId":"s1"}]');
+      localStorage.setItem(PENDING_NEP413_STORAGE_KEY, '{"challengeId":"c1"}');
+      localStorage.setItem(RECENT_NEP413_POPUP_KEY, '{"payload":{}}');
+      sessionStorage.setItem(PENDING_NEP413_STORAGE_KEY, '{"challengeId":"c1"}');
+      sessionStorage.setItem(RECENT_NEP413_POPUP_KEY, '{"payload":{}}');
+    };
+
+    seedKeys();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const access = new PilotAccess(host, { skipRestore: true });
+    await access.signOut();
+    expect(localStorage.getItem(PKCE_STATE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(PENDING_NEP413_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(RECENT_NEP413_POPUP_KEY)).toBeNull();
+    expect(sessionStorage.getItem(PENDING_NEP413_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(RECENT_NEP413_POPUP_KEY)).toBeNull();
+    access.dispose();
+
+    seedKeys();
+    tradeSignOut();
+    expect(localStorage.getItem(PKCE_STATE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(PENDING_NEP413_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(RECENT_NEP413_POPUP_KEY)).toBeNull();
+    expect(sessionStorage.getItem(PENDING_NEP413_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(RECENT_NEP413_POPUP_KEY)).toBeNull();
+  });
+});
+
+describe('Mainnet vs Testnet wallet account validation, CLI command & sign-message URL parity', () => {
+  it('enforces network-specific account IDs across assertNetworkAccountId and isValidCliAccountForNetwork', () => {
+    expect(assertNetworkAccountId('Alice.Testnet', 'testnet')).toBe('alice.testnet');
+    expect(assertNetworkAccountId('alex.pilots.terraagent.testnet', 'testnet')).toBe(
+      'alex.pilots.terraagent.testnet',
+    );
+    expect(() => assertNetworkAccountId('alice.near', 'testnet')).toThrow(/Mainnet/);
+
+    expect(assertNetworkAccountId('Alice.Near', 'mainnet')).toBe('alice.near');
+    expect(assertNetworkAccountId('pilot.tg', 'mainnet')).toBe('pilot.tg');
+    expect(assertNetworkAccountId('aurora', 'mainnet')).toBe('aurora');
+    expect(assertNetworkAccountId('a'.repeat(64), 'mainnet')).toBe('a'.repeat(64));
+    expect(() => assertNetworkAccountId('alice.testnet', 'mainnet')).toThrow(/Testnet/);
+
+    expect(isValidCliAccountForNetwork('alice.testnet', 'testnet')).toBe(true);
+    expect(isValidCliAccountForNetwork('alice.near', 'testnet')).toBe(false);
+    expect(isValidCliAccountForNetwork('alice.near', 'mainnet')).toBe(true);
+    expect(isValidCliAccountForNetwork('pilot.tg', 'mainnet')).toBe(true);
+    expect(isValidCliAccountForNetwork('alice.testnet', 'mainnet')).toBe(false);
+  });
+
+  it('switches buildCliSignCommand and buildNearWalletSignMessageUrl cleanly between testnet and mainnet', () => {
+    const mainnetChallenge: NearAuthChallengeResponse = {
+      ...SAMPLE_CHALLENGE,
+      recipient: 'terraagent.near',
+      network: 'mainnet',
+    };
+    const mainnetCmd = buildCliSignCommand(mainnetChallenge, 'alice.near');
+    expect(mainnetCmd).toContain('network-config mainnet');
+    expect(mainnetCmd).toContain('recipient "terraagent.near"');
+    expect(mainnetCmd).toContain('sign-as alice.near');
+
+    const testnetUrl = buildNearWalletSignMessageUrl({
+      message: 'Sign in',
+      recipient: 'terraagent.testnet',
+      nonce: SAMPLE_CHALLENGE.nonce,
+      callbackUrl: 'https://play.terraagent.fun/landing.html',
+      state: 'c-test',
+      network: 'testnet',
+    });
+    expect(testnetUrl.startsWith(`${NEAR_TESTNET_WALLET_URL}/sign-message?`)).toBe(true);
+
+    const mainnetUrl = buildNearWalletSignMessageUrl({
+      message: 'Sign in',
+      recipient: 'terraagent.near',
+      nonce: SAMPLE_CHALLENGE.nonce,
+      callbackUrl: 'https://play.terraagent.fun/landing.html',
+      state: 'c-main',
+      network: 'mainnet',
+    });
+    expect(mainnetUrl.startsWith(`${NEAR_MAINNET_WALLET_URL}/sign-message?`)).toBe(true);
   });
 });

@@ -1,8 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setFastAuthPopupDriverForTests } from '../../../design/pilot/fastAuthSpa';
+import {
+  PENDING_NEP413_STORAGE_KEY,
+  RECENT_NEP413_POPUP_KEY,
+} from '../../../design/pilot/nearAuthApi';
+import { PKCE_STATE_STORAGE_KEY } from '../../../design/pilot/pkceState';
 import type { FetchLike, StorageLike } from './bootOnline';
 import { GuestBootTarget } from './guestBoot';
 import { activeHome } from './homeFixture';
 import { PilotBridge } from './pilotBridge';
+
+afterEach(() => {
+  setFastAuthPopupDriverForTests(null);
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const PLAYER = 'pr_01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const PILOT = 'test-pilot.terraagent.mock';
@@ -84,5 +96,61 @@ describe('PilotBridge loginSocial (W06-15)', () => {
     expect(target.accessToken).toBe('jwt-guest');
     expect(bridge.view().isGuest).toBe(true);
     expect(bridge.view().accountId).toBeNull();
+  });
+
+  it('forwards mode: signup to authenticateFastAuthEmailPopup and clears ta_fastauth_pkce + sessionStorage NEP-413 keys on logout', async () => {
+    const { target, boot } = await booted();
+    const popupCalls: Array<{ email?: string; mode?: string }> = [];
+    setFastAuthPopupDriverForTests(async (opts) => {
+      popupCalls.push({ email: opts.email, mode: opts.mode });
+      return { idToken: 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlbWFpbHw1NSJ9.sig', email: opts.email ?? null };
+    });
+
+    const localMap = new Map<string, string>([
+      [PKCE_STATE_STORAGE_KEY, '[{"stateId":"pkce-1"}]'],
+      [PENDING_NEP413_STORAGE_KEY, '{"challengeId":"ch-1"}'],
+      [RECENT_NEP413_POPUP_KEY, '{"payload":{}}'],
+    ]);
+    const sessionMap = new Map<string, string>([
+      [PENDING_NEP413_STORAGE_KEY, '{"challengeId":"ch-1"}'],
+      [RECENT_NEP413_POPUP_KEY, '{"payload":{}}'],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => localMap.get(k) ?? null,
+      setItem: (k: string, v: string) => void localMap.set(k, v),
+      removeItem: (k: string) => void localMap.delete(k),
+    });
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => sessionMap.get(k) ?? null,
+      setItem: (k: string, v: string) => void sessionMap.set(k, v),
+      removeItem: (k: string) => void sessionMap.delete(k),
+    });
+
+    const seenBodies: unknown[] = [];
+    const bridge = new PilotBridge({
+      fetch: async (url, init) => {
+        if (url === '/v1/auth/social') {
+          seenBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return json(200, socialBody);
+        }
+        return json(200, {});
+      },
+      target: () => target,
+    });
+    bridge.note(boot);
+
+    await bridge.loginSocial('email', 'signup@terraagent.fun', { mode: 'signup' });
+    expect(popupCalls).toEqual([{ email: 'signup@terraagent.fun', mode: 'signup' }]);
+    expect(seenBodies).toEqual([
+      { provider: 'email', token: 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlbWFpbHw1NSJ9.sig' },
+    ]);
+
+    await bridge.logout();
+    expect(localMap.has(PKCE_STATE_STORAGE_KEY)).toBe(false);
+    expect(localMap.has(PENDING_NEP413_STORAGE_KEY)).toBe(false);
+    expect(localMap.has(RECENT_NEP413_POPUP_KEY)).toBe(false);
+    expect(sessionMap.has(PENDING_NEP413_STORAGE_KEY)).toBe(false);
+    expect(sessionMap.has(RECENT_NEP413_POPUP_KEY)).toBe(false);
+    expect(bridge.view().isGuest).toBe(true);
   });
 });

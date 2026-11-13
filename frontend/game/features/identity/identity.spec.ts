@@ -168,4 +168,69 @@ describe('identity pilot chip in NEAR testnet mode (W23-09)', () => {
     await vi.waitFor(() => expect(pilot.calls).toEqual([['email', 'judge@terraagent.fun']]));
     panel.dispose();
   });
+
+  it('forwards mode: signup for Email Sign-Up and silently clears fault when Auth0 popup is cancelled', async () => {
+    const rawArgs: unknown[][] = [];
+    let shouldRejectWith: Error | null = null;
+    let state = { isGuest: true, handle: 'Colonist', accountId: null as string | null, accessToken: 'jwt-guest' };
+    const listeners = new Set<() => void>();
+    const pilot = {
+      view: () => state,
+      subscribe(fn: () => void) {
+        listeners.add(fn);
+        return () => {
+          listeners.delete(fn);
+        };
+      },
+      async loginSocial(...args: unknown[]) {
+        rawArgs.push(args);
+        if (shouldRejectWith) throw shouldRejectWith;
+        state = { isGuest: false, handle: 'New Pilot', accountId: 'newpilot.terraagent.testnet', accessToken: 'jwt-linked' };
+        for (const fn of listeners) fn();
+      },
+    };
+
+    document.body.replaceChildren();
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const ctx = {
+      flags: new Set(['W06']),
+      host: 'server',
+      services: { pilot, identityMode: 'testnet' },
+    } as unknown as FeatureContext;
+    const panel = identity.hud![0]!.mount(el, ctx);
+
+    (el.querySelector('[data-testid="save-progress"]') as HTMLButtonElement).click();
+    (el.querySelector('[data-testid="chip-mode-signup"]') as HTMLButtonElement).click();
+    expect(el.querySelector('[data-testid="continue-email"]')?.textContent).toBe('Mint Testnet Pilot (Email)');
+
+    // Seed an initial validation fault, then cancel the Auth0 popup -> fault must be cleared to ''
+    (el.querySelector('[data-testid="pilot-email-input"]') as HTMLInputElement).value = 'bad';
+    (el.querySelector('[data-testid="continue-email"]') as HTMLButtonElement).click();
+    expect(el.querySelector('.ta-pilot__fault')?.textContent).toBe('Enter a valid email address.');
+
+    const cancelErr = new Error('Popup closed');
+    cancelErr.name = 'PopupCancelledError';
+    shouldRejectWith = cancelErr;
+    (el.querySelector('[data-testid="pilot-email-input"]') as HTMLInputElement).value = 'NewPilot@TerraAgent.fun';
+    (el.querySelector('[data-testid="continue-email"]') as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      expect(rawArgs).toEqual([['email', 'newpilot@terraagent.fun', { mode: 'signup' }]]);
+    });
+    await vi.waitFor(() => {
+      expect(el.querySelector('.ta-pilot__fault')).toBeNull();
+    });
+
+    // Now succeed in Sign-Up mode
+    shouldRejectWith = null;
+    (el.querySelector('[data-testid="pilot-email-input"]') as HTMLInputElement).value = 'NewPilot@TerraAgent.fun';
+    (el.querySelector('[data-testid="continue-email"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      expect(el.querySelector('[data-testid="pilot-id"]')?.textContent).toBe('Pilot ID newpilot.terraagent.testnet');
+    });
+    expect(rawArgs).toHaveLength(2);
+    expect(rawArgs[1]).toEqual(['email', 'newpilot@terraagent.fun', { mode: 'signup' }]);
+    panel.dispose();
+  });
 });

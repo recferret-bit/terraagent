@@ -1,0 +1,467 @@
+/* TerraAgent Whitepaper — Live 3D Cards, Feature Matrices, Tables & Callouts */
+
+.wp-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: var(--ta-s4);
+  margin-bottom: var(--ta-s5);
+}
+
+.wp-feature-card {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s4) var(--ta-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  transition: border-color var(--ta-dur-quick) var(--ta-ease-servo),
+    transform var(--ta-dur-quick) var(--ta-ease-servo);
+}
+
+.wp-feature-card:hover {
+  border-color: var(--ta-orange);
+  transform: translateY(-2px);
+}
+
+.wp-feature-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.wp-feature-title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-body-l);
+  color: var(--ta-text);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.wp-feature-body {
+  margin: 0;
+  color: var(--ta-text-2);
+  font-size: var(--ta-fs-small);
+}
+
+.wp-feature-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s2);
+  margin-top: auto;
+  padding-top: var(--ta-s2);
+}
+
+.wp-chip {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: 0.08em;
+  color: var(--ta-text-2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+  padding: 2px var(--ta-s2);
+}
+
+/* Callout & Canonical Prose Blocks */
+.wp-callout {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  border-left: 4px solid var(--ta-orange);
+  padding: var(--ta-s4) var(--ta-s5);
+  margin: var(--ta-s4) 0;
+  color: var(--ta-text-2);
+}
+
+.wp-callout strong {
+  color: var(--ta-text);
+}
+
+/* Tables */
+.wp-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-3);
+  margin: var(--ta-s4) 0;
+}
+
+.wp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ta-fs-small);
+}
+
+.wp-table th,
+.wp-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--ta-s3) var(--ta-s4);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.wp-table th {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-orange-hi);
+  background: var(--ta-deep);
+  white-space: nowrap;
+}
+
+.wp-table td {
+  color: var(--ta-text-2);
+}
+
+.wp-table tbody tr:hover td {
+  background: var(--ta-plate-3);
+}
+
+.wp-table td:first-child {
+  color: var(--ta-text);
+  font-weight: 600;
+}
+
+/* Filter Strip above Entity & Effect Card Grids */
+.wp-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ta-s2);
+  margin: var(--ta-s4) 0;
+}
+
+.wp-filter-btn {
+  border: 1px solid var(--ta-seam-3);
+  background: var(--ta-plate-2);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  padding: var(--ta-s2) var(--ta-s3);
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  transition: border-color var(--ta-dur-quick) var(--ta-ease-servo),
+    background-color var(--ta-dur-quick) var(--ta-ease-servo),
+    color var(--ta-dur-quick) var(--ta-ease-servo);
+}
+
+.wp-filter-btn:hover {
+  color: var(--ta-text);
+  border-color: var(--ta-orange);
+}
+
+.wp-filter-btn.is-active {
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+  color: var(--ta-void);
+  font-weight: 700;
+}
+
+/* 3D Rendering Cards */
+.wp-card3d-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: var(--ta-s4);
+  margin: var(--ta-s4) 0 var(--ta-s5);
+}
+
+.wp-card3d {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color var(--ta-dur-quick) var(--ta-ease-servo),
+    transform var(--ta-dur-quick) var(--ta-ease-servo);
+}
+
+.wp-card3d:hover,
+.wp-card3d.is-animating {
+  border-color: var(--ta-orange);
+  transform: translateY(-2px);
+}
+
+.wp-card3d[hidden] {
+  display: none;
+}
+
+.wp-card3d-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: radial-gradient(circle at 50% 40%, var(--ta-plate-3), var(--ta-void));
+  border-bottom: 1px solid var(--ta-seam-2);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.wp-card3d-canvas {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wp-card3d-corner {
+  position: absolute;
+  top: var(--ta-s2);
+  left: var(--ta-s2);
+  max-width: calc(100% - 16px);
+  z-index: 3;
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px var(--ta-s2);
+  background: rgba(7, 8, 10, 0.86);
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-energy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.wp-card3d-live {
+  position: absolute;
+  bottom: var(--ta-s2);
+  right: var(--ta-s2);
+  z-index: 3;
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 2px var(--ta-s2);
+  background: rgba(7, 8, 10, 0.86);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text-3);
+  pointer-events: none;
+}
+
+.wp-card3d.is-animating .wp-card3d-live {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+
+.wp-card3d-body {
+  padding: var(--ta-s3) var(--ta-s4) var(--ta-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  flex: 1;
+}
+
+.wp-card3d-title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-body-l);
+  font-weight: 700;
+  color: var(--ta-text);
+}
+
+.wp-card3d-id {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+}
+
+.wp-card3d-desc {
+  margin: 0;
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text-2);
+}
+
+.wp-card3d-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s1);
+  margin-top: auto;
+  padding-top: var(--ta-s2);
+}
+
+.wp-mode-btn {
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-void);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px var(--ta-s2);
+  cursor: pointer;
+}
+
+.wp-mode-btn:hover {
+  border-color: var(--ta-energy);
+  color: var(--ta-text);
+}
+
+.wp-mode-btn.is-active {
+  background: var(--ta-blue);
+  border-color: var(--ta-blue-hi);
+  color: var(--ta-text);
+}
+
+/* Canonical Markdown Appendix styling */
+.wp-canonical {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-3);
+  padding: var(--ta-s6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s4);
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.wp-canonical h1,
+.wp-canonical h2,
+.wp-canonical h3 {
+  font-family: var(--ta-font-display);
+  text-transform: uppercase;
+  margin: var(--ta-s3) 0 0;
+  color: var(--ta-text);
+}
+
+.wp-canonical p,
+.wp-canonical li {
+  color: var(--ta-text-2);
+}
+
+.wp-canonical blockquote {
+  margin: 0;
+  padding: var(--ta-s4);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+  border-left: 4px solid var(--ta-orange);
+  color: var(--ta-text-2);
+}
+
+.wp-canonical table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.wp-canonical th,
+.wp-canonical td {
+  text-align: left;
+  padding: var(--ta-s2) var(--ta-s3);
+  border-bottom: 1px solid var(--ta-seam);
+  color: var(--ta-text-2);
+}
+
+.wp-canonical th {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  background: var(--ta-deep);
+  color: var(--ta-orange-hi);
+}
+
+.wp-subsection-h3 {
+  margin: var(--ta-s6) 0 var(--ta-s3);
+  padding-top: var(--ta-s4);
+  border-top: 1px dashed var(--ta-seam-2);
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-h3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ta-text);
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s3);
+}
+
+.wp-subsection-h3::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  flex: none;
+  background: var(--ta-blue-hi);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+code {
+  font-family: var(--ta-font-mono);
+  font-size: 0.88em;
+  color: var(--ta-energy);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  padding: 1px 6px;
+}
+
+.wp-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity var(--ta-dur-plate) var(--ta-ease-hydraulic),
+    transform var(--ta-dur-plate) var(--ta-ease-servo);
+}
+
+.wp-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .wp-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+.wp-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--ta-s3);
+}
+
+.wp-kpi {
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s3) var(--ta-s4);
+}
+
+.wp-kpi-val {
+  display: block;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-h3);
+  font-weight: 700;
+  color: var(--ta-orange);
+}
+
+.wp-kpi-lbl {
+  display: block;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-steel);
+  text-transform: uppercase;
+  margin-top: var(--ta-s1);
+}
+
+@media print {
+  .wp-top,
+  .wp-rail,
+  .wp-rail-backdrop,
+  .wp-rail-show-float,
+  .wp-progress {
+    display: none !important;
+  }
+  .wp-shell {
+    display: block;
+  }
+  .wp-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

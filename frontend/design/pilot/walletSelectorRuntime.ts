@@ -33,7 +33,7 @@ export interface WalletSelectorDriver {
   signOutActiveWallet(): Promise<void>;
 }
 
-let selectorPromise: Promise<WalletSelector> | null = null;
+const selectorPromises = new Map<'testnet' | 'mainnet', Promise<WalletSelector>>();
 let testDriverOverride: WalletSelectorDriver | null = null;
 
 /** Test seam allowing jsdom unit specs to exercise every wallet-selector flow deterministically. */
@@ -52,9 +52,10 @@ function base64ToBytes(base64Str: string): Uint8Array {
   return out;
 }
 
-export async function getTestnetWalletSelector(): Promise<WalletSelector> {
-  if (selectorPromise) return selectorPromise;
-  selectorPromise = (async () => {
+export async function getNearWalletSelector(network: 'testnet' | 'mainnet' = 'testnet'): Promise<WalletSelector> {
+  const cached = selectorPromises.get(network);
+  if (cached) return cached;
+  const promise = (async () => {
     const { ensureBrowserPolyfills } = await import('./browserPolyfills');
     ensureBrowserPolyfills();
     const [
@@ -73,14 +74,25 @@ export async function getTestnetWalletSelector(): Promise<WalletSelector> {
       import('@near-wallet-selector/my-near-wallet'),
     ]);
     const origin = typeof location !== 'undefined' ? location.origin : 'https://terraagent.fun';
+    const netCfg =
+      network === 'mainnet'
+        ? {
+            networkId: 'mainnet',
+            nodeUrl: 'https://free.rpc.fastnear.com',
+            helperUrl: 'https://helper.mainnet.near.org',
+            explorerUrl: 'https://nearblocks.io',
+            indexerUrl: 'https://api.kitwallet.app',
+          }
+        : {
+            networkId: 'testnet',
+            nodeUrl: 'https://test.rpc.fastnear.com',
+            helperUrl: 'https://helper.testnet.near.org',
+            explorerUrl: 'https://testnet.nearblocks.io',
+            indexerUrl: 'https://testnet-api.kitwallet.app',
+          };
+    const mnwUrl = network === 'mainnet' ? 'https://app.mynearwallet.com' : 'https://testnet.mynearwallet.com';
     return setupWalletSelector({
-      network: {
-        networkId: 'testnet',
-        nodeUrl: 'https://test.rpc.fastnear.com',
-        helperUrl: 'https://helper.testnet.near.org',
-        explorerUrl: 'https://testnet.nearblocks.io',
-        indexerUrl: 'https://testnet-api.kitwallet.app',
-      },
+      network: netCfg,
       modules: [
         setupMeteorWallet(),
         setupOKXWallet(),
@@ -92,25 +104,42 @@ export async function getTestnetWalletSelector(): Promise<WalletSelector> {
           },
         }),
         setupIntearWallet(),
-        setupMyNearWallet({ walletUrl: 'https://testnet.mynearwallet.com' }),
+        setupMyNearWallet({ walletUrl: mnwUrl }),
       ],
     });
   })().catch((err) => {
-    selectorPromise = null;
+    selectorPromises.delete(network);
     throw err;
   });
-  return selectorPromise;
+  selectorPromises.set(network, promise);
+  return promise;
 }
 
-function assertTestnetAccountId(accountId: string): string {
+export async function getTestnetWalletSelector(): Promise<WalletSelector> {
+  return getNearWalletSelector('testnet');
+}
+
+const MAINNET_NAMED_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)+(near|tg|sweat)$/;
+
+export function assertNetworkAccountId(accountId: string, network: 'testnet' | 'mainnet' = 'testnet'): string {
   const clean = accountId.trim().toLowerCase();
   if (!clean) {
     throw new Error('Wallet did not return a NEAR account ID.');
   }
+  const isImplicit = /^[0-9a-f]{64}$/.test(clean);
+  if (network === 'mainnet') {
+    if (clean.endsWith('.testnet') || clean.endsWith('.mock')) {
+      throw new Error('Testnet (.testnet) account detected. Switch your wallet network to NEAR Mainnet (.near) and try again.');
+    }
+    if (!isImplicit && clean !== 'aurora' && !MAINNET_NAMED_RE.test(clean)) {
+      throw new Error(`Account "${clean}" is not a valid NEAR Mainnet account.`);
+    }
+    return clean;
+  }
   if (clean.endsWith('.near')) {
     throw new Error('Mainnet (.near) account detected. Switch your wallet network to NEAR Testnet (.testnet) and try again.');
   }
-  if (!clean.endsWith('.testnet') && !/^[0-9a-f]{64}$/.test(clean)) {
+  if (!clean.endsWith('.testnet') && !isImplicit) {
     throw new Error(`Account "${clean}" is not a NEAR Testnet account (.testnet).`);
   }
   return clean;
@@ -119,6 +148,7 @@ function assertTestnetAccountId(accountId: string): string {
 async function ensureWalletConnected(
   wallet: Wallet,
   moduleId: WalletSelectorModuleId,
+  network: 'testnet' | 'mainnet',
   progress?: WalletSignProgress,
 ): Promise<void> {
   // NEAR Mobile & MyNearWallet perform off-chain NEP-413 pairing/popup directly inside `signMessage` without gas-paid AddKey!
@@ -138,7 +168,8 @@ async function ensureWalletConnected(
   if (wallet.type === 'hardware') {
     throw new Error(`${wallet.metadata.name} hardware wallet requires account derivation.`);
   }
-  progress?.onStep?.(`2/3 · Connect your Testnet account in ${wallet.metadata.name}…`);
+  const netLabel = network === 'mainnet' ? 'Mainnet' : 'Testnet';
+  progress?.onStep?.(`2/3 · Connect your ${netLabel} account in ${wallet.metadata.name}…`);
   // Empty `contractId` connects the wallet off-chain without broadcasting a gas-paid `AddKey` transaction.
   const signedIn = await wallet.signIn({ contractId: '' });
   if (!Array.isArray(signedIn) || !signedIn.length || !signedIn[0]?.accountId) {
@@ -154,7 +185,8 @@ async function executeWalletSignMessage(
 ): Promise<NearAuthVerifyRequest> {
   const { ensureBrowserPolyfills } = await import('./browserPolyfills');
   const BufferCtor = ensureBrowserPolyfills();
-  const selector = await getTestnetWalletSelector();
+  const network = challenge.network === 'mainnet' ? 'mainnet' : 'testnet';
+  const selector = await getNearWalletSelector(network);
   let wallet: Wallet;
   try {
     wallet = await selector.wallet(moduleId);
@@ -165,7 +197,7 @@ async function executeWalletSignMessage(
     throw new Error(`Selected wallet (${moduleId}) is not supported in this browser.`);
   }
 
-  await ensureWalletConnected(wallet, moduleId, progress);
+  await ensureWalletConnected(wallet, moduleId, network, progress);
 
   if (typeof wallet.signMessage !== 'function') {
     throw new Error(`${wallet.metadata.name} does not support NEP-413 message signing.`);
@@ -180,9 +212,10 @@ async function executeWalletSignMessage(
     });
   }
 
+  const netLabel = network === 'mainnet' ? 'Mainnet' : 'Testnet';
   const promptHint =
     moduleId === 'near-mobile-wallet'
-      ? '2/3 · Scan the QR code (or tap Open App) in NEAR Mobile (Testnet) and approve the signature…'
+      ? `2/3 · Scan the QR code (or tap Open App) in NEAR Mobile (${netLabel}) and approve the signature…`
       : `3/3 · Confirm the NEP-413 sign-in message in ${wallet.metadata.name}…`;
   progress?.onStep?.(promptHint);
 
@@ -200,7 +233,7 @@ async function executeWalletSignMessage(
     if (moduleId === 'my-near-wallet') {
       const recovered = consumeRecentNep413PopupResult(challenge.challengeId);
       if (recovered) {
-        return { ...recovered, accountId: assertTestnetAccountId(recovered.accountId) };
+        return { ...recovered, accountId: assertNetworkAccountId(recovered.accountId, network) };
       }
     }
     throw err;
@@ -210,13 +243,13 @@ async function executeWalletSignMessage(
     if (moduleId === 'my-near-wallet') {
       const recovered = consumeRecentNep413PopupResult(challenge.challengeId);
       if (recovered) {
-        return { ...recovered, accountId: assertTestnetAccountId(recovered.accountId) };
+        return { ...recovered, accountId: assertNetworkAccountId(recovered.accountId, network) };
       }
     }
     throw new Error('Signature confirmation was cancelled or incomplete.');
   }
 
-  const verifiedAccountId = assertTestnetAccountId(signed.accountId);
+  const verifiedAccountId = assertNetworkAccountId(signed.accountId, network);
   return {
     challengeId: challenge.challengeId,
     accountId: verifiedAccountId,
@@ -227,7 +260,7 @@ async function executeWalletSignMessage(
   };
 }
 
-/** Connects the selected `@near-wallet-selector` Testnet wallet and signs the server NEP-413 challenge. */
+/** Connects the selected `@near-wallet-selector` wallet and signs the server NEP-413 challenge (`testnet` or `mainnet`). */
 export async function signChallengeWithNearWallet(
   moduleId: WalletSelectorModuleId,
   challenge: NearAuthChallengeResponse,
@@ -246,14 +279,15 @@ export async function signOutNearWalletSelector(): Promise<void> {
     await testDriverOverride.signOutActiveWallet();
     return;
   }
-  if (!selectorPromise) return;
-  try {
-    const selector = await selectorPromise;
-    if (selector.isSignedIn()) {
-      const wallet = await selector.wallet();
-      await wallet.signOut();
+  for (const pending of selectorPromises.values()) {
+    try {
+      const selector = await pending;
+      if (selector.isSignedIn()) {
+        const wallet = await selector.wallet();
+        await wallet.signOut();
+      }
+    } catch {
+      /* ignore wallet sign-out cleanup errors */
     }
-  } catch {
-    /* ignore wallet sign-out cleanup errors */
   }
 }

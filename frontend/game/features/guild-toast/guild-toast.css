@@ -18,14 +18,27 @@
   display: none;
 }
 
+.ta-guild-toast-row {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  border: 1.5px solid var(--ta-blue-hi);
+  background: var(--ta-plate-2);
+}
+
+.ta-guild-toast-row:has(.ta-guild-toast[data-kind='departed']) {
+  border-color: var(--ta-seam-3);
+}
+
 .ta-guild-toast {
   appearance: none;
   pointer-events: auto;
   margin: 0;
   max-width: 100%;
-  padding: var(--ta-s2) var(--ta-s4);
-  border: 1.5px solid var(--ta-blue-hi);
-  background: var(--ta-plate-2);
+  padding: var(--ta-s2) var(--ta-s3);
+  border: 0;
+  background: transparent;
   color: var(--ta-text);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-small);
@@ -37,6 +50,25 @@
 }
 
 .ta-guild-toast[data-kind='departed'] {
-  border-color: var(--ta-seam-3);
   color: var(--ta-steel);
+}
+
+.ta-guild-toast__close {
+  appearance: none;
+  pointer-events: auto;
+  margin: 0;
+  padding: 0 var(--ta-s2);
+  border: 0;
+  border-left: 1px solid var(--ta-seam-2);
+  background: transparent;
+  color: var(--ta-steel);
+  font-family: var(--ta-font-mono);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ta-guild-toast__close:hover,
+.ta-guild-toast__close:focus-visible {
+  color: var(--ta-text);
 }

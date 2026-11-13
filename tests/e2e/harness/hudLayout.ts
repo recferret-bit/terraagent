@@ -67,8 +67,8 @@ export function hudLayout(page: Page): Promise<HudLayoutReport> {
       }
     };
     // An open book may cover the bottom stacks (owner, 2026-11-10: the page grows to the screen bottom, above all HUD).
-    check(rightBook, [...topCenter, leftBook]);
-    // The pilot chip lives in the Colony book's PLAYER tab; the minimap sits above the book in the top-left slot.
+    // Both rightBook (command-dock) and leftBook (colony-book) are combined in the top-right slot; only one page opens at a time.
+    check(rightBook, [...topCenter]);
     check(leftBook, [minimap, ...topLeftPlates.filter((b) => b.name !== 'top-left:minimap'), ...topCenter]);
     for (const page of Array.from(document.querySelectorAll<HTMLElement>('.ta-book:not([data-collapsed="true"]) .ta-book__page'))) {
       const r = page.getBoundingClientRect();

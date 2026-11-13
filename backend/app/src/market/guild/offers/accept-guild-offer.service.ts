@@ -10,7 +10,8 @@ import { MarketBooks } from '../../book/market-books.js';
 import { MarketOrderRepository } from '../../book/market-order.repository.js';
 import { MarketFillsHook } from '../../orders/market-fills.hook.js';
 import { resolveMarketAccountId } from '../../orders/colony-account.js';
-import { PLATFORM_ACCOUNT_ID } from '../../orders/market-policy.provider.js';
+import { resolveProtocolAccountId } from '../../orders/market-policy.provider.js';
+import { resolveDbStakerPerks } from '../../../near/staking/staker-perks.js';
 import { GUILD_FILL_SINK, type GuildFillSink } from '../maker/fill-sink.js';
 import { GuildContactProducer } from '../../progression/guild-contact.producer.js';
 import { crossGuildOffer } from './cross-offer.js';
@@ -98,21 +99,33 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
       input.planetId,
       input.colonyIndex,
     );
-    await ensureMockSigners(this.env, this.prisma, [accountId, judged.quote.npcAccountId, PLATFORM_ACCOUNT_ID]);
+    const envBag = this.env as unknown as Record<string, string | undefined>;
+    const platformAccountId = resolveProtocolAccountId(envBag);
+    await ensureMockSigners(this.env, this.prisma, [accountId, judged.quote.npcAccountId, platformAccountId]);
     const npcSellToken = judged.quote.side === 'sell' ? judged.quote.base : judged.quote.quote;
     const npcSellUnits = judged.quote.side === 'sell' ? judged.quote.amount : judged.quote.priceAmount * 2n;
-    await ensureVerifierBalance(this.prisma, judged.quote.npcAccountId, npcSellToken, npcSellUnits);
+    await ensureVerifierBalance(this.prisma, judged.quote.npcAccountId, npcSellToken, npcSellUnits, this.env);
     if (this.env.TA_SEED_RIVAL_AI === '1' || this.env.TA_SEED_RIVAL_AI === 'true') {
       const playerSellToken = judged.quote.side === 'sell' ? judged.quote.quote : judged.quote.base;
       const playerSellUnits = judged.quote.side === 'sell' ? judged.quote.priceAmount * 2n : judged.quote.amount * 2n;
-      await ensureVerifierBalance(this.prisma, accountId, playerSellToken, playerSellUnits);
+      await ensureVerifierBalance(this.prisma, accountId, playerSellToken, playerSellUnits, this.env);
     }
+    const perks = await resolveDbStakerPerks(this.prisma, {
+      colonyId: input.colonyId,
+      accountId,
+      env: envBag,
+    });
     const crossed = await crossGuildOffer(
       this.prisma,
       this.repo,
       this.fills,
       this.books,
-      { ...input, accountId },
+      {
+        ...input,
+        accountId,
+        platformAccountId,
+        ...(perks.active ? { stakerPlatformFeeBp: perks.platformFeeBp } : {}),
+      },
       judged.quote,
       judged.offer,
     );

@@ -43,6 +43,7 @@ export class GuildOrderBook implements GuildOrderPort {
     private readonly prisma: PrismaClient,
     private readonly repo: MarketOrderRepository,
     private readonly release: OrderRelease,
+    private readonly platformAccountId: string = PLATFORM_ACCOUNT_ID,
   ) {}
 
   async resting(npcId: string, planetId?: string): Promise<RestingGuildOrder[]> {
@@ -86,7 +87,7 @@ export class GuildOrderBook implements GuildOrderPort {
       stallColonyId: intent.npcId,
       stallAccountId: intent.accountId,
       stallHubEntityId: 0,
-      platformAccountId: PLATFORM_ACCOUNT_ID,
+      platformAccountId: this.platformAccountId,
       amount: intent.amount,
       priceAmount: intent.priceAmount,
       fillPolicy: 'partial',

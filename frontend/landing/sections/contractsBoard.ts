@@ -1,5 +1,5 @@
-// Deployed NEAR Testnet smart contract showcase (6 Rust near-sdk 5.7 contracts + 3 protocol accounts)
-// with smooth scroll-driven reveal across Section 06 (#chain).
+// Deployed NEAR Testnet smart contract showcase (6 Rust near-sdk 5.7 contracts + 4 protocol accounts)
+// with smooth scroll-driven reveal across Section 08 (#chain).
 import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
 
 interface DeployedContract {
@@ -32,8 +32,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Exported resources mint as real NEP-245 tokens and settle cross-colony swaps through NEAR Intents.',
     inGameTrigger: 'Trade Hub Export',
     onChainAction: 'mt_mint · intents.near',
-    codeHash: '9KrGRQKkAMUP8qCEGk5CC6pgK9E79V1js46EipXTsvym',
-    txHash: '7r2V4bttfkSjKBuFc2y4hKHjmd8FDQuDexnfLNSNUTFh',
+    codeHash: '6G6Ew8mygiAud4NoA772PzkCwnbfUA6ZacWxEnrpqJwC',
+    txHash: 'HcukrSstSJwmzNkrYekqbt6Kt9V8AZAjTYhebb7B3Sso',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <polygon points="24,6 40,15 40,33 24,42 8,33 8,15" fill="#0E1A14" stroke="#3DDC84" stroke-width="1.8"/>
       <path d="M8 15 L24 24 L40 15 M24 24 V42" stroke="#3DDC84" stroke-width="1.4" stroke-opacity=".7"/>
@@ -52,7 +52,7 @@ const CONTRACTS: readonly DeployedContract[] = [
     inGameTrigger: 'Stage Milestone',
     onChainAction: 'mint_deed · update_metadata',
     codeHash: 'GFB5WgL1hMiCSFZSNjiXdYhui68ptf2AyDvFHZGUR6pB',
-    txHash: '72R9C6pU6HKw25HBpX4XSFHXQhGxFhoCE1SQzTgkiUUW',
+    txHash: '3csscTYvcVK5Sz8JUvvtjULj5tHyb6J1XC3U8tddZyV9',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <polygon points="24,5 39,13 39,31 24,43 9,31 9,13" fill="#0F1626" stroke="#5B8CFF" stroke-width="1.8"/>
       <polygon points="24,13 31,18 31,28 24,34 17,28 17,18" stroke="#39D0FF" stroke-width="1.4"/>
@@ -65,13 +65,13 @@ const CONTRACTS: readonly DeployedContract[] = [
     badge: 'ESCROW',
     badgeClass: 'badge-recruiting',
     accent: 'var(--ta-orange)',
-    kicker: 'TRUSTLESS MERCENARIES',
-    title: 'Mercenary & Raid Bounty Escrow',
-    summary: 'Lock cargo escrows to fund counter-raids and defense bounties with deterministic claim verification.',
-    inGameTrigger: 'Post Raid Bounty',
-    onChainAction: 'open_escrow · claim_escrow',
-    codeHash: 'DiHqr7iaRkvo4Nc86gYNFysZ18v4AWojFuxGLhz6VEi',
-    txHash: '5b4ypSd9vgSFuDQC9f7JK8MdeVxf7xiwTMj3kC6BVGnM',
+    kicker: 'BOUNTY, PEACE & WAR ESCROW',
+    title: 'Mercenary, Treaty & War Bond Escrow',
+    summary: 'Locks mercenary defense bounties plus Bonded Peace Treaties and 6h War Bonds (90% victim/defender · 10% Protocol slash on breach).',
+    inGameTrigger: 'Bounty / Treaty / War Bond',
+    onChainAction: 'open_escrow · slash_escrow',
+    codeHash: '79UNK5jUfEWWQYtBjSqD69UyKEw6vVGmUSrtBGy1ow2e',
+    txHash: '2Uw4SkRkKedPtTtjzyewAFy2N5jnAcgB9HnKpPS7aSua',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="24" r="15" fill="#1B120C" stroke="#FF6A13" stroke-width="1.8" stroke-dasharray="6 3"/>
       <circle cx="24" cy="24" r="7" stroke="#FF8A3D" stroke-width="1.5"/>
@@ -85,13 +85,13 @@ const CONTRACTS: readonly DeployedContract[] = [
     badge: 'HUMAN ONLY',
     badgeClass: 'badge-ai',
     accent: 'var(--ta-energy)',
-    kicker: 'GUARDRAILED YIELD VAULT',
-    title: 'Validator Staking Vault',
-    summary: 'Stake NEAR through your colony for validator rewards—strictly gated to human pilots (AI callers blocked 403).',
-    inGameTrigger: 'Pilot Vault Deposit',
-    onChainAction: 'stake · withdraw (403 AI)',
-    codeHash: '6Z3m4dKqaPeCZ6b2HHcNEJNcbQjgd1myWh7fJG7oSYJJ',
-    txHash: 'HZK7MnpjpzqbnCyEmT219jM6wZn6TQJsW4mxBE4qMeSU',
+    kicker: 'DAY-1 LOSSLESS STAKING VAULT',
+    title: 'Validator Staking & Perks Vault',
+    summary: 'Day-1 staking (≥10 NEAR): 80% yield (7.2% APY) to human pilot + 20% (1.8% APY) to Protocol for Managed NEAR.AI & 50% trade fee cut (403 AI).',
+    inGameTrigger: 'Day-1 Pilot Stake (≥10 NEAR)',
+    onChainAction: 'stake · unstake (80/20 split)',
+    codeHash: 'Hjw4T6c4hAN3A81xqytUmD5heR7aahtGbwMkpqAX8Yze',
+    txHash: 'DD7gHYoZji5prVQZsnpaQSkQVqMrR9gqJaHJd1RNyTmP',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <rect x="11" y="20" width="26" height="20" fill="#0D1924" stroke="#39D0FF" stroke-width="1.8"/>
       <path d="M16 20V14C16 9.6 19.6 6 24 6C28.4 6 32 9.6 32 14V20" stroke="#5B8CFF" stroke-width="1.8"/>
@@ -110,8 +110,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Colonies pool taxes into a shared planetary treasury and vote on hazard shields and sector grants.',
     inGameTrigger: 'Council Proposal',
     onChainAction: 'propose · vote · finalize',
-    codeHash: 'ByT7esMkAqrtAi7SceUhDM5aauA1XfoUPt88fVvz5L8r',
-    txHash: '4DVcXY5cV4uGRA5rtcoy6HhqPAhi2QwuKgwtjTvJedHn',
+    codeHash: 'Aa2cch25oaHQohk5FxTDAxBSRw5L5pHkxWxxjJbr992G',
+    txHash: 'G8YgUSGW1XaTSY2ZpG8nncB5ZuEU9ibjTSYMNHD3HcuJ',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="24" r="16" fill="#161412" stroke="#FF8A3D" stroke-width="1.6"/>
       <polygon points="24,12 34,29 14,29" stroke="#F2F4F7" stroke-width="1.5" fill="none"/>
@@ -131,8 +131,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Provisions {pilot}.pilots.terraagent.testnet while keeping the root key in cold storage, with atomic non-custodial key rotation on claim.',
     inGameTrigger: 'OAuth / Guest Drop',
     onChainAction: 'create_pilot_account · claim',
-    codeHash: '7Hm4DQNFC1t1bvADn23vxMUq7WZouyZnWp8Zd2c9uSES',
-    txHash: 'BQ2pWYj49ALR2kB6VuLTpKMmRur7xMrNco2UMdLZg2BY',
+    codeHash: '6nKVXYo46jG61ZUB1VUogGwC1ennpDzEWzqAGKQguU4z',
+    txHash: '9KT6vYxpJG28nB8gc4VJUPmN9QxXoTZb865ZUaSPxuX5',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="16" r="7" fill="#0E1A14" stroke="#3DDC84" stroke-width="1.8"/>
       <path d="M11 39C11 31.8 16.8 26 24 26C31.2 26 37 31.8 37 39" stroke="#3DDC84" stroke-width="1.8"/>
@@ -143,6 +143,7 @@ const CONTRACTS: readonly DeployedContract[] = [
 
 const ACCOUNTS = [
   { label: 'ROOT', id: 'terraagent.testnet' },
+  { label: 'PROTOCOL TREASURY', id: 'protocol.terraagent.testnet' },
   { label: 'NEP-366 RELAYER', id: 'relayer.terraagent.testnet' },
   { label: 'OPERATOR / MINTER', id: 'minter.terraagent.testnet' },
 ] as const;

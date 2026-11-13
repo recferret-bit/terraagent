@@ -31,6 +31,7 @@ export interface EnsureColonyAccountsInput {
   readonly ownerAccountId: string;
   /** When set, only these colonies. When omitted, every `core.colony` of the player. */
   readonly colonyIds?: readonly string[];
+  readonly envSource?: Record<string, string | undefined>;
 }
 
 /**
@@ -74,7 +75,12 @@ async function writeAccounts(
   for (const colonyId of colonyIds) {
     if (seen.has(colonyId)) continue;
     seen.add(colonyId);
-    await ensureColonyRow(tx, keys, { playerId: input.playerId, colonyId, playerName, ownerAccountId }, outbox);
+    await ensureColonyRow(
+      tx,
+      keys,
+      { playerId: input.playerId, colonyId, playerName, ownerAccountId, envSource: input.envSource },
+      outbox,
+    );
   }
 }
 
@@ -111,7 +117,13 @@ async function ensurePlayerRow(tx: TransactionClient, keys: KeyStore, playerId: 
 async function ensureColonyRow(
   tx: TransactionClient,
   keys: KeyStore,
-  input: { playerId: string; colonyId: string; playerName: string; ownerAccountId: string },
+  input: {
+    playerId: string;
+    colonyId: string;
+    playerName: string;
+    ownerAccountId: string;
+    envSource?: Record<string, string | undefined>;
+  },
   outbox: ChainOutboxRepository,
 ): Promise<void> {
   const existing = await tx.nearColonyAccount.findUnique({
@@ -123,7 +135,13 @@ async function ensureColonyRow(
     await enqueueStorageDeposit(outbox, tx, existing.accountId);
     return;
   }
-  const accountId = await freeColonyAccountId(tx, input.colonyId, input.playerName, input.ownerAccountId);
+  const accountId = await freeColonyAccountId(
+    tx,
+    input.colonyId,
+    input.playerName,
+    input.ownerAccountId,
+    input.envSource,
+  );
   const sealed = seal(keys);
   await tx.nearColonyAccount.create({
     data: {
@@ -164,8 +182,9 @@ export function accountRootFromOwner(
     const fallbackRoot = isMainnet
       ? (configuredRoot?.endsWith('.near') ? configuredRoot : 'terraagent.near')
       : (configuredRoot?.endsWith('.testnet') ? configuredRoot : 'terraagent.testnet');
+    const ownerStemLen = (ownerAccountId.split('.')[0] ?? '').length;
     const ownerParent = ownerAccountId.split('.').slice(1).join('.');
-    if (ownerParent.includes('.') && colonyNameBudget(colonyId, ownerParent) >= 4) {
+    if (ownerParent.includes('.') && colonyNameBudget(colonyId, ownerParent) >= Math.max(4, ownerStemLen)) {
       return ownerParent;
     }
     return fallbackRoot;
@@ -186,8 +205,9 @@ async function freeColonyAccountId(
   colonyId: string,
   playerName: string,
   ownerAccountId: string,
+  envSource?: Record<string, string | undefined>,
 ): Promise<string> {
-  const candidates = colonyAccountCandidates(colonyId, playerName, accountRootFromOwner(ownerAccountId, colonyId));
+  const candidates = colonyAccountCandidates(colonyId, playerName, accountRootFromOwner(ownerAccountId, colonyId, envSource));
   const where = { accountId: { in: [...candidates] } };
   const [near, mock] = await Promise.all([
     tx.nearColonyAccount.findMany({ where, select: { accountId: true } }),

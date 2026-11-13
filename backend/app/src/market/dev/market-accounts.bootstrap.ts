@@ -6,16 +6,17 @@ import { PRISMA } from '../../db/db.module.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
 import { loadKekRing } from '../../near/keystore/kek.js';
 import { KeyStore } from '../../near/keystore/keys.js';
-import { PLATFORM_ACCOUNT_ID } from '../orders/market-policy.provider.js';
-import { TREASURY_ACCOUNT_ID } from '../settlement/treasury-terms.js';
+import { nearAdapterFor } from '../../near/infrastructure/adapter-selection.js';
+import { PLATFORM_ACCOUNT_ID, resolveProtocolAccountId } from '../orders/market-policy.provider.js';
+import { resolveTreasurySystemAccountId, TREASURY_ACCOUNT_ID } from '../settlement/treasury-terms.js';
 
 /** Fee beneficiaries every settlement batch touches: they need a custodial key because the verifier batch carries one signed diff per account. */
 export const MARKET_SYSTEM_ACCOUNTS: readonly string[] = [PLATFORM_ACCOUNT_ID, TREASURY_ACCOUNT_ID];
 
 /**
- * Dev/demo bootstrap (W13-14): outside production, makes sure the platform and treasury mock accounts exist with a sealed custodial
+ * Dev/demo bootstrap (W13-14): outside real-network production, makes sure the platform and treasury accounts exist with a sealed custodial
  * key (same `chain.near_colony_account` row shape as a colony account, slot `system`), so settlement works without test helpers.
- * Idempotent; a row that exists keeps its key. Never runs in production (real fee accounts are provisioned, not generated).
+ * Idempotent; a row that exists keeps its key. Skipped in production when `Intents` runs on `mainnet` (`intents.near`).
  */
 @Injectable()
 export class MarketAccountsBootstrap implements OnModuleInit {
@@ -28,6 +29,8 @@ export class MarketAccountsBootstrap implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     if (!databaseEnabled(this.env)) return;
+    const envBag = this.env as unknown as Record<string, string | undefined>;
+    if (this.env.NODE_ENV === 'production' && nearAdapterFor('Intents', envBag) === 'mainnet') return;
     try {
       await this.ensure();
     } catch (err) {
@@ -36,8 +39,16 @@ export class MarketAccountsBootstrap implements OnModuleInit {
   }
 
   async ensure(): Promise<void> {
+    const envBag = this.env as unknown as Record<string, string | undefined>;
+    const accounts = Array.from(
+      new Set([
+        ...MARKET_SYSTEM_ACCOUNTS,
+        resolveProtocolAccountId(envBag),
+        resolveTreasurySystemAccountId(envBag),
+      ]),
+    );
     const keys = new KeyStore(loadKekRing(kekEnv(this.env)));
-    for (const accountId of MARKET_SYSTEM_ACCOUNTS) await ensureCustodialAccount(this.prisma, keys, accountId);
+    for (const accountId of accounts) await ensureCustodialAccount(this.prisma, keys, accountId);
   }
 }
 

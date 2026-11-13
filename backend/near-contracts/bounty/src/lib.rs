@@ -59,6 +59,12 @@ fn emit_escrow(event: &str, data: serde_json::Value) {
     env::log_str(&format!("EVENT_JSON:{}", payload));
 }
 
+/// Overflow-free `floor(amount * bp / 10_000)` across the full `u128` range.
+fn mul_bp_floor(amount: u128, bp: u32) -> u128 {
+    let bp_u = bp as u128;
+    (amount / 10_000) * bp_u + ((amount % 10_000) * bp_u) / 10_000
+}
+
 #[near]
 impl BountyEscrowContract {
     #[init]
@@ -79,7 +85,21 @@ impl BountyEscrowContract {
         self.operator_id = operator_id;
     }
 
-    /// Opens a mercenary or raid-defense bounty escrow (`EscrowPort.open`). Idempotent by `op_id`.
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
+    pub fn get_operator(&self) -> AccountId {
+        self.operator_id.clone()
+    }
+
+    fn require_operator(&self, msg: &'static str) {
+        let caller = env::predecessor_account_id();
+        require!(caller == self.operator_id || caller == self.owner_id, msg);
+    }
+
+    /// Opens a mercenary, peace-treaty, or war-bond escrow (`EscrowPort.open`). Idempotent by `op_id`.
+    #[allow(clippy::too_many_arguments)]
     pub fn open_escrow(
         &mut self,
         op_id: String,
@@ -93,11 +113,8 @@ impl BountyEscrowContract {
         require!(!op_id.is_empty(), "NEAR_ESCROW_INVALID: op_id required");
         require!(!escrow_id.is_empty(), "NEAR_ESCROW_INVALID: escrow_id required");
         require!(!beneficiary.is_empty(), "NEAR_ESCROW_STATE: beneficiary required");
-        let caller = env::predecessor_account_id();
-        require!(
-            caller == self.operator_id || caller == self.owner_id || caller == funder,
-            "NEAR_NOT_OWNER: caller not authorized to open escrow"
-        );
+        require!(!token_id.trim().is_empty(), "NEAR_ESCROW_INVALID: token_id required");
+        self.require_operator("NEAR_NOT_OWNER: only operator may open escrows");
         if let Some(existing_id) = self.processed_ops.get(&op_id) {
             if let Some(existing) = self.escrows.get(existing_id) {
                 return EscrowView::from(existing);
@@ -146,11 +163,7 @@ impl BountyEscrowContract {
         caller: AccountId,
     ) -> EscrowView {
         require!(!op_id.is_empty(), "NEAR_ESCROW_INVALID: op_id required");
-        let pred = env::predecessor_account_id();
-        require!(
-            pred == self.operator_id || pred == self.owner_id,
-            "NEAR_NOT_OWNER: only operator may settle escrow claims"
-        );
+        self.require_operator("NEAR_NOT_OWNER: only operator may settle escrow claims");
         if let Some(existing_id) = self.processed_ops.get(&op_id) {
             if let Some(existing) = self.escrows.get(existing_id) {
                 return EscrowView::from(existing);
@@ -188,7 +201,7 @@ impl BountyEscrowContract {
         amount: Option<String>,
     ) -> EscrowView {
         require!(!op_id.is_empty(), "NEAR_ESCROW_INVALID: op_id required");
-        let pred = env::predecessor_account_id();
+        self.require_operator("NEAR_NOT_OWNER: only operator may refund escrows");
         if let Some(existing_id) = self.processed_ops.get(&op_id) {
             if let Some(existing) = self.escrows.get(existing_id) {
                 return EscrowView::from(existing);
@@ -199,10 +212,6 @@ impl BountyEscrowContract {
             .get(&escrow_id)
             .cloned()
             .unwrap_or_else(|| env::panic_str("NEAR_ESCROW_NOT_FOUND: escrow not found"));
-        require!(
-            pred == self.operator_id || pred == self.owner_id || pred == rec.funder,
-            "NEAR_NOT_OWNER: not authorized to refund escrow"
-        );
         require!(rec.status == "open", "NEAR_ESCROW_STATE: escrow is not open");
 
         let requested = match amount {
@@ -211,6 +220,7 @@ impl BountyEscrowContract {
                 .parse::<u128>()
                 .unwrap_or_else(|_| env::panic_str("NEAR_ESCROW_INVALID: invalid refund amount")),
         };
+        require!(requested > 0, "NEAR_ESCROW_INVALID: refund amount must be > 0");
         require!(
             requested <= rec.amount,
             "NEAR_ESCROW_STATE: refund exceeds remaining hold"
@@ -218,7 +228,7 @@ impl BountyEscrowContract {
 
         if requested == rec.amount {
             rec.status = "refunded".to_string();
-        } else if requested > 0 {
+        } else {
             rec.amount -= requested;
         }
         self.escrows.insert(escrow_id.clone(), rec.clone());
@@ -238,7 +248,7 @@ impl BountyEscrowContract {
     }
 
     /// Slashes an open diplomacy or war bond escrow (`EscrowPort.slash`):
-    /// splits the bond `90%` (`10_000 - protocol_fee_bp`) to `victim_id` and `10%` (`protocol_fee_bp`) to `protocol_id`.
+    /// splits the bond `10_000 - protocol_fee_bp` (`90%`) to `victim_id` and `protocol_fee_bp` (`10%`) to `protocol_id`.
     /// Idempotent by `op_id`.
     pub fn slash_escrow(
         &mut self,
@@ -253,11 +263,7 @@ impl BountyEscrowContract {
             protocol_fee_bp <= 10_000,
             "NEAR_ESCROW_INVALID: protocol_fee_bp must be <= 10_000"
         );
-        let pred = env::predecessor_account_id();
-        require!(
-            pred == self.operator_id || pred == self.owner_id,
-            "NEAR_NOT_OWNER: only operator may slash escrows"
-        );
+        self.require_operator("NEAR_NOT_OWNER: only operator may slash escrows");
         if let Some(existing_id) = self.processed_ops.get(&op_id) {
             if let Some(existing) = self.escrows.get(existing_id) {
                 return EscrowView::from(existing);
@@ -269,8 +275,12 @@ impl BountyEscrowContract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("NEAR_ESCROW_NOT_FOUND: escrow not found"));
         require!(rec.status == "open", "NEAR_ESCROW_STATE: escrow is not open");
+        require!(
+            victim_id != rec.funder,
+            "NEAR_ESCROW_INVALID_VICTIM: victim cannot equal funder"
+        );
 
-        let protocol_cut = (rec.amount * (protocol_fee_bp as u128)) / 10_000;
+        let protocol_cut = mul_bp_floor(rec.amount, protocol_fee_bp);
         let victim_cut = rec.amount - protocol_cut;
         rec.status = "slashed".to_string();
         self.escrows.insert(escrow_id.clone(), rec.clone());
@@ -298,129 +308,4 @@ impl BountyEscrowContract {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
-
-    fn acct(s: &str) -> AccountId {
-        s.parse().unwrap()
-    }
-
-    fn set_caller(predecessor: &str) {
-        let ctx = VMContextBuilder::new()
-            .predecessor_account_id(acct(predecessor))
-            .build();
-        testing_env!(ctx);
-    }
-
-    #[test]
-    fn partial_refund_then_claim_and_idempotency() {
-        set_caller("owner.testnet");
-        let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
-
-        set_caller("op.testnet");
-        let opened = c.open_escrow(
-            "op_open_1".into(),
-            "escrow_1".into(),
-            acct("col1.testnet"),
-            "escrow:00112233445566778899aabbccddeeff".into(),
-            "metals.t1".into(),
-            "1000".into(),
-            0,
-        );
-        assert_eq!(opened.status, "open");
-        assert_eq!(opened.amount, "1000");
-
-        // Partial refund of 400 leaves 600 open (W22-28)
-        let part = c.refund_escrow(
-            "op_ref_part".into(),
-            "escrow_1".into(),
-            acct("col1.testnet"),
-            Some("400".into()),
-        );
-        assert_eq!(part.status, "open");
-        assert_eq!(part.amount, "600");
-
-        // Claim settles the remaining 600
-        let claimed = c.claim_escrow("op_claim_1".into(), "escrow_1".into(), acct("merc.testnet"));
-        assert_eq!(claimed.status, "claimed");
-        assert_eq!(claimed.amount, "600");
-
-        // Duplicate op_id is idempotent
-        let dup = c.claim_escrow("op_claim_1".into(), "escrow_1".into(), acct("merc.testnet"));
-        assert_eq!(dup.status, "claimed");
-    }
-
-    #[test]
-    fn full_refund_closes_row_preserving_amount() {
-        set_caller("owner.testnet");
-        let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
-        set_caller("op.testnet");
-        c.open_escrow(
-            "op_open_2".into(),
-            "escrow_2".into(),
-            acct("col1.testnet"),
-            "escrow:00112233445566778899aabbccddeeff".into(),
-            "metals.t1".into(),
-            "500".into(),
-            0,
-        );
-        let closed = c.refund_escrow("op_ref_all".into(), "escrow_2".into(), acct("col1.testnet"), None);
-        assert_eq!(closed.status, "refunded");
-        assert_eq!(closed.amount, "500");
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_ESCROW_STATE")]
-    fn rejects_double_claim_with_new_op() {
-        set_caller("owner.testnet");
-        let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
-        set_caller("op.testnet");
-        c.open_escrow(
-            "op_o3".into(),
-            "escrow_3".into(),
-            acct("col1.testnet"),
-            "escrow:00112233445566778899aabbccddeeff".into(),
-            "metals.t1".into(),
-            "500".into(),
-            0,
-        );
-        c.claim_escrow("op_c3".into(), "escrow_3".into(), acct("merc.testnet"));
-        c.claim_escrow("op_c4".into(), "escrow_3".into(), acct("merc.testnet"));
-    }
-
-    #[test]
-    fn slash_escrow_splits_90_10_and_replays_idempotently() {
-        set_caller("owner.testnet");
-        let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
-        set_caller("op.testnet");
-        c.open_escrow(
-            "op_war_open".into(),
-            "escrow_war_1".into(),
-            acct("attacker.testnet"),
-            "escrow:00112233445566778899aabbccddeeff".into(),
-            "metals.t1".into(),
-            "1000".into(),
-            0,
-        );
-        let slashed = c.slash_escrow(
-            "op_war_slash".into(),
-            "escrow_war_1".into(),
-            acct("defender.testnet"),
-            acct("protocol.terraagent.testnet"),
-            1_000,
-        );
-        assert_eq!(slashed.status, "slashed");
-        assert_eq!(slashed.amount, "1000");
-
-        let replay = c.slash_escrow(
-            "op_war_slash".into(),
-            "escrow_war_1".into(),
-            acct("defender.testnet"),
-            acct("protocol.terraagent.testnet"),
-            1_000,
-        );
-        assert_eq!(replay.status, "slashed");
-    }
-}
+mod tests;

@@ -5,6 +5,7 @@ import {
   type HexTerrain,
   type TerritoryBorderStats,
 } from '@terra/render/planets/hex';
+import { isProductionBuild } from '../../core/buildEnv';
 import {
   defineFeature,
   type DevCommandDef,
@@ -37,6 +38,7 @@ export interface MountTerritoryBorderOptions {
   colorBlindMode?: boolean;
   colonyColors?: Record<number, number>;
   services?: Partial<FeatureContext['services']>;
+  hideToggle?: boolean;
 }
 
 /** Per-browser memory of the player's border pattern choice (`localStorage`). */
@@ -91,8 +93,13 @@ export function mountTerritoryBorder(
   opts: MountTerritoryBorderOptions = {},
 ): TerritoryBorderFeatureHandle {
   const hasDom = typeof document !== 'undefined';
-  const hostEl = opts.el ?? (hasDom ? document.body : null);
-  const root = hasDom ? document.createElement('button') : null;
+  const hideToggle = opts.hideToggle ?? isProductionBuild();
+  const hostEl = hideToggle ? null : (opts.el ?? (hasDom ? document.body : null));
+  if (hideToggle && opts.el) {
+    opts.el.hidden = true;
+    opts.el.remove();
+  }
+  const root = hasDom && !hideToggle ? document.createElement('button') : null;
   if (root) {
     root.type = 'button';
     root.className = 'btn btn-ghost btn-sm plate-sm';

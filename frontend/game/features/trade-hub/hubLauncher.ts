@@ -20,6 +20,7 @@ export class TradeHubLauncher {
   constructor(parent: HTMLElement, private readonly actions: TradeHubLauncherActions) {
     const actionsRow = makeDiv('ta-trade-hub-launcher__actions');
     const openBtn = makeBtn('btn btn-ghost btn-sm', 'trade-hub-open', 'OPEN TRADE HUB', () => actions.openHub());
+    openBtn.dataset.dialogTrigger = 'true';
     this.contractsBtn = makeBtn('btn btn-ghost btn-sm', 'trade-hub-open-contracts', 'CONTRACTS', () => actions.openContracts?.());
     actionsRow.append(openBtn, this.contractsBtn);
     this.el.append(

@@ -39,6 +39,7 @@ export class TestnetStakingAdapter implements StakingPort {
   private readonly rpc: NearRpcClient;
   private readonly cache = new OpReceiptCache<ChainReceipt>();
   private localOffsetMs = 0;
+  private creditSeq = 0;
 
   constructor(@Optional() @Inject(APP_ENV) private readonly env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
@@ -51,15 +52,26 @@ export class TestnetStakingAdapter implements StakingPort {
     }
   }
 
-  async creditNear(accountId: string, yoctoAmount: string): Promise<void> {
+  async nearBalanceOf(accountId: string): Promise<string> {
+    try {
+      const vaultBal = await this.rpc.view<string>(this.rpc.config.contracts.staking, 'get_near_balance', {
+        account_id: accountId,
+      });
+      return vaultBal || '0';
+    } catch {
+      return '0';
+    }
+  }
+
+  async creditNear(accountId: string, yoctoAmount: string, opId?: string): Promise<void> {
     const signer = this.requireOperatorSigner();
-    const opId = `credit:${accountId}:${yoctoAmount}:${Date.now()}`;
+    const effectiveOpId = opId?.trim() || `credit:${accountId}:${yoctoAmount}:${++this.creditSeq}`;
     await this.rpc.call({
       signerAccountId: signer.accountId,
       signerSecretKey: signer.secretKey,
       contractId: this.rpc.config.contracts.staking,
       methodName: 'credit_near',
-      args: { op_id: opId, account_id: accountId, amount: yoctoAmount },
+      args: { op_id: effectiveOpId, account_id: accountId, amount: yoctoAmount },
     });
   }
 

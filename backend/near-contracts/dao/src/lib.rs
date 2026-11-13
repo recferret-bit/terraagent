@@ -163,6 +163,7 @@ impl TreasuryDaoContract {
         council_account_ids: Vec<String>,
     ) -> String {
         require!(!op_id.is_empty(), "DAO_NOT_FOUND: op_id required");
+        require!(!dao_account_id.trim().is_empty(), "DAO_NOT_FOUND: dao_account_id required");
         self.require_operator();
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.clone();
@@ -214,12 +215,15 @@ impl TreasuryDaoContract {
             .cloned()
             .expect("DAO_NOT_FOUND: dao does not exist");
         let add_val = parse_u128(&amount);
+        require!(add_val > 0, "TREASURY_INSUFFICIENT: deposit amount must be > 0");
         let cur = dao
             .balances
             .get(&token_id)
             .map(|s| parse_u128(s))
             .unwrap_or(0);
-        let next = cur + add_val;
+        let next = cur
+            .checked_add(add_val)
+            .expect("TREASURY_OVERFLOW: treasury balance overflow");
         dao.balances.insert(token_id.clone(), next.to_string());
         self.daos.insert(dao_account_id.clone(), dao);
         let res = next.to_string();
@@ -344,6 +348,7 @@ impl TreasuryDaoContract {
         proposal_id
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn vote(
         &mut self,
         op_id: String,
@@ -355,6 +360,10 @@ impl TreasuryDaoContract {
         pass_min_yes: Option<u32>,
     ) -> String {
         require!(!op_id.is_empty(), "DAO_NOT_FOUND: op_id required");
+        require!(
+            vote == "approve" || vote == "reject",
+            "INVALID_VOTE: vote must be approve or reject"
+        );
         self.require_operator();
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.clone();
@@ -465,81 +474,4 @@ impl TreasuryDaoContract {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
-
-    fn ctx(predecessor: &str) -> VMContextBuilder {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(predecessor.parse().unwrap());
-        builder
-    }
-
-    #[test]
-    fn dao_lifecycle_deposit_propose_vote_and_finalize() {
-        testing_env!(ctx("minter.terraagent.testnet").build());
-        let mut contract = TreasuryDaoContract::new(
-            "terraagent.testnet".parse().unwrap(),
-            "minter.terraagent.testnet".parse().unwrap(),
-        );
-        let dao_id = contract.create_dao(
-            "op-create".into(),
-            "kepler.dao.mock".into(),
-            "kepler".into(),
-            vec!["a.mock".into(), "b.mock".into(), "c.mock".into()],
-        );
-        assert_eq!(dao_id, "kepler.dao.mock");
-
-        contract.deposit("op-dep".into(), dao_id.clone(), "a.mock".into(), "metals.t1".into(), "500".into());
-        let pid = contract.propose(
-            "op-prop".into(),
-            dao_id.clone(),
-            "a.mock".into(),
-            "Shield".into(),
-            "meteor_shield".into(),
-            r#"{"cost":"150","tokenId":"metals.t1"}"#.into(),
-            Some("150".into()),
-            Some("metals.t1".into()),
-        );
-        assert_eq!(pid, 0);
-
-        let s1 = contract.vote("op-v1".into(), dao_id.clone(), pid, "a.mock".into(), "approve".into(), None, None);
-        assert_eq!(s1, "InProgress");
-        let s2 = contract.vote("op-v2".into(), dao_id.clone(), pid, "b.mock".into(), "approve".into(), None, None);
-        assert_eq!(s2, "Approved");
-
-        let view = contract.get_dao(dao_id.clone());
-        assert_eq!(view.balances.get("metals.t1").map(String::as_str), Some("350"));
-        assert_eq!(view.proposals[0].status, "Approved");
-
-        // Second proposal expires on finalize
-        let pid2 = contract.propose(
-            "op-prop-2".into(),
-            dao_id.clone(),
-            "a.mock".into(),
-            "Pulse".into(),
-            "orbital_pulse".into(),
-            "{}".into(),
-            None,
-            None,
-        );
-        contract.vote("op-v3".into(), dao_id.clone(), pid2, "a.mock".into(), "approve".into(), None, None);
-        let fin = contract.finalize("op-fin".into(), dao_id, pid2, None, None);
-        assert_eq!(fin, "Expired");
-    }
-
-    #[test]
-    #[should_panic(expected = "ALREADY_VOTED")]
-    fn double_vote_panics() {
-        testing_env!(ctx("minter.terraagent.testnet").build());
-        let mut contract = TreasuryDaoContract::new(
-            "terraagent.testnet".parse().unwrap(),
-            "minter.terraagent.testnet".parse().unwrap(),
-        );
-        let dao_id = contract.create_dao("op-c".into(), "c.dao.mock".into(), "c".into(), vec!["a.mock".into(), "b.mock".into(), "c.mock".into()]);
-        let pid = contract.propose("op-p".into(), dao_id.clone(), "a.mock".into(), "x".into(), "x".into(), "{}".into(), None, None);
-        contract.vote("op-v1".into(), dao_id.clone(), pid, "a.mock".into(), "approve".into(), None, None);
-        contract.vote("op-v2".into(), dao_id, pid, "a.mock".into(), "reject".into(), None, None);
-    }
-}
+mod tests;

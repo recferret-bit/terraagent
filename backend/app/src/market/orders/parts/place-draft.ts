@@ -37,8 +37,12 @@ export function orderDraft(
   cfg: PlacePolicy,
   claimed: boolean,
   actorKind?: string,
+  stakerPlatformFeeBp?: number,
+  platformAccountId: string = PLATFORM_ACCOUNT_ID,
 ): CreateMarketOrderInput {
   const maxStall = d.maxStallFeeBp ?? cfg.stallFeeMaxBp;
+  const hasStakerDiscount =
+    stakerPlatformFeeBp !== undefined && stakerPlatformFeeBp !== cfg.platformFeeBp;
   return {
     orderId: orderIdOf(planetId, d.ref),
     ref: d.ref,
@@ -54,7 +58,7 @@ export function orderDraft(
     stallColonyId: d.colonyId,
     stallAccountId: accountId,
     stallHubEntityId: d.hubEntityId,
-    platformAccountId: PLATFORM_ACCOUNT_ID,
+    platformAccountId,
     amount: BigInt(d.amount),
     priceAmount: BigInt(d.price.amount),
     fillPolicy: claimed ? 'all_or_nothing' : 'partial',
@@ -66,6 +70,7 @@ export function orderDraft(
     ttlS: d.ttlS,
     expiresAt: new Date(Date.now() + d.ttlS * 1000),
     ...(actorKind ? { actorKind } : {}),
+    ...(hasStakerDiscount ? { signedTerms: { stakerPlatformFeeBp } } : {}),
   };
 }
 

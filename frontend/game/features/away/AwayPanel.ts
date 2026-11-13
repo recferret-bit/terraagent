@@ -1,3 +1,4 @@
+import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { dispatchCommand, type CommandOutcome } from '../shared/commandDispatch';
 import { AutoTradeSection } from './AutoTradeSection';
 import { buildAwayDom, type AwayDom } from './dom';
@@ -14,20 +15,36 @@ export type { AwayPanelOptions } from './options';
 export class AwayPanel {
   private readonly dom: AwayDom;
   private readonly trade: AutoTradeSection | null;
+  private readonly offShared: () => void;
   private saved: AwaySettings;
   private open = true;
   private inflight = false;
 
   constructor(host: HTMLElement, private readonly opts: AwayPanelOptions = {}) {
     this.saved = loadAwaySettings();
+    patchSharedAutopilotState({
+      awayRaids: this.saved.awayRaids,
+      mode: this.saved.mode,
+    });
     this.dom = buildAwayDom(host, { mercenary: opts.mercenary === true });
     this.trade = opts.flags?.has('W15') ? new AutoTradeSection(this.dom.body, opts) : null;
     this.bind();
     this.paint();
     this.setOpen(true);
+    this.offShared = subscribeSharedAutopilotState((st) => {
+      if (st.awayRaids !== this.saved.awayRaids) {
+        this.saved = { ...this.saved, awayRaids: st.awayRaids };
+        this.dom.raids.checked = st.awayRaids;
+      }
+      if (st.mode !== this.saved.mode) {
+        this.saved = { ...this.saved, mode: st.mode };
+        this.dom.mode.value = st.mode;
+      }
+    });
   }
 
   dispose(): void {
+    this.offShared();
     this.trade?.dispose();
     const host = this.dom.toggle.parentElement;
     if (!host) return;
@@ -129,6 +146,10 @@ export class AwayPanel {
     }
     this.saved = next;
     saveAwaySettings(this.saved);
+    patchSharedAutopilotState({
+      awayRaids: this.saved.awayRaids,
+      mode: this.saved.mode,
+    });
     this.paint();
     this.setStatus('saved', 'saved');
   }

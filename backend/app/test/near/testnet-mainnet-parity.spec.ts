@@ -185,6 +185,75 @@ describe('Cryptographic NEP-413 claim verifier & replay/network/recipient guards
   });
 });
 
+describe('MyNearWallet NEP-413 callbackUrl claim verification', () => {
+  beforeEach(() => {
+    clearNep413ReplayCache();
+  });
+
+  it('verifies MyNearWallet NEP-413 claim signatures signed over Some(callbackUrl) and rejects invalid callbackUrl schemes', () => {
+    const id = makeEd25519Identity();
+    const withCallback = signNep413Message({
+      accountId: 'alice.testnet',
+      publicKey: id.nearPublicKey,
+      privateKey: id.privateKey,
+      message: 'claim:col_0',
+      nonceBase64: randomBytes(32).toString('base64'),
+      recipient: 'terraagent.testnet',
+      callbackUrl: 'http://127.0.0.1:5173/play.html',
+    });
+    expect(withCallback.callbackUrl).toBe('http://127.0.0.1:5173/play.html');
+    expect(() =>
+      verifyNep413ClaimSignature({
+        signature: withCallback,
+        expectedWalletAccountId: 'alice.testnet',
+        expectedPublicKey: id.nearPublicKey,
+        allowedRecipients: ['terraagent.testnet'],
+        network: 'testnet',
+      }),
+    ).not.toThrow();
+
+    // Origin without trailing slash signed literally by wallet must still verify
+    const bareOrigin = signNep413Message({
+      accountId: 'alice.testnet',
+      publicKey: id.nearPublicKey,
+      privateKey: id.privateKey,
+      message: 'claim:col_0',
+      nonceBase64: randomBytes(32).toString('base64'),
+      recipient: 'terraagent.testnet',
+      callbackUrl: 'https://terraagent.fun',
+    });
+    expect(() =>
+      verifyNep413ClaimSignature({
+        signature: bareOrigin,
+        expectedWalletAccountId: 'alice.testnet',
+        expectedPublicKey: id.nearPublicKey,
+        allowedRecipients: ['terraagent.testnet'],
+        network: 'testnet',
+      }),
+    ).not.toThrow();
+
+    // Non-HTTP(S) callbackUrl must fail closed
+    const badScheme = signNep413Message({
+      accountId: 'alice.testnet',
+      publicKey: id.nearPublicKey,
+      privateKey: id.privateKey,
+      message: 'claim:col_0',
+      nonceBase64: randomBytes(32).toString('base64'),
+      recipient: 'terraagent.testnet',
+      callbackUrl: 'javascript:alert(1)',
+    });
+    expect(() =>
+      verifyNep413ClaimSignature({
+        signature: badScheme,
+        expectedWalletAccountId: 'alice.testnet',
+        expectedPublicKey: id.nearPublicKey,
+        allowedRecipients: ['terraagent.testnet'],
+        network: 'testnet',
+      }),
+    ).toThrow(/callbackUrl/i);
+  });
+});
+
 describe('NEP-366 Relayer deposit cap, FunctionCall-only enforcement & receiver allow-list (R01-59)', () => {
   it('allows res/dao/pilots/staking/intents FunctionCalls within deposit cap and blocks Transfer, high deposits, and evil receivers', async () => {
     expect(receiverAllowed('dao.terraagent.testnet')).toBe(true);

@@ -19,6 +19,8 @@ import { NearException } from '../domain/errors.js';
 import type { ChainReceipt } from '../domain/types.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../infrastructure/network/near-network.config.js';
+import { resolveProtocolFeeSchedule } from '../infrastructure/network/protocol-fee.config.js';
+import { isDeterministicChainError } from '../infrastructure/rpc/near-error-map.js';
 import { nearToYocto } from '../staking/yocto.js';
 
 export const truceEscrowOpenOpId = (planetId: string, truceId: string, side: 'a' | 'b'): string =>
@@ -166,7 +168,8 @@ export class DiplomacyEscrowService {
     if (!this.flags.has('W22')) return null;
     const escrowId = escrowIdFromOp(warEscrowOpenOpId(input.planetId, input.warId));
     const settleOpId = warEscrowSettleOpId(input.planetId, input.warId);
-    if (input.reason === 'objective_met' || input.reason === 'eliminated') {
+    // Note: `warBonds.ts` emits `objective_met` when the defender is eliminated; `eliminated` means the attacker was eliminated during their own siege.
+    if (input.reason === 'objective_met') {
       const attackerAccount = await this.accountFor(input.planetId, input.attackerColonyId, input.attackerColonyIndex);
       return this.refundSingle(settleOpId, escrowId, attackerAccount);
     }
@@ -193,7 +196,9 @@ export class DiplomacyEscrowService {
       }
       return opened;
     } catch (err) {
-      if (this.useOutbox()) await this.outbox!.abandon(opId).catch(() => undefined);
+      if (this.useOutbox() && isDeterministicChainError(err)) {
+        await this.outbox!.abandon(opId).catch(() => undefined);
+      }
       throw err;
     }
   }
@@ -213,12 +218,14 @@ export class DiplomacyEscrowService {
   }
 
   private async slashSingle(opId: string, escrowId: string, victimAccountId: string): Promise<ChainReceipt | null> {
+    const protocolFeeBp =
+      resolveProtocolFeeSchedule(this.envSource).escrowSlashProtocolShareBp ?? DEFAULT_ESCROW_SLASH_PROTOCOL_BP;
     const body = {
       opId,
       escrowId,
       victimAccountId,
       protocolAccountId: this.resolveProtocolAccount(),
-      protocolFeeBp: DEFAULT_ESCROW_SLASH_PROTOCOL_BP,
+      protocolFeeBp,
     };
     try {
       return await this.escrow.slash(body);

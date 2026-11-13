@@ -35,6 +35,8 @@ export interface NearNetworkConfig {
     readonly rootSecretKey?: string;
     readonly relayerSecretKey?: string;
     readonly minterSecretKey?: string;
+    readonly protocolSecretKey?: string;
+    readonly daoSecretKey?: string;
   };
   readonly fastAuth: {
     readonly issuer: string;
@@ -96,6 +98,7 @@ export function resolveNearNetworkConfig(
   const relayer = env.NEAR_RELAYER_ACCOUNT?.trim() || `relayer.${rootAccount}`;
   const minter = env.NEAR_MINTER_ACCOUNT?.trim() || `minter.${rootAccount}`;
   const protocol = env.NEAR_PROTOCOL_ACCOUNT?.trim() || `protocol.${rootAccount}`;
+  const daoContract = env.NEAR_CONTRACT_DAO?.trim() || `dao.${rootAccount}`;
 
   const credDir = env.NEAR_CREDENTIALS_DIR?.trim()
     || (env.NODE_ENV !== 'production' ? path.join(os.homedir(), '.near-credentials', network) : null);
@@ -103,6 +106,8 @@ export function resolveNearNetworkConfig(
   const rootSecretKey = resolveSecret(env, 'NEAR_ROOT_SECRET_KEY', credDir, rootAccount);
   const relayerSecretKey = resolveSecret(env, 'NEAR_RELAYER_SECRET_KEY', credDir, relayer) ?? rootSecretKey;
   const minterSecretKey = resolveSecret(env, 'NEAR_MINTER_SECRET_KEY', credDir, minter) ?? rootSecretKey;
+  const protocolSecretKey = resolveSecret(env, 'NEAR_PROTOCOL_SECRET_KEY', credDir, protocol) ?? minterSecretKey ?? rootSecretKey;
+  const daoSecretKey = resolveSecret(env, 'NEAR_DAO_SECRET_KEY', credDir, daoContract) ?? minterSecretKey ?? rootSecretKey;
 
   const dailyCap = Number(env.NEAR_RELAYER_DAILY_CAP ?? '5');
   const minBalance = Number(env.NEAR_MIN_RELAYER_BALANCE ?? '5');
@@ -119,7 +124,7 @@ export function resolveNearNetworkConfig(
       deed: env.NEAR_CONTRACT_DEED?.trim() || `deed.${rootAccount}`,
       bounty: env.NEAR_CONTRACT_BOUNTY?.trim() || `bounty.${rootAccount}`,
       staking: env.NEAR_CONTRACT_STAKING?.trim() || `staking.${rootAccount}`,
-      dao: env.NEAR_CONTRACT_DAO?.trim() || `dao.${rootAccount}`,
+      dao: daoContract,
       pilots: env.NEAR_CONTRACT_PILOTS?.trim() || `pilots.${rootAccount}`,
       intents: env.NEAR_CONTRACT_INTENTS?.trim() || 'intents.near',
     },
@@ -128,7 +133,7 @@ export function resolveNearNetworkConfig(
       usdc: env.NEAR_TOKEN_USDC?.trim() || (isMainnet ? MAINNET_USDC_CONTRACT : TESTNET_USDC_CONTRACT),
     },
     accounts: { relayer, minter, protocol },
-    secrets: { rootSecretKey, relayerSecretKey, minterSecretKey },
+    secrets: { rootSecretKey, relayerSecretKey, minterSecretKey, protocolSecretKey, daoSecretKey },
     fastAuth: {
       issuer: env.NEAR_FASTAUTH_ISSUER?.trim() || 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/',
       clientId: env.NEAR_FASTAUTH_CLIENT_ID?.trim() || 'GhPTEx5u0o5Bh16F6LWjPXOXAyQROUNL',

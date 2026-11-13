@@ -1,3 +1,7 @@
+import { pushNotification } from '../notifications/notificationStore';
+
+export const DEFAULT_XP_TOAST_DURATION_MS = 6000;
+
 export interface XpLevelUpToastPayload {
   readonly level: number;
   readonly previousLevel?: number;
@@ -7,6 +11,7 @@ export interface XpLevelUpToastPayload {
 
 interface EventSourceLike {
   onServerEvents?(fn: (events: ReadonlyArray<{ kind: string; data?: Record<string, unknown> }>) => void): () => void;
+  onOpenPlayer?: () => void;
 }
 
 /**
@@ -16,8 +21,13 @@ interface EventSourceLike {
 export class XpToastHost {
   private current: HTMLElement | null = null;
   private offEvents: (() => void) | null = null;
+  private autoDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly host: HTMLElement, store?: EventSourceLike) {
+  constructor(
+    private readonly host: HTMLElement,
+    private readonly store?: EventSourceLike,
+    private readonly durationMs = DEFAULT_XP_TOAST_DURATION_MS,
+  ) {
     this.host.hidden = true;
     this.host.setAttribute('role', 'status');
     this.host.setAttribute('aria-live', 'polite');
@@ -53,6 +63,7 @@ export class XpToastHost {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'ta-toast-close';
+    closeBtn.dataset.testid = 'xp-toast-close';
     closeBtn.setAttribute('aria-label', 'Dismiss level up notification');
     closeBtn.textContent = '×';
     closeBtn.onclick = () => this.dismiss();
@@ -63,7 +74,8 @@ export class XpToastHost {
     const title = document.createElement('p');
     title.className = 'ta-xp-toast-title';
     const titlePart = payload.title ? ` · ${payload.title}` : '';
-    title.textContent = `Level ${payload.level}${titlePart} (${payload.xp} XP)`;
+    const message = `Level ${payload.level}${titlePart} (${payload.xp} XP)`;
+    title.textContent = message;
 
     card.appendChild(head);
     card.appendChild(title);
@@ -71,9 +83,23 @@ export class XpToastHost {
     this.host.appendChild(card);
     this.host.hidden = false;
     this.current = card;
+    pushNotification({
+      category: 'achievement',
+      title: 'Level Up',
+      message,
+      dedupeKey: `xp-level:${payload.level}`,
+      onSelect: () => this.store?.onOpenPlayer?.(),
+    });
+    if (this.durationMs > 0) {
+      this.autoDismissTimer = setTimeout(() => this.dismiss(), this.durationMs);
+    }
   }
 
   dismiss(): void {
+    if (this.autoDismissTimer !== null) {
+      clearTimeout(this.autoDismissTimer);
+      this.autoDismissTimer = null;
+    }
     this.current?.remove();
     this.current = null;
     this.host.hidden = true;

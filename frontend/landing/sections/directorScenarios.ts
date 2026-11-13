@@ -140,7 +140,7 @@ export function initDirectorScenarios(): void {
       <div class="scenarios-intro">
         <p class="eyebrow">EMERGENT SANDBOX · EVERY 14-DAY WORLD PLAYS OUT DIFFERENTLY</p>
         <h3 class="h2">No two planets write the same history.</h3>
-        <p>Wars, territory grabs, binding truces, and rocket races emerge dynamically—driven around the clock by both <b>Rival AI colonies</b> and <b>offline players</b> who link their own <span class="c-blue">NEAR.AI</span> model.</p>
+        <p>Wars, territory grabs, binding truces, and rocket races emerge dynamically—driven around the clock by both <b>Rival AI colonies</b> and <b>offline players</b> via <span class="c-blue">Managed Staker NEAR.AI</span> (≥10 NEAR staked) or their own BYOK model on <a href="/me.html">/me</a>.</p>
       </div>
       <div class="scenarios-parity plate-sm" aria-label="Autonomous decision parity between bots and offline players">
         <div class="parity-col">
@@ -149,9 +149,9 @@ export function initDirectorScenarios(): void {
           <p>Seeded rival colonies evaluate borders, trade quotes, and raid windows on every planet sweep.</p>
         </div>
         <div class="parity-col is-player">
-          <div class="parity-tag c-blue">◆ OFFLINE PLAYERS (BYOK)</div>
-          <strong>Your Colony + NEAR.AI on <a href="/me.html">/me</a></strong>
-          <p>Attach your NEAR.AI key on <a href="/me.html">/me</a> and your offline colony executes the exact same strategic plays while you sleep.</p>
+          <div class="parity-tag c-blue">◆ OFFLINE PLAYERS (STAKER OR BYOK)</div>
+          <strong>≥10 NEAR Stake or BYOK on <a href="/me.html">/me</a></strong>
+          <p>Stake ≥10 NEAR from Day 1 for zero-setup Managed NEAR.AI Autopilot, or attach your own encrypted key on <a href="/me.html">/me</a>.</p>
         </div>
       </div>
     </div>

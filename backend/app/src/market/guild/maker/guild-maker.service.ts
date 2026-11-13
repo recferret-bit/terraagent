@@ -10,6 +10,7 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { MarketOrderRepository } from '../../book/market-order.repository.js';
 import type { MatchOutcome } from '../../matching/market-matcher.service.js';
 import { OrderRelease } from '../../orders/cancel-order.service.js';
+import { resolveProtocolAccountId } from '../../orders/market-policy.provider.js';
 import { TradeKeyRepository, type KeyRecord } from '../../trade/trade-key.repository.js';
 import { TradeReadService } from '../../trade/trade-read.service.js';
 import { fundingEnabled } from '../funding/caps.js';
@@ -167,7 +168,12 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     if (this.orders) return this.orders;
     if (!this.book) {
       if (!this.prisma) throw new Error('guild maker has no order book');
-      this.book = new GuildOrderBook(this.prisma, this.moduleRef.get(MarketOrderRepository, { strict: false }), this.moduleRef.get(OrderRelease, { strict: false }));
+      this.book = new GuildOrderBook(
+        this.prisma,
+        this.moduleRef.get(MarketOrderRepository, { strict: false }),
+        this.moduleRef.get(OrderRelease, { strict: false }),
+        resolveProtocolAccountId(this.env as unknown as Record<string, string | undefined>),
+      );
     }
     return this.book;
   }

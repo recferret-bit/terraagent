@@ -1,0 +1,388 @@
+/* Section 07 (#protocol): TerraAgent Protocol Treasury Visuals & Scroll Transition Animations.
+   Uses Faction Plate tokens (--ta-*) exclusively; zero raw hex, zero border-radius. */
+
+.proto-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 36px;
+  padding: 14px 18px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.proto-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proto-filter-btn {
+  padding: 7px 13px;
+  background: var(--ta-black-hole);
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--ta-dur-quick) ease, border-color var(--ta-dur-quick) ease, color var(--ta-dur-quick) ease;
+}
+
+.proto-filter-btn:hover {
+  border-color: var(--ta-orange);
+  color: var(--ta-text);
+}
+
+.proto-filter-btn[aria-pressed="true"] {
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+  color: var(--ta-void);
+}
+
+.proto-acct-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  color: var(--ta-steel);
+}
+
+.proto-acct-readout code {
+  padding: 4px 10px;
+  background: var(--ta-black-hole);
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-energy);
+  font-size: 12px;
+}
+
+/* Main 3-column animated schematic board */
+.proto-schematic {
+  --proto-p: 1;
+  position: relative;
+  margin-top: 20px;
+  padding: 28px;
+  background: var(--ta-black-hole);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.proto-progress-rail {
+  height: 3px;
+  margin-bottom: 24px;
+  background: var(--ta-seam);
+  overflow: hidden;
+}
+
+.proto-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--ta-terra), var(--ta-blue-hi), var(--ta-orange));
+  transform-origin: left center;
+  transform: scaleX(var(--proto-p));
+}
+
+.proto-flow-grid {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(260px, 1.08fr) minmax(250px, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.proto-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.proto-col-label {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.proto-col-label.is-in { color: var(--ta-terra); }
+.proto-col-label.is-core { color: var(--ta-energy); text-align: center; }
+.proto-col-label.is-out { color: var(--ta-orange-hi); }
+
+.proto-node {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  border-left: 3px solid var(--ta-terra);
+  transition: opacity var(--ta-dur-base) ease, border-color var(--ta-dur-base) ease, transform var(--ta-dur-base) ease;
+}
+
+.proto-node[data-stream="staking"] { border-left-color: var(--ta-blue-hi); }
+.proto-node[data-stream="bonds"] { border-left-color: var(--ta-orange); }
+.proto-node.is-out { border-left-color: var(--ta-energy); }
+.proto-node.is-out-ai { border-left-color: var(--ta-orange-hi); }
+
+.proto-node-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.proto-node-top b {
+  font-family: var(--ta-font-display);
+  font-size: 16px;
+  color: var(--ta-text);
+  letter-spacing: 0.03em;
+}
+
+.proto-rate {
+  font-family: var(--ta-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ta-terra);
+  white-space: nowrap;
+}
+
+.proto-node[data-stream="staking"] .proto-rate { color: var(--ta-blue-hi); }
+.proto-node[data-stream="bonds"] .proto-rate { color: var(--ta-orange-hi); }
+.proto-node.is-out .proto-rate { color: var(--ta-energy); }
+.proto-node.is-out-ai .proto-rate { color: var(--ta-orange-hi); }
+
+.proto-node p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ta-text-3);
+}
+
+/* Center SVG Conduit + Treasury Core */
+.proto-core-wrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.proto-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.proto-pipe-bg {
+  stroke: var(--ta-seam-3);
+  stroke-width: 2;
+  fill: none;
+}
+
+.proto-pipe-active {
+  fill: none;
+  stroke-width: 2.6;
+  stroke-dasharray: 220;
+  stroke-dashoffset: calc((1 - var(--proto-p)) * 220);
+  transition: opacity var(--ta-dur-base) ease;
+}
+
+.proto-core-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  text-align: center;
+}
+
+.proto-core-stat {
+  padding: 8px 6px;
+  background: var(--ta-black-hole);
+  border: 1px solid var(--ta-seam);
+}
+
+.proto-core-stat span {
+  display: block;
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ta-steel);
+}
+
+.proto-core-stat strong {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--ta-font-display);
+  font-size: 16px;
+  color: var(--ta-text);
+}
+
+/* Filter dimming states */
+.proto-schematic[data-active-stream="trade"] [data-stream]:not([data-stream="trade"]):not([data-stream="all"]),
+.proto-schematic[data-active-stream="staking"] [data-stream]:not([data-stream="staking"]):not([data-stream="all"]),
+.proto-schematic[data-active-stream="bonds"] [data-stream]:not([data-stream="bonds"]):not([data-stream="all"]) {
+  opacity: 0.24;
+}
+
+/* 3-Mechanism Scroll Transition Stage Cards */
+.proto-stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.proto-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.proto-stage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.proto-stage-num {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange-hi);
+}
+
+.proto-stage h3 {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: 21px;
+  color: var(--ta-text);
+}
+
+.proto-stage p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ta-text-3);
+}
+
+/* Visual Split Bars inside Stage Cards */
+.proto-bar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--ta-seam);
+}
+
+.proto-bar-caption {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  color: var(--ta-text-2);
+}
+
+.proto-seg-bar {
+  display: flex;
+  height: 14px;
+  gap: 2px;
+  background: var(--ta-black-hole);
+  padding: 2px;
+  border: 1px solid var(--ta-seam-3);
+  transform-origin: left center;
+}
+
+.proto-seg {
+  height: 100%;
+}
+
+.proto-seg.is-terra { background: var(--ta-terra); }
+.proto-seg.is-blue { background: var(--ta-blue-hi); }
+.proto-seg.is-orange { background: var(--ta-orange); }
+.proto-seg.is-energy { background: var(--ta-energy); }
+
+.proto-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--ta-font-mono);
+  font-size: 11.5px;
+  color: var(--ta-text-2);
+}
+
+.proto-legend-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.proto-legend-row b { color: var(--ta-text); font-weight: 600; }
+
+/* Scroll-Driven & JS Intersection Transition Animations (Compositor-only: opacity + transform) */
+@media (prefers-reduced-motion: no-preference) {
+  .js-proto .proto-stage {
+    opacity: 0;
+    transform: translateY(26px);
+    transition:
+      opacity var(--ta-dur-plate) var(--ta-ease-hydraulic) var(--stage-delay, 0ms),
+      transform var(--ta-dur-plate) var(--ta-ease-hydraulic) var(--stage-delay, 0ms),
+      border-color var(--ta-dur-base) ease;
+  }
+
+  .js-proto .proto-stage.is-active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .js-proto .proto-stage .proto-seg-bar {
+    transform: scaleX(0.15);
+    opacity: 0.4;
+    transition:
+      transform var(--ta-dur-cinematic) var(--ta-ease-servo) calc(var(--stage-delay, 0ms) + 120ms),
+      opacity var(--ta-dur-plate) ease calc(var(--stage-delay, 0ms) + 120ms);
+  }
+
+  .js-proto .proto-stage.is-active .proto-seg-bar {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+
+  @supports ((animation-timeline: view()) and (animation-range: entry)) {
+    @keyframes proto-band-entry {
+      entry 0% {
+        opacity: 0.35;
+        transform: translateY(22px);
+      }
+      entry 100%,
+      exit 0% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .proto-schematic {
+      animation: proto-band-entry auto linear both;
+      animation-timeline: view();
+    }
+  }
+}
+
+@media (max-width: 1024px) {
+  .proto-flow-grid,
+  .proto-stages {
+    grid-template-columns: 1fr;
+  }
+}

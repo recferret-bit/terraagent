@@ -21,23 +21,31 @@
 }
 
 .ta-hud__slot[data-slot='top-left'] {
-  /* Minimap in the corner, the Colony book under it (Player tab first). The book's page grows with its content down to the screen bottom and
-     draws over every other HUD plate (minimap, env panel, selection bar): an open book is the player's focus. */
+  /* Minimap in the corner, followed by the players list below it (each player in its own block). */
   top: 0;
-  bottom: 40px; /* stops above the CRT / PIXEL / SHADOW / F8 toggle row (#fx-bar), which draws over the HUD */
+  bottom: var(--ta-s3);
   left: 0;
   align-items: flex-start;
-  z-index: 30; /* above the bottom slots, the selection bar and edge pings (25); below the overlay layer */
+  z-index: 30;
+}
+
+body:has(#fx-bar) .ta-hud__slot[data-slot='top-left'] {
+  bottom: 40px; /* stops above the local-dev CRT / PIXEL / SHADOW / F8 toggle row (#fx-bar) when present */
 }
 
 .ta-hud__slot[data-slot='top-right'] {
-  /* The Command Dock, under the fixed FPS counter (render/ui/fps.ts); grows down to the screen bottom like the left book. */
+  /* Combined right-side tab menu: Command Dock + Colony book stacked along the right edge, sharing the page region to their left. */
   top: 0;
   bottom: 0;
   right: 0;
   align-items: flex-end;
-  padding-top: var(--ta-s7);
+  gap: 2px;
+  padding-top: var(--ta-s4);
   z-index: 30;
+}
+
+body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] {
+  padding-top: var(--ta-s7);
 }
 
 .ta-hud__slot[data-slot='top-left'] > *,
@@ -45,23 +53,50 @@
   flex-shrink: 0;
 }
 
-/* Narrow screens: the top-centre resource bar (~590 px) reaches the corner minimap, so the left stack starts below it. */
+/* Narrow screens: the top-centre resource bar (~590 px) reaches the corners, so the stacks start below it. */
 @media (max-width: 1000px) {
-  .ta-hud__slot[data-slot='top-left'] {
+  .ta-hud__slot[data-slot='top-left'],
+  .ta-hud__slot[data-slot='top-right'] {
     padding-top: var(--ta-s7);
   }
 }
 
-/* No minimap (maps wave off): the Colony book starts below the top-centre resource bar. */
+/* No minimap (maps wave off): the left stack starts below the top-centre resource bar. */
 .ta-hud__slot[data-slot='top-left']:not(:has(> [data-panel='minimap'])) > .ta-book {
   margin-top: 40px;
 }
 
 /* Only the books shrink (their page scrolls); they sit after the slot's own plates. */
-.ta-hud__slot > .ta-book {
+.ta-hud__slot[data-slot] > .ta-book {
   order: 1;
   flex: 0 1 auto;
   min-height: 0;
+}
+
+/* When both Command Dock and Colony Book are combined in top-right, their spines stack seamlessly on the right edge
+   while their pages float in the shared panel region immediately to the left of the spine column. */
+.ta-hud__slot[data-slot='top-right'] > .ta-book {
+  position: static;
+}
+
+.ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
+  position: absolute;
+  top: var(--ta-s4);
+  right: calc(var(--ta-s4) + var(--ta-book-spine-w));
+  max-height: calc(100vh - var(--ta-s4) - var(--ta-s4));
+  z-index: 2;
+}
+
+body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
+  top: var(--ta-s7);
+  max-height: calc(100vh - var(--ta-s7) - var(--ta-s4));
+}
+
+@media (max-width: 1000px) {
+  .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
+    top: var(--ta-s7);
+    max-height: calc(100vh - var(--ta-s7) - var(--ta-s4));
+  }
 }
 
 .ta-hud__slot[data-slot='top-center'] {
@@ -72,13 +107,16 @@
 }
 
 .ta-hud__slot[data-slot='bottom-left'] {
-  /* Env panel and army stance; clears the CRT / PIXEL / SHADOW toggles along the bottom edge. An open Colony book may
-     cover this row. */
-  bottom: 56px;
+  /* Env panel and army stance; when #fx-bar is removed on production, sits flush at the bottom edge. */
+  bottom: var(--ta-s2);
   left: 0;
   flex-direction: row;
   align-items: flex-end;
   padding-bottom: var(--ta-s2);
+}
+
+body:has(#fx-bar) .ta-hud__slot[data-slot='bottom-left'] {
+  bottom: 56px;
 }
 
 .ta-hud__slot[data-slot='bottom-right'] {
@@ -104,7 +142,8 @@
   pointer-events: auto;
 }
 
-.ta-hud__panel[hidden] {
+.ta-hud__panel[hidden],
+.ta-hud__panel:empty {
   display: none !important;
 }
 

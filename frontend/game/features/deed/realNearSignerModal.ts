@@ -1,9 +1,14 @@
-import { ensureBrowserPolyfills } from '../../../design/pilot/browserPolyfills';
 import type { Nep413Signature } from '@terra/contracts';
+import { tryParseCliJsonPaste } from '../../../design/pilot/nearCliPanel';
+import {
+  signWithBrowserWalletSelector,
+  type RealNearNetwork,
+  type RealSignerWalletModuleId,
+} from './parts/realNearWalletDriver';
 import type { OpenSignerModalHandle, SignerModalOutcome, SignerModalRequest } from './signerModal';
 import './signerModal.css';
 
-export type RealNearNetwork = 'testnet' | 'mainnet';
+export type { RealNearNetwork } from './parts/realNearWalletDriver';
 
 interface SavedWalletHint {
   readonly walletId?: string;
@@ -46,62 +51,6 @@ function buildCliCommand(req: SignerModalRequest, nonceBase64: string, network: 
   ].join(' \\\n');
 }
 
-async function signWithBrowserWalletSelector(params: {
-  readonly network: RealNearNetwork;
-  readonly moduleId: 'meteor-wallet' | 'okx-wallet' | 'intear-wallet';
-  readonly message: string;
-  readonly nonceBytes: Uint8Array;
-  readonly recipient: string;
-}): Promise<{ accountId: string; publicKey: string; signature: string }> {
-  const [
-    { setupWalletSelector },
-    { setupMeteorWallet },
-    { setupOKXWallet },
-    { setupIntearWallet },
-  ] = await Promise.all([
-    import('@near-wallet-selector/core'),
-    import('@near-wallet-selector/meteor-wallet'),
-    import('@near-wallet-selector/okx-wallet'),
-    import('@near-wallet-selector/intear-wallet'),
-  ]);
-  const isMainnet = params.network === 'mainnet';
-  const selector = await setupWalletSelector({
-    network: {
-      networkId: params.network,
-      nodeUrl: isMainnet ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com',
-      helperUrl: isMainnet ? 'https://helper.mainnet.near.org' : 'https://helper.testnet.near.org',
-      explorerUrl: isMainnet ? 'https://nearblocks.io' : 'https://testnet.nearblocks.io',
-      indexerUrl: isMainnet ? 'https://api.kitwallet.app' : 'https://testnet-api.kitwallet.app',
-    },
-    modules: [setupMeteorWallet(), setupOKXWallet(), setupIntearWallet()],
-  });
-  const BufferCtor = ensureBrowserPolyfills();
-  const wallet = await selector.wallet(params.moduleId);
-  if (wallet.type === 'hardware') {
-    throw new Error('Hardware wallets are not supported in browser popup mode.');
-  }
-  const existing = await wallet.getAccounts().catch(() => []);
-  if (!existing.length) {
-    await wallet.signIn({ contractId: '' });
-  }
-  if (typeof wallet.signMessage !== 'function') {
-    throw new Error(`${wallet.metadata.name} does not support NEP-413 message signing.`);
-  }
-  const signed = await wallet.signMessage({
-    message: params.message,
-    nonce: BufferCtor.from(params.nonceBytes),
-    recipient: params.recipient,
-  });
-  if (!signed || !signed.accountId || !signed.publicKey || !signed.signature) {
-    throw new Error('Wallet NEP-413 signature was cancelled.');
-  }
-  return {
-    accountId: signed.accountId.trim().toLowerCase(),
-    publicKey: signed.publicKey.trim(),
-    signature: signed.signature.trim(),
-  };
-}
-
 function buildInputField(placeholder: string, testId: string, initialValue = ''): HTMLInputElement {
   const input = document.createElement('input');
   input.type = 'text';
@@ -112,20 +61,6 @@ function buildInputField(placeholder: string, testId: string, initialValue = '')
   return input;
 }
 
-interface RealSignerDom {
-  readonly root: HTMLDivElement;
-  readonly meteorBtn: HTMLButtonElement;
-  readonly okxBtn: HTMLButtonElement;
-  readonly intearBtn: HTMLButtonElement;
-  readonly cliCode: HTMLElement;
-  readonly acctInput: HTMLInputElement;
-  readonly pubKeyInput: HTMLInputElement;
-  readonly sigInput: HTMLInputElement;
-  readonly statusEl: HTMLDivElement;
-  readonly rejectBtn: HTMLButtonElement;
-  readonly approveBtn: HTMLButtonElement;
-}
-
 function buildWalletBtn(label: string, testId: string, primary = false): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -133,6 +68,18 @@ function buildWalletBtn(label: string, testId: string, primary = false): HTMLBut
   btn.dataset.testid = testId;
   btn.textContent = label;
   return btn;
+}
+
+interface RealSignerDom {
+  readonly root: HTMLDivElement;
+  readonly walletBtns: ReadonlyArray<{ readonly btn: HTMLButtonElement; readonly moduleId: RealSignerWalletModuleId }>;
+  readonly cliCode: HTMLElement;
+  readonly acctInput: HTMLInputElement;
+  readonly pubKeyInput: HTMLInputElement;
+  readonly sigInput: HTMLInputElement;
+  readonly statusEl: HTMLDivElement;
+  readonly rejectBtn: HTMLButtonElement;
+  readonly approveBtn: HTMLButtonElement;
 }
 
 function buildRealSignerDom(
@@ -160,11 +107,17 @@ function buildRealSignerDom(
   summary.textContent = req.actionSummary;
 
   const walletRow = document.createElement('div');
-  walletRow.className = 'ta-signer-modal__actions';
-  const meteorBtn = buildWalletBtn('Sign with Meteor', 'real-signer-meteor', true);
-  const okxBtn = buildWalletBtn('OKX', 'real-signer-okx');
-  const intearBtn = buildWalletBtn('Intear', 'real-signer-intear');
-  walletRow.append(meteorBtn, okxBtn, intearBtn);
+  walletRow.className = 'ta-signer-modal__wallets';
+  const walletBtns: Array<{ readonly btn: HTMLButtonElement; readonly moduleId: RealSignerWalletModuleId }> = [
+    { btn: buildWalletBtn('Sign with Meteor', 'real-signer-meteor', true), moduleId: 'meteor-wallet' },
+    { btn: buildWalletBtn('OKX', 'real-signer-okx'), moduleId: 'okx-wallet' },
+    { btn: buildWalletBtn('NEAR Mobile', 'real-signer-mobile'), moduleId: 'near-mobile-wallet' },
+    { btn: buildWalletBtn('Intear', 'real-signer-intear'), moduleId: 'intear-wallet' },
+    ...(req.network === 'testnet'
+      ? [{ btn: buildWalletBtn('MyNearWallet', 'real-signer-mynearwallet'), moduleId: 'my-near-wallet' as const }]
+      : []),
+  ];
+  walletRow.append(...walletBtns.map((w) => w.btn));
 
   const cliCode = document.createElement('code');
   cliCode.className = 'ta-signer-modal__field-value';
@@ -177,7 +130,10 @@ function buildRealSignerDom(
     defaultAcct,
   );
   const pubKeyInput = buildInputField('FullAccess public key (ed25519:...)', 'real-signer-pubkey', savedPubKey);
-  const sigInput = buildInputField('NEP-413 signature (ed25519:... or base64)', 'real-signer-signature');
+  const sigInput = buildInputField(
+    'NEP-413 signature (ed25519:..., base64, or paste CLI JSON)',
+    'real-signer-signature',
+  );
 
   const statusEl = document.createElement('div');
   statusEl.className = 'ta-signer-modal__status';
@@ -191,19 +147,111 @@ function buildRealSignerDom(
 
   card.append(title, summary, walletRow, cliCode, acctInput, pubKeyInput, sigInput, statusEl, actions);
   root.appendChild(card);
-  return {
-    root,
-    meteorBtn,
-    okxBtn,
-    intearBtn,
-    cliCode,
-    acctInput,
-    pubKeyInput,
-    sigInput,
-    statusEl,
-    rejectBtn,
-    approveBtn,
+  return { root, walletBtns, cliCode, acctInput, pubKeyInput, sigInput, statusEl, rejectBtn, approveBtn };
+}
+
+function wireCliInputs(
+  dom: RealSignerDom,
+  req: SignerModalRequest & { readonly network: RealNearNetwork },
+  nonceBase64: string,
+  onApprove: () => void,
+): void {
+  const syncCliCmd = (): void => {
+    dom.cliCode.textContent = buildCliCommand(req, nonceBase64, req.network, dom.acctInput.value.trim().toLowerCase());
   };
+  dom.acctInput.addEventListener('input', syncCliCmd);
+  dom.sigInput.addEventListener('input', () => {
+    const parsed = tryParseCliJsonPaste(dom.sigInput.value);
+    if (!parsed) return;
+    if (parsed.accountId) dom.acctInput.value = parsed.accountId;
+    if (parsed.publicKey) dom.pubKeyInput.value = parsed.publicKey;
+    if (parsed.signature) dom.sigInput.value = parsed.signature;
+    syncCliCmd();
+  });
+  dom.sigInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') onApprove();
+  });
+}
+
+const TESTNET_NAMED_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)+testnet$/;
+const MAINNET_NAMED_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)+(near|tg|sweat)$/;
+const IMPLICIT_HEX_RE = /^[0-9a-f]{64}$/;
+
+function validateManualSignature(
+  dom: RealSignerDom,
+  req: SignerModalRequest & { readonly network: RealNearNetwork },
+  nonceBase64: string,
+): Nep413Signature | null {
+  const accountId = dom.acctInput.value.trim().toLowerCase();
+  const publicKey = dom.pubKeyInput.value.trim();
+  const signature = dom.sigInput.value.trim();
+  if (!accountId || !publicKey || !signature) {
+    dom.statusEl.textContent = 'Enter account ID, FullAccess public key, and NEP-413 signature (or click a wallet above).';
+    return null;
+  }
+  const isImplicit = IMPLICIT_HEX_RE.test(accountId);
+  if (req.network === 'testnet') {
+    if (accountId.endsWith('.near')) {
+      dom.statusEl.textContent = 'Mainnet (.near) account entered for a Testnet action. Enter a .testnet account.';
+      return null;
+    }
+    if (!isImplicit && !TESTNET_NAMED_RE.test(accountId)) {
+      dom.statusEl.textContent = 'Enter a valid NEAR Testnet account ID (e.g. alice.testnet).';
+      return null;
+    }
+  } else {
+    if (accountId.endsWith('.testnet')) {
+      dom.statusEl.textContent = 'Testnet (.testnet) account entered for a Mainnet action. Enter a .near account.';
+      return null;
+    }
+    if (!isImplicit && accountId !== 'aurora' && !MAINNET_NAMED_RE.test(accountId)) {
+      dom.statusEl.textContent = 'Enter a valid NEAR Mainnet account ID (e.g. alice.near).';
+      return null;
+    }
+  }
+  return { accountId, publicKey, signature, message: req.message, nonce: nonceBase64, recipient: req.recipient };
+}
+
+function runRealWalletButtonSign(params: {
+  readonly dom: RealSignerDom;
+  readonly req: SignerModalRequest & { readonly network: RealNearNetwork };
+  readonly moduleId: RealSignerWalletModuleId;
+  readonly nonceBase64: string;
+  readonly nonceBytes: Uint8Array;
+  readonly setWalletBusy: (busy: boolean) => void;
+  readonly finishApproved: (sig: Nep413Signature) => void;
+}): void {
+  const { dom, req, moduleId, nonceBase64, nonceBytes, setWalletBusy, finishApproved } = params;
+  setWalletBusy(true);
+  dom.statusEl.textContent =
+    moduleId === 'near-mobile-wallet'
+      ? 'Scan the QR code in NEAR Mobile and approve the NEP-413 signature…'
+      : 'Waiting for wallet NEP-413 signature…';
+  dom.root.style.zIndex = '900';
+  void signWithBrowserWalletSelector({
+    network: req.network,
+    moduleId,
+    message: req.message,
+    nonceBase64,
+    nonceBytes,
+    recipient: req.recipient,
+  })
+    .then((res) =>
+      finishApproved({
+        accountId: res.accountId,
+        publicKey: res.publicKey,
+        signature: res.signature,
+        message: req.message,
+        nonce: nonceBase64,
+        recipient: req.recipient,
+        ...(res.callbackUrl ? { callbackUrl: res.callbackUrl } : {}),
+      }),
+    )
+    .catch((err: unknown) => {
+      dom.root.style.zIndex = '';
+      setWalletBusy(false);
+      dom.statusEl.textContent = err instanceof Error ? err.message : 'Wallet signing failed.';
+    });
 }
 
 /**
@@ -227,14 +275,23 @@ export function openRealNearSignerModal(
   container.appendChild(dom.root);
 
   let settled = false;
+  let walletBusy = false;
   let resolveOutcome!: (val: SignerModalOutcome) => void;
   const promise = new Promise<SignerModalOutcome>((res) => {
     resolveOutcome = res;
   });
 
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && !walletBusy) {
+      e.preventDefault();
+      reject();
+    }
+  };
+
   const finishApproved = (sig: Nep413Signature): void => {
     if (settled) return;
     settled = true;
+    document.removeEventListener('keydown', onKeyDown);
     dom.root.remove();
     resolveOutcome({ status: 'approved', signature: sig });
   };
@@ -242,64 +299,37 @@ export function openRealNearSignerModal(
   const reject = (): void => {
     if (settled) return;
     settled = true;
+    document.removeEventListener('keydown', onKeyDown);
     dom.root.remove();
     resolveOutcome({ status: 'rejected', reason: 'Cancelled in wallet' });
   };
 
+  document.addEventListener('keydown', onKeyDown);
+
   const approve = (): void => {
-    const accountId = dom.acctInput.value.trim().toLowerCase();
-    const publicKey = dom.pubKeyInput.value.trim();
-    const signature = dom.sigInput.value.trim();
-    if (!accountId || !publicKey || !signature) {
-      dom.statusEl.textContent = 'Enter account ID, FullAccess public key, and NEP-413 signature (or click a wallet above).';
-      return;
-    }
-    finishApproved({
-      accountId,
-      publicKey,
-      signature,
-      message: req.message,
-      nonce: nonceBase64,
-      recipient: req.recipient,
+    const validated = validateManualSignature(dom, req, nonceBase64);
+    if (validated) finishApproved(validated);
+  };
+
+  const setWalletBusy = (busy: boolean): void => {
+    walletBusy = busy;
+    dom.walletBtns.forEach(({ btn }) => {
+      btn.disabled = busy;
     });
   };
 
-  const triggerWallet = (moduleId: 'meteor-wallet' | 'okx-wallet' | 'intear-wallet'): void => {
-    dom.statusEl.textContent = 'Waiting for wallet NEP-413 signature…';
-    dom.root.style.display = 'none';
-    void signWithBrowserWalletSelector({
-      network: req.network,
-      moduleId,
-      message: req.message,
-      nonceBytes,
-      recipient: req.recipient,
-    })
-      .then((res) => {
-        finishApproved({
-          accountId: res.accountId,
-          publicKey: res.publicKey,
-          signature: res.signature,
-          message: req.message,
-          nonce: nonceBase64,
-          recipient: req.recipient,
-        });
-      })
-      .catch((err: unknown) => {
-        dom.root.style.display = '';
-        dom.statusEl.textContent = err instanceof Error ? err.message : 'Wallet signing failed.';
-      });
-  };
-
-  dom.acctInput.addEventListener('input', () => {
-    dom.cliCode.textContent = buildCliCommand(req, nonceBase64, req.network, dom.acctInput.value.trim().toLowerCase());
+  wireCliInputs(dom, req, nonceBase64, approve);
+  dom.walletBtns.forEach(({ btn, moduleId }) => {
+    btn.onclick = () => {
+      if (!walletBusy && !settled) {
+        runRealWalletButtonSign({ dom, req, moduleId, nonceBase64, nonceBytes, setWalletBusy, finishApproved });
+      }
+    };
   });
-  dom.meteorBtn.onclick = () => triggerWallet('meteor-wallet');
-  dom.okxBtn.onclick = () => triggerWallet('okx-wallet');
-  dom.intearBtn.onclick = () => triggerWallet('intear-wallet');
   dom.approveBtn.onclick = approve;
   dom.rejectBtn.onclick = reject;
   dom.root.onclick = (e) => {
-    if (e.target === dom.root) reject();
+    if (e.target === dom.root && !walletBusy) reject();
   };
 
   return { promise, approve, reject, close: reject, root: dom.root };

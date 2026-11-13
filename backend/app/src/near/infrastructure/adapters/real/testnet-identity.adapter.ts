@@ -1,4 +1,3 @@
-import { createHash, createPublicKey } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { envFlagTrue } from '@terra/config';
 import { PublicKey, nearToYocto } from 'near-api-js';
@@ -23,8 +22,7 @@ import { kekEnv } from '../../../identity/colony-accounts.js';
 import { mockOauthSecret, verifyMockToken } from '../../../identity/mock-token.js';
 import { Nep413AuthService } from '../../../identity/nep413-auth.service.js';
 import { verifyNep413ClaimSignature } from '../../../identity/nep413-verifier.js';
-import { encodeBase58 } from '../../../keystore/base58.js';
-import { ed25519PrivateKeyFromSeed, KeyStore, loadKekRing } from '../../../keystore/index.js';
+import { KeyStore, loadKekRing } from '../../../keystore/index.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
 import {
@@ -68,7 +66,9 @@ export class TestnetIdentityAdapter implements IdentityPort {
 
     if (provider === 'near-wallet' || input.token.startsWith('nep413:')) {
       const verified = await this.nep413.verifyInlineToken(input.token);
-      const preferredName = verified.accountId.replace(/\.(testnet|near)$/i, '') || verified.accountId;
+      const preferredName = verified.accountId.includes('.')
+        ? (verified.accountId.split('.')[0] || verified.accountId)
+        : verified.accountId;
       return {
         playerId: verified.accountId,
         email: null,
@@ -160,10 +160,10 @@ export class TestnetIdentityAdapter implements IdentityPort {
       envFlagTrue(this.envSource.NEAR_USE_PILOTS_FACTORY) || this.envSource.NEAR_USE_PILOTS_FACTORY?.trim() === '1';
     const parentSecret = this.rpc.config.secrets.rootSecretKey;
     const useFactory = forceFactory || input.parent === this.rpc.config.contracts.pilots || !parentSecret;
-    const operatorSecret = this.rpc.config.secrets.relayerSecretKey ?? this.rpc.config.secrets.minterSecretKey;
+    const operatorSecret = this.rpc.config.secrets.relayerSecretKey;
     if (useFactory && !operatorSecret) {
       throw new NearException('NEAR_UNAVAILABLE', {
-        message: 'Missing NEAR_RELAYER_SECRET_KEY / NEAR_MINTER_SECRET_KEY (or NEAR_ROOT_SECRET_KEY) for createNamedAccount',
+        message: 'Missing NEAR_RELAYER_SECRET_KEY (or NEAR_ROOT_SECRET_KEY) for createNamedAccount',
       });
     }
     const parent = useFactory
@@ -191,18 +191,25 @@ export class TestnetIdentityAdapter implements IdentityPort {
         const accountId = `${label}.${parent}`;
         if (this.createdKeys.has(accountId) || (await this.rpc.accountExists(accountId))) continue;
         const generated = this.keys().generate();
-        const receipt = useFactory
-          ? await this.createViaPilotFactory(input.opId, label, parent, generated.row.publicKey, operatorSecret!)
-          : await this.rpc.createSubAccount({
-              parentAccountId: parent,
-              parentSecretKey: parentSecret!,
-              newAccountId: accountId,
-              publicKey: generated.row.publicKey,
-              initialNear: '0.02',
-            });
-        this.createdKeys.set(accountId, { seed: generated.seed, publicKey: generated.row.publicKey });
-        registerPreSealedAccountKey(accountId, generated.row);
-        return { accountId, receipt };
+        try {
+          const receipt = useFactory
+            ? await this.createViaPilotFactory(input.opId, label, parent, generated.row.publicKey, operatorSecret!)
+            : await this.rpc.createSubAccount({
+                parentAccountId: parent,
+                parentSecretKey: parentSecret!,
+                newAccountId: accountId,
+                publicKey: generated.row.publicKey,
+                initialNear: '0.02',
+              });
+          this.createdKeys.set(accountId, { seed: generated.seed, publicKey: generated.row.publicKey });
+          registerPreSealedAccountKey(accountId, generated.row);
+          return { accountId, receipt };
+        } catch (err) {
+          if (err instanceof NearException && (err.errorCode === 'NEAR_NAME_TAKEN' || err.errorCode === 'NEAR_ACCOUNT_EXISTS')) {
+            continue;
+          }
+          throw err;
+        }
       }
       throw new NearException('NEAR_NAME_TAKEN');
     });
@@ -215,11 +222,8 @@ export class TestnetIdentityAdapter implements IdentityPort {
     publicKey: string,
     operatorSecret: string,
   ): Promise<ChainReceipt> {
-    const signerAccountId = this.rpc.config.secrets.relayerSecretKey
-      ? this.rpc.config.accounts.relayer
-      : this.rpc.config.accounts.minter;
     const { receipt } = await this.rpc.call({
-      signerAccountId,
+      signerAccountId: this.rpc.config.accounts.relayer,
       signerSecretKey: operatorSecret,
       contractId: factoryContract,
       methodName: 'create_pilot_account',
@@ -231,43 +235,48 @@ export class TestnetIdentityAdapter implements IdentityPort {
   }
 
   async claimAccount(input: ClaimAccountInput): Promise<ChainReceipt> {
-    const storedRow = this.prisma?.nearColonyAccount
-      ? await this.prisma.nearColonyAccount.findUnique({ where: { accountId: input.accountId } })
-      : null;
-    const memKey = this.createdKeys.get(input.accountId);
-    if (!storedRow && !memKey) {
-      throw new NearException('NEAR_UNAVAILABLE', { message: 'Custodial colony account not found for claim' });
-    }
-    if (storedRow?.encryptedSecret === 'claimed' && !memKey) {
-      throw new NearException('NEAR_NOT_OWNER', {
-        message: 'Colony account has already been claimed to self-custody',
-      });
-    }
-    if (!input.walletSignature) {
-      throw new NearException('NEAR_PROVIDER_REJECTED', {
-        message: 'NEP-413 walletSignature is required to claim a custodial NEAR account',
-      });
-    }
-
     return this.claimCache.run(input.opId, async () => {
-      verifyNep413ClaimSignature({
-        signature: input.walletSignature!,
-        expectedWalletAccountId: input.walletAccountId,
-        expectedPublicKey: input.walletPublicKey,
-        allowedRecipients: [
-          this.rpc.config.rootAccount,
-          input.accountId,
-          'terraagent.app',
-          'terraagent.testnet',
-          'terraagent.near',
-        ],
-        network: this.rpc.network,
-      });
-      await this.rpc.verifyFullAccessKeyOnChain(input.walletAccountId, input.walletSignature!.publicKey);
+      const storedRow = this.prisma?.nearColonyAccount
+        ? await this.prisma.nearColonyAccount.findUnique({ where: { accountId: input.accountId } })
+        : null;
+      const memKey = this.createdKeys.get(input.accountId);
+      if (!storedRow && !memKey) {
+        throw new NearException('NEAR_UNAVAILABLE', { message: 'Custodial colony account not found for claim' });
+      }
+      if (storedRow?.encryptedSecret === 'claimed' && !memKey) {
+        if (storedRow.claimedByAccountId === input.walletAccountId) {
+          return {
+            txHash: `claimed:${storedRow.accountId}`,
+            status: 'success',
+            network: this.rpc.network,
+            at: (storedRow.claimedAt ?? new Date()).getTime(),
+          };
+        }
+        throw new NearException('NEAR_NOT_OWNER', {
+          message: 'Colony account has already been claimed to self-custody',
+        });
+      }
+      if (!input.walletSignature) {
+        throw new NearException('NEAR_PROVIDER_REJECTED', {
+          message: 'NEP-413 walletSignature is required to claim a custodial NEAR account',
+        });
+      }
 
       const target = await this.resolveClaimTarget(input.accountId, storedRow, memKey);
+      const allowedRecipients = Array.from(
+        new Set([this.rpc.config.rootAccount, input.accountId, target.accountId, 'terraagent.app']),
+      );
+      verifyNep413ClaimSignature({
+        signature: input.walletSignature,
+        expectedWalletAccountId: input.walletAccountId,
+        expectedPublicKey: input.walletPublicKey,
+        allowedRecipients,
+        network: this.rpc.network,
+      });
+      await this.rpc.verifyFullAccessKeyOnChain(input.walletAccountId, input.walletSignature.publicKey);
+
       const signerSecret = seedToNearSecretKey(target.seed);
-      const walletPubKey = normalizeNearPublicKey(input.walletSignature!.publicKey);
+      const walletPubKey = normalizeNearPublicKey(input.walletSignature.publicKey);
 
       if (this.rpc.network === 'mainnet' && target.publicKey !== walletPubKey) {
         await this.revokeMainnetIntentsKeyBestEffort(target.accountId, signerSecret, target.publicKey);
@@ -281,9 +290,11 @@ export class TestnetIdentityAdapter implements IdentityPort {
       });
 
       this.createdKeys.delete(target.accountId);
+      this.createdKeys.delete(input.accountId);
       if (this.prisma?.nearColonyAccount && storedRow) {
+        const updatedAccounts = Array.from(new Set([input.accountId, target.accountId]));
         await this.prisma.nearColonyAccount.updateMany({
-          where: { accountId: input.accountId },
+          where: { accountId: { in: updatedAccounts } },
           data: {
             publicKey: walletPubKey,
             encryptedSecret: 'claimed',
@@ -318,31 +329,41 @@ export class TestnetIdentityAdapter implements IdentityPort {
 
   private async resolveClaimTarget(
     requestedAccountId: string,
-    storedRow: { accountId: string; ownerAccountId: string; publicKey: string; encryptedSecret: string; kekVersion: number } | null,
+    storedRow: {
+      accountId: string;
+      playerId?: string;
+      ownerAccountId: string;
+      publicKey: string;
+      encryptedSecret: string;
+      kekVersion: number;
+    } | null,
     memKey: { seed: Buffer; publicKey: string } | undefined,
   ): Promise<{ accountId: string; seed: Buffer; publicKey: string }> {
     if (memKey) return { accountId: requestedAccountId, seed: memKey.seed, publicKey: memKey.publicKey };
-    if (storedRow && storedRow.accountId.endsWith('.mock') && !storedRow.ownerAccountId.endsWith('.mock')) {
-      const ownerMem = this.createdKeys.get(storedRow.ownerAccountId);
-      if (ownerMem) return { accountId: storedRow.ownerAccountId, seed: ownerMem.seed, publicKey: ownerMem.publicKey };
-      const ownerRow = await this.prisma?.nearColonyAccount.findUnique({
-        where: { accountId: storedRow.ownerAccountId },
-      });
-      if (ownerRow && ownerRow.encryptedSecret !== 'mock' && ownerRow.encryptedSecret !== 'claimed') {
-        return { accountId: ownerRow.accountId, seed: this.keys().open(ownerRow), publicKey: ownerRow.publicKey };
+    if (storedRow && storedRow.ownerAccountId && storedRow.ownerAccountId !== storedRow.accountId) {
+      const subExists = !storedRow.accountId.endsWith('.mock') && (await this.rpc.accountExists(storedRow.accountId));
+      if (!subExists && !storedRow.ownerAccountId.endsWith('.mock')) {
+        const ownerMem = this.createdKeys.get(storedRow.ownerAccountId);
+        if (ownerMem) return { accountId: storedRow.ownerAccountId, seed: ownerMem.seed, publicKey: ownerMem.publicKey };
+        const ownerRow = await this.prisma?.nearColonyAccount.findUnique({
+          where: { accountId: storedRow.ownerAccountId },
+        });
+        if (ownerRow && ownerRow.encryptedSecret !== 'mock' && ownerRow.encryptedSecret !== 'claimed') {
+          return { accountId: ownerRow.accountId, seed: this.keys().open(ownerRow), publicKey: ownerRow.publicKey };
+        }
       }
     }
     if (storedRow && (storedRow.encryptedSecret === 'mock' || storedRow.accountId.endsWith('.mock'))) {
-      const playerRow = await this.prisma?.nearColonyAccount.findFirst({
-        where: { slot: 'player', encryptedSecret: { notIn: ['mock', 'claimed'] } },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (playerRow) return { accountId: playerRow.accountId, seed: this.keys().open(playerRow), publicKey: playerRow.publicKey };
-      const firstMem = this.createdKeys.entries().next().value as [string, { seed: Buffer; publicKey: string }] | undefined;
-      if (firstMem) return { accountId: firstMem[0], seed: firstMem[1].seed, publicKey: firstMem[1].publicKey };
-      if (storedRow.encryptedSecret === 'mock') {
-        throw new NearException('NEAR_UNAVAILABLE', { message: 'Custodial colony account has no testnet key' });
+      if (storedRow.playerId) {
+        const playerRow = await this.prisma?.nearColonyAccount.findFirst({
+          where: { playerId: storedRow.playerId, slot: 'player', encryptedSecret: { notIn: ['mock', 'claimed'] } },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (playerRow) {
+          return { accountId: playerRow.accountId, seed: this.keys().open(playerRow), publicKey: playerRow.publicKey };
+        }
       }
+      throw new NearException('NEAR_UNAVAILABLE', { message: 'Custodial colony account has no testnet key' });
     }
     return { accountId: requestedAccountId, seed: this.keys().open(storedRow!), publicKey: storedRow!.publicKey };
   }
@@ -386,13 +407,9 @@ function isDirectGoogleIssuer(token: string): boolean {
 
 function normalizeNearPublicKey(raw: string): string {
   try {
-    PublicKey.fromString(raw);
-    return raw;
+    return PublicKey.fromString(raw.trim()).toString();
   } catch {
-    const seed = createHash('sha256').update(raw).digest();
-    const priv = ed25519PrivateKeyFromSeed(seed);
-    const pubDer = createPublicKey(priv).export({ format: 'der', type: 'spki' });
-    return `ed25519:${encodeBase58(pubDer.subarray(pubDer.length - 32))}`;
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEAR public key format' });
   }
 }
 

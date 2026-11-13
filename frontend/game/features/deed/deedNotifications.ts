@@ -1,4 +1,7 @@
 import type { DeedUpdatedPayload } from '@terra/contracts';
+import { pushNotification } from '../notifications/notificationStore';
+
+export const DEFAULT_DEED_TOAST_DURATION_MS = 6000;
 
 export interface DeedToastInput {
   readonly colonyId: string;
@@ -13,6 +16,8 @@ export interface DeedNotificationSource {
   onServerEvents?(
     fn: (events: ReadonlyArray<{ kind: string; data?: Record<string, unknown> }>) => void,
   ): () => void;
+  onOpenDeed?: () => void;
+  durationMs?: number;
 }
 
 /**
@@ -22,12 +27,13 @@ export interface DeedNotificationSource {
  */
 export class DeedToastHost {
   private current: HTMLElement | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly offs: Array<() => void> = [];
   private readonly seenKeys = new Set<string>();
 
   constructor(
     private readonly host: HTMLElement,
-    source?: DeedNotificationSource,
+    private readonly source?: DeedNotificationSource,
   ) {
     this.host.hidden = true;
     this.host.setAttribute('role', 'status');
@@ -104,17 +110,22 @@ export class DeedToastHost {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'ta-deed-toast-close';
+    closeBtn.dataset.testid = 'deed-toast-close';
     closeBtn.setAttribute('aria-label', 'Dismiss deed notification');
     closeBtn.textContent = '×';
-    closeBtn.onclick = () => this.dismiss();
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.dismiss();
+    };
 
     head.appendChild(eyebrow);
     head.appendChild(closeBtn);
 
+    const text = `Your Deed was updated: ${input.change.trim()}`;
     const msg = document.createElement('p');
     msg.className = 'ta-deed-toast-msg';
     msg.dataset.testid = 'deed-toast-message';
-    msg.textContent = `Your Deed was updated: ${input.change.trim()}`;
+    msg.textContent = text;
 
     card.appendChild(head);
     card.appendChild(msg);
@@ -122,9 +133,26 @@ export class DeedToastHost {
     this.host.appendChild(card);
     this.host.hidden = false;
     this.current = card;
+
+    const ms = this.source?.durationMs ?? DEFAULT_DEED_TOAST_DURATION_MS;
+    if (ms > 0) {
+      this.timer = setTimeout(() => this.dismiss(), ms);
+    }
+
+    pushNotification({
+      category: 'deed',
+      title: input.settled ? 'Colony Deed Settled' : `Colony Deed v${input.version}`,
+      message: text,
+      dedupeKey: `deed:${input.colonyId}:${input.version}:${input.change.trim()}`,
+      onSelect: () => this.source?.onOpenDeed?.(),
+    });
   }
 
   dismiss(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
     this.current?.remove();
     this.current = null;
     this.host.hidden = true;

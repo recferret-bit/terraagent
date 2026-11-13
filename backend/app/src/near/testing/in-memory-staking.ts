@@ -38,8 +38,13 @@ export class InMemoryStaking extends StakingPort {
   constructor(
     private readonly chain: InMemoryChain = new InMemoryChain(),
     private readonly rawPools?: string,
+    private readonly protocolAccountId?: string,
   ) {
     super();
+  }
+
+  private resolveProtocolAccount(): string {
+    return this.protocolAccountId?.trim() || process.env.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_STAKING_ACCOUNT_ID;
   }
 
   advanceClockMs(deltaMs: number): void {
@@ -152,10 +157,8 @@ export class InMemoryStaking extends StakingPort {
       const next = this.settle(accountId, pool);
       mutate(next, amount);
       if (next.protocolYieldDelta > 0n) {
-        this.balances.set(
-          PROTOCOL_STAKING_ACCOUNT_ID,
-          (this.balances.get(PROTOCOL_STAKING_ACCOUNT_ID) ?? 0n) + next.protocolYieldDelta,
-        );
+        const proto = this.resolveProtocolAccount();
+        this.balances.set(proto, (this.balances.get(proto) ?? 0n) + next.protocolYieldDelta);
       }
       this.positions.set(`${accountId}::${pool.poolId}`, next);
     }).receipt;
@@ -172,10 +175,8 @@ export class InMemoryStaking extends StakingPort {
         });
       }
       if (next.protocolYieldDelta > 0n) {
-        this.balances.set(
-          PROTOCOL_STAKING_ACCOUNT_ID,
-          (this.balances.get(PROTOCOL_STAKING_ACCOUNT_ID) ?? 0n) + next.protocolYieldDelta,
-        );
+        const proto = this.resolveProtocolAccount();
+        this.balances.set(proto, (this.balances.get(proto) ?? 0n) + next.protocolYieldDelta);
       }
       const payout = next.withdrawable + next.rewards;
       const recipient = input.toAccountId ?? input.accountId;

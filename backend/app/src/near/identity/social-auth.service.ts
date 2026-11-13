@@ -46,7 +46,9 @@ export class SocialAuthService {
   ): Promise<SocialAuthIssued> {
     if (!this.flags.has('W06')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     const verified = await this.nep413.verifyChallenge(body);
-    const stem = verified.accountId.replace(/\.(testnet|near)$/i, '') || verified.accountId;
+    const stem = verified.accountId.includes('.')
+      ? (verified.accountId.split('.')[0] || verified.accountId)
+      : verified.accountId;
     return this.linkAndIssueSession({
       provider: 'near-wallet',
       subject: verified.accountId,

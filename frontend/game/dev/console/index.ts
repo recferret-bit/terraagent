@@ -1,3 +1,4 @@
+import { isProductionBuild } from '../../core/buildEnv';
 import type { Disposable, Feature, FeatureContext } from '../../core/registry/types';
 import { DevConsole } from './DevConsole';
 
@@ -10,7 +11,10 @@ export const devConsoleEnabled = (
   search: string = typeof location !== 'undefined' ? location.search : '',
   dev: boolean = import.meta.env.DEV,
   mode: string = import.meta.env.MODE,
-): boolean => dev || (mode !== 'production' && new URLSearchParams(search).get('dev') === '1');
+): boolean => {
+  if (isProductionBuild(mode, !dev && mode === 'production')) return false;
+  return dev || new URLSearchParams(search).get('dev') === '1';
+};
 
 export interface MountDevConsoleOptions {
   parent: HTMLElement;
@@ -22,7 +26,9 @@ export interface MountDevConsoleOptions {
 /** Mounts the console (backtick toggles it) and returns its disposer, or a no-op when not enabled. Call on session start, dispose on teardown. */
 export function mountDevConsole({ parent, features, ctx }: MountDevConsoleOptions): Disposable & { console: DevConsole | null } {
   // Literal env checks so a production-mode build folds this away and drops DevConsole from the bundle.
-  if ((!import.meta.env.DEV && import.meta.env.MODE === 'production') || !devConsoleEnabled()) return { console: null, dispose() {} };
+  if ((!import.meta.env.DEV && import.meta.env.MODE === 'production') || isProductionBuild() || !devConsoleEnabled()) {
+    return { console: null, dispose() {} };
+  }
   const c = new DevConsole(parent, features, ctx);
   return { console: c, dispose: () => c.dispose() };
 }

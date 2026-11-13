@@ -48,9 +48,9 @@ function assertAccountMatchesNetwork(accountId: string, network: 'testnet' | 'ma
   if (IMPLICIT_ACCOUNT_RE.test(accountId)) return;
 
   if (network === 'testnet') {
-    if (accountId.endsWith('.near')) {
+    if (/\.(near|tg|sweat)$/i.test(accountId) || accountId === 'aurora') {
       throw new NearException('NEAR_PROVIDER_REJECTED', {
-        message: 'Mainnet (.near) accounts are rejected on NEAR Testnet; switch your wallet to Testnet',
+        message: 'Mainnet accounts are rejected on NEAR Testnet; switch your wallet to Testnet',
       });
     }
     if (!accountId.endsWith('.testnet') || accountId.length <= '.testnet'.length) {
@@ -61,9 +61,11 @@ function assertAccountMatchesNetwork(accountId: string, network: 'testnet' | 'ma
     return;
   }
 
-  if (accountId.endsWith('.testnet') || !accountId.endsWith('.near') || accountId.length <= '.near'.length) {
+  const validMainnetNamed =
+    (/\.(near|tg|sweat)$/i.test(accountId) && accountId.split('.')[0]!.length >= 1) || accountId === 'aurora';
+  if (accountId.endsWith('.testnet') || !validMainnetNamed) {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
-      message: 'Only NEAR Mainnet (.near or implicit 64-hex) accounts are accepted',
+      message: 'Only NEAR Mainnet (.near, .tg, .sweat, or implicit 64-hex) accounts are accepted',
     });
   }
 }

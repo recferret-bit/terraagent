@@ -12,6 +12,11 @@
   display: none;
 }
 
+/* Inside the Colony book, War & Diplomacy raid permission lives in the DIRECTOR tab; Away focuses on offline budgets & auto-trade. */
+.ta-colony-book [data-tab-pane='away'] .ta-away__row--raids {
+  display: none;
+}
+
 .ta-away {
   display: flex;
   flex-direction: column;

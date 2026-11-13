@@ -32,15 +32,20 @@ npm run deploy -- --dry-run
 
 ---
 
-## Step 3 — Push `/srv/terraagent/.env` to the Server
+## Step 3 — Deploy / Verify the 6 Rust Contracts & Push `/srv/terraagent/.env`
 
-Extract your funded NEAR Testnet credentials from `~/.near-credentials/testnet/*.json`, generate production `JWT_ACCESS_SECRET` + `NEAR_KEK` (which also encrypts player `/me` NEAR.AI BYOK keys at rest with AES-256-GCM), and write `/srv/terraagent/.env` (`chmod 600`):
+Ensure all **6 Rust WASM contracts** (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) and **4 core accounts** (`<root>`, `protocol.<root>`, `relayer.<root>`, `minter.<root>`) are provisioned on-chain (`--network mainnet` with `NEAR_ALLOW_MAINNET=1` promotes the exact same stack to `terraagent.near`):
+
+```bash
+npm run near:deploy-contracts -- --network testnet --ensure-accounts
+```
+
+Extract your funded `relayer` and `minter` credentials from `~/.near-credentials/testnet/*.json` (**note:** with `NEAR_USE_PILOTS_FACTORY=true`, `pilots.<root>` creates `{pilot}.pilots.<root>` accounts via `relayer.<root>` so `NEAR_ROOT_SECRET_KEY` can stay completely offline in cold storage!), generate production `JWT_ACCESS_SECRET` + `NEAR_KEK` (AES-256-GCM for custodial keys and `/me` NEAR.AI BYOK keys), and write `/srv/terraagent/.env` (`chmod 600`):
 
 ```bash
 source .env
 NEARAI_KEY="<YOUR_NEARAI_API_KEY>"
 
-ROOT_SK=$(node -e "console.log(require(process.env.HOME+'/.near-credentials/testnet/terraagent.testnet.json').private_key)")
 RELAYER_SK=$(node -e "console.log(require(process.env.HOME+'/.near-credentials/testnet/relayer.terraagent.testnet.json').private_key)")
 MINTER_SK=$(node -e "console.log(require(process.env.HOME+'/.near-credentials/testnet/minter.terraagent.testnet.json').private_key)")
 JWT_SEC=$(openssl rand -hex 32)
@@ -52,10 +57,18 @@ DATABASE_URL=postgresql://terra:terra@postgres:5432/terraagent
 JWT_ACCESS_SECRET=${JWT_SEC}
 NEAR_KEK=${KEK_B64}
 
-# Real NEAR Testnet (all 11 NEAR ports live on *.terraagent.testnet + intents.near)
+# Real NEAR Testnet (6 Rust contracts: res, deed, bounty, staking, dao, pilots + protocol.terraagent.testnet)
+# Flip NEAR_MODE=mainnet + NEAR_ALLOW_MAINNET=1 + NEAR_ROOT_ACCOUNT=terraagent.near for Mainnet + live intents.near
 NEAR_MODE=testnet
 NEAR_ROOT_ACCOUNT=terraagent.testnet
-NEAR_ROOT_SECRET_KEY=${ROOT_SK}
+NEAR_PROTOCOL_ACCOUNT=protocol.terraagent.testnet
+NEAR_CONTRACT_PILOTS=pilots.terraagent.testnet
+NEAR_USE_PILOTS_FACTORY=true
+NEAR_PLATFORM_FEE_BP=100
+NEAR_STAKER_PLATFORM_FEE_BP=50
+NEAR_DAO_FEE_SHARE_BP=2000
+NEAR_STAKER_MIN_NEAR=10
+NEAR_ESCROW_SLASH_PROTOCOL_BP=1000
 NEAR_RELAYER_SECRET_KEY=${RELAYER_SK}
 NEAR_MINTER_SECRET_KEY=${MINTER_SK}
 NOTIFY_ALLOW_MOCK_IN_PROD=true

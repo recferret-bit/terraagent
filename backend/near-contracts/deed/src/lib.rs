@@ -26,6 +26,14 @@ pub struct StoredDeed {
 }
 
 #[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Nep177ContractMetadata {
+    pub spec: String,
+    pub name: String,
+    pub symbol: String,
+}
+
+#[near(serializers = [json])]
 #[derive(Clone, Debug)]
 pub struct Nep171TokenMetadata {
     pub title: Option<String>,
@@ -80,6 +88,22 @@ impl DeedContract {
             "NEAR_NOT_OWNER: only owner can update operator"
         );
         self.operator_id = operator_id;
+    }
+
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
+    pub fn get_operator(&self) -> AccountId {
+        self.operator_id.clone()
+    }
+
+    pub fn nft_metadata(&self) -> Nep177ContractMetadata {
+        Nep177ContractMetadata {
+            spec: "nft-2.0.0".to_string(),
+            name: "TerraAgent Colony Deeds & Badges".to_string(),
+            symbol: "DEED".to_string(),
+        }
     }
 
     /// Mints a dynamic Colony Deed (or Badge) NFT. Idempotent by `op_id`.
@@ -157,6 +181,7 @@ impl DeedContract {
         explicit_unsettle: Option<bool>,
     ) -> StoredDeed {
         require!(!op_id.is_empty(), "NEAR_NFT_INVALID: op_id required");
+        require!(!token_id.is_empty(), "NEAR_NFT_INVALID: token_id required");
         let caller = env::predecessor_account_id();
         require!(
             caller == self.operator_id || caller == self.owner_id,
@@ -180,7 +205,7 @@ impl DeedContract {
         }
 
         let now = env::block_timestamp_ms();
-        deed.version += 1;
+        deed.version = deed.version.saturating_add(1);
         deed.settled = deed.settled || settled;
         deed.metadata_json = metadata_json.clone();
         deed.updated_at_ms = now;
@@ -244,88 +269,4 @@ impl DeedContract {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
-
-    fn acct(s: &str) -> AccountId {
-        s.parse().unwrap()
-    }
-
-    fn set_caller(predecessor: &str, ts_ms: u64) {
-        let ctx = VMContextBuilder::new()
-            .predecessor_account_id(acct(predecessor))
-            .block_timestamp(ts_ms * 1_000_000)
-            .build();
-        testing_env!(ctx);
-    }
-
-    #[test]
-    fn mint_update_settle_and_idempotency() {
-        set_caller("owner.testnet", 1_000);
-        let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
-
-        set_caller("op.testnet", 2_000);
-        let minted = c.mint_deed(
-            "op_m1".into(),
-            "deed".into(),
-            "deed:col_0".into(),
-            acct("pilot.testnet"),
-            r#"{"stage":1,"settled":false,"version":1}"#.into(),
-            false,
-        );
-        assert_eq!(minted.version, 1);
-        assert!(!minted.settled);
-
-        // Idempotent retry returns same deed at version 1
-        let retry = c.mint_deed(
-            "op_m1".into(),
-            "deed".into(),
-            "deed:col_0".into(),
-            acct("pilot.testnet"),
-            r#"{"stage":1}"#.into(),
-            false,
-        );
-        assert_eq!(retry.version, 1);
-
-        set_caller("op.testnet", 5_000);
-        let settled = c.update_metadata(
-            "op_u1".into(),
-            "deed:col_0".into(),
-            r#"{"stage":4,"settled":true,"status":"settled","version":2}"#.into(),
-            true,
-            None,
-        );
-        assert_eq!(settled.version, 2);
-        assert!(settled.settled);
-        assert_eq!(settled.history.len(), 2);
-        assert_eq!(c.owner_of("deed:col_0".into()), Some(acct("pilot.testnet")));
-        assert_eq!(c.nft_tokens_for_owner(acct("pilot.testnet")).len(), 1);
-    }
-
-    #[test]
-    #[should_panic(expected = "settled Colony Deed cannot be unsettled")]
-    fn blocks_unsettling_a_settled_deed() {
-        set_caller("owner.testnet", 1_000);
-        let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
-        set_caller("op.testnet", 2_000);
-        c.mint_deed(
-            "op_m1".into(),
-            "deed".into(),
-            "deed:col_1".into(),
-            acct("pilot.testnet"),
-            "{}".into(),
-            true,
-        );
-        c.update_metadata("op_u2".into(), "deed:col_1".into(), "{}".into(), false, Some(true));
-    }
-
-    #[test]
-    #[should_panic(expected = "NEAR_NFT_SOULBOUND")]
-    fn blocks_transfer_of_soulbound_deed() {
-        set_caller("owner.testnet", 1_000);
-        let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
-        c.nft_transfer(acct("other.testnet"), "deed:col_0".into());
-    }
-}
+mod tests;

@@ -3,6 +3,7 @@ import { databaseEnabled } from '../../../core/persistence.js';
 import type { AppEnv } from '../../../core/tokens.js';
 import { PROTOCOL_ACCOUNT_ID } from '../../../market/orders/market-policy.provider.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../network/near-network.config.js';
+import { resolveProtocolFeeSchedule } from '../network/protocol-fee.config.js';
 
 export interface ProtocolStreamInfo {
   readonly id: string;
@@ -37,26 +38,33 @@ export interface TerraAgentProtocolView {
   readonly outflows: readonly ProtocolStreamInfo[];
 }
 
-const PROTOCOL_INFLOWS: readonly ProtocolStreamInfo[] = [
-  {
-    id: 'market_fee',
-    label: 'Market Settlement Fee',
-    rateSummary: '0.80% standard / 0.40% for >=10 NEAR stakers',
-    description: '80% of the 1.00% (or 0.50% staker) platform fee on finalized NEP-413 trades; 20% carves out to the Planet Sputnik DAO.',
-  },
-  {
-    id: 'staking_yield',
-    label: 'Validator Staking Yield Share',
-    rateSummary: '20% of validator yield (1.80% APY; player keeps 7.20% net APY)',
-    description: 'Lossless subscription: principal stays 100% the player’s while 20% of accrued validator yield funds AI & gasless relays.',
-  },
-  {
-    id: 'escrow_slash',
-    label: 'Peace & War Escrow Slashing',
-    rateSummary: '10% protocol cut (90% paid to betrayed partner / defender)',
-    description: 'Triggered when a bonded truce is broken early or a 6h War Bond is canceled/expires without meeting its war objective.',
-  },
-];
+function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): readonly ProtocolStreamInfo[] {
+  const fmtPct = (bp: number) => `${(bp / 100).toFixed(2)}%`;
+  const daoPct = Math.round(sched.daoCarveOutShareBp / 100);
+  const protoSharePct = 100 - daoPct;
+  const slashProtoPct = Math.round(sched.escrowSlashProtocolShareBp / 100);
+  const slashVictimPct = 100 - slashProtoPct;
+  return [
+    {
+      id: 'market_fee',
+      label: 'Market Settlement Fee',
+      rateSummary: `${fmtPct(sched.protocolNetStandardBp)} standard / ${fmtPct(sched.protocolNetStakerBp)} for >=${sched.minStakeForPerksNear} NEAR stakers`,
+      description: `${protoSharePct}% of the ${fmtPct(sched.standardPlatformFeeBp)} (or ${fmtPct(sched.stakerPlatformFeeBp)} staker) platform fee on finalized NEP-413 trades; ${daoPct}% carves out to the Planet Sputnik DAO.`,
+    },
+    {
+      id: 'staking_yield',
+      label: 'Validator Staking Yield Share',
+      rateSummary: `20% of validator yield (${fmtPct(sched.protocolStakingYieldBp)} APY; player keeps ${fmtPct(sched.stakerNetApyBp)} net APY)`,
+      description: 'Lossless subscription: principal stays 100% the player’s while 20% of accrued validator yield funds AI & gasless relays.',
+    },
+    {
+      id: 'escrow_slash',
+      label: 'Peace & War Escrow Slashing',
+      rateSummary: `${slashProtoPct}% protocol cut (${slashVictimPct}% paid to betrayed partner / defender)`,
+      description: 'Triggered when a bonded truce is broken early or a 6h War Bond is canceled/expires without meeting its war objective.',
+    },
+  ];
+}
 
 const PROTOCOL_OUTFLOWS: readonly ProtocolStreamInfo[] = [
   {
@@ -80,16 +88,20 @@ export async function buildProtocolTreasuryView(
   const nearMode = envSource.NEAR_MODE ?? 'mock';
   const activeNet = resolveActiveNearNetwork(null, envSource);
   const cfg = resolveNearNetworkConfig(envSource, activeNet);
-  const protocolAccountId = nearMode === 'mock' ? PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
+  const protocolAccountId =
+    nearMode === 'mock' ? envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
+  const sched = resolveProtocolFeeSchedule(envSource);
   const balances: Record<string, string> = {};
 
   if (prisma && databaseEnabled(envSource as unknown as AppEnv)) {
+    const accountIds = Array.from(new Set([PROTOCOL_ACCOUNT_ID, protocolAccountId]));
     const [chainBals, intentsBals] = await Promise.all([
-      prisma.mockChainBalance.findMany({ where: { accountId: PROTOCOL_ACCOUNT_ID } }),
-      prisma.mockChainIntentsBalance.findMany({ where: { accountId: PROTOCOL_ACCOUNT_ID } }),
+      prisma.mockChainBalance.findMany({ where: { accountId: { in: accountIds } } }),
+      prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } }),
     ]);
     for (const row of chainBals) {
-      balances[row.tokenId] = row.amount.toFixed(0);
+      const prev = BigInt(balances[row.tokenId] ?? '0');
+      balances[row.tokenId] = (prev + BigInt(row.amount.toFixed(0))).toString();
     }
     for (const row of intentsBals) {
       const prev = BigInt(balances[row.tokenId] ?? '0');
@@ -104,22 +116,22 @@ export async function buildProtocolTreasuryView(
     protocolAccountId,
     relayerAccountId: cfg.accounts.relayer,
     feeSchedule: {
-      standardPlatformFeeBp: 100,
-      stakerPlatformFeeBp: 50,
-      daoCarveOutShareBp: 2000,
-      protocolNetStandardBp: 80,
-      protocolNetStakerBp: 40,
-      validatorGrossApyBp: 900,
-      stakerNetApyBp: 720,
-      protocolStakingYieldBp: 180,
-      protocolStakingYieldShareBp: 2000,
-      minStakeForPerksNear: '10',
-      escrowSlashVictimShareBp: 9000,
-      escrowSlashProtocolShareBp: 1000,
+      standardPlatformFeeBp: sched.standardPlatformFeeBp,
+      stakerPlatformFeeBp: sched.stakerPlatformFeeBp,
+      daoCarveOutShareBp: sched.daoCarveOutShareBp,
+      protocolNetStandardBp: sched.protocolNetStandardBp,
+      protocolNetStakerBp: sched.protocolNetStakerBp,
+      validatorGrossApyBp: sched.validatorGrossApyBp,
+      stakerNetApyBp: sched.stakerNetApyBp,
+      protocolStakingYieldBp: sched.protocolStakingYieldBp,
+      protocolStakingYieldShareBp: sched.protocolStakingYieldShareBp,
+      minStakeForPerksNear: sched.minStakeForPerksNear,
+      escrowSlashVictimShareBp: sched.escrowSlashVictimShareBp,
+      escrowSlashProtocolShareBp: sched.escrowSlashProtocolShareBp,
     },
     balances,
     relayerDailyCapNear: cfg.relayerDailyCapNear,
-    inflows: PROTOCOL_INFLOWS,
+    inflows: buildInflows(sched),
     outflows: PROTOCOL_OUTFLOWS,
   };
 }

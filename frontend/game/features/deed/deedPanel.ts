@@ -69,6 +69,7 @@ export class DeedPanel implements Disposable {
       openWindow: opts.openWindow,
     });
     this.triggerBtn = dom.triggerBtn;
+    this.triggerBtn.dataset.dialogTrigger = 'true';
     this.triggerStatusEl = dom.triggerStatusEl;
     this.hintEl = dom.hintEl;
     this.root = dom.root;
@@ -212,8 +213,26 @@ export class DeedPanel implements Disposable {
     renderDeedStatsGrid(this.statsGridEl, deed);
 
     const encodedToken = encodeURIComponent(deed.tokenId);
-    this.receiptLinkEl.href = `/dev/chain/?tab=deeds&tokenId=${encodedToken}`;
-    this.receiptLinkEl.textContent = 'Recorded on NEAR (mock)';
+    const rawTx = deed.txHash?.trim() ?? '';
+    const isMockDeed =
+      deed.contractId.endsWith('.mock') ||
+      !rawTx ||
+      rawTx.startsWith('mock:') ||
+      rawTx.startsWith('testnet:') ||
+      rawTx.startsWith('mainnet:');
+    if (isMockDeed) {
+      this.receiptLinkEl.href = `/dev/chain/?tab=deeds&tokenId=${encodedToken}`;
+      this.receiptLinkEl.textContent = 'Recorded on NEAR (mock)';
+      this.receiptLinkEl.removeAttribute('target');
+      this.receiptLinkEl.removeAttribute('rel');
+    } else {
+      const isMainnet = deed.contractId.endsWith('.near');
+      const explorerHost = isMainnet ? 'https://nearblocks.io' : 'https://testnet.nearblocks.io';
+      this.receiptLinkEl.href = `${explorerHost}/txns/${encodeURIComponent(rawTx)}`;
+      this.receiptLinkEl.textContent = `Recorded on NEAR (${isMainnet ? 'Mainnet' : 'Testnet'}) ↗`;
+      this.receiptLinkEl.target = '_blank';
+      this.receiptLinkEl.rel = 'noopener noreferrer';
+    }
 
     const sharePath = `/deed/${encodedToken}`;
     this.shareLinkEl.href = sharePath;

@@ -19,13 +19,23 @@ export interface CrossResult {
   readonly offer: GuildOffer;
 }
 
+export interface CrossTakerContext {
+  readonly planetId: string;
+  readonly colonyId: string;
+  readonly colonyIndex: number;
+  readonly playerId: string;
+  readonly accountId: string;
+  readonly platformAccountId?: string;
+  readonly stakerPlatformFeeBp?: number;
+}
+
 /** One player taker crossed only against this NPC quote, then the W13 fills hook. */
 export async function crossGuildOffer(
   prisma: PrismaClient,
   repo: MarketOrderRepository,
   fills: MarketFillsHook,
   books: MarketBooks,
-  input: { planetId: string; colonyId: string; colonyIndex: number; playerId: string; accountId: string },
+  input: CrossTakerContext,
   quote: OfferQuote,
   offer: GuildOffer,
 ): Promise<CrossResult | { ok: false; code: 'offer_expired'; detail?: string }> {
@@ -44,7 +54,7 @@ async function crossLocked(
   tx: TransactionClient,
   repo: MarketOrderRepository,
   fills: MarketFillsHook,
-  input: { planetId: string; colonyId: string; colonyIndex: number; playerId: string; accountId: string },
+  input: CrossTakerContext,
   quote: OfferQuote,
   ref: string,
 ): Promise<{ ok: true; takerId: string } | { ok: false; detail?: string }> {
@@ -78,7 +88,7 @@ async function crossLocked(
 }
 
 function takerInput(
-  input: { planetId: string; colonyId: string; colonyIndex: number; playerId: string; accountId: string },
+  input: CrossTakerContext,
   maker: MarketOrderRecord,
   quote: OfferQuote,
   ref: string,
@@ -87,9 +97,13 @@ function takerInput(
   const qty = maker.amount - maker.filled;
   const limit = takerLimit(maker, qty, side);
   const maxStall = Math.max(maker.stallFeeBp, maker.maxStallFeeBp ?? 0);
+  const effectiveFeeBp =
+    side === 'buy' && input.stakerPlatformFeeBp !== undefined && input.stakerPlatformFeeBp < maker.platformFeeBp
+      ? input.stakerPlatformFeeBp
+      : maker.platformFeeBp;
   const need = requirementOf({
     side, base: quote.base, quote: quote.quote, amount: limit.amount, priceAmount: limit.priceAmount,
-    platformFeeBp: maker.platformFeeBp, maxStallFeeBp: maxStall,
+    platformFeeBp: effectiveFeeBp, maxStallFeeBp: maxStall,
   });
   return {
     orderId: orderIdOf(input.planetId, ref),
@@ -106,13 +120,14 @@ function takerInput(
     stallColonyId: input.colonyId,
     stallAccountId: input.accountId,
     stallHubEntityId: 0,
-    platformAccountId: PLATFORM_ACCOUNT_ID,
+    platformAccountId: input.platformAccountId ?? PLATFORM_ACCOUNT_ID,
     amount: limit.amount,
     priceAmount: limit.priceAmount,
     fillPolicy: 'partial',
     policyVersion: maker.policyVersion,
     policyHash: maker.policyHash,
     platformFeeBp: maker.platformFeeBp,
+    ...(effectiveFeeBp < maker.platformFeeBp ? { signedTerms: { stakerPlatformFeeBp: effectiveFeeBp } } : {}),
     stallFeeBp: maker.stallFeeBp,
     maxStallFeeBp: side === 'buy' ? maxStall : null,
     actorKind: 'player',

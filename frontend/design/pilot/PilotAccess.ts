@@ -386,7 +386,12 @@ export class PilotAccess {
       localStorage.removeItem(PKCE_STATE_STORAGE_KEY);
       localStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
       localStorage.removeItem(RECENT_NEP413_POPUP_KEY);
+    } catch {
+      /* ignore */
+    }
+    try {
       sessionStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
+      sessionStorage.removeItem(RECENT_NEP413_POPUP_KEY);
     } catch {
       /* ignore */
     }

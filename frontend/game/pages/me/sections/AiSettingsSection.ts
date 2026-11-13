@@ -139,7 +139,7 @@ export function renderAiSettingsSection(
   const statusNode = el(
     'p',
     { className: 'ta-me-muted', dataset: { testid: 'me-ai-status' } },
-    'Connect your NEAR AI Cloud key (https://cloud-api.near.ai/v1) so your colony bots use your chosen LLM for batched strategic decisions, NEAR Intents trading, war declarations, and diplomacy.',
+    'Staking ≥10 NEAR in Colony Staking unlocks server-sponsored Managed NEAR.AI Autopilot (z-ai/glm-5.3-flash) automatically. Prefer custom models (Claude, GPT-5, DeepSeek) or playing unstaked? Save your own encrypted BYOK NEAR AI Cloud key (https://cloud-api.near.ai/v1) below — AI remains bounded (AW-13: cannot break truces or lock human NEAR).',
   );
   const saveBtn = el(
     'button',

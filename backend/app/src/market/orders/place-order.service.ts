@@ -26,7 +26,7 @@ import { GuildContactProducer } from '../progression/guild-contact.producer.js';
 import { MarketMatcher, type MatchOutcome } from '../matching/market-matcher.service.js';
 import { resolveMarketAccountId } from './colony-account.js';
 import { MarketFillsHook } from './market-fills.hook.js';
-import { MarketPolicyProvider } from './market-policy.provider.js';
+import { MarketPolicyProvider, resolveProtocolAccountId } from './market-policy.provider.js';
 import { MarketSimGateway, type SimTarget } from './market-sim-gateway.js';
 import { OrderFunds, requirementOf, type FundsView, type Requirement } from './order-funds.js';
 import { orderDraft, orderIdOf, stallCap } from './parts/place-draft.js';
@@ -234,10 +234,36 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
           await new Promise((r) => setTimeout(r, 10 + Math.random() * 40 * attempt));
           continue;
         }
+        if (attempt === 1 && (err as { errorCode?: string })?.errorCode === 'NEAR_NOT_OWNER') {
+          const evicted = await this.evictSelfCustodyRestingOrders();
+          if (evicted > 0) continue;
+        }
         this.log.warn(`matching ${orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
         return;
       }
     }
+  }
+
+  private async evictSelfCustodyRestingOrders(): Promise<number> {
+    const claimedAccounts = await this.prisma.nearColonyAccount.findMany({
+      where: { encryptedSecret: 'claimed' },
+      select: { accountId: true },
+    });
+    const evictedIds: string[] = [];
+    for (const { accountId } of claimedAccounts) {
+      const openOrders = await this.repo.listOpenByAccount(accountId);
+      for (const openOrder of openOrders) {
+        await this.repo.updateReservation(openOrder.orderId, {
+          reservedPrincipal: 0n,
+          reservedFees: 0n,
+          state: 'CANCELLED',
+        });
+        await this.repo.setState(openOrder.orderId, 'CANCELLED', 'account_claimed_self_custody');
+        evictedIds.push(openOrder.orderId);
+      }
+    }
+    if (evictedIds.length > 0) await this.books.sync(...evictedIds);
+    return evictedIds.length;
   }
 
   /** Director flag with no guard, or a guard refusal, is `autotrade_limit`. Player orders never call this. */
@@ -256,17 +282,42 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
   ): Promise<PlaceOrderResult> {
     const baseCfg = this.policy.current();
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-funds:${accountId}`}, 0))`;
+    const envBag = this.env as unknown as Record<string, string | undefined>;
     const perks = await resolveDbStakerPerks(tx, {
       colonyId: d.colonyId,
       accountId,
       standardPlatformFeeBp: baseCfg.platformFeeBp,
+      env: envBag,
     });
-    const cfg = perks.active ? { ...baseCfg, platformFeeBp: perks.platformFeeBp } : baseCfg;
-    const claimed =
-      (await tx.nearColonyAccount.findUnique({ where: { accountId }, select: { claimedAt: true } }))?.claimedAt != null;
-    const maxStall = stallCap(d, cfg);
-    const { order, created } = await this.repo.createFromRequest(orderDraft(planetId, d, accountId, cfg, claimed, actorKind), tx);
+    const acctRow = await tx.nearColonyAccount.findUnique({
+      where: { accountId },
+      select: { claimedAt: true, encryptedSecret: true },
+    });
+    const claimed = acctRow?.claimedAt != null;
+    const platformAccountId = resolveProtocolAccountId(envBag);
+    const maxStall = stallCap(d, baseCfg);
+    const { order, created } = await this.repo.createFromRequest(
+      orderDraft(
+        planetId,
+        d,
+        accountId,
+        baseCfg,
+        claimed,
+        actorKind,
+        perks.active ? perks.platformFeeBp : undefined,
+        platformAccountId,
+      ),
+      tx,
+    );
     if (!created) return { order, created, depositChain: 0n };
+    if (acctRow?.encryptedSecret === 'claimed') {
+      return this.reject(
+        tx,
+        order,
+        'market_unavailable',
+        'Account is self-custodial; sign market intents directly with your wallet.',
+      );
+    }
     if (blocked) return this.reject(tx, order, blocked, 'That trade is outside the autoTrade limits.');
 
     await this.repo.lockForUpdate(
@@ -274,15 +325,15 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
       tx,
     );
     const open = (await this.repo.listOpenByColony(planetId, d.colonyId, tx)).length;
-    if (open >= cfg.openOrderLimit)
-      return this.reject(tx, order, 'order_limit', `At most ${cfg.openOrderLimit} open orders.`);
+    if (open >= baseCfg.openOrderLimit)
+      return this.reject(tx, order, 'order_limit', `At most ${baseCfg.openOrderLimit} open orders.`);
     const need = requirementOf({
       side: d.side,
       base: d.resource,
       quote: d.price.token,
       amount: BigInt(d.amount),
       priceAmount: BigInt(d.price.amount),
-      platformFeeBp: cfg.platformFeeBp,
+      platformFeeBp: perks.platformFeeBp,
       maxStallFeeBp: maxStall,
     });
     const view = await this.funds.view(accountId, need.token, tx);

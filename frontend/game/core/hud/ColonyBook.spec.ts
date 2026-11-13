@@ -24,9 +24,10 @@ describe('resolveColonyTab routing', () => {
     ['combat', 'combat-alerts', 'combat'],
     ['combat-tuning', 'combat-tuning', 'combat'],
     ['market', 'supply-trade', 'supply'],
+    ['market', 'contracts', 'supply'],
     ['trade-hub', 'trade-hub-panel', 'trade'],
-    ['market', 'contracts', 'trade'],
     ['market', 'market-tab', 'trade'],
+    ['notifications', 'notifications-panel', 'notifications'],
   ] as const)('%s/%s → %s', (feature, panel, tab) => {
     expect(resolveColonyTab(feature, panel)).toBe(tab);
   });
@@ -40,17 +41,18 @@ describe('resolveColonyTab routing', () => {
   });
 });
 
-describe('ColonyBook (left tab book)', () => {
-  it('is a left book with its test ids and the tabs in fixed order, whatever the set order', () => {
-    const colony = makeColony(['trade', 'deed', 'hq', 'goals']);
+describe('ColonyBook (right tab book)', () => {
+  it('is a right book with its test ids and the tabs in fixed order, whatever the set order', () => {
+    const colony = makeColony(['notifications', 'trade', 'deed', 'hq', 'goals']);
     expect(colony.el.getAttribute('data-testid')).toBe('colony-book');
-    expect(colony.el.dataset.side).toBe('left');
+    expect(colony.el.dataset.side).toBe('right');
     expect(colony.el.classList.contains('ta-colony-book')).toBe(true);
     const ids = [...colony.el.querySelectorAll('.ta-book__tab')].map((t) => t.getAttribute('data-testid'));
-    expect(ids).toEqual(['colony-tab-deed', 'colony-tab-goals', 'colony-tab-hq', 'colony-tab-trade']);
+    expect(ids).toEqual(['colony-tab-deed', 'colony-tab-goals', 'colony-tab-hq', 'colony-tab-trade', 'colony-tab-notifications']);
     expect(document.querySelector('[data-testid=colony-book-toggle]')).not.toBeNull();
     expect(colony.book.getActiveTab()).toBe('deed');
     expect(document.querySelector('[data-testid=colony-tab-hq]')!.textContent).toBe('HQ AI');
+    expect(document.querySelector('[data-testid=colony-tab-notifications]')!.textContent).toBe('NOTIFICATIONS');
   });
 
   it('PLAYER is the first tab and opens first when present', () => {

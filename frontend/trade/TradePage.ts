@@ -142,8 +142,13 @@ export class TradePage {
       const f = this.client.fetchFn();
       const res = await f('/v1/near/status', { headers: { accept: 'application/json' } });
       if (!res.ok) return;
-      const body = (await res.json()) as { nearMode?: string; ports?: Array<{ port: string; adapter: string }>; protocolAccount?: string };
-      const intentsAdapter = body.ports?.find((p) => p.port === 'Intents')?.adapter ?? body.nearMode ?? 'mock';
+      const body = (await res.json()) as {
+        nearMode?: string;
+        ports?: Array<{ port: string; mode?: string; adapter?: string }>;
+        protocolAccount?: string;
+      };
+      const intentsEntry = body.ports?.find((p) => p.port === 'Intents');
+      const intentsAdapter = intentsEntry?.mode ?? intentsEntry?.adapter ?? body.nearMode ?? 'mock';
       if (intentsAdapter === 'mainnet') {
         this.netBadge.textContent = 'NEAR MAINNET · NEP-413 INTENTS';
         this.netBadge.className = 'tr-badge tr-badge-ok';

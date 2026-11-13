@@ -17,6 +17,38 @@
   display: none;
 }
 
+.ta-trade-hub[data-modal='true'] {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 84;
+  width: min(760px, 94vw);
+  max-height: min(720px, 90vh);
+  padding: var(--ta-s4);
+  background: var(--ta-plate);
+  border: 1.5px solid var(--ta-seam-3);
+  pointer-events: auto;
+}
+
+.ta-trade-hub__eyebrow {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ta-orange);
+}
+
+.ta-trade-hub__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+}
+
+.ta-trade-hub__terminal-link {
+  text-decoration: none;
+}
+
 .ta-trade-hub__header {
   display: flex;
   align-items: center;

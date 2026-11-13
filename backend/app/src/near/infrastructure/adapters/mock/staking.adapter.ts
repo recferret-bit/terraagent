@@ -103,6 +103,11 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     return parseStakingPoolsConfig(raw);
   }
 
+  private resolveProtocolAccount(): string {
+    const bag = this.env as { NEAR_PROTOCOL_ACCOUNT?: string } | undefined;
+    return bag?.NEAR_PROTOCOL_ACCOUNT?.trim() || process.env.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_STAKING_ACCOUNT_ID;
+  }
+
   private assertPoolWhitelisted(poolId: string): StakingPoolView {
     const found = this.resolvePools().find((p) => p.poolId === poolId);
     if (!found) {
@@ -133,7 +138,7 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
       const now = this.nowMs();
       const snap = await this.loadAndSettleRow(tx, input.accountId, pool.poolId, pool.apyBp, now);
       if (snap.protocolYieldDelta > 0n) {
-        await this.credit(tx, PROTOCOL_STAKING_ACCOUNT_ID, NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
+        await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
       }
       const nextStaked = snap.staked + amountBig;
       await this.saveRow(tx, input.accountId, pool.poolId, {
@@ -169,7 +174,7 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
         });
       }
       if (snap.protocolYieldDelta > 0n) {
-        await this.credit(tx, PROTOCOL_STAKING_ACCOUNT_ID, NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
+        await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
       }
       const nextStaked = snap.staked - amountBig;
       const nextUnbonding = snap.unbonding + amountBig;
@@ -211,7 +216,7 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
         });
       }
       if (snap.protocolYieldDelta > 0n) {
-        await this.credit(tx, PROTOCOL_STAKING_ACCOUNT_ID, NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
+        await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
       }
       const payout = snap.withdrawable + snap.rewards;
       const recipient = input.toAccountId ?? input.accountId;

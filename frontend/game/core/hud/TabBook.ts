@@ -13,6 +13,8 @@ export interface BookTabDef<T extends string = string> {
   readonly label: string;
   /** Optional hotkey hint shown under the label, e.g. `B`. */
   readonly hint?: string;
+  /** When true and the pane contains a `[data-dialog-trigger="true"]` button, clicking the tab opens the dialog immediately without unfolding the side-tab page. */
+  readonly dialogOnly?: boolean;
 }
 
 export interface TabBookOptions<T extends string> {
@@ -28,6 +30,8 @@ export interface TabBookOptions<T extends string> {
   readonly toggleTestId: string;
   /** Accessible name of the tab list. */
   readonly ariaLabel: string;
+  /** Optional callback invoked when a spine tab is clicked by the user. */
+  readonly onSpineClick?: (tab: T) => void;
 }
 
 /**
@@ -43,6 +47,7 @@ export class TabBook<T extends string> {
   private readonly tabButtons = new Map<T, HTMLButtonElement>();
   private readonly panes = new Map<T, HTMLElement>();
   private readonly badges = new Map<T, HTMLElement>();
+  private readonly dialogOnlyTabs = new Set<T>();
   private activeTab: T;
   private collapsed = false;
   private readonly listeners = new Set<() => void>();
@@ -58,7 +63,10 @@ export class TabBook<T extends string> {
     spine.setAttribute('role', 'tablist');
     spine.setAttribute('aria-orientation', 'vertical');
     spine.setAttribute('aria-label', opts.ariaLabel);
-    for (const def of opts.tabs) spine.appendChild(this.makeTab(def));
+    for (const def of opts.tabs) {
+      if (def.dialogOnly) this.dialogOnlyTabs.add(def.id);
+      spine.appendChild(this.makeTab(def));
+    }
 
     this.toggleBtn = document.createElement('button');
     this.toggleBtn.type = 'button';
@@ -98,10 +106,39 @@ export class TabBook<T extends string> {
     badge.className = 'ta-book__badge';
     badge.hidden = true;
     btn.append(label, badge);
-    btn.onclick = () => this.selectOrToggleTab(def.id);
+    btn.onclick = () => this.handleTabClick(def.id);
     this.tabButtons.set(def.id, btn);
     this.badges.set(def.id, badge);
     return btn;
+  }
+
+  private dialogTriggerOf(tab: T): HTMLElement | null {
+    if (!this.dialogOnlyTabs.has(tab)) return null;
+    return this.panes.get(tab)?.querySelector<HTMLElement>('[data-dialog-trigger="true"]') ?? null;
+  }
+
+  /** Whether `tab` is configured as a dialog-only tab with a mounted `[data-dialog-trigger="true"]`. */
+  isDialogOnlyTab(tab: T): boolean {
+    return Boolean(this.dialogTriggerOf(tab));
+  }
+
+  private handleTabClick(tab: T): void {
+    if (!this.has(tab)) return;
+    this.opts.onSpineClick?.(tab);
+    const trigger = this.dialogTriggerOf(tab);
+    if (trigger) {
+      this.activeTab = tab;
+      this.collapsed = false;
+      this.syncDom();
+      trigger.click();
+      return;
+    }
+    this.selectOrToggleTab(tab);
+  }
+
+  /** Re-evaluates `data-dialog-only` attributes after panels mount into panes. */
+  refresh(): void {
+    this.syncDom();
   }
 
   has(tab: T): boolean {
@@ -199,10 +236,17 @@ export class TabBook<T extends string> {
     this.toggleBtn.setAttribute('aria-expanded', String(!folded));
     for (const [id, btn] of this.tabButtons) {
       const on = this.isShown(id);
+      const isDialogOnly = Boolean(this.dialogTriggerOf(id));
       btn.setAttribute('data-active', String(on));
       btn.setAttribute('aria-selected', String(on));
+      if (isDialogOnly) btn.setAttribute('data-dialog-only', 'true');
+      else btn.removeAttribute('data-dialog-only');
     }
-    for (const [id, pane] of this.panes) pane.setAttribute('data-active', String(this.activeTab === id));
+    for (const [id, pane] of this.panes) {
+      pane.setAttribute('data-active', String(this.activeTab === id));
+      if (this.dialogTriggerOf(id)) pane.setAttribute('data-dialog-only', 'true');
+      else pane.removeAttribute('data-dialog-only');
+    }
     for (const fn of this.listeners) fn();
   }
 

@@ -1,4 +1,4 @@
-import { randomBytes, sign as edSign, type KeyObject } from 'node:crypto';
+import { createHash, randomBytes, sign as edSign, type KeyObject } from 'node:crypto';
 import {
   MARKET_TOKEN_KEYS,
   MARKET_TOKENS,
@@ -58,8 +58,12 @@ export function normalizeMainnetDeltas(
   return out;
 }
 
-/** Fetches 4-byte `current_salt` from `intents.near` and builds a 32-byte base64 NEP-413 nonce. */
-export async function buildMainnetSaltNonce(rpc: NearRpcClient): Promise<string> {
+/**
+ * Fetches 4-byte `current_salt` from `intents.near` and builds a 32-byte base64 NEP-413 nonce.
+ * When `seedNonce` is supplied (e.g. deterministic `tradeNonce(tradeId, accountId)`), preserves its
+ * deterministic 28-byte body while prefixing the active 4-byte `current_salt` if not already prefixed.
+ */
+export async function buildMainnetSaltNonce(rpc: NearRpcClient, seedNonce?: string): Promise<string> {
   let saltBytes: Buffer | null =
     cachedSalt && Date.now() - cachedSalt.fetchedAt < SALT_TTL_MS ? cachedSalt.bytes : null;
 
@@ -75,8 +79,17 @@ export async function buildMainnetSaltNonce(rpc: NearRpcClient): Promise<string>
         cachedSalt = { bytes: saltBytes, fetchedAt: Date.now() };
       }
     } catch {
-      /* fall back to random prefix if offline in static unit tests */
+      /* fall back to seedNonce or random prefix if offline in static unit tests */
     }
+  }
+
+  if (seedNonce) {
+    const rawBuf = Buffer.from(seedNonce, 'base64');
+    const body32 = rawBuf.length === 32 ? rawBuf : createHash('sha256').update(seedNonce).digest();
+    if (!saltBytes || saltBytes.length !== 4 || body32.subarray(0, 4).equals(saltBytes)) {
+      return body32.toString('base64');
+    }
+    return Buffer.concat([saltBytes, body32.subarray(0, 28)]).toString('base64');
   }
 
   const prefix = saltBytes?.length === 4 ? saltBytes : randomBytes(4);

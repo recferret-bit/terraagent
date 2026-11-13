@@ -1,3 +1,4 @@
+import { isFastAuthPopupCancelled } from '../../../design/pilot/fastAuthSpa';
 import type { FeatureContext, HudPanelInstance } from '../../core/registry/types';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { copyText, type TextClipboard } from './copyText';
@@ -63,6 +64,9 @@ interface GuestActions {
 }
 
 function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
+  const isMainnet = act.mode === 'mainnet';
+  const netLabel = isMainnet ? 'Mainnet' : 'Testnet';
+  const suffix = isMainnet ? 'near' : 'testnet';
   const tabs = makeDiv('ta-pilot__line');
   const signInBtn = makeBtn(
     act.authIntent === 'signin' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm',
@@ -87,7 +91,7 @@ function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
   const submitEmail = makeBtn(
     'btn btn-primary btn-sm',
     'continue-email',
-    act.authIntent === 'signup' ? 'Mint Testnet Pilot (Email)' : 'Email / Passkey',
+    act.authIntent === 'signup' ? `Mint ${netLabel} Pilot (Email)` : 'Email / Passkey',
     () => {
       act.email(input.value);
     },
@@ -101,14 +105,14 @@ function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
     row,
     makeBtn('btn btn-ghost btn-sm', 'continue-google', 'Google', act.google),
     makeBtn('btn btn-ghost btn-sm', 'continue-x', 'X', act.x),
-    makeBtn('btn btn-ghost btn-sm', 'continue-fastauth', 'NEAR Auth (Testnet Wallet)', act.fastAuth),
+    makeBtn('btn btn-ghost btn-sm', 'continue-fastauth', `NEAR Auth (${netLabel} Wallet)`, act.fastAuth),
   );
   const hint = document.createElement('p');
   hint.className = 'ta-pilot__hint';
   hint.textContent =
     act.authIntent === 'signup'
-      ? 'Mints a gasless *.terraagent.testnet account or links a new NEAR Testnet wallet.'
-      : 'Sign in via FastAuth (Google, X, Email) or NEP-413 Testnet wallet.';
+      ? `Mints a gasless *.terraagent.${suffix} account or links a new NEAR ${netLabel} wallet.`
+      : `Sign in via FastAuth (Google, X, Email) or NEP-413 ${netLabel} wallet.`;
   plate.append(hint);
 }
 
@@ -148,8 +152,54 @@ function selectContents(node: HTMLElement): void {
   }
 }
 
-function linkedLine(accountId: string, clipboard: TextClipboard | undefined, onSignOut: () => void): HTMLElement {
+/** Formats a clean, human-readable pilot display name from handle and NEAR accountId. */
+export function formatPilotDisplayName(
+  handleOrView: string | { readonly isGuest?: boolean; readonly handle?: string | null; readonly accountId?: string | null } | null | undefined,
+  accountId?: string | null,
+  isGuest = false,
+): string {
+  const rawHandle =
+    typeof handleOrView === 'object' && handleOrView !== null ? handleOrView.handle : handleOrView;
+  const rawAcct =
+    typeof handleOrView === 'object' && handleOrView !== null ? handleOrView.accountId : accountId;
+  const rawGuest =
+    typeof handleOrView === 'object' && handleOrView !== null ? Boolean(handleOrView.isGuest) : isGuest;
+
+  const cleanHandle = (rawHandle ?? '').trim();
+  const cleanAcct = (rawAcct ?? '').trim();
+
+  const guestMatch = /^(?:guest|pilot)[_-]([a-z0-9]{4,})/i.exec(cleanHandle);
+  if (guestMatch) {
+    return `Pilot #${guestMatch[1]!.slice(0, 4).toUpperCase()}`;
+  }
+
+  if (rawGuest && !cleanAcct) {
+    if (cleanHandle && !/^guest([_-]|$)/i.test(cleanHandle) && cleanHandle.toLowerCase() !== 'colonist') {
+      return cleanHandle;
+    }
+    return 'Guest Pilot';
+  }
+  const source =
+    cleanHandle && cleanHandle !== cleanAcct && !cleanHandle.includes('.terraagent.')
+      ? cleanHandle
+      : cleanAcct.replace(/\.(terraagent\.(mock|testnet|near)|testnet|near)$/i, '');
+  if (!source) return rawGuest ? 'Guest Pilot' : 'Pilot';
+  if (source.includes(' ')) return source;
+  return source
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function linkedLine(
+  handle: string | undefined,
+  accountId: string,
+  clipboard: TextClipboard | undefined,
+): HTMLElement {
   const line = makeDiv('ta-pilot__line');
+  const displayName = formatPilotDisplayName(handle, accountId, false);
+  const nameEl = makeSpan('ta-pilot__name', 'pilot-display-name', displayName);
   const id = makeSpan('ta-pilot__id', 'pilot-id', `Pilot ID ${accountId}`);
   const copy = makeBtn('btn btn-ghost btn-sm', 'pilot-copy', 'Copy', () => {
     void copyText(accountId, clipboard).then((result) => {
@@ -157,8 +207,7 @@ function linkedLine(accountId: string, clipboard: TextClipboard | undefined, onS
       if (result === 'fail') selectContents(id);
     });
   });
-  const signOut = makeBtn('btn btn-ghost btn-sm', 'pilot-sign-out', 'Sign out', onSignOut);
-  line.append(id, copy, signOut);
+  line.append(nameEl, id, copy);
   return line;
 }
 
@@ -203,6 +252,50 @@ function bindPopupChannelListeners(handlers: {
   };
 }
 
+function buildPilotGuestActions(ctx: {
+  getMode: () => 'mock' | 'testnet' | 'mainnet';
+  getIntent: () => 'signin' | 'signup';
+  setIntent: (intent: 'signin' | 'signup') => void;
+  isBusy: () => boolean;
+  setOpen: (v: boolean) => void;
+  setFault: (msg: string) => void;
+  setPopup: (pop: Window | null) => void;
+  render: () => void;
+  runLogin: (provider: AuthProviderKind, token: string, options?: { readonly mode?: 'signin' | 'signup' }) => void;
+}): GuestActions {
+  return {
+    mode: ctx.getMode(),
+    authIntent: ctx.getIntent(),
+    setAuthIntent: (intent) => { ctx.setIntent(intent); ctx.render(); },
+    save: () => { ctx.setOpen(true); ctx.render(); },
+    google: () => {
+      if (!ctx.isBusy()) ctx.setPopup(ctx.getMode() === 'mock' ? openMockProvider('google') : openFastAuthProvider('google', ctx.getIntent()));
+    },
+    x: () => {
+      if (!ctx.isBusy()) ctx.setPopup(ctx.getMode() === 'mock' ? openMockProvider('x') : openFastAuthProvider('x', ctx.getIntent()));
+    },
+    fastAuth: () => {
+      if (ctx.isBusy()) return;
+      openNearWalletSelectorModal({
+        initialMode: ctx.getIntent(),
+        network: ctx.getMode() === 'mainnet' ? 'mainnet' : 'testnet',
+        onPopupOpened: (pop) => { ctx.setPopup(pop); },
+        onDirectToken: (hit) => { ctx.runLogin(hit.provider, hit.token); },
+      });
+    },
+    email: (addr) => {
+      const clean = addr.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+        ctx.setFault('Enter a valid email address.');
+        ctx.setOpen(true);
+        ctx.render();
+        return;
+      }
+      ctx.runLogin('email', clean, ctx.getIntent() === 'signup' ? { mode: 'signup' } : undefined);
+    },
+  };
+}
+
 /** Top-left pilot chip. Subscribes to `services.pilot` and re-renders; no page reload. */
 export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
   const pilot = ctx.services.pilot;
@@ -217,11 +310,26 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
   let authIntent: 'signin' | 'signup' = 'signin';
   let popup: Window | null = null;
 
-  const runLogin = (provider: AuthProviderKind, token: string): void => {
+  const runLogin = (
+    provider: AuthProviderKind,
+    token: string,
+    options?: { readonly mode?: 'signin' | 'signup' },
+  ): void => {
     if (!pilot || busy) return;
     busy = true;
-    void pilot.loginSocial(provider, token)
-      .then(() => { fault = ''; }, (err: unknown) => { fault = extractChipFault(err); open = true; })
+    const call = options ? pilot.loginSocial(provider, token, options) : pilot.loginSocial(provider, token);
+    void call
+      .then(
+        () => { fault = ''; },
+        (err: unknown) => {
+          if (isFastAuthPopupCancelled(err)) {
+            fault = '';
+          } else {
+            fault = extractChipFault(err);
+            open = true;
+          }
+        },
+      )
       .finally(() => { busy = false; if (!disposed) render(); });
   };
 
@@ -229,47 +337,20 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
     const view = pilot?.view();
     root.replaceChildren();
     if (view?.accountId && !view.isGuest) {
-      root.append(linkedLine(view.accountId, clipboard, () => {
-        if (busy) return;
-        busy = true;
-        open = false;
-        void Promise.resolve(pilot?.logout?.()).finally(() => {
-          busy = false;
-          if (!disposed) render();
-        });
-      }));
+      root.append(linkedLine(view.handle, view.accountId, clipboard));
       return;
     }
-    root.append(...guestNodes(open, fault, {
-      mode,
-      authIntent,
-      setAuthIntent: (intent) => { authIntent = intent; render(); },
-      save: () => { open = true; render(); },
-      google: () => {
-        if (!busy) popup = mode === 'mock' ? openMockProvider('google') : openFastAuthProvider('google', authIntent);
-      },
-      x: () => {
-        if (!busy) popup = mode === 'mock' ? openMockProvider('x') : openFastAuthProvider('x', authIntent);
-      },
-      fastAuth: () => {
-        if (busy) return;
-        openNearWalletSelectorModal({
-          initialMode: authIntent,
-          onPopupOpened: (pop) => { popup = pop; },
-          onDirectToken: (hit) => { runLogin(hit.provider, hit.token); },
-        });
-      },
-      email: (addr) => {
-        const clean = addr.trim().toLowerCase();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
-          fault = 'Enter a valid email address.';
-          open = true;
-          render();
-          return;
-        }
-        runLogin('email', clean);
-      },
-    }));
+    root.append(...guestNodes(open, fault, buildPilotGuestActions({
+      getMode: () => mode,
+      getIntent: () => authIntent,
+      setIntent: (intent) => { authIntent = intent; },
+      isBusy: () => busy,
+      setOpen: (v) => { open = v; },
+      setFault: (msg) => { fault = msg; },
+      setPopup: (pop) => { popup = pop; },
+      render,
+      runLogin,
+    })));
   };
 
   if (!ctx.services.identityMode) {

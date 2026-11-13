@@ -2,6 +2,7 @@
    bright band, soft flicker, tape grain, a vignette and a rare sideways distortion wave on the canvases.
    One absolutely-positioned layer per host (the element that holds a WebGL canvas), so HTML interface layers that sit
    above the host are never touched. Plus a small on/off switch (button, or F9). The choice and all shader parameters are remembered. */
+import { isProductionBuild } from './buildEnv';
 import { disposePixelArt, initPixelArt, setPixelArt, setShadow } from './pixelArt';
 import { initFpsCounter } from './fps';
 
@@ -183,11 +184,15 @@ export interface InitCrtOptions {
   showControls?: boolean;
   showFps?: boolean;
   forceEnableAll?: boolean;
+  production?: boolean;
 }
 
 /** Mount one overlay per host (each host must contain the WebGL canvas) + the switch. Safe to call repeatedly. */
 export function initCrt(targets: HTMLElement[], opts?: InitCrtOptions) {
   if (document.getElementById('crt-css')) return;
+  const prod = opts?.production ?? isProductionBuild();
+  const showControls = prod ? false : (opts?.showControls ?? true);
+  const showFps = prod ? false : (opts?.showFps ?? showControls);
   hosts = targets.filter(Boolean);
   if (opts?.forceEnableAll) {
     on = true;
@@ -206,7 +211,7 @@ export function initCrt(targets: HTMLElement[], opts?: InitCrtOptions) {
     h.appendChild(el);
   }
 
-  if (opts?.showControls !== false) {
+  if (showControls) {
     const bar = ensureFxBar();
     btn = document.createElement('button');
     btn.id = 'crt-switch'; btn.type = 'button'; btn.setAttribute('role', 'switch');
@@ -219,12 +224,14 @@ export function initCrt(targets: HTMLElement[], opts?: InitCrtOptions) {
       if (e.code !== 'F9' || e.repeat || (e.target as HTMLElement | null)?.closest?.('input, textarea')) return;
       e.preventDefault(); toggleCrt();
     });
+  } else {
+    document.getElementById('fx-bar')?.remove();
   }
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion:reduce)').matches;
   if (!reducedMotion) { document.body.insertAdjacentHTML('beforeend', SVG); schedule(); }
   apply();
-  initPixelArt({ showControls: opts?.showControls });
-  if (opts?.showFps !== false) {
+  initPixelArt({ showControls, production: prod });
+  if (showFps) {
     initFpsCounter();
   }
 }

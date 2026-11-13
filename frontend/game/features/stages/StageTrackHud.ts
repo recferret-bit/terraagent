@@ -1,5 +1,6 @@
 import { getStageSpec, STAGE_TABLE_ROWS, type StageRow, type ViewColony } from '@terra/sim';
 import type { Disposable, FeatureContext } from '../../core/registry/types';
+import { pushNotification } from '../notifications/notificationStore';
 import { ownColonyIndex, viewColony } from '../shared/colony';
 import { stageGuideText } from './guide';
 import {
@@ -56,6 +57,10 @@ export class StageTrackHud implements Disposable {
         this.launcher.focus();
       },
     });
+    this.launcher.dataset.dialogTrigger = 'true';
+    if (ctx.services.registerHudCloser) {
+      this.cleanups.push(ctx.services.registerHudCloser(() => this.setPanelVisible(false)));
+    }
     this.setPanelVisible(false);
     this.toast = new StageToast(this.root);
 
@@ -195,6 +200,17 @@ export class StageTrackHud implements Disposable {
       guide: stageGuideText(stage, opts?.replay ? this.currentStage : Math.max(stage, this.currentStage)),
       ...opts,
     });
+    const spec = STAGE_TABLE_ROWS[stage] ?? STAGE_TABLE_ROWS[0]!;
+    const title = opts?.title ?? `S${stage} ${spec.label}`;
+    if (!opts?.replay) {
+      pushNotification({
+        category: 'stage',
+        title: 'Stage Reached',
+        message: `${title} — ${opts?.teaches ?? spec.teaches}`,
+        dedupeKey: `stage:${stage}`,
+        onSelect: () => this.setPanelVisible(true),
+      });
+    }
     if (this.suppressNotices && !opts?.replay) this.toast.dismiss();
     return el;
   }

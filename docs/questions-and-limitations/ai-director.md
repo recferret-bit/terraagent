@@ -146,3 +146,16 @@
 - **Goals queued by the player sit idle while AI is off**, and the UI does not say so yet.
 - **Existing `hq`/`ai` queue entries are not cancelled** when AI is switched off; they finish.
 - **Spacing is a soft rule** (`siteSpacing.ts`): it falls back to touching sites when no lane site exists; hub and extractor pickers are unchanged; manual placement is not constrained.
+
+
+### AI-15 · Dual-path `NEAR.AI` Autopilot funding (`>= 10 NEAR` Staker Managed Pool vs `/me` BYOK) & `AW-13` War/Bond AI guardrails
+
+- **Status:** Accepted (by design, owner-confirmed 2026-11-13)
+- **Area / code:** `backend/app/src/ai/colony-agent/colony-agent-loop.service.ts`, `backend/app/src/ai/colony-agent/colony-agent-types.ts`, `backend/app/src/near/staking/staking.service.ts` (`hasManagedAutopilotPerk`), `shared/sim/src/systems/away/{orders,policy,gate}.ts`
+- **What happens:**
+  1. **Dual-path player `NEAR.AI` resolution:** When evaluating an online `AI AUTOPILOT: ON` or offline (`away`) human colony, `ColonyAgentLoopService` first checks if the player saved a personal encrypted BYOK `NEAR.AI` key on `/me.html` (which allows custom model selection such as Claude, GPT-5, or DeepSeek). If no BYOK key is set, it checks `StakingService.hasManagedAutopilotPerk(playerId)` (`>= 10 NEAR` actively staked on `staking.terraagent.*`): if unlocked, the server sponsors the colony's autopilot calls using the server's `NEAR.AI` credentials (`z-ai/glm-5.3-flash`), funded by the protocol's `20%` (`1.80%` APY) validator staking yield slice. Unstaked players without BYOK fall back cleanly to the deterministic rule engine (`0` LLM spend).
+  2. **War & Bond AI Safety Guardrails (`AW-13` extension):** Autonomous AI agents (`ColonyAgentLoopService` and `@terra/sim` away orders) are strictly forbidden from calling `diplomacy.cancelTruce` or `diplomacy.cancelWar` (never triggering `90%` bond slashes on a human's behalf) and are blocked from locking native `NEAR` (`bond.token === 'NEAR'`) in any truce or war proposal.
+- **Why it is like this:** Owner confirmed keeping `/me.html` BYOK intact for custom-model power users while rewarding `>= 10 NEAR` Day-1 stakers with zero-setup server-sponsored `NEAR.AI` Autopilot, and ensuring AI can never slash or lock human `NEAR`.
+- **Workaround / mitigation:** Stake `>= 10 NEAR` in the Colony Staking panel for zero-config `NEAR.AI` Autopilot, or configure a custom BYOK key on `/me.html`.
+- **To resolve:** Nothing required; per-planet daily Managed `NEAR.AI` call caps can be tuned alongside `AI-03` if staker LLM utilization grows.
+- **Found:** 2026-11-13, Managed Staker NEAR.AI & War Bond guardrails

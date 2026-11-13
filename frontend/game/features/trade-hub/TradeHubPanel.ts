@@ -78,6 +78,7 @@ export class TradeHubPanel implements Disposable {
   private offStoreReject: (() => void) | null = null;
   private offStoreEvents: (() => void) | null = null;
   private offStoreCargo: (() => void) | null = null;
+  private offCloser: (() => void) | null = null;
   private lastSeenRefundRef: string | null = null;
 
   constructor(
@@ -149,6 +150,9 @@ export class TradeHubPanel implements Disposable {
     content.append(balances, transfer);
     this.root.append(headerBuild.header, this.offlineBannerEl, this.toastEl, this.pendingContainerEl, content);
     this.parent.appendChild(this.root);
+    if (this.ctx?.services.registerHudCloser) {
+      this.offCloser = this.ctx.services.registerHudCloser(() => this.setOpen(false));
+    }
 
     this.bindSelection();
     this.bindStore();
@@ -346,11 +350,23 @@ export class TradeHubPanel implements Disposable {
     const resolved = this.getResolvedCargoView();
 
     const details = this.ctx?.services.selectionDetails;
-    if (this.selectedHubId !== null) details?.show(this.root, this.isOpen, (open) => {
-      this.closedForEntityId = open ? null : this.selectedHubId;
-      this.setOpen(open);
-    });
-    else { details?.hide(); if (this.root.parentElement && this.root.parentElement !== this.parent) this.parent.append(this.root); } // back to its HUD tab
+    const overlay = this.ctx?.services.hudOverlay;
+    if (this.selectedHubId !== null) {
+      this.root.removeAttribute('data-modal');
+      details?.show(this.root, this.isOpen, (open) => {
+        this.closedForEntityId = open ? null : this.selectedHubId;
+        this.setOpen(open);
+      });
+    } else {
+      details?.hide();
+      if (this.isOpen && overlay) {
+        this.root.setAttribute('data-modal', 'true');
+        if (this.root.parentElement !== overlay) overlay.append(this.root);
+      } else {
+        this.root.removeAttribute('data-modal');
+        if (this.root.parentElement !== this.parent) this.parent.append(this.root);
+      }
+    }
     this.toastController.setPanelOpen(this.isOpen);
 
     renderTradeHubStatusAndMeters(
@@ -388,6 +404,8 @@ export class TradeHubPanel implements Disposable {
     this.offStoreEvents = null;
     this.offStoreCargo?.();
     this.offStoreCargo = null;
+    this.offCloser?.();
+    this.offCloser = null;
     this.extensions.dispose();
     this.toastController.dispose();
     this.orbitRows.clear();

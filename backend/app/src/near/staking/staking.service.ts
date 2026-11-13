@@ -25,6 +25,9 @@ import { StakingPort } from '../application/ports/staking.port.js';
 import { DeedTelemetryService } from '../deed/deed-telemetry.service.js';
 import { DeedRepository, type StoredDeedRecord } from '../deed/deed.repository.js';
 import { NearException } from '../domain/errors.js';
+import { verifyNep413ClaimSignature } from '../identity/nep413-verifier.js';
+import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
+import { resolveNearNetworkConfig } from '../infrastructure/network/near-network.config.js';
 import { AccountClaimService, type AccountClaimStatus } from './account-claim.service.js';
 import { StakingPositionSyncService } from './staking-position-sync.service.js';
 import { buildStakerPerksFromYocto, sumDtoStakedYocto } from './staker-perks.js';
@@ -32,6 +35,7 @@ import {
   CLAIM_ACCOUNT_PATH,
   NEAR_TOKEN_ID,
   nearToYocto,
+  PROTOCOL_STAKING_ACCOUNT_ID,
   stakeOpId,
   unstakeOpId,
   withdrawOpId,
@@ -169,7 +173,11 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     ]);
 
     const grossApyBp = pools[0]?.apyBp ?? 900;
-    const perks = buildStakerPerksFromYocto(sumDtoStakedYocto(positions), { grossApyBp });
+    const protocolAccountId = this.resolveProtocolAccountId();
+    const perks = buildStakerPerksFromYocto(sumDtoStakedYocto(positions), {
+      grossApyBp,
+      protocolAccountId,
+    });
 
     return StakingStatusResponse.parse({
       colonyId,
@@ -201,8 +209,10 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   ): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
     const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
+    const sig = input.walletSignature ?? input.signature;
+    this.verifyRealNetworkSignatureIfPresent(sig, claimInfo, input.pool);
     const amountYocto = nearToYocto(input.amount);
-    const nonce = input.walletSignature?.nonce ?? input.signature?.nonce ?? String(++this.opCounter);
+    const nonce = sig?.nonce ?? String(++this.opCounter);
     const opId = input.opId?.trim() || stakeOpId(deed.colonyId, input.pool, nonce);
     const payerAccountId = await this.resolvePayerAccount(
       [claimInfo.accountId, deed.accountId, claimInfo.claimedByAccountId],
@@ -244,8 +254,10 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   ): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
     const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
+    const sig = input.walletSignature ?? input.signature;
+    this.verifyRealNetworkSignatureIfPresent(sig, claimInfo, input.pool);
     const amountYocto = nearToYocto(input.amount);
-    const nonce = input.walletSignature?.nonce ?? input.signature?.nonce ?? String(++this.opCounter);
+    const nonce = sig?.nonce ?? String(++this.opCounter);
     const opId = input.opId?.trim() || unstakeOpId(deed.colonyId, input.pool, nonce);
 
     const receipt = await this.staking.unstake({
@@ -281,7 +293,9 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   ): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
     const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
-    const nonce = input.walletSignature?.nonce ?? input.signature?.nonce ?? String(++this.opCounter);
+    const sig = input.walletSignature ?? input.signature;
+    this.verifyRealNetworkSignatureIfPresent(sig, claimInfo, input.pool);
+    const nonce = sig?.nonce ?? String(++this.opCounter);
     const opId = input.opId?.trim() || withdrawOpId(deed.colonyId, input.pool, nonce);
 
     const receipt = await this.staking.withdraw({
@@ -434,6 +448,38 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       return BigInt(row?.amount.toFixed(0) ?? '0');
     }
     return null;
+  }
+
+  private resolveProtocolAccountId(): string {
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    const kind = nearAdapterFor('Staking', envMap);
+    if (kind === 'mock') return envMap.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_STAKING_ACCOUNT_ID;
+    return resolveNearNetworkConfig(envMap, kind === 'mainnet' ? 'mainnet' : 'testnet').accounts.protocol;
+  }
+
+  private verifyRealNetworkSignatureIfPresent(
+    sig: Nep413Signature | undefined,
+    claimInfo: AccountClaimStatus,
+    poolId: string,
+  ): void {
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    const kind = nearAdapterFor('Staking', envMap);
+    if (kind === 'mock') return;
+    if (!sig) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', {
+        status: 401,
+        message: 'NEP-413 walletSignature is required for real-network staking actions.',
+      });
+    }
+    const net = kind === 'mainnet' ? 'mainnet' : 'testnet';
+    const cfg = resolveNearNetworkConfig(envMap, net);
+    const expectedWallet = claimInfo.claimedByAccountId ?? claimInfo.accountId;
+    verifyNep413ClaimSignature({
+      signature: sig,
+      expectedWalletAccountId: expectedWallet,
+      allowedRecipients: [poolId, cfg.contracts.staking, cfg.rootAccount],
+      network: net,
+    });
   }
 
   private portHooks(): StakingPortBalanceHooks {

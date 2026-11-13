@@ -29,7 +29,11 @@ export function buildAwayDom(host: HTMLElement, opts: { mercenary?: boolean } = 
   const raids = raidsBox();
   const sessions = {} as Record<AwayFamily, HTMLInputElement>;
   const readouts = {} as Record<AwayFamily, HTMLElement>;
-  body.append(fieldRow('Mode', mode), fieldRow('Away raids', raids), directiveLine());
+  const modeRow = fieldRow('Mode', mode);
+  modeRow.classList.add('ta-away__row--mode');
+  const raidsRow = fieldRow('Away raids', raids);
+  raidsRow.classList.add('ta-away__row--raids');
+  body.append(modeRow, raidsRow, directiveLine());
   const mercenary = opts.mercenary ? mercenaryFields() : null;
   if (mercenary) body.append(mercenary.row, mercenary.maxRow);
   for (const family of AWAY_FAMILIES) {

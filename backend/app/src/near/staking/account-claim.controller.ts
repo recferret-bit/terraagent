@@ -9,12 +9,16 @@ import { AccountClaimService, type ClaimAccountResponse } from './account-claim.
 
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
-function resolveOptionalPlayerId(req: IncomingMessage | undefined, tokens?: AuthTokenService): string | undefined {
+function resolveOptionalPlayerId(
+  req: IncomingMessage | undefined,
+  tokens?: AuthTokenService,
+  allowDevBearer = true,
+): string | undefined {
   if (!req?.headers?.authorization) return undefined;
   const raw = req.headers.authorization;
   const header = Array.isArray(raw) ? raw[0] : raw;
   const token = typeof header === 'string' ? BEARER_RE.exec(header.trim())?.[1] : undefined;
-  if (token) {
+  if (token && allowDevBearer) {
     const dev = devBearerPlayer(token);
     if (dev) return dev.id;
   }
@@ -56,13 +60,14 @@ export class AccountClaimController {
     if (body.colonyId !== undefined && body.colonyId.trim().length === 0) {
       this.pipe.transform({ colonyId: '' });
     }
+    const allowDevBearer = process.env.NODE_ENV !== 'production';
     return this.claimService.claimColonyAccount({
       colonyId: body.colonyId ?? 'col_0',
       walletAccountId: body.walletAccountId,
       newPublicKey: body.newPublicKey,
       signature: body.walletSignature,
       opId: body.opId,
-      playerId: resolveOptionalPlayerId(req, this.tokens),
+      playerId: resolveOptionalPlayerId(req, this.tokens, allowDevBearer),
     });
   }
 }

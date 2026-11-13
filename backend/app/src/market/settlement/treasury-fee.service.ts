@@ -10,9 +10,14 @@ import { loadKekRing } from '../../near/keystore/kek.js';
 import { KeyStore } from '../../near/keystore/keys.js';
 import { daoAccountIdFor } from '../../near/treasury/policy.js';
 import { ensureCustodialAccount } from '../dev/market-accounts.bootstrap.js';
-import { MarketPolicyProvider, PLATFORM_ACCOUNT_ID } from '../orders/market-policy.provider.js';
+import { MarketPolicyProvider, resolveProtocolAccountId } from '../orders/market-policy.provider.js';
 import type { TradePlan } from './trade-plan.js';
-import { TREASURY_ACCOUNT_ID, treasuryBatchAccount, treasuryFeeOpId, treasuryTerms } from './treasury-terms.js';
+import {
+  resolveTreasurySystemAccountId,
+  treasuryBatchAccount,
+  treasuryFeeOpId,
+  treasuryTerms,
+} from './treasury-terms.js';
 
 const missingDao = (e: unknown): boolean => {
   const code = (e as { errorCode?: string }).errorCode;
@@ -62,7 +67,7 @@ export class TreasuryFeeService {
     await this.daos.deposit({
       opId: treasuryFeeOpId(plan.tradeId),
       daoAccountId,
-      from: PLATFORM_ACCOUNT_ID,
+      from: resolveProtocolAccountId(this.env as unknown as Record<string, string | undefined>),
       tokenId: plan.quote,
       amount,
     });
@@ -80,7 +85,9 @@ export class TreasuryFeeService {
 
   private async signerFor(accountId: string): Promise<string> {
     if (await this.hasKey(accountId)) return accountId;
-    if (this.env.NODE_ENV === 'production') return TREASURY_ACCOUNT_ID;
+    if (this.env.NODE_ENV === 'production') {
+      return resolveTreasurySystemAccountId(this.env as unknown as Record<string, string | undefined>);
+    }
     await ensureCustodialAccount(this.prisma, this.ring(), accountId);
     return accountId;
   }

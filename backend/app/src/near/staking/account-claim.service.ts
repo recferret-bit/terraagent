@@ -8,6 +8,8 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { IdentityPort } from '../application/ports/identity.port.js';
+import { NearException } from '../domain/errors.js';
+import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 
 export interface ClaimAccountInputDto {
   readonly colonyId?: string;
@@ -150,23 +152,52 @@ export class AccountClaimService {
     return databaseEnabled(this.env) && this.prisma ? this.prisma : null;
   }
 
-  private async findColonyAccountRow(prisma: PrismaClient, colonyId: string, accountId?: string) {
+  private isRealNetworkMode(): boolean {
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    return nearAdapterFor('Identity', envMap) !== 'mock';
+  }
+
+  private assertRowOwnership(ownerPlayerId: string | null | undefined, callerPlayerId: string | undefined): void {
+    if (!ownerPlayerId || ownerPlayerId === 'dev_pilot') return;
+    if (callerPlayerId && ownerPlayerId !== callerPlayerId) {
+      throw new NearException('NEAR_NOT_OWNER', { message: 'Caller does not own this colony account' });
+    }
+    if (!callerPlayerId && this.isRealNetworkMode()) {
+      throw new NearException('NEAR_NOT_OWNER', { message: 'Authentication is required to claim this colony account' });
+    }
+  }
+
+  private async findColonyAccountRow(
+    prisma: PrismaClient,
+    colonyId: string,
+    accountId?: string,
+    playerId?: string,
+  ) {
     if (accountId) {
       const byAccount = await prisma.nearColonyAccount.findUnique({ where: { accountId } });
       if (byAccount) return byAccount;
     }
     const byColony = await prisma.nearColonyAccount.findFirst({
-      where: { OR: [{ colonyId }, { slot: colonyId }] },
+      where: {
+        ...(playerId ? { playerId } : {}),
+        OR: [{ colonyId }, { slot: colonyId }],
+      },
     });
     if (byColony) return byColony;
-    if (colonyId === 'col_0' || colonyId === '0') {
+    const anyByColony = playerId
+      ? await prisma.nearColonyAccount.findFirst({ where: { OR: [{ colonyId }, { slot: colonyId }] } })
+      : null;
+    if (anyByColony) return anyByColony;
+
+    if ((colonyId === 'col_0' || colonyId === '0') && (!this.isRealNetworkMode() || playerId)) {
+      const scopedPlayer = playerId ? { playerId } : {};
       const nonPlayer = await prisma.nearColonyAccount.findFirst({
-        where: { slot: { notIn: ['player', 'system'] } },
+        where: { ...scopedPlayer, slot: { notIn: ['player', 'system'] } },
         orderBy: { createdAt: 'asc' },
       });
       if (nonPlayer) return nonPlayer;
       return prisma.nearColonyAccount.findFirst({
-        where: { slot: 'player' },
+        where: { ...scopedPlayer, slot: 'player' },
         orderBy: { createdAt: 'asc' },
       });
     }
@@ -190,12 +221,16 @@ export class AccountClaimService {
       };
     }
 
-    const existing = await this.findColonyAccountRow(prisma, input.colonyId);
+    const existing = await this.findColonyAccountRow(prisma, input.colonyId, undefined, input.playerId);
     if (existing) {
+      this.assertRowOwnership(existing.playerId, input.playerId);
       return { accountId: existing.accountId, existingClaimedAt: existing.claimedAt };
     }
 
     const deed = await prisma.deed.findUnique({ where: { colonyId: input.colonyId } });
+    if (deed) {
+      this.assertRowOwnership(deed.playerId, input.playerId);
+    }
     const resolvedAccountId = (deed?.accountId ?? defaultAccountId).replace(/[-_]{2,}/g, '-');
     const playerId = input.playerId ?? deed?.playerId ?? 'dev_pilot';
     await this.ensurePlayerRow(prisma, playerId);

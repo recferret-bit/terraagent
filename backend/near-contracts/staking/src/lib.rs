@@ -1,11 +1,14 @@
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, PanicOnDefault};
+use near_sdk::{env, near, require, AccountId, NearToken, PanicOnDefault, Promise};
 use serde_json::json;
 
 const GAME_DAY_MS: u64 = 86_400_000;
 const UNBONDING_DURATION_MS: u64 = 2 * GAME_DAY_MS;
 const YEAR_MS: u128 = 365 * (GAME_DAY_MS as u128);
 const PROTOCOL_YIELD_SHARE_BP: u128 = 2_000; // 20% of validator yield -> protocol.<owner_id>, 80% -> staker (7.2% net APY)
+const MAX_APY_BP: u32 = 5_000; // 50.00% sanity ceiling on gross validator APY
+const STORAGE_RESERVE_MILLINEAR: u128 = 50; // 0.05 NEAR liquid buffer above storage lock
+const CFG_PROTOCOL_KEY: &[u8] = b"cfg:protocol";
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -53,9 +56,38 @@ fn pos_key(account_id: &str, pool_id: &str) -> String {
     format!("{}::{}", account_id, pool_id)
 }
 
+fn native_dep_key(account_id: &str) -> Vec<u8> {
+    format!("ndep:{}", account_id).into_bytes()
+}
+
+fn read_native_dep(account_id: &str) -> u128 {
+    match env::storage_read(&native_dep_key(account_id)) {
+        Some(bytes) if bytes.len() == 16 => {
+            let mut arr = [0u8; 16];
+            arr.copy_from_slice(&bytes);
+            u128::from_le_bytes(arr)
+        }
+        _ => 0,
+    }
+}
+
+fn write_native_dep(account_id: &str, val: u128) {
+    let key = native_dep_key(account_id);
+    if val == 0 {
+        env::storage_remove(&key);
+    } else {
+        env::storage_write(&key, &val.to_le_bytes());
+    }
+}
+
 fn parse_yocto(raw: &str) -> u128 {
     raw.parse::<u128>()
         .expect("STAKE_INSUFFICIENT_BALANCE: invalid yoctoNEAR amount")
+}
+
+fn validate_pool_and_apy(pool_id: &str, apy_bp: u32) {
+    require!(!pool_id.trim().is_empty(), "STAKE_INVALID_POOL: pool_id required");
+    require!(apy_bp <= MAX_APY_BP, "STAKE_INVALID_APY: apy_bp exceeds 5000 bp");
 }
 
 /// Overflow-free reward accrual matching `@terra/sim` / `yocto.ts`:
@@ -72,7 +104,8 @@ fn compute_accrued_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> u
 /// Splits gross accrued validator yield into `(staker_reward_80pct, protocol_yield_20pct)`.
 fn compute_split_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> (u128, u128) {
     let gross = compute_accrued_reward_delta(staked, apy_bp, elapsed_ms);
-    let protocol_cut = (gross * PROTOCOL_YIELD_SHARE_BP) / 10_000u128;
+    let protocol_cut = (gross / 10_000u128) * PROTOCOL_YIELD_SHARE_BP
+        + ((gross % 10_000u128) * PROTOCOL_YIELD_SHARE_BP) / 10_000u128;
     (gross.saturating_sub(protocol_cut), protocol_cut)
 }
 
@@ -94,7 +127,8 @@ fn project_record(record: &StakingRecord, apy_bp: u32, now_ms: u64) -> (StakingR
             }
         }
     }
-    next.last_accrued_at_ms = now_ms;
+    // Monotonic timestamp progression prevents out-of-order clock skew from double-accruing yield.
+    next.last_accrued_at_ms = next.last_accrued_at_ms.max(now_ms);
     (next, protocol_cut)
 }
 
@@ -138,7 +172,31 @@ impl StakingVaultContract {
             env::predecessor_account_id() == self.owner_id,
             "NEAR_NOT_OWNER: only owner can update operator"
         );
-        self.operator_id = operator_id;
+        self.operator_id = operator_id.clone();
+        emit_staking("operator_updated", json!({ "operator_id": operator_id }));
+    }
+
+    /// Configures an explicit protocol treasury receiver (`protocol.<root>` by default).
+    /// Stored under disjoint key `cfg:protocol` so Borsh contract state upgrades remain 100% compatible.
+    pub fn set_protocol_account(&mut self, protocol_id: AccountId) {
+        require!(
+            env::predecessor_account_id() == self.owner_id,
+            "NEAR_NOT_OWNER: only owner can update protocol account"
+        );
+        env::storage_write(CFG_PROTOCOL_KEY, protocol_id.as_bytes());
+        emit_staking("protocol_account_updated", json!({ "protocol_id": protocol_id }));
+    }
+
+    fn resolve_protocol_account_id(&self) -> String {
+        if let Some(bytes) = env::storage_read(CFG_PROTOCOL_KEY) {
+            if let Ok(custom) = String::from_utf8(bytes) {
+                let trimmed = custom.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+        format!("protocol.{}", self.owner_id)
     }
 
     fn require_operator(&self) {
@@ -152,6 +210,7 @@ impl StakingVaultContract {
     /// Credits virtual NEAR balance inside the staking vault (`fund` helper / top-ups). Idempotent by `op_id`.
     pub fn credit_near(&mut self, op_id: String, account_id: String, amount: String) -> String {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
+        require!(!account_id.trim().is_empty(), "STAKE_INSUFFICIENT_BALANCE: account_id required");
         self.require_operator();
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.clone();
@@ -170,20 +229,106 @@ impl StakingVaultContract {
         self.balances.get(&account_id).copied().unwrap_or(0).to_string()
     }
 
+    pub fn get_native_deposit_balance(&self, account_id: String) -> String {
+        read_native_dep(&account_id).to_string()
+    }
+
+    /// Accepts real payable NEAR deposits directly from a user wallet (or on behalf of `account_id`).
+    #[payable]
+    pub fn deposit_near(&mut self, account_id: Option<AccountId>) -> String {
+        let attached = env::attached_deposit().as_yoctonear();
+        require!(
+            attached > 0,
+            "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit must be > 0"
+        );
+        let target = account_id
+            .unwrap_or_else(env::predecessor_account_id)
+            .to_string();
+        let cur = self.balances.get(&target).copied().unwrap_or(0);
+        let next = cur
+            .checked_add(attached)
+            .expect("STAKE_INSUFFICIENT_BALANCE: overflow");
+        let cur_native = read_native_dep(&target);
+        let next_native = cur_native
+            .checked_add(attached)
+            .expect("STAKE_INSUFFICIENT_BALANCE: native deposit overflow");
+        self.balances.insert(target.clone(), next);
+        write_native_dep(&target, next_native);
+        let res = next.to_string();
+        emit_staking(
+            "deposit_near",
+            json!({
+                "account_id": target,
+                "depositor": env::predecessor_account_id(),
+                "amount": attached.to_string(),
+                "balance": res,
+            }),
+        );
+        res
+    }
+
+    /// Withdraws unlocked native NEAR backed by real `deposit_near` principal (CEI pattern + storage reserve floor).
+    /// Virtual operator credits (`credit_near`) can never drain real user NEAR or contract storage lock.
+    pub fn claim_native_near(&mut self, amount: String, recipient_id: Option<AccountId>) -> Promise {
+        let caller = env::predecessor_account_id();
+        let caller_str = caller.to_string();
+        let claim_val = parse_yocto(&amount);
+        require!(claim_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
+
+        let vault_bal = self.balances.get(&caller_str).copied().unwrap_or(0);
+        let native_bal = read_native_dep(&caller_str);
+        require!(
+            vault_bal >= claim_val && native_bal >= claim_val,
+            "STAKE_INSUFFICIENT_BALANCE: insufficient native NEAR deposit balance"
+        );
+
+        let storage_locked = (env::storage_usage() as u128)
+            .saturating_mul(env::storage_byte_cost().as_yoctonear());
+        let reserve = NearToken::from_millinear(STORAGE_RESERVE_MILLINEAR).as_yoctonear();
+        let liquid = env::account_balance()
+            .as_yoctonear()
+            .saturating_sub(storage_locked.saturating_add(reserve));
+        require!(
+            liquid >= claim_val,
+            "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve"
+        );
+
+        // Checks-Effects-Interactions: debit both ledgers prior to scheduling transfer Promise.
+        self.balances.insert(caller_str.clone(), vault_bal - claim_val);
+        write_native_dep(&caller_str, native_bal - claim_val);
+
+        let dest = recipient_id.unwrap_or(caller);
+        emit_staking(
+            "claim_native_near",
+            json!({
+                "account_id": caller_str,
+                "recipient_id": dest,
+                "amount": claim_val.to_string(),
+            }),
+        );
+        Promise::new(dest).transfer(NearToken::from_yoctonear(claim_val))
+    }
+
     fn credit_protocol_yield(&mut self, cut: u128) {
         if cut == 0 {
             return;
         }
-        let protocol_id = format!("protocol.{}", self.owner_id);
+        let protocol_id = self.resolve_protocol_account_id();
         let cur = self.balances.get(&protocol_id).copied().unwrap_or(0);
         self.balances.insert(protocol_id, cur.saturating_add(cut));
     }
 
     pub fn get_protocol_account(&self) -> String {
-        format!("protocol.{}", self.owner_id)
+        self.resolve_protocol_account_id()
+    }
+
+    pub fn get_protocol_yield_balance(&self) -> String {
+        let protocol_id = self.resolve_protocol_account_id();
+        self.balances.get(&protocol_id).copied().unwrap_or(0).to_string()
     }
 
     /// Stakes `amount` yoctoNEAR from `payer_id` (or `account_id`) into `pool_id`. Idempotent by `op_id`.
+    #[allow(clippy::too_many_arguments)]
     pub fn stake(
         &mut self,
         op_id: String,
@@ -199,6 +344,7 @@ impl StakingVaultContract {
         if let Some(cached) = self.processed_ops.get(&op_id) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
+        validate_pool_and_apy(&pool_id, apy_bp);
         let stake_val = parse_yocto(&amount);
         require!(stake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
 
@@ -241,6 +387,7 @@ impl StakingVaultContract {
         if let Some(cached) = self.processed_ops.get(&op_id) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
+        validate_pool_and_apy(&pool_id, apy_bp);
         let unstake_val = parse_yocto(&amount);
         require!(unstake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
 
@@ -281,6 +428,7 @@ impl StakingVaultContract {
         if let Some(cached) = self.processed_ops.get(&op_id) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
+        validate_pool_and_apy(&pool_id, apy_bp);
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
@@ -320,6 +468,7 @@ impl StakingVaultContract {
         apy_bp: u32,
         now_ms: u64,
     ) -> StakingPositionView {
+        validate_pool_and_apy(&pool_id, apy_bp);
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
         let projected = if self.positions.contains_key(&key) {
@@ -340,109 +489,4 @@ impl StakingVaultContract {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
-
-    fn ctx(predecessor: &str) -> VMContextBuilder {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(predecessor.parse().unwrap());
-        builder
-    }
-
-    #[test]
-    fn stake_unstake_unbonding_rewards_and_withdraw_flow() {
-        testing_env!(ctx("minter.terraagent.testnet").build());
-        let mut contract = StakingVaultContract::new(
-            "terraagent.testnet".parse().unwrap(),
-            "minter.terraagent.testnet".parse().unwrap(),
-        );
-        let ten_near = "10000000000000000000000000".to_string();
-        let four_near = "4000000000000000000000000".to_string();
-        let six_near = "6000000000000000000000000".to_string();
-
-        contract.credit_near("op-fund".into(), "col1.testnet".into(), ten_near.clone());
-        let t0 = 1_700_000_000_000u64;
-        let s1 = contract.stake(
-            "op-stake-1".into(),
-            "col1.testnet".into(),
-            None,
-            "astro-stakers.pool.mock".into(),
-            900,
-            ten_near.clone(),
-            t0,
-        );
-        assert_eq!(s1.staked, ten_near);
-
-        // Replay returns cached position without double debit.
-        let s2 = contract.stake(
-            "op-stake-1".into(),
-            "col1.testnet".into(),
-            None,
-            "astro-stakers.pool.mock".into(),
-            900,
-            ten_near.clone(),
-            t0,
-        );
-        assert_eq!(s2.staked, ten_near);
-
-        // Unstake after 10 game days -> accrues rewards.
-        let t10 = t0 + 10 * GAME_DAY_MS;
-        let u1 = contract.unstake(
-            "op-unstake-1".into(),
-            "col1.testnet".into(),
-            "astro-stakers.pool.mock".into(),
-            900,
-            four_near.clone(),
-            t10,
-        );
-        assert_eq!(u1.staked, six_near);
-        assert_eq!(u1.unbonding, four_near);
-        assert!(u1.rewards.parse::<u128>().unwrap() > 0);
-
-        // Advance 2 game days -> unbonding matures into withdrawable.
-        let t12 = t10 + UNBONDING_DURATION_MS;
-        let pos = contract.get_position(
-            "col1.testnet".into(),
-            "astro-stakers.pool.mock".into(),
-            900,
-            t12,
-        );
-        assert_eq!(pos.unbonding, "0");
-        assert_eq!(pos.withdrawable, four_near);
-
-        let w = contract.withdraw(
-            "op-withdraw-1".into(),
-            "col1.testnet".into(),
-            None,
-            "astro-stakers.pool.mock".into(),
-            900,
-            t12,
-        );
-        assert!(w.withdrawn.parse::<u128>().unwrap() > four_near.parse::<u128>().unwrap());
-        assert!(contract.get_near_balance("col1.testnet".into()).parse::<u128>().unwrap() > 0);
-        // TerraAgent Protocol receives 20% of validator yield in `protocol.<owner_id>`.
-        let protocol_bal = contract
-            .get_near_balance("protocol.terraagent.testnet".into())
-            .parse::<u128>()
-            .unwrap();
-        assert!(protocol_bal > 0);
-    }
-
-    #[test]
-    #[should_panic(expected = "STAKE_INSUFFICIENT_BALANCE")]
-    fn withdraw_before_unbonding_panics() {
-        testing_env!(ctx("minter.terraagent.testnet").build());
-        let mut contract = StakingVaultContract::new(
-            "terraagent.testnet".parse().unwrap(),
-            "minter.terraagent.testnet".parse().unwrap(),
-        );
-        let ten_near = "10000000000000000000000000".to_string();
-        contract.credit_near("op-fund".into(), "col1.testnet".into(), ten_near.clone());
-        let t0 = 1_700_000_000_000u64;
-        contract.stake("op-s".into(), "col1.testnet".into(), None, "p1".into(), 900, ten_near.clone(), t0);
-        contract.unstake("op-u".into(), "col1.testnet".into(), "p1".into(), 900, ten_near, t0);
-        contract.withdraw("op-w".into(), "col1.testnet".into(), None, "p1".into(), 900, t0 + 1000);
-    }
-}
+mod tests;

@@ -18,9 +18,10 @@ function estimateCargoUsdcMicro(s: TradeState): bigint {
   for (const [resKey, bal] of Object.entries(s.balances.inOrbit)) {
     const units = BigInt(bal.total || '0');
     if (units <= 0n) continue;
-    const pairRow = s.overview?.find((p) => p.pair === `${resKey}/USDC`);
-    const liveLast = pairRow?.last ? (BigInt(pairRow.last.num) / BigInt(Math.max(1, pairRow.last.den))) : null;
-    const unitMicro = liveLast ?? REF_USDC_MICRO_PER_UNIT[resKey] ?? 1_000_000n;
+    const topRow = s.top[`${resKey}/USDC`];
+    const bestBid = topRow?.bid;
+    const liveBid = bestBid ? (BigInt(bestBid.num) / BigInt(Math.max(1, bestBid.den))) : null;
+    const unitMicro = liveBid ?? REF_USDC_MICRO_PER_UNIT[resKey] ?? 1_000_000n;
     sumMicro += units * unitMicro;
   }
   return sumMicro;

@@ -88,7 +88,7 @@ export class NeighborHudStrip {
     this.ctx = opts.ctx;
 
     this.hudStripEl = document.createElement('div');
-    this.hudStripEl.className = 'ta-neighbor-hud-strip plate-sm';
+    this.hudStripEl.className = 'ta-neighbor-hud-strip';
     this.hudStripEl.dataset.testid = 'neighbor-hud-strip';
     this.hudStripEl.setAttribute('aria-label', 'Discovered neighbors');
 
@@ -113,7 +113,7 @@ export class NeighborHudStrip {
     }
 
     for (const marker of markers) {
-      const stripItem = createNeighborItem(marker, this.ctx, 'ta-neighbor-hud-item');
+      const stripItem = createNeighborItem(marker, this.ctx, 'ta-neighbor-hud-item plate-sm');
       this.hudStripEl.appendChild(stripItem);
 
       const minimapItem = createNeighborItem(marker, this.ctx, 'ta-minimap-neighbor-marker');

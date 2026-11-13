@@ -49,7 +49,9 @@ export class MockIdentityAdapter implements IdentityPort {
     const provider = input.provider.trim().toLowerCase();
     if (provider === 'near-wallet' || input.token.startsWith('nep413:')) {
       const verified = await this.nep413.verifyInlineToken(input.token);
-      const preferredName = verified.accountId.replace(/\.(testnet|near)$/i, '') || verified.accountId;
+      const preferredName = verified.accountId.includes('.')
+        ? (verified.accountId.split('.')[0] || verified.accountId)
+        : verified.accountId;
       return {
         playerId: verified.accountId,
         email: null,

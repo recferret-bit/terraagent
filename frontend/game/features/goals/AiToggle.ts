@@ -1,4 +1,5 @@
 import type { FeatureContext } from '../../core/registry/types';
+import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { ownColonyIndex, viewColony } from '../shared/colony';
 
 /**
@@ -9,6 +10,7 @@ export class AiToggle {
   readonly root = document.createElement('div');
   private readonly button = document.createElement('button');
   private readonly hint = document.createElement('span');
+  private readonly offShared: () => void;
   private enabled = false;
 
   constructor(host: HTMLElement, private readonly ctx: FeatureContext) {
@@ -24,6 +26,12 @@ export class AiToggle {
     this.root.append(label, this.button, this.hint);
     host.append(this.root);
     this.render();
+    this.offShared = subscribeSharedAutopilotState((st) => {
+      if (st.aiEnabled !== this.enabled) {
+        this.enabled = st.aiEnabled;
+        this.render();
+      }
+    });
     if (ctx.services.store?.latest) this.update(ctx.services.store.latest);
   }
 
@@ -37,6 +45,7 @@ export class AiToggle {
     if (!view) return;
     const col = viewColony(view, ownColonyIndex(this.ctx.services));
     const next = col?.aiEnabled === true;
+    patchSharedAutopilotState({ aiEnabled: next });
     if (next === this.enabled && this.button.textContent) return;
     this.enabled = next;
     this.render();
@@ -56,6 +65,7 @@ export class AiToggle {
   }
 
   dispose(): void {
+    this.offShared();
     this.root.remove();
   }
 }

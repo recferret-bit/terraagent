@@ -13,16 +13,17 @@
 
 ---
 
-## 2. Multi-Agent Roster & On-Chain Sub-Accounts (`NEAR_MODE=testnet`)
+## 2. Multi-Agent Roster & On-Chain Sub-Accounts (`NEAR_MODE=testnet|mainnet`)
 
-Every economic actor on a planet owns an isolated NEAR account (`*.<root>.testnet` in `NEAR_MODE=testnet`, deterministic `*.terraagent.mock` in zero-key `NEAR_MODE=mock`):
+Every economic actor on a planet owns an isolated NEAR account (`*.terraagent.testnet` in `NEAR_MODE=testnet`, `*.terraagent.near` in `NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`, deterministic `*.terraagent.mock` in zero-key `NEAR_MODE=mock`):
 
 | Actor | Account Pattern | Role on the Shared Planet |
 | :--- | :--- | :--- |
-| **Player Colony** | `{pilot}.<root>.testnet` / `col-{n}.{pilot}.<root>.testnet` | **100% Human-controlled by default** while online. Switches to AI Director control only when the player clicks **`AI AUTOPILOT: ON`** or goes **offline**. |
-| **Rival AI Colony #1 (Trader)** | `rival-trader-{planet}.<root>.testnet` | Established Stage 3–4 autonomous neighbor (`conservative` risk, `trade`/`terraforming` focus): posts liquidity on `/v1/trade/orders`, terraforms to `Living`, defends, and favors peace truces. |
-| **Rival AI Colony #2 (Warlord)** | `rival-warlord-{planet}.<root>.testnet` | Established Stage 3–4 autonomous neighbor (`risky` risk, `expansion`/`diplomacy` focus): trades shortages, launches `raid_target` offenses against unshielded neighbors, and negotiates truces when outmatched. |
-| **Orbital Guild NPCs** | `kestrel.npc.<root>.testnet`, `vanguard.npc.<root>.testnet` | Scheduled orbital merchant ships quoting two-sided barter spreads from live stock ratios (`docs/game/GUILD_PRICING.md`), with 10% off-planet sink and restock per visit so prices evolve without developer patches. |
+| **Player Colony** | `{pilot}.pilots.<root>` (or `{pilot}.<root>`) / `col-{n}.{pilot}.*` | **100% Human-controlled by default** while online. Provisioned gaslessly via `pilots.<root>` (`relayer.<root>` operator, cold root key offline) and upgradeable via atomic `[AddKey, DeleteKey]` non-custodial `claimAccount`. Switches to AI Director control only when the player clicks **`AI AUTOPILOT: ON`** or goes **offline**. |
+| **Rival AI Colony #1 (Trader)** | `rival-trader-{planet}.<root>` | Established Stage 3–4 autonomous neighbor (`conservative` risk, `trade`/`terraforming` focus): posts liquidity on `/v1/trade/orders`, terraforms to `Living`, defends, and favors peace truces. |
+| **Rival AI Colony #2 (Warlord)** | `rival-warlord-{planet}.<root>` | Established Stage 3–4 autonomous neighbor (`risky` risk, `expansion`/`diplomacy` focus): trades shortages, launches `raid_target` offenses against unshielded neighbors, and negotiates truces when outmatched. |
+| **Orbital Guild NPCs** | `kestrel.npc.<root>`, `vanguard.npc.<root>` | Scheduled orbital merchant ships quoting two-sided barter spreads from live stock ratios (`docs/game/GUILD_PRICING.md`), with 10% off-planet sink and restock per visit so prices evolve without developer patches. |
+| **TerraAgent Protocol** | `protocol.<root>` | Transparent protocol treasury account (`GET /v1/near/protocol`) receiving 80% of platform trade fees, 20% of Day-1 staking yield, and 10% of diplomacy/war escrow slashes. |
 
 ---
 
@@ -38,7 +39,7 @@ Every economic actor on a planet owns an isolated NEAR account (`*.<root>.testne
 
 ### What the AI Agent CANNOT Do Without the Human Owner (Hard Server-Enforced Blocks)
 1. **NEVER Break an Active Truce Early (`AW-13` / Oathbreaker Guard):** Cancelling an active truce triggers a 10-minute notice window and brands the colony **`OATHBREAKER`** for 24 hours (blocking all future truce offers). Only a human click can cancel an active truce.
-2. **NEVER Touch User-Wallet NEAR Staking (`D-18`):** Native `NEAR` validator staking (`StakingPort`) requires a settled Colony Deed and a direct user wallet signature — neither the relayer nor any AI director key can stake or unstake user `NEAR`.
+2. **NEVER Touch User-Wallet NEAR Staking (`403 AI_STAKING_FORBIDDEN`):** Lossless Day-1 `NEAR` validator staking (`staking.<root>`, `80%` player / `20%` protocol yield split; `>= 10 NEAR` unlocks `0.50%` platform fee + Managed `NEAR.AI` Autopilot) requires a claimed human account and a verified `NEP-413` user wallet signature on real networks — neither the relayer nor any AI director/bot key can stake, unstake, or withdraw user `NEAR`.
 3. **NEVER Exceed Trade Allowance or Bypass Kill Switch:** Every AI trade checks the colony's server-enforced director allowance (`DirectorKey`) and global/per-colony kill switch before hitting the orderbook or relayer; any manual player override increments `intentRevision` and immediately supersedes open AI directives (`stale_revision`).
 4. **NEVER Demolish Player Buildings While Away (`AW-10`):** Away AI cannot dismantle existing player-placed structures.
 

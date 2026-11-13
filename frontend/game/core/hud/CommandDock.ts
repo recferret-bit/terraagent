@@ -55,7 +55,12 @@ export class CommandDock {
   readonly book: TabBook<DockTabId>;
   private readonly onKeyDown: (e: KeyboardEvent) => void;
 
-  constructor(slotEl: HTMLElement, _ctx: FeatureContext, availableTabs: ReadonlySet<DockTabId>) {
+  constructor(
+    slotEl: HTMLElement,
+    _ctx: FeatureContext,
+    availableTabs: ReadonlySet<DockTabId>,
+    onSpineClick?: (tab: DockTabId) => void,
+  ) {
     this.book = new TabBook(slotEl, {
       side: 'right',
       tabs: TAB_DEFS.filter((d) => availableTabs.has(d.id)),
@@ -64,6 +69,7 @@ export class CommandDock {
       tabTestIdPrefix: 'dock-tab-',
       toggleTestId: 'command-dock-toggle',
       ariaLabel: 'Commands',
+      onSpineClick,
     });
     this.el = this.book.el;
     if (this.book.has('queue')) this.book.containerFor('queue').classList.add('ta-command-dock__queue');

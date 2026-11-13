@@ -24,6 +24,8 @@ export interface MarketOrderRecord extends RestingOrder {
   readonly policyVersion: string;
   readonly policyHash: string;
   readonly platformFeeBp: number;
+  /** Discounted buyer platform fee pinned at placement (e.g. `50` bp for `>= 10 NEAR` stakers) while `platformFeeBp` stays at the epoch policy rate for book matching. */
+  readonly effectivePlatformFeeBp?: number;
   readonly stallFeeBp: number;
   readonly maxStallFeeBp: number | null;
   readonly reservedPrincipal: bigint;
@@ -41,6 +43,11 @@ export const OPEN_STATES: readonly string[] = ['OPEN', 'PARTIAL'];
 export const isBookable = (state: string): boolean => OPEN_STATES.includes(state);
 
 export function toRecord(r: MarketOrder): MarketOrderRecord {
+  const rawStakerFee = (r.signedTerms as { stakerPlatformFeeBp?: unknown } | null)?.stakerPlatformFeeBp;
+  const effectivePlatformFeeBp =
+    typeof rawStakerFee === 'number' && Number.isInteger(rawStakerFee) && rawStakerFee >= 0
+      ? rawStakerFee
+      : undefined;
   return {
     orderId: r.orderId,
     seq: r.id,
@@ -65,6 +72,7 @@ export function toRecord(r: MarketOrder): MarketOrderRecord {
     policyVersion: r.policyVersion,
     policyHash: r.policyHash,
     platformFeeBp: r.platformFeeBp,
+    ...(effectivePlatformFeeBp !== undefined ? { effectivePlatformFeeBp } : {}),
     stallFeeBp: r.stallFeeBp,
     maxStallFeeBp: r.maxStallFeeBp,
     reservedPrincipal: decimalToBigint(r.reservedPrincipal),

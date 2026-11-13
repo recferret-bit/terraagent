@@ -81,6 +81,8 @@ export async function bootStack(): Promise<Stack> {
   const appEnv: NodeJS.ProcessEnv = {
     ...process.env, NODE_ENV: 'development', PORT: String(u.appPort), DATABASE_URL: db.url,
     SIM_THREADS: '1', GAME_DEV_PLANETS: '1', SNAPSHOT_EVERY_S: '5', TA_PORT_BASE: String(u.base),
+    NEAR_MODE: process.env.NEAR_MODE ?? 'mock',
+    NEAR_ADAPTER_IDENTITY: process.env.NEAR_ADAPTER_IDENTITY ?? 'mock',
     ...(waves ? { TA_WAVES: waves } : {}),
   };
   process.env.E2E_APP_WAVES = appEnv.TA_WAVES ?? ''; // the suites (workers) read it: `expectedOnWaves()`

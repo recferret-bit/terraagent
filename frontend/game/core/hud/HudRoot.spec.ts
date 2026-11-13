@@ -52,10 +52,10 @@ describe('HudRoot routing', () => {
     expect([bookOf(minimap), slotOf(minimap)]).toEqual([null, 'bottom-left']);
   });
 
-  it('places the dock in the top-right slot and the colony book in the top-left slot', () => {
+  it('places both the dock and the colony book in the top-right slot', () => {
     mount([...COLONY, ...DOCK]);
     expect(slotOf($('[data-testid=command-dock]')!)).toBe('top-right');
-    expect(slotOf($('[data-testid=colony-book]')!)).toBe('top-left');
+    expect(slotOf($('[data-testid=colony-book]')!)).toBe('top-right');
   });
 
   it('creates only the tabs whose panel is enabled, in book order', () => {

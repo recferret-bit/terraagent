@@ -33,7 +33,7 @@ const BATCH_SYSTEM_PROMPT = [
   'You are the TerraAgent NEAR.AI Decision Manager (z-ai/glm-5.3-flash) governing autonomous colonies.',
   'Given { colonies: ColonyObservation[] }, reply with strict JSON: { "directives": [ { "colonyIndex": number, "action": "queue_goal"|"propose_truce"|"respond_truce"|"declare_war"|"raid"|"trade"|"accept_guild_offer"|"hold", "goal"?: "grow_economy"|"secure_power"|"defend_colony"|"terraform_zone"|"raid_target", "targetColonyIndex"?: number, "offerId"?: string, "accept"?: boolean, "durationHours"?: 6|12|24, "tradeSide"?: "buy"|"sell", "tradePair"?: string, "tradeAmount"?: number, "tradeNotionalAtomic"?: string, "rationale": string (<=160 chars) } ] }.',
   'Optimize economy, power grid, Living terraforming, NEAR Intents trading (allowedPairs: metals.t1/minerals.t1, metals.t1/bio.water, bio.water/minerals.t1, bio.biomass/minerals.t1, metals.t1/USDC, minerals.t1/USDC, bio.water/USDC, bio.biomass/USDC), war raids against unshielded rivals, and peace truces.',
-  'Hard guardrails: NEVER output cancel_truce (Oathbreaker is human-only) and NEVER output stake.',
+  'Hard guardrails: NEVER output cancel_truce (Oathbreaker is human-only), NEVER output cancel_war, and NEVER output stake or lock native NEAR bonds.',
 ].join(' ');
 
 export interface PlayerColonyAiOverride {
@@ -130,9 +130,10 @@ export class ColonyAgentLoopService {
 
   /**
    * Evaluates one batched LLM / policy decision turn across every colony on `planetId`:
-   * - Non-player AI bots (`obs.isBot === true`) are batched into a single NEAR.AI (`z-ai/glm-5.3-flash`) completion call.
-   * - Human player colonies with AI enabled use the player's connected NEAR.AI API key + selected model (batched per player);
-   *   if the player has not connected a personal NEAR.AI API key, deterministic policy is used without consuming the server key.
+   * - Non-player AI bots (`obs.isBot === true`) and human colonies staking `>= 10 NEAR` without a custom BYOK key
+   *   are batched into the server-sponsored Managed NEAR.AI (`z-ai/glm-5.3-flash`) completion call.
+   * - Human player colonies with a saved `/me.html` BYOK NEAR.AI key use their chosen custom model (batched per player).
+   * - Unstaked human colonies without a personal BYOK key use deterministic policy without consuming the server key.
    */
   async tickPlanetAgents(planetId: string, opts: TickPlanetAgentsOptions = {}): Promise<ColonyAgentEvalResult[]> {
     const snap = await this.planets.fullState(planetId);
@@ -473,6 +474,6 @@ export class ColonyAgentLoopService {
         : amount;
     const accountId = await resolveMarketAccountId(this.prisma, col.id, col.playerId ?? null, planetId, col.index);
     await ensureMockSigners(this.env, this.prisma, [accountId]);
-    await ensureVerifierBalance(this.prisma, accountId, spendToken as MarketTokenKey, spendUnits * 2n);
+    await ensureVerifierBalance(this.prisma, accountId, spendToken as MarketTokenKey, spendUnits * 2n, this.env);
   }
 }

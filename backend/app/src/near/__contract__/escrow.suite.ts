@@ -179,6 +179,16 @@ async function slashSplits90ToVictimAnd10ToProtocol(a: A, expectReceipt: Receipt
   const before = await total(a, parties);
 
   const opened = await a.port.open(openOf(funder, `open-slash:${uid()}`, beneficiary));
+  await expect(
+    a.port.slash({
+      opId: `slash-self:${uid()}`,
+      escrowId: opened.escrowId,
+      victimAccountId: funder,
+      protocolAccountId: protocol,
+      protocolFeeBp: 1_000,
+    }),
+  ).rejects.toMatchObject({ errorCode: 'NEAR_ESCROW_STATE' });
+
   const slashOp = `slash:${uid()}`;
   const slashed = await a.port.slash({
     opId: slashOp,
@@ -205,7 +215,7 @@ async function slashSplits90ToVictimAnd10ToProtocol(a: A, expectReceipt: Receipt
   expect(await a.balance(victim, TOKEN)).toBe('180');
   expect(await a.balance(protocol, TOKEN)).toBe('20');
   expect(await a.balance(opened.escrowId, TOKEN)).toBe('0');
-  expect(['slashed', 'claimed']).toContain((await a.port.get({ escrowId: opened.escrowId })).status);
+  expect((await a.port.get({ escrowId: opened.escrowId })).status).toBe('slashed');
   expect(await total(a, [...parties, opened.escrowId])).toBe(before);
 }
 

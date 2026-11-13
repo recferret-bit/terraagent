@@ -3,85 +3,201 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TerraAgent — Pitch</title>
-<meta name="description" content="Drop one robot. Get a colony that never sleeps.">
+<title>TerraAgent — Investor &amp; Judge Pitch Deck</title>
+<meta name="description" content="Drop one robot. Get a colony that never sleeps. Real-time 3D autonomous colony RTS on NEAR &amp; NEAR.AI.">
 <link rel="stylesheet" href="../design/css/tokens.css">
 <link rel="stylesheet" href="../design/css/base.css">
-<style>
-  .pitch { min-height: 100vh; display: flex; flex-direction: column; }
-  .pitch-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding-top: var(--ta-s5); padding-bottom: var(--ta-s4);
-  }
-  .pitch-mark {
-    color: var(--ta-text); text-decoration: none;
-    font-size: var(--ta-fs-h3); letter-spacing: var(--ta-track-button);
-  }
-  .pitch-mark b { color: var(--ta-orange); font-weight: 700; }
-  .pitch-hero { padding-top: var(--ta-s8); padding-bottom: var(--ta-s8); }
-  .pitch-hero h1 {
-    max-width: 16ch;
-    font-size: var(--ta-fs-display-xl);
-    text-transform: none;
-  }
-  .pitch-lede { max-width: 42rem; margin-top: var(--ta-s5); }
-  .pitch-actions { display: flex; flex-wrap: wrap; gap: var(--ta-s4); margin-top: var(--ta-s6); }
-  .pitch-kicker { margin-bottom: var(--ta-s3); }
-  .pitch-plate p { margin: var(--ta-s3) 0 0; }
-  .pitch-foot {
-    margin-top: auto;
-    border-top: 1px solid var(--ta-seam);
-    padding-top: var(--ta-s5); padding-bottom: var(--ta-s5);
-  }
-  .pitch-strip { height: var(--ta-s2); }
-</style>
+<link rel="stylesheet" href="./pitchdeck.css">
 </head>
 <body>
-<div class="pitch">
-  <header class="pitch-bar container">
-    <a class="pitch-mark display" href="http://terraagent.fun">TERRA<b>AGENT</b></a>
-    <span class="label">PITCH</span>
+<div class="pitch is-deck">
+  <header class="pitch-header">
+    <div class="pitch-bar container">
+      <a class="pitch-mark" href="/landing.html">TERRA<b>AGENT</b> · PITCH DECK</a>
+      <div class="pitch-dots" id="pitch-dots" role="tablist" aria-label="Pitch slides"></div>
+      <div class="pitch-controls">
+        <button type="button" class="btn btn-ghost btn-sm" id="pitch-prev">← PREV</button>
+        <button type="button" class="btn btn-primary btn-sm" id="pitch-next">NEXT →</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="pitch-mode">ALL SLIDES</button>
+      </div>
+    </div>
+    <div class="pitch-progress" aria-hidden="true"><div class="pitch-progress-fill" id="pitch-progress-fill"></div></div>
   </header>
 
-  <main>
-    <section class="container pitch-hero">
-      <p class="eyebrow">NEAR HACKATHON</p>
-      <h1 class="display h1">Drop one robot. Get a colony that never sleeps.</h1>
-      <p class="lede pitch-lede">A strategy game where the colony mines, builds, defends, terraforms and trades around the clock, on NEAR, without ever showing you a wallet.</p>
+  <main class="container pitch-stage">
+    <!-- SLIDE 01: HOOK & VISION -->
+    <section class="pitch-slide plate is-active" data-slide="1">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 01 / 08 · VISION &amp; HOOK</span>
+        <span class="badge badge-ok">11 / 11 PORTS LIVE ON NEAR TESTNET</span>
+      </div>
+      <h1 class="slide-title">Drop one robot. Get a colony that never sleeps.</h1>
+      <p class="slide-lede">Strategy games freeze when you close the tab, and Web3 games put token speculation ahead of gameplay. TerraAgent is a persistent 3D colony RTS where humans and bounded <code>NEAR.AI</code> directors mine, terraform, wage war, and trade real <code>NEP-245</code> commodities 24/7—with zero wallet popups.</p>
+      <div class="pitch-stat-strip">
+        <div class="pitch-stat is-orange"><span>SMART CONTRACTS</span><b>6 Rust WASM</b></div>
+        <div class="pitch-stat is-terra"><span>NEAR PORTS LIVE</span><b>11 / 11 Testnet</b></div>
+        <div class="pitch-stat is-blue"><span>AI AUTOPILOT</span><b>NEAR.AI TEE</b></div>
+        <div class="pitch-stat"><span>COMBAT PAY-TO-WIN</span><b>0% (Skill Only)</b></div>
+      </div>
       <div class="pitch-actions">
-        <a class="btn btn-primary" href="http://play.terraagent.fun">Play</a>
-        <a class="btn btn-ghost" href="http://whitepaper.terraagent.fun">Whitepaper</a>
+        <a class="btn btn-primary" href="/play.html?planet=oceanForest&deploy=1">PLAY LIVE COLONY →</a>
+        <a class="btn btn-ghost" href="/trade.html">OPEN /TRADE EXCHANGE</a>
+        <a class="btn btn-ghost" href="/whitepaper/">READ WHITEPAPER</a>
       </div>
     </section>
 
-    <div class="hazard pitch-strip" aria-hidden="true"></div>
+    <!-- SLIDE 02: CORE GAMEPLAY & SCARCITY -->
+    <section class="pitch-slide plate" data-slide="2">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 02 / 08 · THE GAME LOOP</span>
+        <span class="badge badge-recruiting">ECONOMY IS THE GAMEPLAY</span>
+      </div>
+      <h2 class="slide-title">Biome scarcity creates real comparative advantage.</h2>
+      <p class="slide-lede">Five colonies share a planet across Desert (solar-rich, crystal/water-scarce), Ocean (water/bio-rich, ore-scarce), and Temperate worlds. Storage caps fill in minutes, forcing every pilot to build, export to orbit, or trade.</p>
+      <div class="pitch-grid-3">
+        <article class="pitch-card is-orange"><span class="kicker">EVERY 30 SECONDS</span><h3>Harvest, Power &amp; Cultivate</h3><p>Balance solar day/night capacitor grids, mine finite T1–T3 veins, and cultivate tiles (<code>Grade → Irrigate → Seed → Living</code>) to unlock higher tech tiers.</p></article>
+        <article class="pitch-card is-blue"><span class="kicker">EVERY 5 MINUTES</span><h3>Export, Trade &amp; Raid</h3><p>Export surplus at your Trade Hub to mint <code>NEP-245</code> cargo, cross Orbital Guild VWAP quotes, scout neighbours, or negotiate bilateral peace treaties.</p></article>
+        <article class="pitch-card is-terra"><span class="kicker">WHILE YOU SLEEP</span><h3>24/7 Server Continuity</h3><p>Your rule engine + <code>NEAR.AI</code> Director keep repairing storm damage, trading within ACID session caps, and defending territory until you return.</p></article>
+      </div>
+    </section>
 
-    <section class="container section">
-      <div class="grid-auto">
-        <article class="card plate pitch-plate" id="drop">
-          <p class="eyebrow pitch-kicker">01 · DROP</p>
-          <h2 class="h3">One founder</h2>
-          <p class="muted">Land a single robot with a Command Hub. It claims ground, and you set the priorities once.</p>
+    <!-- SLIDE 03: HOW PLAYERS & BOTS EARN -->
+    <section class="pitch-slide plate" data-slide="3">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 03 / 08 · PLAYER MONETIZATION</span>
+        <span class="badge badge-ok">4 REAL INCOME LANES</span>
+      </div>
+      <h2 class="slide-title">How players &amp; AI agents make money.</h2>
+      <p class="slide-lede">TerraAgent never prints inflationary reward tokens. Every dollar or NEAR earned by a player comes from real counterparty demand, market-making spreads, or slashed enemy bonds:</p>
+      <div class="pitch-grid-4">
+        <article class="pitch-card is-terra"><span class="kicker">LANE 01 · PRODUCER</span><h3>Sell NEP-245 Cargo</h3><p>Specialize in scarce regional resources (water on Desert, iron on Ocean), export via Trade Hub, and sell on <code>/trade.html</code> for <code>USDC</code> or <code>NEAR</code> (100% principal to seller).</p></article>
+        <article class="pitch-card is-orange"><span class="kicker">LANE 02 · EXCHANGE OWNER</span><h3>0–1.0% Stall Royalties</h3><p>Your Trade Hub is a commercial stall. Set a 0–100 bp maker fee and earn passive <code>USDC</code> / <code>NEAR</code> / cargo royalties on every order filled at your Hub.</p></article>
+        <article class="pitch-card is-blue"><span class="kicker">LANE 03 · ALGO BOTS</span><h3>24/7 Bot Market-Making</h3><p>Mint scoped <code>ta_bot_...</code> API keys with hard daily spend limits to run external arbitrage and liquidity scripts on the live 90-pair planet CLOB.</p></article>
+        <article class="pitch-card is-orange"><span class="kicker">LANE 04 · MERCENARY &amp; BONDS</span><h3>Bounties &amp; 90% Slashes</h3><p>Collect escrowed raid-defense bounties, or earn <b>90%</b> of an opponent's locked bond when they break a Bonded Peace Treaty or stall a 6h War Bond.</p></article>
+      </div>
+    </section>
+
+    <!-- SLIDE 04: DAY-1 LOSSLESS STAKING -->
+    <section class="pitch-slide plate" data-slide="4">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 04 / 08 · STAKING UTILITY</span>
+        <span class="badge badge-ai">DAY-1 UNLOCK · ZERO P2W</span>
+      </div>
+      <h2 class="slide-title">Lossless Staking: yield pays for your AI &amp; halves your fees.</h2>
+      <p class="slide-lede">Any claimed human account can stake from Day 1 on <code>staking.terraagent.testnet</code> (AI callers receive <code>403 AI_STAKING_FORBIDDEN</code>). Staking never boosts unit damage or mining speed—it funds infrastructure:</p>
+      <div class="pitch-grid-3">
+        <article class="pitch-card is-terra"><span class="kicker">80% / 20% VALIDATOR SPLIT</span><h3>7.2% Net APY to Pilot</h3><p>On a 9.0% NEAR validator pool, you keep <b>100% of your principal</b> (2-day unbonding) plus <b>80% of yield (7.2% APY)</b>. The remaining <b>20% (1.8% APY)</b> routes to <code>TerraAgent Protocol</code>.</p></article>
+        <article class="pitch-card is-blue"><span class="kicker">PERK #1 AT ≥ 10 NEAR</span><h3>Managed NEAR.AI Autopilot</h3><p>Staking ≥10 NEAR unlocks zero-setup server-sponsored <code>NEAR.AI</code> Autopilot (<code>z-ai/glm-5.3-flash</code>). Power users who prefer custom models can still attach BYOK keys on <code>/me.html</code>.</p></article>
+        <article class="pitch-card is-orange"><span class="kicker">PERK #2 AT ≥ 10 NEAR</span><h3>50% Platform Fee Discount</h3><p>Active stakers (≥10 NEAR) pay <b>0.50% (50 bp)</b> instead of <b>1.00% (100 bp)</b> on every <code>/trade.html</code> purchase—saving active traders &amp; bots half their platform fees.</p></article>
+      </div>
+    </section>
+
+    <!-- SLIDE 05: BONDED PEACE & WAR ESCROWS -->
+    <section class="pitch-slide plate" data-slide="5">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 05 / 08 · TRUSTLESS DIPLOMACY</span>
+        <span class="badge badge-tier">BOUNTY.TERRAAGENT.TESTNET</span>
+      </div>
+      <h2 class="slide-title">Credible Peace &amp; High-Stakes War via Smart-Contract Escrow.</h2>
+      <p class="slide-lede">Cheap talk ruins multiplayer diplomacy. TerraAgent turns both peace treaties and war declarations into enforceable on-chain financial commitments with automatic <code>90% / 10%</code> slashing:</p>
+      <div class="pitch-grid-2">
+        <article class="pitch-card is-terra">
+          <span class="kicker">BONDED PEACE TREATIES (2H–72H)</span>
+          <h3>Break a truce → lose 90% to your ally</h3>
+          <ul>
+            <li><b>Tier 1 (Free Unbonded):</b> 0 deposit; early cancel marks breaker with a 24h public <code>Oathbreaker</code> badge.</li>
+            <li><b>Tier 2 (Bonded Treaty):</b> Both colonies lock matching <code>NEAR</code> or <code>NEP-245</code> cargo in escrow.</li>
+            <li><b>Peaceful Expiry:</b> Both colonies receive <b>100%</b> of their locked bond back.</li>
+            <li><b>Early Betrayal:</b> Breaker's bond slashes <b>90% to the betrayed partner</b> + <b>10% to Protocol</b>; partner's bond refunds 100%.</li>
+          </ul>
         </article>
-        <article class="card plate pitch-plate" id="colony">
-          <p class="eyebrow pitch-kicker">02 · COLONY</p>
-          <h2 class="h3">It keeps working</h2>
-          <p class="muted">Miners, builders and combat bots run every server tick. Close the tab. The colony is still at work.</p>
+        <article class="pitch-card is-orange">
+          <span class="kicker">6-HOUR BONDED WAR ESCROWS</span>
+          <h3>Cancel or stall a war → pay the defender</h3>
+          <ul>
+            <li><b>Siege Perk:</b> Locking a War Bond unlocks <b>2× Raider Loot Siphon</b> (carry cap <code>40 → 80</code>) against the target for 6 hours.</li>
+            <li><b>Victory Refund (100%):</b> Destroy <code>≥ 1</code> enemy structure OR siphon <code>≥ 200</code> resources before the 6h clock expires.</li>
+            <li><b>Cowardice / Stall Slash:</b> Canceling war early OR letting 6h expire without hitting the objective slashes <b>90% to Defender + 10% to Protocol</b>.</li>
+            <li><b>AI Guardrail (<code>AW-13</code>):</b> AI can never cancel truces/wars or lock human <code>NEAR</code>.</li>
+          </ul>
         </article>
-        <article class="card plate pitch-plate" id="economy">
-          <p class="eyebrow pitch-kicker">03 · ECONOMY</p>
-          <h2 class="h3">Nothing is free</h2>
-          <p class="muted">Metals, minerals, fuel, water and power. Trade with neighbours on NEAR. No wallet on screen.</p>
+      </div>
+    </section>
+
+    <!-- SLIDE 06: TERRAAGENT PROTOCOL TREASURY -->
+    <section class="pitch-slide plate" data-slide="6">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 06 / 08 · BUSINESS MODEL</span>
+        <span class="badge badge-ok">PROTOCOL.TERRAAGENT.TESTNET</span>
+      </div>
+      <h2 class="slide-title">TerraAgent Protocol: transparent revenue, self-funded UX.</h2>
+      <p class="slide-lede"><code>protocol.terraagent.*</code> is a first-class on-chain treasury account (<code>GET /v1/near/protocol</code>) that captures protocol value from real activity and pays gas + AI compute:</p>
+      <div class="pitch-grid-2">
+        <article class="pitch-card is-terra">
+          <span class="kicker">▲ 3 PROTOCOL REVENUE STREAMS</span>
+          <h3>Where Protocol Funds Come From</h3>
+          <ul>
+            <li><b>80% of Platform Trade Fee:</b> <code>0.80%</code> standard / <code>0.40%</code> staker on every market trade (the other <code>20%</code> funds the Planet Council DAO).</li>
+            <li><b>20% of Validator Staking Yield:</b> <code>1.80%</code> APY slice on staked NEAR—recurring revenue with zero principal risk to players.</li>
+            <li><b>10% Escrow Arbitration Fee:</b> Collected automatically whenever a Bonded Peace Treaty or 6h War Bond is slashed on-chain.</li>
+          </ul>
         </article>
+        <article class="pitch-card is-blue">
+          <span class="kicker">▼ 2 PROTOCOL COST CENTERS</span>
+          <h3>What Protocol Revenue Pays For</h3>
+          <ul>
+            <li><b>NEP-366 Gasless Meta-Tx Relayer (<code>relayer.terraagent.*</code>):</b> Pays <code>0.02 NEAR</code> pilot onboarding, storage deposits, and gameplay meta-tx gas within daily caps.</li>
+            <li><b>Managed NEAR.AI TEE Cloud:</b> Pays batched <code>z-ai/glm-5.3-flash</code> inference for Rival NPCs and ≥10 NEAR Staker Autopilot colonies.</li>
+            <li><b>Net Margin:</b> Scales positively with planet trading volume and total value staked (TVL).</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- SLIDE 07: WHY NEAR BLOCKCHAIN -->
+    <section class="pitch-slide plate" data-slide="7">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 07 / 08 · ARCHITECTURE</span>
+        <span class="badge badge-ai">WHY NEAR IS ESSENTIAL</span>
+      </div>
+      <h2 class="slide-title">Why this cannot be built on a Web2 database.</h2>
+      <p class="slide-lede">Autonomous AI agents holding real economic value require cryptographic sandboxes, verifiable inference, and atomic multi-party settlement that only NEAR + NEAR.AI provide together:</p>
+      <div class="pitch-grid-3">
+        <article class="pitch-card is-blue"><span class="kicker">SUB-ACCOUNTS &amp; FUNCTION KEYS</span><h3>Named AI Citizens</h3><p><code>pilots</code>, colony sub-accounts, and Guild NPCs isolate assets per actor with scoped keys, ACID daily spend caps, and atomic self-custody key rotation.</p></article>
+        <article class="pitch-card is-orange"><span class="kicker">NEP-413 INTENTS + 1CLICK</span><h3>Zero-Sum 4-Leg Clearing</h3><p><code>res</code> (NEP-245) + <code>intents.near</code> settle Seller, Stall Owner, Planet DAO, and Protocol legs atomically with live <code>1click.chaindefuser.com</code> quotes.</p></article>
+        <article class="pitch-card is-terra"><span class="kicker">NEAR.AI TEE + 6 CONTRACTS</span><h3>Attested AI &amp; On-Chain Law</h3><p>ECDSA-verified TEE inference (<code>/v1/signature/{chat_id}</code>) meets 6 Rust contracts (<code>res</code>, <code>deed</code>, <code>bounty</code>, <code>staking</code>, <code>dao</code>, <code>pilots</code>).</p></article>
+      </div>
+    </section>
+
+    <!-- SLIDE 08: LIVE VERIFICATION -->
+    <section class="pitch-slide plate" data-slide="8">
+      <div class="slide-meta">
+        <span class="slide-num">SLIDE 08 / 08 · VERIFY RIGHT NOW</span>
+        <span class="badge badge-ok">LIVE PRODUCTION &amp; LOCAL STACK</span>
+      </div>
+      <h2 class="slide-title">Test every claim in 60 seconds.</h2>
+      <p class="slide-lede">Every system in this deck is live and inspectable in your browser or terminal—no slides-only vaporware:</p>
+      <div class="pitch-grid-3">
+        <article class="pitch-card is-orange"><span class="kicker">01 · PLAY &amp; DIPLOMACY</span><h3>3D Colony + War Bonds</h3><p>Drop onto a live planet, toggle <code>AI AUTOPILOT</code>, stake NEAR from Day 1, or test Bonded Truces &amp; 6h War Escrows.</p><a class="btn btn-primary btn-sm" href="/play.html?planet=oceanForest&deploy=1">LAUNCH GAME →</a></article>
+        <article class="pitch-card is-terra"><span class="kicker">02 · LIVE EXCHANGE</span><h3>4-Way Split &amp; Staker Tier</h3><p>Inspect Unit Price vs Total, Staker <code>0.50%</code> fee discount, <code>80%/20%</code> Protocol/DAO split, and <code>ta_bot_...</code> API keys.</p><a class="btn btn-ghost btn-sm" href="/trade.html">OPEN /TRADE →</a></article>
+        <article class="pitch-card is-blue"><span class="kicker">03 · 7-DAY SIM &amp; APIS</span><h3>Fast-Forward &amp; Telemetry</h3><p>Run 7 days of 3-colony trading + live <code>NEAR.AI</code> TEE attestation, or inspect <code>/v1/near/protocol</code> &amp; <code>/v1/near/status</code>.</p><a class="btn btn-ghost btn-sm" href="/dev/economy-sim/">RUN 7-DAY SIM →</a></article>
+      </div>
+      <div class="pitch-actions">
+        <a class="btn btn-ghost btn-sm" href="/me.html">PILOT PROFILE &amp; BYOK</a>
+        <a class="btn btn-ghost btn-sm" href="/v1/near/protocol">GET /v1/near/protocol</a>
+        <a class="btn btn-ghost btn-sm" href="/v1/near/status">GET /v1/near/status</a>
+        <a class="btn btn-ghost btn-sm" href="/">HUB INDEX</a>
       </div>
     </section>
   </main>
 
   <footer class="pitch-foot">
-    <div class="container">
-      <p class="label">terraagent.fun</p>
+    <div class="container pitch-foot-row">
+      <span>TERRAAGENT · AUTONOMOUS COLONY BUILDER ON NEAR &amp; NEAR.AI</span>
+      <span id="pitch-counter">SLIDE 01 / 08 · ← → KEYS</span>
     </div>
   </footer>
 </div>
+<script type="module" src="./main.ts"></script>
 </body>
 </html>

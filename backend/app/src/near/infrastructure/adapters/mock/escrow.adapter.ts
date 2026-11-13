@@ -53,6 +53,13 @@ export class MockEscrowAdapter extends MockChainBase implements EscrowPort {
   async slash(raw: EscrowSlashInput): Promise<ChainReceipt> {
     const input = EscrowSlashInput.parse(raw);
     return this.call('Escrow', 'slash', input.opId, async (tx) => {
+      const existing = await tx.mockChainEscrow.findUnique({ where: { id: input.escrowId } });
+      if (existing && existing.status === 'open' && input.victimAccountId === existing.opener) {
+        throw new NearException('NEAR_ESCROW_STATE', {
+          message: 'Escrow funder cannot receive their own slashed bond.',
+          details: { escrowId: input.escrowId, victimAccountId: input.victimAccountId },
+        });
+      }
       const row = await takeOpenEscrow(tx, input.escrowId, 'slashed');
       const whole = BigInt(row.amount.toFixed(0));
       const protocolCut = (whole * BigInt(input.protocolFeeBp)) / 10_000n;

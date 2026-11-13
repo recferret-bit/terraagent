@@ -225,4 +225,35 @@ describe('DiplomacyEscrowService — 6h Bonded War Escrows', () => {
     expect(port.balance(defender, 'NEAR')).toBe(9n * ONE_NEAR_YOCTO);
     expect(port.balance(PROTOCOL_ACCOUNT_ID, 'NEAR')).toBe(1n * ONE_NEAR_YOCTO);
   });
+
+  it('slashes eliminated attacker bond to surviving defender and honors NEAR_ESCROW_SLASH_PROTOCOL_BP env override', async () => {
+    const port = new InMemoryEscrowPort();
+    const svc = new DiplomacyEscrowService(port, { has: () => true }, undefined, undefined, {
+      NEAR_PROTOCOL_ACCOUNT: 'treasury.terraagent.mock',
+      NEAR_ESCROW_SLASH_PROTOCOL_BP: '1500',
+    } as never);
+    const attacker = 'pl4-col_0.terraagent.mock';
+    const defender = 'pl4-col_1.terraagent.mock';
+    port.seed(attacker, 'NEAR', 10n * ONE_NEAR_YOCTO);
+
+    await svc.openWarBond({
+      planetId: 'pl4',
+      warId: 'war_elim',
+      attackerColonyId: 'col_0',
+      attackerColonyIndex: 0,
+      bondToken: 'NEAR',
+      bondAmount: 10,
+    });
+    // Attacker eliminated during their own failed war -> 85% to surviving Defender, 15% to configured Protocol account
+    await svc.settleWarBond({
+      planetId: 'pl4',
+      warId: 'war_elim',
+      attackerColonyId: 'col_0',
+      defenderColonyId: 'col_1',
+      reason: 'eliminated',
+    });
+    expect(port.balance(attacker, 'NEAR')).toBe(0n);
+    expect(port.balance(defender, 'NEAR')).toBe(85n * (ONE_NEAR_YOCTO / 10n));
+    expect(port.balance('treasury.terraagent.mock', 'NEAR')).toBe(15n * (ONE_NEAR_YOCTO / 10n));
+  });
 });

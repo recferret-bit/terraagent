@@ -1,0 +1,180 @@
+.ta-notifications {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+}
+
+.ta-notifications__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2) var(--ta-s3);
+  border: 1px solid var(--ta-seam);
+  background: var(--ta-plate-3);
+}
+
+.ta-notifications__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-notifications__title {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ta-text);
+}
+
+.ta-notifications__badge {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text-2);
+  text-transform: uppercase;
+}
+
+.ta-notifications__badge[data-active='true'] {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange);
+}
+
+.ta-notifications__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ta-notifications__filter {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--ta-seam);
+  background: var(--ta-plate-2);
+  color: var(--ta-text-2);
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.ta-notifications__filter[aria-pressed='true'] {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange);
+  background: var(--ta-plate-3);
+}
+
+.ta-notifications__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ta-notifications__empty {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+  padding: var(--ta-s2) 0;
+}
+
+.ta-notif-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border: 1px solid var(--ta-seam);
+  background: var(--ta-plate-2);
+}
+
+.ta-notif-item[data-unread='true'] {
+  border-left: 2px solid var(--ta-orange);
+}
+
+.ta-notif-item__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 0;
+  color: var(--ta-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ta-notif-item__main:hover,
+.ta-notif-item__main:focus-visible {
+  background: var(--ta-plate-3);
+}
+
+.ta-notif-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-notif-item__cat {
+  font-family: var(--ta-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ta-energy);
+}
+
+.ta-notif-item[data-category='combat'] .ta-notif-item__cat {
+  color: var(--ta-fault-text);
+}
+
+.ta-notif-item[data-category='guild'] .ta-notif-item__cat {
+  color: var(--ta-orange-hi);
+}
+
+.ta-notif-item[data-category='deed'] .ta-notif-item__cat,
+.ta-notif-item[data-category='stage'] .ta-notif-item__cat,
+.ta-notif-item[data-category='achievement'] .ta-notif-item__cat {
+  color: var(--ta-terra);
+}
+
+.ta-notif-item__time {
+  font-family: var(--ta-font-mono);
+  font-size: 9px;
+  color: var(--ta-steel);
+}
+
+.ta-notif-item__msg {
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ta-notif-item__close {
+  flex: 0 0 24px;
+  border: 0;
+  border-left: 1px solid var(--ta-seam);
+  background: transparent;
+  color: var(--ta-steel);
+  cursor: pointer;
+  font-family: var(--ta-font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ta-notif-item__close:hover,
+.ta-notif-item__close:focus-visible {
+  color: var(--ta-text);
+  background: var(--ta-plate-3);
+}

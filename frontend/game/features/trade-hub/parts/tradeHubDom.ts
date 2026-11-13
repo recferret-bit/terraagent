@@ -53,16 +53,27 @@ export function buildTradeHubHeader(onClose: () => void): {
 } {
   const header = makeDiv('ta-trade-hub__header');
   const titleGroup = makeDiv('ta-trade-hub__title-group');
+  const eyebrow = makeSpan('ta-trade-hub__eyebrow', undefined, 'TERRAAGENT // PLANETARY LOGISTICS & MARKET');
   const title = makeSpan('ta-trade-hub__title', 'trade-hub-title', 'INTER-COLONY TRADE HUB');
   const badges = makeDiv('ta-trade-hub__badges');
   const tierBadge = makeSpan('ta-trade-hub__badge ta-trade-hub__badge--tier plate-sm', 'trade-hub-tier', 'TIER 1');
   const statusBadge = makeSpan('ta-trade-hub__badge ta-trade-hub__badge--status plate-sm', 'trade-hub-status', 'ONLINE');
   statusBadge.setAttribute('data-online', 'true');
   badges.append(tierBadge, statusBadge);
-  titleGroup.append(title, badges);
+  titleGroup.append(eyebrow, title, badges);
+
+  const actions = makeDiv('ta-trade-hub__header-actions');
+  const termLink = document.createElement('a');
+  termLink.href = '/trade.html';
+  termLink.target = '_blank';
+  termLink.rel = 'noopener noreferrer';
+  termLink.className = 'btn btn-ghost btn-sm plate-sm ta-trade-hub__terminal-link';
+  termLink.dataset.testid = 'trade-hub-open-terminal';
+  termLink.textContent = 'TRADING TERMINAL ↗';
   const closeBtn = makeBtn('ta-trade-hub__close btn-sm plate-sm', 'trade-hub-close', 'CLOSE', onClose);
   closeBtn.setAttribute('aria-label', 'Close Trade Hub panel');
-  header.append(titleGroup, closeBtn);
+  actions.append(termLink, closeBtn);
+  header.append(titleGroup, actions);
   return { header, tierBadge, statusBadge, closeBtn };
 }
 

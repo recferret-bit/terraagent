@@ -72,7 +72,7 @@ export class TestnetEscrowAdapter implements EscrowPort {
     const input = EscrowActionInput.parse(raw);
     const signer = this.requireOperatorSigner();
     return this.actionCache.run(`claim:${input.opId}`, async () => {
-      const row = await this.fetchOpenRow(input.escrowId);
+      const row = await this.fetchRowForAction(input.escrowId, 'claimed');
       const { receipt } = await this.rpc.call({
         signerAccountId: signer.accountId,
         signerSecretKey: signer.secretKey,
@@ -93,10 +93,10 @@ export class TestnetEscrowAdapter implements EscrowPort {
     const input = EscrowActionInput.parse(raw);
     const signer = this.requireOperatorSigner();
     return this.actionCache.run(`refund:${input.opId}`, async () => {
-      const row = await this.fetchOpenRow(input.escrowId);
+      const row = await this.fetchRowForAction(input.escrowId, 'refunded');
       const whole = BigInt(row.amount);
       const requested = input.amount === undefined ? whole : BigInt(input.amount);
-      if (requested > whole) {
+      if (row.status === 'open' && requested > whole) {
         throw new NearException('NEAR_ESCROW_STATE', { details: { escrowId: input.escrowId, amount: input.amount } });
       }
       const { receipt } = await this.rpc.call({
@@ -128,7 +128,7 @@ export class TestnetEscrowAdapter implements EscrowPort {
     const input = EscrowSlashInput.parse(raw);
     const signer = this.requireOperatorSigner();
     return this.actionCache.run(`slash:${input.opId}`, async () => {
-      const row = await this.fetchOpenRow(input.escrowId);
+      const row = await this.fetchRowForAction(input.escrowId, 'slashed');
       const whole = BigInt(row.amount);
       const protocolCut = (whole * BigInt(input.protocolFeeBp)) / 10_000n;
       const victimCut = whole - protocolCut;
@@ -219,14 +219,17 @@ export class TestnetEscrowAdapter implements EscrowPort {
     });
   }
 
-  private async fetchOpenRow(escrowId: string): Promise<RawChainEscrowView> {
+  private async fetchRowForAction(
+    escrowId: string,
+    allowedSettledStatus: RawChainEscrowView['status'],
+  ): Promise<RawChainEscrowView> {
     const row = await this.rpc.view<RawChainEscrowView | null>(this.rpc.config.contracts.bounty, 'get_escrow', {
       escrow_id: escrowId,
     });
     if (!row) {
       throw new NearException('NEAR_ESCROW_NOT_FOUND', { details: { escrowId } });
     }
-    if (row.status !== 'open') {
+    if (row.status !== 'open' && row.status !== allowedSettledStatus) {
       throw new NearException('NEAR_ESCROW_STATE', { details: { escrowId, status: row.status } });
     }
     return row;
@@ -259,7 +262,11 @@ export class TestnetEscrowAdapter implements EscrowPort {
   /** Maps `escrow:<32hex>` hold identifiers onto a syntactically valid NEAR `AccountId` for `res.<root>.testnet`. */
   private toCargoAccount(id: string): string {
     const match = /^escrow:([0-9a-f]{32})$/.exec(id);
-    if (match) return `hold-${match[1]}.${this.rpc.config.rootAccount}`;
+    if (match) {
+      const root = this.rpc.config.rootAccount;
+      const maxHex = Math.min(32, Math.max(8, 64 - 'hold-'.length - 1 - root.length));
+      return `hold-${match[1]!.slice(0, maxHex)}.${root}`;
+    }
     return id;
   }
 

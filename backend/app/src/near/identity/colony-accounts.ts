@@ -69,6 +69,7 @@ export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {
       subject: social.subject,
       ownerAccountId: social.accountId,
       colonyIds: [colonyId],
+      envSource: this.env as unknown as Record<string, string | undefined>,
     });
     // The founding listener may have looked before this row existed. The same opId adds the member once.
     this.membership?.onFounded(planetId, colonyId);
@@ -77,7 +78,10 @@ export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {
   private async ensure(input: EnsureColonyAccountsInput): Promise<void> {
     const prisma = this.database();
     if (!prisma) return;
-    await ensureColonyAccounts(prisma, this.keys(), input);
+    await ensureColonyAccounts(prisma, this.keys(), {
+      ...input,
+      envSource: input.envSource ?? (this.env as unknown as Record<string, string | undefined>),
+    });
   }
 
   private database(): PrismaClient | null {

@@ -1,3 +1,7 @@
+import { pushNotification } from '../notifications/notificationStore';
+
+export const DEFAULT_ACHIEVEMENT_TOAST_DURATION_MS = 6000;
+
 export interface AchievementToastPayload {
   readonly achievementId: string;
   readonly familyId?: string;
@@ -8,6 +12,8 @@ export interface AchievementToastPayload {
 
 interface EventSourceLike {
   onServerEvents?(fn: (events: ReadonlyArray<{ kind: string; data?: Record<string, unknown> }>) => void): () => void;
+  onOpenPlayer?: () => void;
+  durationMs?: number;
 }
 
 /**
@@ -16,9 +22,10 @@ interface EventSourceLike {
  */
 export class AchievementToastHost {
   private current: HTMLElement | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private offEvents: (() => void) | null = null;
 
-  constructor(private readonly host: HTMLElement, store?: EventSourceLike) {
+  constructor(private readonly host: HTMLElement, private readonly store?: EventSourceLike) {
     this.host.hidden = true;
     this.host.setAttribute('role', 'status');
     this.host.setAttribute('aria-live', 'polite');
@@ -55,6 +62,7 @@ export class AchievementToastHost {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'ta-toast-close';
+    closeBtn.dataset.testid = 'achievement-toast-close';
     closeBtn.setAttribute('aria-label', 'Dismiss achievement notification');
     closeBtn.textContent = '×';
     closeBtn.onclick = () => this.dismiss();
@@ -75,9 +83,10 @@ export class AchievementToastHost {
       bodyRow.appendChild(img);
     }
 
+    const line = `${payload.familyName} · ${payload.tierName} (+${payload.xp} XP)`;
     const title = document.createElement('p');
     title.className = 'ta-achievement-toast-title';
-    title.textContent = `${payload.familyName} · ${payload.tierName} (+${payload.xp} XP)`;
+    title.textContent = line;
     bodyRow.appendChild(title);
 
     card.appendChild(head);
@@ -86,9 +95,26 @@ export class AchievementToastHost {
     this.host.appendChild(card);
     this.host.hidden = false;
     this.current = card;
+
+    const ms = this.store?.durationMs ?? DEFAULT_ACHIEVEMENT_TOAST_DURATION_MS;
+    if (ms > 0) {
+      this.timer = setTimeout(() => this.dismiss(), ms);
+    }
+
+    pushNotification({
+      category: 'achievement',
+      title: 'Achievement Unlocked',
+      message: line,
+      dedupeKey: payload.achievementId ? `ach:${payload.achievementId}` : undefined,
+      onSelect: () => this.store?.onOpenPlayer?.(),
+    });
   }
 
   dismiss(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
     this.current?.remove();
     this.current = null;
     this.host.hidden = true;

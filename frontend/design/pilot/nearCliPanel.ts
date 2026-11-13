@@ -2,18 +2,24 @@ import type { NearAuthChallengeResponse, NearAuthVerifyRequest } from '@terra/co
 import { requestNearAuthChallenge } from './nearAuthApi';
 
 const TESTNET_ACCOUNT_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)+testnet$/;
+const MAINNET_ACCOUNT_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)+(near|tg|sweat)$/;
 const IMPLICIT_ACCOUNT_RE = /^[0-9a-f]{64}$/;
 const CLI_FAUCET_CREATE_CMD =
   'near account create-account sponsor-by-faucet-service <your-pilot>.testnet autogenerate-new-keypair save-to-keychain network-config testnet create';
 
 export interface NearCliPanelOptions {
   readonly mode: 'signin' | 'signup';
+  readonly network?: 'testnet' | 'mainnet';
   readonly savedAccountId?: string;
   readonly onVerifiedPayload: (payload: NearAuthVerifyRequest) => void;
 }
 
 interface CliPanelDom {
   readonly box: HTMLDivElement;
+  readonly label: HTMLDivElement;
+  readonly faucetStep?: HTMLDivElement;
+  readonly faucetCode?: HTMLElement;
+  readonly stepSign: HTMLDivElement;
   readonly cmdCode: HTMLElement;
   readonly acctInput: HTMLInputElement;
   readonly keyInput: HTMLInputElement;
@@ -24,12 +30,13 @@ interface CliPanelDom {
 
 export function buildCliSignCommand(challenge: NearAuthChallengeResponse, accountPlaceholder: string): string {
   const singleQuotedMsg = `'${challenge.message.replace(/'/g, "'\\''")}'`;
+  const net = challenge.network === 'mainnet' ? 'mainnet' : 'testnet';
   return [
     `near message sign-nep413 utf8 ${singleQuotedMsg}`,
     `  nonce "${challenge.nonce}"`,
     `  recipient "${challenge.recipient}"`,
     `  sign-as ${accountPlaceholder}`,
-    `  sign-with-keychain network-config testnet`,
+    `  sign-with-keychain network-config ${net}`,
   ].join(' \\\n');
 }
 
@@ -54,9 +61,13 @@ export function tryParseCliJsonPaste(rawText: string): {
   }
 }
 
-function isValidTestnetCliAccount(acct: string): boolean {
+export function isValidCliAccountForNetwork(acct: string, network: 'testnet' | 'mainnet' = 'testnet'): boolean {
   if (acct.length < 2 || acct.length > 64) return false;
-  return TESTNET_ACCOUNT_RE.test(acct) || IMPLICIT_ACCOUNT_RE.test(acct);
+  if (IMPLICIT_ACCOUNT_RE.test(acct)) return true;
+  if (network === 'mainnet') {
+    return acct === 'aurora' || MAINNET_ACCOUNT_RE.test(acct);
+  }
+  return TESTNET_ACCOUNT_RE.test(acct);
 }
 
 function makeCliInput(placeholder: string, testId: string): HTMLInputElement {
@@ -68,42 +79,58 @@ function makeCliInput(placeholder: string, testId: string): HTMLInputElement {
   return input;
 }
 
+function syncCliNetworkLabels(dom: CliPanelDom, mode: 'signin' | 'signup', network: 'testnet' | 'mainnet'): void {
+  const upper = network.toUpperCase();
+  const titleCase = network === 'mainnet' ? 'Mainnet' : 'Testnet';
+  dom.label.textContent =
+    mode === 'signup'
+      ? `NEAR-CLI-RS · CREATE & SIGN (${upper})`
+      : `NEAR-CLI-RS · NEP-413 CHALLENGE (${upper})`;
+  if (dom.faucetStep && dom.faucetCode) {
+    const showFaucet = network === 'testnet';
+    dom.faucetStep.style.display = showFaucet ? '' : 'none';
+    dom.faucetCode.style.display = showFaucet ? '' : 'none';
+  }
+  dom.stepSign.textContent =
+    mode === 'signup'
+      ? network === 'mainnet'
+        ? 'Sign the single-use NEAR Mainnet challenge below & paste the output:'
+        : 'Step 2 — Sign the single-use server challenge below & paste the output:'
+      : `Run this command in your terminal to sign the single-use ${titleCase} challenge:`;
+  dom.acctInput.placeholder = network === 'mainnet' ? 'pilot.near' : 'pilot.testnet';
+}
+
 function buildCliPanelDom(opts: NearCliPanelOptions): CliPanelDom {
+  const initialNet = opts.network ?? 'testnet';
   const box = document.createElement('div');
   box.className = 'near-wallet-panel';
   box.dataset.testid = 'near-panel-near-cli';
 
   const label = document.createElement('div');
   label.className = 'label';
-  label.textContent =
-    opts.mode === 'signup'
-      ? 'NEAR-CLI-RS · CREATE & SIGN (TESTNET)'
-      : 'NEAR-CLI-RS · NEP-413 CHALLENGE (TESTNET)';
   box.append(label);
 
+  let faucetStep: HTMLDivElement | undefined;
+  let faucetCode: HTMLElement | undefined;
   if (opts.mode === 'signup') {
-    const stepCreate = document.createElement('div');
-    stepCreate.className = 'near-cli-hint';
-    stepCreate.textContent = 'Step 1 — Create a free NEAR Testnet account in your terminal:';
-    const createCode = document.createElement('code');
-    createCode.dataset.testid = 'near-cli-faucet-cmd';
-    createCode.textContent = CLI_FAUCET_CREATE_CMD;
-    box.append(stepCreate, createCode);
+    faucetStep = document.createElement('div');
+    faucetStep.className = 'near-cli-hint';
+    faucetStep.textContent = 'Step 1 — Create a free NEAR Testnet account in your terminal:';
+    faucetCode = document.createElement('code');
+    faucetCode.dataset.testid = 'near-cli-faucet-cmd';
+    faucetCode.textContent = CLI_FAUCET_CREATE_CMD;
+    box.append(faucetStep, faucetCode);
   }
 
   const stepSign = document.createElement('div');
   stepSign.className = 'near-cli-hint';
-  stepSign.textContent =
-    opts.mode === 'signup'
-      ? 'Step 2 — Sign the single-use server challenge below & paste the output:'
-      : 'Run this command in your terminal to sign the single-use Testnet challenge:';
 
   const cmdCode = document.createElement('code');
   cmdCode.dataset.testid = 'near-cli-command';
   cmdCode.textContent = 'Requesting single-use NEP-413 challenge from server…';
 
-  const acctInput = makeCliInput('pilot.testnet', 'near-account-input');
-  if (opts.savedAccountId && isValidTestnetCliAccount(opts.savedAccountId)) {
+  const acctInput = makeCliInput(initialNet === 'mainnet' ? 'pilot.near' : 'pilot.testnet', 'near-account-input');
+  if (opts.savedAccountId && isValidCliAccountForNetwork(opts.savedAccountId, initialNet)) {
     acctInput.value = opts.savedAccountId;
   }
   const keyInput = makeCliInput('Public key (ed25519:...)', 'near-pubkey-input');
@@ -121,14 +148,19 @@ function buildCliPanelDom(opts: NearCliPanelOptions): CliPanelDom {
   submit.textContent = 'Verify NEP-413 Signature & Sign In';
 
   box.append(stepSign, cmdCode, acctInput, keyInput, sigInput, err, submit);
-  return { box, cmdCode, acctInput, keyInput, sigInput, err, submit };
+  const dom: CliPanelDom = { box, label, faucetStep, faucetCode, stepSign, cmdCode, acctInput, keyInput, sigInput, err, submit };
+  syncCliNetworkLabels(dom, opts.mode, initialNet);
+  return dom;
 }
 
-/** Renders the cryptographic NEP-413 `near-cli-rs` Testnet challenge & signature verification panel. */
+/** Renders the cryptographic NEP-413 `near-cli-rs` challenge & signature verification panel (`testnet` or `mainnet`). */
 export function renderNearCliPanel(panelHost: HTMLElement, opts: NearCliPanelOptions): void {
   panelHost.replaceChildren();
   const dom = buildCliPanelDom(opts);
   let activeChallenge: NearAuthChallengeResponse | null = null;
+
+  const activeNet = (): 'testnet' | 'mainnet' =>
+    activeChallenge?.network === 'mainnet' ? 'mainnet' : (opts.network ?? 'testnet');
 
   const showError = (msg: string): void => {
     dom.err.textContent = msg;
@@ -137,13 +169,16 @@ export function renderNearCliPanel(panelHost: HTMLElement, opts: NearCliPanelOpt
 
   const updateCmdText = (): void => {
     if (!activeChallenge) return;
-    const acct = dom.acctInput.value.trim().toLowerCase() || '<your-account>.testnet';
+    const net = activeNet();
+    const fallbackPlaceholder = net === 'mainnet' ? '<your-account>.near' : '<your-account>.testnet';
+    const acct = dom.acctInput.value.trim().toLowerCase() || fallbackPlaceholder;
     dom.cmdCode.textContent = buildCliSignCommand(activeChallenge, acct);
   };
 
   void requestNearAuthChallenge({ walletId: 'near-cli', intent: opts.mode })
     .then((ch) => {
       activeChallenge = ch;
+      syncCliNetworkLabels(dom, opts.mode, activeNet());
       updateCmdText();
     })
     .catch((e: unknown) => {
@@ -165,12 +200,21 @@ export function renderNearCliPanel(panelHost: HTMLElement, opts: NearCliPanelOpt
     const rawAcct = dom.acctInput.value.trim().toLowerCase();
     const rawKey = dom.keyInput.value.trim();
     const rawSig = dom.sigInput.value.trim();
-    if (rawAcct.endsWith('.near')) {
-      showError('Mainnet (.near) accounts are disabled right now. Enter a NEAR Testnet (.testnet) account.');
+    const net = activeNet();
+    if (net === 'testnet' && rawAcct.endsWith('.near')) {
+      showError('Mainnet (.near) accounts cannot sign a NEAR Testnet challenge. Enter a NEAR Testnet (.testnet) account.');
       return;
     }
-    if (!isValidTestnetCliAccount(rawAcct)) {
-      showError('Enter a valid NEAR Testnet account ID (e.g. alice.testnet).');
+    if (net === 'mainnet' && rawAcct.endsWith('.testnet')) {
+      showError('Testnet (.testnet) accounts cannot sign a NEAR Mainnet challenge. Enter a NEAR Mainnet (.near) account.');
+      return;
+    }
+    if (!isValidCliAccountForNetwork(rawAcct, net)) {
+      showError(
+        net === 'mainnet'
+          ? 'Enter a valid NEAR Mainnet account ID (e.g. alice.near).'
+          : 'Enter a valid NEAR Testnet account ID (e.g. alice.testnet).',
+      );
       return;
     }
     if (!rawKey || !rawSig) {

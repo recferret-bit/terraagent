@@ -105,9 +105,9 @@ footer p { margin: 0; font-size: 13px; color: var(--dim); max-width: 90ch; }
 
 <header class="hero">
   <div class="hero-inner">
-    <p class="eyebrow">TerraAgent whitepaper · web3 part · draft, 2026-11-02</p>
+    <p class="eyebrow">TerraAgent whitepaper · web3 part · updated 2026-11-13</p>
     <h1>Every actor is a NEAR account. Gameplay never waits for the chain.</h1>
-    <p class="lead">The game server simulates the colony. NEAR holds what players own and settles what they trade; only a trade's own settlement waits for a block. This page shows how each on-chain feature works, why it is built that way, and what is real on demo day.</p>
+    <p class="lead">The game server simulates the colony. NEAR holds what players own and settles what they trade; only a trade's own settlement waits for a block. All 11 NEAR ports and 6 Rust contracts (<code>res</code>, <code>deed</code>, <code>bounty</code>, <code>staking</code>, <code>dao</code>, <code>pilots</code> + <code>protocol.terraagent.testnet</code>) are deployed live on NEAR Testnet (<code>NEAR_MODE=testnet</code>) with 1-env promotion to Mainnet (<code>NEAR_MODE=mainnet</code> + <code>NEAR_ALLOW_MAINNET=1</code>).</p>
   </div>
   <div class="legend" aria-label="Status legend">
     <div><span class="chip s-built">Built</span><p>On <code>main</code> today (wave W00).</p></div>
@@ -718,7 +718,7 @@ footer p { margin: 0; font-size: 13px; color: var(--dim); max-width: 90ch; }
 </section>
 
 <footer>
-  <p>Drawn from <code>docs/hackathon/near/01–09</code> and <code>docs/hackathon/public/whitepaper.md</code> (review pass 4, 2026-11-02). Each figure lists the rule and issue ids it comes from. This page describes mechanics; it makes no promise about the value of any token.</p>
+  <p>Drawn from <code>docs/hackathon/near/01–09</code> and <code>docs/hackathon/public/whitepaper.md</code> (updated 2026-11-13 for all 6 live <code>*.terraagent.testnet</code> contracts, cold-root <code>pilots.&lt;root&gt;</code>, atomic non-custodial <code>claimAccount</code>, Day-1 lossless staking, and <code>NEAR_MODE=mainnet</code> parity). Each figure lists the rule and issue ids it comes from. This page describes mechanics; it makes no promise about the value of any token.</p>
   <p>Where this page and the README's mock/real table differ, the README wins.</p>
 </footer>
 

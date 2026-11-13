@@ -18,8 +18,13 @@ export default defineFeature({
       slot: 'bottom-right',
       order: 75,
       mount(el, ctx) {
-        const store = ctx.services.store as { onServerEvents?: never } | undefined;
-        const host = new XpToastHost(el, store);
+        const store = ctx.services.store as {
+          onServerEvents?: (fn: (events: ReadonlyArray<{ kind: string; data?: Record<string, unknown> }>) => void) => () => void;
+        } | undefined;
+        const host = new XpToastHost(el, {
+          onServerEvents: store?.onServerEvents ? (fn) => store.onServerEvents!(fn) : undefined,
+          onOpenPlayer: () => ctx.services.openPilotDialog?.(true),
+        });
         ctx.services.xpToasts = host;
         return {
           dispose() {

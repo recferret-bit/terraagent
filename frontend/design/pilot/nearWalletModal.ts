@@ -3,135 +3,21 @@ import type { MockToken } from './mockToken';
 import { encodeNep413SocialToken, requestNearAuthChallenge } from './nearAuthApi';
 import { renderNearCliPanel } from './nearCliPanel';
 import {
-  signChallengeWithNearWallet,
-  WalletNotInstalledError,
-  type WalletSelectorModuleId,
-} from './walletSelectorRuntime';
+  ensureModalCss,
+  readSavedNearWallet,
+  renderStatusBox,
+  saveNearWallet,
+  SELECTOR_WALLETS,
+  type SavedNearWallet,
+  type SelectorWalletDef,
+} from './nearWalletModalParts';
+import { signChallengeWithNearWallet, WalletNotInstalledError } from './walletSelectorRuntime';
 
-export interface SavedNearWallet {
-  readonly walletId: string;
-  readonly walletName: string;
-  readonly accountId: string;
-  readonly publicKey?: string;
-  readonly connectedAt: number;
-}
-
-const STORAGE_KEY = 'ta_near_wallet';
-const NEAR_ACCOUNT_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
-
-const MODAL_CSS = `
-.near-modal{margin:auto;padding:var(--ta-s5);width:min(460px,92vw);background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
-.near-modal::backdrop{background:color-mix(in srgb,var(--ta-black-hole) 78%,transparent);backdrop-filter:blur(4px)}
-.near-modal-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s3);margin-bottom:var(--ta-s3)}
-.near-modal-tabs{display:grid;grid-template-columns:1fr 1fr;gap:var(--ta-s2);margin-bottom:var(--ta-s3)}
-.near-modal-sub{font-size:var(--ta-fs-eyebrow);color:var(--ta-text-3);margin:0 0 var(--ta-s3);line-height:1.45}
-.near-wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--ta-s2);margin-bottom:var(--ta-s3)}
-.near-wallet-opt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;text-align:left;background:var(--ta-plate-2);border:1px solid var(--ta-seam);color:var(--ta-text);cursor:pointer;font-family:var(--ta-font-display)}
-.near-wallet-opt:hover:not(:disabled){border-color:var(--ta-orange);background:color-mix(in srgb,var(--ta-orange) 8%,var(--ta-plate-2))}
-.near-wallet-opt:disabled{opacity:.55;cursor:wait}
-.near-wallet-opt b{font-size:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
-.near-wallet-opt span{font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-text-3)}
-.near-wallet-panel{padding:var(--ta-s3);background:var(--ta-plate-2);border:1px solid var(--ta-seam-2);display:flex;flex-direction:column;gap:var(--ta-s2);margin-top:var(--ta-s2)}
-.near-wallet-panel code{display:block;padding:var(--ta-s2) 10px;background:var(--ta-void);border:1px solid var(--ta-seam);font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-orange-hi);word-break:break-all;white-space:pre-wrap;user-select:all}
-.near-wallet-panel input{width:100%;box-sizing:border-box}
-.near-cli-hint{font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-text-2)}
-.near-wallet-saved{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s2);padding:10px 12px;margin-bottom:var(--ta-s3);background:color-mix(in srgb,var(--ta-orange) 10%,var(--ta-plate-2));border:1px solid var(--ta-orange)}
-.near-wallet-saved span{font-family:var(--ta-font-mono);font-size:12px;color:var(--ta-text)}
-.near-wallet-step{font-family:var(--ta-font-mono);font-size:12px;color:var(--ta-blue-hi);margin:0}
-.near-wallet-err{font-family:var(--ta-font-mono);font-size:12px;color:var(--ta-fault-text);margin:0}
-.near-signup-links{display:flex;flex-wrap:wrap;gap:var(--ta-s2)}
-`;
-
-interface SelectorWalletDef {
-  readonly testId: string;
-  readonly moduleId: WalletSelectorModuleId;
-  readonly name: string;
-  readonly subtitle: string;
-  readonly signupUrl: string;
-  readonly signupActionLabel: string;
-}
-
-const SELECTOR_WALLETS: readonly SelectorWalletDef[] = [
-  {
-    testId: 'near-wallet-meteor',
-    moduleId: 'meteor-wallet',
-    name: 'Meteor Wallet',
-    subtitle: 'EXTENSION / WEB · TESTNET',
-    signupUrl: 'https://wallet.meteorwallet.app',
-    signupActionLabel: 'Create Meteor Testnet Wallet ↗',
-  },
-  {
-    testId: 'near-wallet-okx',
-    moduleId: 'okx-wallet',
-    name: 'OKX Wallet',
-    subtitle: 'EXTENSION · TESTNET',
-    signupUrl: 'https://web3.okx.com/download',
-    signupActionLabel: 'Install OKX Extension ↗',
-  },
-  {
-    testId: 'near-wallet-mobile',
-    moduleId: 'near-mobile-wallet',
-    name: 'NEAR Mobile',
-    subtitle: 'QR / APP PAIR · TESTNET',
-    signupUrl: 'https://nearmobile.app',
-    signupActionLabel: 'Get NEAR Mobile (iOS / Android) ↗',
-  },
-  {
-    testId: 'near-wallet-intear',
-    moduleId: 'intear-wallet',
-    name: 'Intear Wallet',
-    subtitle: 'WEB / DESKTOP · TESTNET',
-    signupUrl: 'https://wallet.intear.tech',
-    signupActionLabel: 'Create Intear Testnet Wallet ↗',
-  },
-  {
-    testId: 'near-wallet-mynearwallet',
-    moduleId: 'my-near-wallet',
-    name: 'MyNearWallet',
-    subtitle: 'TESTNET WEB WALLET',
-    signupUrl: 'https://testnet.mynearwallet.com/create',
-    signupActionLabel: 'Create MyNearWallet (.testnet) ↗',
-  },
-];
-
-function ensureModalCss(): void {
-  if (typeof document === 'undefined' || document.getElementById('near-wallet-modal-css')) return;
-  const style = document.createElement('style');
-  style.id = 'near-wallet-modal-css';
-  style.textContent = MODAL_CSS;
-  document.head.appendChild(style);
-}
-
-export function readSavedNearWallet(): SavedNearWallet | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SavedNearWallet>;
-    if (typeof parsed.accountId === 'string' && NEAR_ACCOUNT_RE.test(parsed.accountId)) {
-      return {
-        walletId: parsed.walletId ?? 'near-cli',
-        walletName: parsed.walletName ?? 'NEAR Wallet',
-        accountId: parsed.accountId,
-        publicKey: typeof parsed.publicKey === 'string' ? parsed.publicKey : undefined,
-        connectedAt: typeof parsed.connectedAt === 'number' ? parsed.connectedAt : Date.now(),
-      };
-    }
-  } catch {
-    /* ignore storage errors */
-  }
-  return null;
-}
-
-export function saveNearWallet(entry: SavedNearWallet): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entry));
-  } catch {
-    /* ignore storage errors */
-  }
-}
+export { readSavedNearWallet, saveNearWallet, type SavedNearWallet };
 
 export interface NearWalletSelectorCallbacks {
   readonly initialMode?: 'signin' | 'signup';
+  readonly network?: 'testnet' | 'mainnet';
   onPopupOpened?(popup: Window | null): void;
   onDirectToken(hit: MockToken): void;
 }
@@ -150,97 +36,39 @@ function createOptionButton(testId: string, title: string, subtitle: string, onC
   return btn;
 }
 
-function renderStatusBox(
-  panelHost: HTMLElement,
-  opts: {
-    readonly headline: string;
-    readonly stepText?: string;
-    readonly errorText?: string;
-    readonly actionLink?: { readonly label: string; readonly href: string };
-    readonly retryAction?: { readonly label: string; readonly onClick: () => void };
-  },
-): HTMLElement {
-  panelHost.replaceChildren();
-  const box = document.createElement('div');
-  box.className = 'near-wallet-panel';
-  box.dataset.testid = 'near-wallet-status-panel';
-
-  const head = document.createElement('div');
-  head.className = 'label';
-  head.textContent = opts.headline;
-  box.append(head);
-
-  if (opts.stepText) {
-    const p = document.createElement('p');
-    p.className = 'near-wallet-step';
-    p.dataset.testid = 'near-wallet-step';
-    p.textContent = opts.stepText;
-    box.append(p);
-  }
-  if (opts.errorText) {
-    const err = document.createElement('p');
-    err.className = 'near-wallet-err';
-    err.dataset.testid = 'near-wallet-error';
-    err.textContent = opts.errorText;
-    box.append(err);
-  }
-  if (opts.actionLink || opts.retryAction) {
-    const actions = document.createElement('div');
-    actions.className = 'near-signup-links';
-    if (opts.actionLink) {
-      const a = document.createElement('a');
-      a.className = 'btn btn-ghost btn-sm';
-      a.href = opts.actionLink.href;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.dataset.testid = 'near-wallet-external-link';
-      a.textContent = opts.actionLink.label;
-      actions.append(a);
-    }
-    if (opts.retryAction) {
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'btn btn-primary btn-sm';
-      retry.dataset.testid = 'near-wallet-pair-btn';
-      retry.textContent = opts.retryAction.label;
-      retry.onclick = opts.retryAction.onClick;
-      actions.append(retry);
-    }
-    box.append(actions);
-  }
-  panelHost.append(box);
-  return box;
-}
-
 async function executeSelectorWalletFlow(params: {
   readonly def: SelectorWalletDef;
   readonly mode: 'signin' | 'signup';
+  readonly initialNetwork: 'testnet' | 'mainnet';
   readonly panelHost: HTMLElement;
   readonly setBusy: (busy: boolean) => void;
   readonly suspendTopLayer: () => () => void;
   readonly onSigned: (walletName: string, payload: NearAuthVerifyRequest) => void;
 }): Promise<void> {
-  const { def, mode, panelHost, setBusy, suspendTopLayer, onSigned } = params;
+  const { def, mode, initialNetwork, panelHost, setBusy, suspendTopLayer, onSigned } = params;
   setBusy(true);
   const origin = typeof location !== 'undefined' ? location.origin : 'https://terraagent.fun';
   const pathname = typeof location !== 'undefined' ? location.pathname : '/';
   const callbackUrl = `${origin}${pathname}`;
 
+  let activeNet: 'testnet' | 'mainnet' = initialNetwork;
   renderStatusBox(panelHost, {
-    headline: `${def.name.toUpperCase()} · NEP-413 TESTNET AUTH`,
+    headline: `${def.name.toUpperCase()} · NEP-413 ${activeNet.toUpperCase()} AUTH`,
     stepText: '1/3 · Requesting single-use 32-byte NEP-413 challenge from backend…',
   });
 
   let restoreTopLayer: (() => void) | null = null;
   try {
     const challenge = await requestNearAuthChallenge({ walletId: def.moduleId, intent: mode });
+    activeNet = challenge.network === 'mainnet' ? 'mainnet' : 'testnet';
     // Exit `<dialog>` modal `#top-layer` before invoking external wallet SDKs so `document.body`
-    // iframes (NEAR Mobile QR widget, Intear, Meteor web) render unobstructed and are not `inert`.
+    // overlays (NEAR Mobile QR widget, Intear, Meteor web) render above `.near-modal.is-signing` and are not `inert`,
+    // while keeping the dialog non-modally open so extension/popup users see live `2/3` and `3/3` step status.
     restoreTopLayer = suspendTopLayer();
     const signedPayload = await signChallengeWithNearWallet(def.moduleId, challenge, callbackUrl, {
       onStep: (stepText) => {
         renderStatusBox(panelHost, {
-          headline: `${def.name.toUpperCase()} · NEP-413 TESTNET AUTH`,
+          headline: `${def.name.toUpperCase()} · NEP-413 ${activeNet.toUpperCase()} AUTH`,
           stepText,
           ...(def.moduleId === 'near-mobile-wallet'
             ? { actionLink: { label: 'Need NEAR Mobile App? ↗', href: def.signupUrl } }
@@ -248,15 +76,18 @@ async function executeSelectorWalletFlow(params: {
         });
       },
     });
+    if (!panelHost.isConnected) return;
     onSigned(def.name, signedPayload);
   } catch (err) {
     restoreTopLayer?.();
+    if (!panelHost.isConnected) return;
     setBusy(false);
     const retry = () => void executeSelectorWalletFlow(params);
+    const acctHint = activeNet === 'mainnet' ? 'NEAR Mainnet (.near)' : 'NEAR Testnet (.testnet)';
     if (err instanceof WalletNotInstalledError) {
       renderStatusBox(panelHost, {
         headline: `${def.name.toUpperCase()} · EXTENSION REQUIRED`,
-        errorText: `${err.message} Install the extension, create or import a NEAR Testnet (.testnet) account, then retry.`,
+        errorText: `${err.message} Install the extension, create or import a ${acctHint} account, then retry.`,
         actionLink: { label: def.signupActionLabel, href: err.downloadUrl },
         retryAction: { label: 'Retry Connection', onClick: retry },
       });
@@ -328,14 +159,16 @@ function buildWalletGrid(
   return grid;
 }
 
-function createModalChrome(onClose: () => void): {
-  head: HTMLDivElement;
-  title: HTMLSpanElement;
-  tabs: HTMLDivElement;
-  signInTab: HTMLButtonElement;
-  signUpTab: HTMLButtonElement;
-  sub: HTMLParagraphElement;
-} {
+interface ModalChrome {
+  readonly head: HTMLDivElement;
+  readonly title: HTMLSpanElement;
+  readonly tabs: HTMLDivElement;
+  readonly signInTab: HTMLButtonElement;
+  readonly signUpTab: HTMLButtonElement;
+  readonly sub: HTMLParagraphElement;
+}
+
+function createModalChrome(onClose: () => void): ModalChrome {
   const head = document.createElement('div');
   head.className = 'near-modal-head';
   const title = document.createElement('span');
@@ -365,8 +198,51 @@ function createModalChrome(onClose: () => void): {
   return { head, title, tabs, signInTab, signUpTab, sub };
 }
 
+function syncModalModeChrome(
+  chrome: ModalChrome,
+  mode: 'signin' | 'signup',
+  initialNetwork: 'testnet' | 'mainnet',
+  panelHost: HTMLElement,
+): void {
+  const netLabel = initialNetwork === 'mainnet' ? 'Mainnet' : 'Testnet';
+  const netUpper = initialNetwork.toUpperCase();
+  chrome.signInTab.textContent = `Sign In (${netLabel})`;
+  chrome.title.textContent =
+    mode === 'signup' ? `CREATE & LINK NEAR ${netUpper} WALLET` : `CONNECT NEAR ${netUpper} WALLET`;
+  chrome.signInTab.className = mode === 'signin' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  chrome.signUpTab.className = mode === 'signup' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  chrome.sub.textContent =
+    mode === 'signup'
+      ? initialNetwork === 'mainnet'
+        ? 'Connect or create a NEAR Mainnet (.near) wallet or CLI keypair, then sign a gasless NEP-413 challenge to link your Pilot.'
+        : 'Create a free NEAR Testnet (.testnet) wallet or CLI keypair, then sign a gasless NEP-413 challenge to link your Pilot.'
+      : `Select your NEAR ${netLabel} wallet. Every login verifies a single-use 32-byte NEP-413 signature & FullAccess key on-chain.`;
+  panelHost.replaceChildren();
+}
+
+function createTopLayerSuspender(dialog: HTMLDialogElement): () => () => void {
+  return () => {
+    if (!dialog.isConnected) return () => undefined;
+    if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+    else dialog.removeAttribute('open');
+    dialog.setAttribute('closedby', 'none');
+    dialog.classList.add('is-signing');
+    if (typeof dialog.show === 'function') dialog.show();
+    else dialog.setAttribute('open', '');
+    return () => {
+      if (!dialog.isConnected) return;
+      dialog.classList.remove('is-signing');
+      dialog.setAttribute('closedby', 'any');
+      if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+      else dialog.removeAttribute('open');
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+    };
+  };
+}
+
 /**
- * Opens the NEAR Testnet Wallet Selector dialog (Meteor, OKX, NEAR Mobile, NEAR CLI, Intear, MyNearWallet)
+ * Opens the NEAR Wallet Selector dialog (Meteor, OKX, NEAR Mobile, NEAR CLI, Intear, MyNearWallet)
  * enforcing server-issued NEP-413 32-byte cryptographic challenge signing + FullAccess key verification.
  */
 export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbacks): HTMLDialogElement {
@@ -375,6 +251,7 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
 
   let mode: 'signin' | 'signup' = callbacks.initialMode ?? 'signin';
   let signingBusy = false;
+  const initialNetwork: 'testnet' | 'mainnet' = callbacks.network === 'mainnet' ? 'mainnet' : 'testnet';
 
   const dialog = document.createElement('dialog');
   dialog.className = 'plate near-modal';
@@ -383,12 +260,13 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
   dialog.dataset.testid = 'near-wallet-modal';
 
   const close = (): void => {
+    dialog.classList.remove('is-signing');
     if (typeof dialog.close === 'function' && dialog.open) dialog.close();
     else dialog.removeAttribute('open');
     dialog.remove();
   };
 
-  const { head, title, tabs, signInTab, signUpTab, sub } = createModalChrome(close);
+  const chrome = createModalChrome(close);
   const panelHost = document.createElement('div');
   const saved = readSavedNearWallet();
 
@@ -412,27 +290,14 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
     });
   };
 
-  const suspendTopLayer = (): (() => void) => {
-    if (!dialog.isConnected) return () => undefined;
-    if (typeof dialog.close === 'function' && dialog.open) dialog.close();
-    else dialog.removeAttribute('open');
-    dialog.style.display = 'none';
-    return () => {
-      if (!dialog.isConnected) return;
-      dialog.style.display = '';
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-      else dialog.setAttribute('open', '');
-    };
-  };
-
+  const suspendTopLayer = createTopLayerSuspender(dialog);
   const startFlow = (def: SelectorWalletDef): void => {
     if (signingBusy) return;
-    void executeSelectorWalletFlow({ def, mode, panelHost, setBusy, suspendTopLayer, onSigned: finishVerified });
+    void executeSelectorWalletFlow({ def, mode, initialNetwork, panelHost, setBusy, suspendTopLayer, onSigned: finishVerified });
   };
-
   const openCli = (): void => {
     if (signingBusy) return;
-    renderNearCliPanel(panelHost, { mode, savedAccountId: saved?.accountId, onVerifiedPayload: (p) => finishVerified('NEAR CLI', p) });
+    renderNearCliPanel(panelHost, { mode, network: initialNetwork, savedAccountId: saved?.accountId, onVerifiedPayload: (p) => finishVerified('NEAR CLI', p) });
   };
 
   grid = buildWalletGrid((def) => {
@@ -444,23 +309,12 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
     startFlow(def);
   }, openCli);
 
-  const syncModeUi = (): void => {
-    title.textContent = mode === 'signup' ? 'CREATE & LINK NEAR TESTNET WALLET' : 'CONNECT NEAR TESTNET WALLET';
-    signInTab.className = mode === 'signin' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
-    signUpTab.className = mode === 'signup' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
-    sub.textContent =
-      mode === 'signup'
-        ? 'Create a free NEAR Testnet (.testnet) wallet or CLI keypair, then sign a gasless NEP-413 challenge to link your Pilot.'
-        : 'Select your NEAR Testnet wallet. Every login verifies a single-use 32-byte NEP-413 signature & FullAccess key on-chain.';
-    panelHost.replaceChildren();
-  };
-
-  signInTab.onclick = () => { if (!signingBusy) { mode = 'signin'; syncModeUi(); } };
-  signUpTab.onclick = () => { if (!signingBusy) { mode = 'signup'; syncModeUi(); } };
-  syncModeUi();
+  chrome.signInTab.onclick = () => { if (!signingBusy) { mode = 'signin'; syncModalModeChrome(chrome, mode, initialNetwork, panelHost); } };
+  chrome.signUpTab.onclick = () => { if (!signingBusy) { mode = 'signup'; syncModalModeChrome(chrome, mode, initialNetwork, panelHost); } };
+  syncModalModeChrome(chrome, mode, initialNetwork, panelHost);
 
   dialog.onclick = (e) => { if (e.target === dialog && !signingBusy) close(); };
-  dialog.append(head, tabs, sub, ...(saved ? [buildSavedWalletBanner(saved, startFlow, openCli)] : []), grid, panelHost);
+  dialog.append(chrome.head, chrome.tabs, chrome.sub, ...(saved ? [buildSavedWalletBanner(saved, startFlow, openCli)] : []), grid, panelHost);
   document.body.appendChild(dialog);
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');

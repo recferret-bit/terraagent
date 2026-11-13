@@ -1,4 +1,5 @@
 import type { FeatureContext, GameView } from '../../core/registry/types';
+import { pushNotification } from '../notifications/notificationStore';
 import { ownColonyIndex } from '../shared/colony';
 import {
   ALERT_PING_DURATION_MS,
@@ -222,6 +223,14 @@ export class CombatAlertsHud {
     if (this.logEntries.length > MAX_COMBAT_LOG_ENTRIES) {
       this.logEntries.length = MAX_COMBAT_LOG_ENTRIES;
     }
+    pushNotification({
+      category: 'combat',
+      title: 'Combat Alert',
+      message: entry.label,
+      onSelect: () => {
+        if (q !== undefined && r !== undefined) this.jumpToTile(q, r);
+      },
+    });
     this.renderLog();
   }
 

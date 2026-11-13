@@ -81,15 +81,16 @@ The same pattern applies outside NEAR: `LlmProviderPort` (AI director: mock and 
 
 | Account | Role | Keys held by the app |
 |---|---|---|
-| `terraagent.near` (+ `terraagent.testnet` for dev) | Owner/root; creates the sub-accounts below | **None.** It stays on the owner's hardware or cold wallet. |
-| `relayer.terraagent.near` | Pays gas for meta-transactions; operator of the game contracts | Full-access, file secret |
-| `minter.terraagent.near` | Sole mint/burn authority on `res.terraagent.near` | Full-access, file secret |
-| `{name}.terraagent.near` | **Player named account**, created on social login (F5) | Per-player key, envelope-encrypted (KEK) until claimed |
-| `{colony}.{name}.terraagent.near` | **Colony account**: holds cargo, signs market intents, owns the deed, stakes after claim | Per-colony key, envelope-encrypted until claimed |
+| `terraagent.near` (+ `terraagent.testnet` for dev) | Owner/root; deploys the 6 Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) | **None in production.** Stays on the owner's cold wallet (`pilots.<root>` mints pilot accounts via `relayer.<root>`). |
+| `protocol.terraagent.near` | Protocol treasury recipient (`80%` platform fee, `20%` staking yield, `10%` escrow slashes) | View/treasury account (`GET /v1/near/protocol`) |
+| `relayer.terraagent.near` | Pays gas for NEP-366 meta-transactions; operator of `pilots`, `deed`, `bounty`, `staking`, `dao` | Full-access, env/file secret |
+| `minter.terraagent.near` | Sole mint/burn authority on `res.terraagent.near` | Full-access, env/file secret |
+| `{name}.pilots.terraagent.near` (or `{name}.terraagent.near`) | **Player named account**, created on social login via `pilots.<root>` (F5) | Per-player key, envelope-encrypted (`NEAR_KEK`) until claimed |
+| `{colony}.{name}.pilots.terraagent.near` | **Colony account**: holds cargo, signs market intents, owns the deed, stakes after claim | Per-colony key, envelope-encrypted until claimed (`encryptedSecret = 'claimed'` after `[AddKey, DeleteKey]`) |
 | `guild-N.npc.terraagent.near` | Orbital Guild NPC traders (F3) | Function-call keys for `intents.near` and `res.*` only |
 
 - **Keys.** The app generates ed25519 keys and encrypts the secrets with AES-256-GCM under `NEAR_KEK` (stored in `chain.near_colony_account.encrypted_secret` with `kek_version`).
-- **Account claim (D-18, at launch).** The player links a wallet (NEP-413, §3). The app adds the player's key as full-access and removes its own full-access key. It keeps only a **function-call key with an allowance** scoped to `intents.near` and `res.*`. Gameplay keeps working, but the game can no longer move the player's NEAR. Claiming is one-way and is required for staking.
+- **Account claim (D-18, at launch).** The player links a wallet (NEP-413, §3). The app verifies `colony.playerId === request.playerId` plus `FullAccess` ownership of `walletPublicKey` on `walletAccountId` at `final` finality, then atomically executes `[addFullAccessKey(walletPublicKey), deleteKey(custodialPublicKey)]` and sets `encryptedSecret = 'claimed'`. Once claimed, the server cannot sign custodial orders (`NEAR_NOT_OWNER`) and automatically evicts pre-claim resting custodial orders on match; the game can never move the player's NEAR. Claiming is one-way (idempotent on same-wallet replay) and unlocks Day-1 staking.
 - **Director key (F4).** A separate key on the colony account whose allowance equals the player's away budget for trading. The AI director uses it to sign `autoTrade` orders. The player revokes it in one tap; the HUD shows spent versus allowance.
 - **Social-login provider: verify in docs.** HOT is a listed hackathon partner; other providers must be checked for NEAR named-account support. TA-10 decides.
 
@@ -179,8 +180,8 @@ sequenceDiagram
 |---|---|
 | `NEAR-90` | `deed.terraagent.near` mints one NFT per colony at founding, owned by the colony account. It replaces the earlier `colony-registry` milestone log. |
 | `NEAR-91` | **Dynamic metadata.** The relayer (operator) updates `extra` (stage, terraform %, walls, trade volume, truces, rank) on milestones, debounced to at most one update per colony per 10 min. The image is rendered by the app from the colony snapshot. |
-| `NEAR-92` | **Settled Deed.** On `colonySettled` (SIMULATION §7.7) the deed is marked settled and becomes the home for **own-NEAR staking**. The player, through a **claimed** account, sends NEAR to the colony account, which calls `deposit_and_stake` on a pool from `NEAR_STAKING_POOLS`. Validator rewards accrue to the player. The game never pays NEAR and never holds the player's funds. |
-| `NEAR-93` | In-game perks are independent of the staked amount (no pay-to-win). |
+| `NEAR-92` | **Day-1 Lossless Staking & Settled Deed.** Any **claimed** human account can stake `NEAR` from Day 1 on `staking.<root>` (`9.0%` gross validator pool APY, `80%` player / `20%` `protocol.<root>` yield split, `2` game-day unbonding; `>= 10 NEAR` staked unlocks `0.50%` platform trade fee + Managed Server `NEAR.AI` Autopilot). On `colonySettled` (SIMULATION §7.7) the deed is marked settled on `deed.<root>`. Real-network `stake`, `unstake`, and `withdraw` verify a live `NEP-413` `walletSignature` against the claimed account; AI/bot keys always receive `403 AI_STAKING_FORBIDDEN`. |
+| `NEAR-93` | In-game simulation perks are strictly zero (no combat or mining buffs — `@terra/sim` never reads staking). |
 
 *Follow-up:* the staking UI is wallet-signed and sits outside the "invisible chain"; validator whitelist governance; legal review.
 
@@ -210,9 +211,10 @@ sequenceDiagram
 
 | Key | Default | Notes |
 |---|---|---|
-| `NEAR_NETWORK` | `testnet` for accounts and deeds in dev; **`mainnet` for cargo + markets** (Intents has no testnet) | `NEAR_ALLOW_MAINNET=1` required |
-| `NEAR_RPC_URL` / `NEAR_RPC_FALLBACK_URL` | **FastNEAR** / a second provider | D-23 |
-| `NEAR_ACCOUNT_ROOT` | `terraagent.near` | |
+| `NEAR_MODE` | `mock` (`testnet` for staging; `mainnet` for live `intents.near`) | `NEAR_ALLOW_MAINNET=1` required whenever any port resolves to `mainnet` |
+| `NEAR_RPC_PRIMARY` / `NEAR_RPC_FALLBACK` | **FastNEAR** (`test.rpc.fastnear.com` / `free.rpc.fastnear.com`) + official NEAR RPC fallback | D-23 |
+| `NEAR_ROOT_ACCOUNT`, `NEAR_PROTOCOL_ACCOUNT` | `terraagent.testnet` (`terraagent.near` on mainnet), `protocol.<root>` | 6 Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) + `relayer.<root>` + `minter.<root>` |
+| `NEAR_CONTRACT_PILOTS`, `NEAR_USE_PILOTS_FACTORY` | `pilots.<root>`, auto (`true` when `NEAR_ROOT_SECRET_KEY` unset) | Cold-root `{pilot}.pilots.<root>` factory operated by `relayer.<root>` |
 | `NEAR_STAKING_POOLS` | whitelist of validator pools | NEAR-92 |
 | `CARGO_MINT_CAP_PER_DAY` | 20 000 per sub-resource per colony (proposed) | NEAR-53 |
 | `MARKET_PLATFORM_FEE_BP` / `MARKET_FEE_BP_MAX` / `TREASURY_FEE_SHARE_BP` | 100 / 100 / 2 000 (versioned DB profile) | NEAR-61, NEAR-101 |

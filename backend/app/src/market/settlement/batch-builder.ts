@@ -10,7 +10,7 @@ const toBatchOrder = (o: MarketOrderRecord): BatchOrder => ({
   amount: o.amount,
   filled: o.filled,
   priceAmount: o.priceAmount,
-  platformFeeBp: o.platformFeeBp,
+  platformFeeBp: o.effectivePlatformFeeBp ?? o.platformFeeBp,
   stallFeeBp: o.stallFeeBp,
   stallColonyId: o.stallColonyId,
   stallAccountId: o.stallAccountId,
