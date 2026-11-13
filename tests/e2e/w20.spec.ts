@@ -116,12 +116,13 @@ test('3. Share on X and public /deed/<tokenId> page render OG card and PNG image
   await sharePage.close();
 });
 
-test('4. Non-settled deed hides staking controls and shows "Available after your colony is Settled"', async () => {
+test('4. Non-settled deed already exposes Day-1 staking controls and staker perks banner', async () => {
   serverOnly();
-  const lockedBanner = page.locator('[data-testid="staking-locked-banner"]');
-  await expect(lockedBanner).toBeVisible();
-  await expect(lockedBanner).toHaveText('Available after your colony is Settled');
-  await expect(page.locator('[data-testid="staking-controls"]')).toBeHidden();
+  await expect(page.locator('[data-testid="staking-locked-banner"]')).toBeHidden();
+  await expect(page.locator('[data-testid="staking-controls"]')).toBeVisible();
+  await expect(page.locator('[data-testid="staking-perks-banner"]')).toContainText(
+    'Stake >= 10 NEAR from Day 1',
+  );
 });
 
 test('5. deed.settle turns card to gold Settled variant, fires settler toast, claims account, tests signer Reject, then stakes 10 NEAR', async () => {
@@ -176,9 +177,10 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
     '10 NEAR staked',
     { timeout: 15_000 },
   );
+  await expect(page.locator('[data-testid="staking-perks-banner"]')).toContainText('PERKS ACTIVE');
 
   await devConsole(page, 'time.warp 86400', 15_000);
-  await expect(page.locator('[data-testid="staking-rewards-value"]')).toContainText('0.00246', {
+  await expect(page.locator('[data-testid="staking-rewards-value"]')).toContainText('0.00197', {
     timeout: 15_000,
   });
 });
@@ -197,7 +199,7 @@ test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance
   const withdrawBtn = page.locator('[data-testid="staking-withdraw-btn"]');
   await expect(withdrawBtn).toBeEnabled({ timeout: 15_000 });
   await withdrawBtn.click();
-  await expect(page.locator('[data-testid="staking-wallet-balance"]')).toContainText('100.00246', {
+  await expect(page.locator('[data-testid="staking-wallet-balance"]')).toContainText('100.00197', {
     timeout: 15_000,
   });
 

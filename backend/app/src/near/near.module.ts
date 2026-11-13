@@ -54,6 +54,8 @@ import { BountyPostedListener } from './bounty/posted.listener.js';
 import { BountyPostService } from './bounty/post.service.js';
 import { BountyRepository } from './bounty/bounty.repository.js';
 import { PlanetBountyWorld } from './bounty/world.js';
+import { DiplomacyEscrowListener } from './diplomacy/diplomacy-escrow.listener.js';
+import { DiplomacyEscrowService } from './diplomacy/diplomacy-escrow.service.js';
 import { MercenaryAccountsService } from './mercenary/accounts.service.js';
 import { MercenaryAwayService } from './mercenary/away.service.js';
 import { MercenaryHireService } from './mercenary/hire.service.js';
@@ -107,6 +109,8 @@ export const env = {
     BountyPostedListener,
     BountyPostService,
     BountyRepository,
+    DiplomacyEscrowListener,
+    DiplomacyEscrowService,
     MercenaryAccountsService,
     MercenaryAwayService,
     MercenaryHireService,
@@ -152,6 +156,7 @@ export const env = {
     AccountClaimService,
     BountyPostService,
     BountyRepository,
+    DiplomacyEscrowService,
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,

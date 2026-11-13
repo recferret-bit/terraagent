@@ -91,26 +91,16 @@ afterAll(async () => {
 });
 
 describe('W20-18 StakingController & StakingService Postgres HTTP lifecycle', () => {
-  it('enforces DEED_NOT_SETTLED, ACCOUNT_NOT_CLAIMED with claimUrl, and completes stake -> unstake -> withdraw', async () => {
+  it('enforces ACCOUNT_NOT_CLAIMED with claimUrl from Day 1 (even before settled), unlocks staker perks at 10 NEAR, and completes stake -> unstake -> withdraw', async () => {
     const { app, url } = await boot({ TA_WAVES: '..20' });
     const colonyId = 'col_stake_int';
     const accountId = `${colonyId}.pilot.terraagent.mock`;
 
     await createTestDeed(colonyId, accountId, false);
-    const unsettled = await postJson<{
-      errorCode: string;
-      error: { code: string; details?: { colonyId?: string; settled?: boolean } };
-    }>(url, '/v1/near/stake', { colonyId, pool: POOL_ASTRO, amount: '5' });
-    expect(unsettled.status).toBe(409);
-    expect(unsettled.body.errorCode).toBe('DEED_NOT_SETTLED');
-    expect(unsettled.body.error.code).toBe('deed_not_settled');
-    expect(unsettled.body.error.details?.settled).toBe(false);
-
-    await createTestDeed(colonyId, accountId, true);
     const unclaimed = await postJson<{
       errorCode: string;
       error: { code: string; details?: { claimUrl?: string } };
-    }>(url, '/v1/near/stake', { colonyId, pool: POOL_ASTRO, amount: '5' });
+    }>(url, '/v1/near/stake', { colonyId, pool: POOL_ASTRO, amount: '10' });
     expect(unclaimed.status).toBe(409);
     expect(unclaimed.body.errorCode).toBe('ACCOUNT_NOT_CLAIMED');
     expect(unclaimed.body.error.code).toBe('account_not_claimed');
@@ -129,36 +119,38 @@ describe('W20-18 StakingController & StakingService Postgres HTTP lifecycle', ()
     const staked = await postJson<StakingActionResponse>(url, '/v1/near/stake', {
       colonyId,
       pool: POOL_ASTRO,
-      amount: '5',
+      amount: '10',
     });
     expect(staked.status).toBe(200);
     expect(staked.body.txHash).toMatch(MOCK_HASH_RE);
-    expect(staked.body.walletBalanceNear).toBe('7');
+    expect(staked.body.walletBalanceNear).toBe('2');
     expect(staked.body.position).toMatchObject({
       colonyId,
       accountId,
       pool: POOL_ASTRO,
-      staked: '5',
+      staked: '10',
       unbonding: '0',
     });
 
     const statusRes = await fetch(`${url}/v1/near/staking?colonyId=${encodeURIComponent(colonyId)}`);
     expect(statusRes.status).toBe(200);
     const statusBody = (await statusRes.json()) as StakingStatusResponse;
-    expect(statusBody.deedSettled).toBe(true);
+    expect(statusBody.deedSettled).toBe(false);
     expect(statusBody.accountClaimed).toBe(true);
-    expect(statusBody.walletBalanceNear).toBe('7');
+    expect(statusBody.walletBalanceNear).toBe('2');
     expect(statusBody.positions).toHaveLength(1);
+    expect(statusBody.perks?.active).toBe(true);
+    expect(statusBody.perks?.platformFeeBp).toBe(50);
 
     stakingService.advanceGameDays(30);
     const unstaked = await postJson<StakingActionResponse>(url, '/v1/near/unstake', {
       colonyId,
       pool: POOL_ASTRO,
-      amount: '5',
+      amount: '10',
     });
     expect(unstaked.status).toBe(200);
     expect(unstaked.body.position.staked).toBe('0');
-    expect(unstaked.body.position.unbonding).toBe('5');
+    expect(unstaked.body.position.unbonding).toBe('10');
 
     stakingService.advanceGameDays(2);
     const withdrawn = await postJson<StakingActionResponse>(url, '/v1/near/withdraw', {

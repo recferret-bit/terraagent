@@ -44,6 +44,7 @@ export const REJECT_CODES = [
   'offer_expired', 'director_key_missing', 'director_key_revoked', 'allowance_exhausted', 'autotrade_limit',
   // W18 PvP & Diplomacy (UO-DIP-01..06, UO-T-05, W18-01, W18-31):
   'recent_hostility', 'oathbreaker', 'cross_sector_disabled', 'no_contact', 'truce_cap', 'unknown_offer', 'unknown_truce',
+  'war_active', 'unknown_war',
   // W22 clear_nest: a second bounty.post from the same colony in the same tick reuses `bt:{colony}:{tick}`.
   'already_posted',
   // W22-19: the nest is missing, dead, or outside the poster's explored tiles.

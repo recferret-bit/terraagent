@@ -54,7 +54,7 @@ describe('W20-20 StakingPositionSyncService on Postgres — direct stake & recov
     const match = synced.find((p) => p.accountId === accountId && p.pool === pool);
     expect(match).toBeDefined();
     expect(match?.staked).toBe('10');
-    expect(Number(match?.rewards)).toBeCloseTo(0.074, 3);
+    expect(Number(match?.rewards)).toBeCloseTo(0.0592, 3);
 
     const row = await db.prisma.stakingPosition.findUnique({
       where: { colonyId_poolId: { colonyId: 'col-sync-1', poolId: pool } },

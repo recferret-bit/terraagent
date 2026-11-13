@@ -2,11 +2,14 @@ import type { FeatureContext, HudPanelInstance } from '../../core/registry/types
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { copyText, type TextClipboard } from './copyText';
 import {
+  type AuthProviderKind,
   buildFastAuthLoginUrl,
-  buildNearWalletLoginUrl,
   consumeNearWalletCallback,
+  consumePendingOAuthError,
   openNearWalletSelectorModal,
   readMockToken,
+  readOAuthError,
+  readOAuthErrorStorageEvent,
   readOAuthStorageEvent,
 } from './mockToken';
 import { probeIdentityAdapterMode } from './real/fastAuthClient';
@@ -20,15 +23,20 @@ export function openMockProvider(provider: 'google' | 'x'): Window | null {
 }
 
 /** Opens the real NEAR FastAuth (Auth0 OIDC + PKCE) popup for Google or X. */
-export function openFastAuthProvider(provider: 'google' | 'x'): Window | null {
-  const url = buildFastAuthLoginUrl(location.origin, location.pathname + location.search, provider);
+export function openFastAuthProvider(provider: 'google' | 'x', authMode: 'signin' | 'signup' = 'signin'): Window | null {
+  const url = buildFastAuthLoginUrl(location.origin, location.pathname + location.search, provider, { mode: authMode });
   return window.open(url, 'terra-fastauth-oauth', 'popup,width=500,height=680');
 }
 
-/** Opens the real NEAR Testnet Wallet sign-in dialog in a popup. */
-export function openNearWalletPopup(): Window | null {
-  const url = buildNearWalletLoginUrl(location.origin, location.pathname + location.search);
-  return window.open(url, 'terra-near-wallet', 'popup,width=500,height=680');
+function extractChipFault(err: unknown): string {
+  if (!(err instanceof Error) || !err.message) return FAULT;
+  const dashIdx = err.message.indexOf(' — ');
+  if (dashIdx >= 0) {
+    const detail = err.message.slice(dashIdx + 3).trim();
+    if (detail) return detail;
+  }
+  if (err.message.startsWith('POST /v1/auth/')) return FAULT;
+  return err.message;
 }
 
 function guestLine(onSave: () => void): HTMLElement {
@@ -45,6 +53,8 @@ function guestLine(onSave: () => void): HTMLElement {
 
 interface GuestActions {
   readonly mode: 'mock' | 'testnet' | 'mainnet';
+  readonly authIntent: 'signin' | 'signup';
+  setAuthIntent(intent: 'signin' | 'signup'): void;
   save(): void;
   google(): void;
   x(): void;
@@ -53,28 +63,52 @@ interface GuestActions {
 }
 
 function buildTestnetPlate(plate: HTMLElement, act: GuestActions): void {
+  const tabs = makeDiv('ta-pilot__line');
+  const signInBtn = makeBtn(
+    act.authIntent === 'signin' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm',
+    'chip-mode-signin',
+    'Sign In',
+    () => act.setAuthIntent('signin'),
+  );
+  const signUpBtn = makeBtn(
+    act.authIntent === 'signup' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm',
+    'chip-mode-signup',
+    'Sign Up',
+    () => act.setAuthIntent('signup'),
+  );
+  tabs.append(signInBtn, signUpBtn);
+
   const row = makeDiv('ta-pilot__email-row');
   const input = document.createElement('input');
   input.type = 'email';
   input.className = 'input';
   input.placeholder = 'pilot@terraagent.fun';
   input.setAttribute('data-testid', 'pilot-email-input');
-  const submitEmail = makeBtn('btn btn-primary btn-sm', 'continue-email', 'Mint Testnet Pilot (Email)', () => {
-    act.email(input.value);
-  });
+  const submitEmail = makeBtn(
+    'btn btn-primary btn-sm',
+    'continue-email',
+    act.authIntent === 'signup' ? 'Mint Testnet Pilot (Email)' : 'Email / Passkey',
+    () => {
+      act.email(input.value);
+    },
+  );
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') act.email(input.value);
   });
   row.append(input, submitEmail);
   plate.append(
+    tabs,
     row,
     makeBtn('btn btn-ghost btn-sm', 'continue-google', 'Google', act.google),
     makeBtn('btn btn-ghost btn-sm', 'continue-x', 'X', act.x),
-    makeBtn('btn btn-ghost btn-sm', 'continue-fastauth', 'NEAR Auth (Testnet Popup)', act.fastAuth),
+    makeBtn('btn btn-ghost btn-sm', 'continue-fastauth', 'NEAR Auth (Testnet Wallet)', act.fastAuth),
   );
   const hint = document.createElement('p');
   hint.className = 'ta-pilot__hint';
-  hint.textContent = 'Provisions a real *.terraagent.testnet account (gasless).';
+  hint.textContent =
+    act.authIntent === 'signup'
+      ? 'Mints a gasless *.terraagent.testnet account or links a new NEAR Testnet wallet.'
+      : 'Sign in via FastAuth (Google, X, Email) or NEP-413 Testnet wallet.';
   plate.append(hint);
 }
 
@@ -128,6 +162,47 @@ function linkedLine(accountId: string, clipboard: TextClipboard | undefined, onS
   return line;
 }
 
+function bindPopupChannelListeners(handlers: {
+  getPopup: () => Window | null;
+  clearPopup: () => void;
+  onToken: (provider: AuthProviderKind, token: string) => void;
+  onError: (msg: string) => void;
+}): () => void {
+  const onMessage = (event: MessageEvent): void => {
+    const popup = handlers.getPopup();
+    const hit = readMockToken(event, popup, location.origin);
+    if (hit) {
+      handlers.onToken(hit.provider, hit.token);
+      return;
+    }
+    const err = readOAuthError(event, popup, location.origin);
+    if (err) {
+      handlers.clearPopup();
+      handlers.onError(err.message);
+    }
+  };
+  const onStorage = (event: StorageEvent): void => {
+    const hasPopup = Boolean(handlers.getPopup());
+    const hit = readOAuthStorageEvent(event, hasPopup);
+    if (hit) {
+      handlers.clearPopup();
+      handlers.onToken(hit.provider, hit.token);
+      return;
+    }
+    const err = readOAuthErrorStorageEvent(event, hasPopup);
+    if (err) {
+      handlers.clearPopup();
+      handlers.onError(err.message);
+    }
+  };
+  window.addEventListener('message', onMessage);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener('message', onMessage);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
 /** Top-left pilot chip. Subscribes to `services.pilot` and re-renders; no page reload. */
 export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
   const pilot = ctx.services.pilot;
@@ -139,13 +214,14 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
   let busy = false;
   let disposed = false;
   let mode: 'mock' | 'testnet' | 'mainnet' = ctx.services.identityMode ?? 'mock';
+  let authIntent: 'signin' | 'signup' = 'signin';
   let popup: Window | null = null;
 
-  const runLogin = (provider: 'google' | 'x' | 'fastauth' | 'email', token: string): void => {
+  const runLogin = (provider: AuthProviderKind, token: string): void => {
     if (!pilot || busy) return;
     busy = true;
     void pilot.loginSocial(provider, token)
-      .then(() => { fault = ''; }, () => { fault = FAULT; open = true; })
+      .then(() => { fault = ''; }, (err: unknown) => { fault = extractChipFault(err); open = true; })
       .finally(() => { busy = false; if (!disposed) render(); });
   };
 
@@ -166,16 +242,19 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
     }
     root.append(...guestNodes(open, fault, {
       mode,
+      authIntent,
+      setAuthIntent: (intent) => { authIntent = intent; render(); },
       save: () => { open = true; render(); },
       google: () => {
-        if (!busy) popup = mode === 'mock' ? openMockProvider('google') : openFastAuthProvider('google');
+        if (!busy) popup = mode === 'mock' ? openMockProvider('google') : openFastAuthProvider('google', authIntent);
       },
       x: () => {
-        if (!busy) popup = mode === 'mock' ? openMockProvider('x') : openFastAuthProvider('x');
+        if (!busy) popup = mode === 'mock' ? openMockProvider('x') : openFastAuthProvider('x', authIntent);
       },
       fastAuth: () => {
         if (busy) return;
         openNearWalletSelectorModal({
+          initialMode: authIntent,
           onPopupOpened: (pop) => { popup = pop; },
           onDirectToken: (hit) => { runLogin(hit.provider, hit.token); },
         });
@@ -199,26 +278,23 @@ export function mountPilotChip(el: HTMLElement, ctx: FeatureContext): HudPanelIn
     });
   }
 
-  const onMessage = (event: MessageEvent): void => {
-    const hit = readMockToken(event, popup, location.origin);
-    if (hit) runLogin(hit.provider, hit.token);
-  };
-  const onStorage = (event: StorageEvent): void => {
-    const hit = readOAuthStorageEvent(event, Boolean(popup));
-    if (hit) { popup = null; runLogin(hit.provider, hit.token); }
-  };
   const nearCallback = consumeNearWalletCallback();
+  const redirectErr = consumePendingOAuthError();
   if (nearCallback) runLogin(nearCallback.provider, nearCallback.token);
-  window.addEventListener('message', onMessage);
-  window.addEventListener('storage', onStorage);
+  else if (redirectErr) { fault = redirectErr.message; open = true; }
+  const unbindChannels = bindPopupChannelListeners({
+    getPopup: () => popup,
+    clearPopup: () => { popup = null; },
+    onToken: runLogin,
+    onError: (msg) => { if (!disposed) { fault = msg; open = true; render(); } },
+  });
   const off = pilot?.subscribe(() => render());
   render();
   return {
     dispose() {
       disposed = true;
       off?.();
-      window.removeEventListener('message', onMessage);
-      window.removeEventListener('storage', onStorage);
+      unbindChannels();
       root.remove();
     },
   };

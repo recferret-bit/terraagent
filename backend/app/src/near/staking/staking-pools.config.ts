@@ -8,6 +8,9 @@ export const DEFAULT_STAKING_POOLS_RAW =
 export const DEFAULT_TESTNET_STAKING_POOLS_RAW =
   'astro-stakers.pool.testnet:Astro Stakers:900,chorus-one.pool.testnet:Chorus One:900,kiln.pool.testnet:Kiln Validator:900';
 
+export const DEFAULT_MAINNET_STAKING_POOLS_RAW =
+  'astro-stakers.poolv1.near:Astro Stakers:900,chorus-one.poolv1.near:Chorus One:900,kiln.poolv1.near:Kiln Validator:900';
+
 export const DEFAULT_STAKING_APY_BP = 900;
 
 function humanizePoolName(poolId: string): string {
@@ -64,9 +67,11 @@ export function parseStakingPoolsConfig(
 ): readonly StakingPoolView[] {
   const stakingMode = env.NEAR_ADAPTER_STAKING ?? env.NEAR_MODE;
   const fallback =
-    stakingMode === 'testnet' || stakingMode === 'devnet'
-      ? DEFAULT_TESTNET_STAKING_POOLS_RAW
-      : DEFAULT_STAKING_POOLS_RAW;
+    stakingMode === 'mainnet'
+      ? DEFAULT_MAINNET_STAKING_POOLS_RAW
+      : stakingMode === 'testnet' || stakingMode === 'devnet'
+        ? DEFAULT_TESTNET_STAKING_POOLS_RAW
+        : DEFAULT_STAKING_POOLS_RAW;
   const source = raw === undefined ? fallback : raw;
   const trimmed = source.trim();
   if (!trimmed) {

@@ -11,6 +11,7 @@ import { isUnitKind } from '../../../units/mobility';
 import { cancelMove } from '../../../units/movement/orchestrator';
 import { entityFootprint, getBuildingFootprintTiles } from '../../construction/placement';
 import { noteDefendBuildingLost } from '../../bounty/defend';
+import { recordWarStructureDestroyed } from '../../diplomacy/parts/warBonds';
 import { resolveColonyIdStr } from '../../diplomacy/store';
 import { getBuildingJobs, saveBuildingJobs } from '../../economy/buildJob';
 import { getFootprintTileIndices } from '../../economy/buildingRows';
@@ -286,6 +287,12 @@ export function handleBuildingDestruction(
   const q = cols.q[row];
   const r = cols.r[row];
   const data = opts?.data ?? opts?.ctx?.data;
+  const attackerColony =
+    opts?.attackerOwner !== undefined
+      ? opts.attackerOwner
+      : opts?.attackerId !== undefined && rowOf(state.entities, opts.attackerId) >= 0
+        ? cols.owner[rowOf(state.entities, opts.attackerId)]
+        : undefined;
 
   const tileIndices = resolveEntityFootprintIndices(state, row, data);
   if (owner >= 0 && !isFaunaHiveKind(kind)) {
@@ -296,6 +303,14 @@ export function handleBuildingDestruction(
   }
   if (owner >= 0) {
     noteColonyBuildingDestroyedDuringRaid(state, owner, tick);
+    if (
+      !isFaunaHiveKind(kind) &&
+      typeof attackerColony === 'number' &&
+      attackerColony >= 0 &&
+      attackerColony !== owner
+    ) {
+      recordWarStructureDestroyed(state, attackerColony, owner, tick, opts?.ctx);
+    }
   }
 
   const jobs = getBuildingJobs(state);

@@ -2713,11 +2713,112 @@
       "summary": "Starts the 10-minute cancellation notice on an active truce and marks the canceller Oathbreaker for 24 h (`UO-DIP-04`, W18-01, W18-14).",
       "wave": "W18"
     },
+    "diplomacy.cancelWar": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "warId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "warId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Cancels an active 6-hour War Bond before objective completion, slashing 90% of the bond to the defender and 10% to TerraAgent Protocol.",
+      "wave": "W22"
+    },
+    "diplomacy.declareWar": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "bondAmount": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "default": "metals.t1",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "targetColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "targetColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "targetColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "toColony": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "bondAmount"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Locks a 6-hour War Bond in escrow for 2x raid siphon cap; refunded on war objective (>=1 structure destroyed or >=200 siphoned), otherwise slashed 90% to defender + 10% to TerraAgent Protocol.",
+      "wave": "W22"
+    },
     "diplomacy.proposeTruce": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "bondAmount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "durationHours": {
             "anyOf": [
               {
@@ -3760,6 +3861,8 @@
               "truce_cap",
               "unknown_offer",
               "unknown_truce",
+              "war_active",
+              "unknown_war",
               "already_posted",
               "invalid_target"
             ],
@@ -7995,6 +8098,8 @@
               "truce_cap",
               "unknown_offer",
               "unknown_truce",
+              "war_active",
+              "unknown_war",
               "already_posted",
               "invalid_target"
             ],
@@ -10421,6 +10526,15 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "bondAmount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "cancelledBy": {
             "anyOf": [
               {
@@ -10434,6 +10548,11 @@
                 "type": "string"
               }
             ]
+          },
+          "cancelledByColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "colonyA": {
             "anyOf": [
@@ -10454,6 +10573,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "colonyAIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "colonyB": {
             "anyOf": [
               {
@@ -10472,6 +10596,11 @@
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "colonyBIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "colonyId": {
             "type": "string"
@@ -10530,7 +10659,30 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "bondAmount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "cancelledBy": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
+          "cancelledByColony": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
@@ -10577,6 +10729,30 @@
             "minimum": 0,
             "type": "integer"
           },
+          "oathbreakerUntilTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "partnerColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "partnerColonyId": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
+          },
           "playerId": {
             "type": "string"
           },
@@ -10602,6 +10778,15 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "bondAmount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "colonyId": {
             "type": "string"
           },
@@ -10609,6 +10794,26 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "durationHours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
           },
           "expiresAtTick": {
             "maximum": 9007199254740991,
@@ -10633,6 +10838,11 @@
                 "type": "string"
               }
             ]
+          },
+          "fromColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "hours": {
             "anyOf": [
@@ -10685,6 +10895,11 @@
                 "type": "string"
               }
             ]
+          },
+          "toColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -10703,25 +10918,62 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "colonyA": {
-            "maximum": 9007199254740991,
+          "bondAmount": {
             "minimum": 0,
-            "type": "integer"
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyA": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
           },
           "colonyAId": {
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
           },
-          "colonyB": {
+          "colonyAIndex": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "colonyB": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
           },
           "colonyBId": {
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "colonyBIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "colonyId": {
             "type": "string"
@@ -10730,6 +10982,26 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "durationHours": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 6,
+                "type": "number"
+              },
+              {
+                "const": 24,
+                "type": "number"
+              },
+              {
+                "const": 72,
+                "type": "number"
+              }
+            ]
           },
           "expiresAtTick": {
             "maximum": 9007199254740991,
@@ -10765,6 +11037,11 @@
             "type": "string"
           },
           "signedAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "startedAtTick": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
@@ -11017,6 +11294,158 @@
       "severity": "info",
       "summary": "Emitted when a worker or combat unit completes production and spawns at its producer edge (W02-10, W02-17).",
       "wave": "W02"
+    },
+    "warDeclared": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "attackerColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "bondAmount": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "declaredAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "defenderColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "defenderColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expiresAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "warId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "warId",
+          "attackerColony",
+          "defenderColony",
+          "bondToken",
+          "bondAmount",
+          "declaredAtTick",
+          "expiresAtTick"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when an attacker colony locks a 6-hour War Bond in escrow against a target colony.",
+      "wave": "W22"
+    },
+    "warEnded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "attackerColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "bondAmount": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "bondToken": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "defenderColony": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "defenderColonyId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "endedAtTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "objective_met",
+              "cancelled",
+              "expired",
+              "eliminated"
+            ],
+            "type": "string"
+          },
+          "resourcesSiphoned": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "slashedToDefender": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "slashedToProtocol": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "structuresDestroyed": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "warId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "warId",
+          "attackerColony",
+          "defenderColony",
+          "bondToken",
+          "bondAmount",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a 6-hour War Bond resolves: 100% refunded on objective completion, or slashed 90% to defender + 10% to TerraAgent Protocol on early cancel or expiry.",
+      "wave": "W22"
     },
     "xp.levelUp": {
       "audience": "player",
@@ -11636,6 +12065,8 @@
                 "truce_cap",
                 "unknown_offer",
                 "unknown_truce",
+                "war_active",
+                "unknown_war",
                 "already_posted",
                 "invalid_target"
               ],

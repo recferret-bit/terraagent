@@ -19,10 +19,12 @@ import type { ChainReceipt } from '../../../domain/types.js';
 import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.js';
 import {
   computeAccruedRewardDelta,
+  computeSplitRewardDelta,
   GAME_DAY_MS,
   NEAR_TOKEN_ID,
   nearToYocto,
   ONE_NEAR_YOCTO,
+  PROTOCOL_STAKING_ACCOUNT_ID,
   UNBONDING_DURATION_MS,
   UNBONDING_GAME_DAYS,
   yoctoToNear,
@@ -130,6 +132,9 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
       await this.ensureAccount(tx, input.accountId, 'colony');
       const now = this.nowMs();
       const snap = await this.loadAndSettleRow(tx, input.accountId, pool.poolId, pool.apyBp, now);
+      if (snap.protocolYieldDelta > 0n) {
+        await this.credit(tx, PROTOCOL_STAKING_ACCOUNT_ID, NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
+      }
       const nextStaked = snap.staked + amountBig;
       await this.saveRow(tx, input.accountId, pool.poolId, {
         ...snap,
@@ -162,6 +167,9 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
           message: 'Insufficient staked NEAR to unstake.',
           details: { accountId: input.accountId, pool: pool.poolId, staked: snap.staked.toString(), requested: input.amount },
         });
+      }
+      if (snap.protocolYieldDelta > 0n) {
+        await this.credit(tx, PROTOCOL_STAKING_ACCOUNT_ID, NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
       }
       const nextStaked = snap.staked - amountBig;
       const nextUnbonding = snap.unbonding + amountBig;
@@ -201,6 +209,9 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
             unbondingReadyAtMs: snap.unbondingReadyAtMs,
           },
         });
+      }
+      if (snap.protocolYieldDelta > 0n) {
+        await this.credit(tx, PROTOCOL_STAKING_ACCOUNT_ID, NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
       }
       const payout = snap.withdrawable + snap.rewards;
       const recipient = input.toAccountId ?? input.accountId;
@@ -296,7 +307,8 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     let withdrawable = BigInt(row.withdrawable.toFixed());
     const baseRewards = BigInt(row.rewardsAccrued.toFixed());
     const elapsedMs = Math.max(0, nowMs - row.lastAccruedAt.getTime());
-    const rewards = baseRewards + computeAccruedRewardDelta(staked, apyBp, elapsedMs);
+    const split = computeSplitRewardDelta(staked, apyBp, elapsedMs);
+    const rewards = baseRewards + split.userReward;
 
     if (unbonding > 0n && unbondingReadyAtMs !== null && nowMs >= unbondingReadyAtMs) {
       withdrawable += unbonding;
@@ -304,7 +316,15 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
       unbondingReadyAtMs = null;
     }
 
-    return { staked, unbonding, unbondingReadyAtMs, withdrawable, rewards, lastAccruedAtMs: nowMs };
+    return {
+      staked,
+      unbonding,
+      unbondingReadyAtMs,
+      withdrawable,
+      rewards,
+      protocolYieldDelta: split.protocolYield,
+      lastAccruedAtMs: nowMs,
+    };
   }
 
   private async loadAndSettleRow(
@@ -324,6 +344,7 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
         unbondingReadyAtMs: null as number | null,
         withdrawable: 0n,
         rewards: 0n,
+        protocolYieldDelta: 0n,
         lastAccruedAtMs: nowMs,
       };
     }

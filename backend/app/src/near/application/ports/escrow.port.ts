@@ -4,9 +4,12 @@ import { AccountId, ChainReceipt, OpId, TokenAmount } from '../../domain/types.j
 /** Env binding `NEAR_ADAPTER_ESCROW` (mock | testnet | devnet | mainnet). The adapter is W22-17. */
 export const NEAR_ADAPTER_ESCROW = 'NEAR_ADAPTER_ESCROW';
 
-export const ESCROW_STATUSES = ['open', 'claimed', 'refunded'] as const;
+export const ESCROW_STATUSES = ['open', 'claimed', 'refunded', 'slashed'] as const;
 export const EscrowStatus = z.enum(ESCROW_STATUSES);
 export type EscrowStatus = z.infer<typeof EscrowStatus>;
+
+/** Default slash split: 10% (1,000 bp) to `TerraAgent Protocol`, 90% (9,000 bp) to betrayed partner / defender. */
+export const DEFAULT_ESCROW_SLASH_PROTOCOL_BP = 1_000;
 
 const EscrowId = z.string().min(1).max(80);
 const TokenId = z.string().min(1).max(64);
@@ -45,6 +48,15 @@ export const EscrowActionInput = z.strictObject({
 });
 export type EscrowActionInput = z.infer<typeof EscrowActionInput>;
 
+export const EscrowSlashInput = z.strictObject({
+  opId: OpId,
+  escrowId: EscrowId,
+  victimAccountId: AccountId,
+  protocolAccountId: AccountId,
+  protocolFeeBp: z.number().int().min(0).max(10_000).default(DEFAULT_ESCROW_SLASH_PROTOCOL_BP),
+});
+export type EscrowSlashInput = z.infer<typeof EscrowSlashInput>;
+
 /** Read. No `opId`: a get does not spend. */
 export const EscrowGetInput = z.strictObject({
   escrowId: EscrowId,
@@ -63,13 +75,14 @@ export const EscrowView = z.strictObject({
 export type EscrowView = z.infer<typeof EscrowView>;
 
 /**
- * Bounty escrow (`EscrowPort`, W00-30 + W22-02, NEAR-110..111).
- * `claim` is the operator call that pays the claimer the current hold. `refund` returns the opener
- * the whole hold, or `amount` when that is set (the unused part of a mercenary hire).
+ * Bounty, Peace Treaty & War Bond escrow (`EscrowPort`, W00-30 + W22-02, NEAR-110..111).
+ * `claim` pays the claimer the current hold; `refund` returns the opener all or `amount`;
+ * `slash` forfeits an open diplomacy/war bond `90%` to `victimAccountId` and `10%` to `protocolAccountId`.
  */
 export abstract class EscrowPort {
   abstract open(input: EscrowOpenInput): Promise<EscrowOpenResult>;
   abstract claim(input: EscrowActionInput): Promise<ChainReceipt>;
   abstract refund(input: EscrowActionInput): Promise<ChainReceipt>;
+  abstract slash(input: EscrowSlashInput): Promise<ChainReceipt>;
   abstract get(input: EscrowGetInput): Promise<EscrowView>;
 }

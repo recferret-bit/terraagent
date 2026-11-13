@@ -8,7 +8,7 @@ only thing that talks to a chain. `infrastructure/near-infrastructure.module.ts`
 
 | Port | Variable | Values |
 |---|---|---|
-| global switch | `NEAR_MODE` | `mock` \| `testnet` \| `devnet` \| `mainnet` — sets the default across all 11 NEAR ports (`testnet` binds all 11 ports to live Testnet contracts under `*.terraagent.testnet`: `res`, `deed`, `bounty`, `staking`, `dao`, `relayer`, `minter`, plus `intents.near`) |
+| global switch | `NEAR_MODE` | `mock` \| `testnet` \| `devnet` \| `mainnet` — sets the default across all 11 NEAR ports (`testnet` binds all 11 ports to live Testnet contracts under `*.terraagent.testnet`: `res`, `deed`, `bounty`, `staking`, `dao`, `pilots`, `relayer`, `minter`, plus `intents.near`; `mainnet` requires `NEAR_ALLOW_MAINNET=1`) |
 | each of the 11 NEAR ports | `NEAR_ADAPTER_<UPPER_SNAKE(port)>` e.g. `NEAR_ADAPTER_CHAIN_READ`, `NEAR_ADAPTER_BADGE_NFT` | overrides `NEAR_MODE`: `testnet` (`devnet` alias) or `mainnet`; anything else (unset, typo, `Mainnet`) is `mock` |
 | `LlmProviderPort` | `AI_PROVIDER` (+ `AI_LIVE`) | exactly `nearai` (NEAR AI Cloud TEE `z-ai/glm-5.3-flash`; authenticated players may also set a personal BYOK key + model on `/me` stored AES-256-GCM encrypted), else `mock`. Outside production `nearai` also needs `AI_LIVE=1` (else mock); in production `nearai` suffices |
 | `NotifierPort` | `NOTIFY_ADAPTER` | `live`, `webpush` or `telegram` -> live; anything else mock |

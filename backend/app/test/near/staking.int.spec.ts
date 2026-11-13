@@ -8,6 +8,7 @@ import {
   yoctoToNear,
 } from '../../src/near/infrastructure/adapters/mock/staking.adapter';
 import { nearAdapters } from '../../src/near/infrastructure/near-infrastructure.module';
+import { PROTOCOL_STAKING_ACCOUNT_ID } from '../../src/near/staking/yocto';
 
 let db: TestDatabase;
 const sleep = async () => undefined;
@@ -21,7 +22,7 @@ afterAll(async () => {
 });
 
 describe('W20-16 MockStakingAdapter on Postgres', () => {
-  it('registers MockStakingAdapter in nearAdapters and accrues ~0.074 NEAR after 30 game-days on 10 NEAR staked', async () => {
+  it('registers MockStakingAdapter in nearAdapters and splits 9% validator yield 80% user (~0.0592 NEAR) / 20% TerraAgent Protocol (~0.0148 NEAR) after 30 game-days', async () => {
     expect(
       nearAdapters.some((a) => a.port === StakingPort && a.kind === 'mock' && a.useClass === MockStakingAdapter),
     ).toBe(true);
@@ -42,7 +43,7 @@ describe('W20-16 MockStakingAdapter on Postgres', () => {
     adapter.advanceGameDays(30);
     const rew = await adapter.rewards({ accountId, pool });
     const nearRewards = Number(yoctoToNear(rew.accrued, 6));
-    expect(nearRewards).toBeCloseTo(0.074, 3);
+    expect(nearRewards).toBeCloseTo(0.0592, 3);
 
     await adapter.unstake({
       opId: 'pg-unstake:1',
@@ -50,6 +51,10 @@ describe('W20-16 MockStakingAdapter on Postgres', () => {
       pool,
       amount: nearToYocto(5),
     });
+    const protocolNear = Number(
+      yoctoToNear(await adapter.nearBalanceOf(PROTOCOL_STAKING_ACCOUNT_ID), 6),
+    );
+    expect(protocolNear).toBeCloseTo(0.0148, 3);
     adapter.advanceGameDays(2);
 
     const posReady = await adapter.position({ accountId, pool });

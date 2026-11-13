@@ -59,7 +59,7 @@
   .art-trade i:nth-child(3) { height: 62px; }
   .art-trade i:nth-child(4) { height: 98px; background: var(--ta-fault); }
   .art-trade i:nth-child(5) { height: 84px; }
-  .art-trade::after { content: "MOCK USDC · ORBITAL CARGO"; position: absolute; left: 20px; top: 14px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-steel); }
+  .art-trade::after { content: "USDC · NEAR · NEP-245 CARGO"; position: absolute; left: 20px; top: 14px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-steel); }
 
   .ref { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; margin-top: 20px; padding: 22px 28px; background: var(--ta-deep); border: 1px solid var(--ta-seam); }
   .ref .h3 { font-size: 20px; }
@@ -144,22 +144,22 @@
       </div>
     </article>
     <article class="door plate card-hover">
-      <a class="cover" href="/me.html?as=w12" target="_blank" rel="noopener noreferrer" aria-label="Open mocked pilot profile"></a>
+      <a class="cover" href="/me.html?as=w12" target="_blank" rel="noopener noreferrer" aria-label="Open pilot profile and AI settings"></a>
       <div class="door-body">
-        <div class="door-top"><span class="label c-blue">MOCK PILOT</span><span class="door-num">05</span></div>
+        <div class="door-top"><span class="label c-blue">PILOT · BYOK NEAR.AI</span><span class="door-num">05</span></div>
         <h2 class="h3">PILOT / ME</h2>
-        <p>Explore the W12 pilot's career, lifetime statistics, colonies and achievements in a new tab.</p>
+        <p>Pilot career, Colony Deeds, achievements, and custom BYOK NEAR.AI model settings (or stake ≥10 NEAR in-game for zero-setup Managed Autopilot).</p>
         <span class="path">/me.html?as=w12</span>
-        <a class="btn btn-primary btn-sm go" href="/me.html?as=w12" target="_blank" rel="noopener noreferrer">OPEN MOCK PILOT →</a>
+        <a class="btn btn-primary btn-sm go" href="/me.html?as=w12" target="_blank" rel="noopener noreferrer">OPEN PILOT PROFILE →</a>
       </div>
     </article>
     <article class="door plate card-hover">
       <a class="cover" href="/trade.html" aria-label="Open the trading page"></a>
       <div class="door-art art-trade" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
       <div class="door-body">
-        <div class="door-top"><span class="label c-blue">MOCK MARKET</span><span class="door-num">06</span></div>
+        <div class="door-top"><span class="label c-blue">NEAR EXCHANGE · NEP-413</span><span class="door-num">06</span></div>
         <h2 class="h3">Trade</h2>
-        <p>Order book, price board, order ticket, fills and bot keys for your orbital resources. All money is mock.</p>
+        <p>Planet order book, depth ladder, USDC/NEAR settlement, Trade Hub Stall Fees (0–1.0%), 50% staker fee discount, and scoped ta_bot_... keys.</p>
         <div class="quick">
           <a href="/trade.html?pair=bio.water/USDC">WATER / USDC</a>
           <a href="/trade.html?pair=metals.t1/USDC">METALS T1 / USDC</a>
@@ -169,6 +169,20 @@
         <a class="btn btn-primary btn-sm go" href="/trade.html">OPEN TRADING <span aria-hidden="true">→</span></a>
       </div>
     </article>
+  </section>
+
+  <section class="ref plate-sm" aria-label="Protocol Economics and Judge Pack">
+    <div>
+      <p class="label c-orange">JUDGES &amp; INVESTORS · TERRAAGENT PROTOCOL</p>
+      <h2 class="h3">How Players Earn · Day-1 Staking · Peace &amp; War Escrows</h2>
+      <p>4 player/bot income lanes, lossless ≥10 NEAR staking (7.2% net APY + Managed NEAR.AI + 50% fee discount), 90%/10% Peace &amp; 6h War Bond slashing, and protocol.terraagent.* treasury flows.</p>
+    </div>
+    <nav>
+      <a class="btn btn-primary btn-sm" href="/pitchdeck/">PITCH DECK</a>
+      <a class="btn btn-ghost btn-sm" href="/whitepaper/">WHITEPAPER</a>
+      <a class="btn btn-ghost btn-sm" href="/landing.html#economics">PROTOCOL ECONOMICS</a>
+      <a class="btn btn-ghost btn-sm" href="/v1/near/protocol">PROTOCOL JSON</a>
+    </nav>
   </section>
 
   <section class="ref plate-sm" aria-label="Dev tools">

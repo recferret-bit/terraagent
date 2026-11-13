@@ -230,8 +230,10 @@ describe('W18-32 checkDirectorActionPermission — target validation shield and 
     writeDiplomacyBlob(state, {
       nextOfferSeq: 1,
       nextTruceSeq: 2,
+      nextWarSeq: 1,
       offers: {},
       truces: { truce_0_1: truceRecord },
+      wars: {},
       oathbreakerUntilByColony: {},
       lastHostilityByPair: {},
       contactsByColony: {},

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TruceEndReasonSchema } from '../diplomacy';
+import { DiplomacyBondTokenSchema, TruceEndReasonSchema } from '../diplomacy';
 import { defineEvent } from './define';
 
 export const TruceEndedDataSchema = z.strictObject({
@@ -8,14 +8,19 @@ export const TruceEndedDataSchema = z.strictObject({
   colonyB: z.union([z.number().int().nonnegative(), z.string().min(1).max(64)]).optional(),
   colonyAId: z.string().min(1).max(64).optional(),
   colonyBId: z.string().min(1).max(64).optional(),
+  colonyAIndex: z.number().int().nonnegative().optional(),
+  colonyBIndex: z.number().int().nonnegative().optional(),
   colonyId: z.string().optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
   playerId: z.string().optional(),
   reason: TruceEndReasonSchema,
   cancelledBy: z.union([z.number().int().nonnegative(), z.string().min(1).max(64)]).optional(),
+  cancelledByColony: z.number().int().nonnegative().optional(),
   oathbreakerUntilTick: z.number().int().nonnegative().optional(),
   endedAtTick: z.number().int().nonnegative().optional(),
   count: z.number().int().positive().optional(),
+  bondToken: DiplomacyBondTokenSchema.optional(),
+  bondAmount: z.number().nonnegative().optional(),
 });
 export type TruceEndedData = z.infer<typeof TruceEndedDataSchema>;
 

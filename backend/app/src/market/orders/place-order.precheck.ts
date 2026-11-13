@@ -9,6 +9,7 @@ import { MarketOrderRepository } from '../book/market-order.repository.js';
 import { MarketColonies } from './market-colonies.js';
 import { OrderFunds, requirementOf } from './order-funds.js';
 import { MarketPolicyProvider } from './market-policy.provider.js';
+import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
 
 /**
  * Synchronous server precheck of `market.placeOrder` (W13-09): open-order limit and effective spend (free funds against the
@@ -44,9 +45,10 @@ export class PlaceOrderPrecheck implements OnModuleInit, OnModuleDestroy {
     const cfg = this.policy.current();
     const { colonyId, accountId } = await this.colonies.resolve(input.planetId, input.colony.colonyIndex, input.colony.id, input.playerId);
     if ((await this.repo.listOpenByColony(input.planetId, colonyId)).length >= cfg.openOrderLimit) return { code: 'order_limit', detail: `At most ${cfg.openOrderLimit} open orders.` };
+    const perks = await resolveDbStakerPerks(this.prisma, { colonyId, accountId, standardPlatformFeeBp: cfg.platformFeeBp });
     const need = requirementOf({
       side: a.side, base: a.resource, quote: a.price.token, amount: BigInt(a.amount), priceAmount: BigInt(a.price.amount),
-      platformFeeBp: cfg.platformFeeBp, maxStallFeeBp: a.maxStallFeeBp ?? cfg.stallFeeMaxBp,
+      platformFeeBp: perks.platformFeeBp, maxStallFeeBp: a.maxStallFeeBp ?? cfg.stallFeeMaxBp,
     });
     const view = await this.funds.view(accountId, need.token);
     const total = need.principal + need.fees;

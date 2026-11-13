@@ -2,6 +2,8 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import {
   cancelTruceHandler,
+  cancelWarHandler,
+  declareWarHandler,
   devOfferTruceHandler,
   proposeTruceHandler,
   respondTruceHandler,
@@ -26,7 +28,14 @@ export const diplomacy = defineSimModule({
   id: 'diplomacy',
   wave: 'W18',
   systems: [diplomacySystem],
-  handlers: [proposeTruceHandler, respondTruceHandler, cancelTruceHandler, devOfferTruceHandler],
+  handlers: [
+    proposeTruceHandler,
+    respondTruceHandler,
+    cancelTruceHandler,
+    declareWarHandler,
+    cancelWarHandler,
+    devOfferTruceHandler,
+  ],
 });
 
 export default diplomacy;

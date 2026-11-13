@@ -1,4 +1,4 @@
-import { formatAtomic, mockLabel, parsePairId, type BookLevel, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
+import { formatAtomic, parsePairId, type BookLevel, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
 import { TradeApiFailure, type TradeClient } from '../api/client';
 import { previewTicket, type TicketPreview } from '../model/preview';
 import { freeOf, type TradeState } from '../model/state';
@@ -18,7 +18,9 @@ export class OrderTicket {
   private side: OrderSide = 'sell';
   private busy = false;
   private readonly amount = h('input', { class: 'input', id: 'tk-amount', 'data-testid': 'ticket-amount', inputmode: 'numeric', autocomplete: 'off', placeholder: 'whole units', 'aria-describedby': 'tk-reason' });
+  private readonly unitPrice = h('input', { class: 'input', id: 'tk-unit-price', 'data-testid': 'ticket-unit-price', inputmode: 'decimal', autocomplete: 'off', placeholder: 'price per 1 unit (auto-syncs total)' });
   private readonly total = h('input', { class: 'input', id: 'tk-total', 'data-testid': 'ticket-total', inputmode: 'decimal', autocomplete: 'off', placeholder: 'total for the whole amount', 'aria-describedby': 'tk-reason' });
+  private readonly feeTier = h('div', { class: 'tr-fee-tier', 'data-testid': 'ticket-fee-tier' });
   private readonly ttl = h('select', { class: 'input', id: 'tk-ttl' });
   private readonly stall = h('input', { class: 'input', id: 'tk-stall', 'data-testid': 'ticket-stall', inputmode: 'decimal', autocomplete: 'off' });
   private readonly stallField = h('div', { class: 'field' });
@@ -37,15 +39,20 @@ export class OrderTicket {
     const mk = (s: OrderSide): HTMLButtonElement => h('button', { type: 'button', class: `tr-side tr-side-${s}`, 'data-side': s, 'data-testid': `ticket-side-${s}`, role: 'radio', onclick: () => this.setSide(s) }, s.toUpperCase());
     this.sideBtns = { buy: mk('buy'), sell: mk('sell') };
     for (const el of [this.amount, this.total, this.stall]) el.addEventListener('input', () => this.update());
+    this.unitPrice.addEventListener('input', () => this.syncTotalFromUnitPrice());
     this.ttl.addEventListener('change', () => this.update());
     this.place.addEventListener('click', () => { void this.submit(); });
     const suggest = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', id: 'tk-suggest', 'data-testid': 'ticket-suggest', title: 'Agent-assisted: asks the quote engine for a price and amount, only fills the form' }, 'SUGGEST');
     suggest.addEventListener('click', () => { void this.suggest(); });
-    this.stallField.append(h('label', { class: 'field-label', for: 'tk-stall' }, 'MAX STALL FEE (%)'), this.stall, h('span', { class: 'field-hint' }, 'Buy only: the most you accept the seller\'s hub to charge. Reserved up front.'));
+    this.stallField.append(h('label', { class: 'field-label', for: 'tk-stall' }, 'MAX STALL FEE (%)'), this.stall, h('span', { class: 'field-hint' }, 'Buy only: the most you accept the seller\'s Trade Hub to charge (0–1.00% paid to seller\'s Hub). Reserved up front.'));
     this.root = h('div', { class: 'tr-ticket' },
+      this.feeTier,
       h('div', { class: 'tr-sides', role: 'radiogroup', 'aria-label': 'Order side' }, this.sideBtns.buy, this.sideBtns.sell),
       h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-amount' }, 'AMOUNT (UNITS)'), this.amount),
-      h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-total' }, 'TOTAL PRICE (WHOLE ORDER)'), this.total, this.unit),
+      h('div', { class: 'tr-price-pair' },
+        h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-unit-price' }, 'UNIT PRICE (PER 1 UNIT)'), this.unitPrice),
+        h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-total' }, 'TOTAL ORDER PRICE'), this.total)),
+      this.unit,
       h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-ttl' }, 'EXPIRES IN'), this.ttl),
       this.stallField, this.aonToggle(), this.policyNote, this.preview, this.reason,
       h('div', { class: 'tr-row' }, this.place, suggest), h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-cost' }, 'SUGGEST: YOUR UNIT COST'), this.cost, h('span', { class: 'field-hint' }, 'What one unit costs you; the quote engine needs it to price an ask.')), this.suggestMsg, this.result);
@@ -108,8 +115,17 @@ export class OrderTicket {
       side: this.side, base: parsed.base, quote: q, amountText: this.amount.value, totalText: this.total.value, stallBp: this.stallBp(st), policy: st.policy,
       freeQuote: freeOf(st.balances, q), freeUnits: freeOf(st.balances, parsed.base), hasColony: st.balances !== null, busy: this.busy,
     });
+    if (document.activeElement !== this.unitPrice) {
+      this.unitPrice.value = pv.amount && pv.total ? fmtUnit({ num: pv.total.toString(), den: pv.amount }, q) : '';
+    }
+    const feeBp = st.policy?.platformFeeBp ?? 100;
+    const isStaker = feeBp <= 50;
+    this.feeTier.className = `tr-fee-tier ${isStaker ? 'is-staker' : ''}`;
+    this.feeTier.textContent = isStaker
+      ? `★ STAKER PERK ACTIVE: ${(feeBp / 100).toFixed(2)}% Platform Fee (50% Discount — ≥10 NEAR Staked)`
+      : `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥10 NEAR in Colony Staking for 0.50% Fee + Managed NEAR.AI)`;
     this.drawPreview(pv, q, parsed.base, st);
-    this.unit.textContent = pv.amount && pv.total ? `= ${fmtUnit({ num: pv.total.toString(), den: pv.amount }, q)} ${mockLabel(q)} per unit` : 'The price is the total for the whole amount, not per unit.';
+    this.unit.textContent = pv.amount && pv.total ? `= ${fmtUnit({ num: pv.total.toString(), den: pv.amount }, q)} ${q} per unit · Total ${formatAtomic(q, pv.total)} ${q} settled via NEP-413` : 'Type either Unit Price or Total Order Price — the other updates automatically.';
     this.reason.hidden = pv.blocked === null || this.busy;
     this.reason.textContent = pv.blocked ?? '';
     this.place.disabled = pv.blocked !== null;
@@ -118,13 +134,41 @@ export class OrderTicket {
     this.policyNote.textContent = `Orders are sent with the partial fill policy${lastPolicy ? ` (your last order: ${lastPolicy.replace(/_/g, ' ')})` : ''}.`;
   }
 
+  private syncTotalFromUnitPrice(): void {
+    const st = this.d.state();
+    const parsed = parsePairId(st.pair);
+    if (!parsed) return;
+    const units = Number(this.amount.value.trim());
+    const perUnit = tryParse(parsed.quote, this.unitPrice.value);
+    if (Number.isInteger(units) && units > 0 && perUnit !== null) {
+      this.total.value = formatAtomic(parsed.quote, perUnit * BigInt(units));
+    }
+    this.update();
+  }
+
   private drawPreview(pv: TicketPreview, q: Parameters<typeof fmtAmount>[0], base: string, st: TradeState): void {
     const row = (k: string, v: string, id: string): HTMLElement[] => [h('dt', {}, k), h('dd', { class: 'num', 'data-k': id, 'data-testid': `ticket-preview-${id}` }, v)];
     const money = (v: bigint | null): string => (v === null ? '-' : fmtAmount(q, v));
     const min = st.policy?.minNotional[q];
+    const unitStr = pv.amount && pv.total ? `${fmtUnit({ num: pv.total.toString(), den: pv.amount }, q)} ${q}` : '-';
+    const daoCut = pv.total === null ? null : (pv.platformFee * 2_000n) / 10_000n;
+    const protocolCut = pv.total === null ? null : pv.platformFee - (daoCut ?? 0n);
     const rows = this.side === 'buy'
-      ? [...row('NOTIONAL', money(pv.total), 'notional'), ...row('PLATFORM FEE', money(pv.total === null ? null : pv.platformFee), 'platform'), ...row('MAX STALL FEE', money(pv.total === null ? null : pv.stallFee), 'stall'), ...row('MAX SPEND (RESERVED)', money(pv.total === null ? null : pv.maxSpend), 'max')]
-      : [...row('YOU GIVE', pv.amount === null ? '-' : `${pv.amount} ${base}`, 'give'), ...row('YOU RECEIVE', money(pv.youReceive), 'receive'), ...row('FEES', 'paid by the buyer, none for you', 'fees')];
+      ? [
+          ...row('UNIT PRICE', unitStr, 'unit-price'),
+          ...row('SELLER PRINCIPAL', money(pv.total), 'notional'),
+          ...row('PLATFORM FEE', money(pv.total === null ? null : pv.platformFee), 'platform'),
+          ...row('↳ PLANET DAO (20%)', money(daoCut), 'split-dao'),
+          ...row('↳ TERRAAGENT PROTOCOL (80%)', money(protocolCut), 'split-protocol'),
+          ...row('MAX STALL OWNER FEE', money(pv.total === null ? null : pv.stallFee), 'stall'),
+          ...row('MAX SPEND (RESERVED)', money(pv.total === null ? null : pv.maxSpend), 'max'),
+        ]
+      : [
+          ...row('UNIT PRICE', unitStr, 'unit-price'),
+          ...row('YOU GIVE (NEP-245)', pv.amount === null ? '-' : `${pv.amount} ${base}`, 'give'),
+          ...row('YOU RECEIVE (100%)', money(pv.youReceive), 'receive'),
+          ...row('FEES', 'paid by the buyer, none for you (+ your Stall Fee on hub sales)', 'fees'),
+        ];
     if (min) rows.push(...row('MIN NOTIONAL', fmtAmount(q, min), 'min'));
     this.preview.replaceChildren(...rows);
   }

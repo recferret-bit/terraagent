@@ -40,7 +40,7 @@ import {
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { encodeBase58 } from '../../../keystore/base58.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
@@ -75,7 +75,7 @@ export class TestnetAgentWalletAdapter implements AgentWalletPort {
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
   ) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('AgentWallet', source)));
     this.prisma = databaseEnabled(env) && prisma ? prisma : null;
   }
 
@@ -330,3 +330,4 @@ function keyRef(accountId: string, publicKey: string): string {
 }
 
 export const adapter = adapterOf({ port: AgentWalletPort, kind: 'testnet', useClass: TestnetAgentWalletAdapter });
+export const mainnetAdapter = adapterOf({ port: AgentWalletPort, kind: 'mainnet', useClass: TestnetAgentWalletAdapter });

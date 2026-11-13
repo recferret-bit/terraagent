@@ -13,6 +13,7 @@ import { TradeError } from './trade-error.js';
 import { OrderFunds } from '../orders/order-funds.js';
 import { TradeOrdersService } from './trade-orders.service.js';
 import { TradeRequestRepository } from './trade-request.repository.js';
+import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
 
 type Ratio = { readonly num: bigint; readonly den: bigint };
 const ratioOf = (t: string | undefined): Ratio | null => {
@@ -64,6 +65,12 @@ export class TradeAgentService {
     const budgetLeft = await this.budgetLeft(p, colony.colonyId);
     const res = views[q.resource];
     const inventory = res.cargo + res.verifier;
+    const baseCfg = this.policy.current();
+    const perks = await resolveDbStakerPerks(this.prisma, {
+      colonyId: colony.colonyId,
+      accountId: colony.accountId,
+      standardPlatformFeeBp: baseCfg.platformFeeBp,
+    });
     const input: AgentColonyInput = {
       resource: q.resource, quote: q.quote as MarketTokenKey,
       need: { planned: BigInt(q.planned), reserve: BigInt(q.reserve), available: BigInt(q.available), expectedOwn: BigInt(q.expectedOwn) },
@@ -71,7 +78,7 @@ export class TradeAgentService {
       reference: { price: row?.vwap ? { num: BigInt(row.vwap.num), den: BigInt(row.vwap.den) } : null, ageS, eligibleVolume: row?.eligibleVolume ?? null, basis: 'organic' },
       walkAway: { localUnitCost: ratioOf(q.localUnitCost), localMinutesPerUnit: ratioOf(q.localMinutesPerUnit), minuteValue: ratioOf(q.minuteValue), needValue: ratioOf(q.needValue) },
       ownUnitCost: ratioOf(q.ownUnitCost), transportPerUnit: ratioOf(q.transportPerUnit), freeQuote: views[q.quote as MarketTokenKey].free, budgetLeft,
-      platformFeeBp: this.policy.current().platformFeeBp, maxStallFeeBp: this.policy.current().stallFeeMaxBp, lotUnits: pair.lotUnits, minNotionalAtomic: BigInt(pair.minNotionalAtomic),
+      platformFeeBp: perks.platformFeeBp, maxStallFeeBp: baseCfg.stallFeeMaxBp, lotUnits: pair.lotUnits, minNotionalAtomic: BigInt(pair.minNotionalAtomic),
     };
     const quotes = quoteColony(input, await this.agentParams());
     const side = (s: SideQuote | null) => (s ? { order: { planetId, ...toPlaceOrderArgs(s, q.resource, q.ttlS) } as never, maxSpend: s.maxSpend.toString() } : null);

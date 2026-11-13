@@ -48,6 +48,7 @@ export class TradePage {
   private readonly busy = new Set<string>();
   private attempt = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly netBadge = h('span', { class: 'tr-badge tr-badge-info', 'data-testid': 'trade-near-mode' }, 'NEAR SETTLEMENT');
 
   constructor(private readonly root: HTMLElement, private readonly client: TradeClient, private readonly who: string, start: PageStart) {
     this.store = new Store(initialState(start.planetId, start.pair));
@@ -76,6 +77,7 @@ export class TradePage {
   async mount(): Promise<void> {
     clear(this.root);
     this.root.append(this.shell());
+    void this.loadNearModeBadge();
     this.pickers.setPlanets(await this.client.devPlanets());
     this.openStream();
     setInterval(() => this.tick(), 5000);
@@ -116,14 +118,44 @@ export class TradePage {
     });
     return h('div', { class: 'tr-page' },
       h('header', { class: 'tr-top' },
-        h('div', { class: 'tr-brand' }, h('a', { href: '/', class: 'tr-back' }, 'TERRA', h('b', {}, 'AGENT')), h('h1', { class: 'tr-title' }, 'TRADE')),
-        h('nav', { class: 'tr-links', 'aria-label': 'Related pages' }, h('a', { href: '/play.html' }, 'Game'), h('a', { href: '/me.html' }, 'Profile'), h('a', { href: '/dev/chain/' }, 'Chain explorer')),
+        h('div', { class: 'tr-brand' }, h('a', { href: '/', class: 'tr-back' }, 'TERRA', h('b', {}, 'AGENT')), h('h1', { class: 'tr-title' }, 'TRADE'), this.netBadge),
+        h('nav', { class: 'tr-links', 'aria-label': 'Related pages' }, h('a', { href: '/play.html' }, 'Game'), h('a', { href: '/me.html' }, 'Profile'), h('a', { href: '/pitchdeck/' }, 'Pitch Deck'), h('a', { href: '/whitepaper/' }, 'Whitepaper'), h('a', { href: '/dev/chain/' }, 'Chain explorer')),
         this.pickers.root),
-      h('p', { class: 'tr-banner' }, 'MOCK MARKET (F2): every USDC and NEAR amount here is mock money; resources are your in-orbit cargo only. Prices are the TOTAL for the whole order.'),
+      this.onboardingStrip(),
       h('main', { class: 'tr-grid', id: 'tr-main' },
         h('div', { class: 'tr-col tr-col-a' }, this.p.ladder.root, this.p.board.root),
         h('div', { class: 'tr-col tr-col-b' }, this.p.ticket.root, this.p.balances.root)),
       h('section', { class: 'tr-lower', id: 'tr-lower', 'aria-label': 'Orders, fills and keys' }, tabs, ...panes));
+  }
+
+  private onboardingStrip(): HTMLElement {
+    const step = (n: string, title: string, desc: string): HTMLElement =>
+      h('div', { class: 'tr-step' }, h('span', { class: 'tr-step-num' }, n), h('div', {}, h('strong', {}, title), h('span', {}, desc)));
+    return h('section', { class: 'tr-banner tr-onboard', 'aria-label': 'How trading and real-money settlement work' },
+      step('01', 'MINE SURFACE BIOME', 'Extract abundant metals, minerals, or bio in your colony.'),
+      step('02', 'EXPORT NEP-245 CARGO', 'Ship stock to orbit at your Trade Hub (gasless via NEP-366).'),
+      step('03', 'EARN USDC / NEAR', 'Sell cargo via NEP-413 Intents, collect 0–1.0% Stall Fees, or stake ≥10 NEAR for 50% lower platform fees (0.50%).'));
+  }
+
+  private async loadNearModeBadge(): Promise<void> {
+    try {
+      const f = this.client.fetchFn();
+      const res = await f('/v1/near/status', { headers: { accept: 'application/json' } });
+      if (!res.ok) return;
+      const body = (await res.json()) as { nearMode?: string; ports?: Array<{ port: string; adapter: string }>; protocolAccount?: string };
+      const intentsAdapter = body.ports?.find((p) => p.port === 'Intents')?.adapter ?? body.nearMode ?? 'mock';
+      if (intentsAdapter === 'mainnet') {
+        this.netBadge.textContent = 'NEAR MAINNET · NEP-413 INTENTS';
+        this.netBadge.className = 'tr-badge tr-badge-ok';
+      } else if (intentsAdapter === 'testnet' || intentsAdapter === 'devnet') {
+        this.netBadge.textContent = 'NEAR TESTNET · NEP-413 INTENTS';
+        this.netBadge.className = 'tr-badge tr-badge-ok';
+      } else {
+        this.netBadge.textContent = 'LOCAL SIM · NEP-413 INTENTS';
+        this.netBadge.className = 'tr-badge tr-badge-warn';
+      }
+      if (body.protocolAccount) this.netBadge.title = `TerraAgent Protocol treasury: ${body.protocolAccount}`;
+    } catch { /* non-blocking */ }
   }
 
   private tabKey(e: KeyboardEvent, id: TabId): void {

@@ -65,7 +65,8 @@
     "deploy:infra": "node scripts/sites/deploy.mjs infra",
     "deploy:frontend": "node scripts/sites/deploy.mjs frontend",
     "deploy:backend": "node scripts/sites/deploy.mjs backend",
-    "deploy:chain": "node scripts/sites/deploy.mjs chain"
+    "deploy:chain": "node scripts/sites/deploy.mjs chain",
+    "near:deploy-contracts": "node scripts/dev/deploy-testnet-contracts.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

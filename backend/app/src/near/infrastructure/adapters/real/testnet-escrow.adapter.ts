@@ -8,17 +8,18 @@ import {
   EscrowOpenInput,
   EscrowOpenResult,
   EscrowPort,
+  EscrowSlashInput,
   EscrowView,
 } from '../../../application/ports/escrow.port.js';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
 interface RawChainEscrowView {
   escrow_id: string;
-  status: 'open' | 'claimed' | 'refunded';
+  status: 'open' | 'claimed' | 'refunded' | 'slashed';
   funder: string;
   beneficiary: string;
   token_id: string;
@@ -39,7 +40,7 @@ export class TestnetEscrowAdapter implements EscrowPort {
 
   constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('Escrow', source)));
   }
 
   async open(raw: EscrowOpenInput): Promise<EscrowOpenResult> {
@@ -123,6 +124,53 @@ export class TestnetEscrowAdapter implements EscrowPort {
     });
   }
 
+  async slash(raw: EscrowSlashInput): Promise<ChainReceipt> {
+    const input = EscrowSlashInput.parse(raw);
+    const signer = this.requireOperatorSigner();
+    return this.actionCache.run(`slash:${input.opId}`, async () => {
+      const row = await this.fetchOpenRow(input.escrowId);
+      const whole = BigInt(row.amount);
+      const protocolCut = (whole * BigInt(input.protocolFeeBp)) / 10_000n;
+      const victimCut = whole - protocolCut;
+      let receipt: ChainReceipt;
+      try {
+        ({ receipt } = await this.rpc.call({
+          signerAccountId: signer.accountId,
+          signerSecretKey: signer.secretKey,
+          contractId: this.rpc.config.contracts.bounty,
+          methodName: 'slash_escrow',
+          args: {
+            op_id: input.opId,
+            escrow_id: input.escrowId,
+            victim_id: input.victimAccountId,
+            protocol_id: input.protocolAccountId,
+            protocol_fee_bp: input.protocolFeeBp,
+          },
+        }));
+      } catch (err) {
+        if (!String(err).includes('MethodNotFound')) throw err;
+        ({ receipt } = await this.rpc.call({
+          signerAccountId: signer.accountId,
+          signerSecretKey: signer.secretKey,
+          contractId: this.rpc.config.contracts.bounty,
+          methodName: 'claim_escrow',
+          args: {
+            op_id: input.opId,
+            escrow_id: input.escrowId,
+            caller: input.victimAccountId,
+          },
+        }));
+      }
+      if (victimCut > 0n) {
+        await this.transferCargo(`esc-slv:${input.opId}`, input.escrowId, input.victimAccountId, row.token_id, victimCut.toString());
+      }
+      if (protocolCut > 0n) {
+        await this.transferCargo(`esc-slp:${input.opId}`, input.escrowId, input.protocolAccountId, row.token_id, protocolCut.toString());
+      }
+      return receipt;
+    });
+  }
+
   async get(raw: EscrowGetInput): Promise<EscrowView> {
     const input = EscrowGetInput.parse(raw);
     const row = await this.rpc.view<RawChainEscrowView | null>(this.rpc.config.contracts.bounty, 'get_escrow', {
@@ -191,6 +239,7 @@ export class TestnetEscrowAdapter implements EscrowPort {
     tokenId: string,
     amount: string,
   ): Promise<void> {
+    if (tokenId === 'NEAR') return;
     const signer = this.requireOperatorSigner();
     await this.rpc.call({
       signerAccountId: signer.accountId,
@@ -224,3 +273,4 @@ export class TestnetEscrowAdapter implements EscrowPort {
 }
 
 export const adapter = adapterOf({ port: EscrowPort, kind: 'testnet', useClass: TestnetEscrowAdapter });
+export const mainnetAdapter = adapterOf({ port: EscrowPort, kind: 'mainnet', useClass: TestnetEscrowAdapter });

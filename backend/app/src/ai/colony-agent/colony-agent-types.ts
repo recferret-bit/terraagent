@@ -26,6 +26,7 @@ export const AgentDirectiveSchema = z.object({
     'propose_truce',
     'respond_truce',
     'declare_war',
+    'cancel_war',
     'raid',
     'trade',
     'accept_guild_offer',
@@ -38,6 +39,8 @@ export const AgentDirectiveSchema = z.object({
   offerId: z.string().min(1).optional(),
   accept: z.boolean().optional(),
   durationHours: z.union([z.literal(2), z.literal(6), z.literal(12), z.literal(24), z.literal(72)]).optional(),
+  bondToken: z.string().optional(),
+  bondAmount: z.number().nonnegative().optional(),
   tradeSide: z.enum(['buy', 'sell']).optional(),
   tradePair: z.string().optional(),
   tradeAmount: z.number().int().positive().optional(),
@@ -141,7 +144,11 @@ export function observeColony(state: PlanetState, colonyIndex: number): ColonyOb
   const warDiplomacyAllowed = Boolean(meta?.allowWarDiplomacy || resolveColonyAwayRaids(state, colonyIndex));
   const dip = readDiplomacyBlob(state);
   const pending = Object.values(dip.offers).find(
-    (o) => o.status === 'pending' && o.toColonyIndex === colonyIndex && o.expiresAtTick > state.meta.tick,
+    (o) =>
+      o.status === 'pending' &&
+      o.toColonyIndex === colonyIndex &&
+      o.expiresAtTick > state.meta.tick &&
+      !(o.bondAmount && o.bondAmount > 0 && o.bondToken === 'NEAR'),
   );
   let unshieldedTargetIndex: number | null = null;
   let truceCandidateIndex: number | null = null;
@@ -279,7 +286,15 @@ export function validateAgentGuardrails(
   usage: AllowanceUsage = { outstandingOrders: 0, committedToday: 0n, reference: null },
 ): string | null {
   if (directive.action === 'cancel_truce') return 'AW-13_CANCEL_TRUCE_FORBIDDEN';
+  if (directive.action === 'cancel_war') return 'AW-13_CANCEL_WAR_FORBIDDEN';
   if (directive.action === 'stake') return 'D-18_STAKING_FORBIDDEN';
+  if (
+    directive.bondAmount !== undefined &&
+    directive.bondAmount > 0 &&
+    (directive.bondToken === undefined || directive.bondToken === 'NEAR')
+  ) {
+    return 'AW-13_NEAR_BOND_FORBIDDEN';
+  }
   const isWarAction =
     directive.action === 'declare_war' ||
     directive.action === 'raid' ||

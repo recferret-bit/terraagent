@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { ColonyTargetIdSchema, TruceDurationHoursSchema } from '../diplomacy';
+import {
+  ColonyTargetIdSchema,
+  DiplomacyBondTokenSchema,
+  TruceDurationHoursSchema,
+} from '../diplomacy';
 import { defineEvent } from './define';
 
 export const TruceOfferedDataSchema = z.strictObject({
@@ -8,12 +12,17 @@ export const TruceOfferedDataSchema = z.strictObject({
   toColony: z.number().int().nonnegative().optional(),
   fromColonyId: ColonyTargetIdSchema.optional(),
   toColonyId: ColonyTargetIdSchema.optional(),
+  fromColonyIndex: z.number().int().nonnegative().optional(),
+  toColonyIndex: z.number().int().nonnegative().optional(),
   colonyId: z.string().optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
   playerId: z.string().optional(),
   hours: TruceDurationHoursSchema,
+  durationHours: TruceDurationHoursSchema.optional(),
   offeredAtTick: z.number().int().nonnegative().optional(),
   expiresAtTick: z.number().int().nonnegative().optional(),
+  bondToken: DiplomacyBondTokenSchema.optional(),
+  bondAmount: z.number().nonnegative().optional(),
 });
 export type TruceOfferedData = z.infer<typeof TruceOfferedDataSchema>;
 

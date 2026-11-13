@@ -30,6 +30,7 @@ import { MarketPolicyProvider } from './market-policy.provider.js';
 import { MarketSimGateway, type SimTarget } from './market-sim-gateway.js';
 import { OrderFunds, requirementOf, type FundsView, type Requirement } from './order-funds.js';
 import { orderDraft, orderIdOf, stallCap } from './parts/place-draft.js';
+import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
 
 export { orderIdOf };
 
@@ -253,8 +254,14 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     actorKind?: ActorKind,
     blocked?: 'autotrade_limit',
   ): Promise<PlaceOrderResult> {
-    const cfg = this.policy.current();
+    const baseCfg = this.policy.current();
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-funds:${accountId}`}, 0))`;
+    const perks = await resolveDbStakerPerks(tx, {
+      colonyId: d.colonyId,
+      accountId,
+      standardPlatformFeeBp: baseCfg.platformFeeBp,
+    });
+    const cfg = perks.active ? { ...baseCfg, platformFeeBp: perks.platformFeeBp } : baseCfg;
     const claimed =
       (await tx.nearColonyAccount.findUnique({ where: { accountId }, select: { claimedAt: true } }))?.claimedAt != null;
     const maxStall = stallCap(d, cfg);

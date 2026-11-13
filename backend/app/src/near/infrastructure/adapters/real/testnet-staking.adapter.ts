@@ -16,7 +16,7 @@ import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.js';
 import { GAME_DAY_MS } from '../../../staking/yocto.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
@@ -42,7 +42,7 @@ export class TestnetStakingAdapter implements StakingPort {
 
   constructor(@Optional() @Inject(APP_ENV) private readonly env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('Staking', source)));
   }
 
   advanceGameDays(days: number): void {
@@ -71,7 +71,7 @@ export class TestnetStakingAdapter implements StakingPort {
     const bag = this.env as Record<string, string | undefined> | undefined;
     return parseStakingPoolsConfig(bag?.NEAR_STAKING_POOLS ?? process.env.NEAR_STAKING_POOLS, {
       ...(bag ?? process.env),
-      NEAR_ADAPTER_STAKING: 'testnet',
+      NEAR_ADAPTER_STAKING: this.rpc.network,
     });
   }
 
@@ -199,3 +199,4 @@ export class TestnetStakingAdapter implements StakingPort {
 }
 
 export const adapter = adapterOf({ port: StakingPort, kind: 'testnet', useClass: TestnetStakingAdapter });
+export const mainnetAdapter = adapterOf({ port: StakingPort, kind: 'mainnet', useClass: TestnetStakingAdapter });

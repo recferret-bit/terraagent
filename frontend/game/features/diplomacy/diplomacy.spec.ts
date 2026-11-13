@@ -313,3 +313,49 @@ describe('Diplomacy HUD mounting and wave gating', () => {
     expect(names).toContain('dev.offerTruce');
   });
 });
+
+describe('DiplomacyPanel bonded treaties and 6h war escrows', () => {
+  let restoreDom: () => void;
+  beforeEach(() => {
+    restoreDom = installMockDocument();
+  });
+  afterEach(() => {
+    restoreDom?.();
+  });
+
+  it('supports proposing a 5 NEAR bonded treaty and declaring/cancelling a 6h bonded war', () => {
+    const onProposeTruce = vi.fn();
+    const onDeclareWar = vi.fn();
+    const onCancelWar = vi.fn();
+    const host = document.createElement('div');
+    const panel = createDiplomacyPanel(host, {
+      ownColonyIndex: 0,
+      warsEnabled: true,
+      actions: { onProposeTruce, onDeclareWar, onCancelWar },
+    });
+
+    panel.update({
+      tick: 100,
+      colonies: [{ index: 0, diplomacy: { contacts: [1] } }],
+    });
+
+    host.querySelector<HTMLButtonElement>('[data-testid="truce-bond-chip-5_near"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="propose-truce"]')?.click();
+    expect(onProposeTruce).toHaveBeenCalledWith(1, 6, { bondToken: 'NEAR', bondAmount: 5 });
+
+    host.querySelector<HTMLButtonElement>('[data-action="declare-war"]')?.click();
+    expect(onDeclareWar).toHaveBeenCalledWith(1, { bondToken: 'NEAR', bondAmount: 5 });
+
+    panel.ingestSimEvents([
+      {
+        kind: 'warDeclared',
+        data: { warId: 'war_9', attackerColony: 0, defenderColony: 1, bondToken: 'NEAR', bondAmount: 5, expiresAtTick: 108_100 },
+      },
+    ]);
+    expect(host.querySelector<HTMLElement>('[data-testid="diplomacy-war-badge"]')).not.toBeNull();
+    host.querySelector<HTMLButtonElement>('[data-action="cancel-war"]')?.click();
+    expect(onCancelWar).toHaveBeenCalledWith('war_9');
+
+    panel.dispose();
+  });
+});

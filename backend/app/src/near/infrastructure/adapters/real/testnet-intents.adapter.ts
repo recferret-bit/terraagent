@@ -21,16 +21,25 @@ import { kekEnv } from '../../../identity/colony-accounts.js';
 import { checkBatchStatic, hasDuplicateNonce } from '../../../intents/intent-checks.js';
 import { signTokenDiffPayload } from '../../../intents/nep413-token-diff.js';
 import { decodeBase58, ed25519PrivateKeyFromSeed, encodeBase58, KeyStore, loadKekRing } from '../../../keystore/index.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
-import { NearRpcClient } from '../../rpc/near-rpc.client.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { NearRpcClient, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
 import { MockIntentsAdapter } from '../mock/intents.adapter.js';
+import {
+  buildMainnetSaltNonce,
+  depositToMainnetIntents,
+  executeMainnetIntents,
+  normalizeMainnetDeltas,
+  simulateMainnetIntents,
+  withdrawFromMainnetIntents,
+} from './mainnet-intents-rpc.js';
+import { OpReceiptCache } from './op-receipt-cache.js';
 
 /**
- * Real NEAR Testnet `IntentsPort` (`W23-22..W23-25`):
- * - Signs canonical NEP-413 `token_diff` payloads (`intents.near`) using KEK-sealed custodial keys or configured testnet keys.
- * - Validates static NEP-413 signatures, zero-sum legs, and deadlines via `checkBatchStatic` (`contract:real --port Intents`).
- * - Settles testnet colony market swaps via Postgres ledger + real `res.<root>.testnet` cargo verification when DB is active
- *   (since `intents.near` verifier lives on NEAR mainnet while testnet uses ourNEP-413 + 1Click `dry: true` solver bridge).
+ * Real NEAR `IntentsPort` (`W23-22..W23-25`, Hybrid Testnet / Live Mainnet `intents.near`):
+ * - **Testnet (`NEAR_MODE=testnet`):** Signs canonical NEP-413 `token_diff` payloads with KEK-sealed keys,
+ *   validates via `checkBatchStatic`, syncs cargo from `res.<root>.testnet`, and settles via Postgres ledger + 1Click `dry: true` quotes.
+ * - **Mainnet (`NEAR_MODE=mainnet`):** Fetches 4-byte `current_salt` nonces, registers signer keys (`add_public_key`),
+ *   deposits via `mt_transfer_call` / `ft_transfer_call`, simulates via `simulate_intents`, and settles via `execute_intents` on `intents.near`.
  */
 @Injectable()
 export class TestnetIntentsAdapter implements IntentsPort {
@@ -38,6 +47,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
   private readonly envSource: Record<string, string | undefined>;
   private readonly prisma: PrismaClient | null;
   private readonly delegate: MockIntentsAdapter | null;
+  private readonly txCache = new OpReceiptCache<ChainReceipt>();
   private readonly ephemeralSigners = new Map<string, { publicKey: string; seed: Buffer }>();
   private keyStore: KeyStore | null = null;
 
@@ -46,18 +56,20 @@ export class TestnetIntentsAdapter implements IntentsPort {
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
   ) {
     this.envSource = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(this.envSource, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(this.envSource, resolveActiveNearNetwork('Intents', this.envSource)));
     this.prisma = databaseEnabled(env) ? (prisma ?? null) : null;
     this.delegate = this.prisma ? new MockIntentsAdapter(this.prisma, undefined, undefined, env) : null;
   }
 
   async signTokenDiff(input: SignTokenDiffInput): Promise<SignedIntent> {
     const signer = await this.resolveSignerKey(input.accountId);
-    const nonce = input.nonce ?? randomBytes(32).toString('base64');
+    const isMainnet = this.rpc.network === 'mainnet';
+    const nonce = input.nonce ?? (isMainnet ? await buildMainnetSaltNonce(this.rpc) : randomBytes(32).toString('base64'));
+    const deltas = isMainnet ? normalizeMainnetDeltas(input.deltas, this.rpc.config) : input.deltas;
     return signTokenDiffPayload(
       ed25519PrivateKeyFromSeed(signer.seed),
       signer.publicKey,
-      { accountId: input.accountId, deltas: input.deltas },
+      { accountId: input.accountId, deltas },
       input.deadlineMs,
       nonce,
     );
@@ -71,6 +83,9 @@ export class TestnetIntentsAdapter implements IntentsPort {
     });
     if (staticErr) return { ok: false, errorCode: staticErr, effects };
     if (hasDuplicateNonce(intents)) return { ok: false, errorCode: 'NEAR_INTENT_NONCE_REUSED', effects };
+    if (this.rpc.network === 'mainnet') {
+      return simulateMainnetIntents(this.rpc, intents);
+    }
     if (this.delegate && this.prisma) {
       const sim = await this.delegate.simulate(intents);
       if (!sim.ok && sim.errorCode !== 'NEAR_INTENT_BAD_SIGNATURE') return sim;
@@ -79,6 +94,16 @@ export class TestnetIntentsAdapter implements IntentsPort {
   }
 
   async deposit(input: IntentsDepositInput): Promise<ChainReceipt> {
+    if (this.rpc.network === 'mainnet') {
+      return this.txCache.run(`dep:${input.opId}`, async () => {
+        const signer = await this.resolveSignerKey(input.accountId);
+        return depositToMainnetIntents(this.rpc, {
+          input,
+          signerSecretKey: seedToNearSecretKey(signer.seed),
+          signerPublicKey: signer.publicKey,
+        });
+      });
+    }
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents deposit requires DB ledger' });
     await this.syncOnChainCargoForDeposit(input);
     const r = await this.delegate.deposit(input);
@@ -120,12 +145,26 @@ export class TestnetIntentsAdapter implements IntentsPort {
   }
 
   async withdraw(input: IntentsWithdrawInput): Promise<ChainReceipt> {
+    if (this.rpc.network === 'mainnet') {
+      return this.txCache.run(`wd:${input.opId}`, async () => {
+        const signer = await this.resolveSignerKey(input.accountId);
+        return withdrawFromMainnetIntents(this.rpc, {
+          input,
+          privateKey: ed25519PrivateKeyFromSeed(signer.seed),
+          publicKey: signer.publicKey,
+          fallbackSignerSecretKey: seedToNearSecretKey(signer.seed),
+        });
+      });
+    }
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents withdraw requires DB ledger' });
     const r = await this.delegate.withdraw(input);
     return this.asTestnetReceipt(r);
   }
 
   async execute(input: IntentsExecuteInput): Promise<ChainReceipt> {
+    if (this.rpc.network === 'mainnet') {
+      return this.txCache.run(`exec:${input.opId}`, () => executeMainnetIntents(this.rpc, input.intents));
+    }
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents execute requires DB ledger' });
     const r = await this.delegate.execute(input);
     return this.asTestnetReceipt(r);
@@ -149,13 +188,18 @@ export class TestnetIntentsAdapter implements IntentsPort {
         // Fall back if rate-limited during rapid market ticks
       }
     }
-    return { ...mockReceipt, network: 'testnet', txHash: mockReceipt.txHash.replace(/^mock:/, '') };
+    return { ...mockReceipt, network: this.rpc.network, txHash: mockReceipt.txHash.replace(/^mock:/, '') };
   }
 
   private async resolveSignerKey(accountId: string): Promise<{ publicKey: string; seed: Buffer }> {
     if (this.prisma?.nearColonyAccount) {
       const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId } });
       if (row) {
+        if (row.encryptedSecret === 'claimed') {
+          throw new NearException('NEAR_NOT_OWNER', {
+            message: `Account ${accountId} is claimed to self-custody; sign intents with your wallet`,
+          });
+        }
         return { publicKey: row.publicKey, seed: this.keys().open(row) };
       }
     }
@@ -199,3 +243,4 @@ export class TestnetIntentsAdapter implements IntentsPort {
 }
 
 export const adapter = adapterOf({ port: IntentsPort, kind: 'testnet', useClass: TestnetIntentsAdapter });
+export const mainnetAdapter = adapterOf({ port: IntentsPort, kind: 'mainnet', useClass: TestnetIntentsAdapter });

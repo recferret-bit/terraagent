@@ -36,6 +36,7 @@ export function mountDiplomacyHud(
   }
 
   el.hidden = false;
+  const warsEnabled = ctx.flags.has('W22');
   const actions: DiplomacyPanelActions = {
     onRespondTruce(offerId: string, accept: boolean) {
       sendCommandToHost(ctx, 'diplomacy.respondTruce', { offerId, accept });
@@ -43,13 +44,28 @@ export function mountDiplomacyHud(
     onCancelTruce(truceId: string) {
       sendCommandToHost(ctx, 'diplomacy.cancelTruce', { truceId });
     },
-    onProposeTruce(targetColonyId: string | number, hours: TruceDurationHours) {
-      sendCommandToHost(ctx, 'diplomacy.proposeTruce', { targetColonyId, hours });
+    onProposeTruce(targetColonyId: string | number, hours: TruceDurationHours, bond) {
+      sendCommandToHost(ctx, 'diplomacy.proposeTruce', {
+        targetColonyId,
+        hours,
+        ...(bond ? { bondToken: bond.bondToken, bondAmount: bond.bondAmount } : {}),
+      });
+    },
+    onDeclareWar(targetColonyId, bond) {
+      sendCommandToHost(ctx, 'diplomacy.declareWar', {
+        targetColonyId,
+        bondToken: bond.bondToken,
+        bondAmount: bond.bondAmount,
+      });
+    },
+    onCancelWar(warId) {
+      sendCommandToHost(ctx, 'diplomacy.cancelWar', { warId });
     },
   };
 
   const panel = createDiplomacyPanel(el, {
     actions,
+    warsEnabled,
     ownColonyIndex: ownColonyIndex(ctx.services),
     getOwnColonyIndex: () => ownColonyIndex(ctx.services),
   });

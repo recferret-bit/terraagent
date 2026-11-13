@@ -67,6 +67,8 @@ export const MarketPolicyView = z.object({
   policyVersion: z.string().min(1),
   policyHash: z.string().min(1),
   platformFeeBp: z.number().int().min(0).max(10_000),
+  standardPlatformFeeBp: z.number().int().min(0).max(10_000).optional(),
+  stakerDiscountActive: z.boolean().optional(),
   stallFeeMaxBp: z.number().int().min(0).max(10_000),
   stallFeeDefaultBp: z.number().int().min(0).max(10_000),
   ttlOptionsS: z.array(z.number().int().positive()),

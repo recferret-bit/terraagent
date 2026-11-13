@@ -32,6 +32,8 @@ export interface AuthStore {
   findPlayerById(id: string): Promise<PlayerRecord | null>;
   /** Throws {@link UniqueViolation} when the handle or device secret is taken. */
   createPlayer(input: { id: string; handle: string; deviceSecretHash: string | null }): Promise<PlayerRecord>;
+  /** Updates a player's handle; throws {@link UniqueViolation} (`'handle'`) when taken by another player. */
+  updatePlayerHandle(id: string, handle: string): Promise<PlayerRecord>;
   createSession(input: { id: string; playerId: string; refreshTokenHash: string; expiresAt: Date }): Promise<AuthSessionRecord>;
   findSessionByTokenHash(refreshTokenHash: string): Promise<AuthSessionRecord | null>;
   /** Atomic: revokes the session only when it is not revoked yet; true when this call revoked it. */
@@ -66,6 +68,18 @@ export class MemoryAuthStore implements AuthStore {
     const record: PlayerRecord = { ...input, createdAt: now, updatedAt: now };
     this.playersById.set(record.id, record);
     return record;
+  }
+
+  async updatePlayerHandle(id: string, handle: string): Promise<PlayerRecord> {
+    const existing = this.playersById.get(id);
+    if (!existing) throw new Error(`player not found: ${id}`);
+    if (existing.handle === handle) return existing;
+    if ([...this.playersById.values()].some((p) => p.id !== id && p.handle === handle)) {
+      throw new UniqueViolation('handle');
+    }
+    const updated: PlayerRecord = { ...existing, handle, updatedAt: new Date() };
+    this.playersById.set(id, updated);
+    return updated;
   }
 
   async createSession(input: { id: string; playerId: string; refreshTokenHash: string; expiresAt: Date }): Promise<AuthSessionRecord> {

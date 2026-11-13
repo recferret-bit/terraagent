@@ -25,6 +25,27 @@ export const ColonyTargetIdSchema = z.union([
 ]);
 export type ColonyTargetId = z.infer<typeof ColonyTargetIdSchema>;
 
+export const DiplomacyBondTokenSchema = z.string().min(1).max(64);
+export type DiplomacyBondToken = z.infer<typeof DiplomacyBondTokenSchema>;
+
+export const WAR_BOND_DURATION_HOURS = 6;
+export const WAR_OBJECTIVE_STRUCTURES = 1;
+export const WAR_OBJECTIVE_SIPHON = 200;
+
+export const WarStatusSchema = z.enum([
+  'active',
+  'won',
+  'slashed',
+  'completed',
+  'cancelled',
+  'expired',
+  'eliminated',
+]);
+export type WarStatus = z.infer<typeof WarStatusSchema>;
+
+export const WarEndReasonSchema = z.enum(['objective_met', 'cancelled', 'expired', 'eliminated']);
+export type WarEndReason = z.infer<typeof WarEndReasonSchema>;
+
 export const TruceOfferSchema = z.strictObject({
   offerId: z.string().min(1).max(64),
   fromColony: z.number().int().nonnegative(),
@@ -35,6 +56,8 @@ export const TruceOfferSchema = z.strictObject({
   offeredAtTick: z.number().int().nonnegative(),
   expiresAtTick: z.number().int().nonnegative(),
   status: TruceOfferStatusSchema.optional(),
+  bondToken: DiplomacyBondTokenSchema.optional(),
+  bondAmount: z.number().nonnegative().optional(),
 });
 export type TruceOffer = z.infer<typeof TruceOfferSchema>;
 
@@ -50,14 +73,37 @@ export const TruceStateSchema = z.strictObject({
   status: TruceStatusSchema,
   noticeEndsAtTick: z.number().int().nonnegative().optional(),
   cancelledBy: z.number().int().nonnegative().optional(),
+  bondToken: DiplomacyBondTokenSchema.optional(),
+  bondAmount: z.number().nonnegative().optional(),
 });
 export type TruceState = z.infer<typeof TruceStateSchema>;
 export const TruceRecordSchema = TruceStateSchema;
 export type TruceRecord = TruceState;
 
+export const WarStateSchema = z.strictObject({
+  warId: z.string().min(1).max(64),
+  attackerColony: z.number().int().nonnegative(),
+  defenderColony: z.number().int().nonnegative(),
+  attackerColonyId: z.string().min(1).max(64).optional(),
+  defenderColonyId: z.string().min(1).max(64).optional(),
+  bondToken: DiplomacyBondTokenSchema,
+  bondAmount: z.number().positive(),
+  declaredAtTick: z.number().int().nonnegative(),
+  expiresAtTick: z.number().int().nonnegative(),
+  structuresDestroyed: z.number().int().nonnegative(),
+  resourcesSiphoned: z.number().nonnegative(),
+  status: WarStatusSchema,
+  endReason: WarEndReasonSchema.optional(),
+  endedAtTick: z.number().int().nonnegative().optional(),
+});
+export type WarState = z.infer<typeof WarStateSchema>;
+export const WarRecordSchema = WarStateSchema;
+export type WarRecord = WarState;
+
 export const DiplomacyStateSchema = z.strictObject({
   offers: z.array(TruceOfferSchema),
   truces: z.array(TruceStateSchema),
+  wars: z.array(WarStateSchema).optional(),
   oathbreakerUntilByColony: z.record(z.string(), z.number().int().nonnegative()).optional(),
   lastHostilityAtByPair: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });

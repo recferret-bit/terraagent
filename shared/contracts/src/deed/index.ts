@@ -181,6 +181,20 @@ export const WithdrawRequestSchema = z.strictObject({
 });
 export type WithdrawRequest = z.infer<typeof WithdrawRequestSchema>;
 
+export const StakerPerksInfo = z.strictObject({
+  active: z.boolean(),
+  minStakeNear: z.string(),
+  totalStakedNear: z.string(),
+  grossApyBp: z.number().int().nonnegative(),
+  netApyBp: z.number().int().nonnegative(),
+  protocolYieldShareBp: z.number().int().nonnegative(),
+  platformFeeBp: z.number().int().nonnegative(),
+  standardPlatformFeeBp: z.number().int().nonnegative(),
+  managedAutopilotUnlocked: z.boolean(),
+  protocolAccountId: z.string().min(2).max(64),
+});
+export type StakerPerksInfo = z.infer<typeof StakerPerksInfo>;
+
 export const StakingStatusResponse = z.strictObject({
   colonyId: z.string().min(1),
   accountId: z.string().min(2).max(64),
@@ -191,6 +205,7 @@ export const StakingStatusResponse = z.strictObject({
   claimedByAccountId: z.string().nullable(),
   pools: z.array(StakingPoolInfo),
   positions: z.array(StakingPositionDto),
+  perks: StakerPerksInfo.optional(),
 });
 export type StakingStatusResponse = z.infer<typeof StakingStatusResponse>;
 

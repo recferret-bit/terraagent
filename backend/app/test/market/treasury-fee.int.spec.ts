@@ -38,7 +38,7 @@ beforeAll(async () => {
   dao = app.get(TreasuryDaoPort);
   fees = app.get(TreasuryFeeService);
   intents = app.get(IntentsPort) as unknown as MockIntentsAdapter;
-  await intents.testRegisterSigner('platform.terraagent.mock');
+  await intents.testRegisterSigner('protocol.terraagent.mock');
 });
 afterAll(async () => { await app?.close(); await db?.drop(); });
 
@@ -97,5 +97,39 @@ describe('W22-07 treasury fee deposit', () => {
     await fees.depositSettled({ tradeId: t.tradeId, planetId: t.planetId, quote: 'USDC', treasuryFee: trade.treasuryAllocation.toFixed() });
     expect(await db.prisma.mockChainDao.findUnique({ where: { id: daoId } })).toBeNull();
     expect((await db.prisma.intentTrade.findUniqueOrThrow({ where: { tradeId: t.tradeId } })).state).toBe('FINAL');
+  });
+
+  it('halves platformFee from 1.00% (100,000) to 0.50% (50,000) when buyer stakes >= 10 NEAR, splitting 80% Protocol (40,000) / 20% DAO (10,000)', async () => {
+    const planetId = `tf${++n}`;
+    const seller = `s${n}`;
+    const buyer = `b${n}`;
+    await dao.createDao({ opId: `dao-create:${planetId}`, name: planetId, councilAccountIds: [acct(seller)] });
+    for (const c of [seller, buyer]) await intents.testRegisterSigner(acct(c));
+    await intents.testSeedVerifier(acct(seller), WATER, toChainUnits('bio.water', 1n));
+    await intents.testSeedVerifier(acct(buyer), USDC, 20_000_000n);
+    await db.prisma.stakingPosition.create({
+      data: {
+        colonyId: buyer,
+        accountId: acct(buyer),
+        poolId: 'astro-stakers.pool.mock',
+        stakedSnapshot: '10000000000000000000000000',
+        unbondingSnapshot: '0',
+        rewardsSnapshot: '0',
+      },
+    });
+    const event = (colony: string, over: Record<string, unknown>): PlanetEventOf<'marketOrderRequested'> => ({
+      planetId, tick: 1, kind: 'marketOrderRequested', severity: 'info', colonyIds: [colony],
+      data: { ref: marketOrderRef(colony, ++seq), orderSeq: seq, colonyId: colony, colonyIndex: colony.startsWith('s') ? 0 : 1, resource: 'bio.water', amount: 1, ttlS: 3600, stallFeeBp: 100, hubEntityId: 3, ...over },
+    } as unknown as PlanetEventOf<'marketOrderRequested'>);
+    await place.handle(event(seller, { side: 'sell', price: { token: 'USDC', amount: '10000000' } }));
+    await place.handle(event(buyer, { side: 'buy', price: { token: 'USDC', amount: '10000000' }, maxStallFeeBp: 100 }));
+    const trade0 = await db.prisma.intentTrade.findFirstOrThrow({ where: { planetId } });
+    expect([trade0.platformFee.toFixed(), trade0.treasuryAllocation.toFixed()]).toEqual(['50000', '10000']);
+    const protocolBefore = await usdc('protocol.terraagent.mock');
+    expect(await relay.pollOnce()).toBeGreaterThan(0);
+    const protocolAfter = await usdc('protocol.terraagent.mock');
+    expect(protocolAfter - protocolBefore).toBe(40_000n);
+    expect(await usdc(daoAccountIdFor(planetId))).toBe(10_000n);
+    expect(await usdc(acct(buyer))).toBe(9_850_000n);
   });
 });

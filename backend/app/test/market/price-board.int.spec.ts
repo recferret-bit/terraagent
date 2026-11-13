@@ -36,7 +36,7 @@ async function finalTrade(planetId: string, o: { organic: boolean; buyer: string
   const row: NewIntentTrade = {
     tradeId: `tr_board_${n}`, planetId, pair: 'bio.water/USDC', base: 'bio.water', quote: 'USDC', makerOrderId: `mo${n}`, takerOrderId: `to${n}`,
     makerSide: 'sell', buyerColonyId: o.buyer, sellerColonyId: o.seller, buyerAccountId: `${o.buyer}.mock`, sellerAccountId: `${o.seller}.mock`,
-    stallColonyId: o.seller, stallAccountId: `${o.seller}.mock`, platformAccountId: 'platform.terraagent.mock', amount, notional: amount * (o.price ?? 400_000n),
+    stallColonyId: o.seller, stallAccountId: `${o.seller}.mock`, platformAccountId: 'protocol.terraagent.mock', amount, notional: amount * (o.price ?? 400_000n),
     platformFee: 0n, stallFee: 0n, treasuryAllocation: 0n, platformFeeBp: 100, stallFeeBp: 100, policyVersion: 'bootstrap-1', policyHash: 'sha256:x',
     legs: [], batchHash: `h${n}`, buyerActorKind: o.kind ?? 'player', sellerActorKind: o.kind ?? 'player', organic: o.organic,
   };

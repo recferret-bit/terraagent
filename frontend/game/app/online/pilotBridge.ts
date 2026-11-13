@@ -1,4 +1,7 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
+import { authenticateFastAuthEmailPopup } from '../../../design/pilot/fastAuthSpa';
+import { decodeNep413SocialToken, extractAuthApiErrorMessage } from '../../../design/pilot/nearAuthApi';
+import { signOutNearWalletSelector } from '../../../design/pilot/walletSelectorRuntime';
 import type { BootAuthResult, FetchLike } from './bootOnline';
 import type { GuestBootTarget } from './guestBoot';
 import { createRelayWatch, type RelayWatch } from './relayWatch';
@@ -60,18 +63,28 @@ export class PilotBridge {
     this.emit();
   }
 
-  async loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email', token: string): Promise<void> {
+  async loginSocial(provider: 'google' | 'x' | 'fastauth' | 'email' | 'near-wallet', token: string): Promise<void> {
+    let resolvedToken = token;
+    if (provider === 'email' && token.includes('@') && !token.includes(':') && token.split('.').length !== 3) {
+      resolvedToken = (await authenticateFastAuthEmailPopup({ email: token })).idToken;
+    }
     const accessToken = this.view().accessToken || this.deps.sessionToken?.() || '';
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     const doFetch: FetchLike = this.deps.fetch ?? ((input, init) => fetch(input, init));
-    const res = await doFetch('/v1/auth/social', {
+    const nep413 = decodeNep413SocialToken(resolvedToken);
+    const endpoint = nep413 ? '/v1/auth/near/verify' : '/v1/auth/social';
+    const res = await doFetch(endpoint, {
       method: 'POST',
       headers,
       credentials: 'include',
-      body: JSON.stringify({ provider, token }),
+      body: JSON.stringify(nep413 ?? { provider, token: resolvedToken }),
     });
-    if (!res.ok) throw new Error(`POST /v1/auth/social: ${res.status}`);
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null);
+      const detail = extractAuthApiErrorMessage(errBody, '');
+      throw new Error(`POST ${endpoint}: ${res.status}${detail ? ` — ${detail}` : ''}`);
+    }
     const parsed = SocialAuthResponseSchema.safeParse(await res.json());
     if (!parsed.success) throw new Error('POST /v1/auth/social: unexpected answer');
     const body = parsed.data;
@@ -115,6 +128,7 @@ export class PilotBridge {
 
   async logout(): Promise<void> {
     const doFetch: FetchLike = this.deps.fetch ?? ((input, init) => fetch(input, init));
+    void signOutNearWalletSelector().catch(() => undefined);
     try {
       await doFetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
     } catch {
@@ -124,6 +138,11 @@ export class PilotBridge {
       const ls = (globalThis as unknown as { localStorage?: Storage }).localStorage;
       ls?.removeItem('ta_active_pilot');
       ls?.removeItem('ta_trade_token');
+      ls?.removeItem('ta_oauth_callback');
+      ls?.removeItem('ta_oauth_error');
+      ls?.removeItem('ta_pkce_state');
+      ls?.removeItem('ta_nep413_pending');
+      ls?.removeItem('ta_nep413_popup_result');
     } catch {
       /* ignore */
     }

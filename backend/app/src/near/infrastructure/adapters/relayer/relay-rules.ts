@@ -4,7 +4,7 @@ import { NearException } from '../../../domain/errors';
 import { AccountId, OpId } from '../../../domain/types';
 import { mockTxHashFor } from '../../mock/tx-hash';
 
-const CONTRACT_PREFIXES = ['res.', 'deed.', 'bounty.'] as const;
+const CONTRACT_PREFIXES = ['res.', 'deed.', 'bounty.', 'dao.', 'pilots.', 'staking.'] as const;
 const DAO_NAME = /^[a-z0-9][a-z0-9-]{0,40}$/;
 
 /** Shape of `RelayerPort.submitMetaTx`. Invalid input is `VALIDATION_ERROR`, never a relay code. */
@@ -31,13 +31,13 @@ function prefixedContract(receiverId: string): boolean {
   });
 }
 
-/** `{name}.sputnik-dao.near` or `{name}.sputnik-dao.mock`. */
+/** `{name}.sputnik-dao.near`, `{name}.sputnik-dao.testnet`, or `{name}.sputnik-dao.mock`. */
 function planetDao(receiverId: string): boolean {
   const dot = receiverId.indexOf('.');
   if (dot < 1) return false;
   const name = receiverId.slice(0, dot);
   const rest = receiverId.slice(dot + 1);
-  return DAO_NAME.test(name) && (rest === 'sputnik-dao.near' || rest === 'sputnik-dao.mock');
+  return DAO_NAME.test(name) && (rest === 'sputnik-dao.near' || rest === 'sputnik-dao.testnet' || rest === 'sputnik-dao.mock');
 }
 
 /** Cost-control allow-list (NEAR §4). Checked before any database call. */

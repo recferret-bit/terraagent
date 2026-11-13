@@ -146,6 +146,16 @@ export {
   command as cancelTruce,
   type CancelTruceArgs,
 } from './commands/diplomacy-cancel-truce';
+export {
+  DeclareWarArgsSchema,
+  command as declareWar,
+  type DeclareWarArgs,
+} from './commands/diplomacy-declare-war';
+export {
+  CancelWarArgsSchema,
+  command as cancelWar,
+  type CancelWarArgs,
+} from './commands/diplomacy-cancel-war';
 export { DevKillHqArgsSchema, command as devKillHq, type DevKillHqArgs } from './commands/dev-kill-hq';
 export { DevKillHubArgsSchema, command as devKillHub, type DevKillHubArgs } from './commands/dev-kill-hub';
 export { DevSetShieldArgsSchema, command as devSetShield, type DevSetShieldArgs } from './commands/dev-set-shield';
@@ -154,6 +164,8 @@ export { TruceOfferedDataSchema, event as truceOffered, type TruceOfferedData } 
 export { TruceSignedDataSchema, event as truceSigned, type TruceSignedData } from './events/truce-signed';
 export { TruceNoticeDataSchema, event as truceNotice, type TruceNoticeData } from './events/truce-notice';
 export { TruceEndedDataSchema, event as truceEnded, type TruceEndedData } from './events/truce-ended';
+export { WarDeclaredDataSchema, event as warDeclared, type WarDeclaredData } from './events/war-declared';
+export { WarEndedDataSchema, event as warEnded, type WarEndedData } from './events/war-ended';
 export * from './treasury';
 export { command as systemTreasuryEffect } from './commands/system-treasury-effect';
 export { TreasuryProposalCreatedDataSchema, event as treasuryProposalCreated } from './events/treasury-proposal-created';

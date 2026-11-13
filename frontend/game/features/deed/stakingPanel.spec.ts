@@ -67,8 +67,8 @@ function fakeSigner(decision: 'approve' | 'reject'): () => OpenSignerModalHandle
   };
 }
 
-describe('W20-21 StakingPanel gating & signer rejection (unit)', () => {
-  it('hides staking controls until deed is settled, shows explicit Real NEAR copy, and prompts account claim before staking', async () => {
+describe('W20-21 StakingPanel Day-1 availability & signer rejection (unit)', () => {
+  it('shows staking controls from Day 1 (even before settled), renders Real NEAR + perks copy, and prompts account claim before staking', async () => {
     const parent = document.createElement('div');
     const ctx: FeatureContext = {
       flags: new Set(['W20']),
@@ -78,9 +78,11 @@ describe('W20-21 StakingPanel gating & signer rejection (unit)', () => {
     const panel = new StakingPanel(parent, ctx, { openSigner: fakeSigner('approve') });
 
     panel.syncDeed(makeDeed(false, false));
-    expect(panel.lockedBannerEl.hidden).toBe(false);
-    expect(panel.controlsWrapEl.hidden).toBe(true);
+    expect(panel.lockedBannerEl.hidden).toBe(true);
+    expect(panel.controlsWrapEl.hidden).toBe(false);
     expect(panel.copyEl.textContent).toBe(REAL_NEAR_COPY);
+    expect(panel.perksBannerEl.textContent).toContain('Stake >= 10 NEAR from Day 1');
+    expect(panel.root.dataset.perksActive).toBe('false');
 
     panel.syncDeed(makeDeed(true, false));
     expect(panel.lockedBannerEl.hidden).toBe(true);

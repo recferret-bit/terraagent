@@ -5,6 +5,7 @@ use serde_json::json;
 const GAME_DAY_MS: u64 = 86_400_000;
 const UNBONDING_DURATION_MS: u64 = 2 * GAME_DAY_MS;
 const YEAR_MS: u128 = 365 * (GAME_DAY_MS as u128);
+const PROTOCOL_YIELD_SHARE_BP: u128 = 2_000; // 20% of validator yield -> protocol.<owner_id>, 80% -> staker (7.2% net APY)
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -68,13 +69,21 @@ fn compute_accrued_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> u
     (staked / den) * factor + ((staked % den) * factor) / den
 }
 
-fn project_record(record: &StakingRecord, apy_bp: u32, now_ms: u64) -> StakingRecord {
+/// Splits gross accrued validator yield into `(staker_reward_80pct, protocol_yield_20pct)`.
+fn compute_split_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> (u128, u128) {
+    let gross = compute_accrued_reward_delta(staked, apy_bp, elapsed_ms);
+    let protocol_cut = (gross * PROTOCOL_YIELD_SHARE_BP) / 10_000u128;
+    (gross.saturating_sub(protocol_cut), protocol_cut)
+}
+
+fn project_record(record: &StakingRecord, apy_bp: u32, now_ms: u64) -> (StakingRecord, u128) {
     let mut next = record.clone();
+    let mut protocol_cut = 0u128;
     if next.last_accrued_at_ms > 0 && now_ms > next.last_accrued_at_ms {
         let elapsed = now_ms - next.last_accrued_at_ms;
-        next.rewards = next
-            .rewards
-            .saturating_add(compute_accrued_reward_delta(next.staked, apy_bp, elapsed));
+        let (user_reward, cut) = compute_split_reward_delta(next.staked, apy_bp, elapsed);
+        next.rewards = next.rewards.saturating_add(user_reward);
+        protocol_cut = cut;
     }
     if next.unbonding > 0 {
         if let Some(ready_at) = next.unbonding_ready_at_ms {
@@ -86,7 +95,7 @@ fn project_record(record: &StakingRecord, apy_bp: u32, now_ms: u64) -> StakingRe
         }
     }
     next.last_accrued_at_ms = now_ms;
-    next
+    (next, protocol_cut)
 }
 
 fn to_view(account_id: &str, pool_id: &str, rec: &StakingRecord) -> StakingPositionView {
@@ -161,6 +170,19 @@ impl StakingVaultContract {
         self.balances.get(&account_id).copied().unwrap_or(0).to_string()
     }
 
+    fn credit_protocol_yield(&mut self, cut: u128) {
+        if cut == 0 {
+            return;
+        }
+        let protocol_id = format!("protocol.{}", self.owner_id);
+        let cur = self.balances.get(&protocol_id).copied().unwrap_or(0);
+        self.balances.insert(protocol_id, cur.saturating_add(cut));
+    }
+
+    pub fn get_protocol_account(&self) -> String {
+        format!("protocol.{}", self.owner_id)
+    }
+
     /// Stakes `amount` yoctoNEAR from `payer_id` (or `account_id`) into `pool_id`. Idempotent by `op_id`.
     pub fn stake(
         &mut self,
@@ -190,7 +212,8 @@ impl StakingVaultContract {
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let mut next = project_record(&existing, apy_bp, now_ms);
+        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms);
+        self.credit_protocol_yield(protocol_cut);
         next.staked = next.staked.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(key, next.clone());
 
@@ -223,11 +246,12 @@ impl StakingVaultContract {
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let mut next = project_record(&existing, apy_bp, now_ms);
+        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms);
         require!(
             next.staked >= unstake_val,
             "STAKE_INSUFFICIENT_BALANCE: insufficient staked NEAR"
         );
+        self.credit_protocol_yield(protocol_cut);
         next.staked -= unstake_val;
         next.unbonding = next.unbonding.saturating_add(unstake_val);
         next.unbonding_ready_at_ms = Some(now_ms.saturating_add(UNBONDING_DURATION_MS));
@@ -260,11 +284,12 @@ impl StakingVaultContract {
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let mut next = project_record(&existing, apy_bp, now_ms);
+        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms);
         require!(
             next.withdrawable > 0,
             "STAKE_INSUFFICIENT_BALANCE: no withdrawable NEAR available"
         );
+        self.credit_protocol_yield(protocol_cut);
         let payout = next.withdrawable.saturating_add(next.rewards);
         let recipient = recipient_id.unwrap_or_else(|| account_id.clone());
         let cur_rec = self.balances.get(&recipient).copied().unwrap_or(0);
@@ -298,7 +323,7 @@ impl StakingVaultContract {
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
         let projected = if self.positions.contains_key(&key) {
-            project_record(&existing, apy_bp, now_ms)
+            project_record(&existing, apy_bp, now_ms).0
         } else {
             existing
         };
@@ -397,6 +422,12 @@ mod tests {
         );
         assert!(w.withdrawn.parse::<u128>().unwrap() > four_near.parse::<u128>().unwrap());
         assert!(contract.get_near_balance("col1.testnet".into()).parse::<u128>().unwrap() > 0);
+        // TerraAgent Protocol receives 20% of validator yield in `protocol.<owner_id>`.
+        let protocol_bal = contract
+            .get_near_balance("protocol.terraagent.testnet".into())
+            .parse::<u128>()
+            .unwrap();
+        assert!(protocol_bal > 0);
     }
 
     #[test]

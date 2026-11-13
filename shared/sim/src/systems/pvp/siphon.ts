@@ -12,7 +12,8 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { footprintAttackRange } from '../combat/approachBand';
 import { getEntityFootprintSize } from '../combat/vision';
-import { hasActiveTruce, recordHostilityBetween } from '../diplomacy/store';
+import { recordWarSiphonProgress } from '../diplomacy/parts/warBonds';
+import { hasActiveTruce, hasActiveWar, recordHostilityBetween } from '../diplomacy/store';
 import {
   consumeResource,
   creditResource,
@@ -150,6 +151,7 @@ function siphonFromBuildingForUnit(
   dt: number,
   tick: number,
   data?: CompiledDataLike,
+  ctx?: StepContext,
 ): boolean {
   const cols = state.entities.cols;
   const unitId = cols.id[unitRow]!;
@@ -158,6 +160,8 @@ function siphonFromBuildingForUnit(
   const colA = ensureColonyAt(state, attackerIdx, tick);
   const colB = ensureColonyAt(state, victimIdx, tick);
   const cfg = resolvePvpConfig(data);
+  const warActive = hasActiveWar(state, attackerIdx, victimIdx, tick);
+  const effectiveCarryCap = warActive ? cfg.siphonCarryCap * 2 : cfg.siphonCarryCap;
   const rateAmount = cfg.siphonRatePerTick * Math.max(1, dt);
 
   ensureColonyPvpRecord(state, attackerIdx, tick, data);
@@ -167,12 +171,13 @@ function siphonFromBuildingForUnit(
   const unitCarried: Partial<Record<string, number>> = byUnit[unitId] ? { ...byUnit[unitId] } : {};
 
   let transferredAny = false;
+  let totalTaken = 0;
   for (const key of RESOURCE_KEYS) {
     const bAvail = resourceValue(colB, key);
     if (bAvail <= 1e-9) continue;
 
     const alreadyCarried = Number(unitCarried[key] ?? 0);
-    const carryRoom = Math.max(0, cfg.siphonCarryCap - alreadyCarried);
+    const carryRoom = Math.max(0, effectiveCarryCap - alreadyCarried);
     if (carryRoom <= 1e-9) continue;
 
     const family = RESOURCE_FAMILY_OF[key];
@@ -187,6 +192,7 @@ function siphonFromBuildingForUnit(
 
     creditResource(colA, key, taken, tick, { produced: false, reason: 'production.tick' });
     unitCarried[key] = Math.round((alreadyCarried + taken) * 1_000_000) / 1_000_000;
+    totalTaken += taken;
     transferredAny = true;
   }
 
@@ -197,6 +203,9 @@ function siphonFromBuildingForUnit(
     savePvpState(state, pvpState, tick);
     dropColonyShield(state, attackerIdx, tick, data);
     recordHostilityBetween(state, attackerIdx, victimIdx, tick);
+    if (warActive && totalTaken > 0) {
+      recordWarSiphonProgress(state, attackerIdx, victimIdx, totalTaken, tick, ctx);
+    }
   }
   return transferredAny;
 }
@@ -205,8 +214,8 @@ function siphonFromBuildingForUnit(
  * Steps PvP resource siphoning (`W18-05`, `UO-W-08`, `DI-16`, SIM §7.7):
  * - Each living combat unit (`Recon`) parked within `siphonRangeTiles` (`1` tile from footprint edge)
  *   of a foreign `supplyDepot` or `commandHub` siphons `1 unit/s` (`0.2/tick`) of each `ResourceKey`
- *   the victim colony holds, up to `siphonCarryCap` (`40`) per unit and clamped by the attacker's
- *   family storage caps (`colA.caps[family]`).
+ *   the victim colony holds, up to `siphonCarryCap` (`40`, or `80` during an active 6h Bonded War) per unit
+ *   and clamped by the attacker's family storage caps (`colA.caps[family]`).
  */
 export function stepRaidSiphon(state: PlanetState, ctx: StepContext): void {
   if (!ctx.flags.has('W18') || !isW18PvpActive(ctx.data)) return;
@@ -216,6 +225,6 @@ export function stepRaidSiphon(state: PlanetState, ctx: StepContext): void {
     if (!isRaidCombatUnitRow(state, row, ctx.data)) continue;
     const bRow = findForeignSiphonBuildingInRange(state, row, ctx.tick, ctx.data);
     if (bRow < 0) continue;
-    siphonFromBuildingForUnit(state, row, bRow, ctx.dt, ctx.tick, ctx.data);
+    siphonFromBuildingForUnit(state, row, bRow, ctx.dt, ctx.tick, ctx.data, ctx);
   }
 }

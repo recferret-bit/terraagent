@@ -95,11 +95,11 @@ describe('W20-21 StakingPanel end-to-end client <-> server HTTP integration', ()
     const staked = StakingActionResponse.parse(await stakeRes.json());
     expect(staked.position.staked).toBe('10');
 
-    // Warp 1 day (86400s) -> rewards ~ 0.00246 NEAR
+    // Warp 1 day (86400s) -> net user rewards ~ 0.00197 NEAR (7.2% net APY; 20% of 9% goes to TerraAgent Protocol)
     await postDevCmd('time.warp', { seconds: 86_400 });
     const status1Res = await fetch(`${url}/v1/near/staking?colonyId=col_0`);
     const status1 = StakingStatusResponse.parse(await status1Res.json());
-    expect(status1.positions[0]?.rewards).toContain('0.00246');
+    expect(status1.positions[0]?.rewards).toContain('0.00197');
 
     // Unstake -> Unbonding (4 epochs)
     const unstakeRes = await fetch(`${url}/v1/near/unstake`, {
@@ -132,6 +132,6 @@ describe('W20-21 StakingPanel end-to-end client <-> server HTTP integration', ()
     });
     expect(withdrawRes.status).toBe(200);
     const withdrawn = StakingActionResponse.parse(await withdrawRes.json());
-    expect(withdrawn.walletBalanceNear).toContain('100.00246');
+    expect(withdrawn.walletBalanceNear).toContain('100.00197');
   });
 });

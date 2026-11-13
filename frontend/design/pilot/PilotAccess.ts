@@ -1,22 +1,41 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
+import { authenticateFastAuthEmailPopup, isFastAuthPopupCancelled } from './fastAuthSpa';
 import {
   buildFastAuthLoginUrl,
   consumeNearWalletCallback,
+  consumePendingOAuthError,
   OAUTH_CALLBACK_STORAGE_KEY,
+  OAUTH_ERROR_STORAGE_KEY,
+  PKCE_STATE_STORAGE_KEY,
   readMockToken,
+  readOAuthError,
+  readOAuthErrorStorageEvent,
   readOAuthStorageEvent,
 } from './mockToken';
+import {
+  decodeNep413SocialToken,
+  extractAuthApiErrorMessage,
+  PENDING_NEP413_STORAGE_KEY,
+  RECENT_NEP413_POPUP_KEY,
+} from './nearAuthApi';
 import { openNearWalletSelectorModal } from './nearWalletModal';
+import { signOutNearWalletSelector } from './walletSelectorRuntime';
 
 const PILOT_DIALOG_CSS = `
 .pilot-access-bar{display:inline-flex;align-items:center;gap:var(--ta-s2);flex-wrap:wrap}
-.pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:300px;max-width:360px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
-.pilot-dialog::backdrop{background:rgba(5,6,8,.74);backdrop-filter:blur(4px)}
-.pilot-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s3);margin-bottom:var(--ta-s4)}
+.pilot-dialog{margin:auto;padding:var(--ta-s5);min-width:320px;max-width:390px;background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
+.pilot-dialog::backdrop{background:color-mix(in srgb,var(--ta-black-hole) 74%,transparent);backdrop-filter:blur(4px)}
+.pilot-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:var(--ta-s3);margin-bottom:var(--ta-s3)}
+.pilot-dialog-tabs{display:grid;grid-template-columns:1fr 1fr;gap:var(--ta-s2);margin-bottom:var(--ta-s3)}
+.pilot-dialog-sub{font-size:var(--ta-fs-eyebrow);color:var(--ta-text-3);margin:0 0 var(--ta-s3);line-height:1.4}
 .pilot-dialog-list{display:flex;flex-direction:column;gap:var(--ta-s2)}
 .pilot-dialog-list .btn{width:100%;justify-content:center}
+.pilot-email-box{display:flex;flex-direction:column;gap:var(--ta-s2);padding:var(--ta-s2);background:var(--ta-plate-2);border:1px solid var(--ta-seam)}
+.pilot-email-box input{width:100%;box-sizing:border-box}
 .pilot-status{font-family:var(--ta-font-mono);font-size:var(--ta-fs-label);color:var(--ta-fault-text)}
 `;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const PROVIDERS = [
   { id: 'google', label: 'Google', testId: 'continue-google' },
@@ -74,7 +93,7 @@ function ensureDialogStyles(): void {
   document.head.appendChild(style);
 }
 
-/** Shared landing/orbit/profile/trade sign-in & sign-out control. */
+/** Shared landing/orbit/profile/trade sign-in, sign-up & sign-out control (NEAR Testnet). */
 export class PilotAccess {
   readonly el = document.createElement('div');
   private popup: Window | null = null;
@@ -96,8 +115,11 @@ export class PilotAccess {
     window.addEventListener('message', this.onMessage);
     window.addEventListener('storage', this.onStorage);
     const walletHit = consumeNearWalletCallback();
+    const redirectErr = consumePendingOAuthError();
     if (walletHit) {
       this.triggerLogin(walletHit);
+    } else if (redirectErr) {
+      this.guest(redirectErr.message);
     } else if (opts.initialSession && opts.initialSession.player.isGuest === false) {
       this.linked(opts.initialSession, false);
     } else if (!opts.skipRestore) {
@@ -146,6 +168,7 @@ export class PilotAccess {
   }
 
   private buildDialog(): HTMLDialogElement {
+    let mode: 'signin' | 'signup' = 'signin';
     const dialog = document.createElement('dialog');
     dialog.className = 'plate pilot-dialog';
     dialog.setAttribute('closedby', 'any');
@@ -157,7 +180,6 @@ export class PilotAccess {
     const title = document.createElement('span');
     title.id = 'pilot-dialog-title';
     title.className = 'label';
-    title.textContent = 'SELECT PROVIDER';
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'btn btn-ghost btn-sm';
@@ -166,20 +188,66 @@ export class PilotAccess {
     closeBtn.onclick = () => this.closeDialog(dialog);
     head.append(title, closeBtn);
 
+    const tabs = document.createElement('div');
+    tabs.className = 'pilot-dialog-tabs';
+    const signInTab = document.createElement('button');
+    signInTab.type = 'button';
+    signInTab.dataset.testid = 'pilot-mode-signin';
+    signInTab.textContent = 'Sign In';
+    const signUpTab = document.createElement('button');
+    signUpTab.type = 'button';
+    signUpTab.dataset.testid = 'pilot-mode-signup';
+    signUpTab.textContent = 'Sign Up · Testnet';
+    tabs.append(signInTab, signUpTab);
+
+    const sub = document.createElement('p');
+    sub.className = 'pilot-dialog-sub';
+    const list = this.buildProviderButtons(dialog, () => mode);
+
+    const syncMode = (): void => {
+      title.textContent = mode === 'signup' ? 'CREATE PILOT · NEAR TESTNET' : 'SIGN IN · NEAR TESTNET';
+      signInTab.className = mode === 'signin' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+      signUpTab.className = mode === 'signup' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+      sub.textContent =
+        mode === 'signup'
+          ? 'Mint a gasless *.terraagent.testnet Pilot with Google, X, or Email/Passkey, or create & link a NEAR Testnet wallet.'
+          : 'Sign in with NEAR FastAuth (Google, X, Email/Passkey) or verify your NEAR Testnet wallet via NEP-413.';
+    };
+    signInTab.onclick = () => {
+      mode = 'signin';
+      syncMode();
+    };
+    signUpTab.onclick = () => {
+      mode = 'signup';
+      syncMode();
+    };
+    syncMode();
+
+    dialog.onclick = (e) => {
+      if (e.target === dialog) this.closeDialog(dialog);
+    };
+    dialog.append(head, tabs, sub, list);
+    return dialog;
+  }
+
+  private buildProviderButtons(dialog: HTMLDialogElement, getMode: () => 'signin' | 'signup'): HTMLElement {
     const list = document.createElement('div');
     list.className = 'pilot-dialog-list';
+
     for (const p of PROVIDERS) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'btn btn-ghost btn-sm';
+      btn.className = p.id === 'fastauth' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
       btn.dataset.testid = p.testId;
       btn.textContent = p.label;
       btn.onclick = () => {
         if (this.busy) return;
+        const mode = getMode();
         this.closeDialog(dialog);
         const returnPath = location.pathname + location.search;
         if (p.id === 'fastauth') {
           openNearWalletSelectorModal({
+            initialMode: mode,
             onPopupOpened: (pop) => {
               this.popup = pop;
             },
@@ -190,7 +258,7 @@ export class PilotAccess {
           return;
         }
         this.popup = window.open(
-          buildFastAuthLoginUrl(location.origin, returnPath, p.id),
+          buildFastAuthLoginUrl(location.origin, returnPath, p.id, { mode }),
           'terra-fastauth-oauth',
           'popup,width=500,height=680',
         );
@@ -198,11 +266,59 @@ export class PilotAccess {
       list.append(btn);
     }
 
-    dialog.onclick = (e) => {
-      if (e.target === dialog) this.closeDialog(dialog);
+    list.append(this.buildEmailFastAuthBox(dialog, getMode));
+    return list;
+  }
+
+  private buildEmailFastAuthBox(dialog: HTMLDialogElement, getMode: () => 'signin' | 'signup'): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'pilot-email-box';
+    const emailInput = document.createElement('input');
+    emailInput.type = 'email';
+    emailInput.className = 'input';
+    emailInput.placeholder = 'pilot@terraagent.fun';
+    emailInput.dataset.testid = 'pilot-email-input';
+    const inlineErr = document.createElement('span');
+    inlineErr.className = 'pilot-status';
+    inlineErr.style.display = 'none';
+
+    const emailBtn = document.createElement('button');
+    emailBtn.type = 'button';
+    emailBtn.className = 'btn btn-ghost btn-sm';
+    emailBtn.dataset.testid = 'continue-email';
+    emailBtn.textContent = 'Email / Passkey (FastAuth)';
+
+    const startEmailAuth = (): void => {
+      if (this.busy) return;
+      const clean = emailInput.value.trim().toLowerCase();
+      if (!EMAIL_RE.test(clean)) {
+        inlineErr.textContent = 'Enter a valid email address.';
+        inlineErr.style.display = 'block';
+        return;
+      }
+      inlineErr.style.display = 'none';
+      const mode = getMode();
+      this.closeDialog(dialog);
+      void authenticateFastAuthEmailPopup({ email: clean, mode })
+        .then((res) => {
+          this.triggerLogin({ provider: 'email', token: res.idToken });
+        })
+        .catch((err: unknown) => {
+          if (this.disposed) return;
+          if (isFastAuthPopupCancelled(err)) {
+            this.guest('Sign-in was cancelled.');
+            return;
+          }
+          this.guest(err instanceof Error && err.message ? err.message : 'FastAuth Email sign-in could not be completed.');
+        });
     };
-    dialog.append(head, list);
-    return dialog;
+
+    emailInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') startEmailAuth();
+    });
+    emailBtn.onclick = startEmailAuth;
+    box.append(emailInput, inlineErr, emailBtn);
+    return box;
   }
 
   private closeDialog(dialog: HTMLDialogElement): void {
@@ -266,9 +382,15 @@ export class PilotAccess {
       localStorage.removeItem('ta_active_pilot');
       localStorage.removeItem('ta_trade_token');
       localStorage.removeItem(OAUTH_CALLBACK_STORAGE_KEY);
+      localStorage.removeItem(OAUTH_ERROR_STORAGE_KEY);
+      localStorage.removeItem(PKCE_STATE_STORAGE_KEY);
+      localStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
+      localStorage.removeItem(RECENT_NEP413_POPUP_KEY);
+      sessionStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
     } catch {
       /* ignore */
     }
+    await signOutNearWalletSelector();
     try {
       await fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
     } catch {
@@ -302,32 +424,54 @@ export class PilotAccess {
 
   private onMessage = (event: MessageEvent): void => {
     const hit = readMockToken(event, this.popup, location.origin);
-    if (!hit) return;
-    this.triggerLogin(hit);
+    if (hit) {
+      this.triggerLogin(hit);
+      return;
+    }
+    const err = readOAuthError(event, this.popup, location.origin);
+    if (err && !this.disposed) {
+      this.popup = null;
+      this.guest(err.message);
+    }
   };
 
   private onStorage = (event: StorageEvent): void => {
     const hit = readOAuthStorageEvent(event, Boolean(this.popup));
-    if (!hit) return;
-    this.popup = null;
-    this.triggerLogin(hit);
+    if (hit) {
+      this.popup = null;
+      this.triggerLogin(hit);
+      return;
+    }
+    const err = readOAuthErrorStorageEvent(event, Boolean(this.popup));
+    if (err && !this.disposed) {
+      this.popup = null;
+      this.guest(err.message);
+    }
   };
 
   private async login(hit: { provider: string; token: string }): Promise<void> {
     try {
-      const response = await fetch('/v1/auth/social', {
+      const nep413Payload = decodeNep413SocialToken(hit.token);
+      const endpoint = nep413Payload ? '/v1/auth/near/verify' : '/v1/auth/social';
+      const reqBody = nep413Payload ?? hit;
+      const response = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(this.bearer ? { Authorization: `Bearer ${this.bearer}` } : {}),
         },
-        body: JSON.stringify(hit),
+        body: JSON.stringify(reqBody),
       });
-      if (!response.ok) throw new Error('Sign-in failed. Please try again.');
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => null);
+        throw new Error(extractAuthApiErrorMessage(errBody, 'Sign-in failed. Please try again.'));
+      }
       this.linked(SocialAuthResponseSchema.parse(await response.json()), true);
-    } catch {
-      if (!this.disposed) this.guest('Sign-in failed. Please try again.');
+    } catch (err) {
+      if (!this.disposed) {
+        this.guest(err instanceof Error && err.message ? err.message : 'Sign-in failed. Please try again.');
+      }
     }
   }
 

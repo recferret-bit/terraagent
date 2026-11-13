@@ -2292,6 +2292,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "terra-pilots-contract"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "terra-res-contract"
 version = "0.1.0"
 dependencies = [

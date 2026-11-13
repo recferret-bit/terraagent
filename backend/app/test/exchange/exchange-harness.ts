@@ -34,7 +34,7 @@ import { devPlayerId } from '../../src/ws/session-verifier.js';
 export { mockChainControls };
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export const tokenId = (k: MarketTokenKey): string => MARKET_TOKENS[k].verifierId;
-export const PLATFORM = 'platform.terraagent.mock';
+export const PLATFORM = 'protocol.terraagent.mock';
 
 export interface Reply<T = any> { status: number; body: T }
 export type Body = Record<string, unknown>;

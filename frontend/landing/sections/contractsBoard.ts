@@ -1,4 +1,4 @@
-// Deployed NEAR Testnet smart contract showcase (5 Rust near-sdk 5.7 contracts + 3 protocol accounts)
+// Deployed NEAR Testnet smart contract showcase (6 Rust near-sdk 5.7 contracts + 3 protocol accounts)
 // with smooth scroll-driven reveal across Section 06 (#chain).
 import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
 
@@ -70,8 +70,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Lock cargo escrows to fund counter-raids and defense bounties with deterministic claim verification.',
     inGameTrigger: 'Post Raid Bounty',
     onChainAction: 'open_escrow · claim_escrow',
-    codeHash: '6VGAZh8udooNjj85LyzBZT4jY1959FWFBJ3KBugGVtuH',
-    txHash: 'GDDYUk826TgGxDWiTq9y6PdNKW7HpfGoe8hQrMXccNFG',
+    codeHash: 'DiHqr7iaRkvo4Nc86gYNFysZ18v4AWojFuxGLhz6VEi',
+    txHash: '5b4ypSd9vgSFuDQC9f7JK8MdeVxf7xiwTMj3kC6BVGnM',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="24" r="15" fill="#1B120C" stroke="#FF6A13" stroke-width="1.8" stroke-dasharray="6 3"/>
       <circle cx="24" cy="24" r="7" stroke="#FF8A3D" stroke-width="1.5"/>
@@ -90,8 +90,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Stake NEAR through your colony for validator rewards—strictly gated to human pilots (AI callers blocked 403).',
     inGameTrigger: 'Pilot Vault Deposit',
     onChainAction: 'stake · withdraw (403 AI)',
-    codeHash: '9K2xHY4QZh7wfXAdf8pxogviBortXP4mM722W3k97NeC',
-    txHash: 'CJAeXB8YVZqrXPQQRRMMY2s6sBY7Ma17gE1thZ9CHAyX',
+    codeHash: '6Z3m4dKqaPeCZ6b2HHcNEJNcbQjgd1myWh7fJG7oSYJJ',
+    txHash: 'HZK7MnpjpzqbnCyEmT219jM6wZn6TQJsW4mxBE4qMeSU',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <rect x="11" y="20" width="26" height="20" fill="#0D1924" stroke="#39D0FF" stroke-width="1.8"/>
       <path d="M16 20V14C16 9.6 19.6 6 24 6C28.4 6 32 9.6 32 14V20" stroke="#5B8CFF" stroke-width="1.8"/>
@@ -118,6 +118,25 @@ const CONTRACTS: readonly DeployedContract[] = [
       <circle cx="24" cy="12" r="3" fill="#FF6A13"/>
       <circle cx="34" cy="29" r="3" fill="#5B8CFF"/>
       <circle cx="14" cy="29" r="3" fill="#3DDC84"/>
+    </svg>`,
+  },
+  {
+    step: '06',
+    accountId: 'pilots.terraagent.testnet',
+    badge: 'COLD ROOT',
+    badgeClass: 'badge-ok',
+    accent: 'var(--ta-terra)',
+    kicker: 'SUB-ACCOUNT FACTORY',
+    title: 'Pilot Account Factory & Claim',
+    summary: 'Provisions {pilot}.pilots.terraagent.testnet while keeping the root key in cold storage, with atomic non-custodial key rotation on claim.',
+    inGameTrigger: 'OAuth / Guest Drop',
+    onChainAction: 'create_pilot_account · claim',
+    codeHash: '7Hm4DQNFC1t1bvADn23vxMUq7WZouyZnWp8Zd2c9uSES',
+    txHash: 'BQ2pWYj49ALR2kB6VuLTpKMmRur7xMrNco2UMdLZg2BY',
+    iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <circle cx="24" cy="16" r="7" fill="#0E1A14" stroke="#3DDC84" stroke-width="1.8"/>
+      <path d="M11 39C11 31.8 16.8 26 24 26C31.2 26 37 31.8 37 39" stroke="#3DDC84" stroke-width="1.8"/>
+      <circle cx="36" cy="14" r="4" fill="#0F1626" stroke="#39D0FF" stroke-width="1.5"/>
     </svg>`,
   },
 ];
@@ -207,7 +226,7 @@ export function initContractsBoard(): void {
   ).join('');
 
   host.innerHTML = `<div class="board-h contracts-board-h">
-      <span><i class="dot-live"></i> DEPLOYED ON NEAR TESTNET · 5 RUST SMART CONTRACTS (NEAR-SDK 5.7)</span>
+      <span><i class="dot-live"></i> DEPLOYED ON NEAR TESTNET · 6 RUST SMART CONTRACTS (NEAR-SDK 5.7)</span>
       <span>11 / 11 PORTS LIVE · TEST.RPC.FASTNEAR.COM</span>
     </div>
     <div class="chain-stream" id="chain-stream">

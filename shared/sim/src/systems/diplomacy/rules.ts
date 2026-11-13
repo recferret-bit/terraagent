@@ -10,6 +10,7 @@ import {
   getActiveTrucesForColony,
   getLastHostilityTick,
   hasActiveTruce,
+  hasAnyActiveWarBetween,
   isColonyOathbreaker,
   isValidTruceDurationHours,
   readDiplomacyBlob,
@@ -205,6 +206,10 @@ export function validateTruceProposal(
 
   if (hasActiveTruce(state, fromColony, toColony, tick)) {
     return { ok: false, code: 'truce_active', detail: 'truce already active' };
+  }
+
+  if (hasAnyActiveWarBetween(state, fromColony, toColony, tick)) {
+    return { ok: false, code: 'war_active', detail: 'bonded war active between colonies' };
   }
 
   const maxHours = maxTruceHoursForHqTier(fromHq.tier, data);

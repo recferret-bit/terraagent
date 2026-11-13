@@ -30,6 +30,14 @@ export class PrismaAuthStore implements AuthStore {
     }
   }
 
+  async updatePlayerHandle(id: string, handle: string): Promise<PlayerRecord> {
+    try {
+      return await this.prisma.player.update({ where: { id }, data: { handle } });
+    } catch (e) {
+      throw asUniqueViolation(e);
+    }
+  }
+
   createSession(input: { id: string; playerId: string; refreshTokenHash: string; expiresAt: Date }): Promise<AuthSessionRecord> {
     return this.prisma.authSession.create({ data: input });
   }

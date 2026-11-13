@@ -3,10 +3,11 @@ import {
   nearToYocto,
   yoctoToNear,
 } from '../../src/near/infrastructure/adapters/mock/staking.adapter';
+import { PROTOCOL_STAKING_ACCOUNT_ID } from '../../src/near/staking/yocto';
 import { InMemoryStaking } from '../../src/near/testing/in-memory-staking';
 
 describe('W20-16 InMemoryStaking & reward accrual math', () => {
-  it('acceptance: Stake 10 NEAR -> after 30 game-days, rewards ~= 0.074 NEAR (10 * 0.09 * 30 / 365)', async () => {
+  it('acceptance: Stake 10 NEAR -> after 30 game-days, net user rewards ~= 0.0592 NEAR (80% of 9% APY = 7.2%) and 20% (~0.0148 NEAR) credits TerraAgent Protocol', async () => {
     const staking = new InMemoryStaking();
     const accountId = 'col-0.pilot.terraagent.mock';
     const pool = 'astro-stakers.pool.mock';
@@ -22,8 +23,20 @@ describe('W20-16 InMemoryStaking & reward accrual math', () => {
     staking.advanceGameDays(30);
     const rew = await staking.rewards({ accountId, pool });
     const nearRewards = Number(yoctoToNear(rew.accrued, 6));
-    expect(nearRewards).toBeCloseTo((10 * 0.09 * 30) / 365, 3);
-    expect(nearRewards).toBeCloseTo(0.074, 3);
+    expect(nearRewards).toBeCloseTo((10 * 0.072 * 30) / 365, 3);
+    expect(nearRewards).toBeCloseTo(0.0592, 3);
+
+    await staking.unstake({
+      opId: 'unstake:settle-yield',
+      accountId,
+      pool,
+      amount: nearToYocto(10),
+    });
+    const protocolNear = Number(
+      yoctoToNear(await staking.nearBalanceOf(PROTOCOL_STAKING_ACCOUNT_ID), 6),
+    );
+    expect(protocolNear).toBeCloseTo((10 * 0.018 * 30) / 365, 3);
+    expect(protocolNear).toBeCloseTo(0.0148, 3);
   });
 
   it('enforces 2-game-day unbonding before withdraw and is idempotent by opId', async () => {

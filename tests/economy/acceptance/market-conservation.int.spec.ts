@@ -18,7 +18,7 @@ import { ProgressionEngine } from '../../../backend/app/src/progression/progress
  * ledger, reservations released exactly once, and the Merchant / Port Authority facts a real FINAL trade produces.
  */
 let h: Harness;
-beforeAll(async () => { h = await bootHarness(); await h.intents.testRegisterSigner('platform.terraagent.mock'); }, 120_000);
+beforeAll(async () => { h = await bootHarness(); await h.intents.testRegisterSigner('protocol.terraagent.mock'); }, 120_000);
 afterAll(async () => { await h?.close(); });
 
 type Leg = { accountId: string; token: string; delta: string | number };

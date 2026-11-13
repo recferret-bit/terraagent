@@ -15,7 +15,11 @@ export interface OpenEscrowRow {
  * Moves `open` → `claimed` or `refunded` inside the caller's transaction.
  * Missing id is `NEAR_ESCROW_NOT_FOUND`. Any other status is `NEAR_ESCROW_STATE`.
  */
-export async function takeOpenEscrow(tx: DbClient, escrowId: string, next: 'claimed' | 'refunded'): Promise<OpenEscrowRow> {
+export async function takeOpenEscrow(
+  tx: DbClient,
+  escrowId: string,
+  next: 'claimed' | 'refunded' | 'slashed',
+): Promise<OpenEscrowRow> {
   const moved = await tx.mockChainEscrow.updateMany({
     where: { id: escrowId, status: 'open' },
     data: { status: next },

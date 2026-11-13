@@ -11,7 +11,7 @@ import type {
   NftTokenRef,
   NftUpdateMetadataInput,
 } from '../../../domain/types.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
@@ -55,7 +55,7 @@ export class TestnetBadgeNftAdapter implements BadgeNftPort {
 
   constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('BadgeNft', source)));
   }
 
   async mint(input: NftMintInput): Promise<NftMintResult> {
@@ -135,3 +135,4 @@ export class TestnetBadgeNftAdapter implements BadgeNftPort {
 }
 
 export const adapter = adapterOf({ port: BadgeNftPort, kind: 'testnet', useClass: TestnetBadgeNftAdapter });
+export const mainnetAdapter = adapterOf({ port: BadgeNftPort, kind: 'mainnet', useClass: TestnetBadgeNftAdapter });

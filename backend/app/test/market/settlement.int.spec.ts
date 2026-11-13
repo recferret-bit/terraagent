@@ -47,7 +47,7 @@ beforeAll(async () => {
   bus = app.get(EventBus);
   bus.on('near.market.command', (c) => cmds.push(c), { module: 'test' });
   bus.on('market.trade', (p) => pushes.push(p), { module: 'test' });
-  await intents.testRegisterSigner('platform.terraagent.mock');
+  await intents.testRegisterSigner('protocol.terraagent.mock');
 });
 afterEach(() => mockChainControls.reset());
 afterAll(async () => {
@@ -103,7 +103,7 @@ describe('W13-13 settlement: from fill to FINAL', () => {
     expect(trade.txHash).toMatch(/^mock:/);
     expect(await verifier(acct(t.buyer), USDC)).toBe((10_000_000n - 5_100_000n).toString());
     expect(await verifier(acct(t.seller), USDC)).toBe('5050000'); // notional + the stall fee (the seller is the maker stall)
-    expect(await verifier('platform.terraagent.mock', USDC)).not.toBe('0');
+    expect(await verifier('protocol.terraagent.mock', USDC)).not.toBe('0');
     const mine = cmds.filter((c) => c.kind === 'market.settled' && (c.args as { tradeId: string }).tradeId === t.tradeId);
     expect(mine.map((c) => `${c.colonyId}:${(c.args as { role: string }).role}`).sort()).toEqual([`${t.buyer}:buyer`, `${t.seller}:seller`, `${t.seller}:stall`].sort());
     const seller = mine.find((c) => (c.args as { role: string }).role === 'seller')!.args as { deltas: Record<string, number>; released: Record<string, number> };

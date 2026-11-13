@@ -1,7 +1,11 @@
 import { createSign, generateKeyPairSync, sign as edSign } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NearStatusController } from '../../src/near/infrastructure/dev/near-status.controller.js';
-import { verifyFastAuthSessionProof, verifyOidcJwt } from '../../src/near/infrastructure/adapters/real/jwks-verifier.js';
+import {
+  assertOAuthProviderMatchesSubject,
+  verifyFastAuthSessionProof,
+  verifyOidcJwt,
+} from '../../src/near/infrastructure/adapters/real/jwks-verifier.js';
 import { OneClickQuoteClient } from '../../src/near/infrastructure/adapters/real/oneclick-quote.service.js';
 import { OpReceiptCache } from '../../src/near/infrastructure/adapters/real/op-receipt-cache.js';
 import { resolveNearNetworkConfig } from '../../src/near/infrastructure/network/near-network.config.js';
@@ -112,6 +116,31 @@ describe('W23 JWKS OIDC verifier, FastAuth session proofs & 1Click dry quotes', 
     });
     expect(verified).toEqual({ subject: 'google-oauth2|12345', email: 'pilot@terraagent.fun' });
 
+    const withProfile = makeJwt({
+      iss: 'https://login.testnet.fast-auth.com/',
+      aud: 'np8paqIpMWmNbzT4xAvOOapZBjsOpptl',
+      sub: 'twitter|987654321',
+      nickname: 'ferretrec',
+      name: 'Ferret Commander',
+      exp: Math.floor(Date.now() / 1000) + 300,
+    });
+    const verifiedTwitter = await verifyOidcJwt({
+      token: withProfile,
+      jwksUrl: 'https://login.testnet.fast-auth.com/.well-known/jwks.json',
+      allowedIssuers: ['https://login.testnet.fast-auth.com/'],
+      expectedAudience: 'np8paqIpMWmNbzT4xAvOOapZBjsOpptl',
+    });
+    expect(verifiedTwitter).toEqual({
+      subject: 'twitter|987654321',
+      email: null,
+      preferredName: 'ferretrec',
+    });
+
+    expect(() => assertOAuthProviderMatchesSubject('x', 'google-oauth2|106920817337195603')).toThrow();
+    expect(() => assertOAuthProviderMatchesSubject('google', 'twitter|987654321')).toThrow();
+    expect(() => assertOAuthProviderMatchesSubject('x', 'twitter|987654321')).not.toThrow();
+    expect(() => assertOAuthProviderMatchesSubject('google', 'google-oauth2|106920817337195603')).not.toThrow();
+
     const tampered = makeJwt(
       {
         iss: 'https://login.testnet.fast-auth.com/',
@@ -129,7 +158,9 @@ describe('W23 JWKS OIDC verifier, FastAuth session proofs & 1Click dry quotes', 
       }),
     ).rejects.toMatchObject({ errorCode: 'NEAR_PROVIDER_REJECTED' });
   });
+});
 
+describe('W23 FastAuth ed25519 session proofs', () => {
   it('verifies FastAuth ed25519 session proofs and encodes 32-byte seeds to NEAR secret keys', () => {
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     const pubDer = publicKey.export({ format: 'der', type: 'spki' });

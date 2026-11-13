@@ -14,13 +14,13 @@ import {
 } from '../../../application/ports/cargo-token.port.js';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt, TokenAmount } from '../../../domain/types.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
 /**
- * Real NEAR Testnet `CargoTokenPort` (`W23-19`): executes NEP-245 multi-token mint/burn/transfer/balanceOf
- * on `res.<root>.testnet` with `opId` idempotency and canonical `NearException` mapping.
+ * Real NEAR `CargoTokenPort` (`W23-19`): executes NEP-245 multi-token mint/burn/transfer/balanceOf
+ * on `res.<root>` (`testnet` & `mainnet`) with `opId` idempotency and canonical `NearException` mapping.
  */
 @Injectable()
 export class TestnetCargoTokenAdapter implements CargoTokenPort {
@@ -33,7 +33,7 @@ export class TestnetCargoTokenAdapter implements CargoTokenPort {
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
   ) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('CargoToken', source)));
     this.prisma = databaseEnabled(env) ? (prisma ?? null) : null;
   }
 
@@ -151,3 +151,4 @@ export class TestnetCargoTokenAdapter implements CargoTokenPort {
 }
 
 export const adapter = adapterOf({ port: CargoTokenPort, kind: 'testnet', useClass: TestnetCargoTokenAdapter });
+export const mainnetAdapter = adapterOf({ port: CargoTokenPort, kind: 'mainnet', useClass: TestnetCargoTokenAdapter });

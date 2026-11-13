@@ -5,7 +5,6 @@ import {
   KeyPairSigner,
   PublicKey,
   actions,
-  decodeSignedDelegate,
   nearToYocto,
   teraToGas,
   type FinalExecutionOutcome,
@@ -16,6 +15,11 @@ import { ChainHealth, ChainReceipt, type NearNetwork } from '../../domain/types.
 import { ed25519PrivateKeyFromSeed, encodeBase58 } from '../../keystore/index.js';
 import type { NearNetworkConfig } from '../network/near-network.config.js';
 import { formatErrorText, isDeterministicChainError, toNearException } from './near-error-map.js';
+import {
+  rotateCustodialKeysAtomic,
+  validateAndDecodeRelayDelegate,
+  verifyFullAccessKeyAtFinality,
+} from './near-rpc-guardrails.js';
 
 type TxOutcome = Awaited<ReturnType<Account['callFunctionRaw']>> | FinalExecutionOutcome;
 
@@ -64,8 +68,9 @@ export class NearRpcClient {
   private lastWriteHeight = 0;
 
   constructor(readonly config: NearNetworkConfig) {
-    this.primary = new JsonRpcProvider({ url: config.primaryRpcUrl });
-    this.fallback = new JsonRpcProvider({ url: config.fallbackRpcUrl });
+    const rpcRetry = { retries: 2, wait: 150, backoff: 1.5 };
+    this.primary = new JsonRpcProvider({ url: config.primaryRpcUrl }, rpcRetry);
+    this.fallback = new JsonRpcProvider({ url: config.fallbackRpcUrl }, rpcRetry);
   }
 
   get failoverCount(): number {
@@ -95,11 +100,22 @@ export class NearRpcClient {
     const started = Date.now();
     try {
       const status = await this.withFailover((p) => p.viewNodeStatus());
+      let balanceNote = '';
+      if (this.config.secrets.relayerSecretKey) {
+        try {
+          const bal = await this.accountBalanceNear(this.config.accounts.relayer);
+          if (bal < this.config.minRelayerBalanceNear) {
+            balanceNote = ` low_relayer_balance=${bal.toFixed(2)}N(<${this.config.minRelayerBalanceNear}N)`;
+          }
+        } catch {
+          /* ignore unprovisioned relayer account during health check */
+        }
+      }
       return ChainHealth.parse({
         ok: !status.sync_info?.syncing,
         network: this.config.network,
         latencyMs: Date.now() - started,
-        detail: `block=${status.sync_info?.latest_block_height ?? 'unknown'} failovers=${this.failoverTotal}`,
+        detail: `block=${status.sync_info?.latest_block_height ?? 'unknown'} failovers=${this.failoverTotal}${balanceNote}`,
       });
     } catch (err) {
       return ChainHealth.parse({
@@ -236,14 +252,48 @@ export class NearRpcClient {
     }
   }
 
-  async relaySignedDelegate(signedDelegateBase64: string): Promise<ChainReceipt> {
+  async verifyFullAccessKeyOnChain(accountId: string, publicKey: string): Promise<void> {
+    return verifyFullAccessKeyAtFinality((op) => this.withFailover(op), accountId, publicKey);
+  }
+
+  async rotateCustodialKeys(params: {
+    readonly accountId: string;
+    readonly currentSecretKey: string;
+    readonly currentPublicKey: string;
+    readonly newFullAccessPublicKey: string;
+    readonly scopedSessionKey?: {
+      readonly publicKey: string;
+      readonly receiverId: string;
+      readonly methodNames: string[];
+    };
+  }): Promise<ChainReceipt> {
+    this.chargeDailyBudget(0.002);
+    return rotateCustodialKeysAtomic({
+      withFailover: (op) => this.withFailover(op),
+      network: this.config.network,
+      ...params,
+    });
+  }
+
+  async relaySignedDelegate(
+    signedDelegateBase64: string,
+    expectedSenderId?: string,
+    expectedReceiverId?: string,
+  ): Promise<ChainReceipt> {
     const relayerSecret = this.config.secrets.relayerSecretKey;
     if (!relayerSecret) {
-      throw new NearException('NEAR_UNAVAILABLE', { message: 'Missing NEAR_RELAYER_SECRET_KEY for testnet relayer' });
+      throw new NearException('NEAR_UNAVAILABLE', {
+        message: `Missing NEAR_RELAYER_SECRET_KEY for ${this.config.network} relayer`,
+      });
     }
-    this.chargeDailyBudget(0.003);
+    const { decoded, attachedNear } = validateAndDecodeRelayDelegate({
+      signedDelegateBase64,
+      expectedSenderId,
+      expectedReceiverId,
+      maxDepositNear: this.config.maxRelayDepositNear,
+    });
+    this.chargeDailyBudget(0.003 + attachedNear);
     try {
-      const decoded = decodeSignedDelegate(Buffer.from(signedDelegateBase64, 'base64'));
       const signer = KeyPairSigner.fromSecretKey(relayerSecret as KeyPairString);
       const outcome = await this.withFailover(async (provider) => {
         const relayer = new Account(this.config.accounts.relayer, provider, signer);

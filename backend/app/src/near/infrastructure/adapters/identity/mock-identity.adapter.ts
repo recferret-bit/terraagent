@@ -16,9 +16,10 @@ import { NearException } from '../../../domain/errors.js';
 import { ChainReceipt } from '../../../domain/types.js';
 import { NamedAccountBook } from '../../../identity/account-allocate.js';
 import { mockOauthSecret, verifyMockToken } from '../../../identity/mock-token.js';
+import { Nep413AuthService } from '../../../identity/nep413-auth.service.js';
 import { mockTxHashFor } from '../../mock/tx-hash.js';
 import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
-import { verifyFastAuthPkceCode } from '../real/jwks-verifier.js';
+import { assertOAuthProviderMatchesSubject, verifyFastAuthPkceCode, verifyOidcJwt } from '../real/jwks-verifier.js';
 import { insertNamedAccount } from './named-account.db.js';
 
 /**
@@ -30,35 +31,75 @@ export class MockIdentityAdapter implements IdentityPort {
   private readonly book: NamedAccountBook | null;
   private readonly prisma: PrismaClient | null;
   private readonly receipts = new Map<string, ChainReceipt>();
+  private readonly nep413: Nep413AuthService;
+  private readonly envSource: Record<string, string | undefined>;
 
   constructor(
     @Optional() @Inject(APP_ENV) env?: AppEnv,
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
+    @Optional() @Inject(Nep413AuthService) nep413?: Nep413AuthService,
   ) {
     this.book = databaseEnabled(env) ? null : new NamedAccountBook();
     this.prisma = this.book ? null : prisma ?? null;
+    this.envSource = (env ?? process.env) as Record<string, string | undefined>;
+    this.nep413 = nep413 ?? new Nep413AuthService(env);
   }
 
   async loginSocial(input: SocialLoginInput): Promise<SocialLoginResult> {
+    const provider = input.provider.trim().toLowerCase();
+    if (provider === 'near-wallet' || input.token.startsWith('nep413:')) {
+      const verified = await this.nep413.verifyInlineToken(input.token);
+      const preferredName = verified.accountId.replace(/\.(testnet|near)$/i, '') || verified.accountId;
+      return {
+        playerId: verified.accountId,
+        email: null,
+        preferredName,
+        verifiedAccountId: verified.accountId,
+        isNew: true,
+      };
+    }
+    if (input.token.startsWith('near-wallet:')) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', {
+        message: 'NEAR wallet authentication requires a NEP-413 challenge signature',
+      });
+    }
     if (input.token.startsWith('fastauth-code:')) {
-      const cfg = resolveNearNetworkConfig(process.env, 'testnet');
+      const cfg = resolveNearNetworkConfig(this.envSource, 'testnet');
       const verified = await verifyFastAuthPkceCode({
         rawToken: input.token,
         issuer: cfg.fastAuth.issuer,
         clientId: cfg.fastAuth.clientId,
+        requireEmail: provider === 'email',
+        envSource: this.envSource,
       });
-      return { playerId: verified.subject, email: verified.email, isNew: true };
+      assertOAuthProviderMatchesSubject(provider, verified.subject, verified.email);
+      return {
+        playerId: verified.subject,
+        email: verified.email,
+        ...(verified.preferredName ? { preferredName: verified.preferredName } : {}),
+        isNew: true,
+      };
     }
-    if ((input.provider === 'fastauth' || input.provider === 'near-auth') && input.token.startsWith('near-wallet:')) {
-      const rawAccountId = input.token.split(':')[1]?.trim().toLowerCase() ?? '';
-      if (!/^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/.test(rawAccountId) || rawAccountId.length < 2 || rawAccountId.length > 64) {
-        throw new NearException('NEAR_PROVIDER_REJECTED');
-      }
-      const subject = rawAccountId.replace(/\.(testnet|near)$/i, '') || rawAccountId;
-      return { playerId: subject, email: null, isNew: true };
+    if (input.token.split('.').length === 3 && !input.token.includes(':')) {
+      const cfg = resolveNearNetworkConfig(this.envSource, 'testnet');
+      const issuer = cfg.fastAuth.issuer.endsWith('/') ? cfg.fastAuth.issuer : `${cfg.fastAuth.issuer}/`;
+      const verified = await verifyOidcJwt({
+        token: input.token,
+        jwksUrl: `${issuer}.well-known/jwks.json`,
+        allowedIssuers: [issuer, issuer.replace(/\/$/, '')],
+        expectedAudience: cfg.fastAuth.clientId,
+        requireEmail: provider === 'email',
+      });
+      assertOAuthProviderMatchesSubject(provider, verified.subject, verified.email);
+      return {
+        playerId: verified.subject,
+        email: verified.email,
+        ...(verified.preferredName ? { preferredName: verified.preferredName } : {}),
+        isNew: true,
+      };
     }
     const claims = verifyMockToken(input.token, mockOauthSecret(), Date.now());
-    if (claims.provider !== input.provider) throw new NearException('NEAR_PROVIDER_REJECTED');
+    if (claims.provider !== provider) throw new NearException('NEAR_PROVIDER_REJECTED');
     return { playerId: claims.subject, email: claims.email ?? null, isNew: true };
   }
 

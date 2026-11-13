@@ -14,11 +14,16 @@ import {
   buildStakingHeader,
   buildStakingPositionGrid,
   DEFAULT_STAKING_POOLS,
+  formatStakerPerksBanner,
   formatUnbondingSummary,
   REAL_NEAR_COPY,
   renderStakingPoolOptions,
   upsertStakingPositionList,
 } from './parts/stakingPanelParts';
+import {
+  openRealNearSignerModal,
+  type RealNearNetwork,
+} from './realNearSignerModal';
 import {
   openMockWalletSignerModal,
   type OpenSignerModalHandle,
@@ -40,6 +45,7 @@ export interface StakingPanelOptions {
 export class StakingPanel implements Disposable {
   readonly root: HTMLElement;
   readonly copyEl: HTMLParagraphElement;
+  readonly perksBannerEl: HTMLDivElement;
   readonly lockedBannerEl: HTMLDivElement;
   readonly controlsWrapEl: HTMLDivElement;
   readonly poolSelectEl: HTMLSelectElement;
@@ -73,9 +79,15 @@ export class StakingPanel implements Disposable {
     opts: StakingPanelOptions = {},
   ) {
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
-    const openSigner = opts.openSigner ?? openMockWalletSignerModal;
     // The signer modal joins the HUD overlay (above the deed modal) when the HUD provides one; else document.body.
-    this.openSigner = (req) => openSigner({ container: this.ctx.services?.hudOverlay, ...req });
+    this.openSigner = (req) => {
+      const container = this.ctx.services?.hudOverlay;
+      if (opts.openSigner) return opts.openSigner({ container, ...req });
+      const net = this.activeNetwork();
+      return net === 'mock'
+        ? openMockWalletSignerModal({ container, ...req })
+        : openRealNearSignerModal({ container, ...req, network: net });
+    };
 
     this.root = document.createElement('section');
     this.root.className = 'ta-staking-panel plate-sm';
@@ -90,15 +102,21 @@ export class StakingPanel implements Disposable {
     this.copyEl.dataset.testid = 'staking-real-near-copy';
     this.copyEl.textContent = REAL_NEAR_COPY;
 
+    this.perksBannerEl = document.createElement('div');
+    this.perksBannerEl.className = 'ta-staking-panel__perks';
+    this.perksBannerEl.dataset.testid = 'staking-perks-banner';
+    this.perksBannerEl.textContent = formatStakerPerksBanner(0);
+
     this.lockedBannerEl = document.createElement('div');
     this.lockedBannerEl.className = 'ta-staking-panel__locked';
     this.lockedBannerEl.dataset.testid = 'staking-locked-banner';
-    this.lockedBannerEl.textContent = 'Available after your colony is Settled';
+    this.lockedBannerEl.hidden = true;
+    this.lockedBannerEl.textContent = '';
 
     this.controlsWrapEl = document.createElement('div');
     this.controlsWrapEl.className = 'ta-staking-panel__controls';
     this.controlsWrapEl.dataset.testid = 'staking-controls';
-    this.controlsWrapEl.hidden = true;
+    this.controlsWrapEl.hidden = false;
 
     const claimRow = buildStakingClaimRow(() => {
       void this.claimAccountFlow();
@@ -138,6 +156,7 @@ export class StakingPanel implements Disposable {
 
     this.root.appendChild(header.headerEl);
     this.root.appendChild(this.copyEl);
+    this.root.appendChild(this.perksBannerEl);
     this.root.appendChild(this.lockedBannerEl);
     this.root.appendChild(this.controlsWrapEl);
 
@@ -147,6 +166,7 @@ export class StakingPanel implements Disposable {
   }
 
   syncDeed(deed: DeedView): void {
+    const prevColonyId = this.currentDeed?.colonyId;
     const prevSettled = this.currentDeed?.settled ?? false;
     this.currentDeed = deed;
     if (deed.accountClaimed) {
@@ -154,7 +174,7 @@ export class StakingPanel implements Disposable {
       this.claimedByAccountId = deed.claimedByAccountId ?? 'pilot.mock';
     }
     this.renderState();
-    if ((deed.settled || deed.status === 'settled') && !prevSettled) {
+    if (prevColonyId !== deed.colonyId || ((deed.settled || deed.status === 'settled') && !prevSettled)) {
       void this.refreshFromServer();
     }
   }
@@ -188,14 +208,19 @@ export class StakingPanel implements Disposable {
 
   async claimAccountFlow(): Promise<boolean> {
     const colonyId = this.currentDeed?.colonyId ?? 'col_0';
-    const walletAccountId = this.claimedByAccountId ?? 'pilot.mock';
+    const net = this.activeNetwork();
+    const fallbackAcct = net === 'mainnet' ? 'pilot.near' : net === 'testnet' ? 'pilot.testnet' : 'pilot.mock';
+    const initialAcct = this.claimedByAccountId ?? fallbackAcct;
+    const recipient = net === 'mainnet' ? 'terraagent.near' : net === 'testnet' ? 'terraagent.testnet' : 'terraagent.mock';
     const handle = this.openSigner({
-      title: 'NEAR WALLET SIGNER (MOCK)',
+      title: `NEAR WALLET SIGNER (${net.toUpperCase()})`,
       subtitle: 'Approve NEP-413 signature to claim your colony account',
-      actionSummary: `Claim colony account for ${colonyId} as ${walletAccountId}`,
-      accountId: walletAccountId,
-      recipient: 'terraagent.mock',
-      message: `claim:${colonyId}:${walletAccountId}`,
+      actionSummary: net === 'mock'
+        ? `Claim colony account for ${colonyId} as ${initialAcct}`
+        : `Claim colony account for ${colonyId} (${net})`,
+      accountId: initialAcct,
+      recipient,
+      message: net === 'mock' ? `claim:${colonyId}:${initialAcct}` : `claim:${colonyId}`,
     });
     const outcome = await handle.promise;
     if (outcome.status !== 'approved') {
@@ -203,6 +228,8 @@ export class StakingPanel implements Disposable {
       return false;
     }
 
+    const walletAccountId =
+      net === 'mock' ? initialAcct : outcome.signature.accountId || initialAcct;
     try {
       const res = await this.fetchFn('/v1/near/claim-account', {
         method: 'POST',
@@ -210,14 +237,17 @@ export class StakingPanel implements Disposable {
         body: JSON.stringify({
           colonyId,
           walletAccountId,
+          newPublicKey: outcome.signature.publicKey,
           walletSignature: outcome.signature,
         }),
       });
+      const body = (await res.json().catch(() => ({}))) as {
+        claimed?: boolean;
+        claimedByAccountId?: string;
+        code?: string;
+        message?: string;
+      };
       if (res.ok) {
-        const body = (await res.json()) as {
-          claimed?: boolean;
-          claimedByAccountId?: string;
-        };
         this.accountClaimed = body.claimed ?? true;
         this.claimedByAccountId = body.claimedByAccountId ?? walletAccountId;
         this.statusMsgEl.textContent = `Account claimed (${this.claimedByAccountId})`;
@@ -225,12 +255,16 @@ export class StakingPanel implements Disposable {
         await this.refreshFromServer();
         return true;
       }
+      this.statusMsgEl.textContent = body.message ?? body.code ?? 'Account claim failed';
     } catch {
-      this.accountClaimed = true;
-      this.claimedByAccountId = walletAccountId;
-      this.statusMsgEl.textContent = `Account claimed (${this.claimedByAccountId})`;
-      this.renderState();
-      return true;
+      if (net === 'mock') {
+        this.accountClaimed = true;
+        this.claimedByAccountId = walletAccountId;
+        this.statusMsgEl.textContent = `Account claimed (${this.claimedByAccountId})`;
+        this.renderState();
+        return true;
+      }
+      this.statusMsgEl.textContent = 'Account claim failed';
     }
     return false;
   }
@@ -250,9 +284,10 @@ export class StakingPanel implements Disposable {
     const tracker = createDeedTracker(this.ctx.services.track);
     tracker.stakeStarted({ colonyId, planetId, pool, amount: rawAmount });
 
+    const net = this.activeNetwork();
     const signerAccount = this.claimedByAccountId ?? this.currentDeed?.ownerAccountId ?? 'pilot.mock';
     const handle = this.openSigner({
-      title: 'NEAR WALLET SIGNER (MOCK)',
+      title: `NEAR WALLET SIGNER (${net.toUpperCase()})`,
       subtitle: REAL_NEAR_COPY,
       actionSummary: `Stake ${rawAmount} NEAR in ${pool}`,
       accountId: signerAccount,
@@ -395,8 +430,12 @@ export class StakingPanel implements Disposable {
       this.currentDeed?.settled || this.currentDeed?.status === 'settled',
     );
     this.root.dataset.settled = isSettled ? 'true' : 'false';
-    this.lockedBannerEl.hidden = isSettled;
-    this.controlsWrapEl.hidden = !isSettled;
+    this.lockedBannerEl.hidden = true;
+    this.controlsWrapEl.hidden = false;
+
+    const totalStakedNear = this.positions.reduce((sum, p) => sum + Number(p.staked || '0'), 0);
+    this.perksBannerEl.textContent = formatStakerPerksBanner(totalStakedNear);
+    this.root.dataset.perksActive = totalStakedNear >= 10 ? 'true' : 'false';
 
     this.walletBalanceEl.textContent = `Wallet: ${this.walletBalanceNear} NEAR`;
     if (this.accountClaimed) {
@@ -419,6 +458,13 @@ export class StakingPanel implements Disposable {
 
     this.unstakeBtnEl.disabled = Number(stakedNear) <= 0;
     this.withdrawBtnEl.disabled = Number(withdrawableNear) <= 0;
+  }
+
+  private activeNetwork(): 'mock' | RealNearNetwork {
+    const cid = (this.currentDeed?.contractId ?? this.currentDeed?.ownerAccountId ?? '').toLowerCase();
+    if (cid.endsWith('.testnet')) return 'testnet';
+    if (cid.endsWith('.near')) return 'mainnet';
+    return 'mock';
   }
 
   private activePosition(): StakingPositionDto | null {

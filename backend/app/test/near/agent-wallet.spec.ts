@@ -76,13 +76,14 @@ describe('W15-03 sub-account names and adapter selection', () => {
     expect(() => composeSubAccountId('BAD', 'guild-1')).toThrowError(/outside NEAR account-id rules/);
   });
 
-  it('selects the mock by default, binds testnet when requested, and fails closed when mainnet has no class', () => {
+  it('selects the mock by default, binds testnet/mainnet when requested, and fails closed without NEAR_ALLOW_MAINNET', () => {
     expect(nearAdapterKey('AgentWallet')).toBe('NEAR_ADAPTER_AGENT_WALLET');
     expect(nearAdapterFor('AgentWallet', {})).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'mock' })).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_ADAPTER_AGENT_WALLET: 'mock' })).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'testnet', NEAR_ADAPTER_AGENT_WALLET: 'mock' })).toBe('mock');
     expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'testnet' })).toBe('testnet');
+    expect(nearAdapterFor('AgentWallet', { NEAR_MODE: 'mainnet' })).toBe('mainnet');
     expect(
       nearAdapters.some(
         (a) => a.port === AgentWalletPort && a.kind === 'mock' && a.useClass === MockAgentWalletAdapter,
@@ -93,12 +94,23 @@ describe('W15-03 sub-account names and adapter selection', () => {
         (a) => a.port === AgentWalletPort && a.kind === 'testnet' && a.useClass === TestnetAgentWalletAdapter,
       ),
     ).toBe(true);
+    expect(
+      nearAdapters.some(
+        (a) => a.port === AgentWalletPort && a.kind === 'mainnet' && a.useClass === TestnetAgentWalletAdapter,
+      ),
+    ).toBe(true);
     expect(() =>
       parseEnv([nearEnvFor(nearAdapters)], { ...UNIT_APP_ENV, NEAR_ADAPTER_AGENT_WALLET: 'testnet' }),
     ).not.toThrow();
-    expect(nearAdapters.some((a) => a.port === AgentWalletPort && a.kind === 'mainnet')).toBe(false);
     expect(() =>
       parseEnv([nearEnvFor(nearAdapters)], { ...UNIT_APP_ENV, NEAR_ADAPTER_AGENT_WALLET: 'mainnet' }),
-    ).toThrow(/AgentWallet: "mainnet" adapter selected but none is registered/);
+    ).toThrow(/NEAR_ALLOW_MAINNET/);
+    expect(() =>
+      parseEnv([nearEnvFor(nearAdapters)], {
+        ...UNIT_APP_ENV,
+        NEAR_ADAPTER_AGENT_WALLET: 'mainnet',
+        NEAR_ALLOW_MAINNET: '1',
+      }),
+    ).not.toThrow();
   });
 });

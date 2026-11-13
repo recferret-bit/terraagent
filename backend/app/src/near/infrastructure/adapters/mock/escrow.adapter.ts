@@ -7,6 +7,7 @@ import {
   EscrowOpenInput,
   EscrowOpenResult,
   EscrowPort,
+  EscrowSlashInput,
   EscrowView,
 } from '../../../application/ports/escrow.port.js';
 import { NearException } from '../../../domain/errors.js';
@@ -47,6 +48,31 @@ export class MockEscrowAdapter extends MockChainBase implements EscrowPort {
   async refund(raw: EscrowActionInput): Promise<ChainReceipt> {
     const input = EscrowActionInput.parse(raw);
     return this.call('Escrow', 'refund', input.opId, (tx) => this.refundOpen(tx, input));
+  }
+
+  async slash(raw: EscrowSlashInput): Promise<ChainReceipt> {
+    const input = EscrowSlashInput.parse(raw);
+    return this.call('Escrow', 'slash', input.opId, async (tx) => {
+      const row = await takeOpenEscrow(tx, input.escrowId, 'slashed');
+      const whole = BigInt(row.amount.toFixed(0));
+      const protocolCut = (whole * BigInt(input.protocolFeeBp)) / 10_000n;
+      const victimCut = whole - protocolCut;
+      await this.debit(tx, escrowHoldAccount(row.id), row.tokenId, whole.toString());
+      if (victimCut > 0n) {
+        await this.credit(tx, input.victimAccountId, row.tokenId, victimCut.toString());
+      }
+      if (protocolCut > 0n) {
+        await this.credit(tx, input.protocolAccountId, row.tokenId, protocolCut.toString());
+      }
+      return {
+        escrowId: row.id,
+        status: 'slashed',
+        victim: input.victimAccountId,
+        victimAmount: victimCut.toString(),
+        protocol: input.protocolAccountId,
+        protocolAmount: protocolCut.toString(),
+      };
+    });
   }
 
   async get(raw: EscrowGetInput): Promise<EscrowView> {

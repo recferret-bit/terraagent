@@ -1,8 +1,10 @@
 import 'reflect-metadata';
+import { createSign, generateKeyPairSync } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { SocialAuthResponseSchema } from '@terra/contracts';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app';
+import { AuthRepository } from '../../src/core/auth';
 import { mockOauthSecret, signMockToken } from '../../src/near/identity/mock-token';
 
 const DEV = {
@@ -13,6 +15,7 @@ const DEV = {
 };
 
 const apps: INestApplication[] = [];
+afterEach(() => { vi.restoreAllMocks(); });
 afterAll(async () => { await Promise.all(apps.map((a) => a.close())); });
 
 async function boot(extra: Record<string, string> = {}) {
@@ -75,5 +78,81 @@ describe('POST /v1/auth/social', () => {
     const res = await postSocial(url, pilotToken());
     expect(res.status).toBe(404);
     expect(((await res.json()) as { errorCode: string }).errorCode).toBe('NOT_FOUND');
+  });
+});
+
+describe('POST /v1/auth/social (Auth0 PKCE profile naming & provider guard)', () => {
+  it('derives readable handle & NEAR account from Auth0 PKCE claims, heals legacy google-oauth2-* handles, and blocks Google-under-X SSO mixups', async () => {
+    const { app } = await createApp({ source: { ...DEV } });
+    await app.listen(0, '127.0.0.1');
+    apps.push(app);
+    const url = (await app.getUrl()).replace('[::1]', '127.0.0.1');
+
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = { ...(publicKey.export({ format: 'jwk' }) as object), kid: 'auth0-kid-1', alg: 'RS256' };
+    const signIdToken = (claims: Record<string, unknown>): string => {
+      const h = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'auth0-kid-1' })).toString('base64url');
+      const p = Buffer.from(JSON.stringify(claims)).toString('base64url');
+      const signer = createSign('RSA-SHA256');
+      signer.update(`${h}.${p}`);
+      return `${h}.${p}.${signer.sign(privateKey).toString('base64url')}`;
+    };
+
+    const googleJwt = signIdToken({
+      iss: 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/',
+      aud: 'GhPTEx5u0o5Bh16F6LWjPXOXAyQROUNL',
+      sub: 'google-oauth2|106920817337195603999',
+      email: 'recferret@gmail.com',
+      nickname: 'recferret',
+      name: 'Andrey Sokolov',
+      exp: Math.floor(Date.now() / 1000) + 300,
+    });
+
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const href = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (href === 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/oauth/token') {
+        return new Response(JSON.stringify({ id_token: googleJwt }), { status: 200 });
+      }
+      if (href === 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/.well-known/jwks.json') {
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }));
+
+    const pkceToken = 'fastauth-code:code123:verifier123:https%3A%2F%2Fterraagent.fun%2Flanding.html';
+
+    // Cross-provider SSO mixup (Google token sent under provider='x') must be rejected:
+    const mismatchRes = await realFetch(`${url}/v1/auth/social`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'x', token: pkceToken }),
+    });
+    expect(mismatchRes.status).toBe(401);
+    expect(((await mismatchRes.json()) as { errorCode: string }).errorCode).toBe('NEAR_PROVIDER_REJECTED');
+
+    // Valid Google login gets clean handle & NEAR account name (not google-oauth2-106920817337195603):
+    const okRes = await realFetch(`${url}/v1/auth/social`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'google', token: pkceToken }),
+    });
+    expect(okRes.status).toBe(200);
+    const linked = SocialAuthResponseSchema.parse(await okRes.json());
+    expect(linked.player.handle).toBe('recferret');
+    expect(linked.accountId).toBe('recferret.terraagent.mock');
+
+    // Simulate a legacy player row stuck with handle `google-oauth2-106920817337195603`, then re-login:
+    const authRepo = app.get(AuthRepository);
+    await authRepo.updatePlayerHandle(linked.player.id, 'google-oauth2-106920817337195603');
+    const healedRes = await realFetch(`${url}/v1/auth/social`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'google', token: pkceToken }),
+    });
+    expect(healedRes.status).toBe(200);
+    const healed = SocialAuthResponseSchema.parse(await healedRes.json());
+    expect(healed.player.id).toBe(linked.player.id);
+    expect(healed.player.handle).toBe('recferret');
   });
 });

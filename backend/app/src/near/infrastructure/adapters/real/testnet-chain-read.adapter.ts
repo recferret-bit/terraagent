@@ -3,17 +3,17 @@ import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { adapterOf } from '../../../../ports/adapters.js';
 import { ChainReadPort } from '../../../application/ports/chain-read.port.js';
 import type { ChainHealth, ChainReceipt } from '../../../domain/types.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 
-/** Real NEAR Testnet `ChainReadPort` (`W23-06`): reads receipts & health via FastNEAR + fallback RPC and builds nearblocks links. */
+/** Real NEAR `ChainReadPort` (`W23-06`): reads receipts & health via FastNEAR + fallback RPC and builds nearblocks links. */
 @Injectable()
 export class TestnetChainReadAdapter implements ChainReadPort {
   private readonly rpc: NearRpcClient;
 
   constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('ChainRead', source)));
   }
 
   explorerUrl(txHash: string): string | null {
@@ -36,3 +36,4 @@ export class TestnetChainReadAdapter implements ChainReadPort {
 }
 
 export const adapter = adapterOf({ port: ChainReadPort, kind: 'testnet', useClass: TestnetChainReadAdapter });
+export const mainnetAdapter = adapterOf({ port: ChainReadPort, kind: 'mainnet', useClass: TestnetChainReadAdapter });

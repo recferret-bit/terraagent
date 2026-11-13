@@ -73,6 +73,8 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   truce_cap: 'Rejected: Active truce cap reached for HQ tier',
   unknown_offer: 'Rejected: Truce offer no longer active',
   unknown_truce: 'Rejected: Truce no longer active',
+  war_active: 'Rejected: Bonded war already active against target colony',
+  unknown_war: 'Rejected: Bonded war no longer active',
   already_posted: 'Rejected: A bounty was already posted this tick',
   invalid_target: 'Rejected: That target is not visible',
   timeout: 'Not confirmed: Timeout',

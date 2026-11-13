@@ -17,6 +17,44 @@ interface JwtHeader {
 export interface VerifiedSocialClaims {
   readonly subject: string;
   readonly email: string | null;
+  readonly preferredName?: string;
+}
+
+const PROFILE_NAME_FIELDS = ['preferred_username', 'screen_name', 'nickname', 'given_name', 'name'] as const;
+
+function extractPreferredOidcName(payload: Record<string, unknown>): string | undefined {
+  for (const key of PROFILE_NAME_FIELDS) {
+    const raw = payload[key];
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.includes('|')) continue;
+    const stem = (trimmed.includes('@') ? (trimmed.split('@')[0] ?? '') : trimmed).trim();
+    if (stem.replace(/[^a-z0-9]/gi, '').length >= 2) return stem;
+  }
+  return undefined;
+}
+
+/** Rejects cross-provider OAuth SSO mixups (e.g. a `google-oauth2|...` subject submitted under `provider: 'x'`). */
+export function assertOAuthProviderMatchesSubject(
+  provider: string,
+  subject: string,
+  email?: string | null,
+): void {
+  const p = provider.trim().toLowerCase();
+  if (p === 'x' && /^(google-oauth2|apple|github|windowslive|email)\|/i.test(subject)) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'OAuth subject does not match requested provider x' });
+  }
+  if (p === 'google' && /^(twitter|oauth2\|twitter|oauth2\|x|x|email)\|/i.test(subject)) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'OAuth subject does not match requested provider google' });
+  }
+  if (p === 'email') {
+    if (/^(twitter|oauth2\|twitter|oauth2\|x|x)\|/i.test(subject)) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'OAuth subject does not match requested provider email' });
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Verified email claim missing from OIDC token' });
+    }
+  }
 }
 
 const jwksCache = new Map<string, { keys: readonly JwksKey[]; fetchedAt: number }>();
@@ -60,6 +98,9 @@ export async function verifyOidcJwt(params: {
   readonly jwksUrl: string;
   readonly allowedIssuers: readonly string[];
   readonly expectedAudience?: string;
+  readonly expectedNonce?: string;
+  readonly requireNonceIfPresent?: boolean;
+  readonly requireEmail?: boolean;
 }): Promise<VerifiedSocialClaims> {
   const { header, payload, signingInput, signature } = parseJwtParts(params.token);
   if (header.alg !== 'RS256') {
@@ -84,6 +125,34 @@ export async function verifyOidcJwt(params: {
     throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT RS256 signature invalid' });
   }
 
+  assertJwtClaims(payload, params);
+
+  const sub = typeof payload.sub === 'string' && payload.sub.trim() ? payload.sub.trim() : '';
+  if (!sub) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT missing subject' });
+  }
+  const email = typeof payload.email === 'string' && payload.email.trim() ? payload.email.trim().toLowerCase() : null;
+  if (params.requireEmail) {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT missing verified email claim' });
+    }
+    if (payload.email_verified !== true) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Email address is not verified' });
+    }
+  }
+  const preferredName = extractPreferredOidcName(payload);
+  return preferredName ? { subject: sub, email, preferredName } : { subject: sub, email };
+}
+
+function assertJwtClaims(
+  payload: Record<string, unknown>,
+  params: {
+    readonly allowedIssuers: readonly string[];
+    readonly expectedAudience?: string;
+    readonly expectedNonce?: string;
+    readonly requireNonceIfPresent?: boolean;
+  },
+): void {
   const iss = typeof payload.iss === 'string' ? payload.iss : '';
   if (!params.allowedIssuers.includes(iss)) {
     throw new NearException('NEAR_PROVIDER_REJECTED', { message: `Unexpected JWT issuer: ${iss}` });
@@ -94,6 +163,9 @@ export async function verifyOidcJwt(params: {
   if (exp <= nowSec) {
     throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT expired' });
   }
+  if (typeof payload.iat === 'number' && payload.iat > nowSec + 120) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT iat is in the future' });
+  }
 
   if (params.expectedAudience) {
     const aud = payload.aud;
@@ -103,27 +175,75 @@ export async function verifyOidcJwt(params: {
     }
   }
 
-  const sub = typeof payload.sub === 'string' && payload.sub.trim() ? payload.sub.trim() : '';
-  if (!sub) {
-    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT missing subject' });
+  const tokenNonce = typeof payload.nonce === 'string' ? payload.nonce : '';
+  if (params.expectedNonce) {
+    if (tokenNonce !== params.expectedNonce) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'JWT OIDC nonce mismatch' });
+    }
+  } else if (params.requireNonceIfPresent && tokenNonce.length > 0) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Missing OIDC PKCE nonce parameter' });
   }
-  const email = typeof payload.email === 'string' ? payload.email : null;
-  return { subject: sub, email };
 }
 
-/** Exchanges a PKCE authorization code (`fastauth-code:<code>:<verifier>:<redirectUri>`) with Auth0 `/oauth/token` and verifies the RS256 ID token. */
+export function assertAllowedRedirectUri(
+  redirectUri: string,
+  envSource?: Record<string, string | undefined>,
+): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(redirectUri);
+  } catch {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid FastAuth redirect_uri' });
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid FastAuth redirect_uri protocol' });
+  }
+
+  const isProd = envSource?.NODE_ENV === 'production';
+  if (!isProd && parsed.protocol === 'http:' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+    return;
+  }
+
+  const allowedOrigins = new Set<string>(['https://terraagent.fun', 'https://www.terraagent.fun']);
+  const taDomain = envSource?.TA_DOMAIN?.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (taDomain) {
+    allowedOrigins.add(`https://${taDomain}`);
+    allowedOrigins.add(`https://www.${taDomain}`);
+  }
+  const corsRaw = envSource?.CORS_ORIGINS ?? '';
+  for (const part of corsRaw.split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    try {
+      allowedOrigins.add(new URL(trimmed).origin);
+    } catch {
+      /* ignore malformed entry */
+    }
+  }
+  if (!allowedOrigins.has(parsed.origin)) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', {
+      message: `Disallowed FastAuth redirect_uri origin: ${parsed.origin}`,
+    });
+  }
+}
+
+/** Exchanges a PKCE authorization code (`fastauth-code:<code>:<verifier>:<redirectUri>[:<nonce>]`) with Auth0 `/oauth/token` and verifies the RS256 ID token. */
 export async function verifyFastAuthPkceCode(params: {
   readonly rawToken: string;
   readonly issuer: string;
   readonly clientId: string;
+  readonly requireEmail?: boolean;
+  readonly envSource?: Record<string, string | undefined>;
 }): Promise<VerifiedSocialClaims> {
-  const [, rawCode = '', rawVerifier = '', rawRedirectUri = ''] = params.rawToken.split(':');
+  const [, rawCode = '', rawVerifier = '', rawRedirectUri = '', rawNonce = ''] = params.rawToken.split(':');
   const code = decodeURIComponent(rawCode).trim();
   const codeVerifier = decodeURIComponent(rawVerifier).trim();
   const redirectUri = decodeURIComponent(rawRedirectUri).trim();
-  if (!code || !codeVerifier || !redirectUri) {
+  const expectedNonce = rawNonce ? decodeURIComponent(rawNonce).trim() : undefined;
+  if (!code || codeVerifier.length < 4 || codeVerifier.length > 128 || !redirectUri) {
     throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Incomplete FastAuth PKCE code payload' });
   }
+  assertAllowedRedirectUri(redirectUri, params.envSource);
   const normalizedIssuer = params.issuer.endsWith('/') ? params.issuer : `${params.issuer}/`;
   const tokenRes = await fetch(`${normalizedIssuer}oauth/token`, {
     method: 'POST',
@@ -152,10 +272,17 @@ export async function verifyFastAuthPkceCode(params: {
     jwksUrl: `${normalizedIssuer}.well-known/jwks.json`,
     allowedIssuers: [normalizedIssuer, normalizedIssuer.replace(/\/$/, '')],
     expectedAudience: params.clientId,
+    expectedNonce,
+    requireNonceIfPresent: true,
+    requireEmail: params.requireEmail,
   });
 }
 
-/** Verifies a JSON-encoded FastAuth / NEP-413 ed25519 session signature token (`@fast-auth-near/browser-sdk`). */
+/**
+ * Low-level ed25519 signature helper for offline FastAuth session payload inspection.
+ * Security note: does NOT verify server challenge/nonce or on-chain `view_access_key` ownership;
+ * MUST NEVER be used alone to authenticate `POST /v1/auth/social`.
+ */
 export function verifyFastAuthSessionProof(rawToken: string): VerifiedSocialClaims {
   let parsed: {
     accountId?: string;

@@ -40,7 +40,7 @@ beforeAll(async () => {
   intents = app.get(IntentsPort, { strict: false }) as unknown as MockIntentsAdapter;
   bus = app.get(EventBus);
   bus.on('near.market.command', (c) => cmds.push(c), { module: 'test' });
-  await intents.testRegisterSigner('platform.terraagent.mock');
+  await intents.testRegisterSigner('protocol.terraagent.mock');
 });
 afterEach(() => mockChainControls.reset());
 afterAll(async () => {

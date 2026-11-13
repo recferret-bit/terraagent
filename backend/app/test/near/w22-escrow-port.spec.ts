@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_ESCROW_SLASH_PROTOCOL_BP,
   ESCROW_STATUSES,
   EscrowActionInput,
   EscrowGetInput,
   EscrowOpenInput,
   EscrowPort,
+  EscrowSlashInput,
   EscrowView,
   NEAR_ADAPTER_ESCROW,
 } from '../../src/near/application/ports/escrow.port';
@@ -33,14 +35,25 @@ describe('W22-02 EscrowPort get and view schemas', () => {
   it('parses a get with no opId and a view in each status', () => {
     expect(NEAR_ADAPTER_ESCROW).toBe('NEAR_ADAPTER_ESCROW');
     expect(EscrowPort.prototype.open).toBeUndefined();
+    expect(EscrowPort.prototype.slash).toBeUndefined();
     expect(EscrowPort.prototype.get).toBeUndefined();
-    expect([...ESCROW_STATUSES]).toEqual(['open', 'claimed', 'refunded']);
+    expect([...ESCROW_STATUSES]).toEqual(['open', 'claimed', 'refunded', 'slashed']);
+    expect(DEFAULT_ESCROW_SLASH_PROTOCOL_BP).toBe(1_000);
     expect(EscrowGetInput.parse({ escrowId: 'esc_bt01' }).escrowId).toBe('esc_bt01');
     expect(EscrowView.parse(VIEW).amount).toBe('200');
     expect(EscrowView.parse({ ...VIEW, status: 'claimed' }).status).toBe('claimed');
     expect(EscrowView.parse({ ...VIEW, status: 'refunded', amount: '0' }).status).toBe('refunded');
+    expect(EscrowView.parse({ ...VIEW, status: 'slashed' }).status).toBe('slashed');
     expect(EscrowOpenInput.parse(OPEN).beneficiary).toBe(HOLD);
     expect(EscrowActionInput.parse({ opId: 'bounty-pay:bt_01', escrowId: 'esc_bt01', caller: FUNDER }).caller).toBe(FUNDER);
+    expect(
+      EscrowSlashInput.parse({
+        opId: 'slash:tr_1',
+        escrowId: 'esc_bt01',
+        victimAccountId: 'victim.terraagent.mock',
+        protocolAccountId: 'protocol.terraagent.mock',
+      }).protocolFeeBp,
+    ).toBe(1_000);
   });
 
   it('rejects a bad account on the view, the open, and the claim', () => {

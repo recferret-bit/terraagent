@@ -1,5 +1,6 @@
 import type { MeAchievementsResponse, MeProfileResponse } from '@terra/contracts';
 import { consumeNearWalletCallback } from '../../../design/pilot/mockToken';
+import { decodeNep413SocialToken } from '../../../design/pilot/nearAuthApi';
 import { PilotAccess, type PilotAccessOptions, type PilotAccessSession } from '../../../design/pilot/PilotAccess';
 import { clearMeCachedToken, fetchMeData, resolveMeBearerToken, type MeFetchFn } from './api';
 import { clearChildren, el } from './dom';
@@ -52,11 +53,12 @@ export class MePage {
     if (!walletHit) return;
     const doFetch: MeFetchFn = this.opts.fetch ?? ((input, init) => fetch(input, init));
     try {
-      const res = await doFetch('/v1/auth/social', {
+      const nep413 = decodeNep413SocialToken(walletHit.token);
+      const res = await doFetch(nep413 ? '/v1/auth/near/verify' : '/v1/auth/social', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(walletHit),
+        body: JSON.stringify(nep413 ?? walletHit),
       });
       if (!res.ok) return;
       const body = (await res.json()) as PilotAccessSession;

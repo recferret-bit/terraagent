@@ -23,7 +23,7 @@ import type { ChainReceipt } from '../../../domain/types.js';
 import { PASS_ABOVE_BP, PASS_MIN_YES, tallyMemberVotes, type DaoVoteValue } from '../../../treasury/pass-rule.js';
 import { daoAccountIdFor, readCost } from '../../../treasury/policy.js';
 import { insertDaoIfMissing } from '../../../treasury/store.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
@@ -69,7 +69,7 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
   ) {
     this.envSource = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(this.envSource, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(this.envSource, resolveActiveNearNetwork('TreasuryDao', this.envSource)));
     this.prisma = databaseEnabled(env) && prisma ? prisma : null;
   }
 
@@ -264,3 +264,4 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
 }
 
 export const adapter = adapterOf({ port: TreasuryDaoPort, kind: 'testnet', useClass: TestnetTreasuryDaoAdapter });
+export const mainnetAdapter = adapterOf({ port: TreasuryDaoPort, kind: 'mainnet', useClass: TestnetTreasuryDaoAdapter });

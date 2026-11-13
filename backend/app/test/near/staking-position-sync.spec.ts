@@ -69,7 +69,7 @@ describe('W20-20 StakingPositionSyncService — syncAccount & lifecycle', () => 
     expect(afterUnstake?.staked).toBe('0');
     expect(afterUnstake?.unbonding).toBe('10');
     expect(afterUnstake?.unbondingReadyAtMs).not.toBeNull();
-    expect(Number(afterUnstake?.rewards)).toBeCloseTo(0.074, 3);
+    expect(Number(afterUnstake?.rewards)).toBeCloseTo(0.0592, 3);
 
     staking.advanceGameDays(2);
     await staking.withdraw({

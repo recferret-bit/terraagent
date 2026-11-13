@@ -14,6 +14,7 @@ import { IntentTradeRepository } from '../settlement/intent-trade.repository.js'
 import { colonyFunds } from './colony-funds.js';
 import { MarketBookPush } from './market-book-push.service.js';
 import type { MarketCaller } from './market-caller.js';
+import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
 
 export const RECENT_TRADES = 50;
 
@@ -50,8 +51,27 @@ export class MarketSnapshotService {
 
   async snapshot(planetId: string, caller: MarketCaller | null): Promise<MarketSnapshotResponse> {
     const [books, board, recent] = await Promise.all([this.books(planetId), this.boardRows(planetId), this.trades.recentFinal(planetId, RECENT_TRADES)]);
-    const out: MarketSnapshotResponse = { planetId, books, board, recentTrades: recent.map(tradeView), policy: this.policyView() };
-    if (caller?.colony) Object.assign(out, await this.mine(planetId, caller.colony));
+    const basePolicy = this.policyView();
+    const out: MarketSnapshotResponse = { planetId, books, board, recentTrades: recent.map(tradeView), policy: basePolicy };
+    if (caller?.colony) {
+      const [mine, perks] = await Promise.all([
+        this.mine(planetId, caller.colony),
+        resolveDbStakerPerks(this.prisma, {
+          colonyId: caller.colony.colonyId,
+          accountId: caller.colony.accountId,
+          standardPlatformFeeBp: basePolicy.platformFeeBp,
+        }),
+      ]);
+      Object.assign(out, mine);
+      if (perks.active) {
+        out.policy = {
+          ...basePolicy,
+          platformFeeBp: perks.platformFeeBp,
+          standardPlatformFeeBp: perks.standardPlatformFeeBp,
+          stakerDiscountActive: true,
+        };
+      }
+    }
     return out;
   }
 

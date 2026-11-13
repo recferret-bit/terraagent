@@ -72,6 +72,24 @@ export class AuthRepository {
     }
   }
 
+  /** Updates a player's handle, retrying with a suffix when the desired handle is already taken. */
+  async updatePlayerHandle(id: string, desiredHandle: string): Promise<PlayerRecord> {
+    let handle = desiredHandle;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.store.updatePlayerHandle(id, handle);
+      } catch (e) {
+        if (!(e instanceof UniqueViolation) || e.field !== 'handle') throw e;
+        if (attempt >= HANDLE_ATTEMPTS) {
+          const existing = await this.store.findPlayerById(id);
+          if (existing) return existing;
+          throw e;
+        }
+        handle = suffixed(desiredHandle);
+      }
+    }
+  }
+
   createSession(input: { id: string; playerId: string; refreshTokenHash: string; expiresAt: Date }): Promise<AuthSessionRecord> {
     return this.store.createSession(input);
   }

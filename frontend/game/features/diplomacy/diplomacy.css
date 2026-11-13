@@ -218,3 +218,40 @@
   width: 100%;
   min-height: 34px;
 }
+
+.ta-diplomacy-slash-note {
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--ta-text-2);
+}
+
+.ta-diplomacy-war-badge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-void);
+  border: 1px solid var(--ta-fault);
+}
+
+.ta-diplomacy-war-badge__pill {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-fault);
+  color: var(--ta-fault);
+}
+
+.ta-diplomacy-war-badge__objective {
+  font-size: 10px;
+  color: var(--ta-orange-hi);
+}
+
+.ta-diplomacy-war__submit {
+  width: 100%;
+  min-height: 32px;
+  border-color: var(--ta-fault);
+  color: var(--ta-fault);
+}

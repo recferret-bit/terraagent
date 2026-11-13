@@ -1,5 +1,14 @@
 import { Body, Controller, HttpCode, Inject, Optional, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { SocialAuthRequestSchema, type SocialAuthRequest, type SocialAuthResponse } from '@terra/contracts';
+import {
+  NearAuthChallengeRequestSchema,
+  NearAuthVerifyRequestSchema,
+  SocialAuthRequestSchema,
+  type NearAuthChallengeRequest,
+  type NearAuthChallengeResponse,
+  type NearAuthVerifyRequest,
+  type SocialAuthRequest,
+  type SocialAuthResponse,
+} from '@terra/contracts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AuthTokenService, extractBearerPlayer, formatRefreshCookie, resolveCookieDomain } from '../../core/auth/index.js';
 import { ZodPipe } from '../../core/errors/zod.pipe.js';
@@ -61,6 +70,31 @@ export class SocialAuthController {
     @Res({ passthrough: true }) res: ReplyLike,
   ): Promise<SocialAuthResponse> {
     const { response, refreshToken } = await this.social.login(body, optionalBearer(req, this.tokens, !this.isProduction));
+    setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
+    return response;
+  }
+
+  @Post('near/challenge')
+  @HttpCode(200)
+  @UseGuards(IpThrottleGuard)
+  nearChallenge(
+    @Body(new ZodPipe(NearAuthChallengeRequestSchema.optional())) body?: NearAuthChallengeRequest,
+  ): NearAuthChallengeResponse {
+    return this.social.issueNearChallenge(body);
+  }
+
+  @Post('near/verify')
+  @HttpCode(200)
+  @UseGuards(IpThrottleGuard)
+  async nearVerify(
+    @Body(new ZodPipe(NearAuthVerifyRequestSchema)) body: NearAuthVerifyRequest,
+    @Req() req: IncomingMessage,
+    @Res({ passthrough: true }) res: ReplyLike,
+  ): Promise<SocialAuthResponse> {
+    const { response, refreshToken } = await this.social.verifyNearWallet(
+      body,
+      optionalBearer(req, this.tokens, !this.isProduction),
+    );
     setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction, resolveCookieDomain(req?.headers?.host)));
     return response;
   }

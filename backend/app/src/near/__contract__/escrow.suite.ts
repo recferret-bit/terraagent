@@ -169,6 +169,46 @@ async function payoutsSumToDebit(a: A, expectReceipt: ReceiptCheck): Promise<voi
   expect(await total(a, [...parties, claimed.escrowId, refunded.escrowId])).toBe(before);
 }
 
+async function slashSplits90ToVictimAnd10ToProtocol(a: A, expectReceipt: ReceiptCheck): Promise<void> {
+  const funder = acc('attacker');
+  const victim = acc('defender');
+  const protocol = acc('protocol');
+  const beneficiary = acc('benef');
+  await a.fund(funder, TOKEN, FUNDED);
+  const parties = [funder, victim, protocol, beneficiary];
+  const before = await total(a, parties);
+
+  const opened = await a.port.open(openOf(funder, `open-slash:${uid()}`, beneficiary));
+  const slashOp = `slash:${uid()}`;
+  const slashed = await a.port.slash({
+    opId: slashOp,
+    escrowId: opened.escrowId,
+    victimAccountId: victim,
+    protocolAccountId: protocol,
+    protocolFeeBp: 1_000,
+  });
+  expectReceipt(slashed, a, 'success');
+
+  const replay = await a.port.slash({
+    opId: slashOp,
+    escrowId: opened.escrowId,
+    victimAccountId: victim,
+    protocolAccountId: protocol,
+    protocolFeeBp: 1_000,
+  });
+  expect(replay.txHash).toBe(slashed.txHash);
+
+  await expect(
+    a.port.claim({ opId: `claim-after-slash:${uid()}`, escrowId: opened.escrowId, caller: victim }),
+  ).rejects.toMatchObject({ errorCode: 'NEAR_ESCROW_STATE' });
+
+  expect(await a.balance(victim, TOKEN)).toBe('180');
+  expect(await a.balance(protocol, TOKEN)).toBe('20');
+  expect(await a.balance(opened.escrowId, TOKEN)).toBe('0');
+  expect(['slashed', 'claimed']).toContain((await a.port.get({ escrowId: opened.escrowId })).status);
+  expect(await total(a, [...parties, opened.escrowId])).toBe(before);
+}
+
 export const escrowSuite: NearContractSuite<EscrowPort, EscrowContractHelpers> = ({ test, expectReceipt }) => {
   test('open 200 of metals.t1 debits the funder, credits the hold, and get is open', (a) => openCreditsHold(a, expectReceipt));
   test('open above the balance throws NEAR_INSUFFICIENT_BALANCE and changes nothing', (a) => overdraftChangesNothing(a, expectReceipt));
@@ -177,4 +217,5 @@ export const escrowSuite: NearContractSuite<EscrowPort, EscrowContractHelpers> =
   test('the same open opId returns the same escrow and the same balances', (a) => openReplayKeepsBalances(a, expectReceipt));
   test('refund then get is refunded and the opener is whole again', (a) => refundRestoresOpener(a, expectReceipt));
   test('claim and refund payouts sum to the original debit', (a) => payoutsSumToDebit(a, expectReceipt));
+  test('slash splits 90% to victim and 10% to TerraAgent Protocol idempotently', (a) => slashSplits90ToVictimAnd10ToProtocol(a, expectReceipt));
 };

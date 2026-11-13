@@ -1,4 +1,5 @@
 import { refreshPilotSession } from '../../design/pilot/PilotAccess';
+import { signOutNearWalletSelector } from '../../design/pilot/walletSelectorRuntime';
 import { readActivePilot } from '../../game/features/achievements/activePilot';
 
 /** Where the page keeps a token it minted from the OAuth redirect. */
@@ -113,6 +114,11 @@ export function signOut(): void {
     store()?.removeItem(TRADE_TOKEN_KEY);
     store()?.removeItem('ta_active_pilot');
     store()?.removeItem('ta_oauth_callback');
+    store()?.removeItem('ta_oauth_error');
+    store()?.removeItem('ta_pkce_state');
+    store()?.removeItem('ta_nep413_pending');
+    store()?.removeItem('ta_nep413_popup_result');
   } catch { /* ignore */ }
+  void signOutNearWalletSelector().catch(() => undefined);
   void fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => undefined);
 }

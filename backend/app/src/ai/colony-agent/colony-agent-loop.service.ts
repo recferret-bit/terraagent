@@ -13,6 +13,7 @@ import type { AllowanceUsage } from '../../market/trade/allowance.js';
 import type { LlmAttestation } from '../../ports/llm-provider.port.js';
 import { LlmProviderPort } from '../../ports/llm-provider.port.js';
 import { PlayerAiSettingsStore } from '../../profile/player-ai-settings.store.js';
+import { resolvePlanetStakedColonies } from '../../near/staking/staker-perks.js';
 import { DEFAULT_NEAR_AI_MODEL, normalizeNearAiModel } from '../nearai-models.js';
 import {
   buildSimCommandFromDirective,
@@ -45,6 +46,7 @@ export interface TickPlanetAgentsOptions {
   readonly allowanceByColony?: Record<number, TradeAllowance>;
   readonly usageByColony?: Record<number, AllowanceUsage>;
   readonly playerAiByColony?: Record<number, PlayerColonyAiOverride>;
+  readonly stakedByColony?: Record<number, boolean>;
   readonly useCache?: boolean;
   readonly nowMs?: number;
 }
@@ -136,8 +138,12 @@ export class ColonyAgentLoopService {
     const snap = await this.planets.fullState(planetId);
     const state = restore(snap.bytes);
     const nowMs = opts.nowMs ?? Date.now();
-    const playerConfigs = await this.resolvePlayerAiMap(planetId, state.colonies, opts.playerAiByColony);
-    const enforcePlayerKeyGate = Boolean(this.playerAiStore || opts.playerAiByColony);
+    const [playerConfigs, dbStaked] = await Promise.all([
+      this.resolvePlayerAiMap(planetId, state.colonies, opts.playerAiByColony),
+      resolvePlanetStakedColonies(this.prisma, this.env, state.colonies),
+    ]);
+    const stakedColonies = { ...dbStaked, ...(opts.stakedByColony ?? {}) };
+    const enforcePlayerKeyGate = Boolean(this.playerAiStore || opts.playerAiByColony || opts.stakedByColony);
 
     const governedObs: ColonyObservation[] = [];
     const resultsByIndex = new Map<number, ColonyAgentEvalResult>();
@@ -160,6 +166,7 @@ export class ColonyAgentLoopService {
       planetId,
       governedObs,
       playerConfigs,
+      stakedColonies,
       enforcePlayerKeyGate,
       Boolean(opts.useCache),
       nowMs,
@@ -204,6 +211,7 @@ export class ColonyAgentLoopService {
   private cacheDigestFor(
     obs: ColonyObservation,
     playerCfg: PlayerColonyAiOverride | undefined,
+    hasStakerAutopilot: boolean,
     enforcePlayerKeyGate: boolean,
   ): string {
     if (obs.isBot) return `${observationDigest(obs)}|bot:${this.botModel()}`;
@@ -212,13 +220,17 @@ export class ColonyAgentLoopService {
       const model = normalizeNearAiModel(playerCfg?.model || DEFAULT_NEAR_AI_MODEL);
       return `${observationDigest(obs)}|player:${apiKey.slice(-4)}:${model}`;
     }
-    return `${observationDigest(obs)}|${enforcePlayerKeyGate ? 'det' : 'bot'}`;
+    if (hasStakerAutopilot || !enforcePlayerKeyGate) {
+      return `${observationDigest(obs)}|bot:${this.botModel()}`;
+    }
+    return `${observationDigest(obs)}|det`;
   }
 
   private async resolveAllDecisions(
     planetId: string,
     observations: readonly ColonyObservation[],
     playerConfigs: Record<number, PlayerColonyAiOverride>,
+    stakedColonies: Record<number, boolean>,
     enforcePlayerKeyGate: boolean,
     useCache: boolean,
     nowMs: number,
@@ -230,7 +242,8 @@ export class ColonyAgentLoopService {
     for (const obs of observations) {
       const cacheKey = `${planetId}:${obs.colonyIndex}`;
       const playerCfg = playerConfigs[obs.colonyIndex];
-      const digest = this.cacheDigestFor(obs, playerCfg, enforcePlayerKeyGate);
+      const hasStakerAutopilot = Boolean(stakedColonies[obs.colonyIndex]);
+      const digest = this.cacheDigestFor(obs, playerCfg, hasStakerAutopilot, enforcePlayerKeyGate);
       const cached = this.decisionCache.get(cacheKey);
       if (
         useCache &&
@@ -255,7 +268,7 @@ export class ColonyAgentLoopService {
         const existing = playerBatches.get(groupKey);
         if (existing) existing.list.push(obs);
         else playerBatches.set(groupKey, { apiKey, model, list: [obs] });
-      } else if (!enforcePlayerKeyGate) {
+      } else if (hasStakerAutopilot || !enforcePlayerKeyGate) {
         botBatch.push(obs);
       } else {
         const fallback: ResolvedDecision = {
@@ -277,7 +290,7 @@ export class ColonyAgentLoopService {
         const dec = batchOut.get(obs.colonyIndex)!;
         out.set(obs.colonyIndex, dec);
         this.decisionCache.set(`${planetId}:${obs.colonyIndex}`, {
-          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], enforcePlayerKeyGate),
+          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], Boolean(stakedColonies[obs.colonyIndex]), enforcePlayerKeyGate),
           atMs: nowMs,
           decision: dec,
         });
@@ -294,7 +307,7 @@ export class ColonyAgentLoopService {
         const dec = batchOut.get(obs.colonyIndex)!;
         out.set(obs.colonyIndex, dec);
         this.decisionCache.set(`${planetId}:${obs.colonyIndex}`, {
-          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], enforcePlayerKeyGate),
+          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], Boolean(stakedColonies[obs.colonyIndex]), enforcePlayerKeyGate),
           atMs: nowMs,
           decision: dec,
         });

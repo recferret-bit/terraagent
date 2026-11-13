@@ -1,12 +1,19 @@
 import type { Feature } from '../../core/registry/types';
+import { formatCountdownSeconds } from '../shared/neighborMarkers';
+import { applyDiplomacySimEventInternal } from './parts/diplomacyEvents';
+
+export { formatCountdownSeconds };
 
 export const TRUCE_DURATIONS_HOURS = [2, 6, 24, 72] as const;
 export type TruceDurationHours = (typeof TRUCE_DURATIONS_HOURS)[number];
 export type TruceStatus = 'active' | 'notice' | 'ended';
-
 export type GameFeature = Feature;
-
 export const TICKS_PER_SECOND = 5;
+
+export interface DiplomacyBondSpec {
+  readonly bondToken: string;
+  readonly bondAmount: number;
+}
 
 export interface DiplomacyOfferView {
   offerId: string;
@@ -18,6 +25,8 @@ export interface DiplomacyOfferView {
   offeredAtTick: number;
   expiresAtTick: number;
   status?: string;
+  bondToken?: string;
+  bondAmount?: number;
 }
 
 export interface DiplomacyTruceView {
@@ -34,6 +43,23 @@ export interface DiplomacyTruceView {
   status: TruceStatus;
   noticeEndsAtTick?: number;
   cancelledBy?: number;
+  bondToken?: string;
+  bondAmount?: number;
+}
+
+export interface DiplomacyWarView {
+  warId: string;
+  attackerColony: number;
+  defenderColony: number;
+  partnerColony: number;
+  role: 'attacker' | 'defender';
+  bondToken: string;
+  bondAmount: number;
+  declaredAtTick: number;
+  expiresAtTick: number;
+  structuresDestroyed: number;
+  resourcesSiphoned: number;
+  status: 'active' | 'completed' | 'cancelled' | 'expired' | 'eliminated';
 }
 
 export interface DiplomacyColonyView {
@@ -44,13 +70,16 @@ export interface DiplomacyColonyView {
   incomingOffers: DiplomacyOfferView[];
   outgoingOffers: DiplomacyOfferView[];
   truces: DiplomacyTruceView[];
+  wars?: DiplomacyWarView[];
   contacts: number[];
 }
 
 export interface DiplomacyPanelActions {
   onRespondTruce(offerId: string, accept: boolean): void;
   onCancelTruce(truceId: string): void;
-  onProposeTruce(targetColonyId: string | number, hours: TruceDurationHours): void;
+  onProposeTruce(targetColonyId: string | number, hours: TruceDurationHours, bond?: DiplomacyBondSpec): void;
+  onDeclareWar?(targetColonyId: string | number, bond: DiplomacyBondSpec): void;
+  onCancelWar?(warId: string): void;
 }
 
 export interface DiplomacyPanelOptions {
@@ -58,16 +87,19 @@ export interface DiplomacyPanelOptions {
   ownColonyIndex?: number;
   getOwnColonyIndex?: () => number;
   colonyId?: string;
+  warsEnabled?: boolean;
 }
-
-import { formatCountdownSeconds } from '../shared/neighborMarkers';
-
-export { formatCountdownSeconds };
 
 export function formatTickRemaining(targetTick: number, currentTick: number): string {
   const remTicks = Math.max(0, targetTick - currentTick);
   const seconds = Math.ceil(remTicks / TICKS_PER_SECOND);
   return formatCountdownSeconds(seconds);
+}
+
+export function formatBondLabel(bondAmount?: number, bondToken?: string): string {
+  if (!bondAmount || bondAmount <= 0) return 'Free (Unbonded)';
+  const tok = bondToken === 'metals.t1' ? 'Metals' : bondToken === 'minerals.t1' ? 'Minerals' : (bondToken ?? 'NEAR');
+  return `${bondAmount} ${tok} Bond`;
 }
 
 function normalizeHours(val: unknown): TruceDurationHours {
@@ -117,9 +149,9 @@ function extractOffers(col: any, ownColonyIdx: number, colId: string | undefined
     const toColonyId = item.toColonyId ? String(item.toColonyId) : undefined;
     const expiresAtTick = Number(item.expiresAtTick ?? 0);
     const status = String(item.status || 'pending');
-
     if (status !== 'pending' || expiresAtTick <= tick) continue;
 
+    const bondAmount = typeof item.bondAmount === 'number' && item.bondAmount > 0 ? item.bondAmount : undefined;
     const offer: DiplomacyOfferView = {
       offerId,
       fromColony,
@@ -130,13 +162,11 @@ function extractOffers(col: any, ownColonyIdx: number, colId: string | undefined
       offeredAtTick: Number(item.offeredAtTick ?? 0),
       expiresAtTick,
       status,
+      ...(bondAmount ? { bondAmount, bondToken: String(item.bondToken || 'NEAR') } : {}),
     };
 
-    const isIncoming = toColony === ownColonyIdx || (colId && toColonyId === colId);
-    const isOutgoing = fromColony === ownColonyIdx || (colId && fromColonyId === colId);
-
-    if (isIncoming) incoming.push(offer);
-    else if (isOutgoing) outgoing.push(offer);
+    if (toColony === ownColonyIdx || (colId && toColonyId === colId)) incoming.push(offer);
+    else if (fromColony === ownColonyIdx || (colId && fromColonyId === colId)) outgoing.push(offer);
   }
   return { incoming, outgoing };
 }
@@ -161,13 +191,13 @@ function extractTruces(col: any, ownColonyIdx: number, colId: string | undefined
     const colBId = item.colonyBId ? String(item.colonyBId) : undefined;
     const expiresAtTick = Number(item.expiresAtTick ?? 0);
     const status = (item.status as TruceStatus) || 'active';
-
     if (status === 'ended' || expiresAtTick <= tick) continue;
 
     const isA = colA === ownColonyIdx || (colId && colAId === colId);
     const isB = colB === ownColonyIdx || (colId && colBId === colId);
     if (!isA && !isB) continue;
 
+    const bondAmount = typeof item.bondAmount === 'number' && item.bondAmount > 0 ? item.bondAmount : undefined;
     result.push({
       truceId,
       colonyA: colA,
@@ -182,6 +212,50 @@ function extractTruces(col: any, ownColonyIdx: number, colId: string | undefined
       status,
       noticeEndsAtTick: typeof item.noticeEndsAtTick === 'number' ? item.noticeEndsAtTick : undefined,
       cancelledBy: typeof item.cancelledBy === 'number' ? item.cancelledBy : undefined,
+      ...(bondAmount ? { bondAmount, bondToken: String(item.bondToken || 'NEAR') } : {}),
+    });
+  }
+  return result;
+}
+
+function extractWars(col: any, ownColonyIdx: number, colId: string | undefined, tick: number): DiplomacyWarView[] {
+  const rawWars: any[] = [];
+  if (Array.isArray(col?.diplomacy?.wars)) rawWars.push(...col.diplomacy.wars);
+  if (Array.isArray(col?.wars)) rawWars.push(...col.wars);
+
+  const seen = new Set<string>();
+  const result: DiplomacyWarView[] = [];
+  for (const item of rawWars) {
+    if (!item || typeof item !== 'object') continue;
+    const warId = String(item.warId || item.id || '');
+    if (!warId || seen.has(warId)) continue;
+    seen.add(warId);
+
+    const attacker = Number(item.attackerColonyIndex ?? item.attackerColony ?? 0);
+    const defender = Number(item.defenderColonyIndex ?? item.defenderColony ?? 0);
+    const attackerId = item.attackerColonyId ? String(item.attackerColonyId) : undefined;
+    const defenderId = item.defenderColonyId ? String(item.defenderColonyId) : undefined;
+    const expiresAtTick = Number(item.expiresAtTick ?? 0);
+    const status = String(item.status || 'active');
+    if (status !== 'active' || expiresAtTick <= tick) continue;
+
+    const isAttacker = attacker === ownColonyIdx || (colId && attackerId === colId);
+    const isDefender = defender === ownColonyIdx || (colId && defenderId === colId);
+    if (!isAttacker && !isDefender) continue;
+
+    result.push({
+      warId,
+      attackerColony: attacker,
+      defenderColony: defender,
+      partnerColony: isAttacker ? defender : attacker,
+      role: isAttacker ? 'attacker' : 'defender',
+      bondToken: String(item.bondToken || 'NEAR'),
+      bondAmount: Number(item.bondAmount ?? 5),
+      declaredAtTick: Number(item.declaredAtTick ?? 0),
+      expiresAtTick,
+      structuresDestroyed: Number(item.structuresDestroyed ?? 0),
+      resourcesSiphoned: Number(item.resourcesSiphoned ?? 0),
+      status: 'active',
     });
   }
   return result;
@@ -195,6 +269,7 @@ export function extractDiplomacyColonyView(
   const { col, tick, colId } = resolveColonyAndTick(snapshot, ownColonyIdx, currentTick);
   const { incoming, outgoing } = extractOffers(col, ownColonyIdx, colId, tick);
   const truces = extractTruces(col, ownColonyIdx, colId, tick);
+  const wars = extractWars(col, ownColonyIdx, colId, tick);
 
   let rawOath = col?.diplomacy?.oathbreakerUntil ?? col?.oathbreakerUntil;
   if (rawOath === undefined && col?.diplomacy?.oathbreakerUntilByColony) {
@@ -213,112 +288,9 @@ export function extractDiplomacyColonyView(
     incomingOffers: incoming,
     outgoingOffers: outgoing,
     truces,
+    wars,
     contacts,
   };
-}
-
-function handleTruceOffered(current: DiplomacyColonyView, data: Record<string, unknown>, idx: number, tick: number): DiplomacyColonyView {
-  const offerId = String(data.offerId || '');
-  if (!offerId) return current;
-  const fromCol = Number(data.fromColony ?? data.fromColonyIndex ?? 0);
-  const toCol = Number(data.toColony ?? data.toColonyIndex ?? 0);
-  const hours = normalizeHours(data.hours ?? data.durationHours);
-  const expiresAtTick = Number(data.expiresAtTick ?? tick + 600 * TICKS_PER_SECOND);
-  const offeredAtTick = Number(data.offeredAtTick ?? tick);
-
-  const offerView: DiplomacyOfferView = {
-    offerId,
-    fromColony: fromCol,
-    toColony: toCol,
-    fromColonyId: data.fromColonyId ? String(data.fromColonyId) : undefined,
-    toColonyId: data.toColonyId ? String(data.toColonyId) : undefined,
-    hours,
-    offeredAtTick,
-    expiresAtTick,
-    status: 'pending',
-  };
-
-  if (toCol === idx) {
-    return {
-      ...current,
-      incomingOffers: [...current.incomingOffers.filter((o) => o.offerId !== offerId), offerView],
-    };
-  }
-  if (fromCol === idx) {
-    return {
-      ...current,
-      outgoingOffers: [...current.outgoingOffers.filter((o) => o.offerId !== offerId), offerView],
-    };
-  }
-  return current;
-}
-
-function handleTruceSigned(current: DiplomacyColonyView, data: Record<string, unknown>, idx: number, tick: number): DiplomacyColonyView {
-  const offerId = data.offerId ? String(data.offerId) : undefined;
-  const truceId = String(data.truceId || `tr_${Date.now()}`);
-  const colA = Number(data.colonyA ?? data.colonyAIndex ?? 0);
-  const colB = Number(data.colonyB ?? data.colonyBIndex ?? 0);
-  const isParticipant = colA === idx || colB === idx;
-
-  const nextIncoming = offerId ? current.incomingOffers.filter((o) => o.offerId !== offerId) : current.incomingOffers;
-  const nextOutgoing = offerId ? current.outgoingOffers.filter((o) => o.offerId !== offerId) : current.outgoingOffers;
-
-  if (!isParticipant) {
-    return { ...current, incomingOffers: nextIncoming, outgoingOffers: nextOutgoing };
-  }
-
-  const partner = colA === idx ? colB : colA;
-  const hours = normalizeHours(data.hours ?? data.durationHours);
-  const signedAtTick = Number(data.signedAtTick ?? tick);
-  const expiresAtTick = Number(data.expiresAtTick ?? signedAtTick + hours * 3600 * TICKS_PER_SECOND);
-
-  const newTruce: DiplomacyTruceView = {
-    truceId,
-    colonyA: colA,
-    colonyB: colB,
-    colonyAId: data.colonyAId ? String(data.colonyAId) : undefined,
-    colonyBId: data.colonyBId ? String(data.colonyBId) : undefined,
-    partnerColony: partner,
-    partnerColonyId: colA === idx ? (data.colonyBId ? String(data.colonyBId) : undefined) : (data.colonyAId ? String(data.colonyAId) : undefined),
-    hours,
-    signedAtTick,
-    expiresAtTick,
-    status: 'active',
-  };
-
-  return {
-    ...current,
-    incomingOffers: nextIncoming,
-    outgoingOffers: nextOutgoing,
-    truces: [...current.truces.filter((t) => t.truceId !== truceId), newTruce],
-  };
-}
-
-function handleTruceNotice(current: DiplomacyColonyView, data: Record<string, unknown>, idx: number, tick: number): DiplomacyColonyView {
-  const truceId = String(data.truceId || '');
-  const cancelledBy = typeof data.cancelledBy === 'number' ? data.cancelledBy : undefined;
-  const noticeEndsAtTick = Number(data.noticeEndsAtTick ?? tick + 600 * TICKS_PER_SECOND);
-
-  const nextTruces = current.truces.map((t) => {
-    if (t.truceId !== truceId) return t;
-    return { ...t, status: 'notice' as const, noticeEndsAtTick, cancelledBy };
-  });
-
-  let oathUntil = current.oathbreakerUntil;
-  if (cancelledBy === idx) {
-    oathUntil = noticeEndsAtTick + 24 * 3600 * TICKS_PER_SECOND;
-  }
-  return { ...current, truces: nextTruces, oathbreakerUntil: oathUntil };
-}
-
-function handleTruceEnded(current: DiplomacyColonyView, data: Record<string, unknown>, idx: number): DiplomacyColonyView {
-  const truceId = String(data.truceId || '');
-  const nextTruces = current.truces.filter((t) => t.truceId !== truceId);
-  let oathUntil = current.oathbreakerUntil;
-  if (typeof data.oathbreakerUntilTick === 'number' && Number(data.cancelledBy) === idx) {
-    oathUntil = data.oathbreakerUntilTick;
-  }
-  return { ...current, truces: nextTruces, oathbreakerUntil: oathUntil };
 }
 
 export function applyDiplomacySimEvent(
@@ -327,20 +299,5 @@ export function applyDiplomacySimEvent(
   ownColonyIdx?: number,
   currentTick?: number,
 ): DiplomacyColonyView {
-  const idx = ownColonyIdx ?? current.colonyIndex;
-  const tick = currentTick ?? current.currentTick;
-  const data = event.data || {};
-
-  switch (event.kind) {
-    case 'truceOffered':
-      return handleTruceOffered(current, data, idx, tick);
-    case 'truceSigned':
-      return handleTruceSigned(current, data, idx, tick);
-    case 'truceNotice':
-      return handleTruceNotice(current, data, idx, tick);
-    case 'truceEnded':
-      return handleTruceEnded(current, data, idx);
-    default:
-      return current;
-  }
+  return applyDiplomacySimEventInternal(current, event, ownColonyIdx, currentTick);
 }

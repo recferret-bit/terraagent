@@ -75,6 +75,7 @@ export class AccountClaimService {
       accountId,
       walletAccountId,
       walletPublicKey,
+      ...(sig ? { walletSignature: sig } : {}),
     });
 
     const priorMem = this.claimedAccounts.get(colonyId);

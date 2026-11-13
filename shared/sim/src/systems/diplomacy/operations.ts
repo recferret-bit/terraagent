@@ -1,4 +1,4 @@
-import type { RejectCode, TruceDurationHours } from '@terra/contracts';
+import type { DiplomacyBondToken, RejectCode, TruceDurationHours } from '@terra/contracts';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
@@ -15,6 +15,7 @@ import {
   getActiveTrucesForColony,
   getLastHostilityTick,
   hasActiveTruce,
+  hasAnyActiveWarBetween,
   readDiplomacyBlob,
   resolveColonyIdStr,
   resolveColonyIndex,
@@ -22,6 +23,11 @@ import {
   type StoredTruceOffer,
   type StoredTruceRecord,
 } from './store';
+
+export interface TruceBondOptions {
+  bondToken?: DiplomacyBondToken;
+  bondAmount?: number;
+}
 
 export type ProposeTruceResult =
   | { ok: true; offer: StoredTruceOffer }
@@ -42,12 +48,19 @@ export function createAndEmitTruceOffer(
   durationHours: TruceDurationHours,
   tick: number,
   ctx?: StepContext,
+  bond?: TruceBondOptions,
 ): StoredTruceOffer {
   const blob = readDiplomacyBlob(state);
   const offerId = `of_${blob.nextOfferSeq++}`;
   const fromColonyId = resolveColonyIdStr(state, fromColony);
   const toColonyId = resolveColonyIdStr(state, toColony);
   const expiresAtTick = tick + offerExpiryTicks(ctx?.data);
+  const bondAmount =
+    typeof bond?.bondAmount === 'number' && Number.isFinite(bond.bondAmount) && bond.bondAmount > 0
+      ? bond.bondAmount
+      : undefined;
+  const bondToken: DiplomacyBondToken | undefined = bondAmount ? (bond?.bondToken ?? 'NEAR') : undefined;
+  const bondFields = bondAmount && bondToken ? { bondAmount, bondToken } : {};
 
   const offer: StoredTruceOffer = {
     offerId,
@@ -62,6 +75,7 @@ export function createAndEmitTruceOffer(
     offeredAtTick: tick,
     expiresAtTick,
     status: 'pending',
+    ...bondFields,
   };
   blob.offers[offerId] = offer;
   writeDiplomacyBlob(state, blob, tick);
@@ -81,6 +95,7 @@ export function createAndEmitTruceOffer(
       hours: durationHours,
       durationHours,
       expiresAtTick,
+      ...bondFields,
     },
   });
   return offer;
@@ -93,11 +108,18 @@ export function proposeTruce(
   durationHours: TruceDurationHours,
   tick: number = state.meta.tick,
   ctx?: StepContext,
+  bond?: TruceBondOptions,
 ): ProposeTruceResult {
+  if (
+    bond?.bondAmount !== undefined &&
+    (typeof bond.bondAmount !== 'number' || !Number.isFinite(bond.bondAmount) || bond.bondAmount < 0)
+  ) {
+    return { ok: false, code: 'invalid_args', detail: 'invalid truce bond amount' };
+  }
   const toColony = resolveColonyIndex(state, targetRef);
   const check = validateTruceProposal(state, fromColony, toColony, durationHours, tick, ctx?.data);
   if (!check.ok) return check;
-  const offer = createAndEmitTruceOffer(state, fromColony, toColony, durationHours, tick, ctx);
+  const offer = createAndEmitTruceOffer(state, fromColony, toColony, durationHours, tick, ctx, bond);
   return { ok: true, offer };
 }
 
@@ -129,6 +151,10 @@ function finalizeAcceptedTruce(
   const truceId = `tr_${blob.nextTruceSeq++}`;
   const hours = offer.hours;
   const expiresAtTick = tick + hours * 3600 * TICKS_PER_SECOND;
+  const bondFields =
+    offer.bondAmount && offer.bondAmount > 0 && offer.bondToken
+      ? { bondAmount: offer.bondAmount, bondToken: offer.bondToken }
+      : {};
   const truce: StoredTruceRecord = {
     truceId,
     colonyA: offer.fromColonyIndex,
@@ -143,6 +169,7 @@ function finalizeAcceptedTruce(
     startedAtTick: tick,
     expiresAtTick,
     status: 'active',
+    ...bondFields,
   };
   blob.truces[truceId] = truce;
   writeDiplomacyBlob(state, blob, tick);
@@ -161,6 +188,7 @@ function finalizeAcceptedTruce(
       durationHours: hours,
       startedAtTick: tick,
       expiresAtTick,
+      ...bondFields,
     },
   });
   return truce;
@@ -204,6 +232,9 @@ export function respondTruce(
   }
   if (hasActiveTruce(state, fromColony, toColony, tick)) {
     return { ok: false, code: 'truce_active', detail: 'truce already active' };
+  }
+  if (hasAnyActiveWarBetween(state, fromColony, toColony, tick)) {
+    return { ok: false, code: 'war_active', detail: 'bonded war active between colonies' };
   }
 
   const fromCap = maxActiveTrucesForHqTier(fromHq.tier, ctx?.data);
@@ -260,6 +291,10 @@ export function cancelTruce(
   blob.oathbreakerUntilByColony[callerColony] = oathbreakerUntilTick;
   writeDiplomacyBlob(state, blob, tick);
 
+  const bondFields =
+    truce.bondAmount && truce.bondAmount > 0 && truce.bondToken
+      ? { bondAmount: truce.bondAmount, bondToken: truce.bondToken }
+      : {};
   ctx?.emit({
     kind: 'truceNotice',
     severity: 'warn',
@@ -271,6 +306,7 @@ export function cancelTruce(
       partnerColonyId,
       noticeEndsAtTick,
       oathbreakerUntilTick,
+      ...bondFields,
     },
   });
 
@@ -282,4 +318,13 @@ export {
   devOfferTruce,
   stepDiplomacy,
 } from './parts/truceLifecycle';
+export {
+  cancelWar,
+  declareWar,
+  recordWarSiphonProgress,
+  recordWarStructureDestroyed,
+  warBondDurationTicks,
+  type CancelWarResult,
+  type DeclareWarResult,
+} from './parts/warBonds';
 

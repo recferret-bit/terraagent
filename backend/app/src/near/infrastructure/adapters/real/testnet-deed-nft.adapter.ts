@@ -15,7 +15,7 @@ import type {
   NftTokenRef,
   NftUpdateMetadataInput,
 } from '../../../domain/types.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
@@ -66,7 +66,7 @@ export class TestnetDeedNftAdapter implements DeedNftPort {
 
   constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('DeedNft', source)));
   }
 
   async mint(input: NftMintInput): Promise<NftMintResult> {
@@ -174,3 +174,4 @@ export class TestnetDeedNftAdapter implements DeedNftPort {
 }
 
 export const adapter = adapterOf({ port: DeedNftPort, kind: 'testnet', useClass: TestnetDeedNftAdapter });
+export const mainnetAdapter = adapterOf({ port: DeedNftPort, kind: 'mainnet', useClass: TestnetDeedNftAdapter });

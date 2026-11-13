@@ -73,7 +73,11 @@ async function boot(): Promise<void> {
   activePromptAuth?.dispose();
   activePromptAuth = null;
 
-  const hasWalletCallback = location.search.includes('near_wallet_callback=1') || location.search.includes('state=terra-fastauth');
+  const hasWalletCallback =
+    location.search.includes('state=terra-pkce:') ||
+    location.search.includes('state=terra-fastauth') ||
+    location.hash.includes('signature=') ||
+    location.search.includes('signature=');
   const who = hasWalletCallback ? null : await identify();
   if (!who) {
     const mode = hasWalletCallback ? 'testnet' : await probeTradeAuthMode();

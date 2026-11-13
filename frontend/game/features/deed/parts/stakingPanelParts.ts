@@ -3,6 +3,13 @@ import type { StakingPoolInfo, StakingPositionDto } from '@terra/contracts';
 export const REAL_NEAR_COPY =
   'Real NEAR from your wallet — not game currency, no in-game bonus';
 
+export function formatStakerPerksBanner(stakedNear: number): string {
+  if (stakedNear >= 10) {
+    return 'PERKS ACTIVE (>= 10 NEAR): 7.2% Net APY · Managed NEAR.AI Autopilot ON · 0.50% Market Fee (20% yield -> TerraAgent Protocol)';
+  }
+  return 'Stake >= 10 NEAR from Day 1: 7.2% Net APY (20% yield -> TerraAgent Protocol) · Unlocks Managed NEAR.AI Autopilot + 50% Lower Market Fee (0.50%)';
+}
+
 export const DEFAULT_STAKING_POOLS: readonly StakingPoolInfo[] = [
   {
     poolId: 'astro-stakers.poolv1.near',
@@ -17,8 +24,9 @@ export const DEFAULT_STAKING_POOLS: readonly StakingPoolInfo[] = [
 ];
 
 export function formatPoolOptionText(pool: StakingPoolInfo): string {
-  const apyPct = (pool.apyBp / 100).toFixed(pool.apyBp % 100 === 0 ? 0 : 2);
-  return `${pool.poolId} (${apyPct}% APY)`;
+  const grossPct = (pool.apyBp / 100).toFixed(pool.apyBp % 100 === 0 ? 0 : 2);
+  const netPct = ((pool.apyBp * 0.8) / 100).toFixed(1);
+  return `${pool.poolId} (${netPct}% net / ${grossPct}% validator APY)`;
 }
 
 export function formatUnbondingSummary(pos: StakingPositionDto | null): string {
@@ -40,7 +48,7 @@ export function buildStakingHeader() {
 
   const title = document.createElement('h3');
   title.className = 'ta-staking-panel__title';
-  title.textContent = 'SETTLED DEED · NEAR STAKING';
+  title.textContent = 'COLONY DEED · DAY-1 NEAR STAKING';
 
   const walletBalanceEl = document.createElement('span');
   walletBalanceEl.className = 'ta-deed-panel__chip';
@@ -137,7 +145,7 @@ export function buildStakingPositionGrid() {
   };
 
   const stakedValEl = makeCell('Staked', 'staking-staked-value', '0 NEAR staked');
-  const rewardsValEl = makeCell('Rewards (9% APY)', 'staking-rewards-value', '0 NEAR');
+  const rewardsValEl = makeCell('Net Rewards (7.2% APY)', 'staking-rewards-value', '0 NEAR');
   const unbondingValEl = makeCell('Unbonding', 'staking-unbonding-value', 'None');
   const withdrawableValEl = makeCell('Withdrawable', 'staking-withdrawable-value', '0 NEAR');
 

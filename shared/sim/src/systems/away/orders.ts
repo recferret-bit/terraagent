@@ -54,6 +54,46 @@ export function isCancelTruce(command: { readonly kind: string; readonly args: u
   );
 }
 
+export function isCancelWar(command: { readonly kind: string; readonly args: unknown }): boolean {
+  if (command.kind === 'diplomacy.cancelWar' || command.kind === 'cancelWar' || command.kind === 'warCancel') {
+    return true;
+  }
+  if (!isRec(command.args)) return false;
+  return (
+    command.args.kind === 'cancelWar' ||
+    command.args.kind === 'diplomacy.cancelWar' ||
+    isRec(command.args.cancelWar)
+  );
+}
+
+export function isDeclareWar(command: { readonly kind: string; readonly args: unknown }): boolean {
+  if (command.kind === 'diplomacy.declareWar' || command.kind === 'declareWar') {
+    return true;
+  }
+  if (!isRec(command.args)) return false;
+  return (
+    command.args.kind === 'declareWar' ||
+    command.args.kind === 'diplomacy.declareWar' ||
+    isRec(command.args.declareWar)
+  );
+}
+
+export function locksHumanNearBond(command: { readonly kind: string; readonly args: unknown }): boolean {
+  if (!isRec(command.args)) return false;
+  if (!isProposeTruce(command) && !isDeclareWar(command)) return false;
+  const src = isRec(command.args.proposeTruce)
+    ? command.args.proposeTruce
+    : isRec(command.args.truceOffer)
+      ? command.args.truceOffer
+      : isRec(command.args.declareWar)
+        ? command.args.declareWar
+        : command.args;
+  const amount = num(src.bondAmount);
+  if (amount === undefined || amount <= 0) return false;
+  const token = typeof src.bondToken === 'string' ? src.bondToken : 'NEAR';
+  return token === 'NEAR';
+}
+
 export function isProposeTruce(command: { readonly kind: string; readonly args: unknown }): boolean {
   if (command.kind === 'diplomacy.proposeTruce' || command.kind === 'proposeTruce' || command.kind === 'truceOffer') {
     return true;
@@ -92,7 +132,9 @@ export function withinDiplomacyPolicy(
   _view: unknown,
   command: { readonly kind: string; readonly args: unknown; readonly withinDiplomacy?: boolean },
 ): boolean {
-  if (isCancelTruce(command) || command.withinDiplomacy === false) return false;
+  if (isCancelTruce(command) || isCancelWar(command) || locksHumanNearBond(command) || command.withinDiplomacy === false) {
+    return false;
+  }
   const propose = isProposeTruce(command);
   const respond = isRespondTruce(command);
   if (!propose && !respond) return false;

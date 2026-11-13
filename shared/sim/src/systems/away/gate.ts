@@ -2,7 +2,7 @@ import type { PriorityKey } from '@terra/contracts';
 import type { SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import { isCancelTruce, isRaidCommand } from './orders';
+import { isCancelTruce, isCancelWar, isDeclareWar, isRaidCommand, isRespondTruce, locksHumanNearBond } from './orders';
 import { awayPolicy } from './policy';
 import { readAwaySettings } from './store';
 import type { AwayActor, AwayFamily, AwayPolicyView } from './types';
@@ -114,15 +114,37 @@ export function checkAiRaidAwayPolicy(
   return { code: 'away_policy', detail: decision.rule };
 }
 
+function aiAcceptsNearBondedOffer(
+  state: PlanetState | undefined,
+  cmd: Pick<SimCommand, 'kind' | 'source' | 'args'>,
+): boolean {
+  if (!state || !isRespondTruce(cmd) || typeof cmd.args !== 'object' || cmd.args === null) return false;
+  const args = cmd.args as Record<string, unknown>;
+  if (args.accept === false) return false;
+  const offerId = typeof args.offerId === 'string' ? args.offerId : undefined;
+  if (!offerId) return false;
+  const rawOffers = (state.blobs.diplomacy?.value as { offers?: Record<string, { bondAmount?: number; bondToken?: string }> } | undefined)?.offers;
+  const offer = rawOffers?.[offerId];
+  return Boolean(offer && typeof offer.bondAmount === 'number' && offer.bondAmount > 0 && offer.bondToken === 'NEAR');
+}
+
 /**
- * Hard human-only guardrail (`AW-13`): AI / director callers may NEVER cancel an active truce early into Oathbreaker,
- * whether the colony is offline (`away`) or online (`AI AUTOPILOT: ON`).
+ * Hard human-only guardrail (`AW-13`): AI / director callers may NEVER cancel an active truce/war into slashing or
+ * lock human `NEAR` in diplomacy/war escrows, whether offline (`away`) or online (`AI AUTOPILOT: ON`).
  */
 export function checkAiCancelTrucePolicy(
   cmd: Pick<SimCommand, 'kind' | 'source' | 'args'>,
+  state?: PlanetState,
 ): { code: 'away_policy'; detail: 'AW-13' } | undefined {
   if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
-  if (!isCancelTruce(cmd)) return undefined;
+  if (
+    !isCancelTruce(cmd) &&
+    !isCancelWar(cmd) &&
+    !locksHumanNearBond(cmd) &&
+    !aiAcceptsNearBondedOffer(state, cmd)
+  ) {
+    return undefined;
+  }
   rejections.set('AW-13', (rejections.get('AW-13') ?? 0) + 1);
   return { code: 'away_policy', detail: 'AW-13' };
 }
@@ -132,13 +154,17 @@ export function checkAiCancelTrucePolicy(
  * Any other source is the away policy. A reject is counted under its rule.
  */
 export function gateAwayCommand(state: PlanetState, cmd: SimCommand, ctx: StepContext): { code: 'away_policy'; detail: string } | undefined {
-  if (!ctx.flags.has('W09') && !ctx.flags.has('W18')) return undefined;
+  if (!ctx.flags.has('W09') && !ctx.flags.has('W18') && !ctx.flags.has('W22')) return undefined;
   if (EXEMPT.has(cmd.source) || cmd.kind.startsWith('system.')) return undefined;
   if (typeof cmd.colonyIndex !== 'number') return undefined;
-  if (ctx.flags.has('W18')) {
-    const cancelGate = checkAiCancelTrucePolicy(cmd);
+  if (ctx.flags.has('W18') || ctx.flags.has('W22')) {
+    const cancelGate = checkAiCancelTrucePolicy(cmd, state);
     if (cancelGate) return cancelGate;
     if (isRaidCommand(cmd)) return checkAiRaidAwayPolicy(state, cmd.colonyIndex, cmd, ctx);
+    if (isDeclareWar(cmd) && !resolveColonyAwayRaids(state, cmd.colonyIndex)) {
+      rejections.set('AW-11', (rejections.get('AW-11') ?? 0) + 1);
+      return { code: 'away_policy', detail: 'AW-11' };
+    }
   }
   if (!colonyIsAway(state, cmd.colonyIndex)) return undefined;
   const decision = awayPolicy(viewFor(state, cmd.colonyIndex, ctx), {

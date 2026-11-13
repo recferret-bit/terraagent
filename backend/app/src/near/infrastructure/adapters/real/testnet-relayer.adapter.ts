@@ -5,15 +5,16 @@ import { adapterOf } from '../../../../ports/adapters.js';
 import { RelayerPort, type SubmitMetaTxInput } from '../../../application/ports/relayer.port.js';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
-import { resolveNearNetworkConfig } from '../../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
 import { runRelayed, SignerLane } from '../relayer/nonce-lane.js';
 import { assertRelayAllowed } from '../relayer/relay-rules.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
 /**
- * Real NEAR Testnet NEP-366 `RelayerPort` (`W23-15`, `W23-16`): enforces receiver allow-list,
- * per-signer nonce mutex, `opId` idempotency, and broadcasts `SignedDelegate` via `relayer.<root>.testnet`.
+ * Real NEAR NEP-366 `RelayerPort` (`W23-15`, `W23-16`): enforces receiver allow-list,
+ * inner `SignedDelegate` action/deposit guardrails, per-signer nonce mutex, `opId` idempotency,
+ * and broadcasts `SignedDelegate` via `relayer.<root>`.
  */
 @Injectable()
 export class TestnetRelayerAdapter implements RelayerPort {
@@ -23,7 +24,7 @@ export class TestnetRelayerAdapter implements RelayerPort {
 
   constructor(@Optional() @Inject(APP_ENV) env?: AppEnv) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, 'testnet'));
+    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('Relayer', source)));
   }
 
   async submitMetaTx(input: SubmitMetaTxInput): Promise<ChainReceipt> {
@@ -44,9 +45,7 @@ export class TestnetRelayerAdapter implements RelayerPort {
       const storageDepositReceipt = await this.tryExecuteStorageDepositJson(signedDelegate);
       if (storageDepositReceipt) return storageDepositReceipt;
     }
-    void signerId;
-    void receiverId;
-    return this.rpc.relaySignedDelegate(signedDelegate);
+    return this.rpc.relaySignedDelegate(signedDelegate, signerId, receiverId);
   }
 
   private async tryExecuteStorageDepositJson(signedDelegate: string): Promise<ChainReceipt | null> {
@@ -95,3 +94,4 @@ export class TestnetRelayerAdapter implements RelayerPort {
 }
 
 export const adapter = adapterOf({ port: RelayerPort, kind: 'testnet', useClass: TestnetRelayerAdapter });
+export const mainnetAdapter = adapterOf({ port: RelayerPort, kind: 'mainnet', useClass: TestnetRelayerAdapter });

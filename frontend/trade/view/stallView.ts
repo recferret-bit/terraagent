@@ -38,8 +38,8 @@ export class StallEditor {
       this.hint);
     form.addEventListener('submit', (e) => { e.preventDefault(); void this.submit(); });
     this.root = h('div', { class: 'tr-stall', 'data-stall-editor': '' },
-      h('h3', { class: 'tr-h3' }, 'Stall fee'),
-      h('p', { class: 'tr-hint' }, 'Charged to buyers on your sales. Now: ', this.current, '. Orders already open keep the fee they were placed with.'),
+      h('h3', { class: 'tr-h3' }, 'Trade Hub Stall Owner Fee (Income Lane #2)'),
+      h('p', { class: 'tr-hint' }, 'Paid directly to YOU by buyers filling against your orbital cargo (0–1.00%). Current rate: ', this.current, '. Existing open orders keep their placed rate.'),
       form, this.lock, this.msg, this.earned);
   }
 

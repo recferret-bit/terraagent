@@ -77,10 +77,14 @@ describe('production guard', () => {
     expect(app.getHttpServer()).toBeDefined();
     await app.close();
   });
-  it('unregistered adapter kind fails boot naming the port', async () => {
+  it('mainnet adapter kind fails boot without NEAR_ALLOW_MAINNET naming the port, and unregistered kind fails when adapters lack it', async () => {
     const err = await createApp({ source: { ...base, NEAR_ADAPTER_BADGE_NFT: 'mainnet' } }).catch((e) => e);
     expect(err).toBeInstanceOf(EnvError);
-    expect(err.message).toContain('BadgeNft: "mainnet" adapter selected but none is registered');
+    expect(err.message).toContain('BadgeNft');
+    expect(err.message).toContain('NEAR_ALLOW_MAINNET');
+    expect(() =>
+      parseEnv([nearEnvFor([])], { ...base, NEAR_ADAPTER_BADGE_NFT: 'testnet' }),
+    ).toThrow(/BadgeNft: "testnet" adapter selected but none is registered/);
   });
   it('boots all 11 ports with real testnet adapters when NEAR_MODE=testnet', async () => {
     const nearPorts = ['Identity', 'Relayer', 'CargoToken', 'Intents', 'AgentWallet', 'BadgeNft', 'DeedNft', 'Escrow', 'Staking', 'TreasuryDao', 'ChainRead'] as const;

@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { NearNetwork } from '../../domain/types.js';
+import type { NearNetwork, NearPortName } from '../../domain/types.js';
+import { nearAdapterFor } from '../adapter-selection.js';
+
+export const MAINNET_USDC_CONTRACT = '17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
+export const TESTNET_USDC_CONTRACT = '3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af';
 
 export interface NearNetworkConfig {
   readonly network: Exclude<NearNetwork, 'mock'>;
@@ -15,11 +19,17 @@ export interface NearNetworkConfig {
     readonly bounty: string;
     readonly staking: string;
     readonly dao: string;
+    readonly pilots: string;
     readonly intents: string;
+  };
+  readonly quoteTokens: {
+    readonly wnear: string;
+    readonly usdc: string;
   };
   readonly accounts: {
     readonly relayer: string;
     readonly minter: string;
+    readonly protocol: string;
   };
   readonly secrets: {
     readonly rootSecretKey?: string;
@@ -35,9 +45,21 @@ export interface NearNetworkConfig {
   readonly oneClickApiKey?: string;
   readonly relayerDailyCapNear: number;
   readonly minRelayerBalanceNear: number;
+  readonly maxRelayDepositNear: number;
 }
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
+
+/** Resolves whether a port (or global `NEAR_MODE`) targets `'mainnet'` or `'testnet'`. */
+export function resolveActiveNearNetwork(
+  port: NearPortName | null,
+  env: EnvMap = process.env,
+): Exclude<NearNetwork, 'mock'> {
+  if (port) {
+    return nearAdapterFor(port, env) === 'mainnet' ? 'mainnet' : 'testnet';
+  }
+  return env.NEAR_MODE?.trim() === 'mainnet' ? 'mainnet' : 'testnet';
+}
 
 function readKeyFile(credDir: string, accountId: string): string | undefined {
   try {
@@ -73,6 +95,7 @@ export function resolveNearNetworkConfig(
 
   const relayer = env.NEAR_RELAYER_ACCOUNT?.trim() || `relayer.${rootAccount}`;
   const minter = env.NEAR_MINTER_ACCOUNT?.trim() || `minter.${rootAccount}`;
+  const protocol = env.NEAR_PROTOCOL_ACCOUNT?.trim() || `protocol.${rootAccount}`;
 
   const credDir = env.NEAR_CREDENTIALS_DIR?.trim()
     || (env.NODE_ENV !== 'production' ? path.join(os.homedir(), '.near-credentials', network) : null);
@@ -83,6 +106,7 @@ export function resolveNearNetworkConfig(
 
   const dailyCap = Number(env.NEAR_RELAYER_DAILY_CAP ?? '5');
   const minBalance = Number(env.NEAR_MIN_RELAYER_BALANCE ?? '5');
+  const maxRelayDeposit = Number(env.NEAR_RELAYER_MAX_DEPOSIT_NEAR ?? '0.05');
 
   return {
     network,
@@ -96,9 +120,14 @@ export function resolveNearNetworkConfig(
       bounty: env.NEAR_CONTRACT_BOUNTY?.trim() || `bounty.${rootAccount}`,
       staking: env.NEAR_CONTRACT_STAKING?.trim() || `staking.${rootAccount}`,
       dao: env.NEAR_CONTRACT_DAO?.trim() || `dao.${rootAccount}`,
+      pilots: env.NEAR_CONTRACT_PILOTS?.trim() || `pilots.${rootAccount}`,
       intents: env.NEAR_CONTRACT_INTENTS?.trim() || 'intents.near',
     },
-    accounts: { relayer, minter },
+    quoteTokens: {
+      wnear: env.NEAR_TOKEN_WNEAR?.trim() || (isMainnet ? 'wrap.near' : 'wrap.testnet'),
+      usdc: env.NEAR_TOKEN_USDC?.trim() || (isMainnet ? MAINNET_USDC_CONTRACT : TESTNET_USDC_CONTRACT),
+    },
+    accounts: { relayer, minter, protocol },
     secrets: { rootSecretKey, relayerSecretKey, minterSecretKey },
     fastAuth: {
       issuer: env.NEAR_FASTAUTH_ISSUER?.trim() || 'https://dev-ep2ml1ryu5jcs8pz.us.auth0.com/',
@@ -109,5 +138,6 @@ export function resolveNearNetworkConfig(
     oneClickApiKey: env.NEAR_ONECLICK_API_KEY?.trim() || undefined,
     relayerDailyCapNear: Number.isFinite(dailyCap) && dailyCap > 0 ? dailyCap : 5,
     minRelayerBalanceNear: Number.isFinite(minBalance) && minBalance >= 0 ? minBalance : 5,
+    maxRelayDepositNear: Number.isFinite(maxRelayDeposit) && maxRelayDeposit >= 0 ? maxRelayDeposit : 0.05,
   };
 }

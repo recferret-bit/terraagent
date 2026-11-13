@@ -19,7 +19,7 @@
 1. **The Problem:** Online strategy games stop progressing when you close the browser tab, price resources with static studio spreadsheets that inflate and freeze, or break immersion with seed phrases, wallet popups, and gas prompts. Meanwhile, letting autonomous AI agents manage real wallets without cryptographic and policy boundaries risks draining user funds.
 2. **The Product:** A persistent hex-planet RTS (`@terra/sim` deterministic engine + Three.js WebGL2 diorama + `@msgpack/msgpack` binary WebSockets) where humans command colonies directly while online — and click **`AI AUTOPILOT: ON`** (or go offline) to hand execution to bounded **NEAR.AI (`z-ai/glm-5.3-flash`)** directors competing and trading alongside autonomous Rival AI colonies, external API trading bots, and scheduled NPC Orbital Guild ships.
 3. **What NEAR Concretely Enables:**
-   - **Invisible Account & Gasless Gameplay (`Identity` + `NEP-366` Relayer):** Social login (`FastAuth` PKCE/JWKS, Google/X OAuth, or NEAR wallet selector) provisions `{pilot}.terraagent.testnet` funded with `0.02 NEAR`, while `relayer.terraagent.testnet` sponsors allowlisted `SignedDelegate` meta-transactions so players never hold gas to play — with non-custodial `claimAccount` (`addFullAccessKey`) when ready.
+   - **Invisible Account & Gasless Gameplay (`Identity` + `pilots` Factory + `NEP-366` Relayer):** Social login (`FastAuth` PKCE/JWKS, Google/X OAuth, or NEAR wallet selector with cryptographic `NEP-413` challenge verification) provisions `{pilot}.terraagent.testnet` (or `{pilot}.pilots.terraagent.testnet` via the on-chain `pilots` factory so the root key stays in cold storage) funded with `0.02 NEAR`. `relayer.terraagent.testnet` sponsors allowlisted `SignedDelegate` meta-transactions with a per-action deposit cap (`R01-59`), and `claimAccount` executes an atomic `[AddKey(userPubKey), DeleteKey(custodialPubKey)]` rotation to transition the account to 100% non-custodial ownership.
    - **Open Commodity Liquidity & Intent Settlement (`NEP-245` + `NEP-413` + `1Click`):** Exporting colony resources mints `NEP-245` multi-tokens on `res.terraagent.testnet` (importing burns them). Player, bot, rival AI, and NPC Guild orders clear via counter-signed **`NEP-413` zero-sum `token_diff` intents** paired with live **NEAR Intents 1Click (`1click.chaindefuser.com/v0/quote`, `dry: true`)** cross-asset solver quotes.
    - **Confidential Verifiable AI + Sandboxed Spending (`NEAR AI Cloud TEE` + `AgentWallet`):** Colony directives run in **NEAR AI Cloud TEEs (`z-ai/glm-5.3-flash`)** verified via `/v1/signature/{chat_id}` ECDSA signatures (plus `AES-256-GCM` encrypted player BYOK keys on `/me.html`), constrained by scoped session keys, ACID per-token daily spend caps, one-click revocation, and hard server/contract guardrails (`403 AI_STAKING_FORBIDDEN`, human-only truce breaking).
    - **Dynamic Assets, Trustless Bounties & Shared Treasuries (`NEP-171`, `Escrow`, `DAO`, `Staking`):** Every colony mints an evolving soulbound **NEP-171 Colony Deed NFT** (`deed.terraagent.testnet`) whose `Settled` status gates human-only validator staking (`staking.terraagent.testnet`), posts raid-defense cargo escrows (`bounty.terraagent.testnet`), and votes on planetary public goods in per-planet **Treasury DAOs** (`{planet}.dao.terraagent.testnet` on `dao.terraagent.testnet`).
@@ -87,6 +87,9 @@ npm run dev            # → Postgres (docker :15434), NestJS API + WS (:4001), 
 NEAR_MODE=testnet NEAR_ROOT_ACCOUNT=terraagent.testnet \
 AI_PROVIDER=nearai AI_LIVE=1 NEAR_AI_API_KEY=<your_nearai_key> NEAR_AI_MODEL=z-ai/glm-5.3-flash \
 TA_SEED_RIVAL_AI=1 npm run dev
+
+# Deploy/verify all 6 Rust WASM contracts on Testnet (or Mainnet with NEAR_ALLOW_MAINNET=1 --network mainnet):
+npm run near:deploy-contracts -- --network testnet
 
 # Run live RPC contract-verification suites against https://test.rpc.fastnear.com:
 CONTRACT_CHAIN_READ_TX=BKC581CwFy3uQweLfZr7jLHRxXQRbrerMgcmHHbC6NJH npm run contract:real -- --port ChainRead
@@ -218,27 +221,28 @@ Generated and verified by [`backend/app/src/near/intents/nep413-token-diff.ts`](
 
 ## Deployed NEAR Testnet Contracts, Accounts & On-Chain Truth Matrix
 
-All **5 custom Rust `near-sdk 5.7` smart contracts** ([`backend/near-contracts/`](./backend/near-contracts/)) and **3 core protocol accounts** are deployed and active on NEAR Testnet (`NEAR_MODE=testnet`):
+All **6 custom Rust `near-sdk 5.7` smart contracts** ([`backend/near-contracts/`](./backend/near-contracts/)) and **3 core protocol accounts** are deployed and active on NEAR Testnet (`NEAR_MODE=testnet`), with 1-env promotion to NEAR Mainnet (`NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`):
 
-### 5 Live Rust Smart Contracts (`near-sdk 5.7`)
+### 6 Live Rust Smart Contracts (`near-sdk 5.7`)
 
 | Contract Account | Source Crate | Standard & Key On-Chain Methods | Live WASM `code_hash` | Deploy / Init Tx (`testnet.nearblocks.io`) |
 |---|---|---|---|---|
 | [`res.terraagent.testnet`](https://testnet.nearblocks.io/address/res.terraagent.testnet) | [`near-contracts/res`](./backend/near-contracts/res/src/lib.rs) | **NEP-245 Multi-Token** (`10` cargo tokens, `18` dec) · `mt_mint`, `mt_burn`, `operator_transfer`, `mt_transfer`, `mt_balance_of`, `mt_metadata` | `9KrGRQKkAMUP8qCEGk5CC6pgK9E79V1js46EipXTsvym` | [`7r2V4bttfkSjKBuFc2y4hKHjmd8FDQuDexnfLNSNUTFh`](https://testnet.nearblocks.io/txns/7r2V4bttfkSjKBuFc2y4hKHjmd8FDQuDexnfLNSNUTFh) |
 | [`deed.terraagent.testnet`](https://testnet.nearblocks.io/address/deed.terraagent.testnet) | [`near-contracts/deed`](./backend/near-contracts/deed/src/lib.rs) | **NEP-171 Soulbound Deeds & Badges** · `mint_deed`, `update_metadata`, `get_deed`, `owner_of`, `nft_token`, `nft_tokens_for_owner` | `GFB5WgL1hMiCSFZSNjiXdYhui68ptf2AyDvFHZGUR6pB` | [`72R9C6pU6HKw25HBpX4XSFHXQhGxFhoCE1SQzTgkiUUW`](https://testnet.nearblocks.io/txns/72R9C6pU6HKw25HBpX4XSFHXQhGxFhoCE1SQzTgkiUUW) (live mint [`FSYoA8pd...`](https://testnet.nearblocks.io/txns/FSYoA8pdfsmKCK2G6Pri6apnKMoj2sHGbA3dsoNJu4XF)) |
-| [`bounty.terraagent.testnet`](https://testnet.nearblocks.io/address/bounty.terraagent.testnet) | [`near-contracts/bounty`](./backend/near-contracts/bounty/src/lib.rs) | **Mercenary & Raid-Defense Escrow** · `open_escrow`, `claim_escrow`, `refund_escrow`, `get_escrow` (idempotent by `op_id`) | `6VGAZh8udooNjj85LyzBZT4jY1959FWFBJ3KBugGVtuH` | [`GDDYUk826TgGxDWiTq9y6PdNKW7HpfGoe8hQrMXccNFG`](https://testnet.nearblocks.io/txns/GDDYUk826TgGxDWiTq9y6PdNKW7HpfGoe8hQrMXccNFG) |
-| [`staking.terraagent.testnet`](https://testnet.nearblocks.io/address/staking.terraagent.testnet) | [`near-contracts/staking`](./backend/near-contracts/staking/src/lib.rs) | **Validator Yield Vault (`D-18` human-only)** · `credit_near`, `stake`, `unstake` (`2` game-day unbonding), `withdraw`, `get_position` | `9K2xHY4QZh7wfXAdf8pxogviBortXP4mM722W3k97NeC` | [`CJAeXB8YVZqrXPQQRRMMY2s6sBY7Ma17gE1thZ9CHAyX`](https://testnet.nearblocks.io/txns/CJAeXB8YVZqrXPQQRRMMY2s6sBY7Ma17gE1thZ9CHAyX) (init [`BKC581Cw...`](https://testnet.nearblocks.io/txns/BKC581CwFy3uQweLfZr7jLHRxXQRbrerMgcmHHbC6NJH)) |
+| [`bounty.terraagent.testnet`](https://testnet.nearblocks.io/address/bounty.terraagent.testnet) | [`near-contracts/bounty`](./backend/near-contracts/bounty/src/lib.rs) | **Mercenary & Raid-Defense Escrow** · `open_escrow`, `claim_escrow`, `refund_escrow`, `slash_escrow`, `get_escrow` (idempotent by `op_id`) | `DiHqr7iaRkvo4Nc86gYNFysZ18v4AWojFuxGLhz6VEi` | [`5b4ypSd9vgSFuDQC9f7JK8MdeVxf7xiwTMj3kC6BVGnM`](https://testnet.nearblocks.io/txns/5b4ypSd9vgSFuDQC9f7JK8MdeVxf7xiwTMj3kC6BVGnM) (init [`GDDYUk82...`](https://testnet.nearblocks.io/txns/GDDYUk826TgGxDWiTq9y6PdNKW7HpfGoe8hQrMXccNFG)) |
+| [`staking.terraagent.testnet`](https://testnet.nearblocks.io/address/staking.terraagent.testnet) | [`near-contracts/staking`](./backend/near-contracts/staking/src/lib.rs) | **Validator Yield Vault (`D-18` human-only)** · `credit_near`, `stake`, `unstake` (`2` game-day unbonding), `withdraw`, `get_position` | `6Z3m4dKqaPeCZ6b2HHcNEJNcbQjgd1myWh7fJG7oSYJJ` | [`HZK7MnpjpzqbnCyEmT219jM6wZn6TQJsW4mxBE4qMeSU`](https://testnet.nearblocks.io/txns/HZK7MnpjpzqbnCyEmT219jM6wZn6TQJsW4mxBE4qMeSU) (init [`CJAeXB8Y...`](https://testnet.nearblocks.io/txns/CJAeXB8YVZqrXPQQRRMMY2s6sBY7Ma17gE1thZ9CHAyX)) |
 | [`dao.terraagent.testnet`](https://testnet.nearblocks.io/address/dao.terraagent.testnet) | [`near-contracts/dao`](./backend/near-contracts/dao/src/lib.rs) | **Planet Council Treasury DAO** · `create_dao`, `deposit`, `add_member`, `propose`, `vote`, `finalize`, `get_dao` (`> 50%` quorum) | `ByT7esMkAqrtAi7SceUhDM5aauA1XfoUPt88fVvz5L8r` | [`4DVcXY5cV4uGRA5rtcoy6HhqPAhi2QwuKgwtjTvJedHn`](https://testnet.nearblocks.io/txns/4DVcXY5cV4uGRA5rtcoy6HhqPAhi2QwuKgwtjTvJedHn) (planet DAO [`CcatcC2z...`](https://testnet.nearblocks.io/txns/CcatcC2zYsrkr2zSS7CnNazF6nHzvu7Sz5nEyvQ7f9ee)) |
+| [`pilots.terraagent.testnet`](https://testnet.nearblocks.io/address/pilots.terraagent.testnet) | [`near-contracts/pilots`](./backend/near-contracts/pilots/src/lib.rs) | **Cold-Root Pilot Sub-Account Factory** · `create_pilot_account`, `get_pilot_account`, `set_operator`, `get_operator` (idempotent by `op_id`) | `7Hm4DQNFC1t1bvADn23vxMUq7WZouyZnWp8Zd2c9uSES` | [`BQ2pWYj49ALR2kB6VuLTpKMmRur7xMrNco2UMdLZg2BY`](https://testnet.nearblocks.io/txns/BQ2pWYj49ALR2kB6VuLTpKMmRur7xMrNco2UMdLZg2BY) (deploy [`2rpUcBjj...`](https://testnet.nearblocks.io/txns/2rpUcBjjEHGbZ8XC3wDaxvFnX9w8sHxwQ9TK21eM3bqD)) |
 
 ### Protocol Accounts & Direct FastNEAR RPC Verification
 
-- **Root & Sub-Account Parent:** [`terraagent.testnet`](https://testnet.nearblocks.io/address/terraagent.testnet) ([`3qmHWbgs...`](https://testnet.nearblocks.io/txns/3qmHWbgsfNoykfDeuLsyGVw36kaUmGN5uUiJqrHBgRLH)) — funds new pilot/bot sub-accounts (`0.02 NEAR`).
-- **NEP-366 Gasless Meta-Tx Relayer:** [`relayer.terraagent.testnet`](https://testnet.nearblocks.io/address/relayer.terraagent.testnet) ([`BftLVcAc...`](https://testnet.nearblocks.io/txns/BftLVcAcvG5ik42WAzypjQ81Vo2xBVULcHtMjsUdKPbW)) — sponsors `SignedDelegate` gas & `storage_deposit` within `NEAR_RELAYER_DAILY_CAP`.
+- **Root & Governance Owner:** [`terraagent.testnet`](https://testnet.nearblocks.io/address/terraagent.testnet) ([`3qmHWbgs...`](https://testnet.nearblocks.io/txns/3qmHWbgsfNoykfDeuLsyGVw36kaUmGN5uUiJqrHBgRLH)) — cold governance owner of all 6 contracts (hot server never needs the root key when `NEAR_PILOT_FACTORY_ACCOUNT=pilots.terraagent.testnet` is set).
+- **NEP-366 Gasless Meta-Tx Relayer & Pilot Operator:** [`relayer.terraagent.testnet`](https://testnet.nearblocks.io/address/relayer.terraagent.testnet) ([`BftLVcAc...`](https://testnet.nearblocks.io/txns/BftLVcAcvG5ik42WAzypjQ81Vo2xBVULcHtMjsUdKPbW)) — sponsors `SignedDelegate` gas & `storage_deposit` within `NEAR_RELAYER_DAILY_CAP` (`R01-59` deposit cap) and calls `pilots.terraagent.testnet::create_pilot_account`.
 - **Authorized Contract Operator:** [`minter.terraagent.testnet`](https://testnet.nearblocks.io/address/minter.terraagent.testnet) ([`7FHCx4UM...`](https://testnet.nearblocks.io/txns/7FHCx4UMq8E3hVj1tQxAWGN7CmZ4hTupGpEte4Fopzu)) — serialized FIFO nonce signer across `res`, `deed`, `bounty`, `staking`, `dao`.
 
 ```bash
-# Verify live WASM code_hash across all 5 contracts + query NEP-245 cargo metadata on FastNEAR Testnet RPC:
-for c in res deed bounty staking dao; do
+# Verify live WASM code_hash across all 6 contracts + query NEP-245 cargo metadata on FastNEAR Testnet RPC:
+for c in res deed bounty staking dao pilots; do
   echo -n "$c.terraagent.testnet -> "
   curl -fsS -X POST https://test.rpc.fastnear.com -H 'content-type: application/json' \
     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"query\",\"params\":{\"request_type\":\"view_account\",\"finality\":\"final\",\"account_id\":\"$c.terraagent.testnet\"}}" | jq -r '.result.code_hash'
@@ -252,13 +256,13 @@ curl -fsS -X POST https://test.rpc.fastnear.com -H 'content-type: application/js
 
 Per [`docs/hackathon/HACKATHON.md`](./docs/hackathon/HACKATHON.md) (`Q-007`, `Q-010`, `Q-017`), the exact boundary between on-chain Testnet execution and off-chain/hybrid verification is documented below:
 
-| Port / Service | Local (`NEAR_MODE=mock`) | Production (`NEAR_MODE=testnet` on `api.terraagent.fun`) | Exact On-Chain vs. Verifier Boundary |
+| Port / Service | Local (`NEAR_MODE=mock`) | Production (`NEAR_MODE=testnet` / `mainnet`) | Exact On-Chain vs. Verifier Boundary |
 |---|---|---|---|
-| `ChainRead` | Postgres Mock | **Live Testnet** (`test.rpc.fastnear.com` + failover) | Real JSON-RPC block finality, account views & tx receipt verification. |
-| `Identity` | Postgres Mock | **Live Testnet** (`TestnetIdentityAdapter`) | Verifies FastAuth Ed25519 / OIDC JWKS proofs; creates real `{pilot}.terraagent.testnet` sub-accounts (`0.02 NEAR`) and supports on-chain `addFullAccessKey` claim. |
-| `Relayer` | Postgres Mock | **Live Testnet** (`relayer.terraagent.testnet`) | Broadcasts real `NEP-366` `SignedDelegate` meta-transactions & `storage_deposit` against allowlisted contracts within daily gas cap. |
-| `CargoToken` | Postgres Mock | **Live Testnet** (`res.terraagent.testnet`) | Real `mt_mint`, `mt_burn`, `operator_transfer` & `mt_balance_of` calls on our NEP-245 Rust contract. |
-| `Intents` | Postgres Mock | **Live Testnet + 1Click** (`TestnetIntentsAdapter`) | Because `intents.near` has no NEAR Testnet deployment (`Q-007`), `TestnetIntentsAdapter` signs & verifies real `NEP-413` Borsh/Ed25519 `token_diff` payloads, queries live `1click.chaindefuser.com/v0/quote` (`dry: true`), settles Testnet swaps in our ACID verifier ledger synced with `res.terraagent.testnet` `mt_balance_of`, and anchors finalized Testnet receipts on `res.terraagent.testnet`. |
+| `ChainRead` | Postgres Mock | **Live Testnet / Mainnet** (`test.rpc.fastnear.com` / `free.rpc.fastnear.com`) | Real JSON-RPC block finality, account views & tx receipt verification with automatic RPC failover (`retries: 2`). |
+| `Identity` | Postgres Mock | **Live Testnet / Mainnet** (`TestnetIdentityAdapter`) | Verifies `NEP-413` Ed25519 + RPC `view_access_key` (`FullAccess`) / FastAuth / OIDC JWKS proofs; provisions `{pilot}.pilots.<root>` via `pilots.terraagent.testnet` (or `{pilot}.<root>`) and executes atomic `[AddKey(userKey), DeleteKey(custodialKey)]` non-custodial rotation on `claimAccount`. |
+| `Relayer` | Postgres Mock | **Live Testnet / Mainnet** (`relayer.terraagent.testnet`) | Broadcasts real `NEP-366` `SignedDelegate` meta-transactions & `storage_deposit` against allowlisted contracts within daily gas cap, per-action `maxAttachedDepositYocto` cap (`R01-59`), `12 s` RPC timeout, and `>= 1 NEAR` balance floor. |
+| `CargoToken` | Postgres Mock | **Live Testnet / Mainnet** (`res.terraagent.testnet`) | Real `mt_mint`, `mt_burn`, `operator_transfer` & `mt_balance_of` calls on our NEP-245 Rust contract. |
+| `Intents` | Postgres Mock | **Hybrid Testnet / Direct `intents.near` Mainnet** (`TestnetIntentsAdapter`) | Because `intents.near` has no NEAR Testnet deployment (`Q-007`), `NEAR_MODE=testnet` signs & verifies real `NEP-413` `token_diff` payloads, queries live `1click.chaindefuser.com/v0/quote`, settles in our ACID verifier synced with `res.terraagent.testnet`, and anchors receipts on-chain. Under `NEAR_MODE=mainnet` (`NEAR_ALLOW_MAINNET=1`), `execute()` broadcasts directly to `intents.near::execute_intents` and `IntentsBalanceRead` queries `intents.near::mt_batch_balance_of`. |
 | `AgentWallet` | Postgres Mock | **Live Testnet** (`TestnetAgentWalletAdapter`) | Provisions real `{name}.terraagent.testnet` sub-accounts on-chain; enforces per-token spend allowances ACID in Postgres (native NEAR FC keys cap gas only, not NEP-245 amounts) and anchors finalized receipts on `res.terraagent.testnet`. |
 | `DeedNft` | Postgres Mock | **Live Testnet** (`deed.terraagent.testnet`) | Real `mint_deed` & debounced `update_metadata` transactions on our NEP-171 Rust contract + dynamic PNG & SSR OpenGraph share page. |
 | `BadgeNft` | Postgres Mock | **Live Testnet** (`deed.terraagent.testnet`) | Real soulbound achievement badge mints (`collection: 'badge'`) on `deed.terraagent.testnet`. |
@@ -303,7 +307,7 @@ npm run contract:real -- --port <Port>   # live NEAR Testnet contract verificati
 npm run test:parity                      # browser worker vs server thread bit-determinism gate
 npm run e2e -- --waves ..22              # Playwright headless-Chromium end-to-end suite
 npm run validate:models -- --all         # 3D procedural geometry, connectivity & palette validator
-cargo test --manifest-path backend/near-contracts/Cargo.toml   # Rust unit tests across all 5 contracts
+cargo test --manifest-path backend/near-contracts/Cargo.toml   # Rust unit tests across all 6 contracts
 ```
 
 ### Repository Layout (`D-41` Clean Root)
@@ -312,7 +316,7 @@ cargo test --manifest-path backend/near-contracts/Cargo.toml   # Rust unit tests
 shared/        @terra/{contracts, config, db, ledger, sim} — deterministic sim, schemas & ledger shared by client & server
 backend/
   app/         @terra/app — NestJS modules (ws, game, near, ai, market, profile, notify, analytics, dev)
-  near-contracts/  5 Rust near-sdk 5.7 smart contracts: res, deed, bounty, staking, dao
+  near-contracts/  6 Rust near-sdk 5.7 smart contracts: res, deed, bounty, staking, dao, pilots
 frontend/      Vite multi-page WebGL2 client (game, render, landing, trade, playground, design, pitchdeck, whitepaper)
 tests/         Playwright E2E, client/server parity & Vitest suites
 infra/         Docker Compose stacks (infra, frontend, backend, chain), Nginx vhosts & env templates
@@ -324,7 +328,7 @@ docs/          Game rules, Guild math, NEAR protocol specs, deployment guide & v
 
 ## Hackathon Window, Baseline & Open-Source Disclosures
 
-- **Hackathon Window & Baseline (`Q-001`, `Q-003`):** Repository history begins at commit `b0a6108e` (`2026-10-29`, inside the official NEAR Hackathon window starting `2026-10-19` through `2026-11-14`). Early commits (`b0a6108e..90b5fb5a`, `2026-10-29`–`2026-10-30`) seeded the initial visual landing/terrain prototype and wave harness; all deterministic `@terra/sim` gameplay, `@terra/contracts` & ledger, NestJS backend (`@terra/app`), real-time markets, autonomous AI (`NEAR.AI` TEE + BYOK), all **5 Rust `near-sdk 5.7` smart contracts** (`res`, `deed`, `bounty`, `staking`, `dao`), **11/11 NEAR Testnet adapters**, procedural fauna/kitbash expansions, and unit/integration/E2E suites were built during the hackathon window.
+- **Hackathon Window & Baseline (`Q-001`, `Q-003`):** Repository history begins at commit `b0a6108e` (`2026-10-29`, inside the official NEAR Hackathon window starting `2026-10-19` through `2026-11-14`). Early commits (`b0a6108e..90b5fb5a`, `2026-10-29`–`2026-10-30`) seeded the initial visual landing/terrain prototype and wave harness; all deterministic `@terra/sim` gameplay, `@terra/contracts` & ledger, NestJS backend (`@terra/app`), real-time markets, autonomous AI (`NEAR.AI` TEE + BYOK), all **6 Rust `near-sdk 5.7` smart contracts** (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`), **11/11 NEAR Testnet & Mainnet adapters**, procedural fauna/kitbash expansions, and unit/integration/E2E suites were built during the hackathon window.
 - **AI Tooling Disclosure (`Q-005`):** Built with AI coding agents (Antigravity & Claude Code) under human architectural direction, verification, and playtesting, gated by automated architectural (`<= 500` lines/file, `<= 100` lines/fn), parity, contract, and 3D geometry checks.
 - **Libraries & Frameworks (`Q-005`):** Three.js · Vite · TypeScript · NestJS · `ws` · `@msgpack/msgpack` · `near-api-js` · Rust `near-sdk 5.7` · `borsh` · Prisma + PostgreSQL · `zod` · `pino` · `prom-client` · Vitest · Playwright · ESLint · Prettier.
 - **License (`Q-014`):** [MIT](./LICENSE).

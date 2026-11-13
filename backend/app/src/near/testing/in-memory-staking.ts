@@ -12,8 +12,9 @@ import {
 import { NearException } from '../domain/errors.js';
 import type { ChainReceipt } from '../domain/types.js';
 import {
-  computeAccruedRewardDelta,
+  computeSplitRewardDelta,
   GAME_DAY_MS,
+  PROTOCOL_STAKING_ACCOUNT_ID,
   UNBONDING_DURATION_MS,
 } from '../staking/yocto.js';
 import { parseStakingPoolsConfig } from '../staking/staking-pools.config.js';
@@ -71,7 +72,7 @@ export class InMemoryStaking extends StakingPort {
     return found;
   }
 
-  private settle(accountId: string, pool: StakingPoolView): MemStakingState {
+  private settle(accountId: string, pool: StakingPoolView): MemStakingState & { protocolYieldDelta: bigint } {
     const key = `${accountId}::${pool.poolId}`;
     const existing = this.positions.get(key);
     const now = this.clockMs;
@@ -83,10 +84,12 @@ export class InMemoryStaking extends StakingPort {
         withdrawable: 0n,
         rewards: 0n,
         lastAccruedAtMs: now,
+        protocolYieldDelta: 0n,
       };
     }
     const elapsed = Math.max(0, now - existing.lastAccruedAtMs);
-    const rewards = existing.rewards + computeAccruedRewardDelta(existing.staked, pool.apyBp, elapsed);
+    const split = computeSplitRewardDelta(existing.staked, pool.apyBp, elapsed);
+    const rewards = existing.rewards + split.userReward;
     let unbonding = existing.unbonding;
     let unbondingReadyAtMs = existing.unbondingReadyAtMs;
     let withdrawable = existing.withdrawable;
@@ -102,6 +105,7 @@ export class InMemoryStaking extends StakingPort {
       withdrawable,
       rewards,
       lastAccruedAtMs: now,
+      protocolYieldDelta: split.protocolYield,
     };
   }
 
@@ -147,6 +151,12 @@ export class InMemoryStaking extends StakingPort {
     return this.chain.write(opId, () => {
       const next = this.settle(accountId, pool);
       mutate(next, amount);
+      if (next.protocolYieldDelta > 0n) {
+        this.balances.set(
+          PROTOCOL_STAKING_ACCOUNT_ID,
+          (this.balances.get(PROTOCOL_STAKING_ACCOUNT_ID) ?? 0n) + next.protocolYieldDelta,
+        );
+      }
       this.positions.set(`${accountId}::${pool.poolId}`, next);
     }).receipt;
   }
@@ -160,6 +170,12 @@ export class InMemoryStaking extends StakingPort {
         throw new NearException('STAKE_INSUFFICIENT_BALANCE', {
           message: 'No withdrawable NEAR available.',
         });
+      }
+      if (next.protocolYieldDelta > 0n) {
+        this.balances.set(
+          PROTOCOL_STAKING_ACCOUNT_ID,
+          (this.balances.get(PROTOCOL_STAKING_ACCOUNT_ID) ?? 0n) + next.protocolYieldDelta,
+        );
       }
       const payout = next.withdrawable + next.rewards;
       const recipient = input.toAccountId ?? input.accountId;

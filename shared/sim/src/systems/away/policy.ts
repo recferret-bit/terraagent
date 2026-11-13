@@ -1,7 +1,7 @@
 import type { AwayCommand, AwayDecision, AwayPolicyView } from './types';
 import { allowRule } from './allow';
 import { denyRule } from './deny';
-import { isCancelTruce, isRaidCommand } from './orders';
+import { isCancelTruce, isCancelWar, isRaidCommand, locksHumanNearBond } from './orders';
 
 /**
  * Pure away policy (AW-01..15, AW-21).
@@ -11,7 +11,9 @@ import { isCancelTruce, isRaidCommand } from './orders';
 export function awayPolicy(view: AwayPolicyView, command: AwayCommand): AwayDecision {
   if (!view.away) return { decision: 'allow', rule: 'present' };
   if (command.actor === 'player') return { decision: 'allow', rule: 'player' };
-  if (isCancelTruce(command)) return { decision: 'reject', rule: 'AW-13', code: 'away_policy' };
+  if (isCancelTruce(command) || isCancelWar(command) || locksHumanNearBond(command)) {
+    return { decision: 'reject', rule: 'AW-13', code: 'away_policy' };
+  }
   const allowed = allowRule(view, command);
   if (allowed) return { decision: 'allow', rule: allowed };
   if (command.defensive) return { decision: 'allow', rule: 'defensive' };

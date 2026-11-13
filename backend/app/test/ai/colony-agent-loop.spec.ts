@@ -260,6 +260,49 @@ describe('ColonyAgentLoopService — batching, cooldown cache & player NEAR.AI k
   });
 });
 
+describe('ColonyAgentLoopService — staker Managed NEAR.AI Autopilot', () => {
+  it('unlocks managed server NEAR.AI Autopilot for human colonies staking >= 10 NEAR even without a personal BYOK key', async () => {
+    const { host, planets } = createFakePlanetHarness();
+    host.state.colonies[0]!.aiEnabled = true;
+
+    const store = new PlayerAiSettingsStore();
+    store.bindColonyPlayer('pl_loop', 0, 'staker_pilot');
+
+    const seenBatches: number[][] = [];
+    const llm: LlmProviderPort = {
+      complete: async (req): Promise<LlmResponse> => {
+        const body = JSON.parse(req.messages[0]?.content ?? '{}') as { colonies?: Array<{ colonyIndex: number }> };
+        const indices = body.colonies?.map((c) => c.colonyIndex) ?? [];
+        seenBatches.push(indices);
+        return {
+          text: JSON.stringify({
+            directives: indices.map((colonyIndex) => ({
+              colonyIndex,
+              action: 'queue_goal',
+              goal: 'grow_economy',
+              rationale: `Managed NEAR.AI Autopilot for col_${colonyIndex}.`,
+            })),
+          }),
+          usage: { inputTokens: 60, outputTokens: 30 },
+          model: req.model ?? 'z-ai/glm-5.3-flash',
+        };
+      },
+    };
+
+    const svc = new ColonyAgentLoopService(planets, llm, undefined, undefined, undefined, store);
+
+    const unstaked = await svc.tickPlanetAgents('pl_loop', { stakedByColony: { 0: false } });
+    expect(unstaked.find((e) => e.colonyIndex === 0)?.model).toBe('deterministic-policy');
+
+    const staked = await svc.tickPlanetAgents('pl_loop', { stakedByColony: { 0: true } });
+    const col0 = staked.find((e) => e.colonyIndex === 0);
+    expect(col0?.governed).toBe(true);
+    expect(col0?.usedPlayerKey).toBe(false);
+    expect(col0?.model).toBe('z-ai/glm-5.3-flash');
+    expect(seenBatches.at(-1)).toContain(0);
+  });
+});
+
 describe('ColonyAgentLoopService — sim playerId resolution, cache invalidation & batch error fallback', () => {
   it('resolves col.playerId from sim state and invalidates cached decisions when player updates NEAR.AI key/model', async () => {
     const { host, planets } = createFakePlanetHarness();

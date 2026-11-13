@@ -74,16 +74,38 @@ describe('W20-18 StakingService negative rules — deed & claim preconditions', 
     });
   });
 
-  it('rejects stake on an unsettled deed with DEED_NOT_SETTLED (409)', async () => {
-    const { deeds, service } = createHarness();
+  it('allows Day-1 staking on an unsettled deed once the colony account is claimed, and toggles staker perks at >= 10 NEAR', async () => {
+    const { deeds, claimService, service, controller } = createHarness();
     await seedDeed(deeds, { colonyId: 'col_0', settled: false });
+    await claimService.claimColonyAccount({
+      colonyId: 'col_0',
+      walletAccountId: 'pilot-wallet.terraagent.mock',
+    });
+    await service.fundWalletNear('col_0.pilot.terraagent.mock', '15');
 
-    await expect(
-      service.stake({ colonyId: 'col_0', pool: POOL_ASTRO, amount: '5' }),
-    ).rejects.toMatchObject({
-      errorCode: 'DEED_NOT_SETTLED',
-      status: 409,
-      details: { colonyId: 'col_0', settled: false },
+    await service.stake({ colonyId: 'col_0', pool: POOL_ASTRO, amount: '5' });
+    const belowThreshold = await controller.getStatus('col_0');
+    expect(belowThreshold.deedSettled).toBe(false);
+    expect(belowThreshold.perks).toMatchObject({
+      active: false,
+      minStakeNear: '10',
+      totalStakedNear: '5',
+      managedAutopilotUnlocked: false,
+      platformFeeBp: 100,
+      netApyBp: 720,
+      protocolYieldShareBp: 2000,
+    });
+
+    await service.stake({ colonyId: 'col_0', pool: POOL_ASTRO, amount: '5' });
+    const aboveThreshold = await controller.getStatus('col_0');
+    expect(aboveThreshold.perks).toMatchObject({
+      active: true,
+      minStakeNear: '10',
+      totalStakedNear: '10',
+      managedAutopilotUnlocked: true,
+      platformFeeBp: 50,
+      netApyBp: 720,
+      protocolYieldShareBp: 2000,
     });
   });
 

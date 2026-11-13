@@ -27,6 +27,7 @@ import { DeedRepository, type StoredDeedRecord } from '../deed/deed.repository.j
 import { NearException } from '../domain/errors.js';
 import { AccountClaimService, type AccountClaimStatus } from './account-claim.service.js';
 import { StakingPositionSyncService } from './staking-position-sync.service.js';
+import { buildStakerPerksFromYocto, sumDtoStakedYocto } from './staker-perks.js';
 import {
   CLAIM_ACCOUNT_PATH,
   NEAR_TOKEN_ID,
@@ -61,7 +62,7 @@ interface StakingPortBalanceHooks {
  * Staking domain rules and read/write orchestration (`W20-18`, `NEAR-92`, `D-18`).
  *
  * Enforces:
- * 1. Target Colony Deed must exist (`DEED_NOT_FOUND`, 404) and be settled (`DEED_NOT_SETTLED`, 409).
+ * 1. Target Colony Deed must exist (`DEED_NOT_FOUND`, 404). Day-1 staking is enabled without waiting for `Settled`.
  * 2. Colony NEAR account must be claimed by the player (`ACCOUNT_NOT_CLAIMED`, 409 with `claimUrl: '/v1/near/claim-account'`).
  * 3. Pool must be in `NEAR_STAKING_POOLS` (`POOL_NOT_WHITELISTED`, 422) and staked amount must come from the player's own NEAR wallet balance (`STAKE_INSUFFICIENT_BALANCE`, 409), never from game funds.
  */
@@ -167,6 +168,9 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       claimInfo.claimedByAccountId,
     ]);
 
+    const grossApyBp = pools[0]?.apyBp ?? 900;
+    const perks = buildStakerPerksFromYocto(sumDtoStakedYocto(positions), { grossApyBp });
+
     return StakingStatusResponse.parse({
       colonyId,
       accountId,
@@ -177,6 +181,18 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       claimedByAccountId: claimInfo.claimedByAccountId,
       pools: pools.map((p) => ({ poolId: p.poolId, name: p.name, apyBp: p.apyBp })),
       positions,
+      perks: {
+        active: perks.active,
+        minStakeNear: perks.minStakeNear,
+        totalStakedNear: perks.totalStakedNear,
+        grossApyBp: perks.grossApyBp,
+        netApyBp: perks.netApyBp,
+        protocolYieldShareBp: perks.protocolYieldShareBp,
+        platformFeeBp: perks.platformFeeBp,
+        standardPlatformFeeBp: perks.standardPlatformFeeBp,
+        managedAutopilotUnlocked: perks.managedAutopilotUnlocked,
+        protocolAccountId: perks.protocolAccountId,
+      },
     });
   }
 
@@ -310,13 +326,6 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
         status: 404,
         message: 'Colony Deed not found.',
         details: { colonyId: colonyId ?? 'col_0' },
-      });
-    }
-    if (!deed.settled) {
-      throw new NearException('DEED_NOT_SETTLED', {
-        status: 409,
-        message: 'Available after your colony is Settled.',
-        details: { colonyId: deed.colonyId, settled: false },
       });
     }
     const claimInfo = await this.claimService.isAccountClaimed(deed.colonyId, deed.accountId);

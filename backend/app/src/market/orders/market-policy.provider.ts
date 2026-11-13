@@ -2,8 +2,10 @@ import { Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit }
 import { compileMarketConfig, type MarketConfig } from '@terra/sim';
 import { EconomyProfileService } from '../../economy/profile/profile.service.js';
 
-/** Platform fee beneficiary of every order (mock chain account; `chain.mock_chain_account` row is created by the fixture/adapter). */
-export const PLATFORM_ACCOUNT_ID = 'platform.terraagent.mock';
+/** TerraAgent Protocol treasury beneficiary (`protocol.terraagent.*`; `chain.mock_chain_account` row is bootstrapped by `MarketAccountsBootstrap`). */
+export const PROTOCOL_ACCOUNT_ID = 'protocol.terraagent.mock';
+/** Backwards-compatible alias for `PROTOCOL_ACCOUNT_ID`. */
+export const PLATFORM_ACCOUNT_ID = PROTOCOL_ACCOUNT_ID;
 
 /**
  * The market policy new orders pin: the `MarketConfig` of the ACTIVE compiled economy profile (the same object the planets got,

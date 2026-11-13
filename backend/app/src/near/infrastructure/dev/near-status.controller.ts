@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Inject, Optional, Post } from '@nestjs/common';
+import type { PrismaClient } from '@terra/db';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
+import { PRISMA } from '../../../db/db.module.js';
+import { PROTOCOL_ACCOUNT_ID } from '../../../market/orders/market-policy.provider.js';
 import { ChainReadPort } from '../../application/ports/chain-read.port.js';
 import { NEAR_PORT_NAMES } from '../../domain/types.js';
 import { nearAdapterFor } from '../adapter-selection.js';
 import { OneClickQuoteClient, type OneClickDryQuoteRequest } from '../adapters/real/oneclick-quote.service.js';
-import { resolveNearNetworkConfig } from '../network/near-network.config.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../network/near-network.config.js';
+import { buildProtocolTreasuryView } from './protocol-treasury.view.js';
 
 /**
  * Runtime NEAR port matrix & live NEAR Intents 1Click dry-quote controller (`W23-02`, `W23-25`, `W23-43`).
@@ -19,20 +23,22 @@ export class NearStatusController {
   constructor(
     @Optional() private readonly chainRead?: ChainReadPort,
     @Optional() @Inject(APP_ENV) env?: AppEnv,
+    @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
   ) {
     this.envSource = (env ?? process.env) as Record<string, string | undefined>;
-    const cfg = resolveNearNetworkConfig(this.envSource, 'testnet');
+    const cfg = resolveNearNetworkConfig(this.envSource, resolveActiveNearNetwork(null, this.envSource));
     this.oneClick = new OneClickQuoteClient(cfg.oneClickUrl, cfg.oneClickApiKey);
   }
 
   @Get('status')
   async status() {
-    const cfg = resolveNearNetworkConfig(this.envSource, 'testnet');
+    const activeNet = resolveActiveNearNetwork(null, this.envSource);
+    const cfg = resolveNearNetworkConfig(this.envSource, activeNet);
     const health = this.chainRead
       ? await this.chainRead.health()
       : { ok: false, network: 'mock' as const, latencyMs: 0, detail: 'unbound' };
     const contractByPort: Partial<Record<(typeof NEAR_PORT_NAMES)[number], string>> = {
-      Identity: cfg.rootAccount,
+      Identity: cfg.contracts.pilots,
       Relayer: cfg.accounts.relayer,
       CargoToken: cfg.contracts.res,
       Intents: cfg.contracts.intents,
@@ -54,13 +60,24 @@ export class NearStatusController {
       };
     });
 
+    const nearMode = this.envSource.NEAR_MODE ?? 'mock';
     return {
-      nearMode: this.envSource.NEAR_MODE ?? 'mock',
+      nearMode,
+      network: activeNet,
       rootAccount: cfg.rootAccount,
+      protocolAccount: nearMode === 'mock' ? PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol,
+      contracts: cfg.contracts,
+      accounts: cfg.accounts,
+      fastAuth: cfg.fastAuth,
       explorerBaseUrl: cfg.explorerBaseUrl,
       health,
       ports,
     };
+  }
+
+  @Get('protocol')
+  async protocol() {
+    return buildProtocolTreasuryView(this.envSource, this.prisma);
   }
 
   @Post('intents/quote')

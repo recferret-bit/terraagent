@@ -237,6 +237,61 @@ impl BountyEscrowContract {
         EscrowView::from(&rec)
     }
 
+    /// Slashes an open diplomacy or war bond escrow (`EscrowPort.slash`):
+    /// splits the bond `90%` (`10_000 - protocol_fee_bp`) to `victim_id` and `10%` (`protocol_fee_bp`) to `protocol_id`.
+    /// Idempotent by `op_id`.
+    pub fn slash_escrow(
+        &mut self,
+        op_id: String,
+        escrow_id: String,
+        victim_id: AccountId,
+        protocol_id: AccountId,
+        protocol_fee_bp: u32,
+    ) -> EscrowView {
+        require!(!op_id.is_empty(), "NEAR_ESCROW_INVALID: op_id required");
+        require!(
+            protocol_fee_bp <= 10_000,
+            "NEAR_ESCROW_INVALID: protocol_fee_bp must be <= 10_000"
+        );
+        let pred = env::predecessor_account_id();
+        require!(
+            pred == self.operator_id || pred == self.owner_id,
+            "NEAR_NOT_OWNER: only operator may slash escrows"
+        );
+        if let Some(existing_id) = self.processed_ops.get(&op_id) {
+            if let Some(existing) = self.escrows.get(existing_id) {
+                return EscrowView::from(existing);
+            }
+        }
+        let mut rec = self
+            .escrows
+            .get(&escrow_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("NEAR_ESCROW_NOT_FOUND: escrow not found"));
+        require!(rec.status == "open", "NEAR_ESCROW_STATE: escrow is not open");
+
+        let protocol_cut = (rec.amount * (protocol_fee_bp as u128)) / 10_000;
+        let victim_cut = rec.amount - protocol_cut;
+        rec.status = "slashed".to_string();
+        self.escrows.insert(escrow_id.clone(), rec.clone());
+        self.processed_ops.insert(op_id.clone(), escrow_id.clone());
+
+        emit_escrow(
+            "escrow_slash",
+            json!({
+                "escrow_id": escrow_id,
+                "funder": rec.funder,
+                "victim_id": victim_id,
+                "victim_amount": victim_cut.to_string(),
+                "protocol_id": protocol_id,
+                "protocol_amount": protocol_cut.to_string(),
+                "protocol_fee_bp": protocol_fee_bp,
+                "memo": op_id,
+            }),
+        );
+        EscrowView::from(&rec)
+    }
+
     pub fn get_escrow(&self, escrow_id: String) -> Option<EscrowView> {
         self.escrows.get(&escrow_id).map(EscrowView::from)
     }
@@ -333,5 +388,39 @@ mod tests {
         );
         c.claim_escrow("op_c3".into(), "escrow_3".into(), acct("merc.testnet"));
         c.claim_escrow("op_c4".into(), "escrow_3".into(), acct("merc.testnet"));
+    }
+
+    #[test]
+    fn slash_escrow_splits_90_10_and_replays_idempotently() {
+        set_caller("owner.testnet");
+        let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
+        set_caller("op.testnet");
+        c.open_escrow(
+            "op_war_open".into(),
+            "escrow_war_1".into(),
+            acct("attacker.testnet"),
+            "escrow:00112233445566778899aabbccddeeff".into(),
+            "metals.t1".into(),
+            "1000".into(),
+            0,
+        );
+        let slashed = c.slash_escrow(
+            "op_war_slash".into(),
+            "escrow_war_1".into(),
+            acct("defender.testnet"),
+            acct("protocol.terraagent.testnet"),
+            1_000,
+        );
+        assert_eq!(slashed.status, "slashed");
+        assert_eq!(slashed.amount, "1000");
+
+        let replay = c.slash_escrow(
+            "op_war_slash".into(),
+            "escrow_war_1".into(),
+            acct("defender.testnet"),
+            acct("protocol.terraagent.testnet"),
+            1_000,
+        );
+        assert_eq!(replay.status, "slashed");
     }
 }

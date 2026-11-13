@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { ColonyTargetIdSchema, TruceDurationHoursSchema } from '../diplomacy';
+import {
+  ColonyTargetIdSchema,
+  DiplomacyBondTokenSchema,
+  TruceDurationHoursSchema,
+} from '../diplomacy';
 import { defineCommand } from './define';
 
 export const ProposeTruceArgsSchema = z
@@ -10,6 +14,8 @@ export const ProposeTruceArgsSchema = z
     toColony: ColonyTargetIdSchema.optional(),
     hours: TruceDurationHoursSchema.optional(),
     durationHours: TruceDurationHoursSchema.optional(),
+    bondToken: DiplomacyBondTokenSchema.optional(),
+    bondAmount: z.number().nonnegative().optional(),
   })
   .refine(
     (v) =>

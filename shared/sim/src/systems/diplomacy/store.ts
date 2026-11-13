@@ -1,4 +1,11 @@
-import type { DiplomacyState, TruceDurationHours, TruceOffer, TruceRecord } from '@terra/contracts';
+import type {
+  DiplomacyBondToken,
+  DiplomacyState,
+  TruceDurationHours,
+  TruceOffer,
+  TruceRecord,
+  WarRecord,
+} from '@terra/contracts';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import { setBlob, type PlanetState } from '../../kernel/state';
 
@@ -10,6 +17,8 @@ export interface StoredTruceOffer extends TruceOffer {
   fromColonyId: string;
   toColonyId: string;
   durationHours: TruceDurationHours;
+  bondToken?: DiplomacyBondToken;
+  bondAmount?: number;
 }
 
 export interface StoredTruceRecord extends TruceRecord {
@@ -21,13 +30,25 @@ export interface StoredTruceRecord extends TruceRecord {
   startedAtTick: number;
   cancelledById?: string;
   endReason?: 'expired' | 'cancelled' | 'settled' | 'eliminated';
+  bondToken?: DiplomacyBondToken;
+  bondAmount?: number;
+}
+
+export interface StoredWarRecord extends WarRecord {
+  attackerColonyIndex: number;
+  defenderColonyIndex: number;
+  attackerColonyId: string;
+  defenderColonyId: string;
+  endReason?: 'objective_met' | 'cancelled' | 'expired' | 'eliminated';
 }
 
 export interface DiplomacyBlobValue {
   nextOfferSeq: number;
   nextTruceSeq: number;
+  nextWarSeq: number;
   offers: Record<string, StoredTruceOffer>;
   truces: Record<string, StoredTruceRecord>;
+  wars: Record<string, StoredWarRecord>;
   oathbreakerUntilByColony: Record<number, number>;
   lastHostilityByPair: Record<string, number>;
   contactsByColony: Record<number, number[]>;
@@ -38,8 +59,10 @@ export function emptyDiplomacyBlob(): DiplomacyBlobValue {
   return {
     nextOfferSeq: 1,
     nextTruceSeq: 1,
+    nextWarSeq: 1,
     offers: {},
     truces: {},
+    wars: {},
     oathbreakerUntilByColony: {},
     lastHostilityByPair: {},
     contactsByColony: {},
@@ -53,8 +76,10 @@ export function readDiplomacyBlob(state: PlanetState): DiplomacyBlobValue {
   return {
     nextOfferSeq: typeof raw.nextOfferSeq === 'number' ? raw.nextOfferSeq : 1,
     nextTruceSeq: typeof raw.nextTruceSeq === 'number' ? raw.nextTruceSeq : 1,
+    nextWarSeq: typeof raw.nextWarSeq === 'number' ? raw.nextWarSeq : 1,
     offers: raw.offers ? { ...raw.offers } : {},
     truces: raw.truces ? { ...raw.truces } : {},
+    wars: raw.wars ? { ...raw.wars } : {},
     oathbreakerUntilByColony: raw.oathbreakerUntilByColony ? { ...raw.oathbreakerUntilByColony } : {},
     lastHostilityByPair: raw.lastHostilityByPair ? { ...raw.lastHostilityByPair } : {},
     contactsByColony: raw.contactsByColony ? { ...raw.contactsByColony } : {},
@@ -116,6 +141,10 @@ export function syncColonyDiplomacyViews(
     indices.add(t.colonyAIndex);
     indices.add(t.colonyBIndex);
   }
+  for (const w of Object.values(blob.wars)) {
+    indices.add(w.attackerColonyIndex);
+    indices.add(w.defenderColonyIndex);
+  }
 
   for (const idx of indices) {
     if (!Number.isInteger(idx) || idx < 0) continue;
@@ -129,6 +158,15 @@ export function syncColonyDiplomacyViews(
       (t) =>
         (t.colonyAIndex === idx || t.colonyBIndex === idx || t.colonyAId === colId || t.colonyBId === colId) &&
         (t.status === 'active' || t.status === 'notice'),
+    );
+    const wars = Object.values(blob.wars).filter(
+      (w) =>
+        (w.attackerColonyIndex === idx ||
+          w.defenderColonyIndex === idx ||
+          w.attackerColonyId === colId ||
+          w.defenderColonyId === colId) &&
+        w.status === 'active' &&
+        w.expiresAtTick > tick,
     );
     const incomingOffers = Object.values(blob.offers).filter(
       (o) => (o.toColonyIndex === idx || o.toColonyId === colId) && o.status === 'pending' && o.expiresAtTick > tick,
@@ -145,6 +183,7 @@ export function syncColonyDiplomacyViews(
     } = {
       oathbreakerUntil,
       truces,
+      wars,
       offers: [...incomingOffers, ...outgoingOffers],
       oathbreakerUntilByColony: Object.fromEntries(
         Object.entries(blob.oathbreakerUntilByColony).map(([k, v]) => [String(k), v]),
@@ -300,4 +339,37 @@ export function getActiveTrucesForColony(
 
 export function isValidTruceDurationHours(hours: unknown): hours is TruceDurationHours {
   return hours === 2 || hours === 6 || hours === 24 || hours === 72;
+}
+
+/** Returns `true` when `attackerColony` currently has an active 6h Bonded War against `defenderColony`. */
+export function hasActiveWar(
+  state: PlanetState,
+  attackerColony: number,
+  defenderColony: number,
+  tick: number = state.meta.tick,
+): boolean {
+  if (attackerColony < 0 || defenderColony < 0 || attackerColony === defenderColony) return false;
+  const raw = state.blobs[DIPLOMACY_BLOB]?.value as Partial<DiplomacyBlobValue> | undefined;
+  if (!raw?.wars) return false;
+  for (const w of Object.values(raw.wars)) {
+    if (
+      w.status === 'active' &&
+      w.expiresAtTick > tick &&
+      w.attackerColonyIndex === attackerColony &&
+      w.defenderColonyIndex === defenderColony
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Returns `true` when either colony currently has an active Bonded War against the other. */
+export function hasAnyActiveWarBetween(
+  state: PlanetState,
+  colA: number,
+  colB: number,
+  tick: number = state.meta.tick,
+): boolean {
+  return hasActiveWar(state, colA, colB, tick) || hasActiveWar(state, colB, colA, tick);
 }

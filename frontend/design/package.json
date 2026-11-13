@@ -3,5 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Faction Plate design system: tokens.css, base.css and the /design/ docs pages."
+  "description": "Faction Plate design system: tokens.css, base.css and the /design/ docs pages.",
+  "dependencies": {
+    "@auth0/auth0-spa-js": "^2.30.0",
+    "@near-wallet-selector/core": "^10.1.4",
+    "@near-wallet-selector/intear-wallet": "^10.1.4",
+    "@near-wallet-selector/meteor-wallet": "^10.1.4",
+    "@near-wallet-selector/my-near-wallet": "^10.1.4",
+    "@near-wallet-selector/near-mobile-wallet": "^10.1.4",
+    "@near-wallet-selector/okx-wallet": "^10.1.4",
+    "buffer": "^6.0.3"
+  }
 }
