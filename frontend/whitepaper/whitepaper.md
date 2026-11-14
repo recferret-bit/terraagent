@@ -48,12 +48,12 @@ You land one Hero bot, build a Command Hub, expand across Desert, Ocean, and Tem
 
 | Account | Standard & Role | Testnet Proof |
 |---|---|---|
-| `res.terraagent.testnet` | `NEP-245` Orbital Cargo Multi-Token (10 commodities) | [Fs96ny9B…](https://testnet.nearblocks.io/txns/Fs96ny9BP74g1pX9e4cXuRT5DG9XQo6TNKRgv3ZUF6kr) |
-| `deed.terraagent.testnet` | `NEP-171` Soulbound Colony Deeds & Milestone Badges | [32xtwqUF…](https://testnet.nearblocks.io/txns/32xtwqUFRMCq4vEnNgoVJnxPLkRDGhPavDY5FYUpQ4Lx) |
-| `bounty.terraagent.testnet` | Mercenary Bounties, Peace Treaties & 6h War Escrows | [EPMPMYMv…](https://testnet.nearblocks.io/txns/EPMPMYMvDKsr6R36TLgdsymBDStaR5WfpU2JUGCFJYPK) |
-| `staking.terraagent.testnet` | Day-1 Lossless Validator Vault (80/20 yield split) | [12AwBVfj…](https://testnet.nearblocks.io/txns/12AwBVfjGkkbDi72Y9264YeY6szMbkQWaL2L2bTxHJ6v) |
-| `dao.terraagent.testnet` | Planet Council Treasury Voting (> 50% quorum) | [6qkgGWoK…](https://testnet.nearblocks.io/txns/6qkgGWoKJei1X5ihZdip2ts9W1ynity62bzynWC5orDz) |
-| `pilots.terraagent.testnet` | Cold-Root Sub-Account Factory & `claimAccount` Flow | [BcSaHVpg…](https://testnet.nearblocks.io/txns/BcSaHVpgUEAsMRtLyYbHxhQeWZbSCoLbJ8aAEC97Xzpm) |
+| `res.terraagent.testnet` | `NEP-245` Orbital Cargo Multi-Token (10 commodities) | [5reiQL5X…](https://testnet.nearblocks.io/txns/5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok) |
+| `deed.terraagent.testnet` | `NEP-171` Soulbound Colony Deeds & Milestone Badges | [E1AGHyMm…](https://testnet.nearblocks.io/txns/E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK) |
+| `bounty.terraagent.testnet` | Mercenary Bounties, Peace Treaties & 6h War Escrows | [21F1c5Td…](https://testnet.nearblocks.io/txns/21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB) |
+| `staking.terraagent.testnet` | Day-1 Lossless Validator Vault (80/20 yield split) | [6r2gXkr7…](https://testnet.nearblocks.io/txns/6r2gXkr7YdPnfnizEbViH3ZyHKpegNWRtC1GyYkDukVD) |
+| `dao.terraagent.testnet` | Planet Council Treasury Voting (> 50% quorum) | [DmsGYQ7V…](https://testnet.nearblocks.io/txns/DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U) |
+| `pilots.terraagent.testnet` | Cold-Root Sub-Account Factory & `claimAccount` Flow | [cSTqNFu5…](https://testnet.nearblocks.io/txns/cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h) |
 
 | Capability | Live NEAR Testnet | Offline Local Sandbox |
 |---|---|---|

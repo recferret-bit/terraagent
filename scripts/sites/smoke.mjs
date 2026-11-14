@@ -170,7 +170,7 @@ function snippet(body) {
 }
 
 function markdownH1() {
-  const markdown = readFileSync(resolve(root, 'docs/hackathon/public/whitepaper.md'), 'utf8');
+  const markdown = readFileSync(resolve(root, 'frontend/whitepaper/whitepaper.md'), 'utf8');
   const line = markdown.split(/\r?\n/).find((row) => row.startsWith('# '));
   if (!line) throw new Error('whitepaper.md has no # heading');
   return line.replace(/^#\s+/, '').trim();

@@ -1,4 +1,4 @@
-// Build-time renderer: docs/hackathon/public/whitepaper.md -> frontend/whitepaper/index.html.
+// Build-time renderer: frontend/whitepaper/whitepaper.md -> frontend/whitepaper/index.html.
 // Wraps the compiled canonical markdown inside the interactive Faction Plate shell
 // so Docker builds (`Dockerfile.frontend`) and tests keep both in sync.
 
@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, '../..');
 
 export function sourcePath() {
-  return resolve(repoRoot, 'docs/hackathon/public/whitepaper.md');
+  return resolve(here, 'whitepaper.md');
 }
 
 export function pagePath() {

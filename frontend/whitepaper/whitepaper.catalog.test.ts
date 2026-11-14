@@ -106,7 +106,7 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
       expect(src).not.toMatch(/--ta-hull\b/);
     }
 
-    const md = readFileSync(resolve(import.meta.dirname, '../../docs/hackathon/public/whitepaper.md'), 'utf8');
+    const md = readFileSync(resolve(import.meta.dirname, 'whitepaper.md'), 'utf8');
     expect(md).not.toContain('NEAR_MODE=testnet / AI_PROVIDER=nearai');
 
     const featuresSrc = readFileSync(resolve(import.meta.dirname, 'data/features.ts'), 'utf8');
