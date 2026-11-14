@@ -19,7 +19,9 @@ import {
 } from '@terra/sim';
 import { checkAllowance } from '../../market/trade/allowance.js';
 import type { LlmAttestation } from '../../ports/llm-provider.port.js';
+import { executeContractorTaskPlan, type ContractorPlanReport } from '../colony-agent/agent-commerce.js';
 import { DEFAULT_AGENT_ALLOWANCE } from '../colony-agent/colony-agent-types.js';
+import { runScriptedSwarmRounds, type SwarmSimulationSummary } from './swarm-rounds.js';
 
 export interface EconomySimPricePoint {
   readonly day: number;
@@ -46,6 +48,7 @@ export interface EconomySimEvent {
 export interface EconomySimColonySummary {
   readonly colonyIndex: number;
   readonly colonyId: string;
+  readonly accountId: string;
   readonly name: string;
   readonly persona: 'eco_terraformer' | 'trader' | 'warlord';
   readonly initialStock: Record<string, number>;
@@ -64,6 +67,8 @@ export interface EconomySimReport {
   readonly colonies: readonly EconomySimColonySummary[];
   readonly dailySeries: readonly EconomySimPricePoint[];
   readonly timeline: readonly EconomySimEvent[];
+  readonly swarm: SwarmSimulationSummary;
+  readonly agentCommerce: ContractorPlanReport;
   readonly guardrails: {
     readonly cancelTruceBlocked: number;
     readonly stakingBlocked: number;
@@ -220,12 +225,12 @@ function stepDayDiplomacyAndWar(host: SimHost, day: number, acc: SimAccumulator)
 function stepDayMarketAndSeries(host: SimHost, seed: string, day: number, indices: readonly number[], acc: SimAccumulator): void {
   const jitter = (hashUnit(seed, day * 31) - 0.5) * 0.08;
   const raidPressure = day === 3 || day === 5 ? 0.14 : 0;
-  const livingBonus = day >= 4 ? -0.06 : 0;
+  const livingFloodDiscount = day >= 4 ? -0.14 : 0;
   const prices = {
     'metals.t1': round2(BASE_GUILD_PRICES['metals.t1'] * (1 + raidPressure + jitter)),
     'minerals.t1': round2(BASE_GUILD_PRICES['minerals.t1'] * (1 + day * 0.02 - jitter * 0.5)),
     'bio.water': round2(BASE_GUILD_PRICES['bio.water'] * (1 + day * 0.015 + jitter * 0.4)),
-    'bio.biomass': round2(BASE_GUILD_PRICES['bio.biomass'] * (1 + livingBonus + jitter * 0.5)),
+    'bio.biomass': round2(BASE_GUILD_PRICES['bio.biomass'] * (1 + livingFloodDiscount + jitter * 0.4)),
   };
   const lot = 40 + day * 10;
   const notional = BigInt(Math.round(lot * prices['metals.t1'] * 1_000_000));
@@ -239,12 +244,18 @@ function stepDayMarketAndSeries(host: SimHost, seed: string, day: number, indice
     acc.tradesByCol[4]++;
     acc.tradesByCol[0]++;
     dayVolume = round2(lot * prices['metals.t1'] + 30 * prices['bio.biomass']);
+    const guildReason =
+      day === 3 || day === 5
+        ? `Kestrel stock thin after raid siphon → ask half-spread widened to 15% (${prices['metals.t1']} USDC).`
+        : day >= 4
+          ? `Organic VWAP active; Biomass supply flood pushed mid down to ${prices['bio.biomass']} USDC (-14% vs cold-start).`
+          : 'Cold-start reference quote (shared/sim/src/systems/trade/guild/quote.ts).';
     acc.timeline.push({
       day,
       kind: 'trade',
       actor: 'Iron Guild Outpost',
       summary: `Settled ${lot} Metals @ ${prices['metals.t1']} USDC & 30 Biomass @ ${prices['bio.biomass']} USDC (${dayVolume} USDC).`,
-      guildReason: day >= 3 ? 'Organic VWAP active (≥ 3 settlements); Guild quoting 6% dynamic band.' : 'Cold-start reference quote.',
+      guildReason,
       opId: `op_trade_d${day}`,
     });
   }
@@ -277,6 +288,11 @@ export function runDeterministic7DaySim(seed = 'near-hackathon-7d', days = 7): O
     4: 'trader',
     5: 'warlord',
   };
+  const subAccounts: Record<number, string> = {
+    0: 'verdant-collective.terraagent.testnet',
+    4: 'iron-guild.terraagent.testnet',
+    5: 'crimson-vanguard.terraagent.testnet',
+  };
   const initialStocks: Record<number, Record<string, number>> = {
     0: getColonyStock(host.state, 0),
     4: getColonyStock(host.state, 4),
@@ -291,9 +307,9 @@ export function runDeterministic7DaySim(seed = 'near-hackathon-7d', days = 7): O
       {
         day: 1,
         kind: 'guild_quote',
-        actor: 'NPC Merchant Guild',
+        actor: 'NPC Merchant Guild (kestrel.npc.terraagent.testnet)',
         summary: 'Cold-start reference board opened (Metals 1.00, Minerals 1.20, Water 0.90, Biomass 1.25 USDC).',
-        guildReason: 'Cold-start anchor (< 3 organic settlements); 8% Guild spread active per GUILD_PRICING.md.',
+        guildReason: 'Cold-start anchor (< 3 organic settlements); 8% Guild spread active per shared/sim/src/systems/trade/guild/quote.ts.',
       },
     ],
     seenTruces: new Set<string>(),
@@ -329,6 +345,7 @@ export function runDeterministic7DaySim(seed = 'near-hackathon-7d', days = 7): O
   const colonies: EconomySimColonySummary[] = indices.map((idx) => ({
     colonyIndex: idx,
     colonyId: host.state.colonies[idx]?.id ?? `col_${idx}`,
+    accountId: subAccounts[idx]!,
     name: host.state.colonies[idx]?.name ?? `Colony ${idx}`,
     persona: personas[idx]!,
     initialStock: initialStocks[idx]!,
@@ -346,6 +363,8 @@ export function runDeterministic7DaySim(seed = 'near-hackathon-7d', days = 7): O
     colonies,
     dailySeries: acc.dailySeries,
     timeline: acc.timeline,
+    swarm: runScriptedSwarmRounds(seed, clampedDays),
+    agentCommerce: executeContractorTaskPlan(seed),
     guardrails: { cancelTruceBlocked: acc.cancelTruceBlocked, stakingBlocked: 1, allowanceEnforced: acc.allowanceEnforced },
   };
 }

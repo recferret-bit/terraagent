@@ -72,6 +72,7 @@ export function staleDetail(q: OfferQuote): string {
 function toOffer(q: OfferQuote): GuildOffer {
   const qty = fillsNow(q);
   const priceAmount = quoteTotal(q, qty).toString();
+  const stance = q.side === 'sell' ? 'stock > target, discounting ask' : 'stock < target, raising bid';
   return {
     offerId: guildOfferId(q.orderId, q.quoteSeq),
     shipId: q.shipId,
@@ -82,7 +83,7 @@ function toOffer(q: OfferQuote): GuildOffer {
     amount: Number(qty),
     price: { token: q.quote, amount: priceAmount },
     quoteSeq: q.quoteSeq,
-    reason: `Guild ${q.npcId} ${q.side === 'sell' ? 'selling surplus' : 'buying needed'} ${q.base} (${Number(qty)} @ ${priceAmount} ${q.quote})`,
+    reason: `Guild ${q.npcId} ${q.side === 'sell' ? 'selling surplus' : 'buying needed'} ${q.base} (${Number(qty)} @ ${priceAmount} ${q.quote} — ${stance}, 24h VWAP power-law)`,
   };
 }
 

@@ -47,7 +47,8 @@
 }
 
 .es-controls input[type='text'],
-.es-controls input[type='number'] {
+.es-controls input[type='number'],
+.es-controls select {
   background: var(--ta-void);
   color: var(--ta-text);
   border: 1px solid var(--ta-seam-2);

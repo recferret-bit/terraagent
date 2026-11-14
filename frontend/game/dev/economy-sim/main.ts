@@ -2,12 +2,17 @@ import './economy-sim.css';
 import {
   renderAiBanner,
   renderColonyCards,
+  renderContractorReceiptsSection,
   renderDailySeriesTable,
+  renderSwarmRoundsSection,
   renderTimeline,
   type EconomySimUiReport,
 } from './renderReport';
 
-async function fetchSimReport(method: 'GET' | 'POST', body?: { seed: string; days: number }): Promise<EconomySimUiReport> {
+async function fetchSimReport(
+  method: 'GET' | 'POST',
+  body?: { seed: string; days: number; useLiveLlm?: boolean },
+): Promise<EconomySimUiReport> {
   const urls = method === 'POST' ? ['/v1/economy-sim/run', '/v1/dev/economy-sim/run'] : ['/v1/economy-sim/latest', '/v1/dev/economy-sim/latest'];
   let lastErr = 'Simulation endpoint unreachable';
   for (const url of urls) {
@@ -26,8 +31,7 @@ async function fetchSimReport(method: 'GET' | 'POST', body?: { seed: string; day
   throw new Error(lastErr);
 }
 
-function mountEconomySimApp(root: HTMLElement): void {
-  root.classList.add('es-wrap');
+function buildEconomySimHeader(): HTMLElement {
   const head = document.createElement('header');
   head.className = 'es-head';
   const left = document.createElement('div');
@@ -44,9 +48,21 @@ function mountEconomySimApp(root: HTMLElement): void {
   back.href = '/';
   back.textContent = '← HUB';
   head.append(left, back);
+  return head;
+}
 
-  const controls = document.createElement('form');
-  controls.className = 'es-controls plate-sm';
+interface SimControlsRefs {
+  readonly form: HTMLFormElement;
+  readonly seedInput: HTMLInputElement;
+  readonly daysInput: HTMLInputElement;
+  readonly modeSelect: HTMLSelectElement;
+  readonly runBtn: HTMLButtonElement;
+  readonly statusEl: HTMLSpanElement;
+}
+
+function buildEconomySimControls(): SimControlsRefs {
+  const form = document.createElement('form');
+  form.className = 'es-controls plate-sm';
   const seedLabel = document.createElement('label');
   seedLabel.textContent = 'SEED';
   const seedInput = document.createElement('input');
@@ -65,6 +81,20 @@ function mountEconomySimApp(root: HTMLElement): void {
   daysInput.dataset.testid = 'econ-sim-days';
   daysLabel.appendChild(daysInput);
 
+  const modeLabel = document.createElement('label');
+  modeLabel.textContent = 'ENGINE';
+  const modeSelect = document.createElement('select');
+  modeSelect.dataset.testid = 'econ-sim-mode';
+  const optLive = document.createElement('option');
+  optLive.value = 'live';
+  optLive.textContent = 'NEAR.AI TEE + Scripted Swarm';
+  const optZeroLlm = document.createElement('option');
+  optZeroLlm.value = 'scripted';
+  optZeroLlm.textContent = 'Zero-LLM Scripted Only';
+  if (new URLSearchParams(location.search).get('llm') === '0') optZeroLlm.selected = true;
+  modeSelect.append(optLive, optZeroLlm);
+  modeLabel.appendChild(modeSelect);
+
   const runBtn = document.createElement('button');
   runBtn.type = 'submit';
   runBtn.className = 'btn btn-primary btn-sm';
@@ -75,7 +105,14 @@ function mountEconomySimApp(root: HTMLElement): void {
   statusEl.className = 'es-event__meta';
   statusEl.dataset.testid = 'econ-sim-status';
   statusEl.textContent = 'Ready';
-  controls.append(seedLabel, daysLabel, runBtn, statusEl);
+  form.append(seedLabel, daysLabel, modeLabel, runBtn, statusEl);
+  return { form, seedInput, daysInput, modeSelect, runBtn, statusEl };
+}
+
+function mountEconomySimApp(root: HTMLElement): void {
+  root.classList.add('es-wrap');
+  const head = buildEconomySimHeader();
+  const { form: controls, seedInput, daysInput, modeSelect, runBtn, statusEl } = buildEconomySimControls();
 
   const output = document.createElement('div');
   output.style.display = 'flex';
@@ -84,12 +121,15 @@ function mountEconomySimApp(root: HTMLElement): void {
   root.append(head, controls, output);
 
   const render = (report: EconomySimUiReport) => {
-    output.replaceChildren(
+    const sections: HTMLElement[] = [
       renderAiBanner(report),
       renderColonyCards(report),
       renderDailySeriesTable(report),
-      renderTimeline(report),
-    );
+    ];
+    if (report.swarm) sections.push(renderSwarmRoundsSection(report.swarm));
+    if (report.agentCommerce) sections.push(renderContractorReceiptsSection(report.agentCommerce));
+    sections.push(renderTimeline(report));
+    output.replaceChildren(...sections);
   };
 
   const execute = async (post: boolean) => {
@@ -97,7 +137,11 @@ function mountEconomySimApp(root: HTMLElement): void {
     statusEl.textContent = 'Running 7-day multi-agent simulation…';
     try {
       const report = post
-        ? await fetchSimReport('POST', { seed: seedInput.value.trim() || 'near-hackathon-7d', days: Number(daysInput.value) || 7 })
+        ? await fetchSimReport('POST', {
+            seed: seedInput.value.trim() || 'near-hackathon-7d',
+            days: Number(daysInput.value) || 7,
+            useLiveLlm: modeSelect.value !== 'scripted',
+          })
         : await fetchSimReport('GET');
       render(report);
       statusEl.textContent = `Completed ${report.days}d sim in ${report.durationMs}ms`;

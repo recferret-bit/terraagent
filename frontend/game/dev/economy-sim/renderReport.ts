@@ -1,3 +1,12 @@
+import {
+  renderContractorReceiptsSection,
+  renderSwarmRoundsSection,
+  type EconomySimContractorUi,
+  type EconomySimSwarmUi,
+} from './renderSwarmAndReceipts';
+
+export { renderContractorReceiptsSection, renderSwarmRoundsSection };
+
 export interface EconomySimUiReport {
   seed: string;
   days: number;
@@ -6,6 +15,7 @@ export interface EconomySimUiReport {
   colonies: Array<{
     colonyIndex: number;
     colonyId: string;
+    accountId?: string;
     name: string;
     persona: string;
     initialStock: Record<string, number>;
@@ -30,6 +40,8 @@ export interface EconomySimUiReport {
     guildReason?: string;
     opId?: string;
   }>;
+  swarm?: EconomySimSwarmUi;
+  agentCommerce?: EconomySimContractorUi;
   guardrails: {
     cancelTruceBlocked: number;
     stakingBlocked: number;
@@ -89,6 +101,7 @@ export function renderColonyCards(report: EconomySimUiReport): HTMLElement {
     card.appendChild(head);
 
     const rows: Array<[string, string]> = [
+      ...(col.accountId ? ([['NEAR Sub-Account', col.accountId]] as Array<[string, string]>) : []),
       ['Living Hexes Cultivated', String(col.livingTiles)],
       ['Market Trades Settled', String(col.tradesExecuted)],
       ['War Raids Launched', String(col.raidsLaunched)],
