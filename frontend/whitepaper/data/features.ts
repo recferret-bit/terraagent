@@ -8,6 +8,8 @@ export interface WebFeatureCard {
 
 export interface ContractSpec {
   readonly contract: string;
+  readonly accountId: string;
+  readonly txHash: string;
   readonly standard: string;
   readonly role: string;
   readonly guardAndSettlement: string;
@@ -26,159 +28,159 @@ export interface AiGuardrailRow {
   readonly enforcement: string;
 }
 
-export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
-  {
-    title: 'Deterministic Shared Simulation (`@terra/sim`)',
-    layer: 'WEB2',
-    badge: '5 Hz / 50 Hz',
-    summary: 'Pure TypeScript hex-grid state machine runs identically in Node (backend), Web Worker (local sandbox) and client prediction, supporting `5 Hz` live ticks and `50 Hz` `warp` replay.',
-    chips: ['shared/sim', 'Fixed-point rules', 'Zero render coupling'],
-  },
-  {
-    title: 'Binary MsgPack WebSocket + 60 FPS Prediction',
-    layer: 'WEB2',
-    badge: 'REALTIME',
-    summary: 'Authoritative state snapshots and diffs encode with `@msgpack/msgpack` over `/ws`. Client predicts camera/unit motion at `60 FPS` with lag/jitter test hooks (`&lag=`, `&predict=0`).',
-    chips: ['backend/app/src/ws', '@msgpack/msgpack', 'Sequence acks'],
-  },
-  {
-    title: 'Local Worker Sandbox + IndexedDB Persistence',
-    layer: 'WEB2',
-    badge: 'OFFLINE PARITY',
-    summary: 'Play offline (`?host=local`) on the exact same `@terra/sim` ruleset inside a dedicated Web Worker backed by browser IndexedDB snapshots — identical sim parity.',
-    chips: ['?host=local', 'Web Worker', 'IndexedDB'],
-  },
-  {
-    title: '17-Module NestJS Backend + PostgreSQL Outbox',
-    layer: 'WEB2',
-    badge: 'ACID',
-    summary: '17 top-level domain modules (20 `.module.ts` total: `core`, `db`, `bus`, `ws`, `game`, `market`, `economy`, `ai`, `near`, `profile`, `progression`, `notify`, `analytics`, `lobby`, `flags`, `scenarios`, `dev`) commit state via Prisma + ACID outbox across 5 PostgreSQL schemas.',
-    chips: ['17 NestJS modules', '5 PG Schemas + Prisma', 'Outbox dispatcher'],
-  },
-  {
-    title: 'CLOB Orderbook & SSE Trading Terminal (`/trade.html`)',
-    layer: 'WEB2',
-    badge: 'EXCHANGE',
-    summary: 'Full limit/market orderbook across all `10` resources against `USDC`, `NEAR`, or barter pairs with Server-Sent Events depth streams, fills ladder, bot keys (`ta_bot_...`) & `/v1/trade/*` routes.',
-    chips: ['/trade.html', '/v1/trade/*', 'SSE depth stream'],
-  },
-  {
-    title: 'Orbital Guild AMM & 24h VWAP Oracle',
-    layer: 'WEB2',
-    badge: 'AMM + VWAP',
-    summary: 'Autonomous NPC freighters (`kestrel`, `vanguard`) quote two-sided spreads via `mid = ref * (target / inventory)^k` anchored to rolling `24h` organic VWAP (`4%–15%` thin-side spread).',
-    chips: ['ship.guildTrader', '24h VWAP anchor', '10% off-planet sink'],
-  },
-  {
-    title: 'Player Profile, 60 Badges & Shareable Deeds (`/me.html`)',
-    layer: 'WEB2',
-    badge: 'IDENTITY',
-    summary: 'Tracks `60` achievement badges (20 families × 3 tiers, Level 0–30 / 46,500 XP), `S0–S10` stage history, encrypted BYOK vault, and public `/deed/:tokenId` colony chronicle cards with server-rendered OpenGraph PNGs.',
-    chips: ['/me.html', '/deed/:tokenId', '60 Badges (20×3)'],
-  },
-  {
-    title: 'Landing, Pitchdeck & Faction Plate Design System',
-    layer: 'WEB2',
-    badge: 'SURFACES',
-    summary: 'Public product portal (`/landing.html` -> deep links to `/play.html?planet=`), interactive investor deck (`/pitchdeck/`), `/design/` Faction Plate CSS token & chamfer storybook, and static `/` hub.',
-    chips: ['/landing.html', '/pitchdeck/', '/design/'],
-  },
-  {
-    title: 'Visual Labs, 7-Day Economy Sim & CI Validators',
-    layer: 'WEB2',
-    badge: 'TOOLING',
-    summary: 'Built-in `/playground.html` 3D inspector (`&validate=1`), `F8` 7-Tab Shader Lab, `/dev/economy-sim/`, `/dev/chain/`, `/dev/parity/`, in-game tilde console, plus `validate:models` & `validate:particles` CI gates.',
-    chips: ['/playground.html', 'F8 Shader Lab', 'validate:models + particles'],
-  },
-];
-
 export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
   {
-    title: 'Dual Settlement: Fast Off-Chain Sim + NEAR Finality',
+    title: 'Dual Settlement: Fast Sim + NEAR Finality',
     layer: 'WEB3',
     badge: 'HYBRID',
-    summary: '`5 Hz` game actions never block on RPC latency. Asset custody, peace/war bonds, soulbound deeds, council votes and cargo bridges settle deterministically across `6` Rust contracts.',
-    chips: ['near-sdk 5.7', 'Mock / Testnet / Mainnet', '11 Typed Ports'],
+    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, and cargo bridges settle asynchronously across six Rust smart contracts.',
+    chips: ['near-sdk 5.7', 'Testnet Live', '11 Typed Ports'],
   },
   {
-    title: 'NEP-366 Gasless Meta-Transactions & Cold-Root Pilots',
+    title: 'Gasless Meta-Transactions & Cold-Root Pilots',
     layer: 'WEB3',
-    badge: 'GASLESS UX',
-    summary: '`relayer.terraagent.*` sponsors storage/gas fees (`SignedDelegate`) for onboarded players while `pilots` manages scoped keys with atomic `claimAccount` `[AddKey, DeleteKey]` self-custody rotation.',
-    chips: ['relayer.terraagent.*', 'NEP-366 DelegateAction', 'Atomic claimAccount'],
+    badge: 'NEP-366',
+    summary: '`relayer.terraagent.testnet` sponsors DelegateAction gas so players never face seed-phrase popups, while `pilots` swaps to full self-custody via atomic `[AddKey, DeleteKey]` claim rotation.',
+    chips: ['relayer.terraagent.testnet', 'SignedDelegate', 'claimAccount'],
   },
   {
-    title: 'NEP-245 Multi-Tokens, NEP-413 Intents & 1Click Bridge',
+    title: 'Orbital Cargo Multi-Tokens & 1Click Intents',
     layer: 'WEB3',
-    badge: 'INTENTS',
-    summary: 'Exported orbital cargo wraps into `res` NEP-245 multi-tokens (`chainDecimals: 18`), settling peer swaps atomically via counter-signed zero-sum `NEP-413` `token_diff` intents and `1Click`.',
-    chips: ['NEP-245 res', 'NEP-413 token_diff', '1Click Swap'],
+    badge: 'NEP-245',
+    summary: 'Exported resources wrap cleanly into NEP-245 tokens on `res.terraagent.testnet` (18 decimals), clearing multi-party swaps in atomic counter-signed `NEP-413` `token_diff` intents and `1Click`.',
+    chips: ['res.terraagent.testnet', 'NEP-413 token_diff', '1Click Swap'],
   },
   {
     title: 'Day-1 Lossless Staking & Zero Pay-to-Win',
     layer: 'WEB3',
     badge: 'LOSSLESS',
-    summary: 'Any claimed human account can stake `NEAR` (`9.0%` gross APY, `2` game-day unbonding). Player keeps `100%` principal + `80%` yield (`7.20%` net APY); `20%` yield funds `protocol.terraagent.*`. `>= 10 NEAR` grants `50%` fee discount + Managed TEE AI — zero combat buffs.',
-    chips: ['80% Staker / 20% Protocol', '>= 10 NEAR Perks', 'Zero Stat P2W'],
+    summary: 'Human accounts stake NEAR on `staking.terraagent.testnet` from Day 1 (9.0% gross APY, 2 game-day unbond). Pilots keep 100% principal + 80% yield (7.20% APY); 20% funds Protocol.',
+    chips: ['80/20 Yield Split', '10 NEAR Unlocks AI', 'Zero Combat Buffs'],
   },
   {
-    title: '4-Way Trade Settlement (`D-44`) & Peace/War Escrows',
+    title: '4-Way Trade Split & Peace/War Escrows',
     layer: 'WEB3',
-    badge: 'ESCROW + DAO',
-    summary: 'Every matched order splits atomically: `100%` Seller Principal, `0–100 bp` Trade Hub Stall Royalty, `20%` of platform fee to Planet Council DAO, and `80%` to Protocol (`100 bp` standard / `50 bp` staker). `bounty` slashes breached bonds `90%` partner / `10%` Protocol.',
+    badge: 'D-44 + ESCROW',
+    summary: 'Every matched order pays 100% principal to seller, 0–1.00% stall royalty to Trade Hub owners, 20% platform fee to Planet DAO, and 80% to Protocol. Breached truces or failed sieges slash 90/10.',
     chips: ['4-Way NEP-413 Split', '90/10 Bond Slash', 'Planet Council DAO'],
   },
   {
-    title: 'Dynamic Soulbound Colony Deeds & Badges (`NEP-171`)',
+    title: 'Soulbound Colony Deeds & 60 Milestone Badges',
     layer: 'WEB3',
-    badge: 'PROVENANCE',
-    summary: 'Every settled colony mints a non-transferable `deed` NFT whose metadata appends immutable milestone chapters as the base climbs `S0 -> S10`, alongside `60` soulbound achievement badges.',
-    chips: ['NEP-171 deed', 'Append-only chapters', 'Public /deed/:id'],
+    badge: 'NEP-171',
+    summary: 'Every founded colony mints a non-transferable deed on `deed.terraagent.testnet` whose metadata appends immutable chapters from S0 through S10 alongside 60 achievement badges.',
+    chips: ['deed.terraagent.testnet', 'Append-only Chapters', 'Public /deed/:id'],
+  },
+];
+
+export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
+  {
+    title: 'Deterministic Shared Simulation (@terra/sim)',
+    layer: 'WEB2',
+    badge: '5 Hz / 50 Hz',
+    summary: 'One pure TypeScript hex-grid state machine powers the authoritative server, offline Web Worker sandbox, client motion prediction, and instant 50 Hz replay warp without render drift.',
+    chips: ['Zero Client Authority', 'Deterministic Ticks', 'Instant Warp'],
+  },
+  {
+    title: 'Binary MsgPack WebSockets + 60 FPS Prediction',
+    layer: 'WEB2',
+    badge: 'REALTIME',
+    summary: 'World diffs serialize via MessagePack over WebSockets while the Three.js diorama interpolates robots, cutter beams, and camera motion smoothly at 60 FPS.',
+    chips: ['MessagePack WS', 'Lag & Jitter Hooks', 'Sequence Acks'],
+  },
+  {
+    title: 'Full Offline Parity (Web Worker + IndexedDB)',
+    layer: 'WEB2',
+    badge: 'OFFLINE',
+    summary: 'Launching with `?host=local` executes the exact same simulation ruleset inside a dedicated browser Web Worker persisted locally to IndexedDB.',
+    chips: ['?host=local', 'Web Worker', 'IndexedDB Snapshots'],
+  },
+  {
+    title: '17-Domain NestJS Server & ACID Postgres Outbox',
+    layer: 'WEB2',
+    badge: 'ACID DB',
+    summary: 'Seventeen domain modules (sim loop, WS gateway, CLOB market, economy, AI, NEAR ports, profile, progression, notify, lobby, analytics) commit trades and chain intents atomically via PostgreSQL + Prisma.',
+    chips: ['17 NestJS Modules', 'Prisma + Outbox', 'Acid Spend Locks'],
+  },
+  {
+    title: 'Planetary CLOB Orderbook & Bot API',
+    layer: 'WEB2',
+    badge: 'EXCHANGE',
+    summary: 'Full limit/market orderbooks across 10 resources paired against USDC, NEAR, or barter goods on `/trade.html`, streaming live depth via SSE alongside capped `ta_bot_...` keys.',
+    chips: ['/trade.html', '/v1/trade/*', 'SSE Depth Stream'],
+  },
+  {
+    title: 'Orbital Guild AMM & 24h VWAP Oracle',
+    layer: 'WEB2',
+    badge: 'AMM + VWAP',
+    summary: 'Autonomous NPC freighters dock periodically and quote two-sided liquidity from live 24h organic VWAP using a readable power-law inventory curve (4%–15% spreads).',
+    chips: ['kestrel & vanguard', '24h VWAP Anchor', '10% Off-Planet Sink'],
+  },
+  {
+    title: 'Pilot Profile, 60 Badges & Public Colony Deeds',
+    layer: 'WEB2',
+    badge: 'IDENTITY',
+    summary: 'Tracks 60 tiered achievement badges (20 families × Bronze/Silver/Gold across 30 levels), encrypted BYOK settings on `/me.html`, and shareable OpenGraph colony pages at `/deed/:tokenId`.',
+    chips: ['/me.html', '60 Badges (20×3)', '/deed/:tokenId'],
+  },
+  {
+    title: 'Web Surfaces, Pitchdeck & Faction Plate UI',
+    layer: 'WEB2',
+    badge: 'SURFACES',
+    summary: 'Multi-entry Vite architecture spanning the orbital landing page (`/landing.html`), investor deck (`/pitchdeck/`), live RTS (`/play.html`), and Faction Plate design system (`/design/`).',
+    chips: ['/landing.html', '/pitchdeck/', '/design/'],
+  },
+  {
+    title: '3D Inspector, Shader Lab, 7-Day Sim & Validators',
+    layer: 'WEB2',
+    badge: 'TOOLING',
+    summary: 'Built-in 4-view 3D storybook (`/playground.html`), in-game `F8` Shader Lab, 7-day multi-colony stress test (`/dev/economy-sim/`), and automated geometry/particle CI gates.',
+    chips: ['/playground.html', 'F8 Shader Lab', 'CI Model Gates'],
   },
 ];
 
 export const CONTRACT_ROWS: ReadonlyArray<ContractSpec> = [
-  { contract: 'res', standard: 'NEP-245 Multi-Token', role: 'Bridged Orbital Cargo Balances across all 10 `ResourceKey` tokens', guardAndSettlement: '`mt_mint` / `mt_burn` / `operator_transfer` paired strictly to Cargo Escrow ACKs' },
-  { contract: 'deed', standard: 'NEP-171 Non-Transferable', role: 'Soulbound Colony Deeds + Dynamic Milestone History + Achievement Badges', guardAndSettlement: 'Append-only server signer chapters; non-transferable chronicle' },
-  { contract: 'bounty', standard: 'Escrow State Machine', role: 'Mercenary Bounties, Bonded Peace Treaties (`2h–72h`) & `6h` War Bonds', guardAndSettlement: '`open_escrow` / `claim_escrow` / `refund_escrow` / `slash_escrow` (`90%` victim + `10%` Protocol)' },
-  { contract: 'staking', standard: 'Lossless Validator Pool', role: 'Day-1 Native NEAR Staking (`9.0%` gross APY) & `>= 10 NEAR` Utility Perks', guardAndSettlement: '`100%` principal withdrawal (`2` game-day unbond); `80%` Staker / `20%` Protocol yield split' },
-  { contract: 'dao', standard: 'Planet Council Voting', role: 'Planet Policy Proposals: `meteor_shield`, `terraform_boost`, `guild_subsidy`', guardAndSettlement: 'Living-tier / S-stage weighted `> 50%` quorum + epoch cooldown enforcement' },
-  { contract: 'pilots', standard: 'Cold-Root Account Factory', role: 'Sub-Account Provisioning (`{pilot}.pilots.*`) & Scoped Session Keys', guardAndSettlement: 'Gasless onboarding + atomic `[AddKey, DeleteKey]` `claimAccount` self-custody upgrade' },
+  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: 'Fs96ny9BP74g1pX9e4cXuRT5DG9XQo6TNKRgv3ZUF6kr', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo balances across all 10 resource commodities', guardAndSettlement: '`mt_mint` / `mt_burn` / `operator_transfer` matched strictly to Cargo Escrow acks' },
+  { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: '32xtwqUFRMCq4vEnNgoVJnxPLkRDGhPavDY5FYUpQ4Lx', standard: 'NEP-171 Soulbound', role: 'Non-transferable Colony Deeds, milestone chapters, and badges', guardAndSettlement: 'Append-only server signer chronicle from S0 through S10' },
+  { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: 'EPMPMYMvDKsr6R36TLgdsymBDStaR5WfpU2JUGCFJYPK', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / `claim_escrow` / `refund_escrow` / `slash_escrow` (90% victim, 10% Protocol)' },
+  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '12AwBVfjGkkbDi72Y9264YeY6szMbkQWaL2L2bTxHJ6v', standard: 'Lossless Validator Vault', role: 'Day-1 native NEAR staking (9.0% gross APY) & 10 NEAR AI unlock', guardAndSettlement: '100% principal safe (2-day unbond); 80% Staker / 20% Protocol yield split' },
+  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: '6qkgGWoKJei1X5ihZdip2ts9W1ynity62bzynWC5orDz', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Living-tile + tier-weighted > 50% quorum with epoch cooldowns' },
+  { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'BcSaHVpgUEAsMRtLyYbHxhQeWZbSCoLbJ8aAEC97Xzpm', standard: 'Cold-Root Factory', role: 'Instant pilot sub-accounts and scoped bot session keys', guardAndSettlement: 'Gasless creation + atomic `[AddKey, DeleteKey]` self-custody upgrade' },
 ];
 
 export const PORT_ROWS: ReadonlyArray<PortSpec> = [
-  { port: 'ChainReadPort', category: 'Core Read', mockBehavior: 'In-memory seeded JSON block/state', liveImplementation: 'NEAR RPC JSON view queries' },
-  { port: 'IdentityPort', category: 'Auth', mockBehavior: 'Local ephemeral keypair session', liveImplementation: 'NEAR Wallet / `NEP-413` sign-in verification' },
-  { port: 'RelayerPort', category: 'Gasless UX', mockBehavior: 'Simulated instant receipt', liveImplementation: '`relayer.terraagent.*` `NEP-366` broadcaster' },
-  { port: 'CargoTokenPort', category: 'Assets', mockBehavior: 'PostgreSQL ledger balance', liveImplementation: '`res` `NEP-245` `mt_mint` / `mt_burn` & transfer' },
-  { port: 'IntentsPort', category: 'Trading', mockBehavior: 'Local matcher verification', liveImplementation: '`NEP-413` signed `token_diff` + `1Click` quotes' },
-  { port: 'AgentWalletPort', category: 'Automation', mockBehavior: 'Virtual cap counter', liveImplementation: 'Scoped `pilots` key + ACID spend ledger' },
-  { port: 'DeedNftPort', category: 'Identity', mockBehavior: 'Local SVG/JSON deed DB', liveImplementation: '`deed` `NEP-171` mint & milestone append' },
+  { port: 'ChainReadPort', category: 'Core Read', mockBehavior: 'In-memory seeded JSON state', liveImplementation: 'FastNEAR RPC JSON view calls' },
+  { port: 'IdentityPort', category: 'Auth', mockBehavior: 'Local ephemeral session keypair', liveImplementation: 'NEAR Wallet & `NEP-413` signature auth' },
+  { port: 'RelayerPort', category: 'Gasless UX', mockBehavior: 'Simulated instant tx receipt', liveImplementation: 'Sponsored `NEP-366` DelegateAction broadcaster' },
+  { port: 'CargoTokenPort', category: 'Assets', mockBehavior: 'PostgreSQL mock token ledger', liveImplementation: '`res` `NEP-245` mint, burn & transfer' },
+  { port: 'IntentsPort', category: 'Trading', mockBehavior: 'Local order matcher verification', liveImplementation: 'Signed `NEP-413` `token_diff` + `1Click` quotes' },
+  { port: 'AgentWalletPort', category: 'Automation', mockBehavior: 'Simulated spend cap counter', liveImplementation: 'Scoped session key + ACID allowance lock' },
+  { port: 'DeedNftPort', category: 'Identity', mockBehavior: 'Local deed milestone record', liveImplementation: '`deed` `NEP-171` mint & metadata append' },
   { port: 'BadgeNftPort', category: 'Progression', mockBehavior: '60 DB badge unlocks (20×3)', liveImplementation: 'On-chain soulbound badge proofs' },
-  { port: 'EscrowPort', category: 'PvP / Coop', mockBehavior: 'Sim truce/war bond ledger', liveImplementation: '`bounty` contract lock, claim & `90/10` slash' },
-  { port: 'StakingPort', category: 'Yield', mockBehavior: 'Simulated epoch reward rate', liveImplementation: '`staking` lossless pool (`80/20` yield split)' },
-  { port: 'TreasuryDaoPort', category: 'Governance', mockBehavior: 'Local council tally', liveImplementation: '`dao` planet policy proposal & execute' },
+  { port: 'EscrowPort', category: 'Diplomacy', mockBehavior: 'Simulated truce & war bond book', liveImplementation: '`bounty` lock, claim, refund & 90/10 slash' },
+  { port: 'StakingPort', category: 'Yield', mockBehavior: 'Simulated epoch reward clock', liveImplementation: '`staking` pool (80/20 split, human-only)' },
+  { port: 'TreasuryDaoPort', category: 'Governance', mockBehavior: 'Local council vote tally', liveImplementation: '`dao` policy proposal & execution' },
 ];
 
 export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
   {
-    control: 'TEE Verifiable Inference (`NEAR.AI`)',
+    control: 'Hardware TEE Inference',
     trigger: 'Every autonomous commander turn (`z-ai/glm-5.3-flash`)',
-    enforcement: 'Prompt & decision payload signed inside Hardware TEE (Intel TDX + NVIDIA) via `/v1/signature/{chat_id}` (ECDSA proof stored on colony audit log)',
+    enforcement: 'Executed inside NEAR AI Cloud Intel TDX + NVIDIA TEEs; prompt and decision hash signed via `/v1/signature/{chat_id}` and saved in the colony audit log.',
   },
   {
-    control: 'Encrypted BYOK Vault (`/v1/me/ai-settings`)',
-    trigger: 'Player supplies own `NEAR.AI` key & custom model ID on `/me.html`',
-    enforcement: 'Server encrypts key at rest with `AES-256-GCM`; plaintext never echoed back in API responses or logs',
+    control: 'Encrypted BYOK Vault (`/me.html`)',
+    trigger: 'Player attaches personal NEAR.AI key & custom model ID',
+    enforcement: 'Encrypted at rest using authenticated AES-256-GCM; plaintext secret keys are never echoed in HTTP responses or worker logs.',
   },
   {
-    control: 'Hard Staking Isolation (`403 AI_STAKING_FORBIDDEN`)',
-    trigger: 'Any AI agent call attempting stake / unstake / withdraw',
-    enforcement: 'API router rejects non-human principal signatures at HTTP boundary before port invocation',
+    control: 'Staking Isolation (`403 AI_STAKING_FORBIDDEN`)',
+    trigger: 'Any AI or bot token calls stake, unstake, or withdraw',
+    enforcement: 'HTTP and service boundaries reject non-human callers outright before touching StakingPort.',
   },
   {
-    control: 'Bounded Autonomy (`AW-10 / AW-13` + `intentRevision`)',
-    trigger: 'Away orders, truce/war cancels & NEAR bond checks',
-    enforcement: '`AW-10` forbids AI from demolishing player buildings; `AW-13` forbids AI from breaking active peace truces, canceling wars, or locking human `NEAR`; stale `intentRevision` orders abort immediately on human override',
+    control: 'Bounded Autonomy (`AW-10` / `AW-13` + Revision)',
+    trigger: 'Away orders, truce/war controls, and NEAR bond checks',
+    enforcement: '`AW-10` blocks structure demolition; `AW-13` blocks breaking active peace treaties, canceling wars, or bonding human NEAR; stale `intentRevision` aborts on human click.',
   },
 ];

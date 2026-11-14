@@ -1,4 +1,3 @@
-import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { WhitepaperLiveStage3D } from './liveStage3D';
 import {
   buildRailTabsContent,
@@ -6,8 +5,11 @@ import {
   initScrollAnimationsAndSpy,
 } from './scrollAndNav';
 import { buildEntitiesAndEffectsSections } from './sections/entitiesAndEffects';
-import { buildOverviewAndMechanicsSections } from './sections/overviewAndMechanics';
-import { buildWeb2AndWeb3Sections } from './sections/web2AndWeb3';
+import {
+  buildGameplayAndEngineSections,
+  mountCanonicalRisksSummary,
+} from './sections/gameplayAndEngine';
+import { buildWeb3AndAiSections } from './sections/web3AndAi';
 
 function rewriteSubdomainLinks(): void {
   if (location.hostname !== 'whitepaper.terraagent.fun') return;
@@ -27,22 +29,6 @@ function rewriteSubdomainLinks(): void {
   }
 }
 
-function wireBiomeSwitcher(stage3D: WhitepaperLiveStage3D): void {
-  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-biome]'));
-  for (const btn of buttons) {
-    btn.addEventListener('click', () => {
-      const biome = btn.dataset.biome as PlanetKind | undefined;
-      if (!biome) return;
-      for (const b of buttons) {
-        const active = b === btn;
-        b.classList.toggle('is-active', active);
-        b.setAttribute('aria-pressed', String(active));
-      }
-      stage3D.setBiome(biome);
-    });
-  }
-}
-
 function bootWhitepaper(): void {
   rewriteSubdomainLinks();
   const mount = document.getElementById('wpSectionsMount');
@@ -54,16 +40,16 @@ function bootWhitepaper(): void {
   });
 
   const sections = [
-    ...buildOverviewAndMechanicsSections(),
-    ...buildWeb2AndWeb3Sections(),
+    ...buildWeb3AndAiSections(),
+    ...buildGameplayAndEngineSections(),
     ...buildEntitiesAndEffectsSections(stage3D),
   ];
 
   const frag = document.createDocumentFragment();
   for (const sec of sections) frag.appendChild(sec);
   mount.replaceChildren(frag);
+  mountCanonicalRisksSummary();
 
-  wireBiomeSwitcher(stage3D);
   buildRailTabsContent();
   initRailShowHideAndTabs();
   initScrollAnimationsAndSpy();

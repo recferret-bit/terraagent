@@ -10,7 +10,9 @@
 <link rel="stylesheet" href="../design/css/tokens.css">
 <link rel="stylesheet" href="../design/css/base.css">
 <link rel="stylesheet" href="./whitepaper.css">
+<link rel="stylesheet" href="./rail.css">
 <link rel="stylesheet" href="./cards.css">
+<link rel="stylesheet" href="./schemas.css">
 </head>
 <body>
 <div class="wp-progress"><div id="wpScrollProgress" class="wp-progress-fill"></div></div>
@@ -19,14 +21,6 @@
     <span class="wp-top-dot" aria-hidden="true"></span>
     <span>TerraAgent // Whitepaper</span>
   </a>
-  <div class="wp-top-controls">
-    <button id="wpRailToggle" class="btn btn-ghost btn-sm" type="button" aria-controls="wpRail" aria-expanded="true">Hide Menu</button>
-    <div class="wp-biome-pills" role="group" aria-label="3D Biome Shader">
-      <button class="wp-biome-btn is-active" type="button" data-biome="dune" aria-pressed="true">Dune</button>
-      <button class="wp-biome-btn" type="button" data-biome="oceanForest" aria-pressed="false">Ocean Forest</button>
-      <button class="wp-biome-btn" type="button" data-biome="forestRock" aria-pressed="false">Forest Rock</button>
-    </div>
-  </div>
   <nav class="wp-top-links" aria-label="Primary destinations">
     <a class="btn btn-ghost btn-sm" href="/playground.html">3D Playground</a>
     <a class="btn btn-ghost btn-sm" href="/trade.html">Exchange</a>
@@ -35,22 +29,28 @@
 </header>
 <div id="wpShell" class="wp-shell">
   <div id="wpRailBackdrop" class="wp-rail-backdrop" aria-hidden="true"></div>
-  <aside id="wpRail" class="wp-rail plate-lg" aria-label="Whitepaper Navigation">
+  <aside id="wpRail" class="wp-rail plate" aria-label="Whitepaper Navigation">
     <div class="wp-rail-head">
       <span class="wp-rail-title">INDEX // COMMAND RAIL</span>
       <button id="wpRailHide" class="btn btn-ghost btn-sm" type="button">Hide</button>
     </div>
     <div class="wp-rail-tabs" role="tablist" aria-label="Navigation Views">
       <button class="wp-rail-tab is-active" type="button" role="tab" aria-selected="true" data-rail-tab="chapters">Chapters</button>
-      <button class="wp-rail-tab" type="button" role="tab" aria-selected="false" data-rail-tab="stack">Web2+3</button>
+      <button class="wp-rail-tab" type="button" role="tab" aria-selected="false" data-rail-tab="stack">Protocol</button>
       <button class="wp-rail-tab" type="button" role="tab" aria-selected="false" data-rail-tab="entities">3D Units</button>
     </div>
-    <input id="wpRailSearch" class="wp-rail-search" type="search" placeholder="Filter chapters, units..." aria-label="Filter navigation">
-    <div class="wp-rail-body">
-      <nav id="tabPanel-chapters" class="wp-rail-panel" aria-label="Chapters"></nav>
-      <nav id="tabPanel-stack" class="wp-rail-panel" aria-label="Web2 and Web3 Stack" hidden></nav>
-      <nav id="tabPanel-entities" class="wp-rail-panel" aria-label="3D Entities and Effects" hidden></nav>
+    <input id="wpRailSearch" class="wp-rail-search" type="search" placeholder="Filter sections, units…" aria-label="Filter navigation">
+    <div class="wp-rail-scroll-wrap">
+      <div id="wpRailBody" class="wp-rail-body">
+        <nav id="tabPanel-chapters" class="wp-rail-panel" aria-label="Chapters"></nav>
+        <nav id="tabPanel-stack" class="wp-rail-panel" aria-label="Protocol and Architecture" hidden></nav>
+        <nav id="tabPanel-entities" class="wp-rail-panel" aria-label="3D Entities and Effects" hidden></nav>
+      </div>
+      <div id="wpRailScrollbar" class="wp-rail-scrollbar" aria-hidden="true">
+        <div id="wpRailThumb" class="wp-rail-thumb"></div>
+      </div>
     </div>
+    <button id="wpRailMore" class="wp-rail-more" type="button" hidden>▾ Scroll for more</button>
     <div class="wp-rail-foot">
       <span id="wpActiveChapter">CH 00 // CORE</span>
       <span id="wpRenderStatus">3D STAGE READY</span>
@@ -59,14 +59,14 @@
   <main class="container doc" id="wpMain">
     <header class="wp-hero plate-lg">
       <div class="scanlines" aria-hidden="true"></div>
-      <div class="badge badge-recruiting">TECHNICAL &amp; ECONOMIC SPECIFICATION</div>
+      <div class="badge badge-recruiting">PROTOCOL, AI &amp; ENGINE WHITEPAPER</div>
       <h1>TerraAgent — Whitepaper (draft v0.1, 2026-10-31)</h1>
-      <p class="wp-hero-lead">Interactive architecture specification covering the 17-module NestJS backend, 6 NEAR smart contracts and 11 typed ports, every planetary mechanic from S0 Landing to S10 Ascendant, and live Three.js Faction Plate 3D previews for all 68 units, structures, fauna, deposits, VFX and shader presets.</p>
+      <p class="wp-hero-lead">TerraAgent is an autonomous planetary colony RTS where the economy is the gameplay. Colonies mine, trade, form treaties, and defend 24/7 on a deterministic 5 Hz engine — while NEAR smart contracts and hardware-attested NEAR.AI commanders handle asset custody, atomic 4-way settlement, and verifiable autonomy.</p>
       <div class="wp-kpi-strip">
-        <div class="wp-kpi"><span class="wp-kpi-val">5 Hz / 50 Hz</span><span class="wp-kpi-lbl">Deterministic Sim + Warp</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">6 + 11</span><span class="wp-kpi-lbl">Rust Contracts &amp; NEAR Ports</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">S0–S10 · 60</span><span class="wp-kpi-lbl">Stages &amp; Achievements</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">68 Live 3D</span><span class="wp-kpi-lbl">Units, Fauna, VFX &amp; Shaders</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">0% Mint / 0% P2W</span><span class="wp-kpi-lbl">Organic Fee &amp; Yield Economy</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">6 NEAR Contracts</span><span class="wp-kpi-lbl">NEP-245 · 171 · 366 · 413</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">TEE + Guardrails</span><span class="wp-kpi-lbl">Verifiable NEAR.AI Autopilot</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">68 Live 3D Assets</span><span class="wp-kpi-lbl">Interactive WebGL2 Previews</span></div>
       </div>
     </header>
     <div id="wpSectionsMount"></div>
@@ -75,108 +75,96 @@
         <div class="wp-divider-bar">
           <span class="wp-divider-index">10</span>
           <div class="wp-divider-hazard hazard"></div>
-          <span class="wp-divider-domain">CANONICAL PUBLIC DRAFT // LEDGER</span>
+          <span class="wp-divider-domain">RISKS, PROOFS &amp; CANONICAL DRAFT</span>
         </div>
-        <h2>Canonical Public Markdown &amp; Verification Status</h2>
+        <h2>Risks, Design Trade-offs &amp; Testnet Proof Ledger</h2>
       </div>
-      <article class="wp-canonical">
-<blockquote><p>Outward-facing; last updated 2026-11-13. It agrees with <code>docs/spec/DECISIONS.md</code>, <code>docs/spec/ECONOMY.md</code>, the game specs, and the live NEAR Testnet port matrix in <code>README.md</code>. Numbers marked <em>(proposed)</em> are tunable defaults from <a href="../economy-balance-simulation.md"><code>../economy-balance-simulation.md</code></a>. This document describes mechanics; it makes no promise about the value of any token.</p></blockquote>
-<h2>1. The problem</h2>
-<p>Online strategy games stop when you close the tab, and their economies are spreadsheets the studio patches. Blockchain games have mostly inverted the problem: the token is the game and the loop is an afterthought. TerraAgent is a colony builder where <strong>the economy is the gameplay</strong>: the colony keeps mining, trading, defending, and terraforming while you are away, prices move because players and agents trade, and NEAR + NEAR.AI provide sandboxed agent accounts, verifiable inference, and atomic settlement invisibly.</p>
-<h2>2. The game in one screen</h2>
-<p>You drop one robot on a planet. It prepares the ground, builds a Command Hub, and the colony grows: extractors, power, storage, drones, turrets, a Trade Hub. Every building draws power, every tile must be terraformed before it can be built on, and Living ground unlocks higher-tier resources. Five colonies share a planet across Desert, Ocean, and Temperate worlds; they trade on the planet market, deal with Orbital Guild traders, sign peace treaties or declare wars, vote in the planet treasury, and seal their Colony Deed.</p>
+      <div id="wpCanonicalRisksMount"></div>
+      <details class="wp-canonical-details">
+        <summary class="wp-canonical-summary">
+          <span>Read Full Standalone Markdown Draft &amp; Testnet Deployment Table</span>
+          <span class="wp-canonical-toggle-hint">EXPAND ▾</span>
+        </summary>
+        <article class="wp-canonical">
+<blockquote><p>Outward-facing specification updated 2026-11-13. Matches <code>docs/spec/DECISIONS.md</code>, <code>docs/spec/ECONOMY.md</code>, and the live NEAR Testnet deployments. Values marked <em>(proposed)</em> are tunable defaults calibrated in <a href="../economy-balance-simulation.md"><code>../economy-balance-simulation.md</code></a>. This document describes game and protocol mechanics and makes no promise regarding any token value.</p></blockquote>
+<h2>1. Thesis: the economy is the gameplay</h2>
+<p>Traditional strategy games stop when you close the browser tab and patch balance on spreadsheets. Early blockchain games inverted the problem: tokens came first and gameplay came second. TerraAgent builds a real-time colony RTS where supply, terrain scarcity, trade routes, diplomacy, and autonomous AI directors form one continuous economy across NEAR Protocol and hardware-attested NEAR.AI.</p>
+<h2>2. Web3 ownership &amp; first-class NEAR accounts</h2>
+<ul>
+<li><strong>Human Pilots:</strong> Drop in immediately via FastAuth, OAuth, or NEAR wallet sign-in (<code>{pilot}.pilots.terraagent.testnet</code>). Gasless <code>NEP-366</code> meta-transactions eliminate seed-phrase popups during play, with atomic key rotation (<code>claimAccount</code>) to 100% self-custody at any time.</li>
+<li><strong>Colony Sub-Accounts:</strong> Isolated sub-accounts hold <code>NEP-245</code> orbital cargo, post bounties, settle peer trades, and own the soulbound <code>NEP-171</code> Colony Deed.</li>
+<li><strong>AI Directors &amp; Trading Bots:</strong> Operate solely under scoped session keys (<code>director-key</code>, <code>ta_bot_...</code>) with strict daily spend allowances and instant revocation (<code>/v1/trade/kill</code>).</li>
+<li><strong>Guild Traders &amp; Protocol Treasury:</strong> NPC freighters (<code>kestrel</code>, <code>vanguard</code>) quote VWAP-anchored spreads, while <code>protocol.terraagent.testnet</code> collects organic protocol shares to fund gasless onboarding and Managed NEAR.AI.</li>
+</ul>
+<p>What autonomous agents <strong>cannot</strong> do without a human: exceed spend caps, break an active peace truce or cancel a war (<code>AW-13</code>), lock human NEAR in bonds, dismantle buildings (<code>AW-10</code>), claim ownership keys, or stake validator NEAR (<code>403 AI_STAKING_FORBIDDEN</code>).</p>
+<h2>3. Player income, lossless staking &amp; 4-way settlement</h2>
+<ul>
+<li><strong>Cargo Exports (<code>100%</code> to Seller):</strong> Mine scarce Metals, Crystals, Water, and Bio-Fuel, wrap them into <code>NEP-245</code> tokens on <code>res.terraagent.testnet</code>, and sell for USDC, NEAR, or barter cargo on <code>/trade.html</code>.</li>
+<li><strong>Trade Hub Stall Royalties (<code>0–1.00%</code>):</strong> Every built Trade Hub acts as a commercial storefront earning maker royalties on filled orders.</li>
+<li><strong>Scoped Trading Bots &amp; Bounties:</strong> Automated bots arbitrage orbital spreads within daily limits, while mercenary defense bounties and breached peace/war bonds pay 90% directly to victims or defenders.</li>
+<li><strong>4-Way Settlement (<code>D-44</code>):</strong> Every trade clears atomically via counter-signed <code>NEP-413</code> <code>token_diff</code> intents across four recipients: Seller Principal (100%), Stall Owner (0–1.00%), Planet Council DAO (20% of platform fee), and TerraAgent Protocol (80% of platform fee).</li>
+<li><strong>Day-1 Lossless Staking:</strong> Stake NEAR from Day 1 on <code>staking.terraagent.testnet</code> (9.0% gross pool APY, 2 game-day unbonding). Pilots keep 100% principal plus 80% of yield (7.20% net APY); 20% (1.80% APY) funds TerraAgent Protocol. Staking &gt;= 10 NEAR unlocks Managed NEAR.AI Autopilot and a 50% platform trade fee cut (1.00% down to 0.50%) with <strong>zero</strong> combat or harvesting buffs.</li>
+<li><strong>Bonded Diplomacy &amp; 6-Hour War Escrows:</strong> Bonded truces (2h–72h) and 6-hour War Bonds (granting 2x Raider carry capacity) lock collateral on <code>bounty.terraagent.testnet</code>. Peaceful truce completion or meeting war objectives refunds 100%; early betrayal or failed sieges slash 90% to the counterparty and 10% to Protocol.</li>
+</ul>
+<h2>4. Verifiable NEAR.AI commanders &amp; Guild pricing</h2>
+<p>Orbital Guild merchants price every pair from live 24h organic VWAP using <code>mid = reference * (target / inventory)^k</code> with 4%–15% spreads. Rival AI colonies and Managed Staker Autopilot run batched <code>z-ai/glm-5.3-flash</code> turns on NEAR AI Cloud inside hardware TEEs attested via <code>/v1/signature/{chat_id}</code>, alongside encrypted BYOK key support on <code>/me.html</code>.</p>
+<h2>5. Core loop, cadence &amp; trust architecture</h2>
+<p>You land one Hero bot, build a Command Hub, expand across Desert, Ocean, and Temperate worlds, terraform hexes into Living ground to unlock T2 (30%) and T3 (70%) resources, and race neighbors to the S10 Ascension Rocket.</p>
 <div class="table-wrap">
 <table>
-<thead><tr><th>Cadence</th><th>What the player does</th><th>What the economy does</th></tr></thead>
+<thead><tr><th>Cadence</th><th>Player Decision</th><th>Economic Consequence</th></tr></thead>
 <tbody>
-<tr><td>Every 30 s</td><td>one order: a building, a drone, a terraform brush; accept or ignore a Guild offer</td><td>storage fills in minutes, so every decision is <em>spend, export, or lose it</em></td></tr>
-<tr><td>Every 5 min</td><td>a stage beat: the first night, a raid, a terraform threshold, a treaty or council vote; a Guild ship docks every 20–40 min</td><td>night sheds production unless the grid is sized for it; a docking re-prices every pair</td></tr>
-<tr><td>Every session</td><td>the next tier or terraform gate; the away budget, staking perks, and auto-trade limits; &quot;while you were away&quot;</td><td>new tiers change what the colony mines and sells; the director trades overnight within its allowance</td></tr>
-</tbody>
-</table>
-</div>
-<h2>3. Agents are citizens (and why NEAR is essential)</h2>
-<p>Every actor that holds value in TerraAgent is a first-class account on NEAR with cryptographic and server-enforced boundaries:</p>
-<ul>
-<li><strong>Players</strong> get <code>{pilot}.pilots.terraagent.testnet</code> (or <code>{name}.terraagent.testnet</code>) via FastAuth / OAuth / NEP-413 wallet sign-in; <code>relayer.terraagent.testnet</code> sponsors NEP-366 gasless meta-transactions so players never hit seed phrases or gas popups during play, with atomic key rotation (<code>claimAccount</code>) to 100% self-custody at any time.</li>
-<li><strong>Colonies</strong> are isolated sub-accounts that hold NEP-245 orbital cargo, sign market orders, post bounties, and own the soulbound NEP-171 Colony Deed.</li>
-<li><strong>The AI Director &amp; External Bots</strong> sign trades under scoped keys (<code>director-key</code> and <code>ta_bot_...</code>) with ACID per-token spend allowances and one-click revocation (<code>/v1/trade/kill</code>).</li>
-<li><strong>Orbital Guild traders</strong> (<code>kestrel</code>, <code>vanguard</code>) are NPC agents with their own sub-accounts, inventories, and a published VWAP-anchored power-law pricing rule.</li>
-<li><strong>TerraAgent Protocol</strong> (<code>protocol.terraagent.testnet</code> / <code>protocol.terraagent.near</code>, inspected at <code>GET /v1/near/protocol</code>) is the transparent protocol treasury account that receives protocol fee and staking/slash shares and funds gasless NEP-366 relays plus Managed <code>NEAR.AI</code> Autopilot.</li>
-</ul>
-<p>What an AI agent <strong>cannot</strong> do without a human: spend beyond its allowance, break an active peace truce or cancel a declared war (<code>AW-13</code>), lock human <code>NEAR</code> in diplomacy/war bonds, demolish buildings (<code>AW-10</code>), claim the account, or stake/unstake validator NEAR (<code>403 AI_STAKING_FORBIDDEN</code>).</p>
-<h2>4. How players earn, Day-1 Staking, and TerraAgent Protocol</h2>
-<h3>4.1 Four player &amp; agent income lanes</h3>
-<ol>
-<li><strong>Commodity Production &amp; Biome Arbitrage:</strong> Mine biome-abundant T1–T3 metals, minerals, water, and bio-resources, export via the Trade Hub to mint NEP-245 tokens on <code>res.terraagent.testnet</code>, and sell on <code>/trade.html</code> for <code>USDC</code>, <code>NEAR</code>, or scarce cargo (<code>100%</code> of sale principal goes to the seller).</li>
-<li><strong>Trade Hub Stall Royalties (<code>0–1.00%</code>):</strong> Every built Trade Hub is a commercial stall; its owner sets a <code>0–100 bp</code> maker stall fee and earns quote-token royalties on every fill against their orders.</li>
-<li><strong>Scoped Algorithmic Bots (<code>ta_bot_...</code>):</strong> Players run automated market-making and arbitrage bots via <code>/v1/trade/*</code> under bounded daily spend caps.</li>
-<li><strong>Mercenary Bounties &amp; Peace/War Escrow Slashes (<code>90%</code> payout):</strong> Players earn escrowed cargo/NEAR by completing raid-defense bounties, holding a Bonded Peace Treaty when an ally betrays it early, or defending against a failed/canceled <code>6h</code> War Bond.</li>
-</ol>
-<h3>4.2 Four-way trade settlement (<code>D-44</code> + <code>TerraAgent Protocol</code>)</h3>
-<p>Buyers pay the platform fee (<code>100 bp</code> = <code>1.00%</code> standard, or <strong><code>50 bp</code> = <code>0.50%</code> for active stakers</strong>) plus the maker's stall fee (<code>0–100 bp</code>) in the pair's quote token (<code>USDC</code>, <code>NEAR</code>, or cargo). Every matched trade settles atomically as a zero-sum <code>NEP-413</code> <code>token_diff</code> batch across four legs: <strong>Seller Principal (<code>100%</code>)</strong>, <strong>Stall Owner (<code>0–1.00%</code>)</strong>, <strong>Planet Council DAO (<code>20%</code> of platform fee)</strong>, and <strong>TerraAgent Protocol (<code>80%</code> of platform fee)</strong>.</p>
-<h3>4.3 Lossless Day-1 Staking (<code>Zero Pay-to-Win</code>)</h3>
-<p>Any claimed human account can stake <code>NEAR</code> from <strong>Day 1</strong> (no <code>Settled</code> colony wait required) on <code>staking.terraagent.testnet</code> (<code>9.0%</code> gross validator pool APY, <code>2</code> game-day unbonding):</p>
-<ul>
-<li><strong>80% / 20% Validator Yield Split:</strong> The player keeps <code>100%</code> of staked principal plus <strong><code>80%</code> of validator yield (<code>7.20%</code> net APY)</strong>; <strong><code>20%</code> of validator yield (<code>1.80%</code> APY)</strong> routes to <code>TerraAgent Protocol</code> as a lossless infrastructure subscription.</li>
-<li><strong>Two Utility Perks at <code>&gt;= 10 NEAR</code> Staked:</strong> Unlocks <strong>Managed Server <code>NEAR.AI</code> Autopilot</strong> (<code>z-ai/glm-5.3-flash</code> batched TEE inference without needing a personal API key) and a <strong>50% Platform Trade Fee Discount</strong> (<code>1.00% -&gt; 0.50%</code>). Players who want custom models without staking can still attach an encrypted BYOK <code>NEAR.AI</code> key on <code>/me.html</code>. Staking grants <strong>zero</strong> combat or mining buffs (<code>@terra/sim</code> is completely isolated from staking).</li>
-</ul>
-<h3>4.4 Skin-in-the-game Diplomacy: Bonded Peace Treaties &amp; 6-Hour War Escrows</h3>
-<p>Locked on <code>bounty.terraagent.testnet</code> (<code>slash_escrow</code>):</p>
-<ul>
-<li><strong>Two-Tier Peace Treaties (<code>2h–72h</code>):</strong> Colony pairs can sign a <strong>Free Unbonded Truce</strong> (<code>0</code> deposit; early cancel stamps a <code>24h</code> public <code>Oathbreaker</code> badge) or a <strong>Bonded Peace Treaty</strong> where both sides lock matching <code>NEAR</code> or <code>NEP-245</code> cargo. Peaceful expiry refunds <code>100%</code> to both sides; early <code>cancelTruce</code> slashes the breaker's bond <strong><code>90%</code> to the betrayed partner + <code>10%</code> to <code>TerraAgent Protocol</code></strong> (partner's bond refunds <code>100%</code>).</li>
-<li><strong>6-Hour Bonded War Escrows (<code>108 000</code> ticks):</strong> An attacker may lock a War Bond (<code>NEAR</code> or <code>NEP-245</code> cargo) when declaring war to unlock <strong><code>2x</code> Raider Loot Siphon</strong> (<code>siphonCarryCap</code> <code>40 -&gt; 80</code>). Destroying <code>&gt;= 1</code> enemy structure or siphoning <code>&gt;= 200</code> resources within <code>6h</code> refunds <code>100%</code> of the bond; canceling war early (<code>cancelWar</code>), being eliminated during the war, or letting the <code>6h</code> timer expire without meeting the objective slashes <strong><code>90%</code> to the Defender + <code>10%</code> to <code>TerraAgent Protocol</code></strong>.</li>
-</ul>
-<h2>5. What is on-chain, and why</h2>
-<div class="table-wrap">
-<table>
-<thead><tr><th>Layer</th><th>Holds</th><th>Truth</th></tr></thead>
-<tbody>
-<tr><td>NEAR (<code>6</code> Rust contracts + <code>intents.near</code>)</td><td>pilot &amp; colony sub-accounts (<code>pilots</code>), NEP-245 cargo (<code>res</code>), zero-sum trade batches (<code>NEP-413</code> + <code>1Click</code>), soulbound Deeds &amp; Badges (<code>deed</code>), mercenary &amp; peace/war escrows (<code>bounty</code>), Day-1 staking (<code>staking</code>), Planet Council DAOs (<code>dao</code>), and <code>protocol.terraagent.*</code></td><td>the chain</td></tr>
-<tr><td>Server simulation (<code>@terra/sim</code>)</td><td>5 Hz deterministic production, power grids, terraforming, combat, and export/import authorizations</td><td>the game server</td></tr>
-<tr><td>Client (<code>Three.js</code> WebGL2)</td><td>60 FPS prediction, diorama rendering, and HUD input</td><td>nothing</td></tr>
-</tbody>
-</table>
-</div>
-<h2>6. Fair merchants &amp; verifiable TEE AI</h2>
-<p>The Guild's price for every pair follows one readable rule: <code>mid = reference * (target inventory / inventory)^k</code>, anchored to the planet's 24-hour organic VWAP, with thin-side spreads widening from <code>4%</code> up to <code>15%</code> and plain-English reason tooltips on every quote. Autonomous Rival AI colonies and Managed Staker Autopilot run batched <code>z-ai/glm-5.3-flash</code> directives on <strong>NEAR AI Cloud</strong> inside hardware TEEs verified via <code>/v1/signature/{chat_id}</code> ECDSA signatures.</p>
-<h2>7. What runs on real NEAR Testnet</h2>
-<p>All <strong>11 NEAR ports</strong> run on deterministic Postgres mocks locally (<code>NEAR_MODE=mock</code>) and bind to <strong>live NEAR Testnet</strong> (<code>NEAR_MODE=testnet</code>) across 6 deployed <code>near-sdk 5.7</code> contracts (<code>res</code>, <code>deed</code>, <code>bounty</code>, <code>staking</code>, <code>dao</code>, <code>pilots</code>) plus <code>protocol.terraagent.testnet</code> (<code>txHash</code> <code>567guLDVMfBG9t9n1dNGtL5ziQcuwArj1Ff8wcsHgdq4</code>), <code>relayer.terraagent.testnet</code>, and <code>minter.terraagent.testnet</code> (with 1-env promotion to <code>NEAR_MODE=mainnet</code> + <code>NEAR_ALLOW_MAINNET=1</code>):</p>
-<div class="table-wrap">
-<table>
-<thead><tr><th>Deployed Account</th><th>Standard / Role</th><th>Live Testnet <code>code_hash</code></th><th>Deployment <code>txHash</code></th></tr></thead>
-<tbody>
-<tr><td><code>res.terraagent.testnet</code></td><td>NEP-245 Cargo Multi-Token (<code>10</code> resources)</td><td><code>6G6Ew8mygiAud4NoA772PzkCwnbfUA6ZacWxEnrpqJwC</code></td><td><code>HcukrSstSJwmzNkrYekqbt6Kt9V8AZAjTYhebb7B3Sso</code></td></tr>
-<tr><td><code>deed.terraagent.testnet</code></td><td>NEP-171 Soulbound Colony Deeds &amp; Badges</td><td><code>GFB5WgL1hMiCSFZSNjiXdYhui68ptf2AyDvFHZGUR6pB</code></td><td><code>3csscTYvcVK5Sz8JUvvtjULj5tHyb6J1XC3U8tddZyV9</code></td></tr>
-<tr><td><code>bounty.terraagent.testnet</code></td><td>Mercenary &amp; Peace/War Bond Escrow (<code>90/10</code> slash)</td><td><code>79UNK5jUfEWWQYtBjSqD69UyKEw6vVGmUSrtBGy1ow2e</code></td><td><code>2Uw4SkRkKedPtTtjzyewAFy2N5jnAcgB9HnKpPS7aSua</code></td></tr>
-<tr><td><code>staking.terraagent.testnet</code></td><td>Day-1 Lossless Staking Vault (<code>80/20</code> yield split)</td><td><code>Hjw4T6c4hAN3A81xqytUmD5heR7aahtGbwMkpqAX8Yze</code></td><td><code>DD7gHYoZji5prVQZsnpaQSkQVqMrR9gqJaHJd1RNyTmP</code></td></tr>
-<tr><td><code>dao.terraagent.testnet</code></td><td>Planet Council Treasury DAO (<code>&gt; 50%</code> quorum)</td><td><code>Aa2cch25oaHQohk5FxTDAxBSRw5L5pHkxWxxjJbr992G</code></td><td><code>G8YgUSGW1XaTSY2ZpG8nncB5ZuEU9ibjTSYMNHD3HcuJ</code></td></tr>
-<tr><td><code>pilots.terraagent.testnet</code></td><td>Cold-Root Pilot Sub-Account Factory</td><td><code>6nKVXYo46jG61ZUB1VUogGwC1ennpDzEWzqAGKQguU4z</code></td><td><code>9KT6vYxpJG28nB8gc4VJUPmN9QxXoTZb865ZUaSPxuX5</code></td></tr>
+<tr><td>Every 30 s</td><td>Place extractors, power grids, or terraform brushes</td><td>Storage fills fast: spend, export cargo, or stall production</td></tr>
+<tr><td>Every 5 min</td><td>Survive night drops, raids, or Guild freighter docks</td><td>Unbuffered dusk sheds power; docking re-prices markets</td></tr>
+<tr><td>Every session</td><td>Climb stages S0–S10 and tune away budgets</td><td>Higher tiers shift supply chains and overnight AI trades</td></tr>
 </tbody>
 </table>
 </div>
 <div class="table-wrap">
 <table>
-<thead><tr><th>Feature</th><th>Live (<code>NEAR_MODE=testnet</code> / <code>AI_PROVIDER=nearai</code>)</th><th>Local Dev (<code>NEAR_MODE=mock</code> / <code>AI_PROVIDER=mock</code>)</th></tr></thead>
+<thead><tr><th>Trust Layer</th><th>Authoritative State</th><th>Responsibility</th></tr></thead>
 <tbody>
-<tr><td>Identity, Cold-Root Sub-Accounts &amp; NEP-366 Relayer</td><td>Live <code>pilots.terraagent.testnet</code> + <code>relayer.terraagent.testnet</code> (<code>SignedDelegate</code> meta-txs &amp; atomic <code>claimAccount</code> key rotation)</td><td>Postgres mock identity &amp; relayer with realistic receipts</td></tr>
-<tr><td>Cargo Multi-Tokens (NEP-245)</td><td>Live <code>mt_mint</code>, <code>mt_burn</code>, <code>operator_transfer</code> on <code>res.terraagent.testnet</code></td><td>Postgres mock ledger with deterministic <code>opId</code> receipts</td></tr>
-<tr><td>4-Way Markets &amp; NEAR Intents</td><td>Counter-signed <code>NEP-413</code> <code>token_diff</code> (Seller, Stall, 20% DAO, 80% Protocol; 50% Staker fee cut) + live <code>1click.chaindefuser.com</code> dry quotes (<code>intents.near</code> on mainnet)</td><td>Postgres mock verifier &amp; Guild order matching</td></tr>
-<tr><td>Deeds, Bounties &amp; Peace/War Slashing</td><td>Live <code>deed.terraagent.testnet</code> (NEP-171) &amp; <code>bounty.terraagent.testnet</code> (<code>open_escrow</code>, <code>claim_escrow</code>, <code>refund_escrow</code>, <code>slash_escrow</code> 90/10)</td><td>Postgres mock tables (<code>chain.mock_chain_*</code>)</td></tr>
-<tr><td>Day-1 Staking Vault &amp; Planet Council DAO</td><td>Live <code>staking.terraagent.testnet</code> (80/20 yield split, <code>&gt;= 10 NEAR</code> perks, <code>403</code> for AI) &amp; <code>dao.terraagent.testnet</code> (<code>&gt; 50%</code> quorum)</td><td>Postgres mock staking &amp; DAO policy tables</td></tr>
-<tr><td>Verifiable TEE AI (<code>NEAR.AI</code>)</td><td>Live NEAR AI Cloud TEE (<code>z-ai/glm-5.3-flash</code>) + ECDSA <code>/v1/signature/{chat_id}</code> verification + Managed Staker &amp; <code>/me</code> AES-256-GCM BYOK</td><td>Deterministic mock LLM adapter</td></tr>
+<tr><td>NEAR Protocol + NEAR.AI</td><td>Pilot/colony accounts, <code>NEP-245</code> cargo, <code>NEP-171</code> deeds, bonds, staking, DAO &amp; TEE proofs</td><td>Custody, finality, and verifiable AI</td></tr>
+<tr><td>Simulation Server (<code>@terra/sim</code>)</td><td>Deterministic 5 Hz hex state, power grids, combat, and agent spend caps</td><td>Game physics and rate protection</td></tr>
+<tr><td>WebGL2 Client (<code>Three.js</code>)</td><td>60 FPS diorama rendering, prediction, and input dispatch</td><td>Responsive UI (zero authority)</td></tr>
 </tbody>
 </table>
 </div>
-<p>The <code>README.md</code> live Testnet contract &amp; port matrix is authoritative.</p>
-<h2>8. Risks we accept and state</h2>
+<h2>6. Live NEAR Testnet deployments &amp; sandbox parity</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Account</th><th>Standard &amp; Role</th><th>Testnet Proof</th></tr></thead>
+<tbody>
+<tr><td><code>res.terraagent.testnet</code></td><td><code>NEP-245</code> Orbital Cargo Multi-Token (10 commodities)</td><td><a href="https://testnet.nearblocks.io/txns/Fs96ny9BP74g1pX9e4cXuRT5DG9XQo6TNKRgv3ZUF6kr">Fs96ny9B…</a></td></tr>
+<tr><td><code>deed.terraagent.testnet</code></td><td><code>NEP-171</code> Soulbound Colony Deeds &amp; Milestone Badges</td><td><a href="https://testnet.nearblocks.io/txns/32xtwqUFRMCq4vEnNgoVJnxPLkRDGhPavDY5FYUpQ4Lx">32xtwqUF…</a></td></tr>
+<tr><td><code>bounty.terraagent.testnet</code></td><td>Mercenary Bounties, Peace Treaties &amp; 6h War Escrows</td><td><a href="https://testnet.nearblocks.io/txns/EPMPMYMvDKsr6R36TLgdsymBDStaR5WfpU2JUGCFJYPK">EPMPMYMv…</a></td></tr>
+<tr><td><code>staking.terraagent.testnet</code></td><td>Day-1 Lossless Validator Vault (80/20 yield split)</td><td><a href="https://testnet.nearblocks.io/txns/12AwBVfjGkkbDi72Y9264YeY6szMbkQWaL2L2bTxHJ6v">12AwBVfj…</a></td></tr>
+<tr><td><code>dao.terraagent.testnet</code></td><td>Planet Council Treasury Voting (&gt; 50% quorum)</td><td><a href="https://testnet.nearblocks.io/txns/6qkgGWoKJei1X5ihZdip2ts9W1ynity62bzynWC5orDz">6qkgGWoK…</a></td></tr>
+<tr><td><code>pilots.terraagent.testnet</code></td><td>Cold-Root Sub-Account Factory &amp; <code>claimAccount</code> Flow</td><td><a href="https://testnet.nearblocks.io/txns/BcSaHVpgUEAsMRtLyYbHxhQeWZbSCoLbJ8aAEC97Xzpm">BcSaHVpg…</a></td></tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Capability</th><th>Live NEAR Testnet</th><th>Offline Local Sandbox</th></tr></thead>
+<tbody>
+<tr><td>Accounts &amp; Relayer</td><td><code>pilots</code> factory + gasless <code>NEP-366</code> <code>relayer.terraagent.testnet</code></td><td>Ephemeral local keypair &amp; instant mock receipts</td></tr>
+<tr><td>Cargo &amp; 4-Way Swaps</td><td><code>res</code> <code>NEP-245</code> mint/burn + <code>NEP-413</code> <code>token_diff</code> &amp; 1Click quotes</td><td>Local Postgres ledger &amp; deterministic matcher</td></tr>
+<tr><td>Deeds &amp; Bond Slashes</td><td><code>deed</code> &amp; <code>bounty</code> contracts with automatic 90/10 settlement</td><td>Mock chain tables with identical state transitions</td></tr>
+<tr><td>Staking &amp; Planet DAO</td><td><code>staking</code> (80/20 split, human-only) &amp; <code>dao</code> proposal execution</td><td>Simulated validator epochs &amp; local council tally</td></tr>
+<tr><td>Verifiable AI Commander</td><td>Hardware TEE <code>z-ai/glm-5.3-flash</code> + ECDSA attestation</td><td>Deterministic mock planner for offline testing</td></tr>
+</tbody>
+</table>
+</div>
+<h2>7. Known risks &amp; design trade-offs</h2>
 <ul>
-<li>No anti-cheat and no anti-bot identity gate in beta (<code>D-25</code>, <code>D-45</code>); automation is first-class under explicit rate and spend caps, and mint/throughput caps pace supply rather than guarantee price floors.</li>
-<li>Per-token agent spend caps, staker fee tiers, and war-objective counters are enforced by the authoritative game server (<code>@terra/sim</code> + Postgres ACID locks), while asset custody, sub-accounts, deeds, staking principal, and escrow settlements live on NEAR.</li>
-<li>Balance numbers and regional scarcity weights <em>(proposed)</em> are tunable defaults calibrated through the deterministic simulator (<code>scripts/economy/</code>).</li>
-<li>Repository history starts <code>2026-10-29</code> inside the hackathon window; early visual/terrain scaffolding is disclosed in <code>README.md</code>.</li>
+<li>Automation is first-class in beta under explicit spend and rate caps rather than identity gates (<code>D-25</code>, <code>D-45</code>); resource caps pace emission without promising price floors.</li>
+<li>Daily agent spend allowances, staker fee tiers, and war objectives are enforced by <code>@terra/sim</code> + PostgreSQL ACID locks; custody, deeds, staking principal, and escrow settlements live on NEAR.</li>
+<li>Numbers marked <em>(proposed)</em> are tunable defaults validated across 7-day deterministic economy simulations.</li>
+<li>Repository history starts 2026-10-29 within the hackathon window, with starter terrain/visual scaffolding disclosed in <code>README.md</code>.</li>
 </ul>
-      </article>
+        </article>
+      </details>
     </section>
   </main>
 </div>

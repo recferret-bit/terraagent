@@ -11,7 +11,9 @@ function renderHeadAndTopBar(safeTitle) {
 <link rel="stylesheet" href="../design/css/tokens.css">
 <link rel="stylesheet" href="../design/css/base.css">
 <link rel="stylesheet" href="./whitepaper.css">
+<link rel="stylesheet" href="./rail.css">
 <link rel="stylesheet" href="./cards.css">
+<link rel="stylesheet" href="./schemas.css">
 </head>
 <body>
 <div class="wp-progress"><div id="wpScrollProgress" class="wp-progress-fill"></div></div>
@@ -20,14 +22,6 @@ function renderHeadAndTopBar(safeTitle) {
     <span class="wp-top-dot" aria-hidden="true"></span>
     <span>TerraAgent // Whitepaper</span>
   </a>
-  <div class="wp-top-controls">
-    <button id="wpRailToggle" class="btn btn-ghost btn-sm" type="button" aria-controls="wpRail" aria-expanded="true">Hide Menu</button>
-    <div class="wp-biome-pills" role="group" aria-label="3D Biome Shader">
-      <button class="wp-biome-btn is-active" type="button" data-biome="dune" aria-pressed="true">Dune</button>
-      <button class="wp-biome-btn" type="button" data-biome="oceanForest" aria-pressed="false">Ocean Forest</button>
-      <button class="wp-biome-btn" type="button" data-biome="forestRock" aria-pressed="false">Forest Rock</button>
-    </div>
-  </div>
   <nav class="wp-top-links" aria-label="Primary destinations">
     <a class="btn btn-ghost btn-sm" href="/playground.html">3D Playground</a>
     <a class="btn btn-ghost btn-sm" href="/trade.html">Exchange</a>
@@ -38,22 +32,28 @@ function renderHeadAndTopBar(safeTitle) {
 
 function renderLeftRail() {
   return `  <div id="wpRailBackdrop" class="wp-rail-backdrop" aria-hidden="true"></div>
-  <aside id="wpRail" class="wp-rail plate-lg" aria-label="Whitepaper Navigation">
+  <aside id="wpRail" class="wp-rail plate" aria-label="Whitepaper Navigation">
     <div class="wp-rail-head">
       <span class="wp-rail-title">INDEX // COMMAND RAIL</span>
       <button id="wpRailHide" class="btn btn-ghost btn-sm" type="button">Hide</button>
     </div>
     <div class="wp-rail-tabs" role="tablist" aria-label="Navigation Views">
       <button class="wp-rail-tab is-active" type="button" role="tab" aria-selected="true" data-rail-tab="chapters">Chapters</button>
-      <button class="wp-rail-tab" type="button" role="tab" aria-selected="false" data-rail-tab="stack">Web2+3</button>
+      <button class="wp-rail-tab" type="button" role="tab" aria-selected="false" data-rail-tab="stack">Protocol</button>
       <button class="wp-rail-tab" type="button" role="tab" aria-selected="false" data-rail-tab="entities">3D Units</button>
     </div>
-    <input id="wpRailSearch" class="wp-rail-search" type="search" placeholder="Filter chapters, units..." aria-label="Filter navigation">
-    <div class="wp-rail-body">
-      <nav id="tabPanel-chapters" class="wp-rail-panel" aria-label="Chapters"></nav>
-      <nav id="tabPanel-stack" class="wp-rail-panel" aria-label="Web2 and Web3 Stack" hidden></nav>
-      <nav id="tabPanel-entities" class="wp-rail-panel" aria-label="3D Entities and Effects" hidden></nav>
+    <input id="wpRailSearch" class="wp-rail-search" type="search" placeholder="Filter sections, units…" aria-label="Filter navigation">
+    <div class="wp-rail-scroll-wrap">
+      <div id="wpRailBody" class="wp-rail-body">
+        <nav id="tabPanel-chapters" class="wp-rail-panel" aria-label="Chapters"></nav>
+        <nav id="tabPanel-stack" class="wp-rail-panel" aria-label="Protocol and Architecture" hidden></nav>
+        <nav id="tabPanel-entities" class="wp-rail-panel" aria-label="3D Entities and Effects" hidden></nav>
+      </div>
+      <div id="wpRailScrollbar" class="wp-rail-scrollbar" aria-hidden="true">
+        <div id="wpRailThumb" class="wp-rail-thumb"></div>
+      </div>
     </div>
+    <button id="wpRailMore" class="wp-rail-more" type="button" hidden>▾ Scroll for more</button>
     <div class="wp-rail-foot">
       <span id="wpActiveChapter">CH 00 // CORE</span>
       <span id="wpRenderStatus">3D STAGE READY</span>
@@ -64,14 +64,14 @@ function renderLeftRail() {
 function renderHeroHeader(safeTitle) {
   return `    <header class="wp-hero plate-lg">
       <div class="scanlines" aria-hidden="true"></div>
-      <div class="badge badge-recruiting">TECHNICAL &amp; ECONOMIC SPECIFICATION</div>
+      <div class="badge badge-recruiting">PROTOCOL, AI &amp; ENGINE WHITEPAPER</div>
       <h1>${safeTitle}</h1>
-      <p class="wp-hero-lead">Interactive architecture specification covering the 17-module NestJS backend, 6 NEAR smart contracts and 11 typed ports, every planetary mechanic from S0 Landing to S10 Ascendant, and live Three.js Faction Plate 3D previews for all 68 units, structures, fauna, deposits, VFX and shader presets.</p>
+      <p class="wp-hero-lead">TerraAgent is an autonomous planetary colony RTS where the economy is the gameplay. Colonies mine, trade, form treaties, and defend 24/7 on a deterministic 5 Hz engine — while NEAR smart contracts and hardware-attested NEAR.AI commanders handle asset custody, atomic 4-way settlement, and verifiable autonomy.</p>
       <div class="wp-kpi-strip">
-        <div class="wp-kpi"><span class="wp-kpi-val">5 Hz / 50 Hz</span><span class="wp-kpi-lbl">Deterministic Sim + Warp</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">6 + 11</span><span class="wp-kpi-lbl">Rust Contracts &amp; NEAR Ports</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">S0–S10 · 60</span><span class="wp-kpi-lbl">Stages &amp; Achievements</span></div>
-        <div class="wp-kpi"><span class="wp-kpi-val">68 Live 3D</span><span class="wp-kpi-lbl">Units, Fauna, VFX &amp; Shaders</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">0% Mint / 0% P2W</span><span class="wp-kpi-lbl">Organic Fee &amp; Yield Economy</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">6 NEAR Contracts</span><span class="wp-kpi-lbl">NEP-245 · 171 · 366 · 413</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">TEE + Guardrails</span><span class="wp-kpi-lbl">Verifiable NEAR.AI Autopilot</span></div>
+        <div class="wp-kpi"><span class="wp-kpi-val">68 Live 3D Assets</span><span class="wp-kpi-lbl">Interactive WebGL2 Previews</span></div>
       </div>
     </header>`;
 }
@@ -95,13 +95,20 @@ ${renderHeroHeader(safeTitle)}
         <div class="wp-divider-bar">
           <span class="wp-divider-index">10</span>
           <div class="wp-divider-hazard hazard"></div>
-          <span class="wp-divider-domain">CANONICAL PUBLIC DRAFT // LEDGER</span>
+          <span class="wp-divider-domain">RISKS, PROOFS &amp; CANONICAL DRAFT</span>
         </div>
-        <h2>Canonical Public Markdown &amp; Verification Status</h2>
+        <h2>Risks, Design Trade-offs &amp; Testnet Proof Ledger</h2>
       </div>
-      <article class="wp-canonical">
+      <div id="wpCanonicalRisksMount"></div>
+      <details class="wp-canonical-details">
+        <summary class="wp-canonical-summary">
+          <span>Read Full Standalone Markdown Draft &amp; Testnet Deployment Table</span>
+          <span class="wp-canonical-toggle-hint">EXPAND ▾</span>
+        </summary>
+        <article class="wp-canonical">
 ${canonicalBodyHtml}
-      </article>
+        </article>
+      </details>
     </section>
   </main>
 </div>

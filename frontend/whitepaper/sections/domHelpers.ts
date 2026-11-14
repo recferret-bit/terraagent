@@ -1,6 +1,8 @@
-import type { WebFeatureCard } from '../data/features';
 import type { EntityCardSpec } from '../data/entitiesCatalog';
+import type { WebFeatureCard } from '../data/features';
 import type { CardControlState, WhitepaperLiveStage3D } from '../liveStage3D';
+
+export type SectionVariant = 'default' | 'web3' | 'ai';
 
 export function makeEl<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -13,17 +15,51 @@ export function makeEl<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-export function appendInlineFormatted(parent: HTMLElement, text: string): void {
+function makeCodeEl(chunk: string): HTMLElement {
+  const code = makeEl('code');
+  if (chunk.length <= 16 || !/[./]/.test(chunk)) {
+    code.textContent = chunk;
+    return code;
+  }
+  const parts = chunk.split(/([./])/);
+  for (let i = 0; i < parts.length; i += 1) {
+    const seg = parts[i];
+    if (!seg) continue;
+    code.appendChild(document.createTextNode(seg));
+    if ((seg === '.' || seg === '/') && i < parts.length - 1) {
+      code.appendChild(document.createElement('wbr'));
+    }
+  }
+  return code;
+}
+
+function appendTextWithCodes(parent: HTMLElement, text: string): void {
   const parts = text.split(/`([^`]+)`/g);
   for (let i = 0; i < parts.length; i++) {
     const chunk = parts[i];
     if (!chunk) continue;
-    if (i % 2 === 1) {
-      parent.appendChild(makeEl('code', undefined, chunk));
-    } else {
-      parent.appendChild(document.createTextNode(chunk));
-    }
+    if (i % 2 === 1) parent.appendChild(makeCodeEl(chunk));
+    else parent.appendChild(document.createTextNode(chunk));
   }
+}
+
+export function appendInlineFormatted(parent: HTMLElement, text: string): void {
+  const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g;
+  let lastIdx = 0;
+  for (const m of text.matchAll(linkRe)) {
+    const idx = m.index ?? 0;
+    if (idx > lastIdx) appendTextWithCodes(parent, text.slice(lastIdx, idx));
+    const a = makeEl('a', undefined, m[1]!);
+    const href = m[2]!;
+    a.href = href;
+    if (href.startsWith('https://') || href.startsWith('http://')) {
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+    }
+    parent.appendChild(a);
+    lastIdx = idx + m[0].length;
+  }
+  if (lastIdx < text.length) appendTextWithCodes(parent, text.slice(lastIdx));
 }
 
 export function makeFormattedEl<K extends keyof HTMLElementTagNameMap>(
@@ -42,8 +78,10 @@ export function createSectionShell(
   domain: string,
   title: string,
   lead: string,
+  variant: SectionVariant = 'default',
 ): HTMLElement {
-  const sec = makeEl('section', 'wp-section wp-reveal');
+  const variantCls = variant === 'web3' ? ' is-web3-section' : variant === 'ai' ? ' is-ai-section' : '';
+  const sec = makeEl('section', `wp-section wp-reveal${variantCls}`);
   sec.id = id;
 
   const divider = makeEl('div', 'wp-divider');
@@ -60,8 +98,7 @@ export function createSectionShell(
 
 export function createCallout(title: string, body: string): HTMLElement {
   const box = makeEl('div', 'wp-callout');
-  const strong = makeEl('strong', undefined, `${title}: `);
-  box.append(strong);
+  box.append(makeEl('strong', undefined, `${title}: `));
   appendInlineFormatted(box, body);
   return box;
 }
@@ -71,6 +108,10 @@ export function createTable(
   rows: ReadonlyArray<ReadonlyArray<string>>,
 ): HTMLElement {
   const wrap = makeEl('div', 'wp-table-wrap');
+  wrap.tabIndex = 0;
+  wrap.setAttribute('role', 'region');
+  wrap.setAttribute('aria-label', headers[0] ?? 'Specification table');
+
   const table = makeEl('table', 'wp-table');
   const thead = makeEl('thead');
   const htr = makeEl('tr');

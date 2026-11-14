@@ -10,12 +10,14 @@ function createRailLink(
   labelText: string,
   tagText: string,
   filterGroup?: string,
+  accent?: 'web3' | 'ai',
 ): HTMLAnchorElement {
   const link = document.createElement('a');
   link.className = 'wp-nav-link';
   link.href = `#${hrefId}`;
   link.dataset.targetSec = targetSec;
   if (filterGroup) link.dataset.filterGroup = filterGroup;
+  if (accent) link.dataset.accent = accent;
 
   const numSpan = document.createElement('span');
   numSpan.className = 'wp-nav-num';
@@ -40,14 +42,15 @@ export function buildRailTabsContent(): void {
 
   if (chaptersEl) {
     chaptersEl.replaceChildren(
-      ...CHAPTER_ITEMS.map((c) => createRailLink(c.id, c.id, c.num, c.label, c.tag)),
+      ...CHAPTER_ITEMS.map((c) => createRailLink(c.id, c.id, c.num, c.label, c.tag, undefined, c.accent)),
     );
   }
   if (stackEl) {
     stackEl.replaceChildren(
-      ...STACK_NAV_ITEMS.map((s) =>
-        createRailLink(s.anchorId ?? s.targetId, s.targetId, s.layer, s.title, s.status),
-      ),
+      ...STACK_NAV_ITEMS.map((s) => {
+        const accent = s.layer === 'WEB3' ? 'web3' : s.layer === 'AI-TEE' ? 'ai' : undefined;
+        return createRailLink(s.anchorId ?? s.targetId, s.targetId, s.layer, s.title, s.status, undefined, accent);
+      }),
     );
   }
   if (entitiesEl) {
@@ -79,9 +82,44 @@ export function activateEntityFilter(secId: string, filterGroup: string): void {
   window.dispatchEvent(new CustomEvent('wp:cards-changed', { detail: { secId, filterGroup } }));
 }
 
-function bindRailTabsAndSearch(rail: HTMLElement): void {
+function wireRailScrollIndicator(): () => void {
+  const body = document.getElementById('wpRailBody');
+  const bar = document.getElementById('wpRailScrollbar');
+  const thumb = document.getElementById('wpRailThumb');
+  const moreBtn = document.getElementById('wpRailMore') as HTMLButtonElement | null;
+  if (!body || !bar || !thumb) return () => undefined;
+
+  const sync = () => {
+    const ch = body.clientHeight;
+    const sh = body.scrollHeight;
+    const scrollable = ch > 0 && sh > ch + 4;
+    bar.hidden = !scrollable;
+    if (!scrollable) {
+      if (moreBtn) moreBtn.hidden = true;
+      return;
+    }
+    const thumbH = Math.max(28, Math.round((ch / sh) * ch));
+    const maxTop = Math.max(1, ch - thumbH);
+    const maxScroll = Math.max(1, sh - ch);
+    const topPx = Math.round((body.scrollTop / maxScroll) * maxTop);
+    thumb.style.height = `${thumbH}px`;
+    thumb.style.transform = `translateY(${topPx}px)`;
+    if (moreBtn) moreBtn.hidden = body.scrollTop + ch >= sh - 6;
+  };
+
+  body.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+  moreBtn?.addEventListener('click', () => {
+    body.scrollBy({ top: Math.max(140, Math.round(body.clientHeight * 0.55)), behavior: 'smooth' });
+  });
+  requestAnimationFrame(sync);
+  return sync;
+}
+
+function bindRailTabsAndSearch(rail: HTMLElement, syncScroll: () => void): void {
   const tabs = Array.from(rail.querySelectorAll<HTMLButtonElement>('[data-rail-tab]'));
   const panels = Array.from(rail.querySelectorAll<HTMLElement>('.wp-rail-panel'));
+  const body = document.getElementById('wpRailBody');
 
   for (const tab of tabs) {
     tab.addEventListener('click', () => {
@@ -96,6 +134,8 @@ function bindRailTabsAndSearch(rail: HTMLElement): void {
         panel.classList.toggle('is-active', match);
         panel.hidden = !match;
       }
+      if (body) body.scrollTop = 0;
+      requestAnimationFrame(syncScroll);
     });
   }
 
@@ -108,6 +148,7 @@ function bindRailTabsAndSearch(rail: HTMLElement): void {
         link.hidden = Boolean(q && !text.includes(q));
       }
     }
+    requestAnimationFrame(syncScroll);
   });
 }
 
@@ -116,22 +157,19 @@ export function initRailShowHideAndTabs(): void {
   const rail = document.getElementById('wpRail');
   const backdrop = document.getElementById('wpRailBackdrop');
   const btnHide = document.getElementById('wpRailHide');
-  const btnToggle = document.getElementById('wpRailToggle');
   const btnShowFloat = document.getElementById('wpRailShowFloat');
   if (!shell || !rail) return;
 
   const isMobile = () => window.innerWidth <= MOBILE_BREAKPOINT_PX;
+  const syncScroll = wireRailScrollIndicator();
 
   const applyCollapsed = (collapsed: boolean, persist: boolean) => {
     shell.classList.toggle('is-rail-hidden', collapsed);
     rail.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
     if (btnShowFloat) btnShowFloat.hidden = !collapsed;
-    if (btnToggle) {
-      btnToggle.textContent = collapsed ? 'Show Menu' : 'Hide Menu';
-      btnToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    }
     btnHide?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     btnShowFloat?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    if (!collapsed) requestAnimationFrame(syncScroll);
     if (persist) {
       try {
         sessionStorage.setItem(RAIL_STORAGE_KEY, collapsed ? '1' : '0');
@@ -147,17 +185,13 @@ export function initRailShowHideAndTabs(): void {
   } catch {
     saved = null;
   }
-  const initialCollapsed = isMobile() ? true : saved === '1';
-  applyCollapsed(initialCollapsed, false);
+  applyCollapsed(isMobile() ? true : saved === '1', false);
 
   btnHide?.addEventListener('click', () => applyCollapsed(true, true));
   btnShowFloat?.addEventListener('click', () => applyCollapsed(false, true));
   backdrop?.addEventListener('click', () => applyCollapsed(true, false));
-  btnToggle?.addEventListener('click', () => {
-    applyCollapsed(!shell.classList.contains('is-rail-hidden'), true);
-  });
 
-  bindRailTabsAndSearch(rail);
+  bindRailTabsAndSearch(rail, syncScroll);
 
   rail.addEventListener('click', (ev) => {
     const target = ev.target as HTMLElement | null;
@@ -166,8 +200,7 @@ export function initRailShowHideAndTabs(): void {
     const secId = link.dataset.targetSec;
     const filterGroup = link.dataset.filterGroup;
     if (secId) {
-      const secEl = document.getElementById(secId);
-      secEl?.classList.add('is-visible');
+      document.getElementById(secId)?.classList.add('is-visible');
       if (filterGroup) activateEntityFilter(secId, filterGroup);
     }
     if (isMobile()) applyCollapsed(true, false);
@@ -185,9 +218,7 @@ function revealVisibleOrPassedSections(sections: HTMLElement[]): void {
   let stagger = 0;
   for (const el of sections) {
     if (el.classList.contains('is-visible')) continue;
-    if (el.getBoundingClientRect().top <= cutoff) {
-      revealElement(el, stagger++);
-    }
+    if (el.getBoundingClientRect().top <= cutoff) revealElement(el, stagger++);
   }
 }
 
@@ -255,9 +286,7 @@ export function initScrollAnimationsAndSpy(): void {
       link.classList.toggle('is-active', link.dataset.targetSec === activeId);
     }
     const ch = chapterMap.get(activeId);
-    if (activeChapterEl && ch) {
-      activeChapterEl.textContent = `CH ${ch.num} // ${ch.tag}`;
-    }
+    if (activeChapterEl && ch) activeChapterEl.textContent = `CH ${ch.num} // ${ch.tag}`;
   };
 
   window.addEventListener(

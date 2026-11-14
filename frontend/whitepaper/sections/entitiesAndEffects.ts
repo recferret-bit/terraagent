@@ -58,7 +58,7 @@ export function buildEntitiesAndEffectsSections(stage3D: WhitepaperLiveStage3D):
     '07',
     'LIVE 3D CATALOG // UNITS & STRUCTURES',
     '3D Fleet & Structures: Robots, Orbital Vessels & Colony Buildings (28 Models)',
-    'Every model below renders live through TerraAgent’s Three.js `createColonyViewport` + Kitbash PBR pipeline with the Unifier biome shader (`dune` / `oceanForest` / `forestRock` switcher in the top bar). Hover or tap any card to animate GPU kinematics (`aPartAnim`), walk cycles, construction masks (`build 36%`) or `Ruin` states.',
+    'Every model renders live through TerraAgent’s Three.js kitbash PBR pipeline with the Unifier biome shader (switchable in the top bar across Dune, Ocean Forest, and Forest Rock). Hover or tap any card to animate GPU kinematics, walk cycles, construction masks, or Ruin decay.',
   );
   buildFilterableCardSection(
     sec07,
@@ -76,8 +76,8 @@ export function buildEntitiesAndEffectsSections(stage3D: WhitepaperLiveStage3D):
     'sec-08',
     '08',
     'LIVE 3D CATALOG // ECOLOGY & DEPOSITS',
-    'Alien Fauna, Species Hives, Ambient Nests & Mineral Deposit Stages (13 Models)',
-    'Hostile insect species obey organic chitin anatomy and tripod/spitter combat animation states; neutral Skitters and pelagic Drifters inhabit dynamic terrain nests; resource outcrops visibly deplete across `full`, `half` and `depleted` stages.',
+    'Alien Fauna, Species Hives, Ambient Nests & Deposit Stages (13 Models)',
+    'Hostile insect species use segmented chitin armor and tripod combat states; ambient Skitters and pelagic Drifters inhabit native nests; resource outcrops shrink visibly across Full, Half, and Depleted extraction stages.',
   );
   buildFilterableCardSection(
     sec08,
@@ -95,8 +95,8 @@ export function buildEntitiesAndEffectsSections(stage3D: WhitepaperLiveStage3D):
     'sec-09',
     '09',
     'LIVE 3D CATALOG // VFX & SHADERS',
-    `Visual Effects: 3D Work Particles, Combat Bursts, Weather & Shaders (${EFFECT_CARDS.length} Effects)`,
-    'Zero flat 2D sprite templates: all harvesting, terraforming, combat impacts and storms emit low-poly instanced 3D chunks with ground-bounce physics, CIE Lab contrast (ΔE >= 15) and selective HDR Bloom (>= 3.0), paired with live Water, Unifier, Day/Night, Build Scaffold and Ruin shaders.',
+    `Visual Effects: 3D Work Particles, Combat Bursts, Storms & Shaders (${EFFECT_CARDS.length} Effects)`,
+    'Zero flat 2D sprite templates: harvesting, terraforming, combat impacts, and storms emit instanced 3D chunks with ground-bounce physics, high CIE Lab contrast, and selective HDR Bloom, alongside live Water, Unifier, Day/Night, Build, and Ruin shaders.',
   );
   buildFilterableCardSection(
     sec09,

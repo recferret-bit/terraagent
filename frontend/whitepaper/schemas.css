@@ -1,0 +1,419 @@
+/* TerraAgent Whitepaper — Protocol Schemas, Split Bars, Flow Diagrams & Worked Examples */
+
+.wp-schema {
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-3);
+  padding: var(--ta-s5);
+  margin: var(--ta-s5) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s4);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wp-schema.is-web3-schema {
+  border-left: 3px solid var(--ta-orange);
+}
+
+.wp-schema.is-ai-schema {
+  border-left: 3px solid var(--ta-blue-hi);
+}
+
+.wp-schema-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-bottom: var(--ta-s3);
+  border-bottom: 1px solid var(--ta-seam-2);
+}
+
+.wp-schema-kicker {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange-hi);
+  text-transform: uppercase;
+}
+
+.wp-schema.is-ai-schema .wp-schema-kicker {
+  color: var(--ta-energy);
+}
+
+.wp-flow-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ta-s3);
+  min-width: 0;
+}
+
+.wp-flow-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ta-s3);
+  min-width: 0;
+}
+
+.wp-flow-node {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  border-top: 2px solid var(--ta-seam-3);
+  padding: var(--ta-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  min-width: 0;
+}
+
+.wp-flow-node.is-orange { border-top-color: var(--ta-orange); }
+.wp-flow-node.is-blue { border-top-color: var(--ta-blue-hi); }
+.wp-flow-node.is-steel { border-top-color: var(--ta-steel); }
+
+.wp-flow-node-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.wp-flow-step {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: 0.08em;
+  color: var(--ta-orange-hi);
+  text-transform: uppercase;
+}
+
+.wp-flow-node.is-blue .wp-flow-step {
+  color: var(--ta-energy);
+}
+
+.wp-flow-truth {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  color: var(--ta-terra);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wp-flow-title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-body);
+  font-weight: 700;
+  color: var(--ta-text);
+  line-height: 1.25;
+}
+
+.wp-flow-copy {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.48;
+  color: var(--ta-text-2);
+}
+
+/* Worked Example Trace Boxes */
+.wp-example-box {
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam-2);
+  border-left: 3px solid var(--ta-terra);
+  padding: var(--ta-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  min-width: 0;
+}
+
+.wp-example-label {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-terra);
+  text-transform: uppercase;
+}
+
+.wp-example-list {
+  margin: 0;
+  padding-left: var(--ta-s5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--ta-text-2);
+}
+
+/* Interactive Protocol Treasury Conduit Board */
+.wp-proto-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ta-s3);
+  padding-bottom: var(--ta-s3);
+  border-bottom: 1px solid var(--ta-seam-2);
+}
+
+.wp-proto-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s2);
+}
+
+.wp-proto-acct {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+}
+
+.wp-proto-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 1.05fr) minmax(0, 1fr);
+  gap: var(--ta-s4);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.wp-proto-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  min-width: 0;
+}
+
+.wp-proto-col-lbl {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.wp-proto-col-lbl.is-in { color: var(--ta-terra); }
+.wp-proto-col-lbl.is-core { color: var(--ta-energy); text-align: center; }
+.wp-proto-col-lbl.is-out { color: var(--ta-orange-hi); }
+
+.wp-proto-node {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  border-left: 3px solid var(--ta-terra);
+  min-width: 0;
+  transition: opacity var(--ta-dur-base) ease;
+}
+
+.wp-proto-node[data-stream="staking"] { border-left-color: var(--ta-blue-hi); }
+.wp-proto-node[data-stream="bonds"] { border-left-color: var(--ta-orange); }
+.wp-proto-node.is-out { border-left-color: var(--ta-energy); }
+.wp-proto-node.is-out-ai { border-left-color: var(--ta-orange-hi); }
+
+.wp-proto-node-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.wp-proto-node-top b {
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  color: var(--ta-text);
+}
+
+.wp-proto-rate {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  color: var(--ta-orange-hi);
+  white-space: nowrap;
+}
+
+.wp-proto-node p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ta-text-3);
+}
+
+.wp-proto-core {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--ta-s3);
+  padding: var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  min-width: 0;
+}
+
+.wp-proto-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.wp-pipe-bg {
+  stroke: var(--ta-seam-3);
+  stroke-width: 2;
+  fill: none;
+}
+
+.wp-pipe-active {
+  fill: none;
+  stroke-width: 2.5;
+  transition: opacity var(--ta-dur-base) ease;
+}
+
+.wp-proto-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  text-align: center;
+}
+
+.wp-proto-stat {
+  padding: 6px 4px;
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam);
+}
+
+.wp-proto-stat span {
+  display: block;
+  font-family: var(--ta-font-mono);
+  font-size: 9.5px;
+  color: var(--ta-steel);
+}
+
+.wp-proto-stat strong {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--ta-font-display);
+  font-size: 14px;
+  color: var(--ta-text);
+}
+
+.wp-proto-board[data-active-stream="trade"] [data-stream]:not([data-stream="trade"]):not([data-stream="all"]),
+.wp-proto-board[data-active-stream="staking"] [data-stream]:not([data-stream="staking"]):not([data-stream="all"]),
+.wp-proto-board[data-active-stream="bonds"] [data-stream]:not([data-stream="bonds"]):not([data-stream="all"]) {
+  opacity: 0.24;
+}
+
+/* Concrete Numeric Receipt Cards + Split Bars */
+.wp-receipts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ta-s4);
+  margin: var(--ta-s4) 0;
+  min-width: 0;
+}
+
+.wp-receipt-card {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-3);
+  padding: var(--ta-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+  min-width: 0;
+}
+
+.wp-seg-bar {
+  display: flex;
+  height: 12px;
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.wp-seg { height: 100%; }
+.wp-seg.is-terra { background: var(--ta-terra); }
+.wp-seg.is-orange { background: var(--ta-orange); }
+.wp-seg.is-blue { background: var(--ta-blue-hi); }
+.wp-seg.is-energy { background: var(--ta-energy); }
+
+.wp-receipt-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: var(--ta-s2);
+  border-top: 1px dashed var(--ta-seam-2);
+}
+
+.wp-receipt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--ta-s2);
+  font-size: 12.5px;
+  color: var(--ta-text-2);
+}
+
+.wp-receipt-row strong {
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  color: var(--ta-text);
+  white-space: nowrap;
+}
+
+/* AI Trace Compare */
+.wp-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ta-s3);
+  min-width: 0;
+}
+
+.wp-compare-col {
+  background: var(--ta-void);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  min-width: 0;
+}
+
+.wp-compare-col.is-allow { border-left: 3px solid var(--ta-terra); }
+.wp-compare-col.is-block { border-left: 3px solid var(--ta-fault); }
+
+.wp-compare-head {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.wp-compare-col.is-allow .wp-compare-head { color: var(--ta-terra); }
+.wp-compare-col.is-block .wp-compare-head { color: var(--ta-fault-text); }
+
+@media (max-width: 1080px) {
+  .wp-flow-4,
+  .wp-proto-grid,
+  .wp-receipts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .wp-flow-3,
+  .wp-compare-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wp-schema {
+    padding: var(--ta-s4);
+  }
+}
