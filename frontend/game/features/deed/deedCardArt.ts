@@ -273,10 +273,13 @@ function buildStageRibbonAndIdentity(metadata: DeedMetadataV1): HTMLElement {
   const planetLine = document.createElement('p');
   planetLine.className = 'ta-deed-card__planet';
   planetLine.setAttribute('data-testid', 'deed-card-planet');
+  const planetLabel = /^(?:pl|planet)[_-]+[a-z0-9]{7,}$/i.test(metadata.planet)
+    ? `SECTOR #${metadata.planet.slice(-4).toUpperCase()}`
+    : metadata.planet;
   const planetTypeSuffix = metadata.planetType
     ? ` · ${metadata.planetType.toUpperCase()}`
     : '';
-  planetLine.textContent = `PLANET: ${metadata.planet}${planetTypeSuffix}`;
+  planetLine.textContent = `PLANET: ${planetLabel}${planetTypeSuffix}`;
 
   identity.append(colonyTitle, planetLine);
   row.append(ribbon, identity);

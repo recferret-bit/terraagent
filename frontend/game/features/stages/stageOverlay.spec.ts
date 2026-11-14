@@ -78,6 +78,18 @@ describe('Stage goals in the Colony book (launcher + summary in the Goals tab, d
     const toast = overlay.querySelector('[data-testid=stage-reached-toast]');
     expect(toast).not.toBeNull();
     expect(pane.querySelector('[data-testid=stage-reached-toast]')).toBeNull();
+    expect(mounted.hud!.root.hidden).toBe(false);
+    overlay.querySelector<HTMLButtonElement>('[data-testid=stage-toast-close]')!.click();
+    expect(mounted.hud!.root.hidden).toBe(true);
+    mounted.dispose();
+  });
+
+  it('does not falsely pop open on initial snapshot when pre-snapshot view lacked colony stage', () => {
+    const { mounted, hud } = mountInBook();
+    mounted.update!({ colonies: [] } as never);
+    expect(hud.root.hidden).toBe(true);
+    mounted.update!({ colonies: [{ index: 0, stage: 4 }] } as never);
+    expect(hud.root.hidden).toBe(true);
     mounted.dispose();
   });
 });

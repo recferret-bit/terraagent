@@ -198,8 +198,8 @@
 }
 
 .ta-hq-panel { flex-wrap: wrap; gap: var(--ta-s2); max-width: calc(100vw - 602px); }
-/* Expanded details (e.g. a Trade Hub) are a temporary wide sheet: they may cover the corner stacks while open. */
-.ta-hq-panel[data-expanded='true'] { width: min(800px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
+/* Expanded details (e.g. a Trade Hub) are a temporary wide sheet: they sit above open side drawers (z-index 40) and below modals (50). */
+.ta-hq-panel[data-expanded='true'] { z-index: 45; width: min(800px, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
 .ta-selection-details { flex-basis: 100%; min-width: 0; border-top: 1px solid var(--ta-seam); padding-top: var(--ta-s2); }
 .ta-selection-details[hidden] { display: none; }
 

@@ -1,4 +1,5 @@
 import type { DeedUpdatedPayload, DeedView } from '@terra/contracts';
+import { setGameInputBlocked } from '../../core/input/gameInputBlock';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { createDeedCardArtElement } from './deedCardArt';
 import { createDeedTracker } from './deedTracker';
@@ -141,9 +142,13 @@ export class DeedPanel implements Disposable {
           overlay.appendChild(this.backdropEl);
         }
       }
+      if (this.triggerBtn.isConnected) {
+        this.ctx.services.revealHudPanel?.(this.triggerBtn);
+      }
     } else if (this.backdropEl) {
       this.backdropEl.remove();
     }
+    setGameInputBlocked('deed-modal', Boolean(open && overlay));
     if (open) {
       void this.refreshFromServer(true);
       void this.stakingPanel.refreshFromServer();
@@ -271,7 +276,7 @@ export class DeedPanel implements Disposable {
 
     const sharePath = `/deed/${encodedToken}`;
     this.shareLinkEl.href = sharePath;
-    this.shareLinkEl.textContent = sharePath;
+    this.shareLinkEl.textContent = `/deed/${deed.tokenId} ↗`;
 
     this.settleBtnEl.hidden =
       isSettled || deed.status === 'eliminated' || deed.status === 'abandoned';
@@ -316,6 +321,7 @@ export class DeedPanel implements Disposable {
   }
 
   dispose(): void {
+    setGameInputBlocked('deed-modal', false);
     for (const timer of this.warpTimers) clearTimeout(timer);
     this.warpTimers.clear();
     for (const off of this.offs.splice(0)) off();

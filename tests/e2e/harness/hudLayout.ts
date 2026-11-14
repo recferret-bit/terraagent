@@ -1,9 +1,10 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
- * HUD tab books (`frontend/game/core/hud/TabBook.ts`): the Command Dock (right, `command-dock`, tabs `dock-tab-<id>`)
- * and the Colony book (left, `colony-book`, tabs `colony-tab-<id>`). A panel in a book is hidden until its tab is the
- * active tab of an unfolded book, so a spec opens the tab before it reads or clicks the panel.
+ * HUD tab books (`frontend/game/core/hud/TabBook.ts`): the Command Dock (`command-dock`, tabs `dock-tab-<id>`)
+ * and the Colony book (`colony-book`, tabs `colony-tab-<id>`), combined in the right-side rail (`top-right`).
+ * A panel in a book is hidden until its tab is the active tab of an unfolded book, so a spec opens the tab before
+ * it reads or clicks the panel.
  */
 async function openBookTab(page: Page, bookTestId: string, tabTestId: string, id: string): Promise<void> {
   const book = page.getByTestId(bookTestId);
@@ -14,7 +15,7 @@ async function openBookTab(page: Page, bookTestId: string, tabTestId: string, id
   await expect.poll(open).toBe(true);
 }
 
-/** Opens the Colony book (left) on tab `id` (`deed`, `goals`, `hq`, `director`, `combat`, `supply`, `trade`). */
+/** Opens the Colony book (right rail) on tab `id` (`player`, `away`, `deed`, `goals`, `hq`, `director`, `combat`, `supply`, `trade`, `notifications`). */
 export const openColonyTab = (page: Page, id: string): Promise<void> => openBookTab(page, 'colony-book', `colony-tab-${id}`, id);
 
 /** Opens the Command Dock (right) on tab `id` (`build`, `production`, `terraform`, `queue`). */

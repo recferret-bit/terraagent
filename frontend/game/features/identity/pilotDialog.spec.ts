@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
+import { isGameInputBlocked, resetGameInputBlock } from '../../core/input/gameInputBlock';
 import type { FeatureContext } from '../../core/registry/types';
+import { formatPlanetDisplayLabel } from '../shared/planetLabel';
 import { formatPilotDisplayName, mountPilotChip, PilotDialog } from './index';
 
 describe('Pilot display name, logout removal & full-featured PilotDialog', () => {
   afterEach(() => {
+    resetGameInputBlock();
     document.body.replaceChildren();
   });
 
@@ -12,6 +15,8 @@ describe('Pilot display name, logout removal & full-featured PilotDialog', () =>
     expect(formatPilotDisplayName({ isGuest: true, handle: '', accountId: null })).toBe('Guest Pilot');
     expect(formatPilotDisplayName({ isGuest: true, handle: 'guest_9f8e7d6c5b', accountId: null })).toBe('Pilot #9F8E');
     expect(formatPilotDisplayName({ isGuest: true, handle: 'pilot-1234', accountId: null })).toBe('Pilot #1234');
+    expect(formatPilotDisplayName('', 'p-1956.pilots.terraagent.testnet', false)).toBe('Pilot #1956');
+    expect(formatPilotDisplayName('p_a1b2', 'p_a1b2.terraagent.testnet', false)).toBe('Pilot #A1B2');
     expect(formatPilotDisplayName({ isGuest: true, handle: 'Colonist-A1B2', accountId: null })).toBe('Pilot #A1B2');
     expect(
       formatPilotDisplayName({
@@ -127,9 +132,45 @@ describe('Full-featured PilotDialog', () => {
     expect(meLink).not.toBeNull();
     expect(meLink.getAttribute('href')).toBe('/me.html');
     expect(meLink.getAttribute('target')).toBe('_blank');
+    expect(isGameInputBlocked()).toBe(true);
 
     modal.querySelector<HTMLButtonElement>('[data-testid="pilot-dialog-close"]')?.click();
     expect(modal.getAttribute('data-open')).toBe('false');
+    expect(isGameInputBlocked()).toBe(false);
+    dialog.dispose();
+
+    expect(formatPlanetDisplayLabel('pl_w18', 'temperate')).toBe('Sector W18 · Temperate');
+    expect(formatPlanetDisplayLabel('pl_01M7CWQVFMKGGHFD1NG00TH5Z4', 'temperate')).toBe('Sector #H5Z4 · Temperate');
+    expect(formatPlanetDisplayLabel('dune-prime', 'dune')).toBe('Dune Prime');
+  });
+
+  it('shows full #1956 code monogram without truncating to #19 for opaque Pilot IDs', () => {
+    const host = document.createElement('div');
+    const overlay = document.createElement('div');
+    document.body.append(host, overlay);
+    const dialog = new PilotDialog(host, {
+      flags: new Set(['W06']),
+      host: 'server',
+      services: {
+        track: () => {},
+        hudOverlay: overlay,
+        session: { planetId: () => 'pl_w18', colonyId: () => 'col_0' },
+        pilot: {
+          view: () => ({
+            isGuest: false,
+            handle: 'google-oauth2-1069208173371956-2',
+            accountId: 'google-oauth2-1069208173371956-2.terraagent.testnet',
+            accessToken: 'tok',
+          }),
+          subscribe: () => () => {},
+          loginSocial: async () => {},
+        },
+      },
+    });
+    dialog.setOpen(true);
+    const modal = overlay.querySelector<HTMLElement>('[data-testid="pilot-dialog"]')!;
+    expect(modal.querySelector('.ta-pilot-dossier-card__monogram')?.textContent).toBe('#1956');
+    expect(modal.querySelector('[data-testid="pilot-stat-planet"]')?.textContent).toBe('Sector W18');
     dialog.dispose();
   });
 });

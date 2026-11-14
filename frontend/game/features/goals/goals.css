@@ -381,7 +381,7 @@
 .ta-ai-toggle[data-enabled="true"] .ta-ai-toggle__hint { color: var(--ta-text); }
 
 /* Colony book HQ AI tab: the page is the plate, so the HQ panel drops its own frame, fills the page and scrolls with it. */
-.ta-colony-book .ta-hq-command-panel { width: 100%; box-sizing: border-box; background: transparent; border: 0; clip-path: none; }
+.ta-colony-book .ta-hq-command-panel { width: 100%; box-sizing: border-box; background: transparent; border: 0; clip-path: none; color-scheme: dark; padding-bottom: var(--ta-s1); }
 .ta-colony-book .ta-hq-command-panel .ta-goals-panel,
 .ta-colony-book .ta-hq-command-panel .ta-priorities-panel { padding-left: 0; padding-right: 0; background: transparent; clip-path: none; }
 .ta-colony-book .ta-hq-command-panel [role="tabpanel"] { max-height: none; overflow: visible; }

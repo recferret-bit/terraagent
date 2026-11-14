@@ -26,6 +26,11 @@ export class AwayDigestModal {
     if (away) this.show(away);
   }
 
+  reopen(digest: AwayDigestV1): void {
+    dismissedAwayIds.delete(awayIdentity(digest));
+    this.show(digest);
+  }
+
   show(digest: AwayDigestV1): void {
     const id = awayIdentity(digest);
     if (dismissedAwayIds.has(id)) return;

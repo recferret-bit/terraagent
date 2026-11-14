@@ -50,7 +50,13 @@ export class StageTrackHud implements Disposable {
       host,
       launcher: this.launcher,
       summaryEl: this.summaryEl,
-      onToggle: () => this.setPanelVisible(this.panelHidden),
+      onToggle: () => {
+        if (this.panelHidden) {
+          this.browseStage(this.currentStage);
+        } else {
+          this.setPanelVisible(false);
+        }
+      },
       onClose: () => {
         this.suppressNotices = true;
         this.setPanelVisible(false);
@@ -127,6 +133,7 @@ export class StageTrackHud implements Disposable {
     this.panelHidden = !visible;
     if (visible) this.suppressNotices = false;
     this.root.hidden = !visible;
+    if (!visible) this.root.removeAttribute('data-dialog-mode');
     this.launcher.setAttribute('aria-expanded', String(visible));
     if (!visible) {
       this.toast?.dismiss();
@@ -137,8 +144,13 @@ export class StageTrackHud implements Disposable {
   }
 
   private browseStage(stage: number): void {
+    const wasHidden = this.panelHidden;
     const selected = Math.max(0, Math.min(STAGE_TABLE_ROWS.length - 1, stage));
+    this.root.dataset.dialogMode = 'true';
     this.setPanelVisible(true);
+    if (wasHidden && this.launcher.isConnected) {
+      this.ctx.services.revealHudPanel?.(this.launcher);
+    }
     this.showStageToast(selected, { autoDismissMs: 0, replay: true });
   }
 
@@ -185,13 +197,15 @@ export class StageTrackHud implements Disposable {
         ? (view as ViewColony)
         : undefined);
 
-    const stage = typeof col?.stage === 'number' ? col.stage : 0;
+    const hasStage = typeof col?.stage === 'number';
+    const stage = hasStage ? col!.stage! : 0;
     const dwell = extractDwellRemainingSeconds(col);
     const condition = typeof col?.nextStageConditionText === 'string'
       ? col.nextStageConditionText
       : undefined;
 
     this.renderStage(stage, dwell, condition);
+    if (!hasStage) return;
 
     if (!this.hasBaseline) {
       this.hasBaseline = true;
@@ -211,10 +225,16 @@ export class StageTrackHud implements Disposable {
   showStageToast(stage: number, opts?: StageToastOptions): HTMLElement {
     if (!opts?.replay) this.previousStage = Math.max(this.previousStage, stage);
 
+    const openedByToast = this.panelHidden && !opts?.replay;
     if (!this.suppressNotices || opts?.replay) this.setPanelVisible(true);
+    const userOnDismiss = opts?.onDismiss;
     const el = this.toast.show(stage, {
       guide: stageGuideText(stage, opts?.replay ? this.currentStage : Math.max(stage, this.currentStage)),
       ...opts,
+      onDismiss: () => {
+        userOnDismiss?.();
+        if (openedByToast) this.setPanelVisible(false);
+      },
     });
     const spec = STAGE_TABLE_ROWS[stage] ?? STAGE_TABLE_ROWS[0]!;
     const stageLabel = spec.label.startsWith(`S${stage}`) ? spec.label : `S${stage} ${spec.label}`;
@@ -225,7 +245,7 @@ export class StageTrackHud implements Disposable {
         title: 'Stage Reached',
         message: `${title} — ${opts?.teaches ?? spec.teaches}`,
         dedupeKey: `stage:${stage}`,
-        onSelect: () => this.setPanelVisible(true),
+        onSelect: () => this.browseStage(stage),
       });
     }
     if (this.suppressNotices && !opts?.replay) this.toast.dismiss();

@@ -1,7 +1,7 @@
 import { capsOf, TICKS_PER_SECOND, type CompiledDataLike, type ViewColony } from '@terra/sim';
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
-import { pushNotification } from '../notifications/notificationStore';
+import { pushNotification, type NotificationCategory } from '../notifications/notificationStore';
 import { viewColony } from '../shared/colony';
 import { makeDiv, makeSpan } from '../shared/dom';
 import { extractHqFromView } from '../shared/hqView';
@@ -286,7 +286,13 @@ export class MinimalHud {
    * Shows `message`. A toast with the same `key` (e.g. one reject cause), or else the same text, already on screen is
    * updated and its timer restarted instead of stacking a second one. Toasts are buttons: click or Enter dismisses.
    */
-  showToast(message: string, severity: 'warning' | 'error' | 'info' = 'warning', durationMs = 4000, key?: string): HTMLElement {
+  showToast(
+    message: string,
+    severity: 'warning' | 'error' | 'info' = 'warning',
+    durationMs = 4000,
+    key?: string,
+    notif?: { category?: NotificationCategory; title?: string; dedupeKey?: string; onSelect?: () => void },
+  ): HTMLElement {
     const existing = [...this.toastContainer.children].find(
       (el) => el instanceof HTMLElement && el.dataset.severity === severity && (key ? el.dataset.key === key : el.textContent === message),
     ) as HTMLElement | undefined;
@@ -306,9 +312,11 @@ export class MinimalHud {
     this.armTimer(toast, durationMs);
     this.toastContainer.appendChild(toast);
     pushNotification({
-      category: 'system',
-      title: severity === 'error' ? 'Alert' : severity === 'warning' ? 'Notice' : 'Info',
+      category: notif?.category ?? 'system',
+      title: notif?.title ?? (severity === 'error' ? 'Alert' : severity === 'warning' ? 'Notice' : 'Info'),
       message,
+      dedupeKey: notif?.dedupeKey,
+      onSelect: notif?.onSelect,
     });
     return toast;
   }

@@ -218,6 +218,7 @@ export class StageToast implements Disposable {
 
     const el = document.createElement('div');
     el.className = 'ta-stage-reached-toast plate-sm';
+    el.dataset.replay = opts?.replay ? 'true' : 'false';
     el.setAttribute('data-testid', 'stage-reached-toast');
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');

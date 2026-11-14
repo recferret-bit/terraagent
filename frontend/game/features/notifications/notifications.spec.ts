@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeatureContext } from '../../core/registry/types';
-import { AchievementToastHost } from '../achievements/toast';
-import { DeedToastHost } from '../deed/deedNotifications';
+import { AchievementToastHost, DEFAULT_ACHIEVEMENT_TOAST_DURATION_MS } from '../achievements/toast';
+import { DeedToastHost, DEFAULT_DEED_TOAST_DURATION_MS } from '../deed/deedNotifications';
 import { GuildToastHost } from '../guild-toast/toast';
 import { NearErrorToasts } from '../near-errors/toast';
 import { XpToastHost } from '../xp/toast';
@@ -116,7 +116,7 @@ describe('Auto-dismissing & closeable toasts', () => {
     });
     expect(dHost.hidden).toBe(false);
     expect(dHost.querySelector('[data-testid="deed-toast-close"]')).not.toBeNull();
-    vi.advanceTimersByTime(6100);
+    vi.advanceTimersByTime(DEFAULT_DEED_TOAST_DURATION_MS + 100);
     expect(dHost.hidden).toBe(true);
     dToast.dispose();
 
@@ -142,6 +142,10 @@ describe('Auto-dismissing & closeable toasts', () => {
     expect(nHost.hidden).toBe(true);
     vi.advanceTimersByTime(6100);
     expect(xHost.hidden).toBe(true);
+    aToast.show({ achievementId: 'a2', familyName: 'Settler', tierName: 'Bronze', xp: 50 });
+    expect(aHost.hidden).toBe(false);
+    vi.advanceTimersByTime(DEFAULT_ACHIEVEMENT_TOAST_DURATION_MS + 100);
+    expect(aHost.hidden).toBe(true);
     const xpEntry = getNotificationHistory().find((e) => e.dedupeKey === 'xp-level:4');
     expect(xpEntry).toBeDefined();
     xpEntry?.onSelect?.();

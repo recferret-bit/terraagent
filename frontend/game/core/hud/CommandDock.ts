@@ -59,7 +59,7 @@ export class CommandDock {
     slotEl: HTMLElement,
     _ctx: FeatureContext,
     availableTabs: ReadonlySet<DockTabId>,
-    onSpineClick?: (tab: DockTabId) => void,
+    private readonly onSpineClick?: (tab: DockTabId) => void,
   ) {
     this.book = new TabBook(slotEl, {
       side: 'right',
@@ -110,6 +110,7 @@ export class CommandDock {
     const tab = HOTKEYS[(e.key ?? '').toLowerCase()];
     if (!tab || !this.book.has(tab)) return;
     e.stopImmediatePropagation?.();
+    this.onSpineClick?.(tab);
     this.book.selectOrToggleTab(tab);
   }
 

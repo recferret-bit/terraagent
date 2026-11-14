@@ -142,21 +142,21 @@ export function buildPilotDialogFooter(): HTMLElement {
   footer.className = 'ta-pilot-modal__footer';
   const note = document.createElement('span');
   note.className = 'ta-pilot-modal__footer-note';
-  note.textContent = 'Opens in a new browser tab — your colony session stays active.';
+  note.textContent = 'Opens /me.html in a new browser tab — your colony session stays active.';
   const meLink = document.createElement('a');
   meLink.href = '/me.html';
   meLink.target = '_blank';
   meLink.rel = 'noopener noreferrer';
   meLink.className = 'btn btn-primary btn-sm ta-pilot-modal__me-link';
   meLink.dataset.testid = 'pilot-open-me';
-  meLink.textContent = 'OPEN PILOT PROFILE (/me.html) ↗';
+  meLink.textContent = 'OPEN PILOT PROFILE ↗';
   footer.append(note, meLink);
   return footer;
 }
 
 export function computePilotMonogram(displayName: string): string {
   const hashMatch = /#([A-Z0-9]{2,4})$/i.exec(displayName.trim());
-  if (hashMatch) return `#${hashMatch[1]!.slice(0, 2).toUpperCase()}`;
+  if (hashMatch) return `#${hashMatch[1]!.toUpperCase()}`;
   const parts = displayName.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
     return `${parts[0]!.charAt(0)}${parts[1]!.charAt(0)}`.toUpperCase();

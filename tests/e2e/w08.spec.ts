@@ -5,6 +5,7 @@ import {
   hostMode,
   login,
   openColonyTab,
+  openDockTab,
   screenshot,
   test,
   waitForTick,
@@ -172,6 +173,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Solar Collector');
 
   // At S1: Metals Extractor and Solar un-grey; Builder, Pylon, Depot (unlockStage: 2) appear greyed
+  await openDockTab(page, 'build');
   await expect(extCard).toHaveAttribute('data-disabled', 'false');
   await expect(solarCard).toHaveAttribute('data-disabled', 'false');
   const depotCard = page.locator('.ta-construction__card[data-building="supplyDepot"]');

@@ -51,6 +51,12 @@
   color: var(--ta-orange);
 }
 
+.ta-notifications__guild-body {
+  max-height: 210px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .ta-notifications__filters {
   display: flex;
   flex-wrap: wrap;
@@ -148,10 +154,16 @@
   color: var(--ta-orange-hi);
 }
 
+.ta-notif-item[data-category='colony'] .ta-notif-item__cat,
 .ta-notif-item[data-category='deed'] .ta-notif-item__cat,
 .ta-notif-item[data-category='stage'] .ta-notif-item__cat,
 .ta-notif-item[data-category='achievement'] .ta-notif-item__cat {
   color: var(--ta-terra);
+}
+
+.ta-notif-item[data-actionable='true'] .ta-notif-item__time::after {
+  content: ' · OPEN ↗';
+  color: var(--ta-orange-hi);
 }
 
 .ta-notif-item__time {

@@ -16,6 +16,7 @@ export interface DirectorPanelOptions {
   readonly onToggleAutopilot?: (enabled: boolean) => void;
   readonly onToggleWarDiplomacy?: (enabled: boolean) => void;
   readonly onOpenHq?: () => void;
+  readonly onOpenAway?: () => void;
 }
 
 export interface DirectorAutopilotState {
@@ -40,7 +41,7 @@ export class DirectorPanel {
 
   constructor(private readonly host: HTMLElement, opts?: DirectorPanelOptions) {
     this.host.classList.add('ta-director', 'plate-sm');
-    const head = buildDirectorHeader(opts?.onOpenHq);
+    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway);
     this.aiStatusPill = head.aiStatusPill;
 
     const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
@@ -149,12 +150,21 @@ export class DirectorPanel {
   }
 }
 
-function buildDirectorHeader(onOpenHq?: () => void): { el: HTMLElement; aiStatusPill: HTMLElement } {
+function buildDirectorHeader(
+  onOpenHq?: () => void,
+  onOpenAway?: () => void,
+): { el: HTMLElement; aiStatusPill: HTMLElement } {
   const el = document.createElement('div');
   el.className = 'ta-director__head';
+  const copy = document.createElement('div');
+  copy.className = 'ta-director__head-copy';
   const title = document.createElement('div');
   title.className = 'ta-director__title';
   title.textContent = 'DIRECTOR';
+  const sub = document.createElement('div');
+  sub.className = 'ta-director__sub';
+  sub.textContent = 'Doctrine, risk reserve & live AI action feed';
+  copy.append(title, sub);
   const right = document.createElement('div');
   right.className = 'ta-director__head-actions';
   const aiStatusPill = document.createElement('span');
@@ -171,7 +181,17 @@ function buildDirectorHeader(onOpenHq?: () => void): { el: HTMLElement; aiStatus
     jump.addEventListener('click', () => onOpenHq());
     right.appendChild(jump);
   }
-  el.append(title, right);
+  if (onOpenAway) {
+    const awayJump = document.createElement('button');
+    awayJump.type = 'button';
+    awayJump.className = 'btn btn-ghost btn-sm ta-director__away-jump';
+    awayJump.dataset.testid = 'director-open-away';
+    awayJump.textContent = 'AWAY →';
+    awayJump.title = 'Open Away offline session caps & auto-trade rules';
+    awayJump.addEventListener('click', () => onOpenAway());
+    right.appendChild(awayJump);
+  }
+  el.append(copy, right);
   return { el, aiStatusPill };
 }
 

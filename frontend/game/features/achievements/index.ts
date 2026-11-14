@@ -11,7 +11,8 @@ declare module '../../core/registry/types' {
   }
 }
 
-function mountPilotTracking(_el: HTMLElement, ctx: FeatureContext) {
+function mountPilotTracking(el: HTMLElement, ctx: FeatureContext) {
+  el.hidden = true;
   const tracker = new ActivePilotTracker(ctx);
   ctx.services.activePilot = tracker;
 

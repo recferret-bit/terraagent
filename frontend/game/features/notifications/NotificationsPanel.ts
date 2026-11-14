@@ -28,7 +28,7 @@ const FILTERS: ReadonlyArray<{ id: FilterKind; label: string }> = [
 
 function matchesFilter(cat: NotificationCategory, filter: FilterKind): boolean {
   if (filter === 'all') return true;
-  if (filter === 'colony') return cat === 'deed' || cat === 'stage' || cat === 'achievement';
+  if (filter === 'colony') return cat === 'colony' || cat === 'deed' || cat === 'stage' || cat === 'achievement';
   return cat === filter;
 }
 
@@ -56,6 +56,8 @@ export class NotificationsPanel implements HudPanelInstance {
   private readonly filterBtns = new Map<FilterKind, HTMLButtonElement>();
   private filter: FilterKind = 'all';
   private activeShipName: string | null = null;
+  private readonly lastDepartAtByShip = new Map<string, number>();
+  private departSeq = 0;
   private readonly cleanups: Array<() => void> = [];
 
   constructor(
@@ -82,6 +84,7 @@ export class NotificationsPanel implements HudPanelInstance {
     guildHdr.append(guildTitle, this.guildBadge);
 
     const guildBody = document.createElement('div');
+    guildBody.className = 'ta-notifications__guild-body';
     guildBody.dataset.testid = 'notifications-guild-body';
     this.guildOffers = new GuildOffers(guildBody, ctx, this.guildModel);
     this.guildOffers.onShow();
@@ -171,6 +174,7 @@ export class NotificationsPanel implements HudPanelInstance {
   private onGuildArrived(p: GuildArrivedPayload): void {
     const name = p.name || p.npcId || p.shipId;
     this.activeShipName = name;
+    this.lastDepartAtByShip.set(p.shipId, p.departAt);
     this.guildBadge.textContent = `${name} DOCKED`;
     this.guildBadge.dataset.active = 'true';
     this.guildModel.arrive(p);
@@ -188,6 +192,8 @@ export class NotificationsPanel implements HudPanelInstance {
   private onGuildDeparted(p: GuildDepartedPayload): void {
     const name = this.activeShipName || p.npcId || p.shipId;
     this.activeShipName = null;
+    const visitTag = this.lastDepartAtByShip.get(p.shipId) ?? `solo-${++this.departSeq}`;
+    this.lastDepartAtByShip.delete(p.shipId);
     this.guildBadge.textContent = 'DEPARTED';
     this.guildBadge.dataset.active = 'false';
     this.guildModel.depart(p);
@@ -195,7 +201,7 @@ export class NotificationsPanel implements HudPanelInstance {
       category: 'guild',
       title: 'Guild Trader Departed',
       message: `Guild trader ${name} has departed`,
-      dedupeKey: `guild-departed:${p.shipId}`,
+      dedupeKey: `guild-departed:${p.shipId}:${visitTag}`,
       onSelect: () => {
         this.ctx.services.revealHudPanel?.(this.hostEl);
       },
@@ -220,6 +226,7 @@ export class NotificationsPanel implements HudPanelInstance {
     li.dataset.notificationId = item.id;
     li.dataset.category = item.category;
     li.dataset.unread = String(!item.read);
+    if (item.onSelect) li.dataset.actionable = 'true';
 
     const mainBtn = document.createElement('button');
     mainBtn.type = 'button';

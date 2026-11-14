@@ -26,7 +26,11 @@ export class AwayPanel {
       awayRaids: this.saved.awayRaids,
       mode: this.saved.mode,
     });
-    this.dom = buildAwayDom(host, { mercenary: opts.mercenary === true });
+    this.dom = buildAwayDom(host, {
+      mercenary: opts.mercenary === true,
+      onOpenHq: opts.onOpenHq,
+      onOpenDirector: opts.onOpenDirector,
+    });
     this.trade = opts.flags?.has('W15') ? new AutoTradeSection(this.dom.body, opts) : null;
     this.bind();
     this.paint();

@@ -18,7 +18,7 @@ if (params.get('deedcard') === '1') {
   const app = new PlaygroundApp(params);
   app.start();
   const viewport = document.getElementById('viewport');
-  if (viewport) initCrt([viewport]);
+  if (viewport) initCrt([viewport], { production: false });
   const fxBar = document.getElementById('fx-bar');
   const stage = document.getElementById('stage');
   if (fxBar && stage) stage.appendChild(fxBar);

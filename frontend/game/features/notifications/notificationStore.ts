@@ -1,4 +1,4 @@
-export type NotificationCategory = 'guild' | 'deed' | 'achievement' | 'stage' | 'combat' | 'system';
+export type NotificationCategory = 'guild' | 'deed' | 'achievement' | 'stage' | 'colony' | 'combat' | 'system';
 
 export interface NotificationHistoryEntry {
   readonly id: string;

@@ -21,6 +21,8 @@
 }
 
 .ta-achievement-toast {
+  position: relative;
+  z-index: 55;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -29,7 +31,18 @@
   padding: 12px 14px;
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-orange);
+  box-shadow: var(--ta-glow-1);
   color: var(--ta-hull);
+}
+
+.ta-achievement-toast-body {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s3);
+}
+
+.ta-achievement-toast-art {
+  flex-shrink: 0;
 }
 
 .ta-achievement-toast-head {

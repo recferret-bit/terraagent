@@ -165,7 +165,7 @@ function extractOpaquePilotCode(raw: string): string | null {
     return guestMatch[1]!.slice(0, 4).toUpperCase();
   }
 
-  const pilotCodeMatch = /^pilot[|_-]+([0-9a-f]{4,}|[a-z0-9]*\d[a-z0-9]*)(?:[|_-].*)?$/i.exec(stem);
+  const pilotCodeMatch = /^(?:pilot|p)[|_-]+([0-9a-f]{4,}|[a-z0-9]*\d[a-z0-9]*)(?:[|_-].*)?$/i.exec(stem);
   if (pilotCodeMatch) {
     return pilotCodeMatch[1]!.slice(0, 4).toUpperCase();
   }

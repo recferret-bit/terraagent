@@ -19,21 +19,16 @@ export interface AwayDom {
 }
 
 /** Builds the plate. No `innerHTML`: labels and reject text are untrusted-safe text nodes. */
-export function buildAwayDom(host: HTMLElement, opts: { mercenary?: boolean } = {}): AwayDom {
+export function buildAwayDom(
+  host: HTMLElement,
+  opts: { mercenary?: boolean; onOpenHq?: () => void; onOpenDirector?: () => void } = {},
+): AwayDom {
   host.classList.add('ta-away', 'plate-sm');
   const { toggle, caret } = titleButton();
   const body = document.createElement('div');
   body.className = 'ta-away__body';
   body.dataset.testid = 'away-panel';
-  const bookHead = document.createElement('div');
-  bookHead.className = 'ta-away__book-head';
-  const bookTitle = document.createElement('div');
-  bookTitle.className = 'ta-away__kicker';
-  bookTitle.textContent = 'OFFLINE SESSION & BUDGETS';
-  const bookSub = document.createElement('div');
-  bookSub.className = 'ta-away__book-sub';
-  bookSub.textContent = 'Resource spending caps and auto-trade limits while you are offline.';
-  bookHead.append(bookTitle, bookSub);
+  const bookHead = buildBookHead(opts);
   const mode = modeSelect();
   const raids = raidsBox();
   const sessions = {} as Record<AwayFamily, HTMLInputElement>;
@@ -64,6 +59,47 @@ export function buildAwayDom(host: HTMLElement, opts: { mercenary?: boolean } = 
     maxSpend: mercenary?.max ?? null,
     sessions, readouts, save, status,
   };
+}
+
+function buildBookHead(opts: { onOpenHq?: () => void; onOpenDirector?: () => void }): HTMLElement {
+  const bookHead = document.createElement('div');
+  bookHead.className = 'ta-away__book-head';
+  const topRow = document.createElement('div');
+  topRow.className = 'ta-away__head-row';
+  const bookTitle = document.createElement('div');
+  bookTitle.className = 'ta-away__kicker';
+  bookTitle.textContent = 'OFFLINE SESSION & BUDGETS';
+  topRow.appendChild(bookTitle);
+  if (opts.onOpenHq || opts.onOpenDirector) {
+    const jumps = document.createElement('div');
+    jumps.className = 'ta-away__jumps';
+    if (opts.onOpenHq) {
+      const hqBtn = document.createElement('button');
+      hqBtn.type = 'button';
+      hqBtn.className = 'btn btn-ghost btn-sm';
+      hqBtn.dataset.testid = 'away-open-hq';
+      hqBtn.textContent = 'HQ AI →';
+      hqBtn.title = 'Open HQ AI goals & priorities';
+      hqBtn.addEventListener('click', () => opts.onOpenHq?.());
+      jumps.appendChild(hqBtn);
+    }
+    if (opts.onOpenDirector) {
+      const dirBtn = document.createElement('button');
+      dirBtn.type = 'button';
+      dirBtn.className = 'btn btn-ghost btn-sm';
+      dirBtn.dataset.testid = 'away-open-director';
+      dirBtn.textContent = 'DIRECTOR →';
+      dirBtn.title = 'Open Director doctrine & action feed';
+      dirBtn.addEventListener('click', () => opts.onOpenDirector?.());
+      jumps.appendChild(dirBtn);
+    }
+    topRow.appendChild(jumps);
+  }
+  const bookSub = document.createElement('div');
+  bookSub.className = 'ta-away__book-sub';
+  bookSub.textContent = 'Resource spending caps and auto-trade limits while you are offline.';
+  bookHead.append(topRow, bookSub);
+  return bookHead;
 }
 
 function titleButton(): { toggle: HTMLButtonElement; caret: HTMLElement } {

@@ -18,6 +18,14 @@
   margin-top: var(--ta-s1);
   width: 100%;
   max-width: 210px;
+  max-height: max(88px, calc(100dvh - 324px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ta-seam-2) var(--ta-deep);
+}
+
+body:has(#fx-bar) .ta-neighbor-hud-strip {
+  max-height: max(88px, calc(100dvh - 368px));
 }
 
 .ta-neighbor-hud-strip:empty {

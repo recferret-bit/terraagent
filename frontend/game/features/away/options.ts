@@ -16,4 +16,7 @@ export interface AwayPanelOptions {
   track?: (name: string, props?: Record<string, string | number | boolean | null>) => void;
   /** `director.status` pushes. The same payload as POST and DELETE `/v1/near/director-key`. */
   subscribeDirector?: (fn: (payload: DirectorKeyStatusPayload) => void) => () => void;
+  /** Cross-links inside ColonyBook (`AWAY` -> `HQ AI` / `DIRECTOR`). */
+  onOpenHq?: () => void;
+  onOpenDirector?: () => void;
 }

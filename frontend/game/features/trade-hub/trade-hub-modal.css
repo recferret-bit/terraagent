@@ -8,10 +8,24 @@
 }
 
 .ta-trade-hub[data-modal='true'] {
-  width: min(840px, 94vw);
+  width: min(840px, calc(100vw - 168px));
   max-height: min(760px, 90vh);
   gap: var(--ta-s3);
   box-shadow: var(--ta-glow-1);
+}
+
+@media (max-width: 1180px) {
+  .ta-trade-hub[data-modal='true'] {
+    left: calc((100vw - 140px) / 2);
+    width: min(840px, calc(100vw - 160px));
+  }
+}
+
+@media (max-width: 680px) {
+  .ta-trade-hub[data-modal='true'] {
+    left: 50%;
+    width: calc(100vw - 24px);
+  }
 }
 
 .ta-trade-hub__tabs {

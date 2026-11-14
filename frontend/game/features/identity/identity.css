@@ -142,8 +142,9 @@
 }
 
 .ta-pilot-modal {
-  width: min(780px, 94vw);
-  max-height: min(680px, 90vh);
+  width: min(780px, calc(100vw - 168px));
+  max-height: min(680px, calc(100dvh - 32px));
+  margin-right: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -154,6 +155,12 @@
   color: var(--ta-text);
   pointer-events: auto;
   box-sizing: border-box;
+}
+
+@media (max-width: 1120px) {
+  .ta-pilot-modal-backdrop {
+    padding-right: 148px;
+  }
 }
 
 .ta-pilot-modal__header {
@@ -232,16 +239,19 @@
 }
 
 .ta-pilot-dossier-card__monogram {
-  flex: 0 0 48px;
+  flex: 0 0 auto;
+  min-width: 48px;
   height: 48px;
+  padding: 0 8px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--ta-plate-3);
   border: 1px solid var(--ta-orange);
   color: var(--ta-orange);
-  font: 700 16px/1 var(--ta-font-display);
-  letter-spacing: 0.06em;
+  font: 700 13px/1 var(--ta-font-mono);
+  letter-spacing: 0.04em;
 }
 
 .ta-pilot-dossier-card__meta {

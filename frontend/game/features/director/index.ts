@@ -51,6 +51,11 @@ export default defineFeature({
         onOpenHq() {
           document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-hq"]')?.click();
         },
+        onOpenAway: ctx.flags.has('W09')
+          ? () => {
+              document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-away"]')?.click();
+            }
+          : undefined,
       });
       activeDirectorPanel = panel;
       ctx.services.getDirectorPanel = () => activeDirectorPanel;

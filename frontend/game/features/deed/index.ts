@@ -111,9 +111,11 @@ function mountDeedToast(el: HTMLElement, ctx: FeatureContext): HudPanelInstance 
     return { dispose() {} };
   }
   const store = ctx.services.store as {
+    onDeedUpdated?: (fn: (payload: import('@terra/contracts').DeedUpdatedPayload) => void) => () => void;
     onServerEvents?: (fn: (events: ReadonlyArray<{ kind: string; data?: Record<string, unknown> }>) => void) => () => void;
   } | undefined;
   const host = new DeedToastHost(el, {
+    onDeedUpdated: store?.onDeedUpdated ? (fn) => store.onDeedUpdated!(fn) : undefined,
     onServerEvents: store?.onServerEvents ? (fn) => store.onServerEvents!(fn) : undefined,
     onOpenDeed: () => ctx.services.openDeedPanel?.(true),
   });

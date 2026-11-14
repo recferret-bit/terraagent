@@ -113,7 +113,8 @@ export class HudRoot {
       if (!book) return false;
       for (const pane of [...book.pageEl.querySelectorAll<HTMLElement>('[data-tab-pane]')]) {
         const tab = pane.getAttribute('data-tab-pane');
-        if (tab && pane.childElementCount === 0) book.removeTab(tab);
+        const hasVisibleChild = [...pane.children].some((c) => !(c as HTMLElement).hidden);
+        if (tab && !hasVisibleChild) book.removeTab(tab);
       }
       return book.tabCount === 0;
     };

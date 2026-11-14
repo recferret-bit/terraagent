@@ -5,6 +5,7 @@
 .ta-supply__body { display: flex; flex-direction: column; gap: var(--ta-s2); }
 .ta-supply__body[hidden] { display: none; }
 .ta-supply__section { display: flex; flex-direction: column; gap: var(--ta-s1); border-top: 1px solid var(--ta-seam); padding-top: var(--ta-s1); }
+.ta-supply__section[hidden] { display: none; }
 .ta-supply__chip { display: inline-block; padding: 2px var(--ta-s2); background: var(--ta-plate-2); border: 1px solid var(--ta-seam-2); font-family: var(--ta-font-display); font-size: var(--ta-fs-label); margin-right: var(--ta-s1); }
 .ta-supply__chip--abundant { border-color: var(--ta-blue); color: var(--ta-blue-hi); }
 .ta-supply__chip--scarce { border-color: var(--ta-orange); color: var(--ta-orange-hi); }

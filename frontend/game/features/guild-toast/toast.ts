@@ -18,6 +18,8 @@ export class GuildToastHost {
   private readonly memory = new GuildVisitMemory();
   private readonly root: HTMLElement;
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
+  private readonly lastDepartAtByShip = new Map<string, number>();
+  private departSeq = 0;
 
   constructor(
     parent: HTMLElement,
@@ -33,6 +35,7 @@ export class GuildToastHost {
   }
 
   arrive(payload: GuildArrivalToastInput): string | null {
+    this.lastDepartAtByShip.set(payload.shipId, payload.departAt);
     const line = this.memory.docked(payload, this.hooks.enabled());
     if (line) {
       this.show(line, true);
@@ -48,6 +51,8 @@ export class GuildToastHost {
   }
 
   depart(payload: GuildDepartureToastInput): string | null {
+    const visitTag = this.lastDepartAtByShip.get(payload.shipId) ?? `solo-${++this.departSeq}`;
+    this.lastDepartAtByShip.delete(payload.shipId);
     const line = this.memory.departed(payload, this.hooks.enabled());
     if (line) {
       this.show(line, false);
@@ -55,7 +60,7 @@ export class GuildToastHost {
         category: 'guild',
         title: 'Guild Trader Departed',
         message: line,
-        dedupeKey: `guild-departed:${payload.shipId}`,
+        dedupeKey: `guild-departed:${payload.shipId}:${visitTag}`,
       });
     }
     return line;

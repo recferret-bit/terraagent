@@ -82,6 +82,7 @@ export class SupplyPanel {
     if (!v) return;
     this.body.append(this.badges(v), this.basket(v), this.logistics(v));
     this.remedies = section('Options for the selected need', 'supply-remedies');
+    this.remedies.hidden = true;
     this.body.append(this.remedies);
     if (this.compare) void this.showRemedies(this.compare);
   }
@@ -129,6 +130,7 @@ export class SupplyPanel {
       d.append(el('span', 'ta-supply__k', r.title), el('span', 'ta-supply__v', r.detail));
       return d;
     });
+    this.remedies.hidden = false;
     this.remedies.replaceChildren(el('div', 'ta-supply__title', 'Options for the selected need'), head, ...rows);
   }
 }

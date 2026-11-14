@@ -1,6 +1,8 @@
 import { STAGE_TABLE_ROWS, type ViewColony } from '@terra/sim';
+import { setGameInputBlocked } from '../../core/input/gameInputBlock';
 import type { FeatureContext, GameView, HudPanelInstance } from '../../core/registry/types';
 import { ownColonyIndex, viewColony } from '../shared/colony';
+import { formatPlanetDisplayLabel } from '../shared/planetLabel';
 import { mountOrbitStatus } from './orbitStatus';
 import {
   addPilotStatCell,
@@ -166,6 +168,13 @@ export class PilotDialog implements HudPanelInstance {
       : 'LOCAL GUEST SESSION';
     this.callsignCard.deedSummaryEl.textContent = resolvePilotDeedSummary(this.ctx);
     this.triggerBtn.textContent = `Pilot · ${displayName}`;
+    if (this.planetValEl.textContent === '—') {
+      const pid = this.ctx.services.session?.planetId?.() ?? this.ctx.services.store?.currentPlanetId?.();
+      if (pid) {
+        this.planetValEl.textContent = formatPlanetDisplayLabel(pid);
+        this.planetValEl.title = pid;
+      }
+    }
   }
 
   setOpen(open: boolean): void {
@@ -174,10 +183,12 @@ export class PilotDialog implements HudPanelInstance {
     this.root.dataset.open = String(open);
     this.triggerBtn.setAttribute('aria-expanded', String(open));
     if (this.ctx.services.hudOverlay) {
+      setGameInputBlocked('pilot-dialog', open);
       this.root.hidden = !open;
       if (open) {
         this.detailsColEl.append(this.chipSectionEl);
         this.syncIdentity();
+        this.ctx.services.revealHudPanel?.(this.triggerBtn);
       } else if (this.paneEl.isConnected || this.triggerBtn.parentElement === this.paneEl) {
         this.paneEl.insertBefore(this.chipSectionEl, this.triggerBtn);
       }
@@ -196,8 +207,11 @@ export class PilotDialog implements HudPanelInstance {
       planet?: { id?: string; type?: string };
       colonies?: ReadonlyArray<ViewColony & { terraformBp?: number }>;
     };
-    if (raw.planet?.id) {
-      this.planetValEl.textContent = raw.planet.type ? `${raw.planet.id} (${raw.planet.type})` : raw.planet.id;
+    const planetId =
+      raw.planet?.id ?? this.ctx.services.session?.planetId?.() ?? this.ctx.services.store?.currentPlanetId?.();
+    if (planetId) {
+      this.planetValEl.textContent = formatPlanetDisplayLabel(planetId, raw.planet?.type);
+      this.planetValEl.title = raw.planet?.type ? `${planetId} (${raw.planet.type})` : planetId;
     }
     const col = viewColony(view, ownColonyIndex(this.ctx.services)) as
       | (ViewColony & { terraformBp?: number })
@@ -219,6 +233,7 @@ export class PilotDialog implements HudPanelInstance {
   }
 
   dispose(): void {
+    setGameInputBlocked('pilot-dialog', false);
     for (const fn of this.cleanups.splice(0)) fn();
     this.pilotInstance.dispose();
     this.orbitInstance.dispose();

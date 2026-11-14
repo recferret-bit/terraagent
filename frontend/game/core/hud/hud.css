@@ -34,14 +34,20 @@ body:has(#fx-bar) .ta-hud__slot[data-slot='top-left'] {
 }
 
 .ta-hud__slot[data-slot='top-right'] {
-  /* Combined right-side tab menu: Command Dock + Colony book stacked along the right edge, sharing the page region to their left. */
+  /* Combined right-side tab menu: Command Dock + Colony book stacked along the right edge, sharing the page region to their left.
+     No z-index on the slot itself so `.ta-book__page` (40) sits below `.ta-hud__overlay` modals (50) while `.ta-book__spine` (60)
+     remains one-click interactive even while a modal dialog is open. */
   top: 0;
   bottom: 0;
   right: 0;
   align-items: flex-end;
   gap: 2px;
   padding-top: var(--ta-s4);
-  z-index: 30;
+}
+
+.ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__spine {
+  position: relative;
+  z-index: 60;
 }
 
 body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] {
@@ -95,7 +101,7 @@ body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] {
   top: var(--ta-s4);
   right: calc(var(--ta-s4) + var(--ta-book-spine-w));
   max-height: max(280px, calc(100vh - var(--ta-s4) - 184px));
-  z-index: 2;
+  z-index: 40;
 }
 
 body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
@@ -103,11 +109,31 @@ body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-boo
   max-height: max(280px, calc(100vh - var(--ta-s7) - 184px));
 }
 
-@media (max-width: 1000px) {
+/* On <= 1480px viewports an unfolded right-book page reaches into the right edge of the centered MinimalHud bar,
+   so the page starts below MinimalHud while the right-edge spine stays flush in the top-right corner. */
+@media (max-width: 1480px) {
   .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
     top: var(--ta-s7);
     max-height: max(280px, calc(100vh - var(--ta-s7) - 184px));
   }
+}
+
+/* Dim local-dev FX / FPS bars behind open full-screen Colony dialogs so they do not float bright over modal backdrops. */
+body:has(
+  .ta-pilot-modal-backdrop[data-open='true'],
+  .ta-trade-hub-backdrop[data-open='true'],
+  .ta-deed-backdrop,
+  .ta-stage-track-hud[data-dialog-mode='true']:not([hidden])
+) #fx-bar,
+body:has(
+  .ta-pilot-modal-backdrop[data-open='true'],
+  .ta-trade-hub-backdrop[data-open='true'],
+  .ta-deed-backdrop,
+  .ta-stage-track-hud[data-dialog-mode='true']:not([hidden])
+) #fps-counter {
+  opacity: 0.2;
+  filter: blur(2px);
+  pointer-events: none;
 }
 
 .ta-hud__slot[data-slot='top-center'] {
@@ -115,6 +141,7 @@ body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-boo
   left: 50%;
   transform: translateX(-50%);
   align-items: center;
+  z-index: 35;
 }
 
 .ta-hud__slot[data-slot='bottom-left'] {
@@ -124,6 +151,11 @@ body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-boo
   flex-direction: row;
   align-items: flex-end;
   padding-bottom: var(--ta-s2);
+  z-index: 30;
+}
+
+.ta-hud__slot[data-slot='bottom-left']:has(.ta-hq-panel[data-expanded='true']) {
+  z-index: 45;
 }
 
 body:has(#fx-bar) .ta-hud__slot[data-slot='bottom-left'] {
@@ -135,6 +167,11 @@ body:has(#fx-bar) .ta-hud__slot[data-slot='bottom-left'] {
   right: 0;
   align-items: flex-end;
   justify-content: flex-end;
+  z-index: 30;
+}
+
+.ta-hud__slot[data-slot='bottom-right']:has(.ta-achievement-toast) {
+  z-index: 55;
 }
 
 /* Fixed-position overlays (modals, edge pings) live here, outside the books' panes and clip paths. */

@@ -13,12 +13,13 @@ function normalizeEnvTag(raw: unknown): string | undefined {
 
 /**
  * Returns `true` when running a production build (`VITE_APP_ENV=production`, `mode === 'production'`,
- * or `import.meta.env.PROD`), and `false` in local/dev (`development`, `local`, `test`) builds unless overridden.
+ * non-local custom modes such as `staging`, or `import.meta.env.PROD`), and `false` in local/dev
+ * (`development`, `dev`, `local`, `test`) builds unless overridden.
  *
- * Precedence:
+ * Precedence (fail-closed for non-local environments):
  * 1. Explicit test override (`setProductionBuildOverride`)
- * 2. Explicit `appEnv` (`VITE_APP_ENV`: `'production'` -> `true`; `'development' | 'local' | 'test'` -> `false`)
- * 3. Vite `mode` (`'production'` -> `true`, any other defined mode -> `false`)
+ * 2. Explicit `appEnv` (`VITE_APP_ENV`: `'development' | 'dev' | 'local' | 'test'` -> `false`; any other non-empty value e.g. `'production' | 'prod' | 'staging'` -> `true`)
+ * 3. Vite `mode` (`'development' | 'dev' | 'local' | 'test'` -> `false`; `'production' | 'prod'` -> `true`; custom modes fall through to `Boolean(prod)`)
  * 4. `import.meta.env.PROD` boolean fallback
  */
 export function isProductionBuild(
@@ -30,16 +31,25 @@ export function isProductionBuild(
 ): boolean {
   if (productionOverride !== null) return productionOverride;
   const normalizedAppEnv = normalizeEnvTag(appEnv);
-  if (normalizedAppEnv === 'production' || normalizedAppEnv === 'prod') return true;
+  if (normalizedAppEnv !== undefined) {
+    return !(
+      normalizedAppEnv === 'development' ||
+      normalizedAppEnv === 'dev' ||
+      normalizedAppEnv === 'local' ||
+      normalizedAppEnv === 'test'
+    );
+  }
+  const normalizedMode = normalizeEnvTag(mode);
   if (
-    normalizedAppEnv === 'development' ||
-    normalizedAppEnv === 'dev' ||
-    normalizedAppEnv === 'local' ||
-    normalizedAppEnv === 'test'
+    normalizedMode === 'development' ||
+    normalizedMode === 'dev' ||
+    normalizedMode === 'local' ||
+    normalizedMode === 'test'
   ) {
     return false;
   }
-  const normalizedMode = normalizeEnvTag(mode);
-  if (normalizedMode !== undefined) return normalizedMode === 'production';
+  if (normalizedMode === 'production' || normalizedMode === 'prod') {
+    return true;
+  }
   return Boolean(prod);
 }

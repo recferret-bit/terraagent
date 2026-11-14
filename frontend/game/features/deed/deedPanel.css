@@ -68,9 +68,9 @@
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 84;
-  width: min(740px, 94vw);
+  width: min(780px, calc(100vw - 168px));
   max-width: 94vw;
-  max-height: min(560px, 88vh);
+  max-height: min(780px, 88vh);
   overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;
@@ -80,8 +80,23 @@
   padding: var(--ta-s4);
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam-3);
+  box-shadow: var(--ta-glow-1);
   color: var(--ta-text);
   pointer-events: auto;
+}
+
+@media (max-width: 1120px) {
+  .ta-deed-panel {
+    left: calc((100vw - 140px) / 2);
+    width: min(740px, calc(100vw - 160px));
+  }
+}
+
+@media (max-width: 680px) {
+  .ta-deed-panel {
+    left: 50%;
+    width: calc(100vw - 24px);
+  }
 }
 
 .ta-deed-panel[data-open="false"] {

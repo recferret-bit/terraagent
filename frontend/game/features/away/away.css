@@ -16,13 +16,33 @@
 .ta-away__book-head {
   display: none;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   padding-bottom: var(--ta-s2);
   border-bottom: 1px solid var(--ta-seam);
 }
 
 [data-tab-pane='away'] .ta-away__book-head {
   display: flex;
+}
+
+.ta-away__head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s1);
+  flex-wrap: wrap;
+}
+
+.ta-away__jumps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ta-away__jumps .btn {
+  padding: 2px 6px;
+  min-height: 22px;
+  font-size: 9px;
 }
 
 .ta-away__book-sub {
@@ -52,8 +72,18 @@
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam-2);
   color: var(--ta-text);
+  color-scheme: dark;
   font: 500 11px/1.35 var(--ta-font-mono);
   box-sizing: border-box;
+}
+
+[data-tab-pane='away'] .ta-away__body {
+  padding-bottom: var(--ta-s2);
+}
+
+.ta-away__directive::before {
+  content: 'Baseline reserve · ';
+  color: var(--ta-steel);
 }
 
 .ta-away__toggle {

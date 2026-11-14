@@ -32,7 +32,7 @@ export default defineFeature({
   hud: [
     // bottom-right, not bottom-left: an extra bar in the left stack pushed the command dock under the pilot chip (W02/W03/W08 e2e)
     { id: 'supply-trade', slot: 'bottom-right', order: 64, mount: mountSupplyPanel },
-    { id: 'market-tab', slot: 'bottom-right', order: 30, mount: (_el, ctx: FeatureContext) => registerMarketTab(ctx) },
+    { id: 'market-tab', slot: 'bottom-right', order: 30, mount: (el, ctx: FeatureContext) => { el.hidden = true; return registerMarketTab(ctx); } },
     {
       id: 'contracts',
       slot: 'bottom-left',
@@ -51,7 +51,13 @@ export default defineFeature({
         });
         const controller = new ContractsController(
           log,
-          (msg, sev, ms, key) => s.hudMin?.showToast(msg, sev, ms, key),
+          (msg, sev, ms, key) =>
+            s.hudMin?.showToast(msg, sev, ms, key, {
+              category: 'guild',
+              title: sev === 'error' ? 'Trade Failed' : 'Trade Contract',
+              dedupeKey: key ? `contract:${key}` : undefined,
+              onSelect: () => s.openTradeHubPanel?.(true),
+            }),
           () => s.landfall?.getOwnerColonyIndex(),
           s.store as never,
         );

@@ -1,7 +1,7 @@
 import type { DeedUpdatedPayload } from '@terra/contracts';
 import { pushNotification } from '../notifications/notificationStore';
 
-export const DEFAULT_DEED_TOAST_DURATION_MS = 6000;
+export const DEFAULT_DEED_TOAST_DURATION_MS = 12_000;
 
 export interface DeedToastInput {
   readonly colonyId: string;

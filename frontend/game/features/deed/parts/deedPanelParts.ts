@@ -1,5 +1,6 @@
 import type { DeedView } from '@terra/contracts';
 import type { FeatureContext } from '../../../core/registry/types';
+import { formatPlanetDisplayLabel } from '../../shared/planetLabel';
 import { buildDeedShareUrl, buildDeedTwitterIntentUrl } from '../deedShare';
 import { createDeedTracker } from '../deedTracker';
 
@@ -285,15 +286,17 @@ export function renderDeedStatsGrid(statsGridEl: HTMLElement, deed: DeedView): v
     statsGridEl.removeChild(statsGridEl.firstChild);
   }
   const tfPct = `${Math.round((deed.metadata.terraformBp ?? 0) / 100)} %`;
-  const rows: Array<[string, string, string]> = [
+  const planetDisplay = formatPlanetDisplayLabel(deed.planetId, deed.metadata.planetType);
+  const ownerAccount = deed.claimedByAccountId ?? deed.ownerAccountId;
+  const rows: Array<[string, string, string, string?]> = [
     ['Colony', deed.metadata.colonyName ?? deed.colonyId, 'deed-stat-colony'],
-    ['Planet', deed.planetId, 'deed-stat-planet'],
+    ['Planet', planetDisplay, 'deed-stat-planet', deed.planetId],
     ['Stage', `Stage ${deed.metadata.stage ?? 0}`, 'deed-stat-stage'],
     ['Terraform', tfPct, 'deed-stat-terraform'],
-    ['Owner Account', deed.claimedByAccountId ?? deed.ownerAccountId, 'deed-stat-account'],
-    ['Token ID', deed.tokenId, 'deed-stat-token'],
+    ['Owner Account', ownerAccount, 'deed-stat-account', ownerAccount],
+    ['Token ID', deed.tokenId, 'deed-stat-token', deed.tokenId],
   ];
-  for (const [label, value, testid] of rows) {
+  for (const [label, value, testid, tooltip] of rows) {
     const cell = document.createElement('div');
     cell.className = 'ta-deed-panel__stat';
     const l = document.createElement('span');
@@ -303,6 +306,7 @@ export function renderDeedStatsGrid(statsGridEl: HTMLElement, deed: DeedView): v
     v.className = 'ta-deed-panel__stat-value';
     v.dataset.testid = testid;
     v.textContent = value;
+    if (tooltip) v.title = tooltip;
     cell.appendChild(l);
     cell.appendChild(v);
     statsGridEl.appendChild(cell);

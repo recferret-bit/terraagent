@@ -88,7 +88,7 @@ export function initPixelArt(opts?: InitPixelArtOptions) {
       tuneBtn.style.height = `${r.height}px`;
     }
 
-    initPixelDialog();
+    initPixelDialog({ production: prod });
 
     window.addEventListener('keydown', (e) => {
       if (e.repeat || (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;

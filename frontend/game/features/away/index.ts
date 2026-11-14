@@ -24,6 +24,12 @@ function optionsFrom(ctx: FeatureContext): AwayPanelOptions {
     accessToken: () => services.pilot?.view().accessToken || null,
     track: services.track,
     subscribeDirector: (fn) => services.store?.onDirectorStatus?.(fn) ?? (() => {}),
+    onOpenHq: ctx.flags.has('W08')
+      ? () => document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-hq"]')?.click()
+      : undefined,
+    onOpenDirector: ctx.flags.has('W16')
+      ? () => document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-director"]')?.click()
+      : undefined,
   };
 }
 

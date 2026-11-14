@@ -135,7 +135,7 @@ export class PlaygroundApp {
     this.lightsPanel.render();
     this.faunaPanel.render();
     this.syncStageLighting();
-    initPixelDialog();
+    initPixelDialog({ production: false });
     if (params.has('pixel')) setPixelArt(state.pixel, false);
     state.shadows = isShadowOn();
     onPixelArtChange((on) => { this.state.pixel = on; this.toolbar.syncToggles(); syncURL(this.state); });

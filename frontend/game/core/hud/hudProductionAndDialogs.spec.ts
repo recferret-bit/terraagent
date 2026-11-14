@@ -6,7 +6,10 @@ import { initPixelDialog, togglePixelDialog } from '@terra/render/ui/pixelDialog
 import { setProductionBuildOverride as setGameProductionBuildOverride } from '../buildEnv';
 import { devConsoleEnabled, mountDevConsole } from '../../dev/console';
 import combatTuningFeature from '../../features/combat-tuning';
+import awayFeature from '../../features/away';
 import deedFeature from '../../features/deed';
+import directorFeature from '../../features/director';
+import { GuildToastHost } from '../../features/guild-toast/toast';
 import identityFeature from '../../features/identity';
 import { NeighborHudStrip } from '../../features/maps/NeighborHudStrip';
 import notificationsFeature from '../../features/notifications';
@@ -68,7 +71,7 @@ describe('Production vs Local build gating & VITE_APP_ENV precedence', () => {
     expect(document.getElementById('pixel-switch')).toBeNull();
     expect(document.getElementById('shadow-switch')).toBeNull();
     expect(document.getElementById('pixel-tune')).toBeNull();
-    expect(document.getElementById('pixel-dialog')).toBeNull();
+    expect(document.getElementById('pixel-dlg')).toBeNull();
     disposeCrt();
 
     expect(devConsoleEnabled('?dev=1', true, 'development')).toBe(false);
@@ -292,5 +295,49 @@ describe('HUD neighbor blocks, notifications & shared autopilot state', () => {
     expect(getSharedAutopilotState()).toEqual({ aiEnabled: false, awayRaids: false, mode: 'director' });
     patchSharedAutopilotState({ aiEnabled: true, awayRaids: true, mode: 'rules_only' });
     expect(getSharedAutopilotState()).toEqual({ aiEnabled: true, awayRaids: true, mode: 'rules_only' });
+  });
+});
+
+describe('Host-gated tab pruning, Away/Director cross-links & repeated Guild visits', () => {
+  beforeEach(() => {
+    resetSharedAutopilotStateForTests();
+    resetNotificationsForTests();
+    document.body.replaceChildren();
+  });
+
+  afterEach(() => {
+    resetSharedAutopilotStateForTests();
+    resetNotificationsForTests();
+    document.body.replaceChildren();
+  });
+
+  it('prunes hidden host-gated tabs in local mode, cross-links Away <-> Director, and logs repeated Guild Trader departures', () => {
+    const localCtx: FeatureContext = {
+      flags: new Set(['W08', 'W09', 'W16']),
+      host: 'local',
+      services: { track: () => {} },
+    };
+    const root = new HudRoot(
+      document.body,
+      [deedFeature, awayFeature, directorFeature, stagesFeature],
+      localCtx,
+    );
+    // Deed sets el.hidden = true when W20 is absent; HudRoot must prune its empty spine tab
+    expect(document.querySelector('[data-testid="colony-tab-deed"]')).toBeNull();
+    expect(document.querySelector('[data-testid="away-open-hq"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="away-open-director"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="director-open-away"]')).not.toBeNull();
+    root.dispose();
+
+    const toastParent = document.createElement('div');
+    document.body.appendChild(toastParent);
+    const host = new GuildToastHost(toastParent, { enabled: () => true, openTrade: () => {} });
+    host.arrive({ shipId: 'ship_alpha', npcId: 'ares', name: 'Ares', departAt: 1000, offers: [] });
+    host.depart({ shipId: 'ship_alpha', npcId: 'ares' });
+    host.arrive({ shipId: 'ship_alpha', npcId: 'ares', name: 'Ares', departAt: 2000, offers: [] });
+    host.depart({ shipId: 'ship_alpha', npcId: 'ares' });
+    const departedEntries = getNotificationHistory().filter((n) => n.title === 'Guild Trader Departed');
+    expect(departedEntries).toHaveLength(2);
+    host.dispose();
   });
 });

@@ -12,6 +12,7 @@ const TAB_KEY = 'terraagent.visual.tab';
 let dlg: HTMLElement | null = null;
 let activeTab: VisualTabId = readInitialTab();
 let cleanups: Array<() => void> = [];
+let allowInProduction = false;
 
 function readInitialTab(): VisualTabId {
   try { return getVisualLabTab(localStorage.getItem(TAB_KEY)).id; } catch { return getVisualLabTab(null).id; }
@@ -126,9 +127,15 @@ export function selectVisualTab(tab: VisualTabId): void {
   syncDialog(dlg);
 }
 
-export function togglePixelDialog(force?: boolean): boolean {
-  if (isProductionBuild()) return false;
-  initPixelDialog();
+export interface InitPixelDialogOptions {
+  production?: boolean;
+}
+
+export function togglePixelDialog(force?: boolean, opts?: InitPixelDialogOptions): boolean {
+  if (opts?.production === false) allowInProduction = true;
+  const prod = opts?.production ?? (allowInProduction ? false : isProductionBuild());
+  if (prod) return false;
+  initPixelDialog({ production: false });
   if (!dlg) return false;
   const open = force ?? !dlg.classList.contains('open');
   dlg.classList.toggle('open', open);
@@ -137,8 +144,10 @@ export function togglePixelDialog(force?: boolean): boolean {
   return open;
 }
 
-export function initPixelDialog() {
-  if (isProductionBuild()) return;
+export function initPixelDialog(opts?: InitPixelDialogOptions) {
+  if (opts?.production === false) allowInProduction = true;
+  const prod = opts?.production ?? (allowInProduction ? false : isProductionBuild());
+  if (prod) return;
   if (typeof document === 'undefined' || document.getElementById('pixel-dlg')) return;
   document.head.insertAdjacentHTML('beforeend', `<style id="pixel-dlg-css">${VISUAL_LAB_CSS}</style>`);
   const box = dlg = document.createElement('div');
@@ -184,6 +193,7 @@ export function initPixelDialog() {
 export function disposePixelDialog() {
   cleanups.forEach((f) => f());
   cleanups = [];
+  allowInProduction = false;
   document.getElementById('pixel-dlg')?.remove();
   document.getElementById('pixel-dlg-css')?.remove();
   dlg = null;

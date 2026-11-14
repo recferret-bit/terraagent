@@ -1,4 +1,5 @@
 import { mockLabel, type MarketTokenKey } from '@terra/contracts';
+import { setGameInputBlocked } from '../../../core/input/gameInputBlock';
 import type { FeatureContext } from '../../../core/registry/types';
 import { makeDiv, makeSpan } from '../../shared/dom';
 
@@ -55,6 +56,7 @@ export class TradeHubModalBridge {
 
   sync(isModalOpen: boolean, overlay: HTMLElement | undefined): void {
     this.modalActive = isModalOpen;
+    setGameInputBlocked('trade-hub-modal', isModalOpen);
     if (isModalOpen && overlay) {
       if (this.backdropEl.parentElement !== overlay) {
         if (typeof overlay.insertBefore === 'function') {
@@ -115,6 +117,7 @@ export class TradeHubModalBridge {
   }
 
   dispose(): void {
+    setGameInputBlocked('trade-hub-modal', false);
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('keydown', this.onKeyDown);
     }
