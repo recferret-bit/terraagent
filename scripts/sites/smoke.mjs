@@ -41,6 +41,7 @@ function buildChecks(catalog, env) {
   const health = api.health ?? '/v1/healthz';
   return [
     ...catalog.hosts.map((row) => indexCheck(row, state)),
+    named(`pages ${design.host}/{foundations,storybook,motion}.html`, () => designSubpages(design, state)),
     named(`tokens ${design.host}/design/css/tokens.css`, () => tokensCss(design, state)),
     named(`health ${play.host}${health}`, () => statusIs(curl(play.host, health), 200, health)),
     named(`websocket ${play.host}/ws`, () => websocket(play.host)),
@@ -84,6 +85,15 @@ function tokensCss(design, state) {
   statusIs(res, 200, '/design/css/tokens.css');
   noteNosniff(state, res);
   if (!res.body.includes('--ta-void')) throw new Error('tokens.css missing --ta-void');
+}
+
+function designSubpages(design, state) {
+  for (const path of ['/index.html', '/foundations.html', '/storybook.html', '/motion.html']) {
+    const res = curl(design.host, path);
+    statusIs(res, 200, path);
+    noteNosniff(state, res);
+    if (!res.body.includes('TerraAgent —')) throw new Error(`${path} missing TerraAgent title`);
+  }
 }
 
 function websocket(host) {

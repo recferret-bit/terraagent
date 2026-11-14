@@ -29,3 +29,9 @@ test('local.hosts mentions every catalog host', () => {
     assert.match(text, new RegExp(`(^|\\s)${escaped(row.host)}(\\s|$)`, 'm'), row.host);
   }
 });
+
+test('design.conf resolves root-level design pages and /index.html under /design/', () => {
+  const text = readFileSync(resolve(nginxHosts, 'design.conf'), 'utf8');
+  assert.match(text, /location = \/index\.html[\s\S]*?try_files \/design\/index\.html =404;/);
+  assert.match(text, /try_files \$uri \$uri\/ \/design\$uri \/design\$uri\/ =404;/);
+});

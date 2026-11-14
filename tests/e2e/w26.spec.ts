@@ -75,6 +75,13 @@ test('@hack 3. design index contains Faction Plate and tokens.css contains --ta-
   const index = curlResolve('design.terraagent.fun', '/design/');
   expect(index.status).toBe(200);
   expect(index.body).toContain('Faction Plate');
+  const rootIndex = curlResolve('design.terraagent.fun', '/index.html');
+  expect(rootIndex.status).toBe(200);
+  expect(rootIndex.body).toContain('Faction Plate');
+  for (const path of ['/foundations.html', '/storybook.html', '/motion.html', '/design/foundations.html']) {
+    const res = curlResolve('design.terraagent.fun', path);
+    expect(res.status, path).toBe(200);
+  }
   const tokens = curlResolve('design.terraagent.fun', '/design/css/tokens.css');
   expect(tokens.status).toBe(200);
   expect(tokens.body).toContain('--ta-void');
