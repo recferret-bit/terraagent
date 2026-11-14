@@ -296,3 +296,54 @@ describe('W08-21 HQ Goals - Labels', () => {
     expect(formatGoalLabel('establish_colony')).toBe('Establish Colony');
   });
 });
+
+describe('GoalsPanel shipped raid_target colony options & self-raid / truce guards', () => {
+  it('excludes player own colony on non-zero seat and disables shielded/truced rivals from view', () => {
+    const { ctx, sendCommand } = makeMockContext('all');
+    ctx.services.colonyId = 1;
+    const container = document.createElement('div');
+    const mounted = mountGoalsPanel(container, ctx);
+
+    const kindSelect = container.querySelector<HTMLSelectElement>('[data-testid="goal-kind-select"]')!;
+    kindSelect.value = 'raid_target';
+    kindSelect.dispatchEvent(new Event('change'));
+
+    const targetSelect = () =>
+      container.querySelector<HTMLSelectElement>('[data-testid="goal-param-target-colony"]')!;
+    expect([...targetSelect().options].map((o) => o.value)).toEqual(['0', '2']);
+
+    mounted.update?.({
+      tick: 100,
+      colonies: [
+        { index: 0, id: 'col_0', name: 'Helios Syndicate', discovered: true, raidProtectedUntil: 400 },
+        { index: 1, id: 'col_1', name: 'Player Colony', goalLimit: 2, goals: [] },
+        { index: 2, id: 'col_2', name: 'Crimson Vanguard', discovered: true },
+      ],
+    });
+
+    const opts = [...targetSelect().options];
+    expect(opts).toHaveLength(2);
+    expect(opts[0]?.value).toBe('0');
+    expect(opts[0]?.disabled).toBe(true);
+    expect(opts[0]?.textContent).toContain('Protected');
+    expect(opts[1]?.value).toBe('2');
+    expect(opts[1]?.disabled).toBe(false);
+    expect(targetSelect().value).toBe('2');
+
+    // Attempt selecting disabled shielded target does not submit
+    targetSelect().value = '0';
+    container.querySelector<HTMLButtonElement>('[data-testid="goal-add-btn"]')!.click();
+    expect(sendCommand).not.toHaveBeenCalled();
+
+    // Valid target submits cleanly
+    targetSelect().value = '2';
+    container.querySelector<HTMLButtonElement>('[data-testid="goal-add-btn"]')!.click();
+    expect(sendCommand).toHaveBeenCalledWith('queueGoal', {
+      goal: 'raid_target',
+      params: { targetColonyId: 2 },
+      budgetBp: 5000,
+    });
+
+    mounted.dispose();
+  });
+});

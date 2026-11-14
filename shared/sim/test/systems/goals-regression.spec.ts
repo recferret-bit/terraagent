@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
   createState, createRegistryPipeline, ensureColonyLedger, ensureColonyRecord,
-  spawnHqUnit, startBuildingConstruction, hexIndex, DEPOSIT, step,
+  spawnHqUnit, startBuildingConstruction, hexIndex, DEPOSIT, TERRAIN, step,
   getColonyGoals, getColonyQueue, computeColonyResourceRatePerMin, setPlanetTime,
   getColonyHarvestWeights, queueColonyGoal, setColonyAiEnabled,
 } from '../../src';
@@ -94,5 +94,54 @@ describe('W08 owner goal regressions', () => {
     expect(getColonyGoals(state, 0)[0]).toMatchObject({ status: 'active' });
     expect(getColonyGoals(state, 0)[0].detail).toContain('night generators');
     expect(getColonyQueue(state, 0, 'construction').filter((e) => e.goalId)).toHaveLength(0);
+  });
+
+  it('explains full storage with Supply Depot guidance when depot row is compiled and W03 fallback when absent', async () => {
+    const { planGrowth } = await import('../../src/systems/goals/growth');
+    const { state, colony } = fixture();
+    colony.stock['metals.t1'] = colony.caps.metals;
+    // Block all candidate generator/depot/extractor sites by flooding terrain around the hub
+    state.grid.layers.terrain.fill(TERRAIN.deep);
+    const withDepot = planGrowth(state, 0, 'metals.t1', 10);
+    expect(withDepot.detail).toBe('Storage full: build a Supply Depot or spend resources to resume production.');
+
+    const noDepotData = { hash: 'no-depot', tables: { grid: {} } };
+    const withoutDepot = planGrowth(state, 0, 'metals.t1', 10, noDepotData);
+    expect(withoutDepot.detail).toBe('Storage full: spend resources to resume production; storage expansion needs W03.');
+  });
+});
+
+describe('shipped vs wave-gated goal breakdown details', () => {
+  it('emits player-facing manual/director detail for non-automated goals in shipped mode and wave message in gated mode', async () => {
+    const { stepColonyGoalsBreakdown, saveColonyGoals } = await import('../../src');
+    const { state } = fixture();
+    saveColonyGoals(
+      state,
+      0,
+      [
+        {
+          id: 'goal_0_manual',
+          goal: 'expand_territory',
+          status: 'active',
+          params: {},
+          progress: 0,
+          stepsCompleted: 0,
+          stepsTotal: 1,
+          budgetBp: 5000,
+          spent: {},
+          childTaskIds: [],
+          createdAtTick: 0,
+        },
+      ],
+      1,
+    );
+    stepColonyGoalsBreakdown(state, 0, { tick: 5, flags: parseWaves('all') } as never, true);
+    expect(getColonyGoals(state, 0)[0]?.detail).toBe(
+      'Execute this objective manually via Build, Trade, or AI Director, or cancel to continue.',
+    );
+    stepColonyGoalsBreakdown(state, 0, { tick: 10, flags: parseWaves('..08') } as never, true);
+    expect(getColonyGoals(state, 0)[0]?.detail).toBe(
+      'Unavailable: this goal requires its owning feature wave. Cancel to continue.',
+    );
   });
 });

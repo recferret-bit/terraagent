@@ -134,7 +134,7 @@ ${cards}
 </head>
 <body style="background:var(--ta-void);color:var(--ta-text);padding:32px;font-family:var(--ta-font-body)">
 <header style="margin-bottom:36px;border-bottom:1px solid var(--ta-seam);padding-bottom:18px">
-<p class="eyebrow" style="color:var(--ta-orange);font-family:var(--ta-font-mono);margin-bottom:8px">PROGRESSION ASSETS · W12-23</p>
+<p class="eyebrow" style="color:var(--ta-orange);font-family:var(--ta-font-mono);margin-bottom:8px">PROGRESSION ASSETS · 60 BADGES</p>
 <h1 style="font-family:var(--ta-font-display);margin:0 0 8px">TerraAgent Achievement Badges</h1>
 <p class="muted" style="margin:0">20 families × 3 tiers = 60 milestones (Earned SVG, Locked SVG, 1024×1024 PNG).</p>
 </header>

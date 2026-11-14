@@ -142,6 +142,93 @@ describe('/me NEAR.AI Bot Decision Manager settings section', () => {
   });
 });
 
+describe('/me NEAR.AI custom model ID selection & client-side validation', () => {
+  it('supports saving, loading, and validating custom NEAR AI Cloud model IDs', async () => {
+    const root = document.createElement('div');
+    const profile = {
+      ...makeW12ProfileFixture(),
+      aiSettings: {
+        hasApiKey: true,
+        apiKeyPreview: 'sk-c••••7777',
+        model: 'meta-llama/Llama-3.3-70B-Instruct',
+        availableModels: ['z-ai/glm-5.3-flash', 'deepseek/deepseek-v3.2'],
+      },
+    };
+    const achievements = makeW12AchievementsFixture();
+    let putCalls = 0;
+    let putBody: unknown = null;
+
+    const page = new MePage(root, {
+      search: '?as=w12',
+      fetch: async (url, init) => {
+        if (url.includes('/v1/me/ai-settings') && init?.method === 'PUT') {
+          putCalls += 1;
+          putBody = JSON.parse(String(init.body ?? '{}'));
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              hasApiKey: true,
+              apiKeyPreview: 'sk-c••••7777',
+              model: (putBody as { model: string }).model,
+              availableModels: ['z-ai/glm-5.3-flash', 'deepseek/deepseek-v3.2'],
+            }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => (url.includes('/profile') ? profile : achievements),
+        };
+      },
+    });
+    await page.load();
+
+    const modelSelect = root.querySelector('[data-testid="me-ai-model-select"]') as HTMLSelectElement;
+    const customInput = root.querySelector('[data-testid="me-ai-custom-model-input"]') as HTMLInputElement;
+    const saveBtn = root.querySelector('[data-testid="me-ai-save-btn"]') as HTMLButtonElement;
+    const statusNode = root.querySelector('[data-testid="me-ai-status"]') as HTMLElement;
+
+    // Pre-existing custom model loads cleanly into the custom input with explicit id/for label pairing
+    expect(modelSelect.id).toBe('me-ai-model-select');
+    expect(customInput.id).toBe('me-ai-custom-model-input');
+    expect(root.querySelector('label[for="me-ai-model-select"]')).not.toBeNull();
+    expect(root.querySelector('label[for="me-ai-custom-model-input"]')).not.toBeNull();
+    expect(root.querySelector('label[for="me-ai-key-input"]')).not.toBeNull();
+    for (const lbl of root.querySelectorAll('label')) {
+      expect(lbl.querySelectorAll('input, select, textarea, button').length).toBeLessThanOrEqual(1);
+    }
+    expect(statusNode.getAttribute('role')).toBe('status');
+    expect(modelSelect.value).toBe('__custom__');
+    expect(customInput.hidden).toBe(false);
+    expect(customInput.value).toBe('meta-llama/Llama-3.3-70B-Instruct');
+
+    // Empty or whitespace-containing custom model is rejected client-side without calling PUT
+    customInput.value = '   ';
+    saveBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(putCalls).toBe(0);
+    expect(customInput.getAttribute('aria-invalid')).toBe('true');
+    expect(statusNode.textContent).toContain('Enter a valid custom NEAR.AI model ID');
+
+    customInput.value = 'bad model id';
+    saveBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(putCalls).toBe(0);
+    expect(customInput.getAttribute('aria-invalid')).toBe('true');
+
+    // Valid custom model ID saves, clears aria-invalid, and stays selected
+    customInput.value = 'mistralai/Mistral-Large-2411';
+    saveBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(putCalls).toBe(1);
+    expect(customInput.hasAttribute('aria-invalid')).toBe(false);
+    expect(putBody).toEqual({ model: 'mistralai/Mistral-Large-2411' });
+    expect(modelSelect.value).toBe('__custom__');
+    expect(customInput.value).toBe('mistralai/Mistral-Large-2411');
+  });
+});
+
 describe('/me NEAR.AI settings — cookie refresh auth token & waves query forwarding', () => {
   it('reuses the refreshed access token and waves query when saving NEAR.AI settings without ?as= or localStorage', async () => {
     window.localStorage.clear();

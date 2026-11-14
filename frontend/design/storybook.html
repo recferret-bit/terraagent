@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TerraAgent — Storybook</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/storybook.css">
@@ -12,7 +13,7 @@
 <div class="sb">
 
   <aside class="sb-side">
-    <a class="sb-brand" href="index.html" style="text-decoration:none;color:inherit">
+    <a class="sb-brand" href="/design/index.html" style="text-decoration:none;color:inherit">
       <svg width="26" height="26" viewBox="0 0 34 34" aria-hidden="true"><path d="M17 2 L30 9.5 V24.5 L17 32 L4 24.5 V9.5 Z" fill="#111318" stroke="#FF6A13" stroke-width="2"/><path d="M10 15 H24 L22 20 H12 Z" fill="#1E5BFF"/></svg>
       <span><b>TERRA<em>AGENT</em> UI</b><span class="label" style="font-size:10px">STORYBOOK · V0.1</span></span>
     </a>
@@ -123,7 +124,7 @@
         <!-- INPUT & BADGES -->
         <div class="story" data-panel="input" hidden>
           <div class="forms">
-            <div class="field"><label class="field-label" for="in1">COLONY NAME</label><input id="in1" class="input" value="Vega Forge"><span class="field-hint">Shown to neighbours. Up to 32 characters.</span></div>
+            <div class="field"><label class="field-label" for="in1">COLONY NAME</label><input id="in1" class="input" value="Vega Forge"><span class="field-hint">Shown to neighbors. Up to 32 characters.</span></div>
             <div class="field is-error"><label class="field-label" for="in2">NEAR ACCOUNT</label><input id="in2" class="input" value="pilot.near" aria-invalid="true" aria-describedby="in2e"><span class="field-hint" id="in2e">That signature did not match. Sign the message again.</span></div>
             <div class="field"><label class="field-label" for="in3">INVITE CODE</label><div class="input-row"><input id="in3" class="input mono" placeholder="ORBIT-0000" style="letter-spacing:.1em"><button class="btn btn-primary btn-sm" style="min-height:46px">CLAIM</button></div></div>
             <div class="field"><label class="field-label" for="in4" style="color:var(--ta-dim)">PLANET SEED</label><input id="in4" class="input" value="Locked after landing" disabled></div>
@@ -200,5 +201,6 @@
 </template>
 
 <script type="module" src="js/storybook.js"></script>
+<script type="module" src="js/nav.js"></script>
 </body>
 </html>

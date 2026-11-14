@@ -97,9 +97,9 @@
   <text x="632" y="320" class="txt">bounty.terraagent::open_escrow</text>
   <text x="632" y="338" class="hdr-o">Escrow: 4.20 NEAR patrol defense</text>
   <rect x="622" y="370" width="244" height="86" fill="#160f0d" stroke="#f59e0b" stroke-width="1"/>
-  <text x="632" y="390" class="hdr-o">TRACK 06 SAFETY GUARDRAILS:</text>
-  <text x="632" y="408" class="txt">AW-13 human-only truce break +</text>
-  <text x="632" y="426" class="txt">D-18 staking gate (403) +</text>
+  <text x="632" y="390" class="hdr-o">AGENT SAFETY GUARDRAILS:</text>
+  <text x="632" y="408" class="txt">Human-only truce break &amp; bonds +</text>
+  <text x="632" y="426" class="txt">Staking gate (403 human-only) +</text>
   <text x="632" y="444" class="muted">Allow War &amp; Diplomacy opt-in</text>
 
   <!-- PHASE 4: T+22h DIPLOMACY + DAO SHIELD + WAKEUP -->

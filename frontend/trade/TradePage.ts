@@ -49,6 +49,7 @@ export class TradePage {
   private attempt = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly netBadge = h('span', { class: 'tr-badge tr-badge-info', 'data-testid': 'trade-near-mode' }, 'NEAR SETTLEMENT');
+  private readonly explorerLink = h('a', { href: '/dev/chain/' }, 'Chain explorer');
 
   constructor(private readonly root: HTMLElement, private readonly client: TradeClient, private readonly who: string, start: PageStart) {
     this.store = new Store(initialState(start.planetId, start.pair));
@@ -116,10 +117,14 @@ export class TradePage {
       const pane = id === 'market' ? this.p.market : id === 'pairs' ? this.p.pairs : this.p[id];
       return h('div', { role: 'tabpanel', id: `tabpanel-${id}`, 'aria-labelledby': `tab-${id}`, class: 'tr-pane', hidden: id !== this.tab ? true : null }, pane.root);
     });
+    const isPlayHost = typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun';
+    const hubHref = isPlayHost ? 'https://terraagent.fun/' : '/';
+    const pitchHref = isPlayHost ? 'https://pitchdeck.terraagent.fun/' : '/pitchdeck/';
+    const wpHref = isPlayHost ? 'https://whitepaper.terraagent.fun/' : '/whitepaper/';
     return h('div', { class: 'tr-page' },
       h('header', { class: 'tr-top' },
-        h('div', { class: 'tr-brand' }, h('a', { href: '/', class: 'tr-back' }, 'TERRA', h('b', {}, 'AGENT')), h('h1', { class: 'tr-title' }, 'TRADE'), this.netBadge),
-        h('nav', { class: 'tr-links', 'aria-label': 'Related pages' }, h('a', { href: '/play.html' }, 'Game'), h('a', { href: '/me.html' }, 'Profile'), h('a', { href: '/pitchdeck/' }, 'Pitch Deck'), h('a', { href: '/whitepaper/' }, 'Whitepaper'), h('a', { href: '/dev/chain/' }, 'Chain explorer')),
+        h('div', { class: 'tr-brand' }, h('a', { href: hubHref, class: 'tr-back' }, 'TERRA', h('b', {}, 'AGENT')), h('h1', { class: 'tr-title' }, 'TRADE'), this.netBadge),
+        h('nav', { class: 'tr-links', 'aria-label': 'Related pages' }, h('a', { href: '/play.html' }, 'Game'), h('a', { href: '/me.html' }, 'Profile'), h('a', { href: pitchHref }, 'Pitch Deck'), h('a', { href: wpHref }, 'Whitepaper'), this.explorerLink),
         this.pickers.root),
       this.onboardingStrip(),
       h('main', { class: 'tr-grid', id: 'tr-main' },
@@ -152,9 +157,17 @@ export class TradePage {
       if (intentsAdapter === 'mainnet') {
         this.netBadge.textContent = 'NEAR MAINNET · NEP-413 INTENTS';
         this.netBadge.className = 'tr-badge tr-badge-ok';
+        this.explorerLink.href = 'https://nearblocks.io';
+        this.explorerLink.target = '_blank';
+        this.explorerLink.rel = 'noopener noreferrer';
+        this.explorerLink.textContent = 'NearBlocks ↗';
       } else if (intentsAdapter === 'testnet' || intentsAdapter === 'devnet') {
         this.netBadge.textContent = 'NEAR TESTNET · NEP-413 INTENTS';
         this.netBadge.className = 'tr-badge tr-badge-ok';
+        this.explorerLink.href = 'https://testnet.nearblocks.io/address/res.terraagent.testnet';
+        this.explorerLink.target = '_blank';
+        this.explorerLink.rel = 'noopener noreferrer';
+        this.explorerLink.textContent = 'NearBlocks ↗';
       } else {
         this.netBadge.textContent = 'LOCAL SIM · NEP-413 INTENTS';
         this.netBadge.className = 'tr-badge tr-badge-warn';

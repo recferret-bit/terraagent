@@ -2,6 +2,12 @@
   "name": "terra-agent",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://terraagent.fun",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/recferret-bit/terraagent.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev/dev.mjs",
@@ -71,6 +77,8 @@
     "near:deploy-contracts": "node scripts/dev/deploy-testnet-contracts.mjs",
     "install:media": "npm --prefix social/media install",
     "media": "node social/media/make.mjs",
+    "media:screenshots": "node social/media/capture-screenshots.mjs",
+    "media:infographics": "node social/media/render-infographics.mjs",
     "media:check": "npm --prefix social/media run check"
   },
   "devDependencies": {

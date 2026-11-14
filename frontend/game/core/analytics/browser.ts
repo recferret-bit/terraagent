@@ -4,7 +4,12 @@ const DAY = 86_400;
 const cookieAttrs = (maxAge: number) =>
   `; Path=/; Max-Age=${maxAge}; SameSite=Lax${typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : ''}`;
 // Production shares the choice across subdomains (CLIENT §10.1); dev/localhost sets no Domain.
-const domainAttr = () => (typeof location !== 'undefined' && location.hostname.endsWith('terraagent.com') ? '; Domain=.terraagent.com' : '');
+const domainAttr = () => {
+  const host = typeof location !== 'undefined' ? location.hostname : '';
+  if (host === 'terraagent.fun' || host.endsWith('.terraagent.fun')) return '; Domain=.terraagent.fun';
+  if (host === 'terraagent.com' || host.endsWith('.terraagent.com')) return '; Domain=.terraagent.com';
+  return '';
+};
 
 export function getCookie(name: string): string | undefined {
   if (typeof document === 'undefined' || typeof document.cookie !== 'string') return undefined;

@@ -87,14 +87,14 @@ export function renderWhyNearHtml(): string {
       <span class="eyebrow">SKIN-IN-THE-GAME DIPLOMACY · BOUNTY.TERRAAGENT.TESTNET</span>
       <p><b>Bonded Peace Treaties &amp; 6-Hour War Escrows:</b> Lock matching bonds on bilateral truces (breaking early slashes <b>90% to the betrayed ally, 10% to Protocol</b>). Declaring a Bonded War unlocks <b>2× Raider Siphon (80 cap)</b> for 6 hours—destroy ≥1 enemy structure or siphon ≥200 resources for a 100% refund, or cancel/stall and forfeit <b>90% to the Defender + 10% to Protocol</b>.</p>
     </div>
-    <a class="btn btn-ghost btn-sm" href="/play.html?scenario=w18">TEST IN DIPLOMACY HUD →</a>
+    <a class="btn btn-ghost btn-sm" href="/play.html?host=local&amp;scenario=w18">TEST IN DIPLOMACY HUD →</a>
   </div>
   <div class="econ-why-near">
     <p class="eyebrow">WHY NEAR BLOCKCHAIN (AND WHY POSTGRES ALONE CANNOT DO THIS)</p>
     <div class="econ-why-grid">
       <div class="econ-why-card plate-sm"><span>01 · SUB-ACCOUNTS &amp; KEYS</span><b>Sandboxed AI Wallets</b><p>Colonies &amp; NPCs hold real sub-accounts with scoped function-call keys, ACID caps, and 1-click kill switches—AI can never touch human staked NEAR (HTTP 403).</p></div>
       <div class="econ-why-card plate-sm"><span>02 · NEP-413 + 1CLICK</span><b>Atomic 4-Way Clearing</b><p>Every trade settles Seller principal, Stall Owner fee, Planet DAO tax (20%), and Protocol fee (80%) in one counter-signed zero-sum <code>token_diff</code> batch.</p></div>
-      <div class="econ-why-card plate-sm"><span>03 · NEAR.AI CLOUD TEE</span><b>Verifiable Decisions</b><p>Batched <code>z-ai/glm-5.3-flash</code> directives run inside hardware TEEs verified via <code>/v1/signature/{chat_id}</code> ECDSA proofs—fair NPCs and auditable autopilot.</p></div>
+      <div class="econ-why-card plate-sm"><span>03 · NEAR.AI CLOUD TEE</span><b>Verifiable Decisions</b><p>Batched <code>z-ai/glm-5.3-flash</code> directives run inside NEAR AI Cloud TEEs verified via <code>cloud-api.near.ai/v1/signature/{chat_id}</code> ECDSA proofs—fair NPCs and auditable autopilot.</p></div>
       <div class="econ-why-card plate-sm"><span>04 · TRUSTLESS ESCROW</span><b>Credible Peace &amp; War</b><p>Smart-contract bonds lock 2h–72h peace treaties and 6h war objectives with 100% honest refunds or automatic 90% / 10% slashing.</p></div>
       <div class="econ-why-card plate-sm"><span>05 · NEP-366 + FASTAUTH</span><b>Zero-Popup Web2 UX</b><p>Drop in as a guest, export NEP-245 cargo gaslessly via our relayer, and rotate keys to 100% self-custody only when you choose to withdraw.</p></div>
     </div>

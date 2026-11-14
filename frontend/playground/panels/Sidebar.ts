@@ -145,10 +145,14 @@ export class Sidebar {
 }
 
 function sideShell(count: number): string {
+  const hubHref =
+    typeof location !== 'undefined' && location.hostname === 'playground.terraagent.fun'
+      ? 'https://terraagent.fun/'
+      : '/';
   const tabs = SIDE_TABS.map((id) =>
     `<button type="button" class="pg-btn" data-side-tab="${id}" role="tab" aria-selected="false">${TAB_LABEL[id]}</button>`,
   ).join('');
-  return `<div class="brand"><div><a class="wm" href="/" title="Return to hub">TERRA<b>AGENT</b></a><small>3D PLAYGROUND · ${count} ARCHETYPES</small></div></div>
+  return `<div class="brand"><div><a class="wm" href="${hubHref}" title="Return to hub">TERRA<b>AGENT</b></a><small>3D PLAYGROUND · ${count} ARCHETYPES</small></div></div>
   <div class="side-tabs" role="tablist">${tabs}</div>
   <div class="side-pane" data-side-pane="hive" hidden></div>
   <div class="side-pane" data-side-pane="march" hidden></div>

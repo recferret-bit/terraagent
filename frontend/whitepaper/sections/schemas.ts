@@ -86,7 +86,7 @@ export function createCustodyLifecycleSchema(): HTMLElement {
   );
   const trace = makeEl('ol', 'wp-example-list');
   const items = [
-    'Command Hub reaches 70% Living terrain (`D-34`) and smelts `400` Titanium (`metals.t3`) inside `@terra/sim`.',
+    'Command Hub reaches 70% Living terrain and smelts `400` Titanium (`metals.t3`) inside `@terra/sim`.',
     'Export click creates an ACID outbox job that calls `mt_mint` (`400` units of `metals.t3`, 18 dec) on `res.terraagent.testnet` signed by `minter.terraagent.testnet` (while `relayer.terraagent.testnet` sponsors gasless `NEP-366` player actions).',
     'Seller lists `400` `metals.t3` on `/trade.html` for `120 USDC`; a `NEP-413` `token_diff` fill delivers `120 USDC` (100% principal) straight to seller.',
     'Whenever desired, `claimAccount` executes atomic `[AddKey, DeleteKey]` rotation so only the player hardware wallet controls the account.',
@@ -294,7 +294,7 @@ export function createReceiptExamplesGrid(): HTMLElement {
         ['Betrayed Ally / War Defender', '+18.00 NEAR (90%)'],
         ['Protocol Arbitration Fee', '+2.00 NEAR (10%)'],
         ['Honored Bond Return', '20.00 NEAR (100% Refund)'],
-        ['AI Guardrail Rule (AW-13)', 'Blocked from Canceling'],
+        ['Server AI Guardrail', 'Blocked from Canceling'],
       ],
     },
     {
@@ -341,13 +341,13 @@ export function createAiPipelineSchema(): HTMLElement {
   const head = makeEl('div', 'wp-schema-head');
   head.append(
     makeEl('span', 'wp-schema-kicker', 'SCHEMA 03 // ATTESTED NEAR.AI DECISION & GUARDRAIL PIPELINE'),
-    makeEl('span', 'badge badge-ai', 'INTEL TDX + NVIDIA TEE'),
+    makeEl('span', 'badge badge-ai', 'NEAR AI CLOUD TEE'),
   );
 
   const stages = [
     { num: '01 · DIGEST', title: '180s Colony Snapshot', body: 'Summarizes net grid E/s, stock levels, active treaties, and resting `/trade.html` quotes.' },
-    { num: '02 · TEE INFERENCE', title: 'ECDSA Attested Turn', body: '`z-ai/glm-5.3-flash` or BYOK key signs decisions via `/v1/signature/{chat_id}`.' },
-    { num: '03 · HARD GATES', title: '4 Server Assertions', body: 'Enforces `403 AI_STAKING_FORBIDDEN`, `AW-10`, `AW-13`, ACID token caps, and `intentRevision`.' },
+    { num: '02 · TEE INFERENCE', title: 'ECDSA Attested Turn', body: '`z-ai/glm-5.3-flash` or BYOK model runs on `cloud-api.near.ai`, verified via NEAR AI Cloud `/v1/signature/{chat_id}` (`SHA-256` `model:request:response` ECDSA).' },
+    { num: '03 · HARD GATES', title: '4 Server Assertions', body: 'Enforces `403 AI_STAKING_FORBIDDEN`, no demolish, human-only truce/war bonds, ACID token caps, and `intentRevision`.' },
     { num: '04 · ENQUEUE', title: '@terra/sim Orders', body: 'Only passing actions touch the hex queue; human clicks immediately abort stale AI intents.' },
   ];
 
@@ -367,7 +367,7 @@ export function createAiPipelineSchema(): HTMLElement {
   for (const txt of [
     'Built 2 Capacitors before orbital dusk to keep Command Hub online (`+14 E/s` margin).',
     'Sold 150 surplus Water at `1.08×` 24h VWAP (`16.2 / 25.0 USDC` daily bot cap used).',
-    'Stored TEE proof at `/v1/signature/cht_8f3a91` for owner audit on return.',
+    'Verified NEAR AI Cloud `cloud-api.near.ai/v1/signature/cht_8f3a91` ECDSA attestation (`SHA-256` `model:request:response`) and persisted it in TerraAgent’s `ai` TEE signature log.',
   ]) allowList.appendChild(makeFormattedEl('li', undefined, txt));
   allowed.appendChild(allowList);
 
@@ -376,8 +376,8 @@ export function createAiPipelineSchema(): HTMLElement {
   const blockList = makeEl('ul', 'wp-example-list');
   for (const txt of [
     '`staking.stake(50 NEAR)` → Rejected `403 AI_STAKING_FORBIDDEN` (humans only).',
-    '`diplomacy.cancelTruce("kestrel-9")` → Blocked by `AW-13` (zero bond forfeiture).',
-    '`building.dismantle("commandHub")` → Blocked by `AW-10` (buildings protected).',
+    '`diplomacy.cancelTruce("kestrel-9")` → Blocked on-server (zero bond forfeiture).',
+    '`building.dismantle("commandHub")` → Blocked on-server (buildings protected).',
   ]) blockList.appendChild(makeFormattedEl('li', undefined, txt));
   blocked.appendChild(blockList);
 

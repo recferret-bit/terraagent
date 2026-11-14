@@ -29,7 +29,7 @@
   <rect width="1200" height="480" class="bg"/>
   <polygon points="16,14 1172,14 1184,26 1184,50 16,50" fill="#0b1222" stroke="#22d3ee" stroke-width="1.5"/>
   <rect x="24" y="22" width="10" height="20" fill="#22d3ee"/>
-  <text x="44" y="36" class="title">REAL-TIME PLANET GUILD MARKET (VWAP) &lt;-&gt; NEAR INTENTS (NEP-413) + TRACK 06 GUARDRAILS</text>
+  <text x="44" y="36" class="title">REAL-TIME PLANET GUILD MARKET (VWAP) &lt;-&gt; NEAR INTENTS (NEP-413) + AGENT SAFETY GUARDRAILS</text>
 
   <!-- LEFT: LIVE PLANET ORDERBOOK & VWAP -->
   <polygon points="24,68 380,68 394,82 394,454 24,454" class="panel-o"/>
@@ -62,7 +62,7 @@
   <g transform="translate(42,346)">
     <rect width="332" height="34" class="row"/>
     <text x="10" y="21" class="txt">metals.t2 / min.t3</text>
-    <text x="135" y="21" class="hdr-r">RARE D-34 TIER ASSETS</text>
+    <text x="135" y="21" class="hdr-r">TERRAFORM-GATED T2/T3</text>
   </g>
   <rect x="42" y="392" width="332" height="46" fill="#0d172a" stroke="#334155"/>
   <text x="54" y="411" class="hdr-c">Bot + Human + 25-Agent Swarm Matching</text>
@@ -94,10 +94,10 @@
   <text x="464" y="408" class="hdr-c">Replay &amp; Expiry Guards Enforced</text>
   <text x="464" y="426" class="muted">NEAR_INTENT_NONCE_REUSED / EXPIRED / DIFF_NOT_ZERO</text>
 
-  <!-- RIGHT: TRACK 06 AGENT WALLET POLICY + ON-CHAIN SETTLEMENT -->
+  <!-- RIGHT: SCOPED AGENT WALLET POLICY + ON-CHAIN SETTLEMENT -->
   <polygon points="830,68 1176,68 1176,454 816,454 816,82" class="panel-g"/>
   <text x="836" y="92" class="hdr-g">3. AGENT WALLET + ON-CHAIN CLEAR</text>
-  <text x="836" y="108" class="muted">Track 06 Limited Keys (AW-11 / AW-13 / D-18)</text>
+  <text x="836" y="108" class="muted">Scoped Session Keys + ACID Spend Allowances</text>
 
   <rect x="836" y="128" width="320" height="106" fill="#091322" stroke="#334155"/>
   <text x="850" y="150" class="hdr-o">ED25519 LIMITED SESSION POLICY</text>
@@ -107,9 +107,9 @@
   <text x="850" y="222" class="hdr-g">- Instant 1-click revoke() supported</text>
 
   <rect x="836" y="248" width="320" height="92" fill="#1b110d" stroke="#ff5a1f" stroke-width="1.3"/>
-  <text x="850" y="268" class="hdr-o">AW-13 &amp; D-18 SAFETY GUARDRAILS</text>
-  <text x="850" y="288" class="txt">- AW-13: Human-only truce break &amp; NEAR bonds</text>
-  <text x="850" y="306" class="txt">- D-18: Staking 403 AI_STAKING_FORBIDDEN</text>
+  <text x="850" y="268" class="hdr-o">CODE-ENFORCED SAFETY GUARDRAILS</text>
+  <text x="850" y="288" class="txt">- Human-only truce break &amp; NEAR bonds</text>
+  <text x="850" y="306" class="txt">- Staking 403 AI_STAKING_FORBIDDEN</text>
   <text x="850" y="324" class="muted">NEAR_ALLOWANCE_EXHAUSTED if cap hit</text>
 
   <rect x="836" y="354" width="320" height="84" fill="#071a16" stroke="#22c55e" stroke-width="1.4"/>

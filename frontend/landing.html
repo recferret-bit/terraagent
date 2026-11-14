@@ -249,7 +249,7 @@ It keeps building.</h1>
           <div class="director-copy">
             <p class="eyebrow">05 · THE AI DIRECTOR</p>
             <h2 class="h1" style="margin-top:12px">Rules for routine.<br><span class="sub-blue">An AI for emergencies.</span></h2>
-            <p>Most decisions come from a deterministic rule engine running every 5 Hz tick that already knows your planet, hazards and resource map. The NEAR.AI Director (<code>z-ai/glm-5.3-flash</code> TEE) runs in a batched planet sweep every 3 minutes (180 s, packing up to 5 colonies into 1 RPC with a 120 s state-digest cooldown so burst re-triggers on unchanged colonies spend zero extra LLM tokens) or on critical events: a severe shortage, a raid, a new neighbour, or the rocket race.</p>
+            <p>Most decisions come from a deterministic rule engine running every 5 Hz tick that already knows your planet, hazards and resource map. The NEAR.AI Director (<code>z-ai/glm-5.3-flash</code> TEE) runs in a batched planet sweep every 3 minutes (180 s, packing up to 5 colonies into 1 RPC with a 120 s state-digest cooldown so burst re-triggers on unchanged colonies spend zero extra LLM tokens) or on critical events: a severe shortage, a raid, a new neighbor, or the rocket race.</p>
             <div class="split">
               <div class="split-row"><span>RULE ENGINE · EVERY TICK</span><span class="c-orange-hi">90–95 %</span></div>
               <div class="split-bar"><span class="rules"></span><span class="ai"></span></div>
@@ -262,7 +262,7 @@ It keeps building.</h1>
               <div class="terminal-body">
                 <div style="color:var(--ta-dim)">▸ trigger: water_critical · severity: critical</div>
                 <div class="gap">Planet: Desert | Water: critical | Solar: high</div>
-                <div>Neighbour offer: water for metals</div>
+                <div>Neighbor offer: water for metals</div>
                 <div>Player priority: expand</div>
                 <div>Current: 3 miners, 1 solar, low defense</div>
                 <div class="gap c-blue">◆ directive</div>
@@ -328,20 +328,20 @@ It keeps building.</h1>
             <div class="leg-card plate">
               <header class="leg-h"><span class="leg-id">LEG 1</span><span class="badge badge-ok">LIVE ON TESTNET</span></header>
               <h3 class="h3">Full-stack RTS, 6 Rust contracts &amp; NEAR.AI TEE</h3>
-              <p class="leg-when">Oct 29 – Nov 14, 2026 · Waves W00–W26 landed on main</p>
+              <p class="leg-when">Oct 29 – Nov 14, 2026 · 27 engineering waves shipped on main</p>
               <div class="leg-meter" role="img" aria-label="11 of 11 items done"><i style="width:100%"></i></div>
               <ul class="tasks">
                 <li class="t-done">Authoritative NestJS + Postgres + <code>@terra/sim</code> server over binary WebSockets</li>
                 <li class="t-done">Three live biomes (Desert, Ocean Forest, Temperate), stages S0–S10, insect fauna, combat &amp; cultivation</li>
-                <li class="t-done"><b>F5</b> Cold-root <code>pilots.terraagent.testnet</code> factory, FastAuth PKCE/NEP-413 login, NEP-366 gasless relayer &amp; atomic non-custodial claim</li>
-                <li class="t-done"><b>F1</b> Orbital Port: 10 NEP-245 cargo tokens minted/burned on <code>res.terraagent.testnet</code></li>
-                <li class="t-done"><b>F2</b> 24/7 CLOB &amp; Trade Hub stalls settled via NEP-413 <code>token_diff</code> Intents + live 1Click quotes</li>
-                <li class="t-done"><b>F3</b> Orbital Guild: scheduled NPC merchants (<code>Kestrel</code>, <code>Vanguard</code>) with 24h VWAP pricing</li>
-                <li class="t-done"><b>F4</b> Batched NEAR.AI Cloud TEE Director (<code>z-ai/glm-5.3-flash</code>), BYOK <code>/me</code> vault &amp; scoped <code>ta_bot_...</code> keys</li>
+                <li class="t-done"><b>Identity &amp; Gasless UX:</b> Cold-root <code>pilots.terraagent.testnet</code> factory, FastAuth PKCE/NEP-413 login, NEP-366 gasless relayer &amp; atomic non-custodial claim</li>
+                <li class="t-done"><b>NEP-245 Cargo:</b> Orbital Port minting/burning 10 resource commodities on <code>res.terraagent.testnet</code></li>
+                <li class="t-done"><b>NEP-413 Intents &amp; 1Click:</b> 24/7 CLOB &amp; Trade Hub stalls settled via zero-sum <code>token_diff</code> Intents + live 1Click quotes</li>
+                <li class="t-done"><b>Orbital Guild AMM:</b> Scheduled NPC merchants (<code>Kestrel</code>, <code>Vanguard</code>) with 24h organic VWAP pricing</li>
+                <li class="t-done"><b>NEAR.AI TEE &amp; Bot Keys:</b> Batched NEAR.AI Cloud TEE Director (<code>z-ai/glm-5.3-flash</code>), BYOK <code>/me</code> vault &amp; scoped <code>ta_bot_...</code> keys</li>
+                <li class="t-done"><b>NEP-171 Deeds &amp; Staking:</b> Dynamic soulbound Colony Deed NFTs (<code>deed.terraagent.testnet</code>) &amp; Day-1 Lossless Staking (<code>staking.terraagent.testnet</code>)</li>
+                <li class="t-done"><b>Planet Council DAO:</b> Planetary governance treasuries (<code>dao.terraagent.testnet</code>) with &gt;50% quorum proposals</li>
+                <li class="t-done"><b>Diplomacy &amp; War Escrows:</b> Mercenary bounties, Bonded Peace Treaties &amp; 6h War Escrows (<code>bounty.terraagent.testnet</code>)</li>
                 <li class="t-done">Public MIT repo, live HTTPS stack (<code>terraagent.fun</code>), 7-day 25-agent swarm &amp; contractor simulator, and whitepaper</li>
-                <li class="t-done"><b>F6</b> Dynamic NEP-171 Colony Deed NFTs (<code>deed.terraagent.testnet</code>) &amp; Day-1 Lossless Staking (<code>staking.terraagent.testnet</code>)</li>
-                <li class="t-done"><b>F7</b> Planet Council Treasury DAOs (<code>dao.terraagent.testnet</code>) with &gt;50% quorum proposals</li>
-                <li class="t-done"><b>F8</b> Mercenary bounties, Bonded Peace Treaties &amp; 6h War Escrows (<code>bounty.terraagent.testnet</code>)</li>
               </ul>
             </div>
           </article>
@@ -382,7 +382,7 @@ It keeps building.</h1>
               <div class="hazard" aria-hidden="true" style="height:8px"></div>
               <header class="leg-h"><span class="leg-id">LEFT BEHIND</span><span class="badge badge-alert">CUT</span></header>
               <h3 class="h3">Not in v1, on purpose</h3>
-              <p class="leg-when">Decisions D-22, D-19, D-25 · each one keeps the core economy fair and focused</p>
+              <p class="leg-when">Deliberate scope boundaries · keeping the core economy fair and focused</p>
               <ul class="tasks">
                 <li class="t-cut">Combat Pay-to-Win or inflationary reward token printing</li>
                 <li class="t-cut">Spectators</li>

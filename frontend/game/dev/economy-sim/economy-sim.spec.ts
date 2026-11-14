@@ -55,8 +55,8 @@ describe('/dev/economy-sim UI renderers', () => {
   it('renders TEE attestation banner, colony cards, 7-day price table, and Guild reason tooltips', () => {
     const banner = renderAiBanner(SAMPLE);
     expect(banner.textContent).toContain('NEAR AI TEE VERIFIED');
-    expect(banner.textContent).toContain('Track 06 Safety Rails');
-    expect(banner.textContent).toContain('AW-13 Oathbreaker Blocked: 1');
+    expect(banner.textContent).toContain('Agent Security Rails');
+    expect(banner.textContent).toContain('Truce Betrayal Blocked: 1');
 
     const cards = renderColonyCards(SAMPLE);
     expect(cards.textContent).toContain('Verdant Collective');

@@ -1,10 +1,17 @@
 import type { GoalKind, GoalParams, QueueGoalArgs } from '@terra/contracts';
 import { GOAL_CATALOG, isGoalExecutable } from '@terra/sim';
 
+export interface GoalColonyOption {
+  value: string | number;
+  label: string;
+  disabled?: boolean;
+}
+
 export interface GoalFormOptions {
   onAdd: (args: QueueGoalArgs) => void;
   disabled?: boolean;
-  colonyOptions?: ReadonlyArray<{ value: string | number; label: string }>;
+  colonyOptions?: ReadonlyArray<GoalColonyOption>;
+  flags?: ReadonlySet<string>;
 }
 
 export class GoalForm {
@@ -15,11 +22,14 @@ export class GoalForm {
   private readonly budgetVal: HTMLElement;
   readonly addBtn: HTMLButtonElement;
   private readonly onAdd: (args: QueueGoalArgs) => void;
-  private readonly colonyOptions?: ReadonlyArray<{ value: string | number; label: string }>;
+  private colonyOptions?: ReadonlyArray<GoalColonyOption>;
+  private colonyOptionsSig = '';
+  private readonly flags?: ReadonlySet<string>;
 
   constructor(opts: GoalFormOptions) {
     this.onAdd = opts.onAdd;
     this.colonyOptions = opts.colonyOptions;
+    this.flags = opts.flags;
     this.el = document.createElement('form');
     this.el.className = 'ta-goal-form';
     this.el.onsubmit = (e) => {
@@ -41,9 +51,11 @@ export class GoalForm {
     for (const [key, entry] of Object.entries(GOAL_CATALOG)) {
       const opt = document.createElement('option');
       opt.value = key;
-      const executable = isGoalExecutable(entry.id) || entry.id === 'raid_target';
+      const executable =
+        isGoalExecutable(entry.id, this.flags) ||
+        (entry.id === 'raid_target' && (!this.flags || this.flags.has('W18')));
       opt.disabled = !executable;
-      opt.textContent = entry.label + (!executable ? ' — coming in a future wave' : '');
+      opt.textContent = entry.label + (!executable ? ' — manual / AI Director' : '');
       this.kindSelect.appendChild(opt);
     }
     this.kindSelect.value = 'establish_colony';
@@ -97,6 +109,24 @@ export class GoalForm {
     this.addBtn.disabled = disabled;
   }
 
+  setColonyOptions(options?: ReadonlyArray<GoalColonyOption>): void {
+    const sig = options
+      ? options.map((o) => `${o.value}:${o.label}:${Boolean(o.disabled)}`).join('|')
+      : '__default__';
+    if (sig === this.colonyOptionsSig) return;
+    this.colonyOptionsSig = sig;
+    this.colonyOptions = options;
+    if (this.kindSelect.value === 'raid_target') {
+      const prev = this.paramsBox.querySelector<HTMLSelectElement>('[data-testid="goal-param-target-colony"]')?.value;
+      this.renderParams();
+      const nextSel = this.paramsBox.querySelector<HTMLSelectElement>('[data-testid="goal-param-target-colony"]');
+      if (nextSel && prev) {
+        const match = [...nextSel.options].find((o) => o.value === prev && !o.disabled);
+        if (match) nextSel.value = prev;
+      }
+    }
+  }
+
   renderParams(): void {
     this.paramsBox.innerHTML = '';
     const kind = this.kindSelect.value as GoalKind;
@@ -127,11 +157,15 @@ export class GoalForm {
       { value: 'bio.water', label: 'Water' },
       { value: 'bio.biomass', label: 'Biomass' },
     ];
+    const waterSuffix =
+      !this.flags || this.flags.has('W03')
+        ? ' — place shoreline Water Pump'
+        : ' — requires W03 extraction';
     for (const r of resources) {
       const opt = document.createElement('option');
       opt.value = r.value;
       opt.disabled = r.value === 'bio.water';
-      opt.textContent = r.label + (opt.disabled ? ' — requires W03 extraction' : '');
+      opt.textContent = r.label + (opt.disabled ? waterSuffix : '');
       resSelect.appendChild(opt);
     }
 
@@ -188,19 +222,31 @@ export class GoalForm {
     targetSelect.className = 'ta-goal-form__select';
     targetSelect.setAttribute('data-testid', 'goal-param-target-colony');
 
-    const options =
-      this.colonyOptions && this.colonyOptions.length > 0
+    const options: ReadonlyArray<GoalColonyOption> =
+      this.colonyOptions !== undefined
         ? this.colonyOptions
         : [
             { value: '1', label: 'Colony 2' },
             { value: '2', label: 'Colony 3' },
           ];
 
-    for (const t of options) {
+    if (options.length === 0) {
       const opt = document.createElement('option');
-      opt.value = String(t.value);
-      opt.textContent = t.label;
+      opt.value = '';
+      opt.disabled = true;
+      opt.textContent = 'No rival colonies available';
       targetSelect.appendChild(opt);
+    } else {
+      let selectedValue: string | null = null;
+      for (const t of options) {
+        const opt = document.createElement('option');
+        opt.value = String(t.value);
+        opt.disabled = Boolean(t.disabled);
+        opt.textContent = t.label;
+        if (selectedValue === null && !opt.disabled) selectedValue = opt.value;
+        targetSelect.appendChild(opt);
+      }
+      if (selectedValue !== null) targetSelect.value = selectedValue;
     }
 
     targetRow.append(targetLabel, targetSelect);
@@ -210,7 +256,10 @@ export class GoalForm {
   submit(): void {
     if (this.addBtn.disabled) return;
     const kind = this.kindSelect.value as GoalKind;
-    if (!isGoalExecutable(kind) && kind !== 'raid_target') return;
+    const canExecute =
+      isGoalExecutable(kind, this.flags) ||
+      (kind === 'raid_target' && (!this.flags || this.flags.has('W18')));
+    if (!canExecute) return;
     const budgetPct = Number(this.budgetInput.value);
     const budgetBp = Math.round(budgetPct * 100);
 
@@ -227,12 +276,12 @@ export class GoalForm {
       const colEl = this.paramsBox.querySelector<HTMLSelectElement | HTMLInputElement>(
         '[data-testid="goal-param-target-colony"]',
       );
-      if (colEl && colEl.value !== '') {
-        const raw = colEl.value.trim();
-        const num = Number(raw);
-        (params as any).targetColonyId =
-          Number.isInteger(num) && !Number.isNaN(num) && String(num) === raw ? num : raw;
-      }
+      if (!colEl || colEl.value === '') return;
+      if (colEl instanceof HTMLSelectElement && colEl.selectedOptions[0]?.disabled) return;
+      const raw = colEl.value.trim();
+      const num = Number(raw);
+      (params as any).targetColonyId =
+        Number.isInteger(num) && !Number.isNaN(num) && String(num) === raw ? num : raw;
     }
 
     this.onAdd({

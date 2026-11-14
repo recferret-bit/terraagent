@@ -14,6 +14,13 @@
   gap: 16px;
 }
 
+.es-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .es-title {
   margin: 8px 0 0;
   font-family: var(--ta-font-display);

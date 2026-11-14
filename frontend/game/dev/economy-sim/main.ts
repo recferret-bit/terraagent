@@ -37,17 +37,32 @@ function buildEconomySimHeader(): HTMLElement {
   const left = document.createElement('div');
   const eye = document.createElement('p');
   eye.className = 'eyebrow';
-  eye.textContent = 'TRACK 05 · 06 · 07 · 09 JUDGE HARNESS';
+  eye.textContent = 'GAMES · AGENTS · SWARMS · SECURITY JUDGE HARNESS';
   const h1 = document.createElement('h1');
   h1.className = 'es-title';
-  h1.innerHTML = '7-DAY MULTI-AGENT <b>ECONOMY SIM</b>';
+  const bold = document.createElement('b');
+  bold.textContent = 'ECONOMY SIM';
+  h1.append('7-DAY MULTI-AGENT ', bold);
   left.append(eye, h1);
 
-  const back = document.createElement('a');
-  back.className = 'btn btn-ghost btn-sm';
-  back.href = '/';
-  back.textContent = '← HUB';
-  head.append(left, back);
+  const isPlayHost = location.hostname === 'play.terraagent.fun';
+  const nav = document.createElement('nav');
+  nav.className = 'es-nav';
+  nav.setAttribute('aria-label', 'Primary surfaces');
+  const links: readonly [string, string, boolean][] = [
+    ['LANDING', isPlayHost ? 'https://terraagent.fun/' : '/landing.html', false],
+    ['EXCHANGE', '/trade.html', false],
+    ['WHITEPAPER', isPlayHost ? 'https://whitepaper.terraagent.fun/' : '/whitepaper/', false],
+    ['PLAY LIVE →', '/play.html?planet=dune&skip=1', true],
+  ];
+  for (const [label, href, primary] of links) {
+    const a = document.createElement('a');
+    a.className = primary ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+    a.href = href;
+    a.textContent = label;
+    nav.appendChild(a);
+  }
+  head.append(left, nav);
   return head;
 }
 

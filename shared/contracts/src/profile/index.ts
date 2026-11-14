@@ -143,7 +143,14 @@ export type PlayerAiSettings = z.infer<typeof PlayerAiSettingsSchema>;
 
 export const UpdatePlayerAiSettingsSchema = z.strictObject({
   apiKey: z.string().max(256).optional().nullable(),
-  model: z.string().min(1).max(128),
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .max(128)
+    .refine((v) => v !== '__custom__' && /^[!-~]+$/.test(v), {
+      message: 'Invalid NEAR.AI model identifier',
+    }),
 });
 export type UpdatePlayerAiSettings = z.infer<typeof UpdatePlayerAiSettingsSchema>;
 

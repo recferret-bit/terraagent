@@ -88,8 +88,12 @@ function buildMenuInnerHtml(
     sectorIntent,
     queuePaused,
   );
+  const landingHref =
+    typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
+      ? 'https://terraagent.fun/'
+      : '/landing.html';
   return `
-      <div class="menu-top"><div><h1 class="title">TERRA<b>AGENT</b></h1><div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div></div><a class="btn btn-ghost btn-sm" href="/landing.html">◂ TERRAAGENT.COM</a></div>
+      <div class="menu-top"><div><h1 class="title">TERRA<b>AGENT</b></h1><div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div></div><a class="btn btn-ghost btn-sm" href="${landingHref}">◂ TERRAAGENT.FUN</a></div>
       <div class="menu-bottom">
         <div class="cards">${cards}</div>
         <div class="deploy-box plate">

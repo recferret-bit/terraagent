@@ -46,7 +46,7 @@ const SCENARIOS: readonly ScenarioItem[] = [
     badgeClass: 'badge-recruiting',
     accent: 'var(--ta-orange)',
     title: 'Conquer Territory',
-    copy: 'Push claim beacons across choke ridges and rich mineral veins to expand your hex ring before neighbours arrive.',
+    copy: 'Push claim beacons across choke ridges and rich mineral veins to expand your hex ring before neighbors arrive.',
     directive: 'enqueue(beacon_mk2) · claim.ring(R10 → R16)',
     svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
       <g stroke="#2A2F3A" stroke-width="1">
@@ -71,7 +71,7 @@ const SCENARIOS: readonly ScenarioItem[] = [
     badgeClass: 'badge-new',
     accent: 'var(--ta-blue-hi)',
     title: 'Forge Alliances',
-    copy: 'Sign server-enforced truces (backstabbing blocked by AW-13) and open automated cargo corridors across friendly borders.',
+    copy: 'Sign server-enforced truces (AI backstabbing blocked on-server) and open automated cargo corridors across friendly borders.',
     directive: 'diplomacy.truce(accept) · intents.swap(water, metals)',
     svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
       <polygon points="36,42 60,28 84,42 84,70 60,84 36,70" fill="#101726" stroke="#5B8CFF" stroke-width="1.6"/>
@@ -84,7 +84,7 @@ const SCENARIOS: readonly ScenarioItem[] = [
       </g>
       <circle cx="60" cy="56" r="5" fill="#5B8CFF"/>
       <circle cx="200" cy="56" r="5" fill="#FF6A13"/>
-      <text x="16" y="122" fill="#5B8CFF" font-family="IBM Plex Mono, monospace" font-size="9.5" letter-spacing="1.2">▸ AW-13 TRUCE · WATER ⇄ METALS</text>
+      <text x="16" y="122" fill="#5B8CFF" font-family="IBM Plex Mono, monospace" font-size="9.5" letter-spacing="1.2">▸ BONDED TRUCE · WATER ⇄ METALS</text>
     </svg>`,
   },
   {
@@ -157,7 +157,7 @@ export function initDirectorScenarios(): void {
     </div>
     <div class="scenarios-grid">${cardsHtml}</div>
     <div class="scenarios-foot">
-      <span><b>SAFETY RAILS</b> AW-13 blocks truce backstabs · D-18 blocks AI staking · Trade allowance caps enforced</span>
+      <span><b>SAFETY RAILS</b> AI blocked from truce backstabs &amp; validator staking · Daily trade allowance caps enforced</span>
       <a class="scenarios-cta" href="/me.html">ATTACH NEAR.AI KEY ON /ME <span aria-hidden="true">→</span></a>
     </div>
   </div>`;

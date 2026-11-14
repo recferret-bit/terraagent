@@ -64,7 +64,7 @@ export class StakingController {
     if (actor === 'ai' || actor === 'director' || actor === 'agent') {
       throw new CoreException('AI_STAKING_FORBIDDEN', {
         status: 403,
-        message: 'D-18: Staking requires explicit human wallet approval; AI agents cannot stake, unstake, or withdraw.',
+        message: 'Staking requires explicit human wallet approval; AI agents cannot stake, unstake, or withdraw.',
       });
     }
   }

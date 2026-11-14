@@ -187,6 +187,10 @@
   gap: 6px;
 }
 
+.ta-ai-custom-input[hidden] {
+  display: none;
+}
+
 .ta-ai-actions {
   display: flex;
   align-items: center;

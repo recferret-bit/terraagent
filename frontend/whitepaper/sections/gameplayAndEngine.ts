@@ -18,7 +18,7 @@ const BETA_RISK_CARDS: ReadonlyArray<WebFeatureCard> = [
   {
     title: 'Automation Without CAPTCHA Gates',
     layer: 'WEB2',
-    badge: 'D-25 · D-45',
+    badge: 'OPEN BOTS + CAPS',
     summary: 'Algorithmic trading and fleet bots are first-class citizens bounded by per-token spend allowances and rate limits rather than brittle anti-bot captchas.',
     chips: ['ACID Spend Caps', 'Instant Revocation'],
   },
@@ -88,10 +88,10 @@ export function buildGameplayAndEngineSections(): HTMLElement[] {
       ['Operation', 'Rule & Precondition', 'Resource Yield / Biome Effect'],
       TERRAFORM_OPS.map((t) => [t.op, t.rule, t.costAndEffect]),
     ),
-    makeEl('h3', 'wp-subsection-h3', 'Ten Tradeable Commodities (+ Continuous Grid Energy)'),
+    makeEl('h3', 'wp-subsection-h3', 'Ten Tradeable Commodities (Surface Name ↔ res.terraagent.testnet NEP-245 ID)'),
     createTable(
-      ['Commodity', 'Key', 'Family', 'Tier', 'Extraction & Living Gate', 'Primary Sinks & Markets'],
-      RESOURCE_ROWS.map((r) => [r.id, r.label, r.family, r.tier, r.sourceAndGate, r.primarySink]),
+      ['Surface Commodity', 'NEP-245 Token ID', 'Family', 'Tier', 'Extraction & Living Gate', 'Primary Sinks & Markets'],
+      RESOURCE_ROWS.map((r) => [r.label, `\`${r.id}\``, r.family, r.tier, r.sourceAndGate, r.primarySink]),
     ),
   );
 
@@ -114,13 +114,13 @@ export function buildGameplayAndEngineSections(): HTMLElement[] {
     createTable(
       ['Surface / Route', 'Runtime', 'Primary Capability'],
       [
-        ['/landing.html & /pitchdeck/', 'Vite MPA + Three.js Orbit', 'Interactive 3D orbital landing (`terraagent.fun`), protocol schematic & pitch deck'],
-        ['/play.html?planet=dune&skip=1', 'WebGL2 + WS / Web Worker', 'Live RTS gameplay (`?deploy=1` drop-pod descent, `?skip=1` colony entry, `?host=local`, plus local-dev console & `F8` Shader Lab)'],
-        ['/trade.html', 'SSE + REST (`/v1/trade/*`)', '90-pair planetary CLOB orderbook, live depth ladder, 1Click swaps & `ta_bot_...` keys'],
-        ['/me.html', 'REST (`/v1/me/*`)', 'Pilot dashboard, 60 soulbound badges, S0–S10 chronicle & AES-256-GCM BYOK vault'],
-        ['/deed.html (`/deed/:tokenId`)', 'OpenGraph + NFT Feed', 'Shareable colony deed milestone timeline with generated preview artwork'],
-        ['/dev/economy-sim/', 'Headless `@terra/sim`', '7-day multi-colony runner testing wars, truces, Guild AMM, 25-agent swarms, contractor receipts & TEE commanders'],
-        ['/playground.html & /design/', '3D Storybook & Tokens', '4-view diagnostic model turntable (`&validate=1`), CI validators & Faction Plate tokens'],
+        ['[/landing.html](/landing.html) & [/pitchdeck/](/pitchdeck/)', 'Vite MPA + Three.js Orbit', 'Interactive 3D orbital landing (`terraagent.fun`), protocol schematic & pitch deck'],
+        ['[/play.html?planet=dune&skip=1](/play.html?planet=dune&skip=1)', 'WebGL2 + WS / Web Worker', 'Live RTS gameplay (`?deploy=1` drop-pod descent, `?skip=1` colony entry, `?host=local`, plus local-dev console & `F8` Shader Lab)'],
+        ['[/trade.html](/trade.html)', 'SSE + REST (`/v1/trade/*`)', '90-pair planetary CLOB orderbook, live depth ladder, 1Click swaps & `ta_bot_...` keys'],
+        ['[/me.html](/me.html)', 'REST (`/v1/me/*`)', 'Pilot dashboard, 60 soulbound badges, S0–S10 chronicle & AES-256-GCM BYOK vault'],
+        ['[/deed.html](/deed.html) (`/deed/:tokenId`)', 'OpenGraph + NFT Feed', 'Shareable colony deed milestone timeline with generated preview artwork'],
+        ['[/dev/economy-sim/](/dev/economy-sim/)', 'Headless `@terra/sim`', '7-day multi-colony runner testing wars, truces, Guild AMM, 25-agent swarms, contractor receipts & TEE commanders'],
+        ['[/playground.html](/playground.html) & [/design/](/design/)', '3D Storybook & Tokens', '4-view diagnostic model turntable (`&validate=1`), CI validators & Faction Plate tokens'],
       ],
     ),
     createCallout(

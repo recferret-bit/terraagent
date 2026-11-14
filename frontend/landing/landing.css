@@ -1,4 +1,4 @@
-/* terraagent.com landing. Requires tokens.css + base.css. */
+/* terraagent.fun landing. Requires tokens.css + base.css. */
 
 /* ticker */
 .ticker { height: 30px; display: flex; align-items: center; overflow: hidden; background: var(--ta-orange); color: var(--ta-void); font-family: var(--ta-font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; }

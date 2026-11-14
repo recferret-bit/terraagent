@@ -108,7 +108,7 @@ function buildThesisSection(): HTMLElement {
         ['Kitbash & GPU 3D', 'Modular RoundedBox hulls, `aPartAnim` kinematics, Unifier biome shader & instanced 3D debris', 'Readable 4-view silhouettes, < 3.5k tris/unit, zero flat sprite particles'],
         ['Deterministic Sim', 'Single `@terra/sim` shared across NestJS, browser Web Workers & 50 Hz warp replay', 'Zero server/client desync; full offline parity via `?host=local`'],
         ['Non-Dilutive Web3', 'Six Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) + gasless `NEP-366`', 'Real asset & treaty ownership; zero combat or harvest power from staking'],
-        ['Verifiable NEAR.AI', 'Intel TDX + NVIDIA TEE turns (`/v1/signature`) + encrypted BYOK + 4 hard guardrails', 'Overnight colony commander you can audit without custody risk'],
+        ['Verifiable NEAR.AI', 'NEAR AI Cloud TEE turns (`cloud-api.near.ai/v1/signature/{chat_id}` `SHA-256` `model:request:response` ECDSA) + encrypted BYOK + 4 hard guardrails', 'Overnight colony commander you can audit without custody risk'],
       ],
     ),
   );

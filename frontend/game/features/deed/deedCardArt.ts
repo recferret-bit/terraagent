@@ -399,7 +399,7 @@ export function mountDeedCardShowcase(
 
   const subtitle = document.createElement('p');
   subtitle.className = 'ta-deed-showcase__subtitle';
-  subtitle.textContent = 'W20-11 // ACTIVE · SETTLED GOLD · ELIMINATED GREY';
+  subtitle.textContent = 'NEP-171 SOULBOUND // ACTIVE · SETTLED GOLD · ELIMINATED GREY';
 
   header.append(title, subtitle);
 

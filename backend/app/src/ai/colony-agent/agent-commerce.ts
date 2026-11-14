@@ -270,7 +270,7 @@ export function executeContractorTaskPlan(
     contractorAccountId,
     goal: 'Expand Living hexes to Stage 5, buffer night power grid & defend perimeter depots',
     keyPolicySummary:
-      'Scoped Ed25519 session key (director-key / ta_bot_...); daily spend caps 120 USDC & 6 NEAR; cannot break truces (AW-13), demolish buildings (AW-10), or stake validator NEAR (403 D-18).',
+      'Scoped Ed25519 session key (director-key / ta_bot_...); daily spend caps 120 USDC & 6 NEAR; cannot break truces, demolish buildings, or stake validator NEAR (HTTP 403).',
     budgetUsdc,
     spentUsdc,
     budgetNear,

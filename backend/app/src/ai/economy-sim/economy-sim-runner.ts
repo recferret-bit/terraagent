@@ -210,7 +210,7 @@ function stepDayDiplomacyAndWar(host: SimHost, day: number, acc: SimAccumulator)
       acc.timeline.push({
         day,
         kind: 'guardrail_block',
-        actor: 'Server Safety Gate (AW-13)',
+        actor: 'Server Safety Gate',
         summary: 'Blocked AI early truce cancellation — Oathbreaker penalty stays strictly human-only.',
       });
     }

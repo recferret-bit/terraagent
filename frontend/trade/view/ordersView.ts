@@ -45,6 +45,13 @@ export function renderOrders(body: HTMLElement, s: TradeState, filter: OrderFilt
 
 const KIND_BADGE: Record<string, string> = { player: 'info', bot: 'system', npc: 'dim', guild: 'info', fixture: 'fixture', subsidy: 'warn' };
 
+function fillReceiptHref(txHash: string): string {
+  if (txHash.startsWith('mock:') || txHash.startsWith('tx_')) {
+    return `/dev/chain/tx/${encodeURIComponent(txHash)}`;
+  }
+  return `https://testnet.nearblocks.io/txns/${encodeURIComponent(txHash)}`;
+}
+
 /** My fills with the fee breakdown (notional, platform, stall) and the receipt link. */
 export function renderFills(body: HTMLElement, s: TradeState): void {
   if (!gate(body, s.panels.fills, s.panels.fills.status === 'ready' && s.fills.length === 0 ? 'No fills yet. A fill appears here the moment one of your orders trades.' : null)) return;
@@ -57,8 +64,8 @@ export function renderFills(body: HTMLElement, s: TradeState): void {
       td(`${fmtAmount(q, f.platformFee)}`, 'num'), td(`${fmtAmount(q, f.stallFee)} (${bpLabel(f.stallFeeBp)})`, 'num'),
       td(badge(f.counterpartyKind, KIND_BADGE[f.counterpartyKind] ?? 'dim')),
       td(badge(f.state, f.state === 'FINAL' ? 'ok' : f.state === 'FAILED' ? 'err' : 'warn'), ''),
-      td(f.txHash ? h('a', { 'data-testid': 'fill-receipt', href: `/dev/chain/tx/${encodeURIComponent(f.txHash)}`, target: '_blank', rel: 'noopener' }, `${f.txHash.slice(0, 10)}...`) : h('span', { class: 'tr-hint' }, 'pending')));
+      td(f.txHash ? h('a', { 'data-testid': 'fill-receipt', href: fillReceiptHref(f.txHash), target: '_blank', rel: 'noopener' }, `${f.txHash.slice(0, 10)}...`) : h('span', { class: 'tr-hint' }, 'pending')));
   });
   body.replaceChildren(table([{ label: 'TIME' }, { label: 'SIDE' }, { label: 'PAIR' }, { label: 'AMOUNT', num: true }, { label: 'NOTIONAL', num: true }, { label: 'PLATFORM FEE', num: true }, { label: 'STALL FEE', num: true }, { label: 'COUNTERPARTY' }, { label: 'SETTLEMENT' }, { label: 'RECEIPT' }], rows, 'My fills'),
-    h('p', { class: 'tr-hint' }, 'Fees are paid by the buyer. Receipts open the dev chain explorer.'));
+    h('p', { class: 'tr-hint' }, 'Fees are paid by the buyer. Receipts open the transaction explorer.'));
 }

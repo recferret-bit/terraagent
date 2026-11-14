@@ -229,7 +229,11 @@ export class StageTrackHud implements Disposable {
     if (!this.suppressNotices || opts?.replay) this.setPanelVisible(true);
     const userOnDismiss = opts?.onDismiss;
     const el = this.toast.show(stage, {
-      guide: stageGuideText(stage, opts?.replay ? this.currentStage : Math.max(stage, this.currentStage)),
+      guide: stageGuideText(
+        stage,
+        opts?.replay ? this.currentStage : Math.max(stage, this.currentStage),
+        this.ctx.flags,
+      ),
       ...opts,
       onDismiss: () => {
         userOnDismiss?.();

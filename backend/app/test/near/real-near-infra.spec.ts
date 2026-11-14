@@ -223,9 +223,25 @@ describe('W23 NEAR Intents 1Click dry-quote client', () => {
     expect(sentBody.recipient).toBe('intents.near');
 
     spy.mockRejectedValueOnce(new Error('offline'));
-    const fallback = await client.dryQuote({ amount: '1000' });
+    const fallbackAmount = await client.dryQuote({ amount: '1000' });
+    expect(fallbackAmount.source).toBe('fallback');
+    expect(fallbackAmount.amountIn).toBe('1000');
+
+    spy.mockRejectedValueOnce(new Error('offline'));
+    const fallback = await client.dryQuote({ amountIn: '2500' });
     expect(fallback.source).toBe('fallback');
     expect(fallback.dry).toBe(true);
+    expect(fallback.amountIn).toBe('2500');
     expect(fallback.minAmountOut).toBe('4108500');
+
+    spy.mockRejectedValueOnce(new Error('offline'));
+    const numericPayload = await client.dryQuote({
+      amountIn: 5000,
+      recipient: 12345,
+      originAsset: { bad: true },
+    });
+    expect(numericPayload.source).toBe('fallback');
+    expect(numericPayload.amountIn).toBe('5000');
+    expect(numericPayload.originAsset).toBe('nep141:wrap.near');
   });
 });

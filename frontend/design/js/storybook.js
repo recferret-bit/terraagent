@@ -9,7 +9,7 @@
     button: ['Button', 'COMPONENTS / BUTTON / PLAYGROUND', 'Primary actions are verbs in uppercase on an orange plate. Only one primary per view.', 'Use System blue for secondary, AI or chain actions.', 'Never put white text on orange; it fails contrast.', "import { Button } from '@terra/ui';\n<Button variant=\"primary\" size=\"lg\">PICK A PLANET</Button>"],
     radio: ['Radio', 'COMPONENTS / RADIO / PLANET PICKER', 'Card radios pick one planet type or one open planet; inline radios for short choices.', 'Show the reason a choice is disabled (sealed, full).', 'Do not hide sealed planets without telling the player why.', '<RadioCard name="planet" value="desert" meta="3 / 5 SEATS" />'],
     toggle: ['Toggle', 'COMPONENTS / TOGGLE / AUTOPILOT', 'Switches apply instantly (autopilot, notifications). Checkboxes collect choices that are saved with a button.', 'Label the switch with the setting; show ON/OFF inside the track.', 'Do not use a switch for a choice that needs a confirm.', '<Switch checked={director} onChange={setDirector} label="AI Director" />'],
-    slider: ['Slider', 'COMPONENTS / SLIDER / PRIORITIES', 'Priority sliders send one setPriorities command when released, in steps of 5.', 'Show the numeric value next to every slider.', 'Do not normalise values behind the player’s back.', '<PrioritySlider id="economy" value={60} step={5} />'],
+    slider: ['Slider', 'COMPONENTS / SLIDER / PRIORITIES', 'Priority sliders send one setPriorities command when released, in steps of 5.', 'Show the numeric value next to every slider.', 'Do not normalize values behind the player’s back.', '<PrioritySlider id="economy" value={60} step={5} />'],
     input: ['Input', 'COMPONENTS / INPUT · BADGE', 'Labels above fields in mono caps; help or error text below. Badges carry state in two words or fewer.', 'Errors say what happened and what to do next.', 'Do not rely on red alone; pair it with an icon or the word.', '<TextField label="COLONY NAME" hint="Up to 32 characters" />'],
     hud: ['HUD', 'GAME / HUD / OVERVIEW', 'In-game overlay: resource readouts with rate, grid meter, event log and toasts. Updates at most 10 times a second.', 'Rates in blue when positive, orange when negative.', 'Do not animate counters faster than the server tick.', '<ResourceBar resources={view.resources} />']
   };
@@ -58,7 +58,7 @@
     var disabled = $('#c-disabled').checked, loading = $('#c-loading').checked, arrow = $('#c-arrow').checked;
     btn.className = 'btn btn-' + variant + (size === 'md' ? '' : ' btn-' + size);
     btn.disabled = disabled;
-    // loading keeps the variant colour but blocks clicks
+    // loading keeps the variant color but blocks clicks
     btn.setAttribute('aria-busy', String(loading));
     btn.style.opacity = loading ? '0.85' : '';
     btn.style.pointerEvents = loading ? 'none' : '';
@@ -85,7 +85,7 @@
       $('output[for="' + r.id + '"]').textContent = r.value;
       if (+r.value > max) { max = +r.value; top = r.id; }
     });
-    $('[data-prio-hint]').textContent = 'Rule engine will favour ' + names[top] + ' first. Values are weights, not percentages.';
+    $('[data-prio-hint]').textContent = 'Rule engine will favor ' + names[top] + ' first. Values are weights, not percentages.';
   }
   $$('.prio input').forEach(function (r) { r.addEventListener('input', renderPrio); });
   renderPrio();

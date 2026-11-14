@@ -159,7 +159,11 @@ function stepSecurePowerGoal(
   ensureStarterGoalStock(state, colonyIndex, tick, ctx?.data);
 
   const { netPerS, brownout } = computeEffectivePowerNetPerS(state, colonyIndex, ctx?.data);
-  goal.detail = `${netPerS.toFixed(1)} / ${targetNetEnergyPerS} E/s. ${getEnvironment(state).phase === 'night' ? 'Night power: solar cannot meet a night deficit; night generators arrive in W03.' : 'Building daytime power, then verifying at night.'}`;
+  const nightHint =
+    !ctx?.flags || ctx.flags.has('W03')
+      ? 'Night power: solar cannot meet a night deficit; build capacitors or night generators.'
+      : 'Night power: solar cannot meet a night deficit; night generators arrive in W03.';
+  goal.detail = `${netPerS.toFixed(1)} / ${targetNetEnergyPerS} E/s. ${getEnvironment(state).phase === 'night' ? nightHint : 'Building daytime power, then verifying at night.'}`;
   const hasOpenSolar =
     hasOpenBuildTask(state, colonyIndex, 'solar') ||
     (hasAliveBuilding(state, colonyIndex, ENTITY_KIND.solar, false) &&
@@ -229,7 +233,10 @@ export function stepColonyGoalsBreakdown(
   const executor = getGoalExecutor(active.goal, ctx?.flags);
   if (executor) executor(state, colonyIndex, active, goals, tick, ctx);
   else {
-    active.detail = 'Unavailable: this goal requires its owning feature wave. Cancel to continue.';
+    active.detail =
+      !ctx?.flags || ctx.flags.has('W21')
+        ? 'Execute this objective manually via Build, Trade, or AI Director, or cancel to continue.'
+        : 'Unavailable: this goal requires its owning feature wave. Cancel to continue.';
     saveColonyGoals(state, colonyIndex, goals, tick);
   }
 }

@@ -1,24 +1,6 @@
 // Interactive keyboard & button controller for the TerraAgent Pitch Deck (/pitchdeck/).
 // Supports single-slide presentation mode (ArrowLeft/ArrowRight, 1..8) and full-scroll overview mode.
-
-function rewriteSubdomainLinks(): void {
-  if (location.hostname !== 'pitchdeck.terraagent.fun') return;
-  const map: Readonly<Record<string, string>> = {
-    '/': 'https://terraagent.fun/',
-    '/landing.html': 'https://terraagent.fun/',
-    '/play.html?planet=oceanForest&deploy=1': 'https://play.terraagent.fun/play.html?planet=oceanForest&deploy=1',
-    '/trade.html': 'https://play.terraagent.fun/trade.html',
-    '/me.html': 'https://play.terraagent.fun/me.html',
-    '/dev/economy-sim/': 'https://play.terraagent.fun/dev/economy-sim/',
-    '/whitepaper/': 'https://whitepaper.terraagent.fun/',
-    '/v1/near/status': 'https://api.terraagent.fun/v1/near/status',
-    '/v1/near/protocol': 'https://api.terraagent.fun/v1/near/protocol',
-  };
-  for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    const raw = a.getAttribute('href');
-    if (raw && map[raw]) a.href = map[raw];
-  }
-}
+import { rewriteSubdomainLinks } from '../design/js/subdomainLinks';
 
 function bootPitchDeck(): void {
   rewriteSubdomainLinks();

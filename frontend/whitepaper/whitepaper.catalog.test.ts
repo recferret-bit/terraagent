@@ -1,11 +1,16 @@
+// @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ArchetypeCatalog } from '@terra/render/kitbash';
 import { ParticlePresetRegistry } from '@terra/render/particles';
+import { rewriteSubdomainLinks } from '../design/js/subdomainLinks';
 import { CHAPTER_ITEMS, ENTITY_NAV_ITEMS, STACK_NAV_ITEMS } from './data/chapters';
 import { ECOLOGY_CARDS, EFFECT_CARDS } from './data/ecologyAndEffectsCatalog';
 import { FLEET_CARDS } from './data/entitiesCatalog';
+import { RESOURCE_ROWS } from './data/mechanics';
+import { buildGameplayAndEngineSections } from './sections/gameplayAndEngine';
+import { buildWeb3AndAiSections } from './sections/web3AndAi';
 
 function assertCssAndMarkupClean(): void {
   const tokensCss = readFileSync(resolve(import.meta.dirname, '../design/css/tokens.css'), 'utf8');
@@ -114,5 +119,58 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
     expect(featuresSrc).toContain('60 tiered achievement badges');
     expect(web3AiSrc).not.toContain('backend/app/src/near/application/ports');
     expect(web3AiSrc).not.toContain('backend/near-contracts');
+  });
+});
+
+describe('TerraAgent whitepaper NEP-245 & subdomain link parity', () => {
+  it('maps all 10 surface commodities 1-to-1 to canonical res.terraagent.testnet NEP-245 token IDs and clarifies NEAR AI Cloud TEE URLs', () => {
+    expect(RESOURCE_ROWS.map((r) => [r.id, r.label])).toEqual([
+      ['metals.t1', 'Iron'],
+      ['metals.t2', 'Light Alloys'],
+      ['metals.t3', 'Titanium'],
+      ['minerals.t1', 'Silica'],
+      ['minerals.t2', 'Rare Earths'],
+      ['minerals.t3', 'Exotic Crystal'],
+      ['bio.water', 'Water'],
+      ['bio.biomass', 'Biomass'],
+      ['bio.t2', 'Petroleum'],
+      ['bio.t3', 'Gene-stock'],
+    ]);
+
+    const md = readFileSync(resolve(import.meta.dirname, 'whitepaper.md'), 'utf8');
+    for (const row of RESOURCE_ROWS) {
+      expect(md).toContain(row.id);
+      expect(md).toContain(row.label);
+    }
+    expect(md).toContain('cloud-api.near.ai/v1');
+    expect(md).toContain('model:request:response');
+
+    for (const f of ['sections/schemas.ts', 'sections/web3AndAi.ts', 'data/features.ts']) {
+      const src = readFileSync(resolve(import.meta.dirname, f), 'utf8');
+      expect(src).not.toMatch(/INTEL TDX|Intel TDX/);
+      expect(src).toContain('NEAR AI Cloud');
+    }
+  });
+
+  it('rewrites dynamically mounted section links on whitepaper.terraagent.fun after DOM mount', () => {
+    const mount = document.createElement('div');
+    for (const sec of [...buildWeb3AndAiSections(), ...buildGameplayAndEngineSections()]) {
+      mount.appendChild(sec);
+    }
+
+    const beforeHrefs = Array.from(mount.querySelectorAll('a[href]'), (a) => a.getAttribute('href'));
+    expect(beforeHrefs).toContain('/play.html?planet=dune&skip=1');
+    expect(beforeHrefs).toContain('/trade.html');
+    expect(beforeHrefs).toContain('/dev/economy-sim/');
+    expect(beforeHrefs).toContain('/playground.html');
+
+    rewriteSubdomainLinks(mount, 'whitepaper.terraagent.fun');
+    const afterHrefs = Array.from(mount.querySelectorAll('a[href]'), (a) => a.getAttribute('href'));
+    expect(afterHrefs).toContain('https://play.terraagent.fun/play.html?planet=dune&skip=1');
+    expect(afterHrefs).toContain('https://play.terraagent.fun/trade.html');
+    expect(afterHrefs).toContain('https://play.terraagent.fun/dev/economy-sim/');
+    expect(afterHrefs).toContain('https://playground.terraagent.fun/');
+    expect(afterHrefs).toContain('https://design.terraagent.fun/');
+    expect(afterHrefs.some((h) => h?.startsWith('/play.html') || h?.startsWith('/trade.html'))).toBe(false);
   });
 });

@@ -91,7 +91,7 @@ export class EconomySimService {
 function buildFallbackSummary(base: Omit<EconomySimReport, 'durationMs' | 'ai'>): string {
   const last = base.dailySeries[base.dailySeries.length - 1];
   const totalTrades = base.colonies.reduce((s, c) => s + c.tradesExecuted, 0);
-  return `Across ${base.days} simulated planetary days, 3 autonomous colonies cultivated ${last?.totalLivingTiles ?? 0} Living hexes, settled ${totalTrades} market legs, weathered Crimson Vanguard depot raids (Metals peaked during conflict), and stabilized prices via bilateral peace truces while enforcing AW-13, D-18, and trade-cap guardrails.`;
+  return `Across ${base.days} simulated planetary days, 3 autonomous colonies cultivated ${last?.totalLivingTiles ?? 0} Living hexes, settled ${totalTrades} market legs, weathered Crimson Vanguard depot raids (Metals peaked during conflict), and stabilized prices via bilateral peace truces while enforcing human-only truce, staking, and trade-cap guardrails.`;
 }
 
 function extractSummaryText(raw: string): string | null {

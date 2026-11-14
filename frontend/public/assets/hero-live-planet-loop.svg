@@ -132,7 +132,7 @@
   <rect x="432" y="404" width="350" height="72" fill="#09101f" stroke="#ff5a1f" stroke-width="1.2"/>
   <text x="446" y="424" class="hdr">TRANSACTING OUTBOX (IDEMPOTENT opId)</text>
   <text x="446" y="444" class="txt">Debounces sim ticks -&gt; durable Postgres jobs</text>
-  <text x="446" y="462" class="muted">Track 06 Policy Guardrails + NEP-366 Relayer</text>
+  <text x="446" y="462" class="muted">Scoped Key Guardrails + NEP-366 Relayer</text>
 
   <!-- ZONE 3: LIVE NEAR TESTNET CONTRACTS -->
   <polygon points="856,74 1176,74 1176,494 842,494 842,88" class="panel"/>

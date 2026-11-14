@@ -10,7 +10,7 @@ export function formatEarnedDate(iso: string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function buildShareIntentUrl(entry: PlayerAchievementEntry, pageUrl = 'https://terraagent.com/me'): string {
+export function buildShareIntentUrl(entry: PlayerAchievementEntry, pageUrl = 'https://play.terraagent.fun/me.html'): string {
   const text = `Unlocked ${entry.familyName} (${entry.tierName} · +${entry.xp} XP) in TerraAgent!`;
   const params = new URLSearchParams({ text, url: pageUrl });
   return `https://x.com/intent/tweet?${params.toString()}`;

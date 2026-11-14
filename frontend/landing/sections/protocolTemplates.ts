@@ -177,7 +177,7 @@ export function renderProtocolStagesHtml(): string {
         <div class="proto-legend-list">
           <div class="proto-legend-row"><span>■ Betrayed Truce Partner / War Defender</span><b data-proto-legend-victim-val>90% Payout</b></div>
           <div class="proto-legend-row"><span>■ TerraAgent Protocol Arbitration</span><b data-proto-legend-slash-val>10% Slash Fee</b></div>
-          <div class="proto-legend-row"><span>■ AI Guardrail (AW-13)</span><b>Blocked from Break/NEAR</b></div>
+          <div class="proto-legend-row"><span>■ Server AI Guardrail</span><b>Blocked from Break/NEAR</b></div>
         </div>
       </div>
     </article>

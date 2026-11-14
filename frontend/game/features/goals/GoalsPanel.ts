@@ -5,9 +5,43 @@ import {
   type ColonyGoalEntry,
 } from '@terra/sim';
 import type { FeatureContext } from '../../core/registry/types';
+import { formatColonyOrPilotName } from '../identity/PilotChip';
+import { extractRaidTargets } from '../raid/raidTargets';
 import { ownColonyIndex, viewColony } from '../shared/colony';
 import { renderStageSuggestion } from './suggestion';
-import { GoalForm } from './GoalForm';
+import { GoalForm, type GoalColonyOption } from './GoalForm';
+
+function resolveRaidColonyOptions(view: unknown, ownIndex: number): GoalColonyOption[] {
+  if (view && typeof view === 'object') {
+    const discovered = extractRaidTargets(view, ownIndex);
+    if (discovered.length > 0) {
+      return discovered.map((t) => ({
+        value: t.colonyIndex,
+        label: t.disabled && t.disabledReason ? `${t.name} — ${t.disabledReason}` : t.name,
+        disabled: t.disabled,
+      }));
+    }
+    const root = view as Record<string, unknown>;
+    const simView = ((root.sim as Record<string, unknown> | undefined)?.view ?? root.view ?? root) as Record<
+      string,
+      unknown
+    >;
+    const rawCols = Array.isArray(simView.colonies) ? simView.colonies : Array.isArray(root.colonies) ? root.colonies : [];
+    const rivals = rawCols
+      .filter((c): c is Record<string, unknown> => Boolean(c && typeof c === 'object'))
+      .map((c) => ({ idx: Number(c.index ?? c.colonyIndex), col: c }))
+      .filter(({ idx, col }) => Number.isInteger(idx) && idx !== ownIndex && col.status !== 'eliminated' && !col.eliminated);
+    if (rivals.length > 0) {
+      return rivals.map(({ idx, col }) => ({
+        value: idx,
+        label: formatColonyOrPilotName(String(col.name ?? `Colony ${idx + 1}`)),
+      }));
+    }
+  }
+  return [0, 1, 2]
+    .filter((i) => i !== ownIndex)
+    .map((i) => ({ value: String(i), label: `Colony ${i + 1}` }));
+}
 
 export function formatGoalLabel(goal: GoalKind, params?: GoalParams): string {
   if (goal === 'grow_economy') {
@@ -80,6 +114,8 @@ export class GoalsPanel {
 
     this.form = new GoalForm({
       onAdd: (args) => this.addGoal(args),
+      colonyOptions: resolveRaidColonyOptions(ctx.services.store?.latest, this.colonyIndex),
+      flags: ctx.flags,
     });
 
     this.listEl = document.createElement('div');
@@ -222,6 +258,7 @@ export class GoalsPanel {
   update(view?: unknown): void {
     if (!view) return;
     this.colonyIndex = ownColonyIndex(this.ctx.services);
+    this.form.setColonyOptions(resolveRaidColonyOptions(view, this.colonyIndex));
     const col = viewColony(view, this.colonyIndex) as {
       goals?: ColonyGoalEntry[];
       goalLimit?: number;
@@ -258,8 +295,15 @@ export class GoalsPanel {
   }
 
   private renderSuggestion(): void {
-    renderStageSuggestion(this.suggestionContainer, this.colonyStage, this.goals, this.suggestionDismissed,
-      (goal) => this.acceptSuggestion(this.colonyStage, goal), () => this.dismissSuggestion());
+    renderStageSuggestion(
+      this.suggestionContainer,
+      this.colonyStage,
+      this.goals,
+      this.suggestionDismissed,
+      (goal) => this.acceptSuggestion(this.colonyStage, goal),
+      () => this.dismissSuggestion(),
+      this.ctx.flags,
+    );
   }
 
   private renderList(): void {

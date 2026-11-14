@@ -12,6 +12,8 @@ export interface RenderAiSettingsOptions {
   readonly search?: string;
 }
 
+const CUSTOM_MODEL_OPTION = '__custom__';
+
 const MODEL_LABELS: Readonly<Record<string, string>> = {
   'z-ai/glm-5.3-flash': 'GLM 5.3 Flash (z-ai/glm-5.3-flash · Default)',
   'z-ai/glm-5.3': 'GLM 5.3 (z-ai/glm-5.3)',
@@ -35,10 +37,11 @@ function defaultSettings(profile: MeProfileResponse): PlayerAiSettings {
 
 function createModelSelect(models: readonly string[], selectedModel: string): HTMLSelectElement {
   const select = el('select', {
+    id: 'me-ai-model-select',
     className: 'input ta-ai-select',
     dataset: { testid: 'me-ai-model-select' },
-    aria: { label: 'NEAR.AI Model' },
   }) as HTMLSelectElement;
+  const isPreset = models.includes(selectedModel);
   for (const modelId of models) {
     const opt = document.createElement('option');
     opt.value = modelId;
@@ -46,17 +49,53 @@ function createModelSelect(models: readonly string[], selectedModel: string): HT
     if (modelId === selectedModel) opt.selected = true;
     select.appendChild(opt);
   }
+  const customOpt = document.createElement('option');
+  customOpt.value = CUSTOM_MODEL_OPTION;
+  customOpt.textContent = 'Custom NEAR AI Cloud model ID…';
+  if (!isPreset && selectedModel.length > 0) customOpt.selected = true;
+  select.appendChild(customOpt);
   return select;
 }
 
+function makeFieldLabel(forId: string, text: string, className = 'label'): HTMLLabelElement {
+  const lbl = el('label', { className }, text);
+  lbl.htmlFor = forId;
+  return lbl;
+}
+
 interface AiSettingsDomRefs {
+  readonly models: readonly string[];
   readonly badge: HTMLElement;
   readonly previewNode: HTMLElement;
   readonly modelSelect: HTMLSelectElement;
+  readonly customModelInput: HTMLInputElement;
   readonly keyInput: HTMLInputElement;
   readonly statusNode: HTMLElement;
   readonly saveBtn: HTMLButtonElement;
   readonly clearBtn: HTMLButtonElement;
+}
+
+function syncModelControls(refs: Pick<AiSettingsDomRefs, 'models' | 'modelSelect' | 'customModelInput'>, modelId: string): void {
+  if (refs.models.includes(modelId)) {
+    refs.modelSelect.value = modelId;
+    refs.customModelInput.hidden = true;
+    refs.customModelInput.value = '';
+  } else {
+    refs.modelSelect.value = CUSTOM_MODEL_OPTION;
+    refs.customModelInput.hidden = false;
+    refs.customModelInput.value = modelId;
+  }
+}
+
+function resolveChosenModel(refs: Pick<AiSettingsDomRefs, 'modelSelect' | 'customModelInput'>): string | null {
+  if (refs.modelSelect.value === CUSTOM_MODEL_OPTION) {
+    const trimmed = refs.customModelInput.value.trim();
+    if (trimmed.length === 0 || trimmed === CUSTOM_MODEL_OPTION || !/^[!-~]+$/.test(trimmed)) {
+      return null;
+    }
+    return trimmed;
+  }
+  return refs.modelSelect.value || DEFAULT_PLAYER_NEAR_AI_MODEL;
 }
 
 function applyUpdatedSettings(refs: AiSettingsDomRefs, next: PlayerAiSettings, message: string): void {
@@ -66,17 +105,37 @@ function applyUpdatedSettings(refs: AiSettingsDomRefs, next: PlayerAiSettings, m
     next.hasApiKey && next.apiKeyPreview
       ? `Stored key: ${next.apiKeyPreview}`
       : 'No personal NEAR.AI key stored';
-  refs.modelSelect.value = next.model;
+  refs.customModelInput.removeAttribute('aria-invalid');
+  syncModelControls(refs, next.model);
   refs.keyInput.value = '';
   refs.statusNode.textContent = message;
 }
 
 function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsOptions): void {
+  refs.modelSelect.addEventListener('change', () => {
+    const isCustom = refs.modelSelect.value === CUSTOM_MODEL_OPTION;
+    refs.customModelInput.hidden = !isCustom;
+    refs.customModelInput.removeAttribute('aria-invalid');
+    if (isCustom) refs.customModelInput.focus();
+  });
+
+  refs.customModelInput.addEventListener('input', () => {
+    refs.customModelInput.removeAttribute('aria-invalid');
+  });
+
   refs.saveBtn.addEventListener('click', () => {
     void (async () => {
+      const chosenModel = resolveChosenModel(refs);
+      if (!chosenModel) {
+        refs.customModelInput.setAttribute('aria-invalid', 'true');
+        refs.statusNode.textContent =
+          'Enter a valid custom NEAR.AI model ID (no spaces) or choose a preset model.';
+        return;
+      }
+      refs.customModelInput.removeAttribute('aria-invalid');
       const typedKey = refs.keyInput.value.trim();
       const payload = {
-        model: refs.modelSelect.value || DEFAULT_PLAYER_NEAR_AI_MODEL,
+        model: chosenModel,
         ...(typedKey.length > 0 ? { apiKey: typedKey } : {}),
       };
       refs.statusNode.textContent = 'Saving NEAR.AI configuration…';
@@ -91,9 +150,10 @@ function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsO
 
   refs.clearBtn.addEventListener('click', () => {
     void (async () => {
+      const chosenModel = resolveChosenModel(refs) ?? DEFAULT_PLAYER_NEAR_AI_MODEL;
       refs.statusNode.textContent = 'Clearing NEAR.AI API key…';
       const out = await saveMeAiSettings(
-        { model: refs.modelSelect.value || DEFAULT_PLAYER_NEAR_AI_MODEL, apiKey: null },
+        { model: chosenModel, apiKey: null },
         opts.fetch,
         opts.search,
       );
@@ -129,7 +189,19 @@ export function renderAiSettingsSection(
       : 'No personal NEAR.AI key stored',
   );
   const modelSelect = createModelSelect(models, current.model);
+  const customModelInput = el('input', {
+    id: 'me-ai-custom-model-input',
+    className: 'input ta-ai-input ta-ai-custom-input',
+    type: 'text',
+    dataset: { testid: 'me-ai-custom-model-input' },
+  });
+  customModelInput.placeholder = 'e.g. meta-llama/Llama-3.3-70B-Instruct';
+  customModelInput.maxLength = 128;
+  customModelInput.autocomplete = 'off';
+  syncModelControls({ models, modelSelect, customModelInput }, current.model);
+
   const keyInput = el('input', {
+    id: 'me-ai-key-input',
     className: 'input ta-ai-input',
     type: 'password',
     dataset: { testid: 'me-ai-key-input' },
@@ -138,8 +210,13 @@ export function renderAiSettingsSection(
   keyInput.autocomplete = 'off';
   const statusNode = el(
     'p',
-    { className: 'ta-me-muted', dataset: { testid: 'me-ai-status' } },
-    'Staking ≥10 NEAR in Colony Staking unlocks server-sponsored Managed NEAR.AI Autopilot (z-ai/glm-5.3-flash) automatically. Prefer custom models (Claude, GPT-5, DeepSeek) or playing unstaked? Save your own encrypted BYOK NEAR AI Cloud key (https://cloud-api.near.ai/v1) below — AI remains bounded (AW-13: cannot break truces or lock human NEAR).',
+    {
+      className: 'ta-me-muted',
+      role: 'status',
+      aria: { live: 'polite' },
+      dataset: { testid: 'me-ai-status' },
+    },
+    'Staking ≥10 NEAR in Colony Staking unlocks server-sponsored Managed NEAR.AI Autopilot (z-ai/glm-5.3-flash) automatically. Prefer custom models (Claude, GPT-5, DeepSeek, or any custom NEAR AI Cloud model ID) or playing unstaked? Save your own encrypted BYOK NEAR AI Cloud key (https://cloud-api.near.ai/v1) below — AI remains bounded on-server and can never break truces, stake NEAR, or lock human funds.',
   );
   const saveBtn = el(
     'button',
@@ -152,7 +229,10 @@ export function renderAiSettingsSection(
     'Disconnect Key',
   );
 
-  wireAiSettingsHandlers({ badge, previewNode, modelSelect, keyInput, statusNode, saveBtn, clearBtn }, opts);
+  wireAiSettingsHandlers(
+    { models, badge, previewNode, modelSelect, customModelInput, keyInput, statusNode, saveBtn, clearBtn },
+    opts,
+  );
 
   return el(
     'div',
@@ -162,8 +242,15 @@ export function renderAiSettingsSection(
     el(
       'div',
       { className: 'ta-ai-controls' },
-      el('label', { className: 'ta-ai-field' }, el('span', { className: 'label' }, 'NEAR.AI MODEL'), modelSelect),
-      el('label', { className: 'ta-ai-field' }, el('span', { className: 'label' }, 'NEAR.AI API KEY'), keyInput),
+      el(
+        'div',
+        { className: 'ta-ai-field' },
+        makeFieldLabel('me-ai-model-select', 'NEAR.AI MODEL'),
+        modelSelect,
+        makeFieldLabel('me-ai-custom-model-input', 'Custom NEAR.AI Model ID', 'sr-only'),
+        customModelInput,
+      ),
+      el('div', { className: 'ta-ai-field' }, makeFieldLabel('me-ai-key-input', 'NEAR.AI API KEY'), keyInput),
     ),
     el('div', { className: 'ta-colony-head' }, previewNode, el('div', { className: 'ta-ai-actions' }, saveBtn, clearBtn)),
   );

@@ -1,3 +1,4 @@
+import { rewriteSubdomainLinks } from '../design/js/subdomainLinks';
 import { WhitepaperLiveStage3D } from './liveStage3D';
 import {
   buildRailTabsContent,
@@ -11,29 +12,13 @@ import {
 } from './sections/gameplayAndEngine';
 import { buildWeb3AndAiSections } from './sections/web3AndAi';
 
-function rewriteSubdomainLinks(): void {
-  if (location.hostname !== 'whitepaper.terraagent.fun') return;
-  const map: Readonly<Record<string, string>> = {
-    '/': 'https://terraagent.fun/',
-    '/landing.html': 'https://terraagent.fun/',
-    '/play.html?planet=dune&skip=1': 'https://play.terraagent.fun/play.html?planet=dune&skip=1',
-    '/trade.html': 'https://play.terraagent.fun/trade.html',
-    '/me.html': 'https://play.terraagent.fun/me.html',
-    '/playground.html': 'https://playground.terraagent.fun/',
-    '/design/': 'https://design.terraagent.fun/',
-    '/pitchdeck/': 'https://pitchdeck.terraagent.fun/',
-  };
-  for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-    const raw = a.getAttribute('href');
-    if (raw && map[raw]) a.href = map[raw];
-  }
-}
-
 function bootWhitepaper(): void {
-  rewriteSubdomainLinks();
   const mount = document.getElementById('wpSectionsMount');
   const stageStatus = document.getElementById('wpRenderStatus');
-  if (!mount) return;
+  if (!mount) {
+    rewriteSubdomainLinks();
+    return;
+  }
 
   const stage3D = new WhitepaperLiveStage3D((status) => {
     if (stageStatus) stageStatus.textContent = status;
@@ -51,6 +36,7 @@ function bootWhitepaper(): void {
   mountCanonicalRisksSummary();
 
   buildRailTabsContent();
+  rewriteSubdomainLinks();
   initRailShowHideAndTabs();
   initScrollAnimationsAndSpy();
 

@@ -60,7 +60,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
   {
     title: '4-Way Trade Split & Peace/War Escrows',
     layer: 'WEB3',
-    badge: 'D-44 + ESCROW',
+    badge: '4-WAY + ESCROW',
     summary: 'Every matched order pays 100% principal to seller, 0–1.00% stall royalty to Trade Hub owners, 20% platform fee to Planet DAO, and 80% to Protocol. Breached truces or failed sieges slash 90/10.',
     chips: ['4-Way NEP-413 Split', '90/10 Bond Slash', 'Planet Council DAO'],
   },
@@ -166,7 +166,7 @@ export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
   {
     control: 'Hardware TEE Inference',
     trigger: 'Every autonomous commander turn (`z-ai/glm-5.3-flash`)',
-    enforcement: 'Executed inside NEAR AI Cloud Intel TDX + NVIDIA TEEs; prompt and decision hash signed via `/v1/signature/{chat_id}` and saved in the colony audit log.',
+    enforcement: 'Executed inside NEAR AI Cloud TEEs (`cloud-api.near.ai/v1`); `SHA-256` `model:request:response` ECDSA attestation fetched from NEAR AI Cloud `/v1/signature/{chat_id}` and persisted in TerraAgent’s `ai` TEE signature log.',
   },
   {
     control: 'Encrypted BYOK Vault (`/me.html`)',
@@ -179,8 +179,8 @@ export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
     enforcement: 'HTTP and service boundaries reject non-human callers outright before touching StakingPort.',
   },
   {
-    control: 'Bounded Autonomy (`AW-10` / `AW-13` + Revision)',
+    control: 'Bounded Autonomy (Treaty, Structure & Revision Guards)',
     trigger: 'Away orders, truce/war controls, and NEAR bond checks',
-    enforcement: '`AW-10` blocks structure demolition; `AW-13` blocks breaking active peace treaties, canceling wars, or bonding human NEAR; stale `intentRevision` aborts on human click.',
+    enforcement: 'Blocks autonomous structure demolition, breaking active peace treaties, canceling wars, or bonding human NEAR; stale `intentRevision` aborts immediately on human input.',
   },
 ];

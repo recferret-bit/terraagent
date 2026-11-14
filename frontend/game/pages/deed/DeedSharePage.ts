@@ -63,7 +63,10 @@ function buildTopbar(): HTMLElement {
 
   const brand = document.createElement('a');
   brand.className = 'ta-deed-share-brand';
-  brand.href = '/';
+  brand.href =
+    typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
+      ? 'https://terraagent.fun/'
+      : '/';
   brand.textContent = 'TERRAAGENT // COLONY DEED';
 
   const cta = document.createElement('a');

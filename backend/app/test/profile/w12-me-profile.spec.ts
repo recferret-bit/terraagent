@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MeProfileResponseSchema } from '@terra/contracts';
+import { MeProfileResponseSchema, UpdatePlayerAiSettingsSchema } from '@terra/contracts';
 import { AuthTokenService, DEV_JWT_SECRET } from '../../src/core/auth/auth-token.service.js';
 import { FlagsService } from '../../src/flags/flags.service.js';
 import { ColonyHistoryStore } from '../../src/profile/colony-history.store.js';
@@ -135,5 +135,13 @@ describe('W12-09 MeProfileController and wave gating', () => {
     });
     expect(cleared.hasApiKey).toBe(false);
     expect(cleared.apiKeyPreview).toBeNull();
+
+    // Schema trims valid custom model IDs and rejects whitespace-only, __custom__, or space/control characters
+    expect(UpdatePlayerAiSettingsSchema.parse({ model: '  mistralai/Mistral-Large-2411  ' }).model).toBe(
+      'mistralai/Mistral-Large-2411',
+    );
+    expect(UpdatePlayerAiSettingsSchema.safeParse({ model: '   ' }).success).toBe(false);
+    expect(UpdatePlayerAiSettingsSchema.safeParse({ model: '__custom__' }).success).toBe(false);
+    expect(UpdatePlayerAiSettingsSchema.safeParse({ model: 'bad model\nid' }).success).toBe(false);
   });
 });

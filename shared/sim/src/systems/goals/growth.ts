@@ -45,7 +45,11 @@ export function planGrowth(
   if (hasHub && !full && (workers === 0 || (lastWorker && tick - lastWorker.createdAt > 300))) {
     return { task: { kind: 'buildUnit', unit: 'worker', count: 1 }, detail: 'Building a Worker Drone T1 for the target resource.' };
   }
-  return { detail: full ? 'Storage full: spend resources to resume production; storage expansion needs W03.'
+  const hasDepot = Boolean(resolveBuildingRow('depot', data));
+  return { detail: full
+    ? (hasDepot
+        ? 'Storage full: build a Supply Depot or spend resources to resume production.'
+        : 'Storage full: spend resources to resume production; storage expansion needs W03.')
     : !hasHub ? 'Build the Command Hub first (Establish Colony).'
     : power.phase === 'night' && power.brownout ? 'Waiting for daylight / night power.'
     : 'Waiting for workers or a free, reachable deposit. Check harvest priorities and clear nearby ground.' };

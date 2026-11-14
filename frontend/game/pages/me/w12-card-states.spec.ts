@@ -31,6 +31,7 @@ describe('W12-22 Achievement card states: earned, locked, coming_soon, lore ridd
     const share = card.querySelector<HTMLAnchorElement>('[data-testid="ach-share-btn"]')!;
     expect(share.href).toContain('https://x.com/intent/tweet?');
     expect(decodeURIComponent(share.href)).toContain('Groundbreaker');
+    expect(decodeURIComponent(share.href)).toContain('https://play.terraagent.fun/me.html');
   });
 
   it('renders locked card with -locked.svg art, progress bar, hides front description when not next tier, and provides unique lore across all 60 achievements', () => {

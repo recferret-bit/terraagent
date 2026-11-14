@@ -141,8 +141,12 @@ export class MePage {
         void this.load();
       },
     });
+    const landingHref =
+      typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
+        ? 'https://terraagent.fun/'
+        : '/landing.html';
     authSlot.appendChild(
-      el('a', { className: 'btn btn-ghost btn-sm', href: '/landing.html' }, '◂ Landing'),
+      el('a', { className: 'btn btn-ghost btn-sm', href: landingHref }, '◂ Landing'),
     );
     return el(
       'div',
@@ -235,13 +239,17 @@ export class MePage {
       });
     }
 
+    const hubHref =
+      typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
+        ? 'https://terraagent.fun/'
+        : '/';
     return el(
       'header',
       { className: 'ta-me-header', dataset: { testid: 'me-sticky-tabs' } },
       el(
         'div',
         { className: 'ta-me-header-inner plate-sm' },
-        el('a', { className: 'ta-me-brand label c-orange', href: '/' }, 'TERRAAGENT // ME'),
+        el('a', { className: 'ta-me-brand label c-orange', href: hubHref }, 'TERRAAGENT // ME'),
         el('nav', { className: 'ta-me-tabs', aria: { label: 'Profile sections' } }, ...links),
         authHost,
       ),
