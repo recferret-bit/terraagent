@@ -23,3 +23,5 @@ tests/economy/artifacts/
 
 # Rust / NEAR smart contract build artifacts
 backend/near-contracts/target/
+
+social/
