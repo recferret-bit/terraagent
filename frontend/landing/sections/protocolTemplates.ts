@@ -6,8 +6,8 @@ export function renderProtocolToolbarHtml(): string {
     <div class="proto-filters">
       <button type="button" class="proto-filter-btn" data-proto-filter="all" aria-pressed="true">ALL STREAMS</button>
       <button type="button" class="proto-filter-btn" data-proto-filter="trade" aria-pressed="false">01 · 4-WAY TRADE</button>
-      <button type="button" class="proto-filter-btn" data-proto-filter="staking" aria-pressed="false">02 · 80/20 STAKING</button>
-      <button type="button" class="proto-filter-btn" data-proto-filter="bonds" aria-pressed="false">03 · 90/10 BONDS</button>
+      <button type="button" class="proto-filter-btn" data-proto-filter="staking" data-proto-filter-staking aria-pressed="false">02 · 80/20 STAKING</button>
+      <button type="button" class="proto-filter-btn" data-proto-filter="bonds" data-proto-filter-bonds aria-pressed="false">03 · 90/10 BONDS</button>
     </div>
     <div class="proto-acct-readout">
       <span>TREASURY ACCOUNT</span>
@@ -58,15 +58,15 @@ export function renderProtocolSchematicHtml(): string {
       <div class="proto-col">
         <span class="proto-col-label is-in">▲ 3 ORGANIC PROTOCOL INFLOWS</span>
         <article class="proto-node plate-sm" data-stream="trade">
-          <div class="proto-node-top"><b>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.40%</span></div>
-          <p>Collected atomically on every CLOB &amp; Guild fill via NEP-413 <code>token_diff</code>. Remaining 20% funds the Planet Council DAO.</p>
+          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.40%</span></div>
+          <p>Collected atomically on every CLOB &amp; Guild fill via NEP-413 <code>token_diff</code>. Remaining <span data-proto-dao-share-pct>20%</span> funds the Planet Council DAO.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="staking">
           <div class="proto-node-top"><b data-proto-yield-title>20% of Validator Yield</b><span class="proto-rate" data-proto-yield-rate>1.80% APY Slice</span></div>
           <p>Routed from 9.0% NEAR validator pools on <code>staking.terraagent.*</code> while human pilots keep 100% principal + <span data-proto-pilot-net-apy>7.20%</span> APY.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="bonds">
-          <div class="proto-node-top"><b>10% Bond Arbitration Slash</b><span class="proto-rate" data-proto-slash-rate>10% of Breach</span></div>
+          <div class="proto-node-top"><b data-proto-slash-title>10% Bond Arbitration Slash</b><span class="proto-rate" data-proto-slash-rate>10% of Breach</span></div>
           <p>Paid automatically when an oathbreaker breaks a Bonded Peace Treaty or an attacker stalls/cancels a 6h War Escrow.</p>
         </article>
       </div>
@@ -89,7 +89,7 @@ export function renderProtocolSchematicHtml(): string {
         </article>
         <article class="proto-node is-out-ai plate-sm" data-stream="all">
           <div class="proto-node-top"><b>Managed NEAR.AI Cloud TEE</b><span class="proto-rate">cloud-api.near.ai</span></div>
-          <p>Pays batched <code>z-ai/glm-5.3-flash</code> hardware-attested inference for Rival NPCs and ≥10 NEAR Staker Autopilot colonies.</p>
+          <p>Pays batched <code>z-ai/glm-5.3-flash</code> hardware-attested inference for Rival NPCs and <span data-proto-ai-min-stake>≥10 NEAR</span> Staker Autopilot colonies.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="all">
           <div class="proto-node-top"><b>Verifiable Sustainability</b><span class="proto-rate">Net Positive Scale</span></div>
@@ -110,16 +110,16 @@ export function renderProtocolStagesHtml(): string {
       <h3>4-Way Trade Split on Every Fill</h3>
       <p>Sellers receive <b>100% of sale principal</b>. Buyer fees clear in the exact same counter-signed intent—never touching custodial studio wallets:</p>
       <div class="proto-bar-group">
-        <div class="proto-bar-caption"><span>BUYER FEE ALLOCATION (MAX 2.00% / 1.50% STAKER)</span><span>ATOMIC</span></div>
+        <div class="proto-bar-caption"><span data-proto-stage-trade-cap>BUYER FEE ALLOCATION (MAX 2.00% / 1.50% STAKER)</span><span>ATOMIC</span></div>
         <div class="proto-seg-bar" role="img" aria-label="Up to 50% Stall Owner, 40% Protocol, 10% Planet Council DAO">
           <span class="proto-seg is-terra" style="width:50%"></span>
-          <span class="proto-seg is-orange" style="width:40%"></span>
-          <span class="proto-seg is-blue" style="width:10%"></span>
+          <span class="proto-seg is-orange" data-proto-bar-trade-proto style="width:40%"></span>
+          <span class="proto-seg is-blue" data-proto-bar-trade-dao style="width:10%"></span>
         </div>
         <div class="proto-legend-list">
           <div class="proto-legend-row"><span>■ Trade Hub Stall Owner</span><b>0.00% – 1.00%</b></div>
-          <div class="proto-legend-row"><span>■ TerraAgent Protocol (80% of platform)</span><b>0.80% (0.40% Staker)</b></div>
-          <div class="proto-legend-row"><span>■ Planet Council DAO (20% of platform)</span><b>0.20% (0.10% Staker)</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-proto-label>■ TerraAgent Protocol (80% of platform)</span><b data-proto-legend-proto-val>0.80% (0.40% Staker)</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-dao-label>■ Planet Council DAO (20% of platform)</span><b data-proto-legend-dao-val>0.20% (0.10% Staker)</b></div>
         </div>
       </div>
     </article>
@@ -129,18 +129,18 @@ export function renderProtocolStagesHtml(): string {
         <span class="proto-stage-num">MECHANISM 02 · DAY-1 LOSSLESS VAULT</span>
         <span class="badge badge-ai">HTTP 403 AI</span>
       </div>
-      <h3>80 / 20 Yield Split · Zero Pay-to-Win</h3>
-      <p>Any claimed human wallet can stake ≥10 NEAR from Day 1 (2-day unbonding, 100% principal safe). Yield funds your perks instead of combat buffs:</p>
+      <h3 data-proto-stage-staking-title>80 / 20 Yield Split · Zero Pay-to-Win</h3>
+      <p>Any claimed human wallet can stake <span data-proto-stage-min-stake>≥10 NEAR</span> from Day 1 (2-day unbonding, 100% principal safe). Yield funds your perks instead of combat buffs:</p>
       <div class="proto-bar-group">
         <div class="proto-bar-caption"><span>9.0% VALIDATOR POOL YIELD SPLIT</span><span>LOSSLESS</span></div>
         <div class="proto-seg-bar" role="img" aria-label="80% Net APY to Pilot, 20% APY to Protocol">
-          <span class="proto-seg is-blue" style="width:80%"></span>
-          <span class="proto-seg is-energy" style="width:20%"></span>
+          <span class="proto-seg is-blue" data-proto-bar-stake-pilot style="width:80%"></span>
+          <span class="proto-seg is-energy" data-proto-bar-stake-proto style="width:20%"></span>
         </div>
         <div class="proto-legend-list">
-          <div class="proto-legend-row"><span>■ Human Pilot Net Yield (80%)</span><b>7.20% Net APY</b></div>
-          <div class="proto-legend-row"><span>■ Protocol AI + Gas Slice (20%)</span><b>1.80% APY</b></div>
-          <div class="proto-legend-row"><span>★ Perks at ≥10 NEAR</span><b>Managed AI + 0.50% Fee</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-pilot-label>■ Human Pilot Net Yield (80%)</span><b data-proto-legend-pilot-apy>7.20% Net APY</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-yield-label>■ Protocol AI + Gas Slice (20%)</span><b data-proto-legend-yield-apy>1.80% APY</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-perks-label>★ Perks at ≥10 NEAR</span><b data-proto-legend-perks-val>Managed AI + 0.50% Fee</b></div>
         </div>
       </div>
     </article>
@@ -148,19 +148,19 @@ export function renderProtocolStagesHtml(): string {
     <article class="proto-stage plate-sm" data-proto-stage data-stream="bonds">
       <div class="proto-stage-head">
         <span class="proto-stage-num">MECHANISM 03 · CREDIBLE DIPLOMACY</span>
-        <span class="badge badge-recruiting">90 / 10 SLASH</span>
+        <span class="badge badge-recruiting" data-proto-stage-bonds-badge>90 / 10 SLASH</span>
       </div>
       <h3>Peace Treaties &amp; 6h War Escrows</h3>
       <p>Peaceful truce expiry or meeting a 6h War Bond objective (≥1 structure razed or ≥200 loot siphoned at 2× cap) refunds <b>100%</b>. Betrayal or stall slashes:</p>
       <div class="proto-bar-group">
         <div class="proto-bar-caption"><span>BREACHED TRUCE OR FAILED 6H SIEGE BOND</span><span>ON-CHAIN</span></div>
         <div class="proto-seg-bar" role="img" aria-label="90% to Betrayed Ally or Defender, 10% to Protocol">
-          <span class="proto-seg is-terra" style="width:90%"></span>
-          <span class="proto-seg is-orange" style="width:10%"></span>
+          <span class="proto-seg is-terra" data-proto-bar-bond-victim style="width:90%"></span>
+          <span class="proto-seg is-orange" data-proto-bar-bond-proto style="width:10%"></span>
         </div>
         <div class="proto-legend-list">
-          <div class="proto-legend-row"><span>■ Betrayed Truce Partner / War Defender</span><b>90% Payout</b></div>
-          <div class="proto-legend-row"><span>■ TerraAgent Protocol Arbitration</span><b>10% Slash Fee</b></div>
+          <div class="proto-legend-row"><span>■ Betrayed Truce Partner / War Defender</span><b data-proto-legend-victim-val>90% Payout</b></div>
+          <div class="proto-legend-row"><span>■ TerraAgent Protocol Arbitration</span><b data-proto-legend-slash-val>10% Slash Fee</b></div>
           <div class="proto-legend-row"><span>■ AI Guardrail (AW-13)</span><b>Blocked from Break/NEAR</b></div>
         </div>
       </div>

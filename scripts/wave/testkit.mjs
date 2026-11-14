@@ -1,10 +1,11 @@
 // Sandbox for the wave script tests: a throwaway git repo (plan files copied from the real repo) with a bare `origin`,
 // laid out like the real one (`<sandbox>/TerraAgent` + `<sandbox>/TerraAgent-wt`). Nothing here touches the real repository.
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { seedSandboxPlan } from './sandbox-plan-fixture.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const wave = join(repo, 'scripts', 'wave', 'wave.mjs');
@@ -21,8 +22,12 @@ export function makeSandbox() {
   const root = join(base, 'TerraAgent');
   mkdirSync(root, { recursive: true });
   mkdirSync(join(base, 'TerraAgent-wt'));
-  cpSync(join(repo, 'docs', 'plan'), join(root, 'docs', 'plan'), { recursive: true });
   cpSync(join(repo, 'scripts', 'plan'), join(root, 'scripts', 'plan'), { recursive: true });
+  if (existsSync(join(repo, 'docs', 'plan'))) {
+    cpSync(join(repo, 'docs', 'plan'), join(root, 'docs', 'plan'), { recursive: true });
+  } else {
+    seedSandboxPlan(root);
+  }
   writeFileSync(join(root, '.gitignore'), 'infra/.env.worktree\n.env.worktree\n');
   git(base, 'init', '--bare', '-b', 'main', 'origin.git');
   git(root, 'init', '-b', 'main');

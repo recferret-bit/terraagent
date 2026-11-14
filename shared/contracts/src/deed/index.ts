@@ -190,6 +190,7 @@ export const StakerPerksInfo = z.strictObject({
   netApyBp: z.number().int().nonnegative(),
   protocolYieldShareBp: z.number().int().nonnegative(),
   platformFeeBp: z.number().int().nonnegative(),
+  stakerPlatformFeeBp: z.number().int().nonnegative().optional(),
   standardPlatformFeeBp: z.number().int().nonnegative(),
   managedAutopilotUnlocked: z.boolean(),
   protocolAccountId: z.string().min(2).max(64),

@@ -47,11 +47,11 @@ export function buildStagePanelHeader(opts: {
   const header = document.createElement('div');
   header.className = 'ta-stage-panel-header';
   const title = document.createElement('span');
-  title.textContent = 'Goals';
+  title.textContent = 'Stage Goals';
   const close = document.createElement('button');
   close.type = 'button';
-  close.className = 'btn btn-ghost btn-sm';
-  close.textContent = '−';
+  close.className = 'btn btn-sm';
+  close.textContent = 'CLOSE';
   close.dataset.testid = 'stage-goals-close';
   close.setAttribute('aria-label', 'Close stage goals');
   close.onclick = opts.onClose;

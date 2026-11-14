@@ -13,6 +13,32 @@ import os from 'node:os';
 import path from 'node:path';
 import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, PublicKey, nearToYocto, teraToGas } from 'near-api-js';
 
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+function wasmCodeHashBase58(wasmBytes) {
+  const digest = createHash('sha256').update(wasmBytes).digest();
+  const digits = [0];
+  for (const byte of digest) {
+    let carry = byte;
+    for (let j = 0; j < digits.length; j += 1) {
+      carry += digits[j] << 8;
+      digits[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = (carry / 58) | 0;
+    }
+  }
+  let out = '';
+  for (const byte of digest) {
+    if (byte === 0) out += '1';
+    else break;
+  }
+  for (let i = digits.length - 1; i >= 0; i -= 1) out += BASE58_ALPHABET[digits[i]];
+  return out;
+}
+
 function parseCliArgs(argv) {
   let network = (process.env.NEAR_NETWORK || process.env.NEAR_MODE || 'testnet').trim().toLowerCase();
   if (network !== 'mainnet') network = 'testnet';
@@ -261,6 +287,7 @@ async function buildDryRunReport(target, selectedSpecs) {
       accountId: spec.accountId,
       initialNear: spec.initialNear,
       wasmBytes: wasm.length,
+      codeHash: wasmCodeHashBase58(wasm),
       wasmSha256Base64: createHash('sha256').update(wasm).digest('base64'),
       initArgs: spec.initArgs,
     });
@@ -277,9 +304,54 @@ async function buildDryRunReport(target, selectedSpecs) {
   };
 }
 
+async function configureStakingPostDeploy(parent, spec, rootAccount, protocolAccount, txs) {
+  if (protocolAccount !== `protocol.${rootAccount}`) {
+    const out = await parent.callFunctionRaw({
+      contractId: spec.accountId,
+      methodName: 'set_protocol_account',
+      args: { protocol_id: protocolAccount },
+      gas: teraToGas(30),
+    });
+    assertTxOutcomeOk(out, `set_protocol_account(${spec.accountId})`);
+    txs.setProtocolAccount = out.transaction?.hash || out.transaction_outcome?.id;
+  }
+  const rawYieldBp = process.env.NEAR_PROTOCOL_STAKING_YIELD_BP?.trim();
+  if (rawYieldBp && /^\d+$/.test(rawYieldBp)) {
+    const yieldBp = Number(rawYieldBp);
+    if (Number.isSafeInteger(yieldBp) && yieldBp >= 0 && yieldBp <= 10_000) {
+      const out = await parent.callFunctionRaw({
+        contractId: spec.accountId,
+        methodName: 'set_protocol_yield_bp',
+        args: { yield_bp: yieldBp },
+        gas: teraToGas(30),
+      });
+      assertTxOutcomeOk(out, `set_protocol_yield_bp(${spec.accountId})`);
+      txs.setProtocolYieldBp = out.transaction?.hash || out.transaction_outcome?.id;
+    }
+  }
+}
+
+async function awaitFinalAccountView(provider, accountId, expectedCodeHash) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const view = await provider.query({
+      request_type: 'view_account',
+      account_id: accountId,
+      finality: 'final',
+    });
+    if (!expectedCodeHash || view.code_hash === expectedCodeHash) return view;
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  return provider.query({
+    request_type: 'view_account',
+    account_id: accountId,
+    finality: 'optimistic',
+  });
+}
+
 async function deployOne(provider, parent, target, spec, redeploy) {
   const { credsDir, rootAccount, protocolAccount } = target;
   const wasm = await fs.readFile(path.resolve(spec.wasmPath));
+  const expectedCodeHash = wasmCodeHashBase58(wasm);
   const cred = await ensureSubCredential(credsDir, spec.accountId);
   const txs = {};
   let view = await viewAccountOrNull(provider, spec.accountId);
@@ -326,36 +398,13 @@ async function deployOne(provider, parent, target, spec, redeploy) {
     txs.init = out.transaction?.hash || out.transaction_outcome?.id;
   }
   if (spec.key === 'staking') {
-    if (protocolAccount !== `protocol.${rootAccount}`) {
-      const out = await parent.callFunctionRaw({
-        contractId: spec.accountId,
-        methodName: 'set_protocol_account',
-        args: { protocol_id: protocolAccount },
-        gas: teraToGas(30),
-      });
-      assertTxOutcomeOk(out, `set_protocol_account(${spec.accountId})`);
-      txs.setProtocolAccount = out.transaction?.hash || out.transaction_outcome?.id;
-    }
-    const rawYieldBp = process.env.NEAR_PROTOCOL_STAKING_YIELD_BP?.trim();
-    if (rawYieldBp && /^\d+$/.test(rawYieldBp)) {
-      const yieldBp = Number(rawYieldBp);
-      if (Number.isSafeInteger(yieldBp) && yieldBp >= 0 && yieldBp <= 10_000) {
-        const out = await parent.callFunctionRaw({
-          contractId: spec.accountId,
-          methodName: 'set_protocol_yield_bp',
-          args: { yield_bp: yieldBp },
-          gas: teraToGas(30),
-        });
-        assertTxOutcomeOk(out, `set_protocol_yield_bp(${spec.accountId})`);
-        txs.setProtocolYieldBp = out.transaction?.hash || out.transaction_outcome?.id;
-      }
-    }
+    await configureStakingPostDeploy(parent, spec, rootAccount, protocolAccount, txs);
   }
-  const finalView = await provider.query({
-    request_type: 'view_account',
-    account_id: spec.accountId,
-    finality: 'final',
-  });
+  const finalView = await awaitFinalAccountView(
+    provider,
+    spec.accountId,
+    txs.deployContract ? expectedCodeHash : null,
+  );
   return {
     key: spec.key,
     accountId: spec.accountId,

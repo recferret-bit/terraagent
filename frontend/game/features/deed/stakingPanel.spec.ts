@@ -232,4 +232,53 @@ describe('W20-21 StakingPanel stake -> unstake -> withdraw flow (unit)', () => {
     );
     panel.dispose();
   });
+
+  it('honors custom stakerPlatformFeeBp, minStakeNear, and protocolYieldShareBp both before and right after staking', async () => {
+    const parent = document.createElement('div');
+    const ctx: FeatureContext = {
+      flags: new Set(['W20']),
+      host: 'server',
+      services: { track: () => {} },
+    };
+    const panel = new StakingPanel(parent, ctx, {
+      fetchFn: createLifecycleFetchMock(),
+      openSigner: fakeSigner('approve'),
+    });
+    panel.syncDeed(makeDeed(false, true));
+    panel.applyStatusResponse({
+      colonyId: 'col_0',
+      accountId: 'pilot.mock',
+      walletAccountId: 'pilot.mock',
+      walletBalanceNear: '100',
+      deedSettled: false,
+      accountClaimed: true,
+      claimedByAccountId: 'pilot.mock',
+      pools: [{ poolId: 'astro-stakers.poolv1.near', name: 'Astro Stakers', apyBp: 900 }],
+      positions: [],
+      perks: {
+        active: false,
+        minStakeNear: '10',
+        totalStakedNear: '0',
+        grossApyBp: 900,
+        netApyBp: 810,
+        protocolYieldShareBp: 1_000,
+        platformFeeBp: 100,
+        stakerPlatformFeeBp: 25,
+        standardPlatformFeeBp: 100,
+        managedAutopilotUnlocked: false,
+        protocolAccountId: 'protocol.terraagent.mock',
+      },
+    });
+
+    expect(panel.perksBannerEl.textContent).toContain('8.1% Net APY (10% yield -> TerraAgent Protocol)');
+    expect(panel.perksBannerEl.textContent).toContain('75% Lower Market Fee (0.25%)');
+    expect(panel.poolSelectEl.options[0]?.textContent).toContain('8.1% net / 9% validator APY');
+    expect(panel.root.textContent).toContain('Net Rewards (8.1% APY)');
+
+    panel.amountInputEl.value = '10';
+    expect(await panel.stakeFlow()).toBe(true);
+    expect(panel.perksBannerEl.textContent).toContain('PERKS ACTIVE (>= 10 NEAR): 8.1% Net APY');
+    expect(panel.perksBannerEl.textContent).toContain('0.25% Market Fee');
+    panel.dispose();
+  });
 });

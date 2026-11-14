@@ -1,13 +1,19 @@
 .ta-deed-toast {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 75;
   display: flex;
   flex-direction: column;
   gap: var(--ta-s2);
   padding: var(--ta-s3) var(--ta-s4);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-orange);
+  box-shadow: var(--ta-glow-1);
   color: var(--ta-text);
-  min-width: 240px;
-  max-width: 340px;
+  min-width: 260px;
+  max-width: min(380px, 90vw);
   pointer-events: auto;
 }
 

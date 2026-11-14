@@ -55,12 +55,22 @@ describe('Landing #protocol & #economics sections', () => {
     expect(board?.dataset.activeStream).toBe('all');
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('treasury.terraagent.near');
     expect(document.querySelector('[data-relayer-account]')?.textContent).toBe('relayer.terraagent.near');
+    expect(document.querySelector('[data-proto-trade-title]')?.textContent).toBe('75% of Platform Trade Fee');
     expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.90% / 0.45%');
+    expect(document.querySelector('[data-proto-dao-share-pct]')?.textContent).toBe('25%');
     expect(document.querySelector('[data-proto-yield-title]')?.textContent).toBe('15% of Validator Yield');
     expect(document.querySelector('[data-proto-yield-rate]')?.textContent).toBe('1.35% APY Slice');
     expect(document.querySelector('[data-proto-pilot-net-apy]')?.textContent).toBe('7.65%');
+    expect(document.querySelector('[data-proto-slash-title]')?.textContent).toBe('12% Bond Arbitration Slash');
     expect(document.querySelector('[data-proto-slash-rate]')?.textContent).toBe('12% of Breach');
     expect(document.querySelector('[data-proto-min-stake]')?.textContent).toBe('≥15 NEAR');
+    expect(document.querySelector('[data-proto-stage-staking-title]')?.textContent).toBe('85 / 15 Yield Split · Zero Pay-to-Win');
+    expect(document.querySelector('[data-proto-legend-pilot-apy]')?.textContent).toBe('7.65% Net APY');
+    expect(document.querySelector('[data-proto-legend-yield-apy]')?.textContent).toBe('1.35% APY');
+    expect(document.querySelector('[data-proto-legend-perks-val]')?.textContent).toBe('Managed AI + 0.60% Fee');
+    expect(document.querySelector('[data-proto-stage-bonds-badge]')?.textContent).toBe('88 / 12 SLASH');
+    expect(document.querySelector('[data-proto-legend-victim-val]')?.textContent).toBe('88% Payout');
+    expect(document.querySelector('[data-proto-legend-slash-val]')?.textContent).toBe('12% Slash Fee');
     expect(document.querySelectorAll('[data-proto-stage]').length).toBe(3);
 
     const stakingBtn = document.querySelector<HTMLButtonElement>('[data-proto-filter="staking"]')!;
@@ -78,6 +88,16 @@ describe('Landing #protocol & #economics sections', () => {
 
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('protocol.terraagent.testnet');
     expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.40%');
+  });
+});
+
+describe('Landing #economics Day-1 staking calculator', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `<section id="economics"><div id="economics-board"></div></section>`;
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
   });
 
   it('computes exact Day-1 staking boundary (5 NEAR standard vs 10 NEAR staker unlock) in #economics calculator', () => {

@@ -18,9 +18,6 @@ coverage/
 scripts/dev/.out/
 .dev/
 
-# the committed coverage reference (docs/coverage/README.md) is not a coverage output folder
-!docs/coverage/
-
 # W13-45 experiment artifacts (checksummed run outputs)
 tests/economy/artifacts/
 

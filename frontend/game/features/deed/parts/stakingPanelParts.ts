@@ -8,14 +8,18 @@ export function formatStakerPerksBanner(stakedNear: number, perks?: StakerPerksI
   const minLabel = perks?.minStakeNear || '10';
   const netPct = ((perks?.netApyBp ?? 720) / 100).toFixed(1);
   const protoSharePct = Math.round((perks?.protocolYieldShareBp ?? 2_000) / 100);
-  const stakerFeeBp = perks?.platformFeeBp && stakedNear >= minNear ? perks.platformFeeBp : 50;
   const stdFeeBp = perks?.standardPlatformFeeBp ?? 100;
-  const feePct = ((perks ? (perks.active ? perks.platformFeeBp : Math.min(perks.platformFeeBp, stakerFeeBp)) : 50) / 100).toFixed(2);
-  const discountPct = stdFeeBp > 0 ? Math.round(((stdFeeBp - (perks?.active ? perks.platformFeeBp : 50)) / stdFeeBp) * 100) : 50;
+  const targetStakerFeeBp = perks?.stakerPlatformFeeBp ?? (perks?.active ? perks.platformFeeBp : 50);
+  const feePct = (targetStakerFeeBp / 100).toFixed(2);
+  const discountPct =
+    stdFeeBp > 0 && targetStakerFeeBp < stdFeeBp
+      ? Math.round(((stdFeeBp - targetStakerFeeBp) / stdFeeBp) * 100)
+      : 0;
   if (stakedNear >= minNear) {
-    return `PERKS ACTIVE (>= ${minLabel} NEAR): ${netPct}% Net APY · Managed NEAR.AI Autopilot ON · ${((perks?.platformFeeBp ?? 50) / 100).toFixed(2)}% Market Fee (${protoSharePct}% yield -> TerraAgent Protocol)`;
+    return `PERKS ACTIVE (>= ${minLabel} NEAR): ${netPct}% Net APY · Managed NEAR.AI Autopilot ON · ${feePct}% Market Fee (${protoSharePct}% yield -> TerraAgent Protocol)`;
   }
-  return `Stake >= ${minLabel} NEAR from Day 1: ${netPct}% Net APY (${protoSharePct}% yield -> TerraAgent Protocol) · Unlocks Managed NEAR.AI Autopilot + ${discountPct}% Lower Market Fee (${feePct}%)`;
+  const feeBenefit = discountPct > 0 ? `${discountPct}% Lower Market Fee (${feePct}%)` : `${feePct}% Market Fee`;
+  return `Stake >= ${minLabel} NEAR from Day 1: ${netPct}% Net APY (${protoSharePct}% yield -> TerraAgent Protocol) · Unlocks Managed NEAR.AI Autopilot + ${feeBenefit}`;
 }
 
 export const DEFAULT_STAKING_POOLS: readonly StakingPoolInfo[] = [
@@ -31,9 +35,10 @@ export const DEFAULT_STAKING_POOLS: readonly StakingPoolInfo[] = [
   },
 ];
 
-export function formatPoolOptionText(pool: StakingPoolInfo): string {
+export function formatPoolOptionText(pool: StakingPoolInfo, protocolYieldShareBp = 2_000): string {
   const grossPct = (pool.apyBp / 100).toFixed(pool.apyBp % 100 === 0 ? 0 : 2);
-  const netPct = ((pool.apyBp * 0.8) / 100).toFixed(1);
+  const userShare = Math.max(0, Math.min(10_000, 10_000 - protocolYieldShareBp)) / 10_000;
+  const netPct = ((pool.apyBp * userShare) / 100).toFixed(1);
   return `${pool.poolId} (${netPct}% net / ${grossPct}% validator APY)`;
 }
 
@@ -269,6 +274,7 @@ export function buildStakingPanelLayout(handlers: {
 export function renderStakingPoolOptions(
   poolSelectEl: HTMLSelectElement,
   pools: readonly StakingPoolInfo[],
+  protocolYieldShareBp = 2_000,
 ): void {
   const prevVal = poolSelectEl.value;
   while (poolSelectEl.firstChild) {
@@ -277,12 +283,19 @@ export function renderStakingPoolOptions(
   for (const pool of pools) {
     const opt = document.createElement('option');
     opt.value = pool.poolId;
-    opt.textContent = formatPoolOptionText(pool);
+    opt.textContent = formatPoolOptionText(pool, protocolYieldShareBp);
     poolSelectEl.appendChild(opt);
   }
   if (prevVal && pools.some((p) => p.poolId === prevVal)) {
     poolSelectEl.value = prevVal;
   }
+}
+
+export function syncStakingRewardsLabel(rewardsValEl: HTMLElement, perks?: StakerPerksInfo | null): void {
+  const labelEl = rewardsValEl.previousElementSibling;
+  if (!labelEl) return;
+  const netPct = ((perks?.netApyBp ?? 720) / 100).toFixed(1);
+  labelEl.textContent = `Net Rewards (${netPct}% APY)`;
 }
 
 export function extractStakingApiError(body: unknown, fallback: string): string {

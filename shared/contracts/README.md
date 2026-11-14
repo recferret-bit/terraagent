@@ -1,7 +1,6 @@
 # @terra/contracts
 
-zod schemas for every message that crosses a boundary. `docs/spec/PROTOCOL.md` is the human-readable mirror; on a
-conflict the spec wins and the code is fixed.
+Zod schemas for every message that crosses a boundary (`schema/contracts.schema.json` is the generated JSON-Schema snapshot; see [`README.md`](../../README.md)).
 
 | Folder | What |
 |---|---|
@@ -33,7 +32,7 @@ conflict the spec wins and the code is fixed.
    `EventKindSchema`, `eventDef(kind)`) and the JSON-Schema snapshot `schema/contracts.schema.json`.
 3. Commit the generated files with the kind file. `npm run gen:check` (part of `npm run check`, i.e. CI) fails while they
    are stale, so a contract change can never land without an explicit, reviewable snapshot diff.
-4. A snapshot diff is a protocol change: reviewers check that `docs/spec/PROTOCOL.md` was updated with it (PR-06).
+4. A snapshot diff is a protocol change: reviewers check that [`README.md`](../../README.md) and any affected consumer handlers are updated with it (PR-06).
 
 The `cmd` envelope keeps `kind: string`; the server routes on it, answers unknown kinds with `cmd.reject unknown_kind`
 and validates `args` with `parseCommandArgs(kind, args)`.

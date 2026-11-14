@@ -17,6 +17,7 @@ export interface EvaluatedStakerPerks {
   readonly netApyBp: number;
   readonly protocolYieldShareBp: number;
   readonly platformFeeBp: number;
+  readonly stakerPlatformFeeBp: number;
   readonly standardPlatformFeeBp: number;
   readonly managedAutopilotUnlocked: boolean;
   readonly protocolAccountId: string;
@@ -48,6 +49,7 @@ export function buildStakerPerksFromYocto(
     netApyBp,
     protocolYieldShareBp: sched.protocolStakingYieldShareBp,
     platformFeeBp: active ? sched.stakerPlatformFeeBp : standardPlatformFeeBp,
+    stakerPlatformFeeBp: sched.stakerPlatformFeeBp,
     standardPlatformFeeBp,
     managedAutopilotUnlocked: active,
     protocolAccountId: opts.protocolAccountId ?? PROTOCOL_STAKING_ACCOUNT_ID,

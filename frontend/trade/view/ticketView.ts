@@ -1,9 +1,31 @@
-import { formatAtomic, parsePairId, type BookLevel, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
+import { formatAtomic, parsePairId, type BookLevel, type MarketPolicyView, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
 import { TradeApiFailure, type TradeClient } from '../api/client';
 import { previewTicket, type TicketPreview } from '../model/preview';
 import { freeOf, type TradeState } from '../model/state';
 import { bpLabel, fmtAmount, fmtUnit, levelRatio, totalAtLevel, tryParse, ttlLabel } from '../model/units';
 import { h, note } from './dom';
+
+export function formatTicketFeeTier(policy: MarketPolicyView | null): { readonly isStaker: boolean; readonly text: string } {
+  const feeBp = policy?.platformFeeBp ?? 100;
+  const stdFeeBp = policy?.standardPlatformFeeBp ?? feeBp;
+  const stakerFeeBp = policy?.stakerPlatformFeeBp ?? 50;
+  const minStake = policy?.minStakeNear ?? '10';
+  const isStaker = Boolean(policy?.stakerDiscountActive) || feeBp < stdFeeBp;
+  if (isStaker) {
+    return {
+      isStaker: true,
+      text: `★ STAKER PERK ACTIVE: ${(feeBp / 100).toFixed(2)}% Platform Fee (Down from ${(stdFeeBp / 100).toFixed(2)}% — ≥${minStake} NEAR Staked)`,
+    };
+  }
+  const discountPct = stdFeeBp > 0 && stakerFeeBp < stdFeeBp ? Math.round(((stdFeeBp - stakerFeeBp) / stdFeeBp) * 100) : 0;
+  const discountLabel = discountPct > 0
+    ? `${discountPct}% Lower Fee (${(stakerFeeBp / 100).toFixed(2)}%)`
+    : `${(stakerFeeBp / 100).toFixed(2)}% Staker Fee`;
+  return {
+    isStaker: false,
+    text: `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥${minStake} NEAR in Colony Staking for ${discountLabel} + Managed NEAR.AI)`,
+  };
+}
 
 export interface TicketDeps {
   client: TradeClient;
@@ -118,13 +140,9 @@ export class OrderTicket {
     if (document.activeElement !== this.unitPrice) {
       this.unitPrice.value = pv.amount && pv.total ? fmtUnit({ num: pv.total.toString(), den: pv.amount }, q) : '';
     }
-    const feeBp = st.policy?.platformFeeBp ?? 100;
-    const stdFeeBp = st.policy?.standardPlatformFeeBp ?? 100;
-    const isStaker = Boolean(st.policy?.stakerDiscountActive) || feeBp < stdFeeBp || feeBp <= 50;
-    this.feeTier.className = `tr-fee-tier ${isStaker ? 'is-staker' : ''}`;
-    this.feeTier.textContent = isStaker
-      ? `★ STAKER PERK ACTIVE: ${(feeBp / 100).toFixed(2)}% Platform Fee (Down from ${(stdFeeBp / 100).toFixed(2)}% — ≥10 NEAR Staked)`
-      : `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥10 NEAR in Colony Staking for 50% Lower Fee + Managed NEAR.AI)`;
+    const tier = formatTicketFeeTier(st.policy);
+    this.feeTier.className = `tr-fee-tier ${tier.isStaker ? 'is-staker' : ''}`;
+    this.feeTier.textContent = tier.text;
     this.drawPreview(pv, q, parsed.base, st);
     this.unit.textContent = pv.amount && pv.total ? `= ${fmtUnit({ num: pv.total.toString(), den: pv.amount }, q)} ${q} per unit · Total ${formatAtomic(q, pv.total)} ${q} settled via NEP-413` : 'Type either Unit Price or Total Order Price — the other updates automatically.';
     this.reason.hidden = pv.blocked === null || this.busy;

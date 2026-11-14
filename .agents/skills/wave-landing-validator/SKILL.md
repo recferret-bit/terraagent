@@ -13,6 +13,8 @@ description: >-
 
 # Full Wave Pre-Landing Validator (`wave-landing-validator`)
 
+> **Clean Root Note (`D-41`):** Canonical docs on `main` live in [`README.md`](../../../README.md), [`HACKATHON.md`](../../../HACKATHON.md), [`infra/.env.example`](../../../infra/.env.example), [`frontend/whitepaper/whitepaper.md`](../../../frontend/whitepaper/whitepaper.md), and [`shared/sim/README.md`](../../../shared/sim/README.md); update those canonical files instead of `docs/*` unless validating a legacy wave branch that still carries `docs/plan/`.
+
 > **Natural-Language Trigger (`"validate the wave"`):** Whenever the user says **"validate the wave"** (or `"validate wave"`, `"validate WNN"`, `"review the wave"`), immediately run `npm run validate:wave` (auto-detects the current worktree's wave or the open wave in the plan), execute the **2-iteration review-and-fix loop** in §1 below across all modified files, run `npm run validate:wave -- <NN> --gates`, and report the 6-part structured summary.
 
 Before a wave branch (`wave/wNN-<slug>`) is handed to the owner or merged into `main`, it must pass a rigorous **pre-landing quality, architecture, test-pyramid, and task-parity validation**. Large wave implementations across multiple subagents frequently accumulate subtle gaps against the initial wave task, happy-path-only tests missing negative/corner cases, features with unit tests but no integration or backend E2E tests, duplicated helper blocks, oversized orchestrators that mix wiring with business logic, or client/server/sim boundary drift.

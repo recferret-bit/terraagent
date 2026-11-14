@@ -18,6 +18,7 @@ import {
   formatUnbondingSummary,
   REAL_NEAR_COPY,
   renderStakingPoolOptions,
+  syncStakingRewardsLabel,
   upsertStakingPositionList,
 } from './parts/stakingPanelParts';
 import {
@@ -166,11 +167,13 @@ export class StakingPanel implements Disposable {
       this.claimedByAccountId = status.accountId || 'pilot.mock';
     }
     this.walletBalanceNear = status.walletBalanceNear;
-    if (status.pools?.length) {
-      this.renderPools(status.pools);
-    }
     this.positions = status.positions ?? [];
     this.perks = status.perks ?? this.perks;
+    if (status.pools?.length) {
+      this.renderPools(status.pools);
+    } else if (status.perks) {
+      this.renderPools(this.pools);
+    }
     this.renderState();
   }
 
@@ -399,7 +402,7 @@ export class StakingPanel implements Disposable {
 
   private renderPools(pools: readonly StakingPoolInfo[]): void {
     this.pools = pools;
-    renderStakingPoolOptions(this.poolSelectEl, pools);
+    renderStakingPoolOptions(this.poolSelectEl, pools, this.perks?.protocolYieldShareBp);
   }
 
   private renderState(): void {
@@ -413,6 +416,7 @@ export class StakingPanel implements Disposable {
     const totalStakedNear = this.positions.reduce((sum, p) => sum + Number(p.staked || '0'), 0);
     const minNear = Number(this.perks?.minStakeNear || '10') || 10;
     this.perksBannerEl.textContent = formatStakerPerksBanner(totalStakedNear, this.perks);
+    syncStakingRewardsLabel(this.rewardsValEl, this.perks);
     this.root.dataset.perksActive = totalStakedNear >= minNear ? 'true' : 'false';
 
     this.walletBalanceEl.textContent = `Wallet: ${this.walletBalanceNear} NEAR`;

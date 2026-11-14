@@ -37,6 +37,11 @@
   color: var(--ta-steel);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam-2);
+  white-space: nowrap;
+}
+
+.ta-director__head-actions .btn {
+  white-space: nowrap;
 }
 
 .ta-director__ai-pill[data-enabled='true'] {
@@ -145,6 +150,7 @@
    HQ AI already owns the master AI on/off toggle in the Colony book, so hide the duplicate autopilot button here. */
 .ta-colony-book .ta-director {
   width: 100%;
+  min-width: 300px;
   max-width: none;
   box-sizing: border-box;
   padding: 0;

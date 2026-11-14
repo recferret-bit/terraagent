@@ -13,7 +13,7 @@ npm run wave       # open/resume the next ready wave in its worktree and start i
 npm run wave:land -- <NN>                                # Mode 1 ("merge wave into main"): 3-iteration audit/test/E2E loop, auto-heal generated conflicts, merge --no-ff to main, tag wave-NN, push, cleanup + future-wave propagation
 npm run wave:sync -- <NN|--all> [--sync-issues]          # Mode 2 ("merge main into wave"): merge updated main into WIP wave worktree (and active issue/WNN-XX worktrees) with 3-iteration verification & incoming plan delta
 npm run wave:audit -- <NN> [--sync] [--json]             # semantic collision scan (ECS codes, migrations, Q&L/Decision IDs, unlanded issues) + as-built scope delta
-npm run wave:propagate -- <NN> [--add-issue WMM ...]     # post-merge self-review feature audit & safe issue injection into downstream future wave plans (`docs/plan/waves/W*.md`)
+npm run wave:propagate -- <NN> [--add-issue WMM ...]     # post-merge self-review feature audit & safe issue injection when wave plans exist
 npm run validate:wave -- <NN> [--gates] [--strict]       # pre-landing wave validator (task parity, Test Pyramid [unit+integration+backend E2E + pos/neg/corner cases], AST duplication, orchestrator/service split, client+server wiring)
 npm run test:wave:validator                              # self-test of the pre-landing wave validator
 npm run validate:models -- <id|--category robot|--all>   # geometry validator for kitbash models

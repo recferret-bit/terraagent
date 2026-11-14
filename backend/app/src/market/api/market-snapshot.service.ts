@@ -15,6 +15,7 @@ import { IntentTradeRepository } from '../settlement/intent-trade.repository.js'
 import { colonyFunds } from './colony-funds.js';
 import { MarketBookPush } from './market-book-push.service.js';
 import type { MarketCaller } from './market-caller.js';
+import { resolveProtocolFeeSchedule } from '../../near/infrastructure/network/protocol-fee.config.js';
 import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
 
 export const RECENT_TRADES = 50;
@@ -90,11 +91,25 @@ export class MarketSnapshotService {
 
   policyView(): MarketPolicyView {
     const c = this.policy.current();
+    const sched = resolveProtocolFeeSchedule(
+      (this.env ?? process.env) as Record<string, string | undefined>,
+      { basePlatformFeeBp: c.platformFeeBp },
+    );
     const minNotional: Partial<Record<QuoteToken, string>> = {};
     for (const p of c.pairs) minNotional[p.quote] ??= p.minNotionalAtomic;
     return {
-      policyVersion: c.policyVersion, policyHash: c.policyHash, platformFeeBp: c.platformFeeBp, daoFeeShareBp: c.treasuryShareBp, stallFeeMaxBp: c.stallFeeMaxBp, stallFeeDefaultBp: c.stallFeeDefaultBp,
-      ttlOptionsS: [...c.ttlOptionsS], openOrderLimit: c.openOrderLimit, minNotional,
+      policyVersion: c.policyVersion,
+      policyHash: c.policyHash,
+      platformFeeBp: c.platformFeeBp,
+      standardPlatformFeeBp: c.platformFeeBp,
+      stakerPlatformFeeBp: sched.stakerPlatformFeeBp,
+      minStakeNear: sched.minStakeForPerksNear,
+      daoFeeShareBp: c.treasuryShareBp,
+      stallFeeMaxBp: c.stallFeeMaxBp,
+      stallFeeDefaultBp: c.stallFeeDefaultBp,
+      ttlOptionsS: [...c.ttlOptionsS],
+      openOrderLimit: c.openOrderLimit,
+      minNotional,
     };
   }
 

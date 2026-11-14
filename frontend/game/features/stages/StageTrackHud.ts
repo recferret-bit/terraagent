@@ -217,7 +217,8 @@ export class StageTrackHud implements Disposable {
       ...opts,
     });
     const spec = STAGE_TABLE_ROWS[stage] ?? STAGE_TABLE_ROWS[0]!;
-    const title = opts?.title ?? `S${stage} ${spec.label}`;
+    const stageLabel = spec.label.startsWith(`S${stage}`) ? spec.label : `S${stage} ${spec.label}`;
+    const title = opts?.title ?? stageLabel;
     if (!opts?.replay) {
       pushNotification({
         category: 'stage',

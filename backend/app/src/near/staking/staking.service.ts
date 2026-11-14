@@ -198,6 +198,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
         netApyBp: perks.netApyBp,
         protocolYieldShareBp: perks.protocolYieldShareBp,
         platformFeeBp: perks.platformFeeBp,
+        stakerPlatformFeeBp: perks.stakerPlatformFeeBp,
         standardPlatformFeeBp: perks.standardPlatformFeeBp,
         managedAutopilotUnlocked: perks.managedAutopilotUnlocked,
         protocolAccountId: perks.protocolAccountId,

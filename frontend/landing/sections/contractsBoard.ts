@@ -90,7 +90,7 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Day-1 staking (≥10 NEAR): 80% yield (7.2% APY) to human pilot + 20% (1.8% APY) to Protocol for Managed NEAR.AI & 50% trade fee cut (403 AI).',
     inGameTrigger: 'Day-1 Pilot Stake (≥10 NEAR)',
     onChainAction: 'stake · unstake · withdraw_protocol_yield',
-    codeHash: '2cDtJn9Scf3iR7P5pSMWmcTfJy6Be3ZZARwSqi7bwaSj',
+    codeHash: '9b51P4dVKvQWK5r8T5J9gdiNuEvNMuxY3CK1SihefNwb',
     txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <rect x="11" y="20" width="26" height="20" fill="#0D1924" stroke="#39D0FF" stroke-width="1.8"/>

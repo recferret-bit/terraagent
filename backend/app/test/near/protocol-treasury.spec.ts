@@ -434,8 +434,13 @@ describe('Custom staking yield split & /v1/trade/policy staker discounts', () =>
     );
 
     const anonPolicy = await readSvc.policyView(null);
-    expect(anonPolicy.policy.platformFeeBp).toBe(120);
-    expect(anonPolicy.policy.daoFeeShareBp).toBe(2500);
+    expect(anonPolicy.policy).toMatchObject({
+      platformFeeBp: 120,
+      standardPlatformFeeBp: 120,
+      stakerPlatformFeeBp: 45,
+      minStakeNear: '10',
+      daoFeeShareBp: 2500,
+    });
     expect(anonPolicy.policy.stakerDiscountActive).toBeUndefined();
 
     const stakerPolicy = await readSvc.policyView({

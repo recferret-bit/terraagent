@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { DEFAULT_NEAR_AI_MODEL, NearAiLlmAdapter, normalizeNearAiModel } from './adapters/nearai-llm.adapter.js';
 
@@ -70,11 +70,16 @@ export function reportMarkdown(report: LiveReport): string {
 }
 
 const envPath = process.argv[2];
+const outArg = process.argv[3];
 const isMain = process.argv[1]?.includes('live-once');
 if (isMain && envPath) {
   const env = loadEnv(envPath);
   const report = await liveOnce(env);
-  const markdown = reportMarkdown(report);
-  writeFileSync(resolve(process.cwd(), 'docs/plan/w16-live-report.md'), markdown);
+  const targetPath = outArg || env.TA_AI_REPORT_PATH;
+  if (targetPath) {
+    const resolvedOut = resolve(process.cwd(), targetPath);
+    mkdirSync(dirname(resolvedOut), { recursive: true });
+    writeFileSync(resolvedOut, reportMarkdown(report));
+  }
   process.stdout.write(`${JSON.stringify({ ok: report.ok, model: report.model, latencyMs: report.latencyMs, inputTokens: report.inputTokens, outputTokens: report.outputTokens, error: report.error })}\n`);
 }

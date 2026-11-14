@@ -35,7 +35,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font: 600 var(--ta-fs-small) var(--ta-font-display);
+  padding-bottom: var(--ta-s2);
+  border-bottom: 1px solid var(--ta-seam-2);
+  color: var(--ta-orange);
+  font: 700 var(--ta-fs-small) var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
   text-transform: uppercase;
 }
 
@@ -44,10 +48,11 @@
 .ta-stage-track-hud {
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s1);
-  padding: var(--ta-s1) var(--ta-s2);
+  gap: var(--ta-s2);
+  padding: var(--ta-s3) var(--ta-s4);
   background: var(--ta-plate);
-  border: 1px solid var(--ta-seam);
+  border: 1px solid var(--ta-seam-3);
+  box-shadow: var(--ta-glow-1);
   color: var(--ta-text);
   clip-path: polygon(
     var(--ta-chamfer-s) 0,
@@ -58,12 +63,12 @@
     0 var(--ta-chamfer-s)
   );
   position: fixed;
-  z-index: 22; /* overlay: under combat edge pings (25), deed modal (40) and the Combat Lab (90) */
-  top: 52px;
+  z-index: 82;
+  top: 56px;
   left: 50vw;
   transform: translateX(-50%);
-  width: min(420px, calc(100vw - var(--ta-s6)));
-  max-height: calc(100dvh - 80px);
+  width: min(520px, calc(100vw - var(--ta-s6)));
+  max-height: calc(100dvh - 96px);
   overflow-y: auto;
   box-sizing: border-box;
   pointer-events: auto;
@@ -86,14 +91,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 20px;
+  height: 24px;
   background: var(--ta-plate-3);
   border: 1px solid var(--ta-seam-2);
   color: var(--ta-dim);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   letter-spacing: var(--ta-track-label);
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   transition: color var(--ta-dur-quick) var(--ta-ease-servo),
               background var(--ta-dur-quick) var(--ta-ease-servo),
@@ -195,8 +200,7 @@
 }
 
 .ta-stage-track__dwell[data-active="false"] {
-  color: var(--ta-dim);
-  border-color: var(--ta-seam);
+  display: none;
 }
 
 /* Stage Reached Toast & Unlock Reveal Panel (W08-13) */

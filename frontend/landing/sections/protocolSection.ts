@@ -105,44 +105,88 @@ function bindScrollTransitions(section: HTMLElement, host: HTMLElement): void {
   update();
 }
 
+function setText(host: HTMLElement, selector: string, text: string): void {
+  const el = host.querySelector<HTMLElement>(selector);
+  if (el) el.textContent = text;
+}
+
+function setBarWidth(host: HTMLElement, selector: string, pct: number): void {
+  const el = host.querySelector<HTMLElement>(selector);
+  if (el) el.style.width = `${pct}%`;
+}
+
+function hydrateTradeAndBonds(host: HTMLElement, sched: NonNullable<ProtocolTelemetryDto['feeSchedule']>): void {
+  const stdBp = sched.standardPlatformFeeBp ?? 100;
+  const stkBp = sched.stakerPlatformFeeBp ?? 50;
+  const daoShareBp = sched.daoCarveOutShareBp ?? 2_000;
+  const daoPct = Math.round(daoShareBp / 100);
+  const protoPct = 100 - daoPct;
+  const protoStdPct = ((sched.protocolNetStandardBp ?? Math.round((stdBp * protoPct) / 100)) / 100).toFixed(2);
+  const protoStkPct = ((sched.protocolNetStakerBp ?? Math.round((stkBp * protoPct) / 100)) / 100).toFixed(2);
+  const daoStdPct = ((stdBp - (sched.protocolNetStandardBp ?? 80)) / 100).toFixed(2);
+  const daoStkPct = ((stkBp - (sched.protocolNetStakerBp ?? 40)) / 100).toFixed(2);
+
+  setText(host, '[data-proto-trade-title]', `${protoPct}% of Platform Trade Fee`);
+  setText(host, '[data-proto-trade-rate]', `${protoStdPct}% / ${protoStkPct}%`);
+  setText(host, '[data-proto-dao-share-pct]', `${daoPct}%`);
+  setText(host, '[data-proto-stage-trade-cap]', `BUYER FEE ALLOCATION (MAX ${((100 + stdBp) / 100).toFixed(2)}% / ${((100 + stkBp) / 100).toFixed(2)}% STAKER)`);
+  setText(host, '[data-proto-legend-proto-label]', `■ TerraAgent Protocol (${protoPct}% of platform)`);
+  setText(host, '[data-proto-legend-proto-val]', `${protoStdPct}% (${protoStkPct}% Staker)`);
+  setText(host, '[data-proto-legend-dao-label]', `■ Planet Council DAO (${daoPct}% of platform)`);
+  setText(host, '[data-proto-legend-dao-val]', `${daoStdPct}% (${daoStkPct}% Staker)`);
+  setBarWidth(host, '[data-proto-bar-trade-proto]', Math.round(protoPct * 0.5));
+  setBarWidth(host, '[data-proto-bar-trade-dao]', 50 - Math.round(protoPct * 0.5));
+
+  if (sched.escrowSlashProtocolShareBp !== undefined) {
+    const slashProtoPct = Math.round(sched.escrowSlashProtocolShareBp / 100);
+    const slashVictimPct = 100 - slashProtoPct;
+    setText(host, '[data-proto-filter-bonds]', `03 · ${slashVictimPct}/${slashProtoPct} BONDS`);
+    setText(host, '[data-proto-slash-title]', `${slashProtoPct}% Bond Arbitration Slash`);
+    setText(host, '[data-proto-slash-rate]', `${slashProtoPct}% of Breach`);
+    setText(host, '[data-proto-stage-bonds-badge]', `${slashVictimPct} / ${slashProtoPct} SLASH`);
+    setText(host, '[data-proto-legend-victim-val]', `${slashVictimPct}% Payout`);
+    setText(host, '[data-proto-legend-slash-val]', `${slashProtoPct}% Slash Fee`);
+    setBarWidth(host, '[data-proto-bar-bond-victim]', slashVictimPct);
+    setBarWidth(host, '[data-proto-bar-bond-proto]', slashProtoPct);
+  }
+}
+
+function hydrateStakingStage(host: HTMLElement, sched: NonNullable<ProtocolTelemetryDto['feeSchedule']>): void {
+  const yieldProtoPct = Math.round((sched.protocolStakingYieldShareBp ?? 2_000) / 100);
+  const yieldPilotPct = 100 - yieldProtoPct;
+  const netApyPct = ((sched.stakerNetApyBp ?? 720) / 100).toFixed(2);
+  const protoApyPct = ((sched.protocolStakingYieldBp ?? 180) / 100).toFixed(2);
+  const minStake = sched.minStakeForPerksNear ?? '10';
+  const stkFeePct = ((sched.stakerPlatformFeeBp ?? 50) / 100).toFixed(2);
+
+  setText(host, '[data-proto-filter-staking]', `02 · ${yieldPilotPct}/${yieldProtoPct} STAKING`);
+  setText(host, '[data-proto-yield-title]', `${yieldProtoPct}% of Validator Yield`);
+  setText(host, '[data-proto-yield-rate]', `${protoApyPct}% APY Slice`);
+  setText(host, '[data-proto-pilot-net-apy]', `${netApyPct}%`);
+  setText(host, '[data-proto-min-stake]', `≥${minStake} NEAR`);
+  setText(host, '[data-proto-ai-min-stake]', `≥${minStake} NEAR`);
+  setText(host, '[data-proto-stage-staking-title]', `${yieldPilotPct} / ${yieldProtoPct} Yield Split · Zero Pay-to-Win`);
+  setText(host, '[data-proto-stage-min-stake]', `≥${minStake} NEAR`);
+  setText(host, '[data-proto-legend-pilot-label]', `■ Human Pilot Net Yield (${yieldPilotPct}%)`);
+  setText(host, '[data-proto-legend-pilot-apy]', `${netApyPct}% Net APY`);
+  setText(host, '[data-proto-legend-yield-label]', `■ Protocol AI + Gas Slice (${yieldProtoPct}%)`);
+  setText(host, '[data-proto-legend-yield-apy]', `${protoApyPct}% APY`);
+  setText(host, '[data-proto-legend-perks-label]', `★ Perks at ≥${minStake} NEAR`);
+  setText(host, '[data-proto-legend-perks-val]', `Managed AI + ${stkFeePct}% Fee`);
+  setBarWidth(host, '[data-proto-bar-stake-pilot]', yieldPilotPct);
+  setBarWidth(host, '[data-proto-bar-stake-proto]', yieldProtoPct);
+}
+
 async function hydrateProtocolTelemetry(host: HTMLElement): Promise<void> {
   try {
     const res = await fetch('/v1/near/protocol', { headers: { accept: 'application/json' } });
     if (!res.ok) return;
     const body = (await res.json()) as ProtocolTelemetryDto;
-    const acctEl = host.querySelector<HTMLElement>('[data-protocol-account]');
-    if (acctEl && body.protocolAccountId) acctEl.textContent = body.protocolAccountId;
-    const relayerEl = host.querySelector<HTMLElement>('[data-relayer-account]');
-    if (relayerEl && body.relayerAccountId) relayerEl.textContent = body.relayerAccountId;
-
-    const sched = body.feeSchedule;
-    if (!sched) return;
-    const tradeEl = host.querySelector<HTMLElement>('[data-proto-trade-rate]');
-    if (tradeEl && sched.protocolNetStandardBp !== undefined && sched.protocolNetStakerBp !== undefined) {
-      const stdPct = (sched.protocolNetStandardBp / 100).toFixed(2);
-      const stkPct = (sched.protocolNetStakerBp / 100).toFixed(2);
-      tradeEl.textContent = `${stdPct}% / ${stkPct}%`;
-    }
-    const yieldTitleEl = host.querySelector<HTMLElement>('[data-proto-yield-title]');
-    if (yieldTitleEl && sched.protocolStakingYieldShareBp !== undefined) {
-      yieldTitleEl.textContent = `${Math.round(sched.protocolStakingYieldShareBp / 100)}% of Validator Yield`;
-    }
-    const yieldEl = host.querySelector<HTMLElement>('[data-proto-yield-rate]');
-    if (yieldEl && sched.protocolStakingYieldBp !== undefined) {
-      yieldEl.textContent = `${(sched.protocolStakingYieldBp / 100).toFixed(2)}% APY Slice`;
-    }
-    const netApyEl = host.querySelector<HTMLElement>('[data-proto-pilot-net-apy]');
-    if (netApyEl && sched.stakerNetApyBp !== undefined) {
-      netApyEl.textContent = `${(sched.stakerNetApyBp / 100).toFixed(2)}%`;
-    }
-    const slashEl = host.querySelector<HTMLElement>('[data-proto-slash-rate]');
-    if (slashEl && sched.escrowSlashProtocolShareBp !== undefined) {
-      slashEl.textContent = `${(sched.escrowSlashProtocolShareBp / 100).toFixed(0)}% of Breach`;
-    }
-    const minStakeEl = host.querySelector<HTMLElement>('[data-proto-min-stake]');
-    if (minStakeEl && sched.minStakeForPerksNear !== undefined) {
-      minStakeEl.textContent = `≥${sched.minStakeForPerksNear} NEAR`;
-    }
+    if (body.protocolAccountId) setText(host, '[data-protocol-account]', body.protocolAccountId);
+    if (body.relayerAccountId) setText(host, '[data-relayer-account]', body.relayerAccountId);
+    if (!body.feeSchedule) return;
+    hydrateTradeAndBonds(host, body.feeSchedule);
+    hydrateStakingStage(host, body.feeSchedule);
   } catch {
     // Static / offline preview keeps Testnet defaults.
   }

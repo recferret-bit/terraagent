@@ -1,6 +1,6 @@
-# Market module (W13, F2 mock)
+# Market module (W13, CLOB + Guild + 4-Way Intents)
 
-Server side of [W13](../../../../docs/plan/waves/W13-markets.md). Client commands reach the planet sim first (D-31): the sim
+Server side of the orbital CLOB & Guild market ([`README.md`](../../../../README.md)). Client commands reach the planet sim first (D-31): the sim
 checks the Trade Hub, size, TTL and fee range and emits `marketOrderRequested` / `marketCancelRequested` / `marketHubFeeSet`;
 this module acts on those events in Postgres (`chain.market_order`, `chain.intent_trade`, `chain.market_stall`) and answers
 the sim with the module commands `market.reserve` / `market.release` / `market.settled`. Synchronous rejections that need

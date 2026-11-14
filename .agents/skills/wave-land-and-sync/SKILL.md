@@ -4,15 +4,16 @@ description: >-
   Carefully land an implemented wave into `main` (Mode 1: `land` / "merge wave into main" / "land wave into main")
   or merge an updated `main` into a Work-In-Progress wave branch (Mode 2: `sync` / `merge-main` / "merge main into wave" /
   "sync main into wave"). Runs a mandatory 3-iteration merge, semantic-collision audit, test, and gap-discovery loop,
-  auto-heals generated registry/schema conflicts, and propagates new self-review features into downstream future wave
-  plans (`docs/plan/waves/W*.md`, `PRODUCT_WAVES.md`, `ISSUE_INDEX.md`, `HACKATHON_SCHEDULE.md`, `DEV_TOOLS.md`,
-  `DECISIONS.md`, and `docs/questions-and-limitations/`). Activate this skill immediately whenever the user says
-  "merge wave into main", "land wave into main", "merge main into wave", "sync main into wave", or asks to land a wave,
-  sync `main` into an open wave worktree, resolve cross-wave merge conflicts, or update future wave plans after
-  self-review extensions.
+  auto-heals generated registry/schema conflicts, updates canonical root docs (`README.md`, `HACKATHON.md`, `infra/.env.example`,
+  `frontend/whitepaper/whitepaper.md`), and propagates new self-review features into downstream wave plans when present. Activate
+  this skill immediately whenever the user says "merge wave into main", "land wave into main", "merge main into wave",
+  "sync main into wave", or asks to land a wave, sync `main` into an open wave worktree, resolve cross-wave merge conflicts,
+  or update future wave plans after self-review extensions.
 ---
 
 # Wave Land & Sync Harness (`wave-land-and-sync`)
+
+> **Clean Root Note (`D-41`):** On `main`, canonical documentation lives in [`README.md`](../../../README.md), [`HACKATHON.md`](../../../HACKATHON.md), [`infra/.env.example`](../../../infra/.env.example), [`frontend/whitepaper/whitepaper.md`](../../../frontend/whitepaper/whitepaper.md), and [`shared/sim/README.md`](../../../shared/sim/README.md) (no `docs/` folder at repo root). Any `docs/plan/*` steps below apply only when syncing or landing legacy wave worktrees that still carry `docs/plan/`.
 
 In TerraAgent, every product wave (`W00`–`W27`) is developed in an isolated git worktree (`../TerraAgent-wt/wNN` on branch `wave/wNN-<slug>`) and extended during owner self-review. Because waves run across parallel tracks and share registries, ECS columns, data tables, placement rules, and progression contracts, merging a wave into `main`—or merging an updated `main` into a WIP wave—requires more than `git merge`:
 

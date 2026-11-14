@@ -249,6 +249,28 @@
   color: var(--ta-orange-hi);
 }
 
+.ta-diplomacy-oathbreaker[hidden],
+.ta-diplomacy-offer-banner[hidden],
+.ta-diplomacy-truces[hidden],
+.ta-diplomacy-war-badge[hidden] {
+  display: none;
+}
+
+.ta-colony-book [data-tab-pane='hq'] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+}
+
+.ta-colony-book .ta-diplomacy-panel {
+  width: 100%;
+  padding: var(--ta-s3) 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--ta-seam-2);
+  order: 2;
+}
+
 .ta-diplomacy-war__submit {
   width: 100%;
   min-height: 32px;

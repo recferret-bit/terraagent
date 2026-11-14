@@ -114,7 +114,7 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 
 ## Economy: one door, whole units, postings for the host ledger (`src/economy/`)
 
-Known limitations and open questions of the economy, the host journals and seating: [`docs/questions-and-limitations/economy-ledger.md`](../../docs/questions-and-limitations/economy-ledger.md).
+Canonical economy, settlement, and ledger overview: [`README.md`](../../README.md) and [`frontend/whitepaper/whitepaper.md`](../../frontend/whitepaper/whitepaper.md).
 
 - **One door.** Every change to a colony's resources goes through `treasury(state, ctx).add({...})` or
   `.withdraw({...})` with `colony`, `amounts`, a `reason`, an `actor` and usually a `ref`
@@ -221,7 +221,7 @@ Known limitations and open questions of the economy, the host journals and seati
 
 ## Gameplay rules (`systems/terraform-basic`, `systems/construction`, `systems/hq`)
 
-Known limitations and open questions: [`docs/questions-and-limitations/sim-gameplay.md`](../../docs/questions-and-limitations/sim-gameplay.md).
+Canonical gameplay loop and controls reference: [`README.md`](../../README.md).
 
 - **Data rows** (`systems/rows.ts`, XC-01 / XC-02): one field per value, read with `w01Row` / `rowNum`, which throw on a
   missing row or field (no literal fallbacks). Fields in a table's `units` are compiled (ticks, per tick):
