@@ -94,7 +94,7 @@ const SCENARIOS: readonly ScenarioItem[] = [
     accent: 'var(--ta-terra)',
     title: 'Race for the Rocket',
     copy: 'Pool grid megawatts to defend your orbital launch countdown—or rally the sector to halt a rival colony before liftoff.',
-    directive: 'rocket.ignite(stage_4) · turret.guard_perimeter()',
+    directive: 'rocket.ignite(stage_10) · turret.guard_perimeter()',
     svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
       <ellipse cx="130" cy="86" rx="62" ry="18" fill="#0E1714" stroke="#3DDC84" stroke-width="1.4" stroke-dasharray="6 3"/>
       <ellipse cx="130" cy="86" rx="34" ry="10" fill="#13221C" stroke="#3DDC84" stroke-opacity=".6"/>

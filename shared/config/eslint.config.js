@@ -15,6 +15,7 @@ export default tseslint.config(
       '.agents/**',
       '.claude/**',
       'docs/**',
+      'social/**',
       'tests/e2e/.out/**',
       'tests/.out/**',
       'scripts/dev/.out/**',

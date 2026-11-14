@@ -307,14 +307,23 @@
 
 .wp-proto-board[data-active-stream="trade"] [data-stream]:not([data-stream="trade"]):not([data-stream="all"]),
 .wp-proto-board[data-active-stream="staking"] [data-stream]:not([data-stream="staking"]):not([data-stream="all"]),
-.wp-proto-board[data-active-stream="bonds"] [data-stream]:not([data-stream="bonds"]):not([data-stream="all"]) {
+.wp-proto-board[data-active-stream="bonds"] [data-stream]:not([data-stream="bonds"]):not([data-stream="all"]),
+section[data-active-stream="trade"] .wp-receipt-card[data-stream]:not([data-stream="trade"]):not([data-stream="all"]),
+section[data-active-stream="staking"] .wp-receipt-card[data-stream]:not([data-stream="staking"]):not([data-stream="all"]),
+section[data-active-stream="bonds"] .wp-receipt-card[data-stream]:not([data-stream="bonds"]):not([data-stream="all"]) {
   opacity: 0.24;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-proto-packets {
+    display: none;
+  }
 }
 
 /* Concrete Numeric Receipt Cards + Split Bars */
 .wp-receipts-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--ta-s4);
   margin: var(--ta-s4) 0;
   min-width: 0;
@@ -328,6 +337,7 @@
   flex-direction: column;
   gap: var(--ta-s3);
   min-width: 0;
+  transition: opacity var(--ta-dur-base) ease;
 }
 
 .wp-seg-bar {

@@ -40,7 +40,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Gasless Meta-Transactions & Cold-Root Pilots',
     layer: 'WEB3',
     badge: 'NEP-366',
-    summary: '`relayer.terraagent.testnet` sponsors DelegateAction gas so players never face seed-phrase popups, while `pilots` swaps to full self-custody via atomic `[AddKey, DeleteKey]` claim rotation.',
+    summary: '`pilots.terraagent.testnet` provisions `{pilot}.pilots.terraagent.testnet` (`0.02 NEAR`), `relayer.terraagent.testnet` sponsors NEP-366 `SignedDelegate` gas, and `claimAccount` rotates `[AddKey, DeleteKey]` on the pilot sub-account.',
     chips: ['relayer.terraagent.testnet', 'SignedDelegate', 'claimAccount'],
   },
   {
@@ -100,7 +100,7 @@ export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
     layer: 'WEB2',
     badge: 'ACID DB',
     summary: 'Seventeen domain modules (sim loop, WS gateway, CLOB market, economy, AI, NEAR ports, profile, progression, notify, lobby, analytics) commit trades and chain intents atomically via PostgreSQL + Prisma.',
-    chips: ['17 NestJS Modules', 'Prisma + Outbox', 'Acid Spend Locks'],
+    chips: ['17 NestJS Modules', 'Prisma + Outbox', 'ACID Spend Locks'],
   },
   {
     title: 'Planetary CLOB Orderbook & Bot API',
@@ -113,7 +113,7 @@ export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Orbital Guild AMM & 24h VWAP Oracle',
     layer: 'WEB2',
     badge: 'AMM + VWAP',
-    summary: 'Autonomous NPC freighters dock periodically and quote two-sided liquidity from live 24h organic VWAP using a readable power-law inventory curve (4%–15% spreads).',
+    summary: 'Autonomous NPC freighters dock periodically and quote two-sided liquidity from live 24h organic VWAP via `mid = ref * clamp((T+10)/(I+10), 0.50, 2.00)^0.5` (4% base spread, 15% thin-side half-spread).',
     chips: ['kestrel & vanguard', '24h VWAP Anchor', '10% Off-Planet Sink'],
   },
   {
@@ -131,29 +131,29 @@ export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
     chips: ['/landing.html', '/pitchdeck/', '/design/'],
   },
   {
-    title: '3D Inspector, Shader Lab, 7-Day Sim & Validators',
+    title: '3D Inspector, Shader Lab, 7-Day Swarm Sim & Validators',
     layer: 'WEB2',
     badge: 'TOOLING',
-    summary: 'Built-in 4-view 3D storybook (`/playground.html`), in-game `F8` Shader Lab, 7-day multi-colony stress test (`/dev/economy-sim/`), and automated geometry/particle CI gates.',
-    chips: ['/playground.html', 'F8 Shader Lab', 'CI Model Gates'],
+    summary: 'Built-in 4-view 3D storybook (`/playground.html`), `F8` Shader Lab, 7-day 3-colony + 25-account swarm & contractor simulator (`/dev/economy-sim/`), and automated geometry/particle CI gates.',
+    chips: ['/playground.html', '/dev/economy-sim/', 'CI Model Gates'],
   },
 ];
 
 export const CONTRACT_ROWS: ReadonlyArray<ContractSpec> = [
-  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo balances across all 10 resource commodities', guardAndSettlement: '`mt_mint` / `mt_burn` / `operator_transfer` matched strictly to Cargo Escrow acks' },
+  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo balances across all 10 resource commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `operator_transfer` / `mt_transfer` matched strictly to Cargo Escrow acks' },
   { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK', standard: 'NEP-171 Soulbound', role: 'Non-transferable Colony Deeds, milestone chapters, and badges', guardAndSettlement: 'Append-only server signer chronicle from S0 through S10' },
   { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / `claim_escrow` / `refund_escrow` / `slash_escrow` (90% victim, 10% Protocol)' },
   { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Lossless Validator Vault', role: 'Day-1 native NEAR staking (9.0% gross APY) & 10 NEAR AI unlock', guardAndSettlement: '100% principal safe (2-day unbond); configurable 80/20 yield split & protocol yield claim' },
-  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Living-tile + tier-weighted > 50% quorum with epoch cooldowns' },
-  { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant pilot sub-accounts and scoped bot session keys', guardAndSettlement: 'Gasless creation + atomic `[AddKey, DeleteKey]` self-custody upgrade' },
+  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: '1-member-1-vote (> 50% council majority or >= 2 unopposed yes votes) with idempotent `op_id`' },
+  { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant `{pilot}.pilots.terraagent.testnet` sub-account provisioning', guardAndSettlement: '`create_pilot_account` + `on_pilot_created` (`0.02 NEAR` seed); `IdentityPort.claimAccount` rotates `[AddKey, DeleteKey]` on the sub-account' },
 ];
 
 export const PORT_ROWS: ReadonlyArray<PortSpec> = [
-  { port: 'ChainReadPort', category: 'Core Read', mockBehavior: 'In-memory seeded JSON state', liveImplementation: 'FastNEAR RPC JSON view calls' },
-  { port: 'IdentityPort', category: 'Auth', mockBehavior: 'Local ephemeral session keypair', liveImplementation: 'NEAR Wallet & `NEP-413` signature auth' },
-  { port: 'RelayerPort', category: 'Gasless UX', mockBehavior: 'Simulated instant tx receipt', liveImplementation: 'Sponsored `NEP-366` DelegateAction broadcaster' },
-  { port: 'CargoTokenPort', category: 'Assets', mockBehavior: 'PostgreSQL mock token ledger', liveImplementation: '`res` `NEP-245` mint, burn & transfer' },
-  { port: 'IntentsPort', category: 'Trading', mockBehavior: 'Local order matcher verification', liveImplementation: 'Signed `NEP-413` `token_diff` + `1Click` quotes' },
+  { port: 'ChainReadPort', category: 'Core Read', mockBehavior: 'In-memory seeded JSON state', liveImplementation: 'FastNEAR RPC JSON view calls with automatic failover' },
+  { port: 'IdentityPort', category: 'Auth', mockBehavior: 'Local ephemeral session keypair', liveImplementation: 'FastAuth PKCE / OIDC JWKS / `NEP-413` auth + `pilots` factory & `claimAccount`' },
+  { port: 'RelayerPort', category: 'Gasless UX', mockBehavior: 'Simulated instant tx receipt', liveImplementation: 'Sponsored `NEP-366` `SignedDelegate` broadcaster (`5 NEAR/day` cap, `<= 0.05 NEAR` deposit)' },
+  { port: 'CargoTokenPort', category: 'Assets', mockBehavior: 'PostgreSQL mock token ledger', liveImplementation: '`res` `NEP-245` `mt_mint`, `mt_burn` & `operator_transfer`' },
+  { port: 'IntentsPort', category: 'Trading', mockBehavior: 'Local order matcher verification', liveImplementation: 'Testnet: signed `NEP-413` `token_diff` + `1Click` quote + `res` sync; Mainnet: `intents.near`' },
   { port: 'AgentWalletPort', category: 'Automation', mockBehavior: 'Simulated spend cap counter', liveImplementation: 'Scoped session key + ACID allowance lock' },
   { port: 'DeedNftPort', category: 'Identity', mockBehavior: 'Local deed milestone record', liveImplementation: '`deed` `NEP-171` mint & metadata append' },
   { port: 'BadgeNftPort', category: 'Progression', mockBehavior: '60 DB badge unlocks (20×3)', liveImplementation: 'On-chain soulbound badge proofs' },

@@ -30,7 +30,7 @@ test('rendered h1 equals the markdown heading', () => {
   assert.match(html, /<table>/);
   assert.match(html, /<blockquote>/);
   assert.match(html, /<ul>/);
-  assert.match(html, /<a href="\.\.\/economy-balance-simulation\.md">/);
+  assert.match(html, /<a href="\/v1\/near\/protocol">/);
   assert.match(html, /<strong>/);
   assert.match(html, /<em>/);
   assert.match(html, /<code>/);

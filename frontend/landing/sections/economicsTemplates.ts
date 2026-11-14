@@ -46,7 +46,7 @@ export function renderSimulatorSplitHtml(): string {
         <div class="econ-flow-item"><div><b>Resource Exporters &amp; Makers</b><div style="font-size:12.5px;color:var(--ta-text-3)">100% of cargo sale principal + 0.00%–1.00% Trade Hub stall fee</div></div><span>USDC / NEAR</span></div>
         <div class="econ-flow-item"><div><b>Day-1 Stakers (≥10 NEAR)</b><div style="font-size:12.5px;color:var(--ta-text-3)">80% of validator yield + Managed NEAR.AI + 50% lower trade fee</div></div><span>7.20% Net APY</span></div>
         <div class="econ-flow-item"><div><b>Peace Allies &amp; War Defenders</b><div style="font-size:12.5px;color:var(--ta-text-3)">Receive 90% of breached truce or failed 6h siege escrow bonds</div></div><span>90% Slash Payout</span></div>
-        <div class="econ-flow-item is-out"><div><b>Planet Council Sputnik DAO</b><div style="font-size:12.5px;color:var(--ta-text-3)">Receives 20% of platform trade fees for meteor shields &amp; boosts</div></div><span>0.20% / 0.10%</span></div>
+        <div class="econ-flow-item is-out"><div><b>Planet Council DAO</b><div style="font-size:12.5px;color:var(--ta-text-3)">Receives 20% of platform trade fees for meteor shields &amp; boosts</div></div><span>0.20% / 0.10%</span></div>
       </div>
       <div style="margin-top:auto;padding-top:8px">
         <a class="btn btn-ghost btn-sm" href="#protocol">SEE TERRAAGENT PROTOCOL TREASURY ↓</a>
@@ -95,7 +95,7 @@ export function renderWhyNearHtml(): string {
       <div class="econ-why-card plate-sm"><span>01 · SUB-ACCOUNTS &amp; KEYS</span><b>Sandboxed AI Wallets</b><p>Colonies &amp; NPCs hold real sub-accounts with scoped function-call keys, ACID caps, and 1-click kill switches—AI can never touch human staked NEAR (HTTP 403).</p></div>
       <div class="econ-why-card plate-sm"><span>02 · NEP-413 + 1CLICK</span><b>Atomic 4-Way Clearing</b><p>Every trade settles Seller principal, Stall Owner fee, Planet DAO tax (20%), and Protocol fee (80%) in one counter-signed zero-sum <code>token_diff</code> batch.</p></div>
       <div class="econ-why-card plate-sm"><span>03 · NEAR.AI CLOUD TEE</span><b>Verifiable Decisions</b><p>Batched <code>z-ai/glm-5.3-flash</code> directives run inside hardware TEEs verified via <code>/v1/signature/{chat_id}</code> ECDSA proofs—fair NPCs and auditable autopilot.</p></div>
-      <div class="econ-why-card plate-sm"><span>04 · TRUSTLESS ESCROW</span><b>Credible Peace &amp; War</b><p>Smart-contract bonds give diplomacy and war declarations real financial teeth with automatic 90% / 10% slashing and 2-day unbonding.</p></div>
+      <div class="econ-why-card plate-sm"><span>04 · TRUSTLESS ESCROW</span><b>Credible Peace &amp; War</b><p>Smart-contract bonds lock 2h–72h peace treaties and 6h war objectives with 100% honest refunds or automatic 90% / 10% slashing.</p></div>
       <div class="econ-why-card plate-sm"><span>05 · NEP-366 + FASTAUTH</span><b>Zero-Popup Web2 UX</b><p>Drop in as a guest, export NEP-245 cargo gaslessly via our relayer, and rotate keys to 100% self-custody only when you choose to withdraw.</p></div>
     </div>
     <div class="econ-cta-bar">

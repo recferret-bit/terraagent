@@ -115,11 +115,11 @@ export function buildGameplayAndEngineSections(): HTMLElement[] {
       ['Surface / Route', 'Runtime', 'Primary Capability'],
       [
         ['/landing.html & /pitchdeck/', 'Vite MPA + Three.js Orbit', 'Interactive 3D orbital landing (`terraagent.fun`), protocol schematic & pitch deck'],
-        ['/play.html?planet=dune&skip=1', 'WebGL2 + WS / Web Worker', 'Live RTS gameplay with descent cinematics, `?host=local`, dev console & `F8` Shader Lab'],
+        ['/play.html?planet=dune&skip=1', 'WebGL2 + WS / Web Worker', 'Live RTS gameplay (`?deploy=1` drop-pod descent, `?skip=1` colony entry, `?host=local`, plus local-dev console & `F8` Shader Lab)'],
         ['/trade.html', 'SSE + REST (`/v1/trade/*`)', '90-pair planetary CLOB orderbook, live depth ladder, 1Click swaps & `ta_bot_...` keys'],
         ['/me.html', 'REST (`/v1/me/*`)', 'Pilot dashboard, 60 soulbound badges, S0–S10 chronicle & AES-256-GCM BYOK vault'],
         ['/deed.html (`/deed/:tokenId`)', 'OpenGraph + NFT Feed', 'Shareable colony deed milestone timeline with generated preview artwork'],
-        ['/dev/economy-sim/', 'Headless `@terra/sim`', '7-day multi-colony economy runner testing wars, truces, Guild AMM & TEE commanders'],
+        ['/dev/economy-sim/', 'Headless `@terra/sim`', '7-day multi-colony runner testing wars, truces, Guild AMM, 25-agent swarms, contractor receipts & TEE commanders'],
         ['/playground.html & /design/', '3D Storybook & Tokens', '4-view diagnostic model turntable (`&validate=1`), CI validators & Faction Plate tokens'],
       ],
     ),

@@ -130,27 +130,33 @@
         <span class="slide-num">SLIDE 06 / 08 · BUSINESS MODEL</span>
         <span class="badge badge-ok">PROTOCOL.TERRAAGENT.TESTNET</span>
       </div>
-      <h2 class="slide-title">TerraAgent Protocol: transparent revenue, self-funded UX.</h2>
-      <p class="slide-lede"><code>protocol.terraagent.*</code> is a first-class on-chain treasury account (<code>GET /v1/near/protocol</code>) that captures protocol value from real activity and pays gas + AI compute:</p>
+      <h2 class="slide-title">TerraAgent Protocol: self-funded UX &amp; AI.</h2>
+      <p class="slide-lede"><code>protocol.terraagent.*</code> is a first-class on-chain treasury account (<code>GET /v1/near/protocol</code>) that captures small counterparty slices from real activity and funds gasless relays + TEE Autopilot without printing an inflationary token:</p>
       <div class="pitch-grid-2">
         <article class="pitch-card is-terra">
-          <span class="kicker">▲ 3 PROTOCOL REVENUE STREAMS</span>
+          <span class="kicker">▲ 3 REVENUE STREAMS (WORKED RECEIPTS)</span>
           <h3>Where Protocol Funds Come From</h3>
           <ul>
-            <li><b>80% of Platform Trade Fee:</b> <code>0.80%</code> standard / <code>0.40%</code> staker on every market trade (the other <code>20%</code> funds the Planet Council DAO).</li>
-            <li><b>20% of Validator Staking Yield:</b> <code>1.80%</code> APY slice on staked NEAR—recurring revenue with zero principal risk to players.</li>
-            <li><b>10% Escrow Arbitration Fee:</b> Collected automatically whenever a Bonded Peace Treaty or 6h War Bond is slashed on-chain.</li>
+            <li><b>80% of Platform Trade Fee (<code>0.80%</code> / <code>0.40%</code> Stk):</b> On a <code>$100 USDC</code> fill (<code>50 bp</code> stall), Seller gets <code>$100</code>, Stall Owner <code>+$0.50</code>, Planet DAO <code>+$0.20</code> (<code>20%</code>), and Protocol <code>+$0.80</code>—funding <b>~650 gasless NEP-366 meta-txs</b> (<code>~0.0003 NEAR/tx</code> at <code>~$4/NEAR</code>).</li>
+            <li><b>20% of Validator Yield (<code>1.80%</code> APY Slice):</b> A <code>50 NEAR</code> Day-1 stake remains <code>100%</code> principal-safe while paying the pilot <code>+3.60 NEAR/yr</code> (<code>7.2%</code> net) and Protocol <code>+0.90 NEAR/yr</code> (~3,000 meta-txs).</li>
+            <li><b>10% Escrow Arbitration Slash:</b> On a breached <code>20 NEAR</code> Peace Treaty or stalled <code>6h</code> War Bond, Victim/Defender receives <code>18.0 NEAR (90%)</code> and Protocol collects <code>2.0 NEAR (10%)</code>.</li>
           </ul>
         </article>
         <article class="pitch-card is-blue">
-          <span class="kicker">▼ 2 PROTOCOL COST CENTERS</span>
+          <span class="kicker">▼ 2 COST CENTERS &amp; PLANET BREAK-EVEN</span>
           <h3>What Protocol Revenue Pays For</h3>
           <ul>
-            <li><b>NEP-366 Gasless Meta-Tx Relayer (<code>relayer.terraagent.*</code>):</b> Pays <code>0.02 NEAR</code> pilot onboarding, storage deposits, and gameplay meta-tx gas within daily caps.</li>
-            <li><b>Managed NEAR.AI TEE Cloud:</b> Pays batched <code>z-ai/glm-5.3-flash</code> inference for Rival NPCs and ≥10 NEAR Staker Autopilot colonies.</li>
-            <li><b>Net Margin:</b> Scales positively with planet trading volume and total value staked (TVL).</li>
+            <li><b>NEP-366 Gasless Meta-Tx Relayer (<code>relayer.terraagent.*</code>):</b> Sponsors <code>0.02 NEAR</code> cold-root pilot sub-account creation, storage deposits, and allowlisted gameplay <code>SignedDelegate</code> relays within a <code>5 NEAR/day</code> gas cap (<code>&lt;= 0.05 NEAR</code> deposit cap).</li>
+            <li><b>Batched NEAR.AI TEE Cloud:</b> 1 batched <code>z-ai/glm-5.3-flash</code> TEE sweep per planet every <code>180s</code> (with <code>120s</code> digest cooldown) keeps a 5-colony planet at <b><code>~$0.03–$0.05/day</code></b>.</li>
+            <li><b>Day-1 Sustainability:</b> Just <b><code>~$7/day</code></b> in planet trade volume OR <b><code>200 NEAR</code> staked TVL</b> (4 × 50 NEAR stakers = <code>+3.60 NEAR/yr ≈ $14.40/yr</code> at <code>~$4/NEAR</code>) covers 24/7 planet AI.</li>
           </ul>
         </article>
+      </div>
+      <div class="pitch-stat-strip">
+        <div class="pitch-stat is-terra"><span>$100 FILL → PROTOCOL</span><b>+$0.80 (~650 txs)</b></div>
+        <div class="pitch-stat is-blue"><span>50 NEAR STAKE (YR)</span><b>+3.60 / +0.90 NEAR</b></div>
+        <div class="pitch-stat is-orange"><span>20 NEAR BOND BREACH</span><b>18.0 / 2.0 NEAR</b></div>
+        <div class="pitch-stat"><span>PLANET AI BREAK-EVEN</span><b>~$7/d or 200 NEAR</b></div>
       </div>
     </section>
 
@@ -180,7 +186,7 @@
       <div class="pitch-grid-3">
         <article class="pitch-card is-orange"><span class="kicker">01 · PLAY &amp; DIPLOMACY</span><h3>3D Colony + War Bonds</h3><p>Drop onto a live planet, toggle <code>AI AUTOPILOT</code>, stake NEAR from Day 1, or test Bonded Truces &amp; 6h War Escrows.</p><a class="btn btn-primary btn-sm" href="/play.html?planet=oceanForest&deploy=1">LAUNCH GAME →</a></article>
         <article class="pitch-card is-terra"><span class="kicker">02 · LIVE EXCHANGE</span><h3>4-Way Split &amp; Staker Tier</h3><p>Inspect Unit Price vs Total, Staker <code>0.50%</code> fee discount, <code>80%/20%</code> Protocol/DAO split, and <code>ta_bot_...</code> API keys.</p><a class="btn btn-ghost btn-sm" href="/trade.html">OPEN /TRADE →</a></article>
-        <article class="pitch-card is-blue"><span class="kicker">03 · 7-DAY SIM &amp; APIS</span><h3>Fast-Forward &amp; Telemetry</h3><p>Run 7 days of 3-colony trading + live <code>NEAR.AI</code> TEE attestation, or inspect <code>/v1/near/protocol</code> &amp; <code>/v1/near/status</code>.</p><a class="btn btn-ghost btn-sm" href="/dev/economy-sim/">RUN 7-DAY SIM →</a></article>
+        <article class="pitch-card is-blue"><span class="kicker">03 · 7-DAY SIM &amp; APIS</span><h3>Swarms, Agents &amp; Telemetry</h3><p>Run 7 days of 3-colony RTS + 25-account zero-LLM swarm clearing, 1-round agent negotiation receipts &amp; live <code>NEAR.AI</code> TEE attestation.</p><a class="btn btn-ghost btn-sm" href="/dev/economy-sim/">RUN 7-DAY SIM →</a></article>
       </div>
       <div class="pitch-actions">
         <a class="btn btn-ghost btn-sm" href="/me.html">PILOT PROFILE &amp; BYOK</a>

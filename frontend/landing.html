@@ -195,7 +195,7 @@ It keeps building.</h1>
               <div class="tier tier-2"><b>MK.II</b><span>2×2 · 42 s</span></div>
               <div class="tier tier-3"><b>MK.III</b><span>3×3 · 90 s</span></div>
             </div>
-            <p>Each tier produces about 3× more, costs about 3× more, takes a bigger footprint and longer to build. Upgrade in place if the ring around it is free; you pay only the difference. (Example: Territory Claim Beacon.)</p>
+            <p>Each tier produces about 3× more, costs about 3× more, takes a bigger footprint and longer to build. Upgrade in place if the ring around it is free; you pay only the difference. Refining raw inputs across MK.I–MK.III yields <b>10 tradeable NEP-245 orbital cargo tokens</b> (<code>metals.t1..t3</code>, <code>minerals.t1..t3</code>, <code>bio.water</code>, <code>bio.biomass</code>, <code>bio.t2..t3</code>), while grid Energy (<code>E/s</code>) stays local and non-tokenized.</p>
           </div>
         </div>
       </div>
@@ -249,7 +249,7 @@ It keeps building.</h1>
           <div class="director-copy">
             <p class="eyebrow">05 · THE AI DIRECTOR</p>
             <h2 class="h1" style="margin-top:12px">Rules for routine.<br><span class="sub-blue">An AI for emergencies.</span></h2>
-            <p>Most decisions come from a rule engine that already knows your planet, hazards and resource map. The AI Director is called only on big events: a critical shortage, a raid, a new neighbour, the rocket decision. That's at most once every 5 minutes per colony.</p>
+            <p>Most decisions come from a deterministic rule engine running every 5 Hz tick that already knows your planet, hazards and resource map. The NEAR.AI Director (<code>z-ai/glm-5.3-flash</code> TEE) runs in a batched planet sweep every 3 minutes (180 s, packing up to 5 colonies into 1 RPC with a 120 s state-digest cooldown so burst re-triggers on unchanged colonies spend zero extra LLM tokens) or on critical events: a severe shortage, a raid, a new neighbour, or the rocket race.</p>
             <div class="split">
               <div class="split-row"><span>RULE ENGINE · EVERY TICK</span><span class="c-orange-hi">90–95 %</span></div>
               <div class="split-bar"><span class="rules"></span><span class="ai"></span></div>
@@ -314,7 +314,7 @@ It keeps building.</h1>
             <p class="eyebrow">09 · ROADMAP</p>
             <h2 class="h1">Flight plan.<br><span class="sub">Where the colony is, and where it is going.</span></h2>
           </div>
-          <p>Scroll to fly the route. Green is live on NEAR Testnet, orange is next (`NEAR_MODE=mainnet` switchover), blue is booked post-launch, red was cut on purpose.</p>
+          <p>Scroll to fly the route. Green is live on NEAR Testnet, orange is next (<code>NEAR_MODE=mainnet</code> switchover), blue is booked post-launch, red was cut on purpose.</p>
         </div>
 
         <div class="mission" id="mission">
@@ -332,13 +332,13 @@ It keeps building.</h1>
               <div class="leg-meter" role="img" aria-label="11 of 11 items done"><i style="width:100%"></i></div>
               <ul class="tasks">
                 <li class="t-done">Authoritative NestJS + Postgres + <code>@terra/sim</code> server over binary WebSockets</li>
-                <li class="t-done">Three live biomes (Desert, Ocean Forest, Temperate), stages S0–S4, fauna, combat &amp; cultivation</li>
+                <li class="t-done">Three live biomes (Desert, Ocean Forest, Temperate), stages S0–S10, insect fauna, combat &amp; cultivation</li>
                 <li class="t-done"><b>F5</b> Cold-root <code>pilots.terraagent.testnet</code> factory, FastAuth PKCE/NEP-413 login, NEP-366 gasless relayer &amp; atomic non-custodial claim</li>
                 <li class="t-done"><b>F1</b> Orbital Port: 10 NEP-245 cargo tokens minted/burned on <code>res.terraagent.testnet</code></li>
                 <li class="t-done"><b>F2</b> 24/7 CLOB &amp; Trade Hub stalls settled via NEP-413 <code>token_diff</code> Intents + live 1Click quotes</li>
                 <li class="t-done"><b>F3</b> Orbital Guild: scheduled NPC merchants (<code>Kestrel</code>, <code>Vanguard</code>) with 24h VWAP pricing</li>
                 <li class="t-done"><b>F4</b> Batched NEAR.AI Cloud TEE Director (<code>z-ai/glm-5.3-flash</code>), BYOK <code>/me</code> vault &amp; scoped <code>ta_bot_...</code> keys</li>
-                <li class="t-done">Public MIT repo, live HTTPS stack (<code>terraagent.fun</code>), 7-day economy simulator &amp; whitepaper</li>
+                <li class="t-done">Public MIT repo, live HTTPS stack (<code>terraagent.fun</code>), 7-day 25-agent swarm &amp; contractor simulator, and whitepaper</li>
                 <li class="t-done"><b>F6</b> Dynamic NEP-171 Colony Deed NFTs (<code>deed.terraagent.testnet</code>) &amp; Day-1 Lossless Staking (<code>staking.terraagent.testnet</code>)</li>
                 <li class="t-done"><b>F7</b> Planet Council Treasury DAOs (<code>dao.terraagent.testnet</code>) with &gt;50% quorum proposals</li>
                 <li class="t-done"><b>F8</b> Mercenary bounties, Bonded Peace Treaties &amp; 6h War Escrows (<code>bounty.terraagent.testnet</code>)</li>

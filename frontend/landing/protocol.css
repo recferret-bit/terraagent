@@ -257,8 +257,17 @@
 
 #protocol-board[data-active-stream="trade"] .proto-stage[data-stream="trade"],
 #protocol-board[data-active-stream="staking"] .proto-stage[data-stream="staking"],
-#protocol-board[data-active-stream="bonds"] .proto-stage[data-stream="bonds"] {
+#protocol-board[data-active-stream="bonds"] .proto-stage[data-stream="bonds"],
+#protocol-board[data-active-stream="trade"] .proto-proof[data-stream="trade"],
+#protocol-board[data-active-stream="staking"] .proto-proof[data-stream="staking"],
+#protocol-board[data-active-stream="bonds"] .proto-proof[data-stream="bonds"] {
   border-color: var(--ta-orange);
+}
+
+#protocol-board[data-active-stream="trade"] .proto-proof:not([data-stream="trade"]):not([data-stream="all"]),
+#protocol-board[data-active-stream="staking"] .proto-proof:not([data-stream="staking"]):not([data-stream="all"]),
+#protocol-board[data-active-stream="bonds"] .proto-proof:not([data-stream="bonds"]):not([data-stream="all"]) {
+  opacity: 0.34;
 }
 
 /* 3-Mechanism Scroll Transition Stage Cards */
@@ -361,6 +370,26 @@
 
 .proto-legend-row b { color: var(--ta-text); font-weight: 600; }
 
+/* Worked Receipts & Planet Unit-Economics Proof Strip */
+.proto-proofs { margin-top: 24px; padding: 24px; background: var(--ta-black-hole); border: 1px solid var(--ta-seam-2); }
+.proto-proofs-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
+.proto-proofs-head .h3 { margin: 4px 0 0; }
+.proto-proof-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.proto-proof { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam-2); transition: opacity var(--ta-dur-base) ease, border-color var(--ta-dur-base) ease; }
+.proto-proof.is-econ { border-top: 2px solid var(--ta-energy); }
+.proto-proof-tag { font-family: var(--ta-font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; }
+.proto-proof-tag.is-terra { color: var(--ta-terra); }
+.proto-proof-tag.is-blue { color: var(--ta-blue-hi); }
+.proto-proof-tag.is-orange { color: var(--ta-orange-hi); }
+.proto-proof-tag.is-energy { color: var(--ta-energy); }
+.proto-proof strong { font-family: var(--ta-font-display); font-size: 16.5px; color: var(--ta-text); }
+.proto-proof-rows { list-style: none; margin: 0; padding: 8px 0; border-top: 1px solid var(--ta-seam); border-bottom: 1px solid var(--ta-seam); display: flex; flex-direction: column; gap: 5px; font-family: var(--ta-font-mono); font-size: 11px; color: var(--ta-text-3); }
+.proto-proof-rows li { display: flex; justify-content: space-between; gap: 8px; }
+.proto-proof-rows b { color: var(--ta-text); font-weight: 600; white-space: nowrap; }
+.proto-proof-foot { margin: auto 0 0; font-size: 12.5px; line-height: 1.4; color: var(--ta-text-3); }
+.proto-proof-foot b { color: var(--ta-text-2); }
+@media (prefers-reduced-motion: reduce) { .proto-packets { display: none; } }
+
 /* Scroll-Driven & JS Intersection Transition Animations (Compositor-only: opacity + transform) */
 @media (prefers-reduced-motion: no-preference) {
   .js-proto .proto-stage {
@@ -416,7 +445,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .proto-proof-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .proto-node-top {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .proto-proof-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

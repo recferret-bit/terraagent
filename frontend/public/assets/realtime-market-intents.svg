@@ -20,41 +20,44 @@
       .flash { animation: pulse 2s ease-in-out infinite; }
       @keyframes dash { to { stroke-dashoffset: -22; } }
       @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) {
+        .flow-c, .flow-o, .flow-g, .flash { animation: none; }
+      }
     </style>
   </defs>
 
   <rect width="1200" height="480" class="bg"/>
   <polygon points="16,14 1172,14 1184,26 1184,50 16,50" fill="#0b1222" stroke="#22d3ee" stroke-width="1.5"/>
   <rect x="24" y="22" width="10" height="20" fill="#22d3ee"/>
-  <text x="44" y="36" class="title">REAL-TIME PLANET GUILD MARKET (VWAP) &lt;-&gt; NEAR INTENTS (NEP-413) + TRACK 07 GUARDRAILS</text>
+  <text x="44" y="36" class="title">REAL-TIME PLANET GUILD MARKET (VWAP) &lt;-&gt; NEAR INTENTS (NEP-413) + TRACK 06 GUARDRAILS</text>
 
   <!-- LEFT: LIVE PLANET ORDERBOOK & VWAP -->
   <polygon points="24,68 380,68 394,82 394,454 24,454" class="panel-o"/>
   <text x="42" y="92" class="hdr-o">1. REAL-TIME COLONY GUILD MARKET (/trade.html)</text>
-  <text x="42" y="108" class="muted">24/7 WebSocket tick updates + 16-tick VWAP window</text>
+  <text x="42" y="108" class="muted">24/7 WebSocket CLOB + 24h organic VWAP (min 3 fills)</text>
 
   <!-- Price Curve Chart -->
   <rect x="42" y="122" width="332" height="92" fill="#060b16" stroke="#1e293b"/>
   <polyline points="52,192 92,184 132,188 172,166 212,172 252,146 292,152 332,134 364,138" fill="none" stroke="#ff5a1f" stroke-width="2.2"/>
   <circle cx="332" cy="134" r="4" fill="#ff5a1f" class="flash"/>
   <text x="52" y="138" class="hdr-o">bio.water SURGE (THIN-SIDE SPREAD)</text>
-  <text x="52" y="205" class="muted">Guild: mid = ref * (target / inv)^k</text>
+  <text x="52" y="205" class="muted">Guild: mid = ref * ((T+10)/(I+10))^0.5 [0.5x..2x]</text>
 
   <!-- Orderbook Rows -->
   <g transform="translate(42,226)">
     <rect width="332" height="34" class="row"/>
     <text x="10" y="21" class="txt">metals.t1</text>
-    <text x="135" y="21" class="hdr-g">ASK 500 @ 1.00 NEAR</text>
+    <text x="135" y="21" class="hdr-g">ASK 500 @ 1.00 USDC</text>
   </g>
   <g transform="translate(42,266)">
     <rect width="332" height="34" class="row"/>
     <text x="10" y="21" class="txt">minerals.t1</text>
-    <text x="135" y="21" class="hdr-c">BID 320 @ 1.15 NEAR</text>
+    <text x="135" y="21" class="hdr-c">BID 320 @ 1.15 USDC</text>
   </g>
   <g transform="translate(42,306)">
     <rect width="332" height="34" class="row"/>
     <text x="10" y="21" class="txt">bio.water</text>
-    <text x="135" y="21" class="hdr-o">SURGE 250 @ 1.45 NEAR</text>
+    <text x="135" y="21" class="hdr-o">SURGE 250 @ 1.45 USDC</text>
   </g>
   <g transform="translate(42,346)">
     <rect width="332" height="34" class="row"/>
@@ -62,8 +65,8 @@
     <text x="135" y="21" class="hdr-r">RARE D-34 TIER ASSETS</text>
   </g>
   <rect x="42" y="392" width="332" height="46" fill="#0d172a" stroke="#334155"/>
-  <text x="54" y="411" class="hdr-c">Bot + Human Order Matching</text>
-  <text x="54" y="427" class="muted">Guild sink/floor prevents death-spirals (GDD §9.3)</text>
+  <text x="54" y="411" class="hdr-c">Bot + Human + 25-Agent Swarm Matching</text>
+  <text x="54" y="427" class="muted">4% base spread -&gt; 15% thin-side half-spread brake</text>
 
   <!-- CENTER: NEP-413 INTENT VERIFIER + 1CLICK -->
   <polygon points="434,68 776,68 790,82 790,454 434,454" class="panel-c"/>
@@ -83,18 +86,18 @@
   <text x="464" y="266" class="muted">1Click Cross-Chain Dry Quote: USDC -&gt; NEAR</text>
 
   <!-- Conservation Check -->
-  <polygon points="482,300 742,300 754,312 754,370 470,370 470,312" fill="#062219" stroke="#22c55e" stroke-width="2" class="flash"/>
-  <text x="506" y="328" class="hdr-g">VERIFIER INVARIANT: SUM(DIFF) == 0</text>
-  <text x="484" y="348" class="txt">4-Way Split: Seller + Stall + DAO + Protocol</text>
+  <polygon points="464,300 760,300 772,312 772,370 452,370 452,312" fill="#062219" stroke="#22c55e" stroke-width="2" class="flash"/>
+  <text x="612" y="328" text-anchor="middle" class="hdr-g">VERIFIER INVARIANT: SUM(DIFF) == 0</text>
+  <text x="612" y="348" text-anchor="middle" class="txt">4-Way Split: Seller + Stall + DAO + Protocol</text>
 
   <rect x="452" y="388" width="320" height="50" fill="#0d172a" stroke="#22d3ee" stroke-width="1"/>
   <text x="464" y="408" class="hdr-c">Replay &amp; Expiry Guards Enforced</text>
   <text x="464" y="426" class="muted">NEAR_INTENT_NONCE_REUSED / EXPIRED / DIFF_NOT_ZERO</text>
 
-  <!-- RIGHT: TRACK 07 AGENT WALLET POLICY + ON-CHAIN SETTLEMENT -->
+  <!-- RIGHT: TRACK 06 AGENT WALLET POLICY + ON-CHAIN SETTLEMENT -->
   <polygon points="830,68 1176,68 1176,454 816,454 816,82" class="panel-g"/>
   <text x="836" y="92" class="hdr-g">3. AGENT WALLET + ON-CHAIN CLEAR</text>
-  <text x="836" y="108" class="muted">Track 07 Limited Keys (AW-11 / AW-13 / D-18)</text>
+  <text x="836" y="108" class="muted">Track 06 Limited Keys (AW-11 / AW-13 / D-18)</text>
 
   <rect x="836" y="128" width="320" height="106" fill="#091322" stroke="#334155"/>
   <text x="850" y="150" class="hdr-o">ED25519 LIMITED SESSION POLICY</text>
@@ -105,14 +108,14 @@
 
   <rect x="836" y="248" width="320" height="92" fill="#1b110d" stroke="#ff5a1f" stroke-width="1.3"/>
   <text x="850" y="268" class="hdr-o">AW-13 &amp; D-18 SAFETY GUARDRAILS</text>
-  <text x="850" y="288" class="txt">- AW-13: AI limited keys non-transferable</text>
+  <text x="850" y="288" class="txt">- AW-13: Human-only truce break &amp; NEAR bonds</text>
   <text x="850" y="306" class="txt">- D-18: Staking 403 AI_STAKING_FORBIDDEN</text>
   <text x="850" y="324" class="muted">NEAR_ALLOWANCE_EXHAUSTED if cap hit</text>
 
   <rect x="836" y="354" width="320" height="84" fill="#071a16" stroke="#22c55e" stroke-width="1.4"/>
   <text x="850" y="376" class="hdr-g">ATOMIC ON-CHAIN SETTLEMENT</text>
-  <text x="850" y="396" class="txt">intents.near::execute_intents(signed)</text>
-  <text x="850" y="414" class="txt">res.terraagent.testnet::mt_transfer_batch</text>
+  <text x="850" y="396" class="txt">NEP-413 signed + Mainnet intents.near</text>
+  <text x="850" y="414" class="txt">res.terraagent::operator_transfer / mt_transfer</text>
   <text x="850" y="430" class="muted">Tx receipt persisted -&gt; WebSocket broadcast</text>
 
   <!-- Animated Arrows & Flowing Packets -->

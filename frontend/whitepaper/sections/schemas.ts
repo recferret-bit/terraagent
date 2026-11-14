@@ -86,16 +86,34 @@ export function createCustodyLifecycleSchema(): HTMLElement {
   );
   const trace = makeEl('ol', 'wp-example-list');
   const items = [
-    'Command Hub reaches 70% Living terrain and smelts `400` Titanium inside `@terra/sim`.',
-    'Export click creates an ACID escrow lock and sends `mt_mint` (`400` units of Titanium) on `res.terraagent.testnet` via `relayer.terraagent.testnet`.',
-    'Seller lists `400` Titanium on `/trade.html` for `120 USDC`; a `NEP-413` `token_diff` fill delivers `120 USDC` (100% principal) straight to seller.',
-    'Whenever desired, `claimAccount` removes the app key on `pilots.terraagent.testnet` so only the player hardware wallet signs withdrawals.',
+    'Command Hub reaches 70% Living terrain (`D-34`) and smelts `400` Titanium (`metals.t3`) inside `@terra/sim`.',
+    'Export click creates an ACID outbox job that calls `mt_mint` (`400` units of `metals.t3`, 18 dec) on `res.terraagent.testnet` signed by `minter.terraagent.testnet` (while `relayer.terraagent.testnet` sponsors gasless `NEP-366` player actions).',
+    'Seller lists `400` `metals.t3` on `/trade.html` for `120 USDC`; a `NEP-413` `token_diff` fill delivers `120 USDC` (100% principal) straight to seller.',
+    'Whenever desired, `claimAccount` executes atomic `[AddKey, DeleteKey]` rotation so only the player hardware wallet controls the account.',
   ];
   for (const line of items) trace.appendChild(makeFormattedEl('li', undefined, line));
   example.appendChild(trace);
 
   wrap.append(head, row, example);
   return wrap;
+}
+
+function appendConduitPackets(svg: SVGSVGElement, paths: readonly string[]): void {
+  const group = svgEl('g', { class: 'wp-proto-packets', 'aria-hidden': 'true' });
+  const specs = [
+    { stream: 'trade', fill: 'var(--ta-terra)', dur: '1.7s', r: '3.3', d: paths[0]! },
+    { stream: 'staking', fill: 'var(--ta-blue-hi)', dur: '1.9s', r: '3.3', d: paths[1]! },
+    { stream: 'bonds', fill: 'var(--ta-orange)', dur: '2.1s', r: '3.3', d: paths[2]! },
+    { stream: 'all', fill: 'var(--ta-energy)', dur: '1.6s', r: '3.5', d: paths[3]! },
+    { stream: 'all', fill: 'var(--ta-orange-hi)', dur: '1.8s', r: '3.5', d: paths[4]! },
+  ];
+  for (const s of specs) {
+    const packet = svgEl('circle', { r: s.r, fill: s.fill });
+    packet.dataset.stream = s.stream;
+    packet.appendChild(svgEl('animateMotion', { dur: s.dur, repeatCount: 'indefinite', path: s.d }));
+    group.appendChild(packet);
+  }
+  svg.appendChild(group);
 }
 
 function buildCoreConduitSvg(): SVGSVGElement {
@@ -126,6 +144,7 @@ function buildCoreConduitSvg(): SVGSVGElement {
     el.dataset.stream = p.stream;
     svg.appendChild(el);
   }
+  appendConduitPackets(svg, bgPaths);
 
   const dots = [
     ['8', '36', 'var(--ta-terra)'],
@@ -137,6 +156,11 @@ function buildCoreConduitSvg(): SVGSVGElement {
   for (const [cx, cy, fill] of dots) svg.appendChild(svgEl('circle', { cx: cx!, cy: cy!, r: '4', fill: fill! }));
 
   svg.append(
+    svgEl('text', { x: '16', y: '27', fill: 'var(--ta-terra)', 'font-family': 'var(--ta-font-mono)', 'font-size': '8.5' }, 'FEES 80%'),
+    svgEl('text', { x: '16', y: '101', fill: 'var(--ta-blue-hi)', 'font-family': 'var(--ta-font-mono)', 'font-size': '8.5' }, 'YIELD 20%'),
+    svgEl('text', { x: '16', y: '201', fill: 'var(--ta-orange-hi)', 'font-family': 'var(--ta-font-mono)', 'font-size': '8.5' }, 'SLASH 10%'),
+    svgEl('text', { x: '344', y: '50', 'text-anchor': 'end', fill: 'var(--ta-energy)', 'font-family': 'var(--ta-font-mono)', 'font-size': '8.5' }, 'NEP-366 GAS'),
+    svgEl('text', { x: '344', y: '176', 'text-anchor': 'end', fill: 'var(--ta-orange-hi)', 'font-family': 'var(--ta-font-mono)', 'font-size': '8.5' }, 'TEE AI'),
     svgEl('polygon', { points: '180,48 228,76 228,144 180,172 132,144 132,76', fill: 'var(--ta-black-hole)', stroke: 'var(--ta-orange)', 'stroke-width': '2' }),
     svgEl('polygon', { points: '180,58 219,81 219,139 180,162 141,139 141,81', fill: 'var(--ta-plate-2)', stroke: 'var(--ta-seam-3)', 'stroke-width': '1.2' }),
     svgEl('text', { x: '180', y: '98', 'text-anchor': 'middle', fill: 'var(--ta-energy)', 'font-family': 'var(--ta-font-mono)', 'font-size': '9', 'font-weight': '600', 'letter-spacing': '1.4' }, 'PROTOCOL'),
@@ -183,6 +207,7 @@ export function createProtocolEconomySchema(): HTMLElement {
     btn.setAttribute('aria-pressed', String(key === 'all'));
     btn.addEventListener('click', () => {
       board.dataset.activeStream = key;
+      wrap.closest('section')?.setAttribute('data-active-stream', key);
       for (const b of filters.querySelectorAll<HTMLButtonElement>('[data-proto-stream]')) {
         const active = b === btn;
         b.classList.toggle('is-active', active);
@@ -234,18 +259,20 @@ export function createReceiptExamplesGrid(): HTMLElement {
   grid.id = 'sub-econ-examples';
   const receipts = [
     {
+      stream: 'trade',
       num: 'EXAMPLE A · 4-WAY TRADE RECEIPT',
       badge: 'NEP-413',
-      title: '$100 USDC Cargo Fill (Staker, 0.50% Stall)',
+      title: '$100 USDC Cargo Fill (Standard vs Staker, 0.50% Stall)',
       bars: [['50%', 'is-terra'], ['40%', 'is-orange'], ['10%', 'is-blue']],
       rows: [
         ['Seller Principal (100%)', '$100.00 USDC'],
         ['Trade Hub Stall Royalty', '+$0.50 USDC'],
-        ['TerraAgent Protocol (80% fee)', '+$0.40 USDC'],
-        ['Planet Council DAO (20% fee)', '+$0.10 USDC'],
+        ['TerraAgent Protocol (80% fee)', '+$0.80 ($0.40 Staker)'],
+        ['Planet Council DAO (20% fee)', '+$0.20 ($0.10 Staker)'],
       ],
     },
     {
+      stream: 'staking',
       num: 'EXAMPLE B · DAY-1 LOSSLESS STAKE',
       badge: '9.0% POOL APY',
       title: '50 NEAR Staked on Day 1 (No Wait)',
@@ -253,11 +280,12 @@ export function createReceiptExamplesGrid(): HTMLElement {
       rows: [
         ['Locked Principal (2d Unbond)', '50.00 NEAR (100% Safe)'],
         ['Pilot Net Yield (80% split)', '+3.60 NEAR / yr (7.20%)'],
-        ['Protocol Infra Slice (20%)', '+0.90 NEAR / yr'],
+        ['Protocol Infra Slice (20%)', '+0.90 NEAR / yr (~3k txs)'],
         ['Unlocked Perks (>= 10 NEAR)', 'Managed AI + 0.50% Fee'],
       ],
     },
     {
+      stream: 'bonds',
       num: 'EXAMPLE C · BOND SLASH SETTLEMENT',
       badge: '90 / 10 SLASH',
       title: '20 NEAR Breached Truce or Failed 6h War',
@@ -265,14 +293,28 @@ export function createReceiptExamplesGrid(): HTMLElement {
       rows: [
         ['Betrayed Ally / War Defender', '+18.00 NEAR (90%)'],
         ['Protocol Arbitration Fee', '+2.00 NEAR (10%)'],
-        ['Victim Bond Return', '20.00 NEAR (100% Refund)'],
+        ['Honored Bond Return', '20.00 NEAR (100% Refund)'],
         ['AI Guardrail Rule (AW-13)', 'Blocked from Canceling'],
+      ],
+    },
+    {
+      stream: 'all',
+      num: 'EXAMPLE D · PLANET UNIT ECONOMICS',
+      badge: 'NET POSITIVE',
+      title: '5-Colony 24/7 Planet Cost vs Break-Even',
+      bars: [['85%', 'is-energy'], ['15%', 'is-orange']],
+      rows: [
+        ['Batched GLM-5.3 TEE Sweep', '1 RPC / 180s (5 colonies)'],
+        ['5-Colony Batch + 120s Cache', '80% Fewer RPCs · 0 Burst Waste'],
+        ['Daily Planet AI + Gas Cost', '~$0.04/d + ~0.0003 N/tx'],
+        ['Self-Funding (@ ~$4/NEAR)', '~$7/d Vol or 200 NEAR TVL'],
       ],
     },
   ];
 
   for (const r of receipts) {
     const card = makeEl('article', 'wp-receipt-card plate-sm');
+    card.dataset.stream = r.stream;
     const head = makeEl('div', 'wp-flow-node-top');
     head.append(makeEl('span', 'wp-flow-step', r.num), makeEl('span', 'badge badge-ok', r.badge));
     const bar = makeEl('div', 'wp-seg-bar');

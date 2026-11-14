@@ -4,7 +4,29 @@ import { buildProtocolTreasuryView } from '../../../backend/app/src/near/infrast
 import { initEconomicsSection } from './economicsSection';
 import { initProtocolSection } from './protocolSection';
 
-describe('Landing #protocol & #economics sections', () => {
+function assertHydratedReceipts(): void {
+  expect(document.querySelector('[data-proto-ex-buyer-total]')?.textContent).toBe('Buyer pays $101.70 ($101.10 Staker)');
+  expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.90 ($0.45 Stk)');
+  expect(document.querySelector('[data-proto-ex-dao]')?.textContent).toBe('+$0.30 ($0.15 Stk)');
+  expect(document.querySelector('[data-proto-ex-trade-txs]')?.textContent).toBe('~750 gasless NEP-366 player txs');
+  expect(document.querySelector('[data-proto-ex-pilot-yield]')?.textContent).toBe('+3.83 NEAR / yr');
+  expect(document.querySelector('[data-proto-ex-proto-yield]')?.textContent).toBe('+0.68 NEAR / yr');
+  expect(document.querySelector('[data-proto-ex-perks]')?.textContent).toBe('Managed AI + 0.60% Fee');
+  expect(document.querySelector('[data-proto-ex-stake-foot]')?.textContent).toContain('+0.68 NEAR/yr sponsors ~2,250 meta-txs');
+  expect(document.querySelector('[data-proto-ex-victim]')?.textContent).toBe('17.60 NEAR (88%)');
+  expect(document.querySelector('[data-proto-ex-slash]')?.textContent).toBe('2.40 NEAR (12%)');
+  expect(document.querySelector('[data-proto-bar-trade]')?.getAttribute('aria-label')).toBe(
+    'Up to 45% Stall Owner, 41% Protocol, 14% Planet Council DAO',
+  );
+  expect(document.querySelector('[data-proto-bar-stake]')?.getAttribute('aria-label')).toBe(
+    '85% Net APY to Pilot, 15% APY to Protocol',
+  );
+  expect(document.querySelector('[data-proto-bar-bond]')?.getAttribute('aria-label')).toBe(
+    '88% to Betrayed Ally or Defender, 12% to Protocol',
+  );
+}
+
+describe('Landing #protocol live telemetry & stream filtering', () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
@@ -55,6 +77,9 @@ describe('Landing #protocol & #economics sections', () => {
     expect(board?.dataset.activeStream).toBe('all');
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('treasury.terraagent.near');
     expect(document.querySelector('[data-relayer-account]')?.textContent).toBe('relayer.terraagent.near');
+    expect(document.querySelector('[data-proto-svg-fees]')?.textContent).toBe('FEES 75%');
+    expect(document.querySelector('[data-proto-svg-yield]')?.textContent).toBe('YIELD 15%');
+    expect(document.querySelector('[data-proto-svg-slash]')?.textContent).toBe('SLASH 12%');
     expect(document.querySelector('[data-proto-trade-title]')?.textContent).toBe('75% of Platform Trade Fee');
     expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.90% / 0.45%');
     expect(document.querySelector('[data-proto-dao-share-pct]')?.textContent).toBe('25%');
@@ -71,6 +96,7 @@ describe('Landing #protocol & #economics sections', () => {
     expect(document.querySelector('[data-proto-stage-bonds-badge]')?.textContent).toBe('88 / 12 SLASH');
     expect(document.querySelector('[data-proto-legend-victim-val]')?.textContent).toBe('88% Payout');
     expect(document.querySelector('[data-proto-legend-slash-val]')?.textContent).toBe('12% Slash Fee');
+    assertHydratedReceipts();
     expect(document.querySelectorAll('[data-proto-stage]').length).toBe(3);
 
     const stakingBtn = document.querySelector<HTMLButtonElement>('[data-proto-filter="staking"]')!;
@@ -88,6 +114,84 @@ describe('Landing #protocol & #economics sections', () => {
 
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('protocol.terraagent.testnet');
     expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.40%');
+    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.40 Stk)');
+    expect(document.querySelector('[data-proto-ex-pilot-yield]')?.textContent).toBe('+3.60 NEAR / yr');
+    expect(document.querySelector('[data-proto-ex-victim]')?.textContent).toBe('18.00 NEAR (90%)');
+  });
+});
+
+describe('Landing #protocol partial feeSchedule fallback math', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    document.body.innerHTML = `<section id="protocol"><div id="protocol-board"></div></section>`;
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    document.body.innerHTML = '';
+  });
+
+  it('computes exact protocol + DAO fee and staking splits when derived fields are omitted on partial schedules', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        feeSchedule: {
+          standardPlatformFeeBp: 30,
+          daoCarveOutShareBp: 2_500,
+          validatorGrossApyBp: 1_000,
+          protocolStakingYieldShareBp: 1_500,
+        },
+      }),
+    }) as unknown as typeof fetch;
+
+    initProtocolSection();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // 30 bp standard -> 15 bp staker; 75% protocol = floor(30*0.75)=22 bp & floor(15*0.75)=11 bp; DAO = 8 bp & 4 bp (never negative)
+    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.22% / 0.11%');
+    expect(document.querySelector('[data-proto-legend-dao-val]')?.textContent).toBe('0.08% (0.04% Staker)');
+    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.22 ($0.11 Stk)');
+    expect(document.querySelector('[data-proto-ex-dao]')?.textContent).toBe('+$0.08 ($0.04 Stk)');
+    expect(document.querySelector('[data-proto-ex-trade-txs]')?.textContent).toBe('~180 gasless NEP-366 player txs');
+    expect(document.querySelector<HTMLElement>('[data-proto-bar-trade-stall]')?.style.width).toBe('77%');
+    expect(document.querySelector<HTMLElement>('[data-proto-bar-trade-proto]')?.style.width).toBe('17%');
+    expect(document.querySelector<HTMLElement>('[data-proto-bar-trade-dao]')?.style.width).toBe('6%');
+    // 10.0% gross APY * 15% protocol = 1.50% protocol APY & 8.50% pilot net APY; staker fee = 0.15%
+    expect(document.querySelector('[data-proto-pilot-net-apy]')?.textContent).toBe('8.50%');
+    expect(document.querySelector('[data-proto-yield-rate]')?.textContent).toBe('1.50% APY Slice');
+    expect(document.querySelector('[data-proto-ex-perks]')?.textContent).toBe('Managed AI + 0.15% Fee');
+  });
+
+  it('handles zero-platform-fee and half-tie boundary schedules without >100% bar overflow or ~0 labels', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        feeSchedule: {
+          standardPlatformFeeBp: 0,
+          daoCarveOutShareBp: 0,
+          protocolStakingYieldShareBp: 0,
+        },
+      }),
+    }) as unknown as typeof fetch;
+
+    initProtocolSection();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(document.querySelector('[data-proto-ex-trade-txs]')?.textContent).toBe('0 gasless NEP-366 player txs');
+    expect(document.querySelector('[data-proto-ex-stake-foot]')?.textContent).toContain('+0.00 NEAR/yr sponsors 0 meta-txs');
+    expect(document.querySelector<HTMLElement>('[data-proto-bar-trade-stall]')?.style.width).toBe('100%');
+    expect(document.querySelector<HTMLElement>('[data-proto-bar-trade-proto]')?.style.width).toBe('0%');
+    expect(document.querySelector<HTMLElement>('[data-proto-bar-trade-dao]')?.style.width).toBe('0%');
   });
 });
 

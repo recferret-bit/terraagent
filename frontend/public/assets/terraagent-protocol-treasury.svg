@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" width="1200" height="540" role="img" aria-label="TerraAgent Protocol Self-Sustaining On-Chain Treasury: 3 Organic Inflows, Clearing Core, and 2 Infrastructure Outflows">
+  <defs>
+    <style>
+      .bg { fill: #060912; }
+      .panel-o { fill: #0d1424; stroke: #ff6a13; stroke-width: 1.6; }
+      .panel-c { fill: #091324; stroke: #39d0ff; stroke-width: 1.6; }
+      .panel-g { fill: #081814; stroke: #3ddc84; stroke-width: 1.6; }
+      .box { fill: #0a101d; stroke: #222a3a; stroke-width: 1.2; }
+      .box-o { fill: #151110; stroke: #ff6a13; stroke-width: 1.3; }
+      .box-c { fill: #0b1626; stroke: #39d0ff; stroke-width: 1.3; }
+      .box-g { fill: #091b16; stroke: #3ddc84; stroke-width: 1.3; }
+      .box-r { fill: #191014; stroke: #ff6b6b; stroke-width: 1.3; }
+      .title { font: 700 13px 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace; fill: #f2f4f7; letter-spacing: 1px; }
+      .hdr-o { font: 700 11px 'IBM Plex Mono', ui-monospace, monospace; fill: #ff8a3d; letter-spacing: 0.6px; }
+      .hdr-c { font: 700 11px 'IBM Plex Mono', ui-monospace, monospace; fill: #39d0ff; letter-spacing: 0.6px; }
+      .hdr-g { font: 700 11px 'IBM Plex Mono', ui-monospace, monospace; fill: #3ddc84; letter-spacing: 0.6px; }
+      .hdr-r { font: 700 11px 'IBM Plex Mono', ui-monospace, monospace; fill: #ff6b6b; letter-spacing: 0.6px; }
+      .txt { font: 500 10.2px 'IBM Plex Mono', ui-monospace, monospace; fill: #dbe2ef; }
+      .txt-c { font: 700 10.2px 'IBM Plex Mono', ui-monospace, monospace; fill: #39d0ff; }
+      .muted { font: 500 9.4px 'IBM Plex Mono', ui-monospace, monospace; fill: #8a93a6; }
+      .muted-g { font: 700 9.4px 'IBM Plex Mono', ui-monospace, monospace; fill: #3ddc84; }
+      .wire-o { fill: none; stroke: #ff6a13; stroke-width: 2; stroke-dasharray: 6 5; animation: dash 1.5s linear infinite; }
+      .wire-c { fill: none; stroke: #39d0ff; stroke-width: 2; stroke-dasharray: 6 5; animation: dash 1.6s linear infinite; }
+      .wire-g { fill: none; stroke: #3ddc84; stroke-width: 2; stroke-dasharray: 6 5; animation: dash 1.4s linear infinite; }
+      .wire-r { fill: none; stroke: #ff6b6b; stroke-width: 2; stroke-dasharray: 6 5; animation: dash 1.7s linear infinite; }
+      .ring-spin { transform-origin: 600px 210px; animation: spin 22s linear infinite; }
+      .pulse { animation: pulseOp 2.2s ease-in-out infinite; }
+      @keyframes dash { to { stroke-dashoffset: -22; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulseOp { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) {
+        .wire-o, .wire-c, .wire-g, .wire-r, .ring-spin, .pulse { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1200" height="540" class="bg"/>
+  <g opacity="0.12" stroke="#334155" stroke-width="0.7">
+    <path d="M0 60 H1200 M0 120 H1200 M0 180 H1200 M0 240 H1200 M0 300 H1200 M0 360 H1200 M0 420 H1200 M0 480 H1200"/>
+    <path d="M120 0 V540 M240 0 V540 M360 0 V540 M480 0 V540 M600 0 V540 M720 0 V540 M840 0 V540 M960 0 V540 M1080 0 V540"/>
+  </g>
+
+  <!-- Header Bar -->
+  <polygon points="16,14 1172,14 1184,26 1184,52 16,52" fill="#0b111c" stroke="#ff6a13" stroke-width="1.5"/>
+  <rect x="24" y="23" width="10" height="20" fill="#ff6a13"/>
+  <text x="44" y="37" class="title">TERRAAGENT PROTOCOL // SELF-SUSTAINING ON-CHAIN FLYWHEEL (0% TOKEN INFLATION · 0% P2W)</text>
+  <polygon points="908,21 1170,21 1176,27 1176,45 908,45" fill="#071a16" stroke="#3ddc84" stroke-width="1"/>
+  <circle cx="922" cy="33" r="4.5" fill="#3ddc84" class="pulse"/>
+  <text x="934" y="37" class="hdr-g">GET /v1/near/protocol // LIVE</text>
+
+  <!-- LEFT ZONE: 3 ORGANIC INFLOWS -->
+  <polygon points="24,68 386,68 400,82 400,516 24,516" class="panel-o"/>
+  <text x="42" y="92" class="hdr-o">1. THREE ORGANIC PROTOCOL INFLOWS</text>
+  <text x="42" y="108" class="muted">Zero minted inflationary tokens · real economic velocity</text>
+
+  <!-- Inflow 1: Market Settlement Fee -->
+  <rect x="40" y="124" width="344" height="118" class="box-o"/>
+  <text x="52" y="144" class="hdr-o">A. NEP-413 MARKET PLATFORM FEE (80 / 20)</text>
+  <text x="52" y="163" class="txt">Rate: 1.00% standard | 0.50% staker (&gt;=10 NEAR)</text>
+  <text x="52" y="181" class="txt">80% -&gt; Protocol (0.80% / 0.40%)</text>
+  <text x="52" y="199" class="txt">20% -&gt; Planet Council DAO (0.20% / 0.10%)</text>
+  <rect x="52" y="209" width="320" height="24" fill="#090d16" stroke="#2c3548"/>
+  <text x="60" y="225" class="hdr-g">$100 USDC fill -&gt; $0.80 Proto + $0.20 DAO</text>
+
+  <!-- Inflow 2: Day-1 Lossless Staking -->
+  <rect x="40" y="254" width="344" height="118" class="box-c"/>
+  <text x="52" y="274" class="hdr-c">B. DAY-1 LOSSLESS STAKING YIELD (80 / 20)</text>
+  <text x="52" y="293" class="txt">staking.terraagent.testnet (9.00% validator APY)</text>
+  <text x="52" y="311" class="txt">80% (7.20% APY) -&gt; Human Pilot (100% principal)</text>
+  <text x="52" y="329" class="txt">20% (1.80% APY) -&gt; Protocol Treasury</text>
+  <rect x="52" y="339" width="320" height="24" fill="#090d16" stroke="#2c3548"/>
+  <text x="60" y="355" class="hdr-c">50 NEAR -&gt; +3.60 Pilot / +0.90 Proto/yr</text>
+
+  <!-- Inflow 3: Peace & War Escrow Slashing -->
+  <rect x="40" y="384" width="344" height="118" class="box-r"/>
+  <text x="52" y="404" class="hdr-r">C. PEACE &amp; 6H WAR ESCROW SLASH (90 / 10)</text>
+  <text x="52" y="423" class="txt">bounty.terraagent.testnet deterrence bonds</text>
+  <text x="52" y="441" class="txt">90% -&gt; Betrayed Treaty Partner / War Defender</text>
+  <text x="52" y="459" class="txt">10% -&gt; Protocol Treasury slash penalty</text>
+  <rect x="52" y="469" width="320" height="24" fill="#090d16" stroke="#2c3548"/>
+  <text x="60" y="485" class="hdr-r">20 NEAR breach -&gt; 18.0 Victim + 2.0 Proto</text>
+
+  <!-- CENTER ZONE: CLEARING CORE & 4-WAY SPLIT + UNIT ECONOMICS -->
+  <polygon points="434,68 766,68 780,82 780,516 434,516" class="panel-c"/>
+  <text x="452" y="92" class="hdr-c">2. PROTOCOL TREASURY CLEARING CORE</text>
+  <text x="452" y="108" class="muted">protocol.terraagent.testnet · auditable on NearBlocks</text>
+
+  <!-- Animated Hex Core -->
+  <g class="ring-spin">
+    <circle cx="600" cy="210" r="72" fill="none" stroke="#39d0ff" stroke-width="1.3" stroke-dasharray="6 5" opacity="0.7"/>
+  </g>
+  <circle cx="600" cy="210" r="61" fill="none" stroke="#ff6a13" stroke-width="1.2" opacity="0.45"/>
+  <polygon points="600,152 656,181 656,239 600,268 544,239 544,181" fill="#0e1728" stroke="#ff6a13" stroke-width="2"/>
+  <text x="600" y="198" text-anchor="middle" class="hdr-o">TERRAAGENT</text>
+  <text x="600" y="216" text-anchor="middle" class="title">PROTOCOL</text>
+  <text x="600" y="233" text-anchor="middle" class="muted-g">0% MINT · 0% P2W</text>
+
+  <!-- 4-Way NEP-413 Trade Split Breakdown -->
+  <rect x="448" y="294" width="318" height="104" class="box"/>
+  <text x="460" y="314" class="hdr-o">4-WAY ATOMIC NEP-413 TRADE RECEIPT</text>
+  <text x="460" y="333" class="txt">1. Seller Principal : 100.00% ($100.00)</text>
+  <text x="460" y="350" class="txt">2. Stall Owner Fee  : +0.00%-1.00% (+$0.50)</text>
+  <text x="460" y="367" class="txt">3. Planet DAO (20%) : +0.20% / +0.10% ($0.20)</text>
+  <text x="460" y="384" class="txt-c">4. Protocol (80%)   : +0.80% / +0.40% ($0.80)</text>
+
+  <!-- Unit Economics Proof Box -->
+  <rect x="448" y="408" width="318" height="94" class="box-g"/>
+  <text x="460" y="428" class="hdr-g">WHY IT SCALES NET-POSITIVE (MATH)</text>
+  <text x="460" y="447" class="txt">TEE AI: 1 batch / 180s = 480 calls/planet/day</text>
+  <text x="460" y="464" class="txt">Meta-Tx Gas: ~0.0003 NEAR per NEP-366 relay</text>
+  <text x="460" y="481" class="hdr-g">~$0.04/day AI cost paid by ~$7/day vol</text>
+  <text x="460" y="495" class="muted">or 200 NEAR staked TVL (@ ~$4/NEAR)!</text>
+
+  <!-- RIGHT ZONE: 2 SELF-FUNDED OUTFLOWS + DAO CARVE-OUT -->
+  <polygon points="814,68 1162,68 1176,82 1176,516 814,516" class="panel-g"/>
+  <text x="832" y="92" class="hdr-g">3. INFRASTRUCTURE FUNDED FOR PLAYERS</text>
+  <text x="832" y="108" class="muted">Every inflow recycles into zero-gas UX &amp; 24/7 AI</text>
+
+  <!-- Outflow 1: NEP-366 Relayer -->
+  <rect x="830" y="124" width="330" height="130" class="box-g"/>
+  <text x="842" y="144" class="hdr-g">1. NEP-366 GASLESS META-TX RELAYER</text>
+  <text x="842" y="163" class="txt">Account: relayer.terraagent.testnet (5 N/day)</text>
+  <text x="842" y="181" class="txt">- 0.02 NEAR cold-root pilot sub-account seed</text>
+  <text x="842" y="199" class="txt">- Gasless SignedDelegate, Deeds &amp; NEP-245</text>
+  <text x="842" y="217" class="txt">- Zero wallet popup for F2P &amp; OAuth players</text>
+  <rect x="842" y="224" width="306" height="22" fill="#090d16" stroke="#2c3548"/>
+  <text x="850" y="239" class="hdr-g">1x $100 fill -&gt; ~650 meta-txs (@ ~$4/N)</text>
+
+  <!-- Outflow 2: Managed NEAR.AI TEE -->
+  <rect x="830" y="268" width="330" height="130" class="box-c"/>
+  <text x="842" y="288" class="hdr-c">2. MANAGED NEAR.AI TEE AUTOPILOT</text>
+  <text x="842" y="307" class="txt">Model: z-ai/glm-5.3-flash (NEAR AI Cloud TEE)</text>
+  <text x="842" y="325" class="txt">- Runs 24/7 Rival AI colonies on every planet</text>
+  <text x="842" y="343" class="txt">- Unlocks zero-setup offline AI for &gt;=10 N stake</text>
+  <text x="842" y="361" class="txt">- Custom /me BYOK API keys stay 100% free</text>
+  <rect x="842" y="368" width="306" height="22" fill="#090d16" stroke="#2c3548"/>
+  <text x="850" y="383" class="hdr-c">5-colony batch RPC + 120s burst cache</text>
+
+  <!-- Carve-Out: Planet Council DAO -->
+  <rect x="830" y="412" width="330" height="90" class="box-o"/>
+  <text x="842" y="432" class="hdr-o">+ PLANET COUNCIL DAO CARVE-OUT (20%)</text>
+  <text x="842" y="451" class="txt">Account: {planet}.dao.terraagent.testnet</text>
+  <text x="842" y="469" class="txt">&gt;50% council vote funds meteor_shield,</text>
+  <text x="842" y="487" class="txt">terraform_boost &amp; guild_subsidy grants</text>
+
+  <!-- Animated Signal Flows (chamfered Faction-Plate gutter routing, zero text overlap) -->
+  <path d="M400 182 H422 L432 192 H543" class="wire-o"/>
+  <path d="M400 312 H414 L422 304 V218 L430 210 H543" class="wire-c"/>
+  <path d="M400 442 H408 L414 436 V236 L422 228 H543" class="wire-r"/>
+
+  <path d="M657 192 H830" class="wire-g"/>
+  <path d="M657 228 H792 L800 236 V322 L808 330 H830" class="wire-c"/>
+  <path d="M766 364 H786 L794 372 V446 L802 454 H830" class="wire-o"/>
+
+  <circle r="4.2" fill="#ff6a13"><animateMotion dur="1.4s" repeatCount="indefinite" path="M400,182 L422,182 L432,192 L543,192"/></circle>
+  <circle r="4.2" fill="#39d0ff"><animateMotion dur="1.6s" repeatCount="indefinite" path="M400,312 L414,312 L422,304 L422,218 L430,210 L543,210"/></circle>
+  <circle r="4.2" fill="#ff6b6b"><animateMotion dur="1.8s" repeatCount="indefinite" path="M400,442 L408,442 L414,436 L414,236 L422,228 L543,228"/></circle>
+  <circle r="4.5" fill="#3ddc84"><animateMotion dur="1.3s" repeatCount="indefinite" path="M657,192 L830,192"/></circle>
+  <circle r="4.5" fill="#39d0ff"><animateMotion dur="1.5s" repeatCount="indefinite" path="M657,228 L792,228 L800,236 L800,322 L808,330 L830,330"/></circle>
+</svg>

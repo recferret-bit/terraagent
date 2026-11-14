@@ -127,10 +127,10 @@ const CONTRACTS: readonly DeployedContract[] = [
     badgeClass: 'badge-ok',
     accent: 'var(--ta-terra)',
     kicker: 'SUB-ACCOUNT FACTORY',
-    title: 'Pilot Account Factory & Claim',
-    summary: 'Provisions {pilot}.pilots.terraagent.testnet while keeping the root key in cold storage, with atomic non-custodial key rotation on claim.',
+    title: 'Cold-Root Pilot Account Factory',
+    summary: 'Provisions {pilot}.pilots.terraagent.testnet (0.02 NEAR) while keeping the root key in cold storage; self-custody claim rotates [AddKey, DeleteKey] directly on the sub-account.',
     inGameTrigger: 'OAuth / Guest Drop',
-    onChainAction: 'create_pilot_account · claim',
+    onChainAction: 'create_pilot_account · on_pilot_created',
     codeHash: '7HP8BHuqUF36MtxYK8DKRenjZ9n9CmR9NSaZmnuZpWa5',
     txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">

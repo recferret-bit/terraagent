@@ -234,7 +234,8 @@
 
 .pitch-stat b {
   font-family: var(--ta-font-display);
-  font-size: 24px;
+  font-size: clamp(18px, 1.55vw, 22px);
+  line-height: 1.15;
   color: var(--ta-text);
 }
 

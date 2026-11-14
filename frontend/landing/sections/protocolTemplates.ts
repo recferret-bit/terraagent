@@ -27,11 +27,27 @@ function renderCoreConduitSvg(): string {
     <path class="proto-pipe-bg" d="M 228 124 C 276 124, 286 166, 352 166" />
 
     <!-- Scroll-energized active pipes (normalized pathLength=100 for exact phased scroll progress) -->
-    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="trade" stroke="var(--ta-terra)" d="M 8 38 C 78 38, 86 96, 132 104" />
-    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="staking" stroke="var(--ta-blue-hi)" d="M 8 115 L 132 115" />
-    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="bonds" stroke="var(--ta-orange)" d="M 8 192 C 78 192, 86 134, 132 126" />
-    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="out" data-stream="all" stroke="var(--ta-energy)" d="M 228 106 C 276 106, 286 64, 352 64" />
-    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="out" data-stream="all" stroke="var(--ta-orange-hi)" d="M 228 124 C 276 124, 286 166, 352 166" />
+    <path id="proto-p-trade" class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="trade" stroke="var(--ta-terra)" d="M 8 38 C 78 38, 86 96, 132 104" />
+    <path id="proto-p-stake" class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="staking" stroke="var(--ta-blue-hi)" d="M 8 115 L 132 115" />
+    <path id="proto-p-bonds" class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="bonds" stroke="var(--ta-orange)" d="M 8 192 C 78 192, 86 134, 132 126" />
+    <path id="proto-p-gas" class="proto-pipe-active" pathLength="100" data-pipe-phase="out" data-stream="all" stroke="var(--ta-energy)" d="M 228 106 C 276 106, 286 64, 352 64" />
+    <path id="proto-p-ai" class="proto-pipe-active" pathLength="100" data-pipe-phase="out" data-stream="all" stroke="var(--ta-orange-hi)" d="M 228 124 C 276 124, 286 166, 352 166" />
+
+    <!-- Conduit callout micro-labels -->
+    <text x="16" y="29" fill="var(--ta-terra)" font-family="var(--ta-font-mono)" font-size="8.5" data-stream="trade" data-proto-svg-fees>FEES 80%</text>
+    <text x="16" y="106" fill="var(--ta-blue-hi)" font-family="var(--ta-font-mono)" font-size="8.5" data-stream="staking" data-proto-svg-yield>YIELD 20%</text>
+    <text x="16" y="209" fill="var(--ta-orange-hi)" font-family="var(--ta-font-mono)" font-size="8.5" data-stream="bonds" data-proto-svg-slash>SLASH 10%</text>
+    <text x="344" y="54" text-anchor="end" fill="var(--ta-energy)" font-family="var(--ta-font-mono)" font-size="8.5">NEP-366 GAS</text>
+    <text x="344" y="182" text-anchor="end" fill="var(--ta-orange-hi)" font-family="var(--ta-font-mono)" font-size="8.5">TEE AI</text>
+
+    <!-- Live traveling value packets -->
+    <g class="proto-packets" aria-hidden="true">
+      <circle r="3.4" fill="var(--ta-terra)" data-stream="trade"><animateMotion dur="1.7s" repeatCount="indefinite" path="M 8 38 C 78 38, 86 96, 132 104" /></circle>
+      <circle r="3.4" fill="var(--ta-blue-hi)" data-stream="staking"><animateMotion dur="1.9s" repeatCount="indefinite" path="M 8 115 L 132 115" /></circle>
+      <circle r="3.4" fill="var(--ta-orange)" data-stream="bonds"><animateMotion dur="2.1s" repeatCount="indefinite" path="M 8 192 C 78 192, 86 134, 132 126" /></circle>
+      <circle r="3.6" fill="var(--ta-energy)"><animateMotion dur="1.6s" repeatCount="indefinite" path="M 228 106 C 276 106, 286 64, 352 64" /></circle>
+      <circle r="3.6" fill="var(--ta-orange-hi)"><animateMotion dur="1.8s" repeatCount="indefinite" path="M 228 124 C 276 124, 286 166, 352 166" /></circle>
+    </g>
 
     <!-- Anchor terminals -->
     <circle cx="8" cy="38" r="4" fill="var(--ta-terra)" data-stream="trade" />
@@ -45,7 +61,7 @@ function renderCoreConduitSvg(): string {
       <polygon points="180,52 228,80 228,150 180,178 132,150 132,80" fill="var(--ta-black-hole)" stroke="var(--ta-orange)" stroke-width="2.2" />
       <polygon points="180,62 219,85 219,145 180,168 141,145 141,85" fill="var(--ta-plate-2)" stroke="var(--ta-seam-3)" stroke-width="1.2" />
       <text x="180" y="103" text-anchor="middle" fill="var(--ta-energy)" font-family="var(--ta-font-mono)" font-size="9.5" font-weight="600" letter-spacing="1.4">PROTOCOL</text>
-      <text x="180" y="121" text-anchor="middle" fill="var(--ta-hull)" font-family="var(--ta-font-display)" font-size="14" font-weight="700" letter-spacing="1">TREASURY</text>
+      <text x="180" y="121" text-anchor="middle" fill="var(--ta-text)" font-family="var(--ta-font-display)" font-size="14" font-weight="700" letter-spacing="1">TREASURY</text>
       <text x="180" y="138" text-anchor="middle" fill="var(--ta-steel)" font-family="var(--ta-font-mono)" font-size="8.5">ZERO INFLATION</text>
     </g>
   </svg>`;
@@ -111,8 +127,8 @@ export function renderProtocolStagesHtml(): string {
       <p>Sellers receive <b>100% of sale principal</b>. Buyer fees clear in the exact same counter-signed intent—never touching custodial studio wallets:</p>
       <div class="proto-bar-group">
         <div class="proto-bar-caption"><span data-proto-stage-trade-cap>BUYER FEE ALLOCATION (MAX 2.00% / 1.50% STAKER)</span><span>ATOMIC</span></div>
-        <div class="proto-seg-bar" role="img" aria-label="Up to 50% Stall Owner, 40% Protocol, 10% Planet Council DAO">
-          <span class="proto-seg is-terra" style="width:50%"></span>
+        <div class="proto-seg-bar" role="img" data-proto-bar-trade aria-label="Up to 50% Stall Owner, 40% Protocol, 10% Planet Council DAO">
+          <span class="proto-seg is-terra" data-proto-bar-trade-stall style="width:50%"></span>
           <span class="proto-seg is-orange" data-proto-bar-trade-proto style="width:40%"></span>
           <span class="proto-seg is-blue" data-proto-bar-trade-dao style="width:10%"></span>
         </div>
@@ -132,8 +148,8 @@ export function renderProtocolStagesHtml(): string {
       <h3 data-proto-stage-staking-title>80 / 20 Yield Split · Zero Pay-to-Win</h3>
       <p>Any claimed human wallet can stake <span data-proto-stage-min-stake>≥10 NEAR</span> from Day 1 (2-day unbonding, 100% principal safe). Yield funds your perks instead of combat buffs:</p>
       <div class="proto-bar-group">
-        <div class="proto-bar-caption"><span>9.0% VALIDATOR POOL YIELD SPLIT</span><span>LOSSLESS</span></div>
-        <div class="proto-seg-bar" role="img" aria-label="80% Net APY to Pilot, 20% APY to Protocol">
+        <div class="proto-bar-caption"><span data-proto-stage-pool-apy>9.0% VALIDATOR POOL YIELD SPLIT</span><span>LOSSLESS</span></div>
+        <div class="proto-seg-bar" role="img" data-proto-bar-stake aria-label="80% Net APY to Pilot, 20% APY to Protocol">
           <span class="proto-seg is-blue" data-proto-bar-stake-pilot style="width:80%"></span>
           <span class="proto-seg is-energy" data-proto-bar-stake-proto style="width:20%"></span>
         </div>
@@ -154,7 +170,7 @@ export function renderProtocolStagesHtml(): string {
       <p>Peaceful truce expiry or meeting a 6h War Bond objective (≥1 structure razed or ≥200 loot siphoned at 2× cap) refunds <b>100%</b>. Betrayal or stall slashes:</p>
       <div class="proto-bar-group">
         <div class="proto-bar-caption"><span>BREACHED TRUCE OR FAILED 6H SIEGE BOND</span><span>ON-CHAIN</span></div>
-        <div class="proto-seg-bar" role="img" aria-label="90% to Betrayed Ally or Defender, 10% to Protocol">
+        <div class="proto-seg-bar" role="img" data-proto-bar-bond aria-label="90% to Betrayed Ally or Defender, 10% to Protocol">
           <span class="proto-seg is-terra" data-proto-bar-bond-victim style="width:90%"></span>
           <span class="proto-seg is-orange" data-proto-bar-bond-proto style="width:10%"></span>
         </div>
@@ -165,5 +181,63 @@ export function renderProtocolStagesHtml(): string {
         </div>
       </div>
     </article>
+  </div>`;
+}
+
+export function renderProtocolReceiptsHtml(): string {
+  return `<div class="proto-proofs plate" aria-label="Concrete TerraAgent Protocol worked receipts and per-planet unit economics">
+    <div class="proto-proofs-head">
+      <div>
+        <span class="eyebrow">CONCRETE NUMBERS &amp; UNIT ECONOMICS</span>
+        <h3 class="h3">Worked On-Chain Receipts — Why Every Planet Sustains Itself</h3>
+      </div>
+      <span class="badge badge-ok">REAL COUNTERPARTY MATH</span>
+    </div>
+    <div class="proto-proof-grid">
+      <article class="proto-proof plate-sm" data-stream="trade">
+        <span class="proto-proof-tag is-terra">RECEIPT 01 · $100 USDC FILL (50 BP STALL)</span>
+        <strong data-proto-ex-buyer-total>Buyer pays $101.50 ($101.00 Staker)</strong>
+        <ul class="proto-proof-rows">
+          <li><span>Seller Principal (100%)</span><b>$100.00 USDC</b></li>
+          <li><span>Trade Hub Stall Owner</span><b>+$0.50 USDC</b></li>
+          <li><span>Planet Council DAO</span><b data-proto-ex-dao>+$0.20 ($0.10 Stk)</b></li>
+          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.40 Stk)</b></li>
+        </ul>
+        <p class="proto-proof-foot">1 fill funds <b data-proto-ex-trade-txs>~650 gasless NEP-366 player txs</b> (~0.0003 NEAR/tx at ~$4/NEAR).</p>
+      </article>
+      <article class="proto-proof plate-sm" data-stream="staking">
+        <span class="proto-proof-tag is-blue">RECEIPT 02 · 50 NEAR DAY-1 STAKE</span>
+        <strong>100% Principal Safe · 2d Unbond</strong>
+        <ul class="proto-proof-rows">
+          <li><span>Locked Principal</span><b>50.00 NEAR</b></li>
+          <li><span>Pilot Net Yield</span><b data-proto-ex-pilot-yield>+3.60 NEAR / yr</b></li>
+          <li><span>Protocol Yield Slice</span><b data-proto-ex-proto-yield>+0.90 NEAR / yr</b></li>
+          <li><span>Unlocked Perks</span><b data-proto-ex-perks>Managed AI + 0.50% Fee</b></li>
+        </ul>
+        <p class="proto-proof-foot" data-proto-ex-stake-foot>+0.90 NEAR/yr sponsors ~3,000 meta-txs with zero principal risk.</p>
+      </article>
+      <article class="proto-proof plate-sm" data-stream="bonds">
+        <span class="proto-proof-tag is-orange">RECEIPT 03 · 20 NEAR PEACE / WAR BOND</span>
+        <strong>100% Refund if Kept · Slashed on Breach</strong>
+        <ul class="proto-proof-rows">
+          <li><span>Honored Treaty / Goal Met</span><b>20.00 NEAR Refund</b></li>
+          <li><span>Victim / Defender Cut</span><b data-proto-ex-victim>18.00 NEAR (90%)</b></li>
+          <li><span>Protocol Deterrence Cut</span><b data-proto-ex-slash>2.00 NEAR (10%)</b></li>
+          <li><span>War Objective Window</span><b>6h (2× Raider Cap)</b></li>
+        </ul>
+        <p class="proto-proof-foot">Turns broken truces and stalled sieges into defender profit.</p>
+      </article>
+      <article class="proto-proof plate-sm is-econ" data-stream="all">
+        <span class="proto-proof-tag is-energy">UNIT ECONOMICS · 5-COLONY PLANET</span>
+        <strong>~$0.04 / day Cost vs ~$7 / day Break-Even</strong>
+        <ul class="proto-proof-rows">
+          <li><span>Batched GLM-5.3 TEE Sweep</span><b>1 RPC / 180s (5 Colonies)</b></li>
+          <li><span>120s Digest Cooldown</span><b>0 Burst Re-Trigger Tokens</b></li>
+          <li><span>Daily Planet AI Cost</span><b>~$0.03 – $0.05 / day</b></li>
+          <li><span>Break-Even Threshold</span><b>~$7/d Vol or 200 NEAR TVL</b></li>
+        </ul>
+        <p class="proto-proof-foot">4 × 50 NEAR stakers (+3.60 NEAR/yr ≈ $14.40/yr at ~$4/NEAR) or ~$7/d trade vol covers 24/7 AI.</p>
+      </article>
+    </div>
   </div>`;
 }

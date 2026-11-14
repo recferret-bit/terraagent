@@ -25,6 +25,9 @@
       @keyframes pulseOpacity { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
       @keyframes roverMove { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(58px, -18px); } }
       @keyframes sunSweep { 0%, 100% { transform: translateX(0px); opacity: 0.25; } 50% { transform: translateX(64px); opacity: 0.55; } }
+      @media (prefers-reduced-motion: reduce) {
+        .wire-hot, .wire-cyan, .wire-green, .pulse, .orb-spin, .rover, .sun-sweep { animation: none; }
+      }
     </style>
     <linearGradient id="planetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#f97316"/>
@@ -56,11 +59,11 @@
   <polygon points="16,14 1172,14 1184,26 1184,52 16,52" fill="#0b1222" stroke="#ff5a1f" stroke-width="1.5"/>
   <rect x="24" y="23" width="10" height="20" fill="#ff5a1f"/>
   <text x="44" y="37" class="title">TERRAAGENT // LIVE PERSISTENT COLONY + NEAR ON-CHAIN SETTLEMENT LOOP</text>
-  <polygon points="942,21 1168,21 1174,27 1174,45 942,45" fill="#071a16" stroke="#22c55e" stroke-width="1"/>
-  <circle cx="956" cy="33" r="4.5" fill="#22c55e">
+  <polygon points="932,21 1168,21 1174,27 1174,45 932,45" fill="#071a16" stroke="#22c55e" stroke-width="1"/>
+  <circle cx="946" cy="33" r="4.5" fill="#22c55e">
     <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>
   </circle>
-  <text x="968" y="37" class="hdr-g">11/11 PORTS LIVE // TESTNET</text>
+  <text x="958" y="37" class="hdr-g">11/11 PORTS LIVE // TESTNET</text>
 
   <!-- ZONE 1: CLIENT & 5HZ TICK / PREDICTION SOCKET STREAM -->
   <polygon points="24,74 344,74 358,88 358,494 24,494" class="panel-cyan"/>
@@ -106,7 +109,7 @@
   </polygon>
   <polygon points="502,228 514,194 526,228" fill="#16a34a"/>
   <polygon points="698,228 712,204 728,214 724,232 702,234" fill="#38bdf8" stroke="#e0f2fe" stroke-width="1"/>
-  <text x="688" y="246" class="muted">metals.t1</text>
+  <text x="706" y="246" class="muted">metals.t1</text>
   <!-- Animated Rover -->
   <g class="rover">
     <rect x="556" y="210" width="28" height="14" rx="2" fill="#ff5a1f" stroke="#fed7aa" stroke-width="1"/>
@@ -114,61 +117,67 @@
     <circle cx="578" cy="226" r="4" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
     <line x1="584" y1="215" x2="604" y2="206" stroke="#22d3ee" stroke-width="2" class="pulse"/>
   </g>
-  <text x="444" y="246" class="txt">Flora regrowth + raids + weather hazards</text>
+  <text x="444" y="246" class="txt">Flora + raids + weather hazards</text>
 
   <!-- Batched NEAR.AI Box -->
   <rect x="432" y="272" width="350" height="118" fill="#0c1326" stroke="#22d3ee" stroke-width="1.5"/>
   <circle cx="450" cy="292" r="5" fill="#22d3ee" class="pulse"/>
   <text x="462" y="296" class="hdr-c">NEAR.AI AUTONOMOUS DECISION ENGINE</text>
   <text x="446" y="318" class="txt">Model: z-ai/glm-5.3-flash (TEE attested)</text>
-  <text x="446" y="336" class="txt">Bots: 1 batched RPC / 60s across 8 colonies</text>
+  <text x="446" y="336" class="txt">Sweep: 1 batched RPC / 180s (5 colonies)</text>
   <text x="446" y="354" class="txt">Pilots: &gt;=10 NEAR Managed AI or /me BYOK</text>
-  <text x="446" y="372" class="hdr-g">Orders: harvest / build / trade / war / peace</text>
+  <text x="446" y="372" class="hdr-g">Orders: build / trade / raid / truce</text>
 
   <!-- Outbox Queue -->
   <rect x="432" y="404" width="350" height="72" fill="#09101f" stroke="#ff5a1f" stroke-width="1.2"/>
   <text x="446" y="424" class="hdr">TRANSACTING OUTBOX (IDEMPOTENT opId)</text>
   <text x="446" y="444" class="txt">Debounces sim ticks -&gt; durable Postgres jobs</text>
-  <text x="446" y="462" class="muted">Track 07 Policy Check &lt;-&gt; Human approve_action</text>
+  <text x="446" y="462" class="muted">Track 06 Policy Guardrails + NEP-366 Relayer</text>
 
   <!-- ZONE 3: LIVE NEAR TESTNET CONTRACTS -->
   <polygon points="856,74 1176,74 1176,494 842,494 842,88" class="panel"/>
-  <text x="860" y="98" class="hdr-g">3. NEAR TESTNET CONTRACTS (LIVE)</text>
+  <text x="860" y="98" class="hdr-g">3. 6 RUST CONTRACTS + INTENTS (LIVE)</text>
   <text x="860" y="114" class="muted">test.rpc.fastnear.com + rpc.testnet.near.org</text>
 
-  <g transform="translate(860,130)">
-    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#ff5a1f"/>
-    <text x="14" y="19" class="txt">res.terraagent.testnet (NEP-245 FT)</text>
-    <text x="14" y="35" class="muted">T1/T2/T3 colony cargo + mint / burn</text>
+  <g transform="translate(860,126)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#ff5a1f"/>
+    <text x="14" y="17" class="txt">res.terraagent.testnet (NEP-245 MT)</text>
+    <text x="14" y="32" class="muted">10 T1/T2/T3 cargo tokens + mint / burn</text>
   </g>
-  <g transform="translate(860,182)">
-    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#22d3ee"/>
-    <text x="14" y="19" class="txt">intents.near (NEP-413 + 1Click API)</text>
-    <text x="14" y="35" class="muted">Zero-sum token_diff swaps &amp; USDC/NEAR</text>
+  <g transform="translate(860,171)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#22c55e"/>
+    <text x="14" y="17" class="txt">deed.terraagent.testnet (NEP-171)</text>
+    <text x="14" y="32" class="muted">Soulbound Colony Deeds + Badges NFT</text>
   </g>
-  <g transform="translate(860,234)">
-    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#22c55e"/>
-    <text x="14" y="19" class="txt">deed.terraagent.testnet (NEP-171)</text>
-    <text x="14" y="35" class="muted">Soulbound Colony Deeds + Badges NFT</text>
+  <g transform="translate(860,216)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#f59e0b"/>
+    <text x="14" y="17" class="txt">bounty.terraagent.testnet</text>
+    <text x="14" y="32" class="muted">Bounties + 90/10 Peace &amp; 6h War Escrows</text>
   </g>
-  <g transform="translate(860,286)">
-    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#f59e0b"/>
-    <text x="14" y="19" class="txt">bounty.terraagent.testnet</text>
-    <text x="14" y="35" class="muted">Bounties + 90/10 Peace &amp; 6h War Escrows</text>
+  <g transform="translate(860,261)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#a855f7"/>
+    <text x="14" y="17" class="txt">staking.terraagent.testnet</text>
+    <text x="14" y="32" class="muted">Day-1 80/20 yield vault &amp; 2-day unbond</text>
   </g>
-  <g transform="translate(860,338)">
-    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#a855f7"/>
-    <text x="14" y="19" class="txt">staking.terraagent.testnet</text>
-    <text x="14" y="35" class="muted">Day-1 80/20 yield vault &amp; 2-day unbond</text>
+  <g transform="translate(860,306)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#ec4899"/>
+    <text x="14" y="17" class="txt">dao.terraagent.testnet</text>
+    <text x="14" y="32" class="muted">Planet council treasury &amp; &gt;50% quorum</text>
   </g>
-  <g transform="translate(860,390)">
-    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#ec4899"/>
-    <text x="14" y="19" class="txt">dao.terraagent.testnet</text>
-    <text x="14" y="35" class="muted">Planet council treasury &amp; &gt;50% quorum</text>
+  <g transform="translate(860,351)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#14b8a6"/>
+    <text x="14" y="17" class="txt">pilots.terraagent.testnet</text>
+    <text x="14" y="32" class="muted">Cold-root create_pilot_account factory</text>
   </g>
-  <g transform="translate(860,442)">
-    <rect width="298" height="36" class="pill"/><rect width="4" height="36" fill="#38bdf8"/>
-    <text x="14" y="22" class="txt">protocol + relayer.terraagent.testnet</text>
+  <g transform="translate(860,396)">
+    <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#22d3ee"/>
+    <text x="14" y="17" class="txt">intents.near (NEP-413 + 1Click API)</text>
+    <text x="14" y="32" class="muted">Zero-sum token_diff swaps &amp; USDC/NEAR</text>
+  </g>
+  <g transform="translate(860,441)">
+    <rect width="298" height="38" class="pill"/><rect width="4" height="38" fill="#38bdf8"/>
+    <text x="14" y="17" class="txt">protocol + relayer + minter.terraagent</text>
+    <text x="14" y="31" class="muted">Self-funded NEP-366 gas &amp; Managed AI</text>
   </g>
 
   <!-- Animated Data Wires Between Zones -->

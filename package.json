@@ -68,7 +68,10 @@
     "deploy:chain": "node scripts/sites/deploy.mjs chain",
     "near:build-contracts": "cd backend/near-contracts && cargo build --target wasm32-unknown-unknown --release",
     "near:test-contracts": "cd backend/near-contracts && cargo test",
-    "near:deploy-contracts": "node scripts/dev/deploy-testnet-contracts.mjs"
+    "near:deploy-contracts": "node scripts/dev/deploy-testnet-contracts.mjs",
+    "install:media": "npm --prefix social/media install",
+    "media": "node social/media/make.mjs",
+    "media:check": "npm --prefix social/media run check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

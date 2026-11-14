@@ -50,7 +50,7 @@ export const STACK_NAV_ITEMS: ReadonlyArray<StackNavItem> = [
   { targetId: 'sec-02', anchorId: 'sub-econ-schematic', layer: 'WEB3', title: 'Protocol Treasury & 4-Way Settlement', status: 'SCHEMA' },
   { targetId: 'sec-02', anchorId: 'sub-econ-examples', layer: 'WEB3', title: 'Trade, Staking & Bond Math Receipts', status: 'EXAMPLES' },
   { targetId: 'sec-03', anchorId: 'sub-ai-pipeline', layer: 'AI-TEE', title: 'Hardware TEE & 4-Gate Guardrails', status: 'SCHEMA' },
-  { targetId: 'sec-03', anchorId: 'sub-ai-byok', layer: 'AI-TEE', title: 'Managed Autopilot vs Encrypted BYOK', status: 'BYOK' },
+  { targetId: 'sec-03', anchorId: 'sub-ai-byok', layer: 'AI-TEE', title: 'Managed Autopilot, BYOK, Swarms & Commerce', status: 'BYOK' },
   { targetId: 'sec-03', anchorId: 'sub-ai-example', layer: 'AI-TEE', title: 'Overnight Session Trace & VWAP Formula', status: 'EXAMPLE' },
   { targetId: 'sec-06', anchorId: 'sub-web2-core', layer: 'WEB2', title: '@terra/sim 5 Hz + 50 Hz Warp Replay', status: 'SHARED' },
   { targetId: 'sec-06', anchorId: 'sub-web2-core', layer: 'WEB2', title: 'MsgPack Binary WS + 60 FPS Prediction', status: 'LIVE' },

@@ -65,8 +65,25 @@ const AI_ACCESS_MODES: ReadonlyArray<WebFeatureCard> = [
     title: 'Personal Encrypted BYOK Vault (/me.html)',
     layer: 'NEAR.AI',
     badge: 'CUSTOM MODEL',
-    summary: 'Prefer another NEAR AI Cloud model (DeepSeek, Llama, Qwen, or GPT-compatible endpoints) without staking? Save a personal key on `/me.html` encrypted at rest with AES-256-GCM.',
-    chips: ['AES-256-GCM Vault', 'Any Custom Model ID', 'Attested Logs'],
+    summary: 'Prefer another NEAR AI Cloud model (`GLM-5.3`, `GLM-5.3 Flash`, `DeepSeek V3.2`, `DeepSeek V4.1 Flash`, `Qwen 3.8 27B`, `GPT-5 Mini`, `Claude Sonnet 4.6`, or any custom model ID) without staking? Save a personal key on `/me.html` encrypted at rest with AES-256-GCM.',
+    chips: ['AES-256-GCM Vault', '7 Presets + Custom ID', 'Attested Logs'],
+  },
+];
+
+const SWARM_AND_AGENT_CARDS: ReadonlyArray<WebFeatureCard> = [
+  {
+    title: '25-Sub-Account Zero-LLM Swarm Clearing',
+    layer: 'NEAR.AI',
+    badge: 'AI SWARMS',
+    summary: 'Twenty cohort-typed buyer sub-accounts (`buyer-01..20.swarm.terraagent.testnet` across `terraformer`, `industrial`, `shield_builder`, `arb_bot`) and five NPC/rival sellers submit sealed bids into a deterministic uniform-price auction (`zeroLlmCalls: true`), filling bids in price-priority order with verified `NEP-413` `sum(token_diff) == 0` conservation.',
+    chips: ['20 Buyers × 5 Sellers', 'Uniform Clearing Price', 'Zero-Sum NEP-413'],
+  },
+  {
+    title: 'Contractor Agents & 1-Round Negotiation',
+    layer: 'NEAR.AI',
+    badge: 'AGENT COMMERCE',
+    summary: 'Colony contractors (`verdant-collective.terraagent.testnet`) decompose multi-step goals within hard `USDC`/`NEAR` budgets, run 1-round benchmark counter-quote negotiation (`negotiateAgentQuote`), hire patrol escorts via `bounty.terraagent.testnet`, or walk away to local smelting, emitting signed `AgentTaskReceipt` proofs.',
+    chips: ['1-Round Counter-Quote', 'Walk-Away Cap', 'AgentTaskReceipt'],
   },
 ];
 
@@ -187,7 +204,7 @@ function buildAiSection(): HTMLElement {
     'ai',
   );
 
-  const accessH3 = makeEl('h3', 'wp-subsection-h3', 'Managed Staker Autopilot vs Personal BYOK');
+  const accessH3 = makeEl('h3', 'wp-subsection-h3', 'Managed Staker Autopilot, BYOK, 25-Agent Swarms & Contractor Commerce');
   accessH3.id = 'sub-ai-byok';
 
   const guardsH3 = makeEl('h3', 'wp-subsection-h3', 'Orbital Guild Pricing Rule & Hard Guardrail Enforcement');
@@ -196,11 +213,11 @@ function buildAiSection(): HTMLElement {
   sec03.append(
     createAiPipelineSchema(),
     accessH3,
-    createFeatureGrid(AI_ACCESS_MODES),
+    createFeatureGrid([...AI_ACCESS_MODES, ...SWARM_AND_AGENT_CARDS]),
     guardsH3,
     createCallout(
       'Orbital Guild Merchant Pricing Formula',
-      'Guild freighters (`kestrel`, `vanguard`) quote transparent spreads via `mid = reference * (targetInventory / currentInventory)^k`, anchored to each planet’s trailing 24-hour organic VWAP with thin-side spreads widening cleanly from 4% to 15%.',
+      'Guild freighters (`kestrel`, `vanguard`) quote transparent spreads via `mid = ref * clamp((T + 10) / (I + 10), 0.50, 2.00)^0.5`, anchored to each planet’s trailing 24-hour organic VWAP (min 3 eligible fills) with half-spreads widening from 2% (4% full spread) to 15% on the thin inventory side.',
     ),
     createTable(
       ['Security Control', 'When Triggered', 'Hard Enforcement Mechanism'],
