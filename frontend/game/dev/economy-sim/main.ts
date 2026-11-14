@@ -37,7 +37,7 @@ function buildEconomySimHeader(): HTMLElement {
   const left = document.createElement('div');
   const eye = document.createElement('p');
   eye.className = 'eyebrow';
-  eye.textContent = 'TRACK 05 · 07 · 09 JUDGE HARNESS';
+  eye.textContent = 'TRACK 05 · 06 · 07 · 09 JUDGE HARNESS';
   const h1 = document.createElement('h1');
   h1.className = 'es-title';
   h1.innerHTML = '7-DAY MULTI-AGENT <b>ECONOMY SIM</b>';

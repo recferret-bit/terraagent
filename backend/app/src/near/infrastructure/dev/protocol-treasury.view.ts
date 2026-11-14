@@ -59,7 +59,7 @@ function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): rea
       id: 'market_fee',
       label: 'Market Settlement Fee',
       rateSummary: `${fmtPct(sched.protocolNetStandardBp)} standard / ${fmtPct(sched.protocolNetStakerBp)} for >=${sched.minStakeForPerksNear} NEAR stakers`,
-      description: `${protoSharePct}% of the ${fmtPct(sched.standardPlatformFeeBp)} (or ${fmtPct(sched.stakerPlatformFeeBp)} staker) platform fee on finalized NEP-413 trades; ${daoPct}% carves out to the Planet Sputnik DAO.`,
+      description: `${protoSharePct}% of the ${fmtPct(sched.standardPlatformFeeBp)} (or ${fmtPct(sched.stakerPlatformFeeBp)} staker) platform fee on finalized NEP-413 trades; ${daoPct}% carves out to the Planet Council DAO.`,
     },
     {
       id: 'staking_yield',

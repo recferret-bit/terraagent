@@ -96,7 +96,7 @@ export function renderSwarmRoundsSection(swarm: EconomySimSwarmUi | undefined): 
   const table = el('table', 'es-table');
   const thead = el('thead');
   const hr = el('tr');
-  for (const h of ['ROUND', 'RESOURCE', 'BIDS / ASKS', 'CLEARING PRICE', 'CLEARED', 'WHO GOT WHAT (PRO-RATA SHARE)', 'NEP-413 PROOF']) {
+  for (const h of ['ROUND', 'RESOURCE', 'BIDS / ASKS', 'CLEARING PRICE', 'CLEARED', 'WHO GOT WHAT (PRICE-PRIORITY FILL)', 'NEP-413 PROOF']) {
     const th = el('th', undefined, h);
     th.scope = 'col';
     hr.appendChild(th);

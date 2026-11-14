@@ -309,7 +309,7 @@ export function runDeterministic7DaySim(seed = 'near-hackathon-7d', days = 7): O
         kind: 'guild_quote',
         actor: 'NPC Merchant Guild (kestrel.npc.terraagent.testnet)',
         summary: 'Cold-start reference board opened (Metals 1.00, Minerals 1.20, Water 0.90, Biomass 1.25 USDC).',
-        guildReason: 'Cold-start anchor (< 3 organic settlements); 8% Guild spread active per shared/sim/src/systems/trade/guild/quote.ts.',
+        guildReason: 'Cold-start anchor (< 3 organic settlements); 4% base Guild spread (200 bp half-spread; 15% thin-side half-spread) active per shared/sim/src/systems/trade/guild/quote.ts.',
       },
     ],
     seenTruces: new Set<string>(),

@@ -40,7 +40,7 @@ const SAMPLE: EconomySimUiReport = {
       kind: 'guild_quote',
       actor: 'NPC Merchant Guild',
       summary: 'Reference board active.',
-      guildReason: 'Cold-start anchor (< 3 organic settlements); 8% Guild spread.',
+      guildReason: 'Cold-start anchor (< 3 organic settlements); 4% base Guild spread (200 bp half-spread).',
     },
   ],
   guardrails: { cancelTruceBlocked: 1, stakingBlocked: 1, allowanceEnforced: 1 },
@@ -55,6 +55,7 @@ describe('/dev/economy-sim UI renderers', () => {
   it('renders TEE attestation banner, colony cards, 7-day price table, and Guild reason tooltips', () => {
     const banner = renderAiBanner(SAMPLE);
     expect(banner.textContent).toContain('NEAR AI TEE VERIFIED');
+    expect(banner.textContent).toContain('Track 06 Safety Rails');
     expect(banner.textContent).toContain('AW-13 Oathbreaker Blocked: 1');
 
     const cards = renderColonyCards(SAMPLE);

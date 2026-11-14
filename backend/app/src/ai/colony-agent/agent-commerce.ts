@@ -200,7 +200,7 @@ function buildSpecs(rootAccount: string, jitter: number): readonly OutsourcedSpe
       sellerAccountId: `crimson-vanguard.${rootAccount}`,
       category: 'buy_commodity',
       rail: 'near_intents_nep413',
-      itemOrService: 'nep245:alloys.t2 rush batch',
+      itemOrService: 'nep245:metals.t2 (Conductive Alloys) rush batch',
       quantity: 20,
       currency: 'USDC',
       plannedUnitPrice: 2.35,
@@ -208,7 +208,7 @@ function buildSpecs(rootAccount: string, jitter: number): readonly OutsourcedSpe
       sellerInitialAsk: 3.6,
       sellerFloorPrice: 3.3,
       benchmarkNote: 'local Smelter unit cost 2.40 USDC',
-      checkPassText: 'Verified +20 alloys.t2 delivered.',
+      checkPassText: 'Verified +20 metals.t2 delivered.',
       walkAwayFallbackText: 'Rejected 3.30 USDC ask (> 2.75 cap); smelted locally inside colony power budget.',
     },
   ];

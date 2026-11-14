@@ -52,8 +52,9 @@ function parseMinStakeNear(raw: string | undefined): { near: string; yocto: bigi
 /**
  * Resolves the active `TerraAgent Protocol` fee, staking perk, and escrow slash schedule
  * from environment overrides (`NEAR_PLATFORM_FEE_BP`, `NEAR_STAKER_PLATFORM_FEE_BP`,
- * `NEAR_DAO_FEE_SHARE_BP`, `NEAR_STAKER_MIN_NEAR`, `NEAR_ESCROW_SLASH_PROTOCOL_BP`),
- * falling back to D-44 defaults (`100 bp` / `50 bp`, `20%` DAO / `80%` Protocol, `10 NEAR`, `10%` slash).
+ * `NEAR_DAO_FEE_SHARE_BP`, `NEAR_STAKER_MIN_NEAR`, `NEAR_PROTOCOL_STAKING_YIELD_BP`,
+ * `NEAR_ESCROW_SLASH_PROTOCOL_BP`), falling back to D-44 defaults
+ * (`100 bp` / `50 bp`, `20%` DAO / `80%` Protocol, `10 NEAR`, `20%` staking yield slice, `10%` slash).
  */
 export function resolveProtocolFeeSchedule(
   env: EnvMap = process.env,

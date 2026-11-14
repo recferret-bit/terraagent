@@ -97,7 +97,7 @@ describe('Track 05 Swarms & Track 07 Agent Commerce modules', () => {
     expect(countered.finalUnitPrice).toBe(1.2);
 
     const walked = negotiateAgentQuote({
-      itemOrService: 'alloys.t2',
+      itemOrService: 'metals.t2',
       quantity: 10,
       currency: 'NEAR',
       plannedUnitPrice: 2.0,

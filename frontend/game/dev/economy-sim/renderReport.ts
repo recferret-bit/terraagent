@@ -85,7 +85,7 @@ export function renderAiBanner(report: EconomySimUiReport): HTMLElement {
   const rails = el(
     'div',
     'es-event__meta',
-    `Track 07 Safety Rails — AW-13 Oathbreaker Blocked: ${report.guardrails.cancelTruceBlocked} · D-18 Staking Blocked: ${report.guardrails.stakingBlocked} · Allowance Cap Enforced: ${report.guardrails.allowanceEnforced}`,
+    `Track 06 Safety Rails — AW-13 Oathbreaker Blocked: ${report.guardrails.cancelTruceBlocked} · D-18 Staking Blocked: ${report.guardrails.stakingBlocked} · Allowance Cap Enforced: ${report.guardrails.allowanceEnforced}`,
   );
   box.append(top, summary, rails);
   return box;
