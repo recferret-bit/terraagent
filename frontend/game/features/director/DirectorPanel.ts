@@ -15,6 +15,7 @@ export interface DirectorPanelOptions {
   readonly onPolicyChange?: (patch: SetDirectorPolicyArgs) => void;
   readonly onToggleAutopilot?: (enabled: boolean) => void;
   readonly onToggleWarDiplomacy?: (enabled: boolean) => void;
+  readonly onOpenHq?: () => void;
 }
 
 export interface DirectorAutopilotState {
@@ -26,6 +27,7 @@ export interface DirectorAutopilotState {
 export class DirectorPanel {
   private readonly autopilotBar: HTMLElement | null;
   private readonly autopilotBtn: HTMLButtonElement | null;
+  private readonly aiStatusPill: HTMLElement;
   private readonly warToggleInput: HTMLInputElement | null;
   private readonly summaryEl: HTMLElement;
   private readonly controlsHost: HTMLElement;
@@ -38,9 +40,8 @@ export class DirectorPanel {
 
   constructor(private readonly host: HTMLElement, opts?: DirectorPanelOptions) {
     this.host.classList.add('ta-director', 'plate-sm');
-    const title = document.createElement('div');
-    title.className = 'ta-director__title';
-    title.textContent = 'DIRECTOR';
+    const head = buildDirectorHeader(opts?.onOpenHq);
+    this.aiStatusPill = head.aiStatusPill;
 
     const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
       this.aiEnabled = next;
@@ -63,12 +64,16 @@ export class DirectorPanel {
     this.controlsHost.hidden = !opts?.onPolicyChange;
     this.controls = opts?.onPolicyChange ? new DirectorControls(this.controlsHost, opts.onPolicyChange) : null;
 
+    const planKicker = document.createElement('div');
+    planKicker.className = 'ta-director__section-label';
+    planKicker.textContent = 'ACTION FEED';
+
     this.list = document.createElement('div');
     this.list.className = 'ta-director__list';
     if (this.autopilotBar) {
-      this.host.append(title, this.autopilotBar, this.summaryEl, this.controlsHost, this.list);
+      this.host.append(head.el, this.autopilotBar, this.summaryEl, this.controlsHost, planKicker, this.list);
     } else {
-      this.host.append(title, this.summaryEl, this.controlsHost, this.list);
+      this.host.append(head.el, this.summaryEl, this.controlsHost, planKicker, this.list);
     }
 
     this.offShared = subscribeSharedAutopilotState((st) => {
@@ -92,6 +97,8 @@ export class DirectorPanel {
   }
 
   private renderAutopilotBtn(): void {
+    this.aiStatusPill.textContent = this.aiEnabled ? 'COLONY AI: ON' : 'COLONY AI: OFF';
+    this.aiStatusPill.dataset.enabled = String(this.aiEnabled);
     if (!this.autopilotBtn) return;
     this.autopilotBtn.textContent = this.aiEnabled ? 'AI AUTOPILOT: ON' : 'AI AUTOPILOT: OFF';
     this.autopilotBtn.className = this.aiEnabled ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
@@ -140,6 +147,32 @@ export class DirectorPanel {
     this.host.replaceChildren();
     this.host.classList.remove('ta-director', 'plate-sm');
   }
+}
+
+function buildDirectorHeader(onOpenHq?: () => void): { el: HTMLElement; aiStatusPill: HTMLElement } {
+  const el = document.createElement('div');
+  el.className = 'ta-director__head';
+  const title = document.createElement('div');
+  title.className = 'ta-director__title';
+  title.textContent = 'DIRECTOR';
+  const right = document.createElement('div');
+  right.className = 'ta-director__head-actions';
+  const aiStatusPill = document.createElement('span');
+  aiStatusPill.className = 'ta-director__ai-pill';
+  aiStatusPill.dataset.testid = 'director-ai-status';
+  right.appendChild(aiStatusPill);
+  if (onOpenHq) {
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'btn btn-ghost btn-sm ta-director__hq-jump';
+    jump.dataset.testid = 'director-open-hq';
+    jump.textContent = 'HQ AI →';
+    jump.title = 'Open HQ AI to toggle master AI or edit goals & priorities';
+    jump.addEventListener('click', () => onOpenHq());
+    right.appendChild(jump);
+  }
+  el.append(title, right);
+  return { el, aiStatusPill };
 }
 
 function buildAutopilotBar(

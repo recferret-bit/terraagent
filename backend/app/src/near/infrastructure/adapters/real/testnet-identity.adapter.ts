@@ -222,7 +222,7 @@ export class TestnetIdentityAdapter implements IdentityPort {
     publicKey: string,
     operatorSecret: string,
   ): Promise<ChainReceipt> {
-    const { receipt } = await this.rpc.call({
+    const { receipt, outcome } = await this.rpc.call({
       signerAccountId: this.rpc.config.accounts.relayer,
       signerSecretKey: operatorSecret,
       contractId: factoryContract,
@@ -231,6 +231,16 @@ export class TestnetIdentityAdapter implements IdentityPort {
       gasTgas: 80,
       depositYocto: nearToYocto('0.02'),
     });
+    const rawSuccess =
+      outcome && typeof outcome.status === 'object' && outcome.status !== null && 'SuccessValue' in outcome.status
+        ? outcome.status.SuccessValue
+        : undefined;
+    if (typeof rawSuccess === 'string' && rawSuccess.length > 0) {
+      const decoded = Buffer.from(rawSuccess, 'base64').toString('utf8');
+      if (decoded.includes('ERR:NEAR_NAME_TAKEN')) {
+        throw new NearException('NEAR_NAME_TAKEN', { message: decoded });
+      }
+    }
     return receipt;
   }
 

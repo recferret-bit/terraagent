@@ -37,10 +37,15 @@ export class DirectorControls {
     this.pauseEl.addEventListener('change', emit);
     this.noteEl.addEventListener('change', emit);
 
+    const grid = document.createElement('div');
+    grid.className = 'ta-director-controls__grid';
+    grid.append(labeledField('RISK PROFILE', this.riskEl), labeledField('STRATEGY FOCUS', this.presetEl));
+    const noteField = labeledField('COMMANDER DIRECTIVE', this.noteEl);
+    noteField.classList.add('ta-director-controls__field--full');
     const pauseLabel = document.createElement('label');
     pauseLabel.className = 'ta-director-controls__pause';
     pauseLabel.append(this.pauseEl, ' Pause director');
-    this.host.append(this.riskEl, this.presetEl, this.noteEl, pauseLabel);
+    this.host.append(grid, noteField, pauseLabel);
   }
 
   /** Syncs controls from authoritative colony policy without emitting a synthetic change event. */
@@ -70,6 +75,16 @@ export class DirectorControls {
   dispose(): void {
     this.host.replaceChildren();
   }
+}
+
+function labeledField(labelText: string, control: HTMLElement): HTMLElement {
+  const wrap = document.createElement('label');
+  wrap.className = 'ta-director-controls__field';
+  const text = document.createElement('span');
+  text.className = 'ta-director-controls__label';
+  text.textContent = labelText;
+  wrap.append(text, control);
+  return wrap;
 }
 
 function select(name: string, options: readonly string[]): HTMLSelectElement {

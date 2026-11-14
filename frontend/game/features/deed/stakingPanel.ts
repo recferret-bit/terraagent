@@ -1,5 +1,6 @@
 import type {
   DeedView,
+  StakerPerksInfo,
   StakingActionResponse,
   StakingPoolInfo,
   StakingPositionDto,
@@ -71,6 +72,7 @@ export class StakingPanel implements Disposable {
   private walletBalanceNear = '100';
   private pools: readonly StakingPoolInfo[] = DEFAULT_STAKING_POOLS;
   private positions: readonly StakingPositionDto[] = [];
+  private perks: StakerPerksInfo | null = null;
   private lastTxHash: string | null = null;
 
   constructor(
@@ -168,6 +170,7 @@ export class StakingPanel implements Disposable {
       this.renderPools(status.pools);
     }
     this.positions = status.positions ?? [];
+    this.perks = status.perks ?? this.perks;
     this.renderState();
   }
 
@@ -408,8 +411,9 @@ export class StakingPanel implements Disposable {
     this.controlsWrapEl.hidden = false;
 
     const totalStakedNear = this.positions.reduce((sum, p) => sum + Number(p.staked || '0'), 0);
-    this.perksBannerEl.textContent = formatStakerPerksBanner(totalStakedNear);
-    this.root.dataset.perksActive = totalStakedNear >= 10 ? 'true' : 'false';
+    const minNear = Number(this.perks?.minStakeNear || '10') || 10;
+    this.perksBannerEl.textContent = formatStakerPerksBanner(totalStakedNear, this.perks);
+    this.root.dataset.perksActive = totalStakedNear >= minNear ? 'true' : 'false';
 
     this.walletBalanceEl.textContent = `Wallet: ${this.walletBalanceNear} NEAR`;
     if (this.accountClaimed) {

@@ -16,6 +16,10 @@ const fileEnv = (name: string) => {
 const env = { ...fileEnv('.env'), ...fileEnv('.env.worktree'), ...process.env };
 const appPort = Number(env.PORT ?? Number(env.TA_PORT_BASE ?? 4000) + 1);
 const app = `http://127.0.0.1:${appPort}`;
+const envDir = existsSync(resolve(root, 'infra/.env')) ? resolve(root, 'infra') : root;
+const explicitAppEnv = typeof env.VITE_APP_ENV === 'string' && env.VITE_APP_ENV.trim().length > 0
+  ? env.VITE_APP_ENV.trim()
+  : undefined;
 
 function splitUrl(raw: string): { path: string; search: string } {
   const qAt = raw.indexOf('?');
@@ -89,8 +93,13 @@ const chainTxPage: Plugin = {
 export default defineConfig({
   plugins: [chainTxPage],
   root: frontend,
-  // The client uses same-origin /v1 (REST) and /ws (WebSocket); in dev they are proxied to the app.
+  envDir,
+  ...(explicitAppEnv
+    ? { define: { 'import.meta.env.VITE_APP_ENV': JSON.stringify(explicitAppEnv) } }
+    : {}),
+  // The client uses same-origin /v1 (REST) and /ws (WebSocket); in dev and local preview they are proxied to the app.
   server: { proxy: { '/v1': app, '/ws': { target: app, ws: true } } },
+  preview: { proxy: { '/v1': app, '/ws': { target: app, ws: true } } },
   build: {
     outDir: resolve(frontend, 'dist'),
     emptyOutDir: true,

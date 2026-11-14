@@ -1,4 +1,5 @@
 import { readDirectorView } from '@terra/sim';
+import { isProductionBuild } from '../../core/buildEnv';
 import { defineFeature } from '../../core/registry/types';
 import { ownColonyIndex, viewColony } from '../shared/colony';
 import { DirectorPanel } from './DirectorPanel';
@@ -47,6 +48,9 @@ export default defineFeature({
           const send = ctx.services.sendCommand ?? ctx.services.store?.sendCommand;
           if (send) void send('setAutopilot', { awayRaids: enabled });
         },
+        onOpenHq() {
+          document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-hq"]')?.click();
+        },
       });
       activeDirectorPanel = panel;
       ctx.services.getDirectorPanel = () => activeDirectorPanel;
@@ -76,5 +80,5 @@ export default defineFeature({
       };
     },
   }],
-  devCommands: directorDevCommands(import.meta.env.PROD ? 'production' : 'development'),
+  devCommands: directorDevCommands(isProductionBuild() ? 'production' : 'development'),
 });

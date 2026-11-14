@@ -1,13 +1,21 @@
-import type { StakingPoolInfo, StakingPositionDto } from '@terra/contracts';
+import type { StakerPerksInfo, StakingPoolInfo, StakingPositionDto } from '@terra/contracts';
 
 export const REAL_NEAR_COPY =
   'Real NEAR from your wallet — not game currency, no in-game bonus';
 
-export function formatStakerPerksBanner(stakedNear: number): string {
-  if (stakedNear >= 10) {
-    return 'PERKS ACTIVE (>= 10 NEAR): 7.2% Net APY · Managed NEAR.AI Autopilot ON · 0.50% Market Fee (20% yield -> TerraAgent Protocol)';
+export function formatStakerPerksBanner(stakedNear: number, perks?: StakerPerksInfo | null): string {
+  const minNear = Number(perks?.minStakeNear || '10') || 10;
+  const minLabel = perks?.minStakeNear || '10';
+  const netPct = ((perks?.netApyBp ?? 720) / 100).toFixed(1);
+  const protoSharePct = Math.round((perks?.protocolYieldShareBp ?? 2_000) / 100);
+  const stakerFeeBp = perks?.platformFeeBp && stakedNear >= minNear ? perks.platformFeeBp : 50;
+  const stdFeeBp = perks?.standardPlatformFeeBp ?? 100;
+  const feePct = ((perks ? (perks.active ? perks.platformFeeBp : Math.min(perks.platformFeeBp, stakerFeeBp)) : 50) / 100).toFixed(2);
+  const discountPct = stdFeeBp > 0 ? Math.round(((stdFeeBp - (perks?.active ? perks.platformFeeBp : 50)) / stdFeeBp) * 100) : 50;
+  if (stakedNear >= minNear) {
+    return `PERKS ACTIVE (>= ${minLabel} NEAR): ${netPct}% Net APY · Managed NEAR.AI Autopilot ON · ${((perks?.platformFeeBp ?? 50) / 100).toFixed(2)}% Market Fee (${protoSharePct}% yield -> TerraAgent Protocol)`;
   }
-  return 'Stake >= 10 NEAR from Day 1: 7.2% Net APY (20% yield -> TerraAgent Protocol) · Unlocks Managed NEAR.AI Autopilot + 50% Lower Market Fee (0.50%)';
+  return `Stake >= ${minLabel} NEAR from Day 1: ${netPct}% Net APY (${protoSharePct}% yield -> TerraAgent Protocol) · Unlocks Managed NEAR.AI Autopilot + ${discountPct}% Lower Market Fee (${feePct}%)`;
 }
 
 export const DEFAULT_STAKING_POOLS: readonly StakingPoolInfo[] = [

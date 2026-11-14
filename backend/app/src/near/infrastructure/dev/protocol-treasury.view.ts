@@ -1,9 +1,18 @@
+import { RESOURCE_KEYS } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../../core/persistence.js';
 import type { AppEnv } from '../../../core/tokens.js';
 import { PROTOCOL_ACCOUNT_ID } from '../../../market/orders/market-policy.provider.js';
-import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../network/near-network.config.js';
+import { readMainnetVerifierBalances } from '../adapters/real/mainnet-intents-rpc.js';
+import {
+  resolveActiveNearNetwork,
+  resolveNearNetworkConfig,
+  type NearNetworkConfig,
+} from '../network/near-network.config.js';
 import { resolveProtocolFeeSchedule } from '../network/protocol-fee.config.js';
+import { NearRpcClient } from '../rpc/near-rpc.client.js';
+
+export type ProtocolRpcReader = Pick<NearRpcClient, 'config' | 'network' | 'view' | 'withFailover'>;
 
 export interface ProtocolStreamInfo {
   readonly id: string;
@@ -42,6 +51,7 @@ function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): rea
   const fmtPct = (bp: number) => `${(bp / 100).toFixed(2)}%`;
   const daoPct = Math.round(sched.daoCarveOutShareBp / 100);
   const protoSharePct = 100 - daoPct;
+  const yieldProtoPct = Math.round(sched.protocolStakingYieldShareBp / 100);
   const slashProtoPct = Math.round(sched.escrowSlashProtocolShareBp / 100);
   const slashVictimPct = 100 - slashProtoPct;
   return [
@@ -54,8 +64,8 @@ function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): rea
     {
       id: 'staking_yield',
       label: 'Validator Staking Yield Share',
-      rateSummary: `20% of validator yield (${fmtPct(sched.protocolStakingYieldBp)} APY; player keeps ${fmtPct(sched.stakerNetApyBp)} net APY)`,
-      description: 'Lossless subscription: principal stays 100% the player’s while 20% of accrued validator yield funds AI & gasless relays.',
+      rateSummary: `${yieldProtoPct}% of validator yield (${fmtPct(sched.protocolStakingYieldBp)} APY; player keeps ${fmtPct(sched.stakerNetApyBp)} net APY)`,
+      description: `Lossless subscription: principal stays 100% the player’s while ${yieldProtoPct}% of accrued validator yield funds AI & gasless relays.`,
     },
     {
       id: 'escrow_slash',
@@ -66,24 +76,94 @@ function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): rea
   ];
 }
 
-const PROTOCOL_OUTFLOWS: readonly ProtocolStreamInfo[] = [
-  {
-    id: 'relayer_gas',
-    label: 'NEP-366 Gasless Meta-Tx Relayer',
-    rateSummary: 'relayer.<root> gas sponsorship',
-    description: 'Covers onboarding, Colony Deed updates, NEP-245 cargo exports, and signed delegate actions for F2P & social-auth players.',
-  },
-  {
-    id: 'managed_near_ai',
-    label: 'Managed NEAR.AI Autopilot',
-    rateSummary: 'z-ai/glm-5.3-flash TEE batching',
-    description: 'Funds 24/7 autonomous LLM sweeps for Rival AI colonies and human players staking >= 10 NEAR (custom BYOK keys remain free).',
-  },
-];
+function buildOutflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): readonly ProtocolStreamInfo[] {
+  return [
+    {
+      id: 'relayer_gas',
+      label: 'NEP-366 Gasless Meta-Tx Relayer',
+      rateSummary: 'relayer.<root> gas sponsorship',
+      description: 'Covers onboarding, Colony Deed updates, NEP-245 cargo exports, and signed delegate actions for F2P & social-auth players.',
+    },
+    {
+      id: 'managed_near_ai',
+      label: 'Managed NEAR.AI Autopilot',
+      rateSummary: 'z-ai/glm-5.3-flash TEE batching',
+      description: `Funds 24/7 autonomous LLM sweeps for Rival AI colonies and human players staking >= ${sched.minStakeForPerksNear} NEAR (custom BYOK keys remain free).`,
+    },
+  ];
+}
+
+function addBalance(balances: Record<string, string>, tokenId: string, delta: bigint, allowZero = false): void {
+  if (!allowZero && delta <= 0n && !(tokenId in balances)) return;
+  const prev = BigInt(balances[tokenId] ?? '0');
+  balances[tokenId] = (prev + delta).toString();
+}
+
+function withRpcTimeout<T>(op: Promise<T>, ms = 3_500): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('rpc_timeout')), ms);
+    op.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+async function hydrateLiveProtocolBalances(
+  rpc: ProtocolRpcReader,
+  cfg: NearNetworkConfig,
+  protocolAccountId: string,
+  balances: Record<string, string>,
+): Promise<void> {
+  const tasks: Promise<void>[] = [
+    withRpcTimeout(rpc.withFailover((p) => p.viewAccount({ accountId: protocolAccountId })))
+      .then((acct) => addBalance(balances, 'NEAR', BigInt(acct.amount)))
+      .catch(() => undefined),
+    withRpcTimeout(rpc.view<string>(cfg.contracts.staking, 'get_protocol_yield_balance', {}))
+      .then((raw) => {
+        const yieldYocto = BigInt(raw ?? '0');
+        if (yieldYocto > 0n) balances.STAKING_YIELD_NEAR = yieldYocto.toString();
+      })
+      .catch(() => undefined),
+    withRpcTimeout(
+      rpc.view<readonly string[]>(cfg.contracts.res, 'mt_batch_balance_of', {
+        account_id: protocolAccountId,
+        token_ids: [...RESOURCE_KEYS],
+      }),
+    )
+      .then((amounts) => {
+        for (let i = 0; i < RESOURCE_KEYS.length; i += 1) {
+          const key = RESOURCE_KEYS[i];
+          if (key) addBalance(balances, key, BigInt(amounts?.[i] ?? '0'));
+        }
+      })
+      .catch(() => undefined),
+  ];
+
+  if (cfg.network === 'mainnet') {
+    tasks.push(
+      withRpcTimeout(readMainnetVerifierBalances(rpc as NearRpcClient, protocolAccountId))
+        .then((verifierBals) => {
+          for (const [tokenKey, amt] of Object.entries(verifierBals)) {
+            if (amt !== undefined) addBalance(balances, tokenKey, amt);
+          }
+        })
+        .catch(() => undefined),
+    );
+  }
+  await Promise.all(tasks);
+}
 
 export async function buildProtocolTreasuryView(
   envSource: Record<string, string | undefined>,
   prisma?: PrismaClient,
+  rpcClient?: ProtocolRpcReader,
 ): Promise<TerraAgentProtocolView> {
   const nearMode = envSource.NEAR_MODE ?? 'mock';
   const activeNet = resolveActiveNearNetwork(null, envSource);
@@ -95,17 +175,33 @@ export async function buildProtocolTreasuryView(
 
   if (prisma && databaseEnabled(envSource as unknown as AppEnv)) {
     const accountIds = Array.from(new Set([PROTOCOL_ACCOUNT_ID, protocolAccountId]));
-    const [chainBals, intentsBals] = await Promise.all([
-      prisma.mockChainBalance.findMany({ where: { accountId: { in: accountIds } } }),
-      prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } }),
-    ]);
-    for (const row of chainBals) {
-      const prev = BigInt(balances[row.tokenId] ?? '0');
-      balances[row.tokenId] = (prev + BigInt(row.amount.toFixed(0))).toString();
+    if (nearMode === 'mock') {
+      const [chainBals, intentsBals] = await Promise.all([
+        prisma.mockChainBalance.findMany({ where: { accountId: { in: accountIds } } }),
+        prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } }),
+      ]);
+      for (const row of chainBals) {
+        addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
+      }
+      for (const row of intentsBals) {
+        addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
+      }
+    } else if (activeNet === 'testnet') {
+      const intentsBals = await prisma.mockChainIntentsBalance.findMany({
+        where: { accountId: { in: accountIds } },
+      });
+      for (const row of intentsBals) {
+        addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
+      }
     }
-    for (const row of intentsBals) {
-      const prev = BigInt(balances[row.tokenId] ?? '0');
-      balances[row.tokenId] = (prev + BigInt(row.amount.toFixed(0))).toString();
+  }
+
+  if (nearMode !== 'mock') {
+    const rpc =
+      rpcClient ??
+      (envSource.VITEST !== 'true' && process.env.VITEST !== 'true' ? new NearRpcClient(cfg) : undefined);
+    if (rpc) {
+      await hydrateLiveProtocolBalances(rpc, cfg, protocolAccountId, balances);
     }
   }
 
@@ -132,6 +228,6 @@ export async function buildProtocolTreasuryView(
     balances,
     relayerDailyCapNear: cfg.relayerDailyCapNear,
     inflows: buildInflows(sched),
-    outflows: PROTOCOL_OUTFLOWS,
+    outflows: buildOutflows(sched),
   };
 }

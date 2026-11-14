@@ -24,7 +24,9 @@ export function buildTradeHubToastSection(
   floatingToastEl.hidden = true;
   (ctx?.services.hudOverlay ?? parent).appendChild(floatingToastEl); // shown while the panel is closed / its tab inactive
 
-  const controller = new CargoToastController(toastEl, floatingToastEl);
+  const controller = new CargoToastController(toastEl, floatingToastEl, () => {
+    ctx?.services.openTradeHubPanel?.(true);
+  });
   return { toastEl, floatingToastEl, controller };
 }
 
@@ -152,7 +154,10 @@ export function renderTradeHubStatusAndMeters(
   activeTab: TradeHubTab,
 ): void {
   els.root.setAttribute('data-open', String(isOpen));
-  els.root.setAttribute('data-tab', activeTab);
+  const curTab = els.root.getAttribute('data-tab') ?? '';
+  if (!curTab.startsWith('ext:')) {
+    els.root.setAttribute('data-tab', activeTab);
+  }
   els.root.setAttribute('data-online', String(resolved.hubOnline));
 
   els.tierBadgeEl.textContent = `TIER ${resolved.hubTier}`;

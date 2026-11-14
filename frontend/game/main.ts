@@ -1,6 +1,7 @@
 import { initCrt } from '@terra/render/ui/crt';
 import { lazyStart } from './app/lazyStart';
 import { onlineMode, type OnlineMode } from './app/online/onlineMode';
+import { isProductionBuild } from './core/buildEnv';
 
 const app = document.getElementById('app')!;
 let activeDispose: (() => void) | null = null;
@@ -13,7 +14,7 @@ function mountFromCurrentUrl(): void {
 
 mountFromCurrentUrl();
 initCrt([app]); // old-TV look over the 3D picture only; menus/HUD layers sit above #app
-if (import.meta.env.DEV || location.search.includes('devworld')) {
+if (!isProductionBuild() && (import.meta.env.DEV || location.search.includes('devworld'))) {
   void import('./store/devHook').then((m) => m.installWorldDevHook());
 }
 if (import.meta.hot) {

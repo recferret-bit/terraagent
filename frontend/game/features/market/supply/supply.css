@@ -21,12 +21,15 @@
 .ta-supply .ta-supply__toggle, .ta-supply .ta-supply__btn { min-height: 28px; padding: var(--ta-s1) var(--ta-s2); background: var(--ta-plate-2); color: var(--ta-text); border: 1px solid var(--ta-seam-3); font-family: var(--ta-font-display); font-size: var(--ta-fs-label); font-weight: 600; letter-spacing: var(--ta-track-label); text-transform: uppercase; cursor: pointer; }
 .ta-supply .ta-supply__toggle:hover, .ta-supply .ta-supply__btn:hover { border-color: var(--ta-orange); color: var(--ta-orange-hi); }
 .ta-supply .ta-supply__btn--act, .ta-supply .ta-supply__btn--act:hover { background: var(--ta-orange); color: var(--ta-void); border-color: var(--ta-orange-hi); }
-/* Colony book Supply tab: the page is the plate and scrolls; the tab replaces SHOW / HIDE, and Contracts is already embedded below. */
+/* Colony book Supply tab: the page is the plate and scrolls; the tab replaces SHOW / HIDE, and Trade Hub dialog owns BOARD & CONTRACTS. */
 .ta-colony-book .ta-supply { padding: 0; background: transparent; border: 0; clip-path: none; max-height: none; overflow: visible; }
 .ta-colony-book .ta-supply__showhide,
+.ta-colony-book [data-testid='market-open-board'],
 .ta-colony-book [data-testid='market-open-contracts'] { display: none; }
-.ta-colony-book .ta-supply__head { flex-wrap: wrap; justify-content: flex-start; }
-.ta-colony-book .ta-supply__heading { flex: 1 1 100%; color: var(--ta-orange); }
+.ta-colony-book .ta-supply__head { flex-wrap: nowrap; justify-content: space-between; padding-bottom: var(--ta-s1); border-bottom: 1px solid var(--ta-seam); }
+.ta-colony-book .ta-supply__heading { flex: 1 1 auto; color: var(--ta-orange); }
+.ta-supply__trade-btn { display: none; }
+.ta-colony-book .ta-supply__trade-btn { display: inline-flex; align-items: center; }
 .ta-supply-empty { margin: 0; color: var(--ta-text-3); font-family: var(--ta-font-body); font-size: var(--ta-fs-label); }
 .ta-supply-empty[hidden] { display: none; }
 /* Regional abundance: chips wrap in rows under the section title. */

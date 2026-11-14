@@ -5,6 +5,7 @@ import { AchievementToastHost } from '../achievements/toast';
 import { DeedToastHost } from '../deed/deedNotifications';
 import { GuildToastHost } from '../guild-toast/toast';
 import { NearErrorToasts } from '../near-errors/toast';
+import { XpToastHost } from '../xp/toast';
 import {
   clearNotifications,
   getNotificationHistory,
@@ -119,21 +120,34 @@ describe('Auto-dismissing & closeable toasts', () => {
     expect(dHost.hidden).toBe(true);
     dToast.dispose();
 
-    // AchievementToastHost & NearErrorToasts: cross buttons and auto-dismiss
+    // AchievementToastHost, XpToastHost & NearErrorToasts: cross buttons, auto-dismiss & history click
     const aHost = document.createElement('div');
+    const xHost = document.createElement('div');
     const nHost = document.createElement('div');
-    document.body.append(aHost, nHost);
-    const aToast = new AchievementToastHost(aHost);
+    document.body.append(aHost, xHost, nHost);
+    const openPlayerSpy = vi.fn();
+    const aToast = new AchievementToastHost(aHost, { onOpenPlayer: openPlayerSpy });
+    const xToast = new XpToastHost(xHost, { onOpenPlayer: openPlayerSpy });
     const nToast = new NearErrorToasts(nHost);
     aToast.show({ achievementId: 'a1', familyName: 'First Light', tierName: 'Bronze', xp: 50 });
+    xToast.show({ level: 4, xp: 400, title: 'Vanguard' });
     nToast.show('NEAR_RELAY_FAILED');
     expect(aHost.hidden).toBe(false);
+    expect(xHost.hidden).toBe(false);
     expect(nHost.hidden).toBe(false);
+    expect(xHost.querySelector('[data-testid="xp-toast-close"]')).not.toBeNull();
     aHost.querySelector<HTMLButtonElement>('[data-testid="achievement-toast-close"]')?.click();
     nHost.querySelector<HTMLButtonElement>('[data-testid="near-toast-close"]')?.click();
     expect(aHost.hidden).toBe(true);
     expect(nHost.hidden).toBe(true);
+    vi.advanceTimersByTime(6100);
+    expect(xHost.hidden).toBe(true);
+    const xpEntry = getNotificationHistory().find((e) => e.dedupeKey === 'xp-level:4');
+    expect(xpEntry).toBeDefined();
+    xpEntry?.onSelect?.();
+    expect(openPlayerSpy).toHaveBeenCalledTimes(1);
     aToast.dispose();
+    xToast.dispose();
     nToast.dispose();
   });
 });

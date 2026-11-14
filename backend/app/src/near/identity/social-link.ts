@@ -129,7 +129,10 @@ export class SocialLink {
   }
 
   private async playerForNew(input: SocialLinkInput): Promise<PlayerRecord> {
-    if (input.bearer) return this.mustFind(input.bearer.id);
+    if (input.bearer) {
+      const existing = await this.authRepo.findPlayerById(input.bearer.id);
+      if (existing) return existing;
+    }
     return this.authRepo.createPlayer({
       id: newId('pr'),
       handle: this.desiredHandle(input),

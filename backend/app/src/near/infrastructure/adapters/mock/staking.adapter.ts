@@ -17,6 +17,7 @@ import {
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.js';
+import { resolveProtocolFeeSchedule } from '../../network/protocol-fee.config.js';
 import {
   computeAccruedRewardDelta,
   computeSplitRewardDelta,
@@ -312,7 +313,9 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     let withdrawable = BigInt(row.withdrawable.toFixed());
     const baseRewards = BigInt(row.rewardsAccrued.toFixed());
     const elapsedMs = Math.max(0, nowMs - row.lastAccruedAt.getTime());
-    const split = computeSplitRewardDelta(staked, apyBp, elapsedMs);
+    const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
+    const yieldShareBp = resolveProtocolFeeSchedule(envBag).protocolStakingYieldShareBp;
+    const split = computeSplitRewardDelta(staked, apyBp, elapsedMs, yieldShareBp);
     const rewards = baseRewards + split.userReward;
 
     if (unbonding > 0n && unbondingReadyAtMs !== null && nowMs >= unbondingReadyAtMs) {

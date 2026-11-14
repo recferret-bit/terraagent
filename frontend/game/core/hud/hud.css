@@ -74,28 +74,39 @@ body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] {
 }
 
 /* When both Command Dock and Colony Book are combined in top-right, their spines stack seamlessly on the right edge
-   while their pages float in the shared panel region immediately to the left of the spine column. */
+   as one unified rail (with a subtle group divider and a single bottom collapse button) while their pages float in
+   the shared panel region immediately to the left of the spine column. */
 .ta-hud__slot[data-slot='top-right'] > .ta-book {
   position: static;
+}
+
+.ta-hud__slot[data-slot='top-right']:has(> .ta-colony-book) > .ta-command-dock > .ta-book__spine > .ta-book__toggle {
+  display: none;
+}
+
+.ta-hud__slot[data-slot='top-right']:has(> .ta-command-dock) > .ta-colony-book > .ta-book__spine {
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ta-seam-2);
 }
 
 .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
   position: absolute;
   top: var(--ta-s4);
   right: calc(var(--ta-s4) + var(--ta-book-spine-w));
-  max-height: calc(100vh - var(--ta-s4) - var(--ta-s4));
+  max-height: max(280px, calc(100vh - var(--ta-s4) - 184px));
   z-index: 2;
 }
 
 body:has(#fps-counter) .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
   top: var(--ta-s7);
-  max-height: calc(100vh - var(--ta-s7) - var(--ta-s4));
+  max-height: max(280px, calc(100vh - var(--ta-s7) - 184px));
 }
 
 @media (max-width: 1000px) {
   .ta-hud__slot[data-slot='top-right'] > .ta-book > .ta-book__page {
     top: var(--ta-s7);
-    max-height: calc(100vh - var(--ta-s7) - var(--ta-s4));
+    max-height: max(280px, calc(100vh - var(--ta-s7) - 184px));
   }
 }
 

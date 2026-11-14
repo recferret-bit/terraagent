@@ -44,7 +44,8 @@ export class TradeClient {
   }
 
   pairs = (): Promise<TradePairsResponse> => this.call('GET', '/pairs');
-  policy = (): Promise<TradePolicyResponse> => this.call('GET', '/policy');
+  policy = (planetId?: string): Promise<TradePolicyResponse> =>
+    this.call('GET', planetId ? `/policy?planetId=${enc(planetId)}` : '/policy');
   overview = (planetId: string): Promise<TradeOverviewResponse> => this.call('GET', `/overview/${enc(planetId)}`);
   book = (planetId: string, pair: string, levels = 20): Promise<TradeBookResponse> => this.call('GET', `/book/${enc(planetId)}/${enc(pair)}?levels=${levels}`);
   board = (planetId: string): Promise<TradeBoardResponse> => this.call('GET', `/board/${enc(planetId)}`);

@@ -86,61 +86,52 @@ One Vite app, several HTML entries (`frontend/vite.config.ts` → `rollupOptions
 - Pages that import `base.css` already get its `.btn`, `.card`, `.input`, `.label` classes. Don't reuse those names for page-specific components (the playground uses `.pg-btn`, the game menu uses `.world-card`).
 - A new page MUST be added to `rollupOptions.input`, linked from the hub (`frontend/index.html`), and must use `<script type="module">` (classic scripts are not bundled).
 - Debug handles: `window.__game` (game; `__game.debug`, `__game.setPaused(true)`) and `window.__pg` (playground; `__pg.select(id)`, `__pg.setView(v)`, `__pg.setWorkTarget(t)`, `__pg.validateParticles(id?)`, `__pg.setDepositStage(stage)`, `__pg.getLights()`, `__pg.exportLightsCode()`, `__pg.contactSheet()`); the online flow adds `window.__online`.
-- **Wave pre-landing validation (`"validate the wave"` / `wave-landing-validator`):** whenever the user says **"validate the wave"** (or **"validate wave"**, **"validate WNN"**, **"review the wave"**), immediately activate [`wave-landing-validator`](./.agents/skills/wave-landing-validator/SKILL.md), run `npm run validate:wave` (auto-detects the current worktree or open wave, or pass `<NN>`), execute the mandatory **2-iteration review-and-fix loop** (comparing the full wave diff against `docs/plan/waves/WNN-*.md` and specs, fixing every gap and bug, enforcing full Test Pyramid coverage [every major feature covered by BOTH unit and integration tests, backend tested by E2E too, and every suite testing positive, negative, and corner/boundary cases], eliminating AST function/block duplication, splitting new logic across thin orchestrators and focused services/parts, verifying end-to-end client + server + shared sim parity, and passing all test/domain gates via `npm run validate:wave -- <NN> --gates`), and return the 6-part structured validation summary.
-- **Wave owner check, landing & main sync (`wave-land-and-sync`):** a wave lead ends every wave by playing its demo story on the running stack and writing the step-by-step **owner check guide** [`docs/plan/checks/wNN-check.md`](./docs/plan/checks/README.md) (exact URLs with the worktree's ports, where to type — the in-game dev console is the `` ` `` key —, what to see; example [`w00-check.md`](./docs/plan/checks/w00-check.md)), committed on the wave branch and pasted as the final message. Waves open only after every dependency is in `main` (`docs/plan/PRODUCT_WAVES.md` §7). Whenever the user says **"merge wave into main"** (or **"land wave into main"**) or **"merge main into wave"** (or **"sync main into wave"**), immediately activate [`wave-land-and-sync`](./.agents/skills/wave-land-and-sync/SKILL.md) and do all the heavy work autonomously:
-  - **Mode 1 ("merge wave into main" / `npm run wave:land -- NN`):** auto-detect `WNN` if omitted, merge `main` into `wave/wNN-<slug>` with generated-file auto-heal, run the **3-iteration** semantic collision + test/E2E + as-built audit loop (fixing every issue found), merge `--no-ff` into `main`, tag `wave-NN`, push, clean up the worktree/branch, and then run `npm run wave:propagate -- NN` to update `WNN`'s docs (`DEV_TOOLS.md`, `DECISIONS.md`, `questions-and-limitations/*.md`, `PRODUCT_WAVES.md`) and inject new self-review feature tasks into downstream future wave plans (`docs/plan/waves/W*.md` + `python3 scripts/plan/index_waves.py --write`).
-  - **Mode 2 ("merge main into wave" / `npm run wave:sync -- NN [--sync-issues]`):** auto-detect the open WIP wave (or `--all`), save a recovery ref (`refs/wave-sync-backup/WNN`), merge updated `main` into `wave/wNN-<slug>` (and active `issue/WNN-XX` sub-worktrees) with generated-file auto-heal, run the **3-iteration** reconciliation + test + incoming-plan-delta loop, and surface any new `WNN-XX` issues added on `main`.
-- **Dev tools reference: [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)** — online play URL parameters (`?scenario=`, `?host=local`, `&waves=`, `&lag=`, `&predict=0`, `&as=`, `&daynight=`, `&shadow=`), the in-game dev console (`` ` ``; `warp`, `time`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, …), dev pages (`/dev/chain/`, `/dev/parity/`) and `/v1/dev/*` routes, the mock blockchain, env variables, debug handles and test commands. Keep it current: a change that adds or renames one of these updates that file in the same commit.
+- **Wave pre-landing validation (`"validate the wave"` / `wave-landing-validator`):** whenever the user says **"validate the wave"** (or **"validate wave"**, **"validate WNN"**, **"review the wave"**), immediately activate [`wave-landing-validator`](./.agents/skills/wave-landing-validator/SKILL.md), run `npm run validate:wave` (auto-detects the current worktree or open wave, or pass `<NN>`), execute the mandatory **2-iteration review-and-fix loop** (fixing every gap and bug, enforcing full Test Pyramid coverage [unit + integration per major feature, backend E2E, and positive/negative/corner cases], eliminating AST function/block duplication, splitting new logic across thin orchestrators and focused services/parts, verifying end-to-end client + server + shared sim parity, and passing all test/domain gates via `npm run validate:wave -- <NN> --gates`), and return the 6-part structured validation summary.
+- **Wave landing & main sync (`wave-land-and-sync`):** whenever the user says **"merge wave into main"** (or **"land wave into main"**) or **"merge main into wave"** (or **"sync main into wave"**), immediately activate [`wave-land-and-sync`](./.agents/skills/wave-land-and-sync/SKILL.md):
+  - **Mode 1 ("merge wave into main" / `npm run wave:land -- NN`):** auto-detect `WNN` if omitted, merge `main` into `wave/wNN-<slug>` with generated-file auto-heal, run the **3-iteration** semantic collision + test/E2E + as-built audit loop, merge `--no-ff` into `main`, tag `wave-NN`, push, clean up the worktree/branch, and run `npm run wave:propagate -- NN` when wave plans exist.
+  - **Mode 2 ("merge main into wave" / `npm run wave:sync -- NN [--sync-issues]`):** auto-detect the open WIP wave (or `--all`), save a recovery ref (`refs/wave-sync-backup/WNN`), merge updated `main` into `wave/wNN-<slug>` (and active `issue/WNN-XX` sub-worktrees) with generated-file auto-heal, and run the **3-iteration** reconciliation + test loop.
+- **Developer reference ([`README.md`](./README.md) & [`infra/.env.example`](./infra/.env.example)):** online play URL parameters (`?scenario=`, `?host=local`, `&waves=`, `&lag=`, `&predict=0`, `&as=`, `&daynight=`, `&shadow=`), the in-game dev console (`` ` ``; `help`, `warp`, `time`, `spawn`, `grant`, `stage`, `away`, `back`, `offerTruce`, `chain.ping`, `near.ports`, `near.quote`), dev pages (`/dev/economy-sim/`, `/dev/chain/`, `/dev/parity/`) and `/v1/dev/*` routes, mock/live NEAR adapters, env variables, debug handles, and test commands are documented in [`README.md`](./README.md) and [`infra/.env.example`](./infra/.env.example). Keep both current in the same commit when adding or renaming parameters or env vars.
 
 **Visual QA for 3D work (Pillar 4):** first run `npm run validate:models -- <id>` (numeric geometry check), then open the playground with `&validate=1` (or press `V`) to see offending parts outlined and numbered. The playground *is* the diagnostic turntable. After creating or changing an archetype or shader, open `/playground.html?inspect=<id>` and check `iso`, `front`, `side` and `top` (keys `1`–`4`). The info panel must show `ground contact ✔` (`minY 0.000`, or `minY -0.100 (−0.1 m plinth skirt)` for a building whose only sunk part is its `role: 'plinth'` foundation) and a triangle count under 3.5k. Check all three biomes for weathering. For game-flow changes, use `/play.html?planet=<kind>&skip=1` to land directly in gameplay.
 
 ---
 
-## 5. Where documents live
+## 5. Clean Root & Canonical Documentation (`D-41`)
 
-Everything that is not code goes in `docs/` (index: [docs/README.md](./docs/README.md)). Following the clean root folder rule (D-41), the repository root holds ONLY agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, `package.json` (`package-lock.json`, `node_modules/`), and the 7 domain directories (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`). Do not add loose `.md` or config files to the repo root.
+Following the clean root folder rule (`D-41`), the repository root holds ONLY agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), [`README.md`](./README.md), [`HACKATHON.md`](./HACKATHON.md), git files (`.git`, `.github/`, `.gitignore`), [`LICENSE`](./LICENSE), `package.json` (`package-lock.json`, `node_modules/`), and the **6 domain directories** (`backend/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`). Do not add loose `.md` or config files to the repo root.
 
-| Folder | Put here |
+| Canonical File / Folder | Purpose |
 | :--- | :--- |
-| `docs/game/` | Game design: economy, units, NEAR features |
-| `docs/spec/` | Online architecture and decisions (`DECISIONS.md` is the source of truth) |
-| `docs/plan/` | Build plans, status boards, owner tasks |
-| `docs/hackathon/` | Hackathon strategy pack, NEAR feature analysis, rubrics, launch playbook |
-| `docs/coverage/` | Test coverage baselines and audit reports |
-| `docs/visuals/` | 3D coding rules, AI-mesh pipeline, procedural textures, shaders, lighting |
-| `docs/dev/` | Developer tooling reference ([`DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)): URL params, dev console, dev pages/routes, mock chain, env vars, debug handles |
-| `docs/questions-and-limitations/` | Known limitations, deliberate trade-offs and open questions, one file per area ([format](./docs/questions-and-limitations/README.md)) |
+| [`README.md`](./README.md) | Complete system overview, "Do X → See Y" verification steps, deployed Testnet contracts, 11-port honesty matrix, controls & CLI gates |
+| [`HACKATHON.md`](./HACKATHON.md) | Official NEAR Hackathon rules, tracks, safety guardrails (never submit or sign Mainnet txs without explicit human confirmation) |
+| [`frontend/whitepaper/whitepaper.md`](./frontend/whitepaper/whitepaper.md) | Outward-facing game, Guild AMM, 4-way settlement, Day-1 staking, Peace/War bond & protocol whitepaper (`node frontend/whitepaper/render.mjs` syncs `index.html`) |
+| [`frontend/pitchdeck/index.html`](./frontend/pitchdeck/index.html) | 8-slide investor & judge deck covering gameplay, 4 income lanes, lossless staking, diplomacy escrows & `TerraAgent Protocol` |
+| [`infra/.env.example`](./infra/.env.example) | Canonical environment variable template across `NEAR_MODE`, `AI_PROVIDER`, relayer caps, and `TerraAgent Protocol` fee/staking overrides |
+| [`shared/sim/README.md`](./shared/sim/README.md) | Deterministic `@terra/sim` engine boundaries, ECS columns, movement (`SIM-M-01`), and placement invariants |
 
-**Record what you leave behind (mandatory).** Whenever you finish a task with something knowingly undone or traded
-off, decide not to fix a review finding, go ahead with a default on a question only the owner can answer, or see
-intended-but-surprising behaviour, add or update an entry in `docs/questions-and-limitations/<area>.md` in the same
-change (format and numbering in its [README](./docs/questions-and-limitations/README.md)). Read the area's file
-before working there. Fixed entries are marked `Resolved (<commit>)`, never deleted. A lead that delegates to
-subagents tells them to report such items and writes the entries itself (or has them do it); the final report to the
-owner names the entries added.
-
-When you move or rename a document, update every link to it (`grep -r <name> --include='*.md'`), and keep relative links working.
+When moving or renaming any file or route, update every link to it (`git grep <name>`) so zero dead relative links remain.
 
 ---
 
-## 6. Frontend Architecture (enforced)
+## 6. Frontend & Repository Architecture (enforced)
 
 ```
 frontend/
-  index.html landing.html play.html playground.html pitchdeck/ whitepaper/   thin page entries (Vite root = frontend/)
+  index.html landing.html play.html trade.html me.html deed.html playground.html pitchdeck/ whitepaper/   thin page entries (Vite root = frontend/)
+  public/assets/ SVG architecture schematics embedded by README.md and served statically
   design/       Faction Plate tokens + docs pages (shared layer: any app may import its CSS)
-  landing/      app: main.ts (LandingPage orchestrator) + sections/ hero/ colony/ resources/
-  game/         app: main.ts, app/ (Game, Gameplay, camera), ui/, descent/ (DescentRunner + parts/ + fx/)
+  landing/      app: main.ts (LandingPage orchestrator) + sections/ (economics, protocol, contractsBoard) + hero/ colony/ resources/
+  game/         app: main.ts, app/ (Game, Gameplay, camera), ui/, features/, pages/, descent/ (DescentRunner + parts/ + fx/)
+  trade/        24/7 CLOB orderbook, depth ladder, staker-aware OrderTicket, stall royalties & ta_bot_... API keys
   playground/   app: PlaygroundApp orchestrator + stage/ content/ camera/ panels/
   render/       3D render engine used by 2+ apps (`@terra/render/*`): core (viewport, StageHost), kitbash (+validate/),
                 visuals, planets, orbit, descent (drop rig + handoff types), lighting, ui (CRT overlay)
 shared/         code used by frontend AND backend: `contracts/`, `config/`, `db/`, `ledger/`, `sim/` (`@terra/*`, game rules, D-31)
-backend/app/    the one NestJS app (D-24), including all 11 NEAR ports (`mock` / `testnet` / `mainnet`)
-backend/near-contracts/  6 Rust `near-sdk 5.7` smart contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) deployed via `npm run near:deploy-contracts`
+backend/app/    the one NestJS app (D-24), including all 11 NEAR ports (`mock` / `testnet` / `mainnet`), `ai/`, `market/`, `game/`
+backend/near-contracts/  6 Rust `near-sdk 5.7` smart contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`; 85 unit tests)
 tests/          test suites: `tests/e2e/`, `tests/scenarios/`, `tests/vitest.config.ts`, `tests/vitest.integration.config.ts`, `tests/vitest.contract.config.ts`
 infra/          deploy, docker, and environment configs (`infra/.env.example`, `infra/.env.worktree`, `docker/`, `hosts/`)
-scripts/        developer, build, and operational scripts (`dev/`, `ci/`, `wave/`, etc.)
-docs/           system documentation, specifications, plans, and guides
+scripts/        developer, build, codegen, contract deploy, and structure check scripts (`dev/`, `ci/`, `gen/`, `wave/`)
 ```
 
 `frontend/render/` draws things; `shared/sim/` decides things. A game rule never goes into `render/` or an app (D-31), and `render/` never imports `shared/sim` internals: apps pass sim views into it.
@@ -160,3 +151,15 @@ docs/           system documentation, specifications, plans, and guides
 - `.agents/skills/*/examples/` are reference copies for the skills, not app code; the app copies in `frontend/render/` are the source of truth.
 - **Units move only by walking (SIM-M-01):** every bot input (player order, system work, death) is a unit command executed by the units runner; movement goes through the movement orchestrator and the pathfinding service, and only `shared/sim/src/units/movement/locomotion.ts` writes an entity's position (spawn: `placeSpawnedEntity`; admin `dev.*`: `adminRelocateEntity`). Never snap a unit to a target. The sim lint rejects position writes anywhere else. Details: `shared/sim/README.md` → Units.
 - Pure refactors must keep behaviour identical: kitbash geometry unchanged (`npm run validate:models -- --all` same output), screenshots of `/play.html?planet=dune&seed=1&skip=1`, `/landing.html`, `/playground.html?inspect=<id>` unchanged.
+
+---
+
+## 7. NEAR, Smart Contracts & `TerraAgent Protocol` Constitution
+
+- **11 Hexagonal NEAR Ports & 6 Rust WASM Contracts:** `backend/app/src/near/` binds all 11 ports (`ChainRead`, `Identity`, `Relayer`, `CargoToken`, `Intents`, `AgentWallet`, `DeedNft`, `BadgeNft`, `Escrow`, `Staking`, `TreasuryDao`) across `NEAR_MODE=mock|testnet|mainnet` (`mainnet` gated by `NEAR_ALLOW_MAINNET=1`) backed by 6 Rust `near-sdk 5.7` contracts (`backend/near-contracts/{res,deed,bounty,staking,dao,pilots}`) and 4 core accounts (`<root>`, `protocol.<root>`, `relayer.<root>`, `minter.<root>`).
+- **WASM Build & Deploy Guardrail (`--cfg near`):** Always build contracts with `npm run near:build-contracts` (runs inside `backend/near-contracts` so `.cargo/config.toml` `--cfg near` emits `env::panic_str` errors instead of raw WASM `unreachable` traps), test with `npm run near:test-contracts` (`85/85` Rust unit tests), and deploy/verify via `npm run near:deploy-contracts -- --network testnet` (`--dry-run` for Mainnet unless the human explicitly confirms live Mainnet signing per [`HACKATHON.md`](./HACKATHON.md)).
+- **`TerraAgent Protocol` (`protocol.<root>`, `GET /v1/near/protocol`, `/landing.html#protocol`):**
+  - **3 Organic Inflows:** `80%` of platform trade fees (`0.80%` standard / `0.40%` staker; `20%` carves out to Planet Council DAO), `20%` of validator staking yield (`1.80%` APY; pilot keeps `100%` principal + `7.20%` net APY), and `10%` of slashed Peace/War escrow bonds (`90%` paid to betrayed treaty partner or war defender).
+  - **2 Infrastructure Outflows:** Sponsors `NEP-366` gasless meta-transactions (`relayer.<root>`) and server-hosted Managed `NEAR.AI` Autopilot (`z-ai/glm-5.3-flash` TEE batching).
+  - **Zero-P2W Day-1 Staking & AI Safety:** Claimed human accounts can stake from Day 1 (`>= 10 NEAR` unlocks Managed `NEAR.AI` Autopilot + `50%` platform trade fee cut `1.00% -> 0.50%`, while custom `/me.html` BYOK remains free; `@terra/sim` never reads staking state). AI callers receive `403 AI_STAKING_FORBIDDEN`, and `AW-13` blocks AI from canceling truces/wars or locking human `NEAR`.
+  - **Tunable Protocol Env Vars ([`infra/.env.example`](./infra/.env.example)):** `NEAR_PROTOCOL_ACCOUNT`, `NEAR_PLATFORM_FEE_BP` (`100`), `NEAR_STAKER_PLATFORM_FEE_BP` (`50`), `NEAR_DAO_FEE_SHARE_BP` (`2000`), `NEAR_STAKER_MIN_NEAR` (`10`), `NEAR_PROTOCOL_STAKING_YIELD_BP` (`2000`), `NEAR_ESCROW_SLASH_PROTOCOL_BP` (`1000`).

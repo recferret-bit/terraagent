@@ -108,8 +108,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
 }) => {
   await openW08(page);
 
-  await openColonyTab(page, 'goals'); // the stage launcher lives in the Colony book's Goals tab
-  await page.getByTestId('stage-goals-launcher').click();
+  await openColonyTab(page, 'goals'); // clicking the Goals tab opens the stage dialog directly
 
   // Step 1: Start at S0 Landing
   await expect(page.locator('[data-testid="stage-track-hud"]')).toBeVisible();
@@ -337,8 +336,7 @@ test('owner fixes: compact Goals launcher, clickable stages, minus and HQ tabs',
   await openW08(page);
   await expect(page.getByTestId('stage-track-hud')).toBeHidden();
   await openColonyTab(page, 'goals');
-  await expect(page.getByTestId('stage-goals-launcher')).toBeVisible();
-  await expect(page.getByTestId('stage-goals-launcher')).toHaveText('Goals · S0');
+  await expect(page.getByTestId('stage-track-hud')).toBeVisible();
   await runConsole(page, 'stage set 2');
   await page.keyboard.press('Backquote');
   await expect(page.getByTestId('stage-toast-countdown')).toContainText(/Closes in \d+s/);
@@ -351,7 +349,7 @@ test('owner fixes: compact Goals launcher, clickable stages, minus and HQ tabs',
   await page.getByTestId('stage-goals-close').click();
   await expect(page.getByTestId('stage-track-hud')).toBeHidden();
   await expect(page.getByTestId('stage-reached-toast')).toHaveCount(0);
-  await page.getByTestId('stage-goals-launcher').click();
+  await page.getByTestId('colony-tab-goals').click();
   await expect(page.getByTestId('stage-track-hud')).toBeVisible();
   await expect(page.getByTestId('stage-guide-previous')).toHaveCount(0);
   await page.getByTestId('stage-segment-S10').click();

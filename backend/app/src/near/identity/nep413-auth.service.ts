@@ -14,6 +14,9 @@ import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../infrastru
 import { formatErrorText, isDeterministicChainError, toNearException } from '../infrastructure/rpc/near-error-map.js';
 import { NearRpcClient } from '../infrastructure/rpc/near-rpc.client.js';
 import { decodeBase58 } from '../keystore/base58.js';
+import { validateCallbackUrlCandidates } from './nep413-verifier.js';
+
+export { validateCallbackUrlCandidates };
 
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const MAX_CHALLENGES = 4096;
@@ -93,19 +96,6 @@ function decodeNep413Signature(rawSignature: string): Uint8Array {
     });
   }
   return bytes;
-}
-
-function normalizeCallbackUrl(rawUrl: string | undefined): string | undefined {
-  if (!rawUrl) return undefined;
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error('unsupported protocol');
-    }
-    return parsed.toString();
-  } catch {
-    throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEP-413 callbackUrl' });
-  }
 }
 
 function isRpcMissingOrKeyError(err: unknown): boolean {
@@ -192,7 +182,7 @@ export class Nep413AuthService {
       throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Invalid NEAR public key format' });
     }
     const signature = decodeNep413Signature(req.signature);
-    const callbackUrl = normalizeCallbackUrl(req.callbackUrl);
+    const callbackUrlCandidates = validateCallbackUrlCandidates(req.callbackUrl);
 
     await this.verifyOnChainNep413({
       accountId,
@@ -201,7 +191,7 @@ export class Nep413AuthService {
       message: entry.message,
       nonce: entry.nonceBytes,
       recipient: entry.recipient,
-      callbackUrl,
+      callbackUrlCandidates,
     });
 
     return {
@@ -232,7 +222,7 @@ export class Nep413AuthService {
     readonly message: string;
     readonly nonce: Uint8Array;
     readonly recipient: string;
-    readonly callbackUrl?: string;
+    readonly callbackUrlCandidates: readonly (string | undefined)[];
   }): Promise<void> {
     let cachedKeyPromise: Promise<unknown> | null = null;
     const finalProvider = {
@@ -247,36 +237,30 @@ export class Nep413AuthService {
       },
     };
 
-    try {
-      await verifyMessage({
-        signerAccountId: params.accountId,
-        signerPublicKey: params.publicKey,
-        payload: {
-          message: params.message,
-          nonce: params.nonce,
-          recipient: params.recipient,
-          callbackUrl: params.callbackUrl,
-        },
-        signature: params.signature,
-        provider: finalProvider as never,
-      });
-    } catch (firstErr) {
-      if (params.callbackUrl && formatErrorText(firstErr).includes('Signature verification failed')) {
-        try {
-          await verifyMessage({
-            signerAccountId: params.accountId,
-            signerPublicKey: params.publicKey,
-            payload: { message: params.message, nonce: params.nonce, recipient: params.recipient },
-            signature: params.signature,
-            provider: finalProvider as never,
-          });
-          return;
-        } catch (secondErr) {
-          this.throwMappedVerifyError(secondErr);
+    let lastErr: unknown;
+    for (const candidateUrl of params.callbackUrlCandidates) {
+      try {
+        await verifyMessage({
+          signerAccountId: params.accountId,
+          signerPublicKey: params.publicKey,
+          payload: {
+            message: params.message,
+            nonce: params.nonce,
+            recipient: params.recipient,
+            ...(candidateUrl !== undefined ? { callbackUrl: candidateUrl } : {}),
+          },
+          signature: params.signature,
+          provider: finalProvider as never,
+        });
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (!formatErrorText(err).includes('Signature verification failed')) {
+          this.throwMappedVerifyError(err);
         }
       }
-      this.throwMappedVerifyError(firstErr);
     }
+    this.throwMappedVerifyError(lastErr);
   }
 
   private throwMappedVerifyError(err: unknown): never {

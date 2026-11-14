@@ -42,7 +42,7 @@ function emitWarEnded(
   ctx?: StepContext,
   cancelledBy?: number,
 ): void {
-  const slashedToDefender = reason === 'cancelled' || reason === 'expired';
+  const slashedToDefender = reason === 'cancelled' || reason === 'expired' || reason === 'eliminated';
   ctx?.emit({
     kind: 'warEnded',
     severity: slashedToDefender ? 'warn' : 'info',
@@ -53,6 +53,8 @@ function emitWarEnded(
       defenderColony: war.defenderColonyIndex,
       attackerColonyId: war.attackerColonyId,
       defenderColonyId: war.defenderColonyId,
+      attackerColonyIndex: war.attackerColonyIndex,
+      defenderColonyIndex: war.defenderColonyIndex,
       reason,
       ...(cancelledBy !== undefined ? { cancelledBy } : {}),
       endedAtTick: tick,

@@ -1,6 +1,8 @@
 import type { Nep413Signature } from '@terra/contracts';
 import { tryParseCliJsonPaste } from '../../../design/pilot/nearCliPanel';
+import { extractPopupBlockedAccountId, friendlyWalletError } from '../../../design/pilot/nearWalletModalParts';
 import {
+  createRealSignerWalletSelector,
   signWithBrowserWalletSelector,
   type RealNearNetwork,
   type RealSignerWalletModuleId,
@@ -8,6 +10,7 @@ import {
 import type { OpenSignerModalHandle, SignerModalOutcome, SignerModalRequest } from './signerModal';
 import './signerModal.css';
 
+export { friendlyWalletError };
 export type { RealNearNetwork } from './parts/realNearWalletDriver';
 
 interface SavedWalletHint {
@@ -220,8 +223,9 @@ function runRealWalletButtonSign(params: {
   readonly nonceBytes: Uint8Array;
   readonly setWalletBusy: (busy: boolean) => void;
   readonly finishApproved: (sig: Nep413Signature) => void;
+  readonly preverifiedAccountId?: string;
 }): void {
-  const { dom, req, moduleId, nonceBase64, nonceBytes, setWalletBusy, finishApproved } = params;
+  const { dom, req, moduleId, nonceBase64, nonceBytes, setWalletBusy, finishApproved, preverifiedAccountId } = params;
   setWalletBusy(true);
   dom.statusEl.textContent =
     moduleId === 'near-mobile-wallet'
@@ -235,6 +239,7 @@ function runRealWalletButtonSign(params: {
     nonceBase64,
     nonceBytes,
     recipient: req.recipient,
+    ...(preverifiedAccountId ? { preverifiedAccountId } : {}),
   })
     .then((res) =>
       finishApproved({
@@ -250,7 +255,19 @@ function runRealWalletButtonSign(params: {
     .catch((err: unknown) => {
       dom.root.style.zIndex = '';
       setWalletBusy(false);
-      dom.statusEl.textContent = err instanceof Error ? err.message : 'Wallet signing failed.';
+      const blockedAcct = extractPopupBlockedAccountId(err);
+      if (blockedAcct) {
+        dom.statusEl.replaceChildren();
+        const cta = buildWalletBtn(
+          `Account ${blockedAcct} connected — Click to Sign NEP-413 Message`,
+          'real-signer-popup-retry',
+          true,
+        );
+        cta.onclick = () => runRealWalletButtonSign({ ...params, preverifiedAccountId: blockedAcct });
+        dom.statusEl.appendChild(cta);
+        return;
+      }
+      dom.statusEl.textContent = friendlyWalletError(err, req.network, 'Wallet signing failed.');
     });
 }
 
@@ -261,6 +278,7 @@ function runRealWalletButtonSign(params: {
 export function openRealNearSignerModal(
   req: SignerModalRequest & { readonly network: RealNearNetwork },
 ): OpenSignerModalHandle {
+  void createRealSignerWalletSelector(req.network).catch(() => undefined);
   const { base64: nonceBase64, bytes: nonceBytes } = generateBase64Nonce32();
   const saved = readSavedWalletHint();
   const container = req.container ?? document.body;

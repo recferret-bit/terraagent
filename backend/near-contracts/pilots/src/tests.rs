@@ -47,8 +47,9 @@ fn operator_creates_pilot_subaccount_and_replays_idempotently() {
     let committed = contract.on_pilot_created(
         "named-account:google:sub-1".to_string(),
         "alex-pilot".to_string(),
-        account("alex-pilot.pilots.terraagent.testnet"),
         String::from(&sample_pk()),
+        NearToken::from_millinear(20).as_yoctonear().to_string(),
+        account("relayer.terraagent.testnet"),
         NearToken::from_millinear(20).as_yoctonear().to_string(),
         Ok(()),
     );
@@ -105,8 +106,9 @@ fn rejects_duplicate_label_under_different_op() {
     contract.on_pilot_created(
         "op-1".into(),
         "nova".into(),
-        account("nova.pilots.terraagent.testnet"),
         String::from(&sample_pk()),
+        "20000000000000000000000".into(),
+        account("relayer.terraagent.testnet"),
         "20000000000000000000000".into(),
         Ok(()),
     );
@@ -115,7 +117,7 @@ fn rejects_duplicate_label_under_different_op() {
 }
 
 #[test]
-fn failed_child_callback_leaves_label_and_op_clean() {
+fn failed_child_callback_without_deposit_panics_and_leaves_state_clean() {
     setup_ctx("pilots.terraagent.testnet", 0);
     let mut contract = PilotFactoryContract::new(
         account("terraagent.testnet"),
@@ -125,14 +127,39 @@ fn failed_child_callback_leaves_label_and_op_clean() {
         contract.on_pilot_created(
             "op-fail".into(),
             "ghost".into(),
-            account("ghost.pilots.terraagent.testnet"),
             String::from(&sample_pk()),
             "20000000000000000000000".into(),
+            account("relayer.terraagent.testnet"),
+            "0".into(),
             Err(PromiseError::Failed),
         );
     }));
     assert!(panicked.is_err());
     assert_eq!(contract.get_pilot_account("ghost".into()), None);
+}
+
+#[test]
+fn failed_child_callback_with_attached_deposit_refunds_caller_without_stranding_funds() {
+    setup_ctx("pilots.terraagent.testnet", 0);
+    let mut contract = PilotFactoryContract::new(
+        account("terraagent.testnet"),
+        account("relayer.terraagent.testnet"),
+    );
+    let res = contract.on_pilot_created(
+        "op-fail-dep".into(),
+        "ghost".into(),
+        String::from(&sample_pk()),
+        "20000000000000000000000".into(),
+        account("relayer.terraagent.testnet"),
+        "20000000000000000000000".into(),
+        Err(PromiseError::Failed),
+    );
+    assert_eq!(res, "ERR:NEAR_NAME_TAKEN:ghost.pilots.terraagent.testnet");
+    assert_eq!(contract.get_pilot_account("ghost".into()), None);
+    let logs = get_logs();
+    assert!(logs
+        .iter()
+        .any(|l| l.contains("pilot_account_create_failed") && l.contains("relayer.terraagent.testnet")));
 }
 
 #[test]
@@ -166,6 +193,17 @@ fn rejects_reserved_guild_prefix() {
         account("relayer.terraagent.testnet"),
     );
     let _ = contract.create_pilot_account("op-1".into(), "guild-alpha".into(), sample_pk());
+}
+
+#[test]
+#[should_panic(expected = "NEAR_NAME_TAKEN: reserved pilot label")]
+fn rejects_reserved_merc_prefix() {
+    setup_ctx("relayer.terraagent.testnet", 20);
+    let mut contract = PilotFactoryContract::new(
+        account("terraagent.testnet"),
+        account("relayer.terraagent.testnet"),
+    );
+    let _ = contract.create_pilot_account("op-1".into(), "merc-raider".into(), sample_pk());
 }
 
 #[test]

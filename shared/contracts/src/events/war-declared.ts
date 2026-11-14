@@ -8,6 +8,8 @@ export const WarDeclaredDataSchema = z.strictObject({
   defenderColony: z.number().int().nonnegative(),
   attackerColonyId: z.string().min(1).max(64).optional(),
   defenderColonyId: z.string().min(1).max(64).optional(),
+  attackerColonyIndex: z.number().int().nonnegative().optional(),
+  defenderColonyIndex: z.number().int().nonnegative().optional(),
   bondToken: DiplomacyBondTokenSchema,
   bondAmount: z.number().positive(),
   declaredAtTick: z.number().int().nonnegative(),

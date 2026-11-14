@@ -31,21 +31,25 @@ function setSetCookie(res: ReplyLike, cookie: string): void {
 
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
-/** No header → a new player. A non-production `dev:` token is the scenario session (not a JWT). */
+/** No header (or an expired/invalid guest JWT) → a new player or existing social identity lookup. */
 function optionalBearer(
   req: IncomingMessage,
   tokens: AuthTokenService,
   allowDev: boolean,
 ): { id: string; handle: string } | undefined {
-  if (req.headers.authorization === undefined) return undefined;
-  const raw = req.headers.authorization;
+  const raw = req.headers.authorization ?? req.headers.Authorization;
+  if (raw === undefined) return undefined;
   const header = Array.isArray(raw) ? raw[0] : raw;
   const token = typeof header === 'string' ? BEARER_RE.exec(header.trim())?.[1] : undefined;
   if (allowDev && token) {
     const dev = devBearerPlayer(token);
     if (dev) return dev;
   }
-  return extractBearerPlayer(req, tokens);
+  try {
+    return extractBearerPlayer(req, tokens);
+  } catch {
+    return undefined;
+  }
 }
 
 /** `POST /v1/auth/social`. A guest bearer upgrades that player; a missing bearer mints one. */

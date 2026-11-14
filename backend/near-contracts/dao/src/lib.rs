@@ -396,6 +396,10 @@ impl TreasuryDaoContract {
         });
 
         let above_bp = pass_above_bp.unwrap_or(DEFAULT_PASS_ABOVE_BP);
+        require!(
+            above_bp <= 10_000,
+            "INVALID_QUORUM: pass_above_bp must be <= 10_000"
+        );
         let min_yes = pass_min_yes.unwrap_or(DEFAULT_PASS_MIN_YES);
         let mut status = "InProgress".to_string();
         if rule_passes(&dao.members, &dao.proposals[idx].votes, above_bp, min_yes) {
@@ -440,6 +444,10 @@ impl TreasuryDaoContract {
             return status;
         }
         let above_bp = pass_above_bp.unwrap_or(DEFAULT_PASS_ABOVE_BP);
+        require!(
+            above_bp <= 10_000,
+            "INVALID_QUORUM: pass_above_bp must be <= 10_000"
+        );
         let min_yes = pass_min_yes.unwrap_or(DEFAULT_PASS_MIN_YES);
         let status = if !rule_passes(&dao.members, &dao.proposals[idx].votes, above_bp, min_yes) {
             dao.proposals[idx].status = "Expired".to_string();

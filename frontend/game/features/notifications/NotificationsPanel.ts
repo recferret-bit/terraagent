@@ -7,6 +7,7 @@ import {
   clearNotifications,
   getNotificationHistory,
   getUnreadNotificationCount,
+  markAllNotificationsRead,
   markNotificationRead,
   pushNotification,
   removeNotification,
@@ -50,6 +51,7 @@ export class NotificationsPanel implements HudPanelInstance {
   private readonly guildOffers: GuildOffers;
   private readonly historyList: HTMLElement;
   private readonly historyEmpty: HTMLElement;
+  private readonly markReadBtn: HTMLButtonElement;
   private readonly clearBtn: HTMLButtonElement;
   private readonly filterBtns = new Map<FilterKind, HTMLButtonElement>();
   private filter: FilterKind = 'all';
@@ -94,13 +96,22 @@ export class NotificationsPanel implements HudPanelInstance {
     const histTitle = document.createElement('span');
     histTitle.className = 'ta-notifications__title';
     histTitle.textContent = 'NOTIFICATIONS HISTORY';
+    const histActions = document.createElement('div');
+    histActions.className = 'ta-notifications__actions';
+    this.markReadBtn = document.createElement('button');
+    this.markReadBtn.type = 'button';
+    this.markReadBtn.className = 'btn btn-ghost btn-sm';
+    this.markReadBtn.dataset.testid = 'notifications-mark-read';
+    this.markReadBtn.textContent = 'MARK READ';
+    this.markReadBtn.addEventListener('click', () => markAllNotificationsRead());
     this.clearBtn = document.createElement('button');
     this.clearBtn.type = 'button';
     this.clearBtn.className = 'btn btn-ghost btn-sm';
     this.clearBtn.dataset.testid = 'notifications-clear';
     this.clearBtn.textContent = 'CLEAR';
     this.clearBtn.addEventListener('click', () => clearNotifications());
-    histHdr.append(histTitle, this.clearBtn);
+    histActions.append(this.markReadBtn, this.clearBtn);
+    histHdr.append(histTitle, histActions);
 
     const filterRow = document.createElement('div');
     filterRow.className = 'ta-notifications__filters';
@@ -196,6 +207,7 @@ export class NotificationsPanel implements HudPanelInstance {
     const filtered = all.filter((e) => matchesFilter(e.category, this.filter));
     const unread = getUnreadNotificationCount();
     this.ctx.services.setHudTabBadge?.(this.hostEl, unread > 0 ? unread : null);
+    this.markReadBtn.disabled = unread === 0;
     this.clearBtn.disabled = all.length === 0;
     this.historyEmpty.hidden = filtered.length > 0;
     this.historyList.replaceChildren(...filtered.map((item) => this.buildHistoryRow(item)));

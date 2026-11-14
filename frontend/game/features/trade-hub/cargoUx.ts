@@ -1,4 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
+import { pushNotification } from '../notifications/notificationStore';
 import { viewColony } from '../shared/colony';
 import {
   formatCargoCount,
@@ -219,6 +220,7 @@ export class CargoToastController {
   constructor(
     private readonly panelToastEl: HTMLElement,
     private readonly floatingToastEl: HTMLElement,
+    private readonly onSelectNotification?: () => void,
   ) {
     this.panelToastEl.onclick = () => this.dismiss();
     this.floatingToastEl.onclick = () => this.dismiss();
@@ -231,11 +233,19 @@ export class CargoToastController {
     this.activeRetryInS =
       retryInS !== undefined && retryInS !== null ? retryInS : parseRetryInSeconds(detail);
 
-    this.renderToast(code, detail, this.activeRetryInS);
+    const message = formatCargoErrorToast(code, detail, this.activeRetryInS);
+    this.applyToastState(code, message, this.activeRetryInS);
+    pushNotification({
+      category: 'system',
+      title: 'Cargo Alert',
+      message,
+      dedupeKey: `cargo-err:${code}:${detail ?? ''}`,
+      onSelect: this.onSelectNotification,
+    });
 
-    this.autoDismissTimer = setTimeout(() => this.dismiss(), 8000);
     if (code === 'mint_cap' && this.activeRetryInS !== null && this.activeRetryInS > 0) {
       let remaining = this.activeRetryInS;
+      this.autoDismissTimer = setTimeout(() => this.dismiss(), Math.min(8000, remaining * 1000));
       this.countdownTimer = setInterval(() => {
         remaining -= 1;
         this.activeRetryInS = remaining;
@@ -264,6 +274,12 @@ export class CargoToastController {
 
     const message = formatCargoRefundToast(amount, resource, direction);
     this.applyToastState('refund', message, null);
+    pushNotification({
+      category: 'system',
+      title: 'Cargo Refunded',
+      message,
+      onSelect: this.onSelectNotification,
+    });
     this.autoDismissTimer = setTimeout(() => this.dismiss(), 8000);
   }
 

@@ -93,7 +93,7 @@ export class MarketSnapshotService {
     const minNotional: Partial<Record<QuoteToken, string>> = {};
     for (const p of c.pairs) minNotional[p.quote] ??= p.minNotionalAtomic;
     return {
-      policyVersion: c.policyVersion, policyHash: c.policyHash, platformFeeBp: c.platformFeeBp, stallFeeMaxBp: c.stallFeeMaxBp, stallFeeDefaultBp: c.stallFeeDefaultBp,
+      policyVersion: c.policyVersion, policyHash: c.policyHash, platformFeeBp: c.platformFeeBp, daoFeeShareBp: c.treasuryShareBp, stallFeeMaxBp: c.stallFeeMaxBp, stallFeeDefaultBp: c.stallFeeDefaultBp,
       ttlOptionsS: [...c.ttlOptionsS], openOrderLimit: c.openOrderLimit, minNotional,
     };
   }

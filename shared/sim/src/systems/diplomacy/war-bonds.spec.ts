@@ -1,4 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import {
+  TruceEndedDataSchema,
+  TruceNoticeDataSchema,
+  TruceOfferedDataSchema,
+  TruceSignedDataSchema,
+  WarDeclaredDataSchema,
+  WarEndedDataSchema,
+} from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
@@ -10,6 +18,7 @@ import { handleBuildingDestruction } from '../combat/parts/damageHelpers';
 import { creditResource, ensureColonyLedger } from '../economy/ledger';
 import { getUnitSiphonedAmount, stepRaidSiphon } from '../pvp/siphon';
 import {
+  cancelColonyTrucesOnElimination,
   cancelTruce,
   cancelWar,
   declareWar,
@@ -83,6 +92,11 @@ describe('Bonded Peace Treaties in @terra/sim', () => {
     expect(ended?.data.reason).toBe('cancelled');
     expect(ended?.data.bondAmount).toBe(5);
     expect(ended?.data.cancelledByColony).toBe(0);
+
+    expect(() => TruceOfferedDataSchema.parse(events.find((e) => e.kind === 'truceOffered')!.data)).not.toThrow();
+    expect(() => TruceSignedDataSchema.parse(events.find((e) => e.kind === 'truceSigned')!.data)).not.toThrow();
+    expect(() => TruceNoticeDataSchema.parse(events.find((e) => e.kind === 'truceNotice')!.data)).not.toThrow();
+    expect(() => TruceEndedDataSchema.parse(ended!.data)).not.toThrow();
   });
 });
 
@@ -141,6 +155,33 @@ describe('6h War Bonds lifecycle, objectives, and slashing', () => {
     expect(ended?.data.reason).toBe('objective_met');
     expect(ended?.data.slashedToDefender).toBe(false);
     expect(readDiplomacyBlob(state).wars[war.war.warId]?.status).toBe('completed');
+
+    expect(() => WarDeclaredDataSchema.parse(events.find((e) => e.kind === 'warDeclared')!.data)).not.toThrow();
+    expect(() => WarEndedDataSchema.parse(ended!.data)).not.toThrow();
+  });
+
+  it('slashes attacker war bond on attacker elimination and refunds on defender elimination with strict schema compliance', () => {
+    const { state, events, ctx } = makeDiplomacyPlanet();
+    markColonyContact(state, 1, 2, 1_000);
+    const warAtk = declareWar(state, 0, 1, 5, 'NEAR', 1_000, ctx);
+    const warDef = declareWar(state, 2, 0, 5, 'NEAR', 1_000, ctx);
+    expect(warAtk.ok && warDef.ok).toBe(true);
+    if (!warAtk.ok || !warDef.ok) return;
+
+    cancelColonyTrucesOnElimination(state, 0, 1_200, ctx);
+    const atkEnded = events.find((e) => e.kind === 'warEnded' && e.data.warId === warAtk.war.warId);
+    const defEnded = events.find((e) => e.kind === 'warEnded' && e.data.warId === warDef.war.warId);
+    expect(atkEnded?.data.reason).toBe('eliminated');
+    expect(atkEnded?.data.slashedToDefender).toBe(true);
+    expect(defEnded?.data.reason).toBe('objective_met');
+    expect(defEnded?.data.slashedToDefender).toBe(false);
+
+    for (const ev of events.filter((e) => e.kind === 'warDeclared')) {
+      expect(() => WarDeclaredDataSchema.parse(ev.data)).not.toThrow();
+    }
+    for (const ev of events.filter((e) => e.kind === 'warEnded')) {
+      expect(() => WarEndedDataSchema.parse(ev.data)).not.toThrow();
+    }
   });
 });
 

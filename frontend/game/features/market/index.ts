@@ -16,6 +16,8 @@ declare module '../../core/registry/types' {
   interface FeatureServices {
     /** W13-24: the Contracts list; `toggle()` opens it from a menu or from the Trade Hub panel. */
     contracts?: ContractsPanel;
+    /** Live signed/failed trade contracts log shared with the Trade Hub modal dialog. */
+    contractsLog?: ContractsLog;
   }
 }
 
@@ -40,7 +42,13 @@ export default defineFeature({
         const s = ctx.services;
         // Inside a HUD tab book (Colony book → Trade) the tab shows and hides the list, so it starts open; any later
         // open (menu, Supply's CONTRACTS, Trade Hub) switches the book to that tab.
-        const panel = new ContractsPanel(el, log, { reveal: (root) => s.revealHudPanel?.(root), open: isInHudBook(el) });
+        const panel = new ContractsPanel(el, log, {
+          reveal: (root) => {
+            s.revealHudPanel?.(root);
+            if (root.closest('[data-tab-pane="trade"]')) s.openTradeHubPanel?.(true);
+          },
+          open: isInHudBook(el),
+        });
         const controller = new ContractsController(
           log,
           (msg, sev, ms, key) => s.hudMin?.showToast(msg, sev, ms, key),
@@ -48,10 +56,12 @@ export default defineFeature({
           s.store as never,
         );
         s.contracts = panel;
+        s.contractsLog = log;
         active = panel;
         return {
           dispose() {
             if (s.contracts === panel) s.contracts = undefined;
+            if (s.contractsLog === log) s.contractsLog = undefined;
             if (active === panel) active = undefined;
             controller.dispose();
             panel.dispose();

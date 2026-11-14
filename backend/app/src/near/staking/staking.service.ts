@@ -177,6 +177,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     const perks = buildStakerPerksFromYocto(sumDtoStakedYocto(positions), {
       grossApyBp,
       protocolAccountId,
+      env: (this.env ?? process.env) as Record<string, string | undefined>,
     });
 
     return StakingStatusResponse.parse({

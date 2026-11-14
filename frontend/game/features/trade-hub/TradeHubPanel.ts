@@ -34,6 +34,7 @@ import {
   buildTradeHubToastSection,
   renderTradeHubStatusAndMeters,
 } from './parts/tradeHubDom';
+import { TradeHubModalBridge } from './parts/tradeHubModal';
 import { TabExtensions } from './tabExtensions';
 import { formatTransferPreview, syncMockTreeText, TradeHubForms } from './TradeHubForms';
 
@@ -67,6 +68,8 @@ export class TradeHubPanel implements Disposable {
   private readonly importTabBtn: HTMLButtonElement;
   private readonly orbitBalancesEl: HTMLElement;
   private readonly orbitRows: Map<ResourceKey, { row: HTMLElement; valEl: HTMLElement }>;
+  private readonly modalBridge: TradeHubModalBridge;
+  private onOpenStateChanged: (() => void) | null = null;
 
   private isOpen = false;
   private activeTab: TradeHubTab = 'export';
@@ -142,10 +145,14 @@ export class TradeHubPanel implements Disposable {
     });
 
     this.extensions = new TabExtensions(tabsBuild.tabsRow, this.tabBodyEl, ctx, (id) => this.root.setAttribute('data-tab', id ? `ext:${id}` : this.activeTab));
+    this.modalBridge = new TradeHubModalBridge(this.root, ctx, () => {
+      this.closedForEntityId = this.selectedHubId;
+      this.setOpen(false);
+    });
     const content = makeDiv('ta-trade-hub__content');
     const balances = makeDiv('ta-trade-hub__column');
     const transfer = makeDiv('ta-trade-hub__column');
-    balances.append(metersBuild.metersRow, this.orbitBalancesEl);
+    balances.append(metersBuild.metersRow, this.orbitBalancesEl, this.modalBridge.contractsSection);
     transfer.append(tabsBuild.tabsRow, this.tabBodyEl);
     content.append(balances, transfer);
     this.root.append(headerBuild.header, this.offlineBannerEl, this.toastEl, this.pendingContainerEl, content);
@@ -187,11 +194,22 @@ export class TradeHubPanel implements Disposable {
     });
   }
 
+  setOnOpenStateChanged(fn: (() => void) | null): void {
+    this.onOpenStateChanged = fn;
+  }
+
   setOpen(open: boolean): void {
+    const wasOpen = this.isOpen;
     this.isOpen = open;
     this.closedForEntityId = open ? null : this.selectedHubId;
     this.root.setAttribute('data-open', String(open));
     this.render();
+    if (wasOpen && !open) {
+      this.ctx?.services.clearHudDialogTab?.('trade');
+    }
+    if (wasOpen !== open) {
+      this.onOpenStateChanged?.();
+    }
   }
 
   isOpenState(): boolean {
@@ -353,19 +371,22 @@ export class TradeHubPanel implements Disposable {
     const overlay = this.ctx?.services.hudOverlay;
     if (this.selectedHubId !== null) {
       this.root.removeAttribute('data-modal');
+      this.modalBridge.sync(false, overlay);
       details?.show(this.root, this.isOpen, (open) => {
         this.closedForEntityId = open ? null : this.selectedHubId;
         this.setOpen(open);
       });
     } else {
       details?.hide();
-      if (this.isOpen && overlay) {
+      const isModal = Boolean(this.isOpen && overlay);
+      if (isModal && overlay) {
         this.root.setAttribute('data-modal', 'true');
         if (this.root.parentElement !== overlay) overlay.append(this.root);
       } else {
         this.root.removeAttribute('data-modal');
         if (this.root.parentElement !== this.parent) this.parent.append(this.root);
       }
+      this.modalBridge.sync(isModal, overlay);
     }
     this.toastController.setPanelOpen(this.isOpen);
 
@@ -407,6 +428,7 @@ export class TradeHubPanel implements Disposable {
     this.offCloser?.();
     this.offCloser = null;
     this.extensions.dispose();
+    this.modalBridge.dispose();
     this.toastController.dispose();
     this.orbitRows.clear();
     this.root.remove();

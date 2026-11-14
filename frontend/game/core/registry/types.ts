@@ -40,6 +40,8 @@ export interface FeatureServices {
   registerHudCloser?: (close: () => void) => () => void;
   /** Folds both tab books and runs every registered closer (e.g. when the HQ dies and the respawn dialog opens). */
   closeHudMenus?: () => void;
+  /** Clears the active spine highlight of a dialog-only Colony tab when its modal closes. */
+  clearHudDialogTab?: (tab: string) => void;
 }
 
 /** The part of `WorldStore` features use; optional members, so a spec can pass a stand-in with only what it needs. */

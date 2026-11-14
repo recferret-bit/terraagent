@@ -1,7 +1,7 @@
 // stack:local:down is the four site projects only. It must not stop the dev Postgres or drop volumes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMPOSE, backendComposeEnv, downArgv, upArgv } from './compose.mjs';
+import { COMPOSE, backendComposeEnv, downArgv, frontendComposeEnv, upArgv } from './compose.mjs';
 
 test('down targets the four site projects and not the dev postgres', () => {
   const plan = downArgv();
@@ -35,4 +35,13 @@ test('local backend env ignores a shell production flag and a localhost database
   });
   assert.equal(env.NODE_ENV, 'development');
   assert.equal(env.DATABASE_URL, 'postgresql://terra:terra@host.docker.internal:15434/terra_wave_w26_sites');
+});
+
+test('local frontend env defaults to development and honors explicit VITE_APP_ENV', () => {
+  const laptop = frontendComposeEnv({ NODE_ENV: 'production' });
+  assert.equal(laptop.NODE_ENV, 'development');
+  assert.equal(laptop.VITE_APP_ENV, 'development');
+
+  const explicit = frontendComposeEnv({ NODE_ENV: 'development', VITE_APP_ENV: 'production' });
+  assert.equal(explicit.VITE_APP_ENV, 'production');
 });

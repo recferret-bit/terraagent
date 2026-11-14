@@ -2,6 +2,11 @@ use near_sdk::store::LookupMap;
 use near_sdk::{env, near, require, AccountId, PanicOnDefault};
 use serde_json::json;
 
+const MAX_OP_ID_BYTES: usize = 128;
+const MAX_COLLECTION_BYTES: usize = 64;
+const MAX_TOKEN_ID_BYTES: usize = 128;
+const MAX_METADATA_BYTES: usize = 32_768;
+
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeedHistoryEntry {
@@ -116,8 +121,22 @@ impl DeedContract {
         metadata_json: String,
         settled: bool,
     ) -> StoredDeed {
-        require!(!op_id.is_empty(), "NEAR_NFT_INVALID: op_id required");
-        require!(!token_id.is_empty(), "NEAR_NFT_INVALID: token_id required");
+        require!(
+            !op_id.is_empty() && op_id.len() <= MAX_OP_ID_BYTES,
+            "NEAR_NFT_INVALID: op_id required (<= 128 bytes)"
+        );
+        require!(
+            !collection.trim().is_empty() && collection.len() <= MAX_COLLECTION_BYTES,
+            "NEAR_NFT_INVALID: collection required (<= 64 bytes)"
+        );
+        require!(
+            !token_id.is_empty() && token_id.len() <= MAX_TOKEN_ID_BYTES,
+            "NEAR_NFT_INVALID: token_id required (<= 128 bytes)"
+        );
+        require!(
+            metadata_json.len() <= MAX_METADATA_BYTES,
+            "NEAR_NFT_INVALID: metadata_json exceeds 32 KiB"
+        );
         let caller = env::predecessor_account_id();
         require!(
             caller == self.operator_id || caller == self.owner_id,
@@ -180,8 +199,18 @@ impl DeedContract {
         settled: bool,
         explicit_unsettle: Option<bool>,
     ) -> StoredDeed {
-        require!(!op_id.is_empty(), "NEAR_NFT_INVALID: op_id required");
-        require!(!token_id.is_empty(), "NEAR_NFT_INVALID: token_id required");
+        require!(
+            !op_id.is_empty() && op_id.len() <= MAX_OP_ID_BYTES,
+            "NEAR_NFT_INVALID: op_id required (<= 128 bytes)"
+        );
+        require!(
+            !token_id.is_empty() && token_id.len() <= MAX_TOKEN_ID_BYTES,
+            "NEAR_NFT_INVALID: token_id required (<= 128 bytes)"
+        );
+        require!(
+            metadata_json.len() <= MAX_METADATA_BYTES,
+            "NEAR_NFT_INVALID: metadata_json exceeds 32 KiB"
+        );
         let caller = env::predecessor_account_id();
         require!(
             caller == self.operator_id || caller == self.owner_id,

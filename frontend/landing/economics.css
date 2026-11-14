@@ -55,7 +55,7 @@
 /* Protocol + Calculator 2-column split */
 .econ-split {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 24px;
   margin-top: 32px;
 }
@@ -104,9 +104,10 @@
 
 .econ-flow-item {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: 6px 12px;
   padding: 10px 12px;
   background: var(--ta-plate-2);
   border-left: 3px solid var(--ta-terra);
@@ -281,6 +282,12 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+}
+
+#economics .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
 }
 
 @media (max-width: 640px) {

@@ -10,7 +10,7 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { MarketOrderRepository } from '../../book/market-order.repository.js';
 import type { MatchOutcome } from '../../matching/market-matcher.service.js';
 import { OrderRelease } from '../../orders/cancel-order.service.js';
-import { resolveProtocolAccountId } from '../../orders/market-policy.provider.js';
+import { MarketPolicyProvider, resolveProtocolAccountId } from '../../orders/market-policy.provider.js';
 import { TradeKeyRepository, type KeyRecord } from '../../trade/trade-key.repository.js';
 import { TradeReadService } from '../../trade/trade-read.service.js';
 import { fundingEnabled } from '../funding/caps.js';
@@ -62,6 +62,7 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
     @Optional() @Inject(GUILD_BOOK_DISCOVERY) private readonly discovery?: GuildBookDiscovery,
     @Optional() private readonly telemetry?: GuildMetrics,
     @Optional() @Inject(GuildStrategyPort) private readonly strategy?: GuildStrategyPort,
+    @Optional() private readonly policy?: MarketPolicyProvider,
   ) {}
 
   onModuleInit(): void {
@@ -179,7 +180,24 @@ export class GuildMakerService implements OnModuleInit, OnModuleDestroy, GuildFi
   }
 
   private data(): CompiledDataLike {
-    return compileData(this.flags.flags);
+    const base = compileData(this.flags.flags);
+    const active = this.policy?.current();
+    if (!active) return base;
+    const marketTable = (base.tables.market ?? {}) as Record<string, Record<string, unknown>>;
+    return {
+      ...base,
+      tables: {
+        ...base.tables,
+        market: {
+          ...marketTable,
+          policy: {
+            ...(marketTable.policy ?? {}),
+            platformFeeBp: active.platformFeeBp,
+            treasuryShareBp: active.treasuryShareBp,
+          },
+        },
+      },
+    };
   }
 
   /** Strategy stockpile, or `undefined` when there is no port or the payload is rejected. */

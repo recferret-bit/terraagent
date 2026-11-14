@@ -1,6 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  cancelWar,
+  createState,
+  declareWar,
+  ENTITY_KIND,
+  ENTITY_STATE,
+  ensureColonyRecord,
+  insertRow,
+  markColonyContact,
+  placeSpawnedEntity,
+  stepDiplomacy,
+  type StepContext,
+} from '@terra/sim';
+import { EventBus } from '../../src/bus/event-bus.js';
 import { PROTOCOL_ACCOUNT_ID } from '../../src/market/orders/market-policy.provider.js';
 import { escrowHoldAccount, escrowIdFromOp } from '../../src/near/application/escrow-id.js';
+import type { ChainOutboxRepository } from '../../src/near/application/outbox/chain-outbox.repository.js';
 import {
   DEFAULT_ESCROW_SLASH_PROTOCOL_BP,
   EscrowActionInput,
@@ -11,6 +26,7 @@ import {
   EscrowSlashInput,
   EscrowView,
 } from '../../src/near/application/ports/escrow.port.js';
+import { DiplomacyEscrowListener } from '../../src/near/diplomacy/diplomacy-escrow.listener.js';
 import {
   DiplomacyEscrowService,
   bondToBaseUnits,
@@ -255,5 +271,98 @@ describe('DiplomacyEscrowService — 6h Bonded War Escrows', () => {
     expect(port.balance(attacker, 'NEAR')).toBe(0n);
     expect(port.balance(defender, 'NEAR')).toBe(85n * (ONE_NEAR_YOCTO / 10n));
     expect(port.balance('treasury.terraagent.mock', 'NEAR')).toBe(15n * (ONE_NEAR_YOCTO / 10n));
+  });
+});
+
+describe('DiplomacyEscrowListener — strict EventBus @terra/sim integration & outbox durability', () => {
+  it('bridges real @terra/sim warDeclared & warEnded events through strict EventBus validation and enqueues outbox rows', async () => {
+    const port = new InMemoryEscrowPort();
+    const enqueued: Array<{ opId: string; method: string }> = [];
+    const doneOps: string[] = [];
+    const fakeOutbox = {
+      enqueue: vi.fn(async (row: { opId: string; method: string }) => {
+        enqueued.push({ opId: row.opId, method: row.method });
+      }),
+      markDoneByOpId: vi.fn(async (opId: string) => {
+        doneOps.push(opId);
+        return true;
+      }),
+      abandon: vi.fn(async () => undefined),
+    } as unknown as ChainOutboxRepository;
+    const attacker = 'pl_bus-col_0.terraagent.mock';
+    const defender = 'pl_bus-col_1.terraagent.mock';
+    port.seed(attacker, 'NEAR', 20n * ONE_NEAR_YOCTO);
+
+    const fakePrisma = {
+      nearColonyAccount: {
+        findFirst: vi.fn(async ({ where }: { where?: { colonyId?: string } }) => ({
+          accountId: where?.colonyId === 'col_1' ? defender : attacker,
+        })),
+      },
+    };
+
+    const bus = new EventBus();
+    const svc = new DiplomacyEscrowService(
+      port,
+      { has: () => true },
+      fakeOutbox,
+      fakePrisma as never,
+      { DATABASE_URL: 'postgresql://terra:terra@127.0.0.1:5432/terra' } as never,
+    );
+    const listener = new DiplomacyEscrowListener(bus, svc, { has: () => true });
+    listener.onModuleInit();
+
+    const state = createState({ planetId: 'pl_bus', planetType: 'temperate', seed: 'bus', radius: 16 });
+    state.meta.tick = 1_000;
+    for (const idx of [0, 1]) {
+      const col = ensureColonyRecord(state, idx, 1_000);
+      col.status = 'active';
+      col.stage = 4;
+      const r = insertRow(state.entities, state.meta.nextEntityId++, 1_000);
+      state.entities.cols.kind[r] = ENTITY_KIND.hq;
+      state.entities.cols.owner[r] = idx;
+      state.entities.cols.tier[r] = 2;
+      state.entities.cols.hp[r] = 500;
+      state.entities.cols.hpMax[r] = 500;
+      state.entities.cols.state[r] = ENTITY_STATE.idle;
+      placeSpawnedEntity(state.entities, r, idx * 6, 0, 1_000);
+    }
+    markColonyContact(state, 0, 1, 1_000);
+
+    const pendingPromises: Promise<unknown>[] = [];
+    const ctx = {
+      tick: 1_000,
+      dt: 1,
+      flags: new Set(['W18', 'W22']),
+      emit: (ev: { kind: string; severity?: 'info' | 'warn' | 'alert'; colonyIds?: string[]; data: Record<string, unknown> }) => {
+        // Strict EventBus.emit throws synchronously if Zod strictObject rejects any sim event field!
+        bus.emit('planet.event', {
+          planetId: 'pl_bus',
+          tick: state.meta.tick,
+          kind: ev.kind as never,
+          severity: ev.severity === 'alert' ? 'critical' : (ev.severity ?? 'info'),
+          colonyIds: ev.colonyIds ?? [],
+          data: ev.data as never,
+        });
+      },
+    } as unknown as StepContext;
+
+    const declared = declareWar(state, 0, 1, 10, 'NEAR', 1_000, ctx);
+    expect(declared.ok).toBe(true);
+    if (!declared.ok) return;
+    await new Promise((r) => setTimeout(r, 15));
+    expect(port.balance(attacker, 'NEAR')).toBe(10n * ONE_NEAR_YOCTO);
+
+    const cancelled = cancelWar(state, 0, declared.war.warId, 1_100, ctx);
+    expect(cancelled.ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 15));
+    void pendingPromises;
+    void stepDiplomacy;
+
+    expect(port.balance(defender, 'NEAR')).toBe(9n * ONE_NEAR_YOCTO);
+    expect(port.balance(PROTOCOL_ACCOUNT_ID, 'NEAR')).toBe(1n * ONE_NEAR_YOCTO);
+    expect(enqueued.map((e) => e.method)).toEqual(['open', 'slash']);
+    expect(doneOps).toHaveLength(2);
+    listener.onModuleDestroy();
   });
 });

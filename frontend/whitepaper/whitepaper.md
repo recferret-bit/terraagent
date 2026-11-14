@@ -1,6 +1,6 @@
 # TerraAgent — Whitepaper (draft v0.1, 2026-10-31)
 
-> Outward-facing specification updated 2026-11-13. Matches `docs/spec/DECISIONS.md`, `docs/spec/ECONOMY.md`, and the live NEAR Testnet deployments. Values marked *(proposed)* are tunable defaults calibrated in [`../economy-balance-simulation.md`](../economy-balance-simulation.md). This document describes game and protocol mechanics and makes no promise regarding any token value.
+> Outward-facing specification updated 2026-11-14. Matches [`README.md`](../../README.md), `@terra/sim` deterministic rules, and the live NEAR Testnet deployments. Values marked *(proposed)* are tunable defaults calibrated in the 7-day economy simulator (`/dev/economy-sim/`). This document describes game and protocol mechanics and makes no promise regarding any token value.
 
 ## 1. Thesis: the economy is the gameplay
 
@@ -51,7 +51,7 @@ You land one Hero bot, build a Command Hub, expand across Desert, Ocean, and Tem
 | `res.terraagent.testnet` | `NEP-245` Orbital Cargo Multi-Token (10 commodities) | [5reiQL5X…](https://testnet.nearblocks.io/txns/5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok) |
 | `deed.terraagent.testnet` | `NEP-171` Soulbound Colony Deeds & Milestone Badges | [E1AGHyMm…](https://testnet.nearblocks.io/txns/E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK) |
 | `bounty.terraagent.testnet` | Mercenary Bounties, Peace Treaties & 6h War Escrows | [21F1c5Td…](https://testnet.nearblocks.io/txns/21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB) |
-| `staking.terraagent.testnet` | Day-1 Lossless Validator Vault (80/20 yield split) | [6r2gXkr7…](https://testnet.nearblocks.io/txns/6r2gXkr7YdPnfnizEbViH3ZyHKpegNWRtC1GyYkDukVD) |
+| `staking.terraagent.testnet` | Day-1 Lossless Validator Vault (80/20 yield split) | [5UvHFrKU…](https://testnet.nearblocks.io/txns/5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2) |
 | `dao.terraagent.testnet` | Planet Council Treasury Voting (> 50% quorum) | [DmsGYQ7V…](https://testnet.nearblocks.io/txns/DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U) |
 | `pilots.terraagent.testnet` | Cold-Root Sub-Account Factory & `claimAccount` Flow | [cSTqNFu5…](https://testnet.nearblocks.io/txns/cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h) |
 

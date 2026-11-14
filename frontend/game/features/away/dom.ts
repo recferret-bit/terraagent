@@ -25,6 +25,15 @@ export function buildAwayDom(host: HTMLElement, opts: { mercenary?: boolean } = 
   const body = document.createElement('div');
   body.className = 'ta-away__body';
   body.dataset.testid = 'away-panel';
+  const bookHead = document.createElement('div');
+  bookHead.className = 'ta-away__book-head';
+  const bookTitle = document.createElement('div');
+  bookTitle.className = 'ta-away__kicker';
+  bookTitle.textContent = 'OFFLINE SESSION & BUDGETS';
+  const bookSub = document.createElement('div');
+  bookSub.className = 'ta-away__book-sub';
+  bookSub.textContent = 'Resource spending caps and auto-trade limits while you are offline.';
+  bookHead.append(bookTitle, bookSub);
   const mode = modeSelect();
   const raids = raidsBox();
   const sessions = {} as Record<AwayFamily, HTMLInputElement>;
@@ -33,7 +42,10 @@ export function buildAwayDom(host: HTMLElement, opts: { mercenary?: boolean } = 
   modeRow.classList.add('ta-away__row--mode');
   const raidsRow = fieldRow('Away raids', raids);
   raidsRow.classList.add('ta-away__row--raids');
-  body.append(modeRow, raidsRow, directiveLine());
+  const capsKicker = document.createElement('div');
+  capsKicker.className = 'ta-away__subkicker';
+  capsKicker.textContent = 'SESSION RESOURCE CAPS';
+  body.append(bookHead, modeRow, raidsRow, capsKicker, directiveLine());
   const mercenary = opts.mercenary ? mercenaryFields() : null;
   if (mercenary) body.append(mercenary.row, mercenary.maxRow);
   for (const family of AWAY_FAMILIES) {

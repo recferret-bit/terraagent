@@ -37,9 +37,10 @@ trait ExtSelf {
         &mut self,
         op_id: String,
         label: String,
-        new_account_id: AccountId,
         public_key: String,
         funded_yocto: String,
+        caller: AccountId,
+        attached_yocto: String,
     ) -> String;
 }
 
@@ -59,7 +60,9 @@ fn validate_pilot_label(label: &str) {
         "NEAR_PROVIDER_REJECTED: pilot label must contain only [a-z0-9-]"
     );
     require!(
-        !RESERVED_LABELS.contains(&label) && !label.starts_with("guild-"),
+        !RESERVED_LABELS.contains(&label)
+            && !label.starts_with("guild-")
+            && !label.starts_with("merc-"),
         "NEAR_NAME_TAKEN: reserved pilot label"
     );
 }
@@ -174,35 +177,58 @@ impl PilotFactoryContract {
 
         let pk_str = String::from(&public_key);
         let funded_str = funding.as_yoctonear().to_string();
+        let attached_str = attached.as_yoctonear().to_string();
 
-        let promise = Promise::new(new_account_id.clone())
+        let promise = Promise::new(new_account_id)
             .create_account()
             .transfer(funding)
             .add_full_access_key(public_key)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(CALLBACK_GAS)
-                    .on_pilot_created(op_id, label, new_account_id, pk_str, funded_str),
+                    .on_pilot_created(
+                        op_id,
+                        label,
+                        pk_str,
+                        funded_str,
+                        caller,
+                        attached_str,
+                    ),
             );
 
         PromiseOrValue::Promise(promise)
     }
 
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn on_pilot_created(
         &mut self,
         op_id: String,
         label: String,
-        new_account_id: AccountId,
         public_key: String,
         funded_yocto: String,
+        caller: AccountId,
+        attached_yocto: String,
         #[callback_result] call_result: Result<(), PromiseError>,
     ) -> String {
-        require!(
-            call_result.is_ok(),
-            "NEAR_NAME_TAKEN: child sub-account creation failed on-chain"
-        );
-        let id_str = new_account_id.to_string();
+        let id_str = format!("{}.{}", label, env::current_account_id());
+        if call_result.is_err() {
+            let refund = attached_yocto.parse::<u128>().unwrap_or(0);
+            if refund > 0 {
+                let _ = Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(refund));
+                emit_pilots_event(
+                    "pilot_account_create_failed",
+                    json!({
+                        "op_id": op_id,
+                        "account_id": id_str,
+                        "refunded_to": caller,
+                        "refunded_yocto": attached_yocto,
+                    }),
+                );
+                return format!("ERR:NEAR_NAME_TAKEN:{}", id_str);
+            }
+            env::panic_str("NEAR_NAME_TAKEN: child sub-account creation failed on-chain");
+        }
         self.created_accounts.insert(label, id_str.clone());
         self.processed_ops.insert(op_id.clone(), id_str.clone());
         emit_pilots_event(

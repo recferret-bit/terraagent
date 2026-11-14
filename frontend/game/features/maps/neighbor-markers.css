@@ -28,7 +28,7 @@
   display: flex;
   align-items: center;
   gap: var(--ta-s2);
-  padding: var(--ta-s1) var(--ta-s2);
+  padding: 6px 10px;
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam-2);
   cursor: pointer;
@@ -96,7 +96,7 @@
   position: absolute;
   top: 24px;
   left: 4px;
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 2px;
   max-height: 64px;

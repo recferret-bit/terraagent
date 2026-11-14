@@ -27,6 +27,9 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.frontend
+      args:
+        # Laptop default keeps local dev HUD/console active; /srv/terraagent/.env sets NODE_ENV=production.
+        VITE_APP_ENV: ${VITE_APP_ENV:-${NODE_ENV:-development}}
     networks:
       - terra_edge
     volumes:

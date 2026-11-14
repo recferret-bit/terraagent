@@ -61,6 +61,16 @@ export class StageTrackHud implements Disposable {
     if (ctx.services.registerHudCloser) {
       this.cleanups.push(ctx.services.registerHudCloser(() => this.setPanelVisible(false)));
     }
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && !this.panelHidden) {
+          e.preventDefault();
+          this.setPanelVisible(false);
+        }
+      };
+      window.addEventListener('keydown', onKey);
+      this.cleanups.push(() => window.removeEventListener('keydown', onKey));
+    }
     this.setPanelVisible(false);
     this.toast = new StageToast(this.root);
 
@@ -113,11 +123,17 @@ export class StageTrackHud implements Disposable {
   }
 
   private setPanelVisible(visible: boolean): void {
+    const wasVisible = !this.panelHidden;
     this.panelHidden = !visible;
     if (visible) this.suppressNotices = false;
     this.root.hidden = !visible;
     this.launcher.setAttribute('aria-expanded', String(visible));
-    if (!visible) this.toast?.dismiss();
+    if (!visible) {
+      this.toast?.dismiss();
+      if (wasVisible) {
+        this.ctx.services.clearHudDialogTab?.('goals');
+      }
+    }
   }
 
   private browseStage(stage: number): void {

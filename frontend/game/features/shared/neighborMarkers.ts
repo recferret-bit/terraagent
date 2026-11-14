@@ -1,3 +1,5 @@
+import { formatColonyOrPilotName } from '../identity/PilotChip';
+
 export interface NeighborColonyMarker {
   colonyIndex: number;
   colonyId: string;
@@ -316,7 +318,8 @@ export function extractNeighborColonyMarkers(
     if (!isDiscovered) continue;
 
     const colonyId = String(col.id ?? `col_${colIdx}`);
-    const name = String(col.name ?? `Colony ${colIdx + 1}`);
+    const rawName = String(col.name ?? `Colony ${colIdx + 1}`);
+    const name = formatColonyOrPilotName(rawName);
     const colorToken = getColonyColorToken(colIdx);
     const { q, r } = findColonyCoords(col, colIdx, ctx.view);
     const { shieldActive, shieldRemainingSeconds } = resolveShieldState(col, colIdx, ctx.view, ctx.currentTick);

@@ -10,6 +10,7 @@ export const PENDING_NEP413_STORAGE_KEY = 'ta_nep413_pending';
 export const RECENT_NEP413_POPUP_KEY = 'ta_nep413_popup_result';
 const PENDING_TTL_MS = 5 * 60_000;
 const POPUP_RESULT_TTL_MS = 60_000;
+const JWT_EXPIRY_BUFFER_MS = 5_000;
 
 /** Extracts the human-readable message from NestJS `{ error: { message } }` or `{ message }` JSON envelopes. */
 export function extractAuthApiErrorMessage(errBody: unknown, fallback: string): string {
@@ -49,6 +50,38 @@ function base64UrlToString(raw: string): string {
     bytes[i] = binary.charCodeAt(i);
   }
   return new TextDecoder().decode(bytes);
+}
+
+/** Returns true when `token` is a 3-segment JWT with a numeric `exp` claim still in the future. */
+export function jwtStillValid(token: string, nowMs = Date.now()): boolean {
+  if (!token) return false;
+  const parts = token.trim().split('.');
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return false;
+  try {
+    const payload = JSON.parse(base64UrlToString(parts[1])) as { exp?: unknown };
+    return (
+      typeof payload.exp === 'number' &&
+      Number.isFinite(payload.exp) &&
+      payload.exp * 1000 > nowMs + JWT_EXPIRY_BUFFER_MS
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Reads a non-expired guest `accessToken` from `localStorage.getItem('ta_active_pilot')` for colony upgrade. */
+export function readStoredGuestUpgradeBearer(nowMs = Date.now()): string {
+  try {
+    const raw = localStorage.getItem('ta_active_pilot');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw) as { accessToken?: unknown; isGuest?: unknown; accountId?: unknown };
+    const hasLinkedAccount = typeof parsed.accountId === 'string' && parsed.accountId.trim().length > 0;
+    if (parsed.isGuest === false || hasLinkedAccount || typeof parsed.accessToken !== 'string') return '';
+    const trimmed = parsed.accessToken.trim();
+    return jwtStillValid(trimmed, nowMs) ? trimmed : '';
+  } catch {
+    return '';
+  }
 }
 
 /** Encodes a verified NEP-413 payload into a `nep413:<base64url>` social token. */

@@ -11,6 +11,7 @@ import {
 } from '../application/ports/staking.port.js';
 import { NearException } from '../domain/errors.js';
 import type { ChainReceipt } from '../domain/types.js';
+import { resolveProtocolFeeSchedule } from '../infrastructure/network/protocol-fee.config.js';
 import {
   computeSplitRewardDelta,
   GAME_DAY_MS,
@@ -39,6 +40,7 @@ export class InMemoryStaking extends StakingPort {
     private readonly chain: InMemoryChain = new InMemoryChain(),
     private readonly rawPools?: string,
     private readonly protocolAccountId?: string,
+    private readonly protocolYieldShareBp?: number,
   ) {
     super();
   }
@@ -93,7 +95,9 @@ export class InMemoryStaking extends StakingPort {
       };
     }
     const elapsed = Math.max(0, now - existing.lastAccruedAtMs);
-    const split = computeSplitRewardDelta(existing.staked, pool.apyBp, elapsed);
+    const yieldShareBp =
+      this.protocolYieldShareBp ?? resolveProtocolFeeSchedule(process.env).protocolStakingYieldShareBp;
+    const split = computeSplitRewardDelta(existing.staked, pool.apyBp, elapsed, yieldShareBp);
     const rewards = existing.rewards + split.userReward;
     let unbonding = existing.unbonding;
     let unbondingReadyAtMs = existing.unbondingReadyAtMs;

@@ -1,16 +1,21 @@
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { MARKET_TOKEN_KEYS, RESOURCE_KEYS } from '@terra/contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { myOrderView } from '../../src/market/api/market-snapshot.service.js';
+import { MarketSnapshotService, myOrderView } from '../../src/market/api/market-snapshot.service.js';
 import type { MarketOrderRecord } from '../../src/market/book/market-order.record.js';
 import { MarketPolicyProvider } from '../../src/market/orders/market-policy.provider.js';
+import { TradeReadService } from '../../src/market/trade/trade-read.service.js';
 import { TestnetIntentsAdapter } from '../../src/near/infrastructure/adapters/real/testnet-intents.adapter.js';
 import { NearStatusController } from '../../src/near/infrastructure/dev/near-status.controller.js';
+import { buildProtocolTreasuryView } from '../../src/near/infrastructure/dev/protocol-treasury.view.js';
 import { nearAdapters, nearEnvFor } from '../../src/near/infrastructure/near-infrastructure.module.js';
+import { resolveNearNetworkConfig } from '../../src/near/infrastructure/network/near-network.config.js';
 import { resolveProtocolFeeSchedule } from '../../src/near/infrastructure/network/protocol-fee.config.js';
 import { seedToNearSecretKey } from '../../src/near/infrastructure/rpc/near-rpc.client.js';
 import { encodeBase58 } from '../../src/near/keystore/base58.js';
 import {
   buildStakerPerksFromYocto,
+  resolveDbStakerPerks,
   resolvePlanetStakedColonies,
 } from '../../src/near/staking/staker-perks.js';
 import { GAME_DAY_MS, nearToYocto } from '../../src/near/staking/yocto.js';
@@ -60,7 +65,9 @@ describe('TerraAgent Protocol treasury view, fee env overrides & staker perks', 
     ]);
     expect(protocol.outflows.map((s) => s.id)).toEqual(['relayer_gas', 'managed_near_ai']);
   });
+});
 
+describe('TerraAgent Protocol custom fee/yield env overrides & bounds', () => {
   it('propagates custom fee/treasury env overrides and safely clamps/rejects malformed values', async () => {
     const customEnv = {
       NEAR_MODE: 'testnet',
@@ -69,6 +76,7 @@ describe('TerraAgent Protocol treasury view, fee env overrides & staker perks', 
       NEAR_STAKER_PLATFORM_FEE_BP: '40',
       NEAR_DAO_FEE_SHARE_BP: '2500',
       NEAR_STAKER_MIN_NEAR: '25',
+      NEAR_PROTOCOL_STAKING_YIELD_BP: '1500',
       NEAR_ESCROW_SLASH_PROTOCOL_BP: '1500',
     };
     const parsed = nearEnvFor(nearAdapters).schema.parse(customEnv);
@@ -77,12 +85,23 @@ describe('TerraAgent Protocol treasury view, fee env overrides & staker perks', 
     const ctl = new NearStatusController(undefined, customEnv as never);
     const view = await ctl.protocol();
     expect(view.protocolAccountId).toBe('revenue.terraagent.testnet');
+    expect(view.inflows[1]?.rateSummary).toContain('15% of validator yield');
+    expect(view.outflows[1]?.description).toContain('>= 25 NEAR');
+
+    const mockCustomCtl = new NearStatusController(undefined, {
+      NEAR_MODE: 'mock',
+      NEAR_PROTOCOL_ACCOUNT: 'custom.protocol.mock',
+    } as never);
+    expect((await mockCustomCtl.status()).protocolAccount).toBe('custom.protocol.mock');
     expect(view.feeSchedule).toMatchObject({
       standardPlatformFeeBp: 120,
       stakerPlatformFeeBp: 40,
       daoCarveOutShareBp: 2500,
       protocolNetStandardBp: 90,
       protocolNetStakerBp: 30,
+      stakerNetApyBp: 765,
+      protocolStakingYieldBp: 135,
+      protocolStakingYieldShareBp: 1500,
       minStakeForPerksNear: '25',
       escrowSlashVictimShareBp: 8500,
       escrowSlashProtocolShareBp: 1500,
@@ -98,13 +117,27 @@ describe('TerraAgent Protocol treasury view, fee env overrides & staker perks', 
       NEAR_STAKER_PLATFORM_FEE_BP: '-5',
       NEAR_DAO_FEE_SHARE_BP: 'abc',
       NEAR_STAKER_MIN_NEAR: 'not-a-number',
+      NEAR_PROTOCOL_STAKING_YIELD_BP: '10001',
       NEAR_ESCROW_SLASH_PROTOCOL_BP: '20000',
     });
     expect(fallback.standardPlatformFeeBp).toBe(100);
     expect(fallback.stakerPlatformFeeBp).toBe(50);
     expect(fallback.daoCarveOutShareBp).toBe(2000);
     expect(fallback.minStakeForPerksNear).toBe('10');
+    expect(fallback.protocolStakingYieldShareBp).toBe(2000);
     expect(fallback.escrowSlashProtocolShareBp).toBe(1000);
+
+    // Boundary 0 bp & 10000 bp staking yield shares
+    expect(resolveProtocolFeeSchedule({ NEAR_PROTOCOL_STAKING_YIELD_BP: '0' })).toMatchObject({
+      protocolStakingYieldShareBp: 0,
+      protocolStakingYieldBp: 0,
+      stakerNetApyBp: 900,
+    });
+    expect(resolveProtocolFeeSchedule({ NEAR_PROTOCOL_STAKING_YIELD_BP: '10000' })).toMatchObject({
+      protocolStakingYieldShareBp: 10000,
+      protocolStakingYieldBp: 900,
+      stakerNetApyBp: 0,
+    });
   });
 });
 
@@ -196,6 +229,57 @@ describe('Staker perks threshold & Managed NEAR.AI wallet fallback', () => {
   });
 });
 
+describe('Claimed wallet trade fee discounts & multi-pool mockChainStaking', () => {
+  it('resolves claimed wallet trade fee discounts via resolveDbStakerPerks and sums multi-pool mockChainStaking', async () => {
+    const claimedDb = {
+      nearColonyAccount: {
+        findMany: vi.fn(async () => [
+          {
+            colonyId: 'col_0',
+            accountId: 'col-0.alex.pilots.terraagent.testnet',
+            ownerAccountId: 'alex.pilots.terraagent.testnet',
+            claimedByAccountId: 'alex-wallet.testnet',
+          },
+        ]),
+      },
+      stakingPosition: {
+        findMany: vi.fn(async () => [
+          { stakedSnapshot: { toFixed: () => nearToYocto(10) } },
+        ]),
+      },
+      mockChainStaking: { findMany: vi.fn(async () => []) },
+    };
+    const perks = await resolveDbStakerPerks(claimedDb as never, {
+      colonyId: 'col_0',
+      accountId: 'col-0.alex.pilots.terraagent.testnet',
+      standardPlatformFeeBp: 80,
+    });
+    expect(perks.active).toBe(true);
+    expect(perks.platformFeeBp).toBe(40);
+
+    const multiPoolPrisma = {
+      nearColonyAccount: {
+        findMany: vi.fn(async () => [
+          { colonyId: 'col_0', accountId: 'p0.mock', ownerAccountId: 'p0.mock', claimedByAccountId: null },
+        ]),
+      },
+      stakingPosition: { findMany: vi.fn(async () => []) },
+      mockChainStaking: {
+        findMany: vi.fn(async () => [
+          { accountId: 'p0.mock', staked: { toFixed: () => nearToYocto(5) } },
+          { accountId: 'p0.mock', staked: { toFixed: () => nearToYocto(5) } },
+        ]),
+      },
+    };
+    const multiMap = await resolvePlanetStakedColonies(
+      multiPoolPrisma as never,
+      { DATABASE_URL: 'postgresql://terra:terra@127.0.0.1:5432/terra' } as never,
+      [{ index: 0, id: 'col_0' }],
+    );
+    expect(multiMap).toEqual({ 0: true });
+  });
+});
+
 describe('Mainnet fee-receiving token_diff signing for protocol & dao accounts', () => {
   it('signs production Mainnet fee-receiving token_diff legs for protocol.<root> and dao.<root> via NEAR_PROTOCOL_SECRET_KEY / NEAR_DAO_SECRET_KEY', async () => {
     const protoKey = makeNearKeyPair();
@@ -235,6 +319,14 @@ describe('Mainnet fee-receiving token_diff signing for protocol & dao accounts',
     expect(daoSigned.publicKey).toBe(daoKey.nearPublicKey);
     expect(daoSigned.diff.accountId).toBe('dao.terraagent.near');
 
+    const subDaoSigned = await adapter.signTokenDiff({
+      accountId: 'kepler.dao.terraagent.near',
+      deltas: { USDC: '2000' },
+      deadlineMs: Date.now() + 60_000,
+    });
+    expect(subDaoSigned.publicKey).toBe(daoKey.nearPublicKey);
+    expect(subDaoSigned.diff.accountId).toBe('kepler.dao.terraagent.near');
+
     // Unknown unprovisioned account on production Mainnet still fails closed
     await expect(
       adapter.signTokenDiff({
@@ -243,5 +335,122 @@ describe('Mainnet fee-receiving token_diff signing for protocol & dao accounts',
         deadlineMs: Date.now() + 60_000,
       }),
     ).rejects.toMatchObject({ errorCode: 'NEAR_ACCOUNT_NOT_FOUND' });
+  });
+});
+
+describe('Live RPC protocol balance hydration & /v1/trade/policy staker discounts', () => {
+  it('hydrates native NEAR, staking vault yield, NEP-245 cargo & Mainnet verifier balances with graceful RPC error tolerance', async () => {
+    const mainnetEnv = { NEAR_MODE: 'mainnet', NEAR_ROOT_ACCOUNT: 'terraagent.near' };
+    const cfg = resolveNearNetworkConfig(mainnetEnv, 'mainnet');
+    const cargoBatch = RESOURCE_KEYS.map((k) => (k === 'metals.t1' ? '42000000000000000000' : '0'));
+    const verifierBatch = MARKET_TOKEN_KEYS.map((k) => (k === 'USDC' ? '12500000' : '0'));
+
+    const mockRpc = {
+      config: cfg,
+      network: 'mainnet' as const,
+      withFailover: vi.fn(async (op: (p: { viewAccount: () => Promise<{ amount: string }> }) => Promise<unknown>) =>
+        op({ viewAccount: async () => ({ amount: nearToYocto(15) }) }),
+      ),
+      view: vi.fn(async (contractId: string, methodName: string) => {
+        if (contractId === cfg.contracts.staking && methodName === 'get_protocol_yield_balance') {
+          return nearToYocto('1.8');
+        }
+        if (contractId === cfg.contracts.res && methodName === 'mt_batch_balance_of') {
+          return cargoBatch;
+        }
+        if (contractId === cfg.contracts.intents && methodName === 'mt_batch_balance_of') {
+          return verifierBatch;
+        }
+        throw new Error('unexpected rpc view');
+      }),
+    };
+
+    const view = await buildProtocolTreasuryView(mainnetEnv, undefined, mockRpc as never);
+    expect(view.balances).toEqual({
+      NEAR: nearToYocto(15),
+      STAKING_YIELD_NEAR: nearToYocto('1.8'),
+      'metals.t1': '42000000000000000000',
+      USDC: '12500000',
+    });
+
+    // Partial RPC failure never rejects /v1/near/protocol
+    const degradedRpc = {
+      ...mockRpc,
+      withFailover: vi.fn(async () => {
+        throw new Error('rpc_down');
+      }),
+    };
+    const degraded = await buildProtocolTreasuryView(mainnetEnv, undefined, degradedRpc as never);
+    expect(degraded.balances.STAKING_YIELD_NEAR).toBe(nearToYocto('1.8'));
+    expect(degraded.balances.NEAR).toBeUndefined();
+  });
+});
+
+describe('Custom staking yield split & /v1/trade/policy staker discounts', () => {
+  it('credits custom NEAR_PROTOCOL_STAKING_YIELD_BP in InMemoryStaking and resolves /v1/trade/policy staker fee discounts', async () => {
+    const mem15 = new InMemoryStaking(undefined, undefined, 'proto.mock', 1500);
+    await mem15.creditNear('bob.mock', nearToYocto(10));
+    await mem15.stake({ opId: 's1', accountId: 'bob.mock', pool: 'astro-stakers.pool.mock', amount: nearToYocto(10) });
+    mem15.advanceClockMs(365 * GAME_DAY_MS);
+    await mem15.unstake({ opId: 'u1', accountId: 'bob.mock', pool: 'astro-stakers.pool.mock', amount: nearToYocto(10) });
+    expect(await mem15.nearBalanceOf('proto.mock')).toBe(nearToYocto('0.135'));
+
+    const customTradeEnv = {
+      NEAR_PLATFORM_FEE_BP: '120',
+      NEAR_STAKER_PLATFORM_FEE_BP: '45',
+      NEAR_DAO_FEE_SHARE_BP: '2500',
+      NEAR_STAKER_MIN_NEAR: '10',
+    };
+    const policyProvider = new MarketPolicyProvider(undefined, customTradeEnv as never);
+    const snapshotSvc = new MarketSnapshotService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      policyProvider,
+      {} as never,
+      {} as never,
+      customTradeEnv as never,
+    );
+    const fakePrisma = {
+      colony: { findFirst: vi.fn(async () => ({ id: 'col_staker' })) },
+      nearColonyAccount: {
+        findMany: vi.fn(async () => [{ colonyId: 'col_staker', accountId: 'staker.testnet', ownerAccountId: null, claimedByAccountId: null }]),
+      },
+      stakingPosition: {
+        findMany: vi.fn(async () => [{ stakedSnapshot: { toFixed: () => nearToYocto(12) } }]),
+      },
+      mockChainStaking: { findMany: vi.fn(async () => []) },
+    };
+    const readSvc = new TradeReadService(
+      fakePrisma as never,
+      { gate: () => undefined } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      snapshotSvc,
+      policyProvider,
+      customTradeEnv as never,
+    );
+
+    const anonPolicy = await readSvc.policyView(null);
+    expect(anonPolicy.policy.platformFeeBp).toBe(120);
+    expect(anonPolicy.policy.daoFeeShareBp).toBe(2500);
+    expect(anonPolicy.policy.stakerDiscountActive).toBeUndefined();
+
+    const stakerPolicy = await readSvc.policyView({
+      actorKind: 'player',
+      ownerId: 'player_1',
+      ownerRef: 'player:player_1',
+      key: null,
+      scopes: ['read', 'trade', 'manage'],
+      colonyFor: async () => ({ colonyId: 'col_staker', colonyIndex: 0, accountId: 'staker.testnet' }),
+    }, 'planet-alpha');
+    expect(stakerPolicy.policy).toMatchObject({
+      platformFeeBp: 45,
+      standardPlatformFeeBp: 120,
+      daoFeeShareBp: 2500,
+      stakerDiscountActive: true,
+    });
   });
 });

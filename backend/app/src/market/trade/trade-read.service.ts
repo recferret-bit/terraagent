@@ -1,10 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   type BookLevel, isResourceToken, parsePairId, MARKET_TOKEN_KEYS, TRADE_OVERVIEW_MAX_PAIRS, type TradeOverviewRow, type ListTradeOrdersQuery, type TradeBookOrdersResponse, type TokenBalance, type TradeBalancesResponse, type TradeBoardResponse, type TradeBookResponse,
   type TradeFillsResponse, type TradeOrdersResponse, type TradeOverviewResponse, type TradePairsResponse, type TradePolicyResponse, type MarketTokenKey, type ResourceKey,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
+import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
 import { colonyFunds } from '../api/colony-funds.js';
 import { MarketBookPush } from '../api/market-book-push.service.js';
 import { MarketSnapshotService } from '../api/market-snapshot.service.js';
@@ -31,6 +33,7 @@ export class TradeReadService {
     private readonly push: MarketBookPush,
     private readonly snapshots: MarketSnapshotService,
     private readonly policy: MarketPolicyProvider,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   async listOrders(p: TradePrincipal, q: ListTradeOrdersQuery & { planetId?: string }): Promise<TradeOrdersResponse> {
@@ -135,9 +138,41 @@ export class TradeReadService {
     return { pairs: this.policy.current().pairs.map((x) => ({ pair: x.pair, base: x.base, quote: x.quote, lot: x.lotUnits, minNotionalAtomic: x.minNotionalAtomic })) };
   }
 
-  policyView(p: TradePrincipal | null): TradePolicyResponse {
+  async policyView(p: TradePrincipal | null, planetId?: string): Promise<TradePolicyResponse> {
     this.orders.gate();
     const rate = p?.key ? { perSecond: p.key.ratePerSecond ?? DEFAULT_KEY_RATE.perSecond, burst: p.key.rateBurst ?? DEFAULT_KEY_RATE.burst } : p ? SESSION_RATE : DEFAULT_KEY_RATE;
-    return { policy: this.snapshots.policyView(), rateLimit: { perSecond: rate.perSecond, burst: rate.burst } };
+    const basePolicy = this.snapshots.policyView();
+    if (!p) return { policy: basePolicy, rateLimit: { perSecond: rate.perSecond, burst: rate.burst } };
+
+    let colonyId: string | undefined = p.key?.colonyId;
+    let accountId: string | undefined = p.key?.accountId;
+    if (!colonyId && planetId?.trim()) {
+      const col = await p.colonyFor(planetId.trim());
+      colonyId = col?.colonyId;
+      accountId = col?.accountId;
+    }
+    if (!colonyId && typeof this.prisma.colony?.findFirst === 'function') {
+      const owned = await this.prisma.colony.findFirst({
+        where: { playerId: p.ownerId },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      colonyId = owned?.id;
+    }
+    const perks = await resolveDbStakerPerks(this.prisma, {
+      colonyId,
+      accountId,
+      standardPlatformFeeBp: basePolicy.platformFeeBp,
+      env: (this.env ?? process.env) as Record<string, string | undefined>,
+    });
+    const policy = perks.active
+      ? {
+          ...basePolicy,
+          platformFeeBp: perks.platformFeeBp,
+          standardPlatformFeeBp: perks.standardPlatformFeeBp,
+          stakerDiscountActive: true,
+        }
+      : basePolicy;
+    return { policy, rateLimit: { perSecond: rate.perSecond, burst: rate.burst } };
   }
 }

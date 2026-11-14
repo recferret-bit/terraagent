@@ -186,6 +186,16 @@ fn slash_escrow_rejects_self_victim_equal_to_funder() {
 }
 
 #[test]
+#[should_panic(expected = "NEAR_ESCROW_INVALID_VICTIM: protocol cannot equal funder")]
+fn slash_escrow_rejects_protocol_equal_to_funder() {
+    set_caller("owner.testnet");
+    let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
+    set_caller("op.testnet");
+    c.open_escrow("op_o".into(), "esc_sp".into(), acct("attacker.testnet"), "escrow:1".into(), "metals.t1".into(), "500".into(), 0);
+    c.slash_escrow("op_s".into(), "esc_sp".into(), acct("defender.testnet"), acct("attacker.testnet"), 1_000);
+}
+
+#[test]
 #[should_panic(expected = "NEAR_ESCROW_STATE")]
 fn rejects_double_claim_with_new_op() {
     set_caller("owner.testnet");

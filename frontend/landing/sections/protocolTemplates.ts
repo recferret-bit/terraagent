@@ -26,12 +26,12 @@ function renderCoreConduitSvg(): string {
     <path class="proto-pipe-bg" d="M 228 106 C 276 106, 286 64, 352 64" />
     <path class="proto-pipe-bg" d="M 228 124 C 276 124, 286 166, 352 166" />
 
-    <!-- Scroll-energized active pipes -->
-    <path class="proto-pipe-active" data-stream="trade" stroke="var(--ta-terra)" d="M 8 38 C 78 38, 86 96, 132 104" />
-    <path class="proto-pipe-active" data-stream="staking" stroke="var(--ta-blue-hi)" d="M 8 115 L 132 115" />
-    <path class="proto-pipe-active" data-stream="bonds" stroke="var(--ta-orange)" d="M 8 192 C 78 192, 86 134, 132 126" />
-    <path class="proto-pipe-active" data-stream="all" stroke="var(--ta-energy)" d="M 228 106 C 276 106, 286 64, 352 64" />
-    <path class="proto-pipe-active" data-stream="all" stroke="var(--ta-orange-hi)" d="M 228 124 C 276 124, 286 166, 352 166" />
+    <!-- Scroll-energized active pipes (normalized pathLength=100 for exact phased scroll progress) -->
+    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="trade" stroke="var(--ta-terra)" d="M 8 38 C 78 38, 86 96, 132 104" />
+    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="staking" stroke="var(--ta-blue-hi)" d="M 8 115 L 132 115" />
+    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="in" data-stream="bonds" stroke="var(--ta-orange)" d="M 8 192 C 78 192, 86 134, 132 126" />
+    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="out" data-stream="all" stroke="var(--ta-energy)" d="M 228 106 C 276 106, 286 64, 352 64" />
+    <path class="proto-pipe-active" pathLength="100" data-pipe-phase="out" data-stream="all" stroke="var(--ta-orange-hi)" d="M 228 124 C 276 124, 286 166, 352 166" />
 
     <!-- Anchor terminals -->
     <circle cx="8" cy="38" r="4" fill="var(--ta-terra)" data-stream="trade" />
@@ -41,11 +41,13 @@ function renderCoreConduitSvg(): string {
     <circle cx="352" cy="166" r="4" fill="var(--ta-orange-hi)" />
 
     <!-- Central Hexagonal Treasury Core -->
-    <polygon points="180,52 228,80 228,150 180,178 132,150 132,80" fill="var(--ta-black-hole)" stroke="var(--ta-orange)" stroke-width="2.2" />
-    <polygon points="180,62 219,85 219,145 180,168 141,145 141,85" fill="var(--ta-plate-2)" stroke="var(--ta-seam-3)" stroke-width="1.2" />
-    <text x="180" y="103" text-anchor="middle" fill="var(--ta-energy)" font-family="var(--ta-font-mono)" font-size="9.5" font-weight="600" letter-spacing="1.4">PROTOCOL</text>
-    <text x="180" y="121" text-anchor="middle" fill="var(--ta-hull)" font-family="var(--ta-font-display)" font-size="14" font-weight="700" letter-spacing="1">TREASURY</text>
-    <text x="180" y="138" text-anchor="middle" fill="var(--ta-steel)" font-family="var(--ta-font-mono)" font-size="8.5">ZERO INFLATION</text>
+    <g class="proto-core-hex">
+      <polygon points="180,52 228,80 228,150 180,178 132,150 132,80" fill="var(--ta-black-hole)" stroke="var(--ta-orange)" stroke-width="2.2" />
+      <polygon points="180,62 219,85 219,145 180,168 141,145 141,85" fill="var(--ta-plate-2)" stroke="var(--ta-seam-3)" stroke-width="1.2" />
+      <text x="180" y="103" text-anchor="middle" fill="var(--ta-energy)" font-family="var(--ta-font-mono)" font-size="9.5" font-weight="600" letter-spacing="1.4">PROTOCOL</text>
+      <text x="180" y="121" text-anchor="middle" fill="var(--ta-hull)" font-family="var(--ta-font-display)" font-size="14" font-weight="700" letter-spacing="1">TREASURY</text>
+      <text x="180" y="138" text-anchor="middle" fill="var(--ta-steel)" font-family="var(--ta-font-mono)" font-size="8.5">ZERO INFLATION</text>
+    </g>
   </svg>`;
 }
 
@@ -60,8 +62,8 @@ export function renderProtocolSchematicHtml(): string {
           <p>Collected atomically on every CLOB &amp; Guild fill via NEP-413 <code>token_diff</code>. Remaining 20% funds the Planet Council DAO.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="staking">
-          <div class="proto-node-top"><b>20% of Validator Yield</b><span class="proto-rate">1.80% APY Slice</span></div>
-          <p>Routed from 9.0% NEAR validator pools on <code>staking.terraagent.*</code> while human pilots keep 100% principal + 7.20% APY.</p>
+          <div class="proto-node-top"><b data-proto-yield-title>20% of Validator Yield</b><span class="proto-rate" data-proto-yield-rate>1.80% APY Slice</span></div>
+          <p>Routed from 9.0% NEAR validator pools on <code>staking.terraagent.*</code> while human pilots keep 100% principal + <span data-proto-pilot-net-apy>7.20%</span> APY.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="bonds">
           <div class="proto-node-top"><b>10% Bond Arbitration Slash</b><span class="proto-rate" data-proto-slash-rate>10% of Breach</span></div>
@@ -82,7 +84,7 @@ export function renderProtocolSchematicHtml(): string {
       <div class="proto-col">
         <span class="proto-col-label is-out">▼ 2 INFRASTRUCTURE OUTFLOWS</span>
         <article class="proto-node is-out plate-sm" data-stream="all">
-          <div class="proto-node-top"><b>NEP-366 Gasless Relayer</b><span class="proto-rate">relayer.terraagent.*</span></div>
+          <div class="proto-node-top"><b>NEP-366 Gasless Relayer</b><span class="proto-rate" data-relayer-account>relayer.terraagent.*</span></div>
           <p>Sponsors <code>0.02 NEAR</code> cold-root pilot sub-account creation, storage deposits, and zero-popup gameplay meta-transactions.</p>
         </article>
         <article class="proto-node is-out-ai plate-sm" data-stream="all">

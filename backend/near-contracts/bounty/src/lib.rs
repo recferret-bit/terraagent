@@ -279,6 +279,10 @@ impl BountyEscrowContract {
             victim_id != rec.funder,
             "NEAR_ESCROW_INVALID_VICTIM: victim cannot equal funder"
         );
+        require!(
+            protocol_fee_bp == 0 || protocol_id != rec.funder,
+            "NEAR_ESCROW_INVALID_VICTIM: protocol cannot equal funder"
+        );
 
         let protocol_cut = mul_bp_floor(rec.amount, protocol_fee_bp);
         let victim_cut = rec.amount - protocol_cut;

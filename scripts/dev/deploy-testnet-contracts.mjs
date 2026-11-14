@@ -101,7 +101,7 @@ function buildNetworkTarget(network) {
     {
       key: 'staking',
       accountId: process.env.NEAR_CONTRACT_STAKING || `staking.${rootAccount}`,
-      initialNear: '2.45',
+      initialNear: '2.80',
       wasmPath: `${wasmDir}/terra_staking_contract.wasm`,
       probeMethod: 'get_owner',
       probeArgs: {},
@@ -222,6 +222,36 @@ async function ensureCoreAccounts(provider, parent, credsDir, coreAccounts) {
   return provisioned;
 }
 
+async function registerMainnetIntentsKeys(provider, credsDir, accountId, extraPublicKeys = []) {
+  const intentsContract = process.env.NEAR_CONTRACT_INTENTS || 'intents.near';
+  if (!(await viewAccountOrNull(provider, intentsContract))) return [];
+  const cred = await readCredential(credsDir, accountId);
+  const acc = new Account(accountId, provider, KeyPairSigner.fromSecretKey(cred.privateKey));
+  const keys = Array.from(new Set([cred.publicKey, ...extraPublicKeys.filter(Boolean)]));
+  const registered = [];
+  for (const publicKey of keys) {
+    const check = await provider.query({
+      request_type: 'call_function',
+      account_id: intentsContract,
+      method_name: 'has_public_key',
+      args_base64: Buffer.from(JSON.stringify({ account_id: accountId, public_key: publicKey })).toString('base64'),
+      finality: 'optimistic',
+    }).catch(() => null);
+    const already = check?.result ? JSON.parse(Buffer.from(check.result).toString('utf8')) === true : false;
+    if (already) continue;
+    const out = await acc.callFunctionRaw({
+      contractId: intentsContract,
+      methodName: 'add_public_key',
+      args: { public_key: publicKey },
+      gas: teraToGas(30),
+      deposit: 1n,
+    });
+    assertTxOutcomeOk(out, `intents.add_public_key(${accountId}, ${publicKey})`);
+    registered.push(publicKey);
+  }
+  return registered;
+}
+
 async function buildDryRunReport(target, selectedSpecs) {
   const contracts = [];
   for (const spec of selectedSpecs) {
@@ -265,6 +295,21 @@ async function deployOne(provider, parent, target, spec, redeploy) {
   }
   const sub = new Account(spec.accountId, provider, KeyPairSigner.fromSecretKey(cred.privateKey));
   if (redeploy || view?.code_hash === '11111111111111111111111111111111') {
+    const estBytes = Math.max(Number(view?.storage_usage || 0), wasm.length + 12_000);
+    const requiredYocto = BigInt(estBytes) * 10_000_000_000_000_000_000n + nearToYocto('0.18');
+    const currentYocto = BigInt(view?.amount || '0');
+    if (currentYocto < requiredYocto) {
+      const topUpYocto = requiredYocto - currentYocto;
+      const parentView = await provider.viewAccount({ accountId: rootAccount });
+      let funder = parent;
+      if (BigInt(parentView.amount) < topUpYocto + nearToYocto('0.05')) {
+        const relayerCred = await readCredential(credsDir, target.relayerAccount);
+        funder = new Account(target.relayerAccount, provider, KeyPairSigner.fromSecretKey(relayerCred.privateKey));
+      }
+      const topOut = await funder.transfer({ receiverId: spec.accountId, amount: topUpYocto });
+      assertTxOutcomeOk(topOut, `topUpStorage(${spec.accountId})`);
+      txs.topUpStorage = topOut.transaction?.hash || topOut.transaction_outcome?.id;
+    }
     const out = await sub.deployContract(wasm);
     assertTxOutcomeOk(out, `deployContract(${spec.accountId})`);
     txs.deployContract = out.transaction?.hash || out.transaction_outcome?.id;
@@ -280,17 +325,37 @@ async function deployOne(provider, parent, target, spec, redeploy) {
     assertTxOutcomeOk(out, `init(${spec.accountId})`);
     txs.init = out.transaction?.hash || out.transaction_outcome?.id;
   }
-  if (spec.key === 'staking' && protocolAccount !== `protocol.${rootAccount}`) {
-    const out = await parent.callFunctionRaw({
-      contractId: spec.accountId,
-      methodName: 'set_protocol_account',
-      args: { protocol_id: protocolAccount },
-      gas: teraToGas(30),
-    });
-    assertTxOutcomeOk(out, `set_protocol_account(${spec.accountId})`);
-    txs.setProtocolAccount = out.transaction?.hash || out.transaction_outcome?.id;
+  if (spec.key === 'staking') {
+    if (protocolAccount !== `protocol.${rootAccount}`) {
+      const out = await parent.callFunctionRaw({
+        contractId: spec.accountId,
+        methodName: 'set_protocol_account',
+        args: { protocol_id: protocolAccount },
+        gas: teraToGas(30),
+      });
+      assertTxOutcomeOk(out, `set_protocol_account(${spec.accountId})`);
+      txs.setProtocolAccount = out.transaction?.hash || out.transaction_outcome?.id;
+    }
+    const rawYieldBp = process.env.NEAR_PROTOCOL_STAKING_YIELD_BP?.trim();
+    if (rawYieldBp && /^\d+$/.test(rawYieldBp)) {
+      const yieldBp = Number(rawYieldBp);
+      if (Number.isSafeInteger(yieldBp) && yieldBp >= 0 && yieldBp <= 10_000) {
+        const out = await parent.callFunctionRaw({
+          contractId: spec.accountId,
+          methodName: 'set_protocol_yield_bp',
+          args: { yield_bp: yieldBp },
+          gas: teraToGas(30),
+        });
+        assertTxOutcomeOk(out, `set_protocol_yield_bp(${spec.accountId})`);
+        txs.setProtocolYieldBp = out.transaction?.hash || out.transaction_outcome?.id;
+      }
+    }
   }
-  const finalView = await provider.viewAccount({ accountId: spec.accountId });
+  const finalView = await provider.query({
+    request_type: 'view_account',
+    account_id: spec.accountId,
+    finality: 'final',
+  });
   return {
     key: spec.key,
     accountId: spec.accountId,
@@ -328,6 +393,16 @@ async function main() {
   const results = [];
   for (const spec of selectedSpecs) {
     results.push(await deployOne(provider, parent, target, spec, opts.redeploy));
+  }
+  if (opts.network === 'mainnet' && (!opts.only || opts.ensureAccounts || opts.only.has('dao'))) {
+    const minterCred = await readCredential(target.credsDir, target.minterAccount, 'NEAR_MINTER_SECRET_KEY').catch(() => null);
+    const extraKeys = [minterCred?.publicKey, rootCred.publicKey].filter(Boolean);
+    const daoSpec = target.specs.find((s) => s.key === 'dao');
+    for (const acctId of [target.protocolAccount, daoSpec?.accountId].filter(Boolean)) {
+      if (await viewAccountOrNull(provider, acctId)) {
+        await registerMainnetIntentsKeys(provider, target.credsDir, acctId, extraKeys);
+      }
+    }
   }
   const rootView = await provider.viewAccount({ accountId: target.rootAccount });
   const relayerView = await viewAccountOrNull(provider, target.relayerAccount);

@@ -8,7 +8,7 @@ For state-driven insect actions and hive-life combat, use [procedural-insect-ani
 
 # Hives that look inhabited
 
-Read the [fauna contract](../../../docs/game/fauna-hives-spec.md), [organic policy](../procedural-kitbash-3d/references/organic-fauna.md), bug, shader, viewport and validator skills. Hives use organic rules even though gameplay treats them as buildings.
+Read [`faunaVisualRegistry.ts`](../../../frontend/render/kitbash/faunaVisualRegistry.ts), [organic policy](../procedural-kitbash-3d/references/organic-fauna.md), bug, shader, viewport and validator skills. Hives use organic rules even though gameplay treats them as buildings.
 
 Build inhabited growth or excavated habitat: ant earth mounds with irregular burrow lips and sediment trails; beetle nests with layered molted shell vaults and a broad recessed entrance; spitter colonies with fleshy fluted chimneys, resin lobes and a recessed basin. Explore unequal spacing, slumped contours, branching growth, eroded ridges and asymmetric silhouettes. Avoid industrial plinths, collars, strut cages, rectangular doors and beacon towers unless the concept explicitly calls for machinery.
 

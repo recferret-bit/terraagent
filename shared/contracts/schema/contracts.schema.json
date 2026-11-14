@@ -11311,6 +11311,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "attackerColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "bondAmount": {
             "exclusiveMinimum": 0,
             "type": "number"
@@ -11334,6 +11339,11 @@
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "defenderColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "expiresAtTick": {
             "maximum": 9007199254740991,
@@ -11377,6 +11387,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "attackerColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "bondAmount": {
             "exclusiveMinimum": 0,
             "type": "number"
@@ -11385,6 +11400,20 @@
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "cancelledBy": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ]
           },
           "defenderColony": {
             "maximum": 9007199254740991,
@@ -11395,6 +11424,11 @@
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
+          },
+          "defenderColonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "endedAtTick": {
             "maximum": 9007199254740991,
@@ -11415,8 +11449,15 @@
             "type": "number"
           },
           "slashedToDefender": {
-            "minimum": 0,
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "minimum": 0,
+                "type": "number"
+              }
+            ]
           },
           "slashedToProtocol": {
             "minimum": 0,

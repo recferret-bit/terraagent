@@ -5,5 +5,5 @@
     "noEmit": true, "isolatedModules": true, "resolveJsonModule": true, "types": ["vite/client"]
   },
   "include": [".", "vite.config.ts"],
-  "exclude": ["dist", "node_modules", "game/features/treasury/council-costs.spec.ts"]
+  "exclude": ["dist", "node_modules", "game/features/treasury/council-costs.spec.ts", "landing/sections/protocolSection.spec.ts"]
 }

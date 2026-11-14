@@ -40,6 +40,10 @@
 }
 
 .ta-trade-hub__toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   line-height: 1.4;
@@ -48,6 +52,15 @@
   border: 1px solid var(--ta-orange);
   padding: var(--ta-s1) var(--ta-s2);
   cursor: pointer;
+}
+
+.ta-trade-hub__toast::after,
+.ta-cargo-toast::after {
+  content: '×';
+  flex: none;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.8;
 }
 
 .ta-trade-hub__toast[hidden] {
@@ -60,12 +73,18 @@
 }
 
 .ta-cargo-toast {
+  position: fixed;
+  bottom: var(--ta-s7);
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
-  gap: var(--ta-s1);
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
   min-width: 240px;
-  max-width: 340px;
-  padding: var(--ta-s2);
+  max-width: min(420px, 92vw);
+  padding: var(--ta-s2) var(--ta-s3);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   font-weight: 600;
@@ -75,6 +94,7 @@
   border: 1px solid var(--ta-orange);
   box-sizing: border-box;
   cursor: pointer;
+  pointer-events: auto;
   z-index: 100;
 }
 

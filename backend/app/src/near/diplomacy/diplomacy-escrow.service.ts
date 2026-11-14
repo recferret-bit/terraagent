@@ -205,13 +205,23 @@ export class DiplomacyEscrowService {
 
   private async refundSingle(opId: string, escrowId: string, caller: string): Promise<ChainReceipt | null> {
     const body = { opId, escrowId, caller };
+    if (this.useOutbox()) {
+      await this.outbox!.enqueue({ opId, port: 'Escrow', method: 'refund', payload: body });
+    }
     try {
       const receipt = await this.escrow.refund(body);
+      if (this.useOutbox()) {
+        await this.outbox!.markDoneByOpId(opId, receipt, receipt.txHash).catch(() => false);
+      }
       return receipt;
     } catch (err) {
       if (err instanceof NearException && err.errorCode === 'NEAR_ESCROW_NOT_FOUND') {
+        if (this.useOutbox()) await this.outbox!.abandon(opId).catch(() => undefined);
         this.log.warn(`diplomacy/war escrow ${escrowId} not found on refund (${opId})`);
         return null;
+      }
+      if (this.useOutbox() && isDeterministicChainError(err)) {
+        await this.outbox!.abandon(opId).catch(() => undefined);
       }
       throw err;
     }
@@ -227,12 +237,23 @@ export class DiplomacyEscrowService {
       protocolAccountId: this.resolveProtocolAccount(),
       protocolFeeBp,
     };
+    if (this.useOutbox()) {
+      await this.outbox!.enqueue({ opId, port: 'Escrow', method: 'slash', payload: body });
+    }
     try {
-      return await this.escrow.slash(body);
+      const receipt = await this.escrow.slash(body);
+      if (this.useOutbox()) {
+        await this.outbox!.markDoneByOpId(opId, receipt, receipt.txHash).catch(() => false);
+      }
+      return receipt;
     } catch (err) {
       if (err instanceof NearException && err.errorCode === 'NEAR_ESCROW_NOT_FOUND') {
+        if (this.useOutbox()) await this.outbox!.abandon(opId).catch(() => undefined);
         this.log.warn(`diplomacy/war escrow ${escrowId} not found on slash (${opId})`);
         return null;
+      }
+      if (this.useOutbox() && isDeterministicChainError(err)) {
+        await this.outbox!.abandon(opId).catch(() => undefined);
       }
       throw err;
     }

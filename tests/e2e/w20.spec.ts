@@ -52,11 +52,8 @@ test('@hack 1. open /play.html?scenario=w20 -> open Colony Deed -> see card with
   const t0 = await loadScenario(page, 'w20', { skip: '1' }, { as: 'w20', timeout: 45_000 });
   await tickAdvances(page, t0);
 
-  const trigger = page.locator('[data-testid="colony-deed-btn"]');
   await expect(page.getByTestId('colony-tab-deed')).toBeVisible({ timeout: 15_000 });
-  await openColonyTab(page, 'deed'); // the Deed button lives in the Colony book's Deed tab
-  await expect(trigger).toBeVisible({ timeout: 15_000 });
-  await trigger.click();
+  await openColonyTab(page, 'deed'); // clicking the Deed tab opens the Deed dialog directly
 
   const panel = page.locator('[data-testid="deed-panel"]');
   await expect(panel).toHaveAttribute('data-open', 'true');

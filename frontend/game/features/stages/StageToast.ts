@@ -236,17 +236,7 @@ export class StageToast implements Disposable {
     titleEl.className = 'ta-stage-toast__title';
     titleEl.setAttribute('data-testid', 'stage-toast-title');
     titleEl.textContent = title;
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'btn btn-ghost btn-sm ta-stage-toast__close';
-    closeBtn.setAttribute('data-testid', 'stage-toast-close');
-    closeBtn.setAttribute('aria-label', 'Close stage notification');
-    closeBtn.textContent = '×';
-    closeBtn.onclick = () => {
-      this.dismiss();
-      opts?.onDismiss?.();
-    };
-    titleRow.appendChild(closeBtn);
+    titleRow.append(titleEl, this.createCloseButton(opts));
 
     if (override && override.trim() !== '') {
       const overrideEl = document.createElement('span');
@@ -306,6 +296,20 @@ export class StageToast implements Disposable {
     this.startCountdown(actions, opts);
 
     return el;
+  }
+
+  private createCloseButton(opts?: StageToastOptions): HTMLButtonElement {
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn-ghost btn-sm ta-stage-toast__close';
+    closeBtn.setAttribute('data-testid', 'stage-toast-close');
+    closeBtn.setAttribute('aria-label', 'Close stage notification');
+    closeBtn.textContent = '×';
+    closeBtn.onclick = () => {
+      this.dismiss();
+      opts?.onDismiss?.();
+    };
+    return closeBtn;
   }
 
   private startCountdown(actions: HTMLElement, opts?: StageToastOptions): void {

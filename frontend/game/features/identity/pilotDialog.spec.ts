@@ -8,10 +8,40 @@ describe('Pilot display name, logout removal & full-featured PilotDialog', () =>
     document.body.replaceChildren();
   });
 
-  it('formats raw guest/pilot identifiers cleanly while preserving custom handles', () => {
+  it('formats raw guest/pilot/oauth identifiers cleanly while preserving custom handles', () => {
     expect(formatPilotDisplayName({ isGuest: true, handle: '', accountId: null })).toBe('Guest Pilot');
     expect(formatPilotDisplayName({ isGuest: true, handle: 'guest_9f8e7d6c5b', accountId: null })).toBe('Pilot #9F8E');
     expect(formatPilotDisplayName({ isGuest: true, handle: 'pilot-1234', accountId: null })).toBe('Pilot #1234');
+    expect(formatPilotDisplayName({ isGuest: true, handle: 'Colonist-A1B2', accountId: null })).toBe('Pilot #A1B2');
+    expect(
+      formatPilotDisplayName({
+        isGuest: false,
+        handle: 'google-oauth2-1069208173371956-2',
+        accountId: 'google-oauth2-1069208173371956-2.terraagent.testnet',
+      }),
+    ).toBe('Pilot #1956');
+    expect(
+      formatPilotDisplayName({
+        isGuest: false,
+        handle: '',
+        accountId: 'google-oauth2-1069208173371956-2.terraagent.testnet',
+      }),
+    ).toBe('Pilot #1956');
+    expect(formatPilotDisplayName('google-oauth2|1069208173371956')).toBe('Pilot #1956');
+    expect(formatPilotDisplayName('linkedin|99887766')).toBe('Pilot #7766');
+    expect(formatPilotDisplayName('', 'google-oauth2-1069208173371956-2.pilots.terraagent.testnet', false)).toBe(
+      'Pilot #1956',
+    );
+    expect(formatPilotDisplayName('', 'aria.pilots.terraagent.testnet', false)).toBe('Aria');
+    expect(formatPilotDisplayName('pilot-nova')).toBe('Pilot Nova');
+    expect(formatPilotDisplayName('twitter-987654321', 'twitter-987654321.terraagent.testnet', false)).toBe('Pilot #4321');
+    expect(
+      formatPilotDisplayName({
+        isGuest: false,
+        handle: 'google-oauth2|1069208173371956',
+        accountId: 'captain-aria.terraagent.testnet',
+      }),
+    ).toBe('Captain Aria');
     expect(formatPilotDisplayName({ isGuest: false, handle: 'Commander Nova', accountId: 'nova.near' })).toBe('Commander Nova');
   });
 
@@ -37,6 +67,12 @@ describe('Pilot display name, logout removal & full-featured PilotDialog', () =>
     expect(el.textContent?.toLowerCase()).not.toContain('logout');
     inst.dispose();
   });
+});
+
+describe('Full-featured PilotDialog', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
 
   it('opens a full-featured PilotDialog like Deed with colony details and a /me.html new-tab link', () => {
     const host = document.createElement('div');
@@ -60,7 +96,15 @@ describe('Pilot display name, logout removal & full-featured PilotDialog', () =>
     const dialog = new PilotDialog(host, ctx);
     dialog.update({
       planet: { id: 'dune-prime', type: 'dune' },
-      colonies: [{ index: 0, name: 'Helios Outpost', stage: 3, terraformBp: 4200 }],
+      colonies: [
+        {
+          index: 0,
+          name: 'Helios Outpost',
+          stage: 3,
+          terraformBp: 4200,
+          stock: { 'metals.t1': 120, 'metals.t2': 30, 'minerals.t1': 60, 'bio.biomass': 25 },
+        },
+      ],
     } as never);
 
     const trigger = host.querySelector<HTMLButtonElement>('[data-testid="pilot-dialog-trigger"]')!;
@@ -77,6 +121,7 @@ describe('Pilot display name, logout removal & full-featured PilotDialog', () =>
     expect(modal.querySelector('[data-testid="pilot-stat-colony"]')?.textContent).toBe('Helios Outpost');
     expect(modal.querySelector('[data-testid="pilot-stat-stage"]')?.textContent).toContain('S3');
     expect(modal.querySelector('[data-testid="pilot-stat-terraform"]')?.textContent).toBe('42 %');
+    expect(modal.querySelector('[data-testid="pilot-stat-stock"]')?.textContent).toBe('M 150 · Mn 60 · B 25');
 
     const meLink = modal.querySelector<HTMLAnchorElement>('[data-testid="pilot-open-me"]')!;
     expect(meLink).not.toBeNull();

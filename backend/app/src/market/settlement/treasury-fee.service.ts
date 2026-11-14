@@ -5,6 +5,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { TreasuryDaoPort } from '../../near/application/ports/treasury-dao.port.js';
+import { nearAdapterFor } from '../../near/infrastructure/adapter-selection.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
 import { loadKekRing } from '../../near/keystore/kek.js';
 import { KeyStore } from '../../near/keystore/keys.js';
@@ -75,7 +76,8 @@ export class TreasuryFeeService {
 
   private async daoAccount(planetId: string): Promise<string | null> {
     try {
-      const view = await this.daos.get({ daoAccountId: daoAccountIdFor(planetId) });
+      const envBag = this.env as unknown as Record<string, string | undefined>;
+      const view = await this.daos.get({ daoAccountId: daoAccountIdFor(planetId, envBag) });
       return view.daoAccountId;
     } catch (e) {
       if (missingDao(e)) return null;
@@ -85,8 +87,9 @@ export class TreasuryFeeService {
 
   private async signerFor(accountId: string): Promise<string> {
     if (await this.hasKey(accountId)) return accountId;
-    if (this.env.NODE_ENV === 'production') {
-      return resolveTreasurySystemAccountId(this.env as unknown as Record<string, string | undefined>);
+    const envBag = this.env as unknown as Record<string, string | undefined>;
+    if (this.env.NODE_ENV === 'production' || nearAdapterFor('Intents', envBag) === 'mainnet') {
+      return resolveTreasurySystemAccountId(envBag);
     }
     await ensureCustodialAccount(this.prisma, this.ring(), accountId);
     return accountId;

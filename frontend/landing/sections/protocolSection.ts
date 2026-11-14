@@ -9,25 +9,35 @@ import {
 } from './protocolTemplates';
 
 interface ProtocolTelemetryDto {
-  readonly protocolAccount?: string;
+  readonly protocolAccountId?: string;
+  readonly relayerAccountId?: string;
   readonly feeSchedule?: {
     readonly standardPlatformFeeBp?: number;
     readonly stakerPlatformFeeBp?: number;
-    readonly protocolShareBp?: number;
-    readonly stakerMinNear?: number;
-    readonly diplomacySlashProtocolBp?: number;
+    readonly daoCarveOutShareBp?: number;
+    readonly protocolNetStandardBp?: number;
+    readonly protocolNetStakerBp?: number;
+    readonly stakerNetApyBp?: number;
+    readonly protocolStakingYieldBp?: number;
+    readonly protocolStakingYieldShareBp?: number;
+    readonly minStakeForPerksNear?: string | number;
+    readonly escrowSlashProtocolShareBp?: number;
   };
 }
+
+let detachScrollListeners: (() => void) | null = null;
 
 function bindStreamFilter(host: HTMLElement): void {
   const schematic = host.querySelector<HTMLElement>('#protocol-schematic');
   const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-proto-filter]')];
   if (!schematic || buttons.length === 0) return;
 
+  host.dataset.activeStream = 'all';
   for (const btn of buttons) {
     btn.addEventListener('click', () => {
       const stream = btn.dataset.protoFilter ?? 'all';
       schematic.dataset.activeStream = stream;
+      host.dataset.activeStream = stream;
       for (const b of buttons) {
         b.setAttribute('aria-pressed', String(b === btn));
       }
@@ -35,13 +45,26 @@ function bindStreamFilter(host: HTMLElement): void {
   }
 }
 
+function setPhasedConduitVars(schematic: HTMLElement, progress: number): void {
+  const inP = clamp(progress / 0.55, 0, 1);
+  const coreP = clamp((progress - 0.25) / 0.5, 0, 1);
+  const outP = clamp((progress - 0.45) / 0.55, 0, 1);
+  schematic.style.setProperty('--proto-p', progress.toFixed(3));
+  schematic.style.setProperty('--in-p', inP.toFixed(3));
+  schematic.style.setProperty('--core-p', coreP.toFixed(3));
+  schematic.style.setProperty('--out-p', outP.toFixed(3));
+}
+
 function bindScrollTransitions(section: HTMLElement, host: HTMLElement): void {
+  detachScrollListeners?.();
+  detachScrollListeners = null;
+
   const schematic = host.querySelector<HTMLElement>('#protocol-schematic');
   const stages = [...host.querySelectorAll<HTMLElement>('[data-proto-stage]')];
   if (!schematic) return;
 
   if (prefersReducedMotion()) {
-    schematic.style.setProperty('--proto-p', '1');
+    setPhasedConduitVars(schematic, 1);
     stages.forEach((s) => s.classList.add('is-active'));
     return;
   }
@@ -51,10 +74,11 @@ function bindScrollTransitions(section: HTMLElement, host: HTMLElement): void {
 
   const update = (): void => {
     const rect = schematic.getBoundingClientRect();
-    const progress = clamp((innerHeight * 0.82 - rect.top) / Math.max(rect.height * 0.85, 1), 0, 1);
-    schematic.style.setProperty('--proto-p', progress.toFixed(3));
+    const vh = Math.max(innerHeight, 1);
+    const progress = clamp((vh * 0.86 - rect.top) / Math.max(rect.height * 0.85, 1), 0, 1);
+    setPhasedConduitVars(schematic, progress);
 
-    const stageTrigger = innerHeight * 0.84;
+    const stageTrigger = vh * 0.86;
     for (const stage of stages) {
       if (stage.getBoundingClientRect().top < stageTrigger) {
         stage.classList.add('is-active');
@@ -74,6 +98,10 @@ function bindScrollTransitions(section: HTMLElement, host: HTMLElement): void {
 
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', onScroll);
+  detachScrollListeners = () => {
+    removeEventListener('scroll', onScroll);
+    removeEventListener('resize', onScroll);
+  };
   update();
 }
 
@@ -83,28 +111,37 @@ async function hydrateProtocolTelemetry(host: HTMLElement): Promise<void> {
     if (!res.ok) return;
     const body = (await res.json()) as ProtocolTelemetryDto;
     const acctEl = host.querySelector<HTMLElement>('[data-protocol-account]');
-    if (acctEl && body.protocolAccount) acctEl.textContent = body.protocolAccount;
+    if (acctEl && body.protocolAccountId) acctEl.textContent = body.protocolAccountId;
+    const relayerEl = host.querySelector<HTMLElement>('[data-relayer-account]');
+    if (relayerEl && body.relayerAccountId) relayerEl.textContent = body.relayerAccountId;
 
     const sched = body.feeSchedule;
     if (!sched) return;
     const tradeEl = host.querySelector<HTMLElement>('[data-proto-trade-rate]');
-    if (
-      tradeEl &&
-      sched.standardPlatformFeeBp !== undefined &&
-      sched.stakerPlatformFeeBp !== undefined &&
-      sched.protocolShareBp !== undefined
-    ) {
-      const stdPct = ((sched.standardPlatformFeeBp * sched.protocolShareBp) / 1_000_000).toFixed(2);
-      const stkPct = ((sched.stakerPlatformFeeBp * sched.protocolShareBp) / 1_000_000).toFixed(2);
+    if (tradeEl && sched.protocolNetStandardBp !== undefined && sched.protocolNetStakerBp !== undefined) {
+      const stdPct = (sched.protocolNetStandardBp / 100).toFixed(2);
+      const stkPct = (sched.protocolNetStakerBp / 100).toFixed(2);
       tradeEl.textContent = `${stdPct}% / ${stkPct}%`;
     }
+    const yieldTitleEl = host.querySelector<HTMLElement>('[data-proto-yield-title]');
+    if (yieldTitleEl && sched.protocolStakingYieldShareBp !== undefined) {
+      yieldTitleEl.textContent = `${Math.round(sched.protocolStakingYieldShareBp / 100)}% of Validator Yield`;
+    }
+    const yieldEl = host.querySelector<HTMLElement>('[data-proto-yield-rate]');
+    if (yieldEl && sched.protocolStakingYieldBp !== undefined) {
+      yieldEl.textContent = `${(sched.protocolStakingYieldBp / 100).toFixed(2)}% APY Slice`;
+    }
+    const netApyEl = host.querySelector<HTMLElement>('[data-proto-pilot-net-apy]');
+    if (netApyEl && sched.stakerNetApyBp !== undefined) {
+      netApyEl.textContent = `${(sched.stakerNetApyBp / 100).toFixed(2)}%`;
+    }
     const slashEl = host.querySelector<HTMLElement>('[data-proto-slash-rate]');
-    if (slashEl && sched.diplomacySlashProtocolBp !== undefined) {
-      slashEl.textContent = `${(sched.diplomacySlashProtocolBp / 100).toFixed(0)}% of Breach`;
+    if (slashEl && sched.escrowSlashProtocolShareBp !== undefined) {
+      slashEl.textContent = `${(sched.escrowSlashProtocolShareBp / 100).toFixed(0)}% of Breach`;
     }
     const minStakeEl = host.querySelector<HTMLElement>('[data-proto-min-stake]');
-    if (minStakeEl && sched.stakerMinNear !== undefined) {
-      minStakeEl.textContent = `≥${sched.stakerMinNear} NEAR`;
+    if (minStakeEl && sched.minStakeForPerksNear !== undefined) {
+      minStakeEl.textContent = `≥${sched.minStakeForPerksNear} NEAR`;
     }
   } catch {
     // Static / offline preview keeps Testnet defaults.

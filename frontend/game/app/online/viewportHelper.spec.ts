@@ -144,6 +144,26 @@ describe('viewportHelper: page events and overlays', () => {
     expect(isEscapeBlockedByHudOverlay()).toBe(false);
     con.style.display = '';
     expect(isEscapeBlockedByHudOverlay()).toBe(true);
+    con.style.display = 'none';
+
+    for (const testid of ['pilot-dialog', 'trade-hub-panel', 'deed-panel']) {
+      const modal = document.createElement('div');
+      modal.dataset.testid = testid;
+      modal.dataset.open = 'false';
+      document.body.append(modal);
+      expect(isEscapeBlockedByHudOverlay()).toBe(false);
+      modal.dataset.open = 'true';
+      expect(isEscapeBlockedByHudOverlay()).toBe(true);
+      modal.dataset.open = 'false';
+    }
+
+    const stageHud = document.createElement('div');
+    stageHud.dataset.testid = 'stage-track-hud';
+    stageHud.hidden = true;
+    document.body.append(stageHud);
+    expect(isEscapeBlockedByHudOverlay()).toBe(false);
+    stageHud.hidden = false;
+    expect(isEscapeBlockedByHudOverlay()).toBe(true);
   });
 });
 

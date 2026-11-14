@@ -8,7 +8,7 @@ For state-driven insect actions and hive-life combat, use [procedural-insect-ani
 
 # Living insect models
 
-Read the [fauna contract](../../../docs/game/fauna-hives-spec.md), [organic policy](../procedural-kitbash-3d/references/organic-fauna.md), animation, shader and validator skills. The organic policy takes precedence over mechanical kitbash appearance rules for fauna.
+Read [`faunaVisualRegistry.ts`](../../../frontend/render/kitbash/faunaVisualRegistry.ts), [organic policy](../procedural-kitbash-3d/references/organic-fauna.md), animation, shader and validator skills. The organic policy takes precedence over mechanical kitbash appearance rules for fauna.
 
 Build forms that appear grown. Major shapes express anatomy, growth, articulation or tissue tension. Explore bold proportions, curved cross-sections, tapered limbs, overlapping shell lips, uneven growth and restrained asymmetry. Avoid box thoraxes, foot pads with rims, exposed ball bearings, gun barrels and decorative status lights. Keep six legs attached to the thorax and a recognizable species silhouette: ant waist and cutting jaws; beetle domed elytra and horn; spitter elevated gland-bearing abdomen and fleshy mouth.
 

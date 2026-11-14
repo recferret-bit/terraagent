@@ -60,7 +60,7 @@
 .ta-book__tab {
   justify-content: space-between;
   gap: var(--ta-s1);
-  padding: var(--ta-s2) var(--ta-s3);
+  padding: 6px var(--ta-s3);
   color: var(--ta-steel);
   background: var(--ta-deep);
   border: 1px solid var(--ta-seam);
@@ -135,12 +135,12 @@
 
 .ta-book__toggle {
   justify-content: center;
-  height: 24px;
-  margin-top: var(--ta-s1);
+  height: 22px;
+  margin-top: 2px;
   color: var(--ta-text-2);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam-2);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .ta-book__toggle:hover {

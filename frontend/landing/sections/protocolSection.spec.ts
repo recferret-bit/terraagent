@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildProtocolTreasuryView } from '../../../backend/app/src/near/infrastructure/dev/protocol-treasury.view';
 import { initEconomicsSection } from './economicsSection';
 import { initProtocolSection } from './protocolSection';
 
@@ -28,28 +29,36 @@ describe('Landing #protocol & #economics sections', () => {
   });
 
   it('mounts the Protocol schematic, filters streams interactively, and hydrates live /v1/near/protocol telemetry', async () => {
+    const realApiPayload = await buildProtocolTreasuryView({
+      NEAR_MODE: 'mainnet',
+      NEAR_ROOT_ACCOUNT: 'terraagent.near',
+      NEAR_PROTOCOL_ACCOUNT: 'treasury.terraagent.near',
+      NEAR_PLATFORM_FEE_BP: '120',
+      NEAR_STAKER_PLATFORM_FEE_BP: '60',
+      NEAR_DAO_FEE_SHARE_BP: '2500',
+      NEAR_STAKER_MIN_NEAR: '15',
+      NEAR_PROTOCOL_STAKING_YIELD_BP: '1500',
+      NEAR_ESCROW_SLASH_PROTOCOL_BP: '1200',
+    });
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        protocolAccount: 'treasury.terraagent.near',
-        feeSchedule: {
-          standardPlatformFeeBp: 120,
-          stakerPlatformFeeBp: 60,
-          protocolShareBp: 7500,
-          stakerMinNear: 15,
-          diplomacySlashProtocolBp: 1200,
-        },
-      }),
+      json: async () => realApiPayload,
     }) as unknown as typeof fetch;
 
     initProtocolSection();
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 15));
 
+    const board = document.getElementById('protocol-board');
     const card = document.querySelector<HTMLElement>('[data-testid="landing-protocol-card"]');
     expect(card).not.toBeNull();
     expect(card?.dataset.activeStream).toBe('all');
+    expect(board?.dataset.activeStream).toBe('all');
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('treasury.terraagent.near');
+    expect(document.querySelector('[data-relayer-account]')?.textContent).toBe('relayer.terraagent.near');
     expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.90% / 0.45%');
+    expect(document.querySelector('[data-proto-yield-title]')?.textContent).toBe('15% of Validator Yield');
+    expect(document.querySelector('[data-proto-yield-rate]')?.textContent).toBe('1.35% APY Slice');
+    expect(document.querySelector('[data-proto-pilot-net-apy]')?.textContent).toBe('7.65%');
     expect(document.querySelector('[data-proto-slash-rate]')?.textContent).toBe('12% of Breach');
     expect(document.querySelector('[data-proto-min-stake]')?.textContent).toBe('≥15 NEAR');
     expect(document.querySelectorAll('[data-proto-stage]').length).toBe(3);
@@ -57,6 +66,7 @@ describe('Landing #protocol & #economics sections', () => {
     const stakingBtn = document.querySelector<HTMLButtonElement>('[data-proto-filter="staking"]')!;
     stakingBtn.click();
     expect(card?.dataset.activeStream).toBe('staking');
+    expect(board?.dataset.activeStream).toBe('staking');
     expect(stakingBtn.getAttribute('aria-pressed')).toBe('true');
   });
 

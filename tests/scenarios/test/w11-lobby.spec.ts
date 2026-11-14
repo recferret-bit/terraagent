@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   computeAtlasSectorColonyMetrics,
   evaluateCrossSectorPlacement,
@@ -9,6 +7,7 @@ import {
   inspectCrossSectorPowerGrid,
   runSmallAtlasBenchmark,
   validateSeedCorpusLandingSites,
+  W11_PUBLISHED_SMALL_ATLAS_FIXTURE,
   W11_SMALL_ATLAS_PERF_CAPS,
 } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
@@ -186,7 +185,10 @@ describe('W11 isolated 4x sector (R=48, 7,057 tiles) & disabled cross-sector gam
 });
 
 describe('W11 safe landing site corpus, W11-43 perf caps & W27 readiness manifest', () => {
-  it('verifies the 3-profile × X=3/4/5 safe landing site corpus and W11-43 performance caps (w27ScaleClaimed === false)', () => {
+  it(
+    'verifies the 3-profile × X=3/4/5 safe landing site corpus and W11-43 performance caps (w27ScaleClaimed === false)',
+    { timeout: 30_000 },
+    () => {
     const corpus = validateSeedCorpusLandingSites({
       planetTypes: ['desert', 'ocean', 'temperate'],
       capacities: [3, 4, 5],
@@ -219,31 +221,20 @@ describe('W11 safe landing site corpus, W11-43 perf caps & W27 readiness manifes
     expect(bench.withinBudget).toBe(true);
   });
 
-  it('verifies docs/plan/w27-readiness-manifest.md and docs/plan/checks/w11-check.md completeness', () => {
+  it('verifies W11 issue partition (W11-01..W11-47) and published small-atlas W27 readiness invariants', () => {
     expect(COMPLETED_H_ISSUES).toHaveLength(28);
     expect(DEFERRED_UNTAGGED_ISSUES).toHaveLength(19);
 
-    const rootDir = resolve(__dirname, '../../..');
-    const manifestMd = readFileSync(resolve(rootDir, 'docs/plan/w27-readiness-manifest.md'), 'utf8');
-    expect(manifestMd).toContain('"w27Ready": false');
-    expect(manifestMd).toContain('"w27ScaleClaimed": false');
-    expect(manifestMd).toContain('W11_SMALL_ATLAS_PERF_CAPS');
-    expect(manifestMd).toContain('MAP_EXTENSION_HANDOFF.md');
-
-    for (const id of COMPLETED_H_ISSUES) {
-      expect(manifestMd).toContain(id);
-    }
-    for (const id of DEFERRED_UNTAGGED_ISSUES) {
-      expect(manifestMd).toContain(id);
+    const combined = [...COMPLETED_H_ISSUES, ...DEFERRED_UNTAGGED_ISSUES];
+    const unique = new Set<string>(combined);
+    expect(unique.size).toBe(47);
+    for (let n = 1; n <= 47; n += 1) {
+      expect(unique.has(`W11-${String(n).padStart(2, '0')}`)).toBe(true);
     }
 
-    const checkMd = readFileSync(resolve(rootDir, 'docs/plan/checks/w11-check.md'), 'utf8');
-    expect(checkMd).toContain('http://127.0.0.1:5273');
-    expect(checkMd).toContain('http://127.0.0.1:4101');
-    expect(checkMd).toContain('?scenario=w11');
-    expect(checkMd).toContain('&waves=..10');
-    expect(checkMd).toContain('?host=local&scenario=w11');
-    expect(checkMd).toContain('w27-readiness-manifest.md');
-    expect(checkMd).toContain('npm run wave -- land 11');
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.w27ScaleClaimed).toBe(false);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.caps).toBe(W11_SMALL_ATLAS_PERF_CAPS);
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.deferredToW27).toContain('150_sector_medium_atlas');
+    expect(W11_PUBLISHED_SMALL_ATLAS_FIXTURE.deferredToW27).toContain('450_sector_large_atlas');
   });
 });

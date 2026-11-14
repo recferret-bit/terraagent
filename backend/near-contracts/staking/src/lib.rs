@@ -1,14 +1,26 @@
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, NearToken, PanicOnDefault, Promise};
+use near_sdk::{
+    env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise,
+    PromiseError,
+};
 use serde_json::json;
 
 const GAME_DAY_MS: u64 = 86_400_000;
 const UNBONDING_DURATION_MS: u64 = 2 * GAME_DAY_MS;
 const YEAR_MS: u128 = 365 * (GAME_DAY_MS as u128);
-const PROTOCOL_YIELD_SHARE_BP: u128 = 2_000; // 20% of validator yield -> protocol.<owner_id>, 80% -> staker (7.2% net APY)
+const DEFAULT_PROTOCOL_YIELD_SHARE_BP: u32 = 2_000; // Default 20% of validator yield -> protocol.<owner_id>, 80% -> staker (7.2% net APY)
 const MAX_APY_BP: u32 = 5_000; // 50.00% sanity ceiling on gross validator APY
 const STORAGE_RESERVE_MILLINEAR: u128 = 50; // 0.05 NEAR liquid buffer above storage lock
+const MIN_CLAIM_PREPAID_TGAS: u64 = 25;
+const CLAIM_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const CFG_PROTOCOL_KEY: &[u8] = b"cfg:protocol";
+const CFG_YIELD_BP_KEY: &[u8] = b"cfg:yield_bp";
+
+#[allow(dead_code)]
+#[ext_contract(ext_self)]
+trait ExtSelf {
+    fn on_claim_native_near(&mut self, caller: String, recipient_id: String, amount: String) -> bool;
+}
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -101,20 +113,46 @@ fn compute_accrued_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> u
     (staked / den) * factor + ((staked % den) * factor) / den
 }
 
-/// Splits gross accrued validator yield into `(staker_reward_80pct, protocol_yield_20pct)`.
-fn compute_split_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> (u128, u128) {
+fn read_protocol_yield_bp() -> u32 {
+    match env::storage_read(CFG_YIELD_BP_KEY) {
+        Some(bytes) if bytes.len() == 4 => {
+            let mut arr = [0u8; 4];
+            arr.copy_from_slice(&bytes);
+            let bp = u32::from_le_bytes(arr);
+            if bp <= 10_000 {
+                bp
+            } else {
+                DEFAULT_PROTOCOL_YIELD_SHARE_BP
+            }
+        }
+        _ => DEFAULT_PROTOCOL_YIELD_SHARE_BP,
+    }
+}
+
+/// Splits gross accrued validator yield into `(staker_reward, protocol_yield)` using `yield_bp` (`0..=10_000`).
+fn compute_split_reward_delta(
+    staked: u128,
+    apy_bp: u32,
+    elapsed_ms: u64,
+    yield_bp: u32,
+) -> (u128, u128) {
     let gross = compute_accrued_reward_delta(staked, apy_bp, elapsed_ms);
-    let protocol_cut = (gross / 10_000u128) * PROTOCOL_YIELD_SHARE_BP
-        + ((gross % 10_000u128) * PROTOCOL_YIELD_SHARE_BP) / 10_000u128;
+    let share = (yield_bp.min(10_000)) as u128;
+    let protocol_cut = (gross / 10_000u128) * share + ((gross % 10_000u128) * share) / 10_000u128;
     (gross.saturating_sub(protocol_cut), protocol_cut)
 }
 
-fn project_record(record: &StakingRecord, apy_bp: u32, now_ms: u64) -> (StakingRecord, u128) {
+fn project_record(
+    record: &StakingRecord,
+    apy_bp: u32,
+    now_ms: u64,
+    yield_bp: u32,
+) -> (StakingRecord, u128) {
     let mut next = record.clone();
     let mut protocol_cut = 0u128;
     if next.last_accrued_at_ms > 0 && now_ms > next.last_accrued_at_ms {
         let elapsed = now_ms - next.last_accrued_at_ms;
-        let (user_reward, cut) = compute_split_reward_delta(next.staked, apy_bp, elapsed);
+        let (user_reward, cut) = compute_split_reward_delta(next.staked, apy_bp, elapsed, yield_bp);
         next.rewards = next.rewards.saturating_add(user_reward);
         protocol_cut = cut;
     }
@@ -185,6 +223,25 @@ impl StakingVaultContract {
         );
         env::storage_write(CFG_PROTOCOL_KEY, protocol_id.as_bytes());
         emit_staking("protocol_account_updated", json!({ "protocol_id": protocol_id }));
+    }
+
+    /// Configures the protocol share of accrued validator staking yield (`0..=10_000` bp; default `2_000` = `20%`).
+    /// Stored under disjoint key `cfg:yield_bp` so Borsh contract state upgrades remain 100% compatible.
+    pub fn set_protocol_yield_bp(&mut self, yield_bp: u32) {
+        require!(
+            env::predecessor_account_id() == self.owner_id,
+            "NEAR_NOT_OWNER: only owner can update protocol yield bp"
+        );
+        require!(
+            yield_bp <= 10_000,
+            "STAKE_INVALID_YIELD_BP: yield_bp exceeds 10000 bp"
+        );
+        env::storage_write(CFG_YIELD_BP_KEY, &yield_bp.to_le_bytes());
+        emit_staking("protocol_yield_bp_updated", json!({ "yield_bp": yield_bp }));
+    }
+
+    pub fn get_protocol_yield_bp(&self) -> u32 {
+        read_protocol_yield_bp()
     }
 
     fn resolve_protocol_account_id(&self) -> String {
@@ -267,9 +324,12 @@ impl StakingVaultContract {
         res
     }
 
-    /// Withdraws unlocked native NEAR backed by real `deposit_near` principal (CEI pattern + storage reserve floor).
-    /// Virtual operator credits (`credit_near`) can never drain real user NEAR or contract storage lock.
+    /// Withdraws unlocked native NEAR backed by real `deposit_near` principal (CEI + async rollback callback).
     pub fn claim_native_near(&mut self, amount: String, recipient_id: Option<AccountId>) -> Promise {
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(MIN_CLAIM_PREPAID_TGAS),
+            "NEAR_INSUFFICIENT_GAS: attach >= 25 TGas for claim_native_near"
+        );
         let caller = env::predecessor_account_id();
         let caller_str = caller.to_string();
         let claim_val = parse_yocto(&amount);
@@ -293,20 +353,38 @@ impl StakingVaultContract {
             "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve"
         );
 
-        // Checks-Effects-Interactions: debit both ledgers prior to scheduling transfer Promise.
         self.balances.insert(caller_str.clone(), vault_bal - claim_val);
         write_native_dep(&caller_str, native_bal - claim_val);
-
         let dest = recipient_id.unwrap_or(caller);
-        emit_staking(
-            "claim_native_near",
-            json!({
-                "account_id": caller_str,
-                "recipient_id": dest,
-                "amount": claim_val.to_string(),
-            }),
-        );
-        Promise::new(dest).transfer(NearToken::from_yoctonear(claim_val))
+        let dest_str = dest.to_string();
+        Promise::new(dest)
+            .transfer(NearToken::from_yoctonear(claim_val))
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(CLAIM_CALLBACK_GAS)
+                    .on_claim_native_near(caller_str, dest_str, claim_val.to_string()),
+            )
+    }
+
+    #[private]
+    pub fn on_claim_native_near(
+        &mut self,
+        caller: String,
+        recipient_id: String,
+        amount: String,
+        #[callback_result] call_result: Result<(), PromiseError>,
+    ) -> bool {
+        let amt = parse_yocto(&amount);
+        if call_result.is_ok() {
+            emit_staking("claim_native_near", json!({ "account_id": caller, "recipient_id": recipient_id, "amount": amount }));
+            true
+        } else {
+            let cur_bal = self.balances.get(&caller).copied().unwrap_or(0);
+            self.balances.insert(caller.clone(), cur_bal.saturating_add(amt));
+            write_native_dep(&caller, read_native_dep(&caller).saturating_add(amt));
+            emit_staking("claim_native_near_rollback", json!({ "account_id": caller, "recipient_id": recipient_id, "amount": amount }));
+            false
+        }
     }
 
     fn credit_protocol_yield(&mut self, cut: u128) {
@@ -325,6 +403,57 @@ impl StakingVaultContract {
     pub fn get_protocol_yield_balance(&self) -> String {
         let protocol_id = self.resolve_protocol_account_id();
         self.balances.get(&protocol_id).copied().unwrap_or(0).to_string()
+    }
+
+    /// Sweeps accrued protocol yield (`amount` or full balance) to `recipient_id` (or `owner_id`). Idempotent by `op_id`.
+    pub fn withdraw_protocol_yield(
+        &mut self,
+        op_id: String,
+        amount: Option<String>,
+        recipient_id: Option<AccountId>,
+    ) -> WithdrawResultView {
+        require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
+        self.require_operator();
+        if let Some(cached) = self.processed_ops.get(&op_id) {
+            return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
+        }
+        let protocol_id = self.resolve_protocol_account_id();
+        let avail = self.balances.get(&protocol_id).copied().unwrap_or(0);
+        let withdraw_val = match amount {
+            Some(ref raw) => parse_yocto(raw),
+            None => avail,
+        };
+        require!(
+            withdraw_val > 0 && avail >= withdraw_val,
+            "STAKE_INSUFFICIENT_BALANCE: insufficient protocol yield balance"
+        );
+        let recipient = recipient_id
+            .map(|a| a.to_string())
+            .unwrap_or_else(|| self.owner_id.to_string());
+        if recipient != protocol_id {
+            self.balances.insert(protocol_id.clone(), avail - withdraw_val);
+            let cur_rec = self.balances.get(&recipient).copied().unwrap_or(0);
+            let next_rec = cur_rec
+                .checked_add(withdraw_val)
+                .expect("STAKE_INSUFFICIENT_BALANCE: overflow");
+            self.balances.insert(recipient.clone(), next_rec);
+        }
+        let res = WithdrawResultView {
+            account_id: protocol_id.clone(),
+            recipient_id: recipient.clone(),
+            pool_id: "protocol_yield".to_string(),
+            withdrawn: withdraw_val.to_string(),
+        };
+        self.processed_ops.insert(op_id, serde_json::to_string(&res).unwrap());
+        emit_staking(
+            "withdraw_protocol_yield",
+            json!({
+                "protocol_id": protocol_id,
+                "recipient": recipient,
+                "withdrawn": res.withdrawn,
+            }),
+        );
+        res
     }
 
     /// Stakes `amount` yoctoNEAR from `payer_id` (or `account_id`) into `pool_id`. Idempotent by `op_id`.
@@ -358,7 +487,8 @@ impl StakingVaultContract {
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms);
+        let (mut next, protocol_cut) =
+            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
         self.credit_protocol_yield(protocol_cut);
         next.staked = next.staked.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(key, next.clone());
@@ -393,7 +523,8 @@ impl StakingVaultContract {
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms);
+        let (mut next, protocol_cut) =
+            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
         require!(
             next.staked >= unstake_val,
             "STAKE_INSUFFICIENT_BALANCE: insufficient staked NEAR"
@@ -432,7 +563,8 @@ impl StakingVaultContract {
 
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms);
+        let (mut next, protocol_cut) =
+            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
         require!(
             next.withdrawable > 0,
             "STAKE_INSUFFICIENT_BALANCE: no withdrawable NEAR available"
@@ -472,7 +604,7 @@ impl StakingVaultContract {
         let key = pos_key(&account_id, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
         let projected = if self.positions.contains_key(&key) {
-            project_record(&existing, apy_bp, now_ms).0
+            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp()).0
         } else {
             existing
         };

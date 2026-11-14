@@ -41,6 +41,7 @@ export class DeedPanel implements Disposable {
   private readonly historyListEl: HTMLUListElement;
 
   private isOpen = false;
+  private backdropEl: HTMLElement | null = null;
   private currentDeed: DeedView | null = null;
   private lastWarp: number | undefined;
   private readonly warpTimers = new Set< ReturnType<typeof setTimeout> >();
@@ -70,6 +71,7 @@ export class DeedPanel implements Disposable {
     });
     this.triggerBtn = dom.triggerBtn;
     this.triggerBtn.dataset.dialogTrigger = 'true';
+    this.triggerBtn.setAttribute('aria-expanded', 'false');
     this.triggerStatusEl = dom.triggerStatusEl;
     this.hintEl = dom.hintEl;
     this.root = dom.root;
@@ -91,6 +93,16 @@ export class DeedPanel implements Disposable {
     this.onDeedListeners.add((d) => this.stakingPanel.syncDeed(d));
 
     this.bindRealtimeUpdates();
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && this.isOpen) {
+          e.preventDefault();
+          this.setOpen(false);
+        }
+      };
+      window.addEventListener('keydown', onKey);
+      this.offs.push(() => window.removeEventListener('keydown', onKey));
+    }
     this.renderDeed(defaultFallbackDeed(this.resolvePlanetId(), 'col_0'));
   }
 
@@ -109,11 +121,34 @@ export class DeedPanel implements Disposable {
   }
 
   setOpen(open: boolean): void {
+    const wasOpen = this.isOpen;
     this.isOpen = open;
     this.root.dataset.open = open ? 'true' : 'false';
+    this.triggerBtn.setAttribute('aria-expanded', String(open));
+    const overlay = this.ctx.services.hudOverlay;
+    if (open && overlay) {
+      if (!this.backdropEl) {
+        const bd = document.createElement('div');
+        bd.className = 'ta-deed-backdrop';
+        bd.dataset.testid = 'deed-modal-backdrop';
+        bd.addEventListener('click', () => this.setOpen(false));
+        this.backdropEl = bd;
+      }
+      if (!this.backdropEl.isConnected) {
+        if (typeof overlay.insertBefore === 'function' && this.root.parentNode === overlay) {
+          overlay.insertBefore(this.backdropEl, this.root);
+        } else {
+          overlay.appendChild(this.backdropEl);
+        }
+      }
+    } else if (this.backdropEl) {
+      this.backdropEl.remove();
+    }
     if (open) {
       void this.refreshFromServer(true);
       void this.stakingPanel.refreshFromServer();
+    } else if (wasOpen) {
+      this.ctx.services.clearHudDialogTab?.('deed');
     }
   }
 
@@ -284,6 +319,8 @@ export class DeedPanel implements Disposable {
     for (const timer of this.warpTimers) clearTimeout(timer);
     this.warpTimers.clear();
     for (const off of this.offs.splice(0)) off();
+    this.backdropEl?.remove();
+    this.backdropEl = null;
     this.triggerBtn.remove();
     this.hintEl.remove();
     this.root.remove();

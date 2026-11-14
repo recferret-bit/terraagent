@@ -257,7 +257,7 @@ export class TestnetIntentsAdapter implements IntentsPort {
     const { accounts, contracts, secrets } = this.rpc.config;
     let secret: string | undefined;
     if (accountId === accounts.protocol) secret = secrets.protocolSecretKey;
-    else if (accountId === contracts.dao) secret = secrets.daoSecretKey;
+    else if (accountId === contracts.dao || accountId.endsWith(`.${contracts.dao}`)) secret = secrets.daoSecretKey;
     else if (accountId === accounts.minter) secret = secrets.minterSecretKey;
     else if (accountId === accounts.relayer) secret = secrets.relayerSecretKey;
     return secret ? this.parseNearEd25519Secret(accountId, secret) : null;

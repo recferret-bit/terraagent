@@ -65,6 +65,9 @@
 /* Main 3-column animated schematic board */
 .proto-schematic {
   --proto-p: 1;
+  --in-p: 1;
+  --core-p: 1;
+  --out-p: 1;
   position: relative;
   margin-top: 20px;
   padding: 28px;
@@ -190,9 +193,23 @@
 .proto-pipe-active {
   fill: none;
   stroke-width: 2.6;
-  stroke-dasharray: 220;
-  stroke-dashoffset: calc((1 - var(--proto-p)) * 220);
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc((1 - var(--proto-p)) * 100);
   transition: opacity var(--ta-dur-base) ease;
+}
+
+.proto-pipe-active[data-pipe-phase="in"] {
+  stroke-dashoffset: calc((1 - var(--in-p)) * 100);
+}
+
+.proto-pipe-active[data-pipe-phase="out"] {
+  stroke-dashoffset: calc((1 - var(--out-p)) * 100);
+}
+
+.proto-core-hex {
+  transform-origin: 180px 115px;
+  transform: scale(calc(0.92 + 0.08 * var(--core-p)));
+  opacity: calc(0.58 + 0.42 * var(--core-p));
 }
 
 .proto-core-stats {
@@ -224,11 +241,24 @@
   color: var(--ta-text);
 }
 
-/* Filter dimming states */
+/* Filter dimming & focus states across both schematic and 3 mechanism cards */
 .proto-schematic[data-active-stream="trade"] [data-stream]:not([data-stream="trade"]):not([data-stream="all"]),
 .proto-schematic[data-active-stream="staking"] [data-stream]:not([data-stream="staking"]):not([data-stream="all"]),
-.proto-schematic[data-active-stream="bonds"] [data-stream]:not([data-stream="bonds"]):not([data-stream="all"]) {
-  opacity: 0.24;
+.proto-schematic[data-active-stream="bonds"] [data-stream]:not([data-stream="bonds"]):not([data-stream="all"]),
+#protocol:not(.js-proto) #protocol-board[data-active-stream="trade"] .proto-stage:not([data-stream="trade"]),
+#protocol:not(.js-proto) #protocol-board[data-active-stream="staking"] .proto-stage:not([data-stream="staking"]),
+#protocol:not(.js-proto) #protocol-board[data-active-stream="bonds"] .proto-stage:not([data-stream="bonds"]),
+#protocol.js-proto #protocol-board[data-active-stream="trade"] .proto-stage.is-active:not([data-stream="trade"]),
+#protocol.js-proto #protocol-board[data-active-stream="staking"] .proto-stage.is-active:not([data-stream="staking"]),
+#protocol.js-proto #protocol-board[data-active-stream="bonds"] .proto-stage.is-active:not([data-stream="bonds"]) {
+  opacity: 0.28;
+  transition-delay: 0ms;
+}
+
+#protocol-board[data-active-stream="trade"] .proto-stage[data-stream="trade"],
+#protocol-board[data-active-stream="staking"] .proto-stage[data-stream="staking"],
+#protocol-board[data-active-stream="bonds"] .proto-stage[data-stream="bonds"] {
+  border-color: var(--ta-orange);
 }
 
 /* 3-Mechanism Scroll Transition Stage Cards */
@@ -362,20 +392,20 @@
 
   @supports ((animation-timeline: view()) and (animation-range: entry)) {
     @keyframes proto-band-entry {
-      entry 0% {
+      from {
         opacity: 0.35;
         transform: translateY(22px);
       }
-      entry 100%,
-      exit 0% {
+      to {
         opacity: 1;
         transform: translateY(0);
       }
     }
 
     .proto-schematic {
-      animation: proto-band-entry auto linear both;
+      animation: proto-band-entry linear both;
       animation-timeline: view();
+      animation-range: entry 0% entry 100%;
     }
   }
 }
@@ -383,6 +413,10 @@
 @media (max-width: 1024px) {
   .proto-flow-grid,
   .proto-stages {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .proto-node-top {
+    flex-wrap: wrap;
   }
 }

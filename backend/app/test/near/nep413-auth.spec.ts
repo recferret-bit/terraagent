@@ -8,7 +8,7 @@ import {
 import { baseEncode, KeyPairEd25519, KeyPairSigner } from 'near-api-js';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app';
-import { Nep413AuthService } from '../../src/near/identity/nep413-auth.service';
+import { Nep413AuthService, validateCallbackUrlCandidates } from '../../src/near/identity/nep413-auth.service';
 
 const DEV = {
   NODE_ENV: 'test',
@@ -389,5 +389,92 @@ describe('Security hardening on POST /v1/auth/social (unsigned wallet & email by
       });
       expect(badRes.status).toBe(401);
     }
+  });
+});
+
+describe('NEP-413 exact vs normalized callbackUrl candidate matching', () => {
+  it('verifies signatures over raw origin without trailing slash, normalized URL, and omitted callbackUrl while rejecting non-HTTP schemes', async () => {
+    const { url } = await boot();
+    const realFetch = globalThis.fetch;
+    const kp = KeyPairEd25519.fromRandom();
+    const signer = new KeyPairSigner(kp);
+    const seenFinalities: string[] = [];
+
+    stubTestnetRpc(realFetch, { [`origin-pilot.testnet:${kp.publicKey.toString()}`]: 'FullAccess' }, { seenFinalities });
+
+    // 1) Wallet signed exact raw `http://127.0.0.1:5173` (without trailing slash) while URL() normalizes to `http://127.0.0.1:5173/`:
+    const chRaw = await fetchChallenge(realFetch, url, 'my-near-wallet');
+    const signedRaw = await signer.signNep413Message('origin-pilot.testnet', {
+      message: chRaw.message,
+      nonce: new Uint8Array(Buffer.from(chRaw.nonce, 'base64')),
+      recipient: chRaw.recipient,
+      callbackUrl: 'http://127.0.0.1:5173',
+    });
+    const resRaw = await realFetch(`${url}/v1/auth/near/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: chRaw.challengeId,
+        accountId: 'origin-pilot.testnet',
+        publicKey: signedRaw.publicKey.toString(),
+        signature: Buffer.from(signedRaw.signature).toString('base64'),
+        callbackUrl: 'http://127.0.0.1:5173',
+        walletId: 'my-near-wallet',
+      }),
+    });
+    expect(resRaw.status).toBe(200);
+    expect(seenFinalities).toHaveLength(1);
+
+    // 2) Wallet signed normalized `http://127.0.0.1:5173/` while client sent `http://127.0.0.1:5173` (cached RPC key reused across candidates):
+    const chNorm = await fetchChallenge(realFetch, url, 'my-near-wallet');
+    const signedNorm = await signer.signNep413Message('origin-pilot.testnet', {
+      message: chNorm.message,
+      nonce: new Uint8Array(Buffer.from(chNorm.nonce, 'base64')),
+      recipient: chNorm.recipient,
+      callbackUrl: 'http://127.0.0.1:5173/',
+    });
+    const resNorm = await realFetch(`${url}/v1/auth/near/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: chNorm.challengeId,
+        accountId: 'origin-pilot.testnet',
+        publicKey: signedNorm.publicKey.toString(),
+        signature: Buffer.from(signedNorm.signature).toString('base64'),
+        callbackUrl: 'http://127.0.0.1:5173',
+        walletId: 'my-near-wallet',
+      }),
+    });
+    expect(resNorm.status).toBe(200);
+    expect(seenFinalities).toHaveLength(2);
+
+    // 3) Invalid non-HTTP(S) callbackUrl scheme must fail closed with 401:
+    const chBad = await fetchChallenge(realFetch, url, 'my-near-wallet');
+    const resBad = await realFetch(`${url}/v1/auth/near/verify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: chBad.challengeId,
+        accountId: 'origin-pilot.testnet',
+        publicKey: signedRaw.publicKey.toString(),
+        signature: Buffer.from(signedRaw.signature).toString('base64'),
+        callbackUrl: 'javascript:alert(1)',
+      }),
+    });
+    expect(resBad.status).toBe(401);
+
+    // 4) Direct unit checks on deduplicated callbackUrl candidate list:
+    expect(validateCallbackUrlCandidates(undefined)).toEqual([undefined]);
+    expect(validateCallbackUrlCandidates('   ')).toEqual([undefined]);
+    expect(validateCallbackUrlCandidates('http://127.0.0.1:5173')).toEqual([
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5173/',
+      undefined,
+    ]);
+    expect(validateCallbackUrlCandidates('https://terraagent.fun/play.html')).toEqual([
+      'https://terraagent.fun/play.html',
+      undefined,
+    ]);
+    expect(() => validateCallbackUrlCandidates('ftp://terraagent.fun')).toThrow(/HTTP\(S\) URL/);
   });
 });

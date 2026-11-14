@@ -43,4 +43,4 @@ Do not silently replace gameplay collision with render raycasts. State exactly w
 4. Review each species in iso/front/side/top and all three biomes. Watch sequences at normal speed and freeze key frames. Check melee reach at gameplay zoom and side view, sac-to-bolus continuity, exterior splash, feet and corpse contact, and independent individuals in MIXED.
 5. Exercise ANT HIVE, BEETLE NEST, SPITTER HIVE and MIXED in both attack directions. Controls use actual radio semantics and keep the selected species/scene. Robots attack must expose insect hit/death; bugs attack must expose real melee or ranged release. Preserve explicit legacy gallery access and deterministic reset.
 
-Save actual visual evidence and focused state/replication tests. Record remaining optical, collision or terrain-contact approximations under `docs/questions-and-limitations/`; a validator pass does not substitute for watching the creature act.
+Save actual visual evidence and focused state/replication tests. Explicitly report any remaining optical, collision or terrain-contact approximations; a validator pass does not substitute for watching the creature act.

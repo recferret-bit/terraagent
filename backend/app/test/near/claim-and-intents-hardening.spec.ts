@@ -22,6 +22,10 @@ import type { NearRpcClient } from '../../src/near/infrastructure/rpc/near-rpc.c
 import { AccountClaimService } from '../../src/near/staking/account-claim.service.js';
 import type { StakingPositionSyncService } from '../../src/near/staking/staking-position-sync.service.js';
 import { StakingService } from '../../src/near/staking/staking.service.js';
+import { resolveDbStakerPerks, resolvePlanetStakedColonies } from '../../src/near/staking/staker-perks.js';
+import { TreasuryFeeService } from '../../src/market/settlement/treasury-fee.service.js';
+import { MarketPolicyProvider } from '../../src/market/orders/market-policy.provider.js';
+import type { TreasuryDaoPort } from '../../src/near/application/ports/treasury-dao.port.js';
 
 function makeDbEnv(extra: Record<string, string> = {}): AppEnv {
   return {
@@ -206,6 +210,55 @@ describe('4-segment pilot sub-accounts & real-network staking signature guard', 
     expect(mapped.errorCode).toBe('NEAR_NAME_TAKEN');
   });
 
+  it('retries next pilot label candidate when pilots.<root> returns ERR:NEAR_NAME_TAKEN on refund-safe collision', async () => {
+    const adapter = new TestnetIdentityAdapter(
+      makeDbEnv({
+        NEAR_MODE: 'testnet',
+        NEAR_USE_PILOTS_FACTORY: '1',
+        NEAR_RELAYER_SECRET_KEY: 'ed25519:1111111111111111111111111111111111111111111111111111111111111111',
+        NEAR_KEK: Buffer.alloc(32, 7).toString('base64'),
+      }),
+    );
+    const rpc = (adapter as unknown as {
+      rpc: {
+        accountExists: (id: string) => Promise<boolean>;
+        call: (args: { args: { label: string } }) => Promise<{
+          receipt: { txHash: string; status: 'success'; network: 'testnet'; at: number };
+          outcome: { status: { SuccessValue: string } };
+        }>;
+      };
+    }).rpc;
+    vi.spyOn(rpc, 'accountExists').mockResolvedValue(false);
+    const callSpy = vi.spyOn(rpc, 'call').mockImplementation(async ({ args }) => {
+      if (args.label === 'nova') {
+        return {
+          receipt: { txHash: 'tx-refund-1', status: 'success', network: 'testnet', at: 1_700_000_000_000 },
+          outcome: {
+            status: {
+              SuccessValue: Buffer.from(JSON.stringify('ERR:NEAR_NAME_TAKEN:nova.pilots.terraagent.testnet')).toString('base64'),
+            },
+          },
+        };
+      }
+      return {
+        receipt: { txHash: 'tx-ok-2', status: 'success', network: 'testnet', at: 1_700_000_000_001 },
+        outcome: {
+          status: {
+            SuccessValue: Buffer.from(JSON.stringify(`${args.label}.pilots.terraagent.testnet`)).toString('base64'),
+          },
+        },
+      };
+    });
+
+    const created = await adapter.createNamedAccount({ opId: 'op-pilot-collision', name: 'nova' });
+    expect(callSpy).toHaveBeenCalledTimes(2);
+    expect(created.accountId).toMatch(/\.pilots\.terraagent\.testnet$/);
+    expect(created.accountId).not.toBe('nova.pilots.terraagent.testnet');
+    expect(created.receipt.txHash).toBe('tx-ok-2');
+  });
+});
+
+describe('Real-network staking guard, Mainnet DAO fee leg signing & multi-pool staker perks', () => {
   it('requires a NEP-413 walletSignature on StakingService.stake when NEAR_ADAPTER_STAKING=testnet', async () => {
     const deedRecord: StoredDeedRecord = {
       colonyId: 'col_0',
@@ -266,5 +319,81 @@ describe('4-segment pilot sub-accounts & real-network staking signature guard', 
       }),
     ).rejects.toMatchObject({ errorCode: 'NEAR_PROVIDER_REJECTED' });
     expect(stakingPort.stake).not.toHaveBeenCalled();
+  });
+});
+
+describe('Mainnet DAO fee leg signing & claimed self-custody staker perks', () => {
+  it('remaps Mainnet {planet}.dao.<root> fee legs to dao.<root> even outside NODE_ENV=production', async () => {
+    const mainnetEnv = makeDbEnv({
+      NODE_ENV: 'development',
+      TA_WAVES: 'all',
+      NEAR_MODE: 'mainnet',
+      NEAR_ROOT_ACCOUNT: 'terraagent.near',
+      NEAR_PLATFORM_FEE_BP: '120',
+      NEAR_STAKER_PLATFORM_FEE_BP: '60',
+      NEAR_DAO_FEE_SHARE_BP: '2500',
+    });
+    const policy = new MarketPolicyProvider(undefined, mainnetEnv);
+    expect(policy.current().platformFeeBp).toBe(120);
+    expect(policy.current().treasuryShareBp).toBe(2500);
+
+    const daos = {
+      get: vi.fn().mockResolvedValue({ daoAccountId: 'dune.dao.terraagent.near' }),
+    } as unknown as TreasuryDaoPort;
+    const fakePrisma = {
+      nearColonyAccount: { findUnique: vi.fn().mockResolvedValue(null) },
+    } as unknown as PrismaClient;
+
+    const feeSvc = new TreasuryFeeService(new FlagsService(mainnetEnv), policy, daos, fakePrisma, mainnetEnv);
+    const terms = await feeSvc.termsFor('dune');
+    expect(terms).toEqual({ enabled: true, shareBp: 2500, accountId: 'dune.dao.terraagent.near' });
+
+    const signedLegs = await feeSvc.legsToSign(
+      [
+        { accountId: 'protocol.terraagent.near', token: 'USDC', delta: 90n },
+        { accountId: 'dune.dao.terraagent.near', token: 'USDC', delta: 30n },
+      ],
+      'dune.dao.terraagent.near',
+    );
+    expect(signedLegs).toContainEqual({ accountId: 'dao.terraagent.near', token: 'USDC', delta: 30n });
+  });
+
+  it('resolves staker perks across claimed self-custody wallets and multi-pool mock stakes', async () => {
+    const fakePrisma = {
+      nearColonyAccount: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            colonyId: 'col_0',
+            accountId: 'col_0.alex.pilots.terraagent.testnet',
+            ownerAccountId: 'alex.pilots.terraagent.testnet',
+            claimedByAccountId: 'alex.near',
+          },
+        ]),
+      },
+      stakingPosition: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      mockChainStaking: {
+        findMany: vi.fn().mockResolvedValue([
+          { accountId: 'alex.near', staked: { toFixed: () => '4000000000000000000000000' } },
+          { accountId: 'alex.near', staked: { toFixed: () => '6000000000000000000000000' } },
+        ]),
+      },
+    } as unknown as PrismaClient;
+
+    const perks = await resolveDbStakerPerks(fakePrisma, {
+      colonyId: 'col_0',
+      env: { NEAR_STAKER_MIN_NEAR: '10', NEAR_STAKER_PLATFORM_FEE_BP: '50' },
+    });
+    expect(perks.active).toBe(true);
+    expect(perks.platformFeeBp).toBe(50);
+    expect(perks.managedAutopilotUnlocked).toBe(true);
+
+    const stakedIndices = await resolvePlanetStakedColonies(
+      fakePrisma,
+      makeDbEnv({ NEAR_STAKER_MIN_NEAR: '10' }),
+      [{ index: 0, id: 'col_0' }],
+    );
+    expect(stakedIndices[0]).toBe(true);
   });
 });

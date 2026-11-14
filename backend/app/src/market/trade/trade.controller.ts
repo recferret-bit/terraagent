@@ -186,11 +186,11 @@ export class TradeController {
   }
 
   @Get('policy')
-  async policy(@Req() req: IncomingMessage, @Query('as') as?: string): Promise<TradePolicyResponse> {
+  async policy(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('as') as?: string): Promise<TradePolicyResponse> {
     this.orders.gate();
-    if (!req.headers.authorization) this.auth.throttlePublic(req);
-    const p = req.headers.authorization ? await this.auth.authenticate(req, as) : null;
-    return this.read.policyView(p);
+    if (!req.headers.authorization && !as) this.auth.throttlePublic(req);
+    const p = req.headers.authorization || as ? await this.auth.authenticate(req, as) : null;
+    return this.read.policyView(p, planetId);
   }
 
   // --- push stream --------------------------------------------------------------------------------------------

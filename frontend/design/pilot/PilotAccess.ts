@@ -15,11 +15,15 @@ import {
 import {
   decodeNep413SocialToken,
   extractAuthApiErrorMessage,
+  jwtStillValid,
   PENDING_NEP413_STORAGE_KEY,
+  readStoredGuestUpgradeBearer,
   RECENT_NEP413_POPUP_KEY,
 } from './nearAuthApi';
 import { openNearWalletSelectorModal } from './nearWalletModal';
 import { signOutNearWalletSelector } from './walletSelectorRuntime';
+
+export { jwtStillValid };
 
 const PILOT_DIALOG_CSS = `
 .pilot-access-bar{display:inline-flex;align-items:center;gap:var(--ta-s2);flex-wrap:wrap}
@@ -133,6 +137,12 @@ export class PilotAccess {
 
   getSession(): PilotAccessSession | null {
     return this.session;
+  }
+
+  resolveUpgradeBearer(nowMs = Date.now()): string {
+    if (this.bearer && !jwtStillValid(this.bearer, nowMs)) this.bearer = '';
+    if (this.hasLinkedPilot()) return '';
+    return this.bearer || readStoredGuestUpgradeBearer(nowMs);
   }
 
   openSignInDialog(): void {
@@ -386,21 +396,15 @@ export class PilotAccess {
       localStorage.removeItem(PKCE_STATE_STORAGE_KEY);
       localStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
       localStorage.removeItem(RECENT_NEP413_POPUP_KEY);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
     try {
       sessionStorage.removeItem(PENDING_NEP413_STORAGE_KEY);
       sessionStorage.removeItem(RECENT_NEP413_POPUP_KEY);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
     await signOutNearWalletSelector();
     try {
       await fetch('/v1/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      /* ignore network errors on logout */
-    }
+    } catch { /* ignore network errors on logout */ }
     if (!this.disposed) {
       this.guest();
       this.opts.onAuthChange?.(null);
@@ -459,12 +463,13 @@ export class PilotAccess {
       const nep413Payload = decodeNep413SocialToken(hit.token);
       const endpoint = nep413Payload ? '/v1/auth/near/verify' : '/v1/auth/social';
       const reqBody = nep413Payload ?? hit;
+      const upgradeBearer = this.resolveUpgradeBearer();
       const response = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.bearer ? { Authorization: `Bearer ${this.bearer}` } : {}),
+          ...(upgradeBearer ? { Authorization: `Bearer ${upgradeBearer}` } : {}),
         },
         body: JSON.stringify(reqBody),
       });

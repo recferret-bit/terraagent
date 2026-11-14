@@ -47,21 +47,65 @@ export class HudRoot {
     if (this.colony && (this.dock !== null || this.colony.book.isDialogOnlyTab(this.colony.book.getActiveTab()))) {
       this.colony.book.setCollapsed(true);
     }
-    this.bindMutualCollapse();
+    this.bindMutualCollapse(ctx);
     parent.appendChild(this.el);
   }
 
-  private bindMutualCollapse(): void {
+  private closeBlockingDialogs(ctx: FeatureContext): void {
+    ctx.services.openPilotDialog?.(false);
+    ctx.services.openDeedPanel?.(false);
+    ctx.services.openTradeHubPanel?.(false);
+  }
+
+  private syncUnifiedRailToggle(): void {
+    if (!this.dock || !this.colony) return;
+    const anyExpanded = !this.dock.isCollapsed() || !this.colony.book.isCollapsed();
+    const btn = this.colony.book.toggleBtn;
+    btn.textContent = anyExpanded ? '▸' : '◂';
+    btn.title = anyExpanded ? 'Hide' : 'Show';
+    btn.setAttribute('aria-label', anyExpanded ? 'Hide panel' : 'Show panel');
+    btn.setAttribute('aria-expanded', String(anyExpanded));
+  }
+
+  private bindMutualCollapse(ctx: FeatureContext): void {
     this.dock?.book.onChange(() => {
-      if (this.dock && !this.dock.isCollapsed() && this.colony && !this.colony.book.isCollapsed()) {
+      if (
+        this.dock &&
+        !this.dock.isCollapsed() &&
+        this.colony &&
+        !this.colony.book.isCollapsed() &&
+        !this.colony.book.isDialogOnlyTab(this.colony.book.getActiveTab())
+      ) {
         this.colony.book.setCollapsed(true);
       }
+      this.syncUnifiedRailToggle();
     });
     this.colony?.book.onChange(() => {
-      if (this.colony && !this.colony.book.isCollapsed() && this.dock && !this.dock.isCollapsed()) {
+      if (
+        this.colony &&
+        !this.colony.book.isCollapsed() &&
+        !this.colony.book.isDialogOnlyTab(this.colony.book.getActiveTab()) &&
+        this.dock &&
+        !this.dock.isCollapsed()
+      ) {
         this.dock.setCollapsed(true);
       }
+      this.syncUnifiedRailToggle();
     });
+    if (this.dock && this.colony) {
+      this.colony.book.setToggleHandler(() => {
+        if (!this.dock || !this.colony) return;
+        const anyOpen = !this.dock.isCollapsed() || !this.colony.book.isCollapsed();
+        if (anyOpen) {
+          this.dock.setCollapsed(true);
+          this.colony.book.setCollapsed(true);
+          this.closeBlockingDialogs(ctx);
+        } else {
+          this.dock.setCollapsed(false);
+        }
+      });
+      this.syncUnifiedRailToggle();
+    }
   }
 
   private pruneEmptyBookTabs(): void {
@@ -95,19 +139,23 @@ export class HudRoot {
     const rightSlot = this.slots.get('top-right')!;
     if (dockTabs.size > 0) {
       this.dock = new CommandDock(rightSlot, ctx, dockTabs, () => {
-        this.colony?.book.setCollapsed(true);
+        this.closeBlockingDialogs(ctx);
+        if (this.colony && !this.colony.book.isDialogOnlyTab(this.colony.book.getActiveTab())) {
+          this.colony.book.setCollapsed(true);
+        }
       });
     }
     if (colonyTabs.size > 0) {
       this.colony = new ColonyBook(rightSlot, colonyTabs, (tab) => {
-        this.dock?.setCollapsed(true);
+        const isDialogOnly = this.colony?.book.isDialogOnlyTab(tab) ?? false;
+        if (!isDialogOnly) {
+          this.dock?.setCollapsed(true);
+        }
         if (this.colony && (this.colony.book.isCollapsed() || this.colony.book.getActiveTab() !== tab)) {
-          if (this.colony.book.isDialogOnlyTab(tab)) {
+          if (isDialogOnly) {
             this.runClosers();
           } else {
-            ctx.services.openPilotDialog?.(false);
-            ctx.services.openDeedPanel?.(false);
-            ctx.services.openTradeHubPanel?.(false);
+            this.closeBlockingDialogs(ctx);
           }
         }
       });
@@ -132,8 +180,11 @@ export class HudRoot {
     const s = ctx.services;
     s.hudOverlay = this.overlay;
     s.revealHudPanel = (el) => {
-      const tab = el.closest('[data-tab-pane]')?.getAttribute('data-tab-pane');
-      if (tab) this.bookOf(el)?.selectTab(tab);
+      const tab = el.closest('[data-tab-pane]')?.getAttribute('data-tab-pane')
+        ?? (el.getAttribute('data-testid') === 'trade-hub-panel' ? 'trade' : null);
+      if (!tab) return;
+      const book = this.bookOf(el) ?? (tab === 'trade' ? (this.colony?.book as TabBook<string> | undefined) ?? null : null);
+      book?.selectTab(tab);
     };
     s.setHudTabBadge = (el, value) => {
       const tab = el.closest('[data-tab-pane]')?.getAttribute('data-tab-pane');
@@ -144,6 +195,9 @@ export class HudRoot {
       return () => { this.closers.delete(close); };
     };
     s.closeHudMenus = () => this.closeAll();
+    s.clearHudDialogTab = (tab) => {
+      this.colony?.book.clearDialogTab(tab as ColonyTabId);
+    };
   }
 
   /** Folds both books and runs every registered closer (one failing closer does not stop the others). */

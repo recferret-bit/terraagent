@@ -18,6 +18,7 @@ import {
   type TransferBounds,
 } from './TradeHubPanel';
 import './trade-hub.css';
+import './trade-hub-modal.css';
 import './cargo-ux.css';
 
 export {
@@ -85,6 +86,7 @@ export function mountTradeHubPanel(el: HTMLElement, ctx: FeatureContext): HudPan
   });
   const syncLauncher = (): void =>
     launcher.sync(panel.isOpenState() && (panel.root.parentElement === el || panel.root.dataset.modal === 'true'));
+  panel.setOnOpenStateChanged(syncLauncher);
   // Reveal after opening: a selected hub keeps the panel in the selection bar, where the reveal is a no-op.
   const open = (tab?: TradeHubTab, extId?: string): void => {
     if (tab) panel.setTab(tab);

@@ -4,6 +4,7 @@ import { withTransaction, type PrismaClient } from '@terra/db';
 import { agentParamsFromData, compileData, quoteColony, toPlaceOrderArgs, type AgentColonyInput, type AgentParams, type SideQuote } from '@terra/sim';
 import { FlagsService } from '../../flags/flags.service.js';
 import { PRISMA } from '../../db/db.module.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { EconomyProfileService } from '../../economy/profile/profile.service.js';
 import { colonyFunds } from '../api/colony-funds.js';
 import { PriceBoardService } from '../board/price-board.service.js';
@@ -41,6 +42,7 @@ export class TradeAgentService {
     private readonly requests: TradeRequestRepository,
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() private readonly profiles?: EconomyProfileService,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   /** The pinned `market.agent` row of the active profile (cached; the profile hash does not change within a process run unless activated). */
@@ -70,6 +72,7 @@ export class TradeAgentService {
       colonyId: colony.colonyId,
       accountId: colony.accountId,
       standardPlatformFeeBp: baseCfg.platformFeeBp,
+      env: (this.env ?? process.env) as Record<string, string | undefined>,
     });
     const input: AgentColonyInput = {
       resource: q.resource, quote: q.quote as MarketTokenKey,

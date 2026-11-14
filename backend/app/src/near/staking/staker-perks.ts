@@ -5,8 +5,6 @@ import { resolveProtocolFeeSchedule } from '../infrastructure/network/protocol-f
 import {
   nearToYocto,
   PROTOCOL_STAKING_ACCOUNT_ID,
-  PROTOCOL_YIELD_SHARE_BP,
-  STAKER_NET_YIELD_SHARE_BP,
   yoctoToNear,
 } from './yocto.js';
 
@@ -38,7 +36,7 @@ export function buildStakerPerksFromYocto(
     validatorGrossApyBp: opts.grossApyBp,
   });
   const grossApyBp = sched.validatorGrossApyBp;
-  const netApyBp = Math.floor((grossApyBp * STAKER_NET_YIELD_SHARE_BP) / 10_000);
+  const netApyBp = sched.stakerNetApyBp;
   const standardPlatformFeeBp = sched.standardPlatformFeeBp;
   const active = totalStakedYocto >= sched.minStakeForPerksYocto;
   return {
@@ -48,7 +46,7 @@ export function buildStakerPerksFromYocto(
     totalStakedYocto,
     grossApyBp,
     netApyBp,
-    protocolYieldShareBp: PROTOCOL_YIELD_SHARE_BP,
+    protocolYieldShareBp: sched.protocolStakingYieldShareBp,
     platformFeeBp: active ? sched.stakerPlatformFeeBp : standardPlatformFeeBp,
     standardPlatformFeeBp,
     managedAutopilotUnlocked: active,
@@ -82,12 +80,34 @@ export async function resolveDbStakerPerks(
     readonly env?: Readonly<Record<string, string | undefined>>;
   },
 ): Promise<EvaluatedStakerPerks> {
-  const standardPlatformFeeBp = query.standardPlatformFeeBp ?? 100;
+  const standardPlatformFeeBp = query.standardPlatformFeeBp;
   if (!db) return buildStakerPerksFromYocto(0n, { standardPlatformFeeBp, env: query.env });
 
-  const orPreds: Array<{ colonyId?: string; accountId?: string }> = [];
-  if (query.colonyId?.trim()) orPreds.push({ colonyId: query.colonyId.trim() });
-  if (query.accountId?.trim()) orPreds.push({ accountId: query.accountId.trim() });
+  const colonyId = query.colonyId?.trim() || undefined;
+  const accountSet = new Set<string>();
+  if (query.accountId?.trim()) accountSet.add(query.accountId.trim());
+
+  if (typeof db.nearColonyAccount?.findMany === 'function' && (colonyId || accountSet.size > 0)) {
+    const acctOr: Array<{ colonyId?: string; accountId?: string; ownerAccountId?: string; claimedByAccountId?: string }> = [];
+    if (colonyId) acctOr.push({ colonyId });
+    for (const acct of accountSet) {
+      acctOr.push({ accountId: acct }, { ownerAccountId: acct }, { claimedByAccountId: acct });
+    }
+    const linked = await db.nearColonyAccount.findMany({
+      where: { OR: acctOr },
+      select: { accountId: true, ownerAccountId: true, claimedByAccountId: true },
+    });
+    for (const row of linked) {
+      accountSet.add(row.accountId);
+      if (row.ownerAccountId) accountSet.add(row.ownerAccountId);
+      if (row.claimedByAccountId) accountSet.add(row.claimedByAccountId);
+    }
+  }
+
+  const accountIds = Array.from(accountSet);
+  const orPreds: Array<{ colonyId?: string; accountId?: { in: string[] } }> = [];
+  if (colonyId) orPreds.push({ colonyId });
+  if (accountIds.length > 0) orPreds.push({ accountId: { in: accountIds } });
   if (orPreds.length === 0) return buildStakerPerksFromYocto(0n, { standardPlatformFeeBp, env: query.env });
 
   const posRows =
@@ -104,11 +124,11 @@ export async function resolveDbStakerPerks(
 
   if (
     totalYocto === 0n &&
-    query.accountId?.trim() &&
+    accountIds.length > 0 &&
     typeof db.mockChainStaking?.findMany === 'function'
   ) {
     const mockRows = await db.mockChainStaking.findMany({
-      where: { accountId: query.accountId.trim() },
+      where: { accountId: { in: accountIds } },
       select: { staked: true },
     });
     for (const row of mockRows) {
@@ -140,13 +160,14 @@ export async function resolvePlanetStakedColonies(
   if (typeof prisma.nearColonyAccount?.findMany === 'function') {
     const colRows = await prisma.nearColonyAccount.findMany({
       where: { colonyId: { in: ids } },
-      select: { colonyId: true, accountId: true, ownerAccountId: true },
+      select: { colonyId: true, accountId: true, ownerAccountId: true, claimedByAccountId: true },
     });
     for (const row of colRows) {
       if (!row.colonyId) continue;
       const list = accountByColony.get(row.colonyId) ?? [];
       list.push(row.accountId);
       if (row.ownerAccountId) list.push(row.ownerAccountId);
+      if (row.claimedByAccountId) list.push(row.claimedByAccountId);
       accountByColony.set(row.colonyId, list);
     }
   }
@@ -163,10 +184,12 @@ export async function resolvePlanetStakedColonies(
 
   const byColony = new Map<string, bigint>();
   const byAccount = new Map<string, bigint>();
+  const accountsInPositions = new Set<string>();
   for (const r of rows) {
     const amt = BigInt(r.stakedSnapshot.toFixed(0));
     byColony.set(r.colonyId, (byColony.get(r.colonyId) ?? 0n) + amt);
     byAccount.set(r.accountId, (byAccount.get(r.accountId) ?? 0n) + amt);
+    accountsInPositions.add(r.accountId);
   }
 
   if (allAccounts.length > 0 && typeof prisma.mockChainStaking?.findMany === 'function') {
@@ -175,8 +198,8 @@ export async function resolvePlanetStakedColonies(
       select: { accountId: true, staked: true },
     });
     for (const r of mockRows) {
-      if ((byAccount.get(r.accountId) ?? 0n) === 0n) {
-        byAccount.set(r.accountId, BigInt(r.staked.toFixed(0)));
+      if (!accountsInPositions.has(r.accountId)) {
+        byAccount.set(r.accountId, (byAccount.get(r.accountId) ?? 0n) + BigInt(r.staked.toFixed(0)));
       }
     }
   }

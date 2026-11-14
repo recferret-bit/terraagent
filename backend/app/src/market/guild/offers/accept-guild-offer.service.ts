@@ -10,7 +10,7 @@ import { MarketBooks } from '../../book/market-books.js';
 import { MarketOrderRepository } from '../../book/market-order.repository.js';
 import { MarketFillsHook } from '../../orders/market-fills.hook.js';
 import { resolveMarketAccountId } from '../../orders/colony-account.js';
-import { resolveProtocolAccountId } from '../../orders/market-policy.provider.js';
+import { MarketPolicyProvider, resolveProtocolAccountId } from '../../orders/market-policy.provider.js';
 import { resolveDbStakerPerks } from '../../../near/staking/staker-perks.js';
 import { GUILD_FILL_SINK, type GuildFillSink } from '../maker/fill-sink.js';
 import { GuildContactProducer } from '../../progression/guild-contact.producer.js';
@@ -50,6 +50,7 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() @Inject(GUILD_FILL_SINK) private readonly guild?: GuildFillSink,
     @Optional() private readonly guildContact?: GuildContactProducer,
+    @Optional() private readonly policy?: MarketPolicyProvider,
   ) {}
 
   onModuleInit(): void {
@@ -113,6 +114,7 @@ export class AcceptGuildOfferService implements OnModuleInit, OnModuleDestroy {
     const perks = await resolveDbStakerPerks(this.prisma, {
       colonyId: input.colonyId,
       accountId,
+      ...(this.policy ? { standardPlatformFeeBp: this.policy.current().platformFeeBp } : {}),
       env: envBag,
     });
     const crossed = await crossGuildOffer(

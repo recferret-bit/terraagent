@@ -22,6 +22,12 @@
   gap: var(--ta-s2);
 }
 
+.ta-notifications__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .ta-notifications__title {
   font-family: var(--ta-font-display);
   font-size: var(--ta-fs-label);

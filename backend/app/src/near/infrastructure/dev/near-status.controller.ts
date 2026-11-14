@@ -8,6 +8,7 @@ import { NEAR_PORT_NAMES } from '../../domain/types.js';
 import { nearAdapterFor } from '../adapter-selection.js';
 import { OneClickQuoteClient, type OneClickDryQuoteRequest } from '../adapters/real/oneclick-quote.service.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../network/near-network.config.js';
+import { NearRpcClient } from '../rpc/near-rpc.client.js';
 import { buildProtocolTreasuryView } from './protocol-treasury.view.js';
 
 /**
@@ -19,6 +20,7 @@ import { buildProtocolTreasuryView } from './protocol-treasury.view.js';
 export class NearStatusController {
   private readonly envSource: Record<string, string | undefined>;
   private readonly oneClick: OneClickQuoteClient;
+  private rpcClient?: NearRpcClient;
 
   constructor(
     @Optional() private readonly chainRead?: ChainReadPort,
@@ -65,7 +67,8 @@ export class NearStatusController {
       nearMode,
       network: activeNet,
       rootAccount: cfg.rootAccount,
-      protocolAccount: nearMode === 'mock' ? PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol,
+      protocolAccount:
+        nearMode === 'mock' ? (this.envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID) : cfg.accounts.protocol,
       contracts: cfg.contracts,
       accounts: cfg.accounts,
       fastAuth: cfg.fastAuth,
@@ -77,7 +80,12 @@ export class NearStatusController {
 
   @Get('protocol')
   async protocol() {
-    return buildProtocolTreasuryView(this.envSource, this.prisma);
+    const nearMode = this.envSource.NEAR_MODE ?? 'mock';
+    if (nearMode !== 'mock' && !this.rpcClient && this.envSource.VITEST !== 'true' && process.env.VITEST !== 'true') {
+      const cfg = resolveNearNetworkConfig(this.envSource, resolveActiveNearNetwork(null, this.envSource));
+      this.rpcClient = new NearRpcClient(cfg);
+    }
+    return buildProtocolTreasuryView(this.envSource, this.prisma, this.rpcClient);
   }
 
   @Post('intents/quote')

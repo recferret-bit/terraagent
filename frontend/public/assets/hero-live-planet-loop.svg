@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="1200" height="520" role="img" aria-label="TerraAgent Live Persistent Planet Loop and NEAR Chain Architecture">
+  <defs>
+    <style>
+      .bg { fill: #060912; }
+      .panel { fill: #0b1120; stroke: #1e293b; stroke-width: 1.5; }
+      .panel-hi { fill: #0e172a; stroke: #ff5a1f; stroke-width: 1.5; }
+      .panel-cyan { fill: #0b1424; stroke: #22d3ee; stroke-width: 1.5; }
+      .title { font: 700 13px 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; fill: #f8fafc; letter-spacing: 1.2px; }
+      .hdr { font: 700 11px 'JetBrains Mono', ui-monospace, monospace; fill: #ff5a1f; letter-spacing: 1px; }
+      .hdr-c { font: 700 11px 'JetBrains Mono', ui-monospace, monospace; fill: #22d3ee; letter-spacing: 1px; }
+      .hdr-g { font: 700 11px 'JetBrains Mono', ui-monospace, monospace; fill: #22c55e; letter-spacing: 1px; }
+      .txt { font: 500 10.5px 'JetBrains Mono', ui-monospace, monospace; fill: #cbd5e1; }
+      .muted { font: 500 9.5px 'JetBrains Mono', ui-monospace, monospace; fill: #64748b; }
+      .pill { fill: #131c31; stroke: #334155; stroke-width: 1; }
+      .wire { fill: none; stroke: #334155; stroke-width: 1.8; stroke-dasharray: 5 5; }
+      .wire-hot { fill: none; stroke: #ff5a1f; stroke-width: 2; stroke-dasharray: 6 6; animation: dash 1.6s linear infinite; }
+      .wire-cyan { fill: none; stroke: #22d3ee; stroke-width: 2; stroke-dasharray: 6 6; animation: dash 1.8s linear infinite; }
+      .wire-green { fill: none; stroke: #22c55e; stroke-width: 2; stroke-dasharray: 6 6; animation: dash 2.1s linear infinite; }
+      .pulse { animation: pulseOpacity 2.4s ease-in-out infinite; }
+      .orb-spin { transform-origin: 185px 255px; animation: spin 18s linear infinite; }
+      .rover { animation: roverMove 6s ease-in-out infinite; }
+      .sun-sweep { animation: sunSweep 8s ease-in-out infinite; }
+      @keyframes dash { to { stroke-dashoffset: -24; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulseOpacity { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+      @keyframes roverMove { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(58px, -18px); } }
+      @keyframes sunSweep { 0%, 100% { transform: translateX(0px); opacity: 0.25; } 50% { transform: translateX(64px); opacity: 0.55; } }
+    </style>
+    <linearGradient id="planetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="52%" stop-color="#c2410c"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <linearGradient id="atmGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ff5a1f" stop-opacity="0.05"/>
+    </linearGradient>
+    <marker id="arrO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#ff5a1f"/>
+    </marker>
+    <marker id="arrC" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="520" class="bg"/>
+  <g opacity="0.14" stroke="#334155" stroke-width="0.7">
+    <path d="M0 60 H1200 M0 120 H1200 M0 180 H1200 M0 240 H1200 M0 300 H1200 M0 360 H1200 M0 420 H1200 M0 480 H1200"/>
+    <path d="M100 0 V520 M200 0 V520 M300 0 V520 M400 0 V520 M500 0 V520 M600 0 V520 M700 0 V520 M800 0 V520 M900 0 V520 M1000 0 V520 M1100 0 V520"/>
+  </g>
+
+  <!-- Top Faction Header -->
+  <polygon points="16,14 1172,14 1184,26 1184,52 16,52" fill="#0b1222" stroke="#ff5a1f" stroke-width="1.5"/>
+  <rect x="24" y="23" width="10" height="20" fill="#ff5a1f"/>
+  <text x="44" y="37" class="title">TERRAAGENT // LIVE PERSISTENT COLONY + NEAR ON-CHAIN SETTLEMENT LOOP</text>
+  <polygon points="942,21 1168,21 1174,27 1174,45 942,45" fill="#071a16" stroke="#22c55e" stroke-width="1"/>
+  <circle cx="956" cy="33" r="4.5" fill="#22c55e">
+    <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>
+  </circle>
+  <text x="968" y="37" class="hdr-g">11/11 PORTS LIVE // TESTNET</text>
+
+  <!-- ZONE 1: CLIENT & 5HZ TICK / PREDICTION SOCKET STREAM -->
+  <polygon points="24,74 344,74 358,88 358,494 24,494" class="panel-cyan"/>
+  <text x="42" y="98" class="hdr-c">1. THREE.JS DIORAMA + WS CLIENT</text>
+  <text x="42" y="114" class="muted">/play.html &lt;-&gt; WebSocket /ws (msgpack)</text>
+
+  <!-- Planet + Orbit Ring -->
+  <circle cx="185" cy="255" r="78" fill="url(#atmGrad)"/>
+  <circle cx="185" cy="255" r="64" fill="url(#planetGrad)" stroke="#fb923c" stroke-width="1.5"/>
+  <!-- Hex terrain patches on planet -->
+  <polygon points="154,228 172,220 188,232 178,248 158,246" fill="#15803d" opacity="0.72"/>
+  <polygon points="190,256 210,248 224,264 212,282 194,276" fill="#1d4ed8" opacity="0.65"/>
+  <rect x="172" y="250" width="12" height="10" fill="#0f172a" stroke="#22d3ee" stroke-width="1.2"/>
+  <g class="orb-spin">
+    <ellipse cx="185" cy="255" rx="94" ry="26" fill="none" stroke="#22d3ee" stroke-width="1.2" stroke-dasharray="4 4"/>
+    <circle cx="279" cy="255" r="5" fill="#ff5a1f"/>
+    <circle cx="91" cy="255" r="3.5" fill="#22d3ee"/>
+  </g>
+  <text x="116" y="346" class="txt">3 Biomes: Dune / Ocean / Rock</text>
+
+  <!-- WebSocket Pills -->
+  <rect x="40" y="366" width="300" height="32" class="pill"/>
+  <text x="52" y="386" class="txt">emit colony.command (optimistic)</text>
+  <rect x="40" y="406" width="300" height="32" class="pill"/>
+  <text x="52" y="426" class="txt">5 Hz sim tick (50 Hz warp) + 60 FPS pred</text>
+  <rect x="40" y="446" width="300" height="32" class="pill"/>
+  <text x="52" y="466" class="hdr-c">NEAR Auth + Limited Session Keys</text>
+
+  <!-- ZONE 2: AUTHORITATIVE SIM + LIVING WORLD + NEAR.AI -->
+  <polygon points="414,74 786,74 800,88 800,494 414,494" class="panel-hi"/>
+  <text x="432" y="98" class="hdr">2. AUTHORITATIVE SIM + LIVING WORLD</text>
+  <text x="432" y="114" class="muted">@terra/sim deterministic worker tick</text>
+
+  <!-- Living Biome & Rover Box -->
+  <rect x="432" y="130" width="350" height="128" fill="#070c18" stroke="#1e293b" stroke-width="1.2"/>
+  <text x="444" y="150" class="hdr-g">DAY/NIGHT + GROWING TREES &amp; ORE VEINS</text>
+  <!-- Day/Night solar bar -->
+  <rect x="444" y="160" width="326" height="8" fill="#1e293b"/>
+  <rect x="444" y="160" width="120" height="8" fill="#fbbf24" class="sun-sweep"/>
+  <!-- Trees & Deposits -->
+  <polygon points="468,228 478,200 488,228" fill="#22c55e">
+    <animate attributeName="opacity" values="0.5;1;0.5" dur="4s" repeatCount="indefinite"/>
+  </polygon>
+  <polygon points="502,228 514,194 526,228" fill="#16a34a"/>
+  <polygon points="698,228 712,204 728,214 724,232 702,234" fill="#38bdf8" stroke="#e0f2fe" stroke-width="1"/>
+  <text x="688" y="246" class="muted">metals.t1</text>
+  <!-- Animated Rover -->
+  <g class="rover">
+    <rect x="556" y="210" width="28" height="14" rx="2" fill="#ff5a1f" stroke="#fed7aa" stroke-width="1"/>
+    <circle cx="562" cy="226" r="4" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+    <circle cx="578" cy="226" r="4" fill="#0f172a" stroke="#94a3b8" stroke-width="1.5"/>
+    <line x1="584" y1="215" x2="604" y2="206" stroke="#22d3ee" stroke-width="2" class="pulse"/>
+  </g>
+  <text x="444" y="246" class="txt">Flora regrowth + raids + weather hazards</text>
+
+  <!-- Batched NEAR.AI Box -->
+  <rect x="432" y="272" width="350" height="118" fill="#0c1326" stroke="#22d3ee" stroke-width="1.5"/>
+  <circle cx="450" cy="292" r="5" fill="#22d3ee" class="pulse"/>
+  <text x="462" y="296" class="hdr-c">NEAR.AI AUTONOMOUS DECISION ENGINE</text>
+  <text x="446" y="318" class="txt">Model: z-ai/glm-5.3-flash (TEE attested)</text>
+  <text x="446" y="336" class="txt">Bots: 1 batched RPC / 60s across 8 colonies</text>
+  <text x="446" y="354" class="txt">Pilots: &gt;=10 NEAR Managed AI or /me BYOK</text>
+  <text x="446" y="372" class="hdr-g">Orders: harvest / build / trade / war / peace</text>
+
+  <!-- Outbox Queue -->
+  <rect x="432" y="404" width="350" height="72" fill="#09101f" stroke="#ff5a1f" stroke-width="1.2"/>
+  <text x="446" y="424" class="hdr">TRANSACTING OUTBOX (IDEMPOTENT opId)</text>
+  <text x="446" y="444" class="txt">Debounces sim ticks -&gt; durable Postgres jobs</text>
+  <text x="446" y="462" class="muted">Track 07 Policy Check &lt;-&gt; Human approve_action</text>
+
+  <!-- ZONE 3: LIVE NEAR TESTNET CONTRACTS -->
+  <polygon points="856,74 1176,74 1176,494 842,494 842,88" class="panel"/>
+  <text x="860" y="98" class="hdr-g">3. NEAR TESTNET CONTRACTS (LIVE)</text>
+  <text x="860" y="114" class="muted">test.rpc.fastnear.com + rpc.testnet.near.org</text>
+
+  <g transform="translate(860,130)">
+    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#ff5a1f"/>
+    <text x="14" y="19" class="txt">res.terraagent.testnet (NEP-245 FT)</text>
+    <text x="14" y="35" class="muted">T1/T2/T3 colony cargo + mint / burn</text>
+  </g>
+  <g transform="translate(860,182)">
+    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#22d3ee"/>
+    <text x="14" y="19" class="txt">intents.near (NEP-413 + 1Click API)</text>
+    <text x="14" y="35" class="muted">Zero-sum token_diff swaps &amp; USDC/NEAR</text>
+  </g>
+  <g transform="translate(860,234)">
+    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#22c55e"/>
+    <text x="14" y="19" class="txt">deed.terraagent.testnet (NEP-171)</text>
+    <text x="14" y="35" class="muted">Soulbound Colony Deeds + Badges NFT</text>
+  </g>
+  <g transform="translate(860,286)">
+    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#f59e0b"/>
+    <text x="14" y="19" class="txt">bounty.terraagent.testnet</text>
+    <text x="14" y="35" class="muted">Bounties + 90/10 Peace &amp; 6h War Escrows</text>
+  </g>
+  <g transform="translate(860,338)">
+    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#a855f7"/>
+    <text x="14" y="19" class="txt">staking.terraagent.testnet</text>
+    <text x="14" y="35" class="muted">Day-1 80/20 yield vault &amp; 2-day unbond</text>
+  </g>
+  <g transform="translate(860,390)">
+    <rect width="298" height="44" class="pill"/><rect width="4" height="44" fill="#ec4899"/>
+    <text x="14" y="19" class="txt">dao.terraagent.testnet</text>
+    <text x="14" y="35" class="muted">Planet council treasury &amp; &gt;50% quorum</text>
+  </g>
+  <g transform="translate(860,442)">
+    <rect width="298" height="36" class="pill"/><rect width="4" height="36" fill="#38bdf8"/>
+    <text x="14" y="22" class="txt">protocol + relayer.terraagent.testnet</text>
+  </g>
+
+  <!-- Animated Data Wires Between Zones -->
+  <path id="w1" d="M358 190 H412" class="wire-hot" marker-end="url(#arrO)"/>
+  <path id="w2" d="M412 245 H360" class="wire-cyan" marker-end="url(#arrC)"/>
+  <path id="w3" d="M800 330 H840" class="wire-cyan" marker-end="url(#arrC)"/>
+  <path id="w4" d="M800 440 H840" class="wire-green" marker-end="url(#arrG)"/>
+
+  <!-- Traveling Signal Packets -->
+  <circle r="4" fill="#ff5a1f">
+    <animateMotion dur="1.4s" repeatCount="indefinite" path="M358,190 L414,190"/>
+  </circle>
+  <circle r="4" fill="#22d3ee">
+    <animateMotion dur="1.2s" repeatCount="indefinite" path="M414,245 L358,245"/>
+  </circle>
+  <circle r="4.5" fill="#22c55e">
+    <animateMotion dur="1.5s" repeatCount="indefinite" path="M800,440 L842,440"/>
+  </circle>
+  <circle r="4.5" fill="#22d3ee">
+    <animateMotion dur="1.3s" repeatCount="indefinite" path="M800,330 L842,330"/>
+  </circle>
+</svg>

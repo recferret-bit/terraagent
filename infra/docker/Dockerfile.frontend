@@ -9,7 +9,9 @@ RUN DATABASE_URL=postgresql://terra:terra@127.0.0.1:5432/terraagent \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     npm ci
 RUN node frontend/whitepaper/render.mjs
-RUN npx vite build --config frontend/vite.config.ts
+ARG VITE_APP_ENV=production
+ENV VITE_APP_ENV=${VITE_APP_ENV}
+RUN npx vite build --config frontend/vite.config.ts --mode "${VITE_APP_ENV}"
 RUN node --input-type=module <<'EOF'
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';

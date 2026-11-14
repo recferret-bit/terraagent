@@ -66,6 +66,8 @@
     "deploy:frontend": "node scripts/sites/deploy.mjs frontend",
     "deploy:backend": "node scripts/sites/deploy.mjs backend",
     "deploy:chain": "node scripts/sites/deploy.mjs chain",
+    "near:build-contracts": "cd backend/near-contracts && cargo build --target wasm32-unknown-unknown --release",
+    "near:test-contracts": "cd backend/near-contracts && cargo test",
     "near:deploy-contracts": "node scripts/dev/deploy-testnet-contracts.mjs"
   },
   "devDependencies": {

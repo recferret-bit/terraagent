@@ -200,3 +200,38 @@ fn rejects_u128_balance_overflow() {
     c.mt_mint("op_max".into(), acct("col1.testnet"), "metals.t1".into(), u128::MAX.to_string());
     c.mt_mint("op_over".into(), acct("col1.testnet"), "metals.t1".into(), "1".into());
 }
+
+#[test]
+fn mt_transfer_accepts_one_yocto_and_rejects_excess_deposit_or_long_memo() {
+    set_caller("owner.testnet");
+    let mut c = CargoContract::new(acct("owner.testnet"), acct("minter.testnet"));
+    set_caller("minter.testnet");
+    c.mt_mint("op_m".into(), acct("col1.testnet"), "metals.t1".into(), "100".into());
+
+    // 1 yoctoNEAR NEP-245 wallet confirmation succeeds
+    let ctx_one = VMContextBuilder::new()
+        .predecessor_account_id(acct("col1.testnet"))
+        .attached_deposit(near_sdk::NearToken::from_yoctonear(1))
+        .build();
+    testing_env!(ctx_one);
+    c.mt_transfer(acct("col2.testnet"), "metals.t1".into(), "25".into(), None);
+    assert_eq!(c.mt_balance_of(acct("col2.testnet"), "metals.t1".into()), "25");
+
+    // 2 yoctoNEAR accidental deposit panics so native NEAR is never locked inside res.<root>
+    let ctx_two = VMContextBuilder::new()
+        .predecessor_account_id(acct("col1.testnet"))
+        .attached_deposit(near_sdk::NearToken::from_yoctonear(2))
+        .build();
+    testing_env!(ctx_two);
+    let dep_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.mt_transfer(acct("col2.testnet"), "metals.t1".into(), "10".into(), None);
+    }));
+    assert!(dep_panic.is_err());
+
+    // Oversized memo (> 512 bytes) panics cleanly
+    set_caller("col1.testnet");
+    let memo_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.mt_transfer(acct("col2.testnet"), "metals.t1".into(), "10".into(), Some("m".repeat(513)));
+    }));
+    assert!(memo_panic.is_err());
+}

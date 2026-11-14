@@ -27,9 +27,11 @@ export function computeSplitRewardDelta(
   staked: bigint,
   apyBp: number,
   elapsedMs: number,
+  protocolYieldShareBp: number = PROTOCOL_YIELD_SHARE_BP,
 ): { readonly gross: bigint; readonly userReward: bigint; readonly protocolYield: bigint } {
   const gross = computeAccruedRewardDelta(staked, apyBp, elapsedMs);
-  const protocolYield = (gross * BigInt(PROTOCOL_YIELD_SHARE_BP)) / 10_000n;
+  const clampedShareBp = Math.min(Math.max(Math.trunc(protocolYieldShareBp), 0), 10_000);
+  const protocolYield = (gross * BigInt(clampedShareBp)) / 10_000n;
   return {
     gross,
     userReward: gross - protocolYield,

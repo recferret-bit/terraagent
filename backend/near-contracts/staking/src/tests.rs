@@ -238,6 +238,47 @@ fn deposit_near_and_claim_native_near_blocks_virtual_credit_drain() {
         let _ = contract.claim_native_near("1".into(), None);
     }));
     assert!(panicked.is_err());
+
+    // Simulate cross-shard transfer failure -> callback restores both balances and native deposit ledger!
+    testing_env!(ctx("staking.terraagent.testnet").build());
+    let ok_fail = contract.on_claim_native_near(
+        "pilot.testnet".into(),
+        "pilot.testnet".into(),
+        (2 * ONE_NEAR).to_string(),
+        Err(PromiseError::Failed),
+    );
+    assert!(!ok_fail);
+    assert_eq!(contract.get_near_balance("pilot.testnet".into()), (12 * ONE_NEAR).to_string());
+    assert_eq!(contract.get_native_deposit_balance("pilot.testnet".into()), (2 * ONE_NEAR).to_string());
+
+    // Re-claim and confirm callback success commits the withdrawal permanently.
+    testing_env!(ctx("pilot.testnet").build());
+    let _ = contract.claim_native_near((2 * ONE_NEAR).to_string(), None);
+    testing_env!(ctx("staking.terraagent.testnet").build());
+    let ok_done = contract.on_claim_native_near(
+        "pilot.testnet".into(),
+        "pilot.testnet".into(),
+        (2 * ONE_NEAR).to_string(),
+        Ok(()),
+    );
+    assert!(ok_done);
+    assert_eq!(contract.get_near_balance("pilot.testnet".into()), (10 * ONE_NEAR).to_string());
+    assert_eq!(contract.get_native_deposit_balance("pilot.testnet".into()), "0");
+}
+
+#[test]
+#[should_panic(expected = "NEAR_INSUFFICIENT_GAS")]
+fn claim_native_near_rejects_low_prepaid_gas() {
+    let mut contract = new_contract();
+    let mut dep_ctx = ctx("pilot.testnet");
+    dep_ctx.attached_deposit(NearToken::from_near(1));
+    testing_env!(dep_ctx.build());
+    contract.deposit_near(None);
+
+    let mut low_gas = ctx("pilot.testnet");
+    low_gas.prepaid_gas(Gas::from_tgas(20));
+    testing_env!(low_gas.build());
+    let _ = contract.claim_native_near(ONE_NEAR.to_string(), None);
 }
 
 #[test]
@@ -356,4 +397,153 @@ fn rejects_zero_stake_amount() {
     testing_env!(ctx("minter.terraagent.testnet").build());
     contract.credit_near("op-f".into(), "col1.testnet".into(), (10 * ONE_NEAR).to_string());
     contract.stake("op-s".into(), "col1.testnet".into(), None, "p1".into(), 900, "0".into(), 1000);
+}
+
+#[test]
+fn configurable_protocol_yield_bp_splits_custom_and_boundary_0_and_10000_bp() {
+    let mut contract = new_contract();
+    assert_eq!(contract.get_protocol_yield_bp(), 2_000);
+
+    // Owner updates protocol yield cut to 10% (1000 bp) -> 8.10% staker / 0.90% protocol on 9.00% gross.
+    testing_env!(ctx("terraagent.testnet").build());
+    contract.set_protocol_yield_bp(1_000);
+    assert_eq!(contract.get_protocol_yield_bp(), 1_000);
+
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let ten_near = 10 * ONE_NEAR;
+    contract.credit_near("op-fund-a".into(), "col_a.testnet".into(), ten_near.to_string());
+    let t0 = 1_700_000_000_000u64;
+    contract.stake("op-sa".into(), "col_a.testnet".into(), None, "p1".into(), 900, ten_near.to_string(), t0);
+    let ua = contract.unstake("op-ua".into(), "col_a.testnet".into(), "p1".into(), 900, ten_near.to_string(), t0 + 365 * GAME_DAY_MS);
+    assert_eq!(ua.rewards.parse::<u128>().unwrap(), 810_000_000_000_000_000_000_000);
+    assert_eq!(contract.get_protocol_yield_balance().parse::<u128>().unwrap(), 90_000_000_000_000_000_000_000);
+
+    // Boundary 0 bp -> 100% staker, 0% protocol.
+    testing_env!(ctx("terraagent.testnet").build());
+    contract.set_protocol_yield_bp(0);
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    contract.credit_near("op-fund-b".into(), "col_b.testnet".into(), ten_near.to_string());
+    contract.stake("op-sb".into(), "col_b.testnet".into(), None, "p1".into(), 900, ten_near.to_string(), t0);
+    let ub = contract.unstake("op-ub".into(), "col_b.testnet".into(), "p1".into(), 900, ten_near.to_string(), t0 + 365 * GAME_DAY_MS);
+    assert_eq!(ub.rewards.parse::<u128>().unwrap(), 900_000_000_000_000_000_000_000);
+    assert_eq!(contract.get_protocol_yield_balance().parse::<u128>().unwrap(), 90_000_000_000_000_000_000_000);
+
+    // Boundary 10_000 bp -> 0% staker, 100% protocol.
+    testing_env!(ctx("terraagent.testnet").build());
+    contract.set_protocol_yield_bp(10_000);
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    contract.credit_near("op-fund-c".into(), "col_c.testnet".into(), ten_near.to_string());
+    contract.stake("op-sc".into(), "col_c.testnet".into(), None, "p1".into(), 900, ten_near.to_string(), t0);
+    let uc = contract.unstake("op-uc".into(), "col_c.testnet".into(), "p1".into(), 900, ten_near.to_string(), t0 + 365 * GAME_DAY_MS);
+    assert_eq!(uc.rewards.parse::<u128>().unwrap(), 0);
+    assert_eq!(contract.get_protocol_yield_balance().parse::<u128>().unwrap(), 990_000_000_000_000_000_000_000);
+}
+
+#[test]
+#[should_panic(expected = "NEAR_NOT_OWNER")]
+fn non_owner_cannot_set_protocol_yield_bp() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    contract.set_protocol_yield_bp(1_500);
+}
+
+#[test]
+#[should_panic(expected = "STAKE_INVALID_YIELD_BP")]
+fn rejects_protocol_yield_bp_above_10000() {
+    let mut contract = new_contract();
+    testing_env!(ctx("terraagent.testnet").build());
+    contract.set_protocol_yield_bp(10_001);
+}
+
+#[test]
+fn withdraw_protocol_yield_partial_full_and_idempotent_replay() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+
+    let ten_near = 10 * ONE_NEAR;
+    contract.credit_near("op-fund".into(), "col1.testnet".into(), ten_near.to_string());
+    let t0 = 1_700_000_000_000u64;
+    contract.stake("op-s".into(), "col1.testnet".into(), None, "astro.pool".into(), 900, ten_near.to_string(), t0);
+    contract.unstake("op-u".into(), "col1.testnet".into(), "astro.pool".into(), 900, ten_near.to_string(), t0 + 365 * GAME_DAY_MS);
+
+    let accrued: u128 = contract.get_protocol_yield_balance().parse().unwrap();
+    assert_eq!(accrued, 180_000_000_000_000_000_000_000);
+
+    let partial = 80_000_000_000_000_000_000_000u128;
+    let w1 = contract.withdraw_protocol_yield(
+        "op-wy-1".into(),
+        Some(partial.to_string()),
+        Some("relayer.terraagent.testnet".parse().unwrap()),
+    );
+    let w1_replay = contract.withdraw_protocol_yield(
+        "op-wy-1".into(),
+        Some(partial.to_string()),
+        Some("relayer.terraagent.testnet".parse().unwrap()),
+    );
+    assert_eq!(w1, w1_replay);
+    assert_eq!(w1.withdrawn, partial.to_string());
+    assert_eq!(contract.get_near_balance("relayer.terraagent.testnet".into()), partial.to_string());
+    assert_eq!(
+        contract.get_protocol_yield_balance(),
+        (accrued - partial).to_string()
+    );
+
+    // Sweep remaining balance (amount: None) to owner_id by default.
+    let w2 = contract.withdraw_protocol_yield("op-wy-2".into(), None, None);
+    assert_eq!(w2.recipient_id, "terraagent.testnet");
+    assert_eq!(w2.withdrawn, (accrued - partial).to_string());
+    assert_eq!(contract.get_protocol_yield_balance(), "0");
+    assert_eq!(
+        contract.get_near_balance("terraagent.testnet".into()),
+        (accrued - partial).to_string()
+    );
+}
+
+#[test]
+#[should_panic(expected = "insufficient protocol yield balance")]
+fn withdraw_protocol_yield_rejects_excess_amount() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    contract.withdraw_protocol_yield("op-wy-empty".into(), None, None);
+}
+
+#[test]
+#[should_panic(expected = "NEAR_NOT_OWNER")]
+fn withdraw_protocol_yield_rejects_unauthorized_caller() {
+    let mut contract = new_contract();
+    testing_env!(ctx("attacker.testnet").build());
+    contract.withdraw_protocol_yield("op-wy-bad".into(), Some("1".into()), None);
+}
+
+#[test]
+#[should_panic(expected = "attached NEAR deposit must be > 0")]
+fn deposit_near_rejects_zero_attached_deposit() {
+    let mut contract = new_contract();
+    testing_env!(ctx("pilot.testnet").build());
+    contract.deposit_near(None);
+}
+
+#[test]
+fn deposit_near_on_behalf_of_target_credits_target_native_ledger() {
+    let mut contract = new_contract();
+    let mut dep_ctx = ctx("sponsor.testnet");
+    dep_ctx.attached_deposit(NearToken::from_near(3));
+    testing_env!(dep_ctx.build());
+    let bal = contract.deposit_near(Some("col_0.pilots.terraagent.testnet".parse().unwrap()));
+    assert_eq!(bal, (3 * ONE_NEAR).to_string());
+    assert_eq!(
+        contract.get_native_deposit_balance("col_0.pilots.terraagent.testnet".into()),
+        (3 * ONE_NEAR).to_string()
+    );
+    assert_eq!(contract.get_native_deposit_balance("sponsor.testnet".into()), "0");
+}
+
+#[test]
+#[should_panic(expected = "insufficient staked NEAR")]
+fn unstake_exceeding_staked_balance_panics() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    contract.credit_near("op-f".into(), "col1.testnet".into(), (5 * ONE_NEAR).to_string());
+    contract.stake("op-s".into(), "col1.testnet".into(), None, "p1".into(), 900, (5 * ONE_NEAR).to_string(), 1000);
+    contract.unstake("op-u".into(), "col1.testnet".into(), "p1".into(), 900, (6 * ONE_NEAR).to_string(), 2000);
 }

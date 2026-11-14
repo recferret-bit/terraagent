@@ -43,13 +43,14 @@ export interface TabBookOptions<T extends string> {
 export class TabBook<T extends string> {
   readonly el: HTMLElement;
   readonly pageEl: HTMLElement;
-  private readonly toggleBtn: HTMLButtonElement;
+  readonly toggleBtn: HTMLButtonElement;
   private readonly tabButtons = new Map<T, HTMLButtonElement>();
   private readonly panes = new Map<T, HTMLElement>();
   private readonly badges = new Map<T, HTMLElement>();
   private readonly dialogOnlyTabs = new Set<T>();
   private activeTab: T;
   private collapsed = false;
+  private customToggleHandler: (() => void) | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(parent: HTMLElement, private readonly opts: TabBookOptions<T>) {
@@ -72,7 +73,13 @@ export class TabBook<T extends string> {
     this.toggleBtn.type = 'button';
     this.toggleBtn.className = 'ta-book__toggle';
     this.toggleBtn.setAttribute('data-testid', opts.toggleTestId);
-    this.toggleBtn.onclick = () => this.setCollapsed(!this.collapsed);
+    this.toggleBtn.onclick = () => {
+      if (this.customToggleHandler) {
+        this.customToggleHandler();
+      } else {
+        this.setCollapsed(!this.collapsed);
+      }
+    };
     spine.appendChild(this.toggleBtn);
 
     this.pageEl = document.createElement('div');
@@ -131,9 +138,26 @@ export class TabBook<T extends string> {
       this.collapsed = false;
       this.syncDom();
       trigger.click();
+      if (trigger.getAttribute('aria-expanded') === 'false') {
+        this.collapsed = true;
+        this.syncDom();
+      }
       return;
     }
     this.selectOrToggleTab(tab);
+  }
+
+  /** Clears the active spine highlight when a dialog-only tab's modal is dismissed externally. */
+  clearDialogTab(tab: T): void {
+    if (!this.collapsed && this.activeTab === tab && this.isDialogOnlyTab(tab)) {
+      this.collapsed = true;
+      this.syncDom();
+    }
+  }
+
+  /** Overrides the collapse button handler (used by HudRoot when combining two books into one rail). */
+  setToggleHandler(handler: (() => void) | null): void {
+    this.customToggleHandler = handler;
   }
 
   /** Re-evaluates `data-dialog-only` attributes after panels mount into panes. */

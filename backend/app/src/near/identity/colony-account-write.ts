@@ -171,29 +171,42 @@ async function enqueueStorageDeposit(outbox: ChainOutboxRepository, tx: Transact
   }, tx);
 }
 
+const MAINNET_OWNER_TLD_RE = /\.(near|tg|sweat)$/;
+
+function isMainnetConfiguredRoot(root: string | undefined): boolean {
+  return Boolean(root && (MAINNET_OWNER_TLD_RE.test(root) || root === 'aurora'));
+}
+
 export function accountRootFromOwner(
   ownerAccountId: string,
   colonyId: string,
   envSource: Record<string, string | undefined> = process.env,
 ): string {
-  const configuredRoot = envSource.NEAR_ROOT_ACCOUNT?.trim();
-  if (ownerAccountId.endsWith('.testnet') || ownerAccountId.endsWith('.near')) {
-    const isMainnet = ownerAccountId.endsWith('.near');
-    const fallbackRoot = isMainnet
-      ? (configuredRoot?.endsWith('.near') ? configuredRoot : 'terraagent.near')
+  const cleanOwner = ownerAccountId.trim().toLowerCase();
+  const configuredRoot = envSource.NEAR_ROOT_ACCOUNT?.trim().toLowerCase();
+  const isMainnetNamed = MAINNET_OWNER_TLD_RE.test(cleanOwner) || cleanOwner === 'aurora';
+  if (cleanOwner.endsWith('.testnet') || isMainnetNamed) {
+    const fallbackRoot = isMainnetNamed
+      ? (configuredRoot && isMainnetConfiguredRoot(configuredRoot) ? configuredRoot : 'terraagent.near')
       : (configuredRoot?.endsWith('.testnet') ? configuredRoot : 'terraagent.testnet');
-    const ownerStemLen = (ownerAccountId.split('.')[0] ?? '').length;
-    const ownerParent = ownerAccountId.split('.').slice(1).join('.');
-    if (ownerParent.includes('.') && colonyNameBudget(colonyId, ownerParent) >= Math.max(4, ownerStemLen)) {
+    const ownerStemLen = (cleanOwner.split('.')[0] ?? '').length;
+    const ownerParent = cleanOwner.split('.').slice(1).join('.');
+    const isControlledNamespace =
+      ownerParent === fallbackRoot || ownerParent.endsWith(`.${fallbackRoot}`);
+    if (
+      isControlledNamespace &&
+      ownerParent.includes('.') &&
+      colonyNameBudget(colonyId, ownerParent) >= Math.max(4, ownerStemLen)
+    ) {
       return ownerParent;
     }
     return fallbackRoot;
   }
-  if (/^[0-9a-f]{64}$/i.test(ownerAccountId)) {
+  if (/^[0-9a-f]{64}$/i.test(cleanOwner)) {
     const nearMode = envSource.NEAR_MODE?.trim().toLowerCase();
     if (nearMode === 'mock') return MOCK_ACCOUNT_ROOT;
-    if (nearMode === 'mainnet' || configuredRoot?.endsWith('.near')) {
-      return configuredRoot?.endsWith('.near') ? configuredRoot : 'terraagent.near';
+    if (nearMode === 'mainnet' || isMainnetConfiguredRoot(configuredRoot)) {
+      return configuredRoot && isMainnetConfiguredRoot(configuredRoot) ? configuredRoot : 'terraagent.near';
     }
     return configuredRoot?.endsWith('.testnet') ? configuredRoot : 'terraagent.testnet';
   }

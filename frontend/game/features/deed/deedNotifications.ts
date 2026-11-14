@@ -129,6 +129,13 @@ export class DeedToastHost {
 
     card.appendChild(head);
     card.appendChild(msg);
+    if (this.source?.onOpenDeed) {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        this.source?.onOpenDeed?.();
+        this.dismiss();
+      });
+    }
 
     this.host.appendChild(card);
     this.host.hidden = false;

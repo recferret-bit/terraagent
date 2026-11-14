@@ -36,6 +36,9 @@ async function tickAdvances(target: Page, from: number): Promise<void> {
 /** Save progress → Google mock. `test-pilot` uses the preset; any other subject is typed. The game page stays put. */
 async function saveWithGoogle(target: Page, subject: string): Promise<void> {
   const stay = target.url().split('#')[0];
+  if (!(await target.locator('[data-testid=save-progress]').isVisible())) {
+    await target.getByTestId('colony-tab-player').click();
+  }
   await target.locator('[data-testid=save-progress]').click();
   const opened = target.waitForEvent('popup', { timeout: 15_000 });
   await target.locator('[data-testid=continue-google]').click();
@@ -123,6 +126,8 @@ test('@hack 6. relayer fail shows the orbit retry toast; clearing the fail rate 
     // This story starts at a ready colony; W01 covers the normal descent sequence.
     await loadScenario(other, 'w06', { skip: '1' }, { as: 'w06b', timeout: 45_000 });
     // The tick exists during descent while the HUD is hidden. Time the save only once its action is available.
+    await expect(other.getByTestId('colony-tab-player')).toBeVisible({ timeout: 30_000 });
+    await other.getByTestId('colony-tab-player').click();
     await expect(other.locator('[data-testid=save-progress]')).toBeVisible({ timeout: 30_000 });
     const saving = await observeTransientVisibility(other, '[data-testid=orbit-save]', 30_000, { text: 'Saving to orbit…', role: 'status' });
     try { await Promise.all([saveWithGoogle(other, RETRY_SUBJECT), saving.assertSeen()]); }

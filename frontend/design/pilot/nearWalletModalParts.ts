@@ -1,4 +1,6 @@
-import type { WalletSelectorModuleId } from './walletSelectorRuntime';
+import type { NearAuthChallengeResponse } from '@terra/contracts';
+import { requestNearAuthChallenge } from './nearAuthApi';
+import { WalletPopupBlockedError, type WalletSelectorModuleId } from './walletSelectorRuntime';
 
 export interface SavedNearWallet {
   readonly walletId: string;
@@ -19,6 +21,8 @@ export interface SelectorWalletDef {
 
 const STORAGE_KEY = 'ta_near_wallet';
 const NEAR_ACCOUNT_RE = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+const GENERIC_WALLET_SIGN_ERR_RE = /^(sign error|failed to sign in)$/i;
+export const MIN_PREWARMED_CHALLENGE_TTL_MS = 15_000;
 
 const MODAL_CSS = `
 .near-modal{margin:auto;padding:var(--ta-s5);width:min(460px,92vw);background:var(--ta-plate);color:var(--ta-text);border:1px solid var(--ta-seam-2);overscroll-behavior:contain}
@@ -86,6 +90,174 @@ export const SELECTOR_WALLETS: readonly SelectorWalletDef[] = [
     signupActionLabel: 'Create MyNearWallet (.testnet) ↗',
   },
 ];
+
+export function friendlyWalletError(
+  err: unknown,
+  network: 'testnet' | 'mainnet' = 'testnet',
+  fallback = 'Wallet signature could not be completed.',
+): string {
+  const raw = err instanceof Error ? err.message.trim() : typeof err === 'string' ? err.trim() : '';
+  if (!raw) return fallback;
+  if (GENERIC_WALLET_SIGN_ERR_RE.test(raw)) {
+    return network === 'mainnet'
+      ? 'Wallet extension rejected or could not sign on NEAR Mainnet. Ensure your wallet is unlocked, switched to NEAR Mainnet (.near), and try again.'
+      : 'Wallet extension rejected or could not sign on NEAR Testnet. Ensure your wallet is unlocked, switched to NEAR Testnet (.testnet), and try again.';
+  }
+  return raw;
+}
+
+export function extractPopupBlockedAccountId(err: unknown): string | null {
+  if (err instanceof WalletPopupBlockedError && err.connectedAccountId) {
+    return err.connectedAccountId;
+  }
+  if (err && typeof err === 'object') {
+    const acct = (err as { connectedAccountId?: unknown }).connectedAccountId;
+    if (typeof acct === 'string' && acct.trim().length > 0) return acct.trim();
+  }
+  return null;
+}
+
+export interface PrefetchedChallengeStore {
+  warm(intent: 'signin' | 'signup', allowAutoRefresh?: boolean): Promise<NearAuthChallengeResponse | null>;
+  takeReady(intent: 'signin' | 'signup'): NearAuthChallengeResponse | null;
+  restoreUnused(intent: 'signin' | 'signup', challenge: NearAuthChallengeResponse): void;
+  awaitOrFetch(walletId: string, intent: 'signin' | 'signup'): Promise<NearAuthChallengeResponse>;
+  ensureFresh(intent: 'signin' | 'signup'): void;
+  dispose(): void;
+}
+
+const MAX_AUTO_REFRESHES = 6;
+
+function hasEnoughChallengeTtl(ch: NearAuthChallengeResponse): boolean {
+  return ch.expiresAt - Date.now() > MIN_PREWARMED_CHALLENGE_TTL_MS;
+}
+
+interface ChallengeRefreshTimer {
+  clear(): void;
+  schedule(expiresAt: number, remaining: number, onExpire: (nextRemaining: number) => void): void;
+}
+
+function createChallengeRefreshTimer(isDisposed: () => boolean): ChallengeRefreshTimer {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const clear = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  return {
+    clear,
+    schedule(expiresAt, remaining, onExpire) {
+      clear();
+      if (isDisposed() || remaining <= 0) return;
+      const refreshIn = expiresAt - Date.now() - MIN_PREWARMED_CHALLENGE_TTL_MS;
+      if (refreshIn <= 0) {
+        onExpire(remaining - 1);
+        return;
+      }
+      if (refreshIn <= 10 * 60_000) {
+        timer = setTimeout(() => {
+          if (!isDisposed()) onExpire(remaining - 1);
+        }, refreshIn);
+      }
+    },
+  };
+}
+
+export function createPrefetchedChallengeStore(): PrefetchedChallengeStore {
+  let disposed = false;
+  let activeIntent: 'signin' | 'signup' = 'signin';
+  let ready: { intent: 'signin' | 'signup'; challenge: NearAuthChallengeResponse } | null = null;
+  let inFlight: { intent: 'signin' | 'signup'; promise: Promise<NearAuthChallengeResponse | null> } | null = null;
+  const refreshTimer = createChallengeRefreshTimer(() => disposed);
+
+  const scheduleFor = (intent: 'signin' | 'signup', ch: NearAuthChallengeResponse, remaining: number): void => {
+    refreshTimer.schedule(ch.expiresAt, remaining, (nextRemaining) => {
+      if (ready?.challenge.challengeId === ch.challengeId || !hasEnoughChallengeTtl(ch)) {
+        void warmInternal(intent, nextRemaining);
+      }
+    });
+  };
+
+  const warmInternal = (
+    intent: 'signin' | 'signup',
+    remainingAutoRefreshes: number,
+  ): Promise<NearAuthChallengeResponse | null> => {
+    activeIntent = intent;
+    refreshTimer.clear();
+    if (ready && ready.intent !== intent) ready = null;
+    if (inFlight && inFlight.intent === intent) return inFlight.promise;
+    const promise = requestNearAuthChallenge({ intent })
+      .then((ch) => {
+        if (disposed || activeIntent !== intent) return ch;
+        ready = { intent, challenge: ch };
+        scheduleFor(intent, ch, remainingAutoRefreshes);
+        return ch;
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (inFlight?.promise === promise) inFlight = null;
+      });
+    inFlight = { intent, promise };
+    return promise;
+  };
+
+  const warm = (
+    intent: 'signin' | 'signup',
+    allowAutoRefresh = true,
+  ): Promise<NearAuthChallengeResponse | null> =>
+    warmInternal(intent, allowAutoRefresh ? MAX_AUTO_REFRESHES : 0);
+
+  const takeReady = (intent: 'signin' | 'signup'): NearAuthChallengeResponse | null => {
+    if (!ready || ready.intent !== intent) return null;
+    refreshTimer.clear();
+    const ch = ready.challenge;
+    ready = null;
+    return hasEnoughChallengeTtl(ch) ? ch : null;
+  };
+
+  return {
+    warm,
+    takeReady,
+    restoreUnused(intent, challenge) {
+      if (disposed) return;
+      if (!hasEnoughChallengeTtl(challenge)) {
+        if (activeIntent === intent) void warm(intent);
+        return;
+      }
+      if (!ready || ready.intent !== intent) {
+        ready = { intent, challenge };
+        scheduleFor(intent, challenge, MAX_AUTO_REFRESHES);
+      }
+    },
+    async awaitOrFetch(walletId, intent) {
+      const sync = takeReady(intent);
+      if (sync) return sync;
+      if (inFlight && inFlight.intent === intent) {
+        const awaited = await inFlight.promise;
+        if (awaited && hasEnoughChallengeTtl(awaited)) {
+          if (ready?.challenge.challengeId === awaited.challengeId) {
+            refreshTimer.clear();
+            ready = null;
+          }
+          return awaited;
+        }
+      }
+      return requestNearAuthChallenge({ walletId, intent });
+    },
+    ensureFresh(intent) {
+      if (ready && ready.intent === intent && hasEnoughChallengeTtl(ready.challenge)) return;
+      if (inFlight && inFlight.intent === intent) return;
+      void warm(intent);
+    },
+    dispose() {
+      disposed = true;
+      refreshTimer.clear();
+      ready = null;
+      inFlight = null;
+    },
+  };
+}
 
 export function ensureModalCss(): void {
   if (typeof document === 'undefined' || document.getElementById('near-wallet-modal-css')) return;

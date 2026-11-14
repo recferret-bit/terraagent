@@ -32,8 +32,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Exported resources mint as real NEP-245 tokens and settle cross-colony swaps through NEAR Intents.',
     inGameTrigger: 'Trade Hub Export',
     onChainAction: 'mt_mint · intents.near',
-    codeHash: '6G6Ew8mygiAud4NoA772PzkCwnbfUA6ZacWxEnrpqJwC',
-    txHash: 'HcukrSstSJwmzNkrYekqbt6Kt9V8AZAjTYhebb7B3Sso',
+    codeHash: '8Tmkq9b1e4KoumPiiBAEFMMsSTnWuxCZ6L6p52SHRroa',
+    txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <polygon points="24,6 40,15 40,33 24,42 8,33 8,15" fill="#0E1A14" stroke="#3DDC84" stroke-width="1.8"/>
       <path d="M8 15 L24 24 L40 15 M24 24 V42" stroke="#3DDC84" stroke-width="1.4" stroke-opacity=".7"/>
@@ -51,8 +51,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Soulbound Colony Deeds evolve automatically as your colony unlocks terraforming stages and milestone badges.',
     inGameTrigger: 'Stage Milestone',
     onChainAction: 'mint_deed · update_metadata',
-    codeHash: 'GFB5WgL1hMiCSFZSNjiXdYhui68ptf2AyDvFHZGUR6pB',
-    txHash: '3csscTYvcVK5Sz8JUvvtjULj5tHyb6J1XC3U8tddZyV9',
+    codeHash: '4TMMsxv3whUVCUxmfbzEWgf8HfwEMLFmX4pGxyvpVV3M',
+    txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <polygon points="24,5 39,13 39,31 24,43 9,31 9,13" fill="#0F1626" stroke="#5B8CFF" stroke-width="1.8"/>
       <polygon points="24,13 31,18 31,28 24,34 17,28 17,18" stroke="#39D0FF" stroke-width="1.4"/>
@@ -70,8 +70,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Locks mercenary defense bounties plus Bonded Peace Treaties and 6h War Bonds (90% victim/defender · 10% Protocol slash on breach).',
     inGameTrigger: 'Bounty / Treaty / War Bond',
     onChainAction: 'open_escrow · slash_escrow',
-    codeHash: '79UNK5jUfEWWQYtBjSqD69UyKEw6vVGmUSrtBGy1ow2e',
-    txHash: '2Uw4SkRkKedPtTtjzyewAFy2N5jnAcgB9HnKpPS7aSua',
+    codeHash: '9NEAvdLMN62YEth7ENZxadZhxH68injDVff7sGgDvSJ9',
+    txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="24" r="15" fill="#1B120C" stroke="#FF6A13" stroke-width="1.8" stroke-dasharray="6 3"/>
       <circle cx="24" cy="24" r="7" stroke="#FF8A3D" stroke-width="1.5"/>
@@ -89,9 +89,9 @@ const CONTRACTS: readonly DeployedContract[] = [
     title: 'Validator Staking & Perks Vault',
     summary: 'Day-1 staking (≥10 NEAR): 80% yield (7.2% APY) to human pilot + 20% (1.8% APY) to Protocol for Managed NEAR.AI & 50% trade fee cut (403 AI).',
     inGameTrigger: 'Day-1 Pilot Stake (≥10 NEAR)',
-    onChainAction: 'stake · unstake (80/20 split)',
-    codeHash: 'Hjw4T6c4hAN3A81xqytUmD5heR7aahtGbwMkpqAX8Yze',
-    txHash: 'DD7gHYoZji5prVQZsnpaQSkQVqMrR9gqJaHJd1RNyTmP',
+    onChainAction: 'stake · unstake · withdraw_protocol_yield',
+    codeHash: '2cDtJn9Scf3iR7P5pSMWmcTfJy6Be3ZZARwSqi7bwaSj',
+    txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <rect x="11" y="20" width="26" height="20" fill="#0D1924" stroke="#39D0FF" stroke-width="1.8"/>
       <path d="M16 20V14C16 9.6 19.6 6 24 6C28.4 6 32 9.6 32 14V20" stroke="#5B8CFF" stroke-width="1.8"/>
@@ -110,8 +110,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Colonies pool taxes into a shared planetary treasury and vote on hazard shields and sector grants.',
     inGameTrigger: 'Council Proposal',
     onChainAction: 'propose · vote · finalize',
-    codeHash: 'Aa2cch25oaHQohk5FxTDAxBSRw5L5pHkxWxxjJbr992G',
-    txHash: 'G8YgUSGW1XaTSY2ZpG8nncB5ZuEU9ibjTSYMNHD3HcuJ',
+    codeHash: 'J5L9QjPghZQ337PLxyv7ehEtNRWo2KuMvTnoAMyNEGrS',
+    txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="24" r="16" fill="#161412" stroke="#FF8A3D" stroke-width="1.6"/>
       <polygon points="24,12 34,29 14,29" stroke="#F2F4F7" stroke-width="1.5" fill="none"/>
@@ -131,8 +131,8 @@ const CONTRACTS: readonly DeployedContract[] = [
     summary: 'Provisions {pilot}.pilots.terraagent.testnet while keeping the root key in cold storage, with atomic non-custodial key rotation on claim.',
     inGameTrigger: 'OAuth / Guest Drop',
     onChainAction: 'create_pilot_account · claim',
-    codeHash: '6nKVXYo46jG61ZUB1VUogGwC1ennpDzEWzqAGKQguU4z',
-    txHash: '9KT6vYxpJG28nB8gc4VJUPmN9QxXoTZb865ZUaSPxuX5',
+    codeHash: '7HP8BHuqUF36MtxYK8DKRenjZ9n9CmR9NSaZmnuZpWa5',
+    txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <circle cx="24" cy="16" r="7" fill="#0E1A14" stroke="#3DDC84" stroke-width="1.8"/>
       <path d="M11 39C11 31.8 16.8 26 24 26C31.2 26 37 31.8 37 39" stroke="#3DDC84" stroke-width="1.8"/>

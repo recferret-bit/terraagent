@@ -166,3 +166,44 @@ fn rejects_empty_token_id() {
     set_caller("op.testnet", 2_000);
     c.mint_deed("op_1".into(), "deed".into(), "".into(), acct("pilot.testnet"), "{}".into(), false);
 }
+
+#[test]
+#[should_panic(expected = "NEAR_NFT_INVALID: token_id required (<= 128 bytes)")]
+fn rejects_oversized_token_id() {
+    set_caller("owner.testnet", 1_000);
+    let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
+    set_caller("op.testnet", 2_000);
+    c.mint_deed(
+        "op_long".into(),
+        "deed".into(),
+        "d".repeat(129),
+        acct("pilot.testnet"),
+        "{}".into(),
+        false,
+    );
+}
+
+#[test]
+#[should_panic(expected = "NEAR_NFT_INVALID: metadata_json exceeds 32 KiB")]
+fn rejects_oversized_metadata_json() {
+    set_caller("owner.testnet", 1_000);
+    let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
+    set_caller("op.testnet", 2_000);
+    c.mint_deed(
+        "op_big".into(),
+        "deed".into(),
+        "deed:big".into(),
+        acct("pilot.testnet"),
+        "x".repeat(32_769),
+        false,
+    );
+}
+
+#[test]
+#[should_panic(expected = "NEAR_NFT_INVALID: collection required")]
+fn rejects_blank_collection() {
+    set_caller("owner.testnet", 1_000);
+    let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
+    set_caller("op.testnet", 2_000);
+    c.mint_deed("op_col".into(), "   ".into(), "deed:1".into(), acct("pilot.testnet"), "{}".into(), false);
+}

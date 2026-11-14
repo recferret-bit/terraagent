@@ -2,18 +2,44 @@
    so the body drops its own frame there. Outside a book the panel keeps its own plate. */
 
 [data-tab-pane='away'] .ta-away {
-  width: min(280px, 72vw);
+  width: 100%;
   background: transparent;
   border: 0;
-  padding: var(--ta-s3);
+  padding: 0;
+  clip-path: none;
 }
 
 [data-tab-pane='away'] .ta-away__toggle {
   display: none;
 }
 
-/* Inside the Colony book, War & Diplomacy raid permission lives in the DIRECTOR tab; Away focuses on offline budgets & auto-trade. */
-.ta-colony-book [data-tab-pane='away'] .ta-away__row--raids {
+.ta-away__book-head {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--ta-s2);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+[data-tab-pane='away'] .ta-away__book-head {
+  display: flex;
+}
+
+.ta-away__book-sub {
+  color: var(--ta-text-3);
+  font: 400 var(--ta-fs-label)/1.35 var(--ta-font-body);
+}
+
+.ta-away__subkicker {
+  color: var(--ta-steel);
+  font: 600 10px/1.2 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Inside the Colony book when DIRECTOR is mounted, AI mode & raid permissions live in DIRECTOR; Away focuses on offline budgets & auto-trade. */
+.ta-colony-book:has([data-tab-pane='director']) [data-tab-pane='away'] :is(.ta-away__row--raids, .ta-away__row--mode) {
   display: none;
 }
 
@@ -60,6 +86,7 @@
 .ta-away__family {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--ta-s2);
 }
 

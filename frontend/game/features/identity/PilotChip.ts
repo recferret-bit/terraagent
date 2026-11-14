@@ -152,6 +152,41 @@ function selectContents(node: HTMLElement): void {
   }
 }
 
+function stripNearAccountSuffix(raw: string): string {
+  return raw.trim().replace(/\.(?:(?:pilots\.)?terraagent\.(?:mock|testnet|near)|testnet|near)$/i, '');
+}
+
+function extractOpaquePilotCode(raw: string): string | null {
+  const stem = stripNearAccountSuffix(raw);
+  if (!stem) return null;
+
+  const guestMatch = /^(?:guest|colonist)[|_-]+([a-z0-9]{4,})/i.exec(stem);
+  if (guestMatch) {
+    return guestMatch[1]!.slice(0, 4).toUpperCase();
+  }
+
+  const pilotCodeMatch = /^pilot[|_-]+([0-9a-f]{4,}|[a-z0-9]*\d[a-z0-9]*)(?:[|_-].*)?$/i.exec(stem);
+  if (pilotCodeMatch) {
+    return pilotCodeMatch[1]!.slice(0, 4).toUpperCase();
+  }
+
+  const oauthMatch =
+    /^(?:(?:google[-_]?oauth2|twitter|oauth2|auth0|apple|windowslive|github|discord)[|_-]+|[a-z0-9_-]+\|)(.+)$/i.exec(
+      stem,
+    );
+  if (oauthMatch) {
+    const tokens = oauthMatch[1]!.split(/[^a-z0-9]+/i).filter(Boolean);
+    const primary = tokens.find((t) => t.length >= 4) ?? tokens.join('');
+    return (primary ? primary.slice(-4) : '0000').toUpperCase();
+  }
+
+  if (/^(?:pr[_-][a-z0-9]{6,}|[0-9a-f]{32,}|\d{10,})$/i.test(stem)) {
+    return stem.slice(-4).toUpperCase();
+  }
+
+  return null;
+}
+
 /** Formats a clean, human-readable pilot display name from handle and NEAR accountId. */
 export function formatPilotDisplayName(
   handleOrView: string | { readonly isGuest?: boolean; readonly handle?: string | null; readonly accountId?: string | null } | null | undefined,
@@ -168,21 +203,24 @@ export function formatPilotDisplayName(
   const cleanHandle = (rawHandle ?? '').trim();
   const cleanAcct = (rawAcct ?? '').trim();
 
-  const guestMatch = /^(?:guest|pilot)[_-]([a-z0-9]{4,})/i.exec(cleanHandle);
-  if (guestMatch) {
-    return `Pilot #${guestMatch[1]!.slice(0, 4).toUpperCase()}`;
+  const handleCode = extractOpaquePilotCode(cleanHandle);
+  const acctCode = extractOpaquePilotCode(cleanAcct);
+  const acctStem = stripNearAccountSuffix(cleanAcct);
+  const isGenericRoleHandle = /^(?:guest|colonist|pilot)$/i.test(cleanHandle);
+  const hasHumanHandle =
+    Boolean(cleanHandle) &&
+    !handleCode &&
+    !isGenericRoleHandle &&
+    !/\.(?:(?:pilots\.)?terraagent\.(?:mock|testnet|near)|testnet|near)$/i.test(cleanHandle);
+  const hasHumanAcct = Boolean(acctStem) && !acctCode && !/^(?:guest|colonist|pilot)$/i.test(acctStem);
+
+  if (!hasHumanHandle && !hasHumanAcct) {
+    const code = handleCode ?? acctCode;
+    if (code) return `Pilot #${code}`;
+    return rawGuest ? 'Guest Pilot' : 'Pilot';
   }
 
-  if (rawGuest && !cleanAcct) {
-    if (cleanHandle && !/^guest([_-]|$)/i.test(cleanHandle) && cleanHandle.toLowerCase() !== 'colonist') {
-      return cleanHandle;
-    }
-    return 'Guest Pilot';
-  }
-  const source =
-    cleanHandle && cleanHandle !== cleanAcct && !cleanHandle.includes('.terraagent.')
-      ? cleanHandle
-      : cleanAcct.replace(/\.(terraagent\.(mock|testnet|near)|testnet|near)$/i, '');
+  const source = hasHumanHandle ? cleanHandle : acctStem;
   if (!source) return rawGuest ? 'Guest Pilot' : 'Pilot';
   if (source.includes(' ')) return source;
   return source
@@ -190,6 +228,19 @@ export function formatPilotDisplayName(
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+/** Normalizes colony/neighbor labels that carry raw OAuth, guest, or NEAR account stems without altering custom colony names. */
+export function formatColonyOrPilotName(rawName: string): string {
+  const trimmed = rawName.trim();
+  if (!trimmed) return rawName;
+  if (
+    extractOpaquePilotCode(trimmed) !== null ||
+    /\.(?:(?:pilots\.)?terraagent\.(?:mock|testnet|near)|testnet|near)$/i.test(trimmed)
+  ) {
+    return formatPilotDisplayName(trimmed);
+  }
+  return rawName;
 }
 
 function linkedLine(
@@ -201,6 +252,7 @@ function linkedLine(
   const displayName = formatPilotDisplayName(handle, accountId, false);
   const nameEl = makeSpan('ta-pilot__name', 'pilot-display-name', displayName);
   const id = makeSpan('ta-pilot__id', 'pilot-id', `Pilot ID ${accountId}`);
+  id.title = accountId;
   const copy = makeBtn('btn btn-ghost btn-sm', 'pilot-copy', 'Copy', () => {
     void copyText(accountId, clipboard).then((result) => {
       copy.setAttribute('data-copied', result);

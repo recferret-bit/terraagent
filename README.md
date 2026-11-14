@@ -10,7 +10,7 @@
 - **Live NEAR Testnet Status & Protocol Treasury API:** [https://api.terraagent.fun/v1/near/status](https://api.terraagent.fun/v1/near/status) · [https://api.terraagent.fun/v1/near/protocol](https://api.terraagent.fun/v1/near/protocol)
 - **Docs Surfaces:** [Whitepaper](https://whitepaper.terraagent.fun) · [Pitch Deck](https://pitchdeck.terraagent.fun) · [3D Model Playground](https://playground.terraagent.fun/playground.html) · [Design System](https://design.terraagent.fun)
 
-![TerraAgent Live Persistent Planet Loop & NEAR Chain Architecture](./docs/assets/hero-live-planet-loop.svg)
+![TerraAgent Live Persistent Planet Loop & NEAR Chain Architecture](./frontend/public/assets/hero-live-planet-loop.svg)
 
 ---
 
@@ -36,11 +36,12 @@
 2. **Lossless Day-1 Validator Staking (`Zero Pay-to-Win`):**
    - Any claimed human account can stake `NEAR` from **Day 1** on `staking.terraagent.testnet` (`9.0%` gross pool APY, `2` game-day unbonding; AI callers blocked `403`).
    - **80% / 20% Yield Split + Perks at `>= 10 NEAR`:** You keep `100%` of your principal + **`80%` of validator yield (`7.20%` net APY)**, while **`20%` (`1.80%` APY)** routes to `TerraAgent Protocol` to unlock **Managed Server `NEAR.AI` Autopilot** (`z-ai/glm-5.3-flash`) + **50% Platform Trade Fee Discount** (`1.00% -> 0.50%`). Custom `/me.html` BYOK keys remain supported without staking; `@terra/sim` stays 100% isolated from staking (zero combat/mining P2W).
-3. **`TerraAgent Protocol` (`protocol.terraagent.testnet` · `GET /v1/near/protocol`):**
+3. **`TerraAgent Protocol` (`protocol.terraagent.testnet` · `GET /v1/near/protocol` · `/landing.html#protocol`):**
    - **3 Inflows:** `80%` of platform trade fees (`0.80%` standard / `0.40%` staker; `20%` goes to Planet Council DAO), `20%` of validator staking yield (`1.80%` APY), and `10%` of slashed Peace/War escrow bonds (`90%` goes to the betrayed treaty partner or war defender).
    - **2 Outflows:** Directly sponsors `relayer.terraagent.testnet` (`NEP-366` gasless meta-txs & `0.02 NEAR` pilot onboarding) and batched `NEAR AI Cloud` TEE inference.
+   - **Configurable Fee & Staking Envs:** `NEAR_PROTOCOL_ACCOUNT`, `NEAR_PLATFORM_FEE_BP` (`100`), `NEAR_STAKER_PLATFORM_FEE_BP` (`50`), `NEAR_DAO_FEE_SHARE_BP` (`2000`), `NEAR_STAKER_MIN_NEAR` (`10`), `NEAR_PROTOCOL_STAKING_YIELD_BP` (`2000`), and `NEAR_ESCROW_SLASH_PROTOCOL_BP` (`1000`) — all validated at boot and exposed via `GET /v1/near/protocol`.
 
-> **Specs & Rules:** [`docs/game/RULES.md`](./docs/game/RULES.md) (30s/5m/session loop, sub-accounts & AI custody checkpoint) · [`docs/game/GUILD_PRICING.md`](./docs/game/GUILD_PRICING.md) (NPC Guild AMM formula & reason tooltips) · [`docs/hackathon/DEPLOY_GUIDE.md`](./docs/hackathon/DEPLOY_GUIDE.md) (VPS + Testnet deployment) · [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md) (console commands, routes & env vars).
+> **Specs & Config:** [`frontend/whitepaper/whitepaper.md`](./frontend/whitepaper/whitepaper.md) (game loop, 4-way settlement, Guild AMM & protocol spec) · [`HACKATHON.md`](./HACKATHON.md) (official hackathon tracks & rules) · [`infra/.env.example`](./infra/.env.example) (all runtime, NEAR, AI & fee environment variables) · [`shared/sim/src/systems/trade/guild/quote.ts`](./shared/sim/src/systems/trade/guild/quote.ts) (NPC Guild AMM pricing math).
 
 ---
 
@@ -118,11 +119,11 @@ npm run contract:real -- --port TreasuryDao
 
 ## NEAR Hackathon Track Alignment
 
-TerraAgent is one cohesive product designed around the official NEAR Hackathon tracks ([`docs/hackathon/HACKATHON.md`](./docs/hackathon/HACKATHON.md)):
+TerraAgent is one cohesive product designed around the official NEAR Hackathon tracks ([`HACKATHON.md`](./HACKATHON.md)):
 
 | Track ID & Name | Official Track Themes Covered | How TerraAgent Implements It | Verify Live / Source |
 |---|---|---|---|
-| **`games`**<br>Games With Real Economies | `AGENT NPCS` · `SOCIAL LOGIN` · `NEAR INTENTS` · `NEP-245` | 30s/5m/session RTS where the economy *is* the gameplay: `NEP-245` cargo (`res.terraagent.testnet`), scheduled NPC Orbital Guild merchants (`kestrel`, `vanguard`) with readable inventory power-law pricing & hover `reason` tooltips, 10% off-planet sink/restock, social login + `NEP-366` gasless relayer (invisible chain UX), and 7-day fast-forward simulator. | [`/dev/economy-sim/`](https://play.terraagent.fun/dev/economy-sim/) · [`RULES.md`](./docs/game/RULES.md) · [`GUILD_PRICING.md`](./docs/game/GUILD_PRICING.md) |
+| **`games`**<br>Games With Real Economies | `AGENT NPCS` · `SOCIAL LOGIN` · `NEAR INTENTS` · `NEP-245` | 30s/5m/session RTS where the economy *is* the gameplay: `NEP-245` cargo (`res.terraagent.testnet`), scheduled NPC Orbital Guild merchants (`kestrel`, `vanguard`) with readable inventory power-law pricing & hover `reason` tooltips, 10% off-planet sink/restock, social login + `NEP-366` gasless relayer (invisible chain UX), and 7-day fast-forward simulator. | [`/dev/economy-sim/`](https://play.terraagent.fun/dev/economy-sim/) · [`whitepaper.md`](./frontend/whitepaper/whitepaper.md) · [`guild/quote.ts`](./shared/sim/src/systems/trade/guild/quote.ts) |
 | **`agents`**<br>Agent Economy | `AGENT COMMERCE` · `NEAR INTENTS` · `SUB-ACCOUNTS` | Colony AI directors (`ColonyAgentLoopService`), Rival AI neighbors, and external `ta_bot_...` bots earn NEP-245 cargo, trade via `NEP-413` `token_diff` intents + `1Click` quotes, counter-quote Guild spreads, negotiate bilateral truces, and hire mercenary defense via on-chain cargo escrows (`bounty.terraagent.testnet`), emitting one verifiable receipt + rationale per task. | [`colony-agent/`](./backend/app/src/ai/colony-agent/) · [`trade-bot.ts`](./scripts/economy/trade-bot.ts) · [`bounty`](./backend/near-contracts/bounty/src/lib.rs) |
 | **`swarms`**<br>AI Swarms | `MULTI-AGENT SYSTEMS` · `NEAR INTENTS` · `SUB-ACCOUNTS` | Shared-planet multi-agent coordination & competition: isolated `*.terraagent.testnet` & `*.npc.terraagent.testnet` sub-accounts, central planet orderbook coordinator (`/v1/market/:planetId`), zero-sum intent batch clearing, collective public-good funding in `{planet}.dao.terraagent.testnet`, plus zero-LLM deterministic simulation mode (`useLiveLlm: false`). | `POST /v1/economy-sim/run` · [`economy-sim/`](./backend/app/src/ai/economy-sim/) · [`/trade.html`](https://play.terraagent.fun/trade.html) |
 | **`security`**<br>AI Security & Defense | `AGENT SECURITY` · `FUNCTION CALL KEYS` · `TEE ATTESTATION` | Sandboxed agent custody: scoped Ed25519 session keys (`/v1/near/director-key`, `/v1/trade/keys`) with ACID per-token spend allowances (`NEAR_ALLOWANCE_EXHAUSTED`), one-click revoke & emergency kill switch (`POST /v1/trade/kill`), relayer receiver allowlist + daily gas cap, `validateAgentGuardrails` policy engine (`403 AI_STAKING_FORBIDDEN`, no demolish `AW-10`, war opt-in `AW-11`, human-only truce cancel `AW-13`, `intentRevision` concurrency), and TEE signature verification. | `POST /v1/near/stake -H 'x-actor: ai'` · [`testnet-agent-wallet.adapter.ts`](./backend/app/src/near/infrastructure/adapters/real/testnet-agent-wallet.adapter.ts) |
@@ -151,11 +152,11 @@ Real-time RTS play runs at `5 Hz` deterministic worker ticks (`50 Hz` under `war
 | **4. Autonomy, War & Bounties** | Offline / `AI AUTOPILOT: ON` colonies evaluate every `180 s` (`120 s` state-digest cache). | Raid-defense escrows lock/claim/refund on `bounty.terraagent.testnet`; gasless `SignedDelegate` actions relay via `relayer.terraagent.testnet` (`NEP-366`). |
 | **5. Council DAO & Staking** | Colonies vote on `meteor_shield`, `terraform_boost`, or `guild_subsidy`; launch settles colony. | `TreasuryDaoPort` executes proposals on `{planet}.dao.terraagent.testnet`; humans stake NEAR on `staking.terraagent.testnet` (`403` for AI). |
 
-![Real-Time Planet Guild Market and NEAR Intents NEP-413 Settlement](./docs/assets/realtime-market-intents.svg)
+![Real-Time Planet Guild Market and NEAR Intents NEP-413 Settlement](./frontend/public/assets/realtime-market-intents.svg)
 
 ### Orbital Guild AMM Pricing Math & Fee Model
 
- Markets run 24/7 over REST + SSE + WebSocket diffs (`/v1/trade/*`). Scheduled NPC Guild ships (`kestrel` / `vanguard`) prevent illiquidity on young planets without distorting organic price discovery ([`docs/game/GUILD_PRICING.md`](./docs/game/GUILD_PRICING.md), [`shared/sim/src/systems/trade/guild/quote.ts`](./shared/sim/src/systems/trade/guild/quote.ts)):
+ Markets run 24/7 over REST + SSE + WebSocket diffs (`/v1/trade/*`). Scheduled NPC Guild ships (`kestrel` / `vanguard`) prevent illiquidity on young planets without distorting organic price discovery ([`frontend/whitepaper/whitepaper.md`](./frontend/whitepaper/whitepaper.md), [`shared/sim/src/systems/trade/guild/quote.ts`](./shared/sim/src/systems/trade/guild/quote.ts)):
 
 $$\text{mid}_i = \text{clamp}\!\left(\text{ref}_i \cdot \left(\frac{T_i}{\max(I_i, 100)}\right)^k,\; 0.25\,\text{ref}_i,\; 4.00\,\text{ref}_i\right)$$
 
@@ -167,7 +168,7 @@ $$\text{mid}_i = \text{clamp}\!\left(\text{ref}_i \cdot \left(\frac{T_i}{\max(I_
 
 ## Autonomous Intelligence (`NEAR.AI` TEE + Player BYOK) & Safety Guardrails
 
-![24-Hour Autonomous Scenario: Offline Player, NEAR.AI Bots, Trade, War & Diplomacy](./docs/assets/autonomous-scenario-24h.svg)
+![24-Hour Autonomous Scenario: Offline Player, NEAR.AI Bots, Trade, War & Diplomacy](./frontend/public/assets/autonomous-scenario-24h.svg)
 
 1. **Batched Bot Decision Manager ([`backend/app/src/ai/colony-agent/`](./backend/app/src/ai/colony-agent/)):**
    - Sweeps active planets every **`180 s`** with a **`120 s` observation-digest cache** so unchanged colonies consume **zero LLM tokens**.
@@ -243,12 +244,12 @@ All **6 custom Rust `near-sdk 5.7` smart contracts** ([`backend/near-contracts/`
 
 | Contract Account | Source Crate | Standard & Key On-Chain Methods | Live WASM `code_hash` | Deploy / Init Tx (`testnet.nearblocks.io`) |
 |---|---|---|---|---|
-| [`res.terraagent.testnet`](https://testnet.nearblocks.io/address/res.terraagent.testnet) | [`near-contracts/res`](./backend/near-contracts/res/src/lib.rs) | **NEP-245 Multi-Token** (`10` cargo tokens, `18` dec) · `mt_mint`, `mt_burn`, `operator_transfer`, `mt_transfer`, `mt_balance_of`, `mt_metadata` | `6G6Ew8mygiAud4NoA772PzkCwnbfUA6ZacWxEnrpqJwC` | [`HcukrSstSJwmzNkrYekqbt6Kt9V8AZAjTYhebb7B3Sso`](https://testnet.nearblocks.io/txns/HcukrSstSJwmzNkrYekqbt6Kt9V8AZAjTYhebb7B3Sso) |
-| [`deed.terraagent.testnet`](https://testnet.nearblocks.io/address/deed.terraagent.testnet) | [`near-contracts/deed`](./backend/near-contracts/deed/src/lib.rs) | **NEP-171 Soulbound Deeds & Badges** · `mint_deed`, `update_metadata`, `get_deed`, `owner_of`, `nft_token`, `nft_tokens_for_owner`, `nft_metadata` | `GFB5WgL1hMiCSFZSNjiXdYhui68ptf2AyDvFHZGUR6pB` | [`3csscTYvcVK5Sz8JUvvtjULj5tHyb6J1XC3U8tddZyV9`](https://testnet.nearblocks.io/txns/3csscTYvcVK5Sz8JUvvtjULj5tHyb6J1XC3U8tddZyV9) (live mint [`FSYoA8pd...`](https://testnet.nearblocks.io/txns/FSYoA8pdfsmKCK2G6Pri6apnKMoj2sHGbA3dsoNJu4XF)) |
-| [`bounty.terraagent.testnet`](https://testnet.nearblocks.io/address/bounty.terraagent.testnet) | [`near-contracts/bounty`](./backend/near-contracts/bounty/src/lib.rs) | **Mercenary, Peace & War Bond Escrow** · `open_escrow`, `claim_escrow`, `refund_escrow`, `slash_escrow` (`90%` victim/defender · `10%` Protocol) | `79UNK5jUfEWWQYtBjSqD69UyKEw6vVGmUSrtBGy1ow2e` | [`2Uw4SkRkKedPtTtjzyewAFy2N5jnAcgB9HnKpPS7aSua`](https://testnet.nearblocks.io/txns/2Uw4SkRkKedPtTtjzyewAFy2N5jnAcgB9HnKpPS7aSua) (init [`GDDYUk82...`](https://testnet.nearblocks.io/txns/GDDYUk826TgGxDWiTq9y6PdNKW7HpfGoe8hQrMXccNFG)) |
-| [`staking.terraagent.testnet`](https://testnet.nearblocks.io/address/staking.terraagent.testnet) | [`near-contracts/staking`](./backend/near-contracts/staking/src/lib.rs) | **Day-1 Lossless Staking Vault (`D-18` human-only)** · `credit_near`, `deposit_near`, `claim_native_near`, `stake`, `unstake` (`80%/20%` yield split, `2` game-day unbonding), `withdraw`, `get_protocol_yield_balance` | `Hjw4T6c4hAN3A81xqytUmD5heR7aahtGbwMkpqAX8Yze` | [`DD7gHYoZji5prVQZsnpaQSkQVqMrR9gqJaHJd1RNyTmP`](https://testnet.nearblocks.io/txns/DD7gHYoZji5prVQZsnpaQSkQVqMrR9gqJaHJd1RNyTmP) (init [`CJAeXB8Y...`](https://testnet.nearblocks.io/txns/CJAeXB8YVZqrXPQQRRMMY2s6sBY7Ma17gE1thZ9CHAyX)) |
-| [`dao.terraagent.testnet`](https://testnet.nearblocks.io/address/dao.terraagent.testnet) | [`near-contracts/dao`](./backend/near-contracts/dao/src/lib.rs) | **Planet Council Treasury DAO** · `create_dao`, `deposit`, `add_member`, `propose`, `vote`, `finalize`, `get_dao` (`> 50%` quorum) | `Aa2cch25oaHQohk5FxTDAxBSRw5L5pHkxWxxjJbr992G` | [`G8YgUSGW1XaTSY2ZpG8nncB5ZuEU9ibjTSYMNHD3HcuJ`](https://testnet.nearblocks.io/txns/G8YgUSGW1XaTSY2ZpG8nncB5ZuEU9ibjTSYMNHD3HcuJ) (planet DAO [`CcatcC2z...`](https://testnet.nearblocks.io/txns/CcatcC2zYsrkr2zSS7CnNazF6nHzvu7Sz5nEyvQ7f9ee)) |
-| [`pilots.terraagent.testnet`](https://testnet.nearblocks.io/address/pilots.terraagent.testnet) | [`near-contracts/pilots`](./backend/near-contracts/pilots/src/lib.rs) | **Cold-Root Pilot Sub-Account Factory** · `create_pilot_account` + `on_pilot_created` callback, `get_pilot_account`, `set_operator`, `get_operator` (idempotent by `op_id`) | `6nKVXYo46jG61ZUB1VUogGwC1ennpDzEWzqAGKQguU4z` | [`9KT6vYxpJG28nB8gc4VJUPmN9QxXoTZb865ZUaSPxuX5`](https://testnet.nearblocks.io/txns/9KT6vYxpJG28nB8gc4VJUPmN9QxXoTZb865ZUaSPxuX5) (init [`BQ2pWYj4...`](https://testnet.nearblocks.io/txns/BQ2pWYj49ALR2kB6VuLTpKMmRur7xMrNco2UMdLZg2BY)) |
+| [`res.terraagent.testnet`](https://testnet.nearblocks.io/address/res.terraagent.testnet) | [`near-contracts/res`](./backend/near-contracts/res/src/lib.rs) | **NEP-245 Multi-Token** (`10` cargo tokens, `18` dec) · `mt_mint`, `mt_burn`, `operator_transfer`, `mt_transfer`, `mt_balance_of`, `mt_metadata` | `8Tmkq9b1e4KoumPiiBAEFMMsSTnWuxCZ6L6p52SHRroa` | [`5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok`](https://testnet.nearblocks.io/txns/5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok) |
+| [`deed.terraagent.testnet`](https://testnet.nearblocks.io/address/deed.terraagent.testnet) | [`near-contracts/deed`](./backend/near-contracts/deed/src/lib.rs) | **NEP-171 Soulbound Deeds & Badges** · `mint_deed`, `update_metadata`, `get_deed`, `owner_of`, `nft_token`, `nft_tokens_for_owner`, `nft_metadata` | `4TMMsxv3whUVCUxmfbzEWgf8HfwEMLFmX4pGxyvpVV3M` | [`E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK`](https://testnet.nearblocks.io/txns/E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK) (live mint [`FSYoA8pd...`](https://testnet.nearblocks.io/txns/FSYoA8pdfsmKCK2G6Pri6apnKMoj2sHGbA3dsoNJu4XF)) |
+| [`bounty.terraagent.testnet`](https://testnet.nearblocks.io/address/bounty.terraagent.testnet) | [`near-contracts/bounty`](./backend/near-contracts/bounty/src/lib.rs) | **Mercenary, Peace & War Bond Escrow** · `open_escrow`, `claim_escrow`, `refund_escrow`, `slash_escrow` (`90%` victim/defender · `10%` Protocol) | `9NEAvdLMN62YEth7ENZxadZhxH68injDVff7sGgDvSJ9` | [`21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB`](https://testnet.nearblocks.io/txns/21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB) (init [`GDDYUk82...`](https://testnet.nearblocks.io/txns/GDDYUk826TgGxDWiTq9y6PdNKW7HpfGoe8hQrMXccNFG)) |
+| [`staking.terraagent.testnet`](https://testnet.nearblocks.io/address/staking.terraagent.testnet) | [`near-contracts/staking`](./backend/near-contracts/staking/src/lib.rs) | **Day-1 Lossless Staking Vault (`D-18` human-only)** · `credit_near`, `deposit_near`, `claim_native_near`, `stake`, `unstake` (`80%/20%` yield split, `2` game-day unbonding), `withdraw`, `set_protocol_yield_bp`, `withdraw_protocol_yield`, `get_protocol_yield_balance` | `2cDtJn9Scf3iR7P5pSMWmcTfJy6Be3ZZARwSqi7bwaSj` | [`5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2`](https://testnet.nearblocks.io/txns/5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2) (init [`CJAeXB8Y...`](https://testnet.nearblocks.io/txns/CJAeXB8YVZqrXPQQRRMMY2s6sBY7Ma17gE1thZ9CHAyX)) |
+| [`dao.terraagent.testnet`](https://testnet.nearblocks.io/address/dao.terraagent.testnet) | [`near-contracts/dao`](./backend/near-contracts/dao/src/lib.rs) | **Planet Council Treasury DAO** · `create_dao`, `deposit`, `add_member`, `propose`, `vote`, `finalize`, `get_dao` (`> 50%` quorum) | `J5L9QjPghZQ337PLxyv7ehEtNRWo2KuMvTnoAMyNEGrS` | [`DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U`](https://testnet.nearblocks.io/txns/DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U) (planet DAO [`CcatcC2z...`](https://testnet.nearblocks.io/txns/CcatcC2zYsrkr2zSS7CnNazF6nHzvu7Sz5nEyvQ7f9ee)) |
+| [`pilots.terraagent.testnet`](https://testnet.nearblocks.io/address/pilots.terraagent.testnet) | [`near-contracts/pilots`](./backend/near-contracts/pilots/src/lib.rs) | **Cold-Root Pilot Sub-Account Factory** · `create_pilot_account` + `on_pilot_created` callback, `get_pilot_account`, `set_operator`, `get_operator` (idempotent by `op_id`) | `7HP8BHuqUF36MtxYK8DKRenjZ9n9CmR9NSaZmnuZpWa5` | [`cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h`](https://testnet.nearblocks.io/txns/cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h) (init [`BQ2pWYj4...`](https://testnet.nearblocks.io/txns/BQ2pWYj49ALR2kB6VuLTpKMmRur7xMrNco2UMdLZg2BY)) |
 
 ### 4 Core Protocol Accounts & Direct FastNEAR RPC Verification
 
@@ -271,7 +272,7 @@ curl -fsS -X POST https://test.rpc.fastnear.com -H 'content-type: application/js
 
 ### Full 11/11 Port + AI + Notifier Honesty Table (`GET /v1/near/status`)
 
-Per [`docs/hackathon/HACKATHON.md`](./docs/hackathon/HACKATHON.md) (`Q-007`, `Q-010`, `Q-017`), the exact boundary between on-chain Testnet execution and off-chain/hybrid verification is documented below:
+Per [`HACKATHON.md`](./HACKATHON.md) (`Q-007`, `Q-010`, `Q-017`), the exact boundary between on-chain Testnet execution and off-chain/hybrid verification is documented below:
 
 | Port / Service | Local (`NEAR_MODE=mock`) | Production (`NEAR_MODE=testnet` / `mainnet`) | Exact On-Chain vs. Verifier Boundary |
 |---|---|---|---|
@@ -297,7 +298,7 @@ Per [`docs/hackathon/HACKATHON.md`](./docs/hackathon/HACKATHON.md) (`Q-007`, `Q-
 
 | Path / Host | Purpose | Key Parameters |
 |---|---|---|
-| `/` · `/landing.html` (`terraagent.fun`) | Hub navigation & interactive orbital landing showcase | Planet cards deep-link into `/play.html` |
+| `/` · `/landing.html` (`terraagent.fun`) | Hub navigation, orbital showcase, `#economics` calculator & `#protocol` visual schematic | Planet cards deep-link into `/play.html`; live `/v1/near/protocol` hydration |
 | `/play.html` (`play.terraagent.fun`) | 3D colony RTS over `/ws` or offline worker | `?planet=dune\|oceanForest\|forestRock`, `?deploy=1`, `?scenario=w00..w22`, `?host=local`, `?skip=1` |
 | `/trade.html` | Planet CLOB orderbook, depth ladder, swaps & `ta_bot_...` keys | `?planet=<id>&pair=<base>/<quote>&as=<name>` |
 | `/me.html` | Pilot profile, badges, colony history & **BYOK NEAR.AI vault** | Authenticated session (`?as=<name>` in local dev) |
@@ -324,7 +325,8 @@ npm run contract:real -- --port <Port>   # live NEAR Testnet contract verificati
 npm run test:parity                      # browser worker vs server thread bit-determinism gate
 npm run e2e -- --waves ..22              # Playwright headless-Chromium end-to-end suite
 npm run validate:models -- --all         # 3D procedural geometry, connectivity & palette validator
-cargo test --manifest-path backend/near-contracts/Cargo.toml   # Rust unit tests across all 6 contracts
+npm run near:test-contracts              # 85/85 Rust unit tests across all 6 smart contracts
+npm run near:build-contracts             # Build release wasm32-unknown-unknown binaries (--cfg near)
 ```
 
 ### Repository Layout (`D-41` Clean Root)
@@ -337,8 +339,8 @@ backend/
 frontend/      Vite multi-page WebGL2 client (game, render, landing, trade, playground, design, pitchdeck, whitepaper)
 tests/         Playwright E2E, client/server parity & Vitest suites
 infra/         Docker Compose stacks (infra, frontend, backend, chain), Nginx vhosts & env templates
-scripts/       Dev orchestration, Testnet deployment, codegen & architectural structure gates
-docs/          Game rules, Guild math, NEAR protocol specs, deployment guide & visual constitution
+scripts/       Dev orchestration, Testnet/Mainnet deployment, codegen & architectural structure gates
+HACKATHON.md   Official NEAR Hackathon track & submission specification
 ```
 
 ### Tech Stack, Patterns & Database

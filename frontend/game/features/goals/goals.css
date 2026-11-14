@@ -386,3 +386,6 @@
 .ta-colony-book .ta-hq-command-panel .ta-priorities-panel { padding-left: 0; padding-right: 0; background: transparent; clip-path: none; }
 .ta-colony-book .ta-hq-command-panel [role="tabpanel"] { max-height: none; overflow: visible; }
 .ta-colony-book .ta-hq-tabs, .ta-colony-book .ta-ai-toggle { padding-left: 0; padding-right: 0; }
+.ta-colony-book .ta-ai-toggle { padding-top: 0; padding-bottom: var(--ta-s2); border-bottom: 1px solid var(--ta-seam); justify-content: space-between; }
+.ta-colony-book .ta-ai-toggle__label { color: var(--ta-orange); font-weight: 600; }
+.ta-colony-book .ta-ai-toggle__hint { margin-left: auto; text-align: right; }

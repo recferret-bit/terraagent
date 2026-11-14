@@ -58,6 +58,7 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]): EnvSecti
     NEAR_STAKER_PLATFORM_FEE_BP: z.string().optional(),
     NEAR_DAO_FEE_SHARE_BP: z.string().optional(),
     NEAR_STAKER_MIN_NEAR: z.string().optional(),
+    NEAR_PROTOCOL_STAKING_YIELD_BP: z.string().optional(),
     NEAR_ESCROW_SLASH_PROTOCOL_BP: z.string().optional(),
     NEAR_CREDENTIALS_DIR: z.string().optional(),
     NEAR_FASTAUTH_ISSUER: z.string().optional(),

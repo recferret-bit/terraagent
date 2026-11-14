@@ -96,6 +96,7 @@ export class NeighborHudStrip {
     this.minimapOverlayEl.className = 'ta-minimap-neighbor-markers';
     this.minimapOverlayEl.dataset.testid = 'minimap-neighbor-markers';
     this.minimapOverlayEl.setAttribute('aria-label', 'Minimap neighbor markers');
+    this.minimapOverlayEl.hidden = true;
 
     this.container.appendChild(this.hudStripEl);
     this.container.appendChild(this.minimapOverlayEl);

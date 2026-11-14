@@ -3,7 +3,6 @@ import {
   MIN_PERK_STAKE_NEAR,
   nearToYocto,
   PROTOCOL_YIELD_SHARE_BP,
-  STAKER_NET_YIELD_SHARE_BP,
 } from '../../staking/yocto.js';
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
@@ -76,8 +75,10 @@ export function resolveProtocolFeeSchedule(
   const protocolNetStakerBp = Math.floor((stakerPlatformFeeBp * protocolFeeShareBp) / 10_000);
 
   const validatorGrossApyBp = defaults.validatorGrossApyBp ?? 900;
-  const stakerNetApyBp = Math.floor((validatorGrossApyBp * STAKER_NET_YIELD_SHARE_BP) / 10_000);
-  const protocolStakingYieldBp = validatorGrossApyBp - stakerNetApyBp;
+  const protocolStakingYieldShareBp =
+    parseOptionalBp(env.NEAR_PROTOCOL_STAKING_YIELD_BP, 0, 10_000) ?? PROTOCOL_YIELD_SHARE_BP;
+  const protocolStakingYieldBp = Math.floor((validatorGrossApyBp * protocolStakingYieldShareBp) / 10_000);
+  const stakerNetApyBp = validatorGrossApyBp - protocolStakingYieldBp;
 
   const minStake = parseMinStakeNear(env.NEAR_STAKER_MIN_NEAR);
   const escrowSlashProtocolShareBp =
@@ -93,7 +94,7 @@ export function resolveProtocolFeeSchedule(
     validatorGrossApyBp,
     stakerNetApyBp,
     protocolStakingYieldBp,
-    protocolStakingYieldShareBp: PROTOCOL_YIELD_SHARE_BP,
+    protocolStakingYieldShareBp,
     minStakeForPerksNear: minStake.near,
     minStakeForPerksYocto: minStake.yocto,
     escrowSlashVictimShareBp: 10_000 - escrowSlashProtocolShareBp,

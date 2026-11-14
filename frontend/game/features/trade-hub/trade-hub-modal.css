@@ -1,0 +1,80 @@
+.ta-trade-hub-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 83;
+  background: color-mix(in srgb, var(--ta-void) 76%, transparent);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.ta-trade-hub[data-modal='true'] {
+  width: min(840px, 94vw);
+  max-height: min(760px, 90vh);
+  gap: var(--ta-s3);
+  box-shadow: var(--ta-glow-1);
+}
+
+.ta-trade-hub__tabs {
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+}
+
+.ta-trade-hub[data-modal='true'] .ta-trade-hub__tabs .btn {
+  padding-inline: 6px;
+  font-size: 10px;
+}
+
+.ta-trade-hub__contracts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__contracts[hidden] {
+  display: none;
+}
+
+.ta-trade-hub__contracts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  max-height: 120px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ta-trade-hub__contracts-empty {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-dim);
+}
+
+.ta-trade-hub__contract-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-left: var(--ta-s2);
+  border-left: 2px solid var(--ta-energy);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+}
+
+.ta-trade-hub__contract-row--failed {
+  border-left-color: var(--ta-fault);
+  color: var(--ta-fault-text);
+}
+
+.ta-trade-hub__contract-badge {
+  flex: none;
+  font-family: var(--ta-font-display);
+  font-size: 10px;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-blue-hi);
+}

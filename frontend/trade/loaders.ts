@@ -12,7 +12,7 @@ export class Loaders {
   catalog(): Promise<void[]> {
     return Promise.all([
       this.store.load('pairs', async () => { const r = await this.client.pairs(); return (s) => ({ ...s, pairs: r.pairs }); }),
-      this.store.load('policy', async () => { const r = await this.client.policy(); return (s) => ({ ...s, policy: r.policy }); }),
+      this.store.load('policy', async (s) => { const r = await this.client.policy(s.planetId || undefined); return (x) => ({ ...x, policy: r.policy }); }),
     ]);
   }
 

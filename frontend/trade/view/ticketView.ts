@@ -119,11 +119,12 @@ export class OrderTicket {
       this.unitPrice.value = pv.amount && pv.total ? fmtUnit({ num: pv.total.toString(), den: pv.amount }, q) : '';
     }
     const feeBp = st.policy?.platformFeeBp ?? 100;
-    const isStaker = feeBp <= 50;
+    const stdFeeBp = st.policy?.standardPlatformFeeBp ?? 100;
+    const isStaker = Boolean(st.policy?.stakerDiscountActive) || feeBp < stdFeeBp || feeBp <= 50;
     this.feeTier.className = `tr-fee-tier ${isStaker ? 'is-staker' : ''}`;
     this.feeTier.textContent = isStaker
-      ? `★ STAKER PERK ACTIVE: ${(feeBp / 100).toFixed(2)}% Platform Fee (50% Discount — ≥10 NEAR Staked)`
-      : `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥10 NEAR in Colony Staking for 0.50% Fee + Managed NEAR.AI)`;
+      ? `★ STAKER PERK ACTIVE: ${(feeBp / 100).toFixed(2)}% Platform Fee (Down from ${(stdFeeBp / 100).toFixed(2)}% — ≥10 NEAR Staked)`
+      : `Platform Fee: ${(feeBp / 100).toFixed(2)}% (Stake ≥10 NEAR in Colony Staking for 50% Lower Fee + Managed NEAR.AI)`;
     this.drawPreview(pv, q, parsed.base, st);
     this.unit.textContent = pv.amount && pv.total ? `= ${fmtUnit({ num: pv.total.toString(), den: pv.amount }, q)} ${q} per unit · Total ${formatAtomic(q, pv.total)} ${q} settled via NEP-413` : 'Type either Unit Price or Total Order Price — the other updates automatically.';
     this.reason.hidden = pv.blocked === null || this.busy;
@@ -151,15 +152,18 @@ export class OrderTicket {
     const money = (v: bigint | null): string => (v === null ? '-' : fmtAmount(q, v));
     const min = st.policy?.minNotional[q];
     const unitStr = pv.amount && pv.total ? `${fmtUnit({ num: pv.total.toString(), den: pv.amount }, q)} ${q}` : '-';
-    const daoCut = pv.total === null ? null : (pv.platformFee * 2_000n) / 10_000n;
+    const daoShareBp = BigInt(st.policy?.daoFeeShareBp ?? 2_000);
+    const daoPct = Math.round(Number(daoShareBp) / 100);
+    const protoPct = 100 - daoPct;
+    const daoCut = pv.total === null ? null : (pv.platformFee * daoShareBp) / 10_000n;
     const protocolCut = pv.total === null ? null : pv.platformFee - (daoCut ?? 0n);
     const rows = this.side === 'buy'
       ? [
           ...row('UNIT PRICE', unitStr, 'unit-price'),
           ...row('SELLER PRINCIPAL', money(pv.total), 'notional'),
           ...row('PLATFORM FEE', money(pv.total === null ? null : pv.platformFee), 'platform'),
-          ...row('↳ PLANET DAO (20%)', money(daoCut), 'split-dao'),
-          ...row('↳ TERRAAGENT PROTOCOL (80%)', money(protocolCut), 'split-protocol'),
+          ...row(`↳ PLANET DAO (${daoPct}%)`, money(daoCut), 'split-dao'),
+          ...row(`↳ TERRAAGENT PROTOCOL (${protoPct}%)`, money(protocolCut), 'split-protocol'),
           ...row('MAX STALL OWNER FEE', money(pv.total === null ? null : pv.stallFee), 'stall'),
           ...row('MAX SPEND (RESERVED)', money(pv.total === null ? null : pv.maxSpend), 'max'),
         ]

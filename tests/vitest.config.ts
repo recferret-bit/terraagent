@@ -8,7 +8,7 @@ process.env.SWC_NODE_PROJECT ??= resolve(root, 'shared/tsconfig.base.json');
 export default defineConfig({
   root,
   test: {
-    projects: ['shared/*/vitest.config.ts', 'tests/scenarios', 'tests/economy', 'tests/e2e/parity', 'backend/app', 'backend/director', 'frontend/game', 'frontend/render', 'frontend/playground'],
+    projects: ['shared/*/vitest.config.ts', 'tests/scenarios', 'tests/economy', 'tests/e2e/parity', 'backend/app', 'backend/director', 'frontend/game', 'frontend/landing', 'frontend/render', 'frontend/playground'],
     coverage: { reportsDirectory: resolve(import.meta.dirname, '.out/coverage') },
   },
 });

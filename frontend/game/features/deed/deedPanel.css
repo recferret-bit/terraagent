@@ -53,12 +53,21 @@
   color: var(--ta-orange-hi);
 }
 
+.ta-deed-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 83;
+  background: color-mix(in srgb, var(--ta-void) 74%, transparent);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
 .ta-deed-panel {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 40;
+  z-index: 84;
   width: min(740px, 94vw);
   max-width: 94vw;
   max-height: min(560px, 88vh);

@@ -81,8 +81,17 @@ export function upInfra(env) {
   reloadNginx(env);
 }
 
+/** Laptop frontend compose env: keep local dev HUD tools enabled even if shell has NODE_ENV=production. */
+export function frontendComposeEnv(env) {
+  return {
+    ...env,
+    NODE_ENV: 'development',
+    VITE_APP_ENV: env.VITE_APP_ENV || 'development',
+  };
+}
+
 export function upFrontend(env) {
-  run('docker', upArgv.frontend, env);
+  run('docker', upArgv.frontend, frontendComposeEnv(env));
 }
 
 /** Laptop compose env. The shell DATABASE_URL is 127.0.0.1, which is the container itself. */

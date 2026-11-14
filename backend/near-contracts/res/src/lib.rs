@@ -202,6 +202,8 @@ impl CargoContract {
     }
 
     /// Standard NEP-245 single-token transfer signed by holder (`mt_transfer`).
+    /// Accepts `0 yoctoNEAR` (scoped `AgentWallet` FunctionCall keys) or `1 yoctoNEAR` (NEP-245 wallet confirmation),
+    /// while rejecting > 1 yoctoNEAR so accidental native deposits are never locked inside the contract.
     #[payable]
     pub fn mt_transfer(
         &mut self,
@@ -210,6 +212,14 @@ impl CargoContract {
         amount: String,
         memo: Option<String>,
     ) {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "NEAR_NFT_INVALID: mt_transfer accepts at most 1 yoctoNEAR"
+        );
+        require!(
+            memo.as_ref().is_none_or(|m| m.len() <= 512),
+            "NEAR_NFT_INVALID: memo exceeds 512 bytes"
+        );
         assert_valid_token(&token_id);
         let qty = parse_positive_u128(&amount);
         let sender = env::predecessor_account_id();

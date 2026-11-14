@@ -52,9 +52,10 @@ function decodeNep413SignatureBytes(raw: string): Buffer {
   return bytes;
 }
 
-function validateCallbackUrlCandidates(raw?: string): readonly (string | undefined)[] {
+export function validateCallbackUrlCandidates(raw?: string): readonly (string | undefined)[] {
   if (!raw) return [undefined];
   const trimmed = raw.trim();
+  if (!trimmed) return [undefined];
   let normalized: string;
   try {
     const parsed = new URL(trimmed);

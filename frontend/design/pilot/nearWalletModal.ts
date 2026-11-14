@@ -1,19 +1,29 @@
-import type { NearAuthVerifyRequest } from '@terra/contracts';
+import type { NearAuthChallengeResponse, NearAuthVerifyRequest } from '@terra/contracts';
 import type { MockToken } from './mockToken';
-import { encodeNep413SocialToken, requestNearAuthChallenge } from './nearAuthApi';
+import { encodeNep413SocialToken } from './nearAuthApi';
 import { renderNearCliPanel } from './nearCliPanel';
 import {
+  createPrefetchedChallengeStore,
   ensureModalCss,
+  extractPopupBlockedAccountId,
+  friendlyWalletError,
+  MIN_PREWARMED_CHALLENGE_TTL_MS,
   readSavedNearWallet,
   renderStatusBox,
   saveNearWallet,
   SELECTOR_WALLETS,
+  type PrefetchedChallengeStore,
   type SavedNearWallet,
   type SelectorWalletDef,
 } from './nearWalletModalParts';
-import { signChallengeWithNearWallet, WalletNotInstalledError } from './walletSelectorRuntime';
+import {
+  getNearWalletSelector,
+  isPopupBlockedError,
+  signChallengeWithNearWallet,
+  WalletNotInstalledError,
+} from './walletSelectorRuntime';
 
-export { readSavedNearWallet, saveNearWallet, type SavedNearWallet };
+export { friendlyWalletError, readSavedNearWallet, saveNearWallet, type SavedNearWallet };
 
 export interface NearWalletSelectorCallbacks {
   readonly initialMode?: 'signin' | 'signup';
@@ -36,36 +46,111 @@ function createOptionButton(testId: string, title: string, subtitle: string, onC
   return btn;
 }
 
+function renderFlowFailure(params: {
+  readonly def: SelectorWalletDef;
+  readonly mode: 'signin' | 'signup';
+  readonly activeNet: 'testnet' | 'mainnet';
+  readonly panelHost: HTMLElement;
+  readonly challenge: NearAuthChallengeResponse | null;
+  readonly challengeStore: PrefetchedChallengeStore;
+  readonly err: unknown;
+  readonly onRetry: (preverifiedAccountId?: string) => void;
+}): void {
+  const { def, mode, activeNet, panelHost, challenge, challengeStore, err, onRetry } = params;
+  const preserveUnusedChallenge = (): void => {
+    if (challenge && challenge.expiresAt - Date.now() > MIN_PREWARMED_CHALLENGE_TTL_MS) {
+      challengeStore.restoreUnused(mode, challenge);
+    } else {
+      void challengeStore.warm(mode);
+    }
+  };
+  const popupBlockedAccount = extractPopupBlockedAccountId(err);
+  if (popupBlockedAccount) {
+    preserveUnusedChallenge();
+    renderStatusBox(panelHost, {
+      headline: `${def.name.toUpperCase()} · SIGNATURE POPUP BLOCKED`,
+      stepText: `Account ${popupBlockedAccount} is connected. Click below to open the NEP-413 signature window directly.`,
+      errorText: friendlyWalletError(err, activeNet),
+      retryAction: {
+        label: `Account ${popupBlockedAccount} connected — Click to Sign NEP-413 Message`,
+        onClick: () => onRetry(popupBlockedAccount),
+      },
+    });
+    return;
+  }
+
+  if (isPopupBlockedError(err) || err instanceof WalletNotInstalledError) {
+    preserveUnusedChallenge();
+  } else {
+    void challengeStore.warm(mode);
+  }
+  const acctHint = activeNet === 'mainnet' ? 'NEAR Mainnet (.near)' : 'NEAR Testnet (.testnet)';
+  if (err instanceof WalletNotInstalledError) {
+    renderStatusBox(panelHost, {
+      headline: `${def.name.toUpperCase()} · EXTENSION REQUIRED`,
+      errorText: `${err.message} Install the extension, create or import a ${acctHint} account, then retry.`,
+      actionLink: { label: def.signupActionLabel, href: err.downloadUrl },
+      retryAction: { label: 'Retry Connection', onClick: () => onRetry() },
+    });
+    return;
+  }
+  renderStatusBox(panelHost, {
+    headline: `${def.name.toUpperCase()} · SIGN-IN INCOMPLETE`,
+    errorText: friendlyWalletError(err, activeNet),
+    actionLink: { label: def.signupActionLabel, href: def.signupUrl },
+    retryAction: { label: `Pair & Sign with ${def.name}`, onClick: () => onRetry() },
+  });
+}
+
 async function executeSelectorWalletFlow(params: {
   readonly def: SelectorWalletDef;
   readonly mode: 'signin' | 'signup';
   readonly initialNetwork: 'testnet' | 'mainnet';
   readonly panelHost: HTMLElement;
+  readonly challengeStore: PrefetchedChallengeStore;
   readonly setBusy: (busy: boolean) => void;
   readonly suspendTopLayer: () => () => void;
   readonly onSigned: (walletName: string, payload: NearAuthVerifyRequest) => void;
+  readonly preverifiedAccountId?: string;
 }): Promise<void> {
-  const { def, mode, initialNetwork, panelHost, setBusy, suspendTopLayer, onSigned } = params;
+  const {
+    def,
+    mode,
+    initialNetwork,
+    panelHost,
+    challengeStore,
+    setBusy,
+    suspendTopLayer,
+    onSigned,
+    preverifiedAccountId,
+  } = params;
   setBusy(true);
   const origin = typeof location !== 'undefined' ? location.origin : 'https://terraagent.fun';
   const pathname = typeof location !== 'undefined' ? location.pathname : '/';
   const callbackUrl = `${origin}${pathname}`;
 
   let activeNet: 'testnet' | 'mainnet' = initialNetwork;
-  renderStatusBox(panelHost, {
-    headline: `${def.name.toUpperCase()} · NEP-413 ${activeNet.toUpperCase()} AUTH`,
-    stepText: '1/3 · Requesting single-use 32-byte NEP-413 challenge from backend…',
-  });
-
+  let challenge: NearAuthChallengeResponse | null = challengeStore.takeReady(mode);
   let restoreTopLayer: (() => void) | null = null;
   try {
-    const challenge = await requestNearAuthChallenge({ walletId: def.moduleId, intent: mode });
+    if (!challenge) {
+      renderStatusBox(panelHost, {
+        headline: `${def.name.toUpperCase()} · NEP-413 ${activeNet.toUpperCase()} AUTH`,
+        stepText: '1/3 · Requesting single-use 32-byte NEP-413 challenge from backend…',
+      });
+      challenge = await challengeStore.awaitOrFetch(def.moduleId, mode);
+    }
     activeNet = challenge.network === 'mainnet' ? 'mainnet' : 'testnet';
+    renderStatusBox(panelHost, {
+      headline: `${def.name.toUpperCase()} · NEP-413 ${activeNet.toUpperCase()} AUTH`,
+      stepText: `2/3 · Opening ${def.name} (${activeNet === 'mainnet' ? 'Mainnet' : 'Testnet'})…`,
+    });
     // Exit `<dialog>` modal `#top-layer` before invoking external wallet SDKs so `document.body`
     // overlays (NEAR Mobile QR widget, Intear, Meteor web) render above `.near-modal.is-signing` and are not `inert`,
     // while keeping the dialog non-modally open so extension/popup users see live `2/3` and `3/3` step status.
     restoreTopLayer = suspendTopLayer();
     const signedPayload = await signChallengeWithNearWallet(def.moduleId, challenge, callbackUrl, {
+      ...(preverifiedAccountId ? { preverifiedAccountId } : {}),
       onStep: (stepText) => {
         renderStatusBox(panelHost, {
           headline: `${def.name.toUpperCase()} · NEP-413 ${activeNet.toUpperCase()} AUTH`,
@@ -82,22 +167,15 @@ async function executeSelectorWalletFlow(params: {
     restoreTopLayer?.();
     if (!panelHost.isConnected) return;
     setBusy(false);
-    const retry = () => void executeSelectorWalletFlow(params);
-    const acctHint = activeNet === 'mainnet' ? 'NEAR Mainnet (.near)' : 'NEAR Testnet (.testnet)';
-    if (err instanceof WalletNotInstalledError) {
-      renderStatusBox(panelHost, {
-        headline: `${def.name.toUpperCase()} · EXTENSION REQUIRED`,
-        errorText: `${err.message} Install the extension, create or import a ${acctHint} account, then retry.`,
-        actionLink: { label: def.signupActionLabel, href: err.downloadUrl },
-        retryAction: { label: 'Retry Connection', onClick: retry },
-      });
-      return;
-    }
-    renderStatusBox(panelHost, {
-      headline: `${def.name.toUpperCase()} · SIGN-IN INCOMPLETE`,
-      errorText: err instanceof Error ? err.message : 'Wallet signature could not be completed.',
-      actionLink: { label: def.signupActionLabel, href: def.signupUrl },
-      retryAction: { label: `Pair & Sign with ${def.name}`, onClick: retry },
+    renderFlowFailure({
+      def,
+      mode,
+      activeNet,
+      panelHost,
+      challenge,
+      challengeStore,
+      err,
+      onRetry: (retryAcct) => void executeSelectorWalletFlow({ ...params, preverifiedAccountId: retryAcct }),
     });
   }
 }
@@ -241,6 +319,46 @@ function createTopLayerSuspender(dialog: HTMLDialogElement): () => () => void {
   };
 }
 
+function wireModalModeTabs(params: {
+  readonly chrome: ModalChrome;
+  readonly initialNetwork: 'testnet' | 'mainnet';
+  readonly panelHost: HTMLElement;
+  readonly challengeStore: PrefetchedChallengeStore;
+  readonly isBusy: () => boolean;
+  readonly getMode: () => 'signin' | 'signup';
+  readonly setMode: (next: 'signin' | 'signup') => void;
+}): void {
+  const { chrome, initialNetwork, panelHost, challengeStore, isBusy, getMode, setMode } = params;
+  const switchTo = (target: 'signin' | 'signup'): void => {
+    if (isBusy() || getMode() === target) return;
+    setMode(target);
+    syncModalModeChrome(chrome, target, initialNetwork, panelHost);
+    void challengeStore.warm(target);
+  };
+  chrome.signInTab.onclick = () => switchTo('signin');
+  chrome.signUpTab.onclick = () => switchTo('signup');
+  syncModalModeChrome(chrome, getMode(), initialNetwork, panelHost);
+}
+
+function createDialogShell(challengeStore: PrefetchedChallengeStore): {
+  readonly dialog: HTMLDialogElement;
+  readonly close: () => void;
+} {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'plate near-modal';
+  dialog.setAttribute('closedby', 'any');
+  dialog.setAttribute('aria-labelledby', 'near-modal-title');
+  dialog.dataset.testid = 'near-wallet-modal';
+  const close = (): void => {
+    challengeStore.dispose();
+    dialog.classList.remove('is-signing');
+    if (typeof dialog.close === 'function' && dialog.open) dialog.close();
+    else dialog.removeAttribute('open');
+    dialog.remove();
+  };
+  return { dialog, close };
+}
+
 /**
  * Opens the NEAR Wallet Selector dialog (Meteor, OKX, NEAR Mobile, NEAR CLI, Intear, MyNearWallet)
  * enforcing server-issued NEP-413 32-byte cryptographic challenge signing + FullAccess key verification.
@@ -253,18 +371,12 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
   let signingBusy = false;
   const initialNetwork: 'testnet' | 'mainnet' = callbacks.network === 'mainnet' ? 'mainnet' : 'testnet';
 
-  const dialog = document.createElement('dialog');
-  dialog.className = 'plate near-modal';
-  dialog.setAttribute('closedby', 'any');
-  dialog.setAttribute('aria-labelledby', 'near-modal-title');
-  dialog.dataset.testid = 'near-wallet-modal';
-
-  const close = (): void => {
-    dialog.classList.remove('is-signing');
-    if (typeof dialog.close === 'function' && dialog.open) dialog.close();
-    else dialog.removeAttribute('open');
-    dialog.remove();
-  };
+  // Pre-warm `@near-wallet-selector/*` modules & server NEP-413 challenge immediately so wallet clicks
+  // open browser popups synchronously inside transient user activation (avoiding Safari/Firefox popup blockers).
+  void getNearWalletSelector(initialNetwork).catch(() => undefined);
+  const challengeStore = createPrefetchedChallengeStore();
+  void challengeStore.warm(mode);
+  const { dialog, close } = createDialogShell(challengeStore);
 
   const chrome = createModalChrome(close);
   const panelHost = document.createElement('div');
@@ -293,7 +405,16 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
   const suspendTopLayer = createTopLayerSuspender(dialog);
   const startFlow = (def: SelectorWalletDef): void => {
     if (signingBusy) return;
-    void executeSelectorWalletFlow({ def, mode, initialNetwork, panelHost, setBusy, suspendTopLayer, onSigned: finishVerified });
+    void executeSelectorWalletFlow({
+      def,
+      mode,
+      initialNetwork,
+      panelHost,
+      challengeStore,
+      setBusy,
+      suspendTopLayer,
+      onSigned: finishVerified,
+    });
   };
   const openCli = (): void => {
     if (signingBusy) return;
@@ -309,10 +430,21 @@ export function openNearWalletSelectorModal(callbacks: NearWalletSelectorCallbac
     startFlow(def);
   }, openCli);
 
-  chrome.signInTab.onclick = () => { if (!signingBusy) { mode = 'signin'; syncModalModeChrome(chrome, mode, initialNetwork, panelHost); } };
-  chrome.signUpTab.onclick = () => { if (!signingBusy) { mode = 'signup'; syncModalModeChrome(chrome, mode, initialNetwork, panelHost); } };
-  syncModalModeChrome(chrome, mode, initialNetwork, panelHost);
+  wireModalModeTabs({
+    chrome,
+    initialNetwork,
+    panelHost,
+    challengeStore,
+    isBusy: () => signingBusy,
+    getMode: () => mode,
+    setMode: (next) => {
+      mode = next;
+    },
+  });
 
+  dialog.addEventListener('pointerenter', () => {
+    if (!signingBusy) challengeStore.ensureFresh(mode);
+  });
   dialog.onclick = (e) => { if (e.target === dialog && !signingBusy) close(); };
   dialog.append(chrome.head, chrome.tabs, chrome.sub, ...(saved ? [buildSavedWalletBanner(saved, startFlow, openCli)] : []), grid, panelHost);
   document.body.appendChild(dialog);

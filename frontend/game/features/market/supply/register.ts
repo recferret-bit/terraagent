@@ -15,6 +15,7 @@ export function mountSupplyPanel(el: HTMLElement, ctx: FeatureContext): HudPanel
   };
   const panel = new SupplyPanel({
     buy: go('buy'), sell: go('sell'),
+    openTradeHub: () => svc.openTradeHubPanel?.(true),
     openBoard: () => { window.open(tradePageUrl(svc.session?.planetId() ?? null, 'board'), '_blank', 'noopener'); },
     // Opens (never toggles shut) the Contracts list; ContractsPanel reveals its book tab.
     openContracts: () => svc.contracts?.setOpen(true),

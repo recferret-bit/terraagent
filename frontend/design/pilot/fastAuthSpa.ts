@@ -77,31 +77,44 @@ export async function authenticateFastAuthEmailPopup(
   const client = getFastAuthSpaClient();
   const nonce = randomCryptoToken(24);
   const cleanEmail = opts.email?.trim().toLowerCase();
-  const syncPopup =
+  const origin = typeof location !== 'undefined' ? location.origin : 'http://127.0.0.1:5173';
+  const pathname = typeof location !== 'undefined' ? location.pathname : '/';
+  const popup =
     typeof window !== 'undefined' && typeof window.open === 'function'
       ? window.open('', 'terra-fastauth-auth0', 'popup,width=500,height=680')
       : null;
-  await client.loginWithPopup(
-    {
-      authorizationParams: {
-        scope: 'openid profile email',
-        nonce,
-        ...(cleanEmail ? { login_hint: cleanEmail } : {}),
-        ...(opts.mode === 'signup' ? { screen_hint: 'signup' } : {}),
+  if (!popup) {
+    throw new Error('Popup window was blocked by the browser. Allow popups for this site and try again.');
+  }
+  try {
+    await client.loginWithPopup(
+      {
+        authorizationParams: {
+          redirect_uri: resolveFastAuthRedirectUri(origin, pathname),
+          scope: 'openid profile email',
+          nonce,
+          ...(cleanEmail ? { login_hint: cleanEmail } : {}),
+          ...(opts.mode === 'signup' ? { screen_hint: 'signup' } : {}),
+        },
       },
-    },
-    syncPopup ? { popup: syncPopup } : undefined,
-  );
-  const claims = await client.getIdTokenClaims();
-  const rawIdToken = claims?.__raw;
-  if (!rawIdToken) {
-    throw new Error('NEAR FastAuth completed without returning an OIDC ID token.');
+      { popup },
+    );
+    const claims = await client.getIdTokenClaims();
+    const rawIdToken = claims?.__raw;
+    if (!rawIdToken) {
+      throw new Error('NEAR FastAuth completed without returning an OIDC ID token.');
+    }
+    if (typeof claims?.nonce === 'string' && claims.nonce !== nonce) {
+      throw new Error('NEAR FastAuth OIDC nonce mismatch.');
+    }
+    return {
+      idToken: rawIdToken,
+      email: typeof claims.email === 'string' ? claims.email : cleanEmail ?? null,
+    };
+  } catch (err) {
+    try {
+      if (!popup.closed && typeof popup.close === 'function') popup.close();
+    } catch { /* ignore cross-origin popup close errors */ }
+    throw err;
   }
-  if (typeof claims?.nonce === 'string' && claims.nonce !== nonce) {
-    throw new Error('NEAR FastAuth OIDC nonce mismatch.');
-  }
-  return {
-    idToken: rawIdToken,
-    email: typeof claims.email === 'string' ? claims.email : cleanEmail ?? null,
-  };
 }

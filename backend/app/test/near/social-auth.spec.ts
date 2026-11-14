@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import { SocialAuthResponseSchema } from '@terra/contracts';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app';
-import { AuthRepository } from '../../src/core/auth';
+import { AuthRepository, AuthTokenService } from '../../src/core/auth';
 import { mockOauthSecret, signMockToken } from '../../src/near/identity/mock-token';
 
 const DEV = {
@@ -154,5 +154,80 @@ describe('POST /v1/auth/social (Auth0 PKCE profile naming & provider guard)', ()
     const healed = SocialAuthResponseSchema.parse(await healedRes.json());
     expect(healed.player.id).toBe(linked.player.id);
     expect(healed.player.handle).toBe('recferret');
+  });
+});
+
+describe('POST /v1/auth/social with expired or stale guest Authorization bearer', () => {
+  it('gracefully ignores an expired guest JWT instead of throwing 401 while upgrading valid guest JWTs', async () => {
+    const { app } = await createApp({ source: { ...DEV } });
+    await app.listen(0, '127.0.0.1');
+    apps.push(app);
+    const url = (await app.getUrl()).replace('[::1]', '127.0.0.1');
+
+    const tokens = app.get(AuthTokenService);
+    const guestRes = await fetch(`${url}/v1/auth/guest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(guestRes.status).toBe(200);
+    const guestBody = (await guestRes.json()) as { accessToken: string; player: { id: string; handle: string } };
+    const guest = guestBody.player;
+
+    const expiredGuestJwt = tokens.signAccessToken({ sub: guest.id, handle: guest.handle }, -60);
+    const expiredLoginToken = signMockToken(
+      { provider: 'google', subject: 'expired-bearer-pilot', exp: Math.floor(Date.now() / 1000) + 60 },
+      mockOauthSecret(),
+    );
+    const expiredRes = await fetch(`${url}/v1/auth/social`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${expiredGuestJwt}`,
+      },
+      body: JSON.stringify({ provider: 'google', token: expiredLoginToken }),
+    });
+    expect(expiredRes.status).toBe(200);
+    const expiredBody = SocialAuthResponseSchema.parse(await expiredRes.json());
+    expect(expiredBody.player.isGuest).toBe(false);
+    expect(expiredBody.player.id).not.toBe(guest.id);
+
+    // Valid non-expired guest JWT still upgrades the guest player in place:
+    const validGuestJwt = tokens.signAccessToken({ sub: guest.id, handle: guest.handle }, 600);
+    const upgradeToken = signMockToken(
+      { provider: 'google', subject: 'upgraded-guest-pilot', exp: Math.floor(Date.now() / 1000) + 60 },
+      mockOauthSecret(),
+    );
+    const upgradeRes = await fetch(`${url}/v1/auth/social`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${validGuestJwt}`,
+      },
+      body: JSON.stringify({ provider: 'google', token: upgradeToken }),
+    });
+    expect(upgradeRes.status).toBe(200);
+    const upgradedBody = SocialAuthResponseSchema.parse(await upgradeRes.json());
+    expect(upgradedBody.player.id).toBe(guest.id);
+    expect(upgradedBody.player.isGuest).toBe(false);
+
+    // Non-expired JWT whose guest player ID no longer exists (e.g. server restarted in memory) creates a new player instead of 401:
+    const orphanGuestJwt = tokens.signAccessToken({ sub: 'pr_vanished_guest', handle: 'ghost' }, 600);
+    const orphanToken = signMockToken(
+      { provider: 'google', subject: 'orphan-bearer-pilot', exp: Math.floor(Date.now() / 1000) + 60 },
+      mockOauthSecret(),
+    );
+    const orphanRes = await fetch(`${url}/v1/auth/social`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${orphanGuestJwt}`,
+      },
+      body: JSON.stringify({ provider: 'google', token: orphanToken }),
+    });
+    expect(orphanRes.status).toBe(200);
+    const orphanBody = SocialAuthResponseSchema.parse(await orphanRes.json());
+    expect(orphanBody.player.isGuest).toBe(false);
+    expect(orphanBody.player.id).not.toBe('pr_vanished_guest');
   });
 });

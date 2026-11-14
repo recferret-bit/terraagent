@@ -166,7 +166,10 @@ describe('Colony sub-account root resolution & live near-cli-rs binary round-tri
         { NEAR_MODE: 'testnet' },
       ),
     ).toBe('terraagent.testnet');
-    expect(accountRootFromOwner('pilot.custom-root.testnet', 'co_01hxyz', {})).toBe('custom-root.testnet');
+    expect(accountRootFromOwner('sub.alice.testnet', 'co_01hxyz', {})).toBe('terraagent.testnet');
+    expect(
+      accountRootFromOwner('pilot.custom-root.testnet', 'co_01hxyz', { NEAR_ROOT_ACCOUNT: 'custom-root.testnet' }),
+    ).toBe('custom-root.testnet');
   });
 
   it.skipIf(!hasNearCliRs())(

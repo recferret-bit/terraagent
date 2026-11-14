@@ -2,6 +2,7 @@
    Toggle open/closed with F8 (or Shift+P), or via the F8 gear button beside the bottom-left switches. Draggable by its header.
    The tabs, their stores and head widgets are a registry (`visualLabTabs.ts`); this file only renders and dispatches. */
 import { onWeatherChange } from '../core/weatherConfig';
+import { isProductionBuild } from './buildEnv';
 import { VISUAL_LAB_CSS } from './visualLabCss';
 import type { SliderSpec } from './visualLabSpecs';
 import { getVisualLabTab, VISUAL_LAB_TABS, type VisualLabTab, type VisualTabId } from './visualLabTabs';
@@ -126,6 +127,7 @@ export function selectVisualTab(tab: VisualTabId): void {
 }
 
 export function togglePixelDialog(force?: boolean): boolean {
+  if (isProductionBuild()) return false;
   initPixelDialog();
   if (!dlg) return false;
   const open = force ?? !dlg.classList.contains('open');
@@ -136,6 +138,7 @@ export function togglePixelDialog(force?: boolean): boolean {
 }
 
 export function initPixelDialog() {
+  if (isProductionBuild()) return;
   if (typeof document === 'undefined' || document.getElementById('pixel-dlg')) return;
   document.head.insertAdjacentHTML('beforeend', `<style id="pixel-dlg-css">${VISUAL_LAB_CSS}</style>`);
   const box = dlg = document.createElement('div');

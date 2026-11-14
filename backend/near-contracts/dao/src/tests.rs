@@ -196,3 +196,13 @@ fn rejects_unauthorized_caller() {
     testing_env!(ctx("attacker.testnet").build());
     contract.create_dao("op-c".into(), "c.dao".into(), "c".into(), vec![]);
 }
+
+#[test]
+#[should_panic(expected = "INVALID_QUORUM")]
+fn rejects_quorum_above_10000_bp() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let dao_id = contract.create_dao("op-c".into(), "c.dao".into(), "c".into(), vec!["a.mock".into(), "b.mock".into()]);
+    let pid = contract.propose("op-p".into(), dao_id.clone(), "a.mock".into(), "x".into(), "x".into(), "{}".into(), None, None);
+    contract.vote("op-v".into(), dao_id, pid, "a.mock".into(), "approve".into(), Some(10_001), None);
+}

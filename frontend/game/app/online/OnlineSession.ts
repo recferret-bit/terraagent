@@ -300,7 +300,7 @@ export class OnlineSession {
     const onKey = (e: KeyboardEvent) => {
       if (this.entities.podTouchdown.isSpacePhaseActive() || isTypingTarget(e)) return;
       if ((e.key === 'Escape' || e.key === ' ') && this.landingSkippable()) { e.preventDefault(); this.skipLanding(); return; }
-      if (e.key === 'Escape' && !isEscapeBlockedByHudOverlay()) this.setPaused(!this.pauseOverlay.paused);
+      if (e.key === 'Escape' && !e.defaultPrevented && !isEscapeBlockedByHudOverlay()) this.setPaused(!this.pauseOverlay.paused);
     };
     window.addEventListener('keydown', onKey);
     this.cleanups.push(() => window.removeEventListener('keydown', onKey));

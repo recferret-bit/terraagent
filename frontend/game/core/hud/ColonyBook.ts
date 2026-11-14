@@ -39,8 +39,8 @@ const PANEL_TABS: Readonly<Record<string, ColonyTabId>> = {
   'combat/combat-alerts': 'combat',
   'combat-tuning/combat-tuning': 'combat',
   'market/supply-trade': 'supply',
-  'market/contracts': 'supply',
   'trade-hub/trade-hub-panel': 'trade',
+  'market/contracts': 'trade',
   'market/market-tab': 'trade',
   'notifications/notifications-panel': 'notifications',
 };

@@ -24,18 +24,26 @@ export function bindLocalSaveListeners(local: LocalTransport): () => void {
   };
 }
 
+function isOpenModalEl(el: HTMLElement | null): boolean {
+  return Boolean(el && el.dataset.open === 'true' && !el.hidden && el.style.display !== 'none');
+}
+
+function isVisibleOverlayEl(el: HTMLElement | null): boolean {
+  return Boolean(el && !el.hidden && el.style.display !== 'none');
+}
+
 export function isEscapeBlockedByHudOverlay(): boolean {
   if (typeof document === 'undefined') return false;
   const ghost = document.querySelector<HTMLElement>('[data-testid="hub-placement-ghost"]');
   if (ghost && ghost.dataset.active === 'true' && !ghost.hidden) return true;
-  const cGhost = document.querySelector<HTMLElement>('.ta-placement-ghost');
-  if (cGhost && !cGhost.hidden && cGhost.style.display !== 'none') return true;
-  const devCon = document.querySelector<HTMLElement>('[data-testid="dev-console"]');
-  if (devCon && !devCon.hidden && devCon.style.display !== 'none') return true;
-  const globalMap = document.querySelector<HTMLElement>('[data-testid="global-map-overlay"]');
-  if (globalMap && globalMap.dataset.open === 'true' && !globalMap.hidden && globalMap.style.display !== 'none') return true;
-  const away = document.querySelector<HTMLElement>('[data-testid="away-digest"]');
-  if (away && !away.hidden && away.style.display !== 'none') return true;
+  if (isVisibleOverlayEl(document.querySelector<HTMLElement>('.ta-placement-ghost'))) return true;
+  if (isVisibleOverlayEl(document.querySelector<HTMLElement>('[data-testid="dev-console"]'))) return true;
+  if (isOpenModalEl(document.querySelector<HTMLElement>('[data-testid="global-map-overlay"]'))) return true;
+  if (isVisibleOverlayEl(document.querySelector<HTMLElement>('[data-testid="away-digest"]'))) return true;
+  if (isOpenModalEl(document.querySelector<HTMLElement>('[data-testid="pilot-dialog"]'))) return true;
+  if (isOpenModalEl(document.querySelector<HTMLElement>('[data-testid="trade-hub-panel"]'))) return true;
+  if (isOpenModalEl(document.querySelector<HTMLElement>('[data-testid="deed-panel"]'))) return true;
+  if (isVisibleOverlayEl(document.querySelector<HTMLElement>('[data-testid="stage-track-hud"]'))) return true;
   return false;
 }
 
