@@ -1,4 +1,4 @@
-import { Module, type BeforeApplicationShutdown, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Module, Optional, type BeforeApplicationShutdown, type OnApplicationBootstrap } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { HttpAdapterHost } from '@nestjs/core';
 import { defineEnv } from '@terra/config';
@@ -21,8 +21,10 @@ import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
 import { createPresenceTracker } from '../game/presence';
 import { CommandPrechecks } from '../core/command-prechecks';
+import { PlanetsService } from '../lobby/planets.service';
 import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
 import { DbHomeProvider, HOME_PROVIDER, type HomeProvider } from './home-provider';
+import { LiveStatsTelemetry } from './live-stats-telemetry';
 import { SimCommandIngress } from './sim-command-ingress';
 import { JwtSessionVerifier, SESSION_VERIFIER, type SessionVerifier } from './session-verifier';
 import { WsGateway } from './ws.gateway';
@@ -105,17 +107,28 @@ export const env = defineEnv('ws', {
           bus,
         }),
     },
+    LiveStatsTelemetry,
   ],
 })
 export class WsModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
-  constructor(private readonly gateway: WsGateway, private readonly host: HttpAdapterHost) {}
+  constructor(
+    private readonly gateway: WsGateway,
+    private readonly host: HttpAdapterHost,
+    @Inject(APP_ENV) private readonly env: AppEnv,
+    @Optional() private readonly planetsService?: PlanetsService,
+    @Optional() private readonly telemetry?: LiveStatsTelemetry,
+  ) {}
 
   onApplicationBootstrap(): void {
     this.gateway.attach(this.host.httpAdapter.getHttpServer() as Server);
+    if (this.env.NODE_ENV !== 'test' && databaseEnabled(this.env) && this.planetsService && this.telemetry) {
+      this.planetsService.setLiveTelemetryProvider(this.telemetry);
+    }
   }
 
   /** Runs before every `onApplicationShutdown`, i.e. before the game module stops its threads. */
   async beforeApplicationShutdown(): Promise<void> {
+    this.planetsService?.setLiveTelemetryProvider(undefined);
     await this.gateway.closeAll();
   }
 }

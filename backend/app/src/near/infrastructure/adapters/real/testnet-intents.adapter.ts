@@ -35,6 +35,22 @@ import {
 } from './mainnet-intents-rpc.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
+export function isSystemOrBotIntentSigner(accountId: string): boolean {
+  const lower = accountId.toLowerCase();
+  return (
+    lower.startsWith('bot-') ||
+    lower.startsWith('guild-') ||
+    lower.startsWith('npc-') ||
+    lower.startsWith('treasury') ||
+    lower.startsWith('platform.') ||
+    lower.startsWith('protocol.') ||
+    lower.startsWith('dao.') ||
+    lower.startsWith('minter.') ||
+    lower.startsWith('relayer.') ||
+    lower.includes('.dao.')
+  );
+}
+
 /**
  * Real NEAR `IntentsPort` (`W23-22..W23-25`, Hybrid Testnet / Live Mainnet `intents.near`):
  * - **Testnet (`NEAR_MODE=testnet`):** Signs canonical NEP-413 `token_diff` payloads with KEK-sealed keys,
@@ -183,7 +199,9 @@ export class TestnetIntentsAdapter implements IntentsPort {
     }
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents execute requires DB ledger' });
     const r = await this.delegate.execute(input);
-    return this.asTestnetReceipt(r);
+    const hasHumanSigner = input.intents.some((it) => !isSystemOrBotIntentSigner(it.diff.accountId));
+    if (hasHumanSigner) return this.asTestnetReceipt(r);
+    return { ...r, network: this.rpc.network, txHash: r.txHash.replace(/^mock:/, '') };
   }
 
   private async asTestnetReceipt(mockReceipt: ChainReceipt): Promise<ChainReceipt> {

@@ -47,6 +47,19 @@ describe('TradeClient reads', () => {
     expect(second).toEqual(['pl_home', 'pl_dune']);
     expect(urls).toEqual(['/v1/dev/planets', '/v1/me/profile', '/v1/planets']);
   });
+
+  it('omits Authorization header and skips /v1/me/profile when constructed with empty public token', async () => {
+    const urls: string[] = [];
+    const c = new TradeClient('', async (u) => {
+      urls.push(u);
+      if (u === '/v1/dev/planets') return jsonRes({ errorCode: 'NOT_FOUND' }, 404);
+      if (u === '/v1/planets') return jsonRes({ planets: [{ id: 'pl_01JKHAR0NDVNEST00000000000' }] });
+      return jsonRes({}, 404);
+    });
+    expect(c.authHeaders()).toEqual({});
+    expect(await c.devPlanets()).toEqual(['pl_01JKHAR0NDVNEST00000000000']);
+    expect(urls).toEqual(['/v1/dev/planets', '/v1/planets']);
+  });
 });
 
 describe('trade identity & NEAR status mode probing', () => {

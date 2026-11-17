@@ -123,6 +123,7 @@ export class TestnetCargoTokenAdapter implements CargoTokenPort {
   }
 
   async balanceOf(input: CargoBalanceInput): Promise<TokenAmount> {
+    if (input.accountId.startsWith('bot-')) return '0';
     return this.rpc.view<string>(this.rpc.config.contracts.res, 'mt_balance_of', {
       account_id: input.accountId,
       token_id: input.tokenId,

@@ -115,6 +115,7 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
   }
 
   private settleSim(plan: TradePlan, p: SettleParty, txHash: string | null, stallName?: string): void {
+    if (p.colonyId.startsWith('bot-')) return;
     const args: Omit<MarketSettledArgs, 'colonyId' | 'colonyIndex'> = {
       tradeId: plan.tradeId, role: p.role, ...(p.ref ? { ref: p.ref } : {}),
       deltas: p.deltas as MarketResourceDeltas,

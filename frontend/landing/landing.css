@@ -113,6 +113,10 @@
 .planet-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .planet-body p { margin: 0; color: var(--ta-text-3); font-size: 15px; }
 .planet-meta { display: flex; justify-content: space-between; font-family: var(--ta-font-mono); font-size: 12px; color: var(--ta-steel); }
+.planet-live { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--ta-void); border: 1px solid var(--ta-seam); }
+.planet-live-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: .06em; color: var(--ta-steel); }
+.planet-market-link { color: var(--ta-terra); text-decoration: none; font-weight: 600; }
+.planet-market-link:hover { color: var(--ta-orange); text-decoration: underline; }
 .planet .btn { margin-top: 6px; width: 100%; }
 .planet.is-sealed { background: #0B0C10; border-style: dashed; border-color: var(--ta-seam-2); }
 .planet.is-sealed .h3, .planet.is-sealed p { color: var(--ta-steel); }

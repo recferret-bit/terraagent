@@ -27,6 +27,7 @@ export interface PageStart {
   readonly planetId: string;
   readonly pair: string;
   readonly onSignOut?: () => void;
+  readonly authSlot?: HTMLElement;
 }
 
 /** Wires the store, the loaders, the SSE stream and the panels. Panels render from state; the ticket owns its inputs. */
@@ -48,6 +49,8 @@ export class TradePage {
   private readonly busy = new Set<string>();
   private attempt = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly onHashChange = (): void => this.applyHash();
   private readonly netBadge = h('span', { class: 'tr-badge tr-badge-info', 'data-testid': 'trade-near-mode' }, 'NEAR SETTLEMENT');
   private readonly explorerLink = h('a', { href: '/dev/chain/' }, 'Chain explorer');
 
@@ -61,7 +64,7 @@ export class TradePage {
         if (start.onSignOut) start.onSignOut();
         else location.assign(mockOauthUrl(location.pathname));
       },
-    });
+    }, start.authSlot);
     this.p = {
       ladder: panel('book', 'Depth ladder', 'click a level to prefill the ticket'), board: panel('board', 'Price board'),
       ticket: panel('ticket', 'Order ticket'), balances: panel('balances', 'Balances (yours only)'),
@@ -81,8 +84,9 @@ export class TradePage {
     void this.loadNearModeBadge();
     this.pickers.setPlanets(await this.client.devPlanets());
     this.openStream();
-    setInterval(() => this.tick(), 5000);
-    window.addEventListener('hashchange', () => this.applyHash());
+    if (this.tickTimer) clearInterval(this.tickTimer);
+    this.tickTimer = setInterval(() => this.tick(), 5000);
+    window.addEventListener('hashchange', this.onHashChange);
     this.applyHash();
     // an untradable `?pair=` is replaced before any book is requested (the book routes answer 400 for it)
     await this.loaders.catalog();
@@ -91,6 +95,17 @@ export class TradePage {
     this.pickers.sync(this.store.get().pairs, this.store.get().planetId, this.store.get().pair);
     this.ensureValidPair();
     this.applyHash();
+  }
+
+  dispose(): void {
+    this.stream?.close();
+    this.stream = null;
+    if (this.tickTimer) clearInterval(this.tickTimer);
+    this.tickTimer = null;
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    if (this.marketTimer) clearTimeout(this.marketTimer);
+    if (this.overviewTimer) clearTimeout(this.overviewTimer);
+    window.removeEventListener('hashchange', this.onHashChange);
   }
 
   /** `#board` scrolls to the price board, `#orders` opens the All orders tab (the in-game hub links to `/trade.html?planet=<id>#board`). */
@@ -260,6 +275,10 @@ export class TradePage {
     const focused = (el: HTMLElement): boolean => el.contains(document.activeElement);
     if (this.tab === 'orders' && !focused(this.p.orders.body)) this.renderOrdersTab(s);
     if (this.tab === 'market' && !focused(this.p.market.body)) this.renderMarket(s);
+    if (!this.client.token || s.conn === 'no_colony') {
+      this.reload(['book', 'board', 'bookOrders', ...(this.tab === 'pairs' ? (['overview'] as const) : [])]);
+      return;
+    }
     this.reload(tickRefresh(this.tab));
   }
 
@@ -317,6 +336,11 @@ export class TradePage {
 
   private openStream(): void {
     this.stream?.close();
+    if (!this.client.token) {
+      this.store.update((x) => ({ ...x, conn: 'live' }), []);
+      this.pickers.setConn('live', 0);
+      return;
+    }
     const s = this.store.get();
     this.stream = new TradeStream(this.client.streamUrl(s.planetId), this.client.authHeaders(), {
       onEvent: (e) => {

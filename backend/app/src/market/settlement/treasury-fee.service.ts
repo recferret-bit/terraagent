@@ -20,9 +20,12 @@ import {
   treasuryTerms,
 } from './treasury-terms.js';
 
+const DAO_CACHE_TTL_MS = 60_000;
+
 const missingDao = (e: unknown): boolean => {
   const code = (e as { errorCode?: string }).errorCode;
-  return code === 'DAO_NOT_FOUND' || code === 'NEAR_DAO_NOT_FOUND';
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  return code === 'DAO_NOT_FOUND' || code === 'NEAR_DAO_NOT_FOUND' || msg.includes('DAO_NOT_FOUND');
 };
 
 /**
@@ -32,6 +35,7 @@ const missingDao = (e: unknown): boolean => {
 @Injectable()
 export class TreasuryFeeService {
   private keys: KeyStore | null = null;
+  private readonly daoCache = new Map<string, { readonly at: number; readonly id: string | null }>();
 
   constructor(
     private readonly flags: FlagsService,
@@ -60,9 +64,21 @@ export class TreasuryFeeService {
   }
 
   /** Credits the planet DAO by the carved share, once per trade. No DAO, or a zero share: no-op. */
-  async depositSettled(plan: Pick<TradePlan, 'tradeId' | 'planetId' | 'quote' | 'treasuryFee'>): Promise<void> {
+  async depositSettled(
+    plan: Pick<TradePlan, 'tradeId' | 'planetId' | 'quote' | 'treasuryFee'> & {
+      readonly parties?: readonly { readonly colonyId: string }[];
+    },
+  ): Promise<void> {
     const amount = plan.treasuryFee ?? '0';
     if (amount === '0') return;
+    if (
+      this.env.NODE_ENV === 'production' &&
+      plan.parties &&
+      plan.parties.length > 0 &&
+      plan.parties.every((p) => p.colonyId.startsWith('bot-'))
+    ) {
+      return;
+    }
     const daoAccountId = await this.daoAccount(plan.planetId);
     if (!daoAccountId) return;
     await this.daos.deposit({
@@ -75,12 +91,21 @@ export class TreasuryFeeService {
   }
 
   private async daoAccount(planetId: string): Promise<string | null> {
+    const useCache = this.env.NODE_ENV === 'production';
+    if (useCache) {
+      const hit = this.daoCache.get(planetId);
+      if (hit && Date.now() - hit.at < DAO_CACHE_TTL_MS) return hit.id;
+    }
     try {
       const envBag = this.env as unknown as Record<string, string | undefined>;
       const view = await this.daos.get({ daoAccountId: daoAccountIdFor(planetId, envBag) });
+      if (useCache) this.daoCache.set(planetId, { at: Date.now(), id: view.daoAccountId });
       return view.daoAccountId;
     } catch (e) {
-      if (missingDao(e)) return null;
+      if (missingDao(e)) {
+        if (useCache) this.daoCache.set(planetId, { at: Date.now(), id: null });
+        return null;
+      }
       throw e;
     }
   }

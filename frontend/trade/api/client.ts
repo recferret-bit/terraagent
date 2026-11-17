@@ -22,7 +22,7 @@ export class TradeClient {
 
   constructor(readonly token: string, private readonly doFetch: FetchFn = (i, init) => fetch(i, init)) {}
 
-  authHeaders(): Record<string, string> { return { authorization: `Bearer ${this.token}` }; }
+  authHeaders(): Record<string, string> { return this.token ? { authorization: `Bearer ${this.token}` } : {}; }
 
   private async call<T>(method: string, path: string, body?: unknown, idempotent = false): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json', ...this.authHeaders() };
@@ -84,15 +84,17 @@ export class TradeClient {
       }
     } catch { /* fallback below */ }
     const out: string[] = [];
-    try {
-      const profRes = await this.doFetch('/v1/me/profile', { headers: { accept: 'application/json', ...this.authHeaders() }, credentials: 'include' });
-      if (profRes.ok) {
-        const prof = (await profRes.json()) as { currentColonies?: Array<{ planetId?: string }> };
-        for (const c of prof.currentColonies ?? []) {
-          if (c.planetId && !out.includes(c.planetId)) out.push(c.planetId);
+    if (this.token) {
+      try {
+        const profRes = await this.doFetch('/v1/me/profile', { headers: { accept: 'application/json', ...this.authHeaders() }, credentials: 'include' });
+        if (profRes.ok) {
+          const prof = (await profRes.json()) as { currentColonies?: Array<{ planetId?: string }> };
+          for (const c of prof.currentColonies ?? []) {
+            if (c.planetId && !out.includes(c.planetId)) out.push(c.planetId);
+          }
         }
-      }
-    } catch { /* ignore */ }
+      } catch { /* ignore */ }
+    }
     try {
       const pubRes = await this.doFetch('/v1/planets');
       if (pubRes.ok) {

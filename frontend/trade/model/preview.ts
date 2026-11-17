@@ -36,10 +36,10 @@ export function previewTicket(i: TicketInput): TicketPreview {
   const amount = parseUnits(i.amountText);
   const total = tryParse(i.quote, i.totalText);
   const base = { amount, total, ...NONE };
-  if (!i.hasColony) return { ...base, blocked: 'No colony of yours on this planet: join it from the game first.' };
-  if (!i.policy) return { ...base, blocked: 'Market policy is not loaded yet.' };
-  if (amount === null) return { ...base, blocked: 'Enter a whole amount from 1 to 1,000,000,000.' };
-  if (total === null) return { ...base, blocked: `Enter the TOTAL price for the whole amount in ${mockLabel(i.quote)} (above zero).` };
+  const noColonyMsg = i.hasColony ? null : 'No colony of yours on this planet: join it from the game first.';
+  if (!i.policy) return { ...base, blocked: noColonyMsg ?? 'Market policy is not loaded yet.' };
+  if (amount === null) return { ...base, blocked: noColonyMsg ?? 'Enter a whole amount from 1 to 1,000,000,000.' };
+  if (total === null) return { ...base, blocked: noColonyMsg ?? `Enter the TOTAL price for the whole amount in ${mockLabel(i.quote)} (above zero).` };
   const min = BigInt(i.policy.minNotional[i.quote] ?? '0');
   const minMsg = total < min ? `Below the minimum notional ${fmtAmount(i.quote, min)}.` : null;
   const busy = i.busy ? 'Sending the order...' : null;
@@ -47,7 +47,7 @@ export function previewTicket(i: TicketInput): TicketPreview {
     const give = BigInt(amount);
     const short = i.freeUnits === null ? 'Balances unavailable.'
       : i.freeUnits < give ? `Not enough free ${i.base} in orbit: need ${give}, free ${i.freeUnits}. Export surface stock via the Trade Hub.` : null;
-    return { amount, total, platformFee: 0n, stallFee: 0n, maxSpend: give, youReceive: total, blocked: minMsg ?? short ?? busy };
+    return { amount, total, platformFee: 0n, stallFee: 0n, maxSpend: give, youReceive: total, blocked: noColonyMsg ?? minMsg ?? short ?? busy };
   }
   const bp = i.policy.platformFeeBp;
   const platformFee = (total * BigInt(bp)) / 10_000n;
@@ -55,5 +55,5 @@ export function previewTicket(i: TicketInput): TicketPreview {
   const maxSpend = maxBuyerSpend(total, bp, i.stallBp);
   const short = i.freeQuote === null ? 'Balances unavailable.'
     : i.freeQuote < maxSpend ? `Not enough free ${mockLabel(i.quote)}: need ${formatAtomic(i.quote, maxSpend)}, free ${formatAtomic(i.quote, i.freeQuote)}.` : null;
-  return { amount, total, platformFee, stallFee, maxSpend, youReceive: null, blocked: minMsg ?? short ?? busy };
+  return { amount, total, platformFee, stallFee, maxSpend, youReceive: null, blocked: noColonyMsg ?? minMsg ?? short ?? busy };
 }

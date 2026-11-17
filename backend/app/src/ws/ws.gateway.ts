@@ -94,6 +94,34 @@ export class WsGateway {
     return this.conns.size;
   }
 
+  onlinePlayerCount(): number {
+    const distinct = new Set<string>();
+    for (const c of this.conns) {
+      if (c.state === 'closed') continue;
+      if (c.playerId) distinct.add(`p:${c.playerId}`);
+      else if (c.welcomeTick !== undefined) distinct.add(`s:${this.presenceId(c)}`);
+    }
+    return distinct.size;
+  }
+
+  onlinePlayersByPlanet(): Map<string, number> {
+    const byPlanet = new Map<string, Set<string>>();
+    for (const c of this.conns) {
+      if (c.state === 'closed' || !c.planetId) continue;
+      const key = c.playerId ? `p:${c.playerId}` : c.welcomeTick !== undefined ? `s:${this.presenceId(c)}` : null;
+      if (!key) continue;
+      let set = byPlanet.get(c.planetId);
+      if (!set) {
+        set = new Set<string>();
+        byPlanet.set(c.planetId, set);
+      }
+      set.add(key);
+    }
+    const counts = new Map<string, number>();
+    for (const [planetId, set] of byPlanet) counts.set(planetId, set.size);
+    return counts;
+  }
+
   attach(server: Server): void {
     const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => this.upgrade(req, socket, head);
     server.on('upgrade', onUpgrade);

@@ -81,6 +81,14 @@ describe('order preview', () => {
     expect(previewTicket(ticket({ freeQuote: 10_100_000n })).blocked).toBe('Not enough free mock USDC: need 10.20, free 10.10.');
     expect(previewTicket(ticket({ busy: true })).blocked).toMatch(/Sending/);
   });
+  it('computes fee preview even when hasColony is false in public spectator mode', () => {
+    const buy = previewTicket(ticket({ hasColony: false }));
+    expect(buy.blocked).toMatch(/No colony/);
+    expect([buy.total, buy.platformFee, buy.stallFee, buy.maxSpend]).toEqual([10_000_000n, 100_000n, 100_000n, 10_200_000n]);
+    const sell = previewTicket(ticket({ side: 'sell', hasColony: false }));
+    expect(sell.blocked).toMatch(/No colony/);
+    expect([sell.youReceive, sell.maxSpend]).toEqual([10_000_000n, 300n]);
+  });
   it('checks free in-orbit units for a sell and charges the seller nothing', () => {
     const ok = previewTicket(ticket({ side: 'sell' }));
     expect(ok.blocked).toBeNull();

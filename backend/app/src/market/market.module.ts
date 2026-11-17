@@ -10,6 +10,7 @@ import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketAnalyticsController } from './analytics/market-analytics.controller.js';
 import { MarketAnalyticsService } from './analytics/market-analytics.service.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
+import { CanonicalMarketBotService } from './dev/canonical-market-bot.service.js';
 import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
 import { MarketSeedCommand } from './dev/market-seed.command.js';
@@ -89,6 +90,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeSettlement,
     TradeRecovery,
     MarketAccountsBootstrap,
+    CanonicalMarketBotService,
     PriceBoardService,
     MarketBookPush,
     MarketCallers,

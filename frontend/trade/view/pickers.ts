@@ -16,15 +16,18 @@ export class Pickers {
   private readonly conn = h('span', { class: 'chip-live tr-conn', id: 'tr-conn', 'data-testid': 'trade-conn', role: 'status', 'data-conn': 'connecting' });
   private pairs: readonly PairView[] = [];
 
-  constructor(private readonly who: string, private readonly hd: PickerHandlers) {
+  constructor(private readonly who: string, private readonly hd: PickerHandlers, authSlot?: HTMLElement) {
     const go = h('form', { class: 'tr-planetform' }, this.planet, h('button', { type: 'submit', class: 'btn btn-ghost btn-sm' }, 'GO'));
     go.addEventListener('submit', (e) => { e.preventDefault(); const v = this.planet.value.trim(); if (v) hd.planet(v); });
     this.base.addEventListener('change', () => { this.fillQuotes(); this.emit(); });
     this.quote.addEventListener('change', () => this.emit());
     const field = (label: string, el: HTMLElement, id: string): HTMLElement => h('div', { class: 'field tr-pick' }, h('label', { class: 'field-label', for: id }, label), el);
+    const whoRow = authSlot
+      ? h('div', { class: 'tr-who' }, this.conn, h('span', { class: 'tr-hint', id: 'tr-who' }, 'PUBLIC VIEW'), authSlot)
+      : h('div', { class: 'tr-who' }, this.conn, h('span', { class: 'tr-hint', id: 'tr-who' }, `as ${who}`), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-testid': 'pilot-sign-out', onclick: () => hd.signOut() }, 'SIGN OUT'));
     this.root = h('div', { class: 'tr-pickers' },
       field('PLANET', go, 'pk-planet'), this.planets, field('RESOURCE', this.base, 'pk-base'), field('QUOTE', this.quote, 'pk-quote'),
-      h('div', { class: 'tr-who' }, this.conn, h('span', { class: 'tr-hint', id: 'tr-who' }, `as ${who}`), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-testid': 'pilot-sign-out', onclick: () => hd.signOut() }, 'SIGN OUT')));
+      whoRow);
   }
 
   setPlanets(ids: readonly string[]): void { this.planets.replaceChildren(...ids.map((id) => h('option', { value: id }))); }

@@ -25,16 +25,19 @@ export class Loaders {
   }
 
   orders(quiet = false): Promise<void> {
+    if (!this.client.token) return this.store.load('orders', async () => (x) => ({ ...x, orders: [] }), quiet);
     return this.store.load('orders', async (s) => {
       try { const r = await this.client.orders(s.planetId); return (x) => ({ ...x, orders: r.orders }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, orders: [] }); throw e; }
     }, quiet);
   }
 
   fills(quiet = false): Promise<void> {
+    if (!this.client.token) return this.store.load('fills', async () => (x) => ({ ...x, fills: [] }), quiet);
     return this.store.load('fills', async (s) => { try { const r = await this.client.fills(s.planetId); return (x) => ({ ...x, fills: r.fills }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, fills: [] }); throw e; } }, quiet);
   }
 
   balances(quiet = false): Promise<void> {
+    if (!this.client.token) return this.store.load('balances', async () => (x) => ({ ...x, balances: null }), quiet);
     return this.store.load('balances', async (s) => {
       try { const r = await this.client.tradeBalances(s.planetId); return (x) => ({ ...x, balances: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, balances: null }); throw e; }
     }, quiet);
@@ -46,12 +49,14 @@ export class Loaders {
   }
 
   stall(quiet = false): Promise<void> {
+    if (!this.client.token) return this.store.load('stall', async () => (x) => ({ ...x, stall: null }), quiet);
     return this.store.load('stall', async (s) => {
       try { const r = await this.client.getStall(s.planetId); return (x) => ({ ...x, stall: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, stall: null }); throw e; }
     }, quiet);
   }
 
   keys(quiet = false): Promise<void> {
+    if (!this.client.token) return this.store.load('keys', async () => (x) => ({ ...x, keys: [] }), quiet);
     return this.store.load('keys', async () => { const r = await this.client.keys(); return (x) => ({ ...x, keys: r.keys.filter((k) => k.planetId === x.planetId) }); }, quiet);
   }
 
