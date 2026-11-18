@@ -7,6 +7,7 @@ import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
+import { depositCodeForRequired, matchesDeposit, nudgeHoverAnchor } from './ghostNudge';
 import { getTilePrepOp, isW05LinkedPrepActive, resolveGhostPrepBill } from './prepBillFormat';
 import { depositReasonText, evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
 
@@ -21,17 +22,6 @@ export interface PlacementGhostState {
   prepEnergyE?: number; prepTimeS?: number; prepCost?: Record<string, number>;
   valid: boolean; statusColor: 'green' | 'red'; reason: string;
   requiresDeposit?: string; depositCovered: boolean; depositTileIndices: number[];
-}
-
-function depositCodeForRequired(requiresDeposit?: string): number | undefined {
-  if (requiresDeposit === 'metals') return DEPOSIT.metals;
-  if (requiresDeposit === 'minerals') return DEPOSIT.minerals;
-  if (requiresDeposit === 'oil') return DEPOSIT.oil;
-  return undefined;
-}
-
-function matchesDeposit(deposit: number | undefined, reqCode: number | undefined): boolean {
-  return reqCode !== undefined && (deposit === reqCode || (reqCode === DEPOSIT.metals && deposit === DEPOSIT.minerals));
 }
 
 export interface EvaluatePlacementGhostOptions {
@@ -201,6 +191,7 @@ export class PlacementGhostController implements Disposable {
   private rotation = 0;
   private state: PlacementGhostState | null = null;
   private view?: GameView;
+  private disposed = false;
   private readonly pendingIndices = new Set<number>();
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onContextMenu: (e: MouseEvent) => void;
@@ -322,19 +313,25 @@ export class PlacementGhostController implements Disposable {
     if (!this.activeBuilding) return;
     const effView = this.resolveEffectiveView();
     const tilesData = (effView as { tiles?: ClientTiles } | undefined)?.tiles;
-    if (effView && tilesData?.deposit) {
+    if (effView && tilesData) {
       const { base, ctx } = this.ghostInputs(this.activeBuilding, effView);
       const direct = evaluatePlacementGhost({ ...base, q, r }, ctx);
-      const hoverIdx = ctx.hIndex.indexOf(q, r);
-      const reqCode = depositCodeForRequired(direct.requiresDeposit);
-      if (!direct.valid && hoverIdx >= 0 && matchesDeposit(tilesData.deposit[hoverIdx], reqCode)) {
-        for (const [aq, ar] of [[q - 1, r], [q, r - 1], [q - 1, r - 1]]) {
-          if (evaluatePlacementGhost({ ...base, q: aq, r: ar }, ctx).valid) {
-            this.hoverQ = aq;
-            this.hoverR = ar;
-            break;
-          }
-        }
+      const nudged = nudgeHoverAnchor({
+        q,
+        r,
+        valid: direct.valid,
+        footprintW: direct.footprintW,
+        footprintD: direct.footprintD,
+        requiresDeposit: direct.requiresDeposit,
+        colonyId: base.colonyId,
+        w05Active: isW05LinkedPrepActive(base.flags, ctx.data),
+        tilesData,
+        ctx,
+        isValidAt: (aq, ar) => evaluatePlacementGhost({ ...base, q: aq, r: ar }, ctx).valid,
+      });
+      if (nudged) {
+        this.hoverQ = nudged.q;
+        this.hoverR = nudged.r;
       }
     }
     this.evaluate();
@@ -360,11 +357,32 @@ export class PlacementGhostController implements Disposable {
       return false;
     }
     const { building, q, r, rotation, tiles } = this.state;
-    for (const t of tiles) if (t.tileIdx >= 0) this.pendingIndices.add(t.tileIdx);
-    this.opts.ctx.services.sendCommand?.('enqueueTask', { task: { kind: 'build', building, q, r, rotation } });
+    const addedIdx = tiles.map((t) => t.tileIdx).filter((i) => i >= 0);
+    for (const idx of addedIdx) this.pendingIndices.add(idx);
+    const resPromise = this.opts.ctx.services.sendCommand?.('enqueueTask', { task: { kind: 'build', building, q, r, rotation } });
     this.cancel();
     this.opts.onConfirm?.();
+    if (resPromise && typeof (resPromise as PromiseLike<unknown>).then === 'function') {
+      void Promise.resolve(resPromise).then((res) => this.handleCommandOutcome(building, q, r, addedIdx, res));
+    }
     return true;
+  }
+
+  private handleCommandOutcome(building: string, q: number, r: number, addedIdx: readonly number[], res: unknown): void {
+    const rObj = res as { ok?: boolean; code?: string; detail?: string } | undefined;
+    if (!rObj || rObj.ok !== false) return;
+    for (const idx of addedIdx) this.pendingIndices.delete(idx);
+    if (rObj.code === 'not_connected' || rObj.detail) {
+      const msg = rObj.code === 'not_connected'
+        ? 'Not connected to planet yet — retry placement'
+        : rObj.detail!;
+      this.opts.ctx.services.hudMin?.showToast(msg, 'warning', 5000, 'placement-rejected');
+    }
+    if (this.activeBuilding === null && !this.disposed) {
+      this.hoverQ = q;
+      this.hoverR = r;
+      this.start(building);
+    }
   }
 
   updateView(view: GameView): void {
@@ -380,7 +398,12 @@ export class PlacementGhostController implements Disposable {
     if (!this.activeBuilding) { this.state = null; return; }
     const effView = this.resolveEffectiveView();
     const { base, ctx } = this.ghostInputs(this.activeBuilding, effView);
-    this.state = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
+    let next = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
+    const hasTiles = Boolean((effView as { tiles?: ClientTiles } | undefined)?.tiles);
+    if (!hasTiles && this.opts.ctx.services.store) {
+      next = { ...next, valid: false, statusColor: 'red', reason: 'syncing planet…' };
+    }
+    this.state = next;
     this.renderState(this.state);
   }
 
@@ -408,6 +431,7 @@ export class PlacementGhostController implements Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown, { capture: true });
       window.removeEventListener('contextmenu', this.onContextMenu);

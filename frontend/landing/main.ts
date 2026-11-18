@@ -4,6 +4,7 @@ import { PilotAccess } from '../design/pilot/PilotAccess';
 // WebGL sections are loaded lazily so the light sections never wait for three.js; one failing never blocks the rest.
 import { initHeroCopy } from './sections/heroCopy';
 import { initLiveStats } from './sections/liveStats';
+import { refreshLandingActiveColony } from './sections/activeColony';
 import { initColonyCanvas } from './sections/colonyCanvas';
 import { initDirectorScenarios } from './sections/directorScenarios';
 import { initEconomicsSection } from './sections/economicsSection';
@@ -34,7 +35,12 @@ class LandingPage {
     initProtocolSection,
     initContractsBoard,
     initRoadmap,
-    () => { const host = document.querySelector<HTMLElement>('.header-right'); if (host) new PilotAccess(host); },
+    () => {
+      const host = document.querySelector<HTMLElement>('.header-right');
+      const root = this.page ?? document;
+      if (host) new PilotAccess(host, { onAuthChange: () => { void refreshLandingActiveColony(root); } });
+      void refreshLandingActiveColony(root);
+    },
     lazy(() => import('./hero/HeroStage').then((m) => m.initHeroStage)),
     lazy(() => import('./sections/planetCards').then((m) => m.initPlanetCards)),
     lazy(() => import('./resources').then((m) => m.initResources)),

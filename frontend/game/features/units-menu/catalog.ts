@@ -100,7 +100,7 @@ const STAGE_UNIT_ROWS: readonly Record<string, unknown>[] = [
   },
 ];
 
-function resolveColonyUnlockStage(view?: GameView): number | undefined {
+function resolveColonyUnlockStage(view?: GameView, colonyIndex = 0): number | undefined {
   if (!view) return undefined;
   const v = view as {
     colonyId?: number;
@@ -109,8 +109,8 @@ function resolveColonyUnlockStage(view?: GameView): number | undefined {
     stage?: number;
     colonies?: Array<{ index?: number; unlockStage?: number; stage?: number }>;
   };
-  const idx = v.colonyIndex ?? v.colonyId ?? 0;
-  const col = v.colonies?.find((c) => c?.index === idx) ?? v.colonies?.[idx] ?? v.colonies?.[0];
+  const idx = v.colonyIndex ?? v.colonyId ?? colonyIndex;
+  const col = v.colonies?.find((c) => c?.index === idx) ?? v.colonies?.[idx] ?? (idx === 0 ? v.colonies?.[0] : undefined);
   const val = col?.unlockStage ?? col?.stage ?? v.unlockStage ?? v.stage;
   return typeof val === 'number' && Number.isFinite(val) ? val : undefined;
 }
@@ -209,6 +209,7 @@ function asWorkerRow(row: Record<string, unknown>, tier: 1 | 2 | 3): Record<stri
 export function buildUnitsCatalog(
   flags: ReadonlySet<string> | FlagSet,
   view?: GameView,
+  colonyIndex = 0,
 ): UnitCardModel[] {
   const fs = toFlagSet(flags);
   if (!fs.has('W02')) return [];
@@ -219,7 +220,7 @@ export function buildUnitsCatalog(
   if (!t1) return [];
 
   const isLiveGameView = Boolean(view && typeof view === 'object' && 'planet' in view && (view as { planet?: unknown }).planet !== undefined);
-  const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view);
+  const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view, colonyIndex);
   const candidateRows: Record<string, unknown>[] = [asWorkerRow(t1, 1)];
   if (fs.has('W03') && unitsTable?.t2) candidateRows.push(asWorkerRow(unitsTable.t2, 2));
   if (fs.has('W05') && unitsTable?.t3) candidateRows.push(asWorkerRow(unitsTable.t3, 3));

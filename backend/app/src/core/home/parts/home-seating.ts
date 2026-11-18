@@ -150,24 +150,32 @@ export async function seatColonyOnPlanet(
   }
 }
 
+/** Max populated historical shards scanned before giving up when `TA_SEED_RIVAL_AI` fills shards below capacity. */
+export const MAX_PLANET_SCANS = 64;
+
 export async function seatNewColony(
   ctx: SeatContext,
   player: { id: string; handle: string },
   type: DevPlanetType,
 ): Promise<HomeResponse> {
-  const tried: string[] = [];
-  for (let attempt = 0; attempt < SEAT_ATTEMPTS; attempt++) {
+  const emptyTried: string[] = [];
+  const allTried: string[] = [];
+  let emptyAttempts = 0;
+  for (let scan = 0; scan < MAX_PLANET_SCANS && emptyAttempts < SEAT_ATTEMPTS; scan++) {
     const { planet, colonyIndex } = await ctx.repo.findOrCreateOpenDevPlanet(type, ctx.exhausted, ctx.landedIndices);
-    if (!tried.includes(planet.id)) {
-      if (tried.length >= SEAT_PLANETS) break;
-      tried.push(planet.id);
+    const isEmpty = (planet.seatsTaken ?? 0) === 0;
+    if (!allTried.includes(planet.id)) allTried.push(planet.id);
+    if (isEmpty && !emptyTried.includes(planet.id)) {
+      if (emptyTried.length >= SEAT_PLANETS) break;
+      emptyTried.push(planet.id);
     }
     const out = await seatColonyOnPlanet(ctx, player, planet, colonyIndex);
     if (typeof out === 'object') return out;
+    if (isEmpty || out !== 'no_site') emptyAttempts++;
     if (out === 'no_site') ctx.exhausted.add(planet.id);
     else if (out === 'index_landed') markPlanetIndexLanded(ctx.landedIndices, planet.id, colonyIndex);
   }
-  throw noLandingSite(tried);
+  throw noLandingSite(emptyTried.length > 0 ? emptyTried : allTried);
 }
 
 export async function buildHomeResponseForColony(opts: {

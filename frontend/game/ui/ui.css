@@ -27,8 +27,10 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .menu-bottom{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-end;justify-content:space-between}
 .cards{display:flex;gap:14px;flex-wrap:wrap}
 .world-card{width:216px;padding:14px;border:1.5px solid var(--ta-seam-2);background:rgba(15,17,22,.88);backdrop-filter:blur(10px);cursor:pointer;transition:transform var(--ta-dur-quick) ease,border-color var(--ta-dur-quick) ease,background-color var(--ta-dur-quick) ease;text-align:left;color:inherit;font:inherit}
-.world-card:hover{transform:translateY(-3px);border-color:var(--ta-orange)}
+.world-card:hover:not(:disabled){transform:translateY(-3px);border-color:var(--ta-orange)}
 .world-card.sel{border-color:var(--ta-orange);background:linear-gradient(rgba(255,106,19,.12),rgba(255,106,19,.12)),rgba(15,17,22,.92)}
+.world-card.is-active-colony{border-color:var(--ta-orange);box-shadow:var(--ta-glow-2)}
+.world-card.is-colony-locked{opacity:.36;filter:grayscale(.85);cursor:not-allowed;pointer-events:none;border-color:var(--ta-seam);background:var(--ta-void);transform:none}
 .thumb{width:64px;height:64px;border-radius:50%;float:right;margin:0 0 6px 6px;box-shadow:inset -12px -8px 18px rgba(0,0,0,.65),0 0 18px var(--glow,rgba(255,255,255,.2))}
 .world-card h3{margin:2px 0 6px;font-family:var(--ta-font-display);font-weight:600;font-size:16px;line-height:1.15;letter-spacing:.06em;text-transform:uppercase;color:var(--ta-text)}
 .world-card p{margin:0 0 10px;font-size:12px;line-height:1.45;color:var(--ta-text-3);clear:both}
@@ -37,8 +39,12 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .swatches{display:flex;height:5px;margin-top:10px}.swatches i{flex:1}
 .world-card-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:2px 0 6px}
 .world-card-head h3{margin:0}
+.world-card-badges{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.world-colony-badge{padding:2px 6px;font-family:var(--ta-font-mono);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:var(--ta-orange);color:var(--ta-void);border:1px solid var(--ta-orange)}
+.world-colony-badge[hidden]{display:none}
 .world-card-status{padding:2px 6px;font-family:var(--ta-font-mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--ta-seam-3);color:var(--ta-steel);background:var(--ta-plate-3)}
 .world-card-status[data-availability=open]{background:var(--ta-terra);color:var(--ta-void);border-color:var(--ta-terra)}
+.world-card-status[data-availability=locked]{background:var(--ta-deep);color:var(--ta-dim);border-color:var(--ta-seam)}
 .world-card-status[data-availability=full]{background:var(--ta-plate-3);color:var(--ta-orange-hi);border-color:var(--ta-orange)}
 .world-card-status[data-availability=paused]{background:var(--ta-plate-3);color:var(--ta-blue-hi);border-color:var(--ta-blue-hi)}
 .world-card-status[data-availability=faulted],.world-card-status[data-availability=archived]{background:var(--ta-fault);color:var(--ta-void);border-color:var(--ta-fault)}

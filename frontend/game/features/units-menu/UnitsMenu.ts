@@ -198,9 +198,10 @@ export class UnitsMenu implements Disposable {
   }
 
   private render(): void {
-    const supply = resolveSupply(this.view, ownColonyIndex(this.ctx.services));
+    const own = ownColonyIndex(this.ctx.services);
+    const supply = resolveSupply(this.view, own);
     this.renderSupply(supply);
-    this.renderCards(buildUnitsCatalog(this.ctx.flags, this.view), supply);
+    this.renderCards(buildUnitsCatalog(this.ctx.flags, this.view, own), supply);
     this.renderBuffer();
   }
 

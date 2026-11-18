@@ -207,12 +207,46 @@ describe('buildConstructionCatalog - hubBuilt state', () => {
 
     const entityBuf = new Float32Array(2 * ENTITY_STRIDE);
     entityBuf[E.kind] = 3; // entity 0 is hq
-    entityBuf[ENTITY_STRIDE + E.kind] = 4; // entity 1 is commandHub
+    entityBuf[ENTITY_STRIDE + E.kind] = 4; // entity 1 is commandHub (owner 0)
     const catBuf = buildConstructionCatalog(flags, { entities: entityBuf });
     expect(catBuf[0].disabled).toBe(true);
     expect(catBuf[0].disabledReason).toBe('Already built');
     expect(catBuf[1].disabled).toBe(false);
     expect(catBuf[2].disabled).toBe(false);
+  });
+
+  it('does not disable commandHub when only rival AI or foreign colonies own a commandHub', () => {
+    const flags = new Set(['W00', 'W01', 'W02']);
+
+    const entityBuf = new Float32Array(3 * ENTITY_STRIDE);
+    entityBuf[E.kind] = 3; // entity 0 is player 0's hq
+    entityBuf[E.owner] = 0;
+    entityBuf[ENTITY_STRIDE + E.kind] = 4; // entity 1 is rival AI commandHub (owner 6)
+    entityBuf[ENTITY_STRIDE + E.owner] = 6;
+    entityBuf[2 * ENTITY_STRIDE + E.kind] = 4; // entity 2 is rival AI commandHub (owner 7)
+    entityBuf[2 * ENTITY_STRIDE + E.owner] = 7;
+
+    const catPlayer0 = buildConstructionCatalog(flags, { entities: entityBuf }, 0);
+    expect(catPlayer0[0].building).toBe('commandHub');
+    expect(catPlayer0[0].disabled).toBe(false);
+    expect(catPlayer0[0].disabledReason).toBeUndefined();
+
+    // Seat 1 remains able to build even when seat 0 has built a Command Hub
+    entityBuf[E.kind] = 4;
+    entityBuf[E.owner] = 0;
+    const catPlayer1 = buildConstructionCatalog(
+      flags,
+      {
+        entities: entityBuf,
+        colonies: [
+          { index: 0, hubBuilt: true, stage: 2 },
+          { index: 1, hubBuilt: false, stage: 1 },
+        ],
+      } as never,
+      1,
+    );
+    expect(catPlayer1[0].disabled).toBe(false);
+    expect(catPlayer1[0].disabledReason).toBeUndefined();
   });
 });
 

@@ -75,7 +75,7 @@ export class OnlineSession {
 
   private biomeKey = 'forestRock'; private lastHudMs = 0;
   private readonly ownsViewport: boolean; private readonly search: string;
-  private readonly skipDescent: boolean; private readonly fromSpaceDescent: boolean; private readonly fastStartLand: boolean;
+  private skipDescent: boolean; private readonly fromSpaceDescent: boolean; private readonly fastStartLand: boolean;
   private readonly onReturnToOrbit?: (kind: PlanetKind) => void; private readonly allowLocalFallback: boolean;
   private banner: ConnectionBanner | null; private readonly hud: FeatureHud;
   private readonly pilot: PilotBridge;
@@ -197,16 +197,28 @@ export class OnlineSession {
   /** Updates the active space/atmospheric state (`orbit .. approach`) or hands off to surface (`null`). */
   setSpacePhase(phase: PodLandingStateName | null, showTerrain = false): boolean {
     this.showSpaceTerrain = showTerrain;
-    return applySessionSpacePhase({
+    const ready = applySessionSpacePhase({
       phase, showTerrain, entities: this.entities, banner: this.banner, terrain: this.terrain,
       cameraTargetTile: this.cameraTargetTile, store: this.store, planetKind: this.planetKind, viewport: this.viewport,
       focusTile: (q, r, instant) => this.focusTile(q, r, instant), onView: (v) => this.onView(v),
     });
+    if (phase === null && this.guest && (!this.bootResult || !this.store.latest)) {
+      if (this.banner && !this.bootResult) this.banner.el.style.display = 'none';
+      if (this.bootOverlay?.phase === 'descent') this.bootOverlay.showSplash('Contacting orbit…');
+      this.hud.setVisible(false);
+    }
+    return ready;
   }
 
   skipLanding(): void {
+    this.skipDescent = true;
     this.setSpacePhase(null);
     this.entities.podTouchdown.setEnabled(false);
+    const ready = !this.guest || (this.bootResult !== null && this.store.latest !== null);
+    if (!ready) {
+      this.hud.setVisible(false);
+      return;
+    }
     this.sendLandOnce();
     this.bootOverlay?.showColony(this.planetId || 'pl_dev');
     this.hud.setVisible(true);
@@ -245,6 +257,7 @@ export class OnlineSession {
     if (opts.localHost) this.attachLocalHost(opts.localHost, false, false);
     else if (boot.mode === 'local' && boot.localHost) this.attachLocalHost(boot.localHost, typeof window !== 'undefined', true);
     else {
+      if (this.banner && !this.entities.podTouchdown.isSpacePhaseActive()) this.banner.el.style.display = '';
       this.cleanups.push(this.transport.onState((s) => this.onSocketState(s, boot)));
       this.transport.start();
       if (this.store.latest) this.onView(this.store.latest);

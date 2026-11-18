@@ -27,6 +27,7 @@ import {
   type SectorLiveCountsInput,
 } from './planets.helpers';
 import { MatchTicketBadRequestException, MatchTicketNotFoundException } from './tickets.types';
+import { resolveDevFamilyColoniesForSummary } from './parts/dev-planet-colonies';
 
 /**
  * Canonical planet & sector summary and public stats service (W11-08, MATCHMAKING §0.2 MM-20..24, §0.3, §4):
@@ -265,6 +266,13 @@ export class PlanetsService {
       this.homeRepo ? this.homeRepo.listColoniesByPlanetId(planetId) : Promise.resolve([]),
     ]);
 
+    const effectiveColonies = await resolveDevFamilyColoniesForSummary(
+      type,
+      sectors,
+      repoColonies,
+      this.homeRepo,
+    );
+
     const providerLive = this.telemetryProvider?.getPlanetLiveCounts
       ? await this.telemetryProvider.getPlanetLiveCounts(planetId, type)
       : null;
@@ -295,7 +303,7 @@ export class PlanetsService {
       fallbackType: type,
       planetRecord,
       reservations,
-      repoColonies,
+      repoColonies: effectiveColonies,
       planetLiveCounts: mergedPlanetLive,
       sectorLiveCounts: perSectorLive,
     });

@@ -86,7 +86,7 @@ function renderPlanetLiveBlock(card: HTMLElement, planet: PlanetSummaryDto, acti
   if (!body) return;
 
   const badge = body.querySelector<HTMLElement>('.planet-head .badge');
-  if (badge) {
+  if (badge && !card.dataset.activeColony && !card.dataset.colonyLocked) {
     const avail = planet.availability.toUpperCase();
     badge.textContent = `${TYPE_LABEL[planet.type]} · ${avail}`;
     badge.className = `badge ${planet.availability === 'full' || planet.availability === 'faulted' ? 'badge-alert' : 'badge-ok'}`;

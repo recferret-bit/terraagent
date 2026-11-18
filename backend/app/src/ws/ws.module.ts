@@ -111,23 +111,32 @@ export const env = defineEnv('ws', {
   ],
 })
 export class WsModule implements OnApplicationBootstrap, BeforeApplicationShutdown {
+  private unsubSeatTelemetry: (() => void) | null = null;
+
   constructor(
     private readonly gateway: WsGateway,
     private readonly host: HttpAdapterHost,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() private readonly planetsService?: PlanetsService,
     @Optional() private readonly telemetry?: LiveStatsTelemetry,
+    @Optional() private readonly homeService?: HomeService,
   ) {}
 
   onApplicationBootstrap(): void {
     this.gateway.attach(this.host.httpAdapter.getHttpServer() as Server);
     if (this.env.NODE_ENV !== 'test' && databaseEnabled(this.env) && this.planetsService && this.telemetry) {
       this.planetsService.setLiveTelemetryProvider(this.telemetry);
+      this.unsubSeatTelemetry?.();
+      this.unsubSeatTelemetry = this.homeService?.onColonySeated(() => {
+        this.telemetry?.invalidate();
+      }) ?? null;
     }
   }
 
   /** Runs before every `onApplicationShutdown`, i.e. before the game module stops its threads. */
   async beforeApplicationShutdown(): Promise<void> {
+    this.unsubSeatTelemetry?.();
+    this.unsubSeatTelemetry = null;
     this.planetsService?.setLiveTelemetryProvider(undefined);
     await this.gateway.closeAll();
   }

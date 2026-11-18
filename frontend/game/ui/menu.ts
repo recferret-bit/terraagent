@@ -2,6 +2,8 @@ import type { PlanetListV1, PlanetSummaryV1, SectorId } from '@terra/contracts';
 import { getViewportPreset, isShaderOptimized, type ViewportPreset } from '@terra/render/core/perfConfig';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { PilotAccess } from '../../design/pilot/PilotAccess';
+import { probeActiveHomeColony, type ActiveHomeColony } from '../../design/pilot/activeHomeColony';
+import { applyActiveColonyToMenuDom } from './lobby/activeColonyLock';
 import {
   LobbyPlanetFeed,
   type LobbyPlanetFeedOptions,
@@ -59,6 +61,8 @@ export interface MainMenuOptions {
   readonly feed?: LobbyPlanetFeed;
   readonly feedOptions?: LobbyPlanetFeedOptions;
   readonly autoStartFeed?: boolean;
+  readonly autoProbeColony?: boolean;
+  readonly probeFetch?: typeof fetch;
 }
 
 function buildMenuInnerHtml(
@@ -143,6 +147,10 @@ export class MainMenu {
   private sectorHostEl!: HTMLElement;
   private ownedFeed: LobbyPlanetFeed | null = null;
   private unsubscribeFeed: (() => void) | null = null;
+  private activeColony: ActiveHomeColony | null = null;
+  private disposed = false;
+  private readonly autoProbeColony: boolean;
+  private readonly probeFetch?: typeof fetch;
 
   constructor(
     parent: HTMLElement,
@@ -153,6 +161,8 @@ export class MainMenu {
   ) {
     this.kind = kind;
     this.seed = seed ?? PLANET_SPECS[kind].seed;
+    this.autoProbeColony = Boolean(options?.autoProbeColony);
+    this.probeFetch = options?.probeFetch;
     this.planetsByKind = options?.planetList
       ? mergePlanetListIntoCanonicalMap(options.planetList)
       : createDefaultCanonicalPlanetMap();
@@ -171,7 +181,11 @@ export class MainMenu {
     );
     parent.appendChild(this.el);
 
-    this.pilotAccess = new PilotAccess(this.el.querySelector<HTMLElement>('.menu-top')!);
+    this.pilotAccess = new PilotAccess(this.el.querySelector<HTMLElement>('.menu-top')!, {
+      onAuthChange: () => {
+        if (this.autoProbeColony) void this.probeActiveColony();
+      },
+    });
     this.deployBtn = this.el.querySelector('#deploy')!;
     this.seedInput = this.el.querySelector('#seed')!;
     this.errEl = this.el.querySelector('#menu-err')!;
@@ -186,6 +200,9 @@ export class MainMenu {
       if (options.autoStartFeed !== false) options.feed.start();
     } else if (options?.feedOptions) {
       this.connectLobbyFeed(options.feedOptions, options.autoStartFeed !== false);
+    }
+    if (this.autoProbeColony) {
+      void this.probeActiveColony();
     }
   }
 
@@ -257,6 +274,7 @@ export class MainMenu {
   }
 
   select(k: PlanetKind, notify: boolean): void {
+    if (this.activeColony && k !== this.activeColony.kind) return;
     const changed = k !== this.kind;
     this.kind = k;
     if (changed) this.seed = PLANET_SPECS[k].seed;
@@ -266,6 +284,29 @@ export class MainMenu {
       .forEach((c) => c.classList.toggle('sel', c.dataset.k === k));
     this.renderSectorChooser();
     if (notify) this.cb.onPlanet(k);
+  }
+
+  getActiveColony(): ActiveHomeColony | null {
+    return this.activeColony;
+  }
+
+  hasActiveColony(): boolean {
+    return this.activeColony !== null;
+  }
+
+  setActiveColony(active: ActiveHomeColony | null): void {
+    this.activeColony = active;
+    applyActiveColonyToMenuDom(this.el, active);
+    if (active && this.kind !== active.kind) {
+      this.select(active.kind, true);
+      applyActiveColonyToMenuDom(this.el, active);
+    }
+  }
+
+  async probeActiveColony(): Promise<ActiveHomeColony | null> {
+    const found = await probeActiveHomeColony({ fetch: this.probeFetch });
+    if (!this.disposed) this.setActiveColony(found);
+    return found;
   }
 
   getSectorIntent(): SectorIntentV1 {
@@ -318,6 +359,9 @@ export class MainMenu {
         updateWorldCardElement(cardEl, this.planetsByKind[k]);
       }
     });
+    if (this.activeColony) {
+      applyActiveColonyToMenuDom(this.el, this.activeColony);
+    }
     this.renderSectorChooser();
   }
 
@@ -361,6 +405,7 @@ export class MainMenu {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.unsubscribeFeed?.();
     this.unsubscribeFeed = null;
     this.ownedFeed?.dispose();

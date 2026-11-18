@@ -59,6 +59,7 @@ export class Game {
   private gHud: GameHud | null = null; private play: Gameplay | null = null;
   private online: OnlineSession | null = null;
   private skipOnlineLanding = false;
+  private keepOnlineSession = false;
   private useOnlineGameplay = true;
   private fastForward = 0; private time = 0; private last = performance.now(); private raf = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
@@ -93,7 +94,7 @@ export class Game {
       onSector: (intent) => { this.sectorIntent = intent; },
       onDeploy: (k, s, st, intent) => { this.settings = st; this.sectorIntent = intent; this.deploy(k, s); },
       onSettings: (st) => { this.settings = st; this.applySettings(); this.schedulePrepare(); },
-    }, kind, seed, { sectorIntent: this.sectorIntent });
+    }, kind, seed, { sectorIntent: this.sectorIntent, feedOptions: { wsUrl: null }, autoProbeColony: this.useOnlineGameplay });
     this.settings = this.menu.settings;
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
@@ -101,7 +102,7 @@ export class Game {
     if (q.has('planet') && (q.get('skip') === '1' || q.has('t') || q.get('deploy') === '1')) {
       this.settings.skipCinematic = q.get('skip') === '1';
       this.fastForward = Math.max(0, parseFloat(q.get('t') ?? '0') || 0);
-      setTimeout(() => this.deploy(kind, this.menu.seed, true), 50);
+      void this.autoDeploy(kind);
     } else {
       this.syncOrbitUrl();
       this.schedulePrepare(900);
@@ -192,8 +193,27 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ deploy
+  private async autoDeploy(requestedKind: PlanetKind): Promise<void> {
+    if (this.useOnlineGameplay) {
+      await Promise.race([
+        this.menu.probeActiveColony(),
+        new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+      ]);
+    } else {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const active = this.menu.getActiveColony();
+    const targetKind = active?.kind ?? requestedKind;
+    this.deploy(targetKind, PLANET_SPECS[targetKind].seed, true);
+  }
+
   private deploy(kind: PlanetKind, seed: number, instant = false) {
     if (this.phase !== 'menu') return;
+    const activeColony = this.menu.getActiveColony();
+    if (activeColony) {
+      kind = activeColony.kind;
+      seed = PLANET_SPECS[kind].seed;
+    }
     clearTimeout(this.prepTimer);
     writeStoredPlanetKind(kind);
     let p: Prepared;
@@ -208,10 +228,10 @@ export class Game {
     this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
     this.skipOnlineLanding = false;
     if (this.useOnlineGameplay) {
-      // Every explicit DEPLOY from the orbital planet selector starts a fresh guest on the selected planet family
-      // (`dune` -> desert, `oceanForest` -> ocean, `forestRock` -> temperate), unless the user has signed in.
-      const keepPilot = this.menu.hasLinkedPilot();
-      if (!keepPilot) resetDeviceSecret();
+      // Preserve session when signed in or entering an existing ACTIVE colony; reset only for a fresh guest deployment.
+      const keepSession = this.menu.hasLinkedPilot() || activeColony !== null;
+      this.keepOnlineSession = keepSession;
+      if (!keepSession) resetDeviceSecret();
       if (typeof localStorage !== 'undefined') clearPendingJoinIntent(localStorage);
       if (!this.settings.skipCinematic) {
         this.online = new OnlineSession(this.root, 'boot', {
@@ -220,7 +240,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: false,
           fromSpaceDescent: true,
-          tryRefresh: keepPilot,
+          tryRefresh: keepSession,
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
@@ -321,7 +341,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: true,
           fromSpaceDescent: false,
-          tryRefresh: this.menu.hasLinkedPilot(),
+          tryRefresh: this.keepOnlineSession,
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
@@ -388,6 +408,7 @@ export class Game {
     this.mountStage(this.makeSpec(kind, seed));
     this.menu.select(kind, false);
     this.menu.show();
+    if (this.useOnlineGameplay) void this.menu.probeActiveColony();
     this.syncOrbitUrl();
     this.schedulePrepare(1200);
     this.fade.classList.remove('on');

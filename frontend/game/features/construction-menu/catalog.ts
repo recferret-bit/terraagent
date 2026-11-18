@@ -83,6 +83,20 @@ function generatorNet(row: Record<string, unknown>): number {
   return numField(row, 'netOutputPerS');
 }
 
+function resolveEffectiveColonyIndex(view?: GameView, colonyIndex = 0): number {
+  if (!view) return colonyIndex;
+  const v = view as { colonyId?: number; colonyIndex?: number };
+  return v.colonyIndex ?? v.colonyId ?? colonyIndex;
+}
+
+function findColonyInView<T extends { index?: number }>(
+  colonies: T[] | undefined,
+  idx: number,
+): T | undefined {
+  if (!Array.isArray(colonies)) return undefined;
+  return colonies.find((c) => c?.index === idx) ?? colonies[idx] ?? (idx === 0 ? colonies[0] : undefined);
+}
+
 /** A card's power line, read from its balance row (`founderCoreGenPerS`, `powerDrainPerS`, gross / net, `capacityE`). */
 export function resolveColonyUnlockStage(view?: GameView, colonyIndex = 0): number | undefined {
   if (!view) return undefined;
@@ -93,19 +107,23 @@ export function resolveColonyUnlockStage(view?: GameView, colonyIndex = 0): numb
     stage?: number;
     colonies?: Array<{ index?: number; unlockStage?: number; stage?: number }>;
   };
-  const idx = v.colonyIndex ?? v.colonyId ?? colonyIndex;
-  const col = v.colonies?.find((c) => c?.index === idx) ?? v.colonies?.[idx] ?? v.colonies?.[0];
+  const idx = resolveEffectiveColonyIndex(view, colonyIndex);
+  const col = findColonyInView(v.colonies, idx);
   const val = col?.unlockStage ?? col?.stage ?? v.unlockStage ?? v.stage;
   return typeof val === 'number' && Number.isFinite(val) ? val : undefined;
 }
 
-function hasExplicitUnlockStage(view?: GameView): boolean {
+function hasExplicitUnlockStage(view?: GameView, colonyIndex = 0): boolean {
   if (!view) return false;
   const v = view as {
+    colonyId?: number;
+    colonyIndex?: number;
     unlockStage?: number;
-    colonies?: Array<{ unlockStage?: number }>;
+    colonies?: Array<{ index?: number; unlockStage?: number }>;
   };
-  return typeof v.colonies?.[0]?.unlockStage === 'number' || typeof v.unlockStage === 'number';
+  const idx = resolveEffectiveColonyIndex(view, colonyIndex);
+  const col = findColonyInView(v.colonies, idx);
+  return typeof col?.unlockStage === 'number' || typeof v.unlockStage === 'number';
 }
 
 export function formatUnlockDetail(stage: number): string {
@@ -150,36 +168,56 @@ function formatPower(row: Record<string, unknown>): string {
   return '0 E/s';
 }
 
-function isHubBuilt(view?: GameView): boolean {
+function isHubBuilt(view?: GameView, colonyIndex = 0): boolean {
   if (!view) return false;
   const v = view as {
-    entities?: Float32Array | Array<{ kind?: number }>;
-    colonies?: Array<{ hubBuilt?: boolean; [k: string]: unknown }>;
+    colonyId?: number;
+    colonyIndex?: number;
+    count?: number;
+    entities?: Float32Array | Array<{ kind?: number; owner?: number; hp?: number; hpMax?: number }>;
+    colonies?: Array<{ index?: number; hubBuilt?: boolean; [k: string]: unknown }>;
     hubBuilt?: boolean;
   };
   if (v.hubBuilt === true) return true;
-  if (v.colonies?.[0]?.hubBuilt === true) return true;
+  const idx = resolveEffectiveColonyIndex(view, colonyIndex);
+  const col = findColonyInView(v.colonies, idx);
+  if (col?.hubBuilt === true) return true;
   if (v.entities) {
     if (v.entities instanceof Float32Array) {
-      for (let i = 0; i < v.entities.length; i += ENTITY_STRIDE) {
-        if (v.entities[i + 1] === ENTITY_KIND.commandHub) return true;
+      const limit =
+        typeof v.count === 'number' && Number.isFinite(v.count)
+          ? Math.min(v.entities.length, v.count * ENTITY_STRIDE)
+          : v.entities.length;
+      for (let i = 0; i < limit; i += ENTITY_STRIDE) {
+        const hp = v.entities[i + 8];
+        const hpMax = v.entities[i + 9];
+        if (v.entities[i + 1] === ENTITY_KIND.commandHub && v.entities[i + 2] === idx && !(hpMax > 0 && hp <= 0)) {
+          return true;
+        }
       }
     } else if (Array.isArray(v.entities)) {
       for (const e of v.entities) {
-        if (e && e.kind === ENTITY_KIND.commandHub) return true;
+        if (!e || e.kind !== ENTITY_KIND.commandHub) continue;
+        if ((e.owner ?? 0) !== idx) continue;
+        if (typeof e.hpMax === 'number' && e.hpMax > 0 && typeof e.hp === 'number' && e.hp <= 0) continue;
+        return true;
       }
     }
   }
   return false;
 }
 
-function hasInsufficientStock(cost: Record<string, number>, view?: GameView): boolean {
+function hasInsufficientStock(cost: Record<string, number>, view?: GameView, colonyIndex = 0): boolean {
   if (!view) return false;
   const v = view as {
-    colonies?: Array<{ stock?: Record<string, number> }>;
+    colonyId?: number;
+    colonyIndex?: number;
+    colonies?: Array<{ index?: number; stock?: Record<string, number> }>;
     stock?: Record<string, number>;
   };
-  const stock = v.colonies?.[0]?.stock ?? v.stock;
+  const idx = resolveEffectiveColonyIndex(view, colonyIndex);
+  const col = findColonyInView(v.colonies, idx);
+  const stock = col?.stock ?? v.stock;
   if (!stock) return false;
   for (const [res, amt] of Object.entries(cost)) {
     if (amt > 0 && (stock[res] ?? 0) < amt) {
@@ -206,6 +244,7 @@ function makeCard(
   fs: FlagSet,
   colonyStage: number | undefined,
   data: CompiledDataLike,
+  colonyIndex = 0,
 ): BuildingCardModel {
   const building = String(row.building) as BuildingKind;
   const label = typeof row.label === 'string' ? row.label : (LABELS[building] ?? building);
@@ -221,14 +260,16 @@ function makeCard(
   const cost = (row.cost as Record<string, number>) ?? {};
   const powerText = formatPower(row);
 
-  const tradeUnlock = building === 'tradeHub' && fs.has('W10') ? evaluateTradeHubUnlock(view, 0, data) : undefined;
+  const effColonyIndex = resolveEffectiveColonyIndex(view, colonyIndex);
+  const tradeUnlock =
+    building === 'tradeHub' && fs.has('W10') ? evaluateTradeHubUnlock(view, effColonyIndex, data) : undefined;
   const stageLocked = tradeUnlock ? !tradeUnlock.unlocked : isStageLocked(unlockStage, colonyStage);
   let disabled = false;
   let disabledReason: string | undefined;
   let unlockConditionText: string | undefined;
   let unlockDetailText: string | undefined;
 
-  if (building === 'commandHub' && isHubBuilt(view)) {
+  if (building === 'commandHub' && isHubBuilt(view, effColonyIndex)) {
     disabled = true;
     disabledReason = 'Already built';
   } else if (tradeUnlock && !tradeUnlock.unlocked) {
@@ -238,9 +279,9 @@ function makeCard(
     disabled = true;
     unlockConditionText = formatUnlockAtTooltip(unlockStage);
     unlockDetailText = formatUnlockDetail(unlockStage);
-    const useLegacyLockedLabel = !fs.has('W08') && colonyStage === 0 && !hasExplicitUnlockStage(view);
+    const useLegacyLockedLabel = !fs.has('W08') && colonyStage === 0 && !hasExplicitUnlockStage(view, effColonyIndex);
     disabledReason = useLegacyLockedLabel ? 'Locked' : unlockConditionText;
-  } else if (hasInsufficientStock(cost, view)) {
+  } else if (hasInsufficientStock(cost, view, effColonyIndex)) {
     disabled = true;
     disabledReason = 'Insufficient resources';
   }
@@ -269,11 +310,15 @@ function makeCard(
   };
 }
 
-export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, view?: GameView): BuildingCardModel[] {
+export function buildConstructionCatalog(
+  flags: ReadonlySet<string> | FlagSet,
+  view?: GameView,
+  colonyIndex = 0,
+): BuildingCardModel[] {
   const fs = toFlagSet(flags);
   const data = clientDataFor(fs);
   const isLiveGameView = Boolean(view && typeof view === 'object' && 'planet' in view && (view as { planet?: unknown }).planet !== undefined);
-  const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view);
+  const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view, colonyIndex);
   const candidateRows: Record<string, unknown>[] = [];
   const seenBuildings = new Set<string>();
 
@@ -338,7 +383,7 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
     if (row !== tradeHubRow && colonyStage !== undefined && itemStage > colonyStage + 1) {
       continue;
     }
-    cards.push(makeCard(row, view, fs, colonyStage, data));
+    cards.push(makeCard(row, view, fs, colonyStage, data, colonyIndex));
   }
 
   return cards;

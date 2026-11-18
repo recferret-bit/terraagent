@@ -26,7 +26,7 @@ export interface EvaluateTradeHubUnlockOptions {
   tradeHubAtS2?: boolean;
 }
 
-const PACKED_ENTITY_STRIDE = 12;
+const PACKED_ENTITY_STRIDE = 13;
 
 function hasActiveCommandHub(stateOrView: unknown, colonyIndex: number): boolean {
   if (!stateOrView || typeof stateOrView !== 'object') return false;
@@ -35,12 +35,16 @@ function hasActiveCommandHub(stateOrView: unknown, colonyIndex: number): boolean
   if (!entities) return false;
 
   if (entities instanceof Float32Array) {
-    const count =
-      typeof obj.count === 'number' && Number.isFinite(obj.count)
-        ? obj.count
-        : Math.floor(entities.length / PACKED_ENTITY_STRIDE);
+    const rawCount = typeof obj.count === 'number' && Number.isFinite(obj.count) && obj.count > 0 ? obj.count : undefined;
+    const stride =
+      rawCount && entities.length % rawCount === 0
+        ? entities.length / rawCount
+        : entities.length % PACKED_ENTITY_STRIDE === 0
+          ? PACKED_ENTITY_STRIDE
+          : 12;
+    const count = rawCount ?? Math.floor(entities.length / stride);
     for (let i = 0; i < count; i++) {
-      const base = i * PACKED_ENTITY_STRIDE;
+      const base = i * stride;
       const kind = entities[base + 1];
       const owner = entities[base + 2];
       const hp = entities[base + 8];

@@ -163,6 +163,20 @@ describe('OnlineSession lifecycle', () => {
     expect(ws.opened).toBe(0);
   });
 
+  it('skipLanding during pending or failed HTTP boot keeps the splash and hides HUD instead of showing an empty colony screen', async () => {
+    const down: FetchLike = async () => { throw new TypeError('Failed to fetch'); };
+    const s = session('boot', { fetch: down, wsDeps: closingSockets(4012), allowLocalFallback: false, fromSpaceDescent: true });
+    await flush();
+    expect(s.bootPhase).toBe('splash');
+    expect(q('orbital-splash-retry')).not.toBeNull();
+    s.skipLanding();
+    expect(s.bootPhase).toBe('splash');
+    expect(q('orbital-splash')?.hidden).toBe(false);
+    expect(q('orbital-splash-retry')).not.toBeNull();
+    expect(document.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(q('net-banner')?.style.display).toBe('none');
+  });
+
 });
 
 describe('OnlineSession on the in-process fallback host (FA-07)', () => {

@@ -366,4 +366,41 @@ describe('W11-08 — GET /v1/planets/stats public stats with nullable live telem
     expect(afterFaultAndStale.coloniesAlive).toBeNull();
     expect(afterFaultAndStale.playersOnline).toBeNull();
   });
+
+  it('aggregates dev-shard colonies into canonical planet foundedSeats and freeSeats when sectors are unprovisioned', async () => {
+    const fx = createTicketFixture();
+    await fx.homeRepo.upsertDevPlanet('pl_dev', { type: 'desert', state: 'ACTIVE', capacity: 5 });
+    for (let i = 0; i < 6; i++) {
+      await fx.homeRepo.createColony({
+        playerId: `p_dev_${i}`,
+        planetId: i < 3 ? 'pl_dev' : 'pl_dev_2',
+        colonyIndex: i % 3,
+        name: `Desert_${i}`,
+        spawnQ: i,
+        spawnR: 0,
+      });
+    }
+    await fx.homeRepo.upsertDevPlanet('pl_dev_ocean', { type: 'ocean', state: 'ACTIVE', capacity: 5 });
+    for (let i = 0; i < 2; i++) {
+      await fx.homeRepo.createColony({
+        playerId: `p_ocean_${i}`,
+        planetId: 'pl_dev_ocean',
+        colonyIndex: i,
+        name: `Ocean_${i}`,
+        spawnQ: i,
+        spawnR: 0,
+      });
+    }
+
+    const list = PlanetListV1Schema.parse(await fx.planetsController.listPlanets());
+    const desert = list.planets.find((p) => p.type === 'desert')!;
+    const ocean = list.planets.find((p) => p.type === 'ocean')!;
+    const temperate = list.planets.find((p) => p.type === 'temperate')!;
+    expect(desert.foundedSeats).toBe(6);
+    expect(desert.freeSeats).toBe(22);
+    expect(ocean.foundedSeats).toBe(2);
+    expect(ocean.freeSeats).toBe(26);
+    expect(temperate.foundedSeats).toBe(0);
+    expect(temperate.freeSeats).toBe(28);
+  });
 });

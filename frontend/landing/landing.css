@@ -121,6 +121,9 @@
 .planet.is-sealed { background: #0B0C10; border-style: dashed; border-color: var(--ta-seam-2); }
 .planet.is-sealed .h3, .planet.is-sealed p { color: var(--ta-steel); }
 .planet.is-sealed .planet-meta { color: var(--ta-dim); }
+.planet.is-active-colony { border-color: var(--ta-orange); box-shadow: var(--ta-glow-2); }
+.badge-active-colony { background: var(--ta-orange); color: var(--ta-void); border-color: var(--ta-orange); }
+.planet.is-colony-locked { opacity: .38; filter: grayscale(.85); pointer-events: none; user-select: none; border-color: var(--ta-seam); }
 .seats { display: flex; gap: 4px; }
 .seats i { flex: 1; height: 8px; background: var(--ta-seam-2); }
 .seats i.on { background: var(--ta-orange); }

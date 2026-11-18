@@ -96,6 +96,25 @@ describe('HomeService seats where the planet\'s sim says (LED-14)', () => {
     expect(asked.slice(2)).toEqual(['pl_dev_3#0', 'pl_dev_4#0']);
   });
 
+  it('scans past populated planets filled by Rival AI in the sim (seatsTaken > 0) without tripping SEAT_PLANETS', async () => {
+    const repo = new HomeRepository();
+    for (const id of ['pl_dev', 'pl_dev_2', 'pl_dev_3']) {
+      await repo.upsertDevPlanet(id, { capacity: 5 });
+      for (let i = 0; i < 3; i++) {
+        await repo.createColony({ playerId: `seed_${id}_${i}`, planetId: id, colonyIndex: i, name: `C${i}`, spawnQ: i, spawnR: 0 });
+      }
+    }
+    const home = new HomeService(repo);
+    const fullIds = new Set(['pl_dev', 'pl_dev_2', 'pl_dev_3']);
+    const lh = landingHost((planetId, colIdx) =>
+      fullIds.has(planetId) ? { ok: false, code: 'landing_site_taken' } : { ok: true, q: 7, r: colIdx },
+    );
+    home.setLandingHost(lh.host);
+    const res = await home.getOrAssignHome({ id: 'p_fresh_guest', handle: 'Guest' }, 'desert');
+    expect(res).toMatchObject({ state: 'ACTIVE', planet: { id: 'pl_dev_4' }, colony: { colonyIndex: 0 } });
+    expect(lh.asked).toEqual(['pl_dev#3', 'pl_dev_2#3', 'pl_dev_3#3', 'pl_dev_4#0']);
+  });
+
   it('skips a colony index the sim already landed (a late landing, LED-15) and seats the next one', async () => {
     const { home, asked } = homeService((_p, i) => (i === 0 ? { ok: false, code: 'already_landed' } : { ok: true, q: 3, r: 4 }));
     const ok = await home.getOrAssignHome({ id: 'p_idx', handle: 'Idx' });

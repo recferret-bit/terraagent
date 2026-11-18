@@ -5,6 +5,7 @@ import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisibl
 import { createBuildingCard, syncBuildingCard, type BuildingCardRefs } from './buildingCard';
 import { buildConstructionCatalog, type BuildingKind } from './catalog';
 import { PlacementGhostController, type PlacementGhostState } from './PlacementGhost';
+import { ownColonyIndex } from './sitePlacement';
 
 export { formatResourceLabel } from './catalog';
 
@@ -165,7 +166,7 @@ export class ConstructionMenu implements Disposable {
   }
 
   private renderCards(): void {
-    const cards = buildConstructionCatalog(this.ctx.flags, this.view);
+    const cards = buildConstructionCatalog(this.ctx.flags, this.view, ownColonyIndex(this.ctx.services));
     const tier = rememberTier(this.pickedTier, cards);
     this.pickedTier = tier;
     renderTierBar(this.tierBar, 'build', presentTiers(cards), tier, (next) => {

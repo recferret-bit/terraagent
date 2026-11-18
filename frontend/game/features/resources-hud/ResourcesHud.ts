@@ -9,6 +9,7 @@ import {
   type ResourceFlowSummary,
   type SubResourceDef,
 } from '../hud-min/resourceBreakdown';
+import { ownColonyIndex, viewColony } from '../shared/colony';
 
 export { FAMILY_DEFS, type FamilyKey, type SubResourceDef };
 
@@ -27,7 +28,7 @@ export class ResourcesHud implements Disposable {
 
   constructor(
     private readonly parent: HTMLElement,
-    _ctx?: FeatureContext,
+    private readonly ctx?: FeatureContext,
   ) {
     this.root = document.createElement('div');
     this.root.className = 'ta-resources-hud plate-sm';
@@ -108,16 +109,17 @@ export class ResourcesHud implements Disposable {
 
   update(view: GameView): void {
     const v = (view ?? {}) as Record<string, unknown>;
+    const colonyIdx = ownColonyIndex(this.ctx?.services);
     const colonies = Array.isArray(v.colonies) ? v.colonies : [];
-    const col = (colonies[0] ?? v.colony ?? v) as Record<string, unknown>;
+    const col = (viewColony(view, colonyIdx) ?? colonies[0] ?? v.colony ?? v) as Record<string, unknown>;
     const stock = ((col.stock ?? v.stock ?? {}) as Record<string, number>);
     const caps = ((col.caps ?? v.caps ?? {}) as Record<string, number>);
-    const flow = computeResourceFlow(col, v, 0);
+    const flow = computeResourceFlow(col, v, colonyIdx);
 
     for (const f of ['metals', 'minerals', 'bio'] as const) {
       this.updateFamily(f, stock, caps, flow);
     }
-    this.updateEnergy(col, v);
+    this.updateEnergy(col, v, colonyIdx);
   }
 
   private updateFamily(
@@ -159,11 +161,11 @@ export class ResourcesHud implements Disposable {
     renderFamilyBreakdown(el.breakdownEl, family, stock, flow);
   }
 
-  private updateEnergy(col: Record<string, unknown>, v: Record<string, unknown>): void {
+  private updateEnergy(col: Record<string, unknown>, v: Record<string, unknown>, colonyIdx = 0): void {
     const blobs = (v.blobs ?? {}) as Record<string, unknown>;
     const powerBlob = (blobs.power ?? {}) as Record<string, unknown>;
     const byColony = (powerBlob.byColony ?? {}) as Record<number, unknown>;
-    const power = (col.power ?? byColony[0] ?? v.power) as Record<string, unknown> | undefined;
+    const power = (col.power ?? byColony[colonyIdx] ?? byColony[0] ?? v.power) as Record<string, unknown> | undefined;
 
     if (power && typeof power.supply === 'number') {
       const sup = Math.round(Number(power.supply));
