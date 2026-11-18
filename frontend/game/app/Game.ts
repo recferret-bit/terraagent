@@ -4,7 +4,7 @@ import { getPresetDimensions, getViewportPreset, isShaderOptimized, setShaderOpt
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import type { OrbitalStage } from '@terra/render/orbit/types';
-import type { DescentSequence } from '@terra/render/descent/types';
+import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import { createPlanetSurface } from '@terra/render/planets/surface';
 import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
@@ -15,6 +15,7 @@ import { resetDeviceSecret } from './online/bootOnline';
 import { clearPendingJoinIntent } from './online/joinQueueFlow';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
+import { stepDeployingStageFrame, stepOnlineRetroHud, syncOnlineSpaceDescentFrame } from './descentBridge';
 import { track } from '../core/analytics';
 import { MainMenu, type MenuSettings, type SectorIntentV1 } from '../ui/menu';
 import { normalizeSectorIntent } from '../ui/lobby/orbitalPickerModel';
@@ -56,11 +57,14 @@ export class Game {
   // per-session
   private spec!: PlanetSpec; private surface: PlanetSurface | null = null;
   private descent: DescentSequence | null = null; private dHud: DescentHud | null = null;
+  private retroTelAt: ((tn: number) => DescentTelemetry) | null = null;
+  private suppressDescentHud = false;
   private gHud: GameHud | null = null; private play: Gameplay | null = null;
   private online: OnlineSession | null = null;
   private skipOnlineLanding = false;
   private keepOnlineSession = false;
   private useOnlineGameplay = true;
+  private readonly isLocalHost: boolean;
   private fastForward = 0; private time = 0; private last = performance.now(); private raf = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
   private prepared: Prepared | null = null; private prepTimer = 0;
@@ -81,6 +85,7 @@ export class Game {
     this.sectorIntent = normalizeSectorIntent(q.get('sector'));
     const store = this.flagsStore ??= createClientFlagsStore();
     const isLegacyQa = q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1');
+    this.isLocalHost = q.get('host') === 'local';
     this.useOnlineGameplay = store.set.has('W01') && !isLegacyQa;
 
     this.menu = new MainMenu(document.body, {
@@ -90,11 +95,10 @@ export class Game {
         this.syncOrbitUrl();
         this.schedulePrepare();
       },
-      onSeed: () => this.schedulePrepare(),
       onSector: (intent) => { this.sectorIntent = intent; },
       onDeploy: (k, s, st, intent) => { this.settings = st; this.sectorIntent = intent; this.deploy(k, s); },
       onSettings: (st) => { this.settings = st; this.applySettings(); this.schedulePrepare(); },
-    }, kind, seed, { sectorIntent: this.sectorIntent, feedOptions: { wsUrl: null }, autoProbeColony: this.useOnlineGameplay });
+    }, kind, seed, { sectorIntent: this.sectorIntent, feedOptions: this.isLocalHost ? undefined : { wsUrl: null }, autoProbeColony: this.useOnlineGameplay && !this.isLocalHost });
     this.settings = this.menu.settings;
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
@@ -142,7 +146,8 @@ export class Game {
   private resetScene() {
     const sc = this.viewport.scene;
     for (const c of [...sc.children]) if (!this.baseChildren.has(c)) sc.remove(c);
-    sc.background = new THREE.Color(0xb9dcef);
+    sc.background = new THREE.Color(0x03060c);
+    if (sc.fog instanceof THREE.FogExp2) sc.fog.color.setHex(0x03060c);
   }
 
   // ------------------------------------------------------------------ session pre-build (no loading gap on DEPLOY)
@@ -194,7 +199,7 @@ export class Game {
 
   // ------------------------------------------------------------------ deploy
   private async autoDeploy(requestedKind: PlanetKind): Promise<void> {
-    if (this.useOnlineGameplay) {
+    if (this.useOnlineGameplay && !this.isLocalHost) {
       await Promise.race([
         this.menu.probeActiveColony(),
         new Promise<null>((r) => setTimeout(() => r(null), 1500)),
@@ -227,6 +232,7 @@ export class Game {
     this.prepared = null; this.deploySession = p;
     this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
     this.skipOnlineLanding = false;
+    this.suppressDescentHud = false;
     if (this.useOnlineGameplay) {
       // Preserve session when signed in or entering an existing ACTIVE colony; reset only for a fresh guest deployment.
       const keepSession = this.menu.hasLinkedPilot() || activeColony !== null;
@@ -240,6 +246,7 @@ export class Game {
           sectorIntent: this.sectorIntent,
           skipDescent: false,
           fromSpaceDescent: true,
+          freshDeployment: activeColony === null,
           tryRefresh: keepSession,
           search: '',
           onReturnToOrbit: () => { void this.returnToOrbit(); },
@@ -252,15 +259,19 @@ export class Game {
       this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
     }
     this.descent.onTelemetry((t) => {
+      if (this.suppressDescentHud) return;
+      if (this.useOnlineGameplay && (t.phase === 'retro' || t.phase === 'touchdown')) {
+        this.handoffDescent(false);
+        return;
+      }
       this.dHud?.update(t);
       if (!this.useOnlineGameplay) return;
-      if (t.phase === 'retro' || t.phase === 'touchdown') {
-        this.handoffDescent(false);
-      } else if (this.online?.setSpacePhase(t.phase, this.surface?.group.visible ?? false) && this.surface) {
-        this.surface.group.visible = false;
-      }
+      this.spec = syncOnlineSpaceDescentFrame({
+        online: this.online, descent: this.descent, surface: this.surface, currentSpec: this.spec, tel: t,
+      });
     });
     this.descent.onComplete((hero) => this.startGameplay(hero));
+    this.descent.syncHandoffSolar?.();
     this.dHud.update(this.descent.handoff.tel);
 
     if (instant || !this.stage || this.settings.skipCinematic) {
@@ -301,8 +312,10 @@ export class Game {
   private handoffDescent(skipToColony: boolean) {
     if (!this.descent || this.phase !== 'descent') return;
     this.skipOnlineLanding = skipToColony;
+    this.suppressDescentHud = this.useOnlineGameplay;
     this.descent.skip();
     if (this.phase === 'descent') this.descent.update(0);
+    if (this.useOnlineGameplay && !skipToColony) this.syncOnlineRetroHud();
   }
 
   private skipDescent() {
@@ -312,14 +325,18 @@ export class Game {
   private startGameplay(hero: THREE.Object3D) {
     if (this.phase === 'gameplay' || !this.surface || !this.descent) return;
     this.phase = 'gameplay';
-    this.dHud?.hide();
     const d = this.descent; this.descent = null;
-    const dh = this.dHud; this.dHud = null;
 
     if (this.useOnlineGameplay) {
+      const keepRetroHud = Boolean(this.online && !this.skipOnlineLanding && !this.settings.skipCinematic);
+      this.retroTelAt = keepRetroHud ? d.handoff.telAt : null;
+      if (!keepRetroHud) {
+        this.dHud?.hide();
+        this.dHud?.dispose();
+        this.dHud = null;
+      }
       hero.removeFromParent();
       try { d.dispose(); } catch (e) { console.warn(e); }
-      dh?.dispose();
       if (this.surface) {
         this.viewport.scene.remove(this.surface.group);
         this.surface.dispose();
@@ -350,6 +367,8 @@ export class Game {
       return;
     }
 
+    this.dHud?.hide();
+    const dh = this.dHud; this.dHud = null;
     const pose = d.finalPose;
     this.viewport.camera.fov = 28; this.viewport.camera.updateProjectionMatrix();
     this.play = new Gameplay(this.viewport.scene, this.viewport.camera, this.viewport.renderer.domElement, this.surface, this.spec, hero, this.gHud!, { position: pose.position.clone(), target: pose.target.clone() });
@@ -393,6 +412,7 @@ export class Game {
     this.online?.dispose(); this.online = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
+    this.retroTelAt = null;
     this.dHud?.dispose(); this.dHud = null; this.gHud?.dispose(); this.gHud = null;
     if (this.surface) { this.viewport.scene.remove(this.surface.group); this.surface.dispose(); this.surface = null; }
     this.resetScene();
@@ -408,7 +428,7 @@ export class Game {
     this.mountStage(this.makeSpec(kind, seed));
     this.menu.select(kind, false);
     this.menu.show();
-    if (this.useOnlineGameplay) void this.menu.probeActiveColony();
+    if (this.useOnlineGameplay && !this.isLocalHost) void this.menu.probeActiveColony();
     this.syncOrbitUrl();
     this.schedulePrepare(1200);
     this.fade.classList.remove('on');
@@ -426,22 +446,39 @@ export class Game {
   private tick(dt: number, forceReady = false) {
     this.time += dt;
     const vp = this.viewport;
-    if (this.phase === 'menu') this.stage?.update(dt, this.time);
-    else if (this.phase === 'deploying') {
-      this.stage?.update(dt, this.time);
-      if (this.stage && this.descent) {
-        const tel = this.descent.handoff.telAt(this.stage.deployTn());
-        this.dHud?.update(tel);
-        this.online?.setSpacePhase(tel.phase === 'touchdown' ? 'retro' : tel.phase, false);
-      }
+    if (this.phase === 'menu' && this.stage) {
+      this.stage.setHighlights(this.menu.getGlobeMarkers());
+      this.stage.update(dt, this.time);
+      this.menu.updateArProjection(this.stage.projectHighlights());
+    } else if (this.phase === 'deploying') {
+      this.spec = stepDeployingStageFrame({
+        dt, time: this.time, online: this.online, descent: this.descent, stage: this.stage, dHud: this.dHud, currentSpec: this.spec,
+      });
       if (this.stage && this.stage.deployProgress() >= 1 && (this.deploySession?.ready || forceReady)) this.cutToDescent();
     } else if (this.phase === 'descent') {
       this.descent?.update(dt); this.surface?.update(dt, this.time);
       if (this.cutFlash > 0) { vp.bloom.strength += 0.55 * this.cutFlash * this.cutFlash; this.cutFlash = Math.max(0, this.cutFlash - dt / 0.5); }
+    } else if (this.phase === 'gameplay' && this.online) {
+      this.syncOnlineRetroHud();
     } else if (this.phase === 'gameplay' && !this.online) {
       this.play?.update(dt);
       this.surface?.update(dt, this.time);
       if (this.play) vp.followShadow(this.play.cam.target);
+    }
+  }
+
+  private syncOnlineRetroHud() {
+    if (!this.dHud || !this.online) return;
+    const retire = stepOnlineRetroHud({
+      dHud: this.dHud,
+      online: this.online,
+      retroTelAt: this.retroTelAt,
+      skipOnlineLanding: this.skipOnlineLanding,
+    });
+    if (retire) {
+      const dh = this.dHud; this.dHud = null; this.retroTelAt = null;
+      dh.hide();
+      window.setTimeout(() => dh.dispose(), 850);
     }
   }
 

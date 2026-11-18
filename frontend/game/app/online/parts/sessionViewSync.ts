@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import type { HexTerrain } from '@terra/render/planets/hex';
@@ -14,7 +15,7 @@ import type { OnlineDayNightSync } from '../dayNightSync';
 import type { EntityMeshes } from '../EntityMeshes';
 import type { FeatureHud } from '../featureHud';
 import { extractPodDescentStatus, type PodDescentStatus } from '../podStatus';
-import type { PodLandingStateName } from '../PodTouchdownFx';
+import { POD_TOUCHDOWN_DESCENT_S, type PodLandingStateName } from '../PodTouchdownFx';
 import { resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
 
 export function resolveSeatIndexFromSearch(search: string, v: ClientView): number | null {
@@ -36,6 +37,7 @@ export function applySessionSpacePhase(opts: {
   readonly store: WorldStore;
   readonly planetKind: PlanetKind | null;
   readonly viewport: ColonyViewport;
+  readonly dayNightSync?: OnlineDayNightSync | null;
   readonly focusTile: (q: number, r: number, instant?: boolean) => void;
   readonly onView: (v: ClientView) => void;
 }): boolean {
@@ -45,6 +47,7 @@ export function applySessionSpacePhase(opts: {
   if (opts.banner) opts.banner.el.style.display = opts.phase === null ? '' : 'none';
   syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain, opts.cameraTargetTile);
   if (opts.phase === null && wasActive) {
+    opts.dayNightSync?.syncFrame();
     if (opts.terrain) {
       const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind);
       try {
@@ -52,6 +55,10 @@ export function applySessionSpacePhase(opts: {
       } catch {
         /* Ignore in headless tests */
       }
+    } else {
+      if (opts.viewport.scene.background instanceof THREE.Color) opts.viewport.scene.background.setHex(0x03060c);
+      else opts.viewport.scene.background = new THREE.Color(0x03060c);
+      if (opts.viewport.scene.fog instanceof THREE.FogExp2) opts.viewport.scene.fog.color.setHex(0x03060c);
     }
     opts.focusTile(opts.cameraTargetTile.q, opts.cameraTargetTile.r, true);
     if (opts.store.latest) {
@@ -107,7 +114,9 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
     }
     if ((status.descending || !deps.hqReady) && !deps.skipDescent) {
       const landed = deps.fromSpaceDescent || deps.entities.hasPodTouchedDown();
-      deps.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed });
+      const td = deps.entities.podTouchdown.peekSurfaceState();
+      const smoothProg = Math.max(status.progress, Math.min(1, td.elapsed / POD_TOUCHDOWN_DESCENT_S));
+      deps.bootOverlay.showDescent({ progress: smoothProg, q: status.q, r: status.r, landed, planetType: view.planet.type });
       deps.hud.setVisible(false);
       return;
     }
@@ -155,9 +164,15 @@ export function syncSessionFrameHud(deps: FrameHudSyncDeps): void {
   const v = deps.store.latest;
   if (!v || deps.entities.podTouchdown.isSpacePhaseActive()) return;
   deps.dayNightSync?.syncFrame();
-  if (deps.bootOverlay?.phase === 'descent' && deps.entities.hasPodTouchedDown() && !deps.bootOverlay.descentEl.hidden) {
+  if (deps.bootOverlay?.phase === 'descent' && !deps.bootOverlay.descentEl.hidden) {
     const status = extractPodDescentStatus(v, deps.colonyIndex, deps.spawn);
-    deps.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed: true });
+    if (deps.entities.hasPodTouchedDown()) {
+      deps.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed: true, planetType: v.planet.type });
+    } else {
+      const td = deps.entities.podTouchdown.computeState(status.descending, status.progress);
+      const smoothProg = Math.max(status.progress, Math.min(1, td.elapsed / 1.75));
+      deps.bootOverlay.updateDescent({ progress: smoothProg, q: status.q, r: status.r, planetType: v.planet.type });
+    }
   }
   if (deps.fastStartLand && !deps.landSent && deps.entities.hasPodTouchedDown()) {
     if (extractPodDescentStatus(v, deps.colonyIndex, deps.spawn).descending) deps.sendLandOnce();

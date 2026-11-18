@@ -12,22 +12,33 @@ function escapeHtml(text: string): string {
     .replaceAll('"', '&quot;');
 }
 
+const RESOURCE_LABELS: Readonly<Record<string, string>> = {
+  'metals.t1': 'METALS',
+  'minerals.t1': 'MINERALS',
+  'bio.water': 'WATER',
+  'bio.biomass': 'BIOMASS',
+};
+
+function formatPrimaryResource(res: string): string {
+  return RESOURCE_LABELS[res] ?? res.toUpperCase();
+}
+
 export function renderScanCardInnerHtml(kind: PlanetKind, summary: PlanetSummaryV1): string {
   const spec = PLANET_SPECS[kind];
   const traitsHtml = spec.traits.map((t) => `<span class="ar-chip">${escapeHtml(t)}</span>`).join('');
   const primaryRes =
     summary.sectors.find((s) => s.kind === 'land' && s.mainResource)?.mainResource ?? 'metals.t1';
   const seaFrac = Math.round(spec.orbital.seaLevel * 100);
-  const climateLabel = seaFrac > 40 ? 'ARCHIPELAGO' : seaFrac > 10 ? 'TEMPERATE' : 'ARID';
+  const climateLabel = seaFrac > 40 ? 'OCEANIC' : seaFrac > 10 ? 'TEMPERATE' : 'ARID';
 
   return `<div class="ar-card-scanlines scanlines"></div>
-    <div class="ar-eyebrow"><span>SHIP AR // PLANETARY SCAN</span><span class="ar-code">${summary.type.toUpperCase()}</span></div>
+    <div class="ar-eyebrow"><span>ORBITAL SCAN // BIOME</span><span class="ar-code">${summary.type.toUpperCase()}</span></div>
     <h2 class="ar-title">${escapeHtml(spec.name)}</h2>
     <p class="ar-desc">${escapeHtml(spec.tagline)}</p>
     <div class="ar-stat-grid">
       <div class="ar-kv"><span class="ar-k">HYDROSPHERE</span><b class="ar-v">${seaFrac}%</b></div>
       <div class="ar-kv"><span class="ar-k">CLIMATE</span><b class="ar-v">${climateLabel}</b></div>
-      <div class="ar-kv"><span class="ar-k">DOMINANT</span><b class="ar-v">${escapeHtml(primaryRes)}</b></div>
+      <div class="ar-kv"><span class="ar-k">DOMINANT</span><b class="ar-v">${escapeHtml(formatPrimaryResource(primaryRes))}</b></div>
     </div>
     <div class="ar-chips">${traitsHtml}</div>`;
 }
@@ -98,8 +109,12 @@ export function renderLaunchCardShellHtml(
 ): string {
   const sectorChooser = renderSectorChooserHtml(kind, summary, intent, queuePaused);
   const btnText = activeColony ? 'ENTER COLONY' : 'DEPLOY';
+  const statusPill =
+    summary.availability !== 'open'
+      ? `<span class="ar-code">${summary.availability.toUpperCase()}</span>`
+      : '';
   return `<div class="ar-card-scanlines scanlines"></div>
-    <div class="ar-eyebrow"><span>DROP VECTOR // INSERTION</span><span class="ar-code">${summary.availability.toUpperCase()}</span></div>
+    <div class="ar-eyebrow"><span>DROP VECTOR // INSERTION</span>${statusPill}</div>
     <div id="sector-picker-host"${activeColony ? ' hidden' : ''}>${sectorChooser}</div>
     <div id="menu-err"></div>
     <button type="button" class="btn btn-primary btn-lg" id="deploy">${btnText}</button>`;

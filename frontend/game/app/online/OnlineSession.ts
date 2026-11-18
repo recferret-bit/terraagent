@@ -29,7 +29,7 @@ import { applySessionSpacePhase, resolveSeatIndexFromSearch, syncSessionBootOver
 import { PauseOverlay } from './PauseOverlay';
 import { createUnitControl } from './unitControl';
 import type { PodLandingStateName } from './PodTouchdownFx';
-import { extractPodDescentStatus } from './podStatus';
+import { extractPodDescentStatus, isUnplayedFreshColonyLanding } from './podStatus';
 import type { PilotBridge } from './pilotBridge';
 import { createSessionHud } from './sessionHud';
 import { scenarioParam } from './sessionTarget';
@@ -51,7 +51,7 @@ export interface OnlineSessionOptions {
   planetId?: string; sectorIntent?: SectorIntentInput;
   pollQueuedHome?: boolean; enqueueOnNew?: boolean; pollIntervalMs?: number;
   wait?: (ms: number) => Promise<void>; onQueueCancelled?: (ticketId: string | null) => void;
-  skipDescent?: boolean; fromSpaceDescent?: boolean; onReturnToOrbit?: (kind: PlanetKind) => void;
+  skipDescent?: boolean; fromSpaceDescent?: boolean; freshDeployment?: boolean; onReturnToOrbit?: (kind: PlanetKind) => void;
   /** May an unreachable game server fall back to a browser-local host (FA-06)? Default: dev builds only. */
   allowLocalFallback?: boolean;
   /** When false, skip `/v1/auth/refresh` on initial boot and log in with `deviceSecret` directly. */
@@ -82,6 +82,7 @@ export class OnlineSession {
   private readonly bootTarget: SessionTarget; private readonly guest: GuestBootTarget | null;
   private disposed = false; private localHost: LocalHost | null = null;
   private showSpaceTerrain = false; private cameraCentered = false; private landSent = false; private hqDeployedSynced = false;
+  private freshDeployment: boolean; private sawPodDescending = false; private firstObservedTick: number | null = null;
   private tiles: ClientTiles | null = null; private warp = 1; private raf = 0;
   private dayNightSync: OnlineDayNightSync | null = null;
   private last = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -93,6 +94,7 @@ export class OnlineSession {
     const q = new URLSearchParams(this.search);
     this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1');
     this.fromSpaceDescent = Boolean(opts.fromSpaceDescent);
+    this.freshDeployment = Boolean(opts.freshDeployment);
     this.fastStartLand = Boolean(this.skipDescent || (!opts.wsDeps && !opts.localHost && !scenarioParam(this.search)));
     this.onReturnToOrbit = opts.onReturnToOrbit;
     this.allowLocalFallback = opts.allowLocalFallback ?? import.meta.env.DEV;
@@ -102,6 +104,11 @@ export class OnlineSession {
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
     this.viewport = createSafeViewport(root, opts.viewport);
+    if (this.ownsViewport) {
+      if (this.viewport.scene.background instanceof THREE.Color) this.viewport.scene.background.setHex(0x03060c);
+      else this.viewport.scene.background = new THREE.Color(0x03060c);
+      if (this.viewport.scene.fog instanceof THREE.FogExp2) this.viewport.scene.fog.color.setHex(0x03060c);
+    }
 
     const rig = createSessionBootRig({
       mode, search: this.search, flags: this.flags, planetKind: this.planetKind,
@@ -200,6 +207,7 @@ export class OnlineSession {
     const ready = applySessionSpacePhase({
       phase, showTerrain, entities: this.entities, banner: this.banner, terrain: this.terrain,
       cameraTargetTile: this.cameraTargetTile, store: this.store, planetKind: this.planetKind, viewport: this.viewport,
+      dayNightSync: this.dayNightSync,
       focusTile: (q, r, instant) => this.focusTile(q, r, instant), onView: (v) => this.onView(v),
     });
     if (phase === null && this.guest && (!this.bootResult || !this.store.latest)) {
@@ -288,8 +296,9 @@ export class OnlineSession {
     this.landfall.setOwnerColonyIndex(this.colonyIndex);
     this.bootOverlay?.hideQueueStatus();
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
+    if (boot.wasQueued) this.freshDeployment = true;
     if (!this.skipDescent) {
-      if (boot.wasQueued) this.bootOverlay?.showDescent({ progress: 0, q: this.spawn.q, r: this.spawn.r, landed: false });
+      if (boot.wasQueued) this.bootOverlay?.showDescent({ progress: 0, q: this.spawn.q, r: this.spawn.r, landed: this.fromSpaceDescent });
       else this.bootOverlay?.setSplashStatus('Deploying drop pod…');
     }
   }
@@ -334,12 +343,23 @@ export class OnlineSession {
         this.landfall.setOwnerColonyIndex(asIdx);
       }
     }
+    this.dayNightSync?.syncFrame();
     if (v.tiles) this.onTiles(v, v.tiles);
-    if (!this.entities.podTouchdown.isSpacePhaseActive()) this.dayNightSync?.syncFrame();
     const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
     this.biomeKey = look.biomeKey;
+    if (this.firstObservedTick === null) this.firstObservedTick = v.tick;
     const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
-    if (!this.cameraCentered && !this.landSent && !this.fromSpaceDescent && !status.descending && status.hqLanded) {
+    if (status.descending || (this.freshDeployment && isUnplayedFreshColonyLanding(v, this.colonyIndex, this.spawn, this.firstObservedTick))) {
+      this.sawPodDescending = true;
+    }
+    if (
+      !this.entities.podTouchdown.isSpacePhaseActive() &&
+      !this.sawPodDescending &&
+      !this.landSent &&
+      !status.descending &&
+      status.hqLanded &&
+      this.entities.podTouchdown.peekSurfaceState().elapsed === 0
+    ) {
       this.entities.podTouchdown.setEnabled(false);
     }
     this.entities.syncView(v, this.terrain, this.biomeKey, this.store.confirmedTick, this.store.simData() ?? undefined);
@@ -400,7 +420,9 @@ export class OnlineSession {
     const animDt = Math.min(rawDt, 0.4) * Math.max(1, this.warp);
     this.last = now;
     try {
-      if (!this.entities.podTouchdown.isSpacePhaseActive()) {
+      if (this.entities.podTouchdown.isSpacePhaseActive()) {
+        this.dayNightSync?.syncFrame(now);
+      } else {
         this.entities.update(animDt, this.terrain, Math.min(rawDt, 0.4));
         this.cam?.setShake(this.entities.getCameraShake());
         this.terrain?.tick(animDt);

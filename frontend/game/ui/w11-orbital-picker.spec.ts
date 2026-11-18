@@ -211,8 +211,8 @@ function makePollingSnapshots(): PlanetListV1[] {
   return [snap1, snap2, snap3];
 }
 
-describe('W11-22 · Three persistent world cards', () => {
-  it('renders all 3 canonical cards, omits newPlanet CTAs, and maps availability & occupancy', () => {
+describe('W11-22 · Three persistent world cards & Ship AR projection', () => {
+  it('renders all 3 canonical cards with animated planet canvases, real player/bot counts, no chips/seed/bloom/skip, and updates AR cards', () => {
     const root = document.createElement('div');
     const list = makePlanetListFixture({
       desert: {
@@ -221,6 +221,12 @@ describe('W11-22 · Three persistent world cards', () => {
         freeSeats: 20,
         livingColonies: 4,
         onlinePlayers: 3,
+        playerColonies: 2,
+        botColonies: 2,
+        colonies: [
+          { colonyId: 'col_0', displayName: 'Aegis Prime', foundingSectorId: 'sec_0_0', foundedAt: NOW_ISO },
+          { colonyId: 'col_6', displayName: 'Iron Guild Outpost', foundingSectorId: 'sec_1_-1', foundedAt: NOW_ISO, isBot: true },
+        ],
         availability: 'open',
       },
       ocean: {
@@ -229,6 +235,8 @@ describe('W11-22 · Three persistent world cards', () => {
         freeSeats: 0,
         livingColonies: 18,
         onlinePlayers: 9,
+        playerColonies: 16,
+        botColonies: 2,
         availability: 'full',
       },
       temperate: {
@@ -247,34 +255,57 @@ describe('W11-22 · Three persistent world cards', () => {
     expect(cards).toHaveLength(3);
     expect(cards.map((c) => c.dataset.k)).toEqual(['dune', 'oceanForest', 'forestRock']);
     expect(cards.map((c) => c.dataset.planetType)).toEqual(['desert', 'ocean', 'temperate']);
-    expect(menu.el.textContent?.toLowerCase()).not.toContain('create new planet');
     expect(menu.el.textContent?.toLowerCase()).not.toContain('new planet');
+    expect(menu.el.querySelector('#seed')).toBeNull();
+    expect(menu.el.querySelector('#s-bloom')).toBeNull();
+    expect(menu.el.querySelector('#s-skip')).toBeNull();
+    expect(menu.el.querySelector('.world-colony-badge')).toBeNull();
+    expect(menu.el.querySelector('.world-card-status')).toBeNull();
+    expect(menu.el.querySelectorAll('.world-card canvas[data-planet]')).toHaveLength(3);
 
     const duneCard = menu.el.querySelector<HTMLElement>('.world-card[data-k="dune"]')!;
     expect(duneCard.dataset.availability).toBe('open');
     expect(duneCard.dataset.freeSeats).toBe('20');
-    expect(duneCard.dataset.validatedCapacity).toBe('28');
-    expect(duneCard.dataset.reservedSeats).toBe('3');
-    expect(duneCard.dataset.foundedSeats).toBe('5');
-    expect(duneCard.dataset.livingColonies).toBe('4');
-    expect(duneCard.dataset.onlinePlayers).toBe('3');
-    expect(duneCard.textContent).toContain('20/28 SEATS FREE');
-    expect(duneCard.textContent).toContain('5 FOUNDED · 3 RESERVED');
-    expect(duneCard.textContent).toContain('4 LIVING · 3 ONLINE');
+    expect(duneCard.dataset.playerColonies).toBe('2');
+    expect(duneCard.dataset.botColonies).toBe('2');
+    expect(duneCard.textContent).toContain('2 PLAYERS · 2 BOTS · 3 ONLINE');
+    expect(duneCard.textContent).toContain('20/28 DROP ZONES OPEN');
+
+    const arScan = menu.el.querySelector<HTMLElement>('[data-testid="ar-card-scan"]')!;
+    const arPresence = menu.el.querySelector<HTMLElement>('[data-testid="ar-card-presence"]')!;
+    const arLaunch = menu.el.querySelector<HTMLElement>('[data-testid="ar-card-launch"]')!;
+    expect(arScan.classList.contains('brackets')).toBe(false);
+    expect(arPresence.classList.contains('brackets')).toBe(false);
+    expect(arLaunch.classList.contains('brackets')).toBe(false);
+    expect(arScan.textContent).toContain('Kharon Dunes');
+    expect(arPresence.querySelector('[data-testid="ar-players-count"]')?.textContent).toBe('2');
+    expect(arPresence.querySelector('[data-testid="ar-bots-count"]')?.textContent).toBe('2');
+    expect(arPresence.textContent).toContain('Aegis Prime');
+    expect(arPresence.textContent).toContain('Iron Guild Outpost');
+    expect(menu.getGlobeMarkers()).toHaveLength(7);
+
+    const scanWrap = menu.el.querySelector<HTMLElement>('.ar-wrap-scan')!;
+    const baseFrame = { globeNx: 0.6, globeNy: 0.5, globeRadiusNormY: 0.22, anchors: [] };
+    menu.updateArProjection({ ...baseFrame, time: 1.5, pointerX: 0.4, pointerY: -0.3 });
+    const t1 = scanWrap.style.transform;
+    expect(t1).toContain('translate3d(');
+    expect(t1).toContain('rotateY(');
+    expect(t1).toContain('rotateX(');
+    menu.updateArProjection({ ...baseFrame, time: 4.0, pointerX: -0.4, pointerY: 0.25 });
+    expect(scanWrap.style.transform).not.toBe(t1);
 
     const oceanCard = menu.el.querySelector<HTMLElement>('.world-card[data-k="oceanForest"]')!;
-    expect(oceanCard.dataset.availability).toBe('full');
-    expect(oceanCard.textContent).toContain('0/28 SEATS FREE');
+    expect(oceanCard.textContent).toContain('16 PLAYERS · 2 BOTS · 9 ONLINE');
+    expect(oceanCard.textContent).toContain('0/28 DROP ZONES OPEN');
+    oceanCard.click();
+    expect(arScan.textContent).toContain('Thalassa Verde');
 
     const tempCard = menu.el.querySelector<HTMLElement>('.world-card[data-k="forestRock"]')!;
     expect(tempCard.dataset.availability).toBe('paused');
-    expect(tempCard.querySelector('[data-testid="world-live-meta-forestRock"]')?.textContent).toBe('');
+    expect(tempCard.textContent).toContain('6 PLAYERS · 0 BOTS');
 
-    menu.setPlanetList(
-      makePlanetListFixture({ temperate: { health: 'FAULTED', availability: 'faulted' } }),
-    );
+    menu.setPlanetList(makePlanetListFixture({ temperate: { health: 'FAULTED', availability: 'faulted' } }));
     expect(tempCard.dataset.availability).toBe('faulted');
-    expect(menu.el.querySelectorAll('.world-card')).toHaveLength(3);
     menu.dispose();
   });
 });

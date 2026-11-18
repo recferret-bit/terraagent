@@ -283,6 +283,9 @@ export class PodImpactRig {
     this.shockwaveMat.opacity = 0.9 * (1 - sw) * (1 - sw);
 
     const dw = clamp(t / 1.45, 0, 1);
+    const nightFactor = clamp((getColonyVisionUniforms().uNightFactor.value as number) ?? 0, 0, 1);
+    const dustScale = 1 - 0.78 * nightFactor * smoothstep(0.1, 0.85, dw);
+    this.dustRingMat.color.setRGB(0.84 * dustScale, 0.72 * dustScale, 0.59 * dustScale);
     this.dustRingMesh.visible = dw < 1;
     this.dustRingMesh.scale.setScalar(0.65 + 4.1 * smoothstep(0, 1, dw));
     this.dustRingMat.opacity = 0.68 * Math.sin(dw * Math.PI) * (1 - 0.5 * dw);
@@ -321,8 +324,10 @@ export class PodImpactRig {
     if (pos) this.root.position.copy(pos);
     this.waveGroup.visible = false;
     this.craterGroup.visible = false;
-    this.egressGroup.visible = true;
-    this.updateEgress(POD_EGRESS_YAW, 1, 0);
+    this.egressGroup.visible = pos !== undefined;
+    if (pos !== undefined) {
+      this.updateEgress(POD_EGRESS_YAW, 1, 0);
+    }
   }
 
   hide(): void {

@@ -115,7 +115,7 @@ describe('probeActiveHomeColony', () => {
 });
 
 describe('MainMenu active colony planet lock', () => {
-  it('forces active planet selection, highlights YOUR COLONY, gray-locks others, and blocks switching across planet updates', () => {
+  it('forces active planet selection, removes YOUR COLONY/OPEN chips, gray-locks others, and blocks switching across planet updates', () => {
     const onPlanet = vi.fn();
     const cb: MenuCallbacks = { onPlanet, onDeploy: vi.fn(), onSettings: vi.fn() };
     const menu = new MainMenu(document.body, cb, 'oceanForest', undefined, { planetList: makePlanetListFixture() });
@@ -138,16 +138,18 @@ describe('MainMenu active colony planet lock', () => {
     const tempCard = menu.el.querySelector<HTMLButtonElement>('.world-card[data-k="forestRock"]')!;
     expect(duneCard.disabled).toBe(false);
     expect(duneCard.classList.contains('is-active-colony')).toBe(true);
-    expect(duneCard.querySelector<HTMLElement>('.world-colony-badge')?.hidden).toBe(false);
+    expect(duneCard.querySelector('.world-colony-badge')).toBeNull();
+    expect(duneCard.querySelector('.world-card-status')).toBeNull();
 
     expect(oceanCard.disabled).toBe(true);
     expect(oceanCard.classList.contains('is-colony-locked')).toBe(true);
-    expect(oceanCard.querySelector('.world-card-status')?.textContent).toBe('LOCKED');
+    expect(oceanCard.querySelector('.world-card-status')).toBeNull();
     expect(tempCard.disabled).toBe(true);
     expect(tempCard.classList.contains('is-colony-locked')).toBe(true);
 
     expect(menu.el.querySelector('#deploy')?.textContent).toBe('ENTER COLONY');
     expect(menu.el.querySelector<HTMLElement>('#sector-picker-host')?.hidden).toBe(true);
+    expect(menu.el.querySelector('[data-testid="ar-card-presence"]')?.textContent).toContain('Outpost Alpha');
 
     // Attempting to select or click another planet keeps desert locked
     onPlanet.mockClear();
@@ -156,16 +158,15 @@ describe('MainMenu active colony planet lock', () => {
     expect(menu.kind).toBe('dune');
     expect(onPlanet).not.toHaveBeenCalled();
 
-    // Live feed updates preserve LOCKED status
+    // Live feed updates preserve gray-lock state
     menu.setPlanetList(makePlanetListFixture());
-    expect(oceanCard.querySelector('.world-card-status')?.textContent).toBe('LOCKED');
+    expect(oceanCard.classList.contains('is-colony-locked')).toBe(true);
     expect(oceanCard.disabled).toBe(true);
 
     // Clearing active colony unlocks all planets
     menu.setActiveColony(null);
     expect(oceanCard.disabled).toBe(false);
     expect(oceanCard.classList.contains('is-colony-locked')).toBe(false);
-    expect(oceanCard.querySelector('.world-card-status')?.textContent).toBe('OPEN');
     expect(menu.el.querySelector('#deploy')?.textContent).toBe('DEPLOY');
     menu.dispose();
   });

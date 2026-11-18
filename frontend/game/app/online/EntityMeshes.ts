@@ -317,6 +317,11 @@ export class EntityMeshes {
       rec.hp = hp; rec.hpMax = hpMax; rec.state = state; rec.progress = barProgress; rec.tier = tier;
       rec.buildStage = setArchetypeBuildProgress(rec.mesh, buildProg);
       rec.mesh.visible = visible;
+      if (isOwnedPod) {
+        rec.mesh.position.x = wx;
+        rec.mesh.position.z = wz;
+        rec.mesh.rotation.y = yaw;
+      }
       rec.targetPos.set(wx, wy, wz);
     }
     return rec.track.push({ tick, x, y, rot });

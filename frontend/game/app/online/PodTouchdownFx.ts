@@ -100,6 +100,7 @@ export class PodTouchdownFx {
   private wasSimDescending = false;
   private lastPodEntityId: number | null = null;
   private podRemoved = false;
+  private hasGroundPos = false;
   private lastCameraShake = 0;
   private readonly groundPos = new THREE.Vector3();
 
@@ -162,7 +163,7 @@ export class PodTouchdownFx {
       this.spacePhase = null;
       this.elapsed = POD_TOUCHDOWN_TOTAL_S + 1;
       this.hideFx();
-      this.impactRig.setSettled();
+      this.impactRig.setSettled(this.hasGroundPos ? this.groundPos : undefined);
     } else if (this.mode === 'skip') {
       this.mode = 'short';
     }
@@ -173,15 +174,28 @@ export class PodTouchdownFx {
     this.enabled = mode !== 'skip';
     this.spacePhase = null;
     this.podRemoved = false;
+    this.hasGroundPos = false;
     this.elapsed = this.enabled ? 0 : POD_TOUCHDOWN_TOTAL_S + 1;
   }
 
   hasTouchedDown(): boolean {
-    return !this.spacePhase && (!this.enabled || this.elapsed >= POD_TOUCHDOWN_DESCENT_S);
+    return !this.spacePhase && (!this.enabled || this.podRemoved || this.elapsed >= POD_TOUCHDOWN_DESCENT_S);
   }
 
   isHqDeployed(): boolean {
-    return !this.spacePhase && (!this.enabled || this.elapsed >= POD_TOUCHDOWN_TOTAL_S);
+    return !this.spacePhase && (!this.enabled || this.podRemoved || this.elapsed >= POD_TOUCHDOWN_TOTAL_S);
+  }
+
+  /** Pure non-mutating surface touchdown snapshot for external HUD synchronization. */
+  peekSurfaceState(): { elapsed: number; podLift: number; touchedDown: boolean; settled: boolean } {
+    const settled = !this.enabled || this.podRemoved || this.elapsed >= POD_TOUCHDOWN_TOTAL_S;
+    if (this.spacePhase || settled) {
+      return { elapsed: this.elapsed, podLift: settled ? 0 : POD_TOUCHDOWN_START_ALT_M, touchedDown: settled, settled };
+    }
+    const u = clamp(this.elapsed / POD_TOUCHDOWN_DESCENT_S, 0, 1);
+    const decel = 1 - u;
+    const podLift = this.elapsed < POD_TOUCHDOWN_DESCENT_S ? POD_TOUCHDOWN_START_ALT_M * decel * decel : 0;
+    return { elapsed: this.elapsed, podLift, touchedDown: this.elapsed >= POD_TOUCHDOWN_DESCENT_S, settled: false };
   }
 
   getCameraShake(): number {
@@ -311,7 +325,7 @@ export class PodTouchdownFx {
   private computeActiveSurfaceState(t: number): PodTouchdownState {
     if (t < POD_TOUCHDOWN_DESCENT_S) {
       const u = clamp(t / POD_TOUCHDOWN_DESCENT_S, 0, 1);
-      const decel = 1 - smoothstep(0, 1, u);
+      const decel = 1 - u;
       const podLift = POD_TOUCHDOWN_START_ALT_M * decel * decel;
       const ignite = this.mode === 'full' ? 1 : smoothstep(0, 0.22, t);
       const prox = clamp(1 - podLift / 22, 0, 1);
@@ -418,6 +432,7 @@ export class PodTouchdownFx {
 
     const impactAge = Math.max(0, state.elapsed - POD_TOUCHDOWN_DESCENT_S);
     this.groundPos.set(podMesh.position.x, groundY, podMesh.position.z);
+    this.hasGroundPos = true;
     this.impactRig.update({
       time: this.time,
       pos: this.groundPos,
@@ -453,7 +468,7 @@ export class PodTouchdownFx {
     if (gfx) {
       gfx.group.visible = state.dustIntensity > 0.005;
       this.groundPos.set(podMesh.position.x, groundY, podMesh.position.z);
-      gfx.update(this.time, this.groundPos, state.dustIntensity, 800);
+      gfx.update(this.time, this.groundPos, state.dustIntensity, 800, state.thrust);
     }
 
     return state;

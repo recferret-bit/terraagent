@@ -1,6 +1,7 @@
 // Shared lifecycle for live stages (WebGL viewports, 2D canvases): one rAF loop gated by IntersectionObserver visibility,
 // a clamped dt, optional ResizeObserver, and the reduced-motion switch (no loop: callers render still frames themselves).
-export const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const prefersReducedMotion = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 export interface StageHostOptions {

@@ -64,9 +64,10 @@ export class CameraRig implements FramePart {
 
   private shake(f: FrameState) {
     const tn = f.tn, { camPos } = f;
-    const shakeEnv = 1 - smoothstep(31.8, 33.8, tn);
-    const touchdownJolt = 0.72 * Math.exp(-Math.pow((tn - 31.0) / 0.28, 2));
-    const amp = (0.05 * smoothstep(9, 15, tn) + 0.3 * f.plasmaI + 0.5 * Math.exp(-Math.pow((tn - 24.1) / 0.35, 2)) + touchdownJolt + 0.05 * f.thr) * shakeEnv;
+    const touchdownJolt = 0.65 * Math.exp(-Math.pow((tn - 34.02) / 0.22, 2));
+    const retroRumble = 0.05 * f.thr * (1 - smoothstep(31.4, 32.0, tn));
+    const atmoAmp = (0.05 * smoothstep(9, 15, tn) + 0.3 * f.plasmaI + 0.5 * Math.exp(-Math.pow((tn - 24.1) / 0.35, 2))) * (1 - smoothstep(30.5, 32.0, tn));
+    const amp = atmoAmp + retroRumble + touchdownJolt;
     if (amp > 1e-4) {
       camPos.x += amp * (Math.sin(tn * 37.1) + 0.6 * Math.sin(tn * 71.3 + 2));
       camPos.y += amp * (Math.sin(tn * 43.7 + 1) + 0.6 * Math.sin(tn * 67.1 + 4));

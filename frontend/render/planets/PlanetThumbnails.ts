@@ -88,6 +88,9 @@ export function mountPlanetThumbnails(
   opts: PlanetThumbnailsOptions = {},
 ): PlanetThumbnailsHandle | null {
   if (!canvases.length) return null;
+  if (typeof WebGLRenderingContext === 'undefined' && typeof WebGL2RenderingContext === 'undefined') {
+    return null;
+  }
   const size = opts.size ?? DEFAULT_SIZE;
   const spinMult = opts.spinMultiplier ?? DEFAULT_SPIN_MULT;
 

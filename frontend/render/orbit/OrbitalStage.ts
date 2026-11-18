@@ -36,6 +36,7 @@ class OrbitalStageImpl implements OrbitalStage {
   private readonly nebula: NebulaTint;
   private readonly carrier: FittedModel;
   private readonly deploy: DeploySequence;
+  private lastTime = 0;
 
   constructor(viewport: ColonyViewport, spec: PlanetSpec) {
     const { scene, sunDir } = this;
@@ -63,16 +64,19 @@ class OrbitalStageImpl implements OrbitalStage {
     this.moons = new StageMoons(scene, sunDir, spec);
     this.satellites = new Satellites(scene);
     this.nebula = new NebulaTint(spec, this.backdrop.uniforms.uNebA, this.layers);
-    this.deploy = new DeploySequence({ scene, camera: this.camera, viewport, sunDir, sun: this.sun, carrier: this.carrier, globes: this.globes, lookNow: this.lookNow });
+    this.deploy = new DeploySequence({ scene, camera: this.camera, viewport, sunDir, sun: this.sun, backdrop: this.backdrop, carrier: this.carrier, globes: this.globes, lookNow: this.lookNow });
   }
 
   beginDeploy(h: DescentHandoff, opts: { biomeKey?: string } = {}) { return this.deploy.begin(h, opts); }
+  retargetDeploy(h: DescentHandoff) { return this.deploy.retarget(h); }
   deployProgress() { return this.deploy.progress(); }
   deployTn() { return this.deploy.tn(); }
   setTerraform(stage: number, smooth?: boolean) { this.globes.current.setTerraform(stage, smooth); }
   setSpinRate(r: number) { this.globes.setSpinRate(r); }
   setHighlights(markers: readonly OrbitalGlobeMarkerInput[]) { this.highlights.setHighlights(markers); }
-  projectHighlights(): OrbitalProjectedFrame { return this.highlights.project(this.camera, this.globes.planetPos); }
+  projectHighlights(): OrbitalProjectedFrame {
+    return this.highlights.project(this.camera, this.globes.planetPos, this.lastTime, this.sun.mouseS);
+  }
 
   setPlanet(next: PlanetSpec, opts: { duration?: number; continuousSpin?: boolean } = {}) {
     if (!this.globes.setPlanet(next, opts)) return;
@@ -81,6 +85,7 @@ class OrbitalStageImpl implements OrbitalStage {
   }
 
   update(dt: number, time: number) {
+    this.lastTime = time;
     const { globes, camera, sun } = this;
     const deploying = this.deploy.active;
     if (!deploying) globes.place(dt);
@@ -91,7 +96,7 @@ class OrbitalStageImpl implements OrbitalStage {
     if (deploying) this.deploy.update(dt, time);
     else { sun.smoothMouse(dt); updateIdleCamera(camera, this.lookNow, this.camBase, sun.mouseS, globes.planetPos, time); }
     this.highlights.setVisible(!deploying);
-    if (!deploying) this.highlights.update(globes.planetPos, time);
+    if (!deploying) this.highlights.update(globes.current, globes.planetPos, camera, dt, time);
     this.backdrop.update(camera, time);
     this.layers.update(dt, time);
     sun.update(camera, time, globes.planetPos);

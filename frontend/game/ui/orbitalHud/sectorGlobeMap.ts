@@ -12,8 +12,8 @@ interface SectorSphereAngle {
   readonly pitch: number;
 }
 
-// Distributed clearly across the camera-facing hemisphere of the globe so all 7 sectors read unambiguously
-// without being strictly constrained to physical surface map scale.
+// Distributed clearly across the camera-facing hemisphere as a cohesive 7-sector honeycomb
+// following the curved planet surface without needing strict micro-scale fidelity.
 const SECTOR_SPHERE_ANGLES: Readonly<Record<SectorId, SectorSphereAngle>> = (() => {
   const map: Record<string, SectorSphereAngle> = {};
   for (const [mq, mr] of W11_SEVEN_SECTOR_COORDS) {
@@ -21,8 +21,8 @@ const SECTOR_SPHERE_ANGLES: Readonly<Record<SectorId, SectorSphereAngle>> = (() 
     const hx = Math.sqrt(3) * (mq + mr * 0.5);
     const hy = 1.5 * mr;
     map[id] = {
-      yaw: Number((hx * 0.27 - 0.04).toFixed(3)),
-      pitch: Number((-hy * 0.27 + 0.05).toFixed(3)),
+      yaw: Number((hx * 0.205 - 0.02).toFixed(3)),
+      pitch: Number((-hy * 0.205 + 0.04).toFixed(3)),
     };
   }
   return map;
@@ -80,9 +80,9 @@ export function buildOrbitalGlobeMarkers(
   const landSectors = summary.sectors.filter((s) => s.kind === 'land');
   const markers: OrbitalGlobeMarkerInput[] = landSectors.map((sec, idx) => {
     const pos = getSectorSphereAngle(sec.sectorId, idx);
-    const playersFromSec = sec.livingColonies ?? sec.foundedSeats;
-    const players = Math.max(playersBySector.get(sec.sectorId) ?? 0, playersFromSec > 0 ? playersFromSec : 0);
     const bots = botsBySector.get(sec.sectorId) ?? 0;
+    const playersFromSec = Math.max(0, (sec.livingColonies ?? sec.foundedSeats) - bots);
+    const players = Math.max(playersBySector.get(sec.sectorId) ?? 0, playersFromSec);
     const isTarget = sec.sectorId === targetSectorId;
     const role: OrbitalGlobeMarkerInput['role'] = isTarget
       ? 'target'

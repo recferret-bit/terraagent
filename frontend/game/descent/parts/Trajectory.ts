@@ -17,6 +17,8 @@ export class Trajectory {
   /** Where the heat shield separates (t = 23 s) and its vertical speed there. */
   readonly detach23: THREE.Vector3;
   readonly v23 = (altCurve(23.02) - altCurve(22.98)) / 0.04;
+  /** True when an online HexTerrain (offset so the landing pad sits at y=0) replaces the preview surface. */
+  externalGround = false;
 
   constructor(private surface: PlanetSurface) {
     this.L = surface.landingSite.clone();
@@ -32,14 +34,22 @@ export class Trajectory {
     const s = smoother(4, 32, tn);
     const yRel = altCurve(tn);
     const x = this.podLand.x + this.lat0.x * (1 - s), z = this.podLand.z + this.lat0.y * (1 - s);
-    const g = this.surface.heightAt(x, z) * smoothstep(80, 0, yRel);
+    const g = this.externalGround ? 0 : this.surface.heightAt(x, z) * smoothstep(80, 0, yRel);
     return out.set(x, yRel + g - 4.0 * smoothstep(34.55, 35, tn), z);
   }
 
-  /** Pod attitude: tumble after release, slow sway under the chute. */
+  /** Pod attitude: tumble after release, slow sway under the chute, smooth yaw into `fdYaw` before retro handoff. */
   podRot(tn: number, out: THREE.Euler) {
     const tum = smoothstep(4, 4.6, tn) * (1 - smoothstep(8, 13, tn));
     const sway = 0.07 * Math.sin(tn * 1.1) * smoothstep(24, 26, tn) * (1 - smoothstep(29, 32, tn));
-    return out.set(0.35 * Math.sin(1.3 * (tn - 4)) * tum + sway * 0.5, 2.4 * smoother(4, 12, tn), 0.5 * Math.sin(0.9 * (tn - 4) + 1) * tum + sway, 'YXZ');
+    let yawDelta = ((this.fdYaw - 2.4 + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    if (yawDelta < -Math.PI) yawDelta += Math.PI * 2;
+    const yaw = 2.4 * smoother(4, 12, tn) + yawDelta * smoother(26.0, 31.6, tn);
+    return out.set(
+      0.35 * Math.sin(1.3 * (tn - 4)) * tum + sway * 0.5,
+      yaw,
+      0.5 * Math.sin(0.9 * (tn - 4) + 1) * tum + sway,
+      'YXZ',
+    );
   }
 }

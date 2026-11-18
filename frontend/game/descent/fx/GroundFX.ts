@@ -1,12 +1,13 @@
 import * as THREE from 'three';
+import { computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { mulberry32 } from '../math';
 
 /** Thruster-kicked dust / embers / spray. All motion is analytic in the vertex shader (deterministic, zero CPU per particle). */
 export interface GroundFX {
   group: THREE.Group;
-  /** pos = ground contact point under the pod; intensity 0..1; scale = px per world unit at depth 1. */
-  update(time: number, pos: THREE.Vector3, intensity: number, pxScale: number): void;
+  /** pos = ground contact point under the pod; intensity 0..1; scale = px per world unit at depth 1; thrust = 0..1 plume illumination. */
+  update(time: number, pos: THREE.Vector3, intensity: number, pxScale: number, thrust?: number): void;
   dispose(): void;
 }
 interface Layer {
@@ -32,23 +33,33 @@ const LAYERS: Record<PlanetKind, Layer[]> = {
 export function createGroundFX(kind: PlanetKind, seed: number): GroundFX {
   const group = new THREE.Group();
   const rnd = mulberry32(seed * 7 + 11);
-  const tex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!; const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  const tex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d')!; const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+  })();
   const mats: THREE.ShaderMaterial[] = [], geos: THREE.BufferGeometry[] = [];
-  const shared = { uPos: { value: new THREE.Vector3() }, uTime: { value: 0 }, uI: { value: 0 }, uPx: { value: 800 } };
+  const shared = {
+    uPos: { value: new THREE.Vector3() }, uTime: { value: 0 }, uI: { value: 0 }, uPx: { value: 800 },
+    uNight: { value: 0 }, uThr: { value: 1 },
+  };
   for (const L of LAYERS[kind]) {
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(L.n * 3), s = new Float32Array(L.n * 4);
     for (let i = 0; i < L.n * 4; i++) s[i] = rnd();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('aSeed', new THREE.BufferAttribute(s, 4));
     const mat = new THREE.ShaderMaterial({
-      uniforms: { ...shared, uTex: { value: tex }, uC1: { value: new THREE.Color(...L.col) }, uC2: { value: new THREE.Color(...(L.col2 ?? L.col)) },
+      uniforms: {
+        ...shared, uTex: { value: tex }, uC1: { value: new THREE.Color(...L.col) }, uC2: { value: new THREE.Color(...(L.col2 ?? L.col)) },
         uSize: { value: new THREE.Vector2(...L.size) }, uSpeed: { value: new THREE.Vector2(...L.speed) }, uUp: { value: new THREE.Vector2(...L.up) },
-        uG: { value: L.gravity }, uLife: { value: L.life }, uAlpha: { value: L.alpha }, uDrag: { value: L.drag }, uSoft: { value: L.soft ? 1 : 0 } },
+        uG: { value: L.gravity }, uLife: { value: L.life }, uAlpha: { value: L.alpha }, uDrag: { value: L.drag },
+        uSoft: { value: L.soft ? 1 : 0 }, uAdd: { value: L.additive ? 1 : 0 },
+      },
       transparent: true, depthWrite: false, blending: L.additive ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false,
       vertexShader: /* glsl */ `
         attribute vec4 aSeed; uniform vec3 uPos; uniform float uTime, uI, uPx, uG, uLife, uDrag; uniform vec2 uSize, uSpeed, uUp;
-        varying float vA; varying float vM;
+        varying float vA; varying float vM; varying float vR;
         void main(){
           float ph = fract(aSeed.x + uTime / uLife); float age = ph * uLife;
           float ang = aSeed.y * 6.28318 + aSeed.z * 1.7; float spd = mix(uSpeed.x, uSpeed.y, aSeed.z);
@@ -60,23 +71,34 @@ export function createGroundFX(kind: PlanetKind, seed: number): GroundFX {
           gl_Position = projectionMatrix * mv;
           float sz = mix(uSize.x, uSize.y, mix(aSeed.w, 1.0, ph) * (0.4 + 0.6 * ph));
           gl_PointSize = clamp(sz * uPx / max(-mv.z, 1.0), 1.0, 260.0);
-          float on = step(aSeed.w * 0.999, uI * 1.0 + 0.0001) ; // thinning by intensity
-          vA = on * uI * smoothstep(0.0, 0.07, ph) * pow(1.0 - ph, 1.4); vM = aSeed.z;
+          float on = step(aSeed.w * 0.999, uI * 1.0 + 0.0001);
+          vA = on * uI * smoothstep(0.0, 0.07, ph) * pow(1.0 - ph, 1.4); vM = aSeed.z; vR = horiz;
         }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D uTex; uniform vec3 uC1, uC2; uniform float uAlpha, uSoft; varying float vA; varying float vM;
-        void main(){ float t = texture2D(uTex, gl_PointCoord).a; if (uSoft < 0.5) t = smoothstep(0.35, 0.8, t);
-          float a = t * vA * uAlpha; if (a < 0.003) discard; gl_FragColor = vec4(mix(uC1, uC2, vM), a); }`,
+        uniform sampler2D uTex; uniform vec3 uC1, uC2; uniform float uAlpha, uSoft, uAdd, uNight, uThr;
+        varying float vA; varying float vM; varying float vR;
+        void main(){
+          float t = texture2D(uTex, gl_PointCoord).a; if (uSoft < 0.5) t = smoothstep(0.35, 0.8, t);
+          float a = t * vA * uAlpha; if (a < 0.003) discard;
+          vec3 base = mix(uC1, uC2, vM);
+          if (uAdd < 0.5) {
+            vec3 amb = mix(vec3(1.0), vec3(0.09, 0.13, 0.22), uNight);
+            vec3 plume = vec3(1.15, 0.62, 0.26) * (uThr * exp(-vR * 0.19) * 0.95);
+            base *= amb + plume;
+          }
+          gl_FragColor = vec4(base, a);
+        }`,
     });
-    // additive layers pre-multiply: handled by alpha in blend (SrcAlpha, One)
     const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = 30;
     group.add(pts); mats.push(mat); geos.push(geo);
   }
   group.visible = false;
   return {
     group,
-    update(time, pos, intensity, pxScale) {
+    update(time, pos, intensity, pxScale, thrust = intensity) {
       shared.uTime.value = time; shared.uPos.value.copy(pos); shared.uI.value = intensity; shared.uPx.value = pxScale;
+      shared.uNight.value = isDayNightOn() ? 1 - computeSolarState(getDayNightParams()).daylight : 0;
+      shared.uThr.value = THREE.MathUtils.clamp(thrust, 0, 1);
       group.visible = intensity > 0.002;
     },
     dispose() { tex.dispose(); mats.forEach((m) => m.dispose()); geos.forEach((g) => g.dispose()); group.removeFromParent(); },

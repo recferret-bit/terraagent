@@ -84,6 +84,16 @@ test('@hack 1. Orbital menu shows 3 canonical persistent worlds, 7-land-sector c
   await expect(page.locator('.world-card[data-k="oceanForest"]')).toBeVisible();
   await expect(page.locator('.world-card[data-k="forestRock"]')).toBeVisible();
   await expect(page.locator('[data-k="newPlanet"], [data-testid="new-planet"]')).toHaveCount(0);
+  await expect(page.locator('#seed, #s-bloom, #s-skip, .world-colony-badge, .world-card-status')).toHaveCount(0);
+  await expect(page.locator('.world-card canvas[data-planet]')).toHaveCount(3);
+  await expect(page.getByTestId('ar-card-scan')).toBeVisible();
+  await expect(page.getByTestId('ar-card-presence')).toBeVisible();
+  await expect(page.getByTestId('ar-card-launch')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('settings-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('settings-dialog')).toBeHidden();
 
   const picker = page.locator('[data-testid="sector-picker"]');
   await expect(picker).toBeVisible();

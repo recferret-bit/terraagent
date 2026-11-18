@@ -8,11 +8,14 @@ function formatSectorButtonSeatLabel(sec: SectorSummaryV1): string {
 
 function renderLandSectorOptionHtml(sec: SectorSummaryV1, selected: boolean): string {
   const selClass = selected ? ' sel' : '';
-  const availUpper = sec.availability.toUpperCase();
+  const availHtml =
+    sec.availability !== 'open'
+      ? `<span class="badge sector-opt-avail" data-availability="${sec.availability}">${sec.availability.toUpperCase()}</span>`
+      : '';
   const resHtml = sec.mainResource
     ? `<span class="sector-opt-res" data-main-resource="${sec.mainResource}">${sec.mainResource}</span>`
     : '';
-  return `<button type="button" class="sector-opt sector-opt-land plate-sm${selClass}" data-testid="sector-opt-${sec.sectorId}" data-sector-mode="chosen" data-sector-id="${sec.sectorId}" data-sector-kind="land" data-availability="${sec.availability}" data-free-seats="${sec.freeSeats}" data-validated-capacity="${sec.validatedCapacity}" data-reserved-seats="${sec.reservedSeats}" data-founded-seats="${sec.foundedSeats}" aria-pressed="${selected ? 'true' : 'false'}"><span class="sector-opt-id">${sec.sectorId}</span><span class="sector-opt-seats">${formatSectorButtonSeatLabel(sec)}</span><span class="badge sector-opt-avail" data-availability="${sec.availability}">${availUpper}</span>${resHtml}</button>`;
+  return `<button type="button" class="sector-opt sector-opt-land plate-sm${selClass}" data-testid="sector-opt-${sec.sectorId}" data-sector-mode="chosen" data-sector-id="${sec.sectorId}" data-sector-kind="land" data-availability="${sec.availability}" data-free-seats="${sec.freeSeats}" data-validated-capacity="${sec.validatedCapacity}" data-reserved-seats="${sec.reservedSeats}" data-founded-seats="${sec.foundedSeats}" aria-pressed="${selected ? 'true' : 'false'}"><span class="sector-opt-id">${sec.sectorId}</span><span class="sector-opt-seats">${formatSectorButtonSeatLabel(sec)}</span>${availHtml}${resHtml}</button>`;
 }
 
 export function renderSectorChooserHtml(
@@ -29,7 +32,11 @@ export function renderSectorChooserHtml(
   const pausedBadge = queuePaused
     ? `<span class="badge sector-queue-badge" data-testid="sector-queue-paused" data-queue-paused="true">QUEUE PAUSED</span>`
     : '';
-  const autoBtn = `<button type="button" class="sector-opt sector-opt-auto plate-sm${autoSelClass}" data-testid="sector-opt-auto" data-sector-mode="auto" data-sector-id="auto" data-availability="${summary.availability}" data-free-seats="${summary.freeSeats}" data-validated-capacity="${summary.validatedCapacity}" aria-pressed="${isAuto ? 'true' : 'false'}"><span class="sector-opt-id">AUTO · BEST OPEN ZONE</span><span class="sector-opt-seats">${summary.freeSeats}/${summary.validatedCapacity} ZONES</span><span class="badge sector-opt-avail" data-availability="${summary.availability}">${summary.availability.toUpperCase()}</span></button>`;
+  const autoAvailHtml =
+    summary.availability !== 'open'
+      ? `<span class="badge sector-opt-avail" data-availability="${summary.availability}">${summary.availability.toUpperCase()}</span>`
+      : '';
+  const autoBtn = `<button type="button" class="sector-opt sector-opt-auto plate-sm${autoSelClass}" data-testid="sector-opt-auto" data-sector-mode="auto" data-sector-id="auto" data-availability="${summary.availability}" data-free-seats="${summary.freeSeats}" data-validated-capacity="${summary.validatedCapacity}" aria-pressed="${isAuto ? 'true' : 'false'}"><span class="sector-opt-id">AUTO · BEST OPEN ZONE</span><span class="sector-opt-seats">${summary.freeSeats}/${summary.validatedCapacity} ZONES</span>${autoAvailHtml}</button>`;
   const landBtns = landSectors
     .map((sec) => renderLandSectorOptionHtml(sec, intent.mode === 'chosen' && intent.sectorId === sec.sectorId))
     .join('');

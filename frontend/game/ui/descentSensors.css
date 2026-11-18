@@ -1,0 +1,461 @@
+/* Faction Plate Drop-Pod HUD: Right Flight Sequence Stepper, Planetary Pressure, Solar Sync & Spectrometer. */
+
+#descent .d-right-col {
+  position: absolute;
+  right: max(3.2vw, env(safe-area-inset-right, 0px));
+  top: max(10.6vh, env(safe-area-inset-top, 0px));
+  width: min(322px, 44vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+#descent .d-flight-plate,
+#descent .d-env-plate {
+  position: relative;
+  padding: 11px 14px;
+}
+
+#descent .d-flight-plate {
+  border-left: 3px solid var(--ta-orange);
+}
+
+#descent .d-env-plate {
+  border-left: 3px solid var(--ta-blue-hi);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+#descent .d-comms {
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  border: 1px solid var(--ta-terra);
+  color: var(--ta-terra);
+}
+#descent .d-comms[data-state="DEGRADED"] {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+#descent .d-comms[data-state="BLACKOUT"] {
+  background: var(--ta-fault);
+  border-color: var(--ta-fault);
+  color: var(--ta-void);
+  animation: dCritPulse 0.42s ease-in-out infinite alternate;
+}
+
+#descent .d-phase-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  margin-bottom: 6px;
+}
+
+#descent .d-phase-name {
+  font-family: var(--ta-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--ta-hull);
+  text-transform: uppercase;
+}
+
+#descent .d-met {
+  font-size: 11px;
+  color: var(--ta-steel);
+}
+
+#descent .d-stepper {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 3px;
+}
+
+#descent .d-step {
+  padding: 3px 0;
+  text-align: center;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-dim);
+}
+#descent .d-step[data-step="done"] {
+  border-color: var(--ta-seam-3);
+  color: var(--ta-orange-hi);
+  background: color-mix(in srgb, var(--ta-orange) 14%, var(--ta-deep));
+}
+#descent .d-step[data-step="active"] {
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+  color: var(--ta-void);
+  font-weight: 700;
+}
+
+#descent .d-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid var(--ta-seam);
+  font-size: 9.5px;
+}
+
+#descent .d-guidance {
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ta-blue-hi);
+}
+#descent .d-guidance[data-mode="PLASMA INERTIAL"] { color: var(--ta-orange-hi); }
+#descent .d-guidance[data-mode="RADAR ALT LOCK"] { color: var(--ta-energy); }
+#descent .d-guidance[data-mode="PAD CONTACT"] { color: var(--ta-terra); }
+
+#descent .d-rng {
+  color: var(--ta-steel);
+  letter-spacing: 0.08em;
+}
+#descent .d-rng b {
+  color: var(--ta-hull);
+  font-weight: 600;
+}
+
+#descent .d-lock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+#descent .d-beacon {
+  padding: 1px 5px;
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-deep);
+  color: var(--ta-steel);
+  font-weight: 600;
+}
+#descent .d-beacon[data-state="ORBITAL"] { color: var(--ta-blue-hi); border-color: var(--ta-seam-3); }
+#descent .d-beacon[data-state="BLACKOUT"] { color: var(--ta-fault-text); border-color: var(--ta-fault); }
+#descent .d-beacon[data-state="ACQUIRED"] { color: var(--ta-orange-hi); border-color: var(--ta-orange); }
+#descent .d-beacon[data-state="LOCKED"] { color: var(--ta-terra); border-color: var(--ta-terra); }
+
+#descent .d-ralt {
+  color: var(--ta-dim);
+  font-weight: 600;
+}
+#descent .d-ralt[data-locked="true"] {
+  color: var(--ta-energy);
+}
+
+#descent .d-env-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 10px;
+}
+
+#descent .d-env-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 7px;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+}
+
+#descent .d-env-cell b {
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  color: var(--ta-hull);
+}
+
+#descent .d-env-cell small {
+  font-size: 9px;
+  color: var(--ta-steel);
+  letter-spacing: 0.08em;
+}
+
+#descent .d-maxq {
+  display: none;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 8.5px;
+  font-weight: 700;
+  background: var(--ta-orange);
+  color: var(--ta-void);
+}
+#descent .d-maxq[data-on="true"] {
+  display: inline-block;
+}
+
+#descent .d-solar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding: 5px 8px;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+}
+
+#descent .d-solar-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+#descent .d-solar-val b {
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  color: var(--ta-hull);
+}
+
+#descent .d-period {
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  border: 1px solid var(--ta-seam-3);
+}
+#descent .d-period[data-period="DAY"] {
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+  color: var(--ta-void);
+}
+#descent .d-period[data-period="DAWN"],
+#descent .d-period[data-period="DUSK"] {
+  border-color: var(--ta-orange-hi);
+  color: var(--ta-orange-hi);
+}
+#descent .d-period[data-period="NIGHT"] {
+  border-color: var(--ta-blue-hi);
+  color: var(--ta-blue-hi);
+  background: color-mix(in srgb, var(--ta-blue) 18%, var(--ta-deep));
+}
+
+#descent .d-spec {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ta-seam);
+}
+
+#descent .d-spec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+#descent .d-spec-status {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--ta-blue-hi);
+}
+#descent .d-spec-status[data-status="ANALYSIS LOCKED"] { color: var(--ta-terra); }
+#descent .d-spec-status[data-status="IONIZED INTAKE"] { color: var(--ta-orange-hi); }
+
+#descent .d-gas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#descent .d-gas-row {
+  display: grid;
+  grid-template-columns: 38px 1fr 44px;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+}
+
+#descent .d-gas-f {
+  color: var(--ta-hull);
+  font-weight: 600;
+}
+
+#descent .d-gas-track {
+  display: block;
+  height: 5px;
+  background: var(--ta-seam);
+}
+
+#descent .d-gas-bar {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--ta-blue-hi);
+  transition: width 120ms linear;
+}
+#descent .d-gas-row[data-role="oxidizer"] .d-gas-bar { background: var(--ta-terra); }
+#descent .d-gas-row[data-role="greenhouse"] .d-gas-bar { background: var(--ta-orange-hi); }
+#descent .d-gas-row[data-role="trace"] .d-gas-bar { background: var(--ta-energy); }
+
+#descent .d-gas-v {
+  text-align: right;
+  color: var(--ta-text-2);
+}
+
+#descent .d-ext-air {
+  color: var(--ta-text-2);
+}
+
+#descent .d-spec-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+#descent .d-spec-sum {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ta-steel);
+  text-transform: uppercase;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#descent .d-ppo2 {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-dim);
+  background: var(--ta-deep);
+}
+#descent .d-ppo2[data-band="norm"] {
+  border-color: var(--ta-terra);
+  color: var(--ta-terra);
+}
+#descent .d-ppo2[data-band="hypo"] {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+
+@media (max-width: 820px), (max-height: 660px) {
+  #descent .d-kinematics,
+  #descent .d-right-col { top: 9.2vh; gap: 6px; }
+  #descent .d-kinematics { padding: 9px 11px; }
+  #descent .d-flight-plate,
+  #descent .d-env-plate { padding: 8px 10px; }
+  #descent .d-val-main b { font-size: 16px; }
+  #descent .temp b { font-size: 17px; }
+}
+
+@media (max-width: 680px) {
+  #descent.on .lb { height: 3vh; }
+  #descent .d-kinematics {
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    top: max(22px, env(safe-area-inset-top, 6px));
+    width: auto;
+    padding: 5px 8px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px 9px;
+  }
+  #descent .d-kinematics .d-panel-head,
+  #descent .d-kinematics .d-sub,
+  #descent .d-env-plate .d-panel-head,
+  #descent .d-ext-air,
+  #descent .d-spec-sum {
+    display: none;
+  }
+  #descent .d-sys-strip {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+    padding-top: 3px;
+  }
+  #descent .d-sys-cell {
+    flex-direction: column;
+    align-items: center;
+    padding: 1px 1px;
+    gap: 0;
+  }
+  #descent .d-sys-k { font-size: 6.5px; letter-spacing: 0.03em; }
+  #descent .d-sys-v { font-size: 7.5px; letter-spacing: 0.02em; }
+  #descent .d-val-main b,
+  #descent .temp b { font-size: 13.5px; }
+  #descent .d-tag { font-size: 7.5px; padding: 0 3px; }
+  #descent .d-bar,
+  #descent .d-g-meter { height: 3px; }
+  #descent .d-right-col {
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    top: auto;
+    bottom: 52px;
+    width: auto;
+    gap: 4px;
+  }
+  #descent .d-flight-plate,
+  #descent .d-env-plate {
+    padding: 4px 8px;
+    gap: 3px;
+  }
+  #descent .d-flight-plate .d-panel-head {
+    margin-bottom: 2px;
+    padding-bottom: 2px;
+  }
+  #descent .d-phase-row { margin-bottom: 2px; }
+  #descent .d-phase-name { font-size: 10.5px; letter-spacing: 0.1em; }
+  #descent .d-stepper {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 2px;
+  }
+  #descent .d-step {
+    font-size: 7px;
+    letter-spacing: 0;
+    padding: 1px 0;
+  }
+  #descent .d-nav-row { margin-top: 3px; padding-top: 3px; font-size: 8.5px; }
+  #descent .d-lock-row { margin-top: 2px; font-size: 8px; }
+  #descent .d-env-grid { gap: 3px 6px; }
+  #descent .d-env-cell { padding: 2px 6px; flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; }
+  #descent .d-env-cell b { font-size: 12px; }
+  #descent .d-env-cell small { font-size: 7.5px; }
+  #descent .d-solar-row { padding: 2px 6px; }
+  #descent .d-solar-val b { font-size: 12px; }
+  #descent .d-spec { padding-top: 2px; gap: 2px; }
+  #descent .d-spec-foot { justify-content: flex-end; }
+  #descent .d-ppo2 { font-size: 8px; padding: 0 4px; }
+  #descent .d-gas-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 8px;
+  }
+  #descent .d-gas-row {
+    grid-template-columns: 26px 1fr 34px;
+    gap: 4px;
+    font-size: 8px;
+  }
+  #descent .d-gas-row:nth-child(n + 5) { display: none; }
+  #descent .caption { bottom: 32px; font-size: 10.5px; letter-spacing: 0.08em; padding-inline: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #descent .progress { bottom: 25px; inset-inline: 8px; height: 2px; }
+  #descent .skip { display: none; }
+}
+
+@media (max-height: 560px) and (min-width: 681px) {
+  #descent.on .lb { height: 5vh; }
+  #descent .d-kinematics,
+  #descent .d-right-col { top: 6vh; gap: 4px; }
+  #descent .d-panel-head { margin-bottom: 4px; padding-bottom: 3px; }
+  #descent .d-spec-sum,
+  #descent .d-env-cell small { display: none; }
+  #descent .caption { bottom: 8vh; }
+  #descent .progress { bottom: 6vh; }
+}

@@ -1,5 +1,10 @@
 import './bootOnline.css';
 import { formatQueueStatusMessage, type QueuedHomeStatus } from './joinQueueFlow';
+import {
+  buildDescentOverlayDom,
+  renderDescentOverlayUpdate,
+  type DescentOverlayRefs,
+} from './parts/descentOverlayDom';
 
 export type BootPhase = 'splash' | 'descent' | 'colony';
 
@@ -8,6 +13,7 @@ export interface DescentTelemetryUpdate {
   q: number;
   r: number;
   landed?: boolean;
+  planetType?: string | null;
 }
 
 function buildSplashDom() {
@@ -58,50 +64,6 @@ function buildSplashDom() {
   return { splashEl, splashStatusEl, queueEl, queueTextEl, queueCancelBtnEl };
 }
 
-function buildDescentDom() {
-  const descentEl = document.createElement('div');
-  descentEl.className = 'ta-descent-phase plate-sm';
-  descentEl.setAttribute('data-testid', 'descent-phase');
-  descentEl.dataset.testid = 'descent-phase';
-  descentEl.dataset.active = 'false';
-  descentEl.hidden = true;
-
-  const header = document.createElement('div');
-  header.className = 'ta-descent-phase__header';
-  const descentLabelEl = document.createElement('span');
-  descentLabelEl.setAttribute('data-testid', 'descent-phase-label');
-  descentLabelEl.dataset.testid = 'descent-phase-label';
-  descentLabelEl.textContent = 'ATMOSPHERIC ENTRY';
-  const descentCoordsEl = document.createElement('span');
-  descentCoordsEl.setAttribute('data-testid', 'descent-coords');
-  descentCoordsEl.dataset.testid = 'descent-coords';
-  descentCoordsEl.textContent = '(0, 0)';
-  header.append(descentLabelEl, descentCoordsEl);
-
-  const metrics = document.createElement('div');
-  metrics.className = 'ta-descent-phase__metrics';
-  const descentAltEl = document.createElement('span');
-  descentAltEl.setAttribute('data-testid', 'descent-altitude');
-  descentAltEl.dataset.testid = 'descent-altitude';
-  descentAltEl.textContent = '120.0 km';
-  const descentProgEl = document.createElement('span');
-  descentProgEl.setAttribute('data-testid', 'descent-progress');
-  descentProgEl.dataset.testid = 'descent-progress';
-  descentProgEl.textContent = '0%';
-  metrics.append(descentAltEl, descentProgEl);
-
-  const bar = document.createElement('div');
-  bar.className = 'ta-descent-phase__bar';
-  const descentBarFillEl = document.createElement('div');
-  descentBarFillEl.className = 'ta-descent-phase__bar-fill';
-  descentBarFillEl.setAttribute('data-testid', 'descent-progress-bar');
-  descentBarFillEl.dataset.testid = 'descent-progress-bar';
-  bar.appendChild(descentBarFillEl);
-
-  descentEl.append(header, metrics, bar);
-  return { descentEl, descentLabelEl, descentCoordsEl, descentAltEl, descentProgEl, descentBarFillEl };
-}
-
 /**
  * Vanilla-DOM Faction Plate overlays for the W01 `/play.html` boot flow (CLIENT §3.2, D-36):
  * 1. `[data-testid="orbital-splash"]` ("Contacting orbit…")
@@ -124,6 +86,7 @@ export class BootOverlay {
   readonly colonyBadgeEl: HTMLElement;
   /** `[data-testid="offline-badge"]`: the session runs on a browser-local fallback host, not the game server. */
   readonly offlineEl: HTMLElement;
+  private readonly descentRefs: DescentOverlayRefs;
   private retryEl: HTMLButtonElement | null = null;
   private settleRetry: ((retry: boolean) => void) | null = null;
 
@@ -138,7 +101,8 @@ export class BootOverlay {
     this.queueTextEl = splash.queueTextEl;
     this.queueCancelBtnEl = splash.queueCancelBtnEl;
 
-    const descent = buildDescentDom();
+    const descent = buildDescentOverlayDom();
+    this.descentRefs = descent;
     this.descentEl = descent.descentEl;
     this.descentLabelEl = descent.descentLabelEl;
     this.descentCoordsEl = descent.descentCoordsEl;
@@ -178,8 +142,7 @@ export class BootOverlay {
 
   /**
    * Boot failed (HTTP error, or the server is unreachable where no local fallback is allowed): the splash shows the
-   * message with a Retry button; resolves true when the player clicks Retry (the splash then says "Contacting
-   * orbit…"), false when the overlay is disposed first (the session went away: stop booting).
+   * message with a Retry button; resolves true when the player clicks Retry, false when disposed first.
    */
   showError(message: string): Promise<boolean> {
     this.showSplash(message);
@@ -284,18 +247,7 @@ export class BootOverlay {
   }
 
   updateDescent(update: DescentTelemetryUpdate): void {
-    const p = Math.min(1, Math.max(0, update.progress));
-    const pct = Math.round(p * 100);
-    const altKm = ((1 - p) * 120).toFixed(1);
-    const label = p < 0.35 ? 'ATMOSPHERIC ENTRY' : p < 0.8 ? 'RETRO-BURN' : 'TOUCHDOWN';
-    this.descentLabelEl.textContent = label;
-    this.descentCoordsEl.textContent = `(${update.q}, ${update.r})`;
-    this.descentAltEl.textContent = `${altKm} km`;
-    this.descentProgEl.textContent = `${pct}%`;
-    this.descentBarFillEl.style.width = `${pct}%`;
-    this.descentEl.dataset.progress = p.toFixed(2);
-    this.descentEl.dataset.q = String(update.q);
-    this.descentEl.dataset.r = String(update.r);
+    renderDescentOverlayUpdate(this.descentRefs, update);
   }
 
   showColony(planetId?: string): void {

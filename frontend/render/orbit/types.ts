@@ -25,6 +25,9 @@ export interface OrbitalProjectedFrame {
   readonly globeNy: number;
   readonly globeRadiusNormY: number;
   readonly anchors: readonly ProjectedAnchor2D[];
+  readonly time?: number;
+  readonly pointerX?: number;
+  readonly pointerY?: number;
 }
 
 /** Space-menu backdrop: stars + planet globe + carrier ship in orbit. Owned by the "orbit/descent" workstream. */
@@ -47,6 +50,8 @@ export interface OrbitalStage {
    * rotated/scaled onto this globe. Returns the globe orientation the descent must adopt so the planets coincide.
    */
   beginDeploy(h: import('../descent/types').DescentHandoff, opts?: { biomeKey?: string }): { spinQuat: THREE.Quaternion; cloudRotY: number };
+  /** Retargets the orbital entry corridor and lighting before pod release (`T < 3.6s`) if online `welcome` updates the solar clock. */
+  retargetDeploy?(h: import('../descent/types').DescentHandoff): { spinQuat: THREE.Quaternion; cloudRotY: number } | null;
   /** 0..1 progress of the deploy sequence (1 = stage frame == descent frame `h.startAt`, safe to cut). */
   deployProgress(): number;
   /** Authored descent second the deploy sequence currently represents (for telemetry). */

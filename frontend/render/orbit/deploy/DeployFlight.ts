@@ -7,8 +7,13 @@ const Y_UP = new THREE.Vector3(0, 1, 0);
 const dA = new THREE.Vector3(), dB = new THREE.Vector3(), dC = new THREE.Vector3();
 
 /** Phase A+B (T <= TB): fly to the hold shot behind the carrier, pod lowers into the bay, clamps open, pod drops. */
-export function stepHold(host: DeployHost, d: Deploy, T: number) {
+export function stepHold(host: DeployHost, d: Deploy, T: number, dt = 0) {
   const { camera, lookNow } = host;
+  if (dt > 0) {
+    const kHold = 1 - Math.exp(-dt * 4.5);
+    d.holdCam.lerp(d.holdCamGoal, kHold);
+    d.holdTgt.lerp(d.holdTgtGoal, kHold);
+  }
   const e = smoother(T / TA);
   camera.position.lerpVectors(d.p0, d.holdCam, e);
   dA.subVectors(d.holdCam, d.p0);

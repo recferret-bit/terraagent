@@ -6,7 +6,6 @@ import {
   peekArchetypeLights,
   projectorCosOuter,
   stepLightLevel,
-  getColonyLightingBlend,
   isWorldPointInColonyFov,
   MAX_PROJECTOR_CANDIDATES,
   resetColonyVisionAndLights,
@@ -141,30 +140,29 @@ function collectOwnedEntityVisionAndProjectors(
   };
 
   // Lighting cones are cosmetic. Sight is omnidirectional and uses the shared simulation radius.
-  if (rec.hp > 0 && isEntityContributingVision(rec.state)) {
+  // Include owned drop pod even while descending so the landing pad is never shrouded before HQ egress.
+  if (rec.hp > 0 && (isEntityContributingVision(rec.state) || rec.kind === ENTITY_KIND.pod)) {
     const outerRadius = getEntitySpottingRadius(rec.kind, data) * TILE_M;
     if (outerRadius > 0) visionSources.push({ x: ux, z: uz, innerRadius: outerRadius * 0.88, outerRadius });
   }
   if (rec.mesh.visible && rec.state !== ENTITY_STATE.descending) appendArchetypeProjectors(projOpts);
 }
 
-/** Seconds the colony FoV shroud / night factor / projectors take to ease in after the descent hands over. */
+/** Seconds the colony FoV shroud and projector cones take to ease in after the descent hands over. */
 export const COLONY_FADE_IN_S = 0.8;
 let lastBlendMs = -1;
 /** Wall seconds (≤ 0.1) between the last two `syncColonyVisionAndProjectors` calls: the light fade step. */
 let lastDtS = 0;
+let fovBlend = 1;
 
-/**
- * 0 while the space phase / descent renders, then eases 0 → 1 over `COLONY_FADE_IN_S` of wall time. The value lives
- * in `setColonyLightingBlend` (starts at 1, so a session that never ran a descent, e.g. `?skip=1`, is fully on).
- */
-function stepColonyBlend(active: boolean): number {
+function stepFovBlend(active: boolean): number {
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const dt = lastBlendMs < 0 ? 0 : Math.min(0.1, Math.max(0, (now - lastBlendMs) / 1000));
   lastBlendMs = now;
   lastDtS = dt;
-  setColonyLightingBlend(active ? getColonyLightingBlend() + dt / COLONY_FADE_IN_S : 0);
-  return getColonyLightingBlend();
+  fovBlend = active ? Math.min(1, fovBlend + dt / COLONY_FADE_IN_S) : 0;
+  if (active) setColonyLightingBlend(1);
+  return fovBlend;
 }
 
 /**
@@ -178,18 +176,20 @@ export function syncColonyVisionAndProjectors(opts: {
   terrain: HexTerrain | null;
   tiles: ClientTiles | null;
   /**
-   * False while the descent cinematic renders (its surface, pod and sky are not in colony coordinates): FoV shroud,
-   * night factor and projectors are held off, then eased in over `COLONY_FADE_IN_S` once the colony takes over.
+   * False while the descent cinematic renders (its surface, pod and sky are driven by `SkyRig`): FoV shroud and
+   * colony projectors stay off, then ease in over `COLONY_FADE_IN_S` once the colony takes over without dipping `uNightFactor`.
    */
   colonyActive?: boolean;
 }): void {
   const { records, ownerColonyIndex, terrain, tiles } = opts;
-  const blend = stepColonyBlend(opts.colonyActive ?? true);
+  const active = opts.colonyActive ?? true;
+  const blend = stepFovBlend(active);
   const dnParams = getDayNightParams();
   const solar = computeSolarState(dnParams);
   const sunElevSin = Math.sin(((solar.hour / 24) - 0.25) * Math.PI * 2);
-  const nightGate = !isDayNightOn() ? 0 : THREE.MathUtils.smoothstep(-sunElevSin, 0.001, 0.035) * blend;
-  const nightFactor = !isDayNightOn() ? 0 : Math.max(1 - solar.daylight, nightGate * 0.88) * blend;
+  const nightGateRaw = !isDayNightOn() ? 0 : THREE.MathUtils.smoothstep(-sunElevSin, 0.001, 0.035);
+  const nightGate = nightGateRaw * blend;
+  const nightFactor = !isDayNightOn() ? 0 : Math.max(1 - solar.daylight, nightGateRaw * 0.88);
   const rigIntensity = (0.22 + 0.78 * nightFactor) * dnParams.projectorIntensity * nightGate;
   const lightScale = (0.32 + 0.98 * nightFactor) * dnParams.projectorIntensity * nightGate;
 
@@ -211,7 +211,7 @@ export function syncColonyVisionAndProjectors(opts: {
     }
   }
 
-  if (terrain) {
+  if (terrain && active) {
     updateColonyVisionTexture({
       radius: terrain.radius,
       colonyIndex: ownerColonyIndex,
@@ -227,6 +227,6 @@ export function syncColonyVisionAndProjectors(opts: {
     fovEnabled: Boolean(terrain) && blend > 0,
     fovStrength: blend,
     fovDim: dnParams.fovDim,
-    nightFactor,
+    nightFactor: active ? nightFactor : undefined,
   });
 }

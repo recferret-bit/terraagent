@@ -5,6 +5,7 @@ import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@t
 import { createHexTerrain, getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type SimPlanetType } from '@terra/render/planets/hex';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
+import { FINAL_POS } from '../../descent/constants';
 import { RTSCamera } from '../RTSCamera';
 import { hexSurface } from './hexSurface';
 
@@ -259,7 +260,7 @@ export function syncOrRebuildSessionTerrain(params: {
       viewport.camera,
       viewport.renderer.domElement,
       hexSurface(terrain, look),
-      new THREE.Vector3(tx + 42, ty + 46, tz + 42),
+      new THREE.Vector3(tx + FINAL_POS.x, ty + FINAL_POS.y, tz + FINAL_POS.z),
       new THREE.Vector3(tx, ty, tz),
     );
     if (inSpace) {

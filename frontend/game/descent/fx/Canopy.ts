@@ -2,8 +2,8 @@ import * as THREE from 'three';
 
 /** Cloth-ish parachute: 12 gore panels, GPU billow/flutter, rigging lines updated on CPU (24 verts). */
 export interface Canopy {
-  group: THREE.Group;           // attach to the pod (origin = pod centre)
-  update(time: number, deploy: number, inflate: number, sunDir: THREE.Vector3): void;
+  group: THREE.Group; // attach to the pod (origin = pod centre)
+  update(time: number, deploy: number, inflate: number, sunDir: THREE.Vector3, lightTint?: THREE.Color): void;
   dispose(): void;
 }
 const GORES = 12;
@@ -11,7 +11,12 @@ export function createCanopy(podTopY: number, podRadius: number, colA: THREE.Col
   const Rc = 5.4, TH = 1.35, lineLen = 7.5;
   const geo = new THREE.SphereGeometry(1, 48, 16, 0, Math.PI * 2, 0, TH);
   const u = {
-    uTime: { value: 0 }, uInfl: { value: 0 }, uColA: { value: new THREE.Color(colA) }, uColB: { value: new THREE.Color(colB) }, uSun: { value: new THREE.Vector3(0, 1, 0) },
+    uTime: { value: 0 },
+    uInfl: { value: 0 },
+    uColA: { value: new THREE.Color(colA) },
+    uColB: { value: new THREE.Color(colB) },
+    uSun: { value: new THREE.Vector3(0, 1, 0) },
+    uLight: { value: new THREE.Color(1, 1, 1) },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms: u, side: THREE.DoubleSide, fog: false,
@@ -32,15 +37,14 @@ export function createCanopy(podTopY: number, podRadius: number, colA: THREE.Col
         gl_Position = projectionMatrix * viewMatrix * w;
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uColA, uColB, uSun; varying vec3 vN; varying float vG; varying float vRim; varying vec3 vWP;
+      uniform vec3 uColA, uColB, uSun, uLight; varying vec3 vN; varying float vG; varying float vRim; varying vec3 vWP;
       void main(){
         float idx = floor(vG); vec3 base = mod(idx, 2.0) < 0.5 ? uColA : uColB;
-        float seam = smoothstep(0.0, 0.06, abs(fract(vG) - 0.5) * 2.0 - 0.0) ; seam = 1.0 - (1.0 - seam) * 0.0;
         float edge = 1.0 - smoothstep(0.0, 0.05, min(fract(vG), 1.0 - fract(vG)));
         vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
         float d = max(dot(N, normalize(uSun)), 0.0);
-        float back = pow(max(dot(-N, normalize(uSun)), 0.0), 1.5) * 0.45; // translucent glow
-        vec3 c = base * (0.28 + d * 0.8 + back) * (1.0 - edge * 0.45) * (0.85 + 0.15 * vRim);
+        float back = pow(max(dot(-N, normalize(uSun)), 0.0), 1.5) * 0.45;
+        vec3 c = base * uLight * (0.28 + d * 0.8 + back) * (1.0 - edge * 0.45) * (0.85 + 0.15 * vRim);
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
@@ -54,8 +58,12 @@ export function createCanopy(podTopY: number, podRadius: number, colA: THREE.Col
 
   return {
     group,
-    update(time, deploy, inflate, sunDir) {
+    update(time, deploy, inflate, sunDir, lightTint) {
       u.uTime.value = time; u.uInfl.value = inflate; u.uSun.value.copy(sunDir);
+      if (lightTint) {
+        u.uLight.value.copy(lightTint);
+        lmat.color.setRGB(0.85 * lightTint.r, 0.85 * lightTint.g, 0.85 * lightTint.b);
+      }
       const d = THREE.MathUtils.clamp(deploy, 0, 1);
       group.visible = d > 0.001;
       const sxz = THREE.MathUtils.lerp(0.14, 1, inflate) * Rc;
@@ -65,7 +73,7 @@ export function createCanopy(podTopY: number, podRadius: number, colA: THREE.Col
       dome.scale.set(sxz, sy, sxz);
       dome.position.set(0, rimY - Math.cos(TH) * sy, 0);
       for (let i = 0; i < GORES; i++) {
-        const a = (i / GORES - 0.5) * Math.PI * 2 + (Math.PI * 2) / GORES * 0.5 * 0;
+        const a = (i / GORES - 0.5) * Math.PI * 2;
         const j = i * 6;
         lp[j] = Math.cos(a) * podRadius * 0.55; lp[j + 1] = podTopY; lp[j + 2] = Math.sin(a) * podRadius * 0.55;
         lp[j + 3] = Math.cos(a) * sxz * rimR; lp[j + 4] = rimY; lp[j + 5] = Math.sin(a) * sxz * rimR;
