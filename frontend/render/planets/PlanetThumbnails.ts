@@ -14,6 +14,7 @@ const DEFAULT_SPIN_MULT = 6;
 export interface PlanetThumbnailsOptions {
   readonly size?: number;
   readonly spinMultiplier?: number;
+  readonly syncWithOrbitMenu?: boolean;
 }
 
 export interface PlanetThumbnailsHandle {
@@ -119,13 +120,28 @@ export function mountPlanetThumbnails(
   let paused = false;
   let disposed = false;
 
+  let thumbAccumDt = 0;
+  let thumbDrawnOnce = false;
   const drawAll = (dt: number, t: number) => {
     if (paused || disposed) return;
+    thumbAccumDt += dt;
+    if (opts.syncWithOrbitMenu && thumbDrawnOnce && thumbAccumDt < 0.12) return;
+    const stepDt = thumbDrawnOnce ? thumbAccumDt : dt;
+    thumbAccumDt = 0;
+    let drawnAny = false;
     for (const it of items) {
       if (!host.isVisible(it.cv)) continue;
-      it.globe.update(dt * spinMult, t);
+      if (opts.syncWithOrbitMenu) {
+        it.globe.shared.uTime.value = t;
+        it.globe.spin.rotation.y = Math.sin(t * 0.24) * 0.16;
+        it.globe.clouds.rotation.y += stepDt * 0.036;
+      } else {
+        it.globe.update(stepDt * spinMult, t);
+      }
       drawThumbItem(it, renderer, composer, renderPass);
+      drawnAny = true;
     }
+    if (drawnAny) thumbDrawnOnce = true;
   };
 
   const offPixel = onPixelArtChange((enabled) => {

@@ -148,7 +148,7 @@ describe('MainMenu active colony planet lock', () => {
     expect(tempCard.classList.contains('is-colony-locked')).toBe(true);
 
     expect(menu.el.querySelector('#deploy')?.textContent).toBe('ENTER COLONY');
-    expect(menu.el.querySelector<HTMLElement>('#sector-picker-host')?.hidden).toBe(true);
+    expect(menu.el.querySelector<HTMLElement>('#sector-picker-host')?.hidden).toBe(false);
     expect(menu.el.querySelector('[data-testid="ar-card-presence"]')?.textContent).toContain('Outpost Alpha');
 
     // Attempting to select or click another planet keeps desert locked

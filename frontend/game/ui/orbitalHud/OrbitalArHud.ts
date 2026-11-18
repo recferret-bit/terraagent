@@ -2,7 +2,7 @@ import type { PlanetSummaryV1 } from '@terra/contracts';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
 import type { ActiveHomeColony } from '../../../design/pilot/activeHomeColony';
-import { resolvePlanetPopulationCounts, type SectorIntentV1 } from '../lobby/orbitalPickerModel';
+import type { SectorIntentV1 } from '../lobby/orbitalPickerModel';
 import { bindSectorChooserEvents, renderSectorChooserHtml } from '../lobby/sectorChooser';
 import {
   renderLaunchCardShellHtml,
@@ -10,7 +10,7 @@ import {
   renderScanCardInnerHtml,
 } from './arHudTemplates';
 import { ArLeaderLines } from './arLeaderLines';
-import { buildOrbitalGlobeMarkers, resolveTargetSectorId } from './sectorGlobeMap';
+import { buildOrbitalGlobeMarkers, resolveHomeBaseSectorId, resolveTargetSectorId } from './sectorGlobeMap';
 
 export interface OrbitalArHudCallbacks {
   onSectorSelect(intent: SectorIntentV1): void;
@@ -135,6 +135,7 @@ export class OrbitalArHud {
       initial.intent,
       initial.queuePaused,
       initial.activeColony,
+      resolveHomeBaseSectorId(initial.summary, initial.activeColony),
     );
     this.sectorHostEl = this.launchCard.querySelector('#sector-picker-host')!;
     this.deployBtn = this.launchCard.querySelector('#deploy')!;
@@ -189,7 +190,14 @@ export class OrbitalArHud {
       this.scanCard.innerHTML = scanHtml;
       this.lastScanHtml = scanHtml;
     }
-    const presenceHtml = renderPresenceCardInnerHtml(state.summary, state.activeColony);
+    const targetSector = resolveTargetSectorId(state.summary, state.intent, this.hoveredSectorId);
+    const homeBaseSectorId = resolveHomeBaseSectorId(state.summary, state.activeColony);
+    const presenceHtml = renderPresenceCardInnerHtml(
+      state.summary,
+      state.activeColony,
+      targetSector,
+      homeBaseSectorId,
+    );
     if (presenceHtml !== this.lastPresenceHtml) {
       this.presenceCard.innerHTML = presenceHtml;
       this.lastPresenceHtml = presenceHtml;
@@ -197,12 +205,13 @@ export class OrbitalArHud {
 
     const launchBadge = this.launchCard.querySelector<HTMLElement>('.ar-eyebrow .ar-code');
     if (launchBadge) launchBadge.textContent = state.summary.availability.toUpperCase();
-    this.sectorHostEl.hidden = Boolean(state.activeColony);
+    this.sectorHostEl.hidden = false;
     const sectorHtml = renderSectorChooserHtml(
       state.kind,
       state.summary,
       state.intent,
       state.queuePaused,
+      homeBaseSectorId,
     );
     if (sectorHtml !== this.lastSectorHtml) {
       this.sectorHostEl.innerHTML = sectorHtml;
@@ -212,6 +221,7 @@ export class OrbitalArHud {
         (intent) => this.cb.onSectorSelect(intent),
         (sectorId) => {
           this.hoveredSectorId = sectorId;
+          this.refreshPresence();
           this.refreshMarkers();
           this.cb.onMarkerHover?.(sectorId);
         },
@@ -221,6 +231,25 @@ export class OrbitalArHud {
 
     this.refreshMarkers();
     if (planetChanged) this.triggerRetargetPulse();
+  }
+
+  private refreshPresence(): void {
+    const targetSector = resolveTargetSectorId(
+      this.latestState.summary,
+      this.latestState.intent,
+      this.hoveredSectorId,
+    );
+    const homeBaseSectorId = resolveHomeBaseSectorId(this.latestState.summary, this.latestState.activeColony);
+    const presenceHtml = renderPresenceCardInnerHtml(
+      this.latestState.summary,
+      this.latestState.activeColony,
+      targetSector,
+      homeBaseSectorId,
+    );
+    if (presenceHtml !== this.lastPresenceHtml) {
+      this.presenceCard.innerHTML = presenceHtml;
+      this.lastPresenceHtml = presenceHtml;
+    }
   }
 
   private update3dFloat(frame: OrbitalProjectedFrame | null): void {
@@ -240,19 +269,21 @@ export class OrbitalArHud {
       baseRz: number,
       hovered: boolean,
     ) => {
-      const tx = Math.sin(t * 0.72 + phase) * 4.4 * amp - px * 10.5 * amp;
-      const ty = Math.sin(t * 1.12 + phase) * 6.2 * amp + py * 7.0 * amp;
-      const tz = Math.cos(t * 0.88 + phase) * 14.0 * amp + (hovered ? 12 : 0);
-      const ry = baseRy + Math.sin(t * 0.65 + phase) * 2.8 * amp + px * 4.6;
-      const rx = baseRx + Math.cos(t * 0.82 + phase) * 1.9 * amp + py * 3.2;
-      const rz = baseRz + Math.sin(t * 0.50 + phase) * 0.55 * amp;
+      const rotSin = Math.sin(t * 0.24 + phase);
+      const rotCos = Math.cos(t * 0.48 + phase);
+      const tx = rotSin * 3.8 * amp - px * 10.5 * amp;
+      const ty = rotCos * 5.2 * amp + py * 7.0 * amp;
+      const tz = rotCos * 12.0 * amp + (hovered ? 12 : 0);
+      const ry = baseRy + rotSin * 2.4 * amp + px * 4.6;
+      const rx = baseRx + rotCos * 1.6 * amp + py * 3.2;
+      const rz = baseRz + rotSin * 0.45 * amp;
       wrap.style.transform =
         `perspective(780px) translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, ${tz.toFixed(2)}px) ` +
         `rotateY(${ry.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
     };
 
     applyContinuous(this.scanWrap, 0.0, reduced ? 0 : 1.0, 16.5, -2.2, -0.5, this.hoveredCard === 'scan');
-    applyContinuous(this.presenceWrap, 2.1, reduced ? 0 : 0.94, -16.5, -2.0, 0.5, this.hoveredCard === 'presence');
+    applyContinuous(this.presenceWrap, 0.0, reduced ? 0 : 0.94, -16.5, -2.0, 0.5, this.hoveredCard === 'presence');
 
     const launchHovered = this.hoveredCard === 'launch' || this.launchCard.matches(':hover');
     if (reduced) {
@@ -260,7 +291,7 @@ export class OrbitalArHud {
       this.launchPtrX = 0;
       this.launchPtrY = 0;
     } else if (!launchHovered) {
-      this.launchWaveNow = gyroDwellWave(t * 1.48);
+      this.launchWaveNow = gyroDwellWave(t * 0.96);
       if (Math.abs(px - this.launchPtrX) >= 0.012) {
         this.launchPtrX += (px - this.launchPtrX) * 0.25;
       } else {
@@ -292,15 +323,11 @@ export class OrbitalArHud {
 
   syncProjection(frame: OrbitalProjectedFrame | null): void {
     this.update3dFloat(frame);
-    const { summary, intent } = this.latestState;
-    const pop = resolvePlanetPopulationCounts(summary);
+    const { summary, intent, activeColony } = this.latestState;
     const targetSector = resolveTargetSectorId(summary, intent, this.hoveredSectorId);
-    const targetLabel =
-      this.hoveredSectorId !== null
-        ? `PREVIEW // ${targetSector}`
-        : intent.mode === 'chosen'
-          ? `DROP // ${targetSector}`
-          : `AUTO // ${targetSector}`;
+    const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+    const selectedSectorLabel = `SECTOR // ${targetSector}`;
+    const homeBaseLabel = homeBaseSectorId ? `ACTIVE BASE · ${homeBaseSectorId}` : `DROP // ${targetSector}`;
 
     this.leaderLines.render(
       {
@@ -310,15 +337,21 @@ export class OrbitalArHud {
       },
       frame,
       {
-        targetLabel,
-        showPresenceNodes: pop.players + pop.bots > 0,
+        selectedSectorLabel,
+        homeBaseLabel,
       },
     );
   }
 
   private refreshMarkers(): void {
-    const { summary, intent } = this.latestState;
-    this.cachedMarkers = buildOrbitalGlobeMarkers(summary, intent, this.hoveredSectorId);
+    const { summary, intent, kind, activeColony } = this.latestState;
+    this.cachedMarkers = buildOrbitalGlobeMarkers(
+      summary,
+      intent,
+      this.hoveredSectorId,
+      kind,
+      activeColony,
+    );
   }
 
   private triggerRetargetPulse(): void {

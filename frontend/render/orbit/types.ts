@@ -9,6 +9,7 @@ export interface OrbitalGlobeMarkerInput {
   readonly role: 'sector' | 'target' | 'player' | 'bot';
   readonly players?: number;
   readonly bots?: number;
+  readonly isHomeBase?: boolean;
 }
 
 export interface ProjectedAnchor2D {
@@ -18,6 +19,11 @@ export interface ProjectedAnchor2D {
   readonly nx: number;
   readonly ny: number;
   readonly visible: boolean;
+  readonly players?: number;
+  readonly bots?: number;
+  readonly isHomeBase?: boolean;
+  readonly centerNx?: number;
+  readonly centerNy?: number;
 }
 
 export interface OrbitalProjectedFrame {

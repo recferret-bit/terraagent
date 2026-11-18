@@ -73,7 +73,11 @@ class OrbitalStageImpl implements OrbitalStage {
   deployTn() { return this.deploy.tn(); }
   setTerraform(stage: number, smooth?: boolean) { this.globes.current.setTerraform(stage, smooth); }
   setSpinRate(r: number) { this.globes.setSpinRate(r); }
-  setHighlights(markers: readonly OrbitalGlobeMarkerInput[]) { this.highlights.setHighlights(markers); }
+  setHighlights(markers: readonly OrbitalGlobeMarkerInput[]) {
+    const target = markers.find((m) => m.role === 'target');
+    this.globes.setContinentLock(markers.length > 0, target ? -target.yaw * 0.28 : 0);
+    this.highlights.setHighlights(markers);
+  }
   projectHighlights(): OrbitalProjectedFrame {
     return this.highlights.project(this.camera, this.globes.planetPos, this.lastTime, this.sun.mouseS);
   }

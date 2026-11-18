@@ -174,7 +174,7 @@ export class MainMenu {
 
   private mountCardThumbnails(): void {
     const canvases = [...this.el.querySelectorAll<HTMLCanvasElement>('canvas[data-planet]')];
-    this.thumbnails = mountPlanetThumbnails(canvases, { size: 220, spinMultiplier: 6 });
+    this.thumbnails = mountPlanetThumbnails(canvases, { size: 160, spinMultiplier: 3, syncWithOrbitMenu: true });
   }
 
   private bindControls(): void {
