@@ -35,3 +35,41 @@ test('design.conf resolves root-level design pages and /index.html under /design
   assert.match(text, /location = \/index\.html[\s\S]*?try_files \/design\/index\.html =404;/);
   assert.match(text, /try_files \$uri \$uri\/ \/design\$uri \/design\$uri\/ =404;/);
 });
+
+test('public vhosts wire 404.html without soft-404s, redirect /index.html (except design), and configure gzip, referrer, and 24h icon cache', () => {
+  for (const name of ['apex.conf', 'play.conf', 'whitepaper.conf', 'pitchdeck.conf', 'playground.conf', 'design.conf']) {
+    const text = readFileSync(resolve(nginxHosts, name), 'utf8');
+    assert.match(text, /error_page 404 \/404\.html;/, name);
+    assert.match(text, /location = \/404\.html\s*\{[\s\S]*?internal;/, name);
+  }
+  for (const name of ['play.conf', 'whitepaper.conf', 'pitchdeck.conf', 'playground.conf']) {
+    const text = readFileSync(resolve(nginxHosts, name), 'utf8');
+    assert.match(text, /location \/\s*\{[\s\S]*?try_files \$uri \$uri\/ =404;/, name);
+    assert.match(text, /location = \/index\.html\s*\{\s*return 301 \/;\s*\}/, name);
+  }
+  for (const name of ['apex.conf', 'play.conf']) {
+    const text = readFileSync(resolve(nginxHosts, name), 'utf8');
+    assert.match(text, /location = \/me\s*\{[\s\S]*?try_files \/me\.html =404;/, name);
+    assert.match(text, /location = \/me\/\s*\{\s*return 301 \/me;\s*\}/, name);
+  }
+  const devchain = readFileSync(resolve(nginxHosts, 'devchain.conf'), 'utf8');
+  assert.match(devchain, /location \^~ \/dev\/chain\/tx[\s\S]*?\/dev\/chain\/tx\.html =404/);
+  assert.match(devchain, /location = \/robots\.txt[\s\S]*?Disallow: \//);
+
+  const nginxRoot = resolve(here, '../nginx');
+  const mainConf = readFileSync(resolve(nginxRoot, 'nginx.conf'), 'utf8');
+  assert.match(mainConf, /\bgzip on;/);
+  assert.match(mainConf, /application\/manifest\+json\s+webmanifest;/);
+  const secConf = readFileSync(resolve(nginxRoot, 'snippets/security-headers.conf'), 'utf8');
+  assert.match(secConf, /Referrer-Policy strict-origin-when-cross-origin always;/);
+  const cacheConf = readFileSync(resolve(nginxRoot, 'snippets/assets-cache.conf'), 'utf8');
+  assert.match(cacheConf, /max-age=86400/);
+  assert.match(cacheConf, /og-cover/);
+  assert.match(cacheConf, /deed-entry[\s\S]*?Cache-Control "no-cache" always;/);
+
+  for (const name of ['whitepaper.conf', 'pitchdeck.conf']) {
+    const text = readFileSync(resolve(nginxHosts, name), 'utf8');
+    assert.match(text, /\bindex index\.html;/, name);
+    assert.doesNotMatch(text, /\bindex\s+\//, name);
+  }
+});

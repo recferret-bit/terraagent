@@ -282,17 +282,14 @@ export async function hydrateContractsStatus(host: HTMLElement): Promise<void> {
   }
 }
 
-export function initContractsBoard(): void {
-  const host = document.getElementById('contracts-board');
-  if (!host) return;
-
+export function renderContractsBoardHtml(): string {
   const cards = CONTRACTS.map(renderContractCard).join('');
   const acctLinks = ACCOUNTS.map(
     (a) =>
       `<span class="acct-pill plate-sm" data-account-key="${a.key}"><b>${a.label}</b><a data-account-link href="${DEFAULT_EXPLORER}/address/${a.id}" target="_blank" rel="noopener noreferrer">${a.id} ↗</a></span>`,
   ).join('');
 
-  host.innerHTML = `<div class="board-h contracts-board-h">
+  return `<div class="board-h contracts-board-h">
       <span><i class="dot-live"></i> SIX DEPLOYED RUST CONTRACTS ON NEAR</span>
       <span class="contracts-status-wrap"><span data-chain-live-status>LIVE ON NEAR TESTNET · FASTNEAR RPC</span> · <a class="chain-json-link" href="/v1/near/status">/v1/near/status ↗</a> · <a class="chain-json-link" href="/whitepaper/#sub-web3-operator-accounts">whitepaper ↗</a></span>
     </div>
@@ -300,6 +297,13 @@ export function initContractsBoard(): void {
     <div class="contract-accounts">
       ${acctLinks}
     </div>`;
+}
+
+export function initContractsBoard(): void {
+  const host = document.getElementById('contracts-board');
+  if (!host) return;
+
+  host.innerHTML = renderContractsBoardHtml();
 
   void hydrateContractsStatus(host);
 }

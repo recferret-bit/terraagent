@@ -370,14 +370,14 @@ body {
 }
 
 /* KPI Strip & Scroll Reveals */
-.wp-reveal {
+.js-wp-reveal .wp-reveal {
   opacity: 0;
   transform: translateY(22px);
   transition: opacity var(--ta-dur-plate) var(--ta-ease-hydraulic),
     transform var(--ta-dur-plate) var(--ta-ease-servo);
 }
 
-.wp-reveal.is-visible {
+.js-wp-reveal .wp-reveal.is-visible {
   opacity: 1;
   transform: translateY(0);
 }
@@ -438,11 +438,11 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .wp-reveal { opacity: 1; transform: none; transition: none; }
+  .js-wp-reveal .wp-reveal, .wp-reveal { opacity: 1; transform: none; transition: none; }
 }
 
 @media print {
   .wp-top, .wp-rail, .wp-rail-backdrop, .wp-rail-show-float, .wp-progress { display: none !important; }
   .wp-shell { display: block; }
-  .wp-reveal { opacity: 1 !important; transform: none !important; }
+  .js-wp-reveal .wp-reveal, .wp-reveal { opacity: 1 !important; transform: none !important; }
 }

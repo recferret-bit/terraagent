@@ -1,9 +1,6 @@
 // Interactive controller for Section 06 (#economics): mounts the 4 Income Lanes
 // and the unified Day-1 Lossless Staking & Fee Calculator.
-import {
-  renderIncomeLanesHtml,
-  renderStakingCalculatorHtml,
-} from './economicsTemplates';
+import { renderEconomicsBoardHtml } from './economicsTemplates';
 
 const GROSS_APY = 0.09;
 const USER_YIELD_SHARE = 0.8;
@@ -54,15 +51,7 @@ export function initEconomicsSection(): void {
   const host = document.getElementById('economics-board');
   if (!host) return;
 
-  host.innerHTML = `<div class="sec-head">
-      <div>
-        <p class="eyebrow">06 · PLAYER MARKET &amp; STAKING</p>
-        <h2 class="h1">Trade what you mine.<br><span class="sub-blue">Stake without pay-to-win.</span></h2>
-      </div>
-      <p>No reward token printing. Every USDC or NEAR payout comes from real buyer orders, Trade Hub stall fees, validator staking yield, or forfeited treaty bonds.</p>
-    </div>
-    ${renderIncomeLanesHtml()}
-    ${renderStakingCalculatorHtml()}`;
+  host.innerHTML = renderEconomicsBoardHtml();
 
   bindCalculator(host);
 }

@@ -2,12 +2,7 @@
 // mounts the TerraAgent Protocol Treasury visual schematic, binds stream filters,
 // drives scroll-linked conduit/stage transitions, and hydrates live /v1/near/protocol telemetry.
 import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
-import {
-  renderProtocolReceiptsHtml,
-  renderProtocolSchematicHtml,
-  renderProtocolStagesHtml,
-  renderProtocolToolbarHtml,
-} from './protocolTemplates';
+import { renderProtocolBoardHtml } from './protocolTemplates';
 
 interface ProtocolTelemetryDto {
   readonly protocolAccountId?: string;
@@ -253,17 +248,7 @@ export function initProtocolSection(): void {
   const host = document.getElementById('protocol-board');
   if (!host) return;
 
-  host.innerHTML = `<div class="sec-head">
-      <div>
-        <p class="eyebrow">07 · PROTOCOL TREASURY</p>
-        <h2 class="h1">Self-funded servers,<br><span class="sub-blue">gas, and offline AI.</span></h2>
-      </div>
-      <p><code>protocol.terraagent.*</code> is an open treasury on NEAR. Small slices from trades, validator yield, and broken-treaty bonds pay directly for player gas and offline colony AI.</p>
-    </div>
-    ${renderProtocolToolbarHtml()}
-    ${renderProtocolSchematicHtml()}
-    ${renderProtocolStagesHtml()}
-    ${renderProtocolReceiptsHtml()}`;
+  host.innerHTML = renderProtocolBoardHtml();
 
   const section = host.closest<HTMLElement>('#protocol') ?? host;
   bindStreamFilter(host);

@@ -24,6 +24,12 @@ function setMetaContent(selector: string, content: string): void {
   if (el) el.setAttribute('content', content);
 }
 
+function setLinkHref(selector: string, href: string): void {
+  if (typeof document === 'undefined') return;
+  const el = document.head?.querySelector(selector);
+  if (el) el.setAttribute('href', href);
+}
+
 function updateDocumentOpenGraphMeta(
   deed: PublicDeedResponse,
   origin?: string,
@@ -43,6 +49,7 @@ function updateDocumentOpenGraphMeta(
   const pageUrl = buildDeedShareUrl(deed.tokenId, origin);
 
   document.title = title;
+  setLinkHref('link[rel="canonical"]', pageUrl);
   setMetaContent('meta[name="description"]', desc);
   setMetaContent('meta[property="og:title"]', title);
   setMetaContent('meta[property="og:description"]', desc);

@@ -4,10 +4,11 @@ import {
   Inject,
   Optional,
   Param,
+  Req,
   Res,
 } from '@nestjs/common';
 import type { PublicDeedResponse } from '@terra/contracts';
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { CoreException } from '../../core/errors/index.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { DeedTelemetryService } from './deed-telemetry.service.js';
@@ -77,6 +78,22 @@ function renderHistoryItemsHtml(deed: PublicDeedResponse): string {
     .join('\n          ');
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return '';
+  return raw.split(',')[0]?.trim() ?? '';
+}
+
+export function resolveForwardedOrigin(req?: IncomingMessage): string {
+  const proto = firstHeaderValue(req?.headers?.['x-forwarded-proto']).toLowerCase();
+  if (proto !== 'http' && proto !== 'https') return '';
+  const host =
+    firstHeaderValue(req?.headers?.['x-forwarded-host']) ||
+    firstHeaderValue(req?.headers?.host);
+  if (!host || !/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(host)) return '';
+  return `${proto}://${host}`;
+}
+
 function renderShareHeadHtml(opts: {
   escTitle: string;
   escDesc: string;
@@ -88,6 +105,8 @@ function renderShareHeadHtml(opts: {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${opts.escTitle}</title>
   <meta name="description" content="${opts.escDesc}" />
+  <link rel="canonical" href="${opts.escCanonical}" />
+  <meta name="theme-color" content="#07080A" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="TerraAgent" />
   <meta property="og:title" content="${opts.escTitle}" />
@@ -100,12 +119,23 @@ function renderShareHeadHtml(opts: {
   <meta name="twitter:title" content="${opts.escTitle}" />
   <meta name="twitter:description" content="${opts.escDesc}" />
   <meta name="twitter:image" content="${opts.escImageUrl}" />
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="/design/css/tokens.css" />
   <link rel="stylesheet" href="/design/css/base.css" />
+  <link rel="stylesheet" href="/assets/deed-entry.css" />
 </head>`;
 }
 
-export function renderDeedShareHtml(deed: PublicDeedResponse): string {
+export function renderDeedShareHtml(
+  deed: PublicDeedResponse,
+  opts?: { readonly origin?: string },
+): string {
   const meta = deed.metadata;
   const colonyName = meta.colonyName ?? meta.colony;
   const stage = Math.max(0, Math.min(10, Math.trunc(meta.stage ?? 0)));
@@ -114,10 +144,13 @@ export function renderDeedShareHtml(deed: PublicDeedResponse): string {
   const settled = Boolean(deed.settled || meta.settled);
   const statusUpper = (deed.status || meta.status).toUpperCase();
   const badgeText = settled ? 'SETTLED DEED' : `${statusUpper} DEED`;
+  const cleanOrigin = opts?.origin ? opts.origin.trim().replace(/\/+$/, '') : '';
 
   const title = `${colonyName} — Stage S${stage} Colony Deed | TerraAgent`;
   const description = `Terraform ${terraformPct}% · Status: ${statusUpper}${settled ? ' (Settled)' : ''} · Planet ${deed.planetId} · Token ${deed.tokenId} on NEAR`;
-  const imageUrl = `/v1/near/deed/${encodeURIComponent(deed.tokenId)}/image.png?v=${deed.version}`;
+  const relativeImageUrl = `/v1/near/deed/${encodeURIComponent(deed.tokenId)}/image.png?v=${deed.version}`;
+  const metaImageUrl = cleanOrigin ? `${cleanOrigin}${relativeImageUrl}` : relativeImageUrl;
+  const canonicalUrl = buildDeedShareUrl(deed.tokenId, cleanOrigin || undefined);
   const twitterIntentUrl = buildDeedTwitterIntentUrl({
     tokenId: deed.tokenId,
     colonyName,
@@ -125,17 +158,18 @@ export function renderDeedShareHtml(deed: PublicDeedResponse): string {
     stage,
     terraformBp,
     settled,
+    origin: cleanOrigin || undefined,
   });
 
   const escColony = escapeHtml(colonyName);
   const escToken = escapeHtml(deed.tokenId);
   const escBadge = escapeHtml(badgeText);
-  const escImageUrl = escapeHtml(imageUrl);
+  const escRelativeImageUrl = escapeHtml(relativeImageUrl);
   const headHtml = renderShareHeadHtml({
     escTitle: escapeHtml(title),
     escDesc: escapeHtml(description),
-    escImageUrl,
-    escCanonical: escapeHtml(buildDeedShareUrl(deed.tokenId)),
+    escImageUrl: escapeHtml(metaImageUrl),
+    escCanonical: escapeHtml(canonicalUrl),
   });
 
   return `<!doctype html>
@@ -150,7 +184,7 @@ ${headHtml}
         <span class="badge" data-testid="deed-share-badge">${escBadge} · v${deed.version}</span>
       </header>
       <section class="plate card" data-testid="deed-share-card">
-        <img src="${escImageUrl}" width="1200" height="630" alt="${escColony} — ${escBadge}" data-testid="deed-share-image" />
+        <img src="${escRelativeImageUrl}" width="1200" height="630" alt="${escColony} — ${escBadge}" data-testid="deed-share-image" />
         <dl data-testid="deed-share-stats">
           <div><dt class="label">COLONY</dt><dd>${escColony}</dd></div>
           <div><dt class="label">PLANET</dt><dd>${escapeHtml(deed.planetId)}</dd></div>
@@ -173,7 +207,7 @@ ${headHtml}
       </section>
     </main>
   </div>
-  <script type="module" src="/game/pages/deed/main.ts"></script>
+  <script type="module" src="/assets/deed-entry.js"></script>
 </body>
 </html>`;
 }
@@ -212,6 +246,7 @@ export class DeedShareController {
   async getSharePage(
     @Param('tokenId') rawTokenId: string,
     @Res() res?: ShareReplyLike,
+    @Req() req?: IncomingMessage,
   ): Promise<string> {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
@@ -238,7 +273,8 @@ export class DeedShareController {
     });
 
     const publicDeed = this.deeds.toPublicDeedResponse(record);
-    const html = renderDeedShareHtml(publicDeed);
+    const origin = resolveForwardedOrigin(req);
+    const html = renderDeedShareHtml(publicDeed, origin ? { origin } : undefined);
     return sendHtmlResponse(res, html);
   }
 }
