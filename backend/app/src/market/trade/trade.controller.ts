@@ -147,6 +147,13 @@ export class TradeController {
     return this.agent.quote(await this.who(req, as), parseBody(AgentQuoteQuery, query));
   }
 
+  /** Deterministic 1-round agent-to-agent RFQ negotiation endpoint (`POST /v1/trade/agent/rfq`). */
+  @Post('agent/rfq')
+  @HttpCode(200)
+  async agentRfq(@Req() req: IncomingMessage, @Body() body: unknown, @Query('as') as?: string) {
+    return this.agent.negotiateRfq(await this.who(req, as), body);
+  }
+
   // --- public market data -------------------------------------------------------------------------------------
   @Get('book/:planetId/:pair')
   book(@Req() req: IncomingMessage, @Param('planetId') planetId: string, @Param('pair') pair: string, @Query('levels') levels?: string): Promise<TradeBookResponse> {

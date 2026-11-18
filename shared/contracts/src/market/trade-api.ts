@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Nep413Signature } from '../deed/index';
 import { ResourceKey } from '../ws/sim';
 import { ActorKind, BookLevel, FillPolicy, MarketPrice, OrderSide, OrderState, TradeView } from './orders';
 import { AtomicAmount, MarketTokenKey, PairId } from './tokens';
@@ -133,8 +134,10 @@ export const PlaceTradeOrderRequest = z.strictObject({
   price: MarketPrice,
   ttlS: z.number().int().positive().max(7 * 86_400),
   maxStallFeeBp: z.number().int().min(0).max(10_000).optional(),
-  /** Default `partial`. `all_or_nothing` is accepted by the schema but the sim `market.placeOrder` command has no such argument yet: the server answers `invalid_request` until it does. */
+  /** Default `partial`. `all_or_nothing` is accepted by the schema for claimed accounts (`NEAR-60/61`). */
   fillPolicy: FillPolicy.optional(),
+  /** Optional per-order wallet NEP-413 signature when a self-custodial trader revokes their trading session key. */
+  walletSignature: Nep413Signature.optional(),
 });
 export type PlaceTradeOrderRequest = z.infer<typeof PlaceTradeOrderRequest>;
 

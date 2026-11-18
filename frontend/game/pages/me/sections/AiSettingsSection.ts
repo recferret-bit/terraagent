@@ -73,6 +73,7 @@ interface AiSettingsDomRefs {
   readonly statusNode: HTMLElement;
   readonly saveBtn: HTMLButtonElement;
   readonly clearBtn: HTMLButtonElement;
+  readonly verifyBtn: HTMLButtonElement;
 }
 
 function syncModelControls(refs: Pick<AiSettingsDomRefs, 'models' | 'modelSelect' | 'customModelInput'>, modelId: string): void {
@@ -98,13 +99,29 @@ function resolveChosenModel(refs: Pick<AiSettingsDomRefs, 'modelSelect' | 'custo
   return refs.modelSelect.value || DEFAULT_PLAYER_NEAR_AI_MODEL;
 }
 
+function aiBadgeFor(s: PlayerAiSettings): { text: string; cls: string; preview: string } {
+  if (s.hasApiKey) {
+    return {
+      text: 'NEAR.AI CONNECTED',
+      cls: 'badge badge-blue',
+      preview: s.apiKeyPreview ? `Stored key: ${s.apiKeyPreview}` : 'Personal NEAR.AI key stored',
+    };
+  }
+  if (s.stakerAutopilotActive) {
+    return {
+      text: 'MANAGED STAKER AI ACTIVE',
+      cls: 'badge badge-orange',
+      preview: `Managed NEAR.AI Autopilot unlocked (${s.stakedNear ?? '10+'} NEAR staked)`,
+    };
+  }
+  return { text: 'DETERMINISTIC FALLBACK', cls: 'badge', preview: 'No personal NEAR.AI key stored' };
+}
+
 function applyUpdatedSettings(refs: AiSettingsDomRefs, next: PlayerAiSettings, message: string): void {
-  refs.badge.textContent = next.hasApiKey ? 'NEAR.AI CONNECTED' : 'DETERMINISTIC FALLBACK';
-  refs.badge.className = `badge ${next.hasApiKey ? 'badge-blue' : ''}`;
-  refs.previewNode.textContent =
-    next.hasApiKey && next.apiKeyPreview
-      ? `Stored key: ${next.apiKeyPreview}`
-      : 'No personal NEAR.AI key stored';
+  const b = aiBadgeFor(next);
+  refs.badge.textContent = b.text;
+  refs.badge.className = b.cls;
+  refs.previewNode.textContent = b.preview;
   refs.customModelInput.removeAttribute('aria-invalid');
   syncModelControls(refs, next.model);
   refs.keyInput.value = '';
@@ -164,6 +181,31 @@ function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsO
       applyUpdatedSettings(refs, out.settings, 'Personal NEAR.AI key removed.');
     })();
   });
+
+  refs.verifyBtn.addEventListener('click', () => {
+    void (async () => {
+      refs.statusNode.textContent = 'Probing NEAR.AI TEE enclave attestation…';
+      try {
+        const res = await (opts.fetch ?? fetch)(`/v1/me/ai-settings/verify${opts.search ?? ''}`, { method: 'POST' });
+        const body = (await res.json().catch(() => ({}))) as {
+          model?: string;
+          managedStaker?: boolean;
+          message?: string;
+          attestation?: { signingAddress?: string; requestHash?: string; responseHash?: string; cryptoVerified?: boolean } | null;
+        };
+        if (!res.ok) {
+          refs.statusNode.textContent = body.message || 'TEE probe rejected.';
+          return;
+        }
+        const att = body.attestation;
+        refs.statusNode.textContent = att
+          ? `TEE OK (${body.model ?? 'NEAR.AI'}${body.managedStaker ? ' · Staker Sponsored' : ''}): signer ${att.signingAddress ?? 'TEE'} · req ${(att.requestHash ?? '').slice(0, 12)}… · res ${(att.responseHash ?? '').slice(0, 12)}… · cryptoVerified=${String(att.cryptoVerified ?? false)}`
+          : `Probe OK (${body.model ?? 'NEAR.AI'}), no enclave attestation returned.`;
+      } catch {
+        refs.statusNode.textContent = 'Unable to reach /v1/me/ai-settings/verify.';
+      }
+    })();
+  });
 }
 
 export function renderAiSettingsSection(
@@ -172,21 +214,20 @@ export function renderAiSettingsSection(
 ): HTMLElement {
   const current = defaultSettings(profile);
   const models = current.availableModels.length > 0 ? current.availableModels : [...NEAR_AI_AVAILABLE_MODELS];
+  const initialBadge = aiBadgeFor(current);
 
   const badge = el(
     'span',
     {
-      className: `badge ${current.hasApiKey ? 'badge-blue' : ''}`,
+      className: initialBadge.cls,
       dataset: { testid: 'me-ai-badge' },
     },
-    current.hasApiKey ? 'NEAR.AI CONNECTED' : 'DETERMINISTIC FALLBACK',
+    initialBadge.text,
   );
   const previewNode = el(
     'span',
     { className: 'ta-me-muted', dataset: { testid: 'me-ai-key-preview' } },
-    current.hasApiKey && current.apiKeyPreview
-      ? `Stored key: ${current.apiKeyPreview}`
-      : 'No personal NEAR.AI key stored',
+    initialBadge.preview,
   );
   const modelSelect = createModelSelect(models, current.model);
   const customModelInput = el('input', {
@@ -229,8 +270,14 @@ export function renderAiSettingsSection(
     'Disconnect Key',
   );
 
+  const verifyBtn = el(
+    'button',
+    { className: 'btn btn-ghost btn-sm', type: 'button', dataset: { testid: 'me-ai-verify-btn' } },
+    'TEST & VERIFY TEE ENCLAVE',
+  );
+
   wireAiSettingsHandlers(
-    { models, badge, previewNode, modelSelect, customModelInput, keyInput, statusNode, saveBtn, clearBtn },
+    { models, badge, previewNode, modelSelect, customModelInput, keyInput, statusNode, saveBtn, clearBtn, verifyBtn },
     opts,
   );
 
@@ -252,6 +299,6 @@ export function renderAiSettingsSection(
       ),
       el('div', { className: 'ta-ai-field' }, makeFieldLabel('me-ai-key-input', 'NEAR.AI API KEY'), keyInput),
     ),
-    el('div', { className: 'ta-colony-head' }, previewNode, el('div', { className: 'ta-ai-actions' }, saveBtn, clearBtn)),
+    el('div', { className: 'ta-colony-head' }, previewNode, el('div', { className: 'ta-ai-actions' }, verifyBtn, saveBtn, clearBtn)),
   );
 }

@@ -17,6 +17,7 @@ import { TokenAmount, type ChainReceipt } from '../../../domain/types.js';
 import { PRISMA } from '../../../../db/db.module.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { kekEnv } from '../../../identity/colony-accounts.js';
+import { openSealedTradingSessionSeed } from '../../../identity/trading-session-key.js';
 import { checkBatchStatic, hasDuplicateNonce, netLegs } from '../../../intents/intent-checks.js';
 import { mockChainControls } from '../../mock/mock-controls.js';
 import { signTokenDiffPayload } from '../../../intents/nep413-token-diff.js';
@@ -60,9 +61,20 @@ export class MockIntentsAdapter extends MockChainBase implements IntentsPort {
     const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId: input.accountId } });
     if (!row) throw new NearException('NEAR_ACCOUNT_NOT_FOUND', { message: `No custodial key for ${input.accountId}` });
     if (row.encryptedSecret === 'claimed') {
-      throw new NearException('NEAR_NOT_OWNER', {
-        message: `Account ${input.accountId} is claimed to self-custody; sign intents with your wallet`,
-      });
+      const sessionSeed = openSealedTradingSessionSeed(this.keys(), row);
+      if (!sessionSeed || !row.tradingSessionPublicKey) {
+        throw new NearException('NEAR_NOT_OWNER', {
+          message: `Account ${input.accountId} is claimed to self-custody; sign intents with your wallet`,
+        });
+      }
+      const nonce = input.nonce ?? randomBytes(32).toString('base64');
+      return signTokenDiffPayload(
+        ed25519PrivateKeyFromSeed(sessionSeed),
+        row.tradingSessionPublicKey,
+        { accountId: input.accountId, deltas: input.deltas },
+        input.deadlineMs,
+        nonce,
+      );
     }
     const seed = this.keys().open(row);
     const nonce = input.nonce ?? randomBytes(32).toString('base64');
@@ -134,7 +146,15 @@ export class MockIntentsAdapter extends MockChainBase implements IntentsPort {
 
   /** Static checks, then replayed/duplicate nonces, then balances; first failing code or null. In `execute` the nonce insert itself is the final arbiter. */
   private async checkAll(db: DbClient, intents: readonly SignedIntent[], inTx = false): Promise<NearErrorCode | null> {
-    const key = async (accountId: string) => (await db.nearColonyAccount.findUnique({ where: { accountId }, select: { publicKey: true } }))?.publicKey;
+    const key = async (accountId: string) => {
+      const row = await db.nearColonyAccount.findUnique({
+        where: { accountId },
+        select: { publicKey: true, encryptedSecret: true, tradingSessionPublicKey: true },
+      });
+      if (!row) return undefined;
+      if (row.encryptedSecret === 'claimed' && row.tradingSessionPublicKey) return row.tradingSessionPublicKey;
+      return row.publicKey;
+    };
     const staticCode = await checkBatchStatic(intents, this.runtime.now(), key);
     if (staticCode === 'NEAR_INTENT_BAD_SIGNATURE' || staticCode === 'NEAR_INTENT_EXPIRED') return staticCode;
     if (hasDuplicateNonce(intents)) return 'NEAR_INTENT_NONCE_REUSED';

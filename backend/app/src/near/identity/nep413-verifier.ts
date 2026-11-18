@@ -1,10 +1,11 @@
-import { createHash, sign as edSign, verify as edVerify, type KeyObject } from 'node:crypto';
+import { createHash, sign as edSign, type KeyObject } from 'node:crypto';
 import type { Nep413Signature } from '@terra/contracts';
+import type { PrismaClient } from '@terra/db';
+import { PublicKey } from 'near-api-js';
 import { NearException } from '../domain/errors.js';
 import type { NearNetwork } from '../domain/types.js';
 import { NEP413_TAG } from '../intents/nep413-token-diff.js';
 import { decodeBase58, encodeBase58 } from '../keystore/base58.js';
-import { ed25519PublicKeyFromNear } from '../keystore/keys.js';
 
 const NONCE_TTL_MS = 5 * 60_000;
 const MAX_NONCES = 4096;
@@ -13,6 +14,35 @@ const usedNonces = new Map<string, number>();
 
 export function clearNep413ReplayCache(): void {
   usedNonces.clear();
+}
+
+export async function consumeNep413NoncePersistent(
+  prisma: PrismaClient | null | undefined,
+  signature: Pick<Nep413Signature, 'accountId' | 'nonce'>,
+  purpose: string,
+): Promise<void> {
+  if (!prisma?.nep413UsedNonce) return;
+  const nonceBytes = decodeNep413Nonce(signature.nonce);
+  const nonceKey = `${purpose}:${signature.accountId.trim().toLowerCase()}:${nonceBytes.toString('base64')}`;
+  try {
+    await prisma.nep413UsedNonce.create({
+      data: {
+        nonceKey: nonceKey.slice(0, 160),
+        accountId: signature.accountId.trim().toLowerCase().slice(0, 64),
+        purpose: purpose.slice(0, 64),
+      },
+    });
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (code === 'P2002' || msg.includes('Unique constraint')) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', {
+        status: 401,
+        message: 'NEP-413 claim nonce has already been used',
+      });
+    }
+    throw err;
+  }
 }
 
 function borshStr(value: string): Buffer {
@@ -39,17 +69,27 @@ export function decodeNep413Nonce(raw: string): Buffer {
   });
 }
 
-function decodeNep413SignatureBytes(raw: string): Buffer {
+function decodeNep413SignatureBytes(raw: string, isSecp256k1: boolean): Uint8Array {
   const trimmed = raw.trim();
-  const bytes = trimmed.startsWith('ed25519:')
-    ? Buffer.from(decodeBase58(trimmed.slice(8)))
-    : Buffer.from(trimmed.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-  if (bytes.length !== 64) {
+  let bytes: Buffer;
+  if (trimmed.startsWith('ed25519:') || trimmed.startsWith('secp256k1:')) {
+    const body = trimmed.slice(trimmed.indexOf(':') + 1).trim();
+    if (!body) {
+      throw new NearException('NEAR_PROVIDER_REJECTED', { message: 'Empty prefixed NEP-413 signature' });
+    }
+    bytes = Buffer.from(decodeBase58(body));
+  } else {
+    bytes = Buffer.from(trimmed.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  }
+  const validLen = isSecp256k1 ? bytes.length === 65 : bytes.length === 64;
+  if (!validLen) {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
-      message: 'NEP-413 ed25519 signature must be 64 bytes',
+      message: isSecp256k1
+        ? 'NEP-413 secp256k1 signature must be 65 bytes'
+        : 'NEP-413 ed25519 signature must be 64 bytes',
     });
   }
-  return bytes;
+  return new Uint8Array(bytes);
 }
 
 export function validateCallbackUrlCandidates(raw?: string): readonly (string | undefined)[] {
@@ -163,6 +203,22 @@ export function assertWalletNetworkMatches(accountId: string, network: Exclude<N
   }
 }
 
+export function recordNep413Nonce(
+  signature: Pick<Nep413Signature, 'accountId' | 'nonce'>,
+  nowMs = Date.now(),
+): void {
+  const nonceBytes = decodeNep413Nonce(signature.nonce);
+  const nonceKey = `${signature.accountId.trim().toLowerCase()}:${nonceBytes.toString('base64')}`;
+  pruneExpiredNonces(nowMs);
+  if (usedNonces.has(nonceKey)) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', {
+      status: 401,
+      message: 'NEP-413 claim nonce has already been used',
+    });
+  }
+  usedNonces.set(nonceKey, nowMs + NONCE_TTL_MS);
+}
+
 /**
  * Cryptographically verifies a NEP-413 `SignedMessage` (`tag = 2147484061`), checks recipient & network
  * alignment, and enforces single-use nonce replay protection (`5m` TTL).
@@ -171,12 +227,24 @@ export function verifyNep413ClaimSignature(params: {
   readonly signature: Nep413Signature;
   readonly expectedWalletAccountId: string;
   readonly expectedPublicKey?: string;
+  readonly expectedMessagePrefix?: string;
   readonly allowedRecipients: readonly string[];
   readonly network: Exclude<NearNetwork, 'mock'>;
   readonly nowMs?: number;
+  readonly recordNonce?: boolean;
 }): void {
   const { signature } = params;
   const nowMs = params.nowMs ?? Date.now();
+
+  if (
+    params.expectedMessagePrefix &&
+    !signature.message.trim().startsWith(params.expectedMessagePrefix)
+  ) {
+    throw new NearException('NEAR_PROVIDER_REJECTED', {
+      status: 401,
+      message: `NEP-413 message must start with "${params.expectedMessagePrefix}"`,
+    });
+  }
 
   if (signature.accountId.trim().toLowerCase() !== params.expectedWalletAccountId.trim().toLowerCase()) {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
@@ -202,10 +270,11 @@ export function verifyNep413ClaimSignature(params: {
   }
 
   const nonceBytes = decodeNep413Nonce(signature.nonce);
-  const nonceKey = `${signature.accountId.toLowerCase()}:${nonceBytes.toString('base64')}`;
+  const nonceKey = `${signature.accountId.trim().toLowerCase()}:${nonceBytes.toString('base64')}`;
   pruneExpiredNonces(nowMs);
   if (usedNonces.has(nonceKey)) {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
+      status: 401,
       message: 'NEP-413 claim nonce has already been used',
     });
   }
@@ -213,8 +282,10 @@ export function verifyNep413ClaimSignature(params: {
   const callbackUrlCandidates = validateCallbackUrlCandidates(signature.callbackUrl);
   let verified = false;
   try {
-    const pub = ed25519PublicKeyFromNear(signature.publicKey);
-    const sigBytes = decodeNep413SignatureBytes(signature.signature);
+    const pubKeyStr = signature.publicKey.trim();
+    const pub = PublicKey.fromString(pubKeyStr);
+    const isSecp256k1 = pubKeyStr.startsWith('secp256k1:');
+    const sigBytes = decodeNep413SignatureBytes(signature.signature, isSecp256k1);
     for (const candidateUrl of callbackUrlCandidates) {
       const digest = computeNep413Hash({
         message: signature.message,
@@ -222,7 +293,7 @@ export function verifyNep413ClaimSignature(params: {
         recipient: signature.recipient,
         callbackUrl: candidateUrl,
       });
-      if (edVerify(null, digest, pub, sigBytes)) {
+      if (pub.verify(new Uint8Array(digest), sigBytes)) {
         verified = true;
         break;
       }
@@ -230,14 +301,16 @@ export function verifyNep413ClaimSignature(params: {
   } catch (err) {
     if (err instanceof NearException) throw err;
     throw new NearException('NEAR_PROVIDER_REJECTED', {
-      message: 'NEP-413 ed25519 signature verification failed',
+      message: 'NEP-413 signature verification failed',
     });
   }
   if (!verified) {
     throw new NearException('NEAR_PROVIDER_REJECTED', {
-      message: 'Invalid NEP-413 ed25519 signature',
+      message: 'Invalid NEP-413 signature',
     });
   }
 
-  usedNonces.set(nonceKey, nowMs + NONCE_TTL_MS);
+  if (params.recordNonce !== false) {
+    usedNonces.set(nonceKey, nowMs + NONCE_TTL_MS);
+  }
 }

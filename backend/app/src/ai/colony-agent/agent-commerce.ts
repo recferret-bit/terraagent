@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { buildVerifiedNep413Batch, type SignedIntentBatchProof } from './deterministic-nep413.js';
 
 export type AgentPaymentCurrency = 'USDC' | 'NEAR';
 export type AgentSettlementRail = 'near_intents_nep413' | 'bounty_escrow' | 'self_executed' | 'walked_away';
@@ -13,6 +14,7 @@ export interface NegotiationInput {
   readonly sellerInitialAsk: number;
   readonly sellerFloorPrice: number;
   readonly remainingBudget: number;
+  readonly buyerFeeBp?: number;
   readonly benchmarkNote: string;
 }
 
@@ -40,9 +42,11 @@ export interface AgentTaskReceipt {
   readonly negotiation: NegotiationResult;
   readonly unitPricePaid: number;
   readonly totalPaid: number;
+  readonly platformFeePaid?: number;
   readonly workPassedCheck: boolean;
   readonly checkSummary: string;
   readonly settlementRef: string;
+  readonly nep413Proof?: SignedIntentBatchProof;
 }
 
 export interface ContractorPlanReport {
@@ -74,8 +78,10 @@ function receiptHash(seed: string, label: string): string {
  * - Accept if the seller meets <= walkAwayUnitPrice within remaining budget; otherwise walk away.
  */
 export function negotiateAgentQuote(input: NegotiationInput): NegotiationResult {
+  const feeBp = Math.max(0, input.buyerFeeBp ?? 0);
+  const withFee = (principal: number): number => round2(principal * (1 + feeBp / 10_000));
   const initialTotal = round2(input.sellerInitialAsk * input.quantity);
-  if (input.sellerInitialAsk <= input.plannedUnitPrice && initialTotal <= input.remainingBudget) {
+  if (input.sellerInitialAsk <= input.plannedUnitPrice && withFee(initialTotal) <= input.remainingBudget) {
     return {
       decision: 'accepted_initial',
       sellerInitialAsk: input.sellerInitialAsk,
@@ -98,7 +104,7 @@ export function negotiateAgentQuote(input: NegotiationInput): NegotiationResult 
 
   const sellerReply = round2(Math.max(input.sellerFloorPrice, counterUnitPrice));
   const replyTotal = round2(sellerReply * input.quantity);
-  if (sellerReply <= input.walkAwayUnitPrice && replyTotal <= input.remainingBudget) {
+  if (sellerReply <= input.walkAwayUnitPrice && withFee(replyTotal) <= input.remainingBudget) {
     return {
       decision: 'accepted_counter',
       sellerInitialAsk: input.sellerInitialAsk,
@@ -214,6 +220,49 @@ function buildSpecs(rootAccount: string, jitter: number): readonly OutsourcedSpe
   ];
 }
 
+function buildFourWayTaskProof(params: {
+  readonly seed: string;
+  readonly taskId: string;
+  readonly buyerAccountId: string;
+  readonly sellerAccountId: string;
+  readonly rootAccount: string;
+  readonly itemOrService: string;
+  readonly quantity: number;
+  readonly totalCostUsdc: number;
+}): SignedIntentBatchProof {
+  const tokenMatch = /^nep245:([a-z0-9.]+)/i.exec(params.itemOrService);
+  const cargoId = `nep245:res.${params.rootAccount}:${tokenMatch?.[1] ?? 'metals.t1'}`;
+  const usdcId = 'nep141:usdc.near';
+  const principalMicro = BigInt(Math.round(params.totalCostUsdc * 1_000_000));
+  const platformFeeMicro = (principalMicro * 100n) / 10_000n; // 1.00% standard platform fee
+  const daoFeeMicro = (platformFeeMicro * 2_000n) / 10_000n; // 20% Planet Council DAO carve-out
+  const protoFeeMicro = platformFeeMicro - daoFeeMicro; // 80% Protocol Treasury cut
+  const buyerDebitMicro = principalMicro + platformFeeMicro;
+
+  return buildVerifiedNep413Batch({
+    seed: params.seed,
+    batchLabel: params.taskId,
+    legs: [
+      {
+        accountId: params.buyerAccountId,
+        deltas: { [cargoId]: String(params.quantity), [usdcId]: String(-buyerDebitMicro) },
+      },
+      {
+        accountId: params.sellerAccountId,
+        deltas: { [cargoId]: String(-params.quantity), [usdcId]: String(principalMicro) },
+      },
+      {
+        accountId: `pl_econ_sim.dao.${params.rootAccount}`,
+        deltas: { [usdcId]: String(daoFeeMicro) },
+      },
+      {
+        accountId: `protocol.${params.rootAccount}`,
+        deltas: { [usdcId]: String(protoFeeMicro) },
+      },
+    ],
+  });
+}
+
 /** Executes a bounded general-contractor plan with 1-round counter-quotes and per-task verification receipts. */
 export function executeContractorTaskPlan(
   seed: string,
@@ -223,13 +272,16 @@ export function executeContractorTaskPlan(
   const budgetUsdc = 120;
   const budgetNear = 6;
   let spentUsdc = 0;
+  let feesUsdc = 0;
   let spentNear = 0;
   const jitter = ((seed.charCodeAt(0) || 42) % 5) * 0.01;
   const specs = buildSpecs(rootAccount, jitter);
   const receipts: AgentTaskReceipt[] = [];
 
   for (const s of specs) {
-    const rem = s.currency === 'USDC' ? round2(budgetUsdc - spentUsdc) : round2(budgetNear - spentNear);
+    const buyerFeeBp = s.rail === 'near_intents_nep413' ? 100 : 0;
+    const rem =
+      s.currency === 'USDC' ? round2(budgetUsdc - spentUsdc - feesUsdc) : round2(budgetNear - spentNear);
     const neg = negotiateAgentQuote({
       itemOrService: s.itemOrService,
       quantity: s.quantity,
@@ -239,13 +291,32 @@ export function executeContractorTaskPlan(
       sellerInitialAsk: s.sellerInitialAsk,
       sellerFloorPrice: s.sellerFloorPrice,
       remainingBudget: rem,
+      buyerFeeBp,
       benchmarkNote: s.benchmarkNote,
     });
     const settled = neg.decision !== 'walked_away' && neg.finalUnitPrice !== null;
+    const feePaid = settled && buyerFeeBp > 0 ? round2((neg.totalCost * buyerFeeBp) / 10_000) : 0;
     if (settled) {
-      if (s.currency === 'USDC') spentUsdc = round2(spentUsdc + neg.totalCost);
-      else spentNear = round2(spentNear + neg.totalCost);
+      if (s.currency === 'USDC') {
+        spentUsdc = round2(spentUsdc + neg.totalCost);
+        feesUsdc = round2(feesUsdc + feePaid);
+      } else {
+        spentNear = round2(spentNear + neg.totalCost);
+      }
     }
+    const nep413Proof =
+      settled && s.rail === 'near_intents_nep413'
+        ? buildFourWayTaskProof({
+            seed,
+            taskId: s.taskId,
+            buyerAccountId: contractorAccountId,
+            sellerAccountId: s.sellerAccountId,
+            rootAccount,
+            itemOrService: s.itemOrService,
+            quantity: s.quantity,
+            totalCostUsdc: neg.totalCost,
+          })
+        : undefined;
     const refPrefix = !settled ? 'walkaway' : s.rail === 'bounty_escrow' ? 'escrow' : 'nep413';
     receipts.push({
       taskId: s.taskId,
@@ -260,9 +331,11 @@ export function executeContractorTaskPlan(
       negotiation: neg,
       unitPricePaid: neg.finalUnitPrice ?? 0,
       totalPaid: neg.totalCost,
-      workPassedCheck: settled,
+      ...(feePaid > 0 ? { platformFeePaid: feePaid } : {}),
+      workPassedCheck: settled && (nep413Proof ? nep413Proof.verified : true),
       checkSummary: settled ? s.checkPassText : s.walkAwayFallbackText,
-      settlementRef: `${refPrefix}:${receiptHash(seed, s.taskId)}`,
+      settlementRef: nep413Proof ? nep413Proof.intentBatchHash : `${refPrefix}:${receiptHash(seed, s.taskId)}`,
+      ...(nep413Proof ? { nep413Proof } : {}),
     });
   }
 
@@ -275,7 +348,7 @@ export function executeContractorTaskPlan(
     spentUsdc,
     budgetNear,
     spentNear,
-    withinBudget: spentUsdc <= budgetUsdc && spentNear <= budgetNear,
+    withinBudget: round2(spentUsdc + feesUsdc) <= budgetUsdc && spentNear <= budgetNear,
     selfExecutedSteps: [
       'Self-executed: graded, irrigated & seeded +11 Living hexes using local colony drones ($0 external spend)',
       'Self-executed: scheduled night-cycle capacitor discharge & local T2 Smelter fallback after task_04 walk-away',

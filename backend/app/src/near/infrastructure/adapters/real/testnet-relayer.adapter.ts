@@ -28,7 +28,18 @@ export class TestnetRelayerAdapter implements RelayerPort {
   }
 
   async submitMetaTx(input: SubmitMetaTxInput): Promise<ChainReceipt> {
-    const parsed = assertRelayAllowed(input);
+    const { contracts, rootAccount } = this.rpc.config;
+    const allowedTargets = [
+      rootAccount,
+      'terraagent.mock',
+      contracts.res,
+      contracts.deed,
+      contracts.bounty,
+      contracts.staking,
+      contracts.dao,
+      contracts.pilots,
+    ];
+    const parsed = assertRelayAllowed(input, allowedTargets);
     return this.cache.run(parsed.opId, () =>
       runRelayed(this.lane, parsed.signerId, () => this.broadcast(parsed.signerId, parsed.receiverId, parsed.signedDelegate)),
     );

@@ -71,6 +71,33 @@ export function buildDeedTwitterIntentUrl(
   return `https://twitter.com/intent/tweet?${params.toString()}`;
 }
 
+export function buildNearSocialPostTx(
+  opts: DeedTwitterIntentOptions & { readonly network?: 'testnet' | 'mainnet' },
+  accountId: string,
+) {
+  const network = opts.network ?? (accountId.endsWith('.testnet') ? 'testnet' : 'mainnet');
+  const contractId = network === 'mainnet' ? 'social.near' : 'v1.social08.testnet';
+  const shareUrl = buildDeedShareUrl(opts.tokenId, opts.origin);
+  const text = `${buildDeedTwitterIntentText(opts)}\n${shareUrl}`;
+  const mainPost = JSON.stringify({ type: 'md', text });
+  const indexPost = JSON.stringify({ key: 'main', value: { type: 'md' } });
+  return {
+    contractId,
+    methodName: 'set' as const,
+    args: {
+      data: {
+        [accountId]: {
+          post: { main: mainPost },
+          index: { post: indexPost },
+        },
+      },
+    },
+    attachedDepositYocto: '10000000000000000000000',
+    gasTgas: 50,
+    nearSocialUrl: `https://near.social/mob.near/widget/ProfilePage?accountId=${encodeURIComponent(accountId)}`,
+  };
+}
+
 export function extractDeedTokenIdFromLocation(loc?: {
   readonly pathname?: string;
   readonly search?: string;

@@ -19,20 +19,23 @@ import {
 } from '@terra/contracts';
 import { getColonyUnlockStage, restore } from '@terra/sim';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AuthTokenService, extractBearerPlayer } from '../../core/auth/index.js';
+import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException } from '../../core/errors/index.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
-import { devBearerPlayer } from '../../ws/session-verifier.js';
 import { OutboxRelayService } from '../application/outbox/outbox.module.js';
+import {
+  assertColonyOwnership,
+  isStrictNearAuth,
+  resolveOptionalBearerPlayerId,
+} from '../identity/colony-ownership.guard.js';
 import { DeedDebounceService } from './deed-debounce.service.js';
 import { DeedImageRendererService } from './deed-image.renderer.js';
 import { DeedMintOutboxService } from './deed-mint-outbox.service.js';
 import { DeedSettledService } from './deed-settled.service.js';
 import { DeedRepository, type StoredDeedRecord } from './deed.repository.js';
 import { W20ScenarioSeedService } from './w20-scenario-seed.service.js';
-
-const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
 interface ReplyLike extends Partial<ServerResponse> {
   header?: (name: string, value: string) => unknown;
@@ -81,6 +84,7 @@ export class NearDeedController {
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
     @Optional() @Inject(OutboxRelayService) private readonly outboxRelay?: OutboxRelayService,
     @Optional() @Inject(W20ScenarioSeedService) private readonly w20Seed?: W20ScenarioSeedService,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   @Get()
@@ -93,8 +97,12 @@ export class NearDeedController {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
     await this.w20Seed?.waitForSeed();
-    const playerId = this.extractOptionalPlayerId(req);
+    const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
     await this.debounceService.flushReady();
+
+    if (isStrictNearAuth('DeedNft', this.env) && !playerId && !colonyId && !planetId) {
+      return NearDeedListResponse.parse({ deed: null, deeds: [] });
+    }
 
     let records = await this.deeds.listForPlayerOrColony({ playerId, colonyId, planetId });
     if (records.length === 0 && colonyId) {
@@ -120,10 +128,22 @@ export class NearDeedController {
   @HttpCode(200)
   async settleDeed(
     @Body() body?: { colonyId?: string; planetId?: string },
+    @Req() req?: IncomingMessage,
   ): Promise<{ deed: DeedView }> {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
+    const existing = body?.colonyId
+      ? await this.deeds.findByColonyId(body.colonyId)
+      : (await this.deeds.listForPlayerOrColony({ planetId: body?.planetId }))[0];
+    await assertColonyOwnership({
+      req,
+      tokens: this.tokens,
+      env: this.env,
+      port: 'DeedNft',
+      colonyId: body?.colonyId ?? existing?.colonyId,
+      ownerPlayerIdHint: existing?.playerId,
+    });
     await this.settledService.settleColonyDeed({
       colonyId: body?.colonyId,
       planetId: body?.planetId,
@@ -148,23 +168,6 @@ export class NearDeedController {
   ): Promise<Buffer | void> {
     const rendered = await this.imageRenderer.renderForToken(decodeURIComponent(tokenId));
     return sendPngBuffer(res, rendered);
-  }
-
-  private extractOptionalPlayerId(req: IncomingMessage): string | undefined {
-    const raw = req.headers?.authorization;
-    const header = Array.isArray(raw) ? raw[0] : raw;
-    if (typeof header !== 'string' || !header.trim()) return undefined;
-    const token = BEARER_RE.exec(header.trim())?.[1];
-    if (token) {
-      const dev = devBearerPlayer(token);
-      if (dev) return dev.id;
-    }
-    if (!this.tokens) return undefined;
-    try {
-      return extractBearerPlayer(req, this.tokens)?.id;
-    } catch {
-      return undefined;
-    }
   }
 
   private async ensureDeedForLoadedColony(opts: {

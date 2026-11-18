@@ -17,6 +17,7 @@ export interface ClaimAccountInput {
   readonly walletAccountId: AccountId;
   readonly walletPublicKey: string;
   readonly walletSignature?: Nep413Signature;
+  readonly tradingSessionPublicKey?: string;
 }
 
 export abstract class IdentityPort {

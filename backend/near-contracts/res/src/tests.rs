@@ -235,3 +235,49 @@ fn mt_transfer_accepts_one_yocto_and_rejects_excess_deposit_or_long_memo() {
     }));
     assert!(memo_panic.is_err());
 }
+
+#[test]
+fn nep245_batch_transfer_withdraw_resolve_and_nep145_storage() {
+    set_caller("owner.testnet");
+    let mut c = CargoContract::new(acct("owner.testnet"), acct("minter.testnet"));
+    set_caller("minter.testnet");
+    c.mt_mint("op_b1".into(), acct("col1.testnet"), "metals.t1".into(), "500".into());
+    c.mt_mint("op_b2".into(), acct("col1.testnet"), "bio.water".into(), "300".into());
+
+    let dep_ctx = VMContextBuilder::new()
+        .predecessor_account_id(acct("col1.testnet"))
+        .attached_deposit(NearToken::from_millinear(5))
+        .build();
+    testing_env!(dep_ctx);
+    assert!(c.storage_deposit(Some(acct("col1.testnet"))));
+    let bal = c.storage_balance_of(acct("col1.testnet")).unwrap();
+    assert_eq!(bal.total, STORAGE_MIN_YOCTO.to_string());
+    assert_eq!(c.storage_balance_bounds().min, STORAGE_MIN_YOCTO.to_string());
+
+    set_caller("col1.testnet");
+    c.mt_batch_transfer(
+        acct("escrow.testnet"),
+        vec!["metals.t1".into(), "bio.water".into()],
+        vec!["200".into(), "100".into()],
+        Some("batch".into()),
+    );
+    assert_eq!(c.mt_balance_of(acct("escrow.testnet"), "metals.t1".into()), "200");
+    assert_eq!(c.mt_balance_of(acct("escrow.testnet"), "bio.water".into()), "100");
+
+    // Unused-token refund callback restores partial unused amount
+    testing_env!(VMContextBuilder::new().current_account_id(acct("res.testnet")).predecessor_account_id(acct("res.testnet")).build());
+    let spent = c.mt_resolve_transfer(
+        acct("col1.testnet"),
+        acct("escrow.testnet"),
+        "metals.t1".into(),
+        "200".into(),
+        Ok(vec!["50".into()]),
+    );
+    assert_eq!(spent, "150");
+    assert_eq!(c.mt_balance_of(acct("col1.testnet"), "metals.t1".into()), "350");
+    assert_eq!(c.mt_balance_of(acct("escrow.testnet"), "metals.t1".into()), "150");
+
+    set_caller("col1.testnet");
+    assert!(c.mt_withdraw("bio.water".into(), "50".into(), None));
+    assert_eq!(c.mt_balance_of(acct("col1.testnet"), "bio.water".into()), "150");
+}

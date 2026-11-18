@@ -1,15 +1,18 @@
 import 'reflect-metadata';
+import { PublicKey } from 'near-api-js';
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/bus/event-bus.js';
 import type { FlagsService } from '../../src/flags/flags.service.js';
 import type { AgentWalletPort, KeyStatus } from '../../src/near/application/ports/agent-wallet.port.js';
-import { replacedTokenCaps } from '../../src/near/director-key/director-key.allowance.js';
+import { deriveDirectorPublicKey, replacedTokenCaps } from '../../src/near/director-key/director-key.allowance.js';
 import type { DirectorKeyRepository, DirectorKeyRow, OwnedColony } from '../../src/near/director-key/director-key.repository.js';
 import { DirectorKeyService } from '../../src/near/director-key/director-key.service.js';
 
 const COLONY: OwnedColony = { colonyId: 'co_1', playerId: 'p', planetId: 'pl_dev', colonyIndex: 0 };
+const KEY_1 = deriveDirectorPublicKey('co_1', 1);
+const KEY_2 = deriveDirectorPublicKey('co_1', 2);
 const EXISTING: DirectorKeyRow = {
-  colonyId: 'co_1', accountId: 'co.dir.terraagent.mock', publicKey: 'ed25519:d:co_1:1', revokedAt: null,
+  colonyId: 'co_1', accountId: 'co.dir.terraagent.mock', publicKey: KEY_1, revokedAt: null,
 };
 const on = { has: (wave: string) => wave === 'W15' } as unknown as FlagsService;
 const off = { has: () => false } as unknown as FlagsService;
@@ -29,16 +32,17 @@ describe('director.allowance replaces the key (W15-28)', () => {
     };
     const svc = new DirectorKeyService(on, wallet.asPort(), repo as unknown as DirectorKeyRepository, new EventBus());
     const out = await svc.setDevAllowance('co_1', 'metals.t1', 600);
-    expect(wallet.revoked).toEqual(['ed25519:d:co_1:1']);
+    expect(wallet.revoked).toEqual([KEY_1]);
     expect(wallet.added[0]).toMatchObject({
-      publicKey: 'ed25519:d:co_1:2',
+      publicKey: KEY_2,
       tokens: [
         { token: 'metals.t1', allowance: '600' },
         { token: 'minerals.t1', allowance: '50' },
       ],
     });
-    expect(out).toMatchObject({ allowance: '600', spent: '0', publicKey: 'ed25519:d:co_1:2', replaced: true });
-    expect(saved).toMatchObject({ allowance: '600', publicKey: 'ed25519:d:co_1:2', revokedAt: null });
+    expect(() => PublicKey.fromString(out.publicKey)).not.toThrow();
+    expect(out).toMatchObject({ allowance: '600', spent: '0', publicKey: KEY_2, replaced: true });
+    expect(saved).toMatchObject({ allowance: '600', publicKey: KEY_2, revokedAt: null });
   });
 
   it('W15 off and a missing key do not add a key', async () => {

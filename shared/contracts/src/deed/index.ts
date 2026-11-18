@@ -232,6 +232,8 @@ export const ClaimAccountResponseSchema = z.strictObject({
   accountId: z.string().min(2).max(64),
   claimedAt: z.union([z.number().int().nonnegative(), z.string().min(1)]),
   claimedByAccountId: z.string().min(2).max(64),
+  claimedPublicKey: z.string().min(1).max(160).optional(),
+  tradingSessionPublicKey: z.string().min(1).max(160).nullable().optional(),
   txHash: z.string().min(1),
 });
 export type ClaimAccountResponse = z.infer<typeof ClaimAccountResponseSchema>;

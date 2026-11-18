@@ -206,3 +206,37 @@ fn rejects_quorum_above_10000_bp() {
     let pid = contract.propose("op-p".into(), dao_id.clone(), "a.mock".into(), "x".into(), "x".into(), "{}".into(), None, None);
     contract.vote("op-v".into(), dao_id, pid, "a.mock".into(), "approve".into(), Some(10_001), None);
 }
+
+#[test]
+fn council_members_can_propose_and_vote_directly_without_operator() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let dao_id = contract.create_dao(
+        "op-dir-c".into(),
+        "ocean.dao.terraagent.testnet".into(),
+        "Ocean Council".into(),
+        vec!["alice.testnet".into(), "bob.testnet".into()],
+    );
+
+    testing_env!(ctx("alice.testnet").build());
+    let pid = contract.propose(
+        "op-dir-p".into(),
+        dao_id.clone(),
+        "alice.testnet".into(),
+        "Shield Upgrade".into(),
+        "shield".into(),
+        "{}".into(),
+        None,
+        None,
+    );
+    assert_eq!(
+        contract.vote("op-dir-v1".into(), dao_id.clone(), pid, "alice.testnet".into(), "approve".into(), None, None),
+        "InProgress"
+    );
+
+    testing_env!(ctx("bob.testnet").build());
+    assert_eq!(
+        contract.vote("op-dir-v2".into(), dao_id, pid, "bob.testnet".into(), "approve".into(), None, None),
+        "Approved"
+    );
+}

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { buildVerifiedNep413Batch, type SignedIntentBatchProof } from '../colony-agent/deterministic-nep413.js';
 
 export type SwarmBuyerCohort = 'terraformer' | 'industrial' | 'shield_builder' | 'arb_bot';
 
@@ -37,7 +37,9 @@ export interface SwarmClearingRound {
   readonly clearedUnits: number;
   readonly totalNotionalUsdc: number;
   readonly zeroSumVerified: boolean;
+  readonly signedIntentCount: number;
   readonly intentBatchHash: string;
+  readonly sampleSignedIntent?: SignedIntentBatchProof['sampleIntent'];
   readonly topBids: readonly SwarmSealedBid[];
   readonly asks: readonly SwarmSealedAsk[];
   readonly allocations: readonly SwarmRoundAllocation[];
@@ -52,7 +54,7 @@ export interface SwarmSimulationSummary {
 }
 
 const RESOURCES = ['metals.t1', 'bio.water', 'metals.t1', 'bio.biomass', 'metals.t1', 'minerals.t1', 'bio.biomass'] as const;
-const BASE_PRICE: Record<(typeof RESOURCES)[number], number> = {
+const BASE_GUILD_PRICES_SWARM: Record<(typeof RESOURCES)[number], number> = {
   'metals.t1': 1.0,
   'minerals.t1': 1.2,
   'bio.water': 0.9,
@@ -161,10 +163,52 @@ function clearUniformAuction(
   return { clearingPriceUsdc: bestPrice, clearedUnits: bestVol, allocations };
 }
 
+function buildRoundNep413Batch(params: {
+  readonly seed: string;
+  readonly day: number;
+  readonly resource: string;
+  readonly rootAccount: string;
+  readonly clearingPriceUsdc: number;
+  readonly clearedUnits: number;
+  readonly allocations: readonly SwarmRoundAllocation[];
+  readonly asks: readonly SwarmSealedAsk[];
+}): SignedIntentBatchProof {
+  const cargoToken = `nep245:res.${params.rootAccount}:${params.resource}`;
+  const usdcToken = 'nep141:usdc.near';
+  const priceMicro = BigInt(Math.round(params.clearingPriceUsdc * 1_000_000));
+  const legs = params.allocations.map((a) => ({
+    accountId: a.buyerAccountId,
+    deltas: {
+      [cargoToken]: String(a.unitsReceived),
+      [usdcToken]: String(-BigInt(a.unitsReceived) * priceMicro),
+    },
+  }));
+
+  let sellerRem = params.clearedUnits;
+  for (const ask of params.asks) {
+    if (sellerRem <= 0 || ask.minPriceUsdc > params.clearingPriceUsdc) break;
+    const fill = Math.min(ask.offeredUnits, sellerRem);
+    sellerRem -= fill;
+    legs.push({
+      accountId: ask.agentAccountId,
+      deltas: {
+        [cargoToken]: String(-fill),
+        [usdcToken]: String(BigInt(fill) * priceMicro),
+      },
+    });
+  }
+
+  return buildVerifiedNep413Batch({
+    seed: params.seed,
+    batchLabel: `swarm-r${params.day}-${params.resource}`,
+    legs,
+  });
+}
+
 /**
  * Track 05 (`swarms`) coordinator: runs `days` sealed-bid rounds across 20 buyer sub-accounts
  * and 5 seller/Guild sub-accounts using pure scripted strategies (zero LLM calls) and verifies
- * zero-sum NEP-413 `token_diff` conservation on every round.
+ * real Ed25519 Borsh NEP-413 `token_diff` signatures + zero-sum conservation on every round.
  */
 export function runScriptedSwarmRounds(
   seed: string,
@@ -177,22 +221,21 @@ export function runScriptedSwarmRounds(
   for (let day = 1; day <= days; day++) {
     const resource = RESOURCES[(day - 1) % RESOURCES.length]!;
     const raidBump = resource === 'metals.t1' && (day === 3 || day === 5) ? 0.14 : 0;
-    const anchor = round2(BASE_PRICE[resource] * (1 + raidBump));
+    const anchor = round2(BASE_GUILD_PRICES_SWARM[resource] * (1 + raidBump));
     const bids = buildTwentyScriptedBids(seed, day, anchor, parentAccount);
     const asks = buildFiveScriptedAsks(seed, day, resource, anchor, rootAccount);
     const { clearingPriceUsdc, clearedUnits, allocations } = clearUniformAuction(bids, asks, anchor);
 
-    const priceMicro = BigInt(Math.round(clearingPriceUsdc * 1_000_000));
-    const buyerCargoSum = allocations.reduce((s, a) => s + BigInt(a.unitsReceived), 0n);
-    const sellerCargoDelta = -BigInt(clearedUnits);
-    const buyerUsdcDebit = buyerCargoSum * priceMicro;
-    const sellerUsdcCredit = BigInt(clearedUnits) * priceMicro;
-    const zeroSumVerified = buyerCargoSum + sellerCargoDelta === 0n && buyerUsdcDebit === sellerUsdcCredit;
-
-    const intentBatchHash = createHash('sha256')
-      .update(`${seed}:r${day}:${resource}:${clearingPriceUsdc}:${clearedUnits}`)
-      .digest('hex')
-      .slice(0, 16);
+    const proof = buildRoundNep413Batch({
+      seed,
+      day,
+      resource,
+      rootAccount,
+      clearingPriceUsdc,
+      clearedUnits,
+      allocations,
+      asks,
+    });
 
     rounds.push({
       round: day,
@@ -207,8 +250,10 @@ export function runScriptedSwarmRounds(
       clearingPriceUsdc,
       clearedUnits,
       totalNotionalUsdc: round2(clearedUnits * clearingPriceUsdc),
-      zeroSumVerified,
-      intentBatchHash: `nep413:${intentBatchHash}`,
+      zeroSumVerified: proof.verified,
+      signedIntentCount: proof.signedIntentCount,
+      intentBatchHash: proof.intentBatchHash,
+      ...(proof.sampleIntent ? { sampleSignedIntent: proof.sampleIntent } : {}),
       topBids: bids.slice(0, 5),
       asks,
       allocations,

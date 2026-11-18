@@ -1,6 +1,53 @@
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, PanicOnDefault};
+use near_sdk::{
+    env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise,
+    PromiseError, PromiseOrValue,
+};
 use serde_json::json;
+
+const STORAGE_MIN_YOCTO: u128 = 1_250_000_000_000_000_000_000; // 0.00125 NEAR
+const MIN_MT_TRANSFER_CALL_TGAS: u64 = 30;
+const MT_RESOLVE_GAS: Gas = Gas::from_tgas(10);
+const MT_ON_TRANSFER_MIN_GAS: Gas = Gas::from_tgas(10);
+
+#[allow(dead_code)]
+#[ext_contract(ext_mt_receiver)]
+trait MtReceiver {
+    fn mt_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        previous_owner_ids: Vec<AccountId>,
+        token_ids: Vec<String>,
+        amounts: Vec<String>,
+        msg: String,
+    ) -> PromiseOrValue<Vec<String>>;
+}
+
+#[allow(dead_code)]
+#[ext_contract(ext_self)]
+trait ExtSelf {
+    fn mt_resolve_transfer(
+        &mut self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        token_id: String,
+        amount: String,
+    ) -> String;
+}
+
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageBalance {
+    pub total: String,
+    pub available: String,
+}
+
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageBalanceBounds {
+    pub min: String,
+    pub max: Option<String>,
+}
 
 pub(crate) const VALID_TOKENS: [&str; 10] = [
     "metals.t1",
@@ -226,9 +273,184 @@ impl CargoContract {
         self.move_tokens(&sender, &receiver_id, &token_id, qty, memo);
     }
 
+    /// Standard NEP-245 batch transfer signed by holder (`mt_batch_transfer`).
     #[payable]
-    pub fn storage_deposit(&mut self, _account_id: Option<AccountId>) -> bool {
+    pub fn mt_batch_transfer(
+        &mut self,
+        receiver_id: AccountId,
+        token_ids: Vec<String>,
+        amounts: Vec<String>,
+        memo: Option<String>,
+    ) {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "NEAR_NFT_INVALID: mt_batch_transfer accepts at most 1 yoctoNEAR"
+        );
+        require!(
+            !token_ids.is_empty() && token_ids.len() == amounts.len(),
+            "NEAR_NFT_INVALID: token_ids and amounts must be non-empty and equal length"
+        );
+        require!(
+            memo.as_ref().is_none_or(|m| m.len() <= 512),
+            "NEAR_NFT_INVALID: memo exceeds 512 bytes"
+        );
+        let sender = env::predecessor_account_id();
+        for (tid, amt) in token_ids.iter().zip(amounts.iter()) {
+            assert_valid_token(tid);
+            let qty = parse_positive_u128(amt);
+            self.move_tokens(&sender, &receiver_id, tid, qty, memo.clone());
+        }
+    }
+
+    /// Standard NEP-245 `mt_transfer_call` invoking `mt_on_transfer` with automatic unused-token refund rollback.
+    #[payable]
+    pub fn mt_transfer_call(
+        &mut self,
+        receiver_id: AccountId,
+        token_id: String,
+        amount: String,
+        memo: Option<String>,
+        msg: String,
+    ) -> Promise {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "NEAR_NFT_INVALID: mt_transfer_call accepts at most 1 yoctoNEAR"
+        );
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(MIN_MT_TRANSFER_CALL_TGAS),
+            "NEAR_INSUFFICIENT_GAS: attach >= 30 TGas for mt_transfer_call"
+        );
+        require!(
+            memo.as_ref().is_none_or(|m| m.len() <= 512),
+            "NEAR_NFT_INVALID: memo exceeds 512 bytes"
+        );
+        assert_valid_token(&token_id);
+        let qty = parse_positive_u128(&amount);
+        let sender = env::predecessor_account_id();
+        self.move_tokens(&sender, &receiver_id, &token_id, qty, memo);
+
+        let receiver_gas = env::prepaid_gas()
+            .as_gas()
+            .saturating_sub(Gas::from_tgas(20).as_gas())
+            .max(MT_ON_TRANSFER_MIN_GAS.as_gas());
+        ext_mt_receiver::ext(receiver_id.clone())
+            .with_static_gas(Gas::from_gas(receiver_gas))
+            .mt_on_transfer(
+                sender.clone(),
+                vec![sender.clone()],
+                vec![token_id.clone()],
+                vec![qty.to_string()],
+                msg,
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(MT_RESOLVE_GAS)
+                    .mt_resolve_transfer(sender, receiver_id, token_id, qty.to_string()),
+            )
+    }
+
+    #[private]
+    pub fn mt_resolve_transfer(
+        &mut self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        token_id: String,
+        amount: String,
+        #[callback_result] call_result: Result<Vec<String>, PromiseError>,
+    ) -> String {
+        let sent = parse_positive_u128(&amount);
+        let requested_refund = match call_result {
+            Ok(unused_list) => unused_list
+                .first()
+                .and_then(|s| s.parse::<u128>().ok())
+                .unwrap_or(0)
+                .min(sent),
+            Err(_) => sent,
+        };
+        if requested_refund == 0 {
+            return sent.to_string();
+        }
+        let rec_key = bal_key(&receiver_id, &token_id);
+        let rec_bal = self.balances.get(&rec_key).copied().unwrap_or(0);
+        let refund = requested_refund.min(rec_bal);
+        if refund > 0 {
+            self.balances.insert(rec_key, rec_bal - refund);
+            let snd_key = bal_key(&sender_id, &token_id);
+            let snd_bal = self.balances.get(&snd_key).copied().unwrap_or(0);
+            self.balances.insert(snd_key, snd_bal.saturating_add(refund));
+            emit_nep245(
+                "mt_transfer",
+                json!({
+                    "old_owner_id": receiver_id,
+                    "new_owner_id": sender_id,
+                    "token_ids": [token_id],
+                    "amounts": [refund.to_string()],
+                    "memo": "mt_resolve_transfer_refund",
+                }),
+            );
+        }
+        sent.saturating_sub(refund).to_string()
+    }
+
+    /// Holder burn / withdraw compatibility endpoint (`mainnet-intents-rpc.ts` `mt_withdraw`).
+    #[payable]
+    pub fn mt_withdraw(&mut self, token_id: String, amount: String, to: Option<AccountId>) -> bool {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "NEAR_NFT_INVALID: mt_withdraw accepts at most 1 yoctoNEAR"
+        );
+        assert_valid_token(&token_id);
+        let qty = parse_positive_u128(&amount);
+        let holder = env::predecessor_account_id();
+        let key = bal_key(&holder, &token_id);
+        let cur = self.balances.get(&key).copied().unwrap_or(0);
+        require!(cur >= qty, "NEAR_INSUFFICIENT_FUNDS: insufficient cargo balance");
+        self.balances.insert(key, cur - qty);
+        let sup = self.supplies.get(&token_id).copied().unwrap_or(0);
+        self.supplies.insert(token_id.clone(), sup.saturating_sub(qty));
+        emit_nep245(
+            "mt_burn",
+            json!({
+                "owner_id": holder,
+                "authorized_id": to.unwrap_or_else(env::predecessor_account_id),
+                "token_ids": [token_id],
+                "amounts": [qty.to_string()],
+                "memo": "mt_withdraw",
+            }),
+        );
         true
+    }
+
+    #[payable]
+    pub fn storage_deposit(&mut self, account_id: Option<AccountId>) -> bool {
+        let target = account_id.unwrap_or_else(env::predecessor_account_id);
+        let sdep_key = format!("sdep:{}", target).into_bytes();
+        let attached = env::attached_deposit().as_yoctonear();
+        let already = env::storage_read(&sdep_key).is_some();
+        if !already {
+            env::storage_write(&sdep_key, &STORAGE_MIN_YOCTO.to_le_bytes());
+        }
+        let needed = if already || attached == 0 { 0 } else { STORAGE_MIN_YOCTO };
+        if attached > needed {
+            let refund = attached - needed;
+            let _ = Promise::new(env::predecessor_account_id()).transfer(NearToken::from_yoctonear(refund));
+        }
+        true
+    }
+
+    pub fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
+        let sdep_key = format!("sdep:{}", account_id).into_bytes();
+        env::storage_read(&sdep_key).map(|_| StorageBalance {
+            total: STORAGE_MIN_YOCTO.to_string(),
+            available: "0".to_string(),
+        })
+    }
+
+    pub fn storage_balance_bounds(&self) -> StorageBalanceBounds {
+        StorageBalanceBounds {
+            min: STORAGE_MIN_YOCTO.to_string(),
+            max: Some(STORAGE_MIN_YOCTO.to_string()),
+        }
     }
 
     pub fn mt_balance_of(&self, account_id: AccountId, token_id: String) -> String {

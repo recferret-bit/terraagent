@@ -2,6 +2,7 @@ import type { DirectorActionState, SetDirectorPolicyArgs } from '@terra/contract
 import type { ColonyDirectorRecord } from '@terra/sim';
 import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { DirectorControls } from './DirectorControls';
+import { openTeeProofModal } from './parts/teeProofModal';
 
 /** One director action as the HUD may show it. Only `applied` means the sim accepted it. */
 export interface DirectorActionRow {
@@ -36,12 +37,13 @@ export class DirectorPanel {
   private readonly list: HTMLElement;
   private readonly offShared: () => void;
   private aiEnabled = false;
+  private activeColonyId = 'col_0';
   private currentRows: DirectorActionRow[] = [];
   private planIntentRevision: number | null = null;
 
   constructor(private readonly host: HTMLElement, opts?: DirectorPanelOptions) {
     this.host.classList.add('ta-director', 'plate-sm');
-    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway);
+    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway, () => openTeeProofModal(this.activeColonyId));
     this.aiStatusPill = head.aiStatusPill;
 
     const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
@@ -109,6 +111,9 @@ export class DirectorPanel {
   /** Syncs the live colony director policy onto the plate and marks older open plans as superseded. */
   syncPolicy(record: ColonyDirectorRecord | undefined): void {
     if (!record) return;
+    if ('colonyId' in record && typeof (record as { colonyId?: unknown }).colonyId === 'string') {
+      this.activeColonyId = (record as { colonyId: string }).colonyId;
+    }
     const { policy, intentRevision } = record;
     const budget = policy.risk === 'risky' ? '35% commit / 15% reserve' : '15% commit / 40% reserve';
     this.summaryEl.hidden = false;
@@ -153,6 +158,7 @@ export class DirectorPanel {
 function buildDirectorHeader(
   onOpenHq?: () => void,
   onOpenAway?: () => void,
+  onOpenTee?: () => void,
 ): { el: HTMLElement; aiStatusPill: HTMLElement } {
   const el = document.createElement('div');
   el.className = 'ta-director__head';
@@ -171,6 +177,16 @@ function buildDirectorHeader(
   aiStatusPill.className = 'ta-director__ai-pill';
   aiStatusPill.dataset.testid = 'director-ai-status';
   right.appendChild(aiStatusPill);
+  if (onOpenTee) {
+    const teeBtn = document.createElement('button');
+    teeBtn.type = 'button';
+    teeBtn.className = 'btn btn-ghost btn-sm ta-director__tee-btn';
+    teeBtn.dataset.testid = 'director-tee-btn';
+    teeBtn.textContent = 'TEE ✓';
+    teeBtn.title = 'Inspect & cryptographically verify NEAR.AI TEE attestations';
+    teeBtn.addEventListener('click', () => onOpenTee());
+    right.appendChild(teeBtn);
+  }
   if (onOpenHq) {
     const jump = document.createElement('button');
     jump.type = 'button';

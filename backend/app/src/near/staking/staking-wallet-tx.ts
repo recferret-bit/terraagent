@@ -1,0 +1,82 @@
+import { CoreException } from '../../core/errors/index.js';
+import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
+import { resolveNearNetworkConfig } from '../infrastructure/network/near-network.config.js';
+import { PROTOCOL_STAKING_ACCOUNT_ID, nearToYocto } from './yocto.js';
+
+export type StakingWalletTxAction = 'stake_payable' | 'deposit_near' | 'claim_native_near';
+
+export interface StakingWalletTxDescriptor {
+  readonly contractId: string;
+  readonly methodName: StakingWalletTxAction;
+  readonly args: Record<string, unknown>;
+  readonly attachedDepositYocto: string;
+  readonly gasTgas: number;
+}
+
+export interface StakingWalletTxQuery {
+  readonly action?: string;
+  readonly poolId?: string;
+  readonly amountNear?: string;
+  readonly accountId?: string;
+}
+
+export function resolveStakingContractId(env?: Record<string, string | undefined>): string {
+  const source = env ?? process.env;
+  const kind = nearAdapterFor('Staking', source);
+  if (kind === 'mock') {
+    return source.NEAR_CONTRACT_STAKING?.trim() || PROTOCOL_STAKING_ACCOUNT_ID;
+  }
+  return resolveNearNetworkConfig(source, kind === 'mainnet' ? 'mainnet' : 'testnet').contracts.staking;
+}
+
+export function buildStakingWalletTxDescriptor(
+  query: StakingWalletTxQuery,
+  env?: Record<string, string | undefined>,
+): StakingWalletTxDescriptor {
+  const rawAction = (query.action ?? 'stake_payable').trim();
+  if (rawAction !== 'stake_payable' && rawAction !== 'deposit_near' && rawAction !== 'claim_native_near') {
+    throw new CoreException('INVALID_REQUEST', {
+      status: 400,
+      message: `Unsupported staking wallet tx action: ${rawAction}`,
+    });
+  }
+  const amountNear = (query.amountNear ?? '10').trim();
+  const amountYocto = nearToYocto(amountNear);
+  const contractId = resolveStakingContractId(env);
+  const accountId = query.accountId?.trim() || undefined;
+  if (rawAction === 'claim_native_near') {
+    return {
+      contractId,
+      methodName: 'claim_native_near',
+      args: { amount: amountYocto, ...(accountId ? { recipient_id: accountId } : {}) },
+      attachedDepositYocto: '0',
+      gasTgas: 35,
+    };
+  }
+  if (rawAction === 'deposit_near') {
+    return {
+      contractId,
+      methodName: 'deposit_near',
+      args: accountId ? { account_id: accountId } : {},
+      attachedDepositYocto: amountYocto,
+      gasTgas: 30,
+    };
+  }
+  const poolId = (query.poolId ?? 'astro-stakers.poolv1.near').trim();
+  if (!poolId) {
+    throw new CoreException('INVALID_REQUEST', { status: 400, message: 'poolId is required for stake_payable' });
+  }
+  return {
+    contractId,
+    methodName: 'stake_payable',
+    args: {
+      op_id: `wallet-stake-${Date.now().toString(36)}`,
+      pool_id: poolId,
+      apy_bp: 900,
+      now_ms: Date.now(),
+      ...(accountId ? { account_id: accountId } : {}),
+    },
+    attachedDepositYocto: amountYocto,
+    gasTgas: 45,
+  };
+}

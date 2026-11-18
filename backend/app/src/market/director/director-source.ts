@@ -149,7 +149,9 @@ export class SimDirectorSource extends DirectorColonySource {
     const ids: string[] = [];
     for (let index = 0; index < state.colonies.length; index++) {
       const col = state.colonies[index];
-      if (!col || (!colonyIsAway(state, index) && col.aiEnabled !== true)) continue;
+      if (!col) continue;
+      if (col.aiEnabled === true && this.flags.has('W23')) continue;
+      if (!colonyIsAway(state, index) && col.aiEnabled !== true) continue;
       const row = await this.prisma.colony.findUnique({
         where: { planetId_colonyIndex: { planetId, colonyIndex: index } },
         select: { id: true },

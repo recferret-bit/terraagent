@@ -1,4 +1,5 @@
 import type { StakerPerksInfo, StakingPoolInfo, StakingPositionDto } from '@terra/contracts';
+import { createRealSignerWalletSelector, type RealNearNetwork } from './realNearWalletDriver';
 
 export const REAL_NEAR_COPY =
   'Real NEAR from your wallet — not game currency, no in-game bonus';
@@ -168,6 +169,7 @@ export function buildStakingPositionGrid() {
 export function buildStakingActionsRow(opts: {
   onUnstake: () => void;
   onWithdraw: () => void;
+  onWalletDeposit?: () => void;
 }) {
   const row = document.createElement('div');
   row.className = 'ta-staking-panel__actions-row';
@@ -191,8 +193,17 @@ export function buildStakingActionsRow(opts: {
   withdrawBtn.disabled = true;
   withdrawBtn.onclick = opts.onWithdraw;
 
+  const depositWalletBtn = document.createElement('button');
+  depositWalletBtn.type = 'button';
+  depositWalletBtn.className = 'btn btn-sm btn-ghost';
+  depositWalletBtn.dataset.testid = 'staking-wallet-deposit-btn';
+  depositWalletBtn.textContent = 'Deposit & Stake (Wallet Tx)';
+  depositWalletBtn.hidden = true;
+  if (opts.onWalletDeposit) depositWalletBtn.onclick = opts.onWalletDeposit;
+
   btnGroup.appendChild(unstakeBtn);
   btnGroup.appendChild(withdrawBtn);
+  btnGroup.appendChild(depositWalletBtn);
 
   const statusMsgEl = document.createElement('span');
   statusMsgEl.className = 'ta-staking-panel__status-msg';
@@ -201,7 +212,7 @@ export function buildStakingActionsRow(opts: {
 
   row.appendChild(btnGroup);
   row.appendChild(statusMsgEl);
-  return { row, unstakeBtn, withdrawBtn, statusMsgEl };
+  return { row, unstakeBtn, withdrawBtn, depositWalletBtn, statusMsgEl };
 }
 
 export function buildStakingPanelLayout(handlers: {
@@ -209,6 +220,7 @@ export function buildStakingPanelLayout(handlers: {
   onStake: () => void;
   onUnstake: () => void;
   onWithdraw: () => void;
+  onWalletDeposit?: () => void;
 }) {
   const root = document.createElement('section');
   root.className = 'ta-staking-panel plate-sm';
@@ -244,6 +256,7 @@ export function buildStakingPanelLayout(handlers: {
   const actionsRow = buildStakingActionsRow({
     onUnstake: handlers.onUnstake,
     onWithdraw: handlers.onWithdraw,
+    onWalletDeposit: handlers.onWalletDeposit,
   });
 
   controlsWrapEl.append(claimRow.row, formRow.formRow, posGrid.grid, actionsRow.row);
@@ -267,6 +280,7 @@ export function buildStakingPanelLayout(handlers: {
     withdrawableValEl: posGrid.withdrawableValEl,
     unstakeBtnEl: actionsRow.unstakeBtn,
     withdrawBtnEl: actionsRow.withdrawBtn,
+    depositWalletBtnEl: actionsRow.depositWalletBtn,
     statusMsgEl: actionsRow.statusMsgEl,
   };
 }
@@ -364,4 +378,52 @@ export function upsertStakingPositionList(
     return copy;
   }
   return [next, ...positions];
+}
+
+export async function sendStakingWalletTx(opts: {
+  fetchFn: typeof fetch;
+  network: RealNearNetwork;
+  action: 'stake_payable' | 'deposit_near' | 'claim_native_near';
+  poolId: string;
+  amountNear: string;
+  accountId: string | null;
+  statusMsgEl?: HTMLElement;
+  onSuccess?: () => Promise<unknown>;
+}): Promise<string | null> {
+  try {
+    const qs = new URLSearchParams({ action: opts.action, poolId: opts.poolId, amountNear: opts.amountNear });
+    if (opts.accountId) qs.set('accountId', opts.accountId);
+    const res = await opts.fetchFn(`/v1/near/staking/wallet-tx?${qs.toString()}`);
+    if (!res.ok) throw new Error('Unable to build staking wallet transaction.');
+    const tx = (await res.json()) as {
+      contractId: string;
+      methodName: string;
+      args: Record<string, unknown>;
+      attachedDepositYocto: string;
+      gasTgas: number;
+    };
+    const [{ actionCreators }, selector] = await Promise.all([
+      import('@near-wallet-selector/core'),
+      createRealSignerWalletSelector(opts.network),
+    ]);
+    const wallet = await selector.wallet('meteor-wallet').catch(() => selector.wallet());
+    await wallet.signAndSendTransaction({
+      receiverId: tx.contractId,
+      actions: [
+        actionCreators.functionCall(
+          tx.methodName,
+          tx.args,
+          BigInt(`${tx.gasTgas}000000000000`),
+          BigInt(tx.attachedDepositYocto),
+        ),
+      ],
+    });
+    const msg = `Submitted ${tx.methodName} (${opts.amountNear} NEAR) to ${tx.contractId}.`;
+    if (opts.statusMsgEl) opts.statusMsgEl.textContent = msg;
+    if (opts.onSuccess) await opts.onSuccess();
+    return msg;
+  } catch (err) {
+    if (opts.statusMsgEl) opts.statusMsgEl.textContent = err instanceof Error ? err.message : 'Wallet tx cancelled.';
+    return null;
+  }
 }

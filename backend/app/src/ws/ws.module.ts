@@ -120,16 +120,20 @@ export class WsModule implements OnApplicationBootstrap, BeforeApplicationShutdo
     @Optional() private readonly planetsService?: PlanetsService,
     @Optional() private readonly telemetry?: LiveStatsTelemetry,
     @Optional() private readonly homeService?: HomeService,
+    @Optional() private readonly gamePlanets?: GamePlanets,
   ) {}
 
   onApplicationBootstrap(): void {
     this.gateway.attach(this.host.httpAdapter.getHttpServer() as Server);
-    if (this.env.NODE_ENV !== 'test' && databaseEnabled(this.env) && this.planetsService && this.telemetry) {
+    if (this.env.NODE_ENV !== 'test' && this.planetsService && this.telemetry) {
       this.planetsService.setLiveTelemetryProvider(this.telemetry);
       this.unsubSeatTelemetry?.();
       this.unsubSeatTelemetry = this.homeService?.onColonySeated(() => {
         this.telemetry?.invalidate();
       }) ?? null;
+      this.gamePlanets?.onPlanetLoaded(() => {
+        this.telemetry?.invalidate();
+      });
     }
   }
 

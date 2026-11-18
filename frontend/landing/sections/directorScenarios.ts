@@ -1,8 +1,9 @@
-// Section 05 extension: Emergent Planet Scenarios (wars, territory conquest, alliances, orbital endgame)
-// driven autonomously by both Rival AI bots (NEAR AI Cloud) and offline players with NEAR.AI attached on /me.
+// Section 05 interactive scenarios: mounts the 4 tactical scenario cards beside #director-terminal
+// so clicking (or arrow-keying) any card updates the live trace right in the same console.
 import { prefersReducedMotion } from '@terra/render/core/StageHost';
 
 interface ScenarioItem {
+  readonly id: string;
   readonly code: string;
   readonly tag: string;
   readonly badgeClass: string;
@@ -10,109 +11,163 @@ interface ScenarioItem {
   readonly title: string;
   readonly copy: string;
   readonly directive: string;
+  readonly terminalTitle: string;
+  readonly attestBadge: string;
+  readonly triggerLine: string;
+  readonly obsLines: readonly [string, string, string];
+  readonly actionLines: readonly [string, string];
+  readonly simCmd: string;
   readonly svg: string;
 }
 
 const SCENARIOS: readonly ScenarioItem[] = [
   {
-    code: '01 · WARFARE',
-    tag: 'SIEGE & BOUNTIES',
-    badgeClass: 'badge-alert',
-    accent: 'var(--ta-fault)',
-    title: 'Declare Wars & Raids',
-    copy: 'Spot a weak perimeter, march assault frames on rival extractors, or lock an on-chain bounty to hire mercenary strikes.',
-    directive: 'raid.launch(sector_04) · bounty.open_escrow()',
-    svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
-      <g stroke="#222631" stroke-width="1">
-        <polygon points="48,24 70,11 92,24 92,50 70,63 48,50" fill="#111318"/>
-        <polygon points="48,66 70,53 92,66 92,92 70,105 48,92" fill="#15181F" stroke="#FF6A13" stroke-opacity=".6"/>
-        <polygon points="168,24 190,11 212,24 212,50 190,63 168,50" fill="#191114" stroke="#FF3B3B" stroke-opacity=".8"/>
-        <polygon points="168,66 190,53 212,66 212,92 190,105 168,92" fill="#111318"/>
-      </g>
-      <circle cx="70" cy="79" r="6" fill="#FF6A13"/>
-      <path class="sc-vec" d="M78 75 C 118 52, 144 42, 178 37" stroke="#FF6A13" stroke-width="2" stroke-dasharray="5 4"/>
-      <path class="sc-vec" d="M80 82 C 122 76, 148 58, 180 42" stroke="#FF3B3B" stroke-width="1.8" stroke-dasharray="4 4"/>
-      <g class="sc-pulse" transform="translate(190 37)">
-        <circle r="16" stroke="#FF3B3B" stroke-width="1.5" stroke-dasharray="6 3"/>
-        <circle r="4.5" fill="#FF3B3B"/>
-        <path d="M-21 0H-11M11 0H21M0 -21V-11M0 11V21" stroke="#FF3B3B" stroke-width="1.5"/>
-      </g>
-      <text x="16" y="122" fill="#FF6B6B" font-family="IBM Plex Mono, monospace" font-size="9.5" letter-spacing="1.2">▸ RAID VECTOR · TARGET LOCKED</text>
-    </svg>`,
-  },
-  {
-    code: '02 · CONQUEST',
-    tag: 'HEX ANNEXATION',
-    badgeClass: 'badge-recruiting',
-    accent: 'var(--ta-orange)',
-    title: 'Conquer Territory',
-    copy: 'Push claim beacons across choke ridges and rich mineral veins to expand your hex ring before neighbors arrive.',
-    directive: 'enqueue(beacon_mk2) · claim.ring(R10 → R16)',
-    svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
-      <g stroke="#2A2F3A" stroke-width="1">
-        <polygon points="110,14 130,2 150,14 150,38 130,50 110,38" fill="#171310" stroke="#FF6A13" stroke-opacity=".5"/>
-        <polygon points="74,35 94,23 114,35 114,59 94,71 74,59" fill="#171310" stroke="#FF6A13" stroke-opacity=".5"/>
-        <polygon points="146,35 166,23 186,35 186,59 166,71 146,59" fill="#171310" stroke="#FF6A13" stroke-opacity=".5"/>
-        <polygon points="110,56 130,44 150,56 150,80 130,92 110,80" fill="#24160E" stroke="#FF6A13" stroke-width="1.8"/>
-        <polygon points="74,77 94,65 114,77 114,101 94,113 74,101" fill="#111318" stroke-dasharray="3 2"/>
-        <polygon points="146,77 166,65 186,77 186,101 166,113 146,101" fill="#111318" stroke-dasharray="3 2"/>
-      </g>
-      <circle class="sc-ring" cx="130" cy="68" r="28" stroke="#FF6A13" stroke-width="1.5" stroke-dasharray="6 4"/>
-      <circle class="sc-ring sc-ring-outer" cx="130" cy="68" r="45" stroke="#FF8A3D" stroke-width="1.2" stroke-opacity=".65" stroke-dasharray="4 4"/>
-      <polygon points="130,58 138,72 122,72" fill="#FF6A13"/>
-      <circle cx="94" cy="47" r="3.5" fill="#39D0FF"/>
-      <circle cx="166" cy="47" r="3.5" fill="#FF8A3D"/>
-      <text x="16" y="122" fill="#FF8A3D" font-family="IBM Plex Mono, monospace" font-size="9.5" letter-spacing="1.2">▸ CLAIM WAVE · +6 MINERAL HEXES</text>
-    </svg>`,
-  },
-  {
-    code: '03 · DIPLOMACY',
-    tag: 'TRUCE & TRADE',
+    id: 'water',
+    code: '01 · SHORTAGE',
+    tag: 'GUILD BARTER',
     badgeClass: 'badge-new',
     accent: 'var(--ta-blue-hi)',
-    title: 'Forge Alliances',
-    copy: 'Sign server-enforced truces (AI backstabbing blocked on-server) and open automated cargo corridors across friendly borders.',
-    directive: 'diplomacy.truce(accept) · intents.swap(water, metals)',
-    svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
-      <polygon points="36,42 60,28 84,42 84,70 60,84 36,70" fill="#101726" stroke="#5B8CFF" stroke-width="1.6"/>
-      <polygon points="176,42 200,28 224,42 224,70 200,84 176,70" fill="#171310" stroke="#FF6A13" stroke-width="1.6"/>
-      <path class="sc-vec" d="M86 50 H174" stroke="#39D0FF" stroke-width="2" stroke-dasharray="6 4"/>
-      <path class="sc-vec sc-vec-rev" d="M174 62 H86" stroke="#FF8A3D" stroke-width="2" stroke-dasharray="6 4"/>
-      <g transform="translate(130 56)">
-        <polygon points="0,-16 14,-8 14,8 0,16 -14,8 -14,-8" fill="#0B0D11" stroke="#3DDC84" stroke-width="1.6"/>
-        <path d="M-5 0 L-1 4 L6 -4" stroke="#3DDC84" stroke-width="2" stroke-linecap="square"/>
-      </g>
-      <circle cx="60" cy="56" r="5" fill="#5B8CFF"/>
-      <circle cx="200" cy="56" r="5" fill="#FF6A13"/>
-      <text x="16" y="122" fill="#5B8CFF" font-family="IBM Plex Mono, monospace" font-size="9.5" letter-spacing="1.2">▸ BONDED TRUCE · WATER ⇄ METALS</text>
+    title: 'Cover a Water Crisis',
+    copy: 'Buy irrigation water from a docked Guild ship below cap and queue a ridge pump.',
+    directive: 'market.acceptGuildOffer() · enqueue(water_pump)',
+    terminalTitle: 'DIRECTOR TRACE · WATER SHORTAGE',
+    attestBadge: 'ENCLAVE VERIFIED · TEE',
+    triggerLine: '▸ trigger: water_critical · biome: desert',
+    obsLines: [
+      'Stock: metals 340, water 14 | Grid: +18 E/s',
+      'Guild ship Kestrel: asking 0.88 USDC for bio.water',
+      'Limits: war=off · spend_cap=ok · demolish=blocked',
+    ],
+    actionLines: [
+      'Buy 40 bio.water from Kestrel below 0.92 cap,',
+      'then queue a condensation pump on ridge hex.',
+    ],
+    simCmd: '→ market.acceptGuildOffer() · enqueue(water_pump)',
+    svg: `<svg viewBox="0 0 260 92" fill="none" aria-hidden="true">
+      <polygon points="40,28 58,17 76,28 76,50 58,61 40,50" fill="var(--ta-plate)" stroke="var(--ta-blue-hi)" stroke-width="1.6"/>
+      <polygon points="184,28 202,17 220,28 220,50 202,61 184,50" fill="var(--ta-plate)" stroke="var(--ta-terra)" stroke-width="1.6"/>
+      <path class="sc-vec" d="M82 34 H178" stroke="var(--ta-energy)" stroke-width="2" stroke-dasharray="6 4"/>
+      <path class="sc-vec sc-vec-rev" d="M178 44 H82" stroke="var(--ta-terra)" stroke-width="2" stroke-dasharray="6 4"/>
+      <circle cx="58" cy="39" r="4" fill="var(--ta-blue-hi)"/>
+      <circle cx="202" cy="39" r="4" fill="var(--ta-terra)"/>
+      <text x="16" y="80" fill="var(--ta-energy)" font-family="var(--ta-font-mono)" font-size="9.5" letter-spacing="1">▸ 40 BIO.WATER @ 0.88 USDC</text>
     </svg>`,
   },
   {
-    code: '04 · ENDGAME',
-    tag: 'ORBITAL ASCENSION',
+    id: 'raid',
+    code: '02 · PERIMETER',
+    tag: 'WAR OPT-IN',
+    badgeClass: 'badge-alert',
+    accent: 'var(--ta-fault)',
+    title: 'Raid an Unshielded Depot',
+    copy: 'When War & Diplomacy is enabled, dispatch Recon units as soon as a rival shield expires.',
+    directive: 'raid.launch(col_4) · queueGoal(defend_colony)',
+    terminalTitle: 'DIRECTOR TRACE · PERIMETER RAID',
+    attestBadge: 'WAR OPT-IN VERIFIED · TEE',
+    triggerLine: '▸ trigger: rival_shield_expired · target: col_4',
+    obsLines: [
+      'Squads ready: 3 Recon Rovers | Grid: +24 E/s',
+      'Target col_4: shield=expired, active_truce=false',
+      'Guardrails: allow_war=true · near_bond=human_only',
+    ],
+    actionLines: [
+      'Dispatch 3 Recon Rovers to siphon col_4 metals depot,',
+      'hold 1 Autocannon reserve on eastern ridge.',
+    ],
+    simCmd: '→ raid(target: col_4) · queueGoal(defend_colony)',
+    svg: `<svg viewBox="0 0 260 92" fill="none" aria-hidden="true">
+      <polygon points="44,42 62,31 80,42 80,64 62,75 44,64" fill="var(--ta-plate)" stroke="var(--ta-orange)" stroke-opacity=".8"/>
+      <polygon points="172,16 190,6 208,16 208,38 190,48 172,38" fill="var(--ta-plate)" stroke="var(--ta-fault)" stroke-opacity=".9"/>
+      <circle cx="62" cy="53" r="4.5" fill="var(--ta-orange)"/>
+      <path class="sc-vec" d="M70 49 C 110 34, 140 28, 178 27" stroke="var(--ta-fault)" stroke-width="2" stroke-dasharray="5 4"/>
+      <g transform="translate(190 27)">
+        <circle r="11" stroke="var(--ta-fault)" stroke-width="1.4" stroke-dasharray="5 3"/>
+        <circle r="3.5" fill="var(--ta-fault)"/>
+      </g>
+      <text x="16" y="80" fill="var(--ta-fault-text)" font-family="var(--ta-font-mono)" font-size="9.5" letter-spacing="1">▸ RECON SIPHON · SHIELD DOWN</text>
+    </svg>`,
+  },
+  {
+    id: 'arb',
+    code: '03 · MARKET',
+    tag: 'SURPLUS SALE',
+    badgeClass: 'badge-recruiting',
+    accent: 'var(--ta-orange)',
+    title: 'Sell Surplus Into Scarcity',
+    copy: 'List surplus orbital metals on your Trade Hub stall when local output beats 24h VWAP.',
+    directive: 'market.placeOrder(sell, metals.t1/USDC, 50)',
+    terminalTitle: 'DIRECTOR TRACE · SURPLUS ARBITRAGE',
+    attestBadge: 'SPEND CAP OK · TEE',
+    triggerLine: '▸ trigger: orbital_surplus · pair: metals.t1/USDC',
+    obsLines: [
+      'Orbital hold: 260 metals.t1 | Minerals: 18 (low)',
+      'Planet 24h VWAP: 1.14 USDC (+14% above parity)',
+      'Allowance: 50 / 2,000 USDC daily cap committed',
+    ],
+    actionLines: [
+      'List 50 metals.t1 at 1.12 USDC on Trade Hub stall,',
+      'route proceeds to minerals.t1 capacitor order.',
+    ],
+    simCmd: '→ market.placeOrder(sell, metals.t1, 50 @ 1.12 USDC)',
+    svg: `<svg viewBox="0 0 260 92" fill="none" aria-hidden="true">
+      <polygon points="110,26 130,15 150,26 150,48 130,59 110,48" fill="var(--ta-plate)" stroke="var(--ta-orange)" stroke-width="1.6"/>
+      <circle class="sc-ring" cx="130" cy="37" r="23" stroke="var(--ta-orange)" stroke-width="1.3" stroke-dasharray="6 4"/>
+      <path d="M46 58 L92 42 L130 48 L174 26 L214 19" stroke="var(--ta-orange-hi)" stroke-width="2"/>
+      <circle cx="174" cy="26" r="3.5" fill="var(--ta-terra)"/>
+      <circle cx="214" cy="19" r="4" fill="var(--ta-orange)"/>
+      <text x="16" y="80" fill="var(--ta-orange-hi)" font-family="var(--ta-font-mono)" font-size="9.5" letter-spacing="1">▸ +14% VS VWAP · ORDER POSTED</text>
+    </svg>`,
+  },
+  {
+    id: 'truce',
+    code: '04 · DIPLOMACY',
+    tag: 'SAFE TRUCE',
     badgeClass: 'badge-ok',
     accent: 'var(--ta-terra)',
-    title: 'Race for the Rocket',
-    copy: 'Pool grid megawatts to defend your orbital launch countdown—or rally the sector to halt a rival colony before liftoff.',
-    directive: 'rocket.ignite(stage_10) · turret.guard_perimeter()',
-    svg: `<svg viewBox="0 0 260 136" fill="none" aria-hidden="true">
-      <ellipse cx="130" cy="86" rx="62" ry="18" fill="#0E1714" stroke="#3DDC84" stroke-width="1.4" stroke-dasharray="6 3"/>
-      <ellipse cx="130" cy="86" rx="34" ry="10" fill="#13221C" stroke="#3DDC84" stroke-opacity=".6"/>
-      <path class="sc-vec" d="M130 82 V 18" stroke="#3DDC84" stroke-width="2.2" stroke-dasharray="5 3"/>
-      <g class="sc-ship" transform="translate(130 20)">
-        <polygon points="0,-12 7,4 -7,4" fill="#F2F4F7" stroke="#3DDC84" stroke-width="1.2"/>
-        <polygon points="-4,4 4,4 0,12" fill="#FF6A13"/>
+    title: 'Accept a Bilateral Truce',
+    copy: 'Accept non-bonded peace windows to shield harvesters; breaking truces stays human-only.',
+    directive: 'diplomacy.respondTruce(accept) · cancel=blocked',
+    terminalTitle: 'DIRECTOR TRACE · BILATERAL TRUCE',
+    attestBadge: 'TRUCE BREAK BLOCKED · HUMAN ONLY',
+    triggerLine: '▸ trigger: incoming_truce_offer · from: col_2 (6h)',
+    obsLines: [
+      'Living hexes: 11 / 18 | Night solar dip in 4m',
+      'Offer tr_09: 6h mutual raid lock, 0 NEAR bond',
+      'Limits: cancel_truce=forbidden · wallet=locked',
+    ],
+    actionLines: [
+      'Accept 6h peace truce with col_2 to secure border,',
+      'divert drones to cultivate 3 Living hexes.',
+    ],
+    simCmd: '→ diplomacy.respondTruce(tr_09, accept: true)',
+    svg: `<svg viewBox="0 0 260 92" fill="none" aria-hidden="true">
+      <ellipse cx="130" cy="39" rx="54" ry="18" fill="var(--ta-plate)" stroke="var(--ta-terra)" stroke-width="1.4" stroke-dasharray="6 3"/>
+      <g transform="translate(130 39)">
+        <polygon points="0,-13 11,-6 11,6 0,13 -11,6 -11,-6" fill="var(--ta-black-hole)" stroke="var(--ta-terra)" stroke-width="1.6"/>
+        <path d="M-4 0 L-1 3.5 L5 -3.5" stroke="var(--ta-terra)" stroke-width="2" stroke-linecap="square"/>
       </g>
-      <circle cx="78" cy="82" r="4" fill="#FF6A13"/>
-      <circle cx="182" cy="82" r="4" fill="#FF6A13"/>
-      <path d="M56 64 L78 82 M204 64 L182 82" stroke="#FF6A13" stroke-width="1.4"/>
-      <text x="16" y="122" fill="#3DDC84" font-family="IBM Plex Mono, monospace" font-size="9.5" letter-spacing="1.2">▸ ORBITAL SEAL · PERIMETER HELD</text>
+      <circle cx="76" cy="39" r="4" fill="var(--ta-blue-hi)"/>
+      <circle cx="184" cy="39" r="4" fill="var(--ta-terra)"/>
+      <text x="16" y="80" fill="var(--ta-terra)" font-family="var(--ta-font-mono)" font-size="9.5" letter-spacing="1">▸ 6H TRUCE SEALED · AI NO-BREAK</text>
     </svg>`,
   },
 ];
 
+function renderTerminalBody(item: ScenarioItem): string {
+  return `<div style="color:var(--ta-dim)">${item.triggerLine}</div>
+    <div class="gap">${item.obsLines[0]}</div>
+    <div>${item.obsLines[1]}</div>
+    <div>${item.obsLines[2]}</div>
+    <div class="gap c-blue">◆ near.ai directive (z-ai/glm-5.3-flash)</div>
+    <div style="color:var(--ta-text)">${item.actionLines[0]}</div>
+    <div style="color:var(--ta-text)">${item.actionLines[1]}</div>
+    <div class="gap c-orange-hi">${item.simCmd}</div>
+    <div style="color:var(--ta-dim);margin-top:8px">enclave attestation verified · 1 order queued<span class="blink c-orange">▌</span></div>`;
+}
+
 function renderScenarioCard(item: ScenarioItem, index: number): string {
-  return `<article class="scenario-card plate-sm" data-scenario-card style="--sc-accent:${item.accent};--sc-delay:${index * 90}ms">
+  const active = index === 0;
+  return `<button type="button" class="scenario-card plate-sm ${active ? 'is-selected' : ''}" data-scenario-card="${item.id}" aria-pressed="${active}" style="--sc-accent:${item.accent};--sc-delay:${index * 60}ms">
     <div class="scenario-vis">
       ${item.svg}
       <div class="scanlines"></div>
@@ -122,11 +177,53 @@ function renderScenarioCard(item: ScenarioItem, index: number): string {
         <span class="scenario-code">${item.code}</span>
         <span class="badge ${item.badgeClass}">${item.tag}</span>
       </div>
-      <h4 class="h3">${item.title}</h4>
+      <h3 class="h3">${item.title}</h3>
       <p>${item.copy}</p>
       <div class="scenario-cmd"><code>${item.directive}</code></div>
     </div>
-  </article>`;
+  </button>`;
+}
+
+function bindScenarioSwitcher(host: HTMLElement): void {
+  const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-scenario-card]')];
+  const terminal = document.getElementById('director-terminal');
+  const titleEl = terminal?.querySelector<HTMLElement>('[data-dir-title]');
+  const attestEl = terminal?.querySelector<HTMLElement>('[data-dir-attest]');
+  const bodyEl = terminal?.querySelector<HTMLElement>('[data-dir-body]');
+
+  const selectIndex = (index: number, focusBtn = false): void => {
+    const btn = buttons[index];
+    const target = SCENARIOS[index];
+    if (!btn || !target) return;
+    for (const b of buttons) {
+      const selected = b === btn;
+      b.classList.toggle('is-selected', selected);
+      b.setAttribute('aria-pressed', String(selected));
+    }
+    if (focusBtn) btn.focus();
+    if (titleEl) titleEl.textContent = target.terminalTitle;
+    if (attestEl) attestEl.textContent = target.attestBadge;
+    if (bodyEl) bodyEl.innerHTML = renderTerminalBody(target);
+    if (terminal && typeof terminal.getBoundingClientRect === 'function') {
+      const rect = terminal.getBoundingClientRect();
+      if (rect.height > 0 && (rect.bottom < 80 || rect.top > innerHeight - 60)) {
+        terminal.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'nearest' });
+      }
+    }
+  };
+
+  buttons.forEach((btn, idx) => {
+    btn.addEventListener('click', () => selectIndex(idx));
+    btn.addEventListener('keydown', (ev) => {
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        selectIndex((idx + 1) % buttons.length, true);
+      } else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        selectIndex((idx - 1 + buttons.length) % buttons.length, true);
+      }
+    });
+  });
 }
 
 export function initDirectorScenarios(): void {
@@ -134,33 +231,13 @@ export function initDirectorScenarios(): void {
   if (!host) return;
 
   const cardsHtml = SCENARIOS.map(renderScenarioCard).join('');
+  host.innerHTML = `<div class="scenarios-picker-head">
+      <span class="label">SELECT AN EMERGENCY SCENARIO</span>
+      <span>UPDATES TRACE →</span>
+    </div>
+    <div class="scenarios-grid">${cardsHtml}</div>`;
 
-  host.innerHTML = `<div class="scenarios-block plate">
-    <div class="scenarios-head">
-      <div class="scenarios-intro">
-        <p class="eyebrow">EMERGENT SANDBOX · EVERY 14-DAY WORLD PLAYS OUT DIFFERENTLY</p>
-        <h3 class="h2">No two planets write the same history.</h3>
-        <p>Wars, territory grabs, binding truces, and rocket races emerge dynamically—driven around the clock by both <b>Rival AI colonies</b> and <b>offline players</b> via <span class="c-blue">Managed Staker NEAR.AI</span> (≥10 NEAR staked) or their own BYOK model on <a href="/me.html">/me</a>.</p>
-      </div>
-      <div class="scenarios-parity plate-sm" aria-label="Autonomous decision parity between bots and offline players">
-        <div class="parity-col">
-          <div class="parity-tag"><span class="dot-live"></span> RIVAL AI BOTS</div>
-          <strong>NEAR AI Cloud · GLM-5.3 Flash TEE</strong>
-          <p>Seeded rival colonies evaluate borders, trade quotes, and raid windows on every planet sweep.</p>
-        </div>
-        <div class="parity-col is-player">
-          <div class="parity-tag c-blue">◆ OFFLINE PLAYERS (STAKER OR BYOK)</div>
-          <strong>≥10 NEAR Stake or BYOK on <a href="/me.html">/me</a></strong>
-          <p>Stake ≥10 NEAR from Day 1 for zero-setup Managed NEAR.AI Autopilot, or attach your own encrypted key on <a href="/me.html">/me</a>.</p>
-        </div>
-      </div>
-    </div>
-    <div class="scenarios-grid">${cardsHtml}</div>
-    <div class="scenarios-foot">
-      <span><b>SAFETY RAILS</b> AI blocked from truce backstabs &amp; validator staking · Daily trade allowance caps enforced</span>
-      <a class="scenarios-cta" href="/me.html">ATTACH NEAR.AI KEY ON /ME <span aria-hidden="true">→</span></a>
-    </div>
-  </div>`;
+  bindScenarioSwitcher(host);
 
   const cards = [...host.querySelectorAll<HTMLElement>('[data-scenario-card]')];
   if (prefersReducedMotion() || typeof IntersectionObserver === 'undefined') {
@@ -177,7 +254,7 @@ export function initDirectorScenarios(): void {
         }
       }
     },
-    { threshold: 0.18, rootMargin: '0px 0px -40px 0px' },
+    { threshold: 0.12 },
   );
   cards.forEach((c) => io.observe(c));
 }

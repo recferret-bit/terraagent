@@ -55,6 +55,12 @@ export class MeProfileController {
     return this.service.updateAiSettings(player, { apiKey: null, model: current.model });
   }
 
+  @Post('ai-settings/verify')
+  verifyAiEnclave(@Req() req: IncomingMessage) {
+    const player = resolveMePlayer(req, this.tokens, this.flags, this.env?.NODE_ENV === 'production');
+    return this.service.verifyAiEnclave(player.id);
+  }
+
   private async saveAiSettings(req: IncomingMessage, body: unknown): Promise<PlayerAiSettings> {
     const player = resolveMePlayer(req, this.tokens, this.flags, this.env?.NODE_ENV === 'production');
     const parsed = UpdatePlayerAiSettingsSchema.safeParse(body);

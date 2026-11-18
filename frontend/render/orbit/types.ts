@@ -1,5 +1,31 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import type { PlanetSpec } from '../planets/PlanetSpec';
+
+export interface OrbitalGlobeMarkerInput {
+  readonly id: string;
+  /** Angular offset on front hemisphere in radians: yaw (-0.85..0.85), pitch (-0.75..0.75). */
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly role: 'sector' | 'target' | 'player' | 'bot';
+  readonly players?: number;
+  readonly bots?: number;
+}
+
+export interface ProjectedAnchor2D {
+  readonly id: string;
+  readonly role: OrbitalGlobeMarkerInput['role'] | 'scanLimb' | 'presenceLimb';
+  /** Normalized 0..1 viewport coordinates (0,0 = top-left, 1,1 = bottom-right). */
+  readonly nx: number;
+  readonly ny: number;
+  readonly visible: boolean;
+}
+
+export interface OrbitalProjectedFrame {
+  readonly globeNx: number;
+  readonly globeNy: number;
+  readonly globeRadiusNormY: number;
+  readonly anchors: readonly ProjectedAnchor2D[];
+}
 
 /** Space-menu backdrop: stars + planet globe + carrier ship in orbit. Owned by the "orbit/descent" workstream. */
 export interface OrbitalStage {
@@ -11,6 +37,10 @@ export interface OrbitalStage {
   setTerraform(stage: number, smooth?: boolean): void;
   /** Axial spin of every globe in rad/s (default 0.025). `continuousSpin` on setPlanet keeps it forward-only through a morph. */
   setSpinRate(radPerSec: number): void;
+  /** Configure 3D sector / player / bot target markers rendered on the front hemisphere of the orbital globe. */
+  setHighlights(markers: readonly OrbitalGlobeMarkerInput[]): void;
+  /** Project the globe center, limb anchors, and all active 3D markers into normalized 0..1 screen coordinates. */
+  projectHighlights(): OrbitalProjectedFrame;
   /**
    * DEPLOY: camera flies behind the carrier, the pod lowers into the bay, is released, and falls toward the REAL
    * menu planet; pod + camera shrink continuously (scale-dive) until the frame is the descent's frame `h.startAt`

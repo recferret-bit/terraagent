@@ -186,6 +186,30 @@ model DirectorBudgetDay {
   @@schema("ai")
 }
 
+/// Persistent NEAR.AI Cloud TEE attestation proof linked to colony directives.
+model DirectorTeeAttestation {
+  id              String   @id @db.VarChar(80)
+  colonyId        String   @map("colony_id") @db.VarChar(64)
+  planetId        String   @map("planet_id") @db.VarChar(64)
+  chatId          String   @map("chat_id") @db.VarChar(128)
+  model           String   @db.VarChar(128)
+  requestHash     String   @map("request_hash") @db.VarChar(128)
+  responseHash    String   @map("response_hash") @db.VarChar(128)
+  signingAlgo     String   @map("signing_algo") @db.VarChar(16)
+  signingAddress  String?  @map("signing_address") @db.VarChar(160)
+  signature       String?
+  signatureText   String?  @map("signature_text")
+  signatureKind   String   @map("signature_kind") @db.VarChar(32)
+  verified        Boolean  @default(false)
+  cryptoVerified  Boolean  @default(false) @map("crypto_verified")
+  directiveJson   Json     @map("directive_json")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([colonyId, createdAt])
+  @@map("director_tee_attestation")
+  @@schema("ai")
+}
+
 // --- analytics.prisma ---
 /// Consented product-analytics events (CLIENT §10). No IP is stored. 90-day retention (job lands with W25).
 model AnalyticsEvent {
@@ -827,14 +851,28 @@ model NearColonyAccount {
   publicKey          String    @map("public_key") @db.VarChar(128)
   encryptedSecret    String    @map("encrypted_secret")
   kekVersion         Int       @map("kek_version")
-  accessKeyNonce     BigInt    @default(1) @map("access_key_nonce")
-  claimedAt          DateTime? @map("claimed_at") @db.Timestamptz(3)
-  claimedByAccountId String?   @map("claimed_by_account_id") @db.VarChar(64)
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  accessKeyNonce                BigInt    @default(1) @map("access_key_nonce")
+  claimedAt                     DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimedByAccountId            String?   @map("claimed_by_account_id") @db.VarChar(64)
+  tradingSessionPublicKey       String?   @map("trading_session_public_key") @db.VarChar(128)
+  tradingSessionEncryptedSecret String?   @map("trading_session_encrypted_secret")
+  createdAt                     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([playerId, slot])
   @@index([colonyId])
   @@map("near_colony_account")
+  @@schema("chain")
+}
+
+/// Persistent single-use NEP-413 replay guard across restarts and beyond the 5-minute RAM cache.
+model Nep413UsedNonce {
+  nonceKey  String   @id @map("nonce_key") @db.VarChar(160)
+  accountId String   @map("account_id") @db.VarChar(64)
+  purpose   String   @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("nep413_used_nonce")
   @@schema("chain")
 }
 

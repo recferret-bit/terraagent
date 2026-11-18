@@ -232,18 +232,21 @@ export function initScrollAnimationsAndSpy(): void {
   const chapterMap = new Map(CHAPTER_ITEMS.map((c) => [c.id, c]));
   if (sections.length === 0) return;
 
-  const revealHashTarget = () => {
+  const revealHashTarget = (scrollToTarget = false) => {
     const hashId = window.location.hash.replace(/^#/, '');
     if (hashId) {
       const target = document.getElementById(hashId);
       const secParent = target?.closest<HTMLElement>('.wp-reveal');
       if (secParent) revealElement(secParent);
-      if (target) revealElement(target);
+      if (target) {
+        revealElement(target);
+        if (scrollToTarget) requestAnimationFrame(() => target.scrollIntoView?.({ block: 'start' }));
+      }
     }
     revealVisibleOrPassedSections(sections);
   };
 
-  revealHashTarget();
+  revealHashTarget(true);
 
   if ('IntersectionObserver' in window) {
     const observer = new IntersectionObserver(

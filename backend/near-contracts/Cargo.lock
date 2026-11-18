@@ -2319,6 +2319,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "terra-verifier-contract"
+version = "0.1.0"
+dependencies = [
+ "near-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "thiserror"
 version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"

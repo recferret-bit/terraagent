@@ -1,5 +1,5 @@
 [workspace]
-members = ["res", "deed", "bounty", "staking", "dao", "pilots"]
+members = ["res", "deed", "bounty", "staking", "dao", "pilots", "verifier"]
 resolver = "2"
 
 [workspace.dependencies]

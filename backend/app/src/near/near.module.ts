@@ -40,6 +40,8 @@ import { W22ScenarioSeedService } from './treasury/w22-scenario-seed.service.js'
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
+import { ShadeAgentController } from './shade-agent/shade-agent.controller.js';
+import { ShadeAgentService } from './shade-agent/shade-agent.service.js';
 import { StakingPoolsController } from './staking/staking-pools.controller.js';
 import { StakingPositionSyncService } from './staking/staking-position-sync.service.js';
 import { StakingService } from './staking/staking.service.js';
@@ -93,6 +95,7 @@ export const env = {
     NearHealthController,
     PublicDeedController,
     RelayStatusController,
+    ShadeAgentController,
     SocialAuthController,
     StakingController,
     StakingPoolsController,
@@ -139,6 +142,7 @@ export const env = {
     W22DevCommands,
     ColonyAccounts,
     RelayStatusService,
+    ShadeAgentService,
     SocialAuthService,
     SocialLink,
     StakingPositionSyncService,
@@ -176,6 +180,7 @@ export const env = {
     NearInfrastructureModule,
     OutboxModule,
     PlanetDaoLifecycleService,
+    ShadeAgentService,
     SocialLink,
     StakingPositionSyncService,
     StakingService,

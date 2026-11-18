@@ -9,6 +9,7 @@ import { IntentsBalanceReadPort } from '../application/ports/intents-balance-rea
 import type { NearPortName } from '../domain/types.js';
 import { NearStakingPoolsEnvSchema } from '../staking/staking-pools.config.js';
 import { nearAdapterFor, NEAR_PORT_KEYS } from './adapter-selection.js';
+import { IntentsRampController } from './dev/intents-ramp.controller.js';
 import { NearStatusController } from './dev/near-status.controller.js';
 import { Nep413AuthService } from '../identity/nep413-auth.service.js';
 
@@ -44,6 +45,7 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]): EnvSecti
     NEAR_CONTRACT_PILOTS: z.string().optional(),
     NEAR_USE_PILOTS_FACTORY: z.string().optional(),
     NEAR_CONTRACT_INTENTS: z.string().optional(),
+    NEAR_CONTRACT_VERIFIER: z.string().optional(),
     NEAR_TOKEN_WNEAR: z.string().optional(),
     NEAR_TOKEN_USDC: z.string().optional(),
     NEAR_RELAYER_ACCOUNT: z.string().optional(),
@@ -70,6 +72,7 @@ export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]): EnvSecti
     NEAR_MIN_RELAYER_BALANCE: z.string().optional(),
     NEAR_RELAYER_MAX_DEPOSIT_NEAR: z.string().optional(),
     NEAR_ALLOW_MAINNET: z.string().optional(),
+    SHADE_AGENT_ALLOWED_MRTDS: z.string().optional(),
   }, 'NEAR_ALLOW_MOCK_IN_PROD',
     nearPorts.map((p) => ({ name: p.name, token: p.token, key: keyOf(p.name), kind: (s) => nearAdapterFor(p.name as NearPortName, s) })), adapters);
 
@@ -97,7 +100,7 @@ export const nearInfrastructureModuleFor = (adapters: Parameters<typeof bindPort
     // Read-only companion of `Intents` (not a 12th port: no env key, no prod-guard entry); follows `NEAR_ADAPTER_INTENTS`.
     { name: 'IntentsBalanceRead', token: IntentsBalanceReadPort, select: (env: Record<string, unknown>) => nearAdapterFor('Intents', env as Record<string, string>) },
   ], adapters, {
-    controllers: [NearStatusController],
+    controllers: [NearStatusController, IntentsRampController],
     providers: [Nep413AuthService],
     exports: [Nep413AuthService],
   });

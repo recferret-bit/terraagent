@@ -1,5 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { LlmProviderPort } from '../../ports/llm-provider.port.js';
+import { isTeeAttestationRejected } from '../adapters/nearai-signature.js';
 import { runDeterministic7DaySim, type EconomySimReport } from './economy-sim-runner.js';
 
 export interface RunEconomySimInput {
@@ -12,7 +14,10 @@ export interface RunEconomySimInput {
 export class EconomySimService {
   private latest: EconomySimReport | null = null;
 
-  constructor(@Inject(LlmProviderPort) private readonly llm: LlmProviderPort) {}
+  constructor(
+    @Inject(LlmProviderPort) private readonly llm: LlmProviderPort,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+  ) {}
 
   getLatest(): EconomySimReport {
     if (this.latest) return this.latest;
@@ -65,10 +70,13 @@ export class EconomySimService {
           maxTokens: 160,
           temperature: 0.2,
         });
-        providerModel = res.model;
         attestation = res.attestation;
-        const extracted = extractSummaryText(res.text);
-        if (extracted) summary = extracted;
+        const envRecord = (this.env ?? process.env) as unknown as Readonly<Record<string, unknown>>;
+        if (!isTeeAttestationRejected(attestation, envRecord)) {
+          providerModel = res.model;
+          const extracted = extractSummaryText(res.text);
+          if (extracted) summary = extracted;
+        }
       } catch {
         // Preserve deterministic summary on provider failure
       }

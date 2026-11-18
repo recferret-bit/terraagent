@@ -207,3 +207,54 @@ fn rejects_blank_collection() {
     set_caller("op.testnet", 2_000);
     c.mint_deed("op_col".into(), "   ".into(), "deed:1".into(), acct("pilot.testnet"), "{}".into(), false);
 }
+
+#[test]
+fn caps_history_separates_badges_and_supports_nep181_pagination() {
+    set_caller("owner.testnet", 1_000);
+    let mut c = DeedContract::new(acct("owner.testnet"), acct("op.testnet"));
+    assert_eq!(c.nft_metadata().spec, "nft-1.0.0");
+
+    set_caller("op.testnet", 2_000);
+    c.mint_deed(
+        "op_m".into(),
+        "deed".into(),
+        "deed:cap".into(),
+        acct("pilot.testnet"),
+        r#"{"imageUrl":"/v1/deeds/deed:cap/image?v=1"}"#.into(),
+        false,
+    );
+    c.mint_deed(
+        "op_b".into(),
+        "badge".into(),
+        "badge:pioneer".into(),
+        acct("pilot.testnet"),
+        "{}".into(),
+        false,
+    );
+    for step in 1..=8 {
+        c.update_metadata(
+            format!("op_u_{step}"),
+            "deed:cap".into(),
+            format!(r#"{{"step":{step}}}"#),
+            false,
+            None,
+        );
+    }
+    let stored = c.get_deed("deed:cap".into()).unwrap();
+    assert_eq!(stored.history.len(), 5);
+    assert_eq!(stored.history[0].op_id, "op_m");
+    assert_eq!(stored.history[4].op_id, "op_u_8");
+
+    let deed_nft = c.nft_token("deed:cap".into()).unwrap();
+    assert_eq!(deed_nft.metadata.title.as_deref(), Some("TerraAgent Colony Deed deed:cap"));
+    assert_eq!(deed_nft.metadata.media.as_deref(), Some("/v1/deeds/deed:cap/image?v=9"));
+
+    let badge_nft = c.nft_token("badge:pioneer".into()).unwrap();
+    assert_eq!(badge_nft.metadata.title.as_deref(), Some("TerraAgent Achievement Badge badge:pioneer"));
+    assert_eq!(badge_nft.metadata.description.as_deref(), Some("TerraAgent Soulbound Achievement Badge"));
+
+    assert_eq!(c.nft_total_supply(), "2");
+    assert_eq!(c.nft_supply_for_owner(acct("pilot.testnet")), "2");
+    assert_eq!(c.nft_tokens(Some("1".into()), Some(1)).len(), 1);
+    assert_eq!(c.nft_tokens_for_owner_page(acct("pilot.testnet"), Some("1".into()), Some(1)).len(), 1);
+}

@@ -2,6 +2,7 @@ import {
   AI_GUARDRAIL_ROWS,
   CONTRACT_ROWS,
   PORT_ROWS,
+  PROTOCOL_ACCOUNT_ROWS,
   WEB3_FEATURES,
   type WebFeatureCard,
 } from '../data/features';
@@ -72,11 +73,18 @@ const AI_ACCESS_MODES: ReadonlyArray<WebFeatureCard> = [
 
 const SWARM_AND_AGENT_CARDS: ReadonlyArray<WebFeatureCard> = [
   {
-    title: '25-Sub-Account Zero-LLM Swarm Clearing',
+    title: 'Hosted MCP Server (/v1/mcp) & Agent RFQ',
     layer: 'NEAR.AI',
-    badge: 'AI SWARMS',
-    summary: 'Twenty cohort-typed buyer sub-accounts (`buyer-01..20.swarm.terraagent.testnet` across `terraformer`, `industrial`, `shield_builder`, `arb_bot`) and five NPC/rival sellers submit sealed bids into a deterministic uniform-price auction (`zeroLlmCalls: true`), filling bids in price-priority order with verified `NEP-413` `sum(token_diff) == 0` conservation.',
-    chips: ['20 Buyers × 5 Sellers', 'Uniform Clearing Price', 'Zero-Sum NEP-413'],
+    badge: 'MCP JSON-RPC',
+    summary: 'External NEAR AI, Claude, and Cursor agents discover pair schemas at `GET /v1/mcp/agent-market.json`, inspect books/quotes, place authenticated signed intent orders over `POST /v1/mcp`, and settle bilateral quotes via `/v1/trade/agent/rfq`.',
+    chips: ['agent-market.json', 'POST /v1/mcp', 'POST /v1/trade/agent/rfq'],
+  },
+  {
+    title: '25-Sub-Account Zero-LLM Swarm & Shade MPC',
+    layer: 'NEAR.AI',
+    badge: 'AI SWARMS + MPC',
+    summary: 'Twenty cohort buyers (`buyer-01..20.swarm.terraagent.testnet`) and five sellers clear deterministic uniform auctions (`zeroLlmCalls: true`) with verified `NEP-413` `sum(token_diff) == 0` conservation, alongside decentralized **Shade Agents** + **Chain Signatures MPC (`v1.signer`)** workers.',
+    chips: ['20 Buyers × 5 Sellers', 'Uniform Clearing', 'Shade + v1.signer MPC'],
   },
   {
     title: 'Contractor Agents & 1-Round Negotiation',
@@ -107,8 +115,8 @@ function buildThesisSection(): HTMLElement {
       [
         ['Kitbash & GPU 3D', 'Modular RoundedBox hulls, `aPartAnim` kinematics, Unifier biome shader & instanced 3D debris', 'Readable 4-view silhouettes, < 3.5k tris/unit, zero flat sprite particles'],
         ['Deterministic Sim', 'Single `@terra/sim` shared across NestJS, browser Web Workers & 50 Hz warp replay', 'Zero server/client desync; full offline parity via `?host=local`'],
-        ['Non-Dilutive Web3', 'Six Rust contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`) + gasless `NEP-366`', 'Real asset & treaty ownership; zero combat or harvest power from staking'],
-        ['Verifiable NEAR.AI', 'NEAR AI Cloud TEE turns (`cloud-api.near.ai/v1/signature/{chat_id}` `SHA-256` `model:request:response` ECDSA) + encrypted BYOK + 4 hard guardrails', 'Overnight colony commander you can audit without custody risk'],
+        ['Non-Dilutive Web3', 'Six deployed contracts + `verifier` crate (`93` Rust tests), `1Click` ramp & Shade MPC', 'Real asset & treaty ownership; scoped self-custody session keys'],
+        ['Verifiable NEAR.AI', 'NEAR AI Cloud confidential enclave (`SHA-256` `model:request:response` ECDSA) + browser WebCrypto proof + Hosted MCP `/v1/mcp`', 'Governed autonomy you can independently verify in-browser'],
       ],
     ),
   );
@@ -131,8 +139,11 @@ function buildWeb3ProtocolSection(): HTMLElement {
   const custodySchema = createCustodyLifecycleSchema();
   custodySchema.id = 'sub-web3-custody';
 
-  const contractsH3 = makeEl('h3', 'wp-subsection-h3', 'Six Deployed near-sdk 5.7 Smart Contracts');
+  const contractsH3 = makeEl('h3', 'wp-subsection-h3', 'Six Deployed near-sdk 5.7 Contracts + Standalone Verifier Crate');
   contractsH3.id = 'sub-web3-contracts';
+
+  const accountsH3 = makeEl('h3', 'wp-subsection-h3', 'Four Core Protocol & Gas-Paying Operator Accounts');
+  accountsH3.id = 'sub-web3-operator-accounts';
 
   const portsH3 = makeEl('h3', 'wp-subsection-h3', 'Eleven Typed NEAR Ports (Local Mock vs Live Chain Parity)');
   portsH3.id = 'sub-web3-ports';
@@ -149,6 +160,17 @@ function buildWeb3ProtocolSection(): HTMLElement {
         c.standard,
         `${c.role} — ${c.guardAndSettlement}`,
         `[${c.txHash.slice(0, 8)}…](${NEARBLOCKS}/txns/${c.txHash})`,
+      ]),
+    ),
+    accountsH3,
+    createTable(
+      ['Key', 'Testnet Account', 'Role', 'Gas & Security Responsibility', 'Latest Proof Tx'],
+      PROTOCOL_ACCOUNT_ROWS.map((a) => [
+        `\`${a.key}\``,
+        `[${a.accountId}](${NEARBLOCKS}/address/${a.accountId})`,
+        a.role,
+        a.gasAndSecurityModel,
+        `[${a.txHash.slice(0, 8)}…](${NEARBLOCKS}/txns/${a.txHash})`,
       ]),
     ),
     portsH3,

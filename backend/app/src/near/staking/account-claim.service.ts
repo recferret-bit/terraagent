@@ -9,7 +9,10 @@ import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { IdentityPort } from '../application/ports/identity.port.js';
 import { NearException } from '../domain/errors.js';
+import { kekEnv } from '../identity/colony-accounts.js';
+import { generateSealedTradingSessionKey } from '../identity/trading-session-key.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
+import { KeyStore, loadKekRing } from '../keystore/index.js';
 
 export interface ClaimAccountInputDto {
   readonly colonyId?: string;
@@ -26,6 +29,8 @@ export interface ClaimAccountResponse {
   readonly accountId: string;
   readonly claimedAt: string;
   readonly claimedByAccountId: string;
+  readonly claimedPublicKey?: string;
+  readonly tradingSessionPublicKey?: string | null;
   readonly txHash: string;
 }
 
@@ -34,6 +39,7 @@ export interface AccountClaimStatus {
   readonly accountId: string;
   readonly claimedAt: string | null;
   readonly claimedByAccountId: string | null;
+  readonly claimedPublicKey?: string | null;
 }
 
 function sanitizeAccountStem(colonyId: string): string {
@@ -85,10 +91,31 @@ export class AccountClaimService {
       existingClaimedAt ?? (priorMem && priorMem.claimedByAccountId === walletAccountId ? new Date(priorMem.claimedAt) : new Date());
     const claimedAt = claimedAtDate.toISOString();
 
+    let tradingSessionPublicKey: string | null = null;
     if (this.db()) {
+      const currentRow = await this.db()!.nearColonyAccount.findUnique({
+        where: { accountId },
+        select: { tradingSessionPublicKey: true, tradingSessionEncryptedSecret: true },
+      });
+      const sealed =
+        currentRow?.tradingSessionEncryptedSecret && currentRow.tradingSessionPublicKey
+          ? null
+          : generateSealedTradingSessionKey(this.sessionKeyStore());
+      tradingSessionPublicKey = sealed?.publicKey ?? currentRow?.tradingSessionPublicKey ?? null;
       await this.db()!.nearColonyAccount.updateMany({
         where: { accountId },
-        data: { claimedAt: claimedAtDate, claimedByAccountId: walletAccountId },
+        data: {
+          claimedAt: claimedAtDate,
+          claimedByAccountId: walletAccountId,
+          ...(walletPublicKey !== 'ed25519:mock-wallet-key' ? { publicKey: walletPublicKey } : {}),
+          ...(sealed
+            ? {
+                tradingSessionPublicKey: sealed.publicKey,
+                tradingSessionEncryptedSecret: sealed.encryptedSecret,
+                kekVersion: sealed.kekVersion,
+              }
+            : {}),
+        },
       });
     }
 
@@ -97,10 +124,51 @@ export class AccountClaimService {
       accountId,
       claimedAt,
       claimedByAccountId: walletAccountId,
+      claimedPublicKey: walletPublicKey,
+      ...(tradingSessionPublicKey ? { tradingSessionPublicKey } : {}),
       txHash: receipt.txHash,
     };
     this.claimedAccounts.set(colonyId, response);
     return response;
+  }
+
+  async revokeTradingSessionKey(input: { colonyId?: string; playerId?: string }): Promise<{ ok: true; colonyId: string; accountId: string; revoked: true }> {
+    const prisma = this.db();
+    const colonyId = (input.colonyId ?? '').trim() || 'col_0';
+    if (!prisma) return { ok: true, colonyId, accountId: `${sanitizeAccountStem(colonyId)}.pilot.terraagent.mock`, revoked: true };
+    const row = await this.findColonyAccountRow(prisma, colonyId, undefined, input.playerId);
+    if (!row) throw new NearException('NEAR_ACCOUNT_NOT_FOUND', { status: 404, message: 'Colony account not found' });
+    this.assertRowOwnership(row.playerId, input.playerId);
+    await prisma.nearColonyAccount.update({
+      where: { accountId: row.accountId },
+      data: { tradingSessionPublicKey: null, tradingSessionEncryptedSecret: null },
+    });
+    return { ok: true, colonyId, accountId: row.accountId, revoked: true };
+  }
+
+  async reauthorizeTradingSessionKey(input: { colonyId?: string; playerId?: string }): Promise<{ ok: true; colonyId: string; accountId: string; tradingSessionPublicKey: string }> {
+    const prisma = this.db();
+    const colonyId = (input.colonyId ?? '').trim() || 'col_0';
+    const sealed = generateSealedTradingSessionKey(this.sessionKeyStore());
+    if (!prisma) {
+      return { ok: true, colonyId, accountId: `${sanitizeAccountStem(colonyId)}.pilot.terraagent.mock`, tradingSessionPublicKey: sealed.publicKey };
+    }
+    const row = await this.findColonyAccountRow(prisma, colonyId, undefined, input.playerId);
+    if (!row) throw new NearException('NEAR_ACCOUNT_NOT_FOUND', { status: 404, message: 'Colony account not found' });
+    this.assertRowOwnership(row.playerId, input.playerId);
+    await prisma.nearColonyAccount.update({
+      where: { accountId: row.accountId },
+      data: {
+        tradingSessionPublicKey: sealed.publicKey,
+        tradingSessionEncryptedSecret: sealed.encryptedSecret,
+        kekVersion: sealed.kekVersion,
+      },
+    });
+    return { ok: true, colonyId, accountId: row.accountId, tradingSessionPublicKey: sealed.publicKey };
+  }
+
+  private sessionKeyStore(): KeyStore {
+    return new KeyStore(loadKekRing(kekEnv((this.env ?? process.env) as unknown as AppEnv)));
   }
 
   clearColonyClaim(colonyId: string): void {
@@ -116,6 +184,7 @@ export class AccountClaimService {
         accountId: memByColony.accountId,
         claimedAt: memByColony.claimedAt,
         claimedByAccountId: memByColony.claimedByAccountId,
+        claimedPublicKey: memByColony.claimedPublicKey ?? null,
       };
     }
     if (accountId) {
@@ -126,6 +195,7 @@ export class AccountClaimService {
             accountId: entry.accountId,
             claimedAt: entry.claimedAt,
             claimedByAccountId: entry.claimedByAccountId,
+            claimedPublicKey: entry.claimedPublicKey ?? null,
           };
         }
       }
@@ -140,12 +210,13 @@ export class AccountClaimService {
           accountId: row.accountId,
           claimedAt: row.claimedAt ? row.claimedAt.toISOString() : null,
           claimedByAccountId: row.claimedByAccountId ?? null,
+          claimedPublicKey: row.claimedAt !== null ? row.publicKey : null,
         };
       }
     }
 
     const fallbackAccount = accountId ?? `${sanitizeAccountStem(normColonyId)}.pilot.terraagent.mock`;
-    return { claimed: false, accountId: fallbackAccount, claimedAt: null, claimedByAccountId: null };
+    return { claimed: false, accountId: fallbackAccount, claimedAt: null, claimedByAccountId: null, claimedPublicKey: null };
   }
 
   private db(): PrismaClient | null {

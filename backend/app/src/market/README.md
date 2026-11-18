@@ -84,6 +84,8 @@ Fill policy is a property of the account, not of the order (ECONOMY section 3, N
 `all_or_nothing`. `fillPolicy` in `PlaceTradeOrderRequest` is optional; naming the other policy than the account's is `422 fill_policy_not_allowed`
 (`details.allowed`). The sim command carries no policy; `PlaceOrderService` pins it on the order.
 
+Claimed self-custody signing (`trade/` + `near/identity/`): after `claimAccount` deletes the custodial secret key, 1-click order placement on `/trade.html` signs `NEP-413` `token_diff` intents via the pilot's KEK-sealed scoped trading session key (`chain.pilot_account.encrypted_trading_session_secret`), or verifies an explicit client-provided `walletSignature` (`signature`, `publicKey`, `nonce`, `deadline`, `message`) on `POST /v1/trade/orders` — preventing `409 ACCOUNT_ALREADY_CLAIMED` without surrendering self-custody.
+
 Accounts and reservations: real colony ids (`co_<cuid>`) are unique, so their mock account is named by the id. Scenario planets repeat `col_<n>` on every
 planet, so `resolveColonyAccountId` names those accounts `<planet>--col_<n>` (`mockAccountStem`), and open-order counts key on (planet, colony). Funds are
 reserved per chain account (`listOpenByAccount`). Dev fixtures that need an account name must go through the resolver.
@@ -91,3 +93,7 @@ reserved per chain account (`listOpenByAccount`). Dev fixtures that need an acco
 Known trade-off: an `UNKNOWN` trade (ambiguous chain outcome) keeps its debit counted in flight. If the chain did apply the batch the verifier balance already
 shows it and free funds are under-reported until `reconcile()` resolves the trade (<= 30 s). Telling the two cases apart needs a receipt lookup that
 `IntentsPort` does not offer; guessing "applied" could over-report and allow a double spend, so the conservative figure stays.
+
+## Hosted MCP Server & Agent-to-Agent RFQ (`trade/`)
+
+External NEAR AI / Claude / Cursor agent runtimes discover live commodity pairs and endpoints at public `GET /v1/mcp/agent-market.json` and invoke JSON-RPC 2.0 MCP tools over `POST /v1/mcp` (`tools/list`, `tools/call` for `get_orderbook`, `request_quote`, `place_signed_intent_order`, `cancel_order`, and `get_planet_distances`, guarded by `TradeAuth` / `ta_bot_...` keys). Agents can also request direct multi-colony quotes and bilateral RFQ settlement payloads via `POST /v1/trade/agent/rfq`.

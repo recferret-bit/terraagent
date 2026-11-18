@@ -45,6 +45,7 @@ export const STACK_NAV_ITEMS: ReadonlyArray<StackNavItem> = [
   { targetId: 'sec-01', anchorId: 'sub-web3-contracts', layer: 'WEB3', title: 'Contract: staking (Day-1 Lossless)', status: 'RUST' },
   { targetId: 'sec-01', anchorId: 'sub-web3-contracts', layer: 'WEB3', title: 'Contract: dao (Planet Council)', status: 'RUST' },
   { targetId: 'sec-01', anchorId: 'sub-web3-contracts', layer: 'WEB3', title: 'Contract: pilots (Sub-Account Factory)', status: 'RUST' },
+  { targetId: 'sec-01', anchorId: 'sub-web3-operator-accounts', layer: 'WEB3', title: '4 Core Protocol & Gas Accounts', status: 'ACCOUNTS' },
   { targetId: 'sec-01', anchorId: 'sub-web3-ports', layer: 'WEB3', title: '11 Typed NEAR Ports & Mock Parity', status: 'PORTS' },
   { targetId: 'sec-02', anchorId: 'sub-econ-lanes', layer: 'WEB3', title: '4 Player & Agent Income Lanes', status: 'INCOME' },
   { targetId: 'sec-02', anchorId: 'sub-econ-schematic', layer: 'WEB3', title: 'Protocol Treasury & 4-Way Settlement', status: 'SCHEMA' },

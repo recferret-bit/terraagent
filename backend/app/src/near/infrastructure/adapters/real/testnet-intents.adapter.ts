@@ -18,6 +18,7 @@ import {
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import { kekEnv } from '../../../identity/colony-accounts.js';
+import { openSealedTradingSessionSeed } from '../../../identity/trading-session-key.js';
 import { checkBatchStatic, hasDuplicateNonce } from '../../../intents/intent-checks.js';
 import { signTokenDiffPayload } from '../../../intents/nep413-token-diff.js';
 import { decodeBase58, ed25519PrivateKeyFromSeed, encodeBase58, KeyStore, loadKekRing } from '../../../keystore/index.js';
@@ -200,8 +201,30 @@ export class TestnetIntentsAdapter implements IntentsPort {
     if (!this.delegate) throw new NearException('NEAR_UNAVAILABLE', { message: 'Intents execute requires DB ledger' });
     const r = await this.delegate.execute(input);
     const hasHumanSigner = input.intents.some((it) => !isSystemOrBotIntentSigner(it.diff.accountId));
+    if (this.rpc.config.contracts.verifier && this.rpc.config.secrets.minterSecretKey) {
+      return this.executeOnVerifierContract(input, r);
+    }
     if (hasHumanSigner) return this.asTestnetReceipt(r);
     return { ...r, network: this.rpc.network, txHash: r.txHash.replace(/^mock:/, '') };
+  }
+
+  private async executeOnVerifierContract(input: IntentsExecuteInput, fallback: ChainReceipt): Promise<ChainReceipt> {
+    const verifierId = this.rpc.config.contracts.verifier;
+    const minterSecret = this.rpc.config.secrets.minterSecretKey;
+    if (!verifierId || !minterSecret) return fallback;
+    try {
+      const { receipt } = await this.rpc.call({
+        signerAccountId: this.rpc.config.accounts.minter,
+        signerSecretKey: minterSecret,
+        contractId: verifierId,
+        methodName: 'execute_intents',
+        args: { op_id: input.opId, intents: input.intents },
+        gasTgas: 80,
+      });
+      return receipt;
+    } catch {
+      return { ...fallback, network: this.rpc.network, txHash: fallback.txHash.replace(/^mock:/, '') };
+    }
   }
 
   private async asTestnetReceipt(mockReceipt: ChainReceipt): Promise<ChainReceipt> {
@@ -230,6 +253,10 @@ export class TestnetIntentsAdapter implements IntentsPort {
       const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId } });
       if (row) {
         if (row.encryptedSecret === 'claimed') {
+          const sessionSeed = openSealedTradingSessionSeed(this.keys(), row);
+          if (sessionSeed && row.tradingSessionPublicKey) {
+            return { accountId: row.accountId, publicKey: row.tradingSessionPublicKey, seed: sessionSeed };
+          }
           throw new NearException('NEAR_NOT_OWNER', {
             message: `Account ${accountId} is claimed to self-custody; sign intents with your wallet`,
           });
@@ -301,7 +328,12 @@ export class TestnetIntentsAdapter implements IntentsPort {
   private async findRegisteredPublicKey(accountId: string): Promise<string | undefined> {
     if (this.prisma?.nearColonyAccount) {
       const row = await this.prisma.nearColonyAccount.findUnique({ where: { accountId } });
-      if (row) return row.publicKey;
+      if (row) {
+        if (row.encryptedSecret === 'claimed' && row.tradingSessionPublicKey) {
+          return row.tradingSessionPublicKey;
+        }
+        return row.publicKey;
+      }
     }
     return this.ephemeralSigners.get(accountId)?.publicKey ?? this.resolveSystemEnvSigner(accountId)?.publicKey;
   }

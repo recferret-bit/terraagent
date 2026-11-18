@@ -19,9 +19,14 @@ export interface LlmAttestation {
   readonly responseHash: string;
   readonly signingAddress?: string;
   readonly signature?: string;
+  readonly signedText?: string;
   readonly signingAlgo?: 'ed25519' | 'ecdsa';
   readonly signatureKind?: 'provider_tee' | 'gateway' | 'legacy';
   readonly verified: boolean;
+  /** True when `signature` was cryptographically verified (Ed25519 or EIP-191 secp256k1) against `signingAddress`. */
+  readonly cryptoVerified?: boolean;
+  /** Present when `NEAR_AI_TRUSTED_SIGNERS` pins allowed TEE enclave addresses/pubkeys. */
+  readonly enclaveAllowlisted?: boolean;
 }
 export interface LlmResponse {
   readonly text: string;

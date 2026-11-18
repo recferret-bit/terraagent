@@ -1,4 +1,4 @@
-import { RESOURCE_KEYS } from '@terra/contracts';
+import { RESOURCE_KEYS, tokenKeyOfVerifierId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../../core/persistence.js';
 import type { AppEnv } from '../../../core/tokens.js';
@@ -42,6 +42,7 @@ export interface TerraAgentProtocolView {
     readonly escrowSlashProtocolShareBp: number;
   };
   readonly balances: Readonly<Record<string, string>>;
+  readonly testnetVerifierLedger?: Readonly<Record<string, string>>;
   readonly relayerDailyCapNear: number;
   readonly inflows: readonly ProtocolStreamInfo[];
   readonly outflows: readonly ProtocolStreamInfo[];
@@ -172,6 +173,7 @@ export async function buildProtocolTreasuryView(
     nearMode === 'mock' ? envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
   const sched = resolveProtocolFeeSchedule(envSource);
   const balances: Record<string, string> = {};
+  const testnetVerifierLedger: Record<string, string> = {};
 
   if (prisma && databaseEnabled(envSource as unknown as AppEnv)) {
     const accountIds = Array.from(new Set([PROTOCOL_ACCOUNT_ID, protocolAccountId]));
@@ -191,7 +193,9 @@ export async function buildProtocolTreasuryView(
         where: { accountId: { in: accountIds } },
       });
       for (const row of intentsBals) {
-        addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
+        if (row.tokenId.includes('.mock') || row.tokenId === 'native:near') continue;
+        const canonical = tokenKeyOfVerifierId(row.tokenId) ?? row.tokenId;
+        addBalance(testnetVerifierLedger, canonical, BigInt(row.amount.toFixed(0)));
       }
     }
   }
@@ -226,6 +230,7 @@ export async function buildProtocolTreasuryView(
       escrowSlashProtocolShareBp: sched.escrowSlashProtocolShareBp,
     },
     balances,
+    ...(Object.keys(testnetVerifierLedger).length > 0 ? { testnetVerifierLedger } : {}),
     relayerDailyCapNear: cfg.relayerDailyCapNear,
     inflows: buildInflows(sched),
     outflows: buildOutflows(sched),

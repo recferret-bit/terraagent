@@ -1,5 +1,7 @@
+import { createHash, createPublicKey } from 'node:crypto';
 import { RESOURCE_KEYS, type AutoTradeLimits } from '@terra/contracts';
 import { CoreException } from '../../core/errors/index.js';
+import { ed25519PrivateKeyFromSeed, encodeBase58 } from '../keystore/index.js';
 
 /** Gas allowance passed to `addLimitedKey`. No data row names a gas budget, so this stays `0` (BE-73). */
 export const DIRECTOR_GAS_ALLOWANCE = '0';
@@ -59,11 +61,27 @@ export function replacedTokenCaps(
   return caps;
 }
 
-/** Next public key for this colony. A revoked key stays on the mock wallet, so a re-add uses a new suffix. */
+/** Derive a deterministic valid NEAR Ed25519 public key (`ed25519:<base58>`) for a colony's director rotation sequence. */
+export function deriveDirectorPublicKey(colonyId: string, seq: number): string {
+  const safeSeq = Number.isSafeInteger(seq) && seq > 0 ? seq : 1;
+  const seed = createHash('sha256').update(`terra-director-key:${colonyId.toLowerCase()}:${safeSeq}`).digest();
+  const priv = ed25519PrivateKeyFromSeed(seed);
+  const spki = createPublicKey(priv).export({ format: 'der', type: 'spki' });
+  return `ed25519:${encodeBase58(spki.subarray(spki.length - 32))}`;
+}
+
+/** Next public key for this colony. A revoked key stays on the mock wallet, so a re-add uses the next deterministic sequence key. */
 export function nextDirectorPublicKey(colonyId: string, previous: string | null): string {
-  const stem = `ed25519:d:${colonyId.toLowerCase()}`;
-  if (!previous || !previous.startsWith(`${stem}:`)) return `${stem}:1`;
-  const n = Number(previous.slice(stem.length + 1));
-  const next = Number.isSafeInteger(n) && n > 0 ? n + 1 : 1;
-  return `${stem}:${next}`;
+  if (!previous) return deriveDirectorPublicKey(colonyId, 1);
+  const legacyStem = `ed25519:d:${colonyId.toLowerCase()}:`;
+  if (previous.startsWith(legacyStem)) {
+    const n = Number(previous.slice(legacyStem.length));
+    return deriveDirectorPublicKey(colonyId, Number.isSafeInteger(n) && n > 0 ? n + 1 : 1);
+  }
+  for (let seq = 1; seq <= 128; seq += 1) {
+    if (deriveDirectorPublicKey(colonyId, seq) === previous) {
+      return deriveDirectorPublicKey(colonyId, seq + 1);
+    }
+  }
+  return deriveDirectorPublicKey(colonyId, 1);
 }

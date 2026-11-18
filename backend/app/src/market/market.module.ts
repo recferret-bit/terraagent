@@ -51,6 +51,9 @@ import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
+import { AiModule } from '../ai/ai.module.js';
+import { McpController } from '../ai/mcp/mcp.controller.js';
+import { McpService } from '../ai/mcp/mcp.service.js';
 import { DirectorColonySource, SimDirectorSource } from './director/director-source.js';
 import { DirectorDigestRecorder } from './director/digest-recorder.js';
 import { DirectorMatchGuard } from './director/director-match-guard.js';
@@ -118,6 +121,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeStreamService,
     TradeAgentService,
     TradeStallService,
+    McpService,
     DirectorSimMarket,
     SimDirectorSource,
     { provide: DirectorMarketPort, useExisting: DirectorSimMarket },
@@ -132,8 +136,9 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketAnalyticsController,
     TradeController,
     TradeDevController,
+    McpController,
   ],
-  imports: [NearModule, EconomyModule, GameModule, GuildModule],
+  imports: [NearModule, AiModule, EconomyModule, GameModule, GuildModule],
   exports: [
     OrderRelease,
     MarketOrderRepository,

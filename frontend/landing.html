@@ -20,8 +20,8 @@
 
   <div class="ticker" aria-hidden="true">
     <div class="ticker-track">
-      <span>▲ LIGHTNING STRIKE · PYLON SEVERED · BUILDER DISPATCHED</span><span>◆ NEW PLANET OPEN · DESERT · 5 SEATS</span><span>▲ METEOR IMPACT · NEW MINERAL DEPOSIT REVEALED</span><span>◆ DIRECTOR: WATER CRITICAL → BUILD PUMP, TRADE METALS</span><span>▲ PLANET SEALED · 5 / 5 COLONIES</span><span>◆ ROCKET LAUNCHED · COLONY TRANSFERRED</span>
-      <span>▲ LIGHTNING STRIKE · PYLON SEVERED · BUILDER DISPATCHED</span><span>◆ NEW PLANET OPEN · DESERT · 5 SEATS</span><span>▲ METEOR IMPACT · NEW MINERAL DEPOSIT REVEALED</span><span>◆ DIRECTOR: WATER CRITICAL → BUILD PUMP, TRADE METALS</span><span>▲ PLANET SEALED · 5 / 5 COLONIES</span><span>◆ ROCKET LAUNCHED · COLONY TRANSFERRED</span>
+      <span>▲ LIGHTNING STRIKE · PYLON SEVERED · BUILDER DISPATCHED</span><span>◆ NEW PLANET OPEN · DESERT · 24H RECRUITING</span><span>▲ METEOR IMPACT · NEW MINERAL DEPOSIT REVEALED</span><span>◆ DIRECTOR: WATER CRITICAL → BUILD PUMP, TRADE METALS</span><span>▲ SECTOR SEALED · COLONIES LOCKED</span><span>◆ ROCKET LAUNCHED · COLONY SETTLED</span>
+      <span>▲ LIGHTNING STRIKE · PYLON SEVERED · BUILDER DISPATCHED</span><span>◆ NEW PLANET OPEN · DESERT · 24H RECRUITING</span><span>▲ METEOR IMPACT · NEW MINERAL DEPOSIT REVEALED</span><span>◆ DIRECTOR: WATER CRITICAL → BUILD PUMP, TRADE METALS</span><span>▲ SECTOR SEALED · COLONIES LOCKED</span><span>◆ ROCKET LAUNCHED · COLONY SETTLED</span>
     </div>
   </div>
 
@@ -42,17 +42,16 @@
         <span class="wordmark">TERRA<b>AGENT</b></span>
       </a>
       <nav class="nav" aria-label="Sections">
-        <a href="#drop"><span>01</span> DROP</a>
+        <a href="#drop"><span>01</span> LOOP</a>
         <a href="#colony"><span>02</span> COLONY</a>
         <a href="#economy"><span>03</span> ECONOMY</a>
         <a href="#planets"><span>04</span> PLANETS</a>
-        <a href="#director"><span>05</span> DIRECTOR</a>
+        <a href="#director"><span>05</span> AI</a>
         <a href="#economics"><span>06</span> EARN</a>
         <a href="#protocol"><span>07</span> PROTOCOL</a>
-        <a href="#chain"><span>08</span> CHAIN</a>
+        <a href="#chain"><span>08</span> CONTRACTS</a>
         <a href="#roadmap"><span>09</span> ROADMAP</a>
-        <a href="#market"><span>10</span> MARKET</a>
-        <a href="#faq"><span>11</span> FAQ</a>
+        <a href="#faq"><span>10</span> FAQ</a>
       </nav>
       <div class="header-right">
         <a class="btn btn-primary btn-sm btn-play-header" href="/play.html?planet=dune">PLAY</a>
@@ -79,7 +78,7 @@ It keeps building.</h1>
             <div class="stat"><div class="label">COLONIES OPERATING</div><div class="readout" data-stat="coloniesAlive">—</div></div>
             <div class="stat"><div class="label">PLAYERS ONLINE</div><div class="readout c-blue" data-stat="playersOnline">—</div></div>
           </div>
-          <p class="stats-note">LIVE FROM GET /v1/planets/stats · REFRESHED EVERY 60 S</p>
+          <p class="stats-note">UPDATED EVERY 60 S FROM LIVE SERVERS</p>
         </div>
 
         <div class="viewport viewport-hero plate brackets">
@@ -106,7 +105,7 @@ It keeps building.</h1>
         <article class="card plate card-hover step">
           <div class="step-top"><span class="step-num">01</span><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#FF6A13" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"/></svg></div>
           <h3 class="h3">Pick an open planet</h3>
-          <p>First time? You see every planet still taking colonies. Each holds 5 colonies and stops taking new ones after 24 hours, so you never land next to a week-old empire.</p>
+          <p>First time? You see every planet still taking colonies. Worlds close new landings once seats fill or 24 hours pass, so you never drop next to a week-old empire.</p>
         </article>
         <article class="card plate card-hover step">
           <div class="step-top"><span class="step-num">02</span><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#FF6A13" stroke-width="1.6" aria-hidden="true"><path d="M12 3v10M8 9l4 4 4-4"/><rect x="6" y="15" width="12" height="6"/><path d="M9 18h6"/></svg></div>
@@ -195,7 +194,7 @@ It keeps building.</h1>
               <div class="tier tier-2"><b>MK.II</b><span>2×2 · 42 s</span></div>
               <div class="tier tier-3"><b>MK.III</b><span>3×3 · 90 s</span></div>
             </div>
-            <p>Each tier produces about 3× more, costs about 3× more, takes a bigger footprint and longer to build. Upgrade in place if the ring around it is free; you pay only the difference. Refining raw inputs across MK.I–MK.III yields <b>10 tradeable NEP-245 orbital cargo tokens</b> (<code>metals.t1..t3</code>, <code>minerals.t1..t3</code>, <code>bio.water</code>, <code>bio.biomass</code>, <code>bio.t2..t3</code>), while grid Energy (<code>E/s</code>) stays local and non-tokenized.</p>
+            <p>Each tier produces about 3× more, costs about 3× more, and takes a larger footprint and longer build time. Upgrade in place if the surrounding ring is clear and pay only the difference. Refined metals, minerals, water, and biomass can be shipped to orbit for trade; grid power stays on the surface.</p>
           </div>
         </div>
       </div>
@@ -208,9 +207,9 @@ It keeps building.</h1>
           <p class="eyebrow">04 · PLANETS &amp; MATCHMAKING</p>
           <h2 class="h1">New players land on new worlds.</h2>
         </div>
-        <p>A planet takes colonies until it has 5, or until 24 hours have passed since the first landing. Then it seals and plays out for up to 14 days. Nobody gets dropped next to a week-old empire.</p>
+        <p>A planet accepts new colonies until its sector seats fill or 24 hours pass since the first landing. Then it seals and plays out for up to 14 days. Nobody gets dropped next to a week-old empire.</p>
       </div>
-      <p class="label example-note">PLAYABLE NOW · LIVE SERVER PLANETS OVER WEBSOCKET · 5 SEATS PER PLANET · 24H RECRUITING WINDOW</p>
+      <p class="label example-note">OPEN WORLDS · 24-HOUR LANDING WINDOW</p>
       <div class="grid-auto planet-grid">
         <article class="planet plate card-hover">
           <div class="planet-art"><canvas data-planet="dune" role="img" aria-label="Live 3D render of the planet"></canvas></div>
@@ -245,36 +244,54 @@ It keeps building.</h1>
     <!-- 05 DIRECTOR -->
     <section class="band" id="director">
       <div class="container section">
-        <div class="director">
-          <div class="director-copy">
-            <p class="eyebrow">05 · THE AI DIRECTOR</p>
-            <h2 class="h1" style="margin-top:12px">Rules for routine.<br><span class="sub-blue">An AI for emergencies.</span></h2>
-            <p>Most decisions come from a deterministic rule engine running every 5 Hz tick that already knows your planet, hazards and resource map. The NEAR.AI Director (<code>z-ai/glm-5.3-flash</code> TEE) runs in a batched planet sweep every 3 minutes (180 s, packing up to 5 colonies into 1 RPC with a 120 s state-digest cooldown so burst re-triggers on unchanged colonies spend zero extra LLM tokens) or on critical events: a severe shortage, a raid, a new neighbor, or the rocket race.</p>
-            <div class="split">
-              <div class="split-row"><span>RULE ENGINE · EVERY TICK</span><span class="c-orange-hi">90–95 %</span></div>
-              <div class="split-bar"><span class="rules"></span><span class="ai"></span></div>
-              <div class="split-row"><span>AI DIRECTOR · EVENT-DRIVEN</span><span class="c-blue">5–10 %</span></div>
-            </div>
-          </div>
+        <div class="sec-head">
           <div>
-            <div class="terminal plate">
-              <div class="terminal-bar"><span>DIRECTOR LOG · EXAMPLE</span><span><span class="c-terra">●</span> RULES CONTINUE IF THE AI IS SLOW</span></div>
-              <div class="terminal-body">
-                <div style="color:var(--ta-dim)">▸ trigger: water_critical · severity: critical</div>
-                <div class="gap">Planet: Desert | Water: critical | Solar: high</div>
-                <div>Neighbor offer: water for metals</div>
-                <div>Player priority: expand</div>
-                <div>Current: 3 miners, 1 solar, low defense</div>
-                <div class="gap c-blue">◆ directive</div>
-                <div style="color:var(--ta-text)">Accept the water trade, queue a water pump,</div>
-                <div style="color:var(--ta-text)">then one turret before expanding east.</div>
-                <div class="gap c-orange-hi">→ trade.respond(accept) · enqueue(pump) · enqueue(turret)</div>
-                <div style="color:var(--ta-dim);margin-top:8px">applied at next tick · validated against stock and territory<span class="blink c-orange">▌</span></div>
+            <p class="eyebrow">05 · AUTONOMOUS AI DIRECTOR</p>
+            <h2 class="h1">Rules run every tick.<br><span class="sub-blue">AI steps in when the plan breaks.</span></h2>
+          </div>
+          <p>Mining, power routing, and build queues run on the game server at 5 Hz with zero model calls. When a drought, raid, or price spread opens while you are away, <code>NEAR.AI</code> reviews sanitized colony telemetry inside a confidential enclave, respects your price-band and kill-switch gates, and issues one bounded order you can cryptographically verify right inside the HUD.</p>
+        </div>
+        <div class="director-meta">
+          <div class="split plate-sm">
+            <div class="split-row"><span>RULE ENGINE · EVERY TICK</span><span class="c-orange-hi">90–95 %</span></div>
+            <div class="split-bar"><span class="rules"></span><span class="ai"></span></div>
+            <div class="split-row"><span>NEAR.AI DIRECTOR · EMERGENCIES &amp; OFFLINE</span><span class="c-blue">5–10 %</span></div>
+          </div>
+          <div class="scenarios-modes" aria-label="Three ways colony autonomy runs">
+            <div class="mode-pill plate-sm"><span>DEFAULT · FREE</span><b>Rule Engine</b><small>Follows your queue &amp; repairs</small></div>
+            <div class="mode-pill plate-sm is-blue"><span>STAKER · ≥10 NEAR</span><b>Managed NEAR.AI</b><small>Included with Day-1 staking</small></div>
+            <div class="mode-pill plate-sm"><span>BYOK · /ME</span><b>Your Own Model</b><small>Encrypted NEAR AI Cloud key</small></div>
+          </div>
+        </div>
+        <div class="director-console plate">
+          <div class="director-scenarios-col" id="director-scenarios"></div>
+          <div class="director-trace-col">
+            <div class="terminal plate-sm" id="director-terminal">
+              <div class="terminal-bar">
+                <span data-dir-title>DIRECTOR TRACE · WATER SHORTAGE</span>
+                <span><span class="c-terra">●</span> <span data-dir-attest>ENCLAVE VERIFIED · TEE</span></span>
+              </div>
+              <div class="terminal-body" data-dir-body>
+                <div style="color:var(--ta-dim)">▸ trigger: water_critical · biome: desert</div>
+                <div class="gap">Stock: metals 340, water 14 | Grid: +18 E/s</div>
+                <div>Guild ship Kestrel: asking 0.88 USDC for bio.water</div>
+                <div>Limits: war=off · spend_cap=ok · demolish=blocked</div>
+                <div class="gap c-blue">◆ near.ai directive (z-ai/glm-5.3-flash)</div>
+                <div style="color:var(--ta-text)">Buy 40 bio.water from Kestrel below 0.92 cap,</div>
+                <div style="color:var(--ta-text)">then queue a condensation pump on ridge hex.</div>
+                <div class="gap c-orange-hi">→ market.acceptGuildOffer() · enqueue(water_pump)</div>
+                <div style="color:var(--ta-dim);margin-top:8px">enclave attestation verified in-browser (WebCrypto ECDSA) · 1 order queued<span class="blink c-orange">▌</span></div>
+              </div>
+            </div>
+            <div class="scenarios-foot">
+              <span><b>GOVERNED LIMITS</b> The Director sanitizes player labels, checks live order exposure, and honors kill switches &amp; key revocation. Click <code>TEE ✓</code> in the HUD (or <b>Verify &amp; Save</b> on <code>/me.html</code>) to inspect its enclave proof.</span>
+              <div class="scenarios-links">
+                <a class="scenarios-cta" href="/dev/economy-sim/">7-DAY ECONOMY SIM →</a>
+                <a class="scenarios-cta" href="/me.html">PILOT / BYOK →</a>
               </div>
             </div>
           </div>
         </div>
-        <div id="director-scenarios"></div>
       </div>
     </section>
 
@@ -292,18 +309,18 @@ It keeps building.</h1>
     <section class="container section chain" id="chain">
       <div class="sec-head">
         <div>
-          <p class="eyebrow">08 · ON NEAR, OUT OF THE WAY</p>
-          <h2 class="h1">You play a colony,<br><span class="sub-blue">not a wallet.</span></h2>
+          <p class="eyebrow">08 · ON-CHAIN OWNERSHIP</p>
+          <h2 class="h1">Play a colony,<br><span class="sub-blue">not wallet popups.</span></h2>
         </div>
-        <p>Start without a wallet, settle trades through NEAR Intents, and let six deployed Rust smart contracts plus <code>protocol.terraagent.testnet</code> record cargo, deeds, treaty escrows, Day-1 staking, planetary governance, and cold-root pilot accounts in the background.</p>
+        <p>The game simulation runs at full speed on the server while six deployed Rust contracts on NEAR (plus a standalone intent verifier crate) record colony deeds, orbital cargo, bonded diplomacy, staking, and council votes. <a href="/whitepaper/#sub-web3-operator-accounts">Whitepaper: Contracts &amp; Gas Accounts →</a></p>
       </div>
       <div class="grid-auto chain-pillars">
-        <div class="card plate card-hover"><div class="label">01 · GUEST FIRST</div><h3 class="h3">Start without a wallet</h3><p>Drop in as a guest or social pilot. Cold-root pilot provisioning, scoped session keys, and NEP-366 gasless relaying keep wallet popups out of your way until atomic non-custodial claim.</p></div>
-        <div class="card plate card-hover"><div class="label">02 · NEAR.AI · STAKER OR BYOK</div><h3 class="h3">Batched GLM-5.3 Flash TEE Director</h3><p>Stake ≥10 NEAR to unlock server-sponsored NEAR.AI Autopilot (<code>z-ai/glm-5.3-flash</code>), or attach your own encrypted BYOK key &amp; custom model on <a href="/me.html">/me</a>.</p></div>
-        <div class="card plate card-hover"><div class="label">03 · INTENTS &amp; 6 CONTRACTS</div><h3 class="h3">11 / 11 ports live on Testnet</h3><p>Every pilot sub-account, resource export, 4-way trade split, peace/war escrow, validator stake, and council vote settles across six Rust contracts and <code>intents.near</code>.</p></div>
+        <div class="card plate card-hover"><div class="label">STEP 01 · DROP IN</div><h3 class="h3">Start without a wallet</h3><p>Play immediately as a guest or with social sign-in. Early colony transactions are sponsored automatically inside shared daily gas limits.</p></div>
+        <div class="card plate card-hover"><div class="label">STEP 02 · EXPORT</div><h3 class="h3">Real cargo &amp; 1Click ramp</h3><p>Resources shipped to orbit mint 1:1 on NEAR to trade across stalls, Guild freighters, MCP bots, or cross-chain via NEAR Intents 1Click.</p></div>
+        <div class="card plate card-hover"><div class="label">STEP 03 · CLAIM</div><h3 class="h3">Self-custody + scoped session keys</h3><p>Connect Meteor, MyNearWallet, Intear, OKX, NEAR Mobile, Bitte AI, HOT, HERE, Nightly, or Sender. Rotating keys gives you full custody while optionally keeping a revocable trading session key and 1-click NEAR Social deed shares.</p></div>
       </div>
 
-      <div class="contracts-board plate" id="contracts-board" aria-label="Deployed NEAR Testnet smart contracts"></div>
+      <div class="contracts-board plate" id="contracts-board" aria-label="Deployed NEAR smart contracts"></div>
     </section>
 
     <!-- 09 ROADMAP -->
@@ -312,9 +329,9 @@ It keeps building.</h1>
         <div class="sec-head">
           <div>
             <p class="eyebrow">09 · ROADMAP</p>
-            <h2 class="h1">Flight plan.<br><span class="sub">Where the colony is, and where it is going.</span></h2>
+            <h2 class="h1">Flight plan.<br><span class="sub">What is live today, and what comes next.</span></h2>
           </div>
-          <p>Scroll to fly the route. Green is live on NEAR Testnet, orange is next (<code>NEAR_MODE=mainnet</code> switchover), blue is booked post-launch, red was cut on purpose.</p>
+          <p>Green is live on NEAR Testnet right now, orange is queued for Mainnet launch, blue is booked for Season 1, and red was cut on purpose.</p>
         </div>
 
         <div class="mission" id="mission">
@@ -327,21 +344,16 @@ It keeps building.</h1>
             <span class="leg-node" aria-hidden="true"></span>
             <div class="leg-card plate">
               <header class="leg-h"><span class="leg-id">LEG 1</span><span class="badge badge-ok">LIVE ON TESTNET</span></header>
-              <h3 class="h3">Full-stack RTS, 6 Rust contracts &amp; NEAR.AI TEE</h3>
-              <p class="leg-when">Oct 29 – Nov 14, 2026 · 27 engineering waves shipped on main</p>
-              <div class="leg-meter" role="img" aria-label="11 of 11 items done"><i style="width:100%"></i></div>
+              <h3 class="h3">Persistent 3D colony game, live market &amp; NEAR.AI</h3>
+              <p class="leg-when">Playable today · Full colony loop, exchange &amp; NEAR Testnet contracts</p>
+              <div class="leg-meter" role="img" aria-label="6 of 6 core systems live"><i style="width:100%"></i></div>
               <ul class="tasks">
-                <li class="t-done">Authoritative NestJS + Postgres + <code>@terra/sim</code> server over binary WebSockets</li>
-                <li class="t-done">Three live biomes (Desert, Ocean Forest, Temperate), stages S0–S10, insect fauna, combat &amp; cultivation</li>
-                <li class="t-done"><b>Identity &amp; Gasless UX:</b> Cold-root <code>pilots.terraagent.testnet</code> factory, FastAuth PKCE/NEP-413 login, NEP-366 gasless relayer &amp; atomic non-custodial claim</li>
-                <li class="t-done"><b>NEP-245 Cargo:</b> Orbital Port minting/burning 10 resource commodities on <code>res.terraagent.testnet</code></li>
-                <li class="t-done"><b>NEP-413 Intents &amp; 1Click:</b> 24/7 CLOB &amp; Trade Hub stalls settled via zero-sum <code>token_diff</code> Intents + live 1Click quotes</li>
-                <li class="t-done"><b>Orbital Guild AMM:</b> Scheduled NPC merchants (<code>Kestrel</code>, <code>Vanguard</code>) with 24h organic VWAP pricing</li>
-                <li class="t-done"><b>NEAR.AI TEE &amp; Bot Keys:</b> Batched NEAR.AI Cloud TEE Director (<code>z-ai/glm-5.3-flash</code>), BYOK <code>/me</code> vault &amp; scoped <code>ta_bot_...</code> keys</li>
-                <li class="t-done"><b>NEP-171 Deeds &amp; Staking:</b> Dynamic soulbound Colony Deed NFTs (<code>deed.terraagent.testnet</code>) &amp; Day-1 Lossless Staking (<code>staking.terraagent.testnet</code>)</li>
-                <li class="t-done"><b>Planet Council DAO:</b> Planetary governance treasuries (<code>dao.terraagent.testnet</code>) with &gt;50% quorum proposals</li>
-                <li class="t-done"><b>Diplomacy &amp; War Escrows:</b> Mercenary bounties, Bonded Peace Treaties &amp; 6h War Escrows (<code>bounty.terraagent.testnet</code>)</li>
-                <li class="t-done">Public MIT repo, live HTTPS stack (<code>terraagent.fun</code>), 7-day 25-agent swarm &amp; contractor simulator, and whitepaper</li>
+                <li class="t-done">24/7 server simulation and WebGL2 diorama across three biomes, combat, and terraforming</li>
+                <li class="t-done">Instant guest play, 10 NEAR wallets (incl. Bitte &amp; HOT), self-custody key rotation + scoped trading session keys</li>
+                <li class="t-done">Planet orderbook, Orbital Guild freighters, live cross-chain <code>1Click</code> ramp &amp; Hosted MCP Server (<code>/v1/mcp</code>)</li>
+                <li class="t-done">Governed NEAR.AI Director with prompt-injection guards, encrypted BYOK + browser <code>TEE ✓</code> verification, and Shade Agents + MPC</li>
+                <li class="t-done">NEP-171 Colony Deeds + NEAR Social shares, Day-1 staking, SputnikDAO v2 council export, and payable bond escrows</li>
+                <li class="t-done">Fast-forward 7-day multi-colony &amp; 25-agent market simulator at <a href="/dev/economy-sim/">/dev/economy-sim/</a></li>
               </ul>
             </div>
           </article>
@@ -349,14 +361,14 @@ It keeps building.</h1>
           <article class="leg is-next" data-leg>
             <span class="leg-node" aria-hidden="true"></span>
             <div class="leg-card plate">
-              <header class="leg-h"><span class="leg-id">LEG 2</span><span class="badge badge-recruiting">READY · 1 ENV SWITCH</span></header>
-              <h3 class="h3">NEAR Mainnet promotion</h3>
-              <p class="leg-when"><code>NEAR_MODE=mainnet NEAR_ALLOW_MAINNET=1</code> · 11/11 Mainnet adapters wired</p>
-              <div class="leg-meter" role="img" aria-label="11 of 11 mainnet adapters wired"><i style="width:100%"></i></div>
+              <header class="leg-h"><span class="leg-id">LEG 2</span><span class="badge badge-recruiting">MAINNET NEXT</span></header>
+              <h3 class="h3">NEAR Mainnet launch</h3>
+              <p class="leg-when">Mainnet adapters &amp; safety gates wired · awaiting launch sign-off</p>
+              <div class="leg-meter" role="img" aria-label="1 of 3 mainnet launch steps complete"><i style="width:33%"></i></div>
               <ul class="tasks">
-                <li class="t-done">Deploy the same 6 audited Rust WASM contracts under <code>*.terraagent.near</code> via <code>npm run near:deploy-contracts -- --network mainnet</code></li>
-                <li class="t-done">Direct on-chain settlement against <code>intents.near::execute_intents</code> (with <code>current_salt</code> &amp; <code>add_public_key</code>)</li>
-                <li class="t-later">Owner Mainnet launch sign-off, KMS root cold-key ceremony &amp; initial <code>USDC</code> / <code>wNEAR</code> Guild liquidity</li>
+                <li class="t-done">Mainnet adapter config, safety gates, and <code>intents.near</code> settlement support wired</li>
+                <li class="t-next">Deploy the six Rust contracts to <code>*.terraagent.near</code></li>
+                <li class="t-later">Cold-key governance ceremony and initial USDC / wNEAR Guild liquidity</li>
               </ul>
             </div>
           </article>
@@ -365,13 +377,13 @@ It keeps building.</h1>
             <span class="leg-node" aria-hidden="true"></span>
             <div class="leg-card plate">
               <header class="leg-h"><span class="leg-id">LEG 3</span><span class="badge badge-new">BOOKED</span></header>
-              <h3 class="h3">Season 1 · Alliances &amp; mobile push</h3>
-              <p class="leg-when">Post-Mainnet · multi-planet seasons &amp; live push alerts</p>
+              <h3 class="h3">Season 1 · Alliances &amp; mobile alerts</h3>
+              <p class="leg-when">Post-Mainnet · multi-planet seasons &amp; live notifications</p>
               <div class="leg-meter" role="img" aria-label="0 of 3 items done"><i style="width:0%"></i></div>
               <ul class="tasks">
-                <li class="t-later">Live Web Push &amp; Telegram raid/truce alerts (<code>NOTIFY_ADAPTER=live</code>)</li>
+                <li class="t-later">Web Push and Telegram raid &amp; truce alerts</li>
                 <li class="t-later">Seasonal leaderboard rewards &amp; cross-generation Settled Deed prestige</li>
-                <li class="t-later">Hardware wallet &amp; passkey session-key delegation in-browser</li>
+                <li class="t-later">Hardware wallet &amp; passkey session delegation in-browser</li>
               </ul>
             </div>
           </article>
@@ -396,58 +408,15 @@ It keeps building.</h1>
       </div>
     </section>
 
-    <!-- 10 ROAD TO MARKET -->
-    <section class="container section" id="market">
-      <div class="sec-head">
-        <div>
-          <p class="eyebrow">10 · ROAD TO MARKET</p>
-          <h2 class="h1">From first click<br><span class="sub-blue">to your own market.</span></h2>
-        </div>
-        <p>Every lane is a way a player finds the game, stays in it, or earns from it. COST is what the player pays. WHEN is the rollout status across Testnet and Mainnet.</p>
-      </div>
-
-      <ol class="route" aria-label="Player route">
-        <li class="plate-sm"><span class="r-n">01</span><b>ARRIVE</b><span>The orbit is already running behind the headline.</span></li>
-        <li class="plate-sm"><span class="r-n">02</span><b>DROP</b><span>Guest play. One robot, no wallet, no download.</span></li>
-        <li class="plate-sm"><span class="r-n">03</span><b>PARTY UP</b><span>Friends land on the same planet together.</span></li>
-        <li class="plate-sm"><span class="r-n">04</span><b>TRADE</b><span>Export cargo, own a market. The chain stays out of sight.</span></li>
-        <li class="plate-sm"><span class="r-n">05</span><b>RETURN</b><span>A ping brings you back to a colony that kept running.</span></li>
-      </ol>
-
-      <div class="board plate" id="board">
-        <div class="board-h"><span>ORBITAL TRADE HUB · LANE BOARD</span><span><i class="dot-live"></i> LIVE ON NEAR TESTNET · NOV 2026</span></div>
-        <div class="lanes" role="table" aria-label="Go-to-market lanes">
-          <div class="lane lane-head" role="row"><span role="columnheader">LANE</span><span role="columnheader">CARGO</span><span role="columnheader">COST</span><span role="columnheader">WHEN</span><span role="columnheader">STATUS</span></div>
-          <div class="lane" role="row"><b>GUEST PLAY</b><span>Open the page, pick a world, drop in. No wallet, no download, no sign-up.</span><span class="cost">$0</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>PARTY TICKETS</b><span>Friends join the same planet together before the 5-colony / 24h seal.</span><span class="cost">$0</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>AWAY DIGEST &amp; PINGS</b><span>Offline digest on return plus configurable Web Push / Telegram raid &amp; truce alerts.</span><span class="cost">$0</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>CARGO TOKENS</b><span>Exporting at the Trade Hub mints NEP-245 resource tokens on <code>res.terraagent.*</code>; swap them for NEAR or USDC.</span><span class="cost">NEAR / USDC</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>PLAYER MARKETS</b><span>Own a Trade Hub stall (0–1.0% maker fee) and settle orders through NEP-413 NEAR Intents.</span><span class="cost">0–1.0% stall</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>ORBITAL GUILD</b><span>Autonomous NPC merchants (<code>Kestrel</code>, <code>Vanguard</code>) quoting against 24h organic VWAP.</span><span class="cost">$0</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>COLONY AGENT</b><span>HQ &amp; <code>ta_bot_...</code> keys trade while you sleep under ACID daily spend caps and 1-click kill switches.</span><span class="cost">capped key</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>DAY-1 STAKING</b><span>Stake ≥10 NEAR on your claimed account: earn 7.2% net APY (80% yield), unlock Managed NEAR.AI Autopilot, and cut platform trade fees 50% (1.0% → 0.5%). Zero combat P2W.</span><span class="cost">≥10 NEAR</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>DAO, BOUNTIES &amp; BONDS</b><span>Planet Council DAO (20% of platform fee), mercenary bounties, plus Bonded Peace Treaties &amp; 6h War Escrows (90% victim/defender · 10% Protocol slash).</span><span class="cost">cargo / NEAR</span><span class="when">live</span><em class="flap s-live" data-flap>LIVE</em></div>
-          <div class="lane" role="row"><b>MAINNET SWITCHOVER</b><span>Flip <code>NEAR_MODE=mainnet</code> + <code>NEAR_ALLOW_MAINNET=1</code> for direct <code>intents.near</code> &amp; <code>*.terraagent.near</code> settlement.</span><span class="cost">1 env switch</span><span class="when">post-audit</span><em class="flap s-next" data-flap>READY</em></div>
-          <div class="lane is-off" role="row"><b>SPECTATORS</b><span>No spectator mode in v1.</span><span class="cost">–</span><span class="when">–</span><em class="flap s-off" data-flap>NOT LISTED</em></div>
-          <div class="lane is-off" role="row"><b>CROSS-PLANET TRADES</b><span>Deals settle on the same planet only.</span><span class="cost">–</span><span class="when">–</span><em class="flap s-off" data-flap>NOT LISTED</em></div>
-        </div>
-        <div class="board-f">
-          <span><b>CHAIN</b> hidden by design: social login, cold-root pilot accounts, gasless NEP-366 relays.</span>
-          <span><b>TRUST</b> the server simulation is the only mint authority; claim rotates keys to 100% self-custody.</span>
-          <span><b>PARITY</b> identical 11/11 port architecture across <code>mock</code>, <code>testnet</code>, and <code>mainnet</code>.</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- 11 FAQ -->
-    <section class="band" id="faq" style="border-bottom:0">
+    <!-- 10 FAQ -->
+    <section class="band" id="faq" style="border-top:1px solid var(--ta-seam);border-bottom:0">
       <div class="container section faq">
-        <p class="eyebrow">11 · FAQ</p>
+        <p class="eyebrow">10 · FAQ</p>
         <h2 class="h1">Questions from orbit</h2>
         <details open><summary>What happens to my colony when I close the tab?</summary><p>It keeps running on the server. The rule engine follows your last priorities, the AI Director handles emergencies, and builders repair what storms break. Next time you open the game you land straight in your colony.</p></details>
-        <details><summary>Why can't I join any planet I like?</summary><p>Planets stop taking colonies once they have 5 or are a day old. That keeps every new player on a fair start. A fresh planet of each type is always kept ready.</p></details>
+        <details><summary>Why can't I join any planet I like?</summary><p>Planets stop accepting new colonies once their seats fill or 24 hours pass since the first landing. That keeps every new player on a fair start. Fresh worlds open automatically.</p></details>
         <details><summary>Do I need a crypto wallet?</summary><p>No. You start as a guest. Linking or claiming a NEAR wallet is optional and unlocks self-custody withdrawals and Day-1 Staking.</p></details>
-        <details><summary>How do players earn money, and how does TerraAgent Protocol sustain itself?</summary><p>Players earn across four lanes: selling NEP-245 cargo for USDC/NEAR, collecting 0–1.0% Trade Hub stall fees, running scoped <code>ta_bot_...</code> trading bots, and claiming mercenary/treaty/war escrow payouts (90% slash on oathbreakers). <code>TerraAgent Protocol</code> (<code>protocol.terraagent.*</code>) funds gasless NEP-366 relays and Managed NEAR.AI Autopilot via 80% of platform trade fees (0.80%, or 0.40% for stakers), 20% of validator staking yield (1.8% APY slice), and 10% of diplomacy/war escrow slashes.</p></details>
+        <details><summary>How do players earn, and what pays for gas and AI?</summary><p>Sell refined cargo on <a href="/trade.html">/trade.html</a>, collect stall fees at your Trade Hub, run automated trading bots, or claim defense bounties. Real trade activity, staking yield, and forfeited bonds cover gas and AI—never an inflationary reward token.</p></details>
         <details><summary>How does a game end?</summary><p>Build a rocket, launch it, and carry part of your colony to a new planet in the sector. A planet itself ends after 14 days or when every colony on it is gone.</p></details>
       </div>
     </section>

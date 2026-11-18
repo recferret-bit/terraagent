@@ -268,7 +268,41 @@ export function normalizePlanetSummaryV1(summary: PlanetSummaryV1): PlanetSummar
     livingColonies: summary.livingColonies ?? null,
     presentColonies: summary.presentColonies ?? null,
     onlinePlayers: summary.onlinePlayers ?? null,
+    ...(summary.playerColonies !== undefined ? { playerColonies: summary.playerColonies } : {}),
+    ...(summary.botColonies !== undefined ? { botColonies: summary.botColonies } : {}),
     sectors,
+  };
+}
+
+export interface PlanetPopulationCounts {
+  readonly players: number;
+  readonly bots: number;
+  readonly online: number;
+  readonly openZones: number;
+  readonly totalZones: number;
+  readonly reservedZones: number;
+}
+
+/**
+ * Resolves real human player colony count, AI bot count, online pilot count, and open drop-zone counts
+ * from a canonical `PlanetSummaryV1` snapshot without inventing fake numbers.
+ */
+export function resolvePlanetPopulationCounts(summary: PlanetSummaryV1): PlanetPopulationCounts {
+  const coloniesBots = summary.colonies ? summary.colonies.filter((c) => c.isBot).length : 0;
+  const bots = summary.botColonies !== null && summary.botColonies !== undefined ? summary.botColonies : coloniesBots;
+  const totalLiving = summary.livingColonies ?? summary.foundedSeats;
+  const players =
+    summary.playerColonies !== null && summary.playerColonies !== undefined
+      ? summary.playerColonies
+      : Math.max(0, totalLiving - bots);
+  const online = summary.onlinePlayers ?? 0;
+  return {
+    players,
+    bots,
+    online,
+    openZones: summary.freeSeats,
+    totalZones: summary.validatedCapacity,
+    reservedZones: summary.reservedSeats,
   };
 }
 

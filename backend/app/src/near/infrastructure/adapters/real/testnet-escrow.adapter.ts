@@ -186,7 +186,7 @@ export class TestnetEscrowAdapter implements EscrowPort {
       beneficiary: row.beneficiary,
       tokenId: row.token_id,
       amount: row.amount,
-      expiresAtMs: 0,
+      expiresAtMs: row.expires_at_ms,
     });
   }
 

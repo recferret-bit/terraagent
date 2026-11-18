@@ -15,7 +15,11 @@ import {
   type UpdatePlayerAiSettings,
 } from '@terra/contracts';
 import { CoreException } from '../core/errors/index.js';
+import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
+import { DEFAULT_NEAR_AI_MODEL } from '../ai/nearai-models.js';
+import { resolveDbStakerPerks } from '../near/staking/staker-perks.js';
+import { LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
 import { FactsStore } from '../progression/facts.store.js';
 import { W12SeedService } from '../progression/w12-seed.service.js';
 import { XpStore } from '../progression/xp.store.js';
@@ -104,6 +108,8 @@ export class MeProfileService {
     @Optional() @Inject(ProgressionEngine) private readonly engine?: ProgressionEngine,
     @Optional() @Inject(PRISMA) private readonly db?: PrismaClient,
     @Optional() @Inject(PlayerAiSettingsStore) aiSettings?: PlayerAiSettingsStore,
+    @Optional() @Inject(LlmProviderPort) private readonly llm?: LlmProviderPort,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {
     this.aiSettings = aiSettings ?? new PlayerAiSettingsStore();
     if (this.seed) {
@@ -118,7 +124,78 @@ export class MeProfileService {
   }
 
   async getAiSettings(playerId: string): Promise<PlayerAiSettings> {
-    return this.aiSettings.getSettings(playerId);
+    const [base, staker] = await Promise.all([
+      this.aiSettings.getSettings(playerId),
+      this.resolvePlayerStakerSummary(playerId),
+    ]);
+    return { ...base, ...staker };
+  }
+
+  async verifyAiEnclave(playerId: string): Promise<{
+    readonly ok: boolean;
+    readonly model: string;
+    readonly managedStaker: boolean;
+    readonly usedPlayerKey: boolean;
+    readonly attestation: LlmAttestation | null;
+  }> {
+    const [creds, staker] = await Promise.all([
+      this.aiSettings.getCredentials(playerId),
+      this.resolvePlayerStakerSummary(playerId),
+    ]);
+    const hasKey = Boolean(creds.apiKey);
+    if (!hasKey && !staker.stakerAutopilotActive) {
+      throw new CoreException('invalid_ai_settings', {
+        status: 400,
+        message: 'Save a BYOK NEAR.AI key or stake >=10 NEAR in Colony Staking before running a TEE enclave check.',
+      });
+    }
+    if (!this.llm) {
+      return { ok: false, model: creds.model, managedStaker: staker.stakerAutopilotActive, usedPlayerKey: hasKey, attestation: null };
+    }
+    const model = hasKey ? creds.model : DEFAULT_NEAR_AI_MODEL;
+    const res = await this.llm.complete({
+      system: 'Reply strictly with JSON {"ok":true} for a TEE attestation probe.',
+      messages: [{ role: 'user', content: 'ping' }],
+      maxTokens: 24,
+      temperature: 0,
+      json: true,
+      model,
+      ...(hasKey && creds.apiKey ? { apiKey: creds.apiKey } : {}),
+    });
+    return {
+      ok: true,
+      model: res.model,
+      managedStaker: !hasKey && staker.stakerAutopilotActive,
+      usedPlayerKey: hasKey,
+      attestation: res.attestation ?? null,
+    };
+  }
+
+  private async resolvePlayerStakerSummary(
+    playerId: string,
+  ): Promise<{ readonly stakerAutopilotActive: boolean; readonly stakedNear: string }> {
+    const liveDb = this.engine?.enabled ? this.db : undefined;
+    if (!liveDb) return { stakerAutopilotActive: false, stakedNear: '0' };
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    const [linked, cols] = await Promise.all([
+      liveDb.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' }, select: { accountId: true } }),
+      liveDb.colony.findMany({ where: { playerId }, take: 5, select: { id: true } }),
+    ]);
+    let bestYocto = 0n;
+    let active = false;
+    let stakedNear = '0';
+    for (const candidate of [
+      ...cols.map((c) => ({ colonyId: c.id })),
+      ...(linked?.accountId ? [{ accountId: linked.accountId }] : []),
+    ]) {
+      const perks = await resolveDbStakerPerks(liveDb, { ...candidate, env: envMap }).catch(() => null);
+      if (perks && perks.totalStakedYocto >= bestYocto) {
+        bestYocto = perks.totalStakedYocto;
+        active = active || perks.managedAutopilotUnlocked;
+        stakedNear = perks.totalStakedNear;
+      }
+    }
+    return { stakerAutopilotActive: active, stakedNear };
   }
 
   async updateAiSettings(
@@ -200,7 +277,7 @@ export class MeProfileService {
     const isGuest = liveDb ? !linked && !playerId.startsWith('pr_dev_') : resolved.isGuest;
     const stats = buildProfileStats(facts, unlockStage, currentColonies, allPastColonies);
     const next3 = this.achievements.nextAchievements(achRes.achievements, 3);
-    const aiSettings = await this.aiSettings.getSettings(playerId);
+    const aiSettings = await this.getAiSettings(playerId);
 
     return {
       identity: {

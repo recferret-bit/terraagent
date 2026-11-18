@@ -18,6 +18,7 @@ import {
   formatUnbondingSummary,
   REAL_NEAR_COPY,
   renderStakingPoolOptions,
+  sendStakingWalletTx,
   syncStakingRewardsLabel,
   upsertStakingPositionList,
 } from './parts/stakingPanelParts';
@@ -54,6 +55,7 @@ export class StakingPanel implements Disposable {
   readonly stakeBtnEl: HTMLButtonElement;
   readonly unstakeBtnEl: HTMLButtonElement;
   readonly withdrawBtnEl: HTMLButtonElement;
+  readonly depositWalletBtnEl: HTMLButtonElement;
   readonly claimBtnEl: HTMLButtonElement;
   readonly statusMsgEl: HTMLSpanElement;
 
@@ -93,18 +95,11 @@ export class StakingPanel implements Disposable {
     };
 
     const dom = buildStakingPanelLayout({
-      onClaim: () => {
-        void this.claimAccountFlow();
-      },
-      onStake: () => {
-        void this.stakeFlow();
-      },
-      onUnstake: () => {
-        void this.unstakeFlow();
-      },
-      onWithdraw: () => {
-        void this.withdrawFlow();
-      },
+      onClaim: () => void this.claimAccountFlow(),
+      onStake: () => void this.stakeFlow(),
+      onUnstake: () => void this.unstakeFlow(),
+      onWithdraw: () => void this.withdrawFlow(),
+      onWalletDeposit: () => void this.walletDepositFlow(),
     });
     this.root = dom.root;
     this.walletBalanceEl = dom.walletBalanceEl;
@@ -123,6 +118,7 @@ export class StakingPanel implements Disposable {
     this.withdrawableValEl = dom.withdrawableValEl;
     this.unstakeBtnEl = dom.unstakeBtnEl;
     this.withdrawBtnEl = dom.withdrawBtnEl;
+    this.depositWalletBtnEl = dom.depositWalletBtnEl;
     this.statusMsgEl = dom.statusMsgEl;
 
     this.parent.appendChild(this.root);
@@ -440,6 +436,22 @@ export class StakingPanel implements Disposable {
 
     this.unstakeBtnEl.disabled = Number(stakedNear) <= 0;
     this.withdrawBtnEl.disabled = Number(withdrawableNear) <= 0;
+    this.depositWalletBtnEl.hidden = this.activeNetwork() === 'mock';
+  }
+
+  private async walletDepositFlow(): Promise<void> {
+    const net = this.activeNetwork();
+    if (net === 'mock') return;
+    await sendStakingWalletTx({
+      fetchFn: this.fetchFn,
+      network: net,
+      action: 'stake_payable',
+      poolId: this.poolSelectEl.value || DEFAULT_STAKING_POOLS[0].poolId,
+      amountNear: this.amountInputEl.value || '10',
+      accountId: this.claimedByAccountId ?? this.serverAccountId,
+      statusMsgEl: this.statusMsgEl,
+      onSuccess: () => this.refreshFromServer(),
+    });
   }
 
   private activeNetwork(): 'mock' | RealNearNetwork {

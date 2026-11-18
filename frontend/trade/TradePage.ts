@@ -15,6 +15,7 @@ import { renderLadder } from './view/ladderView';
 import { renderMarketOrders, renderOverview } from './view/marketView';
 import { renderFills, renderOrders } from './view/ordersView';
 import { Pickers } from './view/pickers';
+import { RampView } from './view/rampView';
 import { StallEditor } from './view/stallView';
 import { OrderTicket } from './view/ticketView';
 
@@ -38,7 +39,7 @@ export class TradePage {
   private readonly ticket: OrderTicket;
   private readonly keys: KeysPanel;
   private readonly stallEditor: StallEditor;
-  private readonly p: Record<'ladder' | 'board' | 'ticket' | 'balances' | 'market' | 'pairs' | 'orders' | 'fills' | 'keys', Panel>;
+  private readonly p: Record<'ladder' | 'board' | 'ticket' | 'balances' | 'ramp' | 'market' | 'pairs' | 'orders' | 'fills' | 'keys', Panel>;
   private stream: TradeStream | null = null;
   private tab: TabId = 'market';
   private filter: OrderFilter = 'open';
@@ -68,9 +69,11 @@ export class TradePage {
     this.p = {
       ladder: panel('book', 'Depth ladder', 'click a level to prefill the ticket'), board: panel('board', 'Price board'),
       ticket: panel('ticket', 'Order ticket'), balances: panel('balances', 'Balances (yours only)'),
+      ramp: panel('ramp', 'Cross-Chain 1Click Ramp', 'NEAR / Base / Arbitrum -> Colony USDC'),
       market: panel('market', 'All resting orders'), pairs: panel('overview', 'All pairs'), orders: panel('orders', 'My orders'),
       fills: panel('fills', 'My fills'), keys: panel('keys', 'Bot / API keys'),
     };
+    this.p.ramp.body.append(new RampView(client).root);
     this.ticket = new OrderTicket({ client, state: () => this.store.get(), onSent: () => this.afterOrderChange() });
     this.p.ticket.body.append(this.ticket.root);
     this.keys = new KeysPanel(this.p.keys.body, { client, state: () => this.store.get(), reload: () => { void this.loaders.keys(true); } });
@@ -144,7 +147,7 @@ export class TradePage {
       this.onboardingStrip(),
       h('main', { class: 'tr-grid', id: 'tr-main' },
         h('div', { class: 'tr-col tr-col-a' }, this.p.ladder.root, this.p.board.root),
-        h('div', { class: 'tr-col tr-col-b' }, this.p.ticket.root, this.p.balances.root)),
+        h('div', { class: 'tr-col tr-col-b' }, this.p.ticket.root, this.p.balances.root, this.p.ramp.root)),
       h('section', { class: 'tr-lower', id: 'tr-lower', 'aria-label': 'Orders, fills and keys' }, tabs, ...panes));
   }
 

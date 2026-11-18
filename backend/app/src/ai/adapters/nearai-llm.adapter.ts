@@ -14,8 +14,21 @@ import {
   NEAR_AI_MODELS,
   normalizeNearAiModel,
 } from '../nearai-models.js';
+import {
+  evaluateTeeAttestation,
+  verifyCryptographicSignature,
+  verifySignatureHashes,
+  type RawSignaturePayload,
+} from './nearai-signature.js';
 
-export { DEFAULT_NEAR_AI_BASE, DEFAULT_NEAR_AI_MODEL, NEAR_AI_MODELS, normalizeNearAiModel };
+export {
+  DEFAULT_NEAR_AI_BASE,
+  DEFAULT_NEAR_AI_MODEL,
+  NEAR_AI_MODELS,
+  normalizeNearAiModel,
+  verifyCryptographicSignature,
+  verifySignatureHashes,
+};
 export const NEAR_AI_KEY_MISSING = 'NEAR_AI_API_KEY is not set';
 
 export type FetchLike = typeof globalThis.fetch;
@@ -48,14 +61,6 @@ interface RawChatCompletion {
   usage?: { prompt_tokens?: number; completion_tokens?: number; inputTokens?: number; outputTokens?: number };
 }
 
-interface RawSignaturePayload {
-  text?: string;
-  signature?: string;
-  signing_address?: string;
-  signing_algo?: string;
-  signature_kind?: string;
-}
-
 function parseCompletionJson(rawBody: string): RawChatCompletion {
   try {
     return JSON.parse(rawBody) as RawChatCompletion;
@@ -64,40 +69,24 @@ function parseCompletionJson(rawBody: string): RawChatCompletion {
   }
 }
 
-export function verifySignatureHashes(
-  sig: RawSignaturePayload,
-  modelId: string,
-  requestHash: string,
-  responseHash: string,
-): { verified: boolean; kind: 'provider_tee' | 'gateway' | 'legacy' } {
-  const text = typeof sig.text === 'string' ? sig.text : '';
-  const hasSig = typeof sig.signature === 'string' && sig.signature.length > 0;
-  const hasAddr = typeof sig.signing_address === 'string' && sig.signing_address.length > 0;
-  if (!text || !hasSig || !hasAddr) return { verified: false, kind: 'legacy' };
-
-  const providerExpected = `${modelId}:${requestHash}:${responseHash}`;
-  const gatewayExpected = `${requestHash}:${responseHash}`;
-  if (text === providerExpected) {
-    const kind = sig.signature_kind === 'gateway' ? 'gateway' : 'provider_tee';
-    return { verified: true, kind };
-  }
-  if (text === gatewayExpected) {
-    return { verified: true, kind: sig.signature_kind === 'provider_tee' ? 'provider_tee' : 'gateway' };
-  }
-  return { verified: false, kind: 'legacy' };
+function resolveSigningAlgo(env: Readonly<Record<string, string | undefined>>): 'ecdsa' | 'ed25519' {
+  return env.NEAR_AI_SIGNING_ALGO?.trim().toLowerCase() === 'ed25519' ? 'ed25519' : 'ecdsa';
 }
 
-async function fetchAttestationSignature(
-  fetchImpl: FetchLike,
-  baseUrl: string,
-  key: string,
-  chatId: string,
-  modelId: string,
-  requestHash: string,
-  responseHash: string,
-  signal?: AbortSignal,
-): Promise<LlmAttestation> {
-  const algo: 'ecdsa' | 'ed25519' = 'ecdsa';
+async function fetchAttestationSignature(params: {
+  readonly fetchImpl: FetchLike;
+  readonly baseUrl: string;
+  readonly key: string;
+  readonly chatId: string;
+  readonly modelId: string;
+  readonly responseModelId?: string;
+  readonly requestHash: string;
+  readonly responseHash: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly signal?: AbortSignal;
+}): Promise<LlmAttestation> {
+  const { fetchImpl, baseUrl, key, chatId, modelId, responseModelId, requestHash, responseHash, env, signal } = params;
+  const algo = resolveSigningAlgo(env);
   const url = `${baseUrl.replace(/\/+$/, '')}/signature/${encodeURIComponent(chatId)}?model=${encodeURIComponent(modelId)}&signing_algo=${algo}`;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -108,17 +97,16 @@ async function fetchAttestationSignature(
       });
       if (!res.ok) continue;
       const sig = (await res.json()) as RawSignaturePayload;
-      const check = verifySignatureHashes(sig, modelId, requestHash, responseHash);
-      return {
+      return evaluateTeeAttestation({
+        sig,
         chatId,
+        modelId,
+        responseModelId,
         requestHash,
         responseHash,
-        signingAddress: sig.signing_address,
-        signature: sig.signature,
-        signingAlgo: sig.signing_algo === 'ed25519' ? 'ed25519' : 'ecdsa',
-        signatureKind: check.kind,
-        verified: check.verified,
-      };
+        requestedAlgo: algo,
+        env,
+      });
     } catch {
       break;
     }
@@ -202,16 +190,18 @@ export class NearAiLlmAdapter extends LlmProviderPort {
     const chatId = parsed.id || '';
     const attestation =
       chatId && resolvedEnv.NEAR_AI_ATTEST !== '0'
-        ? await fetchAttestationSignature(
-            this.fetchImpl,
+        ? await fetchAttestationSignature({
+            fetchImpl: this.fetchImpl,
             baseUrl,
             key,
             chatId,
             modelId,
+            responseModelId: parsed.model,
             requestHash,
             responseHash,
-            req.signal,
-          )
+            env: resolvedEnv,
+            signal: req.signal,
+          })
         : chatId
           ? { chatId, requestHash, responseHash, verified: false }
           : undefined;

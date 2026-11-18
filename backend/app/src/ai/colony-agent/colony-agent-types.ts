@@ -198,14 +198,21 @@ export function observeColony(state: PlanetState, colonyIndex: number): ColonyOb
 }
 
 export function observationDigest(obs: ColonyObservation): string {
+  const sM = Math.floor((obs.stock['metals.t1'] ?? 0) / 25);
+  const sMin = Math.floor((obs.stock['minerals.t1'] ?? 0) / 25);
+  const sW = Math.floor((obs.stock['bio.water'] ?? 0) / 25);
+  const oM = Math.floor((obs.inOrbit?.['metals.t1'] ?? 0) / 25);
   return [
     obs.colonyIndex,
     obs.stage,
     obs.persona,
+    obs.aiEnabled ? 1 : 0,
+    obs.warDiplomacyAllowed ? 1 : 0,
     obs.brownout ? 1 : 0,
     obs.pendingOfferId ?? '-',
     obs.unshieldedTargetIndex ?? '-',
     obs.truceCandidateIndex ?? '-',
+    `${sM}:${sMin}:${sW}:${oM}`,
   ].join('|');
 }
 
@@ -397,6 +404,7 @@ export function buildSimCommandFromDirective(obs: ColonyObservation, directive: 
         amount,
         price: { token: quoteRes, amount: quoteAmount },
         ttlS: 900,
+        ...(obs.isBot ? {} : { director: true }),
       },
     };
   }

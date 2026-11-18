@@ -29,7 +29,7 @@ export function renderSectorChooserHtml(
   const pausedBadge = queuePaused
     ? `<span class="badge sector-queue-badge" data-testid="sector-queue-paused" data-queue-paused="true">QUEUE PAUSED</span>`
     : '';
-  const autoBtn = `<button type="button" class="sector-opt sector-opt-auto plate-sm${autoSelClass}" data-testid="sector-opt-auto" data-sector-mode="auto" data-sector-id="auto" data-availability="${summary.availability}" data-free-seats="${summary.freeSeats}" data-validated-capacity="${summary.validatedCapacity}" aria-pressed="${isAuto ? 'true' : 'false'}"><span class="sector-opt-id">AUTO · AUTOMATIC SECTOR</span><span class="sector-opt-seats">${summary.freeSeats}/${summary.validatedCapacity} FREE</span><span class="badge sector-opt-avail" data-availability="${summary.availability}">${summary.availability.toUpperCase()}</span></button>`;
+  const autoBtn = `<button type="button" class="sector-opt sector-opt-auto plate-sm${autoSelClass}" data-testid="sector-opt-auto" data-sector-mode="auto" data-sector-id="auto" data-availability="${summary.availability}" data-free-seats="${summary.freeSeats}" data-validated-capacity="${summary.validatedCapacity}" aria-pressed="${isAuto ? 'true' : 'false'}"><span class="sector-opt-id">AUTO · BEST OPEN ZONE</span><span class="sector-opt-seats">${summary.freeSeats}/${summary.validatedCapacity} ZONES</span><span class="badge sector-opt-avail" data-availability="${summary.availability}">${summary.availability.toUpperCase()}</span></button>`;
   const landBtns = landSectors
     .map((sec) => renderLandSectorOptionHtml(sec, intent.mode === 'chosen' && intent.sectorId === sec.sectorId))
     .join('');
@@ -40,6 +40,7 @@ export function renderSectorChooserHtml(
 export function bindSectorChooserEvents(
   container: HTMLElement,
   onSelect: (intent: SectorIntentV1) => void,
+  onHover?: (sectorId: string | null) => void,
 ): void {
   container.querySelectorAll<HTMLElement>('.sector-opt').forEach((btn) => {
     btn.onclick = () => {
@@ -51,5 +52,12 @@ export function bindSectorChooserEvents(
         onSelect({ mode: 'auto' });
       }
     };
+    if (onHover) {
+      btn.onpointerenter = () => {
+        const sid = btn.dataset.sectorId;
+        onHover(sid && sid !== 'auto' ? sid : null);
+      };
+      btn.onpointerleave = () => onHover(null);
+    }
   });
 }

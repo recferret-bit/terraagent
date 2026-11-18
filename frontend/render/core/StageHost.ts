@@ -17,6 +17,10 @@ export class StageHost {
   time = 0;
   private visibility = new Map<Element, boolean>();
   private last = performance.now();
+  private rafId = 0;
+  private io: IntersectionObserver | null = null;
+  private ro: ResizeObserver | null = null;
+  private disposed = false;
 
   constructor(private readonly o: StageHostOptions) {
     this.reduced = o.reduced ?? prefersReducedMotion();
@@ -27,24 +31,39 @@ export class StageHost {
   get visible() { return [...this.visibility.values()].some(Boolean); }
 
   start() {
+    if (this.disposed) return this;
     const { elements, onResize, threshold } = this.o;
     if ('IntersectionObserver' in window) {
-      const io = new IntersectionObserver((es) => {
+      this.io = new IntersectionObserver((es) => {
         es.forEach((e) => this.visibility.set(e.target, e.isIntersecting));
         this.last = performance.now(); // no dt spike when a stage scrolls back into view
       }, threshold === undefined ? undefined : { threshold });
-      elements.forEach((el) => io.observe(el));
+      elements.forEach((el) => this.io!.observe(el));
     }
-    if (onResize && elements[0]) new ResizeObserver(onResize).observe(elements[0]);
-    if (!this.reduced) requestAnimationFrame(this.loop);
+    if (onResize && elements[0] && 'ResizeObserver' in window) {
+      this.ro = new ResizeObserver(onResize);
+      this.ro.observe(elements[0]);
+    }
+    if (!this.reduced) this.rafId = requestAnimationFrame(this.loop);
     return this;
   }
 
   /** Render one frame by hand (reduced-motion stills, layout changes). */
   renderOnce(dt = 0, time = this.time) { this.o.onFrame(dt, time); }
 
+  dispose() {
+    this.disposed = true;
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.rafId = 0;
+    this.io?.disconnect();
+    this.io = null;
+    this.ro?.disconnect();
+    this.ro = null;
+  }
+
   private loop = (now: number) => {
-    requestAnimationFrame(this.loop);
+    if (this.disposed) return;
+    this.rafId = requestAnimationFrame(this.loop);
     const dt = clamp((now - this.last) / 1000, 0, this.o.maxDt ?? 0.05);
     this.last = now;
     if (!this.visible) return;

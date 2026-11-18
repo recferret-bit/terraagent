@@ -1,18 +1,7 @@
+import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
-  Inject,
-  Injectable,
-  Optional,
-  type OnModuleDestroy,
-  type OnModuleInit,
-} from '@nestjs/common';
-import {
-  StakingActionResponse,
-  StakingStatusResponse,
-  type Nep413Signature,
-  type StakeRequest,
-  type StakingPositionDto,
-  type UnstakeRequest,
-  type WithdrawRequest,
+  StakingActionResponse, StakingStatusResponse,
+  type Nep413Signature, type StakeRequest, type StakingPositionDto, type UnstakeRequest, type WithdrawRequest,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../core/errors/index.js';
@@ -25,12 +14,13 @@ import { StakingPort } from '../application/ports/staking.port.js';
 import { DeedTelemetryService } from '../deed/deed-telemetry.service.js';
 import { DeedRepository, type StoredDeedRecord } from '../deed/deed.repository.js';
 import { NearException } from '../domain/errors.js';
-import { verifyNep413ClaimSignature } from '../identity/nep413-verifier.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../infrastructure/network/near-network.config.js';
 import { AccountClaimService, type AccountClaimStatus } from './account-claim.service.js';
+import { verifyStakingWalletSignature, type FullAccessKeyVerifier, type StakingSignableAction } from './staking-signature-guard.js';
 import { StakingPositionSyncService } from './staking-position-sync.service.js';
 import { buildStakerPerksFromYocto, sumDtoStakedYocto } from './staker-perks.js';
+import { buildStakingWalletTxDescriptor, type StakingWalletTxDescriptor, type StakingWalletTxQuery } from './staking-wallet-tx.js';
 import {
   CLAIM_ACCOUNT_PATH,
   NEAR_TOKEN_ID,
@@ -86,6 +76,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(DeedTelemetryService) private readonly telemetry?: DeedTelemetryService,
+    @Optional() private readonly keyVerifier?: FullAccessKeyVerifier,
   ) {}
 
   onModuleInit(): void {
@@ -212,7 +203,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     this.assertWaveEnabled();
     const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
     const sig = input.walletSignature ?? input.signature;
-    this.verifyRealNetworkSignatureIfPresent(sig, claimInfo, input.pool);
+    await this.verifyRealNetworkSignatureIfPresent('stake', deed.colonyId, sig, claimInfo, input.pool, input.amount);
     const amountYocto = nearToYocto(input.amount);
     const nonce = sig?.nonce ?? String(++this.opCounter);
     const opId = input.opId?.trim() || stakeOpId(deed.colonyId, input.pool, nonce);
@@ -257,7 +248,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     this.assertWaveEnabled();
     const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
     const sig = input.walletSignature ?? input.signature;
-    this.verifyRealNetworkSignatureIfPresent(sig, claimInfo, input.pool);
+    await this.verifyRealNetworkSignatureIfPresent('unstake', deed.colonyId, sig, claimInfo, input.pool, input.amount);
     const amountYocto = nearToYocto(input.amount);
     const nonce = sig?.nonce ?? String(++this.opCounter);
     const opId = input.opId?.trim() || unstakeOpId(deed.colonyId, input.pool, nonce);
@@ -296,13 +287,14 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     this.assertWaveEnabled();
     const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
     const sig = input.walletSignature ?? input.signature;
-    this.verifyRealNetworkSignatureIfPresent(sig, claimInfo, input.pool);
+    await this.verifyRealNetworkSignatureIfPresent('withdraw', deed.colonyId, sig, claimInfo, input.pool, input.amount);
     const nonce = sig?.nonce ?? String(++this.opCounter);
     const opId = input.opId?.trim() || withdrawOpId(deed.colonyId, input.pool, nonce);
 
     const receipt = await this.staking.withdraw({
       opId,
       accountId: claimInfo.accountId,
+      toAccountId: claimInfo.claimedByAccountId ?? claimInfo.accountId,
       pool: input.pool,
     });
 
@@ -452,6 +444,10 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  walletTxDescriptor(query: StakingWalletTxQuery): StakingWalletTxDescriptor {
+    return buildStakingWalletTxDescriptor(query, (this.env ?? process.env) as Record<string, string | undefined>);
+  }
+
   private resolveProtocolAccountId(): string {
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
     const kind = nearAdapterFor('Staking', envMap);
@@ -460,27 +456,24 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private verifyRealNetworkSignatureIfPresent(
+    action: StakingSignableAction,
+    colonyId: string,
     sig: Nep413Signature | undefined,
     claimInfo: AccountClaimStatus,
     poolId: string,
-  ): void {
+    amount?: string | number,
+  ): Promise<void> {
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
-    const kind = nearAdapterFor('Staking', envMap);
-    if (kind === 'mock') return;
-    if (!sig) {
-      throw new NearException('NEAR_PROVIDER_REJECTED', {
-        status: 401,
-        message: 'NEP-413 walletSignature is required for real-network staking actions.',
-      });
-    }
-    const net = kind === 'mainnet' ? 'mainnet' : 'testnet';
-    const cfg = resolveNearNetworkConfig(envMap, net);
-    const expectedWallet = claimInfo.claimedByAccountId ?? claimInfo.accountId;
-    verifyNep413ClaimSignature({
-      signature: sig,
-      expectedWalletAccountId: expectedWallet,
-      allowedRecipients: [poolId, cfg.contracts.staking, cfg.rootAccount],
-      network: net,
+    return verifyStakingWalletSignature({
+      sig,
+      action,
+      colonyId,
+      claimInfo,
+      poolId,
+      amount,
+      envMap,
+      keyVerifier: this.keyVerifier,
+      prisma: this.db(),
     });
   }
 

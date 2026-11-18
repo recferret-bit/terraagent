@@ -144,6 +144,7 @@ export const PublicColonySummaryV1Schema = z.strictObject({
   displayName: z.string().min(1).max(64),
   foundingSectorId: SectorIdSchema,
   foundedAt: z.string().datetime(),
+  isBot: z.boolean().optional(),
 });
 export type PublicColonySummaryV1 = z.infer<typeof PublicColonySummaryV1Schema>;
 
@@ -178,6 +179,8 @@ export const PlanetSummaryV1Schema = z
     livingColonies: z.number().int().nonnegative().nullable(),
     presentColonies: z.number().int().nonnegative().nullable(),
     onlinePlayers: z.number().int().nonnegative().nullable(),
+    playerColonies: z.number().int().nonnegative().nullable().optional(),
+    botColonies: z.number().int().nonnegative().nullable().optional(),
     updatedAt: z.string().datetime(),
     sectors: z.array(SectorSummaryV1Schema).min(1),
     colonies: z.array(PublicColonySummaryV1Schema).optional(),

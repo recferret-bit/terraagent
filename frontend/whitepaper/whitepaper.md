@@ -1,6 +1,6 @@
 # TerraAgent — Whitepaper (draft v0.1, 2026-10-31)
 
-> Outward-facing specification updated 2026-11-14. Matches [`README.md`](https://github.com/recferret-bit/terraagent/blob/main/README.md), `@terra/sim` deterministic rules, and the live NEAR Testnet deployments. Fee rates, staking splits, and guild parameters are configurable protocol defaults calibrated in the 7-day economy simulator (`/dev/economy-sim/`). *Note: this document describes game and protocol mechanics and makes no promise regarding any token value.*
+> Outward-facing specification updated 2026-11-18. Matches [`README.md`](https://github.com/recferret-bit/terraagent/blob/main/README.md), `@terra/sim` deterministic rules, and the live NEAR Testnet deployments + 7-crate Rust workspace. Fee rates, staking splits, and guild parameters are configurable protocol defaults calibrated in the 7-day economy simulator (`/dev/economy-sim/`). *Note: this document describes game and protocol mechanics and makes no promise regarding any token value.*
 
 ## 1. Thesis: the economy is the gameplay
 
@@ -8,12 +8,12 @@ Traditional strategy games stop when you close the browser tab and patch balance
 
 ## 2. Web3 ownership & first-class NEAR accounts
 
-- **Human Pilots:** Drop in immediately via FastAuth, OAuth, or NEAR wallet sign-in (`{pilot}.pilots.terraagent.testnet`). Gasless `NEP-366` meta-transactions eliminate seed-phrase popups during play, with atomic key rotation (`claimAccount`) to 100% self-custody at any time.
-- **Colony Sub-Accounts:** Isolated sub-accounts hold `NEP-245` orbital cargo, post bounties, settle peer trades, and own the soulbound `NEP-171` Colony Deed.
-- **AI Directors & Trading Bots:** Operate solely under scoped session keys (`director-key`, `ta_bot_...`) with strict daily spend allowances and instant revocation (`/v1/trade/kill`).
-- **Guild Traders & Protocol Treasury:** NPC freighters (`kestrel`, `vanguard`) quote VWAP-anchored spreads, while `protocol.terraagent.testnet` collects organic protocol shares to fund gasless onboarding and Managed NEAR.AI.
+- **Human Pilots:** Drop in immediately via FastAuth, OAuth, or 10 NEAR wallets (Meteor, MyNearWallet, Intear, OKX, NEAR Mobile, Bitte AI, HOT, HERE, Nightly, Sender) to provision `{pilot}.pilots.terraagent.testnet`. Authenticated `NEP-366` meta-transactions (`POST /v1/near/relay`) share a global daily gas budget, while atomic `claimAccount` rotates `[AddKey, DeleteKey]` to full self-custody and optionally seals a revocable scoped trading session key so 1-click orderbook trading (or direct `walletSignature` signing) works without surrendering custody.
+- **Colony Sub-Accounts & Social Identity:** Isolated sub-accounts hold `NEP-245` orbital cargo (`mt_batch_transfer`, `mt_transfer_call`, user `withdraw`, NEP-145 storage bounds), lock native payable NEAR and cargo escrows (`open_near_escrow`, `claim_expired_refund`), vote in Planet Council DAOs (with SputnikDAO v2 JSON export), and share soulbound `NEP-171` Colony Deeds (`prune_history`, NEP-181 pagination) directly to **NEAR Social**.
+- **AI Directors, Hosted MCP & Shade MPC:** Autonomous Directors use deterministic Ed25519 keys (`deriveDirectorPublicKey`) bound via on-chain `AddKey(FunctionCall)`/`DeleteKey`. External agents trade through the **Hosted MCP Server** (`POST /v1/mcp`, `GET /v1/mcp/agent-market.json`, `POST /v1/trade/agent/rfq`) alongside decentralized **Shade Agents** + **Chain Signatures MPC (`v1.signer`)**.
+- **Guild Traders & Protocol Treasury:** NPC freighters (`kestrel`, `vanguard`) quote VWAP-anchored spreads paired with a live **1Click Cross-Chain Deposit/Withdraw Ramp** on `/trade.html`, while `protocol.terraagent.testnet` collects organic protocol shares to fund gasless onboarding and Managed NEAR.AI.
 
-What autonomous agents **cannot** do without a human: exceed spend caps, break an active peace truce or cancel a war, lock human NEAR in bonds, dismantle buildings, claim ownership keys, or stake validator NEAR (`403 AI_STAKING_FORBIDDEN`).
+What autonomous agents **cannot** do without a human: bypass runtime governance (kill switches, paused policies, revoked director keys, live exposure limits, or VWAP price bands), inject instructions across isolated staker/player `<untrusted_player_label>` fences, exceed ACID spend caps, break an active peace truce or cancel a war, lock human NEAR in bonds, dismantle buildings, claim ownership keys, or stake validator NEAR (`403 AI_STAKING_FORBIDDEN`).
 
 ## 3. Player income, lossless staking, 4-way settlement & TerraAgent Protocol
 
@@ -28,9 +28,9 @@ What autonomous agents **cannot** do without a human: exceed spend caps, break a
 ## 4. Verifiable NEAR.AI commanders, Agent Commerce, 25-Agent Swarms & Guild pricing
 
 - **Orbital Guild VWAP Pricing:** Scheduled NPC freighters (`kestrel`, `vanguard`) quote every T1 pair from trailing `24h` organic VWAP (min `3` eligible fills) via `mid = ref * clamp((T + 10) / (I + 10), 0.50, 2.00)^0.5`, widening half-spreads from `2%` (`4%` full spread) to `15%` on the thin inventory side while exporting `10%` of surplus off-planet on departure.
-- **Batched TEE Commanders & Encrypted BYOK:** Rival AI colonies and Managed Staker Autopilot run batched `z-ai/glm-5.3-flash` turns on **NEAR AI Cloud** (`cloud-api.near.ai/v1`) inside hardware TEEs verified via NEAR AI Cloud `/v1/signature/{chat_id}` (`SHA-256` `model:request:response` ECDSA attestation persisted in TerraAgent's `ai` TEE signature log), alongside `AES-256-GCM` encrypted BYOK support (`GLM-5.3`, `GLM-5.3 Flash`, `DeepSeek V3.2`, `DeepSeek V4.1 Flash`, `Qwen 3.8 27B`, `GPT-5 Mini`, `Claude Sonnet 4.6`, or custom model IDs) on `/me.html`.
-- **Agent Commerce & 1-Round Negotiation:** Scoped colony contractors (`verdant-collective.terraagent.testnet`) decompose multi-step goals under strict `USDC`/`NEAR` budgets, execute 1-round benchmark counter-quote negotiation (`negotiateAgentQuote`: counter once when ask > planned, settle `<= walkAwayUnitPrice` via `NEP-413` or `bounty.terraagent.testnet`, or walk away to local smelting), and emit verifiable `AgentTaskReceipt` proofs.
-- **25-Sub-Account Zero-LLM Swarms:** Twenty cohort-typed buyer sub-accounts (`buyer-01..20.swarm.terraagent.testnet` across `terraformer`, `industrial`, `shield_builder`, and `arb_bot`) and five NPC/rival sellers (`seller-01..03.swarm` + `kestrel.npc`, `vanguard.npc`) clear multi-day scarcity rounds via a deterministic uniform-price auction (`zeroLlmCalls: true` in `/dev/economy-sim/`), filling bids in price-priority order (`maxPriceUsdc` descending) with verified multi-party `NEP-413` `sum(token_diff) == 0` conservation.
+- **Governed TEE Commanders, In-Browser Proofs & Encrypted BYOK:** Rival AI colonies and Managed Staker Autopilot run batched `z-ai/glm-5.3-flash` turns on **NEAR AI Cloud** (`cloud-api.near.ai/v1`) with strict staker prompt isolation and `<untrusted_player_label>` prompt-injection filtering. Runtime governance validates live order exposure, canonical price bands, kill switches, and active director keys (`AddKey`/`DeleteKey`), then verifies `/v1/signature/{chat_id}` (`SHA-256` `model:request:response` ECDSA), persists `DirectorTeeAttestation` records (`GET /v1/near/ai/attestations`), and lets pilots re-verify enclave proofs directly in-browser via WebCrypto (`TEE ✓` modal & live `/me.html` enclave probe). Stakers (`>= 10 NEAR`) also see an active `MANAGED STAKER AI ACTIVE` banner alongside `AES-256-GCM` BYOK vaults (`GLM-5.3`, `GLM-5.3 Flash`, `DeepSeek V3.2`, `DeepSeek V4.1 Flash`, `Qwen 3.8 27B`, `GPT-5 Mini`, `Claude Sonnet 4.6`, or custom model IDs).
+- **Hosted MCP Server, Agent RFQ & Persistent Nonces:** External agents discover pair specs at `GET /v1/mcp/agent-market.json`, execute JSON-RPC 2.0 tools (`get_orderbook`, `request_quote`, `place_signed_intent_order`, `cancel_order`, `get_planet_distances`) over `POST /v1/mcp` or `POST /v1/trade/agent/rfq`, and settle `NEP-413` `token_diff` swaps protected by persistent `nep413_used_nonce` replay tables plus a standalone **`verifier`** Rust contract crate (`env::ed25519_verify`).
+- **Contractor Agents, 25-Account Swarms & Shade MPC:** Scoped contractors execute 1-round negotiation (`negotiateAgentQuote`) and verifiable `AgentTaskReceipt` proofs, 25-account swarms clear zero-LLM uniform auctions (`/dev/economy-sim/`), and decentralized **Shade Agents** (`npm run shade:worker`) sign cross-chain actions via **NEAR Chain Signatures MPC (`v1.signer`)**.
 
 ## 5. Core loop, cadence & trust architecture
 
@@ -44,28 +44,38 @@ You land one Hero bot, build a Command Hub, expand across Desert, Ocean, and Tem
 
 | Trust Layer | Authoritative State | Responsibility |
 |---|---|---|
-| NEAR Protocol + NEAR.AI | Pilot/colony accounts, `NEP-245` cargo, `NEP-171` deeds, bonds, staking, DAO & TEE proofs | Custody, finality, and verifiable AI |
-| Simulation Server (`@terra/sim`) | Deterministic 5 Hz hex state, power grids, combat, and agent spend caps | Game physics and rate protection |
-| WebGL2 Client (`Three.js`) | 60 FPS diorama rendering, prediction, and input dispatch | Responsive UI (zero authority) |
+| NEAR Protocol + NEAR.AI | Pilot/colony accounts, scoped session & director keys, `NEP-245` cargo, `NEP-171` deeds, native escrows, staking, DAO, `verifier` & WebCrypto-checkable TEE proofs | Custody, finality, and verifiable AI |
+| Simulation Server (`@terra/sim`) | Deterministic 5 Hz hex state, power grids, combat, governed AI checks, MCP server & agent spend caps | Game physics, prompt isolation & rate protection |
+| WebGL2 Client (`Three.js`) | 60 FPS diorama rendering, 10-wallet selector, in-browser `TEE ✓` verifier & input dispatch | Responsive UI (zero authority) |
 
-## 6. Live NEAR Testnet deployments & sandbox parity
+## 6. Live NEAR Testnet deployments & workspace contracts
 
 | Account | Standard & Role | Testnet Proof |
 |---|---|---|
-| `res.terraagent.testnet` | `NEP-245` Orbital Cargo Multi-Token (10 commodities) | [5reiQL5X…](https://testnet.nearblocks.io/txns/5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok) |
-| `deed.terraagent.testnet` | `NEP-171` Soulbound Colony Deeds & Milestone Badges | [E1AGHyMm…](https://testnet.nearblocks.io/txns/E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK) |
-| `bounty.terraagent.testnet` | Mercenary Bounties, Peace Treaties & 6h War Escrows | [21F1c5Td…](https://testnet.nearblocks.io/txns/21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB) |
-| `staking.terraagent.testnet` | Day-1 Lossless Validator Vault (80/20 yield split) | [5UvHFrKU…](https://testnet.nearblocks.io/txns/5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2) |
-| `dao.terraagent.testnet` | Planet Council Treasury Voting (> 50% quorum) | [DmsGYQ7V…](https://testnet.nearblocks.io/txns/DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U) |
+| `res.terraagent.testnet` | `NEP-245` Orbital Cargo (`mt_batch_transfer`, `mt_transfer_call`, `withdraw`, NEP-145 bounds) | [5reiQL5X…](https://testnet.nearblocks.io/txns/5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok) |
+| `deed.terraagent.testnet` | `NEP-171` Soulbound Deeds (`prune_history`, NEP-181 pagination, NEAR Social shares) | [E1AGHyMm…](https://testnet.nearblocks.io/txns/E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK) |
+| `bounty.terraagent.testnet` | Mercenary Bounties, Truces & War Escrows (`open_near_escrow`, `mt_on_transfer`, `claim_expired_refund`) | [21F1c5Td…](https://testnet.nearblocks.io/txns/21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB) |
+| `staking.terraagent.testnet` | Day-1 Lossless Vault (`stake_payable`, LST `ft_on_transfer`, `GET /v1/near/staking/wallet-tx`) | [5UvHFrKU…](https://testnet.nearblocks.io/txns/5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2) |
+| `dao.terraagent.testnet` | Planet Council Treasury Voting + SputnikDAO v2 JSON export | [DmsGYQ7V…](https://testnet.nearblocks.io/txns/DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U) |
 | `pilots.terraagent.testnet` | Cold-Root Pilot Sub-Account Factory (`create_pilot_account`) | [cSTqNFu5…](https://testnet.nearblocks.io/txns/cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h) |
+| `verifier` (`NEAR_CONTRACT_VERIFIER`, workspace crate) | On-Chain NEP-413 `token_diff` Borsh/Ed25519 verifier & replay registry (`93` workspace Rust tests) | Pre-deploy WASM built |
+
+### Core Protocol & Gas-Paying Operator Accounts
+
+| Account | Role | Gas & Security Explanation | Testnet Proof |
+|---|---|---|---|
+| [`terraagent.testnet`](https://testnet.nearblocks.io/address/terraagent.testnet) | **Cold Root & Governance Owner** | Owns all deployed contracts and holds reserve NEAR for `npm run near:health --apply` top-ups; hot runtime stays isolated without root keys when `NEAR_USE_PILOTS_FACTORY=true`. | [3qmHWbgs…](https://testnet.nearblocks.io/txns/3qmHWbgsfNoykfDeuLsyGVw36kaUmGN5uUiJqrHBgRLH) |
+| [`protocol.terraagent.testnet`](https://testnet.nearblocks.io/address/protocol.terraagent.testnet) | **Protocol Treasury (`NEAR_PROTOCOL_ACCOUNT`)** | Receives 80% of platform trade fees, 20% of validator staking yield, and 10% of breached bond slashes to fund relayer gas and Managed NEAR.AI. | [9q3km4Ti…](https://testnet.nearblocks.io/txns/9q3km4TiFVGnY6HMZUaZdXWmtuMTJ1cy3hvGXyM9ArXY) |
+| [`relayer.terraagent.testnet`](https://testnet.nearblocks.io/address/relayer.terraagent.testnet) | **NEP-366 Gas Relayer & Pilot Operator (`NEAR_RELAYER_ACCOUNT`)** | Pays gas for allowlisted `SignedDelegate` meta-transactions within a shared `5 NEAR/day` daily cap (`<= 0.05 NEAR` attached deposit) and sponsors `0.02 NEAR` pilot creation on `pilots`. | [BWsCAjsC…](https://testnet.nearblocks.io/txns/BWsCAjsCUDrQsZbd85EHaLZZrFVWrvAHJseXoPpGFyY1) |
+| [`minter.terraagent.testnet`](https://testnet.nearblocks.io/address/minter.terraagent.testnet) | **Authorized Contract Gas Signer (`NEAR_MINTER_ACCOUNT`)** | Pays gas and signs serialized FIFO operator calls across `res`, `deed`, `bounty`, `staking`, and `dao` without holding root governance keys. | [9AyXKPYV…](https://testnet.nearblocks.io/txns/9AyXKPYVSLCDaZA59aZWihYmCr6PaqahAmcuH36uMok6) |
 
 | Capability | Live NEAR Testnet | Offline Local Sandbox |
 |---|---|---|
-| Accounts & Relayer | `pilots` factory + gasless `NEP-366` `relayer.terraagent.testnet` | Ephemeral local keypair & instant mock receipts |
-| Cargo & 4-Way Swaps | `res` `NEP-245` mint/burn + `NEP-413` `token_diff` & 1Click quotes | Local Postgres ledger & deterministic matcher |
-| Deeds & Bond Slashes | `deed` & `bounty` contracts with automatic 90/10 settlement | Mock chain tables with identical state transitions |
-| Staking & Planet DAO | `staking` (80/20 split, human-only) & `dao` proposal execution | Simulated validator epochs & local council tally |
-| Verifiable AI Commander | Hardware TEE `z-ai/glm-5.3-flash` + ECDSA attestation | Deterministic mock planner for offline testing |
+| Accounts & Relayer | `pilots` factory + authenticated `NEP-366` relayer (shared daily budget) + 10 wallets + scoped session keys | Ephemeral local keypair & instant mock receipts |
+| Cargo & 4-Way Swaps | `res` `NEP-245` mint/burn/transfer_call + `NEP-413` persistent nonces + `1Click` cross-chain ramp + Hosted MCP | Local Postgres ledger & deterministic matcher |
+| Deeds, Bonds & Social | `deed` + NEAR Social share & `bounty` native/cargo 90/10 escrows + expired self-refund | Mock chain tables with identical state transitions |
+| Staking, DAO & MPC | `staking` (80/20 split, human-only, direct wallet tx), `dao` + SputnikDAO v2 export & Shade `v1.signer` MPC | Simulated validator epochs & local council tally |
+| Verifiable AI Commander | Governed `z-ai/glm-5.3-flash` TEE + persisted attestations + browser WebCrypto `TEE ✓` verifier | Deterministic mock planner for offline testing |
 
 ## 7. Known risks & design trade-offs
 

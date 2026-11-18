@@ -118,3 +118,27 @@ model DirectorBudgetDay {
   @@map("director_budget_day")
   @@schema("ai")
 }
+
+/// Persistent NEAR.AI Cloud TEE attestation proof linked to colony directives.
+model DirectorTeeAttestation {
+  id              String   @id @db.VarChar(80)
+  colonyId        String   @map("colony_id") @db.VarChar(64)
+  planetId        String   @map("planet_id") @db.VarChar(64)
+  chatId          String   @map("chat_id") @db.VarChar(128)
+  model           String   @db.VarChar(128)
+  requestHash     String   @map("request_hash") @db.VarChar(128)
+  responseHash    String   @map("response_hash") @db.VarChar(128)
+  signingAlgo     String   @map("signing_algo") @db.VarChar(16)
+  signingAddress  String?  @map("signing_address") @db.VarChar(160)
+  signature       String?
+  signatureText   String?  @map("signature_text")
+  signatureKind   String   @map("signature_kind") @db.VarChar(32)
+  verified        Boolean  @default(false)
+  cryptoVerified  Boolean  @default(false) @map("crypto_verified")
+  directiveJson   Json     @map("directive_json")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([colonyId, createdAt])
+  @@map("director_tee_attestation")
+  @@schema("ai")
+}

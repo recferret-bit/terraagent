@@ -2,6 +2,13 @@ import type { NearAuthChallengeResponse, NearAuthVerifyRequest } from '@terra/co
 import type { SignedMessage, Wallet, WalletSelector } from '@near-wallet-selector/core';
 import type { Buffer as BufferPolyfill } from 'buffer';
 import { consumeRecentNep413PopupResult, savePendingNep413Redirect } from './nearAuthApi';
+export {
+  buildBitteSignMessageUrl,
+  detectInjectedNearWallets,
+  signWithExtraWallet,
+  type InjectedWalletDescriptor,
+  type WalletExtraModuleId,
+} from './walletSelectorExtras';
 
 export type WalletSelectorModuleId =
   | 'meteor-wallet'

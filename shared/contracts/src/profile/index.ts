@@ -138,6 +138,8 @@ export const PlayerAiSettingsSchema = z.strictObject({
   apiKeyPreview: z.string().nullable(),
   model: z.string().min(1),
   availableModels: z.array(z.string().min(1)),
+  stakerAutopilotActive: z.boolean().optional(),
+  stakedNear: z.string().optional(),
 });
 export type PlayerAiSettings = z.infer<typeof PlayerAiSettingsSchema>;
 

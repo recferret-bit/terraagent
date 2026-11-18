@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
+import { Account, KeyPairSigner, PublicKey, actions, type KeyPairString } from 'near-api-js';
 import { databaseEnabled } from '../../../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { PRISMA } from '../../../../db/db.module.js';
@@ -39,9 +40,11 @@ import {
 } from '../../../application/ports/agent-wallet.port.js';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
-import { encodeBase58 } from '../../../keystore/base58.js';
+import { kekEnv } from '../../../identity/colony-accounts.js';
+import { KeyStore, encodeBase58, loadKekRing } from '../../../keystore/index.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
-import { NearRpcClient } from '../../rpc/near-rpc.client.js';
+import { toNearException } from '../../rpc/near-error-map.js';
+import { NearRpcClient, outcomeToReceipt, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
 
 interface MemoryKeyRecord {
@@ -62,6 +65,8 @@ interface MemoryKeyRecord {
 export class TestnetAgentWalletAdapter implements AgentWalletPort {
   private readonly rpc: NearRpcClient;
   private readonly prisma: PrismaClient | null;
+  private readonly env: AppEnv;
+  private keyStore: KeyStore | null = null;
   private readonly subCache = new OpReceiptCache<CreateSubAccountResult>();
   private readonly receiptCache = new OpReceiptCache<ChainReceipt>();
   private readonly moveCache = new OpReceiptCache<AllowanceOpResult>();
@@ -74,7 +79,8 @@ export class TestnetAgentWalletAdapter implements AgentWalletPort {
     @Optional() @Inject(APP_ENV) env?: AppEnv,
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
   ) {
-    const source = (env ?? process.env) as Record<string, string | undefined>;
+    this.env = env ?? (process.env as unknown as AppEnv);
+    const source = this.env as unknown as Record<string, string | undefined>;
     this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('AgentWallet', source)));
     this.prisma = databaseEnabled(env) && prisma ? prisma : null;
   }
@@ -97,7 +103,9 @@ export class TestnetAgentWalletAdapter implements AgentWalletPort {
     assertAddLimitedKey(input);
     return this.receiptCache.run(`addKey:${input.opId}`, async () => {
       await this.assertKeyAbsent(input.accountId, input.publicKey);
-      const receipt = await this.anchorTx();
+      const receipt =
+        (await this.tryCustodialAccessKeyOp(input.accountId, input.publicKey, 'add', input)) ??
+        (await this.anchorTx());
       if (this.prisma) {
         await this.prisma.$transaction((tx) => insertLimitedKey(tx, input));
       } else {
@@ -111,7 +119,9 @@ export class TestnetAgentWalletAdapter implements AgentWalletPort {
     assertKeyRef(input.accountId, input.publicKey);
     return this.receiptCache.run(`revoke:${input.opId}`, async () => {
       await this.assertKeyPresent(input.accountId, input.publicKey);
-      const receipt = await this.anchorTx();
+      const receipt =
+        (await this.tryCustodialAccessKeyOp(input.accountId, input.publicKey, 'revoke')) ??
+        (await this.anchorTx());
       if (this.prisma) {
         await this.prisma.$transaction((tx) => revokeLimitedKey(tx, input.accountId, input.publicKey));
       } else {
@@ -258,6 +268,48 @@ export class TestnetAgentWalletAdapter implements AgentWalletPort {
       gasAllowance: rec.gasAllowance,
       gasSpent: '0',
     };
+  }
+
+  private keys(): KeyStore {
+    if (!this.keyStore) {
+      this.keyStore = new KeyStore(loadKekRing(kekEnv(this.env)));
+    }
+    return this.keyStore;
+  }
+
+  private async tryCustodialAccessKeyOp(
+    accountId: string,
+    publicKey: string,
+    mode: 'add' | 'revoke',
+    input?: AddLimitedKeyInput,
+  ): Promise<ChainReceipt | null> {
+    if (!this.prisma || accountId.endsWith('.mock') || accountId.includes('__')) return null;
+    let parsedPk: PublicKey;
+    try {
+      parsedPk = PublicKey.fromString(publicKey);
+    } catch {
+      return null;
+    }
+    const acct = await this.prisma.nearColonyAccount.findUnique({ where: { accountId } });
+    if (!acct || acct.encryptedSecret === 'mock' || acct.encryptedSecret === 'claimed') return null;
+    const seed = this.keys().open(acct);
+    const signer = KeyPairSigner.fromSecretKey(seedToNearSecretKey(seed) as KeyPairString);
+    const allowance = input && /^\d+$/.test(input.allowance) && BigInt(input.allowance) > 0n ? BigInt(input.allowance) : undefined;
+    const action =
+      mode === 'add'
+        ? actions.addFunctionCallAccessKey(parsedPk, input!.receiverId, [...input!.methodNames], allowance)
+        : actions.deleteKey(parsedPk);
+    try {
+      const outcome = await this.rpc.withFailover((provider) =>
+        new Account(accountId, provider, signer).signAndSendTransaction({
+          receiverId: accountId,
+          actions: [action],
+        }),
+      );
+      return outcomeToReceipt(outcome, this.rpc.network);
+    } catch (err) {
+      throw toNearException(err);
+    }
   }
 
   private async broadcastSubAccount(parent: string, accountId: string): Promise<ChainReceipt> {

@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
 import { AiModule } from '../ai/ai.module';
 import { ColonyAgentLoopService } from '../ai/colony-agent/colony-agent-loop.service';
+import { AiAttestationController } from '../ai/colony-agent/ai-attestation.controller';
+import { TeeAttestationStore } from '../ai/colony-agent/tee-attestation.store';
 import { EconomySimService } from '../ai/economy-sim/economy-sim.service';
 import { HomeService } from '../core/home/home.service';
 import { PRISMA } from '../db/db.module';
@@ -90,7 +92,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
   imports: [EconomyModule, AiModule],
-  controllers: [DevPlanetsController, DevLedgerController],
+  controllers: [DevPlanetsController, DevLedgerController, AiAttestationController],
   providers: [
     {
       provide: POOL,
@@ -136,6 +138,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
     ProgressionEventForwarder,
     HardModeClock,
     DevPresence,
+    TeeAttestationStore,
     ColonyAgentLoopService,
     EconomySimService,
     {

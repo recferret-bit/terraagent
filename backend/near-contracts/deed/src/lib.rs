@@ -6,6 +6,55 @@ const MAX_OP_ID_BYTES: usize = 128;
 const MAX_COLLECTION_BYTES: usize = 64;
 const MAX_TOKEN_ID_BYTES: usize = 128;
 const MAX_METADATA_BYTES: usize = 32_768;
+const MAX_HISTORY_ENTRIES: usize = 5;
+const TOKENS_INDEX_KEY: &[u8] = b"idx:tokens";
+
+fn read_all_token_ids() -> Vec<String> {
+    env::storage_read(TOKENS_INDEX_KEY)
+        .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn append_token_index(token_id: &str) {
+    let mut all = read_all_token_ids();
+    if !all.iter().any(|t| t == token_id) {
+        all.push(token_id.to_string());
+        if let Ok(encoded) = serde_json::to_vec(&all) {
+            env::storage_write(TOKENS_INDEX_KEY, &encoded);
+        }
+    }
+}
+
+fn cap_history_entries(history: &mut Vec<DeedHistoryEntry>) {
+    if history.len() <= MAX_HISTORY_ENTRIES {
+        return;
+    }
+    let genesis = history[0].clone();
+    let keep_tail = MAX_HISTORY_ENTRIES - 1;
+    let tail_start = history.len().saturating_sub(keep_tail);
+    let mut compact = Vec::with_capacity(MAX_HISTORY_ENTRIES);
+    compact.push(genesis);
+    compact.extend_from_slice(&history[tail_start..]);
+    *history = compact;
+}
+
+fn extract_media_url(metadata_json: &str, token_id: &str, version: u32) -> String {
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(metadata_json) {
+        if let Some(url) = val.get("imageUrl").and_then(|v| v.as_str()) {
+            let trimmed = url.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+        if let Some(media) = val.get("media").and_then(|v| v.as_str()) {
+            let trimmed = media.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    format!("/v1/deeds/{}/image?v={}", token_id, version)
+}
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,6 +85,10 @@ pub struct Nep177ContractMetadata {
     pub spec: String,
     pub name: String,
     pub symbol: String,
+    pub icon: Option<String>,
+    pub base_uri: Option<String>,
+    pub reference: Option<String>,
+    pub reference_hash: Option<String>,
 }
 
 #[near(serializers = [json])]
@@ -43,6 +96,9 @@ pub struct Nep177ContractMetadata {
 pub struct Nep171TokenMetadata {
     pub title: Option<String>,
     pub description: Option<String>,
+    pub media: Option<String>,
+    pub copies: Option<u64>,
+    pub reference: Option<String>,
     pub extra: Option<String>,
 }
 
@@ -105,9 +161,13 @@ impl DeedContract {
 
     pub fn nft_metadata(&self) -> Nep177ContractMetadata {
         Nep177ContractMetadata {
-            spec: "nft-2.0.0".to_string(),
+            spec: "nft-1.0.0".to_string(),
             name: "TerraAgent Colony Deeds & Badges".to_string(),
             symbol: "DEED".to_string(),
+            icon: None,
+            base_uri: Some("https://api.terraagent.fun".to_string()),
+            reference: None,
+            reference_hash: None,
         }
     }
 
@@ -178,6 +238,7 @@ impl DeedContract {
         }
         self.by_owner.insert(owner_account_id.clone(), owned);
         self.processed_ops.insert(op_id.clone(), token_id.clone());
+        append_token_index(&token_id);
 
         emit_nep171(
             "nft_mint",
@@ -243,6 +304,7 @@ impl DeedContract {
             metadata_json,
             at_ms: now,
         });
+        cap_history_entries(&mut deed.history);
         self.deeds.insert(token_id.clone(), deed.clone());
         self.processed_ops.insert(op_id.clone(), token_id.clone());
 
@@ -253,6 +315,23 @@ impl DeedContract {
                 "memo": op_id,
             }),
         );
+        deed
+    }
+
+    /// Compacts oversized historical deed entries down to `MAX_HISTORY_ENTRIES` (`5`: genesis + latest 4).
+    pub fn prune_history(&mut self, token_id: String) -> StoredDeed {
+        let caller = env::predecessor_account_id();
+        require!(
+            caller == self.operator_id || caller == self.owner_id,
+            "NEAR_NOT_OWNER: only operator may prune deed history"
+        );
+        let mut deed = self
+            .deeds
+            .get(&token_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("NEAR_NFT_NOT_FOUND: deed not found"));
+        cap_history_entries(&mut deed.history);
+        self.deeds.insert(token_id, deed.clone());
         deed
     }
 
@@ -271,19 +350,58 @@ impl DeedContract {
     }
 
     pub fn nft_token(&self, token_id: String) -> Option<Nep171Token> {
-        self.deeds.get(&token_id).map(|d| Nep171Token {
-            token_id: d.token_id.clone(),
-            owner_id: d.owner_account_id.clone(),
-            metadata: Nep171TokenMetadata {
-                title: Some(format!("TerraAgent Colony Deed {}", d.token_id)),
-                description: Some(if d.settled {
-                    "Settled Living Planet Colony Deed (Stage 4)".to_string()
-                } else {
-                    "Active TerraAgent Colony Deed".to_string()
-                }),
-                extra: Some(d.metadata_json.clone()),
-            },
+        self.deeds.get(&token_id).map(|d| {
+            let is_badge = d.collection.trim().eq_ignore_ascii_case("badge");
+            let title = if is_badge {
+                format!("TerraAgent Achievement Badge {}", d.token_id)
+            } else {
+                format!("TerraAgent Colony Deed {}", d.token_id)
+            };
+            let description = if is_badge {
+                "TerraAgent Soulbound Achievement Badge".to_string()
+            } else if d.settled {
+                "Settled Living Planet Colony Deed (Stage 4)".to_string()
+            } else {
+                "Active TerraAgent Colony Deed".to_string()
+            };
+            Nep171Token {
+                token_id: d.token_id.clone(),
+                owner_id: d.owner_account_id.clone(),
+                metadata: Nep171TokenMetadata {
+                    title: Some(title),
+                    description: Some(description),
+                    media: Some(extract_media_url(&d.metadata_json, &d.token_id, d.version)),
+                    copies: Some(1),
+                    reference: Some(format!("/v1/deeds/{}", d.token_id)),
+                    extra: Some(d.metadata_json.clone()),
+                },
+            }
         })
+    }
+
+    pub fn nft_total_supply(&self) -> String {
+        read_all_token_ids().len().to_string()
+    }
+
+    pub fn nft_tokens(&self, from_index: Option<String>, limit: Option<u32>) -> Vec<Nep171Token> {
+        let all = read_all_token_ids();
+        let start = from_index
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        let take = limit.unwrap_or(50).min(100) as usize;
+        all.into_iter()
+            .skip(start)
+            .take(take)
+            .filter_map(|tid| self.nft_token(tid))
+            .collect()
+    }
+
+    pub fn nft_supply_for_owner(&self, account_id: AccountId) -> String {
+        self.by_owner
+            .get(&account_id)
+            .map(|list| list.len())
+            .unwrap_or(0)
+            .to_string()
     }
 
     pub fn nft_tokens_for_owner(&self, account_id: AccountId) -> Vec<Nep171Token> {
@@ -292,6 +410,27 @@ impl DeedContract {
             .cloned()
             .unwrap_or_default()
             .into_iter()
+            .filter_map(|tid| self.nft_token(tid))
+            .collect()
+    }
+
+    pub fn nft_tokens_for_owner_page(
+        &self,
+        account_id: AccountId,
+        from_index: Option<String>,
+        limit: Option<u32>,
+    ) -> Vec<Nep171Token> {
+        let start = from_index
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        let take = limit.unwrap_or(50).min(100) as usize;
+        self.by_owner
+            .get(&account_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .skip(start)
+            .take(take)
             .filter_map(|tid| self.nft_token(tid))
             .collect()
     }

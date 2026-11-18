@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { NearNetwork, NearPortName } from '../../domain/types.js';
+import { NEAR_PORT_NAMES, type NearNetwork, type NearPortName } from '../../domain/types.js';
 import { nearAdapterFor } from '../adapter-selection.js';
 
 export const MAINNET_USDC_CONTRACT = '17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
@@ -21,6 +21,7 @@ export interface NearNetworkConfig {
     readonly dao: string;
     readonly pilots: string;
     readonly intents: string;
+    readonly verifier?: string;
   };
   readonly quoteTokens: {
     readonly wnear: string;
@@ -52,7 +53,7 @@ export interface NearNetworkConfig {
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
 
-/** Resolves whether a port (or global `NEAR_MODE`) targets `'mainnet'` or `'testnet'`. */
+/** Resolves whether a port (or global `NEAR_MODE` / per-port overrides) targets `'mainnet'` or `'testnet'`. */
 export function resolveActiveNearNetwork(
   port: NearPortName | null,
   env: EnvMap = process.env,
@@ -60,7 +61,12 @@ export function resolveActiveNearNetwork(
   if (port) {
     return nearAdapterFor(port, env) === 'mainnet' ? 'mainnet' : 'testnet';
   }
-  return env.NEAR_MODE?.trim() === 'mainnet' ? 'mainnet' : 'testnet';
+  const globalMode = env.NEAR_MODE?.trim().toLowerCase();
+  if (globalMode === 'mainnet') return 'mainnet';
+  if (globalMode === 'testnet') return 'testnet';
+  const hasMainnetPort = NEAR_PORT_NAMES.some((p) => nearAdapterFor(p, env) === 'mainnet');
+  const hasTestnetPort = NEAR_PORT_NAMES.some((p) => nearAdapterFor(p, env) === 'testnet');
+  return hasMainnetPort && !hasTestnetPort ? 'mainnet' : 'testnet';
 }
 
 function readKeyFile(credDir: string, accountId: string): string | undefined {
@@ -127,6 +133,7 @@ export function resolveNearNetworkConfig(
       dao: daoContract,
       pilots: env.NEAR_CONTRACT_PILOTS?.trim() || `pilots.${rootAccount}`,
       intents: env.NEAR_CONTRACT_INTENTS?.trim() || 'intents.near',
+      ...(env.NEAR_CONTRACT_VERIFIER?.trim() ? { verifier: env.NEAR_CONTRACT_VERIFIER.trim() } : {}),
     },
     quoteTokens: {
       wnear: env.NEAR_TOKEN_WNEAR?.trim() || (isMainnet ? 'wrap.near' : 'wrap.testnet'),

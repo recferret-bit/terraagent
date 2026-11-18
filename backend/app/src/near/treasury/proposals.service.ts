@@ -113,6 +113,36 @@ export class TreasuryProposalsService {
     return response;
   }
 
+  async exportSputnikDaoProposalJson(planetIdRaw: string | undefined, rawProposalId: string) {
+    const planetId = planetIdRaw?.trim();
+    if (!planetId) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'planetId query or path is required' });
+    const proposalId = parseProposalId(rawProposalId);
+    const ensured = await this.requireDao(planetId);
+    const view = await this.dao.get({ daoAccountId: ensured.daoAccountId });
+    const row = view.proposals.find((p) => p.proposalId === proposalId);
+    if (!row) throw new NearException('DAO_NOT_FOUND', { details: { proposalId } });
+    const payloadB64 = Buffer.from(JSON.stringify({ planetId, proposalId, kind: row.kind, description: row.description })).toString('base64');
+    return {
+      daoStandard: 'sputnik-dao-v2' as const,
+      planetId,
+      proposalId,
+      daoAccountId: ensured.daoAccountId,
+      status: row.state,
+      methodName: 'add_proposal' as const,
+      args: {
+        proposal: {
+          description: `${row.kind}: ${row.description}`,
+          kind: {
+            FunctionCall: {
+              receiver_id: ensured.daoAccountId,
+              actions: [{ method_name: 'execute_treasury_effect', args: payloadB64, deposit: '0', gas: '50000000000000' }],
+            },
+          },
+        },
+      },
+    };
+  }
+
   /** Open away digest for this account. No colony row means present, so existing votes still land. */
   private callerIsAway(planetId: string, accountId: string): Promise<boolean> {
     if (!this.prisma) return Promise.resolve(false);

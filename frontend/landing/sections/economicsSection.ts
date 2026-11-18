@@ -1,9 +1,8 @@
-// Interactive controller for Section 06 (#economics): mounts the 4 Income Lanes,
-// Who-Earns-What summary, live Day-1 Staking & Fee Calculator, and Why NEAR breakdown.
+// Interactive controller for Section 06 (#economics): mounts the 4 Income Lanes
+// and the unified Day-1 Lossless Staking & Fee Calculator.
 import {
   renderIncomeLanesHtml,
-  renderSimulatorSplitHtml,
-  renderWhyNearHtml,
+  renderStakingCalculatorHtml,
 } from './economicsTemplates';
 
 const GROSS_APY = 0.09;
@@ -38,12 +37,12 @@ function bindCalculator(root: HTMLElement): void {
     feeSaved.textContent = unlocked
       ? `${savedUsdc.toFixed(2)} USDC / mo (0.50% fee)`
       : `0.00 USDC / mo (1.00% fee)`;
-    aiMode.textContent = unlocked ? 'Managed NEAR.AI · 0% P2W' : 'Rule Engine / BYOK · 0% P2W';
+    aiMode.textContent = unlocked ? 'Managed AI Included' : 'Rule Engine or BYOK';
 
     banner.className = `econ-tier-banner ${unlocked ? 'is-unlocked' : ''}`;
     banner.textContent = unlocked
-      ? `★ STAKER PERKS ACTIVE (≥10 NEAR): 7.20% Net APY + Server-Sponsored NEAR.AI Autopilot + 50% Trade Fee Discount (1.00% → 0.50%)`
-      : `STANDARD TIER (<10 NEAR): 1.00% Platform Trade Fee · Stake ${STAKER_MIN_NEAR - stake} more NEAR to unlock Managed NEAR.AI Autopilot + 0.50% Fee`;
+      ? `STAKER TIER UNLOCKED (≥10 NEAR) · Principal stays yours · 2-day unbond`
+      : `STANDARD TIER (<10 NEAR) · Stake ${STAKER_MIN_NEAR - stake} more NEAR to unlock perks`;
   };
 
   stakeIn.addEventListener('input', update);
@@ -57,14 +56,13 @@ export function initEconomicsSection(): void {
 
   host.innerHTML = `<div class="sec-head">
       <div>
-        <p class="eyebrow">06 · PLAYER EARNINGS &amp; DAY-1 STAKING</p>
-        <h2 class="h1">How players &amp; bots earn.<br><span class="sub-blue">Real counterparty demand, zero Pay-to-Win.</span></h2>
+        <p class="eyebrow">06 · PLAYER MARKET &amp; STAKING</p>
+        <h2 class="h1">Trade what you mine.<br><span class="sub-blue">Stake without pay-to-win.</span></h2>
       </div>
-      <p>Export scarce resources for USDC/NEAR, collect Trade Hub stall royalties, run capped trading bots, or stake ≥10 NEAR from Day 1 to earn 7.20% net APY and cut your platform fees in half.</p>
+      <p>No reward token printing. Every USDC or NEAR payout comes from real buyer orders, Trade Hub stall fees, validator staking yield, or forfeited treaty bonds.</p>
     </div>
     ${renderIncomeLanesHtml()}
-    ${renderSimulatorSplitHtml()}
-    ${renderWhyNearHtml()}`;
+    ${renderStakingCalculatorHtml()}`;
 
   bindCalculator(host);
 }

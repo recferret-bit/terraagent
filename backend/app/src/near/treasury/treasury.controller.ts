@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { IncomingMessage } from 'node:http';
 import { CoreException } from '../../core/errors/core-exception.js';
 import { FlagsService } from '../../flags/flags.service.js';
@@ -18,6 +18,24 @@ export class TreasuryController {
     @Inject(TreasuryProposalsService) private readonly proposals: TreasuryProposalsService,
     @Inject(FlagsService) private readonly flags: FlagsService,
   ) {}
+
+  @Get('proposals/:id/sputnik-json')
+  async exportSputnikByQuery(
+    @Param('id') id: string,
+    @Query('planetId') planetId?: string,
+  ) {
+    this.assertWave();
+    return this.proposals.exportSputnikDaoProposalJson(planetId, id);
+  }
+
+  @Get(':planetId/proposals/:id/sputnik-json')
+  async exportSputnikByPath(
+    @Param('planetId') planetId: string,
+    @Param('id') id: string,
+  ) {
+    this.assertWave();
+    return this.proposals.exportSputnikDaoProposalJson(planetId, id);
+  }
 
   @Get(':planetId')
   async council(@Param('planetId') planetId: string): Promise<TreasuryCouncilResponse> {

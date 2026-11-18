@@ -31,6 +31,7 @@ let detachScrollListeners: (() => void) | null = null;
 
 function bindStreamFilter(host: HTMLElement): void {
   const schematic = host.querySelector<HTMLElement>('#protocol-schematic');
+  const proofs = host.querySelector<HTMLDetailsElement>('[data-proto-proofs]');
   const buttons = [...host.querySelectorAll<HTMLButtonElement>('[data-proto-filter]')];
   if (!schematic || buttons.length === 0) return;
 
@@ -40,6 +41,7 @@ function bindStreamFilter(host: HTMLElement): void {
       const stream = btn.dataset.protoFilter ?? 'all';
       schematic.dataset.activeStream = stream;
       host.dataset.activeStream = stream;
+      if (proofs && stream !== 'all') proofs.open = true;
       for (const b of buttons) {
         b.setAttribute('aria-pressed', String(b === btn));
       }
@@ -72,19 +74,18 @@ function bindScrollTransitions(section: HTMLElement, host: HTMLElement): void {
   }
 
   section.classList.add('js-proto');
-  stages.forEach((s, idx) => s.style.setProperty('--stage-delay', `${idx * 100}ms`));
+  stages.forEach((s, idx) => s.style.setProperty('--stage-delay', `${idx * 45}ms`));
 
   const update = (): void => {
     const rect = schematic.getBoundingClientRect();
     const vh = Math.max(innerHeight, 1);
-    const progress = clamp((vh * 0.86 - rect.top) / Math.max(rect.height * 0.85, 1), 0, 1);
+    const progress = clamp((vh * 0.92 - rect.top) / Math.max(rect.height * 0.8, 1), 0, 1);
     setPhasedConduitVars(schematic, progress);
 
-    const stageTrigger = vh * 0.86;
-    for (const stage of stages) {
-      if (stage.getBoundingClientRect().top < stageTrigger) {
-        stage.classList.add('is-active');
-      }
+    const stageTrigger = vh * 0.98;
+    const anyVisible = stages.some((stage) => stage.getBoundingClientRect().top < stageTrigger);
+    if (anyVisible) {
+      for (const stage of stages) stage.classList.add('is-active');
     }
   };
 
@@ -157,9 +158,9 @@ function hydrateTradeAndBonds(host: HTMLElement, sched: NonNullable<ProtocolTele
   setText(host, '[data-proto-trade-rate]', `${protoStdPct}% / ${protoStkPct}%`);
   setText(host, '[data-proto-dao-share-pct]', `${daoPct}%`);
   setText(host, '[data-proto-stage-trade-cap]', `BUYER FEE ALLOCATION (MAX ${(maxBuyerBp / 100).toFixed(2)}% / ${((100 + stkBp) / 100).toFixed(2)}% STAKER)`);
-  setText(host, '[data-proto-legend-proto-label]', `■ TerraAgent Protocol (${protoPct}% of platform)`);
+  setText(host, '[data-proto-legend-proto-label]', `■ Protocol Share (${protoPct}%)`);
   setText(host, '[data-proto-legend-proto-val]', `${protoStdPct}% (${protoStkPct}% Staker)`);
-  setText(host, '[data-proto-legend-dao-label]', `■ Planet Council DAO (${daoPct}% of platform)`);
+  setText(host, '[data-proto-legend-dao-label]', `■ Planet Council (${daoPct}%)`);
   setText(host, '[data-proto-legend-dao-val]', `${daoStdPct}% (${daoStkPct}% Staker)`);
   setText(host, '[data-proto-ex-buyer-total]', `Buyer pays $${(100.5 + stdBp / 100).toFixed(2)} ($${(100.5 + stkBp / 100).toFixed(2)} Staker)`);
   setText(host, '[data-proto-ex-dao]', `+$${daoStdPct} ($${daoStkPct} Stk)`);
@@ -214,9 +215,9 @@ function hydrateStakingStage(host: HTMLElement, sched: NonNullable<ProtocolTelem
   setText(host, '[data-proto-stage-staking-title]', `${yieldPilotPct} / ${yieldProtoPct} Yield Split · Zero Pay-to-Win`);
   setText(host, '[data-proto-stage-pool-apy]', `${grossApyPct}% VALIDATOR POOL YIELD SPLIT`);
   setText(host, '[data-proto-stage-min-stake]', `≥${minStake} NEAR`);
-  setText(host, '[data-proto-legend-pilot-label]', `■ Human Pilot Net Yield (${yieldPilotPct}%)`);
+  setText(host, '[data-proto-legend-pilot-label]', `■ Pilot Net Yield (${yieldPilotPct}%)`);
   setText(host, '[data-proto-legend-pilot-apy]', `${netApyPct}% Net APY`);
-  setText(host, '[data-proto-legend-yield-label]', `■ Protocol AI + Gas Slice (${yieldProtoPct}%)`);
+  setText(host, '[data-proto-legend-yield-label]', `■ Protocol Slice (${yieldProtoPct}%)`);
   setText(host, '[data-proto-legend-yield-apy]', `${protoApyPct}% APY`);
   setText(host, '[data-proto-legend-perks-label]', `★ Perks at ≥${minStake} NEAR`);
   setText(host, '[data-proto-legend-perks-val]', `Managed AI + ${stkFeePct}% Fee`);
@@ -254,10 +255,10 @@ export function initProtocolSection(): void {
 
   host.innerHTML = `<div class="sec-head">
       <div>
-        <p class="eyebrow">07 · TERRAAGENT PROTOCOL</p>
-        <h2 class="h1">Self-funding Web3 &amp; AI.<br><span class="sub-blue">Zero token printing. Zero Pay-to-Win.</span></h2>
+        <p class="eyebrow">07 · PROTOCOL TREASURY</p>
+        <h2 class="h1">Self-funded servers,<br><span class="sub-blue">gas, and offline AI.</span></h2>
       </div>
-      <p><code>protocol.terraagent.*</code> is a first-class on-chain treasury account. It captures small, transparent slices from real trade velocity, validator staking yield, and slashed treaty/war bonds—and spends them directly on gasless <code>NEP-366</code> relays and Managed <code>NEAR.AI</code> Autopilot.</p>
+      <p><code>protocol.terraagent.*</code> is an open treasury on NEAR. Small slices from trades, validator yield, and broken-treaty bonds pay directly for player gas and offline colony AI.</p>
     </div>
     ${renderProtocolToolbarHtml()}
     ${renderProtocolSchematicHtml()}

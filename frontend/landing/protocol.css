@@ -294,6 +294,11 @@
   gap: 8px;
 }
 
+.proto-stage-head .badge {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .proto-stage-num {
   font-family: var(--ta-font-mono);
   font-size: 11px;
@@ -305,7 +310,8 @@
 .proto-stage h3 {
   margin: 0;
   font-family: var(--ta-font-display);
-  font-size: 21px;
+  font-size: 18.5px;
+  line-height: 1.25;
   color: var(--ta-text);
 }
 
@@ -365,16 +371,26 @@
 .proto-legend-row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  align-items: baseline;
+  gap: 10px;
 }
 
-.proto-legend-row b { color: var(--ta-text); font-weight: 600; }
+.proto-legend-row b {
+  color: var(--ta-text);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 
-/* Worked Receipts & Planet Unit-Economics Proof Strip */
-.proto-proofs { margin-top: 24px; padding: 24px; background: var(--ta-black-hole); border: 1px solid var(--ta-seam-2); }
-.proto-proofs-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
-.proto-proofs-head .h3 { margin: 4px 0 0; }
-.proto-proof-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+/* Worked Receipts & Planet Unit-Economics Collapsible Accordion */
+.proto-proofs { margin-top: 24px; background: var(--ta-black-hole); border: 1px solid var(--ta-seam-2); }
+.proto-proofs-head { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 24px; transition: background-color var(--ta-dur-quick) ease; }
+.proto-proofs-head::-webkit-details-marker { display: none; }
+.proto-proofs-head:hover { background: var(--ta-plate-2); }
+.proto-proofs-head .badge { white-space: nowrap; flex-shrink: 0; }
+.proto-proofs-head .h3 { margin: 4px 0 0; font-size: 20px; }
+.proto-proofs[open] .proto-proofs-head { border-bottom: 1px solid var(--ta-seam); }
+.proto-proof-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 20px 24px 24px; }
 .proto-proof { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam-2); transition: opacity var(--ta-dur-base) ease, border-color var(--ta-dur-base) ease; }
 .proto-proof.is-econ { border-top: 2px solid var(--ta-energy); }
 .proto-proof-tag { font-family: var(--ta-font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; }

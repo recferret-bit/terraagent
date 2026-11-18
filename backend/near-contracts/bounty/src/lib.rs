@@ -1,6 +1,18 @@
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, PanicOnDefault};
+use near_sdk::{env, near, require, AccountId, NearToken, PanicOnDefault, Promise};
 use serde_json::json;
+
+fn nfund_key(escrow_id: &str) -> Vec<u8> {
+    format!("nfund:{}", escrow_id).into_bytes()
+}
+
+fn is_native_funded(escrow_id: &str) -> bool {
+    env::storage_read(&nfund_key(escrow_id)).is_some_and(|b| b == [1])
+}
+
+fn set_native_funded(escrow_id: &str) {
+    env::storage_write(&nfund_key(escrow_id), &[1]);
+}
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -180,6 +192,10 @@ impl BountyEscrowContract {
         self.escrows.insert(escrow_id.clone(), rec.clone());
         self.processed_ops.insert(op_id.clone(), escrow_id.clone());
 
+        if is_native_funded(&escrow_id) && rec.amount > 0 {
+            let _ = Promise::new(caller.clone()).transfer(NearToken::from_yoctonear(rec.amount));
+        }
+
         emit_escrow(
             "escrow_claim",
             json!({
@@ -233,6 +249,10 @@ impl BountyEscrowContract {
         }
         self.escrows.insert(escrow_id.clone(), rec.clone());
         self.processed_ops.insert(op_id.clone(), escrow_id.clone());
+
+        if is_native_funded(&escrow_id) && requested > 0 {
+            let _ = Promise::new(rec.funder.clone()).transfer(NearToken::from_yoctonear(requested));
+        }
 
         emit_escrow(
             "escrow_refund",
@@ -290,6 +310,15 @@ impl BountyEscrowContract {
         self.escrows.insert(escrow_id.clone(), rec.clone());
         self.processed_ops.insert(op_id.clone(), escrow_id.clone());
 
+        if is_native_funded(&escrow_id) {
+            if victim_cut > 0 {
+                let _ = Promise::new(victim_id.clone()).transfer(NearToken::from_yoctonear(victim_cut));
+            }
+            if protocol_cut > 0 {
+                let _ = Promise::new(protocol_id.clone()).transfer(NearToken::from_yoctonear(protocol_cut));
+            }
+        }
+
         emit_escrow(
             "escrow_slash",
             json!({
@@ -304,6 +333,149 @@ impl BountyEscrowContract {
             }),
         );
         EscrowView::from(&rec)
+    }
+
+    /// Opens a real native-NEAR bonded escrow directly from `env::predecessor_account_id()` using attached deposit.
+    #[payable]
+    pub fn open_near_escrow(
+        &mut self,
+        op_id: String,
+        escrow_id: String,
+        beneficiary: String,
+        expires_at_ms: u64,
+    ) -> EscrowView {
+        require!(!op_id.is_empty(), "NEAR_ESCROW_INVALID: op_id required");
+        require!(!escrow_id.is_empty(), "NEAR_ESCROW_INVALID: escrow_id required");
+        require!(!beneficiary.is_empty(), "NEAR_ESCROW_STATE: beneficiary required");
+        if let Some(existing_id) = self.processed_ops.get(&op_id) {
+            if let Some(existing) = self.escrows.get(existing_id) {
+                return EscrowView::from(existing);
+            }
+        }
+        let qty = env::attached_deposit().as_yoctonear();
+        require!(qty > 0, "NEAR_ESCROW_INVALID: attached NEAR deposit must be > 0");
+        require!(
+            self.escrows.get(&escrow_id).is_none(),
+            "NEAR_ESCROW_EXISTS: escrow_id already exists"
+        );
+        let funder = env::predecessor_account_id();
+        let rec = EscrowRecord {
+            escrow_id: escrow_id.clone(),
+            status: "open".to_string(),
+            funder: funder.clone(),
+            beneficiary: beneficiary.clone(),
+            token_id: "NEAR".to_string(),
+            amount: qty,
+            expires_at_ms,
+        };
+        set_native_funded(&escrow_id);
+        self.escrows.insert(escrow_id.clone(), rec.clone());
+        self.processed_ops.insert(op_id.clone(), escrow_id.clone());
+        emit_escrow(
+            "escrow_open",
+            json!({
+                "escrow_id": escrow_id,
+                "funder": funder,
+                "beneficiary": beneficiary,
+                "token_id": "NEAR",
+                "amount": qty.to_string(),
+                "native_funded": true,
+                "memo": op_id,
+            }),
+        );
+        EscrowView::from(&rec)
+    }
+
+    /// Permissionless refund callable by `funder` after `expires_at_ms` elapses.
+    pub fn claim_expired_refund(&mut self, escrow_id: String) -> EscrowView {
+        let mut rec = self
+            .escrows
+            .get(&escrow_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("NEAR_ESCROW_NOT_FOUND: escrow not found"));
+        require!(rec.status == "open", "NEAR_ESCROW_STATE: escrow is not open");
+        require!(rec.expires_at_ms > 0, "NEAR_ESCROW_STATE: escrow has no expiry");
+        require!(
+            env::block_timestamp_ms() >= rec.expires_at_ms,
+            "NEAR_ESCROW_STATE: escrow has not expired yet"
+        );
+        require!(
+            env::predecessor_account_id() == rec.funder,
+            "NEAR_NOT_OWNER: only escrow funder may claim expired refund"
+        );
+        let amount = rec.amount;
+        rec.status = "refunded".to_string();
+        self.escrows.insert(escrow_id.clone(), rec.clone());
+        if is_native_funded(&escrow_id) && amount > 0 {
+            let _ = Promise::new(rec.funder.clone()).transfer(NearToken::from_yoctonear(amount));
+        }
+        emit_escrow(
+            "escrow_refund",
+            json!({
+                "escrow_id": escrow_id,
+                "to": rec.funder,
+                "refunded": amount.to_string(),
+                "status": "refunded",
+                "memo": "expired_self_refund",
+            }),
+        );
+        EscrowView::from(&rec)
+    }
+
+    /// Atomic NEP-245 `mt_transfer_call` receiver for cargo-backed bounties.
+    pub fn mt_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        _previous_owner_ids: Vec<AccountId>,
+        token_ids: Vec<String>,
+        amounts: Vec<String>,
+        msg: String,
+    ) -> Vec<String> {
+        require!(
+            token_ids.len() == 1 && amounts.len() == 1,
+            "NEAR_ESCROW_INVALID: single token transfer expected"
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&msg).unwrap_or_else(|_| env::panic_str("NEAR_ESCROW_INVALID: invalid msg JSON"));
+        let escrow_id = parsed
+            .get("escrow_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| env::panic_str("NEAR_ESCROW_INVALID: escrow_id required in msg"))
+            .to_string();
+        let op_id = parsed
+            .get("op_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&escrow_id)
+            .to_string();
+        let beneficiary = parsed
+            .get("beneficiary")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&escrow_id)
+            .to_string();
+        let expires_at_ms = parsed.get("expires_at_ms").and_then(|v| v.as_u64()).unwrap_or(0);
+        let qty = amounts[0]
+            .parse::<u128>()
+            .unwrap_or_else(|_| env::panic_str("NEAR_ESCROW_INVALID: invalid amount"));
+        require!(qty > 0, "NEAR_ESCROW_INVALID: amount must be > 0");
+        require!(
+            self.escrows.get(&escrow_id).is_none(),
+            "NEAR_ESCROW_EXISTS: escrow_id already exists"
+        );
+        let rec = EscrowRecord {
+            escrow_id: escrow_id.clone(),
+            status: "open".to_string(),
+            funder: sender_id,
+            beneficiary,
+            token_id: token_ids[0].clone(),
+            amount: qty,
+            expires_at_ms,
+        };
+        self.escrows.insert(escrow_id.clone(), rec);
+        self.processed_ops.insert(op_id, escrow_id);
+        vec!["0".to_string()]
     }
 
     pub fn get_escrow(&self, escrow_id: String) -> Option<EscrowView> {

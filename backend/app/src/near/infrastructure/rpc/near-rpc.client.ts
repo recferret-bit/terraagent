@@ -20,6 +20,8 @@ import {
   validateAndDecodeRelayDelegate,
   verifyFullAccessKeyAtFinality,
 } from './near-rpc-guardrails.js';
+import { fetchAccountStorageReport, type AccountStorageReport } from './near-rpc-storage.js';
+import { chargeSharedRelayerBudget } from './relayer-budget.js';
 
 type TxOutcome = Awaited<ReturnType<Account['callFunctionRaw']>> | FinalExecutionOutcome;
 
@@ -65,8 +67,6 @@ export class NearRpcClient {
   private readonly primary: JsonRpcProvider;
   private readonly fallback: JsonRpcProvider;
   private failoverTotal = 0;
-  private spentTodayNear = 0;
-  private spendDayUtc = new Date().toISOString().slice(0, 10);
   private lastWriteHeight = 0;
 
   constructor(readonly config: NearNetworkConfig) {
@@ -145,6 +145,10 @@ export class NearRpcClient {
   async accountBalanceNear(accountId: string): Promise<number> {
     const view = await this.withFailover((p) => p.viewAccount({ accountId }));
     return Number(BigInt(view.amount)) / 1e24;
+  }
+
+  async accountStorageReport(accountId: string, thresholdNear?: number): Promise<AccountStorageReport> {
+    return fetchAccountStorageReport((op) => this.withFailover(op), accountId, thresholdNear);
   }
 
   async view<T>(contractId: string, methodName: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -289,11 +293,22 @@ export class NearRpcClient {
         message: `Missing NEAR_RELAYER_SECRET_KEY for ${this.config.network} relayer`,
       });
     }
+    const { contracts, rootAccount, maxRelayDepositNear } = this.config;
     const { decoded, attachedNear } = validateAndDecodeRelayDelegate({
       signedDelegateBase64,
       expectedSenderId,
       expectedReceiverId,
-      maxDepositNear: this.config.maxRelayDepositNear,
+      allowedRoot: [
+        rootAccount,
+        'terraagent.mock',
+        contracts.res,
+        contracts.deed,
+        contracts.bounty,
+        contracts.staking,
+        contracts.dao,
+        contracts.pilots,
+      ],
+      maxDepositNear: maxRelayDepositNear,
     });
     this.chargeDailyBudget(0.003 + attachedNear);
     try {
@@ -341,17 +356,12 @@ export class NearRpcClient {
   }
 
   private chargeDailyBudget(estimatedNear: number): void {
-    const today = new Date().toISOString().slice(0, 10);
-    if (today !== this.spendDayUtc) {
-      this.spendDayUtc = today;
-      this.spentTodayNear = 0;
-    }
-    if (this.spentTodayNear + estimatedNear > this.config.relayerDailyCapNear) {
-      throw new NearException('NEAR_UNAVAILABLE', {
-        message: 'Chain busy (daily relayer cap reached), will settle automatically.',
-      });
-    }
-    this.spentTodayNear += estimatedNear;
+    chargeSharedRelayerBudget({
+      network: this.config.network,
+      relayerAccountId: this.config.accounts.relayer,
+      estimatedNear,
+      dailyCapNear: this.config.relayerDailyCapNear,
+    });
   }
 }
 

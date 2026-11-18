@@ -75,6 +75,8 @@
     "near:build-contracts": "cd backend/near-contracts && cargo build --target wasm32-unknown-unknown --release",
     "near:test-contracts": "cd backend/near-contracts && cargo test",
     "near:deploy-contracts": "node scripts/dev/deploy-testnet-contracts.mjs",
+    "near:health": "node scripts/dev/testnet-health-topup.mjs",
+    "shade:worker": "tsx scripts/economy/shade-agent-worker.ts",
     "install:media": "npm --prefix social/media install",
     "media": "node social/media/make.mjs",
     "media:screenshots": "node social/media/capture-screenshots.mjs",

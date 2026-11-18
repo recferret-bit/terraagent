@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Inject, Optional, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Inject, Optional, Post, Query, Req } from '@nestjs/common';
 import { ClaimAccountRequestSchema, type ClaimAccountRequest } from '@terra/contracts';
 import type { IncomingMessage } from 'node:http';
 import { AuthTokenService, extractBearerPlayer } from '../../core/auth/index.js';
@@ -50,6 +50,32 @@ export class AccountClaimController {
   @HttpCode(200)
   claimAlias(@Body() raw: unknown, @Req() req?: IncomingMessage): Promise<ClaimAccountResponse> {
     return this.handleClaim(raw, req);
+  }
+
+  @Delete('claim-account/session-key')
+  @HttpCode(200)
+  revokeSessionKey(@Query('colonyId') colonyId?: string, @Req() req?: IncomingMessage) {
+    if (!this.flags.has('W20')) {
+      throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
+    }
+    const allowDevBearer = process.env.NODE_ENV !== 'production';
+    return this.claimService.revokeTradingSessionKey({
+      colonyId,
+      playerId: resolveOptionalPlayerId(req, this.tokens, allowDevBearer),
+    });
+  }
+
+  @Post('claim-account/session-key')
+  @HttpCode(200)
+  reauthorizeSessionKey(@Body() body?: { colonyId?: string }, @Req() req?: IncomingMessage) {
+    if (!this.flags.has('W20')) {
+      throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
+    }
+    const allowDevBearer = process.env.NODE_ENV !== 'production';
+    return this.claimService.reauthorizeTradingSessionKey({
+      colonyId: body?.colonyId,
+      playerId: resolveOptionalPlayerId(req, this.tokens, allowDevBearer),
+    });
   }
 
   private handleClaim(raw: unknown, req?: IncomingMessage): Promise<ClaimAccountResponse> {

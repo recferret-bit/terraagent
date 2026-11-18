@@ -1,7 +1,7 @@
 import type { DeedView } from '@terra/contracts';
 import type { FeatureContext } from '../../../core/registry/types';
 import { formatPlanetDisplayLabel } from '../../shared/planetLabel';
-import { buildDeedShareUrl, buildDeedTwitterIntentUrl } from '../deedShare';
+import { buildDeedShareUrl, buildDeedTwitterIntentUrl, buildNearSocialPostTx } from '../deedShare';
 import { createDeedTracker } from '../deedTracker';
 
 export function defaultFallbackDeed(planetId = 'planet_w20', colonyId = 'col_0'): DeedView {
@@ -185,9 +185,46 @@ export function buildDeedReceiptAndActions(opts: {
     }
   };
 
+  const nearSocialBtn = createNearSocialShareButton(opts);
+
   actionsWrap.appendChild(settleBtn);
   actionsWrap.appendChild(shareXBtn);
-  return { receiptWrap, actionsWrap, receiptLink, shareLink, settleBtn, shareXBtn };
+  actionsWrap.appendChild(nearSocialBtn);
+  return { receiptWrap, actionsWrap, receiptLink, shareLink, settleBtn, shareXBtn, nearSocialBtn };
+}
+
+function createNearSocialShareButton(opts: {
+  getCurrentDeed: () => DeedView | null;
+  openWindow?: (url: string) => void;
+}): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-sm btn-ghost';
+  btn.dataset.testid = 'deed-share-social-btn';
+  btn.textContent = 'Post NEAR Social';
+  btn.onclick = () => {
+    const deed = opts.getCurrentDeed();
+    if (!deed) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const tx = buildNearSocialPostTx(
+      {
+        tokenId: deed.tokenId,
+        colonyName: deed.metadata.colonyName ?? deed.colonyId,
+        planetId: deed.planetId,
+        stage: deed.metadata.stage ?? 4,
+        terraformBp: deed.metadata.terraformBp ?? 0,
+        settled: deed.settled,
+        origin,
+      },
+      deed.claimedByAccountId ?? deed.ownerAccountId ?? 'pilot.testnet',
+    );
+    btn.dataset.lastSocialTx = JSON.stringify({ contractId: tx.contractId, methodName: tx.methodName });
+    if (opts.openWindow) opts.openWindow(tx.nearSocialUrl);
+    else if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      window.open(tx.nearSocialUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+  return btn;
 }
 
 export function buildDeedHistorySection() {

@@ -303,7 +303,12 @@ impl TreasuryDaoContract {
         token_id: Option<String>,
     ) -> u32 {
         require!(!op_id.is_empty(), "DAO_NOT_FOUND: op_id required");
-        self.require_operator();
+        let caller = env::predecessor_account_id();
+        let is_operator = caller == self.operator_id || caller == self.owner_id;
+        require!(
+            is_operator || caller.as_str() == proposer,
+            "NEAR_NOT_OWNER: caller not authorized to propose on behalf of proposer"
+        );
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.parse::<u32>().unwrap_or(0);
         }
@@ -364,7 +369,12 @@ impl TreasuryDaoContract {
             vote == "approve" || vote == "reject",
             "INVALID_VOTE: vote must be approve or reject"
         );
-        self.require_operator();
+        let caller = env::predecessor_account_id();
+        let is_operator = caller == self.operator_id || caller == self.owner_id;
+        require!(
+            is_operator || caller.as_str() == voter,
+            "NEAR_NOT_OWNER: caller not authorized to vote on behalf of voter"
+        );
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.clone();
         }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CreateOrbitalStage, OrbitalStage } from './types';
+import type { CreateOrbitalStage, OrbitalGlobeMarkerInput, OrbitalProjectedFrame, OrbitalStage } from './types';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from '../core/createColonyViewport';
 import type { DescentHandoff } from '../descent/types';
@@ -11,6 +11,7 @@ import { StageMoons } from './stage/StageMoons';
 import { Satellites } from './stage/Satellites';
 import { SunRig } from './stage/SunRig';
 import { NebulaTint } from './stage/NebulaTint';
+import { GlobeHighlights } from './stage/GlobeHighlights';
 import { updateIdleCamera, driftCarrier } from './stage/idle';
 import { DeploySequence } from './deploy/DeploySequence';
 
@@ -29,6 +30,7 @@ class OrbitalStageImpl implements OrbitalStage {
   private readonly layers: ParallaxLayers;
   private readonly sun: SunRig;
   private readonly globes: StageGlobes;
+  private readonly highlights: GlobeHighlights;
   private readonly moons: StageMoons;
   private readonly satellites: Satellites;
   private readonly nebula: NebulaTint;
@@ -54,6 +56,7 @@ class OrbitalStageImpl implements OrbitalStage {
     scene.add(this.layers.group);
 
     this.globes = new StageGlobes(scene, sunDir, spec, aspect);
+    this.highlights = new GlobeHighlights(scene);
     this.carrier = acquireModel('ship.carrier', 'dune', { size: 6.0, mode: 'max', minRatio: 0.8, maxRatio: 1.25 }, { spaceLit: true });
     this.carrier.root.rotation.order = 'YXZ';
     scene.add(this.carrier.root);
@@ -68,6 +71,8 @@ class OrbitalStageImpl implements OrbitalStage {
   deployTn() { return this.deploy.tn(); }
   setTerraform(stage: number, smooth?: boolean) { this.globes.current.setTerraform(stage, smooth); }
   setSpinRate(r: number) { this.globes.setSpinRate(r); }
+  setHighlights(markers: readonly OrbitalGlobeMarkerInput[]) { this.highlights.setHighlights(markers); }
+  projectHighlights(): OrbitalProjectedFrame { return this.highlights.project(this.camera, this.globes.planetPos); }
 
   setPlanet(next: PlanetSpec, opts: { duration?: number; continuousSpin?: boolean } = {}) {
     if (!this.globes.setPlanet(next, opts)) return;
@@ -85,6 +90,8 @@ class OrbitalStageImpl implements OrbitalStage {
 
     if (deploying) this.deploy.update(dt, time);
     else { sun.smoothMouse(dt); updateIdleCamera(camera, this.lookNow, this.camBase, sun.mouseS, globes.planetPos, time); }
+    this.highlights.setVisible(!deploying);
+    if (!deploying) this.highlights.update(globes.planetPos, time);
     this.backdrop.update(camera, time);
     this.layers.update(dt, time);
     sun.update(camera, time, globes.planetPos);
@@ -97,6 +104,7 @@ class OrbitalStageImpl implements OrbitalStage {
   dispose() {
     const { camera } = this;
     this.globes.dispose();
+    this.highlights.dispose();
     this.layers.dispose(); this.moons.dispose(); this.satellites.dispose();
     this.deploy.dispose();
     camera.near = 0.5; camera.fov = 28; camera.updateProjectionMatrix();

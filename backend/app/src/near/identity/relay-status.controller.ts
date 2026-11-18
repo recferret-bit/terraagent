@@ -1,10 +1,11 @@
-import { Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import type { RelayRetryResponse, RelayStatusResponse } from '@terra/contracts';
 import type { IncomingMessage } from 'node:http';
+import type { ChainReceipt } from '../domain/types.js';
 import { RelayStatusService } from './relay-status.service.js';
 
 /**
- * `GET /v1/near/relay` and `POST /v1/near/relay/retry`. Not a dev route.
+ * `GET /v1/near/relay`, `POST /v1/near/relay`, and `POST /v1/near/relay/retry`. Not a dev route.
  * 404 when wave W06 is off, same as social login. The bearer is the logged-in player.
  */
 @Controller('near')
@@ -14,6 +15,12 @@ export class RelayStatusController {
   @Get('relay')
   status(@Req() req: IncomingMessage): Promise<RelayStatusResponse> {
     return this.relay.status(req);
+  }
+
+  @Post('relay')
+  @HttpCode(200)
+  submit(@Req() req: IncomingMessage, @Body() body: unknown): Promise<ChainReceipt> {
+    return this.relay.submitMetaTx(req, body);
   }
 
   @Post('relay/retry')

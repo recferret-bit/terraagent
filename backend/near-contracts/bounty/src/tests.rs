@@ -274,3 +274,49 @@ fn rejects_excess_partial_refund() {
     c.open_escrow("op_1".into(), "esc_ex".into(), acct("a.testnet"), "escrow:1".into(), "metals.t1".into(), "500".into(), 0);
     c.refund_escrow("op_2".into(), "esc_ex".into(), acct("a.testnet"), Some("501".into()));
 }
+
+#[test]
+fn payable_near_escrow_slash_and_expired_refund_work() {
+    set_caller("owner.testnet");
+    let mut c = BountyEscrowContract::new(acct("owner.testnet"), acct("op.testnet"));
+
+    testing_env!(VMContextBuilder::new()
+        .predecessor_account_id(acct("alice.testnet"))
+        .attached_deposit(NearToken::from_near(20))
+        .block_timestamp(1_000_000_000)
+        .build());
+    let opened = c.open_near_escrow("op-near-1".into(), "bond:1".into(), "bob.testnet".into(), 5_000);
+    assert_eq!(opened.token_id, "NEAR");
+    assert_eq!(opened.amount, (20 * 10u128.pow(24)).to_string());
+    assert_eq!(opened.expires_at_ms, 5_000);
+
+    // Before expiry, expired refund must fail
+    testing_env!(VMContextBuilder::new()
+        .predecessor_account_id(acct("alice.testnet"))
+        .block_timestamp(4_999 * 1_000_000)
+        .build());
+    let early = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.claim_expired_refund("bond:1".into());
+    }));
+    assert!(early.is_err());
+
+    // After expiry, funder recovers escrow permissionlessly
+    testing_env!(VMContextBuilder::new()
+        .predecessor_account_id(acct("alice.testnet"))
+        .block_timestamp(5_000 * 1_000_000)
+        .build());
+    let refunded = c.claim_expired_refund("bond:1".into());
+    assert_eq!(refunded.status, "refunded");
+
+    // Atomic mt_on_transfer cargo bounty opens directly
+    set_caller("res.testnet");
+    let unused = c.mt_on_transfer(
+        acct("alice.testnet"),
+        vec![acct("alice.testnet")],
+        vec!["metals.t1".into()],
+        vec!["250".into()],
+        r#"{"escrow_id":"cargo:1","beneficiary":"merc.testnet","expires_at_ms":9000}"#.into(),
+    );
+    assert_eq!(unused, vec!["0".to_string()]);
+    assert_eq!(c.get_escrow("cargo:1".into()).unwrap().amount, "250");
+}

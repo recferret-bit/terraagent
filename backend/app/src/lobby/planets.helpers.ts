@@ -48,6 +48,9 @@ export interface SectorLiveCountsInput {
 
 export interface PlanetLiveCountsInput extends SectorLiveCountsInput {
   readonly sectors?: Readonly<Record<string, SectorLiveCountsInput>>;
+  readonly playerColonies?: number | null;
+  readonly botColonies?: number | null;
+  readonly liveColonies?: readonly PublicColonySummaryV1[];
 }
 
 export interface PublicStatsLiveCountsInput {
@@ -247,24 +250,39 @@ export function buildSectorSummaryV1(
 function buildPublicColoniesList(
   reservations: readonly SectorReservationRecord[],
   repoColonies: readonly ColonyRecord[],
+  liveColonies?: readonly PublicColonySummaryV1[],
 ): PublicColonySummaryV1[] {
   const byId = new Map<string, PublicColonySummaryV1>();
+  const seenNameSector = new Set<string>();
+  const record = (entry: PublicColonySummaryV1): void => {
+    const key = `${entry.displayName.toLowerCase()}:${entry.foundingSectorId}`;
+    if (byId.has(entry.colonyId) || seenNameSector.has(key)) return;
+    byId.set(entry.colonyId, entry);
+    seenNameSector.add(key);
+  };
   for (const col of repoColonies) {
-    byId.set(col.id, {
+    record({
       colonyId: col.id,
       displayName: col.name,
       foundingSectorId: col.foundingSectorId ?? 'sec_0_0',
       foundedAt: col.createdAt.toISOString(),
+      ...(col.playerId.startsWith('ai:') ? { isBot: true } : {}),
     });
   }
   for (const res of reservations) {
-    if (res.state !== 'COMMITTED' || byId.has(res.colonyId)) continue;
-    byId.set(res.colonyId, {
+    if (res.state !== 'COMMITTED') continue;
+    record({
       colonyId: res.colonyId,
       displayName: `Colony-${res.playerId.slice(-4)}`,
       foundingSectorId: res.sectorId,
       foundedAt: res.createdAt.toISOString(),
+      ...(res.playerId.startsWith('ai:') ? { isBot: true } : {}),
     });
+  }
+  if (liveColonies) {
+    for (const live of liveColonies) {
+      record(live);
+    }
   }
   return [...byId.values()];
 }
@@ -389,7 +407,12 @@ export function buildCanonicalPlanetSummaryV1(
   const taken = reservedSeats + foundedSeats;
   const stateStr = planetRecord?.status ?? lifecycle;
   const live = resolvePlanetAggregateLiveCounts(effectiveSectors, foundedSeats, planetLiveCounts);
-  const publicColonies = buildPublicColoniesList(reservations, repoColonies);
+  const publicColonies = buildPublicColoniesList(
+    reservations,
+    repoColonies,
+    planetLiveCounts?.liveColonies,
+  );
+  const botFromRepo = repoColonies.filter((c) => c.playerId.startsWith('ai:')).length;
 
   return {
     id: world?.id ?? fallbackPlanetId,
@@ -418,6 +441,14 @@ export function buildCanonicalPlanetSummaryV1(
     livingColonies: live.livingColonies,
     presentColonies: live.presentColonies,
     onlinePlayers: live.onlinePlayers,
+    ...(planetLiveCounts?.playerColonies !== undefined
+      ? { playerColonies: planetLiveCounts.playerColonies }
+      : {}),
+    ...(planetLiveCounts?.botColonies !== undefined
+      ? { botColonies: planetLiveCounts.botColonies }
+      : botFromRepo > 0
+        ? { botColonies: botFromRepo }
+        : {}),
     updatedAt: (world?.updatedAt ?? new Date()).toISOString(),
     sectors: effectiveSectors,
     ...(publicColonies.length > 0 ? { colonies: publicColonies } : {}),

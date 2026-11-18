@@ -3,6 +3,7 @@ import type { AgentQuoteQuery, AgentQuoteResponse, MarketTokenKey } from '@terra
 import { withTransaction, type PrismaClient } from '@terra/db';
 import { agentParamsFromData, compileData, quoteColony, toPlaceOrderArgs, type AgentColonyInput, type AgentParams, type SideQuote } from '@terra/sim';
 import { FlagsService } from '../../flags/flags.service.js';
+import { runDeterministicRfq } from '../../ai/mcp/mcp-tools.registry.js';
 import { PRISMA } from '../../db/db.module.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { EconomyProfileService } from '../../economy/profile/profile.service.js';
@@ -90,6 +91,12 @@ export class TradeAgentService {
       bid: side(quotes.bid), ask: side(quotes.ask), bidReasons: [...quotes.bidReasons], askReasons: [...quotes.askReasons],
       inputs: { freeUnits: res.free.toString(), inventory: inventory.toString(), freeQuote: input.freeQuote.toString(), budgetLeft: budgetLeft === null ? null : budgetLeft.toString(), referenceAgeS: ageS, eligibleVolume: input.reference.eligibleVolume },
     };
+  }
+
+  negotiateRfq(p: TradePrincipal, body: unknown) {
+    this.orders.gate();
+    TradeAuth.require(p, 'read');
+    return runDeterministicRfq(body);
   }
 
   /** Remaining daily budget of a key (quote atomic); null for a session (no allowance). */

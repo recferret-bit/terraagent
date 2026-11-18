@@ -1,11 +1,15 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Optional, Param, Post, Req } from '@nestjs/common';
 import { BountyPostArgsSchema } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import type { IncomingMessage } from 'node:http';
 import { z } from 'zod';
+import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException } from '../../core/errors/core-exception.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { resolveColonyAccountId } from '../cargo/cargo-export-outbox.js';
+import { assertColonyOwnership } from '../identity/colony-ownership.guard.js';
 import { BountyClaimService } from './claim.service.js';
 import { BountyPostService } from './post.service.js';
 import type { BountyView, PostedBounty } from './view.js';
@@ -36,6 +40,8 @@ export class BountyController {
     @Inject(BountyClaimService) private readonly claims: BountyClaimService,
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
+    @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   @Get(':planetId')
@@ -46,10 +52,24 @@ export class BountyController {
 
   @Post(':planetId')
   @HttpCode(200)
-  async post(@Param('planetId') planetId: string, @Body() raw: unknown): Promise<PostedBounty> {
+  async post(
+    @Param('planetId') planetId: string,
+    @Body() raw: unknown,
+    @Req() req?: IncomingMessage,
+  ): Promise<PostedBounty> {
     this.assertWave();
     const body = PostBody.parse(raw ?? {});
-    const accountId = await this.account(planetId, body.colonyId, body.colonyIndex, body.playerId);
+    const callerPlayerId = await assertColonyOwnership({
+      req,
+      tokens: this.tokens,
+      env: this.env,
+      prisma: this.prisma,
+      port: 'Escrow',
+      colonyId: body.colonyId,
+      claimedPlayerId: body.playerId,
+    });
+    const effectivePlayerId = callerPlayerId ?? body.playerId;
+    const accountId = await this.account(planetId, body.colonyId, body.colonyIndex, effectivePlayerId);
     return this.posts.post({
       planetId,
       colonyId: body.colonyId,
@@ -62,10 +82,24 @@ export class BountyController {
 
   @Post(':planetId/:id/claim')
   @HttpCode(200)
-  async claim(@Param('planetId') planetId: string, @Param('id') id: string, @Body() raw: unknown): Promise<BountyView> {
+  async claim(
+    @Param('planetId') planetId: string,
+    @Param('id') id: string,
+    @Body() raw: unknown,
+    @Req() req?: IncomingMessage,
+  ): Promise<BountyView> {
     this.assertWave();
     const body = ColonyBody.parse(raw ?? {});
-    const accountId = await this.account(planetId, body.colonyId, body.colonyIndex, body.playerId);
+    const callerPlayerId = await assertColonyOwnership({
+      req,
+      tokens: this.tokens,
+      env: this.env,
+      prisma: this.prisma,
+      port: 'Escrow',
+      colonyId: body.colonyId,
+      claimedPlayerId: body.playerId,
+    });
+    const accountId = await this.account(planetId, body.colonyId, body.colonyIndex, callerPlayerId ?? body.playerId);
     return this.claims.claim({ planetId, bountyId: id, accountId });
   }
 

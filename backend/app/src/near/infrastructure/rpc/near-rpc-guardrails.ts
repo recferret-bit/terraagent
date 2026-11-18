@@ -32,6 +32,7 @@ export function validateAndDecodeRelayDelegate(params: {
   readonly signedDelegateBase64: string;
   readonly expectedSenderId?: string;
   readonly expectedReceiverId?: string;
+  readonly allowedRoot?: string | readonly string[];
   readonly maxDepositNear: number;
 }): ValidatedRelayDelegate {
   let decoded: ReturnType<typeof decodeSignedDelegate>;
@@ -54,7 +55,7 @@ export function validateAndDecodeRelayDelegate(params: {
       message: `SignedDelegate receiverId "${receiverId}" does not match outer receiverId "${params.expectedReceiverId}"`,
     });
   }
-  if (!receiverAllowed(receiverId)) {
+  if (!receiverAllowed(receiverId, params.allowedRoot)) {
     throw new NearException('NEAR_RELAY_RECEIVER_NOT_ALLOWED', {
       message: `SignedDelegate receiver "${receiverId}" is not in the relayer allow-list`,
     });

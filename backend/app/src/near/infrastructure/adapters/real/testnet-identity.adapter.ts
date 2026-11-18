@@ -21,7 +21,12 @@ import { registerPreSealedAccountKey } from '../../../identity/colony-account-wr
 import { kekEnv } from '../../../identity/colony-accounts.js';
 import { mockOauthSecret, verifyMockToken } from '../../../identity/mock-token.js';
 import { Nep413AuthService } from '../../../identity/nep413-auth.service.js';
-import { verifyNep413ClaimSignature } from '../../../identity/nep413-verifier.js';
+import {
+  consumeNep413NoncePersistent,
+  recordNep413Nonce,
+  verifyNep413ClaimSignature,
+} from '../../../identity/nep413-verifier.js';
+import { generateSealedTradingSessionKey } from '../../../identity/trading-session-key.js';
 import { KeyStore, loadKekRing } from '../../../keystore/index.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient, seedToNearSecretKey } from '../../rpc/near-rpc.client.js';
@@ -280,13 +285,19 @@ export class TestnetIdentityAdapter implements IdentityPort {
         signature: input.walletSignature,
         expectedWalletAccountId: input.walletAccountId,
         expectedPublicKey: input.walletPublicKey,
+        expectedMessagePrefix: 'claim:',
         allowedRecipients,
         network: this.rpc.network,
+        recordNonce: false,
       });
       await this.rpc.verifyFullAccessKeyOnChain(input.walletAccountId, input.walletSignature.publicKey);
+      recordNep413Nonce(input.walletSignature);
+      await consumeNep413NoncePersistent(this.prisma, input.walletSignature, 'claim');
 
       const signerSecret = seedToNearSecretKey(target.seed);
       const walletPubKey = normalizeNearPublicKey(input.walletSignature.publicKey);
+      const sessionKey = generateSealedTradingSessionKey(this.keys());
+      const scopedPublicKey = input.tradingSessionPublicKey ?? sessionKey.publicKey;
 
       if (this.rpc.network === 'mainnet' && target.publicKey !== walletPubKey) {
         await this.revokeMainnetIntentsKeyBestEffort(target.accountId, signerSecret, target.publicKey);
@@ -297,6 +308,11 @@ export class TestnetIdentityAdapter implements IdentityPort {
         currentSecretKey: signerSecret,
         currentPublicKey: target.publicKey,
         newFullAccessPublicKey: walletPubKey,
+        scopedSessionKey: {
+          publicKey: scopedPublicKey,
+          receiverId: this.rpc.config.contracts.res,
+          methodNames: ['mt_transfer', 'mt_transfer_call', 'storage_deposit'],
+        },
       });
 
       this.createdKeys.delete(target.accountId);
@@ -310,6 +326,9 @@ export class TestnetIdentityAdapter implements IdentityPort {
             encryptedSecret: 'claimed',
             claimedAt: storedRow.claimedAt ?? new Date(),
             claimedByAccountId: input.walletAccountId,
+            tradingSessionPublicKey: scopedPublicKey,
+            tradingSessionEncryptedSecret: input.tradingSessionPublicKey ? null : sessionKey.encryptedSecret,
+            kekVersion: sessionKey.kekVersion,
           },
         });
       }

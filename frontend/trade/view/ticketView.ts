@@ -1,4 +1,6 @@
-import { formatAtomic, parsePairId, type BookLevel, type MarketPolicyView, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
+import { formatAtomic, parsePairId, type BookLevel, type MarketPolicyView, type Nep413Signature, type OrderSide, type PlaceTradeOrderRequest } from '@terra/contracts';
+import { ensureBrowserPolyfills } from '../../design/pilot/browserPolyfills';
+import { getNearWalletSelector, signWithSelectorWallet, type WalletSelectorModuleId } from '../../design/pilot/walletSelectorRuntime';
 import { TradeApiFailure, type TradeClient } from '../api/client';
 import { previewTicket, type TicketPreview } from '../model/preview';
 import { freeOf, type TradeState } from '../model/state';
@@ -200,10 +202,11 @@ export class OrderTicket {
     const parsed = parsePairId(st.pair);
     if (!parsed || this.busy) return;
     const amount = Number(this.amount.value.trim());
+    const totalStr = (tryParse(parsed.quote, this.total.value) ?? 0n).toString();
     const req: PlaceTradeOrderRequest = {
       planetId: st.planetId, side: this.side, resource: parsed.base, amount,
-      price: { token: parsed.quote, amount: (tryParse(parsed.quote, this.total.value) ?? 0n).toString() },
-      ttlS: Number(this.ttl.value), fillPolicy: 'partial',
+      price: { token: parsed.quote, amount: totalStr },
+      ttlS: Number(this.ttl.value),
       ...(this.side === 'buy' ? { maxStallFeeBp: this.stallBp(st) } : {}),
     };
     this.busy = true;
@@ -216,6 +219,11 @@ export class OrderTicket {
         : res.status === 'pending' ? 'Sent to the sim; the outcome is not known yet. It will appear under My orders.'
           : `Order ${res.order?.orderId.slice(-8) ?? ''} accepted (${res.order?.state ?? 'OPEN'}${res.order && res.order.filled > 0 ? `, filled ${res.order.filled}/${res.order.amount}` : ''}).`;
       this.result.replaceChildren(note(text, kind));
+      if (res.status === 'rejected' && res.error?.code === 'market_unavailable') {
+        const signBtn = h('button', { type: 'button', class: 'btn btn-primary btn-sm', 'data-testid': 'ticket-wallet-sign' }, 'SIGN ORDER WITH NEAR WALLET');
+        signBtn.addEventListener('click', () => void this.signAndResubmit(req, totalStr));
+        this.result.appendChild(signBtn);
+      }
     } catch (err) {
       this.result.replaceChildren(note(err instanceof TradeApiFailure ? `${err.code}: ${err.message}` : 'Could not send the order.', 'err'));
     } finally {
@@ -245,6 +253,55 @@ export class OrderTicket {
       this.suggestMsg.replaceChildren(note(`Prefilled from the ${q.basis ?? 'quote'} basis: ${side.order.amount} units for ${fmtAmount(parsed.quote, side.order.price.amount)}${side.order.maxStallFeeBp !== undefined ? `, stall fee up to ${bpLabel(side.order.maxStallFeeBp)}` : ''}. Review it, then place.`));
     } catch (err) {
       this.suggestMsg.replaceChildren(note(err instanceof TradeApiFailure ? `${err.code}: ${err.message}` : 'The quote engine is not reachable.', 'err'));
+    }
+  }
+
+  private async signAndResubmit(baseReq: PlaceTradeOrderRequest, totalStr: string): Promise<void> {
+    this.busy = true;
+    this.update();
+    try {
+      const nonceBytes = new Uint8Array(32);
+      globalThis.crypto?.getRandomValues(nonceBytes);
+      let bin = '';
+      for (const b of nonceBytes) bin += String.fromCharCode(b);
+      const nonce = btoa(bin);
+      const message = `order:${baseReq.planetId ?? 'planet'}:${baseReq.side}:${baseReq.resource}:${baseReq.amount}:${baseReq.price.token}:${totalStr}`;
+      const net = typeof location !== 'undefined' && location.hostname.endsWith('.near') ? 'mainnet' : 'testnet';
+      const selector = await getNearWalletSelector(net);
+      const wallet = await selector.wallet('meteor-wallet').catch(() => selector.wallet());
+      if (wallet.type === 'hardware') {
+        throw new Error('Hardware wallets are not supported in browser popup mode.');
+      }
+      const BufferCtor = ensureBrowserPolyfills();
+      const callbackUrl = typeof location !== 'undefined' ? `${location.origin}${location.pathname}` : 'https://terraagent.fun/trade.html';
+      const signed = await signWithSelectorWallet(wallet, wallet.id as WalletSelectorModuleId, {
+        challengeId: `order-${Date.now().toString(36)}`,
+        message,
+        nonce,
+        recipient: 'intents.near',
+        network: net,
+        expiresAt: Date.now() + 5 * 60_000,
+      }, callbackUrl, BufferCtor);
+      const walletSignature: Nep413Signature = {
+        accountId: signed.accountId,
+        publicKey: signed.publicKey,
+        signature: signed.signature,
+        message,
+        nonce,
+        recipient: 'intents.near',
+        callbackUrl,
+      };
+      const res = await this.d.client.place({ ...baseReq, walletSignature });
+      const text = res.status === 'rejected'
+        ? `Rejected: ${res.error?.code ?? 'unknown'} - ${res.error?.message ?? ''}`
+        : `Wallet-signed order accepted (${res.order?.state ?? 'OPEN'}).`;
+      this.result.replaceChildren(note(text, res.status === 'rejected' ? 'err' : 'info'));
+    } catch (err) {
+      this.result.replaceChildren(note(err instanceof Error ? err.message : 'Wallet signing cancelled or failed.', 'err'));
+    } finally {
+      this.busy = false;
+      this.update();
+      this.d.onSent();
     }
   }
 }

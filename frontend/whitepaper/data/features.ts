@@ -28,48 +28,56 @@ export interface AiGuardrailRow {
   readonly enforcement: string;
 }
 
+export interface ProtocolAccountSpec {
+  readonly key: string;
+  readonly accountId: string;
+  readonly role: string;
+  readonly gasAndSecurityModel: string;
+  readonly txHash: string;
+}
+
 export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
   {
     title: 'Dual Settlement: Fast Sim + NEAR Finality',
     layer: 'WEB3',
     badge: 'HYBRID',
-    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, and cargo bridges settle asynchronously across six Rust smart contracts.',
-    chips: ['near-sdk 5.7', 'Testnet Live', '11 Typed Ports'],
+    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (93 Rust tests).',
+    chips: ['near-sdk 5.7', 'Testnet + verifier', '11 Typed Ports'],
   },
   {
-    title: 'Gasless Meta-Transactions & Cold-Root Pilots',
+    title: 'Gasless Meta-Transactions & Scoped Session Keys',
     layer: 'WEB3',
     badge: 'NEP-366',
-    summary: '`pilots.terraagent.testnet` provisions `{pilot}.pilots.terraagent.testnet` (`0.02 NEAR`), `relayer.terraagent.testnet` sponsors NEP-366 `SignedDelegate` gas, and `claimAccount` rotates `[AddKey, DeleteKey]` on the pilot sub-account.',
-    chips: ['relayer.terraagent.testnet', 'SignedDelegate', 'claimAccount'],
+    summary: '`pilots.terraagent.testnet` provisions `{pilot}.pilots.terraagent.testnet`, authenticated `POST /v1/near/relay` shares daily relayer gas budgets, and `claimAccount` rotates `[AddKey, DeleteKey]` across 10 NEAR wallets (incl. Bitte AI & HOT) while optionally sealing a revocable trading session key.',
+    chips: ['10 NEAR Wallets', 'Scoped Session Key', 'claimAccount'],
   },
   {
-    title: 'Orbital Cargo Multi-Tokens & 1Click Intents',
+    title: 'Orbital Cargo, 1Click Ramp & Hosted MCP',
     layer: 'WEB3',
     badge: 'NEP-245',
-    summary: 'Exported resources wrap cleanly into NEP-245 tokens on `res.terraagent.testnet` (18 decimals), clearing multi-party swaps in atomic counter-signed `NEP-413` `token_diff` intents and `1Click`.',
-    chips: ['res.terraagent.testnet', 'NEP-413 token_diff', '1Click Swap'],
+    summary: 'Exported resources wrap into NEP-245 tokens (`mt_batch_transfer`, `mt_transfer_call`, `withdraw`), clearing counter-signed `NEP-413` swaps guarded by persistent nonces, the `/trade.html` 1Click cross-chain ramp, and `POST /v1/mcp` agent commerce.',
+    chips: ['res.terraagent.testnet', '1Click Ramp', 'Hosted MCP /v1/mcp'],
   },
   {
-    title: 'Day-1 Lossless Staking & Zero Pay-to-Win',
+    title: 'Day-1 Lossless Staking & Direct Wallet Tx',
     layer: 'WEB3',
     badge: 'LOSSLESS',
-    summary: 'Human accounts stake NEAR on `staking.terraagent.testnet` from Day 1 (9.0% gross APY, 2 game-day unbond). Pilots keep 100% principal + 80% yield (7.20% APY); 20% funds Protocol.',
-    chips: ['80/20 Yield Split', '10 NEAR Unlocks AI', 'Zero Combat Buffs'],
+    summary: 'Human accounts stake native NEAR or whitelisted LSTs (`stake_payable`, `ft_on_transfer`) on `staking.terraagent.testnet` via relayer or direct `wallet-tx`. Pilots keep 100% principal + 80% yield (7.20% APY); 20% funds Protocol.',
+    chips: ['80/20 Yield Split', '10 NEAR Unlocks AI', 'Direct wallet-tx'],
   },
   {
-    title: '4-Way Trade Split & Peace/War Escrows',
+    title: 'Payable Escrows, Shade MPC & SputnikDAO Export',
     layer: 'WEB3',
-    badge: '4-WAY + ESCROW',
-    summary: 'Every matched order pays 100% principal to seller, 0–1.00% stall royalty to Trade Hub owners, 20% platform fee to Planet DAO, and 80% to Protocol. Breached truces or failed sieges slash 90/10.',
-    chips: ['4-Way NEP-413 Split', '90/10 Bond Slash', 'Planet Council DAO'],
+    badge: 'ESCROW + DAO',
+    summary: 'Matched fills split 4 ways, `bounty` adds native `open_near_escrow` + expired self-refunds, `dao` supports direct council votes + SputnikDAO v2 JSON export, and Shade Agents sign via NEAR MPC (`v1.signer`).',
+    chips: ['open_near_escrow', 'SputnikDAO Export', 'Shade + v1.signer'],
   },
   {
-    title: 'Soulbound Colony Deeds & 60 Milestone Badges',
+    title: 'Soulbound Colony Deeds, NEAR Social & 60 Badges',
     layer: 'WEB3',
     badge: 'NEP-171',
-    summary: 'Every founded colony mints a non-transferable deed on `deed.terraagent.testnet` whose metadata appends immutable chapters from S0 through S10 alongside 60 achievement badges.',
-    chips: ['deed.terraagent.testnet', 'Append-only Chapters', 'Public /deed/:id'],
+    summary: 'Every founded colony mints a non-transferable deed on `deed.terraagent.testnet` (5-entry circular history, `prune_history`, NEP-181 pagination), 60 milestone badges, public `/deed/:id` cards, and 1-click NEAR Social sharing.',
+    chips: ['deed.terraagent.testnet', 'NEAR Social Share', 'Public /deed/:id'],
   },
 ];
 
@@ -140,12 +148,44 @@ export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
 ];
 
 export const CONTRACT_ROWS: ReadonlyArray<ContractSpec> = [
-  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo balances across all 10 resource commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `operator_transfer` / `mt_transfer` matched strictly to Cargo Escrow acks' },
-  { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK', standard: 'NEP-171 Soulbound', role: 'Non-transferable Colony Deeds, milestone chapters, and badges', guardAndSettlement: 'Append-only server signer chronicle from S0 through S10' },
-  { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / `claim_escrow` / `refund_escrow` / `slash_escrow` (90% victim, 10% Protocol)' },
-  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Lossless Validator Vault', role: 'Day-1 native NEAR staking (9.0% gross APY) & 10 NEAR AI unlock', guardAndSettlement: '100% principal safe (2-day unbond); configurable 80/20 yield split & protocol yield claim' },
-  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: '1-member-1-vote (> 50% council majority or >= 2 unopposed yes votes) with idempotent `op_id`' },
-  { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant `{pilot}.pilots.terraagent.testnet` sub-account provisioning', guardAndSettlement: '`create_pilot_account` + `on_pilot_created` (`0.02 NEAR` seed); `IdentityPort.claimAccount` rotates `[AddKey, DeleteKey]` on the sub-account' },
+  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo across all 10 commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `withdraw` / `mt_batch_transfer` / `mt_transfer_call` + NEP-145 bounds' },
+  { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK', standard: 'NEP-171 Soulbound', role: 'Colony Deeds, 5-entry capped milestone chapters & badges', guardAndSettlement: 'Bounded `update_metadata`, `prune_history` & NEP-181 pagination (`<= 50`) + NEAR Social shares' },
+  { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / payable `open_near_escrow` / `mt_on_transfer` / `claim_expired_refund` / `slash_escrow` (90/10)' },
+  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Lossless Validator Vault', role: 'Day-1 native NEAR & LST staking (9.0% gross APY) + 10 NEAR AI unlock', guardAndSettlement: '100% principal safe (`stake_payable`, `ft_on_transfer` LSTs, `wallet-tx`); 80/20 yield split' },
+  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Direct council `propose`/`vote`/`finalize` + SputnikDAO v2 JSON export (`/sputnik-json`)' },
+  { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant `{pilot}.pilots.terraagent.testnet` sub-account provisioning', guardAndSettlement: '`create_pilot_account`; `claimAccount` rotates `[AddKey, DeleteKey]` + seals scoped trading session key' },
+  { contract: 'verifier (workspace)', accountId: 'verifier.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-413 On-Chain Verifier', role: 'Pure Rust `token_diff` Borsh + `env::ed25519_verify` & replay registry', guardAndSettlement: '`verify_and_record_token_diff` / `is_nonce_used` workspace crate (release WASM built, 3 unit tests)' },
+];
+
+export const PROTOCOL_ACCOUNT_ROWS: ReadonlyArray<ProtocolAccountSpec> = [
+  {
+    key: 'root',
+    accountId: 'terraagent.testnet',
+    role: 'Cold Root & Governance Owner',
+    gasAndSecurityModel: 'Owns all deployed Rust contracts and holds reserve NEAR for `npm run near:health --apply` top-ups; hot runtime never needs `NEAR_ROOT_SECRET_KEY` when `NEAR_USE_PILOTS_FACTORY=true`.',
+    txHash: '3qmHWbgsfNoykfDeuLsyGVw36kaUmGN5uUiJqrHBgRLH',
+  },
+  {
+    key: 'protocol',
+    accountId: 'protocol.terraagent.testnet',
+    role: 'Protocol Treasury (`NEAR_PROTOCOL_ACCOUNT`)',
+    gasAndSecurityModel: 'Collects 80% of platform trade fees, 20% of validator staking yield, and 10% of breached bond slashes to fund gasless relays and Managed NEAR.AI without minting tokens.',
+    txHash: '9q3km4TiFVGnY6HMZUaZdXWmtuMTJ1cy3hvGXyM9ArXY',
+  },
+  {
+    key: 'relayer',
+    accountId: 'relayer.terraagent.testnet',
+    role: 'NEP-366 Gas Relayer & Pilot Operator (`NEAR_RELAYER_ACCOUNT`)',
+    gasAndSecurityModel: 'Pays gas for allowlisted `SignedDelegate` player meta-transactions inside a shared `5 NEAR/day` budget (`<= 0.05 NEAR` attached deposit) and sponsors `0.02 NEAR` pilot sub-account creation on `pilots`.',
+    txHash: 'BWsCAjsCUDrQsZbd85EHaLZZrFVWrvAHJseXoPpGFyY1',
+  },
+  {
+    key: 'minter',
+    accountId: 'minter.terraagent.testnet',
+    role: 'Authorized Contract Gas Signer (`NEAR_MINTER_ACCOUNT`)',
+    gasAndSecurityModel: 'Pays gas and executes serialized FIFO operator transactions across `res`, `deed`, `bounty`, `staking`, and `dao` without holding root governance keys.',
+    txHash: '9AyXKPYVSLCDaZA59aZWihYmCr6PaqahAmcuH36uMok6',
+  },
 ];
 
 export const PORT_ROWS: ReadonlyArray<PortSpec> = [
@@ -164,23 +204,23 @@ export const PORT_ROWS: ReadonlyArray<PortSpec> = [
 
 export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
   {
-    control: 'Hardware TEE Inference',
+    control: 'Confidential Enclave + Browser WebCrypto Proof',
     trigger: 'Every autonomous commander turn (`z-ai/glm-5.3-flash`)',
-    enforcement: 'Executed inside NEAR AI Cloud TEEs (`cloud-api.near.ai/v1`); `SHA-256` `model:request:response` ECDSA attestation fetched from NEAR AI Cloud `/v1/signature/{chat_id}` and persisted in TerraAgent’s `ai` TEE signature log.',
+    enforcement: 'Executed inside NEAR AI Cloud enclaves (`cloud-api.near.ai/v1`); `SHA-256` `model:request:response` ECDSA attestations persist in `director_tee_attestation` and verify live in-browser via WebCrypto (`TEE ✓` modal & `/me.html` live probe).',
   },
   {
-    control: 'Encrypted BYOK Vault (`/me.html`)',
-    trigger: 'Player attaches personal NEAR.AI key & custom model ID',
-    enforcement: 'Encrypted at rest using authenticated AES-256-GCM; plaintext secret keys are never echoed in HTTP responses or worker logs.',
+    control: 'Prompt-Injection & Governance Fencing',
+    trigger: 'Multi-colony sweeps & AI trade directives',
+    enforcement: 'Isolates staker prompts from rival bots, fences labels inside `<untrusted_player_label>`, and checks kill switches, policy pauses, revoked director keys (`DeleteKey`), open-order exposure, and VWAP price bands.',
   },
   {
-    control: 'Staking Isolation (`403 AI_STAKING_FORBIDDEN`)',
-    trigger: 'Any AI or bot token calls stake, unstake, or withdraw',
-    enforcement: 'HTTP and service boundaries reject non-human callers outright before touching StakingPort.',
+    control: 'Encrypted BYOK Vault & Managed Staker Banner (`/me.html`)',
+    trigger: 'Player attaches personal NEAR.AI key or stakes >= 10 NEAR',
+    enforcement: 'Encrypted at rest using authenticated AES-256-GCM with live enclave probe (`Verify & Save`); plaintext keys are never echoed, and >= 10 NEAR stakers see `MANAGED STAKER AI ACTIVE`.',
   },
   {
-    control: 'Bounded Autonomy (Treaty, Structure & Revision Guards)',
-    trigger: 'Away orders, truce/war controls, and NEAR bond checks',
-    enforcement: 'Blocks autonomous structure demolition, breaking active peace treaties, canceling wars, or bonding human NEAR; stale `intentRevision` aborts immediately on human input.',
+    control: 'Staking Isolation & Hard Custody Rails (`403 AI_STAKING_FORBIDDEN`)',
+    trigger: 'AI or bot token calls stake, demolish, or treaty cancellation',
+    enforcement: 'Blocks AI validator staking outright, blocks autonomous demolition, peace breaking, or war canceling, and enforces persistent `nep413_used_nonce` replay checks plus `intentRevision` aborts on human input.',
   },
 ];

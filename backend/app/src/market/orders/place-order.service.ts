@@ -31,6 +31,7 @@ import { MarketSimGateway, type SimTarget } from './market-sim-gateway.js';
 import { OrderFunds, requirementOf, type FundsView, type Requirement } from './order-funds.js';
 import { orderDraft, orderIdOf, stallCap } from './parts/place-draft.js';
 import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
+import { hasWalletSignedOrder } from './wallet-signed-orders.js';
 
 export { orderIdOf };
 
@@ -140,8 +141,9 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
       d.colonyIndex,
     );
     const blocked = d.director === true ? await this.directorBlock(d) : undefined;
+    const cmdId = commandIdOf(event.data);
     const result = await withTransaction(this.prisma, (tx) =>
-      this.place(tx, event.planetId, d, accountId, actorKind, blocked),
+      this.place(tx, event.planetId, d, accountId, actorKind, blocked, cmdId),
     );
     if (d.stallName) await this.rememberStall(event.planetId, d, accountId);
     await this.books.sync(result.order.orderId);
@@ -246,7 +248,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
 
   private async evictSelfCustodyRestingOrders(): Promise<number> {
     const claimedAccounts = await this.prisma.nearColonyAccount.findMany({
-      where: { encryptedSecret: 'claimed' },
+      where: { encryptedSecret: 'claimed', tradingSessionEncryptedSecret: null },
       select: { accountId: true },
     });
     const evictedIds: string[] = [];
@@ -279,6 +281,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     accountId: string,
     actorKind?: ActorKind,
     blocked?: 'autotrade_limit',
+    commandId?: string,
   ): Promise<PlaceOrderResult> {
     const baseCfg = this.policy.current();
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-funds:${accountId}`}, 0))`;
@@ -291,7 +294,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     });
     const acctRow = await tx.nearColonyAccount.findUnique({
       where: { accountId },
-      select: { claimedAt: true, encryptedSecret: true },
+      select: { claimedAt: true, encryptedSecret: true, tradingSessionEncryptedSecret: true },
     });
     const claimed = acctRow?.claimedAt != null;
     const platformAccountId = resolveProtocolAccountId(envBag);
@@ -310,12 +313,16 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
       tx,
     );
     if (!created) return { order, created, depositChain: 0n };
-    if (acctRow?.encryptedSecret === 'claimed') {
+    if (
+      acctRow?.encryptedSecret === 'claimed' &&
+      !acctRow.tradingSessionEncryptedSecret &&
+      !hasWalletSignedOrder(commandId)
+    ) {
       return this.reject(
         tx,
         order,
         'market_unavailable',
-        'Account is self-custodial; sign market intents directly with your wallet.',
+        'Account is self-custodial; authorize a trading session key or sign market intents with your wallet.',
       );
     }
     if (blocked) return this.reject(tx, order, blocked, 'That trade is outside the autoTrade limits.');

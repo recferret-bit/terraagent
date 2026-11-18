@@ -7,6 +7,13 @@ import { CommandPrechecks } from '../../core/command-prechecks.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { PRISMA } from '../../db/db.module.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
+import { kekEnv } from '../../near/identity/colony-accounts.js';
+import { verifyNep413ClaimSignature } from '../../near/identity/nep413-verifier.js';
+import { generateSealedTradingSessionKey } from '../../near/identity/trading-session-key.js';
+import { nearAdapterFor } from '../../near/infrastructure/adapter-selection.js';
+import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../near/infrastructure/network/near-network.config.js';
+import { KeyStore, loadKekRing } from '../../near/keystore/index.js';
+import { markWalletSignedOrder } from '../orders/wallet-signed-orders.js';
 import { InflightGate } from './inflight-gate.js';
 import type { MarketColony } from '../orders/market-colonies.js';
 import { PriceBoardService } from '../board/price-board.service.js';
@@ -44,7 +51,7 @@ export class TradeOrdersService {
     private readonly sim: TradeSimPort,
     private readonly board: PriceBoardService,
     @Inject(FlagsService) private readonly flags: FlagsService,
-    @Inject(APP_ENV) env: AppEnv,
+    @Inject(APP_ENV) private readonly env: AppEnv,
   ) {
     this.gateway = InflightGate.fromEnv(env);
   }
@@ -148,6 +155,9 @@ export class TradeOrdersService {
   }
 
   private async submitPlace(p: TradePrincipal, row: RequestRow, colony: MarketColony, body: PlaceTradeOrderRequest): Promise<RequestRow> {
+    if (body.walletSignature) {
+      await this.authorizeWalletOrderSignature(colony, row.planetId, row.requestId, body);
+    }
     const args = { side: body.side, resource: body.resource, amount: body.amount, price: body.price, ttlS: body.ttlS, ...(body.maxStallFeeBp === undefined ? {} : { maxStallFeeBp: body.maxStallFeeBp }) };
     const pre = await this.prechecks.run({ kind: 'market.placeOrder', args, playerId: p.ownerId, planetId: row.planetId, colony: { id: colony.colonyId, colonyIndex: colony.colonyIndex }, dev: false });
     if (pre) return this.finish(row.requestId, 'REJECTED', { errorCode: pre.code, errorDetail: pre.detail ?? pre.code });
@@ -155,6 +165,46 @@ export class TradeOrdersService {
     const out = await this.submitSim(p, row, 'market.placeOrder', args);
     if (!out.ok) return this.finish(row.requestId, 'REJECTED', { errorCode: out.code, errorDetail: out.detail ?? out.code });
     return this.awaitOutcome(row.requestId);
+  }
+
+  private async authorizeWalletOrderSignature(
+    colony: MarketColony,
+    planetId: string,
+    requestId: string,
+    body: PlaceTradeOrderRequest,
+  ): Promise<void> {
+    const sig = body.walletSignature;
+    if (!sig) return;
+    const acct = await this.prisma.nearColonyAccount.findUnique({
+      where: { accountId: colony.accountId },
+      select: { claimedByAccountId: true, publicKey: true, tradingSessionEncryptedSecret: true },
+    });
+    const envMap = this.env as unknown as Record<string, string | undefined>;
+    const adapterMode = nearAdapterFor('Intents', envMap);
+    const net = resolveActiveNearNetwork('Intents', envMap);
+    const cfg = resolveNearNetworkConfig(envMap, net);
+    const expectedWallet = acct?.claimedByAccountId ?? sig.accountId;
+    if (adapterMode !== 'mock' || !sig.accountId.endsWith('.mock')) {
+      verifyNep413ClaimSignature({
+        signature: sig,
+        expectedWalletAccountId: expectedWallet,
+        expectedMessagePrefix: `order:${planetId}:`,
+        allowedRecipients: [cfg.contracts.res, cfg.contracts.intents, cfg.rootAccount, 'terraagent.app'],
+        network: net,
+      });
+    }
+    markWalletSignedOrder(requestId);
+    if (!acct?.tradingSessionEncryptedSecret) {
+      const sealed = generateSealedTradingSessionKey(new KeyStore(loadKekRing(kekEnv(this.env))));
+      await this.prisma.nearColonyAccount.updateMany({
+        where: { accountId: colony.accountId },
+        data: {
+          tradingSessionPublicKey: sealed.publicKey,
+          tradingSessionEncryptedSecret: sealed.encryptedSecret,
+          kekVersion: sealed.kekVersion,
+        },
+      });
+    }
   }
 
   private async submitSim(p: TradePrincipal, row: RequestRow, kind: 'market.placeOrder' | 'market.cancelOrder', args: unknown): Promise<{ ok: true } | { ok: false; code: string; detail?: string }> {
