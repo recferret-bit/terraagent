@@ -229,11 +229,12 @@ export class AccountClaimService {
   }
 
   private assertRowOwnership(ownerPlayerId: string | null | undefined, callerPlayerId: string | undefined): void {
-    if (!ownerPlayerId || ownerPlayerId === 'dev_pilot') return;
+    const nodeEnv = (this.env ?? process.env).NODE_ENV;
+    if (!ownerPlayerId || (ownerPlayerId === 'dev_pilot' && nodeEnv !== 'production')) return;
     if (callerPlayerId && ownerPlayerId !== callerPlayerId) {
       throw new NearException('NEAR_NOT_OWNER', { message: 'Caller does not own this colony account' });
     }
-    if (!callerPlayerId && this.isRealNetworkMode()) {
+    if (!callerPlayerId && (this.isRealNetworkMode() || nodeEnv === 'production')) {
       throw new NearException('NEAR_NOT_OWNER', { message: 'Authentication is required to claim this colony account' });
     }
   }

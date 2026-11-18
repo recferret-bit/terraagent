@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Inject, Optional, Post, Query, Req } from '@nestjs/common';
 import {
   StakeRequestSchema,
   UnstakeRequestSchema,
@@ -6,8 +6,15 @@ import {
   type StakingActionResponse,
   type StakingStatusResponse,
 } from '@terra/contracts';
+import type { PrismaClient } from '@terra/db';
+import type { IncomingMessage } from 'node:http';
+import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException, ZodPipe } from '../../core/errors/index.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
+import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { assertColonyOwnership } from '../identity/colony-ownership.guard.js';
+import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 import { StakingService } from './staking.service.js';
 import type { StakingWalletTxDescriptor } from './staking-wallet-tx.js';
 
@@ -30,6 +37,9 @@ export class StakingController {
   constructor(
     @Inject(StakingService) private readonly stakingService: StakingService,
     @Inject(FlagsService) private readonly flags: FlagsService,
+    @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
   ) {}
 
   @Get('staking')
@@ -47,9 +57,10 @@ export class StakingController {
     @Query('poolId') poolId?: string,
     @Query('amountNear') amountNear?: string,
     @Query('accountId') accountId?: string,
+    @Query('lstContract') lstContract?: string,
   ): StakingWalletTxDescriptor {
     this.assertWaveEnabled();
-    return this.stakingService.walletTxDescriptor({ action, poolId, amountNear, accountId });
+    return this.stakingService.walletTxDescriptor({ action, poolId, amountNear, accountId, lstContract });
   }
 
   @Post('stake')
@@ -59,11 +70,15 @@ export class StakingController {
     @Headers('x-actor') actorHeader?: string,
     @Headers('authorization') authHeader?: string,
     @Headers('x-api-key') apiKeyHeader?: string,
+    @Req() req?: IncomingMessage,
   ): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const body = this.stakePipe.transform(raw ?? {});
-    return this.stakingService.stake(body);
+    if (!req) return this.stakingService.stake(body);
+    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature)).then(() =>
+      this.stakingService.stake(body),
+    );
   }
 
   @Post('unstake')
@@ -73,11 +88,15 @@ export class StakingController {
     @Headers('x-actor') actorHeader?: string,
     @Headers('authorization') authHeader?: string,
     @Headers('x-api-key') apiKeyHeader?: string,
+    @Req() req?: IncomingMessage,
   ): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const body = this.unstakePipe.transform(raw ?? {});
-    return this.stakingService.unstake(body);
+    if (!req) return this.stakingService.unstake(body);
+    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature)).then(() =>
+      this.stakingService.unstake(body),
+    );
   }
 
   @Post('withdraw')
@@ -87,12 +106,39 @@ export class StakingController {
     @Headers('x-actor') actorHeader?: string,
     @Headers('authorization') authHeader?: string,
     @Headers('x-api-key') apiKeyHeader?: string,
+    @Req() req?: IncomingMessage,
   ): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const normalized = this.normalizeWithdrawBody(raw);
     const body = this.withdrawPipe.transform(normalized);
-    return this.stakingService.withdraw(body);
+    if (!req) return this.stakingService.withdraw(body);
+    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature)).then(() =>
+      this.stakingService.withdraw(body),
+    );
+  }
+
+  private async assertCallerColonyOwnership(
+    req: IncomingMessage | undefined,
+    colonyId: string | undefined,
+    hasWalletSignature: boolean,
+  ): Promise<void> {
+    if (!req) return;
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    // Browser StakingPanel on real networks authenticates via NEP-413 walletSignature without Bearer header
+    if (!req.headers?.authorization && hasWalletSignature && nearAdapterFor('Staking', envMap) !== 'mock') {
+      return;
+    }
+    const ownerPlayerIdHint = await this.stakingService.resolveColonyOwnerPlayerId(colonyId);
+    await assertColonyOwnership({
+      req,
+      tokens: this.tokens,
+      env: this.env,
+      prisma: this.prisma,
+      port: 'Staking',
+      colonyId,
+      ownerPlayerIdHint,
+    });
   }
 
   private assertHumanCaller(

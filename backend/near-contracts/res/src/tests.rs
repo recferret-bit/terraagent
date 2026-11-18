@@ -281,3 +281,24 @@ fn nep245_batch_transfer_withdraw_resolve_and_nep145_storage() {
     assert!(c.mt_withdraw("bio.water".into(), "50".into(), None));
     assert_eq!(c.mt_balance_of(acct("col1.testnet"), "bio.water".into()), "150");
 }
+
+#[test]
+fn storage_deposit_blocks_free_storage_bloat_and_underpaid_registration() {
+    set_caller("owner.testnet");
+    let mut c = CargoContract::new(acct("owner.testnet"), acct("minter.testnet"));
+
+    // Zero attached deposit does not allocate storage or fake storage_balance_of
+    set_caller("griefer.testnet");
+    assert!(c.storage_deposit(Some(acct("griefer.testnet"))));
+    assert!(c.storage_balance_of(acct("griefer.testnet")).is_none());
+
+    // Underpaid (< 0.00125 NEAR) storage_deposit panics
+    testing_env!(VMContextBuilder::new()
+        .predecessor_account_id(acct("griefer.testnet"))
+        .attached_deposit(NearToken::from_yoctonear(1))
+        .build());
+    let underpaid = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.storage_deposit(Some(acct("griefer.testnet")));
+    }));
+    assert!(underpaid.is_err());
+}

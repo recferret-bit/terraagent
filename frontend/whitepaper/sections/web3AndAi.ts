@@ -115,8 +115,8 @@ function buildThesisSection(): HTMLElement {
       [
         ['Kitbash & GPU 3D', 'Modular RoundedBox hulls, `aPartAnim` kinematics, Unifier biome shader & instanced 3D debris', 'Readable 4-view silhouettes, < 3.5k tris/unit, zero flat sprite particles'],
         ['Deterministic Sim', 'Single `@terra/sim` shared across NestJS, browser Web Workers & 50 Hz warp replay', 'Zero server/client desync; full offline parity via `?host=local`'],
-        ['Non-Dilutive Web3', 'Six deployed contracts + `verifier` crate (`93` Rust tests), `1Click` ramp & Shade MPC', 'Real asset & treaty ownership; scoped self-custody session keys'],
-        ['Verifiable NEAR.AI', 'NEAR AI Cloud confidential enclave (`SHA-256` `model:request:response` ECDSA) + browser WebCrypto proof + Hosted MCP `/v1/mcp`', 'Governed autonomy you can independently verify in-browser'],
+        ['Non-Dilutive Web3', 'Six deployed contracts + `verifier` crate (`102` Rust tests), `1Click` ramp & Shade MPC', 'Real asset & treaty ownership; scoped self-custody session keys'],
+        ['Verifiable NEAR.AI', 'NEAR AI Cloud confidential enclave (`SHA-256` `model:request:response` ECDSA/Ed25519) + browser curve verifier + Hosted MCP `/v1/mcp`', 'Governed autonomy you can independently verify in-browser'],
       ],
     ),
   );
@@ -156,10 +156,10 @@ function buildWeb3ProtocolSection(): HTMLElement {
       ['Contract', 'Testnet Account', 'Standard & Pattern', 'On-Chain Role & Settlement Rule', 'Deploy Tx'],
       CONTRACT_ROWS.map((c) => [
         `\`${c.contract}\``,
-        `[${c.accountId}](${NEARBLOCKS}/address/${c.accountId})`,
+        c.txHash ? `[${c.accountId}](${NEARBLOCKS}/address/${c.accountId})` : `\`${c.accountId}\` (workspace)`,
         c.standard,
         `${c.role} — ${c.guardAndSettlement}`,
-        `[${c.txHash.slice(0, 8)}…](${NEARBLOCKS}/txns/${c.txHash})`,
+        c.txHash ? `[${c.txHash.slice(0, 8)}…](${NEARBLOCKS}/txns/${c.txHash})` : 'Pre-deploy WASM',
       ]),
     ),
     accountsH3,

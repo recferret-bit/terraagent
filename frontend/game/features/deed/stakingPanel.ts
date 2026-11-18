@@ -448,7 +448,7 @@ export class StakingPanel implements Disposable {
       action: 'stake_payable',
       poolId: this.poolSelectEl.value || DEFAULT_STAKING_POOLS[0].poolId,
       amountNear: this.amountInputEl.value || '10',
-      accountId: this.claimedByAccountId ?? this.serverAccountId,
+      accountId: this.serverAccountId ?? this.currentDeed?.ownerAccountId ?? this.claimedByAccountId,
       statusMsgEl: this.statusMsgEl,
       onSuccess: () => this.refreshFromServer(),
     });

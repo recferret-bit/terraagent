@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Optional, Query } from '@nestjs/common';
 import { TeeAttestationStore, type StoredTeeAttestation } from './tee-attestation.store.js';
 
-@Controller('near/ai')
+@Controller(['near/ai', 'ai'])
 export class AiAttestationController {
   constructor(@Optional() @Inject(TeeAttestationStore) private readonly store?: TeeAttestationStore) {}
 

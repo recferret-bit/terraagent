@@ -29,6 +29,8 @@ import { ShadeAgentController } from '../../src/near/shade-agent/shade-agent.con
 import { ShadeAgentService } from '../../src/near/shade-agent/shade-agent.service.js';
 import { verifyStakingWalletSignature } from '../../src/near/staking/staking-signature-guard.js';
 import { TreasuryProposalsService } from '../../src/near/treasury/proposals.service.js';
+import { MeProfileService } from '../../src/profile/me-profile.service.js';
+import { PlayerAiSettingsStore } from '../../src/profile/player-ai-settings.store.js';
 
 const bootedApps: INestApplication[] = [];
 afterAll(async () => {
@@ -100,7 +102,8 @@ describe('Hosted MCP, TEE attestations, Shade Agent MPC, 1Click & SputnikDAO exp
   it('serves /v1/mcp/agent-market.json, authenticates tools/call, and executes negotiate_rfq', async () => {
     const auth = { authenticate: vi.fn(async (req: IncomingMessage) => { if (!req.headers.authorization) throw new Error('unauthorized'); return { actorKind: 'bot', ownerId: 'p1', ownerRef: 'key:k1', key: null, scopes: ['read', 'trade'], colonyFor: async () => null }; }) };
     const read = { pairs: vi.fn(() => ({ pairs: [{ pair: 'metals.t1/USDC' }] })), book: vi.fn(), balances: vi.fn() };
-    const mcp = new McpController(new McpService(auth as never, read as never, {} as never, {} as never));
+    const orders = { place: vi.fn(async (_p: unknown, req: unknown, idem: string) => ({ status: 201, body: { requestId: idem, status: 'accepted', req } })) };
+    const mcp = new McpController(new McpService(auth as never, read as never, {} as never, orders as never));
     expect(mcp.manifest({ headers: { host: 'terraagent.fun' } } as never).mcp.endpoint).toBe('https://terraagent.fun/v1/mcp');
     expect(
       mcp.manifest({ headers: { host: 'evil.example/phish', 'x-forwarded-proto': 'javascript' } } as never).mcp.endpoint,
@@ -114,8 +117,39 @@ describe('Hosted MCP, TEE attestations, Shade Agent MPC, 1Click & SputnikDAO exp
       { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'negotiate_rfq', arguments: { itemOrService: 'metals.t1', quantity: 10, sellerInitialAsk: 2, plannedUnitPrice: 2, walkAwayUnitPrice: 3, remainingBudget: 100 } } },
     );
     expect((rfq.result as { structuredContent: { decision: string } }).structuredContent.decision).toBe('accepted_initial');
-  });
 
+    const planetsList = await mcp.rpc(
+      { headers: { authorization: 'Bearer ta_bot_demo' } } as never,
+      { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'list_planets' } },
+    );
+    expect((planetsList.result as { structuredContent: { planets: string[] } }).structuredContent.planets).toEqual(['pl_dev']);
+
+    // place_order accepts idempotencyKey and defaults optional ttlS without failing z.strictObject
+    const placed = await mcp.rpc(
+      { headers: { authorization: 'Bearer ta_bot_demo' } } as never,
+      {
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'tools/call',
+        params: {
+          name: 'place_order',
+          arguments: {
+            planetId: 'pl_dev',
+            side: 'sell',
+            resource: 'metals.t1',
+            amount: 20,
+            price: { token: 'USDC', amount: '20000000' },
+            idempotencyKey: 'mcp-idem-99',
+          },
+        },
+      },
+    );
+    expect(placed.error).toBeUndefined();
+    expect(orders.place).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ ttlS: 3600 }), 'mcp-idem-99');
+  });
+});
+
+describe('TEE attestations, Shade Agent MPC, 1Click, SputnikDAO export & /me enclave probe', () => {
   it('persists TEE proofs, validates Shade Agent MRTDs, serves 1Click presets & exports SputnikDAO JSON', async () => {
     const store = new TeeAttestationStore();
     await store.record({
@@ -146,6 +180,50 @@ describe('Hosted MCP, TEE attestations, Shade Agent MPC, 1Click & SputnikDAO exp
     const sputnik = await propSvc.exportSputnikDaoProposalJson('pl_1', '7');
     expect(sputnik.daoStandard).toBe('sputnik-dao-v2');
     expect(sputnik.methodName).toBe('add_proposal');
+
+    // MeProfileService.verifyAiEnclave returns ok=false when TEE attestation verification fails
+    const aiStore = new PlayerAiSettingsStore();
+    await aiStore.updateSettings({ id: 'p_byok', handle: 'byok' }, { model: 'z-ai/glm-5.3-flash', apiKey: 'sk-test-nearai-key-1234' });
+    let nextVerified = true;
+    const fakeLlm = {
+      complete: vi.fn(async () => ({
+        text: '{"ok":true}',
+        model: 'z-ai/glm-5.3-flash',
+        usage: { inputTokens: 4, outputTokens: 4 },
+        attestation: {
+          chatId: 'c_probe',
+          requestHash: '11'.repeat(32),
+          responseHash: '22'.repeat(32),
+          verified: nextVerified,
+          cryptoVerified: nextVerified,
+        },
+      })),
+    };
+    const meSvc = new MeProfileService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      new FlagsService({ TA_WAVES: 'all' } as never),
+      undefined,
+      undefined,
+      undefined,
+      aiStore,
+      fakeLlm as never,
+    );
+    await expect(meSvc.verifyAiEnclave('p_no_key')).rejects.toMatchObject({ errorCode: 'invalid_ai_settings' });
+    expect((await meSvc.verifyAiEnclave('p_byok')).ok).toBe(true);
+    nextVerified = false;
+    expect((await meSvc.verifyAiEnclave('p_byok')).ok).toBe(false);
+
+    // Also returns ok=false when /v1/signature/{chat_id} HTTP-fails ({ verified: false } without cryptoVerified)
+    fakeLlm.complete.mockResolvedValueOnce({
+      text: '{"ok":true}',
+      model: 'z-ai/glm-5.3-flash',
+      usage: { inputTokens: 4, outputTokens: 4 },
+      attestation: { chatId: 'c_http_fail', requestHash: '11'.repeat(32), responseHash: '22'.repeat(32), verified: false } as never,
+    });
+    expect((await meSvc.verifyAiEnclave('p_byok')).ok).toBe(false);
   });
 });
 
@@ -231,5 +309,10 @@ describe('Booted AppModule 1Click HTTP 200 route & NEP-413 nonce safety', () => 
     const statusJson = (await statusRes.json()) as { rootAccount: string; accounts: { protocol: string; relayer: string } };
     expect(statusJson.rootAccount).toBe('terraagent.testnet');
     expect(statusJson.accounts.relayer).toBe('relayer.terraagent.testnet');
+
+    const attAliasRes = await fetch(`${baseUrl}/v1/ai/attestations?colonyId=col_0`);
+    expect(attAliasRes.status).toBe(200);
+    const attNearRes = await fetch(`${baseUrl}/v1/near/ai/attestations?colonyId=col_0`);
+    expect(attNearRes.status).toBe(200);
   });
 });

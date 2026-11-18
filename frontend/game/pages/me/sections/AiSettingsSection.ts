@@ -5,6 +5,7 @@ import {
   type PlayerAiSettings,
 } from '@terra/contracts';
 import { saveMeAiSettings, type MeFetchFn } from '../api';
+import { verifyTeeAttestationClient, type TeeAttestationClientInput } from '../../../../design/pilot/teeVerifier';
 import { el } from '../dom';
 
 export interface RenderAiSettingsOptions {
@@ -128,6 +129,38 @@ function applyUpdatedSettings(refs: AiSettingsDomRefs, next: PlayerAiSettings, m
   refs.statusNode.textContent = message;
 }
 
+async function runAiEnclaveProbe(refs: AiSettingsDomRefs, opts: RenderAiSettingsOptions): Promise<void> {
+  refs.statusNode.textContent = 'Probing NEAR.AI TEE enclave attestation…';
+  try {
+    const res = await (opts.fetch ?? fetch)(`/v1/me/ai-settings/verify${opts.search ?? ''}`, { method: 'POST' });
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      model?: string;
+      managedStaker?: boolean;
+      message?: string;
+      attestation?: TeeAttestationClientInput | null;
+    };
+    if (!res.ok || body.ok === false) {
+      refs.statusNode.textContent = body.message || 'TEE enclave attestation rejected.';
+      return;
+    }
+    const att = body.attestation;
+    if (!att) {
+      refs.statusNode.textContent = `Probe OK (${body.model ?? 'NEAR.AI'}), no enclave attestation returned.`;
+      return;
+    }
+    const check = await verifyTeeAttestationClient({ ...att, model: att.model ?? body.model });
+    const modeTag = body.managedStaker ? ' · Staker Sponsored' : '';
+    const verdict = check.valid ? 'TEE OK' : 'TEE FAILED';
+    refs.statusNode.textContent =
+      `${verdict} (${body.model ?? 'NEAR.AI'}${modeTag}): signer ${att.signingAddress ?? 'TEE'} · ` +
+      `req ${(att.requestHash ?? '').slice(0, 12)}… · res ${(att.responseHash ?? '').slice(0, 12)}… · ` +
+      `${check.browserVerified ? 'browserVerified=true' : `cryptoVerified=${String(att.cryptoVerified ?? false)}`}`;
+  } catch {
+    refs.statusNode.textContent = 'Unable to reach /v1/me/ai-settings/verify.';
+  }
+}
+
 function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsOptions): void {
   refs.modelSelect.addEventListener('change', () => {
     const isCustom = refs.modelSelect.value === CUSTOM_MODEL_OPTION;
@@ -183,28 +216,7 @@ function wireAiSettingsHandlers(refs: AiSettingsDomRefs, opts: RenderAiSettingsO
   });
 
   refs.verifyBtn.addEventListener('click', () => {
-    void (async () => {
-      refs.statusNode.textContent = 'Probing NEAR.AI TEE enclave attestation…';
-      try {
-        const res = await (opts.fetch ?? fetch)(`/v1/me/ai-settings/verify${opts.search ?? ''}`, { method: 'POST' });
-        const body = (await res.json().catch(() => ({}))) as {
-          model?: string;
-          managedStaker?: boolean;
-          message?: string;
-          attestation?: { signingAddress?: string; requestHash?: string; responseHash?: string; cryptoVerified?: boolean } | null;
-        };
-        if (!res.ok) {
-          refs.statusNode.textContent = body.message || 'TEE probe rejected.';
-          return;
-        }
-        const att = body.attestation;
-        refs.statusNode.textContent = att
-          ? `TEE OK (${body.model ?? 'NEAR.AI'}${body.managedStaker ? ' · Staker Sponsored' : ''}): signer ${att.signingAddress ?? 'TEE'} · req ${(att.requestHash ?? '').slice(0, 12)}… · res ${(att.responseHash ?? '').slice(0, 12)}… · cryptoVerified=${String(att.cryptoVerified ?? false)}`
-          : `Probe OK (${body.model ?? 'NEAR.AI'}), no enclave attestation returned.`;
-      } catch {
-        refs.statusNode.textContent = 'Unable to reach /v1/me/ai-settings/verify.';
-      }
-    })();
+    void runAiEnclaveProbe(refs, opts);
   });
 }
 

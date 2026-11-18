@@ -108,7 +108,8 @@ export class DirectorKeyService {
   }
 
   private async createKey(colony: OwnedColony, existing: DirectorKeyRow | null, caps: DirectorTokenCap[]): Promise<DirectorKeyStatusPayload> {
-    const publicKey = nextDirectorPublicKey(colony.colonyId, existing?.publicKey ?? null);
+    const envMap = this.env as unknown as Record<string, unknown> | undefined;
+    const publicKey = nextDirectorPublicKey(colony.colonyId, existing?.publicKey ?? null, envMap);
     const accountId = existing?.accountId ?? await this.repo.accountIdFor(colony.colonyId);
     await this.addOrKeep(accountId, publicKey, caps);
     const status = await this.wallet.keyStatus({ accountId, publicKey });
@@ -126,7 +127,8 @@ export class DirectorKeyService {
     amount: number,
   ): Promise<DevAllowanceResult> {
     const prior = await this.wallet.keyStatus({ accountId: existing.accountId, publicKey: existing.publicKey });
-    const publicKey = nextDirectorPublicKey(colony.colonyId, existing.publicKey);
+    const envMap = this.env as unknown as Record<string, unknown> | undefined;
+    const publicKey = nextDirectorPublicKey(colony.colonyId, existing.publicKey, envMap);
     await this.wallet.revokeKey({
       opId: `director-key:dev-revoke:${existing.accountId}:${existing.publicKey}:${publicKey}`,
       accountId: existing.accountId,

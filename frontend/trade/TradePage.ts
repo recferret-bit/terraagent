@@ -52,6 +52,7 @@ export class TradePage {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private readonly onHashChange = (): void => this.applyHash();
+  private nearNetwork: 'testnet' | 'mainnet' = 'testnet';
   private readonly netBadge = h('span', { class: 'tr-badge tr-badge-info', 'data-testid': 'trade-near-mode' }, 'NEAR SETTLEMENT');
   private readonly explorerLink = h('a', { href: '/dev/chain/' }, 'Chain explorer');
 
@@ -74,7 +75,12 @@ export class TradePage {
       fills: panel('fills', 'My fills'), keys: panel('keys', 'Bot / API keys'),
     };
     this.p.ramp.body.append(new RampView(client).root);
-    this.ticket = new OrderTicket({ client, state: () => this.store.get(), onSent: () => this.afterOrderChange() });
+    this.ticket = new OrderTicket({
+      client,
+      state: () => this.store.get(),
+      network: () => this.nearNetwork,
+      onSent: () => this.afterOrderChange(),
+    });
     this.p.ticket.body.append(this.ticket.root);
     this.keys = new KeysPanel(this.p.keys.body, { client, state: () => this.store.get(), reload: () => { void this.loaders.keys(true); } });
     this.stallEditor = new StallEditor({ client, token: client.token, onSaved: (stall) => this.store.update((x) => ({ ...x, stall }), ['stall']) });
@@ -173,6 +179,7 @@ export class TradePage {
       const intentsEntry = body.ports?.find((p) => p.port === 'Intents');
       const intentsAdapter = intentsEntry?.mode ?? intentsEntry?.adapter ?? body.nearMode ?? 'mock';
       if (intentsAdapter === 'mainnet') {
+        this.nearNetwork = 'mainnet';
         this.netBadge.textContent = 'NEAR MAINNET · NEP-413 INTENTS';
         this.netBadge.className = 'tr-badge tr-badge-ok';
         this.explorerLink.href = 'https://nearblocks.io';

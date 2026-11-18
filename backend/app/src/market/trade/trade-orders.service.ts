@@ -8,12 +8,9 @@ import { FlagsService } from '../../flags/flags.service.js';
 import { PRISMA } from '../../db/db.module.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
-import { verifyNep413ClaimSignature } from '../../near/identity/nep413-verifier.js';
 import { generateSealedTradingSessionKey } from '../../near/identity/trading-session-key.js';
-import { nearAdapterFor } from '../../near/infrastructure/adapter-selection.js';
-import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../near/infrastructure/network/near-network.config.js';
 import { KeyStore, loadKekRing } from '../../near/keystore/index.js';
-import { markWalletSignedOrder } from '../orders/wallet-signed-orders.js';
+import { markWalletSignedOrder, verifyWalletOrderSignature } from '../orders/wallet-signed-orders.js';
 import { InflightGate } from './inflight-gate.js';
 import type { MarketColony } from '../orders/market-colonies.js';
 import { PriceBoardService } from '../board/price-board.service.js';
@@ -180,19 +177,16 @@ export class TradeOrdersService {
       select: { claimedByAccountId: true, publicKey: true, tradingSessionEncryptedSecret: true },
     });
     const envMap = this.env as unknown as Record<string, string | undefined>;
-    const adapterMode = nearAdapterFor('Intents', envMap);
-    const net = resolveActiveNearNetwork('Intents', envMap);
-    const cfg = resolveNearNetworkConfig(envMap, net);
     const expectedWallet = acct?.claimedByAccountId ?? sig.accountId;
-    if (adapterMode !== 'mock' || !sig.accountId.endsWith('.mock')) {
-      verifyNep413ClaimSignature({
-        signature: sig,
-        expectedWalletAccountId: expectedWallet,
-        expectedMessagePrefix: `order:${planetId}:`,
-        allowedRecipients: [cfg.contracts.res, cfg.contracts.intents, cfg.rootAccount, 'terraagent.app'],
-        network: net,
-      });
-    }
+    await verifyWalletOrderSignature({
+      sig,
+      planetId,
+      body,
+      expectedWalletAccountId: expectedWallet,
+      pinnedPublicKey: acct?.publicKey,
+      envMap,
+      prisma: this.prisma,
+    });
     markWalletSignedOrder(requestId);
     if (!acct?.tradingSessionEncryptedSecret) {
       const sealed = generateSealedTradingSessionKey(new KeyStore(loadKekRing(kekEnv(this.env))));

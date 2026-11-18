@@ -606,3 +606,123 @@ fn preserves_native_ndep_solvency_across_payer_withdraw_and_payable_lst_flows() 
     assert_eq!(refund, "0");
     assert_eq!(contract.get_position("bob.testnet".into(), "meta-pool.near".into(), 900, t0).staked, (3 * ONE_NEAR).to_string());
 }
+
+#[test]
+#[should_panic(expected = "LST token contract is not whitelisted")]
+fn ft_on_transfer_rejects_subdomain_spoofed_lst_contract() {
+    let mut contract = new_contract();
+    testing_env!(ctx("stnear.attacker.testnet").build());
+    contract.ft_on_transfer(
+        "attacker.testnet".parse().unwrap(),
+        (1_000_000 * ONE_NEAR).to_string(),
+        r#"{"pool_id":"stnear.attacker.testnet"}"#.into(),
+    );
+}
+
+#[test]
+fn stake_payable_blocks_non_operator_time_warp_inflated_apy_and_duplicate_deposit() {
+    let mut contract = new_contract();
+    let t0_ms = 1_700_000_000_000u64;
+
+    let mut first = ctx("mallory.testnet");
+    first.attached_deposit(NearToken::from_near(10));
+    first.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(first.build());
+    contract.stake_payable("op-m1".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, None);
+
+    // Non-operator attempting to pass now_ms = t0 + 100 years must accrue 0 fake yield when block_timestamp == t0_ms
+    let mut second = ctx("mallory.testnet");
+    second.attached_deposit(NearToken::from_millinear(10));
+    second.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(second.build());
+    let view = contract.stake_payable(
+        "op-m2".into(),
+        "astro-stakers.pool.testnet".into(),
+        900,
+        t0_ms + 365 * 100 * GAME_DAY_MS,
+        None,
+    );
+    assert_eq!(view.rewards, "0");
+
+    // 1 yoctoNEAR dust deposit on stake_payable / deposit_near is rejected to prevent storage-lock griefing
+    let mut dust = ctx("mallory.testnet");
+    dust.attached_deposit(NearToken::from_yoctonear(1));
+    testing_env!(dust.build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-dust".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, None);
+    })).is_err());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.deposit_near(None);
+    })).is_err());
+
+    // Delimiter injection in account_id or pool_id is rejected
+    let mut delim = ctx("mallory.testnet");
+    delim.attached_deposit(NearToken::from_near(1));
+    testing_env!(delim.build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-delim".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, Some("alice|evil".into()));
+    })).is_err());
+
+    // Inflated apy_bp > 1000 from non-operator panics
+    let mut high_apy = ctx("mallory.testnet");
+    high_apy.attached_deposit(NearToken::from_near(1));
+    high_apy.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(high_apy.build());
+    let apy_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-m3".into(), "astro-stakers.pool.testnet".into(), 5_000, t0_ms, None);
+    }));
+    assert!(apy_panic.is_err());
+
+    // Replaying op-m1 with attached NEAR panics instead of swallowing deposit
+    let mut dup = ctx("mallory.testnet");
+    dup.attached_deposit(NearToken::from_near(5));
+    dup.block_timestamp(t0_ms * 1_000_000);
+    testing_env!(dup.build());
+    let dup_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.stake_payable("op-m1".into(), "astro-stakers.pool.testnet".into(), 900, t0_ms, None);
+    }));
+    assert!(dup_panic.is_err());
+}
+
+#[test]
+fn partial_unstake_and_withdraw_preserves_remaining_pos_ndep_and_blocks_virtual_siphon() {
+    let mut contract = new_contract();
+    let t0 = 1_700_000_000_000u64;
+
+    // Alice stakes 10 real NEAR via stake_payable AND has 9 unbacked virtual NEAR in balances
+    let mut dep = ctx("alice.testnet");
+    dep.account_balance(NearToken::from_near(30));
+    dep.attached_deposit(NearToken::from_near(10));
+    dep.block_timestamp(t0 * 1_000_000);
+    testing_env!(dep.build());
+    contract.stake_payable("op-part-s1".into(), "astro.pool.testnet".into(), 0, t0, None);
+
+    testing_env!(ctx("minter.terraagent.testnet").account_balance(NearToken::from_near(30)).build());
+    contract.credit_near("op-virt-9".into(), "alice.testnet".into(), (9 * ONE_NEAR).to_string());
+
+    // Alice unstakes 1 NEAR (leaving 9 NEAR staked) and withdraws after unbonding
+    contract.unstake("op-part-u1".into(), "alice.testnet".into(), "astro.pool.testnet".into(), 0, ONE_NEAR.to_string(), t0);
+    let t_ready = t0 + UNBONDING_DURATION_MS;
+    contract.withdraw("op-part-w1".into(), "alice.testnet".into(), None, "astro.pool.testnet".into(), 0, t_ready);
+
+    // Position still holds 9 NEAR of native backing; Alice only unlocked 1 NEAR of ndep (not all 10!)
+    assert_eq!(
+        contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()),
+        (9 * ONE_NEAR).to_string()
+    );
+    assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), ONE_NEAR.to_string());
+
+    // Attempting to siphon 10 real NEAR using her 9 virtual NEAR + 1 withdrawn NEAR must panic!
+    testing_env!(ctx("alice.testnet").account_balance(NearToken::from_near(30)).prepaid_gas(Gas::from_tgas(40)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.claim_native_near((10 * ONE_NEAR).to_string(), None);
+    })).is_err());
+
+    // Claiming her 1 unlocked real NEAR succeeds, and later unstaking+withdrawing the remaining 9 NEAR unlocks all 9!
+    let _ = contract.claim_native_near(ONE_NEAR.to_string(), None);
+    testing_env!(ctx("minter.terraagent.testnet").account_balance(NearToken::from_near(30)).build());
+    contract.unstake("op-part-u2".into(), "alice.testnet".into(), "astro.pool.testnet".into(), 0, (9 * ONE_NEAR).to_string(), t_ready);
+    contract.withdraw("op-part-w2".into(), "alice.testnet".into(), None, "astro.pool.testnet".into(), 0, t_ready + UNBONDING_DURATION_MS);
+    assert_eq!(contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()), "0");
+    assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), (9 * ONE_NEAR).to_string());
+}

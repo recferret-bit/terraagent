@@ -240,3 +240,37 @@ fn council_members_can_propose_and_vote_directly_without_operator() {
         "Approved"
     );
 }
+
+#[test]
+#[should_panic(expected = "only operator may override quorum parameters")]
+fn blocks_council_member_from_overriding_quorum_to_self_approve_proposal() {
+    let mut contract = new_contract();
+    testing_env!(ctx("minter.terraagent.testnet").build());
+    let dao_id = contract.create_dao(
+        "op-q-c".into(),
+        "dune.dao.terraagent.testnet".into(),
+        "Dune Council".into(),
+        vec!["alice.testnet".into(), "bob.testnet".into(), "carol.testnet".into()],
+    );
+
+    testing_env!(ctx("alice.testnet").build());
+    let pid = contract.propose(
+        "op-q-p".into(),
+        dao_id.clone(),
+        "alice.testnet".into(),
+        "Drain treasury".into(),
+        "guild_subsidy".into(),
+        "{}".into(),
+        None,
+        None,
+    );
+    contract.vote(
+        "op-q-v".into(),
+        dao_id,
+        pid,
+        "alice.testnet".into(),
+        "approve".into(),
+        Some(0),
+        Some(1),
+    );
+}

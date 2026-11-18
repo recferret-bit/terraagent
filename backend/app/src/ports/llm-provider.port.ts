@@ -35,6 +35,12 @@ export interface LlmResponse {
   readonly attestation?: LlmAttestation;
 }
 
+export function isTeeAttestationRejected(
+  attestation?: Pick<LlmAttestation, 'verified'> | null,
+): boolean {
+  return Boolean(attestation && attestation.verified === false);
+}
+
 export abstract class LlmProviderPort {
   abstract complete(req: LlmRequest): Promise<LlmResponse>;
 }

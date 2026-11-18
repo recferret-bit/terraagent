@@ -299,10 +299,6 @@ export function initContractsBoard(): void {
     <div class="contracts-grid" id="chain-stream">${cards}</div>
     <div class="contract-accounts">
       ${acctLinks}
-      <span class="acct-pill plate-sm"><b>INTENTS</b><code>intents.near + 1Click</code></span>
-      <span class="acct-pill plate-sm"><b>VERIFIER &amp; MPC</b><code>verifier + v1.signer</code></span>
-      <span class="acct-pill plate-sm"><b>AGENT MCP</b><code>/v1/mcp · agent-market</code></span>
-      <span class="acct-pill plate-sm"><b>DOCS</b><a href="/whitepaper/#sub-web3-operator-accounts">Gas &amp; Accounts Spec ↗</a></span>
     </div>`;
 
   void hydrateContractsStatus(host);

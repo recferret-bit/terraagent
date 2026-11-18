@@ -383,16 +383,18 @@ export function upsertStakingPositionList(
 export async function sendStakingWalletTx(opts: {
   fetchFn: typeof fetch;
   network: RealNearNetwork;
-  action: 'stake_payable' | 'deposit_near' | 'claim_native_near';
+  action: 'stake_payable' | 'deposit_near' | 'claim_native_near' | 'stake_lst';
   poolId: string;
   amountNear: string;
   accountId: string | null;
+  lstContract?: string;
   statusMsgEl?: HTMLElement;
   onSuccess?: () => Promise<unknown>;
 }): Promise<string | null> {
   try {
     const qs = new URLSearchParams({ action: opts.action, poolId: opts.poolId, amountNear: opts.amountNear });
     if (opts.accountId) qs.set('accountId', opts.accountId);
+    if (opts.lstContract) qs.set('lstContract', opts.lstContract);
     const res = await opts.fetchFn(`/v1/near/staking/wallet-tx?${qs.toString()}`);
     if (!res.ok) throw new Error('Unable to build staking wallet transaction.');
     const tx = (await res.json()) as {

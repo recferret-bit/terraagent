@@ -448,6 +448,10 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     return buildStakingWalletTxDescriptor(query, (this.env ?? process.env) as Record<string, string | undefined>);
   }
 
+  async resolveColonyOwnerPlayerId(colonyId?: string): Promise<string | null> {
+    return (await this.resolveDeed(colonyId))?.playerId ?? null;
+  }
+
   private resolveProtocolAccountId(): string {
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
     const kind = nearAdapterFor('Staking', envMap);

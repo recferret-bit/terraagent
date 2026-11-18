@@ -41,7 +41,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Dual Settlement: Fast Sim + NEAR Finality',
     layer: 'WEB3',
     badge: 'HYBRID',
-    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (93 Rust tests).',
+    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (102 Rust tests).',
     chips: ['near-sdk 5.7', 'Testnet + verifier', '11 Typed Ports'],
   },
   {
@@ -55,7 +55,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Orbital Cargo, 1Click Ramp & Hosted MCP',
     layer: 'WEB3',
     badge: 'NEP-245',
-    summary: 'Exported resources wrap into NEP-245 tokens (`mt_batch_transfer`, `mt_transfer_call`, `withdraw`), clearing counter-signed `NEP-413` swaps guarded by persistent nonces, the `/trade.html` 1Click cross-chain ramp, and `POST /v1/mcp` agent commerce.',
+    summary: 'Exported resources wrap into NEP-245 tokens (`mt_batch_transfer`, `mt_transfer_call`, `mt_withdraw`), clearing counter-signed `NEP-413` swaps guarded by persistent nonces, the `/trade.html` 1Click cross-chain ramp, and `POST /v1/mcp` agent commerce.',
     chips: ['res.terraagent.testnet', '1Click Ramp', 'Hosted MCP /v1/mcp'],
   },
   {
@@ -148,13 +148,13 @@ export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
 ];
 
 export const CONTRACT_ROWS: ReadonlyArray<ContractSpec> = [
-  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo across all 10 commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `withdraw` / `mt_batch_transfer` / `mt_transfer_call` + NEP-145 bounds' },
+  { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo across all 10 commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `mt_withdraw` / `mt_batch_transfer` / `mt_transfer_call` + NEP-145 bounds' },
   { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK', standard: 'NEP-171 Soulbound', role: 'Colony Deeds, 5-entry capped milestone chapters & badges', guardAndSettlement: 'Bounded `update_metadata`, `prune_history` & NEP-181 pagination (`<= 50`) + NEAR Social shares' },
   { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / payable `open_near_escrow` / `mt_on_transfer` / `claim_expired_refund` / `slash_escrow` (90/10)' },
   { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Lossless Validator Vault', role: 'Day-1 native NEAR & LST staking (9.0% gross APY) + 10 NEAR AI unlock', guardAndSettlement: '100% principal safe (`stake_payable`, `ft_on_transfer` LSTs, `wallet-tx`); 80/20 yield split' },
   { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Direct council `propose`/`vote`/`finalize` + SputnikDAO v2 JSON export (`/sputnik-json`)' },
   { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant `{pilot}.pilots.terraagent.testnet` sub-account provisioning', guardAndSettlement: '`create_pilot_account`; `claimAccount` rotates `[AddKey, DeleteKey]` + seals scoped trading session key' },
-  { contract: 'verifier (workspace)', accountId: 'verifier.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-413 On-Chain Verifier', role: 'Pure Rust `token_diff` Borsh + `env::ed25519_verify` & replay registry', guardAndSettlement: '`verify_and_record_token_diff` / `is_nonce_used` workspace crate (release WASM built, 3 unit tests)' },
+  { contract: 'verifier (workspace)', accountId: 'verifier.terraagent.testnet', txHash: '', standard: 'NEP-413 On-Chain Verifier', role: 'Pure Rust `token_diff` Borsh + `env::ed25519_verify`, key-binding & replay registry', guardAndSettlement: '`simulate_intents` / `execute_intents` / `register_account_key` workspace crate (release WASM built, 6 unit tests)' },
 ];
 
 export const PROTOCOL_ACCOUNT_ROWS: ReadonlyArray<ProtocolAccountSpec> = [
@@ -204,9 +204,9 @@ export const PORT_ROWS: ReadonlyArray<PortSpec> = [
 
 export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
   {
-    control: 'Confidential Enclave + Browser WebCrypto Proof',
+    control: 'Confidential Enclave + Browser Cryptographic Proof',
     trigger: 'Every autonomous commander turn (`z-ai/glm-5.3-flash`)',
-    enforcement: 'Executed inside NEAR AI Cloud enclaves (`cloud-api.near.ai/v1`); `SHA-256` `model:request:response` ECDSA attestations persist in `director_tee_attestation` and verify live in-browser via WebCrypto (`TEE ✓` modal & `/me.html` live probe).',
+    enforcement: 'Executed inside NEAR AI Cloud enclaves (`cloud-api.near.ai/v1`); `SHA-256` `model:request:response` attestations persist in `director_tee_attestation` and verify live in-browser via `secp256k1` EIP-191 & WebCrypto `Ed25519` (`TEE ✓` modal & `/me.html` live probe).',
   },
   {
     control: 'Prompt-Injection & Governance Fencing',
@@ -216,7 +216,7 @@ export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
   {
     control: 'Encrypted BYOK Vault & Managed Staker Banner (`/me.html`)',
     trigger: 'Player attaches personal NEAR.AI key or stakes >= 10 NEAR',
-    enforcement: 'Encrypted at rest using authenticated AES-256-GCM with live enclave probe (`Verify & Save`); plaintext keys are never echoed, and >= 10 NEAR stakers see `MANAGED STAKER AI ACTIVE`.',
+    enforcement: 'Encrypted at rest using authenticated AES-256-GCM with live enclave probe (`TEST & VERIFY TEE ENCLAVE`); plaintext keys are never echoed, and >= 10 NEAR stakers see `MANAGED STAKER AI ACTIVE`.',
   },
   {
     control: 'Staking Isolation & Hard Custody Rails (`403 AI_STAKING_FORBIDDEN`)',

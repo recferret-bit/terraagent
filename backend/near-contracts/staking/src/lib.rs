@@ -10,7 +10,9 @@ const UNBONDING_DURATION_MS: u64 = 2 * GAME_DAY_MS;
 const YEAR_MS: u128 = 365 * (GAME_DAY_MS as u128);
 const DEFAULT_PROTOCOL_YIELD_SHARE_BP: u32 = 2_000; // Default 20% of validator yield -> protocol.<owner_id>, 80% -> staker (7.2% net APY)
 const MAX_APY_BP: u32 = 5_000; // 50.00% sanity ceiling on gross validator APY
+const MAX_NON_OPERATOR_APY_BP: u32 = 1_000; // 10.00% ceiling on direct non-operator payable/LST stakes
 const STORAGE_RESERVE_MILLINEAR: u128 = 50; // 0.05 NEAR liquid buffer above storage lock
+const MIN_PAYABLE_DEPOSIT_YOCTO: u128 = 5_000_000_000_000_000_000_000; // 0.005 NEAR covers storage lock (> ~350 bytes)
 const MIN_CLAIM_PREPAID_TGAS: u64 = 25;
 const CLAIM_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const CFG_PROTOCOL_KEY: &[u8] = b"cfg:protocol";
@@ -56,8 +58,9 @@ fn write_yield_reserve(val: u128) {
     write_u128_key(YIELD_RESERVE_KEY, val);
 }
 
-fn is_whitelisted_lst(contract_id: &str) -> bool {
+fn is_whitelisted_lst(contract_id: &str, owner_id: &str) -> bool {
     let lower = contract_id.to_ascii_lowercase();
+    let owner_lower = owner_id.to_ascii_lowercase();
     matches!(
         lower.as_str(),
         "meta-pool.near"
@@ -66,9 +69,9 @@ fn is_whitelisted_lst(contract_id: &str) -> bool {
             | "linear-protocol.testnet"
             | "rnear.near"
             | "rnear.testnet"
-    ) || lower.starts_with("stnear.")
-        || lower.starts_with("linear.")
-        || lower.starts_with("rnear.")
+    ) || lower == format!("stnear.{}", owner_lower)
+        || lower == format!("linear.{}", owner_lower)
+        || lower == format!("rnear.{}", owner_lower)
 }
 
 #[allow(dead_code)]
@@ -154,7 +157,18 @@ fn parse_yocto(raw: &str) -> u128 {
 
 fn validate_pool_and_apy(pool_id: &str, apy_bp: u32) {
     require!(!pool_id.trim().is_empty(), "STAKE_INVALID_POOL: pool_id required");
+    require!(
+        !pool_id.contains('|') && !pool_id.contains("::"),
+        "STAKE_INVALID_POOL: pool_id cannot contain key delimiters"
+    );
     require!(apy_bp <= MAX_APY_BP, "STAKE_INVALID_APY: apy_bp exceeds 5000 bp");
+}
+
+fn validate_target_account(account_id: &str) {
+    require!(
+        !account_id.trim().is_empty() && !account_id.contains('|') && !account_id.contains("::"),
+        "STAKE_INSUFFICIENT_BALANCE: invalid account_id"
+    );
 }
 
 /// Overflow-free reward accrual matching `@terra/sim` / `yocto.ts`:
@@ -353,6 +367,10 @@ impl StakingVaultContract {
             attached > 0,
             "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit must be > 0"
         );
+        require!(
+            attached >= MIN_PAYABLE_DEPOSIT_YOCTO,
+            "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit must be >= 0.005 NEAR to cover storage"
+        );
         let target = account_id
             .unwrap_or_else(env::predecessor_account_id)
             .to_string();
@@ -529,6 +547,7 @@ impl StakingVaultContract {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
+        validate_target_account(&account_id);
         let stake_val = parse_yocto(&amount);
         require!(stake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
 
@@ -643,14 +662,16 @@ impl StakingVaultContract {
         self.balances.insert(recipient.clone(), cur_rec.saturating_add(payout));
 
         let pos_ndep = read_pos_ndep(&account_id, &pool_id);
+        let released_ndep = pos_ndep.min(next.withdrawable);
+        let remaining_ndep = pos_ndep - released_ndep;
         let yield_reserve = read_yield_reserve();
         let backed_yield = next.rewards.min(yield_reserve);
         if backed_yield > 0 {
             write_yield_reserve(yield_reserve - backed_yield);
         }
-        let restore_ndep = pos_ndep.saturating_add(backed_yield);
-        if pos_ndep > 0 {
-            write_pos_ndep(&account_id, &pool_id, 0);
+        let restore_ndep = released_ndep.saturating_add(backed_yield);
+        if released_ndep > 0 {
+            write_pos_ndep(&account_id, &pool_id, remaining_ndep);
         }
         if restore_ndep > 0 {
             write_native_dep(&recipient, read_native_dep(&recipient).saturating_add(restore_ndep));
@@ -733,19 +754,45 @@ impl StakingVaultContract {
         account_id: Option<String>,
     ) -> StakingPositionView {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
+        let stake_val = env::attached_deposit().as_yoctonear();
         if let Some(cached) = self.processed_ops.get(&op_id) {
+            require!(
+                stake_val == 0,
+                "STAKE_DUPLICATE_OP: duplicate op_id with attached NEAR deposit"
+            );
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
-        let stake_val = env::attached_deposit().as_yoctonear();
         require!(stake_val > 0, "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit must be > 0");
-        let caller = env::predecessor_account_id().to_string();
+        require!(
+            stake_val >= MIN_PAYABLE_DEPOSIT_YOCTO,
+            "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit must be >= 0.005 NEAR to cover storage"
+        );
+        let caller_acct = env::predecessor_account_id();
+        let is_operator = caller_acct == self.operator_id || caller_acct == self.owner_id;
+        require!(
+            is_operator || apy_bp <= MAX_NON_OPERATOR_APY_BP,
+            "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp"
+        );
+        let caller = caller_acct.to_string();
         let target = account_id.filter(|s| !s.trim().is_empty()).unwrap_or(caller);
+        validate_target_account(&target);
         write_pos_ndep(&target, &pool_id, read_pos_ndep(&target, &pool_id).saturating_add(stake_val));
 
         let key = pos_key(&target, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
+        let chain_now = env::block_timestamp_ms();
+        let effective_now = if is_operator {
+            now_ms
+        } else if chain_now > 0 {
+            chain_now
+        } else if existing.staked > 0 {
+            existing.last_accrued_at_ms
+        } else {
+            now_ms
+        };
+        let (mut next, protocol_cut) =
+            project_record(&existing, apy_bp, effective_now, read_protocol_yield_bp());
         self.credit_protocol_yield(protocol_cut);
         next.staked = next.staked.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(key, next.clone());
@@ -760,7 +807,7 @@ impl StakingVaultContract {
     pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> String {
         let token_contract = env::predecessor_account_id();
         require!(
-            is_whitelisted_lst(token_contract.as_str()),
+            is_whitelisted_lst(token_contract.as_str(), self.owner_id.as_str()),
             "STAKE_INVALID_POOL: LST token contract is not whitelisted"
         );
         let qty = parse_yocto(&amount);
@@ -780,14 +827,23 @@ impl StakingVaultContract {
             .to_string();
         let apy_bp = parsed.get("apy_bp").and_then(|v| v.as_u64()).unwrap_or(900) as u32;
         validate_pool_and_apy(&pool_id, apy_bp);
-        let now_ms = parsed
-            .get("now_ms")
-            .and_then(|v| v.as_u64())
-            .unwrap_or_else(env::block_timestamp_ms);
-
+        validate_target_account(&target);
+        require!(
+            apy_bp <= MAX_NON_OPERATOR_APY_BP,
+            "STAKE_INVALID_APY: LST stake apy_bp exceeds 1000 bp"
+        );
         let key = pos_key(&target, &pool_id);
         let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) = project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
+        let chain_now = env::block_timestamp_ms();
+        let effective_now = if chain_now > 0 {
+            chain_now
+        } else if existing.staked > 0 {
+            existing.last_accrued_at_ms
+        } else {
+            parsed.get("now_ms").and_then(|v| v.as_u64()).unwrap_or(0)
+        };
+        let (mut next, protocol_cut) =
+            project_record(&existing, apy_bp, effective_now, read_protocol_yield_bp());
         self.credit_protocol_yield(protocol_cut);
         next.staked = next.staked.checked_add(qty).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
         self.positions.insert(key, next);

@@ -375,6 +375,10 @@ impl TreasuryDaoContract {
             is_operator || caller.as_str() == voter,
             "NEAR_NOT_OWNER: caller not authorized to vote on behalf of voter"
         );
+        require!(
+            is_operator || (pass_above_bp.is_none() && pass_min_yes.is_none()),
+            "NEAR_NOT_OWNER: only operator may override quorum parameters"
+        );
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.clone();
         }

@@ -19,7 +19,7 @@ import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
 import { DEFAULT_NEAR_AI_MODEL } from '../ai/nearai-models.js';
 import { resolveDbStakerPerks } from '../near/staking/staker-perks.js';
-import { LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
+import { isTeeAttestationRejected, LlmProviderPort, type LlmAttestation } from '../ports/llm-provider.port.js';
 import { FactsStore } from '../progression/facts.store.js';
 import { W12SeedService } from '../progression/w12-seed.service.js';
 import { XpStore } from '../progression/xp.store.js';
@@ -162,8 +162,12 @@ export class MeProfileService {
       model,
       ...(hasKey && creds.apiKey ? { apiKey: creds.apiKey } : {}),
     });
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    const ok = res.attestation
+      ? Boolean(res.attestation.verified) && !isTeeAttestationRejected(res.attestation)
+      : envMap.AI_PROVIDER !== 'nearai';
     return {
-      ok: true,
+      ok,
       model: res.model,
       managedStaker: !hasKey && staker.stakerAutopilotActive,
       usedPlayerKey: hasKey,

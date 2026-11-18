@@ -3,6 +3,11 @@ import { negotiateAgentQuote, type NegotiationResult } from '../colony-agent/age
 
 export const HOSTED_MCP_TOOLS = [
   {
+    name: 'list_planets',
+    description: 'List active planets hosting live NEP-245 / NEAR Intents commodity orderbooks.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'list_pairs',
     description: 'List active colony trading pairs and settlement lot constraints.',
     inputSchema: { type: 'object', properties: {} },

@@ -308,15 +308,115 @@ fn payable_near_escrow_slash_and_expired_refund_work() {
     let refunded = c.claim_expired_refund("bond:1".into());
     assert_eq!(refunded.status, "refunded");
 
-    // Atomic mt_on_transfer cargo bounty opens directly
-    set_caller("res.testnet");
+    // Atomic mt_on_transfer cargo bounty opens directly from res.<owner_id>, settles/refunds cargo, and refunds duplicate op_id
+    set_caller("res.owner.testnet");
     let unused = c.mt_on_transfer(
         acct("alice.testnet"),
         vec![acct("alice.testnet")],
         vec!["metals.t1".into()],
         vec!["250".into()],
-        r#"{"escrow_id":"cargo:1","beneficiary":"merc.testnet","expires_at_ms":9000}"#.into(),
+        r#"{"op_id":"op-cargo-1","escrow_id":"cargo:1","beneficiary":"merc.testnet","expires_at_ms":9000}"#.into(),
     );
     assert_eq!(unused, vec!["0".to_string()]);
     assert_eq!(c.get_escrow("cargo:1".into()).unwrap().amount, "250");
+
+    // Duplicate op_id returns full unused amount for NEP-245 mt_resolve_transfer refund
+    let dup_unused = c.mt_on_transfer(
+        acct("alice.testnet"),
+        vec![acct("alice.testnet")],
+        vec!["metals.t1".into()],
+        vec!["250".into()],
+        r#"{"op_id":"op-cargo-1","escrow_id":"cargo:1b","beneficiary":"merc.testnet","expires_at_ms":9000}"#.into(),
+    );
+    assert_eq!(dup_unused, vec!["250".to_string()]);
+
+    // Expired cargo-custodied escrow can be reclaimed by funder and clears cfund marker
+    testing_env!(VMContextBuilder::new()
+        .predecessor_account_id(acct("alice.testnet"))
+        .block_timestamp(9_000 * 1_000_000)
+        .build());
+    let cargo_refunded = c.claim_expired_refund("cargo:1".into());
+    assert_eq!(cargo_refunded.status, "refunded");
+
+    // Operator-custodied open_escrow cannot be flipped via claim_expired_refund (prevents stranding hold-<hex>.<root> cargo)
+    set_caller("op.testnet");
+    c.open_escrow("op-op-1".into(), "op_escrow:1".into(), acct("alice.testnet"), "merc.testnet".into(), "metals.t1".into(), "100".into(), 1_000);
+    testing_env!(VMContextBuilder::new()
+        .predecessor_account_id(acct("alice.testnet"))
+        .block_timestamp(2_000 * 1_000_000)
+        .build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.claim_expired_refund("op_escrow:1".into());
+    })).is_err());
+}
+
+#[test]
+fn rejects_spoofed_mt_on_transfer_sibling_domain_dust_and_duplicate_payable_escrow_op() {
+    testing_env!(VMContextBuilder::new()
+        .current_account_id(acct("bounty.terraagent.testnet"))
+        .predecessor_account_id(acct("terraagent.testnet"))
+        .build());
+    let mut c = BountyEscrowContract::new(acct("terraagent.testnet"), acct("minter.terraagent.testnet"));
+
+    // Arbitrary caller, spoofed res.evil.testnet, or sibling res.testnet must be rejected on mt_on_transfer
+    for bad_caller in ["mallory.testnet", "res.evil.testnet", "res.testnet"] {
+        for current_acct in ["bounty.terraagent.testnet", "custom-bounty.testnet"] {
+            testing_env!(VMContextBuilder::new()
+                .current_account_id(acct(current_acct))
+                .predecessor_account_id(acct(bad_caller))
+                .build());
+            let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                c.mt_on_transfer(
+                    acct("mallory.testnet"),
+                    vec![acct("mallory.testnet")],
+                    vec!["metals.t1".into()],
+                    vec!["1000".into()],
+                    r#"{"escrow_id":"fake:1","beneficiary":"mallory.testnet"}"#.into(),
+                );
+            }));
+            assert!(panicked.is_err(), "expected {bad_caller} on {current_acct} to be rejected");
+        }
+    }
+
+    // Legitimate res.terraagent.testnet succeeds and settles cargo on claim/slash
+    testing_env!(VMContextBuilder::new()
+        .current_account_id(acct("bounty.terraagent.testnet"))
+        .predecessor_account_id(acct("res.terraagent.testnet"))
+        .build());
+    let out = c.mt_on_transfer(
+        acct("alice.testnet"),
+        vec![acct("alice.testnet")],
+        vec!["metals.t1".into()],
+        vec!["500".into()],
+        r#"{"escrow_id":"real:1","beneficiary":"merc.testnet"}"#.into(),
+    );
+    assert_eq!(out, vec!["0".to_string()]);
+    testing_env!(VMContextBuilder::new()
+        .current_account_id(acct("bounty.terraagent.testnet"))
+        .predecessor_account_id(acct("minter.terraagent.testnet"))
+        .build());
+    let claimed = c.claim_escrow("op-claim-real-1".into(), "real:1".into(), acct("merc.testnet"));
+    assert_eq!(claimed.status, "claimed");
+
+    // 1 yoctoNEAR dust deposit on open_near_escrow panics to prevent storage-lock griefing
+    testing_env!(VMContextBuilder::new()
+        .current_account_id(acct("bounty.terraagent.testnet"))
+        .predecessor_account_id(acct("alice.testnet"))
+        .attached_deposit(NearToken::from_yoctonear(1))
+        .build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.open_near_escrow("op-dust-near".into(), "bond:dust".into(), "bob.testnet".into(), 0);
+    })).is_err());
+
+    // Duplicate payable op_id with attached deposit panics so funds are never locked uncredited
+    testing_env!(VMContextBuilder::new()
+        .current_account_id(acct("bounty.terraagent.testnet"))
+        .predecessor_account_id(acct("alice.testnet"))
+        .attached_deposit(NearToken::from_near(5))
+        .build());
+    c.open_near_escrow("op-dup-near".into(), "bond:dup1".into(), "bob.testnet".into(), 0);
+    let dup_panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.open_near_escrow("op-dup-near".into(), "bond:dup2".into(), "bob.testnet".into(), 0);
+    }));
+    assert!(dup_panic.is_err());
 }

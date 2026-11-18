@@ -60,13 +60,25 @@ export async function assertColonyOwnership(params: {
 
   let ownerPlayerId = params.ownerPlayerIdHint ?? undefined;
   const colId = params.colonyId?.trim();
-  if (!ownerPlayerId && colId && params.prisma && databaseEnabled(params.env)) {
-    const row = await params.prisma.nearColonyAccount.findFirst({
+  const isMockPrisma = Boolean(params.prisma && !('$connect' in params.prisma));
+  const useDb = Boolean(colId && params.prisma && (databaseEnabled(params.env) || isMockPrisma));
+  if (!ownerPlayerId && colId && useDb && params.prisma) {
+    const row = await params.prisma.nearColonyAccount?.findFirst?.({
       where: { OR: [{ colonyId: colId }, { slot: colId }] },
       select: { playerId: true },
     });
-    ownerPlayerId = row?.playerId;
+    ownerPlayerId = row?.playerId ?? undefined;
+    if (!ownerPlayerId && typeof params.prisma.colony?.findUnique === 'function') {
+      const colRow = await params.prisma.colony.findUnique({
+        where: { id: colId },
+        select: { playerId: true },
+      });
+      ownerPlayerId = colRow?.playerId ?? undefined;
+    }
   }
+
+  const nodeEnv = params.env?.NODE_ENV ?? process.env.NODE_ENV;
+  const isDevSharedOwner = ownerPlayerId === 'dev_pilot' && nodeEnv !== 'production';
 
   if (strict) {
     if (!callerPlayerId) {
@@ -75,7 +87,7 @@ export async function assertColonyOwnership(params: {
         message: 'Authentication is required for this NEAR action',
       });
     }
-    if (ownerPlayerId && ownerPlayerId !== 'dev_pilot' && ownerPlayerId !== callerPlayerId) {
+    if (ownerPlayerId && !isDevSharedOwner && ownerPlayerId !== callerPlayerId) {
       throw new NearException('NEAR_NOT_OWNER', {
         status: 403,
         message: 'Caller does not own this colony',
@@ -84,7 +96,7 @@ export async function assertColonyOwnership(params: {
     return callerPlayerId;
   }
 
-  if (callerPlayerId && ownerPlayerId && ownerPlayerId !== 'dev_pilot' && ownerPlayerId !== callerPlayerId) {
+  if (callerPlayerId && ownerPlayerId && !isDevSharedOwner && ownerPlayerId !== callerPlayerId) {
     throw new NearException('NEAR_NOT_OWNER', {
       status: 403,
       message: 'Caller does not own this colony',

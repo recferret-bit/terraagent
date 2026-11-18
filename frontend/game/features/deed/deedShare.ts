@@ -81,6 +81,10 @@ export function buildNearSocialPostTx(
   const text = `${buildDeedTwitterIntentText(opts)}\n${shareUrl}`;
   const mainPost = JSON.stringify({ type: 'md', text });
   const indexPost = JSON.stringify({ key: 'main', value: { type: 'md' } });
+  const nearSocialUrl =
+    network === 'mainnet'
+      ? `https://near.social/mob.near/widget/ProfilePage?accountId=${encodeURIComponent(accountId)}`
+      : `https://test.near.social/eugenethedream/widget/ProfilePage?accountId=${encodeURIComponent(accountId)}`;
   return {
     contractId,
     methodName: 'set' as const,
@@ -94,7 +98,7 @@ export function buildNearSocialPostTx(
     },
     attachedDepositYocto: '10000000000000000000000',
     gasTgas: 50,
-    nearSocialUrl: `https://near.social/mob.near/widget/ProfilePage?accountId=${encodeURIComponent(accountId)}`,
+    nearSocialUrl,
   };
 }
 

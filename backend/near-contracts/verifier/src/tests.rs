@@ -186,3 +186,28 @@ fn blocks_third_party_from_executing_unregistered_account_intents() {
         .build());
     c.execute_intents("op-drain-1".into(), real_four_way_intents());
 }
+
+#[test]
+fn blocks_revoked_implicit_account_key_after_key_rotation() {
+    let mut c = setup(1_763_000_000_000, false);
+    let old_pub = "ed25519:AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9";
+    let old_pub32 = decode_ed25519_32(old_pub).unwrap();
+    let implicit_acct = hex_encode_32(&old_pub32);
+
+    // Before key rotation, implicit account matches its initial 32-byte Ed25519 key
+    assert_eq!(c.verify_key_binding(&implicit_acct, old_pub, &old_pub32), Ok(true));
+
+    // Rotate to a new key -> old implicit key must immediately reject with NEAR_INTENT_UNREGISTERED_KEY
+    let rotated_pub = "ed25519:9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu";
+    let rotated_pub32 = decode_ed25519_32(rotated_pub).unwrap();
+    c.register_account_key(implicit_acct.clone(), rotated_pub.into());
+
+    assert_eq!(
+        c.verify_key_binding(&implicit_acct, old_pub, &old_pub32),
+        Err("NEAR_INTENT_UNREGISTERED_KEY")
+    );
+    assert_eq!(
+        c.verify_key_binding(&implicit_acct, rotated_pub, &rotated_pub32),
+        Ok(true)
+    );
+}
