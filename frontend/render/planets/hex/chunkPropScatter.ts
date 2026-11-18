@@ -19,7 +19,7 @@ import {
   tileHashU32,
   type HexTileLayers,
 } from './chunkMesh';
-import { tileXZ } from './hexMath';
+import { clampToGroundHexagon, HEX_PROP_EDGE_MARGIN_M, tileXZ } from './hexMath';
 import { createPropBucketSet } from './propBuckets';
 
 export type PropKind = 'pine' | 'boulder' | 'spire' | 'metals' | 'minerals' | 'oil';
@@ -84,6 +84,7 @@ function makeInstance(
   saltBase: number,
   radMin: number,
   radSpan: number,
+  radius?: number,
 ): TilePropInstance {
   const baseAngle = tileHash01(q, r, saltBase + 99) * Math.PI * 2;
   const h1 = tileHash01(q, r, saltBase + k * 7);
@@ -95,8 +96,17 @@ function makeInstance(
   const dist = minR + radSpan * h1;
   const sector = (Math.PI * 2) / Math.max(1, count);
   const angle = baseAngle + k * sector + (h2 - 0.5) * Math.min(0.42, sector * 0.3);
-  const x = cx + Math.cos(angle) * dist;
-  const z = cz + Math.sin(angle) * dist;
+  let x: number;
+  let z: number;
+  if (radius !== undefined && radius > 0) {
+    const [ax, az] = clampToGroundHexagon(radius, cx, cz, HEX_PROP_EDGE_MARGIN_M + minR + radSpan * 0.65);
+    const rawX = ax + Math.cos(angle) * dist;
+    const rawZ = az + Math.sin(angle) * dist;
+    [x, z] = clampToGroundHexagon(radius, rawX, rawZ, HEX_PROP_EDGE_MARGIN_M);
+  } else {
+    x = cx + Math.cos(angle) * dist;
+    z = cz + Math.sin(angle) * dist;
+  }
   return {
     kind,
     tileQ: q,
@@ -146,12 +156,13 @@ function scatterDepositProps(
   heightAt: (x: number, z: number) => number,
   stage: DepositVisualStage,
   depositTier?: number,
+  radius?: number,
 ): TilePropInstance[] {
   const look = DEPOSIT_TIER_LOOK[depositVisualTier(depositTier)];
   const [cx, cz] = tileXZ(q, r);
   const out: TilePropInstance[] = [];
   for (let k = 0; k < look.count; k++) {
-    const inst = makeInstance(depKind, q, r, tileIndex, cx, cz, heightAt, k, look.count, 800, 0.34, 0.30);
+    const inst = makeInstance(depKind, q, r, tileIndex, cx, cz, heightAt, k, look.count, 800, 0.34, 0.30, radius);
     applyDepositStage(inst, stage, k, 0.78 + 0.40 * tileHash01(q, r, 800 + k * 7 + 3), look.scale);
     if (look.tintMul !== undefined) inst.tintMul = look.tintMul;
     out.push(inst);
@@ -175,6 +186,8 @@ export function scatterTileProps(
   richnessBp?: number,
   /** Sim `depositTier` of the tile: 0 / undefined = legacy tier 1, else 1..3. */
   depositTier = 0,
+  /** Optional planet radius: when given, clamps outer-ring/corner props inside the ground hexagon perimeter. */
+  radius?: number,
 ): TilePropInstance[] {
   const out: TilePropInstance[] = [];
   const [cx, cz] = tileXZ(q, r);
@@ -183,7 +196,7 @@ export function scatterTileProps(
     if (kind === 'dune' && terrain === HEX_TERRAIN.rock) return out;
     const depKind: PropKind =
       deposit === HEX_DEPOSIT.metals ? 'metals' : deposit === HEX_DEPOSIT.minerals ? 'minerals' : 'oil';
-    return scatterDepositProps(depKind, q, r, tileIndex, heightAt, getDepositVisualStage(richnessBp), depositTier);
+    return scatterDepositProps(depKind, q, r, tileIndex, heightAt, getDepositVisualStage(richnessBp), depositTier, radius);
   }
 
   if (!isClearedPrep(prep)) {
@@ -191,19 +204,19 @@ export function scatterTileProps(
       if (kind === 'dune') {
         const count = 1 + (tileHashU32(q, r, 101) % 2); // 1..2 desert boulders instead of trees
         for (let k = 0; k < count; k++) {
-          out.push(makeInstance('boulder', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.26, 0.38));
+          out.push(makeInstance('boulder', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.26, 0.38, radius));
         }
       } else {
         const count = 2 + (tileHashU32(q, r, 101) % 3); // 2..4 trees
         for (let k = 0; k < count; k++) {
-          out.push(makeInstance('pine', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.34, 0.36));
+          out.push(makeInstance('pine', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.34, 0.36, radius));
         }
       }
     } else if (terrain === HEX_TERRAIN.rock && kind !== 'dune') {
       const count = 2 + (tileHashU32(q, r, 303) % 2); // 2..3 boulders/spires on non-dune rock
       for (let k = 0; k < count; k++) {
         const propKind: PropKind = k === count - 1 ? 'spire' : 'boulder';
-        out.push(makeInstance(propKind, q, r, tileIndex, cx, cz, heightAt, k, count, 400, 0.34, 0.34));
+        out.push(makeInstance(propKind, q, r, tileIndex, cx, cz, heightAt, k, count, 400, 0.34, 0.34, radius));
       }
     }
   }
@@ -249,6 +262,7 @@ export function scatterChunkProps(
       kind,
       richness ? richness[i] : undefined,
       depositTier?.[i] ?? 0,
+      radius,
     );
     for (const p of props) {
       buckets[p.kind].push(p);
