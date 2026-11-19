@@ -136,6 +136,7 @@ export class Gameplay {
     this.surface.biosphere?.setAggressors([
       { x: this.hero.obj.position.x, z: this.hero.obj.position.z, radius: 12, working: false },
       ...this.agents.map((a) => ({ x: a.obj.position.x, z: a.obj.position.z, radius: 11, working: false })),
+      ...this.owned.map((m) => ({ x: m.position.x, z: m.position.z, radius: 7.5, working: false })),
     ]);
     tickArchetypeMesh(this.hero.obj, this.time, this.hero.walk);
     for (const m of this.owned) tickArchetypeMesh(m, this.time);

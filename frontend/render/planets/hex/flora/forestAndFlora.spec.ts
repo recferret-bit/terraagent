@@ -160,5 +160,20 @@ describe('HexFloraLayer grass hex variations, bushes, cactuses, reeds, and dune 
     expect(duneCounts.bush).toBeGreaterThan(5);
     expect(duneCounts.reeds).toBe(0);
     dune.dispose();
+
+    // Fortification ridges, dug moats, and colony-owned graded base pads never sprout wild bushes or cactuses
+    const fortCount = hexCount(8);
+    const fortTiles = {
+      terrain: new Uint8Array(fortCount).fill(HEX_TERRAIN.flat),
+      prep: new Uint8Array(fortCount).fill(HEX_PREP.flat),
+      height: new Float32Array(fortCount),
+      owner: new Int8Array(fortCount).fill(0),
+    };
+    fortTiles.prep[0] = HEX_PREP.ridge;
+    fortTiles.prep[1] = HEX_PREP.moat;
+    const baseTerrain = createHexTerrain({ radius: 8, tiles: fortTiles, look: specForPlanetType('desert') });
+    const baseFlora = baseTerrain.flora.counts();
+    expect(baseFlora.bush + baseFlora.saguaro + baseFlora.barrelCactus + baseFlora.grassTuft).toBe(0);
+    baseTerrain.dispose();
   });
 });

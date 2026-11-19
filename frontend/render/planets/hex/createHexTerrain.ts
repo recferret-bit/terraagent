@@ -8,7 +8,7 @@ import { createHexPropScatter, type HexPropScatter } from './chunkPropScatter';
 import { createBorderController } from './borderController';
 import { addHexEdges } from './hexEdges';
 import { createHexFloraLayer, type HexFloraLayer } from './flora/HexFloraLayer';
-import { planetExtent, rayGround, tileAt, waterSurfaceHit } from './hexMath';
+import { planetExtent, rayGround, tileAt, tileXZ, waterSurfaceHit } from './hexMath';
 import { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
 import { createHexAmbient } from './hexAmbient';
 import { getWindUniforms } from '../../core/windConfig';
@@ -172,6 +172,35 @@ function pickHexTile(
   return hit ? tileAt(radius, hit.x, hit.z) : null;
 }
 
+function emitTileHabitatDisturbances(
+  hx: ReturnType<typeof hexIndex>,
+  prevTerrain: Uint8Array,
+  prevPrep: Uint8Array,
+  layers: HexTileLayers,
+  changed: ArrayLike<number> | undefined,
+  biosphere: PlanetBiosphere,
+): void {
+  const n = changed ? changed.length : hx.count;
+  for (let k = 0; k < n; k++) {
+    const ti = changed ? changed[k]! : k;
+    if (ti < 0 || ti >= hx.count) continue;
+    const oldT = prevTerrain[ti]!;
+    const newT = layers.terrain?.[ti] ?? 0;
+    const oldP = prevPrep[ti]!;
+    const newP = layers.prep?.[ti] ?? 0;
+    if (
+      (oldT === HEX_TERRAIN.forest && newT !== HEX_TERRAIN.forest) ||
+      ((oldT === HEX_TERRAIN.shallow || oldT === HEX_TERRAIN.deep) && newT !== oldT) ||
+      (oldP === 0 && newP !== 0)
+    ) {
+      const [dx, dz] = tileXZ(hx.q[ti]!, hx.r[ti]!);
+      biosphere.noteHabitatDisturbance(dx, dz, 14, 7.0);
+    }
+    prevTerrain[ti] = newT;
+    prevPrep[ti] = newP;
+  }
+}
+
 /** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { radius, look } = opts;
@@ -200,6 +229,8 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
 
   chunks.rebuild(chunkLayers(), effHeights);
   flora.update(chunkLayers(), heightAt);
+  const prevTerrainSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.terrain[i] ?? 0);
+  const prevPrepSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.prep?.[i] ?? 0);
   const biosphere = createPlanetBiosphere({
     look,
     habitat: buildHexHabitatIndex(radius, chunkLayers(), look, heightAt),
@@ -223,6 +254,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       const changed = resolved.changed;
       if (!changed || changed.length > 0) {
         const layers = chunkLayers();
+        emitTileHabitatDisturbances(hx, prevTerrainSnap, prevPrepSnap, layers, changed, biosphere);
         effHeights = computeEffectiveHeights(radius, layers);
         tint.update(layers, changed);
         chunks.rebuild(layers, effHeights, changed);

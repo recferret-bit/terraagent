@@ -1,6 +1,6 @@
 import type { KitbashBuilder, MaterialZoneId, MaterialZoneSpec, PartOptions } from '../../KitbashRegistry';
 import { organ, tendril } from '../../greebles/organic/shapes';
-import '../../greebles/organic/vertebrates';
+import { mammalTrunk } from '../../greebles/organic/vertebrates';
 import type { V3 } from '../../greebles/unitParts';
 import { register } from './common';
 
@@ -145,34 +145,32 @@ function addMammalTail(b: KitbashBuilder, s: MammalRigSpec): void {
 
 function buildMammalCore(b: KitbashBuilder, s: MammalRigSpec): { neckPivot: V3; headCenter: V3; headAnim: PartOptions } {
   const bodyAnim: PartOptions = { animType: 8 };
-  const legHx = s.torsoX - s.legThick * 0.25;
+  // Lateral compression so limbs tuck anatomically beneath the body contour with >= 1.8 cm sagittal swing clearance.
+  const ribX = s.chestR[0] * 0.78;
+  const rumpX = s.rumpR[0] * 0.78;
+  const legHx = Math.max(ribX, rumpX) - s.legThick * 0.12;
   const legHy = s.torsoY - s.chestR[1] * 0.18;
 
   b.addGreeble('organicQuadLegs', {
     hx: legHx,
     hy: legHy,
-    zFront: s.chestZ + s.chestR[2] * 0.35,
-    zBack: s.rumpZ - s.rumpR[2] * 0.25,
+    zFront: s.chestZ + s.chestR[2] * 0.32,
+    zBack: s.rumpZ - s.rumpR[2] * 0.22,
     thickness: s.legThick,
     hoof: s.hoof,
   });
 
-  b.addPart(organ(s.chestR, 1, 1.1, 0.014, 10), 'hullPrimary', {
-    name: 'thoracic ribcage',
-    position: [0, s.torsoY, s.chestZ],
+  const zMin = s.rumpZ - s.rumpR[2];
+  const zMax = s.chestZ + s.chestR[2];
+  b.addPart(mammalTrunk(ribX, s.chestR[1], rumpX, s.rumpR[1], zMin, zMax), 'hullPrimary', {
+    name: 'mammalian trunk',
+    position: [0, s.torsoY, 0],
     ...bodyAnim,
   });
-  b.addPart(organ(s.rumpR, 1, 2.3, 0.012, 10), 'hullPrimary', {
-    name: 'pelvic haunches',
-    position: [0, s.torsoY - 0.01, s.rumpZ],
-    ...bodyAnim,
-  });
-  const midZ = (s.chestZ + s.rumpZ) * 0.5;
-  const spanZ = Math.max(0.10, (s.chestZ - s.rumpZ) * 0.42);
   b.addPart(
-    organ([s.torsoX * 0.84, s.chestR[1] * 0.82, spanZ], 2, 3.4, 0.01, 9),
+    organ([ribX * 0.56, s.chestR[1] * 0.38, s.chestR[2] * 0.58], 2, 3.4, 0.01, 8),
     'hullSecondary',
-    { name: 'ventral flank', position: [0, s.torsoY - s.chestR[1] * 0.14, midZ], ...bodyAnim },
+    { name: 'ventral brisket pelage', position: [0, s.torsoY - s.chestR[1] * 0.68, s.chestZ + s.chestR[2] * 0.16], ...bodyAnim },
   );
 
   const head = addMammalHeadAndNeck(b, s);
@@ -247,9 +245,9 @@ register({
       tailPts: [[0, 0.56, -0.58], [0, 0.52, -0.65]],
       tailRadii: [0.045, 0.038, 0.020],
     });
-    b.addPart(organ([0.18, 0.065, 0.15], 1, 8.4, 0.01, 8), 'hullSecondary', {
+    b.addPart(organ([0.16, 0.075, 0.15], 1, 8.4, 0.01, 8), 'hullSecondary', {
       name: 'scapular muscle hump',
-      position: [0, 0.84, 0.22],
+      position: [0, 0.78, 0.18],
       animType: 8,
     });
   },
@@ -460,9 +458,9 @@ register({
       tailPts: [[0, 0.74, -0.58], [0, 0.56, -0.66]],
       tailRadii: [0.030, 0.022, 0.028],
     });
-    b.addPart(organ([0.16, 0.16, 0.22], 1, 9.2, 0.015, 9), 'hullSecondary', {
+    b.addPart(organ([0.13, 0.13, 0.19], 1, 9.2, 0.015, 9), 'hullSecondary', {
       name: 'dorsal fat hump',
-      position: [0, 1.04, -0.02],
+      position: [0, 1.07, -0.02],
       animType: 8,
     });
   },

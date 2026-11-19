@@ -19,9 +19,14 @@ import {
   placeSpawnedEntity,
   PLANET_DAMAGE_AGGRESSION_THRESHOLD,
   PREP,
+  setTileOwner,
+  setTilePrep,
+  setTileTerrain,
   SimHost,
   spawnHiveEntity,
   spawnHqUnit,
+  spawnWorkerUnit,
+  startBuildingConstruction,
   TERRAIN,
 } from '../../src';
 
@@ -131,5 +136,91 @@ describe('Planetary ecological damage & insect-only player aggression', () => {
     expect(isHiveAggressiveToColony(state, hiveId, 0)).toBe(true);
     expect(getActiveCohorts(state).length).toBeGreaterThanOrEqual(1);
     void host;
+  });
+});
+
+describe('Planetary ecological damage · Real SimHost forest-clearing & event deduplication', () => {
+  it('end-to-end SimHost: real forest clearing stays peaceful below threshold and provokes adjacent hive once threshold is crossed without double-counting', () => {
+    const { host, state, data } = createPeacefulColonyHost('real-clear-forest');
+    state.colonies[0]!.powerSupplyOverride = 200;
+    const hx = hexIndex(state.grid.radius);
+    for (let i = 0; i < hx.count; i++) {
+      setTileOwner(state.grid, i, 0, 0);
+    }
+    startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: -2, r: 0, instant: true, costOverride: {} });
+    const hiveId = spawnHiveEntity(state, { species: 'blackAnt', q: 6, r: 0, initialResidents: 5 }, 0, data);
+
+    // Plant 2 wild forest tiles right beside the worker (q=2,r=0 and q=3,r=0; within hive habitat defense buffer of q=6,r=0)
+    const f1 = hx.indexOf(2, 0);
+    const f2 = hx.indexOf(3, 0);
+    setTileTerrain(state.grid, f1, TERRAIN.forest, 0);
+    setTilePrep(state.grid, f1, PREP.wild, 0);
+    setTileTerrain(state.grid, f2, TERRAIN.forest, 0);
+    setTilePrep(state.grid, f2, PREP.wild, 0);
+    spawnWorkerUnit(state, { tier: 3, owner: 0, q: 1, r: 0 });
+
+    // 1. Clear first forest tile while colony has low ecological damage (commandHub 11 + clear 5 + tf 2 = 18 < 25): hive MUST remain passive!
+    host.submit({
+      commandId: 'clear-f1',
+      colonyIndex: 0,
+      source: 'player',
+      kind: 'enqueueTask',
+      args: { terraform: { op: 'clear', tiles: [{ q: 2, r: 0 }] } },
+    });
+    for (let t = 0; t < 60; t++) host.step(1);
+    expect(state.grid.layers.terrain[f1]).toBe(TERRAIN.flat);
+    const dmg1 = computeColonyPlanetDamage(state, 0, data);
+    expect(dmg1.forestCleared).toBe(1); // deduplicated across tileStateChanged + obstacleRemoved
+    expect(dmg1.damagedEnough).toBe(false);
+    expect(isHiveAggressiveToColony(state, hiveId, 0)).toBe(false);
+
+    // 2. Add 1 thermal generator (+12 pts) -> clearing 2nd forest tile crosses 25 threshold and provokes hive!
+    const id = state.meta.nextEntityId++;
+    const row = insertRow(state.entities, id, state.meta.tick);
+    state.entities.cols.kind[row] = BUILDING_KIND.thermalGenerator;
+    state.entities.cols.owner[row] = 0;
+    state.entities.cols.hp[row] = 400;
+    state.entities.cols.hpMax[row] = 400;
+    state.entities.cols.progress[row] = 1;
+    state.entities.cols.state[row] = ENTITY_STATE.active;
+    placeSpawnedEntity(state.entities, row, -5, 0, state.meta.tick);
+
+    host.submit({
+      commandId: 'clear-f2',
+      colonyIndex: 0,
+      source: 'player',
+      kind: 'enqueueTask',
+      args: { terraform: { op: 'clear', tiles: [{ q: 3, r: 0 }] } },
+    });
+    for (let t = 0; t < 65; t++) host.step(1);
+    expect(state.grid.layers.terrain[f2]).toBe(TERRAIN.flat);
+    const dmg2 = computeColonyPlanetDamage(state, 0, data);
+    expect(dmg2.forestCleared).toBe(2);
+    expect(dmg2.damagedEnough).toBe(true);
+    expect(isHiveAggressiveToColony(state, hiveId, 0)).toBe(true);
+
+    // 3. Also accepts hyphenated `col-0` colonyIds emitted by footprint reversion
+    const tickNow = state.meta.tick + 1;
+    ingestEcologicalDamageEvents(state, tickNow, {
+      dt: 1,
+      tick: tickNow,
+      flags: new Set(['W00', 'W01', 'W07']),
+      data,
+      events: [
+        {
+          kind: 'obstacleRemoved',
+          severity: 'info',
+          atTick: tickNow,
+          colonyIds: ['col-0'],
+          data: { colonyId: 'col-0', q: -4, r: 0, op: 'clear', count: 1 },
+        },
+      ],
+      postings: [],
+      record: () => {},
+      rng: () => state.rng.misc,
+      newEntityId: () => state.meta.nextEntityId++,
+      emit: () => {},
+    });
+    expect(computeColonyPlanetDamage(state, 0, data).forestCleared).toBe(3);
   });
 });

@@ -14,7 +14,7 @@ import { WAVE_VERT_PEAK } from '../waveModel';
 
 export const FAUNA_CAP = 128;
 /** Fish per square metre of water at density 1. */
-export const FISH_PER_M2 = 0.04;
+export const FISH_PER_M2 = 0.08;
 export const SPECIES_SCHOOL = 0;
 export const SPECIES_SOLITARY = 1;
 export const SPECIES_MINNOW = 2;
@@ -103,17 +103,18 @@ interface Species {
 }
 
 const SPECIES: Record<number, Species> = {
-  [SPECIES_SCHOOL]: { radius: [0.8, 2.0], members: [5, 9], length: [0.28, 0.44], speed: [0.38, 0.64], spread: 0.45, dy: SCHOOL_DY, minDepth: SWIM_DEPTH[0], maxDepth: SWIM_DEPTH[1], minBed: 0.65, widthMul: 0.5 },
-  [SPECIES_SOLITARY]: { radius: [1.8, 3.6], members: [1, 1], length: [0.72, 1.05], speed: [0.24, 0.40], spread: 0, dy: 0, minDepth: 0.45, maxDepth: SWIM_DEPTH[1], minBed: 1.0, widthMul: 0.5 },
-  [SPECIES_MINNOW]: { radius: [0.48, 1.15], members: [5, 9], length: [0.18, 0.30], speed: [0.46, 0.78], spread: 0.34, dy: MINNOW_DY, minDepth: 0.16, maxDepth: 0.26, minBed: 0.36, widthMul: 0.5 },
-  [SPECIES_RAY]: { radius: [1.5, 3.2], members: [1, 2], length: [0.78, 1.18], speed: [0.20, 0.34], spread: 0.55, dy: 0.03, minDepth: 0.38, maxDepth: 0.85, minBed: 0.95, widthMul: 0.66 },
+  [SPECIES_SCHOOL]: { radius: [0.72, 1.95], members: [5, 9], length: [0.42, 0.64], speed: [0.38, 0.64], spread: 0.40, dy: SCHOOL_DY, minDepth: SWIM_DEPTH[0], maxDepth: SWIM_DEPTH[1], minBed: 0.65, widthMul: 0.5 },
+  [SPECIES_SOLITARY]: { radius: [1.7, 3.5], members: [1, 1], length: [0.85, 1.22], speed: [0.24, 0.40], spread: 0, dy: 0, minDepth: 0.45, maxDepth: SWIM_DEPTH[1], minBed: 1.05, widthMul: 0.5 },
+  [SPECIES_MINNOW]: { radius: [0.30, 0.66], members: [3, 7], length: [0.26, 0.40], speed: [0.48, 0.82], spread: 0.14, dy: MINNOW_DY, minDepth: 0.16, maxDepth: 0.24, minBed: 0.29, widthMul: 0.5 },
+  [SPECIES_RAY]: { radius: [1.4, 3.1], members: [1, 2], length: [0.90, 1.32], speed: [0.20, 0.34], spread: 0.50, dy: 0.03, minDepth: 0.38, maxDepth: 0.85, minBed: 0.96, widthMul: 0.66 },
 };
 
-function pickSpeciesKind(u: number, bedHint: number): number {
-  if (bedHint < 0.72) return u < 0.35 ? SPECIES_MINNOW : -1;
-  if (u < 0.26) return SPECIES_SOLITARY;
-  if (u < 0.46) return SPECIES_RAY;
-  if (u < 0.62) return SPECIES_MINNOW;
+function pickSpeciesKind(u: number, bedHint: number, shoreDist: number): number {
+  if (bedHint < 0.68) return u < 0.72 ? SPECIES_MINNOW : -1;
+  if (shoreDist < 3.4) return shoreDist >= 2.8 && u > 0.65 ? SPECIES_SCHOOL : SPECIES_MINNOW;
+  if (u < 0.25) return SPECIES_SOLITARY;
+  if (u < 0.45) return SPECIES_RAY;
+  if (u < 0.64) return SPECIES_MINNOW;
   return SPECIES_SCHOOL;
 }
 
@@ -162,25 +163,27 @@ export function layoutFauna(f: ShoreField, seed: number, out: FaunaBuffers, cap 
   const cand = candidateTexels(f, minReach + SHORE_CLEARANCE);
   if (cand.length === 0) return layout;
   const rnd = mulberry32((seed ^ 0x51f15e) >>> 0);
-  const maxTries = Math.max(600, budget * 8);
-  const texPad = Math.min(f.texel, 0.75);
+  const maxTries = Math.max(800, budget * 12);
+  const texPad = Math.min(f.texel * 0.85, 0.48);
 
   for (let tries = 0; tries < maxTries && layout.placed < budget; tries++) {
     const k = cand[Math.floor(rnd() * cand.length)]!;
     const cx = ((k % f.res) + 0.5) * f.texel - f.span / 2, cz = (Math.floor(k / f.res) + 0.5) * f.texel - f.span / 2;
     const centerBed = -f.bed[k]!;
-    const kind = pickSpeciesKind(rnd(), centerBed);
+    const shoreDist = f.dist[k]!;
+    const kind = pickSpeciesKind(rnd(), centerBed, shoreDist);
     if (kind < 0) continue;
     const sp = SPECIES[kind]!;
-    const radius = lerp(sp.radius, rnd());
+    const radRoll = shoreDist < 3.5 ? rnd() * 0.45 : rnd();
+    const radius = lerp(sp.radius, radRoll);
     const length = lerp(sp.length, rnd());
     const members = Math.min(budget - layout.placed, Math.round(lerp(sp.members, rnd())));
     if (members < sp.members[0]) continue;
-    const effSpread = members === 1 ? 0 : sp.spread + length * 0.45;
+    const effSpread = members === 1 ? 0 : sp.spread + length * (kind === SPECIES_MINNOW ? 0.24 : 0.42);
     const loopExcursion = radius * (1 + PATH_WOBBLE) + effSpread * Math.SQRT2;
     const reach = loopExcursion + length * sp.widthMul + texPad;
-    if (reach + SHORE_CLEARANCE >= SHORE_DIST_MAX || f.dist[k]! < reach + SHORE_CLEARANCE) continue;
-    if (!ringInWater(f, cx, cz, loopExcursion, Math.max(0.2, SHORE_CLEARANCE + length * 0.5 - f.texel * 0.9))) continue;
+    if (reach + SHORE_CLEARANCE >= SHORE_DIST_MAX || shoreDist < reach + SHORE_CLEARANCE) continue;
+    if (!ringInWater(f, cx, cz, loopExcursion, Math.max(0.2, SHORE_CLEARANCE + length * 0.5 - f.texel * 0.7))) continue;
     const bedDepth = -shallowestBed(f, cx, cz, reach);
     if (bedDepth < sp.minBed) continue;
 

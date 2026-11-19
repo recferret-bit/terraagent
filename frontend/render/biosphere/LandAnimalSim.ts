@@ -86,10 +86,14 @@ function findConquerorThreat(
   z: number,
   aggressors: readonly BiosphereAggressor[],
   battles: readonly BiosphereBattleHotspot[],
+  disturbances: readonly BiosphereBattleHotspot[],
   colonized: readonly HabitatAnchor[],
 ): { tx: number; tz: number } | null {
   for (const bat of battles) {
     if (Math.hypot(x - bat.x, z - bat.z) < bat.radius + 10) return { tx: bat.x, tz: bat.z };
+  }
+  for (const ds of disturbances) {
+    if (Math.hypot(x - ds.x, z - ds.z) < ds.radius + 6) return { tx: ds.x, tz: ds.z };
   }
   for (const ag of aggressors) {
     const rad = (ag.radius ?? 11) + (ag.working ? 4 : 0);
@@ -103,30 +107,40 @@ function findConquerorThreat(
 
 function selectGoalForActivity(
   agent: LandAnimalAgent,
+  leader: LandAnimalAgent,
   activity: AnimalScheduleState,
   allAgents: readonly LandAnimalAgent[],
   habitat: BiosphereHabitatIndex,
   aggressors: readonly BiosphereAggressor[],
 ): void {
+  const offAng = (agent.id * 2.39996) % (Math.PI * 2);
+  const offR = agent === leader ? 0 : 1.35;
+  const ox = Math.cos(offAng) * offR;
+  const oz = Math.sin(offAng) * offR;
+  const applyGoal = (gx: number, gz: number) => {
+    const nx = gx + ox, nz = gz + oz;
+    if (habitat.isPassableLand(nx, nz)) { agent.goalX = nx; agent.goalZ = nz; }
+    else { agent.goalX = gx; agent.goalZ = gz; }
+  };
+
   if (activity === 'SLEEPING') {
-    agent.goalX = agent.homeX;
-    agent.goalZ = agent.homeZ;
+    applyGoal(leader.homeX, leader.homeZ);
     return;
   }
   if (activity === 'DRINKING') {
-    const w = nearestAnchor(agent.x, agent.z, habitat.waterAnchors, aggressors);
-    if (w) { agent.goalX = w.x; agent.goalZ = w.z; }
+    const w = nearestAnchor(leader.x, leader.z, habitat.waterAnchors, aggressors);
+    if (w) applyGoal(w.x, w.z);
     return;
   }
   if (activity === 'EATING_GRASS') {
-    const g = nearestAnchor(agent.homeX, agent.homeZ, habitat.grassAnchors, aggressors);
-    if (g) { agent.goalX = g.x; agent.goalZ = g.z; }
+    const g = nearestAnchor(leader.homeX, leader.homeZ, habitat.grassAnchors, aggressors);
+    if (g) applyGoal(g.x, g.z);
     return;
   }
   if (activity === 'BROWSING_TREES') {
     const pool = habitat.forestAnchors.length > 0 ? habitat.forestAnchors : habitat.grassAnchors;
-    const f = nearestAnchor(agent.homeX, agent.homeZ, pool, aggressors);
-    if (f) { agent.goalX = f.x; agent.goalZ = f.z; }
+    const f = nearestAnchor(leader.homeX, leader.homeZ, pool, aggressors);
+    if (f) applyGoal(f.x, f.z);
     return;
   }
   if (activity === 'HUNTING') {
@@ -134,20 +148,18 @@ function selectGoalForActivity(
     let bestD = Infinity;
     for (const other of allAgents) {
       if (other.species.diet === 'predator') continue;
-      const d = Math.hypot(other.x - agent.x, other.z - agent.z);
-      if (d < bestD && d < 42) {
+      const d = Math.hypot(other.x - leader.x, other.z - leader.z);
+      if (d < bestD && d < 46) {
         bestD = d;
         prey = other;
       }
     }
     if (prey) {
-      agent.goalX = prey.x;
-      agent.goalZ = prey.z;
+      applyGoal(prey.x, prey.z);
       return;
     }
   }
-  agent.goalX = agent.homeX;
-  agent.goalZ = agent.homeZ;
+  applyGoal(leader.homeX, leader.homeZ);
 }
 
 function stepAnimalKinematics(
@@ -248,7 +260,7 @@ export class LandAnimalSimulator {
   constructor(biome: PlanetKind, seed: number, habitat: BiosphereHabitatIndex) {
     this.speciesList = LAND_ANIMALS_BY_BIOME[biome];
     this.rng = mulberry32(seed ^ 0x9e3779b1);
-    const groupsPerSpecies = habitat.halfSize > 55 ? 3 : 2;
+    const groupsPerSpecies = habitat.halfSize > 110 ? 7 : habitat.halfSize > 55 ? 4 : 2;
     let agentId = 0;
     let groupId = 0;
 
@@ -312,13 +324,20 @@ export class LandAnimalSimulator {
     habitat: BiosphereHabitatIndex,
     aggressors: readonly BiosphereAggressor[],
     battles: readonly BiosphereBattleHotspot[],
+    disturbances: readonly BiosphereBattleHotspot[] = [],
   ): void {
     const stepDt = Math.min(0.1, Math.max(0, dt));
     if (stepDt <= 0) return;
 
+    const leaders = new Map<number, LandAnimalAgent>();
+    for (const a of this.agents) {
+      if (!leaders.has(a.groupId)) leaders.set(a.groupId, a);
+    }
+
     for (const agent of this.agents) {
-      // 1. Robot / Colony / Battle Aggressor Override (ALL nature treats robots as conquerors)
-      const threat = findConquerorThreat(agent.x, agent.z, aggressors, battles, habitat.colonizedAnchors);
+      const leader = leaders.get(agent.groupId) ?? agent;
+      // 1. Robot / Colony / Battle / Habitat-Clearing Aggressor Override (ALL nature treats robots as conquerors)
+      const threat = findConquerorThreat(agent.x, agent.z, aggressors, battles, disturbances, habitat.colonizedAnchors);
       if (threat) {
         const [fleeX, fleeZ] = pickEscapeGoal(agent.x, agent.z, threat.tx, threat.tz, 14, habitat);
         agent.state = 'FLEEING_AGGRESSOR';
@@ -345,13 +364,13 @@ export class LandAnimalSimulator {
         }
       }
 
-      // 3. Circadian Day/Night Schedule
+      // 3. Circadian Day/Night Schedule (herds/packs navigate together around their group leader)
       const scheduled = resolveCircadianActivity(agent.species, solarHour24);
       if (agent.state !== scheduled) {
         agent.state = scheduled;
-        selectGoalForActivity(agent, scheduled, this.agents, habitat, aggressors);
+        selectGoalForActivity(agent, leader, scheduled, this.agents, habitat, aggressors);
       } else if (scheduled === 'HUNTING') {
-        selectGoalForActivity(agent, scheduled, this.agents, habitat, aggressors);
+        selectGoalForActivity(agent, leader, scheduled, this.agents, habitat, aggressors);
       }
       stepAnimalKinematics(agent, stepDt, this.rng, this.agents, habitat);
     }

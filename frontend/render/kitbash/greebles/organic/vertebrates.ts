@@ -1,6 +1,33 @@
+import * as THREE from 'three';
 import { KitbashRegistry, type KitbashBuilder, type MaterialZoneId, type PartOptions } from '../../KitbashRegistry';
 import type { V3 } from '../unitParts';
-import { organ, tendril, type Tissue } from './shapes';
+import { organ, tendril, tissue, type Tissue } from './shapes';
+
+/** Single continuous sculpted mammalian trunk (deep thoracic brisket, tucked lumbar waist, rounded haunches). */
+export function mammalTrunk(
+  rxFront: number,
+  ryFront: number,
+  rxRear: number,
+  ryRear: number,
+  zMin: number,
+  zMax: number,
+): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(1, 14, 10);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const t = (z + 1) * 0.5; // 0 = rear haunches, 1 = front chest
+    g.attributes.uv.setXY(i, Math.atan2(y, x) / (Math.PI * 2) + 0.5, t);
+    const waist = 1 - 0.13 * Math.sin(t * Math.PI);
+    const rx = (rxRear + (rxFront - rxRear) * t) * waist;
+    const ry = (ryRear + (ryFront - ryRear) * t) * (1 - 0.09 * Math.sin(t * Math.PI));
+    const archY = ryFront * (0.08 * Math.sin(t * Math.PI) - 0.05 * (1 - t));
+    const pz = zMin + (zMax - zMin) * t;
+    p.setXYZ(i, x * rx, y * ry + archY, pz);
+  }
+  g.computeVertexNormals();
+  return tissue(g, 1);
+}
 
 export interface QuadLegRigParams {
   hx: number;
@@ -14,8 +41,12 @@ export interface QuadLegRigParams {
 
 function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: number, tag: string): void {
   const r = p.thickness;
-  const hip: V3 = [p.hx * side, p.hy, hz];
-  const legX = (p.hx + r * 1.32) * side;
+  const hipX = p.hx * side;
+  const hip: V3 = [hipX, p.hy, hz];
+  // Anatomical mammalian stance: limb drops cleanly beneath the shoulder/haunch (never outrigger crab-legs)
+  // while staying >= 1.8 cm outside the narrowed ribcage/pelvis wall across the full sagittal stride.
+  const limbX = (p.hx + r * 0.78) * side;
+  const footX = (p.hx + r * 0.68) * side;
   const kneeY = p.hy * (1 - 0.3173);
   const ankleY = p.hy * (1 - 0.3173 - 0.5769);
   const pawS = p.pawScale ?? 1.0;
@@ -24,8 +55,8 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
   const lower: PartOptions = { animType: 14, animPivot: hip };
   const foot: PartOptions = { animType: 24, animPivot: hip };
 
-  // Spherical/circular-YZ shoulder/hip muscle pad centered on `hip` so X-pitch never deepens torso overlap.
-  b.addPart(organ([r * 1.68, r * 1.42, r * 1.42], 2, hz, 0, 8), 'hullPrimary', {
+  // Circular-YZ shoulder/haunch muscle mass centered on `hip` so X-pitch stays 100% invariant against the torso.
+  b.addPart(organ([r * 1.55, r * 1.52, r * 1.52], 1, hz, 0, 8), 'hullPrimary', {
     name: `${tag} shoulder hip`,
     position: hip,
     ...upper,
@@ -34,11 +65,11 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
   b.addPart(
     tendril(
       [
-        [legX, p.hy + r * 0.15, hz],
-        [legX, (p.hy + kneeY) * 0.5, hz - r * 0.18],
-        [legX, kneeY, hz],
+        [limbX - side * r * 0.16, p.hy + r * 0.12, hz],
+        [limbX, (p.hy + kneeY) * 0.52, hz - r * 0.16],
+        [limbX, kneeY, hz],
       ],
-      [r * 1.10, r * 0.92, r * 0.76],
+      [r * 1.18, r * 0.94, r * 0.76],
       1,
       5,
       6,
@@ -47,18 +78,18 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
     { name: `${tag} upper limb`, ...upper },
   );
 
-  b.addPart(organ([r * 0.82, r * 0.82, r * 0.82], 2, hz + 1, 0, 6), 'frameGunmetal', {
+  b.addPart(organ([r * 0.80, r * 0.80, r * 0.80], 2, hz + 1, 0, 6), 'frameGunmetal', {
     name: `${tag} knee joint`,
-    position: [legX, kneeY, hz],
+    position: [limbX, kneeY, hz],
     ...lower,
   });
 
   b.addPart(
     tendril(
       [
-        [legX, kneeY, hz],
-        [legX, (kneeY + ankleY) * 0.52, hz + r * 0.10],
-        [legX, ankleY, hz],
+        [limbX, kneeY, hz],
+        [(limbX + footX) * 0.5, (kneeY + ankleY) * 0.52, hz + r * 0.08],
+        [footX, ankleY, hz],
       ],
       [r * 0.74, r * 0.58, r * 0.48],
       1,
@@ -77,7 +108,7 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
     footZone,
     {
       name: `${tag} ${p.hoof ? 'hoof' : 'paw'}`,
-      position: [legX, footHalfY, hz + r * 0.22],
+      position: [footX, footHalfY, hz + r * 0.22],
       ...foot,
     },
   );
@@ -133,15 +164,22 @@ KitbashRegistry.registerGreeble('featheredWings', (params: FeatheredWingsParams,
       },
     );
 
-    const outerSpan = params.span * 0.52;
-    const outerX = (params.wx + rSh * 0.45 + innerSpan * 0.78 + outerSpan * 0.34) * side;
+    const outerSpan = params.span * 0.54;
+    const outerStart: V3 = [(params.wx + rSh * 0.45 + innerSpan * 0.68) * side, params.wy + 0.008, wz - sweep * 0.30];
+    const outerMid: V3 = [(params.wx + rSh * 0.45 + innerSpan * 0.78 + outerSpan * 0.46) * side, params.wy + 0.014, wz - sweep * 0.58];
+    const outerTip: V3 = [(params.wx + rSh * 0.45 + innerSpan * 0.78 + outerSpan * 0.92) * side, params.wy + 0.020, wz - sweep * 0.92];
     b.addPart(
-      organ([outerSpan * 0.52, Math.max(0.016, params.chord * 0.09), params.chord * 0.38], 1, side + 3, 0.035, 8),
+      tendril(
+        [outerStart, outerMid, outerTip],
+        [params.chord * 0.26, params.chord * 0.18, params.chord * 0.05],
+        1,
+        5,
+        6,
+      ),
       tipZone,
       {
         name: `${dir} primary flight feathers`,
-        position: [outerX, params.wy + 0.012, wz - sweep * 0.52],
-        rotation: [0, -side * 0.16, 0],
+        role: 'whip',
         ...flap,
       },
     );

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getDayNightParams } from '../core/dayNightConfig';
+import { getDayNightParams, isDayNightOn, wrapSolarHour } from '../core/dayNightConfig';
 import { viewFocusBounded } from '../core/focusCull';
 import { inViewFocus } from '../core/viewFocus';
 import { ArchetypeCatalog } from '../kitbash';
@@ -132,6 +132,29 @@ function syncAnimalMeshSlots(
   }
 }
 
+function upsertHotspot(list: BiosphereBattleHotspot[], x: number, z: number, radius: number, ttl: number): void {
+  const existing = list.find((h) => Math.hypot(h.x - x, h.z - z) < 8);
+  if (existing) {
+    existing.radius = Math.max(existing.radius, radius);
+    existing.ttl = Math.max(existing.ttl, ttl);
+  } else {
+    list.push({ x, z, radius, ttl });
+  }
+}
+
+function decayHotspots(list: BiosphereBattleHotspot[], dt: number): void {
+  for (let i = list.length - 1; i >= 0; i--) {
+    list[i]!.ttl -= dt;
+    if (list[i]!.ttl <= 0) list.splice(i, 1);
+  }
+}
+
+function resolveSolarHour24(timeOverride01: number | null, elapsed: number): number {
+  if (timeOverride01 !== null) return (((timeOverride01 % 1) + 1) % 1) * 24;
+  const hour = getDayNightParams().timeOfDay;
+  return isDayNightOn() ? wrapSolarHour(hour) : wrapSolarHour(hour + elapsed * 0.08);
+}
+
 export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): PlanetBiosphere {
   const { look } = opts;
   let habitat = opts.habitat;
@@ -143,13 +166,13 @@ export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): Plane
   const birdSim = new BirdFlockSimulator(look.kind, look.seed, habitat);
   const animalSim = new LandAnimalSimulator(look.kind, look.seed, habitat);
 
-  const birdSlots: SpeciesMeshSlot[] = birdSim.speciesList.map((sp, slot) => {
+  const birdSlots = birdSim.speciesList.map((sp, slot) => {
     const cap = birdSim.flocks.filter((f) => f.speciesSlot === slot).reduce((sum, f) => sum + f.members.length, 0);
     const ms = makeSpeciesMeshSlot(sp.id, cap, biomeName, sharedTimeU);
     group.add(ms.mesh);
     return ms;
   });
-  const animalSlots: SpeciesMeshSlot[] = animalSim.speciesList.map((sp, slot) => {
+  const animalSlots = animalSim.speciesList.map((sp, slot) => {
     const cap = animalSim.agents.filter((a) => a.speciesSlot === slot).length;
     const ms = makeSpeciesMeshSlot(sp.id, cap, biomeName, sharedTimeU);
     group.add(ms.mesh);
@@ -158,14 +181,12 @@ export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): Plane
 
   let aggressors: readonly BiosphereAggressor[] = [];
   const battles: BiosphereBattleHotspot[] = [];
+  const disturbances: BiosphereBattleHotspot[] = [];
   let timeOverride01: number | null = null;
   let elapsed = 0;
   const scratch: TransformScratch = {
-    mat: new THREE.Matrix4(),
-    pos: new THREE.Vector3(),
-    quat: new THREE.Quaternion(),
-    euler: new THREE.Euler(0, 0, 0, 'YXZ'),
-    scale: new THREE.Vector3(),
+    mat: new THREE.Matrix4(), pos: new THREE.Vector3(), quat: new THREE.Quaternion(),
+    euler: new THREE.Euler(0, 0, 0, 'YXZ'), scale: new THREE.Vector3(),
   };
 
   syncBirdMeshSlots(birdSlots, birdSim, false, scratch);
@@ -179,40 +200,26 @@ export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): Plane
       let birdsTotal = 0;
       for (const f of birdSim.flocks) birdsTotal += f.members.length;
       return {
-        birdSpecies: birdSim.speciesList.length,
-        birdFlocks: birdSim.flocks.length,
-        birdsTotal,
-        landSpecies: animalSim.speciesList.length,
-        landGroups: animalSim.groupCount,
-        landAnimalsTotal: animalSim.agents.length,
+        birdSpecies: birdSim.speciesList.length, birdFlocks: birdSim.flocks.length, birdsTotal,
+        landSpecies: animalSim.speciesList.length, landGroups: animalSim.groupCount, landAnimalsTotal: animalSim.agents.length,
       };
     },
     getBirdFlocks: () => birdSim.flocks,
     getLandAnimals: () => animalSim.agents,
     setAggressors(next) { aggressors = next; },
-    noteBattleAt(x, z, radius = 14, ttl = 6.0) {
-      const existing = battles.find((b) => Math.hypot(b.x - x, b.z - z) < 8);
-      if (existing) {
-        existing.radius = Math.max(existing.radius, radius);
-        existing.ttl = Math.max(existing.ttl, ttl);
-      } else {
-        battles.push({ x, z, radius, ttl });
-      }
-    },
+    noteBattleAt: (x, z, radius = 14, ttl = 6.0) => upsertHotspot(battles, x, z, radius, ttl),
+    noteHabitatDisturbance: (x, z, radius = 14, ttl = 7.0) => upsertHotspot(disturbances, x, z, radius, ttl),
     setTimeOfDayOverride(time01) { timeOverride01 = time01; },
     onHabitatChanged(nextHabitat) { habitat = nextHabitat; },
     tick(dt) {
       const safeDt = Math.max(0, dt);
       elapsed += safeDt;
       sharedTimeU.value = elapsed;
-      for (let i = battles.length - 1; i >= 0; i--) {
-        battles[i]!.ttl -= safeDt;
-        if (battles[i]!.ttl <= 0) battles.splice(i, 1);
-      }
-      const day01 = timeOverride01 ?? getDayNightParams().timeOfDay;
-      const solarHour24 = (((day01 % 1) + 1) % 1) * 24;
-      birdSim.step(safeDt, habitat, aggressors, battles);
-      animalSim.step(safeDt, solarHour24, habitat, aggressors, battles);
+      decayHotspots(battles, safeDt);
+      decayHotspots(disturbances, safeDt);
+      const solarHour24 = resolveSolarHour24(timeOverride01, elapsed);
+      birdSim.step(safeDt, habitat, aggressors, battles, disturbances);
+      animalSim.step(safeDt, solarHour24, habitat, aggressors, battles, disturbances);
       const bounded = viewFocusBounded();
       syncBirdMeshSlots(birdSlots, birdSim, bounded, scratch);
       syncAnimalMeshSlots(animalSlots, animalSim, bounded, scratch);
@@ -221,11 +228,12 @@ export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): Plane
       for (const s of [...birdSlots, ...animalSlots]) {
         s.mesh.removeFromParent();
         s.mesh.dispose();
-        s.geometry.dispose();
+        s.geometry.deleteAttribute('aBioState');
         s.material.dispose();
         s.depthMaterial.dispose();
       }
       battles.length = 0;
+      disturbances.length = 0;
       group.removeFromParent();
     },
   };

@@ -52,7 +52,7 @@ export function buildDune(c: SurfaceContext) {
   }
   c.addMesh(
     buildInstanced(buildBiomeTreeAtlasGeo('dune', c.spec.seed + 31), createFoliageMaterial(c.timeU, 0.80, true, true), duneTrees, {
-      sx: [0.75, 1.25], sy: [0.80, 1.45], sink: 0.10, tilt: 0.09, tint: jitter(0.16, 0.08), encodeBreedInColor: true,
+      sx: [0.58, 0.98], sy: [0.62, 1.10], sink: 0.10, tilt: 0.09, tint: jitter(0.16, 0.08), encodeBreedInColor: true,
     }),
   );
 

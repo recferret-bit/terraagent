@@ -20,17 +20,41 @@ function pickAnchorsForPref(spec: BirdSpeciesSpec, habitat: BiosphereHabitatInde
   return [{ x: 0, z: 0, tileIndex: -1 }];
 }
 
+function pickSafeInBoundsPoint(
+  fromX: number,
+  fromZ: number,
+  pushX: number,
+  pushZ: number,
+  distRun: number,
+  habitat: BiosphereHabitatIndex,
+): [number, number] {
+  const baseAng = Math.atan2(pushZ, pushX);
+  for (const offset of [0, 0.5, -0.5, 1.1, -1.1, 1.8, -1.8, Math.PI]) {
+    const a = baseAng + offset;
+    const gx = fromX + Math.cos(a) * distRun;
+    const gz = fromZ + Math.sin(a) * distRun;
+    if (habitat.isInBounds(gx, gz)) return [gx, gz];
+  }
+  return [fromX * 0.55, fromZ * 0.55];
+}
+
 function findSurvivingForestAnchor(
   fromX: number,
   fromZ: number,
   habitat: BiosphereHabitatIndex,
   aggressors: readonly BiosphereAggressor[],
 ): HabitatAnchor {
+  const candidates =
+    habitat.forestAnchors.length > 0
+      ? habitat.forestAnchors
+      : habitat.grassAnchors.length > 0
+        ? habitat.grassAnchors
+        : habitat.waterAnchors;
   let best: HabitatAnchor | null = null;
   let bestScore = Infinity;
-  for (const cand of habitat.forestAnchors) {
+  for (const cand of candidates) {
     const dist = Math.hypot(cand.x - fromX, cand.z - fromZ);
-    if (dist < 6) continue;
+    if (dist < 6 || !habitat.isInBounds(cand.x, cand.z)) continue;
     let penalty = 0;
     for (const ag of aggressors) {
       const dAg = Math.hypot(cand.x - ag.x, cand.z - ag.z);
@@ -43,9 +67,8 @@ function findSurvivingForestAnchor(
     }
   }
   if (best) return best;
-  const bound = Math.max(18, habitat.halfSize * 0.72);
-  const ang = Math.atan2(fromZ, fromX) + 0.9;
-  return { x: Math.cos(ang) * bound, z: Math.sin(ang) * bound, tileIndex: -1 };
+  const [sx, sz] = pickSafeInBoundsPoint(fromX, fromZ, -fromX || 1, -fromZ || 0.5, Math.min(18, habitat.halfSize * 0.45), habitat);
+  return { x: sx, z: sz, tileIndex: -1 };
 }
 
 function createFlockMembers(
@@ -130,6 +153,7 @@ function evaluateFlockThreats(
   habitat: BiosphereHabitatIndex,
   aggressors: readonly BiosphereAggressor[],
   battles: readonly BiosphereBattleHotspot[],
+  disturbances: readonly BiosphereBattleHotspot[],
 ): void {
   // 1. Battles cause immediate sharp scatter away from combat zone
   for (const bat of battles) {
@@ -137,34 +161,36 @@ function evaluateFlockThreats(
     const d = Math.hypot(dx, dz);
     if (d < bat.radius + 14) {
       const inv = d > 0.1 ? 1 / d : 1;
-      const pushX = d > 0.1 ? dx * inv : 1;
-      const pushZ = d > 0.1 ? dz * inv : 0;
+      const [tx, tz] = pickSafeInBoundsPoint(cx, cz, d > 0.1 ? dx * inv : 1, d > 0.1 ? dz * inv : 0, 22, habitat);
       flock.state = 'FLEEING_BATTLE';
       flock.stateTimer = 5.5;
-      flock.targetX = Math.max(-habitat.halfSize * 0.88, Math.min(habitat.halfSize * 0.88, cx + pushX * 26));
-      flock.targetZ = Math.max(-habitat.halfSize * 0.88, Math.min(habitat.halfSize * 0.88, cz + pushZ * 26));
+      flock.targetX = tx;
+      flock.targetZ = tz;
       return;
     }
   }
 
-  // 2. Deforestation / Terraforming check: home forest cleared or actively chopped by a working robot
-  if (flock.species.habitatPref === 'forest') {
-    const forestGone = flock.homeTileIndex >= 0 && !habitat.forestTileSet.has(flock.homeTileIndex);
-    const robotChoppingHome = aggressors.some(
-      (ag) => ag.working && Math.hypot(ag.x - flock.homeX, ag.z - flock.homeZ) < 11,
-    );
-    if (forestGone || robotChoppingHome) {
-      const next = findSurvivingForestAnchor(flock.homeX, flock.homeZ, habitat, aggressors);
-      flock.homeX = next.x;
-      flock.homeZ = next.z;
-      flock.homeTileIndex = next.tileIndex;
-      flock.targetX = next.x;
-      flock.targetZ = next.z;
-      flock.state = 'FLEEING_FOREST';
-      flock.stateTimer = 6.5;
-      flock.relocations++;
-      return;
-    }
+  // 2. Deforestation / Terraforming check: home forest cleared, nearby stand terraformed, or working robot chopping
+  const hitDisturbance = disturbances.some(
+    (ds) =>
+      Math.hypot(flock.homeX - ds.x, flock.homeZ - ds.z) < flock.species.orbitRadius + ds.radius * 0.7 ||
+      Math.hypot(cx - ds.x, cz - ds.z) < ds.radius + 6,
+  );
+  const forestGone = flock.species.habitatPref === 'forest' && flock.homeTileIndex >= 0 && !habitat.forestTileSet.has(flock.homeTileIndex);
+  const robotChoppingHome =
+    flock.species.habitatPref === 'forest' &&
+    aggressors.some((ag) => ag.working && Math.hypot(ag.x - flock.homeX, ag.z - flock.homeZ) < flock.species.orbitRadius + 5);
+  if (forestGone || robotChoppingHome || hitDisturbance) {
+    const next = findSurvivingForestAnchor(flock.homeX, flock.homeZ, habitat, aggressors);
+    flock.homeX = next.x;
+    flock.homeZ = next.z;
+    flock.homeTileIndex = flock.species.habitatPref === 'forest' ? next.tileIndex : -1;
+    flock.targetX = next.x;
+    flock.targetZ = next.z;
+    flock.state = 'FLEEING_FOREST';
+    flock.stateTimer = 6.5;
+    flock.relocations++;
+    return;
   }
 
   // 3. Low-altitude aggressor robot proximity
@@ -174,10 +200,11 @@ function evaluateFlockThreats(
     const d = Math.hypot(dx, dz);
     if (d < rad) {
       const inv = d > 0.1 ? 1 / d : 1;
+      const [tx, tz] = pickSafeInBoundsPoint(cx, cz, d > 0.1 ? dx * inv : 1, d > 0.1 ? dz * inv : 0, 18, habitat);
       flock.state = 'FLEEING_AGGRESSOR';
       flock.stateTimer = 4.0;
-      flock.targetX = Math.max(-habitat.halfSize * 0.88, Math.min(habitat.halfSize * 0.88, cx + dx * inv * 20));
-      flock.targetZ = Math.max(-habitat.halfSize * 0.88, Math.min(habitat.halfSize * 0.88, cz + dz * inv * 20));
+      flock.targetX = tx;
+      flock.targetZ = tz;
       return;
     }
   }
@@ -191,7 +218,7 @@ export class BirdFlockSimulator {
   constructor(biome: PlanetKind, seed: number, habitat: BiosphereHabitatIndex) {
     this.speciesList = BIRDS_BY_BIOME[biome];
     const rng = mulberry32(seed ^ 0x51a7b3);
-    const flocksPerSpecies = habitat.halfSize > 55 ? 3 : 2;
+    const flocksPerSpecies = habitat.halfSize > 110 ? 7 : habitat.halfSize > 55 ? 4 : 2;
     let flockId = 0;
 
     this.speciesList.forEach((spec, slot) => {
@@ -227,6 +254,7 @@ export class BirdFlockSimulator {
     habitat: BiosphereHabitatIndex,
     aggressors: readonly BiosphereAggressor[],
     battles: readonly BiosphereBattleHotspot[],
+    disturbances: readonly BiosphereBattleHotspot[] = [],
   ): void {
     const stepDt = Math.min(0.1, Math.max(0, dt));
     if (stepDt <= 0) return;
@@ -234,7 +262,7 @@ export class BirdFlockSimulator {
 
     for (const flock of this.flocks) {
       const leader = flock.members[0]!;
-      evaluateFlockThreats(flock, leader.x, leader.z, habitat, aggressors, battles);
+      evaluateFlockThreats(flock, leader.x, leader.z, habitat, aggressors, battles, disturbances);
 
       const fleeing =
         flock.state === 'FLEEING_FOREST' || flock.state === 'FLEEING_BATTLE' || flock.state === 'FLEEING_AGGRESSOR';
@@ -249,7 +277,14 @@ export class BirdFlockSimulator {
       const angRate = flock.species.speed / Math.max(4.5, flock.species.orbitRadius);
       flock.orbitAngle += angRate * stepDt;
       const gY = Math.max(0, habitat.heightAt(leader.x, leader.z));
-      const [lx, ly, lz] = computeLeaderTarget(flock, this.elapsed, gY);
+      let [lx, ly, lz] = computeLeaderTarget(flock, this.elapsed, gY);
+      if (!habitat.isInBounds(lx, lz)) {
+        // Pull orbit center gently inward if near the hexagonal planet rim so birds never fly off into empty void.
+        flock.homeX *= 0.85;
+        flock.homeZ *= 0.85;
+        lx *= 0.78;
+        lz *= 0.78;
+      }
       const speedMul = fleeing ? 1.68 : 1.0;
       const desiredSpeed = flock.species.speed * speedMul;
 

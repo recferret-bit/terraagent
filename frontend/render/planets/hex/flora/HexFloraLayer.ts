@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
+import { HEX_DIRS, hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetKind, PlanetSpec } from '../../PlanetSpec';
 import { sphereInViewFocus, viewFocusBounded, worldCellKey } from '../../../core/focusCull';
 import { buildInstanced, createFoliageMaterial, type InstOpts, type Place } from '../../../visuals/terrain/Scatter';
@@ -176,6 +176,7 @@ function scatterLushTileFlora(
 
 function scatterHexFloraTile(
   hx: ReturnType<typeof hexIndex>,
+  radius: number,
   i: number,
   layers: HexTileLayers,
   heightAt: (x: number, z: number) => number,
@@ -185,15 +186,18 @@ function scatterHexFloraTile(
   if (!layers.terrain) return;
   const dep = layers.deposit?.[i] ?? 0;
   if (dep === HEX_DEPOSIT.metals || dep === HEX_DEPOSIT.minerals || dep === HEX_DEPOSIT.oil) return;
-  if ((layers.owner?.[i] ?? -1) >= 0 && (layers.prep?.[i] ?? 0) === HEX_PREP.prepared) return;
-  const q = hx.q[i]!, r = hx.r[i]!;
-  const t = layers.terrain[i] ?? 0;
   const prep = layers.prep?.[i] ?? 0;
+  if (prep === HEX_PREP.ridge || prep === HEX_PREP.moat) return;
+  const owned = (layers.owner?.[i] ?? -1) >= 0;
+  if (owned && (prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.flat)) return;
+  const q = hx.q[i]!, r = hx.r[i]!;
+  if (hexDistance(0, 0, q, r) >= radius) return; // keep outer planet rim crisp against sky
+  const t = layers.terrain[i] ?? 0;
   if (t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep || t === HEX_TERRAIN.hole) return;
   const [cx, cz] = tileXZ(q, r);
   if (look.kind === 'dune') {
     if (!isClearedPrep(prep)) scatterDuneTileFlora(q, r, i, t, layers.height[i] ?? 0, cx, cz, heightAt, look.seed, into);
-    else if (prep === HEX_PREP.living) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 710, 0.52, 0.24));
+    else if (prep === HEX_PREP.living) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 710, 0.45, 0.20));
   } else {
     scatterLushTileFlora(hx, q, r, t, prep, cx, cz, layers, heightAt, look.kind, look.seed, into);
   }
@@ -203,6 +207,7 @@ function rebuildFloraCellMeshes(
   cell: string,
   tilesInCell: readonly number[],
   hx: ReturnType<typeof hexIndex>,
+  radius: number,
   layers: HexTileLayers,
   heightAt: (x: number, z: number) => number,
   look: PlanetSpec,
@@ -215,7 +220,7 @@ function rebuildFloraCellMeshes(
   const byKind: Record<GroundFloraKind, Place[]> = {
     grassTuft: [], wildflower: [], bush: [], saguaro: [], barrelCactus: [], reeds: [], duneTree: [],
   };
-  for (const i of tilesInCell) scatterHexFloraTile(hx, i, layers, heightAt, look, byKind);
+  for (const i of tilesInCell) scatterHexFloraTile(hx, radius, i, layers, heightAt, look, byKind);
 
   const cnt: HexFloraCounts = { grassTuft: 0, wildflower: 0, bush: 0, saguaro: 0, barrelCactus: 0, reeds: 0, duneTree: 0 };
   for (const kind of GROUND_FLORA_KINDS) {
@@ -274,7 +279,7 @@ export function createHexFloraLayer(radius: number, look: PlanetSpec): HexFloraL
   const meshes = new Map<string, THREE.InstancedMesh>();
   const cellCounts = new Map<string, HexFloraCounts>();
   const rebuildCell = (cell: string, layers: HexTileLayers, heightAt: (x: number, z: number) => number) =>
-    rebuildFloraCellMeshes(cell, cellTiles.get(cell) ?? [], hx, layers, heightAt, look, geos, mats, group, meshes, cellCounts);
+    rebuildFloraCellMeshes(cell, cellTiles.get(cell) ?? [], hx, radius, layers, heightAt, look, geos, mats, group, meshes, cellCounts);
 
   return {
     group,

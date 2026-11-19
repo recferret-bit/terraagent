@@ -94,8 +94,8 @@ function paintGeo(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.35, seed
   return out;
 }
 
-function crownBlob(radius: number, nz: Noise2, amp: number, seedOff: number): G {
-  const g = new THREE.IcosahedronGeometry(radius, 0);
+function crownBlob(radius: number, nz: Noise2, amp: number, seedOff: number, detail?: number): G {
+  const g = new THREE.IcosahedronGeometry(radius, detail ?? (radius >= 1.18 ? 1 : 0));
   const p = g.getAttribute('position');
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -183,14 +183,32 @@ function buildAncientOak(nz: Noise2): G {
 function buildWeepingWillow(nz: Noise2): G {
   const parts: G[] = [
     paintGeo(curveTube([[0, -0.08, 0], [0.12, 1.3, 0.05], [0.28, 2.6, 0.10], [0.18, 3.6, 0.06]], 0.22, 0.09, 6), C(0x564332), 0.1, 0.15, 81),
-    paintGeo(xf(crownBlob(1.3, nz, 0.2, 40), [0.16, 3.8, 0.05], [1.15, 0.78, 1.15]), C(0x5c9452), 0.08, 0.45, 82),
+    paintGeo(xf(crownBlob(1.32, nz, 0.2, 40, 1), [0.16, 3.85, 0.05], [1.18, 0.78, 1.18]), C(0x5c9452), 0.08, 0.45, 82),
+    paintGeo(xf(crownBlob(0.96, nz, 0.2, 44, 0), [-0.36, 3.55, -0.18], [1.12, 0.72, 1.12]), C(0x69a25c), 0.08, 0.45, 83),
   ];
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2 + 0.3;
-    const rx = 0.16 + Math.cos(a) * 1.05;
-    const rz = 0.05 + Math.sin(a) * 1.05;
+  // Cascading pendulous willow curtains: arch outward from the crown dome and taper down toward the water/ground.
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.25;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const len = 2.1 + (i % 3) * 0.26;
     parts.push(
-      paintGeo(xf(new THREE.ConeGeometry(0.36, 2.5, 5, 1), [rx, 2.45, rz], [0.85, 1, 0.85], [0, a, 0.08]), i % 2 ? C(0x6da65f) : C(0x558c4b), 0.09, 0.4, 85 + i),
+      paintGeo(
+        curveTube(
+          [
+            [0.16 + ca * 0.62, 3.82, 0.05 + sa * 0.62],
+            [0.16 + ca * 1.08, 2.95, 0.05 + sa * 1.08],
+            [0.16 + ca * 1.16, 3.82 - len, 0.05 + sa * 1.16],
+          ],
+          0.26,
+          0.06,
+          5,
+          5,
+        ),
+        i % 2 ? C(0x6da65f) : C(0x558c4b),
+        0.09,
+        0.42,
+        85 + i,
+      ),
     );
   }
   return normalizeHeight(parts);
@@ -223,7 +241,7 @@ function buildPalmVariant(trunkHex: number, leafA: number, leafB: number, fruitH
 }
 
 function buildStiltMangrove(nz: Noise2): G {
-  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.14, 0.20, 1.9, 6, 1), [0, 1.55, 0]), C(0x523b2a), 0.1, 0.15, 110)];
+  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.14, 0.22, 2.65, 6, 1), [0, 1.24, 0]), C(0x523b2a), 0.1, 0.15, 110)];
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2 + 0.2;
     parts.push(

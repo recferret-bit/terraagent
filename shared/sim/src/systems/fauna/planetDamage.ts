@@ -56,7 +56,7 @@ function resolveEventColonyIndex(state: PlanetState, data: Record<string, unknow
   const rawId = typeof data.colonyId === 'string' ? data.colonyId : typeof colonyIds[0] === 'string' ? colonyIds[0] : null;
   if (typeof colonyIds[0] === 'number' && colonyIds[0] >= 0) return colonyIds[0];
   if (rawId) {
-    const match = /^col_(\d+)$/.exec(rawId) ?? /^(\d+)$/.exec(rawId);
+    const match = /^col[_-](\d+)$/.exec(rawId) ?? /^(\d+)$/.exec(rawId);
     if (match) return Number(match[1]);
     for (const [idxStr, col] of Object.entries(state.colonies)) {
       if ((col as { id?: string } | undefined)?.id === rawId) return Number(idxStr);
@@ -179,6 +179,17 @@ export function ingestEcologicalDamageEvents(
   const fauna = getFaunaHivesState(state);
   const map = fauna.planetDamageByColony;
   const touchedHabitats: Array<{ colonyIndex: number; q: number; r: number }> = [];
+  const seenTileOps = new Set<string>();
+  for (let idx = 0; idx < startIdx; idx++) {
+    const prev = ctx.events[idx];
+    if (prev?.atTick === tick && prev.kind === 'tileStateChanged') {
+      const pd = (prev.data ?? {}) as Record<string, unknown>;
+      const pCol = resolveEventColonyIndex(state, pd, prev.colonyIds);
+      if (pCol !== null && typeof pd.q === 'number' && typeof pd.r === 'number') {
+        seenTileOps.add(`${pCol}:${pd.q},${pd.r}`);
+      }
+    }
+  }
   let dirty = false;
 
   for (let idx = startIdx; idx < ctx.events.length; idx++) {
@@ -189,7 +200,11 @@ export function ingestEcologicalDamageEvents(
     if (colonyIndex === null || colonyIndex < 0) continue;
     const entry = ensureColonyLedgerEntry(map, colonyIndex);
 
-    if (ev.kind === 'tileStateChanged') {
+    if (ev.kind === 'tileStateChanged' || ev.kind === 'obstacleRemoved') {
+      const hasCoords = typeof d.q === 'number' && typeof d.r === 'number';
+      const dedupKey = hasCoords ? `${colonyIndex}:${d.q},${d.r}` : '';
+      if (dedupKey && seenTileOps.has(dedupKey)) continue;
+      if (dedupKey) seenTileOps.add(dedupKey);
       const count = typeof d.count === 'number' && d.count > 1 ? Math.round(d.count) : 1;
       entry.tilesTerraformed += count;
       if (d.prevTerrain === 'forest' || d.op === 'clear') {
@@ -197,8 +212,8 @@ export function ingestEcologicalDamageEvents(
       }
       entry.lastProcessedTick = tick;
       dirty = true;
-      if (typeof d.q === 'number' && typeof d.r === 'number') {
-        touchedHabitats.push({ colonyIndex, q: d.q, r: d.r });
+      if (hasCoords) {
+        touchedHabitats.push({ colonyIndex, q: d.q as number, r: d.r as number });
       }
     } else if (ev.kind === 'nestDestroyed') {
       entry.hivesHarmed += 1;

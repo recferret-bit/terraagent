@@ -13,7 +13,7 @@ import {
   makeWildflowerGeo,
 } from '../../../visuals/terrain/groundFloraGeos';
 import { createWaterFauna } from '../../../visuals/water/fauna/WaterFauna';
-import { bakeShoreField, createShoreField } from '../../../visuals/water/shoreField';
+import { bakeShoreField, createShoreField, texelCentre } from '../../../visuals/water/shoreField';
 
 export function buildForestRock(c: SurfaceContext) {
   const { rng, ext, level, heightAt, nz, terrain, cellMul } = c;
@@ -24,7 +24,14 @@ export function buildForestRock(c: SurfaceContext) {
   const shore = bakeShoreField((x, z) => {
     const depth = level - heightAt(x, z);
     return depth <= 0.08 ? 0 : depth > 0.95 ? 2 : 1;
-  }, createShoreField(terrain.span, 256));
+  }, createShoreField(terrain.span, 384));
+  for (let j = 0; j < shore.res; j++) {
+    const tz = texelCentre(j, shore.res, shore.span);
+    for (let i = 0; i < shore.res; i++) {
+      const k = j * shore.res + i;
+      if (shore.mask[k]) shore.bed[k] = Math.max(shore.bed[k]!, heightAt(texelCentre(i, shore.res, shore.span), tz) - level);
+    }
+  }
   const waterFauna = createWaterFauna({
     time: water.uniforms.uTime!,
     deepColor: water.uniforms.uDeep ?? { value: new THREE.Color(deep) },
@@ -52,7 +59,7 @@ export function buildForestRock(c: SurfaceContext) {
   }
   c.addMesh(
     buildInstanced(buildBiomeTreeAtlasGeo('forestRock', c.spec.seed), createFoliageMaterial(c.timeU, 0.72, false, true), trees, {
-      sx: [0.75, 1.32], sy: [0.82, 1.75], sink: 0.10, tilt: 0.06, tint: jitter(0.20, 0.14), encodeBreedInColor: true,
+      sx: [0.56, 0.96], sy: [0.62, 1.15], sink: 0.10, tilt: 0.06, tint: jitter(0.20, 0.14), encodeBreedInColor: true,
     }),
   );
 

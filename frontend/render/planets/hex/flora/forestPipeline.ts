@@ -118,13 +118,17 @@ export function evaluateForestStand(
   r: number,
   biome: PlanetKind,
   planetSeed = 17,
+  tileElevation?: number,
 ): ForestStandClassification {
   const breeds = BREEDS_BY_BIOME[biome];
   const [wx, wz] = tileXZ(q, r);
   const standField = fbmStand(wx * 0.32, wz * 0.32, planetSeed + 401);
   const regimeField = fbmStand(wx * 0.22 + 19, wz * 0.22 - 11, planetSeed + 509);
-  const moisture = fbmStand(wx * 0.28 - 31, wz * 0.28 + 23, planetSeed + 613);
-  const exposure = fbmStand(wx * 0.25 + 47, wz * 0.25 + 41, planetSeed + 719);
+  const baseMoisture = fbmStand(wx * 0.28 - 31, wz * 0.28 + 23, planetSeed + 613);
+  const riparianBoost = tileElevation !== undefined && tileElevation < 0.48 ? (0.48 - tileElevation) * 0.45 : 0;
+  const ridgeDry = tileElevation !== undefined && tileElevation > 1.8 ? Math.min(0.22, (tileElevation - 1.8) * 0.12) : 0;
+  const moisture = Math.max(0, Math.min(1, baseMoisture + riparianBoost - ridgeDry * 0.5));
+  const exposure = Math.max(0, Math.min(1, fbmStand(wx * 0.25 + 47, wz * 0.25 + 41, planetSeed + 719) + ridgeDry));
 
   const standCellQ = Math.round(q / 5);
   const standCellR = Math.round(r / 5);
@@ -243,8 +247,9 @@ export function generateTileForestTrees(
   countOverride?: number,
 ): GeneratedForestTree[] {
   const count = countOverride ?? 2 + (tileHashU32(q, r, 101) % 3);
+  const [cx, cz] = tileXZ(q, r);
   const places = generateCandidateTreePlaces(q, r, tileIndex, count, 200);
-  const stand = evaluateForestStand(q, r, biome, planetSeed);
+  const stand = evaluateForestStand(q, r, biome, planetSeed, heightAt(cx, cz));
   const stratified = stratifyStandSites(places, stand);
   return stratified.map((s) => synthesizeTreePhenotype(s, heightAt, 200));
 }

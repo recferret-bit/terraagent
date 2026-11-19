@@ -117,9 +117,9 @@ float fishMurk = 1.0 - exp(-(vFishDepth + 0.14) * uAbsorption * 1.5);
 { vec3 col = mix(fBelly, fBack, smoothstep(0.28, 0.72, vFishBody.x));
   col = mix(col, fishAccent, vFishBody.y * 0.88);
   // Crisp sunlit dorsal iridescence so swimming fish/rays read clearly through the water surface by day
-  float dayGlint = (1.0 - clamp(uNightFactor, 0.0, 1.0)) * smoothstep(0.45, 0.92, vFishBody.x) * 0.34;
-  col += fishAccent * dayGlint;
-  diffuseColor.rgb = mix(col, uFishDeep, fishMurk * 0.44); }`;
+  float dayGlint = (1.0 - clamp(uNightFactor, 0.0, 1.0)) * smoothstep(0.38, 0.90, vFishBody.x) * 0.48;
+  col += fishAccent * dayGlint + fBelly * (dayGlint * 0.18);
+  diffuseColor.rgb = mix(col, uFishDeep, fishMurk * 0.34); }`;
 
 const FISH_FRAG_EMISSIVE = /* glsl */ `#include <emissivemap_fragment>
 { vec3 taProj = evalColonyProjectorLight(vFishW, vFishN);

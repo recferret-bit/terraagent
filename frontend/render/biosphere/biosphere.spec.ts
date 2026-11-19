@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { hexCount, hexIndex } from '@terra/sim/grid/hex';
+import { afterEach, describe, expect, it } from 'vitest';
+import { hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
+import { resetDayNightParams, setDayNight, setDayNightParams } from '../core/dayNightConfig';
 import {
   BIRD_SPECIES_CATALOG,
   BIRDS_BY_BIOME,
+  buildHexHabitatIndex,
   canBiosphereFaunaAttackPlayer,
   LAND_ANIMAL_SPECIES_CATALOG,
   LAND_ANIMALS_BY_BIOME,
@@ -97,6 +99,39 @@ describe('Living Planet Biosphere: 15 Bird Species, 12 Warm-Blooded Species & Wa
 });
 
 describe('Living Planet Biosphere: Circadian Schedules, Robot Aggressors & Water Fauna', () => {
+  afterEach(() => {
+    resetDayNightParams();
+    setDayNight(true);
+  });
+
+  it('reads real DayNightParams.timeOfDay [0..24) hours directly without 24x fractional-hour wrapping', () => {
+    const radius = 16;
+    const tiles = buildRichBiomeTiles(radius);
+    const terrain = createHexTerrain({ radius, tiles, look: specForPlanetType('ocean') });
+    const animals = terrain.biosphere.getLandAnimals();
+
+    // High noon (12.0 h): crepuscular panthers MUST be sleeping (not midnight-hunting!), diurnal herbivores roaming/eating
+    setDayNight(true);
+    setDayNightParams({ timeOfDay: 12.0 }, 'sync');
+    for (let i = 0; i < 4; i++) terrain.tick(0.08);
+    expect(animals.filter((a) => a.species.id === 'fauna.canopyPanther').every((a) => a.state === 'SLEEPING')).toBe(true);
+    expect(animals.some((a) => a.species.diet !== 'predator' && a.state !== 'SLEEPING')).toBe(true);
+
+    // 09:00 AM default startup: panthers roam peacefully (`ROAMING`), grazers eat grass (`EATING_GRASS`)
+    setDayNightParams({ timeOfDay: 9.0 }, 'sync');
+    for (let i = 0; i < 4; i++) terrain.tick(0.08);
+    expect(animals.some((a) => a.species.id === 'fauna.canopyPanther' && a.state === 'ROAMING')).toBe(true);
+    expect(animals.some((a) => a.state === 'EATING_GRASS' || a.state === 'BROWSING_TREES')).toBe(true);
+
+    // Deep night (02:00 AM): diurnal herbivores sleep while panthers hunt
+    setDayNightParams({ timeOfDay: 2.0 }, 'sync');
+    for (let i = 0; i < 4; i++) terrain.tick(0.08);
+    expect(animals.some((a) => a.species.diet !== 'predator' && a.state === 'SLEEPING')).toBe(true);
+    expect(animals.some((a) => a.species.id === 'fauna.canopyPanther' && a.state === 'HUNTING')).toBe(true);
+
+    terrain.dispose();
+  });
+
   it('drives warm-blooded animals through 24h circadian schedules and makes all fauna flee robot aggressors', () => {
     const radius = 16;
     const tiles = buildRichBiomeTiles(radius);
@@ -150,8 +185,10 @@ describe('Living Planet Biosphere: Circadian Schedules, Robot Aggressors & Water
 
     terrain.dispose();
   });
+});
 
-  it('spawns visible swimming water fauna on both HexTerrain and PlanetSurface water planets', () => {
+describe('Living Planet Biosphere: Water Fauna Ponds & Full-Deforestation Bounds Safety', () => {
+  it('spawns visible swimming water fauna on both HexTerrain (including 7-hex ponds) and PlanetSurface water planets', () => {
     expect(planetFishCap(220)).toBeGreaterThan(800);
 
     const tiles = buildRichBiomeTiles(14);
@@ -172,5 +209,65 @@ describe('Living Planet Biosphere: Circadian Schedules, Robot Aggressors & Water
     expect(surfOcean.biosphere!.counts().landSpecies).toBe(4);
     surfOcean.update(0.1, 1.0);
     surfOcean.dispose();
+
+    // Small 7-hex lakes (centre + 1 hex ring, matching w05-terrain lakes) also place visible swimming shoals
+    const lakeR = 14;
+    const lakeHx = hexIndex(lakeR);
+    const lakeTerrain = new Uint8Array(lakeHx.count).fill(HEX_TERRAIN.flat);
+    const lakePrep = new Uint8Array(lakeHx.count).fill(HEX_PREP.wild);
+    const lakeHeight = new Float32Array(lakeHx.count).fill(0.25);
+    for (let i = 0; i < lakeHx.count; i++) {
+      if (hexDistance(-6, 0, lakeHx.q[i]!, lakeHx.r[i]!) <= 1) lakeTerrain[i] = HEX_TERRAIN.shallow;
+      if (hexDistance(6, 0, lakeHx.q[i]!, lakeHx.r[i]!) <= 1) lakeTerrain[i] = HEX_TERRAIN.deep;
+    }
+    const pondPlanet = createHexTerrain({
+      radius: lakeR,
+      tiles: { terrain: lakeTerrain, prep: lakePrep, height: lakeHeight },
+      look: specForPlanetType('temperate'),
+    });
+    expect(pondPlanet.water.fauna.placed).toBeGreaterThan(0);
+    expect(pondPlanet.water.fauna.count).toBeGreaterThan(0);
+    pondPlanet.dispose();
+  });
+
+  it('keeps all birds and land animals inside hexagonal bounds even when every forest is clear-cut during active battles', () => {
+    const radius = 14;
+    const tiles = buildRichBiomeTiles(radius);
+    const hx = hexIndex(radius);
+    const look = specForPlanetType('temperate');
+    const terrain = createHexTerrain({ radius, tiles, look });
+
+    // Clear-cut EVERY forest tile on the entire island while robots and battles are active
+    const cleared: number[] = [];
+    for (let i = 0; i < hx.count; i++) {
+      if (tiles.terrain[i] === HEX_TERRAIN.forest) {
+        tiles.terrain[i] = HEX_TERRAIN.flat;
+        tiles.prep[i] = HEX_PREP.prepared;
+        cleared.push(i);
+      }
+    }
+    terrain.updateTiles(tiles, cleared);
+    terrain.biosphere.setAggressors([
+      { x: 0, z: 0, radius: 14, working: true },
+      { x: 10, z: -8, radius: 12, working: true },
+    ]);
+    terrain.biosphere.noteBattleAt(-8, 6, 16, 6);
+
+    for (let stepIdx = 0; stepIdx < 40; stepIdx++) {
+      terrain.tick(0.1);
+    }
+
+    const hab = buildHexHabitatIndex(radius, { ...tiles, kind: look.kind, seed: look.seed }, look, (x, z) => terrain.heightAt(x, z));
+    expect(hab.forestAnchors).toHaveLength(0);
+    for (const flock of terrain.biosphere.getBirdFlocks()) {
+      expect(hab.isInBounds(flock.homeX, flock.homeZ)).toBe(true);
+      for (const m of flock.members) {
+        expect(Number.isFinite(m.x + m.y + m.z)).toBe(true);
+      }
+    }
+    for (const animal of terrain.biosphere.getLandAnimals()) {
+      expect(hab.isInBounds(animal.x, animal.z)).toBe(true);
+    }
+    terrain.dispose();
   });
 });

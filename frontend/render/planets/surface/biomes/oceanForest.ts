@@ -13,7 +13,7 @@ import {
   makeWildflowerGeo,
 } from '../../../visuals/terrain/groundFloraGeos';
 import { createWaterFauna } from '../../../visuals/water/fauna/WaterFauna';
-import { bakeShoreField, createShoreField } from '../../../visuals/water/shoreField';
+import { bakeShoreField, createShoreField, texelCentre } from '../../../visuals/water/shoreField';
 
 export function buildOceanForest(c: SurfaceContext) {
   const { rng, ext, level, heightAt, nz, terrain, palette: P, cellMul } = c;
@@ -24,7 +24,14 @@ export function buildOceanForest(c: SurfaceContext) {
   const shore = bakeShoreField((x, z) => {
     const depth = level - heightAt(x, z);
     return depth <= 0.08 ? 0 : depth > 0.95 ? 2 : 1;
-  }, createShoreField(terrain.span, 256));
+  }, createShoreField(terrain.span, 384));
+  for (let j = 0; j < shore.res; j++) {
+    const tz = texelCentre(j, shore.res, shore.span);
+    for (let i = 0; i < shore.res; i++) {
+      const k = j * shore.res + i;
+      if (shore.mask[k]) shore.bed[k] = Math.max(shore.bed[k]!, heightAt(texelCentre(i, shore.res, shore.span), tz) - level);
+    }
+  }
   const waterFauna = createWaterFauna({
     time: water.uniforms.uTime!,
     deepColor: water.uniforms.uDeep ?? { value: new THREE.Color(deep) },
@@ -54,7 +61,7 @@ export function buildOceanForest(c: SurfaceContext) {
   }
   c.addMesh(
     buildInstanced(buildBiomeTreeAtlasGeo('oceanForest', c.spec.seed), createFoliageMaterial(c.timeU, 0.95, true, true), trees, {
-      sx: [0.80, 1.45], sy: [0.82, 1.68], sink: 0.10, tilt: 0.09, tint: jitter(0.20, 0.20), encodeBreedInColor: true,
+      sx: [0.58, 1.02], sy: [0.62, 1.14], sink: 0.10, tilt: 0.09, tint: jitter(0.20, 0.20), encodeBreedInColor: true,
     }),
   );
 

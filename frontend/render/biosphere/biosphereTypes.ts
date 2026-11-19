@@ -95,6 +95,7 @@ export interface BiosphereHabitatIndex {
   readonly grassAnchors: HabitatAnchor[];
   readonly rockAnchors: HabitatAnchor[];
   readonly colonizedAnchors: HabitatAnchor[];
+  isInBounds(x: number, z: number): boolean;
   isPassableLand(x: number, z: number): boolean;
   heightAt(x: number, z: number): number;
 }
@@ -173,6 +174,7 @@ export interface PlanetBiosphere {
   getLandAnimals(): readonly LandAnimalAgent[];
   setAggressors(aggressors: readonly BiosphereAggressor[]): void;
   noteBattleAt(x: number, z: number, radius?: number, ttl?: number): void;
+  noteHabitatDisturbance(x: number, z: number, radius?: number, ttl?: number): void;
   /** Optional `[0..1)` solar cycle override (`0 = midnight`, `0.25 = dawn`, `0.5 = noon`, `0.75 = dusk`). */
   setTimeOfDayOverride(time01: number | null): void;
   onHabitatChanged(habitat: BiosphereHabitatIndex): void;
