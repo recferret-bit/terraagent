@@ -75,7 +75,9 @@ describe('pixelArtPass & viewport sizing', () => {
 
     pixelArt.dispose();
   });
+});
 
+describe('CRT SVG fallback filter & wave', () => {
   it('uses 2x2 fallback pixel filter, zero-Y centered CRT wave, and preserves CSS pixel filter during wave', () => {
     vi.useFakeTimers();
     const rafQueue: FrameRequestCallback[] = [];
