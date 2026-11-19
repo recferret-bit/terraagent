@@ -23,7 +23,7 @@ test('rendered h1 equals the markdown heading', () => {
   const html = writeWhitepaper();
   assert.equal(h1Text(html), expected);
   assert.equal(readFileSync(pagePath(), 'utf8'), html);
-  assert.equal(expected, 'TerraAgent — Whitepaper (draft v0.1, 2026-10-31)');
+  assert.equal(expected, 'TerraAgent — Whitepaper');
   assert.match(html, /class="container doc"/);
   assert.match(html, /href="\.\.\/design\/css\/tokens\.css"/);
   assert.match(html, /href="\.\.\/design\/css\/base\.css"/);

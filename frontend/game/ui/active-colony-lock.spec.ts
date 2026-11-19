@@ -112,6 +112,32 @@ describe('probeActiveHomeColony', () => {
     homeState = 'ELIMINATED';
     expect(await probeActiveHomeColony({ fetch: fetchMock as unknown as typeof fetch, storage, dev: false })).toBeNull();
   });
+
+  it('captures colony.foundingSectorId when returned by GET /v1/me/home?resolve=1', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/v1/auth/refresh') return json(401, {});
+      if (url === '/v1/auth/guest') return json(200, { accessToken: 'tok_guest', player: { id: 'p2', isGuest: true } });
+      if (url === '/v1/me/home?resolve=1') {
+        return json(200, {
+          state: 'ACTIVE',
+          colony: { id: 'col_ocean_2', name: 'Tidal Keep', foundingSectorId: 'sec_1_0' },
+          planet: { id: 'cn_ocean', name: 'Thalassa', type: 'ocean' },
+        });
+      }
+      return json(404, {});
+    });
+    const storage = { getItem: (k: string) => (k === 'ta_device_secret' ? 'secret_at_least_16_chars' : null) };
+    const active = await probeActiveHomeColony({ fetch: fetchMock as unknown as typeof fetch, storage, dev: false });
+    expect(active).toEqual({
+      kind: 'oceanForest',
+      planetType: 'ocean',
+      planetId: 'cn_ocean',
+      planetName: 'Thalassa',
+      colonyId: 'col_ocean_2',
+      colonyName: 'Tidal Keep',
+      foundingSectorId: 'sec_1_0',
+    });
+  });
 });
 
 describe('MainMenu active colony planet lock', () => {
@@ -148,7 +174,7 @@ describe('MainMenu active colony planet lock', () => {
     expect(tempCard.classList.contains('is-colony-locked')).toBe(true);
 
     expect(menu.el.querySelector('#deploy')?.textContent).toBe('ENTER COLONY');
-    expect(menu.el.querySelector<HTMLElement>('#sector-picker-host')?.hidden).toBe(true);
+    expect(menu.el.querySelector<HTMLElement>('#sector-picker-host')?.hidden).toBe(false);
     expect(menu.el.querySelector('[data-testid="ar-card-presence"]')?.textContent).toContain('Outpost Alpha');
 
     // Attempting to select or click another planet keeps desert locked
@@ -168,6 +194,56 @@ describe('MainMenu active colony planet lock', () => {
     expect(oceanCard.disabled).toBe(false);
     expect(oceanCard.classList.contains('is-colony-locked')).toBe(false);
     expect(menu.el.querySelector('#deploy')?.textContent).toBe('DEPLOY');
+    menu.dispose();
+  });
+});
+
+describe('MainMenu deployed colony sector lock', () => {
+  it('disables ENTER COLONY and blocks deploy when selecting a sector other than the deployed colony sector', () => {
+    const onDeploy = vi.fn();
+    const cb: MenuCallbacks = { onPlanet: vi.fn(), onDeploy, onSettings: vi.fn() };
+    const menu = new MainMenu(document.body, cb, 'dune', undefined, { planetList: makePlanetListFixture() });
+
+    const active: ActiveHomeColony = {
+      kind: 'dune',
+      planetType: 'desert',
+      planetId: CANONICAL_PLANETS.desert.id,
+      planetName: 'Kharon',
+      colonyId: 'col_sec_1_0',
+      colonyName: 'Outpost Sec1',
+      foundingSectorId: 'sec_1_0',
+    };
+    menu.setActiveColony(active);
+
+    const deployBtn = menu.el.querySelector<HTMLButtonElement>('#deploy')!;
+    const errEl = menu.el.querySelector<HTMLElement>('#menu-err')!;
+    expect(deployBtn.disabled).toBe(false);
+    expect(deployBtn.getAttribute('aria-disabled')).toBe('false');
+    expect(menu.canDeploy()).toBe(true);
+
+    // Selecting a foreign sector locks ENTER COLONY
+    menu.setSectorIntent({ mode: 'chosen', sectorId: 'sec_0_0' });
+    expect(deployBtn.disabled).toBe(true);
+    expect(deployBtn.getAttribute('aria-disabled')).toBe('true');
+    expect(deployBtn.dataset.sectorLocked).toBe('true');
+    expect(menu.canDeploy()).toBe(false);
+    expect(errEl.textContent).toContain('SEC_1_0');
+
+    // Even if tampered DOM removes disabled attribute, click refuses to fire onDeploy
+    deployBtn.disabled = false;
+    deployBtn.click();
+    expect(onDeploy).not.toHaveBeenCalled();
+
+    // Selecting the deployed home sector re-enables ENTER COLONY and allows deploy
+    menu.setSectorIntent({ mode: 'chosen', sectorId: 'sec_1_0' });
+    expect(deployBtn.disabled).toBe(false);
+    expect(deployBtn.getAttribute('aria-disabled')).toBe('false');
+    expect(deployBtn.dataset.sectorLocked).toBe('false');
+    expect(menu.canDeploy()).toBe(true);
+    expect(errEl.textContent).toBe('');
+
+    deployBtn.click();
+    expect(onDeploy).toHaveBeenCalledTimes(1);
     menu.dispose();
   });
 });

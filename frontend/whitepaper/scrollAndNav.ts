@@ -232,6 +232,8 @@ export function initScrollAnimationsAndSpy(): void {
   const chapterMap = new Map(CHAPTER_ITEMS.map((c) => [c.id, c]));
   if (sections.length === 0) return;
 
+  document.documentElement.classList.add('js-wp-reveal');
+
   const revealHashTarget = (scrollToTarget = false) => {
     const hashId = window.location.hash.replace(/^#/, '');
     if (hashId) {

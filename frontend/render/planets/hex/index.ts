@@ -37,6 +37,7 @@ export {
   type TilePropInstance,
 } from './chunkPropScatter';
 export { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
+export { createHexWaterfallSet, type HexWaterfallSet } from './hexWaterfall';
 export {
   applyTileStatePreset,
   createHexTileTint,
@@ -59,8 +60,18 @@ export {
   type TerritoryBorderStats,
 } from './territoryBorder';
 export { kindForPlanetType, planetTypeForKind, specForPlanetType, type SimPlanetType } from './planetKind';
-export { CHUNK_TILES, TILE_M, tileXZ, tileAt, planetExtent } from './hexMath';
 export {
+  CHUNK_TILES,
+  HEX_PROP_EDGE_MARGIN_M,
+  TILE_M,
+  clampToGroundHexagon,
+  hexEdgeMarginM,
+  planetExtent,
+  tileAt,
+  tileXZ,
+} from './hexMath';
+export {
+  applySurfaceForestPipeline,
   evaluateForestStand,
   generateCandidateTreePlaces,
   generateTileForestTrees,

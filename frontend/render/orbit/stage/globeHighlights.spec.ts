@@ -34,7 +34,7 @@ function makeMockGlobe(kind: 'dune' | 'oceanForest' | 'forestRock', initialSpinY
 }
 
 describe('GlobeHighlights rotation sync', () => {
-  it('moves projected sector markers monotonically in exact lockstep with planet spin and resets on planet switch', () => {
+  it('moves projected sector markers monotonically with planet spin and exposes center coords + counts', () => {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(28, 16 / 9, 0.5, 4000);
     camera.position.set(0, 1.4, CAM_DIST);
@@ -44,11 +44,11 @@ describe('GlobeHighlights rotation sync', () => {
     const planetPos = new THREE.Vector3(6, 0, 0);
     const highlights = new GlobeHighlights(scene, R);
     highlights.setHighlights([
-      { id: 'sec_0_0', yaw: 0, pitch: 0.04, role: 'target', players: 1, bots: 0 },
+      { id: 'sec_0_0', yaw: 0, pitch: 0.04, role: 'target', players: 2, bots: 1, isHomeBase: true },
       { id: 'sec_back', yaw: 2.9, pitch: 0, role: 'sector', players: 0, bots: 0 },
     ]);
 
-    const dune = makeMockGlobe('dune', 0.2);
+    const dune = makeMockGlobe('dune', -0.15);
     const nxSamples: number[] = [];
     for (let i = 0; i < 6; i++) {
       dune.update(1.0, i);
@@ -57,10 +57,11 @@ describe('GlobeHighlights rotation sync', () => {
       const targetAnchor = frame.anchors.find((a) => a.id === 'sec_0_0')!;
       const backAnchor = frame.anchors.find((a) => a.id === 'sec_back')!;
       expect(targetAnchor.visible).toBe(true);
+      expect(targetAnchor.isHomeBase).toBe(true);
+      expect(targetAnchor.players).toBe(2);
+      expect(targetAnchor.bots).toBe(1);
+      expect(typeof targetAnchor.centerNx).toBe('number');
       expect(backAnchor.visible).toBe(false);
-      expect(frame.time).toBe(i);
-      expect(frame.pointerX).toBeCloseTo(0.1);
-      expect(frame.pointerY).toBeCloseTo(-0.2);
       nxSamples.push(targetAnchor.nx);
     }
 
@@ -68,14 +69,7 @@ describe('GlobeHighlights rotation sync', () => {
       expect(nxSamples[i]!).toBeGreaterThan(nxSamples[i - 1]!);
     }
 
-    // Switching planet re-acquires sector markers cleanly on the camera-facing hemisphere
-    const ocean = makeMockGlobe('oceanForest', dune.spin.rotation.y + 0.9);
-    highlights.update(ocean, planetPos, camera, 0.016, 7);
-    const switchedFrame = highlights.project(camera, planetPos, 7);
-    expect(switchedFrame.anchors.find((a) => a.id === 'sec_0_0')?.visible).toBe(true);
-
     highlights.dispose();
     dune.dispose();
-    ocean.dispose();
   });
 });

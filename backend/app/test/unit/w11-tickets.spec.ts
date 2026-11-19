@@ -174,6 +174,31 @@ describe('W11-10 — Live active colony check (409 already_has_colony + home)', 
     const parsedHome = HomeV1Schema.parse(body.home);
     expect(parsedHome.state).toBe('ACTIVE');
     expect(body.error.details.home).toEqual(body.home);
+
+    // Anti-cheat: cannot bypass active colony lock via spoofed TRANSFER request on same planet or wrong source
+    await expect(
+      tickets.enqueueTicket(guest.player.id, {
+        mode: 'TRANSFER',
+        planetType: 'desert',
+        sectorId: 'sec_1_0',
+        sourcePlanetId: CANONICAL_PLANETS.ocean.id,
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'same_planet_transfer',
+    });
+
+    await expect(
+      tickets.enqueueTicket(guest.player.id, {
+        mode: 'TRANSFER',
+        planetType: 'ocean',
+        sectorId: 'sec_1_0',
+        sourcePlanetId: CANONICAL_PLANETS.temperate.id,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'already_has_colony',
+    });
   });
 });
 

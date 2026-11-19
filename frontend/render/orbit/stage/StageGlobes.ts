@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isShaderOptimized } from '../../core/perfConfig';
 import type { PlanetKind, PlanetSpec } from '../../planets/PlanetSpec';
 import { createPlanetGlobe, type PlanetGlobe } from '../../planets/PlanetGlobe';
 import { smoother, win } from './math';
@@ -7,7 +8,7 @@ export const R = 9.5;            // globe radius (world units)
 export const CAM_DIST = 62;
 export const FADE = 1.2;         // crossfade seconds
 
-/** The planet on show: per-kind globe cache (shared shader program → swapping never recompiles), crossfade morph, layout. */
+/** The planet on show: per-kind globe cache (shared shader program -> swapping never recompiles), crossfade morph, layout. */
 export class StageGlobes {
   current: PlanetGlobe;
   outgoing: PlanetGlobe | null = null;
@@ -18,6 +19,9 @@ export class StageGlobes {
   private fade = 1;
   private fadeDur = FADE;        // seconds for the current morph (setPlanet opts.duration)
   private continuousSpin = false; // true: no counter-rotation during a morph, both globes just keep turning forward
+  private continentLock = false; // true on orbital menu: one side always faces the player smoothly
+  private targetFocusYaw = 0;
+  private smoothFocusYaw = 0;
   private layoutX = 0;
   private lx = NaN;
 
@@ -33,6 +37,11 @@ export class StageGlobes {
   }
 
   setSpinRate(r: number) { this.spinRate = r; for (const g of this.cache.values()) g.setSpinRate(r); }
+
+  setContinentLock(enabled: boolean, focusYaw = 0) {
+    this.continentLock = enabled;
+    this.targetFocusYaw = focusYaw;
+  }
 
   /** Planet right of centre, leaving the left for UI. */
   place(dt: number) {
@@ -51,7 +60,9 @@ export class StageGlobes {
     this.outgoing = this.current;
     this.current = this.globeFor(next);
     this.current.group.visible = true;
-    this.current.spin.rotation.y = this.outgoing.spin.rotation.y + (this.continuousSpin ? 0 : 0.9); // arrives mid-rotation → reads as a smooth turn
+    this.current.spin.rotation.y = this.continentLock && !this.continuousSpin
+      ? 0.52
+      : this.outgoing.spin.rotation.y + (this.continuousSpin ? 0 : 0.9);
     this.current.setOpacity(0); this.current.setCloudPresence(0);
     this.fade = 0;
     return true;
@@ -69,23 +80,37 @@ export class StageGlobes {
     const { current, outgoing } = this;
     this.fade = Math.min(1, this.fade + dt / this.fadeDur);
     const fade = this.fade;
-    // Staggered quintic windows: the new globe dissolves in over the old one (5 → 70 %); the old one, kept slightly
-    // smaller so it sits behind, only fades its shells out afterwards (40 → 100 %). No ghosting, no popping.
     const inE = win(0.05, 0.7, fade), outE = win(0.4, 1, fade), e = smoother(fade);
     current.setOpacity(inE);
-    current.setCloudPresence(win(0.4, 1, fade));   // new clouds condense out only once the surface is solid
+    current.setCloudPresence(win(0.4, 1, fade));
     current.group.scale.setScalar(1.003 - 0.003 * e);
     if (outgoing) {
       outgoing.setOpacity(1 - outE);
-      outgoing.setCloudPresence(1 - win(0, 0.5, fade)); // old clouds dissipate first, while the old surface is still solid
+      outgoing.setCloudPresence(1 - win(0, 0.5, fade));
       outgoing.group.scale.setScalar(1 - 0.015 * outE);
-      if (!this.continuousSpin) outgoing.spin.rotation.y -= dt * 0.35 * this.morphRate * (1 - outE);
+      if (!this.continuousSpin && !this.continentLock) outgoing.spin.rotation.y -= dt * 0.35 * this.morphRate * (1 - outE);
       if (fade >= 1) { outgoing.group.visible = false; outgoing.group.scale.setScalar(1); this.outgoing = null; current.group.scale.setScalar(1); }
     }
-    if (!this.continuousSpin) current.spin.rotation.y -= dt * 0.35 * this.morphRate * (1 - e) * 0.9;
+    if (!this.continuousSpin && !this.continentLock) current.spin.rotation.y -= dt * 0.35 * this.morphRate * (1 - e) * 0.9;
   }
 
   updateGlobes(dt: number, time: number) {
+    if (this.continentLock && !this.continuousSpin) {
+      this.smoothFocusYaw += (this.targetFocusYaw - this.smoothFocusYaw) * Math.min(1, dt * 4.5);
+      const morphOffset = this.fade < 1 ? 0.52 * (1 - smoother(this.fade)) : 0;
+      const g = this.current;
+      g.group.position.copy(this.planetPos);
+      g.spin.rotation.y = Math.sin(time * 0.24) * 0.16 + this.smoothFocusYaw + morphOffset;
+      g.clouds.rotation.y += dt * 0.036;
+      g.shared.uTime.value = time;
+      const sharedOpt = g.shared as unknown as { uOpt?: THREE.IUniform<number> };
+      if (sharedOpt.uOpt) sharedOpt.uOpt.value = isShaderOptimized() ? 1 : 0;
+      if (this.outgoing) {
+        this.outgoing.group.position.copy(this.planetPos);
+        this.outgoing.update(dt, time);
+      }
+      return;
+    }
     for (const g of [this.current, this.outgoing]) if (g) { g.group.position.copy(this.planetPos); g.update(dt, time); }
   }
 

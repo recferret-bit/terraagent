@@ -106,7 +106,7 @@ async function collectFromHomeRepo(
         foundedAt: c.createdAt.toISOString(),
         ...(isBot ? { isBot: true } : {}),
       },
-      `${t}:${c.name.toLowerCase()}`,
+      key,
     );
   }
 }
@@ -144,10 +144,9 @@ async function collectFromSimThreads(
           col.status === 'active';
         if (!isBot && !isSeated) continue;
         const colonyId = sanitizeColonyId(col.id, col.index);
-        const nameKey = `${t}:${String(col.name || colonyId).toLowerCase()}`;
         const key = `${id}:${colonyId}`;
         if (isBot) out.aiBotKeysByType[t].add(key);
-        else if (!seenNames.has(nameKey)) out.humanKeysByType[t].add(key);
+        else if (!seenNames.has(key)) out.humanKeysByType[t].add(key);
         pushSummary(
           out.liveColoniesByType[t],
           seenNames,
@@ -158,7 +157,7 @@ async function collectFromSimThreads(
             foundedAt: nowIso,
             ...(isBot ? { isBot: true } : {}),
           },
-          nameKey,
+          key,
         );
       }
     } catch {

@@ -9,8 +9,8 @@ export interface ArLeaderCardRefs {
 }
 
 export interface ArLeaderContext {
-  readonly targetLabel: string;
-  readonly showPresenceNodes: boolean;
+  readonly selectedSectorLabel: string;
+  readonly homeBaseLabel?: string;
 }
 
 interface Pt {
@@ -33,10 +33,6 @@ function hexPoints(cx: number, cy: number, r: number): string {
   return pts.join(' ');
 }
 
-function diamondPoints(cx: number, cy: number, r: number): string {
-  return `${cx.toFixed(1)},${(cy - r).toFixed(1)} ${(cx + r).toFixed(1)},${cy.toFixed(1)} ${cx.toFixed(1)},${(cy + r).toFixed(1)} ${(cx - r).toFixed(1)},${cy.toFixed(1)}`;
-}
-
 function findAnchor(
   frame: OrbitalProjectedFrame | null,
   predicate: (a: ProjectedAnchor2D) => boolean,
@@ -50,54 +46,86 @@ function findAnchor(
   return { nx: gNx + (fallbackNx - 0.62), ny: gNy + (fallbackNy - 0.5), id: 'orbit' };
 }
 
-function appendConnector(
+function appendHexConnector(
   svg: SVGSVGElement,
   from: Pt,
   elbow: Pt,
   to: Pt,
   cls: string,
-  reticle: 'hex' | 'diamond',
   labelText?: string,
-  tagOffsetY = -10,
+  options: { tagOffsetY?: number; withHexReticle?: boolean } = {},
 ): void {
+  const { tagOffsetY = -12, withHexReticle = false } = options;
   const points = `${from.x.toFixed(1)},${from.y.toFixed(1)} ${elbow.x.toFixed(1)},${elbow.y.toFixed(1)} ${to.x.toFixed(1)},${to.y.toFixed(1)}`;
   svg.append(
     el('polyline', { class: `ar-line-glow ${cls}`, points }),
     el('polyline', { class: `ar-line ${cls}`, points }),
     el('polyline', { class: `ar-line-pulse ${cls}`, points }),
-    el('rect', {
-      class: `ar-pad ${cls}`,
-      x: (from.x - 3).toFixed(1),
-      y: (from.y - 3).toFixed(1),
-      width: '6',
-      height: '6',
-    }),
+    el('polygon', { class: `ar-pad ${cls}`, points: hexPoints(from.x, from.y, 4.2) }),
     el('circle', { class: `ar-node ${cls}`, cx: elbow.x.toFixed(1), cy: elbow.y.toFixed(1), r: '2.2' }),
   );
-  const poly =
-    reticle === 'diamond'
-      ? diamondPoints(to.x, to.y, 11)
-      : hexPoints(to.x, to.y, 10);
+  if (withHexReticle) {
+    svg.append(el('polygon', { class: `ar-reticle ${cls}`, points: hexPoints(to.x, to.y, 10) }));
+  }
   svg.append(
-    el('polygon', { class: `ar-reticle ${cls}`, points: poly }),
-    el('circle', { class: `ar-reticle-core ${cls}`, cx: to.x.toFixed(1), cy: to.y.toFixed(1), r: '3' }),
+    el('circle', {
+      class: `ar-reticle-core ${cls}`,
+      cx: to.x.toFixed(1),
+      cy: to.y.toFixed(1),
+      r: withHexReticle ? '3' : '2.6',
+    }),
   );
   if (labelText) {
-    const placeLeft = to.x > svg.viewBox.baseVal.width * 0.72;
+    const isRightRail = cls === 'is-presence' || cls === 'is-target';
     const t = el('text', {
       class: `ar-reticle-tag ${cls}`,
-      x: (placeLeft ? to.x - 14 : to.x + 14).toFixed(1),
-      y: (to.y + tagOffsetY).toFixed(1),
-      'text-anchor': placeLeft ? 'end' : 'start',
+      x: (isRightRail ? from.x - 10 : to.x + 14).toFixed(1),
+      y: (isRightRail ? from.y - 7 : to.y + tagOffsetY).toFixed(1),
+      'text-anchor': isRightRail ? 'end' : 'start',
     });
     t.textContent = labelText;
     svg.append(t);
   }
 }
 
+function appendSectorHexBadges(svg: SVGSVGElement, anchors: readonly ProjectedAnchor2D[], w: number, h: number): void {
+  for (const a of anchors) {
+    if (!a.visible || !a.id.startsWith('sec_') || a.centerNx === undefined || a.centerNy === undefined) continue;
+    const cx = a.centerNx * w;
+    const cy = a.centerNy * h;
+    const players = a.players ?? 0;
+    const bots = a.bots ?? 0;
+    const occupied = players + bots > 0;
+    const stateCls = [
+      a.isHomeBase ? 'is-home' : '',
+      a.role === 'target' ? 'is-target' : '',
+      !a.isHomeBase && a.role !== 'target' ? (occupied ? 'is-occupied' : 'is-open') : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const idNode = el('text', {
+      class: `ar-hex-id ${stateCls}`,
+      x: cx.toFixed(1),
+      y: (cy - 2).toFixed(1),
+      'text-anchor': 'middle',
+    });
+    idNode.textContent = a.id.replace('sec_', '');
+
+    const occNode = el('text', {
+      class: `ar-hex-occ ${stateCls}`,
+      x: cx.toFixed(1),
+      y: (cy + 9).toFixed(1),
+      'text-anchor': 'middle',
+    });
+    occNode.textContent = occupied ? `${players}P·${bots}B` : 'OPEN';
+    svg.append(idNode, occNode);
+  }
+}
+
 /**
- * Draws SVG leader lines & 3D surface reticles connecting the 3 floating Ship AR cards
- * to their live projected coordinates on the rotating 3D planet globe.
+ * Draws strictly hexagonal SVG reticles, in-hex sector occupancy tags, and leader lines connecting the
+ * 3 floating Ship AR cards to their live synchronized positions on the rotating 3D globe.
  */
 export class ArLeaderLines {
   readonly svg: SVGSVGElement;
@@ -133,33 +161,36 @@ export class ArLeaderLines {
     }
 
     const scanAnchor = findAnchor(frame, (a) => a.role === 'scanLimb', 0.48, 0.35);
-    const occupiedAnchors =
-      frame?.anchors.filter((a) => a.visible && (a.role === 'player' || a.role === 'bot')) ?? [];
-    const presAnchor = occupiedAnchors[0]
-      ? { nx: occupiedAnchors[0].nx, ny: occupiedAnchors[0].ny, id: occupiedAnchors[0].id }
-      : findAnchor(frame, (a) => a.role === 'presenceLimb', 0.63, 0.33);
-    const targetAnchor = findAnchor(frame, (a) => a.role === 'target', 0.58, 0.56);
+    // Blue Card inspects the currently selected/hovered sector; Orange Card links to the player's base sector.
+    const selectedAnchor = findAnchor(frame, (a) => a.role === 'target', 0.58, 0.50);
+    const homeAnchor =
+      frame?.anchors.find((a) => a.visible && a.isHomeBase) ??
+      selectedAnchor;
+    const sharedHex = homeAnchor.id === selectedAnchor.id && selectedAnchor.id.startsWith('sec_');
+    const selectedEdgeY = selectedAnchor.id.startsWith('sec_') ? -17 : 0;
+    const homeEdgeY = homeAnchor.id.startsWith('sec_') ? -17 : 0;
 
     const scanFrom: Pt = { x: rScan.right + 2, y: rScan.top + rScan.height * 0.36 };
     const scanTo: Pt = { x: scanAnchor.nx * w, y: scanAnchor.ny * h };
     const scanElbow: Pt = { x: scanFrom.x + Math.max(24, (scanTo.x - scanFrom.x) * 0.48), y: scanFrom.y };
 
     const presFrom: Pt = { x: rPres.left - 2, y: rPres.top + rPres.height * 0.38 };
-    const presTo: Pt = { x: presAnchor.nx * w, y: presAnchor.ny * h };
+    const presTo: Pt = { x: selectedAnchor.nx * w - (sharedHex ? 6 : 0), y: selectedAnchor.ny * h + selectedEdgeY };
     const presElbow: Pt = { x: presFrom.x - Math.max(24, (presFrom.x - presTo.x) * 0.45), y: presFrom.y };
 
     const launchFrom: Pt = { x: rLaunch.left - 2, y: rLaunch.top + Math.min(82, rLaunch.height * 0.28) };
-    const launchTo: Pt = { x: targetAnchor.nx * w, y: targetAnchor.ny * h };
+    const launchTo: Pt = { x: homeAnchor.nx * w + (sharedHex ? 6 : 0), y: homeAnchor.ny * h + homeEdgeY };
     const launchElbow: Pt = { x: launchFrom.x - Math.max(26, (launchFrom.x - launchTo.x) * 0.46), y: launchFrom.y };
 
     const q = (v: number) => Math.round(v * 2);
+    const visibleSectors = frame?.anchors.filter((a) => a.visible && a.id.startsWith('sec_')) ?? [];
+    const secSig = visibleSectors.map((a) => `${a.id}:${a.players ?? 0}:${a.bots ?? 0}:${a.isHomeBase ? 1 : 0}`).join(',');
     const key = [
       w, h,
       q(scanFrom.x), q(scanFrom.y), q(scanTo.x), q(scanTo.y),
       q(presFrom.x), q(presFrom.y), q(presTo.x), q(presTo.y),
       q(launchFrom.x), q(launchFrom.y), q(launchTo.x), q(launchTo.y),
-      occupiedAnchors.length,
-      ctx.targetLabel,
+      selectedAnchor.id, homeAnchor.id, ctx.selectedSectorLabel, ctx.homeBaseLabel ?? '', secSig,
     ].join(':');
     if (key === this.lastKey) return;
     this.lastKey = key;
@@ -167,29 +198,13 @@ export class ArLeaderLines {
     this.svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     this.svg.replaceChildren();
 
-    appendConnector(this.svg, scanFrom, scanElbow, scanTo, 'is-scan', 'hex', 'ORBIT SCAN', -10);
-    appendConnector(
-      this.svg,
-      presFrom,
-      presElbow,
-      presTo,
-      'is-presence',
-      'hex',
-      ctx.showPresenceNodes ? 'ACTIVE BASE' : undefined,
-      -12,
-    );
-    for (let i = 1; i < Math.min(occupiedAnchors.length, 4); i++) {
-      const extra = occupiedAnchors[i]!;
-      const ex = extra.nx * w;
-      const ey = extra.ny * h;
-      const cls = extra.role === 'bot' ? 'is-bot-branch' : 'is-presence';
-      const pts = `${presElbow.x.toFixed(1)},${presElbow.y.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}`;
-      this.svg.append(
-        el('polyline', { class: `ar-line-branch ${cls}`, points: pts }),
-        el('circle', { class: `ar-node ${cls}`, cx: ex.toFixed(1), cy: ey.toFixed(1), r: '3' }),
-      );
-    }
-    appendConnector(this.svg, launchFrom, launchElbow, launchTo, 'is-target', 'diamond', ctx.targetLabel, 18);
+    appendSectorHexBadges(this.svg, visibleSectors, w, h);
+    appendHexConnector(this.svg, scanFrom, scanElbow, scanTo, 'is-scan', 'ORBIT SCAN', {
+      tagOffsetY: -11,
+      withHexReticle: true,
+    });
+    appendHexConnector(this.svg, presFrom, presElbow, presTo, 'is-presence', ctx.selectedSectorLabel);
+    appendHexConnector(this.svg, launchFrom, launchElbow, launchTo, 'is-target', ctx.homeBaseLabel);
   }
 
   dispose(): void {

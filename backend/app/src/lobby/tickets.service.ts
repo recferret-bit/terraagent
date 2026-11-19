@@ -154,12 +154,30 @@ export class MatchTicketsService {
     const effectiveIdempotencyKey = call.idempotencyKey?.trim() || bodyIdempotencyKey;
 
     return this.withPlayerTicketLock(call.playerId, async () => {
-      if (intent.mode !== 'TRANSFER') {
-        const activeHome = await this.resolveActivePlayerHome(call.playerId);
-        if (activeHome) {
+      const activeHome = await this.resolveActivePlayerHome(call.playerId);
+      if (activeHome) {
+        if (intent.mode !== 'TRANSFER') {
           throw new MatchTicketConflictException(
             'already_has_colony',
             'Player already has an active colony',
+            { home: activeHome },
+            activeHome,
+          );
+        }
+        if (activeHome.planet.id === intent.planetId) {
+          throw new MatchTicketBadRequestException(
+            'same_planet_transfer',
+            'TRANSFER must select an eligible different canonical planet',
+          );
+        }
+        if (
+          !intent.sourcePlanetId ||
+          intent.sourcePlanetId !== activeHome.planet.id ||
+          (intent.sourceColonyId && intent.sourceColonyId !== activeHome.colony.id)
+        ) {
+          throw new MatchTicketConflictException(
+            'already_has_colony',
+            'Transfer source does not match active colony',
             { home: activeHome },
             activeHome,
           );

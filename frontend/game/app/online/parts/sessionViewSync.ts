@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
-import type { HexTerrain } from '@terra/render/planets/hex';
+import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { ClientFlagsStore } from '../../../core/flags';
 import type { LandfallController } from '../../../features/landfall';
@@ -15,8 +15,10 @@ import type { OnlineDayNightSync } from '../dayNightSync';
 import type { EntityMeshes } from '../EntityMeshes';
 import type { FeatureHud } from '../featureHud';
 import { extractPodDescentStatus, type PodDescentStatus } from '../podStatus';
-import { POD_TOUCHDOWN_DESCENT_S, type PodLandingStateName } from '../PodTouchdownFx';
+import { POD_TOUCHDOWN_DESCENT_S, type ColonyLoadMode, type PodLandingStateName } from '../PodTouchdownFx';
 import { resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
+
+const tmpHqPos = new THREE.Vector3();
 
 export function resolveSeatIndexFromSearch(search: string, v: ClientView): number | null {
   const asParam = new URLSearchParams(search).get('as')?.trim().toLowerCase() ?? '';
@@ -83,8 +85,12 @@ export interface ViewOverlaySyncDeps {
   readonly flags: ClientFlagsStore;
   readonly planetId: string;
   readonly fastStartLand: boolean;
+  readonly loadMode?: ColonyLoadMode;
   readonly skipDescent: boolean;
   readonly fromSpaceDescent: boolean;
+  readonly deferReveal?: boolean;
+  readonly orbitalCameraDrop?: boolean;
+  readonly sawPodDescending?: boolean;
   readonly cameraCentered: boolean;
   readonly colonyFramed: boolean;
   readonly sendLandOnce: () => void;
@@ -104,15 +110,23 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
     return;
   }
 
+  if (deps.deferReveal) {
+    deps.setCameraTargetTile(status.q, status.r);
+    deps.hud.setVisible(false);
+    return;
+  }
+
+  const mode: ColonyLoadMode = deps.loadMode ?? (deps.skipDescent ? 'instant' : 'pod');
+  const isDirectOrInstant = mode === 'direct' || mode === 'instant';
   if (deps.bootOverlay) {
-    if (status.descending && deps.fastStartLand && (deps.skipDescent || deps.entities.hasPodTouchedDown())) {
+    if (status.descending && (isDirectOrInstant || (deps.fastStartLand && deps.entities.hasPodTouchedDown()))) {
       deps.sendLandOnce();
     }
-    if (!deps.cameraCentered || status.descending) {
+    if (!deps.cameraCentered || (status.descending && mode === 'pod')) {
       deps.focusTile(status.q, status.r, true);
       deps.setCameraCentered(true);
     }
-    if ((status.descending || !deps.hqReady) && !deps.skipDescent) {
+    if ((status.descending || !deps.hqReady) && mode === 'pod') {
       const landed = deps.fromSpaceDescent || deps.entities.hasPodTouchedDown();
       const td = deps.entities.podTouchdown.peekSurfaceState();
       const smoothProg = Math.max(status.progress, Math.min(1, td.elapsed / POD_TOUCHDOWN_DESCENT_S));
@@ -122,11 +136,27 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
     }
     deps.bootOverlay.showColony(view.planet.id || deps.planetId || 'pl_dev');
     deps.hud.setVisible(true);
-    if (!deps.colonyFramed && deps.cam && deps.entities.ownHqObject()) {
+    const hqObj = deps.entities.ownHqObject();
+    if (!deps.colonyFramed && deps.cam) {
       deps.setColonyFramed(true);
       deps.focusTile(status.q, status.r, true);
+      if (hqObj) {
+        deps.landfall.selectHq();
+        deps.cam.follow(hqObj);
+      }
+      if (mode === 'direct' && deps.orbitalCameraDrop && !deps.sawPodDescending) {
+        if (hqObj) {
+          const pos = hqObj.getWorldPosition(tmpHqPos);
+          deps.cam.startOrbitalDrop(pos, { duration: 1.55, followObj: hqObj });
+        } else {
+          const [tx, tz] = tileXZ(status.q, status.r);
+          const ty = deps.terrain ? deps.terrain.heightAt(tx, tz) : 0;
+          deps.cam.startOrbitalDrop(tmpHqPos.set(tx, ty, tz), { duration: 1.55, followObj: null });
+        }
+      }
+    } else if (deps.cam && hqObj && !deps.cam.followTarget) {
       deps.landfall.selectHq();
-      deps.cam?.follow(deps.entities.ownHqObject());
+      deps.cam.follow(hqObj);
     }
     return;
   }
@@ -135,6 +165,42 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
     if (status.q !== 0 || status.r !== 0 || status.hqLanded || status.descending) {
       deps.focusTile(status.q, status.r, true);
       deps.setCameraCentered(true);
+    }
+  }
+}
+
+export function applySessionOrbitalReveal(opts: {
+  readonly terrain: HexTerrain | null;
+  readonly store: WorldStore;
+  readonly planetKind: PlanetKind | null;
+  readonly viewport: ColonyViewport;
+  readonly dayNightSync: OnlineDayNightSync | null;
+  readonly banner: ConnectionBanner | null;
+  readonly hasBootResult: boolean;
+  readonly isLocalHost: boolean;
+  readonly bootOverlay: BootOverlay | null;
+  readonly entities: EntityMeshes;
+  readonly onView: (v: ClientView) => void;
+}): void {
+  if (opts.terrain) {
+    const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind);
+    try {
+      applyPlanetLook(opts.viewport, look);
+    } catch {
+      /* Ignore in headless tests */
+    }
+  }
+  opts.dayNightSync?.syncFrame();
+  if (opts.banner && opts.hasBootResult && !opts.isLocalHost) {
+    opts.banner.el.style.display = '';
+  }
+  if (opts.store.latest) {
+    opts.onView(opts.store.latest);
+    opts.entities.update(0, opts.terrain);
+  } else if (opts.bootOverlay) {
+    opts.bootOverlay.splashEl.hidden = false;
+    if (opts.bootOverlay.splashEl.dataset.error !== 'true') {
+      opts.bootOverlay.showSplash('Linking to colony…');
     }
   }
 }

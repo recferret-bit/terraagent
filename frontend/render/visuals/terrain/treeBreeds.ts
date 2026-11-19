@@ -120,13 +120,22 @@ function curveTube(pts: [number, number, number][], radBot: number, radTop: numb
   return g;
 }
 
-function normalizeHeight(parts: G[], targetH = 5.45): G {
+function normalizeHeight(parts: G[], targetH = 5.45, maxRad = 1.80): G {
   const merged = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)))!;
   merged.computeBoundingBox();
   const bb = merged.boundingBox!;
   const curH = Math.max(0.5, bb.max.y);
   const s = targetH / curH;
   merged.scale(s, s, s);
+  const pos = merged.getAttribute('position');
+  let rMax = 0;
+  for (let i = 0; i < pos.count; i++) {
+    rMax = Math.max(rMax, Math.hypot(pos.getX(i), pos.getZ(i)));
+  }
+  if (rMax > maxRad) {
+    const k = maxRad / rMax;
+    merged.scale(k, 1, k);
+  }
   merged.computeVertexNormals();
   merged.computeBoundingBox();
   merged.computeBoundingSphere();

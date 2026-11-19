@@ -13,7 +13,7 @@ import {
 } from '../../../visuals/terrain/groundFloraGeos';
 import { buildBiomeTreeAtlasGeo } from '../../../visuals/terrain/treeBreeds';
 import { HEX_DEPOSIT, HEX_PREP, HEX_TERRAIN, isClearedPrep, tileHash01, tileHashU32, type HexTileLayers } from '../chunkMesh';
-import { tileXZ } from '../hexMath';
+import { clampToGroundHexagon, HEX_PROP_EDGE_MARGIN_M, tileXZ } from '../hexMath';
 import { generateTileForestTrees } from './forestPipeline';
 
 export type GroundFloraKind = 'grassTuft' | 'wildflower' | 'bush' | 'saguaro' | 'barrelCactus' | 'reeds' | 'duneTree';
@@ -44,6 +44,7 @@ export interface HexFloraCounts {
 export interface HexFloraLayer {
   readonly group: THREE.Group;
   readonly timeU: THREE.IUniform<number>;
+  readonly meshes: Readonly<Record<GroundFloraKind, readonly THREE.InstancedMesh[]>>;
   counts(): HexFloraCounts;
   update(layers: HexTileLayers, heightAt: (x: number, z: number) => number, changed?: ArrayLike<number>): void;
   cullToFocus(): void;
@@ -62,7 +63,7 @@ const FLORA_OPTS: Record<GroundFloraKind, InstOpts> = {
   saguaro: { sx: [0.55, 0.92], sy: [0.58, 1.08], sink: 0.08, tilt: 0.08, tint: jitterTint(0.16, 0.08), castShadow: true },
   barrelCactus: { sx: [0.62, 1.08], sy: [0.62, 1.06], sink: 0.06, tilt: 0.16, tint: jitterTint(0.18, 0.10), castShadow: true },
   reeds: { sx: [0.68, 1.08], sy: [0.72, 1.25], sink: 0.06, tilt: 0.12, tint: jitterTint(0.18, 0.10), castShadow: false },
-  duneTree: { sx: [0.34, 0.54], sy: [0.38, 0.68], sink: 0.08, tilt: 0.08, tint: jitterTint(0.16, 0.08), encodeBreedInColor: true, castShadow: true },
+  duneTree: { sx: [0.32, 0.50], sy: [0.36, 0.62], sink: 0.08, tilt: 0.06, tint: jitterTint(0.16, 0.08), encodeBreedInColor: true, castShadow: true },
 };
 
 function makeSpot(
@@ -74,11 +75,14 @@ function makeSpot(
   salt: number,
   radMin: number,
   radSpan: number,
+  radius: number,
 ): Place {
   const ang = tileHash01(q, r, salt) * Math.PI * 2;
   const dist = radMin + tileHash01(q, r, salt + 1) * radSpan;
-  const x = cx + Math.cos(ang) * dist;
-  const z = cz + Math.sin(ang) * dist;
+  const [ax, az] = clampToGroundHexagon(radius, cx, cz, HEX_PROP_EDGE_MARGIN_M + radMin + radSpan * 0.5);
+  const rawX = ax + Math.cos(ang) * dist;
+  const rawZ = az + Math.sin(ang) * dist;
+  const [x, z] = clampToGroundHexagon(radius, rawX, rawZ, HEX_PROP_EDGE_MARGIN_M);
   return {
     x,
     y: heightAt(x, z),
@@ -108,23 +112,28 @@ function scatterDuneTileFlora(
   cz: number,
   heightAt: (x: number, z: number) => number,
   seed: number,
+  radius: number,
   into: Record<GroundFloraKind, Place[]>,
 ): void {
   const bioPatch = tileHash01(q, r, seed + 771);
   const wadiMoisture = rawH < 0.62 ? 0.14 : 0;
-  if (t === HEX_TERRAIN.forest || (t === HEX_TERRAIN.slope && bioPatch + wadiMoisture > 0.965)) {
-    const nTrees = t === HEX_TERRAIN.forest ? 1 + (tileHashU32(q, r, 109) % 2) : 1;
-    for (const tr of generateTileForestTrees(q, r, tileIdx, 'dune', heightAt, seed, nTrees)) {
+  // Note: HEX_TERRAIN.forest on dune is placed in `chunkPropScatter` (`duneTree`) so it is ray-pickable & worker-targetable;
+  // here we only add lone oasis/wadi scrub trees on low desert slopes.
+  if (t === HEX_TERRAIN.slope && bioPatch + wadiMoisture > 0.80) {
+    for (const tr of generateTileForestTrees(q, r, tileIdx, 'dune', heightAt, seed, 1, radius)) {
       into.duneTree.push(tr);
     }
   }
   if (t === HEX_TERRAIN.slope || t === HEX_TERRAIN.flat) {
-    if (bioPatch > 0.84) into.saguaro.push(makeSpot(q, r, cx, cz, heightAt, 610, 0.18, 0.48));
-    else if (bioPatch > 0.72) into.barrelCactus.push(makeSpot(q, r, cx, cz, heightAt, 630, 0.20, 0.50));
-    if (tileHash01(q, r, seed + 641) > 0.68) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 650, 0.24, 0.48));
-    if (tileHash01(q, r, seed + 661) > 0.58) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 670, 0.22, 0.52));
+    if (bioPatch > 0.84) into.saguaro.push(makeSpot(q, r, cx, cz, heightAt, 610, 0.18, 0.48, radius));
+    else if (bioPatch > 0.72) into.barrelCactus.push(makeSpot(q, r, cx, cz, heightAt, 630, 0.20, 0.50, radius));
+    if (tileHash01(q, r, seed + 641) > 0.68) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 650, 0.24, 0.48, radius));
+    if (tileHash01(q, r, seed + 661) > 0.58) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 670, 0.22, 0.52, radius));
+  } else if (t === HEX_TERRAIN.forest) {
+    if (tileHash01(q, r, seed + 645) > 0.48) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 655, 0.28, 0.40, radius));
+    into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 675, 0.24, 0.42, radius));
   } else if (t === HEX_TERRAIN.rock && tileHash01(q, r, seed + 681) > 0.66) {
-    into.barrelCactus.push(makeSpot(q, r, cx, cz, heightAt, 690, 0.28, 0.42));
+    into.barrelCactus.push(makeSpot(q, r, cx, cz, heightAt, 690, 0.28, 0.42, radius));
   }
 }
 
@@ -140,18 +149,19 @@ function scatterLushTileFlora(
   heightAt: (x: number, z: number) => number,
   kind: PlanetKind,
   seed: number,
+  radius: number,
   into: Record<GroundFloraKind, Place[]>,
 ): void {
   if (prep === HEX_PREP.living) {
-    for (let k = 0; k < 2; k++) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 710 + k * 9, 0.55, 0.22));
-    if (tileHash01(q, r, seed + 729) > 0.45) into.wildflower.push(makeSpot(q, r, cx, cz, heightAt, 735, 0.52, 0.24));
+    for (let k = 0; k < 2; k++) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 710 + k * 9, 0.55, 0.22, radius));
+    if (tileHash01(q, r, seed + 729) > 0.45) into.wildflower.push(makeSpot(q, r, cx, cz, heightAt, 735, 0.52, 0.24, radius));
     return;
   }
   if (isClearedPrep(prep)) return;
 
   if (bordersShallowWater(hx, q, r, layers, kind) && (t === HEX_TERRAIN.flat || t === HEX_TERRAIN.forest || t === HEX_TERRAIN.slope)) {
     const nReeds = 1 + (tileHashU32(q, r, 741) % 2);
-    for (let k = 0; k < nReeds; k++) into.reeds.push(makeSpot(q, r, cx, cz, heightAt, 750 + k * 9, 0.35, 0.42));
+    for (let k = 0; k < nReeds; k++) into.reeds.push(makeSpot(q, r, cx, cz, heightAt, 750 + k * 9, 0.35, 0.42, radius));
   }
 
   if (t === HEX_TERRAIN.flat) {
@@ -159,18 +169,18 @@ function scatterLushTileFlora(
     const hexVariant = tileHash01(q, r, seed + 811);
     if (hexVariant > 0.26) {
       const tufts = hexVariant > 0.72 ? 3 : 2;
-      for (let k = 0; k < tufts; k++) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 820 + k * 11, 0.18, 0.56));
+      for (let k = 0; k < tufts; k++) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 820 + k * 11, 0.18, 0.56, radius));
     }
-    if (hexVariant > 0.60) into.wildflower.push(makeSpot(q, r, cx, cz, heightAt, 860, 0.20, 0.50));
-    if (tileHash01(q, r, seed + 877) > 0.78) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 885, 0.32, 0.40));
+    if (hexVariant > 0.60) into.wildflower.push(makeSpot(q, r, cx, cz, heightAt, 860, 0.20, 0.50, radius));
+    if (tileHash01(q, r, seed + 877) > 0.78) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 885, 0.32, 0.40, radius));
   } else if (t === HEX_TERRAIN.forest) {
     const uRoll = tileHash01(q, r, seed + 901);
-    if (uRoll > 0.35) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 910, 0.26, 0.44));
-    if (uRoll > 0.52) into.wildflower.push(makeSpot(q, r, cx, cz, heightAt, 925, 0.24, 0.46));
-    into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 940, 0.20, 0.52));
+    if (uRoll > 0.35) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 910, 0.26, 0.44, radius));
+    if (uRoll > 0.52) into.wildflower.push(makeSpot(q, r, cx, cz, heightAt, 925, 0.24, 0.46, radius));
+    into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 940, 0.20, 0.52, radius));
   } else if (t === HEX_TERRAIN.slope && tileHash01(q, r, seed + 953) > 0.55) {
-    into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 960, 0.22, 0.48));
-    if (tileHash01(q, r, seed + 971) > 0.68) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 980, 0.26, 0.42));
+    into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 960, 0.22, 0.48, radius));
+    if (tileHash01(q, r, seed + 971) > 0.68) into.bush.push(makeSpot(q, r, cx, cz, heightAt, 980, 0.26, 0.42, radius));
   }
 }
 
@@ -191,15 +201,15 @@ function scatterHexFloraTile(
   const owned = (layers.owner?.[i] ?? -1) >= 0;
   if (owned && (prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.flat)) return;
   const q = hx.q[i]!, r = hx.r[i]!;
-  if (hexDistance(0, 0, q, r) >= radius) return; // keep outer planet rim crisp against sky
+  if (hexDistance(0, 0, q, r) > radius) return;
   const t = layers.terrain[i] ?? 0;
   if (t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep || t === HEX_TERRAIN.hole) return;
   const [cx, cz] = tileXZ(q, r);
   if (look.kind === 'dune') {
-    if (!isClearedPrep(prep)) scatterDuneTileFlora(q, r, i, t, layers.height[i] ?? 0, cx, cz, heightAt, look.seed, into);
-    else if (prep === HEX_PREP.living) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 710, 0.45, 0.20));
+    if (!isClearedPrep(prep)) scatterDuneTileFlora(q, r, i, t, layers.height[i] ?? 0, cx, cz, heightAt, look.seed, radius, into);
+    else if (prep === HEX_PREP.living) into.grassTuft.push(makeSpot(q, r, cx, cz, heightAt, 710, 0.45, 0.20, radius));
   } else {
-    scatterLushTileFlora(hx, q, r, t, prep, cx, cz, layers, heightAt, look.kind, look.seed, into);
+    scatterLushTileFlora(hx, q, r, t, prep, cx, cz, layers, heightAt, look.kind, look.seed, radius, into);
   }
 }
 
@@ -277,6 +287,12 @@ export function createHexFloraLayer(radius: number, look: PlanetSpec): HexFloraL
   }
 
   const meshes = new Map<string, THREE.InstancedMesh>();
+  const meshesByKind = Object.fromEntries(GROUND_FLORA_KINDS.map((k) => [k, []])) as unknown as Record<GroundFloraKind, THREE.InstancedMesh[]>;
+  const syncKindMeshes = () => {
+    for (const k of GROUND_FLORA_KINDS) {
+      meshesByKind[k] = [...meshes.entries()].filter(([id]) => id.startsWith(`${k}|`)).map(([, m]) => m);
+    }
+  };
   const cellCounts = new Map<string, HexFloraCounts>();
   const rebuildCell = (cell: string, layers: HexTileLayers, heightAt: (x: number, z: number) => number) =>
     rebuildFloraCellMeshes(cell, cellTiles.get(cell) ?? [], hx, radius, layers, heightAt, look, geos, mats, group, meshes, cellCounts);
@@ -284,6 +300,7 @@ export function createHexFloraLayer(radius: number, look: PlanetSpec): HexFloraL
   return {
     group,
     timeU,
+    meshes: meshesByKind,
     counts() {
       const total: HexFloraCounts = { grassTuft: 0, wildflower: 0, bush: 0, saguaro: 0, barrelCactus: 0, reeds: 0, duneTree: 0 };
       for (const c of cellCounts.values()) {
@@ -294,6 +311,7 @@ export function createHexFloraLayer(radius: number, look: PlanetSpec): HexFloraL
     update(layers, heightAt, changed) {
       if (!changed) {
         for (const cell of cellTiles.keys()) rebuildCell(cell, layers, heightAt);
+        syncKindMeshes();
         return;
       }
       const dirtyCells = new Set<string>();
@@ -308,6 +326,7 @@ export function createHexFloraLayer(radius: number, look: PlanetSpec): HexFloraL
         }
       }
       for (const cell of dirtyCells) rebuildCell(cell, layers, heightAt);
+      syncKindMeshes();
     },
     cullToFocus() {
       const bounded = viewFocusBounded();

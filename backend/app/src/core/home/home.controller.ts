@@ -28,14 +28,17 @@ export class HomeController {
     @Query('colonyId') colonyId?: string,
     @Query('resolve') resolve?: string,
     @Query('mode') mode?: string,
+    @Query('sector') sector?: string,
+    @Query('sectorId') sectorId?: string,
   ): Promise<HomeResponse> {
     const authPlayer = req?.player ?? player;
-    if (colonyId) return this.homeService.resumeColony(authPlayer.id, colonyId);
+    const requestedSectorId = (sectorId ?? sector)?.trim() || undefined;
+    if (colonyId) return this.homeService.resumeColony(authPlayer.id, colonyId, requestedSectorId);
     const preferredType = isDevPlanetType(type) ? type : undefined;
     if (resolve === '1' || resolve === 'true' || mode === 'lobby') {
-      return this.homeService.resolveHome(authPlayer, { preferredType });
+      return this.homeService.resolveHome(authPlayer, { preferredType, sectorId: requestedSectorId });
     }
-    return this.homeService.getOrAssignHome(authPlayer, preferredType);
+    return this.homeService.getOrAssignHome(authPlayer, preferredType, requestedSectorId);
   }
 
   /** Marks the player's latest (or specified) eliminated/ended colony recap as seen and returns updated `resolveHome` (`state: 'NEW'`). */

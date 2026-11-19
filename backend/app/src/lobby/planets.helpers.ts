@@ -256,7 +256,8 @@ function buildPublicColoniesList(
   const seenNameSector = new Set<string>();
   const record = (entry: PublicColonySummaryV1): void => {
     const key = `${entry.displayName.toLowerCase()}:${entry.foundingSectorId}`;
-    if (byId.has(entry.colonyId) || seenNameSector.has(key)) return;
+    if (byId.has(entry.colonyId)) return;
+    if (entry.colonyId.startsWith('col_sim_') && seenNameSector.has(key)) return;
     byId.set(entry.colonyId, entry);
     seenNameSector.add(key);
   };

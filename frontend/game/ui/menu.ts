@@ -145,7 +145,10 @@ export class MainMenu {
       },
       {
         onSectorSelect: (intent) => this.setSectorIntent(intent, true),
-        onDeploy: () => this.cb.onDeploy(this.kind, this.seed, this.settings, this.getSectorIntent()),
+        onDeploy: () => {
+          if (!this.canDeploy()) return;
+          this.cb.onDeploy(this.kind, this.seed, this.settings, this.getSectorIntent());
+        },
       },
     );
     this.deployBtn = this.arHud.getDeployButton();
@@ -174,7 +177,7 @@ export class MainMenu {
 
   private mountCardThumbnails(): void {
     const canvases = [...this.el.querySelectorAll<HTMLCanvasElement>('canvas[data-planet]')];
-    this.thumbnails = mountPlanetThumbnails(canvases, { size: 220, spinMultiplier: 6 });
+    this.thumbnails = mountPlanetThumbnails(canvases, { size: 160, spinMultiplier: 3, syncWithOrbitMenu: true });
   }
 
   private bindControls(): void {
@@ -248,6 +251,7 @@ export class MainMenu {
 
   getActiveColony(): ActiveHomeColony | null { return this.activeColony; }
   hasActiveColony(): boolean { return this.activeColony !== null; }
+  canDeploy(): boolean { return !this.arHud.isForeignSectorSelected(); }
 
   setActiveColony(active: ActiveHomeColony | null): void {
     this.activeColony = active;
@@ -339,8 +343,9 @@ export class MainMenu {
   }
 
   setError(msg: string): void {
+    this.arHud.syncLockState();
     this.errEl.textContent = msg;
-    this.deployBtn.disabled = false;
+    this.deployBtn.disabled = !this.canDeploy();
   }
 
   hide(): void {
@@ -351,8 +356,8 @@ export class MainMenu {
 
   show(): void {
     this.el.classList.remove('hide');
-    this.deployBtn.disabled = false;
     this.errEl.textContent = '';
+    this.arHud.syncLockState();
     this.thumbnails?.setPaused(false);
   }
 

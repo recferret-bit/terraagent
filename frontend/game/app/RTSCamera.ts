@@ -1,18 +1,42 @@
 import * as THREE from 'three';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 
+export interface OrbitalDropOptions {
+  duration?: number;
+  startDist?: number;
+  startElevDeg?: number;
+  yawOffset?: number;
+  startFov?: number;
+  followObj?: THREE.Object3D | null;
+}
+
+interface OrbitalDropState {
+  elapsed: number;
+  readonly duration: number;
+  readonly startDist: number;
+  readonly endDist: number;
+  readonly startElev: number;
+  readonly endElev: number;
+  readonly startYaw: number;
+  readonly endYaw: number;
+  readonly startFov: number;
+  readonly endFov: number;
+}
+
 /** Diorama RTS camera: FOV stays 28°, fixed ~42° elevation, yaw in 90° steps, clamped zoom. */
 export class RTSCamera {
   readonly target = new THREE.Vector3();
   private goal = new THREE.Vector3();
   private yaw: number; private yawGoal: number;
   private dist: number; private distGoal: number;
-  private elev = THREE.MathUtils.degToRad(42);
+  private readonly defaultElev = THREE.MathUtils.degToRad(42);
+  private elev = this.defaultElev;
   private keys = new Set<string>();
   private mouse = { x: -1, y: -1, inside: false, drag: false, lx: 0, ly: 0 };
   followTarget: THREE.Object3D | null = null;
   /** True while the camera trails `followTarget`; any manual pan clears it, F/Home/`follow()` re-arms it. */
   following = false;
+  private drop: OrbitalDropState | null = null;
   private readonly tmp = new THREE.Vector3();
   private readonly lookTmp = new THREE.Vector3();
   private shakeAmp = 0;
@@ -38,24 +62,76 @@ export class RTSCamera {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       const k = e.key.toLowerCase(); this.keys.add(k);
       if (!this.enabled) return;
-      if (k === 'q') this.yawGoal += Math.PI / 2;
-      if (k === 'e') this.yawGoal -= Math.PI / 2;
+      if (k === 'q' || k === 'e') { this.completeOrbitalDrop(); this.yawGoal += (k === 'q' ? 1 : -1) * (Math.PI / 2); }
       if ((k === 'home' || k === 'f') && this.followTarget) this.following = true;
     });
     on(win, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase()));
     on(win, 'blur', () => this.keys.clear());
-    on(dom, 'wheel', (e: WheelEvent) => { e.preventDefault(); this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.exp(e.deltaY * 0.0012), this.minDist, this.maxDist); }, { passive: false });
+    on(dom, 'wheel', (e: WheelEvent) => { e.preventDefault(); this.completeOrbitalDrop(); this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.exp(e.deltaY * 0.0012), this.minDist, this.maxDist); }, { passive: false });
     on(dom, 'pointerdown', (e: PointerEvent) => { if (e.button === 1) { e.preventDefault(); this.mouse.drag = true; this.mouse.lx = e.clientX; this.mouse.ly = e.clientY; } });
     on(win, 'pointerup', (e: PointerEvent) => { if (e.button === 1) this.mouse.drag = false; });
     on(win, 'pointermove', (e: PointerEvent) => {
       this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.inside = true;
       if (this.mouse.drag && this.enabled) {
+        this.completeOrbitalDrop();
         const k = this.dist * 0.0021;
         this.pan(-(e.clientX - this.mouse.lx) * k, -(e.clientY - this.mouse.ly) * k * 1.3);
         this.mouse.lx = e.clientX; this.mouse.ly = e.clientY;
       }
     });
     on(docEl, 'mouseleave', () => (this.mouse.inside = false));
+  }
+
+  startOrbitalDrop(targetPos: THREE.Vector3, opts: OrbitalDropOptions = {}) {
+    this.shakeAmp = 0;
+    const lim = this.halfSize - 2;
+    this.goal.x = THREE.MathUtils.clamp(targetPos.x, -lim, lim);
+    this.goal.z = THREE.MathUtils.clamp(targetPos.z, -lim, lim);
+    this.goal.y = this.surface.heightAt(this.goal.x, this.goal.z);
+    this.target.copy(this.goal);
+    if (opts.followObj !== undefined) {
+      this.followTarget = opts.followObj;
+      this.following = opts.followObj !== null;
+    }
+    const endDist = this.distGoal;
+    const endYaw = this.yawGoal;
+    const startDist = opts.startDist ?? 148;
+    const startElev = THREE.MathUtils.degToRad(opts.startElevDeg ?? 68);
+    const startYaw = endYaw + (opts.yawOffset ?? 0.26);
+    const startFov = opts.startFov ?? 36;
+    const duration = Math.max(0.25, opts.duration ?? 1.55);
+    this.drop = {
+      elapsed: 0,
+      duration,
+      startDist,
+      endDist,
+      startElev,
+      endElev: this.defaultElev,
+      startYaw,
+      endYaw,
+      startFov,
+      endFov: 28,
+    };
+    this.dist = startDist;
+    this.elev = startElev;
+    this.yaw = startYaw;
+    this.camera.fov = startFov;
+    this.camera.updateProjectionMatrix();
+    this.apply();
+  }
+
+  isOrbitalDropping() { return this.drop !== null; }
+
+  completeOrbitalDrop() {
+    if (!this.drop) return;
+    const d = this.drop;
+    this.drop = null;
+    this.dist = this.distGoal = d.endDist;
+    this.elev = d.endElev;
+    this.yaw = this.yawGoal = d.endYaw;
+    this.camera.fov = d.endFov;
+    this.camera.updateProjectionMatrix();
+    this.apply();
   }
 
   /** dx = screen-right metres, dz = screen-down (toward camera) metres, in yaw-relative ground axes. */
@@ -66,22 +142,31 @@ export class RTSCamera {
   }
 
   update(dt: number) {
+    let mx = 0, mz = 0;
+    const m = this.mouse;
     if (this.enabled) {
-      const sp = this.dist * 0.9 * dt * (this.keys.has('shift') ? 2 : 1);
-      let mx = 0, mz = 0;
       if (this.keys.has('w') || this.keys.has('arrowup')) mz -= 1;
       if (this.keys.has('s') || this.keys.has('arrowdown')) mz += 1;
       if (this.keys.has('a') || this.keys.has('arrowleft')) mx -= 1;
       if (this.keys.has('d') || this.keys.has('arrowright')) mx += 1;
-      const m = this.mouse, W = typeof window !== 'undefined' ? window.innerWidth : 1280, H = typeof window !== 'undefined' ? window.innerHeight : 720, edge = 8;
+      const W = typeof window !== 'undefined' ? window.innerWidth : 1280, H = typeof window !== 'undefined' ? window.innerHeight : 720, edge = 8;
       if (m.inside && !m.drag && m.x >= 0) {
         if (m.x < edge) mx -= 1; else if (m.x > W - edge) mx += 1;
         if (m.y < edge) mz -= 1; else if (m.y > H - edge) mz += 1;
       }
+      if (mx || mz || m.drag) this.completeOrbitalDrop();
+    }
+
+    if (this.drop) {
+      this.stepOrbitalDrop(dt);
+      return;
+    }
+
+    if (this.enabled) {
+      const sp = this.dist * 0.9 * dt * (this.keys.has('shift') ? 2 : 1);
       if (mx || mz) { this.following = false; this.pan(mx * sp, mz * sp); }
       if (m.drag) this.following = false;
       if (this.following && this.followTarget) {
-        // Trail the target: exponential lag leaves a natural gap that grows with its speed.
         this.followTarget.getWorldPosition(this.tmp);
         this.goal.lerp(this.tmp, 1 - Math.exp(-dt * 2.5));
       }
@@ -96,6 +181,29 @@ export class RTSCamera {
     this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-dt * 8));
     this.shakeTime += dt;
     this.apply();
+  }
+
+  private stepOrbitalDrop(dt: number) {
+    const d = this.drop!;
+    d.elapsed = Math.min(d.duration, d.elapsed + Math.max(0, dt));
+    const u = d.elapsed / d.duration;
+    const e = 1 - Math.pow(1 - u, 4);
+    if (this.following && this.followTarget) {
+      const lim = this.halfSize - 2;
+      this.followTarget.getWorldPosition(this.tmp);
+      this.goal.x = THREE.MathUtils.clamp(this.tmp.x, -lim, lim);
+      this.goal.z = THREE.MathUtils.clamp(this.tmp.z, -lim, lim);
+      this.goal.y = this.surface.heightAt(this.goal.x, this.goal.z);
+      this.target.lerp(this.goal, 1 - Math.exp(-dt * 12));
+    }
+    this.dist = THREE.MathUtils.lerp(d.startDist, d.endDist, e);
+    this.elev = THREE.MathUtils.lerp(d.startElev, d.endElev, e);
+    this.yaw = THREE.MathUtils.lerp(d.startYaw, d.endYaw, e);
+    this.camera.fov = THREE.MathUtils.lerp(d.startFov, d.endFov, e);
+    this.camera.updateProjectionMatrix();
+    this.shakeTime += dt;
+    this.apply();
+    if (u >= 1) this.completeOrbitalDrop();
   }
 
   /** Sets `0..1` seismic camera shake amplitude (e.g. drop-pod impact shockwave). */
@@ -121,7 +229,7 @@ export class RTSCamera {
   private apply() {
     const h = Math.sin(this.elev) * this.dist, r = Math.cos(this.elev) * this.dist;
     let sx = 0, sy = 0, sz = 0;
-    if (this.shakeAmp > 1e-4) {
+    if (!this.drop && this.shakeAmp > 1e-4) {
       const t = this.shakeTime;
       const a = this.shakeAmp * (0.018 * this.dist);
       sx = a * (Math.sin(t * 47.3) + 0.55 * Math.sin(t * 89.1 + 1.7));
@@ -135,7 +243,7 @@ export class RTSCamera {
     );
     this.lookTmp.set(this.target.x + sx * 0.75, this.target.y + sy * 0.9, this.target.z + sz * 0.75);
     this.camera.lookAt(this.lookTmp);
-    if (this.camera.fov !== 28) { this.camera.fov = 28; this.camera.updateProjectionMatrix(); }
+    if (!this.drop && this.camera.fov !== 28) { this.camera.fov = 28; this.camera.updateProjectionMatrix(); }
   }
   dispose() { this.cleanups.forEach((f) => f()); this.cleanups = []; }
 }

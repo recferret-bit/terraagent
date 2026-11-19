@@ -155,7 +155,7 @@ export class HomeService {
     return null;
   }
 
-  async resumeColony(playerId: string, colonyId: string): Promise<HomeResponse> {
+  async resumeColony(playerId: string, colonyId: string, requestedSectorId?: string): Promise<HomeResponse> {
     let colony = await this.repo.findColonyById(colonyId);
     let planet = colony && colony.playerId === playerId ? await this.repo.findPlanetById(colony.planetId) : null;
     if (!colony) {
@@ -181,7 +181,10 @@ export class HomeService {
         message: 'This colony is unavailable. Return to your pilot page to choose an active colony.',
       });
     }
-    return this.answerExisting(colony, planet, false);
+    return this.assertRequestedSectorMatches(
+      await this.answerExisting(colony, planet, false),
+      requestedSectorId,
+    );
   }
 
   /**
@@ -194,11 +197,14 @@ export class HomeService {
   ): Promise<HomeResponse> {
     const playerId = typeof player === 'string' ? player : player.id;
     const handle = typeof player === 'string' ? undefined : player.handle;
-    if (opts?.colonyId) return this.resumeColony(playerId, opts.colonyId);
+    if (opts?.colonyId) return this.resumeColony(playerId, opts.colonyId, opts.sectorId);
 
     const existing = await this.existingColony(playerId, handle);
     if (existing && existing.colony.status === 'ACTIVE' && !isPlanetEndedOrArchived(existing.planet, existing.world)) {
-      return this.answerExisting(existing.colony, existing.planet, true);
+      return this.assertRequestedSectorMatches(
+        await this.answerExisting(existing.colony, existing.planet, true),
+        opts?.sectorId,
+      );
     }
 
     const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(playerId);
@@ -211,7 +217,7 @@ export class HomeService {
     }
 
     if (opts?.autoSeatDev === true) {
-      return this.getOrAssignHome({ id: playerId, handle }, opts.preferredType);
+      return this.getOrAssignHome({ id: playerId, handle }, opts.preferredType, opts.sectorId);
     }
 
     const planets = await listCanonicalPlanetSummaries(this.lobbyPersistence, true);
@@ -223,10 +229,17 @@ export class HomeService {
     };
   }
 
-  async getOrAssignHome(player: { id: string; handle?: string }, preferredType?: DevPlanetType): Promise<HomeResponse> {
+  async getOrAssignHome(
+    player: { id: string; handle?: string },
+    preferredType?: DevPlanetType,
+    requestedSectorId?: string,
+  ): Promise<HomeResponse> {
     const existing = await this.existingColony(player.id, player.handle);
     if (existing && existing.colony.status === 'ACTIVE' && !isPlanetEndedOrArchived(existing.planet, existing.world)) {
-      return this.answerExisting(existing.colony, existing.planet, false);
+      return this.assertRequestedSectorMatches(
+        await this.answerExisting(existing.colony, existing.planet, false),
+        requestedSectorId,
+      );
     }
 
     const activeTicket = await this.lobbyPersistence?.findActiveTicketByPlayer(player.id);
@@ -251,7 +264,10 @@ export class HomeService {
         if (recheck.colony.status !== 'ACTIVE' && this.isRecapSeenFor(player.id, recheck.colony)) {
           return this.resolveHome(player);
         }
-        return this.answerExisting(recheck.colony, recheck.planet, false);
+        return this.assertRequestedSectorMatches(
+          await this.answerExisting(recheck.colony, recheck.planet, false),
+          requestedSectorId,
+        );
       }
       return seatNewColony(
         this.seatContext(),
@@ -323,6 +339,25 @@ export class HomeService {
       return { colony: this.applyOverrides(committed.colony), planet: committed.planet, world };
     }
     return null;
+  }
+
+  private assertRequestedSectorMatches(home: HomeResponse, requestedSectorId?: string): HomeResponse {
+    const trimmed = requestedSectorId?.trim();
+    if (!trimmed || home.state !== 'ACTIVE') return home;
+    const activeSector = home.colony.foundingSectorId;
+    if (activeSector && activeSector !== trimmed) {
+      throw new CoreException('COLONY_SECTOR_LOCKED', {
+        status: 409,
+        message: `Active colony is locked to sector ${activeSector}`,
+        details: {
+          colonyId: home.colony.id,
+          planetId: home.planet.id,
+          foundingSectorId: activeSector,
+          requestedSectorId: trimmed,
+        },
+      });
+    }
+    return home;
   }
 
   private async answerExisting(

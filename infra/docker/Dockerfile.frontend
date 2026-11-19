@@ -13,7 +13,7 @@ ARG VITE_APP_ENV=production
 ENV VITE_APP_ENV=${VITE_APP_ENV}
 RUN npx vite build --config frontend/vite.config.ts
 RUN node --input-type=module <<'EOF'
-import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 
 const dist = '/src/frontend/dist';
@@ -80,6 +80,25 @@ for (const page of pages) {
 
 const tokens = readFileSync(join(dist, 'design/css/tokens.css'), 'utf8');
 if (!tokens.includes('--ta-void')) throw new Error('dist/design/css/tokens.css missing --ta-void');
+
+// Emit stable /assets/deed-entry.{js,css} from dist/deed.html for SSR /deed/:tokenId responses.
+const deedHtml = readFileSync(join(dist, 'deed.html'), 'utf8');
+const deedJs = /<script\b[^>]*type=["']module["'][^>]*\bsrc=["'](\/assets\/deed-[^"']+\.js)["']/i.exec(deedHtml);
+if (!deedJs?.[1]) throw new Error('dist/deed.html missing hashed module script');
+cpSync(join(dist, deedJs[1].slice(1)), join(dist, 'assets/deed-entry.js'));
+const deedCssParts = [];
+for (const tag of deedHtml.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)) {
+  const href = /\bhref=["'](\/assets\/[^"']+\.css)["']/i.exec(tag[0]);
+  if (!href?.[1] || href[1].startsWith('/assets/base-')) continue;
+  deedCssParts.push(readFileSync(join(dist, href[1].slice(1)), 'utf8').replace(/^@import[^;]+;\s*/gm, ''));
+}
+if (deedCssParts.length === 0) throw new Error('dist/deed.html missing deed stylesheets');
+writeFileSync(join(dist, 'assets/deed-entry.css'), deedCssParts.join('\n'));
+console.log('emitted stable /assets/deed-entry.js and /assets/deed-entry.css');
+
+for (const seoFile of ['404.html', 'robots.txt', 'sitemap.xml', 'llms.txt', 'site.webmanifest', 'favicon.ico', 'og-cover.png']) {
+  if (!existsSync(join(dist, seoFile))) throw new Error(`missing dist/${seoFile}`);
+}
 EOF
 
 FROM alpine:3.20

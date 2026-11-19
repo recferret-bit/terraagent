@@ -16,7 +16,9 @@
 > **NEAR Hackathon Judge Quick-Jump (`8` Official [`HACKATHON.md`](./HACKATHON.md) Tracks):**
 > - **Submitted Tracks:** **`games`** (*Games With Real Economies*) · **`agents`** (*Agent Economy*) · **`swarms`** (*AI Swarms*) · **`security`** (*AI Security & Defense*) · **`privacy`** (*Privacy & Private AI*) · **`nfts`** (*NFTs That Do Something*) · **`social`** (*Social Money*) · **`defi`** (*Unstoppable DeFi*)
 > - **Jump To:** [8-Track Judge Matrix](#near-hackathon-track-alignment-judge-guide) · [Deep-Dive: `games`, `agents` & `swarms`](#deep-dive-how-terraagent-achieves-game-economy-games-agent-economy-agents--ai-swarms-swarms) · [`TerraAgent Protocol` & Worked Math](#how-players-earn-day-1-staking--terraagent-protocol) · [Live "Do X → See Y" & `curl` Proofs](#try-it-now-do-x--see-y) · [6 Rust Contracts & 11/11 Port Honesty Table](#deployed-near-testnet-contracts-accounts--on-chain-truth-matrix)
-> - **Post-Submission Note:** The official NEAR Hackathon window ended `2026-11-14`. Commits on `main` after `cb3a1020` reflect ongoing post-submission development: **self-custody scoped trading session keys** (`claimAccount`), **HMAC-keyed deterministic Ed25519 director keys** (`AddKey`/`DeleteKey`), **7-crate contract upgrades + on-chain NEP-413 `verifier`** (`102` Rust unit tests), **governed AI + browser `secp256k1` / WebCrypto `Ed25519` TEE proof verification**, **persistent NEP-413 replay nonces & shared relayer budgets**, **live `1Click` cross-chain ramp on `/trade.html`**, **Hosted MCP Server (`/v1/mcp` + `agent-market.json`)**, **Shade Agents + `v1.signer` MPC**, **Bitte AI & injected wallets**, **NEAR Social deed sharing**, and **SputnikDAO v2 export**.
+
+> **Post-Hackathon Update:**
+> This project has been updated after the official NEAR Hackathon window (`2026-11-14`) following the announcement that judges need additional time to complete their review.
 
 ---
 

@@ -1,4 +1,4 @@
-# TerraAgent — Whitepaper (draft v0.1, 2026-10-31)
+# TerraAgent — Whitepaper
 
 > Outward-facing specification updated 2026-11-18. Matches [`README.md`](https://github.com/recferret-bit/terraagent/blob/main/README.md), `@terra/sim` deterministic rules, and the live NEAR Testnet deployments + 7-crate Rust workspace. Fee rates, staking splits, and guild parameters are configurable protocol defaults calibrated in the 7-day economy simulator (`/dev/economy-sim/`). *Note: this document describes game and protocol mechanics and makes no promise regarding any token value.*
 

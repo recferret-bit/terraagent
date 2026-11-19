@@ -1,0 +1,28 @@
+{
+  "name": "TerraAgent",
+  "short_name": "TerraAgent",
+  "description": "Autonomous 3D planetary colony builder in your browser on NEAR and NEAR.AI.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07080A",
+  "theme_color": "#07080A",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

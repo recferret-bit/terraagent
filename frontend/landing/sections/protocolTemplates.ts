@@ -241,3 +241,17 @@ export function renderProtocolReceiptsHtml(): string {
     </div>
   </details>`;
 }
+
+export function renderProtocolBoardHtml(): string {
+  return `<div class="sec-head">
+      <div>
+        <p class="eyebrow">07 · PROTOCOL TREASURY</p>
+        <h2 class="h1">Self-funded servers,<br><span class="sub-blue">gas, and offline AI.</span></h2>
+      </div>
+      <p><code>protocol.terraagent.*</code> is an open treasury on NEAR. Small slices from trades, validator yield, and broken-treaty bonds pay directly for player gas and offline colony AI.</p>
+    </div>
+    ${renderProtocolToolbarHtml()}
+    ${renderProtocolSchematicHtml()}
+    ${renderProtocolStagesHtml()}
+    ${renderProtocolReceiptsHtml()}`;
+}

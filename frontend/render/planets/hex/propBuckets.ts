@@ -20,7 +20,7 @@ const SPARSE_CELL_M = PROP_CELL_M * 2;
  */
 export const PROP_BOUNDS_PAD = 2;
 
-export const propCellSize = (kind: PropKind): number => (kind === 'pine' ? PROP_CELL_M : SPARSE_CELL_M);
+export const propCellSize = (kind: PropKind): number => (kind === 'pine' || kind === 'duneTree' ? PROP_CELL_M : SPARSE_CELL_M);
 
 /** Bucket cell of a `kind` prop on tile (q, r): by the tile centre, so a tile's props always share one bucket. */
 export function tilePropCellKey(kind: PropKind, q: number, r: number): string {

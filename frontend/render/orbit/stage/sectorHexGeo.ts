@@ -75,37 +75,3 @@ export function buildSphericalHexFillGeo(
   geo.setAttribute('position', new THREE.Float32BufferAttribute(tris, 3));
   return geo;
 }
-
-function sphericalPoint(yaw: number, pitch: number, radius: number): THREE.Vector3 {
-  const cp = Math.cos(pitch);
-  return new THREE.Vector3(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp).multiplyScalar(radius);
-}
-
-/**
- * Subtle curved spherical coordinate scan grid anchored to the landing-sector patch.
- */
-export function buildSphericalGridGeo(sphereRadius: number): THREE.BufferGeometry {
-  const pts: number[] = [];
-  const pushSeg = (a: THREE.Vector3, b: THREE.Vector3) => {
-    pts.push(a.x, a.y, a.z, b.x, b.y, b.z);
-  };
-  const yaws = [-0.56, -0.37, -0.18, 0, 0.18, 0.37, 0.56];
-  const pitches = [-0.42, -0.21, 0, 0.21, 0.42];
-  for (const yaw of yaws) {
-    for (let i = 0; i < 16; i++) {
-      const p0 = -0.44 + (0.88 * i) / 16;
-      const p1 = -0.44 + (0.88 * (i + 1)) / 16;
-      pushSeg(sphericalPoint(yaw, p0, sphereRadius), sphericalPoint(yaw, p1, sphereRadius));
-    }
-  }
-  for (const pitch of pitches) {
-    for (let i = 0; i < 18; i++) {
-      const y0 = -0.58 + (1.16 * i) / 18;
-      const y1 = -0.58 + (1.16 * (i + 1)) / 18;
-      pushSeg(sphericalPoint(y0, pitch, sphereRadius), sphericalPoint(y1, pitch, sphereRadius));
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  return geo;
-}

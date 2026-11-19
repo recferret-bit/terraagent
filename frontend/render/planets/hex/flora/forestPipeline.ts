@@ -1,9 +1,11 @@
-import { hexIndex } from '@terra/sim/grid/hex';
+import { hexIndex, planeToAxial } from '@terra/sim/grid/hex';
 import type { PlanetKind, PlanetSpec } from '../../PlanetSpec';
 import { BREEDS_BY_BIOME, type TreeBreedId, type TreeBreedSpec } from '../../../visuals/terrain/treeBreeds';
 import { foliageTreeTraits, type Place } from '../../../visuals/terrain/Scatter';
 import { HEX_DEPOSIT, HEX_TERRAIN, isClearedPrep, tileHash01, tileHashU32, type HexTileLayers } from '../chunkMesh';
-import { tileXZ } from '../hexMath';
+import { clampToGroundHexagon, HEX_PROP_EDGE_MARGIN_M, hexEdgeMarginM, TILE_M, tileXZ } from '../hexMath';
+
+const TREE_RIM_MARGIN_M = Math.max(HEX_PROP_EDGE_MARGIN_M, 1.48);
 
 export type ForestStandRegime = 'monoculture' | 'mixed';
 export type CanopyCohort = 'emergent' | 'canopy' | 'understory';
@@ -83,6 +85,7 @@ export function generateCandidateTreePlaces(
   tileIndex: number,
   count: number,
   saltBase = 200,
+  radius?: number,
 ): CandidateTreePlace[] {
   const [cx, cz] = tileXZ(q, r);
   const baseAngle = tileHash01(q, r, saltBase + 99) * Math.PI * 2;
@@ -96,8 +99,17 @@ export function generateCandidateTreePlaces(
     const minR = count > 1 ? 0.36 : 0.14;
     const dist = minR + 0.36 * h1;
     const angle = baseAngle + k * sector + (h2 - 0.5) * Math.min(0.46, sector * 0.34);
-    const x = cx + Math.cos(angle) * dist;
-    const z = cz + Math.sin(angle) * dist;
+    let x: number;
+    let z: number;
+    if (radius !== undefined && radius > 0) {
+      const [ax, az] = clampToGroundHexagon(radius, cx, cz, TREE_RIM_MARGIN_M + minR + 0.24);
+      const rawX = ax + Math.cos(angle) * dist;
+      const rawZ = az + Math.sin(angle) * dist;
+      [x, z] = clampToGroundHexagon(radius, rawX, rawZ, TREE_RIM_MARGIN_M);
+    } else {
+      x = cx + Math.cos(angle) * dist;
+      z = cz + Math.sin(angle) * dist;
+    }
     let minCrownDist = 2.0;
     for (const prev of pts) {
       minCrownDist = Math.min(minCrownDist, Math.hypot(x - prev.x, z - prev.z));
@@ -194,6 +206,7 @@ export function synthesizeTreePhenotype(
   site: StratifiedTreeSite,
   heightAt: (x: number, z: number) => number,
   saltBase = 200,
+  radius?: number,
 ): GeneratedForestTree {
   const { tileQ: q, tileR: r, slotIndex: k, breed, cohort, stand } = site;
   const hRot = tileHash01(q, r, saltBase + k * 7 + 2);
@@ -202,12 +215,21 @@ export function synthesizeTreePhenotype(
   const hAspect = tileHash01(q, r, saltBase + k * 7 + 5);
   const hWind = tileHash01(q, r, saltBase + k * 7 + 6);
 
-  const cohortMul = cohort === 'emergent' ? 1.24 : cohort === 'understory' ? 0.72 : 1.0;
+  const rimExposed = radius !== undefined && radius > 0 && hexEdgeMarginM(radius, site.x, site.z) < 3.2;
+  const cohortMul = rimExposed
+    ? (cohort === 'understory' ? 0.68 : 0.84)
+    : cohort === 'emergent'
+      ? 1.24
+      : cohort === 'understory'
+        ? 0.72
+        : 1.0;
   const sxRange = breed.scaleRangeXZ;
   const syRange = breed.scaleRangeY;
   const slotSpread = ((hSize * 0.62 + k * 0.3183) % 1);
-  const scaleXZ = (sxRange[0] + (sxRange[1] - sxRange[0]) * hAspect) * cohortMul;
-  const scaleY = (syRange[0] + (syRange[1] - syRange[0]) * slotSpread) * cohortMul;
+  const rawXZ = (sxRange[0] + (sxRange[1] - sxRange[0]) * hAspect) * cohortMul;
+  const rawY = (syRange[0] + (syRange[1] - syRange[0]) * slotSpread) * cohortMul;
+  const scaleXZ = rimExposed ? rawXZ * 0.72 : rawXZ;
+  const scaleY = rimExposed ? rawY * 0.78 : rawY;
   const windMul = breed.windCompliance * (0.82 + 0.36 * hWind) * (cohort === 'understory' ? 1.15 : 1.0);
   const s = 0.28 + 0.66 * hSize;
   const traits = foliageTreeTraits(site.x, site.z, (0.36 + 0.32 * s) * scaleY);
@@ -245,13 +267,77 @@ export function generateTileForestTrees(
   heightAt: (x: number, z: number) => number,
   planetSeed = 17,
   countOverride?: number,
+  radius?: number,
 ): GeneratedForestTree[] {
   const count = countOverride ?? 2 + (tileHashU32(q, r, 101) % 3);
   const [cx, cz] = tileXZ(q, r);
-  const places = generateCandidateTreePlaces(q, r, tileIndex, count, 200);
+  const places = generateCandidateTreePlaces(q, r, tileIndex, count, 200, radius);
   const stand = evaluateForestStand(q, r, biome, planetSeed, heightAt(cx, cz));
   const stratified = stratifyStandSites(places, stand);
-  return stratified.map((s) => synthesizeTreePhenotype(s, heightAt, 200));
+  return stratified.map((s) => synthesizeTreePhenotype(s, heightAt, 200, radius));
+}
+
+/**
+ * Runs the 4-stage Forest Generation Pipeline over continuous `PlanetSurface` candidate sites (`scatterGrid`),
+ * enforcing crown-inhibition spacing, monoculture/mixed stand formation, canopy cohorts, and phenotype diversity.
+ */
+export function applySurfaceForestPipeline(
+  candidates: readonly Place[],
+  biome: PlanetKind,
+  planetSeed = 17,
+  waterLevel: number | null = null,
+): GeneratedForestTree[] {
+  const minSpacing = biome === 'dune' ? 1.35 : 0.95;
+  const cellSize = 4.0;
+  const grid = new Map<string, Array<{ x: number; z: number }>>();
+  const byTile = new Map<string, CandidateTreePlace[]>();
+  const tileCoords = new Map<string, { q: number; r: number; elev: number }>();
+
+  candidates.forEach((cand, idx) => {
+    const gx = Math.floor(cand.x / cellSize), gz = Math.floor(cand.z / cellSize);
+    let minCrownDist = 6.0;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (const nb of grid.get(`${gx + dx},${gz + dz}`) ?? []) {
+          minCrownDist = Math.min(minCrownDist, Math.hypot(cand.x - nb.x, cand.z - nb.z));
+        }
+      }
+    }
+    if (minCrownDist < minSpacing) return;
+    const cellKey = `${gx},${gz}`;
+    let cell = grid.get(cellKey);
+    if (!cell) grid.set(cellKey, (cell = []));
+    cell.push({ x: cand.x, z: cand.z });
+
+    const [q, r] = planeToAxial(cand.x / TILE_M, cand.z / TILE_M);
+    const tKey = `${q},${r}`;
+    let tList = byTile.get(tKey);
+    if (!tList) {
+      byTile.set(tKey, (tList = []));
+      tileCoords.set(tKey, { q, r, elev: cand.y - (waterLevel ?? 0) });
+    }
+    tList.push({
+      tileQ: q,
+      tileR: r,
+      tileIndex: idx,
+      slotIndex: tList.length,
+      x: cand.x,
+      z: cand.z,
+      minCrownDist,
+    });
+  });
+
+  const out: GeneratedForestTree[] = [];
+  for (const [tKey, places] of byTile.entries()) {
+    const meta = tileCoords.get(tKey)!;
+    const stand = evaluateForestStand(meta.q, meta.r, biome, planetSeed, meta.elev);
+    const strat = stratifyStandSites(places, stand);
+    for (const s of strat) {
+      const candY = candidates[s.tileIndex]?.y ?? 0;
+      out.push(synthesizeTreePhenotype(s, () => candY, 200));
+    }
+  }
+  return out;
 }
 
 /**
@@ -283,13 +369,13 @@ export function runForestGenerationPipeline(
     if (!isForest) continue;
 
     const count = look.kind === 'dune' ? 1 + (tileHashU32(q, r, 109) % 2) : 2 + (tileHashU32(q, r, 101) % 3);
-    const places = generateCandidateTreePlaces(q, r, i, count, 200);
+    const places = generateCandidateTreePlaces(q, r, i, count, 200, radius);
     const stand = evaluateForestStand(q, r, look.kind, look.seed);
     const strat = stratifyStandSites(places, stand);
     standsByTile.set(i, stand);
     candidatePlaces.push(...places);
     stratifiedSites.push(...strat);
-    for (const s of strat) trees.push(synthesizeTreePhenotype(s, heightAt, 200));
+    for (const s of strat) trees.push(synthesizeTreePhenotype(s, heightAt, 200, radius));
   }
   return { candidatePlaces, standsByTile, stratifiedSites, trees };
 }

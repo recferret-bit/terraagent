@@ -9,6 +9,7 @@ export interface OrbitalGlobeMarkerInput {
   readonly role: 'sector' | 'target' | 'player' | 'bot';
   readonly players?: number;
   readonly bots?: number;
+  readonly isHomeBase?: boolean;
 }
 
 export interface ProjectedAnchor2D {
@@ -18,6 +19,11 @@ export interface ProjectedAnchor2D {
   readonly nx: number;
   readonly ny: number;
   readonly visible: boolean;
+  readonly players?: number;
+  readonly bots?: number;
+  readonly isHomeBase?: boolean;
+  readonly centerNx?: number;
+  readonly centerNy?: number;
 }
 
 export interface OrbitalProjectedFrame {
@@ -58,6 +64,10 @@ export interface OrbitalStage {
   deployTn(): number;
   /** Idle menu motion (slow orbit + ship drift). */
   update(dt: number, time: number): void;
+  /** Pod-free orbital dive straight toward the player's existing base sector. */
+  beginCameraDive?(opts?: { yaw?: number; pitch?: number; duration?: number }): void;
+  /** 0..1 progress of the pod-free orbital camera dive. */
+  cameraDiveProgress?(): number;
   dispose(): void;
 }
 export type CreateOrbitalStage = (viewport: import('../core/createColonyViewport').ColonyViewport, spec: PlanetSpec) => OrbitalStage;

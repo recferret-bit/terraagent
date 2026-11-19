@@ -58,7 +58,7 @@ export function renderStakingCalculatorHtml(): string {
       </div>
 
       <div class="econ-calc-results">
-        <div id="econ-tier-banner" class="econ-tier-banner is-unlocked" role="status"></div>
+        <div id="econ-tier-banner" class="econ-tier-banner is-unlocked" role="status">STAKER TIER UNLOCKED (≥10 NEAR) · Principal stays yours · 2-day unbond</div>
         <div class="econ-calc-out">
           <div class="econ-metric is-good"><span>YOUR NET VALIDATOR YIELD</span><strong id="econ-user-yield">1.80 NEAR / yr</strong></div>
           <div class="econ-metric is-blue"><span>GAS + AI YIELD SLICE</span><strong id="econ-proto-yield">0.45 NEAR / yr</strong></div>
@@ -69,4 +69,16 @@ export function renderStakingCalculatorHtml(): string {
       </div>
     </div>
   </div>`;
+}
+
+export function renderEconomicsBoardHtml(): string {
+  return `<div class="sec-head">
+      <div>
+        <p class="eyebrow">06 · PLAYER MARKET &amp; STAKING</p>
+        <h2 class="h1">Trade what you mine.<br><span class="sub-blue">Stake without pay-to-win.</span></h2>
+      </div>
+      <p>No reward token printing. Every USDC or NEAR payout comes from real buyer orders, Trade Hub stall fees, validator staking yield, or forfeited treaty bonds.</p>
+    </div>
+    ${renderIncomeLanesHtml()}
+    ${renderStakingCalculatorHtml()}`;
 }

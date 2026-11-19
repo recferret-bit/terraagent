@@ -7,6 +7,7 @@ import {
   buildDeedTwitterIntentUrl,
   DeedShareController,
   escapeHtml,
+  resolveForwardedOrigin,
   type ShareReplyLike,
 } from '../../src/near/deed/deed-share.controller.js';
 import { DeedTelemetryService } from '../../src/near/deed/deed-telemetry.service.js';
@@ -90,6 +91,10 @@ describe('W20-12 DeedShareController SSR & OpenGraph rendering', () => {
     expect(headers.get('content-type')).toBe('text/html; charset=utf-8');
     expect(endedBody).toBe(html);
     expect(html).toContain('property="og:image" content="/v1/near/deed/deed%3Acol_0/image.png?v=1"');
+    expect(html).toContain('rel="canonical" href="/deed/deed%3Acol_0"');
+    expect(html).toContain('href="/assets/deed-entry.css"');
+    expect(html).toContain('src="/assets/deed-entry.js"');
+    expect(html).toContain('rel="icon" href="/favicon.ico"');
     expect(html).toContain('name="twitter:card" content="summary_large_image"');
     expect(html).toContain('Vanguard &lt;Alpha&gt; &amp; &quot;Prime&quot;');
     expect(html).not.toContain('<Alpha>');
@@ -120,5 +125,71 @@ describe('W20-12 DeedShareController SSR & OpenGraph rendering', () => {
       errorCode: 'DEED_NOT_FOUND',
       status: 404,
     });
+  });
+});
+
+describe('W20-12 DeedShareController forwarded origin & canonical SEO tags', () => {
+  it('derives absolute https origin for canonical/OG tags ONLY when x-forwarded-proto is present while keeping <img> src root-relative', async () => {
+    expect(resolveForwardedOrigin(undefined)).toBe('');
+    expect(resolveForwardedOrigin({ headers: { host: 'terraagent.fun' } } as never)).toBe('');
+    expect(
+      resolveForwardedOrigin({
+        headers: { 'x-forwarded-proto': 'https', host: 'terraagent.fun' },
+      } as never),
+    ).toBe('https://terraagent.fun');
+    expect(
+      resolveForwardedOrigin({
+        headers: { 'x-forwarded-proto': 'https', 'x-forwarded-host': '   ', host: 'play.terraagent.fun' },
+      } as never),
+    ).toBe('https://play.terraagent.fun');
+    expect(
+      resolveForwardedOrigin({
+        headers: { 'x-forwarded-proto': 'javascript', host: 'terraagent.fun' },
+      } as never),
+    ).toBe('');
+
+    const flags = new FlagsService({ TA_WAVES: '..20' } as never);
+    const repo = new DeedRepository();
+    const controller = new DeedShareController(flags, repo);
+    const tokenId = deedTokenId('col_7');
+    await repo.upsertInitialMint({
+      colonyId: 'col_7',
+      planetId: 'pl_ocean_7',
+      playerId: 'pilot_7',
+      accountId: 'col-7.owner.terraagent.testnet',
+      tokenId,
+      metadata: DeedMetadataV1.parse({
+        planet: 'pl_ocean_7',
+        colony: 'col_7',
+        colonyName: 'Helios Spire',
+        planetType: 'oceanForest',
+        stage: 6,
+        terraformBp: 9000,
+        status: 'active',
+        settled: false,
+        version: 2,
+        imageUrl: `/v1/near/deed/${encodeURIComponent(tokenId)}/image.png?v=2`,
+      }),
+      opId: 'deed-mint:col_7',
+    });
+
+    const proxiedHtml = await controller.getSharePage('deed:col_7', undefined, {
+      headers: { 'x-forwarded-proto': 'https', host: 'terraagent.fun' },
+    } as never);
+    expect(proxiedHtml).toContain(
+      'rel="canonical" href="https://terraagent.fun/deed/deed%3Acol_7"',
+    );
+    expect(proxiedHtml).toContain(
+      'property="og:url" content="https://terraagent.fun/deed/deed%3Acol_7"',
+    );
+    expect(proxiedHtml).toContain(
+      'property="og:image" content="https://terraagent.fun/v1/near/deed/deed%3Acol_7/image.png?v=1"',
+    );
+    expect(proxiedHtml).toContain(
+      'name="twitter:image" content="https://terraagent.fun/v1/near/deed/deed%3Acol_7/image.png?v=1"',
+    );
+    expect(proxiedHtml).toContain(
+      '<img src="/v1/near/deed/deed%3Acol_7/image.png?v=1"',
+    );
   });
 });
