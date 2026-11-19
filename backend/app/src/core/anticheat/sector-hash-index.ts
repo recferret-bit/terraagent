@@ -119,6 +119,13 @@ export class SectorHashIndex {
     return count;
   }
 
+  /** Active and eliminated bindings on one planet. Lobby counts read this instead of snapshotting the sim. */
+  listColoniesOnPlanet(planetId: string): ColonyBaseBinding[] {
+    const out: ColonyBaseBinding[] = [];
+    for (const b of this.byColonyId.values()) if (b.planetId === planetId) out.push(b);
+    return out;
+  }
+
   upsertPlanetMeta(input: {
     readonly planetId: string;
     readonly planetRadius?: number;

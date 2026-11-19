@@ -8,6 +8,7 @@ import {
   type PublicColonySummaryV1,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { HomeRepository } from '../core/home/home.repository';
 import { databaseEnabled } from '../core/persistence';
 import { APP_ENV, type AppEnv } from '../core/tokens';
@@ -95,6 +96,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Optional() @Inject(GamePlanets) private readonly gamePlanets?: GamePlanets,
     @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {}
 
   invalidate(): void {
@@ -157,6 +159,7 @@ export class LiveStatsTelemetry implements PlanetLiveTelemetryProvider {
     const loaded = await collectLoadedPlanetTelemetry({
       gamePlanets: this.gamePlanets,
       homeRepo: this.homeRepo,
+      index: this.antiCheat?.index,
       archivedIds,
       knownTypes: planetTypes,
       inferType: inferPlanetTypeFromIdOrDb,

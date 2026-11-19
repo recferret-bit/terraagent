@@ -28,6 +28,12 @@ export interface PredictorOptions {
 }
 
 export const DEFAULT_MAX_LEAD_TICKS = 25;
+/**
+ * A click rebuilds the prediction on the worker before the view updates. Chasing a stale clock
+ * (many ticks of estimated server lead) made place and cancel wait 1–2s. Two ticks shows the
+ * command and stays cheap; the ack still reconciles.
+ */
+export const MAX_CATCHUP_TICKS = 2;
 
 /**
  * Client-side prediction (SIM-X-03, CLIENT §7): `confirmed` is the replica at server tick T; `predicted` is
@@ -167,7 +173,7 @@ export class Predictor {
       const due = p.appliedAtTick ?? Math.min(this.expectedApplyTick(p) ?? target, t + this.maxLead);
       if (due > target) target = due;
     }
-    return target;
+    return Math.min(target, t + MAX_CATCHUP_TICKS);
   }
 
   /** The host the render shows: `predicted` when something is pending, else the confirmed host. */
@@ -201,7 +207,7 @@ export class Predictor {
     const col = matchedCol ?? colonies[0];
     const colonyIndex = col && col.status !== 'eliminated' ? col.index : null;
     for (const p of this.pend) {
-      const due = Math.max(p.appliedAtTick ?? this.expectedApplyTick(p) ?? first, first);
+      const due = Math.min(target, Math.max(p.appliedAtTick ?? this.expectedApplyTick(p) ?? first, first));
       const list = byTick.get(due) ?? [];
       const isDev = p.kind.startsWith('dev.');
       list.push({ colonyIndex, source: isDev ? 'dev' : 'player', commandId: p.id, kind: p.kind, args: p.args });

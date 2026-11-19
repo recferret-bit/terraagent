@@ -188,11 +188,11 @@ describe('Predictor: rebase, modes and limits', () => {
     expect(net.ent(net.predictor.host(), id).x).toBeGreaterThan(x0);
   });
 
-  it('limits the lead to maxLeadTicks', () => {
+  it('caps a click at two ticks even when the estimated server clock is far ahead', () => {
     const net = new Net();
     withEntity(net);
     net.predictor.setServerOffset(1e7);
     net.send('dev.ping', {});
-    expect(net.predictor.targetTick() - net.replica.tick).toBeLessThanOrEqual(25);
+    expect(net.predictor.targetTick() - net.replica.tick).toBeLessThanOrEqual(2);
   });
 });

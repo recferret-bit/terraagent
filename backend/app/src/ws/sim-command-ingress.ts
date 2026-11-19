@@ -75,37 +75,49 @@ export class SimCommandIngress implements CommandIngress {
   /** The player's colony row on the planet; else live anti-cheat binding; else colony 0 for a dev session on a scenario planet; else none. */
   private async resolveColony(ctx: CommandContext): Promise<ColonyRecord | null> {
     const { playerId, planetId, memo } = ctx;
-    const remembered = memo?.planetId === planetId && memo.colony === null;
-    const row = remembered || !this.o.homeRepo ? null : await this.o.homeRepo.findColonyByPlayerAndPlanet(playerId, planetId);
+    if (memo?.planetId === planetId && memo.colony) return memo.colony as ColonyRecord;
+    const rememberedMiss = memo?.planetId === planetId && memo.colony === null;
+    const row = rememberedMiss || !this.o.homeRepo ? null : await this.o.homeRepo.findColonyByPlayerAndPlanet(playerId, planetId);
     if (row) {
       this.o.antiCheat?.recordColonyBase({
         ...row,
         playerId: row.playerId ?? playerId,
         planetId: row.planetId ?? planetId,
       });
+      this.rememberColony(memo, planetId, row);
       return row;
     }
+    const live = this.liveColony(ctx);
+    if (live) {
+      this.rememberColony(memo, planetId, live);
+      return live;
+    }
+    if (memo && !rememberedMiss) { memo.planetId = planetId; memo.colony = null; }
+    return null;
+  }
+
+  /** Anti-cheat binding, or colony 0 for a dev session on a scenario planet. */
+  private liveColony(ctx: CommandContext): ColonyRecord | null {
+    const { playerId, planetId } = ctx;
     const liveActive = this.o.antiCheat?.index.getActiveBaseByPlayer(playerId);
     if (liveActive && liveActive.planetId === planetId) {
       return {
-        id: liveActive.colonyId,
-        playerId,
-        planetId,
-        colonyIndex: liveActive.colonyIndex,
-        name: liveActive.name ?? `Colony-${playerId.slice(-4)}`,
-        color: liveActive.colonyIndex,
-        status: liveActive.status,
-        state: liveActive.status,
-        foundingSectorId: liveActive.baseSectorId,
-        spawnQ: liveActive.baseQ,
-        spawnR: liveActive.baseR,
+        id: liveActive.colonyId, playerId, planetId, colonyIndex: liveActive.colonyIndex,
+        name: liveActive.name ?? `Colony-${playerId.slice(-4)}`, color: liveActive.colonyIndex,
+        status: liveActive.status, state: liveActive.status, foundingSectorId: liveActive.baseSectorId,
+        spawnQ: liveActive.baseQ, spawnR: liveActive.baseR,
       } as ColonyRecord;
     }
-    if (memo && !remembered) { memo.planetId = planetId; memo.colony = null; }
     if (ctx.dev && this.o.planets.isScenarioColonyPlanet(planetId)) {
       return { id: 'col_0', playerId, planetId, colonyIndex: 0, name: 'Colony 1', spawnQ: 0, spawnR: 0, status: 'ACTIVE' } as ColonyRecord;
     }
     return null;
+  }
+
+  private rememberColony(memo: CommandContext['memo'], planetId: string, colony: ColonyRecord): void {
+    if (!memo) return;
+    memo.planetId = planetId;
+    memo.colony = colony;
   }
 
   private dispatchWithColony(

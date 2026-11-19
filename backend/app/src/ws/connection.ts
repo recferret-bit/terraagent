@@ -12,7 +12,7 @@ import type { SectorAntiCheatService } from '../core/anticheat';
 import type { AwayDigestService } from '../game/digest';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
 import { holdColonySocket, releaseColonySocket } from '../game/presence/socket-presence';
-import type { CommandIngress } from './command-ingress';
+import type { CommandIngress, MemoColony } from './command-ingress';
 import type { HomeProvider } from './home-provider';
 import { MarketTopics } from './market-topics';
 import {
@@ -81,7 +81,7 @@ export class Connection implements RoomMember {
   private readonly market = new MarketTopics();
   private resyncing = false;
   /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
-  private readonly colonyMemo: { planetId?: string; colony?: null } = {};
+  private readonly colonyMemo: { planetId?: string; colony?: MemoColony | null } = {};
   /** This socket has incremented the colony presence refcount (CT-38). Released once in `leaveRoom`. */
   private colonyHeld = false;
   private chain: Promise<void> = Promise.resolve();

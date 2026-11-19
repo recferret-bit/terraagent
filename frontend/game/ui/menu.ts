@@ -354,6 +354,7 @@ export class MainMenu {
     this.settingsModal.close();
     this.thumbnails?.setPaused(true);
     this.el.classList.add('hide');
+    this.ownedFeed?.suspend();
   }
 
   show(): void {
@@ -361,6 +362,7 @@ export class MainMenu {
     this.errEl.textContent = '';
     this.arHud.syncLockState();
     this.thumbnails?.setPaused(false);
+    this.ownedFeed?.resume();
   }
 
   hasLinkedPilot(): boolean { return this.pilotAccess.hasLinkedPilot(); }

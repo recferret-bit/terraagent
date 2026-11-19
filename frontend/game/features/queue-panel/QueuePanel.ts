@@ -46,6 +46,8 @@ export class QueuePanel {
   private activeLaneTab: QueueLane | 'all' = 'all';
   private collapsed = false;
   private entries: QueueEntry[] = [];
+  /** Task ids hidden until the host view drops them, so a stale delta cannot put a cancel back. */
+  private readonly heldCancels = new Map<string, number>();
   private simState: PlanetState | null = null;
   private colonyIndex = 0;
   private draggedTaskId: string | null = null;
@@ -225,6 +227,7 @@ export class QueuePanel {
    * the host does it in one `cancelTask { scope: 'sameKind' }`, this mirrors it on a local sim state / entry list).
    */
   cancelTask(taskId: string): void {
+    const before = this.entries;
     if (this.simState) {
       for (const id of sameKindTaskIds(this.simState, taskId, this.colonyIndex)) cancelQueueTask(this.simState, id, this.colonyIndex);
       this.syncFromSimState();
@@ -234,11 +237,13 @@ export class QueuePanel {
       this.entries = this.entries.filter((e) => e.taskId !== taskId && (kind === undefined || e.goalId !== undefined || chipKind(e) !== kind));
       this.render();
     }
+    this.holdRemoved(before, this.entries);
     this.ctx.services.sendCommand?.('cancelTask', { taskId, scope: 'sameKind' });
     this.ctx.services.cancelQueueTask?.(taskId);
   }
 
   cancelAll(): void {
+    const before = this.entries;
     if (this.simState) {
       cancelQueueTask(this.simState, 'all', this.colonyIndex);
       this.syncFromSimState();
@@ -246,6 +251,7 @@ export class QueuePanel {
       this.entries = [];
       this.render();
     }
+    this.holdRemoved(before, this.entries);
     this.ctx.services.sendCommand?.('cancelTask', { taskId: 'all' });
     this.ctx.services.cancelQueueTask?.('all');
   }
@@ -266,8 +272,24 @@ export class QueuePanel {
       return;
     }
     this.colonyIndex = ownColonyIndex(this.ctx.services); // the player's seat (FF-05), not colony 0
-    this.entries = extractQueueEntriesFromView(view, this.colonyIndex);
+    this.entries = this.withoutHeldCancels(extractQueueEntriesFromView(view, this.colonyIndex));
     this.render();
+  }
+
+  /** Remember ids this click removed so the next confirmed view cannot paint them back before the ack. */
+  private holdRemoved(before: readonly QueueEntry[], after: readonly QueueEntry[]): void {
+    const keep = new Set(after.map((e) => e.taskId));
+    const now = Date.now();
+    for (const e of before) if (!keep.has(e.taskId)) this.heldCancels.set(e.taskId, now);
+  }
+
+  private withoutHeldCancels(entries: QueueEntry[]): QueueEntry[] {
+    const now = Date.now();
+    const present = new Set(entries.map((e) => e.taskId));
+    for (const [id, at] of this.heldCancels) {
+      if (now - at > 5_000 || !present.has(id)) this.heldCancels.delete(id);
+    }
+    return this.heldCancels.size === 0 ? entries : entries.filter((e) => !this.heldCancels.has(e.taskId));
   }
 
   private updateHeaderSummary(): void {

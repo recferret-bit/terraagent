@@ -38,6 +38,14 @@ describe('ingress colony resolution', () => {
     expect(submitted.every((s) => s.colonyIndex === 2)).toBe(true);
   });
 
+  it('remembers a hit for the socket\'s lifetime on that planet: one lookup, not one per command', async () => {
+    const { ingress, lookups, submitted } = ingressWith(async () => row(4));
+    const memo = {};
+    for (let i = 0; i < 3; i++) await ingress.handle(ctx({ memo }), cmd(i));
+    expect(lookups()).toBe(1);
+    expect(submitted.every((s) => s.colonyIndex === 4)).toBe(true);
+  });
+
   it('remembers a miss for the socket\'s lifetime on that planet: one lookup, not one per command (BE-09)', async () => {
     const { ingress, lookups } = ingressWith(async () => null);
     const memo = {};
