@@ -8,6 +8,8 @@ export interface KeyHandlers {
   focus(): void;
   /** `/` focuses archetype search. Called first so a hidden object list can open. */
   revealSearch?(): void;
+  /** `n` toggles the day/night building-light check. */
+  night?(): void;
 }
 
 const KEY_TOGGLE: Record<string, ToggleKey> = { t: 'turntable', b: 'bloom', p: 'pixel', r: 'row', h: 'human', v: 'validate', l: 'lights' };
@@ -49,6 +51,7 @@ export function bindKeys(on: KeyHandlers) {
     if (k === ']' || k === 'arrowright') on.cycle(1);
     else if (k === '[' || k === 'arrowleft') on.cycle(-1);
     else if (k === 'f') on.focus();
+    else if (k === 'n') on.night?.();
     else if (KEY_VIEW[k]) on.view(KEY_VIEW[k]);
     else if (KEY_TOGGLE[k]) on.toggle(KEY_TOGGLE[k]);
   });

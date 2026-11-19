@@ -7,7 +7,7 @@ export type CableAnchor = [number, number, number];
 
 /**
  * Where a cable meets a building wall: the box around `(cx, cz)` with half-size `r`, at height `y`. Explicit for the
- * Command Hub (its bounding box includes the landing pad and antenna, which would leave the cable ending in the air);
+ * Command Hub (its bounding box includes the antenna, which would leave the cable ending in the air);
  * any other building uses `boxAnchorFromBounds`.
  */
 interface WallAnchor {

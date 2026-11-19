@@ -29,7 +29,7 @@ export function mine() {
   cyl(b, 'hullSecondary', 0.32, 0.32, 0.12, [0, 4.55, 0], { seg: 10, name: 'rotary swivel flange', ...A });
   for (let k = 0; k < 4; k++) {
     const an = (k * PI) / 2;
-    lamp(b, 'energyCyan', 0.06, [Math.cos(an) * 0.26, 4.68, Math.sin(an) * 0.26], { name: 'swivel status light', ...A });
+    lamp(b, 'energyCyan', 0.06, [Math.cos(an) * 0.26, 4.68, Math.sin(an) * 0.26], { housing: false, name: 'swivel status light', ...A });
   }
   // control hut + ore bin
   box(b, 'hullPrimary', [1.25, 1.05, 0.95], [-1.15, 0.19, -1.42], { r: 0.08, name: 'drill control cabin' });
@@ -39,7 +39,7 @@ export function mine() {
   b.addPart(new THREE.IcosahedronGeometry(0.35, 0), 'frameGunmetal', { name: 'extracted ore mound', position: [1.15, 1.08, -1.42], scale: [1.2, 0.8, 1] });
   strut(b, 'frameGunmetal', [0.95, 0.55, -1.05], [0.72, 0.32, -0.45], 0.09, { name: 'slurry transfer pipe' });
   cable(b, [-1.15, 1.15, -1.2], [-0.55, 5.12, -0.45], 0.22, 0.035, 'frameGunmetal', { name: 'hoist power cable' });
-  lamp(b, 'warningAmber', 0.11, [0.0, 5.95, 0.0], { name: 'derrick beacon light' });
+  lamp(b, 'warningAmber', 0.11, [0.0, 5.95, 0.0], { housing: false, name: 'derrick beacon light' });
   gridPort(b, 'building.mine', 5.87);
   return b.build();
 }

@@ -83,9 +83,10 @@ export class PlaygroundApp {
       },
       onDepositStage: (s) => this.setDepositStage(s),
       onTileState: (ts) => this.setTileState(ts),
+      onNight: (night) => this.setNight(night),
     });
     this.lightsPanel = new LightsPanel(this.state, {
-      onNightToggle: () => this.syncStageLighting(),
+      onNightToggle: (night) => this.setNight(night),
       onClose: () => { if (this.state.lights) this.toggle('lights'); },
     });
     this.faunaPanel = new FaunaScenePanel(this.state, () => this.faunaHost.getStats(), {
@@ -109,6 +110,7 @@ export class PlaygroundApp {
     bindKeys({
       cycle: (d) => this.cycle(d), view: (v) => this.setView(v), toggle: (k) => this.toggle(k), focus: () => this.focusSelected(),
       revealSearch: () => { setDockHidden('side', false); this.sidebar.showTab('units'); },
+      night: () => this.setNight(!this.state.night),
     });
   }
 
@@ -151,7 +153,7 @@ export class PlaygroundApp {
     const vp = this.viewport;
     return {
       state: this.state, select: (id: string) => this.select(id), validate: (id = this.state.id) => validateArchetype(id), setView: (v: View) => this.setView(v),
-      setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), contactSheet: () => this.contactSheet(),
+      setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), setNight: (on: boolean) => this.setNight(on), contactSheet: () => this.contactSheet(),
       viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s), setRuin: (on: boolean) => { if (this.state.ruin !== on) this.toggle('ruin'); },
       setWorkTarget: (t: InteractionTargetKind, enableWork = true) => this.setWorkTarget(t, enableWork),
       validateParticles: (targetOrId: string = this.state.workTarget) => validateParticlePreset(ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind)),
@@ -280,7 +282,17 @@ export class PlaygroundApp {
   }
 
   private triggerAcidPreview() { this.faunaHost.triggerAcidPreview(); this.faunaPanel?.render(); return this.faunaHost.getStats(); }
-  private syncStageLighting() { this.rig.syncLighting(this.viewport, this.state.kind, !!this.lightsPanel?.isNightPreview); }
+
+  /** Toolbar, `n`, and the lights-panel Night button all write this one flag. */
+  setNight(on: boolean) {
+    this.state.night = on;
+    this.syncStageLighting();
+    this.toolbar.syncToggles();
+    this.lightsPanel.syncNightButton();
+    syncURL(this.state);
+  }
+
+  private syncStageLighting() { this.rig.syncLighting(this.viewport, this.state.kind, this.state.night); }
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
@@ -424,7 +436,7 @@ export class PlaygroundApp {
     if (dt === null) return;
     this.time += dt;
     this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.state.night, this.state.workTarget);
     this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
     this.marchHost.update(dt, this.time);
     if (this.state.faunaScene !== null) this.faunaPanel.renderStats();

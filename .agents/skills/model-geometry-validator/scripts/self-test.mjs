@@ -21,11 +21,11 @@ function part(geo, pos, { rot = [0, 0, 0], anim = 0, pivot, zone = 'hullPrimary'
   return { index: i, name: name ?? `${geo.type.replace('Geometry', '')}#${i}`, zone, kind: geo.type, ...(role ? { role } : {}), animType: anim, pivot: pivot ?? pos, emissive: 0, tris: t };
 }
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const model = (parts) => { idx = 0; return validateModel({ id: 't', label: 't', source: 'builder', parts: parts() }, { minParts: 1, appearance: false }); };
+const model = (parts, id = 't') => { idx = 0; return validateModel({ id, label: id, source: 'builder', parts: parts() }, { minParts: 1, appearance: false }); };
 const codes = (r) => r.issues.filter((i) => i.severity !== 'info').map((i) => i.code);
 
 const cases = [];
-const t = (name, build, expect) => cases.push({ name, build, expect });
+const t = (name, build, expect, id = 't') => cases.push({ name, build, expect, id });
 const ground = () => part(box(1, 0.2, 1), [0, 0.1, 0], { name: 'base' });
 
 t('clean joint: block sunk 2 cm into the base', () => [ground(), part(box(0.4, 0.4, 0.4), [0, 0.38, 0], { name: 'top' })], (r) => codes(r).length === 0);
@@ -75,6 +75,13 @@ t('recoiling barrel and muzzle sharing pivot.x move as one → clean', gun(0), (
 t('foundation sunk 10 cm below ground is allowed', () => [part(box(1, 0.4, 1), [0, 0.1, 0])], (r) => !codes(r).includes('GROUND_CONTACT'));
 t('foundation sunk 30 cm below ground → GROUND_CONTACT', () => [part(box(1, 0.4, 1), [0, -0.1, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
 t('lowest point 12 cm above the ground → GROUND_CONTACT', () => [part(box(1, 0.2, 1), [0, 0.22, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
+// Night lights: name + emissive zone. The model id is 't' unless a case passes one (buildings only).
+const statusLight = () => part(new THREE.SphereGeometry(0.08, 12, 8), [0, 0.78, 0], { name: 'status light', zone: 'energyCyan' });
+const cornerLight = (x, z) => part(box(0.08, 0.08, 0.08), [x, 0.16, z], { name: 'plinth corner light', zone: 'warningAmber' });
+t('emissive sphere named "status light" floating above the base → LIGHT_UNMOUNTED', () => [ground(), statusLight()], (r) => codes(r).includes('LIGHT_UNMOUNTED'));
+t('same sphere sunk into a gunmetal post → no LIGHT_UNMOUNTED', () => [ground(), part(box(0.24, 0.8, 0.24), [0, 0.4, 0], { name: 'post', zone: 'frameGunmetal' }), statusLight()], (r) => !codes(r).includes('LIGHT_UNMOUNTED'));
+t('four parts named "plinth corner light" on a building → LIGHT_CORNER_STAMP', () => [ground(), cornerLight(-0.4, -0.4), cornerLight(0.4, -0.4), cornerLight(-0.4, 0.4), cornerLight(0.4, 0.4)], (r) => codes(r).includes('LIGHT_CORNER_STAMP'), 'building.sample');
+t('a building with one mounted beacon and no corner stamp → no LIGHT_CORNER_STAMP', () => [ground(), part(box(0.16, 0.7, 0.16), [0, 0.35, 0], { name: 'mast', zone: 'frameGunmetal' }), part(new THREE.SphereGeometry(0.06, 12, 8), [0, 0.66, 0], { name: 'mast beacon', zone: 'energyCyan' })], (r) => !codes(r).includes('LIGHT_CORNER_STAMP') && !codes(r).includes('LIGHT_UNMOUNTED'), 'building.sample');
 
 // ---- appearance fixtures: colour fit, group separation, surface detail (appearance checks ON; geometry noise ignored)
 const amodel = (parts) => { idx = 0; return validateModel({ id: 't', label: 't', source: 'builder', parts: parts() }, { minParts: 1, appearance: true }); };
@@ -124,7 +131,7 @@ for (const c of at_) {
 }
 cases.length += at_.length;
 for (const c of cases.slice(0, cases.length - at_.length)) {
-  const r = model(c.build);
+  const r = model(c.build, c.id);
   const ok = c.expect(r);
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}${ok ? '' : `   → got [${codes(r).join(', ') || 'nothing'}]`}`);
   if (!ok) fail++;

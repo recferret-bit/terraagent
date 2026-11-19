@@ -12,7 +12,7 @@ const TAB_LABEL: Record<SideTab, string> = { hive: 'HIVE', march: 'MARCH', units
 
 /** Left sidebar: hive-life, group march, and the archetype list on separate tabs. */
 export class Sidebar {
-  private expanded = new Set<ArchetypeCategory>();
+  private expanded = new Set<ArchetypeCategory>(['building']);
 
   constructor(private state: PgState, private on: SidebarHandlers) {}
 
@@ -159,6 +159,6 @@ function sideShell(count: number): string {
   <div class="side-pane side-units" data-side-pane="units">
   <input id="search" placeholder="Search archetypes…  ( / )" autocomplete="off" />
   <div id="list"></div>
-  <div class="side-foot"><kbd>[</kbd><kbd>]</kbd> cycle · <kbd>1</kbd>-<kbd>4</kbd> views · <kbd>T</kbd> turntable · <kbd>F</kbd> focus<br><kbd>WASD</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> rotate · <kbd>B</kbd> bloom · <kbd>R</kbd> row · <kbd>V</kbd> validate · <kbd>L</kbd> lights</div>
+  <div class="side-foot"><kbd>[</kbd><kbd>]</kbd> cycle · <kbd>1</kbd>-<kbd>4</kbd> views · <kbd>T</kbd> turntable · <kbd>F</kbd> focus<br><kbd>WASD</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> rotate · <kbd>B</kbd> bloom · <kbd>R</kbd> row · <kbd>V</kbd> validate · <kbd>L</kbd> lights · <kbd>N</kbd> night</div>
   </div>`;
 }

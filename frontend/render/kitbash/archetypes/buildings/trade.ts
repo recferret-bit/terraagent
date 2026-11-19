@@ -64,7 +64,7 @@ export function tradeHub(): THREE.BufferGeometry {
   const mx = -0.15, mz = -0.95, my = 3.1;
   cyl(b, 'frameGunmetal', 0.22, 0.26, 0.24, [mx, 1.82, mz], { seg: 8, name: 'uplink mast base' });
   cyl(b, 'frameGunmetal', 0.09, 0.12, 0.54, [mx, 2.02, mz], { seg: 8, name: 'uplink mast column' });
-  ring(b, 'energyCyan', 0.13, 0.035, [mx, 2.32, mz], { seg: 8, tubeSeg: 4, name: 'mast telemetry ring light' });
+  ring(b, 'energyCyan', 0.1, 0.04, [mx, 2.32, mz], { seg: 8, tubeSeg: 4, name: 'mast telemetry ring light' });
   const A = spin(mx, mz);
   cyl(b, 'frameGunmetal', 0.065, 0.065, 0.62, [mx, 2.5, mz], { seg: 6, name: 'uplink rotor neck', ...A });
   dish(b, 0.65, [mx, my, mz], -0.6, { seg: 8, name: 'orbital uplink dish', ...A });

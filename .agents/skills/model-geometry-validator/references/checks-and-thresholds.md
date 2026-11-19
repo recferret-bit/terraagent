@@ -25,6 +25,15 @@ All lengths are metres. Source of truth: `DEFAULT_OPTIONS` in `frontend/render/k
 | `minCells` / `cellMaxFace` | 6 / 0.028 | Solar panels: ≥ 6 cells, each face below `cellMaxFace` (relative), clustered within 3 cm of each other (`ROLE_DETAIL`) |
 | `dominantZone` / `minMeanL` | 0.7 / 30 | One zone above 70 % of the surface, or mean L* below 30 (`PALETTE_FLAT`, `MODEL_TOO_DARK`) |
 
+### Night lights (`checks/lights.ts`)
+
+Not `DEFAULT_OPTIONS`. Overlap is `embed` depth, either way, on the pair `relate` already computed.
+
+| Code | Rule |
+| :--- | :--- |
+| `LIGHT_UNMOUNTED` | error. Name matches `/light\|lamp\|beacon\|bulb/i`, zone is `energyCyan`, `warningAmber`, `dangerCrimson`, or `terraformEmerald`, and `role` is not `whip`. The part must overlap a structural neighbour by ≥ 1 cm (0.01 m). A structural neighbour's zone is outside that emissive set and its name does not match the same pattern. A ring or strip that cuts its frame by ≥ 1 cm passes. A gap, or a touch of only another emissive blob, fails. Zero lights is allowed. |
+| `LIGHT_CORNER_STAMP` | error. Model id starts with `building.` and at least 4 parts are named exactly `plinth corner light`. Does not run on robots, fauna, or ships. Four differently named fixtures are allowed. |
+
 ## Algorithm
 
 1. **Extract**: `KitbashBuilder.capture(() => entry.create())` returns the merged geometry plus per-part metadata. Parts are contiguous vertex ranges of the merged buffer, so positions are the final, scaled and snapped ones; `aPartAnim` supplies the final pivot.
@@ -33,7 +42,8 @@ All lengths are metres. Source of truth: `DEFAULT_OPTIONS` in `frontend/render/k
 4. **Overlap**: ray-parity inside test on closed parts gives the fraction of one part inside another and the depth; cables are sampled along their length (15 % to 85 %) for mid-span clipping.
 5. **Animation sweep**: each animated part is posed through the shader's motion (24 spin angles for `animType 1`, 4 bob offsets for `2`, 4 recoil offsets for `3`, 16 gait cycle steps for `4` BipedLeg / `5` BipedArm / `6` SpiderLeg / `8` BipedBody / `9` SpiderBody / `18..39` compound mounted channels, 16 roll angles for `7` WheelSpin) and related to every other part within reach. Sub-parts sharing the same `animType` and 3D `pivot` (`sameRig`, or sharing `BipedBody 8` / `SpiderBody 9`) move as a single coupled assembly; parts sharing a shader clock (`1`, `4..6, 8, 9, 18..39`, `7`, or `2`/`3` with equal `pivot.x`) are compared at matching time steps. Two recoil (`3`) parts are one rig only when their `pivot.x` is equal (their phase is `sin(t + pivot.x * 2.3)`), exactly like bob (`2`); otherwise their pair is swept like any two moving parts.
 
-6. **Appearance** (`appearance.ts`): each part gets area, planar faces (normals binned to 0.01, so rotated panels work), a thin-plate flag (two opposite faces ≥ 75 % of its area), the CIE L*a*b* of its zone colour and a role from its name (`power`, `locomotion`, `sensor`, `manipulator`, `platform`). Role rules, group colour distance (area-weighted mean Lab per role, plus the worst touching pair across two roles, each also with the biome dust blended in via `shadedLab`: `mix = (1 - smoothstep(0, weatheringHeight, y)) * weatheringIntensity` toward the dust colour, then the top-down gradient 0.78..1.08), inset contrast, name/zone fit and palette balance follow. A face's features are the smaller touching parts whose centre lies on its outward side; a face is skipped when a closed neighbour covers it, when it faces down, or when the part is emissive or glass. Curved parts (cylinders, spheres, lathes) use half their surface as the face.
+6. **Night lights** (`checks/lights.ts`): see the table above. `LIGHT_UNMOUNTED` uses `embed` depth ≥ 0.01 m against a non-emissive, non-light-named neighbour. `LIGHT_CORNER_STAMP` counts parts named exactly `plinth corner light` on `building.*` ids only.
+7. **Appearance** (`appearance.ts`): each part gets area, planar faces (normals binned to 0.01, so rotated panels work), a thin-plate flag (two opposite faces ≥ 75 % of its area), the CIE L*a*b* of its zone colour and a role from its name (`power`, `locomotion`, `sensor`, `manipulator`, `platform`). Role rules, group colour distance (area-weighted mean Lab per role, plus the worst touching pair across two roles, each also with the biome dust blended in via `shadedLab`: `mix = (1 - smoothstep(0, weatheringHeight, y)) * weatheringIntensity` toward the dust colour, then the top-down gradient 0.78..1.08), inset contrast, name/zone fit and palette balance follow. A face's features are the smaller touching parts whose centre lies on its outward side; a face is skipped when a closed neighbour covers it, when it faces down, or when the part is emissive or glass. Curved parts (cylinders, spheres, lathes) use half their surface as the face.
 
 ## Calibration notes
 

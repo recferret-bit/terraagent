@@ -6,6 +6,7 @@ import { ValidationContext, type CheckStage } from './context';
 import { sanityStage } from './checks/sanity';
 import { floatingStage } from './checks/floating';
 import { overlapStage, cableStage } from './checks/overlaps';
+import { lightStage } from './checks/lights';
 import { animationStage } from './checks/animation';
 import { processStage } from './checks/process';
 import { appearanceStage } from './checks/appearanceStage';
@@ -15,7 +16,7 @@ export { DEFAULT_OPTIONS } from './types';
 export type { ModelInput, PartDef, Report, Issue, Severity, PartStat, PairStat, ValidatorOptions, P } from './types';
 
 /** The check pipeline, in report order (the pair relations are computed once, before the first stage that needs them). */
-const STAGES: CheckStage[] = [floatingStage, overlapStage, cableStage, animationStage, processStage, appearanceStage];
+const STAGES: CheckStage[] = [floatingStage, overlapStage, cableStage, lightStage, animationStage, processStage, appearanceStage];
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 

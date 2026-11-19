@@ -5,9 +5,10 @@ description: >-
   other, coplanar faces that z-fight, cables clipping through solids, animated parts (spin, bob, recoil) that sweep into
   something. Appearance: wrong or missing colours and materials (a solar panel that is a black slab, wheels, chassis and arm
   all one colour, a light that does not glow, a flat palette) and surfaces without enough detail (big blank faces, panels
-  without a cell grid, bare wheels). Use this skill after creating or modifying ANY procedural archetype (robot, building,
-  ship, prop, deposit) and before declaring it done; it is the automated half of the "no floating parts" and "readable
-  detail" checks in the procedural-kitbash-3d visual verification step.
+  without a cell grid, bare wheels). For a colony building, also a logical review: internal connectors, which parts
+  actually move, and mounted night lights (not a four-corner flood stamp). Use this skill after creating or modifying ANY
+  procedural archetype (robot, building, ship, prop, deposit) and before declaring it done; it is the automated half of the
+  "no floating parts" and "readable detail" checks in the procedural-kitbash-3d visual verification step.
 ---
 
 > **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
@@ -36,7 +37,7 @@ position. Animated parts are swept through the same motion the vertex shader app
 | Step | Skill | What happens |
 | :--- | :--- | :--- |
 | 1. Compose the blueprint | `procedural-kitbash-3d` | Four layers, ≥ 7 parts, a silhouette breaker, 60/30/10 zones, GPU animation tags |
-| 2. **Validate geometry, colour and detail** | **`model-geometry-validator`** | **Run the CLI, fix every error and warning** |
+| 2. **Validate geometry, colour, detail, and (buildings) logic** | **`model-geometry-validator`** | **Run the CLI, fix every error and warning. For a building, also write the logic review** |
 | 3. Verify visually | `diorama-viewport-auditor` | iso / front / side / top in the playground, with the validation overlay on (`?validate=1`) |
 | 4. Materials and shaders | `shader-texture-tuning` | Unifier shader, weathering, only after the shape is sound |
 
@@ -59,7 +60,7 @@ npm run validate:models -- resource.metalDeposit    # a deposit: all three stage
 npm run validate:models -- robot.builder --json     # machine-readable (for agents and CI)
 npm run validate:models -- robot.builder --pairs    # every touching/crossing pair with its numbers (calibration)
 npm run validate:models -- robot.builder --geometry-only   # skip the colour / material / detail checks
-npm run test:models                                 # self-test of the validator itself (48 known-good/bad fixtures, geometry and appearance)
+npm run test:models                                 # self-test of the validator itself (52 known-good/bad fixtures, geometry and appearance)
 ```
 A resource deposit (`resource.metalDeposit`, `resource.crystalDeposit`, `resource.oilDeposit`) is three meshes, one per
 depletion stage (`registerDepositStageBuilder`), so every run that includes one validates all three and reports them as
@@ -70,12 +71,12 @@ Exit code is `1` when any model has an **error** (`--strict` also fails on warni
 Every issue prints a `fix:` line. Fix the **cause in the model code**, not the threshold. The report also prints `colour by role`
 (share, dominant zone and lightness L* of the locomotion / platform / manipulator / power / sensor groups): read it to decide
 which group needs a different zone. Roles come from **part names** (`wheel`, `chassis`, `boom`, `solar`, `radar` ...), so name parts.
-`--geometry-only` skips the appearance checks (for debugging a geometry problem on its own).
+`--geometry-only` skips the appearance checks (for debugging a geometry problem on its own). On a building, `LIGHT_UNMOUNTED` and `LIGHT_CORNER_STAMP` are fixed in the mesh the same way; they do not replace the building logic review.
 
 ### Step 4: Look at it (visual self-correction loop)
 Open `http://127.0.0.1:5173/playground.html?inspect=<id>&validate=1` (or press **V**). Offending parts are outlined
 (red = error, amber = warning) and numbered; the numbers match the list in the info panel. Check all four views
-(`iso`, `front`, `side`, `top`) and take screenshots, exactly as the `diorama-viewport-auditor` skill requires. A clean report
+(`iso`, `front`, `side`, `top`) and take screenshots, exactly as the `diorama-viewport-auditor` skill requires. For a building, also open `&night=1` (or press **N**; Day / Night on the View bar) and confirm each projector sits on its own bulb. The building group in the list starts expanded. A clean report
 with a visibly wrong model means a check is missing: add a fixture and a check (see Extending).
 
 ### Step 5: Repeat until the model passes, then regress
@@ -106,6 +107,8 @@ with a visibly wrong model means a check is missing: add a fixture and a check (
 | `TRI_BUDGET` | warn | > 3,500 triangles | Use `rbox(w,h,d,r,1)` (one bevel segment) for small and thin parts: 3x fewer triangles |
 | `FEW_PARTS` | warn | < 7 sub-parts (Pillar 1) | Add detail, not primitives |
 | `EMISSIVE_LOW` | warn | An energy/amber/crimson/emerald zone below intensity 3.0 will not bloom | Raise `emissiveIntensity` |
+| `LIGHT_UNMOUNTED` | error | An emissive part named like a light, lamp, beacon, or bulb does not overlap a non-emissive structural part (that neighbour's name is not also a light) by ≥ 1 cm. `role: 'whip'` is skipped. Does not demand that a model have a light | Seat the bulb in a gunmetal socket/bezel that overlaps both the bulb and the mast, column, housing, or door it belongs to |
+| `LIGHT_CORNER_STAMP` | error | A `building.*` id has 4 or more parts named exactly `plinth corner light`. Robots, fauna, and ships are not flagged. Zero lights is allowed; four different fixtures are allowed | This shared four-corner stamp is not a light design; delete it and add only the fixtures this building actually needs |
 
 ### Appearance checks (colour, material, surface detail)
 
@@ -126,6 +129,18 @@ touches the face and sits on its outward side; faces covered by a neighbour, fac
 
 Things the validator deliberately does **not** report: a joint sphere sunk into a hull (one-sided overlap is normal kitbashing),
 flush opposite-facing faces (that is a clean contact), and cables as structural support (a cable draped over a part does not hold it up).
+
+## Building logic review
+
+Mandatory whenever the model id starts with `building.` or you are editing a colony building. The CLI is the geometry half.
+You must ALSO write a short logical review of that one building before calling it done. The review answers:
+
+1. **What the building is for, and which parts are costume.** Say the job in one sentence, then name any part that does not belong to that job. The Command Hub is not an airfield: no helicopter deck and no H mark.
+2. **Internal connectors.** Every cable, pipe, umbilical, guy, and strut. Both ends must terminate on the two parts that machine would actually join (boiler to stack, hull to antenna), not a cable that ends in the air or in the foundation plinth. Name the two ends. `CABLE_FLOAT` and `CABLE_CLIPS` still apply; this pass asks whether the connection is the right one.
+3. **Animations and moving parts.** Every `animType` other than 0. Name the mechanical axle (radar dish on its mast, drill string inside the derrick, turbine on the hub, recoil along the barrel). The pivot must be that axle. Moving parts keep clearance for the whole sweep (`ANIM_COLLISION`, `ANIM_DISTORTION`, `ANIM_DETACH`). A part that moves must be a part that would move on that machine.
+4. **Night lights.** List each light source (emissive bulb and any projector). A building does not get four corner floods by default. Many buildings need one light, some two, some none. If it has a light, the bulb sits in a socket, hood, collar, or lens housing that is part of the structure (a mast cap, a door header, a furnace mouth, a dish feed). A bare sphere in a corner is a failure even if the numeric overlap barely passes. Projectors, when present, sit on that same bulb and aim at the ground or work area that fixture would light. Do not copy one building's rig onto another.
+
+`LIGHT_UNMOUNTED` and `LIGHT_CORNER_STAMP` are the numeric half of question 4. They do not decide how many lights a building should have, and they do not replace this review.
 
 ## Modelling rules this skill enforces
 
