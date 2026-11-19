@@ -69,6 +69,11 @@ export class FeatureHud {
     }
   }
 
+  /** Folds the Command Dock (the Build pane is the default open tab). */
+  collapseCommandDock(): void {
+    this.root?.collapseDock();
+  }
+
   update(view: GameView): void {
     this.last = view;
     if (!this.visible) {

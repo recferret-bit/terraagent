@@ -230,6 +230,11 @@ export class HudRoot {
     this.el.hidden = !visible;
   }
 
+  /** Folds the Command Dock so Build / Production / Terraform start closed. */
+  collapseDock(): void {
+    this.dock?.setCollapsed(true);
+  }
+
   update(view: GameView) {
     for (const p of this.panels) p.update?.(view);
   }

@@ -27,7 +27,7 @@ import {
   applySessionBootResult, attachSessionLocalHost, bindSessionKeys, createSessionBootRig,
   resolveInitialLoadMode, resolveSocketFallback, runGuestBootSequence,
 } from './parts/sessionBoot';
-import { applySessionOrbitalReveal, applySessionSpacePhase, resolveSeatIndexFromSearch, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
+import { applySessionOrbitalReveal, applySessionSpacePhase, resolveSeatIndexFromSearch, settleArrivalHud, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
 import { retireReplacedSessionTerrain, SessionTerrainPreloader, type TerrainPreloadState } from './parts/terrainPreload';
 import { PauseOverlay } from './PauseOverlay';
 import { createUnitControl } from './unitControl';
@@ -72,7 +72,7 @@ export class OnlineSession {
   readonly whenBooted: Promise<BootAuthResult | null>;
 
   terrain: HexTerrain | null = null; cam: RTSCamera | null = null; lastPick: HexPick | null = null;
-  private colonyFramed = false;
+  private colonyFramed = false; private readonly arrival = { hold: false, quiet: false, noSelect: false, started: false };
   planetId = ''; colonyId: string | null = null; colonyIndex = 0; foundingSectorId: string | null = null;
   spawn = { q: 0, r: 0 }; cameraTargetTile = { q: 0, r: 0 };
   bootResult: BootAuthResult | null = null; planetKind: PlanetKind | null;
@@ -232,7 +232,7 @@ export class OnlineSession {
 
   revealFromOrbitalDive(skipCameraDrop = false): void {
     if (!this.deferReveal) return;
-    this.deferReveal = false;
+    this.deferReveal = false; this.arrival.quiet = true; this.arrival.noSelect = true;
     this.flushTerrainPreload();
     if (skipCameraDrop) { this.orbitalCameraDrop = false; this.loadMode = 'instant'; }
     applySessionOrbitalReveal({
@@ -385,7 +385,7 @@ export class OnlineSession {
       bootOverlay: this.bootOverlay, hud: this.hud, cam: this.cam, landfall: this.landfall, flags: this.flags,
       planetId: this.planetId, fastStartLand: this.fastStartLand, loadMode: this.loadMode, skipDescent: this.skipDescent,
       fromSpaceDescent: this.fromSpaceDescent, deferReveal: this.deferReveal, orbitalCameraDrop: this.orbitalCameraDrop,
-      sawPodDescending: this.sawPodDescending, cameraCentered: this.cameraCentered, colonyFramed: this.colonyFramed,
+      sawPodDescending: this.sawPodDescending, cameraCentered: this.cameraCentered, colonyFramed: this.colonyFramed, arrival: this.arrival,
       sendLandOnce: () => this.sendLandOnce(), focusTile: (q, r, instant) => this.focusTile(q, r, instant),
       setCameraTargetTile: (q, r) => { this.cameraTargetTile = { q, r }; },
       setCameraCentered: (val) => { this.cameraCentered = val; },
@@ -447,7 +447,7 @@ export class OnlineSession {
       this.terrain?.tick(animDt);
       if (!this.deferReveal) {
         this.frameHud(now, dt);
-        if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); }
+        if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); settleArrivalHud(this.arrival, this.cam, this.landfall, this.hud); }
       }
     }
     if (this.ownsViewport && !this.store.isAwaitingPrediction(now)) this.viewport.render();

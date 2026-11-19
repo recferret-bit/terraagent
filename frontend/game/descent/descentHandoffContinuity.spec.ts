@@ -321,6 +321,7 @@ describe('Direct-Boot BootOverlay Monotonic Progress', () => {
       fromSpaceDescent: false,
       cameraCentered: true,
       colonyFramed: false,
+      arrival: { hold: false, quiet: false, noSelect: false, started: false },
       sendLandOnce: () => {},
       focusTile: () => {},
       setCameraTargetTile: () => {},
