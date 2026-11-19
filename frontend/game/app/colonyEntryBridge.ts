@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { clearTransientWeather } from '@terra/render/core/weatherConfig';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { OrbitalGlobeMarkerInput, OrbitalStage } from '@terra/render/orbit/types';
 import type { SectorIntentV1 } from '../ui/menu';
@@ -140,6 +141,7 @@ export function clearEntrySceneChildren(scene: THREE.Scene, baseChildren: Readon
 }
 
 export function resetOrbitalScene(scene: THREE.Scene, baseChildren: ReadonlySet<THREE.Object3D>): void {
+  clearTransientWeather();
   clearEntrySceneChildren(scene, baseChildren);
   scene.background = new THREE.Color(0x03060c);
   if (scene.fog instanceof THREE.FogExp2) scene.fog.color.setHex(0x03060c);

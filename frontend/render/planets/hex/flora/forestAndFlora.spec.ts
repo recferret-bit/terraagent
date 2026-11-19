@@ -1,22 +1,27 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
-import { BREEDS_BY_BIOME, buildBiomeTreeAtlasGeo, TREE_BREEDS } from '../../../visuals/terrain/treeBreeds';
+import { HEX_DIRS, hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
+import { BREEDS_BY_BIOME, buildBiomeTreeAtlasGeo, buildTreeBreedGeo, TREE_BREEDS } from '../../../visuals/terrain/treeBreeds';
 import {
   applySurfaceForestPipeline,
+  buildChunk,
   createHexTerrain,
   evaluateForestStand,
+  FLORA_FOOTPRINTS,
   generateCandidateTreePlaces,
   GROUND_FLORA_KINDS,
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
   hexEdgeMarginM,
+  PROP_EXCLUSION_RADIUS,
   runForestGenerationPipeline,
   specForPlanetType,
   stratifyStandSites,
   synthesizeTreePhenotype,
+  tileShoreFactor,
   tileStyle,
+  type GroundFloraKind,
 } from '../index';
 
 function makeBiomeTiles(radius: number) {
@@ -271,5 +276,136 @@ describe('Ground flora rim containment, wild grass hex ecotypes & surface pipeli
     expect(surfTrees.length).toBeGreaterThan(40);
     expect(new Set(surfTrees.map((t) => t.standRegime)).size).toBe(2);
     expect(new Set(surfTrees.map((t) => t.cohort)).size).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('Collision-free flora & prop placement across biomes', () => {
+  it('enforces zero pairwise overlaps between props and flora across desert, ocean, and temperate biomes', () => {
+    const r = 16;
+    const hx = hexIndex(r);
+    const mat = new THREE.Matrix4();
+
+    for (const pType of ['desert', 'ocean', 'temperate'] as const) {
+      const tiles = makeBiomeTiles(r);
+      const ht = createHexTerrain({ radius: r, tiles, look: specForPlanetType(pType) });
+
+      const propsList: Array<{ kind: string; x: number; z: number }> = [];
+      for (let i = 0; i < hx.count; i++) {
+        for (const p of ht.props.instancesForTile(i)) {
+          propsList.push({ kind: p.kind, x: p.x, z: p.z });
+        }
+      }
+
+      const floraList: Array<{ kind: GroundFloraKind; x: number; z: number }> = [];
+      for (const kind of GROUND_FLORA_KINDS) {
+        for (const im of ht.flora.meshes[kind]) {
+          for (let k = 0; k < im.count; k++) {
+            im.getMatrixAt(k, mat);
+            floraList.push({ kind, x: mat.elements[12]!, z: mat.elements[14]! });
+          }
+        }
+      }
+
+      expect(floraList.length).toBeGreaterThan(40);
+      for (let a = 0; a < floraList.length; a++) {
+        const fa = floraList[a]!;
+        const fpa = FLORA_FOOTPRINTS[fa.kind];
+        for (const p of propsList) {
+          if (Math.abs(fa.x - p.x) > 2.2 || Math.abs(fa.z - p.z) > 2.2) continue;
+          const pr = PROP_EXCLUSION_RADIUS[p.kind] ?? 0.52;
+          expect(Math.hypot(fa.x - p.x, fa.z - p.z)).toBeGreaterThanOrEqual(fpa.radius + pr + 0.12);
+        }
+        for (let b = a + 1; b < floraList.length; b++) {
+          const fb = floraList[b]!;
+          if (Math.abs(fa.x - fb.x) > 2.2 || Math.abs(fa.z - fb.z) > 2.2) continue;
+          const fpb = FLORA_FOOTPRINTS[fb.kind];
+          const minReq = fa.kind === fb.kind ? Math.max(fpa.radius + fpb.radius + 0.12, fpa.sameKindDist - 0.02) : fpa.radius + fpb.radius + 0.12;
+          expect(Math.hypot(fa.x - fb.x, fa.z - fb.z)).toBeGreaterThanOrEqual(minReq);
+        }
+      }
+
+      // Incremental dirty-cell update stays collision-free
+      ht.setTileState(0, 0, HEX_TERRAIN.flat, HEX_PREP.prepared);
+      const dirtyFlora: Array<{ kind: GroundFloraKind; x: number; z: number }> = [];
+      for (const kind of GROUND_FLORA_KINDS) {
+        for (const im of ht.flora.meshes[kind]) {
+          for (let k = 0; k < im.count; k++) {
+            im.getMatrixAt(k, mat);
+            dirtyFlora.push({ kind, x: mat.elements[12]!, z: mat.elements[14]! });
+          }
+        }
+      }
+      for (let a = 0; a < dirtyFlora.length; a++) {
+        const fa = dirtyFlora[a]!;
+        const fpa = FLORA_FOOTPRINTS[fa.kind];
+        for (let b = a + 1; b < dirtyFlora.length; b++) {
+          const fb = dirtyFlora[b]!;
+          if (Math.abs(fa.x - fb.x) > 2.5 || Math.abs(fa.z - fb.z) > 2.5) continue;
+          const minReq = Math.max(fpa.radius + FLORA_FOOTPRINTS[fb.kind].radius + 0.12, fa.kind === fb.kind ? fpa.sameKindDist - 0.02 : 0);
+          expect(Math.hypot(fa.x - fb.x, fa.z - fb.z)).toBeGreaterThanOrEqual(minReq);
+        }
+      }
+      ht.dispose();
+    }
+  });
+});
+
+describe('Stemless tree geometry & sanded coastal corners', () => {
+  it('builds completely stemless grounded foliage geometry across all 11 tree breeds', () => {
+    for (const breed of TREE_BREEDS) {
+      const geo = buildTreeBreedGeo(breed.id, 17);
+      const pos = geo.getAttribute('position');
+      const aBark = geo.getAttribute('aBark');
+      expect(aBark).toBeDefined();
+      let minY = Infinity;
+      let maxBark = 0;
+      for (let i = 0; i < pos.count; i++) {
+        minY = Math.min(minY, pos.getY(i));
+        maxBark = Math.max(maxBark, aBark.getX(i));
+      }
+      expect(maxBark).toBe(0);
+      expect(minY).toBeLessThanOrEqual(-0.04);
+      expect(minY).toBeGreaterThanOrEqual(-0.20);
+      geo.dispose();
+    }
+  });
+
+  it('sands jutting water corners (tileShoreFactor <= 0.92) and excludes grass/bushes on >= 3 water-neighbor corners', () => {
+    const r = 6;
+    const hx = hexIndex(r);
+    const terrain = new Uint8Array(hx.count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(hx.count).fill(HEX_PREP.wild);
+    const height = new Float32Array(hx.count).fill(0.18);
+    // Tile 0 at (0, 0) becomes a pointy corner bordered by 4 water neighbors
+    for (let k = 0; k < 4; k++) {
+      const [dq, dr] = HEX_DIRS[k]!;
+      const j = hx.indexOf(dq, dr);
+      expect(j).toBeGreaterThanOrEqual(0);
+      terrain[j] = HEX_TERRAIN.shallow;
+      height[j] = -0.35;
+    }
+    const layers = { terrain, prep, height, kind: 'oceanForest' as const };
+    const cornerIdx = hx.indexOf(0, 0);
+    const sf = tileShoreFactor(hx, cornerIdx, layers);
+    expect(sf).toBeGreaterThan(0.80);
+    expect(sf).toBeLessThanOrEqual(0.92);
+
+    const chunk = buildChunk(r, Array.from({ length: hx.count }, (_, i) => i), layers);
+    const vertPos = Array.from(chunk.vertexTile).indexOf(cornerIdx);
+    expect(vertPos).toBeGreaterThanOrEqual(0);
+    expect(chunk.aHexShore[vertPos]).toBeCloseTo(sf, 4);
+
+    // Build full terrain around the headland corner and verify zero grass/wildflower/bush at corner (0,0)
+    const ht = createHexTerrain({ radius: r, tiles: layers, look: specForPlanetType('ocean') });
+    const mat = new THREE.Matrix4();
+    for (const restricted of ['grassTuft', 'wildflower', 'bush'] as const) {
+      for (const im of ht.flora.meshes[restricted]) {
+        for (let k = 0; k < im.count; k++) {
+          im.getMatrixAt(k, mat);
+          expect(Math.hypot(mat.elements[12]!, mat.elements[14]!)).toBeGreaterThan(1.05);
+        }
+      }
+    }
+    ht.dispose();
   });
 });

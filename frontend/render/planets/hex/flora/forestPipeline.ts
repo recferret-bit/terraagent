@@ -94,28 +94,37 @@ export function generateCandidateTreePlaces(
   const out: CandidateTreePlace[] = [];
 
   for (let k = 0; k < count; k++) {
-    const h1 = tileHash01(q, r, saltBase + k * 7);
-    const h2 = tileHash01(q, r, saltBase + k * 7 + 1);
-    const minR = count > 1 ? 0.36 : 0.14;
-    const dist = minR + 0.36 * h1;
-    const angle = baseAngle + k * sector + (h2 - 0.5) * Math.min(0.46, sector * 0.34);
-    let x: number;
-    let z: number;
-    if (radius !== undefined && radius > 0) {
-      const [ax, az] = clampToGroundHexagon(radius, cx, cz, TREE_RIM_MARGIN_M + minR + 0.24);
-      const rawX = ax + Math.cos(angle) * dist;
-      const rawZ = az + Math.sin(angle) * dist;
-      [x, z] = clampToGroundHexagon(radius, rawX, rawZ, TREE_RIM_MARGIN_M);
-    } else {
-      x = cx + Math.cos(angle) * dist;
-      z = cz + Math.sin(angle) * dist;
+    let placed: { x: number; z: number; minCrownDist: number } | null = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const salt = saltBase + k * 19 + attempt * 5;
+      const h1 = tileHash01(q, r, salt);
+      const h2 = tileHash01(q, r, salt + 1);
+      const minR = count > 1 ? 0.38 : 0.14;
+      const dist = minR + 0.36 * h1;
+      const angle = baseAngle + k * sector + attempt * 0.65 + (h2 - 0.5) * Math.min(0.46, sector * 0.34);
+      let x: number;
+      let z: number;
+      if (radius !== undefined && radius > 0) {
+        const [ax, az] = clampToGroundHexagon(radius, cx, cz, TREE_RIM_MARGIN_M + minR + 0.24);
+        const rawX = ax + Math.cos(angle) * dist;
+        const rawZ = az + Math.sin(angle) * dist;
+        [x, z] = clampToGroundHexagon(radius, rawX, rawZ, TREE_RIM_MARGIN_M);
+      } else {
+        x = cx + Math.cos(angle) * dist;
+        z = cz + Math.sin(angle) * dist;
+      }
+      let minCrownDist = 2.0;
+      for (const prev of pts) {
+        minCrownDist = Math.min(minCrownDist, Math.hypot(x - prev.x, z - prev.z));
+      }
+      if (minCrownDist >= 0.72) {
+        placed = { x, z, minCrownDist };
+        break;
+      }
     }
-    let minCrownDist = 2.0;
-    for (const prev of pts) {
-      minCrownDist = Math.min(minCrownDist, Math.hypot(x - prev.x, z - prev.z));
-    }
-    pts.push({ x, z });
-    out.push({ tileQ: q, tileR: r, tileIndex, slotIndex: k, x, z, minCrownDist });
+    if (!placed) continue;
+    pts.push({ x: placed.x, z: placed.z });
+    out.push({ tileQ: q, tileR: r, tileIndex, slotIndex: k, x: placed.x, z: placed.z, minCrownDist: placed.minCrownDist });
   }
   return out;
 }

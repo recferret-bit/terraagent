@@ -18,6 +18,7 @@ export {
   HEX_TERRAIN,
   tileHash01,
   tileHashU32,
+  tileShoreFactor,
   tileStyle,
   type ChunkBuffers,
   type HexTileLayers,
@@ -93,3 +94,12 @@ export {
   type HexFloraCounts,
   type HexFloraLayer,
 } from './flora/HexFloraLayer';
+export {
+  FLORA_FOOTPRINTS,
+  PROP_EXCLUSION_RADIUS,
+  SpatialExclusionGrid,
+  countTileWaterNeighbors,
+  filterSurfacePlacesWithExclusion,
+  placeFloraByCellsWithExclusion,
+  type FloraFootprint,
+} from './flora/floraPlacementPipeline';

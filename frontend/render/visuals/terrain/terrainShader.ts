@@ -222,6 +222,7 @@ void evalTerrainWeather(
     rough = mix(rough, 0.22, wet * 0.75);
   }
   if (uPuddleLevel > 0.01 && steep < 0.22) {
+    float allowPuddles = clamp(step(0.5, uKind) + step(0.05, uRainIntensity), 0.0, 1.0);
     vec2 wp = worldPos.xz;
     float puddleNoise = evalPuddleNoiseField(wp);
     float puddleThreshold = mix(0.76, 0.44, uPuddleLevel);
@@ -229,7 +230,8 @@ void evalTerrainWeather(
       * (1.0 - smoothstep(0.06, 0.22, steep))
       * aboveWater
       * (1.0 - smoothstep(0.25, 0.55, hexShore))
-      * step(0.01, uPuddleLevel);
+      * step(0.01, uPuddleLevel)
+      * allowPuddles;
     if (puddleMask > 0.001) {
       float puddleRim = smoothstep(0.0, 0.35, puddleMask) * (1.0 - smoothstep(0.35, 0.88, puddleMask));
       col *= mix(1.0, 0.70, puddleRim);

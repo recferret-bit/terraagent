@@ -280,7 +280,7 @@ function isWaterAt(layers: HexTileLayers, i: number): boolean {
 }
 
 /** Shoreline weight [0..1] for non-dune water tiles and dry land tiles bordering water. */
-function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: HexTileLayers): number {
+export function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: HexTileLayers): number {
   if (!layers.terrain || layers.kind === 'dune' || layers.terrain[i] === HEX_TERRAIN.hole) return 0;
   if (isWaterAt(layers, i)) return 1.0;
   const q = hx.q[i]!, r = hx.r[i]!;
@@ -289,7 +289,7 @@ function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: Hex
     const j = hx.indexOf(q + dq, r + dr);
     if (j >= 0 && isWaterAt(layers, j)) waterNeighbors++;
   }
-  return waterNeighbors > 0 ? Math.min(0.95, 0.55 + waterNeighbors * 0.14) : 0;
+  return waterNeighbors > 0 ? Math.min(0.92, 0.58 + waterNeighbors * 0.10) : 0;
 }
 
 /**

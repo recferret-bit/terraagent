@@ -235,7 +235,7 @@ export function scatterTileProps(
         // Companion desert outcrop boulder on half of oasis/scrub hexes at a non-colliding opposite sector (`saltBase = 520`).
         if (tileHashU32(q, r, 101) % 2 === 0) {
           const cand = makeInstance('boulder', q, r, tileIndex, cx, cz, heightAt, 0, 1, 520, 0.44, 0.20, radius);
-          if (trees.every((tr) => Math.hypot(cand.x - tr.x, cand.z - tr.z) >= 0.72)) {
+          if (trees.every((tr) => Math.hypot(cand.x - tr.x, cand.z - tr.z) >= 0.95)) {
             out.push(cand);
           }
         }

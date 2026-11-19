@@ -80,7 +80,7 @@ export class SurfaceContext {
     this.group.add(object); this.uniformSets.push(uniforms); this.disposables.push(disposable);
   }
 
-  boulders = (count: number, probFn: (x: number, z: number) => number, size: [number, number], tint: THREE.Color, variants = 2, mat: THREE.Material = this.rockMat) => {
+  boulders = (count: number, probFn: (x: number, z: number) => number, size: [number, number], tint: THREE.Color, variants = 2, mat: THREE.Material = this.rockMat): Place[] => {
     const places = scatterGrid(this.rng, this.ext, 2.0 * this.cellMul, (x, z) => probFn(x, z) * this.landingFree(x, z));
     places.length = Math.min(places.length, count);
     this.lift(places);
@@ -88,11 +88,13 @@ export class SurfaceContext {
       const sub = places.filter((_, i) => i % variants === v);
       this.addMesh(buildInstanced(makeBoulderGeo(11 + v * 5 + this.spec.seed % 7, tint.clone().lerp(this.darkTint, v * 0.25)), mat, sub, { sx: size, sy: [size[0] * 0.7, size[1] * 0.85], sink: 0.12, tilt: 0.35, tint: jitter(0.28) }));
     }
+    return places;
   };
-  spires = (probFn: (x: number, z: number) => number, count: number, w: [number, number], h: [number, number], tint: THREE.Color, mat: THREE.Material = this.rockMat) => {
+  spires = (probFn: (x: number, z: number) => number, count: number, w: [number, number], h: [number, number], tint: THREE.Color, mat: THREE.Material = this.rockMat): Place[] => {
     const places = scatterGrid(this.rng, this.ext, 3.0 * this.cellMul, (x, z) => probFn(x, z) * this.landingFree(x, z));
     places.length = Math.min(places.length, count);
     this.lift(places);
     this.addMesh(buildInstanced(makeSpireGeo(7 + this.spec.seed % 5, tint), mat, places, { sx: w, sy: h, sink: 0.02, tilt: 0.12, tint: jitter(0.25) }));
+    return places;
   };
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { CreateOrbitalStage, OrbitalGlobeMarkerInput, OrbitalProjectedFrame, OrbitalStage } from './types';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from '../core/createColonyViewport';
+import { clearTransientWeather } from '../core/weatherConfig';
 import type { DescentHandoff } from '../descent/types';
 import { createSpaceBackdrop, type SpaceBackdrop } from '../visuals/space/SpaceBackdrop';
 import { createParallaxLayers, type ParallaxLayers } from '../visuals/space/ParallaxLayers';
@@ -42,6 +43,9 @@ class OrbitalStageImpl implements OrbitalStage {
 
   constructor(viewport: ColonyViewport, spec: PlanetSpec) {
     const { scene, sunDir } = this;
+    scene.name = 'orbital:stage';
+    scene.userData.isOrbitalSpace = true;
+    clearTransientWeather();
     scene.background = new THREE.Color(0x01020a);
     scene.environment = viewport.environment;
     scene.environmentIntensity = 0.4;
@@ -90,6 +94,7 @@ class OrbitalStageImpl implements OrbitalStage {
 
   setPlanet(next: PlanetSpec, opts: { duration?: number; continuousSpin?: boolean } = {}) {
     if (!this.globes.setPlanet(next, opts)) return;
+    clearTransientWeather();
     this.nebula.retarget(next);
     this.moons.setPlanet(next);
   }

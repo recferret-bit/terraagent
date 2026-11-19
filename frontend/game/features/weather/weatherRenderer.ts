@@ -1,6 +1,7 @@
 import type { SimEventWire } from '@terra/contracts';
+import { isSceneInDescent, isSceneInOrbit } from '@terra/render/core/dayNightConfig';
 import {
-  getRainLevel, getWeatherParams, isTwisterAvailable, isUserEditingWeather, isWeatherOn,
+  clearTransientWeather, getRainLevel, getWeatherParams, isTwisterAvailable, isUserEditingWeather, isWeatherOn,
   onWeatherAction, onWeatherUserEdit, setWeather, setWeatherParams, triggerWaterElectrocution,
   type WeatherActionKind, type WeatherParams,
 } from '@terra/render/core/weatherConfig';
@@ -350,6 +351,8 @@ export class WeatherHazardRenderer implements RendererInstance {
   public update(view: GameView, dt: number): void {
     const step = Math.max(0, dt);
     const simView = view.sim?.view ?? this.ctx.services.store?.latest ?? null;
+    const scene = resolveScene(this.ctx);
+    const inOrbitOrDescent = Boolean(scene && (isSceneInOrbit(scene) || isSceneInDescent(scene)));
     const heightAt = resolveHeightAt(this.ctx);
     const terrain = resolveHexTerrain(this.ctx);
 
@@ -359,7 +362,7 @@ export class WeatherHazardRenderer implements RendererInstance {
       if (p.remainingS <= 0) { clearMeteorTilesOnTerrain(terrain, p.tiles); this.pendingMeteorClears.splice(i, 1); }
     }
 
-    if (simView) {
+    if (simView && !inOrbitOrDescent) {
       const weatherBlob = simView.blobs?.weather as WeatherBlobView | undefined;
       if (weatherBlob) this.syncWeatherBlob(simView, weatherBlob, heightAt);
       const overloaded = extractOverloadedBuildings(simView, weatherBlob, heightAt, this.ctx.services.scene3d ? (q, r) => this.ctx.services.scene3d!.tileToWorld(q, r) : undefined);
@@ -381,6 +384,7 @@ export class WeatherHazardRenderer implements RendererInstance {
   }
 
   public dispose(): void {
+    clearTransientWeather();
     if (this.weatherEditTimer !== null) { clearTimeout(this.weatherEditTimer); this.weatherEditTimer = null; }
     if (this.windEditTimer !== null) { clearTimeout(this.windEditTimer); this.windEditTimer = null; }
     this.offRenderEvents?.(); this.offServerEvents?.();
