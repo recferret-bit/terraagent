@@ -4,6 +4,7 @@ import { DEPOSIT_STAGES, type ArchetypeCategory, type DepositVisualStage } from 
 import { reconFactionPalette } from '@terra/render/kitbash/archetypes/units/reconFaction';
 import type { InteractionTargetKind } from '@terra/render/particles';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
+import type { FloraGroup } from './content/floraCatalog';
 
 export type View = 'iso' | 'front' | 'side' | 'top';
 export const VIEWS: View[] = ['iso', 'front', 'side', 'top'];
@@ -88,12 +89,16 @@ export interface PgState {
   wildlife: PlanetKind | null;
   /** Simulated solar hour (`0..24`) for wildlife circadian schedules (`&wildlifeHour=10`). */
   wildlifeHour: number;
-  row: ArchetypeCategory | null; filter: string;
+  row: ArchetypeCategory | null; floraRow: FloraGroup | null; filter: string;
 }
+
+const parseFloraRow = (v: string | null): FloraGroup | null =>
+  v === 'tree' || v === 'ground' ? v : null;
 
 /** Initial state from the URL parameters documented in README.md. */
 export function createState(params: URLSearchParams): PgState {
   const row = params.get('row') as ArchetypeCategory;
+  const floraRow = parseFloraRow(params.get('floraRow'));
   const rawTileState = params.get('tileState') ?? params.get('tilestate');
   const surface = params.get('surface') === '1';
   const hexTerrain = params.get('hexterrain') === '1' || (Boolean(rawTileState) && !surface);
@@ -120,7 +125,8 @@ export function createState(params: URLSearchParams): PgState {
     pose: parsePose(params.get('pose')),
     wildlife,
     wildlifeHour: parseHour(params.get('wildlifeHour')),
-    row: row && CATS.includes(row) ? row : null,
+    row: floraRow ? null : (row && CATS.includes(row) ? row : null),
+    floraRow,
     filter: '',
   };
 }
@@ -130,6 +136,7 @@ export function syncURL(state: PgState): URLSearchParams {
   if (state.id) q.set('inspect', state.id);
   q.set('biome', state.kind); q.set('view', state.view);
   if (state.row) q.set('row', state.row);
+  if (state.floraRow) q.set('floraRow', state.floraRow);
   if (state.surface) q.set('surface', '1');
   if (state.hexTerrain) q.set('hexterrain', '1');
   if (state.work) q.set('work', '1');

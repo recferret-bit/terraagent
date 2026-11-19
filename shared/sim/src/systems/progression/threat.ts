@@ -24,7 +24,7 @@ export const MAX_RAID_SIZE = 12;
 
 /**
  * Species threat-point cost registry (`fauna-hives-spec.md` §2).
- * Extensible for W17 `brute` and W19 `drifter` additions via `registerFaunaThreatSpecies`.
+ * Extensible for insect brood and siege additions via `registerFaunaThreatSpecies`.
  */
 export const FAUNA_SPECIES_THREAT_COSTS: Record<FaunaSpeciesId, number> & Record<string, number> = {
   blackAnt: 1,
@@ -52,13 +52,13 @@ export function computeSpeciesWaveCounts(raidSize: number): Record<FaunaSpeciesI
   };
 }
 
-export type RaidCompositionTier = 'none' | 'skitters' | 'skitters_and_brutes' | 'drifter_flock';
+export type RaidCompositionTier = 'none' | 'swarms' | 'swarms_and_brutes' | 'spitter_brood';
 
 export interface RaidComposition {
   tier: RaidCompositionTier;
-  skitters: number;
+  swarms: number;
   brutes: number;
-  drifterFlocks: number;
+  spitterBroods: number;
   speciesWaves?: Record<FaunaSpeciesId, number>;
 }
 
@@ -113,9 +113,9 @@ function attachSpeciesWaves(comp: RaidComposition, raidSize: number): RaidCompos
 
 /**
  * Computes the raid creature composition for a given `threatStage` and `raidSize` (`UO-T-03`, `UO-T-08`).
- * - S3–S5: Skitters only
+ * - S3–S5: Insect swarm waves only
  * - S6–S7: +1 Brute per 4 creatures
- * - S8+: adds 1 Drifter flock (+1 extra if the colony has a closed wall ring)
+ * - S8+: adds 1 Spitter brood (+1 extra if the colony has a closed wall ring)
  */
 export function computeRaidComposition(
   threatStage: number,
@@ -127,29 +127,29 @@ export function computeRaidComposition(
     return attachSpeciesWaves(
       {
         tier: 'none',
-        skitters: 0,
+        swarms: 0,
         brutes: 0,
-        drifterFlocks: 0,
+        spitterBroods: 0,
       },
       0,
     );
   }
   const brutes = threatStage >= 6 ? Math.floor(raidSize / 4) : 0;
-  const skitters = Math.max(0, raidSize - brutes);
-  const drifterFlocks = threatStage >= 8 ? 1 + (closedWallRing ? 1 : 0) : 0;
+  const swarms = Math.max(0, raidSize - brutes);
+  const spitterBroods = threatStage >= 8 ? 1 + (closedWallRing ? 1 : 0) : 0;
   const tier: RaidCompositionTier =
     threatStage >= 8
-      ? 'drifter_flock'
+      ? 'spitter_brood'
       : threatStage >= 6
-        ? 'skitters_and_brutes'
-        : 'skitters';
+        ? 'swarms_and_brutes'
+        : 'swarms';
 
   return attachSpeciesWaves(
     {
       tier,
-      skitters,
+      swarms,
       brutes,
-      drifterFlocks,
+      spitterBroods,
     },
     raidSize,
   );

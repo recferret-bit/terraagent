@@ -14,3 +14,20 @@ a.wm:focus-visible{outline:1px solid var(--ta-orange);outline-offset:3px}
 #side #list{min-height:0}
 .side-pane[data-side-pane="hive"],.side-pane[data-side-pane="march"]{overflow:auto}
 #side #fauna-panel,#side #march-panel{position:static;inset:auto;width:auto;z-index:auto;border:0;background:transparent;backdrop-filter:none;clip-path:none;padding:8px 10px 16px}
+.nb-block{flex:none;margin:0 12px 10px;padding:9px 10px 10px;background:var(--ta-plate);border:1px solid var(--ta-seam-2);border-left:3px solid var(--ta-blue);clip-path:polygon(var(--ta-chamfer-s) 0,100% 0,100% calc(100% - var(--ta-chamfer-s)),calc(100% - var(--ta-chamfer-s)) 100%,0 100%,0 var(--ta-chamfer-s))}
+.nb-block.is-active{border-color:var(--ta-orange);border-left-color:var(--ta-orange);background:rgba(255,106,19,.08)}
+.nb-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:7px}
+.nb-title{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ta-blue-hi);font-weight:600;white-space:nowrap}
+.nb-title b{color:var(--ta-steel);font-weight:500}
+.nb-block.is-active .nb-title{color:var(--ta-orange-hi)}
+.nb-rows{display:flex;gap:4px}
+.nb-rows .row-btn{background:none;border:1px solid var(--ta-seam-3);color:var(--ta-steel);font:inherit;font-size:10px;letter-spacing:.1em;padding:1px 6px;cursor:pointer}
+.nb-rows .row-btn:hover,.nb-rows .row-btn.on{color:var(--ta-orange-hi);border-color:var(--ta-orange)}
+.nb-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:7px}
+.nb-tab{background:var(--ta-void);border:1px solid var(--ta-seam-2);color:var(--ta-steel);font:500 10px/1.2 var(--ta-font-mono);letter-spacing:.06em;padding:4px 3px;cursor:pointer;text-align:center}
+.nb-tab:hover{border-color:var(--ta-orange);color:var(--ta-text)}
+.nb-tab.on{background:var(--ta-orange);border-color:var(--ta-orange);color:var(--ta-void);font-weight:700}
+.nb-select{width:100%;box-sizing:border-box;background:var(--ta-void);border:1.5px solid var(--ta-seam-2);color:var(--ta-text);padding:7px 9px;font:500 12px/1.3 var(--ta-font-body);outline:none;cursor:pointer;clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+.nb-select:hover,.nb-select:focus{border-color:var(--ta-orange)}
+.nb-select optgroup{background:var(--ta-deep);color:var(--ta-orange-hi);font-style:normal;font-weight:700}
+.nb-select option{background:var(--ta-void);color:var(--ta-text)}

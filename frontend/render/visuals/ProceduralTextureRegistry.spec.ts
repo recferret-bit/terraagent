@@ -106,3 +106,38 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
     uniMat.dispose();
   });
 });
+
+describe('warmFurPelage CRT/pixel fur locks and UnifiedColonyMaterial pelage sheen', () => {
+  it('produces chunky achromatic fur locks in warmFurPelage and CRT/pixel-ready Kajiya + velvet rim in UnifiedColonyMaterial', () => {
+    const fur = ProceduralTextureRegistry.get('warmFurPelage', 64);
+    const data = fur.map!.image.data as Uint8Array;
+    let minLuma = 255;
+    let maxLuma = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]!;
+      const g = data[i + 1]!;
+      const b = data[i + 2]!;
+      expect(r).toBe(g);
+      expect(g).toBe(b);
+      minLuma = Math.min(minLuma, r);
+      maxLuma = Math.max(maxLuma, r);
+    }
+    expect(maxLuma - minLuma).toBeGreaterThanOrEqual(45);
+
+    const { material: mat } = createUnifiedColonyMaterial({ biome: 'temperate' });
+    const mockShader = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      vertexShader: '#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>\n#include <shadowmap_vertex>',
+      fragmentShader: '#include <common>\n#include <color_fragment>\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n#include <normal_fragment_maps>\n#include <opaque_fragment>',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    mat.onBeforeCompile(mockShader, null as unknown as THREE.WebGLRenderer);
+    expect(mockShader.fragmentShader).toContain('taFurClump');
+    expect(mockShader.fragmentShader).toContain('taVelvetRim');
+    expect(mockShader.fragmentShader).toContain('taKajiya');
+    // Ensure screen-space derivatives remain outside tissue-dependent `if` branches
+    const derivSection = mockShader.fragmentShader.split('// Evaluate derivatives outside')[1]?.split('if (hasOrganicMicroNormal) {')[0] ?? '';
+    expect(derivSection).toContain('dFdx(organicHeight)');
+    expect(derivSection).toContain('dFdy(organicHeight)');
+    mat.dispose();
+  });
+});

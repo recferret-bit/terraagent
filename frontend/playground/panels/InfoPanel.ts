@@ -4,6 +4,7 @@ import type { FaunaSceneStats } from '../content/FaunaSceneHost';
 import type { WildlifeSceneStats } from '../content/WildlifeSceneHost';
 import type { MarchStats } from '../content/marchScene';
 import { ANIM_NAME, archetypeStats } from '../content/archetypeStats';
+import { floraStats, getFloraEntry, isFloraId } from '../content/floraCatalog';
 import { bindDock } from './dock';
 
 let infoDocked = false;
@@ -59,6 +60,24 @@ export function updateInfo(id: string, drawCalls: number, extraHtml: string) {
   ensureInfoDock(el);
   if (!id) {
     el.innerHTML = infoHead('<h3>No selection</h3>');
+    return;
+  }
+  if (isFloraId(id)) {
+    const entry = getFloraEntry(id)!;
+    const s = floraStats(entry);
+    const contactCell = s.plantedSkirt
+      ? `<td class="ok">✔ minY ${s.minY.toFixed(3)} (planted skirt)</td>`
+      : `<td class="${s.groundedOk ? 'ok' : 'bad'}">${s.groundedOk ? '✔' : '✖'} minY ${s.minY.toFixed(3)}</td>`;
+    el.innerHTML = `${infoHead(`<h3>${esc(entry.label)}<small>${esc(entry.id)} · ${entry.group}</small></h3>`)}<table>
+      <tr><td>triangles</td><td>${s.tris.toLocaleString()}</td></tr>
+      <tr><td>vertices</td><td>${s.verts.toLocaleString()}</td></tr>
+      <tr><td>bbox (m)</td><td>${s.size.x.toFixed(2)} × ${s.size.y.toFixed(2)} × ${s.size.z.toFixed(2)}</td></tr>
+      <tr><td>ground contact</td>${contactCell}</tr>
+      <tr><td>biome</td><td>${esc(entry.biomeHint)}</td></tr>
+      <tr><td>wind sway</td><td>${entry.isRock ? 'static rock' : `active (×${entry.sway.toFixed(2)})`}</td></tr>
+      <tr><td>draw calls</td><td>${drawCalls} (${entry.isRock ? 'rock' : 'foliage'})</td></tr>
+      <tr><td>attributes</td><td>${s.attrs.filter((a) => a !== 'position' && a !== 'normal').join(', ') || 'position, normal'}</td></tr>
+      <tr><td>notes</td><td>${esc(entry.description)}</td></tr></table>`;
     return;
   }
   const e = ArchetypeCatalog.get(id);

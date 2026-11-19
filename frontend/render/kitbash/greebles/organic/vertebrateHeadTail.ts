@@ -47,6 +47,7 @@ export interface MammalHeadTailSpec {
   snoutDrop: number;
   muzzleZone?: MaterialZoneId;
   muzzleBlend?: boolean;
+  bluntSkull?: boolean;
   eyeScale?: number;
   eyeForward?: number;
   earWidth: number;
@@ -81,12 +82,15 @@ function addMammalMuzzleAndJaw(
   const mZone = s.muzzleBlend ? 'hullPrimary' : (s.muzzleZone ?? 'hullPrimary');
   const muzzleColor = makeMuzzleColor(s.muzzleBlend, s.coatPattern);
 
+  const blunt = Boolean(s.bluntSkull);
+  const sq = blunt ? 0.36 : 0;
+  const tipRx = blunt ? s.snoutWidth * 0.88 : s.snoutWidth * 0.48;
   b.addPart(
     sculptedLoft(
       [
-        { y: mzY + hh * 0.08, z: mzBaseZ - 0.020, rx: s.snoutWidth * 0.96, ryTop: hh * 0.48, ryBot: hh * 0.36, ridge: 0.25 },
-        { y: mzY + hh * 0.02, z: (mzBaseZ + mzTipZ) * 0.5, rx: s.snoutWidth * 0.72, ryTop: hh * 0.36, ryBot: hh * 0.26, ridge: 0.25 },
-        { y: mzY - hh * 0.03, z: mzTipZ, rx: s.snoutWidth * 0.48, ryTop: hh * 0.25, ryBot: hh * 0.18, ridge: 0.18 },
+        { y: mzY + hh * 0.08, z: mzBaseZ - 0.020, rx: s.snoutWidth * 0.96, ryTop: hh * (blunt ? 0.62 : 0.48), ryBot: hh * (blunt ? 0.48 : 0.36), ridge: blunt ? 0.08 : 0.25, squareness: sq },
+        { y: mzY + hh * (blunt ? 0.06 : 0.02), z: (mzBaseZ + mzTipZ) * 0.5, rx: s.snoutWidth * (blunt ? 0.92 : 0.72), ryTop: hh * (blunt ? 0.54 : 0.36), ryBot: hh * (blunt ? 0.40 : 0.26), ridge: blunt ? 0.06 : 0.25, squareness: sq },
+        { y: mzY - hh * 0.02, z: mzTipZ, rx: tipRx, ryTop: hh * (blunt ? 0.42 : 0.25), ryBot: hh * (blunt ? 0.32 : 0.18), ridge: blunt ? 0.04 : 0.18, squareness: sq },
       ],
       8,
       6,
@@ -240,15 +244,16 @@ export function addMammalNeckAndHead(b: KitbashBuilder, s: MammalHeadTailSpec): 
     ...headOpts,
   });
 
+  const bluntSq = s.bluntSkull ? 0.34 : 0;
   b.addPart(
     sculptedLoft(
       [
-        { y: hc[1] - hh * 0.06, z: occiputZ - 0.014, rx: lastNeckSt.rx * 0.88, ryTop: lastNeckSt.ryTop * 0.88, ryBot: lastNeckSt.ryBot * 0.88, ridge: 0.16 },
-        { y: hc[1] - hh * 0.06, z: occiputZ + 0.006, rx: occRx, ryTop: occRyTop, ryBot: occRyBot, ridge: 0.18 },
-        { y: hc[1] + hh * 0.02, z: hc[2] - hl * 0.10, rx: hw * 1.06, ryTop: hh * 0.98, ryBot: hh * 0.84, ridge: 0.14 },
-        { y: hc[1] - hh * 0.04, z: hc[2] + hl * 0.58, rx: hw * 0.78, ryTop: hh * 0.76, ryBot: hh * 0.68, ridge: 0.22 },
-        { y: hc[1] - hh * 0.14, z: hc[2] + hl * 0.96, rx: s.snoutWidth * 0.95, ryTop: hh * 0.54, ryBot: hh * 0.50, ridge: 0.18 },
-        { y: hc[1] - hh * 0.14, z: hc[2] + hl * 1.02, rx: s.snoutWidth * 0.72, ryTop: hh * 0.40, ryBot: hh * 0.36, ridge: 0.14 },
+        { y: hc[1] - hh * 0.06, z: occiputZ - 0.014, rx: lastNeckSt.rx * 0.88, ryTop: lastNeckSt.ryTop * 0.88, ryBot: lastNeckSt.ryBot * 0.88, ridge: 0.16, squareness: bluntSq },
+        { y: hc[1] - hh * 0.06, z: occiputZ + 0.006, rx: occRx, ryTop: occRyTop, ryBot: occRyBot, ridge: 0.18, squareness: bluntSq },
+        { y: hc[1] + hh * 0.02, z: hc[2] - hl * 0.10, rx: hw * 1.06, ryTop: hh * 0.98, ryBot: hh * 0.84, ridge: bluntSq > 0 ? 0.06 : 0.14, squareness: bluntSq },
+        { y: hc[1] - hh * 0.04, z: hc[2] + hl * 0.58, rx: hw * (bluntSq > 0 ? 0.88 : 0.78), ryTop: hh * 0.76, ryBot: hh * 0.68, ridge: bluntSq > 0 ? 0.08 : 0.22, squareness: bluntSq },
+        { y: hc[1] - hh * 0.14, z: hc[2] + hl * 0.96, rx: s.snoutWidth * (bluntSq > 0 ? 1.06 : 0.95), ryTop: hh * (bluntSq > 0 ? 0.68 : 0.54), ryBot: hh * (bluntSq > 0 ? 0.62 : 0.50), ridge: bluntSq > 0 ? 0.06 : 0.18, squareness: bluntSq },
+        { y: hc[1] - hh * 0.14, z: hc[2] + hl * 1.02, rx: s.snoutWidth * (bluntSq > 0 ? 0.86 : 0.72), ryTop: hh * (bluntSq > 0 ? 0.52 : 0.40), ryBot: hh * (bluntSq > 0 ? 0.48 : 0.36), ridge: bluntSq > 0 ? 0.05 : 0.14, squareness: bluntSq },
       ],
       10,
       6,

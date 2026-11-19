@@ -15,6 +15,7 @@ import { createPlaygroundDebug } from './pgDebug';
 import { BUILD_STAGES, VERTEBRATE_POSE_MODES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type VertebratePoseMode, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
+import { getFloraEntry, isFloraId, listFloraEntries, type FloraGroup } from './content/floraCatalog';
 import { FaunaSceneHost } from './content/FaunaSceneHost';
 import { WildlifeCoordinator } from './content/WildlifeCoordinator';
 import { MarchSceneHost, type MarchPace } from './content/marchScene';
@@ -68,9 +69,13 @@ export class PlaygroundApp {
     this.faunaHost = new FaunaSceneHost(vp.scene);
     this.marchHost = new MarchSceneHost(vp.scene);
     this.rig = new StageRig(() => this.spawns.minX());
-    this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row || !!this.state.faunaScene || !!this.state.wildlife, flyKeys);
+    this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row || !!this.state.floraRow || !!this.state.faunaScene || !!this.state.wildlife, flyKeys);
     vp.scene.add(this.rig.group, this.spawns.content, this.spawns.ring);
-    this.sidebar = new Sidebar(this.state, { onSelect: (id) => this.select(id), onRow: (c) => this.toggleRow(c) });
+    this.sidebar = new Sidebar(this.state, {
+      onSelect: (id) => this.select(id),
+      onRow: (c) => this.toggleRow(c),
+      onFloraRow: (g) => this.toggleFloraRow(g),
+    });
     this.toolbar = new Toolbar(this.state, {
       onView: (v) => this.setView(v),
       onPlanet: (k) => { this.state.kind = k; if (this.state.wildlife) this.state.wildlife = k; this.applyPlanet(); syncURL(this.state); },
@@ -110,12 +115,15 @@ export class PlaygroundApp {
       onStep: () => { this.marchHost.stepTicks(1); this.marchPanel.renderStats(); },
       onReset: () => this.resetMarch(),
     });
-    bindPicking(vp.renderer.domElement, vp.camera, {
-      spawns: () => this.spawns.spawns, isRow: () => !!this.state.row, selectedId: () => this.state.id,
-      select: (id) => this.select(id, { rebuild: false, frame: false }),
-      focus: (target, radius) => this.setView(this.state.view, { target, radius }),
+    const bindPick = {
+      spawns: () => this.spawns.spawns,
+      isRow: () => !!this.state.row || !!this.state.floraRow,
+      selectedId: () => this.state.id,
+      select: (id: string) => this.select(id, { rebuild: false, frame: false }),
+      focus: (target: THREE.Vector3, radius: number) => this.setView(this.state.view, { target, radius }),
       ground: () => this.rig.top,
-    });
+    };
+    bindPicking(vp.renderer.domElement, vp.camera, bindPick);
     bindKeys({
       cycle: (d) => this.cycle(d), view: (v) => this.setView(v), toggle: (k) => this.toggle(k), focus: () => this.focusSelected(),
       revealSearch: () => { setDockHidden('side', false); this.sidebar.showTab('units'); },
@@ -136,8 +144,9 @@ export class PlaygroundApp {
       this.lightsPanel.onExternalChange(changedId);
     });
     const initial = params.get('inspect');
-    state.id = initial && ArchetypeCatalog.has(initial) ? initial : (state.row ? ArchetypeCatalog.list(state.row)[0]?.id : ArchetypeCatalog.list()[0]?.id) ?? '';
-    if (initial && !ArchetypeCatalog.has(initial)) toast(`Unknown archetype "${initial}"`);
+    const knownInitial = initial ? (ArchetypeCatalog.has(initial) || isFloraId(initial)) : false;
+    state.id = knownInitial ? initial! : state.floraRow ? (listFloraEntries(state.floraRow)[0]?.id ?? '') : (state.row ? ArchetypeCatalog.list(state.row)[0]?.id : ArchetypeCatalog.list()[0]?.id) ?? '';
+    if (initial && !knownInitial) toast(`Unknown archetype "${initial}"`);
     this.applyPlanet();
     if (state.id) this.select(state.id, { rebuild: false, frame: true }); else this.setView(state.view, { instant: true });
     this.syncFaunaStage();
@@ -181,7 +190,7 @@ export class PlaygroundApp {
   private bounds() {
     if (this.state.march) return this.marchHost.bounds();
     if (this.state.wildlife !== null) return this.wildlife.host.bounds();
-    return this.state.faunaScene !== null ? this.faunaHost.bounds() : this.spawns.bounds(this.state.id, this.state.row);
+    return this.state.faunaScene !== null ? this.faunaHost.bounds() : this.spawns.bounds(this.state.id, !!this.state.row || !!this.state.floraRow);
   }
 
   // ---------------------------------------------------------------- planet / content
@@ -205,7 +214,7 @@ export class PlaygroundApp {
     const active = state.faunaScene !== null;
     this.spawns.content.visible = !active && !state.march && state.wildlife === null;
     if (active || state.wildlife !== null) this.spawns.ring.visible = false;
-    else this.spawns.updateRing(state.id, state.row);
+    else this.spawns.updateRing(state.id, !!state.row || !!state.floraRow);
     this.faunaHost.setScene(state.faunaScene, { mode: state.faunaMode, seed: state.faunaSeed, biomeKey: PLANET_SPECS[state.kind].biomeKey, wire: state.wire });
     this.syncSurface();
     this.faunaPanel?.render();
@@ -348,10 +357,10 @@ export class PlaygroundApp {
 
   private rebuildContent() {
     const { state, spawns } = this;
-    spawns.rebuild(spawns.idsFor(state.row, state.id), PLANET_SPECS[state.kind].biomeKey, state.wire, state.depositStage);
+    spawns.rebuild(spawns.idsFor(state.row, state.id, state.floraRow), PLANET_SPECS[state.kind].biomeKey, state.wire, state.depositStage);
     spawns.applyBuild(state.build);
     spawns.applyRuin(state.ruin);
-    spawns.updateRing(state.id, state.row);
+    spawns.updateRing(state.id, !!state.row || !!state.floraRow);
     this.rig.placeHuman();
     this.applyValidation();
   }
@@ -365,27 +374,25 @@ export class PlaygroundApp {
     if (state.march) return updateSceneInfo(this.marchHost.getStats());
     if (state.wildlife !== null) return updateSceneInfo(this.wildlife.host.getStats());
     if (state.faunaScene !== null) return updateSceneInfo(this.faunaHost.getStats());
-    updateInfo(state.id, state.row ? this.spawns.spawns.length : 1, validationHtml(this.validation.report(state.id, state.validate), state.id));
+    updateInfo(state.id, (state.row || state.floraRow) ? this.spawns.spawns.length : 1, validationHtml(this.validation.report(state.id, state.validate), state.id));
   }
 
   // ---------------------------------------------------------------- selection / view
   private select(id: string, opts: { rebuild?: boolean; frame?: boolean } = {}) {
     const { state } = this;
-    const { rebuild = !state.row, frame = true } = opts;
-    if (!ArchetypeCatalog.has(id)) { toast(`Unknown archetype: ${id}`); return; }
+    const flora = isFloraId(id);
+    if (!flora && !ArchetypeCatalog.has(id)) { toast(`Unknown archetype: ${id}`); return; }
+    const { rebuild = !(flora ? state.floraRow : state.row), frame = true } = opts;
     state.id = id;
+    if (flora && state.row) state.row = null;
+    if (!flora && state.floraRow) state.floraRow = null;
     if (this.hasStarted && state.march) this.setMarch(null);
-    if (this.hasStarted && state.faunaScene !== null) {
-      state.faunaScene = null;
-      this.syncFaunaStage();
-    }
-    if (this.hasStarted && state.wildlife !== null) {
-      state.wildlife = null;
-      this.wildlife.sync();
-    }
-    if (state.row && ArchetypeCatalog.get(id).category !== state.row) state.row = ArchetypeCatalog.get(id).category;
-    if (rebuild) this.rebuildContent();
-    this.spawns.updateRing(state.id, state.row);
+    if (this.hasStarted && state.faunaScene !== null) { state.faunaScene = null; this.syncFaunaStage(); }
+    if (this.hasStarted && state.wildlife !== null) { state.wildlife = null; this.wildlife.sync(); }
+    if (flora && state.floraRow && getFloraEntry(id)?.group !== state.floraRow) state.floraRow = getFloraEntry(id)!.group;
+    else if (!flora && state.row && ArchetypeCatalog.get(id).category !== state.row) state.row = ArchetypeCatalog.get(id).category;
+    if (rebuild || state.row || state.floraRow) this.rebuildContent();
+    this.spawns.updateRing(state.id, !!state.row || !!state.floraRow);
     this.refreshInfo();
     this.sidebar.mark();
     this.lightsPanel?.render();
@@ -411,9 +418,23 @@ export class PlaygroundApp {
 
   private toggleRow(cat?: ArchetypeCategory) {
     const { state } = this;
-    const c = cat ?? (state.id ? ArchetypeCatalog.get(state.id).category : null);
+    if (isFloraId(state.id) && !cat) { this.toggleFloraRow(getFloraEntry(state.id)!.group); return; }
+    const c = cat ?? (state.id && !isFloraId(state.id) ? ArchetypeCatalog.get(state.id).category : null);
+    state.floraRow = null;
     state.row = state.row === c || !c ? null : c;
-    if (state.row && (!state.id || ArchetypeCatalog.get(state.id).category !== state.row)) state.id = ArchetypeCatalog.list(state.row)[0]?.id ?? state.id;
+    if (state.row && (!state.id || isFloraId(state.id) || ArchetypeCatalog.get(state.id).category !== state.row)) state.id = ArchetypeCatalog.list(state.row)[0]?.id ?? state.id;
+    this.rebuildContent(); this.refreshInfo(); this.sidebar.render(); this.toolbar.clearBar();
+    this.toolbar.syncToggles();
+    this.lightsPanel.render();
+    this.setView(state.view);
+    syncURL(state);
+  }
+
+  private toggleFloraRow(group: FloraGroup) {
+    const { state } = this;
+    state.row = null;
+    state.floraRow = state.floraRow === group ? null : group;
+    if (state.floraRow && getFloraEntry(state.id)?.group !== state.floraRow) state.id = listFloraEntries(state.floraRow)[0]?.id ?? state.id;
     this.rebuildContent(); this.refreshInfo(); this.sidebar.render(); this.toolbar.clearBar();
     this.toolbar.syncToggles();
     this.lightsPanel.render();
@@ -452,7 +473,7 @@ export class PlaygroundApp {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.time += dt;
     this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget, this.state.pose);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row || !!this.state.floraRow, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget, this.state.pose);
     this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
     this.wildlife.host.update(dt);
     this.marchHost.update(dt, this.time);

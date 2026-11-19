@@ -46,16 +46,34 @@ export function mammalTrunk(
   );
 }
 
+function sleepPitchTrunkMinY(trunkGeo: THREE.BufferGeometry, torsoY: number): number {
+  const pos = trunkGeo.getAttribute('position') as THREE.BufferAttribute;
+  const mat = new THREE.Matrix4()
+    .compose(new THREE.Vector3(0, torsoY, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.03), new THREE.Vector3(1, 1, 1))
+    .multiply(new THREE.Matrix4().makeTranslation(0, -torsoY, 0));
+  const v = new THREE.Vector3();
+  let minY = Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(mat);
+    if (v.y < minY) minY = v.y;
+  }
+  return minY;
+}
+
 /**
  * Assembles a complete warm-blooded quadruped using sculpted anatomical lofts,
  * differentiated forelimbs & hindlimbs with closed-form 2-link IK, continuous neck/skull/jaw,
  * cupped ears, sculpted paws/cloven hooves, and tail counterbalance.
  */
 export function buildMammalCore(b: KitbashBuilder, s: MammalBuildSpec): { neckPivot: V3; headCenter: V3; headAnim: PartOptions } {
+  const trunkGeo = sculptedLoft(s.trunkStations, 14, 6, 1.7, 0);
+  const pitchedMinY = sleepPitchTrunkMinY(trunkGeo, s.torsoY);
+  const autoSleepDrop = Math.max(0.02, pitchedMinY - 0.040);
+
   b.vertebrateConfig = {
     isBird: 0,
     comY: s.torsoY,
-    sleepDrop: s.sleepDrop,
+    sleepDrop: s.sleepDrop > 0 ? autoSleepDrop : 0,
     strideLen: s.strideLen,
     liftHeight: s.liftHeight,
     gaitFreq: s.gaitFreq,
@@ -63,7 +81,7 @@ export function buildMammalCore(b: KitbashBuilder, s: MammalBuildSpec): { neckPi
   };
 
   const bodyRig: VertebratePartRig = { role: 1 };
-  b.addPart(sculptedLoft(s.trunkStations, 14, 6, 1.7, 0), 'hullPrimary', {
+  b.addPart(trunkGeo, 'hullPrimary', {
     name: 'sculpted mammalian trunk',
     vertexColor: makeMammalBodyColor(s.coatPattern ?? 'countershade'),
     vertRig: bodyRig,

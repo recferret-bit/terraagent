@@ -60,7 +60,7 @@ export function createPlaygroundDebug(d: PlaygroundDebugApiDeps) {
   return {
     state,
     select: (id: string) => d.select(id),
-    validate: (id = state.id) => validateArchetype(id),
+    validate: (id = state.id) => (id.startsWith('flora.') ? null : validateArchetype(id)),
     setView: (v: View) => d.setView(v),
     setPlanet: (k: PlanetKind) => d.setPlanet(k),
     toggle: (k: ToggleKey) => d.toggle(k),

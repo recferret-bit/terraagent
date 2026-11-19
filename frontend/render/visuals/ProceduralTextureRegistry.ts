@@ -258,19 +258,24 @@ ProceduralTextureRegistry.register('desertPebbleCrust', (size = 256) =>
 );
 
 ProceduralTextureRegistry.register('warmFurPelage', (size = 256) =>
-  buildBufferPbrPreset(size, 1.6, (u, v) => {
-    const tuft = tileableValueNoise(u * 2, v, 24, 907) * 0.6 + tileableValueNoise(u * 3, v, 48, 919) * 0.4;
-    const fine = tileableValueNoise(u * 4, v * 2, 36, 947);
-    const guard = 0.5 + 0.5 * Math.sin((u * 18 + tuft * 2.4 + fine * 1.1) * Math.PI * 2);
-    const dapple = tileableValueNoise(u, v, 5, 937);
-    const h = 104 + tuft * 84 + guard * 28 + fine * 22;
-    const luma = 192 + (tuft - 0.5) * 26 + (dapple - 0.5) * 22 + (guard - 0.5) * 14;
+  buildBufferPbrPreset(size, 2.35, (u, v) => {
+    const row = Math.floor(v * 6);
+    const stagger = (row % 2) * 0.5;
+    const cu = ((u * 5 + stagger) % 1) - 0.5;
+    const cv = (v * 6) % 1;
+    const vNotch = 1 - Math.min(1, cv * 0.85 + Math.abs(cu) * 1.45);
+    const lockShape = Math.max(0, Math.min(1, vNotch * 1.35));
+    const tuft = tileableValueNoise(u * 2, v, 14, 907) * 0.65 + tileableValueNoise(u * 3, v, 28, 919) * 0.35;
+    const guard = 0.5 + 0.5 * Math.sin((u * 12 + tuft * 2.4 + cu * 1.6) * Math.PI * 2);
+    const parting = Math.max(0, 1 - lockShape * 1.6);
+    const h = 72 + lockShape * 116 + tuft * 34 + guard * 18;
+    const luma = 192 + (lockShape - 0.44) * 52 + (tuft - 0.5) * 22 + (guard - 0.5) * 14 - parting * 22;
     return {
       r: luma,
       g: luma,
       b: luma,
       h,
-      rough: 212 - guard * 32 - fine * 14,
+      rough: 214 - lockShape * 28 - guard * 24,
     };
   }),
 );

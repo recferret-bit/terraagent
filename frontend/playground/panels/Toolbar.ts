@@ -149,7 +149,7 @@ export class Toolbar {
   syncToggles() {
     document.querySelectorAll<HTMLElement>('.tog').forEach((b) => {
       const k = b.dataset.k as ToggleKey;
-      b.classList.toggle('on', k === 'row' ? !!this.state.row : !!this.state[k]);
+      b.classList.toggle('on', k === 'row' ? !!(this.state.row || this.state.floraRow) : !!this.state[k]);
     });
     const build = document.querySelector<HTMLElement>('#build');
     if (build) { build.textContent = `build ${Math.round(this.state.build * 100)}%`; build.classList.toggle('on', this.state.build !== 1); }

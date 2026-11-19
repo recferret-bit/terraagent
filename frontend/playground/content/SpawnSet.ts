@@ -20,9 +20,21 @@ import {
   type ActiveWorkSiteInput,
   type InteractionTargetKind,
 } from '@terra/render/particles';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { VertebratePoseMode } from '../state';
+import { createFloraMesh, isFloraId, listFloraEntries, type FloraGroup } from './floraCatalog';
 
-export interface Spawn { id: string; mesh: ArchetypeMesh; box: THREE.Box3; }
+export interface Spawn {
+  id: string;
+  mesh: ArchetypeMesh;
+  box: THREE.Box3;
+  floraTimeU?: { value: number };
+  floraDispose?: () => void;
+}
+const biomeToPlanet = (b: string): PlanetKind =>
+  b === 'dune' || b === 'oceanForest' || b === 'forestRock'
+    ? b
+    : b === 'arid' ? 'dune' : b === 'tropical' ? 'oceanForest' : 'forestRock';
 const footprint = (b: THREE.Box3) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 1);
 const _pos = new THREE.Vector3();
 const _tgt = new THREE.Vector3();
@@ -46,6 +58,10 @@ export class SpawnSet {
     this.workParticles.clear();
     for (const s of this.spawns) {
       this.content.remove(s.mesh);
+      if (s.floraDispose) {
+        s.floraDispose();
+        continue;
+      }
       // every robot / building mesh carries a projector rig (cones, pools, lenses, halo): free it with the model
       (s.mesh.userData as { projectorRig?: EntityProjectorRigState } | undefined)?.projectorRig?.dispose();
       s.mesh.geometry.dispose();
@@ -58,7 +74,19 @@ export class SpawnSet {
   rebuild(ids: string[], biomeKey: string, wire: boolean, depositStage: DepositVisualStage = 'full') {
     this.dispose();
     const widths: number[] = [];
+    const planet = biomeToPlanet(biomeKey);
     for (const id of ids) {
+      if (isFloraId(id)) {
+        try {
+          const built = createFloraMesh(id, planet, 17);
+          built.mesh.geometry.computeBoundingBox();
+          const box = built.mesh.geometry.boundingBox!.clone();
+          widths.push(footprint(box));
+          this.spawns.push({ id, mesh: built.mesh as unknown as ArchetypeMesh, box, floraTimeU: built.timeU, floraDispose: built.dispose });
+          this.content.add(built.mesh);
+        } catch (e) { console.error('flora build failed', id, e); }
+        continue;
+      }
       let mesh: ArchetypeMesh;
       try { mesh = createArchetypeMesh(id, biomeKey, depositStage); } catch (e) { console.error('archetype build failed', id, e); continue; }
       mesh.geometry.computeBoundingBox();
@@ -75,7 +103,8 @@ export class SpawnSet {
     this.content.rotation.y = 0;
   }
 
-  idsFor(row: ArchetypeCategory | null, id: string): string[] {
+  idsFor(row: ArchetypeCategory | null, id: string, floraRow: FloraGroup | null = null): string[] {
+    if (floraRow) return listFloraEntries(floraRow).map((e) => e.id);
     if (!row) return id ? [id] : [];
     const base = ArchetypeCatalog.list(row).map((e) => e.id);
     return row === 'fauna' ? [...base, ...ArchetypeCatalog.listBiosphere().map((e) => e.id)] : base;
@@ -84,16 +113,16 @@ export class SpawnSet {
   applyWire(wire: boolean) { for (const s of this.spawns) (s.mesh.material as THREE.MeshStandardMaterial).wireframe = wire; }
 
   /** Construction scaffold stage of every shown archetype (1 = complete). */
-  applyBuild(stage: number) { for (const s of this.spawns) setArchetypeBuildProgress(s.mesh, stage); }
+  applyBuild(stage: number) { for (const s of this.spawns) if (!s.floraDispose) setArchetypeBuildProgress(s.mesh, stage); }
 
   /** Ruin variant (W18-22: charred, cracked, unlit) of every shown archetype. */
-  applyRuin(ruin: boolean) { for (const s of this.spawns) setArchetypeRuin(s.mesh, ruin); }
+  applyRuin(ruin: boolean) { for (const s of this.spawns) if (!s.floraDispose) setArchetypeRuin(s.mesh, ruin); }
 
   find(id: string) { return this.spawns.find((s) => s.id === id); }
 
-  updateRing(id: string, row: ArchetypeCategory | null) {
+  updateRing(id: string, row: ArchetypeCategory | boolean | null) {
     const s = this.find(id);
-    this.ring.visible = !!s && row !== null;
+    this.ring.visible = !!s && !!row;
     if (!s) return;
     this.ring.scale.setScalar(footprint(s.box) * 0.62);
     this.ring.position.set(s.mesh.position.x, 0.006, s.mesh.position.z);
@@ -101,7 +130,7 @@ export class SpawnSet {
 
   minX() { return this.spawns.length ? Math.min(...this.spawns.map((s) => s.mesh.position.x + s.box.min.x)) : 0; }
 
-  bounds(id: string, row: ArchetypeCategory | null) {
+  bounds(id: string, row: ArchetypeCategory | boolean | null) {
     const box = new THREE.Box3();
     if (!this.spawns.length) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1.5, 1));
     for (const s of row ? this.spawns : this.spawns.filter((s) => s.id === id)) box.union(s.box.clone().translate(s.mesh.position));
@@ -111,6 +140,7 @@ export class SpawnSet {
   /** Rebuild 3D projector rigs on spawned meshes after light source edits. */
   refreshLights(archetypeId?: string) {
     for (const s of this.spawns) {
+      if (s.floraDispose) continue;
       if (archetypeId && archetypeId !== '*' && s.id !== archetypeId) continue;
       const existing = (s.mesh.userData as { projectorRig?: EntityProjectorRigState } | undefined)?.projectorRig;
       if (existing) {
@@ -131,7 +161,7 @@ export class SpawnSet {
     const projectors: ColonyProjectorDesc[] = [];
     const boost = nightMode ? 1.35 : lightsMode ? 1.0 : 0.35;
     for (const s of ordered) {
-      if (isArchetypeRuin(s.mesh)) continue;
+      if (s.floraDispose || isArchetypeRuin(s.mesh)) continue;
       const lights = peekArchetypeLights(s.id); // per frame: no copy
       for (const l of lights) {
         if (projectors.length >= MAX_COLONY_PROJECTORS) break;
@@ -160,6 +190,8 @@ export class SpawnSet {
     if (turntable) this.content.rotation.y = row ? 0 : this.content.rotation.y + dt * 0.5; // rotate object(s), grid stays calibrated; rows stay readable
     this.syncProjectors(selectedId, lightsMode, nightMode);
     for (const s of this.spawns) {
+      if (s.floraTimeU) { s.floraTimeU.value = time; continue; }
+      if (s.floraDispose) continue;
       const u = s.mesh.userData?.uniforms as Record<string, THREE.IUniform<number | THREE.Vector4>> | undefined;
       if (u?.uVertParams && u?.uVertMeta) {
         const isBird = (u.uVertMeta.value as THREE.Vector4).y > 0.5;
@@ -183,7 +215,7 @@ export class SpawnSet {
 
     if (work > 0) {
       const sites: ActiveWorkSiteInput[] = this.spawns
-        .filter((s) => s.id.startsWith('robot.') || !row)
+        .filter((s) => !s.floraDispose && (s.id.startsWith('robot.') || !row))
         .map((s) => {
           const { x, y, z } = s.mesh.position;
           return {

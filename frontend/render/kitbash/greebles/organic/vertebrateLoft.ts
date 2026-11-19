@@ -10,6 +10,10 @@ export interface LoftStation {
   ryBot: number;
   /** Cross-section fullness: >1 narrows top ridge/keel, <1 squares torso. */
   ridge?: number;
+  /** Superellipse flattening (0..0.55): squares broad backs & flat bellies on heavy beasts. */
+  squareness?: number;
+  /** Directional fur-tuft radial relief along perimeter (0..0.022). */
+  tuftAmp?: number;
 }
 
 export interface WingStation {
@@ -41,8 +45,8 @@ function catmullScalar(p0: number, p1: number, p2: number, p3: number, t: number
 }
 
 function clampSplineRadius(a: number, b: number, c: number): number {
-  const lo = Math.min(a, b) * 0.85;
-  const hi = Math.max(a, b) * 1.15;
+  const lo = Math.min(a, b) * 0.76;
+  const hi = Math.max(a, b) * 1.26;
   return Math.max(0.002, Math.min(hi, Math.max(lo, c)));
 }
 
@@ -69,6 +73,8 @@ function interpolateStations(stations: readonly LoftStation[], subdiv: number): 
         ryTop: clampSplineRadius(s1.ryTop, s2.ryTop, catmullScalar(s0.ryTop, s1.ryTop, s2.ryTop, s3.ryTop, t)),
         ryBot: clampSplineRadius(s1.ryBot, s2.ryBot, catmullScalar(s0.ryBot, s1.ryBot, s2.ryBot, s3.ryBot, t)),
         ridge: THREE.MathUtils.lerp(s1.ridge ?? 0, s2.ridge ?? 0, t),
+        squareness: THREE.MathUtils.lerp(s1.squareness ?? 0, s2.squareness ?? 0, t),
+        tuftAmp: THREE.MathUtils.lerp(s1.tuftAmp ?? 0, s2.tuftAmp ?? 0, t),
       });
     }
   }
@@ -100,6 +106,8 @@ function withDomeCaps(stations: LoftStation[]): { rings: LoftStation[]; startCap
     ryTop: Math.max(0.002, st.ryTop * s),
     ryBot: Math.max(0.002, st.ryBot * s),
     ridge: (st.ridge ?? 0) * s,
+    squareness: (st.squareness ?? 0) * s,
+    tuftAmp: (st.tuftAmp ?? 0) * s,
   });
 
   const rings = [
@@ -146,15 +154,21 @@ function buildRingVertices(
 ): void {
   const cx = st.x ?? 0;
   const ridge = st.ridge ?? 0;
+  const sq = Math.max(0, Math.min(0.55, st.squareness ?? 0));
+  const shapeExp = 1 - 0.42 * sq;
+  const tAmp = st.tuftAmp ?? 0;
   const band = ribs > 0 ? 1 + ribs * Math.cos(v * Math.PI * 5 + seed) * Math.sin(v * Math.PI) : 1;
   for (let i = 0; i <= radialSides; i++) {
     const a = (i / radialSides) * Math.PI * 2;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
+    const rawCa = Math.cos(a);
+    const rawSa = Math.sin(a);
+    const ca = sq > 0 ? Math.sign(rawCa) * Math.pow(Math.abs(rawCa), shapeExp) : rawCa;
+    const sa = sq > 0 ? Math.sign(rawSa) * Math.pow(Math.abs(rawSa), shapeExp) : rawSa;
     const ry = sa >= 0 ? st.ryTop : st.ryBot;
     const pinch = sa > 0 ? 1 - ridge * sa * 0.28 : 1 - ridge * (-sa) * 0.14;
-    const x = cx + ca * st.rx * band * pinch;
-    const y = st.y + sa * ry * band;
+    const tuft = tAmp > 0 ? tAmp * (0.58 * Math.cos(a * 5 + v * 11 + seed) + 0.42 * Math.sin(a * 7 - v * 9)) : 0;
+    const x = cx + ca * (st.rx * band * pinch + tuft);
+    const y = st.y + sa * (ry * band + tuft);
     positions.push(x, y, st.z);
     uvs.push(i / radialSides, v);
   }

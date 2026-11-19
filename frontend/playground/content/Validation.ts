@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { validateArchetype, type Report } from '@terra/render/kitbash/validate';
+import { isFloraId } from './floraCatalog';
 import { textSprite } from '../stage/textSprite';
 import type { Spawn } from './SpawnSet';
 
@@ -12,7 +13,7 @@ export class ValidationOverlay {
   private group: THREE.Group | null = null;
 
   report(id: string, enabled: boolean): Report | null {
-    if (!enabled || !id) return null;
+    if (!enabled || !id || isFloraId(id)) return null;
     if (!this.cache.has(id)) { try { this.cache.set(id, validateArchetype(id)); } catch (e) { console.error('validate failed', e); return null; } }
     return this.cache.get(id)!;
   }

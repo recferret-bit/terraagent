@@ -4,7 +4,7 @@ import { WATER_RANGES } from '../waterConfig';
 import { BED_CLEARANCE, FAUNA_SINK_MAX, SHORE_CLEARANCE, candidateTexels, lerp, shallowestBed } from './faunaPlacement';
 
 /**
- * Deterministic jellyfish placement (pure; no three.js): a few slow drifters in DEEP water only. Each drifts on a
+ * Deterministic jellyfish placement (pure; no three.js): a few slow floaters in DEEP water only. Each floats on a
  * small closed loop (`jellyPathPoint` mirrors the vertex shader); its whole body (bell + tentacles, at the deepest
  * wave sink) stays `BED_CLEARANCE` above the bed and its loop `SHORE_CLEARANCE` off dry ground.
  */

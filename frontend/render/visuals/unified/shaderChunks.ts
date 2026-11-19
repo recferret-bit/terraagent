@@ -269,12 +269,24 @@ export const FRAG_METALNESS = /* glsl */ `#include <metalnessmap_fragment>
         }`;
 
 /** Subtle Fresnel silhouette rim light + projector illumination + FoV shroud before output. */
-export const FRAG_RIM = /* glsl */ `// Add subtle Fresnel silhouette rim light before output
+export const FRAG_RIM = /* glsl */ `// Add subtle Fresnel silhouette rim light + stylized pixel-friendly fur sheen & tufted velvet rim before output
         // max(): |dot| of two unit vectors rounds to 1.0000001 on view-facing faces; pow(negative) = NaN, which the
         // bloom mip chain spreads into a ~1000 px black square (the descent pod flash)
-        float fresnel = pow(max(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 0.0), 3.2);
+        vec3 taNrm = normalize(normal);
+        vec3 taViewDir = normalize(vViewPosition);
+        float taAbsNdotV = abs(dot(taNrm, taViewDir));
+        float fresnel = pow(max(1.0 - taAbsNdotV, 0.0), 3.2);
         vec3 taProj = evalColonyProjectorLight(vTaWorldPos, normalize(vTaWorldNormal));
         outgoingLight += diffuseColor.rgb * taProj + taProj * 0.10;
         outgoingLight += uRimTint * fresnel * uRimStrength * (1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.78);
+        if (vOrganic > 5.5 && vOrganic < 6.5) {
+          float taTuftWave = 0.5 + 0.5 * furTuftField(vLocalPos * 1.35);
+          vec3 taHairTan = normalize(cross(taNrm, vec3(0.0, 1.0, 0.0)) + vec3(1e-4, 0.0, 0.0));
+          float taKajiya = pow(max(0.0, 1.0 - abs(dot(taHairTan, normalize(taViewDir + vec3(0.25, 0.55, 0.20))))), 2.4);
+          float taVelvetRim = pow(max(1.0 - taAbsNdotV, 0.0), 2.05) * (0.45 + 0.55 * taTuftWave);
+          vec3 taFurColor = mix(diffuseColor.rgb * 1.38, uRimTint, 0.28);
+          float taDayScale = 1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.72;
+          outgoingLight += min(taFurColor * (taVelvetRim * 0.34 + taKajiya * (0.07 + 0.11 * taTuftWave)) * taDayScale, vec3(0.28));
+        }
         outgoingLight = applyColonyFovShroud(vTaWorldPos, outgoingLight);
         #include <opaque_fragment>`;

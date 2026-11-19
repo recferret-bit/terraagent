@@ -1,9 +1,15 @@
 import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
 import { $ } from '../dom';
+import { FLORA_ENTRIES, listFloraEntries, type FloraGroup } from '../content/floraCatalog';
 import { CATS, type PgState } from '../state';
 import { bindDock } from './dock';
+import { NatureBlock } from './NatureBlock';
 
-export interface SidebarHandlers { onSelect(id: string): void; onRow(cat: ArchetypeCategory): void; }
+export interface SidebarHandlers {
+  onSelect(id: string): void;
+  onRow(cat: ArchetypeCategory): void;
+  onFloraRow?: (group: FloraGroup) => void;
+}
 
 type SideTab = 'hive' | 'march' | 'units';
 
@@ -13,11 +19,17 @@ const TAB_LABEL: Record<SideTab, string> = { hive: 'HIVE', march: 'MARCH', units
 /** Left sidebar: hive-life, group march, and the archetype list on separate tabs. */
 export class Sidebar {
   private expanded = new Set<ArchetypeCategory>();
+  private natureBlock: NatureBlock;
 
-  constructor(private state: PgState, private on: SidebarHandlers) {}
+  constructor(private state: PgState, private on: SidebarHandlers) {
+    this.natureBlock = new NatureBlock(state, {
+      onPickFlora: (id) => this.on.onSelect(id),
+      onFloraRow: (group) => this.on.onFloraRow?.(group),
+    });
+  }
 
   build() {
-    $('#side').innerHTML = sideShell(ArchetypeCatalog.list().length + ArchetypeCatalog.listBiosphere().length);
+    $('#side').innerHTML = sideShell(ArchetypeCatalog.list().length + ArchetypeCatalog.listBiosphere().length + FLORA_ENTRIES.length);
     this.bindTabs();
     bindDock({
       id: 'side',
@@ -27,6 +39,10 @@ export class Sidebar {
       showTitle: 'Hide or show the object list',
       mount: $('#stage'),
     });
+    this.natureBlock.mount(
+      $('#side .side-pane[data-side-pane="units"]'),
+      $('#list'),
+    );
     ($('#search') as HTMLInputElement).addEventListener('input', (e) => {
       this.state.filter = (e.target as HTMLInputElement).value.toLowerCase();
       this.render();
@@ -50,11 +66,16 @@ export class Sidebar {
 
   visibleIds(): string[] {
     const f = this.state.filter;
-    const all = [...ArchetypeCatalog.list(), ...ArchetypeCatalog.listBiosphere()];
+    const all = [
+      ...ArchetypeCatalog.list(),
+      ...ArchetypeCatalog.listBiosphere(),
+      ...listFloraEntries().map((e) => ({ id: e.id, label: e.label, category: e.group })),
+    ];
     return all.filter((e) => !f || (e.id + ' ' + e.label + ' ' + e.category).toLowerCase().includes(f)).map((e) => e.id);
   }
 
   render() {
+    this.natureBlock.render();
     const list = $('#list');
     list.innerHTML = '';
     const vis = new Set(this.visibleIds());
@@ -70,6 +91,7 @@ export class Sidebar {
   }
 
   mark() {
+    this.natureBlock.render();
     const { id, row } = this.state;
     document.querySelectorAll<HTMLElement>('.item').forEach((b) => b.classList.toggle('sel', b.dataset.id === id));
     document.querySelectorAll<HTMLElement>('.row-btn').forEach((b) => {

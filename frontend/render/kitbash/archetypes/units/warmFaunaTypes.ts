@@ -23,6 +23,8 @@ export function warmPalette(
   };
 }
 
+export type WarmFurRuffKind = 'wolfCape' | 'stagMane' | 'oryxRidge' | 'camelHumpTuft' | 'lynxCheek';
+
 export interface WarmFaunaEntry {
   id: string;
   label: string;
@@ -31,5 +33,5 @@ export interface WarmFaunaEntry {
   spec: MammalBuildSpec;
   antlers?: { brow: [number, number, number]; spread: number; height: number; tines?: number };
   horns?: { brow: [number, number, number]; length: number; sweepBack?: number; flare?: number };
-  maneNeck?: boolean;
+  furRuff?: WarmFurRuffKind;
 }
