@@ -113,6 +113,7 @@ export class InstancedRangeRings {
   private readonly tmpScale = new THREE.Vector3();
   private readonly tmpColor = new THREE.Color();
   private activeRings: RangeRingDescriptor[] = [];
+  private lastRingsKey = '';
 
   constructor(
     private readonly scene?: THREE.Scene | null,
@@ -145,8 +146,25 @@ export class InstancedRangeRings {
     }
   }
 
+  private computeRingsKey(inputs: readonly RangeRingInput[]): string {
+    let validCount = 0;
+    let body = '';
+    for (let i = 0; i < inputs.length && validCount < this.maxInstances; i++) {
+      const r = inputs[i]!;
+      if (!Number.isFinite(r.radiusTiles) || r.radiusTiles <= 0) continue;
+      validCount++;
+      body += `${r.entityId ?? ''}:${r.kind}:${r.radiusTiles}:${r.worldX.toFixed(2)},${(r.groundY ?? 0).toFixed(2)},${r.worldZ.toFixed(2)}:${r.colorHex ?? ''}:${r.opacity ?? ''}:${r.dashSegments ?? ''};`;
+    }
+    return `${validCount}|${body}`;
+  }
+
   /** Updates the instanced ring buffer in a single draw call (`mesh.count === activeRings.length`). */
   setRings(inputs: readonly RangeRingInput[]): void {
+    if (inputs.length === 0 && this.activeRings.length === 0 && this.mesh.count === 0) return;
+    const key = this.computeRingsKey(inputs);
+    if (key === this.lastRingsKey && this.activeRings.length === this.mesh.count) return;
+    this.lastRingsKey = key;
+
     const next: RangeRingDescriptor[] = [];
     const limit = Math.min(inputs.length, this.maxInstances);
 
@@ -207,6 +225,7 @@ export class InstancedRangeRings {
   }
 
   clear(): void {
+    this.lastRingsKey = '';
     if (this.activeRings.length === 0 && this.mesh.count === 0) return;
     this.activeRings = [];
     this.mesh.count = 0;

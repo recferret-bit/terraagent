@@ -10,9 +10,29 @@ import {
   onDayNightChange,
   stepStandaloneDayNight,
 } from './dayNightConfig';
-import { daySecondaryShadowFade, fitShadowBox, nightSunShadowFade, type ShadowFit } from './shadowFit';
+import {
+  daySecondaryShadowFade,
+  fitShadowBox,
+  fitShadowQuadInLightSpace,
+  isLiveViewFocus,
+  nightSunShadowFade,
+  placeQuantizedShadowLight,
+  type ShadowFit,
+  type ShadowQuadFit,
+} from './shadowFit';
 import { onPerfChange, skipDaySecondaryShadow, skipNightSunShadow } from './perfConfig';
-import type { ViewFocus } from './viewFocus';
+import {
+  effectiveShadowMapSize,
+  getShadowQuality,
+  onShadowQualityChange,
+  resetShadowCameraTelemetry,
+  shouldCullSmallShadowCasters,
+  shouldRefreshShadowsThisFrame,
+  syncPooledShadowMapSize,
+  syncPresetFromShadowFlag,
+} from './shadowQuality';
+import { getViewFocusQuad, type ViewFocus } from './viewFocus';
+import { resetPropShadowLights, syncActivePropShadowLights } from '../planets/hex/propFocusCompaction';
 
 const KEY = 'terraagent.shadow';
 const PARAMS_KEY = 'terraagent.shadow.params.v7';
@@ -66,16 +86,6 @@ export const DEFAULT_SHADOW_PARAMS: Readonly<ShadowParams> = {
   secondaryIntensity: 1.35,
 };
 
-function readInitialShadowOn(): boolean {
-  try {
-    const q = new URLSearchParams(location.search).get('shadow');
-    if (q === '0' || q === 'false') return false;
-    if (q === '1' || q === 'true') return true;
-    const saved = localStorage.getItem(KEY);
-    return saved === null ? true : saved === '1';
-  } catch { return true; }
-}
-
 function snapMapSize(v: number): number {
   if (v <= 768) return 512;
   if (v <= 1536) return 1024;
@@ -93,9 +103,10 @@ function readInitialShadowParams(): ShadowParams {
   } catch { return { ...DEFAULT_SHADOW_PARAMS }; }
 }
 
-let on = readInitialShadowOn();
+let on = getShadowQuality() !== 'off';
 let params: ShadowParams = readInitialShadowParams();
 let manualSunAngles = false;
+let syncingFromFlag = false;
 const listeners = new Set<(on: boolean, params: ShadowParams) => void>();
 const colonyUniformListeners = new Set<(weatheringMul: number, rimStrength: number) => void>();
 
@@ -144,10 +155,10 @@ export function ensureSecondaryShadowLight(vp: ColonyViewport): THREE.Directiona
   }
   const sec = new THREE.DirectionalLight(0x9cc4ff, params.secondaryIntensity);
   sec.name = 'secondaryShadowLight';
-  sec.castShadow = on && params.secondaryShadowEnabled >= 0.5;
+  sec.castShadow = params.secondaryShadowEnabled >= 0.5;
   sec.shadow.mapSize.set(1024, 1024);
-  sec.shadow.camera.near = 8;
-  sec.shadow.camera.far = 138;
+  sec.shadow.camera.near = 4;
+  sec.shadow.camera.far = 185;
   const d = Math.max(12, params.frustumSize);
   Object.assign(sec.shadow.camera, { left: -d, right: d, top: d, bottom: -d });
   sec.shadow.camera.updateProjectionMatrix();
@@ -158,48 +169,13 @@ export function ensureSecondaryShadowLight(vp: ColonyViewport): THREE.Directiona
 
 const tmpOffset = new THREE.Vector3();
 const tmpSecOffset = new THREE.Vector3();
-const tmpDir = new THREE.Vector3();
-const tmpRight = new THREE.Vector3();
-const tmpUp = new THREE.Vector3();
-const worldUp = new THREE.Vector3(0, 1, 0);
+const tmpLightDir = new THREE.Vector3();
+const tmpSecDir = new THREE.Vector3();
 const warmTint = new THREE.Color(0xff8e47);
-
-function placeQuantizedShadowLight(
-  light: THREE.DirectionalLight,
-  target: THREE.Vector3,
-  offset: THREE.Vector3,
-  frustumSize: number,
-  mapSize: number,
-): void {
-  tmpDir.copy(offset).normalize();
-  tmpRight.crossVectors(worldUp, tmpDir);
-  if (tmpRight.lengthSq() < 1e-5) tmpRight.set(1, 0, 0);
-  else tmpRight.normalize();
-  tmpUp.crossVectors(tmpDir, tmpRight).normalize();
-
-  const texelWorld = (2 * Math.max(10, frustumSize)) / Math.max(256, mapSize);
-  const step = Math.max(0.02, texelWorld * 2);
-  const u = Math.round(target.dot(tmpRight) / step) * step;
-  const v = Math.round(target.dot(tmpUp) / step) * step;
-  const w = Math.round(target.dot(tmpDir) / 0.5) * 0.5;
-
-  const tx = tmpRight.x * u + tmpUp.x * v + tmpDir.x * w;
-  const ty = tmpRight.y * u + tmpUp.y * v + tmpDir.y * w;
-  const tz = tmpRight.z * u + tmpUp.z * v + tmpDir.z * w;
-
-  light.target.position.set(tx, ty, tz);
-  light.position.set(tx + offset.x, ty + offset.y, tz + offset.z);
-  light.target.updateMatrixWorld();
-  light.updateMatrixWorld();
-}
 
 /** Per viewport: the descent cinematic's sun direction (unit), used instead of the solar clock while it renders. */
 const descentSunDirs = new WeakMap<ColonyViewport, THREE.Vector3>();
 
-/**
- * The descent lights its globe, clouds and canopy from its own sun (`DescentRunner` `ctx.sunDir`); the key light must
- * come from there too, or the pod is back-lit over a sunlit planet. `null` when the descent ends (solar clock again).
- */
 export function setDescentSunDirection(vp: ColonyViewport, dir: Readonly<THREE.Vector3> | null): void {
   if (!vp) return;
   if (dir) descentSunDirs.set(vp, new THREE.Vector3().copy(dir).normalize());
@@ -207,40 +183,80 @@ export function setDescentSunDirection(vp: ColonyViewport, dir: Readonly<THREE.V
 }
 
 const fit: ShadowFit = { x: 0, z: 0, half: 0 };
+const sunQuadFit: ShadowQuadFit = { x: 0, z: 0, half: 0, halfW: 0, halfH: 0 };
+const secQuadFit: ShadowQuadFit = { x: 0, z: 0, half: 0, halfW: 0, halfH: 0 };
 const tmpCentre = new THREE.Vector3();
 
-function setShadowBox(light: THREE.DirectionalLight, d: number): void {
+function setShadowBox(light: THREE.DirectionalLight, halfW: number, halfH = halfW): void {
   const cam = light.shadow.camera;
-  if (cam.left === -d && cam.right === d && cam.top === d && cam.bottom === -d) return;
-  Object.assign(cam, { left: -d, right: d, top: d, bottom: -d });
+  if (cam.left === -halfW && cam.right === halfW && cam.top === halfH && cam.bottom === -halfH) return;
+  Object.assign(cam, { left: -halfW, right: halfW, top: halfH, bottom: -halfH });
   cam.updateProjectionMatrix();
 }
 
-/**
- * Quantizes the shadow frustum target in light-space texel steps so panning never causes shadow swimming or 1m jumps.
- * Once the viewport rendered a frame, the box is fitted to the visible ground (`fitShadowBox`, view focus); during
- * descent, with `?focus=0` or before the first frame it is the user `frustumSize` box around `target`.
- */
+function applyLightFit(
+  light: THREE.DirectionalLight,
+  targetY: number,
+  offset: THREE.Vector3,
+  mapSize: number,
+  baseR: number | undefined,
+  d: number,
+  x: number,
+  z: number,
+  halfW: number,
+  halfH: number,
+  halfMax: number,
+): void {
+  tmpCentre.set(x, targetY, z);
+  setShadowBox(light, halfW, halfH);
+  if (baseR !== undefined) light.shadow.radius = baseR * (d / halfMax);
+  placeQuantizedShadowLight(light, tmpCentre, offset, halfW, halfH, mapSize);
+}
+
+/** Quantizes the shadow frustum target and fits shadow boxes to the visible ground trapezoid when available. */
 export function followShadowTarget(vp: ColonyViewport, target: THREE.Vector3): void {
   const rec = viewports.get(vp);
   if (rec) rec.lastTarget.copy(target);
   const focus = rec && !isViewportInDescent(vp) ? rec.focus : null;
   const d = Math.max(12, params.frustumSize);
-  fitShadowBox(focus, target.x, target.z, d, fit);
-  tmpCentre.set(fit.x, target.y, fit.z);
   const sec = ensureSecondaryShadowLight(vp);
-  setShadowBox(vp.sun, fit.half);
-  setShadowBox(sec, fit.half);
-  const blur = d / fit.half;
-  if (rec?.sunRadius !== undefined) vp.sun.shadow.radius = rec.sunRadius * blur;
-  if (rec?.secRadius !== undefined) sec.shadow.radius = rec.secRadius * blur;
 
   const descentSun = isViewportInDescent(vp) ? descentSunDirs.get(vp) : undefined;
   if (descentSun) tmpOffset.copy(descentSun).multiplyScalar(SUN_DIST);
   else computeSunOffset(tmpOffset, hasViewportPlanetSurface(vp) ? undefined : params);
-  placeQuantizedShadowLight(vp.sun, tmpCentre, tmpOffset, fit.half, params.mapSize);
   computeSecondaryOffset(tmpSecOffset, params);
-  placeQuantizedShadowLight(sec, tmpCentre, tmpSecOffset, fit.half, Math.min(2048, snapMapSize(params.mapSize)));
+
+  const sunMapSz = effectiveShadowMapSize(snapMapSize(params.mapSize));
+  const secMapSz = Math.min(2048, sunMapSz);
+
+  if (isLiveViewFocus(focus)) {
+    const quad = getViewFocusQuad();
+    fitShadowQuadInLightSpace(quad, focus, tmpOffset, d, sunQuadFit);
+    fitShadowQuadInLightSpace(quad, focus, tmpSecOffset, d, secQuadFit);
+    applyLightFit(vp.sun, target.y, tmpOffset, sunMapSz, rec?.sunRadius, d, sunQuadFit.x, sunQuadFit.z, sunQuadFit.halfW, sunQuadFit.halfH, sunQuadFit.half);
+    applyLightFit(sec, target.y, tmpSecOffset, secMapSz, rec?.secRadius, d, secQuadFit.x, secQuadFit.z, secQuadFit.halfW, secQuadFit.halfH, secQuadFit.half);
+  } else {
+    fitShadowBox(focus, target.x, target.z, d, fit);
+    applyLightFit(vp.sun, target.y, tmpOffset, sunMapSz, rec?.sunRadius, d, fit.x, fit.z, fit.half, fit.half, fit.half);
+    applyLightFit(sec, target.y, tmpSecOffset, secMapSz, rec?.secRadius, d, fit.x, fit.z, fit.half, fit.half, fit.half);
+  }
+
+  const activeLights: Array<{ cam: THREE.Camera; dir: THREE.Vector3 }> = [];
+  if (on && vp.sun.castShadow && vp.sun.shadow.intensity > 0.001) {
+    activeLights.push({ cam: vp.sun.shadow.camera, dir: tmpLightDir.subVectors(vp.sun.target.position, vp.sun.position) });
+  }
+  if (on && sec.castShadow && sec.shadow.intensity > 0.001) {
+    activeLights.push({ cam: sec.shadow.camera, dir: tmpSecDir.subVectors(sec.target.position, sec.position) });
+  }
+  syncActivePropShadowLights(activeLights);
+
+  const mode = Math.round(THREE.MathUtils.clamp(params.shadowSourceMode, 0, 3));
+  if (mode === 0) {
+    const refresh = shouldRefreshShadowsThisFrame();
+    vp.sun.shadow.autoUpdate = on && ((vp.sun.shadow.intensity > 0 && refresh) || vp.sun.shadow.map === null);
+    sec.shadow.autoUpdate = on && ((sec.shadow.intensity > 0 && refresh) || sec.shadow.map === null);
+  }
+  vp.renderer.shadowMap.autoUpdate = vp.sun.shadow.autoUpdate || (sec.castShadow && sec.shadow.autoUpdate);
 
   const dome = vp.scene.getObjectByName('planetSkyDome') as THREE.Mesh | undefined;
   const uSun = (dome?.material as THREE.ShaderMaterial | undefined)?.uniforms?.uSun;
@@ -259,21 +275,11 @@ export function fitShadowToView(vp: ColonyViewport, focus: Readonly<ViewFocus>):
 function syncDirectionalShadowFrustum(light: THREE.DirectionalLight, mapSz: number, d: number): void {
   light.shadow.normalBias = params.normalBias;
   light.shadow.bias = params.shadowBias;
-  if (light.shadow.mapSize.x !== mapSz || light.shadow.mapSize.y !== mapSz) {
-    light.shadow.mapSize.set(mapSz, mapSz);
-    if (light.shadow.map) {
-      light.shadow.map.dispose();
-      light.shadow.map = null;
-    }
-  }
+  syncPooledShadowMapSize(light, mapSz);
   const cam = light.shadow.camera;
-  if (cam.left !== -d || cam.right !== d || cam.top !== d || cam.bottom !== -d || cam.near !== 8 || cam.far !== 138) {
-    cam.left = -d;
-    cam.right = d;
-    cam.top = d;
-    cam.bottom = -d;
-    cam.near = 8;
-    cam.far = 138;
+  if (cam.left !== -d || cam.right !== d || cam.top !== d || cam.bottom !== -d || cam.near !== 4 || cam.far !== 185) {
+    cam.left = -d; cam.right = d; cam.top = d; cam.bottom = -d;
+    cam.near = 4; cam.far = 185;
     cam.updateProjectionMatrix();
   }
 }
@@ -285,61 +291,54 @@ function applyShadowSourceMode(
   primaryShadowInt: number,
 ): void {
   const mode = Math.round(THREE.MathUtils.clamp(params.shadowSourceMode, 0, 3));
-  const secActive = on && params.secondaryShadowEnabled >= 0.5 && mode !== 3;
+  const secEnabled = params.secondaryShadowEnabled >= 0.5 && mode !== 3;
   sec.color.setHex(0x9cc4ff);
   sec.shadow.autoUpdate = true;
   sun.shadow.autoUpdate = true;
   sec.shadow.radius = params.shadowSoftness;
 
-  if (mode === 3 || !secActive) {
-    sun.castShadow = on;
+  if (mode === 3 || !secEnabled || (mode !== 0 && !on)) {
+    sun.castShadow = mode === 0 ? true : on;
     sun.shadow.intensity = on ? primaryShadowInt : 0;
+    if (mode === 0) sun.shadow.autoUpdate = on && ((sun.shadow.intensity > 0 && shouldRefreshShadowsThisFrame()) || sun.shadow.map === null);
     sec.castShadow = false;
     sec.intensity = 0;
     sec.shadow.intensity = 0;
     return;
   }
   if (mode === 2) {
-    sun.castShadow = false;
-    sun.shadow.intensity = 0;
-    sec.castShadow = true;
-    sec.intensity = params.secondaryIntensity;
+    sun.castShadow = false; sun.shadow.intensity = 0;
+    sec.castShadow = true; sec.intensity = params.secondaryIntensity;
     sec.shadow.intensity = THREE.MathUtils.clamp(params.nightShadowIntensity, 0, 1.6);
     return;
   }
   if (mode === 1) {
-    sun.castShadow = on;
-    sun.shadow.intensity = on ? Math.max(primaryShadowInt, params.nightShadowIntensity * 0.5) : 0;
-    sec.castShadow = true;
-    sec.intensity = params.secondaryIntensity;
+    sun.castShadow = on; sun.shadow.intensity = on ? Math.max(primaryShadowInt, params.nightShadowIntensity * 0.5) : 0;
+    sec.castShadow = true; sec.intensity = params.secondaryIntensity;
     sec.shadow.intensity = THREE.MathUtils.clamp(Math.max(params.nightShadowIntensity, params.shadowIntensity * 0.65), 0, 1.6);
     return;
   }
-  // Mode 0: Sun + Night Moon. By day the secondary is a faint cool fill (18% light, 15% shadow); toward night it
-  // blends continuously (by 1 - daylight, no threshold pop at the horizon) to the dim moon that NIGHT MOONLIGHT
-  // sets. It used to jump to the full secondaryIntensity + nightShadowIntensity at night: a second sun with
-  // daytime-crisp shadows. castShadow stays constant across the day so dawn/dusk never recompile shaders.
+  // Mode 0: keep castShadow constant even when shadows are OFF so toggling never recompiles shaders.
   const t = THREE.MathUtils.clamp(moon.night, 0, 1);
-  sun.castShadow = on;
-  // F8 → PERF: at night the sun's faint shadow fades out and its map stops rendering, so only the moon casts
-  // (two soft-shadow filters per pixel for a ~6 % darkening was 20 % of a night frame at 4K).
+  const refresh = shouldRefreshShadowsThisFrame();
+  const q = getShadowQuality();
+  sun.castShadow = true;
   sun.shadow.intensity = on ? primaryShadowInt * nightSunShadowFade(t, skipNightSunShadow()) : 0;
-  sun.shadow.autoUpdate = sun.shadow.intensity > 0 || sun.shadow.map === null;
+  sun.shadow.autoUpdate = on && ((sun.shadow.intensity > 0 && refresh) || sun.shadow.map === null);
+  if (on && sun.shadow.intensity > 0 && !refresh && sun.shadow.map !== null) sun.shadow.needsUpdate = false;
   sec.castShadow = true;
   sec.intensity = params.secondaryIntensity * THREE.MathUtils.lerp(0.18, moon.intensityMult, t);
-  // F8 → PERF: the faint daytime secondary shadow fades out by day and its map stops rendering (map kept once made).
-  sec.shadow.intensity = THREE.MathUtils.clamp(params.nightShadowIntensity * THREE.MathUtils.lerp(0.15, moon.shadowMult, t)
-    * daySecondaryShadowFade(t, skipDaySecondaryShadow()), 0, 1.6);
-  sec.shadow.autoUpdate = sec.shadow.intensity > 0 || sec.shadow.map === null;
+  let secInt = on
+    ? THREE.MathUtils.clamp(params.nightShadowIntensity * THREE.MathUtils.lerp(0.15, moon.shadowMult, t) * daySecondaryShadowFade(t, skipDaySecondaryShadow()), 0, 1.6)
+    : 0;
+  if ((q === 'low' || q === 'med' || shouldCullSmallShadowCasters()) && sun.shadow.intensity > 0.05) {
+    secInt = 0;
+  }
+  sec.shadow.intensity = secInt;
+  sec.shadow.autoUpdate = on && ((sec.shadow.intensity > 0 && refresh) || sec.shadow.map === null);
 }
 
-/** How far toward night the secondary moon is (`1 - daylight`) and its deep-night targets (`computeMoonMults`). */
-interface MoonBlend {
-  night: number;
-  intensityMult: number;
-  shadowMult: number;
-}
-
+interface MoonBlend { night: number; intensityMult: number; shadowMult: number }
 const DAY_MOON: Readonly<MoonBlend> = { night: 0, intensityMult: 0.18, shadowMult: 0.15 };
 
 export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): void {
@@ -348,13 +347,12 @@ export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): v
   if (isViewportInDescent(vp)) return;
   const sun = vp.sun;
   const sec = ensureSecondaryShadowLight(vp);
-  const mapSz = snapMapSize(params.mapSize);
+  const mapSz = effectiveShadowMapSize(snapMapSize(params.mapSize));
   const d = Math.max(12, params.frustumSize);
-  vp.renderer.shadowMap.enabled = on;
+  vp.renderer.shadowMap.enabled = true;
   syncDirectionalShadowFrustum(sun, mapSz, d);
   syncDirectionalShadowFrustum(sec, Math.min(2048, mapSz), d);
 
-  followShadowTarget(vp, rec ? rec.lastTarget : sun.target.position);
   const hasPlanetSurface = hasViewportPlanetSurface(vp);
   let moon: Readonly<MoonBlend> = DAY_MOON;
   let primaryShadowInt: number;
@@ -372,9 +370,7 @@ export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): v
   } else {
     if (hasPlanetSurface) applyDayNightAtmosphere(vp, params.sunAzimuth, params.sunElevation);
     const elevFactor = THREE.MathUtils.smoothstep(params.sunElevation, 8, 34);
-    if (rec) {
-      sun.color.copy(rec.baseSunColor).lerp(warmTint, (1 - elevFactor) * 0.55);
-    }
+    if (rec) sun.color.copy(rec.baseSunColor).lerp(warmTint, (1 - elevFactor) * 0.55);
     sun.intensity = params.sunIntensity * (0.72 + 0.28 * elevFactor);
     vp.hemi.intensity = params.ambientIntensity;
     vp.scene.environmentIntensity = params.ambientIntensity * 1.15;
@@ -383,11 +379,12 @@ export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): v
     sun.shadow.radius = params.shadowSoftness;
   }
   applyShadowSourceMode(sun, sec, moon, primaryShadowInt);
+  vp.renderer.shadowMap.autoUpdate = sun.shadow.autoUpdate || (sec.castShadow && sec.shadow.autoUpdate);
   if (rec) {
     rec.sunRadius = sun.shadow.radius;
     rec.secRadius = sec.shadow.radius;
-    followShadowTarget(vp, rec.lastTarget);
   }
+  followShadowTarget(vp, rec ? rec.lastTarget : sun.target.position);
 }
 
 export const applyShadowConfig = syncViewportShadow;
@@ -461,15 +458,21 @@ export const onShadowChange = (fn: (on: boolean, params: ShadowParams) => void):
 export function setShadow(v: boolean): boolean {
   on = Boolean(v);
   try { localStorage.setItem(KEY, on ? '1' : '0'); } catch { /* private mode */ }
-  for (const { vp } of viewports.values()) {
-    vp.scene.traverse((o) => {
-      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-      if (m) m.needsUpdate = true;
-    });
-  }
+  syncingFromFlag = true;
+  syncPresetFromShadowFlag(on);
+  syncingFromFlag = false;
+  if (!on) resetPropShadowLights();
   notifyAll();
   return on;
 }
+
+onShadowQualityChange((preset) => {
+  if (syncingFromFlag) return;
+  on = preset !== 'off';
+  try { localStorage.setItem(KEY, on ? '1' : '0'); } catch { /* private mode */ }
+  if (!on) resetPropShadowLights();
+  notifyAll();
+});
 
 export const toggleShadow = (): boolean => setShadow(!on);
 
@@ -486,6 +489,7 @@ export function setShadowParams(next: Partial<ShadowParams>): ShadowParams {
 }
 
 export const resetShadowParams = (): ShadowParams => {
+  resetShadowCameraTelemetry();
   const res = setShadowParams({ ...DEFAULT_SHADOW_PARAMS });
   manualSunAngles = false;
   return res;

@@ -6,6 +6,7 @@ import type { HexTerrain, PrecomputedHexTerrainData } from '@terra/render/planet
 import { getSharedTerrainPrep } from '@terra/render/planets/prep';
 import type { ClientTiles, ClientView } from '../../../store/replica/viewCodec';
 import type { RTSCamera } from '../../RTSCamera';
+import { prewarmAllGameplayShaders, type ShaderWarmupRig } from '../../shaderWarmupRig';
 import { warmupSubtrees } from '../../warmup';
 import type { EntityMeshes } from '../EntityMeshes';
 import {
@@ -70,7 +71,40 @@ export class SessionTerrainPreloader {
   private warmSeq = 0;
   private inFlightKey: string | null = null;
   private gpuWarmState: 'idle' | 'warming' | 'ready' = 'idle';
+  private biomeKey = 'forestRock';
+  private activeWarmupRig: ShaderWarmupRig | null = null;
   private disposed = false;
+
+  private disposeWarmupRig(): void {
+    this.activeWarmupRig?.dispose();
+    this.activeWarmupRig = null;
+  }
+
+  private kickoffGpuWarmup(vp: ColonyViewport, terrain: HexTerrain, entities: EntityMeshes, biomeKey: string): boolean {
+    this.disposeWarmupRig();
+    if (typeof (vp.renderer as { compile?: unknown }).compile !== 'function') {
+      this.gpuWarmState = 'ready';
+      return false;
+    }
+    this.gpuWarmState = 'warming';
+    const warmId = ++this.warmSeq;
+    const expectedTerrain = terrain;
+    const rig = prewarmAllGameplayShaders(vp, vp.scene, biomeKey);
+    this.activeWarmupRig = rig;
+    const fxRoots = entities.prewarmLandingFx();
+    const roots = [terrain.group, entities.group, ...fxRoots, ...rig.roots];
+    void warmupSubtrees(vp, roots, () => this.disposed || warmId !== this.warmSeq || expectedTerrain.group.parent === null, 6)
+      .then(() => {
+        if (!this.disposed && warmId === this.warmSeq && this.gpuWarmState === 'warming') {
+          this.gpuWarmState = 'ready';
+        }
+      })
+      .finally(() => {
+        rig.dispose();
+        if (this.activeWarmupRig === rig) this.activeWarmupRig = null;
+      });
+    return true;
+  }
 
   constructor(
     private readonly onAsyncBuilt: (res: TerrainPreloadState) => void,
@@ -101,6 +135,7 @@ export class SessionTerrainPreloader {
       view, tiles, planetKind, inSpace, deferLook, showSpaceTerrain, cameraTargetTile,
     } = params;
     const look = resolveOnlinePlanetLook(view.planet.type, planetKind);
+    this.biomeKey = look.biomeKey;
     const needsRebuild = !prevTerrain || prevTerrain.radius !== view.planet.radius || prevBiomeKey !== look.biomeKey;
     const canOffloadToWorker =
       needsRebuild &&
@@ -174,21 +209,7 @@ export class SessionTerrainPreloader {
     const fxDone = entities.stepLandingFxPrewarm();
     if (!terrain || !chunksDone || !entitiesDone || !fxDone) return;
     if (this.gpuWarmState === 'idle') {
-      if (typeof (vp.renderer as { compile?: unknown }).compile !== 'function') {
-        this.gpuWarmState = 'ready';
-      } else {
-        this.gpuWarmState = 'warming';
-        const warmId = ++this.warmSeq;
-        const expectedTerrain = terrain;
-        const fxRoots = entities.prewarmLandingFx();
-        const roots = [terrain.group, entities.group, ...fxRoots];
-        void warmupSubtrees(vp, roots, () => this.disposed || warmId !== this.warmSeq || expectedTerrain.group.parent === null, 6).then(() => {
-          if (!this.disposed && warmId === this.warmSeq && this.gpuWarmState === 'warming') {
-            this.gpuWarmState = 'ready';
-          }
-        });
-        return;
-      }
+      if (this.kickoffGpuWarmup(vp, terrain, entities, this.biomeKey)) return;
     }
     if (this.gpuWarmState === 'ready' && this.archetypeQueue.length === 0) {
       onIdleStep?.();
@@ -206,8 +227,11 @@ export class SessionTerrainPreloader {
     cameraTargetTile: { q: number; r: number };
     entities: EntityMeshes;
   }): TerrainPreloadState | null {
+    const needsWarmup = this.gpuWarmState !== 'ready';
+    this.biomeKey = params.biomeKey;
     this.workerJobSeq++;
     this.warmSeq++;
+    this.disposeWarmupRig();
     this.inFlightKey = null;
     let out: TerrainPreloadState | null = null;
     if (this.pendingView && this.pendingTiles) {
@@ -239,7 +263,11 @@ export class SessionTerrainPreloader {
     activeTerrain?.finishProgressiveBuild();
     params.entities.flushSpacePrewarm(activeTerrain);
     params.entities.prewarmLandingFx();
-    this.gpuWarmState = 'ready';
+    if (needsWarmup && activeTerrain && !this.disposed) {
+      this.kickoffGpuWarmup(params.viewport, activeTerrain, params.entities, this.biomeKey);
+    } else {
+      this.gpuWarmState = 'ready';
+    }
     return out;
   }
 
@@ -247,6 +275,7 @@ export class SessionTerrainPreloader {
     this.disposed = true;
     this.workerJobSeq++;
     this.warmSeq++;
+    this.disposeWarmupRig();
     this.inFlightKey = null;
     this.pendingView = null;
     this.pendingTiles = null;

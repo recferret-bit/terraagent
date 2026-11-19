@@ -1,4 +1,11 @@
 import { FPS_LIMITS, getFpsCap, onFpsCapChange, setFpsCap, type FpsLimit } from '@terra/render/core/perfConfig';
+import {
+  getShadowQuality,
+  onShadowQualityChange,
+  setShadowQuality,
+  SHADOW_QUALITY_PRESETS,
+  type ShadowQualityPreset,
+} from '@terra/render/core/shadowQuality';
 import { setGameInputBlocked } from '../../core/input/gameInputBlock';
 import '../../core/ui/scrim.css';
 
@@ -10,15 +17,48 @@ export interface PauseOverlayCallbacks {
   onReturnToOrbit(): void;
 }
 
+function buildOptionSection<T extends string | number>(
+  labelText: string,
+  testId: string,
+  options: readonly T[],
+  labelOf: (v: T) => string,
+  dataAttr: 'fpsCap' | 'shadowQuality',
+  onSelect: (v: T) => void,
+): { el: HTMLDivElement; buttons: HTMLButtonElement[] } {
+  const section = document.createElement('div');
+  section.className = 'ta-pause-fps';
+  section.dataset.testid = testId;
+  const lbl = document.createElement('div');
+  lbl.className = 'ta-pause-fps__label';
+  lbl.textContent = labelText;
+  const row = document.createElement('div');
+  row.className = 'ta-pause-fps__options';
+  const buttons: HTMLButtonElement[] = [];
+  for (const val of options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ta-pause-fps__btn';
+    btn.dataset[dataAttr] = String(val);
+    btn.textContent = labelOf(val);
+    btn.addEventListener('click', () => onSelect(val));
+    buttons.push(btn);
+    row.appendChild(btn);
+  }
+  section.append(lbl, row);
+  return { el: section, buttons };
+}
+
 /**
  * Faction Plate pause dialog for the online play flow (`Esc` key):
- * lets the player adjust Max FPS live, resume, or return to the 3D orbital planet selection screen.
+ * lets the player adjust Max FPS and Shadows live, resume, or return to the 3D orbital planet selection screen.
  */
 export class PauseOverlay {
   readonly el: HTMLElement;
   private isPaused = false;
-  private readonly fpsButtons: HTMLButtonElement[] = [];
+  private readonly fpsButtons: HTMLButtonElement[];
+  private readonly shadowButtons: HTMLButtonElement[];
   private readonly offFpsCap: () => void;
+  private readonly offShadowQuality: () => void;
 
   constructor(parent: HTMLElement, private readonly cb: PauseOverlayCallbacks) {
     this.el = document.createElement('div');
@@ -37,30 +77,21 @@ export class PauseOverlay {
     title.className = 'ta-online-pause__title ta-scrim__title';
     title.textContent = 'PAUSED';
 
-    const fpsSection = document.createElement('div');
-    fpsSection.className = 'ta-pause-fps';
-    fpsSection.dataset.testid = 'pause-fps-cap';
-    const fpsLbl = document.createElement('div');
-    fpsLbl.className = 'ta-pause-fps__label';
-    fpsLbl.textContent = 'MAX FPS';
-    const fpsRow = document.createElement('div');
-    fpsRow.className = 'ta-pause-fps__options';
-    for (const cap of FPS_LIMITS) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'ta-pause-fps__btn';
-      btn.dataset.fpsCap = String(cap);
-      btn.textContent = cap === 0 ? 'MAX' : `${cap}`;
-      btn.addEventListener('click', () => {
-        setFpsCap(cap);
-        this.syncFpsButtons(getFpsCap());
-      });
-      this.fpsButtons.push(btn);
-      fpsRow.appendChild(btn);
-    }
-    fpsSection.append(fpsLbl, fpsRow);
+    const fpsSection = buildOptionSection('MAX FPS', 'pause-fps-cap', FPS_LIMITS, (c) => (c === 0 ? 'MAX' : `${c}`), 'fpsCap', (cap) => {
+      setFpsCap(cap);
+      this.syncFpsButtons(getFpsCap());
+    });
+    this.fpsButtons = fpsSection.buttons;
     this.syncFpsButtons(getFpsCap());
     this.offFpsCap = onFpsCapChange((cap) => this.syncFpsButtons(cap));
+
+    const shadowSection = buildOptionSection('SHADOWS', 'pause-shadows', SHADOW_QUALITY_PRESETS, (q) => q.toUpperCase(), 'shadowQuality', (q) => {
+      setShadowQuality(q);
+      this.syncShadowButtons(getShadowQuality());
+    });
+    this.shadowButtons = shadowSection.buttons;
+    this.syncShadowButtons(getShadowQuality());
+    this.offShadowQuality = onShadowQualityChange((q) => this.syncShadowButtons(q));
 
     const resumeBtn = document.createElement('button');
     resumeBtn.type = 'button';
@@ -84,11 +115,7 @@ export class PauseOverlay {
       this.cb.onReturnToOrbit();
     });
 
-    box.appendChild(hazard);
-    box.appendChild(title);
-    box.appendChild(fpsSection);
-    box.appendChild(resumeBtn);
-    box.appendChild(returnBtn);
+    box.append(hazard, title, fpsSection.el, shadowSection.el, resumeBtn, returnBtn);
     this.el.appendChild(box);
     parent.appendChild(this.el);
   }
@@ -99,13 +126,22 @@ export class PauseOverlay {
     }
   }
 
+  private syncShadowButtons(activeQuality: ShadowQualityPreset): void {
+    for (const btn of this.shadowButtons) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.shadowQuality === activeQuality));
+    }
+  }
+
   get paused(): boolean {
     return this.isPaused;
   }
 
   setPaused(paused: boolean): void {
     this.isPaused = paused;
-    if (paused) this.syncFpsButtons(getFpsCap());
+    if (paused) {
+      this.syncFpsButtons(getFpsCap());
+      this.syncShadowButtons(getShadowQuality());
+    }
     this.el.hidden = !paused;
     this.el.dataset.active = paused ? 'true' : 'false';
     setGameInputBlocked(PAUSE_INPUT_SOURCE, paused);
@@ -118,6 +154,7 @@ export class PauseOverlay {
 
   dispose(): void {
     this.offFpsCap();
+    this.offShadowQuality();
     if (this.isPaused) setGameInputBlocked(PAUSE_INPUT_SOURCE, false);
     this.el.remove();
   }

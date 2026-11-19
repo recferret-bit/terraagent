@@ -132,13 +132,20 @@ void main() {
 
 export const buildPixelArtFrag = () => [BAYER_CHUNK, EDGE_CHUNK, PALETTE_CHUNK, QUANTIZE_CHUNK, PIXEL_MAIN].join('\n');
 
+/** On unless `?pixel=0` or a saved `terraagent.pixel` of `0`. A missing preference stays on. */
+export function resolveInitialPixelArt(urlValue: string | null, saved: string | null): boolean {
+  if (urlValue === '1' || urlValue === 'true') return true;
+  if (urlValue === '0' || urlValue === 'false') return false;
+  if (saved === '0' || saved === 'false') return false;
+  if (saved === '1' || saved === 'true') return true;
+  return true;
+}
+
 function readInitialPixelArt(): boolean {
   try {
     const q = new URLSearchParams(location.search).get('pixel');
-    if (q === '1' || q === 'true') return true;
-    if (q === '0' || q === 'false') return false;
-    return localStorage.getItem(KEY) === '1';
-  } catch { return false; }
+    return resolveInitialPixelArt(q, localStorage.getItem(KEY));
+  } catch { return true; }
 }
 
 function readInitialParams(): PixelArtParams {

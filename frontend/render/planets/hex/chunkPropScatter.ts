@@ -323,6 +323,7 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
 
   const buckets = createPropBucketSet(group, { kinds: PROP_KINDS, geos, mats, opts: INST_OPTS });
   const byChunk = new Map<string, ChunkPropBuckets>();
+  let byTile: Map<number, TilePropInstance[]> | null = null;
 
   return {
     group,
@@ -331,6 +332,7 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
     setChunk(key, b) {
       buckets.setChunk(key, b);
       byChunk.set(key, b);
+      byTile = null;
     },
     rebuildMeshes: () => buckets.rebuild(),
     cullToFocus: () => buckets.cullToFocus(),
@@ -342,15 +344,19 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
       return out;
     },
     instancesForTile(tileIndex) {
-      const out: TilePropInstance[] = [];
-      for (const b of byChunk.values()) {
-        for (const k of PROP_KINDS) {
-          for (const inst of b[k]) {
-            if (inst.tileIndex === tileIndex) out.push(inst);
+      if (!byTile) {
+        byTile = new Map();
+        for (const b of byChunk.values()) {
+          for (const k of PROP_KINDS) {
+            for (const inst of b[k]) {
+              let list = byTile.get(inst.tileIndex);
+              if (!list) { list = []; byTile.set(inst.tileIndex, list); }
+              list.push(inst);
+            }
           }
         }
       }
-      return out;
+      return [...(byTile.get(tileIndex) ?? [])];
     },
     pickProp: (ray) => buckets.pick(ray),
     dispose() {
@@ -360,6 +366,7 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
         mats[k].dispose();
       }
       byChunk.clear();
+      byTile = null;
       group.removeFromParent();
     },
   };

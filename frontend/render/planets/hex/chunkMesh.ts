@@ -42,8 +42,24 @@ export interface ChunkBuffers {
   /** Shoreline weight [0..1] of the tile (water tile or dry tile bordering water); drives the beach band. */
   aHexShore: Float32Array;
   index: Uint32Array;
+  /** Filtered index containing only triangles with at least one rock vertex (`aRock >= 0.001`), for fast shadow passes. */
+  rockIndex?: Uint32Array;
   /** Tile index of each vertex (a chunk also holds the border vertices of its neighbours' tiles). */
   vertexTile: Int32Array;
+}
+
+/** Filters `index` down to triangles with at least one rock vertex (`aRock >= 0.001`). */
+export function buildRockShadowIndex(index: ArrayLike<number>, aRock: ArrayLike<number>): Uint32Array {
+  const rock: number[] = [];
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const i0 = index[i]!;
+    const i1 = index[i + 1]!;
+    const i2 = index[i + 2]!;
+    if ((aRock[i0] ?? -1) >= 0.001 || (aRock[i1] ?? -1) >= 0.001 || (aRock[i2] ?? -1) >= 0.001) {
+      rock.push(i0, i1, i2);
+    }
+  }
+  return Uint32Array.from(rock);
 }
 
 export function tileHashU32(q: number, r: number, salt = 0): number {
@@ -312,13 +328,16 @@ export function buildChunk(
     aRock[v] = st.rock;
     aHexShore[v] = tileShoreFactor(hx, i, layers);
   }
+  const index = Uint32Array.from(idx);
+  const rockIndex = hasTerrain ? buildRockShadowIndex(index, aRock) : new Uint32Array(0);
   return {
     position,
     normal,
     aAO,
     aRock,
     aHexShore,
-    index: Uint32Array.from(idx),
+    index,
+    rockIndex,
     vertexTile: Int32Array.from(order),
   };
 }

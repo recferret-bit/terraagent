@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { createFramePacer } from '@terra/render/core/framePacer';
+import { updateViewFocus } from '@terra/render/core/viewFocus';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexPick, type HexTerrain } from '@terra/render/planets/hex';
 import type { ServerMessage } from '@terra/contracts';
@@ -40,9 +41,8 @@ import { normalizeSectorIntent, type SectorIntentInput, type SectorIntentV1 } fr
 import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
 import {
-  applyChangedTileList, applySpaceVoidBackground, bindLocalSaveListeners, createSafeViewport,
-  listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind,
-  type TileChangePatchItem, writeStoredPlanetKind,
+  acquireSessionViewport, applyChangedTileList, bindLocalSaveListeners, pickTerrainAt, projectTileToScreen,
+  listSceneEntities, resolveOnlinePlanetLook, resolveSessionPlanetKind, type TileChangePatchItem, writeStoredPlanetKind,
 } from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
@@ -101,7 +101,6 @@ export class OnlineSession {
   private cleanups: Array<() => void> = [];
 
   constructor(root: HTMLElement, readonly mode: OnlineMode = 'boot', opts: OnlineSessionOptions = {}) {
-    this.ownsViewport = !opts.viewport;
     this.search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
     const q = new URLSearchParams(this.search);
     const lm = resolveInitialLoadMode(opts, this.search, mode);
@@ -119,8 +118,8 @@ export class OnlineSession {
 
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
-    this.viewport = createSafeViewport(root, opts.viewport);
-    if (this.ownsViewport) applySpaceVoidBackground(this.viewport.scene);
+    const acquired = acquireSessionViewport(root, opts.viewport, this.cleanups);
+    this.viewport = acquired.viewport; this.ownsViewport = acquired.ownsViewport;
 
     const rig = createSessionBootRig({
       mode, loadMode: this.loadMode, search: this.search, flags: this.flags, planetKind: this.planetKind,
@@ -434,20 +433,26 @@ export class OnlineSession {
   stepFrame(dt: number, nowMs?: number): void {
     const now = nowMs ?? (this.last + dt * 1000);
     const rawDt = nowMs !== undefined ? Math.max(0, (now - this.last) / 1000) : Math.max(0, dt);
-    const animDt = Math.min(rawDt, 0.4) * Math.max(1, this.warp);
-    this.last = now;
+    const animDt = Math.min(rawDt, 0.4) * Math.max(1, this.warp); this.last = now;
     const ensureHud = () => { if (this.flags.current.source === 'welcome' || (!this.guest && !this.localHost)) this.hud.ensureMounted(); };
     if (this.entities.podTouchdown.isSpacePhaseActive()) {
       this.dayNightSync?.syncFrame(now);
       this.preloader.stepAirborneFrame(this.viewport, this.terrain, this.entities, ensureHud);
     } else {
-      if (this.deferReveal) this.preloader.stepAirborneFrame(this.viewport, this.terrain, this.entities, ensureHud);
+      const podOrDirectWarm = !this.skipDescent && ((this.loadMode === 'pod' && !this.hqDeployedSynced) || (this.loadMode === 'direct' && Boolean(this.cam?.isOrbitalDropping())));
+      if (this.deferReveal || podOrDirectWarm || !this.preloader.isGpuReadyForGround(this.viewport)) {
+        this.preloader.stepAirborneFrame(this.viewport, this.terrain, this.entities, ensureHud);
+      }
+      if (!this.deferReveal && this.cam) {
+        this.cam.setShake(this.loadMode === 'pod' ? this.entities.getCameraShake() : 0);
+        this.cam.update(dt);
+        updateViewFocus(this.viewport.camera);
+      }
       this.entities.update(animDt, this.terrain, Math.min(rawDt, 0.4));
-      this.cam?.setShake(this.loadMode === 'pod' ? this.entities.getCameraShake() : 0);
       this.terrain?.tick(animDt);
       if (!this.deferReveal) {
         this.frameHud(now, dt);
-        if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); settleArrivalHud(this.arrival, this.cam, this.landfall, this.hud); }
+        if (this.cam) { this.viewport.followShadow(this.cam.target); settleArrivalHud(this.arrival, this.cam, this.landfall, this.hud); }
       }
     }
     if (this.ownsViewport && !this.store.isAwaitingPrediction(now)) this.viewport.render();
@@ -455,22 +460,15 @@ export class OnlineSession {
 
   private loop = (now = typeof performance !== 'undefined' ? performance.now() : Date.now()) => {
     const dt = this.pacer.next(now);
-    if (dt !== null) {
-      try { this.stepFrame(dt, now); } catch (e) { console.error('frame error', e); }
+    if (dt !== null) { try { this.stepFrame(dt, now); } catch (e) { console.error('frame error', e); } }
+    if (typeof requestAnimationFrame === 'function') {
+      if (this.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
+      this.raf = requestAnimationFrame(this.loop);
     }
-    if (typeof requestAnimationFrame === 'function') { if (this.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.loop); }
   };
 
   private frameHud(now: number, dt: number): void {
-    syncSessionFrameHud({
-      now, dt, store: this.store, entities: this.entities, dayNightSync: this.dayNightSync,
-      bootOverlay: this.bootOverlay, hud: this.hud, netStats: this.netStats,
-      colonyIndex: this.colonyIndex, spawn: this.spawn, warp: this.warp,
-      fastStartLand: this.fastStartLand, landSent: this.landSent, hqDeployedSynced: this.hqDeployedSynced,
-      lastHudMs: this.lastHudMs, sendLandOnce: () => this.sendLandOnce(),
-      onHqDeployedSync: (v) => { this.hqDeployedSynced = true; this.onView(v); },
-      setLastHudMs: (ms) => { this.lastHudMs = ms; },
-    });
+    syncSessionFrameHud({ now, dt, store: this.store, entities: this.entities, dayNightSync: this.dayNightSync, bootOverlay: this.bootOverlay, hud: this.hud, netStats: this.netStats, colonyIndex: this.colonyIndex, spawn: this.spawn, warp: this.warp, fastStartLand: this.fastStartLand, landSent: this.landSent, hqDeployedSynced: this.hqDeployedSynced, lastHudMs: this.lastHudMs, sendLandOnce: () => this.sendLandOnce(), onHqDeployedSync: (v) => { this.hqDeployedSynced = true; this.onView(v); }, setLastHudMs: (ms) => { this.lastHudMs = ms; } });
   }
 
   dispose(): void {

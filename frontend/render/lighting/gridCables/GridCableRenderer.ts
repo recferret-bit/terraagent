@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { shouldCullSmallShadowCasters } from '../../core/shadowQuality';
 import { CABLE_TIME_WRAP_S, createCableArcMaterial, type CableArcUniforms } from './cableArcMaterial';
 import {
   buildCableGeometry,
@@ -92,6 +93,7 @@ export class GridCableRenderer {
   }
 
   update(dt: number): void {
+    this.conductor.castShadow = !shouldCullSmallShadowCasters();
     this.time = (this.time + Math.max(0, dt)) % CABLE_TIME_WRAP_S;
     this.arcMat.uniforms.uTime.value = this.time;
   }

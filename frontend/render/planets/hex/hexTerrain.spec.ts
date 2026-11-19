@@ -303,8 +303,14 @@ describe('W01-20: Selected planet biome look sync on HexTerrain', () => {
       fragmentShader: '#include <common>\nvoid main() {\n#include <clipping_planes_fragment>\n}',
     } as unknown as THREE.WebGLProgramParametersWithUniforms;
     (firstChunk.customDepthMaterial as THREE.MeshDepthMaterial).onBeforeCompile(depthSh, null as unknown as THREE.WebGLRenderer);
+    expect((firstChunk.customDepthMaterial as THREE.MeshDepthMaterial).side).toBe(THREE.FrontSide);
     expect(depthSh.vertexShader).toContain('transformed.y -= 0.08;');
-    expect(depthSh.fragmentShader).toContain('if (vRock < 0.001) discard;');
+    expect(depthSh.fragmentShader).not.toContain('discard;');
+    const fullCount = firstChunk.geometry.getIndex()!.count;
+    firstChunk.onBeforeShadow(null as never, null as never, null as never, null as never, firstChunk.geometry, firstChunk.customDepthMaterial!, null as never);
+    expect(firstChunk.geometry.getIndex()!.count).toBeLessThanOrEqual(fullCount);
+    firstChunk.onAfterShadow(null as never, null as never, null as never, null as never, firstChunk.geometry, firstChunk.customDepthMaterial!, null as never);
+    expect(firstChunk.geometry.getIndex()!.count).toBe(fullCount);
     expect(scatterTileProps(0, 0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.metals, () => 0, 'dune')).toEqual([]);
     expect(scatterTileProps(0, 0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.minerals, () => 0, 'dune')).toEqual([]);
     expect(scatterTileProps(0, 0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.oil, () => 0, 'dune')).toEqual([]);

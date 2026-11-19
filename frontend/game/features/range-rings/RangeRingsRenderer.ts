@@ -190,6 +190,7 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
   private altPressed = false;
   private hoveredEntityId: number | null = null;
   private hoveredTile: { q: number; r: number } | null = null;
+  private pendingHoverPointer: { x: number; y: number } | null = null;
   private selectedEntityIds: number[] = [];
   private fallbackSelectedId: number | null = null;
   private latestView: GameView | undefined;
@@ -221,8 +222,12 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
     };
     const onPointerMove = (e: PointerEvent) => {
       if (canvas && e.target && e.target !== canvas) return;
-      const pick = this.ctx.services.pickTile?.(e.clientX, e.clientY, canvas);
-      this.hoveredTile = pick ? { q: pick.q, r: pick.r } : null;
+      if (((e.buttons ?? 0) & 5) !== 0) {
+        this.pendingHoverPointer = null;
+        this.hoveredTile = null;
+        return;
+      }
+      this.pendingHoverPointer = { x: e.clientX, y: e.clientY };
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -388,6 +393,18 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
     const data = rangeRingsData(this.ctx.flags, this.ctx.services.store);
     const ownColony = ownColonyIndex(this.ctx.services);
     const entities = extractRingEntities(effView);
+    if (this.pendingHoverPointer) {
+      const ptr = this.pendingHoverPointer;
+      this.pendingHoverPointer = null;
+      const hasEnemy = entities.some((ent) => ent.owner !== ownColony && ent.hp > 0);
+      if (hasEnemy) {
+        const canvas = (this.ctx.services.surface ?? this.ctx.services.canvas) as HTMLElement | null | undefined;
+        const pick = this.ctx.services.pickTile?.(ptr.x, ptr.y, canvas);
+        this.hoveredTile = pick ? { q: pick.q, r: pick.r } : null;
+      } else {
+        this.hoveredTile = null;
+      }
+    }
     const selectedIds = this.collectSelectedIdSet();
     const inputs: RangeRingInput[] = [];
     const emittedOwnIds = new Set<number>();

@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { getFpsCap, setFpsCap, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
+import { resolveInitialPixelArt } from '@terra/render/core/pixelArtPass';
+import { getShadowQuality, setShadowQuality } from '@terra/render/core/shadowQuality';
+import { resolveInitialCrt } from '@terra/render/ui/crt';
 import { PauseOverlay } from '../app/online/PauseOverlay';
 import { GameHud } from './hud';
 import { MainMenu, type MenuCallbacks, type MenuSettings } from './menu';
@@ -17,6 +20,7 @@ function makeNoopCallbacks(overrides: Partial<MenuCallbacks> = {}): MenuCallback
 describe('Settings Modal (Esc key) & Live Pause FPS Cap', () => {
   afterEach(() => {
     setFpsCap(0);
+    setShadowQuality('auto');
     localStorage.clear();
   });
 
@@ -92,10 +96,54 @@ describe('Settings Modal (Esc key) & Live Pause FPS Cap', () => {
   });
 });
 
-describe('Cross-UI MAX FPS Synchronization', () => {
+describe('Default Pixel-Art & CRT Settings', () => {
+  it('defaults pixel-art and CRT effects to ON unless explicitly disabled via query or saved storage', () => {
+    expect(resolveInitialPixelArt(null, null)).toBe(true);
+    expect(resolveInitialPixelArt('0', null)).toBe(false);
+    expect(resolveInitialPixelArt(null, '0')).toBe(false);
+    expect(resolveInitialPixelArt('1', '0')).toBe(true);
+
+    expect(resolveInitialCrt(null, null)).toBe(true);
+    expect(resolveInitialCrt('0', null)).toBe(false);
+    expect(resolveInitialCrt(null, '0')).toBe(false);
+    expect(resolveInitialCrt('1', '0')).toBe(true);
+  });
+});
+
+describe('Cross-UI MAX FPS & Shadow Quality Synchronization', () => {
   afterEach(() => {
     setFpsCap(0);
+    setShadowQuality('auto');
     localStorage.clear();
+  });
+
+  it('keeps MainMenu, SettingsModal, and PauseOverlay synchronized on SHADOWS quality changes', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const updated: MenuSettings[] = [];
+    const menu = new MainMenu(root, makeNoopCallbacks({ onSettings: (s) => updated.push({ ...s }) }), 'dune');
+    const pause = new PauseOverlay(root, { onResume: () => {}, onReturnToOrbit: () => {} });
+    const dialog = menu.el.querySelector<HTMLDialogElement>('[data-testid="settings-dialog"]')!;
+
+    const medRadio = dialog.querySelector<HTMLInputElement>('input[name="s-shadows"][value="med"]')!;
+    medRadio.checked = true;
+    medRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(getShadowQuality()).toBe('med');
+    expect(updated.at(-1)?.shadows).toBe('med');
+
+    pause.setPaused(true);
+    const pauseMedBtn = pause.el.querySelector<HTMLButtonElement>('[data-shadow-quality="med"]')!;
+    expect(pauseMedBtn.getAttribute('aria-pressed')).toBe('true');
+
+    const pauseLowBtn = pause.el.querySelector<HTMLButtonElement>('[data-shadow-quality="low"]')!;
+    pauseLowBtn.click();
+    expect(getShadowQuality()).toBe('low');
+    expect(menu.settings.shadows).toBe('low');
+    expect(dialog.querySelector<HTMLInputElement>('input[name="s-shadows"][value="low"]')?.checked).toBe(true);
+
+    pause.dispose();
+    menu.dispose();
+    root.remove();
   });
 
   it('keeps MainMenu.settings.fpsCap synchronized when MAX FPS changes via PauseOverlay, GameHud, or F8 PERF so Deploy/Settings never wipe it out', () => {
