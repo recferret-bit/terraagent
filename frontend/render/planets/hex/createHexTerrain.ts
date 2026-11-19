@@ -1,19 +1,29 @@
 import * as THREE from 'three';
 import { hexIndex } from '@terra/sim/grid/hex';
+import { enqueueDeferredDispose } from '../../core/deferredDispose';
 import type { PlanetSpec } from '../PlanetSpec';
 import { createTerrainMaterial, terrainUniforms } from '../../visuals/terrain/terrainMaterial';
 import { computeEffectiveHeights, HEX_TERRAIN, type HexTileLayers } from './chunkMesh';
-import { createHexChunkSet } from './chunkSet';
+import { createHexChunkSet, type PrecomputedChunkEntry } from './chunkSet';
 import { createHexPropScatter, type HexPropScatter } from './chunkPropScatter';
 import { createBorderController } from './borderController';
 import { addHexEdges } from './hexEdges';
 import { planetExtent, rayGround, tileAt, waterSurfaceHit } from './hexMath';
-import { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
+import { createHexWater, HEX_WATER_LEVEL, type HexWater, type PrecomputedHexWater } from './hexWater';
 import { createHexAmbient } from './hexAmbient';
 import { getWindUniforms } from '../../core/windConfig';
 import { makeHeightSampler } from './heightSampler';
 import type { TerritoryBorderStats } from './territoryBorder';
-import { createHexTileTint } from './tileTint';
+import { createHexTileTint, type PrecomputedTileTintBuffers } from './tileTint';
+
+export interface PrecomputedHexTerrainData {
+  radius: number;
+  kind: PlanetSpec['kind'];
+  effHeights: Float32Array;
+  tint: PrecomputedTileTintBuffers;
+  water: PrecomputedHexWater | null;
+  chunks: Record<string, PrecomputedChunkEntry>;
+}
 
 /** Tile layers the terrain reads (apps pass plain arrays; the sim's `ClientTiles` fits). */
 export interface HexTiles extends HexTileLayers {
@@ -67,6 +77,14 @@ export interface HexTerrain {
   setColorBlindMode(enabled: boolean): void;
   /** Overrides colony border colours (`ownerIndex -> hexColor`). */
   setColonyColors(colors: Record<number, number>): void;
+  /** Advances progressive chunk/prop assembly within `budgetMs` when built with `progressive: true`; returns true when complete. */
+  stepProgressiveBuild(budgetMs?: number): boolean;
+  /** Immediately completes any remaining progressive chunks + prop meshes. */
+  finishProgressiveBuild(): void;
+  /** True once all chunk meshes and prop buckets have been assembled. */
+  isBuildComplete(): boolean;
+  /** Detaches immediately, unregisters from `activeTerrains`, and slices GPU disposal across deferred tasks. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
 
@@ -82,6 +100,12 @@ export interface HexTerrainOptions {
   colorBlindMode?: boolean;
   /** Optional custom colony border colour overrides (`owner -> 0xrrggbb`). */
   colonyColors?: Record<number, number>;
+  /** Optional worker-precomputed buffers (`@terra/render/planets/prep`). */
+  precomputed?: PrecomputedHexTerrainData;
+  /** When true, spreads initial chunk + prop mesh creation across frames via `stepProgressiveBuild()`. */
+  progressive?: boolean;
+  /** Spawn/camera focus tile built first when `progressive` is enabled. */
+  priorityTile?: { q: number; r: number };
 }
 
 /** Placeholder only: the hex terrain's `uWind` is replaced by the shared F8 wind direction (`core/windConfig.ts`). */
@@ -139,6 +163,82 @@ function applyTileStateMutation(
   }
 }
 
+function pickHexTerrain(
+  radius: number,
+  tiles: HexTiles,
+  heightAt: (x: number, z: number) => number,
+  props: HexPropScatter,
+  ray: THREE.Raycaster,
+  input: THREE.Raycaster | THREE.Vector2,
+  camera?: THREE.Camera,
+): HexPick | null {
+  let r = input as THREE.Raycaster;
+  if (input instanceof THREE.Vector2) {
+    ray.setFromCamera(input, camera!);
+    r = ray;
+  }
+  const isWaterAt = (x: number, z: number): boolean => {
+    const t = tileAt(radius, x, z);
+    const code = t ? tiles.terrain[t.i] : undefined;
+    return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
+  };
+  const ground = rayGround(r.ray.origin, r.ray.direction, heightAt);
+  const hit = waterSurfaceHit(r.ray.origin, r.ray.direction, HEX_WATER_LEVEL, ground, isWaterAt) ?? ground;
+  // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
+  const prop = props.pickProp(r);
+  if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {
+    const i = hexIndex(radius).indexOf(prop.q, prop.r);
+    if (i >= 0) return { q: prop.q, r: prop.r, i };
+  }
+  return hit ? tileAt(radius, hit.x, hit.z) : null;
+}
+
+function createTerrainDisposer(
+  getHandle: () => HexTerrain,
+  group: THREE.Group,
+  parts: {
+    chunks: { dispose(): void };
+    water: { dispose(): void };
+    props: { dispose(): void };
+    borders: { dispose(): void };
+    material: { dispose(): void };
+    tint: { dispose(): void };
+    ambient: { dispose(): void };
+  },
+) {
+  let disposed = false;
+  let subDisposed = false;
+  return {
+    disposeDeferred() {
+      if (disposed) return;
+      activeTerrains.delete(getHandle());
+      group.removeFromParent();
+      enqueueDeferredDispose(
+        () => { if (!subDisposed) { parts.chunks.dispose(); parts.water.dispose(); } },
+        () => { if (!subDisposed) { parts.props.dispose(); parts.borders.dispose(); } },
+        () => {
+          if (!subDisposed) {
+            subDisposed = true;
+            parts.material.dispose(); parts.tint.dispose(); parts.ambient.dispose();
+          }
+          getHandle().dispose();
+        },
+      );
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      activeTerrains.delete(getHandle());
+      if (!subDisposed) {
+        subDisposed = true;
+        parts.chunks.dispose(); parts.water.dispose(); parts.props.dispose(); parts.borders.dispose();
+        parts.material.dispose(); parts.tint.dispose(); parts.ambient.dispose();
+      }
+      group.removeFromParent();
+    },
+  };
+}
+
 /** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { radius, look } = opts;
@@ -146,9 +246,14 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   let tiles = opts.tiles;
   let elapsedTime = 0;
   const chunkLayers = (): HexTileLayers => ({ ...tiles, kind: look.kind });
-  let effHeights = computeEffectiveHeights(radius, chunkLayers());
+  const pre = opts.precomputed && opts.precomputed.radius === radius && opts.precomputed.kind === look.kind
+    ? opts.precomputed
+    : undefined;
+  let effHeights = pre?.effHeights && pre.effHeights.length === hx.count
+    ? pre.effHeights
+    : computeEffectiveHeights(radius, chunkLayers());
   const ext = planetExtent(radius);
-  const tint = createHexTileTint(radius, chunkLayers());
+  const tint = createHexTileTint(radius, chunkLayers(), pre?.tint);
   // Dune ripples follow the same shared wind object as dust, trees and waves (by reference: F8 WIND re-orients them).
   const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0], tint.terraformTexture), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
   const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
@@ -159,36 +264,31 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const group = new THREE.Group();
   group.name = 'hexTerrain';
   const heightAt = makeHeightSampler(radius, () => effHeights);
-  const water = createHexWater(radius, look, tiles);
+  const water = createHexWater(radius, look, tiles, pre?.water);
   const props = createHexPropScatter(look);
   const borders = createBorderController(radius, tiles, effHeights, opts.colorBlindMode ?? globalColorBlindMode, opts.colonyColors);
-  const chunks = createHexChunkSet(radius, group, material, props, heightAt);
+  const chunks = createHexChunkSet(radius, group, material, props, heightAt, {
+    precomputed: pre?.chunks,
+    progressive: opts.progressive,
+    priorityTile: opts.priorityTile,
+  });
 
-  chunks.rebuild(chunkLayers(), effHeights);
+  if (opts.progressive) chunks.beginProgressive(chunkLayers(), effHeights);
+  else chunks.rebuild(chunkLayers(), effHeights);
   const ambient = createHexAmbient(look, ext.z);
   group.add(water.group, props.group, borders.mesh, ambient.points);
   const ray = new THREE.Raycaster();
-  const isWaterAt = (x: number, z: number): boolean => {
-    const t = tileAt(radius, x, z);
-    const code = t ? tiles.terrain[t.i] : undefined;
-    return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
-  };
 
+  const disposer = createTerrainDisposer(() => handle, group, { chunks, water, props, borders, material, tint, ambient });
   const handle: HexTerrain = {
     group, material, uniforms, water, props, borderMesh: borders.mesh, radius, halfSize: ext.z, heightAt,
-    get chunks() { return [...chunks.meshes.values()]; },
+    get chunks() {
+      if (!chunks.isComplete()) chunks.finishProgressive();
+      return [...chunks.meshes.values()];
+    },
     pick(input, camera) {
-      let r = input as THREE.Raycaster;
-      if (input instanceof THREE.Vector2) { ray.setFromCamera(input, camera!); r = ray; }
-      const ground = rayGround(r.ray.origin, r.ray.direction, heightAt);
-      const hit = waterSurfaceHit(r.ray.origin, r.ray.direction, HEX_WATER_LEVEL, ground, isWaterAt) ?? ground;
-      // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
-      const prop = props.pickProp(r);
-      if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {
-        const i = hexIndex(radius).indexOf(prop.q, prop.r);
-        if (i >= 0) return { q: prop.q, r: prop.r, i };
-      }
-      return hit ? tileAt(radius, hit.x, hit.z) : null;
+      if (!chunks.isComplete()) chunks.finishProgressive();
+      return pickHexTerrain(radius, tiles, heightAt, props, ray, input, camera);
     },
     updateTiles(nextOrChanged, maybeChanged) {
       const resolved = resolveTilesAndChanged(tiles, nextOrChanged, maybeChanged);
@@ -225,12 +325,11 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     getTerritoryBorderStats: () => borders.getStats(),
     setColorBlindMode: (enabled) => borders.setColorBlindMode(enabled, tiles, effHeights),
     setColonyColors: (colors) => borders.setColonyColors(colors, tiles, effHeights),
-    dispose() {
-      activeTerrains.delete(handle);
-      chunks.dispose();
-      water.dispose(); props.dispose(); borders.dispose(); material.dispose(); tint.dispose(); ambient.dispose();
-      group.removeFromParent();
-    },
+    stepProgressiveBuild: (budgetMs) => chunks.stepProgressive(budgetMs),
+    finishProgressiveBuild: () => chunks.finishProgressive(),
+    isBuildComplete: () => chunks.isComplete(),
+    disposeDeferred: () => disposer.disposeDeferred(),
+    dispose: () => disposer.dispose(),
   };
   activeTerrains.add(handle);
   return handle;

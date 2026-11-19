@@ -57,9 +57,46 @@ function gridLayers(l: HexTileLayers, count: number): HexGridLayers {
   return { terrain, prep: l.prep, height: l.height };
 }
 
+export interface PrecomputedTileTintBuffers {
+  tintData: Uint8Array;
+  terraformData: Uint8Array;
+  hexGridData: Uint8Array;
+  hexGrid: Uint8Array;
+}
+
+export function computeTileTintBuffers(radius: number, layers: HexTileLayers): PrecomputedTileTintBuffers {
+  const hx = hexIndex(radius);
+  const n = 2 * radius + 1;
+  const tintData = new Uint8Array(n * n * 4);
+  const terraformData = new Uint8Array(n * n * 4);
+  const hexGridData = new Uint8Array(n * n * 4);
+  const hexGrid = new Uint8Array(hx.count);
+  const gl = gridLayers(layers, hx.count);
+  hexTileMask(radius, gl, hexGrid);
+  for (let i = 0; i < hx.count; i++) {
+    const q = hx.q[i]!, r = hx.r[i]!;
+    const prepVal = layers.prep?.[i] ?? 0;
+    const st = layers.terrain
+      ? tileStyle(q, r, layers.terrain[i] ?? 0, prepVal, layers.deposit?.[i] ?? 0, layers.kind ?? 'forestRock')
+      : tileStyle(q, r, HEX_TERRAIN.flat, prepVal, 0, layers.kind ?? 'forestRock');
+    const o = ((r + radius) * n + (q + radius)) * 4;
+    tintData[o] = Math.round(st.r * 255);
+    tintData[o + 1] = Math.round(st.g * 255);
+    tintData[o + 2] = Math.round(st.b * 255);
+    tintData[o + 3] = 255;
+    terraformData[o] = prepVal === HEX_PREP.living ? 255 : 0;
+    terraformData[o + 1] = prepVal === HEX_PREP.irrigated ? 255 : 0;
+    terraformData[o + 2] = prepVal === HEX_PREP.prepared ? 255 : 0;
+    terraformData[o + 3] = 255;
+    hexGridData[o] = hexGrid[i] ? 255 : 0;
+    hexGridData[o + 3] = 255;
+  }
+  return { tintData, terraformData, hexGridData, hexGrid };
+}
+
 /** One `(2R+1)²` RGBA byte texture indexed by axial `(q + R, r + R)`, read per hex cell (nearest, no mips). */
-function cellTexture(n: number): { data: Uint8Array; texture: THREE.DataTexture } {
-  const data = new Uint8Array(n * n * 4);
+function cellTexture(n: number, initial?: Uint8Array): { data: Uint8Array; texture: THREE.DataTexture } {
+  const data = initial && initial.length === n * n * 4 ? initial : new Uint8Array(n * n * 4);
   const texture = new THREE.DataTexture(data, n, n, THREE.RGBAFormat, THREE.UnsignedByteType);
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;
@@ -95,11 +132,19 @@ export interface HexTileTint {
   dispose(): void;
 }
 
-export function createHexTileTint(radius: number, layers: HexTileLayers): HexTileTint {
+export function createHexTileTint(
+  radius: number,
+  layers: HexTileLayers,
+  precomputed?: PrecomputedTileTintBuffers,
+): HexTileTint {
   const hx = hexIndex(radius);
   const n = 2 * radius + 1;
-  const tint = cellTexture(n), tf = cellTexture(n), grid = cellTexture(n);
-  const hexGrid = new Uint8Array(hx.count);
+  const tint = cellTexture(n, precomputed?.tintData);
+  const tf = cellTexture(n, precomputed?.terraformData);
+  const grid = cellTexture(n, precomputed?.hexGridData);
+  const hexGrid = precomputed?.hexGrid && precomputed.hexGrid.length === hx.count
+    ? precomputed.hexGrid
+    : new Uint8Array(hx.count);
   const texel = (i: number) => ((hx.r[i]! + radius) * n + (hx.q[i]! + radius)) * 4;
 
   const stamp = (l: HexTileLayers, i: number) => {
@@ -137,7 +182,13 @@ export function createHexTileTint(radius: number, layers: HexTileLayers): HexTil
     tf.texture.needsUpdate = true;
     grid.texture.needsUpdate = true;
   };
-  update(layers);
+  if (precomputed) {
+    tint.texture.needsUpdate = true;
+    tf.texture.needsUpdate = true;
+    grid.texture.needsUpdate = true;
+  } else {
+    update(layers);
+  }
 
   return {
     texture: tint.texture,

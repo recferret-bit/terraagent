@@ -13,7 +13,9 @@ import { tickWindClock } from './windConfig';
 import { updateViewFocus } from './viewFocus';
 import { createViewFocusRing } from './viewFocusRing';
 import { isFocusRingOn, perfTelemetry } from './perfConfig';
+import { stepDeferredDispose } from './deferredDispose';
 import { createRenderScaleController } from './renderScale';
+import { noteRenderedFrame } from '../ui/fps';
 import { tickWaterClock } from '../visuals/water/waterConfig';
 import { createWaterReflectionPass } from '../visuals/water/reflection/WaterReflectionPass';
 import { excludeFromReflection } from '../visuals/water/reflection/reflectionRegistry';
@@ -240,6 +242,8 @@ function paintColonyFrame(
   rainPass.update(undefined, renderPass.scene as THREE.Scene, renderPass.camera, { sun: vp.sun, hemi: vp.hemi, renderer: vp.renderer });
   reflections.render();
   composer.render();
+  noteRenderedFrame();
+  stepDeferredDispose(0.8, 2);
 }
 
 /** Pillar 4 bootstrap: 28° FOV, ACES, PMREM RoomEnvironment, warm sun + cool hemi, bloom threshold 1.1. */

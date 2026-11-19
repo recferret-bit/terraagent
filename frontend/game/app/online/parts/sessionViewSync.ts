@@ -16,7 +16,7 @@ import type { EntityMeshes } from '../EntityMeshes';
 import type { FeatureHud } from '../featureHud';
 import { extractPodDescentStatus, type PodDescentStatus } from '../podStatus';
 import { POD_TOUCHDOWN_DESCENT_S, type ColonyLoadMode, type PodLandingStateName } from '../PodTouchdownFx';
-import { resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
+import { applySpaceVoidBackground, resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
 
 const tmpHqPos = new THREE.Vector3();
 
@@ -32,6 +32,7 @@ export function resolveSeatIndexFromSearch(search: string, v: ClientView): numbe
 export function applySessionSpacePhase(opts: {
   readonly phase: PodLandingStateName | null;
   readonly showTerrain: boolean;
+  readonly isGroundReady?: boolean;
   readonly entities: EntityMeshes;
   readonly banner: ConnectionBanner | null;
   readonly terrain: HexTerrain | null;
@@ -47,7 +48,8 @@ export function applySessionSpacePhase(opts: {
   opts.entities.podTouchdown.setSpacePhase(opts.phase);
   opts.entities.group.visible = opts.phase === null;
   if (opts.banner) opts.banner.el.style.display = opts.phase === null ? '' : 'none';
-  syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain, opts.cameraTargetTile);
+  const groundReady = opts.phase === null || (opts.isGroundReady ?? true);
+  syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain && groundReady, opts.cameraTargetTile);
   if (opts.phase === null && wasActive) {
     opts.dayNightSync?.syncFrame();
     if (opts.terrain) {
@@ -58,9 +60,7 @@ export function applySessionSpacePhase(opts: {
         /* Ignore in headless tests */
       }
     } else {
-      if (opts.viewport.scene.background instanceof THREE.Color) opts.viewport.scene.background.setHex(0x03060c);
-      else opts.viewport.scene.background = new THREE.Color(0x03060c);
-      if (opts.viewport.scene.fog instanceof THREE.FogExp2) opts.viewport.scene.fog.color.setHex(0x03060c);
+      applySpaceVoidBackground(opts.viewport.scene);
     }
     opts.focusTile(opts.cameraTargetTile.q, opts.cameraTargetTile.r, true);
     if (opts.store.latest) {
@@ -68,7 +68,7 @@ export function applySessionSpacePhase(opts: {
       opts.entities.update(0, opts.terrain);
     }
   }
-  return Boolean(opts.terrain);
+  return Boolean(opts.terrain && groundReady);
 }
 
 export interface ViewOverlaySyncDeps {
@@ -167,6 +167,7 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
       deps.setCameraCentered(true);
     }
   }
+  deps.hud.setVisible(!((status.descending || !deps.hqReady) && mode === 'pod'));
 }
 
 export function applySessionOrbitalReveal(opts: {

@@ -1,5 +1,7 @@
 // Shared lifecycle for live stages (WebGL viewports, 2D canvases): one rAF loop gated by IntersectionObserver visibility,
 // a clamped dt, optional ResizeObserver, and the reduced-motion switch (no loop: callers render still frames themselves).
+import { createFramePacer, type FramePacer } from './framePacer';
+
 export const prefersReducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -17,7 +19,7 @@ export class StageHost {
   readonly reduced: boolean;
   time = 0;
   private visibility = new Map<Element, boolean>();
-  private last = performance.now();
+  private pacer: FramePacer;
   private rafId = 0;
   private io: IntersectionObserver | null = null;
   private ro: ResizeObserver | null = null;
@@ -25,6 +27,7 @@ export class StageHost {
 
   constructor(private readonly o: StageHostOptions) {
     this.reduced = o.reduced ?? prefersReducedMotion();
+    this.pacer = createFramePacer({ maxDt: o.maxDt ?? 0.05 });
     o.elements.forEach((el) => this.visibility.set(el, true));
   }
 
@@ -37,7 +40,7 @@ export class StageHost {
     if ('IntersectionObserver' in window) {
       this.io = new IntersectionObserver((es) => {
         es.forEach((e) => this.visibility.set(e.target, e.isIntersecting));
-        this.last = performance.now(); // no dt spike when a stage scrolls back into view
+        this.pacer.reset(performance.now()); // no dt spike when a stage scrolls back into view
       }, threshold === undefined ? undefined : { threshold });
       elements.forEach((el) => this.io!.observe(el));
     }
@@ -65,9 +68,12 @@ export class StageHost {
   private loop = (now: number) => {
     if (this.disposed) return;
     this.rafId = requestAnimationFrame(this.loop);
-    const dt = clamp((now - this.last) / 1000, 0, this.o.maxDt ?? 0.05);
-    this.last = now;
-    if (!this.visible) return;
+    if (!this.visible) {
+      this.pacer.reset(now);
+      return;
+    }
+    const dt = this.pacer.next(now);
+    if (dt === null) return;
     this.time += dt;
     this.o.onFrame(dt, this.time);
   };

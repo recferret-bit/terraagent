@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlanetSpec } from '../PlanetSpec';
+import type { TerrainGridData } from '../../visuals/terrain/TerrainGrid';
 
 /** Walkable diorama patch for one planet. Owned by the "surface" workstream; consumed by playground, descent, game. */
 export interface PlanetSurface {
@@ -16,7 +17,16 @@ export interface PlanetSurface {
   readonly landingSite: THREE.Vector3;
   /** Per-frame animation (water waves, foliage sway, dust). dt seconds, time seconds. */
   update(dt: number, time: number): void;
+  /** Detaches `group` immediately and slices GPU buffer/texture disposal across idle frames. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
 
-export type CreatePlanetSurface = (spec: PlanetSpec, opts?: { halfSize?: number; quality?: 'low' | 'high' }) => PlanetSurface;
+export interface PlanetSurfaceOptions {
+  halfSize?: number;
+  quality?: 'low' | 'high';
+  /** Optional worker-precomputed height/normal/AO/bedrock/HalfFloat buffers (`@terra/render/planets/prep`). */
+  precomputedGrid?: TerrainGridData;
+}
+
+export type CreatePlanetSurface = (spec: PlanetSpec, opts?: PlanetSurfaceOptions) => PlanetSurface;

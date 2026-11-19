@@ -1,6 +1,11 @@
 import {
+  getFpsCap,
   getViewportPreset,
   isShaderOptimized,
+  onPerfConfigChange,
+  parseFpsLimit,
+  setFpsCap,
+  type FpsLimit,
   type ViewportPreset,
 } from '@terra/render/core/perfConfig';
 
@@ -12,6 +17,7 @@ export interface MenuSettings {
   skipCinematic: boolean;
   optimized: boolean;
   resolution: ViewportPreset;
+  fpsCap: FpsLimit;
 }
 
 export function getSavedGraphicsQuality(): 'low' | 'high' {
@@ -38,6 +44,7 @@ export function createInitialMenuSettings(): MenuSettings {
     skipCinematic: false,
     optimized: isShaderOptimized(),
     resolution: getViewportPreset(),
+    fpsCap: getFpsCap(),
   };
 }
 
@@ -48,11 +55,23 @@ const RES_OPTIONS: ReadonlyArray<readonly [ViewportPreset, string]> = [
   ['1280x720', '1280×720'],
 ];
 
+const FPS_OPTIONS: ReadonlyArray<readonly [FpsLimit, string]> = [
+  [0, 'UNCAPPED'],
+  [120, '120 FPS'],
+  [90, '90 FPS'],
+  [60, '60 FPS'],
+  [30, '30 FPS'],
+];
+
 function buildSettingsDialogHtml(settings: MenuSettings): string {
-  const { quality, optimized, resolution } = settings;
+  const { quality, optimized, resolution, fpsCap } = settings;
   const resRadios = RES_OPTIONS.map(
     ([val, label]) =>
       `<label><input type="radio" name="s-res" value="${val}" ${resolution === val ? 'checked' : ''} /><span>${label}</span></label>`,
+  ).join('');
+  const fpsRadios = FPS_OPTIONS.map(
+    ([val, label]) =>
+      `<label><input type="radio" name="s-fps" value="${val}" ${fpsCap === val ? 'checked' : ''} /><span>${label}</span></label>`,
   ).join('');
 
   return `<div class="hazard-system settings-dialog-bar"></div>
@@ -78,6 +97,10 @@ function buildSettingsDialogHtml(settings: MenuSettings): string {
           <label><input type="radio" name="s-opt" value="0" ${!optimized ? 'checked' : ''} /><span>OFF</span></label>
         </div>
       </div>
+      <div class="radio-group" data-testid="settings-fps-cap">
+        <div class="field-label">MAX FPS</div>
+        <div class="radios">${fpsRadios}</div>
+      </div>
       <div class="radio-group">
         <div class="field-label">VIEWPORT W×H</div>
         <div class="radios">${resRadios}</div>
@@ -94,6 +117,7 @@ export class SettingsModal {
   readonly dialog: HTMLDialogElement;
   private current: MenuSettings;
   private pressedOutside = false;
+  private readonly offFpsCap: () => void;
 
   constructor(
     parent: HTMLElement,
@@ -109,6 +133,10 @@ export class SettingsModal {
     this.dialog.innerHTML = buildSettingsDialogHtml(this.current);
     parent.appendChild(this.dialog);
     this.bindEvents();
+    this.offFpsCap = onPerfConfigChange((opt, res, cap) => {
+      if (this.current.optimized === opt && this.current.resolution === res && this.current.fpsCap === cap) return;
+      this.sync({ ...this.current, optimized: opt, resolution: res, fpsCap: cap });
+    });
   }
 
   isOpen(): boolean {
@@ -116,7 +144,7 @@ export class SettingsModal {
   }
 
   open(): void {
-    this.sync(this.current);
+    this.sync({ ...this.current, optimized: isShaderOptimized(), resolution: getViewportPreset(), fpsCap: getFpsCap() });
     if (typeof this.dialog.showModal === 'function') {
       if (!this.dialog.open) this.dialog.showModal();
     } else {
@@ -151,6 +179,9 @@ export class SettingsModal {
       .querySelectorAll<HTMLInputElement>('input[name="s-opt"]')
       .forEach((r) => { r.checked = r.value === (settings.optimized ? '1' : '0'); });
     this.dialog
+      .querySelectorAll<HTMLInputElement>('input[name="s-fps"]')
+      .forEach((r) => { r.checked = Number(r.value) === settings.fpsCap; });
+    this.dialog
       .querySelectorAll<HTMLInputElement>('input[name="s-res"]')
       .forEach((r) => { r.checked = r.value === settings.resolution; });
   }
@@ -160,7 +191,7 @@ export class SettingsModal {
       this.close();
     });
     this.dialog
-      .querySelectorAll<HTMLInputElement>('input[name="s-quality"], input[name="s-opt"], input[name="s-res"]')
+      .querySelectorAll<HTMLInputElement>('input[name="s-quality"], input[name="s-opt"], input[name="s-fps"], input[name="s-res"]')
       .forEach((input) => {
         input.addEventListener('change', () => this.emitCurrent());
       });
@@ -182,9 +213,12 @@ export class SettingsModal {
   private emitCurrent(): void {
     const qEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-quality"]:checked');
     const optEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-opt"]:checked');
+    const fpsEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-fps"]:checked');
     const resEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-res"]:checked');
     const quality = qEl?.value === 'low' ? 'low' : 'high';
+    const fpsCap = parseFpsLimit(fpsEl?.value) ?? 0;
     saveGraphicsQuality(quality);
+    setFpsCap(fpsCap);
     this.current = {
       ...this.current,
       bloom: true,
@@ -192,11 +226,13 @@ export class SettingsModal {
       quality,
       optimized: optEl ? optEl.value === '1' : true,
       resolution: (resEl?.value as ViewportPreset) ?? 'auto',
+      fpsCap,
     };
     this.onChange({ ...this.current });
   }
 
   dispose(): void {
+    this.offFpsCap();
     this.close();
     this.dialog.remove();
   }

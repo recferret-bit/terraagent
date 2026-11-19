@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
-import { createHexTerrain, getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type SimPlanetType } from '@terra/render/planets/hex';
+import { createHexTerrain, getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type PrecomputedHexTerrainData, type SimPlanetType } from '@terra/render/planets/hex';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { FINAL_POS } from '../../descent/constants';
@@ -26,11 +27,11 @@ export function bindLocalSaveListeners(local: LocalTransport): () => void {
 }
 
 function isOpenModalEl(el: HTMLElement | null): boolean {
-  return Boolean(el && el.dataset.open === 'true' && !el.hidden && el.style.display !== 'none');
+  return Boolean(el && el.dataset.open === 'true' && !el.hidden && el.style.display !== 'none' && !el.closest('[hidden]'));
 }
 
 function isVisibleOverlayEl(el: HTMLElement | null): boolean {
-  return Boolean(el && !el.hidden && el.style.display !== 'none');
+  return Boolean(el && !el.hidden && el.style.display !== 'none' && !el.closest('[hidden]'));
 }
 
 export function isEscapeBlockedByHudOverlay(): boolean {
@@ -188,6 +189,12 @@ export function applyTerrainTileChanges(
   terrain.updateTiles(nextTiles as HexTiles, changed);
 }
 
+export function applySpaceVoidBackground(scene: THREE.Scene): void {
+  if (scene.background instanceof THREE.Color) scene.background.setHex(0x03060c);
+  else scene.background = new THREE.Color(0x03060c);
+  if (scene.fog instanceof THREE.FogExp2) scene.fog.color.setHex(0x03060c);
+}
+
 export function createSafeViewport(root: HTMLElement, provided?: ColonyViewport): ColonyViewport {
   if (provided) return provided;
   if (typeof WebGLRenderingContext !== 'undefined') {
@@ -235,13 +242,21 @@ export function syncOrRebuildSessionTerrain(params: {
   showSpaceTerrain: boolean;
   deferLook?: boolean;
   cameraTargetTile: { q: number; r: number };
+  precomputed?: PrecomputedHexTerrainData;
+  progressive?: boolean;
 }): { terrain: HexTerrain; cam: RTSCamera | null; biomeKey: string; rebuilt: boolean } {
-  const { viewport, prevTerrain, prevTiles, prevCam, prevBiomeKey, view, tiles, planetKind, inSpace, showSpaceTerrain, deferLook, cameraTargetTile } = params;
+  const {
+    viewport, prevTerrain, prevTiles, prevCam, prevBiomeKey,
+    view, tiles, planetKind, inSpace, showSpaceTerrain, deferLook,
+    cameraTargetTile, precomputed, progressive,
+  } = params;
   const look = resolveOnlinePlanetLook(view.planet.type, planetKind);
   if (!prevTerrain || prevTerrain.radius !== view.planet.radius || prevBiomeKey !== look.biomeKey) {
     if (prevTerrain) {
-      viewport.scene.remove(prevTerrain.group);
-      prevTerrain.dispose();
+      const oldTerrain = prevTerrain;
+      viewport.scene.remove(oldTerrain.group);
+      if (oldTerrain.disposeDeferred) oldTerrain.disposeDeferred();
+      else enqueueDeferredDispose(() => oldTerrain.dispose());
     }
     if (!inSpace && !deferLook) {
       try {
@@ -250,7 +265,14 @@ export function syncOrRebuildSessionTerrain(params: {
         /* Ignore in headless tests */
       }
     }
-    const terrain = createHexTerrain({ radius: view.planet.radius, tiles: tiles as HexTiles, look });
+    const terrain = createHexTerrain({
+      radius: view.planet.radius,
+      tiles: tiles as HexTiles,
+      look,
+      precomputed,
+      progressive,
+      priorityTile: cameraTargetTile,
+    });
     viewport.scene.add(terrain.group);
     prevCam?.dispose();
     const [tx, tz] = tileXZ(cameraTargetTile.q, cameraTargetTile.r);

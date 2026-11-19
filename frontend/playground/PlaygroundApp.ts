@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { createFramePacer } from '@terra/render/core/framePacer';
 import { setDayNightExternalSync } from '@terra/render/core/dayNightConfig';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
 import { isShadowOn, onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
@@ -53,7 +54,7 @@ export class PlaygroundApp {
   private marchPanel: MarchPanel;
   private hasFramedOnce = false;
   private hasStarted = false;
-  private clock = new THREE.Clock();
+  private pacer = createFramePacer({ maxDt: 0.05 });
   private time = 0;
 
   constructor(private params: URLSearchParams) {
@@ -417,8 +418,10 @@ export class PlaygroundApp {
   }
 
   // ---------------------------------------------------------------- loop
-  private frame = () => {
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+  private frame = (now = performance.now()) => {
+    requestAnimationFrame(this.frame);
+    const dt = this.pacer.next(now);
+    if (dt === null) return;
     this.time += dt;
     this.cam.step(dt);
     this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget);
@@ -432,6 +435,5 @@ export class PlaygroundApp {
     this.hexSample.update(dt);
     this.viewport.followShadow(this.cam.controls.target);
     this.viewport.render();
-    requestAnimationFrame(this.frame);
   };
 }

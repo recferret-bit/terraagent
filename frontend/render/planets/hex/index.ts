@@ -8,6 +8,7 @@ export {
   type HexTiles,
   type HexPick,
   type HexTerrainOptions,
+  type PrecomputedHexTerrainData,
 } from './createHexTerrain';
 export {
   buildChunk,

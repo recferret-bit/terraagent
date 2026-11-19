@@ -1,3 +1,6 @@
+import { FPS_LIMITS, getFpsCap, onFpsCapChange, setFpsCap } from '@terra/render/core/perfConfig';
+import '../core/ui/scrim.css';
+
 export { DescentHud } from './descentHud';
 
 
@@ -6,6 +9,7 @@ export class GameHud {
   readonly el = document.createElement('div');
   readonly pause = document.createElement('div');
   private res: Record<string, HTMLElement> = {};
+  private readonly offFpsCap: () => void;
   constructor(parent: HTMLElement, planetName: string, seed: number, cb: { onResume(): void; onReturn(): void }) {
     this.el.id = 'hud'; this.el.className = 'ui-layer';
     this.el.innerHTML = `<div class="hud-top">
@@ -38,9 +42,19 @@ export class GameHud {
       </div></div>
       <div class="hud-hint plate-sm">LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home hero · ESC menu</div>`;
     parent.appendChild(this.el);
+    const fpsBtns = FPS_LIMITS.map((c) => `<button type="button" class="ta-pause-fps__btn" data-fps-cap="${c}" aria-pressed="${c === getFpsCap()}">${c === 0 ? 'MAX' : c}</button>`).join('');
     this.pause.id = 'pause';
-    this.pause.innerHTML = `<div class="box plate"><div class="hazard"></div><h2>PAUSED</h2><button class="btn btn-primary" id="p-resume">Resume</button><button class="btn btn-ghost" id="p-return">Return to orbit</button></div>`;
+    this.pause.innerHTML = `<div class="box plate"><div class="hazard"></div><h2>PAUSED</h2><div class="ta-pause-fps"><div class="ta-pause-fps__label">MAX FPS</div><div class="ta-pause-fps__options">${fpsBtns}</div></div><button class="btn btn-primary" id="p-resume">Resume</button><button class="btn btn-ghost" id="p-return">Return to orbit</button></div>`;
     parent.appendChild(this.pause);
+    const syncFps = (cap = getFpsCap()) => {
+      this.pause.querySelectorAll<HTMLButtonElement>('[data-fps-cap]').forEach((b) => {
+        b.setAttribute('aria-pressed', String(Number(b.dataset.fpsCap) === cap));
+      });
+    };
+    this.pause.querySelectorAll<HTMLButtonElement>('[data-fps-cap]').forEach((b) => {
+      b.onclick = () => { setFpsCap(Number(b.dataset.fpsCap) as typeof FPS_LIMITS[number]); syncFps(); };
+    });
+    this.offFpsCap = onFpsCapChange((cap) => syncFps(cap));
     (this.pause.querySelector('#p-resume') as HTMLElement).onclick = cb.onResume;
     (this.pause.querySelector('#p-return') as HTMLElement).onclick = cb.onReturn;
     for (const id of ['energy', 'metal', 'water', 'bio']) this.res[id] = this.el.querySelector('#r-' + id)!;
@@ -123,5 +137,5 @@ export class GameHud {
   }
   setPaused(p: boolean) { this.pause.classList.toggle('on', p); }
   get paused() { return this.pause.classList.contains('on'); }
-  dispose() { this.el.remove(); this.pause.remove(); }
+  dispose() { this.offFpsCap(); this.el.remove(); this.pause.remove(); }
 }

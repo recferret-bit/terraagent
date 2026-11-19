@@ -32,8 +32,10 @@ import {
   isTrackedWalkingUnitKind,
 } from './entityKinds';
 import {
+  findOwnedPodMesh,
   makeGroundRing,
   placeMeshOnTrack,
+  planetKindForBiome,
   stepPodTouchdownForEntries,
   stepTargetMarker,
 } from './parts/entityMarkers';
@@ -75,6 +77,7 @@ export class EntityMeshes {
   readonly gridCables: GridCableRenderer;
   isW10Enabled: () => boolean = () => true;
   private readonly entries = new Map<number, EntityMeshRecord>();
+  private readonly deferredSpaceRows = new Map<number, EntityRow>();
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
   private markerT = 99;
@@ -96,10 +99,11 @@ export class EntityMeshes {
     private readonly scene: THREE.Scene,
     private readonly makeMesh: MeshFactory = (id, biome) => createArchetypeMesh(id, biome),
     playPodTouchdown = false,
+    deferPodRig = false,
   ) {
     this.group.name = 'online-entities';
     this.scene.add(this.group);
-    this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown);
+    this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown, undefined, deferPodRig);
     this.healthBars = new UnitHealthBars(this.scene);
     this.workParticles = new WorkParticleSystem(this.scene);
     this.combatSync = new CombatSyncController(this.scene);
@@ -111,9 +115,7 @@ export class EntityMeshes {
     this.scene.add(this.targetMarker);
   }
 
-  get count(): number {
-    return this.entries.size;
-  }
+  get count(): number { return this.entries.size; }
 
   /** Rendered (interpolated) mesh of the owned HQ, for camera following. */
   ownHqObject(): THREE.Object3D | null {
@@ -121,21 +123,10 @@ export class EntityMeshes {
     return null;
   }
 
-  getRecord(entityId: number): EntityMeshRecord | undefined {
-    return this.entries.get(entityId);
-  }
-
-  hasPodTouchedDown(): boolean {
-    return this.podTouchdown.hasTouchedDown();
-  }
-
-  isHqDeployed(): boolean {
-    return this.podTouchdown.isHqDeployed();
-  }
-
-  getCameraShake(): number {
-    return this.podTouchdown.getCameraShake();
-  }
+  getRecord(entityId: number): EntityMeshRecord | undefined { return this.entries.get(entityId); }
+  hasPodTouchedDown(): boolean { return this.podTouchdown.hasTouchedDown(); }
+  isHqDeployed(): boolean { return this.podTouchdown.isHqDeployed(); }
+  getCameraShake(): number { return this.podTouchdown.getCameraShake(); }
 
   setOwnerColonyIndex(colonyIndex: number): void {
     if (this.ownerColonyIndex === colonyIndex) return;
@@ -225,16 +216,26 @@ export class EntityMeshes {
       }
     });
     const tdState = this.podTouchdown.computeState(ownedPodDescending, ownedPodProgress, ownedPodId);
+    const deferForeign = this.podTouchdown.isSpacePhaseActive() && typeof requestAnimationFrame === 'function';
+    if (!deferForeign && this.deferredSpaceRows.size > 0) this.deferredSpaceRows.clear();
 
     let correction = 0;
     forEachEntity(view.entities, view.count, (e) => {
       seen.add(e.id);
+      if (deferForeign && !this.entries.has(e.id) && e.owner !== this.ownerColonyIndex) {
+        this.deferredSpaceRows.set(e.id, { ...e });
+        return;
+      }
+      this.deferredSpaceRows.delete(e.id);
       correction = Math.max(correction, this.upsertEntity(e, terrain, tdState, view.tick, view));
       syncExtractorAppearance(this.entries.get(e.id)?.mesh, e, view);
       const mesh = this.entries.get(e.id)?.mesh;
       if (mesh) this.combatSync.battle.insects.track(e.id, mesh, e.hp, e.state === ENTITY_STATE.moving);
     });
     if (correction > 0) this.onCorrection?.(correction);
+    for (const id of [...this.deferredSpaceRows.keys()]) {
+      if (!seen.has(id)) this.deferredSpaceRows.delete(id);
+    }
 
     for (const [id, rec] of [...this.entries]) {
       if (!seen.has(id)) {
@@ -427,7 +428,42 @@ export class EntityMeshes {
     updateGroundSelection(this.selectionRing, sel, this.time);
   }
 
+  /** Incrementally instantiates deferred off-screen/foreign entities while the drop pod is descending from space. */
+  stepSpacePrewarm(terrain: HexTerrain | null, maxCount = 2): boolean {
+    if (this.deferredSpaceRows.size === 0 || !this.latestView) return true;
+    const view = this.latestView;
+    const tdState = this.podTouchdown.computeState(true, 0);
+    let built = 0;
+    for (const [id, row] of this.deferredSpaceRows) {
+      this.deferredSpaceRows.delete(id);
+      this.upsertEntity(row, terrain, tdState, view.tick, view);
+      syncExtractorAppearance(this.entries.get(id)?.mesh, row, view);
+      const mesh = this.entries.get(id)?.mesh;
+      if (mesh) this.combatSync.battle.insects.track(id, mesh, row.hp, row.state === ENTITY_STATE.moving);
+      if (++built >= maxCount) break;
+    }
+    if (this.deferredSpaceRows.size === 0) {
+      this.syncVisionAndForeignVisibility(terrain, tdState);
+      this.healthBars.sync(this.entries.values());
+    }
+    return this.deferredSpaceRows.size === 0;
+  }
+
+  stepLandingFxPrewarm(): boolean {
+    return this.podTouchdown.stepPrewarm(planetKindForBiome(this.biomeKey), findOwnedPodMesh(this.entries.values(), this.ownerColonyIndex));
+  }
+
+  prewarmLandingFx(): THREE.Object3D[] {
+    return this.podTouchdown.prewarm(planetKindForBiome(this.biomeKey), findOwnedPodMesh(this.entries.values(), this.ownerColonyIndex));
+  }
+
+  flushSpacePrewarm(terrain: HexTerrain | null): void {
+    if (this.deferredSpaceRows.size === 0) return;
+    this.stepSpacePrewarm(terrain, Number.MAX_SAFE_INTEGER);
+  }
+
   dispose(): void {
+    this.deferredSpaceRows.clear();
     this.swarms.dispose();
     resetColonyVisionAndLights();
     this.podTouchdown.dispose();

@@ -35,7 +35,10 @@ export class GroundFx implements FramePart {
     const pxScale = viewport.renderer.domElement.height / (2 * Math.tan(camera.fov * D2R * 0.5));
     this.gfx.update(tn, this.tmp, thr * smoothstep(30, 3, f.yRel) + 0.0, pxScale, thr);
     const lightI = 24 * f.plasmaI + 22 * thr;
-    this.light.intensity = lightI; this.light.visible = lightI > 0.1;
+    // Keep `light.visible = true` permanently (intensity = 0 when idle) so Three.js `NUM_POINT_LIGHTS` never changes
+    // across freefall -> reentry -> chute -> retro transitions (toggling `.visible` forces full-scene shader recompiles).
+    this.light.visible = true;
+    this.light.intensity = lightI > 0.05 ? lightI : 0;
     this.light.color.setRGB(1, 0.5, 0.18).lerp(this.col.setRGB(1, 0.75, 0.5), thr);
     this.light.position.set(f.podBase.x, f.podBase.y - 1.0, f.podBase.z);
   }

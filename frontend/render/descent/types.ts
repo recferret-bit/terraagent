@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { PlanetSurface } from '../planets/surface/types';
+import type { PrecomputedGlobeSpheres } from '../visuals/terrain/TerrainGrid';
 import type { ColonyViewport } from '../core/createColonyViewport';
 
 export type DescentPhase = 'orbit' | 'release' | 'freefall' | 'reentry' | 'chute' | 'approach' | 'retro' | 'touchdown';
@@ -158,6 +159,8 @@ export interface DescentSequence {
   onTelemetry(cb: (t: DescentTelemetry) => void): void;
   /** Fired once at touchdown. `hero` is the robot.hero mesh standing at surface.landingSite, already detached from descent objects and added to `scene`. */
   onComplete(cb: (hero: THREE.Object3D) => void): void;
+  /** Detaches scene objects immediately and slices part GPU disposal across idle animation frames. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
 
@@ -171,5 +174,9 @@ export interface DescentOptions {
   duration?: number; // default 35
   /** Authored second to begin at (0 = top; 2 = carrier hand-off with the bay arming). */
   startAt?: number;
+  /** Optional worker-precomputed `PlanetGlobe` high-poly spheres (`@terra/render/planets/prep`). */
+  precomputedGlobeSpheres?: PrecomputedGlobeSpheres;
+  /** When true, `finish()` / `skip()` slices part GPU disposal across idle frames instead of stalling the handoff frame. */
+  deferPartDispose?: boolean;
 }
 export type CreateDescentSequence = (opts: DescentOptions) => DescentSequence;

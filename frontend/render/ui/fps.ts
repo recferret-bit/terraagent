@@ -15,9 +15,19 @@ body.fps-hidden #fps-counter{display:none}
 `;
 
 let el: HTMLElement | null = null;
-let frames = 0;
-let lastTime = performance.now();
+let rafFrames = 0;
+let renderedFrames = 0;
+let firstRenderMs = -1;
+let lastRenderMs = -1;
+let lastTime = typeof performance !== 'undefined' ? performance.now() : 0;
 let rafId = 0;
+
+/** Records one actually painted 3D frame so `#fps-counter` reflects `fpsCap` without VSync window aliasing. */
+export function noteRenderedFrame(nowMs = typeof performance !== 'undefined' ? performance.now() : 0): void {
+  if (renderedFrames === 0) firstRenderMs = nowMs;
+  lastRenderMs = nowMs;
+  renderedFrames++;
+}
 
 export function initFpsCounter() {
   if (typeof document === 'undefined' || document.getElementById('fps-counter')) return;
@@ -30,20 +40,41 @@ export function initFpsCounter() {
 
   const valEl = el.querySelector<HTMLElement>('.fps-val')!;
   const msEl = el.querySelector<HTMLElement>('.fps-ms')!;
+  rafFrames = 0;
+  renderedFrames = 0;
+  firstRenderMs = -1;
+  lastRenderMs = -1;
+  lastTime = performance.now();
 
   const tick = (now: number) => {
-    frames++;
+    rafFrames++;
     const delta = now - lastTime;
     if (delta >= 500) {
-      const fps = Math.round((frames * 1000) / delta);
-      const ms = (delta / frames).toFixed(1);
+      let fps: number;
+      let ms: string;
+      if (renderedFrames >= 2 && lastRenderMs > firstRenderMs) {
+        const span = lastRenderMs - firstRenderMs;
+        const intervals = renderedFrames - 1;
+        fps = Math.round((intervals * 1000) / span);
+        ms = (span / intervals).toFixed(1);
+        // Carry the last render timestamp forward as the start of the next interval window so zero intervals are lost.
+        firstRenderMs = lastRenderMs;
+        renderedFrames = 1;
+      } else {
+        const count = renderedFrames > 0 ? renderedFrames : Math.max(1, rafFrames);
+        fps = Math.round((count * 1000) / delta);
+        ms = (delta / count).toFixed(1);
+        renderedFrames = 0;
+        firstRenderMs = -1;
+        lastRenderMs = -1;
+      }
       valEl.textContent = String(fps);
       msEl.textContent = `(${ms} ms)`;
       if (el) {
         el.classList.toggle('warn', fps < 45 && fps >= 25);
         el.classList.toggle('crit', fps < 25);
       }
-      frames = 0;
+      rafFrames = 0;
       lastTime = now;
     }
     rafId = requestAnimationFrame(tick);

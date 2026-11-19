@@ -1,4 +1,5 @@
 import type { PlanetListV1, PlanetSummaryV1, SectorId } from '@terra/contracts';
+import { onPerfConfigChange } from '@terra/render/core/perfConfig';
 import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { mountPlanetThumbnails, type PlanetThumbnailsHandle } from '@terra/render/planets/PlanetThumbnails';
@@ -100,6 +101,7 @@ export class MainMenu {
   private errEl: HTMLElement;
   private ownedFeed: LobbyPlanetFeed | null = null;
   private unsubscribeFeed: (() => void) | null = null;
+  private readonly offFpsCap: () => void;
   private activeColony: ActiveHomeColony | null = null;
   private disposed = false;
   private readonly autoProbeColony: boolean;
@@ -157,6 +159,10 @@ export class MainMenu {
     this.settingsModal = new SettingsModal(this.el, this.settings, (next) => {
       this.settings = next;
       this.cb.onSettings(next);
+    });
+    this.offFpsCap = onPerfConfigChange((opt, res, cap) => {
+      if (this.settings.optimized === opt && this.settings.resolution === res && this.settings.fpsCap === cap) return;
+      this.settings = { ...this.settings, optimized: opt, resolution: res, fpsCap: cap };
     });
 
     this.bindControls();
@@ -365,6 +371,7 @@ export class MainMenu {
 
   dispose(): void {
     this.disposed = true;
+    this.offFpsCap();
     window.removeEventListener('keydown', this.onKeyCapture, true);
     this.unsubscribeFeed?.();
     this.unsubscribeFeed = null;

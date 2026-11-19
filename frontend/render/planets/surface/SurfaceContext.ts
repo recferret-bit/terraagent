@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlanetSpec } from '../PlanetSpec';
+import type { PlanetSurfaceOptions } from './types';
 import { createHeightField, type HeightField } from '../../visuals/terrain/heightfields';
 import { createTerrain } from '../../visuals/terrain/TerrainMesh';
 import { Noise2, mulberry32, smoothstep } from '../../visuals/terrain/noise';
@@ -37,13 +38,13 @@ export class SurfaceContext {
   readonly rockTint: THREE.Color;
   readonly darkTint: THREE.Color;
 
-  constructor(readonly spec: PlanetSpec, opts?: { halfSize?: number; quality?: 'low' | 'high' }) {
+  constructor(readonly spec: PlanetSpec, opts?: PlanetSurfaceOptions) {
     this.half = opts?.halfSize ?? 64;
     const quality = opts?.quality ?? 'high';
     const N = quality === 'high' ? 420 : 240;
     this.cellMul = quality === 'high' ? 1 : 1.4;
     this.field = createHeightField(spec, this.half * 2);
-    this.terrain = createTerrain(spec, this.field, this.half, N);
+    this.terrain = createTerrain(spec, this.field, this.half, N, opts?.precomputedGrid);
     this.heightAt = this.terrain.heightAt;
     this.level = this.field.liquid?.level ?? -999;
 

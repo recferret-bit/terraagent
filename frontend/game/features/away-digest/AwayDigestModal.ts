@@ -62,7 +62,7 @@ export class AwayDigestModal {
   private listen(): void {
     if (this.onKey || typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
     this.onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || !this.root) return;
+      if (e.key !== 'Escape' || !this.root || this.root.closest('[hidden]')) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       this.dismiss();

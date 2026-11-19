@@ -1,3 +1,4 @@
+import type { AwayDigestV1 } from '@terra/contracts';
 import { track } from '../../core/analytics';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
@@ -5,6 +6,7 @@ import type { Disposable, FeatureContext, FeatureServices, GameView, HostKind, R
 import type { ClientFlagsStore } from '../../core/flags';
 import { mountDevConsole } from '../../dev/console';
 import { httpDevServer } from '../../net/devServer';
+import { digestFromWelcome } from '../../store/awayWelcome';
 
 /** Analytics intake is a server feature: the local host records nothing. */
 const noTrack: typeof track = () => undefined;
@@ -22,14 +24,21 @@ export class FeatureHud {
   private renderers: RendererInstance[] = [];
   private last: GameView = {};
   private visible = true;
+  private dirtyWhileHidden = false;
   private mountedIds: string | null = null;
   private ctx: FeatureContext | null = null;
+  private pendingWelcome: { reason?: string; away?: AwayDigestV1 } | null = null;
   private readonly liveFlags = new Set<string>();
   private readonly off: () => void;
   /** How many times the features were mounted (1 for the whole session unless the enabled waves changed). */
   mounts = 0;
 
+  get isMounted(): boolean {
+    return this.mountedIds !== null;
+  }
+
   get activeServices(): FeatureServices | null {
+    this.ensureMounted();
     return this.ctx?.services ?? null;
   }
 
@@ -38,28 +47,57 @@ export class FeatureHud {
     private readonly flags: ClientFlagsStore,
     private readonly host: HostKind,
     private readonly services: Partial<FeatureServices>,
+    deferInitialMount = false,
   ) {
+    if (deferInitialMount) this.visible = false;
     this.off = flags.onChange(() => this.onFlags());
-    this.mount();
+    if (!deferInitialMount) this.mount();
+  }
+
+  ensureMounted(): void {
+    if (this.mountedIds === null) this.mount();
   }
 
   setVisible(visible: boolean): void {
+    const becameVisible = visible && !this.visible;
     this.visible = visible;
+    if (visible) this.ensureMounted();
     this.root?.setVisible(visible);
+    if (becameVisible && this.dirtyWhileHidden) {
+      this.dirtyWhileHidden = false;
+      this.root?.update(this.last);
+    }
   }
 
   update(view: GameView): void {
     this.last = view;
+    if (!this.visible) {
+      this.dirtyWhileHidden = true;
+      return;
+    }
+    this.ensureMounted();
     this.root?.update(view);
   }
 
   /** A HUD toast (top bar), when the `hud-min` feature is mounted. */
   toast(message: string, severity: 'warning' | 'error' | 'info' = 'warning'): void {
+    this.ensureMounted();
     this.ctx?.services.hudMin?.showToast(message, severity);
+  }
+
+  /** Forwards a join welcome's away digest without forcing an eager HUD mount when deferred or when `away` is absent. */
+  showWelcome(welcome: { reason?: string; away?: AwayDigestV1 }): void {
+    if (!digestFromWelcome(welcome)) return;
+    if (this.mountedIds === null) {
+      this.pendingWelcome = welcome;
+      return;
+    }
+    this.ctx?.services.awayDigest?.showWelcome(welcome);
   }
 
   /** Per-frame tick of the features' 3D renderers with the newest view. */
   frame(view: GameView, dt: number): void {
+    this.ensureMounted();
     for (const r of this.renderers) r.update(view, dt);
   }
 
@@ -68,6 +106,10 @@ export class FeatureHud {
   }
 
   private onFlags(): void {
+    if (this.mountedIds === null) {
+      this.syncFlags();
+      return;
+    }
     if (this.enabledIds() === this.mountedIds) this.syncFlags();
     else this.mount();
   }
@@ -106,6 +148,11 @@ export class FeatureHud {
       try { return [r.mount(ctx)]; } catch (e) { console.warn(`renderer ${r.id} failed`, e); return []; }
     });
     this.root.update(this.last);
+    if (this.pendingWelcome) {
+      const w = this.pendingWelcome;
+      this.pendingWelcome = null;
+      ctx.services.awayDigest?.showWelcome(w);
+    }
   }
 
   private disposeMounted(): void {
@@ -118,6 +165,7 @@ export class FeatureHud {
   }
 
   dispose(): void {
+    this.pendingWelcome = null;
     this.off();
     this.disposeMounted();
   }

@@ -1,10 +1,28 @@
 import * as THREE from 'three';
 import type { HeightField } from './heightfields';
 
-/** CPU-side data of the displaced grid: heights, normals, baked AO and triangle indices. */
+export interface SphereGeometryBuffers {
+  readonly radius: number;
+  readonly widthSegments: number;
+  readonly heightSegments: number;
+  readonly pos: Float32Array;
+  readonly nor: Float32Array;
+  readonly idx: Uint32Array;
+}
+
+export interface PrecomputedGlobeSpheres {
+  readonly surface: SphereGeometryBuffers;
+  readonly clouds: SphereGeometryBuffers;
+  readonly atmo: SphereGeometryBuffers;
+}
+
+/** CPU-side data of the displaced grid: heights, normals, baked AO, triangle indices, and optional worker-baked masks. */
 export interface TerrainGridData {
   V: number; step: number;
   hs: Float32Array; pos: Float32Array; nor: Float32Array; ao: Float32Array; idx: Uint32Array;
+  rk?: Float32Array;
+  heightTexHalf?: Uint16Array;
+  globeSpheres?: PrecomputedGlobeSpheres;
 }
 
 type Lattice = (i: number, j: number) => number;
@@ -74,15 +92,32 @@ export function buildTerrainGrid(field: HeightField, span: number, N: number): T
   return { V, step, hs, pos, nor, ao, idx: gridIndices(N, V) };
 }
 
-export function buildTerrainGeometry(g: TerrainGridData, field: HeightField, span: number): THREE.BufferGeometry {
+export function bakeBedrockMask(g: Pick<TerrainGridData, 'V' | 'pos'>, field: HeightField): Float32Array {
   const { V, pos } = g;
+  const rk = new Float32Array(V * V).fill(-1);
+  if (field.rock) {
+    for (let j = 0; j < V; j++) {
+      for (let i = 0; i < V; i++) {
+        rk[j * V + i] = field.rock(pos[(j * V + i) * 3]!, pos[(j * V + i) * 3 + 2]!);
+      }
+    }
+  }
+  return rk;
+}
+
+export function packHeightHalfFloat(hs: Float32Array): Uint16Array {
+  const hd = new Uint16Array(hs.length);
+  for (let k = 0; k < hd.length; k++) hd[k] = THREE.DataUtils.toHalfFloat(hs[k]!);
+  return hd;
+}
+
+export function buildTerrainGeometry(g: TerrainGridData, field: HeightField, span: number): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('position', new THREE.BufferAttribute(g.pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(g.nor, 3));
   geo.setAttribute('aAO', new THREE.BufferAttribute(g.ao, 1));
   // bedrock mask (−1 = not provided → shader falls back to slope)
-  const rk = new Float32Array(V * V).fill(-1);
-  if (field.rock) for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) rk[j * V + i] = field.rock(pos[(j * V + i) * 3], pos[(j * V + i) * 3 + 2]);
+  const rk = g.rk ?? bakeBedrockMask(g, field);
   geo.setAttribute('aRock', new THREE.BufferAttribute(rk, 1));
   geo.setIndex(new THREE.BufferAttribute(g.idx, 1));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), span);
@@ -91,9 +126,8 @@ export function buildTerrainGeometry(g: TerrainGridData, field: HeightField, spa
 }
 
 /** half-float height texture for liquids (depth-based colouring) */
-export function buildHeightTexture(hs: Float32Array, V: number): THREE.DataTexture {
-  const hd = new Uint16Array(V * V);
-  for (let k = 0; k < hd.length; k++) hd[k] = THREE.DataUtils.toHalfFloat(hs[k]);
+export function buildHeightTexture(hs: Float32Array, V: number, precomputedHalf?: Uint16Array): THREE.DataTexture {
+  const hd = precomputedHalf && precomputedHalf.length === V * V ? precomputedHalf : packHeightHalfFloat(hs);
   const tex = new THREE.DataTexture(hd, V, V, THREE.RedFormat, THREE.HalfFloatType);
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;

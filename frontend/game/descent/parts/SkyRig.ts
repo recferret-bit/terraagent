@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import { ensureSecondaryShadowLight, isShadowOn, setDescentSunDirection } from '@terra/render/core/shadowConfig';
 import { getColonyVisionUniforms, setColonyLightingBlend } from '@terra/render/lighting/ColonyVisionAndLights';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { createPlanetGlobe, type PlanetGlobe } from '@terra/render/planets/PlanetGlobe';
+import type { PrecomputedGlobeSpheres } from '@terra/render/visuals/terrain/TerrainGrid';
 import { createSpaceBackdrop, type SpaceBackdrop } from '@terra/render/visuals/space/SpaceBackdrop';
 import { lerp, smoothstep, smoother } from '../math';
 import { createCloudDeck, type CloudDeck } from '../fx/CloudDeck';
@@ -62,8 +64,9 @@ export class SkyRig implements FramePart {
   private tmpAtmBand = new THREE.Color();
   private tmpBounce = new THREE.Color();
   private spaceSolar = createSpaceEntrySolar();
+  private disposed = false;
 
-  constructor(private ctx: DescentContext) {
+  constructor(private ctx: DescentContext, precomputedSpheres?: PrecomputedGlobeSpheres) {
     const { spec, viewport, scene, sunDir, traj, root } = ctx, o = spec.orbital;
     this.saved = { bloom: viewport.bloom.strength, envI: scene.environmentIntensity };
     this.bg = scene.background as THREE.Color; this.fog = scene.fog as THREE.FogExp2;
@@ -77,7 +80,7 @@ export class SkyRig implements FramePart {
       nebulaB: 0x3a2a8a,
     });
     root.add(this.backdrop.group);
-    this.globe = createPlanetGlobe(spec, { radius: R, segments: 160, cloudScale: 1 + DECK / R, atmScale: 1.035 });
+    this.globe = createPlanetGlobe(spec, { radius: R, segments: 160, cloudScale: 1 + DECK / R, atmScale: 1.035, precomputedSpheres });
     this.globe.group.position.copy(traj.C);
     this.globe.setSunDirection(sunDir);
     this.globe.spin.rotation.set(1.0, 2.2, 0.0); // landing site (world +Y) maps to a mid-latitude point, not the polar cap
@@ -227,5 +230,22 @@ export class SkyRig implements FramePart {
     viewport.followShadow(traj.L);
   }
 
-  dispose() { this.backdrop.dispose(); this.globe.dispose(); this.deck.dispose(); }
+  disposeDeferred() {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.globe.disposeDeferred) this.globe.disposeDeferred();
+    else enqueueDeferredDispose(() => this.globe.dispose());
+    enqueueDeferredDispose(
+      () => this.backdrop.dispose(),
+      () => this.deck.dispose(),
+    );
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.backdrop.dispose();
+    this.globe.dispose();
+    this.deck.dispose();
+  }
 }

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { enqueueDeferredDispose } from '../core/deferredDispose';
 import { isShaderOptimized } from '../core/perfConfig';
+import type { PrecomputedGlobeSpheres, SphereGeometryBuffers } from '../visuals/terrain/TerrainGrid';
 import type { PlanetSpec } from './PlanetSpec';
 
 export interface PlanetGlobeOptions {
@@ -9,6 +11,8 @@ export interface PlanetGlobeOptions {
   cloudScale?: number;
   /** Atmosphere shell radius multiplier (default 1.07). */
   atmScale?: number;
+  /** Optional worker-precomputed sphere buffers (`@terra/render/planets/prep`) to skip main-thread tessellation. */
+  precomputedSpheres?: PrecomputedGlobeSpheres;
 }
 
 export interface PlanetGlobe {
@@ -42,12 +46,25 @@ export interface PlanetGlobe {
   /** Axial spin in rad/s (default 0.025, the menu's idle drift). Clouds drift relative to it. */
   setSpinRate(radPerSec: number): void;
   update(dt: number, time: number): void;
+  disposeDeferred?(): void;
   dispose(): void;
 }
 import { createGlobeMaterials, createSharedUniforms } from './globe/materials';
 import { ColonyBeams } from './globe/ColonyBeams';
 import { ColonyStructures } from './globe/ColonyStructures';
 import { TERRA_ATM, DUSTY_ATM, smooth01 } from './globe/terraform';
+
+function makeSphereGeometry(radius: number, wSeg: number, hSeg: number, pre?: SphereGeometryBuffers): THREE.BufferGeometry {
+  if (pre && Math.abs(pre.radius - radius) < 1e-2 && pre.widthSegments === wSeg && pre.heightSegments === hSeg) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pre.pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(pre.nor, 3));
+    g.setIndex(new THREE.BufferAttribute(pre.idx, 1));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), radius);
+    return g;
+  }
+  return new THREE.SphereGeometry(radius, wSeg, hSeg);
+}
 
 /** Procedural planet globe (surface + clouds + Fresnel/limb atmosphere) for one PlanetSpec. */
 export function createPlanetGlobe(spec: PlanetSpec, opts: PlanetGlobeOptions = {}): PlanetGlobe {
@@ -59,16 +76,17 @@ export function createPlanetGlobe(spec: PlanetSpec, opts: PlanetGlobeOptions = {
   const o = spec.orbital;
   const shared = createSharedUniforms(spec);
   const { surfMat, cloudMat, atmMat, atm, atmBase } = createGlobeMaterials(spec, radius, opts.atmScale, shared);
+  const pre = opts.precomputedSpheres;
 
   const group = new THREE.Group(); group.name = `PlanetGlobe:${spec.kind}`;
   const spin = new THREE.Group(); spin.rotation.z = o.axialTilt;
-  const geo = new THREE.SphereGeometry(radius, seg, Math.round(seg / 2));
+  const geo = makeSphereGeometry(radius, seg, Math.round(seg / 2), pre?.surface);
   // renderOrder 0 < clouds (2) < atmosphere (3); among other transparents the globe's far-away origin sorts it first.
   const surface = new THREE.Mesh(geo, surfMat); surface.renderOrder = 0; surface.frustumCulled = false;
   const cloudScale = opts.cloudScale ?? 1.012;
-  const cloudGeo = new THREE.SphereGeometry(radius * cloudScale, Math.round(seg * 0.75), Math.round(seg * 0.375));
+  const cloudGeo = makeSphereGeometry(radius * cloudScale, Math.round(seg * 0.75), Math.round(seg * 0.375), pre?.clouds);
   const clouds = new THREE.Mesh(cloudGeo, cloudMat); clouds.renderOrder = 2; clouds.frustumCulled = false;
-  const atmGeo = new THREE.SphereGeometry(radius * (opts.atmScale ?? 1.07), big ? 192 : 96, big ? 96 : 48);
+  const atmGeo = makeSphereGeometry(radius * (opts.atmScale ?? 1.07), big ? 192 : 96, big ? 96 : 48, pre?.atmo);
   const atmo = new THREE.Mesh(atmGeo, atmMat); atmo.renderOrder = 3; atmo.frustumCulled = false;
   spin.add(surface, clouds);
 
@@ -79,6 +97,17 @@ export function createPlanetGlobe(spec: PlanetSpec, opts: PlanetGlobeOptions = {
   group.add(spin, atmo); // atmosphere is not tilted (rotation-invariant)
 
   let spinRate = 0.025;
+  let disposed = false;
+  const disposeSteps: Array<() => void> = [
+    () => geo.dispose(),
+    () => cloudGeo.dispose(),
+    () => atmGeo.dispose(),
+    () => beams.dispose(),
+    () => structures.dispose(),
+    () => surfMat.dispose(),
+    () => cloudMat.dispose(),
+    () => atmMat.dispose(),
+  ];
   return {
     group, spin, clouds, atmosphere: atmo, radius, spec, shared,
     setSunDirection(d) { shared.uSunDir.value.copy(d).normalize(); },
@@ -111,10 +140,16 @@ export function createPlanetGlobe(spec: PlanetSpec, opts: PlanetGlobeOptions = {
       clouds.rotation.y += dt * spinRate * 0.24; // clouds drift relative to the surface
     },
     setSpinRate(r) { spinRate = r; },
-    dispose() {
-      geo.dispose(); beams.dispose(); structures.dispose(); cloudGeo.dispose(); atmGeo.dispose();
-      surfMat.dispose(); cloudMat.dispose(); atmMat.dispose();
+    disposeDeferred() {
+      if (disposed) return;
+      disposed = true;
       group.removeFromParent();
+      enqueueDeferredDispose(...disposeSteps.splice(0));
+    },
+    dispose() {
+      group.removeFromParent();
+      disposed = true;
+      for (const fn of disposeSteps.splice(0)) fn();
     },
   };
 }

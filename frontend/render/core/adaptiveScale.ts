@@ -10,10 +10,10 @@
  * - a step up that has to be undone within `probeWindowMs` doubles the next up-hold (3 → 6 → 12 … ≤ `maxUpHoldMs`),
  *   so a level the GPU cannot hold is retried ever more rarely instead of flip-flopping.
  * - both thresholds follow the display's refresh interval (`refreshMs`, else the shortest interval seen, clamped to
- *   [`minFrameMs` = 120 FPS, 17 ms]): slow = smoothed frame > refresh × `downRatio` (some frames miss a refresh),
+ *   [`minFrameMs`, `max(17 ms, minFrameMs)`]): slow = smoothed frame > refresh × `downRatio` (some frames miss a refresh),
  *   fast = < refresh × `upRatio` (on a vsync-locked screen a frame is never under one refresh, so "at the refresh
- *   rate" counts as fast). A 120 Hz screen is held at 8.3 ms, a 60 Hz one at 16.7 ms; the back-off above keeps the
- *   probing rare when the next level really is too slow.
+ *   rate" counts as fast). A 120 Hz screen is held at 8.3 ms, a 60 Hz one at 16.7 ms, and an explicit 30 FPS cap
+ *   (`minFrameMs = 33.3 ms`) is held at 33.3 ms without false step-downs; the back-off above keeps probing rare.
  */
 export const AUTO_SCALE_LEVELS: readonly number[] = [2, 1.75, 1.5, 1.25, 1];
 
@@ -142,10 +142,11 @@ export class AdaptiveScale {
     return false;
   }
 
-  /** Refresh interval the thresholds follow (ms), clamped to [`minFrameMs`, `MAX_REFRESH_MS`]. */
+  /** Refresh interval the thresholds follow (ms), clamped to [`minFrameMs`, `max(MAX_REFRESH_MS, minFrameMs)`]. */
   refreshMs(): number {
+    const maxRefresh = Math.max(MAX_REFRESH_MS, this.o.minFrameMs);
     const r = this.o.refreshMs?.() ?? this.floor;
-    return Math.min(MAX_REFRESH_MS, Math.max(this.o.minFrameMs, Number.isFinite(r) ? r : MAX_REFRESH_MS));
+    return Math.min(maxRefresh, Math.max(this.o.minFrameMs, Number.isFinite(r) ? r : maxRefresh));
   }
 
   private restart(nowMs: number): void {

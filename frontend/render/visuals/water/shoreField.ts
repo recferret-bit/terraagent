@@ -151,9 +151,8 @@ export function createShoreFieldTexture(res = SHORE_FIELD_RES): THREE.DataTextur
   return tex;
 }
 
-/** Packs the field into `tex` (same resolution) and flags it for upload. */
-export function writeShoreFieldTexture(tex: THREE.DataTexture, f: ShoreField): void {
-  const data = tex.image.data as Uint16Array;
+export function packShoreFieldHalf(f: ShoreField, into?: Uint16Array): Uint16Array {
+  const data = into && into.length === f.res * f.res * 4 ? into : new Uint16Array(f.res * f.res * 4);
   const h = THREE.DataUtils.toHalfFloat;
   const zero = h(0), one = h(1);
   for (let k = 0; k < f.res * f.res; k++) {
@@ -161,6 +160,17 @@ export function writeShoreFieldTexture(tex: THREE.DataTexture, f: ShoreField): v
     data[k * 4 + 1] = h(f.dist[k]!);
     data[k * 4 + 2] = f.mask[k] ? one : zero;
     data[k * 4 + 3] = zero;
+  }
+  return data;
+}
+
+/** Packs the field into `tex` (same resolution) and flags it for upload. */
+export function writeShoreFieldTexture(tex: THREE.DataTexture, f: ShoreField, precomputedHalf?: Uint16Array): void {
+  const data = tex.image.data as Uint16Array;
+  if (precomputedHalf && precomputedHalf.length === data.length) {
+    data.set(precomputedHalf);
+  } else {
+    packShoreFieldHalf(f, data);
   }
   tex.needsUpdate = true;
 }

@@ -68,6 +68,8 @@ export interface OrbitalStage {
   beginCameraDive?(opts?: { yaw?: number; pitch?: number; duration?: number }): void;
   /** 0..1 progress of the pod-free orbital camera dive. */
   cameraDiveProgress?(): number;
+  /** Slices GPU disposal of globes, backdrop, parallax layers, moons, satellites, and carrier across idle frames. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
 export type CreateOrbitalStage = (viewport: import('../core/createColonyViewport').ColonyViewport, spec: PlanetSpec) => OrbitalStage;

@@ -1,7 +1,16 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { getSharedTerrainPrep } from '@terra/render/planets/prep';
 import type { OrbitalGlobeMarkerInput, OrbitalStage } from '@terra/render/orbit/types';
+import { track } from '../core/analytics';
+import type { ClientFlagsStore } from '../core/flags';
+import { HudRoot } from '../core/hud/HudRoot';
+import { loadFeatures } from '../core/registry';
+import { mountDevConsole } from '../dev/console';
+import { notConnectedSend } from '../net/commandBus';
+import { httpDevServer } from '../net/devServer';
 import type { SectorIntentV1 } from '../ui/menu';
 import { OnlineSession } from './online/OnlineSession';
 import type { ColonyLoadMode } from './online/PodTouchdownFx';
@@ -18,6 +27,23 @@ export function resolveColonyLoadMode(opts: {
 }): ColonyLoadMode {
   if (opts.instant || opts.skipCinematic) return 'instant';
   return opts.isReturning ? 'direct' : 'pod';
+}
+
+export async function resolveAutoDeployPlanetKind(opts: {
+  readonly requestedKind: PlanetKind;
+  readonly probeOnline: boolean;
+  readonly probeActiveColony: () => Promise<unknown>;
+  readonly getActiveColonyKind: () => PlanetKind | null;
+}): Promise<PlanetKind> {
+  if (opts.probeOnline) {
+    await Promise.race([
+      opts.probeActiveColony(),
+      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+    ]);
+  } else {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return opts.getActiveColonyKind() ?? opts.requestedKind;
 }
 
 export function resolveHomeBaseDiveAngles(markers: readonly OrbitalGlobeMarkerInput[]): { yaw: number; pitch: number } {
@@ -52,6 +78,7 @@ export function mountBootOnlineSession(opts: BootOnlineSessionOpts): OnlineSessi
     orbitalCameraDrop: opts.orbitalCameraDrop,
     deferReveal: opts.deferReveal,
     tryRefresh: opts.tryRefresh,
+    externalFrameLoop: true,
     search: '',
     onReturnToOrbit: opts.onReturnToOrbit,
   });
@@ -153,8 +180,10 @@ export function finishReturningColonyEntry(opts: {
 }): { readonly baseBloom: number; readonly cutFlash: number } {
   if (opts.stage) {
     const st = opts.stage;
-    window.setTimeout(() => st.dispose(), 0);
+    if (st.disposeDeferred) st.disposeDeferred();
+    else enqueueDeferredDispose(() => st.dispose());
   }
+  getSharedTerrainPrep().unloadLanded(true);
   opts.viewport.setView(opts.viewport.scene, opts.viewport.camera);
   if (typeof history !== 'undefined' && typeof location !== 'undefined') {
     history.replaceState(null, '', location.pathname);
@@ -163,5 +192,46 @@ export function finishReturningColonyEntry(opts: {
   return {
     baseBloom: opts.viewport.bloom.strength,
     cutFlash: opts.skipDrop ? 0 : 0.55,
+  };
+}
+
+/** Keeps `?planet=<kind>` in the URL while the orbital planet selector is open so F5 refreshes back to orbit. */
+export function syncOrbitSelectorUrl(kind: PlanetKind): void {
+  if (typeof history === 'undefined' || typeof location === 'undefined') return;
+  const q = new URLSearchParams(location.search);
+  q.set('planet', kind);
+  q.delete('skip');
+  q.delete('deploy');
+  q.delete('t');
+  history.replaceState(null, '', `${location.pathname}?${q.toString()}`);
+}
+
+export function mountPrototypeHudRig(store: ClientFlagsStore): {
+  dispose(): void;
+} {
+  let featureHud: HudRoot | null = null;
+  let devConsole: { dispose(): void } | null = null;
+  const mount = () => {
+    featureHud?.dispose();
+    devConsole?.dispose();
+    const { source } = store.current;
+    const set = store.set;
+    const ctx = {
+      flags: set,
+      host: 'server' as const,
+      services: { track, flagsSource: source, sendCommand: notConnectedSend, devServer: httpDevServer() },
+    };
+    const features = loadFeatures({ flags: set, host: 'server' });
+    featureHud = new HudRoot(document.body, features, ctx);
+    devConsole = mountDevConsole({ parent: document.body, features, ctx });
+  };
+  const offFlags = store.onChange(mount);
+  mount();
+  return {
+    dispose() {
+      offFlags();
+      featureHud?.dispose();
+      devConsole?.dispose();
+    },
   };
 }

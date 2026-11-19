@@ -114,5 +114,10 @@ export class StageGlobes {
     for (const g of [this.current, this.outgoing]) if (g) { g.group.position.copy(this.planetPos); g.update(dt, time); }
   }
 
+  disposeDeferred() {
+    this.cache.forEach((g) => (g.disposeDeferred ? g.disposeDeferred() : g.dispose()));
+    this.cache.clear();
+  }
+
   dispose() { this.cache.forEach((g) => g.dispose()); this.cache.clear(); }
 }
