@@ -127,8 +127,18 @@
         "d": {
           "additionalProperties": false,
           "properties": {
+            "colonyId": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
             "planetId": {
               "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            "sectorId": {
+              "maxLength": 64,
+              "minLength": 1,
               "type": "string"
             }
           },
