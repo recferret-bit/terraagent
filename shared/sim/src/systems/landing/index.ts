@@ -24,7 +24,7 @@ import {
   ensureColony,
   getLandingPods,
   initColonyStagesOnLanding,
-  insertDescendingPodAndVision,
+  insertDescendingPod,
   resolveDescentTicks,
   resolveMinLandingSeparation,
   resolveStartingCargo,
@@ -160,7 +160,7 @@ export function spawnColonyLanding(
   treasury(state, treasuryCtx(tick, ctx)).add(cargoCredit(colonyId, data));
   col.changedAt = tick;
 
-  const podEntityId = insertDescendingPodAndVision(state, colonyId, q, r, totalTicks, tick, data, ctx);
+  const podEntityId = insertDescendingPod(state, colonyId, q, r, totalTicks, tick, data, ctx);
   recordAtlasColonyFounding(state, colonyId, slot?.q ?? opts.q ?? q, slot?.r ?? opts.r ?? r, tick);
   syncAtlasColonySectorState(state, tick);
   if (isW18PvpActive(data)) {

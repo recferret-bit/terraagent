@@ -7,7 +7,6 @@ import type { CompiledDataLike } from '../../../kernel/config';
 import type { StepContext } from '../../../kernel/context';
 import { setBlob, type ColonyState, type SimState } from '../../../kernel/state';
 import { minLandingSeparation } from '../../../world/landingPlanner';
-import { hqViewRadius, revealVision } from '../../hq';
 import { resolveStartingKitRow, rowNum } from '../../rows';
 import type { LandingPodState, SpawnColonyLandingOpts } from '../index';
 
@@ -89,7 +88,8 @@ export function initColonyStagesOnLanding(
   }
 }
 
-export function insertDescendingPodAndVision(
+/** Inserts a descending drop pod. The pod does not reveal fog; a building or unit has to. */
+export function insertDescendingPod(
   state: SimState,
   colonyId: number,
   q: number,
@@ -114,8 +114,6 @@ export function insertDescendingPodAndVision(
   cols.progress[row] = 0;
   cols.createdAt[row] = tick;
   cols.changedAt[row] = tick;
-
-  revealVision(state, colonyId, q, r, hqViewRadius(data), tick);
 
   const pods = [...getLandingPods(state)];
   pods.push({

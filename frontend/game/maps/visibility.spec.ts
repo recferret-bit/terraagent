@@ -50,6 +50,23 @@ describe('map fog visibility', () => {
     expect(collectEntityDots(view).map(e => e.id)).toEqual([1]);
   });
 
+  it('hides a landed pod until a unit sees that tile, and drops the tile when the unit leaves', () => {
+    const view = fixture();
+    const pod = { id: 3, kind: ENTITY_KIND.pod, owner: 0, q: 0, r: 0, x: 0, y: 0, hp: 100, hpMax: 100, state: ENTITY_STATE.idle, rot: 0, progress: 0 };
+    const pack = (list: ViewEntity[]) => { view.clientView!.entities = packEntities(list); view.clientView!.count = list.length; };
+    pack([pod] as ViewEntity[]);
+    expect(createMapVisibility(view)(0, 0)).toBe(false);
+
+    const bot = { ...pod, id: 4, kind: ENTITY_KIND.hq };
+    pack([pod, bot] as ViewEntity[]);
+    expect(createMapVisibility(view)(0, 0)).toBe(true);
+    expect(createMapVisibility(view)(8, 0)).toBe(true);
+
+    pack([pod, { ...bot, q: 20, r: 0, x: 20, y: 0 }] as ViewEntity[]);
+    expect(createMapVisibility(view)(0, 0)).toBe(false);
+    expect(createMapVisibility(view)(20, 0)).toBe(true);
+  });
+
   it('scopes remembered terrain and current spotting to the selected colony', () => {
     const view = fixture(), target = hexIndex(view.radius).indexOf(30, 0);
     view.tiles!.explored![target] = 2;

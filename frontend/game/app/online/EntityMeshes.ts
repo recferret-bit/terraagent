@@ -8,7 +8,7 @@ import { getWindUniforms } from '@terra/render/core/windConfig';
 import { rotorClockRate } from '@terra/render/core/rotorSpeed';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
-import { attachEntityProjectorRig } from '@terra/render/lighting';
+import { attachEntityProjectorRig, getColonyVisionUniforms } from '@terra/render/lighting';
 import { GridCableRenderer } from '@terra/render/lighting/gridCables';
 import { WorkParticleSystem } from '@terra/render/particles';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
@@ -171,9 +171,7 @@ export class EntityMeshes {
     if (owner !== this.ownerColonyIndex && this.hasTerrain && wx !== undefined && wz !== undefined) {
       if (!isWorldPointInColonyFov(wx, wz)) return false;
     }
-    if (kind === ENTITY_KIND.pod) {
-      return owner === this.ownerColonyIndex ? tdState.podVisible : state === ENTITY_STATE.descending;
-    }
+    if (kind === ENTITY_KIND.pod) return owner === this.ownerColonyIndex ? tdState.podVisible : true;
     if (kind === ENTITY_KIND.hq) {
       if (state === ENTITY_STATE.descending) return false;
       return owner === this.ownerColonyIndex ? tdState.hqVisible : true;
@@ -267,11 +265,14 @@ export class EntityMeshes {
       // the descent cinematic (their pod, surface and the offset hex terrain are not in colony coordinates).
       colonyActive: !this.podTouchdown.isSpacePhaseActive() && !isSceneInDescent(this.scene),
     });
+    const fogOn = (getColonyVisionUniforms().uFovEnabled.value as number) > 0.001;
     for (const rec of this.entries.values()) {
-      if (rec.owner !== this.ownerColonyIndex) {
-        const spotted = !this.isTileVisible || this.isTileVisible(rec.q, rec.r);
-        rec.mesh.visible = spotted && this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState, rec.mesh.position.x, rec.mesh.position.z);
-      }
+      const foreign = rec.owner !== this.ownerColonyIndex;
+      const ownPod = !foreign && rec.kind === ENTITY_KIND.pod;
+      if (!foreign && !(ownPod && fogOn)) continue;
+      const spotted = !this.isTileVisible || this.isTileVisible(rec.q, rec.r);
+      const inCircle = !this.hasTerrain || isWorldPointInColonyFov(rec.mesh.position.x, rec.mesh.position.z);
+      rec.mesh.visible = spotted && inCircle && this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
     }
   }
 

@@ -59,4 +59,23 @@ describe('all owned active units reveal terrain', () => {
     syncColonyVisionAndProjectors({ records: [...buildings, scout], ownerColonyIndex: 0, terrain, tiles: null });
     expect(isWorldPointInColonyFov(60, 0)).toBe(false);
   });
+
+  it('does not light a landed pod, and a spawned unit takes its sight with it', () => {
+    const record = (kind: number, x: number, state = ENTITY_STATE.idle): EntityMeshRecord => {
+      const mesh = new THREE.Object3D();
+      mesh.position.x = x;
+      return { kind, owner: 0, hp: 100, state, mesh, buildStage: 1 } as EntityMeshRecord;
+    };
+    const pod = record(ENTITY_KIND.pod, 0);
+    syncColonyVisionAndProjectors({ records: [pod], ownerColonyIndex: 0, terrain, tiles: null });
+    expect(isWorldPointInColonyFov(0, 0)).toBe(false);
+
+    const bot = record(ENTITY_KIND.hq, 0);
+    syncColonyVisionAndProjectors({ records: [pod, bot], ownerColonyIndex: 0, terrain, tiles: null });
+    expect(isWorldPointInColonyFov(0, 0)).toBe(true);
+    bot.mesh.position.x = 40;
+    syncColonyVisionAndProjectors({ records: [pod, bot], ownerColonyIndex: 0, terrain, tiles: null });
+    expect(isWorldPointInColonyFov(0, 0)).toBe(false);
+    expect(isWorldPointInColonyFov(40, 0)).toBe(true);
+  });
 });

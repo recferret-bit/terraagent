@@ -21,6 +21,7 @@ import {
   ENTITY_STATE,
   entityLightLevel,
   getEntitySpottingRadius,
+  isColonyVisionSourceKind,
   isEntityContributingVision,
   type CompiledDataLike,
 } from '@terra/sim';
@@ -140,8 +141,8 @@ function collectOwnedEntityVisionAndProjectors(
   };
 
   // Lighting cones are cosmetic. Sight is omnidirectional and uses the shared simulation radius.
-  // Include owned drop pod even while descending so the landing pad is never shrouded before HQ egress.
-  if (rec.hp > 0 && (isEntityContributingVision(rec.state) || rec.kind === ENTITY_KIND.pod)) {
+  // A drop pod, a spawn marker, and any other prop do not open the fog. Buildings and units do.
+  if (rec.hp > 0 && isColonyVisionSourceKind(rec.kind) && isEntityContributingVision(rec.state)) {
     const outerRadius = getEntitySpottingRadius(rec.kind, data) * TILE_M;
     if (outerRadius > 0) visionSources.push({ x: ux, z: uz, innerRadius: outerRadius * 0.88, outerRadius });
   }

@@ -6,7 +6,7 @@ import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { setTileDeposit, setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
-import { hqViewRadius, revealVision } from '../hq';
+
 import { resolveStartingKitRow, rowNum } from '../rows';
 import { getLandingPods, resolveDescentTicks } from './index';
 import {
@@ -229,8 +229,6 @@ function launchReplacementPod(state: PlanetState, rec: HqRespawnRecord, ctx: Ste
   cols.progress[row] = 0;
   cols.createdAt[row] = ctx.tick;
   cols.changedAt[row] = ctx.tick;
-
-  revealVision(state, rec.colonyId, targetQ, targetR, hqViewRadius(ctx.data), ctx.tick);
 
   const pods = getLandingPods(state).filter((p) => p.colonyId !== rec.colonyId);
   pods.push({
