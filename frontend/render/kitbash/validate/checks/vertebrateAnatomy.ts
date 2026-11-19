@@ -69,6 +69,88 @@ function checkLimbJointContinuity(ctx: ValidationContext): void {
         [u.def.index, l.def.index],
       );
     }
+    const upperDepthZ = boxDim(u, 2);
+    const lowerWidthX = Math.max(0.004, boxDim(l, 0));
+    const minTaper = u.def.vertRig!.pivot[2] < 0 ? 1.65 : 1.45;
+    if (upperDepthZ / lowerWidthX < minTaper) {
+      ctx.add(
+        'error',
+        'VERTEBRATE_LIMB_ANATOMY',
+        `${u.label} lacks sculpted muscular shoulder/haunch taper (sagittal depth ${(upperDepthZ * 100).toFixed(1)} cm is only ${(upperDepthZ / lowerWidthX).toFixed(2)}x lower limb width; require >= ${minTaper}x).`,
+        [u.def.index, l.def.index],
+      );
+    }
+  }
+}
+
+function checkMammalTorsoSilhouette(ctx: ValidationContext): void {
+  const trunk = ctx.parts.find((p) => p.def.vertRig?.role === 1 && p.def.name.includes('trunk'));
+  if (!trunk) return;
+  const torsoVolumes = ctx.parts.filter((p) => p.def.vertRig?.role === 1);
+  const shoulders = torsoVolumes.filter((p) => p.def.name.includes('shoulder') || p.def.name.includes('scapul'));
+  const haunches = torsoVolumes.filter((p) => p.def.name.includes('haunch') || p.def.name.includes('glute'));
+  const brisket = torsoVolumes.filter((p) => p.def.name.includes('brisket') || p.def.name.includes('pectoral'));
+  if (shoulders.length < 2 || haunches.length < 2 || brisket.length < 1) {
+    ctx.add(
+      'error',
+      'VERTEBRATE_TORSO_SILHOUETTE',
+      `${trunk.label} is a single-tube revolution mesh lacking integrated 3D anatomical muscle masses (found ${shoulders.length} scapular shoulder, ${haunches.length} gluteal haunch, ${brisket.length} pectoral brisket volumes; require >= 2, >= 2, >= 1).`,
+      [trunk.def.index],
+    );
+  } else {
+    const undersized = [...shoulders, ...haunches].find((p) => boxDim(p, 0) < 0.03 || boxDim(p, 1) < 0.05 || boxDim(p, 2) < 0.06);
+    if (undersized) {
+      ctx.add(
+        'error',
+        'VERTEBRATE_TORSO_SILHOUETTE',
+        `${undersized.label} is too small to sculpt 3D scapular/gluteal girdle relief onto ${trunk.label}.`,
+        [undersized.def.index],
+      );
+    }
+  }
+  const zMin = trunk.box[2]!;
+  const zMax = trunk.box[5]!;
+  const lenZ = zMax - zMin;
+  if (lenZ < 0.1) return;
+  const innerStart = zMin + lenZ * 0.14;
+  const innerEnd = zMax - lenZ * 0.14;
+  const bins = 5;
+  const minY = new Float64Array(bins).fill(Infinity);
+  const maxY = new Float64Array(bins).fill(-Infinity);
+  const maxAbsX = new Float64Array(bins).fill(0);
+
+  for (let i = 0; i < trunk.tris.length; i += 3) {
+    const x = trunk.tris[i]!;
+    const y = trunk.tris[i + 1]!;
+    const z = trunk.tris[i + 2]!;
+    if (z < innerStart || z > innerEnd) continue;
+    const b = Math.min(bins - 1, Math.max(0, Math.floor(((z - innerStart) / Math.max(1e-5, innerEnd - innerStart)) * bins)));
+    if (y < minY[b]!) minY[b] = y;
+    if (y > maxY[b]!) maxY[b] = y;
+    if (Math.abs(x) > maxAbsX[b]!) maxAbsX[b] = Math.abs(x);
+  }
+
+  let minH = Infinity, maxH = 0, minW = Infinity, maxW = 0, validBins = 0;
+  for (let b = 0; b < bins; b++) {
+    if (!Number.isFinite(minY[b]!) || maxAbsX[b]! <= 0) continue;
+    validBins++;
+    const h = maxY[b]! - minY[b]!;
+    const w = maxAbsX[b]! * 2;
+    minH = Math.min(minH, h);
+    maxH = Math.max(maxH, h);
+    minW = Math.min(minW, w);
+    maxW = Math.max(maxW, w);
+  }
+  if (validBins < 3) return;
+  const hRatio = maxH / Math.max(0.01, minH);
+  const wRatio = maxW / Math.max(0.01, minW);
+  if (Math.max(hRatio, wRatio) < 1.28) {
+    ctx.add(
+      'error',
+      'VERTEBRATE_TORSO_SILHOUETTE',
+      `${trunk.label} has a uniform capsule silhouette (interior height ratio ${hRatio.toFixed(2)}, width ratio ${wRatio.toFixed(2)} < 1.28); sculpt distinct ribcage brisket/withers, abdominal waist tuck or belly paunch, and pelvic croup.`,
+      [trunk.def.index],
+    );
   }
 }
 
@@ -204,6 +286,7 @@ export const vertebrateAnatomyStage: CheckStage = (ctx) => {
       }
     }
     checkLimbJointContinuity(ctx);
+    checkMammalTorsoSilhouette(ctx);
     checkMammalSleepPosture(ctx);
   }
 

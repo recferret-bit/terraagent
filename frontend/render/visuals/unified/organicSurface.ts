@@ -24,14 +24,14 @@ float furValueNoise3(vec3 p) {
   float nx11 = mix(n011, n111, f.x);
   return mix(mix(nx00, nx10, f.y), mix(nx01, nx11, f.y), f.z);
 }
-// Organic non-repeating fur tuft field stretched along hair lay (caudal -z, ventral -y) — zero parallel stripes.
+// Organic non-repeating fur strand field stretched along hair lay (caudal -z, ventral -y) — fine hair grain without cow-spot blotches.
 float furTuftField(vec3 lp) {
-  vec3 q = lp * vec3(20.0, 16.0, 11.0);
-  float w1 = furValueNoise3(q * 0.55 + vec3(1.7, 3.1, 5.3));
-  vec3 warped = q + vec3(w1 * 1.4, -w1 * 1.1, w1 * 1.8);
+  vec3 q = lp * vec3(64.0, 52.0, 22.0);
+  float w1 = furValueNoise3(q * 0.45 + vec3(1.7, 3.1, 5.3));
+  vec3 warped = q + vec3(w1 * 0.85, -w1 * 0.75, w1 * 1.35);
   float macro = furValueNoise3(warped);
-  float mid = furValueNoise3(warped * 1.9 + vec3(4.2, -2.1, 7.9));
-  return clamp((macro * 0.65 + mid * 0.35 - 0.5) * 2.0, -1.0, 1.0);
+  float mid = furValueNoise3(warped * 2.1 + vec3(4.2, -2.1, 7.9));
+  return clamp((macro * 0.58 + mid * 0.42 - 0.5) * 2.0, -1.0, 1.0);
 }
 float organicField(vec2 uv, float tissue, float footprint, float furLuma, float featherLuma, float furClump) {
   vec2 p = uv * vec2(6.2831853, 28.0);
@@ -41,7 +41,7 @@ float organicField(vec2 uv, float tissue, float footprint, float furLuma, float 
   float fineFade = 1.0 - smoothstep(0.35, 1.4, footprint);
   float furMacroFade = 1.0 - smoothstep(2.0, 4.8, footprint);
   if (tissue > 5.5 && tissue < 6.5) {
-    return ((furLuma - 0.74) * 1.15 + furClump * 0.34 + grain * 0.06 * fineFade) * furMacroFade;
+    return ((furLuma - 0.74) * 0.75 + furClump * 0.22 + grain * 0.05 * fineFade) * furMacroFade;
   }
   if (tissue > 6.5) {
     return ((featherLuma - 0.77) * 0.80 + grain * 0.08) * fineFade;
@@ -59,10 +59,10 @@ export const ORGANIC_COLOR = /* glsl */ `
 float taFurClump = furTuftField(vLocalPos);
 vec3 taFurW = pow(abs(normalize(vObjectNormal)), vec3(3.0));
 taFurW /= max(dot(taFurW, vec3(1.0)), 0.0001);
-vec2 taFurWarp = vec2(taFurClump * 0.12, -taFurClump * 0.09);
-vec2 taFurUvX = vLocalPos.zy * vec2(2.2, 2.6) + taFurWarp;
-vec2 taFurUvY = vLocalPos.xz * vec2(2.4, 2.2) + taFurWarp;
-vec2 taFurUvZ = vLocalPos.xy * vec2(2.4, 2.6) + taFurWarp;
+vec2 taFurWarp = vec2(taFurClump * 0.05, -taFurClump * 0.04);
+vec2 taFurUvX = vLocalPos.zy * vec2(5.2, 6.4) + taFurWarp;
+vec2 taFurUvY = vLocalPos.xz * vec2(5.6, 5.2) + taFurWarp;
+vec2 taFurUvZ = vLocalPos.xy * vec2(5.6, 6.4) + taFurWarp;
 vec2 taFeatherUv = vAnatomy * vec2(2.8, 3.8) + vLocalPos.xz * 2.6;
 float taFurLuma =
   dot(texture2D(uFurPelageMap, taFurUvX).rgb, vec3(0.3333)) * taFurW.x +
@@ -72,14 +72,14 @@ vec3 taFeatherTex = texture2D(uFeatherVaneMap, taFeatherUv).rgb;
 float taFeatherLuma = dot(taFeatherTex, vec3(0.3333));
 if (vOrganic > 0.5) {
   float field = organicField(vAnatomy, vOrganic, organicFootprint, taFurLuma, taFeatherLuma, taFurClump);
-  diffuseColor.rgb *= 1.0 + field * 0.14;
+  diffuseColor.rgb *= 1.0 + field * (vOrganic > 5.5 && vOrganic < 6.5 ? 0.07 : 0.14);
   if (vOrganic > 2.5 && vOrganic < 3.5) {
     float thickness = sin(vAnatomy.y * 3.14159);
     diffuseColor.rgb *= mix(vec3(1.14, 1.06, 0.76), vec3(0.67, 0.88, 0.62), thickness * 0.45);
   } else if (vOrganic > 5.5 && vOrganic < 6.5) {
     float furDetail = 1.0 - smoothstep(2.0, 4.8, organicFootprint);
-    float furLockShade = clamp((taFurLuma - 0.74) * 1.15 + taFurClump * 0.16, -0.22, 0.20);
-    diffuseColor.rgb *= clamp(1.0 + furLockShade * furDetail, 0.76, 1.20);
+    float furLockShade = clamp((taFurLuma - 0.74) * 0.72 + taFurClump * 0.08, -0.11, 0.11);
+    diffuseColor.rgb *= clamp(1.0 + furLockShade * furDetail, 0.86, 1.13);
   } else if (vOrganic > 6.5) {
     float featherDetail = 1.0 - smoothstep(0.45, 1.6, organicFootprint);
     diffuseColor.rgb *= mix(1.0, clamp(taFeatherLuma / 0.77, 0.80, 1.18), 0.28 * featherDetail);

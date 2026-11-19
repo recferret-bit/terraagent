@@ -231,7 +231,47 @@ function vertebrateSleepAndFootFixtures(): Array<{ name: string; report: Report;
   });
 }
 
+function vertebrateTorsoFixtures(): Array<{ name: string; report: Report; expected?: string }> {
+  const stag = extractArchetype('fauna.crownStag');
+  const cases: Array<{ name: string; change: (m: ModelInput) => void; expected: string }> = [
+    {
+      name: 'uniform capsule mammal trunk lacking chest/waist/croup silhouette contrast is rejected',
+      change: (m) => {
+        const trunk = m.parts.find((p) => p.name.includes('trunk'))!;
+        for (let i = 0; i < trunk.tris.length; i += 3) {
+          const x = trunk.tris[i]!;
+          const dy = trunk.tris[i + 1]! - 0.75;
+          const r = Math.max(1e-4, Math.hypot(x, dy));
+          trunk.tris[i] = (x / r) * 0.16;
+          trunk.tris[i + 1] = 0.75 + (dy / r) * 0.16;
+        }
+      },
+      expected: 'VERTEBRATE_TORSO_SILHOUETTE',
+    },
+    {
+      name: 'single-tube mammal torso lacking 3D scapular/gluteal/pectoral muscle volumes is rejected',
+      change: (m) => {
+        m.parts = m.parts
+          .filter(
+            (p) => !p.name.includes('scapular shoulder') && !p.name.includes('gluteal haunch') && !p.name.includes('pectoral brisket'),
+          )
+          .map((p, index) => ({ ...p, index }));
+      },
+      expected: 'VERTEBRATE_TORSO_SILHOUETTE',
+    },
+  ];
+  return cases.map((c) => {
+    const model = cloneModel(stag);
+    c.change(model);
+    return {
+      name: c.name,
+      report: validateModel(model, { minParts: 22, grounded: true }),
+      expected: c.expected,
+    };
+  });
+}
+
 /** Shared by the CLI validator self-test and Vitest. Every profile rule has positive and negative fixtures. */
 export function organicValidatorFixtures(): Array<{ name: string; report: Report; expected?: string }> {
-  return [...insectFixtures(), ...vertebrateFixtures(), ...vertebrateSleepAndFootFixtures()];
+  return [...insectFixtures(), ...vertebrateFixtures(), ...vertebrateSleepAndFootFixtures(), ...vertebrateTorsoFixtures()];
 }

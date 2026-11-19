@@ -3,8 +3,8 @@ import type { VertebratePartRig } from '../../../animation/vertebrates/types';
 import { KitbashRegistry, type KitbashBuilder, type MaterialZoneId, type PartOptions } from '../../KitbashRegistry';
 import type { V3 } from '../unitParts';
 import { organ, tendril } from './shapes';
-import { makeMammalBodyColor } from './vertebrateColor';
-import { sculptedLoft } from './vertebrateLoft';
+import { computeTrunkBounds, makeMammalBodyColor } from './vertebrateColor';
+import { sculptedLoft, type LoftStation } from './vertebrateLoft';
 import {
   addMammalForelimb,
   addMammalHindlimb,
@@ -46,29 +46,165 @@ export function mammalTrunk(
   );
 }
 
-function sleepPitchTrunkMinY(trunkGeo: THREE.BufferGeometry, torsoY: number): number {
-  const pos = trunkGeo.getAttribute('position') as THREE.BufferAttribute;
+function sampleTrunkAtZ(stations: readonly LoftStation[], z: number): LoftStation {
+  if (z <= stations[0]!.z) return stations[0]!;
+  for (let i = 0; i < stations.length - 1; i++) {
+    const a = stations[i]!;
+    const b = stations[i + 1]!;
+    if (z <= b.z) {
+      const t = (z - a.z) / Math.max(1e-5, b.z - a.z);
+      return {
+        y: THREE.MathUtils.lerp(a.y, b.y, t),
+        z,
+        rx: THREE.MathUtils.lerp(a.rx, b.rx, t),
+        ryTop: THREE.MathUtils.lerp(a.ryTop, b.ryTop, t),
+        ryBot: THREE.MathUtils.lerp(a.ryBot, b.ryBot, t),
+        ridge: THREE.MathUtils.lerp(a.ridge ?? 0, b.ridge ?? 0, t),
+        keel: THREE.MathUtils.lerp(a.keel ?? 0, b.keel ?? 0, t),
+        topWidth: THREE.MathUtils.lerp(a.topWidth ?? 1, b.topWidth ?? 1, t),
+        muscleFlare: THREE.MathUtils.lerp(a.muscleFlare ?? 0, b.muscleFlare ?? 0, t),
+      };
+    }
+  }
+  return stations[stations.length - 1]!;
+}
+
+function sleepPitchBodyMinY(geos: readonly THREE.BufferGeometry[], torsoY: number): number {
   const mat = new THREE.Matrix4()
     .compose(new THREE.Vector3(0, torsoY, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.03), new THREE.Vector3(1, 1, 1))
     .multiply(new THREE.Matrix4().makeTranslation(0, -torsoY, 0));
   const v = new THREE.Vector3();
   let minY = Infinity;
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i).applyMatrix4(mat);
-    if (v.y < minY) minY = v.y;
+  for (const geo of geos) {
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mat);
+      if (v.y < minY) minY = v.y;
+    }
   }
   return minY;
 }
 
+function buildMammalTorsoMuscles(
+  b: KitbashBuilder,
+  s: MammalBuildSpec,
+  bodyColor: ReturnType<typeof makeMammalBodyColor>,
+  bodyRig: VertebratePartRig,
+): THREE.BufferGeometry[] {
+  const r = s.legThick;
+  const foreRoot = Math.sqrt(s.foreScale ?? 1.0);
+  const thRoot = Math.sqrt(s.thighScale ?? 1.0);
+  const stFront = sampleTrunkAtZ(s.trunkStations, s.zFront);
+  const stBack = sampleTrunkAtZ(s.trunkStations, s.zBack);
+  const geos: THREE.BufferGeometry[] = [];
+
+  const armOuterX = s.legXFront * 0.72 + r * 0.45 * foreRoot;
+  const trunkFrontOuterX = stFront.rx * (1 + (stFront.muscleFlare ?? 0.30) * 0.36);
+  const scapOuterX = Math.max(trunkFrontOuterX + r * 0.22, armOuterX + r * 0.10);
+  const scapInnerX = Math.min(stFront.rx * 0.42, s.legXFront * 0.46 - r * 0.06);
+  const scapRx = Math.max(r * 0.42, (scapOuterX - scapInnerX) * 0.5);
+  const scapCx = (scapOuterX + scapInnerX) * 0.5;
+  const scapMidY = THREE.MathUtils.lerp(s.shoulderY, stFront.y + stFront.ryTop * 0.28, 0.45);
+  const scapZRear = s.zFront - Math.max(r * 1.54, stFront.rx * 0.54);
+  const scapZFwd = Math.min(s.zFront + r * 0.44, s.neckPivot[2] - r * 1.36);
+
+  const thighOuterX = s.legXBack * 0.72 + r * 0.45 * thRoot;
+  const trunkBackOuterX = stBack.rx * (1 + (stBack.muscleFlare ?? 0.30) * 0.36);
+  const haunchOuterX = Math.max(trunkBackOuterX + r * 0.24 * thRoot, thighOuterX + r * 0.10);
+  const haunchInnerX = Math.min(stBack.rx * 0.42, s.legXBack * 0.45 - r * 0.06);
+  const haunchRx = Math.max(r * 0.44, (haunchOuterX - haunchInnerX) * 0.5);
+  const haunchCx = (haunchOuterX + haunchInnerX) * 0.5;
+  const haunchMidY = THREE.MathUtils.lerp(s.hipY, stBack.y + stBack.ryTop * 0.28, 0.46);
+  const haunchZRear = s.zBack - Math.max(r * 1.08, stBack.rx * 0.38);
+  const haunchZFwd = s.zBack + Math.max(r * 1.48, stBack.rx * 0.52);
+
+  for (const side of [-1, 1] as const) {
+    const dir = side > 0 ? 'right' : 'left';
+    const scapRearY = THREE.MathUtils.lerp(s.shoulderY, stFront.y + stFront.ryTop * 0.32, 0.50);
+    const scapFwdY = THREE.MathUtils.lerp(s.shoulderY, stFront.y + stFront.ryTop * 0.18, 0.38);
+    const scapGeo = sculptedLoft(
+      [
+        { x: side * scapCx * 0.93, y: scapRearY, z: scapZRear, rx: scapRx * 0.87, ryTop: stFront.ryTop * 0.54, ryBot: Math.max(r * 0.50, (scapRearY - s.shoulderY) + r * 0.18), ridge: 0.18 },
+        { x: side * scapCx, y: scapMidY, z: s.zFront - r * 0.12, rx: scapRx, ryTop: stFront.ryTop * 0.64, ryBot: Math.max(r * 0.62, (scapMidY - s.shoulderY) + r * 0.26), ridge: 0.16 },
+        { x: side * scapCx * 0.93, y: scapFwdY, z: scapZFwd, rx: scapRx * 0.87, ryTop: stFront.ryTop * 0.46, ryBot: Math.max(r * 0.44, (scapFwdY - s.shoulderY) + r * 0.15), ridge: 0.14 },
+      ],
+      8, 6, 2.3 + side, 0, { subdiv: 2, compactCaps: true, bodyNormalY: stFront.y },
+    );
+    geos.push(scapGeo);
+    b.addPart(scapGeo, 'hullPrimary', {
+      name: `${dir} scapular shoulder mass`,
+      vertexColor: bodyColor,
+      vertRig: bodyRig,
+    });
+
+    const haunchRearY = THREE.MathUtils.lerp(s.hipY, stBack.y + stBack.ryTop * 0.20, 0.40);
+    const haunchFwdY = THREE.MathUtils.lerp(s.hipY, stBack.y + stBack.ryTop * 0.28, 0.48);
+    const haunchGeo = sculptedLoft(
+      [
+        { x: side * haunchCx * 0.93, y: haunchRearY, z: haunchZRear, rx: haunchRx * 0.87, ryTop: stBack.ryTop * 0.48, ryBot: Math.max(r * 0.50, (haunchRearY - s.hipY) + r * 0.20), ridge: 0.14 },
+        { x: side * haunchCx, y: haunchMidY, z: s.zBack + r * 0.08, rx: haunchRx, ryTop: stBack.ryTop * 0.64 * Math.min(1.12, thRoot), ryBot: Math.max(r * 0.68, (haunchMidY - s.hipY) + r * 0.30 * thRoot), ridge: 0.16 },
+        { x: side * haunchCx * 0.91, y: haunchFwdY, z: haunchZFwd, rx: haunchRx * 0.86, ryTop: stBack.ryTop * 0.50, ryBot: Math.max(r * 0.50, (haunchFwdY - s.hipY) + r * 0.18), ridge: 0.18 },
+      ],
+      8, 6, 3.7 + side, 0, { subdiv: 2, compactCaps: true, bodyNormalY: stBack.y },
+    );
+    geos.push(haunchGeo);
+    b.addPart(haunchGeo, 'hullPrimary', {
+      name: `${dir} gluteal haunch mass`,
+      vertexColor: bodyColor,
+      vertRig: bodyRig,
+    });
+  }
+
+  const bZ0 = s.zFront - r * 0.95;
+  const bZ2 = Math.min(s.zFront + r * 0.22, s.neckPivot[2] - r * 1.65);
+  const bZ1 = (bZ0 + bZ2) * 0.5;
+  const st0 = sampleTrunkAtZ(s.trunkStations, bZ0);
+  const st1 = sampleTrunkAtZ(s.trunkStations, bZ1);
+  const st2 = sampleTrunkAtZ(s.trunkStations, bZ2);
+  const innerArmClearX = Math.max(0.015, s.legXFront * 0.78 - r * 0.56 * foreRoot - 0.018);
+  const brisketRx = Math.min(st1.rx * 0.36, innerArmClearX);
+  const brisketRy = Math.max(0.016, Math.min(0.028, st1.ryBot * 0.22));
+  const brisketGeo = sculptedLoft(
+    [
+      { y: st0.y - st0.ryBot * 0.96, z: bZ0, rx: brisketRx * 0.78, ryTop: brisketRy * 0.90, ryBot: brisketRy * 0.82, squareness: 0.24, keel: 0.28 },
+      { y: st1.y - st1.ryBot * 0.98, z: bZ1, rx: brisketRx, ryTop: brisketRy * 0.98, ryBot: brisketRy * 0.96, squareness: 0.24, keel: 0.32 },
+      { y: st2.y - st2.ryBot * 0.96, z: bZ2, rx: brisketRx * 0.76, ryTop: brisketRy * 0.90, ryBot: brisketRy * 0.82, squareness: 0.24, keel: 0.28 },
+    ],
+    6, 6, 4.1, 0, { subdiv: 1, compactCaps: true, bodyNormalY: st1.y },
+  );
+  geos.push(brisketGeo);
+  b.addPart(brisketGeo, 'hullPrimary', {
+    name: 'pectoral brisket mass',
+    vertexColor: bodyColor,
+    vertRig: bodyRig,
+  });
+
+  return geos;
+}
+
 /**
  * Assembles a complete warm-blooded quadruped using sculpted anatomical lofts,
+ * integrated 3D scapular shoulder, gluteal haunch & pectoral brisket muscle masses,
  * differentiated forelimbs & hindlimbs with closed-form 2-link IK, continuous neck/skull/jaw,
  * cupped ears, sculpted paws/cloven hooves, and tail counterbalance.
  */
-export function buildMammalCore(b: KitbashBuilder, s: MammalBuildSpec): { neckPivot: V3; headCenter: V3; headAnim: PartOptions } {
-  const trunkGeo = sculptedLoft(s.trunkStations, 14, 6, 1.7, 0);
-  const pitchedMinY = sleepPitchTrunkMinY(trunkGeo, s.torsoY);
-  const autoSleepDrop = Math.max(0.02, pitchedMinY - 0.040);
+export function buildMammalCore(
+  b: KitbashBuilder,
+  s: MammalBuildSpec,
+): { neckPivot: V3; headCenter: V3; headAnim: PartOptions; bodyColor: ReturnType<typeof makeMammalBodyColor> } {
+  const bounds = computeTrunkBounds(s.trunkStations);
+  const bodyColor = makeMammalBodyColor(s.coatPattern ?? 'countershade', bounds);
+  const trunkGeo = sculptedLoft(s.trunkStations, 12, 6, 1.7, 0, { subdiv: 2 });
+  const bodyRig: VertebratePartRig = { role: 1 };
+
+  b.addPart(trunkGeo, 'hullPrimary', {
+    name: 'sculpted mammalian trunk',
+    vertexColor: bodyColor,
+    vertRig: bodyRig,
+  });
+  const muscleGeos = buildMammalTorsoMuscles(b, s, bodyColor, bodyRig);
+  const pitchedMinY = sleepPitchBodyMinY([trunkGeo, ...muscleGeos], s.torsoY);
+  const autoSleepDrop = Math.max(0.02, pitchedMinY - 0.038);
 
   b.vertebrateConfig = {
     isBird: 0,
@@ -79,13 +215,6 @@ export function buildMammalCore(b: KitbashBuilder, s: MammalBuildSpec): { neckPi
     gaitFreq: s.gaitFreq,
     headSleepPitch: s.headSleepPitch,
   };
-
-  const bodyRig: VertebratePartRig = { role: 1 };
-  b.addPart(trunkGeo, 'hullPrimary', {
-    name: 'sculpted mammalian trunk',
-    vertexColor: makeMammalBodyColor(s.coatPattern ?? 'countershade'),
-    vertRig: bodyRig,
-  });
 
   // Diagonal quadruped trot phases: RF (0) + LH (0), LF (PI) + RH (PI).
   addMammalForelimb(b, s, -1, Math.PI);
@@ -100,6 +229,7 @@ export function buildMammalCore(b: KitbashBuilder, s: MammalBuildSpec): { neckPi
     neckPivot: s.neckPivot,
     headCenter: s.headCenter,
     headAnim: { animPivot: s.neckPivot, vertRig: { role: 2 } },
+    bodyColor,
   };
 }
 
@@ -136,7 +266,7 @@ KitbashRegistry.registerGreeble('cervineAntlers', (params: CervineAntlersParams,
         ],
         [0.024, 0.019, 0.014, 0.005],
         4,
-        7,
+        6,
         5,
       ),
       'hullSecondary',
@@ -152,7 +282,7 @@ KitbashRegistry.registerGreeble('cervineAntlers', (params: CervineAntlersParams,
         ],
         [0.015, 0.011, 0.004],
         4,
-        4,
+        3,
         4,
       ),
       'hullSecondary',
@@ -168,7 +298,7 @@ KitbashRegistry.registerGreeble('cervineAntlers', (params: CervineAntlersParams,
           ],
           [0.014, 0.004],
           4,
-          4,
+          3,
           4,
         ),
         'hullSecondary',
@@ -182,7 +312,7 @@ KitbashRegistry.registerGreeble('cervineAntlers', (params: CervineAntlersParams,
           ],
           [0.012, 0.004],
           4,
-          4,
+          3,
           4,
         ),
         'hullSecondary',
