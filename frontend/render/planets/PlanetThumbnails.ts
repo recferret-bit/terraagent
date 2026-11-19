@@ -62,6 +62,7 @@ function drawThumbItem(
   renderer: THREE.WebGLRenderer,
   composer: EffectComposer,
   renderPass: RenderPass,
+  pixelated: boolean,
 ): void {
   const { cv, ctx } = it;
   const dpr = Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, 2);
@@ -76,6 +77,8 @@ function drawThumbItem(
   composer.render();
   ctx.clearRect(0, 0, w, h);
   const s = Math.min(w, h);
+  // Nearest blit keeps the pixel-art pass's blocks; smoothing would blur them back into a photo.
+  ctx.imageSmoothingEnabled = !pixelated;
   ctx.drawImage(renderer.domElement, (w - s) / 2, (h - s) / 2, s, s);
 }
 
@@ -138,7 +141,7 @@ export function mountPlanetThumbnails(
       } else {
         it.globe.update(stepDt * spinMult, t);
       }
-      drawThumbItem(it, renderer, composer, renderPass);
+      drawThumbItem(it, renderer, composer, renderPass, pixelArt.enabled);
       drawnAny = true;
     }
     if (drawnAny) thumbDrawnOnce = true;
@@ -147,7 +150,7 @@ export function mountPlanetThumbnails(
   const offPixel = onPixelArtChange((enabled) => {
     if (disposed) return;
     pixelArt.enabled = enabled;
-    for (const it of items) drawThumbItem(it, renderer, composer, renderPass);
+    for (const it of items) drawThumbItem(it, renderer, composer, renderPass, pixelArt.enabled);
   });
 
   const host = new StageHost({
@@ -161,7 +164,7 @@ export function mountPlanetThumbnails(
     setPaused(nextPaused: boolean) {
       paused = nextPaused;
       if (!paused && !disposed) {
-        for (const it of items) drawThumbItem(it, renderer, composer, renderPass);
+        for (const it of items) drawThumbItem(it, renderer, composer, renderPass, pixelArt.enabled);
       }
     },
     renderOnce() {

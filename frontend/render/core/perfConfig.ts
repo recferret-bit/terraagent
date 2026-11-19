@@ -8,6 +8,8 @@ export type ViewportPreset = 'auto' | '2560x1440' | '1920x1080' | '1280x720';
 export type FpsLimit = 0 | 30 | 60 | 90 | 120;
 
 export const FPS_LIMITS: readonly FpsLimit[] = [0, 120, 90, 60, 30] as const;
+/** Frame cap used when the URL and `terraagent.fpsCap` are both unset. `0` stays available as UNCAPPED. */
+export const DEFAULT_FPS_CAP: FpsLimit = 60;
 
 export const VIEWPORT_PRESETS: Record<ViewportPreset, { label: string; width: number; height: number } | null> = {
   auto: null,
@@ -48,15 +50,21 @@ function readInitialPreset(): ViewportPreset {
   return 'auto';
 }
 
+/** URL wins, then a saved cap, then {@link DEFAULT_FPS_CAP}. */
+export function resolveInitialFpsCap(urlValue: string | null, saved: string | null): FpsLimit {
+  const fromUrl = parseFpsLimit(urlValue);
+  if (fromUrl !== null) return fromUrl;
+  const fromSaved = parseFpsLimit(saved);
+  if (fromSaved !== null) return fromSaved;
+  return DEFAULT_FPS_CAP;
+}
+
 function readInitialFpsCap(): FpsLimit {
   try {
     const q = new URLSearchParams(location.search);
-    const fromUrl = parseFpsLimit(q.get('fpsCap') ?? q.get('maxFps'));
-    if (fromUrl !== null) return fromUrl;
-    const saved = parseFpsLimit(localStorage.getItem(FPS_CAP_KEY));
-    if (saved !== null) return saved;
+    return resolveInitialFpsCap(q.get('fpsCap') ?? q.get('maxFps'), localStorage.getItem(FPS_CAP_KEY));
   } catch { /* ignore */ }
-  return 0;
+  return DEFAULT_FPS_CAP;
 }
 
 let optimized = readInitialOpt();
@@ -204,7 +212,7 @@ export const togglePerf = (): boolean => perf.toggle();
 export const getPerfParams = (): Readonly<PerfParams> => perf.get();
 export const setPerfParams = (patch: Partial<PerfParams>): Readonly<PerfParams> => perf.set(patch);
 export const resetPerfParams = (): Readonly<PerfParams> => {
-  setFpsCap(0);
+  setFpsCap(DEFAULT_FPS_CAP);
   return perf.reset();
 };
 export const onPerfChange = (fn: (on: boolean, params: Readonly<PerfParams>) => void): (() => void) => perf.onChange(fn);
