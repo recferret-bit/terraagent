@@ -41,6 +41,10 @@ Review the built-in procedural generators in [procedural-pbr-patterns.md](./refe
 - `solarHexGrid`: Photovoltaic blue hex cells, metallic silver busbar grid, subtle cyan charge glow.
 - `industrialHazardStripes`: Diagonal 45° safety-amber and gunmetal stripes with edge scuffs.
 - `biomeTerrainNoise`: 4-channel `RGBA` `DataTexture` (FBM elevation, Voronoi cracks, moisture, micro-grain).
+- `treeBarkFissures`: Anisotropic vertical bark ridges, lenticel knots, Sobel `normalMap` & crevice `roughnessMap` (`frontend/render/visuals/ProceduralTextureRegistry.ts`, headless-safe `HeightBuffer` fallback).
+- `meadowGrassClover`: Botanical meadow blade weave + wildflower clover clusters + Sobel normal/roughness maps.
+- `desertPebbleCrust`: Wind-rippled arid sand, desert varnish pebbles & sun-baked alkali crack network.
+- `warmFurPelage`: Directional mammalian hair-strand pelage & guard-hair sheen roughness map.
 
 ### Step 2: Register or Tune a Custom PBR Pattern
 To add a new procedural texture (e.g., `nuclearCoolingTiles`, `alienChitinCarapace`, `iceGlacierCracks`):

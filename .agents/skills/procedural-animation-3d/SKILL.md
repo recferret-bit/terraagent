@@ -69,6 +69,10 @@ Stamp each part in `KitbashBuilder.addPart(geo, zone, { name, position, animType
 | **`9`** | `SpiderBody` | Spider carapace, underbelly, turret, cables | Rigid quadruped/arachnid chassis suspension & work bracing around COM `(0, 0.76, 0)`: spring-damped $2\omega$ step-impact heave, phase-lagged roll, pitch, yaw, sway, and surge driven by $(w, w_k)$. |
 | **`18, 28, 38`** | `Sub + BipedBody` | Radar (`18`), thruster (`28`), beacon (`38`) on biped | Evaluates rigid `SpinY (1)` / `HoverBob (2)` / `RecoilPulse (3)` around `pivot`, then rides on `BipedBody (8)`. |
 | **`19, 29, 39`** | `Sub + SpiderBody` | Radar (`19`), core (`29`), cannons (`39`) on spider | Evaluates rigid `SpinY (1)` / `HoverBob (2)` / `RecoilPulse (3)` around `pivot`, then rides on `SpiderBody (9)`. |
+| **`78, 88`** | `MammalNeck / Tail` | Quadruped neck/head (`78`) & tail (`88`) on `BipedBody (8)` | `78` pitches head/neck downward around X at `pivot` during grazing/drinking (`uWorkWeight`); `88` yaws tail around Y at `pivot`. Organic `4/14/24` with `aOrganic > 0.5 && pivot.z < -0.05` adds $+\pi$ hind phase for diagonal quadruped trot plus exact `acos` hock flexion so hooves/paws stay $\ge -5\text{ mm}$. |
+| **`92`** | `AvianWingFlap` | Bird flight wings (`featheredWings`) on `HoverBob (2)` | Rigid Z-roll wing stroke $\theta_{\text{flap}} = \text{sign}(p_x)\cdot 0.48\sin(2\theta)\cdot w$ around shoulder `pivot` plus synced vertical body bob $\Delta y = 0.05\sin\theta$. |
+
+> **Planet-Scale Instanced Biosphere (`useBiosphereInstanceAttributes`):** For flocks of birds and herds of warm-blooded animals (`frontend/render/biosphere/`), attach `attribute vec4 aBioState` (`[phaseOffset, walkOrFlapWeight, workOrFeedWeight, sleepCrouch]`) via `useBiosphereInstanceAttributes(material, depthMaterial, key)` (`visuals/unified/instancedBiosphere.ts`) so each species renders in **1 GPU draw call** with independent per-instance circadian states.
 
 Full mathematical derivations and phase tables are in [references/gait-and-ik-math.md](./references/gait-and-ik-math.md).
 

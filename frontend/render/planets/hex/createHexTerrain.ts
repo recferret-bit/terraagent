@@ -7,6 +7,7 @@ import { createHexChunkSet } from './chunkSet';
 import { createHexPropScatter, type HexPropScatter } from './chunkPropScatter';
 import { createBorderController } from './borderController';
 import { addHexEdges } from './hexEdges';
+import { createHexFloraLayer, type HexFloraLayer } from './flora/HexFloraLayer';
 import { planetExtent, rayGround, tileAt, waterSurfaceHit } from './hexMath';
 import { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
 import { createHexAmbient } from './hexAmbient';
@@ -14,6 +15,11 @@ import { getWindUniforms } from '../../core/windConfig';
 import { makeHeightSampler } from './heightSampler';
 import type { TerritoryBorderStats } from './territoryBorder';
 import { createHexTileTint } from './tileTint';
+import {
+  buildHexHabitatIndex,
+  createPlanetBiosphere,
+  type PlanetBiosphere,
+} from '../../biosphere';
 
 /** Tile layers the terrain reads (apps pass plain arrays; the sim's `ClientTiles` fits). */
 export interface HexTiles extends HexTileLayers {
@@ -34,6 +40,8 @@ export interface HexTerrain {
   readonly uniforms: Record<string, THREE.IUniform>;
   readonly water: HexWater;
   readonly props: HexPropScatter;
+  readonly flora: HexFloraLayer;
+  readonly biosphere: PlanetBiosphere;
   readonly borderMesh: THREE.Mesh;
   readonly radius: number;
   /** Half-extent (m) of the largest square inside the planet: a camera clamped to it never leaves the ground. */
@@ -139,13 +147,38 @@ function applyTileStateMutation(
   }
 }
 
+function pickHexTile(
+  radius: number,
+  input: THREE.Raycaster | THREE.Vector2,
+  camera: THREE.Camera | undefined,
+  sharedRay: THREE.Raycaster,
+  heightAt: (x: number, z: number) => number,
+  isWaterAt: (x: number, z: number) => boolean,
+  props: HexPropScatter,
+): HexPick | null {
+  let r = input as THREE.Raycaster;
+  if (input instanceof THREE.Vector2) {
+    sharedRay.setFromCamera(input, camera!);
+    r = sharedRay;
+  }
+  const ground = rayGround(r.ray.origin, r.ray.direction, heightAt);
+  const hit = waterSurfaceHit(r.ray.origin, r.ray.direction, HEX_WATER_LEVEL, ground, isWaterAt) ?? ground;
+  // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
+  const prop = props.pickProp(r);
+  if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {
+    const i = hexIndex(radius).indexOf(prop.q, prop.r);
+    if (i >= 0) return { q: prop.q, r: prop.r, i };
+  }
+  return hit ? tileAt(radius, hit.x, hit.z) : null;
+}
+
 /** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { radius, look } = opts;
   const hx = hexIndex(radius);
   let tiles = opts.tiles;
   let elapsedTime = 0;
-  const chunkLayers = (): HexTileLayers => ({ ...tiles, kind: look.kind });
+  const chunkLayers = (): HexTileLayers => ({ ...tiles, kind: look.kind, seed: look.seed });
   let effHeights = computeEffectiveHeights(radius, chunkLayers());
   const ext = planetExtent(radius);
   const tint = createHexTileTint(radius, chunkLayers());
@@ -161,12 +194,18 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const heightAt = makeHeightSampler(radius, () => effHeights);
   const water = createHexWater(radius, look, tiles);
   const props = createHexPropScatter(look);
+  const flora = createHexFloraLayer(radius, look);
   const borders = createBorderController(radius, tiles, effHeights, opts.colorBlindMode ?? globalColorBlindMode, opts.colonyColors);
   const chunks = createHexChunkSet(radius, group, material, props, heightAt);
 
   chunks.rebuild(chunkLayers(), effHeights);
+  flora.update(chunkLayers(), heightAt);
+  const biosphere = createPlanetBiosphere({
+    look,
+    habitat: buildHexHabitatIndex(radius, chunkLayers(), look, heightAt),
+  });
   const ambient = createHexAmbient(look, ext.z);
-  group.add(water.group, props.group, borders.mesh, ambient.points);
+  group.add(water.group, props.group, flora.group, biosphere.group, borders.mesh, ambient.points);
   const ray = new THREE.Raycaster();
   const isWaterAt = (x: number, z: number): boolean => {
     const t = tileAt(radius, x, z);
@@ -175,21 +214,9 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   };
 
   const handle: HexTerrain = {
-    group, material, uniforms, water, props, borderMesh: borders.mesh, radius, halfSize: ext.z, heightAt,
+    group, material, uniforms, water, props, flora, biosphere, borderMesh: borders.mesh, radius, halfSize: ext.z, heightAt,
     get chunks() { return [...chunks.meshes.values()]; },
-    pick(input, camera) {
-      let r = input as THREE.Raycaster;
-      if (input instanceof THREE.Vector2) { ray.setFromCamera(input, camera!); r = ray; }
-      const ground = rayGround(r.ray.origin, r.ray.direction, heightAt);
-      const hit = waterSurfaceHit(r.ray.origin, r.ray.direction, HEX_WATER_LEVEL, ground, isWaterAt) ?? ground;
-      // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
-      const prop = props.pickProp(r);
-      if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {
-        const i = hexIndex(radius).indexOf(prop.q, prop.r);
-        if (i >= 0) return { q: prop.q, r: prop.r, i };
-      }
-      return hit ? tileAt(radius, hit.x, hit.z) : null;
-    },
+    pick: (input, camera) => pickHexTile(radius, input, camera, ray, heightAt, isWaterAt, props),
     updateTiles(nextOrChanged, maybeChanged) {
       const resolved = resolveTilesAndChanged(tiles, nextOrChanged, maybeChanged);
       tiles = resolved.tiles;
@@ -199,6 +226,8 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
         effHeights = computeEffectiveHeights(radius, layers);
         tint.update(layers, changed);
         chunks.rebuild(layers, effHeights, changed);
+        flora.update(layers, heightAt, changed);
+        biosphere.onHabitatChanged(buildHexHabitatIndex(radius, layers, look, heightAt));
         water.update(tiles, changed);
       }
       borders.rebuild(tiles, effHeights);
@@ -218,8 +247,11 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       if (uniforms.uTime) uniforms.uTime.value = elapsedTime;
       if (water.uniforms.uTime) water.uniforms.uTime.value = elapsedTime;
       props.timeU.value = elapsedTime;
+      flora.timeU.value = elapsedTime;
       props.cullToFocus(); // hide what lies off the view focus (one frame stale; covered by the focus's 4 m edge pad)
+      flora.cullToFocus();
       water.cullToFocus(); // surface + fauna buckets
+      biosphere.tick(dt);
       ambient.setTime(elapsedTime);
     },
     getTerritoryBorderStats: () => borders.getStats(),
@@ -228,7 +260,8 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     dispose() {
       activeTerrains.delete(handle);
       chunks.dispose();
-      water.dispose(); props.dispose(); borders.dispose(); material.dispose(); tint.dispose(); ambient.dispose();
+      water.dispose(); props.dispose(); flora.dispose(); biosphere.dispose();
+      borders.dispose(); material.dispose(); tint.dispose(); ambient.dispose();
       group.removeFromParent();
     },
   };

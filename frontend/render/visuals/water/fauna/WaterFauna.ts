@@ -3,13 +3,13 @@ import type { ShoreField } from '../shoreField';
 import { getFaunaDensity, onWaterChange } from '../waterConfig';
 import { buildFishGeometry } from './fishGeometry';
 import { createFishMaterial } from './fishMaterial';
-import { FAUNA_CAP, createFaunaBuffers, layoutFauna, visibleFishCount, type FaunaLayout } from './faunaPlacement';
+import { FAUNA_CAP, createFaunaBuffers, layoutFauna, planetFishCap, visibleFishCount, type FaunaLayout } from './faunaPlacement';
 import { createFaunaSink } from './faunaSink';
 import { fishBounds, jellyBounds } from './faunaBounds';
 import { createFaunaBucketSet } from './faunaBuckets';
 import { buildJellyGeometry } from './jellyGeometry';
 import { createJellyMaterial } from './jellyMaterial';
-import { JELLY_CAP, createJellyBuffers, layoutJellies, visibleJellyCount } from './jellyPlacement';
+import { JELLY_CAP, createJellyBuffers, layoutJellies, planetJellyCap, visibleJellyCount } from './jellyPlacement';
 
 /**
  * Water fauna: fish (<= FAUNA_CAP, opaque) and jellyfish (<= JELLY_CAP, translucent, deep water only), no shadows,
@@ -45,22 +45,28 @@ export interface WaterFaunaOptions {
   /** The water's deep colour IUniform (underwater tint). */
   deepColor: THREE.IUniform;
   seed: number;
+  /** Optional world span (m) to scale planet-wide aquatic caps beyond the 64 m test cap. */
+  planetSpan?: number;
+  /** Optional planet biome kind ('oceanForest' | 'forestRock' | 'dune') for endemic aquatic palettes. */
+  biomeKind?: string;
 }
 
 export function createWaterFauna(opts: WaterFaunaOptions): WaterFauna {
+  const fishCap = opts.planetSpan ? planetFishCap(opts.planetSpan) : FAUNA_CAP;
+  const jellyCap = opts.planetSpan ? planetJellyCap(opts.planetSpan) : JELLY_CAP;
   const sink = createFaunaSink();
   const step = () => sink.step(); // dt is measured, so being called by several meshes in one frame is harmless
   const group = new THREE.Group();
   group.name = 'waterFaunaGroup';
   const owned = {
-    fishGeo: buildFishGeometry(), fishMat: createFishMaterial(opts.time, opts.deepColor, sink.uniform),
+    fishGeo: buildFishGeometry(), fishMat: createFishMaterial(opts.time, opts.deepColor, sink.uniform, opts.biomeKind),
     jellyGeo: buildJellyGeometry(), jellyMat: createJellyMaterial(opts.time, opts.deepColor, sink.uniform),
   };
-  const fishBuf = createFaunaBuffers(FAUNA_CAP);
+  const fishBuf = createFaunaBuffers(fishCap);
   const fish = createFaunaBucketSet(group, {
     name: 'waterFauna', geometry: owned.fishGeo, material: owned.fishMat, buffers: fishBuf, attrs: { aSwim: 'swim', aFish: 'fish', aOffset: 'offset' }, centre: 'swim', bounds: fishBounds, onFrame: step,
   });
-  const jellyBuf = createJellyBuffers(JELLY_CAP);
+  const jellyBuf = createJellyBuffers(jellyCap);
   const jellies = createFaunaBucketSet(group, {
     name: 'waterJellies', geometry: owned.jellyGeo, material: owned.jellyMat, buffers: jellyBuf, attrs: { aDrift: 'drift', aJelly: 'jelly' }, centre: 'drift', bounds: jellyBounds, onFrame: step,
   });
@@ -69,7 +75,7 @@ export function createWaterFauna(opts: WaterFaunaOptions): WaterFauna {
 
   const applyDensity = () => {
     const d = getFaunaDensity();
-    fish.setCount(layout ? visibleFishCount(layout, d) : 0);
+    fish.setCount(layout ? visibleFishCount(layout, d, fishCap) : 0);
     jellies.setCount(visibleJellyCount(jellyPlaced, d));
   };
   const unsubscribe = onWaterChange(applyDensity);
@@ -82,8 +88,8 @@ export function createWaterFauna(opts: WaterFaunaOptions): WaterFauna {
     get jellyCount() { return jellies.count; },
     get placed() { return layout?.placed ?? 0; },
     rebuild(field) {
-      layout = layoutFauna(field, opts.seed, fishBuf, FAUNA_CAP);
-      jellyPlaced = layoutJellies(field, opts.seed, jellyBuf, JELLY_CAP);
+      layout = layoutFauna(field, opts.seed, fishBuf, fishCap);
+      jellyPlaced = layoutJellies(field, opts.seed, jellyBuf, jellyCap);
       fish.rebuild(layout.placed);
       jellies.rebuild(jellyPlaced);
       applyDensity();

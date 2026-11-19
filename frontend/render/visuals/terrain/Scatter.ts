@@ -20,6 +20,10 @@ export interface Place {
   stage?: 'full' | 'half' | 'depleted';
   /** Instance colour multiplier (> 1 brightens), e.g. the accent step of a tier 2/3 deposit. */
   tintMul?: number;
+  /** Optional tree breed index (`0..3`) within a multi-breed atlas geometry (`aBreed`). */
+  breedIndex?: number;
+  /** Optional per-breed / per-instance wind compliance multiplier (`0.3..1.8`). */
+  windMul?: number;
 }
 
 /** Jittered-grid scatter; `prob(x,z,r)` returns acceptance probability (0 = reject). */
@@ -268,23 +272,67 @@ export function foliageTreeTraits(x: number, z: number, sizeY: number = FOLIAGE_
   };
 }
 
-export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubleSided = false): THREE.MeshStandardMaterial {
+const MULTI_BREED_COLOR_VERT = /* glsl */ `{
+  vec3 taInstCol = vec3(1.0);
+  #ifdef USE_INSTANCING_COLOR
+    float taBrIdx = floor((instanceColor.r + 0.01) / 8.0);
+    float taWnIdx = floor((instanceColor.b + 0.01) / 8.0);
+    taInstCol = vec3(instanceColor.r - taBrIdx * 8.0, instanceColor.g, instanceColor.b - taWnIdx * 8.0);
+  #endif
+  #if defined(USE_COLOR_ALPHA)
+    vColor = vec4(1.0);
+  #elif defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
+    vColor = vec3(1.0);
+  #endif
+  #ifdef USE_COLOR
+    vColor *= color;
+  #endif
+  #if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
+    vColor.xyz *= taInstCol;
+  #endif
+}`;
+
+function wrapMultiBreedBegin(chunk: string): string {
+  return `#include <begin_vertex>
+#if defined(USE_INSTANCING) && defined(USE_INSTANCING_COLOR)
+  float taBreedSel = floor((instanceColor.r + 0.01) / 8.0);
+  float taWindMul = max(0.25, floor((instanceColor.b + 0.01) / 8.0) * 0.1);
+  if (abs(aBreed - taBreedSel) > 0.4) {
+    transformed = vec3(0.0);
+  } else {
+#else
+  float taWindMul = 1.0;
+  {
+#endif
+${chunk.replace('#include <begin_vertex>\n', '').replace(/\buSway\b/g, '(uSway * taWindMul)')}
+  }`;
+}
+
+export function createFoliageMaterial(
+  timeU: THREE.IUniform,
+  sway: number,
+  doubleSided = false,
+  multiBreed = false,
+): THREE.MeshStandardMaterial {
   const side = doubleSided ? THREE.DoubleSide : THREE.FrontSide;
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, flatShading: true, side });
   const swayU = { value: sway };
+  const swayBegin = multiBreed ? wrapMultiBreedBegin(FOLIAGE_SWAY_BEGIN) : FOLIAGE_SWAY_BEGIN;
+  const breedDecl = multiBreed ? 'attribute float aBreed;\n' : '';
+
   const patchDepthSway = (sh: THREE.WebGLProgramParametersWithUniforms) => {
     Object.assign(sh.uniforms, getWindUniforms());
     sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${FOLIAGE_WIND_DECL}`)
-      .replace('#include <begin_vertex>', FOLIAGE_SWAY_BEGIN);
+      .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}`)
+      .replace('#include <begin_vertex>', swayBegin);
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, getColonyVisionUniforms(), getWindUniforms(), getWeatherUniforms());
     sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\n${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN;`)
-      .replace('#include <begin_vertex>', `${FOLIAGE_SWAY_BEGIN}
+      .replace('#include <common>', `#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN;`)
+      .replace('#include <begin_vertex>', `${swayBegin}
 #ifdef USE_INSTANCING
   vFW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
   vFN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
@@ -292,6 +340,9 @@ export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubl
   vFW = (modelMatrix * vec4(transformed, 1.0)).xyz;
   vFN = normalize(mat3(modelMatrix) * objectNormal);
 #endif`);
+    if (multiBreed) {
+      sh.vertexShader = sh.vertexShader.replace('#include <color_vertex>', MULTI_BREED_COLOR_VERT);
+    }
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -304,7 +355,9 @@ if (uWetness > 0.001) {
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vFW, vFN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vFW, gl_FragColor.rgb);');
   };
+  if (multiBreed) m.customProgramCacheKey = () => `ta-foliage-multibreed:${side}`;
   const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side });
+  if (multiBreed) depthMat.customProgramCacheKey = () => `ta-foliage-depth-multibreed:${side}`;
   depthMat.onBeforeCompile = patchDepthSway;
   m.userData.depthMaterial = depthMat;
   const origDispose = m.dispose.bind(m);
@@ -352,6 +405,8 @@ export function createRockMaterial(opts: { rough?: number; metal?: number; flat?
 export interface InstOpts {
   sx?: [number, number]; sy?: [number, number]; sink?: number; tilt?: number;
   tint?: (r: number, c: THREE.Color) => void; scaleMul?: (p: Place) => number;
+  encodeBreedInColor?: boolean;
+  castShadow?: boolean;
 }
 export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt: InstOpts): THREE.InstancedMesh {
   const im = new THREE.InstancedMesh(geo, mat, Math.max(1, places.length));
@@ -372,6 +427,12 @@ export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt
     if (p.stage === 'depleted') c.multiplyScalar(0.58);
     else if (p.stage === 'half' && (p.scaleY ?? 1) < 0.35) c.multiplyScalar(0.72);
     if (p.tintMul !== undefined) c.multiplyScalar(p.tintMul);
+    if (opt.encodeBreedInColor) {
+      const br = Math.max(0, Math.min(7, Math.round(p.breedIndex ?? 0)));
+      const wn = Math.max(2, Math.min(20, Math.round((p.windMul ?? 1) * 10)));
+      c.r = br * 8 + Math.max(0.2, Math.min(3.5, c.r));
+      c.b = wn * 8 + Math.max(0.2, Math.min(3.5, c.b));
+    }
     im.setColorAt(i, c);
   });
   im.instanceMatrix.needsUpdate = true;
@@ -381,6 +442,6 @@ export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt
     im.computeBoundingBox();
     im.computeBoundingSphere();
   }
-  im.castShadow = true; im.receiveShadow = (mat.userData?.receiveShadow as boolean | undefined) ?? true;
+  im.castShadow = opt.castShadow ?? true; im.receiveShadow = (mat.userData?.receiveShadow as boolean | undefined) ?? true;
   return im;
 }

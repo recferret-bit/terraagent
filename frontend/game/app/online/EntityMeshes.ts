@@ -23,6 +23,7 @@ import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRi
 import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
+import { syncBiosphereAggressors } from './biosphereAggressorSync';
 import { CombatSyncController } from './combatSync';
 import {
   archetypeForKind,
@@ -408,6 +409,7 @@ export class EntityMeshes {
       rec.mesh.rotation.y += diff * rotLerp;
     }
     this.workParticles.syncSites(workSites);
+    syncBiosphereAggressors(terrain, this.entries.values(), workingIds);
     this.workParticles.update(dt);
     this.combatSync.update(dt);
     this.gridCables.update(realDt);

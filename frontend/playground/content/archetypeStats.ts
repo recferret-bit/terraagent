@@ -15,7 +15,7 @@ function computeStats(id: string) {
   if (a) for (let i = 0; i < a.count; i++) anim.add(a.getX(i));
   const cat = ArchetypeCatalog.get(id).category;
   // Ships, props, and the flying drifter: no ground rule (same split as `validateArchetype`).
-  const contact = cat === 'ship' || cat === 'prop' || id === 'fauna.drifter' ? null : groundContact(extractArchetype(id));
+  const contact = cat === 'ship' || cat === 'prop' || id === 'fauna.drifter' || id.startsWith('fauna.bird.') ? null : groundContact(extractArchetype(id));
   const out = { tris: Math.round(tris), verts: g.attributes.position.count, size: bb.getSize(new THREE.Vector3()), minY: bb.min.y, contact, anim: [...anim].sort(), attrs: Object.keys(g.attributes) };
   g.dispose();
   return out;

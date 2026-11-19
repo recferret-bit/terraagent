@@ -17,7 +17,7 @@ export class Sidebar {
   constructor(private state: PgState, private on: SidebarHandlers) {}
 
   build() {
-    $('#side').innerHTML = sideShell(ArchetypeCatalog.list().length);
+    $('#side').innerHTML = sideShell(ArchetypeCatalog.list().length + ArchetypeCatalog.listBiosphere().length);
     this.bindTabs();
     bindDock({
       id: 'side',
@@ -50,7 +50,8 @@ export class Sidebar {
 
   visibleIds(): string[] {
     const f = this.state.filter;
-    return ArchetypeCatalog.list().filter((e) => !f || (e.id + ' ' + e.label + ' ' + e.category).toLowerCase().includes(f)).map((e) => e.id);
+    const all = [...ArchetypeCatalog.list(), ...ArchetypeCatalog.listBiosphere()];
+    return all.filter((e) => !f || (e.id + ' ' + e.label + ' ' + e.category).toLowerCase().includes(f)).map((e) => e.id);
   }
 
   render() {
@@ -59,7 +60,9 @@ export class Sidebar {
     const vis = new Set(this.visibleIds());
     const searching = this.state.filter.length > 0;
     for (const cat of CATS) {
-      const items = ArchetypeCatalog.list(cat).filter((e) => vis.has(e.id));
+      const base = ArchetypeCatalog.list(cat);
+      const entries = cat === 'fauna' ? [...base, ...ArchetypeCatalog.listBiosphere()] : base;
+      const items = entries.filter((e) => vis.has(e.id));
       if (!items.length) continue;
       list.appendChild(this.categoryGroup(cat, items, searching || this.expanded.has(cat)));
     }

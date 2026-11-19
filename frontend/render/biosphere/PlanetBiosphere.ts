@@ -1,0 +1,232 @@
+import * as THREE from 'three';
+import { getDayNightParams } from '../core/dayNightConfig';
+import { viewFocusBounded } from '../core/focusCull';
+import { inViewFocus } from '../core/viewFocus';
+import { ArchetypeCatalog } from '../kitbash';
+import type { PlanetSpec } from '../planets/PlanetSpec';
+import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
+import { useBiosphereInstanceAttributes } from '../visuals/unified/instancedBiosphere';
+import { BirdFlockSimulator } from './BirdFlockSim';
+import { LandAnimalSimulator } from './LandAnimalSim';
+import type {
+  BiosphereAggressor,
+  BiosphereBattleHotspot,
+  BiosphereHabitatIndex,
+  PlanetBiosphere,
+} from './biosphereTypes';
+
+interface SpeciesMeshSlot {
+  mesh: THREE.InstancedMesh;
+  bioAttr: THREE.InstancedBufferAttribute;
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  depthMaterial: THREE.Material;
+}
+
+function makeSpeciesMeshSlot(
+  archetypeId: string,
+  capacity: number,
+  biomeName: 'desert' | 'temperate',
+  sharedTimeU: THREE.IUniform<number>,
+): SpeciesMeshSlot {
+  const cap = Math.max(1, capacity);
+  const geometry = ArchetypeCatalog.getGeometry(archetypeId);
+  const bioData = new Float32Array(cap * 4);
+  const bioAttr = new THREE.InstancedBufferAttribute(bioData, 4);
+  bioAttr.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('aBioState', bioAttr);
+
+  const uni = createUnifiedColonyMaterial({ biome: biomeName });
+  uni.uniforms.uTime = sharedTimeU;
+  useBiosphereInstanceAttributes(uni.material, uni.depthMaterial);
+
+  const mesh = new THREE.InstancedMesh(geometry, uni.material, cap);
+  mesh.customDepthMaterial = uni.depthMaterial;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  mesh.count = 0;
+  mesh.name = `biosphere-${archetypeId}`;
+
+  return {
+    mesh,
+    bioAttr,
+    geometry,
+    material: uni.material,
+    depthMaterial: uni.depthMaterial,
+  };
+}
+
+export interface CreatePlanetBiosphereOptions {
+  look: PlanetSpec;
+  habitat: BiosphereHabitatIndex;
+}
+
+interface TransformScratch {
+  mat: THREE.Matrix4;
+  pos: THREE.Vector3;
+  quat: THREE.Quaternion;
+  euler: THREE.Euler;
+  scale: THREE.Vector3;
+}
+
+function syncBirdMeshSlots(
+  birdSlots: readonly SpeciesMeshSlot[],
+  birdSim: BirdFlockSimulator,
+  bounded: boolean,
+  sc: TransformScratch,
+): void {
+  for (let slot = 0; slot < birdSlots.length; slot++) {
+    const ms = birdSlots[slot]!;
+    let drawn = 0;
+    for (const flock of birdSim.flocks) {
+      if (flock.speciesSlot !== slot) continue;
+      for (const m of flock.members) {
+        if (bounded && !inViewFocus(m.x, m.z, 18)) continue;
+        sc.pos.set(m.x, m.y, m.z);
+        sc.euler.set(m.pitch, m.yaw, m.roll, 'YXZ');
+        sc.quat.setFromEuler(sc.euler);
+        sc.scale.setScalar(m.scale);
+        sc.mat.compose(sc.pos, sc.quat, sc.scale);
+        ms.mesh.setMatrixAt(drawn, sc.mat);
+        ms.bioAttr.setXYZW(drawn, m.phase, m.flapWeight, 0, 0);
+        drawn++;
+      }
+    }
+    ms.mesh.count = drawn;
+    ms.mesh.visible = drawn > 0;
+    if (drawn > 0) {
+      ms.mesh.instanceMatrix.needsUpdate = true;
+      ms.bioAttr.needsUpdate = true;
+    }
+  }
+}
+
+function syncAnimalMeshSlots(
+  animalSlots: readonly SpeciesMeshSlot[],
+  animalSim: LandAnimalSimulator,
+  bounded: boolean,
+  sc: TransformScratch,
+): void {
+  for (let slot = 0; slot < animalSlots.length; slot++) {
+    const ms = animalSlots[slot]!;
+    let drawn = 0;
+    for (const a of animalSim.agents) {
+      if (a.speciesSlot !== slot) continue;
+      if (bounded && !inViewFocus(a.x, a.z, 14)) continue;
+      sc.pos.set(a.x, a.y, a.z);
+      sc.euler.set(0, a.yaw, 0, 'YXZ');
+      sc.quat.setFromEuler(sc.euler);
+      sc.scale.setScalar(a.scale);
+      sc.mat.compose(sc.pos, sc.quat, sc.scale);
+      ms.mesh.setMatrixAt(drawn, sc.mat);
+      ms.bioAttr.setXYZW(drawn, a.phase, a.walkWeight, a.workWeight, a.sleepCrouch);
+      drawn++;
+    }
+    ms.mesh.count = drawn;
+    ms.mesh.visible = drawn > 0;
+    if (drawn > 0) {
+      ms.mesh.instanceMatrix.needsUpdate = true;
+      ms.bioAttr.needsUpdate = true;
+    }
+  }
+}
+
+export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): PlanetBiosphere {
+  const { look } = opts;
+  let habitat = opts.habitat;
+  const group = new THREE.Group();
+  group.name = 'planetBiosphere';
+  const sharedTimeU: THREE.IUniform<number> = { value: 0 };
+  const biomeName: 'desert' | 'temperate' = look.kind === 'dune' ? 'desert' : 'temperate';
+
+  const birdSim = new BirdFlockSimulator(look.kind, look.seed, habitat);
+  const animalSim = new LandAnimalSimulator(look.kind, look.seed, habitat);
+
+  const birdSlots: SpeciesMeshSlot[] = birdSim.speciesList.map((sp, slot) => {
+    const cap = birdSim.flocks.filter((f) => f.speciesSlot === slot).reduce((sum, f) => sum + f.members.length, 0);
+    const ms = makeSpeciesMeshSlot(sp.id, cap, biomeName, sharedTimeU);
+    group.add(ms.mesh);
+    return ms;
+  });
+  const animalSlots: SpeciesMeshSlot[] = animalSim.speciesList.map((sp, slot) => {
+    const cap = animalSim.agents.filter((a) => a.speciesSlot === slot).length;
+    const ms = makeSpeciesMeshSlot(sp.id, cap, biomeName, sharedTimeU);
+    group.add(ms.mesh);
+    return ms;
+  });
+
+  let aggressors: readonly BiosphereAggressor[] = [];
+  const battles: BiosphereBattleHotspot[] = [];
+  let timeOverride01: number | null = null;
+  let elapsed = 0;
+  const scratch: TransformScratch = {
+    mat: new THREE.Matrix4(),
+    pos: new THREE.Vector3(),
+    quat: new THREE.Quaternion(),
+    euler: new THREE.Euler(0, 0, 0, 'YXZ'),
+    scale: new THREE.Vector3(),
+  };
+
+  syncBirdMeshSlots(birdSlots, birdSim, false, scratch);
+  syncAnimalMeshSlots(animalSlots, animalSim, false, scratch);
+
+  return {
+    group,
+    birdMeshes: birdSlots.map((s) => s.mesh),
+    animalMeshes: animalSlots.map((s) => s.mesh),
+    counts() {
+      let birdsTotal = 0;
+      for (const f of birdSim.flocks) birdsTotal += f.members.length;
+      return {
+        birdSpecies: birdSim.speciesList.length,
+        birdFlocks: birdSim.flocks.length,
+        birdsTotal,
+        landSpecies: animalSim.speciesList.length,
+        landGroups: animalSim.groupCount,
+        landAnimalsTotal: animalSim.agents.length,
+      };
+    },
+    getBirdFlocks: () => birdSim.flocks,
+    getLandAnimals: () => animalSim.agents,
+    setAggressors(next) { aggressors = next; },
+    noteBattleAt(x, z, radius = 14, ttl = 6.0) {
+      const existing = battles.find((b) => Math.hypot(b.x - x, b.z - z) < 8);
+      if (existing) {
+        existing.radius = Math.max(existing.radius, radius);
+        existing.ttl = Math.max(existing.ttl, ttl);
+      } else {
+        battles.push({ x, z, radius, ttl });
+      }
+    },
+    setTimeOfDayOverride(time01) { timeOverride01 = time01; },
+    onHabitatChanged(nextHabitat) { habitat = nextHabitat; },
+    tick(dt) {
+      const safeDt = Math.max(0, dt);
+      elapsed += safeDt;
+      sharedTimeU.value = elapsed;
+      for (let i = battles.length - 1; i >= 0; i--) {
+        battles[i]!.ttl -= safeDt;
+        if (battles[i]!.ttl <= 0) battles.splice(i, 1);
+      }
+      const day01 = timeOverride01 ?? getDayNightParams().timeOfDay;
+      const solarHour24 = (((day01 % 1) + 1) % 1) * 24;
+      birdSim.step(safeDt, habitat, aggressors, battles);
+      animalSim.step(safeDt, solarHour24, habitat, aggressors, battles);
+      const bounded = viewFocusBounded();
+      syncBirdMeshSlots(birdSlots, birdSim, bounded, scratch);
+      syncAnimalMeshSlots(animalSlots, animalSim, bounded, scratch);
+    },
+    dispose() {
+      for (const s of [...birdSlots, ...animalSlots]) {
+        s.mesh.removeFromParent();
+        s.mesh.dispose();
+        s.geometry.dispose();
+        s.material.dispose();
+        s.depthMaterial.dispose();
+      }
+      battles.length = 0;
+      group.removeFromParent();
+    },
+  };
+}

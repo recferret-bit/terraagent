@@ -60,3 +60,25 @@ export {
 } from './territoryBorder';
 export { kindForPlanetType, planetTypeForKind, specForPlanetType, type SimPlanetType } from './planetKind';
 export { CHUNK_TILES, TILE_M, tileXZ, tileAt, planetExtent } from './hexMath';
+export {
+  evaluateForestStand,
+  generateCandidateTreePlaces,
+  generateTileForestTrees,
+  runForestGenerationPipeline,
+  stratifyStandSites,
+  synthesizeTreePhenotype,
+  type CandidateTreePlace,
+  type CanopyCohort,
+  type ForestPipelineResult,
+  type ForestStandClassification,
+  type ForestStandRegime,
+  type GeneratedForestTree,
+  type StratifiedTreeSite,
+} from './flora/forestPipeline';
+export {
+  createHexFloraLayer,
+  GROUND_FLORA_KINDS,
+  type GroundFloraKind,
+  type HexFloraCounts,
+  type HexFloraLayer,
+} from './flora/HexFloraLayer';

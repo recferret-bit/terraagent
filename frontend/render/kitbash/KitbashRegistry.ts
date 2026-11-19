@@ -57,7 +57,7 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * - 9: SpiderBody — Arachnid/quadruped carapace/turret step-reaction (2ω stomp compression, diagonal roll, pitch, surge, yaw)
  *      (19 = SpinY on SpiderBody, 29 = HoverBob on SpiderBody, 39 = RecoilPulse on SpiderBody)
  */
-export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39 | 49 | 59 | 60 | 69;
+export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39 | 49 | 59 | 60 | 69 | 78 | 88 | 92;
 
 /**
  * What a part is for, when a geometry check must treat it specially (the validator never infers this from names):

@@ -48,7 +48,7 @@ function splitByCell(b: ChunkPropBuckets, kinds: readonly PropKind[]): CellSplit
 const sameInstance = (a: TilePropInstance, b: TilePropInstance) =>
   a.kind === b.kind && a.tileIndex === b.tileIndex && a.x === b.x && a.y === b.y && a.z === b.z && a.rot === b.rot &&
   a.s === b.s && a.r === b.r && a.stage === b.stage && a.scaleX === b.scaleX && a.scaleY === b.scaleY &&
-  a.scaleZ === b.scaleZ && a.tintMul === b.tintMul;
+  a.scaleZ === b.scaleZ && a.tintMul === b.tintMul && a.breedIndex === b.breedIndex && a.windMul === b.windMul;
 
 /** True when two instance lists are the same (scatter is deterministic, so an untouched tile re-scatters equal). */
 function sameInstances(a: readonly TilePropInstance[] = [], b: readonly TilePropInstance[] = []): boolean {
@@ -156,7 +156,12 @@ export function createPropBucketSet(group: THREE.Group, look: PropBucketLook): P
       for (const hit of ray.intersectObjects([...buckets.values()].filter((m) => m.visible), false)) {
         const im = hit.object as THREE.InstancedMesh;
         const inst = hit.instanceId !== undefined ? bucketMeta(im).placed?.[placedIndex(im, hit.instanceId)] : undefined;
-        if (inst) return { q: inst.tileQ, r: inst.tileR, distance: hit.distance };
+        if (!inst) continue;
+        const breedAttr = im.geometry.getAttribute('aBreed') as THREE.BufferAttribute | undefined;
+        if (breedAttr && inst.breedIndex !== undefined && hit.faceIndex != null) {
+          if (Math.abs(breedAttr.getX(hit.faceIndex * 3) - inst.breedIndex) > 0.4) continue;
+        }
+        return { q: inst.tileQ, r: inst.tileR, distance: hit.distance };
       }
       return null;
     },

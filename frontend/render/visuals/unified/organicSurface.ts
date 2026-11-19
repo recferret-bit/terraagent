@@ -56,4 +56,26 @@ if (abs(rawAnim - 49.0) < 0.1 || abs(rawAnim - 59.0) < 0.1) {
 if (abs(rawAnim - 69.0) < 0.1 || abs(rawAnim - 60.0) < 0.1) {
   float pulse = 1.0 + 0.018 * sin(g + pivot.x * 3.1);
   transformed = pivot + (transformed - pivot) * pulse;
+}
+if (abs(rawAnim - 78.0) < 0.1) {
+  float pitch = (0.34 + 0.07 * sin(g * 2.0)) * uWorkWeight + 0.035 * sin(g * 2.0) * uWalkWeight;
+  float cp = cos(pitch), sp = sin(pitch);
+  vec3 r = transformed - pivot;
+  transformed.y = pivot.y + r.y * cp - r.z * sp;
+  transformed.z = pivot.z + r.y * sp + r.z * cp;
+}
+if (abs(rawAnim - 88.0) < 0.1) {
+  float yaw = 0.22 * sin(g + 0.8) * (0.25 + 0.75 * uWalkWeight) + 0.10 * sin(g * 2.0) * uWorkWeight;
+  float cy = cos(yaw), sy = sin(yaw);
+  vec3 r = transformed - pivot;
+  transformed.x = pivot.x + r.x * cy - r.z * sy;
+  transformed.z = pivot.z + r.x * sy + r.z * cy;
+}
+if (abs(rawAnim - 92.0) < 0.1) {
+  float side = pivot.x >= 0.0 ? 1.0 : -1.0;
+  float flap = side * (0.48 * sin(uTime * 8.0) * uWalkWeight + 0.08 * (1.0 - uWalkWeight));
+  float cf = cos(flap), sf = sin(flap);
+  vec3 r = transformed - pivot;
+  transformed.x = pivot.x + r.x * cf - r.y * sf;
+  transformed.y = pivot.y + r.x * sf + r.y * cf;
 }`;

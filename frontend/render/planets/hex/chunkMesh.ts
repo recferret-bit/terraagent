@@ -27,6 +27,8 @@ export interface HexTileLayers {
   owner?: ArrayLike<number>;
   /** Optional planet look kind ('dune' | 'oceanForest' | 'forestRock'); defaults to 'forestRock'. */
   kind?: PlanetKind;
+  /** Optional planet procedural seed for ecological stand generation. */
+  seed?: number;
 }
 
 /**

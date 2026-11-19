@@ -22,6 +22,7 @@ import { fireLaserOrMelee } from '../combat/lasers';
 import { fireProjectile } from '../combat/projectiles';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { issueUnitCommand } from '../units/registry';
+import { ingestEcologicalDamageEvents } from './planetDamage';
 import { detectAndApplyDamageProvocation } from './provocation';
 import { materializeWorldgenHives, spawnResidentBug } from './spawn';
 import { getFaunaHivesState, saveFaunaHivesState } from './state';
@@ -285,7 +286,10 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
 
   flushPendingFaunaEvents(state, ctx);
   const bugPolicy = firingRangeBugPolicy(state);
-  if (bugPolicy === null) detectAndApplyDamageProvocation(state, ctx.tick, ctx);
+  if (bugPolicy === null) {
+    ingestEcologicalDamageEvents(state, ctx.tick, ctx);
+    detectAndApplyDamageProvocation(state, ctx.tick, ctx);
+  }
   fauna = getFaunaHivesState(state);
   syncFaunaLiveness(state, fauna, ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);
@@ -347,7 +351,10 @@ export function stepFaunaMovement(state: PlanetState, ctx: StepContext): void {
 export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
   flushPendingFaunaEvents(state, ctx);
   const bugPolicy = firingRangeBugPolicy(state);
-  if (bugPolicy === null) detectAndApplyDamageProvocation(state, ctx.tick, ctx);
+  if (bugPolicy === null) {
+    ingestEcologicalDamageEvents(state, ctx.tick, ctx);
+    detectAndApplyDamageProvocation(state, ctx.tick, ctx);
+  }
   const fauna = getFaunaHivesState(state);
   syncFaunaLiveness(state, fauna, ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);

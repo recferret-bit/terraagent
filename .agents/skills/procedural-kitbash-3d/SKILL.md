@@ -70,6 +70,7 @@ Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`
 - `animType = 8` (`BipedBody`): Full-body step reaction (`robot.hero` pelvis, torso, head, backpack, cables).
 - `animType = 9` (`SpiderBody`): Heavy quadruped/arachnid chassis suspension (`robot.combat` carapace, underbelly, turret, cables).
 - `animType = 18, 28, 38` / `19, 29, 39`: Compound secondary motion (`SpinY 1`, `HoverBob 2`, `RecoilPulse 3`) riding on `BipedBody (8)` or `SpiderBody (9)`.
+- `animType = 78, 88, 92` (Organic Vertebrate & Avian Channels): `78` = rigid mammalian neck/head grazing & drinking pitch on `BipedBody (8)`, `88` = rigid tail wag on `BipedBody (8)`, `92` = rigid avian wing stroke synced with `HoverBob (2)` (`units/warmFauna.ts`, `units/avianFauna.ts`, `greebles/organic/vertebrates.ts`).
 
 ### Step 4: Geometry Validation, then Visual Diagnostic Verification
 After generating a new procedural model, **first** run the numeric check from the [`model-geometry-validator`](../model-geometry-validator/SKILL.md) skill: `npm run validate:models -- <archetype id>`. It must report 0 errors and 0 warnings (floating parts, hairline gaps, z-fighting, parts cutting through each other, cables clipping, animated parts hitting something, plus colour roles, colour separation between functional groups, palette balance and surface detail: rule 5 above). Name your parts (`name` in `PartOptions`) so its report maps back to code. Then:

@@ -75,6 +75,9 @@ t('recoiling barrel and muzzle sharing pivot.x move as one → clean', gun(0), (
 t('foundation sunk 10 cm below ground is allowed', () => [part(box(1, 0.4, 1), [0, 0.1, 0])], (r) => !codes(r).includes('GROUND_CONTACT'));
 t('foundation sunk 30 cm below ground → GROUND_CONTACT', () => [part(box(1, 0.4, 1), [0, -0.1, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
 t('lowest point 12 cm above the ground → GROUND_CONTACT', () => [part(box(1, 0.2, 1), [0, 0.22, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
+const avian = (wallY) => () => [ground(), part(box(0.22, 0.16, 0.36), [0, 0.55, 0], { name: 'avian torso', anim: 2, pivot: [0, 0.55, 0] }), part(new THREE.SphereGeometry(0.05, 8, 6), [0.11, 0.56, 0], { name: 'wing shoulder', anim: 92, pivot: [0.11, 0.56, 0] }), part(box(0.42, 0.03, 0.14), [0.30, 0.56, 0], { name: 'wing blade', anim: 92, pivot: [0.11, 0.56, 0] }), part(box(0.2, 0.06, 0.2), [0.36, wallY, 0], { name: 'perch' })];
+t('avian wing (anim 92) on bobbing torso (anim 2) flapping into an obstacle → ANIM_COLLISION', avian(0.70), (r) => codes(r).includes('ANIM_COLLISION'));
+t('avian wing (anim 92) on bobbing torso (anim 2) with full flap clearance → clean', avian(0.95), (r) => !codes(r).includes('ANIM_COLLISION') && !codes(r).includes('ANIM_DISTORTION'));
 
 // ---- appearance fixtures: colour fit, group separation, surface detail (appearance checks ON; geometry noise ignored)
 const amodel = (parts) => { idx = 0; return validateModel({ id: 't', label: 't', source: 'builder', parts: parts() }, { minParts: 1, appearance: true }); };

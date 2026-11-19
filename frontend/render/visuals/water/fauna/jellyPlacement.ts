@@ -38,6 +38,11 @@ export const createJellyBuffers = (cap = JELLY_CAP): JellyBuffers => ({
   drift: new Float32Array(cap * 4), jelly: new Float32Array(cap * 4),
 });
 
+export function planetJellyCap(span: number): number {
+  if (span <= 80) return JELLY_CAP;
+  return Math.min(360, Math.max(JELLY_CAP, Math.round((span / 64) ** 1.55 * JELLY_CAP)));
+}
+
 /** Jellies to draw at `density` out of `placed` (placed for the maximum density). */
 export const visibleJellyCount = (placed: number, density: number): number =>
   Math.min(placed, Math.round((placed * Math.max(0, density)) / WATER_RANGES.faunaDensity[1]));
@@ -51,12 +56,14 @@ export function layoutJellies(f: ShoreField, seed: number, out: JellyBuffers, ca
   if (cand.length === 0) return 0;
   const rnd = mulberry32((seed ^ 0x7e11f) >>> 0);
   let placed = 0;
-  for (let tries = 0; tries < MAX_TRIES && placed < budget; tries++) {
+  const maxTries = Math.max(MAX_TRIES, budget * 12);
+  const texPad = Math.min(f.texel, 0.75);
+  for (let tries = 0; tries < maxTries && placed < budget; tries++) {
     const k = cand[Math.floor(rnd() * cand.length)]!;
     const cx = ((k % f.res) + 0.5) * f.texel - f.span / 2, cz = (Math.floor(k / f.res) + 0.5) * f.texel - f.span / 2;
     const radius = lerp(RADIUS, rnd());
     const scale = lerp(SCALE, rnd());
-    const reach = radius + 0.2 * scale + f.texel;
+    const reach = radius + 0.2 * scale + texPad;
     if (reach + SHORE_CLEARANCE >= SHORE_DIST_MAX || f.dist[k]! < reach + SHORE_CLEARANCE) continue;
     const bedDepth = -shallowestBed(f, cx, cz, reach);
     if (bedDepth < MIN_BED) continue;

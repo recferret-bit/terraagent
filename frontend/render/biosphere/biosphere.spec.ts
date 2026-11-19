@@ -1,0 +1,176 @@
+import { describe, expect, it } from 'vitest';
+import { hexCount, hexIndex } from '@terra/sim/grid/hex';
+import {
+  BIRD_SPECIES_CATALOG,
+  BIRDS_BY_BIOME,
+  canBiosphereFaunaAttackPlayer,
+  LAND_ANIMAL_SPECIES_CATALOG,
+  LAND_ANIMALS_BY_BIOME,
+} from './index';
+import {
+  createHexTerrain,
+  HEX_PREP,
+  HEX_TERRAIN,
+  specForPlanetType,
+  tileXZ,
+} from '../planets/hex';
+import { PLANET_SPECS } from '../planets/PlanetSpec';
+import { createPlanetSurface } from '../planets/surface';
+import { planetFishCap } from '../visuals/water/fauna/faunaPlacement';
+
+function buildRichBiomeTiles(radius: number) {
+  const count = hexCount(radius);
+  const hx = hexIndex(radius);
+  const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
+  const prep = new Uint8Array(count).fill(HEX_PREP.wild);
+  const height = new Float32Array(count).fill(0.3);
+
+  for (let i = 0; i < count; i++) {
+    const q = hx.q[i]!, r = hx.r[i]!;
+    if (q < -radius / 2) terrain[i] = HEX_TERRAIN.deep;
+    else if (q === Math.floor(-radius / 2)) terrain[i] = HEX_TERRAIN.shallow;
+    else if ((q + r) % 3 === 0) terrain[i] = HEX_TERRAIN.forest;
+    else if ((q - r) % 7 === 0) terrain[i] = HEX_TERRAIN.rock;
+  }
+  return { terrain, prep, height };
+}
+
+describe('Living Planet Biosphere: 15 Bird Species, 12 Warm-Blooded Species & Water Fauna', () => {
+  it('defines 5 endemic birds per biome (15 total) and 4 endemic warm-blooded animals per biome (12 total)', () => {
+    expect(BIRD_SPECIES_CATALOG).toHaveLength(15);
+    expect(LAND_ANIMAL_SPECIES_CATALOG).toHaveLength(12);
+
+    for (const biome of ['forestRock', 'oceanForest', 'dune'] as const) {
+      expect(BIRDS_BY_BIOME[biome]).toHaveLength(5);
+      expect(LAND_ANIMALS_BY_BIOME[biome]).toHaveLength(4);
+      const diets = new Set(LAND_ANIMALS_BY_BIOME[biome].map((a) => a.diet));
+      expect(diets.has('predator')).toBe(true);
+      expect(diets.has('grassEater') || diets.has('treeBrowser')).toBe(true);
+      const socials = new Set(LAND_ANIMALS_BY_BIOME[biome].map((a) => a.social));
+      expect(socials.has('solo')).toBe(true);
+      expect(socials.has('group')).toBe(true);
+    }
+
+    for (const s of [...BIRD_SPECIES_CATALOG, ...LAND_ANIMAL_SPECIES_CATALOG]) {
+      expect(canBiosphereFaunaAttackPlayer(s.id)).toBe(false);
+    }
+  });
+
+  it('flies bird flocks by pattern and relocates flocks away from terraformed forests and battles', () => {
+    const radius = 16;
+    const tiles = buildRichBiomeTiles(radius);
+    const hx = hexIndex(radius);
+    const terrain = createHexTerrain({ radius, tiles, look: specForPlanetType('temperate') });
+    const bio = terrain.biosphere;
+
+    const counts = bio.counts();
+    expect(counts.birdSpecies).toBe(5);
+    expect(counts.birdFlocks).toBeGreaterThanOrEqual(10);
+    expect(counts.birdsTotal).toBeGreaterThan(30);
+
+    const patterns = new Set(bio.getBirdFlocks().map((f) => f.pattern));
+    expect(patterns.size).toBeGreaterThanOrEqual(4);
+
+    // Deforestation reaction: clearing a forest flock's home tile triggers FLEEING_FOREST + home relocation
+    const forestFlock = bio.getBirdFlocks().find((f) => f.species.habitatPref === 'forest' && f.homeTileIndex >= 0)!;
+    expect(forestFlock).toBeDefined();
+    const oldHomeTile = forestFlock.homeTileIndex;
+    const oldHomeX = forestFlock.homeX;
+    const oldHomeZ = forestFlock.homeZ;
+    terrain.setTileState(hx.q[oldHomeTile]!, hx.r[oldHomeTile]!, HEX_TERRAIN.flat, HEX_PREP.prepared);
+    terrain.tick(0.05);
+
+    expect(forestFlock.state).toBe('FLEEING_FOREST');
+    expect(forestFlock.relocations).toBeGreaterThanOrEqual(1);
+    expect(Math.hypot(forestFlock.homeX - oldHomeX, forestFlock.homeZ - oldHomeZ)).toBeGreaterThan(5);
+
+    // Battle reaction: combat hotspot causes nearby flock to bank away in FLEEING_BATTLE with max wing-flap
+    const hawkFlock = bio.getBirdFlocks().find((f) => f.species.pattern === 'thermalSoar')!;
+    const leader = hawkFlock.members[0]!;
+    bio.noteBattleAt(leader.x + 2, leader.z + 2, 16, 5);
+    terrain.tick(0.05);
+    expect(hawkFlock.state).toBe('FLEEING_BATTLE');
+    expect(hawkFlock.members[0]!.flapWeight).toBe(1);
+
+    terrain.dispose();
+  });
+});
+
+describe('Living Planet Biosphere: Circadian Schedules, Robot Aggressors & Water Fauna', () => {
+  it('drives warm-blooded animals through 24h circadian schedules and makes all fauna flee robot aggressors', () => {
+    const radius = 16;
+    const tiles = buildRichBiomeTiles(radius);
+    const terrain = createHexTerrain({ radius, tiles, look: specForPlanetType('ocean') });
+    const bio = terrain.biosphere;
+    const animals = bio.getLandAnimals();
+
+    expect(animals.length).toBeGreaterThan(15);
+    expect(animals.every((a) => a.canAttackPlayer === false)).toBe(true);
+
+    // 1. Midnight (02:00 -> time01 = 2/24): diurnal herbivores sleep, nocturnal/crepuscular panthers hunt
+    bio.setTimeOfDayOverride(2 / 24);
+    for (let i = 0; i < 6; i++) terrain.tick(0.1);
+    const sleepingHerbivores = animals.filter((a) => a.species.diet !== 'predator' && a.state === 'SLEEPING');
+    const huntingPanthers = animals.filter((a) => a.species.id === 'fauna.canopyPanther' && a.state === 'HUNTING');
+    expect(sleepingHerbivores.length).toBeGreaterThan(0);
+    expect(sleepingHerbivores[0]!.sleepCrouch).toBeGreaterThan(0.2);
+    expect(huntingPanthers.length).toBeGreaterThan(0);
+
+    // 2. Dawn drinking window (07:00 -> 7/24) for grazers
+    bio.setTimeOfDayOverride(7 / 24);
+    terrain.tick(0.1);
+    expect(animals.some((a) => a.state === 'DRINKING' || a.state === 'BROWSING_TREES')).toBe(true);
+
+    // 3. Morning grazing window (09:30 -> 9.5/24)
+    bio.setTimeOfDayOverride(9.5 / 24);
+    terrain.tick(0.1);
+    expect(animals.some((a) => a.state === 'EATING_GRASS')).toBe(true);
+
+    // 4. Midday predator nap (14:00 -> 14/24) & herbivore roaming
+    bio.setTimeOfDayOverride(14 / 24);
+    terrain.tick(0.1);
+    expect(animals.some((a) => a.species.diet === 'predator' && a.state === 'SLEEPING')).toBe(true);
+    expect(animals.some((a) => a.species.diet !== 'predator' && a.state === 'ROAMING')).toBe(true);
+
+    // 5. Conqueror / Robot Aggressor Reaction: even a sleeping apex predator flees an approaching robot!
+    const panther = animals.find((a) => a.species.id === 'fauna.canopyPanther')!;
+    const startX = panther.x, startZ = panther.z;
+    const robotX = startX - 1.2, robotZ = startZ + 0.5;
+    bio.setAggressors([{ x: robotX, z: robotZ, radius: 12, working: true }]);
+    for (let i = 0; i < 10; i++) terrain.tick(0.1);
+    expect(panther.state).toBe('FLEEING_AGGRESSOR');
+    expect(Math.hypot(panther.x - startX, panther.z - startZ)).toBeGreaterThan(0.5);
+
+    // Boundary safety: zero and negative dt do not produce NaNs
+    const [qx, qz] = tileXZ(0, 0);
+    expect(Number.isFinite(qx + qz)).toBe(true);
+    terrain.tick(0);
+    terrain.tick(-0.5);
+    expect(Number.isFinite(panther.x)).toBe(true);
+
+    terrain.dispose();
+  });
+
+  it('spawns visible swimming water fauna on both HexTerrain and PlanetSurface water planets', () => {
+    expect(planetFishCap(220)).toBeGreaterThan(800);
+
+    const tiles = buildRichBiomeTiles(14);
+    const hexOcean = createHexTerrain({ radius: 14, tiles, look: specForPlanetType('ocean') });
+    expect(hexOcean.water.fauna).not.toBeNull();
+    expect(hexOcean.water.fauna!.fish.length).toBeGreaterThan(0);
+    const totalHexFish = hexOcean.water.fauna!.fish.reduce((s, m) => s + m.count, 0);
+    expect(totalHexFish).toBeGreaterThan(20);
+    hexOcean.dispose();
+
+    const surfOcean = createPlanetSurface(PLANET_SPECS.oceanForest, { halfSize: 48, quality: 'low' });
+    let foundWaterFauna = false;
+    surfOcean.group.traverse((obj) => {
+      if (obj.name === 'waterFaunaGroup' && obj.children.length > 0) foundWaterFauna = true;
+    });
+    expect(foundWaterFauna).toBe(true);
+    expect(surfOcean.biosphere!.counts().birdSpecies).toBe(5);
+    expect(surfOcean.biosphere!.counts().landSpecies).toBe(4);
+    surfOcean.update(0.1, 1.0);
+    surfOcean.dispose();
+  });
+});

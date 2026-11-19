@@ -68,7 +68,8 @@ const VERT_SUB_ANIM = /* glsl */ `
         } else if (abs(animType - 2.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 2.0) < 0.1)) {
           float bobAmp = hasBodyCarrier ? 0.025 : 0.05;
           float bobFreq = hasBodyCarrier ? g : uTime * 4.0;
-          transformed.y += sin(bobFreq + pivot.x * 3.1) * bobAmp;
+          float bobPhase = abs(subAnim - 9.0) < 0.1 ? 0.0 : pivot.x * 3.1;
+          transformed.y += sin(bobFreq + bobPhase) * bobAmp;
         } else if (abs(animType - 3.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 3.0) < 0.1)) {
           float recoilWave = sin(g * (1.0 + uWorkWeight) + pivot.x * 2.3);
           transformed.z -= pow(max(recoilWave, 0.0), 6.0) * 0.06;
@@ -77,8 +78,8 @@ const VERT_SUB_ANIM = /* glsl */ `
 const VERT_GAIT_ANIM = /* glsl */ `
         // 4..9: 100% Rigid-body locomotion gaits & full-body step-reaction carriers (zero part distortion)
         if (abs(animType - 4.0) < 0.1) {
-          // 4 (Thigh), 14 (Shin+Ankle) & 24 (Foot): Rigid 3-link bipedal kinematic chain
-          float phase = (pivot.x >= 0.0) ? 0.0 : 3.14159265;
+          // 4 (Thigh), 14 (Shin+Ankle) & 24 (Foot): Rigid 3-link bipedal or diagonal quadruped kinematic chain
+          float phase = ((pivot.x >= 0.0) ? 0.0 : 3.14159265) + ((aOrganic > 0.5 && pivot.z < -0.05) ? 3.14159265 : 0.0);
           float tau = g + phase;
           float s = sin(tau);
           float lift = max(0.0, cos(tau));
@@ -86,9 +87,12 @@ const VERT_GAIT_ANIM = /* glsl */ `
           float hipAngle = s * 0.22 * uWalkWeight;
           float ch = cos(hipAngle), sh = sin(hipAngle);
           float ky0 = -0.3173 * pivot.y;
+          float ay0 = -0.5769 * pivot.y;
           vec3 kneeRest = vec3(pivot.x, pivot.y + ky0, pivot.z);
           vec3 kneeMoved = vec3(pivot.x + dh.x, pivot.y + dh.y + ky0 * ch, pivot.z + dh.z + ky0 * sh);
-          float shinAngle = hipAngle + lift * 0.52 * uWalkWeight;
+          float baseShin = hipAngle + lift * 0.52 * uWalkWeight;
+          float minShin = (aOrganic > 0.5) ? acos(1.0 - clamp((-(dh.y + ky0 * (ch - 1.0)) - 0.005) / max(0.08, -ay0), 0.0, 0.45)) : 0.0;
+          float shinAngle = (aOrganic > 0.5) ? max(baseShin, minShin) : baseShin;
           float cs = cos(shinAngle), ss = sin(shinAngle);
           if (subAnim < 0.5) {
             float ry = transformed.y - pivot.y;
@@ -107,7 +111,6 @@ const VERT_GAIT_ANIM = /* glsl */ `
               kneeMoved.z + uy * ss + uz * cs
             );
           } else {
-            float ay0 = -0.5769 * pivot.y;
             vec3 ankleRest = vec3(pivot.x, kneeRest.y + ay0, pivot.z);
             vec3 ankleMoved = vec3(pivot.x + dh.x, kneeMoved.y + ay0 * cs, kneeMoved.z + ay0 * ss);
             transformed = ankleMoved + (transformed - ankleRest);

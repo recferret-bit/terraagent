@@ -107,6 +107,7 @@ export interface ArchetypeEntry {
 export const REQUIRED_IDS = ['robot.hero', 'ship.carrier', 'ship.dropPod'] as const;
 
 const entries = new Map<string, ArchetypeEntry>();
+const biosphereEntries = new Map<string, ArchetypeEntry>();
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 
 const ARCHETYPE_ALIAS_MAP: Readonly<Record<string, string>> = {
@@ -125,6 +126,10 @@ export const ArchetypeCatalog = {
     entries.set(entry.id, entry);
     geometryCache.delete(entry.id);
   },
+  registerBiosphere(entry: ArchetypeEntry) {
+    biosphereEntries.set(entry.id, entry);
+    geometryCache.delete(entry.id);
+  },
   /** Forget a baked mesh so the next `getGeometry` rebuilds it (faction preview). */
   dropGeometry(id: string): void {
     geometryCache.delete(resolveCanonicalArchetypeId(id));
@@ -132,10 +137,16 @@ export const ArchetypeCatalog = {
   list(category?: ArchetypeCategory): ArchetypeEntry[] {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },
+  listBiosphere(): ArchetypeEntry[] {
+    return [...biosphereEntries.values()];
+  },
   get(id: string): ArchetypeEntry {
     const canonical = resolveCanonicalArchetypeId(id);
-    const e = entries.get(canonical) ?? entries.get(resolveDepositArchetype(canonical)?.id ?? '');
-    if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys()].join(', ')}`);
+    const e =
+      entries.get(canonical) ??
+      biosphereEntries.get(canonical) ??
+      entries.get(resolveDepositArchetype(canonical)?.id ?? '');
+    if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys(), ...biosphereEntries.keys()].join(', ')}`);
     return e;
   },
   /** Returns a clone of the cached merged BufferGeometry so runtime unit spawns skip procedural generation. */
@@ -165,7 +176,7 @@ export const ArchetypeCatalog = {
   },
   has: (id: string) => {
     const canonical = resolveCanonicalArchetypeId(id);
-    return entries.has(canonical) || resolveDepositArchetype(canonical) !== null;
+    return entries.has(canonical) || biosphereEntries.has(canonical) || resolveDepositArchetype(canonical) !== null;
   },
 };
 

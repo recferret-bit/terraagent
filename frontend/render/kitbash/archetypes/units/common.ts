@@ -38,6 +38,8 @@ export function register(opts: {
   scale?: number;
   /** Zone overrides, or a getter read on each build (faction paint). */
   zones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>> | (() => Partial<Record<MaterialZoneId, MaterialZoneSpec>> | undefined);
+  /** Ambient biosphere fauna species (birds & warm-blooded wildlife) rendered by `PlanetBiosphere`. */
+  biosphere?: boolean;
 }) {
   const create = () => {
     const zones = typeof opts.zones === 'function' ? opts.zones() : opts.zones;
@@ -46,12 +48,14 @@ export function register(opts: {
     return finalizeBuiltGeometry(b.build(), opts);
   };
   KitbashRegistry.registerArchetype(opts.id, create);
-  ArchetypeCatalog.register({
+  const entry = {
     id: opts.id,
     label: opts.label,
     category: opts.category,
     footprint: opts.footprint,
     notes: opts.notes,
     create,
-  });
+  };
+  if (opts.biosphere) ArchetypeCatalog.registerBiosphere(entry);
+  else ArchetypeCatalog.register(entry);
 }
