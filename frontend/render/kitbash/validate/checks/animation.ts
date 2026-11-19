@@ -20,7 +20,21 @@ const sameInsectRig = (a: P, b: P) => {
   const gb = classifyInsectPart(b.def.name, b.def.animType, b.def.pivot).group;
   return ga === gb && (ga < 4 || samePivot(a.def.pivot, b.def.pivot));
 };
-const sameRig = (a: P, b: P) => a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined ? sameInsectRig(a, b) :
+const sameVertebrateRig = (a: P, b: P) => {
+  const ra = a.def.vertRig!.role, rb = b.def.vertRig!.role;
+  if (ra !== rb) return false;
+  if (ra >= 4 && ra <= 8) return samePivot(a.def.vertRig!.pivot, b.def.vertRig!.pivot);
+  return true;
+};
+const coupledVertebrate = (ra: number, rb: number, pa: [number, number, number], pb: [number, number, number]) => {
+  const lo = Math.min(ra, rb), hi = Math.max(ra, rb);
+  if (lo === 1 && (hi === 2 || hi === 3 || hi === 4 || hi === 7 || hi === 9 || hi === 10)) return true;
+  if (samePivot(pa, pb) && ((lo === 4 && hi === 5) || (lo === 5 && hi === 6) || (lo === 7 && hi === 8))) return true;
+  return false;
+};
+const sameRig = (a: P, b: P) =>
+  a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined ? sameInsectRig(a, b) :
+  a.def.vertRig !== undefined && b.def.vertRig !== undefined ? sameVertebrateRig(a, b) :
   a.def.animType === b.def.animType &&
   (a.def.animType === 8 || a.def.animType === 9 ||
     (phaseByPivotX(a.def.animType) ? Math.abs(a.def.pivot[0] - b.def.pivot[0]) < 1e-4 :
@@ -33,6 +47,7 @@ const isAvianBobSync = (a: P, b: P) =>
   (b.def.animType === 92 || Math.abs(b.def.pivot[0]) < 1e-4);
 const inSync = (a: P, b: P) =>
   (a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined) ||
+  (a.def.vertConfig !== undefined && b.def.vertConfig !== undefined) ||
   (a.def.animType === 1 && b.def.animType === 1) ||
   (a.def.animType === 7 && b.def.animType === 7) ||
   (isGait(a.def.animType) && isGait(b.def.animType)) ||
@@ -52,6 +67,9 @@ function coupledPair(ta: number, tb: number, pa: [number, number, number], pb: [
 
 function validMount(a: P, b: P, tol: number): boolean {
   if (a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined) return true;
+  if (a.def.vertRig !== undefined && b.def.vertRig !== undefined) {
+    return sameVertebrateRig(a, b) || coupledVertebrate(a.def.vertRig.role, b.def.vertRig.role, a.def.vertRig.pivot, b.def.vertRig.pivot);
+  }
   if (sameRig(a, b)) return true;
   if (b.def.kind === 'TubeGeometry' && b.def.animType !== a.def.animType && b.def.role !== 'whip') return false;
   if (b.def.animType > 0) return coupledPair(a.def.animType, b.def.animType, a.def.pivot, b.def.pivot);
@@ -88,7 +106,7 @@ function buildSweeps(ctx: ValidationContext, anim: P[]): Map<number, Sweep> {
     const flexible = a.def.tissue === 3 && (a.def.animType === 60 || a.def.animType === 69);
     const maxEdge = a.def.tris.reduce((m, _, i, t) => i % 9 === 0 ? Math.max(m, Math.hypot(t[i + 3] - t[i], t[i + 4] - t[i + 1], t[i + 5] - t[i + 2])) : m, 0);
     if (maxDrift > (flexible ? maxEdge * (a.def.insectSpecies === 2 && classifyInsectPart(a.def.name, a.def.animType, a.def.pivot).group === 6 ? 0.206 : 0.019) + 0.000001 : 0.0005)) ctx.add('error', 'ANIM_DISTORTION', `${a.label} distorts/resizes by ${fmt(maxDrift)} while animating (moving parts must be 100% rigid bodies).`, [a.def.index], at(a.box), 'Use pure rigid-body rotations and translations per part; never scale or blend per-vertex coordinates.');
-    if (ctx.o.grounded && a.def.animType >= 2 && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while animating.`, [a.def.index], at(a.box));
+    if (ctx.o.grounded && (a.def.animType >= 2 || a.def.vertRig !== undefined) && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while animating.`, [a.def.index], at(a.box));
   }
   return sweeps;
 }
@@ -99,7 +117,7 @@ function sweepAgainst(ctx: ValidationContext, sweeps: Map<number, Sweep>, report
   const sw = sweeps.get(a.def.index)!;
   const other = P_[b];
   if (sameRig(a, other)) return;
-  const otherSw = other.def.animType > 0 ? sweeps.get(b) : undefined;
+  const otherSw = (other.def.animType > 0 || other.def.vertRig !== undefined) ? sweeps.get(b) : undefined;
   // Spinners, wheels, gait channels, and bobbers/recoilers with equal pivot.x share a single shader clock.
   const lock = !!otherSw && inSync(a, other) && sw.poses.length === otherSw.poses.length;
   const otherPosesFor = (k: number): (Pose | null)[] => (!otherSw ? [null] : lock ? [otherSw.poses[k]] : [null, ...otherSw.poses]);
@@ -145,7 +163,7 @@ function checkDetach(ctx: ValidationContext, sweeps: Map<number, Sweep>, a: P, s
 
 export const animationStage: CheckStage = (ctx) => {
   const { parts: P_, n: N, o, R } = ctx;
-  const anim = P_.filter((p) => p.def.animType > 0);
+  const anim = P_.filter((p) => p.def.animType > 0 || p.def.vertRig !== undefined);
   const sweeps = buildSweeps(ctx, anim);
   const reported = new Set<string>();
   for (const a of anim) {
@@ -159,6 +177,6 @@ export const animationStage: CheckStage = (ctx) => {
       if (!isMount && R(a.def.index, b).dist > o.contactTol && R(a.def.index, b).dist <= o.clearance) continue;
       sweepAgainst(ctx, sweeps, reported, a, b, isMount);
     }
-    if (mounts.length && a.def.animType >= 1) checkDetach(ctx, sweeps, a, sw, mounts);
+    if (mounts.length && (a.def.animType >= 1 || a.def.vertRig !== undefined)) checkDetach(ctx, sweeps, a, sw, mounts);
   }
 };

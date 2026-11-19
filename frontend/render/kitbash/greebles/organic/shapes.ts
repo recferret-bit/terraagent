@@ -43,10 +43,35 @@ export function organ(size: V3, kind: Tissue = 1, seed = 0, ribs = 0, detail = 1
   return tissue(g, kind);
 }
 
-/** Closed, tapered curved appendage. Both ends have real caps for containment tests. */
+function parallelTransportFrames(curve: THREE.CatmullRomCurve3, segments: number): { normals: THREE.Vector3[]; binormals: THREE.Vector3[] } {
+  const tangents: THREE.Vector3[] = [];
+  for (let j = 0; j <= segments; j++) tangents.push(curve.getTangent(j / segments).normalize());
+  const normals: THREE.Vector3[] = [];
+  const binormals: THREE.Vector3[] = [];
+  const t0 = tangents[0]!;
+  const ref = Math.abs(t0.x) < 0.85 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const n0 = new THREE.Vector3().crossVectors(ref, t0).normalize();
+  normals.push(n0);
+  binormals.push(new THREE.Vector3().crossVectors(t0, n0).normalize());
+  const q = new THREE.Quaternion();
+  for (let j = 1; j <= segments; j++) {
+    const prevT = tangents[j - 1]!;
+    const curT = tangents[j]!;
+    q.setFromUnitVectors(prevT, curT);
+    const n = normals[j - 1]!.clone().applyQuaternion(q);
+    n.addScaledVector(curT, -n.dot(curT));
+    if (n.lengthSq() < 1e-8) n.copy(normals[j - 1]!);
+    else n.normalize();
+    normals.push(n);
+    binormals.push(new THREE.Vector3().crossVectors(curT, n).normalize());
+  }
+  return { normals, binormals };
+}
+
+/** Closed, tapered curved appendage using twist-free parallel-transport frames and smoothed seam normals. */
 export function tendril(points: V3[], radii: number[], kind: Tissue = 1, segments = 8, sides = 6): THREE.BufferGeometry {
   const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
-  const frames = curve.computeFrenetFrames(segments, false);
+  const frames = parallelTransportFrames(curve, segments);
   const vertices: number[] = [], uv: number[] = [], indices: number[] = [];
   for (let j = 0; j <= segments; j++) {
     const t = j / segments, c = curve.getPoint(t), f = t * (radii.length - 1);
@@ -74,6 +99,14 @@ export function tendril(points: V3[], radii: number[], kind: Tissue = 1, segment
   g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(indices); g.computeVertexNormals();
+  const norm = g.attributes.normal as THREE.BufferAttribute;
+  const n0 = new THREE.Vector3(), n1 = new THREE.Vector3();
+  for (let j = 0; j <= segments; j++) {
+    const a = j * (sides + 1), b = a + sides;
+    n0.fromBufferAttribute(norm, a); n1.fromBufferAttribute(norm, b);
+    n0.add(n1); if (n0.lengthSq() > 1e-8) n0.normalize();
+    norm.setXYZ(a, n0.x, n0.y, n0.z); norm.setXYZ(b, n0.x, n0.y, n0.z);
+  }
   return tissue(g, kind);
 }
 

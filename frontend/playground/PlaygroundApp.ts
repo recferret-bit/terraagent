@@ -3,19 +3,20 @@ import { createColonyViewport, type ColonyViewport } from '@terra/render/core/cr
 import { setDayNightExternalSync } from '@terra/render/core/dayNightConfig';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
 import { isShadowOn, onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
-import { addArchetypeLight, exportArchetypeLightsCode, getArchetypeLights, onArchetypeLightsChange, removeArchetypeLight, resetArchetypeLights, updateArchetypeLight, type ArchetypeLightSource } from '@terra/render/lighting/archetypeLights';
+import { onArchetypeLightsChange } from '@terra/render/lighting/archetypeLights';
 import { initPixelDialog } from '@terra/render/ui/pixelDialog';
-import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { PLANET_SPECS } from '@terra/render/planets/PlanetSpec';
 import { ArchetypeCatalog, setDepositPreviewStage, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
 import { setReconFactionPreview } from '@terra/render/kitbash/archetypes/units/reconFaction';
-import { validateArchetype } from '@terra/render/kitbash/validate';
-import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
+import { type InteractionTargetKind } from '@terra/render/particles';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $ } from './dom';
-import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type View } from './state';
+import { createPlaygroundDebug } from './pgDebug';
+import { BUILD_STAGES, VERTEBRATE_POSE_MODES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type VertebratePoseMode, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
 import { FaunaSceneHost } from './content/FaunaSceneHost';
+import { WildlifeCoordinator } from './content/WildlifeCoordinator';
 import { MarchSceneHost, type MarchPace } from './content/marchScene';
 import { SurfaceHost } from './content/SurfaceHost';
 import { HexSampleHost } from './content/HexSampleHost';
@@ -41,6 +42,7 @@ export class PlaygroundApp {
   private rig: StageRig;
   private spawns = new SpawnSet();
   private faunaHost: FaunaSceneHost;
+  private wildlife: WildlifeCoordinator;
   private marchHost: MarchSceneHost;
   private surface: SurfaceHost;
   private hexSample: HexSampleHost;
@@ -66,16 +68,17 @@ export class PlaygroundApp {
     this.faunaHost = new FaunaSceneHost(vp.scene);
     this.marchHost = new MarchSceneHost(vp.scene);
     this.rig = new StageRig(() => this.spawns.minX());
-    this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row || !!this.state.faunaScene, flyKeys);
+    this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row || !!this.state.faunaScene || !!this.state.wildlife, flyKeys);
     vp.scene.add(this.rig.group, this.spawns.content, this.spawns.ring);
     this.sidebar = new Sidebar(this.state, { onSelect: (id) => this.select(id), onRow: (c) => this.toggleRow(c) });
     this.toolbar = new Toolbar(this.state, {
       onView: (v) => this.setView(v),
-      onPlanet: (k) => { this.state.kind = k; this.applyPlanet(); syncURL(this.state); },
+      onPlanet: (k) => { this.state.kind = k; if (this.state.wildlife) this.state.wildlife = k; this.applyPlanet(); syncURL(this.state); },
       onToggle: (k) => this.toggle(k),
       onShot: () => { screenshot(vp, this.cam, this.state); toast('Screenshot saved'); },
       onSheet: () => this.contactSheet(),
       onBuild: () => this.setBuild(BUILD_STAGES[(BUILD_STAGES.indexOf(this.state.build) + 1) % BUILD_STAGES.length]!),
+      onPose: () => this.setVertebratePose(VERTEBRATE_POSE_MODES[(VERTEBRATE_POSE_MODES.indexOf(this.state.pose) + 1) % VERTEBRATE_POSE_MODES.length]!),
       onWorkTarget: () => {
         const next = WORK_TARGETS[(WORK_TARGETS.indexOf(this.state.workTarget) + 1) % WORK_TARGETS.length]!;
         this.setWorkTarget(next, true);
@@ -90,6 +93,14 @@ export class PlaygroundApp {
     this.faunaPanel = new FaunaScenePanel(this.state, () => this.faunaHost.getStats(), {
       onScene: (scene) => this.setFaunaScene(scene), onMode: (mode) => this.setFaunaMode(mode), onSeed: (seed) => this.setFaunaSeed(seed),
       onPauseToggle: () => this.pauseFauna(), onStep: (ticks) => this.stepFauna(ticks), onReset: () => this.resetFauna(), onAcidPreview: () => this.triggerAcidPreview(),
+    });
+    this.wildlife = new WildlifeCoordinator({
+      state: this.state, viewport: vp, spawns: this.spawns, toolbar: this.toolbar,
+      deactivateOtherScenes: () => {
+        if (this.state.march) { this.state.march = null; this.marchHost.setActive(false); this.marchPanel.render(); }
+        if (this.state.faunaScene !== null) { this.state.faunaScene = null; this.syncFaunaStage(); }
+      },
+      syncSurface: () => this.syncSurface(), refreshInfo: () => this.refreshInfo(), resetView: () => this.setView(this.state.view),
     });
     this.marchPanel = new MarchPanel(this.state, () => this.marchHost.getStats(), {
       onPace: (pace) => this.setMarch(pace),
@@ -118,6 +129,7 @@ export class PlaygroundApp {
     this.toolbar.build();
     this.lightsPanel.build();
     this.faunaPanel.build();
+    this.wildlife.panel.build();
     this.marchPanel.build();
     onArchetypeLightsChange((changedId) => {
       this.spawns.refreshLights(changedId);
@@ -129,11 +141,13 @@ export class PlaygroundApp {
     this.applyPlanet();
     if (state.id) this.select(state.id, { rebuild: false, frame: true }); else this.setView(state.view, { instant: true });
     this.syncFaunaStage();
+    this.wildlife.sync();
     this.syncMarch();
     this.sidebar.render();
     this.toolbar.syncToggles();
     this.lightsPanel.render();
     this.faunaPanel.render();
+    this.wildlife.panel.render();
     this.syncStageLighting();
     initPixelDialog({ production: false });
     if (params.has('pixel')) setPixelArt(state.pixel, false);
@@ -147,27 +161,26 @@ export class PlaygroundApp {
 
   /** QA hooks (`window.__pg`). */
   get debug() {
-    const vp = this.viewport;
-    return {
-      state: this.state, select: (id: string) => this.select(id), validate: (id = this.state.id) => validateArchetype(id), setView: (v: View) => this.setView(v),
-      setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), contactSheet: () => this.contactSheet(),
-      viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s), setRuin: (on: boolean) => { if (this.state.ruin !== on) this.toggle('ruin'); },
-      setWorkTarget: (t: InteractionTargetKind, enableWork = true) => this.setWorkTarget(t, enableWork),
-      validateParticles: (targetOrId: string = this.state.workTarget) => validateParticlePreset(ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind)),
-      setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s), setTileState: (ts: TileStatePreset) => this.setTileState(ts), getTileState: () => this.state.tileState, hexTerrain: () => this.hexSample.hexTerrain,
-      getLights: (id = this.state.id) => getArchetypeLights(id), addLight: (patch?: Partial<ArchetypeLightSource>, id = this.state.id) => addArchetypeLight(id, patch),
-      removeLight: (idx: number | string, id = this.state.id) => removeArchetypeLight(id, idx), updateLight: (idx: number, patch: Partial<ArchetypeLightSource>, id = this.state.id) => updateArchetypeLight(id, idx, patch),
-      resetLights: (id = this.state.id) => resetArchetypeLights(id), exportLightsCode: (id = this.state.id) => exportArchetypeLightsCode(id),
-      faunaHost: this.faunaHost, setFaunaScene: (scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) => this.setFaunaScene(scene, opts),
-      setFaunaMode: (mode: FaunaMode) => this.setFaunaMode(mode), setFaunaSeed: (seed: number) => this.setFaunaSeed(seed), pauseFauna: (paused?: boolean) => this.pauseFauna(paused),
-      stepFauna: (ticks = 1) => this.stepFauna(ticks), resetFauna: (seed?: number) => this.resetFauna(seed), triggerAcidPreview: () => this.triggerAcidPreview(), getFaunaStats: () => this.faunaHost.getStats(),
-      setMarch: (pace: MarchPace | null) => this.setMarch(pace), setMarchRock: (rock: boolean) => this.setMarchRock(rock), orderMarch: () => this.marchHost.order(),
-      stepMarch: (ticks = 1) => { this.marchHost.stepTicks(ticks); this.marchPanel.renderStats(); return this.marchHost.getStats(); }, resetMarch: () => this.resetMarch(), getMarchStats: () => this.marchHost.getStats(),
-    };
+    return createPlaygroundDebug({
+      state: this.state, viewport: this.viewport, cam: this.cam, spawns: () => this.spawns.spawns,
+      hexTerrain: () => this.hexSample.hexTerrain, faunaHost: this.faunaHost, wildlifeHost: this.wildlife.host, marchHost: this.marchHost,
+      select: (id) => this.select(id), setView: (v) => this.setView(v),
+      setPlanet: (k) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k) => this.toggle(k),
+      contactSheet: () => this.contactSheet(), setBuild: (s) => this.setBuild(s),
+      setWorkTarget: (t, ew) => this.setWorkTarget(t, ew), setDepositStage: (s) => this.setDepositStage(s), setTileState: (ts) => this.setTileState(ts),
+      setFaunaScene: (s, o) => this.setFaunaScene(s, o), setFaunaMode: (m) => this.setFaunaMode(m), setFaunaSeed: (s) => this.setFaunaSeed(s),
+      pauseFauna: (p) => this.pauseFauna(p), stepFauna: (t) => this.stepFauna(t), resetFauna: (s) => this.resetFauna(s),
+      triggerAcidPreview: () => this.triggerAcidPreview(), setVertebratePose: (p) => this.setVertebratePose(p),
+      setWildlifeScene: (k, h) => this.wildlife.setScene(k, h), setWildlifeHour: (h) => this.wildlife.setHour(h),
+      setMarch: (p) => this.setMarch(p), setMarchRock: (r) => this.setMarchRock(r),
+      stepMarch: (t = 1) => { this.marchHost.stepTicks(t); this.marchPanel.renderStats(); return this.marchHost.getStats(); },
+      resetMarch: () => this.resetMarch(),
+    });
   }
 
   private bounds() {
     if (this.state.march) return this.marchHost.bounds();
+    if (this.state.wildlife !== null) return this.wildlife.host.bounds();
     return this.state.faunaScene !== null ? this.faunaHost.bounds() : this.spawns.bounds(this.state.id, this.state.row);
   }
 
@@ -179,17 +192,19 @@ export class PlaygroundApp {
     this.buildStage();
     this.rebuildContent();
     this.faunaHost.setBiome(PLANET_SPECS[state.kind].biomeKey);
+    if (state.wildlife !== null) this.wildlife.host.setScene(state.wildlife, { hour: state.wildlifeHour, wire: state.wire });
     if (state.march) this.marchHost.setActive(true, { pace: state.march, rock: state.marchRock, biomeKey: PLANET_SPECS[state.kind].biomeKey });
     this.syncSurface();
     this.toolbar.setPlanet(state.kind);
     this.faunaPanel?.render();
+    this.wildlife.panel.render();
   }
 
   private syncFaunaStage() {
     const { state } = this;
     const active = state.faunaScene !== null;
-    this.spawns.content.visible = !active && !state.march;
-    if (active) this.spawns.ring.visible = false;
+    this.spawns.content.visible = !active && !state.march && state.wildlife === null;
+    if (active || state.wildlife !== null) this.spawns.ring.visible = false;
     else this.spawns.updateRing(state.id, state.row);
     this.faunaHost.setScene(state.faunaScene, { mode: state.faunaMode, seed: state.faunaSeed, biomeKey: PLANET_SPECS[state.kind].biomeKey, wire: state.wire });
     this.syncSurface();
@@ -199,6 +214,7 @@ export class PlaygroundApp {
 
   private setFaunaScene(scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) {
     if (scene && this.state.march) { this.state.march = null; this.marchHost.setActive(false); this.marchPanel.render(); }
+    if (scene && this.state.wildlife !== null) { this.state.wildlife = null; this.wildlife.sync(); }
     this.state.faunaScene = scene;
     if (opts?.mode) this.state.faunaMode = opts.mode;
     else if (scene && this.state.faunaMode !== 'robots') this.state.faunaMode = 'bugs';
@@ -217,7 +233,7 @@ export class PlaygroundApp {
       this.spawns.ring.visible = false;
     } else {
       this.marchHost.setActive(false);
-      this.spawns.content.visible = state.faunaScene === null;
+      this.spawns.content.visible = state.faunaScene === null && state.wildlife === null;
     }
     this.marchPanel.render();
     this.refreshInfo();
@@ -225,11 +241,21 @@ export class PlaygroundApp {
 
   private setMarch(pace: MarchPace | null) {
     this.state.march = pace;
-    if (pace) { this.state.faunaScene = null; this.syncFaunaStage(); }
+    if (pace) {
+      if (this.state.faunaScene !== null) { this.state.faunaScene = null; this.syncFaunaStage(); }
+      if (this.state.wildlife !== null) { this.state.wildlife = null; this.wildlife.sync(); }
+    }
     this.syncMarch();
     this.setView(this.state.view);
     syncURL(this.state);
     return this.marchHost.getStats();
+  }
+
+  private setVertebratePose(pose: VertebratePoseMode) {
+    this.state.pose = pose;
+    this.toolbar.syncToggles();
+    syncURL(this.state);
+    return pose;
   }
 
   private setMarchRock(rock: boolean) {
@@ -283,11 +309,11 @@ export class PlaygroundApp {
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
-    const { kind, surface, hexTerrain, hatch, depositStage, tileState, faunaScene } = this.state;
-    const showHex = !surface && (hexTerrain || faunaScene !== null);
-    const onSurface = this.surface.sync(kind, surface, tileState);
+    const { kind, surface, hexTerrain, hatch, depositStage, tileState, faunaScene, wildlife } = this.state;
+    const showHex = wildlife === null && !surface && (hexTerrain || faunaScene !== null);
+    const onSurface = wildlife === null && this.surface.sync(kind, surface, tileState);
     const onHex = this.hexSample.sync(kind, showHex, hatch, depositStage, tileState);
-    if (onSurface || onHex) this.rig.hidePedestal();
+    if (onSurface || onHex || wildlife !== null) this.rig.hidePedestal();
     else this.buildStage();
   }
 
@@ -337,6 +363,7 @@ export class PlaygroundApp {
   private refreshInfo() {
     const { state } = this;
     if (state.march) return updateSceneInfo(this.marchHost.getStats());
+    if (state.wildlife !== null) return updateSceneInfo(this.wildlife.host.getStats());
     if (state.faunaScene !== null) return updateSceneInfo(this.faunaHost.getStats());
     updateInfo(state.id, state.row ? this.spawns.spawns.length : 1, validationHtml(this.validation.report(state.id, state.validate), state.id));
   }
@@ -351,6 +378,10 @@ export class PlaygroundApp {
     if (this.hasStarted && state.faunaScene !== null) {
       state.faunaScene = null;
       this.syncFaunaStage();
+    }
+    if (this.hasStarted && state.wildlife !== null) {
+      state.wildlife = null;
+      this.wildlife.sync();
     }
     if (state.row && ArchetypeCatalog.get(id).category !== state.row) state.row = ArchetypeCatalog.get(id).category;
     if (rebuild) this.rebuildContent();
@@ -398,7 +429,7 @@ export class PlaygroundApp {
     switch (k) {
       case 'bloom': vp.bloom.enabled = state.bloom; break;
       case 'pixel': setPixelArt(state.pixel, false); break;
-      case 'wire': this.spawns.applyWire(state.wire); this.faunaHost.applyWire(state.wire); break;
+      case 'wire': this.spawns.applyWire(state.wire); this.faunaHost.applyWire(state.wire); this.wildlife.host.applyWire(state.wire); break;
       case 'human': this.rig.human.visible = state.human; break;
       case 'shadows': setShadow(state.shadows); break;
       case 'surface': if (state.surface) state.hexTerrain = false; this.buildStage(); this.syncSurface(); break;
@@ -421,12 +452,14 @@ export class PlaygroundApp {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.time += dt;
     this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget, this.state.pose);
     this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
+    this.wildlife.host.update(dt);
     this.marchHost.update(dt, this.time);
     if (this.state.faunaScene !== null) this.faunaPanel.renderStats();
+    if (this.state.wildlife !== null) this.wildlife.panel.renderStats();
     if (this.state.march) this.marchPanel.renderStats();
-    if (this.state.march || this.state.faunaScene !== null) this.refreshInfo();
+    if (this.state.march || this.state.faunaScene !== null || this.state.wildlife !== null) this.refreshInfo();
     this.cam.controls.update();
     this.surface.update(dt, this.time);
     this.hexSample.update(dt);

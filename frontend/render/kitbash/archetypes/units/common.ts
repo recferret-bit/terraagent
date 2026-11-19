@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isVertebrateGeometry, shiftVertebrateRigMetadata, stampVertebrateRig } from '../../../animation/vertebrates/rig';
 import { KitbashBuilder, KitbashRegistry, type MaterialZoneId, type MaterialZoneSpec } from '../../KitbashRegistry';
 import { ArchetypeCatalog, type ArchetypeCategory } from '../../catalog';
 import '../../greebles/unitParts';
@@ -12,6 +13,7 @@ export function finalizeBuiltGeometry(
     for (let i = 0; i < pv.count; i++) {
       pv.setY(i, pv.getY(i) * sc); pv.setZ(i, pv.getZ(i) * sc + dy); pv.setW(i, pv.getW(i) * sc);
     }
+    shiftVertebrateRigMetadata(g, sc, dy);
   };
   if (opts.scale) { g.scale(opts.scale, opts.scale, opts.scale); shiftPivot(opts.scale, 0); }
   if (opts.snap !== false) {
@@ -22,6 +24,7 @@ export function finalizeBuiltGeometry(
     g.computeBoundingSphere();
     if (g.boundingSphere) g.boundingSphere.radius *= 1.15;
   }
+  if (isVertebrateGeometry(g)) stampVertebrateRig(g);
   return g;
 }
 

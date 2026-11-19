@@ -348,11 +348,12 @@ export class LandAnimalSimulator {
   constructor(biome: PlanetKind, seed: number, habitat: BiosphereHabitatIndex) {
     this.speciesList = LAND_ANIMALS_BY_BIOME[biome];
     this.rng = mulberry32(seed ^ 0x9e3779b1);
-    const groupsPerSpecies = habitat.halfSize > 110 ? 7 : habitat.halfSize > 55 ? 4 : 2;
+    const baseGroups = habitat.halfSize > 110 ? 7 : habitat.halfSize > 55 ? 4 : 2;
     let agentId = 0;
     let groupId = 0;
 
     this.speciesList.forEach((spec, slot) => {
+      const groupsPerSpecies = spec.diet === 'predator' && habitat.halfSize < 26 ? 1 : baseGroups;
       const pool =
         spec.diet === 'treeBrowser' && habitat.forestAnchors.length > 0
           ? habitat.forestAnchors
@@ -437,10 +438,12 @@ export class LandAnimalSimulator {
         continue;
       }
 
-      // 2. Ecological Predator-Prey Response (herbivores flee nearby hunting predators)
+      // 2. Ecological Predator-Prey Response (sleeping prey only wake at close range; awake prey flee at 12 m)
       if (agent.species.diet !== 'predator') {
+        const scheduledNight = resolveCircadianActivity(agent.species, solarHour24) === 'SLEEPING';
+        const alertRadius = scheduledNight && agent.sleepCrouch > 0.25 ? 5.5 : 12.0;
         const hunter = this.agents.find(
-          (p) => p.species.diet === 'predator' && p.state === 'HUNTING' && Math.hypot(p.x - agent.x, p.z - agent.z) < 12,
+          (p) => p.species.diet === 'predator' && p.state === 'HUNTING' && Math.hypot(p.x - agent.x, p.z - agent.z) < alertRadius,
         );
         if (hunter) {
           const [fleeX, fleeZ] = pickEscapeGoal(agent.x, agent.z, hunter.x, hunter.z, 12, habitat);

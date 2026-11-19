@@ -10,7 +10,7 @@ description: >-
   detail" checks in the procedural-kitbash-3d visual verification step.
 ---
 
-> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md) and [`procedural-animal-3d`](../procedural-animal-3d/SKILL.md). Vertebrates (`tissue = 6` / `7`) run dedicated `vertebrateAnatomy` anti-slop checks (`VERTEBRATE_DETAIL_RICHNESS`, `VERTEBRATE_RIG_PARITY`, `VERTEBRATE_LIMB_ANATOMY`, `VERTEBRATE_WING_ARTICULATION`, `VERTEBRATE_EYE_PROPORTION`, `VERTEBRATE_BLOOM_SAFE`) plus full closed-form `vertebratePartPoses` sweeps; geometry safety, shader/pose parity and visual QA remain mandatory.
 
 # Model Geometry Validator (`model-geometry-validator`)
 

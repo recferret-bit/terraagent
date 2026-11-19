@@ -1,0 +1,203 @@
+import * as THREE from 'three';
+import type { VertebratePartInput, VertebratePose } from './types';
+
+const X = new THREE.Vector3(1, 0, 0);
+const Y = new THREE.Vector3(0, 1, 0);
+const Z = new THREE.Vector3(0, 0, 1);
+const ONE = new THREE.Vector3(1, 1, 1);
+
+function rigid(rest: THREE.Vector3, anchor: THREE.Vector3, q: THREE.Quaternion): THREE.Matrix4 {
+  return new THREE.Matrix4()
+    .compose(anchor, q, ONE)
+    .multiply(new THREE.Matrix4().makeTranslation(-rest.x, -rest.y, -rest.z));
+}
+
+function rotateRollPitchYawQuat(roll: number, pitch: number, yaw: number): THREE.Quaternion {
+  const qz = new THREE.Quaternion().setFromAxisAngle(Z, roll);
+  const qx = new THREE.Quaternion().setFromAxisAngle(X, pitch);
+  const qy = new THREE.Quaternion().setFromAxisAngle(Y, yaw);
+  return qy.multiply(qx).multiply(qz);
+}
+
+function pivotRotate(pivot: THREE.Vector3Tuple, roll: number, pitch: number, yaw: number): THREE.Matrix4 {
+  const p = new THREE.Vector3(...pivot);
+  return rigid(p, p, rotateRollPitchYawQuat(roll, pitch, yaw));
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+export function vertebrateBodyMatrix(p: VertebratePose): THREE.Matrix4 {
+  const { comY, sleepDrop, strideLen, liftHeight, gaitFreq, isBird } = p.config;
+  const g = p.time * gaitFreq;
+  if (isBird > 0.5) {
+    const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
+    const bob = Math.sin(g) * 0.032 * activeFlap + Math.sin(p.time * 1.8) * 0.010 * (1 - activeFlap);
+    const pitch = -Math.cos(g) * 0.045 * activeFlap;
+    const anchor = new THREE.Vector3(0, comY + bob, 0);
+    return rigid(new THREE.Vector3(0, comY, 0), anchor, rotateRollPitchYawQuat(0, pitch, 0));
+  }
+
+  const up = 1 - p.sleep;
+  const w = p.walk * up;
+  const r = p.run * up;
+  const trotW = w * (1 - r);
+  const gallopW = Math.max(w, r) * r;
+  const wk = p.work * up;
+  const breath = Math.sin(p.time * 2.2) * 0.004 * up * (1 - w);
+
+  const heave =
+    (-Math.cos(2 * g) * 0.014 - Math.sin(2 * g) * 0.006) * trotW +
+    Math.sin(g * 1.35) * liftHeight * 0.42 * gallopW -
+    p.sleep * sleepDrop +
+    breath;
+  const pitch =
+    Math.sin(2 * g - 0.35) * 0.022 * trotW +
+    Math.cos(g * 1.35) * 0.075 * gallopW +
+    wk * 0.08 * up +
+    p.sleep * 0.03;
+  const roll = Math.sin(g - 0.25) * 0.028 * trotW;
+  const yaw = -Math.cos(g) * 0.022 * trotW;
+  const swayX = Math.cos(g) * 0.012 * trotW;
+  const surgeZ = Math.sin(2 * g) * 0.012 * trotW + Math.cos(g * 1.35 - 0.4) * strideLen * 0.16 * gallopW;
+
+  const anchor = new THREE.Vector3(swayX, comY + heave, surgeZ);
+  return rigid(new THREE.Vector3(0, comY, 0), anchor, rotateRollPitchYawQuat(roll, pitch, yaw));
+}
+
+function mammalLegMatrix(part: VertebratePartInput, p: VertebratePose, body: THREE.Matrix4): THREE.Matrix4 {
+  const { strideLen, liftHeight, gaitFreq } = p.config;
+  const hip0 = new THREE.Vector3(...part.pivot);
+  const mid0 = new THREE.Vector3(...part.joint);
+  const toe0 = new THREE.Vector3(...part.tip);
+  const hip = hip0.clone().applyMatrix4(body);
+  const side = hip0.x >= 0 ? 1 : -1;
+
+  const up = 1 - p.sleep;
+  const w = p.walk * up;
+  const r = p.run * up;
+  const trotW = w * (1 - r);
+  const gallopW = Math.max(w, r) * r;
+  const g = p.time * gaitFreq;
+  const tau = g * (1 + 0.35 * r) + part.meta * (1 - 0.65 * r) + (hip0.z < 0 ? r * 2.2 : 0);
+
+  const toe = toe0.clone();
+  const amp = strideLen * (trotW + 1.35 * gallopW);
+  const lift = liftHeight * (trotW + 1.30 * gallopW);
+  const dy = Math.pow(Math.max(0, Math.cos(tau)), 0.8) * lift;
+  toe.z += Math.sin(tau) * amp;
+  toe.y += dy;
+
+  // Tuck elbows low & back beside chest with forearms resting forward on the ground; fold hindlimbs beside flanks.
+  const isFore = hip0.z >= 0;
+  const l1 = hip0.distanceTo(mid0);
+  const l2 = mid0.distanceTo(toe0);
+  if (isFore) {
+    const fullSlpHipY = hip0.y - p.config.sleepDrop;
+    const elbowY = THREE.MathUtils.clamp(toe0.y + 0.032, toe0.y + 0.014, Math.max(toe0.y + 0.014, fullSlpHipY - 0.014));
+    const dy1 = Math.min(l1 * 0.94, Math.max(0, fullSlpHipY - elbowY));
+    const dy2 = Math.min(l2 * 0.94, Math.max(0, elbowY - toe0.y));
+    const backZ = Math.sqrt(Math.max(0, l1 * l1 - dy1 * dy1));
+    const fwdZ = Math.sqrt(Math.max(0, l2 * l2 - dy2 * dy2));
+    const dz = Math.max(0.04, (hip0.z - backZ + fwdZ) - toe0.z);
+    toe.z += p.sleep * dz;
+    toe.x += p.sleep * side * Math.min(0.008, l1 * 0.035);
+  } else {
+    toe.z -= p.sleep * Math.min(0.20, l1 * 0.45);
+    toe.x += p.sleep * side * Math.min(0.014, l1 * 0.08);
+  }
+
+  const rawVec = toe.clone().sub(hip);
+  const rawLen = Math.max(1e-5, rawVec.length());
+  const axis = rawVec.divideScalar(rawLen);
+  const minD = Math.abs(l2 - l1) + 0.002;
+  const maxD = l1 + l2 - 0.002;
+  const dist = THREE.MathUtils.clamp(rawLen, minD, maxD);
+  toe.copy(hip).addScaledVector(axis, dist);
+
+  const oldRef = mid0.clone().sub(hip0).normalize();
+  const sleepRef = new THREE.Vector3(isFore ? 0 : side * 0.02, isFore ? -0.35 : 0.16, isFore ? -0.94 : 0.985).normalize();
+  const bendRef = oldRef.lerp(sleepRef, p.sleep);
+  bendRef.addScaledVector(axis, -bendRef.dot(axis));
+  if (bendRef.lengthSq() < 1e-6) bendRef.set(0, 0, isFore ? -1 : 1);
+  bendRef.normalize();
+  const along = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist);
+  const perp = Math.sqrt(Math.max(0, l1 * l1 - along * along));
+  const mid = hip.clone().addScaledVector(axis, along).addScaledVector(bendRef, perp);
+
+  if (part.role === 6) {
+    // Foot tracks moving ankle while remaining level at stance/sleep; pitches softly only when lifted.
+    const swingTilt = -Math.sin(tau) * 0.03 * smoothstep(0.005, 0.04, dy);
+    return rigid(toe0, toe, rotateRollPitchYawQuat(0, swingTilt, 0));
+  }
+
+  const isUpper = part.role === 4;
+  const rest = isUpper ? hip0 : mid0;
+  const origin = isUpper ? hip : mid;
+  const oldAxis = (isUpper ? mid0.clone().sub(hip0) : toe0.clone().sub(mid0)).normalize();
+  const newAxis = (isUpper ? mid.clone().sub(hip) : toe.clone().sub(mid)).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(oldAxis, newAxis);
+  return rigid(rest, origin, q);
+}
+
+function birdWingMatrix(part: VertebratePartInput, p: VertebratePose, body: THREE.Matrix4): THREE.Matrix4 {
+  const g = p.time * p.config.gaitFreq;
+  const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
+  const stroke = Math.sin(g) - 0.16 * Math.sin(2 * g);
+  const side = part.pivot[0] >= 0 ? 1 : -1;
+
+  const innerRoll = side * (0.09 * (1 - activeFlap) + p.config.strideLen * activeFlap * stroke);
+  const innerPitch = -0.06 * activeFlap * Math.cos(g);
+  const innerMat = body.clone().multiply(pivotRotate(part.pivot, innerRoll, innerPitch, 0));
+  if (part.role === 7) return innerMat;
+
+  const upFactor = Math.max(0, stroke);
+  const downFactor = Math.max(0, -stroke);
+  const outerRoll =
+    side *
+    (-0.11 * (1 - activeFlap) - p.config.liftHeight * activeFlap * upFactor + 0.14 * activeFlap * downFactor);
+  const outerYaw = side * (0.10 * activeFlap * upFactor);
+  return innerMat.multiply(pivotRotate(part.joint, outerRoll, 0, outerYaw));
+}
+
+export function vertebratePartMatrix(part: VertebratePartInput, p: VertebratePose): THREE.Matrix4 {
+  const body = vertebrateBodyMatrix(p);
+  if (part.role === 1) return body;
+
+  if (part.role === 4 || part.role === 5 || part.role === 6) {
+    return mammalLegMatrix(part, p, body);
+  }
+  if (part.role === 7 || part.role === 8) {
+    return birdWingMatrix(part, p, body);
+  }
+
+  const g = p.time * p.config.gaitFreq;
+  if (part.role === 2) {
+    const up = 1 - p.sleep;
+    const graze = (0.56 + 0.06 * Math.sin(g * 2)) * p.work * up;
+    const stabilize =
+      (-Math.sin(2 * g - 0.35) * 0.014 * p.walk * (1 - p.run) - Math.cos(g * 1.35) * 0.045 * p.run) * up;
+    const sleepHead = p.sleep * p.config.headSleepPitch;
+    const idleYaw = Math.sin(p.time * 0.9) * 0.08 * (1 - p.walk) * up;
+    return body.multiply(pivotRotate(part.pivot, 0, graze + stabilize + sleepHead, idleYaw));
+  }
+  if (part.role === 3) {
+    const up = 1 - p.sleep;
+    const yaw = (0.20 * Math.sin(g * 1.1 + 0.6) * (0.2 + 0.8 * p.walk) + 0.12 * Math.sin(g * 2) * p.work) * up + p.sleep * 0.18;
+    const pitch = 0.12 * Math.sin(g * 1.35) * p.run * up + p.sleep * 0.42;
+    return body.multiply(pivotRotate(part.pivot, 0, pitch, yaw));
+  }
+  if (part.role === 9) {
+    const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
+    const pitch = -0.08 * activeFlap * Math.sin(g) + 0.03 * Math.sin(p.time * 2.0);
+    return body.multiply(pivotRotate(part.pivot, 0, pitch, 0));
+  }
+  if (part.role === 10) {
+    const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
+    const pitch = Math.cos(g) * 0.025 * activeFlap;
+    return body.multiply(pivotRotate(part.pivot, 0, pitch, 0));
+  }
+  return body;
+}

@@ -67,11 +67,10 @@ KitbashRegistry.registerGreeble('cryoCondenserCoil', (params: { radius: number; 
 
 For passive biosphere wildlife (`archetypes/units/warmFauna.ts`, `avianFauna.ts`) and botanical scatter (`visuals/terrain/treeBreeds.ts`, `groundFloraGeos.ts`), use the dedicated organic generators rather than hard-surface mechanical plates:
 
-| Generator / Greeble | Location | Parameters & Anatomy | Tissue / Material |
+| Greeble / Builder | Location | Parameters & Anatomy | Tissue / Material |
 | :--- | :--- | :--- | :--- |
-| `mammalTrunk` | `greebles/organic/vertebrates.ts` | `(rxFront, ryFront, rxRear, ryRear, zMin, zMax)` — continuous thoracic brisket, tucked lumbar waist, rounded haunches | `tissue = 6` (`pelage`) |
-| `organicQuadLegs` | `greebles/organic/vertebrates.ts` | `{ hx, hy, zFront, zBack, thickness, hoof, pawScale }` — 4-legged diagonal-trot limbs tucked beneath ribcage (`animType = 4/14/24`) | `tissue = 6` limbs, `2` joints, `4` hooves |
-| `featheredWings` | `greebles/organic/vertebrates.ts` | `{ wx, wy, wz, span, chord, sweep }` — circular shoulder coverts + secondary wing + swept primary remiges (`animType = 92`) | `tissue = 7` (`plumage`) |
-| `cervineAntlers` / `sweptHorns` | `greebles/organic/vertebrates.ts` | `{ neckPivot, brow, spread/length, height/sweepBack }` — branching tines or swept keratin horns (`animType = 78`) | `tissue = 4` (`keratin`) |
+| `sculptedLoft` / `sculptedLimbSegment` | `greebles/organic/vertebrateLoft.ts` | Multi-station asymmetric dorsal/ventral lofts & oriented muscle segments (`buildMammalCore`, `vertebrateLimbs.ts`) | `tissue = 6` (`pelage`) |
+| `sculptedWingFoil` / `sculptedFeather` | `greebles/organic/vertebrateLoft.ts` | Cambered secondary airfoils, upper coverts & shingled primary/rectrix feather blades (`buildAvianCore`, `avianBuilder.ts`) | `tissue = 7` (`plumage`) |
+| `sculptedEar` / `cervineAntlers` / `sweptHorns` | `vertebrateLoft.ts` / `vertebrates.ts` | Cupped concave ear pinnae, multi-tine cervid antlers & swept desert keratin horns | `tissue = 6` / `4` (`keratin`) |
 | `buildBiomeTreeAtlasGeo` | `visuals/terrain/treeBreeds.ts` | `(biome, seed)` — merges biome's 3–4 endemic tree breeds (`aBreed` attribute) into one instancing-ready geometry with `treeBarkFissures` bark detail | `createFoliageMaterial(..., multiBreed = true)` |
 | `makeGrassTuftGeo` / `makeSaguaroCactusGeo` / etc. | `visuals/terrain/groundFloraGeos.ts` | 6 low-poly 3D botanical ground-flora primitives (`grassTuft`, `wildflower`, `bush`, `saguaro`, `barrelCactus`, `reeds`) | `createFoliageMaterial` |

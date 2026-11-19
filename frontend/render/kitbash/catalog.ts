@@ -1,6 +1,8 @@
 import { attachInsectAnimator, getInsectAnimator } from '../animation/insects/InsectAnimationController';
 import { INSECT_SPECIES, stampInsectRig } from '../animation/insects/rig';
 import { INSECT_ANIMATION } from '../animation/insects/shader';
+import { getVertebrateConfig, isVertebrateGeometry } from '../animation/vertebrates/rig';
+import { VERTEBRATE_ANIMATION } from '../animation/vertebrates/shader';
 import { attachWeaponRig, getWeaponRig } from '../combat/WeaponRig';
 import { WeaponRigRegistry, stampWeaponRig } from '../combat/weaponRigs';
 import { WEAPON_RIG } from '../combat/weaponShader';
@@ -169,8 +171,8 @@ export const ArchetypeCatalog = {
       geometryCache.set(canonical, cached);
     }
     const cloned = cached.clone();
-    if (cached.userData?.partRanges) {
-      cloned.userData = { ...cloned.userData, partRanges: cached.userData.partRanges };
+    if (cached.userData && Object.keys(cached.userData).length > 0) {
+      cloned.userData = { ...cached.userData };
     }
     return cloned;
   },
@@ -200,16 +202,30 @@ export interface ArchetypeMesh extends THREE.Mesh {
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
   const rig = WeaponRigRegistry.get(id);
   const insect = INSECT_SPECIES[id];
+  const geometry = ArchetypeCatalog.getGeometry(id, stage);
+  const vertebrate = isVertebrateGeometry(geometry);
   const made = createUnifiedColonyMaterial({
     biome: biomeKey,
-    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0,
-    plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT, RUIN_VARIANT, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])],
+    shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : vertebrate ? 0.024 : 0,
+    plugins: [
+      BUILD_SCAFFOLD,
+      SELECTION_PULSE,
+      BUILDING_LIT,
+      RUIN_VARIANT,
+      ...(rig ? [WEAPON_RIG] : []),
+      ...(insect ? [INSECT_ANIMATION] : []),
+      ...(vertebrate ? [VERTEBRATE_ANIMATION] : []),
+    ],
   });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
-  const geometry = ArchetypeCatalog.getGeometry(id, stage);
   if (rig) stampWeaponRig(geometry, rig);
   if (insect) stampInsectRig(geometry);
+  if (vertebrate) {
+    const cfg = getVertebrateConfig(geometry);
+    uniforms.uVertParams?.value?.set(cfg.comY, cfg.sleepDrop, cfg.strideLen, cfg.liftHeight);
+    uniforms.uVertMeta?.value?.set(cfg.gaitFreq, cfg.isBird, cfg.headSleepPitch, 0);
+  }
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);

@@ -21,6 +21,8 @@ export type FaunaMode = 'passive' | 'aggressive' | 'gallery' | 'turrets' | 'unit
 export const FAUNA_MODES: readonly FaunaMode[] = ['passive', 'aggressive', 'gallery', 'turrets', 'units', 'bugs', 'robots'] as const;
 export type MarchPace = 'own' | 'together';
 export const MARCH_PACES: readonly MarchPace[] = ['own', 'together'] as const;
+export type VertebratePoseMode = 'auto' | 'idle' | 'walk' | 'run' | 'graze' | 'sleep' | 'glide' | 'flap';
+export const VERTEBRATE_POSE_MODES: readonly VertebratePoseMode[] = ['auto', 'idle', 'walk', 'run', 'graze', 'sleep', 'glide', 'flap'] as const;
 
 const parseBuild = (v: string | null): BuildStage => ({ '0': 0, '33': 0.33, '66': 0.66 } as Record<string, BuildStage>)[v ?? ''] ?? 1;
 const parseDepositStage = (v: string | null): DepositVisualStage =>
@@ -34,6 +36,16 @@ const parseFaunaScene = (v: string | null): FaunaSceneKind | null =>
 const parseFaunaMode = (v: string | null): FaunaMode =>
   v === 'turrets' || v === 'units' ? 'gallery' : FAUNA_MODES.includes(v as FaunaMode) ? (v as FaunaMode) : 'bugs';
 const parseMarch = (v: string | null): MarchPace | null => (v === '1' || v === 'own' ? 'own' : v === 'together' ? 'together' : null);
+const parsePose = (v: string | null): VertebratePoseMode =>
+  VERTEBRATE_POSE_MODES.includes(v as VertebratePoseMode) ? (v as VertebratePoseMode) : 'auto';
+const parseWildlife = (v: string | null): PlanetKind | null =>
+  PLANET_KINDS.includes(v as PlanetKind) ? (v as PlanetKind) : null;
+const parseHour = (v: string | null): number => {
+  if (v === null || v.trim() === '') return 10;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 10;
+  return ((n % 24) + 24) % 24;
+};
 /** `mercenary` selects that paint; a missing or unknown value stays the default recon. */
 const parseFaction = (v: string | null): string | null => {
   const palette = reconFactionPalette(v);
@@ -70,6 +82,12 @@ export interface PgState {
   marchRock: boolean;
   /** Kitbash paint (`&faction=mercenary`). Null keeps the default palette. */
   faction: string | null;
+  /** Vertebrate pose override for single-model showcase (`&pose=walk|run|graze|sleep|glide|flap`). */
+  pose: VertebratePoseMode;
+  /** Live ecosystem wildlife showcase biome (`&wildlife=forestRock|oceanForest|dune`). */
+  wildlife: PlanetKind | null;
+  /** Simulated solar hour (`0..24`) for wildlife circadian schedules (`&wildlifeHour=10`). */
+  wildlifeHour: number;
   row: ArchetypeCategory | null; filter: string;
 }
 
@@ -80,9 +98,11 @@ export function createState(params: URLSearchParams): PgState {
   const surface = params.get('surface') === '1';
   const hexTerrain = params.get('hexterrain') === '1' || (Boolean(rawTileState) && !surface);
   const march = parseMarch(params.get('march'));
+  const faunaScene = march ? null : parseFaunaScene(params.get('faunaScene'));
+  const wildlife = march || faunaScene ? null : parseWildlife(params.get('wildlife'));
   return {
     id: '',
-    kind: (PLANET_KINDS.includes(params.get('biome') as PlanetKind) ? params.get('biome') : 'dune') as PlanetKind,
+    kind: ((wildlife && PLANET_KINDS.includes(wildlife)) ? wildlife : PLANET_KINDS.includes(params.get('biome') as PlanetKind) ? params.get('biome') : 'dune') as PlanetKind,
     view: (VIEWS.includes(params.get('view') as View) ? params.get('view') : 'iso') as View,
     turntable: params.get('turntable') === '1',
     bloom: true, pixel: params.has('pixel') ? params.get('pixel') === '1' : isPixelArtOn(), wire: false, grid: true, shadows: true, hex: false, human: false, ruler: false, surface, validate: params.get('validate') === '1', lights: params.get('lights') === '1', ruin: params.get('ruin') === '1',
@@ -91,12 +111,15 @@ export function createState(params: URLSearchParams): PgState {
     build: parseBuild(params.get('build')),
     depositStage: parseDepositStage(params.get('depositStage') ?? params.get('stage')), // `stage`: short alias
     tileState: parseTileState(rawTileState),
-    faunaScene: march ? null : parseFaunaScene(params.get('faunaScene')),
+    faunaScene,
     faunaMode: parseFaunaMode(params.get('faunaMode')),
     faunaSeed: parseFaunaSeed(params.get('faunaSeed')),
     march,
     marchRock: params.get('marchRock') === '1',
     faction: parseFaction(params.get('faction')),
+    pose: parsePose(params.get('pose')),
+    wildlife,
+    wildlifeHour: parseHour(params.get('wildlifeHour')),
     row: row && CATS.includes(row) ? row : null,
     filter: '',
   };
@@ -119,10 +142,15 @@ export function syncURL(state: PgState): URLSearchParams {
   if (state.validate) q.set('validate', '1');
   if (state.lights) q.set('lights', '1');
   if (state.ruin) q.set('ruin', '1');
+  if (state.pose !== 'auto') q.set('pose', state.pose);
   if (state.faunaScene !== null) {
     q.set('faunaScene', state.faunaScene);
     q.set('faunaMode', state.faunaMode);
     q.set('faunaSeed', String(Math.trunc(state.faunaSeed)));
+  }
+  if (state.wildlife !== null) {
+    q.set('wildlife', state.wildlife);
+    if (state.wildlifeHour !== 10) q.set('wildlifeHour', String(state.wildlifeHour));
   }
   if (state.march) q.set('march', state.march);
   if (state.marchRock) q.set('marchRock', '1');

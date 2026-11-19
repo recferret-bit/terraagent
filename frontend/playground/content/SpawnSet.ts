@@ -20,6 +20,7 @@ import {
   type ActiveWorkSiteInput,
   type InteractionTargetKind,
 } from '@terra/render/particles';
+import type { VertebratePoseMode } from '../state';
 
 export interface Spawn { id: string; mesh: ArchetypeMesh; box: THREE.Box3; }
 const footprint = (b: THREE.Box3) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 1);
@@ -75,7 +76,9 @@ export class SpawnSet {
   }
 
   idsFor(row: ArchetypeCategory | null, id: string): string[] {
-    return row ? ArchetypeCatalog.list(row).map((e) => e.id) : id ? [id] : [];
+    if (!row) return id ? [id] : [];
+    const base = ArchetypeCatalog.list(row).map((e) => e.id);
+    return row === 'fauna' ? [...base, ...ArchetypeCatalog.listBiosphere().map((e) => e.id)] : base;
   }
 
   applyWire(wire: boolean) { for (const s of this.spawns) (s.mesh.material as THREE.MeshStandardMaterial).wireframe = wire; }
@@ -152,11 +155,31 @@ export class SpawnSet {
     updateColonyProjectorsAndVision({ projectors, visionSources: [], fovEnabled: false, nightFactor });
   }
 
-  /** `work` = biped work-pose weight (`uWorkWeight`, 0..1). */
-  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0, selectedId = '', lightsMode = false, nightMode = false, workTarget: InteractionTargetKind = 'tree') {
+  /** `work` = biped work-pose weight (`uWorkWeight`, 0..1); `pose` overrides vertebrate behavioral animation state. */
+  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0, selectedId = '', lightsMode = false, nightMode = false, workTarget: InteractionTargetKind = 'tree', pose: VertebratePoseMode = 'auto') {
     if (turntable) this.content.rotation.y = row ? 0 : this.content.rotation.y + dt * 0.5; // rotate object(s), grid stays calibrated; rows stay readable
     this.syncProjectors(selectedId, lightsMode, nightMode);
-    for (const s of this.spawns) tickArchetypeMesh(s.mesh, time, undefined, work);
+    for (const s of this.spawns) {
+      const u = s.mesh.userData?.uniforms as Record<string, THREE.IUniform<number | THREE.Vector4>> | undefined;
+      if (u?.uVertParams && u?.uVertMeta) {
+        const isBird = (u.uVertMeta.value as THREE.Vector4).y > 0.5;
+        let walkV = isBird ? 0.65 : 0;
+        let runV = 0;
+        let workV = work;
+        let sleepV = 0;
+        if (pose === 'idle') { walkV = 0; workV = 0; }
+        else if (pose === 'walk' || pose === 'flap') { walkV = 1; workV = 0; }
+        else if (pose === 'run') { walkV = 1; runV = 1; workV = 0; }
+        else if (pose === 'graze') { walkV = 0; workV = 1; }
+        else if (pose === 'sleep') { walkV = 0; sleepV = 1; workV = 0; }
+        else if (pose === 'glide') { walkV = 0.16; workV = 0; }
+        tickArchetypeMesh(s.mesh, time, walkV, workV);
+        if (u.uVertRun) u.uVertRun.value = runV;
+        if (u.uVertSleep) u.uVertSleep.value = sleepV;
+      } else {
+        tickArchetypeMesh(s.mesh, time, undefined, work);
+      }
+    }
 
     if (work > 0) {
       const sites: ActiveWorkSiteInput[] = this.spawns

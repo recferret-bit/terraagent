@@ -30,7 +30,7 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
   });
 
   it('synthesizes seamless botanical and pelage PBR bundles with correct color spaces and linear mipmap filtering', () => {
-    for (const preset of ['treeBarkFissures', 'meadowGrassClover', 'desertPebbleCrust', 'warmFurPelage']) {
+    for (const preset of ['treeBarkFissures', 'meadowGrassClover', 'desertPebbleCrust', 'warmFurPelage', 'avianFeatherVane']) {
       const bundle = ProceduralTextureRegistry.get(preset, 32);
       expect(bundle.map).toBeDefined();
       expect(bundle.normalMap).toBeDefined();
@@ -48,10 +48,12 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
     }
   });
 
-  it('wires all 4 biosphere PBR presets and fur/plumage tissues into runtime materials and meshes', () => {
+  it('wires all 5 biosphere PBR presets and fur/plumage tissues into runtime materials and meshes', () => {
     const { material: uniMat, uniforms: uniU } = createUnifiedColonyMaterial({ biome: 'temperate' });
     expect(uniU.uFurPelageMap?.value).toBe(ProceduralTextureRegistry.get('warmFurPelage', 128).map);
     expect(uniU.uFurRoughnessMap?.value).toBe(ProceduralTextureRegistry.get('warmFurPelage', 128).roughnessMap);
+    expect(uniU.uFeatherVaneMap?.value).toBe(ProceduralTextureRegistry.get('avianFeatherVane', 128).map);
+    expect(uniU.uFeatherRoughnessMap?.value).toBe(ProceduralTextureRegistry.get('avianFeatherVane', 128).roughnessMap);
 
     const foliageMat = createFoliageMaterial({ value: 0 }, 0.75, false, true);
     const mockFolSh = {

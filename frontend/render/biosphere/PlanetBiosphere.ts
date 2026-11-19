@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { useVertebrateInstanceAttributes } from '../animation/vertebrates/instanceShader';
+import { getVertebrateConfig, isVertebrateGeometry } from '../animation/vertebrates/rig';
+import { VERTEBRATE_ANIMATION } from '../animation/vertebrates/shader';
 import { getDayNightParams, isDayNightOn, wrapSolarHour } from '../core/dayNightConfig';
 import { viewFocusBounded } from '../core/focusCull';
 import { inViewFocus } from '../core/viewFocus';
@@ -55,9 +58,21 @@ function makeSpeciesMeshSlot(
   bioAttr.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('aBioState', bioAttr);
 
-  const uni = createUnifiedColonyMaterial({ biome: biomeName });
+  const vertebrate = isVertebrateGeometry(geometry);
+  const uni = createUnifiedColonyMaterial({
+    biome: biomeName,
+    shadowNormalBias: vertebrate ? 0.024 : 0,
+    ...(vertebrate ? { plugins: [VERTEBRATE_ANIMATION] } : {}),
+  });
   uni.uniforms.uTime = sharedTimeU;
-  useBiosphereInstanceAttributes(uni.material, uni.depthMaterial, computeSafeSleepDrop(geometry));
+  if (vertebrate) {
+    const cfg = getVertebrateConfig(geometry);
+    uni.uniforms.uVertParams?.value?.set(cfg.comY, cfg.sleepDrop, cfg.strideLen, cfg.liftHeight);
+    uni.uniforms.uVertMeta?.value?.set(cfg.gaitFreq, cfg.isBird, cfg.headSleepPitch, 0);
+    useVertebrateInstanceAttributes(uni.material, uni.depthMaterial);
+  } else {
+    useBiosphereInstanceAttributes(uni.material, uni.depthMaterial, computeSafeSleepDrop(geometry));
+  }
 
   const mesh = new THREE.InstancedMesh(geometry, uni.material, cap);
   mesh.customDepthMaterial = uni.depthMaterial;
@@ -170,7 +185,10 @@ function syncAnimalMeshSlots(
       sc.scale.setScalar(a.scale);
       sc.mat.compose(sc.pos, sc.quat, sc.scale);
       ms.mesh.setMatrixAt(drawn, sc.mat);
-      ms.bioAttr.setXYZW(drawn, a.phase, a.walkWeight, a.workWeight, a.sleepCrouch);
+      const spdRatio = Math.hypot(a.vx, a.vz) / Math.max(0.5, a.species.walkSpeed);
+      const sprinting = a.state === 'FLEEING_AGGRESSOR' || a.state === 'FLEEING_PREDATOR' || (a.state === 'HUNTING' && spdRatio > 1.25);
+      const walkOrRun = sprinting ? Math.min(2.0, spdRatio) : a.walkWeight;
+      ms.bioAttr.setXYZW(drawn, a.phase, walkOrRun, a.workWeight, a.sleepCrouch);
       drawn++;
     }
     ms.mesh.count = drawn;

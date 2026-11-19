@@ -139,10 +139,10 @@ export class Sidebar {
     });
   }
 
-  /** March wins over a hive fixture; otherwise the archetype list is the default. */
+  /** March wins over a hive/wildlife fixture; otherwise the archetype list is the default. */
   private openingTab(): SideTab {
     if (this.state.march !== null) return 'march';
-    if (this.state.faunaScene !== null) return 'hive';
+    if (this.state.faunaScene !== null || this.state.wildlife !== null) return 'hive';
     return 'units';
   }
 }

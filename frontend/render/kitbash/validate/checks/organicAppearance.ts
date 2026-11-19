@@ -1,6 +1,7 @@
 import { labOfHex } from '../appearance';
 import { triArea } from '../math';
 import type { CheckStage } from '../context';
+import { vertebrateAnatomyStage } from './vertebrateAnatomy';
 
 /** Organic surfaces intentionally do not inherit mechanical color-group / mounted-panel requirements. */
 export const organicAppearanceStage: CheckStage = (ctx) => {
@@ -22,4 +23,5 @@ export const organicAppearanceStage: CheckStage = (ctx) => {
   ctx.meanL = lightness / Math.max(total, 1e-8);
   if (ctx.meanL < 23) ctx.add('warn', 'ORGANIC_TOO_DARK', 'The anatomical surfaces are too dark to read; check the actual biome render.', []);
   if (tissues.size < 2) ctx.add('warn', 'ORGANIC_UNIFORM', 'Use at least two tissue responses (shell/membrane, earth/shell, or resin/soil).', []);
+  vertebrateAnatomyStage(ctx);
 };

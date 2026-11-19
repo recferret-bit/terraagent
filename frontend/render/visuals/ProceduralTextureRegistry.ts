@@ -258,18 +258,41 @@ ProceduralTextureRegistry.register('desertPebbleCrust', (size = 256) =>
 );
 
 ProceduralTextureRegistry.register('warmFurPelage', (size = 256) =>
-  buildBufferPbrPreset(size, 1.9, (u, v) => {
-    const strand = tileableValueNoise(u * 3, v, 42, 907) * 0.7 + tileableValueNoise(u * 2, v, 18, 919) * 0.3;
-    const guardHair = 0.5 + 0.5 * Math.sin((u * 48 + (strand - 0.5) * 3.0) * Math.PI * 2);
-    const dapple = tileableValueNoise(u, v, 6, 937);
-    const h = 92 + strand * 102 + guardHair * 46;
-    const shade = 0.78 + 0.34 * dapple + 0.14 * (strand - 0.5);
+  buildBufferPbrPreset(size, 1.6, (u, v) => {
+    const tuft = tileableValueNoise(u * 2, v, 24, 907) * 0.6 + tileableValueNoise(u * 3, v, 48, 919) * 0.4;
+    const fine = tileableValueNoise(u * 4, v * 2, 36, 947);
+    const guard = 0.5 + 0.5 * Math.sin((u * 18 + tuft * 2.4 + fine * 1.1) * Math.PI * 2);
+    const dapple = tileableValueNoise(u, v, 5, 937);
+    const h = 104 + tuft * 84 + guard * 28 + fine * 22;
+    const luma = 192 + (tuft - 0.5) * 26 + (dapple - 0.5) * 22 + (guard - 0.5) * 14;
     return {
-      r: 172 * shade,
-      g: 146 * shade,
-      b: 116 * shade,
+      r: luma,
+      g: luma,
+      b: luma,
       h,
-      rough: 214 - guardHair * 38,
+      rough: 212 - guard * 32 - fine * 14,
+    };
+  }),
+);
+
+ProceduralTextureRegistry.register('avianFeatherVane', (size = 256) =>
+  buildBufferPbrPreset(size, 1.5, (u, v) => {
+    const row = Math.floor(v * 10);
+    const stagger = (row % 2) * 0.5;
+    const cellU = ((u * 8 + stagger) % 1) - 0.5;
+    const cellV = (v * 10) % 1;
+    const barb = 0.5 + 0.5 * Math.cos((Math.abs(cellU) * 14 + cellV * 12) * Math.PI);
+    const edge = Math.max(0, 1 - Math.abs(cellU) * 1.9);
+    const overlap = Math.min(1, cellV * 1.25) * edge;
+    const fine = tileableValueNoise(u * 2, v * 2, 28, 1021);
+    const h = 88 + overlap * 98 + barb * 28 + fine * 18;
+    const luma = 198 + (overlap - 0.5) * 24 + (barb - 0.5) * 16 + (fine - 0.5) * 14;
+    return {
+      r: luma,
+      g: luma,
+      b: luma,
+      h,
+      rough: 186 - overlap * 36 - barb * 20,
     };
   }),
 );

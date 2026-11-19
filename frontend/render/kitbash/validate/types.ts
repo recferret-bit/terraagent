@@ -1,6 +1,7 @@
 // Data shapes of the validator: input model, issues, report and tunable options.
 import type { Box } from './math';
 import type { RoleSummary } from './appearance';
+import type { VertebratePartInput, VertebrateRigConfig } from '../../animation/vertebrates/types';
 
 export interface PartDef {
   index: number; name: string; zone: string; kind: string;
@@ -10,6 +11,9 @@ export interface PartDef {
   animType: number;
   /** Insect stateful rig species code; populated by ValidationContext from the archetype id. */
   insectSpecies?: number;
+  /** Vertebrate closed-form rig metadata; populated by extractArchetype from authored geometry metadata. */
+  vertRig?: VertebratePartInput;
+  vertConfig?: VertebrateRigConfig;
   pivot: [number, number, number];
   emissive: number;
   /** Zone surface (sRGB hex, roughness, metalness). Optional: falls back to the zone's default. */

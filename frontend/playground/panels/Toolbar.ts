@@ -12,6 +12,7 @@ export interface ToolbarHandlers {
   onShot(): void;
   onSheet(): void;
   onBuild(): void;
+  onPose(): void;
   onWorkTarget(): void;
   onDepositStage(stage: DepositVisualStage): void;
   onTileState(preset: TileStatePreset): void;
@@ -66,7 +67,7 @@ function tileStateHtml(): string {
 }
 
 function workHtml(): string {
-  return '<button class="pg-btn" id="work-target" title="cycle interaction target for 3D work particles">target: tree</button><button class="pg-btn" id="build" title="construction scaffold stage">build</button>';
+  return '<button class="pg-btn" id="ver-pose" title="cycle vertebrate animation pose">pose: auto</button><button class="pg-btn" id="work-target" title="cycle interaction target for 3D work particles">target: tree</button><button class="pg-btn" id="build" title="construction scaffold stage">build</button>';
 }
 
 function page(tab: BarTab, body: string): string {
@@ -123,6 +124,7 @@ export class Toolbar {
     ov.querySelectorAll<HTMLElement>('.tog').forEach((b) => (b.onclick = () => this.on.onToggle(b.dataset.k as ToggleKey)));
     ov.querySelectorAll<HTMLElement>('#bar [data-tab]').forEach((b) => (b.onclick = () => this.showTab(b.dataset.tab as BarTab)));
     $('#build').onclick = () => this.on.onBuild();
+    $('#ver-pose').onclick = () => this.on.onPose();
     $('#work-target').onclick = () => this.on.onWorkTarget();
     this.syncToggles();
     this.showTab(this.tab);
@@ -151,6 +153,8 @@ export class Toolbar {
     });
     const build = document.querySelector<HTMLElement>('#build');
     if (build) { build.textContent = `build ${Math.round(this.state.build * 100)}%`; build.classList.toggle('on', this.state.build !== 1); }
+    const vp = document.querySelector<HTMLElement>('#ver-pose');
+    if (vp) { vp.textContent = `pose: ${this.state.pose}`; vp.classList.toggle('on', this.state.pose !== 'auto'); }
     const wt = document.querySelector<HTMLElement>('#work-target');
     if (wt) { wt.textContent = `target: ${this.state.workTarget}`; wt.classList.toggle('on', this.state.work); }
     setBtn('#deposit-stage-btns', this.state.depositStage);

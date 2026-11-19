@@ -14,7 +14,7 @@ description: >-
 
 This skill enables AI coding agents to generate crisp, tileable PBR texture sets (`map`, `normalMap`, `roughnessMap`, `emissiveMap`) in pure code at startup (`< 25ms`) without relying on external `.png` assets.
 
-> **Note for kitbashed models vs organic/botanical surfaces.** Mechanical kitbash robots and buildings carry zone colours, roughness and metalness as vertex attributes, so mechanical surface detail (solar cells, rims, vents, panel lines) must be real geometry (`npm run validate:models -- <id>`). By contrast, organic pelage (`warmFurPelage` on `aOrganic == 6` in `UnifiedColonyMaterial`), woody trunks (`treeBarkFissures` on `aBark == 1` in `createFoliageMaterial`), and planet ground ecotypes (`meadowGrassClover` & `desertPebbleCrust` in `terrainMaterial.ts`) DO bind cached `ProceduralTextureRegistry` PBR bundles alongside loaded `.glb` props and UI.
+> **Note for kitbashed models vs organic/botanical surfaces.** Mechanical kitbash robots and buildings carry zone colours, roughness and metalness as vertex attributes, so mechanical surface detail (solar cells, rims, vents, panel lines) must be real geometry (`npm run validate:models -- <id>`). By contrast, organic pelage (`warmFurPelage` achromatic PBR bundle on `aOrganic == 6`) and avian plumage (`avianFeatherVane` barbule/rachis PBR bundle on `aOrganic == 7` in `UnifiedColonyMaterial`), woody trunks (`treeBarkFissures` on `aBark == 1` in `createFoliageMaterial`), and planet ground ecotypes (`meadowGrassClover` & `desertPebbleCrust` in `terrainMaterial.ts`) DO bind cached `ProceduralTextureRegistry` PBR bundles alongside loaded `.glb` props and UI.
 
 ---
 
@@ -44,7 +44,8 @@ Review the built-in procedural generators in [procedural-pbr-patterns.md](./refe
 - `treeBarkFissures`: Anisotropic vertical bark ridges, lenticel knots, Sobel `normalMap` & crevice `roughnessMap` (`frontend/render/visuals/ProceduralTextureRegistry.ts`, headless-safe `HeightBuffer` fallback).
 - `meadowGrassClover`: Botanical meadow blade weave + wildflower clover clusters + Sobel normal/roughness maps.
 - `desertPebbleCrust`: Wind-rippled arid sand, desert varnish pebbles & sun-baked alkali crack network.
-- `warmFurPelage`: Directional mammalian hair-strand pelage & guard-hair sheen roughness map.
+- `warmFurPelage`: Neutral achromatic guard-hair strand pelage, normal ridges & sheen roughness map (preserves coat vertex coloration cleanly).
+- `avianFeatherVane`: Asymmetric pennaceous feather rachis, diagonal barbule weave, Sobel `normalMap` & micro-vane `roughnessMap`.
 
 ### Step 2: Register or Tune a Custom PBR Pattern
 To add a new procedural texture (e.g., `nuclearCoolingTiles`, `alienChitinCarapace`, `iceGlacierCracks`):
