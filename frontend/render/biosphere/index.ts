@@ -2,6 +2,8 @@ export {
   createPlanetBiosphere,
   type CreatePlanetBiosphereOptions,
 } from './PlanetBiosphere';
+export { BirdFlockSimulator } from './BirdFlockSim';
+export { LandAnimalSimulator } from './LandAnimalSim';
 export {
   buildContinuousHabitatIndex,
   buildHexHabitatIndex,

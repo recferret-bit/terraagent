@@ -6,6 +6,7 @@ import { createParticles } from '../../../visuals/terrain/Particles';
 import { smoothstep } from '../../../visuals/terrain/noise';
 import { scatterGrid, buildInstanced, createFoliageMaterial } from '../../../visuals/terrain/Scatter';
 import { buildBiomeTreeAtlasGeo } from '../../../visuals/terrain/treeBreeds';
+import { applySurfaceForestPipeline } from '../../hex/flora/forestPipeline';
 import {
   makeBushGeo,
   makeGrassTuftGeo,
@@ -41,27 +42,20 @@ export function buildOceanForest(c: SurfaceContext) {
   });
   waterFauna.rebuild(shore);
   waterFauna.group.position.y = level;
+  c.waterFauna = waterFauna;
   c.addLayer(waterFauna.group, {}, waterFauna);
 
   const forestN = (x: number, z: number) => smoothstep(-0.25, 0.25, nz.fbm(x * 0.03, z * 0.03, 3));
-  const trees = scatterGrid(rng, ext, 2.25 * cellMul, (x, z) => {
+  const treeCandidates = scatterGrid(rng, ext, 2.15 * cellMul, (x, z) => {
     const h = heightAt(x, z) - level;
-    if (h < 0.35 || c.slopeAt(x, z) > 0.6) return 0;
-    return (h < 1.6 ? 0.38 : 0.14 + 0.84 * forestN(x, z)) * c.landingFree(x, z);
+    if (h < 0.30 || c.slopeAt(x, z) > 0.6) return 0;
+    return (h < 1.6 ? 0.40 : 0.14 + 0.84 * forestN(x, z)) * c.landingFree(x, z);
   });
-  c.lift(trees);
-  for (const p of trees) {
-    const dh = p.y - level;
-    const stand = nz.fbm(p.x * 0.045 - 13, p.z * 0.045 + 29, 2);
-    // Coastal mangrove & coconut palm along shores; emergent banyan & coral blossom inland
-    if (dh < 0.95) p.breedIndex = p.r > 0.45 ? 1 : 0;
-    else if (dh < 1.85) p.breedIndex = p.r > 0.35 ? 0 : 2;
-    else p.breedIndex = stand > 0.08 ? 2 : p.r > 0.55 ? 3 : 2;
-    p.windMul = p.breedIndex === 0 ? 1.55 : p.breedIndex === 3 ? 1.10 : 0.68;
-  }
+  c.lift(treeCandidates);
+  const trees = applySurfaceForestPipeline(treeCandidates, 'oceanForest', c.spec.seed, level);
   c.addMesh(
     buildInstanced(buildBiomeTreeAtlasGeo('oceanForest', c.spec.seed), createFoliageMaterial(c.timeU, 0.95, true, true), trees, {
-      sx: [0.58, 1.02], sy: [0.62, 1.14], sink: 0.10, tilt: 0.09, tint: jitter(0.20, 0.20), encodeBreedInColor: true,
+      sx: [0.58, 0.94], sy: [0.62, 1.06], sink: 0.10, tilt: 0.08, tint: jitter(0.20, 0.20), encodeBreedInColor: true,
     }),
   );
 

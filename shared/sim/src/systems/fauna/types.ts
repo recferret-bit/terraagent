@@ -117,6 +117,7 @@ export interface ColonyPlanetDamageLedger {
   forestCleared: number;
   tilesTerraformed: number;
   hivesHarmed: number;
+  faunaKilled?: number;
   lastProcessedTick: number;
 }
 

@@ -1,5 +1,7 @@
 /** Biological fields share anatomical UVs across pigmentation, roughness and micro-normal response. */
 export const ORGANIC_DECL = /* glsl */ `
+uniform sampler2D uFurPelageMap;
+uniform sampler2D uFurRoughnessMap;
 varying float vOrganic;
 varying vec2 vAnatomy;
 float organicField(vec2 uv, float tissue, float footprint) {
@@ -8,6 +10,14 @@ float organicField(vec2 uv, float tissue, float footprint) {
   float growth = sin(uv.y * 88.0 + sin(uv.x * 12.566) * 1.7);
   float veins = pow(max(0.0, 1.0 - abs(sin(p.x * 3.0 + sin(p.y * 0.39) * 2.0))), 7.0);
   float fineFade = 1.0 - smoothstep(0.35, 1.4, footprint);
+  if (tissue > 5.5 && tissue < 6.5) {
+    float furLuma = dot(texture2D(uFurPelageMap, uv * vec2(3.0, 4.0)).rgb, vec3(0.3333));
+    return ((furLuma - 0.52) * 1.35 + grain * 0.10) * fineFade;
+  }
+  if (tissue > 6.5) {
+    float barbs = sin(uv.y * 58.0 + abs(fract(uv.x * 10.0) - 0.5) * 9.0);
+    return (barbs * 0.42 + grain * 0.14) * fineFade;
+  }
   if (tissue > 2.5 && tissue < 3.5) return (grain * 0.12 - veins * 0.7) * fineFade;
   if (tissue > 3.5 && tissue < 4.5) return (grain * 0.7 + growth * 0.15) * fineFade;
   return (grain * 0.18 + growth * 0.35) * fineFade;
@@ -24,20 +34,33 @@ if (vOrganic > 0.5) {
   if (vOrganic > 2.5 && vOrganic < 3.5) {
     float thickness = sin(vAnatomy.y * 3.14159);
     diffuseColor.rgb *= mix(vec3(1.14, 1.06, 0.76), vec3(0.67, 0.88, 0.62), thickness * 0.45);
+  } else if (vOrganic > 5.5 && vOrganic < 6.5) {
+    vec3 furTex = texture2D(uFurPelageMap, vAnatomy * vec2(3.0, 4.0)).rgb;
+    float furDetail = 1.0 - smoothstep(0.45, 1.5, organicFootprint);
+    diffuseColor.rgb *= mix(vec3(1.0), clamp(furTex / 0.58, vec3(0.76), vec3(1.24)), 0.24 * furDetail);
+  } else if (vOrganic > 6.5) {
+    diffuseColor.rgb *= 1.0 + 0.08 * sin(vAnatomy.y * 42.0) * (1.0 - smoothstep(0.45, 1.5, organicFootprint));
   }
 }`;
 export const ORGANIC_ROUGHNESS = /* glsl */ `
 if (vOrganic > 0.5) {
   roughnessFactor = clamp(roughnessFactor + organicField(vAnatomy, vOrganic, organicFootprint) * 0.07, 0.16, 0.98);
   if (vOrganic > 2.5 && vOrganic < 3.5) roughnessFactor = 0.26 + organicField(vAnatomy, vOrganic, organicFootprint) * 0.06;
+  else if (vOrganic > 5.5 && vOrganic < 6.5) {
+    float furRough = texture2D(uFurRoughnessMap, vAnatomy * vec2(3.0, 4.0)).r;
+    roughnessFactor = clamp(mix(roughnessFactor, furRough, 0.34), 0.38, 0.94);
+  } else if (vOrganic > 6.5) {
+    roughnessFactor = clamp(roughnessFactor * 0.90, 0.28, 0.86);
+  }
 }`;
 export const ORGANIC_NORMAL = /* glsl */ `
 float organicHeight = 0.0;
-if (vOrganic > 0.5 && vOrganic < 4.5) organicHeight = organicField(vAnatomy, vOrganic, organicFootprint) * 0.00045;
+bool hasOrganicMicroNormal = (vOrganic > 0.5 && vOrganic < 3.5) || vOrganic > 5.5;
+if (hasOrganicMicroNormal) organicHeight = organicField(vAnatomy, vOrganic, organicFootprint) * (vOrganic > 5.5 ? 0.00055 : 0.00045);
 // Evaluate derivatives outside tissue-dependent control flow, including at silhouette/profile edges.
 vec3 organicDx = dFdx(-vViewPosition), organicDy = dFdy(-vViewPosition);
 vec2 organicDh = vec2(dFdx(organicHeight), dFdy(organicHeight));
-if (vOrganic > 0.5 && vOrganic < 4.5) {
+if (hasOrganicMicroNormal) {
   vec3 rx = cross(organicDy, normal), ry = cross(normal, organicDx);
   float det = dot(organicDx, rx);
   vec3 gradient = sign(det) * (organicDh.x * rx + organicDh.y * ry);

@@ -38,13 +38,16 @@ function pickEscapeGoal(
   habitat: BiosphereHabitatIndex,
 ): [number, number] {
   const baseAng = Math.atan2(az - tz, ax - tx);
-  const lim = habitat.halfSize * 0.90;
   for (const offset of [0, 0.55, -0.55, 1.15, -1.15, 1.85, -1.85, Math.PI]) {
     const a = baseAng + offset;
-    const gx = Math.max(-lim, Math.min(lim, ax + Math.cos(a) * distRun));
-    const gz = Math.max(-lim, Math.min(lim, az + Math.sin(a) * distRun));
-    if (habitat.isPassableLand(gx, gz)) return [gx, gz];
+    for (const stepDist of [distRun, distRun * 0.65, distRun * 0.35]) {
+      const gx = ax + Math.cos(a) * stepDist;
+      const gz = az + Math.sin(a) * stepDist;
+      if (habitat.isPassableLand(gx, gz)) return [gx, gz];
+    }
   }
+  const fx = ax * 0.72, fz = az * 0.72;
+  if (habitat.isPassableLand(fx, fz)) return [fx, fz];
   return [ax, az];
 }
 
@@ -105,6 +108,47 @@ function findConquerorThreat(
   return null;
 }
 
+function findClosestPrey(
+  leader: LandAnimalAgent,
+  allAgents: readonly LandAnimalAgent[],
+  maxDist: number,
+): LandAnimalAgent | null {
+  let prey: LandAnimalAgent | null = null;
+  let bestD = maxDist;
+  for (const other of allAgents) {
+    if (other.species.diet === 'predator') continue;
+    const d = Math.hypot(other.x - leader.x, other.z - leader.z);
+    if (d < bestD) {
+      bestD = d;
+      prey = other;
+    }
+  }
+  return prey;
+}
+
+function pickProwlWaypoint(
+  leader: LandAnimalAgent,
+  rng: () => number,
+  habitat: BiosphereHabitatIndex,
+): [number, number] {
+  const grounds = habitat.grassAnchors.length > 0 ? habitat.grassAnchors : habitat.waterAnchors;
+  if (grounds.length > 0 && rng() < 0.65) {
+    for (let k = 0; k < 6; k++) {
+      const cand = grounds[Math.floor(rng() * grounds.length)]!;
+      const d = Math.hypot(cand.x - leader.x, cand.z - leader.z);
+      if (d > 6 && d < 38 && habitat.isPassableLand(cand.x, cand.z)) return [cand.x, cand.z];
+    }
+  }
+  for (let k = 0; k < 8; k++) {
+    const ang = rng() * Math.PI * 2;
+    const rad = 8 + rng() * 14;
+    const nx = leader.homeX + Math.cos(ang) * rad;
+    const nz = leader.homeZ + Math.sin(ang) * rad;
+    if (habitat.isPassableLand(nx, nz) && Math.hypot(nx - leader.x, nz - leader.z) > 4.5) return [nx, nz];
+  }
+  return [leader.homeX, leader.homeZ];
+}
+
 function selectGoalForActivity(
   agent: LandAnimalAgent,
   leader: LandAnimalAgent,
@@ -112,6 +156,7 @@ function selectGoalForActivity(
   allAgents: readonly LandAnimalAgent[],
   habitat: BiosphereHabitatIndex,
   aggressors: readonly BiosphereAggressor[],
+  rng: () => number,
 ): void {
   const offAng = (agent.id * 2.39996) % (Math.PI * 2);
   const offR = agent === leader ? 0 : 1.35;
@@ -144,22 +189,69 @@ function selectGoalForActivity(
     return;
   }
   if (activity === 'HUNTING') {
-    let prey: LandAnimalAgent | null = null;
-    let bestD = Infinity;
-    for (const other of allAgents) {
-      if (other.species.diet === 'predator') continue;
-      const d = Math.hypot(other.x - leader.x, other.z - leader.z);
-      if (d < bestD && d < 46) {
-        bestD = d;
-        prey = other;
-      }
-    }
+    const prey = findClosestPrey(leader, allAgents, 46) ?? findClosestPrey(leader, allAgents, 110);
     if (prey) {
       applyGoal(prey.x, prey.z);
       return;
     }
+    const [px, pz] = pickProwlWaypoint(leader, rng, habitat);
+    applyGoal(px, pz);
+    return;
   }
   applyGoal(leader.homeX, leader.homeZ);
+}
+
+function stepStationaryFeeding(
+  agent: LandAnimalAgent,
+  dt: number,
+  rng: () => number,
+  habitat: BiosphereHabitatIndex,
+): void {
+  agent.vx *= 0.72;
+  agent.vz *= 0.72;
+  agent.walkWeight = Math.max(0, agent.walkWeight - dt * 3.5);
+  agent.workWeight = Math.min(1, agent.workWeight + dt * 3.0);
+  agent.pauseTimer -= dt;
+  if (agent.pauseTimer <= 0) {
+    for (let k = 0; k < 6; k++) {
+      const ang = rng() * Math.PI * 2;
+      const stepR = 1.3 + rng() * 1.6;
+      const nx = agent.x + Math.cos(ang) * stepR;
+      const nz = agent.z + Math.sin(ang) * stepR;
+      if (habitat.isPassableLand(nx, nz)) {
+        agent.goalX = nx;
+        agent.goalZ = nz;
+        break;
+      }
+    }
+    agent.pauseTimer = 1.8 + rng() * 2.6;
+  }
+  agent.y = habitat.heightAt(agent.x, agent.z);
+}
+
+function applySocialSteering(
+  agent: LandAnimalAgent,
+  allAgents: readonly LandAnimalAgent[],
+  dirX: number,
+  dirZ: number,
+): [number, number] {
+  if (agent.species.social !== 'group') return [dirX, dirZ];
+  let cohX = 0, cohZ = 0, sepX = 0, sepZ = 0, mates = 0;
+  for (const m of allAgents) {
+    if (m === agent || m.groupId !== agent.groupId) continue;
+    const mx = m.x - agent.x, mz = m.z - agent.z;
+    const md = Math.hypot(mx, mz);
+    cohX += m.x; cohZ += m.z; mates++;
+    if (md > 0.01 && md < 1.5) {
+      sepX -= (mx / md) * (1.5 - md);
+      sepZ -= (mz / md) * (1.5 - md);
+    }
+  }
+  if (mates === 0) return [dirX, dirZ];
+  return [
+    dirX + ((cohX / mates - agent.x) * 0.08) + sepX * 0.9,
+    dirZ + ((cohZ / mates - agent.z) * 0.08) + sepZ * 0.9,
+  ];
 }
 
 function stepAnimalKinematics(
@@ -186,54 +278,50 @@ function stepAnimalKinematics(
   const feedingState =
     agent.state === 'DRINKING' || agent.state === 'EATING_GRASS' || agent.state === 'BROWSING_TREES';
 
-  if (feedingState && distGoal < 2.6) {
-    agent.vx *= 0.75;
-    agent.vz *= 0.75;
-    agent.walkWeight = Math.max(0, agent.walkWeight - dt * 3.5);
-    agent.workWeight = Math.min(1, agent.workWeight + dt * 3.0);
-    agent.y = habitat.heightAt(agent.x, agent.z);
+  if (feedingState && distGoal < 0.45) {
+    stepStationaryFeeding(agent, dt, rng, habitat);
     return;
   }
 
-  agent.workWeight = Math.max(0, agent.workWeight - dt * 3.0);
+  const slowForagingStep = feedingState && distGoal < 3.4;
+  if (slowForagingStep) {
+    agent.workWeight = Math.min(0.85, Math.max(0.55, agent.workWeight + dt * 2.0));
+  } else {
+    agent.workWeight = Math.max(0, agent.workWeight - dt * 3.0);
+  }
   const sprinting =
     agent.state === 'FLEEING_AGGRESSOR' || agent.state === 'FLEEING_PREDATOR' || (agent.state === 'HUNTING' && distGoal < 14);
-  const targetSpeed = sprinting ? agent.species.runSpeed : agent.species.walkSpeed;
+  const targetSpeed = sprinting
+    ? agent.species.runSpeed
+    : slowForagingStep
+      ? agent.species.walkSpeed * 0.36
+      : agent.state === 'HUNTING'
+        ? agent.species.walkSpeed * 1.18
+        : agent.species.walkSpeed;
 
-  let dirX = distGoal > 0.2 ? dxGoal / distGoal : Math.sin(agent.yaw);
-  let dirZ = distGoal > 0.2 ? dzGoal / distGoal : Math.cos(agent.yaw);
+  const baseDirX = distGoal > 0.2 ? dxGoal / distGoal : Math.sin(agent.yaw);
+  const baseDirZ = distGoal > 0.2 ? dzGoal / distGoal : Math.cos(agent.yaw);
+  const [dirX, dirZ] = applySocialSteering(agent, allAgents, baseDirX, baseDirZ);
 
-  // Social group cohesion + gentle personal-space separation
-  if (agent.species.social === 'group') {
-    let cohX = 0, cohZ = 0, sepX = 0, sepZ = 0, mates = 0;
-    for (const m of allAgents) {
-      if (m === agent || m.groupId !== agent.groupId) continue;
-      const mx = m.x - agent.x, mz = m.z - agent.z;
-      const md = Math.hypot(mx, mz);
-      cohX += m.x; cohZ += m.z; mates++;
-      if (md > 0.01 && md < 1.5) {
-        sepX -= (mx / md) * (1.5 - md);
-        sepZ -= (mz / md) * (1.5 - md);
-      }
-    }
-    if (mates > 0) {
-      dirX += ((cohX / mates - agent.x) * 0.08) + sepX * 0.9;
-      dirZ += ((cohZ / mates - agent.z) * 0.08) + sepZ * 0.9;
-    }
-  }
-
-  if (agent.state === 'ROAMING' && distGoal < 3.5) {
+  if ((agent.state === 'ROAMING' || agent.state === 'HUNTING') && distGoal < 3.2) {
     agent.pauseTimer -= dt;
     if (agent.pauseTimer <= 0) {
-      const ang = rng() * Math.PI * 2;
-      const rad = 4 + rng() * 9;
-      const nx = agent.homeX + Math.cos(ang) * rad;
-      const nz = agent.homeZ + Math.sin(ang) * rad;
-      if (habitat.isPassableLand(nx, nz)) {
+      if (agent.state === 'HUNTING') {
+        const [nx, nz] = pickProwlWaypoint(agent, rng, habitat);
         agent.goalX = nx;
         agent.goalZ = nz;
+        agent.pauseTimer = 1.0 + rng() * 1.8;
+      } else {
+        const ang = rng() * Math.PI * 2;
+        const rad = 4 + rng() * 9;
+        const nx = agent.homeX + Math.cos(ang) * rad;
+        const nz = agent.homeZ + Math.sin(ang) * rad;
+        if (habitat.isPassableLand(nx, nz)) {
+          agent.goalX = nx;
+          agent.goalZ = nz;
+        }
+        agent.pauseTimer = 2.5 + rng() * 4.0;
       }
-      agent.pauseTimer = 2.5 + rng() * 4.0;
     }
   }
 
@@ -368,9 +456,13 @@ export class LandAnimalSimulator {
       const scheduled = resolveCircadianActivity(agent.species, solarHour24);
       if (agent.state !== scheduled) {
         agent.state = scheduled;
-        selectGoalForActivity(agent, leader, scheduled, this.agents, habitat, aggressors);
+        selectGoalForActivity(agent, leader, scheduled, this.agents, habitat, aggressors, this.rng);
       } else if (scheduled === 'HUNTING') {
-        selectGoalForActivity(agent, leader, scheduled, this.agents, habitat, aggressors);
+        const closePrey = findClosestPrey(leader, this.agents, 46);
+        if (closePrey) {
+          agent.goalX = closePrey.x;
+          agent.goalZ = closePrey.z;
+        }
       }
       stepAnimalKinematics(agent, stepDt, this.rng, this.agents, habitat);
     }

@@ -36,6 +36,8 @@ export function organicValidatorFixtures(): Array<{ name: string; report: Report
     { name: 'single tissue response is reported', change: m => { m.parts[1].tissue = 1; }, expected: 'ORGANIC_UNIFORM' },
     { name: 'organic floating tissue remains invalid', change: m => { for (let i = 1; i < m.parts[1].tris.length; i += 3) m.parts[1].tris[i] += 0.5; }, expected: 'FLOATING_PART' },
     { name: 'bounded secretory pulse is valid', change: m => { m.parts[1].tissue = 3; m.parts[1].animType = 60; } },
+    { name: 'vertebrate fur pelage and avian plumage tissues are valid', change: m => { m.parts[0].tissue = 6; m.parts[1].tissue = 7; } },
+    { name: 'out-of-range tissue id is rejected', change: m => { m.parts[0].tissue = 8; }, expected: 'ORGANIC_TISSUE' },
   ];
   return cases.map(c => {
     const model = fixture(); c.change?.(model);

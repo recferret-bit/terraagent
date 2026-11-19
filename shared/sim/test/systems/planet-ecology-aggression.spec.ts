@@ -224,3 +224,41 @@ describe('Planetary ecological damage · Real SimHost forest-clearing & event de
     expect(computeColonyPlanetDamage(state, 0, data).forestCleared).toBe(3);
   });
 });
+
+describe('Planetary Ecological Damage: faunaKilled ingestion & hive provocation', () => {
+  it('ingests faunaKilled events (single & batch counts), raising ecological damage and provoking nearby hives once over threshold', () => {
+    const { state, data, pipeline } = createPeacefulColonyHost('fauna-kill-planet');
+    startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: 0, r: 0, instant: true, costOverride: {} });
+    startBuildingConstruction(state, { owner: 0, building: 'roboticsFactory', q: 3, r: 0, instant: true, costOverride: {} });
+    const hive2 = spawnHiveEntity(state, { species: 'blueBeetle', q: -8, r: 0, initialResidents: 2 }, 0, data);
+    expect(isHiveAggressiveToColony(state, hive2, 0)).toBe(false);
+    const dmgBefore = computeColonyPlanetDamage(state, 0, data);
+
+    const killTick = state.meta.tick + 2;
+    ingestEcologicalDamageEvents(state, killTick, {
+      dt: 1,
+      tick: killTick,
+      flags: pipeline.config.flags,
+      data,
+      events: [
+        {
+          kind: 'faunaKilled',
+          severity: 'info',
+          atTick: killTick,
+          colonyIds: ['col_0'],
+          data: { colonyIndex: 0, entityId: 999, species: 'blueBeetle', q: -7, r: 0, count: 2 },
+        },
+      ],
+      postings: [],
+      record: () => {},
+      rng: () => state.rng.misc,
+      newEntityId: () => state.meta.nextEntityId++,
+      emit: () => {},
+    });
+    const dmgAfterKill = computeColonyPlanetDamage(state, 0, data);
+    expect(dmgAfterKill.faunaKilled).toBe(2);
+    expect(dmgAfterKill.damageScore).toBe(dmgBefore.damageScore + 8);
+    expect(dmgAfterKill.damagedEnough).toBe(true);
+    expect(isHiveAggressiveToColony(state, hive2, 0)).toBe(true);
+  });
+});

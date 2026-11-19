@@ -26,7 +26,7 @@ export function mammalTrunk(
     p.setXYZ(i, x * rx, y * ry + archY, pz);
   }
   g.computeVertexNormals();
-  return tissue(g, 1);
+  return tissue(g, 6);
 }
 
 export interface QuadLegRigParams {
@@ -56,7 +56,7 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
   const foot: PartOptions = { animType: 24, animPivot: hip };
 
   // Circular-YZ shoulder/haunch muscle mass centered on `hip` so X-pitch stays 100% invariant against the torso.
-  b.addPart(organ([r * 1.55, r * 1.52, r * 1.52], 1, hz, 0, 8), 'hullPrimary', {
+  b.addPart(organ([r * 1.55, r * 1.52, r * 1.52], 6, hz, 0, 8), 'hullPrimary', {
     name: `${tag} shoulder hip`,
     position: hip,
     ...upper,
@@ -70,7 +70,7 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
         [limbX, kneeY, hz],
       ],
       [r * 1.18, r * 0.94, r * 0.76],
-      1,
+      6,
       5,
       6,
     ),
@@ -92,7 +92,7 @@ function addQuadLeg(b: KitbashBuilder, p: QuadLegRigParams, side: number, hz: nu
         [footX, ankleY, hz],
       ],
       [r * 0.74, r * 0.58, r * 0.48],
-      1,
+      6,
       5,
       6,
     ),
@@ -144,7 +144,7 @@ KitbashRegistry.registerGreeble('featheredWings', (params: FeatheredWingsParams,
     const flap: PartOptions = { animType: 92, animPivot: pivot };
 
     // Circular-XY shoulder coverts centered at `pivot` so Z-axis wing strokes stay invariant at the torso mount.
-    b.addPart(organ([rSh, rSh, params.chord * 0.40], 2, side, 0, 7), 'hullPrimary', {
+    b.addPart(organ([rSh, rSh, params.chord * 0.40], 7, side, 0, 7), 'hullPrimary', {
       name: `${dir} wing shoulder`,
       position: pivot,
       ...flap,
@@ -154,7 +154,7 @@ KitbashRegistry.registerGreeble('featheredWings', (params: FeatheredWingsParams,
     const innerX = (params.wx + rSh * 0.45 + innerSpan * 0.44) * side;
     const innerZ = wz - sweep * 0.24;
     b.addPart(
-      organ([innerSpan * 0.54, Math.max(0.020, params.chord * 0.12), params.chord * 0.52], 1, side + 1, 0.025, 9),
+      organ([innerSpan * 0.54, Math.max(0.020, params.chord * 0.12), params.chord * 0.52], 7, side + 1, 0.025, 9),
       'hullPrimary',
       {
         name: `${dir} secondary wing`,
@@ -172,7 +172,7 @@ KitbashRegistry.registerGreeble('featheredWings', (params: FeatheredWingsParams,
       tendril(
         [outerStart, outerMid, outerTip],
         [params.chord * 0.26, params.chord * 0.18, params.chord * 0.05],
-        1,
+        7,
         5,
         6,
       ),

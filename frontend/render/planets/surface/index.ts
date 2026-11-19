@@ -16,6 +16,7 @@ export const createPlanetSurface: CreatePlanetSurface = (spec, opts) => {
   const biosphere = createPlanetBiosphere({
     look: spec,
     habitat: buildContinuousHabitatIndex(ctx.half, spec, heightAt, waterLvl),
+    waterFauna: ctx.waterFauna,
   });
   group.add(biosphere.group);
   disposables.push(biosphere);

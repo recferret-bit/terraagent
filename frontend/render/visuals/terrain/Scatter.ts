@@ -5,6 +5,7 @@ import { getWeatherUniforms } from '../../core/weatherConfig';
 import { getWindUniforms, WIND_GLSL } from '../../core/windConfig';
 import { bindViewFocusUniforms, VIEW_FOCUS_GLSL } from '../../core/viewFocus';
 import { Noise2, mulberry32 } from './noise';
+import { ProceduralTextureRegistry } from '../ProceduralTextureRegistry';
 import { glslFloat } from '../shaderInject';
 
 export interface Place {
@@ -327,9 +328,14 @@ export function createFoliageMaterial(
       .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}`)
       .replace('#include <begin_vertex>', swayBegin);
   };
+  const barkBundle = ProceduralTextureRegistry.get('treeBarkFissures', 128);
+  const barkMapU = { value: barkBundle.map! };
+  const barkRoughU = { value: barkBundle.roughnessMap! };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, getColonyVisionUniforms(), getWindUniforms(), getWeatherUniforms());
-    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
+    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU;
+    sh.uniforms.uBarkMap = barkMapU; sh.uniforms.uBarkRoughMap = barkRoughU;
+    bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN;`)
       .replace('#include <begin_vertex>', `${swayBegin}
@@ -344,14 +350,24 @@ export function createFoliageMaterial(
       sh.vertexShader = sh.vertexShader.replace('#include <color_vertex>', MULTI_BREED_COLOR_VERT);
     }
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nuniform sampler2D uBarkMap, uBarkRoughMap;\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
+float taBarkMask = clamp((diffuseColor.r - diffuseColor.g * 0.88) * 3.4, 0.0, 1.0);
+vec2 taBarkUv = vec2(atan(vFN.x, vFN.z) * 0.31831 + 0.5, vFW.y * 0.42);
+if (taBarkMask > 0.02) {
+  float barkFissure = dot(texture2D(uBarkMap, taBarkUv).rgb, vec3(0.3333));
+  diffuseColor.rgb *= mix(1.0, 0.78 + 0.44 * barkFissure, taBarkMask * 0.75);
+}
 if (uWetness > 0.001) {
   float fUp = clamp(vFN.y, 0.0, 1.0);
   diffuseColor.rgb *= mix(1.0, 0.66, uWetness);
   diffuseColor.rgb += vec3(0.04, 0.07, 0.11) * (uWetness * pow(fUp, 2.0));
 }`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= mix(1.0, 0.32, uWetness);')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+if (taBarkMask > 0.02) {
+  roughnessFactor = mix(roughnessFactor, texture2D(uBarkRoughMap, taBarkUv).r, taBarkMask * 0.55);
+}
+roughnessFactor *= mix(1.0, 0.32, uWetness);`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vFW, vFN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vFW, gl_FragColor.rgb);');
   };

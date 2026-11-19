@@ -1,17 +1,22 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { hexCount, hexIndex } from '@terra/sim/grid/hex';
+import { hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import { BREEDS_BY_BIOME, buildBiomeTreeAtlasGeo, TREE_BREEDS } from '../../../visuals/terrain/treeBreeds';
 import {
+  applySurfaceForestPipeline,
   createHexTerrain,
   evaluateForestStand,
   generateCandidateTreePlaces,
+  GROUND_FLORA_KINDS,
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
+  hexEdgeMarginM,
   runForestGenerationPipeline,
   specForPlanetType,
   stratifyStandSites,
   synthesizeTreePhenotype,
+  tileStyle,
 } from '../index';
 
 function makeBiomeTiles(radius: number) {
@@ -155,10 +160,37 @@ describe('HexFloraLayer grass hex variations, bushes, cactuses, reeds, and dune 
     const dune = createHexTerrain({ radius, tiles: duneTiles, look: specForPlanetType('desert') });
     const duneCounts = dune.flora.counts();
     expect(dune.props.counts().pine).toBe(0);
-    expect(duneCounts.duneTree).toBeGreaterThan(5);
+    expect(dune.props.counts().duneTree).toBeGreaterThan(15);
+    expect(dune.props.counts().boulder).toBeGreaterThan(0);
     expect(duneCounts.saguaro + duneCounts.barrelCactus).toBeGreaterThan(5);
     expect(duneCounts.bush).toBeGreaterThan(5);
     expect(duneCounts.reeds).toBe(0);
+
+    // Dune HEX_TERRAIN.forest tiles expose duneTree via instancesForTile, never collide with boulders, and ray-pick via pickProp
+    let checkedForestTile = false;
+    for (let i = 0; i < hx.count; i++) {
+      if (duneTiles.terrain[i] !== HEX_TERRAIN.forest) continue;
+      const insts = dune.props.instancesForTile(i);
+      const trees = insts.filter((p) => p.kind === 'duneTree');
+      const boulders = insts.filter((p) => p.kind === 'boulder');
+      expect(trees.length).toBeGreaterThanOrEqual(1);
+      for (const tr of trees) {
+        for (const bd of boulders) {
+          expect(Math.hypot(tr.x - bd.x, tr.z - bd.z)).toBeGreaterThanOrEqual(0.70);
+        }
+      }
+      if (!checkedForestTile) {
+        dune.group.updateMatrixWorld(true);
+        const tr = trees[0]!;
+        const ray = new THREE.Raycaster(new THREE.Vector3(tr.x, tr.y + 8, tr.z), new THREE.Vector3(0, -1, 0));
+        const hit = dune.props.pickProp(ray);
+        expect(hit).not.toBeNull();
+        expect(hit!.q).toBe(hx.q[i]);
+        expect(hit!.r).toBe(hx.r[i]);
+        checkedForestTile = true;
+      }
+    }
+    expect(checkedForestTile).toBe(true);
     dune.dispose();
 
     // Fortification ridges, dug moats, and colony-owned graded base pads never sprout wild bushes or cactuses
@@ -175,5 +207,69 @@ describe('HexFloraLayer grass hex variations, bushes, cactuses, reeds, and dune 
     const baseFlora = baseTerrain.flora.counts();
     expect(baseFlora.bush + baseFlora.saguaro + baseFlora.barrelCactus + baseFlora.grassTuft).toBe(0);
     baseTerrain.dispose();
+  });
+});
+
+describe('Ground flora rim containment, wild grass hex ecotypes & surface pipeline parity', () => {
+  it('clamps outer-rim ground flora vertices inside the ground hexagon and varies wild grass hex tints per biome', () => {
+    const r = 10;
+    const hx = hexIndex(r);
+    const terrain = new Uint8Array(hx.count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(hx.count).fill(HEX_PREP.wild);
+    const height = new Float32Array(hx.count).fill(0.2);
+    for (let i = 0; i < hx.count; i++) {
+      if (hexDistance(0, 0, hx.q[i]!, hx.r[i]!) === r && i % 2 === 0) terrain[i] = HEX_TERRAIN.slope;
+    }
+    for (const pType of ['temperate', 'ocean', 'desert'] as const) {
+      const ht = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType(pType) });
+      const mat = new THREE.Matrix4();
+      const v = new THREE.Vector3();
+      let minVertMargin = Infinity;
+      let checked = 0;
+      for (const kind of GROUND_FLORA_KINDS) {
+        for (const im of ht.flora.meshes[kind]) {
+          const pos = im.geometry.getAttribute('position');
+          for (let k = 0; k < im.count; k++) {
+            im.getMatrixAt(k, mat);
+            for (let vi = 0; vi < pos.count; vi++) {
+              v.fromBufferAttribute(pos, vi).applyMatrix4(mat);
+              minVertMargin = Math.min(minVertMargin, hexEdgeMarginM(r, v.x, v.z));
+            }
+            checked++;
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(10);
+      expect(minVertMargin).toBeGreaterThanOrEqual(0);
+      ht.dispose();
+    }
+
+    // Wild grass hexagon ecotypes vary across >= 4 distinct palettes per biome while graded/prepared remain identical
+    for (const kind of ['forestRock', 'oceanForest', 'dune'] as const) {
+      const seen = new Set<string>();
+      for (let q = -12; q <= 12; q += 2) {
+        for (let rr = -12; rr <= 12; rr += 2) {
+          const st = tileStyle(q, rr, HEX_TERRAIN.flat, HEX_PREP.wild, 0, kind);
+          seen.add(`${Math.round(st.r * 20)},${Math.round(st.g * 20)},${Math.round(st.b * 20)}`);
+        }
+      }
+      expect(seen.size).toBeGreaterThanOrEqual(4);
+      expect(tileStyle(3, -2, HEX_TERRAIN.flat, HEX_PREP.prepared, 0, kind)).toEqual(
+        tileStyle(3, -2, HEX_TERRAIN.flat, HEX_PREP.flat, 0, kind),
+      );
+    }
+
+    // Continuous PlanetSurface 4-stage forest pipeline parity + empty-input boundary
+    expect(applySurfaceForestPipeline([], 'forestRock', 17, 0)).toEqual([]);
+    const cands = [];
+    for (let z = -30; z <= 30; z += 2.2) {
+      for (let x = -30; x <= 30; x += 2.2) {
+        cands.push({ x, y: 1.4, z, rot: 0, s: 0.5, r: 0.5 });
+      }
+    }
+    const surfTrees = applySurfaceForestPipeline(cands, 'oceanForest', 42, 0);
+    expect(surfTrees.length).toBeGreaterThan(40);
+    expect(new Set(surfTrees.map((t) => t.standRegime)).size).toBe(2);
+    expect(new Set(surfTrees.map((t) => t.cohort)).size).toBeGreaterThanOrEqual(2);
   });
 });

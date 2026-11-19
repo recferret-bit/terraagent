@@ -234,6 +234,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const biosphere = createPlanetBiosphere({
     look,
     habitat: buildHexHabitatIndex(radius, chunkLayers(), look, heightAt),
+    waterFauna: water.fauna,
   });
   const ambient = createHexAmbient(look, ext.z);
   group.add(water.group, props.group, flora.group, biosphere.group, borders.mesh, ambient.points);

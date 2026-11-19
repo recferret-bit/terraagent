@@ -2,7 +2,12 @@ import * as THREE from 'three';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../../lighting/ColonyVisionAndLights';
 import { glslFloat } from '../../shaderInject';
 import { getWaterUniforms } from '../waterConfig';
-import { FAUNA_WATER_VERT_GLSL, faunaWaterUniforms } from './faunaWater';
+import {
+  createAquaticThreatUniforms,
+  FAUNA_WATER_VERT_GLSL,
+  faunaWaterUniforms,
+  type AquaticThreatUniforms,
+} from './faunaWater';
 import { JELLY_BOB, JELLY_PULSE_S } from './jellyPlacement';
 
 /**
@@ -31,9 +36,11 @@ const JELLY_VERT_MOTION = /* glsl */ `
 float jPhase = aJelly.x, jScale = aJelly.z;
 float jTh = jPhase * 6.2831853 + aDrift.w * uTime;
 vec2 jC = aDrift.xy + aDrift.z * vec2(cos(jTh), sin(jTh));
+FaunaEvasion jEv = faunaThreatEvade(jC, 1.8);
+jC += jEv.shiftXZ;
 vec2 jVel = aDrift.z * aDrift.w * vec2(-sin(jTh), cos(jTh));
 float jPulseA = (jPhase * 2.0 + uTime / (${glslFloat(JELLY_PULSE_S)} * jScale)) * 6.2831853;
-float jContract = 0.5 + 0.5 * sin(jPulseA);
+float jContract = clamp(0.5 + 0.5 * sin(jPulseA) + jEv.panic * 0.25, 0.0, 1.0);
 vec3 jP = position;
 vec3 objectNormal = normal;
 if (aJel.x < 0.5) {
@@ -48,7 +55,7 @@ if (aJel.x < 0.5) {
   jP.z += cos(uTime * 0.9 + v * 2.2 + jPhase * 5.0) * 0.045 * v * v;
   jP.xz -= jVel * (v * 0.9) / jScale;                // tentacles trail behind the drift
 }
-vec3 jellyPos = vec3(jC.x, -aJelly.y - uFaunaSink + ${glslFloat(JELLY_BOB)} * jScale * sin(jPulseA - 1.2), jC.y) + jP * jScale;
+vec3 jellyPos = vec3(jC.x, -aJelly.y - uFaunaSink - jEv.diveY * 0.75 + ${glslFloat(JELLY_BOB)} * jScale * sin(jPulseA - 1.2), jC.y) + jP * jScale;
 jellyPos.xz += faunaRefractShift(jC, -jellyPos.y); // the image wobbles with the waves above
 vJelPulse = jContract;
 vJelHue = aJelly.w;
@@ -93,7 +100,12 @@ export const JELLY_HUES: readonly [number, number, number] = [0xc4a2ff, 0xff9fcf
 const JELLY_GLOW = 0x7fe9ff;
 
 /** `time` = the water's `uTime`, `deepColor` = the water's deep colour, `sink` = the shared wave sink. */
-export function createJellyMaterial(time: THREE.IUniform, deepColor: THREE.IUniform, sink: THREE.IUniform): THREE.MeshStandardMaterial {
+export function createJellyMaterial(
+  time: THREE.IUniform,
+  deepColor: THREE.IUniform,
+  sink: THREE.IUniform,
+  threats: AquaticThreatUniforms = createAquaticThreatUniforms(),
+): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 0.25, metalness: 0, transparent: true, depthWrite: false, side: THREE.DoubleSide,
   });
@@ -101,6 +113,7 @@ export function createJellyMaterial(time: THREE.IUniform, deepColor: THREE.IUnif
   const c = (hex: number) => ({ value: new THREE.Color(hex) });
   const local: Record<string, THREE.IUniform> = {
     uTime: time, uFaunaSink: sink, uJelDeep: deepColor, uAbsorption: getWaterUniforms().uAbsorption,
+    uThreatCount: threats.uThreatCount, uThreatZones: threats.uThreatZones,
     uJelGlow: { value: 4.5 }, uJelGlowCol: c(JELLY_GLOW),
     uJelHue0: c(JELLY_HUES[0]), uJelHue1: c(JELLY_HUES[1]), uJelHue2: c(JELLY_HUES[2]),
   };

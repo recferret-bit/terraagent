@@ -9,7 +9,7 @@ export const organicAppearanceStage: CheckStage = (ctx) => {
   for (const p of ctx.parts) {
     const d = p.def, t = d.tissue ?? 0;
     tissues.add(t);
-    if (t < 1 || t > 5) ctx.add('error', 'ORGANIC_TISSUE', `${p.label} has no valid anatomical surface profile.`, [d.index]);
+    if (t < 1 || t > 7) ctx.add('error', 'ORGANIC_TISSUE', `${p.label} has no valid anatomical surface profile.`, [d.index]);
     if ((d.metalness ?? 0) > 0.05) ctx.add('warn', 'ORGANIC_METAL', `${p.label} uses metallic tissue; chitin and soil need dielectric highlights.`, [d.index]);
     if (!Number.isFinite(d.roughness) || (d.roughness ?? 0) < 0.1 || (d.roughness ?? 1) > 1)
       ctx.add('error', 'ORGANIC_ROUGHNESS', `${p.label} has an invalid biological roughness.`, [d.index]);

@@ -3,11 +3,13 @@ import { hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import { resetDayNightParams, setDayNight, setDayNightParams } from '../core/dayNightConfig';
 import {
   BIRD_SPECIES_CATALOG,
+  BirdFlockSimulator,
   BIRDS_BY_BIOME,
   buildHexHabitatIndex,
   canBiosphereFaunaAttackPlayer,
   LAND_ANIMAL_SPECIES_CATALOG,
   LAND_ANIMALS_BY_BIOME,
+  LandAnimalSimulator,
 } from './index';
 import {
   createHexTerrain,
@@ -18,6 +20,7 @@ import {
 } from '../planets/hex';
 import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { createPlanetSurface } from '../planets/surface';
+import { evalAquaticThreatEvasion } from '../visuals/water/fauna';
 import { planetFishCap } from '../visuals/water/fauna/faunaPlacement';
 
 function buildRichBiomeTiles(radius: number) {
@@ -269,5 +272,75 @@ describe('Living Planet Biosphere: Water Fauna Ponds & Full-Deforestation Bounds
       expect(hab.isInBounds(animal.x, animal.z)).toBe(true);
     }
     terrain.dispose();
+  });
+});
+
+describe('Living Planet Biosphere: Unified Aquatic Evasion & Behavioral Fidelity', () => {
+  it('propagates aggressor/battle/disturbance evasion to WaterFauna and separates veeFormation, ridgePatrol, corner escape, prowling & grazing micro-steps', () => {
+    // 1. WaterFauna evasion math & unified biosphere threat forwarding
+    expect(evalAquaticThreatEvasion(5, 5, [])).toEqual({ dx: 0, dz: 0, diveY: 0, panic: 0 });
+    expect(evalAquaticThreatEvasion(50, 50, [{ x: 0, z: 0, radius: 12, strength: 1.0 }])).toEqual({ dx: 0, dz: 0, diveY: 0, panic: 0 });
+    const ev = evalAquaticThreatEvasion(3, 0, [{ x: 0, z: 0, radius: 12, strength: 1.2 }]);
+    expect(ev.dx).toBeGreaterThan(0.5);
+    expect(ev.diveY).toBeGreaterThan(0.1);
+    expect(ev.panic).toBeGreaterThan(0.4);
+
+    const tiles = buildRichBiomeTiles(14);
+    const oceanHex = createHexTerrain({ radius: 14, tiles, look: specForPlanetType('ocean') });
+    expect(oceanHex.water.fauna.getThreats()).toHaveLength(0);
+    oceanHex.biosphere.setAggressors([{ x: -12, z: 2, radius: 11, working: true }]);
+    oceanHex.biosphere.noteBattleAt(-10, -4, 14, 5);
+    oceanHex.tick(0.1);
+    expect(oceanHex.water.fauna.getThreats().length).toBeGreaterThanOrEqual(2);
+    oceanHex.dispose();
+
+    // 2. veeFormation vs ridgePatrol produce genuinely distinct 3D trajectories from identical home/angle
+    const hab16 = buildHexHabitatIndex(16, buildRichBiomeTiles(16), specForPlanetType('ocean'), () => 0.3);
+    const birdSim = new BirdFlockSimulator('oceanForest', 77, hab16);
+    const vee = birdSim.flocks.find((f) => f.pattern === 'veeFormation')!;
+    const ridge = birdSim.flocks.find((f) => f.pattern === 'ridgePatrol')!;
+    vee.homeX = 0; vee.homeZ = 0; vee.orbitAngle = 1.1; vee.members[0]!.x = 0; vee.members[0]!.z = 0;
+    ridge.homeX = 0; ridge.homeZ = 0; ridge.orbitAngle = 1.1; ridge.members[0]!.x = 0; ridge.members[0]!.z = 0;
+    for (let k = 0; k < 15; k++) birdSim.step(0.1, hab16, [], []);
+    expect(Math.hypot(vee.members[0]!.x - ridge.members[0]!.x, vee.members[0]!.z - ridge.members[0]!.z)).toBeGreaterThan(1.0);
+
+    // 3. East hex corner escape (`x > halfSize * 0.90`), zero-prey predator prowling & herbivore grazing micro-steps
+    const allGrassTiles = {
+      terrain: new Uint8Array(hexCount(16)).fill(HEX_TERRAIN.flat),
+      prep: new Uint8Array(hexCount(16)).fill(HEX_PREP.wild),
+      height: new Float32Array(hexCount(16)).fill(0.2),
+    };
+    const openHab = buildHexHabitatIndex(16, allGrassTiles, specForPlanetType('temperate'), () => 0.2);
+    const animalSim = new LandAnimalSimulator('forestRock', 91, openHab);
+    const wolf = animalSim.agents.find((a) => a.species.diet === 'predator')!;
+    const [eastCornerX, eastCornerZ] = tileXZ(13, 0); // x = 26 > halfSize * 0.90 (~24.94)
+    expect(eastCornerX).toBeGreaterThan(openHab.halfSize * 0.90);
+    wolf.x = eastCornerX - 4;
+    wolf.z = eastCornerZ;
+    animalSim.step(0.1, 10, openHab, [{ x: eastCornerX - 8, z: eastCornerZ, radius: 10, working: true }], []);
+    expect(wolf.goalX).toBeGreaterThan(openHab.halfSize * 0.90);
+
+    // Remove all herbivores > 200m away so predator has zero prey within 46m -> must still prowl away from home!
+    for (const a of animalSim.agents) {
+      if (a.species.diet !== 'predator') { a.x = -200; a.z = -200; }
+    }
+    wolf.state = 'ROAMING';
+    wolf.x = 0; wolf.z = 0; wolf.homeX = 0; wolf.homeZ = 0; wolf.goalX = 0; wolf.goalZ = 0;
+    for (let k = 0; k < 25; k++) animalSim.step(0.1, 20.5, openHab, [], []); // 20:30 = wolf HUNTING window
+    expect(wolf.state).toBe('HUNTING');
+    expect(Math.hypot(wolf.x, wolf.z)).toBeGreaterThan(1.2);
+
+    // Herbivore already at grazing goal takes slow foraging micro-steps over several seconds while keeping workWeight > 0.5
+    const hare = animalSim.agents.find((a) => a.species.id === 'fauna.meadowHare')!;
+    for (const a of animalSim.agents) {
+      if (a.groupId === hare.groupId) {
+        a.x = 4; a.z = 4; a.homeX = 4; a.homeZ = 4; a.goalX = 4; a.goalZ = 4; a.pauseTimer = 0.1;
+        a.state = 'EATING_GRASS';
+      }
+    }
+    for (let k = 0; k < 30; k++) animalSim.step(0.1, 8.0, openHab, [], []); // 08:00 = hare EATING_GRASS window
+    expect(hare.state).toBe('EATING_GRASS');
+    expect(Math.hypot(hare.x - 4, hare.z - 4)).toBeGreaterThan(0.25);
+    expect(hare.workWeight).toBeGreaterThan(0.5);
   });
 });

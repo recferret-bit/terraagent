@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import type { V3 } from '../unitParts';
 
-/** Tissue codes are shared by the biological surface shader and fauna validator. */
-export type Tissue = 1 | 2 | 3 | 4 | 5;
+/**
+ * Tissue codes shared by the biological surface shader and fauna validator:
+ * 1 = insect chitin, 2 = membrane/skin, 3 = secretory sac, 4 = soil/keratin, 5 = eye/rhinarium,
+ * 6 = mammalian fur pelage, 7 = avian feather plumage.
+ */
+export type Tissue = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 class OrganicGeometry extends THREE.BufferGeometry { override readonly type = 'OrganicGeometry'; }
 

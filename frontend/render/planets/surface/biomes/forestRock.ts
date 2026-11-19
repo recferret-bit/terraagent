@@ -6,6 +6,7 @@ import { createParticles } from '../../../visuals/terrain/Particles';
 import { smoothstep } from '../../../visuals/terrain/noise';
 import { scatterGrid, buildInstanced, createFoliageMaterial } from '../../../visuals/terrain/Scatter';
 import { buildBiomeTreeAtlasGeo } from '../../../visuals/terrain/treeBreeds';
+import { applySurfaceForestPipeline } from '../../hex/flora/forestPipeline';
 import {
   makeBushGeo,
   makeGrassTuftGeo,
@@ -41,25 +42,20 @@ export function buildForestRock(c: SurfaceContext) {
   });
   waterFauna.rebuild(shore);
   waterFauna.group.position.y = level;
+  c.waterFauna = waterFauna;
   c.addLayer(waterFauna.group, {}, waterFauna);
 
   const forestN = (x: number, z: number) => smoothstep(-0.2, 0.3, nz.fbm(x * 0.035, z * 0.035, 3));
-  const trees = scatterGrid(rng, ext, 2.1 * cellMul, (x, z) => {
+  const treeCandidates = scatterGrid(rng, ext, 2.0 * cellMul, (x, z) => {
     const h = heightAt(x, z);
-    if (h < level + 0.65 || c.slopeAt(x, z) > 0.55) return 0;
+    if (h < level + 0.45 || c.slopeAt(x, z) > 0.55) return 0;
     return (0.08 + 0.88 * forestN(x, z)) * c.landingFree(x, z);
   });
-  c.lift(trees);
-  for (const p of trees) {
-    const stand = nz.fbm(p.x * 0.05 + 17, p.z * 0.05 - 11, 2);
-    const mono = nz.n(p.x * 0.04, p.z * 0.04) > 0.15;
-    const wetness = Math.max(0, 1 - (p.y - level) / 2.2);
-    p.breedIndex = wetness > 0.55 ? 3 : mono ? (stand > 0 ? 0 : 2) : Math.floor(((p.r * 4) + (stand > 0 ? 0 : 1)) % 4);
-    p.windMul = p.breedIndex === 3 ? 1.5 : p.breedIndex === 1 ? 1.3 : 0.85;
-  }
+  c.lift(treeCandidates);
+  const trees = applySurfaceForestPipeline(treeCandidates, 'forestRock', c.spec.seed, level);
   c.addMesh(
     buildInstanced(buildBiomeTreeAtlasGeo('forestRock', c.spec.seed), createFoliageMaterial(c.timeU, 0.72, false, true), trees, {
-      sx: [0.56, 0.96], sy: [0.62, 1.15], sink: 0.10, tilt: 0.06, tint: jitter(0.20, 0.14), encodeBreedInColor: true,
+      sx: [0.56, 0.90], sy: [0.60, 1.06], sink: 0.10, tilt: 0.06, tint: jitter(0.20, 0.14), encodeBreedInColor: true,
     }),
   );
 

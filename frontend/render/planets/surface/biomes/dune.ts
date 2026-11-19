@@ -10,6 +10,7 @@ import {
   type Place,
 } from '../../../visuals/terrain/Scatter';
 import { buildBiomeTreeAtlasGeo } from '../../../visuals/terrain/treeBreeds';
+import { applySurfaceForestPipeline } from '../../hex/flora/forestPipeline';
 import {
   makeBarrelCactusGeo,
   makeBushGeo,
@@ -38,21 +39,19 @@ export function buildDune(c: SurfaceContext) {
   }
   c.spires((x, z) => (nz.n(x * 0.05, z * 0.05) > 0.45 ? 0.5 : 0), 24, [0.5, 1.0], [2.5, 6], c.rockTint.clone().lerp(new THREE.Color(c.palette.groundLow), 0.25));
 
-  // Desert endemic trees: Oasis Date Palms in low wadi basins, Sun-Bleached Dry Snags & Joshua-Acacias on dry ridges
-  const duneTrees = scatterGrid(rng, ext, 5.2 * cellMul, (x, z) => {
+  // Desert endemic trees via the shared 4-stage Forest Generation Pipeline:
+  // Oasis Date Palms in low wadi basins, Sun-Bleached Dry Snags & Joshua-Acacias on dry ridges
+  const duneCandidates = scatterGrid(rng, ext, 5.0 * cellMul, (x, z) => {
     if (c.slopeAt(x, z) > 0.52) return 0;
     const oasis = nz.fbm(x * 0.032 + 11, z * 0.032 - 7, 2);
     const lowWadi = heightAt(x, z) < 0.85 ? 0.28 : 0;
-    return (oasis + lowWadi > 0.22 ? 0.55 : 0.06) * c.landingFree(x, z);
+    return (oasis + lowWadi > 0.22 ? 0.58 : 0.07) * c.landingFree(x, z);
   });
-  c.lift(duneTrees);
-  for (const p of duneTrees) {
-    p.breedIndex = p.y < 0.75 ? 0 : p.r > 0.48 ? 2 : 1;
-    p.windMul = p.breedIndex === 0 ? 1.25 : p.breedIndex === 2 ? 0.55 : 0.28;
-  }
+  c.lift(duneCandidates);
+  const duneTrees = applySurfaceForestPipeline(duneCandidates, 'dune', c.spec.seed, null);
   c.addMesh(
     buildInstanced(buildBiomeTreeAtlasGeo('dune', c.spec.seed + 31), createFoliageMaterial(c.timeU, 0.80, true, true), duneTrees, {
-      sx: [0.58, 0.98], sy: [0.62, 1.10], sink: 0.10, tilt: 0.09, tint: jitter(0.16, 0.08), encodeBreedInColor: true,
+      sx: [0.58, 0.94], sy: [0.62, 1.05], sink: 0.10, tilt: 0.08, tint: jitter(0.16, 0.08), encodeBreedInColor: true,
     }),
   );
 

@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { ArchetypeCatalog } from '../kitbash';
+import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { ProceduralTextureRegistry, type ProceduralPBRBundle } from './ProceduralTextureRegistry';
+import { createFoliageMaterial } from './terrain/Scatter';
+import { terrainUniforms } from './terrain/terrainMaterial';
+import { createUnifiedColonyMaterial } from './UnifiedColonyMaterial';
 
 describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR presets', () => {
   it('re-registering a preset drops every cached size, so the new generator is used', () => {
@@ -34,5 +39,40 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
       expect(bundle.normalMap!.wrapS).toBe(THREE.RepeatWrapping);
       expect(bundle.normalMap!.wrapT).toBe(THREE.RepeatWrapping);
     }
+  });
+
+  it('wires all 4 biosphere PBR presets and fur/plumage tissues into runtime materials and meshes', () => {
+    const { material: uniMat, uniforms: uniU } = createUnifiedColonyMaterial({ biome: 'temperate' });
+    expect(uniU.uFurPelageMap?.value).toBe(ProceduralTextureRegistry.get('warmFurPelage', 128).map);
+    expect(uniU.uFurRoughnessMap?.value).toBe(ProceduralTextureRegistry.get('warmFurPelage', 128).roughnessMap);
+
+    const foliageMat = createFoliageMaterial({ value: 0 }, 0.75, false, true);
+    const mockFolSh = {
+      uniforms: {} as Record<string, THREE.IUniform>,
+      vertexShader: '#include <common>\nvoid main() {\n#include <color_vertex>\n#include <begin_vertex>\n}',
+      fragmentShader:
+        '#include <common>\nvoid main() {\n#include <color_fragment>\n#include <roughnessmap_fragment>\n#include <emissivemap_fragment>\n#include <fog_fragment>\n}',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    foliageMat.onBeforeCompile(mockFolSh, null as unknown as THREE.WebGLRenderer);
+    expect(mockFolSh.uniforms.uBarkMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).map);
+    expect(mockFolSh.uniforms.uBarkRoughMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).roughnessMap);
+
+    const terrU = terrainUniforms(PLANET_SPECS.forestRock, 0, 128, [1, 0]);
+    expect(terrU.uMeadowDetailMap?.value).toBe(ProceduralTextureRegistry.get('meadowGrassClover', 128).map);
+    expect(terrU.uDesertCrustMap?.value).toBe(ProceduralTextureRegistry.get('desertPebbleCrust', 128).map);
+    (terrU.uTerraformMap.value as THREE.Texture).dispose();
+
+    // Warm-blooded mammals stamp tissue = 6 (pelage); birds stamp tissue = 7 (plumage)
+    const wolfOrg = ArchetypeCatalog.getGeometry('fauna.timberWolf').getAttribute('aOrganic');
+    const hawkOrg = ArchetypeCatalog.getGeometry('fauna.bird.highlandHawk').getAttribute('aOrganic');
+    let hasFur = false;
+    let hasPlumage = false;
+    for (let i = 0; i < wolfOrg.count; i++) if (Math.abs(wolfOrg.getX(i) - 6) < 0.1) hasFur = true;
+    for (let i = 0; i < hawkOrg.count; i++) if (Math.abs(hawkOrg.getX(i) - 7) < 0.1) hasPlumage = true;
+    expect(hasFur).toBe(true);
+    expect(hasPlumage).toBe(true);
+
+    foliageMat.dispose();
+    uniMat.dispose();
   });
 });

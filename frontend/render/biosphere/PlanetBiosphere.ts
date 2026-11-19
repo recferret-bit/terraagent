@@ -6,6 +6,11 @@ import { ArchetypeCatalog } from '../kitbash';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { useBiosphereInstanceAttributes } from '../visuals/unified/instancedBiosphere';
+import {
+  MAX_AQUATIC_THREATS,
+  type AquaticThreatZone,
+  type WaterFauna,
+} from '../visuals/water/fauna';
 import { BirdFlockSimulator } from './BirdFlockSim';
 import { LandAnimalSimulator } from './LandAnimalSim';
 import type {
@@ -60,6 +65,37 @@ function makeSpeciesMeshSlot(
 export interface CreatePlanetBiosphereOptions {
   look: PlanetSpec;
   habitat: BiosphereHabitatIndex;
+  /** Optional swimming water fauna handle so fish/rays/jellies react to the same unified conqueror & battle threats. */
+  waterFauna?: WaterFauna | null;
+}
+
+function buildAquaticThreatZones(
+  aggressors: readonly BiosphereAggressor[],
+  battles: readonly BiosphereBattleHotspot[],
+  disturbances: readonly BiosphereBattleHotspot[],
+  habitat: BiosphereHabitatIndex,
+): AquaticThreatZone[] {
+  const zones: AquaticThreatZone[] = [];
+  for (const bat of battles) {
+    zones.push({ x: bat.x, z: bat.z, radius: bat.radius + 10, strength: 1.35 });
+  }
+  for (const ds of disturbances) {
+    zones.push({ x: ds.x, z: ds.z, radius: ds.radius + 8, strength: 1.15 });
+  }
+  for (const ag of aggressors) {
+    zones.push({
+      x: ag.x,
+      z: ag.z,
+      radius: (ag.radius ?? 11) + (ag.working ? 5 : 2),
+      strength: ag.working ? 1.15 : 0.85,
+    });
+  }
+  for (let i = 0; i < habitat.colonizedAnchors.length && zones.length < MAX_AQUATIC_THREATS; i += 4) {
+    const col = habitat.colonizedAnchors[i]!;
+    zones.push({ x: col.x, z: col.z, radius: 9, strength: 0.65 });
+  }
+  zones.sort((a, b) => b.strength - a.strength);
+  return zones.slice(0, MAX_AQUATIC_THREATS);
 }
 
 interface TransformScratch {
@@ -220,6 +256,9 @@ export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): Plane
       const solarHour24 = resolveSolarHour24(timeOverride01, elapsed);
       birdSim.step(safeDt, habitat, aggressors, battles, disturbances);
       animalSim.step(safeDt, solarHour24, habitat, aggressors, battles, disturbances);
+      if (opts.waterFauna) {
+        opts.waterFauna.setThreats(buildAquaticThreatZones(aggressors, battles, disturbances, habitat));
+      }
       const bounded = viewFocusBounded();
       syncBirdMeshSlots(birdSlots, birdSim, bounded, scratch);
       syncAnimalMeshSlots(animalSlots, animalSim, bounded, scratch);

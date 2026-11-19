@@ -136,13 +136,28 @@ function computeLeaderTarget(flock: BirdFlock, elapsed: number, groundY: number)
         groundY + sp.altitude[0] + Math.abs(Math.sin(elapsed * 1.6 + flock.id)) * 1.3,
         flock.homeZ + Math.sin(a * 0.85) * r * 0.78,
       ];
-    case 'veeFormation':
-    case 'ridgePatrol':
+    case 'veeFormation': {
+      const migAng = (flock.id * 1.047) % Math.PI;
+      const u = Math.cos(a * 0.36) * r * 1.62;
+      const v = Math.sin(a * 0.36) * r * 0.44;
+      const cm = Math.cos(migAng), sm = Math.sin(migAng);
       return [
-        flock.homeX + Math.cos(a * 0.45) * r,
-        midAlt + Math.sin(a * 0.9) * 1.2,
-        flock.homeZ + Math.sin(a * 0.45) * r * 0.82,
+        flock.homeX + cm * u - sm * v,
+        midAlt + Math.sin(a * 0.36 + flock.id) * 0.55,
+        flock.homeZ + sm * u + cm * v,
       ];
+    }
+    case 'ridgePatrol': {
+      const ridgeAng = (flock.id * 1.37 + 0.5) % Math.PI;
+      const u = Math.sin(a * 0.52) * r * 1.38;
+      const v = Math.sin(a * 1.04) * r * 0.22;
+      const cr = Math.cos(ridgeAng), sr = Math.sin(ridgeAng);
+      return [
+        flock.homeX + cr * u - sr * v,
+        midAlt + Math.cos(a * 1.04 + flock.id) * 1.85,
+        flock.homeZ + sr * u + cr * v,
+      ];
+    }
   }
 }
 

@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../../lighting/ColonyVisionAndLights';
 import { getWaterUniforms } from '../waterConfig';
-import { FAUNA_WATER_VERT_GLSL, faunaWaterUniforms } from './faunaWater';
+import {
+  createAquaticThreatUniforms,
+  FAUNA_WATER_VERT_GLSL,
+  faunaWaterUniforms,
+  type AquaticThreatUniforms,
+} from './faunaWater';
 import { BOB_AMP, DART_GAIN, DART_PERIOD, DART_START, PATH_WOBBLE } from './faunaPlacement';
 
 /**
@@ -57,10 +62,15 @@ vec2 fP0 = fishLoop(fPhase, fTh);
 vec2 fFwd = normalize(fishLoop(fPhase, fTh + 0.05 * fDir) - fP0);
 vec2 fSide = vec2(-fFwd.y, fFwd.x);
 vec2 fC = fP0 + fFwd * aOffset.x + fSide * aOffset.y;
+FaunaEvasion fEv = faunaThreatEvade(fC, min(aSwim.z * 0.9 + 1.4, 2.8));
+fC += fEv.shiftXZ;
+if (fEv.panic > 0.02 && length(fEv.shiftXZ) > 0.01) {
+  fFwd = normalize(mix(fFwd, normalize(fEv.shiftXZ), min(0.88, fEv.panic * 0.85)));
+}
 float fL = aBody.x;
 float fFreq = isRay > 0.5 ? 3.2 : (fSp > 1.5 ? 10.5 : (fSp > 0.5 ? 4.2 : 8.5));
-float fWig = fFreq * fClk + aOffset.w * 6.2831853 - fL * 4.0;
-float fAmpK = 0.8 + 0.5 * min(fBurst, 2.0);
+float fWig = fFreq * (fClk + fEv.panic * 0.45) + aOffset.w * 6.2831853 - fL * 4.0;
+float fAmpK = 0.8 + 0.5 * min(fBurst, 2.0) + fEv.panic * 1.35;
 float fAmp = (0.02 + 0.11 * fL * fL) * fAmpK * (1.0 - 0.65 * isRay);
 vec3 fLocal = position;
 if (isRay > 0.5) {
@@ -80,7 +90,7 @@ float fYawC = cos(fBend), fYawS = sin(fBend);
 vec2 fHx = vec2(fFwd.y * fYawC + fFwd.x * fYawS, fFwd.x * fYawC - fFwd.y * fYawS);
 vec3 fN = vec3(normal.x * fHx.x + normal.z * fHx.y, normal.y, -normal.x * fHx.y + normal.z * fHx.x);
 vec3 fS = fLocal * aFish.z;
-float effSink = uFaunaSink * fishSinkFactor(aFish.y);
+float effSink = uFaunaSink * fishSinkFactor(aFish.y) + fEv.diveY * fishSinkFactor(aFish.y + 0.12);
 vec3 fishPos = vec3(fC.x + fS.x * fFwd.y + fS.z * fFwd.x,
   -aFish.y - effSink + aOffset.z + ${f(BOB_AMP)} * sin(uTime * 1.1 + fPhase * 17.0) + fS.y,
   fC.y - fS.x * fFwd.x + fS.z * fFwd.y);
@@ -160,6 +170,7 @@ export function createFishMaterial(
   deepColor: THREE.IUniform,
   sink: THREE.IUniform,
   biomeKind = 'forestRock',
+  threats: AquaticThreatUniforms = createAquaticThreatUniforms(),
 ): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0.24 });
   m.name = 'waterFauna';
@@ -167,6 +178,7 @@ export function createFishMaterial(
   const c = (hex: number) => ({ value: new THREE.Color(hex) });
   const local: Record<string, THREE.IUniform> = {
     uTime: time, uFaunaSink: sink, uFishDeep: deepColor, uAbsorption: getWaterUniforms().uAbsorption, uFishGlow: { value: 1.75 },
+    uThreatCount: threats.uThreatCount, uThreatZones: threats.uThreatZones,
     uFishBack0: c(pal[0].back), uFishBelly0: c(pal[0].belly), uFishAccent0: c(pal[0].accent),
     uFishBack1: c(pal[1].back), uFishBelly1: c(pal[1].belly), uFishAccent1: c(pal[1].accent),
     uFishBack2: c(pal[2].back), uFishBelly2: c(pal[2].belly), uFishAccent2: c(pal[2].accent),

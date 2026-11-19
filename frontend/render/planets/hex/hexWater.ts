@@ -68,12 +68,7 @@ export function hexWaterCodeAt(radius: number, codes: ArrayLike<number>): WaterC
   };
 }
 
-/** Creates the animated hydro water over Shallow and Deep hex tiles: spatial surface buckets sharing one material. */
-export function createHexWater(radius: number, look: PlanetSpec, initialLayers: HexTileLayers): HexWater {
-  const ext = planetExtent(radius);
-  const span = Math.max(16, ext.x * 2.2);
-  const field = createShoreField(span);
-  const fieldTex = createShoreFieldTexture(field.res);
+function buildHexWaterLayers(radius: number, look: PlanetSpec, span: number, fieldTex: THREE.DataTexture) {
   const deepCol = look.palette.waterDeep ?? 0x10344a;
   const water = createWaterMaterial({
     shallow: look.palette.water ?? 0x38858f, deep: deepCol, sky: look.sky.skyColor, heightTex: fieldTex, span,
@@ -99,8 +94,17 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
     biomeKind: look.kind,
   });
   group.add(surface.group, fauna.group, waterfalls.group);
-  // Mirror pass: plane = the group's y (the level); hides surface + fauna; bounds = the buckets `cullToFocus` left shown.
   const offReflect = registerReflectiveWater({ object: group, parts: () => surface.meshes });
+  return { water, surface, waterfallMat, waterfalls, group, fauna, offReflect };
+}
+
+/** Creates the animated hydro water over Shallow and Deep hex tiles: spatial surface buckets sharing one material. */
+export function createHexWater(radius: number, look: PlanetSpec, initialLayers: HexTileLayers): HexWater {
+  const ext = planetExtent(radius);
+  const span = Math.max(16, ext.x * 2.2);
+  const field = createShoreField(span);
+  const fieldTex = createShoreFieldTexture(field.res);
+  const { water, surface, waterfallMat, waterfalls, group, fauna, offReflect } = buildHexWaterLayers(radius, look, span, fieldTex);
 
   const hasWater = look.kind !== 'dune';
   let waterTileCount = 0;

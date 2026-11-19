@@ -77,7 +77,7 @@ function addMammalHeadAndNeck(b: KitbashBuilder, s: MammalRigSpec): { neckPivot:
           neckEnd,
         ],
         [nR * 0.80, nR * 0.74, nR * 0.66],
-        1,
+        6,
         5,
         6,
       ),
@@ -86,7 +86,7 @@ function addMammalHeadAndNeck(b: KitbashBuilder, s: MammalRigSpec): { neckPivot:
     );
   }
 
-  b.addPart(organ(s.headSize, 1, 5.2, 0.01, 9), 'hullPrimary', {
+  b.addPart(organ(s.headSize, 6, 5.2, 0.01, 9), 'hullPrimary', {
     name: 'cranium',
     position: headCenter,
     ...headAnim,
@@ -136,7 +136,7 @@ function addMammalTail(b: KitbashBuilder, s: MammalRigSpec): void {
     ...tailAnim,
   });
   const tailStart: V3 = [tailPivot[0], tailPivot[1], tailPivot[2] - tR * 0.70];
-  b.addPart(tendril([tailStart, ...s.tailPts], s.tailRadii, 1, 6, 6), 'hullSecondary', {
+  b.addPart(tendril([tailStart, ...s.tailPts], s.tailRadii, 6, 6, 6), 'hullSecondary', {
     name: 'tail',
     role: 'whip',
     ...tailAnim,
@@ -168,7 +168,7 @@ function buildMammalCore(b: KitbashBuilder, s: MammalRigSpec): { neckPivot: V3; 
     ...bodyAnim,
   });
   b.addPart(
-    organ([ribX * 0.56, s.chestR[1] * 0.38, s.chestR[2] * 0.58], 2, 3.4, 0.01, 8),
+    organ([ribX * 0.56, s.chestR[1] * 0.38, s.chestR[2] * 0.58], 6, 3.4, 0.01, 8),
     'hullSecondary',
     { name: 'ventral brisket pelage', position: [0, s.torsoY - s.chestR[1] * 0.68, s.chestZ + s.chestR[2] * 0.16], ...bodyAnim },
   );
@@ -245,7 +245,7 @@ register({
       tailPts: [[0, 0.56, -0.58], [0, 0.52, -0.65]],
       tailRadii: [0.045, 0.038, 0.020],
     });
-    b.addPart(organ([0.16, 0.075, 0.15], 1, 8.4, 0.01, 8), 'hullSecondary', {
+    b.addPart(organ([0.16, 0.075, 0.15], 6, 8.4, 0.01, 8), 'hullSecondary', {
       name: 'scapular muscle hump',
       position: [0, 0.78, 0.18],
       animType: 8,
@@ -458,7 +458,7 @@ register({
       tailPts: [[0, 0.74, -0.58], [0, 0.56, -0.66]],
       tailRadii: [0.030, 0.022, 0.028],
     });
-    b.addPart(organ([0.13, 0.13, 0.19], 1, 9.2, 0.015, 9), 'hullSecondary', {
+    b.addPart(organ([0.13, 0.13, 0.19], 6, 9.2, 0.015, 9), 'hullSecondary', {
       name: 'dorsal fat hump',
       position: [0, 1.07, -0.02],
       animType: 8,

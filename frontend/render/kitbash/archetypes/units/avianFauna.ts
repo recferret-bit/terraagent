@@ -64,7 +64,7 @@ function addAvianHeadAndBeak(b: KitbashBuilder, s: BirdAnatomySpec, flyY: number
         neckEnd,
       ],
       [neckR * 1.08, neckR * 0.92, neckR * 0.82],
-      1,
+      7,
       5,
       6,
     ),
@@ -72,7 +72,7 @@ function addAvianHeadAndBeak(b: KitbashBuilder, s: BirdAnatomySpec, flyY: number
     { name: 'avian neck', ...bob },
   );
 
-  b.addPart(organ(s.headR, 1, 3.6, 0.01, 9), 'hullPrimary', {
+  b.addPart(organ(s.headR, 7, 3.6, 0.01, 9), 'hullPrimary', {
     name: 'avian head',
     position: headPos,
     ...bob,
@@ -80,7 +80,7 @@ function addAvianHeadAndBeak(b: KitbashBuilder, s: BirdAnatomySpec, flyY: number
 
   if (s.crestHeight && s.crestHeight > 0) {
     b.addPart(
-      organ([s.headR[0] * 0.36, s.crestHeight * 0.55, s.headR[2] * 0.75], 1, 4.2, 0.02, 7),
+      organ([s.headR[0] * 0.36, s.crestHeight * 0.55, s.headR[2] * 0.75], 7, 4.2, 0.02, 7),
       'hullSecondary',
       {
         name: 'crown feather crest',
@@ -120,7 +120,7 @@ function addAvianTailAndTalons(b: KitbashBuilder, s: BirdAnatomySpec, flyY: numb
     for (const side of [-1, 1] as const) {
       const dir = side > 0 ? 'right' : 'left';
       b.addPart(
-        organ([tailSpread * 0.38, 0.016, tailLen * 0.56], 1, side + 5, 0.03, 8),
+        organ([tailSpread * 0.38, 0.016, tailLen * 0.56], 7, side + 5, 0.03, 8),
         'hullSecondary',
         {
           name: `${dir} forked rectrix feather`,
@@ -132,7 +132,7 @@ function addAvianTailAndTalons(b: KitbashBuilder, s: BirdAnatomySpec, flyY: numb
     }
   } else {
     b.addPart(
-      organ([tailSpread, 0.018, tailLen * 0.54], 1, 6.1, 0.03, 8),
+      organ([tailSpread, 0.018, tailLen * 0.54], 7, 6.1, 0.03, 8),
       'hullSecondary',
       {
         name: 'fanned tail rectrices',
@@ -169,13 +169,13 @@ function buildAvianBody(b: KitbashBuilder, s: BirdAnatomySpec): void {
   const flyY = s.flyY ?? 0.65;
   const bob: PartOptions = { animType: 2, animPivot: [0, flyY, 0] };
 
-  b.addPart(organ(s.torsoR, 1, 1.2, 0.018, 10), 'hullPrimary', {
+  b.addPart(organ(s.torsoR, 7, 1.2, 0.018, 10), 'hullPrimary', {
     name: 'pectoral body',
     position: [0, flyY, 0],
     ...bob,
   });
   b.addPart(
-    organ([s.torsoR[0] * 0.64, s.torsoR[1] * 0.70, s.torsoR[2] * 0.80], 2, 2.4, 0.01, 8),
+    organ([s.torsoR[0] * 0.64, s.torsoR[1] * 0.70, s.torsoR[2] * 0.80], 7, 2.4, 0.01, 8),
     'hullSecondary',
     { name: 'ventral breast plumage', position: [0, flyY - s.torsoR[1] * 0.34, s.torsoR[2] * 0.08], ...bob },
   );

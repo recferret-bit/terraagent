@@ -3,6 +3,7 @@ import { ORGANIC_NORMAL } from './unified/organicSurface';
 import * as THREE from 'three';
 import { onColonyShaderTune } from '../core/shadowConfig';
 import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
+import { ProceduralTextureRegistry } from './ProceduralTextureRegistry';
 import { BiomeMaterialRegistry, ShaderPluginRegistry, type ShaderModifierPlugin } from './unified/registries';
 import {
   VERT_COMMON, vertBeginVertex, FRAG_COMMON, fragColor, FRAG_ROUGHNESS, FRAG_METALNESS, FRAG_RIM,
@@ -97,11 +98,13 @@ export function createUnifiedColonyMaterial(
 ): { material: THREE.MeshStandardMaterial; depthMaterial: THREE.MeshDepthMaterial; uniforms: UnifiedColonyMaterialUniforms } {
   const biome = BiomeMaterialRegistry.getBiome(options.biome ?? 'desert');
   const baseWeathering = biome.weatheringIntensity;
+  const furPelage = ProceduralTextureRegistry.get('warmFurPelage', 128);
   const uniforms: UnifiedColonyMaterialUniforms = {
     uShadowNormalBias: { value: options.shadowNormalBias ?? 0 }, uTime: { value: 0 }, uWalkWeight: { value: 1.0 }, uWorkWeight: { value: 0.0 },
     uBiomeDustColor: { value: new THREE.Color(biome.dustColor) }, uRimTint: { value: new THREE.Color(biome.rimTint) },
     uWeatheringHeight: { value: biome.weatheringHeight }, uWeatheringIntensity: { value: baseWeathering },
     uTriplanarScale: { value: options.triplanarScale ?? 2.0 }, uRimStrength: { value: options.rimStrength ?? 0.28 },
+    uFurPelageMap: { value: furPelage.map! }, uFurRoughnessMap: { value: furPelage.roughnessMap! },
   };
 
   const pluginNames = [...new Set([...(options.plugins ?? []), ...(options.ruin !== undefined ? [RUIN_VARIANT] : [])])];

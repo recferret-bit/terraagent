@@ -6,6 +6,7 @@ import { Noise2, mulberry32, smoothstep } from '../../visuals/terrain/noise';
 import {
   scatterGrid, buildInstanced, createRockMaterial, makeBoulderGeo, makeSpireGeo, type Place,
 } from '../../visuals/terrain/Scatter';
+import type { WaterFauna } from '../../visuals/water/fauna';
 
 /** Brightness/hue jitter relative to the geometry's baked vertex colours. */
 export const jitter = (amt: number, hueShift = 0) => (r: number, c: THREE.Color) => {
@@ -36,6 +37,7 @@ export class SurfaceContext {
   readonly rockMat = createRockMaterial({ rough: 0.92 });
   readonly rockTint: THREE.Color;
   readonly darkTint: THREE.Color;
+  waterFauna: WaterFauna | null = null;
 
   constructor(readonly spec: PlanetSpec, opts?: { halfSize?: number; quality?: 'low' | 'high' }) {
     this.half = opts?.halfSize ?? 64;

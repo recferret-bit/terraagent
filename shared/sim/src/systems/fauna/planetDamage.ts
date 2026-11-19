@@ -25,6 +25,7 @@ export interface ColonyPlanetDamageSummary {
   depositsMined: number;
   industrialPollution: number;
   hivesHarmed: number;
+  faunaKilled: number;
   scheduledRaidBonus: number;
 }
 
@@ -32,6 +33,7 @@ const EMPTY_LEDGER: Readonly<ColonyPlanetDamageLedger> = {
   forestCleared: 0,
   tilesTerraformed: 0,
   hivesHarmed: 0,
+  faunaKilled: 0,
   lastProcessedTick: -1,
 };
 
@@ -133,17 +135,19 @@ export function computeColonyPlanetDamage(
   const { alteredOwnedTiles, drainedDeposits } = countGridEcologicalFootprint(state, colonyIndex);
   const industrialPollution = computeIndustrialPollutionScore(state, colonyIndex);
   const effectiveTerraformed = Math.max(ledger.tilesTerraformed, Math.min(20, Math.floor(alteredOwnedTiles / 3)));
+  const faunaKilled = ledger.faunaKilled ?? 0;
 
   const damageScore =
     ledger.forestCleared * 5 +
     effectiveTerraformed * 2 +
     drainedDeposits * 4 +
     industrialPollution +
-    ledger.hivesHarmed * 18;
+    ledger.hivesHarmed * 18 +
+    faunaKilled * 4;
 
   const damagedEnough = damageScore >= PLANET_DAMAGE_AGGRESSION_THRESHOLD;
   const scheduledRaidBonus = damagedEnough
-    ? Math.min(0.65, ledger.forestCleared * 0.025 + effectiveTerraformed * 0.006 + drainedDeposits * 0.015)
+    ? Math.min(0.65, ledger.forestCleared * 0.025 + effectiveTerraformed * 0.006 + drainedDeposits * 0.015 + faunaKilled * 0.015)
     : 0;
 
   return {
@@ -156,6 +160,7 @@ export function computeColonyPlanetDamage(
     depositsMined: drainedDeposits,
     industrialPollution,
     hivesHarmed: ledger.hivesHarmed,
+    faunaKilled,
     scheduledRaidBonus,
   };
 }
@@ -219,6 +224,14 @@ export function ingestEcologicalDamageEvents(
       entry.hivesHarmed += 1;
       entry.lastProcessedTick = tick;
       dirty = true;
+    } else if (ev.kind === 'faunaKilled') {
+      const count = typeof d.count === 'number' && d.count > 1 ? Math.round(d.count) : 1;
+      entry.faunaKilled = (entry.faunaKilled ?? 0) + count;
+      entry.lastProcessedTick = tick;
+      dirty = true;
+      if (typeof d.q === 'number' && typeof d.r === 'number') {
+        touchedHabitats.push({ colonyIndex, q: d.q, r: d.r });
+      }
     }
   }
 
