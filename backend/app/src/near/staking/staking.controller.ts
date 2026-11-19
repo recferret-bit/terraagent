@@ -8,6 +8,7 @@ import {
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import type { IncomingMessage } from 'node:http';
+import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException, ZodPipe } from '../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
@@ -40,6 +41,7 @@ export class StakingController {
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {}
 
   @Get('staking')
@@ -138,6 +140,7 @@ export class StakingController {
       port: 'Staking',
       colonyId,
       ownerPlayerIdHint,
+      antiCheat: this.antiCheat,
     });
   }
 

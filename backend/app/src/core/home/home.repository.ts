@@ -64,6 +64,7 @@ const seatsOf = (p: PlanetRecord) => Math.min(p.capacity, MAX_COLONIES_PER_PLANE
 export class HomeRepository {
   private readonly store: HomeStore;
   private readonly cache = new Map<string, ColonyRecord>();
+  private readonly latestByPlayerPlanet = new Map<string, ColonyRecord>();
 
   constructor(
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
@@ -133,17 +134,25 @@ export class HomeRepository {
     return undefined;
   }
 
+  async findFreeSlotOnPlanet(
+    planetId: string,
+    skip?: ReadonlySet<number>,
+  ): Promise<{ planet: PlanetRecord; colonyIndex: number } | null> {
+    const planet = await this.store.findPlanet(planetId);
+    if (!planet || isEnded(planet)) return null;
+    const slot = await this.freeColonyIndex(planet, skip);
+    return slot !== undefined ? { planet, colonyIndex: slot } : null;
+  }
+
   async findLatestColonyByPlayerId(playerId: string): Promise<ColonyRecord | null> {
     return this.remember(await this.store.findLatestColony(playerId));
   }
 
-  /** The player's colony on the planet: the cached one when known (WS ingress, every command), else from the store. */
+  /** The player's colony on the planet: O(1) hash lookup in `latestByPlayerPlanet`, else from the store. */
   async findColonyByPlayerAndPlanet(playerId: string, planetId: string): Promise<ColonyRecord | null> {
-    let latest: ColonyRecord | null = null;
-    for (const c of this.cache.values()) {
-      if (c.playerId === playerId && c.planetId === planetId && (!latest || c.createdAt.getTime() >= latest.createdAt.getTime())) latest = c;
-    }
-    return latest ?? this.remember(await this.store.findLatestColony(playerId, planetId));
+    const cached = this.latestByPlayerPlanet.get(`${playerId}\0${planetId}`);
+    if (cached) return cached;
+    return this.remember(await this.store.findLatestColony(playerId, planetId));
   }
 
   async findColonyById(id: string): Promise<ColonyRecord | null> {
@@ -189,13 +198,27 @@ export class HomeRepository {
 
   /** Removes a colony whose landing failed (seat rollback) and recounts its planet's seats. */
   async deleteColony(colonyId: string): Promise<void> {
+    const prev = this.cache.get(colonyId);
     this.cache.delete(colonyId);
+    if (prev) {
+      const ppKey = `${prev.playerId}\0${prev.planetId}`;
+      if (this.latestByPlayerPlanet.get(ppKey)?.id === colonyId) {
+        this.latestByPlayerPlanet.delete(ppKey);
+        for (const c of this.cache.values()) {
+          if (c.playerId === prev.playerId && c.planetId === prev.planetId) {
+            const cur = this.latestByPlayerPlanet.get(ppKey);
+            if (!cur || c.createdAt.getTime() >= cur.createdAt.getTime()) this.latestByPlayerPlanet.set(ppKey, c);
+          }
+        }
+      }
+    }
     await this.store.deleteColony(colonyId);
   }
 
   /** Dev wipe of a planet: deletes its colony rows (and their cache entries); returns how many. */
   async deleteColoniesOfPlanet(planetId: string): Promise<number> {
     for (const [id, c] of this.cache) if (c.planetId === planetId) this.cache.delete(id);
+    for (const [k, c] of this.latestByPlayerPlanet) if (c.planetId === planetId) this.latestByPlayerPlanet.delete(k);
     return this.store.deleteColoniesOfPlanet(planetId);
   }
 
@@ -216,7 +239,14 @@ export class HomeRepository {
   }
 
   private remember<T extends ColonyRecord | null>(colony: T): T {
-    if (colony) this.cache.set(colony.id, colony);
+    if (colony) {
+      this.cache.set(colony.id, colony);
+      const ppKey = `${colony.playerId}\0${colony.planetId}`;
+      const cur = this.latestByPlayerPlanet.get(ppKey);
+      if (!cur || cur.id === colony.id || colony.createdAt.getTime() >= cur.createdAt.getTime()) {
+        this.latestByPlayerPlanet.set(ppKey, colony);
+      }
+    }
     return colony;
   }
 }

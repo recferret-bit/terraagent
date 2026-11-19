@@ -13,6 +13,7 @@ import { ColonyAgentLoopService } from '../ai/colony-agent/colony-agent-loop.ser
 import { AiAttestationController } from '../ai/colony-agent/ai-attestation.controller';
 import { TeeAttestationStore } from '../ai/colony-agent/tee-attestation.store';
 import { EconomySimService } from '../ai/economy-sim/economy-sim.service';
+import { SectorAntiCheatService } from '../core/anticheat';
 import { HomeService } from '../core/home/home.service';
 import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
@@ -159,6 +160,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   private unsubDigest: (() => void) | undefined;
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
+  private unsubAntiCheat: (() => void) | undefined;
   private readonly log: Logger;
 
   constructor(
@@ -177,6 +179,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly hardMode: HardModeClock,
     private readonly colonyAgentLoop: ColonyAgentLoopService,
     @Optional() private readonly homeService?: HomeService,
+    @Optional() private readonly antiCheat?: SectorAntiCheatService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
   }
@@ -198,6 +201,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       if (this.env.NODE_ENV !== 'test') this.colonyAgentLoop.start();
     }
     await this.pool.start();
+    this.unsubAntiCheat = this.wireAntiCheat();
     this.unsubBridge = bridgePlanetEvents(
       this.planets,
       this.bus,
@@ -292,8 +296,29 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     }
   }
 
+  private wireAntiCheat(): (() => void) | undefined {
+    const ac = this.antiCheat;
+    if (!ac) return undefined;
+    this.planets.onPlanetLoaded((planetId) => {
+      void this.planets.fullState(planetId, 2000).then(
+        (full) => ac.syncFromSnapshotBytes(planetId, full.bytes),
+        () => undefined,
+      );
+    });
+    this.planets.onPlanetSnapshot((planetId, s) => ac.syncFromSnapshotBytes(planetId, s.bytes));
+    this.planets.onPlanetUnloaded((planetId) => ac.removePlanet(planetId));
+    const offEvents = this.planets.onEvents((planetId, events) => ac.applyPlanetEvents(planetId, events));
+    const offDown = this.planets.onPlanetDown((planetId) => ac.removePlanet(planetId));
+    return () => {
+      offEvents();
+      offDown();
+    };
+  }
+
   async onApplicationShutdown(): Promise<void> {
     this.colonyAgentLoop.stop();
+    this.unsubAntiCheat?.();
+    this.unsubAntiCheat = undefined;
     this.unsubBridge?.();
     this.unsubBridge = undefined;
     this.unsubDigest?.();

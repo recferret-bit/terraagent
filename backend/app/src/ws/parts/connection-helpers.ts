@@ -9,6 +9,11 @@ import {
 import type { RawData } from 'ws';
 import type { AwayDigestService } from '../../game/digest';
 import type { FullState, GamePlanets } from '../../game/game-planets.service';
+import {
+  inferAuthoritativeBaseSector,
+  isValidSectorIdFormat,
+  type SectorAntiCheatService,
+} from '../../core/anticheat';
 import { DEFAULT_HOME, type HomeProvider } from '../home-provider';
 import type { VerifiedSession } from '../session-verifier';
 import { welcomeFields } from '../welcome-digest';
@@ -72,6 +77,206 @@ export async function resolveConnectionHome(
     log.warn({ err: e, playerId }, 'home lookup failed: answered as NEW (a join is refused until it works)');
     return DEFAULT_HOME;
   }
+}
+
+export async function verifyConnectionJoin(opts: {
+  readonly homeProvider: HomeProvider | undefined;
+  readonly antiCheat: SectorAntiCheatService | undefined;
+  readonly log: Logger;
+  readonly playerId: string | undefined;
+  readonly planetId: string;
+  readonly requestedSectorId?: string;
+  readonly requestedColonyId?: string;
+  readonly dev: boolean;
+  readonly isScenarioPlanet: boolean;
+}): Promise<
+  | {
+      readonly ok: true;
+      readonly colonyId: string | null;
+      readonly colonyIndex?: number;
+      readonly sectorId?: string;
+      readonly bindingHash?: string;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: string;
+    }
+> {
+  const { homeProvider, antiCheat, log, playerId, planetId, requestedSectorId, requestedColonyId, dev, isScenarioPlanet } = opts;
+  const trimmedSector = requestedSectorId?.trim() || undefined;
+  if (trimmedSector && !isValidSectorIdFormat(trimmedSector)) {
+    antiCheat?.recordRejection('ws', 'join', 'invalid_sector');
+    return { ok: false, reason: 'invalid_sector' };
+  }
+
+  const fastActive = playerId ? antiCheat?.index.getActiveBaseByPlayer(playerId) : undefined;
+  const fastLatest = playerId ? antiCheat?.index.getLatestBindingByPlayer(playerId) : undefined;
+  const hasLiveTerminalOnTarget = Boolean(
+    fastLatest?.planetId === planetId && fastLatest.terminalFromLive && fastLatest.status !== 'ACTIVE',
+  );
+
+  let effectiveHome: HomeResponse | undefined;
+  if (playerId && (!antiCheat || (!fastActive && !hasLiveTerminalOnTarget))) {
+    const onTarget = await resolveConnectionHome(homeProvider, log, playerId, planetId);
+    effectiveHome =
+      onTarget.state === 'ACTIVE'
+        ? onTarget
+        : await resolveConnectionHome(homeProvider, log, playerId);
+  }
+
+  const activeColony =
+    effectiveHome?.state === 'ACTIVE' && effectiveHome.colony.planetId === planetId
+      ? effectiveHome.colony
+      : null;
+
+  if (antiCheat && playerId) {
+    const verdict = await antiCheat.verifyJoin({
+      transport: 'ws',
+      playerId,
+      targetPlanetId: planetId,
+      requestedSectorId: trimmedSector,
+      requestedColonyId,
+      dev,
+      isScenarioPlanet,
+      ...(effectiveHome ? { resolvedHome: effectiveHome } : {}),
+      allowNewJoin: false,
+    });
+    if (!verdict.ok) return { ok: false, reason: verdict.reason };
+    const resolvedColonyId = activeColony ? activeColony.id : verdict.colonyId;
+    return {
+      ok: true,
+      colonyId: resolvedColonyId,
+      colonyIndex: activeColony ? activeColony.colonyIndex : verdict.colonyIndex,
+      sectorId: resolvedColonyId ? verdict.sectorId : trimmedSector,
+      bindingHash: resolvedColonyId ? verdict.bindingHash : undefined,
+    };
+  }
+
+  return verifyConnectionJoinWithoutAntiCheat({
+    effectiveHome: effectiveHome ?? DEFAULT_HOME,
+    activeColony,
+    planetId,
+    trimmedSector,
+    requestedColonyId,
+    dev,
+    isScenarioPlanet,
+  });
+}
+
+function verifyConnectionJoinWithoutAntiCheat(opts: {
+  readonly effectiveHome: HomeResponse;
+  readonly activeColony: Extract<HomeResponse, { state: 'ACTIVE' }>['colony'] | null;
+  readonly planetId: string;
+  readonly trimmedSector: string | undefined;
+  readonly requestedColonyId: string | undefined;
+  readonly dev: boolean;
+  readonly isScenarioPlanet: boolean;
+}):
+  | { readonly ok: true; readonly colonyId: string | null; readonly colonyIndex?: number; readonly sectorId?: string }
+  | { readonly ok: false; readonly reason: string } {
+  const { effectiveHome, activeColony, planetId, trimmedSector, requestedColonyId, dev, isScenarioPlanet } = opts;
+  const hasActiveElsewhere =
+    effectiveHome.state === 'ACTIVE' &&
+    effectiveHome.colony.planetId !== planetId &&
+    !(isScenarioPlanet && dev);
+  if (hasActiveElsewhere) return { ok: false, reason: 'not_your_planet' };
+
+  if (!activeColony && !dev) return { ok: false, reason: 'not_your_planet' };
+  if (activeColony) {
+    if (requestedColonyId && requestedColonyId !== activeColony.id) {
+      return { ok: false, reason: 'not_your_colony' };
+    }
+    const baseSec = inferAuthoritativeBaseSector({
+      foundingSectorId: activeColony.foundingSectorId,
+      spawnQ: activeColony.spawnQ,
+      spawnR: activeColony.spawnR,
+    });
+    if (trimmedSector && trimmedSector !== baseSec) {
+      return { ok: false, reason: 'not_your_sector' };
+    }
+    return {
+      ok: true,
+      colonyId: activeColony.id,
+      colonyIndex: activeColony.colonyIndex,
+      sectorId: baseSec,
+    };
+  }
+  return { ok: true, colonyId: null, sectorId: trimmedSector };
+}
+
+export function verifyPostSnapshotConnectionJoin(opts: {
+  readonly antiCheat: SectorAntiCheatService | undefined;
+  readonly planetId: string;
+  readonly colonyId: string | null;
+  readonly colonyIndex: number | undefined;
+  readonly requestedSectorId?: string;
+  readonly currentSectorId?: string;
+  readonly currentBindingHash?: string;
+  readonly dev: boolean;
+  readonly isScenarioPlanet: boolean;
+}):
+  | { readonly ok: true; readonly sectorId?: string; readonly bindingHash?: string }
+  | { readonly ok: false; readonly reason: string } {
+  const { antiCheat, planetId, colonyId, colonyIndex, requestedSectorId, dev, isScenarioPlanet } = opts;
+  if (!antiCheat) return { ok: true, sectorId: opts.currentSectorId, bindingHash: opts.currentBindingHash };
+
+  const planetSpatial = antiCheat.index.getPlanet(planetId);
+  if (planetSpatial && (planetSpatial.status === 'ENDED' || planetSpatial.status === 'ARCHIVED')) {
+    antiCheat.recordRejection('ws', 'join', 'planet_unavailable');
+    return { ok: false, reason: 'planet_unavailable' };
+  }
+
+  const trimmedSector = requestedSectorId?.trim() || undefined;
+  if (colonyId) {
+    const indexed =
+      antiCheat.index.getColonyById(colonyId) ??
+      (colonyIndex !== undefined ? antiCheat.index.getColonyByPlanetIndex(planetId, colonyIndex) : undefined);
+    if (indexed && !(isScenarioPlanet && dev)) {
+      if (indexed.status !== 'ACTIVE') {
+        antiCheat.recordRejection('ws', 'join', 'colony_inactive');
+        return { ok: false, reason: 'colony_inactive' };
+      }
+      if (trimmedSector && trimmedSector !== indexed.baseSectorId) {
+        antiCheat.recordRejection('ws', 'join', 'not_your_sector');
+        return { ok: false, reason: 'not_your_sector' };
+      }
+    }
+    return {
+      ok: true,
+      sectorId: indexed?.baseSectorId ?? opts.currentSectorId,
+      bindingHash: indexed?.bindingHash ?? opts.currentBindingHash,
+    };
+  }
+
+  if (trimmedSector) {
+    const liveSec = antiCheat.index.getSectorSpace(planetId, trimmedSector);
+    if (liveSec) {
+      if (liveSec.kind === 'ocean') {
+        antiCheat.recordRejection('ws', 'join', 'sector_not_land');
+        return { ok: false, reason: 'sector_not_land' };
+      }
+      if (liveSec.freeSeats <= 0) {
+        antiCheat.recordRejection('ws', 'join', 'sector_full');
+        return { ok: false, reason: 'sector_full' };
+      }
+      return { ok: true, sectorId: trimmedSector, bindingHash: opts.currentBindingHash };
+    }
+    const sectors = antiCheat.index.listPlanetSectors(planetId);
+    const isMulti = Boolean(planetSpatial?.hasMultiSectorGrid) || sectors.length > 1;
+    if (sectors.length > 0 || (planetSpatial && planetSpatial.knownSectorIds.size > 0)) {
+      antiCheat.recordRejection('ws', 'join', 'invalid_sector');
+      return { ok: false, reason: 'invalid_sector' };
+    }
+    if (!isMulti && trimmedSector !== 'sec_0_0') {
+      antiCheat.recordRejection('ws', 'join', 'invalid_sector');
+      return { ok: false, reason: 'invalid_sector' };
+    }
+    if (planetSpatial && planetSpatial.capacity > 0 && antiCheat.index.countActiveColoniesOnPlanet(planetId) >= planetSpatial.capacity) {
+      antiCheat.recordRejection('ws', 'join', 'sector_full');
+      return { ok: false, reason: 'sector_full' };
+    }
+  }
+  return { ok: true, sectorId: opts.currentSectorId, bindingHash: opts.currentBindingHash };
 }
 
 /** Closes the open digest and takes it. A failure still lets the join welcome go out. */

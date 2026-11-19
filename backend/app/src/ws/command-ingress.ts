@@ -1,9 +1,15 @@
 import type { ClientMessageOf } from '@terra/contracts';
+import type { AntiCheatTransport } from '../core/anticheat';
 
-/** What a socket tells the ingress about itself when a `cmd` arrives. */
+/** What a socket or HTTP command route tells the ingress about itself when a `cmd` arrives. */
 export interface CommandContext {
   readonly playerId: string;
   readonly planetId: string;
+  readonly transport?: AntiCheatTransport;
+  /** Validated base sector pinned when the session joined. */
+  readonly sectorId?: string;
+  /** Real-time FNV-1a 64-bit colony/planet/sector hash pinned when the session joined. */
+  readonly bindingHash?: string;
   /** A `dev:` session: only it may play colony 0 of a scenario planet without a colony row (BE-07). */
   readonly dev?: boolean;
   /**
@@ -11,7 +17,7 @@ export interface CommandContext {
    * that planet, so a spectator or dev session does not query the database on every command. Owned by the socket.
    */
   readonly memo?: { planetId?: string; colony?: null };
-  /** Sends a server message on the socket that submitted the command. */
+  /** Sends a server message on the socket (or resolves the HTTP command response). */
   reply(msg: object): void;
 }
 

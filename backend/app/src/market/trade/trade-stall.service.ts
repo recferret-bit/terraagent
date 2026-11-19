@@ -54,6 +54,7 @@ export class TradeStallService {
 
   async set(p: TradePrincipal, body: PutTradeStallRequest): Promise<TradeStallResponse> {
     const { planetId, colony } = await this.colonyOf(p, body.planetId);
+    this.orders.assertTradeCommandAllowed(p, planetId, colony, 'market.setHubFee', { bp: body.bp });
     const cfg = this.policy.current();
     if (body.bp < cfg.stallFeeMinBp || body.bp > cfg.stallFeeMaxBp) {
       throw new TradeError('fee_out_of_range', `Stall fee must be within ${cfg.stallFeeMinBp}..${cfg.stallFeeMaxBp} bp.`, { minBp: cfg.stallFeeMinBp, maxBp: cfg.stallFeeMaxBp });

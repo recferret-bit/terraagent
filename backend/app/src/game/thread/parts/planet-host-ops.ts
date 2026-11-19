@@ -1,9 +1,11 @@
-import type { SimCommandV1 } from '@terra/contracts';
+import { W11_DEFAULT_SECTOR_RADIUS, type SimCommandV1 } from '@terra/contracts';
 import {
   allModules,
   applyTunedEntityHealth,
   buildPipeline,
   effectiveOverrides,
+  getAtlasBlob,
+  globalTileToSector,
   mergeOverrides,
   nextLandingSite,
   regionForNewPlanet,
@@ -102,8 +104,17 @@ export function replyLandingSite(
 ): void {
   if (!p) return post({ t: 'landingSite', planetId, reqId, answer: { ok: false, code: 'planet_not_loaded' } });
   const next = nextLandingSite(p.state, colony, { slotIndex: colony, data: p.pipeline.config.data });
+  const atlas = getAtlasBlob(p.state);
+  const secRadius = atlas?.sectorRadius ?? W11_DEFAULT_SECTOR_RADIUS;
+  const hasMultiSector = Boolean(atlas) && p.state.grid.radius > secRadius;
   const answer = next.ok
-    ? { ok: true as const, q: next.site.q, r: next.site.r, ...(next.site.slot ? { slotIndex: next.site.slot.index } : {}) }
+    ? {
+        ok: true as const,
+        q: next.site.q,
+        r: next.site.r,
+        ...(next.site.slot ? { slotIndex: next.site.slot.index } : {}),
+        ...(hasMultiSector ? { sectorId: globalTileToSector(next.site.q, next.site.r, secRadius).sectorId } : {}),
+      }
     : { ok: false as const, code: next.code };
   post({ t: 'landingSite', planetId, reqId, answer });
 }

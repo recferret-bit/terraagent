@@ -69,7 +69,7 @@ export const W00_PLANET_TYPE = 'flat';
 
 /** Where the planet's sim would land a colony next (`nextLandingSite` on the live state, LED-14), or why it cannot. */
 export type LandingSiteAnswer =
-  | { readonly ok: true; readonly q: number; readonly r: number; readonly slotIndex?: number }
+  | { readonly ok: true; readonly q: number; readonly r: number; readonly slotIndex?: number; readonly sectorId?: string }
   | { readonly ok: false; readonly code: string };
 
 /** What the server ledger needs from a `loaded` planet (restore consistency, see `PlanetLedgerService`). */
