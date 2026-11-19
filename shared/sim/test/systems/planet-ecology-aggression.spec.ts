@@ -4,6 +4,7 @@ import {
   BUILDING_KIND,
   canFaunaAttackPlayer,
   computeColonyPlanetDamage,
+  createPlanet,
   createRegistryPipeline,
   createState,
   DEPOSIT,
@@ -19,6 +20,7 @@ import {
   placeSpawnedEntity,
   PLANET_DAMAGE_AGGRESSION_THRESHOLD,
   PREP,
+  regionForNewPlanet,
   setTileOwner,
   setTilePrep,
   setTileTerrain,
@@ -28,6 +30,7 @@ import {
   spawnWorkerUnit,
   startBuildingConstruction,
   TERRAIN,
+  threatOf,
 } from '../../src';
 
 function createPeacefulColonyHost(seed = 'peaceful-planet') {
@@ -233,6 +236,7 @@ describe('Planetary Ecological Damage: faunaKilled ingestion & hive provocation'
     const hive2 = spawnHiveEntity(state, { species: 'blueBeetle', q: -8, r: 0, initialResidents: 2 }, 0, data);
     expect(isHiveAggressiveToColony(state, hive2, 0)).toBe(false);
     const dmgBefore = computeColonyPlanetDamage(state, 0, data);
+    expect(dmgBefore.damagedEnough).toBe(false);
 
     const killTick = state.meta.tick + 2;
     ingestEcologicalDamageEvents(state, killTick, {
@@ -246,7 +250,7 @@ describe('Planetary Ecological Damage: faunaKilled ingestion & hive provocation'
           severity: 'info',
           atTick: killTick,
           colonyIds: ['col_0'],
-          data: { colonyIndex: 0, entityId: 999, species: 'blueBeetle', q: -7, r: 0, count: 2 },
+          data: { colonyIndex: 0, entityId: 999, species: 'blueBeetle', q: -7, r: 0, count: 3 },
         },
       ],
       postings: [],
@@ -256,9 +260,59 @@ describe('Planetary Ecological Damage: faunaKilled ingestion & hive provocation'
       emit: () => {},
     });
     const dmgAfterKill = computeColonyPlanetDamage(state, 0, data);
-    expect(dmgAfterKill.faunaKilled).toBe(2);
-    expect(dmgAfterKill.damageScore).toBe(dmgBefore.damageScore + 8);
+    expect(dmgAfterKill.faunaKilled).toBe(3);
+    expect(dmgAfterKill.damageScore).toBe(dmgBefore.damageScore + 12);
     expect(dmgAfterKill.damagedEnough).toBe(true);
     expect(isHiveAggressiveToColony(state, hive2, 0)).toBe(true);
+  });
+});
+
+describe('Planetary Ecological Damage · W13 regional deposits, clean S3 colonies & multi-colony isolation', () => {
+  it('does not count untouched W13 regional deposits as mined at tick 0 or after claiming territory', () => {
+    const flags = createRegistryPipeline({ flags: parseWaves('..25') }).config.flags;
+    for (const planetType of ['temperate', 'ocean', 'desert'] as const) {
+      const region = regionForNewPlanet({ planetId: `pl_${planetType}`, planetType, flags });
+      const state = createPlanet({ planetId: `pl_${planetType}`, planetType, seed: 'w13-pristine', radius: 32, region });
+      const atZero = computeColonyPlanetDamage(state, 0);
+      expect(atZero.depositsMined).toBe(0);
+      expect(atZero.damagedEnough).toBe(false);
+
+      // Claiming territory over untouched regional deposits must still keep depositsMined === 0
+      for (let i = 0; i < Math.min(40, state.grid.count); i++) {
+        setTileOwner(state.grid, i, 0, 5);
+      }
+      const afterClaim = computeColonyPlanetDamage(state, 0);
+      expect(afterClaim.depositsMined).toBe(0);
+      expect(afterClaim.damagedEnough).toBe(false);
+    }
+  });
+
+  it('keeps a real solar-powered Stage-3 colony peaceful past S3 grace period and isolates rival-colony mining', () => {
+    const { host, state, data } = createPeacefulColonyHost('clean-s3-solar');
+    startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: 0, r: 0, instant: true, costOverride: {} });
+    startBuildingConstruction(state, { owner: 0, building: 'roboticsFactory', q: 4, r: 0, instant: true, costOverride: {} });
+    startBuildingConstruction(state, { owner: 0, building: 'solarCollector', q: -3, r: 0, instant: true, costOverride: {} });
+    const hiveId = spawnHiveEntity(state, { species: 'blackAnt', q: 10, r: 0, initialResidents: 6 }, 0, data);
+
+    // Colony 1 mines unowned deposits far away at (16, -12): must NOT blame peaceful Colony 0
+    ensureColonyRecord(state, 1, 0).status = 'active';
+    spawnHqUnit(state, { owner: 1, q: 16, r: -12 });
+    const hx = hexIndex(state.grid.radius);
+    for (let k = 0; k < 4; k++) {
+      const idx = hx.indexOf(15 - k, -12);
+      state.grid.layers.deposit[idx] = DEPOSIT.metals;
+      state.grid.layers.richness[idx] = 1000;
+    }
+
+    expect(computeColonyPlanetDamage(state, 1, data).depositsMined).toBe(4);
+    const col0Dmg = computeColonyPlanetDamage(state, 0, data);
+    expect(col0Dmg.depositsMined).toBe(0);
+    expect(col0Dmg.damagedEnough).toBe(false);
+
+    state.meta.tick = 2999;
+    expect(threatOf(state, 0).raidsAllowed).toBe(true);
+    host.step(1);
+    expect(isHiveAggressiveToColony(state, hiveId, 0)).toBe(false);
+    expect(getActiveCohorts(state)).toHaveLength(0);
   });
 });

@@ -1,5 +1,9 @@
 import { ENTITY_KIND } from '../../ecs/columns';
-import { hexDistance, hexIndex } from '../../grid/hex';
+import { regionViewOf } from '../../economy/regions/pin';
+import { rollRegionalDeposit, type RegionView } from '../../economy/regions/sourcePolicy';
+import { getDepositRichnessBp } from '../../gen/temperate';
+import { hash2d, seedOf } from '../../gen/world/noise';
+import { hexDistance, hexIndex, type HexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
@@ -67,23 +71,92 @@ function resolveEventColonyIndex(state: PlanetState, data: Record<string, unknow
   return null;
 }
 
+function collectColonyAnchors(state: PlanetState): Map<number, { q: number; r: number }> {
+  const anchors = new Map<number, { q: number; r: number }>();
+  const cols = state.entities.cols;
+  for (let r = 0; r < state.entities.count; r++) {
+    const owner = cols.owner[r]!;
+    if (owner < 0 || cols.hp[r]! <= 0) continue;
+    const kind = cols.kind[r]!;
+    if (!anchors.has(owner) || kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.hq) {
+      anchors.set(owner, { q: cols.q[r]!, r: cols.r[r]! });
+    }
+  }
+  return anchors;
+}
+
+function isUnownedDepositAttributedToColony(
+  anchors: ReadonlyMap<number, { q: number; r: number }>,
+  colonyCount: number,
+  colonyIndex: number,
+  q: number,
+  r: number,
+): boolean {
+  if (colonyCount <= 1 && anchors.size <= 1) return true;
+  const mine = anchors.get(colonyIndex);
+  if (!mine) return false;
+  const myDist = hexDistance(q, r, mine.q, mine.r);
+  if (myDist > 18) return false;
+  for (const [otherIdx, pos] of anchors) {
+    if (otherIdx === colonyIndex) continue;
+    const d = hexDistance(q, r, pos.q, pos.r);
+    if (d < myDist || (d === myDist && otherIdx < colonyIndex)) return false;
+  }
+  return true;
+}
+
+function expectedInitialDepositRichnessBp(
+  state: PlanetState,
+  region: RegionView | undefined,
+  hx: HexIndex,
+  pickSeed: number,
+  reserveSeed: number,
+  tileIdx: number,
+  depKind: number,
+): number {
+  if (region) {
+    const roll = rollRegionalDeposit(region, 'surfaceDeposit', {
+      pick: hash2d(hx.q[tileIdx]!, hx.r[tileIdx]!, pickSeed),
+      reserve: hash2d(hx.q[tileIdx]!, hx.r[tileIdx]!, reserveSeed),
+    });
+    if (roll && roll.deposit === depKind) return roll.richnessBp;
+    if ((state.grid.layers.changedAt?.[tileIdx] ?? 0) === 0) {
+      return Number(state.grid.layers.richness?.[tileIdx] ?? 10000);
+    }
+    return 8000;
+  }
+  return Math.min(10000, getDepositRichnessBp(String(state.meta.seed), tileIdx, depKind, state.meta.planetType));
+}
+
 function countGridEcologicalFootprint(state: PlanetState, colonyIndex: number): { alteredOwnedTiles: number; drainedDeposits: number } {
-  const { layers, count } = state.grid;
-  const owner = layers.owner;
-  const prep = layers.prep;
-  const deposit = layers.deposit;
-  const richness = layers.richness;
+  const { layers, count, radius } = state.grid;
+  const { owner, prep, deposit, richness } = layers;
+  const region = regionViewOf(state);
+  const hx = hexIndex(radius);
+  const baseSeed = String(state.meta.seed);
+  const pickSeed = region ? seedOf(`${baseSeed}|gen:regionalPick`) : 0;
+  const reserveSeed = region ? seedOf(`${baseSeed}|gen:regionalReserve`) : 0;
+  const anchors = collectColonyAnchors(state);
+  const colonyCount = Object.keys(state.colonies).length;
   let alteredOwnedTiles = 0;
   let drainedDeposits = 0;
 
   for (let i = 0; i < count; i++) {
-    const isOwned = owner ? owner[i] === colonyIndex : false;
+    const tileOwner = owner ? owner[i]! : -1;
+    const isOwned = owner ? tileOwner === colonyIndex : false;
     const p = prep[i] ?? 0;
     if (isOwned && (p === PREP.prepared || p === PREP.irrigated || p === PREP.living || p === PREP.ridge || p === PREP.moat)) {
       alteredOwnedTiles++;
     }
-    if (deposit && richness && deposit[i] !== DEPOSIT.none && richness[i]! < 8500) {
-      if (!owner || owner[i] === colonyIndex || owner[i] === -1) drainedDeposits++;
+    const depKind = deposit ? deposit[i]! : DEPOSIT.none;
+    if (depKind !== DEPOSIT.none && richness) {
+      const curRich = Number(richness[i] ?? 0);
+      const initRich = expectedInitialDepositRichnessBp(state, region, hx, pickSeed, reserveSeed, i, depKind);
+      if (curRich <= 0 || curRich < initRich * 0.85) {
+        if (isOwned || (tileOwner === -1 && isUnownedDepositAttributedToColony(anchors, colonyCount, colonyIndex, hx.q[i]!, hx.r[i]!))) {
+          drainedDeposits++;
+        }
+      }
     }
   }
   return { alteredOwnedTiles, drainedDeposits };
@@ -92,13 +165,17 @@ function countGridEcologicalFootprint(state: PlanetState, colonyIndex: number): 
 function computeIndustrialPollutionScore(state: PlanetState, colonyIndex: number): number {
   const counts = countColonyEntities(state, colonyIndex);
   const b = counts.buildingCountsByKind;
-  const hubs = (b.commandHub ?? 0) + (b.commandHub_t2 ?? 0) + (b.commandHub_t3 ?? 0);
-  const factories = (b.roboticsFactory ?? 0) + (b.roboticsFactory_t2 ?? 0);
+  const hubsT1 = b.commandHub ?? 0;
+  const hubsUpgraded = (b.commandHub_t2 ?? 0) + (b.commandHub_t3 ?? 0);
+  const factoriesT1 = b.roboticsFactory ?? 0;
+  const factoriesUpgraded = b.roboticsFactory_t2 ?? 0;
   const heavy = (b.smelter ?? 0) + (b.heavyFoundry ?? 0) * 1.3;
   const thermals = (b.thermalGenerator ?? 0) + (b.thermal ?? 0);
   return Math.round(
-    hubs * 11 +
-    factories * 14 +
+    hubsT1 * 5 +
+    hubsUpgraded * 11 +
+    factoriesT1 * 10 +
+    factoriesUpgraded * 16 +
     heavy * 14 +
     counts.completedExtractors * 6 +
     thermals * 12,
@@ -134,7 +211,8 @@ export function computeColonyPlanetDamage(
   const ledger = fauna.planetDamageByColony?.[colonyIndex] ?? EMPTY_LEDGER;
   const { alteredOwnedTiles, drainedDeposits } = countGridEcologicalFootprint(state, colonyIndex);
   const industrialPollution = computeIndustrialPollutionScore(state, colonyIndex);
-  const effectiveTerraformed = Math.max(ledger.tilesTerraformed, Math.min(20, Math.floor(alteredOwnedTiles / 3)));
+  const sprawlTilesBeyondBasePad = Math.max(0, alteredOwnedTiles - 24);
+  const effectiveTerraformed = Math.max(ledger.tilesTerraformed, Math.min(20, Math.floor(sprawlTilesBeyondBasePad / 3)));
   const faunaKilled = ledger.faunaKilled ?? 0;
 
   const damageScore =

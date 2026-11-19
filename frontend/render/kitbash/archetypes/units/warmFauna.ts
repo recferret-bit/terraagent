@@ -37,6 +37,7 @@ interface MammalRigSpec {
   earTilt?: number;
   tailPts: V3[];
   tailRadii: number[];
+  dorsalHump?: number;
 }
 
 function addMammalHeadAndNeck(b: KitbashBuilder, s: MammalRigSpec): { neckPivot: V3; headCenter: V3; headAnim: PartOptions } {
@@ -162,7 +163,7 @@ function buildMammalCore(b: KitbashBuilder, s: MammalRigSpec): { neckPivot: V3; 
 
   const zMin = s.rumpZ - s.rumpR[2];
   const zMax = s.chestZ + s.chestR[2];
-  b.addPart(mammalTrunk(ribX, s.chestR[1], rumpX, s.rumpR[1], zMin, zMax), 'hullPrimary', {
+  b.addPart(mammalTrunk(ribX, s.chestR[1], rumpX, s.rumpR[1], zMin, zMax, s.dorsalHump ?? 0), 'hullPrimary', {
     name: 'mammalian trunk',
     position: [0, s.torsoY, 0],
     ...bodyAnim,
@@ -457,10 +458,11 @@ register({
       earSize: [0.028, 0.042, 0.022],
       tailPts: [[0, 0.74, -0.58], [0, 0.56, -0.66]],
       tailRadii: [0.030, 0.022, 0.028],
+      dorsalHump: 0.16,
     });
-    b.addPart(organ([0.13, 0.13, 0.19], 6, 9.2, 0.015, 9), 'hullSecondary', {
-      name: 'dorsal fat hump',
-      position: [0, 1.07, -0.02],
+    b.addPart(organ([0.105, 0.045, 0.145], 6, 9.2, 0.01, 8), 'hullSecondary', {
+      name: 'dorsal wool crest',
+      position: [0, 1.10, -0.02],
       animType: 8,
     });
   },

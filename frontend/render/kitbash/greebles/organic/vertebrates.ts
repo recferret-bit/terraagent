@@ -11,6 +11,7 @@ export function mammalTrunk(
   ryRear: number,
   zMin: number,
   zMax: number,
+  dorsalHump = 0,
 ): THREE.BufferGeometry {
   const g = new THREE.SphereGeometry(1, 14, 10);
   const p = g.attributes.position;
@@ -22,8 +23,9 @@ export function mammalTrunk(
     const rx = (rxRear + (rxFront - rxRear) * t) * waist;
     const ry = (ryRear + (ryFront - ryRear) * t) * (1 - 0.09 * Math.sin(t * Math.PI));
     const archY = ryFront * (0.08 * Math.sin(t * Math.PI) - 0.05 * (1 - t));
+    const humpY = dorsalHump > 0 && y > 0 ? dorsalHump * Math.pow(y, 1.35) * Math.exp(-Math.pow((t - 0.48) / 0.24, 2)) : 0;
     const pz = zMin + (zMax - zMin) * t;
-    p.setXYZ(i, x * rx, y * ry + archY, pz);
+    p.setXYZ(i, x * rx, y * ry + archY + humpY, pz);
   }
   g.computeVertexNormals();
   return tissue(g, 6);

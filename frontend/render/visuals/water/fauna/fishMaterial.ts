@@ -83,6 +83,7 @@ if (isRay > 0.5) {
   float spanDist = abs(fLocal.x);
   fLocal.y += sin(fWig - spanDist * 3.4) * spanDist * 0.28;
 } else {
+  fLocal.x *= 1.32;
   fLocal.x += sin(fWig) * fAmp;
 }
 float fDxdL = (-4.0 * cos(fWig) * fAmp + sin(fWig) * 0.22 * fL * fAmpK) * (1.0 - isRay);
@@ -128,30 +129,33 @@ float fishMurk = 1.0 - exp(-(vFishDepth + 0.14) * uAbsorption * 1.5);
 { vec3 col = mix(fBelly, fBack, smoothstep(0.28, 0.72, vFishBody.x));
   col = mix(col, fishAccent, vFishBody.y * 0.88);
   // Crisp sunlit dorsal iridescence so swimming fish/rays read clearly through the water surface by day
-  float dayGlint = (1.0 - clamp(uNightFactor, 0.0, 1.0)) * smoothstep(0.38, 0.90, vFishBody.x) * 0.48;
-  col += fishAccent * dayGlint + fBelly * (dayGlint * 0.18);
-  diffuseColor.rgb = mix(col, uFishDeep, fishMurk * 0.34); }`;
+  float dayGlint = (1.0 - clamp(uNightFactor, 0.0, 1.0)) * smoothstep(0.30, 0.88, vFishBody.x) * 0.62;
+  col += fishAccent * dayGlint + fBelly * (dayGlint * 0.26);
+  diffuseColor.rgb = mix(col, uFishDeep, fishMurk * 0.24); }`;
 
 const FISH_FRAG_EMISSIVE = /* glsl */ `#include <emissivemap_fragment>
 { vec3 taProj = evalColonyProjectorLight(vFishW, vFishN);
+  float night = clamp(uNightFactor, 0.0, 1.0);
+  float daySheen = (1.0 - night) * (0.34 + 0.36 * vFishBody.y) * smoothstep(0.22, 0.88, vFishBody.x) * (1.0 - fishMurk * 0.40);
   totalEmissiveRadiance += diffuseColor.rgb * taProj * 0.65;
-  totalEmissiveRadiance += fishAccent * (vFishBody.y * 0.8 + 0.2 * smoothstep(0.6, 1.0, vFishBody.x)) * uFishGlow * clamp(uNightFactor, 0.0, 1.0) * (1.0 - fishMurk * 0.45); }`;
+  totalEmissiveRadiance += mix(diffuseColor.rgb, fishAccent, 0.52) * daySheen;
+  totalEmissiveRadiance += fishAccent * (vFishBody.y * 0.8 + 0.2 * smoothstep(0.6, 1.0, vFishBody.x)) * uFishGlow * night * (1.0 - fishMurk * 0.45); }`;
 
 export interface FishPalette { back: number; belly: number; accent: number }
 export type AquaticBiomePaletteSet = readonly [FishPalette, FishPalette, FishPalette, FishPalette];
 
 export const AQUATIC_BIOME_PALETTES: Readonly<Record<string, AquaticBiomePaletteSet>> = {
   oceanForest: [
-    { back: 0x1e8ca6, belly: 0xe6f4f1, accent: 0x56f0e5 }, // Reef school: turquoise-silver + cyan fins
-    { back: 0xc85a32, belly: 0xf4dca8, accent: 0xffb703 }, // Solitary reef tang/grouper: coral-gold
-    { back: 0x2ec4b6, belly: 0xf8fff8, accent: 0xffe66d }, // Shallow chromis minnows: bright aqua-gold
-    { back: 0x1d4e89, belly: 0xe8eef5, accent: 0x64dfdf }, // Coastal manta ray: cobalt back, ivory belly
+    { back: 0x3be0d0, belly: 0xf4fffd, accent: 0x7efcff }, // Reef school: sunlit aqua-silver + bright cyan fins
+    { back: 0xf07142, belly: 0xffebc2, accent: 0xffca3a }, // Solitary reef tang/grouper: vivid coral-gold
+    { back: 0xffbe3b, belly: 0xfffdf2, accent: 0x72efdd }, // Shallow chromis minnows: sunlit amber-aqua
+    { back: 0x4ea8de, belly: 0xf2f7fc, accent: 0x90f1ef }, // Coastal manta ray: azure-rimmed back, ivory belly
   ],
   forestRock: [
-    { back: 0x356b6e, belly: 0xd8e4df, accent: 0x72efdd }, // Highland char school: silver-teal
-    { back: 0x4a4e32, belly: 0xd6c79c, accent: 0xe06d44 }, // Solitary salmon/trout: olive-bronze + crimson
-    { back: 0x529677, belly: 0xeef5ec, accent: 0xb5e48c }, // Shallow brook minnows: emerald-silver
-    { back: 0x3d5467, belly: 0xd4dde4, accent: 0x8ecae6 }, // River ray: slate-blue + pale rim
+    { back: 0x64dfdf, belly: 0xedf6f5, accent: 0x9bf6ff }, // Highland char school: bright silver-cyan
+    { back: 0xe07a5f, belly: 0xf4e4c1, accent: 0xffb703 }, // Solitary salmon/trout: copper-salmon + gold
+    { back: 0x80ed99, belly: 0xf6fff4, accent: 0xd9ed92 }, // Shallow brook minnows: bright emerald-lime
+    { back: 0x6c91bf, belly: 0xeaf1f8, accent: 0xa8dadc }, // River ray: sunlit steel-blue + pale rim
   ],
   dune: [
     { back: 0xb57c38, belly: 0xf2e2ba, accent: 0xffca3a },
