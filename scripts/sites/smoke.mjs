@@ -53,7 +53,7 @@ function buildChecks(catalog, env) {
     named(`h1 ${paper.host}`, () => whitepaperH1(paper)),
     named(`pitch ${pitch.host}`, () => pitchLine(pitch)),
     named('X-Content-Type-Options nosniff', () => nosniffSeen(state)),
-    named('compose config publishes only nginx port 80', () => onlyNginx(env)),
+    named('compose config publishes only nginx ports 80/443', () => onlyNginx(env)),
     named('terra-sites-pg is not running', () => assertNotRunning('terra-sites-pg')),
     named('terra-pg is healthy', () => assertHealthy('terra-pg')),
   ];
@@ -145,7 +145,7 @@ function pitchLine(row) {
 
 function onlyNginx(env) {
   const found = runningProjectPorts(env);
-  const bad = found.filter((row) => row.stack !== 'infra' || row.name !== 'nginx' || row.port !== '80');
+  const bad = found.filter((row) => row.stack !== 'infra' || row.name !== 'nginx' || (row.port !== '80' && row.port !== '443'));
   if (bad.length || found.length === 0) throw new Error(`published ports ${JSON.stringify(found)}`);
 }
 
