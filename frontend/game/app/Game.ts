@@ -3,6 +3,7 @@ import { createColonyViewport, type ColonyViewport } from '@terra/render/core/cr
 import { enqueueDeferredDispose, flushDeferredDispose } from '@terra/render/core/deferredDispose';
 import { createFramePacer } from '@terra/render/core/framePacer';
 import { getFpsCap, getPresetDimensions, getViewportPreset, isShaderOptimized, onPerfConfigChange, setFpsCap, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
+import { getShadowQuality, setShadowQuality } from '@terra/render/core/shadowQuality';
 import { ArchetypeCatalog, LANDING_PREWARM_ARCHETYPES } from '@terra/render/kitbash';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { getSharedTerrainPrep } from '@terra/render/planets/prep';
@@ -57,7 +58,7 @@ export class Game {
   private phase: Phase = 'menu';
   private menu!: MainMenu;
   private stage: OrbitalStage | null = null;
-  private settings: MenuSettings = { bloom: true, quality: 'high', skipCinematic: false, optimized: isShaderOptimized(), resolution: getViewportPreset(), fpsCap: getFpsCap() };
+  private settings: MenuSettings = { bloom: true, quality: 'high', shadows: getShadowQuality(), skipCinematic: false, optimized: isShaderOptimized(), resolution: getViewportPreset(), fpsCap: getFpsCap() };
   private sectorIntent: SectorIntentV1 = { mode: 'auto' };
   private baseChildren = new Set<THREE.Object3D>();
   // per-session
@@ -145,6 +146,7 @@ export class Game {
     setShaderOptimized(this.settings.optimized);
     setViewportPreset(this.settings.resolution);
     setFpsCap(this.settings.fpsCap);
+    if (this.settings.shadows) setShadowQuality(this.settings.shadows);
     this.viewport.bloom.enabled = this.settings.bloom;
     const dpr = this.settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2);
     this.viewport.setResolution(getPresetDimensions(this.settings.resolution), dpr);

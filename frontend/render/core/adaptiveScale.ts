@@ -37,8 +37,14 @@ export interface AdaptiveScaleOptions {
   probeWindowMs: number;
   /** EMA weight of a new sample. */
   alpha: number;
-  /** Intervals longer than this (tab hidden, shader compile) are ignored and reset the hold timers. */
+  /** Intervals longer than this are treated as tab/compile gaps and reset hold timers (still smoothed up to maxGapMs). */
   maxGapMs: number;
+  /** Optional larger ceiling above `maxGapMs` before resetting hold timers (defaults to `maxGapMs`). */
+  tabGapMs?: number;
+  /** Rapid step-down threshold (`ema > refresh * fastDownRatio`); Infinity disables fast step-down. */
+  fastDownRatio?: number;
+  /** Hold duration (ms) for rapid step-down when `fastDownRatio` triggers. */
+  fastDownHoldMs?: number;
 }
 
 export const DEFAULT_ADAPTIVE_SCALE: Readonly<AdaptiveScaleOptions> = {
@@ -99,7 +105,12 @@ export class AdaptiveScale {
   /** Feeds one frame interval `frameMs` ending at `nowMs`. Returns true when `dpr` changed. */
   sample(frameMs: number, nowMs: number): boolean {
     const o = this.o;
-    if (!(frameMs > 0) || frameMs > o.maxGapMs) {
+    const tabGapMs = o.tabGapMs ?? o.maxGapMs;
+    if (!(frameMs > 0) || frameMs > tabGapMs) {
+      this.slowSince = this.fastSince = null;
+      return false;
+    }
+    if (frameMs > o.maxGapMs && o.tabGapMs === undefined) {
       this.slowSince = this.fastSince = null;
       return false;
     }
@@ -115,10 +126,12 @@ export class AdaptiveScale {
     const refresh = this.refreshMs();
     const downTh = refresh * o.downRatio;
     const upTh = refresh * o.upRatio;
+    const fastRatio = o.fastDownRatio ?? Infinity;
+    const requiredHoldMs = this.ema > refresh * fastRatio ? (o.fastDownHoldMs ?? o.downHoldMs) : o.downHoldMs;
     if (this.ema > downTh) {
       this.fastSince = null;
       this.slowSince ??= nowMs;
-      if (nowMs - this.slowSince >= o.downHoldMs && this.level < this.levels.length - 1) {
+      if (nowMs - this.slowSince >= requiredHoldMs && this.level < this.levels.length - 1) {
         if (this.lastUpAt !== null && nowMs - this.lastUpAt <= o.probeWindowMs) {
           this.upHold = Math.min(o.maxUpHoldMs, this.upHold * 2); // failed probe
         }

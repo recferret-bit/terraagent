@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { shouldCullSmallShadowCasters } from '../../core/shadowQuality';
+import { inViewFocus } from '../../core/viewFocus';
 import { createArchetypeMesh, type ArchetypeMesh } from '../../kitbash/catalog';
 import { INSECT_SPECIES } from './rig';
 import { INSTANCE_ATTRIBUTES, useInsectInstanceAttributes } from './instanceShader';
@@ -31,6 +33,9 @@ export class InsectSwarmRenderer {
       if (!this.proxies.has(mesh)) this.proxies.set(mesh, { mesh, materialVisible: (mesh.material as THREE.Material).visible });
       (mesh.material as THREE.Material).visible = false; // Raycasting still uses the original geometry.
       if (!this.visibleToRoot(mesh)) return;
+      mesh.updateWorldMatrix(true, false);
+      const wx = mesh.matrixWorld.elements[12]!, wz = mesh.matrixWorld.elements[14]!;
+      if (!inViewFocus(wx, wz, 22)) return;
       const key = `${biome}:${id}`;
       const list = members.get(key) ?? [];
       list.push(mesh); members.set(key, list);
@@ -39,7 +44,7 @@ export class InsectSwarmRenderer {
       (proxy.mesh.material as THREE.Material).visible = proxy.materialVisible;
       this.proxies.delete(mesh);
     }
-    this.root.updateWorldMatrix(true, true);
+    this.group.updateWorldMatrix(true, false);
     this.inverse.copy(this.group.matrixWorld).invert();
     for (const [key, batch] of this.batches) if (!members.has(key)) { this.release(batch); this.batches.delete(key); }
     for (const [key, list] of members) this.writeBatch(key, list, biome);
@@ -75,6 +80,7 @@ export class InsectSwarmRenderer {
       this.batches.set(key, batch);
     }
     const { mesh, template } = batch;
+    mesh.castShadow = !shouldCullSmallShadowCasters();
     mesh.count = list.length;
     list.forEach((source, i) => {
       mesh.setMatrixAt(i, this.relative.multiplyMatrices(this.inverse, source.matrixWorld));

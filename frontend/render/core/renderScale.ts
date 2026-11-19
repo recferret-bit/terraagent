@@ -50,7 +50,14 @@ export function createRenderScaleController(onModeChange: () => void): RenderSca
   const ensureAuto = (ceiling: number): AdaptiveScale => {
     const minFrameMs = resolveMinFrameMs();
     if (!auto || autoCeiling !== ceiling || Math.abs(autoMinFrameMs - minFrameMs) > 1e-4) {
-      auto = new AdaptiveScale(ceiling, { refreshMs: targetRefreshMs, minFrameMs, maxGapMs: Math.max(MAX_GAP_MS, minFrameMs * 4) });
+      auto = new AdaptiveScale(ceiling, {
+        refreshMs: targetRefreshMs,
+        minFrameMs,
+        maxGapMs: Math.max(MAX_GAP_MS, minFrameMs * 4),
+        tabGapMs: 1200,
+        fastDownRatio: 1.65,
+        fastDownHoldMs: 350,
+      });
       autoCeiling = ceiling;
       autoMinFrameMs = minFrameMs;
     }

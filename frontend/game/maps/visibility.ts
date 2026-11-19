@@ -39,9 +39,53 @@ export function createMapVisibility(
   return (q, r) => adapter.tileIndexOf(q, r, bufferCount) >= 0 && sources.some(s => hexDistance(q, r, s.q, s.r) <= s.radius);
 }
 
-/** Darken explored terrain outside current sight while preserving its map memory. */
-export function drawMapFog(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
-  if ((!view.tiles?.explored && !view.tiles?.exploredByColony) || !view.clientView) return;
+interface FogCacheEntry {
+  key: string;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+}
+
+const fogCacheByCtx = new WeakMap<CanvasRenderingContext2D, FogCacheEntry>();
+
+function hashExploredTiles(view: MapLayerDrawView): number {
+  const tiles = view.tiles;
+  if (!tiles) return 0;
+  const colony = view.ownColonySlot ?? 0;
+  const arr = tiles.exploredByColony?.[colony] ?? tiles.explored;
+  if (!arr) return 0;
+  let h = (arr.length * 2654435761) | 0;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i]!;
+    if (v !== 0) h = (Math.imul(h ^ (i + 1), 16777619) ^ v) | 0;
+  }
+  return h;
+}
+
+function buildFogCacheKey(ctx: CanvasRenderingContext2D, view: MapLayerDrawView, w: number, h: number): string {
+  const colony = view.ownColonySlot ?? 0;
+  const origin = view.axialToPixel(0, 0);
+  const t = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const tx = t ? `${t.a.toFixed(3)},${t.d.toFixed(3)},${t.e.toFixed(2)},${t.f.toFixed(2)}` : '1,1,0,0';
+  const vision = view.clientView?.blobs?.combatVision as CombatVisionBlob | undefined;
+  const spotted = vision?.byColony?.[colony];
+  let visionSig = '';
+  if (spotted) {
+    let sh = spotted.length;
+    for (let i = 0; i < spotted.length; i++) sh = (Math.imul(sh, 31) + spotted[i]!) | 0;
+    visionSig = `s:${spotted.length}:${sh}`;
+  } else if (view.clientView?.entities) {
+    let eh = 0;
+    forEachEntity(view.clientView.entities, view.clientView.count, row => {
+      if (row.owner !== colony || row.hp <= 0 || !isEntityContributingVision(row.state)) return;
+      eh = (Math.imul(eh ^ row.q, 31) ^ row.r) | 0;
+    });
+    visionSig = `e:${eh}`;
+  }
+  return `${w}x${h}|${tx}|${view.radius}|${colony}|${view.tilePixelRadius.toFixed(2)}|${origin.x.toFixed(2)},${origin.y.toFixed(2)}|${hashExploredTiles(view)}|${visionSig}`;
+}
+
+function paintMapFogHexes(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
+  if (!view.tiles) return;
   const live = createMapVisibility(view);
   const adapter = resolveMapAdapterForView(view);
   const drawableTiles = adapter.getDrawableTiles(view.tiles.count);
@@ -64,5 +108,48 @@ export function drawMapFog(ctx: CanvasRenderingContext2D, view: MapLayerDrawView
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
+}
+
+/** Darken explored terrain outside current sight while preserving its map memory. */
+export function drawMapFog(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
+  if ((!view.tiles?.explored && !view.tiles?.exploredByColony) || !view.clientView) return;
+  const targetCanvas = (ctx as { canvas?: HTMLCanvasElement | null }).canvas;
+  if (typeof document === 'undefined' || !targetCanvas || typeof ctx.drawImage !== 'function') {
+    paintMapFogHexes(ctx, view);
+    return;
+  }
+  const w = targetCanvas.width;
+  const h = targetCanvas.height;
+  if (!(w > 0 && h > 0)) {
+    paintMapFogHexes(ctx, view);
+    return;
+  }
+  let entry = fogCacheByCtx.get(ctx);
+  if (!entry) {
+    const offscreen = document.createElement('canvas');
+    const offCtx = offscreen.getContext('2d');
+    if (!offCtx) {
+      paintMapFogHexes(ctx, view);
+      return;
+    }
+    entry = { key: '', canvas: offscreen, ctx: offCtx };
+    fogCacheByCtx.set(ctx, entry);
+  }
+  const key = buildFogCacheKey(ctx, view, w, h);
+  if (entry.key !== key || entry.canvas.width !== w || entry.canvas.height !== h) {
+    entry.canvas.width = w;
+    entry.canvas.height = h;
+    entry.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    entry.ctx.clearRect(0, 0, w, h);
+    if (typeof ctx.getTransform === 'function' && typeof entry.ctx.setTransform === 'function') {
+      entry.ctx.setTransform(ctx.getTransform());
+    }
+    paintMapFogHexes(entry.ctx, view);
+    entry.key = key;
+  }
+  ctx.save();
+  if (typeof ctx.setTransform === 'function') ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(entry.canvas, 0, 0);
   ctx.restore();
 }

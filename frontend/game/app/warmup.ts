@@ -165,7 +165,7 @@ async function uploadRenderablesSliced(
   if (renderables.length === 0) return;
 
   let warmedStandardShadow = false;
-  const warmedCustomDepth = new Set<THREE.Material>();
+  const warmedCustomDepth = new Set<string>();
 
   for (let offset = 0; offset < renderables.length; offset += batchSize) {
     if (isStale()) return;
@@ -174,10 +174,13 @@ async function uploadRenderablesSliced(
     for (const o of batch) {
       if (!o.castShadow || vertexCountOf(o) > 12000) continue;
       const cdm = o.customDepthMaterial;
-      if (cdm && !warmedCustomDepth.has(cdm)) {
-        warmedCustomDepth.add(cdm);
-        allowShadowPass = true;
-      } else if (!cdm && !warmedStandardShadow) {
+      if (cdm) {
+        const key = typeof cdm.customProgramCacheKey === 'function' ? cdm.customProgramCacheKey() : cdm.uuid;
+        if (!warmedCustomDepth.has(key)) {
+          warmedCustomDepth.add(key);
+          allowShadowPass = true;
+        }
+      } else if (!warmedStandardShadow) {
         warmedStandardShadow = true;
         allowShadowPass = true;
       }

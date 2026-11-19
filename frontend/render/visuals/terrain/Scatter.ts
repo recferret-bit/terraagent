@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
+import { getShadowSwayScale, onShadowLodTelemetry } from '../../core/shadowQuality';
 import { getWeatherUniforms } from '../../core/weatherConfig';
 import { getWindUniforms, WIND_GLSL } from '../../core/windConfig';
 import { bindViewFocusUniforms, VIEW_FOCUS_GLSL } from '../../core/viewFocus';
-import { Noise2, mulberry32 } from './noise';
+import { Noise2 } from './noise';
 import { glslFloat } from '../shaderInject';
 
 export interface Place {
@@ -37,21 +38,21 @@ export function scatterGrid(rng: () => number, extent: number, cell: number, pro
 
 type G = THREE.BufferGeometry;
 function paint(g: G, color: THREE.Color, jitter = 0, topBoost = 0, seed = 1): G {
-  const out = g.index ? g.toNonIndexed() : g;
-  out.deleteAttribute('uv');
+  g.deleteAttribute('uv');
+  g.deleteAttribute('normal');
+  const out = mergeVertices(g, 1e-4);
   const p = out.getAttribute('position'), n = p.count;
   const col = new Float32Array(n * 3);
-  const rng = mulberry32(seed);
   const box = new THREE.Box3().setFromBufferAttribute(p as THREE.BufferAttribute);
   const hgt = Math.max(1e-3, box.max.y - box.min.y);
   const tmp = new THREE.Color();
-  for (let t = 0; t < n; t += 3) {
-    const k = 1 + (rng() - 0.5) * 2 * jitter; // per-face shade
-    for (let v = 0; v < 3; v++) {
-      const y = (p.getY(t + v) - box.min.y) / hgt;
-      tmp.copy(color).multiplyScalar(k * (1 + topBoost * (y - 0.5)));
-      col[(t + v) * 3] = tmp.r; col[(t + v) * 3 + 1] = tmp.g; col[(t + v) * 3 + 2] = tmp.b;
-    }
+  for (let i = 0; i < n; i++) {
+    const px = p.getX(i), py = p.getY(i), pz = p.getZ(i);
+    const h = Math.sin(px * 12.9898 + py * 78.233 + pz * 37.719 + seed * 19.31) * 43758.5453;
+    const k = 1 + ((h - Math.floor(h)) - 0.5) * 2 * jitter;
+    const y = (py - box.min.y) / hgt;
+    tmp.copy(color).multiplyScalar(k * (1 + topBoost * (y - 0.5)));
+    col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
   }
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
   out.computeVertexNormals();
@@ -74,7 +75,7 @@ function blob(radius: number, detail: number, noise: Noise2, amp: number, seedOf
   return g;
 }
 const C = (h: number | THREE.Color) => (h instanceof THREE.Color ? h.clone() : new THREE.Color(h));
-const done = (parts: G[]) => { const m = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)))!; m.computeVertexNormals(); return m; };
+const done = (parts: G[]) => { const m = mergeGeometries(parts.map((g) => (g.index ? g : mergeVertices(g, 1e-4))))!; m.computeVertexNormals(); return m; };
 
 export function makeBroadleafGeo(leafA: THREE.Color, leafB: THREE.Color, seed: number): G {
   const nz = new Noise2(seed);
@@ -205,7 +206,7 @@ const FOLIAGE_SWAY_BEGIN = /* glsl */ `#include <begin_vertex>
   vec2 fwP = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz;
 #endif
   float fwVw = viewFocusWeight(fwP, ${glslFloat(FOLIAGE_TREE.focusFade)});
-  if (fwVw > 0.0) {
+  if (fwVw * uSway > 0.001) {
   float fwH = max(position.y, 0.0);
   vec3 fwS2 = max(vec3(dot(fwM[0], fwM[0]), dot(fwM[1], fwM[1]), dot(fwM[2], fwM[2])), vec3(1e-4));
   vec4 fwR = foliageTraits(fwP);
@@ -272,9 +273,11 @@ export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubl
   const side = doubleSided ? THREE.DoubleSide : THREE.FrontSide;
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, flatShading: true, side });
   const swayU = { value: sway };
+  const depthSwayU = { value: sway * getShadowSwayScale() };
+  const offLod = onShadowLodTelemetry((st) => { depthSwayU.value = sway * st.shadowSwayScale; });
   const patchDepthSway = (sh: THREE.WebGLProgramParametersWithUniforms) => {
     Object.assign(sh.uniforms, getWindUniforms());
-    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
+    sh.uniforms.uTime = timeU; sh.uniforms.uSway = depthSwayU; bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${FOLIAGE_WIND_DECL}`)
       .replace('#include <begin_vertex>', FOLIAGE_SWAY_BEGIN);
@@ -308,7 +311,7 @@ if (uWetness > 0.001) {
   depthMat.onBeforeCompile = patchDepthSway;
   m.userData.depthMaterial = depthMat;
   const origDispose = m.dispose.bind(m);
-  m.dispose = () => { depthMat.dispose(); origDispose(); };
+  m.dispose = () => { offLod(); depthMat.dispose(); origDispose(); };
   return m;
 }
 
@@ -374,8 +377,12 @@ export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt
     if (p.tintMul !== undefined) c.multiplyScalar(p.tintMul);
     im.setColorAt(i, c);
   });
+  im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   im.instanceMatrix.needsUpdate = true;
-  if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  if (im.instanceColor) {
+    im.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    im.instanceColor.needsUpdate = true;
+  }
   if (mat.userData?.depthMaterial) im.customDepthMaterial = mat.userData.depthMaterial as THREE.Material;
   if (places.length > 0) {
     im.computeBoundingBox();

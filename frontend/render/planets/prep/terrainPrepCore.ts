@@ -172,6 +172,7 @@ export function computeHexTerrainPrep(req: Omit<HexTerrainPrepRequest, 'id' | 't
     pushTransfer(buffers, b.aRock);
     pushTransfer(buffers, b.aHexShore);
     pushTransfer(buffers, b.index);
+    pushTransfer(buffers, b.rockIndex);
     pushTransfer(buffers, b.vertexTile);
   }
 

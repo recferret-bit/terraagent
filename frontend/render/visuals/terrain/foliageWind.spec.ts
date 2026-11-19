@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { resetShadowCameraTelemetry, updateShadowCameraTelemetry } from '../../core/shadowQuality';
 import { getViewFocusEdgesUniform, getViewFocusUniform } from '../../core/viewFocus';
 import { getWindUniforms } from '../../core/windConfig';
 import { createFoliageMaterial, foliageTreeTraits, FOLIAGE_TREE } from './Scatter';
@@ -31,7 +32,7 @@ describe('foliage wind (per-tree inertia sway)', () => {
     for (const sh of [color, dep]) {
       expect(sh.vertexShader).toContain('vec4 foliageTraits(vec2 p)');
       expect(sh.vertexShader).toContain('float viewFocusWeight(vec2 p, float fade)');
-      expect(sh.vertexShader).toContain('if (fwVw > 0.0)');
+      expect(sh.vertexShader).toContain('if (fwVw * uSway > 0.001)');
       // Inertia reads the gust that already passed the tree: downwind of it (fronts travel +uWindDir with uWindPhase).
       expect(sh.vertexShader).toContain('windGustAt(fwP + uWindDir * fwLag)');
       expect(sh.vertexShader).not.toMatch(/uWindStrength\s*\*\s*uTime|uTime\s*\*\s*uWindStrength/);
@@ -49,7 +50,12 @@ describe('foliage wind (per-tree inertia sway)', () => {
       expect(sh.uniforms.uWindTime).toBe(getWindUniforms().uWindTime);
       expect(sh.uniforms.uTime).toBe(timeU);
     }
-    expect(color.uniforms.uSway).toBe(dep.uniforms.uSway);
+    expect(dep.uniforms.uSway.value).toBeCloseTo(1.0, 5);
+    expect(color.uniforms.uSway.value).toBeCloseTo(1.0, 5);
+    updateShadowCameraTelemetry(80, 0, 0, 0.016);
+    expect(dep.uniforms.uSway.value).toBe(0);
+    expect(color.uniforms.uSway.value).toBe(1.0);
+    resetShadowCameraTelemetry();
     mat.dispose();
   });
 

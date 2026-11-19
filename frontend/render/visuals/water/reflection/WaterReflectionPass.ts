@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { perfTelemetry } from '../../../core/perfConfig';
+import { getShadowQuality } from '../../../core/shadowQuality';
+import { getViewFocus, VIEW_FOCUS_MAX_RADIUS } from '../../../core/viewFocus';
 import { getReflectionResScale, getReflectionStrength } from '../waterConfig';
 import { cropProjection, updateMirrorCamera, type PixelRect } from './mirrorCamera';
 import { addBoxToUvBounds, emptyUvBounds, pixelRectToUv, resetUvBounds, uvBoundsToPixelRect } from './reflectionRect';
@@ -161,6 +163,10 @@ export function createWaterReflectionPass(opts: WaterReflectionPassOptions = {})
   return {
     get target() { return rt; },
     render(renderer, scene, camera) {
+      const sq = getShadowQuality();
+      if (sq === 'off' || sq === 'low') { release(); return skip(); }
+      const vf = getViewFocus();
+      if (vf.visibleRadius <= VIEW_FOCUS_MAX_RADIUS && vf.visibleRadius > 58) return skip();
       const strength = strengthOf();
       if (!(strength > 0)) { release(); return skip(); }
       if (!(camera as THREE.PerspectiveCamera).isPerspectiveCamera) return skip();

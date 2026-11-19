@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { fitShadowBox, quantizeShadowHalf, SHADOW_FIT_MARGIN, SHADOW_FIT_MAX_SHRINK, SHADOW_FIT_MIN_HALF } from './shadowFit';
+import {
+  fitShadowBox,
+  fitShadowQuadInLightSpace,
+  quantizeShadowHalf,
+  SHADOW_FIT_MARGIN,
+  SHADOW_FIT_MAX_SHRINK,
+  SHADOW_FIT_MIN_HALF,
+} from './shadowFit';
 import { fitShadowToView, followShadowTarget, getShadowParams, registerShadowViewport } from './shadowConfig';
 import type { ColonyViewport } from './createColonyViewport';
 import type { ViewFocus } from './viewFocus';
@@ -76,5 +83,23 @@ describe('shadow box fitted to the view focus', () => {
     expect(vp.sun.shadow.camera.right).toBe(d);
     expect(vp.sun.shadow.radius).toBeCloseTo(baseRadius, 6);
     off();
+  });
+
+  it('fitShadowQuadInLightSpace fits tighter asymmetric ortho bounds than naive square box around tilted quad', () => {
+    const cam = new THREE.PerspectiveCamera(28, 16 / 9, 1, 600);
+    cam.position.set(0, 65, 70); // ~95m tilted zoom-out camera
+    cam.lookAt(0, 0, 0);
+    cam.updateMatrixWorld();
+
+    const corners: Array<[number, number]> = [[-22, -28], [22, -28], [14, 18], [-14, 18]];
+    const dir = new THREE.Vector3(35, 55, 25);
+    const fit = fitShadowQuadInLightSpace(corners, focus(0, -5, 36), dir, 140);
+
+    expect(fit.halfW).toBeGreaterThan(10);
+    expect(fit.halfH).toBeGreaterThan(10);
+    expect(fit.half).toBeGreaterThanOrEqual(Math.max(fit.halfW, fit.halfH));
+    // Asymmetric trapezoid light-space half-extents stay strictly tighter than a naive full 140m frustum box
+    expect(fit.halfW).toBeLessThan(70);
+    expect(fit.halfH).toBeLessThan(70);
   });
 });

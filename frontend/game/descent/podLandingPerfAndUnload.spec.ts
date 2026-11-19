@@ -215,7 +215,7 @@ describe('Landing Archetype Prewarm, Sliced DescentRunner Disposal & Skip-to-Pau
       expect(ArchetypeCatalog.has(id), `Expected "${id}" to exist in ArchetypeCatalog`).toBe(true);
     }
     const q = ['building.commandHub', 'building.mine'];
-    ArchetypeCatalog.prewarmStep(q, 50);
+    ArchetypeCatalog.prewarmStep(q, 500);
     expect(q.length).toBe(0);
     const hub = createArchetypeMesh('building.commandHub', 'dune');
     stripBuildingPlinth(hub);

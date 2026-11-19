@@ -16,7 +16,7 @@ import { ENTITY_KIND, ENTITY_STATE, TICK_MS, type CompiledDataLike } from '@terr
 import { createMapVisibility } from '../../maps/visibility';
 import { forEachEntity, type ClientTiles, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
 import { resolveEntityActivityProgress } from '../../features/landfall/selectionHelpers';
-import { isEntityInViewFocus } from './entityFocus';
+import { syncEntityShadowCaster } from './entityFocus';
 import { MotionTrack, RenderClock } from '@terra/render/motion/entityMotion';
 import { isWorldPointInColonyFov, resetColonyVisionAndLights, syncColonyVisionAndProjectors } from './entityVisionSync';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
@@ -386,7 +386,7 @@ export class EntityMeshes {
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
       rec.work += (wantWork - rec.work) * Math.min(1, dt * 10);
-      if (!isEntityInViewFocus(rec.mesh)) continue; // off-screen: pose kept, no shader clock / rig upload
+      if (!syncEntityShadowCaster(rec.mesh, !isConstructibleBuilding(rec.kind))) continue; // off-screen: pose kept, no shader clock / rig upload
       const animTime = isConstructibleBuilding(rec.kind) && wantWork === 0
         ? ((rec.mesh.userData as { uniforms?: { uTime?: { value: number } } })?.uniforms?.uTime?.value ?? 0)
         : this.time;

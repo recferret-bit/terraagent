@@ -10,6 +10,7 @@ import {
   placedIndex,
   resetPropShadowLights,
   setPropInstanceCulling,
+  syncActivePropShadowLights,
 } from './propFocusCompaction';
 
 const RADIUS = 40;
@@ -191,6 +192,41 @@ describe('per-instance view-focus culling of prop buckets', () => {
       }
     }
     expect(inFocus).toBeGreaterThan(0);
+    t.dispose();
+  });
+});
+
+describe('zoom-out quad compaction & shadow light cache', () => {
+  afterEach(() => {
+    setPropInstanceCulling(true);
+    setViewFocusEnabled(true);
+    resetPropShadowLights();
+  });
+
+  it('uses DynamicDrawUsage buffers, evicts inactive shadow light dirs, and compacts zoomed-out quad focus', () => {
+    const t = forestPlanet();
+    const zoomedOut = new THREE.PerspectiveCamera(28, 16 / 9, 0.5, 500);
+    zoomedOut.position.set(0, 58, 40); // ~70 m distance -> visibleRadius > 28 m (quad path active) inside RADIUS=40 forest
+    zoomedOut.lookAt(0, 0, 0);
+    zoomedOut.updateMatrixWorld();
+    updateViewFocus(zoomedOut);
+    expect(getViewFocus().visibleRadius).toBeGreaterThan(28);
+    t.props.cullToFocus();
+
+    const buckets = visibleBuckets(t);
+    expect(buckets.every((b) => b.instanceMatrix.usage === THREE.DynamicDrawUsage)).toBe(true);
+    expect(buckets.some((b) => b.count < bucketDrawCounts(b).total)).toBe(true);
+    const m = buckets[0]!;
+
+    const oldDir = new THREE.Vector3(1, 1, 0).normalize();
+    const newDir = new THREE.Vector3(-1, 1, 0.5).normalize();
+    const oldCam = shadowCamera(oldDir);
+    const newCam = shadowCamera(newDir);
+    syncActivePropShadowLights([{ cam: oldCam, dir: oldDir }, { cam: newCam, dir: newDir }]);
+    m.onBeforeShadow(null as never, null as never, zoomedOut, newCam, m.geometry, m.customDepthMaterial!, null as never);
+    m.onAfterShadow(null as never, null as never, zoomedOut, newCam, m.geometry, m.customDepthMaterial!, null as never);
+    syncActivePropShadowLights([{ cam: newCam, dir: newDir }]);
+    expect(oldDir.dot(newDir)).toBeLessThan(0.5);
     t.dispose();
   });
 });

@@ -1,11 +1,15 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
+import { getPresetDimensions, getViewportPreset, onPerfConfigChange } from '@terra/render/core/perfConfig';
+import { setShadow } from '@terra/render/core/shadowConfig';
+import { getShadowQuality, onShadowQualityChange } from '@terra/render/core/shadowQuality';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { createHexTerrain, getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type PrecomputedHexTerrainData, type SimPlanetType } from '@terra/render/planets/hex';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
+import { getSavedGraphicsQuality } from '../../ui/parts/settingsModal';
 import { FINAL_POS } from '../../descent/constants';
 import { RTSCamera } from '../RTSCamera';
 import { hexSurface } from './hexSurface';
@@ -297,4 +301,36 @@ export function syncOrRebuildSessionTerrain(params: {
     applyTerrainTileChanges(prevTerrain, prevTiles, tiles, view.planet.radius);
   }
   return { terrain: prevTerrain, cam: prevCam, biomeKey: prevBiomeKey, rebuilt: false };
+}
+
+/** Acquires a safe session viewport and, when owned locally, applies space backdrop and saved quality/shadow settings. */
+export function acquireSessionViewport(
+  root: HTMLElement,
+  provided: ColonyViewport | undefined,
+  cleanups: Array<() => void>,
+): { viewport: ColonyViewport; ownsViewport: boolean } {
+  const ownsViewport = !provided;
+  const viewport = createSafeViewport(root, provided);
+  if (ownsViewport) {
+    applySpaceVoidBackground(viewport.scene);
+    cleanups.push(bindSavedViewportSettings(viewport));
+  }
+  return { viewport, ownsViewport };
+}
+
+/** Applies saved graphics quality, viewport resolution, and shadow quality settings to a standalone session viewport. */
+export function bindSavedViewportSettings(vp: ColonyViewport): () => void {
+  const apply = () => {
+    const rawDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const maxDpr = getSavedGraphicsQuality() === 'low' ? 1 : Math.min(rawDpr, 2);
+    vp.setResolution(getPresetDimensions(getViewportPreset()), maxDpr);
+    setShadow(getShadowQuality() !== 'off');
+  };
+  apply();
+  const offPerf = onPerfConfigChange(() => apply());
+  const offShadow = onShadowQualityChange(() => apply());
+  return () => {
+    offPerf();
+    offShadow();
+  };
 }

@@ -21,9 +21,11 @@ import { createWaterReflectionPass } from '../visuals/water/reflection/WaterRefl
 import { excludeFromReflection } from '../visuals/water/reflection/reflectionRegistry';
 import { createRainAndStormPass } from '../weather/RainAndStormPass';
 import {
-  fitShadowToView, followShadowTarget, installShadowShaderPatch, isShadowOn,
+  fitShadowToView, followShadowTarget, installShadowShaderPatch,
   registerShadowViewport, stepSunOrbit, syncViewportShadow,
 } from './shadowConfig';
+import { disposePooledShadowMaps, updateShadowCameraTelemetry } from './shadowQuality';
+import { applyRenderShadowRadiusLod, restoreRenderShadowRadiusLod } from './shadowShaderPatch';
 
 export interface ColonyViewport {
   renderer: THREE.WebGLRenderer;
@@ -55,7 +57,7 @@ function createSunAndHemi(scene: THREE.Scene) {
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1d6, 3.0);
   sun.position.set(35, 55, 25);
-  sun.castShadow = isShadowOn();
+  sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 4;
   sun.shadow.camera.far = 175;
@@ -71,7 +73,7 @@ function createSunAndHemi(scene: THREE.Scene) {
   const secondaryShadowLight = new THREE.DirectionalLight(0x9cc4ff, 1.35);
   secondaryShadowLight.name = 'secondaryShadowLight';
   secondaryShadowLight.position.set(-32, 44, -38);
-  secondaryShadowLight.castShadow = isShadowOn();
+  secondaryShadowLight.castShadow = true;
   secondaryShadowLight.shadow.mapSize.set(1024, 1024);
   secondaryShadowLight.shadow.camera.near = 8;
   secondaryShadowLight.shadow.camera.far = 138;
@@ -98,14 +100,24 @@ function applySkyToScene(scene: THREE.Scene, sun: THREE.DirectionalLight, hemi: 
   renderer.toneMappingExposure = k.exposure;
 }
 
+function shouldPreserveDrawingBuffer(): boolean {
+  if (typeof navigator !== 'undefined' && Boolean(navigator.webdriver)) return true;
+  if (typeof location !== 'undefined' && /[?&](qa|screenshot|contactSheet)(?:[=&]|$)/i.test(location.search)) return true;
+  return false;
+}
+
 function createColonyRenderer(container: HTMLElement, width: number, height: number, maxDpr: number): THREE.WebGLRenderer {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+  const renderer = new THREE.WebGLRenderer({
+    antialias: false,
+    powerPreference: 'high-performance',
+    preserveDrawingBuffer: shouldPreserveDrawingBuffer(),
+  });
   renderer.setSize(width, height, false);
   renderer.setPixelRatio(maxDpr);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
-  renderer.shadowMap.enabled = isShadowOn();
+  renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.width = '100%';
@@ -199,7 +211,8 @@ export function sizeColonyViewport(
     renderer.setSize(rw, rh, false);
     composer.setPixelRatio(dpr);
     composer.setSize(rw, rh);
-    bloom.resolution.set(rw * dpr, rh * dpr);
+    const bloomDpr = Math.min(dpr, 1.25);
+    bloom.resolution.set(rw * bloomDpr, rh * bloomDpr);
     Object.assign(perfTelemetry, { dpr, canvasW: renderer.domElement.width, canvasH: renderer.domElement.height });
     prev.rw = rw;
     prev.rh = rh;
@@ -221,6 +234,25 @@ export function sizeColonyViewport(
   }
 }
 
+const _camWorldPos = new THREE.Vector3();
+const _camDir = new THREE.Vector3();
+
+function withShadowFilterLod(
+  sun: THREE.DirectionalLight,
+  sec: THREE.DirectionalLight | undefined,
+  filterLod: 0 | 1 | 2,
+  fn: () => void,
+): void {
+  const savedSun = applyRenderShadowRadiusLod(sun, filterLod);
+  const savedSec = applyRenderShadowRadiusLod(sec, filterLod);
+  try {
+    fn();
+  } finally {
+    restoreRenderShadowRadiusLod(sun, savedSun);
+    restoreRenderShadowRadiusLod(sec, savedSec);
+  }
+}
+
 function paintColonyFrame(
   vp: ColonyViewport, renderPass: RenderPass, composer: EffectComposer,
   focusRing: ReturnType<typeof createViewFocusRing>,
@@ -228,20 +260,39 @@ function paintColonyFrame(
   rainPass: ReturnType<typeof createRainAndStormPass>,
   reflections: ReturnType<typeof createViewportReflections>,
   focusGroundY: number, customRes: { width: number; height: number } | null,
+  frameClock: { lastMs: number },
 ) {
+  const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const frameDtS = frameClock.lastMs > 0 ? Math.min(0.1, Math.max(0.001, (nowMs - frameClock.lastMs) / 1000)) : 1 / 60;
+  frameClock.lastMs = nowMs;
   // Resize before rendering so an AUTO DPR step never clears a just-painted frame to black.
-  if (renderScale.frame(performance.now()) && !customRes) vp.resize();
+  if (renderScale.frame(nowMs) && !customRes) vp.resize();
   stepSunOrbit(vp);
   tickWindClock();
   tickWeatherClock();
   tickWaterClock();
   // Effects restrict themselves to the visible ground (+ margin); the shadow boxes fit to it.
   const focus = updateViewFocus(renderPass.camera, focusGroundY);
+  renderPass.camera.updateMatrixWorld();
+  renderPass.camera.getWorldPosition(_camWorldPos);
+  renderPass.camera.getWorldDirection(_camDir);
+  let targetX = focus.x;
+  let targetZ = focus.z;
+  let camDist = Math.hypot(_camWorldPos.x - focus.x, _camWorldPos.y - focusGroundY, _camWorldPos.z - focus.z);
+  if (Math.abs(_camDir.y) > 1e-4) {
+    const t = (focusGroundY - _camWorldPos.y) / _camDir.y;
+    if (t > 0 && Number.isFinite(t)) {
+      targetX = _camWorldPos.x + _camDir.x * t;
+      targetZ = _camWorldPos.z + _camDir.z * t;
+      camDist = t;
+    }
+  }
+  const lod = updateShadowCameraTelemetry(camDist, targetX, targetZ, frameDtS);
   fitShadowToView(vp, focus);
   focusRing.update(renderPass.scene, focus, focusGroundY, isFocusRingOn());
   rainPass.update(undefined, renderPass.scene as THREE.Scene, renderPass.camera, { sun: vp.sun, hemi: vp.hemi, renderer: vp.renderer });
-  reflections.render();
-  composer.render();
+  withShadowFilterLod(vp.sun, vp.secondaryShadowLight, 0, () => reflections.render());
+  withShadowFilterLod(vp.sun, vp.secondaryShadowLight, lod.filterLod, () => composer.render());
   noteRenderedFrame();
   stepDeferredDispose(0.8, 2);
 }
@@ -257,6 +308,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   let focusGroundY = 0;
   let maxDpr = Math.min(window.devicePixelRatio, 2);
   const sizeState: ViewportSizeState = { rw: -1, rh: -1, dpr: -1, pixelDpr: -1, aspect: -1 };
+  const frameClock = { lastMs: 0 };
 
   const renderer = createColonyRenderer(container, w(), h(), maxDpr);
   const { pmrem, environment } = createEnvironment(renderer, scene);
@@ -292,7 +344,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       const dpr = customRes ? 1 : renderScale.resolve(maxDpr);
       sizeColonyViewport(renderer, composer, bloom, pixelArt, renderPass, camera, cw, ch, customRes, dpr, sizeState);
     },
-    render() { paintColonyFrame(vp, renderPass, composer, focusRing, renderScale, rainPass, reflections, focusGroundY, customRes); },
+    render() { paintColonyFrame(vp, renderPass, composer, focusRing, renderScale, rainPass, reflections, focusGroundY, customRes, frameClock); },
     dispose() {
       renderScale.dispose();
       focusRing.dispose();
@@ -301,6 +353,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       window.removeEventListener('resize', onResize);
       resizeObserver.disconnect();
       offShadow(); offPixel();
+      disposePooledShadowMaps(sun); disposePooledShadowMaps(secondaryShadowLight);
       sun.dispose(); secondaryShadowLight.dispose(); // their shadow-map render targets
       composer.dispose(); pmrem.dispose(); renderer.dispose();
       renderer.domElement.remove();

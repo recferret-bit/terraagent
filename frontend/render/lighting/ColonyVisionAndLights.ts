@@ -273,6 +273,7 @@ export function setDynamicHazardLights(
   projectors: ReadonlyArray<ColonyProjectorDesc>,
   _unusedVision?: ReadonlyArray<ColonyVisionSourceDesc>,
 ): void {
+  if (projectors.length === 0 && hazardProjectors.length === 0) return;
   hazardProjectors = [...projectors];
   uploadCombinedProjectorsAndVision();
 }

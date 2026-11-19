@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { shouldCullSmallShadowCasters } from '../core/shadowQuality';
+import { inViewFocus } from '../core/viewFocus';
 import {
   getColonyVisionUniforms,
   isWorldPointInColonyFov,
@@ -438,7 +440,7 @@ export class MeteorCraterSiteManager {
       site.pointLight.color.setRGB(1.0, 0.22 + 0.34 * effHeat, 0.04 + 0.1 * effHeat);
 
       const nightFactor = Number(getColonyVisionUniforms().uNightFactor?.value ?? 0);
-      const castShadow = inFov && (effHeat > 0.05 || nightFactor < 0.65);
+      const castShadow = inFov && inViewFocus(site.wx, site.wz, site.radius + 12) && !shouldCullSmallShadowCasters() && (effHeat > 0.05 || nightFactor < 0.65);
       for (const r of site.rocks) {
         r.mesh.castShadow = castShadow;
         r.mesh.scale.copy(r.baseScale).multiplyScalar(Math.max(0.01, fade));
