@@ -65,20 +65,13 @@ export interface MainMenuOptions {
 
 function buildMenuShellHtml(planetsByKind: Readonly<Record<PlanetKind, PlanetSummaryV1>>): string {
   const cards = PLANET_KINDS.map((k) => worldCardHtml(k, planetsByKind[k])).join('');
-  const landingHref =
-    typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
-      ? 'https://terraagent.fun/'
-      : '/landing.html';
   return `
       <div class="menu-top">
-        <div>
+        <div class="menu-brand">
           <h1 class="title">TERRA<b>AGENT</b></h1>
           <div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div>
         </div>
-        <div class="menu-top-actions">
-          <button type="button" class="btn btn-ghost btn-sm" id="settings-trigger" data-testid="settings-trigger">ESC · SETTINGS</button>
-          <a class="btn btn-ghost btn-sm" href="${landingHref}">◂ TERRAAGENT.FUN</a>
-        </div>
+        <div class="menu-top-actions"></div>
       </div>
       <div class="menu-bottom">
         <div class="cards">${cards}</div>
@@ -189,9 +182,6 @@ export class MainMenu {
   private bindControls(): void {
     this.el.querySelectorAll<HTMLElement>('.world-card').forEach((c) => {
       c.onclick = () => this.select(c.dataset.k as PlanetKind, true);
-    });
-    this.el.querySelector<HTMLButtonElement>('#settings-trigger')?.addEventListener('click', () => {
-      this.openSettings();
     });
   }
 

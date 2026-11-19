@@ -75,7 +75,7 @@ export function bindSectorChooserEvents(
   onHover?: (sectorId: string | null) => void,
 ): void {
   container.querySelectorAll<HTMLElement>('.sector-opt').forEach((btn) => {
-    btn.onclick = () => {
+    btn.addEventListener('click', () => {
       const mode = btn.dataset.sectorMode;
       const sectorId = btn.dataset.sectorId;
       if (mode === 'chosen' && sectorId && sectorId !== 'auto') {
@@ -83,13 +83,18 @@ export function bindSectorChooserEvents(
       } else {
         onSelect({ mode: 'auto' });
       }
-    };
+    });
     if (onHover) {
-      btn.onpointerenter = () => {
+      btn.addEventListener('pointerenter', () => {
         const sid = btn.dataset.sectorId;
         onHover(sid && sid !== 'auto' ? sid : null);
-      };
-      btn.onpointerleave = () => onHover(null);
+      });
+      btn.addEventListener('pointerleave', (ev: Event) => {
+        if (!btn.isConnected) return;
+        const next = (ev as PointerEvent).relatedTarget;
+        if (next instanceof Element && next.closest('.sector-opt')) return;
+        onHover(null);
+      });
     }
   });
 }
