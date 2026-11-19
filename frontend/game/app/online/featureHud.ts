@@ -27,6 +27,7 @@ export class FeatureHud {
   private dirtyWhileHidden = false;
   private mountedIds: string | null = null;
   private ctx: FeatureContext | null = null;
+  private collapsePending = false;
   private pendingWelcome: { reason?: string; away?: AwayDigestV1 } | null = null;
   private readonly liveFlags = new Set<string>();
   private readonly off: () => void;
@@ -69,9 +70,19 @@ export class FeatureHud {
     }
   }
 
-  /** Folds the Command Dock (the Build pane is the default open tab). */
+  /** Folds all interface tabs and closes dialogs while preserving any active "While You Were Away" plate. */
   collapseCommandDock(): void {
-    this.root?.collapseDock();
+    if (!this.root) {
+      this.collapsePending = true;
+      return;
+    }
+    this.collapsePending = false;
+    const away = this.ctx?.services.awayDigest;
+    if (away) {
+      away.preserveWhile(() => this.root?.closeAll());
+    } else {
+      this.root.closeAll();
+    }
   }
 
   update(view: GameView): void {
@@ -137,6 +148,7 @@ export class FeatureHud {
   }
 
   private mount(): void {
+    const keepCollapsed = this.collapsePending || (this.root?.areBooksCollapsed() ?? false);
     this.disposeMounted();
     this.syncFlags();
     const features = loadFeatures({ flags: this.liveFlags, host: this.host });
@@ -157,6 +169,9 @@ export class FeatureHud {
       const w = this.pendingWelcome;
       this.pendingWelcome = null;
       ctx.services.awayDigest?.showWelcome(w);
+    }
+    if (keepCollapsed) {
+      this.collapseCommandDock();
     }
   }
 

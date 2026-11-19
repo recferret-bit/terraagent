@@ -72,7 +72,7 @@ export class OnlineSession {
   readonly whenBooted: Promise<BootAuthResult | null>;
 
   terrain: HexTerrain | null = null; cam: RTSCamera | null = null; lastPick: HexPick | null = null;
-  private colonyFramed = false; private readonly arrival = { hold: false, quiet: false, noSelect: false, started: false };
+  private colonyFramed = false; private readonly arrival = { hold: false, quiet: true, noSelect: true, started: false };
   planetId = ''; colonyId: string | null = null; colonyIndex = 0; foundingSectorId: string | null = null;
   spawn = { q: 0, r: 0 }; cameraTargetTile = { q: 0, r: 0 };
   bootResult: BootAuthResult | null = null; planetKind: PlanetKind | null;
@@ -138,6 +138,7 @@ export class OnlineSession {
       pickAt: (cx, cy) => this.pickAt(cx, cy), terrain: () => this.terrain, toast: (m) => this.hud?.toast(m), netStats: this.netStats,
     });
     this.landfall = control.landfall;
+    this.landfall.deselect();
     this.cleanups.push(control.dispose);
     this.hud = createSessionHud({
       uiParent, flags: this.flags, local: rig.local, scene: this.viewport.scene, canvas: this.viewport.renderer.domElement,
@@ -158,6 +159,7 @@ export class OnlineSession {
     const predict = q.get('predict') !== '0';
     const hideInitialHud = (this.fromSpaceDescent && !this.skipDescent) || this.deferReveal || Boolean(this.bootOverlay && this.bootOverlay.phase !== 'colony');
     this.hud.setVisible(!hideInitialHud);
+    this.hud.collapseCommandDock();
 
     if (this.guest) {
       this.whenBooted = this.startBootSequence(this.guest, opts, predict);
@@ -245,6 +247,7 @@ export class OnlineSession {
   skipLanding(): void {
     this.skipDescent = true;
     this.loadMode = 'instant';
+    this.arrival.quiet = true;
     this.setSpacePhase(null);
     this.entities.podTouchdown.setSkipLocked(true);
     const ready = !this.guest || (this.bootResult !== null && this.store.latest !== null);

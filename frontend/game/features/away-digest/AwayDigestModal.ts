@@ -18,6 +18,7 @@ export class AwayDigestModal {
   private root: HTMLElement | null = null;
   private openId: string | null = null;
   private onKey: ((e: KeyboardEvent) => void) | null = null;
+  private suppressDismiss = false;
 
   constructor(private readonly parent: HTMLElement) {}
 
@@ -42,7 +43,19 @@ export class AwayDigestModal {
     this.listen();
   }
 
+  /** Runs `fn` while ignoring HUD-wide `dismiss()` sweeps so the away notification stays visible on gameplay entry. */
+  preserveWhile(fn: () => void): void {
+    const prev = this.suppressDismiss;
+    this.suppressDismiss = true;
+    try {
+      fn();
+    } finally {
+      this.suppressDismiss = prev;
+    }
+  }
+
   dismiss(): void {
+    if (this.suppressDismiss) return;
     if (this.openId) dismissedAwayIds.add(this.openId);
     this.openId = null;
     this.remove();

@@ -22,6 +22,29 @@ function mount(services: Partial<FeatureServices> = {}) {
 }
 const panels = () => [...document.querySelectorAll<HTMLElement>('.ta-hud__panel')];
 
+function makeSampleAwayDigest(story: string): AwayDigestV1 {
+  const res = {} as AwayResources;
+  for (const k of RESOURCE_KEYS) res[k] = { before: 0, after: 0 };
+  return {
+    colonyId: 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    awayFrom: '2026-11-09T12:00:00.000Z',
+    awayTo: '2026-11-09T12:15:00.000Z',
+    durationS: 900,
+    resources: res,
+    energy: { before: 0, after: 0 },
+    built: [],
+    lost: [],
+    robots: { before: 0, after: 0, produced: 0, lost: 0 },
+    territory: { before: 0, after: 0 },
+    attacks: { count: 0, repelled: 0, byColony: [] },
+    hazards: [],
+    ai: { decisions: 0, rejected: 0, highlights: [] },
+    trades: { settled: 0, items: [] },
+    alerts: [],
+    story,
+  };
+}
+
 describe('FeatureHud (FA-29)', () => {
   it('mounts the features once: the first welcome and a reconnect welcome keep the same panels', () => {
     const { flags, hud } = mount();
@@ -72,26 +95,7 @@ describe('FeatureHud (FA-29)', () => {
     hud.showWelcome({ reason: 'join' });
     expect(hud.mounts).toBe(0);
 
-    const res = {} as AwayResources;
-    for (const k of RESOURCE_KEYS) res[k] = { before: 0, after: 0 };
-    const sampleAway: AwayDigestV1 = {
-      colonyId: 'co_01ARZ3NDEKTSV4RRFFQ69G5FAV',
-      awayFrom: '2026-11-09T12:00:00.000Z',
-      awayTo: '2026-11-09T12:15:00.000Z',
-      durationS: 900,
-      resources: res,
-      energy: { before: 0, after: 0 },
-      built: [],
-      lost: [],
-      robots: { before: 0, after: 0, produced: 0, lost: 0 },
-      territory: { before: 0, after: 0 },
-      attacks: { count: 0, repelled: 0, byColony: [] },
-      hazards: [],
-      ai: { decisions: 0, rejected: 0, highlights: [] },
-      trades: { settled: 0, items: [] },
-      alerts: [],
-      story: 'Deferred welcome story.',
-    };
+    const sampleAway = makeSampleAwayDigest('Deferred welcome story.');
 
     hud.showWelcome({ reason: 'resync', away: sampleAway });
     expect(hud.mounts).toBe(0);
@@ -105,5 +109,27 @@ describe('FeatureHud (FA-29)', () => {
     hud.ensureMounted();
     expect(hud.mounts).toBe(1);
     expect(document.querySelector('[data-testid="away-digest"]')?.textContent).toContain('Deferred welcome story.');
+  });
+});
+
+describe('FeatureHud startup collapse', () => {
+  it('collapseCommandDock closes tabs and open dialogs while keeping an active "While You Were Away" notification', () => {
+    const { hud } = mount();
+    hud.showWelcome({
+      reason: 'join',
+      away: makeSampleAwayDigest('Colony kept mining while away.'),
+    });
+    const svc = hud.activeServices;
+    svc?.openPilotDialog?.(true);
+    document.querySelector<HTMLButtonElement>('[data-testid="colony-tab-director"]')?.click();
+    expect(document.querySelector('[data-testid="colony-book"]')?.getAttribute('data-collapsed')).toBe('false');
+    expect(document.querySelector('[data-testid="away-digest"]')).not.toBeNull();
+
+    hud.collapseCommandDock();
+
+    expect(document.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
+    expect(document.querySelector('[data-testid="colony-book"]')?.getAttribute('data-collapsed')).toBe('true');
+    expect(document.querySelector<HTMLElement>('[data-testid="pilot-dialog"]')?.hidden).toBe(true);
+    expect(document.querySelector('[data-testid="away-digest"]')).not.toBeNull();
   });
 });

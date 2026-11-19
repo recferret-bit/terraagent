@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import { hexTileMask, hexTileRing, isHexTile, type HexTileLayers as HexGridLayers } from '@terra/sim/grid/hexTile';
-import { HEX_PREP, HEX_TERRAIN, tileStyle, type HexTileLayers } from './chunkMesh';
+import { HEX_PREP, HEX_TERRAIN, isDryShoreTile, isWaterAt, tileStyle, type HexTileLayers } from './chunkMesh';
 
 export const TILE_STATE_PRESETS = ['prepared', 'irrigated', 'living', 'mixed'] as const;
 export type TileStatePreset = (typeof TILE_STATE_PRESETS)[number];
@@ -64,6 +64,16 @@ export interface PrecomputedTileTintBuffers {
   hexGrid: Uint8Array;
 }
 
+function cellShoreByte(
+  hx: ReturnType<typeof hexIndex>,
+  i: number,
+  layers: HexTileLayers,
+): number {
+  if (isDryShoreTile(hx, i, layers)) return 255;
+  if (isWaterAt(layers, i)) return 128;
+  return 0;
+}
+
 export function computeTileTintBuffers(radius: number, layers: HexTileLayers): PrecomputedTileTintBuffers {
   const hx = hexIndex(radius);
   const n = 2 * radius + 1;
@@ -89,6 +99,7 @@ export function computeTileTintBuffers(radius: number, layers: HexTileLayers): P
     terraformData[o + 2] = prepVal === HEX_PREP.prepared ? 255 : 0;
     terraformData[o + 3] = 255;
     hexGridData[o] = hexGrid[i] ? 255 : 0;
+    hexGridData[o + 1] = cellShoreByte(hx, i, layers);
     hexGridData[o + 3] = 255;
   }
   return { tintData, terraformData, hexGridData, hexGrid };
@@ -160,9 +171,10 @@ export function createHexTileTint(
     tf.data[o + 2] = prepVal === HEX_PREP.prepared ? 255 : 0;
     tf.data[o + 3] = 255;
   };
-  const writeGrid = (i: number) => {
+  const writeGrid = (l: HexTileLayers, i: number) => {
     const o = texel(i);
     grid.data[o] = hexGrid[i] ? 255 : 0;
+    grid.data[o + 1] = cellShoreByte(hx, i, l);
     grid.data[o + 3] = 255;
   };
 
@@ -172,11 +184,11 @@ export function createHexTileTint(
       for (let k = 0; k < changed.length; k++) stamp(l, changed[k]!);
       const ring = new Set<number>();
       for (let k = 0; k < changed.length; k++) for (const j of hexTileRing(radius, changed[k]!)) ring.add(j);
-      for (const j of ring) { hexGrid[j] = isHexTile(radius, j, gl) ? 1 : 0; writeGrid(j); }
+      for (const j of ring) { hexGrid[j] = isHexTile(radius, j, gl) ? 1 : 0; writeGrid(l, j); }
     } else {
       for (let i = 0; i < hx.count; i++) stamp(l, i);
       hexTileMask(radius, gl, hexGrid);
-      for (let i = 0; i < hx.count; i++) writeGrid(i);
+      for (let i = 0; i < hx.count; i++) writeGrid(l, i);
     }
     tint.texture.needsUpdate = true;
     tf.texture.needsUpdate = true;

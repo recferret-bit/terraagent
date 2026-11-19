@@ -8,6 +8,7 @@ import { track } from '../core/analytics';
 import type { ClientFlagsStore } from '../core/flags';
 import { HudRoot } from '../core/hud/HudRoot';
 import { loadFeatures } from '../core/registry';
+import type { FeatureContext } from '../core/registry/types';
 import { mountDevConsole } from '../dev/console';
 import { notConnectedSend } from '../net/commandBus';
 import { httpDevServer } from '../net/devServer';
@@ -216,13 +217,18 @@ export function mountPrototypeHudRig(store: ClientFlagsStore): {
     devConsole?.dispose();
     const { source } = store.current;
     const set = store.set;
-    const ctx = {
+    const ctx: FeatureContext = {
       flags: set,
-      host: 'server' as const,
+      host: 'server',
       services: { track, flagsSource: source, sendCommand: notConnectedSend, devServer: httpDevServer() },
     };
     const features = loadFeatures({ flags: set, host: 'server' });
     featureHud = new HudRoot(document.body, features, ctx);
+    if (ctx.services.awayDigest) {
+      ctx.services.awayDigest.preserveWhile(() => featureHud?.closeAll());
+    } else {
+      featureHud.closeAll();
+    }
     devConsole = mountDevConsole({ parent: document.body, features, ctx });
   };
   const offFlags = store.onChange(mount);

@@ -81,11 +81,9 @@ function syncColonyArrival(deps: ViewOverlaySyncDeps, mode: ColonyLoadMode, stat
       deps.arrival.quiet = true;
       deps.arrival.noSelect = true;
     } else if (hqObj) {
-      if (!deps.arrival.noSelect) deps.landfall.selectHq();
       deps.cam.follow(hqObj);
     }
   } else if (deps.cam && hqObj && !deps.cam.followTarget) {
-    if (!deps.arrival.noSelect) deps.landfall.selectHq();
     deps.cam.follow(hqObj);
   }
   if (deps.arrival.hold && deps.cam?.isOrbitalDropping()) {
@@ -227,7 +225,12 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
       deps.setCameraCentered(true);
     }
   }
-  deps.hud.setVisible(!((status.descending || !deps.hqReady) && mode === 'pod'));
+  const showHud = !((status.descending || !deps.hqReady) && mode === 'pod');
+  if (showHud && (deps.arrival.hold || deps.arrival.quiet)) {
+    releaseArrivalHud(deps.arrival, deps.landfall, deps.hud);
+    return;
+  }
+  deps.hud.setVisible(showHud);
 }
 
 export function applySessionOrbitalReveal(opts: {

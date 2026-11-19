@@ -245,7 +245,9 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
     expect(descentEl.hidden).toBe(true);
     expect(colonyEl.hidden).toBe(false);
     expect(colonyEl.dataset.planetId).toBe('pl_dev');
-    expect(session.getSelectedEntityId()).not.toBeNull();
+    expect(session.getSelectedEntityId()).toBeNull();
+    expect(body.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
+    expect(body.querySelector('[data-testid="colony-book"]')?.getAttribute('data-collapsed')).toBe('true');
 
     session.dispose();
   });

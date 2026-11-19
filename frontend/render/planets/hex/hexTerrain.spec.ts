@@ -10,6 +10,7 @@ import {
   HEX_PREP,
   HEX_TERRAIN,
   HEX_WATER_LEVEL,
+  isDryShoreTile,
   scatterTileProps,
   specForPlanetType,
   tileHash01,
@@ -407,7 +408,12 @@ describe('Hexagon edge visibility: the grid exists only on hex tiles (sim `hexTi
     const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('desert') });
     const n = 2 * r + 1;
     const grid = (q: number, rr: number) => ((hexTerrain.uniforms.uHexGrid!.value as THREE.DataTexture).image.data as Uint8Array)[((rr + r) * n + q + r) * 4];
+    const shore = (q: number, rr: number) => ((hexTerrain.uniforms.uHexGrid!.value as THREE.DataTexture).image.data as Uint8Array)[((rr + r) * n + q + r) * 4 + 1];
     expect(grid(0, 0)).toBe(255); // level open ground with a level open one-ring
+    expect(shore(2, -2)).toBe(128); // water tile
+    expect(shore(2, -1)).toBe(0); // desert/dune planet disables coastal dry-shore sand band
+    expect(isDryShoreTile(hx, at(2, -1), { terrain, prep, height, kind: 'forestRock' })).toBe(true);
+    expect(shore(0, -2)).toBe(0); // hole is excluded from dry shore tinting
     expect(grid(-4, 0)).toBe(255);
     for (const [q, rr] of [...obstacles.map(([q, rr]) => [q, rr] as const), [1, -2] as const]) {
       expect(grid(q, rr), `obstacle (${q}, ${rr})`).toBe(0);
@@ -432,6 +438,9 @@ describe('Hexagon edge visibility: the grid exists only on hex tiles (sim `hexTi
     expect(mockShader.vertexShader).not.toContain('aHexFlat');
     expect(mockShader.fragmentShader).toContain('uniform sampler2D uHexGrid;');
     expect(mockShader.fragmentShader).toContain('float hexGrid = max(hexGridCell(ownAx), hexGridCell(ownAx + nbStep));');
+    expect(mockShader.fragmentShader).toContain('float ownShoreCode = hexShoreCode(ownAx);');
+    expect(mockShader.fragmentShader).toContain('cellDryShore');
+    expect(mockShader.fragmentShader).not.toContain('smoothstep(0.88, 0.99, vHexShore)');
     expect(mockShader.fragmentShader).not.toContain('vFlatPos');
     expect(mockShader.fragmentShader).not.toContain('duneSlopeFade');
     for (const chunkMesh of hexTerrain.chunks) expect(chunkMesh.geometry.getAttribute('aHexFlat')).toBeUndefined();

@@ -245,14 +245,34 @@ function horizonAO(hx: ReturnType<typeof hexIndex>, i: number, height: ArrayLike
   return Math.max(0.88, Math.min(1, 1 - occ * 0.25));
 }
 
-function isWaterAt(layers: HexTileLayers, i: number): boolean {
+export function isWaterAt(layers: HexTileLayers, i: number): boolean {
   if (!layers.terrain || i < 0 || isClearedPrep(layers.prep?.[i] ?? 0)) return false;
   const t = layers.terrain[i] ?? 0;
   return t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep;
 }
 
+/** True for non-dune dry land tiles (excluding craters/rock crags and cleared prep) that touch at least one water tile. */
+export function isDryShoreTile(
+  hx: ReturnType<typeof hexIndex>,
+  i: number,
+  layers: HexTileLayers,
+): boolean {
+  if (!layers.terrain || layers.kind === 'dune') return false;
+  if (isWaterAt(layers, i)) return false;
+  if (isClearedPrep(layers.prep?.[i] ?? 0)) return false;
+  const t = layers.terrain[i] ?? 0;
+  if (t === HEX_TERRAIN.hole || t === HEX_TERRAIN.rock) return false;
+  const q = hx.q[i]!;
+  const r = hx.r[i]!;
+  for (const [dq, dr] of HEX_DIRS) {
+    const j = hx.indexOf(q + dq, r + dr);
+    if (j >= 0 && isWaterAt(layers, j)) return true;
+  }
+  return false;
+}
+
 /** Shoreline weight [0..1] for non-dune water tiles and dry land tiles bordering water. */
-function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: HexTileLayers): number {
+export function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: HexTileLayers): number {
   if (!layers.terrain || layers.kind === 'dune' || layers.terrain[i] === HEX_TERRAIN.hole) return 0;
   if (isWaterAt(layers, i)) return 1.0;
   const q = hx.q[i]!, r = hx.r[i]!;
@@ -261,7 +281,7 @@ function tileShoreFactor(hx: ReturnType<typeof hexIndex>, i: number, layers: Hex
     const j = hx.indexOf(q + dq, r + dr);
     if (j >= 0 && isWaterAt(layers, j)) waterNeighbors++;
   }
-  return waterNeighbors > 0 ? Math.min(0.95, 0.55 + waterNeighbors * 0.14) : 0;
+  return waterNeighbors > 0 ? Math.min(0.92, 0.58 + waterNeighbors * 0.10) : 0;
 }
 
 /**
