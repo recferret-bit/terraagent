@@ -2,9 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFramePacer } from './framePacer';
 import {
+  DEFAULT_FPS_CAP,
   getFpsCap,
   parseFpsLimit,
   resetPerfParams,
+  resolveInitialFpsCap,
   setFpsCap,
   setPerf,
   setPerfParams,
@@ -45,14 +47,19 @@ describe('FPS Cap Parsing & Persistence', () => {
   });
 
   it('persists FPS cap in localStorage and notifies subscribers', () => {
-    expect(getFpsCap()).toBe(0);
-    expect(setFpsCap(60)).toBe(60);
+    expect(DEFAULT_FPS_CAP).toBe(60);
+    expect(resolveInitialFpsCap(null, null)).toBe(60);
+    expect(resolveInitialFpsCap('0', '30')).toBe(0);
+    expect(resolveInitialFpsCap(null, '90')).toBe(90);
+    expect(resolveInitialFpsCap('nope', null)).toBe(60);
+    expect(getFpsCap()).toBe(60);
+    expect(setFpsCap(30)).toBe(30);
+    expect(getFpsCap()).toBe(30);
+    expect(localStorage.getItem('terraagent.fpsCap')).toBe('30');
+    expect(setFpsCap(999 as FpsLimit)).toBe(30);
+    resetPerfParams();
     expect(getFpsCap()).toBe(60);
     expect(localStorage.getItem('terraagent.fpsCap')).toBe('60');
-    expect(setFpsCap(999 as FpsLimit)).toBe(60);
-    resetPerfParams();
-    expect(getFpsCap()).toBe(0);
-    expect(localStorage.getItem('terraagent.fpsCap')).toBe('0');
   });
 });
 

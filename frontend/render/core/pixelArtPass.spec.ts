@@ -5,10 +5,19 @@ import type { EffectComposer } from 'three/addons/postprocessing/EffectComposer.
 import type { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import type { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { sizeColonyViewport, type ViewportSizeState } from './createColonyViewport';
-import { buildPixelArtFrag, createPixelArtPass, setPixelArt } from './pixelArtPass';
+import { buildPixelArtFrag, createPixelArtPass, resolveInitialPixelArt, setPixelArt } from './pixelArtPass';
 import { disposeCrt, initCrt, resetCrtParams, setCrtParams } from '../ui/crt';
 
 describe('pixelArtPass & viewport sizing', () => {
+  it('enables the pixel shader by default and lets a saved or URL off win', () => {
+    expect(resolveInitialPixelArt(null, null)).toBe(true);
+    expect(resolveInitialPixelArt(null, '1')).toBe(true);
+    expect(resolveInitialPixelArt(null, '0')).toBe(false);
+    expect(resolveInitialPixelArt('0', '1')).toBe(false);
+    expect(resolveInitialPixelArt('1', '0')).toBe(true);
+    expect(resolveInitialPixelArt('false', null)).toBe(false);
+  });
+
   const origDpr = window.devicePixelRatio;
 
   beforeEach(() => {

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_FPS_CAP,
   getFpsCap,
   getViewportPreset,
   isShaderOptimized,
@@ -216,7 +217,7 @@ export class SettingsModal {
     const fpsEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-fps"]:checked');
     const resEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-res"]:checked');
     const quality = qEl?.value === 'low' ? 'low' : 'high';
-    const fpsCap = parseFpsLimit(fpsEl?.value) ?? 0;
+    const fpsCap = parseFpsLimit(fpsEl?.value) ?? DEFAULT_FPS_CAP;
     saveGraphicsQuality(quality);
     setFpsCap(fpsCap);
     this.current = {
