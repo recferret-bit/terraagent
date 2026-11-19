@@ -36,4 +36,39 @@ describe('owned colony resume', () => {
     await repo.setPlanetStatus(first.planet.id, 'ENDED');
     await expect(home.resumeColony('pilot', first.colony.id)).rejects.toMatchObject({ errorCode: 'COLONY_UNAVAILABLE' });
   });
+
+  it('rejects mismatched requested sectorId with 409 COLONY_SECTOR_LOCKED for an ACTIVE colony', async () => {
+    const repo = new HomeRepository();
+    const home = new HomeService(repo);
+    home.setLandingHost(freeLandingHost);
+    const planet = await repo.upsertDevPlanet('pl_dev_sec');
+    const created = await repo.createColony({
+      playerId: 'pilot_sec',
+      planetId: planet.id,
+      colonyIndex: 0,
+      name: 'SectorZero',
+      status: 'ACTIVE',
+      foundingSectorId: 'sec_0_0',
+      color: 0,
+      spawnQ: 0,
+      spawnR: 0,
+    });
+
+    await expect(home.getOrAssignHome({ id: 'pilot_sec' }, 'desert', 'sec_0_0')).resolves.toMatchObject({
+      state: 'ACTIVE',
+      colony: { id: created.colony.id },
+    });
+    await expect(home.getOrAssignHome({ id: 'pilot_sec' }, 'desert', 'sec_1_0')).rejects.toMatchObject({
+      status: 409,
+      errorCode: 'COLONY_SECTOR_LOCKED',
+    });
+    await expect(home.resolveHome('pilot_sec', { sectorId: 'sec_1_0' })).rejects.toMatchObject({
+      status: 409,
+      errorCode: 'COLONY_SECTOR_LOCKED',
+    });
+    await expect(home.resumeColony('pilot_sec', created.colony.id, 'sec_1_0')).rejects.toMatchObject({
+      status: 409,
+      errorCode: 'COLONY_SECTOR_LOCKED',
+    });
+  });
 });

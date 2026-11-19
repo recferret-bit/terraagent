@@ -233,16 +233,17 @@ export function syncOrRebuildSessionTerrain(params: {
   planetKind: PlanetKind | null;
   inSpace: boolean;
   showSpaceTerrain: boolean;
+  deferLook?: boolean;
   cameraTargetTile: { q: number; r: number };
 }): { terrain: HexTerrain; cam: RTSCamera | null; biomeKey: string; rebuilt: boolean } {
-  const { viewport, prevTerrain, prevTiles, prevCam, prevBiomeKey, view, tiles, planetKind, inSpace, showSpaceTerrain, cameraTargetTile } = params;
+  const { viewport, prevTerrain, prevTiles, prevCam, prevBiomeKey, view, tiles, planetKind, inSpace, showSpaceTerrain, deferLook, cameraTargetTile } = params;
   const look = resolveOnlinePlanetLook(view.planet.type, planetKind);
   if (!prevTerrain || prevTerrain.radius !== view.planet.radius || prevBiomeKey !== look.biomeKey) {
     if (prevTerrain) {
       viewport.scene.remove(prevTerrain.group);
       prevTerrain.dispose();
     }
-    if (!inSpace) {
+    if (!inSpace && !deferLook) {
       try {
         applyPlanetLook(viewport, look);
       } catch {

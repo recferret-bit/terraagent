@@ -290,8 +290,21 @@ export class Connection implements RoomMember {
     });
     const home = this.playerId ? await this.resolveHome(this.playerId, planetId) : DEFAULT_HOME;
     if (this.state !== 'joining') return; // closed or left meanwhile
+    const hasActiveElsewhere =
+      home.state === 'ACTIVE' &&
+      home.colony.planetId !== planetId &&
+      !this.d.planets.isScenarioColonyPlanet(planetId);
+    if (hasActiveElsewhere) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
     const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;
     if (!own && !this.session?.dev) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
+    if (own) {
+      if (msg.d.colonyId && msg.d.colonyId !== home.colony.id) {
+        return this.bye(CLOSE_CODES.forbidden, 'not_your_colony');
+      }
+      if (msg.d.sectorId && home.colony.foundingSectorId && msg.d.sectorId !== home.colony.foundingSectorId) {
+        return this.bye(CLOSE_CODES.forbidden, 'not_your_sector');
+      }
+    }
     this.colonyId = own ? home.colony.id : null;
     this.colonyIndex = own ? home.colony.colonyIndex : undefined;
     this.d.rooms.join(planetId, this);

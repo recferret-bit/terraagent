@@ -1,11 +1,76 @@
+import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { OrbitalStage } from '@terra/render/orbit/types';
+import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
+import { createPlanetSurface } from '@terra/render/planets/surface';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
+import { createDescentSequence } from '../descent/createDescent';
 import type { DescentHud } from '../ui/hud';
+import type { MenuSettings } from '../ui/menu';
 import type { OnlineSession } from './online/OnlineSession';
 import { POD_ENGINE_STOP_END_S, POD_TOUCHDOWN_DESCENT_S } from './online/PodTouchdownFx';
 import { resolveOnlinePlanetLook } from './online/viewportHelper';
+import { warmupScene } from './warmup';
+
+export interface PreparedDescentSession {
+  key: string;
+  spec: PlanetSpec;
+  surface: PlanetSurface;
+  descent: DescentSequence;
+  ready: boolean;
+  whenReady: Promise<void>;
+}
+
+export function buildPreparedDescentSession(opts: {
+  viewport: ColonyViewport;
+  key: string;
+  spec: PlanetSpec;
+  quality: MenuSettings['quality'];
+  resetScene: () => void;
+  isStale: (p: PreparedDescentSession) => boolean;
+}): PreparedDescentSession {
+  const { viewport, key, spec, quality, resetScene, isStale } = opts;
+  const exp = viewport.renderer.toneMappingExposure;
+  const bloom = viewport.bloom.strength;
+  let prep!: PreparedDescentSession;
+  try {
+    resetScene();
+    viewport.camera.fov = 28;
+    viewport.camera.updateProjectionMatrix();
+    viewport.applySky(spec);
+    const surface = createPlanetSurface(spec, { quality });
+    viewport.scene.add(surface.group);
+    try { applyPlanetLook(viewport, spec); } catch (e) { console.warn('applyPlanetLook failed', e); }
+    const descent = createDescentSequence({ viewport, scene: viewport.scene, camera: viewport.camera, spec, surface, startAt: 9 });
+    prep = { key, spec, surface, descent, ready: false, whenReady: Promise.resolve() };
+  } finally {
+    viewport.renderer.toneMappingExposure = exp;
+    viewport.bloom.strength = bloom;
+  }
+  prep.whenReady = warmupScene(viewport, () => isStale(prep)).then(() => { prep.ready = true; });
+  return prep;
+}
+
+export function disposePreparedDescentSession(opts: {
+  viewport: ColonyViewport;
+  prepared: PreparedDescentSession | null;
+  resetScene: () => void;
+}): void {
+  const { viewport, prepared, resetScene } = opts;
+  if (!prepared) return;
+  const exp = viewport.renderer.toneMappingExposure;
+  const bloom = viewport.bloom.strength;
+  try {
+    try { prepared.descent.dispose(); } catch (e) { console.warn(e); }
+    viewport.scene.remove(prepared.surface.group);
+    prepared.surface.dispose();
+    resetScene();
+  } finally {
+    viewport.renderer.toneMappingExposure = exp;
+    viewport.bloom.strength = bloom;
+  }
+}
 
 /** Advances `OrbitalStage` during `deploying`, retargeting the solar entry corridor before pod release (`tn < 3.9`). */
 export function stepDeployingStageFrame(opts: {

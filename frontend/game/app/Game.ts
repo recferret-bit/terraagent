@@ -5,17 +5,29 @@ import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@t
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import type { OrbitalStage } from '@terra/render/orbit/types';
 import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
-import { createPlanetSurface } from '@terra/render/planets/surface';
 import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
-import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
-import { createDescentSequence } from '../descent/createDescent';
-import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
-import { resetDeviceSecret } from './online/bootOnline';
-import { clearPendingJoinIntent } from './online/joinQueueFlow';
+import {
+  finishReturningColonyEntry,
+  mountBootOnlineSession,
+  prepareOnlineGuestState,
+  resetOrbitalScene,
+  resolveColonyLoadMode,
+  startReturningColonyEntry,
+  stepEntryBloomFlash,
+  stepReturningColonyEntry,
+  type ColonyLoadMode,
+} from './colonyEntryBridge';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
-import { stepDeployingStageFrame, stepOnlineRetroHud, syncOnlineSpaceDescentFrame } from './descentBridge';
+import {
+  buildPreparedDescentSession,
+  disposePreparedDescentSession,
+  stepDeployingStageFrame,
+  stepOnlineRetroHud,
+  syncOnlineSpaceDescentFrame,
+  type PreparedDescentSession,
+} from './descentBridge';
 import { track } from '../core/analytics';
 import { MainMenu, type MenuSettings, type SectorIntentV1 } from '../ui/menu';
 import { normalizeSectorIntent } from '../ui/lobby/orbitalPickerModel';
@@ -32,13 +44,7 @@ import '../../design/css/tokens.css';
 import '../../design/css/base.css';
 import '../ui/ui.css';
 
-type Phase = 'menu' | 'loading' | 'deploying' | 'descent' | 'gameplay';
-
-/** A descent session built ahead of time (while the menu idles) so DEPLOY never shows a loading gap. */
-interface Prepared {
-  key: string; spec: PlanetSpec; surface: PlanetSurface; descent: DescentSequence;
-  ready: boolean; whenReady: Promise<void>;
-}
+type Phase = 'menu' | 'loading' | 'entering' | 'deploying' | 'descent' | 'gameplay';
 
 export class Game {
   readonly viewport: ColonyViewport;
@@ -64,12 +70,15 @@ export class Game {
   private skipOnlineLanding = false;
   private keepOnlineSession = false;
   private useOnlineGameplay = true;
+  private loadMode: ColonyLoadMode | null = null;
   private readonly isLocalHost: boolean;
   private fastForward = 0; private time = 0; private last = performance.now(); private raf = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
-  private prepared: Prepared | null = null; private prepTimer = 0;
-  private deploySession: Prepared | null = null;
+  private prepared: PreparedDescentSession | null = null; private prepTimer = 0;
+  private deploySession: PreparedDescentSession | null = null;
   private cutFlash = 0;
+  private baseBloom = 0.45;
+  private entryHoldElapsed = 0;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -144,20 +153,12 @@ export class Game {
   }
 
   private resetScene() {
-    const sc = this.viewport.scene;
-    for (const c of [...sc.children]) if (!this.baseChildren.has(c)) sc.remove(c);
-    sc.background = new THREE.Color(0x03060c);
-    if (sc.fog instanceof THREE.FogExp2) sc.fog.color.setHex(0x03060c);
-  }
-
-  // ------------------------------------------------------------------ session pre-build (no loading gap on DEPLOY)
-  private withMenuGlobals<T>(fn: () => T): T {
-    const vp = this.viewport, exp = vp.renderer.toneMappingExposure, bloom = vp.bloom.strength;
-    try { return fn(); } finally { vp.renderer.toneMappingExposure = exp; vp.bloom.strength = bloom; }
+    resetOrbitalScene(this.viewport.scene, this.baseChildren);
   }
 
   private schedulePrepare(delay = 1400) {
     clearTimeout(this.prepTimer);
+    if (this.useOnlineGameplay && this.menu.getActiveColony() !== null) return;
     this.prepTimer = window.setTimeout(() => {
       if (this.phase !== 'menu') return;
       try { this.prepare(this.menu.kind, this.menu.seed); } catch (e) { console.warn('prepare failed', e); }
@@ -165,36 +166,21 @@ export class Game {
   }
 
   /** Builds surface + descent into viewport.scene (not rendered while the menu shows) and pre-compiles every shader. */
-  private prepare(kind: PlanetKind, seed: number): Prepared {
+  private prepare(kind: PlanetKind, seed: number): PreparedDescentSession {
     const key = `${kind}:${seed}:${this.settings.quality}`;
     if (this.prepared?.key === key) return this.prepared;
     this.discardPrepared();
-    const vp = this.viewport, scene = vp.scene, camera = vp.camera;
-    const p = this.withMenuGlobals(() => {
-      this.resetScene();
-      camera.fov = 28; camera.updateProjectionMatrix();
-      const spec = this.makeSpec(kind, seed);
-      vp.applySky(spec);
-      const surface = createPlanetSurface(spec, { quality: this.settings.quality });
-      scene.add(surface.group);
-      this.callLook(spec);
-      const descent = createDescentSequence({ viewport: vp, scene, camera, spec, surface, startAt: 9 });
-      const prep: Prepared = { key, spec, surface, descent, ready: false, whenReady: Promise.resolve() };
-      return prep;
+    const prep = buildPreparedDescentSession({
+      viewport: this.viewport, key, spec: this.makeSpec(kind, seed), quality: this.settings.quality,
+      resetScene: () => this.resetScene(), isStale: (p) => this.prepared !== p && this.deploySession !== p,
     });
-    p.whenReady = warmupScene(vp, () => this.prepared !== p && this.deploySession !== p).then(() => { p.ready = true; });
-    this.prepared = p;
-    return p;
+    this.prepared = prep;
+    return prep;
   }
 
   private discardPrepared() {
     const p = this.prepared; this.prepared = null;
-    if (!p) return;
-    this.withMenuGlobals(() => {
-      try { p.descent.dispose(); } catch (e) { console.warn(e); }
-      this.viewport.scene.remove(p.surface.group); p.surface.dispose();
-      this.resetScene();
-    });
+    disposePreparedDescentSession({ viewport: this.viewport, prepared: p, resetScene: () => this.resetScene() });
   }
 
   // ------------------------------------------------------------------ deploy
@@ -213,15 +199,17 @@ export class Game {
   }
 
   private deploy(kind: PlanetKind, seed: number, instant = false) {
-    if (this.phase !== 'menu') return;
+    if (this.phase !== 'menu' || !this.menu.canDeploy()) return;
     const activeColony = this.menu.getActiveColony();
     if (activeColony) {
       kind = activeColony.kind;
       seed = PLANET_SPECS[kind].seed;
     }
     clearTimeout(this.prepTimer);
+    this.loadMode = resolveColonyLoadMode({ isReturning: this.useOnlineGameplay && activeColony !== null, instant, skipCinematic: this.settings.skipCinematic });
+    if (this.useOnlineGameplay && activeColony !== null) { this.enterExistingColony(kind, seed, instant); return; }
     writeStoredPlanetKind(kind);
-    let p: Prepared;
+    let p: PreparedDescentSession;
     try { p = this.prepare(kind, seed); }
     catch (err) {
       console.error('deploy failed', err);
@@ -234,24 +222,15 @@ export class Game {
     this.skipOnlineLanding = false;
     this.suppressDescentHud = false;
     if (this.useOnlineGameplay) {
-      // Preserve session when signed in or entering an existing ACTIVE colony; reset only for a fresh guest deployment.
-      const keepSession = this.menu.hasLinkedPilot() || activeColony !== null;
+      const keepSession = this.menu.hasLinkedPilot();
       this.keepOnlineSession = keepSession;
-      if (!keepSession) resetDeviceSecret();
-      if (typeof localStorage !== 'undefined') clearPendingJoinIntent(localStorage);
+      prepareOnlineGuestState(keepSession);
       if (!this.settings.skipCinematic) {
-        this.online = new OnlineSession(this.root, 'boot', {
-          viewport: this.viewport,
-          planetKind: this.spec.kind,
-          sectorIntent: this.sectorIntent,
-          skipDescent: false,
-          fromSpaceDescent: true,
-          freshDeployment: activeColony === null,
-          tryRefresh: keepSession,
-          search: '',
-          onReturnToOrbit: () => { void this.returnToOrbit(); },
+        this.online = mountBootOnlineSession({
+          root: this.root, viewport: this.viewport, planetKind: this.spec.kind, sectorIntent: this.sectorIntent,
+          loadMode: 'pod', skipDescent: false, fromSpaceDescent: true, freshDeployment: true, orbitalCameraDrop: false,
+          deferReveal: false, tryRefresh: keepSession, onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
-        (window as unknown as { __online?: OnlineSession }).__online = this.online;
       }
     }
     this.dHud = new DescentHud(document.body);
@@ -292,6 +271,33 @@ export class Game {
     this.descent.alignGlobe(align.spinQuat, align.cloudRotY);
   }
 
+  private enterExistingColony(kind: PlanetKind, seed: number, instant: boolean) {
+    if (!this.menu.canDeploy()) return;
+    this.discardPrepared();
+    this.resetScene();
+    this.spec = this.makeSpec(kind, seed);
+    this.keepOnlineSession = true;
+    this.entryHoldElapsed = 0;
+    this.skipOnlineLanding = false;
+    const skipCinematic = instant || this.settings.skipCinematic;
+    this.online = startReturningColonyEntry({
+      root: this.root, viewport: this.viewport, planetKind: kind, sectorIntent: this.sectorIntent,
+      skipCinematic, stage: this.stage, markers: this.menu.getGlobeMarkers(),
+      onReturnToOrbit: () => { void this.returnToOrbit(); },
+    });
+    this.menu.hide();
+    if (skipCinematic || !this.stage) this.finishColonyEntry(true);
+    else this.phase = 'entering';
+  }
+
+  private finishColonyEntry(skipDrop = false) {
+    const res = finishReturningColonyEntry({ stage: this.stage, viewport: this.viewport, online: this.online, skipDrop });
+    this.stage = null;
+    this.phase = 'gameplay';
+    this.baseBloom = res.baseBloom;
+    this.cutFlash = res.cutFlash;
+  }
+
   private cutToDescent(flash = true) {
     if (!this.descent) return;
     const vp = this.viewport;
@@ -302,11 +308,6 @@ export class Game {
     this.deploySession = null;
     this.cutFlash = flash ? 1 : 0;
     if (st) window.setTimeout(() => st.dispose(), 0);
-  }
-
-  private callLook(spec: PlanetSpec = this.spec) {
-    const vp = this.viewport;
-    try { applyPlanetLook(vp, spec); } catch (e) { console.warn('applyPlanetLook failed', e); }
   }
 
   private handoffDescent(skipToColony: boolean) {
@@ -352,17 +353,11 @@ export class Game {
         else this.online.setSpacePhase(null);
       } else {
         this.resetScene();
-        this.online = new OnlineSession(this.root, 'boot', {
-          viewport: this.viewport,
-          planetKind: this.spec.kind,
-          sectorIntent: this.sectorIntent,
-          skipDescent: true,
-          fromSpaceDescent: false,
-          tryRefresh: this.keepOnlineSession,
-          search: '',
-          onReturnToOrbit: () => { void this.returnToOrbit(); },
+        this.online = mountBootOnlineSession({
+          root: this.root, viewport: this.viewport, planetKind: this.spec.kind, sectorIntent: this.sectorIntent,
+          loadMode: 'instant', skipDescent: true, fromSpaceDescent: false, freshDeployment: true, orbitalCameraDrop: false,
+          deferReveal: false, tryRefresh: this.keepOnlineSession, onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
-        (window as unknown as { __online?: OnlineSession }).__online = this.online;
       }
       return;
     }
@@ -380,7 +375,8 @@ export class Game {
 
   // ------------------------------------------------------------------ states
   private onKey(e: KeyboardEvent) {
-    if (this.phase === 'deploying' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.cutToDescent(false); this.skipDescent(); }
+    if (this.phase === 'entering' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.finishColonyEntry(true); }
+    else if (this.phase === 'deploying' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.cutToDescent(false); this.skipDescent(); }
     else if (this.phase === 'descent' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.skipDescent(); }
     else if (this.phase === 'gameplay' && !this.online && e.key === 'Escape') this.setPaused(!(this.gHud?.paused));
   }
@@ -420,10 +416,12 @@ export class Game {
   }
 
   private async returnToOrbit() {
-    if (this.phase !== 'gameplay' && this.phase !== 'deploying' && this.phase !== 'descent') return;
+    if (this.phase !== 'gameplay' && this.phase !== 'entering' && this.phase !== 'deploying' && this.phase !== 'descent') return;
     this.phase = 'loading';
+    this.cutFlash = 0; this.loadMode = null;
     this.fade.classList.add('on'); await new Promise((r) => setTimeout(r, 750));
     const kind = this.spec.kind, seed = this.spec.seed;
+    this.stage?.dispose(); this.stage = null;
     this.teardownSession();
     this.mountStage(this.makeSpec(kind, seed));
     this.menu.select(kind, false);
@@ -450,6 +448,10 @@ export class Game {
       this.stage.setHighlights(this.menu.getGlobeMarkers());
       this.stage.update(dt, this.time);
       this.menu.updateArProjection(this.stage.projectHighlights());
+    } else if (this.phase === 'entering' && this.stage) {
+      const step = stepReturningColonyEntry({ stage: this.stage, online: this.online, dt, time: this.time, holdElapsed: this.entryHoldElapsed });
+      this.entryHoldElapsed = step.nextHoldElapsed;
+      if (step.done) this.finishColonyEntry(false);
     } else if (this.phase === 'deploying') {
       this.spec = stepDeployingStageFrame({
         dt, time: this.time, online: this.online, descent: this.descent, stage: this.stage, dHud: this.dHud, currentSpec: this.spec,
@@ -459,6 +461,7 @@ export class Game {
       this.descent?.update(dt); this.surface?.update(dt, this.time);
       if (this.cutFlash > 0) { vp.bloom.strength += 0.55 * this.cutFlash * this.cutFlash; this.cutFlash = Math.max(0, this.cutFlash - dt / 0.5); }
     } else if (this.phase === 'gameplay' && this.online) {
+      if (this.cutFlash > 0) this.cutFlash = stepEntryBloomFlash(vp, this.baseBloom, this.cutFlash, dt);
       this.syncOnlineRetroHud();
     } else if (this.phase === 'gameplay' && !this.online) {
       this.play?.update(dt);

@@ -14,6 +14,7 @@ import { NebulaTint } from './stage/NebulaTint';
 import { GlobeHighlights } from './stage/GlobeHighlights';
 import { updateIdleCamera, driftCarrier } from './stage/idle';
 import { DeploySequence } from './deploy/DeploySequence';
+import { OrbitalCameraDive, type OrbitalCameraDiveOptions } from './deploy/OrbitalCameraDive';
 
 /**
  * Interactive menu backdrop: procedural planet globe (right of frame, UI-safe left), nebula + stars, a sun with
@@ -36,6 +37,7 @@ class OrbitalStageImpl implements OrbitalStage {
   private readonly nebula: NebulaTint;
   private readonly carrier: FittedModel;
   private readonly deploy: DeploySequence;
+  private readonly cameraDive: OrbitalCameraDive;
   private lastTime = 0;
 
   constructor(viewport: ColonyViewport, spec: PlanetSpec) {
@@ -64,13 +66,17 @@ class OrbitalStageImpl implements OrbitalStage {
     this.moons = new StageMoons(scene, sunDir, spec);
     this.satellites = new Satellites(scene);
     this.nebula = new NebulaTint(spec, this.backdrop.uniforms.uNebA, this.layers);
-    this.deploy = new DeploySequence({ scene, camera: this.camera, viewport, sunDir, sun: this.sun, backdrop: this.backdrop, carrier: this.carrier, globes: this.globes, lookNow: this.lookNow });
+    const deployHost = { scene, camera: this.camera, viewport, sunDir, sun: this.sun, backdrop: this.backdrop, carrier: this.carrier, globes: this.globes, lookNow: this.lookNow };
+    this.deploy = new DeploySequence(deployHost);
+    this.cameraDive = new OrbitalCameraDive(deployHost);
   }
 
   beginDeploy(h: DescentHandoff, opts: { biomeKey?: string } = {}) { return this.deploy.begin(h, opts); }
   retargetDeploy(h: DescentHandoff) { return this.deploy.retarget(h); }
   deployProgress() { return this.deploy.progress(); }
   deployTn() { return this.deploy.tn(); }
+  beginCameraDive(opts?: OrbitalCameraDiveOptions) { this.cameraDive.begin(opts); }
+  cameraDiveProgress() { return this.cameraDive.progress(); }
   setTerraform(stage: number, smooth?: boolean) { this.globes.current.setTerraform(stage, smooth); }
   setSpinRate(r: number) { this.globes.setSpinRate(r); }
   setHighlights(markers: readonly OrbitalGlobeMarkerInput[]) {
@@ -92,21 +98,25 @@ class OrbitalStageImpl implements OrbitalStage {
     this.lastTime = time;
     const { globes, camera, sun } = this;
     const deploying = this.deploy.active;
-    if (!deploying) globes.place(dt);
+    const diving = this.cameraDive.active;
+    const transitioning = deploying || diving;
+    if (!transitioning) globes.place(dt);
     globes.updateFade(dt);
-    if (!deploying) globes.updateGlobes(dt, time);
+    if (!transitioning) globes.updateGlobes(dt, time);
     this.nebula.update(dt, globes.morphRate);
 
     if (deploying) this.deploy.update(dt, time);
+    else if (diving) this.cameraDive.update(dt);
     else { sun.smoothMouse(dt); updateIdleCamera(camera, this.lookNow, this.camBase, sun.mouseS, globes.planetPos, time); }
-    this.highlights.setVisible(!deploying);
-    if (!deploying) this.highlights.update(globes.current, globes.planetPos, camera, dt, time);
+    const showHl = !deploying && (!diving || this.cameraDive.progress() < 0.45);
+    this.highlights.setVisible(showHl);
+    if (showHl) this.highlights.update(globes.current, globes.planetPos, camera, dt, time);
     this.backdrop.update(camera, time);
     this.layers.update(dt, time);
     sun.update(camera, time, globes.planetPos);
     this.moons.update(dt, time, globes.planetPos, globes.morphRate);
     this.satellites.update(time, globes.planetPos);
-    if (!deploying) driftCarrier(this.carrier, globes.planetPos, time);
+    if (!transitioning) driftCarrier(this.carrier, globes.planetPos, time);
     tickArchetypeMesh(this.carrier.mesh, time);
   }
 
@@ -116,6 +126,7 @@ class OrbitalStageImpl implements OrbitalStage {
     this.highlights.dispose();
     this.layers.dispose(); this.moons.dispose(); this.satellites.dispose();
     this.deploy.dispose();
+    this.cameraDive.dispose();
     camera.near = 0.5; camera.fov = 28; camera.updateProjectionMatrix();
     this.backdrop.dispose(); this.sun.dispose(this.scene); this.carrier.dispose();
     this.scene.environment = null;

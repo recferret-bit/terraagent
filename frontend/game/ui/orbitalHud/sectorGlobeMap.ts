@@ -287,6 +287,12 @@ export function resolveHomeBaseSectorId(
   const colonies = summary.colonies ?? [];
 
   if (activeColony && planetLookForType(summary.type) === activeColony.kind) {
+    if (
+      activeColony.foundingSectorId &&
+      (landSet.size === 0 || landSet.has(activeColony.foundingSectorId))
+    ) {
+      return activeColony.foundingSectorId;
+    }
     const match = colonies.find(
       (c) => c.colonyId === activeColony.colonyId || c.displayName === activeColony.colonyName,
     );
@@ -318,10 +324,18 @@ export function resolveTargetSectorId(
   summary: PlanetSummaryV1,
   intent: SectorIntentV1,
   hoveredSectorId: string | null,
+  homeBaseSectorId?: string | null,
 ): SectorId {
   const land = summary.sectors.filter((s) => s.kind === 'land');
   if (hoveredSectorId && land.some((s) => s.sectorId === hoveredSectorId)) return hoveredSectorId;
   if (intent.mode === 'chosen' && land.some((s) => s.sectorId === intent.sectorId)) return intent.sectorId;
+  if (
+    intent.mode === 'auto' &&
+    homeBaseSectorId &&
+    (land.length === 0 || land.some((s) => s.sectorId === homeBaseSectorId))
+  ) {
+    return homeBaseSectorId;
+  }
   return (land.find((s) => s.freeSeats > 0) ?? land[0])?.sectorId ?? 'sec_0_0';
 }
 
@@ -336,8 +350,13 @@ export function buildOrbitalGlobeMarkers(
   activeColony: ActiveHomeColony | null = null,
 ): OrbitalGlobeMarkerInput[] {
   const resolvedKind = kind ?? planetLookForType(summary.type);
-  const targetSectorId = resolveTargetSectorId(summary, intent, hoveredSectorId);
   const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+  const targetSectorId = resolveTargetSectorId(
+    summary,
+    intent,
+    hoveredSectorId,
+    activeColony ? homeBaseSectorId : null,
+  );
   const popMap = resolveSectorPopulationMap(summary);
   const landSectors = summary.sectors.filter((s) => s.kind === 'land').slice(0, 8);
 

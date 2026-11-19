@@ -93,6 +93,7 @@ export class OrbitalArHud {
   private cachedMarkers: OrbitalGlobeMarkerInput[] = [];
   private latestState: OrbitalArState;
   private pulseTimer = 0;
+  private sectorLockNoticeShown = false;
 
   private readonly onPointerMove = (e: PointerEvent): void => {
     const w = Math.max(1, window.innerWidth);
@@ -141,6 +142,7 @@ export class OrbitalArHud {
     this.deployBtn = this.launchCard.querySelector('#deploy')!;
     this.errEl = this.launchCard.querySelector('#menu-err')!;
     this.deployBtn.onclick = () => {
+      if (this.deployBtn.disabled || this.isForeignSectorSelected()) return;
       this.deployBtn.disabled = true;
       this.cb.onDeploy();
     };
@@ -190,8 +192,13 @@ export class OrbitalArHud {
       this.scanCard.innerHTML = scanHtml;
       this.lastScanHtml = scanHtml;
     }
-    const targetSector = resolveTargetSectorId(state.summary, state.intent, this.hoveredSectorId);
     const homeBaseSectorId = resolveHomeBaseSectorId(state.summary, state.activeColony);
+    const targetSector = resolveTargetSectorId(
+      state.summary,
+      state.intent,
+      this.hoveredSectorId,
+      state.activeColony ? homeBaseSectorId : null,
+    );
     const presenceHtml = renderPresenceCardInnerHtml(
       state.summary,
       state.activeColony,
@@ -227,19 +234,56 @@ export class OrbitalArHud {
         },
       );
     }
-    this.deployBtn.textContent = state.activeColony ? 'ENTER COLONY' : 'DEPLOY';
+    this.syncLockState();
 
     this.refreshMarkers();
     if (planetChanged) this.triggerRetargetPulse();
   }
 
+  isForeignSectorSelected(): boolean {
+    const { summary, intent, activeColony } = this.latestState;
+    if (!activeColony) return false;
+    const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+    if (!homeBaseSectorId) return false;
+    return intent.mode === 'chosen' && intent.sectorId !== homeBaseSectorId;
+  }
+
+  syncLockState(): void {
+    const { summary, activeColony } = this.latestState;
+    this.deployBtn.textContent = activeColony ? 'ENTER COLONY' : 'DEPLOY';
+    if (!activeColony) {
+      this.deployBtn.disabled = false;
+      this.deployBtn.removeAttribute('aria-disabled');
+      delete this.deployBtn.dataset.sectorLocked;
+      if (this.sectorLockNoticeShown) {
+        this.errEl.textContent = '';
+        this.sectorLockNoticeShown = false;
+      }
+      return;
+    }
+    const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+    const foreignSector = this.isForeignSectorSelected();
+    this.deployBtn.disabled = foreignSector;
+    this.deployBtn.setAttribute('aria-disabled', foreignSector ? 'true' : 'false');
+    this.deployBtn.dataset.sectorLocked = foreignSector ? 'true' : 'false';
+    if (foreignSector && homeBaseSectorId) {
+      this.errEl.textContent =
+        `Colony ${activeColony.colonyName} is deployed in ${homeBaseSectorId.toUpperCase()} — select ${homeBaseSectorId.toUpperCase()} to enter.`;
+      this.sectorLockNoticeShown = true;
+    } else if (this.sectorLockNoticeShown) {
+      this.errEl.textContent = '';
+      this.sectorLockNoticeShown = false;
+    }
+  }
+
   private refreshPresence(): void {
+    const homeBaseSectorId = resolveHomeBaseSectorId(this.latestState.summary, this.latestState.activeColony);
     const targetSector = resolveTargetSectorId(
       this.latestState.summary,
       this.latestState.intent,
       this.hoveredSectorId,
+      this.latestState.activeColony ? homeBaseSectorId : null,
     );
-    const homeBaseSectorId = resolveHomeBaseSectorId(this.latestState.summary, this.latestState.activeColony);
     const presenceHtml = renderPresenceCardInnerHtml(
       this.latestState.summary,
       this.latestState.activeColony,
@@ -324,8 +368,13 @@ export class OrbitalArHud {
   syncProjection(frame: OrbitalProjectedFrame | null): void {
     this.update3dFloat(frame);
     const { summary, intent, activeColony } = this.latestState;
-    const targetSector = resolveTargetSectorId(summary, intent, this.hoveredSectorId);
     const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
+    const targetSector = resolveTargetSectorId(
+      summary,
+      intent,
+      this.hoveredSectorId,
+      activeColony ? homeBaseSectorId : null,
+    );
     const selectedSectorLabel = `SECTOR // ${targetSector}`;
     const homeBaseLabel = homeBaseSectorId ? `ACTIVE BASE · ${homeBaseSectorId}` : `DROP // ${targetSector}`;
 

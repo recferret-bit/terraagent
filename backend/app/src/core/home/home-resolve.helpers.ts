@@ -71,6 +71,7 @@ export interface ResolveHomeOptions {
   readonly autoSeatDev?: boolean;
   readonly preferredType?: DevPlanetType;
   readonly colonyId?: string;
+  readonly sectorId?: string;
 }
 
 export function createSpawnColonyCommand(assignment: ColonySeatAssignment): SimCommandV1 {

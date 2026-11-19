@@ -103,7 +103,8 @@ export class StageGlobes {
       g.spin.rotation.y = Math.sin(time * 0.24) * 0.16 + this.smoothFocusYaw + morphOffset;
       g.clouds.rotation.y += dt * 0.036;
       g.shared.uTime.value = time;
-      (g.shared as { uOpt?: THREE.IUniform<number> }).uOpt && ((g.shared as { uOpt: THREE.IUniform<number> }).uOpt.value = isShaderOptimized() ? 1 : 0);
+      const sharedOpt = g.shared as unknown as { uOpt?: THREE.IUniform<number> };
+      if (sharedOpt.uOpt) sharedOpt.uOpt.value = isShaderOptimized() ? 1 : 0;
       if (this.outgoing) {
         this.outgoing.group.position.copy(this.planetPos);
         this.outgoing.update(dt, time);

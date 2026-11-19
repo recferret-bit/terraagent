@@ -314,14 +314,18 @@ export class WeatherHazardRenderer implements RendererInstance {
 
     const terrain = resolveHexTerrain(this.ctx);
     if (weatherBlob.lastMeteor && weatherBlob.lastMeteor.tick !== this.lastMeteorTick) {
+      const initialStale = this.lastMeteorTick < 0 && simView.tick - weatherBlob.lastMeteor.tick > 5;
       this.lastMeteorTick = weatherBlob.lastMeteor.tick;
-      this.playMeteor(weatherBlob.lastMeteor.q, weatherBlob.lastMeteor.r, weatherBlob.lastMeteor.tiles);
+      if (!initialStale) {
+        this.playMeteor(weatherBlob.lastMeteor.q, weatherBlob.lastMeteor.r, weatherBlob.lastMeteor.tiles);
+      }
     }
     if (weatherBlob.lastLightning && weatherBlob.lastLightning.tick !== this.lastLightningTick) {
+      const initialStale = this.lastLightningTick < 0 && simView.tick - weatherBlob.lastLightning.tick > 5;
       this.lastLightningTick = weatherBlob.lastLightning.tick;
       const lTiles = expandLightningTiles(weatherBlob.lastLightning.tiles?.length ? weatherBlob.lastLightning.tiles : [{ q: weatherBlob.lastLightning.q, r: weatherBlob.lastLightning.r }]);
       clearLightningTilesOnTerrain(terrain, lTiles);
-      this.playLightning(lTiles, weatherBlob.lastLightning.hitWater);
+      if (!initialStale) this.playLightning(lTiles, weatherBlob.lastLightning.hitWater);
     }
 
     const craters = weatherBlob.craters ?? [];
