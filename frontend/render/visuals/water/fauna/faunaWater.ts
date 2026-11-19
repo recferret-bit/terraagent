@@ -30,6 +30,7 @@ export function evalAquaticThreatEvasion(
   z: number,
   threats: readonly AquaticThreatZone[],
   maxShift = 2.4,
+  maxDive = 0.45,
 ): { dx: number; dz: number; diveY: number; panic: number } {
   let pushX = 0;
   let pushZ = 0;
@@ -49,16 +50,20 @@ export function evalAquaticThreatEvasion(
       if (pAmt > panic) panic = pAmt;
     }
   }
+  const safeMaxShift = Math.max(0, maxShift);
   const pLen = Math.hypot(pushX, pushZ);
-  if (pLen > maxShift && pLen > 1e-4) {
-    const k = maxShift / pLen;
+  if (safeMaxShift <= 1e-4) {
+    pushX = 0;
+    pushZ = 0;
+  } else if (pLen > safeMaxShift && pLen > 1e-4) {
+    const k = safeMaxShift / pLen;
     pushX *= k;
     pushZ *= k;
   }
   return {
     dx: pushX,
     dz: pushZ,
-    diveY: Math.min(0.45, panic * 0.36),
+    diveY: Math.min(Math.max(0, maxDive), panic * 0.36),
     panic: Math.min(1.5, panic),
   };
 }
@@ -75,7 +80,7 @@ struct FaunaEvasion {
   float diveY;
   float panic;
 };
-FaunaEvasion faunaThreatEvade(vec2 p, float maxShift) {
+FaunaEvasion faunaThreatEvade(vec2 p, float maxShift, float maxDive) {
   vec2 push = vec2(0.0);
   float panic = 0.0;
   for (int i = 0; i < ${MAX_AQUATIC_THREATS}; i++) {
@@ -91,9 +96,11 @@ FaunaEvasion faunaThreatEvade(vec2 p, float maxShift) {
       panic = max(panic, pAmt);
     }
   }
+  float safeShift = max(0.0, maxShift);
   float pLen = length(push);
-  if (pLen > maxShift && pLen > 0.0001) push *= maxShift / pLen;
-  return FaunaEvasion(push, min(0.45, panic * 0.36), min(1.5, panic));
+  if (safeShift <= 0.0001) push = vec2(0.0);
+  else if (pLen > safeShift && pLen > 0.0001) push *= safeShift / pLen;
+  return FaunaEvasion(push, min(max(0.0, maxDive), panic * 0.36), min(1.5, panic));
 }
 /** Refracted image offset (world xz) of a point \`depth\` metres below the surface at \`p\`. */
 vec2 faunaRefractShift(vec2 p, float depth) {

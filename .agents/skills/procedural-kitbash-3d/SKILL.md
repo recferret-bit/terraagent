@@ -57,6 +57,8 @@ Assemble the entity in four layers from bottom to top:
 
 **Resource deposits** (`resource.metalDeposit`, `resource.crystalDeposit`, `resource.oilDeposit`) live in `frontend/render/kitbash/archetypes/units/nature.ts` (there is no separate deposits file). Each is built per depletion stage: register one builder with `registerDepositStageBuilder(id, (stage) => geometry)` (`frontend/render/kitbash/catalog.ts`, `stage` = `'full' | 'half' | 'depleted'`). All three stages are separate meshes that must each pass the validator (`npm run validate:models -- <deposit id>` checks all three); preview them with `/playground.html?inspect=<id>&depositStage=half|depleted`.
 
+**Botanical trees, ground flora & biosphere fauna** (`visuals/terrain/treeBreeds.ts`, `groundFloraGeos.ts`, `planets/hex/flora/forestPipeline.ts`, `archetypes/units/warmFauna.ts`, `avianFauna.ts`): multi-breed biome tree atlases stamp `aBreed` (`0..3`) and explicit `aBark` (`1` on woody trunks/roots, `0` on foliage/blossoms) and run through the 4-stage ecological stand pipeline (`generateTileForestTrees` on `HexTerrain`, `applySurfaceForestPipeline` on `PlanetSurface`); warm-blooded mammals (`tissue = 6`) and birds (`tissue = 7`) use `greebles/organic/vertebrates.ts` (`mammalTrunk`, `organicQuadLegs`, `featheredWings`) and register with `biosphere: true`.
+
 ### Step 3: Encode GPU Animation Channels (Zero CPU Overhead)
 Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`, tag vertices via `PartOptions` (`animType` + `animPivot`) in [KitbashRegistry.ts](./examples/KitbashRegistry.ts) (see the [`procedural-animation-3d`](../procedural-animation-3d/SKILL.md) skill for coupled limb rigging and gait math):
 - `animType = 0`: Static chassis part.

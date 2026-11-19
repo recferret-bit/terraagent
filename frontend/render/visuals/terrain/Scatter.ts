@@ -41,11 +41,12 @@ export function scatterGrid(rng: () => number, extent: number, cell: number, pro
 }
 
 type G = THREE.BufferGeometry;
-function paint(g: G, color: THREE.Color, jitter = 0, topBoost = 0, seed = 1): G {
+function paint(g: G, color: THREE.Color, jitter = 0, topBoost = 0, seed = 1, bark = 0): G {
   const out = g.index ? g.toNonIndexed() : g;
   out.deleteAttribute('uv');
   const p = out.getAttribute('position'), n = p.count;
   const col = new Float32Array(n * 3);
+  const barkAttr = new Float32Array(n).fill(bark);
   const rng = mulberry32(seed);
   const box = new THREE.Box3().setFromBufferAttribute(p as THREE.BufferAttribute);
   const hgt = Math.max(1e-3, box.max.y - box.min.y);
@@ -59,6 +60,7 @@ function paint(g: G, color: THREE.Color, jitter = 0, topBoost = 0, seed = 1): G 
     }
   }
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setAttribute('aBark', new THREE.BufferAttribute(barkAttr, 1));
   out.computeVertexNormals();
   return out;
 }
@@ -84,7 +86,7 @@ const done = (parts: G[]) => { const m = mergeGeometries(parts.map((g) => (g.ind
 export function makeBroadleafGeo(leafA: THREE.Color, leafB: THREE.Color, seed: number): G {
   const nz = new Noise2(seed);
   const trunk = xf(new THREE.CylinderGeometry(0.11, 0.2, 1.7, 6, 1), [0, 0.85, 0]);
-  const parts: G[] = [paint(trunk, C(0x5a3d26), 0.1, 0, 1)];
+  const parts: G[] = [paint(trunk, C(0x5a3d26), 0.1, 0, 1, 1)];
   const blobs: [number, number, number, number, THREE.Color][] = [
     [0, 2.4, 0, 1.25, leafA], [0.65, 2.0, 0.3, 0.8, leafB], [-0.55, 2.15, -0.35, 0.85, leafA], [0.1, 3.05, -0.1, 0.8, leafB], [-0.2, 2.0, 0.6, 0.7, leafB],
   ];
@@ -95,7 +97,7 @@ export function makeBroadleafGeo(leafA: THREE.Color, leafB: THREE.Color, seed: n
 export function makePalmGeo(leaf: THREE.Color): G {
   const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.25, 1.4, 0.1), new THREE.Vector3(0.55, 2.8, 0.1), new THREE.Vector3(0.5, 4.2, 0.0)]);
   const trunk = new THREE.TubeGeometry(curve, 8, 0.13, 5, false);
-  const parts: G[] = [paint(trunk, C(0x8a6a46), 0.12, 0.2, 3)];
+  const parts: G[] = [paint(trunk, C(0x8a6a46), 0.12, 0.2, 3, 1)];
   const top = curve.getPoint(1);
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
@@ -115,7 +117,7 @@ export function makePalmGeo(leaf: THREE.Color): G {
 }
 
 export function makePineGeo(a: THREE.Color, b: THREE.Color): G {
-  const parts: G[] = [paint(xf(new THREE.CylinderGeometry(0.1, 0.2, 1.6, 6, 1), [0, 0.8, 0]), C(0x4a3424), 0.1, 0, 2)];
+  const parts: G[] = [paint(xf(new THREE.CylinderGeometry(0.1, 0.2, 1.6, 6, 1), [0, 0.8, 0]), C(0x4a3424), 0.1, 0, 2, 1)];
   const tiers: [number, number, number][] = [[1.7, 1.6, 1.2], [1.4, 1.5, 2.3], [1.1, 1.4, 3.3], [0.75, 1.3, 4.2], [0.4, 1.1, 5.0]];
   tiers.forEach(([r, h, y], i) => {
     const g = new THREE.ConeGeometry(r, h, 7, 1);
@@ -337,8 +339,9 @@ export function createFoliageMaterial(
     sh.uniforms.uBarkMap = barkMapU; sh.uniforms.uBarkRoughMap = barkRoughU;
     bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN;`)
+      .replace('#include <common>', `#include <common>\nattribute float aBark;\n${breedDecl}${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN; varying vec4 vFBark;`)
       .replace('#include <begin_vertex>', `${swayBegin}
+  vFBark = vec4(position, aBark);
 #ifdef USE_INSTANCING
   vFW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
   vFN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
@@ -350,23 +353,22 @@ export function createFoliageMaterial(
       sh.vertexShader = sh.vertexShader.replace('#include <color_vertex>', MULTI_BREED_COLOR_VERT);
     }
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nuniform sampler2D uBarkMap, uBarkRoughMap;\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nuniform sampler2D uBarkMap, uBarkRoughMap;\nvarying vec3 vFW; varying vec3 vFN; varying vec4 vFBark;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-float taBarkMask = clamp((diffuseColor.r - diffuseColor.g * 0.88) * 3.4, 0.0, 1.0);
-vec2 taBarkUv = vec2(atan(vFN.x, vFN.z) * 0.31831 + 0.5, vFW.y * 0.42);
-if (taBarkMask > 0.02) {
-  float barkFissure = dot(texture2D(uBarkMap, taBarkUv).rgb, vec3(0.3333));
-  diffuseColor.rgb *= mix(1.0, 0.78 + 0.44 * barkFissure, taBarkMask * 0.75);
-}
+float taBarkMask = clamp(vFBark.w, 0.0, 1.0);
+vec2 taBarkUvA = vec2(vFBark.x * 1.45, vFBark.y * 0.52);
+vec2 taBarkUvB = vec2(vFBark.z * 1.45, vFBark.y * 0.52);
+float taBarkBlend = abs(vFN.x) / max(abs(vFN.x) + abs(vFN.z), 0.001);
+float taBarkFissure = mix(dot(texture2D(uBarkMap, taBarkUvA).rgb, vec3(0.3333)), dot(texture2D(uBarkMap, taBarkUvB).rgb, vec3(0.3333)), taBarkBlend);
+float taBarkRough = mix(texture2D(uBarkRoughMap, taBarkUvA).r, texture2D(uBarkRoughMap, taBarkUvB).r, taBarkBlend);
+diffuseColor.rgb *= mix(1.0, 0.78 + 0.44 * taBarkFissure, taBarkMask * 0.75);
 if (uWetness > 0.001) {
   float fUp = clamp(vFN.y, 0.0, 1.0);
   diffuseColor.rgb *= mix(1.0, 0.66, uWetness);
   diffuseColor.rgb += vec3(0.04, 0.07, 0.11) * (uWetness * pow(fUp, 2.0));
 }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-if (taBarkMask > 0.02) {
-  roughnessFactor = mix(roughnessFactor, texture2D(uBarkRoughMap, taBarkUv).r, taBarkMask * 0.55);
-}
+roughnessFactor = mix(roughnessFactor, taBarkRough, taBarkMask * 0.55);
 roughnessFactor *= mix(1.0, 0.32, uWetness);`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vFW, vFN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vFW, gl_FragColor.rgb);');

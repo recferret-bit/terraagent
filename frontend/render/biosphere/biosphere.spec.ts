@@ -18,10 +18,20 @@ import {
   specForPlanetType,
   tileXZ,
 } from '../planets/hex';
+import { ArchetypeCatalog } from '../kitbash';
 import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { createPlanetSurface } from '../planets/surface';
 import { evalAquaticThreatEvasion } from '../visuals/water/fauna';
-import { planetFishCap } from '../visuals/water/fauna/faunaPlacement';
+import {
+  BED_CLEARANCE,
+  createFaunaBuffers,
+  FAUNA_SINK_MAX,
+  fishPathPoint,
+  layoutFauna,
+  planetFishCap,
+} from '../visuals/water/fauna/faunaPlacement';
+import { bakeShoreField, createShoreField, sampleField } from '../visuals/water/shoreField';
+import { hexWaterCodeAt } from '../planets/hex/hexWater';
 
 function buildRichBiomeTiles(radius: number) {
   const count = hexCount(radius);
@@ -233,6 +243,53 @@ describe('Living Planet Biosphere: Water Fauna Ponds & Full-Deforestation Bounds
     pondPlanet.dispose();
   });
 
+  it('keeps fleeing fish inside narrow 7-hex pond banks/beds and isolates prototype geometries from aBioState', () => {
+    const lakeR = 14;
+    const lakeHx = hexIndex(lakeR);
+    const lakeTerrain = new Uint8Array(lakeHx.count).fill(HEX_TERRAIN.flat);
+    const lakePrep = new Uint8Array(lakeHx.count).fill(HEX_PREP.wild);
+    const lakeHeight = new Float32Array(lakeHx.count).fill(0.25);
+    for (let i = 0; i < lakeHx.count; i++) {
+      if (hexDistance(-6, 0, lakeHx.q[i]!, lakeHx.r[i]!) <= 1) lakeTerrain[i] = HEX_TERRAIN.shallow;
+      if (hexDistance(6, 0, lakeHx.q[i]!, lakeHx.r[i]!) <= 1) lakeTerrain[i] = HEX_TERRAIN.deep;
+    }
+    const pondPlanet = createHexTerrain({
+      radius: lakeR,
+      tiles: { terrain: lakeTerrain, prep: lakePrep, height: lakeHeight },
+      look: specForPlanetType('temperate'),
+    });
+    const codes = new Uint8Array(lakeHx.count);
+    for (let i = 0; i < lakeHx.count; i++) {
+      codes[i] = lakeTerrain[i] === HEX_TERRAIN.deep ? 2 : lakeTerrain[i] === HEX_TERRAIN.shallow ? 1 : 0;
+    }
+    const pondField = bakeShoreField(hexWaterCodeAt(lakeR, codes), createShoreField(Math.max(16, lakeR * 2 * 2.2)));
+    const pondBuf = createFaunaBuffers(planetFishCap(pondField.span));
+    const pondLay = layoutFauna(pondField, specForPlanetType('temperate').seed, pondBuf, planetFishCap(pondField.span));
+    expect(pondLay.placed).toBeGreaterThan(0);
+    const [pondX, pondZ] = tileXZ(-6, 0);
+    const peakThreat = [{ x: pondX - 2.5, z: pondZ, radius: 16, strength: 1.5 }];
+    for (let i = 0; i < pondLay.placed; i++) {
+      const [safeShift, safeDive] = [pondBuf.evade[i * 4]!, pondBuf.evade[i * 4 + 1]!];
+      const len = pondBuf.fish[i * 4 + 2]!;
+      for (const t of [0, 1.9, 4.2]) {
+        const [bx, by, bz] = fishPathPoint(pondBuf, i, t, FAUNA_SINK_MAX);
+        const ev = evalAquaticThreatEvasion(bx, bz, peakThreat, safeShift, safeDive);
+        expect(sampleField(pondField, pondField.mask, bx + ev.dx, bz + ev.dz)).toBeGreaterThan(0.5);
+        expect(by - ev.diveY - len * 0.15 - sampleField(pondField, pondField.bed, bx + ev.dx, bz + ev.dz)).toBeGreaterThanOrEqual(
+          BED_CLEARANCE - 0.03,
+        );
+      }
+    }
+
+    expect(ArchetypeCatalog.getGeometry('fauna.timberWolf').getAttribute('aBioState')).toBeUndefined();
+    const hareMesh = pondPlanet.biosphere.animalMeshes.find((m) => m.name === 'biosphere-fauna.meadowHare')!;
+    expect(hareMesh.geometry).not.toBe(ArchetypeCatalog.getGeometry('fauna.meadowHare'));
+    pondPlanet.dispose();
+    expect(ArchetypeCatalog.getGeometry('fauna.meadowHare').getAttribute('aBioState')).toBeUndefined();
+  });
+});
+
+describe('Living Planet Biosphere: Full-Deforestation Hex Bounds Safety', () => {
   it('keeps all birds and land animals inside hexagonal bounds even when every forest is clear-cut during active battles', () => {
     const radius = 14;
     const tiles = buildRichBiomeTiles(radius);

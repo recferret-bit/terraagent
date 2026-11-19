@@ -69,12 +69,13 @@ function xf(g: G, pos: [number, number, number], scale: [number, number, number]
   return g;
 }
 
-function paintGeo(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.35, seed = 1): G {
+function paintGeo(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.35, seed = 1, bark = 0): G {
   const out = g.index ? g.toNonIndexed() : g;
   out.deleteAttribute('uv');
   const p = out.getAttribute('position');
   const n = p.count;
   const col = new Float32Array(n * 3);
+  const barkAttr = new Float32Array(n).fill(bark);
   const rng = mulberry32(seed);
   const box = new THREE.Box3().setFromBufferAttribute(p as THREE.BufferAttribute);
   const hgt = Math.max(1e-3, box.max.y - box.min.y);
@@ -90,6 +91,7 @@ function paintGeo(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.35, seed
     }
   }
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setAttribute('aBark', new THREE.BufferAttribute(barkAttr, 1));
   out.computeVertexNormals();
   return out;
 }
@@ -143,7 +145,7 @@ function normalizeHeight(parts: G[], targetH = 5.45, maxRad = 1.80): G {
 }
 
 function buildAlpinePine(): G {
-  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.10, 0.22, 1.8, 6, 1), [0, 0.85, 0]), C(0x4a3424), 0.1, 0.1, 2)];
+  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.10, 0.22, 1.8, 6, 1), [0, 0.85, 0]), C(0x4a3424), 0.1, 0.1, 2, 1)];
   const tiers: [number, number, number][] = [[1.65, 1.55, 1.15], [1.38, 1.48, 2.22], [1.08, 1.38, 3.22], [0.76, 1.28, 4.10], [0.42, 1.10, 4.88]];
   tiers.forEach(([r, h, y], i) => {
     const g = new THREE.ConeGeometry(r, h, 7, 1);
@@ -160,8 +162,8 @@ function buildAlpinePine(): G {
 
 function buildSilverBirch(nz: Noise2): G {
   const parts: G[] = [
-    paintGeo(curveTube([[0, -0.08, 0], [0.06, 1.5, 0.03], [0.22, 3.3, 0.08], [0.16, 4.6, 0.02]], 0.14, 0.05), C(0xdad6cc), 0.14, 0.15, 41),
-    paintGeo(curveTube([[0.03, 0.9, 0], [-0.24, 2.5, -0.10], [-0.36, 4.0, -0.14]], 0.09, 0.04, 5), C(0xcfcac0), 0.14, 0.15, 42),
+    paintGeo(curveTube([[0, -0.08, 0], [0.06, 1.5, 0.03], [0.22, 3.3, 0.08], [0.16, 4.6, 0.02]], 0.14, 0.05), C(0xdad6cc), 0.14, 0.15, 41, 1),
+    paintGeo(curveTube([[0.03, 0.9, 0], [-0.24, 2.5, -0.10], [-0.36, 4.0, -0.14]], 0.09, 0.04, 5), C(0xcfcac0), 0.14, 0.15, 42, 1),
   ];
   const crowns: [number, number, number, number, number][] = [
     [0.18, 3.2, 0.08, 0.95, 0x76a844], [-0.34, 3.5, -0.12, 0.86, 0x92bf4e],
@@ -175,9 +177,9 @@ function buildSilverBirch(nz: Noise2): G {
 
 function buildAncientOak(nz: Noise2): G {
   const parts: G[] = [
-    paintGeo(xf(new THREE.CylinderGeometry(0.22, 0.38, 1.9, 7, 1), [0, 0.88, 0]), C(0x473323), 0.12, 0.1, 61),
-    paintGeo(curveTube([[0, 1.5, 0], [0.65, 2.3, 0.28], [1.05, 2.9, 0.42]], 0.16, 0.07, 4), C(0x4a3525), 0.1, 0.1, 62),
-    paintGeo(curveTube([[0, 1.55, 0], [-0.68, 2.35, -0.22], [-1.02, 2.95, -0.35]], 0.15, 0.07, 4), C(0x4a3525), 0.1, 0.1, 63),
+    paintGeo(xf(new THREE.CylinderGeometry(0.22, 0.38, 1.9, 7, 1), [0, 0.88, 0]), C(0x473323), 0.12, 0.1, 61, 1),
+    paintGeo(curveTube([[0, 1.5, 0], [0.65, 2.3, 0.28], [1.05, 2.9, 0.42]], 0.16, 0.07, 4), C(0x4a3525), 0.1, 0.1, 62, 1),
+    paintGeo(curveTube([[0, 1.55, 0], [-0.68, 2.35, -0.22], [-1.02, 2.95, -0.35]], 0.15, 0.07, 4), C(0x4a3525), 0.1, 0.1, 63, 1),
   ];
   const domes: [number, number, number, number, number][] = [
     [0, 3.4, 0, 1.45, 0x356933], [0.95, 3.0, 0.38, 1.05, 0x487f3c], [-0.92, 3.05, -0.32, 1.08, 0x3d7337],
@@ -191,7 +193,7 @@ function buildAncientOak(nz: Noise2): G {
 
 function buildWeepingWillow(nz: Noise2): G {
   const parts: G[] = [
-    paintGeo(curveTube([[0, -0.08, 0], [0.12, 1.3, 0.05], [0.28, 2.6, 0.10], [0.18, 3.6, 0.06]], 0.22, 0.09, 6), C(0x564332), 0.1, 0.15, 81),
+    paintGeo(curveTube([[0, -0.08, 0], [0.12, 1.3, 0.05], [0.28, 2.6, 0.10], [0.18, 3.6, 0.06]], 0.22, 0.09, 6), C(0x564332), 0.1, 0.15, 81, 1),
     paintGeo(xf(crownBlob(1.32, nz, 0.2, 40, 1), [0.16, 3.85, 0.05], [1.18, 0.78, 1.18]), C(0x5c9452), 0.08, 0.45, 82),
     paintGeo(xf(crownBlob(0.96, nz, 0.2, 44, 0), [-0.36, 3.55, -0.18], [1.12, 0.72, 1.12]), C(0x69a25c), 0.08, 0.45, 83),
   ];
@@ -230,7 +232,7 @@ function buildPalmVariant(trunkHex: number, leafA: number, leafB: number, fruitH
     new THREE.Vector3(lean * 0.95, 2.95, 0.06),
     new THREE.Vector3(lean * 0.86, 4.30, 0.0),
   ]);
-  const parts: G[] = [paintGeo(new THREE.TubeGeometry(curve, 8, 0.14, 6, false), C(trunkHex), 0.13, 0.22, 91)];
+  const parts: G[] = [paintGeo(new THREE.TubeGeometry(curve, 8, 0.14, 6, false), C(trunkHex), 0.13, 0.22, 91, 1)];
   const top = curve.getPoint(1);
   for (let i = 0; i < fronds; i++) {
     const a = (i / fronds) * Math.PI * 2 + (i % 2) * 0.14;
@@ -250,7 +252,7 @@ function buildPalmVariant(trunkHex: number, leafA: number, leafB: number, fruitH
 }
 
 function buildStiltMangrove(nz: Noise2): G {
-  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.14, 0.22, 2.65, 6, 1), [0, 1.24, 0]), C(0x523b2a), 0.1, 0.15, 110)];
+  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.14, 0.22, 2.65, 6, 1), [0, 1.24, 0]), C(0x523b2a), 0.1, 0.15, 110, 1)];
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * Math.PI * 2 + 0.2;
     parts.push(
@@ -265,6 +267,7 @@ function buildStiltMangrove(nz: Noise2): G {
         0.1,
         0.1,
         112 + i,
+        1,
       ),
     );
   }
@@ -278,11 +281,11 @@ function buildStiltMangrove(nz: Noise2): G {
 }
 
 function buildCanopyBanyan(nz: Noise2): G {
-  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.24, 0.46, 2.4, 7, 1), [0, 1.12, 0]), C(0x5a402c), 0.12, 0.15, 130)];
+  const parts: G[] = [paintGeo(xf(new THREE.CylinderGeometry(0.24, 0.46, 2.4, 7, 1), [0, 1.12, 0]), C(0x5a402c), 0.12, 0.15, 130, 1)];
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + 0.4;
     const x = Math.cos(a) * 0.65, z = Math.sin(a) * 0.65;
-    parts.push(paintGeo(xf(new THREE.CylinderGeometry(0.035, 0.055, 2.2, 5, 1), [x, 1.02, z]), C(0x6b4d35), 0.1, 0.1, 132 + i));
+    parts.push(paintGeo(xf(new THREE.CylinderGeometry(0.035, 0.055, 2.2, 5, 1), [x, 1.02, z]), C(0x6b4d35), 0.1, 0.1, 132 + i, 1));
   }
   const tables: [number, number, number, number, number][] = [
     [0, 3.55, 0, 1.65, 0x2f7d36], [0.98, 3.15, 0.42, 1.10, 0x499946], [-0.95, 3.20, -0.38, 1.12, 0x398c3e],
@@ -296,8 +299,8 @@ function buildCanopyBanyan(nz: Noise2): G {
 
 function buildCoralBlossom(nz: Noise2): G {
   const parts: G[] = [
-    paintGeo(curveTube([[0, -0.08, 0], [-0.18, 1.35, 0.12], [0.16, 2.65, -0.08], [0.35, 3.55, 0.14]], 0.18, 0.07, 6), C(0x8e7966), 0.1, 0.18, 150),
-    paintGeo(curveTube([[-0.08, 1.65, 0.06], [-0.68, 2.75, 0.28], [-0.92, 3.25, 0.36]], 0.11, 0.05, 4), C(0x8e7966), 0.1, 0.18, 151),
+    paintGeo(curveTube([[0, -0.08, 0], [-0.18, 1.35, 0.12], [0.16, 2.65, -0.08], [0.35, 3.55, 0.14]], 0.18, 0.07, 6), C(0x8e7966), 0.1, 0.18, 150, 1),
+    paintGeo(curveTube([[-0.08, 1.65, 0.06], [-0.68, 2.75, 0.28], [-0.92, 3.25, 0.36]], 0.11, 0.05, 4), C(0x8e7966), 0.1, 0.18, 151, 1),
   ];
   const pads: [number, number, number, number, number][] = [
     [0.34, 3.75, 0.14, 1.22, 0x3ca378], [-0.90, 3.35, 0.36, 1.04, 0xe06d70],
@@ -312,10 +315,10 @@ function buildCoralBlossom(nz: Noise2): G {
 function buildDesertDrySnag(nz: Noise2): G {
   const wood = 0xa88760;
   const parts: G[] = [
-    paintGeo(curveTube([[0, -0.08, 0], [0.08, 1.3, -0.04], [-0.12, 2.7, 0.08], [-0.28, 4.1, 0.16]], 0.20, 0.05, 6), C(wood), 0.14, 0.28, 170),
-    paintGeo(curveTube([[0.04, 1.5, -0.02], [0.58, 2.5, 0.26], [0.96, 3.45, 0.38]], 0.12, 0.035, 5), C(0xb5956c), 0.14, 0.28, 171),
-    paintGeo(curveTube([[-0.06, 2.1, 0.04], [-0.64, 2.95, -0.32], [-0.92, 3.65, -0.48]], 0.10, 0.03, 5), C(0x9c7b54), 0.14, 0.28, 172),
-    paintGeo(curveTube([[0.42, 2.25, 0.18], [0.48, 3.05, -0.28]], 0.065, 0.022, 4), C(0xb89870), 0.12, 0.25, 173),
+    paintGeo(curveTube([[0, -0.08, 0], [0.08, 1.3, -0.04], [-0.12, 2.7, 0.08], [-0.28, 4.1, 0.16]], 0.20, 0.05, 6), C(wood), 0.14, 0.28, 170, 1),
+    paintGeo(curveTube([[0.04, 1.5, -0.02], [0.58, 2.5, 0.26], [0.96, 3.45, 0.38]], 0.12, 0.035, 5), C(0xb5956c), 0.14, 0.28, 171, 1),
+    paintGeo(curveTube([[-0.06, 2.1, 0.04], [-0.64, 2.95, -0.32], [-0.92, 3.65, -0.48]], 0.10, 0.03, 5), C(0x9c7b54), 0.14, 0.28, 172, 1),
+    paintGeo(curveTube([[0.42, 2.25, 0.18], [0.48, 3.05, -0.28]], 0.065, 0.022, 4), C(0xb89870), 0.12, 0.25, 173, 1),
     paintGeo(xf(crownBlob(0.56, nz, 0.26, 111), [0.92, 3.55, 0.36], [1.2, 0.55, 1.2]), C(0x8c7f45), 0.12, 0.4, 174),
   ];
   return normalizeHeight(parts, 4.85);
@@ -323,9 +326,9 @@ function buildDesertDrySnag(nz: Noise2): G {
 
 function buildJoshuaAcacia(nz: Noise2): G {
   const parts: G[] = [
-    paintGeo(curveTube([[0, -0.08, 0], [0.10, 1.4, 0.06], [0.02, 2.8, -0.04]], 0.19, 0.10, 5), C(0x7a5c3e), 0.12, 0.2, 180),
-    paintGeo(curveTube([[0.05, 1.9, 0.02], [0.72, 2.85, 0.28]], 0.11, 0.07, 4), C(0x7a5c3e), 0.12, 0.2, 181),
-    paintGeo(curveTube([[0.03, 2.1, -0.02], [-0.68, 2.95, -0.24]], 0.11, 0.07, 4), C(0x7a5c3e), 0.12, 0.2, 182),
+    paintGeo(curveTube([[0, -0.08, 0], [0.10, 1.4, 0.06], [0.02, 2.8, -0.04]], 0.19, 0.10, 5), C(0x7a5c3e), 0.12, 0.2, 180, 1),
+    paintGeo(curveTube([[0.05, 1.9, 0.02], [0.72, 2.85, 0.28]], 0.11, 0.07, 4), C(0x7a5c3e), 0.12, 0.2, 181, 1),
+    paintGeo(curveTube([[0.03, 2.1, -0.02], [-0.68, 2.95, -0.24]], 0.11, 0.07, 4), C(0x7a5c3e), 0.12, 0.2, 182, 1),
   ];
   const crowns: [number, number, number, number, number][] = [
     [0.02, 3.15, -0.04, 0.92, 0x768242], [0.75, 3.05, 0.30, 0.85, 0x8a944e], [-0.72, 3.12, -0.26, 0.82, 0x6f7b3d],

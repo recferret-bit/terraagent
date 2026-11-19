@@ -4,7 +4,9 @@ import { ArchetypeCatalog } from '../kitbash';
 import { PLANET_SPECS } from '../planets/PlanetSpec';
 import { ProceduralTextureRegistry, type ProceduralPBRBundle } from './ProceduralTextureRegistry';
 import { createFoliageMaterial } from './terrain/Scatter';
+import { makeWildflowerGeo } from './terrain/groundFloraGeos';
 import { terrainUniforms } from './terrain/terrainMaterial';
+import { buildTreeBreedGeo } from './terrain/treeBreeds';
 import { createUnifiedColonyMaterial } from './UnifiedColonyMaterial';
 
 describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR presets', () => {
@@ -27,7 +29,7 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
     expect(ProceduralTextureRegistry.get('rn13Preset_b', 16)).toBe(other);
   });
 
-  it('synthesizes seamless botanical and pelage PBR bundles with correct color spaces', () => {
+  it('synthesizes seamless botanical and pelage PBR bundles with correct color spaces and linear mipmap filtering', () => {
     for (const preset of ['treeBarkFissures', 'meadowGrassClover', 'desertPebbleCrust', 'warmFurPelage']) {
       const bundle = ProceduralTextureRegistry.get(preset, 32);
       expect(bundle.map).toBeDefined();
@@ -38,6 +40,11 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
       expect(bundle.roughnessMap!.colorSpace).toBe(THREE.NoColorSpace);
       expect(bundle.normalMap!.wrapS).toBe(THREE.RepeatWrapping);
       expect(bundle.normalMap!.wrapT).toBe(THREE.RepeatWrapping);
+      expect(bundle.map!.magFilter).toBe(THREE.LinearFilter);
+      expect(bundle.map!.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+      expect(bundle.map!.generateMipmaps).toBe(true);
+      expect(bundle.roughnessMap!.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+      expect(bundle.roughnessMap!.generateMipmaps).toBe(true);
     }
   });
 
@@ -56,6 +63,26 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
     foliageMat.onBeforeCompile(mockFolSh, null as unknown as THREE.WebGLRenderer);
     expect(mockFolSh.uniforms.uBarkMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).map);
     expect(mockFolSh.uniforms.uBarkRoughMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).roughnessMap);
+    expect(mockFolSh.fragmentShader).not.toContain('atan(');
+
+    // Explicit `aBark` tags white silverBirch trunks (1) while keeping pink coralBlossom crowns & wildflowers bark-free (0)
+    const birch = buildTreeBreedGeo('silverBirch', 17);
+    const coral = buildTreeBreedGeo('coralBlossom', 17);
+    const flower = makeWildflowerGeo('oceanForest', 17);
+    const birchBark = birch.getAttribute('aBark');
+    const coralBark = coral.getAttribute('aBark');
+    const coralCol = coral.getAttribute('color');
+    let birchWoodVerts = 0;
+    for (let i = 0; i < birchBark.count; i++) if (birchBark.getX(i) > 0.5) birchWoodVerts++;
+    expect(birchWoodVerts).toBeGreaterThan(20);
+    for (let i = 0; i < coralBark.count; i++) {
+      if (coralCol.getX(i) - coralCol.getY(i) > 0.22) expect(coralBark.getX(i)).toBe(0);
+    }
+    const flowerBark = flower.getAttribute('aBark');
+    for (let i = 0; i < flowerBark.count; i++) expect(flowerBark.getX(i)).toBe(0);
+    birch.dispose();
+    coral.dispose();
+    flower.dispose();
 
     const terrU = terrainUniforms(PLANET_SPECS.forestRock, 0, 128, [1, 0]);
     expect(terrU.uMeadowDetailMap?.value).toBe(ProceduralTextureRegistry.get('meadowGrassClover', 128).map);

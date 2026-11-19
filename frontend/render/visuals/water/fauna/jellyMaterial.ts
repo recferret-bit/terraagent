@@ -23,6 +23,7 @@ ${FAUNA_WATER_VERT_GLSL}
 uniform float uTime, uFaunaSink;
 attribute vec4 aDrift;
 attribute vec4 aJelly;
+attribute vec4 aEvade;
 attribute vec3 aJel;
 varying vec3 vJelW;
 varying vec3 vJelN;
@@ -36,7 +37,7 @@ const JELLY_VERT_MOTION = /* glsl */ `
 float jPhase = aJelly.x, jScale = aJelly.z;
 float jTh = jPhase * 6.2831853 + aDrift.w * uTime;
 vec2 jC = aDrift.xy + aDrift.z * vec2(cos(jTh), sin(jTh));
-FaunaEvasion jEv = faunaThreatEvade(jC, 1.8);
+FaunaEvasion jEv = faunaThreatEvade(jC, aEvade.x, aEvade.y);
 jC += jEv.shiftXZ;
 vec2 jVel = aDrift.z * aDrift.w * vec2(-sin(jTh), cos(jTh));
 float jPulseA = (jPhase * 2.0 + uTime / (${glslFloat(JELLY_PULSE_S)} * jScale)) * 6.2831853;
@@ -55,7 +56,7 @@ if (aJel.x < 0.5) {
   jP.z += cos(uTime * 0.9 + v * 2.2 + jPhase * 5.0) * 0.045 * v * v;
   jP.xz -= jVel * (v * 0.9) / jScale;                // tentacles trail behind the drift
 }
-vec3 jellyPos = vec3(jC.x, -aJelly.y - uFaunaSink - jEv.diveY * 0.75 + ${glslFloat(JELLY_BOB)} * jScale * sin(jPulseA - 1.2), jC.y) + jP * jScale;
+vec3 jellyPos = vec3(jC.x, -aJelly.y - uFaunaSink - jEv.diveY + ${glslFloat(JELLY_BOB)} * jScale * sin(jPulseA - 1.2), jC.y) + jP * jScale;
 jellyPos.xz += faunaRefractShift(jC, -jellyPos.y); // the image wobbles with the waves above
 vJelPulse = jContract;
 vJelHue = aJelly.w;

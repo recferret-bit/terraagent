@@ -26,6 +26,7 @@ uniform float uTime, uFaunaSink;
 attribute vec4 aSwim;
 attribute vec4 aFish;
 attribute vec4 aOffset;
+attribute vec4 aEvade;
 attribute vec3 aBody;
 varying vec3 vFishW;
 varying vec3 vFishN;
@@ -62,7 +63,7 @@ vec2 fP0 = fishLoop(fPhase, fTh);
 vec2 fFwd = normalize(fishLoop(fPhase, fTh + 0.05 * fDir) - fP0);
 vec2 fSide = vec2(-fFwd.y, fFwd.x);
 vec2 fC = fP0 + fFwd * aOffset.x + fSide * aOffset.y;
-FaunaEvasion fEv = faunaThreatEvade(fC, min(aSwim.z * 0.9 + 1.4, 2.8));
+FaunaEvasion fEv = faunaThreatEvade(fC, aEvade.x, aEvade.y);
 fC += fEv.shiftXZ;
 if (fEv.panic > 0.02 && length(fEv.shiftXZ) > 0.01) {
   fFwd = normalize(mix(fFwd, normalize(fEv.shiftXZ), min(0.88, fEv.panic * 0.85)));
@@ -90,7 +91,7 @@ float fYawC = cos(fBend), fYawS = sin(fBend);
 vec2 fHx = vec2(fFwd.y * fYawC + fFwd.x * fYawS, fFwd.x * fYawC - fFwd.y * fYawS);
 vec3 fN = vec3(normal.x * fHx.x + normal.z * fHx.y, normal.y, -normal.x * fHx.y + normal.z * fHx.x);
 vec3 fS = fLocal * aFish.z;
-float effSink = uFaunaSink * fishSinkFactor(aFish.y) + fEv.diveY * fishSinkFactor(aFish.y + 0.12);
+float effSink = uFaunaSink * fishSinkFactor(aFish.y) + fEv.diveY;
 vec3 fishPos = vec3(fC.x + fS.x * fFwd.y + fS.z * fFwd.x,
   -aFish.y - effSink + aOffset.z + ${f(BOB_AMP)} * sin(uTime * 1.1 + fPhase * 17.0) + fS.y,
   fC.y - fS.x * fFwd.x + fS.z * fFwd.y);

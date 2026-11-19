@@ -22,12 +22,13 @@ function xf(g: G, pos: [number, number, number], scale: [number, number, number]
   return g;
 }
 
-function paint(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.42, seed = 1): G {
+function paint(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.42, seed = 1, bark = 0): G {
   const out = g.index ? g.toNonIndexed() : g;
   out.deleteAttribute('uv');
   const p = out.getAttribute('position');
   const n = p.count;
   const col = new Float32Array(n * 3);
+  const barkAttr = new Float32Array(n).fill(bark);
   const rng = mulberry32(seed);
   const box = new THREE.Box3().setFromBufferAttribute(p as THREE.BufferAttribute);
   const hgt = Math.max(1e-3, box.max.y - box.min.y);
@@ -43,6 +44,7 @@ function paint(g: G, color: THREE.Color, jitter = 0.08, topBoost = 0.42, seed = 
     }
   }
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setAttribute('aBark', new THREE.BufferAttribute(barkAttr, 1));
   out.computeVertexNormals();
   return out;
 }
@@ -108,7 +110,7 @@ export function makeBushGeo(biome: PlanetKind, seed = 37): G {
   const foliageB = biome === 'dune' ? 0xa39656 : biome === 'oceanForest' ? 0x46a858 : 0x518c44;
   const berryHex = biome === 'dune' ? 0xd97724 : biome === 'oceanForest' ? 0xf72585 : 0xd62828;
   const parts: G[] = [
-    paint(xf(new THREE.CylinderGeometry(0.05, 0.09, 0.28, 5, 1), [0, 0.10, 0]), C(0x583e2a), 0.1, 0.1, seed),
+    paint(xf(new THREE.CylinderGeometry(0.05, 0.09, 0.28, 5, 1), [0, 0.10, 0]), C(0x583e2a), 0.1, 0.1, seed, 1),
   ];
   const lobes: [number, number, number, number][] = [
     [0, 0.34, 0, 0.38], [0.24, 0.25, 0.14, 0.28], [-0.22, 0.26, -0.12, 0.30], [0.06, 0.24, -0.24, 0.26],

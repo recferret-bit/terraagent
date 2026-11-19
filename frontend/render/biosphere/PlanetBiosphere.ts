@@ -28,6 +28,20 @@ interface SpeciesMeshSlot {
   depthMaterial: THREE.Material;
 }
 
+function computeSafeSleepDrop(geometry: THREE.BufferGeometry): number {
+  const pos = geometry.getAttribute('position');
+  const anim = geometry.getAttribute('aPartAnim');
+  if (!pos || !anim) return 0.14;
+  let minBodyY = Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const raw = Math.round(anim.getX(i));
+    if (raw - Math.floor(raw / 10) * 10 === 8) {
+      minBodyY = Math.min(minBodyY, pos.getY(i));
+    }
+  }
+  return Number.isFinite(minBodyY) ? Math.max(0.05, Math.min(0.24, minBodyY - 0.02)) : 0;
+}
+
 function makeSpeciesMeshSlot(
   archetypeId: string,
   capacity: number,
@@ -35,7 +49,7 @@ function makeSpeciesMeshSlot(
   sharedTimeU: THREE.IUniform<number>,
 ): SpeciesMeshSlot {
   const cap = Math.max(1, capacity);
-  const geometry = ArchetypeCatalog.getGeometry(archetypeId);
+  const geometry = ArchetypeCatalog.getGeometry(archetypeId).clone();
   const bioData = new Float32Array(cap * 4);
   const bioAttr = new THREE.InstancedBufferAttribute(bioData, 4);
   bioAttr.setUsage(THREE.DynamicDrawUsage);
@@ -43,7 +57,7 @@ function makeSpeciesMeshSlot(
 
   const uni = createUnifiedColonyMaterial({ biome: biomeName });
   uni.uniforms.uTime = sharedTimeU;
-  useBiosphereInstanceAttributes(uni.material, uni.depthMaterial);
+  useBiosphereInstanceAttributes(uni.material, uni.depthMaterial, computeSafeSleepDrop(geometry));
 
   const mesh = new THREE.InstancedMesh(geometry, uni.material, cap);
   mesh.customDepthMaterial = uni.depthMaterial;
@@ -267,7 +281,7 @@ export function createPlanetBiosphere(opts: CreatePlanetBiosphereOptions): Plane
       for (const s of [...birdSlots, ...animalSlots]) {
         s.mesh.removeFromParent();
         s.mesh.dispose();
-        s.geometry.deleteAttribute('aBioState');
+        s.geometry.dispose();
         s.material.dispose();
         s.depthMaterial.dispose();
       }

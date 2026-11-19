@@ -47,6 +47,8 @@ export interface FaunaBuffers {
   readonly fish: Float32Array;
   /** 4 / instance: school frame offset along, side, dy (m), wiggle phase 0..1. */
   readonly offset: Float32Array;
+  /** 4 / instance: safe threat-evasion horizontal shift cap (m), safe vertical dive cap (m), reserved, reserved. */
+  readonly evade: Float32Array;
 }
 
 export interface FaunaLayout {
@@ -59,7 +61,10 @@ export interface FaunaLayout {
 }
 
 export const createFaunaBuffers = (cap = FAUNA_CAP): FaunaBuffers => ({
-  swim: new Float32Array(cap * 4), fish: new Float32Array(cap * 4), offset: new Float32Array(cap * 4),
+  swim: new Float32Array(cap * 4),
+  fish: new Float32Array(cap * 4),
+  offset: new Float32Array(cap * 4),
+  evade: new Float32Array(cap * 4),
 });
 
 /** Scales planet-wide aquatic fauna cap for large hex planets while keeping `FAUNA_CAP` for unit-sized test lakes. */
@@ -195,6 +200,15 @@ export function layoutFauna(f: ShoreField, seed: number, out: FaunaBuffers, cap 
     const effSink = effectiveWaveSink(rawDepth, FAUNA_SINK_MAX);
     if (bedDepth - rawDepth - effSink - sp.dy - BOB_AMP - length * 0.16 < BED_CLEARANCE) continue;
 
+    let minRingDist = shoreDist;
+    for (let s = 0; s < 16; s++) {
+      const a = (s / 16) * Math.PI * 2;
+      minRingDist = Math.min(minRingDist, sampleField(f, f.dist, cx + Math.cos(a) * loopExcursion, cz + Math.sin(a) * loopExcursion, 0));
+    }
+    const maxLoopShift = Math.min(radius * 0.9 + 1.4, 2.8);
+    const safeShift = Math.max(0, Math.min(maxLoopShift, minRingDist - (length * sp.widthMul + texPad + 0.18)));
+    const safeDive = Math.max(0, Math.min(0.45, bedDepth - rawDepth - effSink - sp.dy - BOB_AMP - length * 0.16 - BED_CLEARANCE));
+
     const omega = (lerp(sp.speed, rnd()) / radius) * (rnd() < 0.5 ? -1 : 1);
     const phase = rnd();
     for (let m = 0; m < members; m++) {
@@ -207,6 +221,7 @@ export function layoutFauna(f: ShoreField, seed: number, out: FaunaBuffers, cap 
         solo ? [0, 0, 0, rnd()] : [(rnd() * 2 - 1) * effSpread, (rnd() * 2 - 1) * effSpread, (rnd() * 2 - 1) * sp.dy, rnd()],
         i * 4,
       );
+      out.evade.set([safeShift, safeDive, 0, 0], i * 4);
     }
     layout.groupEnds.push(layout.placed);
   }

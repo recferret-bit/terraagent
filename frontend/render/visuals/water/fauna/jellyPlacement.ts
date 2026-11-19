@@ -1,5 +1,5 @@
 import { mulberry32 } from '../../terrain/noise';
-import { SHORE_DIST_MAX, type ShoreField } from '../shoreField';
+import { SHORE_DIST_MAX, sampleField, type ShoreField } from '../shoreField';
 import { WATER_RANGES } from '../waterConfig';
 import { BED_CLEARANCE, FAUNA_SINK_MAX, SHORE_CLEARANCE, candidateTexels, lerp, shallowestBed } from './faunaPlacement';
 
@@ -32,10 +32,14 @@ export interface JellyBuffers {
   readonly drift: Float32Array;
   /** 4 / instance: phase 0..1, depth (m below the water level), bell scale, hue 0..2. */
   readonly jelly: Float32Array;
+  /** 4 / instance: safe threat-evasion horizontal shift cap (m), safe vertical dive cap (m), reserved, reserved. */
+  readonly evade: Float32Array;
 }
 
 export const createJellyBuffers = (cap = JELLY_CAP): JellyBuffers => ({
-  drift: new Float32Array(cap * 4), jelly: new Float32Array(cap * 4),
+  drift: new Float32Array(cap * 4),
+  jelly: new Float32Array(cap * 4),
+  evade: new Float32Array(cap * 4),
 });
 
 export function planetJellyCap(span: number): number {
@@ -71,8 +75,19 @@ export function layoutJellies(f: ShoreField, seed: number, out: JellyBuffers, ca
     const hi = Math.min(DEPTH[1], bedDepth - BED_CLEARANCE - FAUNA_SINK_MAX - body);
     if (hi < DEPTH[0]) continue;
     const omega = (lerp(SPEED, rnd()) / radius) * (rnd() < 0.5 ? -1 : 1);
+    const rawPhase = rnd();
+    const rawDepth = lerp([DEPTH[0], hi], rnd());
+    const rawHue = Math.floor(rnd() * 3);
+    let minRingDist = f.dist[k]!;
+    for (let s = 0; s < 16; s++) {
+      const a = (s / 16) * Math.PI * 2;
+      minRingDist = Math.min(minRingDist, sampleField(f, f.dist, cx + Math.cos(a) * radius, cz + Math.sin(a) * radius, 0));
+    }
+    const safeShift = Math.max(0, Math.min(1.8, minRingDist - (0.2 * scale + texPad + 0.18)));
+    const safeDive = Math.max(0, Math.min(0.34, bedDepth - rawDepth - FAUNA_SINK_MAX - body - BED_CLEARANCE));
     out.drift.set([cx, cz, radius, omega], placed * 4);
-    out.jelly.set([rnd(), lerp([DEPTH[0], hi], rnd()), scale, Math.floor(rnd() * 3)], placed * 4);
+    out.jelly.set([rawPhase, rawDepth, scale, rawHue], placed * 4);
+    out.evade.set([safeShift, safeDive, 0, 0], placed * 4);
     placed++;
   }
   return placed;

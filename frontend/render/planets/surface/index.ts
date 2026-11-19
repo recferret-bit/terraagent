@@ -29,6 +29,7 @@ export const createPlanetSurface: CreatePlanetSurface = (spec, opts) => {
     update(dt, time) {
       timeU.value = time;
       for (const u of uniformSets) if (u.uTime) u.uTime.value = time;
+      ctx.waterFauna?.cullToFocus();
       biosphere.tick(dt);
     },
     dispose() {

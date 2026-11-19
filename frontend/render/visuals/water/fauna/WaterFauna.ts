@@ -75,11 +75,11 @@ export function createWaterFauna(opts: WaterFaunaOptions): WaterFauna {
   };
   const fishBuf = createFaunaBuffers(fishCap);
   const fish = createFaunaBucketSet(group, {
-    name: 'waterFauna', geometry: owned.fishGeo, material: owned.fishMat, buffers: fishBuf, attrs: { aSwim: 'swim', aFish: 'fish', aOffset: 'offset' }, centre: 'swim', bounds: fishBounds, onFrame: step,
+    name: 'waterFauna', geometry: owned.fishGeo, material: owned.fishMat, buffers: fishBuf, attrs: { aSwim: 'swim', aFish: 'fish', aOffset: 'offset', aEvade: 'evade' }, centre: 'swim', bounds: fishBounds, onFrame: step,
   });
   const jellyBuf = createJellyBuffers(jellyCap);
   const jellies = createFaunaBucketSet(group, {
-    name: 'waterJellies', geometry: owned.jellyGeo, material: owned.jellyMat, buffers: jellyBuf, attrs: { aDrift: 'drift', aJelly: 'jelly' }, centre: 'drift', bounds: jellyBounds, onFrame: step,
+    name: 'waterJellies', geometry: owned.jellyGeo, material: owned.jellyMat, buffers: jellyBuf, attrs: { aDrift: 'drift', aJelly: 'jelly', aEvade: 'evade' }, centre: 'drift', bounds: jellyBounds, onFrame: step,
   });
   let layout: FaunaLayout | null = null;
   let jellyPlaced = 0;
