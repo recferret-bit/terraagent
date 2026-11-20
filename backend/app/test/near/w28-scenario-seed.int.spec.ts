@@ -90,6 +90,12 @@ describe('W28-16 scenario seed (w28)', () => {
     await seed.waitForSeed();
     expect((await db.prisma.aiFreeTrial.findUnique({ where: { playerId } }))?.turnsUsed).toBe(3);
     expect(await db.prisma.socialIdentity.count({ where: { playerId, accountId: pilot, provider: 'near-wallet' } })).toBe(1);
+    // reloading `?scenario=w28` creates a NEW planet and seats the pilot again: still no reset
+    await db.prisma.planet.create({ data: { id: 'pl_w28_reload_2', name: 'W28 Reload 2' } });
+    bus.emit('dev.scenario.created', { planetId: 'pl_w28_reload_2', scenario: 'w28' } as never);
+    bus.emit('dev.scenario.seated', { planetId: 'pl_w28_reload_2', playerId, colonyIndex: 0 } as never);
+    await seed.waitForSeed();
+    expect((await db.prisma.aiFreeTrial.findUnique({ where: { playerId } }))?.turnsUsed).toBe(3);
   });
 
   it('ignores other scenarios and seats on planets it did not create (negative)', async () => {

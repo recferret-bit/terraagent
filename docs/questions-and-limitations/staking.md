@@ -42,7 +42,16 @@ could be looked up; where the spec left a number open, the spec's own numbers we
   MyNearWallet, OKX and NEAR Mobile are.
 - **Descent trail** (Tier 2) shows only for a pilot returning to an existing colony: the first descent is built before
   the colony exists. Dev override: `/play.html?…&stakeTier=0..4`.
-- **Old W20 e2e** steps 5–6 (colony-claim staking) skip when the app runs W28; they still run with `--waves ..20`.
+- **Old W20 e2e** steps 5–6 keep their deed checks with W28 on and skip only the W20 colony-claim staking clicks;
+  `--waves ..20` runs them in full.
+- **Mock stNEAR pool:** on mock, `stNEAR` / `LiNEAR` deposits go into the first whitelisted pool and the last deposit
+  sets the position's asset, so after a Stake-Trade-Profits deposit the dashboard counts the whole position as LST
+  value (the total is right; the native / LST split is not).
+- **`/trade.html` Stake Trade Profits** is offered when the trade wallet has free market USDC (from selling cargo).
+  The `w28` scenario seeds its 50 USDC in the pilot's NEAR Intents wallet instead, which the `/me.html#staking`
+  console's **Stake Trade Profits** spends (same `POST /v1/near/stake/profits`).
+- **`w28` scenario seed** runs once per pilot per app process (reloading `?scenario=w28` creates a new planet and
+  must not wipe the demo wallet). For a fresh demo use a new `as=` name or restart the app.
 
 ## Defaults chosen
 

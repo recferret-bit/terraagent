@@ -50,7 +50,11 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
   private readonly early = new Map<string, string[]>();
   /** Planets of other scenarios: their seats are not ours. */
   private readonly others = new Set<string>();
-  /** `planetId|playerId` already seeded: the WS emits `seated` on every dev join / reconnect, a reload must not reset. */
+  /**
+   * Pilots already seeded by this process. The WS emits `seated` on every dev join / reconnect and every
+   * `?scenario=w28` load creates a new planet, so a page reload must not wipe the demo wallet: one seed per pilot
+   * (a fresh demo uses a new `as=` name, or an app restart).
+   */
   private readonly seeded = new Set<string>();
   private pending: Promise<void> = Promise.resolve();
 
@@ -74,7 +78,7 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
         }
         this.planets.add(e.planetId);
         this.queue('rival', () => this.seedRival(e.planetId));
-        for (const playerId of this.early.get(e.planetId) ?? []) this.seatOnce(e.planetId, playerId);
+        for (const playerId of this.early.get(e.planetId) ?? []) this.seatOnce(playerId);
         this.early.delete(e.planetId);
       }, { module: 'W28ScenarioSeedService' }),
       this.bus.on('dev.scenario.seated', (e) => {
@@ -84,7 +88,7 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
           this.early.set(e.planetId, [...(this.early.get(e.planetId) ?? []), e.playerId]);
           return;
         }
-        this.seatOnce(e.planetId, e.playerId);
+        this.seatOnce(e.playerId);
       }, { module: 'W28ScenarioSeedService' }),
     );
   }
@@ -151,10 +155,9 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     return this.env === undefined || databaseEnabled(this.env) ? this.prisma : null;
   }
 
-  private seatOnce(planetId: string, playerId: string): void {
-    const key = `${planetId}|${playerId}`;
-    if (this.seeded.has(key)) return;
-    this.seeded.add(key);
+  private seatOnce(playerId: string): void {
+    if (this.seeded.has(playerId)) return;
+    this.seeded.add(playerId);
     this.queue('pilot', () => this.seedPilot(playerId));
   }
 
