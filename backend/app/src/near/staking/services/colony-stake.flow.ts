@@ -15,10 +15,13 @@ import { NearException } from '../../domain/errors.js';
 import { AccountClaimService, type AccountClaimStatus } from '../account-claim.service.js';
 import { verifyStakingWalletSignature, type FullAccessKeyVerifier, type StakingSignableAction } from '../staking-signature-guard.js';
 import { CLAIM_ACCOUNT_PATH, nearToYocto, stakeOpId, unstakeOpId, withdrawOpId } from '../yocto.js';
+import type { ActionEffects, EffectRef, UnstakeExtras } from './action-effects.js';
 import type { ActionFinisher, OpNonce } from './action-finisher.js';
 import type { WalletBalances } from './wallet-balances.js';
 
 type Signed<T> = T & { readonly signature?: Nep413Signature };
+
+const ref = (accountId: string, pool: string, txHash: string, opId: string): EffectRef => ({ accountId, pool, txHash, opId });
 
 export interface ColonyStakeDeps {
   readonly staking: StakingPort;
@@ -31,6 +34,9 @@ export interface ColonyStakeDeps {
   readonly db: () => PrismaClient | null;
   /** V2 perks of the staking wallet while `W28` is on (undefined with it off, so the W20 response is unchanged). */
   readonly perksAfter?: (accountId: string, position: StakingPositionDto) => Promise<EvaluatedStakerPerksV2 | undefined>;
+  /** `W28` history rows and the early-exit fee, shared with the wallet flow; used only while `W28` is on. */
+  readonly effects: ActionEffects;
+  readonly isW28: () => boolean;
   readonly telemetry?: DeedTelemetryService;
   readonly keyVerifier?: FullAccessKeyVerifier;
 }
@@ -62,6 +68,9 @@ export class ColonyStakeFlow {
       ...(payerAccountId !== claimInfo.accountId ? { walletAccountId: payerAccountId } : {}),
     });
     this.d.telemetry?.recordTx('stake');
+    if (this.d.isW28()) {
+      await this.d.effects.record('stake', ref(claimInfo.accountId, input.pool, receipt.txHash, opId), 'near', BigInt(amountYocto));
+    }
     return this.respond(receipt.txHash, deed, claimInfo, input.pool);
   }
 
@@ -70,13 +79,13 @@ export class ColonyStakeFlow {
     const sig = input.walletSignature ?? input.signature;
     await this.verifySignature('unstake', deed.colonyId, sig, claimInfo, input.pool, input.amount);
     const opId = input.opId?.trim() || unstakeOpId(deed.colonyId, input.pool, sig?.nonce ?? this.d.nonce.next());
-    const receipt = await this.d.staking.unstake({
-      opId,
-      accountId: claimInfo.accountId,
-      pool: input.pool,
-      amount: nearToYocto(input.amount),
-    });
-    return this.respond(receipt.txHash, deed, claimInfo, input.pool);
+    const amountYocto = nearToYocto(input.amount);
+    const before = this.d.isW28() ? await this.d.staking.position({ accountId: claimInfo.accountId, pool: input.pool }) : null;
+    const receipt = await this.d.staking.unstake({ opId, accountId: claimInfo.accountId, pool: input.pool, amount: amountYocto });
+    const extras = before
+      ? await this.d.effects.unstaked(ref(claimInfo.accountId, input.pool, receipt.txHash, opId), BigInt(amountYocto), before)
+      : undefined;
+    return this.respond(receipt.txHash, deed, claimInfo, input.pool, extras);
   }
 
   async withdraw(input: Signed<WithdrawRequest & { readonly amount?: string }>): Promise<StakingActionResponse> {
@@ -84,12 +93,14 @@ export class ColonyStakeFlow {
     const sig = input.walletSignature ?? input.signature;
     await this.verifySignature('withdraw', deed.colonyId, sig, claimInfo, input.pool, input.amount);
     const opId = input.opId?.trim() || withdrawOpId(deed.colonyId, input.pool, sig?.nonce ?? this.d.nonce.next());
+    const before = this.d.isW28() ? await this.d.staking.position({ accountId: claimInfo.accountId, pool: input.pool }) : null;
     const receipt = await this.d.staking.withdraw({
       opId,
       accountId: claimInfo.accountId,
       toAccountId: claimInfo.claimedByAccountId ?? claimInfo.accountId,
       pool: input.pool,
     });
+    if (before) await this.d.effects.withdrawn(ref(claimInfo.accountId, input.pool, receipt.txHash, opId), before);
     return this.respond(receipt.txHash, deed, claimInfo, input.pool);
   }
 
@@ -133,11 +144,12 @@ export class ColonyStakeFlow {
     deed: StoredDeedRecord,
     claimInfo: AccountClaimStatus,
     pool: string,
+    extras?: UnstakeExtras,
   ): Promise<StakingActionResponse> {
     const position = await this.d.finisher.positionAfter(claimInfo.accountId, pool, deed.colonyId);
     const walletBalanceNear = await this.d.balances.readNear([claimInfo.accountId, deed.accountId, claimInfo.claimedByAccountId]);
     const perks = await this.d.perksAfter?.(claimInfo.accountId, position);
-    return StakingActionResponse.parse({ txHash, position, walletBalanceNear, ...(perks ? { perks } : {}) });
+    return StakingActionResponse.parse({ txHash, position, walletBalanceNear, ...(perks ? { perks } : {}), ...extras });
   }
 
   private verifySignature(

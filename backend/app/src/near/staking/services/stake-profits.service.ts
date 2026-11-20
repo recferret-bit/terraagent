@@ -15,11 +15,10 @@ import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolvePerksDeps } from '../perks/perks-deps.js';
 import { verifyStakingWalletSignature, type FullAccessKeyVerifier } from '../staking-signature-guard.js';
 import { ONE_NEAR_YOCTO, yoctoToNear } from '../yocto.js';
+import type { ActionEffects } from './action-effects.js';
 import type { ActionFinisher, OpNonce } from './action-finisher.js';
 import type { PerksView } from './perks-view.js';
-import { stakingNowMs } from './port-hooks.js';
 import { requireWalletAccount, walletClaimOf } from './wallet-stake.flow.js';
-import type { StakingTxWriter } from './staking-tx.writer.js';
 import type { WalletBalances } from './wallet-balances.js';
 
 const USDC_DECIMALS = MARKET_TOKENS.USDC.decimals;
@@ -39,7 +38,7 @@ export interface StakeProfitsDeps {
   readonly finisher: ActionFinisher;
   readonly nonce: OpNonce;
   readonly perks: PerksView;
-  readonly txs: StakingTxWriter;
+  readonly effects: ActionEffects;
   readonly env: () => Record<string, string | undefined>;
   readonly db: () => PrismaClient | null;
   readonly keyVerifier?: FullAccessKeyVerifier;
@@ -104,16 +103,7 @@ export class StakeProfitsService {
       nearYocto: nearYocto.toString(),
       asset,
     });
-    await this.d.txs.record({
-      kind: 'stake_profits',
-      accountId,
-      poolId: pool,
-      asset,
-      amountYocto: nearYocto,
-      txHash: receipt.txHash,
-      opId,
-      atMs: stakingNowMs(this.d.staking),
-    });
+    await this.d.effects.record('stake_profits', { accountId, pool, txHash: receipt.txHash, opId }, asset, nearYocto);
     const position = await this.d.finisher.positionAfter(accountId, pool);
     return this.respond(quote, receipt.txHash, position, accountId);
   }

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
+  STAKING_RULES,
   type CompoundYieldRequest,
   type Nep413Signature,
   type StakeProfitsRequest,
@@ -22,6 +23,7 @@ import { StakingPort } from '../application/ports/staking.port.js';
 import { DeedTelemetryService } from '../deed/deed-telemetry.service.js';
 import { DeedRepository } from '../deed/deed.repository.js';
 import { AccountClaimService } from './account-claim.service.js';
+import { ActionEffects } from './services/action-effects.js';
 import { ActionFinisher, OpNonce } from './services/action-finisher.js';
 import { ColonyStakeFlow } from './services/colony-stake.flow.js';
 import { PatronNominateService, type PatronNominationResult } from './services/patron-nominate.service.js';
@@ -77,7 +79,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     const nonce = new OpNonce();
     const finisher = new ActionFinisher(staking, positionSync);
     const perks = new PerksView(staking, envBag, db);
-    const txs = new StakingTxWriter(db);
+    const effects = new ActionEffects(staking, new StakingTxWriter(db));
     this.balances = new WalletBalances(staking, db);
     const common = { staking, balances: this.balances, finisher, nonce, env: envBag, db, keyVerifier };
     this.colony = new ColonyStakeFlow({
@@ -85,13 +87,15 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       deeds,
       claimService,
       telemetry,
+      effects,
+      isW28: () => this.flags.has('W28'),
       perksAfter: (accountId, position) =>
         this.flags.has('W28')
-          ? perks.evaluate({ accountId, grossApyBp: position.apyBp ?? 900, positions: [position] })
+          ? perks.evaluate({ accountId, grossApyBp: position.apyBp ?? STAKING_RULES.simGrossApyBp, positions: [position] })
           : Promise.resolve(undefined),
     });
-    this.wallet = new WalletStakeFlow({ ...common, perks, txs });
-    this.profits = new StakeProfitsService({ ...common, perks, txs, intentsRead });
+    this.wallet = new WalletStakeFlow({ ...common, perks, effects });
+    this.profits = new StakeProfitsService({ ...common, perks, effects, intentsRead });
     this.patron = new PatronNominateService(db, () => stakingNowMs(staking));
     this.status = new StakingStatusReader({ flags, staking, claimService, positionSync, balances: this.balances, colony: this.colony, perks, env: envBag });
   }

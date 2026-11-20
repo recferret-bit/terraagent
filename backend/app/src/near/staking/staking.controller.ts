@@ -17,6 +17,7 @@ import { CoreException, ZodPipe } from '../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { NearException } from '../domain/errors.js';
 import { assertColonyOwnership } from '../identity/colony-ownership.guard.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
 import { PatronNominateRequest, type PatronNominationResult } from './services/patron-nominate.service.js';
@@ -167,7 +168,11 @@ export class StakingController {
     this.assertW28();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const body = this.nominatePipe.transform(raw ?? {});
-    return this.authorize(req, body).then(() => this.stakingService.nominatePatron(body.accountId, body.planetId));
+    // No NEP-413 message exists for a nomination, so the linked session is the proof on every network (even without `req`).
+    if (!req) return Promise.reject(new NearException('NEAR_NOT_OWNER', { status: 401, message: 'Sign in with the wallet you nominate from.' }));
+    return this.walletGuard
+      .assert(req, body.accountId, { requireSession: true })
+      .then(() => this.stakingService.nominatePatron(body.accountId, body.planetId));
   }
 
   /**

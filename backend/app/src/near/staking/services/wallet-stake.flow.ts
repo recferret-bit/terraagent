@@ -1,5 +1,4 @@
 import {
-  earlyExitFeeBp,
   StakingActionResponse,
   STAKING_RULES,
   type Nep413Signature,
@@ -15,10 +14,9 @@ import { NearException } from '../../domain/errors.js';
 import type { AccountClaimStatus } from '../account-claim.service.js';
 import { verifyStakingWalletSignature, type FullAccessKeyVerifier, type StakingSignableAction } from '../staking-signature-guard.js';
 import { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear } from '../yocto.js';
+import { bigOf, type ActionEffects } from './action-effects.js';
 import type { ActionFinisher, OpNonce } from './action-finisher.js';
 import type { PerksView } from './perks-view.js';
-import { stakingNowMs } from './port-hooks.js';
-import type { StakingTxWriter } from './staking-tx.writer.js';
 import type { WalletBalances } from './wallet-balances.js';
 
 type Signed<T> = T & { readonly signature?: Nep413Signature };
@@ -29,7 +27,7 @@ export interface WalletStakeDeps {
   readonly finisher: ActionFinisher;
   readonly nonce: OpNonce;
   readonly perks: PerksView;
-  readonly txs: StakingTxWriter;
+  readonly effects: ActionEffects;
   readonly env: () => Record<string, string | undefined>;
   readonly db: () => PrismaClient | null;
   readonly keyVerifier?: FullAccessKeyVerifier;
@@ -51,8 +49,6 @@ export function requireWalletAccount(accountId: string | undefined): string {
   return id;
 }
 
-const bigOf = (raw: string | undefined | null): bigint => BigInt(raw || '0');
-
 /**
  * `W28` wallet-first staking: stake / unstake / withdraw / compound by wallet `accountId` with zero colonies, so there is
  * no `DEED_NOT_FOUND` and no `ACCOUNT_NOT_CLAIMED` gate. Control of the wallet is proven by the caller before this runs
@@ -70,7 +66,7 @@ export class WalletStakeFlow {
     const amount = nearToYocto(input.amount);
     const opId = input.opId?.trim() || stakeOpId(accountId, input.pool, sig?.nonce ?? this.d.nonce.next());
     const receipt = await this.d.staking.stake({ opId, accountId, pool: input.pool, amount, asset });
-    await this.record('stake', accountId, input.pool, asset, BigInt(amount), receipt.txHash, opId);
+    await this.d.effects.record('stake', { accountId, pool: input.pool, txHash: receipt.txHash, opId }, asset, BigInt(amount));
     return this.respond(receipt.txHash, accountId, input.pool);
   }
 
@@ -82,16 +78,8 @@ export class WalletStakeFlow {
     const opId = input.opId?.trim() || unstakeOpId(accountId, input.pool, sig?.nonce ?? this.d.nonce.next());
     const before = await this.d.staking.position({ accountId, pool: input.pool });
     const receipt = await this.d.staking.unstake({ opId, accountId, pool: input.pool, amount });
-    const after = await this.d.staking.position({ accountId, pool: input.pool });
-    // `< 7 days` after the last deposit the adapter keeps `earlyExitFeeBp` of the unstaked principal for the protocol.
-    const feeBp = earlyExitFeeBp(before.lastStakedAtMs ?? null, stakingNowMs(this.d.staking));
-    const fee = (BigInt(amount) * BigInt(feeBp)) / 10_000n;
-    await this.record('unstake', accountId, input.pool, after.asset ?? 'near', BigInt(amount), receipt.txHash, opId);
-    if (fee > 0n) await this.record('early_exit_fee', accountId, input.pool, after.asset ?? 'near', fee, receipt.txHash, opId);
-    return this.respond(receipt.txHash, accountId, input.pool, {
-      earlyExitFeeBp: feeBp,
-      earlyExitFeeNear: yoctoToNear(fee, 6),
-    });
+    const extras = await this.d.effects.unstaked({ accountId, pool: input.pool, txHash: receipt.txHash, opId }, BigInt(amount), before);
+    return this.respond(receipt.txHash, accountId, input.pool, extras);
   }
 
   async withdraw(input: Signed<WithdrawRequest & { readonly amount?: string }>): Promise<StakingActionResponse> {
@@ -100,15 +88,19 @@ export class WalletStakeFlow {
     await this.verify('withdraw', accountId, sig, input.pool, input.amount);
     const opId = input.opId?.trim() || withdrawOpId(accountId, input.pool, sig?.nonce ?? this.d.nonce.next());
     const before = await this.d.staking.position({ accountId, pool: input.pool });
-    if (bigOf(before.withdrawable) <= 0n) {
-      throw new NearException('NOTHING_TO_WITHDRAW', {
-        details: { accountId, pool: input.pool, unbonding: before.unbonding, unbondingReadyAtMs: before.unbondingReadyAtMs },
+    // One step: the matured principal (and any accrued yield) lands straight in the wallet. The adapter runs first so a
+    // retry of a finished op id replays its stored receipt; only its "nothing to pay" refusal becomes NOTHING_TO_WITHDRAW.
+    const receipt = await this.d.staking
+      .withdraw({ opId, accountId, toAccountId: accountId, pool: input.pool })
+      .catch((err: unknown) => {
+        if (err instanceof NearException && err.errorCode === 'STAKE_INSUFFICIENT_BALANCE' && bigOf(before.withdrawable) <= 0n) {
+          throw new NearException('NOTHING_TO_WITHDRAW', {
+            details: { accountId, pool: input.pool, unbonding: before.unbonding, unbondingReadyAtMs: before.unbondingReadyAtMs },
+          });
+        }
+        throw err;
       });
-    }
-    // One step: the matured principal (and any accrued yield) lands straight in the wallet.
-    const receipt = await this.d.staking.withdraw({ opId, accountId, toAccountId: accountId, pool: input.pool });
-    const paid = bigOf(before.withdrawable) + bigOf(before.rewards);
-    await this.record('withdraw', accountId, input.pool, before.asset ?? 'near', paid, receipt.txHash, opId);
+    await this.d.effects.withdrawn({ accountId, pool: input.pool, txHash: receipt.txHash, opId }, before);
     return this.respond(receipt.txHash, accountId, input.pool);
   }
 
@@ -121,13 +113,11 @@ export class WalletStakeFlow {
     }
     const opId = input.opId?.trim() || `compound:${accountId}:${input.pool}:${sig?.nonce ?? this.d.nonce.next()}`;
     const before = await this.d.staking.position({ accountId, pool: input.pool });
-    if (bigOf(before.rewards) <= 0n) {
-      throw new NearException('NOTHING_TO_COMPOUND', { details: { accountId, pool: input.pool } });
-    }
+    // The adapter refuses an empty position itself (`NOTHING_TO_COMPOUND`), so a retry of a finished op id still replays.
     const receipt = await this.d.staking.compound({ opId, accountId, pool: input.pool });
     const after = await this.d.staking.position({ accountId, pool: input.pool });
     const compounded = bigOf(after.staked) - bigOf(before.staked);
-    await this.record('compound', accountId, input.pool, after.asset ?? 'near', compounded, receipt.txHash, opId);
+    await this.d.effects.record('compound', { accountId, pool: input.pool, txHash: receipt.txHash, opId }, after.asset ?? 'near', compounded);
     return this.respond(receipt.txHash, accountId, input.pool, { compoundedNear: yoctoToNear(compounded, 6) });
   }
 
@@ -146,18 +136,6 @@ export class WalletStakeFlow {
       positions: [position as StakingPositionDto],
     });
     return StakingActionResponse.parse({ txHash, position, walletBalanceNear, perks, ...extras });
-  }
-
-  private record(
-    kind: Parameters<StakingTxWriter['record']>[0]['kind'],
-    accountId: string,
-    poolId: string,
-    asset: string,
-    amountYocto: bigint,
-    txHash: string,
-    opId: string,
-  ): Promise<void> {
-    return this.d.txs.record({ kind, accountId, poolId, asset, amountYocto, txHash, opId, atMs: stakingNowMs(this.d.staking) });
   }
 
   private verify(

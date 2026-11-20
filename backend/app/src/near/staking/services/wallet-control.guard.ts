@@ -10,7 +10,7 @@ import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 /**
  * Proof that the caller controls the wallet `accountId` of a wallet-first staking action (`W28`).
  *
- * - Real networks: the NEP-413 `walletSignature` of that account, verified on chain by `verifyStakingWalletSignature`
+ * - Real networks (signed actions): the NEP-413 `walletSignature` of that account, verified on chain by `verifyStakingWalletSignature`
  *   inside the service (a missing or foreign signature is `401` there), is the proof.
  * - Mock: no key exists to sign with, so the session must be the wallet's: a Bearer player that owns a `near_colony_account`
  *   row for the wallet (`accountId` / `ownerAccountId` / `claimedByAccountId`) or a linked `social_identity` account.
@@ -23,9 +23,13 @@ export class WalletControlGuard {
     private readonly prisma: PrismaClient | undefined,
   ) {}
 
-  async assert(req: IncomingMessage, accountId: string): Promise<void> {
+  /**
+   * `requireSession` demands the session proof on every network: for an action that carries no NEP-413 signature (the Patron
+   * nomination), so a real-network deployment cannot let anyone move another wallet's nomination.
+   */
+  async assert(req: IncomingMessage, accountId: string, opts: { readonly requireSession?: boolean } = {}): Promise<void> {
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
-    if (nearAdapterFor('Staking', envMap) !== 'mock') return;
+    if (!opts.requireSession && nearAdapterFor('Staking', envMap) !== 'mock') return;
     const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
     if (!playerId) {
       throw new NearException('NEAR_NOT_OWNER', { status: 401, message: 'Sign in with the wallet you stake from.' });

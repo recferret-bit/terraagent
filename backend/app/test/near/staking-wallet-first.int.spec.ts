@@ -286,3 +286,44 @@ describe('W28-04 wallet-first staking: Lead Patron nomination', () => {
     expect(down.perks).toMatchObject({ tier: 2, leadPatronPlanetIds: [] });
   });
 });
+
+async function seedDeed(colonyId: string, accountId: string): Promise<void> {
+  const metadata = { planet: 'pl_dune_01', colony: colonyId, stage: 3, terraformBp: 6000, status: 'active', settled: false, version: 1, imageUrl: `/v1/near/deed/deed:${colonyId}/image.png?v=1` };
+  await db.prisma.deed.create({
+    data: { colonyId, planetId: 'pl_dune_01', playerId: 'p_col_w28', accountId, tokenId: `deed:${colonyId}`, metadata, settled: false, status: 'active', chainState: 'ACTIVE' },
+  });
+}
+
+describe('W28-04 colony-scoped requests while W28 is on (deed + claim gates kept, W28 effects added)', () => {
+  it('colonyId-only stake / unstake record history rows, charge and report the early-exit fee, and answer with V2 perks', async () => {
+    const { url, staking } = await boot('all');
+    const colonyId = 'col_w28';
+    const accountId = `${colonyId}.pilot.terraagent.mock`;
+    await seedDeed(colonyId, accountId);
+    await post(url, '/v1/near/claim-account', { colonyId, walletAccountId: 'pilot-w28.terraagent.mock', newPublicKey: 'ed25519:w28-key' });
+    await staking.fundWalletNear(accountId, '30');
+
+    const staked = StakingActionResponse.parse((await post(url, '/v1/near/stake', { colonyId, pool: POOL, amount: '20' })).body);
+    expect(staked.position).toMatchObject({ colonyId, staked: '20' });
+    expect(staked.perks).toMatchObject({ version: 2, tier: 1, platformFeeBp: 65 });
+
+    const unstaked = StakingActionResponse.parse((await post(url, '/v1/near/unstake', { colonyId, pool: POOL, amount: '10' })).body);
+    expect(unstaked.earlyExitFeeBp).toBe(25);
+    expect(unstaked.earlyExitFeeNear).toBe('0.025');
+    expect(unstaked.position.unbonding).toBe('9.975');
+
+    const kinds = (await db.prisma.stakingTx.findMany({ where: { accountId }, orderBy: { createdAt: 'asc' } })).map((t) => t.kind);
+    expect(kinds).toEqual(['stake', 'unstake', 'early_exit_fee']);
+
+    // A request naming both keeps the colony view (deed + claim), not the bare-wallet one.
+    const both = StakingStatusResponse.parse(await get(url, `/v1/near/staking?colonyId=${colonyId}&accountId=${accountId}`));
+    expect(both).toMatchObject({ colonyId, deedSettled: false, accountClaimed: true });
+  });
+
+  it('colonyId-only compound keeps the deed gate (unknown colony is DEED_NOT_FOUND)', async () => {
+    const { url } = await boot('all');
+    const missing = await post<{ errorCode: string }>(url, '/v1/near/stake/compound', { colonyId: 'col_nope', pool: POOL });
+    expect(missing.status).toBe(404);
+    expect(missing.body.errorCode).toBe('DEED_NOT_FOUND');
+  });
+});

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AppEnv } from '../../src/core/tokens';
 import { FlagsService } from '../../src/flags/flags.service';
+import { ActionEffects } from '../../src/near/staking/services/action-effects';
 import { ActionFinisher, OpNonce } from '../../src/near/staking/services/action-finisher';
 import { PerksView } from '../../src/near/staking/services/perks-view';
 import { StakingTxWriter } from '../../src/near/staking/services/staking-tx.writer';
@@ -34,7 +35,7 @@ function harness() {
     finisher: new ActionFinisher(staking, positionSync),
     nonce: new OpNonce(),
     perks: new PerksView(staking, envBag, () => null),
-    txs: new StakingTxWriter(() => fakeDb as never),
+    effects: new ActionEffects(staking, new StakingTxWriter(() => fakeDb as never)),
     env: envBag,
     db: () => null,
   });
@@ -90,6 +91,19 @@ describe('W28-04 WalletStakeFlow (no deed, no claim)', () => {
     expect(Number(res.walletBalanceNear)).toBeGreaterThanOrEqual(10);
     expect(res.position.withdrawable).toBe('0');
     expect(rows.at(-1)).toMatchObject({ kind: 'withdraw', accountId: 'bob.near' });
+  });
+
+  it('a retried withdraw with the same op id replays the receipt instead of failing NOTHING_TO_WITHDRAW', async () => {
+    const { flow, fund, staking } = harness();
+    await fund('rt.near', 10);
+    await flow.stake({ accountId: 'rt.near', pool: POOL, amount: '10' });
+    staking.advanceClockMs(8 * DAY);
+    await flow.unstake({ accountId: 'rt.near', pool: POOL, amount: '10' });
+    staking.advanceClockMs(2 * DAY + 1);
+    const first = await flow.withdraw({ accountId: 'rt.near', pool: POOL, opId: 'wd-1' });
+    const retry = await flow.withdraw({ accountId: 'rt.near', pool: POOL, opId: 'wd-1' });
+    expect(retry.txHash).toBe(first.txHash);
+    await expect(flow.withdraw({ accountId: 'rt.near', pool: POOL, opId: 'wd-2' })).rejects.toMatchObject({ errorCode: 'NOTHING_TO_WITHDRAW' });
   });
 
   it('compounds accrued yield without moving the deposit clocks, and rejects an empty position', async () => {

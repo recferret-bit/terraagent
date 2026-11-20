@@ -97,6 +97,9 @@ describe('W28-04 TestnetStakingAdapter V2 (fake RPC)', () => {
     await expect(adapter(down, { TA_WAVES: '..27' }).nearBalanceOf('w.testnet')).rejects.toMatchObject({ errorCode: 'NEAR_UNAVAILABLE', message: expect.stringContaining('rpc_timeout') });
   });
 
+});
+
+describe('W28-04 TestnetStakingAdapter V2 position reads (fake RPC)', () => {
   it('reads LST balances with ft_balance_of on the right token contract and rejects a malformed answer', async () => {
     const rpc = fakeRpc({ views: { ft_balance_of: '1500' } });
     expect(await adapter(rpc).lstBalanceOf('w.testnet', 'LiNEAR')).toBe('1500');
@@ -123,6 +126,17 @@ describe('W28-04 TestnetStakingAdapter V2 (fake RPC)', () => {
     const v = await adapter(off, { TA_WAVES: '..27' }).position({ accountId: 'w.testnet', pool: POOL });
     expect(v.stakedSinceMs).toBeUndefined();
     expect(off.views.map((x) => x.methodName)).toEqual(['get_position']);
+  });
+
+  it('a V1 contract without get_account_positions yields a position without clocks (explicit branch); other failures propagate', async () => {
+    const v1 = fakeRpc({
+      views: { get_position: position(), get_account_positions: () => { throw new Error('wasm execution failed: MethodResolveError(MethodNotFound)'); } },
+    });
+    const v = await adapter(v1).position({ accountId: 'w.testnet', pool: POOL });
+    expect(v.staked).toBe('100');
+    expect(v.stakedSinceMs).toBeUndefined();
+    const down = fakeRpc({ views: { get_position: position(), get_account_positions: () => { throw new Error('fetch failed: ECONNREFUSED'); } } });
+    await expect(adapter(down).position({ accountId: 'w.testnet', pool: POOL })).rejects.toMatchObject({ errorCode: 'NEAR_UNAVAILABLE' });
   });
 
   it('exposes the validator APY flagged as sim when the chain probe is down', async () => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetPerksDeps, setPerksDeps } from '../../src/near/staking/perks/perks-deps';
+import { ActionEffects } from '../../src/near/staking/services/action-effects';
 import { ActionFinisher, OpNonce } from '../../src/near/staking/services/action-finisher';
 import { PerksView } from '../../src/near/staking/services/perks-view';
 import { quoteUsdcToNearYocto, StakeProfitsService } from '../../src/near/staking/services/stake-profits.service';
@@ -24,7 +25,7 @@ function service(envOver: Record<string, string> = {}) {
     finisher: new ActionFinisher(staking, positionSync),
     nonce: new OpNonce(),
     perks: new PerksView(staking, envBag, () => null),
-    txs: new StakingTxWriter(() => null),
+    effects: new ActionEffects(staking, new StakingTxWriter(() => null)),
     env: envBag,
     db: () => null,
   });

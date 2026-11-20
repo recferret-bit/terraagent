@@ -88,6 +88,14 @@ export const StakingPositionView = z.strictObject({
 });
 export type StakingPositionView = z.infer<typeof StakingPositionView>;
 
+/** Trailing validator APY and where it came from (`sim` = the `Sim APY` constant, the chain could not be sampled). */
+export interface StakingValidatorApy {
+  readonly apyBp: number;
+  readonly source: 'live' | 'cached' | 'sim';
+  readonly sampledAtMs: number | null;
+  readonly error?: string;
+}
+
 /**
  * Own-NEAR validator staking port (`StakingPort`, W20-01 / NEAR §9).
  * Enforces whitelisted pools (`NEAR_STAKING_POOLS`), 4-epoch unbonding (~2 game-days), and 9 % APY rewards.
@@ -108,6 +116,12 @@ export abstract class StakingPort {
 
   /** W28 `get_account_positions(account_id)`: every pool position of a wallet, independent of Colony Deeds. */
   accountPositions?(accountId: string): Promise<readonly StakingPositionView[]>;
+
+  /** W28 liquid-staking-token balance of a wallet in share units (`ft_balance_of`; real adapters only). */
+  lstBalanceOf?(accountId: string, asset: 'stNEAR' | 'LiNEAR'): Promise<string>;
+
+  /** W28 trailing validator APY, flagged `live` / `cached` / `sim` (real adapters only; mock callers use the pool APY). */
+  validatorApy?(): Promise<StakingValidatorApy>;
 
   /** Staking clock of the adapter (mock game-clock offsets included); callers fall back to `Date.now()` without it. */
   clockNowMs?(): number;

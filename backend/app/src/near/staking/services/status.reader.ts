@@ -1,4 +1,4 @@
-import { StakingStatusResponse, type StakingPositionDto } from '@terra/contracts';
+import { STAKING_RULES, StakingStatusResponse, type StakingPositionDto } from '@terra/contracts';
 import { FlagsService } from '../../../flags/flags.service.js';
 import { StakingPort } from '../../application/ports/staking.port.js';
 import { AccountClaimService } from '../account-claim.service.js';
@@ -34,18 +34,19 @@ export class StakingStatusReader {
 
   read(query?: StakingStatusQuery): Promise<StakingStatusResponse> {
     const accountId = query?.accountId?.trim();
-    if (accountId && this.d.flags.has('W28')) return this.readWallet(accountId, query?.colonyId?.trim());
+    // A request that names a colony keeps the colony view (deed, claim); only a bare `accountId` is a wallet read.
+    if (accountId && !query?.colonyId?.trim() && this.d.flags.has('W28')) return this.readWallet(accountId);
     return this.readColony(query);
   }
 
-  private async readWallet(accountId: string, colonyId?: string): Promise<StakingStatusResponse> {
+  private async readWallet(accountId: string): Promise<StakingStatusResponse> {
     const [pools, positions, walletBalanceNear] = await Promise.all([
       this.d.staking.listPools(),
       this.d.positionSync.syncAccountPositions(accountId, undefined, true),
       this.d.balances.readNear(accountId),
     ]);
-    const perks = await this.d.perks.evaluate({ accountId, grossApyBp: pools[0]?.apyBp ?? 900, positions });
-    const linkedColony = positions.find((p) => p.colonyId)?.colonyId ?? colonyId;
+    const perks = await this.d.perks.evaluate({ accountId, grossApyBp: pools[0]?.apyBp ?? STAKING_RULES.simGrossApyBp, positions });
+    const linkedColony = positions.find((p) => p.colonyId)?.colonyId;
     return StakingStatusResponse.parse({
       ...(linkedColony ? { colonyId: linkedColony } : {}),
       accountId,
@@ -82,7 +83,7 @@ export class StakingStatusReader {
       claimedByAccountId: claimInfo.claimedByAccountId,
       pools: pools.map((p) => ({ poolId: p.poolId, name: p.name, apyBp: p.apyBp })),
       positions,
-      perks: await this.perksFor(accountId, pools[0]?.apyBp ?? 900, positions),
+      perks: await this.perksFor(accountId, pools[0]?.apyBp ?? STAKING_RULES.simGrossApyBp, positions),
     });
   }
 

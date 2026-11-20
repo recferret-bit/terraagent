@@ -45,8 +45,19 @@ describe('W28-04 WalletControlGuard (mock chain)', () => {
     await expect(guard.assert(req('Bearer dev:alice'), 'a.near')).rejects.toMatchObject({ status: 403 });
   });
 
-  it('on a real network the signature is the proof, so the session check steps aside', async () => {
+  it('on a real network a signed action steps aside (the service verifies the NEP-413 signature)', async () => {
     const guard = new WalletControlGuard(undefined, env({ NEAR_MODE: 'testnet' }), undefined);
     await expect(guard.assert(req(), 'a.near')).resolves.toBeUndefined();
+  });
+
+  it('requireSession (the unsigned Patron nomination) demands the linked session on EVERY network', async () => {
+    const { devPlayerId } = await import('../../src/ws/session-verifier');
+    const alice = devPlayerId('alice');
+    for (const mode of ['mock', 'testnet', 'mainnet']) {
+      const guard = new WalletControlGuard(undefined, env({ NEAR_MODE: mode }), prisma({ player: alice, social: ['alice.near'] }));
+      await expect(guard.assert(req(), 'alice.near', { requireSession: true })).rejects.toMatchObject({ status: 401 });
+      await expect(guard.assert(req('Bearer dev:mallory'), 'alice.near', { requireSession: true })).rejects.toMatchObject({ status: 403 });
+      await expect(guard.assert(req('Bearer dev:alice'), 'alice.near', { requireSession: true })).resolves.toBeUndefined();
+    }
   });
 });

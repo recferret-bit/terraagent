@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
@@ -52,6 +52,8 @@ interface ContractPositionView {
 export class TestnetStakingAdapter implements StakingPort {
   private readonly rpc: StakingRpc;
   private readonly apy: ValidatorApyReader;
+  private readonly log = new Logger(TestnetStakingAdapter.name);
+  private warnedNoClocks = false;
   private readonly cache = new OpReceiptCache<ChainReceipt>();
   private localOffsetMs = 0;
   private creditSeq = 0;
@@ -322,7 +324,7 @@ export class TestnetStakingAdapter implements StakingPort {
     });
     // The deposit clocks come from the V2 contract's `get_account_positions`; with W28 off the V1 contract is assumed.
     const clocks = isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>)
-      ? (await this.accountPositions(input.accountId)).find((p) => p.pool === pool.poolId)
+      ? await this.clocksOf(input.accountId, pool.poolId)
       : undefined;
     return StakingPositionView.parse({
       accountId: view.account_id,
@@ -334,6 +336,23 @@ export class TestnetStakingAdapter implements StakingPort {
       rewards: view.rewards,
       ...(clocks ? { stakedSinceMs: clocks.stakedSinceMs, lastStakedAtMs: clocks.lastStakedAtMs, asset: clocks.asset } : {}),
     });
+  }
+
+  /**
+   * Deposit clocks of one position from `get_account_positions`. A contract that does not have the method yet (the frozen V1
+   * deployment) is an explicit, logged "no clocks" answer, never a swallowed error; every other failure propagates.
+   */
+  private async clocksOf(accountId: string, poolId: string): Promise<StakingPositionView | undefined> {
+    try {
+      return (await this.accountPositions(accountId)).find((p) => p.pool === poolId);
+    } catch (err) {
+      if (!/MethodNotFound|MethodResolveError|method .* not found/i.test(err instanceof Error ? err.message : String(err))) throw err;
+      if (!this.warnedNoClocks) {
+        this.warnedNoClocks = true;
+        this.log.warn('staking contract has no get_account_positions (V1 deployment): deposit clocks unavailable until it is upgraded');
+      }
+      return undefined;
+    }
   }
 
   private requireOperatorSigner(): { accountId: string; secretKey: string } {
