@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
+  CompoundInput,
   PositionInput,
   RewardsInput,
   type RewardsResult,
@@ -18,7 +19,20 @@ import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.j
 import { GAME_DAY_MS } from '../../../staking/yocto.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
 import { NearRpcClient } from '../../rpc/near-rpc.client.js';
+import { isW28Enabled } from '../../../staking/perks/legacy-ladder.js';
+import { rpcApyProbe } from './chain-apy-probe.js';
 import { OpReceiptCache } from './op-receipt-cache.js';
+import { classifyStakingRpcFailure, isUnknownAccountError, StakingRpcError } from './staking-rpc-error.js';
+import {
+  finalValueOf,
+  lstContractFor,
+  mapAccountPosition,
+  readLstBalance,
+  readWalletNearYocto,
+  type ContractAccountPosition,
+  type StakingRpc,
+} from './testnet-staking-reads.js';
+import { ValidatorApyReader, type ApyProbe, type ValidatorApy } from './validator-apy.js';
 
 interface ContractPositionView {
   readonly account_id: string;
@@ -36,14 +50,36 @@ interface ContractPositionView {
  */
 @Injectable()
 export class TestnetStakingAdapter implements StakingPort {
-  private readonly rpc: NearRpcClient;
+  private readonly rpc: StakingRpc;
+  private readonly apy: ValidatorApyReader;
   private readonly cache = new OpReceiptCache<ChainReceipt>();
   private localOffsetMs = 0;
   private creditSeq = 0;
 
-  constructor(@Optional() @Inject(APP_ENV) private readonly env?: AppEnv) {
+  /** `rpc` / `apyProbe` are test seams (a fake RPC, so no test ever sends a transaction); Nest passes only `env`. */
+  constructor(
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() rpc?: StakingRpc,
+    @Optional() apyProbe?: ApyProbe,
+  ) {
     const source = (env ?? process.env) as Record<string, string | undefined>;
-    this.rpc = new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('Staking', source)));
+    const client = rpc ? null : new NearRpcClient(resolveNearNetworkConfig(source, resolveActiveNearNetwork('Staking', source)));
+    this.rpc = rpc ?? (client as NearRpcClient);
+    this.apy = new ValidatorApyReader(apyProbe ?? rpcApyProbe(client as NearRpcClient), () => Date.now());
+  }
+
+  private get lstNetwork(): 'testnet' | 'mainnet' {
+    return this.rpc.network === 'mainnet' ? 'mainnet' : 'testnet';
+  }
+
+  /** Staking clock (wall time plus the dev warp, which real adapters only apply to the `now_ms` they send). */
+  clockNowMs(): number {
+    return this.nowMs();
+  }
+
+  /** Trailing validator APY (`live`), the last good one (`cached`) or the `Sim APY` constant (`sim`), always flagged. */
+  validatorApy(): Promise<ValidatorApy> {
+    return this.apy.read();
   }
 
   advanceGameDays(days: number): void {
@@ -52,15 +88,26 @@ export class TestnetStakingAdapter implements StakingPort {
     }
   }
 
+  /**
+   * With `W28` on: the wallet's real liquid NEAR (`view_account`, exact yocto), which is what a wallet-signed
+   * `stake_payable` spends. With it off: the custodial vault balance of the W20 operator-staked path.
+   * RPC failures are typed errors, never a silent `0`; an account the node does not know holds `0`.
+   */
   async nearBalanceOf(accountId: string): Promise<string> {
-    try {
-      const vaultBal = await this.rpc.view<string>(this.rpc.config.contracts.staking, 'get_near_balance', {
-        account_id: accountId,
-      });
-      return vaultBal || '0';
-    } catch {
-      return '0';
+    if (isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>)) {
+      return readWalletNearYocto(this.rpc, accountId);
     }
+    try {
+      return (await this.rpc.view<string>(this.rpc.config.contracts.staking, 'get_near_balance', { account_id: accountId })) || '0';
+    } catch (err) {
+      if (isUnknownAccountError(err)) return '0';
+      throw classifyStakingRpcFailure(err, { operation: 'get_near_balance', accountId, contractId: this.rpc.config.contracts.staking }).toNearException();
+    }
+  }
+
+  /** The wallet's `stNEAR` / `LiNEAR` balance in share units (`ft_balance_of`). */
+  async lstBalanceOf(accountId: string, asset: 'stNEAR' | 'LiNEAR'): Promise<string> {
+    return readLstBalance(this.rpc, lstContractFor(this.lstNetwork, asset), accountId);
   }
 
   async creditNear(accountId: string, yoctoAmount: string, opId?: string): Promise<void> {
@@ -157,22 +204,96 @@ export class TestnetStakingAdapter implements StakingPort {
     const pool = this.assertPoolWhitelisted(input.pool);
     const signer = this.requireOperatorSigner();
     return this.cache.run(`withdraw:${input.opId}`, async () => {
+      const lst = input.asset && input.asset !== 'near' ? input.asset : null;
+      const { receipt, outcome } = lst
+        ? await this.withdrawLst(input, pool, lst, signer)
+        : await this.rpc.call({
+            signerAccountId: signer.accountId,
+            signerSecretKey: signer.secretKey,
+            contractId: this.rpc.config.contracts.staking,
+            methodName: 'withdraw',
+            args: {
+              op_id: input.opId,
+              account_id: input.accountId,
+              recipient_id: input.toAccountId ?? null,
+              pool_id: pool.poolId,
+              apy_bp: pool.apyBp,
+              now_ms: this.nowMs(),
+            },
+          });
+      // The payout is a Promise: the transaction's final value is `on_withdraw`'s result, and a failed transfer is rolled back
+      // there as a SUCCESSFUL outcome with `withdrawn: "0"`. Treating that as success would report a payout that never happened.
+      const result = finalValueOf<{ withdrawn?: string }>(outcome);
+      if (result?.withdrawn === '0') {
+        throw new StakingRpcError('withdraw_rolled_back', 'the payout transfer failed and the position was restored; retry', {
+          operation: 'withdraw',
+          accountId: input.accountId,
+          contractId: this.rpc.config.contracts.staking,
+        }).toNearException();
+      }
+      return receipt;
+    });
+  }
+
+  /** LST pools pay out in one transaction through `withdraw_lst` (`ft_transfer` of the matured shares to the wallet). */
+  private async withdrawLst(
+    input: WithdrawInput,
+    pool: StakingPoolView,
+    asset: 'stNEAR' | 'LiNEAR',
+    signer: { accountId: string; secretKey: string },
+  ) {
+    const view = await this.position({ accountId: input.accountId, pool: pool.poolId });
+    const amount = BigInt(view.withdrawable);
+    if (amount <= 0n) throw new NearException('NOTHING_TO_WITHDRAW', { details: { accountId: input.accountId, pool: pool.poolId } });
+    return this.rpc.call({
+      signerAccountId: signer.accountId,
+      signerSecretKey: signer.secretKey,
+      contractId: this.rpc.config.contracts.staking,
+      methodName: 'withdraw_lst',
+      args: {
+        pool_id: pool.poolId,
+        lst_contract: lstContractFor(this.lstNetwork, asset),
+        amount: amount.toString(),
+        account_id: input.accountId,
+        recipient_id: input.toAccountId ?? null,
+      },
+    });
+  }
+
+  /** W28 `compound_yield`: accrued yield becomes principal (`0 %` fee, deposit clocks untouched). `STAKE_NO_YIELD` maps to `NOTHING_TO_COMPOUND`. */
+  async compound(raw: CompoundInput): Promise<ChainReceipt> {
+    const input = CompoundInput.parse(raw);
+    const pool = this.assertPoolWhitelisted(input.pool);
+    const signer = this.requireOperatorSigner();
+    return this.cache.run(`compound:${input.opId}`, async () => {
       const { receipt } = await this.rpc.call({
         signerAccountId: signer.accountId,
         signerSecretKey: signer.secretKey,
         contractId: this.rpc.config.contracts.staking,
-        methodName: 'withdraw',
-        args: {
-          op_id: input.opId,
-          account_id: input.accountId,
-          recipient_id: input.toAccountId ?? null,
-          pool_id: pool.poolId,
-          apy_bp: pool.apyBp,
-          now_ms: this.nowMs(),
-        },
+        methodName: 'compound_yield',
+        args: { pool_id: pool.poolId, account_id: input.accountId, apy_bp: pool.apyBp, now_ms: this.nowMs() },
       });
       return receipt;
     });
+  }
+
+  /** W28 `get_account_positions`: every pool position of the wallet with its deposit clocks and asset. */
+  async accountPositions(accountId: string): Promise<readonly StakingPositionView[]> {
+    const pools = this.resolvePools();
+    let rows: ContractAccountPosition[];
+    try {
+      rows = await this.rpc.view<ContractAccountPosition[]>(this.rpc.config.contracts.staking, 'get_account_positions', {
+        account_id: accountId,
+        apy_bp: pools[0]?.apyBp ?? null,
+        now_ms: this.nowMs(),
+      });
+    } catch (err) {
+      throw classifyStakingRpcFailure(err, { operation: 'get_account_positions', accountId, contractId: this.rpc.config.contracts.staking }).toNearException();
+    }
+    if (!Array.isArray(rows)) {
+      throw new StakingRpcError('invalid_response', 'get_account_positions did not return a list', { operation: 'get_account_positions', accountId }).toNearException();
+    }
+    return rows.map((r) => StakingPositionView.parse(mapAccountPosition(r, this.lstNetwork)));
   }
 
   async rewards(raw: RewardsInput): Promise<RewardsResult> {
@@ -190,6 +311,10 @@ export class TestnetStakingAdapter implements StakingPort {
       apy_bp: pool.apyBp,
       now_ms: this.nowMs(),
     });
+    // The deposit clocks come from the V2 contract's `get_account_positions`; with W28 off the V1 contract is assumed.
+    const clocks = isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>)
+      ? (await this.accountPositions(input.accountId)).find((p) => p.pool === pool.poolId)
+      : undefined;
     return StakingPositionView.parse({
       accountId: view.account_id,
       pool: view.pool_id,
@@ -198,6 +323,7 @@ export class TestnetStakingAdapter implements StakingPort {
       unbondingReadyAtMs: view.unbonding_ready_at_ms,
       withdrawable: view.withdrawable,
       rewards: view.rewards,
+      ...(clocks ? { stakedSinceMs: clocks.stakedSinceMs, lastStakedAtMs: clocks.lastStakedAtMs, asset: clocks.asset } : {}),
     });
   }
 

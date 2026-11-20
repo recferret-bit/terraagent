@@ -1,9 +1,17 @@
 import type { PlanetPatronView } from '@terra/contracts';
+import { z } from 'zod';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
 import { NearException } from '../../domain/errors.js';
 import { PatronSeatService } from '../perks/patron-seat.service.js';
 import { patronView } from '../perks/staking-perks.service.js';
+
+/** `POST /v1/near/staking/patron/nominate` body. */
+export const PatronNominateRequest = z.strictObject({
+  accountId: z.string().min(2).max(64),
+  planetId: z.string().min(1).max(80),
+});
+export type PatronNominateRequest = z.infer<typeof PatronNominateRequest>;
 
 export interface PatronNominationResult {
   readonly accountId: string;
