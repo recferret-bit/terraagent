@@ -35,6 +35,17 @@ interface LinkRow {
 
 const LINK_SELECT = { colonyId: true, accountId: true, ownerAccountId: true, claimedByAccountId: true, playerId: true } as const;
 
+/** W28 wallet-first: a wallet with no colony row is still a pilot's when a `social_identity` links it (any provider). */
+async function linkedPlayerId(db: DbClient, accountIds: readonly string[]): Promise<string | null> {
+  if (accountIds.length === 0 || typeof db.socialIdentity?.findFirst !== 'function') return null;
+  const row = (await db.socialIdentity.findFirst({
+    where: { accountId: { in: [...accountIds] } },
+    orderBy: { createdAt: 'asc' },
+    select: { playerId: true },
+  })) as { playerId: string } | null;
+  return row?.playerId ?? null;
+}
+
 /**
  * Resolves the wallet the same way the market and staking code link `chain.near_colony_account`: a colony id or any of
  * `accountId` / `ownerAccountId` / `claimedByAccountId` match a row, and every account of the matched owners and
@@ -78,6 +89,7 @@ export async function resolveWallet(
     primary = claimants.size > 0 ? [...claimants].sort()[0] : owners.size > 0 ? [...owners].sort()[0] : primary;
   }
   const walletKey = primary ?? (colonyId ? `colony:${colonyId}` : 'anonymous');
+  playerId ??= await linkedPlayerId(db, [...accounts]);
   return { walletKey, accountIds: [...accounts], colonyIds: [...colonies], playerId };
 }
 
