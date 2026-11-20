@@ -48,7 +48,7 @@ const parseFaunaSeed = (v: string | null): number => {
 export interface PgState {
   id: string; kind: PlanetKind; view: View;
   turntable: boolean; bloom: boolean; pixel: boolean; wire: boolean; grid: boolean; shadows: boolean; hex: boolean; human: boolean; ruler: boolean; surface: boolean; validate: boolean; lights: boolean; ruin: boolean;
-  /** Dim the sun and show archetype projector pools (`night=1`). Absent or `night=0` is day. */
+  /** Night turns building bulbs and projector beams on. Day turns them off (`night=1`). */
   night: boolean;
   /** Hex terrain sample scene (`hexterrain=1`) and the biped work pose (`uWorkWeight` 1). */
   hexTerrain: boolean; hatch: boolean; work: boolean;

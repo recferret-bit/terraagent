@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { createFramePacer } from '@terra/render/core/framePacer';
 import { setDayNightExternalSync } from '@terra/render/core/dayNightConfig';
+import { pinStorybookSolar } from './stage/solarPreview';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
 import { isShadowOn, onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
 import { addArchetypeLight, exportArchetypeLightsCode, getArchetypeLights, onArchetypeLightsChange, removeArchetypeLight, resetArchetypeLights, updateArchetypeLight, type ArchetypeLightSource } from '@terra/render/lighting/archetypeLights';
@@ -292,7 +293,11 @@ export class PlaygroundApp {
     syncURL(this.state);
   }
 
-  private syncStageLighting() { this.rig.syncLighting(this.viewport, this.state.kind, this.state.night); }
+  private syncStageLighting() {
+    // Day must be a sunlit hour. A saved night clock would zero the sun while the bulbs are also off.
+    pinStorybookSolar(this.state.night);
+    this.rig.syncLighting(this.viewport, this.state.kind, this.state.night);
+  }
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
@@ -436,7 +441,7 @@ export class PlaygroundApp {
     if (dt === null) return;
     this.time += dt;
     this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.state.night, this.state.workTarget);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.night, this.state.workTarget);
     this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
     this.marchHost.update(dt, this.time);
     if (this.state.faunaScene !== null) this.faunaPanel.renderStats();
