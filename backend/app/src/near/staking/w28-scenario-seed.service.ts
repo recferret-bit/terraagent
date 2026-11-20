@@ -61,7 +61,6 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
         this.early.delete(e.planetId);
       }, { module: 'W28ScenarioSeedService' }),
       this.bus.on('dev.scenario.seated', (e) => {
-        this.log.log(`w28 seat ${e.planetId} ${e.playerId} known=${this.planets.has(e.planetId)}`);
         if (!this.planets.has(e.planetId)) {
           this.early.set(e.planetId, [...(this.early.get(e.planetId) ?? []), e.playerId]);
           return;
