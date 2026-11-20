@@ -113,10 +113,11 @@ export class HubPlacementView {
     setDataAttr(this.ghostEl, 'r', String(g.r));
     this.ghostEl.className = `ta-hub-ghost plate-sm ${g.valid ? 'ghost-valid' : 'ghost-invalid'}`;
 
-    this.reasonEl.textContent = g.valid ? 'Valid site (3×3)' : (g.reasonText ?? 'site blocked');
+    this.reasonEl.textContent = g.valid ? 'Valid site (3×3) · ground ready' : (g.reasonText ?? 'site blocked');
     if (g.reasonCode) setDataAttr(this.reasonEl, 'reason-code', g.reasonCode);
     else this.reasonEl.removeAttribute('data-reason-code');
-    if (m.active) this.renderFootprintGrid(g);
+    if (m.active && !g.valid) this.renderFootprintGrid(g);
+    else if (g.valid) { this.gridKey = ''; this.gridEl.replaceChildren(); }
     this.renderBill(g.bill, m.hqWorkRate);
     this.confirmBtn.disabled = !g.valid;
 
@@ -127,8 +128,10 @@ export class HubPlacementView {
   private renderBill(bill: HubGhostBill, hqWorkRate: number): void {
     setDataAttr(this.billTilesEl, 'tiles-to-prepare', String(bill.tilesToPrepare));
     setDataAttr(this.billTilesEl, 'total-tiles', String(bill.totalTiles));
-    this.billTilesEl.textContent = `${bill.tilesToPrepare}/${bill.totalTiles} tiles to prepare`;
-    this.billOpsEl.textContent = formatGhostOps(bill.ops);
+    this.billTilesEl.textContent = bill.tilesToPrepare === 0
+      ? 'No terraform'
+      : `${bill.tilesToPrepare}/${bill.totalTiles} tiles to terraform first`;
+    this.billOpsEl.textContent = bill.tilesToPrepare === 0 ? '' : formatGhostOps(bill.ops);
     setDataAttr(this.billTimeEl, 'hq-seconds', String(bill.hqSeconds));
     setDataAttr(this.billTimeEl, 'base-seconds', String(bill.baseSeconds));
     this.billTimeEl.textContent = `${bill.hqSeconds.toFixed(1)}s (HQ ${hqWorkRate}×)`;

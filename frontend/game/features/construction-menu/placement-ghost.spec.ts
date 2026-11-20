@@ -245,38 +245,31 @@ describe('evaluatePlacementGhost - prep bill & rotation', () => {
       const { view, setTile } = createPlanetView(3);
       setTile(1, 1, { terrain, prep: PREP.wild });
       const ghost = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
-      expect(ghost.valid, `terrain ${terrain}`).toBe(false);
-      expect(ghost.statusColor).toBe('red');
-      expect(ghost.reason).toBe(reason);
-      expect(Object.keys(ghost.prepBill)).toEqual(['prepare']);
+      expect([ghost.valid, ghost.statusColor, ghost.reason, ghost.prepBillText, ghost.prepEnergyE], `terrain ${terrain}`).toEqual([false, 'red', reason, '', undefined]);
+      expect(ghost.prepBill).toEqual({});
     }
   });
 
-  it('bills a plain Grade for flat ground and nothing for prepared ground', () => {
+  it('a flat site, wild or prepared, needs no terraform', () => {
     const { view, setTile } = createPlanetView(3);
     setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.wild });
     setTile(1, 1, { terrain: TERRAIN.flat, prep: PREP.prepared });
     const ghost = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
-    expect(ghost.valid).toBe(true);
-    expect(ghost.prepBill).toEqual({ prepare: 3 });
+    expect(ghost).toMatchObject({ valid: true, prepBill: {}, prepBillText: 'No terraform' });
+    expect(ghost.prepEnergyE ?? ghost.prepTimeS ?? ghost.prepCost).toBeUndefined();
 
     setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.prepared });
     setTile(1, 0, { terrain: TERRAIN.flat, prep: PREP.living });
     setTile(0, 1, { terrain: TERRAIN.flat, prep: PREP.prepared });
     const ghostPrepared = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
-    expect(ghostPrepared.valid).toBe(true);
-    expect(ghostPrepared.prepBill).toEqual({});
-    expect(ghostPrepared.prepBillText).toBe('Site prepared');
+    expect(ghostPrepared).toMatchObject({ valid: true, prepBill: {}, prepBillText: 'No terraform' });
   });
 
   it('swaps footprint dimensions when rotation is odd', () => {
     const { view } = createPlanetView(5);
     const hubRot0 = evaluatePlacementGhost({ building: 'commandHub', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
     const hubRot1 = evaluatePlacementGhost({ building: 'commandHub', q: 0, r: 0, rotation: 1, flags: DEFAULT_FLAGS, view });
-    expect(hubRot0.footprintW).toBe(3);
-    expect(hubRot0.footprintD).toBe(3);
-    expect(hubRot1.footprintW).toBe(3);
-    expect(hubRot1.footprintD).toBe(3);
+    expect([hubRot0.footprintW, hubRot0.footprintD, hubRot1.footprintW, hubRot1.footprintD]).toEqual([3, 3, 3, 3]);
 
     const r0 = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
     const r1 = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 1, flags: DEFAULT_FLAGS, view });
@@ -484,8 +477,8 @@ describe('PlacementGhostController - tradeHub', () => {
     expect(ghost?.footprintText).toBe('2×2');
     expect(ghost?.tiles).toHaveLength(4);
     expect(ghost?.valid).toBe(true);
-    expect(ghost?.prepBill).toEqual({ prepare: 3 });
-    expect(ghost?.prepBillText).toBe('Prep: 3× Prepare');
+    expect(ghost?.prepBill).toEqual({});
+    expect(ghost?.prepBillText).toBe('No terraform');
 
     expect(menu.confirm()).toBe(true);
     expect(sendCommand).toHaveBeenCalledWith('enqueueTask', {

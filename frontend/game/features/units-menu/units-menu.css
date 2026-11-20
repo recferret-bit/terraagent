@@ -330,6 +330,10 @@
   padding-top: var(--ta-s2);
 }
 
+.ta-units__army-section {
+  grid-column: 1 / -1;
+}
+
 .ta-units__section-header {
   display: flex;
   align-items: center;
@@ -381,7 +385,12 @@
   border-color: var(--ta-orange-hi);
 }
 
-.ta-units__army-cards,
+.ta-units__army-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ta-s2);
+}
+
 .ta-units__factory-queue {
   display: flex;
   flex-direction: column;

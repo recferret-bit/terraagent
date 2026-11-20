@@ -144,13 +144,14 @@ describe('GP-09 / GP-10: order ids and cancel lanes', () => {
     expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
   });
 
-  it("cancelling a Hub's linked prep by its id cancels the Hub's construction order (never the prep alone)", () => {
+  it('cancelling a Hub construction order removes the building and creates no linked prep', () => {
     const { host } = rig();
     setColonyStock(host.state, 0, { 'metals.t1': 600 });
     expect(send(host, 'placeBuilding', { building: 'commandHub', q: 4, r: 0 }).outcome.code).toBeUndefined();
-    const [prep] = getColonyTerraformOrders(host.state, 0);
-    expect(prep.isLinkedPrep).toBe(true);
-    expect(send(host, 'cancelTask', { taskId: prep.orderId }).outcome.code).toBeUndefined();
+    expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
+    const [order] = getConstructionOrders(host.state, 0);
+    expect(order?.orderId).toBeTruthy();
+    expect(send(host, 'cancelTask', { taskId: order!.orderId }).outcome.code).toBeUndefined();
     expect(getConstructionOrders(host.state, 0)).toEqual([]);
     expect(getColonyTerraformOrders(host.state, 0)).toEqual([]);
   });

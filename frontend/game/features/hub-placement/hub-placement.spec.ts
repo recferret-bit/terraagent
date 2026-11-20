@@ -84,21 +84,14 @@ describe('Construction menu & placement ghost (shared placement rules)', () => {
 
     const clean = hub.hoverTile(-3, 4);
     expect(clean.valid).toBe(true);
-    expect(clean.bill).toEqual({
-      tilesToPrepare: 9,
-      totalTiles: 9,
-      ops: { grade: 9, clear: 0, break: 0 },
-      baseSeconds: 27,
-      hqSeconds: 18,
-      totalEnergyE: 180,
-      yields: { 'metals.t1': 0, 'bio.biomass': 0, 'minerals.t1': 0 },
-    });
+    expect(clean.bill.tilesToPrepare).toBe(0);
+    expect(clean.bill.totalTiles).toBe(9);
+    expect(clean.bill.baseSeconds).toBe(0);
     const ghostEl = container.querySelector('[data-testid="hub-placement-ghost"]') as HTMLElement;
     expect(ghostEl.hidden).toBe(false);
     expect(ghostEl.getAttribute('data-tint')).toBe('valid');
-    expect(container.querySelector('[data-testid="hub-bill-tiles"]')!.textContent).toBe('9/9 tiles to prepare');
-    expect(container.querySelector('[data-testid="hub-bill-time"]')!.textContent).toBe('18.0s (HQ 1.5×)');
-    expect(container.querySelector('[data-testid="hub-bill-energy"]')!.textContent).toBe('180 E');
+    expect(container.querySelector('[data-testid="hub-bill-tiles"]')!.textContent).toBe('No terraform');
+    expect(container.querySelector('[data-testid="hub-ghost-tile"]')).toBeNull();
 
     const foreignGhost = hub.hoverTile(-5, -5);
     expect(foreignGhost.reasonCode).toBe('not_own_territory');
@@ -135,10 +128,8 @@ describe('Confirm goes through the authoritative handler only (no client-side wo
     await flush();
 
     expect(hasColonyHub(state, 0)).toBe(true);
-    expect(getConstructionOrders(state, 0)[0]).toMatchObject({ building: 'commandHub', q: -3, r: 4, status: 'waiting_site' });
-    const tf = getColonyTerraformOrders(state, 0);
-    expect(tf).toHaveLength(1);
-    expect(tf[0].jobs.every((j) => j.op === 'grade')).toBe(true);
+    expect(getConstructionOrders(state, 0)[0]?.status).not.toBe('waiting_site');
+    expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
 
     hub.update(host.view() as never);
     (container.querySelector('[data-testid="hub-cancel-order"]') as HTMLButtonElement).click();
@@ -178,8 +169,7 @@ describe('GhostEvaluator reasons, surface pointer events, hotkeys, and feature r
     setTilePrep(state.grid, idx.indexOf(fp[4].q, fp[4].r), PREP.living);
     const mixed = evaluateHubGhost(state, 0, -2, 2);
     expect(mixed.valid).toBe(true);
-    expect(mixed.bill.ops).toEqual({ grade: 6, clear: 0, break: 0 });
-    expect(mixed.bill.tilesToPrepare).toBe(6);
+    expect(mixed.bill.tilesToPrepare).toBe(0);
 
     setTileTerrain(state.grid, idx.indexOf(fp[0].q, fp[0].r), TERRAIN.forest);
     const trees = evaluateHubGhost(state, 0, -2, 2);
@@ -246,8 +236,7 @@ describe('3D placement ghost', () => {
     hub.hoverTile(-3, 4);
     rig.update(src, 0.016);
     expect(rig.group.visible).toBe(true);
-    expect(ok.visible).toBe(true);
-    expect(hexes(ok)).toBe(9);
+    expect(ok.visible).toBe(false);
     expect(bad.visible).toBe(false);
     expect((ok.material as THREE.MeshBasicMaterial).color.getHex()).toBe(0x39ff88);
 

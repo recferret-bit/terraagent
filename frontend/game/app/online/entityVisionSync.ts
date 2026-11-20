@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
+import { colonyNightBlend, computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
 import {
   applyBuildingLight,
   attachEntityProjectorRig,
@@ -187,10 +187,9 @@ export function syncColonyVisionAndProjectors(opts: {
   const blend = stepFovBlend(active);
   const dnParams = getDayNightParams();
   const solar = computeSolarState(dnParams);
-  const sunElevSin = Math.sin(((solar.hour / 24) - 0.25) * Math.PI * 2);
-  const nightGateRaw = !isDayNightOn() ? 0 : THREE.MathUtils.smoothstep(-sunElevSin, 0.001, 0.035);
-  const nightGate = nightGateRaw * blend;
-  const nightFactor = !isDayNightOn() ? 0 : Math.max(1 - solar.daylight, nightGateRaw * 0.88);
+  const night = isDayNightOn() ? colonyNightBlend(solar.hour, solar.daylight) : { nightFactor: 0, nightGate: 0 };
+  const nightGate = night.nightGate * blend;
+  const nightFactor = night.nightFactor;
   const rigIntensity = (0.22 + 0.78 * nightFactor) * dnParams.projectorIntensity * nightGate;
   const lightScale = (0.32 + 0.98 * nightFactor) * dnParams.projectorIntensity * nightGate;
 

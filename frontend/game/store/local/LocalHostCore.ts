@@ -1,6 +1,6 @@
 import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
-  applyTunedEntityHealth, buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS,
+  applyTunedEntityHealth, buildPipeline, buildingCatalog, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS,
   type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
@@ -310,6 +310,7 @@ export class LocalHostCore {
         state: ownBytes(this.host.snapshot({ forClient: true })), simVersion: meta.simVersion, dataHash: this.host.pipeline.config.data.hash, tick: meta.tick,
         serverTimeMs: Math.round(this.deps.wallMs()), tickMs: TICK_MS, deltaHz: 5, flags: [...this.tuning.flags],
         overrides: effectiveOverrides(this.tuning) as Record<string, unknown>, ...(warp > 1 ? { warp } : {}),
+        buildings: buildingCatalog(this.host.pipeline.config.data),
       },
     });
   }

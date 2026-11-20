@@ -7,14 +7,12 @@ import { bumpPathEpoch } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { rowNum } from '../rows';
-import { enqueueTerraformOrder } from '../terraform-basic/queue';
 import type { TerraformOrder } from '../terraform-basic/orders';
 import { nextOrderId } from '../terraform-basic/orders';
 import { revertFootprintLivingTiles } from '../terraform-basic/rules';
 import { payConstructionCost, resolveHubBuildTimeS, resolveHubCost } from './build';
 import { readConstructionOrders, setOrderStatus, writeConstructionOrders, type ConstructionOrder } from './orders';
 import { resolveBuildingRow } from './placement';
-import { buildLinkedPrepJobs } from './prep';
 import { validateBuildingPlacement, type ValidateHubPlacementOpts, type ValidateHubPlacementResult } from './validate';
 
 export interface PlaceHubResult {
@@ -45,9 +43,9 @@ function spawnPendingBuildingRow(state: PlanetState, opts: ValidateHubPlacementO
 }
 
 /**
- * Validates and places a building at `(opts.q, opts.r)` for `opts.colonyId`: the pending entity, the construction
- * order (waiting for its site, else for resources, else in progress) and, when the footprint is not prepared, one
- * linked Grade order (`UO-TF-03`). An unaffordable building is accepted and waits for resources (GP-30, `UO-Q-01`).
+ * Validates and places a building at `(opts.q, opts.r)` for `opts.colonyId`: the pending entity and the construction
+ * order. Flat ground is already a foundation, so a place does not enqueue a linked Grade order. The order is
+ * `in_progress` when the colony can pay, otherwise `waiting_resources` (GP-30, `UO-Q-01`).
  * `taskId` is the client's id for the order (its command id); the order id is made by the sim (GP-09).
  */
 export function placeBuildingOrder(
@@ -70,26 +68,9 @@ export function placeBuildingOrder(
     tick,
     ctx?.emit && ctx.flags?.has('W05') ? (ev) => ctx.emit!(ev) : undefined,
   );
-  const needsPrep = validation.unpreparedCount > 0;
-  const entityRow = spawnPendingBuildingRow(state, opts, entityId, hp, needsPrep ? ENTITY_STATE.waiting : ENTITY_STATE.constructing, tick);
+  const entityRow = spawnPendingBuildingRow(state, opts, entityId, hp, ENTITY_STATE.constructing, tick);
 
   const orderId = nextOrderId(state, 'build#', tick);
-  const prepJobs = buildLinkedPrepJobs(state, validation.tiles, data);
-  const prepOrder =
-    prepJobs.length > 0
-      ? enqueueTerraformOrder(state, {
-          colonyId: opts.colonyId,
-          jobs: prepJobs,
-          orderId: `${orderId}/prep`,
-          linkedOrderId: orderId,
-          linkedBuildingEntityId: entityId,
-          isLinkedPrep: true,
-          allowUnclaimed: row.allowUnclaimedPlacement === true,
-          tick,
-          data,
-        }).order
-      : undefined;
-
   const order: ConstructionOrder = {
     orderId,
     taskId: opts.taskId ?? orderId,
@@ -102,17 +83,15 @@ export function placeBuildingOrder(
     footprint: rowNum(row, 'footprint'),
     status: 'waiting_site',
     statusText: '',
-    preparedCount: validation.preparedCount,
+    preparedCount: validation.tiles.length,
     totalTiles: validation.tiles.length,
-    ...(prepOrder ? { linkedPrepOrderId: prepOrder.orderId } : {}),
     progress: 0,
     buildTimeS: resolveHubBuildTimeS(data),
     cost: resolveHubCost(data),
     costPaid: false,
     createdAtTick: tick,
   };
-  if (needsPrep) setOrderStatus(order, 'waiting_site', `waiting(site: ${validation.preparedCount}/${validation.tiles.length})`);
-  else {
+  {
     const pay = payConstructionCost(state, order);
     if (pay.ok) setOrderStatus(order, 'in_progress');
     else {
@@ -123,5 +102,5 @@ export function placeBuildingOrder(
   writeConstructionOrders(state, [...readConstructionOrders(state), order], tick);
   recordAtlasColonyFounding(state, opts.colonyId, opts.q, opts.r, tick);
   syncAtlasColonySectorState(state, tick);
-  return { ok: true, entityId, order, prepOrder, validation };
+  return { ok: true, entityId, order, validation };
 }

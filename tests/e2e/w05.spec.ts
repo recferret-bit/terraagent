@@ -12,7 +12,6 @@ import {
   loadScenario,
   screenshot,
   sendSimCmd,
-  STATE_CONSTRUCTING,
   test,
 } from './harness';
 import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
@@ -115,7 +114,7 @@ test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub
   expectNoPageErrors(page);
 });
 
-test('@hack 3. Construction menu -> place a Resource Extractor (Quarry) on the slope + crater footprint (4, 0) -> ghost shows prep bill (Level x2, Fill x1, Grade x4) -> confirm -> waiting(site: 0/4 tiles prepared) -> linked prep runs -> Extractor builds at 4/4', async ({ page }) => {
+test('@hack 3. Construction menu -> Resource Extractor on the slope + crater footprint (4, 0) is not a foundation: ghost is invalid and no linked-prep build starts', async ({ page }) => {
   await openScenario(page, 'w05');
   await expect(page.locator('[data-testid="command-dock"]')).toHaveAttribute('data-active-tab', 'build');
   await page.locator('.ta-construction__card[data-building="metalsExtractor"]').click();
@@ -128,45 +127,22 @@ test('@hack 3. Construction menu -> place a Resource Extractor (Quarry) on the s
 
   const ghost = page.locator('.ta-placement-ghost[data-building="metalsExtractor"]');
   await expect(ghost).toBeVisible();
-  await expect(ghost).toHaveAttribute('data-valid', 'true');
-  await expect(ghost).toHaveAttribute('data-deposit-covered', 'true');
-  const prepText = ghost.locator('.ta-placement-ghost__prep');
-  await expect(prepText).toContainText('Level ×2');
-  await expect(prepText).toContainText('Fill ×1');
-  await expect(prepText).toContainText('Grade ×4');
-  await expect(prepText).toContainText('300 E');
-  await expect(prepText).toContainText('38s');
-  await expect(prepText).toContainText('10 Metals');
-  await expect(prepText).toContainText('9 Minerals');
-  await screenshot(page, '3-quarry-ghost-prep-bill');
+  await expect(ghost).toHaveAttribute('data-valid', 'false');
+  await expect(ghost.locator('.ta-placement-ghost__reason')).toHaveText(/slope|hole|water/);
+  await expect(ghost.locator('.ta-placement-ghost__prep')).not.toContainText(/Level|Fill|Grade/);
+  await expect(ghost.locator('.ta-placement-ghost__confirm')).toBeDisabled();
+  await screenshot(page, '3-quarry-ghost-slope-rejected');
 
-  // Confirm placement -> construction waits on site prep (0/4) while the linked terraform order runs.
-  await ghost.locator('.ta-placement-ghost__confirm').click();
-  await page.getByTestId('dock-tab-queue').click();
-
-  const quarryChip = page.locator('.ta-queue-chip', { hasText: /Resource Extractor|Minerals Quarry/ });
-  await expect(quarryChip).toBeVisible();
-  await expect(quarryChip).toContainText(/waiting\(site: \d\/4 tiles prepared\)|waiting: site/);
-
-  await devConsole(page, 'warp 20');
-  await expect.poll(
-    async () =>
-      (await getEntitiesSnapshot(page)).some(
-        (e) =>
-          (e.kind === KIND.metalsExtractor || e.kind === KIND.mineralsQuarry) &&
-          e.q === 4 &&
-          e.r === 0 &&
-          e.state !== STATE_CONSTRUCTING,
-      ),
-    { timeout: 35_000 },
-  ).toBe(true);
-
-  for (const [q, r] of [[4, 0], [5, 0], [4, 1], [5, 1]] as const) {
-    expect(await readTileAt(page, q, r)).toMatchObject({ terrain: 0, prep: 2 }); // TERRAIN.flat = 0, PREP.prepared = 2
+  // Do not confirm. The slope + crater is not a foundation, so no linked-prep build starts.
+  await expect(page.locator('.ta-queue-chip', { hasText: /Resource Extractor|Minerals Quarry/ })).toHaveCount(0);
+  expect(
+    (await getEntitiesSnapshot(page)).some(
+      (e) => (e.kind === KIND.metalsExtractor || e.kind === KIND.mineralsQuarry) && e.q === 4 && e.r === 0,
+    ),
+  ).toBe(false);
+  for (const [q, r, terrain] of [[4, 0, 3], [5, 0, 3], [4, 1, 4], [5, 1, 0]] as const) {
+    expect(await readTileAt(page, q, r)).toMatchObject({ terrain });
   }
-
-  await devConsole(page, 'warp 1');
-  await screenshot(page, '3-quarry-completed-after-linked-prep');
   expectNoPageErrors(page);
 });
 

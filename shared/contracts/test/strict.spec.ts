@@ -44,6 +44,17 @@ describe('server messages parse permissively', () => {
     const back = Welcome.parse(decodeWire(frame));
     expect([...back.d.state]).toEqual([1, 2, 3]);
   });
+  it('accepts welcome with a building catalog and without one', () => {
+    expect(Welcome.parse(welcome).d.buildings).toBeUndefined();
+    const entry = {
+      id: 'solar', building: 'solar', label: 'Solar Collector Array', tier: 1,
+      footprintW: 2, footprintD: 2, buildS: 18, hp: 400, powerDrainPerS: 1, powerGenPerS: 13,
+      cost: { 'metals.t1': 60 }, archetype: 'building.solar', requiresDeposit: null,
+      hqOnly: false, allowUnclaimed: true, maxPerColony: null,
+    };
+    const parsed = Welcome.parse({ ...welcome, d: { ...welcome.d, buildings: [entry] } });
+    expect(parsed.d.buildings).toEqual([entry]);
+  });
   it('sends byte-free messages as JSON text', () => {
     expect(typeof encodeWire({ v: 1, t: 'pong', d: { clientTimeMs: 1, serverTimeMs: 2 } })).toBe('string');
   });

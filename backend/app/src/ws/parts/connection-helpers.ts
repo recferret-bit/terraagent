@@ -7,6 +7,7 @@ import {
   type HomeResponse,
 } from '@terra/contracts';
 import type { RawData } from 'ws';
+import { buildingCatalog, compileData } from '@terra/sim';
 import type { AwayDigestService } from '../../game/digest';
 import type { FullState, GamePlanets } from '../../game/game-planets.service';
 import {
@@ -323,6 +324,7 @@ export function buildWelcomeMessage(opts: {
       tickMs: TICK_MS,
       deltaHz,
       flags,
+      buildings: buildingCatalog(compileData(new Set(flags), snap.overrides)),
       ...(snap.warp > 1 ? { warp: snap.warp } : {}),
       ...welcomeFields(reason, away),
     },

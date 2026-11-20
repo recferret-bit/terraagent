@@ -161,11 +161,11 @@ test('@hack 3. Construction menu shows only Command Hub; hovering a site shows 3
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-active', 'true');
   await expect(ghost).toHaveAttribute('data-valid', 'true');
-  await expect(ghost.locator('[data-testid=hub-ghost-tile]')).toHaveCount(9);
+  await expect(ghost.locator('[data-testid=hub-ghost-tile]')).toHaveCount(0);
 
   const bill = page.locator('[data-testid=hub-prep-bill]');
   await expect(bill).toBeVisible();
-  await expect(page.locator('[data-testid=hub-bill-tiles]')).toContainText('/9 tiles to prepare');
+  await expect(page.locator('[data-testid=hub-bill-tiles]')).toContainText('No terraform');
   await expect(page.locator('[data-testid=hub-bill-time]')).toContainText('HQ 1.5×');
   await expect(page.locator('[data-testid=hub-bill-energy]')).toContainText('E');
 
@@ -181,10 +181,10 @@ test('@hack 3. Construction menu shows only Command Hub; hovering a site shows 3
   expectNoPageErrors(page);
 });
 
-test('@hack 4. HQ walks to the site and prepares tiles one by one (Wild -> Prepared), draining its cell bar', async () => {
+test('@hack 4. HQ walks to the site and starts the build without a terraform pass', async () => {
   await devConsole(page, 'warp 10');
 
-  // Poll until at least one tile is prepared and the HQ power cell drains below 800 E during prep
+  // The order goes in progress on flat ground. The HQ does not grade the footprint first.
   await expect
     .poll(
       () =>

@@ -2,7 +2,7 @@ import { getColonyStock } from '../../economy';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
-import { isBuildablePrepared } from '../../grid/tileModel';
+import { isFoundationReadyTile } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { payConstructionCost } from './build';
@@ -15,7 +15,7 @@ function countPreparedFootprintTiles(state: PlanetState, order: ConstructionOrde
   let preparedCount = 0;
   for (const pos of coords) {
     const tileIdx = hex.indexOf(pos.q, pos.r);
-    if (tileIdx >= 0 && isBuildablePrepared(state.grid, tileIdx)) preparedCount++;
+    if (tileIdx >= 0 && isFoundationReadyTile(state.grid, tileIdx)) preparedCount++;
   }
   return { preparedCount, totalTiles: coords.length };
 }

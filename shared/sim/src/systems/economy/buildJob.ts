@@ -2,7 +2,7 @@ import type { ResourceKey } from '@terra/contracts';
 import { deliveredServiceBp, serviceScaled } from '../logistics/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
-import { isBuildablePrepared } from '../../grid/tileModel';
+import { isFoundationReadyTile } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { nextCrewShare, type CrewTally } from '../dispatch/crew';
@@ -181,7 +181,10 @@ function completeBuildingJob(state: PlanetState, row: number, owner: number, ctx
 
 function countPrepared(state: PlanetState, job: BuildingJobRecord): { preparedCount: number; totalTiles: number } {
   const fp = getFootprintTileIndices(state, job.q, job.r, job.footprintW, job.footprintD, job.rot);
-  return { preparedCount: fp.indices.filter((i) => isBuildablePrepared(state.grid, i)).length, totalTiles: fp.indices.length };
+  return {
+    preparedCount: fp.indices.filter((i) => isFoundationReadyTile(state.grid, i)).length,
+    totalTiles: fp.indices.length,
+  };
 }
 
 /** Whether the stock now pays at least some progress of a job that waits on `resources`. */

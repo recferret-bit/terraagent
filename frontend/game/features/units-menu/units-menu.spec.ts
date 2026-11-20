@@ -229,6 +229,9 @@ describe('UnitsMenu DOM Component', () => {
 
     const workerCard = mockParent.querySelector('[data-unit="worker"][data-tier="1"]');
     expect(workerCard).not.toBeNull();
+    const workersHead = mockParent.querySelector('[data-menu-section="workers"]');
+    expect(workersHead?.querySelector('.ta-menu-section__title')?.textContent).toBe('Workers');
+    expect(workersHead?.querySelector('.ta-menu-section__text')?.textContent).toMatch(/Harvest, build/);
     const face = workerCard?.querySelector('.ta-card-face');
     expect(face?.querySelector('.ta-units__title')?.textContent).toBe('Worker Drone T1');
     expect(face?.querySelector('.ta-card-tier')?.textContent).toBe('T1');

@@ -175,6 +175,36 @@ export function formatSolarClock(hour: number): string {
   return `${String(wholeH).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
+/**
+ * Sun elevation in degrees. The day arc meets the night arc at 8° on the horizon.
+ * Moonlight then climbs to 32° at midnight. A step here used to jump the key light
+ * from 8° to 14° the moment the sun set, which read as night arriving at once.
+ */
+function sunElevationDeg(rawSin: number, noonPeakElev: number): number {
+  if (rawSin >= 0) return 8 + (noonPeakElev - 8) * Math.pow(rawSin, 0.78);
+  const t = clamp(-rawSin, 0, 1);
+  return 8 + 24 * (t * t * (3 - 2 * t));
+}
+
+/**
+ * Sine of the sun's orbital angle across which colony lights ease on.
+ * 0 is sunset. The old gate was `smoothstep(0.001, 0.035)`, about eight minutes,
+ * and the scene night was then floored at 88% of that gate.
+ */
+const NIGHT_GATE_SINE: readonly [number, number] = [-0.06, 0.32];
+
+/**
+ * Scene night follows daylight, so dusk darkens with the sky on every planet.
+ * `nightGate` eases projector rigs on across that same evening.
+ */
+export function colonyNightBlend(hour: number, daylight: number): { nightFactor: number; nightGate: number } {
+  const sunSin = Math.sin(((wrapSolarHour(hour) / 24) - 0.25) * Math.PI * 2);
+  return {
+    nightFactor: clamp(1 - daylight, 0, 1),
+    nightGate: smoothstep(NIGHT_GATE_SINE[0], NIGHT_GATE_SINE[1], -sunSin),
+  };
+}
+
 /** Computes the sun color, azimuth, elevation, and shadow/lighting multipliers for a given time of day. */
 export function computeSolarState(
   p: Readonly<DayNightParams> = params,
@@ -197,11 +227,8 @@ export function computeSolarState(
 
   // Azimuth sweeps smoothly across the sky; noon aligns with baseAzimuth
   const sunAzimuth = ((baseAzimuth + (phase - 0.5) * 160) % 360 + 360) % 360;
-  // Elevation arcs from 8 deg near horizon up to noon peak, and stays at shallow orbital moonlight angle at night
   const noonPeakElev = clamp(Math.max(baseElevation, 46), 18, 82);
-  const sunElevation = rawSin >= 0
-    ? 8 + (noonPeakElev - 8) * Math.pow(rawSin, 0.78)
-    : 14 + 18 * Math.min(1, -rawSin);
+  const sunElevation = sunElevationDeg(rawSin, noonPeakElev);
 
   // Sun color based on time of day:
   kelvinToColor(p.noonTempK, _cNoon);

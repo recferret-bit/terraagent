@@ -239,13 +239,12 @@ Canonical gameplay loop and controls reference: [`README.md`](../../README.md).
   `hq.t1.terraformMaxOrders` / `terraformMaxJobs` → `queue_full` (GP-02).
 - **Orders** (GP-08 / GP-09 / GP-10): `blobs.terraformTasks = { byColony }`, `blobs.constructionQueue = { orders }`,
   written with `setBlob` (readers `terraformOrdersOf` / `constructionOrdersOf` work on view blobs too). Order ids are
-  sim-made (`tf#<n>`, `build#<n>`, prep `build#<n>/prep`; a W02 building's prep `job:<entityId>/prep`, linked to
-  `building:<entityId>`; counter `blobs.orderSeq`); `taskId` keeps the client's
-  command id, which may name only one open order (`invalid_args` when reused). `cancelTask { taskId }` cancels in
-  its own lane: an order id, a task id or a building's entity id; `'active'` = the first manual terraform order,
-  `'current'` = the open construction order; a Hub's linked prep cancels the Hub, a W02 building's linked prep (or
-  `unit:<hq>` while the HQ works it) cancels that building; no match → `unknown_entity` (W01 only) / `unknown_task`
-  (W02 on).
+  sim-made (`tf#<n>`, `build#<n>`; counter `blobs.orderSeq`). A place does not mint a prep id. A leftover linked
+  prep (`build#<n>/prep`, or `job:<entityId>/prep` on a W02 building) still cancels with its building. `taskId` keeps
+  the client's command id, which may name only one open order (`invalid_args` when reused). `cancelTask { taskId }`
+  cancels in its own lane: an order id, a task id or a building's entity id; `'active'` = the first manual terraform
+  order, `'current'` = the open construction order; `unit:<hq>` while the HQ works a building cancels that building;
+  no match → `unknown_entity` (W01 only) / `unknown_task` (W02 on).
   Completed orders leave the queue. Unknown building kinds are `invalid_args` (GP-05).
 - **Player work jobs** (`terraform-basic/{workOrder,workJobs,workTile,workSystem,chain,resourceSpawn}.ts`,
   `blobs.workJobs`): `enqueueTask { terraform: { op: 'work', intent?, tiles, workerId? } }` (the direct `task` form and
@@ -278,13 +277,17 @@ Canonical gameplay loop and controls reference: [`README.md`](../../README.md).
   costs / refunds use the W02 `economy/ledger.ts` helpers, not the treasury (LED-16).
 - **Placement** (GP-06, GP-23, GP-30): a Hub stands within `hq.startingKit.hubMaxDistFromLanding` of its pod and not
   closer to another colony's pod or Hub (`farFromLanding` / `nearOtherColony` → `site_blocked`); an unaffordable Hub is
-  accepted and waits. `occupiesGround` (alive buildings) is the one footprint rule for placement and ground paths.
-- **Work** (GP-04, GP-12, GP-16, GP-21): providers are asked linked prep → construction → manual terraform. A build
-  short of stock mid-way is `waiting_resources` and resumes once stock covers the slice; `statusTextOf` derives the
-  text. W02 building jobs (`blobs.construction`, `economy/buildJob.ts`) are worked by the same `build` command
-  (id `job:<entityId>`, after the W01 orders, oldest first): progress and the progressive payment happen only while the
-  builder stands in reach (`advanceBuildingJob`); `economy.construction` (slot 6) only keeps the site bookkeeping
-  (prepared tiles, `site` / `resources` / `worker` wait). A Worker Drone takes harvest, build, and linked-prep work
+  accepted and waits. A site `evaluatePlacement` accepts is already a foundation (`isFoundationReady`: flat, not a
+  ridge or moat). Construction does not terraform it. Trees, rock, slope, hole, water and uneven ground reject
+  (`terrain_unbuildable`) until the player terraforms them. `occupiesGround` (alive buildings) is the one footprint
+  rule for placement and ground paths. Balance rows (footprint, time, cost, HP, power, placement flags) are read
+  through `buildingCatalog` and sent on `welcome.buildings`.
+- **Work** (GP-04, GP-12, GP-16, GP-21): providers are asked construction, then manual terraform. A build does not
+  enqueue a linked prep order. A build short of stock mid-way is `waiting_resources` and resumes once stock covers the
+  slice; `statusTextOf` derives the text. W02 building jobs (`blobs.construction`, `economy/buildJob.ts`) are worked
+  by the same `build` command (id `job:<entityId>`, after the W01 orders, oldest first): progress and the progressive
+  payment happen only while the builder stands in reach (`advanceBuildingJob`); `economy.construction` (slot 6) only
+  keeps the site bookkeeping (`resources` / `worker` wait). A Worker Drone takes harvest, build, and manual terraform
   up to its tier (`dispatch/eligibility.ts`). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
   `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
 - **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,

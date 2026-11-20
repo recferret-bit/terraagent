@@ -77,8 +77,8 @@ describe('shared placement rules: one function for server handler and client gho
     setTilePrep(h.state.grid, idx.indexOf(fp[0].q, fp[0].r), PREP.prepared);
     const res = evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, q: 3, r: 0 });
     expect(res.ok).toBe(true);
-    expect(res.bill.ops).toEqual({ grade: 8, clear: 0, break: 0 });
-    expect(res.bill.tilesToPrepare).toBe(8);
+    expect(res.bill.tilesToPrepare).toBe(0);
+    expect(res.bill.ops.grade ?? 0).toBe(0);
     h.submit(mkCmd({ building: 'commandHub', q: 3, r: 0 }));
     expect(h.step(1).outcomes[0]?.code).toBeUndefined();
     expect(hasColonyHub(h.state, 0)).toBe(true);
