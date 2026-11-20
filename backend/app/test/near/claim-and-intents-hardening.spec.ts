@@ -386,7 +386,7 @@ describe('Mainnet DAO fee leg signing & claimed self-custody staker perks', () =
       env: { NEAR_STAKER_MIN_NEAR: '10', NEAR_STAKER_PLATFORM_FEE_BP: '50' },
     });
     expect(perks.active).toBe(true);
-    expect(perks.platformFeeBp).toBe(50);
+    expect(perks.platformFeeBp).toBe(65); // W28: Tier 1 Scout, instant at t=0 (W20 env ladder gave 50)
     expect(perks.managedAutopilotUnlocked).toBe(true);
 
     const stakedIndices = await resolvePlanetStakedColonies(

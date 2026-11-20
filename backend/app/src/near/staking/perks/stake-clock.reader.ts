@@ -1,0 +1,148 @@
+import type { DbClient } from '@terra/db';
+
+/** The wallet behind a colony or account: every account id and colony it spans, and one stable wallet key. */
+export interface WalletRef {
+  readonly walletKey: string;
+  readonly accountIds: readonly string[];
+  readonly colonyIds: readonly string[];
+  readonly playerId: string | null;
+}
+
+export interface StakeClock {
+  /** ACTIVE stake only: unbonding and withdrawable principal never count towards a tier. */
+  readonly activeStakedYocto: bigint;
+  readonly unbondingYocto: bigint;
+  /** Earliest continuous-stake start over the wallet's positions that still hold stake (24h fee warmup). */
+  readonly stakedSinceMs: number | null;
+  /** Latest deposit over the wallet's positions (7-day early-exit fee clock). */
+  readonly lastStakedAtMs: number | null;
+}
+
+export const EMPTY_STAKE_CLOCK: StakeClock = Object.freeze({
+  activeStakedYocto: 0n,
+  unbondingYocto: 0n,
+  stakedSinceMs: null,
+  lastStakedAtMs: null,
+});
+
+interface LinkRow {
+  readonly colonyId?: string | null;
+  readonly accountId: string;
+  readonly ownerAccountId?: string | null;
+  readonly claimedByAccountId?: string | null;
+  readonly playerId?: string | null;
+}
+
+const LINK_SELECT = { colonyId: true, accountId: true, ownerAccountId: true, claimedByAccountId: true, playerId: true } as const;
+
+/**
+ * Resolves the wallet the same way the market and staking code link `chain.near_colony_account`: a colony id or any of
+ * `accountId` / `ownerAccountId` / `claimedByAccountId` match a row, and every account of the matched owners and
+ * claimants joins the wallet, so all colonies of one wallet resolve to the same `WalletRef`.
+ */
+export async function resolveWallet(
+  db: DbClient,
+  query: { readonly colonyId?: string | null; readonly accountId?: string | null },
+): Promise<WalletRef> {
+  const colonyId = query.colonyId?.trim() || undefined;
+  const given = query.accountId?.trim() || undefined;
+  const accounts = new Set<string>(given ? [given] : []);
+  const colonies = new Set<string>(colonyId ? [colonyId] : []);
+  let primary: string | undefined = given;
+  let playerId: string | null = null;
+  if (typeof db.nearColonyAccount?.findMany === 'function' && (colonyId || given)) {
+    const or: Array<Record<string, string>> = colonyId ? [{ colonyId }] : [];
+    if (given) or.push({ accountId: given }, { ownerAccountId: given }, { claimedByAccountId: given });
+    const first = (await db.nearColonyAccount.findMany({ where: { OR: or }, select: LINK_SELECT })) as LinkRow[];
+    const owners = new Set<string>();
+    const claimants = new Set<string>();
+    const absorb = (rows: readonly LinkRow[]): void => {
+      for (const r of rows) {
+        accounts.add(r.accountId);
+        if (r.colonyId) colonies.add(r.colonyId);
+        if (r.ownerAccountId) owners.add(r.ownerAccountId);
+        if (r.claimedByAccountId) claimants.add(r.claimedByAccountId);
+        playerId ??= r.playerId ?? null;
+        primary ??= r.claimedByAccountId ?? r.ownerAccountId ?? r.accountId;
+      }
+    };
+    absorb(first);
+    for (const o of [...owners, ...claimants]) accounts.add(o);
+    if (owners.size + claimants.size > 0) {
+      const second = (await db.nearColonyAccount.findMany({
+        where: { OR: [{ ownerAccountId: { in: [...owners] } }, { claimedByAccountId: { in: [...claimants] } }] },
+        select: LINK_SELECT,
+      })) as LinkRow[];
+      absorb(second);
+    }
+    primary = claimants.size > 0 ? [...claimants].sort()[0] : owners.size > 0 ? [...owners].sort()[0] : primary;
+  }
+  const walletKey = primary ?? (colonyId ? `colony:${colonyId}` : 'anonymous');
+  return { walletKey, accountIds: [...accounts], colonyIds: [...colonies], playerId };
+}
+
+interface PositionRow {
+  readonly accountId?: string;
+  readonly stakedSnapshot?: { toFixed(n: number): string };
+  readonly unbondingSnapshot?: { toFixed(n: number): string } | null;
+  readonly stakedSinceAt?: Date | null;
+  readonly lastStakedAt?: Date | null;
+  readonly updatedAt?: Date | null;
+}
+
+interface MockRow {
+  readonly accountId?: string;
+  readonly staked?: { toFixed(n: number): string };
+  readonly unbonding?: { toFixed(n: number): string } | null;
+  readonly stakedSinceAt?: Date | null;
+  readonly lastStakedAt?: Date | null;
+  readonly updatedAt?: Date | null;
+}
+
+const toYocto = (d: { toFixed(n: number): string } | null | undefined): bigint => (d ? BigInt(d.toFixed(0)) : 0n);
+
+/**
+ * Reads the wallet's ACTIVE stake and stake clocks from `chain.staking_position`, falling back per account to
+ * `chain.mock_chain_staking` for accounts with no read-model row. Rows without a `stakedSinceAt` (pre-W28) fall back
+ * to their `updatedAt`.
+ */
+export async function readStakeClock(db: DbClient, wallet: WalletRef): Promise<StakeClock> {
+  const or: Array<Record<string, unknown>> = [];
+  if (wallet.colonyIds.length > 0) or.push({ colonyId: { in: [...wallet.colonyIds] } });
+  if (wallet.accountIds.length > 0) or.push({ accountId: { in: [...wallet.accountIds] } });
+  if (or.length === 0) return EMPTY_STAKE_CLOCK;
+
+  const positions =
+    typeof db.stakingPosition?.findMany === 'function'
+      ? ((await db.stakingPosition.findMany({
+          where: { OR: or },
+          select: { accountId: true, stakedSnapshot: true, unbondingSnapshot: true, stakedSinceAt: true, lastStakedAt: true, updatedAt: true },
+        })) as PositionRow[])
+      : [];
+  const covered = new Set(positions.map((p) => p.accountId).filter((a): a is string => Boolean(a)));
+  const wanted = wallet.accountIds.filter((a) => !covered.has(a));
+  const mocks =
+    wanted.length > 0 && typeof db.mockChainStaking?.findMany === 'function'
+      ? ((await db.mockChainStaking.findMany({
+          where: { accountId: { in: wanted } },
+          select: { accountId: true, staked: true, unbonding: true, stakedSinceAt: true, lastStakedAt: true, updatedAt: true },
+        })) as MockRow[])
+      : [];
+
+  let active = 0n;
+  let unbonding = 0n;
+  let since: number | null = null;
+  let last: number | null = null;
+  const fold = (staked: bigint, unb: bigint, r: PositionRow | MockRow): void => {
+    active += staked;
+    unbonding += unb;
+    if (staked <= 0n) return;
+    const s = (r.stakedSinceAt ?? r.updatedAt)?.getTime();
+    if (s !== undefined && (since === null || s < since)) since = s;
+    const l = (r.lastStakedAt ?? r.stakedSinceAt ?? r.updatedAt)?.getTime();
+    if (l !== undefined && (last === null || l > last)) last = l;
+  };
+  for (const p of positions) fold(toYocto(p.stakedSnapshot), toYocto(p.unbondingSnapshot), p);
+  for (const m of mocks) fold(toYocto(m.staked), toYocto(m.unbonding), m);
+  return { activeStakedYocto: active, unbondingYocto: unbonding, stakedSinceMs: since, lastStakedAtMs: last };
+}

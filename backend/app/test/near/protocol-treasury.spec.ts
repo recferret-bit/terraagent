@@ -151,7 +151,7 @@ describe('Staker perks threshold & Managed NEAR.AI wallet fallback', () => {
     const exact = buildStakerPerksFromYocto(BigInt(nearToYocto(10)));
     expect(exact.active).toBe(true);
     expect(exact.managedAutopilotUnlocked).toBe(true);
-    expect(exact.platformFeeBp).toBe(50);
+    expect(exact.platformFeeBp).toBe(65); // W28 Tier 1 (W20: 50)
 
     const dummyOrder = {
       orderId: 'ord_1',
@@ -255,7 +255,7 @@ describe('Claimed wallet trade fee discounts & multi-pool mockChainStaking', () 
       standardPlatformFeeBp: 80,
     });
     expect(perks.active).toBe(true);
-    expect(perks.platformFeeBp).toBe(40);
+    expect(perks.platformFeeBp).toBe(65); // W28 Tier 1 (W20 half-of-standard: 40)
 
     const multiPoolPrisma = {
       nearColonyAccount: {
@@ -452,7 +452,7 @@ describe('Custom staking yield split & /v1/trade/policy staker discounts', () =>
       colonyFor: async () => ({ colonyId: 'col_staker', colonyIndex: 0, accountId: 'staker.testnet' }),
     }, 'planet-alpha');
     expect(stakerPolicy.policy).toMatchObject({
-      platformFeeBp: 45,
+      platformFeeBp: 65, // W28 Tier 1 (W20 half-of-standard: 45)
       standardPlatformFeeBp: 120,
       daoFeeShareBp: 2500,
       stakerDiscountActive: true,
