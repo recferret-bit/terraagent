@@ -149,6 +149,8 @@ export interface DescentSequence {
   syncHandoffSolar?(opts?: { updateEntryDir?: boolean; dtSec?: number }): boolean;
   /** Use y=0 landing-pad datum when an online HexTerrain replaces the procedural preview surface. */
   setExternalGround?(active: boolean): void;
+  /** Update the cosmetic prestige while the sequence is prepared but not finished (the own tier may arrive late). */
+  setPrestige?(prestige: DescentPrestige | undefined): void;
   /** Where the camera ends (gameplay diorama pose). Valid immediately after creation. */
   readonly finalPose: { position: THREE.Vector3; target: THREE.Vector3 };
   start(): void;
@@ -162,6 +164,12 @@ export interface DescentSequence {
   /** Detaches scene objects immediately and slices part GPU disposal across idle animation frames. */
   disposeDeferred?(): void;
   dispose(): void;
+}
+
+/** Cosmetic staking prestige of the player's own colony (W28-12). Plain flags from the app; render never reads wallets. */
+export interface DescentPrestige {
+  /** Tier 2+: a cyan plasma trail follows the drop pod through re-entry. */
+  plasmaTrail?: boolean;
 }
 
 export interface DescentOptions {
@@ -178,5 +186,7 @@ export interface DescentOptions {
   precomputedGlobeSpheres?: PrecomputedGlobeSpheres;
   /** When true, `finish()` / `skip()` slices part GPU disposal across idle frames instead of stalling the handoff frame. */
   deferPartDispose?: boolean;
+  /** Cosmetic prestige of the player's own tier. Omitted = none (tier 0, `?host=local`, W28 off). */
+  prestige?: DescentPrestige;
 }
 export type CreateDescentSequence = (opts: DescentOptions) => DescentSequence;

@@ -47,9 +47,8 @@ describe('W28-12 cyan cutter variants (unit)', () => {
     expect(deriveCyanCutter(base).toolBeam.emissiveIntensity).toBe(7);
   });
 
-  it('workPresetIdFor: undefined for tier 0 and combat, the variant id for cyan', () => {
+  it('workPresetIdFor: undefined for tier 0, the variant id for cyan', () => {
     expect(workPresetIdFor('tree', false)).toBeUndefined();
-    expect(workPresetIdFor('combat', true)).toBeUndefined();
     expect(workPresetIdFor('tree', true)).toBe('work.tree.cyan');
     expect(workPresetIdFor('metals', true)).toBe('work.metals.cyan');
   });

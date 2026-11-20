@@ -7,7 +7,7 @@ import type { InteractionTargetKind } from './types';
  * cosmetic, W28-12). `undefined` means "let the registry resolve the target kind" (the unchanged default path).
  */
 export function workPresetIdFor(targetKind: InteractionTargetKind, cyanCutters: boolean): string | undefined {
-  if (!cyanCutters || targetKind === 'combat') return undefined;
+  if (!cyanCutters) return undefined;
   const variantId = cyanCutterPresetId(ParticlePresetRegistry.getByTargetKind(targetKind).id);
   return ParticlePresetRegistry.getWork(variantId) ? variantId : undefined;
 }

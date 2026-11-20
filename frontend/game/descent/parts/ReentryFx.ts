@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { smoothstep } from '../math';
 import { streakSpeed } from '../timeline';
 import { createPlasma, type Plasma } from '../fx/Plasma';
+import { createPlasmaTrail, type PlasmaTrail } from '@terra/render/descent/PlasmaTrail';
 import { createStreakField, type StreakField } from '../fx/Streaks';
 import { DECK } from '../constants';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
@@ -10,11 +11,15 @@ import type { DescentContext, FramePart, FrameState } from './FrameState';
 export class ReentryFx implements FramePart {
   private streaks: StreakField;
   private plasma: Plasma;
+  /** Tier 2+ prestige trail: built the first frame it is wanted, never for tier 0. */
+  private trail: PlasmaTrail | null = null;
+  private readonly podDims: [number, number];
   private scroll = 0;
   private atmCol: THREE.Color;
   private colA = new THREE.Color(); private colB = new THREE.Color();
 
   constructor(private ctx: DescentContext, podR: number, podH: number) {
+    this.podDims = [podR, podH];
     this.atmCol = new THREE.Color(ctx.spec.orbital.atmosphereColor);
     this.streaks = createStreakField(240, 40, 4.5, 110, ctx.spec.seed);
     ctx.root.add(this.streaks.mesh);
@@ -32,6 +37,7 @@ export class ReentryFx implements FramePart {
     plasma.u.uI.value = f.plasmaI; plasma.u.uTime.value = tn;
     plasma.u.uCool.value.setRGB(1.4, 0.32, 0.05).lerp(this.atmCol, 0.2);
     plasma.u.uAtm.value.copy(this.atmCol).lerp(colA.setRGB(0.9, 0.3, 1.0), 0.35);
+    this.updateTrail(f);
     // ---------- streaks
     const sp = streakSpeed(tn);
     this.scroll += sp * f.dtn / this.ctx.tScale; // streak scroll in "authored seconds"
@@ -44,5 +50,19 @@ export class ReentryFx implements FramePart {
     streaks.u.uPod.value.copy(f.podCenter); streaks.u.uScroll.value = this.scroll; streaks.u.uLen.value = 2.5 + 0.1 * sp;
   }
 
-  dispose() { this.streaks.dispose(); this.plasma.dispose(); }
+  private updateTrail(f: FrameState) {
+    if (this.ctx.prestige?.plasmaTrail && !this.trail) {
+      this.trail = createPlasmaTrail(...this.podDims);
+      this.ctx.root.add(this.trail.group);
+    }
+    const trail = this.trail;
+    if (!trail) return;
+    const on = Boolean(this.ctx.prestige?.plasmaTrail) && f.P > 0.01;
+    trail.group.visible = on;
+    if (!on) return;
+    trail.group.position.copy(f.podCenter);
+    trail.u.uI.value = f.P * 1.15; trail.u.uTime.value = f.tn;
+  }
+
+  dispose() { this.streaks.dispose(); this.plasma.dispose(); this.trail?.dispose(); }
 }
