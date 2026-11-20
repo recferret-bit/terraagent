@@ -3,6 +3,7 @@ import './units/robots';
 import './units/recon';
 import './units/ships';
 import './units/guild';
+import './units/flagship';
 import './units/nature';
 import './units/bugs';
 import './units/hives';

@@ -1,13 +1,16 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { earlyExitFeeBp, MARKET_TOKENS, toChainUnits } from '@terra/contracts';
 import type { DbClient, PrismaClient } from '@terra/db';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { PRISMA } from '../../../../db/db.module.js';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
+  CompoundInput,
   PositionInput,
   RewardsInput,
   type RewardsResult,
   StakeInput,
+  StakeProfitsInput,
   StakingPoolView,
   StakingPort,
   type StakingPositionView,
@@ -16,11 +19,20 @@ import {
 } from '../../../application/ports/staking.port.js';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
+import { isW28Enabled } from '../../../staking/perks/legacy-ladder.js';
 import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.js';
+import { debitVerifier } from './intents-ledger.js';
+import {
+  clearClocksWhenEmpty,
+  loadStakingRow,
+  projectStakingRow,
+  saveStakingRow,
+  withDeposit,
+  type SettledStakingRow,
+} from './staking-ledger.js';
 import { resolveProtocolFeeSchedule } from '../../network/protocol-fee.config.js';
 import {
   computeAccruedRewardDelta,
-  computeSplitRewardDelta,
   GAME_DAY_MS,
   NEAR_TOKEN_ID,
   nearToYocto,
@@ -123,6 +135,26 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     return this.resolvePools();
   }
 
+  private yieldShareBp(): number {
+    const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
+    return resolveProtocolFeeSchedule(envBag).protocolStakingYieldShareBp;
+  }
+
+  private load(tx: DbClient, accountId: string, pool: StakingPoolView, now: number): Promise<SettledStakingRow> {
+    return loadStakingRow(tx, accountId, pool.poolId, pool.apyBp, now, this.yieldShareBp());
+  }
+
+  private async creditProtocolYield(tx: DbClient, snap: SettledStakingRow): Promise<void> {
+    if (snap.protocolYieldDelta > 0n) {
+      await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
+    }
+  }
+
+  /** The `< 7 day` early-exit fee in bp. Only with `W28` on: the W20 ladder has no exit fee. */
+  private earlyExitBp(snap: SettledStakingRow, now: number): number {
+    return isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>) ? earlyExitFeeBp(snap.lastStakedAtMs, now) : 0;
+  }
+
   async stake(raw: StakeInput): Promise<ChainReceipt> {
     const input = StakeInput.parse(raw);
     const pool = this.assertPoolWhitelisted(input.pool);
@@ -137,21 +169,15 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
       await this.debitNearOrThrow(tx, payer, input.amount);
       await this.ensureAccount(tx, input.accountId, 'colony');
       const now = this.nowMs();
-      const snap = await this.loadAndSettleRow(tx, input.accountId, pool.poolId, pool.apyBp, now);
-      if (snap.protocolYieldDelta > 0n) {
-        await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
-      }
-      const nextStaked = snap.staked + amountBig;
-      await this.saveRow(tx, input.accountId, pool.poolId, {
-        ...snap,
-        staked: nextStaked,
-        lastAccruedAtMs: now,
-      });
+      const snap = await this.load(tx, input.accountId, pool, now);
+      await this.creditProtocolYield(tx, snap);
+      const next = withDeposit(snap, amountBig, now, input.asset ?? 'near');
+      await saveStakingRow(tx, input.accountId, pool.poolId, next);
       return {
         accountId: input.accountId,
         pool: pool.poolId,
         amount: input.amount,
-        staked: nextStaked.toString(),
+        staked: next.staked.toString(),
       };
     });
   }
@@ -167,32 +193,34 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     }
     return this.call('Staking', 'unstake', input.opId, async (tx) => {
       const now = this.nowMs();
-      const snap = await this.loadAndSettleRow(tx, input.accountId, pool.poolId, pool.apyBp, now);
+      const snap = await this.load(tx, input.accountId, pool, now);
       if (snap.staked < amountBig) {
         throw new NearException('STAKE_INSUFFICIENT_BALANCE', {
           message: 'Insufficient staked NEAR to unstake.',
           details: { accountId: input.accountId, pool: pool.poolId, staked: snap.staked.toString(), requested: input.amount },
         });
       }
-      if (snap.protocolYieldDelta > 0n) {
-        await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
-      }
-      const nextStaked = snap.staked - amountBig;
-      const nextUnbonding = snap.unbonding + amountBig;
+      await this.creditProtocolYield(tx, snap);
+      // `< 7 days` since the last deposit: the fee is taken from the unstaked principal and goes to the protocol (Rust `unstake`).
+      const feeBp = this.earlyExitBp(snap, now);
+      const fee = (amountBig * BigInt(feeBp)) / 10_000n;
+      if (fee > 0n) await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, fee.toString());
       const readyAtMs = now + UNBONDING_DURATION_MS;
-      await this.saveRow(tx, input.accountId, pool.poolId, {
+      const next = clearClocksWhenEmpty({
         ...snap,
-        staked: nextStaked,
-        unbonding: nextUnbonding,
+        staked: snap.staked - amountBig,
+        unbonding: snap.unbonding + amountBig - fee,
         unbondingReadyAtMs: readyAtMs,
         lastAccruedAtMs: now,
       });
+      await saveStakingRow(tx, input.accountId, pool.poolId, next);
       return {
         accountId: input.accountId,
         pool: pool.poolId,
         amount: input.amount,
-        unbonding: nextUnbonding.toString(),
+        unbonding: next.unbonding.toString(),
         unbondingReadyAtMs: readyAtMs,
+        earlyExitFee: fee.toString(),
       };
     });
   }
@@ -202,7 +230,7 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     const pool = this.assertPoolWhitelisted(input.pool);
     return this.call('Staking', 'withdraw', input.opId, async (tx) => {
       const now = this.nowMs();
-      const snap = await this.loadAndSettleRow(tx, input.accountId, pool.poolId, pool.apyBp, now);
+      const snap = await this.load(tx, input.accountId, pool, now);
       if (snap.withdrawable <= 0n) {
         throw new NearException('STAKE_INSUFFICIENT_BALANCE', {
           message: snap.unbonding > 0n
@@ -216,13 +244,11 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
           },
         });
       }
-      if (snap.protocolYieldDelta > 0n) {
-        await this.credit(tx, this.resolveProtocolAccount(), NEAR_TOKEN_ID, snap.protocolYieldDelta.toString());
-      }
+      await this.creditProtocolYield(tx, snap);
       const payout = snap.withdrawable + snap.rewards;
       const recipient = input.toAccountId ?? input.accountId;
       await this.credit(tx, recipient, NEAR_TOKEN_ID, payout.toString());
-      await this.saveRow(tx, input.accountId, pool.poolId, {
+      await saveStakingRow(tx, input.accountId, pool.poolId, {
         ...snap,
         withdrawable: 0n,
         rewards: 0n,
@@ -237,6 +263,56 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
     });
   }
 
+  /** W28 `compound_yield`: the staker's 80 % yield becomes principal (`0 %` fee); the 20 % protocol cut was already credited. */
+  async compound(raw: CompoundInput): Promise<ChainReceipt> {
+    const input = CompoundInput.parse(raw);
+    const pool = this.assertPoolWhitelisted(input.pool);
+    return this.call('Staking', 'compound', input.opId, async (tx) => {
+      const now = this.nowMs();
+      const snap = await this.load(tx, input.accountId, pool, now);
+      if (snap.rewards <= 0n) {
+        throw new NearException('NOTHING_TO_COMPOUND', { details: { accountId: input.accountId, pool: pool.poolId } });
+      }
+      await this.creditProtocolYield(tx, snap);
+      // Clocks stay as they are: compounding is not a deposit, so the 7-day maturity does not restart.
+      await saveStakingRow(tx, input.accountId, pool.poolId, { ...snap, staked: snap.staked + snap.rewards, rewards: 0n, lastAccruedAtMs: now });
+      return {
+        accountId: input.accountId,
+        pool: pool.poolId,
+        compounded: snap.rewards.toString(),
+        protocolCut: snap.protocolYieldDelta.toString(),
+      };
+    });
+  }
+
+  /** W28 `stake-profits`: debit the wallet's `USDC` (verifier ledger), swap to `stNEAR` and deposit, in one DB transaction. */
+  async stakeProfits(raw: StakeProfitsInput): Promise<ChainReceipt> {
+    const input = StakeProfitsInput.parse(raw);
+    const pool = this.assertPoolWhitelisted(input.pool);
+    const usdc = BigInt(input.usdcAtomic);
+    const near = BigInt(input.nearYocto);
+    if (usdc <= 0n || near <= 0n) {
+      throw new NearException('INSUFFICIENT_USDC', { message: 'Profit stake amount must be greater than zero.' });
+    }
+    return this.call('Staking', 'stake_profits', input.opId, async (tx) => {
+      try {
+        await debitVerifier(tx, input.payerAccountId ?? input.accountId, MARKET_TOKENS.USDC.verifierId, toChainUnits('USDC', usdc));
+      } catch (err) {
+        if (err instanceof NearException && err.errorCode === 'NEAR_INSUFFICIENT_BALANCE') {
+          throw new NearException('INSUFFICIENT_USDC', { details: err.details });
+        }
+        throw err;
+      }
+      await this.ensureAccount(tx, input.accountId, 'colony');
+      const now = this.nowMs();
+      const snap = await this.load(tx, input.accountId, pool, now);
+      await this.creditProtocolYield(tx, snap);
+      const next = withDeposit(snap, near, now, input.asset);
+      await saveStakingRow(tx, input.accountId, pool.poolId, next);
+      return { accountId: input.accountId, pool: pool.poolId, usdc: input.usdcAtomic, near: input.nearYocto, staked: next.staked.toString() };
+    });
+  }
+
   async rewards(raw: RewardsInput): Promise<RewardsResult> {
     const input = RewardsInput.parse(raw);
     const pos = await this.position(input);
@@ -246,31 +322,28 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
   async position(raw: PositionInput): Promise<StakingPositionView> {
     const input = PositionInput.parse(raw);
     const pool = this.assertPoolWhitelisted(input.pool);
-    const now = this.nowMs();
     const row = await this.prisma.mockChainStaking.findUnique({
       where: { accountId_poolId: { accountId: input.accountId, poolId: pool.poolId } },
     });
-    if (!row) {
-      return {
-        accountId: input.accountId,
-        pool: pool.poolId,
-        staked: '0',
-        unbonding: '0',
-        unbondingReadyAtMs: null,
-        withdrawable: '0',
-        rewards: '0',
-      };
+    return viewOf(input.accountId, pool.poolId, row ? projectStakingRow(row, pool.apyBp, this.nowMs(), this.yieldShareBp()) : null);
+  }
+
+  /** W28 `get_account_positions`: every whitelisted pool position of the wallet, independent of Colony Deeds. */
+  async accountPositions(accountId: string): Promise<readonly StakingPositionView[]> {
+    const pools = this.resolvePools();
+    const rows = await this.prisma.mockChainStaking.findMany({ where: { accountId }, orderBy: { poolId: 'asc' } });
+    const now = this.nowMs();
+    const out: StakingPositionView[] = [];
+    for (const row of rows) {
+      const pool = pools.find((p) => p.poolId === row.poolId);
+      if (pool) out.push(viewOf(accountId, pool.poolId, projectStakingRow(row, pool.apyBp, now, this.yieldShareBp())));
     }
-    const settled = this.projectRow(row, pool.apyBp, now);
-    return {
-      accountId: input.accountId,
-      pool: pool.poolId,
-      staked: settled.staked.toString(),
-      unbonding: settled.unbonding.toString(),
-      unbondingReadyAtMs: settled.unbondingReadyAtMs,
-      withdrawable: settled.withdrawable.toString(),
-      rewards: settled.rewards.toString(),
-    };
+    return out;
+  }
+
+  /** The staking clock (real time plus the dev warp offsets), so callers evaluate clocks against the same `now`. */
+  clockNowMs(): number {
+    return this.nowMs();
   }
 
   /** Helper to credit mock NEAR to a wallet/colony account in tests and dev console (`stake.fund`). */
@@ -294,110 +367,24 @@ export class MockStakingAdapter extends MockChainBase implements StakingPort {
       throw err;
     }
   }
+}
 
-  private projectRow(
-    row: {
-      staked: { toFixed(): string };
-      unbonding: { toFixed(): string };
-      unbondingReadyAt: Date | null;
-      withdrawable: { toFixed(): string };
-      rewardsAccrued: { toFixed(): string };
-      lastAccruedAt: Date;
-    },
-    apyBp: number,
-    nowMs: number,
-  ) {
-    const staked = BigInt(row.staked.toFixed());
-    let unbonding = BigInt(row.unbonding.toFixed());
-    let unbondingReadyAtMs = row.unbondingReadyAt ? row.unbondingReadyAt.getTime() : null;
-    let withdrawable = BigInt(row.withdrawable.toFixed());
-    const baseRewards = BigInt(row.rewardsAccrued.toFixed());
-    const elapsedMs = Math.max(0, nowMs - row.lastAccruedAt.getTime());
-    const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
-    const yieldShareBp = resolveProtocolFeeSchedule(envBag).protocolStakingYieldShareBp;
-    const split = computeSplitRewardDelta(staked, apyBp, elapsedMs, yieldShareBp);
-    const rewards = baseRewards + split.userReward;
-
-    if (unbonding > 0n && unbondingReadyAtMs !== null && nowMs >= unbondingReadyAtMs) {
-      withdrawable += unbonding;
-      unbonding = 0n;
-      unbondingReadyAtMs = null;
-    }
-
-    return {
-      staked,
-      unbonding,
-      unbondingReadyAtMs,
-      withdrawable,
-      rewards,
-      protocolYieldDelta: split.protocolYield,
-      lastAccruedAtMs: nowMs,
-    };
+function viewOf(accountId: string, pool: string, s: SettledStakingRow | null): StakingPositionView {
+  if (!s) {
+    return { accountId, pool, staked: '0', unbonding: '0', unbondingReadyAtMs: null, withdrawable: '0', rewards: '0', stakedSinceMs: null, lastStakedAtMs: null };
   }
-
-  private async loadAndSettleRow(
-    tx: DbClient,
-    accountId: string,
-    poolId: string,
-    apyBp: number,
-    nowMs: number,
-  ) {
-    const row = await tx.mockChainStaking.findUnique({
-      where: { accountId_poolId: { accountId, poolId } },
-    });
-    if (!row) {
-      return {
-        staked: 0n,
-        unbonding: 0n,
-        unbondingReadyAtMs: null as number | null,
-        withdrawable: 0n,
-        rewards: 0n,
-        protocolYieldDelta: 0n,
-        lastAccruedAtMs: nowMs,
-      };
-    }
-    return this.projectRow(row, apyBp, nowMs);
-  }
-
-  private async saveRow(
-    tx: DbClient,
-    accountId: string,
-    poolId: string,
-    state: {
-      staked: bigint;
-      unbonding: bigint;
-      unbondingReadyAtMs: number | null;
-      withdrawable: bigint;
-      rewards: bigint;
-      lastAccruedAtMs: number;
-    },
-  ): Promise<void> {
-    const nowDate = new Date(state.lastAccruedAtMs);
-    const readyDate = state.unbondingReadyAtMs !== null ? new Date(state.unbondingReadyAtMs) : null;
-    await tx.mockChainStaking.upsert({
-      where: { accountId_poolId: { accountId, poolId } },
-      create: {
-        accountId,
-        poolId,
-        staked: state.staked.toString(),
-        unbonding: state.unbonding.toString(),
-        unbondingReadyAt: readyDate,
-        withdrawable: state.withdrawable.toString(),
-        rewardsAccrued: state.rewards.toString(),
-        lastAccruedAt: nowDate,
-        updatedAt: nowDate,
-      },
-      update: {
-        staked: state.staked.toString(),
-        unbonding: state.unbonding.toString(),
-        unbondingReadyAt: readyDate,
-        withdrawable: state.withdrawable.toString(),
-        rewardsAccrued: state.rewards.toString(),
-        lastAccruedAt: nowDate,
-        updatedAt: nowDate,
-      },
-    });
-  }
+  return {
+    accountId,
+    pool,
+    staked: s.staked.toString(),
+    unbonding: s.unbonding.toString(),
+    unbondingReadyAtMs: s.unbondingReadyAtMs,
+    withdrawable: s.withdrawable.toString(),
+    rewards: s.rewards.toString(),
+    stakedSinceMs: s.stakedSinceMs,
+    lastStakedAtMs: s.lastStakedAtMs,
+    asset: s.asset,
+  };
 }
 
 export const adapter = adapterOf({ port: StakingPort, kind: 'mock', useClass: MockStakingAdapter });

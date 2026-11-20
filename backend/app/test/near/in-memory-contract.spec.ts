@@ -4,6 +4,7 @@ import { contract as cargo } from '../../src/near/__contract__/cargo.contract';
 import { contract as chainRead } from '../../src/near/__contract__/chain-read.contract';
 import { contract as deed } from '../../src/near/__contract__/deed.contract';
 import { contract as intents } from '../../src/near/__contract__/intents.contract';
+import { isW28Enabled } from '../../src/near/staking/perks/legacy-ladder';
 import { contract as staking } from '../../src/near/__contract__/staking.contract';
 import { adapterFor } from '../../src/near/__contract__/harness';
 import {
@@ -20,7 +21,7 @@ import {
 chainRead.run('InMemoryChainRead', async (env) => adapterFor(chainRead, new InMemoryChainRead(), 'mock')(env));
 badge.run('InMemoryBadgeNft', async (env) => adapterFor(badge, new InMemoryBadgeNft(), 'mock')(env));
 deed.run('InMemoryDeedNft', async (env) => adapterFor(deed, new InMemoryDeedNft(), 'mock')(env));
-staking.run('InMemoryStaking', async (env) => adapterFor(staking, new InMemoryStaking(), 'mock')(env));
+staking.run('InMemoryStaking', async (env) => adapterFor(staking, new InMemoryStaking(undefined, undefined, undefined, undefined, { earlyExitFee: isW28Enabled(process.env) }), 'mock')(env));
 cargo.run('InMemoryCargoToken', async (env) => adapterFor(cargo, new InMemoryCargoToken(), 'mock')(env));
 intents.run('InMemoryIntents', async (env) => adapterFor(intents, new InMemoryIntents(), 'mock')(env));
 agentWallet.run('InMemoryAgentWallet', async (env) => adapterFor(agentWallet, new InMemoryAgentWallet(), 'mock')(env));

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { isDayNightExternalSync, stepStandaloneDayNight } from '@terra/render/core/dayNightConfig';
 import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
-import type { DescentHandoff, DescentOptions, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
+import type { DescentHandoff, DescentOptions, DescentPrestigeSource, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { acquireModel } from '@terra/render/visuals/space/placeholders';
 import { setDescentSunDirection } from '@terra/render/core/shadowConfig';
@@ -64,7 +64,7 @@ export class DescentRunner implements DescentSequence {
     const root = new THREE.Group(); root.name = 'descent:root';
     const initSpace = computeSpaceEntrySolar(new DescentSolarEvaluator().evaluate(spec, 0), viewport.bloom.strength);
     const sunDir = initSpace.entrySunDir.clone();
-    this.ctx = { viewport, scene, camera, spec, surface, dens, startAt: this.startAt, tScale: this.tScale, sunDir, traj, root };
+    this.ctx = { viewport, scene, camera, spec, surface, dens, startAt: this.startAt, tScale: this.tScale, sunDir, traj, root, prestige: opts.prestige };
     setDescentSunDirection(viewport, sunDir); // key light + shadows from the same sun as globe/clouds (RN-42)
 
     // ---- models (carrier + shared drop rig: bay plate, clamp arms, pod, heat shield — identical to the menu stage's)
@@ -121,6 +121,8 @@ export class DescentRunner implements DescentSequence {
     CameraRig.curve(startAt, h.pod, h.cam, h.camTarget);
     return h;
   }
+
+  setPrestige(prestige: DescentPrestigeSource | undefined) { this.ctx.prestige = prestige; }
 
   alignGlobe(spinQuat: THREE.Quaternion, cloudRotY: number) {
     this.ctx.globeAligned = true;

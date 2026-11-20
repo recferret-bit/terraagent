@@ -78,7 +78,7 @@ export class StakingPerksService {
   }
 }
 
-function patronView(seat: PatronSeatRow): PlanetPatronView {
+export function patronView(seat: PatronSeatRow): PlanetPatronView {
   return {
     planetId: seat.planetId,
     accountId: seat.accountId,

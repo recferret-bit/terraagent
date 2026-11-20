@@ -290,6 +290,8 @@ export function createSessionBootRig(params: {
   const entities = new EntityMeshes(scene, opts.makeMesh, playPodTouchdown, deferPodRig);
   entities.healthBars.isEnabled = () => flags.current.flags.has('W02');
   entities.isW10Enabled = () => flags.current.flags.has('W10');
+  // W28-12 prestige: cosmetic and server-fed, so never for an in-browser host (`?host=local` shows tier 0)
+  entities.prestige.isEnabled = () => flags.current.flags.has('W28') && !local && !opts.localHost;
   if (loadMode !== 'pod') {
     entities.podTouchdown.setSkipLocked(true);
   } else if (fromSpaceDescent && !skipDescent) {

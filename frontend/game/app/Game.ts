@@ -4,7 +4,9 @@ import { enqueueDeferredDispose, flushDeferredDispose } from '@terra/render/core
 import { createFramePacer } from '@terra/render/core/framePacer';
 import { getFpsCap, getPresetDimensions, getViewportPreset, isShaderOptimized, onPerfConfigChange, setFpsCap, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
 import { getShadowQuality, setShadowQuality } from '@terra/render/core/shadowQuality';
-import { ArchetypeCatalog, LANDING_PREWARM_ARCHETYPES } from '@terra/render/kitbash';
+import { LANDING_PREWARM_ARCHETYPES } from '@terra/render/kitbash';
+import { stepMenuStageFrame } from './menuStageStep';
+import { MenuPrestige } from './prestige/OrbitPrestige';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { getSharedTerrainPrep } from '@terra/render/planets/prep';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
@@ -78,6 +80,7 @@ export class Game {
   private readonly offFpsCap = onPerfConfigChange((opt, res, cap) => { if (this.settings.optimized !== opt || this.settings.resolution !== res || this.settings.fpsCap !== cap) this.settings = { ...this.settings, optimized: opt, resolution: res, fpsCap: cap }; });
   private readonly prewarmQueue: string[] = [...LANDING_PREWARM_ARCHETYPES];
   private prepSeq = 0;
+  private readonly prestige = new MenuPrestige({ isLocalHost: () => this.isLocalHost, flagOn: () => this.flagsStore?.set.has('W28') ?? true, activeColony: () => this.menu.getActiveColony() });
   private escListener = (e: KeyboardEvent) => this.onKey(e);
   private prepared: PreparedDescentSession | null = null; private prepTimer = 0;
   private deploySession: PreparedDescentSession | null = null;
@@ -184,7 +187,7 @@ export class Game {
     this.discardPrepared();
     const prep = buildPreparedDescentSession({
       viewport: this.viewport, key, spec: this.makeSpec(kind, seed), quality: this.settings.quality,
-      resetScene: () => this.resetScene(),
+      resetScene: () => this.resetScene(), prestige: this.prestige.descent,
       isStale: (p) => this.prepared !== p && this.deploySession !== p && this.descent !== p.descent,
     });
     this.prepared = prep;
@@ -444,10 +447,7 @@ export class Game {
     this.time += dt;
     const vp = this.viewport;
     if (this.phase === 'menu' && this.stage) {
-      ArchetypeCatalog.prewarmStep(this.prewarmQueue, 1.0);
-      this.stage.setHighlights(this.menu.getGlobeMarkers());
-      this.stage.update(dt, this.time);
-      this.menu.updateArProjection(this.stage.projectHighlights());
+      stepMenuStageFrame({ stage: this.stage, menu: this.menu, dt, time: this.time, prewarmQueue: this.prewarmQueue, prestige: this.prestige.orbit });
     } else if (this.phase === 'entering' && this.stage) {
       const step = stepReturningColonyEntry({ stage: this.stage, online: this.online, dt, time: this.time, holdElapsed: this.entryHoldElapsed });
       this.entryHoldElapsed = step.nextHoldElapsed;

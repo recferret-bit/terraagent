@@ -74,11 +74,13 @@ export class MePage {
     }
   }
 
-  private renderStakingPlate(connected: boolean): HTMLElement {
+  private renderStakingPlate(accountId: string | null): HTMLElement {
     const handle = renderStakingSection({
       amount: parseStakingHash(this.currentHash()).amount,
       fetch: this.opts.fetch,
-      connected,
+      search: this.opts.search,
+      connected: accountId !== null,
+      accountId,
       onConnect: () => this.headerAuth?.openSignInDialog(),
     });
     return this.renderSectionPlate(STAKING_TAB.id, STAKING_TAB.label, handle.el);
@@ -92,7 +94,7 @@ export class MePage {
     this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
     if (this.waveStakingOn && parseStakingHash(this.currentHash()).active) {
       const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
-      main.appendChild(this.renderStakingPlate(false));
+      main.appendChild(this.renderStakingPlate(null));
       this.root.appendChild(main);
       return;
     }
@@ -267,7 +269,7 @@ export class MePage {
     main.appendChild(
       this.renderSectionPlate('play', 'PLAY', renderPlaySection()),
     );
-    if (this.waveStakingOn) main.appendChild(this.renderStakingPlate(Boolean(profile.identity.accountId)));
+    if (this.waveStakingOn) main.appendChild(this.renderStakingPlate(profile.identity.accountId ?? null));
 
     this.root.appendChild(main);
     this.scrollToStaking();

@@ -10,6 +10,7 @@ import {
   renderScanCardInnerHtml,
 } from './arHudTemplates';
 import { ArLeaderLines } from './arLeaderLines';
+import { FlagshipLabel } from './FlagshipLabel';
 import { buildOrbitalGlobeMarkers, resolveHomeBaseSectorId, resolveTargetSectorId } from './sectorGlobeMap';
 
 export interface OrbitalArHudCallbacks {
@@ -104,6 +105,7 @@ function createFloatWrapper(wrapClass: string): HTMLDivElement {
 export class OrbitalArHud {
   readonly el = document.createElement('div');
   private readonly leaderLines: ArLeaderLines;
+  private readonly flagshipLabel: FlagshipLabel;
   private readonly scanWrap = createFloatWrapper('ar-wrap-scan');
   private readonly rightRail = document.createElement('div');
   private readonly presenceWrap = createFloatWrapper('ar-wrap-presence');
@@ -152,6 +154,7 @@ export class OrbitalArHud {
     this.el.dataset.testid = 'orbital-ar-hud';
 
     this.leaderLines = new ArLeaderLines(this.el);
+    this.flagshipLabel = new FlagshipLabel(this.el);
 
     this.scanCard.className = 'ar-card ar-card-scan plate';
     this.scanCard.dataset.testid = 'ar-card-scan';
@@ -421,6 +424,7 @@ export class OrbitalArHud {
 
   syncProjection(frame: OrbitalProjectedFrame | null): void {
     this.update3dFloat(frame);
+    this.flagshipLabel.sync(frame);
     const { summary, intent, activeColony } = this.latestState;
     const homeBaseSectorId = resolveHomeBaseSectorId(summary, activeColony);
     const targetSector = resolveTargetSectorId(
@@ -471,6 +475,7 @@ export class OrbitalArHud {
     clearTimeout(this.pulseTimer);
     if (typeof window !== 'undefined') window.removeEventListener('pointermove', this.onPointerMove);
     this.leaderLines.dispose();
+    this.flagshipLabel.dispose();
     this.el.remove();
   }
 }

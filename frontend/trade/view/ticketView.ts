@@ -271,7 +271,7 @@ export class OrderTicket {
         this.d.network?.() ??
         (typeof location !== 'undefined' && location.hostname.endsWith('.near') ? 'mainnet' : 'testnet');
       const selector = await getNearWalletSelector(net);
-      const wallet = await selector.wallet('meteor-wallet').catch(() => selector.wallet());
+      const wallet = await selector.wallet();
       if (wallet.type === 'hardware') {
         throw new Error('Hardware wallets are not supported in browser popup mode.');
       }
