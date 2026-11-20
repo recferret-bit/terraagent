@@ -24,11 +24,17 @@ export class TradeStaking {
   readonly profits: StakeProfitsControl;
 
   constructor(private readonly d: TradeStakingDeps) {
-    const accountId = d.accountId ?? ownAccountId;
+    const known = d.accountId ?? ownAccountId;
+    // a dev / session pilot without a stored account: the perks answer names the session's linked wallet
+    let sessionWallet: string | null = null;
+    const accountId = (): string | null => known() ?? sessionWallet;
     this.pill = new StakingPill({
       doFetch: d.client.fetchFn(),
       query: () => ({ accountId: accountId(), token: d.client.token }),
-      onPerks: (perks) => this.fee.update(perks),
+      onPerks: (perks, wallet) => {
+        if (wallet) sessionWallet = wallet;
+        this.fee.update(perks);
+      },
     });
     this.profits = new StakeProfitsControl({
       doFetch: d.client.fetchFn(),

@@ -56,6 +56,10 @@ describe('pill model', () => {
   });
   it('fetchPerks: none without ids, off on 404, error on 500 / junk / throw, ok otherwise; prefers accountId', async () => {
     expect((await fetchPerks(vi.fn() as unknown as PillFetch, {})).status).toBe('none');
+    // a session token alone asks the server for the pilot's linked wallet (no query string)
+    const tokenOnly = vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) }));
+    expect((await fetchPerks(tokenOnly as unknown as PillFetch, { token: 'dev:w28' })).status).toBe('off');
+    expect((tokenOnly.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe('/v1/near/staking/perks');
     expect((await fetchPerks(router(json(404, {})), { colonyId: 'c' })).status).toBe('off');
     expect((await fetchPerks(router(json(500, {})), { colonyId: 'c' })).status).toBe('error');
     expect((await fetchPerks(router(json(200, { nope: 1 })), { colonyId: 'c' })).status).toBe('error');

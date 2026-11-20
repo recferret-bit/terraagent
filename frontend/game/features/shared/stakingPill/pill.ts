@@ -6,7 +6,7 @@ export interface StakingPillOptions {
   readonly doFetch?: PillFetch;
   readonly query: () => PillQuery;
   /** Called with the fresh perks (or `null` when hidden) so a page can drive its fee pill from the same fetch. */
-  readonly onPerks?: (perks: EvaluatedStakerPerksV2 | null) => void;
+  readonly onPerks?: (perks: EvaluatedStakerPerksV2 | null, accountId?: string | null) => void;
 }
 
 const defaultFetch: PillFetch = (input, init) => fetch(input, init);
@@ -40,7 +40,7 @@ export class StakingPill {
     const apy = await fetchApy(this.doFetch);
     if (this.disposed) return;
     this.draw(res.data.perks, apy);
-    this.opts.onPerks?.(res.data.perks);
+    this.opts.onPerks?.(res.data.perks, res.data.accountId);
   }
 
   private draw(perks: EvaluatedStakerPerksV2, apy: Parameters<typeof pillView>[1]): void {

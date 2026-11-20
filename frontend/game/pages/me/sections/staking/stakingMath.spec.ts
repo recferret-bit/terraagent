@@ -59,3 +59,15 @@ describe('W28-09 staking projection math', () => {
     expect(formatNear(0.5)).toBe('0.5000 NEAR');
   });
 });
+
+describe('W28 formatUsdSmall (AI budget meter)', () => {
+  it('shows fractions of a cent with 2 significant digits; cents and zero like formatUsd; junk as a dash', async () => {
+    const { formatUsdSmall } = await import('./stakingMath');
+    expect(formatUsdSmall(0.00346)).toBe('$0.0035');
+    expect(formatUsdSmall(0.0000376)).toBe('$0.000038');
+    expect(formatUsdSmall(0)).toBe('$0.00');
+    expect(formatUsdSmall(0.01)).toBe('$0.01');
+    expect(formatUsdSmall(12.345)).toBe('$12.35');
+    expect(formatUsdSmall(Number.NaN)).toBe('—');
+  });
+});

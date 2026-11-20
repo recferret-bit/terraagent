@@ -73,6 +73,16 @@ export function formatUsd(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * Small USD amounts (the daily managed-AI budget is fractions of a cent: `$0.0035`): 2 significant digits below one
+ * cent instead of a misleading `$0.00`; zero and cents and above read like `formatUsd`.
+ */
+export function formatUsdSmall(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  if (n === 0 || Math.abs(n) >= 0.01) return formatUsd(n);
+  return `$${Number(n.toPrecision(2)).toString()}`;
+}
+
 /** Whole-NEAR TVL (`12,345,678`); non-numeric input shows the dash. */
 export function formatTvl(near: string): string {
   const n = Number(near);

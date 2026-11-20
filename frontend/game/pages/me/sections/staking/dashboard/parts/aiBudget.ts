@@ -1,6 +1,6 @@
 import type { AiBudgetView } from '@terra/contracts';
 import { el } from '../../../../dom';
-import { formatUsd } from '../../stakingMath';
+import { formatUsdSmall } from '../../stakingMath';
 
 const pct = (used: number, cap: number): number => (cap > 0 ? Math.min(100, Math.max(0, Math.round((used / cap) * 100))) : 0);
 
@@ -39,7 +39,7 @@ export function renderAiBudget(b: AiBudgetView, tier: number): HTMLElement {
     'div',
     { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-ai-budget', mode: b.mode } },
     el('h3', { className: 'label ta-stk-h' }, '⚡ AI COMPUTE BUDGET'),
-    meter('Daily budget', b.dailyBudgetUsedUsd, b.dailyBudgetUsd, `${formatUsd(b.dailyBudgetUsedUsd)} / ${formatUsd(b.dailyBudgetUsd)}`, 'staking-ai-budget-usd'),
+    meter('Daily budget', b.dailyBudgetUsedUsd, b.dailyBudgetUsd, `${formatUsdSmall(b.dailyBudgetUsedUsd)} / ${formatUsdSmall(b.dailyBudgetUsd)}`, 'staking-ai-budget-usd'),
     meter('Daily calls', b.dailyCallsUsed, b.dailyCallLimit, `${b.dailyCallsUsed} / ${b.dailyCallLimit}`, 'staking-ai-budget-calls'),
     el('div', { className: 'ta-stk-chips' }, ...lines),
     renderSlotBar(b.colonySlotsUsed, b.colonySlotsMax),

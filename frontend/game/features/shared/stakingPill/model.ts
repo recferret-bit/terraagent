@@ -25,9 +25,10 @@ export async function fetchPerks(doFetch: PillFetch, q: PillQuery): Promise<Perk
   const colony = q.colonyId?.trim();
   if (account) qs.set('accountId', account);
   else if (colony) qs.set('colonyId', colony);
-  else return { status: 'none' };
+  else if (!q.token) return { status: 'none' };
+  // token only: the server resolves the Bearer pilot's linked wallet (`GET /v1/near/staking/perks`)
   try {
-    const res = await doFetch(`/v1/near/staking/perks?${qs.toString()}`, {
+    const res = await doFetch(`/v1/near/staking/perks${qs.size > 0 ? `?${qs.toString()}` : ''}`, {
       headers: { accept: 'application/json', ...(q.token ? { authorization: `Bearer ${q.token}` } : {}) },
     });
     if (res.status === 404) return { status: 'off' };
