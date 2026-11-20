@@ -10,7 +10,7 @@ import {
   W28_RIVAL_ACCOUNT,
   W28ScenarioSeedService,
   w28PilotAccountId,
-} from '../../src/near/staking/w28-scenario-seed.service';
+} from '../../src/near/infrastructure/dev/w28-scenario-seed.service';
 import { devPlayerId } from '../../src/ws/session-verifier';
 
 let db: TestDatabase;

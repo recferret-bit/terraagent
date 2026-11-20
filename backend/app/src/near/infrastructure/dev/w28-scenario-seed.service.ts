@@ -2,15 +2,15 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { MARKET_TOKENS } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
-import { EventBus } from '../../bus/event-bus.js';
-import { databaseEnabled } from '../../core/persistence.js';
-import { APP_ENV, type AppEnv } from '../../core/tokens.js';
-import { PRISMA } from '../../db/db.module.js';
-import { FlagsService } from '../../flags/flags.service.js';
-import { StakingPort } from '../application/ports/staking.port.js';
-import { creditVerifier } from '../infrastructure/adapters/mock/intents-ledger.js';
-import { PatronNominateService } from './services/patron-nominate.service.js';
-import { StakingService } from './staking.service.js';
+import { EventBus } from '../../../bus/event-bus.js';
+import { databaseEnabled } from '../../../core/persistence.js';
+import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
+import { PRISMA } from '../../../db/db.module.js';
+import { FlagsService } from '../../../flags/flags.service.js';
+import { StakingPort } from '../../application/ports/staking.port.js';
+import { creditVerifier } from '../adapters/mock/intents-ledger.js';
+import { PatronNominateService } from '../../staking/services/patron-nominate.service.js';
+import { StakingService } from '../../staking/staking.service.js';
 
 /** Rival whale that holds the Lead Patron seat until the pilot out-stakes it (demo step 6). */
 export const W28_RIVAL_ACCOUNT = 'w28-rival.near';

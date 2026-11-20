@@ -37,7 +37,7 @@ import { DeedTelemetryService } from './deed/deed-telemetry.service.js';
 import { DeedRepository } from './deed/deed.repository.js';
 import { W20ScenarioSeedService } from './deed/w20-scenario-seed.service.js';
 import { W22ScenarioSeedService } from './treasury/w22-scenario-seed.service.js';
-import { W28ScenarioSeedService } from './staking/w28-scenario-seed.service.js';
+import { W28ScenarioSeedService } from './infrastructure/dev/w28-scenario-seed.service.js';
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
