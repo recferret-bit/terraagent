@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PlanetType } from '../ws/sim';
+import { Nep413Signature } from './nep413';
 
 export const MOCK_DEED_CONTRACT = 'deeds.terraagent.mock';
 
@@ -123,100 +124,7 @@ export const DeedUpdatedPayload = z.strictObject({
 export const DeedUpdatedPayloadSchema = DeedUpdatedPayload;
 export type DeedUpdatedPayload = z.infer<typeof DeedUpdatedPayload>;
 
-export const Nep413Signature = z.strictObject({
-  accountId: z.string().min(2).max(64),
-  publicKey: z.string().min(1).max(160),
-  signature: z.string().min(1).max(512),
-  message: z.string().min(1).max(1024),
-  nonce: z.string().min(8).max(128),
-  recipient: z.string().min(1).max(128),
-  callbackUrl: z.string().max(512).optional(),
-});
-export type Nep413Signature = z.infer<typeof Nep413Signature>;
-
-export const StakingPoolInfo = z.strictObject({
-  poolId: z.string().min(2).max(64),
-  name: z.string().min(1).max(80),
-  apyBp: z.number().int().nonnegative().max(100_000),
-});
-export type StakingPoolInfo = z.infer<typeof StakingPoolInfo>;
-
-export const StakingPositionDto = z.strictObject({
-  colonyId: z.string().min(1),
-  accountId: z.string().min(2).max(64),
-  pool: z.string().min(2).max(64),
-  poolName: z.string().optional(),
-  apyBp: z.number().int().nonnegative().optional(),
-  staked: z.string().regex(/^\d+(\.\d+)?$/),
-  unbonding: z.string().regex(/^\d+(\.\d+)?$/),
-  unbondingReadyAtMs: z.number().int().nonnegative().nullable(),
-  withdrawable: z.string().regex(/^\d+(\.\d+)?$/),
-  rewards: z.string().regex(/^\d+(\.\d+)?$/),
-  updatedAt: z.number().int().nonnegative().optional(),
-});
-export type StakingPositionDto = z.infer<typeof StakingPositionDto>;
-
-export const StakeRequestSchema = z.strictObject({
-  colonyId: z.string().min(1).optional(),
-  pool: z.string().min(2).max(64),
-  amount: z.string().regex(/^\d+(\.\d+)?$/),
-  opId: z.string().min(1).max(200).optional(),
-  walletSignature: Nep413Signature.optional(),
-});
-export type StakeRequest = z.infer<typeof StakeRequestSchema>;
-
-export const UnstakeRequestSchema = z.strictObject({
-  colonyId: z.string().min(1).optional(),
-  pool: z.string().min(2).max(64),
-  amount: z.string().regex(/^\d+(\.\d+)?$/),
-  opId: z.string().min(1).max(200).optional(),
-  walletSignature: Nep413Signature.optional(),
-});
-export type UnstakeRequest = z.infer<typeof UnstakeRequestSchema>;
-
-export const WithdrawRequestSchema = z.strictObject({
-  colonyId: z.string().min(1).optional(),
-  pool: z.string().min(2).max(64),
-  opId: z.string().min(1).max(200).optional(),
-  walletSignature: Nep413Signature.optional(),
-});
-export type WithdrawRequest = z.infer<typeof WithdrawRequestSchema>;
-
-export const StakerPerksInfo = z.strictObject({
-  active: z.boolean(),
-  minStakeNear: z.string(),
-  totalStakedNear: z.string(),
-  grossApyBp: z.number().int().nonnegative(),
-  netApyBp: z.number().int().nonnegative(),
-  protocolYieldShareBp: z.number().int().nonnegative(),
-  platformFeeBp: z.number().int().nonnegative(),
-  stakerPlatformFeeBp: z.number().int().nonnegative().optional(),
-  standardPlatformFeeBp: z.number().int().nonnegative(),
-  managedAutopilotUnlocked: z.boolean(),
-  protocolAccountId: z.string().min(2).max(64),
-});
-export type StakerPerksInfo = z.infer<typeof StakerPerksInfo>;
-
-export const StakingStatusResponse = z.strictObject({
-  colonyId: z.string().min(1),
-  accountId: z.string().min(2).max(64),
-  walletAccountId: z.string().min(2).max(64),
-  walletBalanceNear: z.string(),
-  deedSettled: z.boolean(),
-  accountClaimed: z.boolean(),
-  claimedByAccountId: z.string().nullable(),
-  pools: z.array(StakingPoolInfo),
-  positions: z.array(StakingPositionDto),
-  perks: StakerPerksInfo.optional(),
-});
-export type StakingStatusResponse = z.infer<typeof StakingStatusResponse>;
-
-export const StakingActionResponse = z.strictObject({
-  txHash: z.string().min(1),
-  position: StakingPositionDto,
-  walletBalanceNear: z.string(),
-});
-export type StakingActionResponse = z.infer<typeof StakingActionResponse>;
+export { Nep413Signature } from './nep413';
 
 export const ClaimAccountRequestSchema = z.strictObject({
   colonyId: z.string().min(1).optional(),

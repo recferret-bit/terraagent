@@ -10,12 +10,19 @@ export const StakingPoolView = z.strictObject({
 });
 export type StakingPoolView = z.infer<typeof StakingPoolView>;
 
+/** W28: staked asset (native `stake_payable` or LST `stake_lst` / `withdraw_lst`). Defaults to `near`. */
+export const StakingAssetKind = z.enum(['near', 'stNEAR', 'LiNEAR']);
+export type StakingAssetKind = z.infer<typeof StakingAssetKind>;
+
 export const StakeInput = z.object({
   opId: OpId,
   accountId: AccountId,
   pool: AccountId,
   amount: TokenAmount,
   walletAccountId: AccountId.optional(),
+  asset: StakingAssetKind.optional(),
+  /** Meta Pool / LiNEAR builder referral id forwarded on mainnet `deposit_and_stake`. */
+  referralId: AccountId.optional(),
 });
 export type StakeInput = z.infer<typeof StakeInput>;
 
@@ -24,6 +31,7 @@ export const UnstakeInput = z.object({
   accountId: AccountId,
   pool: AccountId,
   amount: TokenAmount,
+  asset: StakingAssetKind.optional(),
 });
 export type UnstakeInput = z.infer<typeof UnstakeInput>;
 
@@ -32,7 +40,12 @@ export const WithdrawInput = z.object({
   accountId: AccountId,
   pool: AccountId,
   toAccountId: AccountId.optional(),
+  asset: StakingAssetKind.optional(),
 });
+
+/** W28 `compound_yield(pool_id)`: accrued 80 % yield → principal, `0 %` fee, 7-day maturity clock untouched. */
+export const CompoundInput = z.object({ opId: OpId, accountId: AccountId, pool: AccountId });
+export type CompoundInput = z.infer<typeof CompoundInput>;
 export type WithdrawInput = z.infer<typeof WithdrawInput>;
 
 export const RewardsInput = z.object({ accountId: AccountId, pool: AccountId });
@@ -50,6 +63,10 @@ export const StakingPositionView = z.strictObject({
   unbondingReadyAtMs: z.number().int().nonnegative().nullable(),
   withdrawable: TokenAmount,
   rewards: TokenAmount,
+  /** W28: continuous-stake start (24h fee warmup) and last deposit (7-day early-exit fee). */
+  stakedSinceMs: z.number().int().nonnegative().nullable().optional(),
+  lastStakedAtMs: z.number().int().nonnegative().nullable().optional(),
+  asset: StakingAssetKind.optional(),
 });
 export type StakingPositionView = z.infer<typeof StakingPositionView>;
 
@@ -64,4 +81,10 @@ export abstract class StakingPort {
   abstract withdraw(input: WithdrawInput): Promise<ChainReceipt>;
   abstract rewards(input: RewardsInput): Promise<RewardsResult>;
   abstract position(input: PositionInput): Promise<StakingPositionView>;
+
+  /** W28 `compound_yield` (optional until every adapter implements it; W28-02 / W28-04 add mock + testnet). */
+  compound?(input: CompoundInput): Promise<ChainReceipt>;
+
+  /** W28 `get_account_positions(account_id)`: every pool position of a wallet, independent of Colony Deeds. */
+  accountPositions?(accountId: string): Promise<readonly StakingPositionView[]>;
 }

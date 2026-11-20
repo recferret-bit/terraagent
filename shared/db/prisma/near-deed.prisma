@@ -58,6 +58,10 @@ model StakingPosition {
   unbondingReadyAt     DateTime? @map("unbonding_ready_at") @db.Timestamptz(3)
   withdrawableSnapshot Decimal   @default(0) @map("withdrawable_snapshot") @db.Decimal(40, 0)
   rewardsSnapshot      Decimal   @default(0) @map("rewards_snapshot") @db.Decimal(40, 0)
+  /// W28: start of the continuous stake (24h fee warmup) and last deposit (7-day early-exit clock).
+  stakedSinceAt        DateTime? @map("staked_since_at") @db.Timestamptz(3)
+  lastStakedAt         DateTime? @map("last_staked_at") @db.Timestamptz(3)
+  asset                String    @default("near") @db.VarChar(16)
   updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@id([colonyId, poolId])
@@ -76,6 +80,10 @@ model MockChainStaking {
   withdrawable     Decimal   @default(0) @db.Decimal(40, 0)
   rewardsAccrued   Decimal   @default(0) @map("rewards_accrued") @db.Decimal(40, 0)
   lastAccruedAt    DateTime  @default(now()) @map("last_accrued_at") @db.Timestamptz(3)
+  /// W28: continuous-stake start (fee warmup) and last deposit (7-day early-exit fee; compounding keeps it).
+  stakedSinceAt    DateTime? @map("staked_since_at") @db.Timestamptz(3)
+  lastStakedAt     DateTime? @map("last_staked_at") @db.Timestamptz(3)
+  asset            String    @default("near") @db.VarChar(16)
   updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@id([accountId, poolId])

@@ -4,8 +4,8 @@ import { z } from 'zod';
 export const WaveId = z.string().regex(/^W\d{2}$/, 'expected a wave id like W07');
 export type WaveId = string;
 
-/** The highest wave of the plan (docs/plan/waves/W25-*). `all` means W00 … LAST_WAVE. */
-export const LAST_WAVE = 25;
+/** The highest wave of the plan (docs/plan/waves/W28-*). `all` means W00 … LAST_WAVE. */
+export const LAST_WAVE = 28;
 
 export const waveId = (n: number): WaveId => `W${String(n).padStart(2, '0')}`;
 
