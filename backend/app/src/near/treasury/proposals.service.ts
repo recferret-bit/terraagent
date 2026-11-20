@@ -27,6 +27,7 @@ import {
 import { W22TelemetryService } from '../telemetry/w22-telemetry.service.js';
 import { PlanetDaoLifecycleService, type EnsuredPlanetDao } from './lifecycle.service.js';
 import { rejectEndedPlanet } from './planet-ended.js';
+import { voteWeightBp } from './vote-weight.js';
 import {
   assertNoOpenProposal,
   assertNotVoted,
@@ -107,8 +108,9 @@ export class TreasuryProposalsService {
     const view = await this.dao.get({ daoAccountId: ensured.daoAccountId });
     assertNotVoted(view, proposalId, accountId);
     const op = daoVoteOpId(planetId, proposalId, accountId);
-    await this.runChain(op, 'vote', { proposalId, voter: accountId, vote }, async () => {
-      const receipt = await this.dao.vote({ opId: op, daoAccountId: ensured.daoAccountId, proposalId, voter: accountId, vote });
+    const weightBp = await voteWeightBp(this.prisma, (this.env ?? process.env) as unknown as Record<string, string | undefined>, this.flags.has('W28'), accountId);
+    await this.runChain(op, 'vote', { proposalId, voter: accountId, vote, weightBp }, async () => {
+      const receipt = await this.dao.vote({ opId: op, daoAccountId: ensured.daoAccountId, proposalId, voter: accountId, vote, weightBp });
       return { receipt };
     });
     const response = await this.publish(planetId, ensured.daoAccountId, proposalId);

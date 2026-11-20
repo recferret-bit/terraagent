@@ -46,6 +46,7 @@ import { TradeStreamService } from './trade/trade-stream.service.js';
 import { GameModule } from '../game/game.module.js';
 import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
 import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
+import { PatronPayoutService } from './settlement/patron-payout.service.js';
 import { TreasuryFeeService } from './settlement/treasury-fee.service.js';
 import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
@@ -88,6 +89,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     PlanetGameClock,
     OrderExpirySweep,
     IntentTradeRepository,
+    PatronPayoutService,
     TreasuryFeeService,
     SettlementFillsHook,
     TradeSettlement,

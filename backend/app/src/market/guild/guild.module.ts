@@ -18,12 +18,14 @@ import { GuildStrategyPort } from './strategy/port.js';
 import { GUILD_OFFER_SOURCE, GuildVisitPublisher } from './visit/guild-visit.publisher.js';
 import { GuildDevCommand } from './dev/guild-dev.command.js';
 import { GuildDevService } from './dev/guild-dev.service.js';
+import { GuildRadarController } from './visit/guild-radar.controller.js';
 import { GuildVisitRepository } from './visit/guild-visit.repository.js';
 import { GuildVisitService } from './visit/guild-visit.service.js';
 
 /** W15 Guild provisioning, funding book, visit schedule, and the docked market maker. Does nothing while wave W15 is off. */
 @Module({
   imports: [NearModule, GameModule],
+  controllers: [GuildRadarController],
   providers: [
     GuildNpcRepository,
     GuildWalletBinder,
