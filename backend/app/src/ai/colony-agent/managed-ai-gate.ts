@@ -71,7 +71,7 @@ export class ManagedAiGate {
   async view(col: GateColony, opts: { byok?: boolean; nowMs?: number } = {}): Promise<AiBudgetView> {
     const nowMs = opts.nowMs ?? Date.now();
     const r = await resolveWalletPerks(this.prisma, { colonyId: col.id, env: this.envBag(), w28: true, full: true, nowMs, deps: this.deps });
-    const base = buildAiBudgetView(r.perks, r.usage, r.nearUsd);
+    const base = { ...buildAiBudgetView(r.perks, r.usage, r.nearUsd), colonySlotsUsed: this.slots.used(r.wallet.walletKey, nowMs) };
     if (opts.byok) return { ...base, mode: 'byok', model: 'byok' };
     const slotsFull = r.perks.maxAiColonySlots > 0 && !this.slots.has(r.wallet.walletKey, col.id, nowMs) && this.slots.used(r.wallet.walletKey, nowMs) >= r.perks.maxAiColonySlots;
     const spent = r.perks.maxAiColonySlots > 0 && r.usage.dailyCallsUsed >= r.perks.dailyAiCallLimit;
