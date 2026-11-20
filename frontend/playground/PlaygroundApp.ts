@@ -14,7 +14,7 @@ import { validateArchetype } from '@terra/render/kitbash/validate';
 import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $ } from './dom';
-import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type View } from './state';
+import { BUILD_STAGES, WORK_TARGETS, createState, inspectAlias, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
 import { FaunaSceneHost } from './content/FaunaSceneHost';
@@ -127,7 +127,7 @@ export class PlaygroundApp {
       this.spawns.refreshLights(changedId);
       this.lightsPanel.onExternalChange(changedId);
     });
-    const initial = params.get('inspect');
+    const initial = inspectAlias(params.get('inspect'));
     state.id = initial && ArchetypeCatalog.has(initial) ? initial : (state.row ? ArchetypeCatalog.list(state.row)[0]?.id : ArchetypeCatalog.list()[0]?.id) ?? '';
     if (initial && !ArchetypeCatalog.has(initial)) toast(`Unknown archetype "${initial}"`);
     this.applyPlanet();
@@ -156,6 +156,7 @@ export class PlaygroundApp {
       state: this.state, select: (id: string) => this.select(id), validate: (id = this.state.id) => validateArchetype(id), setView: (v: View) => this.setView(v),
       setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), setNight: (on: boolean) => this.setNight(on), contactSheet: () => this.contactSheet(),
       viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s), setRuin: (on: boolean) => { if (this.state.ruin !== on) this.toggle('ruin'); },
+      setStakeTier: (tier: number | null) => { this.state.stakeTier = tier; this.rebuildContent(); syncURL(this.state); },
       setWorkTarget: (t: InteractionTargetKind, enableWork = true) => this.setWorkTarget(t, enableWork),
       validateParticles: (targetOrId: string = this.state.workTarget) => validateParticlePreset(ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind)),
       setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s), setTileState: (ts: TileStatePreset) => this.setTileState(ts), getTileState: () => this.state.tileState, hexTerrain: () => this.hexSample.hexTerrain,
@@ -343,6 +344,7 @@ export class PlaygroundApp {
     spawns.rebuild(spawns.idsFor(state.row, state.id), PLANET_SPECS[state.kind].biomeKey, state.wire, state.depositStage);
     spawns.applyBuild(state.build);
     spawns.applyRuin(state.ruin);
+    spawns.applyStakeTier(state.stakeTier);
     spawns.updateRing(state.id, state.row);
     this.rig.placeHuman();
     this.applyValidation();

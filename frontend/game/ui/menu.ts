@@ -251,6 +251,8 @@ export class MainMenu {
     if (notify) this.cb.onPlanet(k);
   }
 
+  /** Id of the planet selected in the menu (the orbit stage shows its prestige), or null when unknown. */
+  selectedPlanetId(): string | null { return this.planetsByKind[this.kind]?.id ?? null; }
   getActiveColony(): ActiveHomeColony | null { return this.activeColony; }
   hasActiveColony(): boolean { return this.activeColony !== null; }
   canDeploy(): boolean { return !this.arHud.isForeignSectorSelected(); }

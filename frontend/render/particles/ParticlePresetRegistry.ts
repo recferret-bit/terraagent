@@ -1,5 +1,6 @@
 import { COMBAT_PARTICLE_PRESETS } from './presetsCombat';
 import { BUILTIN_PARTICLE_PRESETS } from './presets';
+import { CYAN_CUTTER_PRESETS } from './presetsPrestige';
 import type { InteractionTargetKind, ParticlePresetSpec, RegisteredParticlePreset } from './types';
 
 export interface ResolveTargetKindParams {
@@ -14,14 +15,15 @@ class ParticlePresetRegistryImpl {
   private readonly byTarget = new Map<InteractionTargetKind, ParticlePresetSpec>();
 
   constructor() {
-    for (const preset of [...BUILTIN_PARTICLE_PRESETS, ...COMBAT_PARTICLE_PRESETS]) {
+    for (const preset of [...BUILTIN_PARTICLE_PRESETS, ...COMBAT_PARTICLE_PRESETS, ...CYAN_CUTTER_PRESETS]) {
       this.register(preset);
     }
   }
 
   register(preset: RegisteredParticlePreset): void {
     this.byId.set(preset.id, preset);
-    if (preset.targetKind !== 'combat') this.byTarget.set(preset.targetKind, preset);
+    // a variant is reachable by id only, so it can never replace the base preset of its target kind
+    if (preset.targetKind !== 'combat' && !('variantOf' in preset && preset.variantOf)) this.byTarget.set(preset.targetKind, preset);
   }
 
   get(id: string): RegisteredParticlePreset | undefined {
