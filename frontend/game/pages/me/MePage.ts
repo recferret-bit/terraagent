@@ -90,9 +90,8 @@ export class MePage {
 
   /** Server-side fencing: the overview endpoint 404s with W28 off, so the staking tab and plate disappear. */
   private hideStaking(plate: HTMLElement): void {
-    plate.hidden = true;
-    const tab = this.root.querySelector<HTMLElement>('[data-testid="me-tab-staking"]');
-    if (tab) tab.hidden = true;
+    plate.remove();
+    this.root.querySelector<HTMLElement>('[data-testid="me-tab-staking"]')?.remove();
   }
 
   /** Signed-out: the staking tab renders the public preview with no auth wall; every other hash keeps the prompt. */

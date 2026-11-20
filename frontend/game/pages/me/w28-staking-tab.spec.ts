@@ -40,10 +40,10 @@ async function mountSignedOut(hash: string, overview: () => Res, search = ''): P
 }
 
 describe('W28-09 /me.html#staking public preview', () => {
-  it('server reports W28 off (overview 404): tab and staking plate are hidden (server-side wave fencing)', async () => {
+  it('server reports W28 off (overview 404): tab and staking plate are removed (server-side wave fencing)', async () => {
     const root = await mountSignedOut('#staking?amount=50', notFound);
-    expect(q(root, 'me-tab-staking')?.hidden).toBe(true);
-    expect(root.querySelector<HTMLElement>('#staking')?.hidden).toBe(true);
+    expect(q(root, 'me-tab-staking')).toBeNull();
+    expect(root.querySelector<HTMLElement>('#staking')).toBeNull();
   });
 
   it('signed out + #staking?amount=50: full preview, no auth wall, CTA and ecosystem render (fallback path)', async () => {
@@ -76,7 +76,7 @@ describe('W28-09 /me.html#staking public preview', () => {
   });
 
   it('highlights the tier the amount reaches and lists every tier row from the data table', async () => {
-    const root = await mountSignedOut('#staking?amount=200', notFound);
+    const root = await mountSignedOut('#staking?amount=200', serverDown);
     expect(q(root, 'staking-tier-matrix')?.dataset.reachedTier).toBe('3');
     expect(q(root, 'staking-tier-row-3')?.classList.contains('is-reached')).toBe(true);
     expect(q(root, 'staking-tier-row-2')?.classList.contains('is-reached')).toBe(false);
@@ -100,21 +100,21 @@ describe('W28-09 /me.html#staking public preview', () => {
   });
 
   it('junk or oversized hash amounts are validated (default / clamp)', async () => {
-    const junk = await mountSignedOut('#staking?amount=abc', notFound);
+    const junk = await mountSignedOut('#staking?amount=abc', serverDown);
     expect(q(junk, 'staking-connect-cta')?.dataset.amount).toBe(String(STAKING_RULES.defaultPreviewNear));
-    const huge = await mountSignedOut('#staking?amount=99999999', notFound);
+    const huge = await mountSignedOut('#staking?amount=99999999', serverDown);
     expect(q(huge, 'staking-connect-cta')?.dataset.amount).toBe('1000000');
   });
 
   it('W28 off (?waves=..27): no STAKING tab and the signed-out auth wall is unchanged', async () => {
-    const root = await mountSignedOut('#staking?amount=50', notFound, '?waves=..27');
+    const root = await mountSignedOut('#staking?amount=50', serverDown, '?waves=..27');
     expect(q(root, 'me-tab-staking')).toBeNull();
     expect(q(root, 'staking-preview')).toBeNull();
     expect(q(root, 'me-auth-prompt')).not.toBeNull();
   });
 
   it('signed out on another hash keeps the auth prompt (staking only bypasses for #staking)', async () => {
-    const root = await mountSignedOut('#pilot', notFound);
+    const root = await mountSignedOut('#pilot', serverDown);
     expect(q(root, 'me-auth-prompt')).not.toBeNull();
     expect(q(root, 'staking-preview')).toBeNull();
   });
@@ -127,7 +127,7 @@ describe('W28-09 /me.html#staking public preview', () => {
       search: '?as=w12',
       hash: '#staking?amount=50',
       fetch: async (url) =>
-        url.includes('/v1/near/staking/overview') ? notFound() : { ok: true, status: 200, json: async () => (url.includes('/profile') ? profile : achievements) },
+        url.includes('/v1/near/staking/overview') ? serverDown() : { ok: true, status: 200, json: async () => (url.includes('/profile') ? profile : achievements) },
     });
     await page.load();
     await new Promise((r) => setTimeout(r, 0));
