@@ -28,7 +28,8 @@ export function tickedYieldNear(baseNear: number, perSecond: number, elapsedMs: 
   return base + perSecond * Math.max(0, Number.isFinite(elapsedMs) ? elapsedMs : 0) / 1000;
 }
 
-export const formatMicroNear = (n: number): string => (Number.isFinite(n) ? n : 0).toFixed(6);
+/** Counter text with 9 decimals so the per-second accrual is visible even for small stakes. */
+export const formatMicroNear = (n: number): string => (Number.isFinite(n) ? n : 0).toFixed(9);
 
 /** Amount that lifts the stake to the next tier minimum (rounded up to 4 decimals); `null` at the top tier. */
 export function topUpAmountNear(totalNear: number, nextTierMinNear: number | null): number | null {

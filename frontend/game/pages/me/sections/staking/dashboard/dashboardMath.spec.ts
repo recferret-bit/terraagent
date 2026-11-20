@@ -24,8 +24,8 @@ describe('ticker math', () => {
     expect(tickedYieldNear(1, rate, 10_000)).toBeCloseTo(1 + rate * 10, 12);
     expect(tickedYieldNear(1, rate, -5)).toBe(1);
     expect(tickedYieldNear(Number.NaN, rate, 1000)).toBeCloseTo(rate, 12);
-    expect(formatMicroNear(1.23456789)).toBe('1.234568');
-    expect(formatMicroNear(Number.NaN)).toBe('0.000000');
+    expect(formatMicroNear(1.23456789)).toBe('1.234567890');
+    expect(formatMicroNear(Number.NaN)).toBe('0.000000000');
   });
 });
 

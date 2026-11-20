@@ -78,7 +78,7 @@ describe('Wealth Dashboard live behaviour', () => {
     let now = NOW;
     const root = await mount(makeMock(), { now: () => now, tickMs: 5 });
     const el = q(root, 'staking-yield-live')!;
-    expect(el.textContent).toBe('0.500000');
+    expect(el.textContent).toBe('0.500000000');
     now += 3_600_000;
     await new Promise((r) => setTimeout(r, 30));
     const after = Number(el.textContent);
