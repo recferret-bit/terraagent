@@ -1,7 +1,15 @@
-import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
-  StakingActionResponse, StakingStatusResponse,
-  type Nep413Signature, type StakeRequest, type StakingPositionDto, type UnstakeRequest, type WithdrawRequest,
+  STAKING_RULES,
+  type CompoundYieldRequest,
+  type Nep413Signature,
+  type StakeProfitsRequest,
+  type StakeProfitsResponse,
+  type StakeRequest,
+  type StakingActionResponse,
+  type StakingStatusResponse,
+  type UnstakeRequest,
+  type WithdrawRequest,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { CoreException } from '../../core/errors/index.js';
@@ -10,74 +18,91 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
+import { IntentsBalanceReadPort } from '../application/ports/intents-balance-read.port.js';
 import { StakingPort } from '../application/ports/staking.port.js';
 import { DeedTelemetryService } from '../deed/deed-telemetry.service.js';
-import { DeedRepository, type StoredDeedRecord } from '../deed/deed.repository.js';
-import { NearException } from '../domain/errors.js';
-import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
-import { resolveNearNetworkConfig } from '../infrastructure/network/near-network.config.js';
-import { AccountClaimService, type AccountClaimStatus } from './account-claim.service.js';
-import { verifyStakingWalletSignature, type FullAccessKeyVerifier, type StakingSignableAction } from './staking-signature-guard.js';
+import { DeedRepository } from '../deed/deed.repository.js';
+import { AccountClaimService } from './account-claim.service.js';
+import { ActionEffects } from './services/action-effects.js';
+import { ActionFinisher, OpNonce } from './services/action-finisher.js';
+import { ColonyStakeFlow } from './services/colony-stake.flow.js';
+import { PatronNominateService, type PatronNominationResult } from './services/patron-nominate.service.js';
+import { PerksView } from './services/perks-view.js';
+import { portHooks, stakingNowMs } from './services/port-hooks.js';
+import { StakeProfitsService } from './services/stake-profits.service.js';
+import { StakingStatusReader, type StakingStatusQuery } from './services/status.reader.js';
+import { StakingTxWriter } from './services/staking-tx.writer.js';
+import { WalletBalances, type FundWalletNearResult } from './services/wallet-balances.js';
+import { requireWalletAccount, WalletStakeFlow } from './services/wallet-stake.flow.js';
 import { StakingPositionSyncService } from './staking-position-sync.service.js';
-import { buildStakerPerksFromYocto, sumDtoStakedYocto } from './staker-perks.js';
+import { type FullAccessKeyVerifier } from './staking-signature-guard.js';
 import { buildStakingWalletTxDescriptor, type StakingWalletTxDescriptor, type StakingWalletTxQuery } from './staking-wallet-tx.js';
-import {
-  CLAIM_ACCOUNT_PATH,
-  NEAR_TOKEN_ID,
-  nearToYocto,
-  PROTOCOL_STAKING_ACCOUNT_ID,
-  stakeOpId,
-  unstakeOpId,
-  withdrawOpId,
-  yoctoToNear,
-} from './yocto.js';
+import { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear } from './yocto.js';
 
 export { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear };
+export type { FundWalletNearResult, StakingStatusQuery };
 
-export interface StakingStatusQuery {
-  readonly colonyId?: string;
-  readonly accountId?: string;
-}
-
-export interface FundWalletNearResult {
-  readonly accountId: string;
-  readonly walletBalanceNear: string;
-  readonly walletBalanceYocto: string;
-}
-
-interface StakingPortBalanceHooks {
-  creditNear?(accountId: string, yoctoAmount: string): Promise<void>;
-  nearBalanceOf?(accountId: string): Promise<string>;
-  advanceClockMs?(deltaMs: number): void;
-  advanceGameDays?(days: number): void;
-}
+type Signed<T> = T & { readonly signature?: Nep413Signature };
 
 /**
- * Staking domain rules and read/write orchestration (`W20-18`, `NEAR-92`, `D-18`).
- *
- * Enforces:
- * 1. Target Colony Deed must exist (`DEED_NOT_FOUND`, 404). Day-1 staking is enabled without waiting for `Settled`.
- * 2. Colony NEAR account must be claimed by the player (`ACCOUNT_NOT_CLAIMED`, 409 with `claimUrl: '/v1/near/claim-account'`).
- * 3. Pool must be in `NEAR_STAKING_POOLS` (`POOL_NOT_WHITELISTED`, 422) and staked amount must come from the player's own NEAR wallet balance (`STAKE_INSUFFICIENT_BALANCE`, 409), never from game funds.
+ * Thin orchestrator of the staking domain (`W20-18`, `NEAR-92`, `D-18`, `W28-04`). It owns no rules: each action goes to
+ * `ColonyStakeFlow` (the W20 deed + claim gates, used while `W28` is off or for a colony-scoped request) or to
+ * `WalletStakeFlow` / `StakeProfitsService` / `PatronNominateService` (wallet-first, `W28` only), and reads go through
+ * `StakingStatusReader`. The wave flag decides which: with `W28` off every W20 behaviour holds exactly.
  */
 @Injectable()
 export class StakingService implements OnModuleInit, OnModuleDestroy {
-  readonly walletBalancesYocto = new Map<string, bigint>();
+  private readonly log = new Logger(StakingService.name);
   private readonly stops: Array<() => void> = [];
-  private opCounter = 0;
+  private readonly balances: WalletBalances;
+  private readonly colony: ColonyStakeFlow;
+  private readonly wallet: WalletStakeFlow;
+  private readonly profits: StakeProfitsService;
+  private readonly patron: PatronNominateService;
+  private readonly status: StakingStatusReader;
 
   constructor(
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Inject(StakingPort) private readonly staking: StakingPort,
-    @Inject(DeedRepository) private readonly deeds: DeedRepository,
-    @Inject(AccountClaimService) private readonly claimService: AccountClaimService,
+    @Inject(DeedRepository) deeds: DeedRepository,
+    @Inject(AccountClaimService) claimService: AccountClaimService,
     @Inject(StakingPositionSyncService) private readonly positionSync: StakingPositionSyncService,
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
-    @Optional() @Inject(DeedTelemetryService) private readonly telemetry?: DeedTelemetryService,
-    @Optional() private readonly keyVerifier?: FullAccessKeyVerifier,
-  ) {}
+    @Optional() @Inject(DeedTelemetryService) telemetry?: DeedTelemetryService,
+    @Optional() keyVerifier?: FullAccessKeyVerifier,
+    @Optional() intentsRead?: IntentsBalanceReadPort,
+  ) {
+    const envBag = () => (this.env ?? process.env) as Record<string, string | undefined>;
+    const db = () => (databaseEnabled(this.env) && this.prisma ? this.prisma : null);
+    const nonce = new OpNonce();
+    const finisher = new ActionFinisher(staking, positionSync);
+    const perks = new PerksView(staking, envBag, db);
+    const effects = new ActionEffects(staking, new StakingTxWriter(db));
+    this.balances = new WalletBalances(staking, db);
+    const common = { staking, balances: this.balances, finisher, nonce, env: envBag, db, keyVerifier };
+    this.colony = new ColonyStakeFlow({
+      ...common,
+      deeds,
+      claimService,
+      telemetry,
+      effects,
+      isW28: () => this.flags.has('W28'),
+      perksAfter: (accountId, position) =>
+        this.flags.has('W28')
+          ? perks.evaluate({ accountId, grossApyBp: position.apyBp ?? STAKING_RULES.simGrossApyBp, positions: [position] })
+          : Promise.resolve(undefined),
+    });
+    this.wallet = new WalletStakeFlow({ ...common, perks, effects });
+    this.profits = new StakeProfitsService({ ...common, perks, effects, intentsRead });
+    this.patron = new PatronNominateService(db, () => stakingNowMs(staking));
+    this.status = new StakingStatusReader({ flags, staking, claimService, positionSync, balances: this.balances, colony: this.colony, perks, env: envBag });
+  }
+
+  get walletBalancesYocto(): Map<string, bigint> {
+    return this.balances.cache;
+  }
 
   onModuleInit(): void {
     if (this.stops.length > 0 || !this.planets) return;
@@ -85,7 +110,9 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       this.planets.onWarp((_planetId, k) => {
         if (k > 1 && this.flags.has('W20')) {
           this.advanceClockMs(k * 3_600_000);
-          void this.positionSync.syncAll().catch(() => undefined);
+          void this.positionSync.syncAll().catch((err: unknown) => {
+            this.log.warn(`staking read-model sync after a warp failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
         }
       }),
     );
@@ -96,12 +123,11 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   advanceClockMs(deltaMs: number): void {
-    const hooks = this.portHooks();
-    hooks.advanceClockMs?.(deltaMs);
+    portHooks(this.staking).advanceClockMs?.(deltaMs);
   }
 
   advanceGameDays(days: number): void {
-    const hooks = this.portHooks();
+    const hooks = portHooks(this.staking);
     if (hooks.advanceGameDays) {
       hooks.advanceGameDays(days);
       return;
@@ -109,339 +135,56 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     this.advanceClockMs(days * 86_400_000);
   }
 
+  /** `true` while the W28 wallet-first behaviour is on. */
+  isWalletFirst(): boolean {
+    return this.flags.has('W28');
+  }
+
   async fundWalletNear(accountId: string, amountNear: string | number): Promise<FundWalletNearResult> {
     this.assertWaveEnabled();
-    const normAccountId = accountId.trim() || 'col_0.pilot.terraagent.mock';
-    const deltaYocto = BigInt(nearToYocto(amountNear));
-    const hooks = this.portHooks();
-    const db = this.db();
-
-    if (hooks.creditNear) {
-      await hooks.creditNear(normAccountId, deltaYocto.toString());
-    } else if (db) {
-      await db.mockChainAccount.upsert({
-        where: { accountId: normAccountId },
-        create: { accountId: normAccountId, kind: 'colony' },
-        update: {},
-      });
-      await db.$executeRaw`INSERT INTO chain.mock_chain_balance (account_id, token_id, amount)
-        VALUES (${normAccountId}, ${NEAR_TOKEN_ID}, ${deltaYocto.toString()}::numeric)
-        ON CONFLICT (account_id, token_id) DO UPDATE SET amount = chain.mock_chain_balance.amount + EXCLUDED.amount`;
-    }
-
-    const portBal = await this.readPortOrDbBalanceYocto(normAccountId);
-    const nextYocto =
-      portBal !== null
-        ? portBal
-        : (this.walletBalancesYocto.get(normAccountId) ?? 0n) + deltaYocto;
-    this.walletBalancesYocto.set(normAccountId, nextYocto);
-
-    return {
-      accountId: normAccountId,
-      walletBalanceNear: yoctoToNear(nextYocto, 6),
-      walletBalanceYocto: nextYocto.toString(),
-    };
+    return this.balances.fund(accountId, amountNear);
   }
 
   async getStatus(query?: StakingStatusQuery): Promise<StakingStatusResponse> {
     this.assertWaveEnabled();
-    const deed = await this.resolveDeed(query?.colonyId);
-    const colonyId = deed?.colonyId ?? (query?.colonyId?.trim() || 'col_0');
-    const claimInfo = await this.claimService.isAccountClaimed(
-      colonyId,
-      query?.accountId ?? deed?.accountId,
-    );
-    const accountId =
-      query?.accountId?.trim() ||
-      (claimInfo.claimed ? claimInfo.accountId : deed?.accountId ?? claimInfo.accountId);
-    const walletAccountId = claimInfo.claimedByAccountId ?? accountId;
-    const pools = await this.staking.listPools();
-    const positions = await this.positionSync.syncAccountPositions(accountId, colonyId);
-    const walletBalanceNear = await this.readWalletBalanceNear([
-      accountId,
-      deed?.accountId,
-      claimInfo.claimedByAccountId,
-    ]);
-
-    const grossApyBp = pools[0]?.apyBp ?? 900;
-    const protocolAccountId = this.resolveProtocolAccountId();
-    const perks = buildStakerPerksFromYocto(sumDtoStakedYocto(positions), {
-      grossApyBp,
-      protocolAccountId,
-      env: (this.env ?? process.env) as Record<string, string | undefined>,
-    });
-
-    return StakingStatusResponse.parse({
-      colonyId,
-      accountId,
-      walletAccountId,
-      walletBalanceNear,
-      deedSettled: Boolean(deed?.settled),
-      accountClaimed: claimInfo.claimed,
-      claimedByAccountId: claimInfo.claimedByAccountId,
-      pools: pools.map((p) => ({ poolId: p.poolId, name: p.name, apyBp: p.apyBp })),
-      positions,
-      perks: {
-        active: perks.active,
-        minStakeNear: perks.minStakeNear,
-        totalStakedNear: perks.totalStakedNear,
-        grossApyBp: perks.grossApyBp,
-        netApyBp: perks.netApyBp,
-        protocolYieldShareBp: perks.protocolYieldShareBp,
-        platformFeeBp: perks.platformFeeBp,
-        stakerPlatformFeeBp: perks.stakerPlatformFeeBp,
-        standardPlatformFeeBp: perks.standardPlatformFeeBp,
-        managedAutopilotUnlocked: perks.managedAutopilotUnlocked,
-        protocolAccountId: perks.protocolAccountId,
-      },
-    });
+    return this.status.read(query);
   }
 
-  async stake(
-    input: StakeRequest & { readonly signature?: Nep413Signature },
-  ): Promise<StakingActionResponse> {
+  async stake(input: Signed<StakeRequest>): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
-    const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
-    const sig = input.walletSignature ?? input.signature;
-    await this.verifyRealNetworkSignatureIfPresent('stake', deed.colonyId, sig, claimInfo, input.pool, input.amount);
-    const amountYocto = nearToYocto(input.amount);
-    const nonce = sig?.nonce ?? String(++this.opCounter);
-    const opId = input.opId?.trim() || stakeOpId(deed.colonyId, input.pool, nonce);
-    const payerAccountId = await this.resolvePayerAccount(
-      [claimInfo.accountId, deed.accountId, claimInfo.claimedByAccountId],
-      BigInt(amountYocto),
-    );
-
-    const receipt = await this.staking.stake({
-      opId,
-      accountId: claimInfo.accountId,
-      pool: input.pool,
-      amount: amountYocto,
-      ...(payerAccountId !== claimInfo.accountId ? { walletAccountId: payerAccountId } : {}),
-    });
-    this.telemetry?.recordTx('stake');
-
-    const synced = await this.positionSync.syncAccount(claimInfo.accountId, {
-      colonyId: deed.colonyId,
-      pool: input.pool,
-    });
-    const position =
-      synced && synced.pool === input.pool
-        ? synced
-        : await this.buildFallbackPosition(deed.colonyId, claimInfo.accountId, input.pool);
-    const walletBalanceNear = await this.readWalletBalanceNear([
-      claimInfo.accountId,
-      deed.accountId,
-      claimInfo.claimedByAccountId,
-    ]);
-
-    return StakingActionResponse.parse({
-      txHash: receipt.txHash,
-      position,
-      walletBalanceNear,
-    });
+    return this.isWalletAction(input) ? this.wallet.stake(input) : this.colony.stake(input);
   }
 
-  async unstake(
-    input: UnstakeRequest & { readonly signature?: Nep413Signature },
-  ): Promise<StakingActionResponse> {
+  async unstake(input: Signed<UnstakeRequest>): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
-    const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
-    const sig = input.walletSignature ?? input.signature;
-    await this.verifyRealNetworkSignatureIfPresent('unstake', deed.colonyId, sig, claimInfo, input.pool, input.amount);
-    const amountYocto = nearToYocto(input.amount);
-    const nonce = sig?.nonce ?? String(++this.opCounter);
-    const opId = input.opId?.trim() || unstakeOpId(deed.colonyId, input.pool, nonce);
-
-    const receipt = await this.staking.unstake({
-      opId,
-      accountId: claimInfo.accountId,
-      pool: input.pool,
-      amount: amountYocto,
-    });
-
-    const synced = await this.positionSync.syncAccount(claimInfo.accountId, {
-      colonyId: deed.colonyId,
-      pool: input.pool,
-    });
-    const position =
-      synced && synced.pool === input.pool
-        ? synced
-        : await this.buildFallbackPosition(deed.colonyId, claimInfo.accountId, input.pool);
-    const walletBalanceNear = await this.readWalletBalanceNear([
-      claimInfo.accountId,
-      deed.accountId,
-      claimInfo.claimedByAccountId,
-    ]);
-
-    return StakingActionResponse.parse({
-      txHash: receipt.txHash,
-      position,
-      walletBalanceNear,
-    });
+    return this.isWalletAction(input) ? this.wallet.unstake(input) : this.colony.unstake(input);
   }
 
-  async withdraw(
-    input: WithdrawRequest & { readonly amount?: string; readonly signature?: Nep413Signature },
-  ): Promise<StakingActionResponse> {
+  async withdraw(input: Signed<WithdrawRequest & { readonly amount?: string }>): Promise<StakingActionResponse> {
     this.assertWaveEnabled();
-    const { deed, claimInfo } = await this.requireSettledAndClaimed(input.colonyId);
-    const sig = input.walletSignature ?? input.signature;
-    await this.verifyRealNetworkSignatureIfPresent('withdraw', deed.colonyId, sig, claimInfo, input.pool, input.amount);
-    const nonce = sig?.nonce ?? String(++this.opCounter);
-    const opId = input.opId?.trim() || withdrawOpId(deed.colonyId, input.pool, nonce);
-
-    const receipt = await this.staking.withdraw({
-      opId,
-      accountId: claimInfo.accountId,
-      toAccountId: claimInfo.claimedByAccountId ?? claimInfo.accountId,
-      pool: input.pool,
-    });
-
-    const synced = await this.positionSync.syncAccount(claimInfo.accountId, {
-      colonyId: deed.colonyId,
-      pool: input.pool,
-    });
-    const position =
-      synced && synced.pool === input.pool
-        ? synced
-        : await this.buildFallbackPosition(deed.colonyId, claimInfo.accountId, input.pool);
-    const walletBalanceNear = await this.readWalletBalanceNear([
-      claimInfo.accountId,
-      deed.accountId,
-      claimInfo.claimedByAccountId,
-    ]);
-
-    return StakingActionResponse.parse({
-      txHash: receipt.txHash,
-      position,
-      walletBalanceNear,
-    });
+    return this.isWalletAction(input) ? this.wallet.withdraw(input) : this.colony.withdraw(input);
   }
 
-  private assertWaveEnabled(): void {
-    if (!this.flags.has('W20')) {
-      throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
-    }
+  /** `POST /v1/near/stake/compound` (`W28` only): accrued 80 % yield becomes principal, `0 %` fee, clocks untouched. */
+  async compound(input: Signed<CompoundYieldRequest>): Promise<StakingActionResponse> {
+    this.assertW28();
+    return this.wallet.compound({ ...input, accountId: await this.targetAccount(input) });
   }
 
-  private async requireSettledAndClaimed(
-    colonyId?: string,
-  ): Promise<{ deed: StoredDeedRecord; claimInfo: AccountClaimStatus }> {
-    const deed = await this.resolveDeed(colonyId);
-    if (!deed) {
-      throw new NearException('DEED_NOT_FOUND', {
-        status: 404,
-        message: 'Colony Deed not found.',
-        details: { colonyId: colonyId ?? 'col_0' },
-      });
-    }
-    const claimInfo = await this.claimService.isAccountClaimed(deed.colonyId, deed.accountId);
-    if (!claimInfo.claimed) {
-      throw new NearException('ACCOUNT_NOT_CLAIMED', {
-        status: 409,
-        message: 'Claim your colony account before staking NEAR.',
-        details: {
-          colonyId: deed.colonyId,
-          accountId: deed.accountId,
-          claimUrl: CLAIM_ACCOUNT_PATH,
-        },
-      });
-    }
-    return { deed, claimInfo };
+  /** `POST /v1/near/stake/profits` (`W28` only): quote, and on the mock chain swap and stake, the wallet's `USDC` profit. */
+  async stakeProfits(input: Signed<StakeProfitsRequest>): Promise<StakeProfitsResponse> {
+    this.assertW28();
+    return this.profits.run({ ...input, accountId: await this.targetAccount(input) });
   }
 
-  private async resolveDeed(colonyId?: string): Promise<StoredDeedRecord | null> {
-    const trimmed = colonyId?.trim();
-    if (trimmed) {
-      const direct = await this.deeds.findByColonyId(trimmed);
-      if (direct) return direct;
-      const byToken = await this.deeds.findByTokenId(trimmed);
-      if (byToken) return byToken;
-      if (trimmed === 'col_0' || trimmed === '0') {
-        const all = await this.deeds.listAll();
-        return all[0] ?? null;
-      }
-      return null;
-    }
-    const defaultColony = await this.deeds.findByColonyId('col_0');
-    if (defaultColony) return defaultColony;
-    const all = await this.deeds.listAll();
-    return all[0] ?? null;
+  /** `POST /v1/near/staking/patron/nominate` (`W28` only). */
+  nominatePatron(accountId: string, planetId: string): Promise<PatronNominationResult> {
+    this.assertW28();
+    return this.patron.nominate(requireWalletAccount(accountId), planetId);
   }
 
-  private async buildFallbackPosition(
-    colonyId: string,
-    accountId: string,
-    poolId: string,
-  ): Promise<StakingPositionDto> {
-    const pools = await this.staking.listPools();
-    const poolInfo = pools.find((p) => p.poolId === poolId);
-    return {
-      colonyId,
-      accountId,
-      pool: poolId,
-      ...(poolInfo ? { poolName: poolInfo.name, apyBp: poolInfo.apyBp } : {}),
-      staked: '0',
-      unbonding: '0',
-      unbondingReadyAtMs: null,
-      withdrawable: '0',
-      rewards: '0',
-      updatedAt: Date.now(),
-    };
-  }
-
-  private async resolvePayerAccount(
-    candidates: readonly (string | null | undefined)[],
-    neededYocto: bigint,
-  ): Promise<string> {
-    const unique = Array.from(
-      new Set(candidates.map((c) => c?.trim()).filter((c): c is string => Boolean(c))),
-    );
-    const primary = unique[0] ?? 'col_0.pilot.terraagent.mock';
-    for (const candidate of unique) {
-      const bal = await this.readSingleAccountBalanceYocto(candidate);
-      if (bal >= neededYocto) return candidate;
-    }
-    return primary;
-  }
-
-  async readWalletBalanceNear(
-    candidates: string | readonly (string | null | undefined)[],
-  ): Promise<string> {
-    const list = typeof candidates === 'string' ? [candidates] : candidates;
-    const unique = Array.from(
-      new Set(list.map((c) => c?.trim()).filter((c): c is string => Boolean(c))),
-    );
-    let total = 0n;
-    for (const acct of unique) {
-      const bal = await this.readSingleAccountBalanceYocto(acct);
-      this.walletBalancesYocto.set(acct, bal);
-      total += bal;
-    }
-    return yoctoToNear(total, 6);
-  }
-
-  private async readSingleAccountBalanceYocto(accountId: string): Promise<bigint> {
-    const portOrDb = await this.readPortOrDbBalanceYocto(accountId);
-    if (portOrDb !== null) return portOrDb;
-    return this.walletBalancesYocto.get(accountId) ?? 0n;
-  }
-
-  private async readPortOrDbBalanceYocto(accountId: string): Promise<bigint | null> {
-    const hooks = this.portHooks();
-    if (hooks.nearBalanceOf) {
-      const raw = await hooks.nearBalanceOf(accountId);
-      return BigInt(raw || '0');
-    }
-    const db = this.db();
-    if (db) {
-      const row = await db.mockChainBalance.findUnique({
-        where: { accountId_tokenId: { accountId, tokenId: NEAR_TOKEN_ID } },
-      });
-      return BigInt(row?.amount.toFixed(0) ?? '0');
-    }
-    return null;
+  readWalletBalanceNear(candidates: string | readonly (string | null | undefined)[]): Promise<string> {
+    return this.balances.readNear(candidates);
   }
 
   walletTxDescriptor(query: StakingWalletTxQuery): StakingWalletTxDescriptor {
@@ -449,43 +192,27 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async resolveColonyOwnerPlayerId(colonyId?: string): Promise<string | null> {
-    return (await this.resolveDeed(colonyId))?.playerId ?? null;
+    return (await this.colony.resolveDeed(colonyId))?.playerId ?? null;
   }
 
-  private resolveProtocolAccountId(): string {
-    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
-    const kind = nearAdapterFor('Staking', envMap);
-    if (kind === 'mock') return envMap.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_STAKING_ACCOUNT_ID;
-    return resolveNearNetworkConfig(envMap, kind === 'mainnet' ? 'mainnet' : 'testnet').accounts.protocol;
+  /** Wallet-first only when `W28` is on and the request names the wallet; a colony-scoped request keeps the W20 gates. */
+  private isWalletAction(input: { readonly accountId?: string }): boolean {
+    return this.flags.has('W28') && Boolean(input.accountId?.trim());
   }
 
-  private verifyRealNetworkSignatureIfPresent(
-    action: StakingSignableAction,
-    colonyId: string,
-    sig: Nep413Signature | undefined,
-    claimInfo: AccountClaimStatus,
-    poolId: string,
-    amount?: string | number,
-  ): Promise<void> {
-    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
-    return verifyStakingWalletSignature({
-      sig,
-      action,
-      colonyId,
-      claimInfo,
-      poolId,
-      amount,
-      envMap,
-      keyVerifier: this.keyVerifier,
-      prisma: this.db(),
-    });
+  /** The wallet a W28 request acts on: its `accountId`, else the claimed account of its colony; otherwise `WALLET_REQUIRED`. */
+  private async targetAccount(input: { readonly accountId?: string; readonly colonyId?: string }): Promise<string> {
+    const named = input.accountId?.trim();
+    if (named) return named;
+    if (!input.colonyId?.trim()) return requireWalletAccount(undefined);
+    return (await this.colony.requireSettledAndClaimed(input.colonyId)).claimInfo.accountId;
   }
 
-  private portHooks(): StakingPortBalanceHooks {
-    return this.staking as unknown as StakingPortBalanceHooks;
+  private assertWaveEnabled(): void {
+    if (!this.flags.has('W20')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
   }
 
-  private db(): PrismaClient | null {
-    return databaseEnabled(this.env) && this.prisma ? this.prisma : null;
+  private assertW28(): void {
+    if (!this.flags.has('W28')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
   }
 }

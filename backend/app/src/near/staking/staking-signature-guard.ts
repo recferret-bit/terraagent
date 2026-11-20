@@ -12,7 +12,10 @@ import { NearRpcClient } from '../infrastructure/rpc/near-rpc.client.js';
 import type { AccountClaimStatus } from './account-claim.service.js';
 import { nearToYocto } from './yocto.js';
 
-export type StakingSignableAction = 'stake' | 'unstake' | 'withdraw';
+export type StakingSignableAction = 'stake' | 'unstake' | 'withdraw' | 'compound' | 'stake_profits';
+
+/** Actions with no amount in their message (`<action>:<pool>`), like `withdraw`. */
+const isAmountlessAction = (action: StakingSignableAction): boolean => action === 'withdraw' || action === 'compound';
 
 export type FullAccessKeyVerifier = (
   accountId: string,
@@ -86,16 +89,16 @@ export function assertStakingMessageMatchesIntent(params: {
 }): void {
   const trimmed = params.message.trim();
   const prefix = `${params.action}:`;
-  if (params.action === 'withdraw' && trimmed === 'withdraw') return;
+  if (isAmountlessAction(params.action) && trimmed === params.action) return;
   if (!trimmed.startsWith(prefix)) {
     rejectStakingMessage(`expected message starting with "${prefix}"`);
   }
 
   const parts = trimmed.split(':').map((p) => p.trim());
-  if (params.action === 'withdraw') {
+  if (isAmountlessAction(params.action)) {
     if (parts.length === 2) {
       if (parts[1] !== params.poolId && parts[1] !== params.colonyId) {
-        rejectStakingMessage(`signed withdraw target "${parts[1]}" does not match "${params.poolId}"`);
+        rejectStakingMessage(`signed ${params.action} target "${parts[1]}" does not match "${params.poolId}"`);
       }
       return;
     }
@@ -109,7 +112,7 @@ export function assertStakingMessageMatchesIntent(params: {
       if (parts.length >= 4 && parts[3]) assertAmountMatches(parts[3], params.amount);
       return;
     }
-    rejectStakingMessage('malformed withdraw signature message');
+    rejectStakingMessage(`malformed ${params.action} signature message`);
   }
 
   if (parts.length === 2 && parts[1]) {

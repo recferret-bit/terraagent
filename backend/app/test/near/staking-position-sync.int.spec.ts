@@ -91,7 +91,9 @@ describe('W20-20 StakingPositionSyncService on Postgres — direct stake & recov
 describe('W20-20 StakingPositionSyncService on Postgres — unbonding & withdrawal cleanup', () => {
   it('lifecycle: tracks unbonding in chain.staking_position and removes row once fully withdrawn', async () => {
     const nowMs = 1_700_100_000_000;
-    const adapter = new MockStakingAdapter(db.prisma, cfg(), { sleep, now: () => nowMs });
+    // The W20 ladder has no early-exit fee: pin the adapter to it so the unstaked amount is exact.
+    const w20Env = { NODE_ENV: 'test', TA_WAVES: '..27' } as unknown as AppEnv;
+    const adapter = new MockStakingAdapter(db.prisma, cfg(), { sleep, now: () => nowMs }, w20Env);
     const syncService = makeSyncService(adapter);
 
     const accountId = 'col-sync-2.pilot.terraagent.mock';

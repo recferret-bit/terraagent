@@ -48,6 +48,24 @@ export const CompoundInput = z.object({ opId: OpId, accountId: AccountId, pool: 
 export type CompoundInput = z.infer<typeof CompoundInput>;
 export type WithdrawInput = z.infer<typeof WithdrawInput>;
 
+/**
+ * W28 `stake-profits`: the wallet's `USDC` trade profit is swapped to `stNEAR` and staked in ONE chain call, so the debit,
+ * the swap and the deposit commit (or roll back) together and replay by `opId`. `nearYocto` is the quoted output.
+ */
+export const StakeProfitsInput = z.object({
+  opId: OpId,
+  /** The staking wallet that receives the position. */
+  accountId: AccountId,
+  /** Account whose `USDC` is debited (a colony account of the same wallet); defaults to `accountId`. */
+  payerAccountId: AccountId.optional(),
+  pool: AccountId,
+  /** USDC atomic units (6 decimals). */
+  usdcAtomic: TokenAmount,
+  nearYocto: TokenAmount,
+  asset: StakingAssetKind.default('stNEAR'),
+});
+export type StakeProfitsInput = z.infer<typeof StakeProfitsInput>;
+
 export const RewardsInput = z.object({ accountId: AccountId, pool: AccountId });
 export type RewardsInput = z.infer<typeof RewardsInput>;
 export type RewardsResult = { readonly accrued: TokenAmount };
@@ -70,6 +88,14 @@ export const StakingPositionView = z.strictObject({
 });
 export type StakingPositionView = z.infer<typeof StakingPositionView>;
 
+/** Trailing validator APY and where it came from (`sim` = the `Sim APY` constant, the chain could not be sampled). */
+export interface StakingValidatorApy {
+  readonly apyBp: number;
+  readonly source: 'live' | 'cached' | 'sim';
+  readonly sampledAtMs: number | null;
+  readonly error?: string;
+}
+
 /**
  * Own-NEAR validator staking port (`StakingPort`, W20-01 / NEAR §9).
  * Enforces whitelisted pools (`NEAR_STAKING_POOLS`), 4-epoch unbonding (~2 game-days), and 9 % APY rewards.
@@ -85,6 +111,18 @@ export abstract class StakingPort {
   /** W28 `compound_yield` (optional until every adapter implements it; W28-02 / W28-04 add mock + testnet). */
   compound?(input: CompoundInput): Promise<ChainReceipt>;
 
+  /** W28 atomic `USDC → stNEAR` swap + stake from the wallet's USDC trade profit (mock only; testnet quotes dry-run). */
+  stakeProfits?(input: StakeProfitsInput): Promise<ChainReceipt>;
+
   /** W28 `get_account_positions(account_id)`: every pool position of a wallet, independent of Colony Deeds. */
   accountPositions?(accountId: string): Promise<readonly StakingPositionView[]>;
+
+  /** W28 liquid-staking-token balance of a wallet in share units (`ft_balance_of`; real adapters only). */
+  lstBalanceOf?(accountId: string, asset: 'stNEAR' | 'LiNEAR'): Promise<string>;
+
+  /** W28 trailing validator APY, flagged `live` / `cached` / `sim` (real adapters only; mock callers use the pool APY). */
+  validatorApy?(): Promise<StakingValidatorApy>;
+
+  /** Staking clock of the adapter (mock game-clock offsets included); callers fall back to `Date.now()` without it. */
+  clockNowMs?(): number;
 }
