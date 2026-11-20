@@ -408,3 +408,79 @@ fn only_the_operator_can_bind_pools() {
     testing_env!(ctx("mallory.testnet").build());
     c.bind_lst_pool(LST.into(), LST.parse().unwrap());
 }
+
+/// Tiny deterministic generator so the randomized solvency paths replay exactly (no extra dev-dependency).
+struct Lcg(u64);
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        self.0 >> 33
+    }
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n.max(1)
+    }
+}
+
+/// W28-15: after ANY sequence of deposits, share-price moves (crashes and rallies), compounds and exits, the sum of
+/// every liability (staked + unbonding + withdrawable + rewards + protocol cut) equals the shares the vault
+/// actually holds, so it can never owe more than it has. One seeded random path of 40 steps over 3 wallets per
+/// test (the mocked storage is per test thread, so each seed gets a fresh vault).
+fn solvency_path(seed: u64) {
+    let wallets = ["alice.testnet", "bob.testnet", "carol.testnet"];
+    {
+        let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9) + 1);
+        let mut c = priced_pool(PRICE_ONE);
+        let (mut held, mut ms) = (0u128, T0);
+        for _step in 0..40 {
+            ms += rng.below(3 * GAME_DAY_MS) + 1;
+            let who = wallets[rng.below(3) as usize];
+            match rng.below(5) {
+                0 | 1 => {
+                    let shares = (rng.below(500) as u128 + 1) * ONE_NEAR / 10;
+                    deposit(&mut c, who, shares, ms);
+                    held += shares;
+                }
+                2 => {
+                    // Price path: crash to 0.2x, flat, or rally up to 4x (prices stay positive).
+                    let bp = 2_000 + rng.below(38_000) as u128;
+                    set_price(&mut c, PRICE_ONE * bp / 10_000);
+                }
+                3 => {
+                    // Compounding needs an existing price-mode position with realised yield (a wallet that never deposited, or has no yield yet, is rejected).
+                    let accrued = c.get_position(who.into(), LST.into(), 0, ms).rewards.parse::<u128>().unwrap() > 0;
+                    if accrued {
+                        testing_env!(at(OP, ms).build());
+                        c.compound_yield(LST.into(), Some(who.into()), None, Some(ms));
+                    }
+                }
+                _ => {
+                    let p = c.get_position(who.into(), LST.into(), 0, ms);
+                    let staked: u128 = p.staked.parse().unwrap();
+                    if staked > 1 {
+                        let part = 1 + rng.below(staked.min(u64::MAX as u128) as u64) as u128 % staked;
+                        unstake(&mut c, who, &format!("u{seed}-{_step}"), part, ms);
+                    }
+                }
+            }
+            // Views price pending appreciation but only a mutating call books the protocol cut: settle every wallet
+            // with a 1-yocto unstake (fee rounds to 0) so the books are final before they are summed.
+            for w in wallets {
+                if c.get_position(w.into(), LST.into(), 0, ms).staked.parse::<u128>().unwrap() > 1 {
+                    unstake(&mut c, w, &format!("s{seed}-{_step}-{w}"), 1, ms);
+                }
+            }
+            let owed = liabilities(&c, &wallets, ms);
+            assert!(owed <= held, "seed {seed}: liabilities {owed} exceed assets {held}");
+            assert_eq!(owed, held, "seed {seed}: shares must be conserved (nothing created or lost)");
+        }
+    }
+}
+
+macro_rules! solvency_seeds {
+    ($($name:ident => $seed:expr),* $(,)?) => { $(#[test] fn $name() { solvency_path($seed); })* };
+}
+solvency_seeds!(
+    solvency_path_seed_0 => 0, solvency_path_seed_1 => 1, solvency_path_seed_2 => 2, solvency_path_seed_3 => 3,
+    solvency_path_seed_4 => 4, solvency_path_seed_5 => 5, solvency_path_seed_6 => 6, solvency_path_seed_7 => 7,
+    solvency_path_seed_8 => 8, solvency_path_seed_9 => 9, solvency_path_seed_10 => 10, solvency_path_seed_11 => 11,
+);
