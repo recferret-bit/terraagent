@@ -40,6 +40,8 @@ import { W22ScenarioSeedService } from './treasury/w22-scenario-seed.service.js'
 import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
+import { StakingPerksController } from './staking/staking-perks.controller.js';
+import { StakingPerksService } from './staking/perks/staking-perks.service.js';
 import { ShadeAgentController } from './shade-agent/shade-agent.controller.js';
 import { ShadeAgentService } from './shade-agent/shade-agent.service.js';
 import { StakingPoolsController } from './staking/staking-pools.controller.js';
@@ -98,6 +100,7 @@ export const env = {
     ShadeAgentController,
     SocialAuthController,
     StakingController,
+    StakingPerksController,
     StakingPoolsController,
     TreasuryController,
   ],
@@ -145,6 +148,7 @@ export const env = {
     ShadeAgentService,
     SocialAuthService,
     SocialLink,
+    StakingPerksService,
     StakingPositionSyncService,
     StakingService,
     NearMockCommand,
@@ -182,6 +186,7 @@ export const env = {
     PlanetDaoLifecycleService,
     ShadeAgentService,
     SocialLink,
+    StakingPerksService,
     StakingPositionSyncService,
     StakingService,
   ],
