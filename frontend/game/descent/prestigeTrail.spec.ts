@@ -79,6 +79,18 @@ describe('W28-12 ReentryFx prestige trail (integration)', () => {
     expect(g.parent).toBeNull();
   });
 
+  it('accepts a getter, read every frame (own tier known only after the descent was prepared)', () => {
+    let tier2 = false;
+    const ctx = makeCtx(() => (tier2 ? { plasmaTrail: true } : undefined));
+    const fx = new ReentryFx(ctx, 1.2, 3.4);
+    fx.update(frame(18));
+    expect(trailOf(ctx)).toBeUndefined();
+    tier2 = true;
+    fx.update(frame(18));
+    expect(trailOf(ctx)!.visible).toBe(true);
+    fx.dispose();
+  });
+
   it('a prestige that arrives late (setPrestige-style ctx update) builds the trail on the next frame; clearing hides it', () => {
     const ctx = makeCtx();
     const fx = new ReentryFx(ctx, 1.2, 3.4);

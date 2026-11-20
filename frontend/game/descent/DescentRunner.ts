@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { isDayNightExternalSync, stepStandaloneDayNight } from '@terra/render/core/dayNightConfig';
 import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
-import type { DescentHandoff, DescentOptions, DescentPrestige, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
+import type { DescentHandoff, DescentOptions, DescentPrestigeSource, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { acquireModel } from '@terra/render/visuals/space/placeholders';
 import { setDescentSunDirection } from '@terra/render/core/shadowConfig';
@@ -122,7 +122,7 @@ export class DescentRunner implements DescentSequence {
     return h;
   }
 
-  setPrestige(prestige: DescentPrestige | undefined) { this.ctx.prestige = prestige; }
+  setPrestige(prestige: DescentPrestigeSource | undefined) { this.ctx.prestige = prestige; }
 
   alignGlobe(spinQuat: THREE.Quaternion, cloudRotY: number) {
     this.ctx.globeAligned = true;

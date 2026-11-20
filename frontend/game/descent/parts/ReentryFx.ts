@@ -3,6 +3,7 @@ import { smoothstep } from '../math';
 import { streakSpeed } from '../timeline';
 import { createPlasma, type Plasma } from '../fx/Plasma';
 import { createPlasmaTrail, type PlasmaTrail } from '@terra/render/descent/PlasmaTrail';
+import { resolveDescentPrestige } from '@terra/render/descent/types';
 import { createStreakField, type StreakField } from '../fx/Streaks';
 import { DECK } from '../constants';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
@@ -51,13 +52,14 @@ export class ReentryFx implements FramePart {
   }
 
   private updateTrail(f: FrameState) {
-    if (this.ctx.prestige?.plasmaTrail && !this.trail) {
+    const wanted = Boolean(resolveDescentPrestige(this.ctx.prestige)?.plasmaTrail);
+    if (wanted && !this.trail) {
       this.trail = createPlasmaTrail(...this.podDims);
       this.ctx.root.add(this.trail.group);
     }
     const trail = this.trail;
     if (!trail) return;
-    const on = Boolean(this.ctx.prestige?.plasmaTrail) && f.P > 0.01;
+    const on = wanted && f.P > 0.01;
     trail.group.visible = on;
     if (!on) return;
     trail.group.position.copy(f.podCenter);
