@@ -200,7 +200,8 @@ function readVotes(raw: unknown): StoredVote[] {
   for (const item of raw) {
     if (!isRecord(item) || typeof item.voter !== 'string') continue;
     if (item.vote !== 'approve' && item.vote !== 'reject' && item.vote !== 'remove') continue;
-    votes.push({ voter: item.voter, vote: item.vote });
+    const weightBp = typeof item.weightBp === 'number' && Number.isInteger(item.weightBp) && item.weightBp > 0 ? item.weightBp : undefined;
+    votes.push(weightBp === undefined ? { voter: item.voter, vote: item.vote } : { voter: item.voter, vote: item.vote, weightBp });
   }
   return votes;
 }

@@ -1,5 +1,6 @@
 import { STAKING_RULES } from '@terra/contracts';
 import type { DbClient } from '@terra/db';
+import { aiSlotLedger } from './ai-slot.ledger.js';
 import type { WalletRef } from './stake-clock.reader.js';
 
 /** Wallet-wide managed-AI counters read for the perks object. W28-06 owns the writes and the enforcement. */
@@ -28,8 +29,9 @@ export const utcDay = (nowMs: number): string => new Date(nowMs).toISOString().s
 
 /**
  * Default reader: `ai.ai_wallet_usage` (today's calls and USD, keyed by wallet) and `ai.ai_free_trial` (turns used per
- * player). A pilot is trial-eligible when it has a verified social identity (guests have none). Active colony slots
- * are tracked by W28-06 and read as `0` until it lands.
+ * player). A pilot is trial-eligible when it has a verified social identity (`isGuest === false` everywhere in the app:
+ * `me-profile.service.ts` and `AuthService.issueForKnownPlayer` both mean a `core.social_identity` row; anonymous
+ * guests have none). Active colony slots come from the process-local `aiSlotLedger` (W28-06).
  */
 export const dbAiUsageReader: AiUsageReader = {
   async read(db, wallet, nowMs) {
@@ -45,7 +47,7 @@ export const dbAiUsageReader: AiUsageReader = {
       dailyUsdUsed = Number(row?.usdMicros ?? 0n) / 1_000_000;
     }
     const trial = await readTrial(db, wallet.playerId);
-    return { ...trial, dailyCallsUsed, dailyUsdUsed, activeAiColonySlots: 0 };
+    return { ...trial, dailyCallsUsed, dailyUsdUsed, activeAiColonySlots: aiSlotLedger.used(wallet.walletKey, nowMs) };
   },
 };
 
