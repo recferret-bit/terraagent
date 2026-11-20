@@ -38,7 +38,7 @@ import { StakingPositionSyncService } from './staking-position-sync.service.js';
 import { type FullAccessKeyVerifier } from './staking-signature-guard.js';
 import { buildStakingWalletTxDescriptor, type StakingWalletTxDescriptor, type StakingWalletTxQuery } from './staking-wallet-tx.js';
 import { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear } from './yocto.js';
-import { setPerksDeps } from './perks/perks-deps.js';
+import { releasePerksClock, setPerksDeps } from './perks/perks-deps.js';
 
 export { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear };
 export type { FundWalletNearResult, StakingStatusQuery };
@@ -55,6 +55,8 @@ type Signed<T> = T & { readonly signature?: Nep413Signature };
 export class StakingService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(StakingService.name);
   private readonly stops: Array<() => void> = [];
+  /** The staking clock this service installed into the perks engine (released on shutdown). */
+  private perksClock: (() => number) | null = null;
   private readonly balances: WalletBalances;
   private readonly colony: ColonyStakeFlow;
   private readonly wallet: WalletStakeFlow;
@@ -107,7 +109,10 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     const port = this.staking;
-    if (port.clockNowMs) setPerksDeps({ clock: () => port.clockNowMs?.() ?? Date.now() });
+    if (port.clockNowMs) {
+      this.perksClock = () => port.clockNowMs?.() ?? Date.now();
+      setPerksDeps({ clock: this.perksClock });
+    }
     if (this.stops.length > 0 || !this.planets) return;
     this.stops.push(
       this.planets.onWarp((_planetId, k) => {
@@ -122,6 +127,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    if (this.perksClock) releasePerksClock(this.perksClock);
     for (const stop of this.stops.splice(0)) stop();
   }
 

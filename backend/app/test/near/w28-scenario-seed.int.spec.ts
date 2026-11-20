@@ -50,7 +50,7 @@ describe('W28-16 scenario seed (w28)', () => {
     await db.prisma.planet.create({ data: { id: 'pl_w28_demo', name: 'W28 Demo' } });
     const playerId = devPlayerId('w28');
     const pilot = w28PilotAccountId(playerId);
-    expect(pilot).toMatch(/^w28-[0-9a-f]{10}\.near$/);
+    expect(pilot).toMatch(/^w28-[0-9a-f]{10}\.terraagent\.mock$/);
 
     for (let run = 0; run < 2; run += 1) {
       bus.emit('dev.scenario.created', { planetId: 'pl_w28_demo', scenario: 'w28' } as never);
@@ -75,6 +75,21 @@ describe('W28-16 scenario seed (w28)', () => {
     const prestige = StakingPrestigeResponse.parse((await json(`${url}/v1/near/staking/prestige?planetId=pl_w28_demo`)).body);
     expect(prestige.leadPatron?.accountId).toBe(W28_RIVAL_ACCOUNT);
     expect(prestige.leadPatron?.carrierName).toContain('w28-rival');
+  });
+
+  it('a second seat event for the same pilot (page reload / reconnect) does not reset the wallet (corner)', async () => {
+    const { bus, seed } = await boot('all');
+    await db.prisma.planet.create({ data: { id: 'pl_w28_reload', name: 'W28 Reload' } });
+    const playerId = devPlayerId('w28reload');
+    bus.emit('dev.scenario.created', { planetId: 'pl_w28_reload', scenario: 'w28' } as never);
+    bus.emit('dev.scenario.seated', { planetId: 'pl_w28_reload', playerId, colonyIndex: 0 } as never);
+    await seed.waitForSeed();
+    const pilot = w28PilotAccountId(playerId);
+    await db.prisma.aiFreeTrial.create({ data: { playerId, turnsUsed: 3 } });
+    bus.emit('dev.scenario.seated', { planetId: 'pl_w28_reload', playerId, colonyIndex: 0 } as never);
+    await seed.waitForSeed();
+    expect((await db.prisma.aiFreeTrial.findUnique({ where: { playerId } }))?.turnsUsed).toBe(3);
+    expect(await db.prisma.socialIdentity.count({ where: { playerId, accountId: pilot, provider: 'near-wallet' } })).toBe(1);
   });
 
   it('ignores other scenarios and seats on planets it did not create (negative)', async () => {

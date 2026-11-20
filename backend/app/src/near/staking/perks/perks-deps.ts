@@ -38,6 +38,11 @@ export function setPerksDeps(partial: Partial<PerksDeps>): void {
   current = { ...current, ...partial };
 }
 
+/** Restores wall time when `clock` is still the installed one (a closing Nest app undoes only its own clock). */
+export function releasePerksClock(clock: () => number): void {
+  if (current.clock === clock) current = { ...current, clock: DEFAULT_PERKS_DEPS.clock };
+}
+
 export function resetPerksDeps(): void {
   current = DEFAULT_PERKS_DEPS;
 }

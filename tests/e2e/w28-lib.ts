@@ -5,12 +5,12 @@ import { expect } from './harness';
 /** W28 e2e helpers (`tests/e2e/w28.spec.ts`). The pilot is the dev session `w28` (`Bearer dev:w28`). */
 export const PILOT = 'w28';
 export const POOL = 'astro-stakers.pool.mock';
-export const RIVAL = 'w28-rival.near';
+export const RIVAL = 'w28-rival.terraagent.mock';
 export const AUTH = { authorization: `Bearer dev:${PILOT}`, 'content-type': 'application/json' };
 
 /** Same derivation as `W28ScenarioSeedService` (`w28PilotAccountId`): the pilot's seeded, linked NEAR wallet. */
 export function pilotAccount(playerId: string): string {
-  return `w28-${createHash('sha256').update(playerId).digest('hex').slice(0, 10)}.near`;
+  return `w28-${createHash('sha256').update(playerId).digest('hex').slice(0, 10)}.terraagent.mock`;
 }
 
 export interface Perks {

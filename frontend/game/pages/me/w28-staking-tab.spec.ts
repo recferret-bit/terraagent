@@ -40,11 +40,6 @@ async function mountSignedOut(hash: string, overview: () => Res, search = ''): P
 }
 
 describe('W28-09 /me.html#staking public preview', () => {
-  it('server reports W28 off (overview 404): tab and staking plate are removed (server-side wave fencing)', async () => {
-    const root = await mountSignedOut('#staking?amount=50', notFound);
-    expect(q(root, 'me-tab-staking')).toBeNull();
-    expect(root.querySelector<HTMLElement>('#staking')).toBeNull();
-  });
 
   it('signed out + #staking?amount=50: full preview, no auth wall, CTA and ecosystem render (fallback path)', async () => {
     const root = await mountSignedOut('#staking?amount=50', serverDown);
@@ -137,5 +132,14 @@ describe('W28-09 /me.html#staking public preview', () => {
     expect(q(root, 'me-section-pilot')).not.toBeNull();
     const hasWallet = Boolean(profile.identity.accountId);
     expect(q(root, 'staking-connect-cta') === null).toBe(hasWallet);
+  });
+});
+
+describe('W28 /me.html#staking server-side wave fencing', () => {
+  it('server reports W28 off (overview 404): tab and staking plate are removed (server-side wave fencing)', async () => {
+    const root = await mountSignedOut('#staking?amount=50', notFound);
+    expect(q(root, 'me-tab-staking')).toBeNull();
+    expect(root.querySelector<HTMLElement>('#staking')).toBeNull();
+    expect(q(root, 'me-auth-prompt')).not.toBeNull(); // never a blank page: the sign-in prompt comes back
   });
 });

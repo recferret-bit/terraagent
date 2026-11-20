@@ -10,7 +10,7 @@ describe('action console', () => {
       if (path !== '/v1/near/stake') return fail(500);
       const p = makePerformance();
       m.perf = (w) => ({ ...makePerformance({}, w), balances: { ...p.balances, activeStakedNear: '110' } });
-      expect(body).toMatchObject({ accountId: 'pilot.mock', amount: '50', asset: 'stNEAR' });
+      expect(body).toMatchObject({ accountId: 'pilot.mock', amount: '50', asset: 'stNEAR', pool: 'astro-stakers.pool.mock' }); // the host's pool, not the bundled mainnet default
       return ok({});
     };
     const root = await mount(m);

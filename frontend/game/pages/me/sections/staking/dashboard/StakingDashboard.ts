@@ -10,7 +10,7 @@ import {
   runCompoundAction, runStakeAction, runStakeProfitsAction, runUnstakeAction, runWithdrawAction,
   type ActionContext, type ActionResult, type StakingNetwork,
 } from './dashboardActions';
-import { fetchPerformance } from './dashboardApi';
+import { fetchPerformance, fetchWalletPool } from './dashboardApi';
 import { formatMicroNear, tickedYieldNear, totalStakedNear, yieldPerSecondNear } from './dashboardMath';
 import { renderAiBudget } from './parts/aiBudget';
 import { renderChart, type ChartPart } from './parts/chart';
@@ -36,6 +36,8 @@ export interface StakingDashboardOptions {
 export interface StakingDashboardHandle {
   readonly el: HTMLElement;
   readonly ready: Promise<void>;
+  /** The server's chain mode (`GET /v1/near/staking/overview` `network`) replaces the account-suffix guess. */
+  setNetwork(network: StakingNetwork): void;
   dispose(): void;
 }
 
@@ -53,7 +55,8 @@ class StakingDashboard {
   private chart: ChartPart | null = null;
   private readonly now: () => number;
   private readonly doFetch: MeFetchFn;
-  private readonly network: StakingNetwork;
+  private network: StakingNetwork;
+  private pool: string | undefined;
   private readonly body = el('div', { className: 'ta-stk-dash-body' });
   private readonly hosts = { kpi: el('div'), ai: el('div'), patron: el('div'), tx: el('div') };
   private readonly status = el('p', { className: 'ta-stk-status', role: 'status', dataset: { testid: 'staking-dashboard-status' } });
@@ -78,7 +81,19 @@ class StakingDashboard {
   }
 
   load(): Promise<void> {
-    return this.refetch().then(() => this.startTicker());
+    const pool = fetchWalletPool(this.doFetch, this.auth, this.opts.accountId).then((p) => { if (p) this.pool = p; });
+    return Promise.all([this.refetch(), pool]).then(() => this.startTicker());
+  }
+
+  /**
+   * Mock vs real chain must come from the server: a mock wallet may be named `*.near`, which the account-suffix guess
+   * (`detectStakingNetwork`) reads as mainnet and would route actions to a wallet signer instead of the mock REST.
+   */
+  setNetwork(network: StakingNetwork): void {
+    if (network === this.network) return;
+    this.network = network;
+    this.el.dataset.network = network;
+    if (this.perf) this.render(this.perf);
   }
 
   dispose(): void {
@@ -89,7 +104,7 @@ class StakingDashboard {
   private auth = (): string => resolveMeBearerToken(this.opts.search);
 
   private ctx(): ActionContext {
-    return { doFetch: this.doFetch, auth: this.auth, accountId: this.opts.accountId, network: this.network, selectorFactory: this.opts.selectorFactory };
+    return { doFetch: this.doFetch, auth: this.auth, accountId: this.opts.accountId, network: this.network, pool: this.pool, selectorFactory: this.opts.selectorFactory };
   }
 
   /** Fetches the selected window; `false` = unavailable (404 / schema / network) and the previous data stays. */
@@ -187,5 +202,5 @@ class StakingDashboard {
 
 export function renderStakingDashboard(opts: StakingDashboardOptions): StakingDashboardHandle {
   const d = new StakingDashboard(opts);
-  return { el: d.el, ready: d.load(), dispose: () => d.dispose() };
+  return { el: d.el, ready: d.load(), setNetwork: (n) => d.setNetwork(n), dispose: () => d.dispose() };
 }

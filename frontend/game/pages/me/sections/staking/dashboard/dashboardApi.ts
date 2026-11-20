@@ -13,6 +13,22 @@ const headers = (auth: ApiAuth, json: boolean): Record<string, string> => {
 };
 
 /** `GET /v1/near/staking/performance`: a 404 (W28 off / not deployed), any non-OK, network error or schema mismatch is `unavailable`. */
+/**
+ * The pool to act on: the wallet's existing position, else the host's first whitelisted pool (`GET /v1/near/staking`).
+ * `null` when the status is unavailable (the caller keeps its fallback).
+ */
+export async function fetchWalletPool(doFetch: MeFetchFn, auth: ApiAuth, accountId: string): Promise<string | null> {
+  try {
+    const res = await doFetch(`/v1/near/staking?accountId=${encodeURIComponent(accountId)}`, { headers: headers(auth, false) });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { positions?: Array<{ pool?: string; staked?: string }>; pools?: Array<{ poolId?: string }> };
+    const held = body.positions?.find((p) => Number(p.staked ?? 0) > 0)?.pool;
+    return held ?? body.positions?.[0]?.pool ?? body.pools?.[0]?.poolId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchPerformance(
   doFetch: MeFetchFn,
   auth: ApiAuth,

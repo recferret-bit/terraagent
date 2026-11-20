@@ -54,16 +54,20 @@ async function colonyLinkedWallet(db: DbClient, colonyId: string): Promise<{ acc
   return playerLinkedWallet(db, colony.playerId);
 }
 
-/** A player's first linked NEAR wallet (`core.social_identity.account_id`), if any. */
+/**
+ * A player's staking wallet from `core.social_identity`: the self-custody NEAR wallet link (`provider: near-wallet`)
+ * wins over the custodial named account a Google / X / FastAuth sign-in creates; else the oldest link.
+ */
 export async function playerLinkedWallet(db: DbClient, playerId: string): Promise<{ accountId: string; playerId: string } | null> {
   if (typeof db.socialIdentity?.findFirst !== 'function') return null;
-  const row = (await db.socialIdentity.findFirst({
-    where: { playerId },
-    orderBy: { createdAt: 'asc' },
-    select: { accountId: true },
-  })) as { accountId: string | null } | null;
-  return row?.accountId ? { accountId: row.accountId, playerId } : null;
+  const pick = async (where: Record<string, unknown>) =>
+    ((await db.socialIdentity.findFirst({ where, orderBy: { createdAt: 'asc' }, select: { accountId: true } })) as { accountId: string | null } | null)?.accountId ?? null;
+  const accountId = (await pick({ playerId, provider: NEAR_WALLET_PROVIDER })) ?? (await pick({ playerId }));
+  return accountId ? { accountId, playerId } : null;
 }
+
+/** `core.social_identity.provider` of a self-custody NEAR wallet link (`social-auth.service.ts`). */
+export const NEAR_WALLET_PROVIDER = 'near-wallet';
 
 /**
  * Resolves the wallet the same way the market and staking code link `chain.near_colony_account`: a colony id or any of

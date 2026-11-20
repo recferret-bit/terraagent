@@ -30,6 +30,7 @@ import {
 import { evaluateBatchWithLlm, type ResolvedDecision } from './batch-llm.js';
 import { ManagedAiGate, type ManagedAiAccess } from './managed-ai-gate.js';
 import { TeeAttestationStore } from './tee-attestation.store.js';
+import { stakingNowMs } from '../../near/staking/perks/perks-deps.js';
 
 export interface PlayerColonyAiOverride {
   readonly playerId?: string;
@@ -54,6 +55,8 @@ interface DecisionCtx {
   readonly enforcePlayerKeyGate: boolean;
   readonly useCache: boolean;
   readonly nowMs: number;
+  /** The caller's explicit clock (tests); `undefined` = the gate reads the staking clock. */
+  readonly pinnedNowMs?: number;
   readonly w28: boolean;
   readonly playerIdByIndex: Record<number, string | undefined>;
 }
@@ -173,6 +176,7 @@ export class ColonyAgentLoopService {
       enforcePlayerKeyGate,
       useCache: Boolean(opts.useCache),
       nowMs,
+      pinnedNowMs: opts.nowMs,
       w28: isW28Enabled(this.envBag()),
       playerIdByIndex,
     });
@@ -244,7 +248,9 @@ export class ColonyAgentLoopService {
     if (!ctx.w28 || override) {
       return (await evaluateBatchWithLlm(this.llm, [obs], { model: this.botModel(), usedPlayerKey: false })).get(obs.colonyIndex)!;
     }
-    const access = await this.gate().admit({ id: obs.colonyId, playerId: ctx.playerIdByIndex[obs.colonyIndex] }, ctx.nowMs);
+    // the gate runs on the staking clock (fee warmup, AI day, slot ledger), like its `view()`; `ctx.nowMs` stays the
+    // wall clock of the decision-cache cooldown, unless a caller pinned it (tests)
+    const access = await this.gate().admit({ id: obs.colonyId, playerId: ctx.playerIdByIndex[obs.colonyIndex] }, ctx.pinnedNowMs ?? stakingNowMs());
     if (access.mode === 'script') {
       return { directive: deterministicDirective(obs), model: SCRIPT_AI_MODEL, usedPlayerKey: false, aiAccess: access };
     }

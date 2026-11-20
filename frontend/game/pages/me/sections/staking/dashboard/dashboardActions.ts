@@ -14,6 +14,8 @@ export interface ActionContext {
   readonly auth: ApiAuth;
   readonly accountId: string;
   readonly network: StakingNetwork;
+  /** The host's whitelisted pool for this wallet (`GET /v1/near/staking`); the bundled default only as a fallback. */
+  readonly pool?: string;
   readonly selectorFactory?: StakingSelectorFactory;
 }
 
@@ -40,7 +42,7 @@ async function walletAction(c: ActionContext, action: StakingWalletAction, amoun
     fetchFn: ((input: string, init?: RequestInit) => c.doFetch(input, init)) as unknown as typeof fetch,
     network: c.network,
     action,
-    poolId: DEFAULT_POOL,
+    poolId: c.pool ?? DEFAULT_POOL,
     amountNear: amount,
     accountId: c.accountId,
     lstContract: lstFor(c.network, asset),
@@ -51,7 +53,7 @@ async function walletAction(c: ActionContext, action: StakingWalletAction, amoun
 }
 
 async function rest(c: ActionContext, path: string, body: Record<string, unknown>, label: string, okMsg: string): Promise<ActionResult> {
-  const res = await postJson(c.doFetch, c.auth, path, { accountId: c.accountId, pool: DEFAULT_POOL, ...body });
+  const res = await postJson(c.doFetch, c.auth, path, { accountId: c.accountId, pool: c.pool ?? DEFAULT_POOL, ...body });
   if (res.status === 404) return unavailable(label);
   if (!res.ok) return { ok: false, message: apiErrorMessage(res.body, `${label} failed (${res.status || 'network'}).`) };
   return { ok: true, message: okMsg };
@@ -79,7 +81,7 @@ export function runCompoundAction(c: ActionContext, perf: StakingPerformanceResp
 export async function runStakeProfitsAction(c: ActionContext, amountUsdc: string): Promise<ActionResult> {
   const dry = c.network !== 'mock';
   const res = await postJson(c.doFetch, c.auth, '/v1/near/stake/profits', {
-    accountId: c.accountId, amountUsdc, asset: 'stNEAR', pool: DEFAULT_POOL, dry,
+    accountId: c.accountId, amountUsdc, asset: 'stNEAR', pool: c.pool ?? DEFAULT_POOL, dry,
   });
   if (res.status === 404) return unavailable('Stake trade profits');
   if (!res.ok) return { ok: false, message: apiErrorMessage(res.body, `Stake trade profits failed (${res.status || 'network'}).`) };

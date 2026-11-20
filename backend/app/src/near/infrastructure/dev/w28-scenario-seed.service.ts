@@ -10,19 +10,26 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { StakingPort } from '../../application/ports/staking.port.js';
 import { creditVerifier } from '../adapters/mock/intents-ledger.js';
 import { nearAdapterFor } from '../adapter-selection.js';
+import { NEAR_WALLET_PROVIDER } from '../../staking/perks/stake-clock.reader.js';
+import { stakingNowMs } from '../../staking/perks/perks-deps.js';
 import { PatronNominateService } from '../../staking/services/patron-nominate.service.js';
 import { StakingService } from '../../staking/staking.service.js';
 
 /** Rival whale that holds the Lead Patron seat until the pilot out-stakes it (demo step 6). */
-export const W28_RIVAL_ACCOUNT = 'w28-rival.near';
+export const W28_RIVAL_ACCOUNT = 'w28-rival.terraagent.mock';
 export const W28_RIVAL_STAKE_NEAR = '500';
 export const W28_PILOT_FUND_NEAR = '1000';
+/** Bound on seats buffered before their planet's `created` event (dev only; never grows without limit). */
+const MAX_EARLY_PLANETS = 64;
 /** USDC "trade profits" for the Stake-Trade-Profits demo (step 7), in 6-decimal atomic units. */
 export const W28_PILOT_USDC_ATOMIC = 50_000_000n;
 
-/** The pilot's linked NEAR wallet for a seated player: stable, valid `AccountId`, unique per player. */
+/**
+ * The pilot's linked NEAR wallet for a seated player: stable, valid `AccountId`, unique per player. `.mock` keeps every
+ * client network guess (`detectStakingNetwork`) on the mock REST path.
+ */
 export function w28PilotAccountId(playerId: string): string {
-  return `w28-${createHash('sha256').update(playerId).digest('hex').slice(0, 10)}.near`;
+  return `w28-${createHash('sha256').update(playerId).digest('hex').slice(0, 10)}.terraagent.mock`;
 }
 
 /**
@@ -41,6 +48,10 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
   private readonly planets = new Set<string>();
   /** Seats that arrived before their planet's `created` event (the WS join can win the race). */
   private readonly early = new Map<string, string[]>();
+  /** Planets of other scenarios: their seats are not ours. */
+  private readonly others = new Set<string>();
+  /** `planetId|playerId` already seeded: the WS emits `seated` on every dev join / reconnect, a reload must not reset. */
+  private readonly seeded = new Set<string>();
   private pending: Promise<void> = Promise.resolve();
 
   constructor(
@@ -56,18 +67,24 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     if (!this.bus || this.stops.length > 0) return;
     this.stops.push(
       this.bus.on('dev.scenario.created', (e) => {
-        if (e.scenario !== 'w28') return;
+        if (e.scenario !== 'w28') {
+          this.early.delete(e.planetId); // seats buffered for a planet that turned out not to be w28
+          this.others.add(e.planetId);
+          return;
+        }
         this.planets.add(e.planetId);
         this.queue('rival', () => this.seedRival(e.planetId));
-        for (const playerId of this.early.get(e.planetId) ?? []) this.queue('pilot', () => this.seedPilot(playerId));
+        for (const playerId of this.early.get(e.planetId) ?? []) this.seatOnce(e.planetId, playerId);
         this.early.delete(e.planetId);
       }, { module: 'W28ScenarioSeedService' }),
       this.bus.on('dev.scenario.seated', (e) => {
+        if (this.others.has(e.planetId)) return;
         if (!this.planets.has(e.planetId)) {
+          if (this.early.size >= MAX_EARLY_PLANETS) this.early.clear();
           this.early.set(e.planetId, [...(this.early.get(e.planetId) ?? []), e.playerId]);
           return;
         }
-        this.queue('pilot', () => this.seedPilot(e.playerId));
+        this.seatOnce(e.planetId, e.playerId);
       }, { module: 'W28ScenarioSeedService' }),
     );
   }
@@ -88,7 +105,7 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     const pool = await this.defaultPool();
     await this.staking.fundWalletNear(W28_RIVAL_ACCOUNT, '600');
     await this.staking.stake({ accountId: W28_RIVAL_ACCOUNT, pool, amount: W28_RIVAL_STAKE_NEAR, opId: `w28-rival-stake:${planetId}:${Date.now()}` }); // fresh op per seed: the wallet was just reset
-    await new PatronNominateService(() => db, () => Date.now()).nominate(W28_RIVAL_ACCOUNT, planetId);
+    await new PatronNominateService(() => db, stakingNowMs).nominate(W28_RIVAL_ACCOUNT, planetId);
   }
 
   async seedPilot(playerId: string): Promise<string | null> {
@@ -97,7 +114,7 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     const accountId = w28PilotAccountId(playerId);
     await db.socialIdentity.upsert({
       where: { id: `si_w28_${accountId}` },
-      create: { id: `si_w28_${accountId}`, playerId, provider: 'near', subject: accountId, accountId },
+      create: { id: `si_w28_${accountId}`, playerId, provider: NEAR_WALLET_PROVIDER, subject: accountId, accountId },
       update: { playerId },
     });
     await this.resetWallet(db, accountId);
@@ -132,6 +149,13 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
     if (nearAdapterFor('Staking', envMap) !== 'mock' || nearAdapterFor('Intents', envMap) !== 'mock') return null;
     return this.env === undefined || databaseEnabled(this.env) ? this.prisma : null;
+  }
+
+  private seatOnce(planetId: string, playerId: string): void {
+    const key = `${planetId}|${playerId}`;
+    if (this.seeded.has(key)) return;
+    this.seeded.add(key);
+    this.queue('pilot', () => this.seedPilot(playerId));
   }
 
   private queue(step: string, run: () => Promise<unknown>): void {

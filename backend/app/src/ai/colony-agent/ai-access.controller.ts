@@ -49,8 +49,8 @@ export class AiAccessController {
    */
   private async rowId(simId: string, planetId: string | undefined, colonyIndexRaw: string | undefined): Promise<string> {
     const db = this.prisma;
+    if (!db || !planetId || !/^\d{1,3}$/.test(colonyIndexRaw?.trim() ?? '') || typeof db.colony?.findFirst !== 'function') return simId;
     const index = Number(colonyIndexRaw);
-    if (!db || !planetId || !Number.isInteger(index) || index < 0 || typeof db.colony?.findFirst !== 'function') return simId;
     if (await db.colony.findUnique({ where: { id: simId }, select: { id: true } })) return simId;
     const row = await db.colony.findFirst({ where: { planetId, colonyIndex: index }, select: { id: true } });
     return row?.id ?? simId;

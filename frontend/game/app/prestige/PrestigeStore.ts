@@ -42,8 +42,7 @@ export class PrestigeStore {
     return p;
   }
 
-  /** Tier of one colony on a planet; 0 when unknown. */
-  /** Tier of a colony by id, else by sim slot (`colonyIndex`) when the server's row id differs from the sim id. */
+  /** Tier of a colony by id, else by sim slot (`colonyIndex`) when the server's row id differs from the sim id; 0 when unknown. */
   tierOfColony(planetId: string, colonyId: string, colonyIndex?: number): number {
     const list = this.get(planetId)?.colonies ?? [];
     const byId = list.find((c) => c.colonyId === colonyId);

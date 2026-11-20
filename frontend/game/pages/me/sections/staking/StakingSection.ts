@@ -83,6 +83,7 @@ class StakingPreview {
     return fetchStakingOverview(this.amount, this.opts.fetch).then((res) => {
       this.ov = res.overview;
       this.live = res.live;
+      if (res.live) this.dashboard?.setNetwork(res.overview.network);
       this.renderAll();
       if (res.off) this.opts.onOff?.();
     });

@@ -31,6 +31,8 @@ export function makeMock(initial: (w: '30d' | '90d' | '1y') => StakingPerformanc
         const p = m.perf(w);
         return p ? ok(p) : fail(404);
       }
+      // wallet status (pool pick): the mock host's whitelisted pool, no position yet
+      if (method === 'GET' && /\/v1\/near\/staking\?/.test(url)) return ok({ positions: [], pools: [{ poolId: 'astro-stakers.pool.mock' }] });
       return m.post(url, body ?? {});
     },
   };

@@ -22,8 +22,12 @@ test.describe.configure({ mode: 'serial' });
 
 const local = hostMode() === 'local';
 const serverOnly = () => test.skip(local, 'needs the app (server host)');
-/** W28 replaces the W20 colony-claim staking flow (wallet-first, 4 tiers, 25 bp early exit): `tests/e2e/w28.spec.ts`. */
-const w20StakingOnly = () => test.skip(appHasWave('W28'), 'W20 staking flow superseded by W28 wallet-first staking (run with --waves ..20)');
+/**
+ * W28 replaces the W20 colony-claim staking flow (wallet-first, 4 tiers, 25 bp early exit; `tests/e2e/w28.spec.ts`).
+ * With W28 on, steps 5–6 keep their deed checks (settle, Settler toast, resilience, explorer) and skip the W20 staking
+ * clicks; `--waves ..20` runs them in full.
+ */
+const w28On = appHasWave('W28');
 
 let context: BrowserContext;
 let page: Page;
@@ -127,7 +131,6 @@ test('4. Non-settled deed already exposes Day-1 staking controls and staker perk
 
 test('5. deed.settle turns card to gold Settled variant, fires settler toast, claims account, tests signer Reject, then stakes 10 NEAR', async () => {
   serverOnly();
-  w20StakingOnly();
   const settleOut = await devConsole(page, 'deed.settle', 15_000);
   expect(settleOut).toContain('settled');
 
@@ -138,6 +141,11 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
     timeout: 15_000,
   });
   await expect(page.locator('[data-testid="staking-controls"]')).toBeVisible();
+  if (w28On) {
+    // W28: honest perks copy, no colony-claim gate (the W20 claim → stake clicks below do not apply)
+    await expect(page.locator('[data-testid="staking-real-near-copy"]')).toContainText('Never game power');
+    return;
+  }
   await expect(page.locator('[data-testid="staking-real-near-copy"]')).toHaveText(
     'Real NEAR from your wallet — not game currency, no in-game bonus',
   );
@@ -188,22 +196,8 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
 
 test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance to wallet; resilience & dev explorer tabs', async () => {
   serverOnly();
-  w20StakingOnly();
   await closeDevConsole(page);
-  await page.locator('[data-testid="staking-unstake-btn"]').click();
-  await expect(page.locator('[data-testid="staking-status-msg"]')).toContainText(
-    'Unbonding (4 epochs)',
-    { timeout: 15_000 },
-  );
-
-  await devConsole(page, 'warp 100', 15_000);
-  await closeDevConsole(page);
-  const withdrawBtn = page.locator('[data-testid="staking-withdraw-btn"]');
-  await expect(withdrawBtn).toBeEnabled({ timeout: 15_000 });
-  await withdrawBtn.click();
-  await expect(page.locator('[data-testid="staking-wallet-balance"]')).toContainText('100.00197', {
-    timeout: 15_000,
-  });
+  if (!w28On) await unstakeAndWithdraw();
 
   // Resilience: near.mock.fail deed 1 -> deed.bump shows retrying; near.mock.fail deed 0 clears
   await devConsole(page, 'near.mock.fail deed 1', 15_000);
@@ -223,12 +217,32 @@ test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance
   await expect(explorer.locator('table.xt')).toContainText('deed:col_0', {
     timeout: 15_000,
   });
-  await explorer.getByRole('tab', { name: 'STAKING' }).click();
-  await expect(explorer.locator('table.xt')).toContainText('9%', {
-    timeout: 15_000,
-  });
+  if (!w28On) {
+    // the W20 position from step 5 (with W28 on, step 5 stakes nothing)
+    await explorer.getByRole('tab', { name: 'STAKING' }).click();
+    await expect(explorer.locator('table.xt')).toContainText('9%', {
+      timeout: 15_000,
+    });
+  }
   await explorer.close();
 });
+
+/** W20 step 6 staking half: Unstake → Unbonding (4 epochs) → warp 100 → Withdraw returns the balance to the wallet. */
+async function unstakeAndWithdraw(): Promise<void> {
+  await page.locator('[data-testid="staking-unstake-btn"]').click();
+  await expect(page.locator('[data-testid="staking-status-msg"]')).toContainText(
+    'Unbonding (4 epochs)',
+    { timeout: 15_000 },
+  );
+  await devConsole(page, 'warp 100', 15_000);
+  await closeDevConsole(page);
+  const withdrawBtn = page.locator('[data-testid="staking-withdraw-btn"]');
+  await expect(withdrawBtn).toBeEnabled({ timeout: 15_000 });
+  await withdrawBtn.click();
+  await expect(page.locator('[data-testid="staking-wallet-balance"]')).toContainText('100.00197', {
+    timeout: 15_000,
+  });
+}
 
 test('@hack 7. With waves=..19: no Deed button in HUD and existing chain.deed rows stay untouched in DB', async () => {
   serverOnly();
