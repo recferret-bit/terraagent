@@ -3,10 +3,10 @@ import { CoreException } from '../../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import {
   OneClickQuoteClient,
-  type OneClickDryQuoteRequest,
   type OneClickDryQuoteResult,
   type OneClickTokenInfo,
 } from '../adapters/real/oneclick-quote.service.js';
+import { guardQuoteRequest } from './intents-quote-guard.js';
 
 @Controller('near/intents')
 export class IntentsRampController {
@@ -35,8 +35,9 @@ export class IntentsRampController {
 
   @Post('quote')
   @HttpCode(200)
-  dryQuote(@Body() body: OneClickDryQuoteRequest): Promise<OneClickDryQuoteResult> {
-    return this.client().dryQuote(body ?? {});
+  dryQuote(@Body() body: unknown): Promise<OneClickDryQuoteResult> {
+    const env = (this.env ?? process.env) as Record<string, string | undefined>;
+    return this.client().dryQuote(guardQuoteRequest(body, env));
   }
 
   @Get('status')

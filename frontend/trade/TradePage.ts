@@ -74,7 +74,7 @@ export class TradePage {
       market: panel('market', 'All resting orders'), pairs: panel('overview', 'All pairs'), orders: panel('orders', 'My orders'),
       fills: panel('fills', 'My fills'), keys: panel('keys', 'Bot / API keys'),
     };
-    this.p.ramp.body.append(new RampView(client).root);
+    this.p.ramp.body.append(new RampView(client, { isMainnet: () => this.nearNetwork === 'mainnet' }).root);
     this.ticket = new OrderTicket({
       client,
       state: () => this.store.get(),
