@@ -54,7 +54,9 @@ export function tallyMemberVotes(votes: readonly StoredVote[], memberIds: readon
   const counted = votes.filter((vote) => allowed.has(vote.voter));
   const tally = tallyVotes(counted);
   const yesWeightBp = counted.reduce((sum, v) => (v.vote === 'approve' ? sum + (v.weightBp ?? BASE_VOTE_WEIGHT_BP) : sum), 0);
-  return { yes: tally.yes, no: tally.no, members: memberIds.length, yesWeightBp };
+  const base = { yes: tally.yes, no: tally.no, members: memberIds.length };
+  // Only a tally with extra weight carries it, so unweighted councils keep the exact W22 shape.
+  return yesWeightBp === tally.yes * BASE_VOTE_WEIGHT_BP ? base : { ...base, yesWeightBp };
 }
 
 /**
