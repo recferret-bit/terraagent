@@ -4,6 +4,7 @@ import type { StakingOverviewResponse } from '@terra/contracts';
 import type { MeFetchFn } from '../../api';
 import { el } from '../../dom';
 import './staking.css';
+import { renderStakingDashboard, type StakingDashboardHandle } from './dashboard/StakingDashboard';
 import { renderConnectCta } from './parts/connectCta';
 import { renderEcosystem } from './parts/ecosystem';
 import { renderProjection } from './parts/projection';
@@ -15,8 +16,12 @@ import { MAX_PREVIEW_NEAR, sanitizeStakeAmount, stakingHash } from './stakingRou
 export interface StakingSectionOptions {
   readonly amount: number;
   readonly fetch?: MeFetchFn;
+  /** `location.search` of the page (dev bearer overrides such as `?as=`). */
+  readonly search?: string;
   /** A wallet account is already linked: the connect CTA is replaced by the dashboard slot (W28-10). */
   readonly connected: boolean;
+  /** The linked wallet account id; with `connected` it mounts the Wealth Dashboard (W28-10) into the slot. */
+  readonly accountId?: string | null;
   /** Starts the existing NEAR wallet sign-in flow. */
   readonly onConnect: () => void;
 }
@@ -44,6 +49,7 @@ class StakingPreview {
     cta: el('div', { className: 'ta-stk-cta-row' }),
   };
   readonly el: HTMLElement;
+  dashboard: StakingDashboardHandle | null = null;
   private readonly input: HTMLInputElement;
 
   constructor(private readonly opts: StakingSectionOptions) {
@@ -61,6 +67,14 @@ class StakingPreview {
       this.hosts.ecosystem,
     );
     this.renderAll();
+    this.mountDashboard();
+  }
+
+  private mountDashboard(): void {
+    const slot = this.el.querySelector('[data-testid="staking-dashboard-slot"]');
+    if (!slot || !this.opts.accountId) return;
+    this.dashboard = renderStakingDashboard({ accountId: this.opts.accountId, amount: this.amount, fetch: this.opts.fetch, search: this.opts.search });
+    slot.appendChild(this.dashboard.el);
   }
 
   load(): Promise<void> {
@@ -123,5 +137,6 @@ class StakingPreview {
 
 export function renderStakingSection(opts: StakingSectionOptions): StakingSectionHandle {
   const preview = new StakingPreview(opts);
-  return { el: preview.el, ready: preview.load() };
+  const ready = Promise.all([preview.load(), preview.dashboard?.ready]).then(() => undefined);
+  return { el: preview.el, ready };
 }
