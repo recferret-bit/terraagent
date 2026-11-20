@@ -41,6 +41,9 @@ import { AccountClaimController } from './staking/account-claim.controller.js';
 import { AccountClaimService } from './staking/account-claim.service.js';
 import { StakingController } from './staking/staking.controller.js';
 import { StakingPerksController } from './staking/staking-perks.controller.js';
+import { StakingPerformanceController } from './staking/staking-performance.controller.js';
+import { StakingPerformanceService } from './staking/performance/staking-performance.service.js';
+import { NearUsdPriceService } from './staking/performance/near-usd-price.service.js';
 import { StakingPerksService } from './staking/perks/staking-perks.service.js';
 import { ShadeAgentController } from './shade-agent/shade-agent.controller.js';
 import { ShadeAgentService } from './shade-agent/shade-agent.service.js';
@@ -101,6 +104,7 @@ export const env = {
     SocialAuthController,
     StakingController,
     StakingPerksController,
+    StakingPerformanceController,
     StakingPoolsController,
     TreasuryController,
   ],
@@ -149,6 +153,8 @@ export const env = {
     SocialAuthService,
     SocialLink,
     StakingPerksService,
+    NearUsdPriceService,
+    StakingPerformanceService,
     StakingPositionSyncService,
     StakingService,
     NearMockCommand,
