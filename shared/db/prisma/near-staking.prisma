@@ -1,0 +1,79 @@
+/// W28 wallet staking history (NearBlocks-style tx table, `30d/90d/1y` chart). Written by `StakingService`.
+model StakingTx {
+  id         String   @id @db.VarChar(120)
+  accountId  String   @map("account_id") @db.VarChar(64)
+  poolId     String   @map("pool_id") @db.VarChar(64)
+  /// stake | unstake | withdraw | compound | stake_profits | early_exit_fee
+  kind       String   @db.VarChar(24)
+  asset      String   @default("near") @db.VarChar(16)
+  amountYocto Decimal @map("amount_yocto") @db.Decimal(40, 0)
+  txHash     String   @map("tx_hash") @db.VarChar(160)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([accountId, createdAt])
+  @@map("staking_tx")
+  @@schema("chain")
+}
+
+/// W28 King-of-the-Hill Tier 4 seat: the highest active `≥500 NEAR` staker nominating a public planet.
+model StakingPatronSeat {
+  planetId       String   @id @map("planet_id") @db.VarChar(80)
+  accountId      String   @map("account_id") @db.VarChar(64)
+  activeStaked   Decimal  @map("active_staked") @db.Decimal(40, 0)
+  sinceAt        DateTime @default(now()) @map("since_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([accountId])
+  @@map("staking_patron_seat")
+  @@schema("chain")
+}
+
+/// W28 planet nomination: which public planet a wallet's stake backs for the Lead Patron race (one per wallet).
+model StakingPatronNomination {
+  accountId  String   @id @map("account_id") @db.VarChar(64)
+  planetId   String   @map("planet_id") @db.VarChar(80)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([planetId])
+  @@map("staking_patron_nomination")
+  @@schema("chain")
+}
+
+/// W28 Lead Patron payouts: `15 %` of the Protocol's trade-fee cut on the patron's planet.
+model StakingPatronPayout {
+  id               String   @id @db.VarChar(120)
+  planetId         String   @map("planet_id") @db.VarChar(80)
+  accountId        String   @map("account_id") @db.VarChar(64)
+  amountUsdcAtomic Decimal  @map("amount_usdc_atomic") @db.Decimal(40, 0)
+  sourceTradeId    String?  @map("source_trade_id") @db.VarChar(120)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([accountId, createdAt])
+  @@map("staking_patron_payout")
+  @@schema("chain")
+}
+
+/// W28 one-time 5-turn managed TEE trial per verified (`!isGuest`) pilot identity.
+model AiFreeTrial {
+  playerId   String   @id @map("player_id") @db.VarChar(64)
+  turnsUsed  Int      @default(0) @map("turns_used")
+  grantedAt  DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ai_free_trial")
+  @@schema("ai")
+}
+
+/// W28 wallet-wide daily managed AI usage (`glm-5.3-flash` calls + USD), shared across every colony of the wallet.
+model AiWalletUsage {
+  walletKey  String   @map("wallet_key") @db.VarChar(80)
+  /// UTC day `YYYY-MM-DD`
+  day        String   @db.VarChar(10)
+  callsUsed  Int      @default(0) @map("calls_used")
+  usdMicros  BigInt   @default(0) @map("usd_micros")
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([walletKey, day])
+  @@map("ai_wallet_usage")
+  @@schema("ai")
+}

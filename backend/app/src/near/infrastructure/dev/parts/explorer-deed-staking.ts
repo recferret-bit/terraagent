@@ -281,7 +281,7 @@ async function collectStakingPositions(
       const poolInfo = poolMap.get(s.pool);
       rows.push({
         kind: 'position', pool: s.pool, poolId: s.pool, name: s.poolName ?? poolInfo?.name ?? s.pool,
-        accountId: s.accountId, colonyId: s.colonyId,
+        accountId: s.accountId, colonyId: s.colonyId ?? s.accountId,
         staked: formatNearAmount(s.staked), unbonding: formatNearAmount(s.unbonding),
         withdrawable: formatNearAmount(s.withdrawable), rewards: formatNearAmount(s.rewards),
         apyBp: s.apyBp ?? poolInfo?.apyBp ?? 0, updatedAt: s.updatedAt ?? 0,
