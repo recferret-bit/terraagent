@@ -61,6 +61,8 @@ describe('Landing #protocol live telemetry & stream filtering', () => {
       NEAR_STAKER_MIN_NEAR: '15',
       NEAR_PROTOCOL_STAKING_YIELD_BP: '1500',
       NEAR_ESCROW_SLASH_PROTOCOL_BP: '1200',
+      // NEAR_STAKER_* overrides are the W20 ladder; with W28 on the staker fee is the Tier 1 row (65 bp)
+      TA_WAVES: '..27',
     });
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
