@@ -37,6 +37,8 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(W28ScenarioSeedService.name);
   private readonly stops: Array<() => void> = [];
   private readonly planets = new Set<string>();
+  /** Seats that arrived before their planet's `created` event (the WS join can win the race). */
+  private readonly early = new Map<string, string[]>();
   private pending: Promise<void> = Promise.resolve();
 
   constructor(
@@ -55,9 +57,15 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
         if (e.scenario !== 'w28') return;
         this.planets.add(e.planetId);
         this.queue('rival', () => this.seedRival(e.planetId));
+        for (const playerId of this.early.get(e.planetId) ?? []) this.queue('pilot', () => this.seedPilot(playerId));
+        this.early.delete(e.planetId);
       }, { module: 'W28ScenarioSeedService' }),
       this.bus.on('dev.scenario.seated', (e) => {
-        if (!this.planets.has(e.planetId)) return;
+        this.log.log(`w28 seat ${e.planetId} ${e.playerId} known=${this.planets.has(e.planetId)}`);
+        if (!this.planets.has(e.planetId)) {
+          this.early.set(e.planetId, [...(this.early.get(e.planetId) ?? []), e.playerId]);
+          return;
+        }
         this.queue('pilot', () => this.seedPilot(e.playerId));
       }, { module: 'W28ScenarioSeedService' }),
     );

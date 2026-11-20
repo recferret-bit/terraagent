@@ -46,6 +46,25 @@ async function linkedPlayerId(db: DbClient, accountIds: readonly string[]): Prom
   return row?.playerId ?? null;
 }
 
+/** The linked wallet of the player who owns `colonyId` (`core.colony` → `core.social_identity`), if any. */
+async function colonyLinkedWallet(db: DbClient, colonyId: string): Promise<{ accountId: string; playerId: string } | null> {
+  if (typeof db.colony?.findUnique !== 'function' || typeof db.socialIdentity?.findFirst !== 'function') return null;
+  const colony = (await db.colony.findUnique({ where: { id: colonyId }, select: { playerId: true } })) as { playerId: string | null } | null;
+  if (!colony?.playerId) return null;
+  return playerLinkedWallet(db, colony.playerId);
+}
+
+/** A player's first linked NEAR wallet (`core.social_identity.account_id`), if any. */
+export async function playerLinkedWallet(db: DbClient, playerId: string): Promise<{ accountId: string; playerId: string } | null> {
+  if (typeof db.socialIdentity?.findFirst !== 'function') return null;
+  const row = (await db.socialIdentity.findFirst({
+    where: { playerId },
+    orderBy: { createdAt: 'asc' },
+    select: { accountId: true },
+  })) as { accountId: string | null } | null;
+  return row?.accountId ? { accountId: row.accountId, playerId } : null;
+}
+
 /**
  * Resolves the wallet the same way the market and staking code link `chain.near_colony_account`: a colony id or any of
  * `accountId` / `ownerAccountId` / `claimedByAccountId` match a row, and every account of the matched owners and
@@ -87,6 +106,15 @@ export async function resolveWallet(
       absorb(second);
     }
     primary = claimants.size > 0 ? [...claimants].sort()[0] : owners.size > 0 ? [...owners].sort()[0] : primary;
+  }
+  if (colonyId && !primary) {
+    // W28 wallet-first: a colony with no chain account row belongs to its player's linked wallet (`social_identity`).
+    const linked = await colonyLinkedWallet(db, colonyId);
+    if (linked) {
+      accounts.add(linked.accountId);
+      primary = linked.accountId;
+      playerId ??= linked.playerId;
+    }
   }
   const walletKey = primary ?? (colonyId ? `colony:${colonyId}` : 'anonymous');
   playerId ??= await linkedPlayerId(db, [...accounts]);

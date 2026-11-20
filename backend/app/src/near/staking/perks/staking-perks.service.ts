@@ -13,6 +13,7 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { yoctoToNear } from '../yocto.js';
 import { PatronSeatService, type PatronSeatRow } from './patron-seat.service.js';
 import { resolveWalletPerks } from './perks.resolver.js';
+import { playerLinkedWallet } from './stake-clock.reader.js';
 import { buildAiBudgetView } from './tier-engine.js';
 
 const MAX_PRESTIGE_COLONIES = 200;
@@ -33,14 +34,21 @@ export class StakingPerksService {
     if (!this.flags.has('W28')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
   }
 
-  async perksFor(query: { colonyId?: string; accountId?: string }): Promise<StakerPerksResponse> {
+  /**
+   * `playerId` (the Bearer session) stands in for `accountId` when the caller names none: the HUD pill of a pilot who
+   * linked a wallet asks for "my perks" without knowing the wallet id. `nowMs` is the staking clock (mock warps move it).
+   */
+  async perksFor(query: { colonyId?: string; accountId?: string; playerId?: string | null; nowMs?: number }): Promise<StakerPerksResponse> {
     this.assertWaveEnabled();
     const colonyId = query.colonyId?.trim();
-    const accountId = query.accountId?.trim();
+    const sessionWallet = !query.accountId?.trim() && query.playerId && this.prisma
+      ? (await playerLinkedWallet(this.prisma, query.playerId))?.accountId
+      : undefined;
+    const accountId = query.accountId?.trim() || sessionWallet;
     if (!colonyId && !accountId) {
       throw new CoreException('INVALID_REQUEST', { status: 400, message: 'accountId or colonyId is required' });
     }
-    const r = await resolveWalletPerks(this.prisma, { colonyId, accountId, env: this.envBag(), w28: true, full: true });
+    const r = await resolveWalletPerks(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId, env: this.envBag(), w28: true, full: true, nowMs: query.nowMs });
     const { totalStakedYocto: _a, stakedYocto: _b, ...perks } = r.perks;
     return StakerPerksResponse.parse({
       accountId: accountId ?? r.wallet.accountIds[0] ?? null,
