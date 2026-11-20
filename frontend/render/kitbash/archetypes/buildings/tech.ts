@@ -105,7 +105,7 @@ export function roboticsFactory() {
   // antenna (mounted on -X left wall so left face carries detail) + transformer + anchored cables
   strut(b, 'frameGunmetal', [-3.6, 0.5, -0.9], [-3.6, 4.6, -0.9], 0.06, { name: 'comms whip mast' });
   lamp(b, 'dangerCrimson', 0.09, [-3.6, 4.66, -0.9], { name: 'mast warning light' });
-  cable(b, [-3.6, 4.3, -0.9], [-2.3, 3.2, -2.0], 0.35, 0.025, 'frameGunmetal', { name: 'aerial guy cable' });
+  cable(b, [-3.6, 4.35, -0.9], [-2.3, 3.2, -2.0], 0.12, 0.025, 'frameGunmetal', { points: 3, name: 'aerial guy cable' });
   cyl(b, 'hullSecondary', 0.24, 0.26, 0.55, [3.0, 0.18, 1.2], { seg: 8, name: 'factory substation unit' });
   cable(b, [2.85, 1.2, -1.15], [3.0, 0.68, 1.05], 0.22, 0.045, 'frameGunmetal', { name: 'substation feeder cable' });
   return b.build();

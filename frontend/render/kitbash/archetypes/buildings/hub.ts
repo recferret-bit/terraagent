@@ -59,9 +59,9 @@ function addHubAntennaAndRadar(b: KitbashBuilder) {
     ring(b, 'hullSecondary', 0.09, 0.045, pos, { seg: 8, tubeSeg: 4, name: 'antenna collar' });
   }
   lamp(b, 'dangerCrimson', 0.13, [1.35, 6.46, -1.75], { hSeg: 4, emissiveIntensity: 4.2, name: 'antenna beacon light' });
-  const guy = { points: 3, seg: 8 } as const;
-  cable(b, [1.31, 5.9, -1.71], [2.0, 1.68, -2.28], 0.15, 0.025, 'frameGunmetal', { ...guy, name: 'guy cable R' });
-  cable(b, [1.28, 5.5, -1.68], [-0.4, 2.01, -1.96], 0.15, 0.025, 'frameGunmetal', { ...guy, name: 'guy cable L' });
+  // Top of the mast to the top of the two columns beside it. Slack is about 7% of each span: a little longer than the straight line.
+  cable(b, [1.38, 6.28, -1.8], [2.0, 1.68, -2.28], 0.33, 0.018, 'frameGunmetal', { seg: 12, points: 3, name: 'antenna guy cable rear' });
+  cable(b, [1.3, 6.28, -1.68], [2.0, 1.68, 1.88], 0.41, 0.018, 'frameGunmetal', { seg: 12, points: 3, name: 'antenna guy cable front' });
   // Rotating radar tower (left-front top)
   box(b, 'hullSecondary', [0.9, 0.36, 0.9], [-1.4, 1.99, 0.7], { r: 0.05, seg: 1, name: 'radar pedestal' });
   cyl(b, 'frameGunmetal', 0.12, 0.2, 1.92, [-1.4, 2.3, 0.7], { seg: 8, name: 'radar mast' });
@@ -105,6 +105,6 @@ export function claimBeacon() {
   strut(b, 'frameGunmetal', [0.75, 0.18, -0.7], [0.75, 2.42, -0.7], 0.04, { name: 'banner mast' });
   box(b, 'hullSecondary', [0.04, 0.55, 0.72], [0.75, 1.75, -0.36], { r: 0.015, seg: 1, name: 'faction banner' });
   lamp(b, 'warningAmber', 0.07, [0.75, 2.44, -0.7], { name: 'banner mast light' });
-  cable(b, [0.75, 2.32, -0.7], [0.18, 1.65, -0.18], 0.22, 0.02, 'frameGunmetal', { name: 'banner guy cable' });
+  cable(b, [0.73, 2.3, -0.68], [0.18, 1.65, -0.18], 0.07, 0.02, 'frameGunmetal', { points: 3, name: 'banner guy cable' });
   return b.build();
 }

@@ -61,8 +61,8 @@ export function rocket() {
   strut(b, 'hullSecondary', [-1.45, 1.0, 1.45], [-0.8, 1.4, 0.6], 0.09, { name: 'cryo feed line' });
   // ground umbilical junction box + sagging umbilical cables tower -> rocket
   cyl(b, 'hullSecondary', 0.24, 0.26, 0.55, [gx, 0.18, 1.45], { seg: 8, name: 'umbilical terminal unit' });
-  cable(b, [gx - 0.65, 7.46, gz], [0.68, 6.8, 0.0], 0.35, 0.045, 'frameGunmetal', { name: 'upper umbilical cable' });
-  cable(b, [gx - 0.65, 5.26, gz + 0.2], [0.76, 4.6, 0.15], 0.28, 0.04, 'frameGunmetal', { name: 'mid umbilical cable' });
+  cable(b, [gx - 0.65, 7.46, gz], [0.68, 6.8, 0.0], 0.1, 0.045, 'frameGunmetal', { points: 3, name: 'upper umbilical cable' });
+  cable(b, [gx - 0.65, 5.26, gz + 0.2], [0.76, 4.6, 0.15], 0.08, 0.04, 'frameGunmetal', { points: 3, name: 'mid umbilical cable' });
   cable(b, [gx, 3.04, gz + 0.68], [gx, 0.68, 1.35], 0.18, 0.055, 'frameGunmetal', { name: 'ground feeder cable' });
   return b.build();
 }

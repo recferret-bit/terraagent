@@ -96,7 +96,7 @@ export function solar() {
     const hi = P(0, 0, -len / 2 + 0.3), lo = P(0, 0, len / 2 - 0.3);
     strut(b, 'frameGunmetal', [sx * 1.05, 0.18, hi[2]], hi, 0.07, { name: 'rear support strut' });
     strut(b, 'frameGunmetal', [sx * 1.05 + sx * 0.2, 0.18, lo[2] + 0.3], lo, 0.06, { name: 'front support strut' });
-    cable(b, [sx * 0.55, 0.75, 1.35], [sx * 1.0, lo[1], lo[2]], 0.16, 0.035, 'frameGunmetal', { name: 'wing power cable' });
+    cable(b, [sx * 0.55, 0.75, 1.35], [sx * 1.0, lo[1], lo[2]], 0.06, 0.035, 'frameGunmetal', { points: 3, name: 'wing power cable' });
   }
   // small sun-tracker mast + vane (silhouette breaker)
   strut(b, 'frameGunmetal', [0, 0.18, -1.65], [0.15, 3.62, -1.7], 0.05, { name: 'tracker mast' });
