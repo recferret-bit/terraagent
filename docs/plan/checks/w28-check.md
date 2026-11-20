@@ -120,7 +120,8 @@ Run on the merged branch by the lead (pre-existing failures that also fail on `m
 - `npm run validate:wave -- 28` → **16/16 issues merged, 0 errors**; warnings are files near the size limit.
 - `npm run e2e -- --waves 28` → **9 passed** (demo steps 1–8 + W28 fence); `--host local` → 3 passed, 6 skipped
   (server steps). Earlier suites with W28 on (`--waves 12,13,16,20,22,28`): W12 step 4 (W21 past-colony card count),
-  W13 9d (`wrong_planet`), W22 step 5 (bounty claim) fail the same way on `main`.
+  W13 9d / 9f-3 (`wrong_planet`), W22 step 5 (bounty claim) fail the same way on `main`; W16 step 1 timed out once
+  while the unit suite ran beside it and passed on a quiet rerun (`--waves 16,28` → 12 passed).
 - `npm test` → only the 7 suites that fail on `main` (planet-region, reconFaction, reconcile-flow w03, w13-regions,
   construction-orders, pod-terraform, no-teleport). `npm run test:integration` → 761/762, the one failure
   (`exchange-real/rails.real`) is on `main` too. `npm run test:contract` → 66/66. `npm run near:test-contracts` →
