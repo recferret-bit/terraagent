@@ -1,9 +1,19 @@
+mod accrual;
+mod fees;
+mod lst;
+mod mathx;
+mod payout;
+mod positions;
+mod settle;
+mod storage;
+
+use accrual::{read_protocol_yield_bp, to_view};
 use near_sdk::store::LookupMap;
-use near_sdk::{
-    env, ext_contract, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise,
-    PromiseError,
-};
+use near_sdk::{env, near, require, AccountId, PanicOnDefault};
 use serde_json::json;
+use storage::*;
+
+pub use fees::{EARLY_EXIT_FEE_BP, EARLY_EXIT_WINDOW_MS};
 
 const GAME_DAY_MS: u64 = 86_400_000;
 const UNBONDING_DURATION_MS: u64 = 2 * GAME_DAY_MS;
@@ -11,74 +21,9 @@ const YEAR_MS: u128 = 365 * (GAME_DAY_MS as u128);
 const DEFAULT_PROTOCOL_YIELD_SHARE_BP: u32 = 2_000; // Default 20% of validator yield -> protocol.<owner_id>, 80% -> staker (7.2% net APY)
 const MAX_APY_BP: u32 = 5_000; // 50.00% sanity ceiling on gross validator APY
 const MAX_NON_OPERATOR_APY_BP: u32 = 1_000; // 10.00% ceiling on direct non-operator payable/LST stakes
-const STORAGE_RESERVE_MILLINEAR: u128 = 50; // 0.05 NEAR liquid buffer above storage lock
 const MIN_PAYABLE_DEPOSIT_YOCTO: u128 = 5_000_000_000_000_000_000_000; // 0.005 NEAR covers storage lock (> ~350 bytes)
-const MIN_CLAIM_PREPAID_TGAS: u64 = 25;
-const CLAIM_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 const CFG_PROTOCOL_KEY: &[u8] = b"cfg:protocol";
 const CFG_YIELD_BP_KEY: &[u8] = b"cfg:yield_bp";
-const YIELD_RESERVE_KEY: &[u8] = b"ynative:pool";
-
-fn read_u128_key(key: &[u8]) -> u128 {
-    match env::storage_read(key) {
-        Some(bytes) if bytes.len() == 16 => {
-            let mut arr = [0u8; 16];
-            arr.copy_from_slice(&bytes);
-            u128::from_le_bytes(arr)
-        }
-        _ => 0,
-    }
-}
-
-fn write_u128_key(key: &[u8], val: u128) {
-    if val == 0 {
-        env::storage_remove(key);
-    } else {
-        env::storage_write(key, &val.to_le_bytes());
-    }
-}
-
-fn pos_ndep_key(account_id: &str, pool_id: &str) -> Vec<u8> {
-    format!("pndep:{}|{}", account_id, pool_id).into_bytes()
-}
-
-fn read_pos_ndep(account_id: &str, pool_id: &str) -> u128 {
-    read_u128_key(&pos_ndep_key(account_id, pool_id))
-}
-
-fn write_pos_ndep(account_id: &str, pool_id: &str, val: u128) {
-    write_u128_key(&pos_ndep_key(account_id, pool_id), val);
-}
-
-fn read_yield_reserve() -> u128 {
-    read_u128_key(YIELD_RESERVE_KEY)
-}
-
-fn write_yield_reserve(val: u128) {
-    write_u128_key(YIELD_RESERVE_KEY, val);
-}
-
-fn is_whitelisted_lst(contract_id: &str, owner_id: &str) -> bool {
-    let lower = contract_id.to_ascii_lowercase();
-    let owner_lower = owner_id.to_ascii_lowercase();
-    matches!(
-        lower.as_str(),
-        "meta-pool.near"
-            | "meta-v2.pool.testnet"
-            | "linear-protocol.near"
-            | "linear-protocol.testnet"
-            | "rnear.near"
-            | "rnear.testnet"
-    ) || lower == format!("stnear.{}", owner_lower)
-        || lower == format!("linear.{}", owner_lower)
-        || lower == format!("rnear.{}", owner_lower)
-}
-
-#[allow(dead_code)]
-#[ext_contract(ext_self)]
-trait ExtSelf {
-    fn on_claim_native_near(&mut self, caller: String, recipient_id: String, amount: String) -> bool;
-}
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -101,6 +46,9 @@ pub struct StakingPositionView {
     pub unbonding_ready_at_ms: Option<u64>,
     pub withdrawable: String,
     pub rewards: String,
+    /// Set by `unstake`: the `< 7 day` exit fee (yocto of principal routed to the protocol), `"0"` when none.
+    #[serde(default)]
+    pub early_exit_fee: Option<String>,
 }
 
 #[near(serializers = [json])]
@@ -120,135 +68,6 @@ pub struct StakingVaultContract {
     balances: LookupMap<String, u128>,
     positions: LookupMap<String, StakingRecord>,
     processed_ops: LookupMap<String, String>,
-}
-
-fn pos_key(account_id: &str, pool_id: &str) -> String {
-    format!("{}::{}", account_id, pool_id)
-}
-
-fn native_dep_key(account_id: &str) -> Vec<u8> {
-    format!("ndep:{}", account_id).into_bytes()
-}
-
-fn read_native_dep(account_id: &str) -> u128 {
-    match env::storage_read(&native_dep_key(account_id)) {
-        Some(bytes) if bytes.len() == 16 => {
-            let mut arr = [0u8; 16];
-            arr.copy_from_slice(&bytes);
-            u128::from_le_bytes(arr)
-        }
-        _ => 0,
-    }
-}
-
-fn write_native_dep(account_id: &str, val: u128) {
-    let key = native_dep_key(account_id);
-    if val == 0 {
-        env::storage_remove(&key);
-    } else {
-        env::storage_write(&key, &val.to_le_bytes());
-    }
-}
-
-fn parse_yocto(raw: &str) -> u128 {
-    raw.parse::<u128>()
-        .expect("STAKE_INSUFFICIENT_BALANCE: invalid yoctoNEAR amount")
-}
-
-fn validate_pool_and_apy(pool_id: &str, apy_bp: u32) {
-    require!(!pool_id.trim().is_empty(), "STAKE_INVALID_POOL: pool_id required");
-    require!(
-        !pool_id.contains('|') && !pool_id.contains("::"),
-        "STAKE_INVALID_POOL: pool_id cannot contain key delimiters"
-    );
-    require!(apy_bp <= MAX_APY_BP, "STAKE_INVALID_APY: apy_bp exceeds 5000 bp");
-}
-
-fn validate_target_account(account_id: &str) {
-    require!(
-        !account_id.trim().is_empty() && !account_id.contains('|') && !account_id.contains("::"),
-        "STAKE_INSUFFICIENT_BALANCE: invalid account_id"
-    );
-}
-
-/// Overflow-free reward accrual matching `@terra/sim` / `yocto.ts`:
-/// `floor(staked * apy_bp * elapsed_ms / (10_000 * 365 * 86_400_000))`.
-fn compute_accrued_reward_delta(staked: u128, apy_bp: u32, elapsed_ms: u64) -> u128 {
-    if staked == 0 || apy_bp == 0 || elapsed_ms == 0 {
-        return 0;
-    }
-    let den: u128 = 10_000u128 * YEAR_MS;
-    let factor: u128 = (apy_bp as u128) * (elapsed_ms as u128);
-    (staked / den) * factor + ((staked % den) * factor) / den
-}
-
-fn read_protocol_yield_bp() -> u32 {
-    match env::storage_read(CFG_YIELD_BP_KEY) {
-        Some(bytes) if bytes.len() == 4 => {
-            let mut arr = [0u8; 4];
-            arr.copy_from_slice(&bytes);
-            let bp = u32::from_le_bytes(arr);
-            if bp <= 10_000 {
-                bp
-            } else {
-                DEFAULT_PROTOCOL_YIELD_SHARE_BP
-            }
-        }
-        _ => DEFAULT_PROTOCOL_YIELD_SHARE_BP,
-    }
-}
-
-/// Splits gross accrued validator yield into `(staker_reward, protocol_yield)` using `yield_bp` (`0..=10_000`).
-fn compute_split_reward_delta(
-    staked: u128,
-    apy_bp: u32,
-    elapsed_ms: u64,
-    yield_bp: u32,
-) -> (u128, u128) {
-    let gross = compute_accrued_reward_delta(staked, apy_bp, elapsed_ms);
-    let share = (yield_bp.min(10_000)) as u128;
-    let protocol_cut = (gross / 10_000u128) * share + ((gross % 10_000u128) * share) / 10_000u128;
-    (gross.saturating_sub(protocol_cut), protocol_cut)
-}
-
-fn project_record(
-    record: &StakingRecord,
-    apy_bp: u32,
-    now_ms: u64,
-    yield_bp: u32,
-) -> (StakingRecord, u128) {
-    let mut next = record.clone();
-    let mut protocol_cut = 0u128;
-    if next.last_accrued_at_ms > 0 && now_ms > next.last_accrued_at_ms {
-        let elapsed = now_ms - next.last_accrued_at_ms;
-        let (user_reward, cut) = compute_split_reward_delta(next.staked, apy_bp, elapsed, yield_bp);
-        next.rewards = next.rewards.saturating_add(user_reward);
-        protocol_cut = cut;
-    }
-    if next.unbonding > 0 {
-        if let Some(ready_at) = next.unbonding_ready_at_ms {
-            if now_ms >= ready_at {
-                next.withdrawable = next.withdrawable.saturating_add(next.unbonding);
-                next.unbonding = 0;
-                next.unbonding_ready_at_ms = None;
-            }
-        }
-    }
-    // Monotonic timestamp progression prevents out-of-order clock skew from double-accruing yield.
-    next.last_accrued_at_ms = next.last_accrued_at_ms.max(now_ms);
-    (next, protocol_cut)
-}
-
-fn to_view(account_id: &str, pool_id: &str, rec: &StakingRecord) -> StakingPositionView {
-    StakingPositionView {
-        account_id: account_id.to_string(),
-        pool_id: pool_id.to_string(),
-        staked: rec.staked.to_string(),
-        unbonding: rec.unbonding.to_string(),
-        unbonding_ready_at_ms: rec.unbonding_ready_at_ms,
-        withdrawable: rec.withdrawable.to_string(),
-        rewards: rec.rewards.to_string(),
-    }
 }
 
 fn emit_staking(event: &str, data: serde_json::Value) {
@@ -325,10 +144,13 @@ impl StakingVaultContract {
         format!("protocol.{}", self.owner_id)
     }
 
+    fn is_operator(&self, caller: &AccountId) -> bool {
+        *caller == self.operator_id || *caller == self.owner_id
+    }
+
     fn require_operator(&self) {
-        let caller = env::predecessor_account_id();
         require!(
-            caller == self.operator_id || caller == self.owner_id,
+            self.is_operator(&env::predecessor_account_id()),
             "NEAR_NOT_OWNER: caller not authorized"
         );
     }
@@ -395,69 +217,6 @@ impl StakingVaultContract {
             }),
         );
         res
-    }
-
-    /// Withdraws unlocked native NEAR backed by real `deposit_near` principal (CEI + async rollback callback).
-    pub fn claim_native_near(&mut self, amount: String, recipient_id: Option<AccountId>) -> Promise {
-        require!(
-            env::prepaid_gas() >= Gas::from_tgas(MIN_CLAIM_PREPAID_TGAS),
-            "NEAR_INSUFFICIENT_GAS: attach >= 25 TGas for claim_native_near"
-        );
-        let caller = env::predecessor_account_id();
-        let caller_str = caller.to_string();
-        let claim_val = parse_yocto(&amount);
-        require!(claim_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
-
-        let vault_bal = self.balances.get(&caller_str).copied().unwrap_or(0);
-        let native_bal = read_native_dep(&caller_str);
-        require!(
-            vault_bal >= claim_val && native_bal >= claim_val,
-            "STAKE_INSUFFICIENT_BALANCE: insufficient native NEAR deposit balance"
-        );
-
-        let storage_locked = (env::storage_usage() as u128)
-            .saturating_mul(env::storage_byte_cost().as_yoctonear());
-        let reserve = NearToken::from_millinear(STORAGE_RESERVE_MILLINEAR).as_yoctonear();
-        let liquid = env::account_balance()
-            .as_yoctonear()
-            .saturating_sub(storage_locked.saturating_add(reserve));
-        require!(
-            liquid >= claim_val,
-            "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve"
-        );
-
-        self.balances.insert(caller_str.clone(), vault_bal - claim_val);
-        write_native_dep(&caller_str, native_bal - claim_val);
-        let dest = recipient_id.unwrap_or(caller);
-        let dest_str = dest.to_string();
-        Promise::new(dest)
-            .transfer(NearToken::from_yoctonear(claim_val))
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_static_gas(CLAIM_CALLBACK_GAS)
-                    .on_claim_native_near(caller_str, dest_str, claim_val.to_string()),
-            )
-    }
-
-    #[private]
-    pub fn on_claim_native_near(
-        &mut self,
-        caller: String,
-        recipient_id: String,
-        amount: String,
-        #[callback_result] call_result: Result<(), PromiseError>,
-    ) -> bool {
-        let amt = parse_yocto(&amount);
-        if call_result.is_ok() {
-            emit_staking("claim_native_near", json!({ "account_id": caller, "recipient_id": recipient_id, "amount": amount }));
-            true
-        } else {
-            let cur_bal = self.balances.get(&caller).copied().unwrap_or(0);
-            self.balances.insert(caller.clone(), cur_bal.saturating_add(amt));
-            write_native_dep(&caller, read_native_dep(&caller).saturating_add(amt));
-            emit_staking("claim_native_near_rollback", json!({ "account_id": caller, "recipient_id": recipient_id, "amount": amount }));
-            false
-        }
     }
 
     fn credit_protocol_yield(&mut self, cut: u128) {
@@ -547,6 +306,7 @@ impl StakingVaultContract {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
+        require!(!lst::is_lst_pool(&pool_id), "STAKE_INVALID_POOL: LST pools stake through ft_transfer_call");
         validate_target_account(&account_id);
         let stake_val = parse_yocto(&amount);
         require!(stake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
@@ -571,13 +331,13 @@ impl StakingVaultContract {
             );
         }
 
-        let key = pos_key(&account_id, &pool_id);
-        let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) =
-            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
-        self.credit_protocol_yield(protocol_cut);
-        next.staked = next.staked.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
-        self.positions.insert(key, next.clone());
+        let settled = self.settle_pure(&account_id, &pool_id, apy_bp, now_ms);
+        self.apply_settled(&account_id, &pool_id, &settled);
+        let mut next = settled.record;
+        let prior = next.staked;
+        next.staked = prior.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
+        self.positions.insert(pos_key(&account_id, &pool_id), next.clone());
+        positions::record_deposit(&account_id, &pool_id, positions::NATIVE_ASSET, now_ms, prior, stake_val, 0);
 
         let view = to_view(&account_id, &pool_id, &next);
         self.processed_ops.insert(op_id, serde_json::to_string(&view).unwrap());
@@ -607,92 +367,31 @@ impl StakingVaultContract {
         let unstake_val = parse_yocto(&amount);
         require!(unstake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
 
-        let key = pos_key(&account_id, &pool_id);
-        let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) =
-            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
+        let settled = self.settle_pure(&account_id, &pool_id, apy_bp, now_ms);
+        let mut next = settled.record.clone();
         require!(
             next.staked >= unstake_val,
             "STAKE_INSUFFICIENT_BALANCE: insufficient staked NEAR"
         );
-        self.credit_protocol_yield(protocol_cut);
+        self.apply_settled(&account_id, &pool_id, &settled);
+        // `< 7 days` since the latest deposit: 25 bp of the unstaked principal goes to the protocol.
+        let last_staked = positions::read_meta(&account_id, &pool_id).map(|m| m.last_staked_at_ms);
+        let fee = fees::early_exit_fee(unstake_val, last_staked, now_ms);
+        self.credit_protocol_for_pool(&pool_id, fee);
         next.staked -= unstake_val;
-        next.unbonding = next.unbonding.saturating_add(unstake_val);
+        next.unbonding = next.unbonding.saturating_add(unstake_val - fee);
         next.unbonding_ready_at_ms = Some(now_ms.saturating_add(UNBONDING_DURATION_MS));
-        self.positions.insert(key, next.clone());
+        self.positions.insert(pos_key(&account_id, &pool_id), next.clone());
+        positions::record_unstake(&account_id, &pool_id, next.staked);
 
-        let view = to_view(&account_id, &pool_id, &next);
+        let mut view = to_view(&account_id, &pool_id, &next);
+        view.early_exit_fee = Some(fee.to_string());
         self.processed_ops.insert(op_id, serde_json::to_string(&view).unwrap());
         emit_staking(
             "unstake",
-            json!({ "account_id": account_id, "pool_id": pool_id, "amount": amount, "ready_at_ms": next.unbonding_ready_at_ms }),
+            json!({ "account_id": account_id, "pool_id": pool_id, "amount": amount, "early_exit_fee": fee.to_string(), "ready_at_ms": next.unbonding_ready_at_ms }),
         );
         view
-    }
-
-    /// Withdraws matured unbonded NEAR + accrued rewards. Idempotent by `op_id`.
-    pub fn withdraw(
-        &mut self,
-        op_id: String,
-        account_id: String,
-        recipient_id: Option<String>,
-        pool_id: String,
-        apy_bp: u32,
-        now_ms: u64,
-    ) -> WithdrawResultView {
-        require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
-        self.require_operator();
-        if let Some(cached) = self.processed_ops.get(&op_id) {
-            return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
-        }
-        validate_pool_and_apy(&pool_id, apy_bp);
-
-        let key = pos_key(&account_id, &pool_id);
-        let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let (mut next, protocol_cut) =
-            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp());
-        require!(
-            next.withdrawable > 0,
-            "STAKE_INSUFFICIENT_BALANCE: no withdrawable NEAR available"
-        );
-        self.credit_protocol_yield(protocol_cut);
-        let payout = next.withdrawable.saturating_add(next.rewards);
-        let recipient = recipient_id.unwrap_or_else(|| account_id.clone());
-        let cur_rec = self.balances.get(&recipient).copied().unwrap_or(0);
-        self.balances.insert(recipient.clone(), cur_rec.saturating_add(payout));
-
-        let pos_ndep = read_pos_ndep(&account_id, &pool_id);
-        let released_ndep = pos_ndep.min(next.withdrawable);
-        let remaining_ndep = pos_ndep - released_ndep;
-        let yield_reserve = read_yield_reserve();
-        let backed_yield = next.rewards.min(yield_reserve);
-        if backed_yield > 0 {
-            write_yield_reserve(yield_reserve - backed_yield);
-        }
-        let restore_ndep = released_ndep.saturating_add(backed_yield);
-        if released_ndep > 0 {
-            write_pos_ndep(&account_id, &pool_id, remaining_ndep);
-        }
-        if restore_ndep > 0 {
-            write_native_dep(&recipient, read_native_dep(&recipient).saturating_add(restore_ndep));
-        }
-
-        next.withdrawable = 0;
-        next.rewards = 0;
-        self.positions.insert(key, next);
-
-        let res = WithdrawResultView {
-            account_id: account_id.clone(),
-            recipient_id: recipient.clone(),
-            pool_id: pool_id.clone(),
-            withdrawn: payout.to_string(),
-        };
-        self.processed_ops.insert(op_id, serde_json::to_string(&res).unwrap());
-        emit_staking(
-            "withdraw",
-            json!({ "account_id": account_id, "recipient": recipient, "pool_id": pool_id, "withdrawn": res.withdrawn }),
-        );
-        res
     }
 
     pub fn get_position(
@@ -704,43 +403,19 @@ impl StakingVaultContract {
     ) -> StakingPositionView {
         validate_pool_and_apy(&pool_id, apy_bp);
         let key = pos_key(&account_id, &pool_id);
-        let existing = self.positions.get(&key).cloned().unwrap_or_default();
         let projected = if self.positions.contains_key(&key) {
-            project_record(&existing, apy_bp, now_ms, read_protocol_yield_bp()).0
+            self.settle_pure(&account_id, &pool_id, apy_bp, now_ms).record
         } else {
-            existing
+            StakingRecord::default()
         };
         to_view(&account_id, &pool_id, &projected)
     }
-
     pub fn get_owner(&self) -> AccountId {
         self.owner_id.clone()
     }
 
     pub fn get_operator(&self) -> AccountId {
         self.operator_id.clone()
-    }
-
-    pub fn get_yield_reserve(&self) -> String {
-        read_yield_reserve().to_string()
-    }
-
-    pub fn get_position_native_backing(&self, account_id: String, pool_id: String) -> String {
-        read_pos_ndep(&account_id, &pool_id).to_string()
-    }
-
-    /// Funds the native NEAR yield reserve so accrued validator/LST rewards remain 100% claimable on-chain.
-    #[payable]
-    pub fn fund_yield_reserve(&mut self) -> String {
-        let attached = env::attached_deposit().as_yoctonear();
-        require!(attached > 0, "STAKE_INSUFFICIENT_BALANCE: attached yield reserve must be > 0");
-        let next = read_yield_reserve().saturating_add(attached);
-        write_yield_reserve(next);
-        emit_staking(
-            "fund_yield_reserve",
-            json!({ "funder": env::predecessor_account_id(), "amount": attached.to_string(), "reserve": next.to_string() }),
-        );
-        next.to_string()
     }
 
     /// Single-transaction direct wallet deposit + stake (zero operator custody required).
@@ -779,78 +454,36 @@ impl StakingVaultContract {
         validate_target_account(&target);
         write_pos_ndep(&target, &pool_id, read_pos_ndep(&target, &pool_id).saturating_add(stake_val));
 
-        let key = pos_key(&target, &pool_id);
-        let existing = self.positions.get(&key).cloned().unwrap_or_default();
+        require!(!lst::is_lst_pool(&pool_id), "STAKE_INVALID_POOL: LST pools stake through ft_transfer_call");
+        let existing_staked = self.positions.get(&pos_key(&target, &pool_id)).map(|r| (r.staked, r.last_accrued_at_ms)).unwrap_or_default();
         let chain_now = env::block_timestamp_ms();
         let effective_now = if is_operator {
             now_ms
         } else if chain_now > 0 {
             chain_now
-        } else if existing.staked > 0 {
-            existing.last_accrued_at_ms
+        } else if existing_staked.0 > 0 {
+            existing_staked.1
         } else {
             now_ms
         };
-        let (mut next, protocol_cut) =
-            project_record(&existing, apy_bp, effective_now, read_protocol_yield_bp());
-        self.credit_protocol_yield(protocol_cut);
-        next.staked = next.staked.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
-        self.positions.insert(key, next.clone());
+        let settled = self.settle_pure(&target, &pool_id, apy_bp, effective_now);
+        self.apply_settled(&target, &pool_id, &settled);
+        let mut next = settled.record;
+        let prior = next.staked;
+        next.staked = prior.checked_add(stake_val).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
+        self.positions.insert(pos_key(&target, &pool_id), next.clone());
+        positions::record_deposit(&target, &pool_id, positions::NATIVE_ASSET, effective_now, prior, stake_val, 0);
 
         let view = to_view(&target, &pool_id, &next);
         self.processed_ops.insert(op_id, serde_json::to_string(&view).unwrap());
         emit_staking("stake_payable", json!({ "account_id": target, "pool_id": pool_id, "amount": stake_val.to_string() }));
         view
     }
-
-    /// Accepts whitelisted NEP-141 Liquid Staking Tokens (`stNEAR`, `LiNEAR`, `rNEAR`) via `ft_transfer_call`.
-    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: String, msg: String) -> String {
-        let token_contract = env::predecessor_account_id();
-        require!(
-            is_whitelisted_lst(token_contract.as_str(), self.owner_id.as_str()),
-            "STAKE_INVALID_POOL: LST token contract is not whitelisted"
-        );
-        let qty = parse_yocto(&amount);
-        require!(qty > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
-        let parsed = serde_json::from_str::<serde_json::Value>(&msg).unwrap_or_else(|_| json!({}));
-        let pool_id = parsed
-            .get("pool_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or(token_contract.as_str())
-            .to_string();
-        let target = parsed
-            .get("account_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or(sender_id.as_str())
-            .to_string();
-        let apy_bp = parsed.get("apy_bp").and_then(|v| v.as_u64()).unwrap_or(900) as u32;
-        validate_pool_and_apy(&pool_id, apy_bp);
-        validate_target_account(&target);
-        require!(
-            apy_bp <= MAX_NON_OPERATOR_APY_BP,
-            "STAKE_INVALID_APY: LST stake apy_bp exceeds 1000 bp"
-        );
-        let key = pos_key(&target, &pool_id);
-        let existing = self.positions.get(&key).cloned().unwrap_or_default();
-        let chain_now = env::block_timestamp_ms();
-        let effective_now = if chain_now > 0 {
-            chain_now
-        } else if existing.staked > 0 {
-            existing.last_accrued_at_ms
-        } else {
-            parsed.get("now_ms").and_then(|v| v.as_u64()).unwrap_or(0)
-        };
-        let (mut next, protocol_cut) =
-            project_record(&existing, apy_bp, effective_now, read_protocol_yield_bp());
-        self.credit_protocol_yield(protocol_cut);
-        next.staked = next.staked.checked_add(qty).expect("STAKE_INSUFFICIENT_BALANCE: overflow");
-        self.positions.insert(key, next);
-        emit_staking("lst_stake", json!({ "account_id": target, "lst": token_contract, "pool_id": pool_id, "amount": amount }));
-        "0".to_string()
-    }
 }
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_fees;
+#[cfg(test)]
+mod tests_lst;
