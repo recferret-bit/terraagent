@@ -237,7 +237,7 @@ function createNearSocialShareButton(opts: {
             import('@near-wallet-selector/core'),
             createRealSignerWalletSelector(net),
           ]);
-          const wallet = await selector.wallet('meteor-wallet').catch(() => selector.wallet());
+          const wallet = await selector.wallet();
           await wallet.signAndSendTransaction({
             receiverId: tx.contractId,
             actions: [

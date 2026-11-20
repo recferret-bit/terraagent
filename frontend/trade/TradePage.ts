@@ -17,6 +17,8 @@ import { renderFills, renderOrders } from './view/ordersView';
 import { Pickers } from './view/pickers';
 import { RampView } from './view/rampView';
 import { StallEditor } from './view/stallView';
+import { TradeStaking } from './view/stakingHeader';
+import type { NearMode } from './view/stakeProfitsView';
 import { OrderTicket } from './view/ticketView';
 
 const TABS = [['market', 'All orders'], ['pairs', 'All pairs'], ['orders', 'My orders'], ['fills', 'My fills'], ['keys', 'Bot / API keys']] as const;
@@ -53,6 +55,8 @@ export class TradePage {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private readonly onHashChange = (): void => this.applyHash();
   private nearNetwork: 'testnet' | 'mainnet' = 'testnet';
+  private nearMode: NearMode = 'testnet';
+  private readonly staking: TradeStaking;
   private readonly netBadge = h('span', { class: 'tr-badge tr-badge-info', 'data-testid': 'trade-near-mode' }, 'NEAR SETTLEMENT');
   private readonly explorerLink = h('a', { href: '/dev/chain/' }, 'Chain explorer');
 
@@ -82,6 +86,9 @@ export class TradePage {
       onSent: () => this.afterOrderChange(),
     });
     this.p.ticket.body.append(this.ticket.root);
+    this.staking = new TradeStaking({ client, mode: () => this.nearMode, reloadBalances: () => { void this.loaders.balances(true); } });
+    this.p.balances.actions.append(this.staking.profits.button);
+    this.p.balances.root.append(this.staking.profits.dialog);
     this.keys = new KeysPanel(this.p.keys.body, { client, state: () => this.store.get(), reload: () => { void this.loaders.keys(true); } });
     this.stallEditor = new StallEditor({ client, token: client.token, onSaved: (stall) => this.store.update((x) => ({ ...x, stall }), ['stall']) });
     this.store.subscribe((s, changed) => this.render(s, changed));
@@ -91,6 +98,7 @@ export class TradePage {
     clear(this.root);
     this.root.append(this.shell());
     void this.loadNearModeBadge();
+    if (this.client.token) void this.staking.refresh();
     this.pickers.setPlanets(await this.client.devPlanets());
     this.openStream();
     if (this.tickTimer) clearInterval(this.tickTimer);
@@ -115,6 +123,7 @@ export class TradePage {
     if (this.marketTimer) clearTimeout(this.marketTimer);
     if (this.overviewTimer) clearTimeout(this.overviewTimer);
     window.removeEventListener('hashchange', this.onHashChange);
+    this.staking.pill.dispose();
   }
 
   /** `#board` scrolls to the price board, `#orders` opens the All orders tab (the in-game hub links to `/trade.html?planet=<id>#board`). */
@@ -147,7 +156,7 @@ export class TradePage {
     const wpHref = isPlayHost ? 'https://whitepaper.terraagent.fun/' : '/whitepaper/';
     return h('div', { class: 'tr-page' },
       h('header', { class: 'tr-top' },
-        h('div', { class: 'tr-brand' }, h('a', { href: hubHref, class: 'tr-back' }, 'TERRA', h('b', {}, 'AGENT')), h('h1', { class: 'tr-title' }, 'TRADE'), this.netBadge),
+        h('div', { class: 'tr-brand' }, h('a', { href: hubHref, class: 'tr-back' }, 'TERRA', h('b', {}, 'AGENT')), h('h1', { class: 'tr-title' }, 'TRADE'), this.netBadge, this.staking.pill.el, this.staking.fee.el),
         h('nav', { class: 'tr-links', 'aria-label': 'Related pages' }, h('a', { href: '/play.html' }, 'Game'), h('a', { href: '/me.html' }, 'Profile'), h('a', { href: pitchHref }, 'Pitch Deck'), h('a', { href: wpHref }, 'Whitepaper'), this.explorerLink),
         this.pickers.root),
       this.onboardingStrip(),
@@ -178,6 +187,7 @@ export class TradePage {
       };
       const intentsEntry = body.ports?.find((p) => p.port === 'Intents');
       const intentsAdapter = intentsEntry?.mode ?? intentsEntry?.adapter ?? body.nearMode ?? 'mock';
+      this.nearMode = intentsAdapter === 'mainnet' ? 'mainnet' : intentsAdapter === 'testnet' || intentsAdapter === 'devnet' ? 'testnet' : 'mock';
       if (intentsAdapter === 'mainnet') {
         this.nearNetwork = 'mainnet';
         this.netBadge.textContent = 'NEAR MAINNET · NEP-413 INTENTS';
@@ -238,6 +248,7 @@ export class TradePage {
     if (has('board') || has('book')) renderBoard(this.p.board.body, s);
     if (has('stall') || all) this.stallEditor.update(s);
     if (has('balances') || has('stall') || has('policy')) renderBalances(this.p.balances.body, s, this.stallEditor.root);
+    if (has('balances')) this.staking.updateBalances(s);
     if (has('pairs') || has('policy') || has('balances') || has('book') || has('orders') || all) this.ticket.update();
     if (all || changed.has('pairs')) this.pickers.sync(s.pairs, s.planetId, s.pair);
     if (this.tab === 'market' && (has('bookOrders') || has('orders'))) this.renderMarket(s);
@@ -282,6 +293,7 @@ export class TradePage {
 
   private tick(): void {
     const s = this.store.get();
+    this.staking.tick();
     const focused = (el: HTMLElement): boolean => el.contains(document.activeElement);
     if (this.tab === 'orders' && !focused(this.p.orders.body)) this.renderOrdersTab(s);
     if (this.tab === 'market' && !focused(this.p.market.body)) this.renderMarket(s);

@@ -1,7 +1,8 @@
-import type { DirectorActionState, SetDirectorPolicyArgs } from '@terra/contracts';
+import type { AiBudgetView, DirectorActionState, SetDirectorPolicyArgs } from '@terra/contracts';
 import type { ColonyDirectorRecord } from '@terra/sim';
 import { patchSharedAutopilotState, subscribeSharedAutopilotState } from '../shared/aiAutopilotState';
 import { DirectorControls } from './DirectorControls';
+import { aiAccessState, renderAiAccess } from './parts/aiAccessBadge';
 import { openTeeProofModal } from './parts/teeProofModal';
 
 /** One director action as the HUD may show it. Only `applied` means the sim accepted it. */
@@ -32,6 +33,7 @@ export class DirectorPanel {
   private readonly aiStatusPill: HTMLElement;
   private readonly warToggleInput: HTMLInputElement | null;
   private readonly summaryEl: HTMLElement;
+  private readonly aiAccessEl: HTMLElement;
   private readonly controlsHost: HTMLElement;
   private readonly controls: DirectorControls | null;
   private readonly list: HTMLElement;
@@ -57,6 +59,11 @@ export class DirectorPanel {
     this.warToggleInput = autoParts?.warInput ?? null;
     this.renderAutopilotBtn();
 
+    this.aiAccessEl = document.createElement('div');
+    this.aiAccessEl.className = 'ta-director__ai-access';
+    this.aiAccessEl.dataset.testid = 'director-ai-access';
+    this.aiAccessEl.hidden = true;
+
     this.summaryEl = document.createElement('div');
     this.summaryEl.className = 'ta-director__summary';
     this.summaryEl.dataset.testid = 'director-policy-summary';
@@ -74,9 +81,9 @@ export class DirectorPanel {
     this.list = document.createElement('div');
     this.list.className = 'ta-director__list';
     if (this.autopilotBar) {
-      this.host.append(head.el, this.autopilotBar, this.summaryEl, this.controlsHost, planKicker, this.list);
+      this.host.append(head.el, this.aiAccessEl, this.autopilotBar, this.summaryEl, this.controlsHost, planKicker, this.list);
     } else {
-      this.host.append(head.el, this.summaryEl, this.controlsHost, planKicker, this.list);
+      this.host.append(head.el, this.aiAccessEl, this.summaryEl, this.controlsHost, planKicker, this.list);
     }
 
     this.offShared = subscribeSharedAutopilotState((st) => {
@@ -97,6 +104,16 @@ export class DirectorPanel {
       aiEnabled: state.aiEnabled,
       awayRaids: state.warDiplomacy,
     });
+  }
+
+  /** The colony the TEE proofs and the AI access card are about. */
+  getActiveColonyId(): string {
+    return this.activeColonyId;
+  }
+
+  /** W28 AI access card (`trial | script | tee | byok`); `null` (W28 off / 404) restores the pre-W28 plate. */
+  syncAiAccess(budget: AiBudgetView | null): void {
+    renderAiAccess(this.aiAccessEl, aiAccessState(budget), { onOpenTee: () => openTeeProofModal(this.activeColonyId) });
   }
 
   private renderAutopilotBtn(): void {

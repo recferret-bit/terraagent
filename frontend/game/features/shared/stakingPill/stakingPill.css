@@ -1,0 +1,29 @@
+.ta-stake-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font: 600 11px/1.2 var(--ta-font-mono);
+  letter-spacing: 0.08em;
+  color: var(--ta-orange-hi);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-orange);
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  text-decoration: none;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.ta-stake-pill:hover, .ta-stake-pill:focus-visible { background: var(--ta-orange); color: var(--ta-void); }
+.ta-stake-pill[data-tier='0'] { border-style: dashed; }
+.ta-stake-pill__apy { font-weight: 700; }
+.ta-stake-pill__sim { font-style: normal; padding: 0 4px; font-size: 9px; border: 1px solid var(--ta-blue-hi); color: var(--ta-blue-hi); }
+.ta-fee-pill {
+  display: inline-flex;
+  padding: 2px 8px;
+  font: 600 11px/1.2 var(--ta-font-mono);
+  letter-spacing: 0.08em;
+  color: var(--ta-blue-hi);
+  border: 1px solid var(--ta-blue-hi);
+  white-space: nowrap;
+}
+.ta-fee-pill[data-warmup='true'] { color: var(--ta-orange-hi); border-color: var(--ta-orange); }

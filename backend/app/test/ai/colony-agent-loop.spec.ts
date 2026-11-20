@@ -1,63 +1,13 @@
-import { parseWaves, type SimCommandV1 } from '@terra/contracts';
-import { createPlanet, createRegistryPipeline, seedRivalAiColonies, SimHost, snapshot } from '@terra/sim';
 import { describe, expect, it, vi } from 'vitest';
 import { ColonyAgentLoopService } from '../../src/ai/colony-agent/colony-agent-loop.service.js';
 import { CoreException } from '../../src/core/errors/index.js';
 import type { FlagsService } from '../../src/flags/flags.service.js';
 import type { AwayDigestService } from '../../src/game/digest/index.js';
-import type { GamePlanets } from '../../src/game/game-planets.service.js';
 import { StakingController } from '../../src/near/staking/staking.controller.js';
 import type { StakingService } from '../../src/near/staking/staking.service.js';
 import type { LlmProviderPort, LlmRequest, LlmResponse } from '../../src/ports/llm-provider.port.js';
+import { createFakePlanetHarness } from './fake-planet-harness.js';
 import { PlayerAiSettingsStore } from '../../src/profile/player-ai-settings.store.js';
-
-function createFakePlanetHarness() {
-  const flags = parseWaves('..22').list;
-  const host = new SimHost(createRegistryPipeline({ flags }));
-  host.load(
-    createPlanet({
-      id: 'pl_loop',
-      planetId: 'pl_loop',
-      type: 'temperate',
-      planetType: 'temperate',
-      seed: 'loop-seed',
-      radius: 26,
-      capacity: 6,
-    }),
-  );
-  host.submit({
-    colonyIndex: 0,
-    source: 'system',
-    commandId: 'spawn_0',
-    kind: 'system.spawnColony',
-    args: { colonyId: 'col_0', colonyIndex: 0, name: 'Human Colony', unlockStage: 0 },
-  });
-  host.step(1);
-  seedRivalAiColonies(host.state, { count: 2, capacity: 6, tick: host.tick });
-
-  const submitted: SimCommandV1[] = [];
-  const planets = {
-    fullState: async () => ({
-      planetId: 'pl_loop',
-      tick: host.tick,
-      bytes: snapshot(host.state),
-      simVersion: 1,
-      dataHash: 'h',
-      planetType: 'temperate',
-      warp: 1,
-    }),
-    submit: async (_planetId: string, cmd: SimCommandV1) => {
-      submitted.push(cmd);
-      host.submit(cmd);
-      const out = host.step(1).outcomes[0];
-      return out?.code
-        ? { ok: false as const, commandId: cmd.commandId, code: out.code }
-        : { ok: true as const, commandId: cmd.commandId, appliedAtTick: host.tick };
-    },
-  } as unknown as GamePlanets;
-
-  return { host, planets, submitted };
-}
 
 describe('ColonyAgentLoopService — human manual gate, NEAR AI Cloud attestation & guardrails', () => {
   it('skips online manual human colonies while governing Rival AIs and preserving TEE attestation', async () => {

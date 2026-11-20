@@ -1,6 +1,6 @@
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
-import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
+import type { DescentPrestigeSource, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { OrbitalStage } from '@terra/render/orbit/types';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createPlanetSurface } from '@terra/render/planets/surface';
@@ -38,6 +38,8 @@ export function buildPreparedDescentSession(opts: {
   quality: MenuSettings['quality'];
   resetScene: () => void;
   isStale: (p: PreparedDescentSession) => boolean;
+  /** Cosmetic prestige of the player's own tier (a getter, so a late-arriving tier still shows). */
+  prestige?: DescentPrestigeSource;
 }): PreparedDescentSession {
   const { viewport, key, spec, quality, resetScene, isStale } = opts;
   const exp = viewport.renderer.toneMappingExposure;
@@ -61,6 +63,7 @@ export function buildPreparedDescentSession(opts: {
       startAt: 9,
       precomputedGlobeSpheres: precomputedGrid?.globeSpheres,
       deferPartDispose: true,
+      prestige: opts.prestige,
     });
     prep = { key, spec, surface, descent, ready: false, whenReady: Promise.resolve() };
   } finally {

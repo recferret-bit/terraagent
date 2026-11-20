@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
+import type { DescentPrestigeSource } from '@terra/render/descent/types';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { clamp, smoothstep } from '../math';
@@ -24,6 +25,8 @@ export interface DescentContext {
   traj: Trajectory;
   /** Parent of every descent object (removed on cleanup). */
   root: THREE.Group;
+  /** Cosmetic staking prestige of the player's own tier (W28-12); read each frame, so it may arrive late. */
+  prestige?: DescentPrestigeSource;
 }
 
 /** Per-frame values written by early parts and read by later ones (and by the next frame: `camPos`). */

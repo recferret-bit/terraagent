@@ -88,6 +88,12 @@ describe('signerModal (W20-22) - DOM structure and approve flow', () => {
     modal.close();
   });
 
+  it('shows a caller-provided notice (W28 real-perks copy) instead of the W20 "no in-game bonus" line', () => {
+    const modal = openMockWalletSignerModal({ ...BASE_REQ, notice: 'Never game power.' });
+    expect(modal.root.querySelector('.ta-signer-modal__notice')?.textContent).toBe('Never game power.');
+    modal.close();
+  });
+
   it('approving resolves promise with valid signature and removes modal', async () => {
     const modal = openMockWalletSignerModal(BASE_REQ);
     const approveBtn = modal.root.querySelector<HTMLButtonElement>('[data-testid="signer-approve-btn"]')!;

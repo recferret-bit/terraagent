@@ -15,6 +15,7 @@ import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE, TICK_MS, type CompiledDataLike } from '@terra/sim';
 import { createMapVisibility } from '../../maps/visibility';
 import { forEachEntity, type ClientTiles, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
+import { PrestigeDressing } from '../prestige/PrestigeDressing';
 import { resolveEntityActivityProgress } from '../../features/landfall/selectionHelpers';
 import { syncEntityShadowCaster } from './entityFocus';
 import { MotionTrack, RenderClock } from '@terra/render/motion/entityMotion';
@@ -76,6 +77,8 @@ export class EntityMeshes {
   /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
   readonly gridCables: GridCableRenderer;
   isW10Enabled: () => boolean = () => true;
+  /** W28-12 staking prestige: HQ uplink beam, dish, gold trim and cyan cutters (off until the session enables it). */
+  readonly prestige = new PrestigeDressing();
   private readonly entries = new Map<number, EntityMeshRecord>();
   private readonly deferredSpaceRows = new Map<number, EntityRow>();
   private selectedEntityId: number | null = null;
@@ -246,6 +249,7 @@ export class EntityMeshes {
       this.dropPredictedFuture = false;
       for (const rec of this.entries.values()) rec.track.dropAfter(view.tick);
     }
+    this.prestige.sync(view, this.entries.values());
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.swarms.sync(this.biomeKey);
     this.healthBars.sync(this.entries.values());
@@ -394,14 +398,14 @@ export class EntityMeshes {
       tickArchetypeMesh(rec.mesh, rec.kind === ENTITY_KIND.wind && wantWork > 0 ? this.windTime : animTime, rec.walk, rec.work);
     }
 
-    const workSites = buildActiveWorkSites({
+    const workSites = this.prestige.tintCutters(buildActiveWorkSites({
       records: this.entries,
       view: this.latestView,
       tiles: this.latestTiles,
       terrain,
       biomeKey: this.biomeKey,
       dt,
-    });
+    }), this.entries, this.latestView);
     const workingIds = new Set(workSites.map((s) => Number(s.workerId)));
     for (const rec of this.entries.values()) {
       if (rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex && tdState.state === 'egress') continue;
