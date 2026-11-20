@@ -246,3 +246,77 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── W28 staking calculator: tier markers under the slider ── */
+.econ-tier-markers {
+  position: relative;
+  height: 30px;
+  margin: 0 8px;
+}
+
+.econ-tier-marker {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.econ-tier-marker i {
+  width: 2px;
+  height: 8px;
+  background: var(--ta-orange);
+}
+
+.econ-tier-marker em {
+  font-style: normal;
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ta-text-3);
+  white-space: nowrap;
+}
+
+.econ-tier-marker[data-tier="4"] { transform: translateX(-100%); }
+.econ-tier-marker[data-tier="4"] i { align-self: flex-end; }
+
+@media (max-width: 640px) {
+  .econ-tier-marker em { font-size: 9px; }
+  .econ-tier-marker em span { display: none; }
+}
+
+/* ── nav pill: ⚡ STAKE · LIVE APY (chamfered, no border-radius) ── */
+.stake-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 12px;
+  background: var(--ta-plate-2);
+  color: var(--ta-orange-hi);
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1.5px var(--ta-orange);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.stake-pill:hover { background: var(--ta-orange); color: var(--ta-void); }
+.stake-pill-badge { color: var(--ta-text); font-weight: 600; }
+.stake-pill:hover .stake-pill-badge { color: var(--ta-void); }
+
+@media (max-width: 640px) {
+  .stake-pill { padding: 6px 9px; gap: 5px; font-size: 10px; }
+  .stake-pill-label { display: none; }
+}
+
+/* keep the header on one row on mid-width desktops: compact pill, nav scrolls instead of wrapping */
+@media (min-width: 1181px) {
+  .site-header .nav { flex-basis: 0; }
+  .stake-pill-label { display: none; }
+}

@@ -204,7 +204,7 @@ describe('Landing #economics Day-1 staking calculator', () => {
     document.body.innerHTML = '';
   });
 
-  it('computes exact Day-1 staking boundary (5 NEAR standard vs 10 NEAR staker unlock) in #economics calculator', () => {
+  it('computes exact Day-1 staking boundary (5 NEAR Cadet vs 10 NEAR Tier 1 unlock) in #economics calculator', () => {
     initEconomicsSection();
     const stakeSlider = document.querySelector<HTMLInputElement>('#econ-stake-slider')!;
     const volSlider = document.querySelector<HTMLInputElement>('#econ-vol-slider')!;
@@ -216,12 +216,12 @@ describe('Landing #economics Day-1 staking calculator', () => {
     volSlider.value = '1000';
     stakeSlider.dispatchEvent(new Event('input'));
     expect(banner.classList.contains('is-unlocked')).toBe(false);
-    expect(feeSaved.textContent).toBe('0.00 USDC / mo (1.00% fee)');
+    expect(feeSaved.textContent).toBe('0.00 USDC / mo (100 bp fee)');
 
     stakeSlider.value = '10';
     stakeSlider.dispatchEvent(new Event('input'));
     expect(banner.classList.contains('is-unlocked')).toBe(true);
     expect(userYield.textContent).toBe('0.72 NEAR / yr');
-    expect(feeSaved.textContent).toBe('5.00 USDC / mo (0.50% fee)');
+    expect(feeSaved.textContent).toBe('3.50 USDC / mo (65 bp fee)');
   });
 });
