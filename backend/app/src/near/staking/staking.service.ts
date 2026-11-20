@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
   type CompoundYieldRequest,
   type Nep413Signature,
@@ -50,6 +50,7 @@ type Signed<T> = T & { readonly signature?: Nep413Signature };
  */
 @Injectable()
 export class StakingService implements OnModuleInit, OnModuleDestroy {
+  private readonly log = new Logger(StakingService.name);
   private readonly stops: Array<() => void> = [];
   private readonly balances: WalletBalances;
   private readonly colony: ColonyStakeFlow;
@@ -105,7 +106,9 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
       this.planets.onWarp((_planetId, k) => {
         if (k > 1 && this.flags.has('W20')) {
           this.advanceClockMs(k * 3_600_000);
-          void this.positionSync.syncAll().catch(() => undefined);
+          void this.positionSync.syncAll().catch((err: unknown) => {
+            this.log.warn(`staking read-model sync after a warp failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
         }
       }),
     );
