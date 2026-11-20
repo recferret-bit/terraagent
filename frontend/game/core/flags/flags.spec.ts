@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { allTables } from '@terra/sim';
+import { LAST_WAVE } from '@terra/contracts';
 import { clientDataFor, ClientFlagsStore, resolveClientFlags } from './index';
 import { loadFeatures, defineFeature, selectFeatures } from '../registry';
 
@@ -9,7 +10,7 @@ describe('resolveClientFlags', () => {
   it('defaults to all waves without welcome', () => {
     const x = r('');
     expect(x.source).toBe('default');
-    expect(x.flags.list).toHaveLength(26);
+    expect(x.flags.list).toHaveLength(LAST_WAVE + 1);
   });
   it('?waves=..00 overrides in dev', () => {
     const x = r('?planet=dune&waves=..00');
