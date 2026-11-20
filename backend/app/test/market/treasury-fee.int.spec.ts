@@ -99,7 +99,7 @@ describe('W22-07 treasury fee deposit', () => {
     expect((await db.prisma.intentTrade.findUniqueOrThrow({ where: { tradeId: t.tradeId } })).state).toBe('FINAL');
   });
 
-  it('halves platformFee from 1.00% (100,000) to 0.50% (50,000) when buyer stakes >= 10 NEAR, splitting 80% Protocol (40,000) / 20% DAO (10,000)', async () => {
+  it('cuts platformFee from 1.00% (100,000) to the W28 Tier 1 0.65% (65,000) when buyer stakes >= 10 NEAR, splitting 80% Protocol (52,000) / 20% DAO (13,000)', async () => {
     const planetId = `tf${++n}`;
     const seller = `s${n}`;
     const buyer = `b${n}`;
@@ -124,12 +124,12 @@ describe('W22-07 treasury fee deposit', () => {
     await place.handle(event(seller, { side: 'sell', price: { token: 'USDC', amount: '10000000' } }));
     await place.handle(event(buyer, { side: 'buy', price: { token: 'USDC', amount: '10000000' }, maxStallFeeBp: 100 }));
     const trade0 = await db.prisma.intentTrade.findFirstOrThrow({ where: { planetId } });
-    expect([trade0.platformFee.toFixed(), trade0.treasuryAllocation.toFixed()]).toEqual(['50000', '10000']);
+    expect([trade0.platformFee.toFixed(), trade0.treasuryAllocation.toFixed()]).toEqual(['65000', '13000']);
     const protocolBefore = await usdc('protocol.terraagent.mock');
     expect(await relay.pollOnce()).toBeGreaterThan(0);
     const protocolAfter = await usdc('protocol.terraagent.mock');
-    expect(protocolAfter - protocolBefore).toBe(40_000n);
-    expect(await usdc(daoAccountIdFor(planetId))).toBe(10_000n);
-    expect(await usdc(acct(buyer))).toBe(9_850_000n);
+    expect(protocolAfter - protocolBefore).toBe(52_000n);
+    expect(await usdc(daoAccountIdFor(planetId))).toBe(13_000n);
+    expect(await usdc(acct(buyer))).toBe(9_835_000n);
   });
 });
