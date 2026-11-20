@@ -30,12 +30,30 @@ export class AiAccessController {
   }
 
   @Get('staking/ai-access')
-  async aiAccess(@Query('colonyId') colonyIdRaw?: string): Promise<AiAccessResponse> {
+  async aiAccess(
+    @Query('colonyId') colonyIdRaw?: string,
+    @Query('planetId') planetIdRaw?: string,
+    @Query('colonyIndex') colonyIndexRaw?: string,
+  ): Promise<AiAccessResponse> {
     if (!this.flags.has('W28')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
-    const colonyId = colonyIdRaw?.trim();
-    if (!colonyId) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'colonyId is required' });
+    const simId = colonyIdRaw?.trim();
+    if (!simId) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'colonyId is required' });
+    const colonyId = await this.rowId(simId, planetIdRaw?.trim(), colonyIndexRaw);
     const byok = await this.hasByokKey(colonyId);
-    return { colonyId, aiBudget: await this.gate.view({ id: colonyId }, { byok }) };
+    return { colonyId: simId, aiBudget: await this.gate.view({ id: colonyId }, { byok }) };
+  }
+
+  /**
+   * The `core.colony` row id. The sim id equals it on real planets; dev scenarios seat a `co_…` row for sim colony
+   * `col_N`, so a missing id falls back to `(planetId, colonyIndex)` when the client names them.
+   */
+  private async rowId(simId: string, planetId: string | undefined, colonyIndexRaw: string | undefined): Promise<string> {
+    const db = this.prisma;
+    const index = Number(colonyIndexRaw);
+    if (!db || !planetId || !Number.isInteger(index) || index < 0 || typeof db.colony?.findFirst !== 'function') return simId;
+    if (await db.colony.findUnique({ where: { id: simId }, select: { id: true } })) return simId;
+    const row = await db.colony.findFirst({ where: { planetId, colonyIndex: index }, select: { id: true } });
+    return row?.id ?? simId;
   }
 
   /** The colony owner saved a `/me.html` NEAR.AI key: their Director runs on it for `$0` protocol cost. */

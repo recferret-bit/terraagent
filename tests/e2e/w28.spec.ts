@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import type { BrowserContext, Page } from '@playwright/test';
-import { devConsole, expect, hostMode, loadScenario, test } from './harness';
+import { devConsole, expect, hostMode, loadScenario, openColonyTab, test } from './harness';
 import { ROOT } from './harness/ports';
 import {
   getJson, noHorizontalScroll, pilotAccount, pilotIdentity, planetIdOf, POOL, postJson, RIVAL, setSlider, walletPerks,
@@ -89,6 +89,19 @@ test('3. verified pilot with 0 NEAR staked: FREE TEE TRIAL (5 / 5) on the Direct
   const pill = page.getByTestId('staking-pill');
   await expect(pill).toBeVisible({ timeout: 20_000 });
   await expect(pill).toHaveAttribute('data-tier', '0');
+
+  // Director card: verified pilot, nothing staked → FREE TEE TRIAL with 5 turns (the scenario colony's sim id `col_0`
+  // differs from its `core.colony` row; the panel sends the planet slot so the server finds it).
+  await openColonyTab(page, 'director');
+  const card = page.getByTestId('director-ai-access');
+  await expect(card).toHaveAttribute('data-state', 'trial', { timeout: 30_000 });
+  await expect(page.getByTestId('director-ai-badge')).toContainText(/FREE TEE TRIAL \(5 \/ 5/);
+
+  // The in-game staking panel asks for the session's wallet (no deed, no colony account): wallet-first status.
+  const status = await getJson<{ accountId: string; colonyId?: string }>(api, '/v1/near/staking', true);
+  expect(status.status).toBe(200);
+  expect(status.body.accountId).toBe(wallet);
+  expect(status.body.colonyId).toBeUndefined();
 
   const guest = await getJson<{ aiBudget: { trialEligible: boolean; freeTrialTurnsRemaining: number } }>(api, '/v1/near/staking/perks?accountId=nobody-guest.near');
   expect(guest.body.aiBudget).toMatchObject({ trialEligible: false, freeTrialTurnsRemaining: 0 });

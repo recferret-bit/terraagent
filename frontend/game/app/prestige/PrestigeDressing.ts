@@ -10,7 +10,7 @@ import { prestigeStore, type PrestigeStore } from './PrestigeStore';
 /**
  * Applies the staking prestige to the colony's entity meshes (W28-12). Cosmetic only: tiers come from
  * `GET /v1/near/staking/prestige` (fetched once per planet) and are passed to `@terra/render` as plain numbers.
- * Colonies are matched by `view.colonies[owner].id`. Off unless `isEnabled()` (W28 on, not `?host=local`).
+ * Colonies are matched by `view.colonies[owner].id`, else by slot index (dev scenario rows differ from sim ids). Off unless `isEnabled()` (W28 on, not `?host=local`).
  */
 export class PrestigeDressing {
   /** Set by the session: W28 flag on and not an in-browser host. Default off, so tests and tools show nothing. */
@@ -24,7 +24,7 @@ export class PrestigeDressing {
     const planetId = view.planet?.id;
     if (!planetId) return out;
     void this.store.ensureLoaded(planetId);
-    for (const c of view.colonies ?? []) out.set(c.index, this.store.tierOfColony(planetId, c.id));
+    for (const c of view.colonies ?? []) out.set(c.index, this.store.tierOfColony(planetId, c.id, c.index));
     return out;
   }
 

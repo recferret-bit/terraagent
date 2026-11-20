@@ -3,7 +3,6 @@ import type { StakerPerksResponse, StakingPrestigeResponse } from '@terra/contra
 import type { IncomingMessage } from 'node:http';
 import { AuthTokenService } from '../../core/auth/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
-import { StakingPort } from '../application/ports/staking.port.js';
 import { resolveOptionalBearerPlayerId } from '../identity/colony-ownership.guard.js';
 import { StakingPerksService } from './perks/staking-perks.service.js';
 
@@ -12,14 +11,14 @@ import { StakingPerksService } from './perks/staking-perks.service.js';
 export class StakingPerksController {
   constructor(
     @Inject(StakingPerksService) private readonly perks: StakingPerksService,
-    @Optional() @Inject(StakingPort) private readonly port?: StakingPort,
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   /**
    * `GET /v1/near/staking/perks?accountId=…|colonyId=…`: the wallet's tier, fee, quotas and AI allowance. Without an
-   * `accountId`, a Bearer session resolves to the pilot's linked wallet (HUD pill). Fees follow the staking clock.
+   * `accountId`, a Bearer session resolves to the pilot's linked wallet (HUD pill). Fees follow the staking clock
+   * (`PerksDeps.clock`).
    */
   @Get('staking/perks')
   getPerks(
@@ -28,7 +27,7 @@ export class StakingPerksController {
     @Req() req?: IncomingMessage,
   ): Promise<StakerPerksResponse> {
     const playerId = accountId?.trim() ? null : (resolveOptionalBearerPlayerId(req, this.tokens, this.env) ?? null);
-    return this.perks.perksFor({ colonyId, accountId, playerId, nowMs: this.port?.clockNowMs?.() });
+    return this.perks.perksFor({ colonyId, accountId, playerId });
   }
 
   /** `GET /v1/near/staking/prestige?planetId=…`: lead patron plus per-colony tier (cosmetic only). */

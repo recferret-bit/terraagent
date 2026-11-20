@@ -149,6 +149,10 @@ export type PlanetPatronView = z.infer<typeof PlanetPatronView>;
 export const StakingPrestigeResponse = z.strictObject({
   planetId: z.string().min(1).max(80),
   leadPatron: PlanetPatronView.nullable(),
-  colonies: z.array(z.strictObject({ colonyId: z.string().min(1), tier: z.number().int().min(0).max(4) })),
+  /**
+   * Per-colony tier. `colonyIndex` (the sim slot) lets the client match colonies whose sim id differs from the
+   * `core.colony` id (dev scenarios seat `co_…` rows for sim colony `col_N`).
+   */
+  colonies: z.array(z.strictObject({ colonyId: z.string().min(1), colonyIndex: z.number().int().min(0).optional(), tier: z.number().int().min(0).max(4) })),
 });
 export type StakingPrestigeResponse = z.infer<typeof StakingPrestigeResponse>;

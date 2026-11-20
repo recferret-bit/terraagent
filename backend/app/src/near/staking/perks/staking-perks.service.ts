@@ -68,15 +68,15 @@ export class StakingPerksService {
       where: { planetId: planet },
       orderBy: { colonyIndex: 'asc' },
       take: MAX_PRESTIGE_COLONIES,
-      select: { id: true },
-    })) as Array<{ id: string }>;
+      select: { id: true, colonyIndex: true },
+    })) as Array<{ id: string; colonyIndex: number }>;
     const tierByWallet = new Map<string, number>();
-    const colonies: Array<{ colonyId: string; tier: number }> = [];
-    for (const { id } of rows) {
+    const colonies: Array<{ colonyId: string; colonyIndex: number; tier: number }> = [];
+    for (const { id, colonyIndex } of rows) {
       const r = await resolveWalletPerks(db, { colonyId: id, env: this.envBag(), w28: true });
       const key = r.wallet.walletKey === 'anonymous' ? id : r.wallet.walletKey;
       if (!tierByWallet.has(key)) tierByWallet.set(key, r.perks.tier);
-      colonies.push({ colonyId: id, tier: tierByWallet.get(key) ?? 0 });
+      colonies.push({ colonyId: id, colonyIndex, tier: tierByWallet.get(key) ?? 0 });
     }
     return StakingPrestigeResponse.parse({ planetId: planet, leadPatron: seat ? patronView(seat) : null, colonies });
   }

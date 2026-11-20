@@ -23,7 +23,11 @@ function mountAiAccessPoll(ctx: FeatureContext, panel: DirectorPanel): () => voi
   if (!ctx.flags.has('W28') || ctx.host === 'local') return () => {};
   let live = true;
   const refresh = (): void => {
-    void fetchAiAccess(panel.getActiveColonyId()).then((b) => { if (live) panel.syncAiAccess(b); });
+    const slot = {
+      planetId: ctx.services.session?.planetId?.() ?? ctx.services.store?.currentPlanetId?.() ?? null,
+      colonyIndex: ownColonyIndex(ctx.services),
+    };
+    void fetchAiAccess(panel.getActiveColonyId(), undefined, slot).then((b) => { if (live) panel.syncAiAccess(b); });
   };
   refresh();
   const timer = setInterval(refresh, AI_ACCESS_POLL_MS);

@@ -46,10 +46,10 @@ describe('TerraAgent Protocol treasury view, fee env overrides & staker perks', 
     expect(protocol.protocolAccountId).toBe('protocol.terraagent.mock');
     expect(protocol.feeSchedule).toMatchObject({
       standardPlatformFeeBp: 100,
-      stakerPlatformFeeBp: 50,
+      stakerPlatformFeeBp: 65, // W28 Tier 1 instant taker fee (W20: 50)
       daoCarveOutShareBp: 2000,
       protocolNetStandardBp: 80,
-      protocolNetStakerBp: 40,
+      protocolNetStakerBp: 52,
       validatorGrossApyBp: 900,
       stakerNetApyBp: 720,
       protocolStakingYieldBp: 180,
@@ -65,6 +65,11 @@ describe('TerraAgent Protocol treasury view, fee env overrides & staker perks', 
     ]);
     expect(protocol.outflows.map((s) => s.id)).toEqual(['relayer_gas', 'managed_near_ai']);
   });
+
+  it('keeps the W20 staker fee (50 bp, 40 bp protocol net) with W28 off (TA_WAVES=..27)', async () => {
+    const ctl = new NearStatusController(undefined, { NEAR_MODE: 'mock', NEAR_NETWORK: 'testnet', TA_WAVES: '..27' } as never);
+    expect((await ctl.protocol()).feeSchedule).toMatchObject({ stakerPlatformFeeBp: 50, protocolNetStakerBp: 40, minStakeForPerksNear: '10' });
+  });
 });
 
 describe('TerraAgent Protocol custom fee/yield env overrides & bounds', () => {
@@ -78,6 +83,8 @@ describe('TerraAgent Protocol custom fee/yield env overrides & bounds', () => {
       NEAR_STAKER_MIN_NEAR: '25',
       NEAR_PROTOCOL_STAKING_YIELD_BP: '1500',
       NEAR_ESCROW_SLASH_PROTOCOL_BP: '1500',
+      // the NEAR_STAKER_* env overrides are the W20 ladder; W28 takes the tier table instead
+      TA_WAVES: '..27',
     };
     const parsed = nearEnvFor(nearAdapters).schema.parse(customEnv);
     expect(parsed).toBeTruthy();
@@ -437,7 +444,7 @@ describe('Custom staking yield split & /v1/trade/policy staker discounts', () =>
     expect(anonPolicy.policy).toMatchObject({
       platformFeeBp: 120,
       standardPlatformFeeBp: 120,
-      stakerPlatformFeeBp: 45,
+      stakerPlatformFeeBp: 65, // W28 Tier 1 (W20 env: 45)
       minStakeNear: '10',
       daoFeeShareBp: 2500,
     });

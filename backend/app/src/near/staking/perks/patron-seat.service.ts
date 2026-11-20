@@ -1,6 +1,7 @@
 import type { DbClient } from '@terra/db';
 import { resolveLeadPatron, type PatronCandidate } from './patron-resolver.js';
 import { readStakeClock, resolveWallet, type WalletRef } from './stake-clock.reader.js';
+import { stakingNowMs } from './perks-deps.js';
 
 export interface PatronSeatRow {
   readonly planetId: string;
@@ -51,7 +52,7 @@ export class PatronSeatService {
   }
 
   /** Re-resolves the seat of `planetId` from the current nominations and stakes, then upserts, moves or clears it. */
-  async refreshPlanet(planetId: string, nowMs: number = Date.now()): Promise<PatronSeatRow | null> {
+  async refreshPlanet(planetId: string, nowMs: number = stakingNowMs()): Promise<PatronSeatRow | null> {
     if (!this.available) return null;
     const noms = (await this.db.stakingPatronNomination.findMany({
       where: { planetId },
@@ -85,7 +86,7 @@ export class PatronSeatService {
    * Planet ids on which the wallet is the Lead Patron right now. Refreshes the planets the wallet nominates and the
    * seats it currently holds first, so a stale seat never outlives an unstake.
    */
-  async leadPlanetIdsFor(wallet: WalletRef, nowMs: number = Date.now()): Promise<string[]> {
+  async leadPlanetIdsFor(wallet: WalletRef, nowMs: number = stakingNowMs()): Promise<string[]> {
     if (!this.available || wallet.accountIds.length === 0) return [];
     const accounts = [...wallet.accountIds];
     const [noms, held] = await Promise.all([

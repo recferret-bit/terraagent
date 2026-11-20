@@ -6,6 +6,7 @@ import { isW28Enabled, resolvePerkLadder } from './perks/legacy-ladder.js';
 import { resolveWalletPerks, type PerksQuery } from './perks/perks.resolver.js';
 import { evaluatePerks, type EvaluatedPerks } from './perks/tier-engine.js';
 import { nearToYocto, PROTOCOL_STAKING_ACCOUNT_ID } from './yocto.js';
+import { stakingNowMs } from './perks/perks-deps.js';
 
 /** The W28 perks object (`EvaluatedStakerPerksV2`) plus the exact stake; V1 fields keep their meaning. */
 export type EvaluatedStakerPerks = EvaluatedPerks;
@@ -41,7 +42,7 @@ export function buildStakerPerksFromYocto(
     unbondingYocto: opts.unbondingYocto ?? 0n,
     stakedSinceMs: opts.stakedSinceMs ?? null,
     lastStakedAtMs: opts.lastStakedAtMs ?? null,
-    nowMs: opts.nowMs ?? Date.now(),
+    nowMs: opts.nowMs ?? stakingNowMs(),
     protocolAccountId: opts.protocolAccountId ?? PROTOCOL_STAKING_ACCOUNT_ID,
     nearUsd: 0,
     dailyProtocolTradeFeeUsd: 0,

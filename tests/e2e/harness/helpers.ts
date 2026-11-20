@@ -13,6 +13,9 @@ export const hostMode = (): 'server' | 'local' => (process.env.E2E_HOST === 'loc
  */
 export const expectedOnWaves = (): number => parseWaves(process.env.E2E_APP_WAVES ?? '').list.length;
 
+/** Whether the booted app runs `wave` (same rule as `expectedOnWaves`: unknown → every wave on). */
+export const appHasWave = (wave: string): boolean => parseWaves(process.env.E2E_APP_WAVES ?? '').has(wave);
+
 const errorsOf = new WeakMap<Page, string[]>();
 
 function track(page: Page): string[] {

@@ -104,7 +104,14 @@ describe('fetchAiAccess', () => {
   it('parses the budget and encodes the colony id', async () => {
     const f = vi.fn().mockResolvedValue(resp(200, { colonyId: 'c 1', aiBudget: budget() }));
     expect((await fetchAiAccess('c 1', f))?.mode).toBe('trial');
-    expect(f.mock.calls[0]![0]).toBe('/v1/near/staking/ai-access?colonyId=c%201');
+    expect(f.mock.calls[0]![0]).toBe('/v1/near/staking/ai-access?colonyId=c+1');
+  });
+  it('adds the planet slot so dev-scenario colonies resolve; drops a negative / missing index (corner)', async () => {
+    const f = vi.fn().mockResolvedValue(resp(200, { colonyId: 'col_0', aiBudget: budget() }));
+    await fetchAiAccess('col_0', f, { planetId: 'pl_1', colonyIndex: 0 });
+    expect(f.mock.calls[0]![0]).toBe('/v1/near/staking/ai-access?colonyId=col_0&planetId=pl_1&colonyIndex=0');
+    await fetchAiAccess('col_0', f, { planetId: null, colonyIndex: -1 });
+    expect(f.mock.calls[1]![0]).toBe('/v1/near/staking/ai-access?colonyId=col_0');
   });
   it('404, 500, malformed and network errors all resolve to null', async () => {
     expect(await fetchAiAccess('c', vi.fn().mockResolvedValue(resp(404, {})))).toBeNull();

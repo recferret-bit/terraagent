@@ -38,6 +38,7 @@ import { StakingPositionSyncService } from './staking-position-sync.service.js';
 import { type FullAccessKeyVerifier } from './staking-signature-guard.js';
 import { buildStakingWalletTxDescriptor, type StakingWalletTxDescriptor, type StakingWalletTxQuery } from './staking-wallet-tx.js';
 import { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear } from './yocto.js';
+import { setPerksDeps } from './perks/perks-deps.js';
 
 export { nearToYocto, stakeOpId, unstakeOpId, withdrawOpId, yoctoToNear };
 export type { FundWalletNearResult, StakingStatusQuery };
@@ -105,6 +106,8 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    const port = this.staking;
+    if (port.clockNowMs) setPerksDeps({ clock: () => port.clockNowMs?.() ?? Date.now() });
     if (this.stops.length > 0 || !this.planets) return;
     this.stops.push(
       this.planets.onWarp((_planetId, k) => {

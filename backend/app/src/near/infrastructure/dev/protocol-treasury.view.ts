@@ -11,6 +11,7 @@ import {
 } from '../network/near-network.config.js';
 import { resolveProtocolFeeSchedule } from '../network/protocol-fee.config.js';
 import { NearRpcClient } from '../rpc/near-rpc.client.js';
+import { isW28Enabled } from '../../staking/perks/legacy-ladder.js';
 
 export type ProtocolRpcReader = Pick<NearRpcClient, 'config' | 'network' | 'view' | 'withFailover'>;
 
@@ -171,7 +172,7 @@ export async function buildProtocolTreasuryView(
   const cfg = resolveNearNetworkConfig(envSource, activeNet);
   const protocolAccountId =
     nearMode === 'mock' ? envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
-  const sched = resolveProtocolFeeSchedule(envSource);
+  const sched = resolveProtocolFeeSchedule(envSource, { w28: isW28Enabled(envSource) });
   const balances: Record<string, string> = {};
   const testnetVerifierLedger: Record<string, string> = {};
 

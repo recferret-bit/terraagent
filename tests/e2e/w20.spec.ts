@@ -1,5 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import {
+  appHasWave,
   devConsole,
   expect,
   expectNoPageErrors,
@@ -21,6 +22,8 @@ test.describe.configure({ mode: 'serial' });
 
 const local = hostMode() === 'local';
 const serverOnly = () => test.skip(local, 'needs the app (server host)');
+/** W28 replaces the W20 colony-claim staking flow (wallet-first, 4 tiers, 25 bp early exit): `tests/e2e/w28.spec.ts`. */
+const w20StakingOnly = () => test.skip(appHasWave('W28'), 'W20 staking flow superseded by W28 wallet-first staking (run with --waves ..20)');
 
 let context: BrowserContext;
 let page: Page;
@@ -124,6 +127,7 @@ test('4. Non-settled deed already exposes Day-1 staking controls and staker perk
 
 test('5. deed.settle turns card to gold Settled variant, fires settler toast, claims account, tests signer Reject, then stakes 10 NEAR', async () => {
   serverOnly();
+  w20StakingOnly();
   const settleOut = await devConsole(page, 'deed.settle', 15_000);
   expect(settleOut).toContain('settled');
 
@@ -184,6 +188,7 @@ test('5. deed.settle turns card to gold Settled variant, fires settler toast, cl
 
 test('6. Unstake -> Unbonding (4 epochs) -> warp 100 -> Withdraw returns balance to wallet; resilience & dev explorer tabs', async () => {
   serverOnly();
+  w20StakingOnly();
   await closeDevConsole(page);
   await page.locator('[data-testid="staking-unstake-btn"]').click();
   await expect(page.locator('[data-testid="staking-status-msg"]')).toContainText(

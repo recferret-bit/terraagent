@@ -12,8 +12,8 @@ import { FlagsService } from '../flags/flags.service.js';
 import type { PrismaClient } from '@terra/db';
 import { PRISMA } from '../db/db.module.js';
 import { W12SeedService } from '../progression/w12-seed.service.js';
-import { devPlayerId } from '../ws/session-verifier.js';
 import { resolveMePlayer, type ResolvedMePlayer } from './me-auth.js';
+import { aliasDevPlayer } from './me-dev-alias.js';
 import { MeProfileService } from './me-profile.service.js';
 
 @Controller('me')
@@ -78,20 +78,8 @@ export class MeProfileController {
     return this.service.updateAiSettings(player, parsed.data);
   }
 
-  /**
-   * W28 (dev only): `/me.html?as=<name>` resolves to `pr_dev_<name>`, while the game and staking sessions resolve
-   * `dev:<name>` to `devPlayerId(name)`. When only the latter player exists (a dev pilot who played a scenario), the
-   * profile follows it, so the wallet that pilot linked shows on `/me.html#staking`. Fixture ids (`pr_dev_w12`, any
-   * `pr_dev_*` with its own row) are unchanged.
-   */
   private async mePlayer(req: IncomingMessage): Promise<ResolvedMePlayer> {
-    const player = resolveMePlayer(req, this.tokens, this.flags, this.env?.NODE_ENV === 'production');
-    if (this.env?.NODE_ENV === 'production' || !player.id.startsWith('pr_dev_') || !this.prisma?.player) return player;
-    const alias = devPlayerId(player.id.slice('pr_dev_'.length));
-    const [own, played] = await Promise.all([
-      this.prisma.player.findUnique({ where: { id: player.id }, select: { id: true } }),
-      this.prisma.player.findUnique({ where: { id: alias }, select: { id: true } }),
-    ]).catch(() => [null, null] as const);
-    return !own && played ? { ...player, id: alias } : player;
+    const prod = this.env?.NODE_ENV === 'production';
+    return aliasDevPlayer(resolveMePlayer(req, this.tokens, this.flags, prod), this.prisma, prod);
   }
 }

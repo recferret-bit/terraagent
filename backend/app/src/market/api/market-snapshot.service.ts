@@ -17,6 +17,7 @@ import { MarketBookPush } from './market-book-push.service.js';
 import type { MarketCaller } from './market-caller.js';
 import { resolveProtocolFeeSchedule } from '../../near/infrastructure/network/protocol-fee.config.js';
 import { resolveDbStakerPerks } from '../../near/staking/staker-perks.js';
+import { isW28Enabled } from '../../near/staking/perks/legacy-ladder.js';
 
 export const RECENT_TRADES = 50;
 
@@ -91,10 +92,9 @@ export class MarketSnapshotService {
 
   policyView(): MarketPolicyView {
     const c = this.policy.current();
-    const sched = resolveProtocolFeeSchedule(
-      (this.env ?? process.env) as Record<string, string | undefined>,
-      { basePlatformFeeBp: c.platformFeeBp },
-    );
+    const envBag = (this.env ?? process.env) as Record<string, string | undefined>;
+    // W28: the staker fee shown is the Tier 1 (instant) taker fee and its 10 NEAR threshold, not the W20 env value.
+    const sched = resolveProtocolFeeSchedule(envBag, { basePlatformFeeBp: c.platformFeeBp, w28: isW28Enabled(envBag) });
     const minNotional: Partial<Record<QuoteToken, string>> = {};
     for (const p of c.pairs) minNotional[p.quote] ??= p.minNotionalAtomic;
     return {

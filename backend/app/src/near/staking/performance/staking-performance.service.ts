@@ -16,7 +16,7 @@ import { FlagsService } from '../../../flags/flags.service.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../../infrastructure/network/near-network.config.js';
 import { resolveWalletPerks } from '../perks/perks.resolver.js';
-import { setPerksDeps } from '../perks/perks-deps.js';
+import { setPerksDeps, stakingNowMs } from '../perks/perks-deps.js';
 import { buildAiBudgetView } from '../perks/tier-engine.js';
 import { buildApyView, VALIDATOR_APY_READER, type ValidatorApyReader } from './apy.js';
 import { readEcosystemTvl } from './ecosystem.reader.js';
@@ -56,7 +56,7 @@ export class StakingPerformanceService {
     const network = this.network();
     const [price, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(this.prisma)]);
     return StakingOverviewResponse.parse({
-      asOfMs: Date.now(),
+      asOfMs: stakingNowMs(),
       network,
       price,
       apy,
@@ -77,7 +77,7 @@ export class StakingPerformanceService {
    * Readable without a session, like a block explorer: it only aggregates on-chain stake rows and public market fills
    * of the wallet, and returns no player id, settings or keys.
    */
-  async performance(rawAccountId: unknown, rawWindow: unknown, nowMs = Date.now()): Promise<StakingPerformanceResponse> {
+  async performance(rawAccountId: unknown, rawWindow: unknown, nowMs = stakingNowMs()): Promise<StakingPerformanceResponse> {
     this.assertWaveEnabled();
     const accountId = typeof rawAccountId === 'string' ? rawAccountId.trim() : '';
     if (accountId.length < 2 || accountId.length > 64) {

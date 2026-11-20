@@ -27,6 +27,8 @@ const unauthed = (overview: () => Res): ((url: string) => Promise<Res>) => async
   url.includes('/v1/near/staking/overview') ? overview() : { ok: false, status: 401, json: async () => ({}) };
 
 const notFound = (): Res => ({ ok: false, status: 404, json: async () => ({}) });
+/** API unreachable (dev server without a backend: the proxy answers 502): the preview falls back to local data. */
+const serverDown = (): Res => ({ ok: false, status: 502, json: async () => ({}) });
 const q = (root: HTMLElement, id: string): HTMLElement | null => root.querySelector(`[data-testid="${id}"]`);
 
 async function mountSignedOut(hash: string, overview: () => Res, search = ''): Promise<HTMLElement> {
@@ -38,8 +40,14 @@ async function mountSignedOut(hash: string, overview: () => Res, search = ''): P
 }
 
 describe('W28-09 /me.html#staking public preview', () => {
-  it('signed out + #staking?amount=50: full preview, no auth wall, CTA and ecosystem render (fallback path)', async () => {
+  it('server reports W28 off (overview 404): tab and staking plate are hidden (server-side wave fencing)', async () => {
     const root = await mountSignedOut('#staking?amount=50', notFound);
+    expect(q(root, 'me-tab-staking')?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>('#staking')?.hidden).toBe(true);
+  });
+
+  it('signed out + #staking?amount=50: full preview, no auth wall, CTA and ecosystem render (fallback path)', async () => {
+    const root = await mountSignedOut('#staking?amount=50', serverDown);
     expect(q(root, 'me-auth-prompt')).toBeNull();
     expect(q(root, 'me-tab-staking')?.textContent).toBe('STAKING');
     for (const id of ['staking-preview', 'staking-tier-matrix', 'staking-projection', 'staking-ecosystem', 'staking-connect-cta', 'staking-apy-badge']) {
@@ -77,7 +85,7 @@ describe('W28-09 /me.html#staking public preview', () => {
   });
 
   it('typing an amount updates the CTA text, projections and highlighted tier live', async () => {
-    const root = await mountSignedOut('#staking?amount=50', notFound);
+    const root = await mountSignedOut('#staking?amount=50', serverDown);
     const input = q(root, 'staking-amount-input') as HTMLInputElement;
     const yearly = q(root, 'staking-projection-yearly')?.textContent;
     input.value = '500';

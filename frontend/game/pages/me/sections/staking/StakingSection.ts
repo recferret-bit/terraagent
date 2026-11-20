@@ -24,6 +24,8 @@ export interface StakingSectionOptions {
   readonly accountId?: string | null;
   /** Starts the existing NEAR wallet sign-in flow. */
   readonly onConnect: () => void;
+  /** The server reports W28 off (overview 404): the page hides the tab and plate. */
+  readonly onOff?: () => void;
 }
 
 export interface StakingSectionHandle {
@@ -82,6 +84,7 @@ class StakingPreview {
       this.ov = res.overview;
       this.live = res.live;
       this.renderAll();
+      if (res.off) this.opts.onOff?.();
     });
   }
 

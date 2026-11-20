@@ -43,8 +43,12 @@ export class PrestigeStore {
   }
 
   /** Tier of one colony on a planet; 0 when unknown. */
-  tierOfColony(planetId: string, colonyId: string): number {
-    return this.get(planetId)?.colonies.find((c) => c.colonyId === colonyId)?.tier ?? 0;
+  /** Tier of a colony by id, else by sim slot (`colonyIndex`) when the server's row id differs from the sim id. */
+  tierOfColony(planetId: string, colonyId: string, colonyIndex?: number): number {
+    const list = this.get(planetId)?.colonies ?? [];
+    const byId = list.find((c) => c.colonyId === colonyId);
+    if (byId) return byId.tier;
+    return colonyIndex === undefined ? 0 : (list.find((c) => c.colonyIndex === colonyIndex)?.tier ?? 0);
   }
 
   visualsOfColony(planetId: string, colonyId: string): PrestigeVisuals {

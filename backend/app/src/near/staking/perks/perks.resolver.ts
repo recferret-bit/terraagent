@@ -42,10 +42,10 @@ const NO_WALLET: WalletRef = { walletKey: 'anonymous', accountIds: [], colonyIds
  * and evaluates the one perks object. Without a database it evaluates an empty stake.
  */
 export async function resolveWalletPerks(db: DbClient | null | undefined, q: PerksQuery): Promise<ResolvedPerks> {
-  const nowMs = q.nowMs ?? Date.now();
+  const deps = resolvePerksDeps(q.deps);
+  const nowMs = q.nowMs ?? deps.clock();
   const w28 = isW28Enabled(q.env, q.w28);
   const ladder = resolvePerkLadder({ w28, env: q.env, standardPlatformFeeBp: q.standardPlatformFeeBp, grossApyBp: q.grossApyBp });
-  const deps = resolvePerksDeps(q.deps);
   const wallet = db ? await resolveWallet(db, q) : NO_WALLET;
   const clock = db ? await readStakeClock(db, wallet) : EMPTY_STAKE_CLOCK;
   const nearUsd = q.full ? await deps.priceProvider.nearUsd() : 0;

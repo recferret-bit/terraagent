@@ -4,7 +4,7 @@ import { databaseEnabled } from '../../core/persistence.js';
 import type { AppEnv } from '../../core/tokens.js';
 import { aiSlotLedger, type AiSlotLedger } from '../../near/staking/perks/ai-slot.ledger.js';
 import { resolveWalletPerks } from '../../near/staking/perks/perks.resolver.js';
-import type { PerksDeps } from '../../near/staking/perks/perks-deps.js';
+import { stakingNowMs, type PerksDeps } from '../../near/staking/perks/perks-deps.js';
 import { buildAiBudgetView } from '../../near/staking/perks/tier-engine.js';
 import { consumeTrialTurn, isVerifiedPilot } from './trial-ledger.js';
 import { chargeWalletCall } from './wallet-ai-usage.js';
@@ -46,7 +46,7 @@ export class ManagedAiGate {
   }
 
   /** Decides and charges one managed turn for `col`. */
-  async admit(col: GateColony, nowMs: number = Date.now()): Promise<ManagedAiAccess> {
+  async admit(col: GateColony, nowMs: number = stakingNowMs()): Promise<ManagedAiAccess> {
     const db = this.prisma;
     if (!db || !databaseEnabled(this.env)) return script('no_database');
     const r = await resolveWalletPerks(db, { colonyId: col.id, env: this.envBag(), w28: true, full: true, nowMs, deps: this.deps });
@@ -69,7 +69,7 @@ export class ManagedAiGate {
    * colony's own mode (`byok` when the player has a key, `script` when the colony sits outside the slot set).
    */
   async view(col: GateColony, opts: { byok?: boolean; nowMs?: number } = {}): Promise<AiBudgetView> {
-    const nowMs = opts.nowMs ?? Date.now();
+    const nowMs = opts.nowMs ?? stakingNowMs();
     const r = await resolveWalletPerks(this.prisma, { colonyId: col.id, env: this.envBag(), w28: true, full: true, nowMs, deps: this.deps });
     const base = { ...buildAiBudgetView(r.perks, r.usage, r.nearUsd), colonySlotsUsed: this.slots.used(r.wallet.walletKey, nowMs) };
     if (opts.byok) return { ...base, mode: 'byok', model: 'byok' };

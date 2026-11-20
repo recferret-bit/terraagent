@@ -315,8 +315,15 @@
   .stake-pill-label { display: none; }
 }
 
-/* keep the header on one row on mid-width desktops: compact pill, nav scrolls instead of wrapping */
+/* desktop: one header row with every nav item visible — compact pill, tighter nav and header gaps */
 @media (min-width: 1181px) {
-  .site-header .nav { flex-basis: 0; }
+  .site-header .container { gap: 12px; }
+  .site-header .nav { flex-basis: 0; gap: 10px; font-size: 10.5px; }
+  .stake-pill { padding: 5px 9px; gap: 5px; font-size: 10px; min-height: 32px; }
   .stake-pill-label { display: none; }
+  .header-right { gap: 8px; }
+  .header-right .btn-play-header { min-width: 104px; padding-inline: 16px; }
+}
+@media (min-width: 1181px) and (max-width: 1360px) {
+  .site-header .nav { gap: 8px; font-size: 10px; }
 }

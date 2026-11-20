@@ -22,6 +22,15 @@ describe('W28-12 PrestigeStore (unit)', () => {
     expect(store.leadPatron('p1')?.carrierName).toBe('ISS bob.near');
   });
 
+  it('matches a dev-scenario colony by slot index when the server row id differs from the sim id (W28 iteration 1)', async () => {
+    const store = new PrestigeStore(async (planetId) => ({ planetId, leadPatron: null, colonies: [{ colonyId: 'co_ROW0', colonyIndex: 0, tier: 3 }, { colonyId: 'col_1', colonyIndex: 1, tier: 1 }] }));
+    await store.ensureLoaded('p2');
+    expect(store.tierOfColony('p2', 'col_0', 0)).toBe(3); // id miss → index hit
+    expect(store.tierOfColony('p2', 'col_1', 7)).toBe(1); // id hit wins over a wrong index
+    expect(store.tierOfColony('p2', 'col_9', 9)).toBe(0); // neither matches
+    expect(store.tierOfColony('p2', 'col_0')).toBe(0); // no index given: no fallback
+  });
+
   it('unknown colony, unknown planet and a none answer all read as tier 0 / no patron', async () => {
     const store = new PrestigeStore(async () => null);
     await store.ensureLoaded('p9');

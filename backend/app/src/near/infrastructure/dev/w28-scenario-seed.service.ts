@@ -9,6 +9,7 @@ import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
 import { StakingPort } from '../../application/ports/staking.port.js';
 import { creditVerifier } from '../adapters/mock/intents-ledger.js';
+import { nearAdapterFor } from '../adapter-selection.js';
 import { PatronNominateService } from '../../staking/services/patron-nominate.service.js';
 import { StakingService } from '../../staking/staking.service.js';
 
@@ -30,7 +31,8 @@ export function w28PilotAccountId(playerId: string): string {
  * - `dev.scenario.created`: a rival wallet stakes 500 NEAR and nominates the planet (King-of-the-Hill incumbent).
  * - `dev.scenario.seated`: the seated player gets a linked NEAR wallet (`social_identity`, so `/me.html` shows the
  *   wealth dashboard and the pilot counts as verified for the 5-turn trial), 1000 mock NEAR and 50 USDC profits.
- * Every run resets the two wallets' staking rows, so the demo is repeatable. No-op with `W28` off or without a DB.
+ * Every run resets the two wallets' staking rows, so the demo is repeatable. No-op with `W28` off, without a DB, or
+ * when the Staking / Intents ports are not mock (never signs on a real network).
  */
 @Injectable()
 export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
@@ -124,8 +126,11 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
     return first.poolId;
   }
 
+  /** Only on mock chains: the seed stakes and credits through the ports, which on testnet would sign real txs. */
   private db(): PrismaClient | null {
     if (!this.flags.has('W28') || !this.prisma) return null;
+    const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    if (nearAdapterFor('Staking', envMap) !== 'mock' || nearAdapterFor('Intents', envMap) !== 'mock') return null;
     return this.env === undefined || databaseEnabled(this.env) ? this.prisma : null;
   }
 

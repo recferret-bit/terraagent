@@ -16,6 +16,11 @@ export interface PerksDeps {
   readonly priceProvider: NearUsdPriceProvider;
   readonly tradeFeeProvider: TradeFeeUsdProvider;
   readonly usageReader: AiUsageReader;
+  /**
+   * The staking clock (ms). Wall time by default; `StakingService` swaps in the staking port clock so a mock `time.warp`
+   * moves the 24h fee warmup and the 7-day exit window for every caller (market fees, AI gate, HUD) at once.
+   */
+  readonly clock: () => number;
 }
 
 /** Defaults: the `Est.` price from the tier table, no trade bonus, and the DB usage reads. */
@@ -23,6 +28,7 @@ export const DEFAULT_PERKS_DEPS: PerksDeps = Object.freeze({
   priceProvider: { nearUsd: () => STAKING_RULES.estNearUsd },
   tradeFeeProvider: { dailyProtocolTradeFeeUsd: () => 0 },
   usageReader: dbAiUsageReader,
+  clock: () => Date.now(),
 });
 
 let current: PerksDeps = DEFAULT_PERKS_DEPS;
@@ -35,6 +41,9 @@ export function setPerksDeps(partial: Partial<PerksDeps>): void {
 export function resetPerksDeps(): void {
   current = DEFAULT_PERKS_DEPS;
 }
+
+/** The staking clock now (see `PerksDeps.clock`). */
+export const stakingNowMs = (): number => current.clock();
 
 export function resolvePerksDeps(override?: Partial<PerksDeps>): PerksDeps {
   return override ? { ...current, ...override } : current;

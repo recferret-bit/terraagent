@@ -18,8 +18,9 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { NearException } from '../domain/errors.js';
-import { assertColonyOwnership } from '../identity/colony-ownership.guard.js';
+import { assertColonyOwnership, resolveOptionalBearerPlayerId } from '../identity/colony-ownership.guard.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
+import { playerLinkedWallet } from './perks/stake-clock.reader.js';
 import { PatronNominateRequest, type PatronNominationResult } from './services/patron-nominate.service.js';
 import { WalletControlGuard } from './services/wallet-control.guard.js';
 import { StakingService } from './staking.service.js';
@@ -56,12 +57,19 @@ export class StakingController {
     this.walletGuard = new WalletControlGuard(tokens, env, prisma);
   }
 
+  /** `GET /v1/near/staking`: by colony, by wallet, or (W28, neither given) the Bearer pilot's linked wallet. */
   @Get('staking')
-  getStatus(
+  async getStatus(
     @Query('colonyId') colonyId?: string,
     @Query('accountId') accountId?: string,
+    @Req() req?: IncomingMessage,
   ): Promise<StakingStatusResponse> {
     this.assertWaveEnabled();
+    if (!colonyId?.trim() && !accountId?.trim() && this.flags.has('W28') && this.prisma) {
+      const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
+      const linked = playerId ? await playerLinkedWallet(this.prisma, playerId) : null;
+      if (linked) return this.stakingService.getStatus({ accountId: linked.accountId });
+    }
     return this.stakingService.getStatus({ colonyId, accountId });
   }
 
