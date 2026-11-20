@@ -1,43 +1,20 @@
 #!/usr/bin/env node
 /**
- * Deploys and initializes all 6 TerraAgent NEAR contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`)
+ * Deploys and initializes the 6 TerraAgent NEAR contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`)
+ * plus the `verifier` intents-verifier contract (`verifier.<root>`, `strict_balances` on; `NEAR_VERIFIER_WASM` overrides the wasm)
  * and ensures core protocol accounts (`relayer`, `minter`, `protocol`) on NEAR Testnet or Mainnet.
  * Reads keys from `~/.near-credentials/<network>` (never logs private keys).
  *
  * Usage:
- *   node scripts/dev/deploy-testnet-contracts.mjs [--network testnet|mainnet] [--only pilots,staking] [--ensure-accounts] [--redeploy] [--dry-run]
+ *   node scripts/dev/deploy-testnet-contracts.mjs [--network testnet|mainnet] [--only pilots,staking,verifier] [--ensure-accounts] [--redeploy] [--dry-run]
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { loadWasm, wasmCodeHashBase58 } from './wasm-artifacts.mjs';
+import { verifierSpec } from './verifier-deploy-spec.mjs';
 import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, PublicKey, nearToYocto, teraToGas } from 'near-api-js';
-
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-function wasmCodeHashBase58(wasmBytes) {
-  const digest = createHash('sha256').update(wasmBytes).digest();
-  const digits = [0];
-  for (const byte of digest) {
-    let carry = byte;
-    for (let j = 0; j < digits.length; j += 1) {
-      carry += digits[j] << 8;
-      digits[j] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
-  }
-  let out = '';
-  for (const byte of digest) {
-    if (byte === 0) out += '1';
-    else break;
-  }
-  for (let i = digits.length - 1; i >= 0; i -= 1) out += BASE58_ALPHABET[digits[i]];
-  return out;
-}
 
 function parseCliArgs(argv) {
   let network = (process.env.NEAR_NETWORK || process.env.NEAR_MODE || 'testnet').trim().toLowerCase();
@@ -151,6 +128,7 @@ function buildNetworkTarget(network) {
       probeArgs: {},
       initArgs: { owner_id: rootAccount, operator_id: relayerAccount },
     },
+    verifierSpec({ rootAccount, minterAccount, wasmDir }),
   ];
   return { network, rootAccount, relayerAccount, minterAccount, protocolAccount, rpcUrl, credsDir, coreAccounts, specs };
 }
@@ -281,7 +259,12 @@ async function registerMainnetIntentsKeys(provider, credsDir, accountId, extraPu
 async function buildDryRunReport(target, selectedSpecs) {
   const contracts = [];
   for (const spec of selectedSpecs) {
-    const wasm = await fs.readFile(path.resolve(spec.wasmPath));
+    const wasm = await loadWasm(spec).catch((err) => {
+      // A dry-run is a plan: a missing/unpinned wasm is reported, a live deploy still fails hard in deployOne.
+      contracts.push({ key: spec.key, accountId: spec.accountId, initialNear: spec.initialNear, wasmPath: spec.wasmPath, wasmError: err.message, initArgs: spec.initArgs });
+      return null;
+    });
+    if (!wasm) continue;
     contracts.push({
       key: spec.key,
       accountId: spec.accountId,
@@ -350,7 +333,7 @@ async function awaitFinalAccountView(provider, accountId, expectedCodeHash) {
 
 async function deployOne(provider, parent, target, spec, redeploy) {
   const { credsDir, rootAccount, protocolAccount } = target;
-  const wasm = await fs.readFile(path.resolve(spec.wasmPath));
+  const wasm = await loadWasm(spec);
   const expectedCodeHash = wasmCodeHashBase58(wasm);
   const cred = await ensureSubCredential(credsDir, spec.accountId);
   const txs = {};
@@ -399,6 +382,9 @@ async function deployOne(provider, parent, target, spec, redeploy) {
   }
   if (spec.key === 'staking') {
     await configureStakingPostDeploy(parent, spec, rootAccount, protocolAccount, txs);
+  }
+  if (!(await isContractInitialized(provider, spec.accountId, spec.probeMethod, spec.probeArgs))) {
+    throw new Error(`verify(${spec.accountId}): ${spec.probeMethod} probe still fails after deploy/init`);
   }
   const finalView = await awaitFinalAccountView(
     provider,

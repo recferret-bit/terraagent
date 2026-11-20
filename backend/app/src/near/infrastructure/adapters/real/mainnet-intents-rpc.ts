@@ -8,6 +8,7 @@ import {
   tokenKeyOfVerifierId,
   type ResourceKey,
 } from '@terra/contracts';
+import { Logger } from '@nestjs/common';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
 import type {
@@ -24,7 +25,9 @@ import {
 import { encodeBase58 } from '../../../keystore/base58.js';
 import type { NearNetworkConfig } from '../../network/near-network.config.js';
 import type { NearRpcClient } from '../../rpc/near-rpc.client.js';
+import { classifyIntentsRpcFailure } from './intents-rpc-error.js';
 
+const log = new Logger('MainnetIntentsRpc');
 let cachedSalt: { bytes: Buffer; fetchedAt: number } | null = null;
 const SALT_TTL_MS = 30_000;
 
@@ -78,8 +81,9 @@ export async function buildMainnetSaltNonce(rpc: NearRpcClient, seedNonce?: stri
       if (saltBytes?.length === 4) {
         cachedSalt = { bytes: saltBytes, fetchedAt: Date.now() };
       }
-    } catch {
-      /* fall back to seedNonce or random prefix if offline in static unit tests */
+    } catch (err) {
+      // Offline static unit tests fall back to the seed / random prefix; a live node outage must at least be visible.
+      log.warn(classifyIntentsRpcFailure(err, { operation: 'current_salt' }).message);
     }
   }
 
@@ -148,7 +152,9 @@ export async function ensureMainnetIntentsKeyRegistered(
       account_id: accountId,
       public_key: publicKey,
     })
-    .catch(() => false);
+    .catch((err: unknown) => {
+      throw classifyIntentsRpcFailure(err, { operation: 'has_public_key', accountId, publicKey });
+    });
   if (hasKey) return;
 
   await rpc.call({
