@@ -8,9 +8,23 @@ export type StakingWalletTxAction =
   | 'stake_payable'
   | 'deposit_near'
   | 'claim_native_near'
-  | 'stake_lst';
+  | 'stake_lst'
+  | 'withdraw_lst'
+  | 'compound_yield';
 
 export type StakingWalletMethodName = StakingWalletTxAction | 'ft_transfer_call';
+
+const WALLET_TX_ACTIONS: ReadonlySet<string> = new Set<StakingWalletTxAction>([
+  'stake_payable',
+  'deposit_near',
+  'claim_native_near',
+  'stake_lst',
+  'withdraw_lst',
+  'compound_yield',
+]);
+
+/** Sim validator APY the contract accepts from a non-operator caller (`<= 1000 bp`). */
+const WALLET_TX_APY_BP = 900;
 
 export interface StakingWalletTxDescriptor {
   readonly contractId: string;
@@ -46,6 +60,71 @@ export function resolveStakingContractId(env?: Record<string, string | undefined
   return resolveNearNetworkConfig(source, kind === 'mainnet' ? 'mainnet' : 'testnet').contracts.staking;
 }
 
+function resolveLstContract(raw: string | undefined, kind: string): string {
+  const defaultLst = kind === 'testnet' ? 'meta-v2.pool.testnet' : 'meta-pool.near';
+  const lstContract = (raw ?? defaultLst).trim().toLowerCase();
+  if (!WHITELISTED_LST_CONTRACTS.has(lstContract)) {
+    throw new CoreException('INVALID_REQUEST', {
+      status: 400,
+      message: `Unsupported or unwhitelisted LST contract: ${lstContract}`,
+    });
+  }
+  return lstContract;
+}
+
+function requirePool(poolId: string | undefined, action: string): string {
+  const pool = (poolId ?? '').trim();
+  if (!pool) {
+    throw new CoreException('INVALID_REQUEST', { status: 400, message: `poolId is required for ${action}` });
+  }
+  return pool;
+}
+
+/** `compound_yield(pool_id, account_id?, apy_bp, now_ms)`: owner-signed, `0` deposit, rolls 80 % yield into principal. */
+function buildCompoundTx(
+  query: StakingWalletTxQuery,
+  contractId: string,
+  accountId: string | undefined,
+  kind: string,
+): StakingWalletTxDescriptor {
+  const defaultPool = kind === 'testnet' ? 'astro-stakers.pool.testnet' : 'astro-stakers.poolv1.near';
+  return {
+    contractId,
+    methodName: 'compound_yield',
+    args: {
+      pool_id: requirePool(query.poolId ?? defaultPool, 'compound_yield'),
+      apy_bp: WALLET_TX_APY_BP,
+      now_ms: Date.now(),
+      ...(accountId ? { account_id: accountId } : {}),
+    },
+    attachedDepositYocto: '0',
+    gasTgas: 60,
+  };
+}
+
+/** `withdraw_lst(pool_id, lst_contract, amount, account_id?)`: owner-signed 1-step LST payout, `0` deposit. */
+function buildWithdrawLstTx(
+  query: StakingWalletTxQuery,
+  contractId: string,
+  accountId: string | undefined,
+  amountYocto: string,
+  kind: string,
+): StakingWalletTxDescriptor {
+  const lstContract = resolveLstContract(query.lstContract, kind);
+  return {
+    contractId,
+    methodName: 'withdraw_lst',
+    args: {
+      pool_id: (query.poolId ?? lstContract).trim() || lstContract,
+      lst_contract: lstContract,
+      amount: amountYocto,
+      ...(accountId ? { account_id: accountId } : {}),
+    },
+    attachedDepositYocto: '0',
+    gasTgas: 80,
+  };
+}
+
 export function buildStakingWalletTxDescriptor(
   query: StakingWalletTxQuery,
   env?: Record<string, string | undefined>,
@@ -53,12 +132,7 @@ export function buildStakingWalletTxDescriptor(
   const source = env ?? process.env;
   const kind = nearAdapterFor('Staking', source);
   const rawAction = (query.action ?? 'stake_payable').trim();
-  if (
-    rawAction !== 'stake_payable' &&
-    rawAction !== 'deposit_near' &&
-    rawAction !== 'claim_native_near' &&
-    rawAction !== 'stake_lst'
-  ) {
+  if (!WALLET_TX_ACTIONS.has(rawAction)) {
     throw new CoreException('INVALID_REQUEST', {
       status: 400,
       message: `Unsupported staking wallet tx action: ${rawAction}`,
@@ -68,6 +142,8 @@ export function buildStakingWalletTxDescriptor(
   const amountYocto = nearToYocto(amountNear);
   const contractId = resolveStakingContractId(source);
   const accountId = query.accountId?.trim() || undefined;
+  if (rawAction === 'compound_yield') return buildCompoundTx(query, contractId, accountId, kind);
+  if (rawAction === 'withdraw_lst') return buildWithdrawLstTx(query, contractId, accountId, amountYocto, kind);
   if (rawAction === 'claim_native_near') {
     return {
       contractId,
@@ -87,14 +163,7 @@ export function buildStakingWalletTxDescriptor(
     };
   }
   if (rawAction === 'stake_lst') {
-    const defaultLst = kind === 'testnet' ? 'meta-v2.pool.testnet' : 'meta-pool.near';
-    const lstContract = (query.lstContract ?? defaultLst).trim().toLowerCase();
-    if (!WHITELISTED_LST_CONTRACTS.has(lstContract)) {
-      throw new CoreException('INVALID_REQUEST', {
-        status: 400,
-        message: `Unsupported or unwhitelisted LST contract: ${lstContract}`,
-      });
-    }
+    const lstContract = resolveLstContract(query.lstContract, kind);
     const poolId = (query.poolId ?? lstContract).trim() || lstContract;
     return {
       contractId: lstContract,
@@ -119,7 +188,7 @@ export function buildStakingWalletTxDescriptor(
     args: {
       op_id: `wallet-stake-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`,
       pool_id: poolId,
-      apy_bp: 900,
+      apy_bp: WALLET_TX_APY_BP,
       now_ms: Date.now(),
       ...(accountId ? { account_id: accountId } : {}),
     },

@@ -1,8 +1,7 @@
 import type { StakerPerksInfo, StakingPoolInfo, StakingPositionDto } from '@terra/contracts';
-import { createRealSignerWalletSelector, type RealNearNetwork } from './realNearWalletDriver';
+import { stakingCopyFor } from './stakingCopy';
 
-export const REAL_NEAR_COPY =
-  'Real NEAR from your wallet — not game currency, no in-game bonus';
+export { REAL_NEAR_COPY } from './stakingCopy';
 
 export function formatStakerPerksBanner(stakedNear: number, perks?: StakerPerksInfo | null): string {
   const minNear = Number(perks?.minStakeNear || '10') || 10;
@@ -95,7 +94,7 @@ export function buildStakingClaimRow(onClaimClick: () => void) {
   return { row, accountStatusEl, claimBtnEl };
 }
 
-export function buildStakingFormRow(onStakeClick: () => void) {
+export function buildStakingFormRow(onStakeClick: () => void, showAsset = false) {
   const formRow = document.createElement('div');
   formRow.className = 'ta-staking-panel__form-row';
 
@@ -109,6 +108,23 @@ export function buildStakingFormRow(onStakeClick: () => void) {
   poolSelect.dataset.testid = 'staking-pool-select';
   poolField.appendChild(poolLabel);
   poolField.appendChild(poolSelect);
+
+  const assetField = document.createElement('label');
+  assetField.className = 'ta-staking-panel__field';
+  assetField.hidden = !showAsset;
+  const assetLabel = document.createElement('span');
+  assetLabel.className = 'ta-staking-panel__pos-label';
+  assetLabel.textContent = 'Asset';
+  const assetSelect = document.createElement('select');
+  assetSelect.className = 'ta-staking-panel__select';
+  assetSelect.dataset.testid = 'staking-asset-select';
+  for (const [value, text] of [['near', 'NEAR (native)'], ['stNEAR', 'stNEAR (Meta Pool)'], ['LiNEAR', 'LiNEAR']] as const) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = text;
+    assetSelect.appendChild(opt);
+  }
+  assetField.append(assetLabel, assetSelect);
 
   const amountField = document.createElement('label');
   amountField.className = 'ta-staking-panel__field';
@@ -132,9 +148,10 @@ export function buildStakingFormRow(onStakeClick: () => void) {
   stakeBtn.onclick = onStakeClick;
 
   formRow.appendChild(poolField);
+  formRow.appendChild(assetField);
   formRow.appendChild(amountField);
   formRow.appendChild(stakeBtn);
-  return { formRow, poolSelect, amountInput, stakeBtn };
+  return { formRow, poolSelect, assetSelect, amountInput, stakeBtn };
 }
 
 export function buildStakingPositionGrid() {
@@ -170,6 +187,7 @@ export function buildStakingActionsRow(opts: {
   onUnstake: () => void;
   onWithdraw: () => void;
   onWalletDeposit?: () => void;
+  onCompound?: () => void;
 }) {
   const row = document.createElement('div');
   row.className = 'ta-staking-panel__actions-row';
@@ -201,8 +219,23 @@ export function buildStakingActionsRow(opts: {
   depositWalletBtn.hidden = true;
   if (opts.onWalletDeposit) depositWalletBtn.onclick = opts.onWalletDeposit;
 
+  const compoundBtn = document.createElement('button');
+  compoundBtn.type = 'button';
+  compoundBtn.className = 'btn btn-sm';
+  compoundBtn.dataset.testid = 'staking-compound-btn';
+  compoundBtn.textContent = '[↻ Compound Yield]';
+  compoundBtn.title = 'Roll accrued yield into principal. 0 % fee, keeps your 7-day maturity clock.';
+  compoundBtn.hidden = true;
+  if (opts.onCompound) compoundBtn.onclick = opts.onCompound;
+
+  const earlyExitEl = document.createElement('div');
+  earlyExitEl.className = 'ta-staking-panel__early-exit';
+  earlyExitEl.dataset.testid = 'staking-early-exit-notice';
+  earlyExitEl.hidden = true;
+
   btnGroup.appendChild(unstakeBtn);
   btnGroup.appendChild(withdrawBtn);
+  btnGroup.appendChild(compoundBtn);
   btnGroup.appendChild(depositWalletBtn);
 
   const statusMsgEl = document.createElement('span');
@@ -211,8 +244,9 @@ export function buildStakingActionsRow(opts: {
   statusMsgEl.textContent = '';
 
   row.appendChild(btnGroup);
+  row.appendChild(earlyExitEl);
   row.appendChild(statusMsgEl);
-  return { row, unstakeBtn, withdrawBtn, depositWalletBtn, statusMsgEl };
+  return { row, unstakeBtn, withdrawBtn, compoundBtn, earlyExitEl, depositWalletBtn, statusMsgEl };
 }
 
 export function buildStakingPanelLayout(handlers: {
@@ -221,6 +255,8 @@ export function buildStakingPanelLayout(handlers: {
   onUnstake: () => void;
   onWithdraw: () => void;
   onWalletDeposit?: () => void;
+  onCompound?: () => void;
+  w28?: boolean;
 }) {
   const root = document.createElement('section');
   root.className = 'ta-staking-panel plate-sm';
@@ -232,7 +268,7 @@ export function buildStakingPanelLayout(handlers: {
   const copyEl = document.createElement('p');
   copyEl.className = 'ta-staking-panel__copy';
   copyEl.dataset.testid = 'staking-real-near-copy';
-  copyEl.textContent = REAL_NEAR_COPY;
+  copyEl.textContent = stakingCopyFor(Boolean(handlers.w28));
 
   const perksBannerEl = document.createElement('div');
   perksBannerEl.className = 'ta-staking-panel__perks';
@@ -251,12 +287,13 @@ export function buildStakingPanelLayout(handlers: {
   controlsWrapEl.hidden = false;
 
   const claimRow = buildStakingClaimRow(handlers.onClaim);
-  const formRow = buildStakingFormRow(handlers.onStake);
+  const formRow = buildStakingFormRow(handlers.onStake, Boolean(handlers.w28));
   const posGrid = buildStakingPositionGrid();
   const actionsRow = buildStakingActionsRow({
     onUnstake: handlers.onUnstake,
     onWithdraw: handlers.onWithdraw,
     onWalletDeposit: handlers.onWalletDeposit,
+    onCompound: handlers.onCompound,
   });
 
   controlsWrapEl.append(claimRow.row, formRow.formRow, posGrid.grid, actionsRow.row);
@@ -272,6 +309,7 @@ export function buildStakingPanelLayout(handlers: {
     accountStatusEl: claimRow.accountStatusEl,
     claimBtnEl: claimRow.claimBtnEl,
     poolSelectEl: formRow.poolSelect,
+    assetSelectEl: formRow.assetSelect,
     amountInputEl: formRow.amountInput,
     stakeBtnEl: formRow.stakeBtn,
     stakedValEl: posGrid.stakedValEl,
@@ -280,6 +318,8 @@ export function buildStakingPanelLayout(handlers: {
     withdrawableValEl: posGrid.withdrawableValEl,
     unstakeBtnEl: actionsRow.unstakeBtn,
     withdrawBtnEl: actionsRow.withdrawBtn,
+    compoundBtnEl: actionsRow.compoundBtn,
+    earlyExitEl: actionsRow.earlyExitEl,
     depositWalletBtnEl: actionsRow.depositWalletBtn,
     statusMsgEl: actionsRow.statusMsgEl,
   };
@@ -378,54 +418,4 @@ export function upsertStakingPositionList(
     return copy;
   }
   return [next, ...positions];
-}
-
-export async function sendStakingWalletTx(opts: {
-  fetchFn: typeof fetch;
-  network: RealNearNetwork;
-  action: 'stake_payable' | 'deposit_near' | 'claim_native_near' | 'stake_lst';
-  poolId: string;
-  amountNear: string;
-  accountId: string | null;
-  lstContract?: string;
-  statusMsgEl?: HTMLElement;
-  onSuccess?: () => Promise<unknown>;
-}): Promise<string | null> {
-  try {
-    const qs = new URLSearchParams({ action: opts.action, poolId: opts.poolId, amountNear: opts.amountNear });
-    if (opts.accountId) qs.set('accountId', opts.accountId);
-    if (opts.lstContract) qs.set('lstContract', opts.lstContract);
-    const res = await opts.fetchFn(`/v1/near/staking/wallet-tx?${qs.toString()}`);
-    if (!res.ok) throw new Error('Unable to build staking wallet transaction.');
-    const tx = (await res.json()) as {
-      contractId: string;
-      methodName: string;
-      args: Record<string, unknown>;
-      attachedDepositYocto: string;
-      gasTgas: number;
-    };
-    const [{ actionCreators }, selector] = await Promise.all([
-      import('@near-wallet-selector/core'),
-      createRealSignerWalletSelector(opts.network),
-    ]);
-    const wallet = await selector.wallet('meteor-wallet').catch(() => selector.wallet());
-    await wallet.signAndSendTransaction({
-      receiverId: tx.contractId,
-      actions: [
-        actionCreators.functionCall(
-          tx.methodName,
-          tx.args,
-          BigInt(`${tx.gasTgas}000000000000`),
-          BigInt(tx.attachedDepositYocto),
-        ),
-      ],
-    });
-    const msg = `Submitted ${tx.methodName} (${opts.amountNear} NEAR) to ${tx.contractId}.`;
-    if (opts.statusMsgEl) opts.statusMsgEl.textContent = msg;
-    if (opts.onSuccess) await opts.onSuccess();
-    return msg;
-  } catch (err) {
-    if (opts.statusMsgEl) opts.statusMsgEl.textContent = err instanceof Error ? err.message : 'Wallet tx cancelled.';
-    return null;
-  }
 }
