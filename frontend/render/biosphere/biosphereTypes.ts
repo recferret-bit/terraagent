@@ -9,6 +9,18 @@ export type AvianFlightPattern =
   | 'waterSkim'
   | 'ridgePatrol';
 
+export type AvianFormationStyle =
+  | 'veeEchelon'
+  | 'jEchelon'
+  | 'thermalKettle'
+  | 'murmurationRibbon'
+  | 'pelotonWave'
+  | 'tandemPair'
+  | 'canopyCarousel'
+  | 'ridgeSweep';
+
+export type BirdWingSizeClass = 'tiny' | 'medium' | 'large' | 'giant';
+
 export type BirdHabitatPref = 'forest' | 'water' | 'rock' | 'open';
 
 export type BirdFlockState =
@@ -45,6 +57,8 @@ export interface BirdSpeciesSpec {
   label: string;
   biome: PlanetKind;
   pattern: AvianFlightPattern;
+  formation?: AvianFormationStyle;
+  sizeClass?: BirdWingSizeClass;
   habitatPref: BirdHabitatPref;
   flockSize: readonly [number, number];
   altitude: readonly [number, number];
@@ -105,6 +119,7 @@ export interface BirdMemberState {
   y: number;
   z: number;
   vx: number;
+  vy?: number;
   vz: number;
   yaw: number;
   pitch: number;
@@ -112,6 +127,8 @@ export interface BirdMemberState {
   phase: number;
   flapWeight: number;
   scale: number;
+  /** Size-dependent wingbeat frequency multiplier (`smaller -> faster, larger -> slower`). */
+  wingFreqScale?: number;
 }
 
 export interface BirdFlock {
@@ -119,13 +136,21 @@ export interface BirdFlock {
   readonly species: BirdSpeciesSpec;
   readonly speciesSlot: number;
   pattern: AvianFlightPattern;
+  formation?: AvianFormationStyle;
   state: BirdFlockState;
   homeX: number;
   homeZ: number;
   homeTileIndex: number;
   targetX: number;
   targetZ: number;
+  /** Smoothed physical curve anchor that glides continuously toward `(targetX, targetZ)` without single-frame jumps. */
+  anchorX?: number;
+  anchorZ?: number;
   orbitAngle: number;
+  orbitDir?: 1 | -1;
+  headingYaw?: number;
+  cruiseBaseY?: number;
+  fleeAltBoost?: number;
   stateTimer: number;
   relocations: number;
   readonly members: BirdMemberState[];

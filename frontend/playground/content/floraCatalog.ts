@@ -13,10 +13,20 @@ import {
   makeSaguaroCactusGeo,
   makeShoreReedsGeo,
   makeWildflowerGeo,
+  type GroundVariantIndex,
 } from '@terra/render/visuals/terrain/groundFloraGeos';
 import { TREE_BREEDS, buildTreeBreedGeo, type TreeBreedId } from '@terra/render/visuals/terrain/treeBreeds';
 
 export type FloraGroup = 'tree' | 'ground';
+export type GroundObjectFamily =
+  | 'grassTuft'
+  | 'wildflower'
+  | 'bush'
+  | 'saguaro'
+  | 'barrelCactus'
+  | 'reeds'
+  | 'boulder'
+  | 'spire';
 
 export interface FloraEntry {
   id: string;
@@ -30,6 +40,8 @@ export interface FloraEntry {
   isRock?: boolean;
   embeddedSkirt?: boolean;
   breedId?: TreeBreedId;
+  groundKind?: GroundObjectFamily;
+  variantIndex?: GroundVariantIndex;
 }
 
 export interface FloraMeshBuild {
@@ -48,92 +60,140 @@ export interface FloraStats {
   plantedSkirt: boolean;
 }
 
-const GROUND_ENTRIES: readonly FloraEntry[] = [
+interface GroundFamilyConfig {
+  readonly kind: GroundObjectFamily;
+  readonly biomeHint: PlanetKind | 'all';
+  readonly sway: number;
+  readonly doubleSided?: boolean;
+  readonly isRock?: boolean;
+  readonly variants: readonly {
+    readonly slug?: string;
+    readonly label: string;
+    readonly subtitle: string;
+    readonly description: string;
+  }[];
+}
+
+const GROUND_FAMILY_TABLE: readonly GroundFamilyConfig[] = [
   {
-    id: 'flora.ground.grassTuft',
-    label: 'Grass Tuft',
-    group: 'ground',
+    kind: 'grassTuft',
     biomeHint: 'all',
-    subtitle: 'Biome-adaptive 7-blade 3D cluster',
-    description: 'Seven curved 3D triangular-prism grass blades tinted to the active biome palette with wind sway.',
     sway: 0.85,
     doubleSided: true,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Grass Tuft', subtitle: '7-blade 3D cluster', description: 'Seven curved 3D triangular-prism grass blades tinted to the active biome palette with wind sway.' },
+      { slug: 'sedge', label: 'Upright Sedge Plumes', subtitle: 'Tall blades with seed plumes', description: 'Tall upright sedge blades crowned with three slender seed-head plumes.' },
+      { slug: 'fescue', label: 'Arching Fescue Tuft', subtitle: 'Low sweeping meadow rosette', description: 'Wide arching meadow fescue blades radiating low across open turf.' },
+      { slug: 'tussock', label: 'Dense Tussock Mound', subtitle: '11-blade mounded ring grass', description: 'Dense eleven-blade tussock clump rooted around a central basal mound.' },
+      { slug: 'plumeGrass', label: 'Windswept Plume Grass', subtitle: 'Directional blades & panicles', description: 'Wind-bent grass cluster topped with directional flowering panicles.' },
+    ],
   },
   {
-    id: 'flora.ground.wildflower',
-    label: 'Wildflower & Fern Clump',
-    group: 'ground',
+    kind: 'wildflower',
     biomeHint: 'all',
-    subtitle: 'Biome-adaptive rosette + blossoms',
-    description: 'Low-poly 3D fern fronds and multi-petal wildflower stalks adapted to highland, archipelago, or arid meadows.',
     sway: 0.95,
     doubleSided: true,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Wildflower & Fern Clump', subtitle: 'Fern rosette + tri-blossoms', description: 'Low-poly 3D fern fronds and multi-petal wildflower stalks adapted to the active biome.' },
+      { slug: 'foxglove', label: 'Tiered Foxglove Spikes', subtitle: 'Stacked blossom whorls', description: 'Three tall foxglove stalks carrying stacked blossom whorls over basal leaves.' },
+      { slug: 'daisy', label: 'Meadow Aster Bouquet', subtitle: '5-head broadleaf daisy patch', description: 'Compact five-flower daisy cluster nestled into a low broadleaf rosette.' },
+      { slug: 'bellflower', label: 'Arching Bellflower', subtitle: 'Hanging cup blooms + fronds', description: 'Four gracefully arching stems carrying inverted cup bellflowers above fern fronds.' },
+      { slug: 'rosette', label: 'Star Rosette Bloom', subtitle: '8-leaf rosette & star crown', description: 'Eight-leaf succulent meadow rosette crowned by a central star bloom and twin side buds.' },
+    ],
   },
   {
-    id: 'flora.ground.bush',
-    label: 'Berry & Scrub Bush',
-    group: 'ground',
+    kind: 'bush',
     biomeHint: 'all',
-    subtitle: 'Biome-adaptive woody shrub',
-    description: 'Multi-lobe low-poly foliage shrub with woody basal stems and biome-keyed seasonal berries.',
     sway: 0.50,
+    variants: [
+      { label: 'Berry & Scrub Bush', subtitle: 'Multi-lobe shrub with berries', description: 'Multi-lobe low-poly foliage shrub with woody basal stems and biome-keyed seasonal berries.' },
+      { slug: 'bramble', label: 'Sprawling Bramble Thicket', subtitle: 'Low 6-lobe thicket & berries', description: 'Broad low-growing six-lobe bramble thicket studded with wild berry clusters.' },
+      { slug: 'juniper', label: 'Conical Scrub Juniper', subtitle: '3-tier upright evergreen scrub', description: 'Three-tier upright conical juniper scrub rising from a single woody basal stem.' },
+      { slug: 'sagebrush', label: 'Windswept Sagebrush', subtitle: 'Gnarled stems & flat pads', description: 'Forked woody sagebrush carrying five flattened wind-sculpted foliage pads.' },
+      { slug: 'flowering', label: 'Flowering Hedgerow', subtitle: '5-dome shrub with blossoms', description: 'Dense five-dome hedgerow shrub bursting with six bright seasonal blossom clusters.' },
+    ],
   },
   {
-    id: 'flora.ground.saguaro',
-    label: 'Saguaro Cactus',
-    group: 'ground',
+    kind: 'saguaro',
     biomeHint: 'dune',
-    subtitle: 'Arid branched column + crown bloom',
-    description: 'Ribbed desert saguaro column with asymmetric curved arms and a crowned golden blossom.',
     sway: 0.12,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Saguaro Cactus', subtitle: 'Classic 2-arm column + bloom', description: 'Ribbed desert saguaro column with asymmetric curved arms and a crowned golden blossom.' },
+      { slug: 'candelabra', label: 'Candelabra Saguaro', subtitle: 'Monarch 4-arm desert giant', description: 'Ancient four-armed candelabra saguaro bearing staggered branches and twin blooms.' },
+      { slug: 'organPipe', label: 'Organ-Pipe Cactus', subtitle: '5-column curved desert cluster', description: 'Five graduated ribbed cactus columns curving outward from a shared root crown.' },
+      { slug: 'sentinel', label: 'Sentinel Saguaro', subtitle: 'Tall crook column + basal pup', description: 'Tall solitary desert column with a single high crook arm and companion basal pup.' },
+      { slug: 'cardon', label: 'Cardon Cactus', subtitle: 'Low-forked 3-stem giant', description: 'Heavy low-forking desert cactus splitting above the base into three parallel columns.' },
+    ],
   },
   {
-    id: 'flora.ground.barrelCactus',
-    label: 'Barrel & Prickly-Pear',
-    group: 'ground',
+    kind: 'barrelCactus',
     biomeHint: 'dune',
-    subtitle: 'Desert ovoid ribs + cladode pads',
-    description: 'Clustered barrel cactus mound flanked by ribbed pups and angled prickly-pear cladodes.',
     sway: 0.10,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Barrel & Prickly-Pear', subtitle: 'Barrel mound + pup + cladode', description: 'Clustered barrel cactus mound flanked by ribbed pups and angled prickly-pear cladodes.' },
+      { slug: 'pricklyPear', label: 'Prickly-Pear Thicket', subtitle: '6-pad opuntia + rim fruit', description: 'Branching opuntia thicket of six interlocking oval cladode pads crowned with red fruit.' },
+      { slug: 'goldenCluster', label: 'Golden Barrel Cluster', subtitle: '5-dome hummock + flowers', description: 'Mounded five-dome cluster of spherical golden barrel cacti topped with orange flowers.' },
+      { slug: 'cholla', label: 'Teddy-Bear Cholla', subtitle: 'Jointed branching desert scrub', description: 'Branching jointed cholla cactus shrub with four cylindrical arms and golden buds.' },
+      { slug: 'agave', label: 'Desert Agave Rosette', subtitle: '10-blade succulent + spike', description: 'Ten pointed desert agave blades radiating around a tall central flowering spike.' },
+    ],
   },
   {
-    id: 'flora.ground.reeds',
-    label: 'Shoreline Cattail Reeds',
-    group: 'ground',
+    kind: 'reeds',
     biomeHint: 'oceanForest',
-    subtitle: 'Wetland / littoral margin stalks',
-    description: 'Tall waterfront reed stalks and velvety brown cattail heads placed along shallow lakes and lagoons.',
     sway: 1.10,
     doubleSided: true,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Shoreline Cattail Reeds', subtitle: '6-stalk cattail & heads', description: 'Tall waterfront reed stalks and velvety brown cattail heads placed along shallow coves.' },
+      { slug: 'papyrus', label: 'Lagoon Papyrus Reeds', subtitle: 'Tall stalks + bract crowns', description: 'Slender lagoon stalks crowned with radiating green papyrus umbel bracts.' },
+      { slug: 'bulrush', label: 'Marsh Bulrush Clump', subtitle: '9-stalk dense wetland clump', description: 'Dense nine-stalk wetland bulrush clump topped with tapering brown seed spikes.' },
+      { slug: 'horsetail', label: 'Segmented Horsetail', subtitle: 'Jointed reed stems + cones', description: 'Seven segmented marsh horsetail stems with dark node rings and terminal cones.' },
+      { slug: 'waterIris', label: 'Water-Iris Margin', subtitle: 'Sword blades & flag blooms', description: 'Sword-like littoral iris blades framing three tall violet-blue flag blossoms.' },
+    ],
   },
   {
-    id: 'flora.ground.boulder',
-    label: 'Faceted Boulder Rock',
-    group: 'ground',
+    kind: 'boulder',
     biomeHint: 'all',
-    subtitle: 'Biome rock scatter outcrop',
-    description: 'Noise-faceted basalt/sandstone boulder with deep embedded terrain skirt and tri-tone rock shading.',
     sway: 0,
     isRock: true,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Faceted Boulder Rock', subtitle: 'Noise-faceted outcrop rock', description: 'Noise-faceted basalt/sandstone boulder with deep embedded terrain skirt.' },
+      { slug: 'slab', label: 'Tilted Rock Slab', subtitle: 'Tabular stone & basal ledge', description: 'Tilted tabular stone slab resting on a stepped secondary basal rock ledge.' },
+      { slug: 'erratic', label: 'Split Erratic Boulder', subtitle: 'Twin-cleft faceted rock', description: 'Twin-cleft glacial erratic split into two interlocking angular rock masses.' },
+      { slug: 'mesa', label: 'Layered Mesa Block', subtitle: '3-strata sedimentary shelf', description: 'Terraced three-tier sedimentary rock outcrop with flat-topped weathered shelves.' },
+      { slug: 'talus', label: 'Talus Boulder Cluster', subtitle: 'Crag with companion stones', description: 'Primary angular rock outcrop flanked by two embedded companion talus stones.' },
+    ],
   },
   {
-    id: 'flora.ground.spire',
-    label: 'Rock Spire Shard',
-    group: 'ground',
+    kind: 'spire',
     biomeHint: 'all',
-    subtitle: 'Tapering hexagonal rock crag',
-    description: 'Kinked hexagonal ridge spire providing vertical geological landmarks and rocky outcrop variation.',
     sway: 0,
     isRock: true,
-    embeddedSkirt: true,
+    variants: [
+      { label: 'Rock Spire Shard', subtitle: 'Tapering hexagonal crag', description: 'Kinked hexagonal ridge spire providing vertical geological landmarks.' },
+      { slug: 'twinObelisk', label: 'Twin Basalt Obelisk', subtitle: 'Paired leaning rock shards', description: 'Unequal pair of leaning hexagonal basalt shards rising from a shared outcrop.' },
+      { slug: 'hoodoo', label: 'Weathered Hoodoo Rock', subtitle: 'Narrow neck + caprock crown', description: 'Eroded desert/highland hoodoo pillar balancing a wider faceted caprock crown.' },
+      { slug: 'curvedFang', label: 'Curved Ridge Fang', subtitle: 'Swept monolithic rock horn', description: 'Swept curved monolithic rock horn tapering sharply to an angled apex.' },
+      { slug: 'columnar', label: 'Columnar Basalt Pillars', subtitle: '3-step hexagonal columns', description: 'Trio of stepped hexagonal columnar-basalt pillars emerging from bedrock.' },
+    ],
   },
 ];
+
+const GROUND_ENTRIES: readonly FloraEntry[] = GROUND_FAMILY_TABLE.flatMap((fam) =>
+  fam.variants.map((v, idx) => ({
+    id: v.slug ? `flora.ground.${fam.kind}.${v.slug}` : `flora.ground.${fam.kind}`,
+    label: v.label,
+    group: 'ground' as const,
+    biomeHint: fam.biomeHint,
+    subtitle: v.subtitle,
+    description: v.description,
+    sway: fam.sway,
+    ...(fam.doubleSided ? { doubleSided: true } : {}),
+    ...(fam.isRock ? { isRock: true } : {}),
+    embeddedSkirt: true,
+    groundKind: fam.kind,
+    variantIndex: idx as GroundVariantIndex,
+  })),
+);
 
 const TREE_ENTRIES: readonly FloraEntry[] = TREE_BREEDS.map((b) => ({
   id: `flora.tree.${b.id}`,
@@ -141,7 +201,7 @@ const TREE_ENTRIES: readonly FloraEntry[] = TREE_BREEDS.map((b) => ({
   group: 'tree',
   biomeHint: b.biome,
   subtitle: `${b.canopyShape} · ${b.moisturePref} · wind ×${b.windCompliance.toFixed(2)}`,
-  description: `Procedural stemless tree breed (${b.canopyShape} silhouette, ${b.moisturePref} moisture niche) native to ${b.biome}.`,
+  description: `Procedural stemmed tree breed (${b.canopyShape} silhouette, ${b.moisturePref} moisture niche, woody aBark stem) native to ${b.biome}.`,
   sway: b.windCompliance,
   doubleSided: b.canopyShape === 'palmCrown' || b.canopyShape === 'pendulous',
   embeddedSkirt: true,
@@ -166,20 +226,21 @@ export function listFloraEntries(group?: FloraGroup): readonly FloraEntry[] {
 
 function buildFloraGeometry(entry: FloraEntry, biome: PlanetKind, seed: number): THREE.BufferGeometry {
   if (entry.breedId) return buildTreeBreedGeo(entry.breedId, seed);
+  const v = entry.variantIndex ?? 0;
   const rockTint = new THREE.Color(PLANET_SPECS[biome].palette.rock).lerp(
     new THREE.Color(PLANET_SPECS[biome].palette.rockDark),
     0.25,
   );
-  switch (entry.id) {
-    case 'flora.ground.grassTuft': return makeGrassTuftGeo(biome, seed);
-    case 'flora.ground.wildflower': return makeWildflowerGeo(biome, seed);
-    case 'flora.ground.bush': return makeBushGeo(biome, seed);
-    case 'flora.ground.saguaro': return makeSaguaroCactusGeo(seed);
-    case 'flora.ground.barrelCactus': return makeBarrelCactusGeo(seed);
-    case 'flora.ground.reeds': return makeShoreReedsGeo(seed);
-    case 'flora.ground.boulder': return makeBoulderGeo(seed, rockTint);
-    case 'flora.ground.spire': return makeSpireGeo(seed, rockTint);
-    default: return makeBushGeo(biome, seed);
+  switch (entry.groundKind) {
+    case 'grassTuft': return makeGrassTuftGeo(biome, seed, v);
+    case 'wildflower': return makeWildflowerGeo(biome, seed, v);
+    case 'bush': return makeBushGeo(biome, seed, v);
+    case 'saguaro': return makeSaguaroCactusGeo(seed, v);
+    case 'barrelCactus': return makeBarrelCactusGeo(seed, v);
+    case 'reeds': return makeShoreReedsGeo(seed, v);
+    case 'boulder': return makeBoulderGeo(seed, rockTint, v);
+    case 'spire': return makeSpireGeo(seed, rockTint, v);
+    default: return makeBushGeo(biome, seed, v);
   }
 }
 

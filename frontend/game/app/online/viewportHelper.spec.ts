@@ -1,14 +1,35 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
+import { flagsFromList } from '@terra/contracts';
+import { allModules, compileData, createPlanet, SIM_VERSION, SimHost } from '@terra/sim';
 import { PLANET_SPECS } from '@terra/render/planets/PlanetSpec';
-import { specForPlanetType, tileXZ, type HexTerrain } from '@terra/render/planets/hex';
+import {
+  computeEffectiveHeights,
+  createHexTerrain,
+  HEX_TERRAIN,
+  isHexBeachSandAtPoint,
+  makeHeightSampler,
+  placeFloraByCellsWithExclusion,
+  renderedFloraOuterRadius,
+  specForPlanetType,
+  tileAt,
+  tileShoreFactor,
+  tileXZ,
+  type HexTerrain,
+} from '@terra/render/planets/hex';
+import { hexIndex } from '@terra/sim/grid/hex';
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LocalTransport } from '../../net/LocalTransport';
-import type { ClientTiles } from '../../store/replica/viewCodec';
+import { ReplicaCore } from '../../store/replica/ReplicaCore';
+import { packView, unpackView, type ClientTiles } from '../../store/replica/viewCodec';
+import { MainMenu } from '../../ui/menu';
+import { buildForwardedOnlineSearch } from '../colonyEntryBridge';
+import { bootAuthAndHome } from './bootOnline';
 import {
-  applyTerrainTileChanges, bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay, listSceneEntities, PLANET_KIND_SESSION_KEY,
-  pickTerrainAt, projectTileToScreen, readStoredPlanetKind, resolveOnlinePlanetLook, resolveSessionPlanetKind, syncSpaceTerrainOffset,
+  applyTerrainTileChanges, bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay, listSceneEntities,
+  parseGroundSeedInput, PLANET_KIND_SESSION_KEY, pickTerrainAt, projectTileToScreen, readStoredPlanetKind, resolveOnlinePlanetLook,
+  resolveSessionPlanetKind, syncOrRebuildSessionTerrain, syncSpaceTerrainOffset,
 } from './viewportHelper';
 
 const tiles = (n: number, patch: Partial<Record<'height' | 'terrain' | 'prep' | 'deposit' | 'owner', [number, number]>> = {}): ClientTiles => {
@@ -82,6 +103,13 @@ describe('viewportHelper: tiles and planet look', () => {
     expect(resolveOnlinePlanetLook('ocean', 'dune')).toBe(specForPlanetType('ocean'));
     expect(resolveOnlinePlanetLook('flat', 'dune')).toBe(PLANET_SPECS.dune);
     expect(resolveOnlinePlanetLook('flat', null)).toBe(specForPlanetType('temperate'));
+    // Every player joining the same authoritative planet seed derives the exact same deterministic 32-bit look seed
+    const playerA = resolveOnlinePlanetLook('ocean', 'dune', 'mp-seed-alpha');
+    const playerB = resolveOnlinePlanetLook('ocean', 'forestRock', 'mp-seed-alpha');
+    const otherPlanet = resolveOnlinePlanetLook('ocean', 'oceanForest', 'mp-seed-beta');
+    expect(playerA.kind).toBe('oceanForest');
+    expect(playerA.seed).toBe(playerB.seed);
+    expect(playerA.seed).not.toBe(otherPlanet.seed);
   });
 });
 
@@ -214,5 +242,199 @@ describe('viewportHelper: terrain, picking and the scene', () => {
     vp.render();
     vp.dispose();
     expect(root.querySelector('canvas')).toBeNull();
+  });
+});
+
+describe('viewportHelper: multiplayer seeded ground parity', () => {
+  it('reconstructs identical seeded ground, props, and coastal-sand-free flora for multiple players joining a server snapshot', () => {
+    const flags = ['W00', 'W01'] as const;
+    const data = compileData(flagsFromList(flags));
+    const auth = new SimHost({ flags, data, modules: allModules() });
+    auth.load(createPlanet({ id: 'pl_ocean_mp', type: 'ocean', planetType: 'ocean', seed: 'mp-room-seed-77', radius: 12 }));
+    const welcomeBytes = auth.snapshot({ forClient: true });
+
+    const joinAsPlayer = (preferredKind: 'dune' | 'forestRock') => {
+      const rep = new ReplicaCore({ modules: allModules() });
+      const res = rep.welcome({ state: welcomeBytes, tick: auth.tick, flags, dataHash: data.hash, simVersion: SIM_VERSION });
+      expect(res.ok).toBe(true);
+      const clientView = unpackView(packView(rep.view(), true).view);
+      expect(clientView.planet.seed).toBe('mp-room-seed-77');
+      const root = document.createElement('div');
+      const vp = createSafeViewport(root);
+      const synced = syncOrRebuildSessionTerrain({
+        viewport: vp, prevTerrain: null, prevTiles: null, prevCam: null, prevBiomeKey: 'dune',
+        view: clientView, tiles: clientView.tiles!, planetKind: preferredKind,
+        inSpace: false, showSpaceTerrain: false, cameraTargetTile: { q: 0, r: 0 },
+      });
+      return { vp, clientView, ...synced };
+    };
+
+    const p1 = joinAsPlayer('dune');
+    const p2 = joinAsPlayer('forestRock');
+    expect(p1.terrain.seed).toBe(p2.terrain.seed);
+    expect(p1.biomeKey).toBe('oceanForest');
+    expect(p2.biomeKey).toBe('oceanForest');
+    expect(p1.terrain.props.counts()).toEqual(p2.terrain.props.counts());
+    expect(p1.terrain.flora.counts()).toEqual(p2.terrain.flora.counts());
+
+    // Verify real @terra/sim ocean world places zero bushes, wildflowers, grass tufts, or reeds on dry coastal sand hexes
+    const r = p1.clientView.planet.radius;
+    const hx = hexIndex(r);
+    const tLayers = { ...p1.clientView.tiles!, kind: 'oceanForest' as const, seed: p1.terrain.seed };
+    const mat = new THREE.Matrix4();
+    for (const restricted of ['bush', 'wildflower', 'grassTuft', 'reeds'] as const) {
+      for (const im of p1.terrain.flora.meshes[restricted]) {
+        for (let k = 0; k < im.count; k++) {
+          im.getMatrixAt(k, mat);
+          const x = mat.elements[12]!, z = mat.elements[14]!;
+          const picked = tileAt(r, x, z);
+          if (picked && restricted !== 'reeds') {
+            expect(tileShoreFactor(hx, picked.i, tLayers)).toBe(0);
+          }
+        }
+      }
+    }
+
+    p1.cam?.dispose(); p1.terrain.dispose(); p1.vp.dispose();
+    p2.cam?.dispose(); p2.terrain.dispose(); p2.vp.dispose();
+  });
+});
+
+describe('viewportHelper: createPlanet coastal sand exclusion & URL seed hashes', () => {
+  it('keeps 100% of bush, wildflower, and grassTuft centers, footprints, and transformed mesh vertices off beach sand across 10 R=22 ocean/temperate createPlanet seeds', () => {
+    const R = 22;
+    const hx = hexIndex(R);
+    const allTiles = Array.from({ length: hx.count }, (_, i) => i);
+    const tileCell = Array.from({ length: hx.count }, () => '0,0');
+    const seeds = ['golden-1', 'seed-2', 'seed-3', 'seed-4', 'seed-5'] as const;
+    const mat = new THREE.Matrix4();
+    const vPos = new THREE.Vector3();
+
+    for (const pType of ['ocean', 'temperate'] as const) {
+      for (const seed of seeds) {
+        const state = createPlanet({ id: `pl_${pType}_${seed}`, type: pType, planetType: pType, seed, radius: R });
+        const look = specForPlanetType(pType, seed);
+        const gl = state.grid.layers;
+        const layers = {
+          height: gl.height,
+          terrain: gl.terrain,
+          prep: gl.prep,
+          deposit: gl.deposit,
+          kind: look.kind,
+          seed: look.seed,
+        };
+        const effHeights = computeEffectiveHeights(R, layers);
+        const heightAt = makeHeightSampler(R, () => effHeights);
+        const byCell = placeFloraByCellsWithExclusion(allTiles, null, tileCell, hx, R, layers, heightAt, look);
+        const placed = byCell.get('0,0')!;
+        expect(placed.grassTuft.length + placed.wildflower.length + placed.bush.length).toBeGreaterThan(25);
+
+        const shoreByTile = Float32Array.from({ length: hx.count }, (_, idx) => tileShoreFactor(hx, idx, layers));
+        const isBeachSandAt = (px: number, pz: number): boolean =>
+          isHexBeachSandAtPoint(hx, px, pz, heightAt(px, pz), layers, look.kind, shoreByTile);
+
+        for (const kind of ['bush', 'wildflower', 'grassTuft'] as const) {
+          for (const p of placed[kind]) {
+            const fpR = renderedFloraOuterRadius(kind, p.s);
+            const picked = tileAt(R, p.x, p.z);
+            expect(picked).not.toBeNull();
+            expect(tileShoreFactor(hx, picked!.i, layers)).toBe(0);
+            expect(isBeachSandAt(p.x, p.z)).toBe(false);
+
+            for (let a = 0; a < 16; a++) {
+              const ang = (a / 16) * Math.PI * 2;
+              const px = p.x + Math.cos(ang) * fpR;
+              const pz = p.z + Math.sin(ang) * fpR;
+              expect(isBeachSandAt(px, pz)).toBe(false);
+              const pTile = tileAt(R, px, pz);
+              expect(pTile).not.toBeNull();
+              const tCode = layers.terrain[pTile!.i] ?? 0;
+              expect(tCode === HEX_TERRAIN.shallow || tCode === HEX_TERRAIN.deep).toBe(false);
+            }
+          }
+        }
+
+        // Verify actual transformed InstancedMesh vertices on golden-1 for both ocean & temperate
+        if (seed === 'golden-1') {
+          const ht = createHexTerrain({ radius: R, tiles: layers, look });
+          for (const kind of ['bush', 'wildflower', 'grassTuft'] as const) {
+            for (const im of ht.flora.meshes[kind]) {
+              const pos = im.geometry.getAttribute('position');
+              for (let k = 0; k < im.count; k++) {
+                im.getMatrixAt(k, mat);
+                for (let vi = 0; vi < pos.count; vi++) {
+                  vPos.fromBufferAttribute(pos, vi).applyMatrix4(mat);
+                  expect(isBeachSandAt(vPos.x, vPos.z)).toBe(false);
+                }
+              }
+            }
+          }
+          ht.dispose();
+        }
+      }
+    }
+  }, 25_000);
+});
+
+describe('viewportHelper: URL ?seed=<hash> & ?host=local end-to-end forwarding', () => {
+  it('threads URL ?seed=<hash> & ?host=local deterministically across colonyEntryBridge, MainMenu, local boot, and dev.seed updates', async () => {
+    expect(parseGroundSeedInput('shared-colony-hash', 17)).toBe(parseGroundSeedInput('shared-colony-hash', 17));
+    expect(parseGroundSeedInput('shared-colony-hash', 17)).not.toBe(parseGroundSeedInput('other-colony-hash', 17));
+    expect(buildForwardedOnlineSearch('?planet=oceanForest&host=local&seed=custom-room-hash&deploy=1&skip=1'))
+      .toBe('?host=local&seed=custom-room-hash');
+    expect(buildForwardedOnlineSearch('?planet=dune&skip=1')).toBe('');
+
+    // MainMenu preserves an explicit URL ?seed= across planet card switches while resetting default seeds
+    const hostEl = document.createElement('div');
+    const explicitSeed = parseGroundSeedInput('custom-room-hash', PLANET_SPECS.dune.seed)!;
+    const menuExplicit = new MainMenu(
+      hostEl,
+      { onPlanet() {}, onDeploy() {}, onSettings() {} },
+      'dune',
+      explicitSeed,
+      { autoStartFeed: false },
+    );
+    menuExplicit.select('oceanForest', true);
+    expect(menuExplicit.seed).toBe(explicitSeed);
+    menuExplicit.dispose();
+
+    const menuDefault = new MainMenu(
+      hostEl,
+      { onPlanet() {}, onDeploy() {}, onSettings() {} },
+      'dune',
+      undefined,
+      { autoStartFeed: false },
+    );
+    menuDefault.select('oceanForest', true);
+    expect(menuDefault.seed).toBe(PLANET_SPECS.oceanForest.seed);
+    menuDefault.dispose();
+
+    const bootA = await bootAuthAndHome({ search: '?host=local&seed=custom-room-hash', planetType: 'ocean' });
+    const bootB = await bootAuthAndHome({ search: '?host=local&seed=custom-room-hash', planetType: 'ocean' });
+    expect(bootA.planet.seed).toBe('custom-room-hash');
+    expect(bootB.planet.seed).toBe('custom-room-hash');
+    const lookA = resolveOnlinePlanetLook(bootA.planet.type, null, bootA.planet.seed);
+    const lookB = resolveOnlinePlanetLook(bootB.planet.type, null, bootB.planet.seed);
+    expect(lookA.seed).toBe(lookB.seed);
+
+    // Authoritative view.planet.seed (e.g. after runtime dev.seed) wins over stale boot fallback seed
+    const root = document.createElement('div');
+    const vp = createSafeViewport(root);
+    const baseTiles = tiles(19);
+    const initial = syncOrRebuildSessionTerrain({
+      viewport: vp, prevTerrain: null, prevTiles: null, prevCam: null, prevBiomeKey: 'oceanForest',
+      view: { tick: 1, planet: { id: 'p1', type: 'ocean', radius: 2, seed: 'seed-initial' }, entities: new Float32Array(0), count: 0, colonies: [] },
+      tiles: baseTiles, planetKind: 'oceanForest', planetSeed: 'seed-initial',
+      inSpace: false, showSpaceTerrain: false, cameraTargetTile: { q: 0, r: 0 },
+    });
+    const updated = syncOrRebuildSessionTerrain({
+      viewport: vp, prevTerrain: initial.terrain, prevTiles: baseTiles, prevCam: initial.cam, prevBiomeKey: initial.biomeKey,
+      view: { tick: 2, planet: { id: 'p1', type: 'ocean', radius: 2, seed: 'seed-after-dev-cmd' }, entities: new Float32Array(0), count: 0, colonies: [] },
+      tiles: baseTiles, planetKind: 'oceanForest', planetSeed: 'seed-initial',
+      inSpace: false, showSpaceTerrain: false, cameraTargetTile: { q: 0, r: 0 },
+    });
+    expect(updated.rebuilt).toBe(true);
+    expect(updated.terrain.seed).toBe(resolveOnlinePlanetLook('ocean', null, 'seed-after-dev-cmd').seed);
+    updated.cam?.dispose(); updated.terrain.dispose(); vp.dispose();
   });
 });

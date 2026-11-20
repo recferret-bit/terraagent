@@ -19,6 +19,7 @@ export const DEFAULT_BIRD_CONFIG: VertebrateRigConfig = {
   liftHeight: 0.34,
   gaitFreq: 7.5,
   headSleepPitch: 0,
+  birdSize: 0.45,
 };
 
 export function isVertebrateGeometry(geometry: THREE.BufferGeometry): boolean {
@@ -47,8 +48,10 @@ export function shiftVertebrateRigMetadata(geometry: THREE.BufferGeometry, scale
   if (cfg) {
     cfg.comY = cfg.comY * scale + offsetY;
     cfg.sleepDrop *= scale;
-    cfg.strideLen *= scale;
-    cfg.liftHeight *= scale;
+    if (!cfg.isBird) {
+      cfg.strideLen *= scale;
+      cfg.liftHeight *= scale;
+    }
   }
 }
 

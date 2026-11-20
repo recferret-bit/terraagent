@@ -29,6 +29,24 @@ export class WeaponRig {
     this.update(0);
   }
 
+  /** Clears combat target, launch arc lift, barrel index, and recoil uniforms when a pooled mesh is recycled. */
+  reset(): void {
+    this.target = null;
+    this.launchLift = 0;
+    this.nextBarrel = 0;
+    this.kicks = [0, 0];
+    this.recoilAge[0] = 1;
+    this.recoilAge[1] = 1;
+    const u = this.mesh.userData?.uniforms;
+    if (u?.uWeaponTarget) {
+      u.uWeaponTarget.value.set(0, 0, 1);
+      u.uWeaponEnabled.value = 0;
+      u.uWeaponLift.value = 0;
+      u.uWeaponRecoil.value.set(0, 0);
+      u.uWeaponOffsetY.value = this.offsetY;
+    }
+  }
+
   update(dt: number): void {
     this.kicks = this.recoilAge.map((age, i) => {
       const t = this.recoilAge[i] = Math.min(1, age + dt);

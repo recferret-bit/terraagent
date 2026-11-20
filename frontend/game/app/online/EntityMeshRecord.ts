@@ -5,6 +5,7 @@ export interface EntityMeshRecord {
   id: number; kind: number; owner: number; q: number; r: number; x: number; y: number; rot: number;
   hp: number; hpMax: number; state: number; progress: number; buildStage: number;
   tier?: number;
+  archetypeId?: string;
   mesh: THREE.Object3D; targetPos: THREE.Vector3; targetYaw: number; walk: number; work: number;
   /** Poses by tick, drawn at the shared render clock (smooth constant-speed walking, see `entityMotion.ts`). */
   track: MotionTrack;

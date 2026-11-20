@@ -22,7 +22,53 @@ import {
 } from '@terra/render/particles';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { VertebratePoseMode } from '../state';
-import { createFloraMesh, isFloraId, listFloraEntries, type FloraGroup } from './floraCatalog';
+import {
+  createFloraMesh,
+  getFloraEntry,
+  isFloraId,
+  listFloraEntries,
+  type FloraGroup,
+  type GroundObjectFamily,
+} from './floraCatalog';
+
+const GROUND_FAMILY_ORDER: readonly GroundObjectFamily[] = [
+  'grassTuft', 'wildflower', 'bush', 'saguaro', 'barrelCactus', 'reeds', 'boulder', 'spire',
+];
+const TREE_BIOME_ORDER: readonly (PlanetKind | 'all')[] = ['forestRock', 'oceanForest', 'dune'];
+
+function layoutGridLines(lines: Spawn[][], colPitch: number, rowPitch: number) {
+  const halfRows = (lines.length - 1) / 2;
+  lines.forEach((line, rowIdx) => {
+    const z = (rowIdx - halfRows) * rowPitch;
+    const halfCols = (line.length - 1) / 2;
+    line.forEach((s, colIdx) => {
+      s.mesh.position.set((colIdx - halfCols) * colPitch, 0, z);
+    });
+  });
+}
+
+function layoutSpawns(spawns: Spawn[], widths: number[]) {
+  if (spawns.length > 1 && spawns.every((s) => getFloraEntry(s.id)?.group === 'ground')) {
+    const lines = GROUND_FAMILY_ORDER
+      .map((kind) => spawns.filter((s) => getFloraEntry(s.id)?.groundKind === kind))
+      .filter((line) => line.length > 0);
+    layoutGridLines(lines, 3.6, 3.2);
+    return;
+  }
+  if (spawns.length > 1 && spawns.every((s) => getFloraEntry(s.id)?.group === 'tree')) {
+    const lines = TREE_BIOME_ORDER
+      .map((biome) => spawns.filter((s) => getFloraEntry(s.id)?.biomeHint === biome))
+      .filter((line) => line.length > 0);
+    layoutGridLines(lines, 5.8, 5.8);
+    return;
+  }
+  const gap = 0.9;
+  let x = -(widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, widths.length - 1)) / 2;
+  spawns.forEach((s, i) => {
+    s.mesh.position.set(x + widths[i]! / 2, 0, 0);
+    x += widths[i]! + gap;
+  });
+}
 
 export interface Spawn {
   id: string;
@@ -95,9 +141,7 @@ export class SpawnSet {
       this.spawns.push({ id, mesh, box });
       this.content.add(mesh);
     }
-    const gap = 0.9;
-    let x = -(widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, widths.length - 1)) / 2;
-    this.spawns.forEach((s, i) => { s.mesh.position.set(x + widths[i] / 2, 0, 0); x += widths[i] + gap; });
+    layoutSpawns(this.spawns, widths);
     this.applyWire(wire);
     this.refreshLights();
     this.content.rotation.y = 0;

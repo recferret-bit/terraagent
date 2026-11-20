@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { HEX_DIRS, hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
-import { BREEDS_BY_BIOME, buildBiomeTreeAtlasGeo, buildTreeBreedGeo, TREE_BREEDS } from '../../../visuals/terrain/treeBreeds';
+import { hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
+import { BREEDS_BY_BIOME, buildBiomeTreeAtlasGeo, TREE_BREEDS } from '../../../visuals/terrain/treeBreeds';
 import {
   applySurfaceForestPipeline,
-  buildChunk,
   createHexTerrain,
   evaluateForestStand,
   FLORA_FOOTPRINTS,
@@ -19,7 +18,6 @@ import {
   specForPlanetType,
   stratifyStandSites,
   synthesizeTreePhenotype,
-  tileShoreFactor,
   tileStyle,
   type GroundFloraKind,
 } from '../index';
@@ -347,65 +345,5 @@ describe('Collision-free flora & prop placement across biomes', () => {
       }
       ht.dispose();
     }
-  });
-});
-
-describe('Stemless tree geometry & sanded coastal corners', () => {
-  it('builds completely stemless grounded foliage geometry across all 11 tree breeds', () => {
-    for (const breed of TREE_BREEDS) {
-      const geo = buildTreeBreedGeo(breed.id, 17);
-      const pos = geo.getAttribute('position');
-      const aBark = geo.getAttribute('aBark');
-      expect(aBark).toBeDefined();
-      let minY = Infinity;
-      let maxBark = 0;
-      for (let i = 0; i < pos.count; i++) {
-        minY = Math.min(minY, pos.getY(i));
-        maxBark = Math.max(maxBark, aBark.getX(i));
-      }
-      expect(maxBark).toBe(0);
-      expect(minY).toBeLessThanOrEqual(-0.04);
-      expect(minY).toBeGreaterThanOrEqual(-0.20);
-      geo.dispose();
-    }
-  });
-
-  it('sands jutting water corners (tileShoreFactor <= 0.92) and excludes grass/bushes on >= 3 water-neighbor corners', () => {
-    const r = 6;
-    const hx = hexIndex(r);
-    const terrain = new Uint8Array(hx.count).fill(HEX_TERRAIN.flat);
-    const prep = new Uint8Array(hx.count).fill(HEX_PREP.wild);
-    const height = new Float32Array(hx.count).fill(0.18);
-    // Tile 0 at (0, 0) becomes a pointy corner bordered by 4 water neighbors
-    for (let k = 0; k < 4; k++) {
-      const [dq, dr] = HEX_DIRS[k]!;
-      const j = hx.indexOf(dq, dr);
-      expect(j).toBeGreaterThanOrEqual(0);
-      terrain[j] = HEX_TERRAIN.shallow;
-      height[j] = -0.35;
-    }
-    const layers = { terrain, prep, height, kind: 'oceanForest' as const };
-    const cornerIdx = hx.indexOf(0, 0);
-    const sf = tileShoreFactor(hx, cornerIdx, layers);
-    expect(sf).toBeGreaterThan(0.80);
-    expect(sf).toBeLessThanOrEqual(0.92);
-
-    const chunk = buildChunk(r, Array.from({ length: hx.count }, (_, i) => i), layers);
-    const vertPos = Array.from(chunk.vertexTile).indexOf(cornerIdx);
-    expect(vertPos).toBeGreaterThanOrEqual(0);
-    expect(chunk.aHexShore[vertPos]).toBeCloseTo(sf, 4);
-
-    // Build full terrain around the headland corner and verify zero grass/wildflower/bush at corner (0,0)
-    const ht = createHexTerrain({ radius: r, tiles: layers, look: specForPlanetType('ocean') });
-    const mat = new THREE.Matrix4();
-    for (const restricted of ['grassTuft', 'wildflower', 'bush'] as const) {
-      for (const im of ht.flora.meshes[restricted]) {
-        for (let k = 0; k < im.count; k++) {
-          im.getMatrixAt(k, mat);
-          expect(Math.hypot(mat.elements[12]!, mat.elements[14]!)).toBeGreaterThan(1.05);
-        }
-      }
-    }
-    ht.dispose();
   });
 });

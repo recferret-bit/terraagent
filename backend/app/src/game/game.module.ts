@@ -3,7 +3,7 @@ import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicati
 import { ModuleRef } from '@nestjs/core';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
-import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, mergeOverrides, type BalanceOverrides } from '@terra/sim';
+import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_TYPE, devPlanetSeedFor, mergeOverrides, type BalanceOverrides } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
@@ -258,11 +258,12 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     this.wireFastRunAlerts();
     const restored = await this.snapshots.restoreAll();
     const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
-    const devOpts = this.flags.has('W01')
-      ? { params: { type: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY } }
-      : { params: { type: W00_PLANET_TYPE } };
+    const devOptsFor = (id: string) =>
+      this.flags.has('W01')
+        ? { params: { type: DEV_PLANET_TYPE, seed: devPlanetSeedFor(id), radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY } }
+        : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
-    await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
+    await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOptsFor(id)).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
   }
 
   /** Notify is a sibling module. A test that boots Game alone has no router; live play does. */

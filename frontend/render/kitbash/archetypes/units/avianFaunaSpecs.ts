@@ -41,7 +41,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.22, torsoW: 0.102, torsoH: 0.092, keelDepth: 0.115,
       wingSpan: 0.88, wingChord: 0.21, wingSweep: 0.10, wristFrac: 0.46, wristLift: 0.028, wristSweep: 0.035,
-      wingStyle: 'slotted', flapRate: 6.2, flapAmp: 0.36, wristBend: 0.32,
+      wingStyle: 'slotted', flapRate: 4.4, flapAmp: 0.40, wristBend: 0.36, birdSize: 0.62,
       neckCurve: [[0, 0.67, 0.13], [0, 0.695, 0.18], [0, 0.715, 0.22]],
       neckRadii: [0.062, 0.054, 0.048], breastBib: true,
       headR: [0.056, 0.052, 0.068], browFlare: 1.45,
@@ -58,7 +58,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.135, torsoW: 0.070, torsoH: 0.064, keelDepth: 0.076,
       wingSpan: 0.48, wingChord: 0.125, wingSweep: 0.06, wristFrac: 0.42, wristLift: 0.016, wristSweep: 0.022,
-      wingStyle: 'rounded', flapRate: 11.2, flapAmp: 0.44, wristBend: 0.36,
+      wingStyle: 'rounded', flapRate: 14.6, flapAmp: 0.52, wristBend: 0.26, birdSize: 0.05,
       neckCurve: [[0, 0.665, 0.08], [0, 0.682, 0.11], [0, 0.695, 0.135]],
       neckRadii: [0.046, 0.042, 0.038],
       headR: [0.045, 0.043, 0.052],
@@ -75,7 +75,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.20, torsoW: 0.092, torsoH: 0.084, keelDepth: 0.102,
       wingSpan: 0.78, wingChord: 0.18, wingSweep: 0.09, wristFrac: 0.45, wristLift: 0.022, wristSweep: 0.03,
-      wingStyle: 'slotted', flapRate: 7.4, flapAmp: 0.40, wristBend: 0.34,
+      wingStyle: 'slotted', flapRate: 6.8, flapAmp: 0.43, wristBend: 0.36, birdSize: 0.44,
       neckCurve: [[0, 0.67, 0.12], [0, 0.695, 0.165], [0, 0.71, 0.205]],
       neckRadii: [0.058, 0.050, 0.044],
       headR: [0.054, 0.050, 0.066], browFlare: 1.25,
@@ -92,7 +92,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.22, torsoW: 0.098, torsoH: 0.088, keelDepth: 0.108,
       wingSpan: 0.96, wingChord: 0.20, wingSweep: 0.08, wristFrac: 0.46, wristLift: 0.028, wristSweep: 0.03,
-      wingStyle: 'slotted', flapRate: 6.4, flapAmp: 0.38, wristBend: 0.30,
+      wingStyle: 'slotted', flapRate: 4.8, flapAmp: 0.50, wristBend: 0.44, birdSize: 0.72,
       neckCurve: [[0, 0.666, 0.135], [0, 0.654, 0.225], [0, 0.688, 0.315], [0, 0.728, 0.39]],
       neckRadii: [0.048, 0.036, 0.032, 0.030],
       headR: [0.046, 0.044, 0.058],
@@ -110,7 +110,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.135, torsoW: 0.070, torsoH: 0.064, keelDepth: 0.078,
       wingSpan: 0.46, wingChord: 0.115, wingSweep: 0.07, wristFrac: 0.40, wristLift: 0.014, wristSweep: 0.024,
-      wingStyle: 'rounded', flapRate: 11.8, flapAmp: 0.45, wristBend: 0.35,
+      wingStyle: 'rounded', flapRate: 15.2, flapAmp: 0.54, wristBend: 0.24, birdSize: 0.02,
       neckCurve: [[0, 0.665, 0.08], [0, 0.682, 0.11], [0, 0.692, 0.135]],
       neckRadii: [0.050, 0.044, 0.040], breastBib: true, bibCrownDark: true,
       headR: [0.050, 0.046, 0.058],
@@ -130,7 +130,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.25, torsoW: 0.106, torsoH: 0.092, keelDepth: 0.115,
       wingSpan: 1.24, wingChord: 0.165, wingSweep: 0.14, wristFrac: 0.42, wristLift: 0.048, wristSweep: 0.05,
-      wingStyle: 'pelagic', flapRate: 4.8, flapAmp: 0.30, wristBend: 0.28,
+      wingStyle: 'pelagic', flapRate: 2.8, flapAmp: 0.34, wristBend: 0.32, birdSize: 1.0,
       neckCurve: [[0, 0.67, 0.15], [0, 0.698, 0.225], [0, 0.722, 0.288]],
       neckRadii: [0.060, 0.050, 0.044], breastBib: true,
       headR: [0.054, 0.050, 0.066], browFlare: 1.3,
@@ -147,7 +147,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.18, torsoW: 0.088, torsoH: 0.082, keelDepth: 0.098,
       wingSpan: 0.58, wingChord: 0.16, wingSweep: 0.07, wristFrac: 0.44, wristLift: 0.018, wristSweep: 0.025,
-      wingStyle: 'rounded', flapRate: 9.2, flapAmp: 0.42, wristBend: 0.34,
+      wingStyle: 'rounded', flapRate: 9.8, flapAmp: 0.46, wristBend: 0.34, birdSize: 0.22,
       neckCurve: [[0, 0.67, 0.11], [0, 0.695, 0.15], [0, 0.715, 0.185]],
       neckRadii: [0.058, 0.052, 0.048], breastBib: true, bibCrownDark: true,
       headR: [0.054, 0.052, 0.064],
@@ -164,7 +164,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.21, torsoW: 0.094, torsoH: 0.086, keelDepth: 0.106,
       wingSpan: 0.84, wingChord: 0.18, wingSweep: 0.08, wristFrac: 0.46, wristLift: 0.024, wristSweep: 0.03,
-      wingStyle: 'slotted', flapRate: 7.2, flapAmp: 0.40, wristBend: 0.32,
+      wingStyle: 'slotted', flapRate: 5.3, flapAmp: 0.48, wristBend: 0.42, birdSize: 0.64,
       neckCurve: [[0, 0.662, 0.125], [0, 0.646, 0.215], [0, 0.678, 0.315], [0, 0.724, 0.39]],
       neckRadii: [0.044, 0.030, 0.026, 0.024],
       mantleTint: 0xb43042, bellyTint: 0xd8a8ac, beakBaseTint: 0xd4a4a0,
@@ -182,7 +182,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.16, torsoW: 0.072, torsoH: 0.064, keelDepth: 0.078,
       wingSpan: 0.68, wingChord: 0.12, wingSweep: 0.13, wristFrac: 0.40, wristLift: 0.026, wristSweep: 0.042,
-      wingStyle: 'scythe', flapRate: 9.8, flapAmp: 0.42, wristBend: 0.36,
+      wingStyle: 'scythe', flapRate: 9.2, flapAmp: 0.44, wristBend: 0.38, birdSize: 0.30,
       neckCurve: [[0, 0.665, 0.095], [0, 0.685, 0.13], [0, 0.695, 0.165]],
       neckRadii: [0.044, 0.038, 0.035],
       headR: [0.044, 0.040, 0.054],
@@ -199,7 +199,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.21, torsoW: 0.088, torsoH: 0.082, keelDepth: 0.098,
       wingSpan: 1.08, wingChord: 0.15, wingSweep: 0.16, wristFrac: 0.42, wristLift: 0.042, wristSweep: 0.055,
-      wingStyle: 'pelagic', flapRate: 5.8, flapAmp: 0.35, wristBend: 0.32,
+      wingStyle: 'pelagic', flapRate: 3.6, flapAmp: 0.39, wristBend: 0.38, birdSize: 0.84,
       neckCurve: [[0, 0.67, 0.13], [0, 0.69, 0.175], [0, 0.705, 0.215]],
       neckRadii: [0.054, 0.046, 0.042],
       headR: [0.048, 0.046, 0.058], gularPouch: true,
@@ -218,7 +218,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.24, torsoW: 0.114, torsoH: 0.10, keelDepth: 0.125,
       wingSpan: 1.02, wingChord: 0.23, wingSweep: 0.07, wristFrac: 0.48, wristLift: 0.030, wristSweep: 0.028,
-      wingStyle: 'slotted', flapRate: 4.5, flapAmp: 0.28, wristBend: 0.26,
+      wingStyle: 'slotted', flapRate: 3.2, flapAmp: 0.38, wristBend: 0.34, birdSize: 0.88,
       neckCurve: [[0, 0.67, 0.14], [0, 0.645, 0.21], [0, 0.665, 0.28]],
       neckRadii: [0.052, 0.040, 0.036], neckZone: 'hullSecondary', neckRuff: true,
       headR: [0.048, 0.046, 0.060], browFlare: 1.35,
@@ -235,7 +235,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.13, torsoW: 0.062, torsoH: 0.055, keelDepth: 0.068,
       wingSpan: 0.54, wingChord: 0.10, wingSweep: 0.11, wristFrac: 0.38, wristLift: 0.018, wristSweep: 0.035,
-      wingStyle: 'scythe', flapRate: 11.4, flapAmp: 0.45, wristBend: 0.38,
+      wingStyle: 'scythe', flapRate: 13.8, flapAmp: 0.50, wristBend: 0.28, birdSize: 0.10,
       neckCurve: [[0, 0.665, 0.08], [0, 0.68, 0.105], [0, 0.69, 0.13]],
       neckRadii: [0.042, 0.036, 0.034], breastBib: true, bibCrownDark: true,
       headR: [0.040, 0.038, 0.046],
@@ -252,7 +252,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.18, torsoW: 0.088, torsoH: 0.082, keelDepth: 0.10,
       wingSpan: 0.60, wingChord: 0.14, wingSweep: 0.09, wristFrac: 0.42, wristLift: 0.018, wristSweep: 0.028,
-      wingStyle: 'scythe', flapRate: 10.2, flapAmp: 0.42, wristBend: 0.34,
+      wingStyle: 'scythe', flapRate: 10.4, flapAmp: 0.45, wristBend: 0.34, birdSize: 0.24,
       neckCurve: [[0, 0.665, 0.10], [0, 0.69, 0.148], [0, 0.708, 0.186]],
       neckRadii: [0.054, 0.044, 0.038], breastBib: true,
       headR: [0.045, 0.042, 0.052],
@@ -269,7 +269,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.19, torsoW: 0.086, torsoH: 0.080, keelDepth: 0.10,
       wingSpan: 0.76, wingChord: 0.145, wingSweep: 0.14, wristFrac: 0.40, wristLift: 0.026, wristSweep: 0.042,
-      wingStyle: 'scythe', flapRate: 9.0, flapAmp: 0.40, wristBend: 0.36,
+      wingStyle: 'scythe', flapRate: 8.6, flapAmp: 0.44, wristBend: 0.38, birdSize: 0.40,
       neckCurve: [[0, 0.67, 0.115], [0, 0.692, 0.15], [0, 0.708, 0.185]],
       neckRadii: [0.054, 0.046, 0.042], breastBib: true,
       headR: [0.048, 0.046, 0.058], browFlare: 1.45,
@@ -286,7 +286,7 @@ export const AVIAN_FAUNA_ENTRIES: readonly BirdFaunaEntry[] = [
     spec: {
       torsoLen: 0.20, torsoW: 0.090, torsoH: 0.084, keelDepth: 0.102,
       wingSpan: 0.80, wingChord: 0.17, wingSweep: 0.08, wristFrac: 0.45, wristLift: 0.024, wristSweep: 0.03,
-      wingStyle: 'slotted', flapRate: 7.5, flapAmp: 0.38, wristBend: 0.30,
+      wingStyle: 'slotted', flapRate: 5.6, flapAmp: 0.46, wristBend: 0.40, birdSize: 0.54,
       neckCurve: [[0, 0.664, 0.12], [0, 0.656, 0.195], [0, 0.688, 0.265], [0, 0.72, 0.32]],
       neckRadii: [0.046, 0.036, 0.032, 0.030],
       headR: [0.046, 0.044, 0.056],

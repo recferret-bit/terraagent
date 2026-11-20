@@ -42,6 +42,14 @@ mat4 vertRigid(vec3 rest, vec3 anchor, mat3 rot) {
 mat4 vertPivotRpy(vec3 pivot, float roll, float pitch, float yaw) {
   return vertRigid(pivot, pivot, vertRpyMat(roll, pitch, yaw));
 }
+
+float vertBirdFlapEnv(float walk, float sz, float g) {
+  float activeFlap = smoothstep(0.08, 0.45, walk) * walk;
+  float smallness = clamp((0.36 - sz) / 0.36, 0.0, 1.0);
+  float sprint = smoothstep(0.95, 1.0, walk);
+  float burstWave = 0.32 + 0.68 * smoothstep(-0.35, 0.25, sin(g * 0.22));
+  return activeFlap * (1.0 - smallness * (1.0 - sprint) * (1.0 - burstWave));
+}
 `;
 
 const BODY = /* glsl */ `
@@ -55,9 +63,12 @@ mat4 vertBody() {
   float g = uTime * gaitFreq;
 
   if (isBird > 0.5) {
-    float activeFlap = smoothstep(0.10, 0.45, uWalkWeight) * uWalkWeight;
-    float bob = sin(g) * 0.032 * activeFlap + sin(uTime * 1.8) * 0.010 * (1.0 - activeFlap);
-    float pitch = -cos(g) * 0.045 * activeFlap;
+    float sz = clamp(uVertMeta.w, 0.0, 1.0);
+    float flapEnv = vertBirdFlapEnv(uWalkWeight, sz, g);
+    float bobAmp = 0.018 + 0.024 * sz;
+    float glideBob = (0.006 + 0.008 * sz) * sin(uTime * (2.2 - 0.8 * sz));
+    float bob = sin(g - 0.22 * sz) * bobAmp * flapEnv + glideBob * (1.0 - flapEnv);
+    float pitch = -cos(g - 0.22 * sz) * (0.028 + 0.026 * sz) * flapEnv;
     return vertRigid(vec3(0.0, comY, 0.0), vec3(0.0, comY + bob, 0.0), vertRpyMat(0.0, pitch, 0.0));
   }
 
@@ -161,21 +172,29 @@ mat4 vertQuadLeg(mat4 body, float role) {
 
 mat4 vertBirdWing(mat4 body, float role) {
   float g = uTime * uVertMeta.x;
-  float activeFlap = smoothstep(0.10, 0.45, uWalkWeight) * uWalkWeight;
-  float stroke = sin(g) - 0.16 * sin(2.0 * g);
+  float sz = clamp(uVertMeta.w, 0.0, 1.0);
+  float flapEnv = vertBirdFlapEnv(uWalkWeight, sz, g);
+  float armAsym = 0.12 + 0.14 * sz;
+  float armStroke = sin(g) - armAsym * sin(2.0 * g);
+  float wristPhase = g - (0.14 + 0.72 * sz);
+  float handStroke = sin(wristPhase) - 0.16 * sin(2.0 * wristPhase);
   vec3 shoulder = aPartAnim.yzw;
   float side = shoulder.x >= 0.0 ? 1.0 : -1.0;
 
-  float innerRoll = side * (0.09 * (1.0 - activeFlap) + uVertParams.z * activeFlap * stroke);
-  float innerPitch = -0.06 * activeFlap * cos(g);
-  mat4 innerMat = body * vertPivotRpy(shoulder, innerRoll, innerPitch, 0.0);
+  float glideDihedral = 0.04 + 0.13 * sz + 0.024 * sz * sin(uTime * 2.1);
+  float innerRoll = side * (glideDihedral * (1.0 - flapEnv) + uVertParams.z * flapEnv * armStroke);
+  float innerPitch = -(0.04 + 0.05 * (1.0 - sz)) * flapEnv * cos(g);
+  float innerYaw = side * (0.03 + 0.05 * (1.0 - sz)) * flapEnv * sin(g);
+  mat4 innerMat = body * vertPivotRpy(shoulder, innerRoll, innerPitch, innerYaw);
   if (role < 7.5) return innerMat;
 
-  float upFactor = max(0.0, stroke);
-  float downFactor = max(0.0, -stroke);
-  float outerRoll = side * (-0.11 * (1.0 - activeFlap) - uVertParams.w * activeFlap * upFactor + 0.14 * activeFlap * downFactor);
-  float outerYaw = side * (0.10 * activeFlap * upFactor);
-  return innerMat * vertPivotRpy(aVertJoint.xyz, outerRoll, 0.0, outerYaw);
+  float upFactor = max(0.0, handStroke);
+  float downFactor = max(0.0, -handStroke);
+  float glideWrist = -(0.05 + 0.10 * sz) + 0.020 * sz * cos(uTime * 2.1);
+  float outerRoll = side * (glideWrist * (1.0 - flapEnv) - uVertParams.w * flapEnv * upFactor + (0.10 + 0.08 * (1.0 - sz)) * flapEnv * downFactor);
+  float outerPitch = -(0.03 + 0.06 * sz) * flapEnv * cos(wristPhase);
+  float outerYaw = side * ((0.08 + 0.10 * sz) * flapEnv * upFactor);
+  return innerMat * vertPivotRpy(aVertJoint.xyz, outerRoll, outerPitch, outerYaw);
 }
 `;
 
@@ -203,13 +222,13 @@ mat4 vertebrateTransform() {
     float pitch = 0.12 * sin(g * 1.35) * uVertRun * up + uVertSleep * 0.42;
     return body * vertPivotRpy(pivot, 0.0, pitch, yaw);
   }
+  float sz = clamp(uVertMeta.w, 0.0, 1.0);
+  float flapEnv = vertBirdFlapEnv(uWalkWeight, sz, g);
   if (role < 9.5) {
-    float activeFlap = smoothstep(0.10, 0.45, uWalkWeight) * uWalkWeight;
-    float pitch = -0.08 * activeFlap * sin(g) + 0.03 * sin(uTime * 2.0);
+    float pitch = -(0.05 + 0.05 * (1.0 - sz)) * flapEnv * sin(g - 0.3 * sz) + 0.025 * sin(uTime * 2.0);
     return body * vertPivotRpy(pivot, 0.0, pitch, 0.0);
   }
-  float activeFlap = smoothstep(0.10, 0.45, uWalkWeight) * uWalkWeight;
-  float pitch = cos(g) * 0.025 * activeFlap;
+  float pitch = cos(g - 0.22 * sz) * (0.018 + 0.018 * sz) * flapEnv;
   return body * vertPivotRpy(pivot, 0.0, pitch, 0.0);
 }
 `;

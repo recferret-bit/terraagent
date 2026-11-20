@@ -28,6 +28,8 @@ export interface BirdBuildSpec {
   flapRate?: number;
   flapAmp?: number;
   wristBend?: number;
+  /** Optional explicit normalized bird size class (`0..1`); defaults to normalized `wingSpan`. */
+  birdSize?: number;
   neckCurve: readonly V3[];
   neckRadii: readonly number[];
   neckZone?: MaterialZoneId;
@@ -402,6 +404,7 @@ export function buildAvianCore(b: KitbashBuilder, s: BirdBuildSpec): void {
   const H = s.torsoH;
   const keel = s.keelDepth ?? H * 1.14;
 
+  const birdSize = s.birdSize ?? THREE.MathUtils.clamp((s.wingSpan - 0.45) / 0.80, 0, 1);
   b.vertebrateConfig = {
     isBird: 1,
     comY: flyY,
@@ -410,6 +413,7 @@ export function buildAvianCore(b: KitbashBuilder, s: BirdBuildSpec): void {
     liftHeight: s.wristBend ?? 0.34,
     gaitFreq: s.flapRate ?? 7.5,
     headSleepPitch: 0,
+    birdSize,
   };
 
   // Smooth convex rounded breast tapering cleanly into the concentric neck socket (zero rim cavity).

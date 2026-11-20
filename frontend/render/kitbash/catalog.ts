@@ -224,7 +224,7 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
   if (vertebrate) {
     const cfg = getVertebrateConfig(geometry);
     uniforms.uVertParams?.value?.set(cfg.comY, cfg.sleepDrop, cfg.strideLen, cfg.liftHeight);
-    uniforms.uVertMeta?.value?.set(cfg.gaitFreq, cfg.isBird, cfg.headSleepPitch, 0);
+    uniforms.uVertMeta?.value?.set(cfg.gaitFreq, cfg.isBird, cfg.headSleepPitch, cfg.birdSize ?? 0);
   }
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).

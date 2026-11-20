@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { createArchetypeMesh, tickArchetypeMesh } from '@terra/render/kitbash';
+import { tickArchetypeMesh } from '@terra/render/kitbash';
+import {
+  BuildingsOrchestrator,
+  buildBuildingsOrchestratorConfig,
+  buildUnitsOrchestratorConfig,
+  isBuildingOrHiveArchetypeId,
+  UnitsOrchestrator,
+} from '@terra/render/orchestrators';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { RTSCamera } from './RTSCamera';
@@ -14,9 +21,12 @@ interface Agent {
 /** Gameplay state: hero + starter colony + RTS camera + click-to-move. */
 export class Gameplay {
   readonly cam: RTSCamera;
+  readonly colonyGroup = new THREE.Group();
+  readonly buildingsOrchestrator: BuildingsOrchestrator;
+  readonly unitsOrchestrator: UnitsOrchestrator;
   private hero: Agent;
   private agents: Agent[] = [];
-  private owned: THREE.Mesh[] = [];
+  private owned: THREE.Object3D[] = [];
   private marker: THREE.Mesh;
   private cleanups: Array<() => void> = [];
   private time = 0;
@@ -34,6 +44,16 @@ export class Gameplay {
 
     this.marker = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.9, depthWrite: false, fog: false }));
     this.marker.visible = false; scene.add(this.marker);
+    this.colonyGroup.name = 'surface-colony';
+    scene.add(this.colonyGroup);
+    this.buildingsOrchestrator = new BuildingsOrchestrator(
+      this.colonyGroup,
+      JSON.stringify(buildBuildingsOrchestratorConfig(spec.biomeKey, { stripConstructiblePlinths: false, prewarmOnInit: true })),
+    );
+    this.unitsOrchestrator = new UnitsOrchestrator(
+      this.colonyGroup,
+      JSON.stringify(buildUnitsOrchestratorConfig(spec.biomeKey, { prewarmOnInit: true })),
+    );
     this.buildColony();
 
     const down = (e: PointerEvent) => { this.downAt = { x: e.clientX, y: e.clientY, t: performance.now() }; };
@@ -68,9 +88,11 @@ export class Gameplay {
   private dry(x: number, z: number, margin = 1.5) { return isDry(this.surface, x, z, margin); }
 
   private place(id: string, x: number, z: number, yaw: number) {
-    const m = createArchetypeMesh(id, this.spec.biomeKey);
+    const { mesh: m } = isBuildingOrHiveArchetypeId(id)
+      ? this.buildingsOrchestrator.acquireStandalone(id, this.spec.biomeKey)
+      : this.unitsOrchestrator.acquireStandalone(id, this.spec.biomeKey);
     m.position.set(x, this.surface.heightAt(x, z), z); m.rotation.y = yaw;
-    this.scene.add(m); this.owned.push(m);
+    this.owned.push(m);
     return m;
   }
 
@@ -148,8 +170,10 @@ export class Gameplay {
   dispose() {
     this.cleanups.forEach((f) => f());
     this.cam.dispose();
-    for (const m of this.owned) { this.scene.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
     this.owned = [];
+    this.buildingsOrchestrator.dispose();
+    this.unitsOrchestrator.dispose();
+    this.scene.remove(this.colonyGroup);
     this.scene.remove(this.marker); this.marker.geometry.dispose(); (this.marker.material as THREE.Material).dispose();
     this.scene.remove(this.hero.obj);
     this.hero.obj.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry?.dispose(); (m.material as THREE.Material)?.dispose?.(); } });

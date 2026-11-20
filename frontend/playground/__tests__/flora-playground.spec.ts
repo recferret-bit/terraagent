@@ -10,18 +10,21 @@ import {
   isFloraId,
   listFloraEntries,
 } from '../content/floraCatalog';
+import { SpawnSet } from '../content/SpawnSet';
 import { Sidebar } from '../panels/Sidebar';
+import { PEDESTAL_R } from '../stage/grid';
 import { createState, syncURL } from '../state';
 
 describe('Playground Trees & Ground Objects block, dropdown, and floraCatalog', () => {
-  it('registers all 11 tree breeds and 8 ground objects cleanly and builds wind/rock meshes across biomes', () => {
+  it('registers all 11 tree breeds and 40 ground objects (8 families x 5 types) cleanly and builds wind/rock meshes across biomes', () => {
     const trees = listFloraEntries('tree');
     const ground = listFloraEntries('ground');
     expect(trees).toHaveLength(TREE_BREEDS.length);
-    expect(ground).toHaveLength(8);
-    expect(FLORA_ENTRIES).toHaveLength(TREE_BREEDS.length + 8);
+    expect(ground).toHaveLength(40);
+    expect(FLORA_ENTRIES).toHaveLength(TREE_BREEDS.length + 40);
     expect(isFloraId('flora.tree.alpinePine')).toBe(true);
     expect(isFloraId('flora.ground.boulder')).toBe(true);
+    expect(isFloraId('flora.ground.saguaro.candelabra')).toBe(true);
     expect(isFloraId('robot.miner')).toBe(false);
 
     for (const biome of PLANET_KINDS) {
@@ -31,6 +34,7 @@ describe('Playground Trees & Ground Objects block, dropdown, and floraCatalog', 
         expect(stats.tris).toBeGreaterThan(0);
         expect(stats.verts).toBeGreaterThan(0);
         expect(stats.tris).toBeLessThan(3500);
+        expect(stats.groundedOk).toBe(true);
         built.dispose();
       }
     }
@@ -89,5 +93,56 @@ describe('Playground Trees & Ground Objects block, dropdown, and floraCatalog', 
     expect(synced.get('floraRow')).toBe('tree');
     expect(getFloraEntry('flora.tree.oasisDatePalm')?.biomeHint).toBe('dune');
     vi.unstubAllGlobals();
+  });
+});
+
+describe('Playground Per-Type Grid Layout', () => {
+  it('lays out all 40 ground objects in 8 per-type lines and all 11 trees in 3 biome lines inside PEDESTAL_R with proper gaps', () => {
+    const spawns = new SpawnSet();
+
+    spawns.rebuild(spawns.idsFor(null, '', 'ground'), 'dune', false);
+    expect(spawns.spawns).toHaveLength(40);
+    const groundRows = new Map<number, typeof spawns.spawns>();
+    for (const s of spawns.spawns) {
+      const z = Number(s.mesh.position.z.toFixed(3));
+      const distFromEdge = Math.hypot(s.mesh.position.x, s.mesh.position.z) + Math.max(s.box.max.x - s.box.min.x, s.box.max.z - s.box.min.z) * 0.5;
+      expect(distFromEdge).toBeLessThan(PEDESTAL_R);
+      const bucket = groundRows.get(z) ?? [];
+      bucket.push(s);
+      groundRows.set(z, bucket);
+    }
+    expect(groundRows.size).toBe(8);
+    for (const row of groundRows.values()) {
+      expect(row).toHaveLength(5);
+      const kinds = new Set(row.map((s) => getFloraEntry(s.id)?.groundKind));
+      expect(kinds.size).toBe(1);
+      const xs = row.map((s) => s.mesh.position.x).sort((a, b) => a - b);
+      for (let i = 1; i < xs.length; i++) {
+        expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(3.5);
+      }
+    }
+
+    spawns.rebuild(spawns.idsFor(null, '', 'tree'), 'forestRock', false);
+    expect(spawns.spawns).toHaveLength(11);
+    const treeRows = new Map<number, typeof spawns.spawns>();
+    for (const s of spawns.spawns) {
+      const z = Number(s.mesh.position.z.toFixed(3));
+      const distFromEdge = Math.hypot(s.mesh.position.x, s.mesh.position.z) + Math.max(s.box.max.x - s.box.min.x, s.box.max.z - s.box.min.z) * 0.5;
+      expect(distFromEdge).toBeLessThan(PEDESTAL_R);
+      const bucket = treeRows.get(z) ?? [];
+      bucket.push(s);
+      treeRows.set(z, bucket);
+    }
+    expect(treeRows.size).toBe(3);
+    for (const row of treeRows.values()) {
+      const biomes = new Set(row.map((s) => getFloraEntry(s.id)?.biomeHint));
+      expect(biomes.size).toBe(1);
+      const xs = row.map((s) => s.mesh.position.x).sort((a, b) => a - b);
+      for (let i = 1; i < xs.length; i++) {
+        expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(5.5);
+      }
+    }
+
+    spawns.dispose();
   });
 });

@@ -92,7 +92,7 @@ export interface ViewColony {
 
 export interface SimView {
   tick: number;
-  planet: { id: string; type: PlanetType; radius: number };
+  planet: { id: string; type: PlanetType; radius: number; seed?: string };
   tiles: {
     count: number;
     terrain: Uint8Array;
@@ -238,7 +238,7 @@ export function view(state: PlanetState): SimView {
 
   return {
     tick: state.meta.tick,
-    planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
+    planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius, seed: state.meta.seed },
     tiles: {
       count: state.grid.count,
       terrain: L.terrain as Uint8Array,

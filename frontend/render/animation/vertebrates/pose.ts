@@ -29,13 +29,24 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+function computeBirdFlapEnv(walk: number, sz: number, g: number): number {
+  const activeFlap = smoothstep(0.08, 0.45, walk) * walk;
+  const smallness = Math.max(0, Math.min(1, (0.36 - sz) / 0.36));
+  const sprint = smoothstep(0.95, 1.0, walk);
+  const burstWave = 0.32 + 0.68 * smoothstep(-0.35, 0.25, Math.sin(g * 0.22));
+  return activeFlap * (1 - smallness * (1 - sprint) * (1 - burstWave));
+}
+
 export function vertebrateBodyMatrix(p: VertebratePose): THREE.Matrix4 {
   const { comY, sleepDrop, strideLen, liftHeight, gaitFreq, isBird } = p.config;
   const g = p.time * gaitFreq;
   if (isBird > 0.5) {
-    const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
-    const bob = Math.sin(g) * 0.032 * activeFlap + Math.sin(p.time * 1.8) * 0.010 * (1 - activeFlap);
-    const pitch = -Math.cos(g) * 0.045 * activeFlap;
+    const sz = Math.max(0, Math.min(1, p.config.birdSize ?? 0));
+    const flapEnv = computeBirdFlapEnv(p.walk, sz, g);
+    const bobAmp = 0.018 + 0.024 * sz;
+    const glideBob = (0.006 + 0.008 * sz) * Math.sin(p.time * (2.2 - 0.8 * sz));
+    const bob = Math.sin(g - 0.22 * sz) * bobAmp * flapEnv + glideBob * (1 - flapEnv);
+    const pitch = -Math.cos(g - 0.22 * sz) * (0.028 + 0.026 * sz) * flapEnv;
     const anchor = new THREE.Vector3(0, comY + bob, 0);
     return rigid(new THREE.Vector3(0, comY, 0), anchor, rotateRollPitchYawQuat(0, pitch, 0));
   }
@@ -144,22 +155,30 @@ function mammalLegMatrix(part: VertebratePartInput, p: VertebratePose, body: THR
 
 function birdWingMatrix(part: VertebratePartInput, p: VertebratePose, body: THREE.Matrix4): THREE.Matrix4 {
   const g = p.time * p.config.gaitFreq;
-  const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
-  const stroke = Math.sin(g) - 0.16 * Math.sin(2 * g);
+  const sz = Math.max(0, Math.min(1, p.config.birdSize ?? 0));
+  const flapEnv = computeBirdFlapEnv(p.walk, sz, g);
+  const armAsym = 0.12 + 0.14 * sz;
+  const armStroke = Math.sin(g) - armAsym * Math.sin(2 * g);
+  const wristPhase = g - (0.14 + 0.72 * sz);
+  const handStroke = Math.sin(wristPhase) - 0.16 * Math.sin(2 * wristPhase);
   const side = part.pivot[0] >= 0 ? 1 : -1;
 
-  const innerRoll = side * (0.09 * (1 - activeFlap) + p.config.strideLen * activeFlap * stroke);
-  const innerPitch = -0.06 * activeFlap * Math.cos(g);
-  const innerMat = body.clone().multiply(pivotRotate(part.pivot, innerRoll, innerPitch, 0));
+  const glideDihedral = 0.04 + 0.13 * sz + 0.024 * sz * Math.sin(p.time * 2.1);
+  const innerRoll = side * (glideDihedral * (1 - flapEnv) + p.config.strideLen * flapEnv * armStroke);
+  const innerPitch = -(0.04 + 0.05 * (1 - sz)) * flapEnv * Math.cos(g);
+  const innerYaw = side * (0.03 + 0.05 * (1 - sz)) * flapEnv * Math.sin(g);
+  const innerMat = body.clone().multiply(pivotRotate(part.pivot, innerRoll, innerPitch, innerYaw));
   if (part.role === 7) return innerMat;
 
-  const upFactor = Math.max(0, stroke);
-  const downFactor = Math.max(0, -stroke);
+  const upFactor = Math.max(0, handStroke);
+  const downFactor = Math.max(0, -handStroke);
+  const glideWrist = -(0.05 + 0.10 * sz) + 0.020 * sz * Math.cos(p.time * 2.1);
   const outerRoll =
     side *
-    (-0.11 * (1 - activeFlap) - p.config.liftHeight * activeFlap * upFactor + 0.14 * activeFlap * downFactor);
-  const outerYaw = side * (0.10 * activeFlap * upFactor);
-  return innerMat.multiply(pivotRotate(part.joint, outerRoll, 0, outerYaw));
+    (glideWrist * (1 - flapEnv) - p.config.liftHeight * flapEnv * upFactor + (0.10 + 0.08 * (1 - sz)) * flapEnv * downFactor);
+  const outerPitch = -(0.03 + 0.06 * sz) * flapEnv * Math.cos(wristPhase);
+  const outerYaw = side * ((0.08 + 0.10 * sz) * flapEnv * upFactor);
+  return innerMat.multiply(pivotRotate(part.joint, outerRoll, outerPitch, outerYaw));
 }
 
 export function vertebratePartMatrix(part: VertebratePartInput, p: VertebratePose): THREE.Matrix4 {
@@ -189,14 +208,14 @@ export function vertebratePartMatrix(part: VertebratePartInput, p: VertebratePos
     const pitch = 0.12 * Math.sin(g * 1.35) * p.run * up + p.sleep * 0.42;
     return body.multiply(pivotRotate(part.pivot, 0, pitch, yaw));
   }
+  const sz = Math.max(0, Math.min(1, p.config.birdSize ?? 0));
+  const flapEnv = computeBirdFlapEnv(p.walk, sz, g);
   if (part.role === 9) {
-    const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
-    const pitch = -0.08 * activeFlap * Math.sin(g) + 0.03 * Math.sin(p.time * 2.0);
+    const pitch = -(0.05 + 0.05 * (1 - sz)) * flapEnv * Math.sin(g - 0.3 * sz) + 0.025 * Math.sin(p.time * 2.0);
     return body.multiply(pivotRotate(part.pivot, 0, pitch, 0));
   }
   if (part.role === 10) {
-    const activeFlap = smoothstep(0.10, 0.45, p.walk) * p.walk;
-    const pitch = Math.cos(g) * 0.025 * activeFlap;
+    const pitch = Math.cos(g - 0.22 * sz) * (0.018 + 0.018 * sz) * flapEnv;
     return body.multiply(pivotRotate(part.pivot, 0, pitch, 0));
   }
   return body;

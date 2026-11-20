@@ -26,6 +26,34 @@ export function resolveHomeBaseDiveAngles(markers: readonly OrbitalGlobeMarkerIn
   return home ? { yaw: home.yaw, pitch: home.pitch } : { yaw: 0, pitch: 0.08 };
 }
 
+const FORWARDED_ONLINE_QUERY_KEYS = [
+  'host',
+  'seed',
+  'waves',
+  'lag',
+  'predict',
+  'as',
+  'daynight',
+  'shadow',
+  'colonyId',
+] as const;
+
+/**
+ * Extracts session/runtime query parameters (`?host=local`, `?seed=<number|hash>`, `?waves=`, etc.)
+ * from the initial `/play.html` URL while stripping orbital one-shot flags (`planet`, `skip`, `deploy`, `t`).
+ */
+export function buildForwardedOnlineSearch(rawSearch: string): string {
+  if (!rawSearch) return '';
+  const src = new URLSearchParams(rawSearch);
+  const out = new URLSearchParams();
+  for (const key of FORWARDED_ONLINE_QUERY_KEYS) {
+    const val = src.get(key);
+    if (val !== null && val.trim() !== '') out.set(key, val.trim());
+  }
+  const str = out.toString();
+  return str ? `?${str}` : '';
+}
+
 export interface BootOnlineSessionOpts {
   readonly root: HTMLElement;
   readonly viewport: ColonyViewport;
@@ -38,6 +66,7 @@ export interface BootOnlineSessionOpts {
   readonly orbitalCameraDrop: boolean;
   readonly deferReveal: boolean;
   readonly tryRefresh: boolean;
+  readonly search?: string;
   readonly onReturnToOrbit: () => void;
 }
 
@@ -53,7 +82,7 @@ export function mountBootOnlineSession(opts: BootOnlineSessionOpts): OnlineSessi
     orbitalCameraDrop: opts.orbitalCameraDrop,
     deferReveal: opts.deferReveal,
     tryRefresh: opts.tryRefresh,
-    search: '',
+    search: opts.search ?? '',
     onReturnToOrbit: opts.onReturnToOrbit,
   });
   (window as unknown as { __online?: OnlineSession }).__online = session;
@@ -72,6 +101,7 @@ export function startReturningColonyEntry(opts: {
   readonly skipCinematic: boolean;
   readonly stage: OrbitalStage | null;
   readonly markers: readonly OrbitalGlobeMarkerInput[];
+  readonly search?: string;
   readonly onReturnToOrbit: () => void;
 }): OnlineSession {
   writeStoredPlanetKind(opts.planetKind);
@@ -89,6 +119,7 @@ export function startReturningColonyEntry(opts: {
     orbitalCameraDrop: !opts.skipCinematic,
     deferReveal: !opts.skipCinematic && Boolean(opts.stage),
     tryRefresh: true,
+    search: opts.search,
     onReturnToOrbit: opts.onReturnToOrbit,
   });
 

@@ -40,6 +40,8 @@ export interface VertebrateRigConfig {
   gaitFreq: number;
   /** Maximum safe neck pitch downward during sleep (rad). */
   headSleepPitch: number;
+  /** Normalized bird size class (`0` = tiny passerine/diver, `1` = giant pelagic/thermal soarer). */
+  birdSize?: number;
 }
 
 export interface VertebratePose {

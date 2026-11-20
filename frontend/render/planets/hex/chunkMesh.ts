@@ -1,5 +1,12 @@
 import { DEPOSIT_CODES, PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
-import { HEX_DIRS, hexIndex, levelledFlatHeight } from '@terra/sim/grid/hex';
+import {
+  HEX_DIRS,
+  hexIndex,
+  latticeHash01,
+  latticeHashU32,
+  levelledFlatHeight,
+  mixGroundSeed,
+} from '@terra/sim/grid/hex';
 import type { PlanetKind } from '../PlanetSpec';
 import { tileXZ } from './hexMath';
 
@@ -48,16 +55,8 @@ export interface ChunkBuffers {
   vertexTile: Int32Array;
 }
 
-export function tileHashU32(q: number, r: number, salt = 0): number {
-  let h = (salt ^ Math.imul(q, 0x9e3779b1) ^ Math.imul(r, 0x85ebca6b)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}
-
-export function tileHash01(q: number, r: number, salt = 0): number {
-  return tileHashU32(q, r, salt) / 4294967296;
-}
+export const tileHashU32 = latticeHashU32;
+export const tileHash01 = latticeHash01;
 
 type StyleSpec = readonly [number, number, number, number]; // [hexA, hexB, ao, rock]
 
@@ -132,12 +131,12 @@ const WILD_FLAT_HEX_VARIANTS: Record<PlanetKind, readonly StyleSpec[]> = {
   ],
 };
 
-function selectWildFlatVariant(q: number, r: number, kind: PlanetKind): StyleSpec {
+function selectWildFlatVariant(q: number, r: number, kind: PlanetKind, seed = 0): StyleSpec {
   const variants = WILD_FLAT_HEX_VARIANTS[kind] ?? WILD_FLAT_HEX_VARIANTS.forestRock;
   const patchQ = Math.round(q / 3);
   const patchR = Math.round(r / 3);
-  const patchRoll = tileHash01(patchQ, patchR, 809);
-  const tileRoll = tileHash01(q, r, 811);
+  const patchRoll = tileHash01(patchQ, patchR, mixGroundSeed(seed, 809));
+  const tileRoll = tileHash01(q, r, mixGroundSeed(seed, 811));
   const idx = Math.floor((patchRoll * 3.2 + tileRoll * 2.3) % variants.length);
   return variants[idx]!;
 }
@@ -153,6 +152,7 @@ export function tileStyle(
   prep = 0,
   deposit = 0,
   kind: PlanetKind = 'forestRock',
+  seed = 0,
 ): { r: number; g: number; b: number; ao: number; rock: number } {
   const table = CLASS_STYLES[kind] ?? CLASS_STYLES.forestRock;
   const flatSpec = table[HEX_TERRAIN.flat]!;
@@ -166,9 +166,9 @@ export function tileStyle(
       : prep === HEX_PREP.living
         ? (LIVING_STYLES[kind] ?? LIVING_STYLES.forestRock)
         : terrain === HEX_TERRAIN.flat && prep === HEX_PREP.wild
-          ? selectWildFlatVariant(q, r, kind)
+          ? selectWildFlatVariant(q, r, kind, seed)
           : (table[terrain] ?? flatSpec);
-  const t = tileHash01(q, r, 31);
+  const t = tileHash01(q, r, mixGroundSeed(seed, 31));
   const [r0, g0, b0] = unpackRgb(spec[0]);
   const [r1, g1, b1] = unpackRgb(spec[1]);
   const cr = r0 + (r1 - r0) * t;
@@ -185,9 +185,9 @@ export function tileStyle(
  * ranges); classes only add cosmetic detail on top and keep water below the water plane. Flat and Prepared ground sit
  * at their own level, so a pad on a raised plateau stays on the plateau.
  */
-function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number, kind?: PlanetKind): number {
+function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number, kind?: PlanetKind, seed = 0): number {
   if (isClearedPrep(prep)) return levelledFlatHeight(raw);
-  const h = tileHash01(q, r, 17);
+  const h = tileHash01(q, r, mixGroundSeed(seed, 17));
   switch (terrain) {
     case HEX_TERRAIN.flat:
       return levelledFlatHeight(raw);
@@ -228,13 +228,14 @@ export function computeEffectiveHeights(radius: number, layers: HexTileLayers): 
   const prep = layers.prep;
   const deposit = layers.deposit;
   const kind = layers.kind;
+  const seed = layers.seed ?? 0;
   const base = new Float32Array(hx.count);
   for (let i = 0; i < hx.count; i++) {
     const t0 = terrain[i] ?? 0;
     const hasDeposit = (deposit?.[i] ?? 0) !== HEX_DEPOSIT.none && t0 !== HEX_TERRAIN.rock;
     const effTerrain = hasDeposit ? HEX_TERRAIN.flat : t0;
     const effRaw = layers.height[i] ?? 0; // a deposit tile is levelled at its own height, never pitted to 0 on a plateau
-    base[i] = baseTileHeight(hx.q[i]!, hx.r[i]!, effRaw, effTerrain, prep?.[i] ?? 0, kind);
+    base[i] = baseTileHeight(hx.q[i]!, hx.r[i]!, effRaw, effTerrain, prep?.[i] ?? 0, kind, seed);
   }
   for (let i = 0; i < hx.count; i++) {
     const t0 = terrain[i] ?? 0;
@@ -351,7 +352,7 @@ export function buildChunk(
     const tVal = layers.terrain![i] ?? 0;
     const depVal = layers.deposit?.[i] ?? 0;
     const hasDeposit = depVal !== HEX_DEPOSIT.none && tVal !== HEX_TERRAIN.rock;
-    const st = tileStyle(q, r, tVal, prepVal, depVal, layers.kind ?? 'forestRock');
+    const st = tileStyle(q, r, tVal, prepVal, depVal, layers.kind ?? 'forestRock', layers.seed ?? 0);
     aAO[v] = isClearedPrep(prepVal) || hasDeposit ? st.ao : st.ao * horizonAO(hx, i, effHeight);
     aRock[v] = st.rock;
     aHexShore[v] = tileShoreFactor(hx, i, layers);

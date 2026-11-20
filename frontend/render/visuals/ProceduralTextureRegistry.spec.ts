@@ -67,7 +67,7 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
     expect(mockFolSh.uniforms.uBarkRoughMap?.value).toBe(ProceduralTextureRegistry.get('treeBarkFissures', 128).roughnessMap);
     expect(mockFolSh.fragmentShader).not.toContain('atan(');
 
-    // Trees are stemless canopy clusters (aBark = 0 across crowns) and wildflowers remain bark-free (0)
+    // Explicit `aBark` tags woody tree stems (1) while keeping pink coralBlossom crowns & wildflowers bark-free (0)
     const birch = buildTreeBreedGeo('silverBirch', 17);
     const coral = buildTreeBreedGeo('coralBlossom', 17);
     const flower = makeWildflowerGeo('oceanForest', 17);
@@ -75,9 +75,9 @@ describe('ProceduralTextureRegistry cache (RN-13) and botanical/organic PBR pres
     const coralBark = coral.getAttribute('aBark');
     const coralCol = coral.getAttribute('color');
     expect(birchBark).toBeDefined();
-    let maxBirchBark = 0;
-    for (let i = 0; i < birchBark.count; i++) maxBirchBark = Math.max(maxBirchBark, birchBark.getX(i));
-    expect(maxBirchBark).toBe(0);
+    let birchWoodVerts = 0;
+    for (let i = 0; i < birchBark.count; i++) if (birchBark.getX(i) > 0.5) birchWoodVerts++;
+    expect(birchWoodVerts).toBeGreaterThan(20);
     for (let i = 0; i < coralBark.count; i++) {
       if (coralCol.getX(i) - coralCol.getY(i) > 0.22) expect(coralBark.getX(i)).toBe(0);
     }

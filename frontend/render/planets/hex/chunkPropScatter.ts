@@ -1,26 +1,24 @@
 import * as THREE from 'three';
-import { hexIndex } from '@terra/sim/grid/hex';
+import { hexIndex, mixGroundSeed } from '@terra/sim/grid/hex';
+import { buildBiomeOrchestratorConfig } from '../../orchestrators/BiomeConfig';
+import { buildPropsView } from '../../orchestrators/biomeViews';
+import { GroundObjectsOrchestrator } from '../../orchestrators/GroundObjectsOrchestrator';
+import { ResourcesOrchestrator } from '../../orchestrators/ResourcesOrchestrator';
+import { TreesOrchestrator } from '../../orchestrators/TreesOrchestrator';
 import type { PlanetKind, PlanetSpec } from '../PlanetSpec';
-import {
-  createFoliageMaterial,
-  createRockMaterial,
-  makeBoulderGeo,
-  makeSpireGeo,
-  type InstOpts,
-  type Place,
-} from '../../visuals/terrain/Scatter';
-import { buildBiomeTreeAtlasGeo, type TreeBreedId } from '../../visuals/terrain/treeBreeds';
+import type { Place } from '../../visuals/terrain/Scatter';
+import { GROUND_VARIANT_COUNT } from '../../visuals/terrain/groundFloraGeos';
+import type { TreeBreedId } from '../../visuals/terrain/treeBreeds';
 import {
   HEX_DEPOSIT,
   HEX_TERRAIN,
-  isClearedPrep,
   tileHash01,
   tileHashU32,
   type HexTileLayers,
 } from './chunkMesh';
 import { generateTileForestTrees, type GeneratedForestTree } from './flora/forestPipeline';
+import { canFitObjectOnTerrain, classifyHexTilePropSite } from './flora/terrainCompatibility';
 import { clampToGroundHexagon, HEX_PROP_EDGE_MARGIN_M, tileXZ } from './hexMath';
-import { createPropBucketSet } from './propBuckets';
 
 export type PropKind = 'pine' | 'duneTree' | 'boulder' | 'spire' | 'metals' | 'minerals' | 'oil';
 export type DepositVisualStage = 'full' | 'half' | 'depleted';
@@ -87,13 +85,15 @@ function makeInstance(
   radMin: number,
   radSpan: number,
   radius?: number,
+  planetSeed = 0,
 ): TilePropInstance {
-  const baseAngle = tileHash01(q, r, saltBase + 99) * Math.PI * 2;
-  const h1 = tileHash01(q, r, saltBase + k * 7);
-  const h2 = tileHash01(q, r, saltBase + k * 7 + 1);
-  const h3 = tileHash01(q, r, saltBase + k * 7 + 2);
-  const h4 = tileHash01(q, r, saltBase + k * 7 + 3);
-  const h5 = tileHash01(q, r, saltBase + k * 7 + 4);
+  const seededSalt = mixGroundSeed(planetSeed, saltBase);
+  const baseAngle = tileHash01(q, r, seededSalt + 99) * Math.PI * 2;
+  const h1 = tileHash01(q, r, seededSalt + k * 7);
+  const h2 = tileHash01(q, r, seededSalt + k * 7 + 1);
+  const h3 = tileHash01(q, r, seededSalt + k * 7 + 2);
+  const h4 = tileHash01(q, r, seededSalt + k * 7 + 3);
+  const h5 = tileHash01(q, r, seededSalt + k * 7 + 4);
   const minR = count > 1 ? Math.max(radMin, 0.34) : radMin;
   const dist = minR + radSpan * h1;
   const sector = (Math.PI * 2) / Math.max(1, count);
@@ -120,6 +120,9 @@ function makeInstance(
     rot: h3 * Math.PI * 2,
     s: 0.25 + 0.7 * h4,
     r: h5,
+    ...(kind === 'boulder' || kind === 'spire'
+      ? { breedIndex: tileHashU32(q, r, seededSalt + k * 7 + 5) % GROUND_VARIANT_COUNT }
+      : {}),
   };
 }
 
@@ -159,13 +162,15 @@ function scatterDepositProps(
   stage: DepositVisualStage,
   depositTier?: number,
   radius?: number,
+  planetSeed = 0,
 ): TilePropInstance[] {
   const look = DEPOSIT_TIER_LOOK[depositVisualTier(depositTier)];
   const [cx, cz] = tileXZ(q, r);
+  const depSalt = mixGroundSeed(planetSeed, 800);
   const out: TilePropInstance[] = [];
   for (let k = 0; k < look.count; k++) {
-    const inst = makeInstance(depKind, q, r, tileIndex, cx, cz, heightAt, k, look.count, 800, 0.34, 0.30, radius);
-    applyDepositStage(inst, stage, k, 0.78 + 0.40 * tileHash01(q, r, 800 + k * 7 + 3), look.scale);
+    const inst = makeInstance(depKind, q, r, tileIndex, cx, cz, heightAt, k, look.count, 800, 0.34, 0.30, radius, planetSeed);
+    applyDepositStage(inst, stage, k, 0.78 + 0.40 * tileHash01(q, r, depSalt + k * 7 + 3), look.scale);
     if (look.tintMul !== undefined) inst.tintMul = look.tintMul;
     out.push(inst);
   }
@@ -196,7 +201,8 @@ function treeToPropInstance(propKind: 'pine' | 'duneTree', q: number, r: number,
 
 /**
  * Deterministic prop instances for a single hex tile `(q, r)` from its current `terrain`, `prep`, `deposit`, and `richnessBp`.
- * Depends only on `(q, r)` and the tile's own state so clearing a tile never shifts props on neighbouring tiles.
+ * Evaluates `classifyHexTilePropSite` + `canFitObjectOnTerrain` purely from `(q, r)` and the tile's own state so clearing or
+ * reclaiming a tile never shifts or mutates props on neighbouring tiles (RN-02).
  */
 export function scatterTileProps(
   q: number,
@@ -216,40 +222,39 @@ export function scatterTileProps(
 ): TilePropInstance[] {
   const out: TilePropInstance[] = [];
   const [cx, cz] = tileXZ(q, r);
+  const site = classifyHexTilePropSite(q, r, terrain, prep, deposit, kind, planetSeed);
 
   if (deposit === HEX_DEPOSIT.metals || deposit === HEX_DEPOSIT.minerals || deposit === HEX_DEPOSIT.oil) {
-    if (kind === 'dune' && terrain === HEX_TERRAIN.rock) return out;
     const depKind: PropKind =
       deposit === HEX_DEPOSIT.metals ? 'metals' : deposit === HEX_DEPOSIT.minerals ? 'minerals' : 'oil';
-    return scatterDepositProps(depKind, q, r, tileIndex, heightAt, getDepositVisualStage(richnessBp), depositTier, radius);
+    if (!canFitObjectOnTerrain(depKind, site)) return out;
+    return scatterDepositProps(depKind, q, r, tileIndex, heightAt, getDepositVisualStage(richnessBp), depositTier, radius, planetSeed);
   }
 
-  if (!isClearedPrep(prep)) {
-    if (terrain === HEX_TERRAIN.forest) {
-      if (kind === 'dune') {
-        const nTrees = 1 + (tileHashU32(q, r, 109) % 2);
-        const trees = generateTileForestTrees(q, r, tileIndex, 'dune', heightAt, planetSeed, nTrees, radius);
-        for (const tr of trees) {
-          out.push(treeToPropInstance('duneTree', q, r, tileIndex, tr));
-        }
-        // Companion desert outcrop boulder on half of oasis/scrub hexes at a non-colliding opposite sector (`saltBase = 520`).
-        if (tileHashU32(q, r, 101) % 2 === 0) {
-          const cand = makeInstance('boulder', q, r, tileIndex, cx, cz, heightAt, 0, 1, 520, 0.44, 0.20, radius);
-          if (trees.every((tr) => Math.hypot(cand.x - tr.x, cand.z - tr.z) >= 0.95)) {
-            out.push(cand);
-          }
-        }
-      } else {
-        for (const tr of generateTileForestTrees(q, r, tileIndex, kind, heightAt, planetSeed, undefined, radius)) {
-          out.push(treeToPropInstance('pine', q, r, tileIndex, tr));
+  if (terrain === HEX_TERRAIN.forest) {
+    if (canFitObjectOnTerrain('duneTree', site)) {
+      const nTrees = 1 + (tileHashU32(q, r, mixGroundSeed(planetSeed, 109)) % 2);
+      const trees = generateTileForestTrees(q, r, tileIndex, 'dune', heightAt, planetSeed, nTrees, radius);
+      for (const tr of trees) {
+        out.push(treeToPropInstance('duneTree', q, r, tileIndex, tr));
+      }
+      if (canFitObjectOnTerrain('boulder', site) && tileHashU32(q, r, mixGroundSeed(planetSeed, 101)) % 2 === 0) {
+        const cand = makeInstance('boulder', q, r, tileIndex, cx, cz, heightAt, 0, 1, 520, 0.44, 0.20, radius, planetSeed);
+        if (trees.every((tr) => Math.hypot(cand.x - tr.x, cand.z - tr.z) >= 0.95)) {
+          out.push(cand);
         }
       }
-    } else if (terrain === HEX_TERRAIN.rock && kind !== 'dune') {
-      const count = 2 + (tileHashU32(q, r, 303) % 2); // 2..3 boulders/spires on non-dune rock
-      for (let k = 0; k < count; k++) {
-        const propKind: PropKind = k === count - 1 ? 'spire' : 'boulder';
-        out.push(makeInstance(propKind, q, r, tileIndex, cx, cz, heightAt, k, count, 400, 0.34, 0.34, radius));
+    } else if (canFitObjectOnTerrain('pine', site)) {
+      for (const tr of generateTileForestTrees(q, r, tileIndex, kind, heightAt, planetSeed, undefined, radius)) {
+        out.push(treeToPropInstance('pine', q, r, tileIndex, tr));
       }
+    }
+  } else if (terrain === HEX_TERRAIN.rock && canFitObjectOnTerrain('spire', site)) {
+    const count = 2 + (tileHashU32(q, r, mixGroundSeed(planetSeed, 303)) % 2);
+    for (let k = 0; k < count; k++) {
+      const propKind: PropKind = k === count - 1 ? 'spire' : 'boulder';
+      if (!canFitObjectOnTerrain(propKind, site)) continue;
+      out.push(makeInstance(propKind, q, r, tileIndex, cx, cz, heightAt, k, count, 400, 0.34, 0.34, radius, planetSeed));
     }
   }
   return out;
@@ -309,92 +314,27 @@ export function scatterChunkProps(
 
 export const buildChunkPropInstances = scatterChunkProps;
 
-const jitterTint = (amt: number, hueShift = 0) => (rv: number, c: THREE.Color) => {
-  const k = 1 + (rv - 0.5) * 2 * amt;
-  c.setRGB(k * (1 + (rv - 0.5) * hueShift), k, k * (1 - (rv - 0.5) * hueShift));
-};
-
-const INST_OPTS: Record<PropKind, InstOpts> = {
-  pine: { sx: [0.32, 0.50], sy: [0.36, 0.62], sink: 0.08, tilt: 0.06, tint: jitterTint(0.18, 0.12), encodeBreedInColor: true },
-  duneTree: { sx: [0.32, 0.50], sy: [0.36, 0.62], sink: 0.08, tilt: 0.06, tint: jitterTint(0.16, 0.08), encodeBreedInColor: true },
-  boulder: { sx: [0.34, 0.60], sy: [0.42, 0.68], sink: 0.06, tilt: 0.20, tint: jitterTint(0.22) },
-  spire: { sx: [0.32, 0.52], sy: [0.74, 1.38], sink: 0.10, tilt: 0.12, tint: jitterTint(0.2) },
-  metals: { sx: [0.32, 0.50], sy: [0.44, 0.68], sink: 0.06, tilt: 0.18, tint: jitterTint(0.15, 0.08) },
-  minerals: { sx: [0.32, 0.50], sy: [0.78, 1.32], sink: 0.10, tilt: 0.12, tint: jitterTint(0.15, -0.08) },
-  oil: { sx: [0.32, 0.50], sy: [0.36, 0.54], sink: 0.05, tilt: 0.12, tint: jitterTint(0.12) },
-};
-
 /**
- * The hex props: deterministic per-tile scatter, drawn as spatially bucketed instanced meshes (`propBuckets.ts`, one
- * per 32 m cell and kind) so off-screen buckets are frustum-culled in the colour and shadow passes. `setChunk` marks
- * only the (cell, kind) buckets whose instances changed, so a delta that touches no props rebuilds nothing.
+ * Pooled hex prop scatter facade backed by `TreesOrchestrator`, `GroundObjectsOrchestrator`, and `ResourcesOrchestrator`.
  */
-export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
+export function createHexPropScatter(look: PlanetSpec, radius = 32): HexPropScatter {
   const group = new THREE.Group();
   group.name = 'hexProps';
+  const floraSink = new THREE.Group();
   const timeU: THREE.IUniform<number> = { value: 0 };
-
-  const rockTint = new THREE.Color(look.palette.rock);
-  const darkTint = new THREE.Color(look.palette.rockDark);
-  const lushTreeBiome = look.kind === 'oceanForest' ? 'oceanForest' : 'forestRock';
-  const geos: Record<PropKind, THREE.BufferGeometry> = {
-    pine: buildBiomeTreeAtlasGeo(lushTreeBiome, look.seed),
-    duneTree: buildBiomeTreeAtlasGeo('dune', look.seed + 97),
-    boulder: makeBoulderGeo(11 + (look.seed % 7), rockTint),
-    spire: makeSpireGeo(7 + (look.seed % 5), rockTint.clone().lerp(darkTint, 0.25)),
-    metals: makeBoulderGeo(29, new THREE.Color(0xc86d28)),
-    minerals: makeSpireGeo(43, new THREE.Color(0x38c8dc)),
-    oil: makeBoulderGeo(61, new THREE.Color(0x1e1928)),
-  };
-  const mats: Record<PropKind, THREE.Material> = {
-    pine: createFoliageMaterial(timeU, 0.72, look.kind === 'oceanForest', true),
-    duneTree: createFoliageMaterial(timeU, 0.80, true, true),
-    boulder: createRockMaterial({ rough: 0.92 }),
-    spire: createRockMaterial({ rough: 0.88 }),
-    metals: createRockMaterial({ rough: 0.48, metal: 0.65 }),
-    minerals: createRockMaterial({ rough: 0.28, metal: 0.25 }),
-    oil: createRockMaterial({ rough: 0.22, metal: 0.35 }),
-  };
-
-  const buckets = createPropBucketSet(group, { kinds: PROP_KINDS, geos, mats, opts: INST_OPTS });
-  const byChunk = new Map<string, ChunkPropBuckets>();
+  const cfg = buildBiomeOrchestratorConfig(look, radius);
+  const trees = new TreesOrchestrator(cfg, group, floraSink, timeU);
+  const groundObjects = new GroundObjectsOrchestrator(cfg, look, group, floraSink, timeU);
+  const resources = new ResourcesOrchestrator(cfg, group);
+  const view = buildPropsView(group, timeU, trees, groundObjects, resources);
 
   return {
-    group,
-    meshes: buckets.meshes,
-    timeU,
-    setChunk(key, b) {
-      buckets.setChunk(key, b);
-      byChunk.set(key, b);
-    },
-    rebuildMeshes: () => buckets.rebuild(),
-    cullToFocus: () => buckets.cullToFocus(),
-    counts() {
-      const out: Record<PropKind, number> = { pine: 0, duneTree: 0, boulder: 0, spire: 0, metals: 0, minerals: 0, oil: 0 };
-      for (const b of byChunk.values()) {
-        for (const k of PROP_KINDS) out[k] += b[k].length;
-      }
-      return out;
-    },
-    instancesForTile(tileIndex) {
-      const out: TilePropInstance[] = [];
-      for (const b of byChunk.values()) {
-        for (const k of PROP_KINDS) {
-          for (const inst of b[k]) {
-            if (inst.tileIndex === tileIndex) out.push(inst);
-          }
-        }
-      }
-      return out;
-    },
-    pickProp: (ray) => buckets.pick(ray),
+    ...view,
     dispose() {
-      buckets.dispose();
-      for (const k of PROP_KINDS) {
-        geos[k].dispose();
-        mats[k].dispose();
-      }
-      byChunk.clear();
+      view.dispose();
+      trees.dispose();
+      groundObjects.dispose();
+      resources.dispose();
       group.removeFromParent();
     },
   };

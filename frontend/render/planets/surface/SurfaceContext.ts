@@ -4,15 +4,12 @@ import { createHeightField, type HeightField } from '../../visuals/terrain/heigh
 import { createTerrain } from '../../visuals/terrain/TerrainMesh';
 import { Noise2, mulberry32, smoothstep } from '../../visuals/terrain/noise';
 import {
-  scatterGrid, buildInstanced, createRockMaterial, makeBoulderGeo, makeSpireGeo, type Place,
+  scatterGrid, buildInstanced, createRockMaterial, jitterBotanicalTint, makeBoulderGeo, makeSpireGeo, type Place,
 } from '../../visuals/terrain/Scatter';
 import type { WaterFauna } from '../../visuals/water/fauna';
 
 /** Brightness/hue jitter relative to the geometry's baked vertex colours. */
-export const jitter = (amt: number, hueShift = 0) => (r: number, c: THREE.Color) => {
-  const k = 1 + (r - 0.5) * 2 * amt;
-  c.setRGB(k * (1 + (r - 0.5) * hueShift), k, k * (1 - (r - 0.5) * hueShift));
-};
+export const jitter = jitterBotanicalTint;
 
 export const light = (c: number, k: number) => new THREE.Color(c).multiplyScalar(k);
 
@@ -80,13 +77,13 @@ export class SurfaceContext {
     this.group.add(object); this.uniformSets.push(uniforms); this.disposables.push(disposable);
   }
 
-  boulders = (count: number, probFn: (x: number, z: number) => number, size: [number, number], tint: THREE.Color, variants = 2, mat: THREE.Material = this.rockMat): Place[] => {
+  boulders = (count: number, probFn: (x: number, z: number) => number, size: [number, number], tint: THREE.Color, variants = 5, mat: THREE.Material = this.rockMat): Place[] => {
     const places = scatterGrid(this.rng, this.ext, 2.0 * this.cellMul, (x, z) => probFn(x, z) * this.landingFree(x, z));
     places.length = Math.min(places.length, count);
     this.lift(places);
     for (let v = 0; v < variants; v++) {
       const sub = places.filter((_, i) => i % variants === v);
-      this.addMesh(buildInstanced(makeBoulderGeo(11 + v * 5 + this.spec.seed % 7, tint.clone().lerp(this.darkTint, v * 0.25)), mat, sub, { sx: size, sy: [size[0] * 0.7, size[1] * 0.85], sink: 0.12, tilt: 0.35, tint: jitter(0.28) }));
+      this.addMesh(buildInstanced(makeBoulderGeo(11 + v * 5 + this.spec.seed % 7, tint.clone().lerp(this.darkTint, (v % 3) * 0.22), v), mat, sub, { sx: size, sy: [size[0] * 0.7, size[1] * 0.85], sink: 0.12, tilt: 0.35, tint: jitter(0.28) }));
     }
     return places;
   };
@@ -94,7 +91,10 @@ export class SurfaceContext {
     const places = scatterGrid(this.rng, this.ext, 3.0 * this.cellMul, (x, z) => probFn(x, z) * this.landingFree(x, z));
     places.length = Math.min(places.length, count);
     this.lift(places);
-    this.addMesh(buildInstanced(makeSpireGeo(7 + this.spec.seed % 5, tint), mat, places, { sx: w, sy: h, sink: 0.02, tilt: 0.12, tint: jitter(0.25) }));
+    for (let v = 0; v < 5; v++) {
+      const sub = places.filter((_, i) => i % 5 === v);
+      this.addMesh(buildInstanced(makeSpireGeo(7 + v * 5 + this.spec.seed % 5, tint, v), mat, sub, { sx: w, sy: h, sink: 0.02, tilt: 0.12, tint: jitter(0.25) }));
+    }
     return places;
   };
 }

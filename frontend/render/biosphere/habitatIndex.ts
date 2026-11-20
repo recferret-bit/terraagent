@@ -1,4 +1,4 @@
-import { HEX_DIRS, hexDistance, hexIndex } from '@terra/sim/grid/hex';
+import { HEX_DIRS, hexDistance, hexIndex, mixGroundSeed } from '@terra/sim/grid/hex';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import { HEX_TERRAIN, isClearedPrep, tileHash01, type HexTileLayers } from '../planets/hex/chunkMesh';
 import { planetExtent, tileAt, tileXZ } from '../planets/hex/hexMath';
@@ -48,7 +48,7 @@ export function buildHexHabitatIndex(
         forestTileSet.add(i);
       } else if (t === HEX_TERRAIN.flat) {
         grassRaw.push({ x, z, tileIndex: i });
-        if (look.kind === 'dune' && (layers.height[i] ?? 0) < 0.45 && tileHash01(q, r, look.seed + 503) > 0.72) {
+        if (look.kind === 'dune' && (layers.height[i] ?? 0) < 0.45 && tileHash01(q, r, mixGroundSeed(layers.seed ?? look.seed, 503)) > 0.72) {
           waterRaw.push({ x, z, tileIndex: i });
         }
       } else if (t === HEX_TERRAIN.rock) {

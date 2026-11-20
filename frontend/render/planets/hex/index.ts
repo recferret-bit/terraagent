@@ -1,5 +1,6 @@
 export {
   createHexTerrain,
+  createHexTerrainInWorker,
   getActiveHexTerrains,
   getGlobalTerritoryColorBlindMode,
   setGlobalTerritoryColorBlindMode,
@@ -103,3 +104,25 @@ export {
   placeFloraByCellsWithExclusion,
   type FloraFootprint,
 } from './flora/floraPlacementPipeline';
+export {
+  canFitObjectFootprint,
+  canFitObjectOnTerrain,
+  classifyHexSiteAtPoint,
+  classifyHexTilePropSite,
+  classifySurfaceSite,
+  floraEcotoneFields,
+  GROUND_OBJECT_SPECS,
+  inspectTileWaterNeighbors,
+  isDuneWadiSlope,
+  isHexBeachSandAtPoint,
+  renderedFloraOuterRadius,
+  sampleHexShoreAtPoint,
+  type EcotoneSample,
+  type GroundObjectCategory,
+  type GroundObjectKind,
+  type GroundObjectSpec,
+  type TerrainSiteSample,
+  type TerrainSubstrate,
+} from './flora/terrainCompatibility';
+export { makeHeightSampler, sampleHexLatticeField } from './heightSampler';
+export { hashGroundSeed, mixGroundSeed, parseGroundSeedInput } from '@terra/sim/grid/hex';

@@ -25,6 +25,7 @@ import type { FeatureHud } from './featureHud';
 import type { GuestBootTarget } from './guestBoot';
 import type { OnlineMode } from './onlineMode';
 import { createSessionBootRig, resolveInitialLoadMode } from './parts/sessionBoot';
+import { bindSessionTerrainLoader } from './parts/sessionTerrainLoader';
 import { applySessionOrbitalReveal, applySessionSpacePhase, resolveSeatIndexFromSearch, syncSessionBootOverlayOnView, syncSessionFrameHud } from './parts/sessionViewSync';
 import { PauseOverlay } from './PauseOverlay';
 import { createUnitControl } from './unitControl';
@@ -39,7 +40,7 @@ import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync'
 import {
   applyChangedTileList, bindLocalSaveListeners, createSafeViewport, isEscapeBlockedByHudOverlay,
   listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind,
-  syncOrRebuildSessionTerrain, type TileChangePatchItem, writeStoredPlanetKind,
+  type TileChangePatchItem, writeStoredPlanetKind,
 } from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
@@ -87,6 +88,13 @@ export class OnlineSession {
   private sawPodDescending = false; private firstObservedTick: number | null = null;
   private tiles: ClientTiles | null = null; private warp = 1; private raf = 0;
   private dayNightSync: OnlineDayNightSync | null = null;
+  private readonly terrainLoader = bindSessionTerrainLoader(this, {
+    getPlanetSeed: () => this.bootResult?.planet.seed, getBiomeKey: () => this.biomeKey, setBiomeKey: (k) => { this.biomeKey = k; },
+    getTiles: () => this.tiles, setTiles: (t) => { this.tiles = t; },
+    isInSpace: () => this.entities.podTouchdown.isSpacePhaseActive(), getShowSpaceTerrain: () => this.showSpaceTerrain,
+    getDeferReveal: () => this.deferReveal, getCameraTargetTile: () => this.cameraTargetTile,
+    onTerrainMounted: (v) => { this.colonyFramed = false; this.onView({ ...(this.store.latest ?? v), tiles: undefined }); },
+  });
   private last = typeof performance !== 'undefined' ? performance.now() : Date.now();
   private cleanups: Array<() => void> = [];
 
@@ -212,8 +220,8 @@ export class OnlineSession {
     this.showSpaceTerrain = showTerrain;
     const ready = applySessionSpacePhase({
       phase, showTerrain, entities: this.entities, banner: this.banner, terrain: this.terrain,
-      cameraTargetTile: this.cameraTargetTile, store: this.store, planetKind: this.planetKind, viewport: this.viewport,
-      dayNightSync: this.dayNightSync,
+      cameraTargetTile: this.cameraTargetTile, store: this.store, planetKind: this.planetKind, planetSeed: this.bootResult?.planet.seed,
+      viewport: this.viewport, dayNightSync: this.dayNightSync,
       focusTile: (q, r, instant) => this.focusTile(q, r, instant), onView: (v) => this.onView(v),
     });
     if (phase === null && this.guest && (!this.bootResult || !this.store.latest)) {
@@ -231,8 +239,8 @@ export class OnlineSession {
     this.deferReveal = false;
     if (skipCameraDrop) { this.orbitalCameraDrop = false; this.loadMode = 'instant'; }
     applySessionOrbitalReveal({
-      terrain: this.terrain, store: this.store, planetKind: this.planetKind, viewport: this.viewport,
-      dayNightSync: this.dayNightSync, banner: this.banner, hasBootResult: Boolean(this.bootResult),
+      terrain: this.terrain, store: this.store, planetKind: this.planetKind, planetSeed: this.bootResult?.planet.seed,
+      viewport: this.viewport, dayNightSync: this.dayNightSync, banner: this.banner, hasBootResult: Boolean(this.bootResult),
       isLocalHost: Boolean(this.localHost), bootOverlay: this.bootOverlay, entities: this.entities,
       onView: (v) => this.onView(v),
     });
@@ -370,7 +378,7 @@ export class OnlineSession {
     }
     this.dayNightSync?.syncFrame();
     if (v.tiles) this.onTiles(v, v.tiles);
-    const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
+    const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind, v.planet.seed ?? this.bootResult?.planet.seed);
     this.biomeKey = look.biomeKey;
     if (this.firstObservedTick === null) this.firstObservedTick = v.tick;
     const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
@@ -412,17 +420,7 @@ export class OnlineSession {
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {
-    const res = syncOrRebuildSessionTerrain({
-      viewport: this.viewport, prevTerrain: this.terrain, prevTiles: this.tiles, prevCam: this.cam,
-      prevBiomeKey: this.biomeKey, view: v, tiles, planetKind: this.planetKind,
-      inSpace: this.entities.podTouchdown.isSpacePhaseActive(), showSpaceTerrain: this.showSpaceTerrain,
-      deferLook: this.deferReveal, cameraTargetTile: this.cameraTargetTile,
-    });
-    this.terrain = res.terrain;
-    this.cam = res.cam;
-    this.biomeKey = res.biomeKey;
-    if (res.rebuilt) this.colonyFramed = false;
-    this.tiles = tiles;
+    this.terrainLoader.onTiles(v, tiles);
   }
 
   pickAt(clientX: number, clientY: number): HexPick | null {
@@ -478,6 +476,7 @@ export class OnlineSession {
 
   dispose(): void {
     this.disposed = true;
+    this.terrainLoader.dispose();
     this.guest?.dispose();
     if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf);
     this.localHost?.stop();

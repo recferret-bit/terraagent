@@ -1,11 +1,6 @@
 import * as THREE from 'three';
 import { hexDistance, hexIndex } from '@terra/sim/grid/hex';
-import {
-  buildHexHabitatIndex,
-  createPlanetBiosphere,
-  type BiosphereAggressor,
-  type PlanetBiosphere,
-} from '@terra/render/biosphere';
+import type { BiosphereAggressor, PlanetBiosphere } from '@terra/render/biosphere';
 import {
   createHexTerrain,
   HEX_PREP,
@@ -111,12 +106,10 @@ export class WildlifeSceneHost {
     this.terrain = terrain;
     this.group.add(terrain.group);
 
-    const habitat = buildHexHabitatIndex(RADIUS, tiles, look, (x, z) => terrain.heightAt(x, z));
-    const biosphere = createPlanetBiosphere({ look, habitat });
+    const biosphere = terrain.biosphere;
     biosphere.setTimeOfDayOverride(this.hour / 24);
     biosphere.tick(0.05);
     this.biosphere = biosphere;
-    this.group.add(biosphere.group);
 
     this.applyWire(this.wire);
     this.group.visible = true;
@@ -208,16 +201,14 @@ export class WildlifeSceneHost {
 
   private advance(dt: number): void {
     const safeDt = Math.min(0.1, Math.max(0, dt));
-    this.terrain?.tick(safeDt);
     if (this.scareTimer > 0) {
       this.scareTimer = Math.max(0, this.scareTimer - safeDt);
       if (this.scareTimer === 0) this.biosphere?.setAggressors([]);
     }
-    this.biosphere?.tick(safeDt);
+    this.terrain?.tick(safeDt);
   }
 
   private teardown(): void {
-    this.biosphere?.dispose();
     this.biosphere = null;
     this.terrain?.dispose();
     this.terrain = null;
