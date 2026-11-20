@@ -1,7 +1,7 @@
 import type {
   DeedView,
   StakerPerksInfo,
-  StakingActionResponse,
+  StakingAsset,
   StakingPoolInfo,
   StakingPositionDto,
   StakingStatusResponse,
@@ -12,16 +12,27 @@ import {
   buildStakingPanelLayout,
   DEFAULT_STAKING_POOLS,
   detectStakingNetwork,
-  extractStakingApiCode,
   extractStakingApiError,
   formatStakerPerksBanner,
   formatUnbondingSummary,
-  REAL_NEAR_COPY,
   renderStakingPoolOptions,
-  sendStakingWalletTx,
   syncStakingRewardsLabel,
   upsertStakingPositionList,
 } from './parts/stakingPanelParts';
+import {
+  runCompound,
+  runStake,
+  runUnstake,
+  runWithdraw,
+  type StakingFlowHost,
+} from './parts/stakingActionFlows';
+import {
+  formatEarlyExitNotice,
+  formatTierFeeLine,
+  pendingEarlyExitBp,
+  stakingCopyFor,
+} from './parts/stakingCopy';
+import { sendStakingWalletTx, type StakingSelectorFactory } from './parts/stakingWalletTx';
 import {
   openRealNearSignerModal,
   type RealNearNetwork,
@@ -35,6 +46,10 @@ import {
 export interface StakingPanelOptions {
   readonly fetchFn?: typeof fetch;
   readonly openSigner?: (req: SignerModalRequest) => OpenSignerModalHandle;
+  /** Test seam: wallet selector recorder for real-network wallet txs. */
+  readonly selectorFactory?: StakingSelectorFactory;
+  /** Test seam: clock for the 7-day early-exit notice. */
+  readonly nowFn?: () => number;
 }
 
 /**
@@ -51,6 +66,9 @@ export class StakingPanel implements Disposable {
   readonly lockedBannerEl: HTMLDivElement;
   readonly controlsWrapEl: HTMLDivElement;
   readonly poolSelectEl: HTMLSelectElement;
+  readonly assetSelectEl: HTMLSelectElement;
+  readonly compoundBtnEl: HTMLButtonElement;
+  readonly earlyExitEl: HTMLDivElement;
   readonly amountInputEl: HTMLInputElement;
   readonly stakeBtnEl: HTMLButtonElement;
   readonly unstakeBtnEl: HTMLButtonElement;
@@ -68,6 +86,11 @@ export class StakingPanel implements Disposable {
 
   private readonly fetchFn: typeof fetch;
   private readonly openSigner: (req: SignerModalRequest) => OpenSignerModalHandle;
+  private readonly w28: boolean;
+  private readonly selectorFactory?: StakingSelectorFactory;
+  private readonly nowFn: () => number;
+  private readonly host: StakingFlowHost;
+  private compoundUnavailable = false;
   private currentDeed: DeedView | null = null;
   private serverAccountId: string | null = null;
   private accountClaimed = false;
@@ -84,6 +107,9 @@ export class StakingPanel implements Disposable {
     opts: StakingPanelOptions = {},
   ) {
     this.fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
+    this.w28 = ctx.flags.has('W28');
+    this.selectorFactory = opts.selectorFactory;
+    this.nowFn = opts.nowFn ?? (() => Date.now());
     // The signer modal joins the HUD overlay (above the deed modal) when the HUD provides one; else document.body.
     this.openSigner = (req) => {
       const container = this.ctx.services?.hudOverlay;
@@ -100,6 +126,8 @@ export class StakingPanel implements Disposable {
       onUnstake: () => void this.unstakeFlow(),
       onWithdraw: () => void this.withdrawFlow(),
       onWalletDeposit: () => void this.walletDepositFlow(),
+      onCompound: () => void this.compoundFlow(),
+      w28: this.w28,
     });
     this.root = dom.root;
     this.walletBalanceEl = dom.walletBalanceEl;
@@ -110,6 +138,9 @@ export class StakingPanel implements Disposable {
     this.accountStatusEl = dom.accountStatusEl;
     this.claimBtnEl = dom.claimBtnEl;
     this.poolSelectEl = dom.poolSelectEl;
+    this.assetSelectEl = dom.assetSelectEl;
+    this.compoundBtnEl = dom.compoundBtnEl;
+    this.earlyExitEl = dom.earlyExitEl;
     this.amountInputEl = dom.amountInputEl;
     this.stakeBtnEl = dom.stakeBtnEl;
     this.stakedValEl = dom.stakedValEl;
@@ -121,6 +152,7 @@ export class StakingPanel implements Disposable {
     this.depositWalletBtnEl = dom.depositWalletBtnEl;
     this.statusMsgEl = dom.statusMsgEl;
 
+    this.host = this.buildHost();
     this.parent.appendChild(this.root);
     this.renderPools(DEFAULT_STAKING_POOLS);
     this.renderState();
@@ -141,9 +173,13 @@ export class StakingPanel implements Disposable {
   }
 
   async refreshFromServer(): Promise<StakingStatusResponse | null> {
-    const colonyId = this.currentDeed?.colonyId ?? 'col_0';
+    const colonyId = this.currentDeed?.colonyId ?? (this.w28 ? undefined : 'col_0');
     try {
-      const qs = new URLSearchParams({ colonyId });
+      const qs = new URLSearchParams(colonyId ? { colonyId } : {});
+      if (!colonyId) {
+        const acct = this.serverAccountId ?? this.claimedByAccountId;
+        if (acct) qs.set('accountId', acct);
+      }
       const res = await this.fetchFn(`/v1/near/staking?${qs.toString()}`);
       if (!res.ok) return null;
       const status = (await res.json()) as StakingStatusResponse;
@@ -234,162 +270,20 @@ export class StakingPanel implements Disposable {
     return false;
   }
 
-  async stakeFlow(): Promise<boolean> {
-    const colonyId = this.currentDeed?.colonyId ?? 'col_0';
-    const planetId = this.currentDeed?.planetId ?? 'planet_w20';
-    const pool = this.poolSelectEl.value || this.pools[0]?.poolId || 'astro-stakers.poolv1.near';
-    const rawAmount = this.amountInputEl.value.replace(/[^\d.]/g, '').trim() || '10';
-
-    if (!this.accountClaimed) {
-      this.statusMsgEl.textContent = 'Claim your colony account to stake';
-      this.claimBtnEl.hidden = false;
-      return false;
-    }
-
-    const tracker = createDeedTracker(this.ctx.services.track);
-    tracker.stakeStarted({ colonyId, planetId, pool, amount: rawAmount });
-
-    const net = this.activeNetwork();
-    const signerAccount = this.claimedByAccountId ?? this.currentDeed?.ownerAccountId ?? 'pilot.mock';
-    const handle = this.openSigner({
-      title: `NEAR WALLET SIGNER (${net.toUpperCase()})`,
-      subtitle: REAL_NEAR_COPY,
-      actionSummary: `Stake ${rawAmount} NEAR in ${pool}`,
-      accountId: signerAccount,
-      recipient: pool,
-      message: `stake:${colonyId}:${pool}:${rawAmount}`,
-    });
-    const outcome = await handle.promise;
-    if (outcome.status !== 'approved') {
-      tracker.stakeCancelled({ colonyId, planetId, pool, amount: rawAmount });
-      this.statusMsgEl.textContent = outcome.reason;
-      return false;
-    }
-
-    try {
-      const res = await this.fetchFn('/v1/near/stake', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          colonyId,
-          pool,
-          amount: rawAmount,
-          walletSignature: outcome.signature,
-        }),
-      });
-      const body = (await res.json()) as StakingActionResponse;
-      if (!res.ok) {
-        if (extractStakingApiCode(body) === 'ACCOUNT_NOT_CLAIMED') {
-          this.accountClaimed = false;
-          this.statusMsgEl.textContent = 'Claim your colony account to stake';
-          this.renderState();
-          return false;
-        }
-        this.statusMsgEl.textContent = extractStakingApiError(body, 'Stake failed');
-        return false;
-      }
-      this.lastTxHash = body.txHash;
-      this.walletBalanceNear = body.walletBalanceNear;
-      this.positions = upsertStakingPositionList(this.positions, body.position);
-      this.statusMsgEl.textContent = `${body.position.staked} NEAR staked (${body.txHash})`;
-      tracker.stakeCompleted({
-        colonyId,
-        planetId,
-        pool,
-        amount: rawAmount,
-        txHash: body.txHash,
-      });
-      this.renderState();
-      return true;
-    } catch {
-      return false;
-    }
+  stakeFlow(): Promise<boolean> {
+    return runStake(this.host);
   }
 
-  async unstakeFlow(): Promise<boolean> {
-    const pos = this.activePosition();
-    if (!pos || Number(pos.staked || '0') <= 0) return false;
-    const colonyId = this.currentDeed?.colonyId ?? 'col_0';
-    const planetId = this.currentDeed?.planetId ?? 'planet_w20';
-    const amount = pos.staked;
-    const walletSignature = await this.signRealActionIfNeeded(
-      `Unstake ${amount} NEAR from ${pos.pool}`,
-      pos.pool,
-      `unstake:${colonyId}:${pos.pool}:${amount}`,
-    );
-    if (walletSignature === null) return false;
-    createDeedTracker(this.ctx.services.track).unstakeStarted({
-      colonyId,
-      planetId,
-      pool: pos.pool,
-      amount,
-    });
-
-    try {
-      const res = await this.fetchFn('/v1/near/unstake', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          colonyId,
-          pool: pos.pool,
-          amount,
-          ...(walletSignature ? { walletSignature } : {}),
-        }),
-      });
-      if (!res.ok) return false;
-      const body = (await res.json()) as StakingActionResponse;
-      this.lastTxHash = body.txHash;
-      this.walletBalanceNear = body.walletBalanceNear;
-      this.positions = upsertStakingPositionList(this.positions, body.position);
-      this.statusMsgEl.textContent = 'Unbonding (4 epochs)';
-      this.renderState();
-      return true;
-    } catch {
-      return false;
-    }
+  unstakeFlow(): Promise<boolean> {
+    return runUnstake(this.host);
   }
 
-  async withdrawFlow(): Promise<boolean> {
-    const pos = this.activePosition();
-    if (!pos) return false;
-    const colonyId = this.currentDeed?.colonyId ?? 'col_0';
-    const planetId = this.currentDeed?.planetId ?? 'planet_w20';
-    const amount = pos.withdrawable || pos.unbonding || '0';
-    const walletSignature = await this.signRealActionIfNeeded(
-      `Withdraw ${amount} NEAR from ${pos.pool}`,
-      pos.pool,
-      `withdraw:${colonyId}:${pos.pool}`,
-    );
-    if (walletSignature === null) return false;
+  withdrawFlow(): Promise<boolean> {
+    return runWithdraw(this.host);
+  }
 
-    try {
-      const res = await this.fetchFn('/v1/near/withdraw', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          colonyId,
-          pool: pos.pool,
-          ...(walletSignature ? { walletSignature } : {}),
-        }),
-      });
-      if (!res.ok) return false;
-      const body = (await res.json()) as StakingActionResponse;
-      this.lastTxHash = body.txHash;
-      this.walletBalanceNear = body.walletBalanceNear;
-      this.positions = upsertStakingPositionList(this.positions, body.position);
-      this.statusMsgEl.textContent = `Withdrawn to wallet (${body.txHash})`;
-      createDeedTracker(this.ctx.services.track).withdrawCompleted({
-        colonyId,
-        planetId,
-        pool: pos.pool,
-        amount,
-        txHash: body.txHash,
-      });
-      this.renderState();
-      return true;
-    } catch {
-      return false;
-    }
+  compoundFlow(): Promise<boolean> {
+    return runCompound(this.host);
   }
 
   dispose(): void {
@@ -411,12 +305,17 @@ export class StakingPanel implements Disposable {
 
     const totalStakedNear = this.positions.reduce((sum, p) => sum + Number(p.staked || '0'), 0);
     const minNear = Number(this.perks?.minStakeNear || '10') || 10;
-    this.perksBannerEl.textContent = formatStakerPerksBanner(totalStakedNear, this.perks);
+    const tierLine = this.w28 ? formatTierFeeLine(this.perks, this.nowFn()) : '';
+    this.perksBannerEl.textContent =
+      formatStakerPerksBanner(totalStakedNear, this.perks) + (tierLine ? ` · ${tierLine}` : '');
     syncStakingRewardsLabel(this.rewardsValEl, this.perks);
     this.root.dataset.perksActive = totalStakedNear >= minNear ? 'true' : 'false';
 
     this.walletBalanceEl.textContent = `Wallet: ${this.walletBalanceNear} NEAR`;
-    if (this.accountClaimed) {
+    if (this.w28) {
+      this.accountStatusEl.textContent = `Wallet-first staking${this.claimedByAccountId ? ` (${this.claimedByAccountId})` : ''}: no colony deed required`;
+      this.claimBtnEl.hidden = true;
+    } else if (this.accountClaimed) {
       this.accountStatusEl.textContent = `Claimed (${this.claimedByAccountId ?? 'pilot.mock'})`;
       this.claimBtnEl.hidden = true;
     } else {
@@ -436,7 +335,24 @@ export class StakingPanel implements Disposable {
 
     this.unstakeBtnEl.disabled = Number(stakedNear) <= 0;
     this.withdrawBtnEl.disabled = Number(withdrawableNear) <= 0;
-    this.depositWalletBtnEl.hidden = this.activeNetwork() === 'mock';
+    this.depositWalletBtnEl.hidden = this.w28 || this.activeNetwork() === 'mock';
+    this.renderW28Actions(pos);
+  }
+
+  /** W28 only: compound button (rewards > 0) and the `<7d` early-exit notice on Unstake. */
+  private renderW28Actions(pos: StakingPositionDto | null): void {
+    const showCompound = this.w28 && Number(pos?.rewards ?? '0') > 0;
+    this.compoundBtnEl.hidden = !showCompound;
+    this.compoundBtnEl.disabled = this.compoundUnavailable;
+    this.compoundBtnEl.title = this.compoundUnavailable
+      ? 'Compound is not available on this server yet'
+      : 'Roll accrued yield into principal. 0 % fee, keeps your 7-day maturity clock.';
+    const now = this.nowFn();
+    const feeBp = this.w28 ? pendingEarlyExitBp(pos, this.perks, now) : 0;
+    const notice = formatEarlyExitNotice(feeBp, pos?.lastStakedAtMs, now);
+    this.earlyExitEl.textContent = notice;
+    this.earlyExitEl.hidden = notice === '';
+    this.assetSelectEl.parentElement!.hidden = !this.w28;
   }
 
   private async walletDepositFlow(): Promise<void> {
@@ -446,6 +362,7 @@ export class StakingPanel implements Disposable {
       fetchFn: this.fetchFn,
       network: net,
       action: 'stake_payable',
+      selectorFactory: this.selectorFactory,
       poolId: this.poolSelectEl.value || DEFAULT_STAKING_POOLS[0].poolId,
       amountNear: this.amountInputEl.value || '10',
       accountId: this.serverAccountId ?? this.currentDeed?.ownerAccountId ?? this.claimedByAccountId,
@@ -461,14 +378,16 @@ export class StakingPanel implements Disposable {
     );
   }
 
-  private async signRealActionIfNeeded(actionSummary: string, recipient: string, message: string) {
+  private async signAction(summary: string, recipient: string, message: string, force: boolean) {
     const net = this.activeNetwork();
-    if (net === 'mock') return undefined;
-    const signerAccount = this.claimedByAccountId ?? this.currentDeed?.ownerAccountId ?? (net === 'mainnet' ? 'pilot.near' : 'pilot.testnet');
+    if (net === 'mock' && !force) return undefined;
+    const signerAccount =
+      this.claimedByAccountId ?? this.currentDeed?.ownerAccountId ?? (net === 'mainnet' ? 'pilot.near' : net === 'testnet' ? 'pilot.testnet' : 'pilot.mock');
     const outcome = await this.openSigner({
       title: `NEAR WALLET SIGNER (${net.toUpperCase()})`,
-      subtitle: REAL_NEAR_COPY,
-      actionSummary,
+      subtitle: stakingCopyFor(this.w28),
+      ...(this.w28 ? { notice: stakingCopyFor(true) } : {}),
+      actionSummary: summary,
       accountId: signerAccount,
       recipient,
       message,
@@ -478,6 +397,55 @@ export class StakingPanel implements Disposable {
       return null;
     }
     return outcome.signature;
+  }
+
+  private buildHost(): StakingFlowHost {
+    return {
+      fetchFn: this.fetchFn,
+      w28: this.w28,
+      selectorFactory: this.selectorFactory,
+      statusEl: this.statusMsgEl,
+      tracker: () => createDeedTracker(this.ctx.services.track),
+      network: () => this.activeNetwork(),
+      ids: () => ({
+        colonyId: this.currentDeed?.colonyId ?? (this.w28 ? undefined : 'col_0'),
+        planetId: this.currentDeed?.planetId ?? 'planet_w20',
+        accountId: this.serverAccountId ?? this.claimedByAccountId ?? this.currentDeed?.ownerAccountId ?? undefined,
+      }),
+      input: () => ({
+        pool: this.poolSelectEl.value || this.pools[0]?.poolId || 'astro-stakers.poolv1.near',
+        asset: (this.assetSelectEl.value || 'near') as StakingAsset,
+        amount: this.amountInputEl.value.replace(/[^\d.]/g, '').trim() || '10',
+      }),
+      activePosition: () => this.activePosition(),
+      say: (m) => {
+        this.statusMsgEl.textContent = m;
+      },
+      applyAction: (body) => {
+        this.lastTxHash = body.txHash;
+        this.walletBalanceNear = body.walletBalanceNear;
+        this.positions = upsertStakingPositionList(this.positions, body.position);
+        this.perks = body.perks ?? this.perks;
+        this.renderState();
+      },
+      refresh: () => this.refreshFromServer(),
+      sign: (summary, recipient, message, force) => this.signAction(summary, recipient, message, force),
+      accountClaimed: () => this.accountClaimed,
+      promptClaim: () => {
+        this.statusMsgEl.textContent = 'Claim your colony account to stake';
+        this.claimBtnEl.hidden = false;
+      },
+      staleClaim: () => {
+        this.accountClaimed = false;
+        this.statusMsgEl.textContent = 'Claim your colony account to stake';
+        this.renderState();
+      },
+      markCompoundUnavailable: () => {
+        this.compoundUnavailable = true;
+        this.statusMsgEl.textContent = 'Compound is not available on this server yet';
+        this.renderState();
+      },
+    };
   }
 
   private activePosition(): StakingPositionDto | null {

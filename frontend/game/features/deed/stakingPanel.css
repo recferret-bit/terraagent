@@ -158,3 +158,9 @@
   font-size: var(--ta-fs-label);
   color: var(--ta-orange);
 }
+
+.ta-staking-panel__early-exit {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-blue);
+}
