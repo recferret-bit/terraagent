@@ -21,6 +21,7 @@ import {
   type ActiveWorkSiteInput,
   type InteractionTargetKind,
 } from '@terra/render/particles';
+import { applyHubPrestige, isHubMesh } from '@terra/render/prestige/hubPrestige';
 
 export interface Spawn { id: string; mesh: ArchetypeMesh; box: THREE.Box3; }
 const footprint = (b: THREE.Box3) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 1);
@@ -86,6 +87,17 @@ export class SpawnSet {
 
   /** Ruin variant (W18-22: charred, cracked, unlit) of every shown archetype. */
   applyRuin(ruin: boolean) { for (const s of this.spawns) setArchetypeRuin(s.mesh, ruin); }
+
+  /** Staking prestige (W28-12): dress every shown Command Hub for `tier` (dish, gold trim, uplink beam). Null: leave as built. */
+  applyStakeTier(tier: number | null) {
+    if (tier === null) return;
+    for (const s of this.spawns) {
+      if (!isHubMesh(s.mesh)) continue;
+      applyHubPrestige(s.mesh, tier);
+      s.mesh.geometry.computeBoundingBox();
+      s.box = s.mesh.geometry.boundingBox!.clone();
+    }
+  }
 
   find(id: string) { return this.spawns.find((s) => s.id === id); }
 

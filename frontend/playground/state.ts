@@ -3,6 +3,7 @@ import { isPixelArtOn } from '@terra/render/core/pixelArtPass';
 import { DEPOSIT_STAGES, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
 import { reconFactionPalette } from '@terra/render/kitbash/archetypes/units/reconFaction';
 import type { InteractionTargetKind } from '@terra/render/particles';
+import { isKnownPrestigeTier } from '@terra/render/prestige/tierVisuals';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 
 export type View = 'iso' | 'front' | 'side' | 'top';
@@ -39,6 +40,14 @@ const parseFaction = (v: string | null): string | null => {
   const palette = reconFactionPalette(v);
   return palette.id === 'default' ? null : palette.id;
 };
+/** `?inspect=hub` is the Command Hub (`building.commandHub`); any other id is passed through. */
+export const inspectAlias = (v: string | null): string | null => (v === 'hub' ? 'building.commandHub' : v);
+/** `stakeTier=0..4` dresses the Command Hub for that staking tier (W28-12); anything else leaves it untouched. */
+export const parseStakeTier = (v: string | null): number | null => {
+  if (v === null || v.trim() === '') return null;
+  const n = Number(v);
+  return isKnownPrestigeTier(n) ? n : null;
+};
 const parseFaunaSeed = (v: string | null): number => {
   if (v === null || v.trim() === '') return 42;
   const n = Number(v);
@@ -72,6 +81,8 @@ export interface PgState {
   marchRock: boolean;
   /** Kitbash paint (`&faction=mercenary`). Null keeps the default palette. */
   faction: string | null;
+  /** Staking prestige preview of the Command Hub (`&stakeTier=0..4`). Null leaves the stock hub. */
+  stakeTier: number | null;
   row: ArchetypeCategory | null; filter: string;
 }
 
@@ -100,6 +111,7 @@ export function createState(params: URLSearchParams): PgState {
     march,
     marchRock: params.get('marchRock') === '1',
     faction: parseFaction(params.get('faction')),
+    stakeTier: parseStakeTier(params.get('stakeTier')),
     row: row && CATS.includes(row) ? row : null,
     filter: '',
   };
@@ -131,6 +143,7 @@ export function syncURL(state: PgState): URLSearchParams {
   if (state.march) q.set('march', state.march);
   if (state.marchRock) q.set('marchRock', '1');
   if (state.faction) q.set('faction', state.faction);
+  if (state.stakeTier !== null) q.set('stakeTier', String(state.stakeTier));
   if (typeof history !== 'undefined' && typeof location !== 'undefined') {
     history.replaceState(null, '', `${location.pathname}?${q}`);
   }
