@@ -43,7 +43,7 @@ async function linkWallet(name: string): Promise<{ accountId: string; auth: Reco
   return { accountId, auth: { authorization: `Bearer dev:${name}` } };
 }
 
-async function post<T = Record<string, any>>(url: string, path: string, body: unknown, headers: Record<string, string> = {}) {
+async function post<T = Record<string, unknown>>(url: string, path: string, body: unknown, headers: Record<string, string> = {}) {
   const res = await fetch(`${url}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
@@ -155,6 +155,22 @@ describe('W28-04 wallet-first staking over HTTP (NEAR_MODE=mock, zero colonies)'
     const fee = await db.prisma.stakingTx.findFirstOrThrow({ where: { accountId, kind: 'early_exit_fee' } });
     expect(fee.amountYocto.toFixed()).toBe('112500000000000000000000');
   });
+});
+
+describe('W28-04 wallet-first staking: refusals and corners', () => {
+  it('profits are paid from the USDC of the wallet\'s colony account when the wallet itself holds none', async () => {
+    const { url, staking } = await boot('all');
+    const { accountId, auth } = await linkWallet('frank');
+    await db.prisma.nearColonyAccount.create({
+      data: { accountId: 'col_f.frank.near', playerId: devPlayerId('frank'), slot: 'col_f', colonyId: 'col_f', ownerAccountId: accountId, publicKey: 'ed25519:t', encryptedSecret: 'x', kekVersion: 1 },
+    });
+    await creditVerifier(db.prisma, 'col_f.frank.near', MARKET_TOKENS.USDC.verifierId, 8_000_000n);
+    const res = await post<StakeProfitsResponse>(url, '/v1/near/stake/profits', { accountId, amountUsdc: '8' }, auth);
+    expect(res.status).toBe(200);
+    expect(StakeProfitsResponse.parse(res.body).position).toMatchObject({ accountId, staked: '2', asset: 'stNEAR' });
+    expect((await db.prisma.mockChainIntentsBalance.findFirstOrThrow({ where: { accountId: 'col_f.frank.near', tokenId: MARKET_TOKENS.USDC.verifierId } })).amount.toFixed()).toBe('0');
+    expect(staking.isWalletFirst()).toBe(true);
+  });
 
   it('rejects an empty compound (409 NOTHING_TO_COMPOUND) and a request with no wallet or colony (400 WALLET_REQUIRED)', async () => {
     const { url, staking } = await boot('all');
@@ -188,6 +204,9 @@ describe('W28-04 wallet-first staking over HTTP (NEAR_MODE=mock, zero colonies)'
     expect(u.position.unbonding).toBe('5');
   });
 
+});
+
+describe('W28-04 wallet-first staking: spoofing, W28 off', () => {
   it('spoofing another wallet is refused: no session 401, someone else is 403, AI / bot callers are 403', async () => {
     const { url, staking } = await boot('all');
     const victim = await linkWallet('victim');
@@ -220,6 +239,22 @@ describe('W28-04 wallet-first staking over HTTP (NEAR_MODE=mock, zero colonies)'
     expect(status.positions[0]?.staked).toBe('20');
   });
 
+
+  it('with W28 off the W20 gates and 404s hold: DEED_NOT_FOUND for a deed-less wallet, new routes 404', async () => {
+    const { url } = await boot('..27');
+    const { accountId, auth } = await linkWallet('erin');
+    const stake = await post<{ errorCode: string }>(url, '/v1/near/stake', { accountId, pool: POOL, amount: '10' }, auth);
+    expect(stake.status).toBe(404);
+    expect(stake.body.errorCode).toBe('DEED_NOT_FOUND');
+    expect((await post(url, '/v1/near/stake/compound', { accountId, pool: POOL }, auth)).status).toBe(404);
+    expect((await post(url, '/v1/near/stake/profits', { accountId, amountUsdc: '1' }, auth)).status).toBe(404);
+    expect((await post(url, '/v1/near/staking/patron/nominate', { accountId, planetId: 'pl_w28_open' }, auth)).status).toBe(404);
+    const status = await get<Record<string, unknown>>(url, '/v1/near/staking?colonyId=col_0');
+    expect((status.perks as Record<string, unknown>).version).toBeUndefined();
+  });
+});
+
+describe('W28-04 wallet-first staking: Lead Patron nomination', () => {
   it('patron nomination: only public planets, only for the wallet owner, and the seat follows ACTIVE stake', async () => {
     const { url, staking } = await boot('all');
     const whale = await linkWallet('whale');
@@ -246,21 +281,8 @@ describe('W28-04 wallet-first staking over HTTP (NEAR_MODE=mock, zero colonies)'
     const unknown = await post(url, '/v1/near/staking/patron/nominate', { accountId: whale.accountId, planetId: 'pl_missing' }, whale.auth);
     expect(unknown.status).toBe(404);
 
-    // Unstaking below the Tier 4 minimum clears the seat at once (perks of the same call show the new tier).
+    // Unstaking 520 to 120 NEAR (below the Tier 4 minimum) clears the seat at once and the same call shows Tier 2.
     const down = StakingActionResponse.parse((await post(url, '/v1/near/unstake', { accountId: whale.accountId, pool: POOL, amount: '400' }, whale.auth)).body);
-    expect(down.perks).toMatchObject({ tier: 3, leadPatronPlanetIds: [] });
-  });
-
-  it('with W28 off the W20 gates and 404s hold: DEED_NOT_FOUND for a deed-less wallet, new routes 404', async () => {
-    const { url } = await boot('..27');
-    const { accountId, auth } = await linkWallet('erin');
-    const stake = await post<{ errorCode: string }>(url, '/v1/near/stake', { accountId, pool: POOL, amount: '10' }, auth);
-    expect(stake.status).toBe(404);
-    expect(stake.body.errorCode).toBe('DEED_NOT_FOUND');
-    expect((await post(url, '/v1/near/stake/compound', { accountId, pool: POOL }, auth)).status).toBe(404);
-    expect((await post(url, '/v1/near/stake/profits', { accountId, amountUsdc: '1' }, auth)).status).toBe(404);
-    expect((await post(url, '/v1/near/staking/patron/nominate', { accountId, planetId: 'pl_w28_open' }, auth)).status).toBe(404);
-    const status = await get<Record<string, unknown>>(url, '/v1/near/staking?colonyId=col_0');
-    expect((status.perks as Record<string, unknown>).version).toBeUndefined();
+    expect(down.perks).toMatchObject({ tier: 2, leadPatronPlanetIds: [] });
   });
 });

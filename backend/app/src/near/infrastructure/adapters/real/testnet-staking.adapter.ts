@@ -68,6 +68,15 @@ export class TestnetStakingAdapter implements StakingPort {
     this.apy = new ValidatorApyReader(apyProbe ?? rpcApyProbe(client as NearRpcClient), () => Date.now());
   }
 
+  /** Surfaces a typed staking RPC failure as the API's `NEAR_UNAVAILABLE` exception (never a silent fallback value). */
+  private async typed<T>(read: () => Promise<T>): Promise<T> {
+    try {
+      return await read();
+    } catch (err) {
+      throw err instanceof StakingRpcError ? err.toNearException() : err;
+    }
+  }
+
   private get lstNetwork(): 'testnet' | 'mainnet' {
     return this.rpc.network === 'mainnet' ? 'mainnet' : 'testnet';
   }
@@ -95,7 +104,7 @@ export class TestnetStakingAdapter implements StakingPort {
    */
   async nearBalanceOf(accountId: string): Promise<string> {
     if (isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>)) {
-      return readWalletNearYocto(this.rpc, accountId);
+      return this.typed(() => readWalletNearYocto(this.rpc, accountId));
     }
     try {
       return (await this.rpc.view<string>(this.rpc.config.contracts.staking, 'get_near_balance', { account_id: accountId })) || '0';
@@ -107,7 +116,7 @@ export class TestnetStakingAdapter implements StakingPort {
 
   /** The wallet's `stNEAR` / `LiNEAR` balance in share units (`ft_balance_of`). */
   async lstBalanceOf(accountId: string, asset: 'stNEAR' | 'LiNEAR'): Promise<string> {
-    return readLstBalance(this.rpc, lstContractFor(this.lstNetwork, asset), accountId);
+    return this.typed(() => readLstBalance(this.rpc, lstContractFor(this.lstNetwork, asset), accountId));
   }
 
   async creditNear(accountId: string, yoctoAmount: string, opId?: string): Promise<void> {

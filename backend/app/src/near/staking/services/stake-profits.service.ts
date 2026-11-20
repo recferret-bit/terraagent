@@ -10,7 +10,7 @@ import {
 import type { PrismaClient } from '@terra/db';
 import { StakingPort } from '../../application/ports/staking.port.js';
 import { NearException } from '../../domain/errors.js';
-import { verifierChainBalance } from '../../infrastructure/adapters/mock/intents-ledger.js';
+import { IntentsBalanceReadPort } from '../../application/ports/intents-balance-read.port.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolvePerksDeps } from '../perks/perks-deps.js';
 import { verifyStakingWalletSignature, type FullAccessKeyVerifier } from '../staking-signature-guard.js';
@@ -43,6 +43,8 @@ export interface StakeProfitsDeps {
   readonly env: () => Record<string, string | undefined>;
   readonly db: () => PrismaClient | null;
   readonly keyVerifier?: FullAccessKeyVerifier;
+  /** Verifier (`intents.near`) balances: where a wallet's USDC trade profit sits. */
+  readonly intentsRead?: IntentsBalanceReadPort;
 }
 
 /**
@@ -71,7 +73,6 @@ export class StakeProfitsService {
     if (usdcAtomic <= 0n) {
       throw new NearException('NEAR_INVALID_INPUT', { message: 'Profit stake amount must be greater than zero.' });
     }
-    await this.verifySignature(accountId, sig, input);
     const nearUsd = Number(await resolvePerksDeps().priceProvider.nearUsd()) || STAKING_RULES.estNearUsd;
     const nearYocto = quoteUsdcToNearYocto(usdcAtomic, nearUsd);
     const pool = await this.resolvePool(input.pool);
@@ -86,6 +87,8 @@ export class StakeProfitsService {
     };
     if (dry) return this.respond(quote, null, null, accountId);
 
+    // A quote moves nothing, so only the executing path needs the wallet's signature (a no-op on the mock chain).
+    await this.verifySignature(accountId, sig, input);
     if (!this.d.staking.stakeProfits) {
       throw new NearException('NEAR_UNAVAILABLE', { message: 'This staking adapter cannot swap and stake USDC profits.' });
     }
@@ -145,19 +148,20 @@ export class StakeProfitsService {
   }
 
   /**
-   * The mock verifier ledger holds a wallet's trade profit on the account that traded: the wallet itself or one of its
+   * The verifier ledger holds a wallet's trade profit on the account that traded: the wallet itself or one of its
    * colony accounts (`near_colony_account` rows owned / claimed by the wallet). The first with enough USDC pays.
    */
   private async pickUsdcPayer(accountId: string, usdcAtomic: bigint): Promise<string> {
     const db = this.d.db();
-    if (!db) return accountId;
+    const read = this.d.intentsRead;
+    if (!db || !read) return accountId;
     const usdcId = MARKET_TOKENS.USDC.verifierId;
     const rows = await db.nearColonyAccount.findMany({
       where: { OR: [{ ownerAccountId: accountId }, { claimedByAccountId: accountId }] },
       select: { accountId: true },
     });
     for (const candidate of [accountId, ...rows.map((r) => r.accountId)]) {
-      if ((await verifierChainBalance(db, candidate, usdcId)) >= usdcAtomic) return candidate;
+      if ((await read.verifierChainBalance(candidate, usdcId)) >= usdcAtomic) return candidate;
     }
     return accountId;
   }

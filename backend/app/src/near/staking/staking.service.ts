@@ -17,6 +17,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
+import { IntentsBalanceReadPort } from '../application/ports/intents-balance-read.port.js';
 import { StakingPort } from '../application/ports/staking.port.js';
 import { DeedTelemetryService } from '../deed/deed-telemetry.service.js';
 import { DeedRepository } from '../deed/deed.repository.js';
@@ -68,6 +69,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(DeedTelemetryService) telemetry?: DeedTelemetryService,
     @Optional() keyVerifier?: FullAccessKeyVerifier,
+    @Optional() intentsRead?: IntentsBalanceReadPort,
   ) {
     const envBag = () => (this.env ?? process.env) as Record<string, string | undefined>;
     const db = () => (databaseEnabled(this.env) && this.prisma ? this.prisma : null);
@@ -88,7 +90,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
           : Promise.resolve(undefined),
     });
     this.wallet = new WalletStakeFlow({ ...common, perks, txs });
-    this.profits = new StakeProfitsService({ ...common, perks, txs });
+    this.profits = new StakeProfitsService({ ...common, perks, txs, intentsRead });
     this.patron = new PatronNominateService(db, () => stakingNowMs(staking));
     this.status = new StakingStatusReader({ flags, staking, claimService, positionSync, balances: this.balances, colony: this.colony, perks, env: envBag });
   }
