@@ -63,7 +63,7 @@ export class ReentryFx implements FramePart {
     trail.group.visible = on;
     if (!on) return;
     trail.group.position.copy(f.podCenter);
-    trail.u.uI.value = f.P * 1.15; trail.u.uTime.value = f.tn;
+    trail.u.uI.value = f.P * 0.5; trail.u.uTime.value = f.tn;
   }
 
   dispose() { this.streaks.dispose(); this.plasma.dispose(); this.trail?.dispose(); }

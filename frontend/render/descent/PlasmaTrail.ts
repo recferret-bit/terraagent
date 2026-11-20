@@ -14,7 +14,7 @@ export interface PlasmaTrail {
 
 /**
  * Tier 2+ Plasma Drop-Pod re-entry trail: a hollow cyan-violet sheath with scrolling lanes, a hot core thread and shed
- * sparks, all additive HDR. Built beside the pod's own orange plasma (it extends the descent, never replaces it).
+ * sparks, alpha-blended sheath and core, additive sparks, all HDR. Built beside the pod's own orange plasma (it extends the descent, never replaces it).
  * Local space: pod centre at the origin, trail along +y. The caller sets `group.position` and `u.uI` each frame.
  */
 export function createPlasmaTrail(podRadius: number, podHeight: number): PlasmaTrail {
@@ -30,10 +30,10 @@ export function createPlasmaTrail(podRadius: number, podHeight: number): PlasmaT
     const m = new THREE.ShaderMaterial({
       uniforms: {
         ...u, uLen: { value: TRAIL_LENGTH }, uSeed: { value: seed },
-        uHot: { value: new THREE.Color(0.2, 2.1, 2.7) }, uCool: { value: new THREE.Color(0.75, 0.25, 1.8) }, ...extra,
+        uHot: { value: new THREE.Color(0.1, 1.3, 1.7) }, uCool: { value: new THREE.Color(0.55, 0.18, 1.3) }, ...extra,
       },
       vertexShader: TRAIL_VERT, fragmentShader: frag,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+      transparent: true, depthWrite: false, blending: THREE.NormalBlending, side: THREE.DoubleSide, fog: false,
     });
     mats.push(m);
     return m;
@@ -43,8 +43,8 @@ export function createPlasmaTrail(podRadius: number, podHeight: number): PlasmaT
     geos.push(g);
     return g;
   };
-  const sheath = new THREE.Mesh(cone(R * 1.25, R * 0.12), mat(buildTrailFragment(), 0.4));
-  const core = new THREE.Mesh(cone(R * 0.34, R * 0.03), mat(TRAIL_CORE_FRAG, 1.1));
+  const sheath = new THREE.Mesh(cone(R * 1.1, R * 0.1), mat(buildTrailFragment(), 0.4));
+  const core = new THREE.Mesh(cone(R * 0.2, R * 0.02), mat(TRAIL_CORE_FRAG, 1.1));
   for (const [m, order] of [[sheath, 27], [core, 28]] as const) { m.frustumCulled = false; m.renderOrder = order; group.add(m); }
 
   const n = 220;
@@ -60,7 +60,7 @@ export function createPlasmaTrail(podRadius: number, podHeight: number): PlasmaT
     uniforms: {
       ...u, uLen: { value: TRAIL_LENGTH }, uR: { value: R * 1.2 },
       uScale: { value: typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio, 2) },
-      uHot: { value: new THREE.Color(0.2, 2.1, 2.7) }, uCool: { value: new THREE.Color(0.75, 0.25, 1.8) },
+      uHot: { value: new THREE.Color(0.1, 1.3, 1.7) }, uCool: { value: new THREE.Color(0.55, 0.18, 1.3) },
     },
     vertexShader: TRAIL_SPARK_VERT, fragmentShader: TRAIL_SPARK_FRAG,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,

@@ -98,3 +98,20 @@ describe('W28-12 own descent prestige (unit)', () => {
     expect(new MenuPrestige({ isLocalHost: () => false, flagOn: () => false, activeColony: own }, store).descent()).toBeUndefined();
   });
 });
+
+describe('W28-12 dev tier override (unit)', () => {
+  it('only in dev builds, only 0..4', async () => {
+    const { devStakeTier } = await import('./OrbitPrestige');
+    expect(devStakeTier('?stakeTier=2', true)).toBe(2);
+    expect(devStakeTier('?stakeTier=2', false)).toBeNull();
+    for (const q of ['', '?stakeTier=', '?stakeTier=9', '?stakeTier=-1', '?stakeTier=abc', '?stakeTier=1.5']) expect(devStakeTier(q, true)).toBeNull();
+  });
+
+  it('the override drives the own-tier trail regardless of colony (and still needs W28 on)', () => {
+    const store = new PrestigeStore(async () => null);
+    const mk = (flag: boolean, search: string) => new MenuPrestige({ isLocalHost: () => false, flagOn: () => flag, activeColony: () => null }, store, search, true).descent();
+    expect(mk(true, '?stakeTier=3')).toEqual({ plasmaTrail: true });
+    expect(mk(true, '?stakeTier=1')).toBeUndefined();
+    expect(mk(false, '?stakeTier=3')).toBeUndefined();
+  });
+});

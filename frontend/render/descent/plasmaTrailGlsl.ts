@@ -1,5 +1,6 @@
 /**
- * Plasma Drop-Pod trail shader chunks (W28-12, Tier 2+). Composed by `buildTrailFragment`; local space: the pod centre
+ * Plasma Drop-Pod trail shader chunks (W28-12, Tier 2+). The sheath and core are alpha-blended (like the pod's own
+ * plasma) so the cyan keeps its hue over the bright orange sky; the sparks are additive. Composed by `buildTrailFragment`; local space: the pod centre
  * at the origin, the pod falls along -y and the trail streams up behind it. Colours are HDR (> 1.1) for selective bloom.
  */
 export const TRAIL_VERT = /* glsl */ `
@@ -22,7 +23,8 @@ varying vec3 vP; varying vec3 vN; varying vec3 vV; varying float vS;`;
 /** Silhouette glow of the hollow sheath: the pod stays readable inside it. */
 export const TRAIL_RIM = /* glsl */ `
 float trailRim(float sharp){
-  return pow(max(1.0 - abs(dot(normalize(vN), normalize(vV))), 0.0), sharp);
+  // never full strength: seen down its own axis (camera behind the pod) every pixel of the cone is edge-on
+  return 0.12 + 0.5 * pow(max(1.0 - abs(dot(normalize(vN), normalize(vV))), 0.0), sharp);
 }`;
 
 /** Streaks racing up the wake: angular lanes scrolling with time, so it reads as speed, not as a static cone. */
@@ -39,7 +41,7 @@ void main(){
   float rim = trailRim(2.4);
   float a = rim * trailLanes() * pow(max(1.0 - vS, 0.0), 1.5) * smoothstep(0.0, 0.05, vS);
   vec3 c = mix(uHot, uCool, smoothstep(0.0, 0.7, vS));
-  gl_FragColor = vec4(c * a * uI, 1.0);
+  gl_FragColor = vec4(c * 1.35, clamp(a * uI * 1.6, 0.0, 1.0));
 }`;
 
 export function buildTrailFragment(): string {
@@ -51,7 +53,7 @@ export const TRAIL_CORE_FRAG = [TRAIL_HEAD, TRAIL_RIM, /* glsl */ `
 void main(){
   float f = pow(abs(dot(normalize(vN), normalize(vV))), 1.1);
   float a = f * pow(max(1.0 - vS, 0.0), 1.2) * smoothstep(0.0, 0.03, vS) * (0.8 + 0.2 * sin(uTime * 31.0 + vS * 40.0));
-  gl_FragColor = vec4(mix(vec3(1.2, 2.6, 3.0), uCool, vS) * a * uI, 1.0);
+  gl_FragColor = vec4(mix(vec3(0.8, 1.9, 2.3), uCool, vS), clamp(a * uI * 1.2, 0.0, 1.0));
 }`].join('\n');
 
 /** Shed sparks: points spawned at the pod, streaming up the wake and cooling from white-cyan to violet. */

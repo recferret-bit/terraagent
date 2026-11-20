@@ -1,5 +1,5 @@
 import type { OrbitalStage } from '@terra/render/orbit/types';
-import { prestigeVisualsForTier } from '@terra/render/prestige/tierVisuals';
+import { isKnownPrestigeTier, prestigeVisualsForTier } from '@terra/render/prestige/tierVisuals';
 import type { DescentPrestige } from '@terra/render/descent/types';
 import { prestigeStore, type PrestigeStore } from './PrestigeStore';
 
@@ -57,9 +57,11 @@ export function ownDescentPrestige(
   own: () => { planetId: string; colonyId: string } | null,
   isEnabled: () => boolean,
   store: PrestigeStore = prestigeStore,
+  devTier: number | null = null,
 ): () => DescentPrestige | undefined {
   return () => {
     if (!isEnabled()) return undefined;
+    if (devTier !== null) return prestigeVisualsForTier(devTier).plasmaTrail ? { plasmaTrail: true } : undefined;
     const c = own();
     if (!c) return undefined;
     void store.ensureLoaded(c.planetId);
@@ -81,9 +83,21 @@ export class MenuPrestige {
   /** Getter for `DescentOptions.prestige`: the player's own tier, read every descent frame. */
   readonly descent: () => DescentPrestige | undefined;
 
-  constructor(deps: MenuPrestigeDeps, store: PrestigeStore = prestigeStore) {
+  constructor(deps: MenuPrestigeDeps, store: PrestigeStore = prestigeStore, search = typeof location !== 'undefined' ? location.search : '', dev = import.meta.env.DEV) {
     const enabled = () => deps.flagOn() && !deps.isLocalHost();
     this.orbit = new OrbitPrestige(enabled, store);
-    this.descent = ownDescentPrestige(deps.activeColony, enabled, store);
+    this.descent = ownDescentPrestige(deps.activeColony, enabled, store, devStakeTier(search, dev));
   }
+}
+
+/**
+ * Dev QA only (`import.meta.env.DEV`): `/play.html?stakeTier=0..4` previews the own-tier descent trail without a staked
+ * wallet. Anything else (and every production build) reads as no override.
+ */
+export function devStakeTier(search: string, dev: boolean): number | null {
+  if (!dev) return null;
+  const raw = new URLSearchParams(search).get('stakeTier');
+  if (raw === null || raw.trim() === '') return null;
+  const n = Number(raw);
+  return isKnownPrestigeTier(n) ? n : null;
 }

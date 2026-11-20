@@ -4,11 +4,11 @@ import { acquireModel, tickArchetypeMesh, type FittedModel } from '../../visuals
 import type { OrbitalLeadPatron, ProjectedFlagship } from '../types';
 
 /** Model size (m) in the skybox: a touch smaller than the menu carrier and farther back, so it reads as a second ship. */
-const FLAGSHIP_SIZE = 5.4;
+const FLAGSHIP_SIZE = 6.4;
 const _v = new THREE.Vector3();
 
 /**
- * The Lead Patron's `ISS <pilot>.near` Flagship Orbital Carrier, parked upper-left of the planet in the orbit menu.
+ * The Lead Patron's `ISS <pilot>.near` Flagship Orbital Carrier, parked above and left of the planet in the orbit menu.
  * One model, built on demand: no patron means no model, no draw call and no label.
  */
 export class FlagshipCarrier {
@@ -40,7 +40,7 @@ export class FlagshipCarrier {
     if (!m) return;
     m.root.visible = show;
     if (!show) return;
-    m.root.position.set(planetPos.x - 21 + Math.sin(time * 0.06) * 0.5, 8.2 + Math.sin(time * 0.13 + 1.1) * 0.25, -6);
+    m.root.position.set(planetPos.x - 9.5 + Math.sin(time * 0.06) * 0.5, 9.4 + Math.sin(time * 0.13 + 1.1) * 0.25, -8);
     m.root.rotation.set(0.05, 0.62 + Math.sin(time * 0.05) * 0.08, -0.04 + Math.sin(time * 0.09) * 0.02);
     tickArchetypeMesh(m.mesh, time);
   }
@@ -50,7 +50,7 @@ export class FlagshipCarrier {
     const m = this.model;
     if (!m) return null;
     _v.copy(m.root.position);
-    _v.y += m.size.y + 0.6;
+    _v.y += m.size.y;
     _v.project(camera);
     return {
       name: this.name,
