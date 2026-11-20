@@ -8,6 +8,7 @@ import { refreshLandingActiveColony } from './sections/activeColony';
 import { initColonyCanvas } from './sections/colonyCanvas';
 import { initDirectorScenarios } from './sections/directorScenarios';
 import { initEconomicsSection } from './sections/economicsSection';
+import { initStakeNavPill } from './sections/stakeNavPill';
 import { initProtocolSection } from './sections/protocolSection';
 import { initContractsBoard } from './sections/contractsBoard';
 import { initRoadmap } from './sections/roadmap';
@@ -35,6 +36,7 @@ class LandingPage {
     initProtocolSection,
     initContractsBoard,
     initRoadmap,
+    () => { void initStakeNavPill(); },
     () => {
       const host = document.querySelector<HTMLElement>('.header-right');
       const root = this.page ?? document;
