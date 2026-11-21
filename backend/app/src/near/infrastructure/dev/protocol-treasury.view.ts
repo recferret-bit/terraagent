@@ -162,6 +162,32 @@ async function hydrateLiveProtocolBalances(
   await Promise.all(tasks);
 }
 
+async function hydrateDbProtocolBalances(
+  prisma: PrismaClient,
+  nearMode: string,
+  activeNet: 'testnet' | 'mainnet',
+  protocolAccountId: string,
+  balances: Record<string, string>,
+  testnetVerifierLedger: Record<string, string>,
+): Promise<void> {
+  const accountIds = Array.from(new Set([PROTOCOL_ACCOUNT_ID, protocolAccountId]));
+  if (nearMode === 'mock') {
+    const [chainBals, intentsBals] = await Promise.all([
+      prisma.mockChainBalance.findMany({ where: { accountId: { in: accountIds } } }),
+      prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } }),
+    ]);
+    for (const row of chainBals) addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
+    for (const row of intentsBals) addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
+    return;
+  }
+  if (activeNet !== 'testnet') return;
+  const intentsBals = await prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } });
+  for (const row of intentsBals) {
+    if (row.tokenId.includes('.mock') || row.tokenId === 'native:near') continue;
+    addBalance(testnetVerifierLedger, tokenKeyOfVerifierId(row.tokenId) ?? row.tokenId, BigInt(row.amount.toFixed(0)));
+  }
+}
+
 export async function buildProtocolTreasuryView(
   envSource: Record<string, string | undefined>,
   prisma?: PrismaClient,
@@ -177,28 +203,7 @@ export async function buildProtocolTreasuryView(
   const testnetVerifierLedger: Record<string, string> = {};
 
   if (prisma && databaseEnabled(envSource as unknown as AppEnv)) {
-    const accountIds = Array.from(new Set([PROTOCOL_ACCOUNT_ID, protocolAccountId]));
-    if (nearMode === 'mock') {
-      const [chainBals, intentsBals] = await Promise.all([
-        prisma.mockChainBalance.findMany({ where: { accountId: { in: accountIds } } }),
-        prisma.mockChainIntentsBalance.findMany({ where: { accountId: { in: accountIds } } }),
-      ]);
-      for (const row of chainBals) {
-        addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
-      }
-      for (const row of intentsBals) {
-        addBalance(balances, row.tokenId, BigInt(row.amount.toFixed(0)), true);
-      }
-    } else if (activeNet === 'testnet') {
-      const intentsBals = await prisma.mockChainIntentsBalance.findMany({
-        where: { accountId: { in: accountIds } },
-      });
-      for (const row of intentsBals) {
-        if (row.tokenId.includes('.mock') || row.tokenId === 'native:near') continue;
-        const canonical = tokenKeyOfVerifierId(row.tokenId) ?? row.tokenId;
-        addBalance(testnetVerifierLedger, canonical, BigInt(row.amount.toFixed(0)));
-      }
-    }
+    await hydrateDbProtocolBalances(prisma, nearMode, activeNet, protocolAccountId, balances, testnetVerifierLedger);
   }
 
   if (nearMode !== 'mock') {

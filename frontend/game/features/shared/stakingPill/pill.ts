@@ -30,15 +30,19 @@ export class StakingPill {
   }
 
   async refresh(): Promise<void> {
-    const res = await fetchPerks(this.doFetch, this.opts.query());
+    const q = this.opts.query();
+    if (!q.accountId?.trim() && !q.colonyId?.trim() && !q.token) {
+      this.el.hidden = true;
+      this.opts.onPerks?.(null);
+      return;
+    }
+    const [res, apy] = await Promise.all([fetchPerks(this.doFetch, q), fetchApy(this.doFetch)]);
     if (this.disposed) return;
     if (res.status !== 'ok') {
       this.el.hidden = true;
       this.opts.onPerks?.(null);
       return;
     }
-    const apy = await fetchApy(this.doFetch);
-    if (this.disposed) return;
     this.draw(res.data.perks, apy);
     this.opts.onPerks?.(res.data.perks, res.data.accountId);
   }

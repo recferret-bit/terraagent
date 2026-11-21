@@ -293,4 +293,25 @@ describe('W28-07 early-exit notice', () => {
     expect(panel.earlyExitEl.hidden).toBe(false);
     expect(panel.perksBannerEl.textContent).toContain(`Tier Commander: ${STAKING_TIERS[1]!.takerFeeBp} bp market fee now`);
   });
+
+  it('shows [★ Nominate Planet] only at Tier 4 (>= 500 NEAR) with W28 on and posts /v1/near/staking/patron/nominate', async () => {
+    const f = makeFetch({
+      '/v1/near/staking/patron/nominate': (body) => ({
+        json: { accountId: (body as { accountId: string }).accountId, planetId: (body as { planetId: string }).planetId, isLeadPatron: true, leadPatron: { accountId: 'pilot.mock', carrierName: 'ISS pilot.mock' } },
+      }),
+    });
+    const parent = document.createElement('div');
+    const panel = new StakingPanel(
+      parent,
+      { flags: new Set(['W28']), host: 'server', services: { track: () => {}, session: { planetId: () => 'pl_prime' } as never } },
+      { fetchFn: f.fn, openSigner: approvingSigner(), nowFn: () => NOW },
+    );
+    panel.applyStatusResponse(status([mockPos(NOW - 30 * DAY)], 'mock'));
+    expect(panel.nominateBtnEl.hidden).toBe(true);
+    panel.applyStatusResponse(status([pos({ accountId: 'pilot.mock', pool: 'astro-stakers.poolv1.near', staked: '500' })], 'mock'));
+    expect(panel.nominateBtnEl.hidden).toBe(false);
+    expect(await panel.nominatePlanetFlow()).toBe(true);
+    expect(panel.statusMsgEl.textContent).toContain('Lead Patron of pl_prime');
+    expect(f.calls.find((c) => c.url.endsWith('/patron/nominate'))!.body).toEqual({ accountId: 'pilot.mock', planetId: 'pl_prime' });
+  });
 });

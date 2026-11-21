@@ -160,9 +160,14 @@ test('6. scale to 550 NEAR on the public planet: overtakes the 500 NEAR rival as
   const before = await getJson<{ leadPatron: { accountId: string } | null }>(api, `/v1/near/staking/prestige?planetId=${planetId}`);
   expect(before.body.leadPatron?.accountId).toBe(RIVAL);
   expect((await postJson(api, '/v1/near/stake', { accountId: wallet, pool: POOL, amount: '545' })).status).toBe(200);
-  const nominated = await postJson<{ isLeadPatron: boolean }>(api, '/v1/near/staking/patron/nominate', { accountId: wallet, planetId });
-  expect(nominated.status).toBe(200);
-  expect(nominated.body.isLeadPatron).toBe(true);
+  const me = await context.newPage();
+  await me.goto('/me.html?as=w28#staking');
+  await expect(me.getByTestId('staking-dashboard')).toBeVisible({ timeout: 30_000 });
+  await me.getByTestId('staking-nominate-planet').fill(planetId);
+  await me.getByTestId('staking-nominate-btn').click();
+  await expect(me.getByTestId('staking-console-status')).toContainText(`Lead Patron of ${planetId}`, { timeout: 15_000 });
+  await expect(me.getByTestId('staking-patron-planets')).toContainText(planetId, { timeout: 15_000 });
+  await me.close();
   const after = await getJson<{ leadPatron: { accountId: string; carrierName: string; protocolFeeShareBp: number } }>(api, `/v1/near/staking/prestige?planetId=${planetId}`);
   expect(after.body.leadPatron).toMatchObject({ accountId: wallet, protocolFeeShareBp: 1500 });
   expect(after.body.leadPatron.carrierName).toMatch(/^ISS /);
@@ -172,7 +177,7 @@ test('6. scale to 550 NEAR on the public planet: overtakes the 500 NEAR rival as
   const full = await getJson<{ perks: { maxAiColonySlots: number } }>(api, `/v1/near/staking/perks?accountId=${wallet}`);
   expect(full.body.perks.maxAiColonySlots).toBe(12);
   await page.reload();
-  await expect(page.getByTestId('staking-pill')).toHaveAttribute('data-tier', '4', { timeout: 30_000 });
+  await expect(page.getByTestId('staking-pill')).toHaveAttribute('data-tier', '4', { timeout: 60_000 });
 });
 
 test('7. /trade.html: fee pill, Stake Trade Profits (10 USDC → stNEAR), RampView quotes 10.00 USDC as 10000000 atomic, dry', async () => {

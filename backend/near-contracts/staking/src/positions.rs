@@ -7,9 +7,8 @@
 //! grandfathered) and are not listed by `get_account_positions` until the operator calls
 //! `register_position` (or the wallet deposits again).
 use crate::StakingVaultContractExt;
-use crate::accrual::{project_record, read_protocol_yield_bp};
 use crate::storage::pos_key;
-use crate::{lst, StakingRecord, StakingVaultContract};
+use crate::{StakingRecord, StakingVaultContract};
 use near_sdk::borsh;
 use near_sdk::{env, near, require};
 
@@ -83,7 +82,7 @@ pub(crate) fn record_deposit(
     meta.last_staked_at_ms = now_ms;
     meta.asset = asset.to_string();
     meta.entry_lst_price_yocto =
-        lst::weighted_entry(meta.entry_lst_price_yocto, prior_staked, added, price);
+        crate::lst_math::weighted_entry(meta.entry_lst_price_yocto, prior_staked, added, price);
     write_meta(account_id, pool_id, &meta);
     index_pool(account_id, pool_id);
 }
@@ -127,18 +126,15 @@ impl StakingVaultContract {
         now_ms: Option<u64>,
     ) -> Vec<AccountPositionView> {
         let now = now_ms.unwrap_or_else(env::block_timestamp_ms);
-        let yield_bp = read_protocol_yield_bp();
+        let apy = apy_bp.unwrap_or(0);
         read_index(&account_id)
             .into_iter()
             .filter_map(|pool_id| {
-                let rec = self.positions.get(&pos_key(&account_id, &pool_id))?.clone();
+                if !self.positions.contains_key(&pos_key(&account_id, &pool_id)) {
+                    return None;
+                }
                 let meta = read_meta(&account_id, &pool_id).unwrap_or_default();
-                let shown = match apy_bp {
-                    Some(apy) if !lst::is_price_mode(&pool_id, &meta) => {
-                        project_record(&rec, apy, now, yield_bp).0
-                    }
-                    _ => rec,
-                };
+                let shown = self.settle_pure(&account_id, &pool_id, apy, now).record;
                 Some(view_of(&account_id, &pool_id, &shown, &meta))
             })
             .collect()

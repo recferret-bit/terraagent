@@ -27,6 +27,7 @@ beforeEach(async () => {
   await p.aiWalletUsage.deleteMany({});
   await p.aiFreeTrial.deleteMany({});
   await p.socialIdentity.deleteMany({});
+  await p.colony.deleteMany({});
 });
 
 const gate = (price = 4) => new ManagedAiGate(db.prisma, env, slots, { priceProvider: { nearUsd: () => price } });
@@ -69,6 +70,31 @@ describe('W28-06 free trial ledger (Postgres)', () => {
     const out = await gate().admit({ id: 'g1', playerId: 'guest-1' }, NOW);
     expect(out).toMatchObject({ mode: 'script', reason: 'guest', model: SCRIPT_AI_MODEL });
     expect(await db.prisma.aiFreeTrial.count()).toBe(0);
+  });
+
+  it('resolves scenario colonies (sim id col_0 != DB id co_...) via (planetId, colonyIndex) for both 5-turn trial and wallet-first stake', async () => {
+    await db.prisma.colony.create({
+      data: { id: 'co_w28_0', playerId: 'p-scn', planetId: 'scn_w28_test', colonyIndex: 0, name: 'Scenario Hub' },
+    });
+    await db.prisma.socialIdentity.create({
+      data: { id: 'si-scn', playerId: 'p-scn', provider: 'near', subject: 'scn.near', accountId: 'scn.near' },
+    });
+    // Zero near_colony_account rows, sim state only knows id='col_0' without playerId:
+    const first = await gate().admit({ id: 'col_0', planetId: 'scn_w28_test', colonyIndex: 0 }, NOW);
+    expect(first).toMatchObject({ mode: 'trial', trialTurnsLeft: 4 });
+    // Now wallet stakes >= 10 NEAR wallet-first (colonyId='wallet:scn.near'):
+    await db.prisma.stakingPosition.create({
+      data: {
+        colonyId: 'wallet:scn.near',
+        poolId: 'pool.mock',
+        accountId: 'scn.near',
+        stakedSnapshot: nearToYocto(15),
+        stakedSinceAt: new Date(NOW - DAY),
+        lastStakedAt: new Date(NOW - DAY),
+      },
+    });
+    const upgraded = await gate().admit({ id: 'col_0', planetId: 'scn_w28_test', colonyIndex: 0 }, NOW);
+    expect(upgraded).toMatchObject({ mode: 'tee', model: MANAGED_AI_MODEL });
   });
 });
 

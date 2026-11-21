@@ -12,6 +12,7 @@ export interface PatronCardOptions {
   readonly origin: string;
   readonly selectorFactory?: StakingSelectorFactory;
   readonly openWindow?: (url: string) => void;
+  readonly onNominate?: (planetId: string) => void;
 }
 
 type SocialTx = ReturnType<typeof patronNearSocialTx>;
@@ -50,6 +51,24 @@ export function renderPatronCard(p: StakingPerformanceResponse, o: PatronCardOpt
   const planets = facts.leadPlanets.length > 0 ? facts.leadPlanets.join(' · ') : 'No lead-patron seat yet';
   const x = el('a', { className: 'btn btn-primary btn-sm', href: patronTwitterIntentUrl(facts, o.origin), target: '_blank', rel: 'noopener noreferrer', dataset: { testid: 'staking-share-x' } }, 'Share on X');
   const social = el('button', { className: 'btn btn-sm', type: 'button', dataset: { testid: 'staking-share-social' }, onClick: () => void postToNearSocial(social, p, o) }, 'Post to NEAR Social');
+  const planetInput = el('input', {
+    className: 'input ta-stk-input',
+    type: 'text',
+    aria: { label: 'Planet ID to nominate for Lead Patron' },
+    dataset: { testid: 'staking-nominate-planet' },
+  });
+  planetInput.placeholder = 'Public planet ID (e.g. pl_...)';
+  planetInput.value = facts.leadPlanets[0] ?? '';
+  const nominateBtn = el(
+    'button',
+    {
+      className: 'btn btn-sm',
+      type: 'button',
+      dataset: { testid: 'staking-nominate-btn' },
+      onClick: () => o.onNominate?.(planetInput.value.trim()),
+    },
+    '★ Nominate Planet',
+  );
   return el(
     'div',
     { className: 'ta-stk-block ta-stk-patron plate', dataset: { testid: 'staking-patron-card', tier: p.perks.tier } },
@@ -60,6 +79,7 @@ export function renderPatronCard(p: StakingPerformanceResponse, o: PatronCardOpt
       el('div', {}, el('span', { className: 'label' }, 'EFFECTIVE APY'), el('b', { dataset: { testid: 'staking-patron-apy' } }, formatPct(facts.effectiveApyBp))),
     ),
     el('span', { className: 'ta-stk-sub', dataset: { testid: 'staking-patron-planets' } }, `Lead patron: ${planets}`),
+    el('div', { className: 'ta-stk-top', dataset: { testid: 'staking-nominate-row' } }, planetInput, nominateBtn),
     el('p', { className: 'ta-stk-share-text', dataset: { testid: 'staking-share-text' } }, patronShareText(facts)),
     el('div', { className: 'ta-stk-chips' }, x, social),
   );

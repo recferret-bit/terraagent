@@ -7,7 +7,7 @@ import { detectStakingNetwork } from '../../../../../features/deed/parts/staking
 import { resolveMeBearerToken, type MeFetchFn } from '../../../api';
 import { el } from '../../../dom';
 import {
-  runCompoundAction, runStakeAction, runStakeProfitsAction, runUnstakeAction, runWithdrawAction,
+  runCompoundAction, runNominatePlanetAction, runStakeAction, runStakeProfitsAction, runUnstakeAction, runWithdrawAction,
   type ActionContext, type ActionResult, type StakingNetwork,
 } from './dashboardActions';
 import { fetchPerformance, fetchWalletPool } from './dashboardApi';
@@ -72,7 +72,7 @@ class StakingDashboard {
       onUnstake: (amount, asset) => void this.act((c) => runUnstakeAction(c, amount, asset)),
       onWithdraw: (asset) => void this.act((c) => runWithdrawAction(c, this.perf!, asset)),
       onProfits: (usdc) => void this.profits(usdc),
-    }, this.now);
+    }, () => this.effectiveNowMs());
     this.el = el('div', { className: 'ta-stk-block', dataset: { testid: 'staking-dashboard', account: opts.accountId, network: this.network } },
       el('h3', { className: 'label ta-stk-h' }, `WEALTH DASHBOARD · ${opts.accountId}`),
       this.status,
@@ -129,7 +129,7 @@ class StakingDashboard {
   }
 
   private render(p: StakingPerformanceResponse): void {
-    const nowMs = this.now();
+    const nowMs = this.effectiveNowMs(p);
     this.kpi = renderKpiStrip(p, nowMs, {
       onCompound: () => void this.compound(),
       onTopUp: (amount) => this.consolePart.setAmount(String(amount)),
@@ -143,6 +143,7 @@ class StakingDashboard {
       renderPatronCard(p, {
         accountId: this.opts.accountId, network: this.network, origin: this.opts.origin ?? location.origin,
         selectorFactory: this.opts.selectorFactory, openWindow: this.opts.openWindow,
+        onNominate: (planetId) => void this.nominate(planetId),
       }),
     );
     this.hosts.tx.replaceChildren(renderTxTable(p.txs));
@@ -159,7 +160,20 @@ class StakingDashboard {
   }
 
   private compound(): Promise<void> {
-    return this.perf && Number(this.perf.balances.accruedYieldNear) > 0 ? this.act((c) => runCompoundAction(c, this.perf!)) : Promise.resolve();
+    if (!this.perf) return Promise.resolve();
+    const snap = Number(this.perf.balances.accruedYieldNear);
+    const live = this.liveYieldNear(this.perf);
+    if (snap <= 0 && live < 0.000001) return Promise.resolve();
+    const amount = snap > 0 ? this.perf.balances.accruedYieldNear : formatMicroNear(live);
+    return this.act((c) => runCompoundAction(c, this.perf!, amount));
+  }
+
+  private async nominate(planetId: string): Promise<void> {
+    if (!planetId.trim()) {
+      this.consolePart.setStatus('Enter a public planet ID to nominate.', 'error');
+      return;
+    }
+    await this.act((c) => runNominatePlanetAction(c, planetId));
   }
 
   private async profits(usdc: string): Promise<void> {
@@ -185,8 +199,19 @@ class StakingDashboard {
       if (this.el.isConnected) this.wasConnected = true;
       else if (this.wasConnected) return this.dispose();
       this.tickYield();
-      this.consolePart.tick(this.now());
+      this.consolePart.tick(this.effectiveNowMs());
     }, ms);
+  }
+
+  /** Server clock (`asOfMs`) plus monotonic elapsed time since snapshot arrival (`time.warp`-safe). */
+  private effectiveNowMs(p: StakingPerformanceResponse | null = this.perf): number {
+    if (!p) return this.now();
+    return p.asOfMs + Math.max(0, this.now() - this.receivedAtMs);
+  }
+
+  private liveYieldNear(p: StakingPerformanceResponse): number {
+    const rate = yieldPerSecondNear(totalStakedNear(p.balances), p.apy.netApyBp);
+    return tickedYieldNear(Number(p.balances.accruedYieldNear), rate, Math.max(0, this.now() - this.receivedAtMs));
   }
 
   /** Client-side live counter: accrued yield plus the net APY per second since the last snapshot. */
@@ -194,9 +219,12 @@ class StakingDashboard {
     const p = this.perf;
     if (!p || !this.kpi) return;
     const rate = yieldPerSecondNear(totalStakedNear(p.balances), p.apy.netApyBp);
-    const value = tickedYieldNear(Number(p.balances.accruedYieldNear), rate, this.now() - this.receivedAtMs);
+    const value = this.liveYieldNear(p);
+    const canCompound = Number(p.balances.accruedYieldNear) > 0 || value >= 0.000001;
     this.kpi.yieldValue.textContent = formatMicroNear(value);
     this.kpi.yieldValue.dataset.perSecond = String(rate);
+    this.kpi.setCompoundVisible(canCompound);
+    this.consolePart.setCanCompound(canCompound);
   }
 }
 

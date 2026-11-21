@@ -14,8 +14,9 @@ export interface ConsoleHandlers {
 export interface ConsolePart {
   readonly el: HTMLElement;
   update(p: StakingPerformanceResponse, nowMs: number): void;
-  /** Re-renders the early-exit preview and the unbonding countdown (called by the 1 s ticker). */
+  /** Re-renders the early-exit preview and the unbonding countdown (called by the ticker). */
   tick(nowMs: number): void;
+  setCanCompound(show: boolean): void;
   setAmount(amountNear: string): void;
   setStatus(message: string, tone: 'ok' | 'error' | 'info'): void;
   setQuote(line: string): void;
@@ -34,8 +35,10 @@ function field(label: string, control: HTMLElement, id: string): HTMLElement {
   return el('div', { className: 'ta-stk-field' }, l, control);
 }
 
-/** Action console: asset picker, amount, Stake / Compound / Unstake / Withdraw, trade-profit staking, unbonding countdown. */
-export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: () => number = Date.now): ConsolePart {
+const btn = (testid: string, text: string, cls: string, run: () => void): HTMLButtonElement =>
+  el('button', { className: `btn ${cls}`, type: 'button', dataset: { testid }, onClick: run }, text);
+
+function buildInputs(initialAmount: string) {
   const asset = el('select', { className: 'input', dataset: { testid: 'staking-console-asset' } });
   for (const a of STAKING_ASSETS) asset.append(new Option(ASSET_LABEL[a], a));
   const amount = el('input', { className: 'input ta-stk-input', type: 'number', dataset: { testid: 'staking-console-amount' } });
@@ -47,44 +50,59 @@ export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: ()
   usdc.min = '0';
   usdc.step = 'any';
   usdc.value = '10.00';
+  return { asset, amount, usdc };
+}
+
+function updateEarlyExitNotice(
+  perf: StakingPerformanceResponse | null,
+  amountText: string,
+  nowMs: number,
+  notice: HTMLElement,
+  free: HTMLElement,
+): void {
+  const bp = perf?.timers.earlyExitFeeBp ?? 0;
+  const staked = Number(perf?.balances.activeStakedNear ?? '0');
+  const active = bp > 0 && (perf?.timers.earlyExitFreeAtMs ?? 0) > nowMs && staked > 0;
+  notice.hidden = !active;
+  free.hidden = active || staked <= 0;
+  if (active) {
+    const fee = earlyExitFeeNear(Number(amountText) || 0, bp);
+    notice.dataset.feeBp = String(bp);
+    notice.textContent = `Early exit: unstaking within 7 days of your last deposit pays ${(bp / 100).toFixed(2)} % to the Protocol${fee > 0 ? ` (about ${fee.toFixed(6)} NEAR on this amount)` : ''}. Free after ${formatCountdown(perf?.timers.earlyExitFreeAtMs ?? null, nowMs)}; compounding never resets the clock.`;
+  }
+}
+
+function updateUnbondingCountdown(perf: StakingPerformanceResponse | null, nowMs: number, countdown: HTMLElement): void {
+  const ready = perf?.timers.unbondingReadyAtMs ?? null;
+  const unbonding = Number(perf?.balances.unbondingNear ?? '0') > 0 && ready !== null && ready > nowMs;
+  countdown.hidden = !unbonding;
+  if (unbonding) countdown.textContent = `Unbonding ${formatNear(Number(perf?.balances.unbondingNear))}: withdrawable in ${formatCountdown(ready, nowMs)}`;
+}
+
+/** Action console: asset picker, amount, Stake / Compound / Unstake / Withdraw, trade-profit staking, unbonding countdown. */
+export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: () => number = Date.now): ConsolePart {
+  const { asset, amount, usdc } = buildInputs(initialAmount);
   const notice = el('p', { className: 'ta-stk-notice', dataset: { testid: 'staking-early-exit-notice' } });
   const free = el('p', { className: 'ta-stk-sub', dataset: { testid: 'staking-early-exit-free' } }, '0 % early-exit fee after 7 days.');
   const countdown = el('p', { className: 'ta-stk-sub', dataset: { testid: 'staking-unbonding-countdown' } });
   const status = el('p', { className: 'ta-stk-status', role: 'status', dataset: { testid: 'staking-console-status' } });
   const quote = el('p', { className: 'ta-stk-sub', dataset: { testid: 'staking-profits-quote' } });
-  const btn = (testid: string, text: string, cls: string, run: () => void): HTMLButtonElement =>
-    el('button', { className: `btn ${cls}`, type: 'button', dataset: { testid }, onClick: run }, text);
-  const bad = (): boolean => {
-    if (isValidAmount(amount.value)) return false;
+  const requireValidAmount = (): boolean => {
+    if (isValidAmount(amount.value)) return true;
     part.setStatus('Enter an amount greater than 0.', 'error');
-    return true;
+    return false;
   };
-  const stake = btn('staking-console-stake', 'Stake', 'btn-primary', () => !bad() && h.onStake(amount.value.trim(), asset.value as StakingAsset));
+  const stake = btn('staking-console-stake', 'Stake', 'btn-primary', () => requireValidAmount() && h.onStake(amount.value.trim(), asset.value as StakingAsset));
   const compound = btn('staking-console-compound', '↻ Compound Yield', '', h.onCompound);
-  const unstake = btn('staking-console-unstake', 'Unstake', '', () => !bad() && h.onUnstake(amount.value.trim(), asset.value as StakingAsset));
+  const unstake = btn('staking-console-unstake', 'Unstake', '', () => requireValidAmount() && h.onUnstake(amount.value.trim(), asset.value as StakingAsset));
   const withdraw = btn('staking-console-withdraw', 'Withdraw to Wallet', '', () => h.onWithdraw(asset.value as StakingAsset));
   const profits = btn('staking-stake-profits-btn', '⚡ Stake Trade Profits (USDC → stNEAR)', 'btn-primary', () =>
     isValidAmount(usdc.value) ? h.onProfits(usdc.value.trim()) : part.setStatus('Enter a USDC amount greater than 0.', 'error'));
   const buttons = [stake, compound, unstake, withdraw, profits];
-
   let perf: StakingPerformanceResponse | null = null;
-  const refreshNotice = (nowMs: number): void => {
-    const bp = perf?.timers.earlyExitFeeBp ?? 0;
-    const staked = Number(perf?.balances.activeStakedNear ?? '0');
-    const active = bp > 0 && (perf?.timers.earlyExitFreeAtMs ?? 0) > nowMs && staked > 0;
-    notice.hidden = !active;
-    free.hidden = active || staked <= 0;
-    if (active) {
-      const fee = earlyExitFeeNear(Number(amount.value) || 0, bp);
-      notice.dataset.feeBp = String(bp);
-      notice.textContent = `Early exit: unstaking within 7 days of your last deposit pays ${(bp / 100).toFixed(2)} % to the Protocol${fee > 0 ? ` (about ${fee.toFixed(6)} NEAR on this amount)` : ''}. Free after ${formatCountdown(perf?.timers.earlyExitFreeAtMs ?? null, nowMs)}; compounding never resets the clock.`;
-    }
-  };
-  const refreshCountdown = (nowMs: number): void => {
-    const ready = perf?.timers.unbondingReadyAtMs ?? null;
-    const unbonding = Number(perf?.balances.unbondingNear ?? '0') > 0 && ready !== null;
-    countdown.hidden = !unbonding;
-    if (unbonding) countdown.textContent = `Unbonding ${formatNear(Number(perf?.balances.unbondingNear))}: withdrawable in ${formatCountdown(ready, nowMs)}`;
+  const refresh = (nowMs: number): void => {
+    updateEarlyExitNotice(perf, amount.value, nowMs, notice, free);
+    updateUnbondingCountdown(perf, nowMs, countdown);
   };
   const part: ConsolePart = {
     el: el('div', { className: 'ta-stk-block plate-sm ta-stk-pad', dataset: { testid: 'staking-console' } },
@@ -100,15 +118,15 @@ export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: ()
       withdraw.disabled = !(Number(p.balances.withdrawableNear) > 0);
       withdraw.title = withdraw.disabled ? 'Nothing withdrawable yet' : `Withdraw ${formatNear(Number(p.balances.withdrawableNear))}`;
       unstake.disabled = !(Number(p.balances.activeStakedNear) > 0 || p.balances.lst.length > 0);
-      part.tick(nowMs);
+      refresh(nowMs);
     },
-    tick(nowMs) {
-      refreshNotice(nowMs);
-      refreshCountdown(nowMs);
+    tick: refresh,
+    setCanCompound(show) {
+      compound.hidden = !show;
     },
     setAmount(v) {
       amount.value = v;
-      refreshNotice(now());
+      refresh(now());
     },
     setStatus(message, tone) {
       status.textContent = message;
@@ -122,6 +140,6 @@ export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: ()
       for (const b of buttons) b.dataset.busy = busy ? '1' : '0';
     },
   };
-  amount.addEventListener('input', () => refreshNotice(now()));
+  amount.addEventListener('input', () => refresh(now()));
   return part;
 }

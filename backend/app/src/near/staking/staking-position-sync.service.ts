@@ -227,44 +227,53 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     }
 
     const now = new Date();
+    if (db) await this.persistSyncedPosition(db, colonyId, accountId, poolView.poolId, pos, rewardsYocto, now);
+    const dto = this.buildSyncedDto(colonyId, accountId, poolView, pos, rewardsYocto, now.getTime());
+    this.positions.set(mapKey, dto);
+    return dto;
+  }
+
+  private async persistSyncedPosition(
+    db: PrismaClient,
+    colonyId: string,
+    accountId: string,
+    poolId: string,
+    pos: Awaited<ReturnType<StakingPort['position']>>,
+    rewardsYocto: string,
+    now: Date,
+  ): Promise<void> {
     const readyDate = pos.unbondingReadyAtMs !== null ? new Date(pos.unbondingReadyAtMs) : null;
-    // W28 clocks and asset are mirrored only when the adapter reports them (an older adapter leaves the columns as they are).
     const clocks = {
       ...(pos.stakedSinceMs !== undefined ? { stakedSinceAt: pos.stakedSinceMs === null ? null : new Date(pos.stakedSinceMs) } : {}),
       ...(pos.lastStakedAtMs !== undefined ? { lastStakedAt: pos.lastStakedAtMs === null ? null : new Date(pos.lastStakedAtMs) } : {}),
       ...(pos.asset ? { asset: pos.asset } : {}),
     };
+    const fields = {
+      accountId,
+      stakedSnapshot: pos.staked,
+      unbondingSnapshot: pos.unbonding,
+      unbondingReadyAt: readyDate,
+      withdrawableSnapshot: pos.withdrawable,
+      rewardsSnapshot: rewardsYocto,
+      ...clocks,
+      updatedAt: now,
+    };
+    await db.stakingPosition.upsert({
+      where: { colonyId_poolId: { colonyId, poolId } },
+      create: { colonyId, poolId, ...fields },
+      update: fields,
+    });
+  }
 
-    if (db) {
-      await db.stakingPosition.upsert({
-        where: { colonyId_poolId: { colonyId, poolId: poolView.poolId } },
-        create: {
-          colonyId,
-          poolId: poolView.poolId,
-          accountId,
-          stakedSnapshot: pos.staked,
-          unbondingSnapshot: pos.unbonding,
-          unbondingReadyAt: readyDate,
-          withdrawableSnapshot: pos.withdrawable,
-          rewardsSnapshot: rewardsYocto,
-          ...clocks,
-          updatedAt: now,
-        },
-        update: {
-          accountId,
-          stakedSnapshot: pos.staked,
-          unbondingSnapshot: pos.unbonding,
-          unbondingReadyAt: readyDate,
-          withdrawableSnapshot: pos.withdrawable,
-          rewardsSnapshot: rewardsYocto,
-          ...clocks,
-          updatedAt: now,
-        },
-      });
-    }
-
-    const dto: StakingPositionDto = {
-      // A wallet with no colony is keyed by its own account id: the DTO then carries no `colonyId` (W28).
+  private buildSyncedDto(
+    colonyId: string,
+    accountId: string,
+    poolView: StakingPoolView,
+    pos: Awaited<ReturnType<StakingPort['position']>>,
+    rewardsYocto: string,
+    updatedAt: number,
+  ): StakingPositionDto {
+    return {
       ...(colonyId === accountId ? {} : { colonyId }),
       accountId,
       pool: poolView.poolId,
@@ -278,10 +287,8 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
       ...(pos.stakedSinceMs !== undefined ? { stakedSinceMs: pos.stakedSinceMs } : {}),
       ...(pos.lastStakedAtMs !== undefined ? { lastStakedAtMs: pos.lastStakedAtMs } : {}),
       ...(pos.asset ? { asset: pos.asset } : {}),
-      updatedAt: now.getTime(),
+      updatedAt,
     };
-    this.positions.set(mapKey, dto);
-    return dto;
   }
 
   private async collectCandidateAccounts(extraAccountIds: readonly string[]): Promise<string[]> {

@@ -1,6 +1,7 @@
 mod accrual;
 mod fees;
 mod lst;
+mod lst_math;
 mod mathx;
 mod payout;
 mod positions;
@@ -450,7 +451,11 @@ impl StakingVaultContract {
             "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp"
         );
         let caller = caller_acct.to_string();
-        let target = account_id.filter(|s| !s.trim().is_empty()).unwrap_or(caller);
+        let target = account_id.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| caller.clone());
+        require!(
+            is_operator || caller == target,
+            "NEAR_NOT_OWNER: cannot stake_payable into another account"
+        );
         validate_target_account(&target);
         write_pos_ndep(&target, &pool_id, read_pos_ndep(&target, &pool_id).saturating_add(stake_val));
 

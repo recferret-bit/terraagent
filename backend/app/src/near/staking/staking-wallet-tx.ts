@@ -9,6 +9,7 @@ export type StakingWalletTxAction =
   | 'deposit_near'
   | 'claim_native_near'
   | 'stake_lst'
+  | 'deposit_and_stake_lst'
   | 'withdraw_lst'
   | 'compound_yield';
 
@@ -19,6 +20,7 @@ const WALLET_TX_ACTIONS: ReadonlySet<string> = new Set<StakingWalletTxAction>([
   'deposit_near',
   'claim_native_near',
   'stake_lst',
+  'deposit_and_stake_lst',
   'withdraw_lst',
   'compound_yield',
 ]);
@@ -125,6 +127,51 @@ function buildWithdrawLstTx(
   };
 }
 
+function buildLstWalletTx(
+  rawAction: 'stake_lst' | 'deposit_and_stake_lst',
+  query: StakingWalletTxQuery,
+  contractId: string,
+  accountId: string | undefined,
+  amountYocto: string,
+  kind: string,
+  source: Record<string, string | undefined>,
+): StakingWalletTxDescriptor {
+  if (rawAction === 'deposit_and_stake_lst' && BigInt(amountYocto) < 5_000_000_000_000_000_000_000n) {
+    throw new CoreException('INVALID_REQUEST', {
+      status: 400,
+      message: 'amountNear must be at least 0.005 NEAR for deposit_and_stake_lst',
+    });
+  }
+  const lstContract = resolveLstContract(query.lstContract, kind);
+  const poolId = (query.poolId ?? lstContract).trim() || lstContract;
+  if (rawAction === 'stake_lst') {
+    return {
+      contractId: lstContract,
+      methodName: 'ft_transfer_call',
+      args: {
+        receiver_id: contractId,
+        amount: amountYocto,
+        msg: JSON.stringify({ pool_id: poolId, ...(accountId ? { account_id: accountId } : {}) }),
+      },
+      attachedDepositYocto: '1',
+      gasTgas: 60,
+    };
+  }
+  const referralId = resolveNearNetworkConfig(source, kind === 'mainnet' ? 'mainnet' : 'testnet').accounts.protocol;
+  return {
+    contractId,
+    methodName: 'deposit_and_stake_lst',
+    args: {
+      pool_id: poolId,
+      lst_contract: lstContract,
+      referral_id: referralId,
+      ...(accountId ? { account_id: accountId } : {}),
+    },
+    attachedDepositYocto: amountYocto,
+    gasTgas: 95,
+  };
+}
+
 export function buildStakingWalletTxDescriptor(
   query: StakingWalletTxQuery,
   env?: Record<string, string | undefined>,
@@ -144,6 +191,9 @@ export function buildStakingWalletTxDescriptor(
   const accountId = query.accountId?.trim() || undefined;
   if (rawAction === 'compound_yield') return buildCompoundTx(query, contractId, accountId, kind);
   if (rawAction === 'withdraw_lst') return buildWithdrawLstTx(query, contractId, accountId, amountYocto, kind);
+  if (rawAction === 'stake_lst' || rawAction === 'deposit_and_stake_lst') {
+    return buildLstWalletTx(rawAction, query, contractId, accountId, amountYocto, kind, source);
+  }
   if (rawAction === 'claim_native_near') {
     return {
       contractId,
@@ -162,26 +212,8 @@ export function buildStakingWalletTxDescriptor(
       gasTgas: 30,
     };
   }
-  if (rawAction === 'stake_lst') {
-    const lstContract = resolveLstContract(query.lstContract, kind);
-    const poolId = (query.poolId ?? lstContract).trim() || lstContract;
-    return {
-      contractId: lstContract,
-      methodName: 'ft_transfer_call',
-      args: {
-        receiver_id: contractId,
-        amount: amountYocto,
-        msg: JSON.stringify({ pool_id: poolId, ...(accountId ? { account_id: accountId } : {}) }),
-      },
-      attachedDepositYocto: '1',
-      gasTgas: 60,
-    };
-  }
   const defaultPool = kind === 'testnet' ? 'astro-stakers.pool.testnet' : 'astro-stakers.poolv1.near';
-  const poolId = (query.poolId ?? defaultPool).trim();
-  if (!poolId) {
-    throw new CoreException('INVALID_REQUEST', { status: 400, message: 'poolId is required for stake_payable' });
-  }
+  const poolId = requirePool(query.poolId ?? defaultPool, 'stake_payable');
   return {
     contractId,
     methodName: 'stake_payable',

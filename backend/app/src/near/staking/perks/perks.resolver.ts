@@ -12,6 +12,7 @@ type EnvBag = Readonly<Record<string, string | undefined>>;
 export interface PerksQuery {
   readonly colonyId?: string | null;
   readonly accountId?: string | null;
+  readonly playerId?: string | null;
   readonly standardPlatformFeeBp?: number;
   readonly grossApyBp?: number;
   readonly protocolAccountId?: string;

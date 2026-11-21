@@ -75,24 +75,44 @@ export async function resolveDbStakerPerks(
   return (await resolveWalletPerks(db, query)).perks;
 }
 
-/** Batch-resolves which colony indices on `planetId` have `>= minStakeNear` staked for Managed `NEAR.AI` Autopilot. */
-export async function resolvePlanetStakedColonies(
-  prisma: PrismaClient | undefined,
-  env: AppEnv | undefined,
-  stateColonies: ReadonlyArray<{ readonly index: number; readonly id?: string } | undefined>,
-): Promise<Record<number, boolean>> {
-  if (!prisma || !databaseEnabled(env) || typeof prisma.stakingPosition?.findMany !== 'function') {
-    return {};
+interface PresentColony {
+  readonly index: number;
+  readonly id: string;
+  readonly playerId?: unknown;
+}
+
+async function loadPlanetColonyAccounts(
+  prisma: PrismaClient,
+  present: ReadonlyArray<PresentColony>,
+  planetId?: string,
+): Promise<{ ids: string[]; dbIdByIndex: Map<number, string>; accountByColony: Map<string, string[]> }> {
+  const dbIdByIndex = new Map<number, string>();
+  const playerByColId = new Map<string, string>();
+  const playerIds = new Set<string>();
+  for (const c of present) {
+    if (typeof c.playerId === 'string' && c.playerId) playerIds.add(c.playerId);
   }
-  const ids = stateColonies
-    .filter((c): c is { readonly index: number; readonly id: string } => Boolean(c?.id))
-    .map((c) => c.id);
-  if (ids.length === 0) return {};
-
-  const envBag = (env ?? process.env) as Record<string, string | undefined>;
-  const minYocto = resolvePerkLadder({ w28: isW28Enabled(envBag), env: envBag }).minStakeYocto;
-
+  if (planetId && typeof prisma.colony?.findMany === 'function') {
+    const dbCols = (await prisma.colony.findMany({
+      where: { planetId },
+      select: { id: true, colonyIndex: true, playerId: true },
+    })) as Array<{ id: string; colonyIndex: number; playerId: string }>;
+    for (const row of dbCols) {
+      dbIdByIndex.set(row.colonyIndex, row.id);
+      if (row.playerId) {
+        playerByColId.set(row.id, row.playerId);
+        playerIds.add(row.playerId);
+      }
+    }
+  }
+  const ids = Array.from(new Set([...present.map((c) => c.id), ...dbIdByIndex.values()]));
   const accountByColony = new Map<string, string[]>();
+  const addAccount = (colId: string, acct: string | null | undefined) => {
+    if (!acct) return;
+    const list = accountByColony.get(colId) ?? [];
+    list.push(acct);
+    accountByColony.set(colId, list);
+  };
   if (typeof prisma.nearColonyAccount?.findMany === 'function') {
     const colRows = await prisma.nearColonyAccount.findMany({
       where: { colonyId: { in: ids } },
@@ -100,13 +120,46 @@ export async function resolvePlanetStakedColonies(
     });
     for (const row of colRows) {
       if (!row.colonyId) continue;
-      const list = accountByColony.get(row.colonyId) ?? [];
-      list.push(row.accountId);
-      if (row.ownerAccountId) list.push(row.ownerAccountId);
-      if (row.claimedByAccountId) list.push(row.claimedByAccountId);
-      accountByColony.set(row.colonyId, list);
+      for (const acct of [row.accountId, row.ownerAccountId, row.claimedByAccountId]) addAccount(row.colonyId, acct);
     }
   }
+  if (playerIds.size > 0 && typeof prisma.socialIdentity?.findMany === 'function') {
+    const links = (await prisma.socialIdentity.findMany({
+      where: { playerId: { in: [...playerIds] } },
+      select: { playerId: true, accountId: true },
+    })) as Array<{ playerId: string; accountId: string | null }>;
+    const byPlayer = new Map<string, string[]>();
+    for (const l of links) {
+      if (l.accountId) byPlayer.set(l.playerId, [...(byPlayer.get(l.playerId) ?? []), l.accountId]);
+    }
+    for (const c of present) {
+      const colKey = dbIdByIndex.get(c.index) ?? c.id;
+      const pId = (typeof c.playerId === 'string' && c.playerId) || playerByColId.get(colKey);
+      for (const acct of (pId ? byPlayer.get(pId) : undefined) ?? []) {
+        addAccount(c.id, acct);
+        addAccount(colKey, acct);
+      }
+    }
+  }
+  return { ids, dbIdByIndex, accountByColony };
+}
+
+/** Batch-resolves which colony indices on `planetId` have `>= minStakeNear` staked for Managed `NEAR.AI` Autopilot. */
+export async function resolvePlanetStakedColonies(
+  prisma: PrismaClient | undefined,
+  env: AppEnv | undefined,
+  stateColonies: ReadonlyArray<{ readonly index: number; readonly id?: string; readonly playerId?: unknown } | undefined>,
+  planetId?: string,
+): Promise<Record<number, boolean>> {
+  if (!prisma || !databaseEnabled(env) || typeof prisma.stakingPosition?.findMany !== 'function') {
+    return {};
+  }
+  const present = stateColonies.filter((c): c is PresentColony => Boolean(c?.id));
+  if (present.length === 0) return {};
+
+  const envBag = (env ?? process.env) as Record<string, string | undefined>;
+  const minYocto = resolvePerkLadder({ w28: isW28Enabled(envBag), env: envBag }).minStakeYocto;
+  const { ids, dbIdByIndex, accountByColony } = await loadPlanetColonyAccounts(prisma, present, planetId);
   const allAccounts = Array.from(new Set(Array.from(accountByColony.values()).flat()));
 
   const posWhere =
@@ -143,9 +196,11 @@ export async function resolvePlanetStakedColonies(
   const out: Record<number, boolean> = {};
   for (const col of stateColonies) {
     if (!col?.id) continue;
-    let total = byColony.get(col.id) ?? 0n;
+    const altId = dbIdByIndex.get(col.index);
+    let total = (byColony.get(col.id) ?? 0n) + (altId && altId !== col.id ? (byColony.get(altId) ?? 0n) : 0n);
     if (total < minYocto) {
-      for (const acct of accountByColony.get(col.id) ?? []) {
+      const accts = new Set([...(accountByColony.get(col.id) ?? []), ...(altId ? (accountByColony.get(altId) ?? []) : [])]);
+      for (const acct of accts) {
         const acctStake = byAccount.get(acct) ?? 0n;
         if (acctStake > total) total = acctStake;
       }

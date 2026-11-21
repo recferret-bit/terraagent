@@ -76,14 +76,15 @@ export const NEAR_WALLET_PROVIDER = 'near-wallet';
  */
 export async function resolveWallet(
   db: DbClient,
-  query: { readonly colonyId?: string | null; readonly accountId?: string | null },
+  query: { readonly colonyId?: string | null; readonly accountId?: string | null; readonly playerId?: string | null },
 ): Promise<WalletRef> {
   const colonyId = query.colonyId?.trim() || undefined;
   const given = query.accountId?.trim() || undefined;
+  const hintedPlayerId = query.playerId?.trim() || null;
   const accounts = new Set<string>(given ? [given] : []);
   const colonies = new Set<string>(colonyId ? [colonyId] : []);
   let primary: string | undefined = given;
-  let playerId: string | null = null;
+  let playerId: string | null = hintedPlayerId;
   if (typeof db.nearColonyAccount?.findMany === 'function' && (colonyId || given)) {
     const or: Array<Record<string, string>> = colonyId ? [{ colonyId }] : [];
     if (given) or.push({ accountId: given }, { ownerAccountId: given }, { claimedByAccountId: given });
@@ -118,6 +119,13 @@ export async function resolveWallet(
       accounts.add(linked.accountId);
       primary = linked.accountId;
       playerId ??= linked.playerId;
+    }
+  }
+  if (playerId && !primary) {
+    const linked = await playerLinkedWallet(db, playerId);
+    if (linked) {
+      accounts.add(linked.accountId);
+      primary = linked.accountId;
     }
   }
   const walletKey = primary ?? (colonyId ? `colony:${colonyId}` : 'anonymous');

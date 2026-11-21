@@ -72,9 +72,30 @@ export function runWithdrawAction(c: ActionContext, perf: StakingPerformanceResp
   return rest(c, '/v1/near/withdraw', { asset }, 'Withdraw', 'Withdrawn to your wallet in one step.');
 }
 
-export function runCompoundAction(c: ActionContext, perf: StakingPerformanceResponse): Promise<ActionResult> {
-  if (c.network !== 'mock') return walletAction(c, 'compound_yield', perf.balances.accruedYieldNear, 'near');
-  return rest(c, '/v1/near/stake/compound', {}, 'Compound', `Compounded ${perf.balances.accruedYieldNear} NEAR into principal (0 % fee).`);
+export function runCompoundAction(c: ActionContext, perf: StakingPerformanceResponse, amountOverrideNear?: string): Promise<ActionResult> {
+  const amount = amountOverrideNear ?? perf.balances.accruedYieldNear;
+  if (c.network !== 'mock') return walletAction(c, 'compound_yield', amount, 'near');
+  return rest(c, '/v1/near/stake/compound', {}, 'Compound', `Compounded ${amount} NEAR into principal (0 % fee).`);
+}
+
+/** King-of-the-Hill Lead Patron nomination (`POST /v1/near/staking/patron/nominate`). */
+export async function runNominatePlanetAction(c: ActionContext, rawPlanetId: string): Promise<ActionResult> {
+  const planetId = rawPlanetId.trim();
+  if (!planetId) return { ok: false, message: 'Enter a public planet ID to nominate.' };
+  const res = await postJson(c.doFetch, c.auth, '/v1/near/staking/patron/nominate', { accountId: c.accountId, planetId });
+  if (res.status === 404) {
+    const errMsg = apiErrorMessage(res.body, '');
+    if (errMsg && /planet/i.test(errMsg)) return { ok: false, message: errMsg };
+    return unavailable('Lead Patron nomination');
+  }
+  if (!res.ok) return { ok: false, message: apiErrorMessage(res.body, `Nomination failed (${res.status || 'network'}).`) };
+  const body = (res.body ?? {}) as { isLeadPatron?: boolean; leadPatron?: { accountId?: string; carrierName?: string } | null };
+  return {
+    ok: true,
+    message: body.isLeadPatron
+      ? `You are now Lead Patron of ${planetId} (${body.leadPatron?.carrierName ?? 'ISS'}).`
+      : `Backed ${planetId} in the Lead Patron race (seat requires highest active ≥ 500 NEAR stake).`,
+  };
 }
 
 /** `[⚡ Stake Trade Profits (USDC → stNEAR)]`: testnet / mainnet are dry quotes (nothing is sent). */

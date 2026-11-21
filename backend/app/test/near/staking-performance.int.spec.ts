@@ -154,6 +154,29 @@ describe('W28-05 GET /v1/near/staking/performance', () => {
     expect((await perf('accountId=alice.near', urlOff)).status).toBe(404);
     expect((await fetch(`${urlOff}/v1/near/staking/overview`)).status).toBe(404);
   });
+
+  it('projects matured unbonding into withdrawableNear immediately once unbondingReadyAt <= now', async () => {
+    const now = Date.now();
+    await db.prisma.stakingPosition.create({
+      data: {
+        colonyId: 'wallet:mature.near',
+        poolId: POOL,
+        accountId: 'mature.near',
+        stakedSnapshot: '0',
+        unbondingSnapshot: nearToYocto(12),
+        withdrawableSnapshot: nearToYocto(3),
+        unbondingReadyAt: new Date(now - 5_000),
+      },
+    });
+    try {
+      const r = StakingPerformanceResponse.parse(await (await perf('accountId=mature.near')).json());
+      expect(r.balances.unbondingNear).toBe('0');
+      expect(r.balances.withdrawableNear).toBe('15');
+      expect(r.timers.unbondingReadyAtMs).toBeNull();
+    } finally {
+      await db.prisma.stakingPosition.deleteMany({ where: { accountId: 'mature.near' } });
+    }
+  });
 });
 
 describe('W28-05 GET /v1/near/staking/overview (public)', () => {

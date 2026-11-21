@@ -213,4 +213,56 @@ describe('graceful degradation', () => {
     expect(q(root, 'staking-console-status')!.textContent).toBe('Insufficient wallet balance');
     expect(q(root, 'staking-console-status')!.dataset.tone).toBe('error');
   });
+
+  it('anchors countdowns to server asOfMs (time.warp-safe) and unlocks compound when live yield ticks above 0', async () => {
+    let clientNow = 1_000_000;
+    const warpedServerNow = NOW + 10 * 86_400_000;
+    const p = makePerformance();
+    const m = makeMock(() => ({
+      ...p,
+      asOfMs: warpedServerNow,
+      balances: { ...p.balances, accruedYieldNear: '0' },
+      timers: {
+        ...p.timers,
+        feeWarmupReadyAtMs: warpedServerNow + 2 * 3_600_000,
+        earlyExitFreeAtMs: warpedServerNow - 1_000,
+        earlyExitFeeBp: 0,
+      },
+    }));
+    const root = await mount(m, { now: () => clientNow, tickMs: 5 });
+    expect(q(root, 'staking-kpi-tier')!.textContent).toContain('Fee warmup 2h 00m');
+    expect(q(root, 'staking-exit-chip')!.textContent).toBe('Free exit');
+    expect(q(root, 'staking-compound-btn')).toBeNull();
+    clientNow += 60_000;
+    await new Promise((r) => setTimeout(r, 25));
+    expect(q(root, 'staking-compound-btn')).not.toBeNull();
+    expect(q(root, 'staking-console-compound')!.hidden).toBe(false);
+  });
+
+  it('Patron Card nominates a public planet via POST /v1/near/staking/patron/nominate and rejects empty/missing planet IDs', async () => {
+    const m = makeMock();
+    m.post = (path, body) => {
+      if (path === '/v1/near/staking/patron/nominate' && body.planetId === 'pl_dune_open') {
+        return ok({ accountId: 'pilot.mock', planetId: 'pl_dune_open', isLeadPatron: true, leadPatron: { accountId: 'pilot.mock', carrierName: 'ISS pilot.mock' } });
+      }
+      return fail(404, { error: { code: 'NOT_FOUND', message: 'Planet not found or not public.' } });
+    };
+    const root = await mount(m);
+    const input = q(root, 'staking-nominate-planet') as HTMLInputElement;
+    input.value = '   ';
+    click(root, 'staking-nominate-btn');
+    await flush();
+    expect(q(root, 'staking-console-status')!.textContent).toContain('Enter a public planet ID');
+    input.value = 'pl_missing';
+    click(root, 'staking-nominate-btn');
+    await flush();
+    expect(q(root, 'staking-console-status')!.textContent).toBe('Planet not found or not public.');
+    input.value = 'pl_dune_open';
+    const before = perfCalls(m).length;
+    click(root, 'staking-nominate-btn');
+    await flush();
+    await flush();
+    expect(q(root, 'staking-console-status')!.textContent).toContain('Lead Patron of pl_dune_open');
+    expect(perfCalls(m).length).toBe(before + 1);
+  });
 });

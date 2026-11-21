@@ -6,6 +6,7 @@ import { quoteToUsd } from '../../src/near/staking/performance/fill-income.reade
 import { effectiveApyBp, MAX_EFFECTIVE_APY_BP, parsePreviewAmount, projectIncome, YEAR_MS } from '../../src/near/staking/performance/income-math';
 import { identityResolver, isSelfFill, type FillParties } from '../../src/near/staking/performance/self-fill';
 import { buildSeries, MAX_REALIZED_POINTS, PROJECTED_STEPS, WINDOW_MS } from '../../src/near/staking/performance/series.builder';
+import { readWalletBalances } from '../../src/near/staking/performance/wallet-balances.reader';
 
 describe('effectiveApyBp', () => {
   const base = { netApyBp: 720, windowMs: 30 * 86_400_000 };
@@ -159,5 +160,71 @@ describe('buildApyView / buildEcosystemView', () => {
     expect(z.totalNear).toBe('0');
     expect(z.entries).toHaveLength(3);
     expect(z.entries.every((x) => x.sharePct === 0)).toBe(true);
+  });
+});
+
+describe('readWalletBalances maturity & live RPC wallet fallback', () => {
+  const dec = (n: bigint) => ({ toFixed: () => n.toString() });
+  const ONE = 10n ** 24n;
+
+  it('projects matured unbonding into withdrawable at boundary nowMs >= readyAt and reads live RPC wallet balance', async () => {
+    const nowMs = 1_700_000_000_000;
+    const fakeDb = {
+      stakingPosition: {
+        findMany: async () => [
+          {
+            accountId: 'pilot.testnet',
+            asset: 'near',
+            stakedSnapshot: dec(10n * ONE),
+            unbondingSnapshot: dec(4n * ONE),
+            withdrawableSnapshot: dec(1n * ONE),
+            rewardsSnapshot: dec(0n),
+            unbondingReadyAt: new Date(nowMs),
+          },
+          {
+            accountId: 'pilot.testnet',
+            asset: 'near',
+            stakedSnapshot: dec(0n),
+            unbondingSnapshot: dec(3n * ONE),
+            withdrawableSnapshot: dec(0n),
+            rewardsSnapshot: dec(0n),
+            unbondingReadyAt: new Date(nowMs + 60_000),
+          },
+        ],
+      },
+    } as never;
+    const out = await readWalletBalances(
+      fakeDb,
+      { walletKey: 'pilot.testnet', playerId: null, colonyIds: [], accountIds: ['pilot.testnet'] },
+      {
+        readMockWallet: false,
+        nowMs,
+        primaryAccountId: 'pilot.testnet',
+        readLiveWalletYocto: async (acct) => (acct === 'pilot.testnet' ? 42n * ONE : 0n),
+      },
+    );
+    expect(out.withdrawableYocto).toBe(5n * ONE);
+    expect(out.unbondingYocto).toBe(3n * ONE);
+    expect(out.unbondingReadyAtMs).toBe(nowMs + 60_000);
+    expect(out.walletYocto).toBe(42n * ONE);
+  });
+
+  it('falls back to 0 walletYocto when live RPC read throws or returns negative', async () => {
+    const fakeDb = { stakingPosition: { findMany: async () => [] } } as never;
+    const ref = { walletKey: 'pilot.testnet', playerId: null, colonyIds: [], accountIds: ['pilot.testnet'] };
+    const failed = await readWalletBalances(fakeDb, ref, {
+      readMockWallet: false,
+      primaryAccountId: 'pilot.testnet',
+      readLiveWalletYocto: async () => {
+        throw new Error('rpc down');
+      },
+    });
+    expect(failed.walletYocto).toBe(0n);
+    const neg = await readWalletBalances(fakeDb, ref, {
+      readMockWallet: false,
+      primaryAccountId: 'pilot.testnet',
+      readLiveWalletYocto: async () => -5n,
+    });
+    expect(neg.walletYocto).toBe(0n);
   });
 });

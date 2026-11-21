@@ -188,6 +188,7 @@ export function buildStakingActionsRow(opts: {
   onWithdraw: () => void;
   onWalletDeposit?: () => void;
   onCompound?: () => void;
+  onNominate?: () => void;
 }) {
   const row = document.createElement('div');
   row.className = 'ta-staking-panel__actions-row';
@@ -228,25 +229,29 @@ export function buildStakingActionsRow(opts: {
   compoundBtn.hidden = true;
   if (opts.onCompound) compoundBtn.onclick = opts.onCompound;
 
+  const nominateBtn = document.createElement('button');
+  nominateBtn.type = 'button';
+  nominateBtn.className = 'btn btn-sm';
+  nominateBtn.dataset.testid = 'staking-nominate-planet-btn';
+  nominateBtn.textContent = '[★ Nominate Planet]';
+  nominateBtn.title = 'Back this public planet in the Tier 4 King-of-the-Hill Lead Patron race.';
+  nominateBtn.hidden = true;
+  if (opts.onNominate) nominateBtn.onclick = opts.onNominate;
+
   const earlyExitEl = document.createElement('div');
   earlyExitEl.className = 'ta-staking-panel__early-exit';
   earlyExitEl.dataset.testid = 'staking-early-exit-notice';
   earlyExitEl.hidden = true;
 
-  btnGroup.appendChild(unstakeBtn);
-  btnGroup.appendChild(withdrawBtn);
-  btnGroup.appendChild(compoundBtn);
-  btnGroup.appendChild(depositWalletBtn);
+  btnGroup.append(unstakeBtn, withdrawBtn, compoundBtn, nominateBtn, depositWalletBtn);
 
   const statusMsgEl = document.createElement('span');
   statusMsgEl.className = 'ta-staking-panel__status-msg';
   statusMsgEl.dataset.testid = 'staking-status-msg';
   statusMsgEl.textContent = '';
 
-  row.appendChild(btnGroup);
-  row.appendChild(earlyExitEl);
-  row.appendChild(statusMsgEl);
-  return { row, unstakeBtn, withdrawBtn, compoundBtn, earlyExitEl, depositWalletBtn, statusMsgEl };
+  row.append(btnGroup, earlyExitEl, statusMsgEl);
+  return { row, unstakeBtn, withdrawBtn, compoundBtn, nominateBtn, earlyExitEl, depositWalletBtn, statusMsgEl };
 }
 
 export function buildStakingPanelLayout(handlers: {
@@ -256,6 +261,7 @@ export function buildStakingPanelLayout(handlers: {
   onWithdraw: () => void;
   onWalletDeposit?: () => void;
   onCompound?: () => void;
+  onNominate?: () => void;
   w28?: boolean;
 }) {
   const root = document.createElement('section');
@@ -294,6 +300,7 @@ export function buildStakingPanelLayout(handlers: {
     onWithdraw: handlers.onWithdraw,
     onWalletDeposit: handlers.onWalletDeposit,
     onCompound: handlers.onCompound,
+    onNominate: handlers.onNominate,
   });
 
   controlsWrapEl.append(claimRow.row, formRow.formRow, posGrid.grid, actionsRow.row);
@@ -319,6 +326,7 @@ export function buildStakingPanelLayout(handlers: {
     unstakeBtnEl: actionsRow.unstakeBtn,
     withdrawBtnEl: actionsRow.withdrawBtn,
     compoundBtnEl: actionsRow.compoundBtn,
+    nominateBtnEl: actionsRow.nominateBtn,
     earlyExitEl: actionsRow.earlyExitEl,
     depositWalletBtnEl: actionsRow.depositWalletBtn,
     statusMsgEl: actionsRow.statusMsgEl,

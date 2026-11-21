@@ -56,6 +56,10 @@ describe('W28-06 ColonyAgentLoopService managed-AI gate', () => {
     const { svc, fake, human } = setup(W28_ON);
     const col0 = human(await svc.tickPlanetAgents('pl_loop', { playerAiByColony: {} }));
     expect(gate.admit).toHaveBeenCalledTimes(1);
+    expect(gate.admit).toHaveBeenCalledWith(
+      expect.objectContaining({ planetId: 'pl_loop', colonyIndex: 0 }),
+      expect.any(Number),
+    );
     expect(col0.model).toBe(MANAGED_AI_MODEL);
     expect(col0.aiAccess).toEqual(trial);
     expect(fake.batches.some((b) => b.includes(0))).toBe(true);

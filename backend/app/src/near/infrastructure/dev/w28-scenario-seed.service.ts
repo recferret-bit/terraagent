@@ -105,6 +105,11 @@ export class W28ScenarioSeedService implements OnModuleInit, OnModuleDestroy {
   async seedRival(planetId: string): Promise<void> {
     const db = this.db();
     if (!db) return;
+    await db.planet.upsert({
+      where: { id: planetId },
+      create: { id: planetId, name: planetId, admission: 'OPEN' },
+      update: {},
+    });
     await this.resetWallet(db, W28_RIVAL_ACCOUNT);
     const pool = await this.defaultPool();
     await this.staking.fundWalletNear(W28_RIVAL_ACCOUNT, '600');

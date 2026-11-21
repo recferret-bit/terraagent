@@ -13,10 +13,12 @@ import { CoreException } from '../../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
+import { StakingPort } from '../../application/ports/staking.port.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../../infrastructure/network/near-network.config.js';
 import { resolveWalletPerks } from '../perks/perks.resolver.js';
 import { setPerksDeps, stakingNowMs } from '../perks/perks-deps.js';
+import { portHooks } from '../services/port-hooks.js';
 import { buildAiBudgetView } from '../perks/tier-engine.js';
 import { buildApyView, VALIDATOR_APY_READER, type ValidatorApyReader } from './apy.js';
 import { readEcosystemTvl } from './ecosystem.reader.js';
@@ -42,6 +44,7 @@ export class StakingPerformanceService {
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(VALIDATOR_APY_READER) private readonly apyReader?: ValidatorApyReader,
+    @Optional() @Inject(StakingPort) private readonly staking?: StakingPort,
   ) {
     // The perks AI budget scales with the live NEAR/USD this service caches.
     setPerksDeps({ priceProvider: this.price });
@@ -79,36 +82,18 @@ export class StakingPerformanceService {
    */
   async performance(rawAccountId: unknown, rawWindow: unknown, nowMs = stakingNowMs()): Promise<StakingPerformanceResponse> {
     this.assertWaveEnabled();
-    const accountId = typeof rawAccountId === 'string' ? rawAccountId.trim() : '';
-    if (accountId.length < 2 || accountId.length > 64) {
-      throw new CoreException('INVALID_REQUEST', { status: 400, message: 'accountId is required (2..64 chars)' });
-    }
-    const w = PerformanceWindow.safeParse(rawWindow ?? '30d');
-    if (!w.success) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'window must be 30d, 90d or 1y' });
-    const window = w.data;
-    const windowMs = WINDOW_MS[window];
-    const sinceMs = nowMs - windowMs;
+    const { accountId, window, windowMs, sinceMs } = this.parsePerformanceQuery(rawAccountId, rawWindow, nowMs);
     const network = this.network();
-    const bag = this.envBag();
     const db = this.prisma;
 
     const [priceView, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(db)]);
     const nearUsd = priceView.nearUsd;
-    const r = await resolveWalletPerks(db, { accountId, env: bag, w28: true, full: true, nowMs, grossApyBp: apy.grossApyBp });
-    const wallet = r.wallet;
-    const [balances, txs, fills, patron] = db
-      ? await Promise.all([
-          readWalletBalances(db, wallet, network === 'mock'),
-          readStakingTxs(db, wallet, sinceMs),
-          readFillIncome(db, wallet, { sinceMs, nearUsd }),
-          readPatronIncome(db, wallet, sinceMs),
-        ])
-      : [EMPTY_BALANCES, [] as TxRecord[], EMPTY_FILL_INCOME, { usd: 0, events: [] }];
+    const r = await resolveWalletPerks(db, { accountId, env: this.envBag(), w28: true, full: true, nowMs, grossApyBp: apy.grossApyBp });
+    const [balances, txs, fills, patron] = await this.loadWalletLedger(db, r.wallet, accountId, network, nowMs, sinceMs, nearUsd);
 
     const lst = balances.lst.map((l) => ({ asset: l.asset, amount: nearText(l.amountYocto), nearValue: nearText(lstNearValue(l.asset, l.amountYocto)) }));
     const stakedNear = yoctoToNearNumber(balances.activeYocto) + balances.lst.reduce((s, l) => s + yoctoToNearNumber(lstNearValue(l.asset, l.amountYocto)), 0);
     const totalStakedUsd = stakedNear * nearUsd;
-
     const yieldEvents: IncomeEvent[] = txs.filter((t) => t.kind === 'compound').map((t) => ({ tMs: t.atMs, valueNear: yoctoToNearNumber(t.amountYocto) }));
     const accruedNear = yoctoToNearNumber(balances.accruedYocto);
     const stakingYieldNear = yieldEvents.reduce((s, e) => s + e.valueNear, 0) + accruedNear;
@@ -155,16 +140,55 @@ export class StakingPerformanceService {
       perks,
       aiBudget: buildAiBudgetView(perks, r.usage, r.nearUsd),
       ecosystem,
-      series: buildSeries({
-        window,
-        nowMs,
-        events,
-        stakedNear,
-        netApyBp: apy.netApyBp,
-        extraNearPerYear: toNear(extrasUsd) * (YEAR_MS / windowMs),
-      }),
+      series: buildSeries({ window, nowMs, events, stakedNear, netApyBp: apy.netApyBp, extraNearPerYear: toNear(extrasUsd) * (YEAR_MS / windowMs) }),
       txs: txs.slice(0, TX_LIST_LIMIT).map((t) => this.txRow(t, network)),
     });
+  }
+
+  private parsePerformanceQuery(rawAccountId: unknown, rawWindow: unknown, nowMs: number) {
+    const accountId = typeof rawAccountId === 'string' ? rawAccountId.trim() : '';
+    if (accountId.length < 2 || accountId.length > 64) {
+      throw new CoreException('INVALID_REQUEST', { status: 400, message: 'accountId is required (2..64 chars)' });
+    }
+    const w = PerformanceWindow.safeParse(rawWindow ?? '30d');
+    if (!w.success) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'window must be 30d, 90d or 1y' });
+    const window = w.data;
+    const windowMs = WINDOW_MS[window];
+    return { accountId, window, windowMs, sinceMs: nowMs - windowMs };
+  }
+
+  private loadWalletLedger(
+    db: PrismaClient | undefined,
+    wallet: Awaited<ReturnType<typeof resolveWalletPerks>>['wallet'],
+    accountId: string,
+    network: Network,
+    nowMs: number,
+    sinceMs: number,
+    nearUsd: number,
+  ) {
+    if (!db) return Promise.resolve([EMPTY_BALANCES, [] as TxRecord[], EMPTY_FILL_INCOME, { usd: 0, events: [] }] as const);
+    return Promise.all([
+      readWalletBalances(db, wallet, {
+        readMockWallet: network === 'mock',
+        nowMs,
+        primaryAccountId: accountId,
+        readLiveWalletYocto: (acct) => this.readLiveWalletNearYocto(acct),
+      }),
+      readStakingTxs(db, wallet, sinceMs),
+      readFillIncome(db, wallet, { sinceMs, nearUsd }),
+      readPatronIncome(db, wallet, sinceMs),
+    ]);
+  }
+
+  private async readLiveWalletNearYocto(accountId: string): Promise<bigint> {
+    if (!this.staking) return 0n;
+    const fn = portHooks(this.staking).nearBalanceOf;
+    if (!fn) return 0n;
+    try {
+      return BigInt((await fn(accountId)) || '0');
+    } catch {
+      return 0n;
+    }
   }
 
   private txRow(t: TxRecord, network: Network): StakingTxRow {
@@ -174,11 +198,20 @@ export class StakingPerformanceService {
 
   private async apy(network: Network): Promise<ApyView> {
     let live: number | null = null;
-    if (network === 'mainnet' && this.apyReader) {
-      try {
-        live = (await this.apyReader()) ?? null;
-      } catch {
-        live = null;
+    if (network === 'mainnet') {
+      if (this.apyReader) {
+        try {
+          live = (await this.apyReader()) ?? null;
+        } catch {
+          live = null;
+        }
+      } else if (this.staking?.validatorApy) {
+        try {
+          const sample = await this.staking.validatorApy();
+          if (sample.source === 'live' || sample.source === 'cached') live = sample.apyBp;
+        } catch {
+          live = null;
+        }
       }
     }
     return buildApyView(network, live);

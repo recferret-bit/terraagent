@@ -57,6 +57,10 @@ impl StakingVaultContract {
         now_ms: u64,
     ) -> PromiseOrValue<WithdrawResultView> {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(MIN_CLAIM_PREPAID_TGAS),
+            "NEAR_INSUFFICIENT_GAS: attach >= 25 TGas for withdraw"
+        );
         self.require_operator();
         if let Some(cached) = self.processed_ops.get(&op_id) {
             return PromiseOrValue::Value(serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt"));

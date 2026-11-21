@@ -1,6 +1,6 @@
 //! W28: LST single-step withdraw, share-price (Option A) solvency, `deposit_and_stake_lst` referral
 //! forwarding and the pool <-> LST binding.
-use super::lst::{realize, weighted_entry, PRICE_ONE};
+use crate::lst_math::{realize, weighted_entry, PRICE_ONE};
 use super::tests::{ctx, new_contract, ONE_NEAR};
 use super::*;
 use near_sdk::json_types::U128;

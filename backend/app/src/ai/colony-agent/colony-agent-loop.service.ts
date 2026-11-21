@@ -145,7 +145,7 @@ export class ColonyAgentLoopService {
     const nowMs = opts.nowMs ?? Date.now();
     const [playerConfigs, dbStaked] = await Promise.all([
       this.resolvePlayerAiMap(planetId, state.colonies, opts.playerAiByColony),
-      resolvePlanetStakedColonies(this.prisma, this.env, state.colonies),
+      resolvePlanetStakedColonies(this.prisma, this.env, state.colonies, planetId),
     ]);
     const stakedColonies = { ...dbStaked, ...(opts.stakedByColony ?? {}) };
     const enforcePlayerKeyGate = Boolean(this.playerAiStore || opts.playerAiByColony || opts.stakedByColony);
@@ -241,6 +241,7 @@ export class ColonyAgentLoopService {
 
   /** Stakers' managed turn (`W28`: through the wallet gate; `W20` or a test override: unconditional). */
   private async resolveManagedSingle(
+    planetId: string,
     obs: ColonyObservation,
     ctx: DecisionCtx,
     override: boolean,
@@ -250,7 +251,10 @@ export class ColonyAgentLoopService {
     }
     // the gate runs on the staking clock (fee warmup, AI day, slot ledger), like its `view()`; `ctx.nowMs` stays the
     // wall clock of the decision-cache cooldown, unless a caller pinned it (tests)
-    const access = await this.gate().admit({ id: obs.colonyId, playerId: ctx.playerIdByIndex[obs.colonyIndex] }, ctx.pinnedNowMs ?? stakingNowMs());
+    const access = await this.gate().admit(
+      { id: obs.colonyId, planetId, colonyIndex: obs.colonyIndex, playerId: ctx.playerIdByIndex[obs.colonyIndex] },
+      ctx.pinnedNowMs ?? stakingNowMs(),
+    );
     if (access.mode === 'script') {
       return { directive: deterministicDirective(obs), model: SCRIPT_AI_MODEL, usedPlayerKey: false, aiAccess: access };
     }
@@ -320,7 +324,7 @@ export class ColonyAgentLoopService {
 
     if (botBatch.length > 0) saveBatch(botBatch, await evaluateBatchWithLlm(this.llm, botBatch, { model: this.botModel(), usedPlayerKey: false }));
     for (const obs of stakerSingles) {
-      const dec = await this.resolveManagedSingle(obs, ctx, Boolean(ctx.stakedOverride[obs.colonyIndex]));
+      const dec = await this.resolveManagedSingle(planetId, obs, ctx, Boolean(ctx.stakedOverride[obs.colonyIndex]));
       saveBatch([obs], new Map([[obs.colonyIndex, dec]]));
     }
     for (const group of playerBatches.values()) {

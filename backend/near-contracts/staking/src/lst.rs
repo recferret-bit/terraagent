@@ -12,9 +12,10 @@
 //! * Pools without a price (mock / testnet) keep the simulated-APY behaviour; their LST rewards are never
 //!   paid out in tokens (they are unbacked), only `withdrawable` principal is.
 use crate::StakingVaultContractExt;
-use crate::fees::bp_of;
-use crate::mathx::{mul_div_ceil, mul_div_floor};
-use crate::positions::{record_deposit, PositionMeta};
+pub use crate::lst_math::{realize, PRICE_ONE};
+pub(crate) use crate::lst_math::is_whitelisted_lst;
+use crate::mathx::mul_div_floor;
+use crate::positions::record_deposit;
 use crate::storage::{pos_key, read_u128_key, validate_pool_and_apy, validate_target_account, write_u128_key, parse_yocto};
 use crate::{emit_staking, StakingVaultContract, MAX_NON_OPERATOR_APY_BP};
 use near_sdk::json_types::U128;
@@ -23,28 +24,12 @@ use near_sdk::{
 };
 use serde_json::json;
 
-/// One whole LST share in share units; a price of `PRICE_ONE` means 1 share == 1 NEAR.
-pub const PRICE_ONE: u128 = 1_000_000_000_000_000_000_000_000;
 const PRICE_CALL_GAS: Gas = Gas::from_tgas(10);
 const DEPOSIT_STAKE_GAS: Gas = Gas::from_tgas(60);
 const CALLBACK_GAS: Gas = Gas::from_tgas(15);
 const FT_TRANSFER_GAS: Gas = Gas::from_tgas(15);
-
-pub(crate) fn is_whitelisted_lst(contract_id: &str, owner_id: &str) -> bool {
-    let lower = contract_id.to_ascii_lowercase();
-    let owner_lower = owner_id.to_ascii_lowercase();
-    matches!(
-        lower.as_str(),
-        "meta-pool.near"
-            | "meta-v2.pool.testnet"
-            | "linear-protocol.near"
-            | "linear-protocol.testnet"
-            | "rnear.near"
-            | "rnear.testnet"
-    ) || lower == format!("stnear.{}", owner_lower)
-        || lower == format!("linear.{}", owner_lower)
-        || lower == format!("rnear.{}", owner_lower)
-}
+const MIN_WITHDRAW_LST_TGAS: u64 = 40;
+const MIN_DEPOSIT_STAKE_LST_TGAS: u64 = 85;
 
 fn bind_key(pool_id: &str) -> Vec<u8> {
     format!("lstc:{}", pool_id).into_bytes()
@@ -76,52 +61,11 @@ pub(crate) fn bind_pool(pool_id: &str, lst_contract: &str) {
 pub(crate) fn read_price(pool_id: &str) -> u128 {
     read_u128_key(&price_key(pool_id))
 }
-pub(crate) fn is_price_mode(pool_id: &str, meta: &PositionMeta) -> bool {
-    meta.entry_lst_price_yocto > 0 && read_price(pool_id) > 0
-}
 pub(crate) fn read_protocol_shares(pool_id: &str) -> u128 {
     read_u128_key(&protocol_key(pool_id))
 }
 pub(crate) fn write_protocol_shares(pool_id: &str, v: u128) {
     write_u128_key(&protocol_key(pool_id), v);
-}
-
-/// Weighted entry price after adding `added` shares at `price` to `prior` shares at `entry`.
-/// `0` (simulated APY) is sticky for legacy positions; rounding goes against the staker.
-pub(crate) fn weighted_entry(entry: u128, prior: u128, added: u128, price: u128) -> u128 {
-    if price == 0 {
-        return entry;
-    }
-    if prior == 0 {
-        return price;
-    }
-    if entry == 0 {
-        return 0;
-    }
-    let total = prior.saturating_add(added);
-    let a = mul_div_ceil(prior, entry, total).unwrap_or(entry);
-    let b = mul_div_ceil(added, price, total).unwrap_or(price);
-    a.saturating_add(b)
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Realized {
-    pub staked: u128,
-    pub staker: u128,
-    pub protocol: u128,
-    pub entry: u128,
-}
-
-/// Books the share appreciation since `entry` as yield. `staked == principal + staker + protocol`.
-pub fn realize(staked: u128, entry: u128, price: u128, protocol_bp: u32) -> Realized {
-    let idle = Realized { staked, staker: 0, protocol: 0, entry };
-    if staked == 0 || entry == 0 || price <= entry {
-        return idle;
-    }
-    let principal = mul_div_ceil(staked, entry, price).unwrap_or(staked).min(staked);
-    let yielded = staked - principal;
-    let protocol = bp_of(yielded, protocol_bp);
-    Realized { staked: principal, staker: yielded - protocol, protocol, entry: price }
 }
 
 #[allow(dead_code)]
@@ -212,6 +156,10 @@ impl StakingVaultContract {
         account_id: Option<String>,
     ) -> Promise {
         let attached = env::attached_deposit().as_yoctonear();
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(MIN_DEPOSIT_STAKE_LST_TGAS),
+            "NEAR_INSUFFICIENT_GAS: attach >= 85 TGas for deposit_and_stake_lst"
+        );
         require!(attached >= crate::MIN_PAYABLE_DEPOSIT_YOCTO, "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit must be >= 0.005 NEAR to cover storage");
         validate_pool_and_apy(&pool_id, 0);
         require!(
@@ -225,6 +173,10 @@ impl StakingVaultContract {
         require!(price > 0, "STAKE_PRICE_UNKNOWN: call refresh_lst_price first");
         let depositor = env::predecessor_account_id();
         let target = account_id.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| depositor.to_string());
+        require!(
+            self.is_operator(&depositor) || depositor.as_str() == target,
+            "NEAR_NOT_OWNER: cannot deposit_and_stake_lst into another account"
+        );
         validate_target_account(&target);
         let args = match &referral_id {
             Some(r) => json!({ "referral_id": r }),
@@ -272,7 +224,8 @@ impl StakingVaultContract {
 
     /// Single-step LST payout: `ft_transfer` (1 yocto) straight to the wallet, rolled back by
     /// `on_withdraw_lst` when it fails. `amount` is in share units, taken from the matured principal first,
-    /// then (price mode only) from realised yield.
+    /// then (price mode only) from realised yield. Accepts 0 or 1 yoctoNEAR wallet confirmation deposit.
+    #[payable]
     pub fn withdraw_lst(
         &mut self,
         pool_id: String,
@@ -281,6 +234,14 @@ impl StakingVaultContract {
         account_id: Option<String>,
         recipient_id: Option<String>,
     ) -> Promise {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "STAKE_INVALID_DEPOSIT: attach at most 1 yoctoNEAR to withdraw_lst"
+        );
+        require!(
+            env::prepaid_gas() >= Gas::from_tgas(MIN_WITHDRAW_LST_TGAS),
+            "NEAR_INSUFFICIENT_GAS: attach >= 40 TGas for withdraw_lst"
+        );
         let caller = env::predecessor_account_id();
         let target = account_id.unwrap_or_else(|| caller.to_string());
         require!(
@@ -403,6 +364,10 @@ impl StakingVaultContract {
         );
         let qty = parse_yocto(&amount);
         require!(qty > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
+        require!(
+            qty >= crate::MIN_PAYABLE_DEPOSIT_YOCTO,
+            "STAKE_INSUFFICIENT_BALANCE: LST stake must be >= 0.005 shares to cover storage"
+        );
         let parsed = serde_json::from_str::<serde_json::Value>(&msg).unwrap_or_else(|_| json!({}));
         let pool_id = parsed
             .get("pool_id")
@@ -416,6 +381,10 @@ impl StakingVaultContract {
             .filter(|s| !s.trim().is_empty())
             .unwrap_or(sender_id.as_str())
             .to_string();
+        require!(
+            self.is_operator(&sender_id) || sender_id.as_str() == target,
+            "NEAR_NOT_OWNER: cannot stake LST into another account"
+        );
         let apy_bp = parsed.get("apy_bp").and_then(|v| v.as_u64()).unwrap_or(900) as u32;
         validate_pool_and_apy(&pool_id, apy_bp);
         validate_target_account(&target);

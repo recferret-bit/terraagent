@@ -75,7 +75,7 @@ export class StakingService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(DeedTelemetryService) telemetry?: DeedTelemetryService,
     @Optional() keyVerifier?: FullAccessKeyVerifier,
-    @Optional() intentsRead?: IntentsBalanceReadPort,
+    @Optional() @Inject(IntentsBalanceReadPort) intentsRead?: IntentsBalanceReadPort,
   ) {
     const envBag = () => (this.env ?? process.env) as Record<string, string | undefined>;
     const db = () => (databaseEnabled(this.env) && this.prisma ? this.prisma : null);

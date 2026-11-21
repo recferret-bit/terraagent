@@ -79,8 +79,20 @@ async function readPositions(db: DbClient, wallet: WalletRef): Promise<PosRow[]>
   return rows;
 }
 
-/** Wallet NEAR (mock ledger only: live networks read it from the wallet client), active / unbonding / withdrawable / accrued, LSTs. */
-export async function readWalletBalances(db: DbClient, wallet: WalletRef, readMockWallet: boolean): Promise<WalletBalances> {
+export interface WalletBalanceReadOptions {
+  readonly readMockWallet: boolean;
+  readonly nowMs?: number;
+  readonly primaryAccountId?: string;
+  readonly readLiveWalletYocto?: (accountId: string) => Promise<bigint>;
+}
+
+/** Wallet NEAR (mock ledger or live StakingPort RPC), active / unbonding / withdrawable / accrued, LSTs. */
+export async function readWalletBalances(
+  db: DbClient,
+  wallet: WalletRef,
+  opts: boolean | WalletBalanceReadOptions,
+): Promise<WalletBalances> {
+  const cfg: WalletBalanceReadOptions = typeof opts === 'boolean' ? { readMockWallet: opts } : opts;
   const rows = await readPositions(db, wallet);
   let active = 0n, unbonding = 0n, withdrawable = 0n, accrued = 0n;
   let ready: number | null = null;
@@ -89,15 +101,29 @@ export async function readWalletBalances(db: DbClient, wallet: WalletRef, readMo
     const asset = STAKING_ASSETS.find((a) => a === r.asset) ?? 'near';
     if (asset === 'near') active += r.staked;
     else lst.set(asset, (lst.get(asset) ?? 0n) + r.staked);
-    unbonding += r.unbonding;
-    withdrawable += r.withdrawable;
+    const matured = cfg.nowMs !== undefined && r.unbonding > 0n && r.readyAt !== null && cfg.nowMs >= r.readyAt.getTime();
+    const rowUnbonding = matured ? 0n : r.unbonding;
+    const rowWithdrawable = matured ? r.withdrawable + r.unbonding : r.withdrawable;
+    const rowReadyAt = matured ? null : r.readyAt;
+    unbonding += rowUnbonding;
+    withdrawable += rowWithdrawable;
     accrued += r.rewards;
-    if (r.unbonding > 0n && r.readyAt && (ready === null || r.readyAt.getTime() < ready)) ready = r.readyAt.getTime();
+    if (rowUnbonding > 0n && rowReadyAt && (ready === null || rowReadyAt.getTime() < ready)) ready = rowReadyAt.getTime();
   }
   let walletYocto = 0n;
-  if (readMockWallet && wallet.accountIds.length && typeof db.mockChainBalance?.findMany === 'function') {
+  if (cfg.readMockWallet && wallet.accountIds.length && typeof db.mockChainBalance?.findMany === 'function') {
     const bal = (await db.mockChainBalance.findMany({ where: { accountId: { in: [...wallet.accountIds] }, tokenId: 'NEAR' } })) as Array<{ amount: Dec }>;
     walletYocto = bal.reduce((s, b) => s + y(b.amount), 0n);
+  } else if (!cfg.readMockWallet && cfg.readLiveWalletYocto) {
+    const acct = cfg.primaryAccountId ?? wallet.accountIds[0];
+    if (acct) {
+      try {
+        const live = await cfg.readLiveWalletYocto(acct);
+        walletYocto = live > 0n ? live : 0n;
+      } catch {
+        walletYocto = 0n;
+      }
+    }
   }
   return {
     walletYocto,

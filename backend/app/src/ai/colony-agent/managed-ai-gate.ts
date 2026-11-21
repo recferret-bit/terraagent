@@ -22,10 +22,28 @@ export interface ManagedAiAccess {
 
 export interface GateColony {
   readonly id: string;
+  readonly planetId?: string;
+  readonly colonyIndex?: number;
   readonly playerId?: string;
 }
 
 const script = (reason: AiDownshiftReason): ManagedAiAccess => ({ mode: 'script', model: SCRIPT_AI_MODEL, reason });
+
+async function resolveColonyIdentity(db: PrismaClient | undefined, col: GateColony): Promise<{ colonyId: string; playerId?: string }> {
+  if (!db || typeof db.colony?.findUnique !== 'function') return { colonyId: col.id, playerId: col.playerId };
+  const byId = (await db.colony.findUnique({ where: { id: col.id }, select: { id: true, playerId: true } })) as
+    | { id: string; playerId: string }
+    | null;
+  if (byId) return { colonyId: byId.id, playerId: col.playerId ?? byId.playerId };
+  if (col.planetId && col.colonyIndex !== undefined && typeof db.colony.findFirst === 'function') {
+    const bySlot = (await db.colony.findFirst({
+      where: { planetId: col.planetId, colonyIndex: col.colonyIndex },
+      select: { id: true, playerId: true },
+    })) as { id: string; playerId: string } | null;
+    if (bySlot) return { colonyId: bySlot.id, playerId: col.playerId ?? bySlot.playerId };
+  }
+  return { colonyId: col.id, playerId: col.playerId };
+}
 
 /**
  * W28-06: who may spend the protocol's managed `glm-5.3-flash` budget on a colony decision (BYOK keys never come
@@ -49,15 +67,24 @@ export class ManagedAiGate {
   async admit(col: GateColony, nowMs: number = stakingNowMs()): Promise<ManagedAiAccess> {
     const db = this.prisma;
     if (!db || !databaseEnabled(this.env)) return script('no_database');
-    const r = await resolveWalletPerks(db, { colonyId: col.id, env: this.envBag(), w28: true, full: true, nowMs, deps: this.deps });
+    const resolved = await resolveColonyIdentity(db, col);
+    const r = await resolveWalletPerks(db, {
+      colonyId: resolved.colonyId,
+      playerId: resolved.playerId,
+      env: this.envBag(),
+      w28: true,
+      full: true,
+      nowMs,
+      deps: this.deps,
+    });
     const { perks, wallet, usage } = r;
     if (perks.maxAiColonySlots > 0) {
       if (usage.dailyCallsUsed >= perks.dailyAiCallLimit) return script('budget_exhausted');
-      if (!this.slots.claim(wallet.walletKey, col.id, perks.maxAiColonySlots, nowMs)) return script('slot_cap');
+      if (!this.slots.claim(wallet.walletKey, resolved.colonyId, perks.maxAiColonySlots, nowMs)) return script('slot_cap');
       if (!(await chargeWalletCall(db, wallet.walletKey, perks.dailyAiCallLimit, nowMs))) return script('budget_exhausted');
       return { mode: 'tee', model: MANAGED_AI_MODEL };
     }
-    const playerId = col.playerId ?? wallet.playerId;
+    const playerId = resolved.playerId ?? wallet.playerId;
     if (!(await isVerifiedPilot(db, playerId))) return script('guest');
     const left = await consumeTrialTurn(db, playerId);
     if (left === null) return script('trial_exhausted');
@@ -70,10 +97,22 @@ export class ManagedAiGate {
    */
   async view(col: GateColony, opts: { byok?: boolean; nowMs?: number } = {}): Promise<AiBudgetView> {
     const nowMs = opts.nowMs ?? stakingNowMs();
-    const r = await resolveWalletPerks(this.prisma, { colonyId: col.id, env: this.envBag(), w28: true, full: true, nowMs, deps: this.deps });
+    const resolved = await resolveColonyIdentity(this.prisma, col);
+    const r = await resolveWalletPerks(this.prisma, {
+      colonyId: resolved.colonyId,
+      playerId: resolved.playerId,
+      env: this.envBag(),
+      w28: true,
+      full: true,
+      nowMs,
+      deps: this.deps,
+    });
     const base = { ...buildAiBudgetView(r.perks, r.usage, r.nearUsd), colonySlotsUsed: this.slots.used(r.wallet.walletKey, nowMs) };
     if (opts.byok) return { ...base, mode: 'byok', model: 'byok' };
-    const slotsFull = r.perks.maxAiColonySlots > 0 && !this.slots.has(r.wallet.walletKey, col.id, nowMs) && this.slots.used(r.wallet.walletKey, nowMs) >= r.perks.maxAiColonySlots;
+    const slotsFull =
+      r.perks.maxAiColonySlots > 0 &&
+      !this.slots.has(r.wallet.walletKey, resolved.colonyId, nowMs) &&
+      this.slots.used(r.wallet.walletKey, nowMs) >= r.perks.maxAiColonySlots;
     const spent = r.perks.maxAiColonySlots > 0 && r.usage.dailyCallsUsed >= r.perks.dailyAiCallLimit;
     return slotsFull || spent ? { ...base, mode: 'script', model: SCRIPT_AI_MODEL } : base;
   }

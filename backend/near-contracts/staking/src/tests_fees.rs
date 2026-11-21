@@ -332,3 +332,74 @@ fn emptied_position_forgets_clocks_and_restarts_on_next_deposit() {
     let p = &c.get_account_positions("col1.testnet".into(), None, None)[0];
     assert_eq!(p.staked_since_ms, Some(T0 + 20 * GAME_DAY_MS));
 }
+
+#[test]
+fn blocks_third_party_early_exit_clock_reset_across_payable_and_lst_entries() {
+    let mut c = staked(100, "whale.testnet", T0);
+    // Stranger cannot reset whale's 7-day maturity clock via stake_payable.
+    testing_env!(ts_ctx("mallory.testnet", T0 + 10 * GAME_DAY_MS).attached_deposit(NearToken::from_millinear(10)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.stake_payable("grief-1".into(), POOL.into(), 900, T0 + 10 * GAME_DAY_MS, Some("whale.testnet".into()));
+    })).is_err());
+
+    // Stranger cannot reset whale's maturity clock via NEP-141 ft_on_transfer or dust shares.
+    testing_env!(ts_ctx("meta-pool.near", T0 + 10 * GAME_DAY_MS).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.ft_on_transfer("mallory.testnet".parse().unwrap(), ONE_NEAR.to_string(), r#"{"pool_id":"meta-pool.near","account_id":"whale.testnet"}"#.into());
+    })).is_err());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.ft_on_transfer("whale.testnet".parse().unwrap(), "1".into(), r#"{"pool_id":"meta-pool.near"}"#.into());
+    })).is_err());
+
+    // Whale's 7-day maturity remains intact -> 0 bp exit fee!
+    testing_env!(ctx(OP).build());
+    let u = unstake(&mut c, "whale-free-exit", "whale.testnet", 100 * ONE_NEAR, T0 + 10 * GAME_DAY_MS);
+    assert_eq!(u.early_exit_fee.as_deref(), Some("0"));
+}
+
+#[test]
+fn get_account_positions_projects_unbonding_maturity_and_price_mode_rewards_and_enforces_gas_guards() {
+    let mut c = stake_unstake_ready(0);
+    let ready = T0 + WEEK + UNBONDING_DURATION_MS;
+    let listed = c.get_account_positions("col1.testnet".into(), None, Some(ready));
+    assert_eq!(listed[0].unbonding, "0");
+    assert_eq!(listed[0].withdrawable, (10 * ONE_NEAR).to_string());
+
+    // Price-mode LST pool also projects realized share-appreciation rewards in get_account_positions.
+    testing_env!(ctx(OP).build());
+    c.bind_lst_pool("meta-pool.near".into(), "meta-pool.near".parse().unwrap());
+    testing_env!(ts_ctx("staking.terraagent.testnet", T0).build());
+    c.on_lst_price("meta-pool.near".into(), Ok(near_sdk::json_types::U128(crate::lst::PRICE_ONE)));
+    testing_env!(ts_ctx("meta-pool.near", T0).build());
+    c.ft_on_transfer("whale.testnet".parse().unwrap(), (10 * ONE_NEAR).to_string(), r#"{"pool_id":"meta-pool.near","apy_bp":0}"#.into());
+    testing_env!(ts_ctx("staking.terraagent.testnet", T0 + WEEK).build());
+    c.on_lst_price("meta-pool.near".into(), Ok(near_sdk::json_types::U128(crate::lst::PRICE_ONE * 12 / 10)));
+    let lst_pos = c.get_account_positions("whale.testnet".into(), None, Some(T0 + WEEK));
+    assert!(lst_pos[0].rewards.parse::<u128>().unwrap() > 0, "price-mode rewards projected in get_account_positions");
+
+    // Low prepaid gas on withdraw / withdraw_lst / deposit_and_stake_lst fails fast, and 1 yoctoNEAR on withdraw_lst works.
+    let mut low_w = ctx(OP);
+    low_w.prepaid_gas(near_sdk::Gas::from_tgas(20));
+    testing_env!(low_w.build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw("w-low".into(), "col1.testnet".into(), None, POOL.into(), 900, ready);
+    })).is_err());
+
+    let mut low_lst = ts_ctx("whale.testnet", T0 + WEEK);
+    low_lst.prepaid_gas(near_sdk::Gas::from_tgas(30));
+    testing_env!(low_lst.build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+    })).is_err());
+
+    // 1 yoctoNEAR attached deposit on withdraw_lst is accepted; 2 yoctoNEAR is rejected.
+    testing_env!(ctx(OP).build());
+    c.unstake("u-lst".into(), "whale.testnet".into(), "meta-pool.near".into(), 0, ONE_NEAR.to_string(), T0 + WEEK);
+    let lst_ready = T0 + WEEK + UNBONDING_DURATION_MS;
+    testing_env!(ts_ctx("whale.testnet", lst_ready).attached_deposit(NearToken::from_yoctonear(2)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+    })).is_err());
+    testing_env!(ts_ctx("whale.testnet", lst_ready).attached_deposit(NearToken::from_yoctonear(1)).build());
+    let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
+}

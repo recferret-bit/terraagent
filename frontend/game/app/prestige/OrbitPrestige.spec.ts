@@ -114,4 +114,33 @@ describe('W28-12 dev tier override (unit)', () => {
     expect(mk(true, '?stakeTier=1')).toBeUndefined();
     expect(mk(false, '?stakeTier=3')).toBeUndefined();
   });
+
+  it('a wallet-first Tier 2+ staker gets the plasma trail on their very first descent before founding a colony', async () => {
+    const store = new PrestigeStore(async () => null);
+    let acct: string | null = 'whale.near';
+    let tier = 2;
+    const mp = new MenuPrestige(
+      {
+        isLocalHost: () => false,
+        flagOn: () => true,
+        activeColony: () => null,
+        pilotAccount: () => acct,
+        fetchWalletTier: async () => tier,
+      },
+      store,
+      '',
+      false,
+    );
+    expect(mp.descent()).toBeUndefined(); // first frame kicks off async load
+    await flush();
+    expect(mp.descent()).toEqual({ plasmaTrail: true });
+    // Tier 1 / guest account gets no plasma trail
+    acct = 'scout.near';
+    tier = 1;
+    expect(mp.descent()).toBeUndefined();
+    await flush();
+    expect(mp.descent()).toBeUndefined();
+    acct = null;
+    expect(mp.descent()).toBeUndefined();
+  });
 });

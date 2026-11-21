@@ -12,6 +12,8 @@ export interface KpiStrip {
   readonly el: HTMLElement;
   /** The live micro-NEAR counter the ticker rewrites. */
   readonly yieldValue: HTMLElement;
+  /** Toggles `[↻ Compound Yield]` once live-ticked yield rises above `0` without requiring a page reload. */
+  readonly setCompoundVisible: (show: boolean) => void;
 }
 
 export const EFFECTIVE_FORMULA =
@@ -40,15 +42,22 @@ function totalCard(p: StakingPerformanceResponse, nowMs: number): HTMLElement {
   );
 }
 
-function yieldCard(p: StakingPerformanceResponse, h: KpiHandlers): { card: HTMLElement; value: HTMLElement } {
+function yieldCard(p: StakingPerformanceResponse, h: KpiHandlers): {
+  card: HTMLElement;
+  value: HTMLElement;
+  setCompoundVisible: (show: boolean) => void;
+} {
   const value = big(formatMicroNear(Number(p.balances.accruedYieldNear)), 'staking-yield-live');
+  const compoundBtn = el('button', { className: 'btn btn-primary btn-sm', type: 'button', dataset: { testid: 'staking-compound-btn' }, onClick: h.onCompound }, '↻ Compound Yield');
   const accrued = Number(p.balances.accruedYieldNear) > 0;
-  const compound = accrued
-    ? el('button', { className: 'btn btn-primary btn-sm', type: 'button', dataset: { testid: 'staking-compound-btn' }, onClick: h.onCompound }, '↻ Compound Yield')
-    : null;
+  const host = card('yield', 'ACCRUED YIELD (LIVE)', el('div', { className: 'ta-stk-kpi-line' }, value, el('span', { className: 'ta-stk-sub' }, 'NEAR')), sub('0 % fee · keeps your 7-day clock'), accrued ? compoundBtn : null);
   return {
     value,
-    card: card('yield', 'ACCRUED YIELD (LIVE)', el('div', { className: 'ta-stk-kpi-line' }, value, el('span', { className: 'ta-stk-sub' }, 'NEAR')), sub('0 % fee · keeps your 7-day clock'), compound),
+    card: host,
+    setCompoundVisible: (show) => {
+      if (show && !compoundBtn.isConnected) host.append(compoundBtn);
+      else if (!show && compoundBtn.isConnected) compoundBtn.remove();
+    },
   };
 }
 
@@ -118,6 +127,7 @@ export function renderKpiStrip(p: StakingPerformanceResponse, nowMs: number, h: 
   const y = yieldCard(p, h);
   return {
     yieldValue: y.value,
+    setCompoundVisible: y.setCompoundVisible,
     el: el('div', { className: 'ta-stk-kpis', dataset: { testid: 'staking-kpi-strip' } }, totalCard(p, nowMs), y.card, apyCard(p), incomeCard(p), effectiveCard(p), tierCard(p, nowMs, h)),
   };
 }
