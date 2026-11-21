@@ -46,6 +46,8 @@ export interface SessionHudDeps {
   pilot: FeatureServices['pilot'];
   /** Bearer of the session (the market REST snapshot sends it). */
   token?(): string | null;
+  /** Defer mounting the 25+ HUD feature panels off the Orbit `#deploy` click frame until an airborne slice or reveal. */
+  deferInitialMount?: boolean;
 }
 
 /**
@@ -84,5 +86,5 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     camera: { get: () => d.camera?.() ?? null, enumerable: true, configurable: true },
     rtsCamera: { get: () => d.rtsCamera?.() ?? null, enumerable: true, configurable: true },
   });
-  return new FeatureHud(d.uiParent, d.flags, d.local ? 'local' : 'server', services);
+  return new FeatureHud(d.uiParent, d.flags, d.local ? 'local' : 'server', services, Boolean(d.deferInitialMount));
 }

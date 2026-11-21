@@ -51,3 +51,50 @@
 .ta-scrim__title--alert {
   color: var(--ta-fault-text);
 }
+
+.ta-pause-fps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--ta-seam);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-pause-fps__label {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ta-steel);
+}
+
+.ta-pause-fps__options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.ta-pause-fps__btn {
+  padding: 6px 4px;
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-deep);
+  color: var(--ta-steel);
+  font-family: var(--ta-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color var(--ta-dur-quick, 120ms) ease, color var(--ta-dur-quick, 120ms) ease, background-color var(--ta-dur-quick, 120ms) ease;
+}
+
+.ta-pause-fps__btn:hover {
+  border-color: var(--ta-orange);
+  color: var(--ta-text);
+}
+
+.ta-pause-fps__btn[aria-pressed="true"] {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+  background: color-mix(in srgb, var(--ta-orange) 14%, transparent);
+}

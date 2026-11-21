@@ -14468,6 +14468,94 @@
               ],
               "type": "object"
             },
+            "buildings": {
+              "items": {
+                "properties": {
+                  "allowUnclaimed": {
+                    "type": "boolean"
+                  },
+                  "archetype": {
+                    "type": "string"
+                  },
+                  "buildS": {
+                    "type": "number"
+                  },
+                  "building": {
+                    "type": "string"
+                  },
+                  "cost": {
+                    "additionalProperties": {
+                      "type": "number"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "footprintD": {
+                    "type": "number"
+                  },
+                  "footprintW": {
+                    "type": "number"
+                  },
+                  "hp": {
+                    "type": "number"
+                  },
+                  "hqOnly": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "maxPerColony": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "powerDrainPerS": {
+                    "type": "number"
+                  },
+                  "powerGenPerS": {
+                    "type": "number"
+                  },
+                  "requiresDeposit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "tier": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "building",
+                  "label",
+                  "tier",
+                  "footprintW",
+                  "footprintD",
+                  "buildS",
+                  "hp",
+                  "powerDrainPerS",
+                  "powerGenPerS",
+                  "cost",
+                  "archetype",
+                  "requiresDeposit",
+                  "hqOnly",
+                  "allowUnclaimed",
+                  "maxPerColony"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
             "colonyId": {
               "anyOf": [
                 {

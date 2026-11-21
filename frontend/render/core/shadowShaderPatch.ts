@@ -2,6 +2,27 @@ import * as THREE from 'three';
 
 let shaderPatched = false;
 
+const LOD_OFFSET_0 = 100.0;
+const LOD_OFFSET_1 = 50.0;
+
+/**
+ * Temporarily encodes `filterLod` (`0` = 1×4-tap compare, `1` = 5-tap PCF, `2` = full contact-hardening)
+ * into `light.shadow.radius` so Three.js's built-in `WebGLLights` propagates it to every material in the
+ * scene without per-material uniform cloning gaps or runtime shader recompiles.
+ */
+export function applyRenderShadowRadiusLod(light: THREE.DirectionalLight | undefined, filterLod: 0 | 1 | 2): number {
+  if (!light) return 0;
+  const saved = light.shadow.radius;
+  const offset = filterLod === 0 ? LOD_OFFSET_0 : filterLod === 1 ? LOD_OFFSET_1 : 0;
+  light.shadow.radius = saved + offset;
+  return saved;
+}
+
+export function restoreRenderShadowRadiusLod(light: THREE.DirectionalLight | undefined, savedRadius: number): void {
+  if (!light) return;
+  light.shadow.radius = savedRadius;
+}
+
 const SOFT_SHADOW_HELPERS_GLSL = /* glsl */ `
 float taTexelCompare( sampler2D shadowMap, vec2 shadowMapSize, vec2 texelSize, vec2 uv, float compare ) {
 	vec2 st = uv * shadowMapSize - 0.5;
@@ -17,7 +38,25 @@ float taTexelCompare( sampler2D shadowMap, vec2 shadowMapSize, vec2 texelSize, v
 
 float taSampleShadowSoft( sampler2D shadowMap, vec2 shadowMapSize, float shadowRadius, vec3 shadowCoord ) {
 	vec2 texelSize = vec2( 1.0 ) / shadowMapSize;
-	float rScale = max( 0.25, shadowRadius );
+	float taLod = 2.0;
+	float rRaw = shadowRadius;
+	if ( rRaw >= 90.0 ) { taLod = 0.0; rRaw -= 100.0; }
+	else if ( rRaw >= 40.0 ) { taLod = 1.0; rRaw -= 50.0; }
+	float rScale = max( 0.25, rRaw );
+	if ( taLod < 0.5 ) {
+		return taTexelCompare( shadowMap, shadowMapSize, texelSize, shadowCoord.xy, shadowCoord.z );
+	}
+	if ( taLod < 1.5 ) {
+		vec2 sStep = texelSize * ( 0.85 * rScale );
+		float s5 = taTexelCompare( shadowMap, shadowMapSize, texelSize, shadowCoord.xy, shadowCoord.z ) * 0.40;
+		s5 += (
+			taTexelCompare( shadowMap, shadowMapSize, texelSize, shadowCoord.xy + vec2( sStep.x, 0.0 ), shadowCoord.z ) +
+			taTexelCompare( shadowMap, shadowMapSize, texelSize, shadowCoord.xy - vec2( sStep.x, 0.0 ), shadowCoord.z ) +
+			taTexelCompare( shadowMap, shadowMapSize, texelSize, shadowCoord.xy + vec2( 0.0, sStep.y ), shadowCoord.z ) +
+			taTexelCompare( shadowMap, shadowMapSize, texelSize, shadowCoord.xy - vec2( 0.0, sStep.y ), shadowCoord.z )
+		) * 0.15;
+		return smoothstep( 0.08, 0.92, s5 );
+	}
 	vec2 searchStep = texelSize * ( 1.25 * rScale );
 	float d0 = unpackRGBAToDepth( texture2D( shadowMap, shadowCoord.xy ) );
 	float d1 = unpackRGBAToDepth( texture2D( shadowMap, shadowCoord.xy + vec2( searchStep.x, 0.0 ) ) );

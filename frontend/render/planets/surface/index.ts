@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildContinuousHabitatIndex, createPlanetBiosphere } from '../../biosphere';
+import { enqueueDeferredDispose } from '../../core/deferredDispose';
 import type { CreatePlanetSurface, PlanetSurface } from './types';
 import { SurfaceContext } from './SurfaceContext';
 import { BIOME_BUILDERS } from './biomes';
@@ -32,10 +33,16 @@ export const createPlanetSurface: CreatePlanetSurface = (spec, opts) => {
       ctx.waterFauna?.cullToFocus();
       biosphere.tick(dt);
     },
+    disposeDeferred() {
+      if (disposed) return;
+      disposed = true;
+      group.removeFromParent();
+      enqueueDeferredDispose(...disposables.splice(0).map((d) => () => d.dispose()));
+    },
     dispose() {
       if (disposed) return; disposed = true;
       group.removeFromParent();
-      for (const d of disposables) d.dispose();
+      for (const d of disposables.splice(0)) d.dispose();
     },
   };
   return surface;

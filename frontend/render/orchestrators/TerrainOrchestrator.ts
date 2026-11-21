@@ -3,7 +3,7 @@ import { hexIndex } from '@terra/sim/grid/hex';
 import { getWindUniforms } from '../core/windConfig';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import { createBorderController } from '../planets/hex/borderController';
-import { buildChunk, computeEffectiveHeights, type HexTileLayers } from '../planets/hex/chunkMesh';
+import { buildChunk, buildRockShadowIndex, computeEffectiveHeights, type HexTileLayers } from '../planets/hex/chunkMesh';
 import { chunkKey, chunkLayout, type ChunkDef } from '../planets/hex/chunks';
 import { makeHeightSampler } from '../planets/hex/heightSampler';
 import { createHexAmbient } from '../planets/hex/hexAmbient';
@@ -17,14 +17,10 @@ import type { BiomeOrchestratorConfig } from './BiomeConfig';
 import type { WorkerChunkGeometryData } from './worker/protocol';
 
 function createTerrainDepthMaterial(): THREE.MeshDepthMaterial {
-  const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+  const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.FrontSide });
+  mat.customProgramCacheKey = () => 'hex-terrain-rock-depth-v2';
   mat.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aRock;\nvarying float vRock;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock;\ntransformed.y -= 0.08;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vRock;')
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vRock < 0.001) discard;');
+    sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y -= 0.08;');
   };
   return mat;
 }
@@ -49,14 +45,23 @@ function makeChunkMeshFromBuffers(
   geo.setAttribute('aAO', new THREE.BufferAttribute(b.aAO, 1));
   geo.setAttribute('aRock', new THREE.BufferAttribute(b.aRock, 1));
   geo.setAttribute('aHexShore', new THREE.BufferAttribute(b.aHexShore, 1));
-  geo.setIndex(new THREE.BufferAttribute(b.index, 1));
+  const fullIndexAttr = new THREE.BufferAttribute(b.index, 1);
+  geo.setIndex(fullIndexAttr);
   geo.computeBoundingSphere();
   geo.computeBoundingBox();
+
+  const rockIndexData = buildRockShadowIndex(b.index, b.aRock);
+  const rockIndexAttr = rockIndexData.length > 0 ? new THREE.BufferAttribute(rockIndexData, 1) : null;
+
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = `hexChunk ${cq},${cr}`;
   mesh.receiveShadow = true;
   mesh.castShadow = true;
   mesh.customDepthMaterial = depthMaterial;
+  if (rockIndexAttr) {
+    mesh.onBeforeShadow = () => { geo.setIndex(rockIndexAttr); };
+    mesh.onAfterShadow = () => { geo.setIndex(fullIndexAttr); };
+  }
   return mesh;
 }
 

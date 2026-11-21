@@ -2,6 +2,7 @@ import type { Disposable, FeatureContext, GameView } from '../../core/registry/t
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { releaseArchetypeThumbs, retainArchetypeThumbs } from '../shared/archetypeThumb';
 import { type MenuTier, presentTiers, rememberTier, renderTierBar, setTierVisible } from '../shared/menuCards';
+import { layoutMenuGroups, UNIT_GROUPS } from '../shared/menuSections';
 import { ownColonyIndex } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
 import {
@@ -27,6 +28,7 @@ export class UnitsMenu implements Disposable {
   private readonly repeatBtn: HTMLButtonElement;
   private readonly army: ArmySectionController | null = null;
   private readonly cardElements = new Map<string, UnitCardHandle>();
+  private readonly sectionHeads = new Map<string, HTMLElement>();
   private lastBufferKey: string | null = null;
   private pickedTier: MenuTier | null = null;
   private isOpen = true;
@@ -220,16 +222,16 @@ export class UnitsMenu implements Disposable {
       this.render();
     });
     const seen = new Set<string>();
+    const placed: { key: string; el: HTMLElement }[] = [];
     for (const card of cards) {
       seen.add(card.id);
       const handle = this.cardElements.get(card.id) ?? this.mountCard(card);
       syncUnitCard(handle, card);
       this.applySupplyBlock(handle, supplyBlockReason(supply, card.supply));
       setTierVisible(handle.root, card.section === 'army' ? true : card.tier === tier);
+      if (card.section !== 'army') placed.push({ key: card.unit, el: handle.root });
     }
-    if (this.army && this.army.sectionEl.parentElement === this.cardsContainer) {
-      this.cardsContainer.appendChild(this.army.sectionEl);
-    }
+    layoutMenuGroups(this.cardsContainer, UNIT_GROUPS, placed, this.sectionHeads, this.army?.sectionEl);
     for (const [id, handle] of this.cardElements) {
       if (seen.has(id)) continue;
       handle.root.remove();

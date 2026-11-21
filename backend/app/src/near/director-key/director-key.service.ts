@@ -3,6 +3,7 @@ import type { AutoTradeLimits, DirectorKeyStatusPayload } from '@terra/contracts
 import { readAutoTradeLimits, restore } from '@terra/sim';
 import type { IncomingMessage } from 'node:http';
 import { EventBus } from '../../bus/event-bus.js';
+import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { AuthTokenService, extractBearerPlayer } from '../../core/auth/index.js';
 import { CoreException } from '../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
@@ -50,14 +51,32 @@ export class DirectorKeyService {
     @Optional() @Inject(GamePlanets) private readonly planets?: GamePlanets,
     @Optional() @Inject(AuthTokenService) private readonly tokens?: AuthTokenService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {}
 
   async add(req: IncomingMessage, raw: unknown): Promise<DirectorKeyStatusPayload> {
     const { body, colony } = await this.opened(req, raw);
+    this.assertLiveColonyAndPlanetActive(colony);
     const caps = await this.capsFor(body, colony);
     const existing = await this.repo.find(colony.colonyId);
     if (existing && existing.revokedAt === null) return this.current(colony, existing);
     return this.createKey(colony, existing, caps);
+  }
+
+  private assertLiveColonyAndPlanetActive(colony: OwnedColony): void {
+    if (!this.antiCheat) return;
+    const livePlanet = this.antiCheat.index.getPlanet(colony.planetId);
+    if (livePlanet && (livePlanet.status === 'ENDED' || livePlanet.status === 'ARCHIVED')) {
+      this.antiCheat.recordRejection('http', 'economy', 'planet_ended');
+      throw new CoreException('planet_ended', { status: 409, message: 'This planet has ended.', details: { planetId: colony.planetId } });
+    }
+    const liveColony =
+      this.antiCheat.index.getColonyById(colony.colonyId) ??
+      this.antiCheat.index.getColonyByPlanetIndex(colony.planetId, colony.colonyIndex);
+    if (liveColony && liveColony.status !== 'ACTIVE') {
+      this.antiCheat.recordRejection('http', 'economy', 'colony_inactive');
+      throw new CoreException('COLONY_INACTIVE', { status: 409, message: 'Colony is no longer active.', details: { colonyId: colony.colonyId } });
+    }
   }
 
   /**

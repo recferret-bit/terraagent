@@ -10,6 +10,7 @@ import {
   createHexTerrain,
   HEX_PREP,
   HEX_TERRAIN,
+  isDryShoreTile,
   scatterTileProps,
   specForPlanetType,
   tileHash01,
@@ -326,5 +327,36 @@ describe('RN-10: hex shader constants', () => {
     expect(terrain.material.customProgramCacheKey()).not.toBe(plain.customProgramCacheKey());
     terrain.dispose();
     plain.dispose();
+  });
+
+  it('encodes every dry shore hexagon (including peninsulas bordering 1..5 water tiles) in uHexGrid.g and keeps incremental updates in parity', () => {
+    const r = 5;
+    const hx = hexIndex(r);
+    const terrain = new Uint8Array(hx.count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(hx.count).fill(HEX_PREP.flat);
+    const height = new Float32Array(hx.count);
+    const at = (q: number, rr: number) => hx.indexOf(q, rr);
+    // Peninsula at (0, 0) surrounded on 5 sides by shallow/deep water; adjacent coastal forest & slope tiles.
+    for (const [dq, dr] of [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1]] as const) {
+      terrain[at(dq, dr)] = dq === 1 ? HEX_TERRAIN.deep : HEX_TERRAIN.shallow;
+    }
+    terrain[at(0, 1)] = HEX_TERRAIN.forest; prep[at(0, 1)] = HEX_PREP.wild;
+    terrain[at(1, 1)] = HEX_TERRAIN.slope; prep[at(1, 1)] = HEX_PREP.wild;
+    terrain[at(-1, 2)] = HEX_TERRAIN.rock; prep[at(-1, 2)] = HEX_PREP.wild;
+    const ht = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look });
+    const n = 2 * r + 1;
+    const shore = (q: number, rr: number) => ((ht.uniforms.uHexGrid!.value as THREE.DataTexture).image.data as Uint8Array)[((rr + r) * n + q + r) * 4 + 1];
+    expect(shore(0, 0)).toBe(255); // 5-water-neighbor peninsula stays dry shore
+    expect(shore(0, 1)).toBe(255); // coastal forest touching (-1, 1) water
+    expect(shore(1, 1)).toBe(255); // coastal slope touching (1, 0) water
+    expect(shore(-1, 2)).toBe(0);  // inland rock not adjacent to water
+    expect(shore(1, 0)).toBe(128); // water tile
+    expect(isDryShoreTile(hx, at(0, 0), { terrain, prep, height, kind: 'dune' })).toBe(false);
+    // Converting an inland tile at (2, 0) to shallow water promotes its dry neighbors via incremental update.
+    expect(shore(2, 1)).toBe(0);
+    ht.setTileState(2, 0, HEX_TERRAIN.shallow, HEX_PREP.wild, -0.2);
+    expect(shore(2, 0)).toBe(128);
+    expect(shore(2, 1)).toBe(255);
+    ht.dispose();
   });
 });

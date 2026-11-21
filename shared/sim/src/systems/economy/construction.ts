@@ -4,10 +4,9 @@ import { CANCEL_REFUND_RATE, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
-import { isPreparedGround } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
-import { bumpPathEpoch, setTilePrep } from '../../grid/tileModel';
+import { bumpPathEpoch, isFoundationReadyTile, setTilePrep } from '../../grid/tileModel';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
@@ -15,12 +14,10 @@ import { touchTile, type ColonyState, type PlanetState } from '../../kernel/stat
 import { defineSystem } from '../../kernel/system';
 import { requestMove } from '../../units/movement/orchestrator';
 import { buildingFootprints } from '../construction/occupancy';
-import { resolvePlacementRule } from '../construction/placement';
-import { buildLinkedPrepJobs } from '../construction/prep';
-import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
+import { removeTerraformOrder } from '../terraform-basic/queue';
 import { revertFootprintLivingTiles } from '../terraform-basic/rules';
 import { BUILDING_KIND_BY_NAME, buildingKindName, ensureColony, getFootprintTileIndices, isEconomyBuildingKind, resolveBuildingRow } from './buildingRows';
-import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
+import { getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
 import { checkCostAffordability, debitCost, refundCost, resourceValue, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
 import { onCommandHubCompleted } from '../progression';
@@ -179,30 +176,9 @@ function spawnBuildingRow(state: PlanetState, entityId: number, entityKind: numb
 }
 
 /**
- * The linked site prep of a new building job (`UO-TF-03`, the W01 mechanism): one Grade order over the footprint tiles
- * that are not prepared yet, worked by a terraform-capable builder before it builds. Returns its order id, if any.
- */
-function enqueueLinkedPrep(state: PlanetState, entityId: number, building: string, coords: ReadonlyArray<{ q: number; r: number }>, owner: number, tick: number, data?: CompiledDataLike): string | undefined {
-  const jobs = buildLinkedPrepJobs(state, coords, data);
-  if (jobs.length === 0) return undefined;
-  const res = enqueueTerraformOrder(state, {
-    colonyId: owner,
-    jobs,
-    orderId: `${buildJobKey(entityId)}/prep`,
-    linkedOrderId: `building:${entityId}`, // `cancelTask` of the prep cancels the building (queue path)
-    linkedBuildingEntityId: entityId,
-    isLinkedPrep: true,
-    allowUnclaimed: resolvePlacementRule(building, data)?.allowUnclaimed ?? true,
-    tick,
-    data,
-  });
-  return res.order?.orderId;
-}
-
-/**
  * Validates and starts (or completes if `instant`) a T1 building construction. An `instant` building (scenario setup)
- * has its footprint prepared and its cost debited at once. Otherwise it is a building job (`./buildJob.ts`): the
- * footprint gets linked prep, and a builder on site builds it and pays it progressively.
+ * has its footprint prepared and its cost debited at once. Otherwise it is a building job (`./buildJob.ts`): a
+ * builder walks to the site and pays the cost as it builds. The footprint is not terraformed again.
  */
 export function startBuildingConstruction(
   state: PlanetState,
@@ -249,19 +225,16 @@ export function startBuildingConstruction(
   evacuateUnitsFromFootprint(state, fp.indices, tick, data, ctx);
 
   if (!opts.instant) {
-    const building = String(row.building ?? opts.building);
-    const prepOrderId = enqueueLinkedPrep(state, entityId, building, fp.coords, opts.owner, tick, data);
-    const preparedCount = fp.indices.filter((i) => isPreparedGround(state.grid.layers.prep[i])).length;
+    const preparedCount = fp.indices.filter((i) => isFoundationReadyTile(state.grid, i)).length;
     const jobs = getBuildingJobs(state);
     jobs[entityId] = {
-      entityId, building, owner: opts.owner,
+      entityId, building: String(row.building ?? opts.building), owner: opts.owner,
       q: opts.q, r: opts.r, rot: opts.rot ?? 0, footprintW: w, footprintD: d,
       buildTicks, elapsedWeightedTicks: 0, workRate: workerCheck.workRate,
       workerEntityId: opts.workerEntityId,
       cost: { ...cost }, totalCost: { ...cost }, spentCost: {}, paid: false,
-      status: 'waiting', waitReason: prepOrderId ? 'site' : 'worker',
+      status: 'waiting', waitReason: 'worker',
       preparedCount, totalTiles: fp.indices.length,
-      ...(prepOrderId ? { prepOrderId } : {}),
     };
     saveBuildingJobs(state, jobs, tick);
   } else {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { isDayNightExternalSync, stepStandaloneDayNight } from '@terra/render/core/dayNightConfig';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import type { DescentHandoff, DescentOptions, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { acquireModel } from '@terra/render/visuals/space/placeholders';
@@ -42,6 +43,8 @@ export class DescentRunner implements DescentSequence {
   /** Update order matters (e.g. the camera reads the pod pose, the sky reads the camera). */
   private parts: FramePart[];
   private disposeOrder: FramePart[];
+  private readonly deferPartDispose: boolean;
+  private partsDisposed = false;
   private t = 0;
   private started = false; private finished = false; private disposed = false;
   private telCbs: ((x: DescentTelemetry) => void)[] = [];
@@ -49,6 +52,7 @@ export class DescentRunner implements DescentSequence {
 
   constructor(opts: DescentOptions) {
     const { viewport, scene, camera, spec, surface } = opts;
+    this.deferPartDispose = Boolean(opts.deferPartDispose);
     this.duration = opts.duration ?? 35;
     this.startAt = clamp(opts.startAt ?? 0, 0, 30); // authored seconds to begin at (2 = carrier hand-off, bay arming)
     this.tScale = TL / this.duration;
@@ -76,7 +80,7 @@ export class DescentRunner implements DescentSequence {
     root.add(podRoot, carrier.root, hero.root);
 
     // ---- environment objects (construction order == scene child order)
-    this.sky = new SkyRig(this.ctx);
+    this.sky = new SkyRig(this.ctx, opts.precomputedGlobeSpheres);
     const reentry = new ReentryFx(this.ctx, podR, podH);
     const flames = new RetroFlames(podRoot, pod);
     const chute = new ChuteFx(this.ctx, podRoot, podH, podR);
@@ -187,10 +191,24 @@ export class DescentRunner implements DescentSequence {
   onTelemetry(cb: (t: DescentTelemetry) => void) { this.telCbs.push(cb); }
   onComplete(cb: (hero: THREE.Object3D) => void) { this.doneCbs.push(cb); }
 
+  disposeDeferred() {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (!this.finished) {
+      this.finished = true;
+      this.restoreSceneState();
+    }
+    this.disposeParts(true);
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    if (!this.finished) { this.finished = true; this.restoreAndCleanup(); }
+    if (!this.finished) {
+      this.finished = true;
+      this.restoreSceneState();
+    }
+    this.disposeParts(false);
   }
 
   /** QA helper: deterministic seek (re-simulates from 0 in 1/30 s steps). */
@@ -232,17 +250,31 @@ export class DescentRunner implements DescentSequence {
     this.t = this.duration;
     this.applyFrame(TL, 0);
     const h = this.touchdown.handHero();
-    this.restoreAndCleanup();
+    this.restoreSceneState();
+    this.disposeParts(this.deferPartDispose);
     for (const c of this.doneCbs) c(h);
   }
 
-  /** Restore camera + lights/sky, remove every temporary object. */
-  private restoreAndCleanup() {
+  /** Restore camera + lights/sky and detach temporary objects immediately (< 0.05 ms). */
+  private restoreSceneState() {
     this.ctx.surface.group.visible = true;
     this.ctx.root.removeFromParent();
     setDescentSunDirection(this.ctx.viewport, null);
     this.cam.restore();
     this.sky.restore();
-    for (const p of this.disposeOrder) p.dispose?.();
+  }
+
+  private disposeParts(defer: boolean) {
+    if (this.partsDisposed) return;
+    this.partsDisposed = true;
+    const order = this.disposeOrder.splice(0);
+    if (!defer) {
+      for (const p of order) p.dispose?.();
+      return;
+    }
+    for (const p of order) {
+      if (p === this.sky) this.sky.disposeDeferred();
+      else enqueueDeferredDispose(() => p.dispose?.());
+    }
   }
 }

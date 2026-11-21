@@ -9,6 +9,7 @@ export {
   type HexTiles,
   type HexPick,
   type HexTerrainOptions,
+  type PrecomputedHexTerrainData,
 } from './createHexTerrain';
 export {
   buildChunk,
@@ -17,6 +18,8 @@ export {
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
+  isDryShoreTile,
+  isWaterAt,
   tileHash01,
   tileHashU32,
   tileShoreFactor,

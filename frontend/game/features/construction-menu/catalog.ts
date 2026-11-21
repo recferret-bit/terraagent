@@ -28,6 +28,20 @@ export type BuildingKind =
   | 'outpostBeacon'
   | 'tradeHub';
 
+/** Welcome catalog fields the build menu may overlay onto a card. */
+export interface CatalogBalance {
+  readonly building: string;
+  readonly tier: number;
+  readonly footprintW: number;
+  readonly footprintD: number;
+  readonly buildS: number;
+  readonly powerDrainPerS: number;
+  readonly powerGenPerS: number;
+  readonly cost: { readonly [key: string]: number | undefined };
+  /** Hub founder-core rows report generation and drain together. */
+  readonly hqOnly?: boolean;
+}
+
 export interface BuildingCardModel {
   id: string;
   building: BuildingKind;
@@ -232,6 +246,24 @@ function isStageLocked(unlockStage: number, colonyStage: number | undefined): bo
   return colonyStage < unlockStage;
 }
 
+function costFromSpec(cost: CatalogBalance['cost']): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(cost)) {
+    if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
+  }
+  return out;
+}
+
+/** Gen when the spec produces power, otherwise the drain. */
+function specPowerText(spec: Pick<CatalogBalance, 'powerGenPerS' | 'powerDrainPerS' | 'hqOnly'>): string {
+  if (spec.hqOnly && spec.powerGenPerS > 0 && spec.powerDrainPerS > 0) {
+    return `+${spec.powerGenPerS} / −${spec.powerDrainPerS} E/s`;
+  }
+  if (spec.powerGenPerS > 0) return `+${spec.powerGenPerS} E/s`;
+  if (spec.powerDrainPerS > 0) return `−${spec.powerDrainPerS} E/s`;
+  return '0 E/s';
+}
+
 function categoryForBuilding(building: BuildingKind): 'Command' | 'Economy' | 'Power' {
   if (building === 'commandHub') return 'Command';
   if (building === 'solar') return 'Power';
@@ -245,20 +277,22 @@ function makeCard(
   colonyStage: number | undefined,
   data: CompiledDataLike,
   colonyIndex = 0,
+  spec?: CatalogBalance,
 ): BuildingCardModel {
   const building = String(row.building) as BuildingKind;
   const label = typeof row.label === 'string' ? row.label : (LABELS[building] ?? building);
   const tier = typeof row.tier === 'number' ? row.tier : 1;
   const unlockStage = resolveRowUnlockStage(row);
   const defaultFp = typeof row.footprint === 'number' ? row.footprint : 1;
-  const footprintW = typeof row.footprintW === 'number' ? row.footprintW : defaultFp;
-  const footprintD = typeof row.footprintD === 'number' ? row.footprintD : defaultFp;
+  const footprintW = spec ? spec.footprintW : (typeof row.footprintW === 'number' ? row.footprintW : defaultFp);
+  const footprintD = spec ? spec.footprintD : (typeof row.footprintD === 'number' ? row.footprintD : defaultFp);
   const footprintText = `${footprintW}×${footprintD}`;
-  const designBuildS =
-    typeof row.designBuildS === 'number' ? row.designBuildS : (Number(row.buildS ?? 0) * TICK_MS) / 1000;
+  const designBuildS = spec
+    ? spec.buildS
+    : (typeof row.designBuildS === 'number' ? row.designBuildS : (Number(row.buildS ?? 0) * TICK_MS) / 1000);
   const hqBuildS = Number((designBuildS / 1.5).toFixed(1));
-  const cost = (row.cost as Record<string, number>) ?? {};
-  const powerText = formatPower(row);
+  const cost = spec ? costFromSpec(spec.cost) : ((row.cost as Record<string, number>) ?? {});
+  const powerText = spec ? specPowerText(spec) : formatPower(row);
 
   const effColonyIndex = resolveEffectiveColonyIndex(view, colonyIndex);
   const tradeUnlock =
@@ -314,6 +348,7 @@ export function buildConstructionCatalog(
   flags: ReadonlySet<string> | FlagSet,
   view?: GameView,
   colonyIndex = 0,
+  specs?: readonly CatalogBalance[] | null,
 ): BuildingCardModel[] {
   const fs = toFlagSet(flags);
   const data = clientDataFor(fs);
@@ -383,7 +418,9 @@ export function buildConstructionCatalog(
     if (row !== tradeHubRow && colonyStage !== undefined && itemStage > colonyStage + 1) {
       continue;
     }
-    cards.push(makeCard(row, view, fs, colonyStage, data, colonyIndex));
+    const tier = typeof row.tier === 'number' ? row.tier : 1;
+    const spec = specs?.find((s) => s.building === String(row.building) && s.tier === tier);
+    cards.push(makeCard(row, view, fs, colonyStage, data, colonyIndex, spec));
   }
 
   return cards;

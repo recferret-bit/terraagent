@@ -11,6 +11,7 @@ import { placementBlockText } from './placement';
 import { constructionOrdersOf } from './orders';
 import { stepConstruction } from './site';
 
+export * from './buildingCatalog';
 export * from './build';
 export * from './cancel';
 export * from './orders';

@@ -5,6 +5,7 @@ import type { Logger } from 'pino';
 import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
 import { corsOrigin } from '../core/cors';
+import type { SectorAntiCheatService } from '../core/anticheat';
 import type { EventBus } from '../bus/event-bus';
 import type { MarketBookBusEvent } from '../market/api/market-book-push.service';
 import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.service';
@@ -32,6 +33,7 @@ export interface GatewayOptions {
   readonly verifier: SessionVerifier;
   readonly ingress: CommandIngress;
   readonly home?: HomeProvider;
+  readonly antiCheat?: SectorAntiCheatService;
   readonly digests?: ConnectionDeps['digests'];
   readonly flags: readonly string[];
   readonly seatDevScenario?: ConnectionDeps['seatDevScenario'];
@@ -67,7 +69,7 @@ export class WsGateway {
   private presenceSeq = 0;
 
   constructor(private readonly o: GatewayOptions) {
-    this.rooms = new PlanetRooms(o.planets);
+    this.rooms = new PlanetRooms(o.planets, o.antiCheat);
     this.originOk = corsOrigin(o.env);
     this.unwarp = o.planets.onWarp((planetId, k) => this.rooms.broadcast(planetId, encodeWire({
       v: 1, t: 'event', tick: 0, d: { kind: 'dev.warp', severity: 'info', atTick: 0, colonyIds: [], data: { k } },
@@ -139,7 +141,7 @@ export class WsGateway {
 
   private accept(ws: import('ws').WebSocket): void {
     const deps: ConnectionDeps = {
-      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, digests: this.o.digests, flags: this.o.flags,
+      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, antiCheat: this.o.antiCheat, digests: this.o.digests, flags: this.o.flags,
       seatDevScenario: this.o.seatDevScenario,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),

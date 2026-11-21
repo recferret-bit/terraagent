@@ -13,6 +13,7 @@ import {
 import { MAX_COLONY_PROJECTORS, updateColonyProjectorsAndVision, type ColonyProjectorDesc } from '@terra/render/lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, EntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
 import { getArchetypeLights, peekArchetypeLights } from '@terra/render/lighting/archetypeLights';
+import { applyBuildingLight } from '@terra/render/lighting/buildingLights';
 import { projectorCosOuter } from '@terra/render/lighting/projectorCone';
 import {
   WorkParticleSystem,
@@ -197,13 +198,27 @@ export class SpawnSet {
     }
   }
 
-  private syncProjectors(selectedId: string, lightsMode: boolean, nightMode: boolean) {
+  /** Bulbs and beams follow the day/night switch. A ruin stays dark. */
+  private applyNightLights(nightMode: boolean): void {
+    const level = nightMode ? 1 : 0;
+    const power = nightMode ? 1.35 : 0;
+    for (const s of this.spawns) {
+      applyBuildingLight(s.mesh, isArchetypeRuin(s.mesh) ? 0 : level, isArchetypeRuin(s.mesh) ? 0 : power);
+    }
+  }
+
+  private syncProjectors(selectedId: string, nightMode: boolean) {
+    this.applyNightLights(nightMode);
+    if (!nightMode) {
+      updateColonyProjectorsAndVision({ projectors: [], visionSources: [], fovEnabled: false, nightFactor: 0 });
+      return;
+    }
     this.content.updateMatrixWorld(true);
     const ordered = selectedId
       ? [...this.spawns.filter((s) => s.id === selectedId), ...this.spawns.filter((s) => s.id !== selectedId)]
       : this.spawns;
     const projectors: ColonyProjectorDesc[] = [];
-    const boost = nightMode ? 1.35 : lightsMode ? 1.0 : 0.35;
+    const boost = 1.35;
     for (const s of ordered) {
       if (s.floraDispose || isArchetypeRuin(s.mesh)) continue;
       const lights = peekArchetypeLights(s.id); // per frame: no copy
@@ -225,14 +240,13 @@ export class SpawnSet {
       }
       if (projectors.length >= MAX_COLONY_PROJECTORS) break;
     }
-    const nightFactor = nightMode ? 1.35 : lightsMode ? 0.95 : 0.25;
-    updateColonyProjectorsAndVision({ projectors, visionSources: [], fovEnabled: false, nightFactor });
+    updateColonyProjectorsAndVision({ projectors, visionSources: [], fovEnabled: false, nightFactor: 1.35 });
   }
 
   /** `work` = biped work-pose weight (`uWorkWeight`, 0..1); `pose` overrides vertebrate behavioral animation state. */
-  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0, selectedId = '', lightsMode = false, nightMode = false, workTarget: InteractionTargetKind = 'tree', pose: VertebratePoseMode = 'auto') {
+  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0, selectedId = '', nightMode = false, workTarget: InteractionTargetKind = 'tree', pose: VertebratePoseMode = 'auto') {
     if (turntable) this.content.rotation.y = row ? 0 : this.content.rotation.y + dt * 0.5; // rotate object(s), grid stays calibrated; rows stay readable
-    this.syncProjectors(selectedId, lightsMode, nightMode);
+    this.syncProjectors(selectedId, nightMode);
     for (const s of this.spawns) {
       if (s.floraTimeU) { s.floraTimeU.value = time; continue; }
       if (s.floraDispose) continue;

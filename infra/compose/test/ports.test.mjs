@@ -30,7 +30,7 @@ function published(service) {
     .map((port) => String(port));
 }
 
-test('only nginx publishes port 80 and postgres publishes none', () => {
+test('only nginx publishes ports 80/443 and postgres publishes none', () => {
   const found = [];
   let sawPostgres = false;
   for (const { file, profile } of FILES) {
@@ -48,10 +48,10 @@ test('only nginx publishes port 80 and postgres publishes none', () => {
     }
   }
   assert.equal(sawPostgres, true, 'profile server must include postgres');
-  assert.ok(found.length >= 1, 'nginx must publish port 80');
+  assert.ok(found.some((row) => row.port === '80'), 'nginx must publish port 80');
   for (const row of found) {
     assert.equal(row.file, 'infra/compose/infra.yml');
     assert.equal(row.name, 'nginx');
-    assert.equal(row.port, '80');
+    assert.ok(row.port === '80' || row.port === '443', `unexpected published port ${row.port}`);
   }
 });

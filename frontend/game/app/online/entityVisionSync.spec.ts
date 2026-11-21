@@ -5,6 +5,7 @@ import { compileData, ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import type { EntityMeshRecord } from './EntityMeshRecord';
 import { getColonyVisionUniforms, isWorldPointInColonyFov, resetColonyVisionAndLights } from '@terra/render/lighting';
 import type { HexTerrain } from '@terra/render/planets/hex';
+import { colonyNightBlend, computeSolarState, resetDayNightParams, setDayNight, setDayNightParams } from '@terra/render/core/dayNightConfig';
 import { COLONY_FADE_IN_S, syncColonyVisionAndProjectors } from './entityVisionSync';
 
 const terrain = { radius: 4 } as unknown as HexTerrain;
@@ -36,6 +37,33 @@ describe('colony vision gate during the space phase / descent (RN-41)', () => {
 });
 
 
+describe('evening colony night', () => {
+  afterEach(() => {
+    resetDayNightParams('sync');
+    resetColonyVisionAndLights();
+  });
+
+  it('eases the night factor across sunset instead of slamming it', () => {
+    setDayNight(true);
+    const mesh = new THREE.Object3D();
+    const record = { kind: ENTITY_KIND.hq, owner: 0, hp: 100, state: ENTITY_STATE.idle, mesh, buildStage: 1 } as EntityMeshRecord;
+    let prev = -1;
+    for (let h = 17; h <= 20; h += 0.1) {
+      setDayNightParams({ timeOfDay: h }, 'sync');
+      syncColonyVisionAndProjectors({ records: [record], ownerColonyIndex: 0, terrain, tiles: null });
+      const night = getColonyVisionUniforms().uNightFactor.value as number;
+      if (prev >= 0) expect(Math.abs(night - prev)).toBeLessThan(0.08);
+      prev = night;
+    }
+    setDayNightParams({ timeOfDay: 18.25 }, 'sync');
+    syncColonyVisionAndProjectors({ records: [record], ownerColonyIndex: 0, terrain, tiles: null });
+    const dusk = getColonyVisionUniforms().uNightFactor.value as number;
+    expect(dusk).toBeGreaterThan(0.5);
+    expect(dusk).toBeLessThan(0.75);
+    expect(dusk).toBeCloseTo(colonyNightBlend(18.25, computeSolarState().daylight).nightFactor, 5);
+  });
+});
+
 describe('all owned active units reveal terrain', () => {
   afterEach(resetColonyVisionAndLights);
 
@@ -58,5 +86,24 @@ describe('all owned active units reveal terrain', () => {
     scout.hp = 0;
     syncColonyVisionAndProjectors({ records: [...buildings, scout], ownerColonyIndex: 0, terrain, tiles: null });
     expect(isWorldPointInColonyFov(60, 0)).toBe(false);
+  });
+
+  it('does not light a landed pod, and a spawned unit takes its sight with it', () => {
+    const record = (kind: number, x: number, state = ENTITY_STATE.idle): EntityMeshRecord => {
+      const mesh = new THREE.Object3D();
+      mesh.position.x = x;
+      return { kind, owner: 0, hp: 100, state, mesh, buildStage: 1 } as EntityMeshRecord;
+    };
+    const pod = record(ENTITY_KIND.pod, 0);
+    syncColonyVisionAndProjectors({ records: [pod], ownerColonyIndex: 0, terrain, tiles: null });
+    expect(isWorldPointInColonyFov(0, 0)).toBe(false);
+
+    const bot = record(ENTITY_KIND.hq, 0);
+    syncColonyVisionAndProjectors({ records: [pod, bot], ownerColonyIndex: 0, terrain, tiles: null });
+    expect(isWorldPointInColonyFov(0, 0)).toBe(true);
+    bot.mesh.position.x = 40;
+    syncColonyVisionAndProjectors({ records: [pod, bot], ownerColonyIndex: 0, terrain, tiles: null });
+    expect(isWorldPointInColonyFov(0, 0)).toBe(false);
+    expect(isWorldPointInColonyFov(40, 0)).toBe(true);
   });
 });

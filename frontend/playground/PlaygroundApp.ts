@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { createFramePacer } from '@terra/render/core/framePacer';
 import { setDayNightExternalSync } from '@terra/render/core/dayNightConfig';
+import { pinStorybookSolar } from './stage/solarPreview';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
 import { isShadowOn, onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
 import { onArchetypeLightsChange } from '@terra/render/lighting/archetypeLights';
@@ -56,7 +58,7 @@ export class PlaygroundApp {
   private marchPanel: MarchPanel;
   private hasFramedOnce = false;
   private hasStarted = false;
-  private clock = new THREE.Clock();
+  private pacer = createFramePacer({ maxDt: 0.05 });
   private time = 0;
 
   constructor(private params: URLSearchParams) {
@@ -90,9 +92,10 @@ export class PlaygroundApp {
       },
       onDepositStage: (s) => this.setDepositStage(s),
       onTileState: (ts) => this.setTileState(ts),
+      onNight: (night) => this.setNight(night),
     });
     this.lightsPanel = new LightsPanel(this.state, {
-      onNightToggle: () => this.syncStageLighting(),
+      onNightToggle: (night) => this.setNight(night),
       onClose: () => { if (this.state.lights) this.toggle('lights'); },
     });
     this.faunaPanel = new FaunaScenePanel(this.state, () => this.faunaHost.getStats(), {
@@ -128,6 +131,7 @@ export class PlaygroundApp {
     bindKeys({
       cycle: (d) => this.cycle(d), view: (v) => this.setView(v), toggle: (k) => this.toggle(k), focus: () => this.focusSelected(),
       revealSearch: () => { setDockHidden('side', false); this.sidebar.showTab('units'); },
+      night: () => this.setNight(!this.state.night),
     });
   }
 
@@ -174,10 +178,10 @@ export class PlaygroundApp {
     return createPlaygroundDebug({
       state: this.state, viewport: this.viewport, cam: this.cam, spawns: () => this.spawns.spawns,
       hexTerrain: () => this.hexSample.hexTerrain, faunaHost: this.faunaHost, wildlifeHost: this.wildlife.host, marchHost: this.marchHost,
-      select: (id) => this.select(id), setView: (v) => this.setView(v),
-      setPlanet: (k) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k) => this.toggle(k),
-      contactSheet: () => this.contactSheet(), setBuild: (s) => this.setBuild(s),
-      setWorkTarget: (t, ew) => this.setWorkTarget(t, ew), setDepositStage: (s) => this.setDepositStage(s), setTileState: (ts) => this.setTileState(ts),
+      select: (id) => this.select(id), setView: (v) => this.setView(v), setPlanet: (k) => { this.state.kind = k; this.applyPlanet(); },
+      toggle: (k) => this.toggle(k), setNight: (on) => this.setNight(on), contactSheet: () => this.contactSheet(),
+      setBuild: (s) => this.setBuild(s), setWorkTarget: (t, ew) => this.setWorkTarget(t, ew),
+      setDepositStage: (s) => this.setDepositStage(s), setTileState: (ts) => this.setTileState(ts),
       setFaunaScene: (s, o) => this.setFaunaScene(s, o), setFaunaMode: (m) => this.setFaunaMode(m), setFaunaSeed: (s) => this.setFaunaSeed(s),
       pauseFauna: (p) => this.pauseFauna(p), stepFauna: (t) => this.stepFauna(t), resetFauna: (s) => this.resetFauna(s),
       triggerAcidPreview: () => this.triggerAcidPreview(), setVertebratePose: (p) => this.setVertebratePose(p),
@@ -198,16 +202,11 @@ export class PlaygroundApp {
   private applyPlanet() {
     const { state } = this;
     this.viewport.applySky(PLANET_SPECS[state.kind]);
-    this.syncStageLighting();
-    this.buildStage();
-    this.rebuildContent();
+    this.syncStageLighting(); this.buildStage(); this.rebuildContent();
     this.faunaHost.setBiome(PLANET_SPECS[state.kind].biomeKey);
     if (state.wildlife !== null) this.wildlife.host.setScene(state.wildlife, { hour: state.wildlifeHour, wire: state.wire });
     if (state.march) this.marchHost.setActive(true, { pace: state.march, rock: state.marchRock, biomeKey: PLANET_SPECS[state.kind].biomeKey });
-    this.syncSurface();
-    this.toolbar.setPlanet(state.kind);
-    this.faunaPanel?.render();
-    this.wildlife.panel.render();
+    this.syncSurface(); this.toolbar.setPlanet(state.kind); this.faunaPanel?.render(); this.wildlife.panel.render();
   }
 
   private syncFaunaStage() {
@@ -217,9 +216,7 @@ export class PlaygroundApp {
     if (active || state.wildlife !== null) this.spawns.ring.visible = false;
     else this.spawns.updateRing(state.id, !!state.row || !!state.floraRow);
     this.faunaHost.setScene(state.faunaScene, { mode: state.faunaMode, seed: state.faunaSeed, biomeKey: PLANET_SPECS[state.kind].biomeKey, wire: state.wire });
-    this.syncSurface();
-    this.faunaPanel?.render();
-    this.refreshInfo();
+    this.syncSurface(); this.faunaPanel?.render(); this.refreshInfo();
   }
 
   private setFaunaScene(scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) {
@@ -229,9 +226,7 @@ export class PlaygroundApp {
     if (opts?.mode) this.state.faunaMode = opts.mode;
     else if (scene && this.state.faunaMode !== 'robots') this.state.faunaMode = 'bugs';
     if (opts?.seed !== undefined && Number.isFinite(opts.seed)) this.state.faunaSeed = Math.trunc(opts.seed);
-    this.syncFaunaStage();
-    this.setView(this.state.view);
-    syncURL(this.state);
+    this.syncFaunaStage(); this.setView(this.state.view); syncURL(this.state);
     return this.faunaHost.getStats();
   }
 
@@ -239,14 +234,12 @@ export class PlaygroundApp {
     const { state } = this;
     if (state.march) {
       this.marchHost.setActive(true, { pace: state.march, rock: state.marchRock, biomeKey: PLANET_SPECS[state.kind].biomeKey });
-      this.spawns.content.visible = false;
-      this.spawns.ring.visible = false;
+      this.spawns.content.visible = false; this.spawns.ring.visible = false;
     } else {
       this.marchHost.setActive(false);
       this.spawns.content.visible = state.faunaScene === null && state.wildlife === null;
     }
-    this.marchPanel.render();
-    this.refreshInfo();
+    this.marchPanel.render(); this.refreshInfo();
   }
 
   private setMarch(pace: MarchPace | null) {
@@ -315,7 +308,21 @@ export class PlaygroundApp {
   }
 
   private triggerAcidPreview() { this.faunaHost.triggerAcidPreview(); this.faunaPanel?.render(); return this.faunaHost.getStats(); }
-  private syncStageLighting() { this.rig.syncLighting(this.viewport, this.state.kind, !!this.lightsPanel?.isNightPreview); }
+
+  /** Toolbar, `n`, and the lights-panel Night button all write this one flag. */
+  setNight(on: boolean) {
+    this.state.night = on;
+    this.syncStageLighting();
+    this.toolbar.syncToggles();
+    this.lightsPanel.syncNightButton();
+    syncURL(this.state);
+  }
+
+  private syncStageLighting() {
+    // Day must be a sunlit hour. A saved night clock would zero the sun while the bulbs are also off.
+    pinStorybookSolar(this.state.night);
+    this.rig.syncLighting(this.viewport, this.state.kind, this.state.night);
+  }
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
@@ -468,31 +475,22 @@ export class PlaygroundApp {
     }
     this.toolbar.syncToggles(); syncURL(state);
   }
-
-  private contactSheet(): string {
-    const url = contactSheet(this.viewport, this.cam, this.state, this.bounds());
-    toast('4-view contact sheet saved');
-    return url;
-  }
+  private contactSheet(): string { const url = contactSheet(this.viewport, this.cam, this.state, this.bounds()); toast('4-view contact sheet saved'); return url; }
 
   // ---------------------------------------------------------------- loop
-  private frame = () => {
-    const dt = Math.min(this.clock.getDelta(), 0.05);
-    this.time += dt;
-    this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row || !!this.state.floraRow, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget, this.state.pose);
+  private frame = (now = performance.now()) => {
+    requestAnimationFrame(this.frame);
+    const dt = this.pacer.next(now);
+    if (dt === null) return;
+    this.time += dt; this.cam.step(dt);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row || !!this.state.floraRow, this.state.work ? 1 : 0, this.state.id, this.state.night, this.state.workTarget, this.state.pose);
     this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
-    this.wildlife.host.update(dt);
-    this.marchHost.update(dt, this.time);
+    this.wildlife.host.update(dt); this.marchHost.update(dt, this.time);
     if (this.state.faunaScene !== null) this.faunaPanel.renderStats();
     if (this.state.wildlife !== null) this.wildlife.panel.renderStats();
     if (this.state.march) this.marchPanel.renderStats();
     if (this.state.march || this.state.faunaScene !== null || this.state.wildlife !== null) this.refreshInfo();
-    this.cam.controls.update();
-    this.surface.update(dt, this.time);
-    this.hexSample.update(dt);
-    this.viewport.followShadow(this.cam.controls.target);
-    this.viewport.render();
-    requestAnimationFrame(this.frame);
+    this.cam.controls.update(); this.surface.update(dt, this.time); this.hexSample.update(dt);
+    this.viewport.followShadow(this.cam.controls.target); this.viewport.render();
   };
 }

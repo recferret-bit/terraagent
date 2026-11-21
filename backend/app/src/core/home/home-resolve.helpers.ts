@@ -72,6 +72,7 @@ export interface ResolveHomeOptions {
   readonly preferredType?: DevPlanetType;
   readonly colonyId?: string;
   readonly sectorId?: string;
+  readonly planetId?: string;
 }
 
 export function createSpawnColonyCommand(assignment: ColonySeatAssignment): SimCommandV1 {

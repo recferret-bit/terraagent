@@ -158,3 +158,41 @@ describe('WorldStore away digest', () => {
     store.dispose();
   });
 });
+
+describe('WorldStore building catalog', () => {
+  const bare = {
+    v: 1 as const,
+    t: 'welcome' as const,
+    d: {
+      reason: 'join' as const, colonyId: null, planet: { id: 'pl_x', type: 'temperate' as const, name: 'x' },
+      state: new Uint8Array(), simVersion: 1, dataHash: 'h', tick: 0, serverTimeMs: 1,
+      tickMs: 200 as const, deltaHz: 5 as const, flags: ['W00', 'W01', 'W02'],
+    },
+  };
+  const buildings = [{
+    id: 'solar', building: 'solar', label: 'Solar', tier: 1, footprintW: 4, footprintD: 3, buildS: 40, hp: 10,
+    powerDrainPerS: 2, powerGenPerS: 0, cost: { 'metals.t1': 9 }, archetype: 'building.solar',
+    requiresDeposit: null, hqOnly: false, allowUnclaimed: true, maxPerColony: null,
+  }];
+
+  it('is null before welcome and returns the welcome rows after', () => {
+    const t = new FakeTransport();
+    const store = new WorldStore(t, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
+    store.start(['W02']);
+    expect(store.buildingCatalog()).toBeNull();
+    t.msgs.emit(bare as never);
+    expect(store.buildingCatalog()).toBeNull();
+    t.msgs.emit({ ...bare, d: { ...bare.d, buildings } } as never);
+    expect(store.buildingCatalog()).toEqual(buildings);
+    t.msgs.emit({
+      v: 1, t: 'delta',
+      d: {
+        fromTick: 0, toTick: 1, diff: new Uint8Array(),
+        events: [{ kind: 'dev.tuned', severity: 'info', atTick: 1, colonyIds: [], data: { op: 'set', path: 'hub.t1.hp', value: 9, dataHash: 'x' } }],
+      },
+    } as never);
+    expect(store.buildingCatalog()).toEqual(buildings);
+    expect(store.simData()?.tables.hub?.t1?.hp).toBe(9);
+    store.dispose();
+  });
+});

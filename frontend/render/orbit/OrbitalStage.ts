@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { CreateOrbitalStage, OrbitalGlobeMarkerInput, OrbitalProjectedFrame, OrbitalStage } from './types';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from '../core/createColonyViewport';
+import { enqueueDeferredDispose } from '../core/deferredDispose';
 import { clearTransientWeather } from '../core/weatherConfig';
 import type { DescentHandoff } from '../descent/types';
 import { createSpaceBackdrop, type SpaceBackdrop } from '../visuals/space/SpaceBackdrop';
@@ -39,9 +40,12 @@ class OrbitalStageImpl implements OrbitalStage {
   private readonly carrier: FittedModel;
   private readonly deploy: DeploySequence;
   private readonly cameraDive: OrbitalCameraDive;
+  private readonly viewport: ColonyViewport;
   private lastTime = 0;
+  private disposed = false;
 
   constructor(viewport: ColonyViewport, spec: PlanetSpec) {
+    this.viewport = viewport;
     const { scene, sunDir } = this;
     scene.name = 'orbital:stage';
     scene.userData.isOrbitalSpace = true;
@@ -75,7 +79,11 @@ class OrbitalStageImpl implements OrbitalStage {
     this.cameraDive = new OrbitalCameraDive(deployHost);
   }
 
-  beginDeploy(h: DescentHandoff, opts: { biomeKey?: string } = {}) { return this.deploy.begin(h, opts); }
+  beginDeploy(h: DescentHandoff, opts: { biomeKey?: string } = {}) {
+    const res = this.deploy.begin(h, opts);
+    try { this.viewport.renderer.compile?.(this.scene, this.camera); } catch { /* headless fallback */ }
+    return res;
+  }
   retargetDeploy(h: DescentHandoff) { return this.deploy.retarget(h); }
   deployProgress() { return this.deploy.progress(); }
   deployTn() { return this.deploy.tn(); }
@@ -125,7 +133,29 @@ class OrbitalStageImpl implements OrbitalStage {
     tickArchetypeMesh(this.carrier.mesh, time);
   }
 
+  disposeDeferred() {
+    if (this.disposed) return;
+    this.disposed = true;
+    const { camera, scene } = this;
+    camera.near = 0.5; camera.fov = 28; camera.updateProjectionMatrix();
+    scene.environment = null;
+    this.globes.disposeDeferred();
+    enqueueDeferredDispose(
+      () => this.highlights.dispose(),
+      () => this.layers.dispose(),
+      () => this.moons.dispose(),
+      () => this.satellites.dispose(),
+      () => this.deploy.dispose(),
+      () => this.cameraDive.dispose(),
+      () => this.backdrop.dispose(),
+      () => this.sun.dispose(scene),
+      () => this.carrier.dispose(),
+    );
+  }
+
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     const { camera } = this;
     this.globes.dispose();
     this.highlights.dispose();

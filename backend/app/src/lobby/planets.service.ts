@@ -151,11 +151,7 @@ export class PlanetsService {
    * Builds validated `PlanetSummaryV1` objects for all three canonical planet types.
    */
   async listPlanetSummaries(): Promise<PlanetSummaryV1[]> {
-    const out: PlanetSummaryV1[] = [];
-    for (const type of CANONICAL_PLANET_TYPES) {
-      out.push(await this.buildSummaryForCanonicalType(type));
-    }
-    return out;
+    return Promise.all(CANONICAL_PLANET_TYPES.map((type) => this.buildSummaryForCanonicalType(type)));
   }
 
   /**

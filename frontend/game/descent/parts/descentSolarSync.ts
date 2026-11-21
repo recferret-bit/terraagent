@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  colonyNightBlend,
   computeSolarState,
   getDayNightParams,
   isDayNightOn,
@@ -114,7 +115,7 @@ export interface DescentSolarTarget {
   readonly daylight: number;
   readonly twilight: number;
   readonly nightFactor: number;
-  /** Matches `entityVisionSync` (`max(1 - daylight, nightGateRaw * 0.88)`) so `uNightFactor` never steps at tn=32. */
+  /** Same curve as `colonyNightBlend`, so the colony handoff does not step `uNightFactor`. */
   readonly shaderNightFactor: number;
   readonly nightBrightness: number;
   readonly skyTop: THREE.Color;
@@ -306,15 +307,13 @@ export class DescentSolarEvaluator {
     const effHour = this.stepDisplayHour(dn.timeOfDay, dtSec);
     Object.assign(_tmpParams, dn, { timeOfDay: effHour });
     const solar = computeSolarState(_tmpParams, sp.sunAzimuth, sp.sunElevation, s.sunColor);
-    const nightFactor = 1 - solar.daylight;
-    const rawSin = Math.sin(((solar.hour / 24) - 0.25) * Math.PI * 2);
-    const nightGateRaw = THREE.MathUtils.smoothstep(-rawSin, 0.001, 0.035);
+    const nightFactor = colonyNightBlend(solar.hour, solar.daylight).nightFactor;
 
     o.hour = solar.hour;
     o.daylight = solar.daylight;
     o.twilight = solar.twilight;
     o.nightFactor = nightFactor;
-    o.shaderNightFactor = Math.max(nightFactor, nightGateRaw * 0.88);
+    o.shaderNightFactor = nightFactor;
     o.nightBrightness = dn.nightBrightness;
 
     o.skyTop
@@ -359,10 +358,11 @@ export class DescentSolarEvaluator {
       o.keySunDir.set(Math.cos(kAzim) * Math.cos(kElev), Math.sin(kElev), Math.sin(kAzim) * Math.cos(kElev)).normalize();
     }
 
+    const rawSin = Math.sin(((solar.hour / 24) - 0.25) * Math.PI * 2);
     const noonPeakRad = THREE.MathUtils.degToRad(clamp(Math.max(sp.sunElevation, 46), 18, 82));
-    const minDayRad = THREE.MathUtils.degToRad(8);
+    // Meets the night side at the horizon. The old day arc bottomed at 8°, so the terminator jumped as the sun set.
     const astroElev = rawSin >= 0
-      ? minDayRad + (noonPeakRad - minDayRad) * Math.pow(rawSin, 0.78)
+      ? noonPeakRad * Math.pow(rawSin, 0.78)
       : rawSin * THREE.MathUtils.degToRad(48);
     const azim = THREE.MathUtils.degToRad(solar.sunAzimuth);
     const horiz = Math.cos(astroElev);

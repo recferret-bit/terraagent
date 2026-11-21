@@ -51,8 +51,24 @@ export interface ChunkBuffers {
   /** Shoreline weight [0..1] of the tile (water tile or dry tile bordering water); drives the beach band. */
   aHexShore: Float32Array;
   index: Uint32Array;
+  /** Filtered index containing only triangles with at least one rock vertex (`aRock >= 0.001`), for fast shadow passes. */
+  rockIndex?: Uint32Array;
   /** Tile index of each vertex (a chunk also holds the border vertices of its neighbours' tiles). */
   vertexTile: Int32Array;
+}
+
+/** Filters `index` down to triangles with at least one rock vertex (`aRock >= 0.001`). */
+export function buildRockShadowIndex(index: ArrayLike<number>, aRock: ArrayLike<number>): Uint32Array {
+  const rock: number[] = [];
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const i0 = index[i]!;
+    const i1 = index[i + 1]!;
+    const i2 = index[i + 2]!;
+    if ((aRock[i0] ?? -1) >= 0.001 || (aRock[i1] ?? -1) >= 0.001 || (aRock[i2] ?? -1) >= 0.001) {
+      rock.push(i0, i1, i2);
+    }
+  }
+  return Uint32Array.from(rock);
 }
 
 export const tileHashU32 = latticeHashU32;
@@ -274,10 +290,30 @@ function horizonAO(hx: ReturnType<typeof hexIndex>, i: number, height: ArrayLike
   return Math.max(0.88, Math.min(1, 1 - occ * 0.25));
 }
 
-function isWaterAt(layers: HexTileLayers, i: number): boolean {
+export function isWaterAt(layers: HexTileLayers, i: number): boolean {
   if (!layers.terrain || i < 0 || isClearedPrep(layers.prep?.[i] ?? 0)) return false;
   const t = layers.terrain[i] ?? 0;
   return t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep;
+}
+
+/** True for non-dune dry land tiles (excluding craters/rock crags and cleared prep) that touch at least one water tile. */
+export function isDryShoreTile(
+  hx: ReturnType<typeof hexIndex>,
+  i: number,
+  layers: HexTileLayers,
+): boolean {
+  if (!layers.terrain || layers.kind === 'dune') return false;
+  if (isWaterAt(layers, i)) return false;
+  if (isClearedPrep(layers.prep?.[i] ?? 0)) return false;
+  const t = layers.terrain[i] ?? 0;
+  if (t === HEX_TERRAIN.hole || t === HEX_TERRAIN.rock) return false;
+  const q = hx.q[i]!;
+  const r = hx.r[i]!;
+  for (const [dq, dr] of HEX_DIRS) {
+    const j = hx.indexOf(q + dq, r + dr);
+    if (j >= 0 && isWaterAt(layers, j)) return true;
+  }
+  return false;
 }
 
 /** Shoreline weight [0..1] for non-dune water tiles and dry land tiles bordering water. */
@@ -357,13 +393,16 @@ export function buildChunk(
     aRock[v] = st.rock;
     aHexShore[v] = tileShoreFactor(hx, i, layers);
   }
+  const index = Uint32Array.from(idx);
+  const rockIndex = hasTerrain ? buildRockShadowIndex(index, aRock) : new Uint32Array(0);
   return {
     position,
     normal,
     aAO,
     aRock,
     aHexShore,
-    index: Uint32Array.from(idx),
+    index,
+    rockIndex,
     vertexTile: Int32Array.from(order),
   };
 }

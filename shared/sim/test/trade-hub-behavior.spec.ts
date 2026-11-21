@@ -91,8 +91,8 @@ describe('W10-04 Trade Hub placement, construction & wave gating', () => {
     expect(placement.ok).toBe(true);
     expect(placement.preparedCount).toBe(1);
     expect(placement.unpreparedCount).toBe(3);
-    expect(placement.bill.tilesToPrepare).toBe(3);
-    expect(placement.bill.ops.grade).toBe(3);
+    expect(placement.bill.tilesToPrepare).toBe(0);
+    expect(placement.bill.ops.grade ?? 0).toBe(0);
 
     const colony = ensureColony(state, 0, 0);
     const stock = colony.stock as Record<string, number>;

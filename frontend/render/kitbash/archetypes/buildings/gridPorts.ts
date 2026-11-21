@@ -17,5 +17,5 @@ export function gridPort(b: KitbashBuilder, id: string, baseY: number): void {
   const [x, y, z] = GRID_PORTS[id];
   cyl(b, 'frameGunmetal', 0.065, 0.09, y - baseY, [x, baseY, z], { seg: 6, name: 'grid antenna mast' });
   cyl(b, 'hullSecondary', 0.12, 0.12, 0.18, [x, y - 0.22, z], { seg: 6, name: 'grid terminal collar' });
-  lamp(b, 'energyCyan', 0.09, [x, y, z], { seg: 6, hSeg: 3, name: 'grid terminal light' });
+  lamp(b, 'energyCyan', 0.09, [x, y, z], { seg: 6, hSeg: 3, housing: false, name: 'grid terminal light' });
 }

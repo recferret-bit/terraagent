@@ -33,6 +33,15 @@ export function isPreparedGround(prep: number): boolean {
   return prep === PREP.prepared || prep === PREP.irrigated || prep === PREP.living;
 }
 
+/**
+ * A tile can take a building with no further terraform. Flat ground is already the foundation.
+ * Trees, rock, dunes, holes and water are not: the player terraforms those before placing.
+ */
+export function isFoundationReady(terrain: number, prep: number): boolean {
+  if (prep === PREP.ridge || prep === PREP.moat) return false;
+  return terrain === TERRAIN.flat;
+}
+
 /** How a building treats resource deposits on its footprint. */
 export type DepositRule = 'forbid' | 'require' | 'any';
 

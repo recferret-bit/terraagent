@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type AwayDigestV1, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire, type TreasuryProposalPush } from '@terra/contracts';
+import { flagsFromList, newId, type AwayDigestV1, type BuildingCatalogEntry, type CargoStatusPayload, type DeedUpdatedPayload, type DirectorKeyStatusPayload, type GuildArrivedPayload, type GuildDepartedPayload, type MarketBookPayload, type MarketTradePayload, type ServerMessage, type SimEventWire, type TreasuryProposalPush } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { digestFromWelcome } from './awayWelcome';
 import { ownBytes } from './bytes';
@@ -50,7 +50,16 @@ export class WorldStore {
   /** The planet of the last welcome, or null before it. */
   currentPlanetId(): string | null { return this.planetId || null; }
   /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
-  private welcomeData: { flags: string[]; overrides?: BalanceOverrides; data?: ReturnType<typeof compileData> } | null = null;
+  private welcomeData: {
+    flags: string[];
+    overrides?: BalanceOverrides;
+    data?: ReturnType<typeof compileData>;
+    buildings?: readonly BuildingCatalogEntry[];
+  } | null = null;
+  /** Building balance from the last welcome, or null before one arrives (and when that welcome omitted it). */
+  buildingCatalog(): readonly BuildingCatalogEntry[] | null {
+    return this.welcomeData?.buildings ?? null;
+  }
   /**
    * The compiled balance data the host runs with: the last welcome's flags + overrides, with later live `tune set`s
    * (`dev.tuned` events) applied on top, so client-side rule previews (the placement ghost, D-37) evaluate with the
@@ -237,7 +246,11 @@ export class WorldStore {
     switch (m.t) {
       case 'welcome': {
         this.planetId = m.d.planet.id;
-        this.welcomeData = { flags: [...m.d.flags], overrides: m.d.overrides as BalanceOverrides | undefined };
+        this.welcomeData = {
+          flags: [...m.d.flags],
+          overrides: m.d.overrides as BalanceOverrides | undefined,
+          buildings: m.d.buildings,
+        };
         this.offsetMs = m.d.serverTimeMs - this.now();
         this.baseTick = m.d.tick;
         this.baseLocalMs = this.now();
@@ -340,7 +353,7 @@ export class WorldStore {
       this.worker?.postMessage({ t: 'tune', tune: t }, []);
       const w = this.welcomeData;
       const next = w && applyTuned(w.overrides, t);
-      if (w && next) this.welcomeData = { flags: w.flags, overrides: next };
+      if (w && next) this.welcomeData = { flags: w.flags, overrides: next, buildings: w.buildings };
     }
   }
 

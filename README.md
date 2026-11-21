@@ -335,12 +335,12 @@ Per [`HACKATHON.md`](./HACKATHON.md) (`Q-007`, `Q-010`, `Q-017`), the exact boun
 | Path / Host | Purpose | Key Parameters |
 |---|---|---|
 | `/` · `/landing.html` (`terraagent.fun`) | Hub navigation, orbital showcase, `#economics` calculator & `#protocol` visual schematic | Planet cards deep-link into `/play.html`; live `/v1/near/protocol` hydration |
-| `/play.html` (`play.terraagent.fun`) | 3D colony RTS over `/ws` or offline worker | `?planet=dune\|oceanForest\|forestRock`, `?deploy=1`, `?scenario=w00..w22`, `?host=local`, `?skip=1` |
+| `/play.html` (`play.terraagent.fun`) | 3D colony RTS over `/ws` or offline worker | `?planet=dune\|oceanForest\|forestRock`, `?deploy=1`, `?scenario=w00..w22`, `?host=local`, `?skip=1`, `?pixel=0\|1` (on by default), `?fpsCap=0\|30\|60\|90\|120` (60 by default) |
 | `/trade.html` | Planet CLOB orderbook, depth ladder, swaps & `ta_bot_...` keys | `?planet=<id>&pair=<base>/<quote>&as=<name>` |
 | `/me.html` | Pilot profile, badges, colony history & **BYOK NEAR.AI vault** | Authenticated session (`?as=<name>` in local dev) |
 | `/deed/:tokenId` | Public SSR OpenGraph Colony Deed card & metadata history | Dynamic PNG at `/v1/near/deed/:tokenId/image.png` |
 | `/dev/economy-sim/` | 7-day 3-colony RTS + **20-buyer × 5-seller scripted swarm** & agent receipt simulator | `?seed=<str>&llm=0` (Zero-LLM scripted or live `NEAR.AI` TEE) |
-| `/playground.html` (`playground.terraagent.fun`) | 3D procedural kitbash & shader turntable | `?inspect=<id>&floraRow=tree\|ground&validate=1&biome=<kind>&pose=auto\|walk\|run\|graze\|sleep\|glide\|flap&wildlife=forestRock\|oceanForest\|dune&wildlifeHour=10` |
+| `/playground.html` (`playground.terraagent.fun`) | 3D procedural kitbash & shader turntable. Every catalog building is in the list (that group starts open). **Day / Night** on the View bar (`N`) dims the sun and shows each building's own projector pools | `?inspect=<id>&floraRow=tree\|ground&validate=1&biome=<kind>&night=1&pose=auto\|walk\|run\|graze\|sleep\|glide\|flap&wildlife=forestRock\|oceanForest\|dune&wildlifeHour=10` |
 | `/pitchdeck/` · `/whitepaper/` · `/design/` | Investor deck, technical whitepaper & Faction Plate tokens | Hosted on dedicated `*.terraagent.fun` subdomains |
 
 ### Key In-Game Controls (`/play.html`)

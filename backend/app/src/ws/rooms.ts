@@ -1,4 +1,5 @@
 import { encodeWire, hasEventKind } from '@terra/contracts';
+import type { SectorAntiCheatService } from '../core/anticheat';
 import type { GamePlanets, PlanetSubscriber } from '../game/game-planets.service';
 
 /** A socket as a room sees it. */
@@ -27,13 +28,16 @@ interface Room { readonly members: Set<RoomMember>; readonly unsubscribe: () => 
 export class PlanetRooms {
   private readonly rooms = new Map<string, Room>();
 
-  constructor(private readonly planets: GamePlanets) {}
+  constructor(
+    private readonly planets: GamePlanets,
+    private readonly antiCheat?: Pick<SectorAntiCheatService, 'applyPlanetDelta' | 'applyPlanetEvents'>,
+  ) {}
 
   join(planetId: string, m: RoomMember): void {
     let room = this.rooms.get(planetId);
     if (!room) {
       const members = new Set<RoomMember>();
-      room = { members, unsubscribe: this.planets.subscribe(planetId, this.fanout(members)) };
+      room = { members, unsubscribe: this.planets.subscribe(planetId, this.fanout(planetId, members)) };
       this.rooms.set(planetId, room);
     }
     room.members.add(m);
@@ -72,16 +76,18 @@ export class PlanetRooms {
     return true;
   }
 
-  private fanout(members: Set<RoomMember>): PlanetSubscriber {
+  private fanout(planetId: string, members: Set<RoomMember>): PlanetSubscriber {
     const send = (frame: string | Uint8Array, minTick: number) => {
       for (const m of members) if (m.welcomeTick !== undefined && minTick > m.welcomeTick && this.writable(m)) m.send(frame);
     };
     return {
       onDelta: (d) => {
+        this.antiCheat?.applyPlanetDelta(planetId, d.diff, d.events);
         if (members.size === 0) return;
         send(encodeWire({ v: 1, t: 'delta', tick: d.toTick, d: { fromTick: d.fromTick, toTick: d.toTick, diff: d.diff, events: d.events } }), d.toTick);
       },
       onEvent: (events) => {
+        this.antiCheat?.applyPlanetEvents(planetId, events);
         // Until the delta builder fills `delta`, the thread sends bare events: forward the kinds the contract knows.
         for (const e of events) if (hasEventKind(e.kind)) send(encodeWire({ v: 1, t: 'event', tick: e.atTick, d: e }), e.atTick);
       },

@@ -16,6 +16,7 @@ export interface ToolbarHandlers {
   onWorkTarget(): void;
   onDepositStage(stage: DepositVisualStage): void;
   onTileState(preset: TileStatePreset): void;
+  onNight(night: boolean): void;
 }
 
 const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', work: 'work pose', row: 'spawn row', validate: 'validate parts', lights: 'Lights [L]', human: '1.8m human', ruin: 'ruin' };
@@ -44,7 +45,9 @@ function togs(keys: readonly ToggleKey[]): string {
 
 function viewsHtml(): string {
   const buttons = VIEWS.map((v, i) => `<button class="pg-btn" data-v="${v}" title="${i + 1}">${v}</button>`).join('');
-  return `<div id="views" style="display:flex;gap:4px">${buttons}</div>`;
+  const day = `<button class="pg-btn" data-night="0" title="Day. This is for checking building lights">Day</button>`;
+  const night = `<button class="pg-btn" data-night="1" title="Night. This is for checking building lights">Night</button>`;
+  return `<div id="views" style="display:flex;gap:4px">${buttons}${day}${night}</div>`;
 }
 
 function planetsHtml(): string {
@@ -114,6 +117,7 @@ export class Toolbar {
     ov.innerHTML = overlayHtml();
     if (showBar) ov.appendChild(showBar);
     ov.querySelectorAll<HTMLElement>('#views [data-v]').forEach((b) => (b.onclick = () => this.on.onView(b.dataset.v as View)));
+    ov.querySelectorAll<HTMLElement>('#views [data-night]').forEach((b) => (b.onclick = () => this.on.onNight(b.dataset.night === '1')));
     ov.querySelectorAll<HTMLElement>('#planet-btns [data-v]').forEach((b) => (b.onclick = () => this.on.onPlanet(b.dataset.v as PlanetKind)));
     ov.querySelectorAll<HTMLElement>('#deposit-stage-btns [data-deposit-stage]').forEach(
       (b) => (b.onclick = () => this.on.onDepositStage(b.dataset.depositStage as DepositVisualStage)),
@@ -148,8 +152,12 @@ export class Toolbar {
 
   syncToggles() {
     document.querySelectorAll<HTMLElement>('.tog').forEach((b) => {
-      const k = b.dataset.k as ToggleKey;
+      const k = b.dataset.k as ToggleKey | undefined;
+      if (!k || !TOGGLES.includes(k)) return;
       b.classList.toggle('on', k === 'row' ? !!(this.state.row || this.state.floraRow) : !!this.state[k]);
+    });
+    document.querySelectorAll<HTMLElement>('#views [data-night]').forEach((b) => {
+      b.classList.toggle('on', (b.dataset.night === '1') === this.state.night);
     });
     const build = document.querySelector<HTMLElement>('#build');
     if (build) { build.textContent = `build ${Math.round(this.state.build * 100)}%`; build.classList.toggle('on', this.state.build !== 1); }

@@ -1,7 +1,7 @@
 import type { RejectCode, ResourceKey } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import {
-  GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock, type GeoBuildOptions,
+  GEO_BLOCK_TEXT, geoBuildBlock, isFoundationReady, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock, type GeoBuildOptions,
 } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT } from '../../grid/layers';
@@ -102,7 +102,7 @@ export interface PlacementRule {
 
 /** Why a placement fails; maps 1:1 to a protocol `RejectCode` and a UI text. */
 export type PlacementBlock =
-  | GeoBlock | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy'
+  | GeoBlock | 'unprepared' | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy'
   | 'tierLocked' | 'badArgs' | 'unknownBuilding' | 'farFromLanding' | 'nearOtherColony' | 'outsidePowerZone';
 
 export interface PlacementTile {
@@ -157,7 +157,7 @@ export interface EvaluatePlacementOpts {
 
 const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
   water: 'terrain_unbuildable', trees: 'terrain_unbuildable', rock: 'terrain_unbuildable', slope: 'terrain_unbuildable',
-  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'site_blocked',
+  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', unprepared: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'site_blocked',
   outOfMap: 'site_blocked', occupied: 'site_blocked', hubExists: 'site_blocked',
   foreign: 'not_own_territory', unclaimed: 'not_own_territory',
   noBuilder: 'worker_tier_locked', builderBusy: 'worker_tier_locked', tierLocked: 'tier_locked', badArgs: 'invalid_args',
@@ -167,7 +167,7 @@ const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
 
 const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
   ...GEO_BLOCK_TEXT,
-  uneven: 'uneven ground', outOfMap: 'outside the map', foreign: 'not your territory', unclaimed: 'not your territory',
+  uneven: 'uneven ground', unprepared: 'terraform this ground first', outOfMap: 'outside the map', foreign: 'not your territory', unclaimed: 'not your territory',
   occupied: 'another building is here', hubExists: 'hub already exists', noBuilder: 'requires HQ',
   builderBusy: 'builder unavailable', tierLocked: 'tier locked', badArgs: 'invalid site', unknownBuilding: 'unknown building',
   farFromLanding: 'too far from your landing', nearOtherColony: 'closer to another colony',
@@ -175,7 +175,7 @@ const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
 };
 
 /** Tile-level failures, most important first: the footprint's reason is the highest-ranked one among its tiles. */
-const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'outsidePowerZone', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'uneven', 'deposit', 'noDeposit'];
+const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'outsidePowerZone', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'unprepared', 'uneven', 'deposit', 'noDeposit'];
 
 export const placementRejectCode = (b: PlacementBlock): RejectCode => BLOCK_CODE[b];
 export const placementBlockText = (b: PlacementBlock): string => BLOCK_TEXT[b];
@@ -190,7 +190,6 @@ interface TileContext {
 
 function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileContext, q: number, r: number, tileIdx: number): PlacementTile {
   const { colonyId, occupied, zone, geo } = ctx;
-  const linkedPrep = Boolean(geo.linkedPrep);
   const inMap = tileIdx >= 0 && tileIdx < world.tileCount && (!world.valid || world.valid[tileIdx] !== 0);
   if (!inMap) return { q, r, tileIdx, terrain: -1, prep: -1, deposit: 0, owner: -1, prepared: false, ok: false, block: 'outOfMap' };
   const terrain = world.terrain[tileIdx], prep = world.prep[tileIdx], owner = world.owner[tileIdx];
@@ -205,8 +204,12 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileConte
     const isDepleted = deposit !== 0 && world.richness != null && Number(world.richness[tileIdx] ?? 0) <= 0;
     const effectiveDeposit = rule.deposit === 'require' && isDepleted ? 0 : deposit;
     block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit, geo);
+    // A placeable tile is already a foundation. Obstacles are terraformed by the player first, never by the build.
+    if (!block && !isFoundationReady(terrain, prep)) {
+      block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit) ?? 'unprepared';
+    }
   }
-  if (!block && !(linkedPrep && !tile.prepared) && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
+  if (!block && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
   if (block) { tile.ok = false; tile.block = block; }
   return tile;
 }
@@ -247,11 +250,13 @@ function colonyBlock(world: PlacementWorld, rule: PlacementRule, opts: EvaluateP
 }
 
 function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): PlacementBill {
-  // Only the prep the linked order would really do: buildable tiles. Blocked tiles are not billed (D-37).
-  const buildable = tiles.filter((t) => t.ok);
-  const sum = summarizePrepJobs(planPrepJobs(buildable, data), data);
+  // Only tiles that are not already a foundation. Flat ground is not a terraform bill (D-37).
+  const buildable = tiles.filter((t) => t.ok || !isFoundationReady(t.terrain, t.prep));
+  const jobs = planPrepJobs(buildable, data);
+  const sum = summarizePrepJobs(jobs, data);
+  const tilesToPrepare = new Set(jobs.map((j) => `${j.q},${j.r}`)).size;
   return {
-    tilesToPrepare: tiles.filter((t) => !t.prepared).length,
+    tilesToPrepare,
     totalTiles: tiles.length,
     baseSeconds: sum.baseSeconds,
     hqSeconds: sum.hqSeconds,
@@ -300,7 +305,6 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const idx = hexIndex(world.radius);
   const zone = !rule.isHub && powerZoneActive(opts.data) ? placementPowerZoneSources(world, colonyId, opts.data) : null;
   const geo = geoBuildOptionsFor(world, colonyId, opts.data);
-  const linkedPrep = Boolean(geo.linkedPrep);
   const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone, geo };
   const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, ctx, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
@@ -308,7 +312,7 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
     return { ...fail('outOfMap', tiles, bill), code: 'terrain_unbuildable', reason: 'blocked_terrain' };
   }
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
-  if (!(linkedPrep && tiles.some((t) => !t.prepared)) && footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
+  if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
   if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) return fail('noDeposit', tiles, bill);
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);

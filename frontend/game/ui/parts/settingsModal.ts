@@ -1,17 +1,33 @@
 import {
+  DEFAULT_FPS_CAP,
+  getFpsCap,
   getViewportPreset,
   isShaderOptimized,
+  onPerfConfigChange,
+  parseFpsLimit,
+  setFpsCap,
+  type FpsLimit,
   type ViewportPreset,
 } from '@terra/render/core/perfConfig';
+import {
+  getShadowQuality,
+  onShadowQualityChange,
+  parseShadowQuality,
+  setShadowQuality,
+  SHADOW_QUALITY_PRESETS,
+  type ShadowQualityPreset,
+} from '@terra/render/core/shadowQuality';
 
 const QUALITY_KEY = 'terraagent.quality';
 
 export interface MenuSettings {
   bloom: boolean;
   quality: 'low' | 'high';
+  shadows?: ShadowQualityPreset;
   skipCinematic: boolean;
   optimized: boolean;
   resolution: ViewportPreset;
+  fpsCap: FpsLimit;
 }
 
 export function getSavedGraphicsQuality(): 'low' | 'high' {
@@ -35,9 +51,11 @@ export function createInitialMenuSettings(): MenuSettings {
   return {
     bloom: true,
     quality: getSavedGraphicsQuality(),
+    shadows: getShadowQuality(),
     skipCinematic: false,
     optimized: isShaderOptimized(),
     resolution: getViewportPreset(),
+    fpsCap: getFpsCap(),
   };
 }
 
@@ -48,11 +66,27 @@ const RES_OPTIONS: ReadonlyArray<readonly [ViewportPreset, string]> = [
   ['1280x720', '1280×720'],
 ];
 
+const FPS_OPTIONS: ReadonlyArray<readonly [FpsLimit, string]> = [
+  [0, 'UNCAPPED'],
+  [120, '120 FPS'],
+  [90, '90 FPS'],
+  [60, '60 FPS'],
+  [30, '30 FPS'],
+];
+
 function buildSettingsDialogHtml(settings: MenuSettings): string {
-  const { quality, optimized, resolution } = settings;
+  const { quality, shadows = getShadowQuality(), optimized, resolution, fpsCap } = settings;
+  const shadowRadios = SHADOW_QUALITY_PRESETS.map(
+    (val) =>
+      `<label><input type="radio" name="s-shadows" value="${val}" ${shadows === val ? 'checked' : ''} /><span>${val.toUpperCase()}</span></label>`,
+  ).join('');
   const resRadios = RES_OPTIONS.map(
     ([val, label]) =>
       `<label><input type="radio" name="s-res" value="${val}" ${resolution === val ? 'checked' : ''} /><span>${label}</span></label>`,
+  ).join('');
+  const fpsRadios = FPS_OPTIONS.map(
+    ([val, label]) =>
+      `<label><input type="radio" name="s-fps" value="${val}" ${fpsCap === val ? 'checked' : ''} /><span>${label}</span></label>`,
   ).join('');
 
   return `<div class="hazard-system settings-dialog-bar"></div>
@@ -71,12 +105,20 @@ function buildSettingsDialogHtml(settings: MenuSettings): string {
           <label><input type="radio" name="s-quality" value="low" ${quality === 'low' ? 'checked' : ''} /><span>LOW</span></label>
         </div>
       </div>
+      <div class="radio-group" data-testid="settings-shadows">
+        <div class="field-label">SHADOWS</div>
+        <div class="radios">${shadowRadios}</div>
+      </div>
       <div class="radio-group">
         <div class="field-label">SHADER OPTIMIZATIONS</div>
         <div class="radios">
           <label><input type="radio" name="s-opt" value="1" ${optimized ? 'checked' : ''} /><span>ON</span></label>
           <label><input type="radio" name="s-opt" value="0" ${!optimized ? 'checked' : ''} /><span>OFF</span></label>
         </div>
+      </div>
+      <div class="radio-group" data-testid="settings-fps-cap">
+        <div class="field-label">MAX FPS</div>
+        <div class="radios">${fpsRadios}</div>
       </div>
       <div class="radio-group">
         <div class="field-label">VIEWPORT W×H</div>
@@ -88,12 +130,14 @@ function buildSettingsDialogHtml(settings: MenuSettings): string {
 
 /**
  * Faction Plate `<dialog>` popup toggled via `Esc` (or header Settings button) on the planet selection screen.
- * Holds Graphics Quality, Shader Optimizations, and Viewport W×H (with bloom kept enabled and no seed/skip inputs).
+ * Holds Graphics Quality, Shadows, Shader Optimizations, Max FPS, and Viewport W×H (with bloom kept enabled and no seed/skip inputs).
  */
 export class SettingsModal {
   readonly dialog: HTMLDialogElement;
   private current: MenuSettings;
   private pressedOutside = false;
+  private readonly offFpsCap: () => void;
+  private readonly offShadowQuality: () => void;
 
   constructor(
     parent: HTMLElement,
@@ -109,6 +153,14 @@ export class SettingsModal {
     this.dialog.innerHTML = buildSettingsDialogHtml(this.current);
     parent.appendChild(this.dialog);
     this.bindEvents();
+    this.offFpsCap = onPerfConfigChange((opt, res, cap) => {
+      if (this.current.optimized === opt && this.current.resolution === res && this.current.fpsCap === cap) return;
+      this.sync({ ...this.current, optimized: opt, resolution: res, fpsCap: cap });
+    });
+    this.offShadowQuality = onShadowQualityChange((shadows) => {
+      if (this.current.shadows === shadows) return;
+      this.sync({ ...this.current, shadows });
+    });
   }
 
   isOpen(): boolean {
@@ -116,7 +168,13 @@ export class SettingsModal {
   }
 
   open(): void {
-    this.sync(this.current);
+    this.sync({
+      ...this.current,
+      shadows: getShadowQuality(),
+      optimized: isShaderOptimized(),
+      resolution: getViewportPreset(),
+      fpsCap: getFpsCap(),
+    });
     if (typeof this.dialog.showModal === 'function') {
       if (!this.dialog.open) this.dialog.showModal();
     } else {
@@ -147,9 +205,16 @@ export class SettingsModal {
     this.dialog
       .querySelectorAll<HTMLInputElement>('input[name="s-quality"]')
       .forEach((r) => { r.checked = r.value === settings.quality; });
+    const shadows = settings.shadows ?? getShadowQuality();
+    this.dialog
+      .querySelectorAll<HTMLInputElement>('input[name="s-shadows"]')
+      .forEach((r) => { r.checked = r.value === shadows; });
     this.dialog
       .querySelectorAll<HTMLInputElement>('input[name="s-opt"]')
       .forEach((r) => { r.checked = r.value === (settings.optimized ? '1' : '0'); });
+    this.dialog
+      .querySelectorAll<HTMLInputElement>('input[name="s-fps"]')
+      .forEach((r) => { r.checked = Number(r.value) === settings.fpsCap; });
     this.dialog
       .querySelectorAll<HTMLInputElement>('input[name="s-res"]')
       .forEach((r) => { r.checked = r.value === settings.resolution; });
@@ -160,7 +225,7 @@ export class SettingsModal {
       this.close();
     });
     this.dialog
-      .querySelectorAll<HTMLInputElement>('input[name="s-quality"], input[name="s-opt"], input[name="s-res"]')
+      .querySelectorAll<HTMLInputElement>('input[name="s-quality"], input[name="s-shadows"], input[name="s-opt"], input[name="s-fps"], input[name="s-res"]')
       .forEach((input) => {
         input.addEventListener('change', () => this.emitCurrent());
       });
@@ -181,22 +246,32 @@ export class SettingsModal {
 
   private emitCurrent(): void {
     const qEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-quality"]:checked');
+    const shEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-shadows"]:checked');
     const optEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-opt"]:checked');
+    const fpsEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-fps"]:checked');
     const resEl = this.dialog.querySelector<HTMLInputElement>('input[name="s-res"]:checked');
     const quality = qEl?.value === 'low' ? 'low' : 'high';
+    const shadows = parseShadowQuality(shEl?.value) ?? getShadowQuality();
+    const fpsCap = parseFpsLimit(fpsEl?.value) ?? DEFAULT_FPS_CAP;
     saveGraphicsQuality(quality);
+    setShadowQuality(shadows);
+    setFpsCap(fpsCap);
     this.current = {
       ...this.current,
       bloom: true,
       skipCinematic: false,
       quality,
+      shadows,
       optimized: optEl ? optEl.value === '1' : true,
       resolution: (resEl?.value as ViewportPreset) ?? 'auto',
+      fpsCap,
     };
     this.onChange({ ...this.current });
   }
 
   dispose(): void {
+    this.offFpsCap();
+    this.offShadowQuality();
     this.close();
     this.dialog.remove();
   }

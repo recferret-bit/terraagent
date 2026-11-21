@@ -74,8 +74,8 @@ function createW05PlanetView(radius = 4) {
   };
 }
 
-describe('W05-20: Construction ghost prep bill on sloped ground', () => {
-  it('hovering a sloped 2×2 ghost lists Level ×2 + Grade, total E (200 E), and time (28s)', () => {
+describe('W05-20: Construction ghost refuses sloped ground', () => {
+  it('a sloped 2×2 is invalid, with no Level / Fill / Grade bill', () => {
     const { view, setTile } = createW05PlanetView(4);
     // 2x2 footprint at (0, 0) covers (0,0), (1,0), (0,1), (1,1): set 2 slope + 2 flat (wild)
     setTile(0, 0, { terrain: TERRAIN.slope, prep: PREP.wild });
@@ -92,17 +92,14 @@ describe('W05-20: Construction ghost prep bill on sloped ground', () => {
       view,
     });
 
-    expect(ghost.valid).toBe(true);
-    expect(ghost.prepBill).toEqual({ level: 2, grade: 4 });
-    expect(ghost.prepEnergyE).toBe(200);
-    expect(ghost.prepTimeS).toBe(28);
-    expect(ghost.prepCost).toEqual({ 'minerals.t1': 4 });
-    expect(ghost.prepBillText).toContain('Level ×2 + Grade');
-    expect(ghost.prepBillText).toContain('200 E');
-    expect(ghost.prepBillText).toContain('28s');
-    expect(ghost.prepBillText).toContain('4 Minerals');
+    expect(ghost.valid).toBe(false);
+    expect(ghost.reason).toBe('slope');
+    expect(ghost.prepBill).toEqual({});
+    expect(ghost.prepBillText).toBe('');
+    expect(ghost.prepEnergyE).toBeUndefined();
+    expect(ghost.prepTimeS).toBeUndefined();
+    expect(ghost.prepCost).toBeUndefined();
 
-    // Also verify DOM readout in ConstructionMenu ghost element
     const container = document.createElement('div');
     document.body.appendChild(container);
     const menu = new ConstructionMenu(
@@ -113,12 +110,12 @@ describe('W05-20: Construction ghost prep bill on sloped ground', () => {
     mounted.push(menu);
     menu.startPlacement('solar');
     menu.setHoverTile(0, 0);
-    const prepEl = container.querySelector('.ta-placement-ghost__prep');
-    expect(prepEl?.textContent).toContain('Level ×2 + Grade');
-    expect(prepEl?.textContent).toContain('200 E');
-    expect(prepEl?.textContent).toContain('28s');
+    const ghostEl = container.querySelector('.ta-placement-ghost');
+    expect(ghostEl?.getAttribute('data-valid')).toBe('false');
+    expect(container.querySelector('.ta-placement-ghost__reason')?.textContent).toBe('slope');
+    expect(container.querySelector('.ta-placement-ghost__prep')?.textContent ?? '').not.toMatch(/Level|Fill|Grade/);
 
-    // Also verify HubPlacementView formatGhostOps for W05 ops
+    // Op labels still format for a manual terraform readout. A build does not use that bill.
     expect(formatGhostOps({ level: 2, grade: 9, clear: 0, break: 0 })).toBe('Level ×2 + Grade ×9');
   });
 });

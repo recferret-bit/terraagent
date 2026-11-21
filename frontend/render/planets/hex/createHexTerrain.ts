@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { hashGroundSeed, hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetBiosphere } from '../../biosphere/biosphereTypes';
+import { enqueueDeferredDispose } from '../../core/deferredDispose';
 import {
   BiomeOrchestrator,
   BiomeWorkerClient,
@@ -13,10 +14,21 @@ import {
 import type { PlanetSpec } from '../PlanetSpec';
 import { HEX_TERRAIN, type HexTileLayers } from './chunkMesh';
 import type { HexPropScatter } from './chunkPropScatter';
+import type { PrecomputedChunkEntry } from './chunkSet';
 import type { HexFloraLayer } from './flora/HexFloraLayer';
 import { rayGround, tileAt, tileXZ, waterSurfaceHit } from './hexMath';
-import { HEX_WATER_LEVEL, type HexWater } from './hexWater';
+import { HEX_WATER_LEVEL, type HexWater, type PrecomputedHexWater } from './hexWater';
 import type { TerritoryBorderStats } from './territoryBorder';
+import type { PrecomputedTileTintBuffers } from './tileTint';
+
+export interface PrecomputedHexTerrainData {
+  radius: number;
+  kind: PlanetSpec['kind'];
+  effHeights: Float32Array;
+  tint: PrecomputedTileTintBuffers;
+  water: PrecomputedHexWater | null;
+  chunks: Record<string, PrecomputedChunkEntry>;
+}
 
 /** Tile layers the terrain reads (apps pass plain arrays; the sim's `ClientTiles` fits). */
 export interface HexTiles extends HexTileLayers {
@@ -64,6 +76,14 @@ export interface HexTerrain {
   getTerritoryBorderStats(): TerritoryBorderStats;
   setColorBlindMode(enabled: boolean): void;
   setColonyColors(colors: Record<number, number>): void;
+  /** Advances progressive chunk/prop assembly within `budgetMs` when built with `progressive: true`; returns true when complete. */
+  stepProgressiveBuild(budgetMs?: number): boolean;
+  /** Immediately completes any remaining progressive chunks + prop meshes. */
+  finishProgressiveBuild(): void;
+  /** True once all chunk meshes and prop buckets have been assembled. */
+  isBuildComplete(): boolean;
+  /** Detaches immediately, unregisters from `activeTerrains`, and slices GPU disposal across deferred tasks. */
+  disposeDeferred?(): void;
   dispose(): void;
 }
 
@@ -87,6 +107,12 @@ export interface HexTerrainOptions {
   prewarmBugs?: boolean;
   /** Optional Worker-generated payload (`BiomeWorkerClient.generate`) so creation skips main-thread CPU generation. */
   pregenerated?: BiomeGeneratedPayload;
+  /** Optional worker-precomputed buffers (`@terra/render/planets/prep`). */
+  precomputed?: PrecomputedHexTerrainData;
+  /** When true, spreads initial chunk + prop mesh creation across frames via `stepProgressiveBuild()`. */
+  progressive?: boolean;
+  /** Spawn/camera focus tile built first when `progressive` is enabled. */
+  priorityTile?: { q: number; r: number };
 }
 
 const activeTerrains = new Set<HexTerrain>();
@@ -208,7 +234,6 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const hx = hexIndex(radius);
   let tiles = opts.tiles;
   let elapsedTime = 0;
-
   const jsonOrConfig =
     opts.biomeConfigJson ??
     serializeBiomeOrchestratorConfig(buildBiomeOrchestratorConfig(look, radius, { edges: opts.edges }));
@@ -226,12 +251,13 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { props, flora, biosphere } = biomeOrchestrator;
   const prevTerrainSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.terrain[i] ?? 0);
   const prevPrepSnap = Uint8Array.from({ length: hx.count }, (_, i) => tiles.prep?.[i] ?? 0);
-  const ray = new THREE.Raycaster();
   const isWaterAt = (x: number, z: number): boolean => {
     const t = tileAt(radius, x, z);
     const code = t ? tiles.terrain[t.i] : undefined;
     return code === HEX_TERRAIN.shallow || code === HEX_TERRAIN.deep;
   };
+  const ray = new THREE.Raycaster();
+  let disposed = false;
 
   const handle: HexTerrain = {
     group,
@@ -279,7 +305,19 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     getTerritoryBorderStats: () => tOrch.getTerritoryBorderStats(),
     setColorBlindMode: (enabled) => tOrch.setColorBlindMode(enabled, tiles),
     setColonyColors: (colors) => tOrch.setColonyColors(colors, tiles),
+    stepProgressiveBuild: () => true,
+    finishProgressiveBuild() {},
+    isBuildComplete: () => true,
+    disposeDeferred() {
+      if (disposed) return;
+      disposed = true;
+      activeTerrains.delete(handle);
+      group.removeFromParent();
+      enqueueDeferredDispose(() => biomeOrchestrator.dispose());
+    },
     dispose() {
+      if (disposed) return;
+      disposed = true;
       activeTerrains.delete(handle);
       biomeOrchestrator.dispose();
     },

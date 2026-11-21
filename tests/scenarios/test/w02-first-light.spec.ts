@@ -35,7 +35,7 @@ function getCol(host: Host): ColonyWithLedger & { power?: TestColonyPower } {
 
 /**
  * Steps until `done()` (at most `max` ticks) and returns the ticks it took. W02 builds take as long as the HQ needs to
- * walk to each site, grade its footprint (linked prep) and build it, one site after the other (W02-16).
+ * walk to each site and build it. Flat ground is already a foundation (W02-16).
  */
 function stepUntil(host: Host, done: () => boolean, max: number): number {
   let n = 0;
@@ -115,11 +115,13 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
       args: { taskId: 'b-sol-1', task: { kind: 'build', building: 'solar', q: -3, r: 2 } },
     });
     host.step(1);
-    // The HQ and the T1 worker prep the two sites at once.
-    expect(getColonyQueue(host.state, 0, 'construction').map((e) => [e.taskId, e.state, e.waitReason])).toEqual([
-      ['b-ext-1', 'in_progress', 'site'],
-      ['b-sol-1', 'in_progress', 'site'],
-    ]);
+    // Flat sites are foundations: both builds are in progress and neither waits on site prep.
+    const queued = getColonyQueue(host.state, 0, 'construction').map((e) => [e.taskId, e.state, e.waitReason]);
+    expect(queued.map((row) => row[0])).toEqual(['b-ext-1', 'b-sol-1']);
+    for (const row of queued) {
+      expect(row[1]).toBe('in_progress');
+      expect(row[2]).not.toBe('site');
+    }
     stepUntil(host, () => isBuilt(host, ENTITY_KIND.metalsExtractor) && isBuilt(host, ENTITY_KIND.solar), 300);
     host.step(1);
     expect(col.power?.solarNetPerS).toBe(13);

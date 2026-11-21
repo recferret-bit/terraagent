@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
+import { getShadowSwayScale, onShadowLodTelemetry } from '../../core/shadowQuality';
 import { getWeatherUniforms } from '../../core/weatherConfig';
 import { getWindUniforms, WIND_GLSL } from '../../core/windConfig';
 import { bindViewFocusUniforms, VIEW_FOCUS_GLSL } from '../../core/viewFocus';
@@ -133,7 +134,7 @@ const FOLIAGE_SWAY_BEGIN = /* glsl */ `#include <begin_vertex>
   vec2 fwP = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz;
 #endif
   float fwVw = viewFocusWeight(fwP, ${glslFloat(FOLIAGE_TREE.focusFade)});
-  if (fwVw > 0.0) {
+  if (fwVw * uSway > 0.001) {
   float fwH = max(position.y, 0.0);
   vec3 fwS2 = max(vec3(dot(fwM[0], fwM[0]), dot(fwM[1], fwM[1]), dot(fwM[2], fwM[2])), vec3(1e-4));
   vec4 fwR = foliageTraits(fwP);
@@ -243,10 +244,11 @@ export function createFoliageMaterial(
   const swayU = { value: sway };
   const swayBegin = multiBreed ? wrapMultiBreedBegin(FOLIAGE_SWAY_BEGIN) : FOLIAGE_SWAY_BEGIN;
   const breedDecl = multiBreed ? 'attribute float aBreed;\n' : '';
-
+  const depthSwayU = { value: sway * getShadowSwayScale() };
+  const offLod = onShadowLodTelemetry((st) => { depthSwayU.value = sway * st.shadowSwayScale; });
   const patchDepthSway = (sh: THREE.WebGLProgramParametersWithUniforms) => {
     Object.assign(sh.uniforms, getWindUniforms());
-    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
+    sh.uniforms.uTime = timeU; sh.uniforms.uSway = depthSwayU; bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}`)
       .replace('#include <begin_vertex>', swayBegin);
@@ -300,7 +302,7 @@ roughnessFactor *= mix(1.0, 0.32, uWetness);`)
   depthMat.onBeforeCompile = patchDepthSway;
   m.userData.depthMaterial = depthMat;
   const origDispose = m.dispose.bind(m);
-  m.dispose = () => { depthMat.dispose(); origDispose(); };
+  m.dispose = () => { offLod(); depthMat.dispose(); origDispose(); };
   return m;
 }
 
@@ -398,9 +400,11 @@ export function writeInstancedPlaces(im: THREE.InstancedMesh, places: readonly P
     }
     im.setColorAt(i, c);
   });
+  im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   im.instanceMatrix.clearUpdateRanges();
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) {
+    im.instanceColor.setUsage(THREE.DynamicDrawUsage);
     im.instanceColor.clearUpdateRanges();
     im.instanceColor.needsUpdate = true;
   }

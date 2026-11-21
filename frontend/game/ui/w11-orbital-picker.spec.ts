@@ -397,9 +397,9 @@ describe('W11-22 · Lobby WS + HTTP polling fallback', () => {
       timer: fakeTimer,
       pollIntervalMs: 1000,
     });
+    const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
     expect(blockedWsFactory).toHaveBeenCalledTimes(1);
     expect(feed.getMode()).toBe('polling');
     expect(feed.isPolling()).toBe(true);
@@ -412,8 +412,7 @@ describe('W11-22 · Lobby WS + HTTP polling fallback', () => {
 
     // Poll #2 -> full
     scheduledPollCb!();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
     expect(duneCard.dataset.availability).toBe('full');
     expect(duneCard.dataset.freeSeats).toBe('0');
     expect(duneCard.dataset.reservedSeats).toBe('7');
@@ -427,8 +426,7 @@ describe('W11-22 · Lobby WS + HTTP polling fallback', () => {
 
     // Poll #3 -> paused + queuePaused=true
     scheduledPollCb!();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
     expect(menu.isQueuePaused()).toBe(true);
     expect(duneCard.dataset.availability).toBe('paused');
     expect(duneCard.dataset.foundedSeats).toBe('16');
@@ -467,8 +465,8 @@ describe('W11-22 · Active lobby WS disconnect fallback', () => {
     });
     menu.attachFeed(feed);
     feed.start();
-    await Promise.resolve();
-    await Promise.resolve();
+    const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+    await flush();
 
     socket!.onopen?.({});
     expect(feed.getMode()).toBe('ws');
@@ -485,8 +483,7 @@ describe('W11-22 · Active lobby WS disconnect fallback', () => {
 
     const callsBeforeClose = fetchSpy.mock.calls.length;
     socket!.onclose?.({});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     expect(feed.getMode()).toBe('polling');
     expect(feed.isPolling()).toBe(true);

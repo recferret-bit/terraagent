@@ -18,7 +18,7 @@ export function droneArray() {
   ring(b, 'energyCyan', 0.46, 0.05, [0, 2.5, -0.3], { seg: 12, name: 'tower telemetry ring B light' });
   cyl(b, 'frameGunmetal', 0.5, 0.5, 0.16, [0, 2.78, -0.3], { seg: 10, name: 'tower upper deck' });
   cyl(b, 'frameGunmetal', 0.07, 0.08, 0.72, [0, 2.9, -0.3], { seg: 6, name: 'central dish pedestal' });
-  lamp(b, 'dangerCrimson', 0.08, [0, 2.96, 0.12], { name: 'tower deck beacon light' });
+  lamp(b, 'dangerCrimson', 0.08, [0, 2.96, 0.12], { housing: false, name: 'tower deck beacon light' });
   // rotating dish array: 3 dishes on masts of different heights
   const dishes: [number, number, number, number][] = [[0, 4.0, -0.3, 0.68], [-1.35, 2.7, -1.1, 0.55], [1.4, 2.2, -1.2, 0.5]];
   dishes.forEach(([x, y, z, R], i) => {
@@ -49,7 +49,7 @@ export function droneArray() {
   }
   // docked drone on other pad
   cyl(b, 'hullPrimary', 0.2, 0.22, 0.16, [-1.2, 0.29, 1.15], { seg: 8, name: 'docked drone body' });
-  lamp(b, 'energyCyan', 0.06, [-1.2, 0.45, 1.27], { name: 'docked drone status light' });
+  lamp(b, 'energyCyan', 0.06, [-1.2, 0.45, 1.27], { housing: false, name: 'docked drone status light' });
   cable(b, [0.45, 0.75, 0.36], [0.3, 0.27, 0.76], 0.08, 0.04, 'frameGunmetal', { name: 'pad power cable' });
   cable(b, [-0.35, 2.75, -0.45], [-1.35, 2.0, -1.1], 0.22, 0.03, 'frameGunmetal', { name: 'relay aerial cable' });
   return b.build();
@@ -105,7 +105,7 @@ export function roboticsFactory() {
   // antenna (mounted on -X left wall so left face carries detail) + transformer + anchored cables
   strut(b, 'frameGunmetal', [-3.6, 0.5, -0.9], [-3.6, 4.6, -0.9], 0.06, { name: 'comms whip mast' });
   lamp(b, 'dangerCrimson', 0.09, [-3.6, 4.66, -0.9], { name: 'mast warning light' });
-  cable(b, [-3.6, 4.3, -0.9], [-2.3, 3.2, -2.0], 0.35, 0.025, 'frameGunmetal', { name: 'aerial guy cable' });
+  cable(b, [-3.6, 4.35, -0.9], [-2.3, 3.2, -2.0], 0.12, 0.025, 'frameGunmetal', { points: 3, name: 'aerial guy cable' });
   cyl(b, 'hullSecondary', 0.24, 0.26, 0.55, [3.0, 0.18, 1.2], { seg: 8, name: 'factory substation unit' });
   cable(b, [2.85, 1.2, -1.15], [3.0, 0.68, 1.05], 0.22, 0.045, 'frameGunmetal', { name: 'substation feeder cable' });
   return b.build();
@@ -134,7 +134,7 @@ export function turret() {
     b.addPart(new THREE.CylinderGeometry(0.095, 0.11, 0.95, 10), 'frameGunmetal', { name: 'autocannon barrel', position: [sx * 0.3, 1.49, 0.72], rotation: [PI / 2, 0, 0], ...R3 });
     b.addPart(new THREE.CylinderGeometry(0.065, 0.065, 0.52, 8), 'frameGunmetal', { name: 'muzzle accelerator tube', position: [sx * 0.3, 1.49, 1.4], rotation: [PI / 2, 0, 0], ...R3 });
     ring(b, 'hullSecondary', 0.115, 0.03, [sx * 0.3, 1.49, 0.95], { rotation: [0, 0, 0], name: 'barrel cooling collar', ...R3 });
-    b.addPart(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 8), 'warningAmber', { name: 'muzzle flash suppressor light', position: [sx * 0.3, 1.49, 1.66], rotation: [PI / 2, 0, 0], ...R3 });
+    b.addPart(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 8), 'warningAmber', { name: 'muzzle flash suppressor light', position: [sx * 0.3, 1.49, 1.655], rotation: [PI / 2, 0, 0], ...R3 });
   }
   // ammo box + cable anchored to turret housing
   box(b, 'hullSecondary', [0.4, 0.42, 0.4], [-0.75, 0.19, 0.45], { r: 0.05, name: 'ammo feed magazine' });

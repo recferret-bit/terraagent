@@ -12,7 +12,7 @@ import { rocket } from './rocket';
 const reg = (id: string, label: string, create: () => THREE.BufferGeometry, footprint: [number, number], notes: string) =>
   ArchetypeCatalog.register({ id, label, category: 'building', create, footprint, notes: `${notes} Footprint in 2 m tiles.` });
 
-reg('building.commandHub', 'Command Hub', commandHub, [3, 3], 'Hero: domed hull, landing pad, tilted antenna, rotating radar dish, tanks, guy cables.');
+reg('building.commandHub', 'Command Hub', commandHub, [3, 3], 'Hero: domed hull, door light, tilted antenna beacon, rotating radar dish, tanks, guy cables.');
 reg('building.claimBeacon', 'Claim Beacon', claimBeacon, [1, 1], 'Obelisk w/ spinning crystal, bobbing rings, banner.');
 reg('building.pylon', 'Pylon', pylon, [1, 1], 'Lattice power pylon, insulator crossarms, sagging line cables.');
 reg('building.capacitor', 'Capacitor', capacitor, [1, 1], 'Three cyan-banded cells with bus cables.');

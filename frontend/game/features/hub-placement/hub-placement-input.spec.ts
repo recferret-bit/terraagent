@@ -110,7 +110,8 @@ describe('Labels follow the live balance data (FF-12)', () => {
     const hub = mountHubPlacement(container, { host, store, sendCommand: vi.fn() });
     hub.startPlacement(-3, 4);
     expect(container.querySelector('[data-testid="hub-build-cost"]')!.textContent).toBe('300 Metals · 120 Minerals');
-    expect(container.querySelector('[data-testid="hub-bill-time"]')!.textContent).toBe('13.5s (HQ 2×)');
+    // A legal site has no terraform time. The HQ multiplier still comes from the tuned row (2×, not 1.5×).
+    expect(container.querySelector('[data-testid="hub-bill-time"]')!.textContent).toBe('0.0s (HQ 2×)');
   });
 });
 

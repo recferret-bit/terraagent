@@ -29,6 +29,13 @@ const REST_BY_STATUS: Readonly<Record<number, (typeof REST_ERROR_CODES)[number]>
 /** Domain codes with a REST code of their own (else the status decides). */
 const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[number]>> = {
   COLONY_SEAT_REJECTED: 'seat_rejected',
+  SECTOR_FULL: 'sector_full',
+  INVALID_SECTOR: 'invalid_sector',
+  COLONY_PLANET_LOCKED: 'already_has_colony',
+  NOT_OWN_COLONY: 'forbidden',
+  NOT_YOUR_COLONY: 'forbidden',
+  NOT_YOUR_PLANET: 'forbidden',
+  CROSS_SECTOR_DISABLED: 'forbidden',
   DEED_NOT_FOUND: 'deed_not_found',
   DEED_NOT_SETTLED: 'deed_not_settled',
   ACCOUNT_NOT_CLAIMED: 'account_not_claimed',

@@ -75,10 +75,7 @@ describe('W01-09: Drop pod landing and HQ deployment', () => {
 
     const hex = hexIndex(state.grid.radius);
     const explored = state.grid.layers.explored as Uint8Array;
-    for (let i = 0; i < hex.count; i++) {
-      const d = hexDistance(slots[0].q, slots[0].r, hex.q[i], hex.r[i]);
-      expect(explored[i] & 1).toBe(d <= 9 ? 1 : 0);
-    }
+    for (let i = 0; i < hex.count; i++) expect(explored[i] & 1).toBe(0);
 
     for (let t = 1; t <= 29; t++) {
       expect(host.step(1).events).toHaveLength(0);
@@ -114,6 +111,10 @@ describe('W01-09: Drop pod landing and HQ deployment', () => {
       r: slots[0].r,
     });
     expect(eventDef('hqLanded').data.safeParse(ev.data).success).toBe(true);
+    for (let i = 0; i < hex.count; i++) {
+      const d = hexDistance(slots[0].q, slots[0].r, hex.q[i], hex.r[i]);
+      expect(explored[i] & 1).toBe(d <= 9 ? 1 : 0);
+    }
   });
 });
 

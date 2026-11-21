@@ -46,6 +46,44 @@ function gyroDwellWave(u: number): number {
   return Math.sign(s) * smooth;
 }
 
+function clampAxis(v: number, limit: number): number {
+  return Math.max(-limit, Math.min(limit, v));
+}
+
+function dampPtr(current: number, target: number): number {
+  if (Math.abs(target - current) < 0.012) return target;
+  return current + (target - current) * 0.25;
+}
+
+function floatTransform(tx: number, ty: number, tz: number, ry: number, rx: number, rz: number): string {
+  return `perspective(780px) translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, ${tz.toFixed(2)}px) ` +
+    `rotateY(${ry.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
+}
+
+/** Y travel stays inside the rail gap so the blue card and the orange sector card cannot cross. */
+function poseFloatWrap(
+  wrap: HTMLDivElement,
+  t: number,
+  phase: number,
+  amp: number,
+  px: number,
+  py: number,
+  baseRy: number,
+  baseRx: number,
+  baseRz: number,
+  hovered: boolean,
+): void {
+  const rotSin = Math.sin(t * 0.24 + phase);
+  const rotCos = Math.cos(t * 0.48 + phase);
+  const tx = clampAxis(rotSin * 3.8 * amp - px * 8 * amp, 10);
+  const ty = clampAxis(rotCos * 4.2 * amp + py * 4 * amp, 5);
+  const tz = rotCos * 12 * amp + (hovered ? 12 : 0);
+  const ry = baseRy + rotSin * 2.4 * amp + px * 3.2;
+  const rx = baseRx + rotCos * 1.2 * amp + py * 1.6;
+  const rz = baseRz + rotSin * 0.45 * amp;
+  wrap.style.transform = floatTransform(tx, ty, tz, ry, rx, rz);
+}
+
 function createFloatWrapper(wrapClass: string): HTMLDivElement {
   const wrap = document.createElement('div');
   wrap.className = `ar-float-wrap ${wrapClass}`;
@@ -94,6 +132,8 @@ export class OrbitalArHud {
   private latestState: OrbitalArState;
   private pulseTimer = 0;
   private sectorLockNoticeShown = false;
+  private rebindingSectors = false;
+  private railMotion = 1;
 
   private readonly onPointerMove = (e: PointerEvent): void => {
     const w = Math.max(1, window.innerWidth);
@@ -159,11 +199,45 @@ export class OrbitalArHud {
       [this.launchCard, 'launch'],
     ];
     for (const [card, key] of entries) {
-      card.onpointerenter = () => { this.hoveredCard = key; };
-      card.onpointerleave = () => {
-        if (this.hoveredCard === key) this.hoveredCard = null;
-      };
+      card.addEventListener('pointerenter', () => {
+        this.hoveredCard = key;
+        this.applyPointerIsolation();
+      });
+      card.addEventListener('pointerleave', (ev: Event) => {
+        if (this.hoveredCard !== key) return;
+        const next = (ev as PointerEvent).relatedTarget;
+        if (next instanceof Node && card.contains(next)) return;
+        this.hoveredCard = null;
+        this.applyPointerIsolation();
+      });
     }
+  }
+
+  /** The card under the pointer keeps the hit target. The other two cannot steal a sector click. */
+  private applyPointerIsolation(): void {
+    const active = this.hoveredCard;
+    const wraps: Record<ArCardKey, HTMLElement> = {
+      scan: this.scanWrap,
+      presence: this.presenceWrap,
+      launch: this.launchWrap,
+    };
+    const cards: Record<ArCardKey, HTMLElement> = {
+      scan: this.scanCard,
+      presence: this.presenceCard,
+      launch: this.launchCard,
+    };
+    for (const key of ['scan', 'presence', 'launch'] as const) {
+      const hot = active === key;
+      cards[key].style.pointerEvents = active !== null && !hot ? 'none' : '';
+      wraps[key].style.zIndex = hot ? '4' : key === 'launch' ? '2' : '1';
+    }
+  }
+
+  private stepRailMotion(held: boolean): number {
+    const target = held ? 0 : 1;
+    this.railMotion += (target - this.railMotion) * 0.3;
+    if (Math.abs(this.railMotion - target) < 0.015) this.railMotion = target;
+    return this.railMotion;
   }
 
   getDeployButton(): HTMLButtonElement {
@@ -221,18 +295,15 @@ export class OrbitalArHud {
       homeBaseSectorId,
     );
     if (sectorHtml !== this.lastSectorHtml) {
+      this.rebindingSectors = true;
       this.sectorHostEl.innerHTML = sectorHtml;
       this.lastSectorHtml = sectorHtml;
       bindSectorChooserEvents(
         this.sectorHostEl,
         (intent) => this.cb.onSectorSelect(intent),
-        (sectorId) => {
-          this.hoveredSectorId = sectorId;
-          this.refreshPresence();
-          this.refreshMarkers();
-          this.cb.onMarkerHover?.(sectorId);
-        },
+        (sectorId) => this.previewSector(sectorId),
       );
+      this.rebindingSectors = false;
     }
     this.syncLockState();
 
@@ -276,6 +347,14 @@ export class OrbitalArHud {
     }
   }
 
+  private previewSector(sectorId: string | null): void {
+    if (sectorId === null && this.rebindingSectors) return;
+    this.hoveredSectorId = sectorId;
+    this.refreshPresence();
+    this.refreshMarkers();
+    this.cb.onMarkerHover?.(sectorId);
+  }
+
   private refreshPresence(): void {
     const homeBaseSectorId = resolveHomeBaseSectorId(this.latestState.summary, this.latestState.activeColony);
     const targetSector = resolveTargetSectorId(
@@ -303,66 +382,41 @@ export class OrbitalArHud {
     const py = frame?.pointerY ?? this.smoothPtrY;
     const reduced = prefersReducedMotion();
     const t = reduced ? 0 : (frame?.time ?? (typeof performance !== 'undefined' ? performance.now() * 0.001 : 0));
-
-    const applyContinuous = (
-      wrap: HTMLDivElement,
-      phase: number,
-      amp: number,
-      baseRy: number,
-      baseRx: number,
-      baseRz: number,
-      hovered: boolean,
-    ) => {
-      const rotSin = Math.sin(t * 0.24 + phase);
-      const rotCos = Math.cos(t * 0.48 + phase);
-      const tx = rotSin * 3.8 * amp - px * 10.5 * amp;
-      const ty = rotCos * 5.2 * amp + py * 7.0 * amp;
-      const tz = rotCos * 12.0 * amp + (hovered ? 12 : 0);
-      const ry = baseRy + rotSin * 2.4 * amp + px * 4.6;
-      const rx = baseRx + rotCos * 1.6 * amp + py * 3.2;
-      const rz = baseRz + rotSin * 0.45 * amp;
-      wrap.style.transform =
-        `perspective(780px) translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, ${tz.toFixed(2)}px) ` +
-        `rotateY(${ry.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`;
-    };
-
-    applyContinuous(this.scanWrap, 0.0, reduced ? 0 : 1.0, 16.5, -2.2, -0.5, this.hoveredCard === 'scan');
-    applyContinuous(this.presenceWrap, 0.0, reduced ? 0 : 0.94, -16.5, -2.0, 0.5, this.hoveredCard === 'presence');
-
     const launchHovered = this.hoveredCard === 'launch' || this.launchCard.matches(':hover');
+    const presenceHovered = this.hoveredCard === 'presence';
+    const motion = this.stepRailMotion(launchHovered || presenceHovered);
+
+    poseFloatWrap(this.scanWrap, t, 0, reduced ? 0 : 1, px, py, 16.5, -2.2, -0.5, this.hoveredCard === 'scan');
+    if (!presenceHovered) {
+      poseFloatWrap(this.presenceWrap, t, 0, (reduced ? 0 : 0.94) * motion, px, py, -16.5, -2, 0.5, false);
+    }
+    this.poseLaunch(px, py, t, reduced, launchHovered, launchHovered ? 1 : motion);
+  }
+
+  private poseLaunch(px: number, py: number, t: number, reduced: boolean, held: boolean, slide: number): void {
     if (reduced) {
       this.launchWaveNow = 0;
       this.launchPtrX = 0;
       this.launchPtrY = 0;
-    } else if (!launchHovered) {
+    } else if (!held) {
       this.launchWaveNow = gyroDwellWave(t * 0.96);
-      if (Math.abs(px - this.launchPtrX) >= 0.012) {
-        this.launchPtrX += (px - this.launchPtrX) * 0.25;
-      } else {
-        this.launchPtrX = px;
-      }
-      if (Math.abs(py - this.launchPtrY) >= 0.012) {
-        this.launchPtrY += (py - this.launchPtrY) * 0.25;
-      } else {
-        this.launchPtrY = py;
-      }
+      this.launchPtrX = dampPtr(this.launchPtrX, px);
+      this.launchPtrY = dampPtr(this.launchPtrY, py);
     }
-    const w = reduced ? 0 : this.launchWaveNow;
+    const w = (reduced ? 0 : this.launchWaveNow) * slide;
     const lpx = Math.round(this.launchPtrX * 50) / 50;
     const lpy = Math.round(this.launchPtrY * 50) / 50;
-    const ltx = w * 3.0 - lpx * 7.5;
-    const lty = w * 4.4 + lpy * 5.0;
-    const ltz = w * 10.5;
-    const lry = -15.0 + w * 2.1 + lpx * 3.6;
-    const lrx = 2.8 + w * 1.4 + lpy * 2.6;
-    const lrz = -0.35 + w * 0.35;
-    const launchTransform =
-      `perspective(780px) translate3d(${ltx.toFixed(2)}px, ${lty.toFixed(2)}px, ${ltz.toFixed(2)}px) ` +
-      `rotateY(${lry.toFixed(2)}deg) rotateX(${lrx.toFixed(2)}deg) rotateZ(${lrz.toFixed(2)}deg)`;
-    if (launchTransform !== this.lastLaunchTransform) {
-      this.lastLaunchTransform = launchTransform;
-      this.launchWrap.style.transform = launchTransform;
-    }
+    const transform = floatTransform(
+      clampAxis((w * 3 - lpx * 6) * slide, 10),
+      clampAxis((w * 3.2 + lpy * 3.2) * slide, 5),
+      w * 10.5,
+      -15 + w * 2.1 + lpx * 2.4 * slide,
+      2.8 + w * 1.1 + lpy * 1.4 * slide,
+      -0.35 + w * 0.35,
+    );
+    if (transform === this.lastLaunchTransform) return;
+    this.lastLaunchTransform = transform;
+    this.launchWrap.style.transform = transform;
   }
 
   syncProjection(frame: OrbitalProjectedFrame | null): void {

@@ -16,9 +16,87 @@ import type { EntityMeshes } from '../EntityMeshes';
 import type { FeatureHud } from '../featureHud';
 import { extractPodDescentStatus, type PodDescentStatus } from '../podStatus';
 import { POD_TOUCHDOWN_DESCENT_S, type ColonyLoadMode, type PodLandingStateName } from '../PodTouchdownFx';
-import { resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
+import { applySpaceVoidBackground, resolveOnlinePlanetLook, syncSpaceTerrainOffset } from '../viewportHelper';
 
 const tmpHqPos = new THREE.Vector3();
+
+/** Camera dive onto an existing base. `hold` keeps the HUD hidden until the dive ends. */
+export interface ArrivalHud {
+  hold: boolean;
+  /** When the HUD appears, clear selection and fold the Build pane. */
+  quiet: boolean;
+  /** Do not auto-select the HQ for this arrival. */
+  noSelect: boolean;
+  /** The orbital drop has been started at least once (a later terrain rebuild must not replay it). */
+  started: boolean;
+}
+
+type ArrivalHudHost = {
+  setVisible(visible: boolean): void;
+  collapseCommandDock(): void;
+};
+
+/** Shows the gameplay HUD once the returning-colony camera drop has finished. */
+export function settleArrivalHud(
+  arrival: ArrivalHud,
+  cam: { isOrbitalDropping(): boolean } | null,
+  landfall: { deselect(): void },
+  hud: ArrivalHudHost,
+): void {
+  if (!arrival.hold || cam?.isOrbitalDropping()) return;
+  releaseArrivalHud(arrival, landfall, hud);
+}
+
+function releaseArrivalHud(arrival: ArrivalHud, landfall: { deselect(): void }, hud: ArrivalHudHost): void {
+  const quiet = arrival.quiet;
+  arrival.hold = false;
+  arrival.quiet = false;
+  if (quiet) landfall.deselect();
+  hud.setVisible(true);
+  if (quiet) hud.collapseCommandDock();
+}
+
+function beginOrbitalDrop(cam: RTSCamera, terrain: HexTerrain | null, hqObj: THREE.Object3D | null, q: number, r: number): void {
+  if (hqObj) {
+    cam.follow(hqObj);
+    cam.startOrbitalDrop(hqObj.getWorldPosition(tmpHqPos), { duration: 1.55, followObj: hqObj });
+    return;
+  }
+  const [tx, tz] = tileXZ(q, r);
+  const ty = terrain ? terrain.heightAt(tx, tz) : 0;
+  cam.startOrbitalDrop(tmpHqPos.set(tx, ty, tz), { duration: 1.55, followObj: null });
+}
+
+/** Frames the colony. A drop onto an existing base hides the HUD until the camera is on the HQ. */
+function syncColonyArrival(deps: ViewOverlaySyncDeps, mode: ColonyLoadMode, status: PodDescentStatus): void {
+  const hqObj = deps.entities.ownHqObject();
+  const dropping = mode === 'direct' && Boolean(deps.orbitalCameraDrop) && !deps.sawPodDescending;
+  if (!deps.colonyFramed && deps.cam) {
+    deps.setColonyFramed(true);
+    deps.focusTile(status.q, status.r, true);
+    if (dropping && (!deps.arrival.started || deps.arrival.hold)) {
+      beginOrbitalDrop(deps.cam, deps.terrain, hqObj, status.q, status.r);
+      deps.arrival.started = true;
+      deps.arrival.hold = true;
+      deps.arrival.quiet = true;
+      deps.arrival.noSelect = true;
+    } else if (hqObj) {
+      deps.cam.follow(hqObj);
+    }
+  } else if (deps.cam && hqObj && !deps.cam.followTarget) {
+    deps.cam.follow(hqObj);
+  }
+  if (deps.arrival.hold && deps.cam?.isOrbitalDropping()) {
+    deps.landfall.deselect();
+    deps.hud.setVisible(false);
+    return;
+  }
+  if (deps.arrival.hold || deps.arrival.quiet) {
+    releaseArrivalHud(deps.arrival, deps.landfall, deps.hud);
+    return;
+  }
+  deps.hud.setVisible(true);
+}
 
 export function resolveSeatIndexFromSearch(search: string, v: ClientView): number | null {
   const asParam = new URLSearchParams(search).get('as')?.trim().toLowerCase() ?? '';
@@ -32,6 +110,7 @@ export function resolveSeatIndexFromSearch(search: string, v: ClientView): numbe
 export function applySessionSpacePhase(opts: {
   readonly phase: PodLandingStateName | null;
   readonly showTerrain: boolean;
+  readonly isGroundReady?: boolean;
   readonly entities: EntityMeshes;
   readonly banner: ConnectionBanner | null;
   readonly terrain: HexTerrain | null;
@@ -48,7 +127,8 @@ export function applySessionSpacePhase(opts: {
   opts.entities.podTouchdown.setSpacePhase(opts.phase);
   opts.entities.group.visible = opts.phase === null;
   if (opts.banner) opts.banner.el.style.display = opts.phase === null ? '' : 'none';
-  syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain, opts.cameraTargetTile);
+  const groundReady = opts.phase === null || (opts.isGroundReady ?? true);
+  syncSpaceTerrainOffset(opts.terrain, opts.phase !== null, opts.showTerrain && groundReady, opts.cameraTargetTile);
   if (opts.phase === null && wasActive) {
     opts.dayNightSync?.syncFrame();
     if (opts.terrain) {
@@ -59,9 +139,7 @@ export function applySessionSpacePhase(opts: {
         /* Ignore in headless tests */
       }
     } else {
-      if (opts.viewport.scene.background instanceof THREE.Color) opts.viewport.scene.background.setHex(0x03060c);
-      else opts.viewport.scene.background = new THREE.Color(0x03060c);
-      if (opts.viewport.scene.fog instanceof THREE.FogExp2) opts.viewport.scene.fog.color.setHex(0x03060c);
+      applySpaceVoidBackground(opts.viewport.scene);
     }
     opts.focusTile(opts.cameraTargetTile.q, opts.cameraTargetTile.r, true);
     if (opts.store.latest) {
@@ -69,7 +147,7 @@ export function applySessionSpacePhase(opts: {
       opts.entities.update(0, opts.terrain);
     }
   }
-  return Boolean(opts.terrain);
+  return Boolean(opts.terrain && groundReady);
 }
 
 export interface ViewOverlaySyncDeps {
@@ -94,6 +172,8 @@ export interface ViewOverlaySyncDeps {
   readonly sawPodDescending?: boolean;
   readonly cameraCentered: boolean;
   readonly colonyFramed: boolean;
+  /** Returning-colony orbital arrival: hold the HUD until the camera drop finishes, then show it quietly. */
+  readonly arrival: ArrivalHud;
   readonly sendLandOnce: () => void;
   readonly focusTile: (q: number, r: number, instant?: boolean) => void;
   readonly setCameraTargetTile: (q: number, r: number) => void;
@@ -136,29 +216,7 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
       return;
     }
     deps.bootOverlay.showColony(view.planet.id || deps.planetId || 'pl_dev');
-    deps.hud.setVisible(true);
-    const hqObj = deps.entities.ownHqObject();
-    if (!deps.colonyFramed && deps.cam) {
-      deps.setColonyFramed(true);
-      deps.focusTile(status.q, status.r, true);
-      if (hqObj) {
-        deps.landfall.selectHq();
-        deps.cam.follow(hqObj);
-      }
-      if (mode === 'direct' && deps.orbitalCameraDrop && !deps.sawPodDescending) {
-        if (hqObj) {
-          const pos = hqObj.getWorldPosition(tmpHqPos);
-          deps.cam.startOrbitalDrop(pos, { duration: 1.55, followObj: hqObj });
-        } else {
-          const [tx, tz] = tileXZ(status.q, status.r);
-          const ty = deps.terrain ? deps.terrain.heightAt(tx, tz) : 0;
-          deps.cam.startOrbitalDrop(tmpHqPos.set(tx, ty, tz), { duration: 1.55, followObj: null });
-        }
-      }
-    } else if (deps.cam && hqObj && !deps.cam.followTarget) {
-      deps.landfall.selectHq();
-      deps.cam.follow(hqObj);
-    }
+    syncColonyArrival(deps, mode, status);
     return;
   }
 
@@ -168,6 +226,12 @@ export function syncSessionBootOverlayOnView(deps: ViewOverlaySyncDeps): void {
       deps.setCameraCentered(true);
     }
   }
+  const showHud = !((status.descending || !deps.hqReady) && mode === 'pod');
+  if (showHud && (deps.arrival.hold || deps.arrival.quiet)) {
+    releaseArrivalHud(deps.arrival, deps.landfall, deps.hud);
+    return;
+  }
+  deps.hud.setVisible(showHud);
 }
 
 export function applySessionOrbitalReveal(opts: {

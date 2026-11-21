@@ -1,14 +1,17 @@
+import type { ServerMessage } from '@terra/contracts';
 import { COMMAND_TIMEOUT_MS, CommandBus } from '../../../net/commandBus';
 import { ConnectionBanner } from '../../../net/ConnectionBanner';
 import { LagTransport, withDevLag } from '../../../net/LagTransport';
 import { createLocalWorker, LocalTransport, workerLink } from '../../../net/LocalTransport';
-import type { SessionTarget, Transport } from '../../../net/types';
+import type { ConnectionState, SessionTarget, Transport } from '../../../net/types';
 import { WsTransport, browserDeps } from '../../../net/WsTransport';
+import type { LocalHost } from '../../../store/local/LocalHost';
 import { WorldStore } from '../../../store/WorldStore';
 import type { ClientFlagsStore } from '../../../core/flags';
 import type { ColonyLoadMode } from '../PodTouchdownFx';
 import { BootOverlay } from '../BootOverlay';
-import { devPlanetTypeOfKind, type BootAuthResult } from '../bootOnline';
+import { NOT_YOUR_PLANET } from '../../../net/closeCodes';
+import { createLocalBootFallback, devPlanetTypeOfKind, type BootAuthResult } from '../bootOnline';
 import { EntityMeshes } from '../EntityMeshes';
 import { GuestBootTarget } from '../guestBoot';
 import { localHostOptions } from '../localHost';
@@ -16,8 +19,165 @@ import type { OnlineMode } from '../onlineMode';
 import type { OnlineSessionOptions } from '../OnlineSession';
 import { PilotBridge } from '../pilotBridge';
 import { createSessionTarget, joinParam, scenarioParam } from '../sessionTarget';
+import type { LandfallController } from '../../../features/landfall';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type * as THREE from 'three';
+
+export interface BootResultSummary {
+  planetId: string;
+  colonyId: string;
+  colonyIndex: number;
+  foundingSectorId: string | null;
+  spawn: { q: number; r: number };
+  freshDeployment: boolean;
+  loadMode: ColonyLoadMode;
+}
+
+export function applySessionBootResult(params: {
+  boot: BootAuthResult;
+  pilot: PilotBridge;
+  entities: EntityMeshes;
+  landfall: LandfallController;
+  bootOverlay: BootOverlay | null;
+  skipDescent: boolean;
+  fromSpaceDescent: boolean;
+  freshDeployment: boolean;
+  loadMode: ColonyLoadMode;
+}): BootResultSummary {
+  const { boot, pilot, entities, landfall, bootOverlay, skipDescent, fromSpaceDescent } = params;
+  pilot.note(boot);
+  const planetId = boot.planet.id;
+  const colonyId = boot.colony.id;
+  const colonyIndex = boot.colony.colonyIndex;
+  const foundingSectorId = boot.colony.foundingSectorId ?? boot.foundingSectorId ?? null;
+  const spawn = boot.colony.spawn;
+  entities.setOwnerColonyIndex(colonyIndex);
+  landfall.setOwnerColonyIndex(colonyIndex);
+  bootOverlay?.hideQueueStatus();
+  bootOverlay?.setColonyMeta(planetId, colonyId, colonyIndex);
+  let { freshDeployment, loadMode } = params;
+  if (boot.wasQueued && loadMode !== 'direct') {
+    freshDeployment = true;
+    loadMode = skipDescent ? 'instant' : 'pod';
+  }
+  if (!skipDescent) {
+    if (boot.wasQueued) bootOverlay?.showDescent({ progress: 0, q: spawn.q, r: spawn.r, landed: fromSpaceDescent });
+    else bootOverlay?.setSplashStatus(loadMode === 'pod' ? 'Deploying drop pod…' : 'Linking to colony…');
+  }
+  return { planetId, colonyId, colonyIndex, foundingSectorId, spawn, freshDeployment, loadMode };
+}
+
+export function attachSessionLocalHost(params: {
+  lh: LocalHost;
+  autoStep: boolean;
+  offline: boolean;
+  transport: Transport;
+  store: WorldStore;
+  commandBus: CommandBus;
+  bootOverlay: BootOverlay | null;
+  banner: ConnectionBanner | null;
+  getActiveLocalHost: () => LocalHost | null;
+  onHostMessage: (m: ServerMessage) => void;
+}): { cleanup: () => void; banner: ConnectionBanner | null } {
+  const { lh, autoStep, offline, transport, store, commandBus, bootOverlay, getActiveLocalHost, onHostMessage } = params;
+  const cleanup = lh.onMessage((m) => { commandBus.handleMessage(m); onHostMessage(m); });
+  const origSend = transport.send.bind(transport);
+  transport.send = (m) => {
+    const active = getActiveLocalHost();
+    if (active) active.send(m);
+    else origSend(m);
+  };
+  lh.bindStore(store);
+  if (autoStep) lh.start();
+  if (!offline) return { cleanup, banner: params.banner };
+  bootOverlay?.setOffline(true);
+  params.banner?.dispose();
+  return { cleanup, banner: null };
+}
+
+import { isTypingTarget } from '../../../features/shared/hotkeys';
+import { isEscapeBlockedByHudOverlay } from '../viewportHelper';
+import type { RTSCamera } from '../../RTSCamera';
+
+export function bindSessionKeys(params: {
+  entities: EntityMeshes;
+  cam: () => RTSCamera | null;
+  isDeferringReveal?: () => boolean;
+  landingSkippable: () => boolean;
+  skipLanding: () => void;
+  togglePaused: () => void;
+}): () => void {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => {};
+  const onKey = (e: KeyboardEvent) => {
+    if (params.entities.podTouchdown.isSpacePhaseActive() || params.isDeferringReveal?.() || isTypingTarget(e)) return;
+    const c = params.cam();
+    if ((e.key === 'Escape' || e.key === ' ') && c?.isOrbitalDropping()) {
+      e.preventDefault();
+      c.completeOrbitalDrop();
+      return;
+    }
+    if ((e.key === 'Escape' || e.key === ' ') && params.landingSkippable()) {
+      e.preventDefault();
+      params.skipLanding();
+      return;
+    }
+    if (e.key === 'Escape' && !e.defaultPrevented && !isEscapeBlockedByHudOverlay()) {
+      params.togglePaused();
+    }
+  };
+  window.addEventListener('keydown', onKey);
+  return () => window.removeEventListener('keydown', onKey);
+}
+
+export function resolveSocketFallback(params: {
+  state: ConnectionState;
+  boot: BootAuthResult;
+  disposed: boolean;
+  hasLatestView: boolean;
+  hasLocalHost: boolean;
+  allowLocalFallback: boolean;
+  spawn: { q: number; r: number };
+  planetKind: PlanetKind | null;
+}): BootAuthResult | null {
+  const { state, boot, disposed, hasLatestView, hasLocalHost, allowLocalFallback, spawn, planetKind } = params;
+  if (state.phase !== 'terminal' || disposed || hasLatestView || hasLocalHost || !allowLocalFallback) return null;
+  if (state.reason === NOT_YOUR_PLANET) return null;
+  return createLocalBootFallback(boot.deviceSecret, undefined, spawn, devPlanetTypeOfKind(planetKind));
+}
+
+import type { ClientView } from '../../../store/replica/viewCodec';
+
+export async function runGuestBootSequence(params: {
+  guest: GuestBootTarget;
+  opts: OnlineSessionOptions;
+  predict: boolean;
+  flags: readonly string[];
+  store: WorldStore;
+  transport: Transport;
+  entities: EntityMeshes;
+  getBanner: () => ConnectionBanner | null;
+  isDisposed: () => boolean;
+  onCleanup: (fn: () => void) => void;
+  onView: (v: ClientView) => void;
+  attachLocalHost: (lh: LocalHost, autoStep: boolean, offline: boolean) => void;
+  onSocketState: (s: ConnectionState, boot: BootAuthResult) => void;
+}): Promise<BootAuthResult | null> {
+  const { guest, opts, predict, flags, store, transport, entities, getBanner, isDisposed, onCleanup, onView, attachLocalHost, onSocketState } = params;
+  store.start([...flags], { predict });
+  const boot = await guest.boot(); // applied through `onBooted`; null: disposed on the error splash
+  if (!boot || isDisposed()) return boot; // FA-02: Return to orbit / HMR while the HTTP boot ran
+  onCleanup(store.onView((v) => onView(v)));
+  if (opts.localHost) attachLocalHost(opts.localHost, false, false);
+  else if (boot.mode === 'local' && boot.localHost) attachLocalHost(boot.localHost, typeof window !== 'undefined', true);
+  else {
+    const banner = getBanner();
+    if (banner && !entities.podTouchdown.isSpacePhaseActive()) banner.el.style.display = '';
+    onCleanup(transport.onState((s) => onSocketState(s, boot)));
+    transport.start();
+    if (store.latest) onView(store.latest);
+  }
+  return boot;
+}
 
 export interface SessionBootRig {
   guest: GuestBootTarget | null;
@@ -126,7 +286,8 @@ export function createSessionBootRig(params: {
   );
 
   const playPodTouchdown = loadMode === 'pod' && !skipDescent;
-  const entities = new EntityMeshes(scene, opts.makeMesh, playPodTouchdown);
+  const deferPodRig = !playPodTouchdown || Boolean(fromSpaceDescent && !skipDescent);
+  const entities = new EntityMeshes(scene, opts.makeMesh, playPodTouchdown, deferPodRig);
   entities.healthBars.isEnabled = () => flags.current.flags.has('W02');
   entities.isW10Enabled = () => flags.current.flags.has('W10');
   if (loadMode !== 'pod') {

@@ -2,7 +2,7 @@ import { gridPort } from './gridPorts';
 // Extraction & storage: mine, water pump, supply depot.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
-import { box, cyl, ball, ring, strut, cable, lamp, glow, plinth, lattice, spin } from './kit';
+import { box, cyl, ball, ring, strut, cable, sagPoint, tube, lamp, glow, plinth, lattice, spin, type V3 } from './kit';
 
 const PI = Math.PI;
 
@@ -29,7 +29,7 @@ export function mine() {
   cyl(b, 'hullSecondary', 0.32, 0.32, 0.12, [0, 4.55, 0], { seg: 10, name: 'rotary swivel flange', ...A });
   for (let k = 0; k < 4; k++) {
     const an = (k * PI) / 2;
-    lamp(b, 'energyCyan', 0.06, [Math.cos(an) * 0.26, 4.68, Math.sin(an) * 0.26], { name: 'swivel status light', ...A });
+    lamp(b, 'energyCyan', 0.06, [Math.cos(an) * 0.26, 4.68, Math.sin(an) * 0.26], { housing: false, name: 'swivel status light', ...A });
   }
   // control hut + ore bin
   box(b, 'hullPrimary', [1.25, 1.05, 0.95], [-1.15, 0.19, -1.42], { r: 0.08, name: 'drill control cabin' });
@@ -38,8 +38,9 @@ export function mine() {
   box(b, 'hullPrimary', [1.25, 0.85, 0.95], [1.15, 0.19, -1.42], { r: 0.08, name: 'ore hopper bin' });
   b.addPart(new THREE.IcosahedronGeometry(0.35, 0), 'frameGunmetal', { name: 'extracted ore mound', position: [1.15, 1.08, -1.42], scale: [1.2, 0.8, 1] });
   strut(b, 'frameGunmetal', [0.95, 0.55, -1.05], [0.72, 0.32, -0.45], 0.09, { name: 'slurry transfer pipe' });
-  cable(b, [-1.15, 1.15, -1.2], [-0.55, 5.12, -0.45], 0.22, 0.035, 'frameGunmetal', { name: 'hoist power cable' });
-  lamp(b, 'warningAmber', 0.11, [0.0, 5.95, 0.0], { name: 'derrick beacon light' });
+  const hoistA: V3 = [-1.62, 1.12, -1.08], hoistC: V3 = [-0.48, 5.18, -0.48];
+  tube(b, [new THREE.Vector3(...hoistA), new THREE.Vector3(...sagPoint(hoistA, hoistC, 0.15)), new THREE.Vector3(...hoistC)], 0.035, 'frameGunmetal', { seg: 10, name: 'hoist power cable' });
+  lamp(b, 'warningAmber', 0.11, [0.0, 5.95, 0.0], { housing: false, name: 'derrick beacon light' });
   gridPort(b, 'building.mine', 5.87);
   return b.build();
 }
@@ -64,7 +65,8 @@ export function waterPump() {
   cyl(b, 'frameGunmetal', 0.15, 0.17, 0.42, [0.58, 0.18, 0.4], { seg: 8, name: 'intake wellhead' });
   cyl(b, 'hullSecondary', 0.19, 0.19, 0.08, [0.58, 0.56, 0.4], { seg: 8, name: 'wellhead flange' });
   strut(b, 'hullSecondary', [-0.02, 0.48, 0.4], [0.58, 0.48, 0.4], 0.09, { name: 'intake manifold pipe' });
-  cable(b, [-0.55, 0.88, 0.25], [-0.32, 2.32, -0.2], 0.14, 0.03, 'frameGunmetal', { name: 'pump telemetry cable' });
+  const pumpA: V3 = [-0.55, 0.88, 0.25], pumpC: V3 = [-0.32, 2.32, -0.2];
+  tube(b, [new THREE.Vector3(...pumpA), new THREE.Vector3(...sagPoint(pumpA, pumpC, 0.06)), new THREE.Vector3(...pumpC)], 0.03, 'frameGunmetal', { seg: 8, name: 'pump telemetry cable' });
   return b.build();
 }
 
@@ -101,7 +103,7 @@ export function supplyDepot() {
   for (const sz of [-1, 1]) strut(b, 'frameGunmetal', [1.7, 0.18, sz * 1.75], [1.7, 2.9, sz * 1.75], 0.07, { name: 'gantry upright post' });
   strut(b, 'frameGunmetal', [1.7, 2.9, -1.78], [1.7, 2.9, 1.78], 0.08, { name: 'gantry bridge beam' });
   box(b, 'hullSecondary', [0.42, 0.3, 0.5], [1.52, 2.68, 1.3], { r: 0.05, name: 'gantry hoist trolley' });
-  cable(b, [1.45, 2.72, 1.3], [1.38, 1.7, 1.3], 0.02, 0.025, 'frameGunmetal', { name: 'hoist cable' });
+  cable(b, [1.45, 2.72, 1.3], [1.38, 1.7, 1.3], 0.06, 0.025, 'frameGunmetal', { points: 3, name: 'hoist cable' });
   lamp(b, 'warningAmber', 0.09, [1.7, 3.04, -1.72], { name: 'gantry rear light' });
   lamp(b, 'warningAmber', 0.09, [1.7, 3.04, 1.72], { name: 'gantry front light' });
   cable(b, [-1.55, 0.95, 0.36], [-1.3, 0.82, 0.92], 0.08, 0.04, 'frameGunmetal', { name: 'depot feeder cable' });

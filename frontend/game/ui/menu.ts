@@ -1,4 +1,6 @@
 import type { PlanetListV1, PlanetSummaryV1, SectorId } from '@terra/contracts';
+import { onPerfConfigChange } from '@terra/render/core/perfConfig';
+import { onShadowQualityChange } from '@terra/render/core/shadowQuality';
 import type { OrbitalGlobeMarkerInput, OrbitalProjectedFrame } from '@terra/render/orbit/types';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { mountPlanetThumbnails, type PlanetThumbnailsHandle } from '@terra/render/planets/PlanetThumbnails';
@@ -64,20 +66,13 @@ export interface MainMenuOptions {
 
 function buildMenuShellHtml(planetsByKind: Readonly<Record<PlanetKind, PlanetSummaryV1>>): string {
   const cards = PLANET_KINDS.map((k) => worldCardHtml(k, planetsByKind[k])).join('');
-  const landingHref =
-    typeof location !== 'undefined' && location.hostname === 'play.terraagent.fun'
-      ? 'https://terraagent.fun/'
-      : '/landing.html';
   return `
       <div class="menu-top">
-        <div>
+        <div class="menu-brand">
           <h1 class="title">TERRA<b>AGENT</b></h1>
           <div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div>
         </div>
-        <div class="menu-top-actions">
-          <button type="button" class="btn btn-ghost btn-sm" id="settings-trigger" data-testid="settings-trigger">ESC · SETTINGS</button>
-          <a class="btn btn-ghost btn-sm" href="${landingHref}">◂ TERRAAGENT.FUN</a>
-        </div>
+        <div class="menu-top-actions"></div>
       </div>
       <div class="menu-bottom">
         <div class="cards">${cards}</div>
@@ -101,6 +96,8 @@ export class MainMenu {
   private errEl: HTMLElement;
   private ownedFeed: LobbyPlanetFeed | null = null;
   private unsubscribeFeed: (() => void) | null = null;
+  private readonly offFpsCap: () => void;
+  private readonly offShadowQuality: () => void;
   private activeColony: ActiveHomeColony | null = null;
   private disposed = false;
   private readonly autoProbeColony: boolean;
@@ -160,6 +157,14 @@ export class MainMenu {
       this.settings = next;
       this.cb.onSettings(next);
     });
+    this.offFpsCap = onPerfConfigChange((opt, res, cap) => {
+      if (this.settings.optimized === opt && this.settings.resolution === res && this.settings.fpsCap === cap) return;
+      this.settings = { ...this.settings, optimized: opt, resolution: res, fpsCap: cap };
+    });
+    this.offShadowQuality = onShadowQualityChange((shadows) => {
+      if (this.settings.shadows === shadows) return;
+      this.settings = { ...this.settings, shadows };
+    });
 
     this.bindControls();
     this.select(kind, false);
@@ -185,9 +190,6 @@ export class MainMenu {
   private bindControls(): void {
     this.el.querySelectorAll<HTMLElement>('.world-card').forEach((c) => {
       c.onclick = () => this.select(c.dataset.k as PlanetKind, true);
-    });
-    this.el.querySelector<HTMLButtonElement>('#settings-trigger')?.addEventListener('click', () => {
-      this.openSettings();
     });
   }
 
@@ -354,6 +356,7 @@ export class MainMenu {
     this.settingsModal.close();
     this.thumbnails?.setPaused(true);
     this.el.classList.add('hide');
+    this.ownedFeed?.suspend();
   }
 
   show(): void {
@@ -361,12 +364,15 @@ export class MainMenu {
     this.errEl.textContent = '';
     this.arHud.syncLockState();
     this.thumbnails?.setPaused(false);
+    this.ownedFeed?.resume();
   }
 
   hasLinkedPilot(): boolean { return this.pilotAccess.hasLinkedPilot(); }
 
   dispose(): void {
     this.disposed = true;
+    this.offFpsCap();
+    this.offShadowQuality();
     window.removeEventListener('keydown', this.onKeyCapture, true);
     this.unsubscribeFeed?.();
     this.unsubscribeFeed = null;

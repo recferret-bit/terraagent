@@ -1,7 +1,7 @@
 import terrainTable from '../data/terrain';
 import { decodeValue } from '../codec/values';
 import type { EngineDiff } from '../host/diff';
-import { isPreparedGround } from './geo';
+import { isFoundationReady, isPreparedGround } from './geo';
 import { noteTileStamp } from './sectors';
 import type { CompiledDataLike } from '../kernel/config';
 import type { Blob, Grid, PlanetMeta, PlanetState } from '../kernel/state';
@@ -295,6 +295,13 @@ export function isBuildablePrepared(grid: GridLike, tileIdx: number): boolean {
   const { layers } = resolveTileLayers(grid);
   if (layers.terrain[tileIdx] === TERRAIN.deep) return false;
   return isPreparedGround(layers.prep[tileIdx]);
+}
+
+/** Flat ground (not a ridge or moat). A building placed here does not terraform the tile. */
+export function isFoundationReadyTile(grid: GridLike, tileIdx: number): boolean {
+  if (!isValidTileIndex(grid, tileIdx)) return false;
+  const { layers } = resolveTileLayers(grid);
+  return isFoundationReady(layers.terrain[tileIdx] ?? 0, layers.prep[tileIdx] ?? 0);
 }
 
 /** Ground passability may have changed (see `PlanetMeta.pathEpoch`). */

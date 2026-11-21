@@ -21,7 +21,7 @@ This catalog defines the standard parameterized sub-assemblies ("greebles") used
 | :--- | :--- | :--- | :--- |
 | `coolingVentArray` | `{ width, height, slats = 5, tilt = 0.4 }` | Recessed `frameGunmetal` frame populated with angled `RoundedBoxGeometry` louver blades. | `frameGunmetal` |
 | `hydraulicStrut` | `{ start: Vector3, end: Vector3, radius = 0.05 }` | Two coaxial cylinders oriented along `end - start`: thicker painted outer sleeve (`60%` length) + thinner chrome inner piston rod (`40%` length). | `hullSecondary` + `frameGunmetal` |
-| `saggingCable` | `{ p1: Vector3, p2: Vector3, slack = 0.18, radius = 0.03 }` | `CatmullRomCurve3([p1, midPointDown, p2])` swept with `TubeGeometry(curve, 12, radius, 6)`. Breaks rigid box silhouettes immediately. | `frameGunmetal` |
+| `saggingCable` | `{ p1: Vector3, p2: Vector3, slack = 0.18, radius = 0.03 }` | One tube from fitting to fitting. The belly is `slack` metres below the chord, perpendicular to it in the vertical plane (a few percent of the span). A world-Y drop on a steep span is still a straight rod. Not a cylinder and not a frame of bars. | `frameGunmetal` |
 | `pressureTankCluster` | `{ count = 3, radius = 0.22, height = 0.9 }` | Pill-shaped capsule tanks (`CapsuleGeometry`) bound together by two horizontal retaining bands and a manifold pipe. | `hullPrimary` + `hullSecondary` bands |
 
 ---

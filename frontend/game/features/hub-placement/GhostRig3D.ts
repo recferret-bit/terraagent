@@ -68,7 +68,8 @@ export class GhostRig3D {
     const g = src.getGhostState();
     this.pulse += dt;
     const k = 0.85 + 0.15 * Math.sin(this.pulse * 5);
-    this.footprint.update(g.footprintTiles);
+    // A valid site is already a foundation: the ghost is the building, not a hex mat under it.
+    this.footprint.update(g.valid ? [] : g.footprintTiles.filter((t) => !t.valid));
     this.footprint.setPulse(k);
     this.ensureBody();
     if (this.body) {

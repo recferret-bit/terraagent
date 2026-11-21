@@ -61,6 +61,9 @@ export class WeatherHazardRenderer implements RendererInstance {
   private readonly offWeatherUserEdit: () => void;
   private readonly offWindUserEdit: () => void;
   private readonly seenEvents = new Map<string, number>();
+  private readonly clearedCraterKeys = new Set<string>();
+  private readonly clearedLightningKeys = new Set<string>();
+  private clearedTerrainRef: unknown = null;
   private readonly pendingMeteorClears: Array<{ tiles: Array<{ q: number; r: number }>; remainingS: number }> = [];
   private lastMeteorTick = -1;
   private lastLightningTick = -1;
@@ -329,16 +332,29 @@ export class WeatherHazardRenderer implements RendererInstance {
       if (!initialStale) this.playLightning(lTiles, weatherBlob.lastLightning.hitWater);
     }
 
+    if (terrain !== this.clearedTerrainRef) {
+      this.clearedTerrainRef = terrain;
+      this.clearedCraterKeys.clear();
+      this.clearedLightningKeys.clear();
+    }
     const craters = weatherBlob.craters ?? [];
     this.meteorFx?.syncCraters(craters, undefined, heightAt);
     for (const c of craters) {
       if (!this.meteorFx?.hasDescendingStrikeNear(c.q, c.r)) {
-        clearMeteorTilesOnTerrain(terrain, computeCraterDiscTiles(c.q, c.r, c.tiles));
+        const key = `${c.q},${c.r},${c.tiles?.length ?? 0}`;
+        if (!this.clearedCraterKeys.has(key)) {
+          this.clearedCraterKeys.add(key);
+          clearMeteorTilesOnTerrain(terrain, computeCraterDiscTiles(c.q, c.r, c.tiles));
+        }
       }
     }
     this.lightningFx?.syncLightningSites(weatherBlob.lightningSites, heightAt);
     for (const s of weatherBlob.lightningSites ?? []) {
-      clearLightningTilesOnTerrain(terrain, expandLightningTiles(s.tiles?.length ? s.tiles : [{ q: s.q, r: s.r }]));
+      const key = `${s.q},${s.r},${s.tiles?.length ?? 0}`;
+      if (!this.clearedLightningKeys.has(key)) {
+        this.clearedLightningKeys.add(key);
+        clearLightningTilesOnTerrain(terrain, expandLightningTiles(s.tiles?.length ? s.tiles : [{ q: s.q, r: s.r }]));
+      }
     }
 
     if (weatherBlob.activeTwisters) {
@@ -389,6 +405,9 @@ export class WeatherHazardRenderer implements RendererInstance {
     if (this.windEditTimer !== null) { clearTimeout(this.windEditTimer); this.windEditTimer = null; }
     this.offRenderEvents?.(); this.offServerEvents?.();
     this.offWeatherAction(); this.offWeatherUserEdit(); this.offWindUserEdit();
+    this.clearedCraterKeys.clear();
+    this.clearedLightningKeys.clear();
+    this.clearedTerrainRef = null;
     this.hqRespawnModal.dispose(); this.screenOverlay.dispose();
     this.meteorFx?.dispose(); this.twisterFx?.dispose(); this.lightningFx?.dispose();
   }

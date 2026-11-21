@@ -1,5 +1,6 @@
 import { hasCommandKind, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type ClientMessageOf, type RejectCode, type SimCommandV1 } from '@terra/contracts';
 import { Counter, type Registry } from 'prom-client';
+import { normalizeColonyStatus, type SectorAntiCheatService } from '../core/anticheat';
 import type { CommandPrechecks } from '../core/command-prechecks';
 import type { ColonyRecord } from '../core/home/home.repository';
 import type { FlagsService, CommandWaveLookup } from '../flags/flags.service';
@@ -24,6 +25,8 @@ export interface SimCommandIngressOptions {
   readonly rateLimit?: CommandRateLimitOptions;
   /** Server-side prechecks per kind (W13-01), run after the contract checks and before the sim. */
   readonly prechecks?: Pick<CommandPrechecks, 'has' | 'run'>;
+  /** O(1) hash-based real-time planet & sector anti-cheat validator. */
+  readonly antiCheat?: SectorAntiCheatService;
 }
 
 /**
@@ -69,17 +72,52 @@ export class SimCommandIngress implements CommandIngress {
     return next;
   }
 
-  /** The player's colony row on the planet; else colony 0 for a dev session on a scenario planet; else none. */
+  /** The player's colony row on the planet; else live anti-cheat binding; else colony 0 for a dev session on a scenario planet; else none. */
   private async resolveColony(ctx: CommandContext): Promise<ColonyRecord | null> {
     const { playerId, planetId, memo } = ctx;
-    const remembered = memo?.planetId === planetId && memo.colony === null;
-    const row = remembered || !this.o.homeRepo ? null : await this.o.homeRepo.findColonyByPlayerAndPlanet(playerId, planetId);
-    if (row) return row;
-    if (memo && !remembered) { memo.planetId = planetId; memo.colony = null; }
+    if (memo?.planetId === planetId && memo.colony) return memo.colony as ColonyRecord;
+    const rememberedMiss = memo?.planetId === planetId && memo.colony === null;
+    const row = rememberedMiss || !this.o.homeRepo ? null : await this.o.homeRepo.findColonyByPlayerAndPlanet(playerId, planetId);
+    if (row) {
+      this.o.antiCheat?.recordColonyBase({
+        ...row,
+        playerId: row.playerId ?? playerId,
+        planetId: row.planetId ?? planetId,
+      });
+      this.rememberColony(memo, planetId, row);
+      return row;
+    }
+    const live = this.liveColony(ctx);
+    if (live) {
+      this.rememberColony(memo, planetId, live);
+      return live;
+    }
+    if (memo && !rememberedMiss) { memo.planetId = planetId; memo.colony = null; }
+    return null;
+  }
+
+  /** Anti-cheat binding, or colony 0 for a dev session on a scenario planet. */
+  private liveColony(ctx: CommandContext): ColonyRecord | null {
+    const { playerId, planetId } = ctx;
+    const liveActive = this.o.antiCheat?.index.getActiveBaseByPlayer(playerId);
+    if (liveActive && liveActive.planetId === planetId) {
+      return {
+        id: liveActive.colonyId, playerId, planetId, colonyIndex: liveActive.colonyIndex,
+        name: liveActive.name ?? `Colony-${playerId.slice(-4)}`, color: liveActive.colonyIndex,
+        status: liveActive.status, state: liveActive.status, foundingSectorId: liveActive.baseSectorId,
+        spawnQ: liveActive.baseQ, spawnR: liveActive.baseR,
+      } as ColonyRecord;
+    }
     if (ctx.dev && this.o.planets.isScenarioColonyPlanet(planetId)) {
       return { id: 'col_0', playerId, planetId, colonyIndex: 0, name: 'Colony 1', spawnQ: 0, spawnR: 0, status: 'ACTIVE' } as ColonyRecord;
     }
     return null;
+  }
+
+  private rememberColony(memo: CommandContext['memo'], planetId: string, colony: ColonyRecord): void {
+    if (!memo) return;
+    memo.planetId = planetId;
+    memo.colony = colony;
   }
 
   private dispatchWithColony(
@@ -93,8 +131,25 @@ export class SimCommandIngress implements CommandIngress {
       hasColony: Boolean(colony),
     });
     if (!pre.ok) return this.reject(ctx, cmd, pre.code, pre.detail);
-    if (!pre.dev && (colony?.status === 'ELIMINATED' || colony?.state === 'ELIMINATED')) {
+    if (!pre.dev && colony && normalizeColonyStatus(colony.status ?? colony.state ?? 'ACTIVE') !== 'ACTIVE') {
       return this.reject(ctx, cmd, 'colony_inactive');
+    }
+    if (!pre.dev && this.o.antiCheat) {
+      const ac = this.o.antiCheat.validateCommand({
+        transport: ctx.transport ?? 'ws',
+        playerId: ctx.playerId,
+        planetId: ctx.planetId,
+        sectorId: ctx.sectorId,
+        bindingHash: ctx.bindingHash,
+        colony,
+        kind: cmd.d.kind,
+        args: pre.args,
+        rawArgs: cmd.d.args,
+        dev: pre.dev,
+        production: this.o.production,
+        isScenarioPlanet: Boolean(this.o.planets.isScenarioColonyPlanet?.(ctx.planetId)),
+      });
+      if (!ac.ok) return this.reject(ctx, cmd, ac.rejectCode, ac.detail);
     }
     if (this.o.prechecks?.has(cmd.d.kind)) return this.precheckThenSubmit(ctx, cmd, colony, pre.args, pre.dev);
     this.submit(ctx, cmd, colony, pre.args, pre.dev);

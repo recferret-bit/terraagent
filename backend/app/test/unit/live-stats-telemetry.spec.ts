@@ -145,4 +145,28 @@ describe('LiveStatsTelemetry · GamePlanets sim telemetry', () => {
     expect(ocean.liveColonies?.filter((c) => c.isBot)).toHaveLength(2);
     expect(ocean.liveColonies?.filter((c) => !c.isBot).map((c) => c.displayName)).toEqual(['Coral Haven']);
   });
+
+  it('does not snapshot the sim thread when the anti-cheat index already mirrors the planet', async () => {
+    const fullState = vi.fn();
+    const gamePlanets = { loadedIds: () => [CANONICAL_PLANETS.desert.id], fullState };
+    const index = {
+      getPlanet: () => ({ syncedFromSim: true }),
+      listColoniesOnPlanet: () => [{
+        colonyId: 'co_cached', playerId: 'plr_1', planetId: CANONICAL_PLANETS.desert.id,
+        colonyIndex: 0, name: 'Cached', baseSectorId: 'sec_0_0', status: 'ACTIVE', isRivalAi: false,
+      }],
+    };
+    const telemetry = new LiveStatsTelemetry(
+      { onlinePlayerCount: () => 0, onlinePlayersByPlanet: () => new Map() } as never,
+      undefined,
+      { NODE_ENV: 'development' } as never,
+      gamePlanets as never,
+      undefined,
+      { index } as never,
+    );
+    const desert = await telemetry.getPlanetLiveCounts(CANONICAL_PLANETS.desert.id, 'desert');
+    expect(fullState).not.toHaveBeenCalled();
+    expect(desert.playerColonies).toBe(1);
+    expect(desert.liveColonies?.map((c) => c.displayName)).toEqual(['Cached']);
+  });
 });

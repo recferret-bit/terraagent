@@ -112,7 +112,7 @@ describe('playground wildlife storybook tab & active vertebrate animation', () =
     expect(document.querySelector('[data-wildlife-biome="dune"]')?.classList.contains('on')).toBe(true);
 
     const tb = new Toolbar(state, {
-      onView() {}, onPlanet() {}, onToggle() {}, onShot() {}, onSheet() {}, onBuild() {}, onPose() {}, onWorkTarget() {}, onDepositStage() {}, onTileState() {},
+      onView() {}, onPlanet() {}, onToggle() {}, onShot() {}, onSheet() {}, onBuild() {}, onPose() {}, onWorkTarget() {}, onDepositStage() {}, onTileState() {}, onNight() {},
     });
     tb.build();
     const poseBtn = document.querySelector('#ver-pose')!;
@@ -133,7 +133,7 @@ describe('playground wildlife storybook tab & active vertebrate animation', () =
 
     const spawns = new SpawnSet();
     spawns.rebuild(['fauna.timberWolf', 'fauna.bird.highlandHawk'], 'forestRock', false);
-    spawns.tick(1.5, 0.016, false, true, 0, 'fauna.timberWolf', false, false, 'tree', 'auto');
+    spawns.tick(1.5, 0.016, false, true, 0, 'fauna.timberWolf', false, 'tree', 'auto');
 
     const wolfSpawn = spawns.find('fauna.timberWolf')!;
     const hawkSpawn = spawns.find('fauna.bird.highlandHawk')!;

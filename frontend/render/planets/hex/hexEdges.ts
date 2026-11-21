@@ -24,7 +24,8 @@ const TILE_TINT_GLSL = /* glsl */ `vec4 hexCellTexel(sampler2D map, vec2 axial) 
 }
 vec4 hexTileTint(vec2 axial) { return hexCellTexel(uTileTint, axial); }
 vec4 hexTerraformMask(vec2 axial) { return hexCellTexel(uTerraformMap, axial); }
-float hexGridCell(vec2 axial) { return step(0.5, hexCellTexel(uHexGrid, axial).r); }`;
+float hexGridCell(vec2 axial) { return step(0.5, hexCellTexel(uHexGrid, axial).r); }
+float hexShoreCode(vec2 axial) { return hexCellTexel(uHexGrid, axial).g; }`;
 
 const HEX_FRAG_COMMON = /* glsl */ `#define TA_TERRAIN_SHADER 1
 // Flat hex land is levelled to 0 m = water level and dry basins sit below it: only real water tiles (vHexShore = 1,
@@ -65,10 +66,25 @@ const HEX_TINT_GLSL = /* glsl */ `  vec2 ownAx = vec2(rc.x, rc.z);
   diffuseColor.rgb = mix(diffuseColor.rgb, tintedGround, max(tileMix, isLunarHole * 0.96));
   diffuseColor.rgb = mix(diffuseColor.rgb, moonGray, isLunarHole * 0.85);`;
 
-const HEX_SHORE_BEACH_GLSL = /* glsl */ `  float flatGround = (1.0 - smoothstep(0.14, 0.38, vRock)) * smoothstep(0.56, 0.78, vLN.y);
-  float lowCoastal = 1.0 - smoothstep(0.18, 0.36, vLP.y);
-  float aboveDeepBed = smoothstep(-0.34, -0.12, vLP.y);
-  float shoreZone = (1.0 - isDune) * smoothstep(0.32, 0.72, vHexShore) * aboveDeepBed * flatGround * lowCoastal;
+const HEX_SHORE_BEACH_GLSL = /* glsl */ `  float ownShoreCode = hexShoreCode(ownAx);
+  float nbShoreCode = hexShoreCode(ownAx + nbStep);
+  float ownDryShore = step(0.75, ownShoreCode);
+  float ownWater = step(0.25, ownShoreCode) * (1.0 - ownDryShore);
+  float nbDryShore = step(0.75, nbShoreCode);
+  float nbWater = step(0.25, nbShoreCode) * (1.0 - nbDryShore);
+  float nbCoastSide = max(nbDryShore, nbWater);
+  float shoreSeamW = 0.5 * (1.0 - smoothstep(0.0, 0.24, em)) * nbTint.a;
+  float inlandSeam = shoreSeamW * (1.0 - nbCoastSide);
+  float cellDryShore = max(
+    ownDryShore * (1.0 - inlandSeam),
+    (1.0 - max(ownDryShore, ownWater)) * nbDryShore * shoreSeamW
+  );
+  float flatGround = smoothstep(0.84, 0.96, vLN.y);
+  float lowCoastal = 1.0 - smoothstep(0.06, 0.20, vLP.y);
+  float nonRockMask = 1.0 - smoothstep(0.14, 0.38, vRock);
+  float aboveDeepBed = mix(smoothstep(-0.34, -0.12, vLP.y), 1.0, ownDryShore);
+  float vertexShore = smoothstep(0.22, 0.58, vHexShore) * aboveDeepBed * flatGround * lowCoastal;
+  float shoreZone = (1.0 - isDune) * nonRockMask * max(cellDryShore, vertexShore);
   if (shoreZone > 0.001) {
     vec2 sp = vLP.xz;
     float sandNoise = fbm3(sp * 2.2);
@@ -77,19 +93,20 @@ const HEX_SHORE_BEACH_GLSL = /* glsl */ `  float flatGround = (1.0 - smoothstep(
     vec3 drySand = vec3(0.88, 0.78, 0.56) * (0.94 + 0.12 * sandNoise + 0.03 * ripple);
     drySand = mix(drySand, vec3(0.94, 0.86, 0.68), pebble * 0.32);
     vec3 wetSand = vec3(0.54, 0.45, 0.32) * (0.95 + 0.08 * sandNoise);
-    // Warm coastal sand across shoreline rims and water-bordered ground corners; wave foam lives on water.
-    float dryCoast = smoothstep(0.42, 0.74, vHexShore + (sandNoise - 0.5) * 0.14) * (1.0 - smoothstep(0.14, 0.34, vLP.y));
-    float cornerSaturate = smoothstep(0.74, 0.88, vHexShore);
-    float coast = max(dryCoast * 0.92, cornerSaturate);
-    float wetReach = (1.0 - smoothstep(-0.06, 0.05, vLP.y)) * smoothstep(0.62, 0.86, vHexShore);
-    float beachMask = clamp(shoreZone * max(coast, wetReach), 0.0, 1.0);
+    // Dry shore hexagons stay sand-like across the full cell; vertex terms soften shallow beds and inland transitions.
+    float coast = smoothstep(0.42, 0.76, vHexShore + (sandNoise - 0.5) * 0.18) * lowCoastal * flatGround;
+    float wetReach = (1.0 - smoothstep(-0.06, 0.04, vLP.y))
+      * smoothstep(0.58, 0.86, max(vHexShore, ownDryShore * (0.60 + nbWater * nbW * 0.32)));
+    float vertexBeach = vertexShore * max(coast * 0.85, wetReach);
+    float beachMask = clamp((1.0 - isDune) * nonRockMask * max(cellDryShore, vertexBeach), 0.0, 1.0);
     float waterLine = smoothstep(-0.055, -0.028, vLP.y)
       * (1.0 - smoothstep(-0.028, -0.005, vLP.y))
       * smoothstep(0.76, 0.88, vHexShore)
       * step(0.5, flatGround);
     vec3 sandCol = mix(drySand, wetSand, clamp(wetReach, 0.0, 1.0));
     sandCol = mix(sandCol, vec3(0.82, 0.88, 0.92), waterLine * 0.35);
-    diffuseColor.rgb = mix(diffuseColor.rgb, sandCol, beachMask * 0.96);
+    float sandMix = mix(beachMask * 0.90, beachMask, ownDryShore);
+    diffuseColor.rgb = mix(diffuseColor.rgb, sandCol, sandMix);
     float wetSheen = clamp(max(wetReach * 0.85, waterLine), 0.0, 1.0);
     gRough = mix(gRough, mix(0.84, 0.18, wetSheen), beachMask);
     gBump = mix(gBump, vec3(-0.8, 0.0, -0.6) * cos(dot(sp, vec2(0.8, 0.6)) * 14.0 + sandNoise * 5.0) * 0.07 * (1.0 - wetSheen * 0.65), beachMask);

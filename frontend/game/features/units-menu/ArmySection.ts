@@ -1,4 +1,5 @@
 import type { FeatureContext, GameView } from '../../core/registry/types';
+import { ARMY_SECTION_TEXT } from '../shared/menuSections';
 import { viewColony } from '../shared/colony';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 
@@ -205,11 +206,16 @@ export class ArmySectionController {
 
     head.append(title, this.rallyReadoutEl, this.rallyBtn);
 
+    const blurb = document.createElement('p');
+    blurb.className = 'ta-menu-section__text';
+    blurb.setAttribute('data-army-blurb', '');
+    blurb.textContent = ARMY_SECTION_TEXT;
+
     this.cardsEl = document.createElement('div');
     this.cardsEl.className = 'ta-units__army-cards';
     this.cardsEl.setAttribute('data-army-cards', '');
 
-    this.sectionEl.append(head, this.cardsEl);
+    this.sectionEl.append(head, blurb, this.cardsEl);
     cardsContainer.appendChild(this.sectionEl);
 
     this.factorySectionEl = document.createElement('div');

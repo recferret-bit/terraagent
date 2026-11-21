@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import { shouldCullSmallShadowCasters } from '@terra/render/core/shadowQuality';
 import { inViewFocus } from '@terra/render/core/viewFocus';
 
 /**
@@ -7,6 +8,7 @@ import { inViewFocus } from '@terra/render/core/viewFocus';
  * off-screen by at least the margin.
  */
 export const ENTITY_FOCUS_PAD_M = 8;
+export const ENTITY_SHADOW_PAD_M = 28;
 
 /**
  * True while the entity can be on screen. Off-focus entities keep their pose (position, heading, walk/work weights
@@ -17,4 +19,11 @@ export const ENTITY_FOCUS_PAD_M = 8;
  */
 export function isEntityInViewFocus(mesh: THREE.Object3D): boolean {
   return inViewFocus(mesh.position.x, mesh.position.z, ENTITY_FOCUS_PAD_M);
+}
+
+/** Updates `mesh.castShadow` for camera focus + small-caster LOD and returns `isEntityInViewFocus(mesh)`. */
+export function syncEntityShadowCaster(mesh: THREE.Object3D, isSmallUnit: boolean): boolean {
+  const inShadowRange = inViewFocus(mesh.position.x, mesh.position.z, ENTITY_SHADOW_PAD_M);
+  mesh.castShadow = inShadowRange && !(isSmallUnit && shouldCullSmallShadowCasters());
+  return isEntityInViewFocus(mesh);
 }

@@ -9,6 +9,7 @@ import {
   BearerAuthGuard,
 } from './auth';
 import { CommandPrechecks } from './command-prechecks';
+import { SectorAntiCheatService } from './anticheat';
 import { HealthController } from './health.controller';
 import { DEFAULT_AUTH_RATE_PER_MIN, IpThrottleGuard } from './ip-throttle.guard';
 import { HomeController, HomeRepository, HomeService } from './home';
@@ -52,6 +53,7 @@ export const env: EnvSection = (() => {
   controllers: [HealthController, AuthController, HomeController],
   providers: [
     CommandPrechecks,
+    SectorAntiCheatService,
     ReadinessRegistry,
     MetricsRegistry,
     AuthTokenService,
@@ -65,6 +67,7 @@ export const env: EnvSection = (() => {
   ],
   exports: [
     CommandPrechecks,
+    SectorAntiCheatService,
     ReadinessRegistry,
     MetricsRegistry,
     AuthTokenService,

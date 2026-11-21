@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, geoBuildOptionsFor, hexDistance, type GeoBlock, type GeoBuildOptions } from '@terra/sim';
+import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, type GeoBlock, type GeoBuildOptions } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { extractHqFromView } from '../shared/hqView';
@@ -8,7 +8,7 @@ import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
 import { depositCodeForRequired, matchesDeposit, nudgeHoverAnchor } from './ghostNudge';
-import { getTilePrepOp, isW05LinkedPrepActive, resolveGhostPrepBill } from './prepBillFormat';
+import { ghostTerraformReadout } from './prepBillFormat';
 import { depositReasonText, evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
 
 export interface PlacementGhostTile {
@@ -30,7 +30,6 @@ export interface EvaluatePlacementGhostOptions {
 
 interface FootprintScanResult {
   tiles: PlacementGhostTile[];
-  prepBill: Record<string, number>;
   coveredDepositIndices: number[];
   hasOutOfBounds: boolean;
   hasImpassable: boolean;
@@ -47,11 +46,9 @@ function scanFootprintTiles(
   occupied: ReadonlySet<number>,
   tilesData?: ClientTiles,
   requiresDeposit?: string,
-  geo: GeoBuildOptions = { linkedPrep: false },
 ): FootprintScanResult {
-  const w05Active = geo.linkedPrep === true;
+  const geo: GeoBuildOptions = { linkedPrep: false };
   const tiles: PlacementGhostTile[] = [];
-  const prepBill: Record<string, number> = {};
   const coveredDepositIndices: number[] = [];
   let hasOutOfBounds = false, hasImpassable = false, hasOccupied = false, terrainBlock: GeoBlock | null = null;
 
@@ -67,17 +64,15 @@ function scanFootprintTiles(
       const prep = tilesData?.prep ? (tilesData.prep[tileIdx] ?? PREP.wild) : PREP.wild;
       const deposit = tilesData?.deposit ? (tilesData.deposit[tileIdx] ?? DEPOSIT.none) : DEPOSIT.none;
       if (tilesData) {
-        // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first (unless W05 linkedPrep).
+        // One rule with the host (D-37): trees, rock, slope, hole, water and ridge are terraformed first.
         terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', geo);
-        if ((!w05Active && terrain === TERRAIN.deep) || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
+        if (terrain !== TERRAIN.flat || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
         if (matchesDeposit(deposit, reqDepCode)) coveredDepositIndices.push(tileIdx);
       }
-      const prepOp = tilesData ? getTilePrepOp(terrain, prep, w05Active) : undefined;
-      if (prepOp) prepBill[prepOp] = (prepBill[prepOp] ?? 0) + 1;
-      tiles.push({ q: tq, r: tr, tileIdx, deposit, terrain, prep, prepOp });
+      tiles.push({ q: tq, r: tr, tileIdx, deposit, terrain, prep });
     }
   }
-  return { tiles, prepBill, coveredDepositIndices, hasOutOfBounds, hasImpassable, hasOccupied, terrainBlock };
+  return { tiles, coveredDepositIndices, hasOutOfBounds, hasImpassable, hasOccupied, terrainBlock };
 }
 
 interface ValidityResult {
@@ -119,22 +114,16 @@ export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions, ctx:
   const footprintW = isSwapped ? meta.footprintD : meta.footprintW;
   const footprintD = isSwapped ? meta.footprintW : meta.footprintD;
   const tilesData = (opts.view as { tiles?: ClientTiles } | undefined)?.tiles;
-  const w05Active = isW05LinkedPrepActive(opts.flags, ctx.data);
-  // The host's geo options (D-37): linked prep, and deep water once the colony has a worker of `deepReclaim`'s tier.
-  const geo = { ...geoBuildOptionsFor(ctx.world, opts.colonyId ?? 0, ctx.data), linkedPrep: w05Active };
-  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit, geo);
+  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit);
   const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: ctx.data, world: ctx.world });
   const val = sim ? { valid: sim.valid, statusColor: sim.valid ? 'green' as const : 'red' as const, reason: sim.reason, depositCovered: sim.valid && scan.coveredDepositIndices.length > 0 }
     : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
-  const billSummary = resolveGhostPrepBill(scan.tiles, scan.prepBill, sim?.bill, ctx.data, w05Active);
+  const bill = ghostTerraformReadout(val.valid);
 
   return {
     building: opts.building, label: meta.label, q: opts.q, r: opts.r, rotation: rot,
     footprintW, footprintD, footprintText: `${footprintW}×${footprintD}`,
-    tiles: scan.tiles, prepBill: billSummary.prepBill, prepBillText: billSummary.prepBillText,
-    ...(billSummary.prepEnergyE !== undefined ? { prepEnergyE: billSummary.prepEnergyE } : {}),
-    ...(billSummary.prepTimeS !== undefined ? { prepTimeS: billSummary.prepTimeS } : {}),
-    ...(billSummary.prepCost !== undefined ? { prepCost: billSummary.prepCost } : {}),
+    tiles: scan.tiles, prepBill: bill.prepBill, prepBillText: bill.prepBillText,
     valid: val.valid, statusColor: val.statusColor, reason: val.reason,
     requiresDeposit: meta.requiresDeposit, depositCovered: val.depositCovered, depositTileIndices: scan.coveredDepositIndices,
   };
@@ -323,8 +312,6 @@ export class PlacementGhostController implements Disposable {
         footprintW: direct.footprintW,
         footprintD: direct.footprintD,
         requiresDeposit: direct.requiresDeposit,
-        colonyId: base.colonyId,
-        w05Active: isW05LinkedPrepActive(base.flags, ctx.data),
         tilesData,
         ctx,
         isValidAt: (aq, ar) => evaluatePlacementGhost({ ...base, q: aq, r: ar }, ctx).valid,

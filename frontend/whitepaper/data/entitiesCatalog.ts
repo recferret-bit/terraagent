@@ -195,7 +195,7 @@ export const FLEET_CARDS: ReadonlyArray<EntityCardSpec> = [
     renderKind: 'archetype',
     targetId: 'building.commandHub',
     badge: 'HQ // S0',
-    desc: 'Core colony nerve center with spinning radar, cryo tanks, pad uplink and emergency grid generation.',
+    desc: 'Core colony nerve center with spinning radar, cryo tanks, antenna beacon and emergency grid generation.',
     footprintOrBudget: '3×3 · Rotating Radar + Guys',
     actions: ['idle', 'build33', 'ruin'],
     defaultAction: 'idle',

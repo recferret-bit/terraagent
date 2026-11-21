@@ -120,25 +120,41 @@
 .ar-wrap-scan {
   position: fixed;
   left: 3.2vw;
-  top: clamp(114px, 15.2vh, 146px);
+  top: var(--orbit-hud-top, 140px);
   width: clamp(248px, 23vw, 316px);
   transform-origin: left center;
   transform: perspective(780px) rotateY(16.5deg) rotateX(-2.2deg);
 }
 
+/* Two fixed rows so the blue presence card and the orange sector card cannot grow into each other.
+   Launch sits on the bottom row; each row scrolls instead of overlapping. */
 .ar-right-rail {
   position: fixed;
   right: 2.8vw;
-  top: clamp(72px, 11.5vh, 132px);
+  top: var(--orbit-hud-top, 140px);
   bottom: clamp(12px, 2.2vh, 24px);
   width: clamp(304px, 26.2vw, 368px);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
   pointer-events: none;
   overflow: visible;
+  z-index: 1;
 }
+
+#menu .ar-right-rail > .ar-float-wrap {
+  max-height: 100%;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ta-seam-3) transparent;
+}
+
+.ar-right-rail > .ar-wrap-launch { align-self: end; z-index: 2; }
+.ar-right-rail > .ar-wrap-presence { z-index: 1; }
 
 .ar-wrap-presence { transform-origin: right center; transform: perspective(780px) rotateY(-16.5deg) rotateX(-2deg); }
 .ar-wrap-launch { transform-origin: right center; transform: perspective(780px) rotateY(-15deg) rotateX(2.8deg); }
@@ -349,8 +365,8 @@
 .ar-card .sector-opt-res { font-size: 8px; letter-spacing: 0.02em; }
 
 @media (max-height: 820px) {
-  .ar-wrap-scan { top: 96px; }
-  .ar-right-rail { top: 68px; bottom: 12px; gap: 6px; }
+  .ar-wrap-scan { top: var(--orbit-hud-top, 124px); }
+  .ar-right-rail { top: var(--orbit-hud-top, 124px); bottom: 12px; gap: 16px; }
   .ar-card { padding: 9px 13px; gap: 5px; }
   .ar-title { font-size: 18px; }
   .ar-kpi { padding: 5px 8px; }

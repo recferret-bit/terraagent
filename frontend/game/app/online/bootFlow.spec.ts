@@ -245,7 +245,9 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
     expect(descentEl.hidden).toBe(true);
     expect(colonyEl.hidden).toBe(false);
     expect(colonyEl.dataset.planetId).toBe('pl_dev');
-    expect(session.getSelectedEntityId()).not.toBeNull();
+    expect(session.getSelectedEntityId()).toBeNull();
+    expect(body.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
+    expect(body.querySelector('[data-testid="colony-book"]')?.getAttribute('data-collapsed')).toBe('true');
 
     session.dispose();
   });
@@ -287,7 +289,9 @@ describe('W01-38: returning profile & local fallback', () => {
     expect(colonyEl.hidden).toBe(false);
     expect(colonyEl.dataset.planetId).toBe('pl_dev');
     expect(session.cameraTargetTile).toEqual({ q: 4, r: -2 });
-    expect(session.getSelectedEntityId()).toBe(statusBefore.hqEntityId);
+    expect(session.cam?.isOrbitalDropping()).toBe(true);
+    expect(body.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(session.getSelectedEntityId()).toBeNull();
 
     session.dispose();
   });
@@ -373,7 +377,9 @@ describe('W01-38: 3D pod descent handoff & return to orbit', () => {
 
     session.dispose();
   });
+});
 
+describe('W01-38: returning colony orbital drop', () => {
   it('5. returning colony (HQ already on planet) triggers HQ orbital camera drop with no pod descent and supports deferReveal handoff', async () => {
     const { body, app } = setupDom();
     const existingSecret = '0123456789abcdef0123456789abcdef';
@@ -398,10 +404,16 @@ describe('W01-38: 3D pod descent handoff & return to orbit', () => {
     expect(directSession.bootPhase).toBe('colony');
     expect(directSession.cam?.isOrbitalDropping()).toBe(true);
     expect(directSession.viewport.camera.fov).toBeCloseTo(36, 4);
+    expect(body.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(directSession.getSelectedEntityId()).toBeNull();
     expect(wsFramesSent.filter((m) => m.t === 'cmd')).toEqual([]);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(directSession.cam?.isOrbitalDropping()).toBe(false);
     expect(directSession.viewport.camera.fov).toBe(28);
+    directSession.stepFrame(0);
+    expect(body.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(false);
+    expect(directSession.getSelectedEntityId()).toBeNull();
+    expect(body.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
     directSession.dispose();
 
     const { body: body2, app: app2 } = setupDom();
@@ -428,7 +440,13 @@ describe('W01-38: 3D pod descent handoff & return to orbit', () => {
     deferredSession.revealFromOrbitalDive(false);
     expect(body2.querySelector<HTMLElement>('[data-testid="colony-view"]')?.hidden).toBe(false);
     expect(deferredSession.cam?.isOrbitalDropping()).toBe(true);
-    expect(deferredSession.getSelectedEntityId()).not.toBeNull();
+    expect(body2.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(true);
+    expect(deferredSession.getSelectedEntityId()).toBeNull();
+    deferredSession.stepFrame(2);
+    expect(deferredSession.cam?.isOrbitalDropping()).toBe(false);
+    expect(body2.querySelector<HTMLElement>('.ta-hud')?.hidden).toBe(false);
+    expect(deferredSession.getSelectedEntityId()).toBeNull();
+    expect(body2.querySelector('[data-testid="command-dock"]')?.getAttribute('data-collapsed')).toBe('true');
     deferredSession.dispose();
   });
 });
@@ -471,7 +489,7 @@ describe('W01-38: explicit ColonyLoadMode ("direct" / "pod" / "instant")', () =>
     directReland.entities.update(0.1, directReland.terrain, 0.1);
     expect(directReland.entities.getCameraShake()).toBe(0);
     expect(directReland.cam?.followTarget).not.toBeNull();
-    expect(directReland.getSelectedEntityId()).not.toBeNull();
+    expect(directReland.getSelectedEntityId()).toBeNull();
 
     directReland.dispose();
   });

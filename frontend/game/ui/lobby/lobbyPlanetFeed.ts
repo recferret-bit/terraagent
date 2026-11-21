@@ -43,7 +43,7 @@ export interface LobbyPlanetFeedOptions {
   readonly createWebSocket?: LobbyWsFactory | null;
   /** Injectable HTTP `fetch` implementation (defaults to `globalThis.fetch`). */
   readonly fetch?: LobbyFetchLike;
-  /** Polling interval in ms when WS is blocked/unavailable/disconnected (default `2500`). */
+  /** Polling interval in ms when WS is blocked/unavailable/disconnected (default `12000`). */
   readonly pollIntervalMs?: number;
   /** Injectable timer API for deterministic unit testing. */
   readonly timer?: LobbyTimerApi;
@@ -91,6 +91,14 @@ export function coercePlanetListPayload(raw: unknown): PlanetListV1 | null {
   };
 }
 
+function planetListFingerprint(list: PlanetListV1): string {
+  const seats = list.planets.map((p) => {
+    const sectors = p.sectors.map((s) => `${s.sectorId}:${s.availability}:${s.freeSeats}`).join(';');
+    return [p.type, p.availability, p.freeSeats, p.foundedSeats, p.reservedSeats, p.livingColonies, p.presentColonies, p.onlinePlayers, sectors].join(':');
+  }).join(',');
+  return `${list.updatedAt}|${list.queuePaused}|${seats}`;
+}
+
 function extractWsPayload(raw: unknown): { kind: 'list'; list: PlanetListV1 } | { kind: 'ping' } | null {
   let obj: unknown = raw;
   if (typeof raw === 'string') {
@@ -136,8 +144,18 @@ export class LobbyPlanetFeed {
   private pollTimerId: ReturnType<typeof globalThis.setInterval> | number | null = null;
   private mode: LobbyFeedMode = 'idle';
   private latest: PlanetListV1 | null = null;
+  private latestFp = '';
   private disposed = false;
   private running = false;
+  /** Menu is hidden (player is in a colony): do not poll. */
+  private suspended = false;
+  private inflight: Promise<PlanetListV1 | null> | null = null;
+  private visBound = false;
+  private readonly onVisible = (): void => {
+    if (this.disposed || !this.running || this.suspended) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (this.mode === 'polling') void this.refreshNow();
+  };
 
   constructor(private readonly opts: LobbyPlanetFeedOptions = {}) {
     this.endpoint = opts.endpoint ?? '/v1/planets';
@@ -151,7 +169,7 @@ export class LobbyPlanetFeed {
         }
         return globalThis.fetch(input, init);
       });
-    this.pollIntervalMs = Math.max(100, opts.pollIntervalMs ?? 2500);
+    this.pollIntervalMs = Math.max(100, opts.pollIntervalMs ?? 12_000);
     this.timer = opts.timer ?? DEFAULT_TIMER;
     if (opts.onUpdate) this.listeners.add(opts.onUpdate);
   }
@@ -179,15 +197,33 @@ export class LobbyPlanetFeed {
   start(): this {
     if (this.disposed || this.running) return this;
     this.running = true;
+    this.bindVisibility();
     void this.refreshNow();
     this.connectWebSocketOrFallback();
     return this;
   }
 
+  /** Orbit menu left the screen. Polling resumes on {@link resume}. */
+  suspend(): void {
+    this.suspended = true;
+    this.stopPolling();
+  }
+
+  /** Orbit menu is on screen again. One refresh, then the slow poll. */
+  resume(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    if (!this.running || this.disposed) return;
+    void this.refreshNow();
+    if (this.mode === 'polling') this.startPolling();
+  }
+
   stop(): void {
     this.running = false;
+    this.suspended = false;
     this.stopPolling();
     this.closeWs();
+    this.unbindVisibility();
     this.setMode('idle');
   }
 
@@ -199,7 +235,18 @@ export class LobbyPlanetFeed {
   }
 
   async refreshNow(): Promise<PlanetListV1 | null> {
-    if (this.disposed) return null;
+    if (this.disposed || this.suspended) return this.latest;
+    if (this.inflight) return this.inflight;
+    const run = this.fetchList();
+    this.inflight = run;
+    try {
+      return await run;
+    } finally {
+      if (this.inflight === run) this.inflight = null;
+    }
+  }
+
+  private async fetchList(): Promise<PlanetListV1 | null> {
     try {
       const res = await this.doFetch(this.endpoint, {
         method: 'GET',
@@ -210,12 +257,13 @@ export class LobbyPlanetFeed {
         return null;
       }
       const raw = await res.json();
-      if (this.disposed) return null;
+      if (this.disposed || this.suspended) return null;
       const list = coercePlanetListPayload(raw);
       if (!list) {
         this.opts.onError?.(new Error(`GET ${this.endpoint}: invalid PlanetListV1 payload`));
         return null;
       }
+      if (planetListFingerprint(list) === this.latestFp) return list;
       this.emitList(list);
       return list;
     } catch (err) {
@@ -232,6 +280,7 @@ export class LobbyPlanetFeed {
 
   private emitList(list: PlanetListV1): void {
     this.latest = list;
+    this.latestFp = planetListFingerprint(list);
     for (const listener of this.listeners) {
       listener(list);
     }
@@ -302,11 +351,24 @@ export class LobbyPlanetFeed {
   }
 
   private startPolling(): void {
-    if (this.pollTimerId !== null || this.disposed) return;
+    if (this.pollTimerId !== null || this.disposed || this.suspended) return;
     this.pollTimerId = this.timer.setInterval(() => {
-      if (this.disposed || !this.running) return;
+      if (this.disposed || !this.running || this.suspended) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void this.refreshNow();
     }, this.pollIntervalMs);
+  }
+
+  private bindVisibility(): void {
+    if (this.visBound || typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', this.onVisible);
+    this.visBound = true;
+  }
+
+  private unbindVisibility(): void {
+    if (!this.visBound || typeof document === 'undefined') return;
+    document.removeEventListener('visibilitychange', this.onVisible);
+    this.visBound = false;
   }
 
   private stopPolling(): void {

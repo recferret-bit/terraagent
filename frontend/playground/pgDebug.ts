@@ -34,6 +34,7 @@ export interface PlaygroundDebugApiDeps {
   setView: (v: View) => void;
   setPlanet: (k: PlanetKind) => void;
   toggle: (k: ToggleKey) => void;
+  setNight: (on: boolean) => void;
   contactSheet: () => string;
   setBuild: (s: BuildStage) => void;
   setWorkTarget: (t: InteractionTargetKind, enableWork?: boolean) => void;
@@ -64,6 +65,7 @@ export function createPlaygroundDebug(d: PlaygroundDebugApiDeps) {
     setView: (v: View) => d.setView(v),
     setPlanet: (k: PlanetKind) => d.setPlanet(k),
     toggle: (k: ToggleKey) => d.toggle(k),
+    setNight: (on: boolean) => d.setNight(on),
     contactSheet: () => d.contactSheet(),
     viewport,
     camera: viewport.camera as THREE.PerspectiveCamera,

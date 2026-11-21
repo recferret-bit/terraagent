@@ -1,5 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
-import { isPreparedGround } from '../../grid/geo';
+import { isFoundationReady } from '../../grid/geo';
 import { hexIndex } from '../../grid/hex';
 import { isValidTileIndex } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -67,7 +67,7 @@ export interface PrepTileInput {
 export function planPrepJobs(tiles: ReadonlyArray<PrepTileInput>, data?: CompiledDataLike): TerraformJob[] {
   const jobs: TerraformJob[] = [];
   for (const t of tiles) {
-    if (isPreparedGround(t.prep)) continue;
+    if (isFoundationReady(t.terrain, t.prep)) continue;
     // The ops the data rows chain from this terrain to flat ground, ending with the terrain-keeping op (Grade).
     let terrain = t.terrain;
     for (let n = 0; n < SITE_PREP_TERRAFORM_OPS.length; n++) {

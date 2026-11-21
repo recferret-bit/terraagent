@@ -147,11 +147,12 @@ describe('Pod Landing Cut Continuity: Dusk NightFactor, Delayed Welcome Slew & P
     const evaluator = new DescentSolarEvaluator();
     const spec = PLANET_SPECS.dune;
 
-    // Dusk 18:15 (18.25h): nightFactor is ~0.638, but entityVisionSync shaderNightFactor is 0.88
+    // Dusk 18:15 (18.25h): night follows daylight. It must not jump to a fixed 0.88.
     setDayNightParams({ timeOfDay: 18.25 }, 'sync');
     const dusk = evaluator.evaluate(spec, 0);
-    expect(dusk.nightFactor).toBeLessThan(0.7);
-    expect(dusk.shaderNightFactor).toBeCloseTo(0.88, 2);
+    expect(dusk.nightFactor).toBeGreaterThan(0.5);
+    expect(dusk.nightFactor).toBeLessThan(0.75);
+    expect(dusk.shaderNightFactor).toBeCloseTo(dusk.nightFactor, 5);
 
     // Delayed welcome jump: start at 12:00 DAY, then jump to 23:00 NIGHT during 60 FPS playback
     evaluator.reset();
@@ -321,6 +322,7 @@ describe('Direct-Boot BootOverlay Monotonic Progress', () => {
       fromSpaceDescent: false,
       cameraCentered: true,
       colonyFramed: false,
+      arrival: { hold: false, quiet: false, noSelect: false, started: false },
       sendLandOnce: () => {},
       focusTile: () => {},
       setCameraTargetTile: () => {},

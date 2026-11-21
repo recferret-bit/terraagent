@@ -1,9 +1,11 @@
 import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { OrbitalStage } from '@terra/render/orbit/types';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createPlanetSurface } from '@terra/render/planets/surface';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
+import { getSharedTerrainPrep } from '@terra/render/planets/prep';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import { createDescentSequence } from '../descent/createDescent';
 import type { DescentHud } from '../ui/hud';
@@ -20,6 +22,13 @@ export interface PreparedDescentSession {
   descent: DescentSequence;
   ready: boolean;
   whenReady: Promise<void>;
+}
+
+export function preloadDescentSurfaceInWorker(spec: PlanetSpec, quality: MenuSettings['quality']): Promise<void> {
+  return getSharedTerrainPrep()
+    .preloadSurface(spec.kind, spec.seed, quality)
+    .then(() => undefined)
+    .catch(() => undefined);
 }
 
 export function buildPreparedDescentSession(opts: {
@@ -39,10 +48,20 @@ export function buildPreparedDescentSession(opts: {
     viewport.camera.fov = 28;
     viewport.camera.updateProjectionMatrix();
     viewport.applySky(spec);
-    const surface = createPlanetSurface(spec, { quality });
+    const precomputedGrid = getSharedTerrainPrep().takeCachedSurface(spec.kind, spec.seed, quality);
+    const surface = createPlanetSurface(spec, { quality, precomputedGrid });
     viewport.scene.add(surface.group);
     try { applyPlanetLook(viewport, spec); } catch (e) { console.warn('applyPlanetLook failed', e); }
-    const descent = createDescentSequence({ viewport, scene: viewport.scene, camera: viewport.camera, spec, surface, startAt: 9 });
+    const descent = createDescentSequence({
+      viewport,
+      scene: viewport.scene,
+      camera: viewport.camera,
+      spec,
+      surface,
+      startAt: 9,
+      precomputedGlobeSpheres: precomputedGrid?.globeSpheres,
+      deferPartDispose: true,
+    });
     prep = { key, spec, surface, descent, ready: false, whenReady: Promise.resolve() };
   } finally {
     viewport.renderer.toneMappingExposure = exp;
@@ -50,6 +69,28 @@ export function buildPreparedDescentSession(opts: {
   }
   prep.whenReady = warmupScene(viewport, () => isStale(prep)).then(() => { prep.ready = true; });
   return prep;
+}
+
+/**
+ * Detaches `surface` & `descent` from `viewport.scene` immediately (`< 0.05 ms`) and slices GPU buffer/texture disposal
+ * of every part across idle frames so the `tn = 32s` retro handoff never stalls a rendered frame.
+ */
+export function retireDescentAndSurfaceDeferred(
+  viewport: ColonyViewport,
+  descent: DescentSequence | null,
+  surface: PlanetSurface | null,
+): void {
+  if (surface) {
+    viewport.scene.remove(surface.group);
+  }
+  if (descent) {
+    if (descent.disposeDeferred) descent.disposeDeferred();
+    else enqueueDeferredDispose(() => { try { descent.dispose(); } catch (e) { console.warn(e); } });
+  }
+  if (surface) {
+    if (surface.disposeDeferred) surface.disposeDeferred();
+    else enqueueDeferredDispose(() => { try { surface.dispose(); } catch (e) { console.warn(e); } });
+  }
 }
 
 export function disposePreparedDescentSession(opts: {
@@ -62,9 +103,7 @@ export function disposePreparedDescentSession(opts: {
   const exp = viewport.renderer.toneMappingExposure;
   const bloom = viewport.bloom.strength;
   try {
-    try { prepared.descent.dispose(); } catch (e) { console.warn(e); }
-    viewport.scene.remove(prepared.surface.group);
-    prepared.surface.dispose();
+    retireDescentAndSurfaceDeferred(viewport, prepared.descent, prepared.surface);
     resetScene();
   } finally {
     viewport.renderer.toneMappingExposure = exp;

@@ -158,6 +158,7 @@ export default defineConfig({
         deed: resolve(frontend, 'deed.html'),
         trade: resolve(frontend, 'trade.html'),
         playground: resolve(frontend, 'playground.html'),
+        apiAtlas: resolve(frontend, 'dev/api-atlas/index.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
         devChainTx: resolve(frontend, 'dev/chain/tx.html'),
         devEconomySim: resolve(frontend, 'dev/economy-sim/index.html'),

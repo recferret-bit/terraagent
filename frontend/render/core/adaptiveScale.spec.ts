@@ -96,3 +96,25 @@ describe('adaptive render scale (pure state machine)', () => {
     expect(s.dpr).toBe(1.5);
   });
 });
+
+describe('adaptive render scale under explicit FPS cap', () => {
+  it('honors explicit 30 FPS cap (minFrameMs = 33.33 ms) without false step-downs while still stepping down at 24 FPS', () => {
+    const capMs = 1000 / 30;
+    const s = new AdaptiveScale(2, { refreshMs: () => capMs, minFrameMs: capMs, maxGapMs: 250 });
+    expect(s.refreshMs()).toBeCloseTo(capMs, 3);
+    const changes: number[] = [];
+    let t = run(s, 0, capMs, 30_000, changes);
+    expect(changes).toEqual([]);
+    expect(s.dpr).toBe(2);
+
+    // GPU falls behind 30 FPS (~43 ms = 23 FPS > 37.33 ms threshold) -> steps down
+    t = run(s, t, 43, 1400, changes);
+    expect(s.dpr).toBe(1.75);
+    expect(changes).toEqual([1.75]);
+
+    // GPU holds 30 FPS again (33.33 ms < 34.67 ms up threshold) -> recovers to 2.0
+    run(s, t, capMs, 4200, changes);
+    expect(s.dpr).toBe(2);
+    expect(changes).toEqual([1.75, 2]);
+  });
+});

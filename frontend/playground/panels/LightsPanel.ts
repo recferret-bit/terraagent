@@ -68,16 +68,11 @@ function cardHtml(light: ArchetypeLightSource, idx: number): string {
 /** Interactive Faction-Plate Lights Editor panel for tuning per-archetype 3D projector light sources. */
 export class LightsPanel {
   private root!: HTMLElement;
-  private nightMode = true;
   private codeOpen = false;
   private isInlineUpdating = false;
   private lightsOpen = false;
 
   constructor(private state: PgState, private on: LightsPanelHandlers) {}
-
-  get isNightPreview(): boolean {
-    return this.state.lights && this.nightMode;
-  }
 
   build() {
     const el = document.createElement('section');
@@ -91,7 +86,7 @@ export class LightsPanel {
           <small id="lp-sub" class="lp-sub"></small>
         </div>
         <div class="lp-head-actions">
-          <button type="button" class="pg-btn tog on" id="lp-night-btn" title="Dim sun &amp; ambient to preview lights at night">Night</button>
+          <button type="button" class="pg-btn tog" id="lp-night-btn" title="Dim sun &amp; ambient to preview lights at night">Night: OFF</button>
         </div>
       </div>
       <div class="lp-actions">
@@ -115,13 +110,12 @@ export class LightsPanel {
     });
     this.bindHeaderEvents();
     this.bindListEvents();
+    this.syncNightButton();
   }
 
   private bindHeaderEvents() {
     this.root.querySelector<HTMLButtonElement>('#lp-night-btn')!.onclick = () => {
-      this.nightMode = !this.nightMode;
-      this.syncNightButton();
-      this.on.onNightToggle(this.isNightPreview);
+      this.on.onNightToggle(!this.state.night);
     };
     this.root.querySelector<HTMLButtonElement>('#lp-add-btn')!.onclick = () => {
       if (!this.state.id) return;
@@ -215,11 +209,11 @@ export class LightsPanel {
     toast('Light config copied as code');
   }
 
-  private syncNightButton() {
+  syncNightButton() {
     const btn = this.root?.querySelector<HTMLButtonElement>('#lp-night-btn');
     if (!btn) return;
-    btn.classList.toggle('on', this.nightMode);
-    btn.textContent = this.nightMode ? 'Night: ON' : 'Night: OFF';
+    btn.classList.toggle('on', this.state.night);
+    btn.textContent = this.state.night ? 'Night: ON' : 'Night: OFF';
   }
 
   onExternalChange(changedId: string) {

@@ -23,6 +23,7 @@ import { AuthTokenService } from '../../core/auth/index.js';
 import { CoreException } from '../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { FlagsService } from '../../flags/flags.service.js';
+import { SectorAntiCheatService } from '../../core/anticheat/index.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { OutboxRelayService } from '../application/outbox/outbox.module.js';
 import {
@@ -85,6 +86,7 @@ export class NearDeedController {
     @Optional() @Inject(OutboxRelayService) private readonly outboxRelay?: OutboxRelayService,
     @Optional() @Inject(W20ScenarioSeedService) private readonly w20Seed?: W20ScenarioSeedService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
   ) {}
 
   @Get()
@@ -133,9 +135,17 @@ export class NearDeedController {
     if (!this.flags.has('W20')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
+    const callerPlayerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
     const existing = body?.colonyId
       ? await this.deeds.findByColonyId(body.colonyId)
-      : (await this.deeds.listForPlayerOrColony({ planetId: body?.planetId }))[0];
+      : (await this.deeds.listForPlayerOrColony({ playerId: callerPlayerId, planetId: body?.planetId }))[0];
+    if (existing && body?.planetId && existing.planetId !== body.planetId) {
+      this.antiCheat?.recordRejection('http', 'ownership', 'not_your_planet');
+      throw new CoreException('NOT_YOUR_PLANET', {
+        status: 403,
+        message: 'Colony deed belongs to a different planet',
+      });
+    }
     await assertColonyOwnership({
       req,
       tokens: this.tokens,
@@ -143,6 +153,8 @@ export class NearDeedController {
       port: 'DeedNft',
       colonyId: body?.colonyId ?? existing?.colonyId,
       ownerPlayerIdHint: existing?.playerId,
+      expectedPlanetId: body?.planetId,
+      antiCheat: this.antiCheat,
     });
     await this.settledService.settleColonyDeed({
       colonyId: body?.colonyId,
