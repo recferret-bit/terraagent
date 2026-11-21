@@ -26,6 +26,7 @@
 <link rel="manifest" href="/site.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/design/css/tokens.css">
 <link rel="stylesheet" href="/design/css/base.css">
 <link rel="stylesheet" href="/landing/landing.css">
@@ -101,7 +102,11 @@ It keeps building.</h1>
         </div>
 
         <div class="viewport viewport-hero plate brackets">
-          <div id="hero-stage" role="img" aria-label="Live 3D orbit view: a planet with moons, satellites and asteroids, morphing between worlds"></div>
+          <div id="hero-stage" data-stage-state="queued" role="img" aria-label="Live 3D orbit view: a planet with moons, satellites and asteroids, morphing between worlds"></div>
+          <div class="stage-preloader" data-stage-preloader aria-hidden="true" data-preloader-label="INITIALIZING 3D ORBIT" data-preloader-sub="WEBGL2 · STREAMING TELEMETRY">
+            <span class="stage-preloader-reticle"></span>
+            <span class="stage-preloader-bar"><i></i></span>
+          </div>
           <div class="scanlines"></div>
           <div class="viewport-tag tl"><div><span class="c-orange">●</span> LIVE RENDER · WEBGL</div><div id="hero-world">KHARON DUNES</div></div>
           <div class="viewport-tag br"><div>ORBIT VIEW · SAME AS THE GAME MENU</div><div id="hero-morph">WORLD 1 / 3 · MORPH IN 10 S</div></div>
@@ -155,8 +160,12 @@ It keeps building.</h1>
           <p>Live in-game 3D rendering on a forest world shoreline near the water and trees. A Command Hub, Solar Array, Pylon and Metal Extractor run alongside three autonomous harvesters terraforming surrounding rocks and trees.</p>
         </div>
         <div class="colony-row">
-          <div class="viewport viewport-colony plate" id="colony-stage">
+          <div class="viewport viewport-colony plate" id="colony-stage" data-stage-state="queued">
             <canvas id="colony-canvas" role="img" aria-label="Live 3D forest planet colony near the water with trees, Command Hub, Solar Array, Pylon, Metal Extractor and 3 autonomous harvesters"></canvas>
+            <div class="stage-preloader" data-stage-preloader aria-hidden="true" data-preloader-label="LOADING 3D COLONY STAGE" data-preloader-sub="THALASSA FOREST · HEX DIORAMA">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
             <div class="scanlines"></div>
             <div class="viewport-tag tl"><span class="c-orange">●</span> LIVE RENDER · WEBGL · THALASSA FOREST COLONY</div>
           </div>
@@ -184,7 +193,11 @@ It keeps building.</h1>
         </div>
         <div class="rv" id="rv-panel" role="tabpanel">
           <div class="rv-view plate">
-            <div class="rv-stage" id="rv-stage"></div>
+            <div class="rv-stage" id="rv-stage" data-stage-state="queued"></div>
+            <div class="stage-preloader" data-stage-preloader aria-hidden="true" data-preloader-label="LOADING 3D ARCHETYPE" data-preloader-sub="KITBASH · UNIFIER SHADER">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
             <div class="scanlines"></div>
             <div class="rv-tag" id="rv-tag" aria-live="off"></div>
           </div>
@@ -231,7 +244,13 @@ It keeps building.</h1>
       <p class="label example-note">OPEN WORLDS · 24-HOUR LANDING WINDOW</p>
       <div class="grid-auto planet-grid">
         <article class="planet plate card-hover">
-          <div class="planet-art"><canvas data-planet="dune" role="img" aria-label="Live 3D render of the planet"></canvas></div>
+          <div class="planet-art" data-stage-state="queued">
+            <canvas data-planet="dune" role="img" aria-label="Live 3D render of the planet"></canvas>
+            <div class="stage-preloader stage-preloader-sm" data-stage-preloader aria-hidden="true" data-preloader-label="3D GLOBE">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
+          </div>
           <div class="planet-body">
             <div class="planet-head"><h3 class="h3">Kharon Dunes</h3><span class="badge badge-recruiting">DESERT</span></div>
             <p>Wind-carved dunes, rust rocks, brutal sun. Solar-rich, water-poor.</p>
@@ -240,7 +259,13 @@ It keeps building.</h1>
           </div>
         </article>
         <article class="planet plate card-hover">
-          <div class="planet-art"><canvas data-planet="oceanForest" role="img" aria-label="Live 3D render of the planet"></canvas></div>
+          <div class="planet-art" data-stage-state="queued">
+            <canvas data-planet="oceanForest" role="img" aria-label="Live 3D render of the planet"></canvas>
+            <div class="stage-preloader stage-preloader-sm" data-stage-preloader aria-hidden="true" data-preloader-label="3D GLOBE">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
+          </div>
           <div class="planet-body">
             <div class="planet-head"><h3 class="h3">Thalassa Verde</h3><span class="badge badge-new">OCEAN</span></div>
             <p>Island chains, lagoons and dense forest. Water-rich, hydro-friendly.</p>
@@ -249,7 +274,13 @@ It keeps building.</h1>
           </div>
         </article>
         <article class="planet plate card-hover">
-          <div class="planet-art"><canvas data-planet="forestRock" role="img" aria-label="Live 3D render of the planet"></canvas></div>
+          <div class="planet-art" data-stage-state="queued">
+            <canvas data-planet="forestRock" role="img" aria-label="Live 3D render of the planet"></canvas>
+            <div class="stage-preloader stage-preloader-sm" data-stage-preloader aria-hidden="true" data-preloader-label="3D GLOBE">
+              <span class="stage-preloader-reticle"></span>
+              <span class="stage-preloader-bar"><i></i></span>
+            </div>
+          </div>
           <div class="planet-body">
             <div class="planet-head"><h3 class="h3">Granite Hollow</h3><span class="badge badge-new">TEMPERATE</span></div>
             <p>Pine highlands and cliff outcrops. Mineral-dense, temperate.</p>
@@ -458,6 +489,6 @@ It keeps building.</h1>
   </footer>
 </div>
 
-<script type="module" src="/landing/main.ts"></script>
+<script type="module" src="/landing/main.ts" fetchpriority="high"></script>
 </body>
 </html>

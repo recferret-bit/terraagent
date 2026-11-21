@@ -1,10 +1,9 @@
 // Shared lifecycle for live stages (WebGL viewports, 2D canvases): one rAF loop gated by IntersectionObserver visibility,
-// a clamped dt, optional ResizeObserver, and the reduced-motion switch (no loop: callers render still frames themselves).
+// document visibility, and content-visibility auto state, plus a clamped dt, optional ResizeObserver, and reduced-motion switch.
 import { createFramePacer, type FramePacer } from './framePacer';
+import { prefersReducedMotion } from './motionUtils';
 
-export const prefersReducedMotion = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+export { clamp, prefersReducedMotion } from './motionUtils';
 
 export interface StageHostOptions {
   elements: Element[];
@@ -15,10 +14,16 @@ export interface StageHostOptions {
   reduced?: boolean;          // default: prefers-reduced-motion
 }
 
+interface ContentVisibilityEvent extends Event {
+  readonly skipped?: boolean;
+}
+
 export class StageHost {
   readonly reduced: boolean;
   time = 0;
   private visibility = new Map<Element, boolean>();
+  private cvSkipped = new Map<Element, boolean>();
+  private docHidden = typeof document !== 'undefined' && document.hidden;
   private pacer: FramePacer;
   private rafId = 0;
   private io: IntersectionObserver | null = null;
@@ -31,8 +36,13 @@ export class StageHost {
     o.elements.forEach((el) => this.visibility.set(el, true));
   }
 
-  isVisible(el: Element) { return this.visibility.get(el) !== false; }
-  get visible() { return [...this.visibility.values()].some(Boolean); }
+  isVisible(el: Element) {
+    return !this.docHidden && this.visibility.get(el) !== false && !this.cvSkipped.get(el);
+  }
+
+  get visible() {
+    return !this.docHidden && this.o.elements.some((el) => this.isVisible(el));
+  }
 
   start() {
     if (this.disposed) return this;
@@ -47,6 +57,11 @@ export class StageHost {
     if (onResize && elements[0] && 'ResizeObserver' in window) {
       this.ro = new ResizeObserver(onResize);
       this.ro.observe(elements[0]);
+    }
+    if (typeof document !== 'undefined') {
+      this.docHidden = Boolean(document.hidden);
+      document.addEventListener('visibilitychange', this.onVisibilityChange);
+      document.addEventListener('contentvisibilityautostatechange', this.onCvAutoStateChange, { capture: true });
     }
     if (!this.reduced) this.rafId = requestAnimationFrame(this.loop);
     return this;
@@ -63,7 +78,32 @@ export class StageHost {
     this.io = null;
     this.ro?.disconnect();
     this.ro = null;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+      document.removeEventListener('contentvisibilityautostatechange', this.onCvAutoStateChange, { capture: true });
+    }
   }
+
+  private readonly onVisibilityChange = () => {
+    this.docHidden = typeof document !== 'undefined' && Boolean(document.hidden);
+    this.pacer.reset(typeof performance !== 'undefined' ? performance.now() : 0);
+  };
+
+  private readonly onCvAutoStateChange = (event: Event) => {
+    const target = event.target as Element | null;
+    if (!target) return;
+    const skipped = Boolean((event as ContentVisibilityEvent).skipped);
+    let touched = false;
+    for (const el of this.o.elements) {
+      if (el === target || (typeof target.contains === 'function' && target.contains(el))) {
+        this.cvSkipped.set(el, skipped);
+        touched = true;
+      }
+    }
+    if (touched) {
+      this.pacer.reset(typeof performance !== 'undefined' ? performance.now() : 0);
+    }
+  };
 
   private loop = (now: number) => {
     if (this.disposed) return;

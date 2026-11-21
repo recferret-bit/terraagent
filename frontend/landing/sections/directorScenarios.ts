@@ -1,6 +1,6 @@
 // Section 05 interactive scenarios: mounts the 4 tactical scenario cards beside #director-terminal
 // so clicking (or arrow-keying) any card updates the live trace right in the same console.
-import { prefersReducedMotion } from '@terra/render/core/StageHost';
+import { prefersReducedMotion } from '@terra/render/core/motionUtils';
 import {
   renderDirectorScenariosHtml,
   renderTerminalBody,
@@ -53,7 +53,7 @@ export function initDirectorScenarios(): void {
   const host = document.getElementById('director-scenarios');
   if (!host) return;
 
-  host.innerHTML = renderDirectorScenariosHtml();
+  if (host.children.length === 0) host.innerHTML = renderDirectorScenariosHtml();
   bindScenarioSwitcher(host);
 
   const cards = [...host.querySelectorAll<HTMLElement>('[data-scenario-card]')];

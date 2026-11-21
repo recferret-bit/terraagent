@@ -1,5 +1,5 @@
 // Roadmap: the flight plan (a burn line and a ship that ride your scroll; legs ignite as you pass them).
-import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
+import { clamp, prefersReducedMotion } from '@terra/render/core/motionUtils';
 
 function initFlightPlan(mission: HTMLElement, reduced: boolean) {
   const legs = [...mission.querySelectorAll<HTMLElement>('[data-leg]')];

@@ -80,6 +80,12 @@ function drawThumbItem(
   // Nearest blit keeps the pixel-art pass's blocks; smoothing would blur them back into a photo.
   ctx.imageSmoothingEnabled = !pixelated;
   ctx.drawImage(renderer.domElement, (w - s) / 2, (h - s) / 2, s, s);
+  cv.classList.add('is-live');
+  const parent = cv.parentElement;
+  if (parent) {
+    parent.classList.add('is-live');
+    parent.dataset.stageState = 'live';
+  }
 }
 
 /**

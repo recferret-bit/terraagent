@@ -102,7 +102,12 @@ export class ColonyStage3D {
   private readonly lookTarget = new THREE.Vector3();
   private simTime = 0;
 
-  constructor(private readonly host: HTMLElement, viewport?: ColonyViewport) {
+  constructor(
+    private readonly host: HTMLElement,
+    viewport?: ColonyViewport,
+    opts?: { readonly prewarmOnInit?: boolean },
+  ) {
+    const prewarmOnInit = opts?.prewarmOnInit ?? true;
     host.querySelector('#colony-canvas')?.remove();
     resetColonyVisionAndLights();
     setDayNightExternalSync(true);
@@ -126,11 +131,11 @@ export class ColonyStage3D {
     this.vp.scene.add(this.entityGroup);
     this.buildingsOrchestrator = new BuildingsOrchestrator(
       this.entityGroup,
-      JSON.stringify(buildBuildingsOrchestratorConfig(look.biomeKey, { stripConstructiblePlinths: true, prewarmOnInit: true })),
+      JSON.stringify(buildBuildingsOrchestratorConfig(look.biomeKey, { stripConstructiblePlinths: true, prewarmOnInit })),
     );
     this.unitsOrchestrator = new UnitsOrchestrator(
       this.entityGroup,
-      JSON.stringify(buildUnitsOrchestratorConfig(look.biomeKey, { prewarmOnInit: true })),
+      JSON.stringify(buildUnitsOrchestratorConfig(look.biomeKey, { prewarmOnInit })),
     );
     this.gridCables = new GridCableRenderer(this.vp.scene);
     this.workParticles = new WorkParticleSystem(this.vp.scene);

@@ -1,7 +1,7 @@
 // Interactive controller & scroll-transition animator for Section 07 (#protocol):
 // mounts the TerraAgent Protocol Treasury visual schematic, binds stream filters,
 // drives scroll-linked conduit/stage transitions, and hydrates live /v1/near/protocol telemetry.
-import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
+import { clamp, prefersReducedMotion } from '@terra/render/core/motionUtils';
 import { renderProtocolBoardHtml } from './protocolTemplates';
 
 interface ProtocolTelemetryDto {
@@ -292,7 +292,7 @@ export function initProtocolSection(): void {
   const host = document.getElementById('protocol-board');
   if (!host) return;
 
-  host.innerHTML = renderProtocolBoardHtml();
+  if (host.children.length === 0) host.innerHTML = renderProtocolBoardHtml();
 
   const section = host.closest<HTMLElement>('#protocol') ?? host;
   bindStreamFilter(host);

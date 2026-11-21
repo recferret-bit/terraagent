@@ -5,6 +5,6 @@ import { bindStakeCalculator } from './stakeCalculator';
 export function initEconomicsSection(): void {
   const host = document.getElementById('economics-board');
   if (!host) return;
-  host.innerHTML = renderEconomicsBoardHtml();
+  if (host.children.length === 0) host.innerHTML = renderEconomicsBoardHtml();
   bindStakeCalculator(host);
 }

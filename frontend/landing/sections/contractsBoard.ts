@@ -303,7 +303,7 @@ export function initContractsBoard(): void {
   const host = document.getElementById('contracts-board');
   if (!host) return;
 
-  host.innerHTML = renderContractsBoardHtml();
+  if (host.children.length === 0) host.innerHTML = renderContractsBoardHtml();
 
   void hydrateContractsStatus(host);
 }

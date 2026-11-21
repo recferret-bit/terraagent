@@ -149,6 +149,14 @@ export default defineConfig({
     outDir: resolve(frontend, 'dist'),
     emptyOutDir: true,
     rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.replace(/\\/g, '/').includes('/node_modules/three/')) {
+            return 'three-vendor';
+          }
+          return undefined;
+        },
+      },
       input: {
         main: resolve(frontend, 'index.html'),
         landing: resolve(frontend, 'landing.html'),

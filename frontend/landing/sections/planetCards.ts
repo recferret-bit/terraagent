@@ -5,5 +5,18 @@ import { mountPlanetThumbnails, type PlanetThumbnailsHandle } from '@terra/rende
 export function initPlanetCards(): PlanetThumbnailsHandle | null {
   const canvases = [...document.querySelectorAll<HTMLCanvasElement>('canvas[data-planet]')];
   if (!canvases.length) return null;
-  return mountPlanetThumbnails(canvases, { size: 280, spinMultiplier: 6 });
+  for (const cv of canvases) {
+    if (cv.parentElement) cv.parentElement.dataset.stageState = 'loading';
+  }
+  const handle = mountPlanetThumbnails(canvases, { size: 280, spinMultiplier: 6 });
+  if (!handle) {
+    for (const cv of canvases) {
+      const parent = cv.parentElement;
+      if (parent) {
+        parent.classList.add('is-fallback');
+        parent.dataset.stageState = 'fallback';
+      }
+    }
+  }
+  return handle;
 }
