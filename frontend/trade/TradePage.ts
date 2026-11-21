@@ -172,7 +172,7 @@ export class TradePage {
     return h('section', { class: 'tr-banner tr-onboard', 'aria-label': 'How trading and real-money settlement work' },
       step('01', 'MINE SURFACE BIOME', 'Extract abundant metals, minerals, or bio in your colony.'),
       step('02', 'EXPORT NEP-245 CARGO', 'Ship stock to orbit at your Trade Hub (gasless via NEP-366).'),
-      step('03', 'EARN USDC / NEAR', 'Sell cargo via NEP-413 Intents, collect 0–1.0% Stall Fees, or stake ≥10 NEAR for 50% lower platform fees (0.50%).'));
+      step('03', 'EARN USDC / NEAR', 'Sell cargo via NEP-413 Intents, collect 0–1.0% Stall Fees, or stake 10–500+ NEAR for 0.65%–0.25% fees & Stake Trade Profits.'));
   }
 
   private async loadNearModeBadge(): Promise<void> {

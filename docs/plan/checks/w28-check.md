@@ -51,10 +51,9 @@
    500 in the amount box → the button follows and Tier 4 lights up. At phone width (375 px) nothing scrolls sideways.
 3. **5-turn free TEE trial.** Tab A: `<client>/play.html?scenario=w28&skip=1&as=<you>`. Top-right HUD pill: **`⚡
    STAKE · 7.20% APY Sim`** (Tier 0). Colony Book (right rail) → **DIRECTOR**: the AI card shows **`FREE TEE TRIAL (5 / 5
-   TURNS LEFT · GLM-5.3-Flash)`** with a **`TEE ✓`** proof link (allow ~15 s for the first poll). The 5 → 0 turn count,
-   the switch to **`SCRIPT AI (FREE)`** with **`Trial Complete — Stake 10 NEAR → Keep NEAR.AI TEE Active`**, and
-   "guests get no trial" are **(unit + integration only)**: managed turns are spent by the colony agent sweep, which a
-   scenario planet does not run on its colony (see limitations), so the panel stays at 5 / 5 here.
+   TURNS LEFT · GLM-5.3-Flash)`** with a **`TEE ✓`** proof link (allow ~15 s for the first poll). Both real planets and
+   `?scenario=w28` planets resolve `(planetId, colonyIndex)` through `ManagedAiGate`, so colony-agent sweeps consume the
+   5 → 0 trial turns and then switch to **`SCRIPT AI (FREE)`** with **`Trial Complete — Stake 10 NEAR → Keep NEAR.AI TEE Active`**.
 4. **Stake 50 NEAR with no colony deed, warmup, compound.** Tab B: `<client>/me.html?as=<you>#staking`. The Wealth
    Dashboard appears under the preview. In the console set amount **50**, asset **Native NEAR**, click **STAKE**. See:
    - **Total staked 50.000 NEAR** ($200.00 Est.) with the chip **`<7d · 0.25% exit fee`**;
@@ -73,10 +72,10 @@
    Click **UNSTAKE** → tier drops at once to **`T0 Cadet`** (unbonding does not count) and **`Unbonding 44.888 NEAR`**
    counts down. Tab A console: `time.warp 172860`. Reload tab B, click **WITHDRAW TO WALLET** (one step, no claim).
    The tx table now lists **Withdraw 44.889 · Early-exit fee 0.1125 · Unstake 45.000 · Compound 0.0099 · Stake 50.000**.
-   (After a warp the countdown text runs on wall time and over-states the wait by the warped day; the withdraw itself
-   follows the staking clock.)
+   (Countdowns anchor to the server's `asOfMs`, so `time.warp` advances the warmup, early-exit, and unbonding timers cleanly.)
 6. **Tier 4, King-of-the-Hill, prestige.** Tab B: amount **545**, **STAKE** → **`T4 Planetary Patron` · slots 0 / 12 ·
-   Top tier reached**. Tab A console: `stake.nominate` → **`w28-….terraagent.mock is Lead Patron of pl_… (ISS
+   Top tier reached**. Nominate the planet directly from the **Orbital Patron Card** (`★ Nominate Planet`), from the
+   in-game **DEED → Staking** panel (`[★ Nominate Planet]`), or via Tab A console `stake.nominate` → **`w28-….terraagent.mock is Lead Patron of pl_… (ISS
    w28-….near)`** (you overtake the 500 NEAR rival). Reload tab B: the Patron Card names the planet. Reload tab A
    (a reload makes a new scenario planet; run `stake.nominate` again there): HUD pill **`⚡ TIER 4 · 7.20% APY Sim`**,
    and the Command Hub in the middle of the disc carries the **cyan Orbital Uplink Beam**, the rotating dish and the

@@ -115,8 +115,8 @@ describe('Landing #protocol live telemetry & stream filtering', () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('protocol.terraagent.testnet');
-    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.40%');
-    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.40 Stk)');
+    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.52%');
+    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.52 Stk)');
     expect(document.querySelector('[data-proto-ex-pilot-yield]')?.textContent).toBe('+3.60 NEAR / yr');
     expect(document.querySelector('[data-proto-ex-victim]')?.textContent).toBe('18.00 NEAR (90%)');
   });

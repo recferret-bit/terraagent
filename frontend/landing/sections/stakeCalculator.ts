@@ -87,7 +87,7 @@ export function bindStakeCalculator(root: HTMLElement): void {
     e.userYield.textContent = `${quote.netYieldNear.toFixed(2)} NEAR / yr`;
     e.protoYield.textContent = `${quote.protocolYieldNear.toFixed(2)} NEAR / yr`;
     e.feeSaved.textContent = `${quote.feeSavedUsdc.toFixed(2)} USDC / mo (${quote.feeBp} bp fee)`;
-    e.aiMode.textContent = quote.tier.id >= 1 ? `Managed AI · ${quote.tier.aiColonySlots} colony slot${quote.tier.aiColonySlots === 1 ? '' : 's'}` : 'Rule Engine or BYOK';
+    e.aiMode.textContent = quote.tier.id >= 1 ? `Managed AI · ${quote.tier.aiColonySlots} colony slot${quote.tier.aiColonySlots === 1 ? '' : 's'}` : '5 Free TEE Turns → Rule / BYOK';
     e.feeNote.textContent = feeText(quote.feeBp, quote.standardFeeBp, quote.warmupHours);
     e.banner.className = `econ-tier-banner ${quote.tier.id >= 1 ? 'is-unlocked' : ''}`;
     e.banner.textContent = quote.tier.id >= 1

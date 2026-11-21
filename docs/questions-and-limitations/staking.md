@@ -24,10 +24,9 @@ could be looked up; where the spec left a number open, the spec's own numbers we
   on-chain, and LST deposits use the cached price with no staleness check.
 - **Native `withdraw` is operator-only** on the contract, so a native-NEAR withdraw goes through the server relayer;
   `withdraw_lst` and `compound_yield` are wallet-signed.
-- **Validator APY:** no live validator APY reader exists, so `apy.source` is `sim` everywhere (`9.00 %` gross /
-  `7.20 %` net); `validatorApy()` on the testnet adapter is not yet wired into pool APYs or `/performance`.
-- **Balances off mock:** `/performance` `walletNear` is read from the mock ledger only; LST holdings are valued `1:1`
-  with NEAR (a conservative floor).
+- **Validator APY & live wallet balances:** `StakingPerformanceService` now wires `StakingPort.validatorApy()` on
+  `NEAR_MODE=mainnet` (falling back to `9.00 %` gross / `7.20 %` net `Sim APY` on mock/testnet) and reads live RPC
+  `StakingPort.nearBalanceOf()` for `walletNear` off mock; LST holdings are valued `1:1` with NEAR as a conservative floor.
 - **AI colony slots** are a process-local, first-come ledger per wallet and UTC day (the daily call budget itself is in
   `ai.ai_wallet_usage`); after a restart the first colonies to ask retake the slots.
 - **Patron payout** is an accounting row (`chain.staking_patron_payout`), USDC-quoted fills only; no USDC moves yet.
@@ -35,13 +34,11 @@ could be looked up; where the spec left a number open, the spec's own numbers we
 - **Guild radar** is a REST read (`GET /v1/market/guild/radar`); there is no WS push yet.
 - **Wave fencing:** the landing page has no wave-flag mechanism, so its pill and calculator always show. `/me.html`
   hides the STAKING tab when the overview endpoint answers `404` (server `TA_WAVES=..27`) and on `?waves=..27` in dev.
-- **Dev scenarios:** scenario planets seat `co_…` colony rows for sim colony `col_N`. Prestige and `ai-access` match
-  by slot (`colonyIndex`), but the colony-agent loop itself looks colonies up by id, so on `?scenario=` planets the
-  managed-AI trial is shown but not consumed by the loop (real planets use one id for both).
 - **HOT wallet** is not in the wallet selector (`@near-wallet-selector/hot-wallet` is not installed); Meteor, Intear,
   MyNearWallet, OKX and NEAR Mobile are.
-- **Descent trail** (Tier 2) shows only for a pilot returning to an existing colony: the first descent is built before
-  the colony exists. Dev override: `/play.html?…&stakeTier=0..4`.
+- **First-descent plasma trail:** Tier 2+ pilots with a linked session wallet (`ta_active_pilot`) now resolve their
+  wallet perks tier before colony creation so their first drop-pod landing carries the Plasma Trail too (dev override:
+  `/play.html?…&stakeTier=0..4`).
 - **Old W20 e2e** steps 5–6 keep their deed checks with W28 on and skip only the W20 colony-claim staking clicks;
   `--waves ..20` runs them in full.
 - **Mock stNEAR pool:** on mock, `stNEAR` / `LiNEAR` deposits go into the first whitelisted pool and the last deposit

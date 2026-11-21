@@ -56,9 +56,9 @@
   <!-- Inflow 1: Market Settlement Fee -->
   <rect x="40" y="124" width="344" height="118" class="box-o"/>
   <text x="52" y="144" class="hdr-o">A. NEP-413 MARKET PLATFORM FEE (80 / 20)</text>
-  <text x="52" y="163" class="txt">Rate: 1.00% standard | 0.50% staker (&gt;=10 NEAR)</text>
-  <text x="52" y="181" class="txt">80% -&gt; Protocol (0.80% / 0.40%)</text>
-  <text x="52" y="199" class="txt">20% -&gt; Planet Council DAO (0.20% / 0.10%)</text>
+  <text x="52" y="163" class="txt">Rate: 1.00% std | 0.65%-0.25% 4-tier staker</text>
+  <text x="52" y="181" class="txt">80% -&gt; Protocol (0.80% / 0.52%-0.20%)</text>
+  <text x="52" y="199" class="txt">20% -&gt; Planet Council DAO (0.20% / 0.13%-0.05%)</text>
   <rect x="52" y="209" width="320" height="24" fill="#090d16" stroke="#2c3548"/>
   <text x="60" y="225" class="hdr-g">$100 USDC fill -&gt; $0.80 Proto + $0.20 DAO</text>
 
@@ -100,8 +100,8 @@
   <text x="460" y="314" class="hdr-o">4-WAY ATOMIC NEP-413 TRADE RECEIPT</text>
   <text x="460" y="333" class="txt">1. Seller Principal : 100.00% ($100.00)</text>
   <text x="460" y="350" class="txt">2. Stall Owner Fee  : +0.00%-1.00% (+$0.50)</text>
-  <text x="460" y="367" class="txt">3. Planet DAO (20%) : +0.20% / +0.10% ($0.20)</text>
-  <text x="460" y="384" class="txt-c">4. Protocol (80%)   : +0.80% / +0.40% ($0.80)</text>
+  <text x="460" y="367" class="txt">3. Planet DAO (20%) : +0.20% / +0.13% ($0.20)</text>
+  <text x="460" y="384" class="txt-c">4. Protocol (80%)   : +0.80% / +0.52% ($0.80)</text>
 
   <!-- Unit Economics Proof Box -->
   <rect x="448" y="408" width="318" height="94" class="box-g"/>

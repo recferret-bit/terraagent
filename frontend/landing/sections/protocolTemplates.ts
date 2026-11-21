@@ -74,7 +74,7 @@ export function renderProtocolSchematicHtml(): string {
       <div class="proto-col">
         <span class="proto-col-label is-in">INFLOWS · 3 REVENUE STREAMS</span>
         <article class="proto-node plate-sm" data-stream="trade">
-          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.40%</span></div>
+          <div class="proto-node-top"><b data-proto-trade-title>80% of Platform Trade Fee</b><span class="proto-rate" data-proto-trade-rate>0.80% / 0.52%</span></div>
           <p>Paid by the buyer on market fills; the other <span data-proto-dao-share-pct>20%</span> goes to your planet's Council fund.</p>
         </article>
         <article class="proto-node plate-sm" data-stream="staking">
@@ -126,7 +126,7 @@ export function renderProtocolStagesHtml(): string {
       <h3>4-Way Trade Split on Every Fill</h3>
       <p>Sellers receive <b>100% of sale price</b>; buyer fees split in the same settlement:</p>
       <div class="proto-bar-group">
-        <div class="proto-bar-caption"><span data-proto-stage-trade-cap>BUYER FEE ALLOCATION (MAX 2.00% / 1.50% STAKER)</span><span>ATOMIC</span></div>
+        <div class="proto-bar-caption"><span data-proto-stage-trade-cap>BUYER FEE ALLOCATION (MAX 2.00% / 1.65% STAKER)</span><span>ATOMIC</span></div>
         <div class="proto-seg-bar" role="img" data-proto-bar-trade aria-label="Up to 50% Stall Owner, 40% Protocol, 10% Planet Council DAO">
           <span class="proto-seg is-terra" data-proto-bar-trade-stall style="width:50%"></span>
           <span class="proto-seg is-orange" data-proto-bar-trade-proto style="width:40%"></span>
@@ -134,8 +134,8 @@ export function renderProtocolStagesHtml(): string {
         </div>
         <div class="proto-legend-list">
           <div class="proto-legend-row"><span>■ Trade Hub Stall</span><b>0.00% – 1.00%</b></div>
-          <div class="proto-legend-row"><span data-proto-legend-proto-label>■ Protocol Share (80%)</span><b data-proto-legend-proto-val>0.80% (0.40% Staker)</b></div>
-          <div class="proto-legend-row"><span data-proto-legend-dao-label>■ Planet Council (20%)</span><b data-proto-legend-dao-val>0.20% (0.10% Staker)</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-proto-label>■ Protocol Share (80%)</span><b data-proto-legend-proto-val>0.80% (0.52% Staker)</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-dao-label>■ Planet Council (20%)</span><b data-proto-legend-dao-val>0.20% (0.13% Staker)</b></div>
         </div>
       </div>
     </article>
@@ -156,7 +156,7 @@ export function renderProtocolStagesHtml(): string {
         <div class="proto-legend-list">
           <div class="proto-legend-row"><span data-proto-legend-pilot-label>■ Pilot Net Yield (80%)</span><b data-proto-legend-pilot-apy>7.20% Net APY</b></div>
           <div class="proto-legend-row"><span data-proto-legend-yield-label>■ Protocol Slice (20%)</span><b data-proto-legend-yield-apy>1.80% APY</b></div>
-          <div class="proto-legend-row"><span data-proto-legend-perks-label>★ Perks at ≥10 NEAR</span><b data-proto-legend-perks-val>Managed AI + 0.50% Fee</b></div>
+          <div class="proto-legend-row"><span data-proto-legend-perks-label>★ Perks at ≥10 NEAR</span><b data-proto-legend-perks-val>Managed AI + 0.65% Fee</b></div>
         </div>
       </div>
     </article>
@@ -196,12 +196,12 @@ export function renderProtocolReceiptsHtml(): string {
     <div class="proto-proof-grid">
       <article class="proto-proof plate-sm" data-stream="trade">
         <span class="proto-proof-tag is-terra">EXAMPLE 01 · $100 CARGO FILL (0.5% STALL)</span>
-        <strong data-proto-ex-buyer-total>Buyer pays $101.50 ($101.00 Staker)</strong>
+        <strong data-proto-ex-buyer-total>Buyer pays $101.50 ($101.15 Staker)</strong>
         <ul class="proto-proof-rows">
           <li><span>Seller Principal (100%)</span><b>$100.00 USDC</b></li>
           <li><span>Trade Hub Stall Owner</span><b>+$0.50 USDC</b></li>
-          <li><span>Planet Council DAO</span><b data-proto-ex-dao>+$0.20 ($0.10 Stk)</b></li>
-          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.40 Stk)</b></li>
+          <li><span>Planet Council DAO</span><b data-proto-ex-dao>+$0.20 ($0.13 Stk)</b></li>
+          <li><span>Protocol Treasury</span><b data-proto-ex-trade>+$0.80 ($0.52 Stk)</b></li>
         </ul>
         <p class="proto-proof-foot">1 fill covers <b data-proto-ex-trade-txs>~650 gasless NEP-366 player txs</b> (~0.0003 NEAR/tx at ~$4/NEAR).</p>
       </article>
