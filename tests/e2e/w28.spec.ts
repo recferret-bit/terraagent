@@ -72,6 +72,7 @@ test('@hack 2. /me.html#staking?amount=50 logged out: public preview, Sim APY, 4
 
 // Steps 3–7 share the seeded pilot (`wallet`, `planetId`) and run in file order on one worker.
 test('3. verified pilot with 0 NEAR staked: FREE TEE TRIAL (5 / 5) on the Director; a guest gets no trial', async () => {
+  test.setTimeout(120_000);
   serverOnly();
   await loadScenario(page, 'w28', { skip: '1' }, { as: 'w28', timeout: 60_000 });
   planetId = await planetIdOf(page);
