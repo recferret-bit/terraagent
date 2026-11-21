@@ -79,3 +79,20 @@ pub(crate) fn validate_target_account(account_id: &str) {
         "STAKE_INSUFFICIENT_BALANCE: invalid account_id"
     );
 }
+
+pub(crate) fn read_u64_key(key: &[u8]) -> u64 {
+    match env::storage_read(key) {
+        Some(b) if b.len() == 8 => {
+            let mut arr = [0u8; 8];
+            arr.copy_from_slice(&b);
+            u64::from_le_bytes(arr)
+        }
+        _ => 0,
+    }
+}
+
+pub(crate) fn write_u64_key(key: &[u8], val: u64) {
+    if val > 0 {
+        env::storage_write(key, &val.to_le_bytes());
+    }
+}

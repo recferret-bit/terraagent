@@ -27,10 +27,11 @@ export class TradeStaking {
     const known = d.accountId ?? ownAccountId;
     // a dev / session pilot without a stored account: the perks answer names the session's linked wallet
     let sessionWallet: string | null = null;
+    let activeColonyId: string | null = null;
     const accountId = (): string | null => known() ?? sessionWallet;
     this.pill = new StakingPill({
       doFetch: d.client.fetchFn(),
-      query: () => ({ accountId: accountId(), token: d.client.token }),
+      query: () => ({ accountId: accountId(), colonyId: activeColonyId, token: d.client.token }),
       onPerks: (perks, wallet) => {
         if (wallet) sessionWallet = wallet;
         this.fee.update(perks);
@@ -40,10 +41,20 @@ export class TradeStaking {
       doFetch: d.client.fetchFn(),
       token: d.client.token,
       accountId,
+      colonyId: () => activeColonyId,
       mode: d.mode,
       onStaked: () => { void this.pill.refresh(); d.reloadBalances(); },
     });
+    this.setColonyId = (next) => {
+      if (next && next !== activeColonyId) {
+        const hadNone = activeColonyId === null && accountId() === null;
+        activeColonyId = next;
+        if (hadNone) void this.pill.refresh();
+      }
+    };
   }
+
+  private readonly setColonyId: (colonyId: string | null) => void;
 
   refresh(): Promise<void> { return this.pill.refresh(); }
 
@@ -52,6 +63,7 @@ export class TradeStaking {
 
   /** Shows the stake-profits button while the wallet holds free USDC. */
   updateBalances(s: TradeState): void {
+    this.setColonyId(s.balances?.colonyId ?? null);
     const raw = s.balances?.quote.USDC?.free ?? '0';
     this.profits.update(/^\d+$/.test(raw) ? BigInt(raw) : 0n);
   }

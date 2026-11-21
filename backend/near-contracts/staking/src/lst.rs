@@ -16,7 +16,10 @@ pub use crate::lst_math::{realize, PRICE_ONE};
 pub(crate) use crate::lst_math::is_whitelisted_lst;
 use crate::mathx::mul_div_floor;
 use crate::positions::record_deposit;
-use crate::storage::{pos_key, read_u128_key, validate_pool_and_apy, validate_target_account, write_u128_key, parse_yocto};
+use crate::storage::{
+    parse_yocto, pos_key, read_u128_key, read_u64_key, validate_pool_and_apy, validate_target_account,
+    write_u128_key, write_u64_key,
+};
 use crate::{emit_staking, StakingVaultContract, MAX_NON_OPERATOR_APY_BP};
 use near_sdk::json_types::U128;
 use near_sdk::{
@@ -25,11 +28,13 @@ use near_sdk::{
 use serde_json::json;
 
 const PRICE_CALL_GAS: Gas = Gas::from_tgas(10);
-const DEPOSIT_STAKE_GAS: Gas = Gas::from_tgas(60);
+const DEPOSIT_STAKE_GAS: Gas = Gas::from_tgas(50);
 const CALLBACK_GAS: Gas = Gas::from_tgas(15);
 const FT_TRANSFER_GAS: Gas = Gas::from_tgas(15);
 const MIN_WITHDRAW_LST_TGAS: u64 = 40;
 const MIN_DEPOSIT_STAKE_LST_TGAS: u64 = 85;
+/// Maximum age of a cached LST price accepted by `deposit_and_stake_lst` when block timestamps are active (1 hour).
+pub const MAX_LST_PRICE_AGE_MS: u64 = 3_600_000;
 
 fn bind_key(pool_id: &str) -> Vec<u8> {
     format!("lstc:{}", pool_id).into_bytes()
@@ -37,8 +42,27 @@ fn bind_key(pool_id: &str) -> Vec<u8> {
 fn price_key(pool_id: &str) -> Vec<u8> {
     format!("lstprice:{}", pool_id).into_bytes()
 }
+fn price_ts_key(pool_id: &str) -> Vec<u8> {
+    format!("lstpricets:{}", pool_id).into_bytes()
+}
 fn protocol_key(pool_id: &str) -> Vec<u8> {
     format!("plst:{}", pool_id).into_bytes()
+}
+
+fn read_price_ts(pool_id: &str) -> u64 {
+    read_u64_key(&price_ts_key(pool_id))
+}
+fn write_price_ts(pool_id: &str, ts_ms: u64) {
+    write_u64_key(&price_ts_key(pool_id), ts_ms);
+}
+fn fetch_lst_price_promise(lst_contract: AccountId) -> Promise {
+    let lower = lst_contract.as_str().to_ascii_lowercase();
+    let call = ext_lst_token::ext(lst_contract).with_static_gas(PRICE_CALL_GAS);
+    if lower.contains("meta") || lower.contains("stnear") {
+        call.get_st_near_price()
+    } else {
+        call.ft_price()
+    }
 }
 
 pub(crate) fn bound_lst(pool_id: &str) -> Option<String> {
@@ -92,6 +116,11 @@ impl StakingVaultContract {
         read_price(&pool_id).to_string()
     }
 
+    pub fn get_lst_price_updated_at_ms(&self, pool_id: String) -> Option<u64> {
+        let ts = read_price_ts(&pool_id);
+        if ts > 0 { Some(ts) } else { None }
+    }
+
     pub fn get_lst_binding(&self, pool_id: String) -> Option<String> {
         bound_lst(&pool_id)
     }
@@ -118,14 +147,7 @@ impl StakingVaultContract {
             bound_lst(&pool_id).as_deref() == Some(lst_contract.as_str()),
             "STAKE_INVALID_POOL: pool is not bound to this LST contract"
         );
-        let lower = lst_contract.as_str().to_ascii_lowercase();
-        let call = ext_lst_token::ext(lst_contract).with_static_gas(PRICE_CALL_GAS);
-        let price = if lower.contains("meta") || lower.contains("stnear") {
-            call.get_st_near_price()
-        } else {
-            call.ft_price()
-        };
-        price.then(
+        fetch_lst_price_promise(lst_contract).then(
             ext_lst_self::ext(env::current_account_id())
                 .with_static_gas(CALLBACK_GAS)
                 .on_lst_price(pool_id),
@@ -137,6 +159,7 @@ impl StakingVaultContract {
         match price {
             Ok(p) if p.0 > 0 => {
                 write_u128_key(&price_key(&pool_id), p.0);
+                write_price_ts(&pool_id, env::block_timestamp_ms());
                 emit_staking("lst_price", json!({ "pool_id": pool_id, "price": p.0.to_string() }));
                 true
             }
@@ -145,8 +168,8 @@ impl StakingVaultContract {
     }
 
     /// Mainnet native entry: forwards the attached NEAR into `deposit_and_stake` on the LST contract
-    /// (with the builder `referral_id`) and books the minted shares once that call succeeds.
-    /// Shares are derived from the cached price (call `refresh_lst_price` first); a failed deposit refunds.
+    /// (with the builder `referral_id`), fetches the live share price in parallel (`Promise::and`),
+    /// enforces a 1h staleness ceiling on the cached price, and refunds on failure or zero shares.
     #[payable]
     pub fn deposit_and_stake_lst(
         &mut self,
@@ -171,6 +194,14 @@ impl StakingVaultContract {
         }
         let price = read_price(&pool_id);
         require!(price > 0, "STAKE_PRICE_UNKNOWN: call refresh_lst_price first");
+        let chain_now = env::block_timestamp_ms();
+        let price_ts = read_price_ts(&pool_id);
+        if chain_now > 0 && price_ts > 0 {
+            require!(
+                chain_now.saturating_sub(price_ts) <= MAX_LST_PRICE_AGE_MS,
+                "STAKE_PRICE_STALE: cached LST price is older than 1 hour; call refresh_lst_price first"
+            );
+        }
         let depositor = env::predecessor_account_id();
         let target = account_id.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| depositor.to_string());
         require!(
@@ -182,18 +213,17 @@ impl StakingVaultContract {
             Some(r) => json!({ "referral_id": r }),
             None => json!({}),
         };
-        Promise::new(lst_contract.clone())
-            .function_call(
-                "deposit_and_stake".to_string(),
-                args.to_string().into_bytes(),
-                NearToken::from_yoctonear(attached),
-                DEPOSIT_STAKE_GAS,
-            )
-            .then(
-                ext_lst_self::ext(env::current_account_id())
-                    .with_static_gas(CALLBACK_GAS)
-                    .on_lst_deposit(depositor, target, pool_id, lst_contract.to_string(), attached.to_string(), price.to_string(), env::block_timestamp_ms()),
-            )
+        let deposit_call = Promise::new(lst_contract.clone()).function_call(
+            "deposit_and_stake".to_string(),
+            args.to_string().into_bytes(),
+            NearToken::from_yoctonear(attached),
+            DEPOSIT_STAKE_GAS,
+        );
+        deposit_call.and(fetch_lst_price_promise(lst_contract.clone())).then(
+            ext_lst_self::ext(env::current_account_id())
+                .with_static_gas(CALLBACK_GAS)
+                .on_lst_deposit(depositor, target, pool_id, lst_contract.to_string(), attached.to_string(), price.to_string(), chain_now),
+        )
     }
 
     #[private]
@@ -214,10 +244,29 @@ impl StakingVaultContract {
             emit_staking("lst_deposit_refund", json!({ "depositor": depositor, "pool_id": pool_id, "amount": attached }));
             return false;
         }
-        let price = parse_yocto(&price);
-        let shares = mul_div_floor(amount, PRICE_ONE, price).unwrap_or(0);
+        let cached = parse_yocto(&price);
+        let live = if env::promise_results_count() > 1 {
+            env::promise_result_checked(1, 256)
+                .ok()
+                .and_then(|b| near_sdk::serde_json::from_slice::<U128>(&b).ok())
+                .map(|u| u.0)
+                .filter(|&v| v > 0)
+        } else {
+            None
+        };
+        if let Some(p) = live {
+            write_u128_key(&price_key(&pool_id), p);
+            write_price_ts(&pool_id, env::block_timestamp_ms().max(now_ms));
+        }
+        let effective_price = live.map_or(cached, |p| p.max(cached));
+        let shares = mul_div_floor(amount, PRICE_ONE, effective_price).unwrap_or(0);
+        if shares == 0 {
+            Promise::new(depositor.clone()).transfer(NearToken::from_yoctonear(amount)).detach();
+            emit_staking("lst_deposit_refund", json!({ "depositor": depositor, "pool_id": pool_id, "amount": attached }));
+            return false;
+        }
         bind_pool(&pool_id, &lst_contract);
-        self.credit_lst_shares(&target, &pool_id, &lst_contract, shares, price, now_ms, 0);
+        self.credit_lst_shares(&target, &pool_id, &lst_contract, shares, effective_price, now_ms, 0);
         emit_staking("lst_deposit_and_stake", json!({ "account_id": target, "lst": lst_contract, "pool_id": pool_id, "near": attached, "shares": shares.to_string() }));
         true
     }

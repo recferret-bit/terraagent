@@ -46,7 +46,9 @@ impl StakingVaultContract {
     /// Withdraws matured unbonded NEAR + accrued rewards **directly to the recipient wallet in one step**
     /// (`Promise::transfer`); `on_withdraw` restores the position when the transfer fails. Idempotent by
     /// `op_id`: a replay of a *completed* withdraw returns the cached result, an in-flight or rolled-back one
-    /// can simply be retried. LST pools pay out through `withdraw_lst`.
+    /// can simply be retried. Self-custody owners (`caller == account_id`) may withdraw native-backed positions
+    /// directly without the operator. LST pools pay out through `withdraw_lst`.
+    #[payable]
     pub fn withdraw(
         &mut self,
         op_id: String,
@@ -56,21 +58,44 @@ impl StakingVaultContract {
         apy_bp: u32,
         now_ms: u64,
     ) -> PromiseOrValue<WithdrawResultView> {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "STAKE_INVALID_DEPOSIT: attach at most 1 yoctoNEAR to withdraw"
+        );
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
         require!(
             env::prepaid_gas() >= Gas::from_tgas(MIN_CLAIM_PREPAID_TGAS),
             "NEAR_INSUFFICIENT_GAS: attach >= 25 TGas for withdraw"
         );
-        self.require_operator();
+        let caller = env::predecessor_account_id();
+        let is_operator = self.is_operator(&caller);
+        require!(
+            is_operator || caller.as_str() == account_id,
+            "NEAR_NOT_OWNER: caller not authorized"
+        );
+        require!(
+            is_operator || apy_bp <= crate::MAX_NON_OPERATOR_APY_BP,
+            "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp"
+        );
         if let Some(cached) = self.processed_ops.get(&op_id) {
             return PromiseOrValue::Value(serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt"));
         }
         validate_pool_and_apy(&pool_id, apy_bp);
         require!(!lst::is_lst_pool(&pool_id), "STAKE_INVALID_POOL: LST pools pay out through withdraw_lst");
-        let settled = self.settle_pure(&account_id, &pool_id, apy_bp, now_ms);
+        let chain_now = env::block_timestamp_ms();
+        let effective_now = if is_operator { now_ms } else if chain_now > 0 { chain_now } else { now_ms };
+        let settled = self.settle_pure(&account_id, &pool_id, apy_bp, effective_now);
         let mut next = settled.record.clone();
         require!(next.withdrawable > 0, "STAKE_INSUFFICIENT_BALANCE: no withdrawable NEAR available");
-        let payout = next.withdrawable.saturating_add(next.rewards);
+        let pos_ndep = read_pos_ndep(&account_id, &pool_id);
+        require!(
+            is_operator || pos_ndep >= next.withdrawable,
+            "STAKE_INSUFFICIENT_BALANCE: virtual position requires operator settlement"
+        );
+        let yield_reserve = read_yield_reserve();
+        let backed_yield = next.rewards.min(yield_reserve);
+        let paid_rewards = if is_operator { next.rewards } else { backed_yield };
+        let payout = next.withdrawable.saturating_add(paid_rewards);
         let recipient_str = recipient_id.unwrap_or_else(|| account_id.clone());
         let recipient: AccountId = recipient_str
             .parse()
@@ -78,15 +103,12 @@ impl StakingVaultContract {
         require!(liquid_balance() >= payout, "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve");
         self.apply_settled(&account_id, &pool_id, &settled);
 
-        let pos_ndep = read_pos_ndep(&account_id, &pool_id);
         let released_ndep = pos_ndep.min(next.withdrawable);
-        let yield_reserve = read_yield_reserve();
-        let backed_yield = next.rewards.min(yield_reserve);
         write_pos_ndep(&account_id, &pool_id, pos_ndep - released_ndep);
         write_yield_reserve(yield_reserve - backed_yield);
-        let (withdrawable, rewards) = (next.withdrawable, next.rewards);
+        let withdrawable = next.withdrawable;
         next.withdrawable = 0;
-        next.rewards = 0;
+        next.rewards -= paid_rewards;
         self.positions.insert(pos_key(&account_id, &pool_id), next);
 
         PromiseOrValue::Promise(
@@ -95,7 +117,7 @@ impl StakingVaultContract {
                 .then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(CALLBACK_GAS)
-                        .on_withdraw(op_id, account_id, pool_id, recipient_str, withdrawable.to_string(), rewards.to_string(), released_ndep.to_string(), backed_yield.to_string()),
+                        .on_withdraw(op_id, account_id, pool_id, recipient_str, withdrawable.to_string(), paid_rewards.to_string(), released_ndep.to_string(), backed_yield.to_string()),
                 ),
         )
     }
@@ -267,5 +289,56 @@ impl StakingVaultContract {
             .map(|m| m.asset)
             .filter(|a| !a.is_empty())
             .unwrap_or_else(|| NATIVE_ASSET.to_string())
+    }
+
+    /// Sweeps accrued protocol yield (`amount` or full balance) to `recipient_id` (or `owner_id`). Idempotent by `op_id`.
+    pub fn withdraw_protocol_yield(
+        &mut self,
+        op_id: String,
+        amount: Option<String>,
+        recipient_id: Option<AccountId>,
+    ) -> WithdrawResultView {
+        require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
+        self.require_operator();
+        if let Some(cached) = self.processed_ops.get(&op_id) {
+            return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
+        }
+        let protocol_id = self.resolve_protocol_account_id();
+        let avail = self.balances.get(&protocol_id).copied().unwrap_or(0);
+        let withdraw_val = match amount {
+            Some(ref raw) => parse_yocto(raw),
+            None => avail,
+        };
+        require!(
+            withdraw_val > 0 && avail >= withdraw_val,
+            "STAKE_INSUFFICIENT_BALANCE: insufficient protocol yield balance"
+        );
+        let recipient = recipient_id
+            .map(|a| a.to_string())
+            .unwrap_or_else(|| self.owner_id.to_string());
+        if recipient != protocol_id {
+            self.balances.insert(protocol_id.clone(), avail - withdraw_val);
+            let cur_rec = self.balances.get(&recipient).copied().unwrap_or(0);
+            let next_rec = cur_rec
+                .checked_add(withdraw_val)
+                .expect("STAKE_INSUFFICIENT_BALANCE: overflow");
+            self.balances.insert(recipient.clone(), next_rec);
+        }
+        let res = WithdrawResultView {
+            account_id: protocol_id.clone(),
+            recipient_id: recipient.clone(),
+            pool_id: "protocol_yield".to_string(),
+            withdrawn: withdraw_val.to_string(),
+        };
+        self.processed_ops.insert(op_id, serde_json::to_string(&res).unwrap());
+        emit_staking(
+            "withdraw_protocol_yield",
+            json!({
+                "protocol_id": protocol_id,
+                "recipient": recipient,
+                "withdrawn": res.withdrawn,
+            }),
+        );
+        res
     }
 }

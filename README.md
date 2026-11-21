@@ -276,9 +276,9 @@ Generated and verified by [`backend/app/src/near/intents/nep413-token-diff.ts`](
 
 ## Deployed NEAR Testnet Contracts, Accounts & On-Chain Truth Matrix
 
-All **6 deployed custom Rust `near-sdk 5.7` smart contracts** (plus a 7th standalone **`verifier`** workspace crate — **7 crates, `167` Rust unit tests** in [`backend/near-contracts/`](./backend/near-contracts/)) and **4 core protocol accounts** power NEAR Testnet (`NEAR_MODE=testnet`), with 1-env promotion to NEAR Mainnet (`NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`):
+All **6 deployed custom Rust `near-sdk 5.7` smart contracts** (plus a 7th standalone **`verifier`** workspace crate — **7 crates, `169` Rust unit tests** in [`backend/near-contracts/`](./backend/near-contracts/)) and **4 core protocol accounts** power NEAR Testnet (`NEAR_MODE=testnet`), with 1-env promotion to NEAR Mainnet (`NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`):
 
-### 6 Live Testnet Contracts + 7th `verifier` Crate (`near-sdk 5.7` · `167` Unit Tests)
+### 6 Live Testnet Contracts + 7th `verifier` Crate (`near-sdk 5.7` · `169` Unit Tests)
 
 | Contract Account | Source Crate | Standard & Key On-Chain Methods | Live WASM `code_hash` | Deploy / Init Tx (`testnet.nearblocks.io`) |
 |---|---|---|---|---|
@@ -366,7 +366,7 @@ npm run contract:real -- --port <Port>   # live NEAR Testnet contract verificati
 npm run test:parity                      # browser worker vs server thread bit-determinism gate
 npm run e2e -- --waves ..28              # Playwright headless-Chromium end-to-end suite
 npm run validate:models -- --all         # 3D procedural geometry, connectivity & palette validator
-npm run near:test-contracts              # 165/165 Rust unit tests across the 7 near-contracts crates (6 deployed + verifier)
+npm run near:test-contracts              # 169/169 Rust unit tests across the 7 near-contracts crates (6 deployed + verifier)
 npm run near:build-contracts             # Build release wasm32-unknown-unknown binaries (--cfg near)
 npm run near:health                      # Inspect Testnet liquid headroom & storage lock (--apply --faucet for top-up)
 npm run shade:worker                     # Run Shade Agent autonomous swarm/treasury worker (`v1.signer` MPC)

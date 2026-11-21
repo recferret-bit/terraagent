@@ -58,7 +58,7 @@ You land one Hero bot, build a Command Hub, expand across Desert, Ocean, and Tem
 | `staking.terraagent.testnet` | Wallet-First 4-Tier Vault (`stake_payable`, `compound_yield`, `withdraw_lst`, `<7d` `25 bp` exit fee, Option A LST share-price solvency) | [5UvHFrKU…](https://testnet.nearblocks.io/txns/5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2) |
 | `dao.terraagent.testnet` | Planet Council Treasury Voting + SputnikDAO v2 JSON export | [DmsGYQ7V…](https://testnet.nearblocks.io/txns/DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U) |
 | `pilots.terraagent.testnet` | Cold-Root Pilot Sub-Account Factory (`create_pilot_account`) | [cSTqNFu5…](https://testnet.nearblocks.io/txns/cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h) |
-| `verifier` (`NEAR_CONTRACT_VERIFIER`, workspace crate) | On-Chain NEP-413 `token_diff` Borsh/Ed25519 verifier, key-binding & replay registry (`167` workspace Rust tests) | Pre-deploy WASM built |
+| `verifier` (`NEAR_CONTRACT_VERIFIER`, workspace crate) | On-Chain NEP-413 `token_diff` Borsh/Ed25519 verifier, key-binding & replay registry (`169` workspace Rust tests) | Pre-deploy WASM built |
 
 ### Core Protocol & Gas-Paying Operator Accounts
 

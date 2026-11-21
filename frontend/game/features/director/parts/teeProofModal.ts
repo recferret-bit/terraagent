@@ -1,4 +1,11 @@
+import { STAKING_RULES, STAKING_TIERS, type AiBudgetView } from '@terra/contracts';
 import { verifyTeeAttestationClient } from '../../../../design/pilot/teeVerifier';
+import { aiAccessState, modelLabel, stakeCtaHref, type AiAccessState } from './aiAccessBadge';
+
+export interface TeeProofModalOptions {
+  readonly container?: HTMLElement;
+  readonly budget?: AiBudgetView | null;
+}
 
 export interface TeeAttestationRecord {
   readonly id: string;
@@ -30,7 +37,47 @@ function makeFieldRow(label: string, value: string): HTMLElement {
   return row;
 }
 
-async function populateAttestationList(colonyId: string, bodyEl: HTMLElement): Promise<void> {
+function renderModalAiBanner(state: AiAccessState): HTMLElement | null {
+  if (state.kind === 'legacy') return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'plate-sm ta-tee-modal__access';
+  wrap.dataset.testid = 'tee-modal-ai-access';
+  wrap.dataset.state = state.kind;
+  wrap.style.cssText = 'padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:6px;';
+  const title = document.createElement('strong');
+  const detail = document.createElement('span');
+  detail.className = 'ta-me-muted';
+  if (state.kind === 'trial') {
+    title.textContent = `FREE TEE TRIAL (${state.left} / ${state.total} TURNS LEFT · ${modelLabel(state.model)})`;
+    detail.textContent = 'Hardware-attested NEAR.AI Cloud enclave turns active for your verified pilot.';
+    wrap.append(title, detail);
+  } else if (state.kind === 'tee') {
+    const usd = (n: number) => `$${n.toFixed(n >= 1 ? 2 : 4)}`;
+    title.textContent = `NEAR.AI TEE · TIER ${state.tier}`;
+    detail.textContent = `Wallet budget: ${usd(state.usedUsd)} / ${usd(state.capUsd)} today · ${state.calls}/${state.callLimit} calls · Colony slots ${state.slotsUsed}/${state.slotsMax}`;
+    wrap.append(title, detail);
+  } else if (state.kind === 'byok') {
+    title.textContent = 'BYOK · PERSONAL ENCRYPTED NEAR.AI KEY';
+    detail.textContent = 'Running on your personal NEAR.AI Cloud API key ($0 protocol budget cost).';
+    wrap.append(title, detail);
+  } else {
+    title.textContent = 'SCRIPT AI (FREE) · LOCAL DETERMINISTIC POLICY';
+    detail.textContent = state.guest
+      ? `Sign in as a verified pilot to unlock ${STAKING_RULES.freeTrialTurns} free NEAR.AI TEE trial turns, or stake ${STAKING_TIERS[1]!.minStakeNear} NEAR.`
+      : `Stake ${STAKING_TIERS[1]!.minStakeNear} NEAR (100% refundable + APY) to activate hardware-attested NEAR.AI TEE turns.`;
+    const cta = document.createElement('a');
+    cta.className = 'btn btn-primary btn-sm';
+    cta.dataset.testid = 'tee-modal-stake-cta';
+    cta.href = stakeCtaHref();
+    cta.textContent = state.trialComplete
+      ? `Trial Complete — Stake ${STAKING_TIERS[1]!.minStakeNear} NEAR → Keep NEAR.AI TEE Active`
+      : `Stake ${STAKING_TIERS[1]!.minStakeNear} NEAR → Unlock NEAR.AI TEE`;
+    wrap.append(title, detail, cta);
+  }
+  return wrap;
+}
+
+async function populateAttestationList(colonyId: string, bodyEl: HTMLElement, state: AiAccessState): Promise<void> {
   bodyEl.replaceChildren();
   const loading = document.createElement('p');
   loading.className = 'ta-me-muted';
@@ -43,7 +90,10 @@ async function populateAttestationList(colonyId: string, bodyEl: HTMLElement): P
     bodyEl.replaceChildren();
     if (rows.length === 0) {
       const empty = document.createElement('p');
-      empty.textContent = 'No NEAR.AI TEE attestations recorded for this colony yet.';
+      empty.textContent =
+        state.kind === 'script'
+          ? `No NEAR.AI TEE attestations recorded yet — this colony runs Script AI (Free) locally until NEAR.AI TEE is unlocked.`
+          : 'No NEAR.AI TEE attestations recorded for this colony yet.';
       bodyEl.appendChild(empty);
       return;
     }
@@ -70,8 +120,18 @@ async function populateAttestationList(colonyId: string, bodyEl: HTMLElement): P
   }
 }
 
-export function openTeeProofModal(colonyId: string, container?: HTMLElement): void {
-  const host = container ?? document.body;
+function normalizeModalOptions(containerOrOpts?: HTMLElement | TeeProofModalOptions): TeeProofModalOptions {
+  if (!containerOrOpts) return {};
+  if (typeof HTMLElement !== 'undefined' && containerOrOpts instanceof HTMLElement) {
+    return { container: containerOrOpts };
+  }
+  return containerOrOpts as TeeProofModalOptions;
+}
+
+export function openTeeProofModal(colonyId: string, containerOrOpts?: HTMLElement | TeeProofModalOptions): void {
+  const opts = normalizeModalOptions(containerOrOpts);
+  const host = opts.container ?? document.body;
+  const accessState = aiAccessState(opts.budget ?? null);
   const backdrop = document.createElement('div');
   backdrop.className = 'ta-modal-backdrop';
   backdrop.dataset.testid = 'tee-proof-modal';
@@ -110,10 +170,12 @@ export function openTeeProofModal(colonyId: string, container?: HTMLElement): vo
   closeBtn.onclick = close;
   head.append(title, closeBtn);
 
+  const banner = renderModalAiBanner(accessState);
   const body = document.createElement('div');
-  box.append(head, body);
+  if (banner) box.append(head, banner, body);
+  else box.append(head, body);
   backdrop.appendChild(box);
   host.appendChild(backdrop);
   closeBtn.focus();
-  void populateAttestationList(colonyId, body);
+  void populateAttestationList(colonyId, body, accessState);
 }

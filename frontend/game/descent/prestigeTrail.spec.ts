@@ -105,3 +105,32 @@ describe('W28-12 ReentryFx prestige trail (integration)', () => {
     fx.dispose();
   });
 });
+
+describe('W28-12 DescentFlagship skybox carrier (integration)', () => {
+  it('mounts ISS flagship in orbital skybox (tn < 14.5), hides below exosphere, and allocates nothing without a Lead Patron', async () => {
+    const { DescentFlagship } = await import('./parts/DescentFlagship');
+    const makeShipCtx = (prestige?: DescentContext['prestige']) =>
+      ({ spec: { seed: 7, biomeKey: 'dune', orbital: { atmosphereColor: 0x88aaff } }, root: new THREE.Group(), prestige } as unknown as DescentContext);
+
+    // Negative: no patron -> zero mesh allocated.
+    const emptyCtx = makeShipCtx({ plasmaTrail: true });
+    const emptyShip = new DescentFlagship(emptyCtx);
+    emptyShip.update(frame(6));
+    expect(emptyCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')).toBeUndefined();
+    emptyShip.dispose();
+
+    // Positive + boundary: Lead Patron mounts ship at tn=6, hides at tn=14.5, disposes cleanly.
+    const patronCtx = makeShipCtx({ flagshipCarrierName: 'ISS whale.near' });
+    const ship = new DescentFlagship(patronCtx);
+    ship.update(frame(6));
+    const mesh = patronCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')!;
+    expect(mesh).toBeDefined();
+    expect(mesh.visible).toBe(true);
+    expect(ship.activeName).toBe('ISS whale.near');
+
+    ship.update(frame(14.5));
+    expect(mesh.visible).toBe(false);
+    ship.dispose();
+    expect(patronCtx.root.children.find((c) => c.name === 'descent:flagshipCarrier')).toBeUndefined();
+  });
+});

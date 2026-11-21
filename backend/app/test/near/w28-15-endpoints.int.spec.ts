@@ -1,9 +1,10 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { StakingActionResponse, StakingStatusResponse } from '@terra/contracts';
+import { MARKET_TOKENS, StakingActionResponse, StakingStatusResponse } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
+import { creditVerifier } from '../../src/near/infrastructure/adapters/mock/intents-ledger';
 import { StakingService } from '../../src/near/staking/staking.service';
 import { devPlayerId } from '../../src/ws/session-verifier';
 
@@ -155,5 +156,136 @@ describe('W28-15 multi-colony Sybil over HTTP: colonies add nothing to a wallet'
       const p = await perksOf(`accountId=c${i}.sybil.near`);
       expect([p.tier, p.maxAiColonySlots, p.gasMultiplier, p.dailyAiCallLimit]).toEqual([wallet.tier, wallet.maxAiColonySlots, wallet.gasMultiplier, wallet.dailyAiCallLimit]);
     }
+  });
+});
+
+describe('W28 wallet-first <-> unclaimed custodial colony unification', () => {
+  it('links an unclaimed custodial colony sub-account to the pilot near-wallet stake across /v1/trade/policy, /v1/near/staking/performance & /v1/near/stake/profits', async () => {
+    const pid = devPlayerId('unified-alice');
+    const walletId = 'unified-alice.near';
+    const auth = { authorization: 'Bearer dev:unified-alice' };
+    await db.prisma.planet.create({ data: { id: 'pl_uni', name: 'pl_uni' } });
+    await db.prisma.player.upsert({ where: { id: pid }, create: { id: pid, handle: 'unified-alice' }, update: {} });
+    await db.prisma.socialIdentity.create({
+      data: { id: 'si_uni_near', playerId: pid, provider: 'near-wallet', subject: walletId, accountId: walletId },
+    });
+    await db.prisma.colony.create({
+      data: { id: 'co_uni_1', planetId: 'pl_uni', playerId: pid, colonyIndex: 0, name: 'Alpha' },
+    });
+    const custodialAcct = 'co_uni_1.pilots.terraagent.mock';
+    await db.prisma.nearColonyAccount.create({
+      data: {
+        accountId: custodialAcct,
+        playerId: pid,
+        slot: 'c0',
+        colonyId: 'co_uni_1',
+        ownerAccountId: custodialAcct,
+        claimedByAccountId: null,
+        publicKey: 'ed25519:uni',
+        encryptedSecret: 'enc',
+        kekVersion: 1,
+      },
+    });
+
+    // Stake 200 NEAR on walletId -> warm up 2 days -> Tier 3 (35 bp).
+    await staking.fundWalletNear(walletId, '250');
+    await post('/v1/near/stake', { accountId: walletId, pool: POOL, amount: '200' }, auth);
+    staking.advanceClockMs(2 * DAY);
+
+    // 1. Querying perks by custodial colony sub-account MUST resolve Alice's 200 NEAR Tier 3 (35 bp, NOT 100 bp!).
+    const colonyPerks = await perksOf(`colonyId=co_uni_1&accountId=${custodialAcct}`);
+    expect(colonyPerks).toMatchObject({ tier: 3, platformFeeBp: 35 });
+
+    // 2. /v1/trade/policy for Alice's session on pl_uni MUST also return 35 bp!
+    const polRes = await fetch(`${url}/v1/trade/policy?planetId=pl_uni`, { headers: auth });
+    const polBody = (await polRes.json()) as { policy: { platformFeeBp: number; stakerDiscountActive?: boolean } };
+    expect(polBody.policy).toMatchObject({ platformFeeBp: 35, stakerDiscountActive: true });
+
+    // 3. Record a non-self FINAL fill on custodialAcct and verify /v1/near/staking/performance?accountId=unified-alice.near sees the fee savings!
+    await db.prisma.intentTrade.create({
+      data: {
+        tradeId: 'tr_uni_1',
+        planetId: 'pl_uni',
+        pair: 'bio.water/USDC',
+        base: 'bio.water',
+        quote: 'USDC',
+        amount: '100',
+        notional: '100000000', // $100.00 USDC
+        platformFee: '350000', // 35 bp
+        platformFeeBp: 35,
+        stallFee: '0',
+        stallFeeBp: 0,
+        makerOrderId: 'ord_m',
+        takerOrderId: 'ord_t',
+        makerSide: 'sell',
+        buyerColonyId: 'co_uni_1',
+        sellerColonyId: 'co_other',
+        stallColonyId: 'co_other',
+        buyerAccountId: custodialAcct,
+        sellerAccountId: 'seller.pilots.terraagent.mock',
+        stallAccountId: 'seller.pilots.terraagent.mock',
+        platformAccountId: PROTOCOL,
+        policyVersion: 'v1',
+        policyHash: 'ph_1',
+        legs: [],
+        batchHash: 'bh_1',
+        state: 'FINAL',
+        settledAt: new Date(),
+      },
+    });
+    const perfRes = await fetch(`${url}/v1/near/staking/performance?accountId=${walletId}`);
+    const perf = (await perfRes.json()) as { income: { marketFeeSavingsUsd: number } };
+    expect(perf.income.marketFeeSavingsUsd).toBeCloseTo(0.65, 2); // saved 65 bp on $100 = $0.65
+
+    // 4. Credit 20 USDC trade profit onto custodialAcct and stake profits from BOTH walletId AND omitted accountId!
+    await creditVerifier(db.prisma, custodialAcct, MARKET_TOKENS.USDC.verifierId, 20_000_000n);
+    const sp1 = await post<{ txHash: string | null }>('/v1/near/stake/profits', { accountId: walletId, amountUsdc: '10.00' }, auth);
+    expect(sp1.status).toBe(200);
+    expect(sp1.body.txHash).toBeTruthy();
+
+    const sp2 = await post<{ txHash: string | null }>('/v1/near/stake/profits', { amountUsdc: '5.00' }, auth);
+    expect(sp2.status).toBe(200);
+    expect(sp2.body.txHash).toBeTruthy();
+  });
+});
+
+describe('W28 concurrent PatronSeatService multi-whale cross-planet safety', () => {
+  it('survives concurrent cross-planet nominations and unstakes across 4 whales with zero deadlocks and exact final winners', async () => {
+    for (const id of ['pl_race_a', 'pl_race_b']) await db.prisma.planet.create({ data: { id, name: id } });
+    const whales = await Promise.all(
+      [
+        ['race-w1', '500'],
+        ['race-w2', '550'],
+        ['race-w3', '600'],
+        ['race-w4', '700'],
+      ].map(async ([name, amt]) => {
+        const w = await linkWallet(name!);
+        await staking.fundWalletNear(w.accountId, '800');
+        await post('/v1/near/stake', { accountId: w.accountId, pool: POOL, amount: amt }, w.auth);
+        return w;
+      }),
+    );
+    const [w1, w2, w3, w4] = whales as [typeof whales[0], typeof whales[0], typeof whales[0], typeof whales[0]];
+
+    // Seed initial nominations on opposite planets so cross-switching tests alphabetical lock ordering!
+    await post('/v1/near/staking/patron/nominate', { accountId: w1.accountId, planetId: 'pl_race_a' }, w1.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w2.accountId, planetId: 'pl_race_b' }, w2.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w3.accountId, planetId: 'pl_race_a' }, w3.auth);
+    await post('/v1/near/staking/patron/nominate', { accountId: w4.accountId, planetId: 'pl_race_b' }, w4.auth);
+
+    // Hammer concurrent cross-planet switches + w4 unstaking below 500!
+    const responses = await Promise.all([
+      post('/v1/near/staking/patron/nominate', { accountId: w1.accountId, planetId: 'pl_race_b' }, w1.auth),
+      post('/v1/near/staking/patron/nominate', { accountId: w2.accountId, planetId: 'pl_race_a' }, w2.auth),
+      post('/v1/near/staking/patron/nominate', { accountId: w3.accountId, planetId: 'pl_race_b' }, w3.auth),
+      post('/v1/near/unstake', { accountId: w4.accountId, pool: POOL, amount: '250' }, w4.auth), // w4 drops 700 -> 450 (< 500)
+    ]);
+    for (const r of responses) expect(r.status).toBe(200);
+
+    // Final active stakes: pl_race_a has w2 (550); pl_race_b has w1 (500), w3 (600), w4 (450 < 500) -> w3 wins pl_race_b!
+    const seatA = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'pl_race_a' } });
+    const seatB = await db.prisma.stakingPatronSeat.findUnique({ where: { planetId: 'pl_race_b' } });
+    expect(seatA?.accountId).toBe(w2.accountId);
+    expect(seatB?.accountId).toBe(w3.accountId);
   });
 });

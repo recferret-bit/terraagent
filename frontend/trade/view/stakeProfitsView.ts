@@ -10,6 +10,7 @@ export interface StakeProfitsDeps {
   doFetch(input: string, init?: RequestInit): Promise<Response>;
   token: string;
   accountId: () => string | null;
+  colonyId?: () => string | null;
   /** `mock` stakes for real in the mock chain; testnet / mainnet only ask for the quote (`dry: true`). */
   mode: () => NearMode;
   /** After a real stake: the page refreshes perks and balances. */
@@ -92,7 +93,13 @@ export class StakeProfitsControl {
     if (bad) { this.say(bad, 'err'); return; }
     const dry = this.d.mode() !== 'mock';
     const accountId = this.d.accountId();
-    const body: StakeProfitsRequest = { amountUsdc: this.input.value.trim(), dry, ...(accountId ? { accountId } : {}) };
+    const colonyId = this.d.colonyId?.() ?? null;
+    const body: StakeProfitsRequest = {
+      amountUsdc: this.input.value.trim(),
+      dry,
+      ...(accountId ? { accountId } : {}),
+      ...(!accountId && colonyId ? { colonyId } : {}),
+    };
     this.busy = true;
     this.renderSubmitLabel();
     try {

@@ -20,10 +20,12 @@ could be looked up; where the spec left a number open, the spec's own numbers we
   dry-run and unit-tested with fake RPCs; they are owner steps in `docs/plan/checks/w28-check.md`.
 - **Rust contract upgrade:** positions staked before the V2 upgrade have no deposit clock (grandfathered `0 bp` exit fee)
   and are listed by `get_account_positions` only after the operator calls `register_position`; LST pools need
-  `bind_lst_pool`. The Meta Pool / LiNEAR `deposit_and_stake` argument shape and price-method names are unverified
-  on-chain, and LST deposits use the cached price with no staleness check.
-- **Native `withdraw` is operator-only** on the contract, so a native-NEAR withdraw goes through the server relayer;
-  `withdraw_lst` and `compound_yield` are wallet-signed.
+  `bind_lst_pool`. `deposit_and_stake_lst` now enforces a `1h` cached-price freshness ceiling (`STAKE_PRICE_STALE`) and
+  chains a live `Promise::and` price read in `on_lst_deposit`; the Meta Pool / LiNEAR Mainnet contract method shapes are
+  verified in `near-sdk` receipt/callback unit tests pending live Mainnet deployment.
+- **Self-custody `unstake` & `withdraw`:** self-custody wallet owners (`caller == account_id`) can now call `unstake`,
+  `withdraw` (for native-backed `stake_payable` / `deposit_near` positions), `withdraw_lst`, and `compound_yield`
+  directly on-chain without the operator; virtual `credit_near` test positions still require operator settlement.
 - **Validator APY & live wallet balances:** `StakingPerformanceService` now wires `StakingPort.validatorApy()` on
   `NEAR_MODE=mainnet` (falling back to `9.00 %` gross / `7.20 %` net `Sim APY` on mock/testnet) and reads live RPC
   `StakingPort.nearBalanceOf()` for `walletNear` off mock; LST holdings are valued `1:1` with NEAR as a conservative floor.
@@ -31,7 +33,8 @@ could be looked up; where the spec left a number open, the spec's own numbers we
   `ai.ai_wallet_usage`); after a restart the first colonies to ask retake the slots.
 - **Patron payout** is an accounting row (`chain.staking_patron_payout`), USDC-quoted fills only; no USDC moves yet.
 - **DAO vote weight (`1.5x`)** works on the mock DAO; the testnet / mainnet DAO adapters ignore `weightBp`.
-- **Guild radar** is a REST read (`GET /v1/market/guild/radar`); there is no WS push yet.
+- **Guild radar** is wired to the in-game Trade Hub `GUILD` tab (`GET /v1/market/guild/radar` -> `⚡ TIER 2+ EARLY RADAR`
+  countdown); there is no WS push yet (the panel polls every `15 s` while open).
 - **Wave fencing:** the landing page has no wave-flag mechanism, so its pill and calculator always show. `/me.html`
   hides the STAKING tab when the overview endpoint answers `404` (server `TA_WAVES=..27`) and on `?waves=..27` in dev.
 - **HOT wallet** is not in the wallet selector (`@near-wallet-selector/hot-wallet` is not installed); Meteor, Intear,

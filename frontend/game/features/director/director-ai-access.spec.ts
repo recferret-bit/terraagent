@@ -86,14 +86,23 @@ describe('DirectorPanel AI access card', () => {
     expect(card.hidden).toBe(true);
     expect(card.childElementCount).toBe(0);
   });
-  it('the trial TEE link opens the proof modal for the active colony', () => {
+  it('the trial TEE link opens the proof modal with the W28 AI access banner, and Script AI shows Stake 10 NEAR CTA', () => {
     const host = document.createElement('div');
     document.body.append(host);
     const panel = new DirectorPanel(host);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"attestations":[]}'));
     panel.syncAiAccess(budget());
     (q(host, 'director-ai-tee-proof') as HTMLButtonElement).click();
-    expect(document.querySelector('[data-testid="tee-proof-modal"]')).not.toBeNull();
+    const modal = document.querySelector('[data-testid="tee-proof-modal"]');
+    expect(modal).not.toBeNull();
+    expect(document.querySelector('[data-testid="tee-modal-ai-access"]')?.getAttribute('data-state')).toBe('trial');
+    document.body.replaceChildren();
+
+    document.body.append(host);
+    panel.syncAiAccess(budget({ mode: 'script', freeTrialTurnsRemaining: 0, trialEligible: true }));
+    (q(host, 'director-tee-btn') as HTMLButtonElement).click();
+    expect(document.querySelector('[data-testid="tee-modal-ai-access"]')?.getAttribute('data-state')).toBe('script');
+    expect(document.querySelector('[data-testid="tee-modal-stake-cta"]')?.getAttribute('href')).toBe('/me.html#staking?amount=10');
     document.body.replaceChildren();
     vi.restoreAllMocks();
   });

@@ -13,6 +13,7 @@ import { NearException } from '../../domain/errors.js';
 import { IntentsBalanceReadPort } from '../../application/ports/intents-balance-read.port.js';
 import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolvePerksDeps } from '../perks/perks-deps.js';
+import { resolveWallet } from '../perks/stake-clock.reader.js';
 import { verifyStakingWalletSignature, type FullAccessKeyVerifier } from '../staking-signature-guard.js';
 import { ONE_NEAR_YOCTO, yoctoToNear } from '../yocto.js';
 import type { ActionEffects } from './action-effects.js';
@@ -66,7 +67,7 @@ export class StakeProfitsService {
   constructor(private readonly d: StakeProfitsDeps) {}
 
   async run(input: StakeProfitsRequest & { readonly signature?: Nep413Signature; readonly asset?: 'near' | 'stNEAR' | 'LiNEAR' }): Promise<StakeProfitsResponse> {
-    const accountId = requireWalletAccount(input.accountId);
+    const accountId = await this.resolveTargetAccount(input.accountId, input.colonyId);
     const sig = input.walletSignature ?? input.signature;
     const usdcAtomic = parseUsdc(input.amountUsdc);
     if (usdcAtomic <= 0n) {
@@ -137,20 +138,31 @@ export class StakeProfitsService {
     return pool.poolId;
   }
 
+  private async resolveTargetAccount(rawAccount?: string, rawColony?: string): Promise<string> {
+    if (rawAccount?.trim()) return requireWalletAccount(rawAccount);
+    const db = this.d.db();
+    if (db && rawColony?.trim()) {
+      const wallet = await resolveWallet(db, { colonyId: rawColony });
+      if (wallet.accountIds.length > 0) {
+        const chosen = wallet.accountIds.includes(wallet.walletKey) ? wallet.walletKey : wallet.accountIds[0]!;
+        return requireWalletAccount(chosen);
+      }
+    }
+    return requireWalletAccount(rawAccount);
+  }
+
   /**
-   * The verifier ledger holds a wallet's trade profit on the account that traded: the wallet itself or one of its
-   * colony accounts (`near_colony_account` rows owned / claimed by the wallet). The first with enough USDC pays.
+   * The verifier ledger holds a wallet's trade profit on the account that traded: the wallet itself or any of its
+   * linked / custodial colony accounts (`resolveWallet`). The first candidate with enough USDC pays.
    */
   private async pickUsdcPayer(accountId: string, usdcAtomic: bigint): Promise<string> {
     const db = this.d.db();
     const read = this.d.intentsRead;
     if (!db || !read) return accountId;
     const usdcId = MARKET_TOKENS.USDC.verifierId;
-    const rows = await db.nearColonyAccount.findMany({
-      where: { OR: [{ ownerAccountId: accountId }, { claimedByAccountId: accountId }] },
-      select: { accountId: true },
-    });
-    for (const candidate of [accountId, ...rows.map((r) => r.accountId)]) {
+    const wallet = await resolveWallet(db, { accountId });
+    const candidates = [accountId, ...wallet.accountIds.filter((a) => a !== accountId)];
+    for (const candidate of candidates) {
       if ((await read.verifierChainBalance(candidate, usdcId)) >= usdcAtomic) return candidate;
     }
     return accountId;

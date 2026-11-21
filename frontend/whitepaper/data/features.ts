@@ -41,7 +41,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Dual Settlement: Fast Sim + NEAR Finality',
     layer: 'WEB3',
     badge: 'HYBRID',
-    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (167 Rust tests).',
+    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (169 Rust tests).',
     chips: ['near-sdk 5.7', 'Testnet + verifier', '11 Typed Ports'],
   },
   {

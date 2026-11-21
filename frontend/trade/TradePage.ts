@@ -86,7 +86,14 @@ export class TradePage {
       onSent: () => this.afterOrderChange(),
     });
     this.p.ticket.body.append(this.ticket.root);
-    this.staking = new TradeStaking({ client, mode: () => this.nearMode, reloadBalances: () => { void this.loaders.balances(true); } });
+    this.staking = new TradeStaking({
+      client,
+      mode: () => this.nearMode,
+      reloadBalances: () => {
+        void this.loaders.balances(true);
+        void this.loaders.catalog();
+      },
+    });
     this.p.balances.actions.append(this.staking.profits.button);
     this.p.balances.root.append(this.staking.profits.dialog);
     this.keys = new KeysPanel(this.p.keys.body, { client, state: () => this.store.get(), reload: () => { void this.loaders.keys(true); } });

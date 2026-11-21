@@ -20,6 +20,10 @@ export class OrbitPrestige {
     private readonly store: PrestigeStore = prestigeStore,
   ) {}
 
+  currentPlanetId(): string | null {
+    return this.planetId;
+  }
+
   /** Call every menu frame with the stage and the selected planet's id (null when unknown). */
   step(stage: OrbitalStage | null, planetId: string | null): void {
     if (!stage || !planetId || !this.isEnabled()) {
@@ -101,8 +105,9 @@ function createWalletTierReader(
 }
 
 /**
- * The descent prestige of the player's own colony: a getter, evaluated every descent frame. When `own()` is `null`
- * (a wallet-first staker's very first drop-pod landing before founding a colony), falls back to the linked wallet's tier.
+ * The descent prestige of the player's own colony & target planet: a getter, evaluated every descent frame.
+ * Combines colony tier with linked-wallet tier fallback (so an in-flight prestige load never drops a Tier 2+ plasma trail)
+ * and carries the target planet's Tier 4 Lead Patron Flagship Carrier (`ISS <pilot>.near`) into the Descent skybox.
  */
 export function ownDescentPrestige(
   own: () => { planetId: string; colonyId: string } | null,
@@ -110,18 +115,24 @@ export function ownDescentPrestige(
   store: PrestigeStore = prestigeStore,
   devTier: number | null = null,
   walletTierFallback?: () => number,
+  targetPlanetId?: () => string | null,
 ): () => DescentPrestige | undefined {
   return () => {
     if (!isEnabled()) return undefined;
-    if (devTier !== null) return prestigeVisualsForTier(devTier).plasmaTrail ? { plasmaTrail: true } : undefined;
     const c = own();
-    if (!c) {
-      const wt = walletTierFallback?.() ?? 0;
-      return prestigeVisualsForTier(wt).plasmaTrail ? { plasmaTrail: true } : undefined;
-    }
-    void store.ensureLoaded(c.planetId);
-    const v = prestigeVisualsForTier(store.tierOfColony(c.planetId, c.colonyId));
-    return v.plasmaTrail ? { plasmaTrail: true } : undefined;
+    const planetId = c?.planetId ?? targetPlanetId?.() ?? null;
+    if (planetId) void store.ensureLoaded(planetId);
+    const flagship = planetId ? (store.leadPatron(planetId)?.carrierName ?? null) : null;
+    const tier =
+      devTier !== null
+        ? devTier
+        : Math.max(c ? store.tierOfColony(c.planetId, c.colonyId) : 0, walletTierFallback?.() ?? 0);
+    const plasma = prestigeVisualsForTier(tier).plasmaTrail;
+    if (!plasma && !flagship) return undefined;
+    return {
+      ...(plasma ? { plasmaTrail: true } : {}),
+      ...(flagship ? { flagshipCarrierName: flagship } : {}),
+    };
   };
 }
 
@@ -144,7 +155,14 @@ export class MenuPrestige {
     const enabled = () => deps.flagOn() && !deps.isLocalHost();
     const walletTier = createWalletTierReader(deps.pilotAccount ?? readStoredPilotAccount, deps.fetchWalletTier ?? defaultFetchWalletTier);
     this.orbit = new OrbitPrestige(enabled, store);
-    this.descent = ownDescentPrestige(deps.activeColony, enabled, store, devStakeTier(search, dev), walletTier);
+    this.descent = ownDescentPrestige(
+      deps.activeColony,
+      enabled,
+      store,
+      devStakeTier(search, dev),
+      walletTier,
+      () => this.orbit.currentPlanetId(),
+    );
   }
 }
 

@@ -162,6 +162,7 @@ export class TradeReadService {
     const perks = await resolveDbStakerPerks(this.prisma, {
       colonyId,
       accountId,
+      playerId: p.ownerId,
       standardPlatformFeeBp: basePolicy.platformFeeBp,
       env: (this.env ?? process.env) as Record<string, string | undefined>,
     });

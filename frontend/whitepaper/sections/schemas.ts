@@ -233,7 +233,7 @@ export function createProtocolEconomySchema(): HTMLElement {
   const coreCol = makeEl('div', 'wp-proto-core plate-sm');
   coreCol.append(makeEl('span', 'wp-proto-col-lbl is-core', '◆ ON-CHAIN CLEARING CORE'), buildCoreConduitSvg());
   const stats = makeEl('div', 'wp-proto-stats');
-  for (const [lbl, val] of [['TOKEN MINT', '0%'], ['COMBAT P2W', '0%'], ['STAKER PERKS', '>= 10 NEAR']]) {
+  for (const [lbl, val] of [['TOKEN MINT', '0%'], ['COMBAT P2W', '0%'], ['STAKER TIERS', '10–500+ NEAR']]) {
     const cell = makeEl('div', 'wp-proto-stat');
     cell.append(makeEl('span', undefined, lbl), makeEl('strong', undefined, val));
     stats.appendChild(cell);
@@ -244,7 +244,7 @@ export function createProtocolEconomySchema(): HTMLElement {
   rightCol.append(
     makeEl('span', 'wp-proto-col-lbl is-out', '▼ INFRASTRUCTURE & DAO OUTFLOWS'),
     makePipeNode('NEP-366 Gasless Relayer', 'relayer.terraagent.*', 'Sponsors pilot sub-account storage deposits and popup-free gameplay transactions.', 'all', 'is-out'),
-    makePipeNode('Managed NEAR.AI Cloud TEE', 'z-ai/glm-5.3-flash', 'Pays batched hardware-attested directives for Rival NPCs and >= 10 NEAR Staker Autopilot.', 'all', 'is-out-ai'),
+    makePipeNode('Managed NEAR.AI Cloud TEE', 'z-ai/glm-5.3-flash', 'Pays batched hardware-attested directives for Rival NPCs, 5 Free Trial Turns, and 1–12 Staker Colony Slots.', 'all', 'is-out-ai'),
     makePipeNode('Planet Council DAO Vault', '20% of Platform Fee', 'Funds `meteor_shield`, `terraform_boost`, and regional subsidies voted on `dao.terraagent.testnet`.', 'trade', 'is-out'),
   );
 

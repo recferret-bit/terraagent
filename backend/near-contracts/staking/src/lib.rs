@@ -133,7 +133,7 @@ impl StakingVaultContract {
         read_protocol_yield_bp()
     }
 
-    fn resolve_protocol_account_id(&self) -> String {
+    pub(crate) fn resolve_protocol_account_id(&self) -> String {
         if let Some(bytes) = env::storage_read(CFG_PROTOCOL_KEY) {
             if let Ok(custom) = String::from_utf8(bytes) {
                 let trimmed = custom.trim();
@@ -238,57 +238,6 @@ impl StakingVaultContract {
         self.balances.get(&protocol_id).copied().unwrap_or(0).to_string()
     }
 
-    /// Sweeps accrued protocol yield (`amount` or full balance) to `recipient_id` (or `owner_id`). Idempotent by `op_id`.
-    pub fn withdraw_protocol_yield(
-        &mut self,
-        op_id: String,
-        amount: Option<String>,
-        recipient_id: Option<AccountId>,
-    ) -> WithdrawResultView {
-        require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
-        self.require_operator();
-        if let Some(cached) = self.processed_ops.get(&op_id) {
-            return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
-        }
-        let protocol_id = self.resolve_protocol_account_id();
-        let avail = self.balances.get(&protocol_id).copied().unwrap_or(0);
-        let withdraw_val = match amount {
-            Some(ref raw) => parse_yocto(raw),
-            None => avail,
-        };
-        require!(
-            withdraw_val > 0 && avail >= withdraw_val,
-            "STAKE_INSUFFICIENT_BALANCE: insufficient protocol yield balance"
-        );
-        let recipient = recipient_id
-            .map(|a| a.to_string())
-            .unwrap_or_else(|| self.owner_id.to_string());
-        if recipient != protocol_id {
-            self.balances.insert(protocol_id.clone(), avail - withdraw_val);
-            let cur_rec = self.balances.get(&recipient).copied().unwrap_or(0);
-            let next_rec = cur_rec
-                .checked_add(withdraw_val)
-                .expect("STAKE_INSUFFICIENT_BALANCE: overflow");
-            self.balances.insert(recipient.clone(), next_rec);
-        }
-        let res = WithdrawResultView {
-            account_id: protocol_id.clone(),
-            recipient_id: recipient.clone(),
-            pool_id: "protocol_yield".to_string(),
-            withdrawn: withdraw_val.to_string(),
-        };
-        self.processed_ops.insert(op_id, serde_json::to_string(&res).unwrap());
-        emit_staking(
-            "withdraw_protocol_yield",
-            json!({
-                "protocol_id": protocol_id,
-                "recipient": recipient,
-                "withdrawn": res.withdrawn,
-            }),
-        );
-        res
-    }
-
     /// Stakes `amount` yoctoNEAR from `payer_id` (or `account_id`) into `pool_id`. Idempotent by `op_id`.
     #[allow(clippy::too_many_arguments)]
     pub fn stake(
@@ -350,6 +299,7 @@ impl StakingVaultContract {
     }
 
     /// Begins unbonding `amount` yoctoNEAR from `pool_id` (4 epochs / 2 game-days). Idempotent by `op_id`.
+    /// Self-custody owners (`caller == account_id`) may unstake directly using chain block time.
     pub fn unstake(
         &mut self,
         op_id: String,
@@ -360,15 +310,32 @@ impl StakingVaultContract {
         now_ms: u64,
     ) -> StakingPositionView {
         require!(!op_id.is_empty(), "STAKE_INSUFFICIENT_BALANCE: op_id required");
-        self.require_operator();
+        let caller = env::predecessor_account_id();
+        let is_operator = self.is_operator(&caller);
+        require!(
+            is_operator || caller.as_str() == account_id,
+            "NEAR_NOT_OWNER: caller not authorized"
+        );
+        require!(
+            is_operator || apy_bp <= MAX_NON_OPERATOR_APY_BP,
+            "STAKE_INVALID_APY: direct non-operator apy_bp exceeds 1000 bp"
+        );
         if let Some(cached) = self.processed_ops.get(&op_id) {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
         let unstake_val = parse_yocto(&amount);
         require!(unstake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
+        let chain_now = env::block_timestamp_ms();
+        let effective_now = if is_operator {
+            now_ms
+        } else if chain_now > 0 {
+            chain_now
+        } else {
+            now_ms
+        };
 
-        let settled = self.settle_pure(&account_id, &pool_id, apy_bp, now_ms);
+        let settled = self.settle_pure(&account_id, &pool_id, apy_bp, effective_now);
         let mut next = settled.record.clone();
         require!(
             next.staked >= unstake_val,
@@ -377,11 +344,11 @@ impl StakingVaultContract {
         self.apply_settled(&account_id, &pool_id, &settled);
         // `< 7 days` since the latest deposit: 25 bp of the unstaked principal goes to the protocol.
         let last_staked = positions::read_meta(&account_id, &pool_id).map(|m| m.last_staked_at_ms);
-        let fee = fees::early_exit_fee(unstake_val, last_staked, now_ms);
+        let fee = fees::early_exit_fee(unstake_val, last_staked, effective_now);
         self.credit_protocol_for_pool(&pool_id, fee);
         next.staked -= unstake_val;
         next.unbonding = next.unbonding.saturating_add(unstake_val - fee);
-        next.unbonding_ready_at_ms = Some(now_ms.saturating_add(UNBONDING_DURATION_MS));
+        next.unbonding_ready_at_ms = Some(effective_now.saturating_add(UNBONDING_DURATION_MS));
         self.positions.insert(pos_key(&account_id, &pool_id), next.clone());
         positions::record_unstake(&account_id, &pool_id, next.staked);
 

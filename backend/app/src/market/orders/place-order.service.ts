@@ -289,6 +289,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     const perks = await resolveDbStakerPerks(tx, {
       colonyId: d.colonyId,
       accountId,
+      playerId: d.playerId ?? null,
       standardPlatformFeeBp: baseCfg.platformFeeBp,
       env: envBag,
     });

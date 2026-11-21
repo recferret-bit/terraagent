@@ -89,11 +89,14 @@ describe('W28-12 own descent prestige (unit)', () => {
     expect(get()).toBeUndefined();
   });
 
-  it('MenuPrestige is off on ?host=local and when the W28 flag is off', async () => {
+  it('MenuPrestige is off on ?host=local and when the W28 flag is off, and includes target planet flagshipCarrierName', async () => {
     const store = new PrestigeStore(async (id) => resp(id, 'alice', [{ colonyId: 'c', tier: 4 }]));
     await store.ensureLoaded('p1');
     const own = () => ({ planetId: 'p1', colonyId: 'c' });
-    expect(new MenuPrestige({ isLocalHost: () => false, flagOn: () => true, activeColony: own }, store).descent()).toEqual({ plasmaTrail: true });
+    expect(new MenuPrestige({ isLocalHost: () => false, flagOn: () => true, activeColony: own }, store).descent()).toEqual({
+      plasmaTrail: true,
+      flagshipCarrierName: 'ISS alice.near',
+    });
     expect(new MenuPrestige({ isLocalHost: () => true, flagOn: () => true, activeColony: own }, store).descent()).toBeUndefined();
     expect(new MenuPrestige({ isLocalHost: () => false, flagOn: () => false, activeColony: own }, store).descent()).toBeUndefined();
   });
@@ -142,5 +145,25 @@ describe('W28-12 dev tier override (unit)', () => {
     expect(mp.descent()).toBeUndefined();
     acct = null;
     expect(mp.descent()).toBeUndefined();
+  });
+
+  it('preserves walletTierFallback plasma trail even while activeColony is non-null and planet prestige is still 0', async () => {
+    const store = new PrestigeStore(async (id) => resp(id, 'patron', [{ colonyId: 'fresh_col', tier: 0 }]));
+    await store.ensureLoaded('p2');
+    const mp = new MenuPrestige(
+      {
+        isLocalHost: () => false,
+        flagOn: () => true,
+        activeColony: () => ({ planetId: 'p2', colonyId: 'fresh_col' }),
+        pilotAccount: () => 'linked.near',
+        fetchWalletTier: async () => 2,
+      },
+      store,
+      '',
+      false,
+    );
+    mp.descent();
+    await flush();
+    expect(mp.descent()).toEqual({ plasmaTrail: true, flagshipCarrierName: 'ISS patron.near' });
   });
 });

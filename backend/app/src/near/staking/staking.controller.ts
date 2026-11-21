@@ -20,7 +20,7 @@ import { FlagsService } from '../../flags/flags.service.js';
 import { NearException } from '../domain/errors.js';
 import { assertColonyOwnership, resolveOptionalBearerPlayerId } from '../identity/colony-ownership.guard.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
-import { playerLinkedWallet } from './perks/stake-clock.reader.js';
+import { playerLinkedWallet, resolveWallet } from './perks/stake-clock.reader.js';
 import { PatronNominateRequest, type PatronNominationResult } from './services/patron-nominate.service.js';
 import { WalletControlGuard } from './services/wallet-control.guard.js';
 import { StakingService } from './staking.service.js';
@@ -150,7 +150,7 @@ export class StakingController {
   /** `POST /v1/near/stake/profits` (`W28`): `USDC` trade profit to `stNEAR` stake (quote only on real networks). */
   @Post('stake/profits')
   @HttpCode(200)
-  stakeProfits(
+  async stakeProfits(
     @Body() raw: unknown,
     @Headers('x-actor') actorHeader?: string,
     @Headers('authorization') authHeader?: string,
@@ -159,8 +159,17 @@ export class StakingController {
   ): Promise<StakeProfitsResponse> {
     this.assertW28();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
-    const body = this.profitsPipe.transform(raw ?? {});
-    return this.authorize(req, body).then(() => this.stakingService.stakeProfits(body));
+    let body = this.profitsPipe.transform(raw ?? {});
+    if (!body.accountId?.trim() && !body.colonyId?.trim() && this.prisma) {
+      const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
+      if (playerId) {
+        const wallet = await resolveWallet(this.prisma, { playerId });
+        const fallbackAcct = wallet.accountIds.includes(wallet.walletKey) ? wallet.walletKey : wallet.accountIds[0];
+        if (fallbackAcct) body = { ...body, accountId: fallbackAcct };
+      }
+    }
+    await this.authorize(req, body);
+    return this.stakingService.stakeProfits(body);
   }
 
   /** `POST /v1/near/staking/patron/nominate` (`W28`): back a public planet in the King-of-the-Hill Lead Patron race. */

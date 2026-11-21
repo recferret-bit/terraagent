@@ -12,6 +12,7 @@ import { FINAL_POS, FINAL_TARGET, R, TL } from './constants';
 import { FrameState, type DescentContext, type FramePart } from './parts/FrameState';
 import { Trajectory } from './parts/Trajectory';
 import { bayGlowAt, CarrierBay } from './parts/CarrierBay';
+import { DescentFlagship } from './parts/DescentFlagship';
 import { HeatShield } from './parts/HeatShield';
 import { ReentryFx } from './parts/ReentryFx';
 import { ChuteFx } from './parts/ChuteFx';
@@ -86,11 +87,12 @@ export class DescentRunner implements DescentSequence {
     const chute = new ChuteFx(this.ctx, podRoot, podH, podR);
     this.ground = new GroundFx(this.ctx);
     const bay = new CarrierBay(this.ctx, carrier, rig, pod, podH);
+    const flagship = new DescentFlagship(this.ctx);
     const shield = new HeatShield(this.ctx, rig, podH);
     this.cam = new CameraRig(this.ctx, carrier);
 
-    this.parts = [bay, shield, reentry, chute, flames, this.ground, this.touchdown, this.cam, this.sky];
-    this.disposeOrder = [this.sky, reentry, flames, chute, this.ground, this.touchdown, bay];
+    this.parts = [bay, shield, reentry, chute, flames, this.ground, this.touchdown, this.cam, flagship, this.sky];
+    this.disposeOrder = [this.sky, flagship, reentry, flames, chute, this.ground, this.touchdown, bay];
     this.telOut = this.tel.at(0);
     this.handoff = this.buildHandoff(carrier.root.scale.x);
   }

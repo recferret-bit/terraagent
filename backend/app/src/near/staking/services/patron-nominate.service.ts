@@ -1,9 +1,9 @@
 import type { PlanetPatronView } from '@terra/contracts';
 import { z } from 'zod';
-import type { PrismaClient } from '@terra/db';
+import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
 import { CoreException } from '../../../core/errors/index.js';
 import { NearException } from '../../domain/errors.js';
-import { PatronSeatService } from '../perks/patron-seat.service.js';
+import { lockPatronPlanets, PatronSeatService } from '../perks/patron-seat.service.js';
 import { patronView } from '../perks/staking-perks.service.js';
 
 /** `POST /v1/near/staking/patron/nominate` body. */
@@ -45,13 +45,22 @@ export class PatronNominateService {
     if (!planet || planet.admission === 'ARCHIVED') {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Planet not found or not public.', details: { planetId } });
     }
-    const previous = (await db.stakingPatronNomination.findUnique({ where: { accountId }, select: { planetId: true } })) as
-      | { planetId: string }
-      | null;
-    await seats.nominate(accountId, planet.id);
-    const now = this.nowMs();
-    if (previous && previous.planetId !== planet.id) await seats.refreshPlanet(previous.planetId, now);
-    const seat = await seats.refreshPlanet(planet.id, now);
+    const runInTx = async (tx: DbClient) => {
+      if (typeof (tx as { $executeRaw?: unknown }).$executeRaw === 'function') {
+        const raw = tx as { $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown> };
+        await raw.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`patron-acct:${accountId}`}, 0))`;
+      }
+      const txSeats = new PatronSeatService(tx);
+      const previous = (await tx.stakingPatronNomination.findUnique({ where: { accountId }, select: { planetId: true } })) as
+        | { planetId: string }
+        | null;
+      await lockPatronPlanets(tx, [planet.id, ...(previous ? [previous.planetId] : [])]);
+      await txSeats.nominate(accountId, planet.id);
+      const now = this.nowMs();
+      if (previous && previous.planetId !== planet.id) await txSeats.refreshPlanetUnlocked(previous.planetId, now);
+      return txSeats.refreshPlanetUnlocked(planet.id, now);
+    };
+    const seat = typeof db.$transaction === 'function' ? await withTransaction(db, runInTx) : await runInTx(db);
     return {
       accountId,
       planetId: planet.id,

@@ -403,3 +403,70 @@ fn get_account_positions_projects_unbonding_maturity_and_price_mode_rewards_and_
     testing_env!(ts_ctx("whale.testnet", lst_ready).attached_deposit(NearToken::from_yoctonear(1)).build());
     let _ = c.withdraw_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), ONE_NEAR.to_string(), None, None);
 }
+
+#[test]
+fn self_custody_owner_can_unstake_and_withdraw_backed_near_without_operator_and_virtual_self_withdraw_fails() {
+    let mut c = new_contract();
+    // Alice stakes 10 real NEAR via stake_payable.
+    testing_env!(ts_ctx("alice.testnet", T0).account_balance(NearToken::from_near(30)).attached_deposit(NearToken::from_near(10)).build());
+    c.stake_payable("self-s1".into(), POOL.into(), 900, T0, None);
+
+    // At day 2, Alice unstakes directly from her own wallet (trying to spoof now_ms = T0 + 100d to dodge exit fee).
+    let day2 = T0 + 2 * GAME_DAY_MS;
+    testing_env!(ts_ctx("alice.testnet", day2).account_balance(NearToken::from_near(30)).build());
+    let u = c.unstake("self-u1".into(), "alice.testnet".into(), POOL.into(), 900, (10 * ONE_NEAR).to_string(), T0 + 100 * GAME_DAY_MS);
+    let fee = 10 * ONE_NEAR / 400;
+    assert_eq!(u.early_exit_fee.as_deref(), Some(fee.to_string().as_str()), "chain block_timestamp enforces 25 bp exit fee");
+
+    // After 2d unbonding, Alice withdraws directly without operator (unbacked simulated yield stays untouched; principal transfers out).
+    let ready = day2 + UNBONDING_DURATION_MS;
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).build());
+    assert!(matches!(
+        c.withdraw("self-w1".into(), "alice.testnet".into(), None, POOL.into(), 900, ready),
+        PromiseOrValue::Promise(_)
+    ));
+
+    // A virtual credit_near account cannot self-withdraw real users' NEAR without operator settlement.
+    testing_env!(ctx(OP).account_balance(NearToken::from_near(30)).build());
+    c.credit_near("virt-f".into(), "virt.testnet".into(), (5 * ONE_NEAR).to_string());
+    c.stake("virt-s".into(), "virt.testnet".into(), None, POOL.into(), 0, (5 * ONE_NEAR).to_string(), T0);
+    c.unstake("virt-u".into(), "virt.testnet".into(), POOL.into(), 0, (5 * ONE_NEAR).to_string(), T0 + WEEK);
+    testing_env!(ts_ctx("virt.testnet", T0 + WEEK + UNBONDING_DURATION_MS).account_balance(NearToken::from_near(30)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw("virt-w".into(), "virt.testnet".into(), None, POOL.into(), 0, T0 + WEEK + UNBONDING_DURATION_MS);
+    })).is_err());
+}
+
+#[test]
+fn deposit_and_stake_lst_rejects_stale_cached_price_and_uses_live_callback_price() {
+    let mut c = new_contract();
+    testing_env!(ctx(OP).build());
+    c.bind_lst_pool("meta-pool.near".into(), "meta-pool.near".parse().unwrap());
+    testing_env!(ts_ctx("staking.terraagent.testnet", T0).build());
+    c.on_lst_price("meta-pool.near".into(), Ok(near_sdk::json_types::U128(crate::lst::PRICE_ONE)));
+    assert_eq!(c.get_lst_price_updated_at_ms("meta-pool.near".into()), Some(T0));
+
+    // Over 1 hour later without refresh_lst_price -> STAKE_PRICE_STALE.
+    let stale_ts = T0 + crate::lst::MAX_LST_PRICE_AGE_MS + 1;
+    testing_env!(ts_ctx("alice.testnet", stale_ts).attached_deposit(NearToken::from_near(12)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.deposit_and_stake_lst("meta-pool.near".into(), "meta-pool.near".parse().unwrap(), None, None);
+    })).is_err());
+
+    // Live Promise::and price (1.20 NEAR/share) overrides cached 1.00 NEAR/share so vault never over-mints shares!
+    let live_price = crate::lst::PRICE_ONE * 12 / 10;
+    let live_bytes = near_sdk::serde_json::to_vec(&near_sdk::json_types::U128(live_price)).unwrap();
+    testing_env!(
+        ts_ctx("staking.terraagent.testnet", T0 + 1_000).build(),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![near_sdk::PromiseResult::Successful(vec![]), near_sdk::PromiseResult::Successful(live_bytes)]
+    );
+    assert!(c.on_lst_deposit(
+        "alice.testnet".parse().unwrap(), "alice.testnet".into(), "meta-pool.near".into(), "meta-pool.near".into(),
+        (12 * ONE_NEAR).to_string(), crate::lst::PRICE_ONE.to_string(), T0 + 1_000,
+    ));
+    let pos = c.get_account_positions("alice.testnet".into(), None, Some(T0 + 1_000));
+    assert_eq!(pos[0].staked, (10 * ONE_NEAR).to_string(), "12 NEAR at live 1.20 price books 10 shares, not 12");
+}

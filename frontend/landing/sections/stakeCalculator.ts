@@ -25,7 +25,7 @@ export function renderStakingCalculatorHtml(): string {
           </div>
           <span class="badge badge-ai" id="econ-apy-badge">${formatApy(NET_BP)} SIM APY</span>
         </div>
-        <p class="econ-calc-lead">Stake NEAR from a claimed human wallet at any stage. Principal stays yours and never buffs unit damage or mining speed. Each tier cuts your trade fee from ${STAKING_TIERS[0]!.takerFeeBp} bp and adds Managed NEAR.AI colony slots.</p>
+        <p class="econ-calc-lead">Stake NEAR, stNEAR, or LiNEAR from any connected human wallet — even before founding a colony. Principal stays yours and never buffs unit damage or mining speed. Each tier cuts your trade fee from ${STAKING_TIERS[0]!.takerFeeBp} bp and adds Managed NEAR.AI colony slots.</p>
         <div class="econ-slider-row">
           <label for="econ-stake-slider"><span>STAKED PRINCIPAL (TIERS AT ${tierMarkers().map((m) => m.minNear).join(' / ')} NEAR)</span><output id="econ-stake-out">${start} NEAR</output></label>
           <input id="econ-stake-slider" type="range" min="0" max="${max}" step="1" value="${start}">

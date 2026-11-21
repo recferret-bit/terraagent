@@ -102,4 +102,27 @@ describe('StakeProfitsControl', () => {
     (q(c, 'stake-profits-max') as HTMLButtonElement).click();
     expect((q(c, 'stake-profits-amount') as HTMLInputElement).value).toBe('50.00');
   });
+  it('falls back to colonyId when a Web2 F2P session has no external accountId yet', async () => {
+    const f = vi.fn().mockResolvedValue(
+      json(200, {
+        quote: { amountInUsdc: '10.00', amountInAtomic: '10000000', amountOutNear: '2.500000', nearUsd: 4, source: 'mock', dry: false },
+        txHash: 'mock:sp1',
+        position: null,
+        walletBalanceNear: '0',
+      }),
+    );
+    const onStaked = vi.fn();
+    const c = new StakeProfitsControl({
+      doFetch: f,
+      token: 'jwt-f2p',
+      accountId: () => null,
+      colonyId: () => 'co_f2p_1',
+      mode: () => 'mock',
+      onStaked,
+    });
+    c.update(50_000_000n);
+    await submit(c, '10.00');
+    expect(JSON.parse(String(f.mock.calls[0]![1]?.body))).toMatchObject({ colonyId: 'co_f2p_1', amountUsdc: '10.00', dry: false });
+    expect(onStaked).toHaveBeenCalledTimes(1);
+  });
 });

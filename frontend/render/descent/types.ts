@@ -166,10 +166,12 @@ export interface DescentSequence {
   dispose(): void;
 }
 
-/** Cosmetic staking prestige of the player's own colony (W28-12). Plain flags from the app; render never reads wallets. */
+/** Cosmetic staking prestige of the player's own colony and target planet (W28-12). Plain flags from the app; render never reads wallets. */
 export interface DescentPrestige {
   /** Tier 2+: a cyan plasma trail follows the drop pod through re-entry. */
   plasmaTrail?: boolean;
+  /** Tier 4 King-of-the-Hill Lead Patron on the target planet: parks `ISS <pilot>.near` in the orbital descent skybox. */
+  flagshipCarrierName?: string | null;
 }
 
 /** A fixed prestige, or a getter read every frame (the player's own tier may arrive after the descent is prepared). */

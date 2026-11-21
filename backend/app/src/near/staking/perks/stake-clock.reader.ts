@@ -46,33 +46,82 @@ async function linkedPlayerId(db: DbClient, accountIds: readonly string[]): Prom
   return row?.playerId ?? null;
 }
 
-/** The linked wallet of the player who owns `colonyId` (`core.colony` → `core.social_identity`), if any. */
-async function colonyLinkedWallet(db: DbClient, colonyId: string): Promise<{ accountId: string; playerId: string } | null> {
-  if (typeof db.colony?.findUnique !== 'function' || typeof db.socialIdentity?.findFirst !== 'function') return null;
-  const colony = (await db.colony.findUnique({ where: { id: colonyId }, select: { playerId: true } })) as { playerId: string | null } | null;
-  if (!colony?.playerId) return null;
-  return playerLinkedWallet(db, colony.playerId);
-}
-
 /**
  * A player's staking wallet from `core.social_identity`: the self-custody NEAR wallet link (`provider: near-wallet`)
  * wins over the custodial named account a Google / X / FastAuth sign-in creates; else the oldest link.
  */
-export async function playerLinkedWallet(db: DbClient, playerId: string): Promise<{ accountId: string; playerId: string } | null> {
+export async function playerLinkedWallet(
+  db: DbClient,
+  playerId: string,
+): Promise<{ accountId: string; playerId: string; isNearWallet: boolean } | null> {
   if (typeof db.socialIdentity?.findFirst !== 'function') return null;
   const pick = async (where: Record<string, unknown>) =>
     ((await db.socialIdentity.findFirst({ where, orderBy: { createdAt: 'asc' }, select: { accountId: true } })) as { accountId: string | null } | null)?.accountId ?? null;
-  const accountId = (await pick({ playerId, provider: NEAR_WALLET_PROVIDER })) ?? (await pick({ playerId }));
-  return accountId ? { accountId, playerId } : null;
+  const nearWallet = await pick({ playerId, provider: NEAR_WALLET_PROVIDER });
+  if (nearWallet) return { accountId: nearWallet, playerId, isNearWallet: true };
+  const fallback = await pick({ playerId });
+  return fallback ? { accountId: fallback, playerId, isNearWallet: false } : null;
 }
 
 /** `core.social_identity.provider` of a self-custody NEAR wallet link (`social-auth.service.ts`). */
 export const NEAR_WALLET_PROVIDER = 'near-wallet';
 
+async function resolveColonyPlayerId(db: DbClient, colonyIds: readonly string[]): Promise<string | null> {
+  if (colonyIds.length === 0) return null;
+  if (typeof db.colony?.findFirst === 'function') {
+    const row = (await db.colony.findFirst({
+      where: { id: { in: [...colonyIds] } },
+      select: { playerId: true },
+    })) as { playerId: string | null } | null;
+    if (row?.playerId) return row.playerId;
+  }
+  if (colonyIds.length === 1 && typeof db.colony?.findUnique === 'function') {
+    const row = (await db.colony.findUnique({
+      where: { id: colonyIds[0]! },
+      select: { playerId: true },
+    })) as { playerId: string | null } | null;
+    return row?.playerId ?? null;
+  }
+  return null;
+}
+
+async function expandPlayerLinks(
+  db: DbClient,
+  playerId: string,
+  accounts: Set<string>,
+  colonies: Set<string>,
+  absorb: (rows: readonly LinkRow[]) => void,
+): Promise<{ accountId: string; isNearWallet: boolean } | null> {
+  const linked = await playerLinkedWallet(db, playerId);
+  if (linked) accounts.add(linked.accountId);
+  if (typeof db.socialIdentity?.findMany === 'function') {
+    const socialRows = (await db.socialIdentity.findMany({
+      where: { playerId },
+      select: { accountId: true },
+    })) as Array<{ accountId: string | null }>;
+    for (const s of socialRows) if (s.accountId) accounts.add(s.accountId);
+  }
+  if (typeof db.nearColonyAccount?.findMany === 'function') {
+    const playerRows = (await db.nearColonyAccount.findMany({
+      where: { playerId },
+      select: LINK_SELECT,
+    })) as LinkRow[];
+    absorb(playerRows);
+  }
+  if (typeof db.colony?.findMany === 'function') {
+    const cols = (await db.colony.findMany({
+      where: { playerId },
+      select: { id: true },
+    })) as Array<{ id: string }>;
+    for (const c of cols) if (c.id) colonies.add(c.id);
+  }
+  return linked ? { accountId: linked.accountId, isNearWallet: linked.isNearWallet } : null;
+}
+
 /**
- * Resolves the wallet the same way the market and staking code link `chain.near_colony_account`: a colony id or any of
- * `accountId` / `ownerAccountId` / `claimedByAccountId` match a row, and every account of the matched owners and
- * claimants joins the wallet, so all colonies of one wallet resolve to the same `WalletRef`.
+ * Resolves the unified wallet across `chain.near_colony_account`, `core.colony`, and `core.social_identity` in BOTH
+ * directions: querying a custodial colony sub-account (`co_1.pilots.*`) joins the pilot's linked NEAR wallet
+ * (`alice.near`), and querying `alice.near` joins all of that pilot's colonies and custodial sub-accounts.
  */
 export async function resolveWallet(
   db: DbClient,
@@ -80,56 +129,54 @@ export async function resolveWallet(
 ): Promise<WalletRef> {
   const colonyId = query.colonyId?.trim() || undefined;
   const given = query.accountId?.trim() || undefined;
-  const hintedPlayerId = query.playerId?.trim() || null;
   const accounts = new Set<string>(given ? [given] : []);
   const colonies = new Set<string>(colonyId ? [colonyId] : []);
-  let primary: string | undefined = given;
-  let playerId: string | null = hintedPlayerId;
-  if (typeof db.nearColonyAccount?.findMany === 'function' && (colonyId || given)) {
+  const owners = new Set<string>();
+  const claimants = new Set<string>();
+  let firstColonyAcct: string | undefined;
+  let playerId: string | null = query.playerId?.trim() || null;
+
+  const absorb = (rows: readonly LinkRow[]): void => {
+    for (const r of rows) {
+      accounts.add(r.accountId);
+      firstColonyAcct ??= r.accountId;
+      if (r.colonyId) colonies.add(r.colonyId);
+      if (r.ownerAccountId) owners.add(r.ownerAccountId);
+      if (r.claimedByAccountId) claimants.add(r.claimedByAccountId);
+      playerId ??= r.playerId ?? null;
+    }
+  };
+
+  if (typeof db.nearColonyAccount?.findMany === 'function' && (colonyId || given || playerId)) {
     const or: Array<Record<string, string>> = colonyId ? [{ colonyId }] : [];
     if (given) or.push({ accountId: given }, { ownerAccountId: given }, { claimedByAccountId: given });
-    const first = (await db.nearColonyAccount.findMany({ where: { OR: or }, select: LINK_SELECT })) as LinkRow[];
-    const owners = new Set<string>();
-    const claimants = new Set<string>();
-    const absorb = (rows: readonly LinkRow[]): void => {
-      for (const r of rows) {
-        accounts.add(r.accountId);
-        if (r.colonyId) colonies.add(r.colonyId);
-        if (r.ownerAccountId) owners.add(r.ownerAccountId);
-        if (r.claimedByAccountId) claimants.add(r.claimedByAccountId);
-        playerId ??= r.playerId ?? null;
-        primary ??= r.claimedByAccountId ?? r.ownerAccountId ?? r.accountId;
-      }
-    };
-    absorb(first);
-    for (const o of [...owners, ...claimants]) accounts.add(o);
-    if (owners.size + claimants.size > 0) {
-      const second = (await db.nearColonyAccount.findMany({
-        where: { OR: [{ ownerAccountId: { in: [...owners] } }, { claimedByAccountId: { in: [...claimants] } }] },
-        select: LINK_SELECT,
-      })) as LinkRow[];
-      absorb(second);
-    }
-    primary = claimants.size > 0 ? [...claimants].sort()[0] : owners.size > 0 ? [...owners].sort()[0] : primary;
+    if (playerId) or.push({ playerId });
+    absorb((await db.nearColonyAccount.findMany({ where: { OR: or }, select: LINK_SELECT })) as LinkRow[]);
   }
-  if (colonyId && !primary) {
-    // W28 wallet-first: a colony with no chain account row belongs to its player's linked wallet (`social_identity`).
-    const linked = await colonyLinkedWallet(db, colonyId);
-    if (linked) {
-      accounts.add(linked.accountId);
-      primary = linked.accountId;
-      playerId ??= linked.playerId;
-    }
-  }
-  if (playerId && !primary) {
-    const linked = await playerLinkedWallet(db, playerId);
-    if (linked) {
-      accounts.add(linked.accountId);
-      primary = linked.accountId;
-    }
-  }
-  const walletKey = primary ?? (colonyId ? `colony:${colonyId}` : 'anonymous');
+
+  playerId ??= await resolveColonyPlayerId(db, [...colonies]);
   playerId ??= await linkedPlayerId(db, [...accounts]);
+
+  const socialLink = playerId ? await expandPlayerLinks(db, playerId, accounts, colonies, absorb) : null;
+
+  for (const o of [...owners, ...claimants]) accounts.add(o);
+  if (typeof db.nearColonyAccount?.findMany === 'function' && owners.size + claimants.size > 0) {
+    const second = (await db.nearColonyAccount.findMany({
+      where: { OR: [{ ownerAccountId: { in: [...owners] } }, { claimedByAccountId: { in: [...claimants] } }] },
+      select: LINK_SELECT,
+    })) as LinkRow[];
+    absorb(second);
+    for (const o of [...owners, ...claimants]) accounts.add(o);
+  }
+
+  const primary =
+    (claimants.size > 0 ? [...claimants].sort()[0] : undefined) ??
+    (socialLink?.isNearWallet ? socialLink.accountId : undefined) ??
+    (owners.size > 0 ? [...owners].sort()[0] : undefined) ??
+    socialLink?.accountId ??
+    given ??
+    firstColonyAcct;
+  const walletKey = primary ?? (colonyId ? `colony:${colonyId}` : 'anonymous');
   return { walletKey, accountIds: [...accounts], colonyIds: [...colonies], playerId };
 }
 

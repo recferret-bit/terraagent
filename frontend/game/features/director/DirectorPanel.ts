@@ -40,12 +40,15 @@ export class DirectorPanel {
   private readonly offShared: () => void;
   private aiEnabled = false;
   private activeColonyId = 'col_0';
+  private currentAiBudget: AiBudgetView | null = null;
   private currentRows: DirectorActionRow[] = [];
   private planIntentRevision: number | null = null;
 
   constructor(private readonly host: HTMLElement, opts?: DirectorPanelOptions) {
     this.host.classList.add('ta-director', 'plate-sm');
-    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway, () => openTeeProofModal(this.activeColonyId));
+    const head = buildDirectorHeader(opts?.onOpenHq, opts?.onOpenAway, () =>
+      openTeeProofModal(this.activeColonyId, { budget: this.currentAiBudget }),
+    );
     this.aiStatusPill = head.aiStatusPill;
 
     const autoParts = buildAutopilotBar(opts, () => this.aiEnabled, (next) => {
@@ -113,7 +116,10 @@ export class DirectorPanel {
 
   /** W28 AI access card (`trial | script | tee | byok`); `null` (W28 off / 404) restores the pre-W28 plate. */
   syncAiAccess(budget: AiBudgetView | null): void {
-    renderAiAccess(this.aiAccessEl, aiAccessState(budget), { onOpenTee: () => openTeeProofModal(this.activeColonyId) });
+    this.currentAiBudget = budget;
+    renderAiAccess(this.aiAccessEl, aiAccessState(budget), {
+      onOpenTee: () => openTeeProofModal(this.activeColonyId, { budget: this.currentAiBudget }),
+    });
   }
 
   private renderAutopilotBtn(): void {

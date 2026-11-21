@@ -23,17 +23,43 @@ export class GuildRadarController {
   ) {}
 
   @Get('guild/radar')
-  async radar(@Query('planetId') planetIdRaw?: string, @Query('colonyId') colonyIdRaw?: string): Promise<RadarView> {
+  async radar(
+    @Query('planetId') planetIdRaw?: string,
+    @Query('colonyId') colonyIdRaw?: string,
+    @Query('colonyIndex') colonyIndexRaw?: string,
+    @Query('accountId') accountIdRaw?: string,
+  ): Promise<RadarView> {
     const planetId = planetIdRaw?.trim();
     if (!planetId) throw new CoreException('INVALID_REQUEST', { status: 400, message: 'planetId is required' });
-    const leadMs = await this.leadFor(colonyIdRaw?.trim());
+    const leadMs = await this.leadFor(planetId, colonyIdRaw?.trim(), colonyIndexRaw?.trim(), accountIdRaw?.trim());
     const { nowMs, windows } = this.visits.upcoming(planetId);
     return { planetId, nowMs, leadMs, visits: radarVisits(windows, leadMs, nowMs) };
   }
 
-  private async leadFor(colonyId: string | undefined): Promise<number> {
-    if (!colonyId || !this.flags.has('W28')) return 0;
+  private async leadFor(
+    planetId: string,
+    colonyIdRaw: string | undefined,
+    colonyIndexRaw: string | undefined,
+    accountId: string | undefined,
+  ): Promise<number> {
+    if ((!colonyIdRaw && !accountId) || !this.flags.has('W28')) return 0;
+    const colonyId = await this.resolveColonyRowId(planetId, colonyIdRaw, colonyIndexRaw);
     const envBag = (this.env ?? process.env) as unknown as Record<string, string | undefined>;
-    return (await resolveDbStakerPerks(this.prisma, { colonyId, env: envBag, w28: true })).guildRadarLeadMs;
+    return (await resolveDbStakerPerks(this.prisma, { colonyId, accountId, env: envBag, w28: true })).guildRadarLeadMs;
+  }
+
+  private async resolveColonyRowId(
+    planetId: string,
+    simId: string | undefined,
+    colonyIndexRaw: string | undefined,
+  ): Promise<string | undefined> {
+    if (!simId) return undefined;
+    const db = this.prisma;
+    if (!db || !/^\d{1,3}$/.test(colonyIndexRaw ?? '') || typeof db.colony?.findFirst !== 'function') return simId;
+    if (typeof db.colony.findUnique === 'function' && (await db.colony.findUnique({ where: { id: simId }, select: { id: true } }))) {
+      return simId;
+    }
+    const row = await db.colony.findFirst({ where: { planetId, colonyIndex: Number(colonyIndexRaw) }, select: { id: true } });
+    return row?.id ?? simId;
   }
 }

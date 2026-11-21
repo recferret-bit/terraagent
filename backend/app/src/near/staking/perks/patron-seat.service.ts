@@ -1,7 +1,30 @@
-import type { DbClient } from '@terra/db';
+import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
 import { resolveLeadPatron, type PatronCandidate } from './patron-resolver.js';
 import { readStakeClock, resolveWallet, type WalletRef } from './stake-clock.reader.js';
 import { stakingNowMs } from './perks-deps.js';
+
+export async function lockPatronPlanets(tx: DbClient, planetIds: readonly string[]): Promise<void> {
+  if (typeof (tx as { $executeRaw?: unknown }).$executeRaw !== 'function') return;
+  const raw = tx as { $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown> };
+  for (const id of [...new Set(planetIds.filter(Boolean))].sort()) {
+    await raw.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`patron:${id}`}, 0))`;
+  }
+}
+
+export async function withPatronPlanetLocks<T>(
+  db: DbClient,
+  planetIds: readonly string[],
+  fn: (tx: DbClient) => Promise<T>,
+): Promise<T> {
+  if (typeof (db as PrismaClient).$transaction === 'function') {
+    return withTransaction(db as PrismaClient, async (tx) => {
+      await lockPatronPlanets(tx, planetIds);
+      return fn(tx);
+    });
+  }
+  await lockPatronPlanets(db, planetIds);
+  return fn(db);
+}
 
 export interface PatronSeatRow {
   readonly planetId: string;
@@ -53,6 +76,11 @@ export class PatronSeatService {
 
   /** Re-resolves the seat of `planetId` from the current nominations and stakes, then upserts, moves or clears it. */
   async refreshPlanet(planetId: string, nowMs: number = stakingNowMs()): Promise<PatronSeatRow | null> {
+    if (!this.available) return null;
+    return withPatronPlanetLocks(this.db, [planetId], (tx) => new PatronSeatService(tx).refreshPlanetUnlocked(planetId, nowMs));
+  }
+
+  async refreshPlanetUnlocked(planetId: string, nowMs: number = stakingNowMs()): Promise<PatronSeatRow | null> {
     if (!this.available) return null;
     const noms = (await this.db.stakingPatronNomination.findMany({
       where: { planetId },

@@ -11,7 +11,7 @@
   <p class="kicker">GENERATED</p>
   <h1>TerraAgent API atlas</h1>
   <p class="note">Generated file. Regenerate with <code>npm run api:atlas</code>. Do not hand-edit.</p>
-  <p class="counts">160 HTTP · 26 socket messages · 89 commands · 98 events · 36 HTTP routes with no client caller</p>
+  <p class="counts">160 HTTP · 26 socket messages · 89 commands · 98 events · 35 HTTP routes with no client caller</p>
   <nav>
     <a href="#http">HTTP</a>
     <a href="#socket">WebSocket</a>
@@ -864,7 +864,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;MarketSnapshotResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/market/guild/radar backend/app/src/market/guild/visit/guild-radar.controller.ts "><summary><span class="verb get">GET</span><span class="path">/v1/market/guild/radar</span><span class="src">backend/app/src/market/guild/visit/guild-radar.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <span class="none">no client caller found</span></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/market/guild/radar backend/app/src/market/guild/visit/guild-radar.controller.ts frontend/game/features/guild-tab/guildradar.ts"><summary><span class="verb get">GET</span><span class="path">/v1/market/guild/radar</span><span class="src">backend/app/src/market/guild/visit/guild-radar.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/guild-tab/guildRadar.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [
     {
@@ -876,11 +876,21 @@
       &quot;name&quot;: &quot;colonyId&quot;,
       &quot;type&quot;: &quot;string&quot;,
       &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;colonyIndex&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;accountId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
     }
   ],
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
-  &quot;returnType&quot;: &quot;Promise&lt;number&gt;&quot;,
+  &quot;returnType&quot;: &quot;Promise&lt;string | undefined&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="post /v1/match/tickets backend/app/src/lobby/tickets.controller.ts frontend/game/app/online/joinqueueflow.ts"><summary><span class="verb act">POST</span><span class="path">/v1/match/tickets</span><span class="src">backend/app/src/lobby/tickets.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/app/online/joinQueueFlow.ts</code></p><h3>Request</h3><pre>{

@@ -16,6 +16,7 @@ import type { ChainReceipt } from '../domain/types.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../infrastructure/network/near-network.config.js';
 import { validateAndDecodeRelayDelegate } from '../infrastructure/rpc/near-rpc-guardrails.js';
 import { reduceRelayState } from './relay-state.js';
+import { enforceWalletRelayQuota } from './wallet-relay-quota.js';
 
 /** Named-account row. It has no `storage_deposit` (W06-12). */
 const PLAYER_SLOT = 'player';
@@ -75,6 +76,13 @@ export class RelayStatusService {
     await this.assertSignerOwnedByPlayer(pid, body.signerId);
 
     const envMap = (this.env ?? process.env) as Record<string, string | undefined>;
+    await enforceWalletRelayQuota({
+      prisma: this.prisma,
+      env: envMap,
+      w28: this.flags.has('W28'),
+      playerId: pid,
+      signerId: body.signerId,
+    });
     const cfg = resolveNearNetworkConfig(envMap, resolveActiveNearNetwork('Relayer', envMap));
     const { decoded } = validateAndDecodeRelayDelegate({
       signedDelegateBase64: body.signedDelegate,

@@ -96,6 +96,9 @@ test('3. verified pilot with 0 NEAR staked: FREE TEE TRIAL (5 / 5) on the Direct
   const card = page.getByTestId('director-ai-access');
   await expect(card).toHaveAttribute('data-state', 'trial', { timeout: 30_000 });
   await expect(page.getByTestId('director-ai-badge')).toContainText(/FREE TEE TRIAL \(5 \/ 5/);
+  await page.getByTestId('director-ai-tee-proof').click();
+  await expect(page.getByTestId('tee-modal-ai-access')).toHaveAttribute('data-state', 'trial');
+  await page.keyboard.press('Escape');
 
   // The in-game staking panel asks for the session's wallet (no deed, no colony account): wallet-first status.
   const status = await getJson<{ accountId: string; colonyId?: string }>(api, '/v1/near/staking', true);
@@ -189,8 +192,11 @@ test('7. /trade.html: fee pill, Stake Trade Profits (10 USDC → stNEAR), RampVi
   expect(profits.body.position?.asset).toBe('stNEAR');
 
   const trade = await context.newPage();
-  await trade.goto('/trade.html?as=w28&public=1');
+  await trade.goto(`/trade.html?as=w28&planet=${encodeURIComponent(planetId)}`);
   await expect(trade.getByTestId('trade-1click-ramp')).toBeVisible({ timeout: 30_000 });
+  await expect(trade.getByTestId('staking-pill')).toHaveAttribute('data-tier', '4', { timeout: 20_000 });
+  await expect(trade.getByTestId('trade-fee-pill')).toContainText('FEE 0.25%');
+  await expect(trade.getByRole('region', { name: 'Order ticket' })).toContainText('0.25% Platform Fee');
   const bodies: Array<Record<string, unknown>> = [];
   trade.on('request', (r) => { if (r.url().includes('/v1/near/intents/quote') && r.method() === 'POST') bodies.push(r.postDataJSON() as Record<string, unknown>); });
   const origin = trade.getByTestId('ramp-origin');
