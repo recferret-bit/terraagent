@@ -716,14 +716,14 @@ fn partial_unstake_and_withdraw_preserves_remaining_pos_ndep_and_blocks_virtual_
     let t_ready = t0 + UNBONDING_DURATION_MS;
     let _ = contract.withdraw("op-part-w1".into(), "alice.testnet".into(), None, "astro.pool.testnet".into(), 0, t_ready);
 
-    // Position still holds 9 NEAR of native backing plus the 25 bp early-exit fee principal (unstaked
-    // at t0, < 7 days); Alice only released 0.9975 NEAR of ndep (not all 10!)
+    // Position holds the remaining 9 NEAR of native backing, while the 25 bp (< 7d) exit fee moved to protocol backing!
     let fee = ONE_NEAR / 400;
     assert_eq!(
         contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()),
-        (9 * ONE_NEAR + fee).to_string()
+        (9 * ONE_NEAR).to_string()
     );
     assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), "0");
+    assert_eq!(contract.get_native_deposit_balance(contract.get_protocol_account()), fee.to_string());
 
     // Attempting to siphon 10 real NEAR using her 9 virtual NEAR + 1 withdrawn NEAR must panic!
     testing_env!(ctx("alice.testnet").account_balance(NearToken::from_near(30)).prepaid_gas(Gas::from_tgas(40)).build());
@@ -731,12 +731,16 @@ fn partial_unstake_and_withdraw_preserves_remaining_pos_ndep_and_blocks_virtual_
         let _ = contract.claim_native_near((10 * ONE_NEAR).to_string(), None);
     })).is_err());
 
-    // The remaining 9 NEAR unstake + withdraw directly and release all of their backing.
+    // The remaining 9 NEAR unstake + withdraw directly and release all of their backing; protocol can sweep & claim the backed fee.
     testing_env!(ctx("minter.terraagent.testnet").account_balance(NearToken::from_near(30)).build());
     let t_late = t0 + EARLY_EXIT_WINDOW_MS;
     contract.unstake("op-part-u2".into(), "alice.testnet".into(), "astro.pool.testnet".into(), 0, (9 * ONE_NEAR).to_string(), t_late);
     let _ = contract.withdraw("op-part-w2".into(), "alice.testnet".into(), None, "astro.pool.testnet".into(), 0, t_late + UNBONDING_DURATION_MS);
-    // Only the first (< 7d) exit fee principal remains parked as protocol-owned backing.
-    assert_eq!(contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()), fee.to_string());
+    assert_eq!(contract.get_position_native_backing("alice.testnet".into(), "astro.pool.testnet".into()), "0");
     assert_eq!(contract.get_native_deposit_balance("alice.testnet".into()), "0");
+    contract.withdraw_protocol_yield("op-sweep-fee".into(), Some(fee.to_string()), None);
+    assert_eq!(contract.get_native_deposit_balance("terraagent.testnet".into()), fee.to_string());
+    testing_env!(ctx("terraagent.testnet").account_balance(NearToken::from_near(30)).prepaid_gas(Gas::from_tgas(40)).build());
+    let _ = contract.claim_native_near(fee.to_string(), None);
+    assert_eq!(contract.get_native_deposit_balance("terraagent.testnet".into()), "0");
 }

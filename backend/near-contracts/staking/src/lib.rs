@@ -256,7 +256,10 @@ impl StakingVaultContract {
             return serde_json::from_str(cached).expect("STAKE_INSUFFICIENT_BALANCE: cached corrupt");
         }
         validate_pool_and_apy(&pool_id, apy_bp);
-        require!(!lst::is_lst_pool(&pool_id), "STAKE_INVALID_POOL: LST pools stake through ft_transfer_call");
+        require!(
+            !lst::is_lst_pool(&pool_id) && !lst::is_whitelisted_lst(&pool_id, self.owner_id.as_str()),
+            "STAKE_INVALID_POOL: LST pools stake through ft_transfer_call"
+        );
         validate_target_account(&account_id);
         let stake_val = parse_yocto(&amount);
         require!(stake_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
@@ -281,6 +284,7 @@ impl StakingVaultContract {
             );
         }
 
+        mark_native_pool(&pool_id);
         let settled = self.settle_pure(&account_id, &pool_id, apy_bp, now_ms);
         self.apply_settled(&account_id, &pool_id, &settled);
         let mut next = settled.record;
@@ -349,6 +353,19 @@ impl StakingVaultContract {
         next.staked -= unstake_val;
         next.unbonding = next.unbonding.saturating_add(unstake_val - fee);
         next.unbonding_ready_at_ms = Some(effective_now.saturating_add(UNBONDING_DURATION_MS));
+        if fee > 0 && !lst::is_lst_pool(&pool_id) {
+            let pos_ndep = read_pos_ndep(&account_id, &pool_id);
+            let user_principal = next
+                .staked
+                .saturating_add(next.unbonding)
+                .saturating_add(next.withdrawable);
+            let backed_fee = pos_ndep.saturating_sub(user_principal).min(fee);
+            if backed_fee > 0 {
+                write_pos_ndep(&account_id, &pool_id, pos_ndep - backed_fee);
+                let protocol_id = self.resolve_protocol_account_id();
+                write_native_dep(&protocol_id, read_native_dep(&protocol_id).saturating_add(backed_fee));
+            }
+        }
         self.positions.insert(pos_key(&account_id, &pool_id), next.clone());
         positions::record_unstake(&account_id, &pool_id, next.staked);
 
@@ -424,9 +441,12 @@ impl StakingVaultContract {
             "NEAR_NOT_OWNER: cannot stake_payable into another account"
         );
         validate_target_account(&target);
+        require!(
+            !lst::is_lst_pool(&pool_id) && !lst::is_whitelisted_lst(&pool_id, self.owner_id.as_str()),
+            "STAKE_INVALID_POOL: LST pools stake through ft_transfer_call"
+        );
+        mark_native_pool(&pool_id);
         write_pos_ndep(&target, &pool_id, read_pos_ndep(&target, &pool_id).saturating_add(stake_val));
-
-        require!(!lst::is_lst_pool(&pool_id), "STAKE_INVALID_POOL: LST pools stake through ft_transfer_call");
         let existing_staked = self.positions.get(&pos_key(&target, &pool_id)).map(|r| (r.staked, r.last_accrued_at_ms)).unwrap_or_default();
         let chain_now = env::block_timestamp_ms();
         let effective_now = if is_operator {

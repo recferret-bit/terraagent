@@ -1,3 +1,4 @@
+import { stakingTierForYocto } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import type { StakingPoolView, StakingPort } from '../../../application/ports/staking.port.js';
 import { parseStakingPoolsConfig } from '../../../staking/staking-pools.config.js';
@@ -31,12 +32,14 @@ export interface ExplorerDeedRow {
 }
 
 export interface ExplorerStakingRow {
-  readonly kind: 'position' | 'pool';
+  readonly kind: 'position' | 'pool' | 'patron';
   readonly pool: string;
   readonly poolId: string;
   readonly name: string;
   readonly accountId: string;
   readonly colonyId: string;
+  readonly asset?: string;
+  readonly tier?: number;
   readonly staked: string;
   readonly unbonding: string;
   readonly withdrawable: string;
@@ -260,10 +263,12 @@ async function collectStakingPositions(
   for (const r of rawPos) {
     if (accountFilter && r.accountId !== accountFilter && r.colonyId !== accountFilter) continue;
     const poolInfo = poolMap.get(r.poolId);
+    const rawYocto = BigInt(r.stakedSnapshot.toFixed(0));
     seen.add(`${r.accountId}::${r.poolId}`);
     rows.push({
       kind: 'position', pool: r.poolId, poolId: r.poolId, name: poolInfo?.name ?? r.poolId,
-      accountId: r.accountId, colonyId: r.colonyId,
+      accountId: r.accountId, colonyId: r.colonyId === r.accountId ? 'wallet' : r.colonyId,
+      asset: r.asset, tier: stakingTierForYocto(rawYocto).id,
       staked: formatNearAmount(r.stakedSnapshot), unbonding: formatNearAmount(r.unbondingSnapshot),
       withdrawable: formatNearAmount(r.withdrawableSnapshot), rewards: formatNearAmount(r.rewardsSnapshot),
       apyBp: poolInfo?.apyBp ?? 0,
@@ -281,7 +286,7 @@ async function collectStakingPositions(
       const poolInfo = poolMap.get(s.pool);
       rows.push({
         kind: 'position', pool: s.pool, poolId: s.pool, name: s.poolName ?? poolInfo?.name ?? s.pool,
-        accountId: s.accountId, colonyId: s.colonyId ?? s.accountId,
+        accountId: s.accountId, colonyId: s.colonyId && s.colonyId !== s.accountId ? s.colonyId : 'wallet',
         staked: formatNearAmount(s.staked), unbonding: formatNearAmount(s.unbonding),
         withdrawable: formatNearAmount(s.withdrawable), rewards: formatNearAmount(s.rewards),
         apyBp: s.apyBp ?? poolInfo?.apyBp ?? 0, updatedAt: s.updatedAt ?? 0,
@@ -290,6 +295,21 @@ async function collectStakingPositions(
   }
 
   await appendMockStakingRows(prisma, poolMap, accountFilter, take, seen, rows);
+  if (prisma.stakingPatronSeat?.findMany) {
+    const seats = await prisma.stakingPatronSeat.findMany({
+      where: accountFilter ? { accountId: accountFilter } : {},
+      orderBy: [{ planetId: 'asc' }],
+      take,
+    });
+    for (const seat of seats) {
+      rows.push({
+        kind: 'patron', pool: seat.planetId, poolId: seat.planetId, name: `Lead Patron · ${seat.planetId}`,
+        accountId: seat.accountId, colonyId: 'lead-patron', asset: 'NEAR', tier: 4,
+        staked: formatNearAmount(seat.activeStaked), unbonding: '0', withdrawable: '0', rewards: '-',
+        apyBp: 0, updatedAt: seat.updatedAt instanceof Date ? seat.updatedAt.getTime() : Number(seat.updatedAt ?? 0),
+      });
+    }
+  }
   return rows;
 }
 

@@ -249,6 +249,30 @@ describe('W28 wallet-first <-> unclaimed custodial colony unification', () => {
   });
 });
 
+describe('W28 multi-asset Native + stNEAR split & explorer wallet rows', () => {
+  it('keeps native NEAR separate from stNEAR on /v1/near/staking/performance and /v1/dev/chain/staking', async () => {
+    const walletId = 'unified-alice.near';
+    const perfAfterLst = (await (await fetch(`${url}/v1/near/staking/performance?accountId=${walletId}`)).json()) as {
+      balances: { activeStakedNear: string; lst: Array<{ asset: string; amount: string }> };
+      perks: { totalStakedNear: string };
+    };
+    expect(Number(perfAfterLst.balances.activeStakedNear)).toBeCloseTo(200, 4);
+    const stNearEntry = perfAfterLst.balances.lst.find((l) => l.asset === 'stNEAR');
+    expect(Number(stNearEntry?.amount ?? '0')).toBeGreaterThan(3);
+    expect(Number(perfAfterLst.perks.totalStakedNear)).toBeCloseTo(
+      Number(perfAfterLst.balances.activeStakedNear) + Number(stNearEntry?.amount ?? '0'),
+      4,
+    );
+
+    const expRows = (await (await fetch(`${url}/v1/dev/chain/staking?account=${walletId}`)).json()) as Array<{
+      kind: string;
+      colonyId: string;
+      tier?: number;
+    }>;
+    expect(expRows.find((r) => r.kind === 'position')).toMatchObject({ colonyId: 'wallet', tier: 3 });
+  });
+});
+
 describe('W28 concurrent PatronSeatService multi-whale cross-planet safety', () => {
   it('survives concurrent cross-planet nominations and unstakes across 4 whales with zero deadlocks and exact final winners', async () => {
     for (const id of ['pl_race_a', 'pl_race_b']) await db.prisma.planet.create({ data: { id, name: id } });

@@ -78,7 +78,7 @@ export class WalletStakeFlow {
     const opId = input.opId?.trim() || unstakeOpId(accountId, input.pool, sig?.nonce ?? this.d.nonce.next());
     const before = await this.d.staking.position({ accountId, pool: input.pool });
     const receipt = await this.d.staking.unstake({ opId, accountId, pool: input.pool, amount });
-    const extras = await this.d.effects.unstaked({ accountId, pool: input.pool, txHash: receipt.txHash, opId }, BigInt(amount), before);
+    const extras = await this.d.effects.unstaked({ accountId, pool: input.pool, txHash: receipt.txHash, opId }, BigInt(amount), before, input.asset);
     return this.respond(receipt.txHash, accountId, input.pool, extras);
   }
 

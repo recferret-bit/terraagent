@@ -43,10 +43,10 @@ export class ActionEffects {
    * Records an unstake and, inside 7 days of the last deposit, the `early_exit_fee` the adapter kept for the protocol
    * (`earlyExitFeeBp` of the principal, from the clocks read BEFORE the call so a replayed op id shows the same fee).
    */
-  async unstaked(ref: EffectRef, amountYocto: bigint, before: StakingPositionView): Promise<UnstakeExtras> {
+  async unstaked(ref: EffectRef, amountYocto: bigint, before: StakingPositionView, requestedAsset?: string): Promise<UnstakeExtras> {
     const feeBp = earlyExitFeeBp(before.lastStakedAtMs ?? null, stakingNowMs(this.staking));
     const fee = (amountYocto * BigInt(feeBp)) / 10_000n;
-    const asset = before.asset ?? 'near';
+    const asset = requestedAsset ?? before.asset ?? 'near';
     await this.record('unstake', ref, asset, amountYocto);
     if (fee > 0n) await this.record('early_exit_fee', ref, asset, fee);
     return { earlyExitFeeBp: feeBp, earlyExitFeeNear: yoctoToNear(fee, 6) };

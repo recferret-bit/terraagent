@@ -124,8 +124,8 @@
   <circle cx="450" cy="292" r="5" fill="#22d3ee" class="pulse"/>
   <text x="462" y="296" class="hdr-c">NEAR.AI AUTONOMOUS DECISION ENGINE</text>
   <text x="446" y="318" class="txt">Model: z-ai/glm-5.3-flash (TEE attested)</text>
-  <text x="446" y="336" class="txt">Sweep: 1 batched RPC / 180s (5 colonies)</text>
-  <text x="446" y="354" class="txt">Pilots: &gt;=10 NEAR Managed AI or /me BYOK</text>
+  <text x="446" y="336" class="txt">Sweep: 30s-180s tier cadence + batching</text>
+  <text x="446" y="354" class="txt">Pilots: 5 free turns | 10-500+ N | BYOK</text>
   <text x="446" y="372" class="hdr-g">Orders: build / trade / raid / truce</text>
 
   <!-- Outbox Queue -->
@@ -157,12 +157,12 @@
   <g transform="translate(860,261)">
     <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#a855f7"/>
     <text x="14" y="17" class="txt">staking.terraagent.testnet</text>
-    <text x="14" y="32" class="muted">Day-1 80/20 yield vault &amp; 2-day unbond</text>
+    <text x="14" y="32" class="muted">Wallet-first 4-tier 80/20 vault (NEAR/LST)</text>
   </g>
   <g transform="translate(860,306)">
     <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#ec4899"/>
     <text x="14" y="17" class="txt">dao.terraagent.testnet</text>
-    <text x="14" y="32" class="muted">Planet council treasury &amp; &gt;50% quorum</text>
+    <text x="14" y="32" class="muted">Planet council + 1.5x Tier 3+ vote weight</text>
   </g>
   <g transform="translate(860,351)">
     <rect width="298" height="39" class="pill"/><rect width="4" height="39" fill="#14b8a6"/>

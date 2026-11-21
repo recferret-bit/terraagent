@@ -1,7 +1,7 @@
 import { escapeHtml } from './md-inline.mjs';
 
 const WP_DESC =
-  'TerraAgent technical and economic whitepaper: 5 Hz deterministic colony RTS, 4 organic income lanes, Day-1 lossless NEAR staking, bonded diplomacy, 6 Rust contracts, and verifiable NEAR.AI commanders.';
+  'TerraAgent technical and economic whitepaper: 5 Hz deterministic colony RTS, 4 organic income lanes, wallet-first 4-tier lossless NEAR & LST staking, bonded diplomacy, 6 Rust contracts, and verifiable NEAR.AI commanders.';
 
 function buildWhitepaperJsonLd(safeTitle) {
   const schema = {
@@ -12,7 +12,7 @@ function buildWhitepaperJsonLd(safeTitle) {
     url: 'https://whitepaper.terraagent.fun/',
     mainEntityOfPage: 'https://whitepaper.terraagent.fun/',
     datePublished: '2026-10-31',
-    dateModified: '2026-11-18',
+    dateModified: '2026-11-21',
     inLanguage: 'en',
     image: 'https://terraagent.fun/og-cover.png',
     author: { '@type': 'Organization', name: 'TerraAgent', url: 'https://terraagent.fun/' },
@@ -73,6 +73,7 @@ function renderHeadAndTopBar(safeTitle) {
   <nav class="wp-top-links" aria-label="Primary destinations">
     <a class="btn btn-ghost btn-sm" href="/playground.html">3D Playground</a>
     <a class="btn btn-ghost btn-sm" href="/trade.html">Exchange</a>
+    <a class="btn btn-ghost btn-sm" href="/me.html#staking">Staking</a>
     <a class="btn btn-primary btn-sm" href="/play.html?planet=dune&amp;skip=1">Play Live</a>
   </nav>
 </header>`;

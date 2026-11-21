@@ -88,11 +88,13 @@ async function resolveColonyPlayerId(db: DbClient, colonyIds: readonly string[])
 async function expandPlayerLinks(
   db: DbClient,
   playerId: string,
+  explicitPlayerQuery: boolean,
   accounts: Set<string>,
   colonies: Set<string>,
   absorb: (rows: readonly LinkRow[]) => void,
 ): Promise<{ accountId: string; isNearWallet: boolean } | null> {
   const linked = await playerLinkedWallet(db, playerId);
+  if (!linked && !explicitPlayerQuery) return null;
   if (linked) accounts.add(linked.accountId);
   if (typeof db.socialIdentity?.findMany === 'function') {
     const socialRows = (await db.socialIdentity.findMany({
@@ -106,7 +108,10 @@ async function expandPlayerLinks(
       where: { playerId },
       select: LINK_SELECT,
     })) as LinkRow[];
-    absorb(playerRows);
+    const compatible = linked
+      ? playerRows.filter((r) => !r.claimedByAccountId || r.claimedByAccountId === linked.accountId)
+      : playerRows;
+    absorb(compatible);
   }
   if (typeof db.colony?.findMany === 'function') {
     const cols = (await db.colony.findMany({
@@ -157,7 +162,8 @@ export async function resolveWallet(
   playerId ??= await resolveColonyPlayerId(db, [...colonies]);
   playerId ??= await linkedPlayerId(db, [...accounts]);
 
-  const socialLink = playerId ? await expandPlayerLinks(db, playerId, accounts, colonies, absorb) : null;
+  const explicitPlayerQuery = Boolean(query.playerId?.trim());
+  const socialLink = playerId ? await expandPlayerLinks(db, playerId, explicitPlayerQuery, accounts, colonies, absorb) : null;
 
   for (const o of [...owners, ...claimants]) accounts.add(o);
   if (typeof db.nearColonyAccount?.findMany === 'function' && owners.size + claimants.size > 0) {

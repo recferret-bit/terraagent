@@ -51,6 +51,18 @@ fn native_dep_key(account_id: &str) -> Vec<u8> {
     format!("ndep:{}", account_id).into_bytes()
 }
 
+fn native_pool_key(pool_id: &str) -> Vec<u8> {
+    format!("natp:{}", pool_id).into_bytes()
+}
+
+pub(crate) fn is_native_pool(pool_id: &str) -> bool {
+    env::storage_has_key(&native_pool_key(pool_id))
+}
+
+pub(crate) fn mark_native_pool(pool_id: &str) {
+    env::storage_write(&native_pool_key(pool_id), &[1u8]);
+}
+
 pub(crate) fn read_native_dep(account_id: &str) -> u128 {
     read_u128_key(&native_dep_key(account_id))
 }

@@ -1,4 +1,4 @@
-import { MANAGED_AI_MODEL, SCRIPT_AI_MODEL, type AiAccessMode, type AiBudgetView } from '@terra/contracts';
+import { MANAGED_AI_MODEL, SCRIPT_AI_MODEL, STAKING_TIERS, type AiAccessMode, type AiBudgetView } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { databaseEnabled } from '../../core/persistence.js';
 import type { AppEnv } from '../../core/tokens.js';
@@ -27,6 +27,7 @@ export interface GateColony {
   readonly playerId?: string;
 }
 
+const DEFAULT_SCRIPT_COOLDOWN_MS = STAKING_TIERS[0]!.sweepSeconds * 1_000;
 const script = (reason: AiDownshiftReason): ManagedAiAccess => ({ mode: 'script', model: SCRIPT_AI_MODEL, reason });
 
 async function resolveColonyIdentity(db: PrismaClient | undefined, col: GateColony): Promise<{ colonyId: string; playerId?: string }> {
@@ -52,6 +53,8 @@ async function resolveColonyIdentity(db: PrismaClient | undefined, col: GateColo
  * slots or trial, downshifts to the deterministic policy. Never touches `@terra/sim`.
  */
 export class ManagedAiGate {
+  private readonly lastCooldownMsByColony = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaClient | undefined,
     private readonly env: AppEnv | undefined,
@@ -63,10 +66,18 @@ export class ManagedAiGate {
     return (this.env ?? process.env) as unknown as Record<string, string | undefined>;
   }
 
+  /** Tier sweep cooldown (`STAKING_TIERS[tier].sweepSeconds * 1000`) recorded on the last `admit` for `colonyId`. */
+  cooldownMsOf(colonyId: string): number | undefined {
+    return this.lastCooldownMsByColony.get(colonyId);
+  }
+
   /** Decides and charges one managed turn for `col`. */
   async admit(col: GateColony, nowMs: number = stakingNowMs()): Promise<ManagedAiAccess> {
     const db = this.prisma;
-    if (!db || !databaseEnabled(this.env)) return script('no_database');
+    if (!db || !databaseEnabled(this.env)) {
+      this.lastCooldownMsByColony.set(col.id, DEFAULT_SCRIPT_COOLDOWN_MS);
+      return script('no_database');
+    }
     const resolved = await resolveColonyIdentity(db, col);
     const r = await resolveWalletPerks(db, {
       colonyId: resolved.colonyId,
@@ -78,6 +89,9 @@ export class ManagedAiGate {
       deps: this.deps,
     });
     const { perks, wallet, usage } = r;
+    const tierCooldownMs = perks.sweepSeconds * 1_000;
+    this.lastCooldownMsByColony.set(col.id, tierCooldownMs);
+    this.lastCooldownMsByColony.set(resolved.colonyId, tierCooldownMs);
     if (perks.maxAiColonySlots > 0) {
       if (usage.dailyCallsUsed >= perks.dailyAiCallLimit) return script('budget_exhausted');
       if (!this.slots.claim(wallet.walletKey, resolved.colonyId, perks.maxAiColonySlots, nowMs)) return script('slot_cap');

@@ -1,7 +1,7 @@
 import { STAKING_ASSETS, type StakingAsset, type StakingPerformanceResponse } from '@terra/contracts';
 import { el } from '../../../../dom';
 import { formatNear } from '../../stakingMath';
-import { earlyExitFeeNear, formatCountdown } from '../dashboardMath';
+import { earlyExitFeeNear, formatCountdown, totalStakedNear } from '../dashboardMath';
 
 export interface ConsoleHandlers {
   readonly onStake: (amount: string, asset: StakingAsset) => void;
@@ -16,6 +16,7 @@ export interface ConsolePart {
   update(p: StakingPerformanceResponse, nowMs: number): void;
   /** Re-renders the early-exit preview and the unbonding countdown (called by the ticker). */
   tick(nowMs: number): void;
+  selectedAsset(): StakingAsset;
   setCanCompound(show: boolean): void;
   setAmount(amountNear: string): void;
   setStatus(message: string, tone: 'ok' | 'error' | 'info'): void;
@@ -61,7 +62,7 @@ function updateEarlyExitNotice(
   free: HTMLElement,
 ): void {
   const bp = perf?.timers.earlyExitFeeBp ?? 0;
-  const staked = Number(perf?.balances.activeStakedNear ?? '0');
+  const staked = perf ? totalStakedNear(perf.balances) : 0;
   const active = bp > 0 && (perf?.timers.earlyExitFreeAtMs ?? 0) > nowMs && staked > 0;
   notice.hidden = !active;
   free.hidden = active || staked <= 0;
@@ -121,6 +122,9 @@ export function renderConsole(initialAmount: string, h: ConsoleHandlers, now: ()
       refresh(nowMs);
     },
     tick: refresh,
+    selectedAsset() {
+      return asset.value as StakingAsset;
+    },
     setCanCompound(show) {
       compound.hidden = !show;
     },

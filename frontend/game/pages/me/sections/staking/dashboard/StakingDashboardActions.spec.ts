@@ -118,3 +118,108 @@ describe('action console: notice, withdraw, profits', () => {
   });
 });
 
+describe('action console: real-network wallet-tx & LST pool routing', () => {
+  it('shows <7d early-exit notice on LST-only positions where activeStakedNear is 0', async () => {
+    const p = makePerformance();
+    const m = makeMock(() => ({
+      ...p,
+      balances: {
+        ...p.balances,
+        activeStakedNear: '0',
+        lst: [{ asset: 'stNEAR', amount: '50', nearValue: '50' }],
+      },
+    }));
+    const root = await mount(m);
+    const notice = q(root, 'staking-early-exit-notice')!;
+    expect(notice.hidden).toBe(false);
+    expect(notice.textContent).toContain('0.125000 NEAR');
+  });
+});
+
+describe('action console: real-network wallet-tx & LST pool isolation', () => {
+  it('real network (testnet): routes stake, unstake, and withdraw through wallet-tx + selector and isolates LST pools from native pools', async () => {
+    const signedTxs: Array<{ receiverId: string; actions: unknown[] }> = [];
+    const walletTxQueries: string[] = [];
+    const p = makePerformance({ accountId: 'pilot.testnet' });
+    const m = makeMock(() => ({
+      ...p,
+      balances: { ...p.balances, activeStakedNear: '50', withdrawableNear: '5' },
+    }));
+    const origFetch = m.fetch;
+    m.fetch = async (url, init) => {
+      if (url.startsWith('/v1/near/staking/wallet-tx?')) {
+        walletTxQueries.push(url);
+        const u = new URL(url, 'http://x');
+        return ok({
+          contractId: u.searchParams.get('action') === 'stake_lst' ? (u.searchParams.get('lstContract') ?? 'meta-v2.pool.testnet') : 'staking.terraagent.testnet',
+          methodName: u.searchParams.get('action') === 'stake_lst' ? 'ft_transfer_call' : u.searchParams.get('action'),
+          args: { pool_id: u.searchParams.get('poolId') },
+          attachedDepositYocto: '0',
+          gasTgas: 50,
+        });
+      }
+      return origFetch(url, init);
+    };
+    m.post = () => fail(401, { message: 'NEP-413 walletSignature is required' });
+    const root = await mount(m, {
+      accountId: 'pilot.testnet',
+      selectorFactory: async () => ({
+        wallet: async () => ({
+          signAndSendTransaction: async (params) => {
+            signedTxs.push(params);
+            return { transaction_outcome: { id: `tx_${signedTxs.length}` } };
+          },
+        }),
+      }),
+    });
+
+    // 1. Native NEAR stake, unstake, and withdraw all build wallet-tx descriptors and sign via wallet (zero 401 REST POSTs!)
+    click(root, 'staking-console-stake');
+    await flush();
+    await flush();
+    expect(walletTxQueries.at(-1)).toContain('action=stake_payable');
+    expect(walletTxQueries.at(-1)).toContain('poolId=astro-stakers.pool.mock');
+
+    click(root, 'staking-console-unstake');
+    await flush();
+    await flush();
+    expect(walletTxQueries.at(-1)).toContain('action=unstake');
+    expect(walletTxQueries.at(-1)).toContain('poolId=astro-stakers.pool.mock');
+
+    click(root, 'staking-console-withdraw');
+    await flush();
+    await flush();
+    expect(walletTxQueries.at(-1)).toContain('action=withdraw');
+    expect(walletTxQueries.at(-1)).toContain('poolId=astro-stakers.pool.mock');
+
+    // 2. Switch asset to stNEAR -> stake, unstake, withdraw pass poolId=meta-v2.pool.testnet & lstContract=meta-v2.pool.testnet!
+    const select = q(root, 'staking-console-asset') as HTMLSelectElement;
+    select.value = 'stNEAR';
+    select.dispatchEvent(new Event('change'));
+
+    click(root, 'staking-console-stake');
+    await flush();
+    await flush();
+    expect(walletTxQueries.at(-1)).toContain('action=stake_lst');
+    expect(walletTxQueries.at(-1)).toContain('poolId=meta-v2.pool.testnet');
+    expect(walletTxQueries.at(-1)).toContain('lstContract=meta-v2.pool.testnet');
+
+    click(root, 'staking-console-unstake');
+    await flush();
+    await flush();
+    expect(walletTxQueries.at(-1)).toContain('action=unstake');
+    expect(walletTxQueries.at(-1)).toContain('poolId=meta-v2.pool.testnet');
+    expect(walletTxQueries.at(-1)).toContain('lstContract=meta-v2.pool.testnet');
+
+    click(root, 'staking-console-withdraw');
+    await flush();
+    await flush();
+    expect(walletTxQueries.at(-1)).toContain('action=withdraw_lst');
+    expect(walletTxQueries.at(-1)).toContain('poolId=meta-v2.pool.testnet');
+    expect(walletTxQueries.at(-1)).toContain('lstContract=meta-v2.pool.testnet');
+
+    expect(signedTxs).toHaveLength(6);
+    expect(m.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+  });
+});
+

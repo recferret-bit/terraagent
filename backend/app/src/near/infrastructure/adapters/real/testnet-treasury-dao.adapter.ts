@@ -20,7 +20,7 @@ import {
 } from '../../../application/ports/treasury-dao.port.js';
 import { NearException } from '../../../domain/errors.js';
 import type { ChainReceipt } from '../../../domain/types.js';
-import { PASS_ABOVE_BP, PASS_MIN_YES, tallyMemberVotes, type DaoVoteValue } from '../../../treasury/pass-rule.js';
+import { BASE_VOTE_WEIGHT_BP, PASS_ABOVE_BP, PASS_MIN_YES, tallyMemberVotes, type DaoVoteValue } from '../../../treasury/pass-rule.js';
 import { daoAccountIdFor, readCost } from '../../../treasury/policy.js';
 import { insertDaoIfMissing } from '../../../treasury/store.js';
 import { resolveActiveNearNetwork, resolveNearNetworkConfig } from '../../network/near-network.config.js';
@@ -126,18 +126,20 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
   async vote(raw: VoteInput): Promise<ChainReceipt> {
     const input = VoteInput.parse(raw);
     const signer = this.requireOperatorSigner();
+    const weighted = input.weightBp !== undefined && input.weightBp !== BASE_VOTE_WEIGHT_BP;
     return this.txCache.run(`vote:${input.opId}`, async () => {
       const { receipt } = await this.rpc.call({
         signerAccountId: signer.accountId,
         signerSecretKey: signer.secretKey,
         contractId: this.rpc.config.contracts.dao,
-        methodName: 'vote',
+        methodName: weighted ? 'vote_weighted' : 'vote',
         args: {
           op_id: input.opId,
           dao_account_id: input.daoAccountId,
           proposal_id: input.proposalId,
           voter: input.voter,
           vote: input.vote,
+          ...(weighted ? { weight_bp: input.weightBp } : {}),
           pass_above_bp: PASS_ABOVE_BP,
           pass_min_yes: PASS_MIN_YES,
         },
@@ -229,9 +231,16 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
 
   async get(raw: DaoGetInput): Promise<DaoView> {
     const input = DaoGetInput.parse(raw);
-    const rec = await this.rpc.view<ContractDaoRecord>(this.rpc.config.contracts.dao, 'get_dao', {
-      dao_account_id: input.daoAccountId,
-    });
+    const [rec, weights] = await Promise.all([
+      this.rpc.view<ContractDaoRecord>(this.rpc.config.contracts.dao, 'get_dao', {
+        dao_account_id: input.daoAccountId,
+      }),
+      this.rpc
+        .view<Record<string, number>>(this.rpc.config.contracts.dao, 'get_dao_weights', {
+          dao_account_id: input.daoAccountId,
+        })
+        .catch(() => ({} as Record<string, number>)),
+    ]);
     const memberIds = rec.members.map((m) => m.account_id);
     return DaoView.parse({
       daoAccountId: rec.dao_account_id,
@@ -239,7 +248,12 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
       members: rec.members.map((m) => ({ accountId: m.account_id, canPropose: m.can_propose })),
       balances: rec.balances,
       proposals: rec.proposals.map((p) => {
-        const tally = tallyMemberVotes(p.votes, memberIds);
+        const weightedVotes = p.votes.map((v) => ({
+          voter: v.voter,
+          vote: v.vote,
+          weightBp: weights[`${p.id}|${v.voter}`],
+        }));
+        const tally = tallyMemberVotes(weightedVotes, memberIds);
         return {
           proposalId: p.id,
           proposer: p.proposer,

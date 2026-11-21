@@ -31,9 +31,13 @@ export interface TerraAgentProtocolView {
   readonly feeSchedule: {
     readonly standardPlatformFeeBp: number;
     readonly stakerPlatformFeeBp: number;
+    readonly tierTakerFeeBp?: readonly [number, number, number, number, number];
     readonly daoCarveOutShareBp: number;
     readonly protocolNetStandardBp: number;
     readonly protocolNetStakerBp: number;
+    readonly protocolNetTier4Bp?: number;
+    readonly leadPatronProtocolShareBp?: number;
+    readonly freeTrialTurns?: number;
     readonly validatorGrossApyBp: number;
     readonly stakerNetApyBp: number;
     readonly protocolStakingYieldBp: number;
@@ -49,25 +53,32 @@ export interface TerraAgentProtocolView {
   readonly outflows: readonly ProtocolStreamInfo[];
 }
 
-function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): readonly ProtocolStreamInfo[] {
+function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>, w28: boolean): readonly ProtocolStreamInfo[] {
   const fmtPct = (bp: number) => `${(bp / 100).toFixed(2)}%`;
   const daoPct = Math.round(sched.daoCarveOutShareBp / 100);
   const protoSharePct = 100 - daoPct;
   const yieldProtoPct = Math.round(sched.protocolStakingYieldShareBp / 100);
   const slashProtoPct = Math.round(sched.escrowSlashProtocolShareBp / 100);
   const slashVictimPct = 100 - slashProtoPct;
+  const protoT4Bp = Math.floor((25 * (10_000 - sched.daoCarveOutShareBp)) / 10_000);
   return [
     {
       id: 'market_fee',
       label: 'Market Settlement Fee',
-      rateSummary: `${fmtPct(sched.protocolNetStandardBp)} standard / ${fmtPct(sched.protocolNetStakerBp)} for >=${sched.minStakeForPerksNear} NEAR stakers`,
-      description: `${protoSharePct}% of the ${fmtPct(sched.standardPlatformFeeBp)} (or ${fmtPct(sched.stakerPlatformFeeBp)} staker) platform fee on finalized NEP-413 trades; ${daoPct}% carves out to the Planet Council DAO.`,
+      rateSummary: w28
+        ? `${fmtPct(sched.protocolNetStandardBp)} standard / ${fmtPct(sched.protocolNetStakerBp)}–${fmtPct(protoT4Bp)} across Tiers 1–4 (>=${sched.minStakeForPerksNear}–500+ NEAR)`
+        : `${fmtPct(sched.protocolNetStandardBp)} standard / ${fmtPct(sched.protocolNetStakerBp)} for >=${sched.minStakeForPerksNear} NEAR stakers`,
+      description: w28
+        ? `${protoSharePct}% of the ${fmtPct(sched.standardPlatformFeeBp)} (or 0.65%–0.25% 4-tier staker) platform fee on finalized NEP-413 trades; ${daoPct}% carves out to the Planet Council DAO and 15% of Protocol's cut settles to the planet's Tier 4 Lead Patron.`
+        : `${protoSharePct}% of the ${fmtPct(sched.standardPlatformFeeBp)} (or ${fmtPct(sched.stakerPlatformFeeBp)} staker) platform fee on finalized NEP-413 trades; ${daoPct}% carves out to the Planet Council DAO.`,
     },
     {
       id: 'staking_yield',
       label: 'Validator Staking Yield Share',
       rateSummary: `${yieldProtoPct}% of validator yield (${fmtPct(sched.protocolStakingYieldBp)} APY; player keeps ${fmtPct(sched.stakerNetApyBp)} net APY)`,
-      description: `Lossless subscription: principal stays 100% the player’s while ${yieldProtoPct}% of accrued validator yield funds AI & gasless relays.`,
+      description: w28
+        ? `Wallet-first 4-tier lossless patronage (native NEAR, stNEAR, LiNEAR): principal stays 100% the player's while ${yieldProtoPct}% of accrued validator yield funds AI & gasless relays.`
+        : `Lossless subscription: principal stays 100% the player’s while ${yieldProtoPct}% of accrued validator yield funds AI & gasless relays.`,
     },
     {
       id: 'escrow_slash',
@@ -78,7 +89,7 @@ function buildInflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): rea
   ];
 }
 
-function buildOutflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): readonly ProtocolStreamInfo[] {
+function buildOutflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>, w28: boolean): readonly ProtocolStreamInfo[] {
   return [
     {
       id: 'relayer_gas',
@@ -90,7 +101,9 @@ function buildOutflows(sched: ReturnType<typeof resolveProtocolFeeSchedule>): re
       id: 'managed_near_ai',
       label: 'Managed NEAR.AI Autopilot',
       rateSummary: 'z-ai/glm-5.3-flash TEE batching',
-      description: `Funds 24/7 autonomous LLM sweeps for Rival AI colonies and human players staking >= ${sched.minStakeForPerksNear} NEAR (custom BYOK keys remain free).`,
+      description: w28
+        ? `Funds 24/7 autonomous LLM sweeps for Rival AI colonies, 5 free TEE trial turns for verified pilots, and 1–12 colony slots for wallets staking >= ${sched.minStakeForPerksNear} NEAR (capped at 35% of protocol income for >= 65% margin; custom BYOK keys remain free).`
+        : `Funds 24/7 autonomous LLM sweeps for Rival AI colonies and human players staking >= ${sched.minStakeForPerksNear} NEAR (custom BYOK keys remain free).`,
     },
   ];
 }
@@ -198,7 +211,8 @@ export async function buildProtocolTreasuryView(
   const cfg = resolveNearNetworkConfig(envSource, activeNet);
   const protocolAccountId =
     nearMode === 'mock' ? envSource.NEAR_PROTOCOL_ACCOUNT?.trim() || PROTOCOL_ACCOUNT_ID : cfg.accounts.protocol;
-  const sched = resolveProtocolFeeSchedule(envSource, { w28: isW28Enabled(envSource) });
+  const w28 = isW28Enabled(envSource);
+  const sched = resolveProtocolFeeSchedule(envSource, { w28 });
   const balances: Record<string, string> = {};
   const testnetVerifierLedger: Record<string, string> = {};
 
@@ -224,6 +238,14 @@ export async function buildProtocolTreasuryView(
     feeSchedule: {
       standardPlatformFeeBp: sched.standardPlatformFeeBp,
       stakerPlatformFeeBp: sched.stakerPlatformFeeBp,
+      ...(w28
+        ? {
+            tierTakerFeeBp: [100, 65, 50, 35, 25] as const,
+            protocolNetTier4Bp: Math.floor((25 * (10_000 - sched.daoCarveOutShareBp)) / 10_000),
+            leadPatronProtocolShareBp: 1500,
+            freeTrialTurns: 5,
+          }
+        : {}),
       daoCarveOutShareBp: sched.daoCarveOutShareBp,
       protocolNetStandardBp: sched.protocolNetStandardBp,
       protocolNetStakerBp: sched.protocolNetStakerBp,
@@ -238,7 +260,7 @@ export async function buildProtocolTreasuryView(
     balances,
     ...(Object.keys(testnetVerifierLedger).length > 0 ? { testnetVerifierLedger } : {}),
     relayerDailyCapNear: cfg.relayerDailyCapNear,
-    inflows: buildInflows(sched),
-    outflows: buildOutflows(sched),
+    inflows: buildInflows(sched, w28),
+    outflows: buildOutflows(sched, w28),
   };
 }

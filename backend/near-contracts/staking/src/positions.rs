@@ -158,6 +158,20 @@ impl StakingVaultContract {
         if let Some(a) = asset {
             meta.asset = a;
         }
+        if meta.asset.is_empty() || meta.asset == NATIVE_ASSET {
+            require!(
+                !crate::lst::is_lst_pool(&pool_id)
+                    && !crate::lst::is_whitelisted_lst(&pool_id, self.owner_id.as_str()),
+                "STAKE_INVALID_POOL: pool is bound to an LST contract"
+            );
+            crate::storage::mark_native_pool(&pool_id);
+        } else {
+            require!(
+                crate::lst_math::is_whitelisted_lst(&meta.asset, self.owner_id.as_str()),
+                "STAKE_INVALID_POOL: LST token contract is not whitelisted"
+            );
+            crate::lst::bind_pool(&pool_id, &meta.asset);
+        }
         if let Some(ts) = last_staked_at_ms {
             meta.last_staked_at_ms = ts;
             if meta.staked_since_ms == 0 {

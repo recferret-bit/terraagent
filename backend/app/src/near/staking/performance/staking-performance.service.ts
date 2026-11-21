@@ -18,7 +18,9 @@ import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
 import { resolveNearNetworkConfig } from '../../infrastructure/network/near-network.config.js';
 import { resolveWalletPerks } from '../perks/perks.resolver.js';
 import { setPerksDeps, stakingNowMs } from '../perks/perks-deps.js';
+import { resolveWallet } from '../perks/stake-clock.reader.js';
 import { portHooks } from '../services/port-hooks.js';
+import { StakingPositionSyncService } from '../staking-position-sync.service.js';
 import { buildAiBudgetView } from '../perks/tier-engine.js';
 import { buildApyView, VALIDATOR_APY_READER, type ValidatorApyReader } from './apy.js';
 import { readEcosystemTvl } from './ecosystem.reader.js';
@@ -45,6 +47,7 @@ export class StakingPerformanceService {
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(VALIDATOR_APY_READER) private readonly apyReader?: ValidatorApyReader,
     @Optional() @Inject(StakingPort) private readonly staking?: StakingPort,
+    @Optional() @Inject(StakingPositionSyncService) private readonly positionSync?: StakingPositionSyncService,
   ) {
     // The perks AI budget scales with the live NEAR/USD this service caches.
     setPerksDeps({ priceProvider: this.price });
@@ -85,6 +88,11 @@ export class StakingPerformanceService {
     const { accountId, window, windowMs, sinceMs } = this.parsePerformanceQuery(rawAccountId, rawWindow, nowMs);
     const network = this.network();
     const db = this.prisma;
+    if (network !== 'mock' && this.positionSync) {
+      const wallet = db ? await resolveWallet(db, { accountId }).catch(() => null) : null;
+      const targets = wallet && wallet.accountIds.length > 0 ? wallet.accountIds : [accountId];
+      await Promise.all(targets.map((acct) => this.positionSync!.syncAccountPositions(acct, undefined, acct === accountId).catch(() => [])));
+    }
 
     const [priceView, apy, ecosystem] = await Promise.all([this.price.view(), this.apy(network), readEcosystemTvl(db)]);
     const nearUsd = priceView.nearUsd;

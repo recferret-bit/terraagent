@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { newId, SCRIPT_AI_MODEL, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
+import { MANAGED_AI_MODEL, newId, SCRIPT_AI_MODEL, type MarketTokenKey, type TradeAllowance } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { restore, shouldAiGovernColony } from '@terra/sim';
 import { databaseEnabled } from '../../core/persistence.js';
@@ -64,6 +64,7 @@ interface DecisionCtx {
 interface CachedColonyDecision {
   readonly digest: string;
   readonly atMs: number;
+  readonly cooldownMs?: number;
   readonly decision: ResolvedDecision;
 }
 
@@ -88,11 +89,12 @@ export class ColonyAgentLoopService {
     @Optional() private readonly teeStore?: TeeAttestationStore,
   ) {}
 
-  start(intervalMs = COLONY_AGENT_LOOP_MS): void {
+  start(intervalMs?: number): void {
     if (this.timer) return;
+    const ms = intervalMs ?? (isW28Enabled(this.envBag()) ? 30_000 : COLONY_AGENT_LOOP_MS);
     this.timer = setInterval(() => {
       void this.sweepLoadedPlanets();
-    }, intervalMs);
+    }, ms);
     this.timer.unref?.();
   }
 
@@ -226,6 +228,7 @@ export class ColonyAgentLoopService {
     playerCfg: PlayerColonyAiOverride | undefined,
     hasStakerAutopilot: boolean,
     enforcePlayerKeyGate: boolean,
+    w28Managed = false,
   ): string {
     if (obs.isBot) return `${observationDigest(obs)}|bot:${this.botModel()}`;
     const apiKey = playerCfg?.apiKey?.trim();
@@ -234,7 +237,7 @@ export class ColonyAgentLoopService {
       return `${observationDigest(obs)}|player:${apiKey.slice(-4)}:${model}`;
     }
     if (hasStakerAutopilot || !enforcePlayerKeyGate) {
-      return `${observationDigest(obs)}|bot:${this.botModel()}`;
+      return `${observationDigest(obs)}|bot:${w28Managed ? MANAGED_AI_MODEL : this.botModel()}`;
     }
     return `${observationDigest(obs)}|det`;
   }
@@ -258,7 +261,7 @@ export class ColonyAgentLoopService {
     if (access.mode === 'script') {
       return { directive: deterministicDirective(obs), model: SCRIPT_AI_MODEL, usedPlayerKey: false, aiAccess: access };
     }
-    const res = (await evaluateBatchWithLlm(this.llm, [obs], { model: this.botModel(), usedPlayerKey: false })).get(obs.colonyIndex)!;
+    const res = (await evaluateBatchWithLlm(this.llm, [obs], { model: access.model, usedPlayerKey: false })).get(obs.colonyIndex)!;
     return { ...res, aiAccess: access };
   }
 
@@ -282,9 +285,11 @@ export class ColonyAgentLoopService {
       const cacheKey = `${planetId}:${obs.colonyIndex}`;
       const playerCfg = playerConfigs[obs.colonyIndex];
       const hasStakerAutopilot = this.isManagedCandidate(obs, ctx);
-      const digest = this.cacheDigestFor(obs, playerCfg, hasStakerAutopilot, enforcePlayerKeyGate);
+      const w28Managed = ctx.w28 && !obs.isBot && !ctx.stakedOverride[obs.colonyIndex];
+      const digest = this.cacheDigestFor(obs, playerCfg, hasStakerAutopilot, enforcePlayerKeyGate, w28Managed);
       const cached = this.decisionCache.get(cacheKey);
-      if (useCache && cached && nowMs - cached.atMs < COLONY_DECISION_COOLDOWN_MS && cached.digest === digest && !obs.pendingOfferId) {
+      const cooldownMs = cached?.cooldownMs ?? COLONY_DECISION_COOLDOWN_MS;
+      if (useCache && cached && nowMs - cached.atMs < cooldownMs && cached.digest === digest && !obs.pendingOfferId) {
         out.set(obs.colonyIndex, { ...cached.decision, cached: true });
         continue;
       }
@@ -313,10 +318,12 @@ export class ColonyAgentLoopService {
     const saveBatch = (list: readonly ColonyObservation[], resMap: Map<number, ResolvedDecision>) => {
       for (const obs of list) {
         const dec = resMap.get(obs.colonyIndex)!;
+        const w28Managed = ctx.w28 && !obs.isBot && !ctx.stakedOverride[obs.colonyIndex];
         out.set(obs.colonyIndex, dec);
         this.decisionCache.set(`${planetId}:${obs.colonyIndex}`, {
-          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], this.isManagedCandidate(obs, ctx), enforcePlayerKeyGate),
+          digest: this.cacheDigestFor(obs, playerConfigs[obs.colonyIndex], this.isManagedCandidate(obs, ctx), enforcePlayerKeyGate, w28Managed),
           atMs: nowMs,
+          cooldownMs: (w28Managed ? this.managedGate?.cooldownMsOf(obs.colonyId) : undefined) ?? COLONY_DECISION_COOLDOWN_MS,
           decision: dec,
         });
       }

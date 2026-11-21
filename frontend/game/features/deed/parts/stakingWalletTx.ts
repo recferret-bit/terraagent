@@ -1,8 +1,12 @@
 import { STAKING_RULES } from '@terra/contracts';
+import { readSavedNearWallet } from '../../../../design/pilot/nearWalletStorage';
+import { sendTxWithInjectedExtraWallet } from '../../../../design/pilot/walletSelectorExtras';
 import { createRealSignerWalletSelector, type RealNearNetwork } from './realNearWalletDriver';
 
 export type StakingWalletAction =
   | 'stake_payable'
+  | 'unstake'
+  | 'withdraw'
   | 'deposit_near'
   | 'claim_native_near'
   | 'stake_lst'
@@ -63,22 +67,34 @@ export async function sendStakingWalletTx(opts: SendStakingWalletTxOptions): Pro
     const res = await opts.fetchFn(`/v1/near/staking/wallet-tx?${qs.toString()}`);
     if (!res.ok) throw new Error('Unable to build staking wallet transaction.');
     const tx = (await res.json()) as StakingWalletTx;
-    const [{ actionCreators }, selector] = await Promise.all([
-      import('@near-wallet-selector/core'),
-      (opts.selectorFactory ?? createRealSignerWalletSelector)(opts.network),
-    ]);
-    const wallet = await selector.wallet();
-    await wallet.signAndSendTransaction({
-      receiverId: tx.contractId,
-      actions: [
-        actionCreators.functionCall(
-          tx.methodName,
-          tx.args,
-          BigInt(`${tx.gasTgas}000000000000`),
-          BigInt(tx.attachedDepositYocto),
-        ),
-      ],
-    });
+    const gasYocto = `${tx.gasTgas}000000000000`;
+    const sentViaInjected = !opts.selectorFactory
+      ? await sendTxWithInjectedExtraWallet(readSavedNearWallet()?.walletId, {
+          receiverId: tx.contractId,
+          methodName: tx.methodName,
+          args: tx.args,
+          gasYocto,
+          depositYocto: tx.attachedDepositYocto,
+        })
+      : false;
+    if (!sentViaInjected) {
+      const [{ actionCreators }, selector] = await Promise.all([
+        import('@near-wallet-selector/core'),
+        (opts.selectorFactory ?? createRealSignerWalletSelector)(opts.network),
+      ]);
+      const wallet = await selector.wallet();
+      await wallet.signAndSendTransaction({
+        receiverId: tx.contractId,
+        actions: [
+          actionCreators.functionCall(
+            tx.methodName,
+            tx.args,
+            BigInt(gasYocto),
+            BigInt(tx.attachedDepositYocto),
+          ),
+        ],
+      });
+    }
     const msg = `Submitted ${tx.methodName} (${opts.amountNear} NEAR) to ${tx.contractId}.`;
     if (opts.statusMsgEl) opts.statusMsgEl.textContent = msg;
     if (opts.onSuccess) await opts.onSuccess();

@@ -165,7 +165,7 @@ class StakingDashboard {
     const live = this.liveYieldNear(this.perf);
     if (snap <= 0 && live < 0.000001) return Promise.resolve();
     const amount = snap > 0 ? this.perf.balances.accruedYieldNear : formatMicroNear(live);
-    return this.act((c) => runCompoundAction(c, this.perf!, amount));
+    return this.act((c) => runCompoundAction(c, this.perf!, amount, this.consolePart.selectedAsset()));
   }
 
   private async nominate(planetId: string): Promise<void> {

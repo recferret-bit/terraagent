@@ -10,10 +10,12 @@ import { CoreException } from '../../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { FlagsService } from '../../../flags/flags.service.js';
+import { nearAdapterFor } from '../../infrastructure/adapter-selection.js';
+import { StakingPositionSyncService } from '../staking-position-sync.service.js';
 import { yoctoToNear } from '../yocto.js';
 import { PatronSeatService, type PatronSeatRow } from './patron-seat.service.js';
 import { resolveWalletPerks } from './perks.resolver.js';
-import { playerLinkedWallet } from './stake-clock.reader.js';
+import { playerLinkedWallet, resolveWallet } from './stake-clock.reader.js';
 import { buildAiBudgetView } from './tier-engine.js';
 
 const MAX_PRESTIGE_COLONIES = 200;
@@ -28,6 +30,7 @@ export class StakingPerksService {
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() @Inject(StakingPositionSyncService) private readonly positionSync?: StakingPositionSyncService,
   ) {}
 
   assertWaveEnabled(): void {
@@ -47,6 +50,11 @@ export class StakingPerksService {
     const accountId = query.accountId?.trim() || sessionWallet;
     if (!colonyId && !accountId) {
       throw new CoreException('INVALID_REQUEST', { status: 400, message: 'accountId or colonyId is required' });
+    }
+    if (nearAdapterFor('Staking', this.envBag()) !== 'mock' && this.positionSync && this.prisma) {
+      const wallet = await resolveWallet(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId }).catch(() => null);
+      const targets = wallet && wallet.accountIds.length > 0 ? wallet.accountIds : accountId ? [accountId] : [];
+      await Promise.all(targets.map((acct) => this.positionSync!.syncAccountPositions(acct, undefined, acct === accountId).catch(() => [])));
     }
     const r = await resolveWalletPerks(this.prisma, { colonyId: sessionWallet ? undefined : colonyId, accountId, env: this.envBag(), w28: true, full: true, nowMs: query.nowMs });
     const { totalStakedYocto: _a, stakedYocto: _b, ...perks } = r.perks;

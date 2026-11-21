@@ -122,6 +122,51 @@ describe('Landing #protocol live telemetry & stream filtering', () => {
   });
 });
 
+describe('Landing #protocol W28 4-tier live hydration', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    document.body.innerHTML = `<section id="protocol"><div id="protocol-board"></div></section>`;
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    document.body.innerHTML = '';
+  });
+
+  it('hydrates 4-tier W28 staker fee range (0.80% / 0.52%–0.20%) and 1–12 AI slots when W28 is active', async () => {
+    const w28Payload = await buildProtocolTreasuryView({
+      NEAR_MODE: 'testnet',
+      NEAR_ROOT_ACCOUNT: 'terraagent.testnet',
+      TA_WAVES: 'all',
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => w28Payload,
+    }) as unknown as typeof fetch;
+
+    initProtocolSection();
+    await new Promise((r) => setTimeout(r, 15));
+
+    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.52%–0.20%');
+    expect(document.querySelector('[data-proto-legend-proto-val]')?.textContent).toBe('0.80% (0.52%–0.20% T1–T4)');
+    expect(document.querySelector('[data-proto-legend-dao-val]')?.textContent).toBe('0.20% (0.13%–0.05% T1–T4)');
+    expect(document.querySelector('[data-proto-ex-buyer-total]')?.textContent).toBe('Buyer pays $101.50 ($101.15 T1 · $100.75 T4)');
+    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.52–$0.20 Stk)');
+    expect(document.querySelector('[data-proto-legend-perks-val]')?.textContent).toBe('1–12 AI Slots + 0.65%–0.25% Fee');
+    expect(document.querySelector('[data-proto-ex-perks]')?.textContent).toBe('3 AI Slots + 0.50% Fee (24h)');
+  });
+});
+
 describe('Landing #protocol partial feeSchedule fallback math', () => {
   const originalFetch = globalThis.fetch;
 

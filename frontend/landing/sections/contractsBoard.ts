@@ -137,9 +137,9 @@ const CONTRACTS: readonly DeployedContract[] = [
     accent: 'var(--ta-orange-hi)',
     kicker: 'PUBLIC GOODS',
     title: 'Planet Council Treasury',
-    summary: "Collects each planet's share of trade fees so settled colonies can vote on meteor shields and Guild subsidies.",
+    summary: "Collects each planet's share of trade fees so settled colonies can vote (with 1.5× Tier 3+ staker weight) on meteor shields and Guild subsidies.",
     inGameTrigger: 'Council Vote',
-    onChainAction: 'propose · vote · finalize',
+    onChainAction: 'propose · vote_weighted · finalize',
     codeHash: 'J5L9QjPghZQ337PLxyv7ehEtNRWo2KuMvTnoAMyNEGrS',
     txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U',
     iconSvg: `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true">

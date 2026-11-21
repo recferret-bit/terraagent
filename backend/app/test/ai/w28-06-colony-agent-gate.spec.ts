@@ -6,10 +6,11 @@ import type { AppEnv } from '../../src/core/tokens.js';
 import type { LlmProviderPort, LlmResponse } from '../../src/ports/llm-provider.port.js';
 import { createFakePlanetHarness } from './fake-planet-harness.js';
 
-const gate = vi.hoisted(() => ({ admit: vi.fn() }));
+const gate = vi.hoisted(() => ({ admit: vi.fn(), cooldownMsOf: vi.fn() }));
 vi.mock('../../src/ai/colony-agent/managed-ai-gate.js', () => ({
   ManagedAiGate: class {
     admit = gate.admit;
+    cooldownMsOf = gate.cooldownMsOf;
   },
 }));
 
@@ -48,7 +49,10 @@ const trial: ManagedAiAccess = { mode: 'trial', model: MANAGED_AI_MODEL, trialTu
 const tee: ManagedAiAccess = { mode: 'tee', model: MANAGED_AI_MODEL };
 const guest: ManagedAiAccess = { mode: 'script', model: SCRIPT_AI_MODEL, reason: 'guest' };
 
-beforeEach(() => gate.admit.mockReset());
+beforeEach(() => {
+  gate.admit.mockReset();
+  gate.cooldownMsOf.mockReset();
+});
 
 describe('W28-06 ColonyAgentLoopService managed-AI gate', () => {
   it('a trial grant runs the managed TEE model and reports mode trial with the turns left', async () => {
@@ -113,5 +117,36 @@ describe('W28-06 ColonyAgentLoopService managed-AI gate', () => {
     const staked = human(await svc.tickPlanetAgents('pl_loop', { stakedByColony: { 0: true } }));
     expect(staked.model).toBe(MANAGED_AI_MODEL);
     expect(gate.admit).not.toHaveBeenCalled();
+  });
+
+  it('pins managed staker turns to access.model (glm-5.3-flash) even if NEAR_AI_MODEL is overridden to a costly model', async () => {
+    gate.admit.mockResolvedValue(tee);
+    const heavyEnv = { NODE_ENV: 'test', TA_WAVES: 'all', NEAR_AI_MODEL: 'anthropic/claude-sonnet-4.6' } as unknown as AppEnv;
+    const { svc, human } = setup(heavyEnv);
+    const evals = await svc.tickPlanetAgents('pl_loop', { playerAiByColony: {} });
+    const col0 = human(evals);
+    expect(col0.model).toBe(MANAGED_AI_MODEL);
+    expect(evals.some((e) => e.isBot && e.model === 'anthropic/claude-sonnet-4.6')).toBe(true);
+  });
+
+  it('respects per-tier sweepSeconds cooldown (30s Tier 4 re-evaluates at +35s; 180s Tier 0 stays cached at +130s)', async () => {
+    gate.admit.mockResolvedValue(tee);
+    gate.cooldownMsOf.mockReturnValue(30_000);
+    const t4 = setup(W28_ON);
+    await t4.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {}, useCache: true, nowMs: 1_000_000 });
+    await t4.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {}, useCache: true, nowMs: 1_025_000 });
+    expect(gate.admit).toHaveBeenCalledTimes(1);
+    await t4.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {}, useCache: true, nowMs: 1_035_000 });
+    expect(gate.admit).toHaveBeenCalledTimes(2);
+
+    gate.admit.mockReset();
+    gate.admit.mockResolvedValue(trial);
+    gate.cooldownMsOf.mockReturnValue(180_000);
+    const t0 = setup(W28_ON);
+    await t0.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {}, useCache: true, nowMs: 2_000_000 });
+    await t0.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {}, useCache: true, nowMs: 2_130_000 });
+    expect(gate.admit).toHaveBeenCalledTimes(1);
+    await t0.svc.tickPlanetAgents('pl_loop', { playerAiByColony: {}, useCache: true, nowMs: 2_185_000 });
+    expect(gate.admit).toHaveBeenCalledTimes(2);
   });
 });

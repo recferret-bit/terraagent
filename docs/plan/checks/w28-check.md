@@ -16,7 +16,7 @@
 ## Before you start
 
 - **Where it runs:** branch `wave/w28-staking-overhaul`, worktree `../TerraAgent-wt/w28`. Your main checkout is
-  untouched. `main` has nothing newer than this branch (`git log wave/w28-staking-overhaul..main` is empty).
+  untouched (`main` now carries the landed `feat/living-biosphere` commits ahead of the W28 branch base; `npm run wave:land -- 28` or `npm run wave:sync -- 28` reconciles them cleanly).
 - **Ports:** `infra/.env.worktree` sets `TA_PORT_BASE=4500` → app **4501**, client **5673**
   (`TA_DB_NAME=terra_wave_w28_staking_overhaul`). Below, `<client>` = `http://127.0.0.1:5673`,
   `<app>` = `http://127.0.0.1:4501`. The Playwright stack uses **4502** / **5674**, so it can run beside `npm run dev`.
@@ -103,10 +103,11 @@
    `npm run near:build-contracts`, and `NEAR_MINTER_SECRET_KEY` (verifier operator).
 
 **Owner-only, real wallet (not done by the lead: frozen testnet, no keys).** With your approval and a funded wallet:
-`NEAR_MODE=testnet npm run dev`, open `/play.html` → **DEED** → staking panel, connect Intear or MyNearWallet (HOT is not
-installed in the selector), then: the copy says **"Never game power"**; **Stake** opens your wallet once for a single
-`stake_payable`; **↻ Compound Yield** signs `compound_yield`; **Unstake** within 7 days shows the 25 bp notice;
-**Withdraw** is one step (native withdraw is paid by the relayer; LST withdraw is `withdraw_lst`).
+`NEAR_MODE=testnet npm run dev`, open `/me.html#staking` or `/play.html` → **DEED** → staking panel, connect Meteor, Intear,
+MyNearWallet, or an injected wallet (HOT / HERE / Nightly / Sender), then: the copy says **"Never game power"**; **Stake**
+opens your wallet once for a single `stake_payable` (or `ft_transfer_call` to the LST pool for `stNEAR`/`LiNEAR`); **↻ Compound
+Yield** signs `compound_yield`; **Unstake** within 7 days shows the 25 bp notice and signs `unstake` on `/me.html#staking`;
+**Withdraw** is one step (`withdraw` on `/me.html#staking` or NEP-413 relayer withdraw in-game; LST withdraw is `withdraw_lst`).
 
 **Flag off.** Restart with `TA_WAVES=..27 npm run dev`: every W28 route answers 404, `/me.html` drops the STAKING tab,
 market fees are the W20 ladder again (50 bp at ≥ 10 NEAR), and the in-game panel shows the W20 claim-then-stake flow.
@@ -124,7 +125,7 @@ Run on the merged branch by the lead (pre-existing failures that also fail on `m
 - `npm test` → only the 7 suites that fail on `main` (planet-region, reconFaction, reconcile-flow w03, w13-regions,
   construction-orders, pod-terraform, no-teleport). `npm run test:integration` → 761/762, the one failure
   (`exchange-real/rails.real`) is on `main` too. `npm run test:contract` → 66/66. `npm run near:test-contracts` →
-  **169/169** Rust tests. `npm run validate:particles -- --all` → 25/25. `npm run validate:models -- --all` → 47/50
+  **171/171** Rust tests. `npm run validate:particles -- --all` → 25/25. `npm run validate:models -- --all` → 47/50
   (robot.hero / miner / recon fail on `main` too). `npm run test:parity` stops at the w13 scenario, as on `main`.
 - `npm run check` → typecheck + structure + gen clean; the same 3 lint errors as `main`.
 

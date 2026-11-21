@@ -2,6 +2,7 @@ import { STAKING_ASSETS, type StakingAsset, type StakingTxRow } from '@terra/con
 import type { DbClient } from '@terra/db';
 import type { WalletRef } from '../perks/stake-clock.reader.js';
 import { yoctoToNear } from '../yocto.js';
+import { readPoolTxAssetNets, splitStakedByAsset } from './asset-split.js';
 
 type Dec = { toFixed(n: number): string } | null | undefined;
 const y = (d: Dec): bigint => (d ? BigInt(d.toFixed(0)) : 0n);
@@ -34,6 +35,7 @@ export const EMPTY_BALANCES: WalletBalances = Object.freeze({
 
 interface PosRow {
   readonly accountId: string;
+  readonly poolId: string;
   readonly asset: string;
   readonly staked: bigint;
   readonly unbonding: bigint;
@@ -53,6 +55,7 @@ async function readPositions(db: DbClient, wallet: WalletRef): Promise<PosRow[]>
       : [];
   const rows: PosRow[] = pos.map((p) => ({
     accountId: String(p.accountId),
+    poolId: String(p.poolId ?? ''),
     asset: String(p.asset ?? 'near'),
     staked: y(p.stakedSnapshot as Dec),
     unbonding: y(p.unbondingSnapshot as Dec),
@@ -67,6 +70,7 @@ async function readPositions(db: DbClient, wallet: WalletRef): Promise<PosRow[]>
     for (const m of mocks) {
       rows.push({
         accountId: String(m.accountId),
+        poolId: String(m.poolId ?? ''),
         asset: String(m.asset ?? 'near'),
         staked: y(m.staked as Dec),
         unbonding: y(m.unbonding as Dec),
@@ -94,13 +98,15 @@ export async function readWalletBalances(
 ): Promise<WalletBalances> {
   const cfg: WalletBalanceReadOptions = typeof opts === 'boolean' ? { readMockWallet: opts } : opts;
   const rows = await readPositions(db, wallet);
+  const txNets = rows.length > 0 ? await readPoolTxAssetNets(db, [...new Set(rows.map((r) => r.accountId))]) : new Map();
   let active = 0n, unbonding = 0n, withdrawable = 0n, accrued = 0n;
   let ready: number | null = null;
   const lst = new Map<StakingAsset, bigint>();
   for (const r of rows) {
-    const asset = STAKING_ASSETS.find((a) => a === r.asset) ?? 'near';
-    if (asset === 'near') active += r.staked;
-    else lst.set(asset, (lst.get(asset) ?? 0n) + r.staked);
+    const split = splitStakedByAsset(r.staked, r.asset, txNets.get(`${r.accountId}::${r.poolId}`));
+    active += split.near;
+    if (split.stNEAR > 0n) lst.set('stNEAR', (lst.get('stNEAR') ?? 0n) + split.stNEAR);
+    if (split.LiNEAR > 0n) lst.set('LiNEAR', (lst.get('LiNEAR') ?? 0n) + split.LiNEAR);
     const matured = cfg.nowMs !== undefined && r.unbonding > 0n && r.readyAt !== null && cfg.nowMs >= r.readyAt.getTime();
     const rowUnbonding = matured ? 0n : r.unbonding;
     const rowWithdrawable = matured ? r.withdrawable + r.unbonding : r.withdrawable;

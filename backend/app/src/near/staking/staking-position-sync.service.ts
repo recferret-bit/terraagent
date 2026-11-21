@@ -120,18 +120,30 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     if (!this.isWaveEnabled()) return [];
     const colonyId = await this.resolveColonyId(accountId, explicitColonyId, wallet);
     const pools = await this.staking.listPools();
+    const seenPools = new Set<string>();
     const active: StakingPositionDto[] = [];
 
     for (const poolView of pools) {
+      seenPools.add(poolView.poolId);
       const dto = await this.syncSinglePool(accountId, colonyId, poolView);
       if (dto) active.push(dto);
     }
 
-    if (active.length === 0) {
-      const db = this.useDb();
-      if (db) {
-        await db.stakingPosition.deleteMany({ where: { accountId } });
+    if (this.flags?.has('W28') && typeof this.staking.accountPositions === 'function') {
+      const extras = await this.staking.accountPositions(accountId).catch(() => [] as const);
+      for (const pos of extras) {
+        if (seenPools.has(pos.pool)) continue;
+        seenPools.add(pos.pool);
+        const dto = await this.syncDiscoveredPosition(accountId, colonyId, pos, pools[0]?.apyBp ?? 900);
+        if (dto) active.push(dto);
       }
+    }
+
+    const db = this.useDb();
+    if (db) {
+      await db.stakingPosition.deleteMany({
+        where: active.length === 0 ? { accountId } : { accountId, poolId: { notIn: active.map((p) => p.pool) } },
+      });
     }
 
     return active;
@@ -228,6 +240,32 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
 
     const now = new Date();
     if (db) await this.persistSyncedPosition(db, colonyId, accountId, poolView.poolId, pos, rewardsYocto, now);
+    const dto = this.buildSyncedDto(colonyId, accountId, poolView, pos, rewardsYocto, now.getTime());
+    this.positions.set(mapKey, dto);
+    return dto;
+  }
+
+  private async syncDiscoveredPosition(
+    accountId: string,
+    colonyId: string,
+    pos: Awaited<ReturnType<StakingPort['position']>>,
+    defaultApyBp: number,
+  ): Promise<StakingPositionDto | null> {
+    const rewardsYocto = pos.rewards ?? '0';
+    const isZero =
+      BigInt(pos.staked || '0') <= 0n &&
+      BigInt(pos.unbonding || '0') <= 0n &&
+      BigInt(pos.withdrawable || '0') <= 0n &&
+      BigInt(rewardsYocto || '0') <= 0n;
+    const mapKey = `${accountId}:${pos.pool}`;
+    if (isZero) {
+      this.positions.delete(mapKey);
+      return null;
+    }
+    const now = new Date();
+    const db = this.useDb();
+    if (db) await this.persistSyncedPosition(db, colonyId, accountId, pos.pool, pos, rewardsYocto, now);
+    const poolView: StakingPoolView = { poolId: pos.pool, name: pos.pool, apyBp: defaultApyBp };
     const dto = this.buildSyncedDto(colonyId, accountId, poolView, pos, rewardsYocto, now.getTime());
     this.positions.set(mapKey, dto);
     return dto;
@@ -368,24 +406,30 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
 
     const db = this.useDb();
     if (db) {
-      const deed = await db.deed.findFirst({ where: { accountId }, select: { colonyId: true } });
+      const deed = typeof db.deed?.findFirst === 'function'
+        ? await db.deed.findFirst({ where: { accountId }, select: { colonyId: true } })
+        : null;
       if (deed?.colonyId) {
         this.knownAccountColonies.set(accountId, deed.colonyId);
         return deed.colonyId;
       }
-      const colAcct = await db.nearColonyAccount.findUnique({
-        where: { accountId },
-        select: { colonyId: true, slot: true },
-      });
+      const colAcct = typeof db.nearColonyAccount?.findUnique === 'function'
+        ? await db.nearColonyAccount.findUnique({
+            where: { accountId },
+            select: { colonyId: true, slot: true },
+          })
+        : null;
       const fromAcct = colAcct?.colonyId ?? (colAcct?.slot && colAcct.slot !== 'player' ? colAcct.slot : null);
       if (fromAcct) {
         this.knownAccountColonies.set(accountId, fromAcct);
         return fromAcct;
       }
-      const existingPos = await db.stakingPosition.findFirst({
-        where: { accountId },
-        select: { colonyId: true },
-      });
+      const existingPos = typeof db.stakingPosition?.findFirst === 'function'
+        ? await db.stakingPosition.findFirst({
+            where: { accountId },
+            select: { colonyId: true },
+          })
+        : null;
       if (existingPos?.colonyId) {
         this.knownAccountColonies.set(accountId, existingPos.colonyId);
         return existingPos.colonyId;

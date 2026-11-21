@@ -37,15 +37,16 @@ const lstFor = (net: StakingNetwork, asset: StakingAsset): string | undefined =>
 
 async function walletAction(c: ActionContext, action: StakingWalletAction, amount: string, asset: StakingAsset): Promise<ActionResult> {
   if (c.network === 'mock') return { ok: false, message: 'Wallet transaction is not used in mock mode.' };
+  const lst = lstFor(c.network, asset);
   const status = document.createElement('span');
   const done = await sendStakingWalletTx({
     fetchFn: ((input: string, init?: RequestInit) => c.doFetch(input, init)) as unknown as typeof fetch,
     network: c.network,
     action,
-    poolId: c.pool ?? DEFAULT_POOL,
+    poolId: lst ?? c.pool ?? DEFAULT_POOL,
     amountNear: amount,
     accountId: c.accountId,
-    lstContract: lstFor(c.network, asset),
+    lstContract: lst,
     statusMsgEl: status,
     selectorFactory: c.selectorFactory,
   });
@@ -64,17 +65,32 @@ export function runStakeAction(c: ActionContext, amount: string, asset: StakingA
   return rest(c, '/v1/near/stake', { amount, asset }, 'Stake', `${amount} ${asset === 'near' ? 'NEAR' : asset} staked.`);
 }
 
-export const runUnstakeAction = (c: ActionContext, amount: string, asset: StakingAsset): Promise<ActionResult> =>
-  rest(c, '/v1/near/unstake', { amount, asset }, 'Unstake', `Unstake of ${amount} NEAR started (unbonding).`);
+export function runUnstakeAction(c: ActionContext, amount: string, asset: StakingAsset): Promise<ActionResult> {
+  if (c.network !== 'mock') return walletAction(c, 'unstake', amount, asset);
+  return rest(c, '/v1/near/unstake', { amount, asset }, 'Unstake', `Unstake of ${amount} ${asset === 'near' ? 'NEAR' : asset} started (unbonding).`);
+}
 
 export function runWithdrawAction(c: ActionContext, perf: StakingPerformanceResponse, asset: StakingAsset): Promise<ActionResult> {
-  if (c.network !== 'mock' && asset !== 'near') return walletAction(c, 'withdraw_lst', perf.balances.withdrawableNear, asset);
+  if (c.network !== 'mock') {
+    return walletAction(c, asset === 'near' ? 'withdraw' : 'withdraw_lst', perf.balances.withdrawableNear, asset);
+  }
   return rest(c, '/v1/near/withdraw', { asset }, 'Withdraw', 'Withdrawn to your wallet in one step.');
 }
 
-export function runCompoundAction(c: ActionContext, perf: StakingPerformanceResponse, amountOverrideNear?: string): Promise<ActionResult> {
+export function runCompoundAction(
+  c: ActionContext,
+  perf: StakingPerformanceResponse,
+  amountOverrideNear?: string,
+  selectedAsset?: StakingAsset,
+): Promise<ActionResult> {
   const amount = amountOverrideNear ?? perf.balances.accruedYieldNear;
-  if (c.network !== 'mock') return walletAction(c, 'compound_yield', amount, 'near');
+  const fallbackAsset: StakingAsset =
+    selectedAsset && selectedAsset !== 'near' && perf.balances.lst.some((l) => l.asset === selectedAsset)
+      ? selectedAsset
+      : Number(perf.balances.activeStakedNear) <= 0 && perf.balances.lst[0]
+        ? perf.balances.lst[0].asset
+        : 'near';
+  if (c.network !== 'mock') return walletAction(c, 'compound_yield', amount, fallbackAsset);
   return rest(c, '/v1/near/stake/compound', {}, 'Compound', `Compounded ${amount} NEAR into principal (0 % fee).`);
 }
 

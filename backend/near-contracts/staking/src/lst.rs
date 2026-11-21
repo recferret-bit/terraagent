@@ -72,6 +72,10 @@ pub(crate) fn is_lst_pool(pool_id: &str) -> bool {
     bound_lst(pool_id).is_some()
 }
 pub(crate) fn bind_pool(pool_id: &str, lst_contract: &str) {
+    require!(
+        !crate::storage::is_native_pool(pool_id),
+        "STAKE_INVALID_POOL: pool is bound to native NEAR staking"
+    );
     match bound_lst(pool_id) {
         Some(existing) => require!(
             existing == lst_contract,
@@ -189,11 +193,24 @@ impl StakingVaultContract {
             is_whitelisted_lst(lst_contract.as_str(), self.owner_id.as_str()),
             "STAKE_INVALID_POOL: LST token contract is not whitelisted"
         );
+        require!(
+            !crate::storage::is_native_pool(&pool_id),
+            "STAKE_INVALID_POOL: pool is bound to native NEAR staking"
+        );
         if let Some(existing) = bound_lst(&pool_id) {
             require!(existing == lst_contract.as_str(), "STAKE_INVALID_POOL: pool is bound to another LST contract");
+        } else {
+            require!(
+                pool_id == lst_contract.as_str(),
+                "STAKE_INVALID_POOL: pool is not bound to this LST contract"
+            );
         }
         let price = read_price(&pool_id);
         require!(price > 0, "STAKE_PRICE_UNKNOWN: call refresh_lst_price first");
+        require!(
+            mul_div_floor(attached, PRICE_ONE, price).unwrap_or(0) > 0,
+            "STAKE_INSUFFICIENT_BALANCE: attached NEAR deposit too small to mint LST shares"
+        );
         let chain_now = env::block_timestamp_ms();
         let price_ts = read_price_ts(&pool_id);
         if chain_now > 0 && price_ts > 0 {
@@ -261,8 +278,9 @@ impl StakingVaultContract {
         let effective_price = live.map_or(cached, |p| p.max(cached));
         let shares = mul_div_floor(amount, PRICE_ONE, effective_price).unwrap_or(0);
         if shares == 0 {
-            Promise::new(depositor.clone()).transfer(NearToken::from_yoctonear(amount)).detach();
-            emit_staking("lst_deposit_refund", json!({ "depositor": depositor, "pool_id": pool_id, "amount": attached }));
+            // `deposit_and_stake` (promise 0) already succeeded on `lst_contract`, so the attached NEAR left this
+            // contract; never refund out of the vault's own native balance when `shares == 0`.
+            emit_staking("lst_deposit_zero_shares", json!({ "depositor": depositor, "pool_id": pool_id, "amount": attached }));
             return false;
         }
         bind_pool(&pool_id, &lst_contract);
@@ -308,6 +326,10 @@ impl StakingVaultContract {
             .unwrap_or_else(|| target.clone())
             .parse()
             .unwrap_or_else(|_| env::panic_str("STAKE_INVALID_RECIPIENT: invalid recipient account"));
+        require!(
+            self.is_operator(&caller) || recipient == caller || env::attached_deposit().as_yoctonear() == 1,
+            "STAKE_ONE_YOCTO_REQUIRED: attach 1 yoctoNEAR when withdrawing to a third-party recipient"
+        );
         let now = env::block_timestamp_ms();
         let settled = self.settle_pure(&target, &pool_id, 0, now);
         let mut next = settled.record.clone();
@@ -441,6 +463,16 @@ impl StakingVaultContract {
             apy_bp <= MAX_NON_OPERATOR_APY_BP,
             "STAKE_INVALID_APY: LST stake apy_bp exceeds 1000 bp"
         );
+        require!(
+            !crate::storage::is_native_pool(&pool_id),
+            "STAKE_INVALID_POOL: pool is bound to native NEAR staking"
+        );
+        require!(
+            pool_id == token_contract.as_str()
+                || bound_lst(&pool_id).is_some()
+                || self.is_operator(&sender_id),
+            "STAKE_INVALID_POOL: non-operator LST deposits must target the LST contract pool or an operator-bound pool"
+        );
         bind_pool(&pool_id, token_contract.as_str());
         let prior = self.positions.get(&pos_key(&target, &pool_id)).map(|r| (r.staked, r.last_accrued_at_ms)).unwrap_or_default();
         let chain_now = env::block_timestamp_ms();
@@ -452,6 +484,13 @@ impl StakingVaultContract {
             parsed.get("now_ms").and_then(|v| v.as_u64()).unwrap_or(0)
         };
         let price = read_price(&pool_id);
+        let price_ts = read_price_ts(&pool_id);
+        if price > 0 && chain_now > 0 && price_ts > 0 {
+            require!(
+                chain_now.saturating_sub(price_ts) <= MAX_LST_PRICE_AGE_MS,
+                "STAKE_PRICE_STALE: cached LST price is older than 1 hour; call refresh_lst_price first"
+            );
+        }
         self.credit_lst_shares(&target, &pool_id, token_contract.as_str(), qty, price, effective_now, apy_bp);
         emit_staking("lst_stake", json!({ "account_id": target, "lst": token_contract, "pool_id": pool_id, "amount": amount }));
         "0".to_string()

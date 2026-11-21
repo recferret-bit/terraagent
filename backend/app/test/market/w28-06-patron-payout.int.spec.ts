@@ -84,8 +84,16 @@ describe('W28-06 King-of-the-Hill patron payout on a real market fill', () => {
     expect(rows[0]).toMatchObject({ accountId: 'king.near', sourceTradeId: trade.tradeId });
     expect(rows[0]!.amountUsdcAtomic.toFixed()).toBe('12000');
     expect(100000n - 20000n - 12000n).toBe(68000n);
+    const kingBal = await db.prisma.mockChainIntentsBalance.findUniqueOrThrow({
+      where: { accountId_tokenId: { accountId: 'king.near', tokenId: USDC } },
+    });
+    expect(kingBal.amount.toFixed(0)).toBe('12000');
     await fees.depositSettled({ tradeId: trade.tradeId, planetId, quote: 'USDC', treasuryFee: '20000', platformFee: '100000' });
     expect(await payouts(planetId)).toHaveLength(1);
+    const kingAfterReplay = await db.prisma.mockChainIntentsBalance.findUniqueOrThrow({
+      where: { accountId_tokenId: { accountId: 'king.near', tokenId: USDC } },
+    });
+    expect(kingAfterReplay.amount.toFixed(0)).toBe('12000');
     expect((await dao.get({ daoAccountId: daoAccountIdFor(planetId) })).balances.USDC).toBe('20000');
   });
 

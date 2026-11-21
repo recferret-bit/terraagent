@@ -77,10 +77,11 @@ function lstFor(h: StakingFlowHost, asset: StakingAsset | undefined): string | u
 /** Real network: ONE wallet tx (`stake_payable` with the attached deposit, or `stake_lst` via `ft_transfer_call`). */
 async function stakeWithWallet(h: StakingFlowHost): Promise<boolean> {
   const { pool, asset, amount } = h.input();
-  const props = eventProps(h, pool, amount);
   const lst = lstFor(h, asset);
+  const targetPool = lst ?? pool;
+  const props = eventProps(h, targetPool, amount);
   h.tracker().stakeStarted(props);
-  const done = await walletTx(h, lst ? 'stake_lst' : 'stake_payable', pool, amount, lst);
+  const done = await walletTx(h, lst ? 'stake_lst' : 'stake_payable', targetPool, amount, lst);
   if (done === null) {
     h.tracker().stakeCancelled(props);
     return false;

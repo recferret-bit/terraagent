@@ -38,9 +38,13 @@ fn at(who: &str, ms: u64) -> near_sdk::test_utils::VMContextBuilder {
     b
 }
 
-fn set_price(c: &mut StakingVaultContract, price: u128) {
-    testing_env!(at(SELF_ID, T0).build());
+fn set_price_at(c: &mut StakingVaultContract, price: u128, ms: u64) {
+    testing_env!(at(SELF_ID, ms).build());
     assert!(c.on_lst_price(LST.into(), Ok(U128(price))));
+}
+
+fn set_price(c: &mut StakingVaultContract, price: u128) {
+    set_price_at(c, price, T0);
 }
 
 /// Pool bound to `LST` with a known price, ready for price-mode deposits.
@@ -53,6 +57,10 @@ fn priced_pool(price: u128) -> StakingVaultContract {
 }
 
 fn deposit(c: &mut StakingVaultContract, who: &str, shares: u128, ms: u64) {
+    let cur_price: u128 = c.get_lst_price(LST.into()).parse().unwrap_or(0);
+    if cur_price > 0 {
+        set_price_at(c, cur_price, ms);
+    }
     testing_env!(at(LST, ms).build());
     c.ft_on_transfer(who.parse().unwrap(), shares.to_string(), format!(r#"{{"pool_id":"{LST}","apy_bp":0}}"#));
 }
@@ -214,7 +222,7 @@ fn matured_lst_position() -> (StakingVaultContract, u64) {
 #[test]
 fn withdraw_lst_sends_ft_transfer_in_one_step_and_rolls_back_on_failure() {
     let (mut c, ready) = matured_lst_position();
-    testing_env!(at("alice.testnet", ready).build());
+    testing_env!(at("alice.testnet", ready).attached_deposit(NearToken::from_yoctonear(1)).build());
     let _ = c.withdraw_lst(LST.into(), LST.parse().unwrap(), (4 * ONE_NEAR).to_string(), None, Some("wallet.near".into()));
     let receipts = receipts_text();
     assert!(receipts.contains("ft_transfer") && receipts.contains("wallet.near"), "{receipts}");

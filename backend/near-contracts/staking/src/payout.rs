@@ -100,6 +100,10 @@ impl StakingVaultContract {
         let recipient: AccountId = recipient_str
             .parse()
             .unwrap_or_else(|_| env::panic_str("STAKE_INVALID_RECIPIENT: invalid recipient account"));
+        require!(
+            is_operator || recipient == caller || env::attached_deposit().as_yoctonear() == 1,
+            "STAKE_ONE_YOCTO_REQUIRED: attach 1 yoctoNEAR when withdrawing to a third-party recipient"
+        );
         require!(liquid_balance() >= payout, "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve");
         self.apply_settled(&account_id, &pool_id, &settled);
 
@@ -162,7 +166,12 @@ impl StakingVaultContract {
 
     /// Refunds an *unstaked* `deposit_near` balance to a wallet (CEI + async rollback callback).
     /// Staking payouts do not use this path any more: `withdraw` pays out directly.
+    #[payable]
     pub fn claim_native_near(&mut self, amount: String, recipient_id: Option<AccountId>) -> Promise {
+        require!(
+            env::attached_deposit().as_yoctonear() <= 1,
+            "STAKE_INVALID_DEPOSIT: attach at most 1 yoctoNEAR to claim_native_near"
+        );
         require!(
             env::prepaid_gas() >= Gas::from_tgas(MIN_CLAIM_PREPAID_TGAS),
             "NEAR_INSUFFICIENT_GAS: attach >= 25 TGas for claim_native_near"
@@ -171,6 +180,11 @@ impl StakingVaultContract {
         let caller_str = caller.to_string();
         let claim_val = parse_yocto(&amount);
         require!(claim_val > 0, "STAKE_INSUFFICIENT_BALANCE: amount must be > 0");
+        let dest = recipient_id.unwrap_or_else(|| caller.clone());
+        require!(
+            self.is_operator(&caller) || dest == caller || env::attached_deposit().as_yoctonear() == 1,
+            "STAKE_ONE_YOCTO_REQUIRED: attach 1 yoctoNEAR when claiming to a third-party recipient"
+        );
         let vault_bal = self.balances.get(&caller_str).copied().unwrap_or(0);
         let native_bal = read_native_dep(&caller_str);
         require!(
@@ -183,7 +197,6 @@ impl StakingVaultContract {
         );
         self.balances.insert(caller_str.clone(), vault_bal - claim_val);
         write_native_dep(&caller_str, native_bal - claim_val);
-        let dest = recipient_id.unwrap_or(caller);
         let dest_str = dest.to_string();
         Promise::new(dest)
             .transfer(NearToken::from_yoctonear(claim_val))
@@ -323,6 +336,12 @@ impl StakingVaultContract {
                 .checked_add(withdraw_val)
                 .expect("STAKE_INSUFFICIENT_BALANCE: overflow");
             self.balances.insert(recipient.clone(), next_rec);
+            let proto_ndep = read_native_dep(&protocol_id);
+            let moved_ndep = proto_ndep.min(withdraw_val);
+            if moved_ndep > 0 {
+                write_native_dep(&protocol_id, proto_ndep - moved_ndep);
+                write_native_dep(&recipient, read_native_dep(&recipient).saturating_add(moved_ndep));
+            }
         }
         let res = WithdrawResultView {
             account_id: protocol_id.clone(),

@@ -470,3 +470,78 @@ fn deposit_and_stake_lst_rejects_stale_cached_price_and_uses_live_callback_price
     let pos = c.get_account_positions("alice.testnet".into(), None, Some(T0 + 1_000));
     assert_eq!(pos[0].staked, (10 * ONE_NEAR).to_string(), "12 NEAR at live 1.20 price books 10 shares, not 12");
 }
+
+#[test]
+fn blocks_native_lst_pool_hijacking_stale_ft_on_transfer_zero_share_refund_and_third_party_zero_yocto_withdraws() {
+    let mut c = new_contract();
+    // 1. Alice stakes 10 native NEAR into POOL (`astro.pool.testnet`).
+    testing_env!(ts_ctx("alice.testnet", T0).account_balance(NearToken::from_near(30)).attached_deposit(NearToken::from_near(10)).build());
+    c.stake_payable("hijack-s1".into(), POOL.into(), 900, T0, None);
+
+    // Attacker tries to convert POOL into an LST pool via ft_on_transfer or bind_lst_pool -> rejected!
+    testing_env!(ts_ctx("meta-pool.near", T0).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.ft_on_transfer("mallory.testnet".parse().unwrap(), ONE_NEAR.to_string(), format!(r#"{{"pool_id":"{POOL}"}}"#));
+    })).is_err());
+    // Even an untouched validator pool name cannot be hijacked by a non-operator via ft_on_transfer!
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.ft_on_transfer("mallory.testnet".parse().unwrap(), ONE_NEAR.to_string(), r#"{"pool_id":"chorus-one.pool.testnet"}"#.into());
+    })).is_err());
+    testing_env!(ctx(OP).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.bind_lst_pool(POOL.into(), "meta-pool.near".parse().unwrap());
+    })).is_err());
+    // Native stake_payable into a whitelisted LST contract ID is also blocked!
+    testing_env!(ts_ctx("mallory.testnet", T0).attached_deposit(NearToken::from_near(1)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.stake_payable("poison-lst".into(), "meta-pool.near".into(), 900, T0, None);
+    })).is_err());
+
+    // 2. Stale price in ft_on_transfer (> 1h old) panics so pre-deposit LST appreciation is never taxed!
+    testing_env!(ctx(OP).build());
+    c.bind_lst_pool("meta-pool.near".into(), "meta-pool.near".parse().unwrap());
+    testing_env!(ts_ctx("staking.terraagent.testnet", T0).build());
+    c.on_lst_price("meta-pool.near".into(), Ok(near_sdk::json_types::U128(crate::lst::PRICE_ONE)));
+    testing_env!(ts_ctx("meta-pool.near", T0 + crate::lst::MAX_LST_PRICE_AGE_MS + 1).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.ft_on_transfer("alice.testnet".parse().unwrap(), ONE_NEAR.to_string(), r#"{"pool_id":"meta-pool.near","apy_bp":0}"#.into());
+    })).is_err());
+
+    // 3. Successful deposit_and_stake (promise 0 Ok) with 0 computed shares NEVER refunds out of the vault's own native NEAR!
+    let huge_price = near_sdk::serde_json::to_vec(&near_sdk::json_types::U128(u128::MAX)).unwrap();
+    testing_env!(
+        ts_ctx("staking.terraagent.testnet", T0 + 500).build(),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![near_sdk::PromiseResult::Successful(vec![]), near_sdk::PromiseResult::Successful(huge_price)]
+    );
+    assert!(!c.on_lst_deposit(
+        "mallory.testnet".parse().unwrap(), "mallory.testnet".into(), "meta-pool.near".into(), "meta-pool.near".into(),
+        "1".into(), crate::lst::PRICE_ONE.to_string(), T0 + 500,
+    ));
+    assert!(get_created_receipts().is_empty(), "must not drain native vault balance when deposit_and_stake succeeded");
+
+    // 4. Self-custody withdraw / withdraw_lst / claim_native_near to a THIRD-PARTY recipient requires 1 yoctoNEAR!
+    testing_env!(ts_ctx("alice.testnet", T0 + WEEK).account_balance(NearToken::from_near(30)).build());
+    c.unstake("hijack-u1".into(), "alice.testnet".into(), POOL.into(), 900, ONE_NEAR.to_string(), T0 + WEEK);
+    let ready = T0 + WEEK + UNBONDING_DURATION_MS;
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw("hijack-w-bad".into(), "alice.testnet".into(), Some("thief.testnet".into()), POOL.into(), 900, ready);
+    })).is_err());
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).attached_deposit(NearToken::from_yoctonear(1)).build());
+    assert!(matches!(
+        c.withdraw("hijack-w-ok".into(), "alice.testnet".into(), Some("vault.alice.testnet".into()), POOL.into(), 900, ready),
+        PromiseOrValue::Promise(_)
+    ));
+
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).attached_deposit(NearToken::from_near(1)).build());
+    c.deposit_near(None);
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.claim_native_near(ONE_NEAR.to_string(), Some("thief.testnet".parse().unwrap()));
+    })).is_err());
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).attached_deposit(NearToken::from_yoctonear(1)).build());
+    let _ = c.claim_native_near(ONE_NEAR.to_string(), Some("vault.alice.testnet".parse().unwrap()));
+}
