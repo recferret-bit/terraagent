@@ -11,12 +11,12 @@ export interface SidebarHandlers {
   onFloraRow?: (group: FloraGroup) => void;
 }
 
-type SideTab = 'hive' | 'march' | 'units';
+export type SideTab = 'hive' | 'wildlife' | 'march' | 'units';
 
-const SIDE_TABS: readonly SideTab[] = ['hive', 'march', 'units'];
-const TAB_LABEL: Record<SideTab, string> = { hive: 'HIVE', march: 'MARCH', units: 'UNITS' };
+const SIDE_TABS: readonly SideTab[] = ['hive', 'wildlife', 'march', 'units'];
+const TAB_LABEL: Record<SideTab, string> = { hive: 'HIVE', wildlife: 'WILDLIFE', march: 'MARCH', units: 'UNITS' };
 
-/** Left sidebar: hive-life, group march, and the archetype list on separate tabs. */
+/** Left sidebar: hive-life, planet wildlife levels, group march, and the archetype list on separate tabs. */
 export class Sidebar {
   private expanded = new Set<ArchetypeCategory>();
   private natureBlock: NatureBlock;
@@ -52,7 +52,7 @@ export class Sidebar {
   }
 
   /** Shows one pane. Does not change the scene, the sim, or PgState. */
-  showTab(tab: 'hive' | 'march' | 'units'): void {
+  showTab(tab: SideTab): void {
     const root = $('#side');
     root.querySelectorAll<HTMLButtonElement>('[data-side-tab]').forEach((btn) => {
       const on = btn.dataset.sideTab === tab;
@@ -156,15 +156,16 @@ export class Sidebar {
     $('#side').querySelectorAll<HTMLButtonElement>('[data-side-tab]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const tab = btn.dataset.sideTab;
-        if (tab === 'hive' || tab === 'march' || tab === 'units') this.showTab(tab);
+        if (tab === 'hive' || tab === 'wildlife' || tab === 'march' || tab === 'units') this.showTab(tab);
       });
     });
   }
 
-  /** March wins over a hive/wildlife fixture; otherwise the archetype list is the default. */
+  /** March wins over a wildlife/hive fixture; otherwise the archetype list is the default. */
   private openingTab(): SideTab {
     if (this.state.march !== null) return 'march';
-    if (this.state.faunaScene !== null || this.state.wildlife !== null) return 'hive';
+    if (this.state.wildlife !== null) return 'wildlife';
+    if (this.state.faunaScene !== null) return 'hive';
     return 'units';
   }
 }
@@ -180,6 +181,7 @@ function sideShell(count: number): string {
   return `<div class="brand"><div><a class="wm" href="${hubHref}" title="Return to hub">TERRA<b>AGENT</b></a><small>3D PLAYGROUND · ${count} ARCHETYPES</small></div></div>
   <div class="side-tabs" role="tablist">${tabs}</div>
   <div class="side-pane" data-side-pane="hive" hidden></div>
+  <div class="side-pane" data-side-pane="wildlife" hidden></div>
   <div class="side-pane" data-side-pane="march" hidden></div>
   <div class="side-pane side-units" data-side-pane="units">
   <input id="search" placeholder="Search archetypes…  ( / )" autocomplete="off" />

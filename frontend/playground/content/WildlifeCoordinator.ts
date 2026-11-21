@@ -13,6 +13,7 @@ export interface WildlifeDeps {
   toolbar: Toolbar;
   deactivateOtherScenes: () => void;
   syncSurface: () => void;
+  syncStageLighting?: () => void;
   refreshInfo: () => void;
   resetView: () => void;
 }
@@ -51,7 +52,8 @@ export class WildlifeCoordinator {
     state.wildlife = kind;
     if (kind) {
       state.kind = kind;
-      viewport.applySky(PLANET_SPECS[kind]);
+      if (this.d.syncStageLighting) this.d.syncStageLighting();
+      else viewport.applySky(PLANET_SPECS[kind]);
       toolbar.setPlanet(kind);
     }
     if (hour !== undefined && Number.isFinite(hour)) state.wildlifeHour = ((hour % 24) + 24) % 24;

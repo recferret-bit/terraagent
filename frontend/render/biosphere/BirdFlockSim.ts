@@ -43,17 +43,17 @@ function computeTargetFlapWeight(flock: BirdFlock, m: BirdMemberState, idx: numb
   const sp = flock.species;
   const vy = m.vy ?? 0;
   if (sp.flapBase < 0.50) {
-    const powerCycle = Math.sin(elapsed * (0.78 + 0.12 * (idx % 2)) + flock.id * 1.9 + idx * 0.42);
-    if (powerCycle > 0.50 || vy > 0.14) return 0.84;
+    const powerCycle = Math.sin(elapsed * (0.95 + 0.14 * (idx % 2)) + flock.id * 1.9 + idx * 0.42);
+    if (powerCycle > -0.10 || vy > 0.08) return 0.94;
     return sp.flapBase;
   }
   if (sp.sizeClass === 'medium') {
     const glideDip = Math.sin(elapsed * 1.35 + flock.id * 1.3 + idx * 0.48);
-    if (glideDip < -0.72 && vy <= 0.12) return 0.22;
+    if (glideDip < -0.78 && vy <= 0.12) return 0.28;
   }
-  if (vy > 0.22) return Math.min(1, sp.flapBase + 0.28);
-  if (vy < -0.35) return Math.max(0.14, sp.flapBase * 0.55);
-  return sp.flapBase;
+  if (vy > 0.18) return Math.min(1, sp.flapBase + 0.28);
+  if (vy < -0.35) return Math.max(0.24, sp.flapBase * 0.65);
+  return Math.max(0.82, sp.flapBase);
 }
 
 interface FlockStepContext {

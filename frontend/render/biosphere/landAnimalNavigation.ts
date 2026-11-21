@@ -12,22 +12,30 @@ export function nearestAnchor(
   z: number,
   list: readonly HabitatAnchor[],
   avoid: readonly BiosphereAggressor[],
+  minDistance = 0,
 ): HabitatAnchor | null {
   let best: HabitatAnchor | null = null;
   let bestScore = Infinity;
+  let fallback: HabitatAnchor | null = null;
+  let fallbackScore = Infinity;
   for (const a of list) {
     let penalty = 0;
     for (const ag of avoid) {
       const d = Math.hypot(a.x - ag.x, a.z - ag.z);
       if (d < 16) penalty += (16 - d) * 6;
     }
-    const score = Math.hypot(a.x - x, a.z - z) + penalty;
-    if (score < bestScore) {
+    const dist = Math.hypot(a.x - x, a.z - z);
+    const score = dist + penalty;
+    if (score < fallbackScore) {
+      fallbackScore = score;
+      fallback = a;
+    }
+    if (dist >= minDistance && score < bestScore) {
       bestScore = score;
       best = a;
     }
   }
-  return best;
+  return best ?? fallback;
 }
 
 export function pickEscapeGoal(
@@ -171,18 +179,18 @@ export function selectGoalForActivity(
 
   if (activity === 'SLEEPING') { applyGoal(leader.homeX, leader.homeZ); return; }
   if (activity === 'DRINKING') {
-    const w = nearestAnchor(leader.x, leader.z, habitat.waterAnchors, aggressors);
+    const w = nearestAnchor(leader.x, leader.z, habitat.waterAnchors, aggressors, 6.5);
     if (w) applyGoal(w.x, w.z);
     return;
   }
   if (activity === 'EATING_GRASS') {
-    const g = nearestAnchor(leader.homeX, leader.homeZ, habitat.grassAnchors, aggressors);
+    const g = nearestAnchor(leader.x, leader.z, habitat.grassAnchors, aggressors, 7.5);
     if (g) applyGoal(g.x, g.z);
     return;
   }
   if (activity === 'BROWSING_TREES') {
     const pool = habitat.forestAnchors.length > 0 ? habitat.forestAnchors : habitat.grassAnchors;
-    const f = nearestAnchor(leader.homeX, leader.homeZ, pool, aggressors);
+    const f = nearestAnchor(leader.x, leader.z, pool, aggressors, 7.0);
     if (f) applyGoal(f.x, f.z);
     return;
   }
@@ -191,6 +199,11 @@ export function selectGoalForActivity(
     if (prey) { applyGoal(prey.x, prey.z); return; }
     const [px, pz] = pickProwlWaypoint(leader, rng, habitat);
     applyGoal(px, pz);
+    return;
+  }
+  if (Math.hypot(leader.homeX - leader.x, leader.homeZ - leader.z) < 3.2) {
+    const [rx, rz] = pickProwlWaypoint(leader, rng, habitat);
+    applyGoal(rx, rz);
     return;
   }
   applyGoal(leader.homeX, leader.homeZ);

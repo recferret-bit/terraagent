@@ -105,7 +105,8 @@ export class PlaygroundApp {
         if (this.state.march) { this.state.march = null; this.marchHost.setActive(false); this.marchPanel.render(); }
         if (this.state.faunaScene !== null) { this.state.faunaScene = null; this.syncFaunaStage(); }
       },
-      syncSurface: () => this.syncSurface(), refreshInfo: () => this.refreshInfo(), resetView: () => this.setView(this.state.view),
+      syncSurface: () => this.syncSurface(), syncStageLighting: () => this.syncStageLighting(),
+      refreshInfo: () => this.refreshInfo(), resetView: () => this.setView(this.state.view),
     });
     this.marchPanel = new MarchPanel(this.state, () => this.marchHost.getStats(), {
       onPace: (pace) => this.setMarch(pace),
@@ -419,6 +420,9 @@ export class PlaygroundApp {
   private toggleRow(cat?: ArchetypeCategory) {
     const { state } = this;
     if (isFloraId(state.id) && !cat) { this.toggleFloraRow(getFloraEntry(state.id)!.group); return; }
+    if (this.hasStarted && state.march) this.setMarch(null);
+    if (this.hasStarted && state.faunaScene !== null) { state.faunaScene = null; this.syncFaunaStage(); }
+    if (this.hasStarted && state.wildlife !== null) { state.wildlife = null; this.wildlife.sync(); }
     const c = cat ?? (state.id && !isFloraId(state.id) ? ArchetypeCatalog.get(state.id).category : null);
     state.floraRow = null;
     state.row = state.row === c || !c ? null : c;
@@ -432,6 +436,9 @@ export class PlaygroundApp {
 
   private toggleFloraRow(group: FloraGroup) {
     const { state } = this;
+    if (this.hasStarted && state.march) this.setMarch(null);
+    if (this.hasStarted && state.faunaScene !== null) { state.faunaScene = null; this.syncFaunaStage(); }
+    if (this.hasStarted && state.wildlife !== null) { state.wildlife = null; this.wildlife.sync(); }
     state.row = null;
     state.floraRow = state.floraRow === group ? null : group;
     if (state.floraRow && getFloraEntry(state.id)?.group !== state.floraRow) state.id = listFloraEntries(state.floraRow)[0]?.id ?? state.id;

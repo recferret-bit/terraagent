@@ -33,7 +33,7 @@ function stepStationaryFeeding(
   if (agent.pauseTimer <= 0) {
     for (let k = 0; k < 6; k++) {
       const ang = rng() * Math.PI * 2;
-      const stepR = 1.3 + rng() * 1.6;
+      const stepR = 3.2 + rng() * 3.8;
       const nx = agent.x + Math.cos(ang) * stepR;
       const nz = agent.z + Math.sin(ang) * stepR;
       if (habitat.isPassableLand(nx, nz)) {
@@ -42,7 +42,7 @@ function stepStationaryFeeding(
         break;
       }
     }
-    agent.pauseTimer = 1.8 + rng() * 2.6;
+    agent.pauseTimer = 0.55 + rng() * 0.85;
   }
   agent.y = habitat.heightAt(agent.x, agent.z);
 }
@@ -72,6 +72,52 @@ function applySocialSteering(
   ];
 }
 
+const AGILE_CANTER_SPECIES = new Set<string>([
+  'fauna.meadowHare',
+  'fauna.islandLemur',
+  'fauna.crownStag',
+  'fauna.saberOryx',
+  'fauna.timberWolf',
+  'fauna.duneJackal',
+  'fauna.canopyPanther',
+  'fauna.mesaCaracal',
+]);
+
+function refreshRoamingGoal(
+  agent: LandAnimalAgent,
+  distGoal: number,
+  rng: () => number,
+  habitat: BiosphereHabitatIndex,
+): number {
+  if ((agent.state !== 'ROAMING' && agent.state !== 'HUNTING') || distGoal >= 1.8) return distGoal;
+
+  if (agent.state === 'HUNTING') {
+    const [nx, nz] = pickProwlWaypoint(agent, rng, habitat);
+    agent.goalX = nx;
+    agent.goalZ = nz;
+  } else {
+    let picked = false;
+    for (let k = 0; k < 8; k++) {
+      const ang = rng() * Math.PI * 2;
+      const rad = 6.5 + rng() * 10.5;
+      const nx = agent.homeX + Math.cos(ang) * rad;
+      const nz = agent.homeZ + Math.sin(ang) * rad;
+      if (habitat.isPassableLand(nx, nz) && Math.hypot(nx - agent.x, nz - agent.z) > 4.2) {
+        agent.goalX = nx;
+        agent.goalZ = nz;
+        picked = true;
+        break;
+      }
+    }
+    if (!picked) {
+      const [nx, nz] = pickProwlWaypoint(agent, rng, habitat);
+      agent.goalX = nx;
+      agent.goalZ = nz;
+    }
+  }
+  return Math.hypot(agent.goalX - agent.x, agent.goalZ - agent.z);
+}
+
 function stepAnimalKinematics(
   agent: LandAnimalAgent,
   dt: number,
@@ -90,9 +136,10 @@ function stepAnimalKinematics(
   }
 
   agent.sleepCrouch = Math.max(0, agent.sleepCrouch - dt * 3.2);
+  const initialDist = Math.hypot(agent.goalX - agent.x, agent.goalZ - agent.z);
+  const distGoal = refreshRoamingGoal(agent, initialDist, rng, habitat);
   const dxGoal = agent.goalX - agent.x;
   const dzGoal = agent.goalZ - agent.z;
-  const distGoal = Math.hypot(dxGoal, dzGoal);
   const feedingState =
     agent.state === 'DRINKING' || agent.state === 'EATING_GRASS' || agent.state === 'BROWSING_TREES';
 
@@ -101,47 +148,38 @@ function stepAnimalKinematics(
     return;
   }
 
-  const slowForagingStep = feedingState && distGoal < 3.4;
+  const sprinting =
+    agent.state === 'FLEEING_AGGRESSOR' || agent.state === 'FLEEING_PREDATOR' || (agent.state === 'HUNTING' && distGoal < 14);
+  const prevSpd = Math.hypot(agent.vx, agent.vz);
+  const wasCantering = prevSpd > agent.species.walkSpeed * 1.05;
+  const isHopper = agent.species.id === 'fauna.meadowHare' || agent.species.id === 'fauna.islandLemur';
+  const canCanter = isHopper || AGILE_CANTER_SPECIES.has(agent.species.id);
+  const canterThreshold = isHopper ? (wasCantering ? 2.0 : 3.5) : (wasCantering ? 2.8 : 6.0);
+  const openGroundCanter = !sprinting && canCanter && distGoal > canterThreshold;
+  const slowForagingStep = feedingState && !openGroundCanter && distGoal < 4.8;
   if (slowForagingStep) {
     agent.workWeight = Math.min(0.85, Math.max(0.55, agent.workWeight + dt * 2.0));
   } else {
     agent.workWeight = Math.max(0, agent.workWeight - dt * 3.0);
   }
-  const sprinting =
-    agent.state === 'FLEEING_AGGRESSOR' || agent.state === 'FLEEING_PREDATOR' || (agent.state === 'HUNTING' && distGoal < 14);
-  const targetSpeed = sprinting
+  const baseSpeed = sprinting
     ? agent.species.runSpeed
     : slowForagingStep
-      ? agent.species.walkSpeed * 0.36
-      : agent.state === 'HUNTING'
-        ? agent.species.walkSpeed * 1.18
-        : agent.species.walkSpeed;
+      ? agent.species.walkSpeed * 0.78
+      : openGroundCanter
+        ? agent.species.walkSpeed * (isHopper ? 1.55 : 1.48)
+        : agent.state === 'HUNTING'
+          ? agent.species.walkSpeed * 1.38
+          : agent.species.walkSpeed;
+  const arrivalScale =
+    (agent.state === 'ROAMING' || agent.state === 'HUNTING') && distGoal < 1.6
+      ? Math.max(0, Math.min(1, (distGoal - 0.30) / 1.30))
+      : 1;
+  const targetSpeed = baseSpeed * arrivalScale;
 
-  const baseDirX = distGoal > 0.2 ? dxGoal / distGoal : Math.sin(agent.yaw);
-  const baseDirZ = distGoal > 0.2 ? dzGoal / distGoal : Math.cos(agent.yaw);
+  const baseDirX = distGoal > 0.3 ? dxGoal / distGoal : Math.sin(agent.yaw);
+  const baseDirZ = distGoal > 0.3 ? dzGoal / distGoal : Math.cos(agent.yaw);
   const [dirX, dirZ] = applySocialSteering(agent, allAgents, baseDirX, baseDirZ);
-
-  if ((agent.state === 'ROAMING' || agent.state === 'HUNTING') && distGoal < 3.2) {
-    agent.pauseTimer -= dt;
-    if (agent.pauseTimer <= 0) {
-      if (agent.state === 'HUNTING') {
-        const [nx, nz] = pickProwlWaypoint(agent, rng, habitat);
-        agent.goalX = nx;
-        agent.goalZ = nz;
-        agent.pauseTimer = 1.0 + rng() * 1.8;
-      } else {
-        const ang = rng() * Math.PI * 2;
-        const rad = 4 + rng() * 9;
-        const nx = agent.homeX + Math.cos(ang) * rad;
-        const nz = agent.homeZ + Math.sin(ang) * rad;
-        if (habitat.isPassableLand(nx, nz)) {
-          agent.goalX = nx;
-          agent.goalZ = nz;
-        }
-        agent.pauseTimer = 2.5 + rng() * 4.0;
-      }
-    }
-  }
 
   const len = Math.max(0.01, Math.hypot(dirX, dirZ));
   const steerX = (dirX / len) * targetSpeed;
@@ -153,8 +191,16 @@ function stepAnimalKinematics(
   advanceOnPassableLand(agent, dt, habitat);
   agent.y = habitat.heightAt(agent.x, agent.z);
   const curSpd = Math.hypot(agent.vx, agent.vz);
-  if (curSpd > 0.12) agent.yaw = Math.atan2(agent.vx, agent.vz);
-  agent.walkWeight = Math.min(1, curSpd / Math.max(0.5, agent.species.walkSpeed));
+  if (curSpd > 0.14) {
+    const targetYaw = Math.atan2(agent.vx, agent.vz);
+    let dYaw = (targetYaw - agent.yaw) % (Math.PI * 2);
+    if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    agent.yaw += dYaw * Math.min(1, dt * 10.0);
+  }
+  const walkRatio = curSpd / Math.max(0.5, agent.species.walkSpeed);
+  agent.walkWeight = curSpd > 0.14 ? Math.min(1, Math.max(0.84, walkRatio)) : Math.min(1, walkRatio);
+  if (walkRatio > 1.05) agent.phase += dt * Math.min(1.5, (walkRatio - 1) * 0.75);
 }
 
 export interface LandAnimalSimulatorOptions {
@@ -311,12 +357,22 @@ export class LandAnimalSimulator {
       const scheduled = resolveCircadianActivity(agent.species, solarHour24);
       if (agent.state !== scheduled) {
         agent.state = scheduled;
+        agent.pauseTimer = 0;
         selectGoalForActivity(agent, leader, scheduled, this.agents, habitat, aggressors, this.rng);
       } else if (scheduled === 'HUNTING') {
-        const closePrey = findClosestPrey(leader, this.agents, 46);
+        agent.pauseTimer = Math.max(0, agent.pauseTimer - stepDt);
+        const closePrey = agent.pauseTimer <= 0 ? findClosestPrey(leader, this.agents, 46) : null;
         if (closePrey) {
-          agent.goalX = closePrey.x;
-          agent.goalZ = closePrey.z;
+          const preyDist = Math.hypot(closePrey.x - agent.x, closePrey.z - agent.z);
+          if (preyDist < 2.6) {
+            const [px, pz] = pickProwlWaypoint(agent, this.rng, habitat);
+            agent.goalX = px;
+            agent.goalZ = pz;
+            agent.pauseTimer = 3.0;
+          } else {
+            agent.goalX = closePrey.x;
+            agent.goalZ = closePrey.z;
+          }
         }
       }
       stepAnimalKinematics(agent, stepDt, this.rng, this.agents, habitat);

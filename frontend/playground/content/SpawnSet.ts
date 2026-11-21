@@ -239,7 +239,7 @@ export class SpawnSet {
       const u = s.mesh.userData?.uniforms as Record<string, THREE.IUniform<number | THREE.Vector4>> | undefined;
       if (u?.uVertParams && u?.uVertMeta) {
         const isBird = (u.uVertMeta.value as THREE.Vector4).y > 0.5;
-        let walkV = isBird ? 0.65 : 0;
+        let walkV = isBird ? 1.0 : (work > 0 ? 0 : 1.0);
         let runV = 0;
         let workV = work;
         let sleepV = 0;

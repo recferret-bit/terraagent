@@ -31,15 +31,17 @@ export function updateSceneInfo(stats: FaunaSceneStats | WildlifeSceneStats | Ma
   const el = $('#info');
   ensureInfoDock(el);
   if ('birdsTotal' in stats) {
-    const title = stats.kind ? `Wildlife · ${stats.kind}` : 'Wildlife ecosystem';
+    const title = stats.kind ? stats.levelTitle : 'Wildlife ecosystem';
+    const sub = stats.kind ? `Wildlife · ${stats.kind}` : 'Living biosphere';
     const rows: Array<[string, string | number]> = [
+      ['planet', stats.kind ?? '—'],
       ['hour', `${String(Math.round(stats.hour)).padStart(2, '0')}:00`],
       ['birds', `${stats.birdsTotal} (${stats.birdSpecies} spp)`],
       ['mammals', `${stats.landAnimalsTotal} (${stats.landSpecies} spp)`],
       ['grazing / hunt / sleep', `${stats.grazing} / ${stats.hunting} / ${stats.sleeping}`],
       ['fleeing', stats.fleeing],
     ];
-    const html = `${infoHead(`<h3>${esc(title)}<small>Living biosphere</small></h3>`)}<table>${rows.map(([label, value]) => `<tr><td>${label}</td><td>${esc(String(value))}</td></tr>`).join('')}</table><p>Select a model in Units to inspect its sculpted anatomy.</p>`;
+    const html = `${infoHead(`<h3>${esc(title)}<small>${esc(sub)}</small></h3>`)}<table>${rows.map(([label, value]) => `<tr><td>${label}</td><td>${esc(String(value))}</td></tr>`).join('')}</table><p>Select a model in Units to inspect its sculpted anatomy.</p>`;
     if (sceneMarkup.get(el) !== html) { el.innerHTML = html; sceneMarkup.set(el, html); }
     return;
   }

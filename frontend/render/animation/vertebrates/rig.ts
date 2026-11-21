@@ -5,9 +5,9 @@ export const DEFAULT_MAMMAL_CONFIG: VertebrateRigConfig = {
   isBird: 0,
   comY: 0.45,
   sleepDrop: 0.22,
-  strideLen: 0.14,
-  liftHeight: 0.065,
-  gaitFreq: 5.2,
+  strideLen: 0.16,
+  liftHeight: 0.075,
+  gaitFreq: 10.5,
   headSleepPitch: 0.18,
 };
 
@@ -15,9 +15,9 @@ export const DEFAULT_BIRD_CONFIG: VertebrateRigConfig = {
   isBird: 1,
   comY: 0.65,
   sleepDrop: 0,
-  strideLen: 0.42,
-  liftHeight: 0.34,
-  gaitFreq: 7.5,
+  strideLen: 0.46,
+  liftHeight: 0.38,
+  gaitFreq: 18.0,
   headSleepPitch: 0,
   birdSize: 0.45,
 };

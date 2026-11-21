@@ -30,10 +30,10 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 function computeBirdFlapEnv(walk: number, sz: number, g: number): number {
-  const activeFlap = smoothstep(0.08, 0.45, walk) * walk;
-  const smallness = Math.max(0, Math.min(1, (0.36 - sz) / 0.36));
+  const activeFlap = smoothstep(0.14, 0.42, walk) * (0.45 + 0.55 * walk);
+  const smallness = Math.max(0, Math.min(1, (0.20 - sz) / 0.20));
   const sprint = smoothstep(0.95, 1.0, walk);
-  const burstWave = 0.32 + 0.68 * smoothstep(-0.35, 0.25, Math.sin(g * 0.22));
+  const burstWave = 0.82 + 0.18 * smoothstep(-0.25, 0.25, Math.sin(g * 0.22));
   return activeFlap * (1 - smallness * (1 - sprint) * (1 - burstWave));
 }
 
@@ -43,12 +43,13 @@ export function vertebrateBodyMatrix(p: VertebratePose): THREE.Matrix4 {
   if (isBird > 0.5) {
     const sz = Math.max(0, Math.min(1, p.config.birdSize ?? 0));
     const flapEnv = computeBirdFlapEnv(p.walk, sz, g);
-    const bobAmp = 0.018 + 0.024 * sz;
-    const glideBob = (0.006 + 0.008 * sz) * Math.sin(p.time * (2.2 - 0.8 * sz));
-    const bob = Math.sin(g - 0.22 * sz) * bobAmp * flapEnv + glideBob * (1 - flapEnv);
-    const pitch = -Math.cos(g - 0.22 * sz) * (0.028 + 0.026 * sz) * flapEnv;
+    const bobAmp = 0.036 + 0.042 * sz;
+    const glideBob = (0.010 + 0.012 * sz) * Math.sin(p.time * (2.4 - 0.8 * sz));
+    const bob = -Math.sin(g - 0.35 - 0.18 * sz) * bobAmp * flapEnv + glideBob * (1 - flapEnv);
+    const pitch = Math.cos(g - 0.35 - 0.18 * sz) * (0.056 + 0.036 * sz) * flapEnv;
+    const roll = Math.sin(p.time * 1.9) * (0.018 + 0.016 * sz) * (1 - flapEnv * 0.5);
     const anchor = new THREE.Vector3(0, comY + bob, 0);
-    return rigid(new THREE.Vector3(0, comY, 0), anchor, rotateRollPitchYawQuat(0, pitch, 0));
+    return rigid(new THREE.Vector3(0, comY, 0), anchor, rotateRollPitchYawQuat(roll, pitch, 0));
   }
 
   const up = 1 - p.sleep;
@@ -57,22 +58,32 @@ export function vertebrateBodyMatrix(p: VertebratePose): THREE.Matrix4 {
   const trotW = w * (1 - r);
   const gallopW = Math.max(w, r) * r;
   const wk = p.work * up;
-  const breath = Math.sin(p.time * 2.2) * 0.004 * up * (1 - w);
+  const idleW = up * (1 - w);
+  const breath = Math.sin(p.time * 2.6) * 0.014 * idleW;
 
+  const u = g * 1.35;
   const heave =
-    (-Math.cos(2 * g) * 0.014 - Math.sin(2 * g) * 0.006) * trotW +
-    Math.sin(g * 1.35) * liftHeight * 0.42 * gallopW -
+    liftHeight * (-0.21 + 0.25 * Math.cos(2 * g - 0.18)) * trotW +
+    liftHeight * (-0.04 + 0.26 * Math.cos(2 * u - 0.85) - 0.22 * Math.sin(u - 0.65)) * gallopW -
     p.sleep * sleepDrop +
     breath;
   const pitch =
-    Math.sin(2 * g - 0.35) * 0.022 * trotW +
-    Math.cos(g * 1.35) * 0.075 * gallopW +
-    wk * 0.08 * up +
+    Math.sin(2 * g - 0.35) * 0.064 * trotW +
+    Math.cos(g * 1.35) * 0.100 * gallopW +
+    Math.sin(p.time * 2.6) * 0.018 * idleW +
+    wk * 0.10 * up +
     p.sleep * 0.03;
-  const roll = Math.sin(g - 0.25) * 0.028 * trotW;
-  const yaw = -Math.cos(g) * 0.022 * trotW;
-  const swayX = Math.cos(g) * 0.012 * trotW;
-  const surgeZ = Math.sin(2 * g) * 0.012 * trotW + Math.cos(g * 1.35 - 0.4) * strideLen * 0.16 * gallopW;
+  const roll =
+    Math.sin(g - 0.25) * 0.062 * trotW +
+    Math.sin(g * 1.35 - 0.2) * 0.025 * gallopW +
+    Math.sin(p.time * 1.3) * 0.018 * idleW;
+  const yaw = -Math.cos(g) * 0.048 * trotW - Math.cos(g * 1.35) * 0.018 * gallopW;
+  const swayX =
+    Math.cos(g) * (strideLen * 0.12) * trotW +
+    Math.sin(p.time * 1.3) * 0.010 * idleW;
+  const surgeZ =
+    Math.sin(2 * g) * (strideLen * 0.15) * trotW +
+    Math.cos(g * 1.35 - 0.4) * (strideLen * 0.22) * gallopW;
 
   const anchor = new THREE.Vector3(swayX, comY + heave, surgeZ);
   return rigid(new THREE.Vector3(0, comY, 0), anchor, rotateRollPitchYawQuat(roll, pitch, yaw));
@@ -96,9 +107,11 @@ function mammalLegMatrix(part: VertebratePartInput, p: VertebratePose, body: THR
 
   const toe = toe0.clone();
   const amp = strideLen * (trotW + 1.35 * gallopW);
-  const lift = liftHeight * (trotW + 1.30 * gallopW);
-  const dy = Math.pow(Math.max(0, Math.cos(tau)), 0.8) * lift;
-  toe.z += Math.sin(tau) * amp;
+  const lift = liftHeight * (1.18 * trotW + 1.32 * gallopW);
+  const swing = Math.max(0, Math.cos(tau));
+  const dy = Math.pow(swing, 0.70) * lift;
+  const tuck = 0.22 * trotW + 0.06 * gallopW;
+  toe.z += (Math.sin(tau) - tuck * swing * swing) * amp;
   toe.y += dy;
 
   // Tuck elbows low & back beside chest with forearms resting forward on the ground; fold hindlimbs beside flanks.
@@ -139,8 +152,8 @@ function mammalLegMatrix(part: VertebratePartInput, p: VertebratePose, body: THR
   const mid = hip.clone().addScaledVector(axis, along).addScaledVector(bendRef, perp);
 
   if (part.role === 6) {
-    // Foot tracks moving ankle while remaining level at stance/sleep; pitches softly only when lifted.
-    const swingTilt = -Math.sin(tau) * 0.03 * smoothstep(0.005, 0.04, dy);
+    // Foot tracks moving ankle while remaining level at stance/sleep; flexes wrist/pastern cleanly while airborne.
+    const swingTilt = (0.22 * swing - 0.16 * Math.sin(tau)) * smoothstep(0.014, 0.050, dy);
     return rigid(toe0, toe, rotateRollPitchYawQuat(0, swingTilt, 0));
   }
 
@@ -157,27 +170,28 @@ function birdWingMatrix(part: VertebratePartInput, p: VertebratePose, body: THRE
   const g = p.time * p.config.gaitFreq;
   const sz = Math.max(0, Math.min(1, p.config.birdSize ?? 0));
   const flapEnv = computeBirdFlapEnv(p.walk, sz, g);
-  const armAsym = 0.12 + 0.14 * sz;
-  const armStroke = Math.sin(g) - armAsym * Math.sin(2 * g);
-  const wristPhase = g - (0.14 + 0.72 * sz);
-  const handStroke = Math.sin(wristPhase) - 0.16 * Math.sin(2 * wristPhase);
+  const armAsym = 0.18 + 0.10 * sz;
+  const armStroke = Math.sin(g) - armAsym * Math.sin(2 * g) + 0.10;
+  const wristPhase = g - (0.68 + 0.42 * sz);
   const side = part.pivot[0] >= 0 ? 1 : -1;
 
-  const glideDihedral = 0.04 + 0.13 * sz + 0.024 * sz * Math.sin(p.time * 2.1);
-  const innerRoll = side * (glideDihedral * (1 - flapEnv) + p.config.strideLen * flapEnv * armStroke);
-  const innerPitch = -(0.04 + 0.05 * (1 - sz)) * flapEnv * Math.cos(g);
-  const innerYaw = side * (0.03 + 0.05 * (1 - sz)) * flapEnv * Math.sin(g);
+  const glideDihedral = 0.06 + 0.12 * sz + 0.026 * sz * Math.sin(p.time * 2.2);
+  const innerRoll = side * (glideDihedral * (1 - flapEnv) + p.config.strideLen * 1.48 * flapEnv * armStroke);
+  const innerPitch = -(0.14 + 0.08 * (1 - sz)) * flapEnv * Math.cos(g - 0.15);
+  const innerYaw = side * (0.11 + 0.07 * (1 - sz)) * flapEnv * Math.cos(g - 0.25);
   const innerMat = body.clone().multiply(pivotRotate(part.pivot, innerRoll, innerPitch, innerYaw));
   if (part.role === 7) return innerMat;
 
-  const upFactor = Math.max(0, handStroke);
-  const downFactor = Math.max(0, -handStroke);
-  const glideWrist = -(0.05 + 0.10 * sz) + 0.020 * sz * Math.cos(p.time * 2.1);
+  const upstrokeFold = Math.pow(Math.max(0, Math.cos(g - 0.18)), 0.85);
+  const whipWave = Math.sin(wristPhase) - 0.22 * Math.sin(2 * wristPhase);
+  const downWhip = Math.min(0.22, whipWave * 0.42);
+  const glideWrist = -(0.05 + 0.10 * sz) + 0.022 * sz * Math.cos(p.time * 2.2);
   const outerRoll =
     side *
-    (glideWrist * (1 - flapEnv) - p.config.liftHeight * flapEnv * upFactor + (0.10 + 0.08 * (1 - sz)) * flapEnv * downFactor);
-  const outerPitch = -(0.03 + 0.06 * sz) * flapEnv * Math.cos(wristPhase);
-  const outerYaw = side * ((0.08 + 0.10 * sz) * flapEnv * upFactor);
+    (glideWrist * (1 - flapEnv) +
+      flapEnv * p.config.liftHeight * (downWhip - 1.38 * upstrokeFold));
+  const outerPitch = -(0.20 + 0.10 * (1 - sz)) * flapEnv * Math.cos(wristPhase);
+  const outerYaw = side * flapEnv * ((0.16 + 0.10 * sz) * upstrokeFold - 0.07 * Math.max(0, -whipWave));
   return innerMat.multiply(pivotRotate(part.joint, outerRoll, outerPitch, outerYaw));
 }
 
@@ -195,27 +209,51 @@ export function vertebratePartMatrix(part: VertebratePartInput, p: VertebratePos
   const g = p.time * p.config.gaitFreq;
   if (part.role === 2) {
     const up = 1 - p.sleep;
-    const graze = (0.56 + 0.06 * Math.sin(g * 2)) * p.work * up;
+    const w = p.walk * up;
+    const r = p.run * up;
+    const trotW = w * (1 - r);
+    const gallopW = Math.max(w, r) * r;
+    const graze = (0.50 + 0.075 * Math.sin(p.time * 4.6)) * p.work * up;
     const stabilize =
-      (-Math.sin(2 * g - 0.35) * 0.014 * p.walk * (1 - p.run) - Math.cos(g * 1.35) * 0.045 * p.run) * up;
+      (-Math.sin(2 * g - 0.35) * 0.080 * trotW -
+        Math.cos(g * 1.35 - 0.15) * 0.145 * gallopW +
+        Math.sin(p.time * 2.6) * 0.024 * (1 - w) * (1 - p.work)) *
+      up;
     const sleepHead = p.sleep * p.config.headSleepPitch;
-    const idleYaw = Math.sin(p.time * 0.9) * 0.08 * (1 - p.walk) * up;
-    return body.multiply(pivotRotate(part.pivot, 0, graze + stabilize + sleepHead, idleYaw));
+    const headYaw =
+      (Math.sin(p.time * 1.15) * 0.15 * (1 - w) * (1 - p.work) +
+        Math.sin(p.time * 2.1) * 0.070 * p.work +
+        Math.cos(g) * 0.058 * trotW) *
+      up;
+    return body.multiply(pivotRotate(part.pivot, 0, graze + stabilize + sleepHead, headYaw));
   }
   if (part.role === 3) {
     const up = 1 - p.sleep;
-    const yaw = (0.20 * Math.sin(g * 1.1 + 0.6) * (0.2 + 0.8 * p.walk) + 0.12 * Math.sin(g * 2) * p.work) * up + p.sleep * 0.18;
-    const pitch = 0.12 * Math.sin(g * 1.35) * p.run * up + p.sleep * 0.42;
+    const w = p.walk * up;
+    const r = p.run * up;
+    const trotW = w * (1 - r);
+    const gallopW = Math.max(w, r) * r;
+    const yaw =
+      (0.45 * Math.sin(g * 1.1 + 0.6) * (0.28 + 0.72 * p.walk) + 0.25 * Math.sin(g * 2) * p.work) * up +
+      p.sleep * 0.18;
+    const pitch =
+      (0.16 * w +
+        0.13 * r +
+        0.14 * Math.cos(2 * g - 0.3) * trotW +
+        0.28 * Math.sin(g * 1.35) * gallopW +
+        0.05 * Math.sin(p.time * 2.2) * (1 - w)) *
+        up +
+      p.sleep * 0.42;
     return body.multiply(pivotRotate(part.pivot, 0, pitch, yaw));
   }
   const sz = Math.max(0, Math.min(1, p.config.birdSize ?? 0));
   const flapEnv = computeBirdFlapEnv(p.walk, sz, g);
   if (part.role === 9) {
-    const pitch = -(0.05 + 0.05 * (1 - sz)) * flapEnv * Math.sin(g - 0.3 * sz) + 0.025 * Math.sin(p.time * 2.0);
+    const pitch = -(0.13 + 0.09 * (1 - sz)) * flapEnv * Math.sin(g - 0.4 * sz) + 0.038 * Math.sin(p.time * 2.2);
     return body.multiply(pivotRotate(part.pivot, 0, pitch, 0));
   }
   if (part.role === 10) {
-    const pitch = Math.cos(g - 0.22 * sz) * (0.018 + 0.018 * sz) * flapEnv;
+    const pitch = -Math.cos(g - 0.35 - 0.18 * sz) * (0.048 + 0.030 * sz) * flapEnv;
     return body.multiply(pivotRotate(part.pivot, 0, pitch, 0));
   }
   return body;

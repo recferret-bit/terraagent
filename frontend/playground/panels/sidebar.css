@@ -12,8 +12,13 @@ a.wm:focus-visible{outline:1px solid var(--ta-orange);outline-offset:3px}
 .side-pane[hidden]{display:none!important}
 .side-units{display:flex;flex-direction:column;overflow:hidden}
 #side #list{min-height:0}
-.side-pane[data-side-pane="hive"],.side-pane[data-side-pane="march"]{overflow:auto}
-#side #fauna-panel,#side #march-panel{position:static;inset:auto;width:auto;z-index:auto;border:0;background:transparent;backdrop-filter:none;clip-path:none;padding:8px 10px 16px}
+.side-pane[data-side-pane="hive"],.side-pane[data-side-pane="wildlife"],.side-pane[data-side-pane="march"]{overflow:auto}
+#side #fauna-panel,#side #wildlife-panel,#side #march-panel{position:static;inset:auto;width:auto;z-index:auto;display:flex;flex-direction:column;gap:8px;border:0;background:transparent;backdrop-filter:none;clip-path:none;padding:8px 10px 16px}
+.fp-wildlife-card{cursor:pointer;padding:6px 7px;border:1px solid var(--ta-seam);background:var(--ta-void);transition:border-color var(--ta-dur-quick) ease,background-color var(--ta-dur-quick) ease}
+.fp-wildlife-card:hover{border-color:var(--ta-orange)}
+.fp-wildlife-card.on{border-color:var(--ta-orange);border-left:3px solid var(--ta-orange);background:rgba(255,106,19,.1)}
+.fp-wildlife-card.on b{color:var(--ta-orange-hi)}
+.fp-wildlife-summary{display:block;margin-top:2px;color:var(--ta-steel);font-size:9.5px;line-height:1.35}
 .nb-block{flex:none;margin:0 12px 10px;padding:9px 10px 10px;background:var(--ta-plate);border:1px solid var(--ta-seam-2);border-left:3px solid var(--ta-blue);clip-path:polygon(var(--ta-chamfer-s) 0,100% 0,100% calc(100% - var(--ta-chamfer-s)),calc(100% - var(--ta-chamfer-s)) 100%,0 100%,0 var(--ta-chamfer-s))}
 .nb-block.is-active{border-color:var(--ta-orange);border-left-color:var(--ta-orange);background:rgba(255,106,19,.08)}
 .nb-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:7px}

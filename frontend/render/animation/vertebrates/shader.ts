@@ -44,10 +44,10 @@ mat4 vertPivotRpy(vec3 pivot, float roll, float pitch, float yaw) {
 }
 
 float vertBirdFlapEnv(float walk, float sz, float g) {
-  float activeFlap = smoothstep(0.08, 0.45, walk) * walk;
-  float smallness = clamp((0.36 - sz) / 0.36, 0.0, 1.0);
+  float activeFlap = smoothstep(0.14, 0.42, walk) * (0.45 + 0.55 * walk);
+  float smallness = clamp((0.20 - sz) / 0.20, 0.0, 1.0);
   float sprint = smoothstep(0.95, 1.0, walk);
-  float burstWave = 0.32 + 0.68 * smoothstep(-0.35, 0.25, sin(g * 0.22));
+  float burstWave = 0.82 + 0.18 * smoothstep(-0.25, 0.25, sin(g * 0.22));
   return activeFlap * (1.0 - smallness * (1.0 - sprint) * (1.0 - burstWave));
 }
 `;
@@ -65,11 +65,12 @@ mat4 vertBody() {
   if (isBird > 0.5) {
     float sz = clamp(uVertMeta.w, 0.0, 1.0);
     float flapEnv = vertBirdFlapEnv(uWalkWeight, sz, g);
-    float bobAmp = 0.018 + 0.024 * sz;
-    float glideBob = (0.006 + 0.008 * sz) * sin(uTime * (2.2 - 0.8 * sz));
-    float bob = sin(g - 0.22 * sz) * bobAmp * flapEnv + glideBob * (1.0 - flapEnv);
-    float pitch = -cos(g - 0.22 * sz) * (0.028 + 0.026 * sz) * flapEnv;
-    return vertRigid(vec3(0.0, comY, 0.0), vec3(0.0, comY + bob, 0.0), vertRpyMat(0.0, pitch, 0.0));
+    float bobAmp = 0.036 + 0.042 * sz;
+    float glideBob = (0.010 + 0.012 * sz) * sin(uTime * (2.4 - 0.8 * sz));
+    float bob = -sin(g - 0.35 - 0.18 * sz) * bobAmp * flapEnv + glideBob * (1.0 - flapEnv);
+    float pitch = cos(g - 0.35 - 0.18 * sz) * (0.056 + 0.036 * sz) * flapEnv;
+    float roll = sin(uTime * 1.9) * (0.018 + 0.016 * sz) * (1.0 - flapEnv * 0.5);
+    return vertRigid(vec3(0.0, comY, 0.0), vec3(0.0, comY + bob, 0.0), vertRpyMat(roll, pitch, 0.0));
   }
 
   float up = 1.0 - uVertSleep;
@@ -78,17 +79,19 @@ mat4 vertBody() {
   float trotW = w * (1.0 - r);
   float gallopW = max(w, r) * r;
   float wk = uWorkWeight * up;
-  float breath = sin(uTime * 2.2) * 0.004 * up * (1.0 - w);
+  float idleW = up * (1.0 - w);
+  float breath = sin(uTime * 2.6) * 0.014 * idleW;
 
-  float heave = (-cos(2.0 * g) * 0.014 - sin(2.0 * g) * 0.006) * trotW
-    + sin(g * 1.35) * liftHeight * 0.42 * gallopW
+  float u = g * 1.35;
+  float heave = liftHeight * (-0.21 + 0.25 * cos(2.0 * g - 0.18)) * trotW
+    + liftHeight * (-0.04 + 0.26 * cos(2.0 * u - 0.85) - 0.22 * sin(u - 0.65)) * gallopW
     - uVertSleep * sleepDrop + breath;
-  float pitch = sin(2.0 * g - 0.35) * 0.022 * trotW
-    + cos(g * 1.35) * 0.075 * gallopW + wk * 0.08 * up + uVertSleep * 0.03;
-  float roll = sin(g - 0.25) * 0.028 * trotW;
-  float yaw = -cos(g) * 0.022 * trotW;
-  float swayX = cos(g) * 0.012 * trotW;
-  float surgeZ = sin(2.0 * g) * 0.012 * trotW + cos(g * 1.35 - 0.4) * strideLen * 0.16 * gallopW;
+  float pitch = sin(2.0 * g - 0.35) * 0.064 * trotW
+    + cos(g * 1.35) * 0.100 * gallopW + sin(uTime * 2.6) * 0.018 * idleW + wk * 0.10 * up + uVertSleep * 0.03;
+  float roll = sin(g - 0.25) * 0.062 * trotW + sin(g * 1.35 - 0.2) * 0.025 * gallopW + sin(uTime * 1.3) * 0.018 * idleW;
+  float yaw = -cos(g) * 0.048 * trotW - cos(g * 1.35) * 0.018 * gallopW;
+  float swayX = cos(g) * (strideLen * 0.12) * trotW + sin(uTime * 1.3) * 0.010 * idleW;
+  float surgeZ = sin(2.0 * g) * (strideLen * 0.15) * trotW + cos(g * 1.35 - 0.4) * (strideLen * 0.22) * gallopW;
 
   return vertRigid(vec3(0.0, comY, 0.0), vec3(swayX, comY + heave, surgeZ), vertRpyMat(roll, pitch, yaw));
 }
@@ -116,9 +119,11 @@ mat4 vertQuadLeg(mat4 body, float role) {
 
   vec3 toe = toe0;
   float amp = strideLen * (trotW + 1.35 * gallopW);
-  float lift = liftHeight * (trotW + 1.30 * gallopW);
-  float dy = pow(max(0.0, cos(tau)), 0.8) * lift;
-  toe.z += sin(tau) * amp;
+  float lift = liftHeight * (1.18 * trotW + 1.32 * gallopW);
+  float swing = max(0.0, cos(tau));
+  float dy = pow(swing, 0.70) * lift;
+  float tuck = 0.22 * trotW + 0.06 * gallopW;
+  toe.z += (sin(tau) - tuck * swing * swing) * amp;
   toe.y += dy;
 
   bool isFore = hip0.z >= 0.0;
@@ -158,7 +163,7 @@ mat4 vertQuadLeg(mat4 body, float role) {
   vec3 mid = hip + axis * along + bendRef * perp;
 
   if (role > 5.5) {
-    float swingTilt = -sin(tau) * 0.03 * smoothstep(0.005, 0.04, dy);
+    float swingTilt = (0.22 * swing - 0.16 * sin(tau)) * smoothstep(0.014, 0.050, dy);
     return vertRigid(toe0, toe, vertRpyMat(0.0, swingTilt, 0.0));
   }
 
@@ -174,26 +179,26 @@ mat4 vertBirdWing(mat4 body, float role) {
   float g = uTime * uVertMeta.x;
   float sz = clamp(uVertMeta.w, 0.0, 1.0);
   float flapEnv = vertBirdFlapEnv(uWalkWeight, sz, g);
-  float armAsym = 0.12 + 0.14 * sz;
-  float armStroke = sin(g) - armAsym * sin(2.0 * g);
-  float wristPhase = g - (0.14 + 0.72 * sz);
-  float handStroke = sin(wristPhase) - 0.16 * sin(2.0 * wristPhase);
+  float armAsym = 0.18 + 0.10 * sz;
+  float armStroke = sin(g) - armAsym * sin(2.0 * g) + 0.10;
+  float wristPhase = g - (0.68 + 0.42 * sz);
   vec3 shoulder = aPartAnim.yzw;
   float side = shoulder.x >= 0.0 ? 1.0 : -1.0;
 
-  float glideDihedral = 0.04 + 0.13 * sz + 0.024 * sz * sin(uTime * 2.1);
-  float innerRoll = side * (glideDihedral * (1.0 - flapEnv) + uVertParams.z * flapEnv * armStroke);
-  float innerPitch = -(0.04 + 0.05 * (1.0 - sz)) * flapEnv * cos(g);
-  float innerYaw = side * (0.03 + 0.05 * (1.0 - sz)) * flapEnv * sin(g);
+  float glideDihedral = 0.06 + 0.12 * sz + 0.026 * sz * sin(uTime * 2.2);
+  float innerRoll = side * (glideDihedral * (1.0 - flapEnv) + uVertParams.z * 1.48 * flapEnv * armStroke);
+  float innerPitch = -(0.14 + 0.08 * (1.0 - sz)) * flapEnv * cos(g - 0.15);
+  float innerYaw = side * (0.11 + 0.07 * (1.0 - sz)) * flapEnv * cos(g - 0.25);
   mat4 innerMat = body * vertPivotRpy(shoulder, innerRoll, innerPitch, innerYaw);
   if (role < 7.5) return innerMat;
 
-  float upFactor = max(0.0, handStroke);
-  float downFactor = max(0.0, -handStroke);
-  float glideWrist = -(0.05 + 0.10 * sz) + 0.020 * sz * cos(uTime * 2.1);
-  float outerRoll = side * (glideWrist * (1.0 - flapEnv) - uVertParams.w * flapEnv * upFactor + (0.10 + 0.08 * (1.0 - sz)) * flapEnv * downFactor);
-  float outerPitch = -(0.03 + 0.06 * sz) * flapEnv * cos(wristPhase);
-  float outerYaw = side * ((0.08 + 0.10 * sz) * flapEnv * upFactor);
+  float upstrokeFold = pow(max(0.0, cos(g - 0.18)), 0.85);
+  float whipWave = sin(wristPhase) - 0.22 * sin(2.0 * wristPhase);
+  float downWhip = min(0.22, whipWave * 0.42);
+  float glideWrist = -(0.05 + 0.10 * sz) + 0.022 * sz * cos(uTime * 2.2);
+  float outerRoll = side * (glideWrist * (1.0 - flapEnv) + flapEnv * uVertParams.w * (downWhip - 1.38 * upstrokeFold));
+  float outerPitch = -(0.20 + 0.10 * (1.0 - sz)) * flapEnv * cos(wristPhase);
+  float outerYaw = side * flapEnv * ((0.16 + 0.10 * sz) * upstrokeFold - 0.07 * max(0.0, -whipWave));
   return innerMat * vertPivotRpy(aVertJoint.xyz, outerRoll, outerPitch, outerYaw);
 }
 `;
@@ -210,25 +215,33 @@ mat4 vertebrateTransform() {
   vec3 pivot = aPartAnim.yzw;
   if (role < 2.5) {
     float up = 1.0 - uVertSleep;
-    float graze = (0.56 + 0.06 * sin(g * 2.0)) * uWorkWeight * up;
-    float stabilize = (-sin(2.0 * g - 0.35) * 0.014 * uWalkWeight * (1.0 - uVertRun) - cos(g * 1.35) * 0.045 * uVertRun) * up;
+    float w = uWalkWeight * up;
+    float r = uVertRun * up;
+    float trotW = w * (1.0 - r);
+    float gallopW = max(w, r) * r;
+    float graze = (0.50 + 0.075 * sin(uTime * 4.6)) * uWorkWeight * up;
+    float stabilize = (-sin(2.0 * g - 0.35) * 0.080 * trotW - cos(g * 1.35 - 0.15) * 0.145 * gallopW + sin(uTime * 2.6) * 0.024 * (1.0 - w) * (1.0 - uWorkWeight)) * up;
     float sleepHead = uVertSleep * uVertMeta.z;
-    float idleYaw = sin(uTime * 0.9) * 0.08 * (1.0 - uWalkWeight) * up;
-    return body * vertPivotRpy(pivot, 0.0, graze + stabilize + sleepHead, idleYaw);
+    float headYaw = (sin(uTime * 1.15) * 0.15 * (1.0 - w) * (1.0 - uWorkWeight) + sin(uTime * 2.1) * 0.070 * uWorkWeight + cos(g) * 0.058 * trotW) * up;
+    return body * vertPivotRpy(pivot, 0.0, graze + stabilize + sleepHead, headYaw);
   }
   if (role < 3.5) {
     float up = 1.0 - uVertSleep;
-    float yaw = (0.20 * sin(g * 1.1 + 0.6) * (0.2 + 0.8 * uWalkWeight) + 0.12 * sin(g * 2.0) * uWorkWeight) * up + uVertSleep * 0.18;
-    float pitch = 0.12 * sin(g * 1.35) * uVertRun * up + uVertSleep * 0.42;
+    float w = uWalkWeight * up;
+    float r = uVertRun * up;
+    float trotW = w * (1.0 - r);
+    float gallopW = max(w, r) * r;
+    float yaw = (0.45 * sin(g * 1.1 + 0.6) * (0.28 + 0.72 * uWalkWeight) + 0.25 * sin(g * 2.0) * uWorkWeight) * up + uVertSleep * 0.18;
+    float pitch = (0.16 * w + 0.13 * r + 0.14 * cos(2.0 * g - 0.3) * trotW + 0.28 * sin(g * 1.35) * gallopW + 0.05 * sin(uTime * 2.2) * (1.0 - w)) * up + uVertSleep * 0.42;
     return body * vertPivotRpy(pivot, 0.0, pitch, yaw);
   }
   float sz = clamp(uVertMeta.w, 0.0, 1.0);
   float flapEnv = vertBirdFlapEnv(uWalkWeight, sz, g);
   if (role < 9.5) {
-    float pitch = -(0.05 + 0.05 * (1.0 - sz)) * flapEnv * sin(g - 0.3 * sz) + 0.025 * sin(uTime * 2.0);
+    float pitch = -(0.13 + 0.09 * (1.0 - sz)) * flapEnv * sin(g - 0.4 * sz) + 0.038 * sin(uTime * 2.2);
     return body * vertPivotRpy(pivot, 0.0, pitch, 0.0);
   }
-  float pitch = cos(g - 0.22 * sz) * (0.018 + 0.018 * sz) * flapEnv;
+  float pitch = -cos(g - 0.35 - 0.18 * sz) * (0.048 + 0.030 * sz) * flapEnv;
   return body * vertPivotRpy(pivot, 0.0, pitch, 0.0);
 }
 `;

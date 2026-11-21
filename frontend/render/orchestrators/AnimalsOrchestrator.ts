@@ -149,7 +149,7 @@ export class AnimalsOrchestrator {
           a.state === 'FLEEING_AGGRESSOR' ||
           a.state === 'FLEEING_PREDATOR' ||
           (a.state === 'HUNTING' && spdRatio > 1.25);
-        const walkOrRun = sprinting ? Math.min(2.0, spdRatio) : a.walkWeight;
+        const walkOrRun = sprinting || spdRatio > 1.05 ? Math.min(2.0, Math.max(a.walkWeight, spdRatio)) : a.walkWeight;
         rs.bioAttr.setXYZW(drawn, a.phase, walkOrRun, a.workWeight, a.sleepCrouch);
         drawn++;
       }
