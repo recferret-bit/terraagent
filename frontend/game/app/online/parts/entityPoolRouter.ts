@@ -138,7 +138,7 @@ export function computeEntityMeshVisible(
     if (!isWorldPointInColonyFov(wx, wz)) return false;
   }
   if (kind === ENTITY_KIND.pod) {
-    return owner === ownerColonyIndex ? tdState.podVisible : state === ENTITY_STATE.descending;
+    return owner === ownerColonyIndex ? tdState.podVisible : true;
   }
   if (kind === ENTITY_KIND.hq) {
     if (state === ENTITY_STATE.descending) return false;
