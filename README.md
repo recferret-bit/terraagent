@@ -276,9 +276,9 @@ Generated and verified by [`backend/app/src/near/intents/nep413-token-diff.ts`](
 
 ## Deployed NEAR Testnet Contracts, Accounts & On-Chain Truth Matrix
 
-All **6 deployed custom Rust `near-sdk 5.7` smart contracts** (plus a 7th standalone **`verifier`** workspace crate — **7 crates, `171` Rust unit tests** in [`backend/near-contracts/`](./backend/near-contracts/)) and **4 core protocol accounts** power NEAR Testnet (`NEAR_MODE=testnet`), with 1-env promotion to NEAR Mainnet (`NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`):
+All **6 deployed custom Rust `near-sdk 5.7` smart contracts** (plus a 7th standalone **`verifier`** workspace crate — **7 crates, `172` Rust unit tests** in [`backend/near-contracts/`](./backend/near-contracts/)) and **4 core protocol accounts** power NEAR Testnet (`NEAR_MODE=testnet`), with 1-env promotion to NEAR Mainnet (`NEAR_MODE=mainnet` + `NEAR_ALLOW_MAINNET=1`):
 
-### 6 Live Testnet Contracts + 7th `verifier` Crate (`near-sdk 5.7` · `171` Unit Tests)
+### 6 Live Testnet Contracts + 7th `verifier` Crate (`near-sdk 5.7` · `172` Unit Tests)
 
 | Contract Account | Source Crate | Standard & Key On-Chain Methods | Live WASM `code_hash` | Deploy / Init Tx (`testnet.nearblocks.io`) |
 |---|---|---|---|---|
@@ -293,7 +293,7 @@ All **6 deployed custom Rust `near-sdk 5.7` smart contracts** (plus a 7th standa
 ### 4 Core Protocol Accounts & Direct FastNEAR RPC Verification
 
 - **Root & Governance Owner:** [`terraagent.testnet`](https://testnet.nearblocks.io/address/terraagent.testnet) ([`3qmHWbgs...`](https://testnet.nearblocks.io/txns/3qmHWbgsfNoykfDeuLsyGVw36kaUmGN5uUiJqrHBgRLH)) — cold governance owner of all 6 contracts (hot server never needs `NEAR_ROOT_SECRET_KEY` when `NEAR_USE_PILOTS_FACTORY=true` + `NEAR_CONTRACT_PILOTS=pilots.terraagent.testnet` are set).
-- **TerraAgent Protocol Treasury:** [`protocol.terraagent.testnet`](https://testnet.nearblocks.io/address/protocol.terraagent.testnet) ([`567guLDV...`](https://testnet.nearblocks.io/txns/567guLDVMfBG9t9n1dNGtL5ziQcuwArj1Ff8wcsHgdq4), `NEAR_PROTOCOL_ACCOUNT`, live telemetry at `GET /v1/near/protocol`) — receives `80%` of platform trade fees, `20%` of validator staking yield, and `10%` of Peace/War bond slashes to fund `relayer` gas and Managed `NEAR.AI` Autopilot.
+- **TerraAgent Protocol Treasury:** [`protocol.terraagent.testnet`](https://testnet.nearblocks.io/address/protocol.terraagent.testnet) ([`567guLDV...`](https://testnet.nearblocks.io/txns/567guLDVMfBG9t9n1dNGtL5ziQcuwArj1Ff8wcsHgdq4), `NEAR_PROTOCOL_ACCOUNT`, live telemetry at `GET /v1/near/protocol`) — receives `80%` of platform trade fees (`68%` net when a planet's Tier 4 Lead Patron earns their `15%` protocol share = `12%` of gross), `20%` of validator staking yield, and `10%` of Peace/War bond slashes to fund `relayer` gas and Managed `NEAR.AI` Autopilot.
 - **NEP-366 Gasless Meta-Tx Relayer & Pilot Operator:** [`relayer.terraagent.testnet`](https://testnet.nearblocks.io/address/relayer.terraagent.testnet) ([`BftLVcAc...`](https://testnet.nearblocks.io/txns/BftLVcAcvG5ik42WAzypjQ81Vo2xBVULcHtMjsUdKPbW)) — sponsors `SignedDelegate` gas & `storage_deposit` within `NEAR_RELAYER_DAILY_CAP` and `NEAR_RELAYER_MAX_DEPOSIT_NEAR` (`0.05 NEAR`), and calls `pilots.terraagent.testnet::create_pilot_account`.
 - **Authorized Contract Operator:** [`minter.terraagent.testnet`](https://testnet.nearblocks.io/address/minter.terraagent.testnet) ([`7FHCx4UM...`](https://testnet.nearblocks.io/txns/7FHCx4UMq8E3hVj1tQxAWGN7CmZ4hTupGpEte4Fopzu)) — serialized FIFO nonce signer across `res`, `deed`, `bounty`, `staking`, `dao`.
 
@@ -366,7 +366,7 @@ npm run contract:real -- --port <Port>   # live NEAR Testnet contract verificati
 npm run test:parity                      # browser worker vs server thread bit-determinism gate
 npm run e2e -- --waves ..28              # Playwright headless-Chromium end-to-end suite
 npm run validate:models -- --all         # 3D procedural geometry, connectivity & palette validator
-npm run near:test-contracts              # 171/171 Rust unit tests across the 7 near-contracts crates (6 deployed + verifier)
+npm run near:test-contracts              # 172/172 Rust unit tests across the 7 near-contracts crates (6 deployed + verifier)
 npm run near:build-contracts             # Build release wasm32-unknown-unknown binaries (--cfg near)
 npm run near:health                      # Inspect Testnet liquid headroom & storage lock (--apply --faucet for top-up)
 npm run shade:worker                     # Run Shade Agent autonomous swarm/treasury worker (`v1.signer` MPC)

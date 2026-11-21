@@ -25,12 +25,15 @@ could be looked up; where the spec left a number open, the spec's own numbers we
   (`STAKE_PRICE_STALE`) with a live `Promise::and` price read in `on_lst_deposit`, `<7d` `25 bp` native exit fees transfer
   real native backing (`ndep`) to Protocol, and third-party recipient withdrawals require `1 yoctoNEAR` confirmation.
 - **Self-custody `unstake` & `withdraw`:** self-custody wallet owners (`caller == account_id`) can call `unstake`,
-  `withdraw` (for native-backed `stake_payable` / `deposit_near` positions), `withdraw_lst`, and `compound_yield`
-  directly on-chain without the operator (`GET /v1/near/staking/wallet-tx` serves all 7 actions, routing LST deposits and
-  withdrawals to the LST contract pool rather than the native validator pool); virtual `credit_near` test positions still
-  require operator settlement.
+  `withdraw` (for native-backed `stake_payable` / `deposit_near` positions, including after unbacked simulated
+  `compound_yield` where real principal pays out immediately and only the unbacked simulated slice awaits operator
+  settlement), `withdraw_lst`, and `compound_yield` directly on-chain without the operator (`GET /v1/near/staking/wallet-tx`
+  serves all 9 actions, routing LST deposits and withdrawals to the LST contract pool rather than the native validator
+  pool); purely virtual `credit_near` test positions still require operator settlement.
 - **Validator APY, live sync & wallet balances:** `StakingPerformanceService` syncs on-chain `accountPositions` (including
-  LST pools) via `StakingPositionSyncService` before reading `chain.staking_position`, wires `StakingPort.validatorApy()` on
+  LST pools, with a V1 `get_position` LST probe fallback when `get_account_positions` returns `MethodNotFound`, transient
+  RPC error protection so outages never prune LST rows, and automatic `PatronSeatService` refresh) via
+  `StakingPositionSyncService` before reading `chain.staking_position`, wires `StakingPort.validatorApy()` on
   `NEAR_MODE=mainnet` (falling back to `9.00 %` gross / `7.20 %` net `Sim APY` on mock/testnet), and reads live RPC
   `StakingPort.nearBalanceOf()` for `walletNear` off mock; LST holdings are valued `1:1` with NEAR as a conservative floor.
 - **AI colony slots, model guardrail & tier sweep cadence:** `ColonyAgentLoopService` pins W28 managed turns to
@@ -43,16 +46,16 @@ could be looked up; where the spec left a number open, the spec's own numbers we
   balance on mock NEAR; live Testnet/Mainnet off-mock USDC distribution from `protocol.terraagent.*` remains accounting-led
   until the `verifier` contract is deployed live.
 - **DAO vote weight (`1.5x`):** works end-to-end on both mock DAO and `dao` Rust contract (`vote_weighted` +
-  `get_dao_weights`, wired through `TestnetTreasuryDaoAdapter` when `weightBp != 10_000`; requires `dao` WASM upgrade on
-  frozen Testnet before live weighted votes execute on-chain).
+  `get_dao_weights` keyed by `${proposalId}:${voter}`, wired through `TestnetTreasuryDaoAdapter` when `weightBp != 10_000`
+  with automatic `MethodNotFound` fallback to unweighted `vote` on frozen V1 Testnet WASM).
 - **Guild radar** is wired to the in-game Trade Hub `GUILD` tab (`GET /v1/market/guild/radar` -> `⚡ TIER 2+ EARLY RADAR`
   countdown); there is no WS push yet (the panel polls every `15 s` while open).
 - **Wave fencing:** the landing page has no wave-flag mechanism, so its pill and calculator always show. `/me.html`
   hides the STAKING tab when the overview endpoint answers `404` (server `TA_WAVES=..27`) and on `?waves=..27` in dev.
 - **Wallet selector & injected wallets:** `createRealSignerWalletSelector('mainnet')` shares the full `WalletSelector`
-  singleton (including `MyNearWallet` on Mainnet), and `sendStakingWalletTx` dispatches `signAndSendTransaction` through
-  injected `HOT`, `HERE`, `Nightly`, and `Sender` browser wallets alongside selector modules (`Meteor`, `Intear`,
-  `MyNearWallet`, `OKX`, `NEAR Mobile`).
+  singleton (including `MyNearWallet` on Mainnet), and both `sendStakingWalletTx` and NEAR Social Patron Card shares
+  dispatch `signAndSendTransaction` through injected `HOT`, `HERE`, `Nightly`, and `Sender` browser wallets alongside
+  selector modules (`Meteor`, `Intear`, `MyNearWallet`, `OKX`, `NEAR Mobile`).
 - **First-descent plasma trail:** Tier 2+ pilots with a linked session wallet (`ta_active_pilot`) now resolve their
   wallet perks tier before colony creation so their first drop-pod landing carries the Plasma Trail too (dev override:
   `/play.html?…&stakeTier=0..4`).

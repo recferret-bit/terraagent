@@ -26,8 +26,8 @@ const BETA_RISK_CARDS: ReadonlyArray<WebFeatureCard> = [
     title: 'Authoritative Cap Enforcement Split',
     layer: 'WEB3',
     badge: 'CUSTODY SPLIT',
-    summary: 'Daily bot spend caps, staker fee discounts, and war siege objectives execute in `@terra/sim` + PostgreSQL ACID locks while NEAR holds custody, deeds, and escrows.',
-    chips: ['@terra/sim Rules', 'NEAR Finality'],
+    summary: 'War siege objectives and the stake-blind 0–1.00% Trade Hub stall cap execute in `@terra/sim` (which never reads staking, `D-31`), while 4-tier staker fee discounts (`0.65%–0.25%`), daily bot spend caps, and USD-gated AI budgets run in backend services + PostgreSQL ACID locks, and NEAR holds custody, deeds, staking principal, and escrows.',
+    chips: ['D-31 Sim Isolation', 'NEAR Finality'],
   },
   {
     title: 'Tunable Scarcity & Emission Curve',
@@ -116,8 +116,8 @@ export function buildGameplayAndEngineSections(): HTMLElement[] {
       [
         ['[/landing.html](/landing.html) & [/pitchdeck/](/pitchdeck/)', 'Vite MPA + Three.js Orbit', 'Interactive 3D orbital landing (`terraagent.fun`), protocol schematic & pitch deck'],
         ['[/play.html?planet=dune&skip=1](/play.html?planet=dune&skip=1)', 'WebGL2 + WS / Web Worker', 'Live RTS gameplay (`?deploy=1` drop-pod descent, `?skip=1` colony entry, `?host=local`, plus local-dev console & `F8` Shader Lab)'],
-        ['[/trade.html](/trade.html)', 'SSE + REST (`/v1/trade/*`)', '90-pair planetary CLOB orderbook, live depth ladder, 1Click swaps & `ta_bot_...` keys'],
-        ['[/me.html](/me.html)', 'REST (`/v1/me/*`)', 'Pilot dashboard, 60 soulbound badges, S0–S10 chronicle & AES-256-GCM BYOK vault'],
+        ['[/trade.html](/trade.html)', 'SSE + REST (`/v1/trade/*`)', '90-pair planetary CLOB orderbook, live depth ladder, 0.65%–0.25% 4-tier staker fees, Stake Trade Profits, 1Click swaps & `ta_bot_...` keys'],
+        ['[/me.html#staking](/me.html#staking)', 'REST (`/v1/me/*`, `/v1/near/staking/*`)', '4-Tier Staking Wealth Dashboard (self-fill-excluded Effective APY, Compound & Stake Trade Profits, Patron Card), 60 badges & AES-256-GCM BYOK vault'],
         ['[/deed.html](/deed.html) (`/deed/:tokenId`)', 'OpenGraph + NFT Feed', 'Shareable colony deed milestone timeline with generated preview artwork'],
         ['[/dev/economy-sim/](/dev/economy-sim/)', 'Headless `@terra/sim`', '7-day multi-colony runner testing wars, truces, Guild AMM, 25-agent swarms, contractor receipts & TEE commanders'],
         ['[/playground.html](/playground.html) & [/design/](/design/)', '3D Storybook & Tokens', '4-view diagnostic model turntable (`&validate=1`), CI validators & Faction Plate tokens'],

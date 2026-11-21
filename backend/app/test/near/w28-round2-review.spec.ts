@@ -264,7 +264,7 @@ describe('W28 Round 2: TestnetTreasuryDaoAdapter weighted voting & read-model sy
           ],
         };
       }
-      return { '0|a.near': 15_000 };
+      return { '0:a.near': 15_000 };
     });
     (adapter as unknown as { rpc: { call: typeof rpcCall; view: typeof rpcView } }).rpc.call = rpcCall;
     (adapter as unknown as { rpc: { view: typeof rpcView } }).rpc.view = rpcView;
@@ -294,7 +294,19 @@ describe('W28 Round 2: TestnetTreasuryDaoAdapter weighted voting & read-model sy
     );
 
     const view = await adapter.get({ daoAccountId: 'dune.dao.terraagent.testnet' });
-    expect(view.proposals[0]).toMatchObject({ proposalId: 0, state: 'Approved', yes: 2, no: 1 });
+    expect(view.proposals[0]).toMatchObject({ proposalId: 0, state: 'Approved', yes: 2, no: 1, yesWeightBp: 25_000 });
+
+    // Frozen V1 Testnet fallback: when vote_weighted throws MethodNotFound, falls back cleanly to unweighted vote!
+    rpcCall.mockRejectedValueOnce(new Error('Contract method is not found: MethodNotFound'));
+    await adapter.vote({
+      opId: 'op_weighted_v1_fallback',
+      daoAccountId: 'dune.dao.terraagent.testnet',
+      proposalId: 0,
+      voter: 'a.near',
+      vote: 'approve',
+      weightBp: 15_000,
+    });
+    expect(rpcCall).toHaveBeenLastCalledWith(expect.objectContaining({ methodName: 'vote' }));
   });
 });
 

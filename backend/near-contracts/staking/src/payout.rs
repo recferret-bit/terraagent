@@ -88,14 +88,19 @@ impl StakingVaultContract {
         let mut next = settled.record.clone();
         require!(next.withdrawable > 0, "STAKE_INSUFFICIENT_BALANCE: no withdrawable NEAR available");
         let pos_ndep = read_pos_ndep(&account_id, &pool_id);
+        let paid_withdrawable = if is_operator {
+            next.withdrawable
+        } else {
+            next.withdrawable.min(pos_ndep)
+        };
         require!(
-            is_operator || pos_ndep >= next.withdrawable,
+            paid_withdrawable > 0,
             "STAKE_INSUFFICIENT_BALANCE: virtual position requires operator settlement"
         );
         let yield_reserve = read_yield_reserve();
         let backed_yield = next.rewards.min(yield_reserve);
         let paid_rewards = if is_operator { next.rewards } else { backed_yield };
-        let payout = next.withdrawable.saturating_add(paid_rewards);
+        let payout = paid_withdrawable.saturating_add(paid_rewards);
         let recipient_str = recipient_id.unwrap_or_else(|| account_id.clone());
         let recipient: AccountId = recipient_str
             .parse()
@@ -107,11 +112,10 @@ impl StakingVaultContract {
         require!(liquid_balance() >= payout, "STAKE_INSUFFICIENT_BALANCE: contract liquid balance below storage reserve");
         self.apply_settled(&account_id, &pool_id, &settled);
 
-        let released_ndep = pos_ndep.min(next.withdrawable);
+        let released_ndep = pos_ndep.min(paid_withdrawable);
         write_pos_ndep(&account_id, &pool_id, pos_ndep - released_ndep);
         write_yield_reserve(yield_reserve - backed_yield);
-        let withdrawable = next.withdrawable;
-        next.withdrawable = 0;
+        next.withdrawable -= paid_withdrawable;
         next.rewards -= paid_rewards;
         self.positions.insert(pos_key(&account_id, &pool_id), next);
 
@@ -121,7 +125,7 @@ impl StakingVaultContract {
                 .then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(CALLBACK_GAS)
-                        .on_withdraw(op_id, account_id, pool_id, recipient_str, withdrawable.to_string(), paid_rewards.to_string(), released_ndep.to_string(), backed_yield.to_string()),
+                        .on_withdraw(op_id, account_id, pool_id, recipient_str, paid_withdrawable.to_string(), paid_rewards.to_string(), released_ndep.to_string(), backed_yield.to_string()),
                 ),
         )
     }

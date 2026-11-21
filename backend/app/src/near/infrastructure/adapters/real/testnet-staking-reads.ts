@@ -1,7 +1,10 @@
 import type { ChainReceipt, NearNetwork } from '../../../domain/types.js';
 import type { StakingAssetKind, StakingPositionView } from '../../../application/ports/staking.port.js';
+import { isMethodNotFoundRpcError, LST_CONTRACTS, lstContractFor, resolveLstPoolView } from '../../../staking/lst-pools.js';
 import type { ContractCallParams } from '../../rpc/near-rpc.client.js';
 import { classifyStakingRpcFailure, isUnknownAccountError, StakingRpcError } from './staking-rpc-error.js';
+
+export { isMethodNotFoundRpcError, LST_CONTRACTS, lstContractFor, resolveLstPoolView };
 
 /** The slice of `NearRpcClient` the staking adapter needs; a fake implements it in tests (no real transaction is ever sent). */
 export interface StakingRpc {
@@ -15,14 +18,6 @@ export interface StakingRpc {
   call(params: ContractCallParams): Promise<{ receipt: ChainReceipt; outcome: unknown }>;
   accountBalanceYocto(accountId: string): Promise<string>;
 }
-
-/** Whitelisted liquid-staking token contracts per network (the same set as `staking-wallet-tx.ts`). */
-export const LST_CONTRACTS: Readonly<Record<'testnet' | 'mainnet', Readonly<Record<'stNEAR' | 'LiNEAR', string>>>> = {
-  testnet: { stNEAR: 'meta-v2.pool.testnet', LiNEAR: 'linear-protocol.testnet' },
-  mainnet: { stNEAR: 'meta-pool.near', LiNEAR: 'linear-protocol.near' },
-};
-
-export const lstContractFor = (network: 'testnet' | 'mainnet', asset: 'stNEAR' | 'LiNEAR'): string => LST_CONTRACTS[network][asset];
 
 const assetOfContract = (network: 'testnet' | 'mainnet', raw: string): StakingAssetKind => {
   if (raw === 'NEAR') return 'near';

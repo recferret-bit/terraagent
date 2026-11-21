@@ -312,4 +312,35 @@ describe('W28 concurrent PatronSeatService multi-whale cross-planet safety', () 
     expect(seatA?.accountId).toBe(w2.accountId);
     expect(seatB?.accountId).toBe(w3.accountId);
   });
+
+  it('serializes concurrent POST /v1/trade/keys requests under W28 so Tier 0 never exceeds 1 active bot key', async () => {
+    const cadet = await linkWallet('bot-race-cadet');
+    const pid = devPlayerId('bot-race-cadet');
+    await db.prisma.planet.create({ data: { id: 'pl_bot_race', name: 'pl_bot_race' } });
+    await db.prisma.colony.create({
+      data: { id: 'co_bot_race', planetId: 'pl_bot_race', playerId: pid, colonyIndex: 0, name: 'BotCol' },
+    });
+    await db.prisma.nearColonyAccount.create({
+      data: {
+        accountId: 'co_bot_race.pilots.terraagent.mock',
+        playerId: pid,
+        slot: 'c0',
+        colonyId: 'co_bot_race',
+        ownerAccountId: 'co_bot_race.pilots.terraagent.mock',
+        publicKey: 'ed25519:botrace',
+        encryptedSecret: 'enc',
+        kekVersion: 1,
+      },
+    });
+
+    const parallel = await Promise.all(
+      Array.from({ length: 4 }, (_, i) =>
+        post('/v1/trade/keys', { planetId: 'pl_bot_race', label: `bot-${i}`, scopes: ['read', 'trade'] }, cadet.auth),
+      ),
+    );
+    const okCount = parallel.filter((r) => r.status === 200 || r.status === 201).length;
+    const rejectedCount = parallel.filter((r) => r.status === 409 || r.status === 400 || r.status === 429).length;
+    expect(okCount).toBe(1);
+    expect(rejectedCount).toBe(3);
+  });
 });

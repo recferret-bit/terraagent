@@ -13,6 +13,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { StakingPort, type StakingPoolView } from '../application/ports/staking.port.js';
+import { refreshNominatedPatronSeats, syncW28ExtraPositions } from './staking-position-sync-extras.js';
 import { yoctoToNear } from './yocto.js';
 
 export { yoctoToNear };
@@ -129,21 +130,32 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
       if (dto) active.push(dto);
     }
 
-    if (this.flags?.has('W28') && typeof this.staking.accountPositions === 'function') {
-      const extras = await this.staking.accountPositions(accountId).catch(() => [] as const);
-      for (const pos of extras) {
-        if (seenPools.has(pos.pool)) continue;
-        seenPools.add(pos.pool);
-        const dto = await this.syncDiscoveredPosition(accountId, colonyId, pos, pools[0]?.apyBp ?? 900);
-        if (dto) active.push(dto);
-      }
+    let canPrune = true;
+    if (this.flags?.has('W28')) {
+      const extraRes = await syncW28ExtraPositions({
+        accountId,
+        seenPools,
+        defaultApyBp: pools[0]?.apyBp ?? 900,
+        staking: this.staking,
+        db: this.useDb(),
+        envBag: (this.env ?? process.env) as Record<string, string | undefined>,
+        onDiscovered: (pos, apyBp) => this.syncDiscoveredPosition(accountId, colonyId, pos, apyBp),
+        onFallbackPool: (poolView) => this.syncSinglePool(accountId, colonyId, poolView),
+      });
+      active.push(...extraRes.active);
+      canPrune = extraRes.canPrune;
     }
 
     const db = this.useDb();
     if (db) {
-      await db.stakingPosition.deleteMany({
-        where: active.length === 0 ? { accountId } : { accountId, poolId: { notIn: active.map((p) => p.pool) } },
-      });
+      if (canPrune) {
+        await db.stakingPosition.deleteMany({
+          where: active.length === 0 ? { accountId } : { accountId, poolId: { notIn: active.map((p) => p.pool) } },
+        });
+      }
+      if (this.flags?.has('W28')) {
+        await refreshNominatedPatronSeats(db, accountId).catch(() => undefined);
+      }
     }
 
     return active;

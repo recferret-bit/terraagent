@@ -10,6 +10,7 @@ export type StakingWalletAction =
   | 'deposit_near'
   | 'claim_native_near'
   | 'stake_lst'
+  | 'deposit_and_stake_lst'
   | 'withdraw_lst'
   | 'compound_yield';
 

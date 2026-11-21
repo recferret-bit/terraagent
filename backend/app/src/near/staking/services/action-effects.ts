@@ -53,7 +53,7 @@ export class ActionEffects {
   }
 
   /** A withdraw pays the matured principal plus the accrued yield, both read before the call. */
-  withdrawn(ref: EffectRef, before: StakingPositionView): Promise<void> {
-    return this.record('withdraw', ref, before.asset ?? 'near', bigOf(before.withdrawable) + bigOf(before.rewards));
+  withdrawn(ref: EffectRef, before: StakingPositionView, requestedAsset?: string): Promise<void> {
+    return this.record('withdraw', ref, requestedAsset ?? before.asset ?? 'near', bigOf(before.withdrawable) + bigOf(before.rewards));
   }
 }

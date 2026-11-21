@@ -225,7 +225,7 @@ export function createProtocolEconomySchema(): HTMLElement {
   const leftCol = makeEl('div', 'wp-proto-col');
   leftCol.append(
     makeEl('span', 'wp-proto-col-lbl is-in', '▲ THREE ORGANIC INFLOWS'),
-    makePipeNode('80% of Platform Trade Fee', '0.80% / 0.52%–0.20%', 'Cleared on CLOB & Guild fills via `NEP-413` `token_diff` across 4 staker tiers. Remaining 20% funds Planet DAO.', 'trade'),
+    makePipeNode('80% of Platform Trade Fee', '0.80% / 0.52%–0.20%', 'Cleared on CLOB & Guild fills via `NEP-413` `token_diff` across 4 staker tiers (15% of Protocol cut to Tier 4 Lead Patron). Remaining 20% funds Planet DAO.', 'trade'),
     makePipeNode('20% of Validator Yield', '1.80% APY', 'Routed from `staking.terraagent.testnet` 9.0% pool while pilots keep 100% principal + 7.20% APY.', 'staking'),
     makePipeNode('10% Bond Arbitration Slash', '10% Breach', 'Collected if a treaty breaker cancels early or a 6h War Bond fails its siege goal.', 'bonds'),
   );
@@ -267,8 +267,8 @@ export function createReceiptExamplesGrid(): HTMLElement {
       rows: [
         ['Seller Principal (100%)', '$100.00 USDC'],
         ['Trade Hub Stall Royalty', '+$0.50 USDC'],
-        ['TerraAgent Protocol (80% fee)', '+$0.80 ($0.52 T1 Stk)'],
-        ['Planet Council DAO (20% fee)', '+$0.20 ($0.13 T1 Stk)'],
+        ['TerraAgent Protocol (80% fee)', '+$0.80 ($0.52–$0.20 T1–T4)'],
+        ['Planet Council DAO (20% fee)', '+$0.20 ($0.13–$0.05 T1–T4)'],
       ],
     },
     {

@@ -91,7 +91,7 @@ export class WalletStakeFlow {
     // One step: the matured principal (and any accrued yield) lands straight in the wallet. The adapter runs first so a
     // retry of a finished op id replays its stored receipt; only its "nothing to pay" refusal becomes NOTHING_TO_WITHDRAW.
     const receipt = await this.d.staking
-      .withdraw({ opId, accountId, toAccountId: accountId, pool: input.pool })
+      .withdraw({ opId, accountId, toAccountId: accountId, pool: input.pool, ...(input.asset ? { asset: input.asset } : {}) })
       .catch((err: unknown) => {
         if (err instanceof NearException && err.errorCode === 'STAKE_INSUFFICIENT_BALANCE' && bigOf(before.withdrawable) <= 0n) {
           throw new NearException('NOTHING_TO_WITHDRAW', {
@@ -100,7 +100,7 @@ export class WalletStakeFlow {
         }
         throw err;
       });
-    await this.d.effects.withdrawn({ accountId, pool: input.pool, txHash: receipt.txHash, opId }, before);
+    await this.d.effects.withdrawn({ accountId, pool: input.pool, txHash: receipt.txHash, opId }, before, input.asset);
     return this.respond(receipt.txHash, accountId, input.pool);
   }
 

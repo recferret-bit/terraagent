@@ -101,6 +101,7 @@ export const DaoProposalView = z.strictObject({
   state: DaoProposalState,
   yes: z.number().int().nonnegative(),
   no: z.number().int().nonnegative(),
+  yesWeightBp: z.number().int().positive().optional(),
   votes: z.array(z.strictObject({ voter: AccountId, vote: DaoVote })),
 });
 export type DaoProposalView = z.infer<typeof DaoProposalView>;

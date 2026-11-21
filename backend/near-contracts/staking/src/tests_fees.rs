@@ -545,3 +545,49 @@ fn blocks_native_lst_pool_hijacking_stale_ft_on_transfer_zero_share_refund_and_t
     testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(30)).attached_deposit(NearToken::from_yoctonear(1)).build());
     let _ = c.claim_native_near(ONE_NEAR.to_string(), Some("vault.alice.testnet".parse().unwrap()));
 }
+
+#[test]
+fn self_custody_withdraw_after_unbacked_compound_pays_real_principal_without_locking_funds() {
+    let mut c = new_contract();
+    // Alice stakes 100 real NEAR from her wallet while yield_reserve is 0.
+    testing_env!(ts_ctx("alice.testnet", T0).attached_deposit(NearToken::from_near(100)).build());
+    c.stake_payable("sp-comp-1".into(), POOL.into(), 900, T0, None);
+
+    // After 7 days, Alice clicks Compound Yield while yield_reserve is still 0.
+    let t_comp = T0 + WEEK;
+    testing_env!(ts_ctx("alice.testnet", t_comp).build());
+    let comp = c.compound_yield(POOL.into(), None, Some(900), None);
+    let compounded = comp.compounded.parse::<u128>().unwrap();
+    assert!(compounded > 0);
+    let total_staked = 100 * ONE_NEAR + compounded;
+    assert_eq!(comp.position.staked, total_staked.to_string());
+    assert_eq!(c.get_position_native_backing("alice.testnet".into(), POOL.into()), (100 * ONE_NEAR).to_string());
+
+    // Alice unstakes her entire position (0 bp fee after 7 days) and waits 2 days for unbonding.
+    c.unstake("u-comp-1".into(), "alice.testnet".into(), POOL.into(), 900, total_staked.to_string(), t_comp);
+    let ready = t_comp + UNBONDING_DURATION_MS;
+
+    // Self-custody withdraw MUST pay her 100 real NEAR immediately and keep only the unbacked compounded remainder!
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(120)).prepaid_gas(near_sdk::Gas::from_tgas(40)).build());
+    assert!(matches!(
+        c.withdraw("w-comp-self".into(), "alice.testnet".into(), None, POOL.into(), 0, ready),
+        PromiseOrValue::Promise(_)
+    ));
+    let mid = c.get_position("alice.testnet".into(), POOL.into(), 0, ready);
+    assert_eq!(mid.withdrawable, compounded.to_string(), "unbacked compounded slice stays in withdrawable");
+    assert_eq!(c.get_position_native_backing("alice.testnet".into(), POOL.into()), "0");
+
+    // Callback settles the 100 NEAR real principal payout; a subsequent self-custody withdraw on the unbacked remainder still requires operator settlement.
+    testing_env!(ctx("staking.terraagent.testnet").build());
+    let settled = c.on_withdraw(
+        "w-comp-self".into(), "alice.testnet".into(), POOL.into(), "alice.testnet".into(),
+        (100 * ONE_NEAR).to_string(), "0".into(), (100 * ONE_NEAR).to_string(), "0".into(), Ok(()),
+    );
+    assert_eq!(settled.withdrawn, (100 * ONE_NEAR).to_string());
+
+    testing_env!(ts_ctx("alice.testnet", ready).account_balance(NearToken::from_near(20)).prepaid_gas(near_sdk::Gas::from_tgas(40)).build());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = c.withdraw("w-comp-virt".into(), "alice.testnet".into(), None, POOL.into(), 0, ready);
+    })).is_err());
+}
+

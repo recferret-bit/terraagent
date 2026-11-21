@@ -25,10 +25,12 @@ import { OpReceiptCache } from './op-receipt-cache.js';
 import { classifyStakingRpcFailure, isUnknownAccountError, StakingRpcError } from './staking-rpc-error.js';
 import {
   finalValueOf,
+  isMethodNotFoundRpcError,
   lstContractFor,
   mapAccountPosition,
   readLstBalance,
   readWalletNearYocto,
+  resolveLstPoolView,
   type ContractAccountPosition,
   type StakingRpc,
 } from './testnet-staking-reads.js';
@@ -146,11 +148,12 @@ export class TestnetStakingAdapter implements StakingPort {
   }
 
   private assertPoolWhitelisted(poolId: string): StakingPoolView {
-    const found = this.resolvePools().find((p) => p.poolId === poolId);
-    if (!found) {
-      throw new NearException('POOL_NOT_WHITELISTED', { details: { pool: poolId } });
-    }
-    return found;
+    const pools = this.resolvePools();
+    const found = pools.find((p) => p.poolId === poolId);
+    if (found) return found;
+    const lstPool = resolveLstPoolView(this.lstNetwork, poolId, pools[0]?.apyBp ?? 900);
+    if (lstPool) return lstPool.pool;
+    throw new NearException('POOL_NOT_WHITELISTED', { details: { pool: poolId } });
   }
 
   async listPools(): Promise<readonly StakingPoolView[]> {
@@ -215,7 +218,8 @@ export class TestnetStakingAdapter implements StakingPort {
     const pool = this.assertPoolWhitelisted(input.pool);
     const signer = this.requireOperatorSigner();
     return this.cache.run(`withdraw:${input.opId}`, async () => {
-      const lst = input.asset && input.asset !== 'near' ? input.asset : null;
+      const lstPool = resolveLstPoolView(this.lstNetwork, pool.poolId, pool.apyBp);
+      const lst = input.asset && input.asset !== 'near' ? input.asset : lstPool?.asset ?? null;
       const { receipt, outcome } = lst
         ? await this.withdrawLst(input, pool, lst, signer)
         : await this.rpc.call({
@@ -232,10 +236,9 @@ export class TestnetStakingAdapter implements StakingPort {
               now_ms: this.nowMs(),
             },
           });
-      // The payout is a Promise: the transaction's final value is `on_withdraw`'s result, and a failed transfer is rolled back
-      // there as a SUCCESSFUL outcome with `withdrawn: "0"`. Treating that as success would report a payout that never happened.
-      const result = finalValueOf<{ withdrawn?: string }>(outcome);
-      if (result?.withdrawn === '0') {
+      // `on_withdraw` returns `{ withdrawn: "0" }` on rollback, while `on_withdraw_lst` returns boolean `false`.
+      const result = finalValueOf<{ withdrawn?: string } | boolean>(outcome);
+      if (result === false || (typeof result === 'object' && result !== null && result.withdrawn === '0')) {
         throw new StakingRpcError('withdraw_rolled_back', 'the payout transfer failed and the position was restored; retry', {
           operation: 'withdraw',
           accountId: input.accountId,
@@ -309,13 +312,20 @@ export class TestnetStakingAdapter implements StakingPort {
 
   async rewards(raw: RewardsInput): Promise<RewardsResult> {
     const input = RewardsInput.parse(raw);
-    const pos = await this.position(input);
-    return { accrued: pos.rewards };
+    const pool = this.assertPoolWhitelisted(input.pool);
+    const view = await this.rpc.view<ContractPositionView>(this.rpc.config.contracts.staking, 'get_position', {
+      account_id: input.accountId,
+      pool_id: pool.poolId,
+      apy_bp: pool.apyBp,
+      now_ms: this.nowMs(),
+    });
+    return { accrued: view.rewards };
   }
 
   async position(raw: PositionInput): Promise<StakingPositionView> {
     const input = PositionInput.parse(raw);
     const pool = this.assertPoolWhitelisted(input.pool);
+    const lstPool = resolveLstPoolView(this.lstNetwork, pool.poolId, pool.apyBp);
     const view = await this.rpc.view<ContractPositionView>(this.rpc.config.contracts.staking, 'get_position', {
       account_id: input.accountId,
       pool_id: pool.poolId,
@@ -326,6 +336,7 @@ export class TestnetStakingAdapter implements StakingPort {
     const clocks = isW28Enabled((this.env ?? process.env) as Record<string, string | undefined>)
       ? await this.clocksOf(input.accountId, pool.poolId)
       : undefined;
+    const asset = clocks?.asset ?? lstPool?.asset;
     return StakingPositionView.parse({
       accountId: view.account_id,
       pool: view.pool_id,
@@ -334,7 +345,8 @@ export class TestnetStakingAdapter implements StakingPort {
       unbondingReadyAtMs: view.unbonding_ready_at_ms,
       withdrawable: view.withdrawable,
       rewards: view.rewards,
-      ...(clocks ? { stakedSinceMs: clocks.stakedSinceMs, lastStakedAtMs: clocks.lastStakedAtMs, asset: clocks.asset } : {}),
+      ...(clocks ? { stakedSinceMs: clocks.stakedSinceMs, lastStakedAtMs: clocks.lastStakedAtMs } : {}),
+      ...(asset ? { asset } : {}),
     });
   }
 
@@ -346,7 +358,7 @@ export class TestnetStakingAdapter implements StakingPort {
     try {
       return (await this.accountPositions(accountId)).find((p) => p.pool === poolId);
     } catch (err) {
-      if (!/MethodNotFound|MethodResolveError|method .* not found/i.test(err instanceof Error ? err.message : String(err))) throw err;
+      if (!isMethodNotFoundRpcError(err)) throw err;
       if (!this.warnedNoClocks) {
         this.warnedNoClocks = true;
         this.log.warn('staking contract has no get_account_positions (V1 deployment): deposit clocks unavailable until it is upgraded');

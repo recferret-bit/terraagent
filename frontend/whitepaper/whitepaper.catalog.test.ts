@@ -9,7 +9,7 @@ import { CHAPTER_ITEMS, ENTITY_NAV_ITEMS, STACK_NAV_ITEMS } from './data/chapter
 import { ECOLOGY_CARDS, EFFECT_CARDS } from './data/ecologyAndEffectsCatalog';
 import { FLEET_CARDS } from './data/entitiesCatalog';
 import { RESOURCE_ROWS } from './data/mechanics';
-import { buildGameplayAndEngineSections } from './sections/gameplayAndEngine';
+import { buildGameplayAndEngineSections, mountCanonicalRisksSummary } from './sections/gameplayAndEngine';
 import { buildWeb3AndAiSections } from './sections/web3AndAi';
 
 function assertCssAndMarkupClean(): void {
@@ -114,6 +114,17 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
 
     const md = readFileSync(resolve(import.meta.dirname, 'whitepaper.md'), 'utf8');
     expect(md).not.toContain('NEAR_MODE=testnet / AI_PROVIDER=nearai');
+    // D-31 invariant: neither static markdown nor interactive whitepaper sections may claim @terra/sim reads staking or runs staker fee discounts.
+    expect(md).not.toMatch(/staker fee [^.]{0,40}@terra\/sim/i);
+
+    const risksHost = document.createElement('div');
+    risksHost.id = 'wpCanonicalRisksMount';
+    document.body.appendChild(risksHost);
+    mountCanonicalRisksSummary();
+    const mountedText = [...buildWeb3AndAiSections(), ...buildGameplayAndEngineSections(), risksHost].map((s) => s.textContent ?? '').join('\n');
+    risksHost.remove();
+    expect(mountedText).not.toMatch(/staker fee discounts[^.]{0,60}@terra\/sim/i);
+    expect(mountedText).toContain('never reads staking');
 
     const featuresSrc = readFileSync(resolve(import.meta.dirname, 'data/features.ts'), 'utf8');
     const web3AiSrc = readFileSync(resolve(import.meta.dirname, 'sections/web3AndAi.ts'), 'utf8');

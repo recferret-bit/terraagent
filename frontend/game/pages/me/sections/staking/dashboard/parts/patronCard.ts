@@ -1,4 +1,6 @@
 import type { StakingPerformanceResponse } from '@terra/contracts';
+import { readSavedNearWallet } from '../../../../../../../design/pilot/nearWalletStorage';
+import { sendTxWithInjectedExtraWallet } from '../../../../../../../design/pilot/walletSelectorExtras';
 import { createRealSignerWalletSelector } from '../../../../../../features/deed/parts/realNearWalletDriver';
 import type { StakingSelectorFactory } from '../../../../../../features/deed/parts/stakingWalletTx';
 import { el } from '../../../../dom';
@@ -18,6 +20,17 @@ export interface PatronCardOptions {
 type SocialTx = ReturnType<typeof patronNearSocialTx>;
 
 async function sendSocialTx(tx: SocialTx, net: 'testnet' | 'mainnet', factory?: StakingSelectorFactory): Promise<void> {
+  const gasYocto = `${tx.gasTgas}000000000000`;
+  const sentViaInjected = !factory
+    ? await sendTxWithInjectedExtraWallet(readSavedNearWallet()?.walletId, {
+        receiverId: tx.contractId,
+        methodName: tx.methodName,
+        args: tx.args,
+        gasYocto,
+        depositYocto: tx.attachedDepositYocto,
+      })
+    : false;
+  if (sentViaInjected) return;
   const [{ actionCreators }, selector] = await Promise.all([
     import('@near-wallet-selector/core'),
     (factory ?? createRealSignerWalletSelector)(net),
@@ -25,7 +38,7 @@ async function sendSocialTx(tx: SocialTx, net: 'testnet' | 'mainnet', factory?: 
   const wallet = await selector.wallet();
   await wallet.signAndSendTransaction({
     receiverId: tx.contractId,
-    actions: [actionCreators.functionCall(tx.methodName, tx.args, BigInt(`${tx.gasTgas}000000000000`), BigInt(tx.attachedDepositYocto))],
+    actions: [actionCreators.functionCall(tx.methodName, tx.args, BigInt(gasYocto), BigInt(tx.attachedDepositYocto))],
   });
 }
 

@@ -125,7 +125,7 @@ Run on the merged branch by the lead (pre-existing failures that also fail on `m
 - `npm test` → only the 7 suites that fail on `main` (planet-region, reconFaction, reconcile-flow w03, w13-regions,
   construction-orders, pod-terraform, no-teleport). `npm run test:integration` → 761/762, the one failure
   (`exchange-real/rails.real`) is on `main` too. `npm run test:contract` → 66/66. `npm run near:test-contracts` →
-  **171/171** Rust tests. `npm run validate:particles -- --all` → 25/25. `npm run validate:models -- --all` → 47/50
+  **172/172** Rust tests. `npm run validate:particles -- --all` → 25/25. `npm run validate:models -- --all` → 47/50
   (robot.hero / miner / recon fail on `main` too). `npm run test:parity` stops at the w13 scenario, as on `main`.
 - `npm run check` → typecheck + structure + gen clean; the same 3 lint errors as `main`.
 

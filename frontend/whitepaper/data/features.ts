@@ -41,7 +41,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Dual Settlement: Fast Sim + NEAR Finality',
     layer: 'WEB3',
     badge: 'HYBRID',
-    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (169 Rust tests).',
+    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (172 Rust tests).',
     chips: ['near-sdk 5.7', 'Testnet + verifier', '11 Typed Ports'],
   },
   {
@@ -69,8 +69,8 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Payable Escrows, Shade MPC & SputnikDAO Export',
     layer: 'WEB3',
     badge: 'ESCROW + DAO',
-    summary: 'Matched fills split 4 ways, `bounty` adds native `open_near_escrow` + expired self-refunds, `dao` supports direct council votes + SputnikDAO v2 JSON export, and Shade Agents sign via NEAR MPC (`v1.signer`).',
-    chips: ['open_near_escrow', 'SputnikDAO Export', 'Shade + v1.signer'],
+    summary: 'Matched fills split 4 ways, `bounty` adds native `open_near_escrow` + expired self-refunds, `dao` supports direct council votes + Tier 3+ `1.5x` `vote_weighted` + SputnikDAO v2 JSON export, and Shade Agents sign via NEAR MPC (`v1.signer`).',
+    chips: ['open_near_escrow', 'vote_weighted 1.5x', 'Shade + v1.signer'],
   },
   {
     title: 'Soulbound Colony Deeds, NEAR Social & 60 Badges',
@@ -151,8 +151,8 @@ export const CONTRACT_ROWS: ReadonlyArray<ContractSpec> = [
   { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo across all 10 commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `mt_withdraw` / `mt_batch_transfer` / `mt_transfer_call` + NEP-145 bounds' },
   { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK', standard: 'NEP-171 Soulbound', role: 'Colony Deeds, 5-entry capped milestone chapters & badges', guardAndSettlement: 'Bounded `update_metadata`, `prune_history` & NEP-181 pagination (`<= 50`) + NEAR Social shares' },
   { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / payable `open_near_escrow` / `mt_on_transfer` / `claim_expired_refund` / `slash_escrow` (90/10)' },
-  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Wallet-First 4-Tier Vault', role: 'Native NEAR & `stNEAR`/`LiNEAR` staking (7.20% net APY), 4-tier perks & Lead Patron seats', guardAndSettlement: '`stake_payable`, `compound_yield` (0% fee), `withdraw_lst`, `<7d` `25 bp` exit fee & Option A LST share-price solvency' },
-  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Direct council `propose`/`vote`/`finalize` + SputnikDAO v2 JSON export (`/sputnik-json`)' },
+  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Wallet-First 4-Tier Vault', role: 'Native NEAR & `stNEAR`/`LiNEAR` staking (7.20% net APY), 4-tier perks & Lead Patron seats', guardAndSettlement: '`stake_payable`, `compound_yield` (0% fee), self-custody `unstake`/`withdraw`/`withdraw_lst`, `<7d` `25 bp` exit fee & Option A LST share-price solvency' },
+  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Direct council `propose`/`vote`/`vote_weighted` (`1.5x` Tier 3+)/`finalize` + SputnikDAO v2 JSON export (`/sputnik-json`)' },
   { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant `{pilot}.pilots.terraagent.testnet` sub-account provisioning', guardAndSettlement: '`create_pilot_account`; `claimAccount` rotates `[AddKey, DeleteKey]` + seals scoped trading session key' },
   { contract: 'verifier (workspace)', accountId: 'verifier.terraagent.testnet', txHash: '', standard: 'NEP-413 On-Chain Verifier', role: 'Pure Rust `token_diff` Borsh + `env::ed25519_verify`, key-binding & replay registry', guardAndSettlement: '`simulate_intents` / `execute_intents` / `register_account_key` workspace crate (release WASM built, 6 unit tests)' },
 ];
@@ -169,7 +169,7 @@ export const PROTOCOL_ACCOUNT_ROWS: ReadonlyArray<ProtocolAccountSpec> = [
     key: 'protocol',
     accountId: 'protocol.terraagent.testnet',
     role: 'Protocol Treasury (`NEAR_PROTOCOL_ACCOUNT`)',
-    gasAndSecurityModel: 'Collects 80% of platform trade fees, 20% of validator staking yield, and 10% of breached bond slashes to fund gasless relays and Managed NEAR.AI without minting tokens.',
+    gasAndSecurityModel: 'Collects 80% of platform trade fees (`68%` net when a planet’s Tier 4 Lead Patron earns their `15%` protocol share = `12%` of gross), 20% of validator staking yield, and 10% of breached bond slashes to fund gasless relays and Managed NEAR.AI without minting tokens.',
     txHash: '9q3km4TiFVGnY6HMZUaZdXWmtuMTJ1cy3hvGXyM9ArXY',
   },
   {
@@ -198,8 +198,8 @@ export const PORT_ROWS: ReadonlyArray<PortSpec> = [
   { port: 'DeedNftPort', category: 'Identity', mockBehavior: 'Local deed milestone record', liveImplementation: '`deed` `NEP-171` mint & metadata append' },
   { port: 'BadgeNftPort', category: 'Progression', mockBehavior: '60 DB badge unlocks (20×3)', liveImplementation: 'On-chain soulbound badge proofs' },
   { port: 'EscrowPort', category: 'Diplomacy', mockBehavior: 'Simulated truce & war bond book', liveImplementation: '`bounty` lock, claim, refund & 90/10 slash' },
-  { port: 'StakingPort', category: 'Yield', mockBehavior: 'Simulated epoch reward clock', liveImplementation: '`staking` pool (80/20 split, human-only)' },
-  { port: 'TreasuryDaoPort', category: 'Governance', mockBehavior: 'Local council vote tally', liveImplementation: '`dao` policy proposal & execution' },
+  { port: 'StakingPort', category: 'Yield', mockBehavior: 'Simulated epoch reward clock & multi-asset ledger', liveImplementation: '`staking` wallet-first 4-tier vault (80/20 split, 1-step withdraw & LST share-price solvency)' },
+  { port: 'TreasuryDaoPort', category: 'Governance', mockBehavior: 'Local weighted council vote tally', liveImplementation: '`dao` council proposals, Tier 3+ `1.5x` `vote_weighted` & execution' },
 ];
 
 export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [

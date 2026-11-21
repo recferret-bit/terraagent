@@ -50,7 +50,6 @@ export class TradeKeysService implements OnModuleInit {
     this.orders.gate();
     this.sessionOnly(p);
     const colony = await this.orders.colonyOrThrow(p, body.planetId);
-    const active = await this.keys.countActive(p.ownerId);
     let maxKeys = MAX_ACTIVE_KEYS_PER_OWNER;
     let tier: number | undefined;
     if (this.flags?.has('W28')) {
@@ -64,20 +63,29 @@ export class TradeKeysService implements OnModuleInit {
       maxKeys = Math.min(MAX_ACTIVE_KEYS_PER_OWNER, perks.perks.botKeys);
       tier = perks.perks.tier;
     }
-    if (active >= maxKeys) {
-      throw new TradeError(
-        'key_limit',
-        `At most ${maxKeys} active keys per owner${tier !== undefined ? ` at Staking Tier ${tier}` : ''}; revoke one first.`,
-        { max: maxKeys, ...(tier !== undefined ? { tier } : {}) },
-      );
-    }
     const usdcPairs = this.policy.current().pairs.filter((x) => x.quote === 'USDC').map((x) => x.pair);
     const allowance = mergeAllowance(defaultAllowance(usdcPairs), body.allowance);
     const key = newKey();
-    const rec = await this.keys.create({
-      key, ownerId: p.ownerId, label: body.label, planetId: body.planetId, colonyId: colony.colonyId, colonyIndex: colony.colonyIndex, accountId: colony.accountId,
-      scopes: body.scopes, ...(body.ratePerSecond ? { ratePerSecond: body.ratePerSecond } : {}), ...(body.rateBurst ? { rateBurst: body.rateBurst } : {}), allowance,
-    });
+    const createInTx = async (tx?: PrismaClient) => {
+      if (tx && typeof (tx as { $executeRaw?: unknown }).$executeRaw === 'function') {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`trade_keys:${p.ownerId}`}, 0))`;
+      }
+      const active = await this.keys.countActive(p.ownerId, tx);
+      if (active >= maxKeys) {
+        throw new TradeError(
+          'key_limit',
+          `At most ${maxKeys} active keys per owner${tier !== undefined ? ` at Staking Tier ${tier}` : ''}; revoke one first.`,
+          { max: maxKeys, ...(tier !== undefined ? { tier } : {}) },
+        );
+      }
+      return this.keys.create({
+        key, ownerId: p.ownerId, label: body.label, planetId: body.planetId, colonyId: colony.colonyId, colonyIndex: colony.colonyIndex, accountId: colony.accountId,
+        scopes: body.scopes, ...(body.ratePerSecond ? { ratePerSecond: body.ratePerSecond } : {}), ...(body.rateBurst ? { rateBurst: body.rateBurst } : {}), allowance,
+      }, tx);
+    };
+    const rec = typeof this.prisma?.$transaction === 'function'
+      ? await withTransaction(this.prisma, (tx) => createInTx(tx as unknown as PrismaClient))
+      : await createInTx();
     return { ...(await this.withUsage(keyView(rec))), secret: key.secret };
   }
 

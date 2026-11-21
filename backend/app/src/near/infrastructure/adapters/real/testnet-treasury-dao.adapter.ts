@@ -127,24 +127,37 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
     const input = VoteInput.parse(raw);
     const signer = this.requireOperatorSigner();
     const weighted = input.weightBp !== undefined && input.weightBp !== BASE_VOTE_WEIGHT_BP;
+    const baseArgs = {
+      op_id: input.opId,
+      dao_account_id: input.daoAccountId,
+      proposal_id: input.proposalId,
+      voter: input.voter,
+      vote: input.vote,
+      pass_above_bp: PASS_ABOVE_BP,
+      pass_min_yes: PASS_MIN_YES,
+    };
     return this.txCache.run(`vote:${input.opId}`, async () => {
-      const { receipt } = await this.rpc.call({
-        signerAccountId: signer.accountId,
-        signerSecretKey: signer.secretKey,
-        contractId: this.rpc.config.contracts.dao,
-        methodName: weighted ? 'vote_weighted' : 'vote',
-        args: {
-          op_id: input.opId,
-          dao_account_id: input.daoAccountId,
-          proposal_id: input.proposalId,
-          voter: input.voter,
-          vote: input.vote,
-          ...(weighted ? { weight_bp: input.weightBp } : {}),
-          pass_above_bp: PASS_ABOVE_BP,
-          pass_min_yes: PASS_MIN_YES,
-        },
-      });
-      return receipt;
+      try {
+        const { receipt } = await this.rpc.call({
+          signerAccountId: signer.accountId,
+          signerSecretKey: signer.secretKey,
+          contractId: this.rpc.config.contracts.dao,
+          methodName: weighted ? 'vote_weighted' : 'vote',
+          args: weighted ? { ...baseArgs, weight_bp: input.weightBp } : baseArgs,
+        });
+        return receipt;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!weighted || !/MethodNotFound|MethodResolveError|method .* not found/i.test(msg)) throw err;
+        const { receipt } = await this.rpc.call({
+          signerAccountId: signer.accountId,
+          signerSecretKey: signer.secretKey,
+          contractId: this.rpc.config.contracts.dao,
+          methodName: 'vote',
+          args: baseArgs,
+        });
+        return receipt;
+      }
     });
   }
 
@@ -251,7 +264,7 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
         const weightedVotes = p.votes.map((v) => ({
           voter: v.voter,
           vote: v.vote,
-          weightBp: weights[`${p.id}|${v.voter}`],
+          weightBp: weights[`${p.id}:${v.voter}`] ?? weights[`${p.id}|${v.voter}`],
         }));
         const tally = tallyMemberVotes(weightedVotes, memberIds);
         return {
@@ -262,6 +275,7 @@ export class TestnetTreasuryDaoAdapter implements TreasuryDaoPort {
           state: p.status,
           yes: tally.yes,
           no: tally.no,
+          ...(tally.yesWeightBp !== undefined ? { yesWeightBp: tally.yesWeightBp } : {}),
           votes: p.votes.map((v) => ({ voter: v.voter, vote: v.vote })),
         };
       }),
