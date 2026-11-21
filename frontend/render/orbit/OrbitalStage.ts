@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CreateOrbitalStage, OrbitalGlobeMarkerInput, OrbitalProjectedFrame, OrbitalStage } from './types';
+import type { CreateOrbitalStage, OrbitalGlobeMarkerInput, OrbitalLeadPatron, OrbitalProjectedFrame, OrbitalStage } from './types';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from '../core/createColonyViewport';
 import { enqueueDeferredDispose } from '../core/deferredDispose';
@@ -11,6 +11,7 @@ import { acquireModel, tickArchetypeMesh, type FittedModel } from '../visuals/sp
 import { StageGlobes, CAM_DIST } from './stage/StageGlobes';
 import { StageMoons } from './stage/StageMoons';
 import { Satellites } from './stage/Satellites';
+import { FlagshipCarrier } from './stage/FlagshipCarrier';
 import { SunRig } from './stage/SunRig';
 import { NebulaTint } from './stage/NebulaTint';
 import { GlobeHighlights } from './stage/GlobeHighlights';
@@ -36,6 +37,7 @@ class OrbitalStageImpl implements OrbitalStage {
   private readonly highlights: GlobeHighlights;
   private readonly moons: StageMoons;
   private readonly satellites: Satellites;
+  private readonly flagship: FlagshipCarrier;
   private readonly nebula: NebulaTint;
   private readonly carrier: FittedModel;
   private readonly deploy: DeploySequence;
@@ -73,6 +75,7 @@ class OrbitalStageImpl implements OrbitalStage {
     scene.add(this.carrier.root);
     this.moons = new StageMoons(scene, sunDir, spec);
     this.satellites = new Satellites(scene);
+    this.flagship = new FlagshipCarrier(scene);
     this.nebula = new NebulaTint(spec, this.backdrop.uniforms.uNebA, this.layers);
     const deployHost = { scene, camera: this.camera, viewport, sunDir, sun: this.sun, backdrop: this.backdrop, carrier: this.carrier, globes: this.globes, lookNow: this.lookNow };
     this.deploy = new DeploySequence(deployHost);
@@ -97,11 +100,15 @@ class OrbitalStageImpl implements OrbitalStage {
     this.highlights.setHighlights(markers);
   }
   projectHighlights(): OrbitalProjectedFrame {
-    return this.highlights.project(this.camera, this.globes.planetPos, this.lastTime, this.sun.mouseS);
+    const frame = this.highlights.project(this.camera, this.globes.planetPos, this.lastTime, this.sun.mouseS);
+    const flagship = this.flagship.project(this.camera);
+    return flagship ? { ...frame, flagship } : frame;
   }
+  setLeadPatron(patron: OrbitalLeadPatron | null) { this.flagship.setLeadPatron(patron); }
 
   setPlanet(next: PlanetSpec, opts: { duration?: number; continuousSpin?: boolean } = {}) {
     if (!this.globes.setPlanet(next, opts)) return;
+    this.flagship.setLeadPatron(null); // a patron belongs to one planet; the app re-sets it for the new one
     clearTransientWeather();
     this.nebula.retarget(next);
     this.moons.setPlanet(next);
@@ -129,6 +136,7 @@ class OrbitalStageImpl implements OrbitalStage {
     sun.update(camera, time, globes.planetPos);
     this.moons.update(dt, time, globes.planetPos, globes.morphRate);
     this.satellites.update(time, globes.planetPos);
+    this.flagship.update(time, globes.planetPos, !transitioning);
     if (!transitioning) driftCarrier(this.carrier, globes.planetPos, time);
     tickArchetypeMesh(this.carrier.mesh, time);
   }
@@ -145,6 +153,7 @@ class OrbitalStageImpl implements OrbitalStage {
       () => this.layers.dispose(),
       () => this.moons.dispose(),
       () => this.satellites.dispose(),
+      () => this.flagship.dispose(),
       () => this.deploy.dispose(),
       () => this.cameraDive.dispose(),
       () => this.backdrop.dispose(),
@@ -159,7 +168,7 @@ class OrbitalStageImpl implements OrbitalStage {
     const { camera } = this;
     this.globes.dispose();
     this.highlights.dispose();
-    this.layers.dispose(); this.moons.dispose(); this.satellites.dispose();
+    this.layers.dispose(); this.moons.dispose(); this.satellites.dispose(); this.flagship.dispose();
     this.deploy.dispose();
     this.cameraDive.dispose();
     camera.near = 0.5; camera.fov = 28; camera.updateProjectionMatrix();

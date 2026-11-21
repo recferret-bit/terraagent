@@ -1,6 +1,6 @@
 // Command hub + claim beacon.
 import * as THREE from 'three';
-import { KitbashBuilder } from '../../KitbashRegistry';
+import { KitbashBuilder, type MaterialZoneId, type MaterialZoneSpec } from '../../KitbashRegistry';
 import { box, cyl, ring, strut, cable, lamp, dish, plinth, type V3, spin } from './kit';
 
 const PI = Math.PI;
@@ -74,12 +74,58 @@ function addHubAntennaAndRadar(b: KitbashBuilder) {
   });
 }
 
+/** Where the Tier 1+ uplink beam leaves the hub (model space, before the plinth strip): the top of the emitter housing. */
+export const HUB_UPLINK_ORIGIN: V3 = [-0.2, 4.34, -0.2];
+
+/** Gold-anodized trim (Tier 3+). Replaces the hub's `hullSecondary` accent zone only, so 60/30/10 holds. */
+export const HUB_GOLD_TRIM: MaterialZoneSpec = { color: 0xe0b030, roughness: 0.3, metalness: 0.9, emissiveIntensity: 0 };
+
+export interface CommandHubOptions {
+  /** Tier 1+: Quantum Dish on the roof and the uplink emitter on the dome (the beam itself is a render effect). */
+  uplink?: boolean;
+  /** Zone overrides, e.g. the gold trim. Baked into the vertices, so a variant is its own catalog id. */
+  zones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>>;
+  /** Parts (by name) that move into the accent zone, so the zone override reaches the waist band, caps and airlock. */
+  trimParts?: ReadonlySet<string>;
+}
+
+/** Tier 3+ gold trim: the visible gunmetal bands and caps join the accent zone (`hullSecondary`) that turns gold. */
+export const HUB_GOLD_TRIM_PARTS: ReadonlySet<string> = new Set([
+  'hull waist band', 'tank cap 1', 'tank cap 2',
+]);
+
+/** Quantum Dish: mount plate on the roof, mast, spinning dish + feed. The feed light sits in a bezel on the boom. */
+function addQuantumDish(b: KitbashBuilder) {
+  const x = 1.3, z = 1.2, S = spin(x, z);
+  box(b, 'hullSecondary', [0.56, 0.16, 0.56], [x, 1.99, z], { r: 0.04, seg: 1, name: 'quantum dish mount plate' });
+  cyl(b, 'frameGunmetal', 0.1, 0.15, 0.78, [x, 2.1, z], { seg: 8, name: 'quantum dish mast' });
+  cyl(b, 'hullSecondary', 0.17, 0.17, 0.1, [x, 2.82, z], { seg: 8, name: 'quantum dish bearing collar' });
+  cyl(b, 'frameGunmetal', 0.06, 0.06, 0.34, [x, 2.88, z], { seg: 6, name: 'quantum dish spindle', ...S });
+  dish(b, 0.56, [x, 3.14, z], -0.5, { seg: 10, name: 'quantum dish bowl', ...S });
+  strut(b, 'frameGunmetal', [x, 3.2, z], [x, 3.62, z + 0.2], 0.03, { seg: 5, name: 'quantum dish feed boom', ...S });
+  lamp(b, 'energyCyan', 0.07, [x, 3.66, z + 0.22], { hSeg: 4, emissiveIntensity: 4.4, name: 'quantum feed light', ...S });
+}
+
+/** Emitter on the dome apex: gunmetal housing overlapping the canopy and arches, cyan lens on top. */
+function addUplinkEmitter(b: KitbashBuilder) {
+  const [x, , z] = HUB_UPLINK_ORIGIN;
+  cyl(b, 'frameGunmetal', 0.26, 0.34, 0.3, [x, 3.9, z], { seg: 10, name: 'uplink emitter housing' });
+  cyl(b, 'hullSecondary', 0.3, 0.3, 0.08, [x, 4.15, z], { seg: 10, name: 'uplink emitter collar' });
+  cyl(b, 'energyCyan', 0.2, 0.2, 0.1, [x, 4.22, z], { seg: 10, emissiveIntensity: 4.6, name: 'uplink emitter lens light' });
+}
+
 // ---------------------------------------------------------------- Command Hub (3x3)
-export function commandHub() {
-  const b = new KitbashBuilder();
+export function commandHub(opts: CommandHubOptions = {}) {
+  const b = new KitbashBuilder(opts.zones);
+  const trim = opts.trimParts;
+  if (trim) {
+    const add = b.addPart.bind(b);
+    b.addPart = (geo, zone, o = {}) => add(geo, o.name !== undefined && trim.has(o.name) ? 'hullSecondary' : zone, o);
+  }
   addHubFoundationAndHull(b);
   addHubTanks(b);
   addHubAntennaAndRadar(b);
+  if (opts.uplink) { addQuantumDish(b); addUplinkEmitter(b); }
   return b.build();
 }
 

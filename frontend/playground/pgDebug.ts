@@ -37,6 +37,7 @@ export interface PlaygroundDebugApiDeps {
   setNight: (on: boolean) => void;
   contactSheet: () => string;
   setBuild: (s: BuildStage) => void;
+  setStakeTier: (tier: number | null) => void;
   setWorkTarget: (t: InteractionTargetKind, enableWork?: boolean) => void;
   setDepositStage: (s: DepositVisualStage) => void;
   setTileState: (ts: TileStatePreset) => void;
@@ -72,6 +73,7 @@ export function createPlaygroundDebug(d: PlaygroundDebugApiDeps) {
     controls: d.cam.controls,
     spawns: d.spawns,
     setBuild: (s: BuildStage) => d.setBuild(s),
+    setStakeTier: (tier: number | null) => d.setStakeTier(tier),
     setRuin: (on: boolean) => { if (state.ruin !== on) d.toggle('ruin'); },
     setWorkTarget: (t: InteractionTargetKind, enableWork = true) => d.setWorkTarget(t, enableWork),
     validateParticles: (targetOrId: string = state.workTarget) =>

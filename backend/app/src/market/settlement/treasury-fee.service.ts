@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { aggregateLegs, type Leg, type TreasuryTerms } from '@terra/sim/systems/trade/market-batch';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
@@ -12,6 +12,7 @@ import { KeyStore } from '../../near/keystore/keys.js';
 import { daoAccountIdFor } from '../../near/treasury/policy.js';
 import { ensureCustodialAccount } from '../dev/market-accounts.bootstrap.js';
 import { MarketPolicyProvider, resolveProtocolAccountId } from '../orders/market-policy.provider.js';
+import { PatronPayoutService } from './patron-payout.service.js';
 import type { TradePlan } from './trade-plan.js';
 import {
   resolveTreasurySystemAccountId,
@@ -43,6 +44,7 @@ export class TreasuryFeeService {
     private readonly daos: TreasuryDaoPort,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    @Optional() private readonly patron?: PatronPayoutService,
   ) {}
 
   /** `enabled` follows W22. The account is the planet DAO, or `treasury:{planetId}` when get misses. */
@@ -65,20 +67,19 @@ export class TreasuryFeeService {
 
   /** Credits the planet DAO by the carved share, once per trade. No DAO, or a zero share: no-op. */
   async depositSettled(
-    plan: Pick<TradePlan, 'tradeId' | 'planetId' | 'quote' | 'treasuryFee'> & {
+    plan: Pick<TradePlan, 'tradeId' | 'planetId' | 'quote' | 'treasuryFee'> &
+      Partial<Pick<TradePlan, 'platformFee'>> & {
       readonly parties?: readonly { readonly colonyId: string }[];
     },
   ): Promise<void> {
-    const amount = plan.treasuryFee ?? '0';
-    if (amount === '0') return;
-    if (
+    const botOnly =
       this.env.NODE_ENV === 'production' &&
       plan.parties &&
       plan.parties.length > 0 &&
-      plan.parties.every((p) => p.colonyId.startsWith('bot-'))
-    ) {
-      return;
-    }
+      plan.parties.every((p) => p.colonyId.startsWith('bot-'));
+    if (!botOnly) await this.patron?.recordSafely(plan); // W28-06: Lead Patron share of the same platform fee
+    const amount = plan.treasuryFee ?? '0';
+    if (amount === '0' || botOnly) return;
     const daoAccountId = await this.daoAccount(plan.planetId);
     if (!daoAccountId) return;
     await this.daos.deposit({

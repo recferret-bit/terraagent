@@ -1,8 +1,11 @@
 import { Body, Controller, Get, Headers, HttpCode, Inject, Optional, Post, Query, Req } from '@nestjs/common';
 import {
+  CompoundYieldRequestSchema,
+  StakeProfitsRequestSchema,
   StakeRequestSchema,
   UnstakeRequestSchema,
   WithdrawRequestSchema,
+  type StakeProfitsResponse,
   type StakingActionResponse,
   type StakingStatusResponse,
 } from '@terra/contracts';
@@ -14,8 +17,12 @@ import { CoreException, ZodPipe } from '../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
-import { assertColonyOwnership } from '../identity/colony-ownership.guard.js';
+import { NearException } from '../domain/errors.js';
+import { assertColonyOwnership, resolveOptionalBearerPlayerId } from '../identity/colony-ownership.guard.js';
 import { nearAdapterFor } from '../infrastructure/adapter-selection.js';
+import { playerLinkedWallet, resolveWallet } from './perks/stake-clock.reader.js';
+import { PatronNominateRequest, type PatronNominationResult } from './services/patron-nominate.service.js';
+import { WalletControlGuard } from './services/wallet-control.guard.js';
 import { StakingService } from './staking.service.js';
 import type { StakingWalletTxDescriptor } from './staking-wallet-tx.js';
 
@@ -34,6 +41,10 @@ export class StakingController {
   private readonly stakePipe = new ZodPipe(StakeRequestSchema);
   private readonly unstakePipe = new ZodPipe(UnstakeRequestSchema);
   private readonly withdrawPipe = new ZodPipe(WithdrawRequestSchema);
+  private readonly compoundPipe = new ZodPipe(CompoundYieldRequestSchema);
+  private readonly profitsPipe = new ZodPipe(StakeProfitsRequestSchema);
+  private readonly nominatePipe = new ZodPipe(PatronNominateRequest);
+  private readonly walletGuard: WalletControlGuard;
 
   constructor(
     @Inject(StakingService) private readonly stakingService: StakingService,
@@ -42,14 +53,23 @@ export class StakingController {
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
     @Optional() @Inject(SectorAntiCheatService) private readonly antiCheat?: SectorAntiCheatService,
-  ) {}
+  ) {
+    this.walletGuard = new WalletControlGuard(tokens, env, prisma);
+  }
 
+  /** `GET /v1/near/staking`: by colony, by wallet, or (W28, neither given) the Bearer pilot's linked wallet. */
   @Get('staking')
-  getStatus(
+  async getStatus(
     @Query('colonyId') colonyId?: string,
     @Query('accountId') accountId?: string,
+    @Req() req?: IncomingMessage,
   ): Promise<StakingStatusResponse> {
     this.assertWaveEnabled();
+    if (!colonyId?.trim() && !accountId?.trim() && this.flags.has('W28') && this.prisma) {
+      const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
+      const linked = playerId ? await playerLinkedWallet(this.prisma, playerId) : null;
+      if (linked) return this.stakingService.getStatus({ accountId: linked.accountId });
+    }
     return this.stakingService.getStatus({ colonyId, accountId });
   }
 
@@ -77,10 +97,7 @@ export class StakingController {
     this.assertWaveEnabled();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const body = this.stakePipe.transform(raw ?? {});
-    if (!req) return this.stakingService.stake(body);
-    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature)).then(() =>
-      this.stakingService.stake(body),
-    );
+    return this.authorize(req, body).then(() => this.stakingService.stake(body));
   }
 
   @Post('unstake')
@@ -95,10 +112,7 @@ export class StakingController {
     this.assertWaveEnabled();
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const body = this.unstakePipe.transform(raw ?? {});
-    if (!req) return this.stakingService.unstake(body);
-    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature)).then(() =>
-      this.stakingService.unstake(body),
-    );
+    return this.authorize(req, body).then(() => this.stakingService.unstake(body));
   }
 
   @Post('withdraw')
@@ -114,10 +128,82 @@ export class StakingController {
     this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
     const normalized = this.normalizeWithdrawBody(raw);
     const body = this.withdrawPipe.transform(normalized);
-    if (!req) return this.stakingService.withdraw(body);
-    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature)).then(() =>
-      this.stakingService.withdraw(body),
-    );
+    return this.authorize(req, body).then(() => this.stakingService.withdraw(body));
+  }
+
+  /** `POST /v1/near/stake/compound` (`W28`): roll accrued yield into principal; `409 NOTHING_TO_COMPOUND` when there is none. */
+  @Post('stake/compound')
+  @HttpCode(200)
+  compound(
+    @Body() raw: unknown,
+    @Headers('x-actor') actorHeader?: string,
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-api-key') apiKeyHeader?: string,
+    @Req() req?: IncomingMessage,
+  ): Promise<StakingActionResponse> {
+    this.assertW28();
+    this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
+    const body = this.compoundPipe.transform(raw ?? {});
+    return this.authorize(req, body).then(() => this.stakingService.compound(body));
+  }
+
+  /** `POST /v1/near/stake/profits` (`W28`): `USDC` trade profit to `stNEAR` stake (quote only on real networks). */
+  @Post('stake/profits')
+  @HttpCode(200)
+  async stakeProfits(
+    @Body() raw: unknown,
+    @Headers('x-actor') actorHeader?: string,
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-api-key') apiKeyHeader?: string,
+    @Req() req?: IncomingMessage,
+  ): Promise<StakeProfitsResponse> {
+    this.assertW28();
+    this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
+    let body = this.profitsPipe.transform(raw ?? {});
+    if (!body.accountId?.trim() && !body.colonyId?.trim() && this.prisma) {
+      const playerId = resolveOptionalBearerPlayerId(req, this.tokens, this.env);
+      if (playerId) {
+        const wallet = await resolveWallet(this.prisma, { playerId });
+        const fallbackAcct = wallet.accountIds.includes(wallet.walletKey) ? wallet.walletKey : wallet.accountIds[0];
+        if (fallbackAcct) body = { ...body, accountId: fallbackAcct };
+      }
+    }
+    await this.authorize(req, body);
+    return this.stakingService.stakeProfits(body);
+  }
+
+  /** `POST /v1/near/staking/patron/nominate` (`W28`): back a public planet in the King-of-the-Hill Lead Patron race. */
+  @Post('staking/patron/nominate')
+  @HttpCode(200)
+  nominatePatron(
+    @Body() raw: unknown,
+    @Headers('x-actor') actorHeader?: string,
+    @Headers('authorization') authHeader?: string,
+    @Headers('x-api-key') apiKeyHeader?: string,
+    @Req() req?: IncomingMessage,
+  ): Promise<PatronNominationResult> {
+    this.assertW28();
+    this.assertHumanCaller(actorHeader, authHeader, apiKeyHeader, raw);
+    const body = this.nominatePipe.transform(raw ?? {});
+    // No NEP-413 message exists for a nomination, so the linked session is the proof on every network (even without `req`).
+    if (!req) return Promise.reject(new NearException('NEAR_NOT_OWNER', { status: 401, message: 'Sign in with the wallet you nominate from.' }));
+    return this.walletGuard
+      .assert(req, body.accountId, { requireSession: true })
+      .then(() => this.stakingService.nominatePatron(body.accountId, body.planetId));
+  }
+
+  /**
+   * Who may act: with `W28` on and a named wallet the caller must control that wallet (`WalletControlGuard`); otherwise the
+   * W20 rule applies, the caller must own the colony.
+   */
+  private authorize(
+    req: IncomingMessage | undefined,
+    body: { readonly colonyId?: string; readonly accountId?: string; readonly walletSignature?: unknown },
+  ): Promise<void> {
+    if (!req) return Promise.resolve();
+    const wallet = body.accountId?.trim();
+    if (wallet && this.flags.has('W28')) return this.walletGuard.assert(req, wallet);
+    return this.assertCallerColonyOwnership(req, body.colonyId, Boolean(body.walletSignature));
   }
 
   private async assertCallerColonyOwnership(
@@ -174,6 +260,12 @@ export class StakingController {
 
   private assertWaveEnabled(): void {
     if (!this.flags.has('W20')) {
+      throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
+    }
+  }
+
+  private assertW28(): void {
+    if (!this.flags.has('W28')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
   }

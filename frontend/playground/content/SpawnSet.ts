@@ -21,6 +21,7 @@ import {
   type ActiveWorkSiteInput,
   type InteractionTargetKind,
 } from '@terra/render/particles';
+import { applyHubPrestige, isHubMesh } from '@terra/render/prestige/hubPrestige';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import type { VertebratePoseMode } from '../state';
 import {
@@ -162,6 +163,17 @@ export class SpawnSet {
 
   /** Ruin variant (W18-22: charred, cracked, unlit) of every shown archetype. */
   applyRuin(ruin: boolean) { for (const s of this.spawns) if (!s.floraDispose) setArchetypeRuin(s.mesh, ruin); }
+
+  /** Staking prestige (W28-12): dress every shown Command Hub for `tier` (dish, gold trim, uplink beam). Null: leave as built. */
+  applyStakeTier(tier: number | null) {
+    if (tier === null) return;
+    for (const s of this.spawns) {
+      if (!isHubMesh(s.mesh)) continue;
+      applyHubPrestige(s.mesh, tier);
+      s.mesh.geometry.computeBoundingBox();
+      s.box = s.mesh.geometry.boundingBox!.clone();
+    }
+  }
 
   find(id: string) { return this.spawns.find((s) => s.id === id); }
 

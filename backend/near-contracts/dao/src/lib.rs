@@ -5,6 +5,30 @@ use serde_json::json;
 
 const DEFAULT_PASS_ABOVE_BP: u32 = 5_000;
 const DEFAULT_PASS_MIN_YES: u32 = 2;
+const BASE_VOTE_WEIGHT_BP: u32 = 10_000;
+const MAX_VOTE_WEIGHT_BP: u32 = 100_000;
+
+fn vote_weight_key(dao_account_id: &str, proposal_id: u32, voter: &str) -> Vec<u8> {
+    format!("vw:{}|{}|{}", dao_account_id, proposal_id, voter).into_bytes()
+}
+
+fn read_vote_weight_bp(dao_account_id: &str, proposal_id: u32, voter: &str) -> u32 {
+    match env::storage_read(&vote_weight_key(dao_account_id, proposal_id, voter)) {
+        Some(b) if b.len() == 4 => {
+            let mut arr = [0u8; 4];
+            arr.copy_from_slice(&b);
+            let w = u32::from_le_bytes(arr);
+            if w > 0 { w } else { BASE_VOTE_WEIGHT_BP }
+        }
+        _ => BASE_VOTE_WEIGHT_BP,
+    }
+}
+
+fn write_vote_weight_bp(dao_account_id: &str, proposal_id: u32, voter: &str, weight_bp: u32) {
+    if weight_bp != BASE_VOTE_WEIGHT_BP {
+        env::storage_write(&vote_weight_key(dao_account_id, proposal_id, voter), &weight_bp.to_le_bytes());
+    }
+}
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,7 +84,9 @@ fn parse_u128(raw: &str) -> u128 {
 }
 
 fn rule_passes(
+    dao_account_id: &str,
     members: &[DaoMemberRecord],
+    proposal_id: u32,
     votes: &[VoteRecord],
     pass_above_bp: u32,
     pass_min_yes: u32,
@@ -70,11 +96,13 @@ fn rule_passes(
         return false;
     }
     let mut yes: u128 = 0;
+    let mut yes_weight_bp: u128 = 0;
     let mut no: u128 = 0;
     for v in votes {
         if members.iter().any(|m| m.account_id == v.voter) {
             if v.vote == "approve" {
                 yes += 1;
+                yes_weight_bp += read_vote_weight_bp(dao_account_id, proposal_id, &v.voter) as u128;
             } else {
                 no += 1;
             }
@@ -83,7 +111,7 @@ fn rule_passes(
     if yes == 0 {
         return false;
     }
-    if yes * 10_000 > (pass_above_bp as u128) * member_count {
+    if yes_weight_bp > (pass_above_bp as u128) * member_count {
         return true;
     }
     yes >= (pass_min_yes as u128) && no == 0
@@ -364,6 +392,36 @@ impl TreasuryDaoContract {
         pass_above_bp: Option<u32>,
         pass_min_yes: Option<u32>,
     ) -> String {
+        self.cast_vote(op_id, dao_account_id, proposal_id, voter, vote, pass_above_bp, pass_min_yes, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn vote_weighted(
+        &mut self,
+        op_id: String,
+        dao_account_id: String,
+        proposal_id: u32,
+        voter: String,
+        vote: String,
+        weight_bp: Option<u32>,
+        pass_above_bp: Option<u32>,
+        pass_min_yes: Option<u32>,
+    ) -> String {
+        self.cast_vote(op_id, dao_account_id, proposal_id, voter, vote, pass_above_bp, pass_min_yes, weight_bp)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cast_vote(
+        &mut self,
+        op_id: String,
+        dao_account_id: String,
+        proposal_id: u32,
+        voter: String,
+        vote: String,
+        pass_above_bp: Option<u32>,
+        pass_min_yes: Option<u32>,
+        weight_bp: Option<u32>,
+    ) -> String {
         require!(!op_id.is_empty(), "DAO_NOT_FOUND: op_id required");
         require!(
             vote == "approve" || vote == "reject",
@@ -376,8 +434,13 @@ impl TreasuryDaoContract {
             "NEAR_NOT_OWNER: caller not authorized to vote on behalf of voter"
         );
         require!(
-            is_operator || (pass_above_bp.is_none() && pass_min_yes.is_none()),
+            is_operator || (pass_above_bp.is_none() && pass_min_yes.is_none() && weight_bp.is_none()),
             "NEAR_NOT_OWNER: only operator may override quorum parameters"
+        );
+        let effective_weight = weight_bp.unwrap_or(BASE_VOTE_WEIGHT_BP);
+        require!(
+            (1..=MAX_VOTE_WEIGHT_BP).contains(&effective_weight),
+            "INVALID_WEIGHT: weight_bp must be in 1..=100_000"
         );
         if let Some(prev) = self.processed_ops.get(&op_id) {
             return prev.clone();
@@ -404,6 +467,7 @@ impl TreasuryDaoContract {
             !dao.proposals[idx].votes.iter().any(|v| v.voter == voter),
             "ALREADY_VOTED: member already voted"
         );
+        write_vote_weight_bp(&dao_account_id, proposal_id, &voter, effective_weight);
         dao.proposals[idx].votes.push(VoteRecord {
             voter: voter.clone(),
             vote: vote.clone(),
@@ -416,7 +480,7 @@ impl TreasuryDaoContract {
         );
         let min_yes = pass_min_yes.unwrap_or(DEFAULT_PASS_MIN_YES);
         let mut status = "InProgress".to_string();
-        if rule_passes(&dao.members, &dao.proposals[idx].votes, above_bp, min_yes) {
+        if rule_passes(&dao_account_id, &dao.members, proposal_id, &dao.proposals[idx].votes, above_bp, min_yes) {
             let mut proposal = dao.proposals[idx].clone();
             settle_cost(&mut dao, &mut proposal);
             proposal.status = "Approved".to_string();
@@ -425,7 +489,7 @@ impl TreasuryDaoContract {
         }
         self.daos.insert(dao_account_id.clone(), dao);
         self.processed_ops.insert(op_id, status.clone());
-        emit_dao("vote", json!({ "dao_account_id": dao_account_id, "proposal_id": proposal_id, "voter": voter, "status": status }));
+        emit_dao("vote", json!({ "dao_account_id": dao_account_id, "proposal_id": proposal_id, "voter": voter, "weight_bp": effective_weight, "status": status }));
         status
     }
 
@@ -463,7 +527,7 @@ impl TreasuryDaoContract {
             "INVALID_QUORUM: pass_above_bp must be <= 10_000"
         );
         let min_yes = pass_min_yes.unwrap_or(DEFAULT_PASS_MIN_YES);
-        let status = if !rule_passes(&dao.members, &dao.proposals[idx].votes, above_bp, min_yes) {
+        let status = if !rule_passes(&dao_account_id, &dao.members, proposal_id, &dao.proposals[idx].votes, above_bp, min_yes) {
             dao.proposals[idx].status = "Expired".to_string();
             "Expired".to_string()
         } else {
@@ -477,6 +541,23 @@ impl TreasuryDaoContract {
         self.processed_ops.insert(op_id, status.clone());
         emit_dao("finalize", json!({ "dao_account_id": dao_account_id, "proposal_id": proposal_id, "status": status }));
         status
+    }
+
+    pub fn get_dao_weights(&self, dao_account_id: String) -> BTreeMap<String, u32> {
+        let dao = self
+            .daos
+            .get(&dao_account_id)
+            .expect("DAO_NOT_FOUND: dao does not exist");
+        let mut out = BTreeMap::new();
+        for p in &dao.proposals {
+            for v in &p.votes {
+                let w = read_vote_weight_bp(&dao_account_id, p.id, &v.voter);
+                if w != BASE_VOTE_WEIGHT_BP {
+                    out.insert(format!("{}:{}", p.id, v.voter), w);
+                }
+            }
+        }
+        out
     }
 
     pub fn get_dao(&self, dao_account_id: String) -> DaoRecord {

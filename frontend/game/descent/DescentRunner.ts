@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { isDayNightExternalSync, stepStandaloneDayNight } from '@terra/render/core/dayNightConfig';
 import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
-import type { DescentHandoff, DescentOptions, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
+import type { DescentHandoff, DescentOptions, DescentPrestigeSource, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { acquireModel } from '@terra/render/visuals/space/placeholders';
 import { setDescentSunDirection } from '@terra/render/core/shadowConfig';
@@ -12,6 +12,7 @@ import { FINAL_POS, FINAL_TARGET, R, TL } from './constants';
 import { FrameState, type DescentContext, type FramePart } from './parts/FrameState';
 import { Trajectory } from './parts/Trajectory';
 import { bayGlowAt, CarrierBay } from './parts/CarrierBay';
+import { DescentFlagship } from './parts/DescentFlagship';
 import { HeatShield } from './parts/HeatShield';
 import { ReentryFx } from './parts/ReentryFx';
 import { ChuteFx } from './parts/ChuteFx';
@@ -64,7 +65,7 @@ export class DescentRunner implements DescentSequence {
     const root = new THREE.Group(); root.name = 'descent:root';
     const initSpace = computeSpaceEntrySolar(new DescentSolarEvaluator().evaluate(spec, 0), viewport.bloom.strength);
     const sunDir = initSpace.entrySunDir.clone();
-    this.ctx = { viewport, scene, camera, spec, surface, dens, startAt: this.startAt, tScale: this.tScale, sunDir, traj, root };
+    this.ctx = { viewport, scene, camera, spec, surface, dens, startAt: this.startAt, tScale: this.tScale, sunDir, traj, root, prestige: opts.prestige };
     setDescentSunDirection(viewport, sunDir); // key light + shadows from the same sun as globe/clouds (RN-42)
 
     // ---- models (carrier + shared drop rig: bay plate, clamp arms, pod, heat shield — identical to the menu stage's)
@@ -86,11 +87,12 @@ export class DescentRunner implements DescentSequence {
     const chute = new ChuteFx(this.ctx, podRoot, podH, podR);
     this.ground = new GroundFx(this.ctx);
     const bay = new CarrierBay(this.ctx, carrier, rig, pod, podH);
+    const flagship = new DescentFlagship(this.ctx);
     const shield = new HeatShield(this.ctx, rig, podH);
     this.cam = new CameraRig(this.ctx, carrier);
 
-    this.parts = [bay, shield, reentry, chute, flames, this.ground, this.touchdown, this.cam, this.sky];
-    this.disposeOrder = [this.sky, reentry, flames, chute, this.ground, this.touchdown, bay];
+    this.parts = [bay, shield, reentry, chute, flames, this.ground, this.touchdown, this.cam, flagship, this.sky];
+    this.disposeOrder = [this.sky, flagship, reentry, flames, chute, this.ground, this.touchdown, bay];
     this.telOut = this.tel.at(0);
     this.handoff = this.buildHandoff(carrier.root.scale.x);
   }
@@ -121,6 +123,8 @@ export class DescentRunner implements DescentSequence {
     CameraRig.curve(startAt, h.pod, h.cam, h.camTarget);
     return h;
   }
+
+  setPrestige(prestige: DescentPrestigeSource | undefined) { this.ctx.prestige = prestige; }
 
   alignGlobe(spinQuat: THREE.Quaternion, cloudRotY: number) {
     this.ctx.globeAligned = true;

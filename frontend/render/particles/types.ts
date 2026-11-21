@@ -99,6 +99,11 @@ export interface ToolBeamSpec {
 export interface ParticlePresetSpec {
   /** Unique preset ID, e.g. 'work.tree', 'work.rock', 'work.dune'. */
   id: string;
+  /**
+   * Set on a cosmetic variant of another preset (`work.tree.cyan`, W28-12). A variant is found by id only: it never
+   * becomes the default of its `targetKind`, which stays the base preset.
+   */
+  variantOf?: string;
   /** Canonical interaction target category. */
   targetKind: InteractionTargetKind;
   /** Display label for playground & validator reports. */

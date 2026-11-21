@@ -44,7 +44,7 @@ const SECRET_RES = [
 ];
 
 const isTestOrFixture = (rel) => /\.(spec|test|fixture)\.[cm]?[jt]s$|^tests\/|\/test\/|\/__tests__\//.test(rel);
-const isDataOrGen = (rel) => /\/data\/|\/generated\/|\.d\.ts$|^docs\//.test(rel);
+const isDataOrGen = (rel) => /\/data\/|\/generated\/|\.d\.ts$|^docs\/|^frontend\/dev\/api-atlas\/.*\.(html|css)$/.test(rel);
 const lineAt = (sf, pos) => sf.getLineAndCharacterOfPosition(pos).line + 1;
 
 function fnName(node, sf) {

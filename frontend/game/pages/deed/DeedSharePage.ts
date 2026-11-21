@@ -255,7 +255,13 @@ export class DeedSharePage {
     shareXBtn.setAttribute('data-testid', 'deed-share-x-btn');
     shareXBtn.textContent = 'Share on X';
 
-    actions.append(colonizeBtn, shareXBtn);
+    const stakeBtn = document.createElement('a');
+    stakeBtn.className = 'btn btn-ghost';
+    stakeBtn.href = '/me.html#staking';
+    stakeBtn.setAttribute('data-testid', 'deed-staking-cta');
+    stakeBtn.textContent = '⚡ Staking & Perks';
+
+    actions.append(colonizeBtn, stakeBtn, shareXBtn);
     hero.append(cardArt, img, buildMetaGrid(deed), actions);
     main.append(hero, buildHistorySection(deed));
     this.root.appendChild(main);

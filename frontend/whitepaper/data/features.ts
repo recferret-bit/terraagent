@@ -41,7 +41,7 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     title: 'Dual Settlement: Fast Sim + NEAR Finality',
     layer: 'WEB3',
     badge: 'HYBRID',
-    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (102 Rust tests).',
+    summary: 'Five-tick-per-second gameplay never blocks on RPC latency. Asset custody, diplomacy bonds, deeds, council votes, cargo bridges, and Shade Agent MPC flows settle across six deployed contracts plus our standalone verifier crate (172 Rust tests).',
     chips: ['near-sdk 5.7', 'Testnet + verifier', '11 Typed Ports'],
   },
   {
@@ -59,18 +59,18 @@ export const WEB3_FEATURES: ReadonlyArray<WebFeatureCard> = [
     chips: ['res.terraagent.testnet', '1Click Ramp', 'Hosted MCP /v1/mcp'],
   },
   {
-    title: 'Day-1 Lossless Staking & Direct Wallet Tx',
+    title: 'Wallet-First 4-Tier Staking & Wealth Dashboard',
     layer: 'WEB3',
-    badge: 'LOSSLESS',
-    summary: 'Human accounts stake native NEAR or whitelisted LSTs (`stake_payable`, `ft_on_transfer`) on `staking.terraagent.testnet` via relayer or direct `wallet-tx`. Pilots keep 100% principal + 80% yield (7.20% APY); 20% funds Protocol.',
-    chips: ['80/20 Yield Split', '10 NEAR Unlocks AI', 'Direct wallet-tx'],
+    badge: '4-TIER PATRONAGE',
+    summary: 'Stake native NEAR or `stNEAR` / `LiNEAR` on `/me.html#staking` with zero Colony Deed (`stake_payable`, `compound_yield`, `withdraw_lst`). Keep 100% principal + 7.20% net APY, unlock `0.65%–0.25%` fees (`24h` warmup, `<7d` `25 bp` exit), and compete for the Tier 4 Lead Patron seat.',
+    chips: ['10 / 50 / 200 / 500+ NEAR', '1-Click Compound', 'Lead Patron Flagship'],
   },
   {
     title: 'Payable Escrows, Shade MPC & SputnikDAO Export',
     layer: 'WEB3',
     badge: 'ESCROW + DAO',
-    summary: 'Matched fills split 4 ways, `bounty` adds native `open_near_escrow` + expired self-refunds, `dao` supports direct council votes + SputnikDAO v2 JSON export, and Shade Agents sign via NEAR MPC (`v1.signer`).',
-    chips: ['open_near_escrow', 'SputnikDAO Export', 'Shade + v1.signer'],
+    summary: 'Matched fills split 4 ways, `bounty` adds native `open_near_escrow` + expired self-refunds, `dao` supports direct council votes + Tier 3+ `1.5x` `vote_weighted` + SputnikDAO v2 JSON export, and Shade Agents sign via NEAR MPC (`v1.signer`).',
+    chips: ['open_near_escrow', 'vote_weighted 1.5x', 'Shade + v1.signer'],
   },
   {
     title: 'Soulbound Colony Deeds, NEAR Social & 60 Badges',
@@ -125,11 +125,11 @@ export const WEB2_FEATURES: ReadonlyArray<WebFeatureCard> = [
     chips: ['kestrel & vanguard', '24h VWAP Anchor', '10% Off-Planet Sink'],
   },
   {
-    title: 'Pilot Profile, 60 Badges & Public Colony Deeds',
+    title: 'Pilot Profile, Wealth Dashboard, 60 Badges & Deeds',
     layer: 'WEB2',
-    badge: 'IDENTITY',
-    summary: 'Tracks 60 tiered achievement badges (20 families × Bronze/Silver/Gold across 30 levels), encrypted BYOK settings on `/me.html`, and shareable OpenGraph colony pages at `/deed/:tokenId`.',
-    chips: ['/me.html', '60 Badges (20×3)', '/deed/:tokenId'],
+    badge: 'IDENTITY + WEALTH',
+    summary: 'Tracks 60 tiered achievement badges (20×3), the `/me.html#staking` Wealth Dashboard (self-fill-excluded Effective APY, 30d/90d/1y yield curves, Stake Trade Profits), encrypted BYOK settings, and OpenGraph `/deed/:tokenId` cards.',
+    chips: ['/me.html#staking', '60 Badges (20×3)', '/deed/:tokenId'],
   },
   {
     title: 'Web Surfaces, Pitchdeck & Faction Plate UI',
@@ -151,8 +151,8 @@ export const CONTRACT_ROWS: ReadonlyArray<ContractSpec> = [
   { contract: 'res', accountId: 'res.terraagent.testnet', txHash: '5reiQL5XddxLS9hDDmKrh1Nn4N8f5Ui9KjtqySvGejok', standard: 'NEP-245 Multi-Token', role: 'Orbital cargo across all 10 commodities (18 dec)', guardAndSettlement: '`mt_mint` / `mt_burn` / `mt_withdraw` / `mt_batch_transfer` / `mt_transfer_call` + NEP-145 bounds' },
   { contract: 'deed', accountId: 'deed.terraagent.testnet', txHash: 'E1AGHyMmzCGdsRqvoMVjqWqVQGGkuRu3djQzuRj3wRGK', standard: 'NEP-171 Soulbound', role: 'Colony Deeds, 5-entry capped milestone chapters & badges', guardAndSettlement: 'Bounded `update_metadata`, `prune_history` & NEP-181 pagination (`<= 50`) + NEAR Social shares' },
   { contract: 'bounty', accountId: 'bounty.terraagent.testnet', txHash: '21F1c5TdGtgcAhoTMPRMkHCYvQ15USqo4fpxBrXU8UAB', standard: 'Escrow State Machine', role: 'Defense bounties, Peace Treaties (2h–72h), and 6h War Bonds', guardAndSettlement: '`open_escrow` / payable `open_near_escrow` / `mt_on_transfer` / `claim_expired_refund` / `slash_escrow` (90/10)' },
-  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Lossless Validator Vault', role: 'Day-1 native NEAR & LST staking (9.0% gross APY) + 10 NEAR AI unlock', guardAndSettlement: '100% principal safe (`stake_payable`, `ft_on_transfer` LSTs, `wallet-tx`); 80/20 yield split' },
-  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Direct council `propose`/`vote`/`finalize` + SputnikDAO v2 JSON export (`/sputnik-json`)' },
+  { contract: 'staking', accountId: 'staking.terraagent.testnet', txHash: '5UvHFrKUocqf5JewptneZqGeXgXkJQZaeVMPfHTrusX2', standard: 'Wallet-First 4-Tier Vault', role: 'Native NEAR & `stNEAR`/`LiNEAR` staking (7.20% net APY), 4-tier perks & Lead Patron seats', guardAndSettlement: '`stake_payable`, `compound_yield` (0% fee), self-custody `unstake`/`withdraw`/`withdraw_lst`, `<7d` `25 bp` exit fee & Option A LST share-price solvency' },
+  { contract: 'dao', accountId: 'dao.terraagent.testnet', txHash: 'DmsGYQ7VBajz1rRC5FKxNarnnddhs5CzeVgfJc6mqx5U', standard: 'Planet Council Voting', role: 'Meteor shield, terraform boost, and guild subsidy proposals', guardAndSettlement: 'Direct council `propose`/`vote`/`vote_weighted` (`1.5x` Tier 3+)/`finalize` + SputnikDAO v2 JSON export (`/sputnik-json`)' },
   { contract: 'pilots', accountId: 'pilots.terraagent.testnet', txHash: 'cSTqNFu5aQKb9MiJwantuhxj4Hwn3T2D4WbhCHJAr2h', standard: 'Cold-Root Factory', role: 'Instant `{pilot}.pilots.terraagent.testnet` sub-account provisioning', guardAndSettlement: '`create_pilot_account`; `claimAccount` rotates `[AddKey, DeleteKey]` + seals scoped trading session key' },
   { contract: 'verifier (workspace)', accountId: 'verifier.terraagent.testnet', txHash: '', standard: 'NEP-413 On-Chain Verifier', role: 'Pure Rust `token_diff` Borsh + `env::ed25519_verify`, key-binding & replay registry', guardAndSettlement: '`simulate_intents` / `execute_intents` / `register_account_key` workspace crate (release WASM built, 6 unit tests)' },
 ];
@@ -169,7 +169,7 @@ export const PROTOCOL_ACCOUNT_ROWS: ReadonlyArray<ProtocolAccountSpec> = [
     key: 'protocol',
     accountId: 'protocol.terraagent.testnet',
     role: 'Protocol Treasury (`NEAR_PROTOCOL_ACCOUNT`)',
-    gasAndSecurityModel: 'Collects 80% of platform trade fees, 20% of validator staking yield, and 10% of breached bond slashes to fund gasless relays and Managed NEAR.AI without minting tokens.',
+    gasAndSecurityModel: 'Collects 80% of platform trade fees (`68%` net when a planet’s Tier 4 Lead Patron earns their `15%` protocol share = `12%` of gross), 20% of validator staking yield, and 10% of breached bond slashes to fund gasless relays and Managed NEAR.AI without minting tokens.',
     txHash: '9q3km4TiFVGnY6HMZUaZdXWmtuMTJ1cy3hvGXyM9ArXY',
   },
   {
@@ -198,8 +198,8 @@ export const PORT_ROWS: ReadonlyArray<PortSpec> = [
   { port: 'DeedNftPort', category: 'Identity', mockBehavior: 'Local deed milestone record', liveImplementation: '`deed` `NEP-171` mint & metadata append' },
   { port: 'BadgeNftPort', category: 'Progression', mockBehavior: '60 DB badge unlocks (20×3)', liveImplementation: 'On-chain soulbound badge proofs' },
   { port: 'EscrowPort', category: 'Diplomacy', mockBehavior: 'Simulated truce & war bond book', liveImplementation: '`bounty` lock, claim, refund & 90/10 slash' },
-  { port: 'StakingPort', category: 'Yield', mockBehavior: 'Simulated epoch reward clock', liveImplementation: '`staking` pool (80/20 split, human-only)' },
-  { port: 'TreasuryDaoPort', category: 'Governance', mockBehavior: 'Local council vote tally', liveImplementation: '`dao` policy proposal & execution' },
+  { port: 'StakingPort', category: 'Yield', mockBehavior: 'Simulated epoch reward clock & multi-asset ledger', liveImplementation: '`staking` wallet-first 4-tier vault (80/20 split, 1-step withdraw & LST share-price solvency)' },
+  { port: 'TreasuryDaoPort', category: 'Governance', mockBehavior: 'Local weighted council vote tally', liveImplementation: '`dao` council proposals, Tier 3+ `1.5x` `vote_weighted` & execution' },
 ];
 
 export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
@@ -214,9 +214,9 @@ export const AI_GUARDRAIL_ROWS: ReadonlyArray<AiGuardrailRow> = [
     enforcement: 'Isolates staker prompts from rival bots, fences labels inside `<untrusted_player_label>`, and checks kill switches, policy pauses, revoked director keys (`DeleteKey`), open-order exposure, and VWAP price bands.',
   },
   {
-    control: 'Encrypted BYOK Vault & Managed Staker Banner (`/me.html`)',
-    trigger: 'Player attaches personal NEAR.AI key or stakes >= 10 NEAR',
-    enforcement: 'Encrypted at rest using authenticated AES-256-GCM with live enclave probe (`TEST & VERIFY TEE ENCLAVE`); plaintext keys are never echoed, and >= 10 NEAR stakers see `MANAGED STAKER AI ACTIVE`.',
+    control: 'Encrypted BYOK Vault, 5-Turn Trial & USD Budget Gate (`/me.html`)',
+    trigger: 'Pilot runs free trial, attaches BYOK key, or stakes 10–500+ NEAR',
+    enforcement: 'Encrypted at rest via AES-256-GCM with live enclave probe (`TEST & VERIFY TEE ENCLAVE`); verified pilots get 5 free TEE turns, while Tier 1–4 stakers share `1–12` colony slots capped at `35%` of protocol income (`>= 65%` margin).',
   },
   {
     control: 'Staking Isolation & Hard Custody Rails (`403 AI_STAKING_FORBIDDEN`)',

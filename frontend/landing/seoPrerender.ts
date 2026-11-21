@@ -29,7 +29,7 @@ function buildFaqEntities(): Array<Record<string, unknown>> {
       name: 'Do I need a crypto wallet?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'No. You start as a guest. Linking or claiming a NEAR wallet is optional and unlocks self-custody withdrawals and Day-1 Staking.',
+        text: 'No. You start as a guest, and verified accounts get 5 free NEAR.AI TEE turns. Connecting a NEAR wallet is optional and unlocks self-custody withdrawals plus wallet-first 4-Tier Staking on /me.html#staking with no Colony Deed required.',
       },
     },
     {

@@ -7,3 +7,4 @@ export * from './near-claim';
 export * from './near-deed';
 export * from './near-relay';
 export * from './social';
+export * from './near-intents';

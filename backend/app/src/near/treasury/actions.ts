@@ -10,7 +10,7 @@ import type {
 import { NearException } from '../domain/errors.js';
 import { assertCanPropose, assertMember, withMember, withoutMember } from './members.js';
 import { covers, creditBalance, proposalKindJson, readCost, settleCost, type ProposalStatus, type StoredProposal } from './policy.js';
-import { proposalPasses, tallyMemberVotes } from './pass-rule.js';
+import { BASE_VOTE_WEIGHT_BP, proposalPasses, tallyMemberVotes } from './pass-rule.js';
 import {
   nextProposalId,
   requireDao,
@@ -87,7 +87,7 @@ export async function castVote(tx: DbClient, input: VoteInput): Promise<{ propos
   if (proposal.votes.some((vote) => vote.voter === input.voter)) {
     throw new NearException('ALREADY_VOTED', { details: { proposalId: input.proposalId, voter: input.voter } });
   }
-  const next: StoredProposal = { ...proposal, votes: [...proposal.votes, { voter: input.voter, vote: input.vote }] };
+  const next: StoredProposal = { ...proposal, votes: [...proposal.votes, input.weightBp && input.weightBp !== BASE_VOTE_WEIGHT_BP ? { voter: input.voter, vote: input.vote, weightBp: input.weightBp } : { voter: input.voter, vote: input.vote }] };
   if (!rulePasses(dao, next)) {
     await writeProposal(tx, input.daoAccountId, next);
     return { proposalId: next.id, status: 'InProgress' };

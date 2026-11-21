@@ -13,6 +13,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { StakingPort, type StakingPoolView } from '../application/ports/staking.port.js';
+import { refreshNominatedPatronSeats, syncW28ExtraPositions } from './staking-position-sync-extras.js';
 import { yoctoToNear } from './yocto.js';
 
 export { yoctoToNear };
@@ -30,9 +31,21 @@ export function deriveColonyIdFromAccountId(accountId: string): string {
   return dotIdx > 0 ? trimmed.slice(0, dotIdx) : trimmed;
 }
 
+const clockFields = (row: {
+  stakedSinceAt?: Date | null;
+  lastStakedAt?: Date | null;
+  asset?: string;
+}): Pick<StakingPositionDto, 'stakedSinceMs' | 'lastStakedAtMs' | 'asset'> => ({
+  stakedSinceMs: row.stakedSinceAt?.getTime() ?? null,
+  lastStakedAtMs: row.lastStakedAt?.getTime() ?? null,
+  ...(row.asset === 'near' || row.asset === 'stNEAR' || row.asset === 'LiNEAR' ? { asset: row.asset } : {}),
+});
+
 export interface SyncAccountOptions {
   readonly colonyId?: string;
   readonly pool?: string;
+  /** W28 wallet-first: the account has no colony, so its read-model rows are keyed by the account id itself. */
+  readonly wallet?: boolean;
 }
 
 /**
@@ -92,7 +105,7 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     if (!this.isWaveEnabled()) return null;
     const explicitColonyId = typeof options === 'string' ? options : options?.colonyId;
     const preferredPool = typeof options === 'object' ? options?.pool : undefined;
-    const synced = await this.syncAccountPositions(accountId, explicitColonyId);
+    const synced = await this.syncAccountPositions(accountId, explicitColonyId, typeof options === 'object' && options?.wallet === true);
     if (preferredPool) {
       return synced.find((p) => p.pool === preferredPool) ?? synced[0] ?? null;
     }
@@ -103,21 +116,45 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
   async syncAccountPositions(
     accountId: string,
     explicitColonyId?: string,
+    wallet = false,
   ): Promise<StakingPositionDto[]> {
     if (!this.isWaveEnabled()) return [];
-    const colonyId = await this.resolveColonyId(accountId, explicitColonyId);
+    const colonyId = await this.resolveColonyId(accountId, explicitColonyId, wallet);
     const pools = await this.staking.listPools();
+    const seenPools = new Set<string>();
     const active: StakingPositionDto[] = [];
 
     for (const poolView of pools) {
+      seenPools.add(poolView.poolId);
       const dto = await this.syncSinglePool(accountId, colonyId, poolView);
       if (dto) active.push(dto);
     }
 
-    if (active.length === 0) {
-      const db = this.useDb();
-      if (db) {
-        await db.stakingPosition.deleteMany({ where: { accountId } });
+    let canPrune = true;
+    if (this.flags?.has('W28')) {
+      const extraRes = await syncW28ExtraPositions({
+        accountId,
+        seenPools,
+        defaultApyBp: pools[0]?.apyBp ?? 900,
+        staking: this.staking,
+        db: this.useDb(),
+        envBag: (this.env ?? process.env) as Record<string, string | undefined>,
+        onDiscovered: (pos, apyBp) => this.syncDiscoveredPosition(accountId, colonyId, pos, apyBp),
+        onFallbackPool: (poolView) => this.syncSinglePool(accountId, colonyId, poolView),
+      });
+      active.push(...extraRes.active);
+      canPrune = extraRes.canPrune;
+    }
+
+    const db = this.useDb();
+    if (db) {
+      if (canPrune) {
+        await db.stakingPosition.deleteMany({
+          where: active.length === 0 ? { accountId } : { accountId, poolId: { notIn: active.map((p) => p.pool) } },
+        });
+      }
+      if (this.flags?.has('W28')) {
+        await refreshNominatedPatronSeats(db, accountId).catch(() => undefined);
       }
     }
 
@@ -166,10 +203,11 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     return rows.map((row) => {
       const poolInfo = poolMap.get(row.poolId);
       return {
-        colonyId: row.colonyId,
+        ...(row.colonyId === row.accountId ? {} : { colonyId: row.colonyId }),
         accountId: row.accountId,
         pool: row.poolId,
         ...(poolInfo ? { poolName: poolInfo.name, apyBp: poolInfo.apyBp } : {}),
+        ...clockFields(row),
         staked: yoctoToNear(row.stakedSnapshot.toFixed(0), 6),
         unbonding: yoctoToNear(row.unbondingSnapshot.toFixed(0), 6),
         unbondingReadyAtMs: row.unbondingReadyAt ? row.unbondingReadyAt.getTime() : null,
@@ -213,36 +251,80 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     }
 
     const now = new Date();
-    const readyDate = pos.unbondingReadyAtMs !== null ? new Date(pos.unbondingReadyAtMs) : null;
+    if (db) await this.persistSyncedPosition(db, colonyId, accountId, poolView.poolId, pos, rewardsYocto, now);
+    const dto = this.buildSyncedDto(colonyId, accountId, poolView, pos, rewardsYocto, now.getTime());
+    this.positions.set(mapKey, dto);
+    return dto;
+  }
 
-    if (db) {
-      await db.stakingPosition.upsert({
-        where: { colonyId_poolId: { colonyId, poolId: poolView.poolId } },
-        create: {
-          colonyId,
-          poolId: poolView.poolId,
-          accountId,
-          stakedSnapshot: pos.staked,
-          unbondingSnapshot: pos.unbonding,
-          unbondingReadyAt: readyDate,
-          withdrawableSnapshot: pos.withdrawable,
-          rewardsSnapshot: rewardsYocto,
-          updatedAt: now,
-        },
-        update: {
-          accountId,
-          stakedSnapshot: pos.staked,
-          unbondingSnapshot: pos.unbonding,
-          unbondingReadyAt: readyDate,
-          withdrawableSnapshot: pos.withdrawable,
-          rewardsSnapshot: rewardsYocto,
-          updatedAt: now,
-        },
-      });
+  private async syncDiscoveredPosition(
+    accountId: string,
+    colonyId: string,
+    pos: Awaited<ReturnType<StakingPort['position']>>,
+    defaultApyBp: number,
+  ): Promise<StakingPositionDto | null> {
+    const rewardsYocto = pos.rewards ?? '0';
+    const isZero =
+      BigInt(pos.staked || '0') <= 0n &&
+      BigInt(pos.unbonding || '0') <= 0n &&
+      BigInt(pos.withdrawable || '0') <= 0n &&
+      BigInt(rewardsYocto || '0') <= 0n;
+    const mapKey = `${accountId}:${pos.pool}`;
+    if (isZero) {
+      this.positions.delete(mapKey);
+      return null;
     }
+    const now = new Date();
+    const db = this.useDb();
+    if (db) await this.persistSyncedPosition(db, colonyId, accountId, pos.pool, pos, rewardsYocto, now);
+    const poolView: StakingPoolView = { poolId: pos.pool, name: pos.pool, apyBp: defaultApyBp };
+    const dto = this.buildSyncedDto(colonyId, accountId, poolView, pos, rewardsYocto, now.getTime());
+    this.positions.set(mapKey, dto);
+    return dto;
+  }
 
-    const dto: StakingPositionDto = {
-      colonyId,
+  private async persistSyncedPosition(
+    db: PrismaClient,
+    colonyId: string,
+    accountId: string,
+    poolId: string,
+    pos: Awaited<ReturnType<StakingPort['position']>>,
+    rewardsYocto: string,
+    now: Date,
+  ): Promise<void> {
+    const readyDate = pos.unbondingReadyAtMs !== null ? new Date(pos.unbondingReadyAtMs) : null;
+    const clocks = {
+      ...(pos.stakedSinceMs !== undefined ? { stakedSinceAt: pos.stakedSinceMs === null ? null : new Date(pos.stakedSinceMs) } : {}),
+      ...(pos.lastStakedAtMs !== undefined ? { lastStakedAt: pos.lastStakedAtMs === null ? null : new Date(pos.lastStakedAtMs) } : {}),
+      ...(pos.asset ? { asset: pos.asset } : {}),
+    };
+    const fields = {
+      accountId,
+      stakedSnapshot: pos.staked,
+      unbondingSnapshot: pos.unbonding,
+      unbondingReadyAt: readyDate,
+      withdrawableSnapshot: pos.withdrawable,
+      rewardsSnapshot: rewardsYocto,
+      ...clocks,
+      updatedAt: now,
+    };
+    await db.stakingPosition.upsert({
+      where: { colonyId_poolId: { colonyId, poolId } },
+      create: { colonyId, poolId, ...fields },
+      update: fields,
+    });
+  }
+
+  private buildSyncedDto(
+    colonyId: string,
+    accountId: string,
+    poolView: StakingPoolView,
+    pos: Awaited<ReturnType<StakingPort['position']>>,
+    rewardsYocto: string,
+    updatedAt: number,
+  ): StakingPositionDto {
+    return {
+      ...(colonyId === accountId ? {} : { colonyId }),
       accountId,
       pool: poolView.poolId,
       poolName: poolView.name,
@@ -252,10 +334,11 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
       unbondingReadyAtMs: pos.unbondingReadyAtMs,
       withdrawable: yoctoToNear(pos.withdrawable, 6),
       rewards: yoctoToNear(rewardsYocto, 6),
-      updatedAt: now.getTime(),
+      ...(pos.stakedSinceMs !== undefined ? { stakedSinceMs: pos.stakedSinceMs } : {}),
+      ...(pos.lastStakedAtMs !== undefined ? { lastStakedAtMs: pos.lastStakedAtMs } : {}),
+      ...(pos.asset ? { asset: pos.asset } : {}),
+      updatedAt,
     };
-    this.positions.set(mapKey, dto);
-    return dto;
   }
 
   private async collectCandidateAccounts(extraAccountIds: readonly string[]): Promise<string[]> {
@@ -325,7 +408,7 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
     return out;
   }
 
-  private async resolveColonyId(accountId: string, explicitColonyId?: string): Promise<string> {
+  private async resolveColonyId(accountId: string, explicitColonyId?: string, wallet = false): Promise<string> {
     if (explicitColonyId) {
       this.knownAccountColonies.set(accountId, explicitColonyId);
       return explicitColonyId;
@@ -335,31 +418,39 @@ export class StakingPositionSyncService implements OnModuleInit, OnModuleDestroy
 
     const db = this.useDb();
     if (db) {
-      const deed = await db.deed.findFirst({ where: { accountId }, select: { colonyId: true } });
+      const deed = typeof db.deed?.findFirst === 'function'
+        ? await db.deed.findFirst({ where: { accountId }, select: { colonyId: true } })
+        : null;
       if (deed?.colonyId) {
         this.knownAccountColonies.set(accountId, deed.colonyId);
         return deed.colonyId;
       }
-      const colAcct = await db.nearColonyAccount.findUnique({
-        where: { accountId },
-        select: { colonyId: true, slot: true },
-      });
+      const colAcct = typeof db.nearColonyAccount?.findUnique === 'function'
+        ? await db.nearColonyAccount.findUnique({
+            where: { accountId },
+            select: { colonyId: true, slot: true },
+          })
+        : null;
       const fromAcct = colAcct?.colonyId ?? (colAcct?.slot && colAcct.slot !== 'player' ? colAcct.slot : null);
       if (fromAcct) {
         this.knownAccountColonies.set(accountId, fromAcct);
         return fromAcct;
       }
-      const existingPos = await db.stakingPosition.findFirst({
-        where: { accountId },
-        select: { colonyId: true },
-      });
+      const existingPos = typeof db.stakingPosition?.findFirst === 'function'
+        ? await db.stakingPosition.findFirst({
+            where: { accountId },
+            select: { colonyId: true },
+          })
+        : null;
       if (existingPos?.colonyId) {
         this.knownAccountColonies.set(accountId, existingPos.colonyId);
         return existingPos.colonyId;
       }
     }
 
-    const derived = deriveColonyIdFromAccountId(accountId);
+    // W28 wallet-first: an account no colony claims is keyed by its full account id (the W20 derived id would make two
+    // wallets with the same first label collide) and the DTO omits `colonyId`.
+    const derived = wallet ? accountId : deriveColonyIdFromAccountId(accountId);
     this.knownAccountColonies.set(accountId, derived);
     return derived;
   }

@@ -1,0 +1,35 @@
+/* Lead Patron flagship name plate on the orbit menu. Faction Plate tokens only, chamfered corners, no border-radius. */
+.flagship-label {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(60vw, 360px);
+  padding: 6px 14px 7px 12px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--ta-void) 82%, transparent);
+  border-left: 2px solid var(--ta-orange);
+  clip-path: polygon(0 0, calc(100% - var(--ta-chamfer-s)) 0, 100% var(--ta-chamfer-s), 100% 100%, var(--ta-chamfer-s) 100%, 0 calc(100% - var(--ta-chamfer-s)));
+  will-change: transform;
+}
+.flagship-label[hidden] { display: none; }
+.flagship-label-tag {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ta-blue-hi);
+}
+.flagship-label-name {
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ta-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

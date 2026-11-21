@@ -1,4 +1,5 @@
 import { BUILDING_LIGHT_RIGS } from './buildingLightRigs';
+import { baseHubArchetypeId } from '../prestige/tierVisuals';
 
 export interface ArchetypeLightSource {
   id: string;
@@ -83,7 +84,7 @@ function cloneLight(s: ArchetypeLightSource): ArchetypeLightSource {
 }
 
 function resolveDefaultLights(archetypeId: string): ArchetypeLightSource[] {
-  const explicit = DEFAULT_ARCHETYPE_LIGHTS[archetypeId];
+  const explicit = DEFAULT_ARCHETYPE_LIGHTS[baseHubArchetypeId(archetypeId)]; // hub variants share the hub's bulbs
   if (explicit) return explicit.map(cloneLight);
   if (archetypeId.startsWith('robot.')) return makeStandardRobotHeadlamp();
   return [];

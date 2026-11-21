@@ -1,5 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import {
+  appHasWave,
   devConsole,
   expect,
   expectNoPageErrors,
@@ -47,8 +48,8 @@ test('@hack 1. open /play.html?scenario=w12 and open /me.html in a second tab ->
 
   await mePage.goto('/me.html?as=w12');
   await expect(mePage.locator('[data-testid="me-sticky-tabs"]')).toBeVisible({ timeout: 15_000 });
-  const tabLabels = await mePage.locator('.ta-me-tab').allTextContents();
-  expect(tabLabels).toEqual(['PILOT', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY']);
+  // W28 adds the STAKING tab after PLAY when the app runs it (with W28 off the page drops it once the server 404s).
+  await expect(mePage.locator('.ta-me-tab')).toHaveText(['PILOT', 'PROGRESS', 'PLANETS', 'HISTORY', 'ACHIEVEMENTS', 'PLAY', ...(appHasWave('W28') ? ['STAKING'] : [])]);
   expectNoPageErrors(mePage);
 });
 

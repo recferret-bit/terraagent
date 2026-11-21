@@ -1,4 +1,6 @@
+import { earlyExitFeeBp } from '@terra/contracts';
 import {
+  CompoundInput,
   PositionInput,
   RewardsInput,
   type RewardsResult,
@@ -22,6 +24,8 @@ import { parseStakingPoolsConfig } from '../staking/staking-pools.config.js';
 import { InMemoryChain } from './in-memory-chain.js';
 
 interface MemStakingState {
+  stakedSinceMs?: number | null;
+  lastStakedAtMs?: number | null;
   staked: bigint;
   unbonding: bigint;
   unbondingReadyAtMs: number | null;
@@ -41,6 +45,8 @@ export class InMemoryStaking extends StakingPort {
     private readonly rawPools?: string,
     private readonly protocolAccountId?: string,
     private readonly protocolYieldShareBp?: number,
+    /** W28 `< 7 day` early-exit fee on unstake; off by default so the W20 specs keep their exact amounts. */
+    private readonly options: { readonly earlyExitFee?: boolean } = {},
   ) {
     super();
   }
@@ -92,6 +98,8 @@ export class InMemoryStaking extends StakingPort {
         rewards: 0n,
         lastAccruedAtMs: now,
         protocolYieldDelta: 0n,
+        stakedSinceMs: null,
+        lastStakedAtMs: null,
       };
     }
     const elapsed = Math.max(0, now - existing.lastAccruedAtMs);
@@ -115,6 +123,8 @@ export class InMemoryStaking extends StakingPort {
       rewards,
       lastAccruedAtMs: now,
       protocolYieldDelta: split.protocolYield,
+      stakedSinceMs: existing.stakedSinceMs ?? null,
+      lastStakedAtMs: existing.lastStakedAtMs ?? null,
     };
   }
 
@@ -129,6 +139,8 @@ export class InMemoryStaking extends StakingPort {
         });
       }
       this.balances.set(payer, bal - amount);
+      if (next.staked === 0n || next.stakedSinceMs == null) next.stakedSinceMs = this.clockMs;
+      next.lastStakedAtMs = this.clockMs;
       next.staked += amount;
     });
   }
@@ -141,9 +153,20 @@ export class InMemoryStaking extends StakingPort {
           details: { accountId: input.accountId, staked: next.staked.toString(), requested: input.amount },
         });
       }
+      // W28: `< 7 days` since the last deposit, 25 bp of the unstaked principal goes to the protocol (Rust `unstake`).
+      const bp = this.options.earlyExitFee ? earlyExitFeeBp(next.lastStakedAtMs ?? null, this.clockMs) : 0;
+      const fee = (amount * BigInt(bp)) / 10_000n;
+      if (fee > 0n) {
+        const proto = this.resolveProtocolAccount();
+        this.balances.set(proto, (this.balances.get(proto) ?? 0n) + fee);
+      }
       next.staked -= amount;
-      next.unbonding += amount;
+      next.unbonding += amount - fee;
       next.unbondingReadyAtMs = this.clockMs + UNBONDING_DURATION_MS;
+      if (next.staked === 0n) {
+        next.stakedSinceMs = null;
+        next.lastStakedAtMs = null;
+      }
     });
   }
 
@@ -191,6 +214,36 @@ export class InMemoryStaking extends StakingPort {
     }).receipt;
   }
 
+  /** W28 `compound_yield`: accrued user yield becomes principal; deposit clocks are untouched. */
+  async compound(raw: CompoundInput): Promise<ChainReceipt> {
+    const input = CompoundInput.parse(raw);
+    const pool = await this.assertPool(input.pool);
+    return this.chain.write(input.opId, () => {
+      const next = this.settle(input.accountId, pool);
+      if (next.rewards <= 0n) throw new NearException('NOTHING_TO_COMPOUND');
+      if (next.protocolYieldDelta > 0n) {
+        const proto = this.resolveProtocolAccount();
+        this.balances.set(proto, (this.balances.get(proto) ?? 0n) + next.protocolYieldDelta);
+      }
+      next.staked += next.rewards;
+      next.rewards = 0n;
+      this.positions.set(`${input.accountId}::${pool.poolId}`, next);
+    }).receipt;
+  }
+
+  async accountPositions(accountId: string): Promise<readonly StakingPositionView[]> {
+    const pools = await this.listPools();
+    const out: StakingPositionView[] = [];
+    for (const pool of pools) {
+      if (this.positions.has(`${accountId}::${pool.poolId}`)) out.push(await this.position({ accountId, pool: pool.poolId }));
+    }
+    return out;
+  }
+
+  clockNowMs(): number {
+    return this.clockMs;
+  }
+
   async rewards(raw: RewardsInput): Promise<RewardsResult> {
     const pos = await this.position(raw);
     return { accrued: pos.rewards };
@@ -208,6 +261,8 @@ export class InMemoryStaking extends StakingPort {
       unbondingReadyAtMs: snap.unbondingReadyAtMs,
       withdrawable: snap.withdrawable.toString(),
       rewards: snap.rewards.toString(),
+      stakedSinceMs: snap.stakedSinceMs ?? null,
+      lastStakedAtMs: snap.lastStakedAtMs ?? null,
     };
   }
 }

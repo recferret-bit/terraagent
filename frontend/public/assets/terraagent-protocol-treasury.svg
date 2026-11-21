@@ -56,16 +56,16 @@
   <!-- Inflow 1: Market Settlement Fee -->
   <rect x="40" y="124" width="344" height="118" class="box-o"/>
   <text x="52" y="144" class="hdr-o">A. NEP-413 MARKET PLATFORM FEE (80 / 20)</text>
-  <text x="52" y="163" class="txt">Rate: 1.00% standard | 0.50% staker (&gt;=10 NEAR)</text>
-  <text x="52" y="181" class="txt">80% -&gt; Protocol (0.80% / 0.40%)</text>
-  <text x="52" y="199" class="txt">20% -&gt; Planet Council DAO (0.20% / 0.10%)</text>
+  <text x="52" y="163" class="txt">Rate: 1.00% std | 0.65%-0.25% 4-tier staker</text>
+  <text x="52" y="181" class="txt">80% -&gt; Protocol + 15% Tier 4 Lead Patron</text>
+  <text x="52" y="199" class="txt">20% -&gt; Planet Council DAO (0.20% / 0.13%-0.05%)</text>
   <rect x="52" y="209" width="320" height="24" fill="#090d16" stroke="#2c3548"/>
   <text x="60" y="225" class="hdr-g">$100 USDC fill -&gt; $0.80 Proto + $0.20 DAO</text>
 
-  <!-- Inflow 2: Day-1 Lossless Staking -->
+  <!-- Inflow 2: Wallet-First 4-Tier Staking -->
   <rect x="40" y="254" width="344" height="118" class="box-c"/>
-  <text x="52" y="274" class="hdr-c">B. DAY-1 LOSSLESS STAKING YIELD (80 / 20)</text>
-  <text x="52" y="293" class="txt">staking.terraagent.testnet (9.00% validator APY)</text>
+  <text x="52" y="274" class="hdr-c">B. WALLET-FIRST 4-TIER STAKING (80 / 20)</text>
+  <text x="52" y="293" class="txt">staking.terraagent.testnet (NEAR / stNEAR / LiNEAR)</text>
   <text x="52" y="311" class="txt">80% (7.20% APY) -&gt; Human Pilot (100% principal)</text>
   <text x="52" y="329" class="txt">20% (1.80% APY) -&gt; Protocol Treasury</text>
   <rect x="52" y="339" width="320" height="24" fill="#090d16" stroke="#2c3548"/>
@@ -100,8 +100,8 @@
   <text x="460" y="314" class="hdr-o">4-WAY ATOMIC NEP-413 TRADE RECEIPT</text>
   <text x="460" y="333" class="txt">1. Seller Principal : 100.00% ($100.00)</text>
   <text x="460" y="350" class="txt">2. Stall Owner Fee  : +0.00%-1.00% (+$0.50)</text>
-  <text x="460" y="367" class="txt">3. Planet DAO (20%) : +0.20% / +0.10% ($0.20)</text>
-  <text x="460" y="384" class="txt-c">4. Protocol (80%)   : +0.80% / +0.40% ($0.80)</text>
+  <text x="460" y="367" class="txt">3. Planet DAO (20%) : +0.20% / +0.13%-0.05%</text>
+  <text x="460" y="384" class="txt-c">4. Protocol+Patron  : +0.80% / +0.52%-0.20%</text>
 
   <!-- Unit Economics Proof Box -->
   <rect x="448" y="408" width="318" height="94" class="box-g"/>
@@ -130,17 +130,17 @@
   <rect x="830" y="268" width="330" height="130" class="box-c"/>
   <text x="842" y="288" class="hdr-c">2. MANAGED NEAR.AI TEE AUTOPILOT</text>
   <text x="842" y="307" class="txt">Model: z-ai/glm-5.3-flash (NEAR AI Cloud TEE)</text>
-  <text x="842" y="325" class="txt">- Runs 24/7 Rival AI colonies on every planet</text>
-  <text x="842" y="343" class="txt">- Unlocks zero-setup offline AI for &gt;=10 N stake</text>
+  <text x="842" y="325" class="txt">- 5 free trial turns + 24/7 Rival AI colonies</text>
+  <text x="842" y="343" class="txt">- 1-12 slots for 10-500+ N (&lt;=35% income cap)</text>
   <text x="842" y="361" class="txt">- Custom /me BYOK API keys stay 100% free</text>
   <rect x="842" y="368" width="306" height="22" fill="#090d16" stroke="#2c3548"/>
-  <text x="850" y="383" class="hdr-c">5-colony batch RPC + 120s burst cache</text>
+  <text x="850" y="383" class="hdr-c">30s-180s tier cadence + &gt;=65% margin</text>
 
   <!-- Carve-Out: Planet Council DAO -->
   <rect x="830" y="412" width="330" height="90" class="box-o"/>
   <text x="842" y="432" class="hdr-o">+ PLANET COUNCIL DAO CARVE-OUT (20%)</text>
   <text x="842" y="451" class="txt">Account: {planet}.dao.terraagent.testnet</text>
-  <text x="842" y="469" class="txt">&gt;50% council vote funds meteor_shield,</text>
+  <text x="842" y="469" class="txt">&gt;50% vote (1.5x Tier 3+) funds meteor_shield,</text>
   <text x="842" y="487" class="txt">terraform_boost &amp; guild_subsidy grants</text>
 
   <!-- Animated Signal Flows (chamfered Faction-Plate gutter routing, zero text overlap) -->

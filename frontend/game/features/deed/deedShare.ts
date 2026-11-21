@@ -71,14 +71,9 @@ export function buildDeedTwitterIntentUrl(
   return `https://twitter.com/intent/tweet?${params.toString()}`;
 }
 
-export function buildNearSocialPostTx(
-  opts: DeedTwitterIntentOptions & { readonly network?: 'testnet' | 'mainnet' },
-  accountId: string,
-) {
-  const network = opts.network ?? (accountId.endsWith('.testnet') ? 'testnet' : 'mainnet');
+/** NEAR Social `set` transaction posting `text` as the account's main post (shared by deed and patron-card shares). */
+export function buildNearSocialSetTx(text: string, accountId: string, network: 'testnet' | 'mainnet') {
   const contractId = network === 'mainnet' ? 'social.near' : 'v1.social08.testnet';
-  const shareUrl = buildDeedShareUrl(opts.tokenId, opts.origin);
-  const text = `${buildDeedTwitterIntentText(opts)}\n${shareUrl}`;
   const mainPost = JSON.stringify({ type: 'md', text });
   const indexPost = JSON.stringify({ key: 'main', value: { type: 'md' } });
   const nearSocialUrl =
@@ -100,6 +95,15 @@ export function buildNearSocialPostTx(
     gasTgas: 50,
     nearSocialUrl,
   };
+}
+
+export function buildNearSocialPostTx(
+  opts: DeedTwitterIntentOptions & { readonly network?: 'testnet' | 'mainnet' },
+  accountId: string,
+) {
+  const network = opts.network ?? (accountId.endsWith('.testnet') ? 'testnet' : 'mainnet');
+  const shareUrl = buildDeedShareUrl(opts.tokenId, opts.origin);
+  return buildNearSocialSetTx(`${buildDeedTwitterIntentText(opts)}\n${shareUrl}`, accountId, network);
 }
 
 export function extractDeedTokenIdFromLocation(loc?: {

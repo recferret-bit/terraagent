@@ -11,7 +11,7 @@
   <p class="kicker">GENERATED</p>
   <h1>TerraAgent API atlas</h1>
   <p class="note">Generated file. Regenerate with <code>npm run api:atlas</code>. Do not hand-edit.</p>
-  <p class="counts">151 HTTP · 26 socket messages · 89 commands · 98 events · 35 HTTP routes with no client caller</p>
+  <p class="counts">160 HTTP · 26 socket messages · 89 commands · 98 events · 35 HTTP routes with no client caller</p>
   <nav>
     <a href="#http">HTTP</a>
     <a href="#socket">WebSocket</a>
@@ -21,7 +21,7 @@
   <div class="search-wrap"><input id="q" type="search" placeholder="Filter by name or path" aria-label="Filter by name or path" autocomplete="off"></div>
 </header>
 <main>
-<section class="group" id="http"><h2>HTTP</h2><details class="card" data-k="get /deed/:tokenid backend/app/src/near/deed/deed-share.controller.ts frontend/design/deed/deedcardart.ts frontend/game/features/deed/deedpanel.ts frontend/game/features/deed/deedshare.ts frontend/game/features/deed/parts/deedpanelparts.ts frontend/game/pages/deed/deedsharepage.ts frontend/game/pages/deed/main.ts frontend/playground/main.ts frontend/vite.config.ts frontend/whitepaper/data/chapters.ts frontend/whitepaper/data/features.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/deed/:tokenId</span><span class="src">backend/app/src/near/deed/deed-share.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/deed/deedCardArt.ts</code> <code>frontend/game/features/deed/deedPanel.ts</code> <code>frontend/game/features/deed/deedShare.ts</code> <code>frontend/game/features/deed/parts/deedPanelParts.ts</code> <code>frontend/game/pages/deed/DeedSharePage.ts</code> <code>frontend/game/pages/deed/main.ts</code> <code>frontend/playground/main.ts</code> <code>frontend/vite.config.ts</code> <code>frontend/whitepaper/data/chapters.ts</code> <code>frontend/whitepaper/data/features.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+<section class="group" id="http"><h2>HTTP</h2><details class="card" data-k="get /deed/:tokenid backend/app/src/near/deed/deed-share.controller.ts frontend/design/deed/deedcardart.ts frontend/game/features/deed/deedpanel.ts frontend/game/features/deed/deedshare.ts frontend/game/features/deed/parts/deedpanelparts.ts frontend/game/pages/deed/deedsharepage.ts frontend/game/pages/deed/main.ts frontend/game/pages/me/sections/staking/dashboard/patronshare.ts frontend/playground/main.ts frontend/vite.config.ts frontend/whitepaper/data/chapters.ts frontend/whitepaper/data/features.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/deed/:tokenId</span><span class="src">backend/app/src/near/deed/deed-share.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/deed/deedCardArt.ts</code> <code>frontend/game/features/deed/deedPanel.ts</code> <code>frontend/game/features/deed/deedShare.ts</code> <code>frontend/game/features/deed/parts/deedPanelParts.ts</code> <code>frontend/game/pages/deed/DeedSharePage.ts</code> <code>frontend/game/pages/deed/main.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/patronShare.ts</code> <code>frontend/playground/main.ts</code> <code>frontend/vite.config.ts</code> <code>frontend/whitepaper/data/chapters.ts</code> <code>frontend/whitepaper/data/features.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [
     {
       &quot;name&quot;: &quot;tokenId&quot;,
@@ -864,6 +864,35 @@
   &quot;returnType&quot;: &quot;Promise&lt;MarketSnapshotResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
+<details class="card" data-k="get /v1/market/guild/radar backend/app/src/market/guild/visit/guild-radar.controller.ts frontend/game/features/guild-tab/guildradar.ts"><summary><span class="verb get">GET</span><span class="path">/v1/market/guild/radar</span><span class="src">backend/app/src/market/guild/visit/guild-radar.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/guild-tab/guildRadar.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;colonyId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;colonyIndex&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;accountId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;string | undefined&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
 <details class="card" data-k="post /v1/match/tickets backend/app/src/lobby/tickets.controller.ts frontend/game/app/online/joinqueueflow.ts"><summary><span class="verb act">POST</span><span class="path">/v1/match/tickets</span><span class="src">backend/app/src/lobby/tickets.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/app/online/joinQueueFlow.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
@@ -1007,7 +1036,7 @@
   &quot;query&quot;: [],
   &quot;body&quot;: null
 }</pre><h3>Response</h3><pre>{
-  &quot;returnType&quot;: &quot;Promise&lt;PlayerAiSettings&gt;&quot;,
+  &quot;returnType&quot;: &quot;Promise&lt;ResolvedMePlayer&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/me/home backend/app/src/core/home/home.controller.ts frontend/design/pilot/activehomecolony.ts frontend/game/app/online/bootonline.ts frontend/game/app/online/joinqueuecoordinator.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/me/home</span><span class="src">backend/app/src/core/home/home.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/design/pilot/activeHomeColony.ts</code> <code>frontend/game/app/online/bootOnline.ts</code> <code>frontend/game/app/online/joinQueueCoordinator.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
@@ -1141,7 +1170,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;ClaimAccountResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/near/claim-account backend/app/src/near/staking/account-claim.controller.ts frontend/game/features/deed/stakingpanel.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/claim-account</span><span class="src">backend/app/src/near/staking/account-claim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/stakingPanel.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/near/claim-account backend/app/src/near/staking/account-claim.controller.ts frontend/game/features/deed/parts/stakingaccountflows.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/claim-account</span><span class="src">backend/app/src/near/staking/account-claim.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingAccountFlows.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -1255,7 +1284,7 @@
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
-    &quot;type&quot;: &quot;OneClickDryQuoteRequest&quot;
+    &quot;type&quot;: &quot;unknown&quot;
   }
 }</pre><h3>Response</h3><pre>{
   &quot;status&quot;: 200,
@@ -1350,7 +1379,7 @@
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/near/stake backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/stakingpanel.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/stake</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/stakingPanel.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/near/stake backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingactionflows.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/stake</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingActionFlows.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -1361,7 +1390,29 @@
   &quot;returnType&quot;: &quot;Promise&lt;StakingActionResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/near/staking backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/stakingpanel.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/stakingPanel.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/near/stake/compound backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingactionflows.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/stake/compound</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingActionFlows.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;Promise&lt;StakingActionResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/near/stake/profits backend/app/src/near/staking/staking.controller.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts frontend/trade/view/stakeprofitsview.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/stake/profits</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code> <code>frontend/trade/view/stakeProfitsView.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;Promise&lt;StakeProfitsResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/near/staking backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/patroncommand.ts frontend/game/features/deed/stakingpanel.ts frontend/game/pages/me/sections/staking/dashboard/dashboardapi.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/patronCommand.ts</code> <code>frontend/game/features/deed/stakingPanel.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardApi.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [
     {
@@ -1388,7 +1439,108 @@
   &quot;returnType&quot;: &quot;StakingPoolsListResponse&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="get /v1/near/staking/wallet-tx backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingpanelparts.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/wallet-tx</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingPanelParts.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="get /v1/near/staking/ai-access backend/app/src/ai/colony-agent/ai-access.controller.ts frontend/game/features/director/parts/aiaccessapi.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/ai-access</span><span class="src">backend/app/src/ai/colony-agent/ai-access.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/director/parts/aiAccessApi.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;colonyId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;colonyIndex&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;boolean&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/near/staking/overview backend/app/src/near/staking/staking-performance.controller.ts frontend/game/features/shared/stakingpill/model.ts frontend/game/pages/me/sections/staking/stakingapi.ts frontend/landing/sections/stakenavpill.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/overview</span><span class="src">backend/app/src/near/staking/staking-performance.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/shared/stakingPill/model.ts</code> <code>frontend/game/pages/me/sections/staking/stakingApi.ts</code> <code>frontend/landing/sections/stakeNavPill.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;amount&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;StakingOverviewResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="post /v1/near/staking/patron/nominate backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingaccountflows.ts frontend/game/features/deed/patroncommand.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/staking/patron/nominate</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingAccountFlows.ts</code> <code>frontend/game/features/deed/patronCommand.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [],
+  &quot;body&quot;: {
+    &quot;type&quot;: &quot;unknown&quot;
+  }
+}</pre><h3>Response</h3><pre>{
+  &quot;status&quot;: 200,
+  &quot;returnType&quot;: &quot;Promise&lt;void&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/near/staking/performance backend/app/src/near/staking/staking-performance.controller.ts frontend/game/pages/me/sections/staking/dashboard/dashboardapi.ts frontend/game/pages/me/sections/staking/dashboard/dashboardtestkit.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/performance</span><span class="src">backend/app/src/near/staking/staking-performance.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardApi.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardTestKit.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;accountId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;window&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;StakingPerformanceResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/near/staking/perks backend/app/src/near/staking/staking-perks.controller.ts frontend/game/app/prestige/orbitprestige.ts frontend/game/features/shared/stakingpill/model.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/perks</span><span class="src">backend/app/src/near/staking/staking-perks.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/app/prestige/OrbitPrestige.ts</code> <code>frontend/game/features/shared/stakingPill/model.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;colonyId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;accountId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;StakerPerksResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/near/staking/prestige backend/app/src/near/staking/staking-perks.controller.ts frontend/game/app/prestige/prestigeclient.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/prestige</span><span class="src">backend/app/src/near/staking/staking-perks.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/app/prestige/prestigeClient.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
+  &quot;params&quot;: [],
+  &quot;query&quot;: [
+    {
+      &quot;name&quot;: &quot;planetId&quot;,
+      &quot;type&quot;: &quot;string&quot;,
+      &quot;optional&quot;: true
+    }
+  ],
+  &quot;body&quot;: null
+}</pre><h3>Response</h3><pre>{
+  &quot;returnType&quot;: &quot;Promise&lt;StakingPrestigeResponse&gt;&quot;,
+  &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
+}</pre></div></details>
+<details class="card" data-k="get /v1/near/staking/wallet-tx backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingwallettx.ts frontend/whitepaper/sections/gameplayandengine.ts"><summary><span class="verb get">GET</span><span class="path">/v1/near/staking/wallet-tx</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingWalletTx.ts</code> <code>frontend/whitepaper/sections/gameplayAndEngine.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [
     {
@@ -1515,7 +1667,7 @@
   &quot;returnType&quot;: null,
   &quot;note&quot;: &quot;No JSON Schema or return type on this controller method.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/near/unstake backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/stakingpanel.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/unstake</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/stakingPanel.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/near/unstake backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingactionflows.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/unstake</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingActionFlows.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -1526,7 +1678,7 @@
   &quot;returnType&quot;: &quot;Promise&lt;StakingActionResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
-<details class="card" data-k="post /v1/near/withdraw backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/stakingpanel.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/withdraw</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/stakingPanel.ts</code></p><h3>Request</h3><pre>{
+<details class="card" data-k="post /v1/near/withdraw backend/app/src/near/staking/staking.controller.ts frontend/game/features/deed/parts/stakingactionflows.ts frontend/game/pages/me/sections/staking/dashboard/dashboardactions.ts"><summary><span class="verb act">POST</span><span class="path">/v1/near/withdraw</span><span class="src">backend/app/src/near/staking/staking.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/features/deed/parts/stakingActionFlows.ts</code> <code>frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts</code></p><h3>Request</h3><pre>{
   &quot;params&quot;: [],
   &quot;query&quot;: [],
   &quot;body&quot;: {
@@ -1534,7 +1686,7 @@
   }
 }</pre><h3>Response</h3><pre>{
   &quot;status&quot;: 200,
-  &quot;returnType&quot;: &quot;Promise&lt;void&gt;&quot;,
+  &quot;returnType&quot;: &quot;Promise&lt;StakingActionResponse&gt;&quot;,
   &quot;note&quot;: &quot;No JSON Schema on this route. Return type is the controller method signature.&quot;
 }</pre></div></details>
 <details class="card" data-k="get /v1/planets backend/app/src/lobby/planets.controller.ts frontend/game/ui/lobby/lobbyplanetfeed.ts frontend/landing/sections/livestats.ts frontend/trade/api/client.ts"><summary><span class="verb get">GET</span><span class="path">/v1/planets</span><span class="src">backend/app/src/lobby/planets.controller.ts</span></summary><div class="body"><p class="from"><span class="lbl">called from</span> <code>frontend/game/ui/lobby/lobbyPlanetFeed.ts</code> <code>frontend/landing/sections/liveStats.ts</code> <code>frontend/trade/api/client.ts</code></p><h3>Request</h3><pre>{
@@ -5521,6 +5673,94 @@
             &quot;alerts&quot;
           ],
           &quot;type&quot;: &quot;object&quot;
+        },
+        &quot;buildings&quot;: {
+          &quot;items&quot;: {
+            &quot;properties&quot;: {
+              &quot;allowUnclaimed&quot;: {
+                &quot;type&quot;: &quot;boolean&quot;
+              },
+              &quot;archetype&quot;: {
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;buildS&quot;: {
+                &quot;type&quot;: &quot;number&quot;
+              },
+              &quot;building&quot;: {
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;cost&quot;: {
+                &quot;additionalProperties&quot;: {
+                  &quot;type&quot;: &quot;number&quot;
+                },
+                &quot;propertyNames&quot;: {
+                  &quot;type&quot;: &quot;string&quot;
+                },
+                &quot;type&quot;: &quot;object&quot;
+              },
+              &quot;footprintD&quot;: {
+                &quot;type&quot;: &quot;number&quot;
+              },
+              &quot;footprintW&quot;: {
+                &quot;type&quot;: &quot;number&quot;
+              },
+              &quot;hp&quot;: {
+                &quot;type&quot;: &quot;number&quot;
+              },
+              &quot;hqOnly&quot;: {
+                &quot;type&quot;: &quot;boolean&quot;
+              },
+              &quot;id&quot;: {
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;label&quot;: {
+                &quot;type&quot;: &quot;string&quot;
+              },
+              &quot;maxPerColony&quot;: {
+                &quot;type&quot;: [
+                  &quot;number&quot;,
+                  &quot;null&quot;
+                ]
+              },
+              &quot;powerDrainPerS&quot;: {
+                &quot;type&quot;: &quot;number&quot;
+              },
+              &quot;powerGenPerS&quot;: {
+                &quot;type&quot;: &quot;number&quot;
+              },
+              &quot;requiresDeposit&quot;: {
+                &quot;type&quot;: [
+                  &quot;string&quot;,
+                  &quot;null&quot;
+                ]
+              },
+              &quot;tier&quot;: {
+                &quot;maximum&quot;: 9007199254740991,
+                &quot;minimum&quot;: -9007199254740991,
+                &quot;type&quot;: &quot;integer&quot;
+              }
+            },
+            &quot;required&quot;: [
+              &quot;id&quot;,
+              &quot;building&quot;,
+              &quot;label&quot;,
+              &quot;tier&quot;,
+              &quot;footprintW&quot;,
+              &quot;footprintD&quot;,
+              &quot;buildS&quot;,
+              &quot;hp&quot;,
+              &quot;powerDrainPerS&quot;,
+              &quot;powerGenPerS&quot;,
+              &quot;cost&quot;,
+              &quot;archetype&quot;,
+              &quot;requiresDeposit&quot;,
+              &quot;hqOnly&quot;,
+              &quot;allowUnclaimed&quot;,
+              &quot;maxPerColony&quot;
+            ],
+            &quot;type&quot;: &quot;object&quot;
+          },
+          &quot;type&quot;: &quot;array&quot;
         },
         &quot;colonyId&quot;: {
           &quot;anyOf&quot;: [
@@ -16691,7 +16931,7 @@
 }</pre></div></details></section>
 <section class="group" id="gaps"><h2>Scan gaps</h2>
 <p class="meta">Comment-only paths are ignored. <code>t:</code> values that are not in clientMessages or serverMessages (worker protocol, local host) are listed here and are not routes.</p>
-<ul><li><code>unmatched /deed (frontend/design/js/subdomainLinks.ts, frontend/vite.config.ts)</code></li><li><code>unmatched /deed/${encoded}/image.png (frontend/game/features/deed/parts/deedPanelParts.ts)</code></li><li><code>unmatched /deed/${encodeURIComponent(clean)}/image.png (frontend/game/features/deed/deedShare.ts)</code></li><li><code>unmatched /deed/deed:col-aegis/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-cinder/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-helios/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /v1 (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/auth (frontend/game/features/identity/PilotChip.ts)</code></li><li><code>unmatched /v1/dev/command (frontend/game/features/cargo-dev/index.ts)</code></li><li><code>unmatched /v1/lobby/ws (frontend/game/ui/lobby/lobbyPlanetFeed.ts)</code></li><li><code>unmatched /v1/signature (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/signature/{chat_id} (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>unmatched /v1/signature/cht_8f3a91 (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>t:'ack' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'client' is not a wire message (frontend/game/dev/parity/runLocal.ts, frontend/game/net/LocalTransport.ts)</code></li><li><code>t:'clock' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdRejected' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdSent' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'dev' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'devResult' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'error' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/LocalHostCore.ts)</code></li><li><code>t:'init' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'reject' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/SimWorkerController.ts)</code></li><li><code>t:'renderEvents' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'resync' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'save' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'server' is not a wire message (frontend/game/store/local/LocalHostCore.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'status' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'stop' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'stopped' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'terraform' is not a wire message (frontend/game/core/hud/CommandDock.ts)</code></li><li><code>t:'tune' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'turntable' is not a wire message (frontend/playground/keyboard.ts)</code></li><li><code>t:'view' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li></ul>
+<ul><li><code>unmatched /deed (frontend/design/js/subdomainLinks.ts, frontend/vite.config.ts)</code></li><li><code>unmatched /deed/${encoded}/image.png (frontend/game/features/deed/parts/deedPanelParts.ts)</code></li><li><code>unmatched /deed/${encodeURIComponent(clean)}/image.png (frontend/game/features/deed/deedShare.ts)</code></li><li><code>unmatched /deed/deed:col-aegis/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-cinder/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/deed:col-helios/image.png (frontend/game/features/deed/deedCardArt.ts)</code></li><li><code>unmatched /deed/parts/realNearWalletDriver (frontend/game/pages/me/sections/staking/dashboard/parts/patronCard.ts)</code></li><li><code>unmatched /deed/parts/stakingPanelParts (frontend/game/pages/me/sections/staking/dashboard/StakingDashboard.ts, frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts)</code></li><li><code>unmatched /deed/parts/stakingWalletTx (frontend/game/pages/me/sections/staking/dashboard/StakingDashboard.ts, frontend/game/pages/me/sections/staking/dashboard/dashboardActions.ts, frontend/game/pages/me/sections/staking/dashboard/parts/patronCard.ts)</code></li><li><code>unmatched /v1 (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/auth (frontend/game/features/identity/PilotChip.ts)</code></li><li><code>unmatched /v1/dev/command (frontend/game/features/cargo-dev/index.ts)</code></li><li><code>unmatched /v1/lobby/ws (frontend/game/ui/lobby/lobbyPlanetFeed.ts)</code></li><li><code>unmatched /v1/signature (frontend/design/js/subdomainLinks.ts)</code></li><li><code>unmatched /v1/signature/{chat_id} (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>unmatched /v1/signature/cht_8f3a91 (frontend/whitepaper/sections/schemas.ts)</code></li><li><code>t:'ack' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'client' is not a wire message (frontend/game/dev/parity/runLocal.ts, frontend/game/net/LocalTransport.ts)</code></li><li><code>t:'clock' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdRejected' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'cmdSent' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'dev' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'devResult' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'error' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/LocalHostCore.ts)</code></li><li><code>t:'init' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'reject' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/SimWorkerController.ts)</code></li><li><code>t:'renderEvents' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'resync' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'save' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'server' is not a wire message (frontend/game/store/local/LocalHostCore.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'status' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'stop' is not a wire message (frontend/game/net/LocalTransport.ts, frontend/game/store/WorldStore.ts)</code></li><li><code>t:'stopped' is not a wire message (frontend/game/store/local/LocalHostController.ts, frontend/game/store/local/protocol.ts)</code></li><li><code>t:'terraform' is not a wire message (frontend/game/core/hud/CommandDock.ts)</code></li><li><code>t:'tune' is not a wire message (frontend/game/store/WorldStore.ts, frontend/game/store/worker/protocol.ts)</code></li><li><code>t:'turntable' is not a wire message (frontend/playground/keyboard.ts)</code></li><li><code>t:'view' is not a wire message (frontend/game/store/worker/SimWorkerController.ts, frontend/game/store/worker/protocol.ts)</code></li></ul>
 </section>
 </main>
 <script>

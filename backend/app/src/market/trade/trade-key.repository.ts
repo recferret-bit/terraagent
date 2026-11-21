@@ -61,19 +61,18 @@ export const keyView = (k: KeyRecord): TradeKeyView => ({
 export class TradeKeyRepository {
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient) {}
 
-  async create(i: NewKeyInput): Promise<KeyRecord> {
+  async create(i: NewKeyInput, tx?: PrismaClient): Promise<KeyRecord> {
     const a = i.allowance;
-    const [row, allowance] = await this.prisma.$transaction([
-      this.prisma.tradeApiKey.create({
-        data: {
-          keyId: i.key.keyId, secretHash: i.key.hash, ownerId: i.ownerId, label: i.label, planetId: i.planetId, colonyId: i.colonyId,
-          colonyIndex: i.colonyIndex, accountId: i.accountId, scopes: [...i.scopes], ratePerSecond: i.ratePerSecond ?? null, rateBurst: i.rateBurst ?? null,
-        },
-      }),
-      this.prisma.tradeApiAllowance.create({
-        data: { keyId: i.key.keyId, maxOpenOrders: a.maxOpenOrders, maxOrderNotional: a.maxOrderNotional, dailyBudget: a.dailyBudget, allowedPairs: a.allowedPairs, priceBandBp: a.priceBandBp, killSwitch: a.killSwitch },
-      }),
-    ]);
+    const keyData = {
+      keyId: i.key.keyId, secretHash: i.key.hash, ownerId: i.ownerId, label: i.label, planetId: i.planetId, colonyId: i.colonyId,
+      colonyIndex: i.colonyIndex, accountId: i.accountId, scopes: [...i.scopes], ratePerSecond: i.ratePerSecond ?? null, rateBurst: i.rateBurst ?? null,
+    };
+    const allowanceData = {
+      keyId: i.key.keyId, maxOpenOrders: a.maxOpenOrders, maxOrderNotional: a.maxOrderNotional, dailyBudget: a.dailyBudget, allowedPairs: a.allowedPairs, priceBandBp: a.priceBandBp, killSwitch: a.killSwitch,
+    };
+    const [row, allowance] = tx
+      ? await Promise.all([tx.tradeApiKey.create({ data: keyData }), tx.tradeApiAllowance.create({ data: allowanceData })])
+      : await this.prisma.$transaction([this.prisma.tradeApiKey.create({ data: keyData }), this.prisma.tradeApiAllowance.create({ data: allowanceData })]);
     return recordOf(row, allowance);
   }
 
@@ -92,8 +91,8 @@ export class TradeKeyRepository {
     return out;
   }
 
-  countActive(ownerId: string): Promise<number> {
-    return this.prisma.tradeApiKey.count({ where: { ownerId, revokedAt: null } });
+  countActive(ownerId: string, db: PrismaClient = this.prisma): Promise<number> {
+    return db.tradeApiKey.count({ where: { ownerId, revokedAt: null } });
   }
 
   async updateAllowance(keyId: string, patch: TradeAllowanceUpdate): Promise<KeyRecord | null> {

@@ -14,7 +14,7 @@ import { type InteractionTargetKind } from '@terra/render/particles';
 import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $ } from './dom';
 import { createPlaygroundDebug } from './pgDebug';
-import { BUILD_STAGES, VERTEBRATE_POSE_MODES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type VertebratePoseMode, type View } from './state';
+import { BUILD_STAGES, VERTEBRATE_POSE_MODES, WORK_TARGETS, createState, inspectAlias, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type VertebratePoseMode, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
 import { getFloraEntry, isFloraId, listFloraEntries, type FloraGroup } from './content/floraCatalog';
@@ -148,7 +148,7 @@ export class PlaygroundApp {
       this.spawns.refreshLights(changedId);
       this.lightsPanel.onExternalChange(changedId);
     });
-    const initial = params.get('inspect');
+    const initial = inspectAlias(params.get('inspect'));
     const knownInitial = initial ? (ArchetypeCatalog.has(initial) || isFloraId(initial)) : false;
     state.id = knownInitial ? initial! : state.floraRow ? (listFloraEntries(state.floraRow)[0]?.id ?? '') : (state.row ? ArchetypeCatalog.list(state.row)[0]?.id : ArchetypeCatalog.list()[0]?.id) ?? '';
     if (initial && !knownInitial) toast(`Unknown archetype "${initial}"`);
@@ -180,7 +180,9 @@ export class PlaygroundApp {
       hexTerrain: () => this.hexSample.hexTerrain, faunaHost: this.faunaHost, wildlifeHost: this.wildlife.host, marchHost: this.marchHost,
       select: (id) => this.select(id), setView: (v) => this.setView(v), setPlanet: (k) => { this.state.kind = k; this.applyPlanet(); },
       toggle: (k) => this.toggle(k), setNight: (on) => this.setNight(on), contactSheet: () => this.contactSheet(),
-      setBuild: (s) => this.setBuild(s), setWorkTarget: (t, ew) => this.setWorkTarget(t, ew),
+      setBuild: (s) => this.setBuild(s),
+      setStakeTier: (tier) => { this.state.stakeTier = tier; this.rebuildContent(); syncURL(this.state); },
+      setWorkTarget: (t, ew) => this.setWorkTarget(t, ew),
       setDepositStage: (s) => this.setDepositStage(s), setTileState: (ts) => this.setTileState(ts),
       setFaunaScene: (s, o) => this.setFaunaScene(s, o), setFaunaMode: (m) => this.setFaunaMode(m), setFaunaSeed: (s) => this.setFaunaSeed(s),
       pauseFauna: (p) => this.pauseFauna(p), stepFauna: (t) => this.stepFauna(t), resetFauna: (s) => this.resetFauna(s),
@@ -368,6 +370,7 @@ export class PlaygroundApp {
     spawns.rebuild(spawns.idsFor(state.row, state.id, state.floraRow), PLANET_SPECS[state.kind].biomeKey, state.wire, state.depositStage);
     spawns.applyBuild(state.build);
     spawns.applyRuin(state.ruin);
+    spawns.applyStakeTier(state.stakeTier);
     spawns.updateRing(state.id, !!state.row || !!state.floraRow);
     this.rig.placeHuman();
     this.applyValidation();

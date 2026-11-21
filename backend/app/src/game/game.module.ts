@@ -11,6 +11,7 @@ import { EventBus } from '../bus/event-bus';
 import { AiModule } from '../ai/ai.module';
 import { ColonyAgentLoopService } from '../ai/colony-agent/colony-agent-loop.service';
 import { AiAttestationController } from '../ai/colony-agent/ai-attestation.controller';
+import { AiAccessController } from '../ai/colony-agent/ai-access.controller';
 import { TeeAttestationStore } from '../ai/colony-agent/tee-attestation.store';
 import { EconomySimService } from '../ai/economy-sim/economy-sim.service';
 import { SectorAntiCheatService } from '../core/anticheat';
@@ -93,7 +94,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
   imports: [EconomyModule, AiModule],
-  controllers: [DevPlanetsController, DevLedgerController, AiAttestationController],
+  controllers: [DevPlanetsController, DevLedgerController, AiAttestationController, AiAccessController],
   providers: [
     {
       provide: POOL,

@@ -1,43 +1,22 @@
 #!/usr/bin/env node
 /**
- * Deploys and initializes all 6 TerraAgent NEAR contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`)
+ * Deploys and initializes the 6 TerraAgent NEAR contracts (`res`, `deed`, `bounty`, `staking`, `dao`, `pilots`)
+ * plus the `verifier` intents-verifier contract (`verifier.<root>`, `strict_balances` on; `NEAR_VERIFIER_WASM` overrides the wasm)
  * and ensures core protocol accounts (`relayer`, `minter`, `protocol`) on NEAR Testnet or Mainnet.
  * Reads keys from `~/.near-credentials/<network>` (never logs private keys).
  *
  * Usage:
- *   node scripts/dev/deploy-testnet-contracts.mjs [--network testnet|mainnet] [--only pilots,staking] [--ensure-accounts] [--redeploy] [--dry-run]
+ *   node scripts/dev/deploy-testnet-contracts.mjs [--network testnet|mainnet] [--only pilots,staking,verifier] [--ensure-accounts] [--redeploy] [--dry-run]
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { loadWasm, wasmCodeHashBase58 } from './wasm-artifacts.mjs';
+import { verifierSpec } from './verifier-deploy-spec.mjs';
 import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, PublicKey, nearToYocto, teraToGas } from 'near-api-js';
 
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-
-function wasmCodeHashBase58(wasmBytes) {
-  const digest = createHash('sha256').update(wasmBytes).digest();
-  const digits = [0];
-  for (const byte of digest) {
-    let carry = byte;
-    for (let j = 0; j < digits.length; j += 1) {
-      carry += digits[j] << 8;
-      digits[j] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
-  }
-  let out = '';
-  for (const byte of digest) {
-    if (byte === 0) out += '1';
-    else break;
-  }
-  for (let i = digits.length - 1; i >= 0; i -= 1) out += BASE58_ALPHABET[digits[i]];
-  return out;
-}
+const parseCsvSet = (raw) => new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 
 function parseCliArgs(argv) {
   let network = (process.env.NEAR_NETWORK || process.env.NEAR_MODE || 'testnet').trim().toLowerCase();
@@ -49,22 +28,14 @@ function parseCliArgs(argv) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--redeploy') redeploy = true;
-    else if (arg === '--dry-run') dryRun = true;
-    else if (arg === '--ensure-accounts') ensureAccounts = true;
-    else if (arg === '--network' && argv[i + 1]) {
-      network = argv[i + 1].trim().toLowerCase();
-      i += 1;
-    } else if (arg.startsWith('--network=')) {
-      network = arg.slice('--network='.length).trim().toLowerCase();
-    } else if (arg === '--only' && argv[i + 1]) {
-      only = new Set(argv[i + 1].split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-      i += 1;
-    } else if (arg.startsWith('--only=')) {
-      only = new Set(arg.slice('--only='.length).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-    } else {
-      throw new Error(`Unknown CLI argument: ${arg}`);
-    }
+    if (arg === '--redeploy') { redeploy = true; continue; }
+    if (arg === '--dry-run') { dryRun = true; continue; }
+    if (arg === '--ensure-accounts') { ensureAccounts = true; continue; }
+    if (arg === '--network' && argv[i + 1]) { network = argv[++i].trim().toLowerCase(); continue; }
+    if (arg.startsWith('--network=')) { network = arg.slice('--network='.length).trim().toLowerCase(); continue; }
+    if (arg === '--only' && argv[i + 1]) { only = parseCsvSet(argv[++i]); continue; }
+    if (arg.startsWith('--only=')) { only = parseCsvSet(arg.slice('--only='.length)); continue; }
+    throw new Error(`Unknown CLI argument: ${arg}`);
   }
 
   if (network !== 'testnet' && network !== 'mainnet') {
@@ -83,74 +54,27 @@ function buildNetworkTarget(network) {
   const relayerAccount = process.env.NEAR_RELAYER_ACCOUNT || `relayer.${rootAccount}`;
   const minterAccount = process.env.NEAR_MINTER_ACCOUNT || `minter.${rootAccount}`;
   const protocolAccount = process.env.NEAR_PROTOCOL_ACCOUNT || `protocol.${rootAccount}`;
-  const rpcUrl =
-    process.env.NEAR_RPC_PRIMARY ||
-    process.env.NEAR_RPC_URL ||
-    (isMainnet ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com');
+  const rpcUrl = process.env.NEAR_RPC_PRIMARY || process.env.NEAR_RPC_URL || (isMainnet ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com');
   const credsDir = process.env.NEAR_CREDENTIALS_DIR || path.join(os.homedir(), '.near-credentials', network);
   const wasmDir = 'backend/near-contracts/target/wasm32-unknown-unknown/release';
-
   const coreAccounts = [
     { key: 'relayer', accountId: relayerAccount, initialNear: '2.00' },
     { key: 'minter', accountId: minterAccount, initialNear: '1.50' },
     { key: 'protocol', accountId: protocolAccount, initialNear: '0.10' },
   ];
-
+  const spec = (key, envVar, initialNear, probeMethod, probeArgs, initArgs) => ({
+    key, accountId: process.env[envVar] || `${key}.${rootAccount}`, initialNear,
+    wasmPath: `${wasmDir}/terra_${key}_contract.wasm`, probeMethod, probeArgs, initArgs,
+  });
+  const opInit = { owner_id: rootAccount, operator_id: minterAccount };
   const specs = [
-    {
-      key: 'res',
-      accountId: process.env.NEAR_CONTRACT_RES || `res.${rootAccount}`,
-      initialNear: '2.50',
-      wasmPath: `${wasmDir}/terra_res_contract.wasm`,
-      probeMethod: 'get_minter',
-      probeArgs: {},
-      initArgs: { owner_id: rootAccount, minter_id: minterAccount },
-    },
-    {
-      key: 'deed',
-      accountId: process.env.NEAR_CONTRACT_DEED || `deed.${rootAccount}`,
-      initialNear: '2.50',
-      wasmPath: `${wasmDir}/terra_deed_contract.wasm`,
-      probeMethod: 'nft_token',
-      probeArgs: { token_id: '__init_probe__' },
-      initArgs: { owner_id: rootAccount, operator_id: minterAccount },
-    },
-    {
-      key: 'bounty',
-      accountId: process.env.NEAR_CONTRACT_BOUNTY || `bounty.${rootAccount}`,
-      initialNear: '2.40',
-      wasmPath: `${wasmDir}/terra_bounty_contract.wasm`,
-      probeMethod: 'get_escrow',
-      probeArgs: { escrow_id: '__init_probe__' },
-      initArgs: { owner_id: rootAccount, operator_id: minterAccount },
-    },
-    {
-      key: 'staking',
-      accountId: process.env.NEAR_CONTRACT_STAKING || `staking.${rootAccount}`,
-      initialNear: '2.80',
-      wasmPath: `${wasmDir}/terra_staking_contract.wasm`,
-      probeMethod: 'get_owner',
-      probeArgs: {},
-      initArgs: { owner_id: rootAccount, operator_id: minterAccount },
-    },
-    {
-      key: 'dao',
-      accountId: process.env.NEAR_CONTRACT_DAO || `dao.${rootAccount}`,
-      initialNear: '2.65',
-      wasmPath: `${wasmDir}/terra_dao_contract.wasm`,
-      probeMethod: 'get_owner',
-      probeArgs: {},
-      initArgs: { owner_id: rootAccount, operator_id: minterAccount },
-    },
-    {
-      key: 'pilots',
-      accountId: process.env.NEAR_CONTRACT_PILOTS || `pilots.${rootAccount}`,
-      initialNear: '2.40',
-      wasmPath: `${wasmDir}/terra_pilots_contract.wasm`,
-      probeMethod: 'get_owner',
-      probeArgs: {},
-      initArgs: { owner_id: rootAccount, operator_id: relayerAccount },
-    },
+    spec('res', 'NEAR_CONTRACT_RES', '2.50', 'get_minter', {}, { owner_id: rootAccount, minter_id: minterAccount }),
+    spec('deed', 'NEAR_CONTRACT_DEED', '2.50', 'nft_token', { token_id: '__init_probe__' }, opInit),
+    spec('bounty', 'NEAR_CONTRACT_BOUNTY', '2.40', 'get_escrow', { escrow_id: '__init_probe__' }, opInit),
+    spec('staking', 'NEAR_CONTRACT_STAKING', '2.80', 'get_owner', {}, opInit),
+    spec('dao', 'NEAR_CONTRACT_DAO', '2.65', 'get_owner', {}, opInit),
+    spec('pilots', 'NEAR_CONTRACT_PILOTS', '2.40', 'get_owner', {}, { owner_id: rootAccount, operator_id: relayerAccount }),
+    verifierSpec({ rootAccount, minterAccount, wasmDir }),
   ];
   return { network, rootAccount, relayerAccount, minterAccount, protocolAccount, rpcUrl, credsDir, coreAccounts, specs };
 }
@@ -281,7 +205,12 @@ async function registerMainnetIntentsKeys(provider, credsDir, accountId, extraPu
 async function buildDryRunReport(target, selectedSpecs) {
   const contracts = [];
   for (const spec of selectedSpecs) {
-    const wasm = await fs.readFile(path.resolve(spec.wasmPath));
+    const wasm = await loadWasm(spec).catch((err) => {
+      // A dry-run is a plan: a missing/unpinned wasm is reported, a live deploy still fails hard in deployOne.
+      contracts.push({ key: spec.key, accountId: spec.accountId, initialNear: spec.initialNear, wasmPath: spec.wasmPath, wasmError: err.message, initArgs: spec.initArgs });
+      return null;
+    });
+    if (!wasm) continue;
     contracts.push({
       key: spec.key,
       accountId: spec.accountId,
@@ -350,7 +279,7 @@ async function awaitFinalAccountView(provider, accountId, expectedCodeHash) {
 
 async function deployOne(provider, parent, target, spec, redeploy) {
   const { credsDir, rootAccount, protocolAccount } = target;
-  const wasm = await fs.readFile(path.resolve(spec.wasmPath));
+  const wasm = await loadWasm(spec);
   const expectedCodeHash = wasmCodeHashBase58(wasm);
   const cred = await ensureSubCredential(credsDir, spec.accountId);
   const txs = {};
@@ -399,6 +328,9 @@ async function deployOne(provider, parent, target, spec, redeploy) {
   }
   if (spec.key === 'staking') {
     await configureStakingPostDeploy(parent, spec, rootAccount, protocolAccount, txs);
+  }
+  if (!(await isContractInitialized(provider, spec.accountId, spec.probeMethod, spec.probeArgs))) {
+    throw new Error(`verify(${spec.accountId}): ${spec.probeMethod} probe still fails after deploy/init`);
   }
   const finalView = await awaitFinalAccountView(
     provider,

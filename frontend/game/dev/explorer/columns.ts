@@ -56,11 +56,11 @@ export const TABS: TabDef[] = [
     ] },
   { id: 'staking', label: 'Staking', empty: 'No staking pools or positions.', key: (r) => `${s(r.kind)}|${s(r.pool)}|${s(r.accountId)}|${s(r.staked)}|${s(r.rewards)}`,
     columns: [
-      { head: 'KIND', cell: (r) => s(r.kind) },
+      { head: 'KIND', cell: (r) => (r.tier !== undefined && r.kind === 'position' ? `position · T${s(r.tier)}` : s(r.kind)) },
       { head: 'POOL', cell: (r) => s(r.pool) },
       { head: 'ACCOUNT', cell: (r) => s(r.accountId) },
       { head: 'COLONY', cell: (r) => s(r.colonyId) },
-      { head: 'STAKED', cell: (r) => s(r.staked), cls: 'num' },
+      { head: 'STAKED', cell: (r) => (r.asset && r.asset !== 'NEAR' ? `${s(r.staked)} ${s(r.asset)}` : s(r.staked)), cls: 'num' },
       { head: 'REWARDS', cell: (r) => s(r.rewards), cls: 'num' },
       { head: 'APY', cell: (r) => (r.apyBp ? `${Number(r.apyBp) / 100}%` : ''), cls: 'num' },
     ] },

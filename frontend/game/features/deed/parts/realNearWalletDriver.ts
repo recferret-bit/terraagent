@@ -3,10 +3,9 @@ import type { WalletSelector } from '@near-wallet-selector/core';
 import { ensureBrowserPolyfills } from '../../../../design/pilot/browserPolyfills';
 import {
   assertNetworkAccountId,
+  getNearWalletSelector,
   getPrewarmedWallet,
-  getTestnetWalletSelector,
   signWithSelectorWallet,
-  warmSelectorWallets,
 } from '../../../../design/pilot/walletSelectorRuntime';
 
 export type RealNearNetwork = 'testnet' | 'mainnet';
@@ -37,8 +36,6 @@ export interface RealSignerWalletResult {
 
 export type RealSignerWalletDriver = (req: RealSignerWalletRequest) => Promise<RealSignerWalletResult>;
 
-let mainnetSelectorPromise: Promise<WalletSelector> | null = null;
-let resolvedMainnetSelector: WalletSelector | null = null;
 let testDriverOverride: RealSignerWalletDriver | null = null;
 
 /** Test seam allowing jsdom unit specs to exercise real signer wallet buttons deterministically. */
@@ -53,54 +50,7 @@ export function getRealSignerModuleIds(network: RealNearNetwork): readonly RealS
 }
 
 export async function createRealSignerWalletSelector(network: RealNearNetwork): Promise<WalletSelector> {
-  if (network === 'testnet') {
-    return getTestnetWalletSelector();
-  }
-  if (resolvedMainnetSelector) return resolvedMainnetSelector;
-  if (mainnetSelectorPromise) return mainnetSelectorPromise;
-  mainnetSelectorPromise = (async () => {
-    ensureBrowserPolyfills();
-    const [
-      { setupWalletSelector },
-      { setupMeteorWallet },
-      { setupOKXWallet },
-      { setupNearMobileWallet },
-      { setupIntearWallet },
-    ] = await Promise.all([
-      import('@near-wallet-selector/core'),
-      import('@near-wallet-selector/meteor-wallet'),
-      import('@near-wallet-selector/okx-wallet'),
-      import('@near-wallet-selector/near-mobile-wallet'),
-      import('@near-wallet-selector/intear-wallet'),
-    ]);
-    const origin = typeof location !== 'undefined' ? location.origin : 'https://terraagent.fun';
-    const selector = await setupWalletSelector({
-      allowMultipleSelectors: true,
-      network: {
-        networkId: 'mainnet',
-        nodeUrl: 'https://free.rpc.fastnear.com',
-        helperUrl: 'https://helper.mainnet.near.org',
-        explorerUrl: 'https://nearblocks.io',
-        indexerUrl: 'https://api.kitwallet.app',
-      },
-      modules: [
-        setupMeteorWallet(),
-        setupOKXWallet(),
-        setupNearMobileWallet({
-          dAppMetadata: { name: 'TerraAgent', logoUrl: `${origin}/favicon.svg`, url: origin },
-        }),
-        setupIntearWallet(),
-      ],
-    });
-    resolvedMainnetSelector = selector;
-    warmSelectorWallets('mainnet', selector);
-    return selector;
-  })().catch((err) => {
-    mainnetSelectorPromise = null;
-    resolvedMainnetSelector = null;
-    throw err;
-  });
-  return mainnetSelectorPromise;
+  return getNearWalletSelector(network);
 }
 
 function toSignerResult(verified: {

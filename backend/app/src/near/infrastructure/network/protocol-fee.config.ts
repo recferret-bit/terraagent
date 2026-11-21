@@ -1,3 +1,4 @@
+import { STAKING_RULES, STAKING_TIERS } from '@terra/contracts';
 import { DEFAULT_ESCROW_SLASH_PROTOCOL_BP } from '../../application/ports/escrow.port.js';
 import {
   MIN_PERK_STAKE_NEAR,
@@ -62,13 +63,17 @@ export function resolveProtocolFeeSchedule(
     readonly basePlatformFeeBp?: number;
     readonly baseDaoShareBp?: number;
     readonly validatorGrossApyBp?: number;
+    /** W28 on: the staker fee and perk threshold come from the `STAKING_TIERS` Tier 1 row, not the legacy env pair. */
+    readonly w28?: boolean;
   } = {},
 ): ProtocolFeeSchedule {
   const standardPlatformFeeBp =
     parseOptionalBp(env.NEAR_PLATFORM_FEE_BP, 0, 1_000) ?? defaults.basePlatformFeeBp ?? 100;
-  const stakerPlatformFeeBp =
-    parseOptionalBp(env.NEAR_STAKER_PLATFORM_FEE_BP, 0, standardPlatformFeeBp) ??
-    Math.floor(standardPlatformFeeBp / 2);
+  const scoutRow = STAKING_TIERS[1]!;
+  const stakerPlatformFeeBp = defaults.w28
+    ? Math.min(scoutRow.takerFeeBp, standardPlatformFeeBp)
+    : (parseOptionalBp(env.NEAR_STAKER_PLATFORM_FEE_BP, 0, standardPlatformFeeBp) ??
+      Math.floor(standardPlatformFeeBp / 2));
   const daoCarveOutShareBp =
     parseOptionalBp(env.NEAR_DAO_FEE_SHARE_BP, 0, 10_000) ?? defaults.baseDaoShareBp ?? 2_000;
   const protocolFeeShareBp = 10_000 - daoCarveOutShareBp;
@@ -81,7 +86,9 @@ export function resolveProtocolFeeSchedule(
   const protocolStakingYieldBp = Math.floor((validatorGrossApyBp * protocolStakingYieldShareBp) / 10_000);
   const stakerNetApyBp = validatorGrossApyBp - protocolStakingYieldBp;
 
-  const minStake = parseMinStakeNear(env.NEAR_STAKER_MIN_NEAR);
+  const minStake = defaults.w28
+    ? { near: String(scoutRow.minStakeNear), yocto: BigInt(nearToYocto(scoutRow.minStakeNear)) }
+    : parseMinStakeNear(env.NEAR_STAKER_MIN_NEAR);
   const escrowSlashProtocolShareBp =
     parseOptionalBp(env.NEAR_ESCROW_SLASH_PROTOCOL_BP, 0, 10_000) ?? DEFAULT_ESCROW_SLASH_PROTOCOL_BP;
 
@@ -101,4 +108,29 @@ export function resolveProtocolFeeSchedule(
     escrowSlashVictimShareBp: 10_000 - escrowSlashProtocolShareBp,
     escrowSlashProtocolShareBp,
   };
+}
+
+export interface PlatformFeeSplit {
+  readonly protocol: bigint;
+  readonly dao: bigint;
+  readonly patron: bigint;
+}
+
+/**
+ * Splits a gross platform fee (atomic units) into the Protocol / DAO / Lead Patron shares with no rounding loss
+ * (`protocol + dao + patron === gross`). The DAO takes `daoShareBp` of gross; the Lead Patron takes
+ * `STAKING_RULES.patronProtocolFeeShareBp` (`15 %`) of the Protocol's remainder (`15 %` of `80 %` = `12 %` of gross)
+ * and only when `patronActive`; the Protocol keeps the rest (`68 %` with a patron, `80 %` without).
+ */
+export function splitPlatformFee(
+  grossAtomic: bigint,
+  opts: { readonly daoShareBp: number; readonly patronActive: boolean; readonly patronShareBp?: number },
+): PlatformFeeSplit {
+  const gross = grossAtomic > 0n ? grossAtomic : 0n;
+  const clampBp = (bp: number): bigint => BigInt(Math.min(Math.max(Math.trunc(bp), 0), 10_000));
+  const dao = (gross * clampBp(opts.daoShareBp)) / 10_000n;
+  const protocolCut = gross - dao;
+  const patronBp = clampBp(opts.patronShareBp ?? STAKING_RULES.patronProtocolFeeShareBp);
+  const patron = opts.patronActive ? (protocolCut * patronBp) / 10_000n : 0n;
+  return { protocol: protocolCut - patron, dao, patron };
 }

@@ -149,6 +149,8 @@ export interface DescentSequence {
   syncHandoffSolar?(opts?: { updateEntryDir?: boolean; dtSec?: number }): boolean;
   /** Use y=0 landing-pad datum when an online HexTerrain replaces the procedural preview surface. */
   setExternalGround?(active: boolean): void;
+  /** Update the cosmetic prestige while the sequence is prepared but not finished (the own tier may arrive late). */
+  setPrestige?(prestige: DescentPrestigeSource | undefined): void;
   /** Where the camera ends (gameplay diorama pose). Valid immediately after creation. */
   readonly finalPose: { position: THREE.Vector3; target: THREE.Vector3 };
   start(): void;
@@ -164,6 +166,20 @@ export interface DescentSequence {
   dispose(): void;
 }
 
+/** Cosmetic staking prestige of the player's own colony and target planet (W28-12). Plain flags from the app; render never reads wallets. */
+export interface DescentPrestige {
+  /** Tier 2+: a cyan plasma trail follows the drop pod through re-entry. */
+  plasmaTrail?: boolean;
+  /** Tier 4 King-of-the-Hill Lead Patron on the target planet: parks `ISS <pilot>.near` in the orbital descent skybox. */
+  flagshipCarrierName?: string | null;
+}
+
+/** A fixed prestige, or a getter read every frame (the player's own tier may arrive after the descent is prepared). */
+export type DescentPrestigeSource = DescentPrestige | (() => DescentPrestige | undefined);
+
+export const resolveDescentPrestige = (src: DescentPrestigeSource | undefined): DescentPrestige | undefined =>
+  typeof src === 'function' ? src() : src;
+
 export interface DescentOptions {
   viewport: ColonyViewport;
   scene: THREE.Scene;
@@ -178,5 +194,7 @@ export interface DescentOptions {
   precomputedGlobeSpheres?: PrecomputedGlobeSpheres;
   /** When true, `finish()` / `skip()` slices part GPU disposal across idle frames instead of stalling the handoff frame. */
   deferPartDispose?: boolean;
+  /** Cosmetic prestige of the player's own tier. Omitted = none (tier 0, `?host=local`, W28 off). */
+  prestige?: DescentPrestigeSource;
 }
 export type CreateDescentSequence = (opts: DescentOptions) => DescentSequence;

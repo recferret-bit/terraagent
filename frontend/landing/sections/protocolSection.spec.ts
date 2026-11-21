@@ -61,6 +61,8 @@ describe('Landing #protocol live telemetry & stream filtering', () => {
       NEAR_STAKER_MIN_NEAR: '15',
       NEAR_PROTOCOL_STAKING_YIELD_BP: '1500',
       NEAR_ESCROW_SLASH_PROTOCOL_BP: '1200',
+      // NEAR_STAKER_* overrides are the W20 ladder; with W28 on the staker fee is the Tier 1 row (65 bp)
+      TA_WAVES: '..27',
     });
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -113,10 +115,55 @@ describe('Landing #protocol live telemetry & stream filtering', () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(document.querySelector('[data-protocol-account]')?.textContent).toBe('protocol.terraagent.testnet');
-    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.40%');
-    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.40 Stk)');
+    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.52%');
+    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.52 Stk)');
     expect(document.querySelector('[data-proto-ex-pilot-yield]')?.textContent).toBe('+3.60 NEAR / yr');
     expect(document.querySelector('[data-proto-ex-victim]')?.textContent).toBe('18.00 NEAR (90%)');
+  });
+});
+
+describe('Landing #protocol W28 4-tier live hydration', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    document.body.innerHTML = `<section id="protocol"><div id="protocol-board"></div></section>`;
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    document.body.innerHTML = '';
+  });
+
+  it('hydrates 4-tier W28 staker fee range (0.80% / 0.52%–0.20%) and 1–12 AI slots when W28 is active', async () => {
+    const w28Payload = await buildProtocolTreasuryView({
+      NEAR_MODE: 'testnet',
+      NEAR_ROOT_ACCOUNT: 'terraagent.testnet',
+      TA_WAVES: 'all',
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => w28Payload,
+    }) as unknown as typeof fetch;
+
+    initProtocolSection();
+    await new Promise((r) => setTimeout(r, 15));
+
+    expect(document.querySelector('[data-proto-trade-rate]')?.textContent).toBe('0.80% / 0.52%–0.20%');
+    expect(document.querySelector('[data-proto-legend-proto-val]')?.textContent).toBe('0.80% (0.52%–0.20% T1–T4)');
+    expect(document.querySelector('[data-proto-legend-dao-val]')?.textContent).toBe('0.20% (0.13%–0.05% T1–T4)');
+    expect(document.querySelector('[data-proto-ex-buyer-total]')?.textContent).toBe('Buyer pays $101.50 ($101.15 T1 · $100.75 T4)');
+    expect(document.querySelector('[data-proto-ex-trade]')?.textContent).toBe('+$0.80 ($0.52–$0.20 Stk)');
+    expect(document.querySelector('[data-proto-legend-perks-val]')?.textContent).toBe('1–12 AI Slots + 0.65%–0.25% Fee');
+    expect(document.querySelector('[data-proto-ex-perks]')?.textContent).toBe('3 AI Slots + 0.50% Fee (24h)');
   });
 });
 
@@ -204,7 +251,7 @@ describe('Landing #economics Day-1 staking calculator', () => {
     document.body.innerHTML = '';
   });
 
-  it('computes exact Day-1 staking boundary (5 NEAR standard vs 10 NEAR staker unlock) in #economics calculator', () => {
+  it('computes exact Day-1 staking boundary (5 NEAR Cadet vs 10 NEAR Tier 1 unlock) in #economics calculator', () => {
     initEconomicsSection();
     const stakeSlider = document.querySelector<HTMLInputElement>('#econ-stake-slider')!;
     const volSlider = document.querySelector<HTMLInputElement>('#econ-vol-slider')!;
@@ -216,12 +263,12 @@ describe('Landing #economics Day-1 staking calculator', () => {
     volSlider.value = '1000';
     stakeSlider.dispatchEvent(new Event('input'));
     expect(banner.classList.contains('is-unlocked')).toBe(false);
-    expect(feeSaved.textContent).toBe('0.00 USDC / mo (1.00% fee)');
+    expect(feeSaved.textContent).toBe('0.00 USDC / mo (100 bp fee)');
 
     stakeSlider.value = '10';
     stakeSlider.dispatchEvent(new Event('input'));
     expect(banner.classList.contains('is-unlocked')).toBe(true);
     expect(userYield.textContent).toBe('0.72 NEAR / yr');
-    expect(feeSaved.textContent).toBe('5.00 USDC / mo (0.50% fee)');
+    expect(feeSaved.textContent).toBe('3.50 USDC / mo (65 bp fee)');
   });
 });

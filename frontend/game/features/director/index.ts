@@ -1,8 +1,9 @@
 import { readDirectorView } from '@terra/sim';
 import { isProductionBuild } from '../../core/buildEnv';
-import { defineFeature } from '../../core/registry/types';
+import { defineFeature, type FeatureContext } from '../../core/registry/types';
 import { ownColonyIndex, viewColony } from '../shared/colony';
 import { DirectorPanel } from './DirectorPanel';
+import { fetchAiAccess } from './parts/aiAccessApi';
 import { directorDevCommands } from './devCommands';
 import './director.css';
 
@@ -13,6 +14,25 @@ declare module '../../core/registry/types' {
   interface FeatureServices {
     getDirectorPanel?: () => DirectorPanel | null;
   }
+}
+
+const AI_ACCESS_POLL_MS = 15_000;
+
+/** W28-11: polls `ai-access` (every 15 s and after each director decision) while W28 is on and the host is the server. */
+function mountAiAccessPoll(ctx: FeatureContext, panel: DirectorPanel): () => void {
+  if (!ctx.flags.has('W28') || ctx.host === 'local') return () => {};
+  let live = true;
+  const refresh = (): void => {
+    const slot = {
+      planetId: ctx.services.session?.planetId?.() ?? ctx.services.store?.currentPlanetId?.() ?? null,
+      colonyIndex: ownColonyIndex(ctx.services),
+    };
+    void fetchAiAccess(panel.getActiveColonyId(), undefined, slot).then((b) => { if (live) panel.syncAiAccess(b); });
+  };
+  refresh();
+  const timer = setInterval(refresh, AI_ACCESS_POLL_MS);
+  const offStatus = ctx.services.store?.onDirectorStatus?.(refresh);
+  return () => { live = false; clearInterval(timer); offStatus?.(); };
 }
 
 let activeDirectorPanel: DirectorPanel | null = null;
@@ -72,6 +92,7 @@ export default defineFeature({
       };
       if (ctx.services.store?.latest) sync(ctx.services.store.latest);
       const offView = ctx.services.store?.onView?.((v) => sync(v));
+      const aiAccess = mountAiAccessPoll(ctx, panel);
 
       return {
         update(view) {
@@ -79,6 +100,7 @@ export default defineFeature({
         },
         dispose() {
           offView?.();
+          aiAccess();
           if (activeDirectorPanel === panel) activeDirectorPanel = null;
           panel.dispose();
         },

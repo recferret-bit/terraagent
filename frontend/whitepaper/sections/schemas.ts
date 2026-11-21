@@ -225,7 +225,7 @@ export function createProtocolEconomySchema(): HTMLElement {
   const leftCol = makeEl('div', 'wp-proto-col');
   leftCol.append(
     makeEl('span', 'wp-proto-col-lbl is-in', '▲ THREE ORGANIC INFLOWS'),
-    makePipeNode('80% of Platform Trade Fee', '0.80% / 0.40%', 'Cleared on CLOB & Guild fills via `NEP-413` `token_diff`. Remaining 20% funds Planet DAO.', 'trade'),
+    makePipeNode('80% of Platform Trade Fee', '0.80% / 0.52%–0.20%', 'Cleared on CLOB & Guild fills via `NEP-413` `token_diff` across 4 staker tiers (15% of Protocol cut to Tier 4 Lead Patron). Remaining 20% funds Planet DAO.', 'trade'),
     makePipeNode('20% of Validator Yield', '1.80% APY', 'Routed from `staking.terraagent.testnet` 9.0% pool while pilots keep 100% principal + 7.20% APY.', 'staking'),
     makePipeNode('10% Bond Arbitration Slash', '10% Breach', 'Collected if a treaty breaker cancels early or a 6h War Bond fails its siege goal.', 'bonds'),
   );
@@ -233,7 +233,7 @@ export function createProtocolEconomySchema(): HTMLElement {
   const coreCol = makeEl('div', 'wp-proto-core plate-sm');
   coreCol.append(makeEl('span', 'wp-proto-col-lbl is-core', '◆ ON-CHAIN CLEARING CORE'), buildCoreConduitSvg());
   const stats = makeEl('div', 'wp-proto-stats');
-  for (const [lbl, val] of [['TOKEN MINT', '0%'], ['COMBAT P2W', '0%'], ['STAKER PERKS', '>= 10 NEAR']]) {
+  for (const [lbl, val] of [['TOKEN MINT', '0%'], ['COMBAT P2W', '0%'], ['STAKER TIERS', '10–500+ NEAR']]) {
     const cell = makeEl('div', 'wp-proto-stat');
     cell.append(makeEl('span', undefined, lbl), makeEl('strong', undefined, val));
     stats.appendChild(cell);
@@ -244,7 +244,7 @@ export function createProtocolEconomySchema(): HTMLElement {
   rightCol.append(
     makeEl('span', 'wp-proto-col-lbl is-out', '▼ INFRASTRUCTURE & DAO OUTFLOWS'),
     makePipeNode('NEP-366 Gasless Relayer', 'relayer.terraagent.*', 'Sponsors pilot sub-account storage deposits and popup-free gameplay transactions.', 'all', 'is-out'),
-    makePipeNode('Managed NEAR.AI Cloud TEE', 'z-ai/glm-5.3-flash', 'Pays batched hardware-attested directives for Rival NPCs and >= 10 NEAR Staker Autopilot.', 'all', 'is-out-ai'),
+    makePipeNode('Managed NEAR.AI Cloud TEE', 'z-ai/glm-5.3-flash', 'Pays batched hardware-attested directives for Rival NPCs, 5 Free Trial Turns, and 1–12 Staker Colony Slots.', 'all', 'is-out-ai'),
     makePipeNode('Planet Council DAO Vault', '20% of Platform Fee', 'Funds `meteor_shield`, `terraform_boost`, and regional subsidies voted on `dao.terraagent.testnet`.', 'trade', 'is-out'),
   );
 
@@ -267,21 +267,21 @@ export function createReceiptExamplesGrid(): HTMLElement {
       rows: [
         ['Seller Principal (100%)', '$100.00 USDC'],
         ['Trade Hub Stall Royalty', '+$0.50 USDC'],
-        ['TerraAgent Protocol (80% fee)', '+$0.80 ($0.40 Staker)'],
-        ['Planet Council DAO (20% fee)', '+$0.20 ($0.10 Staker)'],
+        ['TerraAgent Protocol (80% fee)', '+$0.80 ($0.52–$0.20 T1–T4)'],
+        ['Planet Council DAO (20% fee)', '+$0.20 ($0.13–$0.05 T1–T4)'],
       ],
     },
     {
       stream: 'staking',
-      num: 'EXAMPLE B · DAY-1 LOSSLESS STAKE',
+      num: 'EXAMPLE B · WALLET-FIRST 4-TIER STAKE',
       badge: '9.0% POOL APY',
-      title: '50 NEAR Staked on Day 1 (No Wait)',
+      title: '50 NEAR Staked on /me.html#staking (Commander T2)',
       bars: [['80%', 'is-blue'], ['20%', 'is-energy']],
       rows: [
         ['Locked Principal (2d Unbond)', '50.00 NEAR (100% Safe)'],
         ['Pilot Net Yield (80% split)', '+3.60 NEAR / yr (7.20%)'],
         ['Protocol Infra Slice (20%)', '+0.90 NEAR / yr (~3k txs)'],
-        ['Unlocked Perks (>= 10 NEAR)', 'Managed AI + 0.50% Fee'],
+        ['Commander Perks (50 NEAR)', '3 AI Slots + 0.50% Fee'],
       ],
     },
     {

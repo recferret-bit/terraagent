@@ -6,3 +6,5 @@ export * from './toolOrigins';
 export * from './WorkParticleEmitter';
 export * from './WorkParticleSystem';
 export * from './validate/ParticleValidator';
+export * from './presetsPrestige';
+export * from './cutterVariant';

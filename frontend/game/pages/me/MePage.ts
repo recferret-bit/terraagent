@@ -14,6 +14,9 @@ import {
 } from './sections/PlanetsHistoryPlaySections';
 import { renderProgressSection } from './sections/ProgressSection';
 import { renderStatsSection } from './sections/StatsSection';
+import { renderStakingSection } from './sections/staking/StakingSection';
+import { parseStakingHash, STAKING_SECTION_ID } from './sections/staking/stakingRoute';
+import { resolveClientFlags } from '../../core/flags/resolve';
 
 export const ME_SECTION_TABS = [
   { id: 'pilot', label: 'PILOT' },
@@ -24,14 +27,23 @@ export const ME_SECTION_TABS = [
   { id: 'play', label: 'PLAY' },
 ] as const;
 
+/** Shown only when wave `W28` is on (NEAR_STAKING_SPEC §2.2). */
+export const STAKING_TAB = { id: STAKING_SECTION_ID, label: 'STAKING' } as const;
+
 export interface MountMePageOptions {
   readonly fetch?: MeFetchFn;
   readonly search?: string;
+  /** Test seam: the location hash (`#staking?amount=200`); defaults to `location.hash`. */
+  readonly hash?: string;
 }
 
 export class MePage {
   private headerAuth: PilotAccess | null = null;
   private promptAuth: PilotAccess | null = null;
+  private readonly waveStakingOn: boolean;
+  /** Set while the signed-out view is showing (the staking tab bypasses the auth wall). */
+  private unauthMessage: string | null = null;
+  private hashListening = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -39,6 +51,65 @@ export class MePage {
   ) {
     this.root.dataset.page = 'me';
     this.root.classList.add('ta-me-root');
+    const search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
+    this.waveStakingOn = resolveClientFlags({ search, dev: Boolean(import.meta.env?.DEV), warn: () => undefined }).flags.has('W28');
+  }
+
+  private currentHash(): string {
+    return this.opts.hash ?? (typeof location !== 'undefined' ? location.hash : '');
+  }
+
+  private listenForHash(): void {
+    if (this.hashListening || typeof window === 'undefined' || this.opts.hash !== undefined) return;
+    this.hashListening = true;
+    window.addEventListener('hashchange', () => {
+      if (this.unauthMessage !== null) this.renderUnauthenticated(this.unauthMessage);
+      else this.scrollToStaking();
+    });
+  }
+
+  private scrollToStaking(): void {
+    if (this.waveStakingOn && parseStakingHash(this.currentHash()).active) {
+      (this.root.querySelector('#staking') as HTMLElement | null)?.scrollIntoView?.();
+    }
+  }
+
+  private renderStakingPlate(accountId: string | null): HTMLElement {
+    const handle = renderStakingSection({
+      amount: parseStakingHash(this.currentHash()).amount,
+      fetch: this.opts.fetch,
+      search: this.opts.search,
+      connected: accountId !== null,
+      accountId,
+      onConnect: () => this.headerAuth?.openSignInDialog(),
+      onOff: () => this.hideStaking(plate),
+    });
+    const plate = this.renderSectionPlate(STAKING_TAB.id, STAKING_TAB.label, handle.el);
+    return plate;
+  }
+
+  /** Server-side fencing: the overview endpoint 404s with W28 off, so the staking tab and plate disappear. */
+  private hideStaking(plate: HTMLElement): void {
+    const main = plate.parentElement;
+    plate.remove();
+    this.root.querySelector<HTMLElement>('[data-testid="me-tab-staking"]')?.remove();
+    // signed out on `#staking`: the preview was the whole page, so fall back to the normal sign-in prompt
+    if (this.unauthMessage !== null && main && main.childElementCount === 0) main.replaceWith(this.renderAuthPrompt(this.unauthMessage));
+  }
+
+  /** Signed-out: the staking tab renders the public preview with no auth wall; every other hash keeps the prompt. */
+  private renderUnauthenticated(message: string): void {
+    this.unauthMessage = message;
+    this.disposeAuthControls();
+    clearChildren(this.root);
+    this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
+    if (this.waveStakingOn && parseStakingHash(this.currentHash()).active) {
+      const main = el('main', { className: 'ta-me-main', dataset: { testid: 'me-main' } });
+      main.appendChild(this.renderStakingPlate(null));
+      this.root.appendChild(main);
+      return;
+    }
+    this.root.appendChild(this.renderAuthPrompt(message));
   }
 
   private disposeAuthControls(): void {
@@ -110,9 +181,10 @@ export class MePage {
       return;
     }
 
+    this.unauthMessage = null;
+    this.listenForHash();
     if (res.kind === 'unauthenticated') {
-      this.root.appendChild(this.renderStickyNav({ skipRestore: true }));
-      this.root.appendChild(this.renderAuthPrompt(res.message));
+      this.renderUnauthenticated(res.message);
       return;
     }
 
@@ -208,14 +280,17 @@ export class MePage {
     main.appendChild(
       this.renderSectionPlate('play', 'PLAY', renderPlaySection()),
     );
+    if (this.waveStakingOn) main.appendChild(this.renderStakingPlate(profile.identity.accountId ?? null));
 
     this.root.appendChild(main);
+    this.scrollToStaking();
   }
 
   private renderStickyNav(
     navOpts: Pick<PilotAccessOptions, 'initialSession' | 'skipRestore'> & { readonly mountAuth?: boolean } = {},
   ): HTMLElement {
-    const links = ME_SECTION_TABS.map((t) =>
+    const tabs = this.waveStakingOn ? [...ME_SECTION_TABS, STAKING_TAB] : ME_SECTION_TABS;
+    const links = tabs.map((t) =>
       el(
         'a',
         {
