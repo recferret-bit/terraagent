@@ -331,3 +331,10 @@ export function bucketDrawCounts(im: THREE.InstancedMesh): { main: number; shado
 
 /** Forgets the shadow lights seen so far (terrain dispose: a new session brings new lights; tests). */
 export function resetPropShadowLights(): void { lightDirs.clear(); lightKey++; }
+
+/** Clears cached focus-compaction state when a pooled `InstancedMesh` bucket is rewritten with new instances. */
+export function resetCompactedBucket(im: THREE.InstancedMesh): void {
+  states.delete(im);
+  im.onBeforeShadow = () => {};
+  im.onAfterShadow = () => {};
+}

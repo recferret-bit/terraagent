@@ -60,10 +60,10 @@ it('W08-09: enforces S3 + 5 min raid start floor: S3 + 4 min -> raidsAllowed=fal
   expect(at6Min.raidSize).toBe(5);
   expect(at6Min.size).toBe(5);
   expect(at6Min.composition).toEqual({
-    tier: 'skitters',
-    skitters: 5,
+    tier: 'swarms',
+    swarms: 5,
     brutes: 0,
-    drifterFlocks: 0,
+    spitterBroods: 0,
   });
 });
 
@@ -98,7 +98,7 @@ it('W08-09: enforces S2 + 10 min meteor floor: S2 + 9 min -> meteorsAllowed=fals
   expect(threatOf(host.state, 0).meteorsAllowed).toBe(true);
 });
 
-it('W08-09: scales raid size with thermalGenerators (capped at 12) and updates composition for S6-S7 Brutes and S8+ Drifters', () => {
+it('W08-09: scales raid size with thermalGenerators (capped at 12) and updates composition for S6-S7 Brutes and S8+ Spitter Broods', () => {
   const s6 = threatOf({
     stage: 6,
     threatStage: 6,
@@ -108,10 +108,10 @@ it('W08-09: scales raid size with thermalGenerators (capped at 12) and updates c
   expect(s6.raidsAllowed).toBe(true);
   expect(s6.raidSize).toBe(10);
   expect(s6.composition).toEqual({
-    tier: 'skitters_and_brutes',
-    skitters: 8,
+    tier: 'swarms_and_brutes',
+    swarms: 8,
     brutes: 2,
-    drifterFlocks: 0,
+    spitterBroods: 0,
   });
 
   const s8 = threatOf({
@@ -122,10 +122,10 @@ it('W08-09: scales raid size with thermalGenerators (capped at 12) and updates c
   });
   expect(s8.raidSize).toBe(12);
   expect(s8.composition).toEqual({
-    tier: 'drifter_flock',
-    skitters: 9,
+    tier: 'spitter_brood',
+    swarms: 9,
     brutes: 3,
-    drifterFlocks: 1,
+    spitterBroods: 1,
   });
 });
 

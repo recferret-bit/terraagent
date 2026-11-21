@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 
-export const PEDESTAL_R = 6.3;
+export const PEDESTAL_R = 18.5;
 
 type Push = (arr: number[], x1: number, z1: number, x2: number, z2: number) => void;
 
 /** Square 1 m / 5 m lines, clipped to the pedestal circle by skipping segments whose endpoints fall outside. */
 function squareLines(push: Push, minor: number[], major: number[]) {
-  const N = 6;
+  const N = Math.floor(PEDESTAL_R);
   for (let i = -N; i <= N; i++) {
     const arr = i % 5 === 0 ? major : minor;
     for (let s = -N; s < N; s++) { push(arr, i, s, i, s + 1); push(arr, s, i, s + 1, i); }
@@ -15,16 +15,23 @@ function squareLines(push: Push, minor: number[], major: number[]) {
 
 /** 1 m (flat-to-flat) hex tiles plus the square 5 m lines. */
 function hexLines(push: Push, minor: number[], major: number[]) {
+  const R = PEDESTAL_R - 0.05;
   const s = 1 / Math.sqrt(3); // circumradius so flat-to-flat = 1m
   const w = 1, h = s * 1.5;
-  for (let row = -9; row <= 9; row++) for (let col = -8; col <= 8; col++) {
+  const rows = Math.ceil(R / h) + 1;
+  const cols = Math.ceil(R / w) + 1;
+  for (let row = -rows; row <= rows; row++) for (let col = -cols; col <= cols; col++) {
     const cx = col * w + (row & 1 ? w / 2 : 0), cz = row * h;
     for (let k = 0; k < 6; k++) {
       const a1 = Math.PI / 6 + (k * Math.PI) / 3, a2 = a1 + Math.PI / 3;
       push(minor, cx + Math.cos(a1) * s, cz + Math.sin(a1) * s, cx + Math.cos(a2) * s, cz + Math.sin(a2) * s);
     }
   }
-  for (let i = -5; i <= 5; i += 5) { push(major, i, -6, i, 6); push(major, -6, i, 6, i); }
+  const N = Math.floor(R);
+  const M = Math.floor(R / 5) * 5;
+  for (let i = -M; i <= M; i += 5) {
+    for (let u = -N; u < N; u++) { push(major, i, u, i, u + 1); push(major, u, i, u + 1, i); }
+  }
 }
 
 const lines = (arr: number[], color: number, op: number) => {

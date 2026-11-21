@@ -126,8 +126,8 @@ export function stepDeployingStageFrame(opts: {
   if (stage && descent) {
     const latest = online?.store.latest;
     if (latest) {
-      const resolved = resolveOnlinePlanetLook(latest.planet.type, currentSpec.kind);
-      if (resolved.kind !== currentSpec.kind) {
+      const resolved = resolveOnlinePlanetLook(latest.planet.type, currentSpec.kind, latest.planet.seed);
+      if (resolved.kind !== currentSpec.kind || resolved.seed !== currentSpec.seed) {
         nextSpec = resolved;
         descent.syncPlanetSpec?.(resolved);
       }
@@ -161,8 +161,8 @@ export function syncOnlineSpaceDescentFrame(opts: {
   let nextSpec = currentSpec;
   const latest = online.store.latest;
   if (latest) {
-    const resolved = resolveOnlinePlanetLook(latest.planet.type, currentSpec.kind);
-    if (resolved.kind !== currentSpec.kind) {
+    const resolved = resolveOnlinePlanetLook(latest.planet.type, currentSpec.kind, latest.planet.seed);
+    if (resolved.kind !== currentSpec.kind || resolved.seed !== currentSpec.seed) {
       nextSpec = resolved;
       descent.syncPlanetSpec?.(resolved);
     }

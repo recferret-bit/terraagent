@@ -23,20 +23,24 @@ export function fishBounds(b: FaunaBuffers, placed: number, out = new THREE.Box3
     const [cx, cz, r] = [b.swim[i * 4]!, b.swim[i * 4 + 1]!, b.swim[i * 4 + 2]!];
     const [depth, length] = [b.fish[i * 4 + 1]!, b.fish[i * 4 + 2]!];
     const [along, side, dy] = [b.offset[i * 4]!, b.offset[i * 4 + 1]!, b.offset[i * 4 + 2]!];
-    const reach = r * (1 + PATH_WOBBLE) + Math.hypot(along, side) + length + XZ_SLACK;
-    grow(out, cx, cz, reach, -depth - FAUNA_SINK_MAX - Math.abs(dy) - BOB_AMP - length - SLACK, SLACK);
+    const evadeXZ = b.evade ? b.evade[i * 4]! : 0;
+    const evadeDive = b.evade ? b.evade[i * 4 + 1]! : 0;
+    const reach = r * (1 + PATH_WOBBLE) + Math.hypot(along, side) + length + evadeXZ + XZ_SLACK;
+    grow(out, cx, cz, reach, -depth - FAUNA_SINK_MAX - evadeDive - Math.abs(dy) - BOB_AMP - length - SLACK, SLACK);
   }
   return out;
 }
 
-/** Local-space box of every placed jellyfish's drift loop, bell and tentacles at the deepest wave sink. */
+/** Local-space box of every placed jellyfish's drift loop, bell and tentacles at the deepest wave sink + panic evade. */
 export function jellyBounds(b: JellyBuffers, placed: number, out = new THREE.Box3()): THREE.Box3 {
   out.makeEmpty();
   for (let i = 0; i < placed; i++) {
     const [cx, cz, r] = [b.drift[i * 4]!, b.drift[i * 4 + 1]!, b.drift[i * 4 + 2]!];
     const [depth, scale] = [b.jelly[i * 4 + 1]!, b.jelly[i * 4 + 2]!];
+    const evadeXZ = b.evade ? b.evade[i * 4]! : 0;
+    const evadeDive = b.evade ? b.evade[i * 4 + 1]! : 0;
     const body = (JELLY_TENTACLE_LEN + 0.1 + JELLY_BOB) * scale;
-    grow(out, cx, cz, r + 0.3 * scale + XZ_SLACK, -depth - FAUNA_SINK_MAX - body - SLACK, 0.3 * scale + SLACK);
+    grow(out, cx, cz, r + 0.3 * scale + evadeXZ + XZ_SLACK, -depth - FAUNA_SINK_MAX - evadeDive - body - SLACK, 0.3 * scale + SLACK);
   }
   return out;
 }

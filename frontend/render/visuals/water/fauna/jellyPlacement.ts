@@ -1,10 +1,10 @@
 import { mulberry32 } from '../../terrain/noise';
-import { SHORE_DIST_MAX, type ShoreField } from '../shoreField';
+import { SHORE_DIST_MAX, sampleField, type ShoreField } from '../shoreField';
 import { WATER_RANGES } from '../waterConfig';
 import { BED_CLEARANCE, FAUNA_SINK_MAX, SHORE_CLEARANCE, candidateTexels, lerp, shallowestBed } from './faunaPlacement';
 
 /**
- * Deterministic jellyfish placement (pure; no three.js): a few slow drifters in DEEP water only. Each drifts on a
+ * Deterministic jellyfish placement (pure; no three.js): a few slow floaters in DEEP water only. Each floats on a
  * small closed loop (`jellyPathPoint` mirrors the vertex shader); its whole body (bell + tentacles, at the deepest
  * wave sink) stays `BED_CLEARANCE` above the bed and its loop `SHORE_CLEARANCE` off dry ground.
  */
@@ -32,11 +32,20 @@ export interface JellyBuffers {
   readonly drift: Float32Array;
   /** 4 / instance: phase 0..1, depth (m below the water level), bell scale, hue 0..2. */
   readonly jelly: Float32Array;
+  /** 4 / instance: safe threat-evasion horizontal shift cap (m), safe vertical dive cap (m), reserved, reserved. */
+  readonly evade: Float32Array;
 }
 
 export const createJellyBuffers = (cap = JELLY_CAP): JellyBuffers => ({
-  drift: new Float32Array(cap * 4), jelly: new Float32Array(cap * 4),
+  drift: new Float32Array(cap * 4),
+  jelly: new Float32Array(cap * 4),
+  evade: new Float32Array(cap * 4),
 });
+
+export function planetJellyCap(span: number): number {
+  if (span <= 80) return JELLY_CAP;
+  return Math.min(360, Math.max(JELLY_CAP, Math.round((span / 64) ** 1.55 * JELLY_CAP)));
+}
 
 /** Jellies to draw at `density` out of `placed` (placed for the maximum density). */
 export const visibleJellyCount = (placed: number, density: number): number =>
@@ -51,12 +60,14 @@ export function layoutJellies(f: ShoreField, seed: number, out: JellyBuffers, ca
   if (cand.length === 0) return 0;
   const rnd = mulberry32((seed ^ 0x7e11f) >>> 0);
   let placed = 0;
-  for (let tries = 0; tries < MAX_TRIES && placed < budget; tries++) {
+  const maxTries = Math.max(MAX_TRIES, budget * 12);
+  const texPad = Math.min(f.texel, 0.75);
+  for (let tries = 0; tries < maxTries && placed < budget; tries++) {
     const k = cand[Math.floor(rnd() * cand.length)]!;
     const cx = ((k % f.res) + 0.5) * f.texel - f.span / 2, cz = (Math.floor(k / f.res) + 0.5) * f.texel - f.span / 2;
     const radius = lerp(RADIUS, rnd());
     const scale = lerp(SCALE, rnd());
-    const reach = radius + 0.2 * scale + f.texel;
+    const reach = radius + 0.2 * scale + texPad;
     if (reach + SHORE_CLEARANCE >= SHORE_DIST_MAX || f.dist[k]! < reach + SHORE_CLEARANCE) continue;
     const bedDepth = -shallowestBed(f, cx, cz, reach);
     if (bedDepth < MIN_BED) continue;
@@ -64,8 +75,19 @@ export function layoutJellies(f: ShoreField, seed: number, out: JellyBuffers, ca
     const hi = Math.min(DEPTH[1], bedDepth - BED_CLEARANCE - FAUNA_SINK_MAX - body);
     if (hi < DEPTH[0]) continue;
     const omega = (lerp(SPEED, rnd()) / radius) * (rnd() < 0.5 ? -1 : 1);
+    const rawPhase = rnd();
+    const rawDepth = lerp([DEPTH[0], hi], rnd());
+    const rawHue = Math.floor(rnd() * 3);
+    let minRingDist = f.dist[k]!;
+    for (let s = 0; s < 16; s++) {
+      const a = (s / 16) * Math.PI * 2;
+      minRingDist = Math.min(minRingDist, sampleField(f, f.dist, cx + Math.cos(a) * radius, cz + Math.sin(a) * radius, 0));
+    }
+    const safeShift = Math.max(0, Math.min(1.8, minRingDist - (0.2 * scale + texPad + 0.18)));
+    const safeDive = Math.max(0, Math.min(0.34, bedDepth - rawDepth - FAUNA_SINK_MAX - body - BED_CLEARANCE));
     out.drift.set([cx, cz, radius, omega], placed * 4);
-    out.jelly.set([rnd(), lerp([DEPTH[0], hi], rnd()), scale, Math.floor(rnd() * 3)], placed * 4);
+    out.jelly.set([rawPhase, rawDepth, scale, rawHue], placed * 4);
+    out.evade.set([safeShift, safeDive, 0, 0], placed * 4);
     placed++;
   }
   return placed;

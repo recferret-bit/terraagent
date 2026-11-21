@@ -54,7 +54,7 @@ export class StageRig {
   /** The planet-surface view replaces the pedestal. */
   hidePedestal() { this.group.children.forEach((c) => { if (c.name === 'pedestal') c.visible = false; }); }
 
-  placeHuman() { this.human.position.set(Math.max(-5, this.getMinX() - 1.2), 0, 0.6); }
+  placeHuman() { this.human.position.set(Math.max(-(PEDESTAL_R - 1.2), this.getMinX() - 1.2), 0, 0.6); }
 
   syncLighting(vp: ColonyViewport, kind: PlanetKind, isNightPreview: boolean) {
     if (isNightPreview) {

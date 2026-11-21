@@ -117,6 +117,7 @@ export function applySessionSpacePhase(opts: {
   readonly cameraTargetTile: { readonly q: number; readonly r: number };
   readonly store: WorldStore;
   readonly planetKind: PlanetKind | null;
+  readonly planetSeed?: string | number | null;
   readonly viewport: ColonyViewport;
   readonly dayNightSync?: OnlineDayNightSync | null;
   readonly focusTile: (q: number, r: number, instant?: boolean) => void;
@@ -131,7 +132,7 @@ export function applySessionSpacePhase(opts: {
   if (opts.phase === null && wasActive) {
     opts.dayNightSync?.syncFrame();
     if (opts.terrain) {
-      const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind);
+      const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind, opts.store.latest?.planet.seed ?? opts.planetSeed);
       try {
         applyPlanetLook(opts.viewport, look);
       } catch {
@@ -237,6 +238,7 @@ export function applySessionOrbitalReveal(opts: {
   readonly terrain: HexTerrain | null;
   readonly store: WorldStore;
   readonly planetKind: PlanetKind | null;
+  readonly planetSeed?: string | number | null;
   readonly viewport: ColonyViewport;
   readonly dayNightSync: OnlineDayNightSync | null;
   readonly banner: ConnectionBanner | null;
@@ -247,7 +249,7 @@ export function applySessionOrbitalReveal(opts: {
   readonly onView: (v: ClientView) => void;
 }): void {
   if (opts.terrain) {
-    const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind);
+    const look = resolveOnlinePlanetLook(opts.store.latest?.planet.type ?? 'temperate', opts.planetKind, opts.store.latest?.planet.seed ?? opts.planetSeed);
     try {
       applyPlanetLook(opts.viewport, look);
     } catch {

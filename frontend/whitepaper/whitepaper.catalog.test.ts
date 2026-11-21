@@ -94,7 +94,7 @@ describe('TerraAgent whitepaper section ordering & token hygiene', () => {
     }
 
     const allCards = [...FLEET_CARDS, ...ECOLOGY_CARDS, ...EFFECT_CARDS];
-    expect(allCards.length).toBe(68);
+    expect(allCards.length).toBe(64);
     for (const item of ENTITY_NAV_ITEMS) {
       const matching = allCards.filter((c) => c.group === item.filterGroup);
       expect(matching.length, `Entity nav count mismatch for ${item.group}`).toBe(item.count);

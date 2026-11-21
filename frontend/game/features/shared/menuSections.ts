@@ -122,7 +122,7 @@ export function layoutMenuGroups(
     }
     lead = placeGroup(container, sectionHead(group, heads), els, lead);
   }
-  if (other.length > 0) lead = placeGroup(container, sectionHead(OTHER_GROUP, heads), other, lead);
+  if (other.length > 0) placeGroup(container, sectionHead(OTHER_GROUP, heads), other, lead);
   else {
     heads.get(OTHER_GROUP.id)?.remove();
     heads.delete(OTHER_GROUP.id);

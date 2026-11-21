@@ -14,7 +14,7 @@ description: >-
 
 This skill enables AI coding agents to generate crisp, tileable PBR texture sets (`map`, `normalMap`, `roughnessMap`, `emissiveMap`) in pure code at startup (`< 25ms`) without relying on external `.png` assets.
 
-> **Note for kitbashed models.** The procedural kitbash pipeline does not bind these textures: kitbash parts carry zone colours, roughness and metalness as vertex attributes, so surface detail (solar cells, rims, vents, panel lines) must be real geometry. Before adding a texture to cover for a plain part, run `npm run validate:models -- <id>` (skill `model-geometry-validator`): `ROLE_DETAIL`, `FLAT_SURFACE` and `LOW_CONTRAST_INSET` say which parts are too plain or too close in colour to their support. Textures from this skill are for terrain, loaded `.glb` props and UI, and must still respect the same colour-separation rules (neighbouring functional parts differ in lightness by a clear margin).
+> **Note for kitbashed models vs organic/botanical surfaces.** Mechanical kitbash robots and buildings carry zone colours, roughness and metalness as vertex attributes, so mechanical surface detail (solar cells, rims, vents, panel lines) must be real geometry (`npm run validate:models -- <id>`). By contrast, organic pelage (`warmFurPelage` achromatic PBR bundle on `aOrganic == 6`) and avian plumage (`avianFeatherVane` barbule/rachis PBR bundle on `aOrganic == 7` in `UnifiedColonyMaterial`), woody trunks (`treeBarkFissures` on `aBark == 1` in `createFoliageMaterial`), and planet ground ecotypes (`meadowGrassClover` & `desertPebbleCrust` in `terrainMaterial.ts`) DO bind cached `ProceduralTextureRegistry` PBR bundles alongside loaded `.glb` props and UI.
 
 ---
 
@@ -23,8 +23,8 @@ This skill enables AI coding agents to generate crisp, tileable PBR texture sets
 1. **Draw Height First, Derive Normals Automatically:**
    - Never attempt to hand-code RGB tangent-space normal values pixel-by-pixel.
    - Draw a grayscale heightfield (`0 = deep seam/groove`, `128 = flat plate`, `255 = raised rivet/ridge`) onto an offscreen canvas or `Uint8Array` buffer, then pass it through `heightToNormalTexture()` in [ProceduralTextureRegistry.ts](./examples/ProceduralTextureRegistry.ts) (which runs a wrapping $3 \times 3$ Sobel filter to produce a seamless `THREE.CanvasTexture` / `DataTexture` normal map).
-2. **Enforce Seamless Wrap (`RepeatWrapping` + Anisotropy):**
-   - All synthesized textures must wrap cleanly across borders (`wrapS = wrapT = THREE.RepeatWrapping`) and set `anisotropy = 4` so oblique RTS camera angles remain razor-sharp.
+2. **Enforce Seamless Wrap, Linear Mipmaps & Anisotropy:**
+   - All synthesized textures must wrap cleanly across borders (`wrapS = wrapT = THREE.RepeatWrapping`). When building a `THREE.DataTexture`, explicitly set `magFilter = THREE.LinearFilter`, `minFilter = THREE.LinearMipmapLinearFilter`, `generateMipmaps = true`, and `anisotropy = 4` (`DataTexture` otherwise defaults to `NearestFilter` without mipmaps, leaving `anisotropy` inert).
 3. **Color Space Correctness:**
    - Set `texture.colorSpace = THREE.SRGBColorSpace` **only** for Albedo (`map`) and Emissive (`emissiveMap`) textures.
    - Keep `normalMap`, `roughnessMap`, `metalnessMap`, and `DataTexture` splatmaps in `THREE.NoColorSpace` (linear) so PBR lighting math is never gamma-corrupted.
@@ -41,6 +41,11 @@ Review the built-in procedural generators in [procedural-pbr-patterns.md](./refe
 - `solarHexGrid`: Photovoltaic blue hex cells, metallic silver busbar grid, subtle cyan charge glow.
 - `industrialHazardStripes`: Diagonal 45° safety-amber and gunmetal stripes with edge scuffs.
 - `biomeTerrainNoise`: 4-channel `RGBA` `DataTexture` (FBM elevation, Voronoi cracks, moisture, micro-grain).
+- `treeBarkFissures`: Anisotropic vertical bark ridges, lenticel knots, Sobel `normalMap` & crevice `roughnessMap` (`frontend/render/visuals/ProceduralTextureRegistry.ts`, headless-safe `HeightBuffer` fallback).
+- `meadowGrassClover`: Botanical meadow blade weave + wildflower clover clusters + Sobel normal/roughness maps.
+- `desertPebbleCrust`: Wind-rippled arid sand, desert varnish pebbles & sun-baked alkali crack network.
+- `warmFurPelage`: Neutral achromatic guard-hair strand pelage, normal ridges & sheen roughness map (preserves coat vertex coloration cleanly).
+- `avianFeatherVane`: Asymmetric pennaceous feather rachis, diagonal barbule weave, Sobel `normalMap` & micro-vane `roughnessMap`.
 
 ### Step 2: Register or Tune a Custom PBR Pattern
 To add a new procedural texture (e.g., `nuclearCoolingTiles`, `alienChitinCarapace`, `iceGlacierCracks`):

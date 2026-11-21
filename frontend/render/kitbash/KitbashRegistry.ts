@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { tubeThrough } from './greebles/tube';
+import type { VertebratePartRig, VertebrateRigConfig } from '../animation/vertebrates/types';
 
 export type MaterialZoneId =
   | 'hullPrimary'
@@ -57,7 +58,7 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * - 9: SpiderBody — Arachnid/quadruped carapace/turret step-reaction (2ω stomp compression, diagonal roll, pitch, surge, yaw)
  *      (19 = SpinY on SpiderBody, 29 = HoverBob on SpiderBody, 39 = RecoilPulse on SpiderBody)
  */
-export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39 | 49 | 59 | 60 | 69;
+export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39 | 49 | 59 | 60 | 69 | 78 | 88 | 92;
 
 /**
  * What a part is for, when a geometry check must treat it specially (the validator never infers this from names):
@@ -66,6 +67,15 @@ export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18
  * no anchor check, may move with a different animation than its mount).
  */
 export type PartRole = 'plinth' | 'plinthDetail' | 'whip';
+
+export type VertexColorFn = (
+  pos: THREE.Vector3,
+  norm: THREE.Vector3,
+  u: number,
+  v: number,
+  zones: Record<string, MaterialZoneSpec>,
+  out: THREE.Color,
+) => void;
 
 export interface PartOptions {
   /** Human-readable label used by the model validator's reports (defaults to "<geometry type>#<index>"). */
@@ -78,6 +88,9 @@ export interface PartOptions {
   emissiveIntensity?: number;
   animType?: AnimChannelId;
   animPivot?: THREE.Vector3Tuple;
+  vertRig?: VertebratePartRig;
+  /** Optional per-vertex pigmentation callback (stays strictly non-emissive within zone palette). */
+  vertexColor?: VertexColorFn;
 }
 
 /** What the model validator needs to know about each sub-part after merging. */
@@ -94,6 +107,7 @@ export interface PartMeta {
   /** Zone surface the part was stamped with (sRGB hex, roughness, metalness): the appearance checks read these. */
   color: number; roughness: number; metalness: number;
   tissue?: number;
+  vertRig?: VertebratePartRig;
   /** Vertices this part owns in the merged buffer (parts are concatenated in order, non-indexed). */
   vertexCount: number;
 }
@@ -103,6 +117,7 @@ export class KitbashBuilder {
   private parts: THREE.BufferGeometry[] = [];
   private meta: PartMeta[] = [];
   private static sink: BuiltModel[] | null = null;
+  public vertebrateConfig?: VertebrateRigConfig;
 
   /**
    * Run `fn` and collect every model any KitbashBuilder.build() produced meanwhile, with per-part metadata.
@@ -149,13 +164,34 @@ export class KitbashBuilder {
     const animType = options.animType ?? 0;
     this.meta.push({
       index: this.parts.length, name: options.name ?? `${geometry.type.replace('Geometry', '')}#${this.parts.length}`, zone: zoneId,
-      kind: geometry.type, tissue: geometry.getAttribute('aOrganic')?.getX(0) ?? 0, ...(options.role ? { role: options.role } : {}), animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, vertexCount: count,
+      kind: geometry.type, tissue: geometry.getAttribute('aOrganic')?.getX(0) ?? 0, ...(options.role ? { role: options.role } : {}), animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, ...(options.vertRig ? { vertRig: options.vertRig } : {}), vertexCount: count,
     });
 
+    const posAttr = g.attributes.position as THREE.BufferAttribute;
+    const normAttr = g.attributes.normal as THREE.BufferAttribute | undefined;
+    const uvAttr = g.attributes.uv as THREE.BufferAttribute | undefined;
+    const vPos = new THREE.Vector3();
+    const vNorm = new THREE.Vector3();
+    const vCol = new THREE.Color();
+    const colorFn = options.vertexColor;
+
     for (let i = 0; i < count; i++) {
-      colorAttr[i * 4 + 0] = c.r * mult;
-      colorAttr[i * 4 + 1] = c.g * mult;
-      colorAttr[i * 4 + 2] = c.b * mult;
+      if (colorFn) {
+        vPos.fromBufferAttribute(posAttr, i);
+        if (normAttr) vNorm.fromBufferAttribute(normAttr, i);
+        else vNorm.set(0, 1, 0);
+        const u = uvAttr ? uvAttr.getX(i) : 0.5;
+        const v = uvAttr ? uvAttr.getY(i) : 0.5;
+        vCol.copy(c);
+        colorFn(vPos, vNorm, u, v, this.zones, vCol);
+        colorAttr[i * 4 + 0] = vCol.r * mult;
+        colorAttr[i * 4 + 1] = vCol.g * mult;
+        colorAttr[i * 4 + 2] = vCol.b * mult;
+      } else {
+        colorAttr[i * 4 + 0] = c.r * mult;
+        colorAttr[i * 4 + 1] = c.g * mult;
+        colorAttr[i * 4 + 2] = c.b * mult;
+      }
       colorAttr[i * 4 + 3] = glow > 0 ? 1.0 : 0.0;
 
       surfaceAttr[i * 2 + 0] = zone.roughness;
@@ -193,6 +229,16 @@ export class KitbashBuilder {
       cursor += m.vertexCount;
     }
     merged.userData.partRanges = partRanges;
+    if (this.vertebrateConfig) {
+      merged.userData.vertebrateConfig = { ...this.vertebrateConfig };
+    }
+    if (this.meta.some((p) => p.vertRig)) {
+      merged.userData.vertebrateParts = this.meta.map((p) => (p.vertRig ? {
+        ...p.vertRig,
+        joint: p.vertRig.joint ? [...p.vertRig.joint] as THREE.Vector3Tuple : undefined,
+        tip: p.vertRig.tip ? [...p.vertRig.tip] as THREE.Vector3Tuple : undefined,
+      } : undefined));
+    }
     const authoredNormals = this.meta.some(p => p.kind === 'OrganicGeometry') ? merged.attributes.normal.array.slice() : null;
     merged.computeVertexNormals();
     let normalOffset = 0;

@@ -340,7 +340,7 @@ Per [`HACKATHON.md`](./HACKATHON.md) (`Q-007`, `Q-010`, `Q-017`), the exact boun
 | `/me.html` | Pilot profile, badges, colony history & **BYOK NEAR.AI vault** | Authenticated session (`?as=<name>` in local dev) |
 | `/deed/:tokenId` | Public SSR OpenGraph Colony Deed card & metadata history | Dynamic PNG at `/v1/near/deed/:tokenId/image.png` |
 | `/dev/economy-sim/` | 7-day 3-colony RTS + **20-buyer × 5-seller scripted swarm** & agent receipt simulator | `?seed=<str>&llm=0` (Zero-LLM scripted or live `NEAR.AI` TEE) |
-| `/playground.html` (`playground.terraagent.fun`) | 3D procedural kitbash & shader turntable. Every catalog building is in the list (that group starts open). **Day / Night** on the View bar (`N`) dims the sun and shows each building's own projector pools | `?inspect=<id>&validate=1&biome=<kind>&night=1` |
+| `/playground.html` (`playground.terraagent.fun`) | 3D procedural kitbash & shader turntable. Every catalog building is in the list (that group starts open). **Day / Night** on the View bar (`N`) dims the sun and shows each building's own projector pools | `?inspect=<id>&floraRow=tree\|ground&validate=1&biome=<kind>&night=1&pose=auto\|walk\|run\|graze\|sleep\|glide\|flap&wildlife=forestRock\|oceanForest\|dune&wildlifeHour=10` |
 | `/pitchdeck/` · `/whitepaper/` · `/design/` | Investor deck, technical whitepaper & Faction Plate tokens | Hosted on dedicated `*.terraagent.fun` subdomains |
 
 ### Key In-Game Controls (`/play.html`)

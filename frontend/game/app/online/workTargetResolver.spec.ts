@@ -318,4 +318,42 @@ describe('workTargetResolver: grade reads the target tile terrain', () => {
     expect(sites).toHaveLength(1);
     expect(sites[0].targetKind).toBe('hole');
   });
+
+  it('prefers duneTree over a closer companion boulder when clearing a dune forest hex', () => {
+    const hqWorker = makeRecord({ id: 41, kind: ENTITY_KIND.hq, owner: 0, q: 0, r: 0, state: ENTITY_STATE.working });
+    hqWorker.mesh.rotation.y = Math.PI / 2;
+    const tiles = {
+      indexOf: (q: number, r: number) => (q === 0 && r === 0 ? 0 : q === 1 && r === 0 ? 1 : -1),
+      terrain: [TERRAIN_CODES.flat, TERRAIN_CODES.forest],
+      deposit: [DEPOSIT_CODES.none, DEPOSIT_CODES.none],
+    } as unknown as ClientTiles;
+    const [tile1X, tile1Z] = tileXZ(1, 0);
+    const closerBoulderX = tile1X - 0.55;
+    const treeX = tile1X + 0.45;
+    const treeZ = tile1Z + 0.25;
+    const mockTerrain = {
+      heightAt: () => 0,
+      props: {
+        instancesForTile: (idx: number) =>
+          idx === 1
+            ? [
+                { kind: 'boulder', tileQ: 1, tileR: 0, tileIndex: 1, x: closerBoulderX, y: 0, z: tile1Z, rot: 0, s: 1, r: 0 },
+                { kind: 'duneTree', tileQ: 1, tileR: 0, tileIndex: 1, x: treeX, y: 0, z: treeZ, rot: 0, s: 1, r: 0 },
+              ]
+            : [],
+      },
+    } as unknown as HexTerrain;
+    const sites = buildActiveWorkSites({
+      records: new Map([[41, hqWorker]]),
+      view: { planet: { radius: 3 }, blobs: {} } as unknown as ClientView,
+      tiles,
+      terrain: mockTerrain,
+      biomeKey: 'dune',
+    });
+    expect(sites).toHaveLength(1);
+    expect(sites[0].targetKind).toBe('tree');
+    const expectedX = treeX * 0.65 + tile1X * 0.35;
+    const expectedZ = treeZ * 0.65 + tile1Z * 0.35;
+    expect(Math.hypot(sites[0].targetPos[0] - expectedX, sites[0].targetPos[2] - expectedZ)).toBeLessThanOrEqual(0.15);
+  });
 });

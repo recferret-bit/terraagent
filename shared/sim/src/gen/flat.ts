@@ -32,6 +32,11 @@ export function devPlanetTypeOf(id: string): DevPlanetType | null {
   return m ? (m[1] as DevPlanetType) : null;
 }
 
+/** Deterministic seed string for a dev planet id (`pl_dev` keeps `DEV_PLANET_SEED`, others derive `${DEV_PLANET_SEED}:${id}`). */
+export function devPlanetSeedFor(id: string): string {
+  return id === 'pl_dev' ? DEV_PLANET_SEED : `${DEV_PLANET_SEED}:${id}`;
+}
+
 registerGenerator('flat', ({ seed, planetId, planetType, radius }) => {
   const s = createState({ planetId, planetType, seed, radius });
   s.grid.layers.terrain.fill(TERRAIN.flat);

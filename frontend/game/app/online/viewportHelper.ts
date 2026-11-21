@@ -4,9 +4,17 @@ import { enqueueDeferredDispose } from '@terra/render/core/deferredDispose';
 import { getPresetDimensions, getViewportPreset, onPerfConfigChange } from '@terra/render/core/perfConfig';
 import { setShadow } from '@terra/render/core/shadowConfig';
 import { getShadowQuality, onShadowQualityChange } from '@terra/render/core/shadowQuality';
+import type {
+  BiomeGeneratedPayload,
+  BugsOrchestrator,
+  BuildingsOrchestrator,
+  UnitsOrchestrator,
+} from '@terra/render/orchestrators';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
-import { createHexTerrain, getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type PrecomputedHexTerrainData, type SimPlanetType } from '@terra/render/planets/hex';
+import { createHexTerrain, getDepositVisualStage, hashGroundSeed, parseGroundSeedInput, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type PrecomputedHexTerrainData, type SimPlanetType } from '@terra/render/planets/hex';
+
+export { parseGroundSeedInput };
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { getSavedGraphicsQuality } from '../../ui/parts/settingsModal';
@@ -134,11 +142,22 @@ export function listSceneEntities(scene: THREE.Scene): Array<{ id: number; x: nu
 /**
  * The look of the planet the session is on. The sim's real planet type wins (D-38: the ground is generated per type, a
  * sand palette on temperate ground would lie); the orbit pick (`preferredKind`) is only used when the type is unknown.
+ * When `planetSeed` is provided (from `SimView.planet.seed` or HTTP boot), `look.seed` is hashed deterministically so
+ * every player joining the planet generates identical ground relief detail, rocks, forest stands, and flora.
  */
-export function resolveOnlinePlanetLook(planetType: SimPlanetType | string, preferredKind?: PlanetKind | null): PlanetSpec {
-  if (planetType === 'desert' || planetType === 'ocean' || planetType === 'temperate') return specForPlanetType(planetType);
-  if (preferredKind && PLANET_KINDS.includes(preferredKind)) return PLANET_SPECS[preferredKind];
-  return specForPlanetType('temperate');
+export function resolveOnlinePlanetLook(
+  planetType: SimPlanetType | string,
+  preferredKind?: PlanetKind | null,
+  planetSeed?: string | number | null,
+): PlanetSpec {
+  const base =
+    planetType === 'desert' || planetType === 'ocean' || planetType === 'temperate'
+      ? specForPlanetType(planetType)
+      : preferredKind && PLANET_KINDS.includes(preferredKind)
+        ? PLANET_SPECS[preferredKind]
+        : specForPlanetType('temperate');
+  if (planetSeed === undefined || planetSeed === null || planetSeed === '') return base;
+  return { ...base, seed: hashGroundSeed(planetSeed, base.seed) };
 }
 
 /**
@@ -233,6 +252,21 @@ export function createSafeViewport(root: HTMLElement, provided?: ColonyViewport)
   };
 }
 
+export function needsSessionTerrainRebuild(
+  prevTerrain: HexTerrain | null,
+  radius: number,
+  prevBiomeKey: string,
+  look: PlanetSpec,
+): boolean {
+  const targetSeed = hashGroundSeed(look.seed, 17);
+  return (
+    !prevTerrain ||
+    prevTerrain.radius !== radius ||
+    prevBiomeKey !== look.biomeKey ||
+    (prevTerrain.seed !== undefined && prevTerrain.seed !== targetSeed)
+  );
+}
+
 export function syncOrRebuildSessionTerrain(params: {
   viewport: ColonyViewport;
   prevTerrain: HexTerrain | null;
@@ -242,10 +276,16 @@ export function syncOrRebuildSessionTerrain(params: {
   view: ClientView;
   tiles: ClientTiles;
   planetKind: PlanetKind | null;
+  planetSeed?: string | number | null;
   inSpace: boolean;
   showSpaceTerrain: boolean;
   deferLook?: boolean;
   cameraTargetTile: { q: number; r: number };
+  bugsOrchestrator?: BugsOrchestrator;
+  buildingsOrchestrator?: BuildingsOrchestrator;
+  unitsOrchestrator?: UnitsOrchestrator;
+  onBiomePrewarm?: (biomeKey: string) => void;
+  pregenerated?: BiomeGeneratedPayload;
   precomputed?: PrecomputedHexTerrainData;
   progressive?: boolean;
 }): { terrain: HexTerrain; cam: RTSCamera | null; biomeKey: string; rebuilt: boolean } {
@@ -254,8 +294,8 @@ export function syncOrRebuildSessionTerrain(params: {
     view, tiles, planetKind, inSpace, showSpaceTerrain, deferLook,
     cameraTargetTile, precomputed, progressive,
   } = params;
-  const look = resolveOnlinePlanetLook(view.planet.type, planetKind);
-  if (!prevTerrain || prevTerrain.radius !== view.planet.radius || prevBiomeKey !== look.biomeKey) {
+  const look = resolveOnlinePlanetLook(view.planet.type, planetKind, view.planet.seed ?? params.planetSeed);
+  if (!prevTerrain || needsSessionTerrainRebuild(prevTerrain, view.planet.radius, prevBiomeKey, look)) {
     if (prevTerrain) {
       const oldTerrain = prevTerrain;
       viewport.scene.remove(oldTerrain.group);
@@ -269,10 +309,15 @@ export function syncOrRebuildSessionTerrain(params: {
         /* Ignore in headless tests */
       }
     }
+    params.onBiomePrewarm?.(look.biomeKey);
+    params.buildingsOrchestrator?.prewarmForBiome(look.biomeKey);
+    params.unitsOrchestrator?.prewarmForBiome(look.biomeKey);
     const terrain = createHexTerrain({
       radius: view.planet.radius,
       tiles: tiles as HexTiles,
       look,
+      bugsOrchestrator: params.bugsOrchestrator,
+      pregenerated: params.pregenerated,
       precomputed,
       progressive,
       priorityTile: cameraTargetTile,

@@ -1,5 +1,12 @@
 import { DEPOSIT_CODES, PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
-import { HEX_DIRS, hexIndex, levelledFlatHeight } from '@terra/sim/grid/hex';
+import {
+  HEX_DIRS,
+  hexIndex,
+  latticeHash01,
+  latticeHashU32,
+  levelledFlatHeight,
+  mixGroundSeed,
+} from '@terra/sim/grid/hex';
 import type { PlanetKind } from '../PlanetSpec';
 import { tileXZ } from './hexMath';
 
@@ -27,6 +34,8 @@ export interface HexTileLayers {
   owner?: ArrayLike<number>;
   /** Optional planet look kind ('dune' | 'oceanForest' | 'forestRock'); defaults to 'forestRock'. */
   kind?: PlanetKind;
+  /** Optional planet procedural seed for ecological stand generation. */
+  seed?: number;
 }
 
 /**
@@ -62,16 +71,8 @@ export function buildRockShadowIndex(index: ArrayLike<number>, aRock: ArrayLike<
   return Uint32Array.from(rock);
 }
 
-export function tileHashU32(q: number, r: number, salt = 0): number {
-  let h = (salt ^ Math.imul(q, 0x9e3779b1) ^ Math.imul(r, 0x85ebca6b)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}
-
-export function tileHash01(q: number, r: number, salt = 0): number {
-  return tileHashU32(q, r, salt) / 4294967296;
-}
+export const tileHashU32 = latticeHashU32;
+export const tileHash01 = latticeHash01;
 
 type StyleSpec = readonly [number, number, number, number]; // [hexA, hexB, ao, rock]
 
@@ -117,6 +118,45 @@ const LIVING_STYLES: Record<PlanetKind, StyleSpec> = {
   oceanForest: [0x1e6f4c, 0x2b855c, 1.0, 0.0],
 };
 
+/**
+ * Botanical ecotype variations for wild `HEX_TERRAIN.flat` (`prep === HEX_PREP.wild`) hexagons per biome:
+ * meadow turf, wildflower clover, golden sedge/savanna, deep moss glade, and sun-warmed fescue/alkali steppe.
+ * Graded/cleared pads (`HEX_PREP.flat` / `HEX_PREP.prepared`) keep the uniform `CLASS_STYLES[kind][flat]` tint.
+ */
+const WILD_FLAT_HEX_VARIANTS: Record<PlanetKind, readonly StyleSpec[]> = {
+  forestRock: [
+    [0x4b7f40, 0x5d944c, 1.0, 0.0], // lush alpine meadow
+    [0x639848, 0x7aad54, 1.0, 0.0], // wildflower clover hex
+    [0x828942, 0x969b4e, 0.98, 0.0], // golden sedge prairie hex
+    [0x38663a, 0x457545, 0.97, 0.0], // deep emerald moss glade
+    [0x6f8448, 0x819655, 0.99, 0.0], // sun-warmed dry fescue
+  ],
+  oceanForest: [
+    [0x44883a, 0x589e46, 1.0, 0.0], // tropical lush turf
+    [0x6da844, 0x84bd52, 1.0, 0.0], // lime clover & blossom meadow
+    [0x889c4e, 0x9eb05e, 0.99, 0.0], // coastal salt-grass savanna
+    [0x2f7038, 0x3d8244, 0.97, 0.0], // deep jungle moss hex
+    [0x549c54, 0x6ab366, 1.0, 0.0], // sunlit lagoon lawn
+  ],
+  dune: [
+    [0xe2aa6c, 0xecb97a, 1.0, 0.0], // wind-rippled ochre erg
+    [0xc8a462, 0xd4b26e, 0.99, 0.0], // arid bunchgrass steppe
+    [0xe8c48c, 0xf0cfa0, 1.0, 0.0], // sun-baked alkali crust
+    [0xd48d56, 0xe09b64, 0.98, 0.0], // iron-oxide red sand
+    [0xbe955c, 0xcb9f66, 0.98, 0.0], // wadi dry scrub loam
+  ],
+};
+
+function selectWildFlatVariant(q: number, r: number, kind: PlanetKind, seed = 0): StyleSpec {
+  const variants = WILD_FLAT_HEX_VARIANTS[kind] ?? WILD_FLAT_HEX_VARIANTS.forestRock;
+  const patchQ = Math.round(q / 3);
+  const patchR = Math.round(r / 3);
+  const patchRoll = tileHash01(patchQ, patchR, mixGroundSeed(seed, 809));
+  const tileRoll = tileHash01(q, r, mixGroundSeed(seed, 811));
+  const idx = Math.floor((patchRoll * 3.2 + tileRoll * 2.3) % variants.length);
+  return variants[idx]!;
+}
+
 function unpackRgb(hex: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
 }
@@ -128,19 +168,23 @@ export function tileStyle(
   prep = 0,
   deposit = 0,
   kind: PlanetKind = 'forestRock',
+  seed = 0,
 ): { r: number; g: number; b: number; ao: number; rock: number } {
   const table = CLASS_STYLES[kind] ?? CLASS_STYLES.forestRock;
   const flatSpec = table[HEX_TERRAIN.flat]!;
   const hasDeposit = deposit !== HEX_DEPOSIT.none && terrain !== HEX_TERRAIN.rock;
-  // Prepared ground is plain levelled flat ground; Irrigated is damp hydro-soil; Living is lush terraformed ground.
-  const spec = hasDeposit || prep === HEX_PREP.prepared
+  // Prepared ground is plain levelled flat ground; Irrigated is damp hydro-soil; Living is lush terraformed ground;
+  // Wild flat hexagons vary across 5 botanical meadow/steppe ecotypes per biome.
+  const spec = hasDeposit || prep === HEX_PREP.prepared || prep === HEX_PREP.flat
     ? flatSpec
     : prep === HEX_PREP.irrigated
       ? (IRRIGATED_STYLES[kind] ?? IRRIGATED_STYLES.forestRock)
       : prep === HEX_PREP.living
         ? (LIVING_STYLES[kind] ?? LIVING_STYLES.forestRock)
-        : (table[terrain] ?? flatSpec);
-  const t = tileHash01(q, r, 31);
+        : terrain === HEX_TERRAIN.flat && prep === HEX_PREP.wild
+          ? selectWildFlatVariant(q, r, kind, seed)
+          : (table[terrain] ?? flatSpec);
+  const t = tileHash01(q, r, mixGroundSeed(seed, 31));
   const [r0, g0, b0] = unpackRgb(spec[0]);
   const [r1, g1, b1] = unpackRgb(spec[1]);
   const cr = r0 + (r1 - r0) * t;
@@ -157,9 +201,9 @@ export function tileStyle(
  * ranges); classes only add cosmetic detail on top and keep water below the water plane. Flat and Prepared ground sit
  * at their own level, so a pad on a raised plateau stays on the plateau.
  */
-function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number, kind?: PlanetKind): number {
+function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number, kind?: PlanetKind, seed = 0): number {
   if (isClearedPrep(prep)) return levelledFlatHeight(raw);
-  const h = tileHash01(q, r, 17);
+  const h = tileHash01(q, r, mixGroundSeed(seed, 17));
   switch (terrain) {
     case HEX_TERRAIN.flat:
       return levelledFlatHeight(raw);
@@ -200,13 +244,14 @@ export function computeEffectiveHeights(radius: number, layers: HexTileLayers): 
   const prep = layers.prep;
   const deposit = layers.deposit;
   const kind = layers.kind;
+  const seed = layers.seed ?? 0;
   const base = new Float32Array(hx.count);
   for (let i = 0; i < hx.count; i++) {
     const t0 = terrain[i] ?? 0;
     const hasDeposit = (deposit?.[i] ?? 0) !== HEX_DEPOSIT.none && t0 !== HEX_TERRAIN.rock;
     const effTerrain = hasDeposit ? HEX_TERRAIN.flat : t0;
     const effRaw = layers.height[i] ?? 0; // a deposit tile is levelled at its own height, never pitted to 0 on a plateau
-    base[i] = baseTileHeight(hx.q[i]!, hx.r[i]!, effRaw, effTerrain, prep?.[i] ?? 0, kind);
+    base[i] = baseTileHeight(hx.q[i]!, hx.r[i]!, effRaw, effTerrain, prep?.[i] ?? 0, kind, seed);
   }
   for (let i = 0; i < hx.count; i++) {
     const t0 = terrain[i] ?? 0;
@@ -343,7 +388,7 @@ export function buildChunk(
     const tVal = layers.terrain![i] ?? 0;
     const depVal = layers.deposit?.[i] ?? 0;
     const hasDeposit = depVal !== HEX_DEPOSIT.none && tVal !== HEX_TERRAIN.rock;
-    const st = tileStyle(q, r, tVal, prepVal, depVal, layers.kind ?? 'forestRock');
+    const st = tileStyle(q, r, tVal, prepVal, depVal, layers.kind ?? 'forestRock', layers.seed ?? 0);
     aAO[v] = isClearedPrep(prepVal) || hasDeposit ? st.ao : st.ao * horizonAO(hx, i, effHeight);
     aRock[v] = st.rock;
     aHexShore[v] = tileShoreFactor(hx, i, layers);

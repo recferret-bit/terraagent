@@ -13,7 +13,14 @@ export class InsectPresentation {
 
   track(id: number, mesh: THREE.Object3D, hp: number, moving: boolean): void {
     const animator = getInsectAnimator(mesh);
-    if (!animator) return;
+    if (!animator) {
+      const stale = this.entries.get(id);
+      if (stale) {
+        stale.dispose?.();
+        this.entries.delete(id);
+      }
+      return;
+    }
     let entry = this.entries.get(id);
     if (entry?.mesh !== mesh) {
       entry?.dispose?.();
@@ -82,6 +89,14 @@ export class InsectPresentation {
   }
   snapshots(): Array<{ id: number; state: string; phase: number; retired: boolean }> {
     return [...this.entries].map(([id, e]) => ({ id, state: e.animator.state, phase: e.animator.phase, retired: !!e.dispose }));
+  }
+  clearRetired(): void {
+    for (const [id, entry] of [...this.entries]) {
+      if (entry.dispose) {
+        entry.dispose();
+        this.entries.delete(id);
+      }
+    }
   }
   clear(): void {
     for (const entry of this.entries.values()) entry.dispose?.();

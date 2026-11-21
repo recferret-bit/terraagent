@@ -4,6 +4,7 @@ import {
   FAUNA_AGGRESSION_BLOB,
   FAUNA_HIVES_BLOB,
   FAUNA_MODE_BLOB,
+  type ColonyPlanetDamageLedger,
   type FaunaAggressionEntry,
   type FaunaBehaviorMode,
   type FaunaCohortRecord,
@@ -16,7 +17,7 @@ import {
 
 interface FaunaInternalTimingBlob {
   byEntityId: Record<number, FaunaAggressionEntry>;
-  byHiveId: Record<number, FaunaAggressionEntry>;
+  byHiveId: Record<number, HiveAggressionRecord | FaunaAggressionEntry>;
   lastSeenHpByEntityId?: Record<number, number>;
   bugTimingById?: Record<number, { lastWanderTick: number; lastAttackTick: number }>;
   hiveReplenishById?: Record<number, number>;
@@ -25,6 +26,18 @@ interface FaunaInternalTimingBlob {
   lastScheduledRollTickByColony?: Record<number, number>;
   scheduledRollIndexByColony?: Record<number, number>;
   pendingEvents?: PendingFaunaEvent[];
+  planetDamageByColony?: Record<number, ColonyPlanetDamageLedger>;
+}
+
+function cloneDamageMap(
+  src: Record<number, ColonyPlanetDamageLedger> | undefined,
+): Record<number, ColonyPlanetDamageLedger> {
+  if (!src) return {};
+  const out: Record<number, ColonyPlanetDamageLedger> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (v) out[Number(k)] = { ...v };
+  }
+  return out;
 }
 
 function cloneAggressionMap(
@@ -131,6 +144,7 @@ export function getFaunaHivesState(state: PlanetState): FaunaHivesBlob {
   const pendingEvents: PendingFaunaEvent[] = Array.isArray(srcEvents)
     ? srcEvents.map((e) => ({ ...e, data: { ...e.data } }))
     : [];
+  const planetDamageByColony = cloneDamageMap(aggro?.planetDamageByColony ?? raw?.planetDamageByColony);
 
   return buildSyncedFaunaState(
     Boolean(raw?.initialized),
@@ -142,6 +156,7 @@ export function getFaunaHivesState(state: PlanetState): FaunaHivesBlob {
     lastScheduledRollTickByColony,
     scheduledRollIndexByColony,
     pendingEvents,
+    planetDamageByColony,
   );
 }
 
@@ -155,6 +170,7 @@ function buildSyncedFaunaState(
   lastScheduledRollTickByColony: Record<number, number> = {},
   scheduledRollIndexByColony: Record<number, number> = {},
   pendingEvents: PendingFaunaEvent[] = [],
+  planetDamageByColony: Record<number, ColonyPlanetDamageLedger> = {},
 ): FaunaHivesBlob {
   const hives: Record<number, HiveRecord> = {};
   const byEntityId: Record<number, HiveRecord | ResidentBugRecord> = {};
@@ -184,6 +200,7 @@ function buildSyncedFaunaState(
     lastScheduledRollTickByColony: { value: lastScheduledRollTickByColony, enumerable: false, writable: true, configurable: true },
     scheduledRollIndexByColony: { value: scheduledRollIndexByColony, enumerable: false, writable: true, configurable: true },
     pendingEvents: { value: pendingEvents, enumerable: false, writable: true, configurable: true },
+    planetDamageByColony: { value: planetDamageByColony, enumerable: false, writable: true, configurable: true },
   });
   return out;
 }
@@ -226,6 +243,47 @@ function hasModeMapChanged(
  * Persists `fauna` into `state.blobs.faunaHives` and synchronizes `state.blobs.faunaMode` and
  * `state.blobs.faunaAggression` so `targeting.ts` (`W07-09`) sees colony-scoped hostility.
  */
+function buildAggroTables(
+  synced: FaunaHivesBlob,
+  prevModeRaw: Record<number, FaunaBehaviorMode> | undefined,
+): {
+  modeByEntityId: Record<number, FaunaBehaviorMode>;
+  aggroByEntityId: Record<number, FaunaAggressionEntry>;
+  aggroByHiveId: Record<number, FaunaAggressionEntry>;
+  bugTimingById: Record<number, { lastWanderTick: number; lastAttackTick: number }>;
+  hiveReplenishById: Record<number, number>;
+} {
+  const modeByEntityId: Record<number, FaunaBehaviorMode> = prevModeRaw ? { ...prevModeRaw } : {};
+  const aggroByEntityId: Record<number, FaunaAggressionEntry> = {};
+  const aggroByHiveId: Record<number, FaunaAggressionEntry> = {};
+  const bugTimingById: Record<number, { lastWanderTick: number; lastAttackTick: number }> = {};
+  const hiveReplenishById: Record<number, number> = {};
+
+  for (const hive of Object.values(synced.hivesById)) {
+    const colonies = Object.keys(hive.aggressionByColony).map(Number).sort((a, b) => a - b);
+    const mode: FaunaBehaviorMode = colonies.length > 0 ? 'aggressive' : 'passive';
+    hive.mode = mode;
+    hive.aggressiveColonies = colonies;
+    modeByEntityId[hive.hiveId] = mode;
+    hiveReplenishById[hive.hiveId] = hive.lastReplenishTick;
+    const entry: FaunaAggressionEntry = { mode, aggressiveColonies: colonies, aggressionByColony: { ...hive.aggressionByColony }, hiveId: hive.hiveId };
+    aggroByEntityId[hive.hiveId] = entry;
+    aggroByHiveId[hive.hiveId] = entry;
+  }
+  for (const bug of Object.values(synced.bugsById)) {
+    const mergedCols = Array.from(new Set(bug.aggressiveColonies)).sort((a, b) => a - b);
+    const mode: FaunaBehaviorMode = mergedCols.length > 0 ? 'aggressive' : 'passive';
+    bug.mode = mode;
+    bug.aggressiveColonies = mergedCols;
+    if (mode === 'passive') bug.targetColony = null;
+    else if (bug.targetColony === null || !mergedCols.includes(bug.targetColony)) bug.targetColony = mergedCols[0] ?? null;
+    modeByEntityId[bug.entityId] = mode;
+    bugTimingById[bug.entityId] = { lastWanderTick: bug.lastWanderTick, lastAttackTick: bug.lastAttackTick };
+    aggroByEntityId[bug.entityId] = { mode, aggressiveColonies: mergedCols, targetColony: bug.targetColony, hiveId: bug.homeHiveId };
+  }
+  return { modeByEntityId, aggroByEntityId, aggroByHiveId, bugTimingById, hiveReplenishById };
+}
+
 export function saveFaunaHivesState(
   state: PlanetState,
   fauna: FaunaHivesBlob,
@@ -242,80 +300,30 @@ export function saveFaunaHivesState(
     fauna.lastScheduledRollTickByColony,
     fauna.scheduledRollIndexByColony,
     fauna.pendingEvents,
+    cloneDamageMap(fauna.planetDamageByColony),
   );
+  const prevModeRaw = (state.blobs[FAUNA_MODE_BLOB]?.value as { byEntityId?: Record<number, FaunaBehaviorMode> } | undefined)?.byEntityId;
+  const tables = buildAggroTables(synced, prevModeRaw);
 
-  const prevModeRaw = (
-    state.blobs[FAUNA_MODE_BLOB]?.value as
-      | { byEntityId?: Record<number, FaunaBehaviorMode> }
-      | undefined
-  )?.byEntityId;
-  const modeByEntityId: Record<number, FaunaBehaviorMode> = prevModeRaw ? { ...prevModeRaw } : {};
-  const aggroByEntityId: Record<number, FaunaAggressionEntry> = {};
-  const aggroByHiveId: Record<number, FaunaAggressionEntry> = {};
-  const bugTimingById: Record<number, { lastWanderTick: number; lastAttackTick: number }> = {};
-  const hiveReplenishById: Record<number, number> = {};
-
-  for (const hive of Object.values(synced.hivesById)) {
-    const colonies = Object.keys(hive.aggressionByColony)
-      .map(Number)
-      .sort((a, b) => a - b);
-    const mode: FaunaBehaviorMode = colonies.length > 0 ? 'aggressive' : 'passive';
-    hive.mode = mode;
-    hive.aggressiveColonies = colonies;
-    modeByEntityId[hive.hiveId] = mode;
-    hiveReplenishById[hive.hiveId] = hive.lastReplenishTick;
-    const entry: FaunaAggressionEntry = {
-      mode,
-      aggressiveColonies: colonies,
-      aggressionByColony: { ...hive.aggressionByColony },
-      hiveId: hive.hiveId,
-    };
-    aggroByEntityId[hive.hiveId] = entry;
-    aggroByHiveId[hive.hiveId] = entry;
-  }
-
-  for (const bug of Object.values(synced.bugsById)) {
-    const mergedCols = Array.from(new Set(bug.aggressiveColonies)).sort((a, b) => a - b);
-    const mode: FaunaBehaviorMode = mergedCols.length > 0 ? 'aggressive' : 'passive';
-    bug.mode = mode;
-    bug.aggressiveColonies = mergedCols;
-    if (mode === 'passive') bug.targetColony = null;
-    else if (bug.targetColony === null || !mergedCols.includes(bug.targetColony)) {
-      bug.targetColony = mergedCols[0] ?? null;
-    }
-    modeByEntityId[bug.entityId] = mode;
-    bugTimingById[bug.entityId] = {
-      lastWanderTick: bug.lastWanderTick,
-      lastAttackTick: bug.lastAttackTick,
-    };
-    aggroByEntityId[bug.entityId] = {
-      mode,
-      aggressiveColonies: mergedCols,
-      targetColony: bug.targetColony,
-      hiveId: bug.homeHiveId,
-    };
-  }
-
-  const structuralChanged = hasStructuralFaunaChange(prevHivesBlob, synced);
-  if (!state.blobs[FAUNA_HIVES_BLOB] || structuralChanged) {
+  if (!state.blobs[FAUNA_HIVES_BLOB] || hasStructuralFaunaChange(prevHivesBlob, synced)) {
     setBlob(state, FAUNA_HIVES_BLOB, synced, tick);
   }
-
-  if (!state.blobs[FAUNA_MODE_BLOB] || hasModeMapChanged(prevModeRaw, modeByEntityId)) {
-    setBlob(state, FAUNA_MODE_BLOB, { byEntityId: modeByEntityId }, tick);
+  if (!state.blobs[FAUNA_MODE_BLOB] || hasModeMapChanged(prevModeRaw, tables.modeByEntityId)) {
+    setBlob(state, FAUNA_MODE_BLOB, { byEntityId: tables.modeByEntityId }, tick);
   }
 
   const nextAggro: FaunaInternalTimingBlob = {
-    byEntityId: aggroByEntityId,
-    byHiveId: aggroByHiveId,
+    byEntityId: tables.aggroByEntityId,
+    byHiveId: tables.aggroByHiveId,
     lastSeenHpByEntityId: { ...fauna.lastSeenHpByEntityId },
-    bugTimingById,
-    hiveReplenishById,
+    bugTimingById: tables.bugTimingById,
+    hiveReplenishById: tables.hiveReplenishById,
     cohortsById: cloneCohortsMap(fauna.cohortsById),
     nextCohortSeq: fauna.nextCohortSeq,
     lastScheduledRollTickByColony: { ...fauna.lastScheduledRollTickByColony },
     scheduledRollIndexByColony: { ...fauna.scheduledRollIndexByColony },
     pendingEvents: fauna.pendingEvents.map((e) => ({ ...e, data: { ...e.data } })),
+    planetDamageByColony: cloneDamageMap(fauna.planetDamageByColony),
   };
   setBlob(state, FAUNA_AGGRESSION_BLOB, nextAggro, tick);
 }

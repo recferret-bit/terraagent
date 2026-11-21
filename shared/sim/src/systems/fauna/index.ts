@@ -7,6 +7,7 @@ export * from './insectActions';
 export * from './state';
 export * from './spawn';
 export * from './provocation';
+export * from './planetDamage';
 export * from './waves';
 export * from './step';
 

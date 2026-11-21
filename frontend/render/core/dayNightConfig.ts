@@ -339,6 +339,11 @@ export function isSceneInDescent(scene: THREE.Object3D): boolean {
   return false;
 }
 
+/** True when `scene` is the orbital planet-selection / space backdrop (`OrbitalStage`). */
+export function isSceneInOrbit(scene: THREE.Object3D): boolean {
+  return scene.name === 'orbital:stage' || Boolean(scene.userData?.isOrbitalSpace);
+}
+
 export function getViewportPlanetBase(vp: ColonyViewport): ViewportPlanetBaseline {
   return baselines.get(vp) ?? recordViewportPlanetBase(vp);
 }

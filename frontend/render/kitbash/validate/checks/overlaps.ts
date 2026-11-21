@@ -107,7 +107,7 @@ function hangOf(tris: Float32Array, nTris: number): { span: number; sag: number 
 }
 
 export const cableStage: CheckStage = (ctx) => {
-  const { parts: P_, o, add, R } = ctx;
+  const { parts: P_, o, add } = ctx;
   const plinthY = floorY(P_, o.grounded, o.minParts);
   for (const T of P_) {
     const hanging = HANGING.test(T.def.name) && !RIGID_BUS.test(T.def.name) && T.def.role !== 'whip';

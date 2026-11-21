@@ -13,6 +13,7 @@ import type { DescentSequence, DescentTelemetry } from '@terra/render/descent/ty
 import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
 import { Gameplay } from './Gameplay';
 import {
+  buildForwardedOnlineSearch,
   finishReturningColonyEntry,
   mountBootOnlineSession,
   mountPrototypeHudRig,
@@ -27,7 +28,7 @@ import {
   type ColonyLoadMode,
 } from './colonyEntryBridge';
 import { OnlineSession } from './online/OnlineSession';
-import { writeStoredPlanetKind } from './online/viewportHelper';
+import { parseGroundSeedInput, writeStoredPlanetKind } from './online/viewportHelper';
 import {
   buildPreparedDescentSession,
   disposePreparedDescentSession,
@@ -72,18 +73,15 @@ export class Game {
   private keepOnlineSession = false;
   private useOnlineGameplay = true;
   private loadMode: ColonyLoadMode | null = null;
-  private readonly isLocalHost: boolean;
+  private readonly isLocalHost: boolean; private readonly sessionSearch: string;
   private fastForward = 0; private time = 0; private raf = 0;
   private readonly pacer = createFramePacer({ maxDt: 0.05 });
   private readonly offFpsCap = onPerfConfigChange((opt, res, cap) => { if (this.settings.optimized !== opt || this.settings.resolution !== res || this.settings.fpsCap !== cap) this.settings = { ...this.settings, optimized: opt, resolution: res, fpsCap: cap }; });
-  private readonly prewarmQueue: string[] = [...LANDING_PREWARM_ARCHETYPES];
-  private prepSeq = 0;
+  private readonly prewarmQueue: string[] = [...LANDING_PREWARM_ARCHETYPES]; private prepSeq = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
   private prepared: PreparedDescentSession | null = null; private prepTimer = 0;
   private deploySession: PreparedDescentSession | null = null;
-  private cutFlash = 0;
-  private baseBloom = 0.45;
-  private entryHoldElapsed = 0;
+  private cutFlash = 0; private baseBloom = 0.45; private entryHoldElapsed = 0;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -92,20 +90,21 @@ export class Game {
     this.fade.className = 'fade'; document.body.appendChild(this.fade);
     window.addEventListener('keydown', this.escListener);
     const q = new URLSearchParams(location.search);
+    this.sessionSearch = buildForwardedOnlineSearch(location.search);
     const kind = (PLANET_KINDS.includes(q.get('planet') as PlanetKind) ? q.get('planet') : 'dune') as PlanetKind;
     writeStoredPlanetKind(kind);
     if (q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0;
-    const seed = q.get('seed') ? parseInt(q.get('seed')!, 10) : undefined;
+    const seed = parseGroundSeedInput(q.get('seed'), PLANET_SPECS[kind].seed);
     this.sectorIntent = normalizeSectorIntent(q.get('sector'));
     const store = this.flagsStore ??= createClientFlagsStore();
-    const isLegacyQa = q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1');
     this.isLocalHost = q.get('host') === 'local';
+    const isLegacyQa = q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1' && !this.isLocalHost);
     this.useOnlineGameplay = store.set.has('W01') && !isLegacyQa;
 
     this.menu = new MainMenu(document.body, {
       onPlanet: (k) => {
         writeStoredPlanetKind(k);
-        this.stage?.setPlanet(this.makeSpec(k, PLANET_SPECS[k].seed));
+        this.stage?.setPlanet(this.makeSpec(k, this.menu.seed));
         this.syncOrbitUrl();
         this.schedulePrepare();
       },
@@ -203,7 +202,8 @@ export class Game {
       probeActiveColony: () => this.menu.probeActiveColony(),
       getActiveColonyKind: () => this.menu.getActiveColony()?.kind ?? null,
     });
-    this.deploy(targetKind, PLANET_SPECS[targetKind].seed, true);
+    const active = this.menu.getActiveColony();
+    this.deploy(targetKind, !active && targetKind === this.menu.kind ? this.menu.seed : PLANET_SPECS[targetKind].seed, true);
   }
 
   private deploy(kind: PlanetKind, seed: number, instant = false) {
@@ -238,7 +238,7 @@ export class Game {
         this.online = mountBootOnlineSession({
           root: this.root, viewport: this.viewport, planetKind: this.spec.kind, sectorIntent: this.sectorIntent,
           loadMode: 'pod', skipDescent: false, fromSpaceDescent: true, freshDeployment: true, orbitalCameraDrop: false,
-          deferReveal: false, tryRefresh: keepSession, onReturnToOrbit: () => { void this.returnToOrbit(); },
+          deferReveal: false, tryRefresh: keepSession, search: this.sessionSearch, onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
       }
     }
@@ -291,7 +291,7 @@ export class Game {
     const skipCinematic = instant || this.settings.skipCinematic;
     this.online = startReturningColonyEntry({
       root: this.root, viewport: this.viewport, planetKind: kind, sectorIntent: this.sectorIntent,
-      skipCinematic, stage: this.stage, markers: this.menu.getGlobeMarkers(),
+      skipCinematic, stage: this.stage, markers: this.menu.getGlobeMarkers(), search: this.sessionSearch,
       onReturnToOrbit: () => { void this.returnToOrbit(); },
     });
     this.menu.hide();
@@ -365,7 +365,7 @@ export class Game {
         this.online = mountBootOnlineSession({
           root: this.root, viewport: this.viewport, planetKind: this.spec.kind, sectorIntent: this.sectorIntent,
           loadMode: 'instant', skipDescent: true, fromSpaceDescent: false, freshDeployment: true, orbitalCameraDrop: false,
-          deferReveal: false, tryRefresh: this.keepOnlineSession, onReturnToOrbit: () => { void this.returnToOrbit(); },
+          deferReveal: false, tryRefresh: this.keepOnlineSession, search: this.sessionSearch, onReturnToOrbit: () => { void this.returnToOrbit(); },
         });
       }
       return;

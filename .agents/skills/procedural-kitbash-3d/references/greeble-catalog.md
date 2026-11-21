@@ -60,3 +60,17 @@ KitbashRegistry.registerGreeble('cryoCondenserCoil', (params: { radius: number; 
   builder.addPart(coilGeo, 'energyCyan', { emissiveIntensity: 3.5 });
 });
 ```
+
+---
+
+## 5. Organic Vertebrate, Avian & Botanical Sub-Assemblies
+
+For passive biosphere wildlife (`archetypes/units/warmFauna.ts`, `avianFauna.ts`) and botanical scatter (`visuals/terrain/treeBreeds.ts`, `groundFloraGeos.ts`), use the dedicated organic generators rather than hard-surface mechanical plates:
+
+| Greeble / Builder | Location | Parameters & Anatomy | Tissue / Material |
+| :--- | :--- | :--- | :--- |
+| `sculptedLoft` / `sculptedLimbSegment` | `greebles/organic/vertebrateLoft.ts` | Multi-station asymmetric dorsal/ventral lofts & oriented muscle segments (`buildMammalCore`, `vertebrateLimbs.ts`) | `tissue = 6` (`pelage`) |
+| `sculptedWingFoil` / `sculptedFeather` | `greebles/organic/vertebrateLoft.ts` | Cambered secondary airfoils, upper coverts & shingled primary/rectrix feather blades (`buildAvianCore`, `avianBuilder.ts`) | `tissue = 7` (`plumage`) |
+| `sculptedEar` / `cervineAntlers` / `sweptHorns` | `vertebrateLoft.ts` / `vertebrates.ts` | Cupped concave ear pinnae, multi-tine cervid antlers & swept desert keratin horns | `tissue = 6` / `4` (`keratin`) |
+| `buildBiomeTreeAtlasGeo` | `visuals/terrain/treeBreeds.ts` | `(biome, seed)` — merges biome's 3–4 endemic tree breeds (`aBreed` attribute) into one instancing-ready geometry with `treeBarkFissures` bark detail | `createFoliageMaterial(..., multiBreed = true)` |
+| `makeGrassTuftGeo` / `makeSaguaroCactusGeo` / etc. | `visuals/terrain/groundFloraGeos.ts` | 6 low-poly 3D botanical ground-flora primitives (`grassTuft`, `wildflower`, `bush`, `saguaro`, `barrelCactus`, `reeds`) | `createFoliageMaterial` |

@@ -161,9 +161,10 @@ export function createHexTileTint(
   const stamp = (l: HexTileLayers, i: number) => {
     const q = hx.q[i]!, r = hx.r[i]!;
     const prepVal = l.prep?.[i] ?? 0;
+    const seed = l.seed ?? 0;
     const st = l.terrain
-      ? tileStyle(q, r, l.terrain[i] ?? 0, prepVal, l.deposit?.[i] ?? 0, l.kind ?? 'forestRock')
-      : tileStyle(q, r, HEX_TERRAIN.flat, prepVal, 0, l.kind ?? 'forestRock');
+      ? tileStyle(q, r, l.terrain[i] ?? 0, prepVal, l.deposit?.[i] ?? 0, l.kind ?? 'forestRock', seed)
+      : tileStyle(q, r, HEX_TERRAIN.flat, prepVal, 0, l.kind ?? 'forestRock', seed);
     const o = texel(i);
     tint.data.set([Math.round(st.r * 255), Math.round(st.g * 255), Math.round(st.b * 255), 255], o);
     tf.data[o] = prepVal === HEX_PREP.living ? 255 : 0;

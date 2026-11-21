@@ -85,7 +85,7 @@ describe('sidebar building list', () => {
 
 function toolbarHandlers(onNight: (night: boolean) => void) {
   return {
-    onView() {}, onPlanet() {}, onToggle() {}, onShot() {}, onSheet() {}, onBuild() {}, onWorkTarget() {},
+    onView() {}, onPlanet() {}, onToggle() {}, onShot() {}, onSheet() {}, onBuild() {}, onPose() {}, onWorkTarget() {},
     onDepositStage() {}, onTileState() {}, onNight,
   };
 }

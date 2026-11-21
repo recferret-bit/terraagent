@@ -1,12 +1,29 @@
 import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
 import { getShadowSwayScale, onShadowLodTelemetry } from '../../core/shadowQuality';
 import { getWeatherUniforms } from '../../core/weatherConfig';
 import { getWindUniforms, WIND_GLSL } from '../../core/windConfig';
 import { bindViewFocusUniforms, VIEW_FOCUS_GLSL } from '../../core/viewFocus';
+import {
+  botanicalColor as C,
+  jitterBotanicalTint,
+  makeBotanicalBlob as blob,
+  mergeBotanicalParts as done,
+  paintBotanical as paint,
+  xfBotanical as xf,
+  type BotanicalGeo as G,
+} from './botanicalGeo';
+import {
+  buildBoulderAtlasGeo,
+  buildSpireAtlasGeo,
+  makeBoulderGeo,
+  makeSpireGeo,
+} from './desertAndRockGeos';
 import { Noise2 } from './noise';
+import { ProceduralTextureRegistry } from '../ProceduralTextureRegistry';
 import { glslFloat } from '../shaderInject';
+
+export { buildBoulderAtlasGeo, buildSpireAtlasGeo, jitterBotanicalTint, makeBoulderGeo, makeSpireGeo };
 
 export interface Place {
   x: number;
@@ -21,6 +38,10 @@ export interface Place {
   stage?: 'full' | 'half' | 'depleted';
   /** Instance colour multiplier (> 1 brightens), e.g. the accent step of a tier 2/3 deposit. */
   tintMul?: number;
+  /** Optional tree breed index (`0..3`) within a multi-breed atlas geometry (`aBreed`). */
+  breedIndex?: number;
+  /** Optional per-breed / per-instance wind compliance multiplier (`0.3..1.8`). */
+  windMul?: number;
 }
 
 /** Jittered-grid scatter; `prob(x,z,r)` returns acceptance probability (0 = reject). */
@@ -36,51 +57,10 @@ export function scatterGrid(rng: () => number, extent: number, cell: number, pro
   return out;
 }
 
-type G = THREE.BufferGeometry;
-function paint(g: G, color: THREE.Color, jitter = 0, topBoost = 0, seed = 1): G {
-  g.deleteAttribute('uv');
-  g.deleteAttribute('normal');
-  const out = mergeVertices(g, 1e-4);
-  const p = out.getAttribute('position'), n = p.count;
-  const col = new Float32Array(n * 3);
-  const box = new THREE.Box3().setFromBufferAttribute(p as THREE.BufferAttribute);
-  const hgt = Math.max(1e-3, box.max.y - box.min.y);
-  const tmp = new THREE.Color();
-  for (let i = 0; i < n; i++) {
-    const px = p.getX(i), py = p.getY(i), pz = p.getZ(i);
-    const h = Math.sin(px * 12.9898 + py * 78.233 + pz * 37.719 + seed * 19.31) * 43758.5453;
-    const k = 1 + ((h - Math.floor(h)) - 0.5) * 2 * jitter;
-    const y = (py - box.min.y) / hgt;
-    tmp.copy(color).multiplyScalar(k * (1 + topBoost * (y - 0.5)));
-    col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b;
-  }
-  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  out.computeVertexNormals();
-  return out;
-}
-function xf(g: G, pos: [number, number, number], scale: [number, number, number] = [1, 1, 1], rot: [number, number, number] = [0, 0, 0]): G {
-  g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(...pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)), new THREE.Vector3(...scale)));
-  return g;
-}
-function blob(radius: number, detail: number, noise: Noise2, amp: number, seedOff: number): G {
-  const g = new THREE.IcosahedronGeometry(radius, detail);
-  const p = g.getAttribute('position');
-  const v = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) {
-    v.fromBufferAttribute(p, i);
-    const d = 1 + amp * noise.n(v.x * 1.7 + seedOff, v.y * 1.7 + v.z * 1.3);
-    p.setXYZ(i, v.x * d, v.y * d, v.z * d);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-const C = (h: number | THREE.Color) => (h instanceof THREE.Color ? h.clone() : new THREE.Color(h));
-const done = (parts: G[]) => { const m = mergeGeometries(parts.map((g) => (g.index ? g : mergeVertices(g, 1e-4))))!; m.computeVertexNormals(); return m; };
-
 export function makeBroadleafGeo(leafA: THREE.Color, leafB: THREE.Color, seed: number): G {
   const nz = new Noise2(seed);
   const trunk = xf(new THREE.CylinderGeometry(0.11, 0.2, 1.7, 6, 1), [0, 0.85, 0]);
-  const parts: G[] = [paint(trunk, C(0x5a3d26), 0.1, 0, 1)];
+  const parts: G[] = [paint(trunk, C(0x5a3d26), 0.1, 0, 1, 1)];
   const blobs: [number, number, number, number, THREE.Color][] = [
     [0, 2.4, 0, 1.25, leafA], [0.65, 2.0, 0.3, 0.8, leafB], [-0.55, 2.15, -0.35, 0.85, leafA], [0.1, 3.05, -0.1, 0.8, leafB], [-0.2, 2.0, 0.6, 0.7, leafB],
   ];
@@ -88,30 +68,8 @@ export function makeBroadleafGeo(leafA: THREE.Color, leafB: THREE.Color, seed: n
   return done(parts);
 }
 
-export function makePalmGeo(leaf: THREE.Color): G {
-  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.25, 1.4, 0.1), new THREE.Vector3(0.55, 2.8, 0.1), new THREE.Vector3(0.5, 4.2, 0.0)]);
-  const trunk = new THREE.TubeGeometry(curve, 8, 0.13, 5, false);
-  const parts: G[] = [paint(trunk, C(0x8a6a46), 0.12, 0.2, 3)];
-  const top = curve.getPoint(1);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const leafG = new THREE.PlaneGeometry(0.55, 2.4, 1, 5);
-    const lp = leafG.getAttribute('position');
-    for (let k = 0; k < lp.count; k++) {
-      const t = Math.min(1, Math.max(0, (lp.getY(k) + 1.2) / 2.4)); // 0..1 along frond
-      const w = Math.sin(t * Math.PI * 0.95 + 0.1);
-      lp.setXYZ(k, lp.getX(k) * (0.35 + w), t * 2.2, -Math.pow(t, 1.8) * 1.3 + Math.abs(lp.getX(k)) * 0.3);
-    }
-    leafG.rotateX(-0.45); leafG.rotateY(a);
-    xf(leafG, [top.x, top.y, top.z]);
-    parts.push(paint(leafG, leaf, 0.12, 0.5, 20 + i));
-  }
-  parts.push(paint(xf(new THREE.IcosahedronGeometry(0.2, 0), [top.x, top.y - 0.1, top.z]), C(0x6b4a2a), 0.1, 0, 5));
-  return done(parts);
-}
-
 export function makePineGeo(a: THREE.Color, b: THREE.Color): G {
-  const parts: G[] = [paint(xf(new THREE.CylinderGeometry(0.1, 0.2, 1.6, 6, 1), [0, 0.8, 0]), C(0x4a3424), 0.1, 0, 2)];
+  const parts: G[] = [paint(xf(new THREE.CylinderGeometry(0.1, 0.2, 1.6, 6, 1), [0, 0.8, 0]), C(0x4a3424), 0.1, 0, 2, 1)];
   const tiers: [number, number, number][] = [[1.7, 1.6, 1.2], [1.4, 1.5, 2.3], [1.1, 1.4, 3.3], [0.75, 1.3, 4.2], [0.4, 1.1, 5.0]];
   tiers.forEach(([r, h, y], i) => {
     const g = new THREE.ConeGeometry(r, h, 7, 1);
@@ -120,36 +78,6 @@ export function makePineGeo(a: THREE.Color, b: THREE.Color): G {
     parts.push(paint(xf(g, [0, y + h / 2 - 0.2, 0]), i % 2 ? a : b, 0.08, 0.35, 30 + i));
   });
   return done(parts);
-}
-
-/** Low-poly faceted boulder. Deep base skirt below y=0 for sloped ground contact, noisy faceted top. */
-export function makeBoulderGeo(seed: number, tint = new THREE.Color(1, 1, 1)): G {
-  const nz = new Noise2(seed);
-  const g = blob(1, 1, nz, 0.38, seed * 1.7);
-  const p = g.getAttribute('position');
-  for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i);
-    if (y < -0.52) p.setY(i, -0.52 + (y + 0.52) * 0.15);
-    else if (y > 0) p.setY(i, y * 1.14);
-  }
-  g.computeVertexNormals();
-  return paint(g, tint, 0.1, 0.3, seed);
-}
-
-/** Tall rock spire / obsidian shard: tapered hexagonal prism with kinks and underground skirt (-0.26..+1.12). */
-export function makeSpireGeo(seed: number, tint = new THREE.Color(1, 1, 1)): G {
-  const nz = new Noise2(seed);
-  const g = new THREE.CylinderGeometry(0.32, 0.90, 1.38, 6, 6);
-  g.translate(0, 0.43, 0);
-  const p = g.getAttribute('position');
-  for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i);
-    const yPos = Math.max(0, y);
-    const k = 1 + 0.25 * nz.n(p.getX(i) * 3 + 5, y * 3 + p.getZ(i) * 3);
-    p.setXYZ(i, p.getX(i) * k + yPos * yPos * 0.25 * nz.n(seed, 1), y, p.getZ(i) * k + yPos * yPos * 0.2 * nz.n(seed, 2));
-  }
-  g.computeVertexNormals();
-  return paint(g, tint, 0.12, 0.45, seed);
 }
 
 /** Foliage vertex uniforms: the material's own clock + sway multiplier, and the shared wind (`core/windConfig.ts`). */
@@ -269,25 +197,74 @@ export function foliageTreeTraits(x: number, z: number, sizeY: number = FOLIAGE_
   };
 }
 
-export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubleSided = false): THREE.MeshStandardMaterial {
+const MULTI_BREED_COLOR_VERT = /* glsl */ `{
+  vec3 taInstCol = vec3(1.0);
+  #ifdef USE_INSTANCING_COLOR
+    float taBrIdx = floor((instanceColor.r + 0.01) / 8.0);
+    float taWnIdx = floor((instanceColor.b + 0.01) / 8.0);
+    taInstCol = vec3(instanceColor.r - taBrIdx * 8.0, instanceColor.g, instanceColor.b - taWnIdx * 8.0);
+  #endif
+  #if defined(USE_COLOR_ALPHA)
+    vColor = vec4(1.0);
+  #elif defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
+    vColor = vec3(1.0);
+  #endif
+  #ifdef USE_COLOR
+    vColor *= color;
+  #endif
+  #if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
+    vColor.xyz *= taInstCol;
+  #endif
+}`;
+
+function wrapMultiBreedBegin(chunk: string): string {
+  return `#include <begin_vertex>
+#if defined(USE_INSTANCING) && defined(USE_INSTANCING_COLOR)
+  float taBreedSel = floor((instanceColor.r + 0.01) / 8.0);
+  float taWindMul = max(0.25, floor((instanceColor.b + 0.01) / 8.0) * 0.1);
+  if (abs(aBreed - taBreedSel) > 0.4) {
+    transformed = vec3(0.0);
+  } else {
+#else
+  float taWindMul = 1.0;
+  {
+#endif
+${chunk.replace('#include <begin_vertex>\n', '').replace(/\buSway\b/g, '(uSway * taWindMul)')}
+  }`;
+}
+
+export function createFoliageMaterial(
+  timeU: THREE.IUniform,
+  sway: number,
+  doubleSided = false,
+  multiBreed = false,
+): THREE.MeshStandardMaterial {
   const side = doubleSided ? THREE.DoubleSide : THREE.FrontSide;
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, flatShading: true, side });
   const swayU = { value: sway };
+  const swayBegin = multiBreed ? wrapMultiBreedBegin(FOLIAGE_SWAY_BEGIN) : FOLIAGE_SWAY_BEGIN;
+  const breedDecl = multiBreed ? 'attribute float aBreed;\n' : '';
   const depthSwayU = { value: sway * getShadowSwayScale() };
   const offLod = onShadowLodTelemetry((st) => { depthSwayU.value = sway * st.shadowSwayScale; });
   const patchDepthSway = (sh: THREE.WebGLProgramParametersWithUniforms) => {
     Object.assign(sh.uniforms, getWindUniforms());
     sh.uniforms.uTime = timeU; sh.uniforms.uSway = depthSwayU; bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${FOLIAGE_WIND_DECL}`)
-      .replace('#include <begin_vertex>', FOLIAGE_SWAY_BEGIN);
+      .replace('#include <common>', `#define TA_FOCUS_SHADOW_PASS\n#include <common>\n${breedDecl}${FOLIAGE_WIND_DECL}`)
+      .replace('#include <begin_vertex>', swayBegin);
   };
+  const barkBundle = ProceduralTextureRegistry.get('treeBarkFissures', 128);
+  const barkMapU = { value: barkBundle.map! };
+  const barkRoughU = { value: barkBundle.roughnessMap! };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, getColonyVisionUniforms(), getWindUniforms(), getWeatherUniforms());
-    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU; bindViewFocusUniforms(sh.uniforms);
+    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU;
+    sh.uniforms.uBarkMap = barkMapU; sh.uniforms.uBarkRoughMap = barkRoughU;
+    bindViewFocusUniforms(sh.uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\n${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN;`)
-      .replace('#include <begin_vertex>', `${FOLIAGE_SWAY_BEGIN}
+      .replace('#include <common>', `#include <common>\nattribute float aBark;\n${breedDecl}${FOLIAGE_WIND_DECL}\nvarying vec3 vFW; varying vec3 vFN; varying vec4 vFBark;`)
+      .replace('#include <begin_vertex>', `${swayBegin}
+  vFBark = vec4(position, aBark);
 #ifdef USE_INSTANCING
   vFW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
   vFN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
@@ -295,19 +272,33 @@ export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubl
   vFW = (modelMatrix * vec4(transformed, 1.0)).xyz;
   vFN = normalize(mat3(modelMatrix) * objectNormal);
 #endif`);
+    if (multiBreed) {
+      sh.vertexShader = sh.vertexShader.replace('#include <color_vertex>', MULTI_BREED_COLOR_VERT);
+    }
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nvarying vec3 vFW; varying vec3 vFN;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
+      .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nuniform sampler2D uBarkMap, uBarkRoughMap;\nvarying vec3 vFW; varying vec3 vFN; varying vec4 vFBark;\n${COLONY_VISION_AND_LIGHTS_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
+float taBarkMask = clamp(vFBark.w, 0.0, 1.0);
+vec2 taBarkUvA = vec2(vFBark.x * 1.45, vFBark.y * 0.52);
+vec2 taBarkUvB = vec2(vFBark.z * 1.45, vFBark.y * 0.52);
+float taBarkBlend = abs(vFN.x) / max(abs(vFN.x) + abs(vFN.z), 0.001);
+float taBarkFissure = mix(dot(texture2D(uBarkMap, taBarkUvA).rgb, vec3(0.3333)), dot(texture2D(uBarkMap, taBarkUvB).rgb, vec3(0.3333)), taBarkBlend);
+float taBarkRough = mix(texture2D(uBarkRoughMap, taBarkUvA).r, texture2D(uBarkRoughMap, taBarkUvB).r, taBarkBlend);
+diffuseColor.rgb *= mix(1.0, 0.78 + 0.44 * taBarkFissure, taBarkMask * 0.75);
 if (uWetness > 0.001) {
   float fUp = clamp(vFN.y, 0.0, 1.0);
   diffuseColor.rgb *= mix(1.0, 0.66, uWetness);
   diffuseColor.rgb += vec3(0.04, 0.07, 0.11) * (uWetness * pow(fUp, 2.0));
 }`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= mix(1.0, 0.32, uWetness);')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+roughnessFactor = mix(roughnessFactor, taBarkRough, taBarkMask * 0.55);
+roughnessFactor *= mix(1.0, 0.32, uWetness);`)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vFW, vFN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vFW, gl_FragColor.rgb);');
   };
+  if (multiBreed) m.customProgramCacheKey = () => `ta-foliage-multibreed:${side}`;
   const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side });
+  if (multiBreed) depthMat.customProgramCacheKey = () => `ta-foliage-depth-multibreed:${side}`;
   depthMat.onBeforeCompile = patchDepthSway;
   m.userData.depthMaterial = depthMat;
   const origDispose = m.dispose.bind(m);
@@ -315,23 +306,35 @@ if (uWetness > 0.001) {
   return m;
 }
 
-/** Rock material: world-space grain + ground-up darkening, faceted, works with instanceColor. */
-export function createRockMaterial(opts: { rough?: number; metal?: number; flat?: boolean }): THREE.MeshStandardMaterial {
+const ROCK_MULTIBREED_BEGIN = `#include <begin_vertex>
+#if defined(USE_INSTANCING) && defined(USE_INSTANCING_COLOR)
+  if (abs(aBreed - floor((instanceColor.r + 0.01) / 8.0)) > 0.4) {
+    transformed = vec3(0.0);
+  }
+#endif`;
+
+/** Rock material: world-space grain + ground-up darkening, faceted, works with instanceColor & optional `aBreed` atlas. */
+export function createRockMaterial(opts: { rough?: number; metal?: number; flat?: boolean; multiBreed?: boolean }): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.rough ?? 0.9, metalness: opts.metal ?? 0, flatShading: opts.flat ?? true });
   m.shadowSide = THREE.DoubleSide;
   m.userData.receiveShadow = false;
+  const multi = Boolean(opts.multiBreed);
+  const breedDecl = multi ? 'attribute float aBreed;\n' : '';
+  const beginChunk = multi ? ROCK_MULTIBREED_BEGIN : '#include <begin_vertex>';
+
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, getColonyVisionUniforms(), getWeatherUniforms());
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRW; varying vec3 vRN;')
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
+      .replace('#include <common>', `#include <common>\n${breedDecl}varying vec3 vRW; varying vec3 vRN;`)
+      .replace('#include <begin_vertex>', `${beginChunk}
 #ifdef USE_INSTANCING
-  vRW = (modelMatrix * instanceMatrix * vec4(position,1.0)).xyz;
+  vRW = (modelMatrix * instanceMatrix * vec4(transformed,1.0)).xyz;
   vRN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
 #else
-  vRW = (modelMatrix * vec4(position,1.0)).xyz;
+  vRW = (modelMatrix * vec4(transformed,1.0)).xyz;
   vRN = normalize(mat3(modelMatrix) * objectNormal);
 #endif`);
+    if (multi) sh.vertexShader = sh.vertexShader.replace('#include <color_vertex>', MULTI_BREED_COLOR_VERT);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>\nuniform float uWetness, uRainIntensity;\nvarying vec3 vRW; varying vec3 vRN;\n${COLONY_VISION_AND_LIGHTS_GLSL}\nfloat rH(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y);} \nfloat rN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(rH(i),rH(i+vec2(1,0)),f.x),mix(rH(i+vec2(0,1)),rH(i+vec2(1,1)),f.x),f.y);}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -349,15 +352,29 @@ export function createRockMaterial(opts: { rough?: number; metal?: number; flat?
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 taProj = evalColonyProjectorLight(vRW, vRN); totalEmissiveRadiance += diffuseColor.rgb * taProj + taProj * 0.05; }')
       .replace('#include <fog_fragment>', '#include <fog_fragment>\ngl_FragColor.rgb = applyColonyFovShroud(vRW, gl_FragColor.rgb);');
   };
+  if (multi) {
+    m.customProgramCacheKey = () => 'ta-rock-multibreed';
+    const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+    depthMat.customProgramCacheKey = () => 'ta-rock-depth-multibreed';
+    depthMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', `#include <common>\n${breedDecl}`)
+        .replace('#include <begin_vertex>', ROCK_MULTIBREED_BEGIN);
+    };
+    m.userData.depthMaterial = depthMat;
+    const origDispose = m.dispose.bind(m);
+    m.dispose = () => { depthMat.dispose(); origDispose(); };
+  }
   return m;
 }
 
 export interface InstOpts {
   sx?: [number, number]; sy?: [number, number]; sink?: number; tilt?: number;
   tint?: (r: number, c: THREE.Color) => void; scaleMul?: (p: Place) => number;
+  encodeBreedInColor?: boolean;
+  castShadow?: boolean;
 }
-export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt: InstOpts): THREE.InstancedMesh {
-  const im = new THREE.InstancedMesh(geo, mat, Math.max(1, places.length));
+export function writeInstancedPlaces(im: THREE.InstancedMesh, places: readonly Place[], opt: InstOpts): THREE.InstancedMesh {
   im.count = places.length;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), t = new THREE.Vector3(), c = new THREE.Color();
   const sx = opt.sx ?? [0.8, 1.3], sy = opt.sy ?? sx;
@@ -375,19 +392,36 @@ export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt
     if (p.stage === 'depleted') c.multiplyScalar(0.58);
     else if (p.stage === 'half' && (p.scaleY ?? 1) < 0.35) c.multiplyScalar(0.72);
     if (p.tintMul !== undefined) c.multiplyScalar(p.tintMul);
+    if (opt.encodeBreedInColor) {
+      const br = Math.max(0, Math.min(7, Math.round(p.breedIndex ?? 0)));
+      const wn = Math.max(2, Math.min(20, Math.round((p.windMul ?? 1) * 10)));
+      c.r = br * 8 + Math.max(0.2, Math.min(3.5, c.r));
+      c.b = wn * 8 + Math.max(0.2, Math.min(3.5, c.b));
+    }
     im.setColorAt(i, c);
   });
   im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  im.instanceMatrix.clearUpdateRanges();
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) {
     im.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    im.instanceColor.clearUpdateRanges();
     im.instanceColor.needsUpdate = true;
   }
-  if (mat.userData?.depthMaterial) im.customDepthMaterial = mat.userData.depthMaterial as THREE.Material;
+  if (im.material && (im.material as THREE.Material).userData?.depthMaterial) {
+    im.customDepthMaterial = (im.material as THREE.Material).userData.depthMaterial as THREE.Material;
+  }
   if (places.length > 0) {
     im.computeBoundingBox();
     im.computeBoundingSphere();
   }
-  im.castShadow = true; im.receiveShadow = (mat.userData?.receiveShadow as boolean | undefined) ?? true;
+  const matReceive = (im.material as THREE.Material | undefined)?.userData?.receiveShadow as boolean | undefined;
+  im.castShadow = opt.castShadow ?? true;
+  im.receiveShadow = matReceive ?? true;
   return im;
+}
+
+export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt: InstOpts): THREE.InstancedMesh {
+  const im = new THREE.InstancedMesh(geo, mat, Math.max(1, places.length));
+  return writeInstancedPlaces(im, places, opt);
 }

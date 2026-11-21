@@ -112,9 +112,14 @@ function createHexWaterRig(radius: number, look: PlanetSpec, precomputed?: Preco
   const group = new THREE.Group();
   group.name = 'hexWater';
   group.position.y = HEX_WATER_LEVEL;
-  const fauna = createWaterFauna({ time: water.uniforms.uTime!, deepColor: { value: new THREE.Color(deepCol) }, seed: look.seed });
+  const fauna = createWaterFauna({
+    time: water.uniforms.uTime!,
+    deepColor: { value: new THREE.Color(deepCol) },
+    seed: look.seed,
+    planetSpan: span,
+    biomeKind: look.kind,
+  });
   group.add(surface.group, fauna.group, waterfalls.group);
-  // Mirror pass: plane = the group's y (the level); hides surface + fauna; bounds = the buckets `cullToFocus` left shown.
   const offReflect = registerReflectiveWater({ object: group, parts: () => surface.meshes });
   return { field, fieldTex, water, surface, waterfallMat, waterfalls, group, fauna, offReflect };
 }

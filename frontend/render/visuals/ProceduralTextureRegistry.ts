@@ -16,13 +16,57 @@ export interface HeightBuffer {
 
 export type ProceduralTextureGeneratorFn = (size?: number) => ProceduralPBRBundle;
 
+function hash2d(x: number, y: number, seed: number): number {
+  let h = (seed ^ Math.imul(x, 0x9e3779b1) ^ Math.imul(y, 0x85ebca6b)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+function tileableValueNoise(u: number, v: number, period: number, seed: number): number {
+  const x = u * period;
+  const y = v * period;
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const wx0 = ((ix % period) + period) % period;
+  const wy0 = ((iy % period) + period) % period;
+  const wx1 = (wx0 + 1) % period;
+  const wy1 = (wy0 + 1) % period;
+  const n00 = hash2d(wx0, wy0, seed);
+  const n10 = hash2d(wx1, wy0, seed);
+  const n01 = hash2d(wx0, wy1, seed);
+  const n11 = hash2d(wx1, wy1, seed);
+  return (n00 + (n10 - n00) * sx) * (1 - sy) + (n01 + (n11 - n01) * sx) * sy;
+}
+
+function makeDataTex(rgba: Uint8Array, size: number, srgb: boolean): THREE.DataTexture {
+  const tex = new THREE.DataTexture(rgba, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function clampByte(v: number): number {
+  return Math.max(0, Math.min(255, Math.round(v)));
+}
+
 /**
  * Converts a grayscale height canvas or raw `HeightBuffer` into a seamless tangent-space Normal DataTexture
  * using a wrapping 3x3 Sobel filter.
  */
 export function heightToNormalTexture(
   heightSource: HTMLCanvasElement | HeightBuffer,
-  normalStrength = 2.5
+  normalStrength = 2.5,
 ): THREE.DataTexture {
   const size = heightSource.width;
   const isBuffer = 'data' in heightSource;
@@ -43,34 +87,28 @@ export function heightToNormalTexture(
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const tl = h(x - 1, y - 1);
-      const t  = h(x,     y - 1);
+      const t = h(x, y - 1);
       const tr = h(x + 1, y - 1);
-      const l  = h(x - 1, y);
-      const r  = h(x + 1, y);
+      const l = h(x - 1, y);
+      const r = h(x + 1, y);
       const bl = h(x - 1, y + 1);
-      const b  = h(x,     y + 1);
+      const b = h(x, y + 1);
       const br = h(x + 1, y + 1);
 
-      const dX = (tr + 2.0 * r + br) - (tl + 2.0 * l + bl);
-      const dY = (bl + 2.0 * b + br) - (tl + 2.0 * t + tr);
+      const dX = tr + 2.0 * r + br - (tl + 2.0 * l + bl);
+      const dY = bl + 2.0 * b + br - (tl + 2.0 * t + tr);
       const dZ = invStrength;
 
       const len = Math.hypot(dX, dY, dZ) || 1.0;
       const idx = (y * size + x) * 4;
-      out[idx + 0] = Math.round(((-dX / len) * 0.5 + 0.5) * 255);
-      out[idx + 1] = Math.round(((-dY / len) * 0.5 + 0.5) * 255);
-      out[idx + 2] = Math.round((( dZ / len) * 0.5 + 0.5) * 255);
+      out[idx + 0] = clampByte(((-dX / len) * 0.5 + 0.5) * 255);
+      out[idx + 1] = clampByte(((-dY / len) * 0.5 + 0.5) * 255);
+      out[idx + 2] = clampByte(((dZ / len) * 0.5 + 0.5) * 255);
       out[idx + 3] = 255;
     }
   }
 
-  const normalTex = new THREE.DataTexture(out, size, size, THREE.RGBAFormat);
-  normalTex.wrapS = THREE.RepeatWrapping;
-  normalTex.wrapT = THREE.RepeatWrapping;
-  normalTex.anisotropy = 4;
-  normalTex.colorSpace = THREE.NoColorSpace;
-  normalTex.needsUpdate = true;
-  return normalTex;
+  return makeDataTex(out, size, false);
 }
 
 /**
@@ -82,7 +120,6 @@ export class ProceduralTextureRegistry {
 
   public static register(name: string, fn: ProceduralTextureGeneratorFn): void {
     this.generators.set(name, fn);
-    // Cache keys are `${name}_${size}`: drop every size of this preset so the new generator is used.
     const prefix = `${name}_`;
     for (const key of [...this.cache.keys()]) {
       if (key.startsWith(prefix) && /^\d+$/.test(key.slice(prefix.length))) this.cache.delete(key);
@@ -101,113 +138,166 @@ export class ProceduralTextureRegistry {
     this.cache.set(key, bundle);
     return bundle;
   }
+
+  public static listPresets(): string[] {
+    return [...this.generators.keys()];
+  }
 }
 
-// --- Built-in Procedural PBR Generators ---
-
-ProceduralTextureRegistry.register('scifiHullPanels', (size = 512) => {
-  const heightCanvas = document.createElement('canvas');
-  heightCanvas.width = heightCanvas.height = size;
-  const hCtx = heightCanvas.getContext('2d')!;
-
-  const roughCanvas = document.createElement('canvas');
-  roughCanvas.width = roughCanvas.height = size;
-  const rCtx = roughCanvas.getContext('2d')!;
-
-  // Base plate height & roughness
-  hCtx.fillStyle = '#b8b8b8';
-  hCtx.fillRect(0, 0, size, size);
-  rCtx.fillStyle = '#707070'; // ~0.44 roughness
-  rCtx.fillRect(0, 0, size, size);
-
-  const panels = [
-    [0, 0, size * 0.5, size * 0.5],
-    [size * 0.5, 0, size * 0.5, size * 0.25],
-    [size * 0.5, size * 0.25, size * 0.5, size * 0.25],
-    [0, size * 0.5, size * 0.25, size * 0.5],
-    [size * 0.25, size * 0.5, size * 0.75, size * 0.5],
-  ];
-
-  for (const [x, y, w, h] of panels) {
-    // Subtle per-plate roughness variation
-    const rVal = 105 + Math.floor(((x * 13 + y * 7) % 24));
-    rCtx.fillStyle = `rgb(${rVal},${rVal},${rVal})`;
-    rCtx.fillRect(x + 3, y + 3, w - 6, h - 6);
-
-    // Recessed panel groove
-    hCtx.strokeStyle = '#222222';
-    hCtx.lineWidth = 4;
-    hCtx.strokeRect(x + 2, y + 2, w - 4, h - 4);
-
-    // Dusty high-roughness seam
-    rCtx.strokeStyle = '#dcdcdc';
-    rCtx.lineWidth = 4;
-    rCtx.strokeRect(x + 2, y + 2, w - 4, h - 4);
-
-    // Corner rivet indentations
-    hCtx.fillStyle = '#383838';
-    const inset = 12;
-    for (const [rx, ry] of [
-      [x + inset, y + inset],
-      [x + w - inset, y + inset],
-      [x + inset, y + h - inset],
-      [x + w - inset, y + h - inset],
-    ]) {
-      hCtx.beginPath();
-      hCtx.arc(rx, ry, 3, 0, Math.PI * 2);
-      hCtx.fill();
+function buildBufferPbrPreset(
+  size: number,
+  normalStrength: number,
+  sample: (u: number, v: number) => { r: number; g: number; b: number; h: number; rough: number },
+): ProceduralPBRBundle {
+  const albedo = new Uint8Array(size * size * 4);
+  const rough = new Uint8Array(size * size * 4);
+  const height = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++) {
+    const v = y / size;
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      const p = sample(u, v);
+      const k = y * size + x;
+      const o = k * 4;
+      albedo[o] = clampByte(p.r);
+      albedo[o + 1] = clampByte(p.g);
+      albedo[o + 2] = clampByte(p.b);
+      albedo[o + 3] = 255;
+      const rv = clampByte(p.rough);
+      rough[o] = rv;
+      rough[o + 1] = rv;
+      rough[o + 2] = rv;
+      rough[o + 3] = 255;
+      height[k] = clampByte(p.h);
     }
   }
+  return {
+    map: makeDataTex(albedo, size, true),
+    normalMap: heightToNormalTexture({ width: size, height: size, data: height }, normalStrength),
+    roughnessMap: makeDataTex(rough, size, false),
+  };
+}
 
-  const normalMap = heightToNormalTexture(heightCanvas, 3.0);
-  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
-  roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
-  roughnessMap.colorSpace = THREE.NoColorSpace;
+// --- Built-in Mechanical & Industrial Presets ---
 
-  return { normalMap, roughnessMap };
-});
+ProceduralTextureRegistry.register('scifiHullPanels', (size = 256) =>
+  buildBufferPbrPreset(size, 3.0, (u, v) => {
+    const gx = (u * 4) % 1;
+    const gy = (v * 4) % 1;
+    const seam = gx < 0.03 || gx > 0.97 || gy < 0.03 || gy > 0.97;
+    const grain = tileableValueNoise(u, v, 32, 101) * 14;
+    const h = seam ? 36 : 186 + grain;
+    const rough = seam ? 220 : 112 + grain * 0.6;
+    return { r: 164 + grain * 0.5, g: 170 + grain * 0.5, b: 178 + grain * 0.5, h, rough };
+  }),
+);
 
-ProceduralTextureRegistry.register('solarHexGrid', (size = 512) => {
-  const albedoCanvas = document.createElement('canvas');
-  albedoCanvas.width = albedoCanvas.height = size;
-  const aCtx = albedoCanvas.getContext('2d')!;
+ProceduralTextureRegistry.register('solarHexGrid', (size = 256) =>
+  buildBufferPbrPreset(size, 2.2, (u, v) => {
+    const gx = (u * 8) % 1;
+    const gy = (v * 8) % 1;
+    const bus = gx < 0.06 || gy < 0.06;
+    return bus
+      ? { r: 152, g: 168, b: 188, h: 226, rough: 92 }
+      : { r: 22, g: 46, b: 84, h: 96, rough: 68 };
+  }),
+);
 
-  const heightCanvas = document.createElement('canvas');
-  heightCanvas.width = heightCanvas.height = size;
-  const hCtx = heightCanvas.getContext('2d')!;
+// --- Living Biosphere Botanical & Organic Presets ---
 
-  aCtx.fillStyle = '#122645';
-  aCtx.fillRect(0, 0, size, size);
-  hCtx.fillStyle = '#606060';
-  hCtx.fillRect(0, 0, size, size);
+ProceduralTextureRegistry.register('treeBarkFissures', (size = 256) =>
+  buildBufferPbrPreset(size, 2.8, (u, v) => {
+    const warp = (tileableValueNoise(u, v, 6, 311) - 0.5) * 0.08;
+    const ridge = Math.abs(Math.sin((u + warp) * Math.PI * 14));
+    const knot = tileableValueNoise(u, v, 12, 317);
+    const fine = tileableValueNoise(u, v, 48, 331);
+    const h = 55 + ridge * 145 * (0.7 + 0.3 * knot) + fine * 28;
+    const moss = Math.max(0, knot - 0.68) * 2.2;
+    const base = 0.55 + 0.45 * ridge;
+    return {
+      r: 96 * base * (1 - moss * 0.35) + 46 * moss,
+      g: 72 * base * (1 - moss * 0.2) + 98 * moss,
+      b: 50 * base * (1 - moss * 0.4) + 42 * moss,
+      h,
+      rough: 235 - ridge * 48,
+    };
+  }),
+);
 
-  const step = size / 8;
-  aCtx.strokeStyle = '#94a3b8';
-  aCtx.lineWidth = 2;
-  hCtx.strokeStyle = '#e2e2e2';
-  hCtx.lineWidth = 3;
+ProceduralTextureRegistry.register('meadowGrassClover', (size = 256) =>
+  buildBufferPbrPreset(size, 2.0, (u, v) => {
+    const patch = tileableValueNoise(u, v, 5, 501);
+    const blades = tileableValueNoise(u, v, 28, 509) * 0.65 + tileableValueNoise(u, v, 64, 521) * 0.35;
+    const bloom = Math.max(0, tileableValueNoise(u, v, 18, 541) - 0.78) * 4.2;
+    const h = 75 + blades * 140 + bloom * 35;
+    const lush = 0.72 + 0.42 * patch;
+    return {
+      r: (68 * lush + 34 * blades) * (1 - bloom) + 232 * bloom,
+      g: (116 * lush + 52 * blades) * (1 - bloom) + 206 * bloom,
+      b: (52 * lush + 22 * blades) * (1 - bloom) + 108 * bloom,
+      h,
+      rough: 228 - blades * 44 - bloom * 30,
+    };
+  }),
+);
 
-  for (let i = 0; i <= 8; i++) {
-    const pos = i * step;
-    aCtx.beginPath();
-    aCtx.moveTo(pos, 0);
-    aCtx.lineTo(pos, size);
-    aCtx.moveTo(0, pos);
-    aCtx.lineTo(size, pos);
-    aCtx.stroke();
+ProceduralTextureRegistry.register('desertPebbleCrust', (size = 256) =>
+  buildBufferPbrPreset(size, 2.4, (u, v) => {
+    const ripple = 0.5 + 0.5 * Math.sin((v * 10 + (tileableValueNoise(u, v, 4, 701) - 0.5) * 1.4) * Math.PI * 2);
+    const pebble = Math.max(0, tileableValueNoise(u, v, 30, 719) - 0.66) * 2.9;
+    const crack = Math.max(0, 0.12 - Math.abs(tileableValueNoise(u, v, 9, 733) - 0.5)) * 6.0;
+    const h = 110 + ripple * 62 + pebble * 74 - crack * 65;
+    return {
+      r: 208 + ripple * 24 - pebble * 52 - crack * 38,
+      g: 154 + ripple * 20 - pebble * 46 - crack * 32,
+      b: 98 + ripple * 14 - pebble * 34 - crack * 22,
+      h,
+      rough: 236 - pebble * 45 + crack * 14,
+    };
+  }),
+);
 
-    hCtx.beginPath();
-    hCtx.moveTo(pos, 0);
-    hCtx.lineTo(pos, size);
-    hCtx.moveTo(0, pos);
-    hCtx.lineTo(size, pos);
-    hCtx.stroke();
-  }
+ProceduralTextureRegistry.register('warmFurPelage', (size = 256) =>
+  buildBufferPbrPreset(size, 2.35, (u, v) => {
+    const row = Math.floor(v * 6);
+    const stagger = (row % 2) * 0.5;
+    const cu = ((u * 5 + stagger) % 1) - 0.5;
+    const cv = (v * 6) % 1;
+    const vNotch = 1 - Math.min(1, cv * 0.85 + Math.abs(cu) * 1.45);
+    const lockShape = Math.max(0, Math.min(1, vNotch * 1.35));
+    const tuft = tileableValueNoise(u * 2, v, 14, 907) * 0.65 + tileableValueNoise(u * 3, v, 28, 919) * 0.35;
+    const guard = 0.5 + 0.5 * Math.sin((u * 12 + tuft * 2.4 + cu * 1.6) * Math.PI * 2);
+    const parting = Math.max(0, 1 - lockShape * 1.6);
+    const h = 72 + lockShape * 116 + tuft * 34 + guard * 18;
+    const luma = 192 + (lockShape - 0.44) * 52 + (tuft - 0.5) * 22 + (guard - 0.5) * 14 - parting * 22;
+    return {
+      r: luma,
+      g: luma,
+      b: luma,
+      h,
+      rough: 214 - lockShape * 28 - guard * 24,
+    };
+  }),
+);
 
-  const map = new THREE.CanvasTexture(albedoCanvas);
-  map.wrapS = map.wrapT = THREE.RepeatWrapping;
-  map.colorSpace = THREE.SRGBColorSpace;
-
-  const normalMap = heightToNormalTexture(heightCanvas, 2.2);
-  return { map, normalMap };
-});
+ProceduralTextureRegistry.register('avianFeatherVane', (size = 256) =>
+  buildBufferPbrPreset(size, 1.5, (u, v) => {
+    const row = Math.floor(v * 10);
+    const stagger = (row % 2) * 0.5;
+    const cellU = ((u * 8 + stagger) % 1) - 0.5;
+    const cellV = (v * 10) % 1;
+    const barb = 0.5 + 0.5 * Math.cos((Math.abs(cellU) * 14 + cellV * 12) * Math.PI);
+    const edge = Math.max(0, 1 - Math.abs(cellU) * 1.9);
+    const overlap = Math.min(1, cellV * 1.25) * edge;
+    const fine = tileableValueNoise(u * 2, v * 2, 28, 1021);
+    const h = 88 + overlap * 98 + barb * 28 + fine * 18;
+    const luma = 198 + (overlap - 0.5) * 24 + (barb - 0.5) * 16 + (fine - 0.5) * 14;
+    return {
+      r: luma,
+      g: luma,
+      b: luma,
+      h,
+      rough: 186 - overlap * 36 - barb * 20,
+    };
+  }),
+);

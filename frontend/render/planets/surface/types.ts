@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { PlanetBiosphere } from '../../biosphere';
 import type { PlanetSpec } from '../PlanetSpec';
 import type { TerrainGridData } from '../../visuals/terrain/TerrainGrid';
 
@@ -7,6 +8,8 @@ export interface PlanetSurface {
   readonly spec: PlanetSpec;
   /** Everything (terrain, water, rocks, trees, props). Add to a scene; y=0 is the nominal build plane. */
   readonly group: THREE.Group;
+  /** Living birds and warm-blooded fauna layer across the surface patch. */
+  readonly biosphere?: PlanetBiosphere;
   /** Half-extent of the square playable patch in metres (terrain extends a bit beyond, fading to fog). */
   readonly halfSize: number;
   /** Terrain height (m) at world x,z (water surfaces NOT included). */
